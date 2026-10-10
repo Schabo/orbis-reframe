@@ -10,6 +10,7 @@
 #       orbis-reframe            launcher (packaging/tarball/), runs bin/...
 #       bin/ lib/ share/
 #   orbis-reframe_<version>[~deb13]_amd64.deb   the same tree under /usr
+#                                               (scripts/package.sh renames ~ to .)
 #
 # <target> (debian-testing, debian-13) is ORBIS_PACKAGE_TARGET, below.
 

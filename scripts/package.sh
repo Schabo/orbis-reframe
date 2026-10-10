@@ -3,7 +3,7 @@
 # (scripts/targets.sh): a clean Release build with every feature, then CPack
 # (cmake/Packaging.cmake) ->
 #   dist/<target>/orbis-reframe-<version>-<target>-x86_64.tar.xz
-#   dist/<target>/orbis-reframe_<version>[~deb13|~ubuntu26.04]_amd64.deb
+#   dist/<target>/orbis-reframe_<version>[.deb13|.ubuntu26.04]_amd64.deb
 #   dist/<target>/orbis-reframe-<version>-source.tar.xz   (git archive of HEAD, GPL)
 # each with a .sha256 file, followed by the cheap checks (no build-machine
 # paths in the binaries, every library found, --version). The GPU half of the
@@ -118,6 +118,12 @@ rm -rf "$DIST_DIR/_CPack_Packages"
 git archive --format=tar --prefix="orbis-reframe-$version/" HEAD \
     | xz -T0 > "$DIST_DIR/orbis-reframe-$version-source.tar.xz"
 
+# GitHub turns a '~' in an uploaded file's name into '.', so the .deb gets
+# that name here already (the package's Version: keeps the '~'); its .sha256
+# then names the file people download.
+for f in "$DIST_DIR"/orbis-reframe_*~*.deb; do
+    if [[ -e $f ]]; then mv "$f" "${f//\~/.}"; fi
+done
 tarball="$DIST_DIR/orbis-reframe-$version-$TARGET-$(uname -m).tar.xz"
 deb=$(ls "$DIST_DIR"/orbis-reframe_*.deb)
 (cd "$DIST_DIR" && for f in *.tar.xz *.deb; do sha256sum "$f" > "$f.sha256"; done)

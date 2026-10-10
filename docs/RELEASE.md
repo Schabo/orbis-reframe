@@ -16,9 +16,9 @@ A release is:
 | `orbis-reframe-<version>-debian-testing-x86_64.tar.xz` | Unpack-anywhere build for Debian Testing x86_64, with a top-level `orbis-reframe` launcher |
 | `orbis-reframe_<version>_amd64.deb` | The same build as a Debian package (`/usr`) |
 | `orbis-reframe-<version>-debian-13-x86_64.tar.xz` | The same for Debian 13 |
-| `orbis-reframe_<version>~deb13_amd64.deb` | Debian 13's `.deb` (a backport-style version, below Testing's) |
+| `orbis-reframe_<version>.deb13_amd64.deb` | Debian 13's `.deb` (its package version is a backport-style `<version>~deb13`, below Testing's; GitHub doesn't allow `~` in file names) |
 | `orbis-reframe-<version>-ubuntu-26.04-x86_64.tar.xz` | The same for Ubuntu 26.04 |
-| `orbis-reframe_<version>~ubuntu26.04_amd64.deb` | Ubuntu 26.04's `.deb` |
+| `orbis-reframe_<version>.ubuntu26.04_amd64.deb` | Ubuntu 26.04's `.deb` (version `<version>~ubuntu26.04`) |
 | `orbis-reframe-<version>-source.tar.xz` | `git archive` of the release tag (GPL-3.0: the source goes with every binary) |
 | `*.sha256` | One per file above |
 | Release notes | The version's section of `CHANGELOG.md` |
@@ -206,12 +206,12 @@ release page and say why in the release notes.
 git push origin main --follow-tags
 gh release create vY --draft --title "orbis-reframe Y" \
     --notes-file tmp/release-notes.md dist/debian-testing/* \
-    dist/debian-13/*~deb13* dist/debian-13/*-debian-13-* \
-    dist/ubuntu-26.04/*~ubuntu26.04* dist/ubuntu-26.04/*-ubuntu-26.04-*
+    dist/debian-13/*.deb13_* dist/debian-13/*-debian-13-* \
+    dist/ubuntu-26.04/*.ubuntu26.04_* dist/ubuntu-26.04/*-ubuntu-26.04-*
 ```
 
 (Both targets' folders hold the same source archive; it's uploaded once.)
-Check the draft on GitHub (all ten files, the notes), add anything the
+Check the draft on GitHub (all fourteen files, the notes), add anything the
 notes are missing (known issues, changed dependencies), then publish it.
 Later, a GitHub Actions workflow moves the build into a
 release workflow that makes the draft. Then step 4 runs in CI and this

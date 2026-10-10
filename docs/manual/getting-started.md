@@ -85,7 +85,7 @@ Vulkan and OpenCV libraries:
 
 | | Debian 13 | Debian Testing | Ubuntu 26.04 |
 |---|---|---|---|
-| Debian package | `orbis-reframe_<version>~deb13_amd64.deb` | `orbis-reframe_<version>_amd64.deb` | `orbis-reframe_<version>~ubuntu26.04_amd64.deb` |
+| Debian package | `orbis-reframe_<version>.deb13_amd64.deb` | `orbis-reframe_<version>_amd64.deb` | `orbis-reframe_<version>.ubuntu26.04_amd64.deb` |
 | Archive | `orbis-reframe-<version>-debian-13-x86_64.tar.xz` | `orbis-reframe-<version>-debian-testing-x86_64.tar.xz` | `orbis-reframe-<version>-ubuntu-26.04-x86_64.tar.xz` |
 
 - The **`.deb`** is a Debian package. apt installs the libraries it needs,
@@ -104,9 +104,9 @@ It should print `OK`.
 ### Option A: the `.deb` package
 
 ```sh
-sudo apt install ./orbis-reframe_<version>~deb13_amd64.deb    # Debian 13
+sudo apt install ./orbis-reframe_<version>.deb13_amd64.deb    # Debian 13
 sudo apt install ./orbis-reframe_<version>_amd64.deb          # Debian Testing
-sudo apt install ./orbis-reframe_<version>~ubuntu26.04_amd64.deb   # Ubuntu 26.04
+sudo apt install ./orbis-reframe_<version>.ubuntu26.04_amd64.deb   # Ubuntu 26.04
 ```
 
 Keep the `./`: it tells apt to install the file instead of looking for a

@@ -126,9 +126,10 @@ release test's GUI run (the dev test passes without them):
   `-DORBIS_SOURCE_TREE_FALLBACK=OFF` and `-ffile-prefix-map`, then `ctest`;
 - CPack (`cmake/Packaging.cmake`): `orbis-reframe-<version>-<target>-x86_64.tar.xz`
   (with a top-level `orbis-reframe` launcher, `packaging/tarball/`) and
-  `orbis-reframe_<version>_amd64.deb` -- `orbis-reframe_<version>~deb13_amd64.deb`
-  for Debian 13, a backport-style version that sorts below Testing's (and
-  `~ubuntu26.04` for Ubuntu)
+  `orbis-reframe_<version>_amd64.deb` -- for Debian 13 the package version is
+  `<version>~deb13`, a backport-style version that sorts below Testing's (and
+  `~ubuntu26.04` for Ubuntu); `scripts/package.sh` names the file
+  `orbis-reframe_<version>.deb13_amd64.deb`, since GitHub turns `~` into `.`
   (`Depends` from `dpkg-shlibdeps` plus `qt6-wayland`, `qt6-svg-plugins` and
   the ONNX Runtime built against, `libonnxruntime1.23` / `1.21`; Debian's NVIDIA
   driver packages as `Suggests`, none on Ubuntu, whose names carry the driver version);

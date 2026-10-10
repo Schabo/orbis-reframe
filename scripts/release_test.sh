@@ -79,8 +79,8 @@ sources=("$DIST_DIR"/orbis-reframe-*-source.tar.xz)
 shopt -u nullglob
 [[ ${#debs[@]} -eq 1 && ${#tarballs[@]} -eq 1 && ${#sources[@]} -eq 1 ]] \
     || die "$DIST_DIR needs exactly one .deb, tarball and source archive (scripts/package.sh)"
-# The .deb's version without a numbered release's ~deb13 / ~ubuntu26.04 is the binary's.
-version=$(basename "${debs[0]}" | sed -E 's/^orbis-reframe_(.*)_amd64\.deb$/\1/; s/~(deb[0-9]+|ubuntu[0-9.]+)$//')
+# The .deb's version without a numbered release's .deb13 / .ubuntu26.04 is the binary's.
+version=$(basename "${debs[0]}" | sed -E 's/^orbis-reframe_(.*)_amd64\.deb$/\1/; s/\.(deb[0-9]+|ubuntu[0-9.]+)$//')
 [[ $(basename "${tarballs[0]}") == orbis-reframe-"$version"-* ]] \
     || die "the .deb and the tarball have different versions"
 target=
