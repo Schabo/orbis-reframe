@@ -1,0 +1,179 @@
+#include "ReframeRenderer.h"
+
+#include <algorithm>
+#include <cmath>
+#include <numbers>
+#include <thread>
+#include <vector>
+
+namespace exportpipe {
+
+namespace {
+
+constexpr float kPi = std::numbers::pi_v<float>;
+
+int wrapIndex(int v, int n)
+{
+    // Positive-result modulo, for the horizontal equirect seam.
+    int m = v % n;
+    return m < 0 ? m + n : m;
+}
+
+// Bilinear RGBA fetch: U wraps, V clamps. `out[4]` receives the sample.
+void sampleEquirect(const uint8_t* eq, int w, int h, float u, float v, float out[4])
+{
+    const float fx = u * static_cast<float>(w) - 0.5f;
+    const float fy = v * static_cast<float>(h) - 0.5f;
+    const float x0f = std::floor(fx);
+    const float y0f = std::floor(fy);
+    const float tx = fx - x0f;
+    const float ty = fy - y0f;
+    const int x0 = static_cast<int>(x0f);
+    const int y0 = static_cast<int>(y0f);
+
+    const int xs[2] = {wrapIndex(x0, w), wrapIndex(x0 + 1, w)};
+    const int ys[2] = {std::clamp(y0, 0, h - 1), std::clamp(y0 + 1, 0, h - 1)};
+
+    for (int c = 0; c < 4; ++c) {
+        const float p00 = eq[(static_cast<size_t>(ys[0]) * w + xs[0]) * 4 + c];
+        const float p10 = eq[(static_cast<size_t>(ys[0]) * w + xs[1]) * 4 + c];
+        const float p01 = eq[(static_cast<size_t>(ys[1]) * w + xs[0]) * 4 + c];
+        const float p11 = eq[(static_cast<size_t>(ys[1]) * w + xs[1]) * 4 + c];
+        const float top = p00 + (p10 - p00) * tx;
+        const float bot = p01 + (p11 - p01) * tx;
+        out[c] = top + (bot - top) * ty;
+    }
+}
+
+// Colour grade, applied in [0,255] rgb space -- the C++ twin of
+// src/render/shaders/color_grade.glsl's gradeColor() (which can't be included
+// here): change both together, constants included. Order: temperature,
+// exposure, contrast, saturation. Leaves alpha untouched.
+constexpr float kGradeTemperaturePush = 40.0f; // levels at temperature +-100%
+constexpr float kGradeContrastPivot = 128.0f;
+constexpr float kGradeWhite = 255.0f;
+
+inline void gradeRgb(float rgba[4], const float g[4])
+{
+    const float t = g[3] / 100.0f;
+    float r = rgba[0] + t * kGradeTemperaturePush;
+    float gr = rgba[1];
+    float b = rgba[2] - t * kGradeTemperaturePush;
+
+    const float ef = std::pow(2.0f, g[0]);
+    r *= ef;
+    gr *= ef;
+    b *= ef;
+
+    const float cf = 1.0f + g[1] / 100.0f;
+    r = (r - kGradeContrastPivot) * cf + kGradeContrastPivot;
+    gr = (gr - kGradeContrastPivot) * cf + kGradeContrastPivot;
+    b = (b - kGradeContrastPivot) * cf + kGradeContrastPivot;
+
+    const float luma = 0.299f * r + 0.587f * gr + 0.114f * b;
+    const float sf = 1.0f + g[2] / 100.0f;
+    r = luma + (r - luma) * sf;
+    gr = luma + (gr - luma) * sf;
+    b = luma + (b - luma) * sf;
+
+    rgba[0] = std::clamp(r, 0.0f, kGradeWhite);
+    rgba[1] = std::clamp(gr, 0.0f, kGradeWhite);
+    rgba[2] = std::clamp(b, 0.0f, kGradeWhite);
+}
+
+void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int outH,
+                const ReframeView& view, int rowBegin, int rowEnd)
+{
+    const float tanHalfFovY = std::tan(view.fovY * 0.5f);
+    const float cosR = std::cos(view.roll);
+    const float sinR = std::sin(view.roll);
+    const float cosP = std::cos(view.pitch);
+    const float sinP = std::sin(view.pitch);
+    const float cosY = std::cos(view.yaw);
+    const float sinY = std::sin(view.yaw);
+
+    for (int py = rowBegin; py < rowEnd; ++py) {
+        const float ndcY = (static_cast<float>(py) + 0.5f) / static_cast<float>(outH) * 2.0f - 1.0f;
+        for (int px = 0; px < outW; ++px) {
+            const float ndcX =
+                (static_cast<float>(px) + 0.5f) / static_cast<float>(outW) * 2.0f - 1.0f;
+
+            // View-space ray (matches equirect.frag: +Y up, -Z forward).
+            float vx = ndcX * tanHalfFovY * view.aspect;
+            float vy = -ndcY * tanHalfFovY;
+            float vz = -1.0f;
+            const float invLen = 1.0f / std::sqrt(vx * vx + vy * vy + vz * vz);
+            vx *= invLen;
+            vy *= invLen;
+            vz *= invLen;
+
+            // Roll about Z (view axis), then pitch about X, then yaw about Y.
+            const float rx = vx * cosR - vy * sinR;
+            const float ry = vx * sinR + vy * cosR;
+            const float px_ = rx;
+            const float py_ = ry * cosP - vz * sinP;
+            const float pz_ = ry * sinP + vz * cosP;
+            const float qx = px_ * cosY + pz_ * sinY;
+            const float qy = py_;
+            const float qz = -px_ * sinY + pz_ * cosY;
+            // Stabilization in the sphere frame, after the pose.
+            const float* m = view.stab;
+            const float wx = m[0] * qx + m[1] * qy + m[2] * qz;
+            const float wy = m[3] * qx + m[4] * qy + m[5] * qz;
+            const float wz = m[6] * qx + m[7] * qy + m[8] * qz;
+
+            const float longitude = std::atan2(wx, -wz);          // [-pi, pi]
+            const float latitude = std::asin(std::clamp(wy, -1.0f, 1.0f)); // [-pi/2, pi/2]
+            const float u = longitude / (2.0f * kPi) + 0.5f;
+            const float v = 0.5f - latitude / kPi;
+
+            float rgba[4];
+            sampleEquirect(eq, eqW, eqH, u, v, rgba);
+            gradeRgb(rgba, view.colorGrade);
+
+            uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
+            for (int c = 0; c < 4; ++c)
+                dst[c] = static_cast<uint8_t>(std::clamp(rgba[c] + 0.5f, 0.0f, 255.0f));
+        }
+    }
+}
+
+} // namespace
+
+void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba, int outW, int outH,
+                       const ReframeView& view)
+{
+    if (eqW <= 0 || eqH <= 0 || outW <= 0 || outH <= 0)
+        return;
+
+    unsigned hw = std::thread::hardware_concurrency();
+    int workers = static_cast<int>(hw == 0 ? 4u : hw);
+    workers = std::clamp(workers, 1, outH);
+    // Small frames aren't worth the thread spin-up.
+    if (outH < 64)
+        workers = 1;
+
+    if (workers == 1) {
+        renderRows(eqRgba, eqW, eqH, outRgba, outW, outH, view, 0, outH);
+        return;
+    }
+
+    std::vector<std::thread> pool;
+    pool.reserve(static_cast<size_t>(workers - 1));
+    const int band = (outH + workers - 1) / workers;
+    for (int w = 0; w < workers; ++w) {
+        const int begin = w * band;
+        const int end = std::min(begin + band, outH);
+        if (begin >= end)
+            break;
+        if (w == workers - 1) {
+            renderRows(eqRgba, eqW, eqH, outRgba, outW, outH, view, begin, end);
+        } else {
+            pool.emplace_back(renderRows, eqRgba, eqW, eqH, outRgba, outW, outH, view, begin, end);
+        }
+    }
+    for (auto& t : pool)
+        t.join();
+}
+
+} // namespace exportpipe

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- orbis-reframe app icon: a 360° sphere (outline, equator, meridian) with
+       a flat frame cut out of it. Colours from resources/theme.qss. -->
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#1e1f22"/>
+  <rect x="4.5" y="4.5" width="119" height="119" rx="25.5" fill="none" stroke="#3a3d42"/>
+  <g fill="none" stroke="#5a5f66" stroke-width="4">
+    <ellipse cx="64" cy="64" rx="42" ry="14"/>
+    <ellipse cx="64" cy="64" rx="16" ry="42"/>
+  </g>
+  <circle cx="64" cy="64" r="42" fill="none" stroke="#e0e0e0" stroke-width="5"/>
+  <rect x="48" y="48" width="56" height="34" rx="5" fill="#2b3a4d" fill-opacity="0.85"
+        stroke="#4a9eff" stroke-width="6" stroke-linejoin="round"/>
+</svg>

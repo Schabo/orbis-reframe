@@ -1,0 +1,10 @@
+#!/bin/sh
+# Checks the commit message against Conventional Commits with commitizen
+# (CONTRIBUTING.md "Commit messages", .cz.toml) -- commitizen builds the version bump
+# and CHANGELOG.md from these, and skips messages that don't follow them.
+# Enable once per clone:  git config core.hooksPath .githooks
+if ! command -v cz >/dev/null 2>&1; then
+    echo "commit-msg: commitizen (cz) isn't installed: sudo apt install commitizen" >&2
+    exit 1
+fi
+exec cz check --allow-abort --commit-msg-file "$1"

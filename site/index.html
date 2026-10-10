@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orbis-reframe</title>
+<meta name="description" content="A native Linux video editor for Insta360 X5 360° footage: stitching, gyro stabilization and reframing.">
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --text: #1b1c1f;
+    --muted: #5a5d66;
+    --line: #e2e0da;
+    --accent: #b86e12;
+    --accent-soft: #f5e7d3;
+    --code-bg: #efede8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141518;
+      --surface: #1c1d21;
+      --text: #e7e7ea;
+      --muted: #9a9ca5;
+      --line: #2c2e34;
+      --accent: #e0a040;
+      --accent-soft: #33291b;
+      --code-bg: #24262b;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { width: min(860px, 100% - 32px); margin: 0 auto; }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  code {
+    font: 0.88em ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  header.hero { padding: 72px 0 40px; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    display: inline-block;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  h1 {
+    margin: 0 0 16px;
+    font-size: clamp(2.2rem, 6vw, 3.4rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; padding: 0; list-style: none; }
+  .actions a {
+    display: inline-block;
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .actions a.primary { background: var(--accent); color: var(--bg); }
+  .lede { font-size: 1.2rem; color: var(--muted); max-width: 42em; margin: 0; }
+  .lede strong { color: var(--text); }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; padding: 0; list-style: none; }
+  .tags li {
+    font-size: 0.85rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 999px;
+    padding: 3px 12px;
+    color: var(--muted);
+  }
+
+  section { padding: 44px 0; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 1.5rem; letter-spacing: -0.01em; margin: 0 0 16px; }
+  h3 { font-size: 1.05rem; margin: 0 0 8px; }
+  p { margin: 0 0 14px; }
+  ul { padding-left: 1.2em; margin: 0 0 14px; }
+  li { margin: 4px 0; }
+
+  .note {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 14px;
+  }
+  .note p:last-child { margin-bottom: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .card ul { margin: 0; font-size: 0.95rem; }
+
+  .sources li { margin: 10px 0; }
+  .shot { padding: 36px 0 8px; }
+  .shot a { display: block; }
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  }
+  .shot figure { margin: 0; }
+  .shot figcaption { font-size: 0.9rem; color: var(--muted); margin-top: 10px; }
+  footer { padding: 36px 0 56px; color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Linux · Insta360 X5 · 360° video</span>
+    <h1>orbis-reframe</h1>
+    <ul class="actions">
+      <li><a class="primary" href="https://github.com/Schabo/orbis-reframe/releases/latest">Download</a></li>
+      <li><a href="https://github.com/Schabo/orbis-reframe">Source code</a></li>
+    </ul>
+    <p class="lede">A native Linux video editor for <strong>Insta360 X5</strong> 360° footage:
+      stitching, gyro stabilization and, above all, <strong>reframing</strong>. You steer a
+      virtual camera through the sphere over time and get a normal flat video out of a
+      360° recording.</p>
+    <ul class="tags">
+      <li>Qt 6</li><li>Vulkan</li><li>FFmpeg + NVENC</li><li>Wayland</li><li>No closed-source dependencies</li>
+    </ul>
+  </div>
+</header>
+
+<main>
+  <div class="shot">
+    <div class="wrap">
+      <figure>
+        <a href="screenshot-full.jpg" title="Open the full-resolution screenshot">
+          <img src="screenshot-1400.jpg" width="1400" height="751"
+               alt="The orbis-reframe editor: a reframed motorcycle ride on a country road with a picture-in-picture inset, and a timeline with overlay, video, mic and music tracks below">
+        </a>
+        <figcaption>A reframed ride with a picture-in-picture inset, and overlay, video, mic and
+          music tracks on the timeline. Click for full resolution (2539×1362).</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <h2>Status: “works on my computer”</h2>
+      <p>A work in progress, built and tested on one machine: Debian Testing, an NVIDIA RTX GPU,
+        Wayland and Sway. The <a href="https://github.com/Schabo/orbis-reframe/releases">releases</a> are a <code>.deb</code> and a
+        tarball for Debian Testing; other setups that meet the requirements should work but haven't
+        been tried. Found a problem? <a href="https://github.com/Schabo/orbis-reframe/issues">Report it on GitHub</a>.</p>
+      <div class="note">
+        <p><strong>AI disclaimer:</strong> most of the code in this project was written with AI, using
+          <a href="https://claude.com/claude-code">Claude Code</a> with Claude Opus 5.5. The design,
+          direction and testing on real footage are human.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Why</h2>
+      <p>Insta360's own editor, <strong>Insta360 Studio</strong>, runs on Windows and macOS only.
+        Linux has no way to edit X5 footage properly:</p>
+      <ul>
+        <li>The X5 records <strong>dual-fisheye <code>.insv</code> files</strong>. They need
+          lens-calibrated stitching into a sphere before you can do anything with them. General
+          players and editors can't read the calibration or the telemetry.</li>
+        <li>The camera's <strong>gyro/accelerometer data</strong> sits in a proprietary trailer at the
+          end of each file. Without it there is no stabilization or horizon leveling, and 360°
+          footage from a moving vehicle is hard to watch without that.</li>
+        <li>The most useful part, <strong>interactive reframing</strong>, doesn't exist in Linux
+          editors. Kdenlive and Shotcut are built on MLT, which has no concept of spherical video or
+          of keyframing a viewing direction. A plugin wouldn't be enough, so this is a standalone
+          application.</li>
+      </ul>
+      <p>My use case is <strong>motorcycle footage</strong> from an X5 on a selfie stick. That
+        footage needs lean-preserving stabilization that removes the shake but keeps the bike's roll
+        in corners, a level horizon when you want one, and a quick way to pick where the camera
+        looks at each moment.</p>
+      <p>Orbis Reframe doesn't use Insta360's Media SDK. An early prototype was built on it, but
+        its Linux support (an Ubuntu 22.04 / CUDA build and a file-to-file stitch API) didn't fit an
+        interactive editor on current Linux. So the container and trailer parser, lens calibration,
+        fisheye→equirect stitch and gyro stabilization were <strong>reimplemented
+        independently</strong>, from public documentation and from studying camera-produced files.
+        The editor has no closed-source dependencies.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Features so far</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Import and playback</h3>
+          <ul>
+            <li>Opens X5 <code>.insv</code> files directly, in every capture mode tested so far
+              (8K, 5.7K/5.7K+, 5.7K 60, 4K 120).</li>
+            <li>Real-time playback: Vulkan video decode, then a Vulkan compute fisheye→view pass on
+              NVIDIA GPUs, with CPU fallbacks.</li>
+            <li>Interactive 360° viewport: drag to look around during playback and while scrubbing.</li>
+            <li>The viewport renders straight from the fisheyes at full source detail.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Reframing</h3>
+          <ul>
+            <li>Keyframed virtual camera: yaw, pitch, roll and field of view, interpolated between
+              keyframes.</li>
+            <li>Set keyframes by dragging the viewport or by typing values into the sidebar.</li>
+            <li><strong>Track subject</strong>: draw a box around a rider, car or anything else, and
+              the camera follows it through the sphere. Tracking plays back live, with the box green
+              while the subject is found and red when it's lost, and you stop it when you've seen
+              enough. The result is ordinary keyframes you can edit.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Timeline</h3>
+          <ul>
+            <li>Multiple clips with trim in/out, split, reorder and hard cuts.</li>
+            <li>Per-clip playback speed (0.1–4×) with pitch-preserving audio time-stretch.</li>
+            <li>Any number of audio and video (overlay) tracks, which can be renamed, reordered,
+              muted, zoomed and scrolled.</li>
+            <li>Music clips with trim, level and fades, added from the menu or by drag and drop,
+              with waveforms.</li>
+            <li>The camera's built-in mic and an Insta360 Mic Air can be split onto separate tracks,
+              linked to their video clip.</li>
+            <li>Keyboard shortcuts for frame stepping, jumping between cuts, split and delete (F1
+              lists them).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Picture-in-picture</h3>
+          <ul>
+            <li>Flat video files on overlay tracks, drawn as insets over the reframed view: position,
+              size, opacity, rounded corners and a border.</li>
+            <li>Set in the Overlay panel or by dragging the inset in the viewport.</li>
+            <li>Keyframe an inset's position, size and opacity. An overlay's own sound can go onto an
+              audio track.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Stabilization</h3>
+          <ul>
+            <li>Native, from the camera's own IMU data.</li>
+            <li>Modes: <strong>Off / Lean follow / Horizon lock / Custom</strong> (per-axis
+              strength), à la Gyroflow.</li>
+            <li>Accelerometer-fused horizon reference, gyro↔video time sync and optional
+              rolling-shutter correction.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Stitching</h3>
+          <ul>
+            <li>Based on the MEI fisheye model, using the per-camera calibration stored in each
+              file.</li>
+            <li>Lens-protector profiles and a per-clip seam fine-tune.</li>
+            <li>Depth-aware seam: the stitch distance is measured along the seam every frame, so near
+              objects (the bike, handlebars, hands) aren't doubled.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Look and sound</h3>
+          <ul>
+            <li>Per-clip colour grading: exposure, contrast, saturation, temperature. The same
+              formula runs in the viewport and in export.</li>
+            <li>Per-clip level and mute, source/track picker, and a mixer used in both playback and
+              export.</li>
+            <li>Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that tracks the
+              engine's harmonics and turns down the wind between them), hiss and mains hum for quiet
+              scenes, and voice isolation with DeepFilterNet 3 (“Voice only”, or “Voice + ambience”
+              that turns the rest down instead).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Privacy blur</h3>
+          <ul>
+            <li>Blur number plates per clip: “Scan clip” finds them faster than real time on the
+              GPU, and the blur shows in the viewport, export and screenshots.</li>
+            <li>“Show regions” outlines what the scan found.</li>
+            <li>Right-click a blur to remove a false hit, or use “Blur a plate…” to box a plate the
+              scan missed; it's followed forwards and backwards from the box.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Output</h3>
+          <ul>
+            <li>Flat reframed export of the whole timeline to H.264/H.265 via NVENC, with the
+              overlays composited in and the audio mixed.</li>
+            <li>Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution and frame rate;
+              the viewport is letterboxed to match.</li>
+            <li>Screenshot of the current view at project resolution (PNG).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Editor</h3>
+          <ul>
+            <li>Project save/load (<code>.orp</code>, JSON) and undo/redo.</li>
+            <li>Dark theme and a settings sidebar with Stitching, Stabilization, Reframe, Audio,
+              Colour, Overlay, Privacy, Project and Media-info panels.</li>
+          </ul>
+        </div>
+      </div>
+      <p style="margin-top:20px"><strong>Planned next:</strong> transitions, a
+        “tiny planet” projection, full 360° export, face blur, and builds for Debian 13 and
+        other Debian-based distributions.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Building</h2>
+      <p>Linux only, Wayland only, NVIDIA GPU with Vulkan. Playback uses Vulkan video decode where
+        the GPU has it and falls back to (slower) CPU decoding where it doesn't; export needs NVENC.
+        The app tells you at startup what's missing instead of failing. Dependencies are the Debian
+        Testing packages for Qt 6, Vulkan, glslang, GLM, nlohmann-json and FFmpeg. Qt Multimedia
+        (audio), OpenCV (analysis tools; with the contrib modules also subject tracking), ONNX
+        Runtime (voice noise modes) and ncnn (the plate scan; <code>scripts/fetch_ncnn.sh</code>)
+        are optional.</p>
+<pre><code>./scripts/build.sh          # configure + build
+./scripts/build.sh -r       # build and run
+./scripts/package.sh        # release tarball + .deb into dist/ (all features)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Sources and thanks</h2>
+      <p>Everything about the X5 file format was learned from <strong>interoperability
+        documentation, published research and camera-produced files</strong>. The Insta360 SDK was
+        never disassembled. The project's format notes mark every fact with where it came from and
+        how well it's verified. We're grateful to these projects and people:</p>
+      <ul class="sources">
+        <li><strong><a href="https://gyroflow.xyz/">Gyroflow</a> and
+          <a href="https://github.com/AdrianEddy/telemetry-parser">telemetry-parser</a></strong> by
+          Adrian Eddy and contributors. telemetry-parser's Insta360 reader gave us the trailer record
+          framing and type names, the protobuf schema of the metadata record, the raw-gyro scaling,
+          the timestamp alignment, the X5 IMU orientation and the lens-profile construction.
+          Gyroflow's approach to gyro stabilization (smoothing, per-axis strength, horizon lock,
+          rolling-shutter readout time) is the model for our stabilization modes.</li>
+        <li><strong><a href="https://exiftool.org/">ExifTool</a></strong> by Phil Harvey.
+          <code>QuickTimeStream.pl</code> (<code>ProcessInsta360</code>) gave an independent decode
+          of the <code>inst</code> trailer, which we checked our parser against byte for byte. The
+          <a href="https://exiftool.org/forum/index.php?msg=78942">ExifTool forum thread on the
+          “Parameters” field</a> covers the short calibration string.</li>
+        <li><strong><a href="https://github.com/BenjaminHenriksson/insv-stitch">insv-stitch</a></strong>
+          by Benjamin Henriksson: the 56-token MEI calibration layout, sensor→video scaling, the
+          <code>.insv.pb</code> sidecar and the IMU→camera matrix for the X5.</li>
+        <li><strong>Insta360</strong>: the
+          <a href="https://onlinemanual.insta360.com/x5/en-us/operating-tutorials/storage/fileformat">X5
+          online manual</a> (file naming, segmented recording) and Insta360 Studio, used as a visual
+          reference for stitching and horizon leveling.</li>
+        <li><strong>TDK InvenSense</strong>: the
+          <a href="https://invensense.tdk.com/products/motion-tracking/6-axis/icm-40609-d/">ICM-40609-D
+          datasheet</a> for the IMU's full-scale ranges.</li>
+        <li><strong>Published methods</strong>: the unified omnidirectional (MEI) camera model
+          (C. Mei &amp; P. Rives, “Single View Point Omnidirectional Camera Calibration from Planar
+          Grids”, ICRA 2007) for the fisheye lens model, and the Mahony complementary filter
+          (R. Mahony, T. Hamel &amp; J.-M. Pflimlin, “Nonlinear Complementary Filters on the Special
+          Orthogonal Group”, IEEE TAC 2008) for fusing the accelerometer into the horizon
+          reference.</li>
+        <li><strong><a href="https://github.com/Rikorose/DeepFilterNet">DeepFilterNet</a></strong> by
+          Hendrik Schröter and contributors (MIT / Apache-2.0; H. Schröter et al., “DeepFilterNet:
+          Perceptually Motivated Real-Time Speech Enhancement”, Interspeech 2023): its
+          DeepFilterNet 3 model runs the voice noise modes. FFmpeg's <code>afftdn</code> filter was
+          a comparison reference, not built in.</li>
+        <li><strong>Subject tracking</strong> combines OpenCV's CSRT tracker (A. Lukežič, T. Vojíř,
+          L. Čehovin Zajc, J. Matas &amp; M. Kristan, “Discriminative Correlation Filter with
+          Channel and Spatial Reliability”, CVPR 2017), which follows the subject, with the
+          <strong>VitTrack</strong> model from <a href="https://github.com/opencv/opencv_zoo">OpenCV
+          Zoo</a> (Apache-2.0), which checks each frame that it's still the same subject.</li>
+        <li><strong>Number-plate detection</strong> uses the YOLOv9-s plate model from
+          <a href="https://github.com/ankandrew/open-image-models">open-image-models</a> by ankandrew
+          (MIT; C.-Y. Wang, I.-H. Yeh &amp; H.-Y. M. Liao, “YOLOv9: Learning What You Want to Learn
+          Using Programmable Gradient Information”, ECCV 2024), run on the GPU by
+          <a href="https://github.com/Tencent/ncnn">ncnn</a>.</li>
+      </ul>
+      <p>Built with <a href="https://www.qt.io/">Qt 6</a>, <a href="https://www.vulkan.org/">Vulkan</a>,
+        <a href="https://ffmpeg.org/">FFmpeg</a> (demux, decode, NVENC encode, audio, time-stretch),
+        <a href="https://github.com/KhronosGroup/glslang">glslang</a> (shader compiler),
+        <a href="https://github.com/g-truc/glm">GLM</a>,
+        <a href="https://github.com/nlohmann/json">nlohmann/json</a>, optionally
+        <a href="https://opencv.org/">OpenCV</a> (analysis tools, subject tracking) and
+        <a href="https://onnxruntime.ai/">ONNX Runtime</a> (the voice noise modes) and
+        <a href="https://github.com/Tencent/ncnn">ncnn</a> (Tencent, BSD-3-Clause; the plate scan), and <a href="https://lucide.dev/">Lucide</a> icons
+        (ISC license).</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Copyright &copy; 2026 Markku Kokko.
+      Licensed under the <a href="https://www.gnu.org/licenses/gpl-3.0.html">GNU GPL v3.0 or later</a>.
+      The <code>.insv</code> library (<code>src/insv/</code>) is licensed under
+      <a href="https://opensource.org/license/mit">MIT</a> or
+      <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache-2.0</a>, at your option.</p>
+    <p>Insta360, Insta360 Studio and X5 are trademarks of Arashi Vision Inc. This project is not
+      affiliated with or endorsed by Insta360.</p>
+    <p><a href="https://github.com/Schabo/orbis-reframe">Source code</a> · <a href="https://github.com/Schabo/orbis-reframe/issues">Report a problem</a> ·
+      Contact: <a href="mailto:orbis-reframe@techmonkeys.se">orbis-reframe@techmonkeys.se</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

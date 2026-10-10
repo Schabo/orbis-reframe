@@ -1,0 +1,16 @@
+# commitizen: Conventional Commits (CONTRIBUTING.md
+# "Commit messages"), `cz bump` sets the version here and in CMakeLists.txt's
+# project(), writes CHANGELOG.md and tags vX.Y.Z. The commit-msg hook in
+# .githooks/ runs `cz check`.
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "commitizen"
+version = "0.0.0"
+version_scheme = "semver2"
+tag_format = "v$version"
+# Annotated, so `git push --follow-tags` pushes it (it skips lightweight tags).
+annotated_tag = true
+major_version_zero = true
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
+version_files = ["CMakeLists.txt:^project\\(orbis-reframe VERSION"]

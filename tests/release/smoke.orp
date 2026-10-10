@@ -1,0 +1,80 @@
+{
+ "format": "orbis-reframe-project",
+ "output": {
+  "aspect": "16:9",
+  "fps": 0.0,
+  "height": 1080,
+  "width": 1920
+ },
+ "previewStitch": {
+  "bitrateBps": 10000000,
+  "depthSeam": true,
+  "height": 0,
+  "lensGuard": "premium",
+  "quality": "template",
+  "width": 0
+ },
+ "stabilization": {
+  "accelLowPassHz": 0.0,
+  "gyroAxes": "z,-x,-y",
+  "gyroScale": 1.0,
+  "horizonGain": 1.0,
+  "horizonLockAmount": 0.0,
+  "mode": "leanFollow",
+  "pitchOffsetRad": 0.0,
+  "rollOffsetRad": 0.0,
+  "timeOffsetSec": 0.0,
+  "windowPitchSec": 0.8999999761581421,
+  "windowRollSec": 0.8999999761581421,
+  "windowYawSec": 0.8999999761581421
+ },
+ "timeline": {
+  "clips": [
+   {
+    "audioGainDb": 0.0,
+    "audioMuted": false,
+    "audioTrack": 0,
+    "color": {
+     "contrast": 0.0,
+     "exposureEv": 0.0,
+     "saturation": 0.0,
+     "temperature": 0.0
+    },
+    "fps": 29.97002997002997,
+    "reframe": {
+     "keys": [
+      {
+       "fovY": 1.3089969158172607,
+       "pitch": -0.05235987755982988,
+       "roll": 0.0,
+       "tMs": 867648,
+       "yaw": -0.07155849933176751
+      }
+     ]
+    },
+    "seamAdjust": {
+     "deg": [
+      -0.15000000000000002,
+      0.15000000000000002,
+      0.05
+     ],
+     "lensGuard": 2
+    },
+    "source": "/footage/Analysis/VID_20250927_144221_00_019-trim/VID_20250927_144221_00_019-trim.insv",
+    "sourceDurationMs": 1797796,
+    "sourceHeight": 3840,
+    "sourceWidth": 3840,
+    "speed": 1.0,
+    "trimInMs": 867648,
+    "trimOutMs": 877648,
+    "noise": {
+     "mode": "voice",
+     "strength": 0.5
+    }
+   }
+  ],
+  "mainMuted": false,
+  "tracks": []
+ },
+ "version": 8
+}

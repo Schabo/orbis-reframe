@@ -1,0 +1,80 @@
+#pragma once
+
+#include "../SettingsPanel.h"
+
+#include "../../core/InsetGeometry.h"
+
+class QDoubleSpinBox;
+class QFrame;
+class QLabel;
+class QPushButton;
+class QSlider;
+
+// The Overlay (picture-in-picture) panel: the video-track clip selected on the
+// timeline (or picked in the view) -- where its inset sits (position, size),
+// how it looks (opacity, corner radius, border) and its fades and start.
+// Keyframes: with none, an edit sets the clip's one look; once it has some, an
+// edit of position / size / opacity sets a key at the playhead, and the fields
+// follow the playhead.
+//
+// Pure view like the other panels: edits go back to MainWindow as signals,
+// which writes them to the Timeline.
+class OverlayPanel : public SettingsPanel {
+    Q_OBJECT
+
+public:
+    explicit OverlayPanel(QWidget *parent = nullptr);
+
+    struct State {
+        QString label;
+        QString trackName;
+        inset::Look look; // at the playhead (keys sampled), before the fades
+        inset::Frame frame;
+        qint64 fadeInMs = 0;
+        qint64 fadeOutMs = 0;
+        qint64 spanMs = 0;
+        qint64 startMs = 0;
+        int keyCount = 0;
+        bool keyAtPlayhead = false;  // a key sits at the playhead
+        bool playheadInClip = false; // keys can be set here
+    };
+    // Reflect a clip. Does not emit.
+    void setState(const State &s);
+    // No overlay clip selected: explains how to get one, greys the rest out.
+    void setNoClip();
+
+signals:
+    void lookEdited(const inset::Look &look);
+    void frameEdited(const inset::Frame &frame);
+    void timingEdited(qint64 fadeInMs, qint64 fadeOutMs, qint64 startMs);
+    void addKeyRequested();
+    void removeKeyRequested();
+    void clearKeysRequested();
+
+private:
+    inset::Look currentLook() const;
+    inset::Frame currentFrame() const;
+    void setBorderColor(uint32_t rgb);
+
+    QLabel *m_clipName = nullptr;
+    QLabel *m_trackName = nullptr;
+    QDoubleSpinBox *m_x = nullptr;     // centre, % of the output width
+    QDoubleSpinBox *m_y = nullptr;     // % of the height
+    QDoubleSpinBox *m_size = nullptr;  // width, % of the output width
+    QSlider *m_opacity = nullptr;      // %
+    QLabel *m_opacityValue = nullptr;
+    QSlider *m_radius = nullptr;       // % of the shorter side, 0..50
+    QLabel *m_radiusValue = nullptr;
+    QDoubleSpinBox *m_border = nullptr; // % of the output height
+    QPushButton *m_borderColor = nullptr;
+    QDoubleSpinBox *m_fadeIn = nullptr;
+    QDoubleSpinBox *m_fadeOut = nullptr;
+    QDoubleSpinBox *m_start = nullptr;
+    QLabel *m_keys = nullptr;
+    QPushButton *m_addKey = nullptr;
+    QPushButton *m_removeKey = nullptr;
+    QPushButton *m_clearKeys = nullptr;
+    QList<QWidget *> m_clipRows; // greyed out with no clip
+    uint32_t m_borderRgb = 0xffffff;
+    bool m_updating = false;
+};

@@ -1,0 +1,18 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+// GPU port of insv::FisheyeStitcher::renderEquirect -- RGB fisheye inputs
+// (CPU-decoded frames uploaded as RGBA8). The NV12 variant is
+// fisheye_stitch_nv12.comp; both share fisheye_stitch_common.glsl.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 1) uniform sampler2D lens0;
+layout(binding = 2) uniform sampler2D lens1;
+
+vec3 sampleLens(int i, vec2 uv)
+{
+    return (i == 0 ? texture(lens0, uv) : texture(lens1, uv)).rgb * 255.0;
+}
+
+#include "fisheye_stitch_common.glsl"

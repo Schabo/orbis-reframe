@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=orbis-reframe
+GenericName=360° Video Editor
+Comment=Edit and reframe Insta360 X5 360° footage
+Exec=orbis-reframe %f
+Icon=orbis-reframe
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=360;Insta360;X5;insv;reframe;video;editor;
+StartupWMClass=orbis-reframe

@@ -1,0 +1,982 @@
+#include "Project.h"
+
+#include "Timeline.h"
+
+#include <limits>
+#include <cmath>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <exception>
+#include <vector>
+
+using nlohmann::json;
+
+namespace {
+
+// Store a source path relative to the project directory when it sits inside
+// it, absolute otherwise -- so a project folder stays portable but a clip
+// elsewhere on disk still resolves.
+QString storedPath(const QString &sourcePath, const QDir &projectDir)
+{
+    const QString abs = QFileInfo(sourcePath).absoluteFilePath();
+    const QString rel = projectDir.relativeFilePath(abs);
+    if (!rel.startsWith(QStringLiteral("../")) && !QDir::isAbsolutePath(rel))
+        return rel;
+    return abs;
+}
+
+QString resolvedPath(const QString &stored, const QDir &projectDir)
+{
+    if (QDir::isAbsolutePath(stored))
+        return QDir::cleanPath(stored);
+    return QDir::cleanPath(projectDir.absoluteFilePath(stored));
+}
+
+json previewStitchToJson(const stitch::PreviewStitchConfig &c)
+{
+    return json{
+        {"quality", c.quality == stitch::PreviewStitchConfig::Quality::OpticalFlow ? "optflow"
+                                                                               : "template"},
+        {"width", c.width},
+        {"height", c.height},
+        {"lensGuard", c.lensGuard == stitch::PreviewStitchConfig::LensGuard::None       ? "none"
+                      : c.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard ? "standard"
+                                                                                     : "premium"},
+        {"depthSeam", c.depthSeam},
+    };
+}
+
+stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
+{
+    stitch::PreviewStitchConfig c; // defaults for any missing field
+    if (!j.is_object())
+        return c;
+    c.quality = j.value("quality", std::string("template")) == "optflow"
+                    ? stitch::PreviewStitchConfig::Quality::OpticalFlow
+                    : stitch::PreviewStitchConfig::Quality::Template;
+    c.width = j.value("width", c.width);
+    c.height = j.value("height", c.height);
+    const std::string guard = j.value("lensGuard", std::string());
+    if (guard == "none")
+        c.lensGuard = stitch::PreviewStitchConfig::LensGuard::None;
+    else if (guard == "standard")
+        c.lensGuard = stitch::PreviewStitchConfig::LensGuard::Standard;
+    else if (guard == "premium")
+        c.lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    c.depthSeam = j.value("depthSeam", c.depthSeam);
+    return c;
+}
+
+json stabilizationToJson(const insv::StabConfig &c)
+{
+    return json{
+        {"mode", insv::stabModeToString(c.mode)},
+        {"windowYawSec", c.windowYawSec},
+        {"windowPitchSec", c.windowPitchSec},
+        {"windowRollSec", c.windowRollSec},
+        {"horizonLockAmount", c.horizonLockAmount},
+        {"horizonGain", c.horizonGain},
+        {"accelLowPassHz", c.accelLowPassHz},
+        {"pitchOffsetRad", c.pitchOffsetRad},
+        {"rollOffsetRad", c.rollOffsetRad},
+        {"autoLevel", c.autoLevel},
+    };
+}
+
+json outputToJson(const OutputSettings &o)
+{
+    const char *aspect = o.aspect == OutputSettings::Aspect::Portrait9x16 ? "9:16"
+                         : o.aspect == OutputSettings::Aspect::Square1x1  ? "1:1"
+                         : o.aspect == OutputSettings::Aspect::Classic4x3 ? "4:3"
+                                                                          : "16:9";
+    return json{{"aspect", aspect}, {"width", o.width}, {"height", o.height}, {"fps", o.fps}};
+}
+
+OutputSettings outputFromJson(const json &j)
+{
+    OutputSettings o; // defaults for any missing field
+    if (!j.is_object())
+        return o;
+    const std::string aspect = j.value("aspect", std::string("16:9"));
+    if (aspect == "9:16")
+        o.aspect = OutputSettings::Aspect::Portrait9x16;
+    else if (aspect == "1:1")
+        o.aspect = OutputSettings::Aspect::Square1x1;
+    else if (aspect == "4:3")
+        o.aspect = OutputSettings::Aspect::Classic4x3;
+    const auto def = OutputSettings::presets(o.aspect)[OutputSettings::defaultPresetIndex()];
+    o.width = j.value("width", def.w);
+    o.height = j.value("height", def.h);
+    if (o.width < 16 || o.height < 16) { // nonsense -> the aspect's default size
+        o.width = def.w;
+        o.height = def.h;
+    }
+    o.fps = std::max(0.0, j.value("fps", 0.0));
+    return o;
+}
+
+insv::StabConfig stabilizationFromJson(const json &j)
+{
+    insv::StabConfig c; // defaults for any missing field
+    if (!j.is_object())
+        return c;
+    c.mode = insv::stabModeFromString(j.value("mode", std::string("off")));
+    c.windowYawSec = j.value("windowYawSec", c.windowYawSec);
+    c.windowPitchSec = j.value("windowPitchSec", c.windowPitchSec);
+    c.windowRollSec = j.value("windowRollSec", c.windowRollSec);
+    c.horizonLockAmount = j.value("horizonLockAmount", c.horizonLockAmount);
+    c.horizonGain = j.value("horizonGain", c.horizonGain);
+    c.accelLowPassHz = j.value("accelLowPassHz", c.accelLowPassHz);
+    c.pitchOffsetRad = j.value("pitchOffsetRad", c.pitchOffsetRad);
+    c.rollOffsetRad = j.value("rollOffsetRad", c.rollOffsetRad);
+    c.autoLevel = j.value("autoLevel", c.autoLevel); // absent (older files) => on
+    return c;
+}
+
+json reframeToJson(const ReframeTrack &track)
+{
+    json keys = json::array();
+    for (const ReframeKey &k : track.keys()) {
+        keys.push_back({{"tMs", static_cast<qint64>(k.timeMs)},
+                        {"yaw", k.pose.yaw},
+                        {"pitch", k.pose.pitch},
+                        {"roll", k.pose.roll},
+                        {"fovY", k.pose.fovY}});
+    }
+    return json{{"keys", std::move(keys)}};
+}
+
+json colorGradeToJson(const ColorGrade &g)
+{
+    return json{
+        {"exposureEv", g.exposureEv},
+        {"contrast", g.contrast},
+        {"saturation", g.saturation},
+        {"temperature", g.temperature},
+    };
+}
+
+ColorGrade colorGradeFromJson(const json &j)
+{
+    ColorGrade g; // defaults for any missing field
+    if (!j.is_object())
+        return g;
+    g.exposureEv = j.value("exposureEv", g.exposureEv);
+    g.contrast = j.value("contrast", g.contrast);
+    g.saturation = j.value("saturation", g.saturation);
+    g.temperature = j.value("temperature", g.temperature);
+    return g;
+}
+
+// "noise": {"mode": "wind" | "windGeneral" | "hiss" | "voice" |
+// "voiceAmbience", "strength": 0.7} -- written only when on. "wind" is the
+// motorcycle one (it came first).
+json noiseToJson(const insv::NoiseReduction &n)
+{
+    const char *mode = "wind";
+    switch (n.mode) {
+    case insv::NoiseMode::Wind: mode = "windGeneral"; break;
+    case insv::NoiseMode::Hiss: mode = "hiss"; break;
+    case insv::NoiseMode::Voice: mode = "voice"; break;
+    case insv::NoiseMode::VoiceAmbience: mode = "voiceAmbience"; break;
+    default: break;
+    }
+    return json{{"mode", mode}, {"strength", n.strength}};
+}
+
+insv::NoiseReduction noiseFromJson(const json &j)
+{
+    insv::NoiseReduction n; // off unless a known mode is given
+    if (!j.is_object())
+        return n;
+    const std::string mode = j.value("mode", std::string());
+    if (mode == "wind")
+        n.mode = insv::NoiseMode::MotorcycleWind;
+    else if (mode == "windGeneral")
+        n.mode = insv::NoiseMode::Wind;
+    else if (mode == "hiss")
+        n.mode = insv::NoiseMode::Hiss;
+    else if (mode == "voice")
+        n.mode = insv::NoiseMode::Voice;
+    else if (mode == "voiceAmbience")
+        n.mode = insv::NoiseMode::VoiceAmbience;
+    n.strength = std::clamp(j.value("strength", n.strength), 0.0f, 1.0f);
+    return n;
+}
+
+json blurRemovalsToJson(const std::vector<privacy::BlurRemoval> &removals)
+{
+    json arr = json::array();
+    for (const privacy::BlurRemoval &r : removals) {
+        json path = json::array();
+        for (const privacy::BlurRemoval::Point &p : r.path)
+            path.push_back({p.tMs, p.dir[0], p.dir[1], p.dir[2]});
+        arr.push_back(json{{"fromMs", r.fromMs}, {"toMs", r.toMs}, {"wholeTrack", r.wholeTrack},
+                           {"path", std::move(path)}});
+    }
+    return arr;
+}
+
+// Corner coordinates in millionths (unit vectors: ~0.00006 deg), as
+// integers -- a followed plate is a region per frame, and full floats made
+// a 20 s plate ~150 KB of project.
+json blurAdditionsToJson(const std::vector<privacy::BlurAddition> &additions)
+{
+    json arr = json::array();
+    for (const privacy::BlurAddition &a : additions) {
+        json frames = json::array();
+        for (const privacy::BlurAddition::Frame &f : a.frames) {
+            json jf = json::array({f.tMs, f.kind});
+            for (int k = 0; k < 4; ++k)
+                for (int i = 0; i < 3; ++i)
+                    jf.push_back(std::lround(f.corner[k][i] * 1e6));
+            frames.push_back(std::move(jf));
+        }
+        const char *timing = a.timing == privacy::StitchTiming::Uncorrected ? "uncorrected"
+                             : a.timing == privacy::StitchTiming::NoGyro    ? "noGyro"
+                                                                            : "corrected";
+        arr.push_back(json{{"frames", std::move(frames)}, {"timing", timing}});
+    }
+    return arr;
+}
+
+// Malformed frames / entries are skipped.
+std::vector<privacy::BlurAddition> blurAdditionsFromJson(const json &j)
+{
+    std::vector<privacy::BlurAddition> out;
+    if (!j.is_array())
+        return out;
+    for (const json &ja : j) {
+        if (!ja.is_object() || !ja.contains("frames") || !ja.at("frames").is_array())
+            continue;
+        privacy::BlurAddition a;
+        if (const auto t = ja.find("timing"); t != ja.end() && t->is_string())
+            a.timing = *t == "uncorrected" ? privacy::StitchTiming::Uncorrected
+                       : *t == "noGyro"    ? privacy::StitchTiming::NoGyro
+                                           : privacy::StitchTiming::Corrected;
+        for (const json &jf : ja.at("frames")) {
+            if (!jf.is_array() || jf.size() != 14 ||
+                !std::all_of(jf.begin(), jf.end(), [](const json &v) { return v.is_number(); }))
+                continue;
+            privacy::BlurAddition::Frame f;
+            f.tMs = jf[0].get<int64_t>();
+            f.kind = static_cast<uint8_t>(std::clamp(jf[1].get<int>(), 0, 3));
+            for (int k = 0; k < 4; ++k)
+                for (int i = 0; i < 3; ++i)
+                    f.corner[k][i] = static_cast<float>(jf[2 + k * 3 + i].get<double>() * 1e-6);
+            if (a.frames.empty() || f.tMs > a.frames.back().tMs)
+                a.frames.push_back(f);
+        }
+        if (!a.frames.empty())
+            out.push_back(std::move(a));
+    }
+    return out;
+}
+
+// Malformed entries are skipped (a removal that matches nothing is harmless,
+// a dropped one only brings a blur back).
+std::vector<privacy::BlurRemoval> blurRemovalsFromJson(const json &j)
+{
+    std::vector<privacy::BlurRemoval> out;
+    if (!j.is_array())
+        return out;
+    for (const json &jr : j) {
+        if (!jr.is_object() || !jr.contains("path") || !jr.at("path").is_array())
+            continue;
+        privacy::BlurRemoval r;
+        r.fromMs = jr.value("fromMs", int64_t(0));
+        r.toMs = jr.value("toMs", int64_t(0));
+        r.wholeTrack = jr.value("wholeTrack", true);
+        for (const json &jp : jr.at("path")) {
+            if (!jp.is_array() || jp.size() != 4 || !jp[0].is_number() || !jp[1].is_number() ||
+                !jp[2].is_number() || !jp[3].is_number())
+                continue;
+            privacy::BlurRemoval::Point p;
+            p.tMs = jp[0].get<int64_t>();
+            for (int k = 0; k < 3; ++k)
+                p.dir[k] = jp[k + 1].get<float>();
+            r.path.push_back(p);
+        }
+        if (!r.path.empty())
+            out.push_back(std::move(r));
+    }
+    return out;
+}
+
+// Parsed form of one clip, before it's committed to the Timeline -- so a
+// malformed file can be rejected without half-destroying the current model.
+struct ParsedClip {
+    QString sourcePath; // already resolved to absolute
+    qint64 trimInMs = 0;
+    qint64 trimOutMs = 0;
+    qint64 sourceDurationMs = 0;
+    double fps = 0.0;
+    int sourceWidth = 0;
+    int sourceHeight = 0;
+    bool mediaMissing = false;
+    std::vector<ReframeKey> reframeKeys;
+    double audioGainDb = 0.0;
+    bool audioMuted = false;
+    int audioTrack = 0;
+    insv::NoiseReduction noise;
+    ColorGrade color;
+    bool blurPlates = false;
+    std::vector<privacy::BlurRemoval> blurRemovals;
+    std::vector<privacy::BlurAddition> blurAdditions;
+    double speed = 1.0;
+    double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
+    std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+    int seamAdjustGuard = -1;
+};
+
+// `linkedIndex`: the main-track index of the clip it's linked to, -1 if
+// none -- ids don't survive a save, indices do.
+json trackClipToJson(const TrackClip &c, const QDir *projectDir, int linkedIndex)
+{
+    const std::string source =
+        (projectDir ? storedPath(c.sourcePath, *projectDir) : c.sourcePath).toStdString();
+    json j{
+        {"source", source},
+        {"stream", c.stream},
+        {"sourceDurationMs", static_cast<qint64>(c.sourceDurationMs)},
+        {"startMs", static_cast<qint64>(c.startMs)},
+        {"trimInMs", static_cast<qint64>(c.trimInMs)},
+        {"trimOutMs", static_cast<qint64>(c.trimOutMs)},
+        {"speed", c.speed},
+        {"gainDb", c.gainDb},
+        {"muted", c.muted},
+        {"fadeInMs", static_cast<qint64>(c.fadeInMs)},
+        {"fadeOutMs", static_cast<qint64>(c.fadeOutMs)},
+    };
+    if (c.noise.mode != insv::NoiseMode::Off)
+        j["noise"] = noiseToJson(c.noise);
+    if (linkedIndex >= 0) {
+        j["linkedClip"] = linkedIndex;
+        j["syncOffsetMs"] = static_cast<qint64>(c.syncOffsetMs);
+    }
+    return j;
+}
+
+TrackClip trackClipFromJson(const json &j, const QDir *projectDir)
+{
+    TrackClip c;
+    const QString stored = QString::fromStdString(j.value("source", std::string()));
+    c.sourcePath = projectDir ? resolvedPath(stored, *projectDir) : stored;
+    c.stream = j.value("stream", -1);
+    c.sourceDurationMs = j.value("sourceDurationMs", qint64(0));
+    c.startMs = j.value("startMs", qint64(0));
+    c.trimInMs = j.value("trimInMs", qint64(0));
+    c.trimOutMs = j.value("trimOutMs", c.sourceDurationMs);
+    c.speed = j.value("speed", 1.0);
+    c.gainDb = j.value("gainDb", 0.0);
+    c.muted = j.value("muted", false);
+    c.fadeInMs = j.value("fadeInMs", qint64(0));
+    c.fadeOutMs = j.value("fadeOutMs", qint64(0));
+    if (j.contains("noise"))
+        c.noise = noiseFromJson(j.at("noise"));
+    c.mediaMissing = !QFileInfo::exists(c.sourcePath);
+    // The linked main-track clip's index + 1 for now (0 = none); applyDocument
+    // maps it to that clip's new id.
+    c.linkedClipId = j.value("linkedClip", -1) + 1;
+    c.syncOffsetMs = j.value("syncOffsetMs", qint64(0));
+    return c;
+}
+
+json lookToJson(const inset::Look &l)
+{
+    return json{{"centerX", l.centerX}, {"centerY", l.centerY}, {"width", l.width},
+                {"opacity", l.opacity}};
+}
+
+inset::Look lookFromJson(const json &j)
+{
+    inset::Look l;
+    l.centerX = j.value("centerX", l.centerX);
+    l.centerY = j.value("centerY", l.centerY);
+    l.width = j.value("width", l.width);
+    l.opacity = j.value("opacity", l.opacity);
+    return l;
+}
+
+// A video-track clip: the track-clip fields plus its size and inset.
+json videoClipToJson(const TrackClip &c, const QDir *projectDir)
+{
+    json j = trackClipToJson(c, projectDir, -1);
+    j.erase("stream");
+    j.erase("gainDb");
+    j.erase("muted");
+    j.erase("noise");
+    j["sourceWidth"] = c.sourceWidth;
+    j["sourceHeight"] = c.sourceHeight;
+    json in = lookToJson(c.look);
+    in["cornerRadius"] = c.frame.cornerRadius;
+    in["borderWidth"] = c.frame.borderWidth;
+    in["borderColor"] =
+        QStringLiteral("#%1").arg(c.frame.borderRgb, 6, 16, QLatin1Char('0')).toStdString();
+    j["inset"] = std::move(in);
+    json keys = json::array();
+    for (const InsetKey &k : c.insetKeys.keys()) {
+        json jk = lookToJson(k.look);
+        jk["tMs"] = static_cast<qint64>(k.timeMs);
+        keys.push_back(std::move(jk));
+    }
+    j["insetKeys"] = std::move(keys);
+    return j;
+}
+
+TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
+{
+    TrackClip c = trackClipFromJson(j, projectDir);
+    c.stream = -1;
+    c.linkedClipId = 0;
+    c.sourceWidth = j.value("sourceWidth", 0);
+    c.sourceHeight = j.value("sourceHeight", 0);
+    if (j.contains("inset") && j.at("inset").is_object()) {
+        const json &in = j.at("inset");
+        c.look = lookFromJson(in);
+        c.frame.cornerRadius = in.value("cornerRadius", c.frame.cornerRadius);
+        c.frame.borderWidth = in.value("borderWidth", c.frame.borderWidth);
+        const QString col = QString::fromStdString(in.value("borderColor", std::string()));
+        bool ok = false;
+        const uint rgb = col.startsWith(QLatin1Char('#')) ? col.mid(1).toUInt(&ok, 16) : 0;
+        if (ok)
+            c.frame.borderRgb = rgb;
+    }
+    if (j.contains("insetKeys") && j.at("insetKeys").is_array())
+        for (const json &jk : j.at("insetKeys"))
+            c.insetKeys.upsert(jk.value("tMs", qint64(0)), lookFromJson(jk), 0);
+    return c;
+}
+
+} // namespace
+
+Project::Project(QObject *parent)
+    : QObject(parent)
+    , m_timeline(new Timeline(this))
+{
+    const auto edited = [this] { onTimelineEdited(); onUndoableEdited(); };
+    connect(m_timeline, &Timeline::clipInserted, this, edited);
+    connect(m_timeline, &Timeline::clipRemoved, this, edited);
+    connect(m_timeline, &Timeline::clipsReordered, this, edited);
+    connect(m_timeline, &Timeline::clipTrimChanged, this, edited);
+    connect(m_timeline, &Timeline::clipReframeChanged, this, edited);
+    connect(m_timeline, &Timeline::clipAudioChanged, this, edited);
+    connect(m_timeline, &Timeline::mainAudioMutedChanged, this, edited);
+    connect(m_timeline, &Timeline::clipColorChanged, this, edited);
+    connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
+    connect(m_timeline, &Timeline::clipSpeedChanged, this, edited);
+    connect(m_timeline, &Timeline::tracksChanged, this, edited);
+    // A measured sync fine-tune is saved with the project but isn't an edit
+    // to undo.
+    connect(m_timeline, &Timeline::clipSyncChanged, this, [this] { onTimelineEdited(); });
+    connect(m_timeline, &Timeline::clipSeamChanged, this, [this] { onTimelineEdited(); });
+
+    m_undoDebounce.setSingleShot(true);
+    connect(&m_undoDebounce, &QTimer::timeout, this, &Project::commitPendingUndoPoint);
+    m_lastSettledSnapshot = snapshot(); // baseline for the empty starting project
+}
+
+void Project::onTimelineEdited()
+{
+    if (!m_rebuilding)
+        setModified(true);
+}
+
+void Project::setModified(bool modified)
+{
+    if (m_modified == modified)
+        return;
+    m_modified = modified;
+    emit modifiedChanged(m_modified);
+}
+
+void Project::setFilePath(const QString &path)
+{
+    if (m_filePath == path)
+        return;
+    m_filePath = path;
+    emit filePathChanged(m_filePath);
+}
+
+void Project::setPreviewStitch(const stitch::PreviewStitchConfig &config)
+{
+    if (m_previewStitch == config)
+        return;
+    m_previewStitch = config;
+    emit previewStitchChanged(m_previewStitch);
+    if (!m_rebuilding) {
+        setModified(true);
+        onUndoableEdited();
+    }
+}
+
+void Project::setStabilization(const insv::StabConfig &config)
+{
+    if (m_stabilization == config)
+        return;
+    m_stabilization = config;
+    emit stabilizationChanged(m_stabilization);
+    if (!m_rebuilding) {
+        setModified(true);
+        onUndoableEdited();
+    }
+}
+
+void Project::setOutput(const OutputSettings &output)
+{
+    if (m_output == output)
+        return;
+    m_output = output;
+    emit outputChanged(m_output);
+    if (!m_rebuilding) {
+        setModified(true);
+        onUndoableEdited();
+    }
+}
+
+void Project::newProject()
+{
+    m_rebuilding = true;
+    m_timeline->clear();
+    setPreviewStitch(stitch::PreviewStitchConfig{});
+    setStabilization(insv::StabConfig{});
+    setOutput(OutputSettings{});
+    m_rebuilding = false;
+    setFilePath(QString());
+    setModified(false);
+    clearUndoHistory();
+    emit projectReset();
+}
+
+int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double fps, int width,
+                           int height)
+{
+    m_rebuilding = true;
+    m_timeline->clear();
+    setPreviewStitch(stitch::PreviewStitchConfig{});
+    setStabilization(insv::StabConfig{});
+    setOutput(OutputSettings{});
+    const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height);
+    m_rebuilding = false;
+
+    setFilePath(QString());
+    setModified(false);
+    clearUndoHistory();
+    emit projectReset();
+    return id;
+}
+
+QByteArray Project::buildDocument(const QDir *projectDir) const
+{
+    json clips = json::array();
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const ClipItem &c = m_timeline->clipAt(i);
+        const std::string source =
+            (projectDir ? storedPath(c.sourcePath, *projectDir) : c.sourcePath).toStdString();
+        clips.push_back({
+            {"source", source},
+            {"trimInMs", static_cast<qint64>(c.trimInMs)},
+            {"trimOutMs", static_cast<qint64>(c.trimOutMs)},
+            {"sourceDurationMs", static_cast<qint64>(c.sourceDurationMs)},
+            {"fps", c.fps},
+            {"sourceWidth", c.sourceWidth},
+            {"sourceHeight", c.sourceHeight},
+            {"reframe", reframeToJson(c.reframe)},
+            {"audioGainDb", c.audioGainDb},
+            {"audioMuted", c.audioMuted},
+            {"audioTrack", c.audioTrack},
+            {"color", colorGradeToJson(c.color)},
+            {"speed", c.speed},
+        });
+        if (c.noise.mode != insv::NoiseMode::Off)
+            clips.back()["noise"] = noiseToJson(c.noise);
+        if (c.blurPlates || !c.blurRemovals.empty() || !c.blurAdditions.empty()) {
+            json &jp = clips.back()["privacy"] = json::object();
+            if (c.blurPlates)
+                jp["plates"] = true;
+            if (!c.blurRemovals.empty())
+                jp["removed"] = blurRemovalsToJson(c.blurRemovals);
+            if (!c.blurAdditions.empty())
+                jp["added"] = blurAdditionsToJson(c.blurAdditions);
+        }
+        if (!std::isnan(c.syncAdjustMs))
+            clips.back()["syncAdjustMs"] = c.syncAdjustMs; // absent until measured
+        if (c.seamAdjustGuard >= 0) // absent until measured
+            clips.back()["seamAdjust"] = json{
+                {"deg", {c.seamAdjustDeg[0], c.seamAdjustDeg[1], c.seamAdjustDeg[2]}},
+                {"lensGuard", c.seamAdjustGuard}};
+    }
+
+    json tracks = json::array();
+    for (int i = 0; i < m_timeline->trackCount(); ++i) {
+        const Track &t = m_timeline->trackAt(i);
+        const bool video = t.kind == Track::Kind::Video;
+        json tc = json::array();
+        for (const TrackClip &c : t.clips) {
+            if (video) {
+                tc.push_back(videoClipToJson(c, projectDir));
+                continue;
+            }
+            tc.push_back(trackClipToJson(
+                c, projectDir, c.linkedClipId ? m_timeline->indexOfId(c.linkedClipId) : -1));
+            int overlayTrackId = 0; // linked to an overlay clip: [track, clip] index
+            if (c.linkedClipId && m_timeline->trackClipById(c.linkedClipId, &overlayTrackId)) {
+                const Track &ot = *m_timeline->trackById(overlayTrackId);
+                const auto at = std::find_if(ot.clips.begin(), ot.clips.end(),
+                                             [&](const TrackClip &o) { return o.id == c.linkedClipId; });
+                tc.back()["linkedOverlay"] = {m_timeline->trackIndexOfId(overlayTrackId),
+                                              static_cast<int>(at - ot.clips.begin())};
+                tc.back()["syncOffsetMs"] = static_cast<qint64>(c.syncOffsetMs);
+            }
+        }
+        tracks.push_back({
+            {"kind", video ? "video" : "audio"},
+            {"name", t.name.toStdString()},
+            {"gainDb", t.gainDb},
+            {"muted", t.muted},
+            {"clips", std::move(tc)},
+        });
+    }
+
+    const json doc = {
+        {"format", kFormatTag},
+        {"version", kFormatVersion},
+        {"previewStitch", previewStitchToJson(m_previewStitch)},
+        {"stabilization", stabilizationToJson(m_stabilization)},
+        {"output", outputToJson(m_output)},
+        {"timeline",
+         {{"clips", std::move(clips)},
+          {"mainMuted", m_timeline->mainAudioMuted()},
+          {"tracks", std::move(tracks)}}},
+    };
+    return QByteArray::fromStdString(doc.dump());
+}
+
+bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QString *error)
+{
+    std::vector<ParsedClip> parsed;
+    std::vector<Track> parsedTracks; // ids unassigned; clips carry everything else
+    // Per parsed track and clip: the [track, clip] index of the overlay clip
+    // it's linked to, or {-1, -1}.
+    std::vector<std::vector<std::pair<int, int>>> overlayLinks;
+    stitch::PreviewStitchConfig parsedStitch;
+    insv::StabConfig parsedStab;
+    OutputSettings parsedOutput;
+    bool parsedMainMuted = false;
+    try {
+        const json doc = json::parse(text.begin(), text.end());
+
+        const std::string format =
+            doc.is_object() ? doc.value("format", std::string()) : std::string();
+        if (format != kFormatTag) {
+            if (error)
+                *error = QStringLiteral("not an orbis-reframe project");
+            return false;
+        }
+        const int version = doc.value("version", 0);
+        if (version != kFormatVersion) {
+            if (error)
+                *error = QStringLiteral("unsupported project version %1").arg(version);
+            return false;
+        }
+
+        if (doc.contains("previewStitch"))
+            parsedStitch = previewStitchFromJson(doc.at("previewStitch"));
+        if (doc.contains("stabilization"))
+            parsedStab = stabilizationFromJson(doc.at("stabilization"));
+        if (doc.contains("output"))
+            parsedOutput = outputFromJson(doc.at("output"));
+
+        const json &clips = doc.at("timeline").at("clips");
+        for (const json &jc : clips) {
+            ParsedClip pc;
+            const QString stored = QString::fromStdString(jc.value("source", std::string()));
+            pc.sourcePath = projectDir ? resolvedPath(stored, *projectDir) : stored;
+            pc.sourceDurationMs = jc.value("sourceDurationMs", qint64(0));
+            pc.fps = jc.value("fps", 0.0);
+            if (!(pc.fps > 0.0)) {
+                if (error)
+                    *error = QStringLiteral("clip %1 has no frame rate").arg(stored);
+                return false;
+            }
+            pc.sourceWidth = jc.value("sourceWidth", 0);
+            pc.sourceHeight = jc.value("sourceHeight", 0);
+            pc.trimInMs = jc.value("trimInMs", qint64(0));
+            pc.trimOutMs = jc.value("trimOutMs", pc.sourceDurationMs);
+            pc.audioGainDb = jc.value("audioGainDb", 0.0);
+            pc.audioMuted = jc.value("audioMuted", false);
+            pc.audioTrack = jc.value("audioTrack", 0);
+            if (jc.contains("noise"))
+                pc.noise = noiseFromJson(jc.at("noise"));
+            if (jc.contains("color"))
+                pc.color = colorGradeFromJson(jc.at("color"));
+            pc.speed = jc.value("speed", 1.0);
+            if (jc.contains("privacy") && jc.at("privacy").is_object()) {
+                pc.blurPlates = jc.at("privacy").value("plates", false);
+                if (jc.at("privacy").contains("removed"))
+                    pc.blurRemovals = blurRemovalsFromJson(jc.at("privacy").at("removed"));
+                if (jc.at("privacy").contains("added"))
+                    pc.blurAdditions = blurAdditionsFromJson(jc.at("privacy").at("added"));
+            }
+            if (jc.contains("syncAdjustMs") && jc.at("syncAdjustMs").is_number())
+                pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
+            if (jc.contains("seamAdjust") && jc.at("seamAdjust").is_object()) {
+                const json &js = jc.at("seamAdjust");
+                if (js.contains("deg") && js.at("deg").is_array() && js.at("deg").size() == 3 &&
+                    js.contains("lensGuard") && js.at("lensGuard").is_number_integer()) {
+                    for (int k = 0; k < 3; ++k)
+                        pc.seamAdjustDeg[k] = js.at("deg")[k].get<double>();
+                    pc.seamAdjustGuard = js.at("lensGuard").get<int>();
+                }
+            }
+            pc.mediaMissing = !QFileInfo::exists(pc.sourcePath);
+            if (jc.contains("reframe") && jc.at("reframe").contains("keys")) {
+                for (const json &jk : jc.at("reframe").at("keys")) {
+                    ReframeKey k;
+                    k.timeMs = jk.value("tMs", qint64(0));
+                    k.pose.yaw = jk.value("yaw", 0.0f);
+                    k.pose.pitch = jk.value("pitch", 0.0f);
+                    k.pose.roll = jk.value("roll", 0.0f);
+                    k.pose.fovY = jk.value("fovY", 1.309f);
+                    pc.reframeKeys.push_back(k);
+                }
+            }
+            parsed.push_back(std::move(pc));
+        }
+
+        // Extra tracks. An unknown track kind is skipped rather than failing
+        // the load.
+        const json &jtl = doc.at("timeline");
+        parsedMainMuted = jtl.value("mainMuted", false);
+        if (jtl.contains("tracks") && jtl.at("tracks").is_array()) {
+            for (const json &jt : jtl.at("tracks")) {
+                const std::string kind = jt.value("kind", std::string());
+                if (kind != "audio" && kind != "video")
+                    continue;
+                Track t;
+                t.kind = kind == "video" ? Track::Kind::Video : Track::Kind::Audio;
+                t.name = QString::fromStdString(jt.value("name", std::string()));
+                t.gainDb = jt.value("gainDb", 0.0);
+                t.muted = jt.value("muted", false);
+                std::vector<std::pair<int, int>> links;
+                if (jt.contains("clips"))
+                    for (const json &jc : jt.at("clips")) {
+                        t.clips.push_back(t.kind == Track::Kind::Video
+                                              ? videoClipFromJson(jc, projectDir)
+                                              : trackClipFromJson(jc, projectDir));
+                        std::pair<int, int> link{-1, -1};
+                        if (t.kind == Track::Kind::Audio && jc.contains("linkedOverlay")) {
+                            const json &jl = jc.at("linkedOverlay");
+                            if (jl.is_array() && jl.size() == 2)
+                                link = {jl[0].get<int>(), jl[1].get<int>()};
+                        }
+                        links.push_back(link);
+                    }
+                parsedTracks.push_back(std::move(t));
+                overlayLinks.push_back(std::move(links));
+            }
+        }
+    } catch (const std::exception &e) {
+        if (error)
+            *error = QStringLiteral("could not be read as a project: %1")
+                         .arg(QString::fromUtf8(e.what()));
+        return false;
+    }
+
+    // Everything parsed -- now it's safe to replace the model.
+    m_rebuilding = true;
+    m_timeline->clear();
+    setPreviewStitch(parsedStitch);
+    setStabilization(parsedStab);
+    setOutput(parsedOutput);
+    m_timeline->setMainAudioMuted(parsedMainMuted);
+    std::vector<int> clipIds; // main-track index -> new id, for linked audio
+    for (const ParsedClip &pc : parsed) {
+        const int id = m_timeline->appendClip(pc.sourcePath, pc.sourceDurationMs, pc.fps,
+                                              pc.sourceWidth, pc.sourceHeight);
+        // appendClip set the trim to the whole source; narrow it to the saved
+        // range (in then out, so the min-gap clamp doesn't fight a valid pair).
+        m_timeline->setClipTrimIn(id, pc.trimInMs);
+        m_timeline->setClipTrimOut(id, pc.trimOutMs);
+        m_timeline->setClipAudio(id, pc.audioGainDb, pc.audioMuted);
+        m_timeline->setClipAudioTrack(id, pc.audioTrack);
+        m_timeline->setClipNoise(id, pc.noise);
+        m_timeline->setClipColor(id, pc.color);
+        m_timeline->setClipBlurPlates(id, pc.blurPlates);
+        m_timeline->setClipBlurRemovals(id, pc.blurRemovals);
+        m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
+        m_timeline->setClipSpeed(id, pc.speed);
+        if (!std::isnan(pc.syncAdjustMs))
+            m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
+        if (pc.seamAdjustGuard >= 0)
+            m_timeline->setSourceSeamAdjust(pc.sourcePath, pc.seamAdjustDeg, pc.seamAdjustGuard);
+        for (const ReframeKey &k : pc.reframeKeys)
+            m_timeline->upsertClipReframeKey(id, k.timeMs, k.pose);
+        m_timeline->setClipMediaMissing(id, pc.mediaMissing);
+        clipIds.push_back(id);
+    }
+    // Overlay clips before any audio, so sound linked to one finds its new id.
+    std::vector<int> trackIds;
+    std::vector<std::vector<int>> overlayIds(parsedTracks.size()); // [track][clip] -> new id
+    for (size_t i = 0; i < parsedTracks.size(); ++i) {
+        const Track &t = parsedTracks[i];
+        trackIds.push_back(m_timeline->addTrack(t.kind, t.name));
+        m_timeline->setTrackAudio(trackIds.back(), t.gainDb, t.muted);
+        if (t.kind == Track::Kind::Video)
+            for (const TrackClip &c : t.clips)
+                overlayIds[i].push_back(m_timeline->insertTrackClip(trackIds.back(), c));
+    }
+    for (size_t i = 0; i < parsedTracks.size(); ++i) {
+        const Track &t = parsedTracks[i];
+        if (t.kind == Track::Kind::Video)
+            continue;
+        for (int k = 0; k < t.clips.size(); ++k) {
+            TrackClip c = t.clips[k];
+            const int idx = c.linkedClipId - 1;
+            c.linkedClipId = idx >= 0 && idx < static_cast<int>(clipIds.size()) ? clipIds[idx] : 0;
+            const auto [ot, oc] = overlayLinks[i][k];
+            if (ot >= 0 && ot < static_cast<int>(overlayIds.size()) && oc >= 0 &&
+                oc < static_cast<int>(overlayIds[ot].size()))
+                c.linkedClipId = overlayIds[ot][oc];
+            m_timeline->insertTrackClip(trackIds[i], c);
+        }
+    }
+    m_rebuilding = false;
+    emit projectReset();
+    return true;
+}
+
+bool Project::save(const QString &path, QString *error)
+{
+    const QDir projectDir = QFileInfo(path).absoluteDir();
+    const QByteArray text = buildDocument(&projectDir) + "\n";
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (error)
+            *error = QStringLiteral("Cannot open %1 for writing: %2").arg(path, file.errorString());
+        return false;
+    }
+    if (file.write(text) != text.size() || !file.commit()) {
+        if (error)
+            *error = QStringLiteral("Failed to write %1: %2").arg(path, file.errorString());
+        return false;
+    }
+
+    setFilePath(path);
+    setModified(false);
+    return true;
+}
+
+bool Project::load(const QString &path, QString *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (error)
+            *error = QStringLiteral("Cannot open %1: %2").arg(path, file.errorString());
+        return false;
+    }
+    const QByteArray bytes = file.readAll();
+    const QDir projectDir = QFileInfo(path).absoluteDir();
+
+    QString innerError;
+    if (!applyDocument(bytes, &projectDir, &innerError)) {
+        if (error)
+            *error = QStringLiteral("%1 %2").arg(path, innerError);
+        return false;
+    }
+
+    setFilePath(path);
+    setModified(false);
+    clearUndoHistory();
+    return true;
+}
+
+QByteArray Project::snapshot() const
+{
+    return buildDocument(nullptr);
+}
+
+void Project::restoreSnapshot(const QByteArray &bytes)
+{
+    applyDocument(bytes, nullptr, nullptr); // generated by us -- never expected to fail
+    setModified(true); // may or may not match the saved file; treat it as unsaved either way
+}
+
+void Project::clearUndoHistory()
+{
+    m_undoDebounce.stop();
+    m_pendingDirty = false;
+    m_undoStack.clear();
+    m_redoStack.clear();
+    m_lastSettledSnapshot = snapshot();
+    emit canUndoChanged(false);
+    emit canRedoChanged(false);
+}
+
+void Project::onUndoableEdited()
+{
+    if (m_rebuilding)
+        return;
+    if (!m_pendingDirty) {
+        m_pendingDirty = true;
+        if (m_undoStack.isEmpty())
+            emit canUndoChanged(true);
+        if (!m_redoStack.isEmpty()) {
+            m_redoStack.clear();
+            emit canRedoChanged(false);
+        }
+    }
+    m_undoDebounce.start(kUndoCoalesceMs);
+}
+
+void Project::commitPendingUndoPoint()
+{
+    if (!m_pendingDirty)
+        return;
+    m_undoDebounce.stop();
+    m_pendingDirty = false;
+
+    const QByteArray now = snapshot();
+    if (now == m_lastSettledSnapshot) {
+        if (m_undoStack.isEmpty())
+            emit canUndoChanged(false); // the whole burst netted out to nothing
+        return;
+    }
+    m_undoStack.push_back(m_lastSettledSnapshot);
+    while (m_undoStack.size() > kMaxUndoDepth)
+        m_undoStack.removeFirst();
+    m_lastSettledSnapshot = now;
+}
+
+void Project::undo()
+{
+    commitPendingUndoPoint(); // don't drop an in-flight edit under Ctrl+Z
+    if (m_undoStack.isEmpty())
+        return;
+    m_redoStack.push_back(m_lastSettledSnapshot);
+    const QByteArray prev = m_undoStack.takeLast();
+    restoreSnapshot(prev);
+    m_lastSettledSnapshot = prev;
+    emit canUndoChanged(!m_undoStack.isEmpty());
+    emit canRedoChanged(true);
+}
+
+void Project::redo()
+{
+    commitPendingUndoPoint();
+    if (m_redoStack.isEmpty())
+        return;
+    m_undoStack.push_back(m_lastSettledSnapshot);
+    const QByteArray next = m_redoStack.takeLast();
+    restoreSnapshot(next);
+    m_lastSettledSnapshot = next;
+    emit canUndoChanged(true);
+    emit canRedoChanged(!m_redoStack.isEmpty());
+}

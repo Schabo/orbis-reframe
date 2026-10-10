@@ -1,0 +1,23 @@
+// Colour grade (Colour panel), shared by every shader that grades:
+// equirect.frag and fisheye_view.frag ([0,1] space), reframe_reproject.comp
+// and fisheye_view_nv12.comp ([0,255] space). The CPU export fallback,
+// exportpipe::gradeRgb() in src/export/ReframeRenderer.cpp, is the C++ twin --
+// it can't include GLSL, so change both together (see ClipItem::ColorGrade).
+//
+// g = {exposureEv (stops), contrast%, saturation%, temperature%}; all 0 =
+// neutral. white = the value of full white in c's space: 1.0 or 255.0. The
+// constants are in 8-bit levels, scaled by white / 255. Order: temperature,
+// exposure, contrast, saturation.
+vec3 gradeColor(vec3 c, vec4 g, float white)
+{
+    float level = white / 255.0;
+    float t = g.w / 100.0;
+    c.r += t * 40.0 * level; // push toward warm(+)/cool(-)
+    c.b -= t * 40.0 * level;
+    c *= pow(2.0, g.x);
+    float mid = 128.0 * level; // contrast pivot
+    c = (c - mid) * (1.0 + g.y / 100.0) + mid;
+    float luma = dot(c, vec3(0.299, 0.587, 0.114));
+    c = luma + (c - luma) * (1.0 + g.z / 100.0);
+    return clamp(c, 0.0, white);
+}

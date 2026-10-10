@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest something orbis-reframe should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The task or the footage, not the solution yet. "I film X and want to…"
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could it work?
+      description: Your idea, and how other editors (Insta360 Studio, Gyroflow, …) do it, if you know.
+    validations:
+      required: false

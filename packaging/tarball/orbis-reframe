@@ -1,0 +1,4 @@
+#!/bin/sh
+# Starts orbis-reframe from the unpacked tarball, wherever it was unpacked.
+here=$(dirname "$(readlink -f "$0")")
+exec "$here/bin/orbis-reframe" "$@"

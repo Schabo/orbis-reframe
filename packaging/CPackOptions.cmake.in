@@ -1,0 +1,12 @@
+# Per-generator CPack settings (cmake/Packaging.cmake), read by cpack once
+# for each generator, after `cpack -D CPACK_PACKAGE_VERSION=...`.
+set(CPACK_PACKAGE_FILE_NAME
+    "orbis-reframe-${CPACK_PACKAGE_VERSION}-@ORBIS_PACKAGE_TARGET@-@CMAKE_SYSTEM_PROCESSOR@")
+# The .deb's version: 0.1.0~deb13 for a numbered Debian release, 0.1.0~ubuntu26.04
+# for Ubuntu.
+set(CPACK_DEBIAN_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION}@ORBIS_DEB_VERSION_SUFFIX@")
+# Only the tarball gets the top-level launcher; the .deb puts
+# bin/orbis-reframe on the PATH.
+if(CPACK_GENERATOR STREQUAL "TXZ")
+    set(CPACK_INSTALLED_DIRECTORIES "@ORBIS_TARBALL_EXTRA_DIR@;.")
+endif()

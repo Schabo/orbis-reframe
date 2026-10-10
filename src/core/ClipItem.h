@@ -1,0 +1,186 @@
+#pragma once
+
+#include <limits>
+#include "AudioLimits.h"
+#include "ReframeTrack.h"
+#include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
+#include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
+#include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
+
+#include <QString>
+
+#include <cmath>
+
+#include <array>
+#include <cstdint>
+
+// Per-clip colour grade (Colour panel): a static adjustment, not animated
+// like the reframe path -- there is no colour keyframing. Applied at render
+// time (order: temperature, exposure, contrast, saturation) by
+// src/render/shaders/color_grade.glsl, which every grading shader includes
+// (playback, GPU export), and by its C++ twin gradeRgb() in
+// src/export/ReframeRenderer.cpp (CPU export fallback) -- the two must be
+// changed together if the formula ever changes.
+struct ColorGrade {
+    static constexpr float kMinExposureEv = -3.0f;
+    static constexpr float kMaxExposureEv = 3.0f;
+    static constexpr float kMinPercent = -100.0f;
+    static constexpr float kMaxPercent = 100.0f;
+
+    float exposureEv = 0.0f;  // stops (2^ev multiplier), [kMinExposureEv, kMaxExposureEv]
+    float contrast = 0.0f;    // percent, [kMinPercent, kMaxPercent], 0 = neutral
+    float saturation = 0.0f;  // percent, [kMinPercent, kMaxPercent], -100 = grayscale
+    float temperature = 0.0f; // percent, [kMinPercent, kMaxPercent], warm(+)/cool(-)
+
+    bool operator==(const ColorGrade &o) const
+    {
+        return exposureEv == o.exposureEv && contrast == o.contrast &&
+              saturation == o.saturation && temperature == o.temperature;
+    }
+    bool operator!=(const ColorGrade &o) const { return !(*this == o); }
+
+    // The 4-float form the renderers take (shader push constant
+    // pc.colorGrade, exportpipe::ReframeView::colorGrade):
+    // {exposureEv, contrast, saturation, temperature}.
+    std::array<float, 4> packed() const { return {exposureEv, contrast, saturation, temperature}; }
+
+    // Clamp every field into its valid range, in place.
+    void clamp();
+};
+
+// One clip on the timeline: a reference to a source .insv plus the edits
+// applied to it -- an in/out trim range and an authored reframe (pan / tilt /
+// zoom) path.
+//
+// Plain value type. Timeline owns a QList<ClipItem>, is the only thing that
+// mutates one, and turns every successful change into a signal -- so the
+// mutating methods here just clamp, apply, and report whether anything
+// actually changed; they carry no Qt signal/slot machinery. Trivially
+// copyable; Project serialises it.
+struct ClipItem {
+    // Shortest allowed trimmed span -- guards an inverted / zero-width range;
+    // ~100 ms is a few frames at any real rate.
+    static constexpr qint64 kMinTrimMs = 100;
+    // Looser snap for deleting a reframe key than for up-serting one: the
+    // playhead rarely lands exactly on a key after a seek.
+    static constexpr qint64 kReframeDeleteSnapMs = 150;
+
+    int id = 0; // stable within one Timeline; assigned by Timeline on insert
+    QString sourcePath;
+
+    // Source media facts, filled by the caller from stitch::ProbeClip so this
+    // stays free of any FFmpeg dependency. Zero until known.
+    qint64 sourceDurationMs = 0;
+    double fps = 0.0; // > 0 once added (probed) or loaded
+    int sourceWidth = 0;
+    int sourceHeight = 0;
+    // Set on project load (step 4) when sourcePath can't be found. The clip
+    // stays on the timeline so the edit isn't lost.
+    bool mediaMissing = false;
+
+    // Edits.
+    qint64 trimInMs = 0;
+    qint64 trimOutMs = 0;
+    // Keyed in absolute source-clip milliseconds (a key is attached to a
+    // moment of footage, so trimming doesn't move it). Timeline playback
+    // samples it at trimInMs + <clip-local offset>.
+    ReframeTrack reframe;
+
+    // Audio (Audio panel): a per-clip level applied to the decoded PCM on
+    // top of whatever the source stream carries, and a mute flag. Follows the
+    // same trim as the video (there is no separate audio in/out) -- see
+    // AudioPlayer. Applied in both playback and export. Clamped to
+    // audiolimits::k{Min,Max}GainDb.
+    double audioGainDb = 0.0;
+    bool audioMuted = false;
+    // Which of the source's audio streams plays/exports: the ordinal among
+    // its audio streams (0 = first). X5 clips shot with an external mic carry
+    // two -- the camera mic and the Mic Air (insv::InsvAudioDemux). Not
+    // range-checked here (the model doesn't know the stream count); an
+    // out-of-range value falls back to the source's default stream.
+    int audioTrack = 0;
+    // Noise reduction on this clip's own sound (the stream above), e.g.
+    // "MC: Wind reduction" (reduce wind, keep the engine). Per clip, so two clips of the same mic can
+    // differ. Applied in playback and export.
+    insv::NoiseReduction noise;
+
+    // Colour grade (Colour panel). See ColorGrade's own comment.
+    ColorGrade color;
+
+    // Privacy blur (Privacy panel): mosaic the number plates a plate scan of
+    // this clip's source found (src/privacy/PlateScanData.h -- the scan
+    // itself is cached per source file, not stored here). Applied in playback
+    // and export; an export with this on refuses a clip whose trim range
+    // hasn't been scanned.
+    bool blurPlates = false;
+    // Blur tracks the user removed from this clip (false hits, e.g. on the
+    // rider's own bike). Kept as each track's path on the sphere, so they stay
+    // removed after a rescan (BlurRemoval.h).
+    std::vector<privacy::BlurRemoval> blurRemovals;
+    // Plates blurred by hand ("Blur a plate…": followed from where the user
+    // boxed them). Applied whether blurPlates is on or not.
+    std::vector<privacy::BlurAddition> blurAdditions;
+
+    // Playback speed: 1 = real time, 0.25 = 4x slow motion, 2 = double speed.
+    // Stretches the clip's span on the timeline (timelineDurationMs = trimmed /
+    // speed); trims, reframe keys, stabilization and sync all stay in source
+    // time. Audio is time-stretched to match, pitch unchanged (ClipAudioReader).
+    static constexpr double kMinSpeed = 0.1;
+    static constexpr double kMaxSpeed = 4.0;
+    double speed = 1.0;
+
+    // Measured video<->IMU sync fine-tune for this source, ms, added to the
+    // trailer-derived offset (stitch::MeasureClipSync). NaN = not measured yet.
+    // A property of the source file, so clips cut from the same file share it.
+    double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
+
+    // Measured seam alignment fine-tune for this source
+    // (stitch::MeasureClipSeam): lens 1's extra yaw / pitch / roll,
+    // degrees. Measured under a lens-guard profile, recorded in
+    // seamAdjustGuard (stitch::PreviewStitchConfig::LensGuard as int; -1 = not
+    // measured) -- a different guard setting needs a new measurement. Shared
+    // by clips of the same source, like syncAdjustMs.
+    std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+    int seamAdjustGuard = -1;
+
+    qint64 trimmedDurationMs() const { return trimOutMs - trimInMs; }
+    // The clip's span on the timeline: the trimmed source span at `speed`.
+    qint64 timelineDurationMs() const { return std::llround(trimmedDurationMs() / speed); }
+    // Timeline-local ms (from the clip's start on the timeline) <-> source ms.
+    qint64 sourceAtLocalMs(qint64 localMs) const { return trimInMs + std::llround(localMs * speed); }
+    qint64 localAtSourceMs(qint64 sourceMs) const
+    {
+        return std::llround((sourceMs - trimInMs) / speed);
+    }
+
+    // Snap tolerance for up-serting a reframe key ("the same playhead frame
+    // updates in place"): one frame.
+    qint64 frameDurationMs() const;
+
+    // Reset the trim to the whole source and clear the reframe path. Call
+    // right after sourceDurationMs is set.
+    void resetEditsToFullSource();
+
+    // --- mutations: clamp, apply, return true iff something changed ---------
+    bool setTrimIn(qint64 positionMs);
+    bool setTrimOut(qint64 positionMs);
+    bool clearTrim();
+    bool upsertReframeKey(qint64 sourceMs, const ReframePose &pose);
+    bool removeReframeKeyNear(qint64 sourceMs);
+    bool clearReframe();
+    bool setAudioGainDb(double db);
+    bool setAudioMuted(bool muted);
+    bool setAudioTrack(int track); // clamped to >= 0
+    bool setNoise(const insv::NoiseReduction &nr); // strength clamped to [0, 1]
+    bool setColorGrade(const ColorGrade &grade);
+    bool setBlurPlates(bool on);
+    bool setBlurRemovals(const std::vector<privacy::BlurRemoval> &removals);
+    bool setBlurAdditions(const std::vector<privacy::BlurAddition> &additions);
+    bool setSpeed(double s); // clamped to [kMinSpeed, kMaxSpeed]
+
+private:
+    // Clamp [inMs, outMs] into [0, sourceDuration] with the min-gap rule (the
+    // opposite edge never moves), apply, return whether it changed. (Was
+    // ClipModel::setRange.)
+    bool setRange(qint64 inMs, qint64 outMs);
+};

@@ -1,0 +1,354 @@
+#pragma once
+
+#include <QElapsedTimer>
+#include <QList>
+#include <QObject>
+#include <QString>
+
+#include <IStitchSource.h> // stitch::Frame
+#include <LensFrame.h>     // render::LensFrame
+#include <NoiseReduction.h> // insv::NoiseReduction (Segment::noise)
+
+#include "InsetFeed.h" // video-track insets
+#include "../render/FrameStats.h" // ORBIS_FRAME_STATS
+
+#include <QStringList>
+
+#include <array>
+#include <atomic>
+#include <cmath>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <thread>
+
+class QTimer;
+class EquirectViewportWindow;
+
+namespace stitch {
+class IStitchSource;
+}
+
+// Plays a *timeline* -- an ordered list of clip segments laid end to end --
+// through the stitch sources into the Vulkan viewport. Frames are decoded
+// fisheye pairs (render::LensFrame: the viewport renders the view from them)
+// whenever both the source and the viewport can share them, else stitched
+// equirects. Positions and seeks are in *timeline time* (0 .. total), not any
+// single clip's source time; the per-clip trims are baked into each segment's
+// [inMs, outMs] source window, so there is no separate "trim" concept here.
+//
+// Two threads cooperate through a bounded frame queue:
+//
+//   * a decoder thread runs SeekTo/ReadFrame on the current segment's source,
+//     rewrites each frame's timestamp into timeline time, and pushes into
+//     m_queue. When a frame reaches the segment's trim-out (or the source
+//     hits EOF) it advances to the next segment -- opening that source if the
+//     path changed, whose first SeekTo blocks on that clip's first stitch;
+//     the "Buffering…" indicator covers it. Consecutive segments that share
+//     a source path switch with just a SeekTo.
+//
+//   * the GUI-facing side (this QObject, on its own worker QThread -- see
+//     MainWindow) runs a fixed-cadence present QTimer that only *presents*:
+//     wall clock in timeline time, pop the newest frame that isn't in the
+//     future, drop the rest.
+//
+// setTimeline() replaces the whole segment list and may be called repeatedly
+// (a trim edit, a project (re)load). It re-clamps the playhead and re-seeks.
+// Only the decoder thread ever touches the stitch sources. Opened sources are
+// kept in a small LRU cache (kMaxCachedSources) so scrubbing back and forth
+// across a clip boundary doesn't re-open (and re-parse the trailer of) the
+// same file each time; sources dropped from the timeline entirely are
+// released on the next setTimeline().
+class PlaybackController : public QObject {
+    Q_OBJECT
+
+public:
+    explicit PlaybackController(QObject *parent = nullptr);
+    ~PlaybackController() override;
+
+    // Set once, before the first setTimeline(). Not owned.
+    void setViewport(EquirectViewportWindow *viewport) { m_viewport = viewport; }
+
+    // One clip on the timeline: a source file and the [in, out) source-time
+    // window to play from it. MainWindow builds these from the Timeline.
+    // audioGainDb/audioMuted/audioTrack (Audio panel) are read only by
+    // AudioPlayer, which reuses this same struct for its own setTimeline() --
+    // the video path here ignores them.
+    struct Segment {
+        QString sourcePath;
+        qint64 inMs = 0;
+        qint64 outMs = 0;
+        double audioGainDb = 0.0;
+        bool audioMuted = false;
+        int audioTrack = 0;
+        // Playback speed (ClipItem::speed): the segment spans (outMs - inMs) /
+        // speed on the timeline. Same rounding as ClipItem::timelineDurationMs.
+        double speed = 1.0;
+        insv::NoiseReduction noise; // on the clip's own sound (AudioPlayer)
+        qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
+        qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
+        qint64 localAtSourceMs(qint64 sourceMs) const
+        {
+            return std::llround((sourceMs - inMs) / speed);
+        }
+    };
+
+    // A segment plus its offset on the timeline. Both this controller and
+    // AudioPlayer place the same Segment list with placeSegments() and look
+    // positions up with segmentAt(), so picture and sound cut at the same
+    // instants.
+    struct Placed {
+        Segment seg;
+        qint64 startMs = 0; // timeline offset of seg.inMs
+        qint64 durationMs() const { return seg.timelineSpanMs(); }
+        qint64 endMs() const { return startMs + durationMs(); }
+    };
+    // `segments` laid end to end from 0; the timeline's total is the last
+    // one's endMs().
+    static QList<Placed> placeSegments(const QList<Segment> &segments);
+    // Index into `placed` whose timeline span contains `timelineMs` (past the
+    // end -> the last); -1 only if `placed` is empty.
+    static int segmentAt(const QList<Placed> &placed, qint64 timelineMs);
+
+    // Replace the timeline. NOT a slot: MainWindow invokes it through a queued
+    // lambda (QMetaObject::invokeMethod), so QList<Segment> needs no metatype
+    // registration. Runs on the worker thread.
+    void setTimeline(const QList<Segment> &segments);
+
+    // Change the preview-stitch settings (Stitching panel). Like
+    // setTimeline(), invoked via a queued lambda so it runs on the worker
+    // thread. If the config actually changed and a timeline is loaded, the
+    // decoder drops its open sources and re-stitches from the current
+    // position under the new cache tag -- a brief "Buffering…" like a cold
+    // scrub. No-op if unchanged.
+    void setPreviewConfig(const stitch::PreviewStitchConfig &config);
+
+    // Per-clip capture-time correction for the stitch (see
+    // stitch::IStitchSource::SetCaptureTiming). Thread-safe, callable from the
+    // GUI thread; the decoder applies it to that clip's source before its next
+    // frame. An inactive timing = off.
+    void setCaptureTiming(const QString &path, stitch::CaptureTiming timing);
+    // Seam alignment fine-tune for one source (lens-1 yaw/pitch/roll, deg;
+    // IStitchSource::SetLens1Adjust). Thread-safe; applies from the next
+    // decoded frame -- seek to refresh a paused picture.
+    void setSeamAdjust(const QString &path, std::array<double, 3> deg);
+    // Privacy blur for one source (IStitchSource::SetBlurQuads); an empty fn
+    // = off. Thread-safe; applies from the next decoded frame -- seek to
+    // refresh a paused picture.
+    void setBlurQuads(const QString &path, stitch::BlurQuadsFn fn);
+
+    // Gyro de-rotation for a presented frame: fills `m` (row-major 3x3) for
+    // source time `sourceMs` of clip `path` and returns true, or returns false
+    // when it has nothing for that clip (the viewport then keeps its current
+    // matrix). Called on the controller thread for every presented frame, with
+    // the frame's own source time, and handed to the viewport with the frame.
+    // Thread-safe to set from the GUI thread.
+    using StabProvider = std::function<bool(const QString &path, qint64 sourceMs, float m[9])>;
+    void setStabilizationProvider(StabProvider provider);
+
+    // Region outlines for a presented frame (the Privacy panel's "Show
+    // regions"): appends those of source time `sourceMs` of clip `path`.
+    // Called like the StabProvider, and handed to the viewport with the
+    // frame. Empty = none. Thread-safe to set from the GUI thread; seek to
+    // refresh a paused picture.
+    using OutlineProvider = std::function<void(
+        const QString &path, qint64 sourceMs, std::vector<EquirectViewportWindow::RegionOutline> &out)>;
+    void setOutlineProvider(OutlineProvider provider);
+
+    // The video tracks' inset clips, bottom-most first. Thread-safe,
+    // callable from the GUI thread; they're drawn over the view from the next
+    // present tick, at the playhead.
+    void setInsets(std::vector<InsetFeed::Clip> clips) { m_insets.setClips(std::move(clips)); }
+
+public slots:
+    void play();
+    void pause();
+    void togglePlay();
+    void seek(qint64 timelineMs);
+    // A seek while dragging the playhead: shows the source's nearest keyframe
+    // (inside the clip's trim) instead of the exact frame -- one decode instead
+    // of up to a GOP's worth -- and the drag's final seek() lands on the exact
+    // frame. During playback the first scrub pauses and that final seek()
+    // resumes, so a drag behaves the same playing or paused.
+    void scrub(qint64 timelineMs);
+
+signals:
+    void openFailed(const QString &error);
+    void durationChanged(qint64 totalMs);
+    void positionChanged(qint64 timelineMs);
+    void playingChanged(bool playing);
+    // True while the presenter wants a frame it doesn't have (decoder behind,
+    // or a new clip still opening). The UI debounces this.
+    void bufferingChanged(bool buffering);
+    // True while the playback clock is frozen (a seek / stall, until
+    // kResumeFrames are queued). Unlike bufferingChanged -- which also fires
+    // when a tick merely finds the queue empty while the clock runs on --
+    // this is what audio must follow: AudioPlayer::setHold.
+    void clockHeldChanged(bool held);
+
+private:
+    // A decoded frame (timestamp already rewritten to timeline time) plus the
+    // seek generation it was produced for.
+    struct QueuedFrame {
+        stitch::Frame frame; // timestamp always set; rgba empty for a lens frame
+        std::shared_ptr<const render::LensFrame> lens; // set => a lens frame
+        uint64_t gen = 0;
+        QString sourcePath;  // clip the frame came from
+        qint64 sourceMs = 0; // its source time (frame.timestamp_ms is timeline time)
+    };
+
+    void startDecoder();
+    void stopDecoder();
+    void decoderLoop();
+    // Caller holds m_mx; bumps m_seekGen. `keyframe`: land on the nearest
+    // keyframe instead of the exact frame (scrub()).
+    void requestSeekLocked(qint64 timelineMs, bool keyframe = false);
+    // Paused: is the frame shown at `timelineMs` on screen already, or among
+    // the queued lookahead (then the frames before it are dropped, and tick()
+    // shows it next)? Either way no seek is needed. Caller holds m_mx.
+    enum class Handy { No, OnScreen, Queued };
+    Handy frameAtLocked(qint64 timelineMs);
+    void settle(); // a scrub's pointer rested: the exact frame
+    void tick();                                // present step, on the QObject's thread
+    void presentInsets(qint64 timelineMs, bool playing); // tick's inset step
+    void setClockHeld(bool held);               // emits clockHeldChanged on change
+
+    // --- decoder-thread helpers ---
+    // Returns the open source for `path` (from the small cache, or freshly
+    // opened). nullptr + *err set on failure.
+    std::shared_ptr<stitch::IStitchSource> acquireSource(const QString &path, QString *err);
+    // Make segment `index` the one being decoded, opening its source if the
+    // path changed. Prunes any other cached source. false (openFailed emitted)
+    // on open failure.
+    bool switchToSegment(int index);
+    qint64 clampTimeline(qint64 ms) const {
+        return ms < 0 ? 0 : (ms > m_totalMs ? m_totalMs : ms);
+    }
+
+    EquirectViewportWindow *m_viewport = nullptr;
+    QTimer *m_timer = nullptr;
+
+    // --- presenter-thread (the controller's QThread) only ---
+    bool m_haveTimeline = false;
+    qint64 m_totalMs = 0;
+    qint64 m_positionMs = 0; // timeline time
+    QElapsedTimer m_clock;
+    qint64 m_clockBaseMs = 0;
+    bool m_presentAfterSeek = false;
+    uint64_t m_shownGen = 0; // seek generation of the frame on screen
+    qint64 m_shownMs = 0;    // and its timeline time
+    QTimer *m_settleTimer = nullptr; // scrub(): the pointer rested -> settle()
+    bool m_buffering = false;
+    bool m_reachedEnd = false;
+    bool m_prerolling = false; // frozen after a stall until kResumeFrames are queued
+    bool m_clockHeld = false;  // last clockHeldChanged value
+    // ORBIS_FRAME_STATS: while playing, a per-second summary of what the
+    // presenter showed and skipped, and what the decoder took per frame.
+    struct Stats {
+        render::framestats::Clock::time_point windowStart{};
+        int shown = 0;
+        int skipped = 0;        // decoded but never shown: the clock had passed them
+        int bufferingTicks = 0; // ticks spent frozen, waiting for the decoder
+        size_t minQueue = SIZE_MAX;
+        render::framestats::Samples lateMs; // clock minus the shown frame's time
+        render::framestats::Samples stabMs; // the stabilization lookup
+    } m_stats;
+    void statsTick(bool playing, size_t queued);
+
+    // --- shared with the decoder thread, guarded by m_mx ---
+    std::mutex m_mx;
+    std::condition_variable m_cv;
+    QList<Placed> m_placed;       // authoritative timeline
+    bool m_timelineDirty = false; // decoder should re-copy m_placed
+    stitch::PreviewStitchConfig m_pendingPreviewConfig;
+    bool m_previewConfigDirty = false; // decoder should drop sources + re-stitch
+    std::deque<QueuedFrame> m_queue;
+    size_t m_frameBytes = 0; // size of the last decoded frame; sets the queue cap
+    bool m_lensQueue = false; // the last decoded frame was a lens frame (kLensQueueMax cap)
+    render::framestats::Samples m_statsReadMs; // ORBIS_FRAME_STATS: decoder read per frame
+    std::thread m_decoder;
+    bool m_playing = false;
+    bool m_stop = false;
+    bool m_decoderEof = false;
+    bool m_seekPending = false;
+    qint64 m_seekTargetMs = 0; // timeline time
+    bool m_seekToKeyframe = false; // the pending seek is a scrub (see scrub())
+    bool m_resumeAfterScrub = false; // a drag paused playback; the next seek() resumes
+    uint64_t m_seekGen = 0;
+    // The decoder is seeking: from a seek or a clip boundary until the first
+    // frame after it is read. While set, tick() freezes the playhead once the
+    // queue runs dry instead of letting the wall clock run on over a frozen
+    // picture.
+    bool m_hardStall = false;
+
+    // --- decoder-thread only ---
+    static constexpr int kMaxCachedSources = 4;
+    QList<Placed> m_decPlaced;
+    // Preview-stitch config the decoder opens sources with. Updated from
+    // m_pendingPreviewConfig when m_previewConfigDirty is seen.
+    stitch::PreviewStitchConfig m_decPreviewConfig;
+    int m_decSegIndex = -1;
+    qint64 m_decLastSourceMs = -1; // source time of the last frame read; -1 after a seek
+    std::map<QString, std::shared_ptr<stitch::IStitchSource>> m_srcCache;
+    QStringList m_srcLru; // paths, least-recently-used first
+    std::shared_ptr<stitch::IStitchSource> m_activeSource;
+    QString m_activePath;
+
+    // The next segment's source, sought and its first frame read on a worker
+    // thread shortly before the boundary, so the cut doesn't wait for the
+    // seek's decode (startPrefetch / takePrefetch). The source is the
+    // job's own until taken: a cached one is moved out of m_srcCache, and a
+    // jump within the active file opens a second one.
+    struct Prefetch {
+        int segIndex = -1;
+        QString path;
+        std::shared_ptr<stitch::IStitchSource> src;
+        bool opened = false; // src open, SeekTo done, the read below tried
+        stitch::Frame frame;
+        std::shared_ptr<render::LensFrame> lens;
+        bool got = false;
+        bool stale = false; // a seek / edit since: dropped once done
+        std::future<void> done; // last: destroyed (waited for) first
+    };
+    std::unique_ptr<Prefetch> m_prefetch;
+    // A read already made for the active segment (a taken prefetch's first
+    // frame); the decoder's next read returns it.
+    struct HeldRead {
+        stitch::Frame frame;
+        std::shared_ptr<render::LensFrame> lens;
+        bool got = false;
+    };
+    std::optional<HeldRead> m_heldRead;
+
+    // Capture-timing settings per clip path, written by the GUI thread.
+    using RsSetting = stitch::CaptureTiming;
+    std::mutex m_stabMx;
+    StabProvider m_stabProvider; // guarded by m_stabMx
+    OutlineProvider m_outlineProvider; // guarded by m_stabMx
+    std::mutex m_rsMx;
+    std::map<QString, RsSetting> m_rsSettings; // guarded by m_rsMx
+    std::map<QString, std::array<double, 3>> m_seamAdjust; // guarded by m_rsMx, same generation
+    std::map<QString, stitch::BlurQuadsFn> m_blurQuads;    // guarded by m_rsMx, same generation
+    std::atomic<uint64_t> m_rsGen{0};          // bumped on every change
+    uint64_t m_decRsGen = ~uint64_t(0);        // decoder: generation last applied
+    QString m_decRsPath;                        // decoder: source it was applied to
+    void applyCaptureTimingIfChanged();         // decoder thread
+    void applySourceSettings(stitch::IStitchSource &src, const QString &path); // reads m_rsMx
+
+    // The insets' own decoder, and what was last handed to the viewport
+    // (frame key + look per inset) so an unchanged picture isn't re-sent.
+    InsetFeed m_insets;
+    std::vector<EquirectViewportWindow::InsetDraw> m_lastInsets;
+
+    void touchSourceLru(const QString &path);   // decoder thread
+    void pruneSourcesToTimeline();               // decoder thread
+    void setHardStall(bool on);                   // decoder thread
+    void startPrefetch(const Placed &cur, qint64 timelineMs); // decoder thread
+    bool takePrefetch(int next);                  // decoder thread
+    void invalidatePrefetch();                    // decoder thread
+};
