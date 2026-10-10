@@ -226,6 +226,8 @@ step only reviews and publishes; the GPU test (step 5) stays by hand.
 - Close the issues and milestones the release finished, and note what was
   tested and anything that came up.
 - README / project page (`site/`): if they mention the latest version or
-  "not published yet", update them.
+  "not published yet", update them. A push to `main` that changes `site/`
+  publishes the page to <https://schabo.github.io/orbis-reframe/>
+  (`.github/workflows/pages.yml`).
 - From the next commit on, builds call themselves `Y+1.gabc1234`, so a
   dev build is never mistaken for the release.
