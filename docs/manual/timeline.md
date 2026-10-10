@@ -69,6 +69,9 @@ another clip before or after it, copy or paste its colour grade
 You can add the same `.insv` file more than once, for example to use two
 different parts of a long recording.
 
+You can't drag `.insv` files onto the timeline from your file manager yet;
+dropping files works for audio and overlays only (see below).
+
 ### Selecting a clip
 
 Click a clip to select it. The settings panels (stabilization, colour,
@@ -158,9 +161,11 @@ There are three ways:
   overlay…** (`Ctrl+Shift+V`). The file goes in at the playhead.
 - Right-click on the timeline where the clip should start and choose **Add
   audio file here…** or **Add video overlay here…**.
-- Drag files from your file manager onto the timeline. They go in where you
-  drop them: on the track you drop them on, or, if you drop them somewhere
-  else, on the first track with room for them.
+- Drag audio files or flat videos from your file manager onto the timeline
+  panel (not the viewport). They go in where you drop them: on the track you
+  drop them on, or, if you drop them somewhere else on the timeline, on the
+  first track with room for them. Other files, such as `.insv` clips, are
+  refused, and so is any drop while the video track is empty.
 
 If there's no track of the right kind with room, orbis-reframe makes a new
 one. To make an empty track yourself, right-click the timeline and choose
