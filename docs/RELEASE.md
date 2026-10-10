@@ -1,9 +1,8 @@
 # Release process (manual)
 
 How to make a release of orbis-reframe by hand, from a clean `main` to the
-published files. This page puts the pieces in order. Parts that don't exist yet are marked **(not yet)**:
-the GitHub repository. Until it
-does, the matching steps are done by hand as written here.
+published files on GitHub (`github.com/Schabo/orbis-reframe`). This page
+puts the pieces in order.
 
 A release has three targets (`scripts/targets.sh`), each its own build:
 `debian-testing` (built on this machine), `debian-13` (built in a
@@ -43,7 +42,8 @@ A release is:
   after every driver update. `ffmpeg` (for `ffprobe`) and the test clip in
   `sample_footage/` (named in `tests/release/smoke.orp`; `--footage DIR`
   for another folder).
-- **(not yet)** The GitHub repository, `gh auth login`.
+- Push access to `github.com/Schabo/orbis-reframe` and the GitHub CLI,
+  `gh auth login`.
 
 ## 2. Get `main` ready
 
@@ -202,8 +202,6 @@ release page and say why in the release notes.
 
 ## 7. Publish
 
-**(not yet: the GitHub repository doesn't exist.)** Once it does:
-
 ```sh
 git push origin main --follow-tags
 gh release create vY --draft --title "orbis-reframe Y" \
@@ -218,9 +216,6 @@ notes are missing (known issues, changed dependencies), then publish it.
 Later, a GitHub Actions workflow moves the build into a
 release workflow that makes the draft. Then step 4 runs in CI and this
 step only reviews and publishes; the GPU test (step 5) stays by hand.
-
-Until then, keep `dist/` (or copy it somewhere safe) and push the tag
-wherever the repository lives, so the source archive and the tag match.
 
 ## 8. Afterwards
 
