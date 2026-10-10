@@ -197,8 +197,10 @@ Then fix the problem (normal commits), and go back to step 3.
 
 **After the tag is pushed**, never move or delete it: others may have
 fetched it. Fix the problem and make a new patch release (Y+0.0.1) with
-the steps above. If a published file is broken, take it down from the
-release page and say why in the release notes.
+the steps above. Releases are immutable (a repository setting): once
+published, a release's files and tag can't be changed or deleted. If a
+published file is broken, make the patch release and add a warning to the
+old release's notes pointing to it.
 
 ## 7. Publish
 
@@ -213,6 +215,8 @@ gh release create vY --draft --title "orbis-reframe Y" \
 (Both targets' folders hold the same source archive; it's uploaded once.)
 Check the draft on GitHub (all fourteen files, the notes), add anything the
 notes are missing (known issues, changed dependencies), then publish it.
+The draft can still be changed (files replaced or removed); publishing
+locks its files and tag for good, so check them first.
 Later, a GitHub Actions workflow moves the build into a
 release workflow that makes the draft. Then step 4 runs in CI and this
 step only reviews and publishes; the GPU test (step 5) stays by hand.

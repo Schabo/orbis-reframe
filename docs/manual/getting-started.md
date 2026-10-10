@@ -101,6 +101,11 @@ Each file has a `.sha256` file next to it. To check that the download is
 complete, run `sha256sum -c <file>.sha256` in the folder with both files.
 It should print `OK`.
 
+For releases after 0.1.0, GitHub also signs each release, so you can check
+that a file really comes from it. With the
+[GitHub CLI](https://cli.github.com/) installed, run
+`gh release verify-asset -R Schabo/orbis-reframe v<version> <file>`.
+
 ### Option A: the `.deb` package
 
 ```sh
