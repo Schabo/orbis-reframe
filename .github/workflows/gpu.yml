@@ -1,52 +1,50 @@
 # The GPU checks GitHub's runners can't do: build, ctest and the headless GPU
 # tools on a real clip, on the maintainer's self-hosted runner (label `gpu`:
-# an NVIDIA GPU, the test footage read-only at /footage). Nightly when main
-# has changed since the last good run, and by hand.
+# an NVIDIA GPU, the test footage read-only at /footage). On pushes to main,
+# on pull requests, and by hand; not for changes to the docs or the site.
 #
-# Never add pull_request / pull_request_target triggers: the runner is on a
-# private machine, and only code already on this repository's branches may
-# run there.
+# The runner is a private machine, so a pull request's code runs there only
+# after two approvals: the repository's approval of outside contributors'
+# runs (Settings > Actions), and, for pull requests from forks, the
+# `gpu-runner` environment's required reviewer (the `approve` job below).
+# Never switch this to pull_request_target, and don't drop the gate.
 name: GPU
 
 on:
-  schedule:
-    - cron: "0 2 * * *"
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "site/**", "**.md"]
+  pull_request:
+    paths-ignore: ["docs/**", "site/**", "**.md"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# One run per branch / pull request: a newer push replaces the one waiting.
 concurrency:
-  group: gpu
-  cancel-in-progress: false
+  group: gpu-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # On GitHub's runners: skip the night's run when this commit already passed.
-  changed:
-    name: Anything new?
+  # Pull requests from forks wait here, on GitHub's runners, for the
+  # maintainer to approve running them on the GPU machine.
+  approve:
+    name: Approve the GPU run
+    if: github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-    outputs:
-      run: ${{ steps.check.outputs.run }}
+    environment: gpu-runner
     steps:
-      - id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          last=$(gh run list -R "$GITHUB_REPOSITORY" -w gpu.yml -b "$GITHUB_REF_NAME" -s success -L 1 \
-              --json headSha -q '.[0].headSha')
-          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
-              echo "$GITHUB_SHA already passed; nothing to do"
-              echo run=false >> "$GITHUB_OUTPUT"
-          else
-              echo run=true >> "$GITHUB_OUTPUT"
-          fi
+      - run: echo "Approved to run on the GPU runner"
 
   gpu:
     name: Build + GPU tools
-    needs: changed
-    if: needs.changed.outputs.run == 'true'
+    needs: approve
+    # The gate passed, or wasn't needed (not a fork).
+    if: >-
+      always() &&
+      (needs.approve.result == 'success' ||
+       (needs.approve.result == 'skipped' && github.event.pull_request.head.repo.fork != true))
     runs-on: [self-hosted, gpu]
     timeout-minutes: 60
     steps:
