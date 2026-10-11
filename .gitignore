@@ -19,7 +19,7 @@ compile_commands.json
 # Downloaded third-party SDKs (scripts/fetch_ncnn.sh) -- not for git.
 /third_party/
 
-# Private working notes (separate repo: orbis-reframe-notes) -- not for git.
-/notes/
-# Private Claude Code instructions (a symlink into notes/) -- not for git.
+# Private maintainer notes and tooling (separate repo: orbis-reframe-internal) -- not for git.
+/internal/
+# Private Claude Code instructions (a symlink into internal/) -- not for git.
 /CLAUDE.local.md
