@@ -64,7 +64,8 @@ class QTimer;
 //   Files: audio / video files dragged in from a file manager drop at the
 //   pointer: onto a track of their kind, or anywhere else for the first
 //   track with room (or a new one) -> audioFilesDropped /
-//   videoFilesDropped.
+//   videoFilesDropped. .insv clips go onto the main track at the cut
+//   nearest the pointer, also on an empty timeline -> clipFilesDropped.
 //   Waveforms: a clip given `peaks` draws its audio's level (dB scale), with
 //   its gain and fades applied.
 //   Reframe keys: a main-track clip's keys show as diamonds along its bottom;
@@ -173,6 +174,9 @@ signals:
     // "Add clip here…" / "Insert clip before/after…": a file picker, then the
     // clip inserted on the main track at position `index`.
     void addClipRequested(int index);
+    // .insv files dropped from a file manager: inserted on the main track at
+    // position `index`, in order.
+    void clipFilesDropped(const QStringList &paths, int index);
     void clipSelected(int clipId); // a video clip clicked; 0 = a click on empty space
 
     void trackClipSelected(int clipId); // -1 = selection cleared
@@ -262,8 +266,9 @@ private:
     void drawWaveform(QPainter &p, const QRect &rc, const Peaks &peaks, qint64 startMs,
                       qint64 trimInMs, double speed, double gain, qint64 fadeInMs,
                       qint64 fadeOutMs, qint64 spanMs, const QColor &color) const;
-    // Audio / video files among a drag's URLs.
-    static QStringList droppableFiles(const QMimeData *mime, bool video);
+    // The files of one kind among a drag's URLs.
+    enum class DropKind { Audio, Overlay, Clip };
+    static QStringList droppableFiles(const QMimeData *mime, DropKind kind);
     int dropIndexForX(int x) const;         // gap index in [0, count]
     // `ms` snapped to the nearest playhead / cut / audio edge within a few px
     // (excluding the clip being dragged).
@@ -317,6 +322,8 @@ private:
     bool m_dropActive = false;
     int m_dropTrack = -1; // track index, -1 = first with room / new
     bool m_dropVideo = false; // the drag carries video files (else audio)
+    bool m_dropClip = false;  // ... .insv clips, for the main track
+    int m_dropIndex = 0;      // the main-track position they'd go in at
     qint64 m_dropMs = 0;
 
     // In-place rename of a track.

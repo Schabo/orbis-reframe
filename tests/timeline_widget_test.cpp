@@ -408,12 +408,44 @@ void testDrop()
     CHECK(dropFiles(&f.w, {"/x/a.flac"}, QPoint(Fixture::x(7060), mainY())));
     CHECK(dropped.count() == 2 && dropped.last().at(1).toInt() == 0 &&
           dropped.last().at(2).toLongLong() == 7000);
-    // No audio among them: refused.
-    CHECK(!dropFiles(&f.w, {"/x/clip.insv", "/x/a.txt"}, QPoint(Fixture::x(5000), trackY(0))));
+    // Nothing it can take: refused.
+    CHECK(!dropFiles(&f.w, {"/x/clip.lrv", "/x/a.txt"}, QPoint(Fixture::x(5000), trackY(0))));
     // Nothing on the video track: nothing to lay audio under.
     TimelineWidget empty;
     empty.resize(kWidth, empty.sizeHint().height());
     CHECK(!dropFiles(&empty, {"/x/a.mp3"}, QPoint(Fixture::x(0), mainY())));
+}
+
+void testDropClips()
+{
+    Fixture f;
+    QSignalSpy clips(&f.w, &TimelineWidget::clipFilesDropped);
+    QSignalSpy audio(&f.w, &TimelineWidget::audioFilesDropped);
+
+    // At the cut nearest the pointer, wherever it's dropped: 7 s is past the
+    // middle of the first clip -> between the two (index 1).
+    CHECK(dropFiles(&f.w, {"/x/a.insv", "/x/b.INSV", "/x/a.lrv"}, QPoint(Fixture::x(7000), trackY(0))));
+    CHECK(clips.count() == 1 && audio.count() == 0);
+    if (clips.count() == 1) {
+        CHECK(clips.last().at(0).toStringList() == QStringList({"/x/a.insv", "/x/b.INSV"}));
+        CHECK(clips.last().at(1).toInt() == 1);
+    }
+    CHECK(dropFiles(&f.w, {"/x/a.insv"}, QPoint(Fixture::x(3000), mainY())));
+    CHECK(clips.count() == 2 && clips.last().at(1).toInt() == 0);
+    CHECK(dropFiles(&f.w, {"/x/a.insv"}, QPoint(Fixture::x(19000), mainY())));
+    CHECK(clips.count() == 3 && clips.last().at(1).toInt() == 2);
+    // With audio: the clips first, the audio where they start.
+    CHECK(dropFiles(&f.w, {"/x/a.insv", "/x/m.mp3"}, QPoint(Fixture::x(12000), mainY())));
+    CHECK(clips.count() == 4 && clips.last().at(1).toInt() == 1);
+    CHECK(audio.count() == 1 && audio.last().at(1).toInt() == 0 &&
+          audio.last().at(2).toLongLong() == 10000);
+
+    // An empty timeline takes clips (and nothing else).
+    TimelineWidget empty;
+    empty.resize(kWidth, empty.sizeHint().height());
+    QSignalSpy first(&empty, &TimelineWidget::clipFilesDropped);
+    CHECK(dropFiles(&empty, {"/x/a.insv"}, QPoint(Fixture::x(500), mainY())));
+    CHECK(first.count() == 1 && first.last().at(1).toInt() == 0);
 }
 
 
@@ -517,6 +549,7 @@ int main(int argc, char **argv)
     testZoom();
     testTrackHeaders();
     testDrop();
+    testDropClips();
     testOverlayTracks();
     if (g_failures == 0)
         std::printf("timeline_widget_test: all checks passed\n");

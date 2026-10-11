@@ -349,6 +349,9 @@ private:
     void remapPlayheadAfterEdit();
     // File dialog -> probe -> Timeline::insertClip at `index` (-1 = append).
     void addClipToTimeline(int index = -1);
+    // Probe -> insert `paths` in order from `index` (-1 = append). Files that
+    // aren't clips are reported and skipped. Used by the picker and by drops.
+    void addClipFiles(const QStringList &paths, int index);
 
     // File menu project actions.
     void saveProject();

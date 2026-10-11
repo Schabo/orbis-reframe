@@ -66,12 +66,13 @@ another clip before or after it, copy or paste its colour grade
   after…** to put the new clip next to it.
 - Right-click an empty part of the video track (or of an empty timeline)
   and choose **Add clip here…**. The clip goes in at the nearest cut.
+- Drag `.insv` files from your file manager onto the timeline panel (not
+  the viewport). They go in at the cut nearest to where you drop them, in
+  the order the file manager gives them; on an empty timeline the first one
+  starts the video track. Drop the `.insv` master, not the `.lrv` proxy.
 
 You can add the same `.insv` file more than once, for example to use two
 different parts of a long recording.
-
-You can't drag `.insv` files onto the timeline from your file manager yet;
-dropping files works for audio and overlays only (see below).
 
 ### Selecting a clip
 
@@ -165,8 +166,9 @@ There are three ways:
 - Drag audio files or flat videos from your file manager onto the timeline
   panel (not the viewport). They go in where you drop them: on the track you
   drop them on, or, if you drop them somewhere else on the timeline, on the
-  first track with room for them. Other files, such as `.insv` clips, are
-  refused, and so is any drop while the video track is empty.
+  first track with room for them. Dropped together with `.insv` clips, they
+  start where the clips go in. Without a clip on the video track, only
+  `.insv` clips can be dropped.
 
 If there's no track of the right kind with room, orbis-reframe makes a new
 one. To make an empty track yourself, right-click the timeline and choose

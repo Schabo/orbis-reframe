@@ -536,7 +536,7 @@ void TimelineWidget::drawWaveform(QPainter &p, const QRect &rc, const Peaks &pea
     }
 }
 
-QStringList TimelineWidget::droppableFiles(const QMimeData *mime, bool video)
+QStringList TimelineWidget::droppableFiles(const QMimeData *mime, DropKind kind)
 {
     static const QStringList kAudioExt = {QStringLiteral("mp3"),  QStringLiteral("wav"),
                                           QStringLiteral("flac"), QStringLiteral("aac"),
@@ -546,7 +546,11 @@ QStringList TimelineWidget::droppableFiles(const QMimeData *mime, bool video)
     static const QStringList kVideoExt = {QStringLiteral("mp4"), QStringLiteral("mov"),
                                           QStringLiteral("mkv"), QStringLiteral("m4v"),
                                           QStringLiteral("webm"), QStringLiteral("avi")};
-    const QStringList &ext = video ? kVideoExt : kAudioExt;
+    // 360 clips for the main track: the master, not the .lrv proxy.
+    static const QStringList kClipExt = {QStringLiteral("insv")};
+    const QStringList &ext = kind == DropKind::Clip      ? kClipExt
+                             : kind == DropKind::Overlay ? kVideoExt
+                                                         : kAudioExt;
     QStringList out;
     if (!mime || !mime->hasUrls())
         return out;
@@ -559,16 +563,18 @@ QStringList TimelineWidget::droppableFiles(const QMimeData *mime, bool video)
 void TimelineWidget::dragEnterEvent(QDragEnterEvent *e)
 {
     // Audio and overlays need a video track to lie over / under (the main
-    // track sets the length).
-    const bool audio = !droppableFiles(e->mimeData(), false).isEmpty();
-    const bool video = !droppableFiles(e->mimeData(), true).isEmpty();
-    if (m_rows.isEmpty() || (!audio && !video)) {
+    // track sets the length); clips can start one.
+    const bool audio = !droppableFiles(e->mimeData(), DropKind::Audio).isEmpty();
+    const bool video = !droppableFiles(e->mimeData(), DropKind::Overlay).isEmpty();
+    const bool clip = !droppableFiles(e->mimeData(), DropKind::Clip).isEmpty();
+    if (!clip && (m_rows.isEmpty() || (!audio && !video))) {
         e->ignore();
         return;
     }
     e->acceptProposedAction();
     m_dropActive = true;
-    m_dropVideo = video && !audio; // a mix goes by the audio rules
+    m_dropClip = clip; // a mix goes by the clip rules, then the audio rules
+    m_dropVideo = video && !audio;
     dragMoveEvent(e);
 }
 
@@ -577,10 +583,17 @@ void TimelineWidget::dragMoveEvent(QDragMoveEvent *e)
     if (!m_dropActive)
         return;
     const QPoint pos = e->position().toPoint();
-    m_dropTrack = trackAtY(pos.y());
-    if (m_dropTrack >= 0 && m_tracks[m_dropTrack].video != m_dropVideo)
-        m_dropTrack = -1; // not a track of the files' kind
-    m_dropMs = std::min(snapMs(timelineMsAt(pos.x()), -1), m_totalMs);
+    if (m_dropClip) {
+        // Between clips, at the cut nearest the pointer.
+        m_dropTrack = -1;
+        m_dropIndex = insertIndexAt(timelineMsAt(pos.x()));
+        m_dropMs = m_dropIndex < m_rows.size() ? m_rows[m_dropIndex].startMs : m_totalMs;
+    } else {
+        m_dropTrack = trackAtY(pos.y());
+        if (m_dropTrack >= 0 && m_tracks[m_dropTrack].video != m_dropVideo)
+            m_dropTrack = -1; // not a track of the files' kind
+        m_dropMs = std::min(snapMs(timelineMsAt(pos.x()), -1), m_totalMs);
+    }
     e->acceptProposedAction();
     update();
 }
@@ -593,15 +606,19 @@ void TimelineWidget::dragLeaveEvent(QDragLeaveEvent *)
 
 void TimelineWidget::dropEvent(QDropEvent *e)
 {
-    const QStringList audio = droppableFiles(e->mimeData(), false);
-    const QStringList video = droppableFiles(e->mimeData(), true);
+    const QStringList audio = droppableFiles(e->mimeData(), DropKind::Audio);
+    const QStringList video = droppableFiles(e->mimeData(), DropKind::Overlay);
+    const QStringList clips = droppableFiles(e->mimeData(), DropKind::Clip);
     const bool active = m_dropActive;
     m_dropActive = false;
     update();
-    if (!active || (audio.isEmpty() && video.isEmpty()))
+    if (!active || (audio.isEmpty() && video.isEmpty() && clips.isEmpty()))
         return;
     e->acceptProposedAction();
     const int trackId = m_dropTrack >= 0 && m_dropTrack < m_tracks.size() ? m_tracks[m_dropTrack].id : 0;
+    // Clips first: audio and overlays dropped with them start where they do.
+    if (!clips.isEmpty())
+        emit clipFilesDropped(clips, m_dropIndex);
     if (!audio.isEmpty())
         emit audioFilesDropped(audio, m_dropVideo ? 0 : trackId, m_dropMs);
     if (!video.isEmpty())
@@ -811,7 +828,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const int x = xForTimelineMs(m_dropMs);
         const QColor hl = palette().color(QPalette::Highlight);
         int top = mainTop() + kMainH, bottom = rowsBottom;
-        if (m_dropVideo) { // over the main track
+        if (m_dropVideo || m_dropClip) { // over the main track
             top = kRulerH;
             bottom = mainTop() + kMainH;
         }

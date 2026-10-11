@@ -378,6 +378,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_timelineWidget, &TimelineWidget::trackMoved, m_timeline, &Timeline::moveTrack);
     connect(m_timelineWidget, &TimelineWidget::addClipRequested, this,
             &MainWindow::addClipToTimeline);
+    connect(m_timelineWidget, &TimelineWidget::clipFilesDropped, this,
+            &MainWindow::addClipFiles);
     connect(m_timelineWidget, &TimelineWidget::addAudioTrackRequested, this,
             [this] { m_timeline->addTrack(Track::Kind::Audio); });
     connect(m_timelineWidget, &TimelineWidget::addAudioFileRequested, this,
@@ -2424,24 +2426,33 @@ void MainWindow::addClipToTimeline(int index)
         this, tr("Add clip to timeline"),
         m_clipPath.isEmpty() ? QDir::homePath() : QFileInfo(m_clipPath).absolutePath(),
         tr("Insta360 video (*.insv);;All files (*)"));
-    if (path.isEmpty())
-        return;
+    if (!path.isEmpty())
+        addClipFiles({path}, index);
+}
 
-    stitch::ClipProbe probe;
-    std::string probeErr;
-    if (!stitch::ProbeClip(path.toStdString(), probe, probeErr)) {
-        QMessageBox::warning(this, tr("Could not add clip"),
-                             probeErr.empty() ? tr("Unrecognised file: %1").arg(path)
-                                              : QString::fromStdString(probeErr));
-        return;
+void MainWindow::addClipFiles(const QStringList &paths, int index)
+{
+    if (index < 0 || index > m_timeline->count())
+        index = m_timeline->count();
+    QStringList failed;
+    for (const QString &path : paths) {
+        stitch::ClipProbe probe;
+        std::string probeErr;
+        if (!stitch::ProbeClip(path.toStdString(), probe, probeErr)) {
+            failed << (probeErr.empty() ? tr("Unrecognised file: %1").arg(path)
+                                        : QString::fromStdString(probeErr));
+            continue;
+        }
+        const bool wasEmpty = m_timeline->count() == 0;
+        m_timeline->insertClip(index++, path, probe.duration_ms, probe.fps, probe.width,
+                               probe.height);
+        if (wasEmpty) {
+            m_clipPath = path;
+            m_fps = probe.fps;
+        }
     }
-    const bool wasEmpty = m_timeline->count() == 0;
-    m_timeline->insertClip(index < 0 ? m_timeline->count() : index, path, probe.duration_ms,
-                           probe.fps, probe.width, probe.height);
-    if (wasEmpty) {
-        m_clipPath = path;
-        m_fps = probe.fps;
-    }
+    if (!failed.isEmpty())
+        QMessageBox::warning(this, tr("Could not add clip"), failed.join(QLatin1Char('\n')));
 }
 
 void MainWindow::openPath(const QString &path)
