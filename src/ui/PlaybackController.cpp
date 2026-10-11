@@ -419,11 +419,11 @@ std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const Q
     return src;
 }
 
-void PlaybackController::setCaptureTiming(const QString &path, stitch::CaptureTiming timing)
+void PlaybackController::setCaptureTimings(std::map<int, stitch::CaptureTiming> timings)
 {
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
-        m_rsSettings[path] = std::move(timing);
+        m_rsSettings = std::move(timings);
     }
     m_rsGen.fetch_add(1);
 }
@@ -463,24 +463,54 @@ void PlaybackController::setOutlineProvider(OutlineProvider provider)
 
 void PlaybackController::applyCaptureTimingIfChanged()
 {
-    const uint64_t gen = m_rsGen.load();
-    if (!m_activeSource || (gen == m_decRsGen && m_activePath == m_decRsPath))
+    if (!m_activeSource)
         return;
-    applySourceSettings(*m_activeSource, m_activePath);
+    const uint64_t gen = m_rsGen.load();
+    const int clipId = m_decPlaced[m_decSegIndex].seg.clipId;
+    const ClipHandOver handOver = handOverAfter(m_decSegIndex);
+    if (gen == m_decRsGen && m_activePath == m_decRsPath && clipId == m_decRsClipId &&
+        handOver.untilMs == m_decRsUntilMs && handOver.afterClipId == m_decRsAfterClipId)
+        return;
+    applySourceSettings(*m_activeSource, m_activePath, clipId, handOver);
     m_decRsGen = gen;
     m_decRsPath = m_activePath;
+    m_decRsClipId = clipId;
+    m_decRsUntilMs = handOver.untilMs;
+    m_decRsAfterClipId = handOver.afterClipId;
 }
 
-void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const QString &path)
+PlaybackController::ClipHandOver PlaybackController::handOverAfter(int index) const
+{
+    // Any frame from the cut on read in this segment either carries on into
+    // the next one or is dropped for a seek, so the hand-over can sit at
+    // the trim-out whether or not the decoder ends up carrying on.
+    ClipHandOver h;
+    if (index < 0 || index + 1 >= m_decPlaced.size())
+        return h;
+    const Segment &cur = m_decPlaced[index].seg;
+    const Segment &next = m_decPlaced[index + 1].seg;
+    if (next.sourcePath != cur.sourcePath)
+        return h;
+    h.untilMs = cur.outMs;
+    h.afterClipId = next.clipId;
+    return h;
+}
+
+void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const QString &path,
+                                             int clipId, ClipHandOver handOver)
 {
     RsSetting s;
+    RsSetting after;
     std::array<double, 3> seam{0, 0, 0};
     stitch::BlurQuadsFn blur;
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
-        auto it = m_rsSettings.find(path);
+        auto it = m_rsSettings.find(clipId);
         if (it != m_rsSettings.end())
             s = it->second;
+        auto at = m_rsSettings.find(handOver.afterClipId);
+        if (handOver.afterClipId && at != m_rsSettings.end())
+            after = at->second;
         auto st = m_seamAdjust.find(path);
         if (st != m_seamAdjust.end())
             seam = st->second;
@@ -488,7 +518,7 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
         if (bt != m_blurQuads.end())
             blur = bt->second;
     }
-    src.SetCaptureTiming(std::move(s));
+    src.SetCaptureTiming(std::move(s), handOver.untilMs, std::move(after));
     src.SetLens1Adjust(seam.data());
     src.SetBlurQuads(std::move(blur));
 }
@@ -567,17 +597,20 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
             m_srcLru.removeAll(p->path);
         }
     }
+    const int clipId = np.seg.clipId;
+    const ClipHandOver handOver = handOverAfter(next);
     if (p->src)
-        applySourceSettings(*p->src, p->path);
+        applySourceSettings(*p->src, p->path, clipId, handOver);
     const bool viewportLens = m_viewport && m_viewport->LensFramesSupported();
     Prefetch *job = p.get();
     p->done = std::async(std::launch::async,
-                         [this, job, viewportLens, inMs = np.seg.inMs, config = m_decPreviewConfig] {
+                         [this, job, viewportLens, clipId, handOver, inMs = np.seg.inMs,
+                          config = m_decPreviewConfig] {
                              if (!job->src) {
                                  auto src = stitch::MakeStitchSource();
                                  if (!src->Open(job->path.toStdString(), config))
                                      return; // the boundary opens it again and reports why
-                                 applySourceSettings(*src, job->path);
+                                 applySourceSettings(*src, job->path, clipId, handOver);
                                  job->src = std::move(src);
                              }
                              job->src->SeekTo(inMs);
@@ -787,7 +820,9 @@ void PlaybackController::decoderLoop()
             }
             // The next clip carries on in this file from this very frame (a
             // split): it's the frame SeekTo(trim-in) would give, so skip the
-            // seek and its decode.
+            // seek and its decode. The source was told to hand over to this
+            // clip's capture timing at the cut (handOverAfter), so the frame
+            // was stitched with the right one.
             const Placed &np = m_decPlaced[next];
             const bool carriesOn = pastTrimOut && np.seg.sourcePath == m_activePath &&
                                    m_decLastSourceMs >= 0 && m_decLastSourceMs < np.seg.inMs &&
@@ -836,7 +871,8 @@ void PlaybackController::decoderLoop()
             m_lensQueue = lens != nullptr;
             if (!lens)
                 m_frameBytes = frame.rgba.size();
-            m_queue.push_back({std::move(frame), std::move(lens), gen, cur.seg.sourcePath, sourceMs});
+            m_queue.push_back({std::move(frame), std::move(lens), gen, cur.seg.sourcePath, sourceMs,
+                               cur.seg.clipId});
         }
     }
 }
@@ -960,6 +996,7 @@ void PlaybackController::tick()
     std::shared_ptr<const render::LensFrame> chosenLens;
     QString chosenPath;
     qint64 chosenSourceMs = 0;
+    int chosenClipId = 0;
     bool haveChosen = false;
     bool chosenIsCurrent = false;
     bool queueEmpty = true;
@@ -974,6 +1011,7 @@ void PlaybackController::tick()
                 chosenLens = std::move(m_queue.front().lens);
                 chosenPath = m_queue.front().sourcePath;
                 chosenSourceMs = m_queue.front().sourceMs;
+                chosenClipId = m_queue.front().clipId;
                 m_shownGen = m_queue.front().gen;
                 m_shownMs = m_queue.front().frame.timestamp_ms;
                 m_queue.pop_front();
@@ -995,6 +1033,7 @@ void PlaybackController::tick()
                 chosenLens = std::move(it->lens);
                 chosenPath = it->sourcePath;
                 chosenSourceMs = it->sourceMs;
+                chosenClipId = it->clipId;
                 m_queue.erase(m_queue.begin(), std::next(it));
                 m_shownGen = gen;
                 m_shownMs = chosen.timestamp_ms;
@@ -1019,7 +1058,7 @@ void PlaybackController::tick()
             }
             float stab[9];
             const auto stabT0 = render::framestats::Clock::now();
-            const bool haveStab = provider && provider(chosenPath, chosenSourceMs, stab);
+            const bool haveStab = provider && provider(chosenClipId, chosenSourceMs, stab);
             if (render::framestats::Enabled() && playing) {
                 ++m_stats.shown;
                 m_stats.lateMs.add(double(clockMs - chosen.timestamp_ms));

@@ -197,6 +197,8 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
     c.sourceWidth = sourceWidth;
     c.sourceHeight = sourceHeight;
     c.resetEditsToFullSource();
+    if (!m_clips.isEmpty()) // the neighbour's stabilization: before it, else after it
+        c.stabilization = m_clips.at(index > 0 ? index - 1 : 0).stabilization;
     for (const ClipItem &o : m_clips) // the sync fine-tune belongs to the source file
         if (o.sourcePath == sourcePath) {
             if (!std::isnan(o.syncAdjustMs))
@@ -419,6 +421,13 @@ void Timeline::setClipColor(int clipId, const ColorGrade &grade)
     ClipItem *c = mutableClipById(clipId);
     if (c && c->setColorGrade(grade))
         emit clipColorChanged(c->id, c->color);
+}
+
+void Timeline::setClipStabilization(int clipId, const insv::StabConfig &config)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->setStabilization(config))
+        emit clipStabilizationChanged(c->id, c->stabilization);
 }
 
 void Timeline::setClipBlurPlates(int clipId, bool on)

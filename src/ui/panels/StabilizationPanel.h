@@ -8,18 +8,23 @@ class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
+class QPushButton;
 class QSlider;
 class QWidget;
 
-// Stabilization mode picker + per-mode controls. All modes drive the native
-// reprojection-time path (insv::GyroStabilizer, Project::stabilization()):
+// Stabilization mode picker + per-mode controls for one clip (the selected
+// one, else the one under the playhead), like the Colour panel. All modes
+// drive the native reprojection-time path (insv::GyroStabilizer,
+// ClipItem::stabilization):
 //   Off;
 //   Lean follow  -- smooth the shake, keep the bike's lean; one Strength slider
 //                   retunes its shared smoothing window;
 //   Horizon Lock -- accel-referenced level horizon (helmet / boat / handheld /
 //                   bump tilt); one Amount slider (0 = off .. 1 = fully level);
 //   Custom       -- the raw per-axis windows + level-horizon + mount offsets.
-// MainWindow routes the emitted insv::StabConfig to Project::setStabilization().
+// MainWindow writes the emitted insv::StabConfig onto the clip
+// (Timeline::setClipStabilization). Copy / Paste ask MainWindow, which holds
+// the copied setting (shared with the timeline's right-click menu).
 class StabilizationPanel : public SettingsPanel {
     Q_OBJECT
 
@@ -28,7 +33,7 @@ public:
 
     explicit StabilizationPanel(QWidget *parent = nullptr);
 
-    // Reflect state set elsewhere (project load / reset). Does not emit.
+    // Reflect a clip's setting. Does not emit.
     // `cfg` is the native gyro config for `mode`: for Lean follow the Strength
     // slider is derived from its shared window, for Custom it fills the raw
     // knobs, otherwise it is ignored.
@@ -37,12 +42,18 @@ public:
     // One line about the active clip's video<->gyro sync fine-tune (measured
     // in the background). Empty hides it.
     void setSyncStatus(const QString &text);
+    // No clip to show (e.g. an empty timeline) -- greys the panel out.
+    void setNoClip();
+    // Whether a setting has been copied (enables Paste).
+    void setCanPaste(bool canPaste);
 
 signals:
     // mode is the picker choice; nativeConfig is the insv::StabConfig for that
     // mode (LeanFollow window from the Strength slider, Custom from the raw
     // knobs, an Off config otherwise).
     void modeChanged(StabilizationPanel::Mode mode, const insv::StabConfig &nativeConfig);
+    void copyRequested();
+    void pasteRequested();
 
 private:
     void emitIfEdited();
@@ -70,5 +81,6 @@ private:
     QWidget *m_accelLpRow = nullptr; // accel low-pass; shown for Horizon lock / Custom
     QDoubleSpinBox *m_accelLowPass = nullptr; // accel fusion low-pass cutoff, Hz (0 = off)
     QLabel *m_syncStatus = nullptr;
+    QPushButton *m_paste = nullptr;
     bool m_updating = false;
 };

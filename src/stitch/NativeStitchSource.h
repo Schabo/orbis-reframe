@@ -161,8 +161,10 @@ public:
 
     // Per-lens / per-sensor-row capture-time correction in the GPU stitch
     // (insv::StitchGpuParams::rsRot), from `timing.rotationAt`
-    // evaluated around each frame's video time. The CPU stitch path ignores it.
-    void SetCaptureTiming(CaptureTiming timing) override;
+    // evaluated around each frame's video time; which of the two timings by
+    // the frame's own time. The CPU stitch path ignores it.
+    using IStitchSource::SetCaptureTiming;
+    void SetCaptureTiming(CaptureTiming timing, int64_t untilMs, CaptureTiming after) override;
 
     // Re-configures the stitch geometry with lens 1 adjusted (see
     // IStitchSource::SetLens1Adjust). Cheap; a no-op when unchanged.
@@ -229,7 +231,9 @@ private:
     insv::InsvCalibration calib_;                          // what stitcher_ was configured with
     insv::StitchParams params_;
     mutable std::mutex rs_mx_; // SetCaptureTiming may come from the GUI thread
-    CaptureTiming capture_timing_; // guarded by rs_mx_
+    CaptureTiming capture_timing_; // guarded by rs_mx_; frames before capture_until_ms_
+    int64_t capture_until_ms_ = INT64_MAX; // guarded by rs_mx_
+    CaptureTiming capture_after_;  // guarded by rs_mx_; frames from capture_until_ms_ on
     BlurQuadsFn blur_quads_;       // guarded by rs_mx_
     mutable bool blur_warned_ = false;
     insv::SeamDepthTracker depth_;                    // depth-aware seam, per frame

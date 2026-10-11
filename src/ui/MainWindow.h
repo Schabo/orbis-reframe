@@ -13,6 +13,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
 #include <AudioMixer.h>      // insv::MixClip
@@ -117,11 +119,16 @@ private:
     // current clip's (m_clipId) source time. No-op when the track is empty or a
     // viewport drag is in progress.
     void applySampledPose(qint64 sourceMs);
-    // (re)build m_stabilizer from `clipPath`'s IMU track under the current
-    // Project::stabilization() config, if the clip or config has changed since
-    // last build. Reads the clip's trailer (fast: it seeks to the trailer, not
-    // the whole file). No-op / clears when stabilization is Off.
-    void ensureStabilizerFor(const QString &clipPath);
+    // Build a stabilizer for clip `c` (its source's IMU track under its own
+    // stabilization setting and the source's sync fine-tune) into
+    // m_stabCache, unless one is there already or the clip's stabilization is
+    // Off. Reads the clip's trailer (fast: it seeks to the trailer, not the
+    // whole file). Returns true if it built one; the caller then publishes.
+    bool ensureStabilizerFor(const ClipItem &c);
+    // The clip under the playhead and the one after it: build their
+    // stabilizers (so a cut finds the next one ready), publish, and refresh
+    // the paused picture if the current one was new.
+    void ensureStabilizers();
     // The measured sync fine-tune for a source (ClipItem::syncAdjustMs),
     // NaN if not measured. maybeMeasureSync() starts a background measurement
     // (stitch::MeasureClipSync) when the source has none; the result lands on
@@ -148,8 +155,9 @@ private:
     // that still lands while playing is applied at the next pause (the
     // re-stitch is a seek).
     void scheduleClipScans();
-    // Push m_stabilizer's correction for `sourceMs` (this clip's source time)
-    // into the viewport. Identity when the stabilizer isn't ready.
+    // Push the current clip's (m_clipId) correction for `sourceMs` (its
+    // source time) into the viewport. Identity when its stabilization is Off
+    // or its stabilizer isn't built.
     void applyStabilization(qint64 sourceMs);
     // Copy the viewport's current pose into the Reframe panel's numeric fields
     // (whatever's on screen -- sampled path, free-look, or a drag result).
@@ -194,6 +202,9 @@ private:
     const ClipItem *selectedVideoClip() const;
     int editClipId() const;
     void refreshClipPanels();
+    // Reflect the panel's clip's (editClipId()) stabilization in the
+    // Stabilization panel; greyed out without one.
+    void syncStabilizationPanel();
     // Privacy blur (Privacy panel): the panel for the clip being edited; the
     // blur regions handed to playback, per source, for its clips with the
     // blur on; a clip's for export (empty when off / not scanned); why a clip
@@ -216,9 +227,9 @@ private:
     // (manual correction).
     void showPictureMenu(const QPoint &globalPos, const std::array<float, 3> &dir);
     QString privacyBlocker(const ClipItem &c, qint64 fromMs, qint64 toMs) const;
-    // Whether the stitch has the capture-time correction now (the
+    // Whether the stitch has the capture-time correction for `c` (its
     // stabilization on) -- the one a new scan / followed plate is found in.
-    bool captureTimingOn() const;
+    static bool captureTimingOn(const ClipItem &c);
     // A warning when `c`'s blurs over [fromMs, toMs] were found in a stitch
     // other than today's, so they may sit off the plates; empty when they
     // match. `name` = start with the clip's file name.
@@ -378,24 +389,39 @@ private:
     QString m_lastVideoDir;         // ... and the last overlay video
     WaveformCache *m_waveforms = nullptr;
 
-    // Native gyro stabilization for the clip under the playhead. Rebuilt
-    // by ensureStabilizerFor() when the clip path or the stabilization config
-    // changes. Presented frames get their matrix from m_stabShared (per frame,
-    // at the frame's own source time, on the playback thread); m_stabilizer
-    // itself only serves the paused / settings-changed refresh.
-    insv::GyroStabilizer m_stabilizer;
+    // Native gyro stabilization, per clip (ClipItem::stabilization). Built
+    // stabilizers are kept per source file + setting + sync fine-tune, so
+    // clips cut from one file with the same setting share one; the clip under
+    // the playhead and the next one are built ahead (ensureStabilizers()).
+    struct BuiltStab {
+        QString path;
+        insv::StabConfig config;
+        double syncMs = 0.0;
+        std::shared_ptr<const insv::GyroStabilizer> stab; // null: no IMU track
+    };
+    static constexpr size_t kStabCacheSize = 4;
+    std::vector<BuiltStab> m_stabCache; // least recently used first
+    // The cache entry for clip `c`, or null (stabilization Off, or not built).
+    const BuiltStab *builtStabFor(const ClipItem &c) const;
+    // Presented frames get their matrix from m_stabShared (per frame, by the
+    // frame's clip, at its own source time, on the playback thread), the
+    // stitch its capture-time correction from setCaptureTimings; the cache
+    // itself also serves the paused / settings-changed refresh.
     struct StabShared {
         std::mutex mx;
-        bool off = true;   // stabilization off: identity for every frame
-        QString path;      // clip `stab` was built for
-        std::shared_ptr<const insv::GyroStabilizer> stab;
+        // Per clip id: its stabilizer, or null for identity (Off, or no IMU
+        // track). A clip not in it isn't built yet: the viewport keeps the
+        // matrix it has.
+        std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
     };
     std::shared_ptr<StabShared> m_stabShared = std::make_shared<StabShared>();
-    void publishStabilizer(); // copy m_stabilizer into m_stabShared
-    insv::StabConfig m_stabConfig;      // mirror of m_project->stabilization()
-    QString m_stabilizerClipPath;       // clip m_stabilizer was built from
-    insv::StabConfig m_stabilizerBuilt; // config m_stabilizer was built with
-    double m_stabilizerSyncMs = 0.0;    // sync fine-tune m_stabilizer was built with
+    // Hand every clip's built stabilizer (and its capture-time correction)
+    // to playback. Call after the cache or the clips change.
+    void publishStabilizer();
+    // Per clip id: whether its capture-time correction was on (its
+    // stabilization on) when last seen, to tell when a change toggles it.
+    // Rebuilt with the controller's segments.
+    QHash<int, bool> m_captureTimingOn;
     // Background sync measurement: one at a time.
     QThread *m_syncThread = nullptr;
     QString m_syncMeasuringPath;
@@ -455,6 +481,7 @@ private:
     // The grade from Copy grade (Colour panel / a clip's right-click menu);
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;
+    std::optional<insv::StabConfig> m_copiedStab; // Copy / Paste stabilization
     struct KeyHelp {
         QString group;
         QString what;

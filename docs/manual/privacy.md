@@ -93,9 +93,9 @@ was lost. Blur it again from a frame after it reappears.
 
 The scan and the hand-blurred plates fit the picture as it was stitched at
 the time. With stabilization on, the picture is stitched slightly
-differently (see [Stabilization](stabilization.md)). If you turn
-stabilization on or off afterwards, the blurs may sit a little off the
-plates when the camera swings fast.
+differently (see [Stabilization](stabilization.md)). If you turn the
+clip's stabilization on or off afterwards, the blurs may sit a little off
+the plates when the camera swings fast.
 
 orbis-reframe notices this. The **Privacy** panel shows a warning, and an
 export or screenshot asks before going ahead. Check the blurs with **Show

@@ -148,6 +148,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     m_sidebar->addPanel(m_audioPanel);
     m_colourPanel = new ColourPanel;
     m_colourPanel->setNoClip(); // nothing open yet
+    m_stabilizationPanel->setNoClip();
     m_sidebar->addPanel(m_colourPanel);
     m_privacyPanel = new PrivacyPanel; // starts in its no-clip state
     m_sidebar->addPanel(m_privacyPanel);
@@ -171,17 +172,18 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     m_controller = new PlaybackController;
     m_controller->setViewport(m_viewport);
     m_controller->setStabilizationProvider(
-        [shared = m_stabShared](const QString &path, qint64 sourceMs, float m[9]) {
+        [shared = m_stabShared](int clipId, qint64 sourceMs, float m[9]) {
             std::lock_guard<std::mutex> lk(shared->mx);
-            if (shared->off) {
+            const auto it = shared->clips.find(clipId);
+            if (it == shared->clips.end())
+                return false; // clip not built yet -- keep the current matrix
+            if (!it->second) {
                 const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
                 std::copy(ident, ident + 9, m);
                 return true;
             }
-            if (!shared->stab || path != shared->path)
-                return false; // clip not built yet -- keep the current matrix
             float r[3][3];
-            shared->stab->correctionMatrix(sourceMs / 1000.0, r);
+            it->second->correctionMatrix(sourceMs / 1000.0, r);
             std::copy(&r[0][0], &r[0][0] + 9, m);
             return true;
         });
@@ -219,32 +221,44 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_timeline, &Timeline::clipInserted, this, refreshFirstClipFps);
     connect(m_timeline, &Timeline::clipRemoved, this, refreshFirstClipFps);
     connect(m_timeline, &Timeline::clipsReordered, this, refreshFirstClipFps);
-    // Stabilization panel -> Project. All modes drive the native
-    // reprojection-time path (Project::stabilization()); the panel hands back
-    // the right insv::StabConfig for the mode (LeanFollow window from its
-    // Strength slider, Custom from the knobs, Off otherwise).
+    // Stabilization panel -> the clip it shows (the selected one, else the
+    // one under the playhead), like the Colour panel. All modes drive the
+    // native reprojection-time path; the panel hands back the right
+    // insv::StabConfig for the mode (LeanFollow window from its Strength
+    // slider, Custom from the knobs, Off otherwise).
     connect(m_stabilizationPanel, &StabilizationPanel::modeChanged, this,
             [this](StabilizationPanel::Mode, const insv::StabConfig &nativeCfg) {
-                m_project->setStabilization(nativeCfg);
+                if (const int id = editClipId())
+                    m_timeline->setClipStabilization(id, nativeCfg);
             });
-    auto refreshStabPanel = [this] {
-        using M = StabilizationPanel::Mode;
-        const insv::StabConfig &s = m_project->stabilization();
-        M mode = M::Off;
-        if (s.mode == insv::StabMode::LeanFollow)
-            mode = M::LeanFollow;
-        else if (s.mode == insv::StabMode::HorizonLock)
-            mode = M::HorizonLock;
-        else if (s.mode == insv::StabMode::Custom)
-            mode = M::Custom;
-        const bool nativeMode = (mode != M::Off);
-        m_stabilizationPanel->setState(
-            mode, nativeMode ? s : insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    // Copy / paste a clip's stabilization, as the colour grade.
+    const auto copyStab = [this](int clipId) {
+        const ClipItem *c = m_timeline->clipById(clipId);
+        if (!c)
+            return;
+        m_copiedStab = c->stabilization;
+        m_stabilizationPanel->setCanPaste(true);
+        m_timelineWidget->setCanPasteStabilization(true);
     };
+    const auto pasteStab = [this](int clipId) {
+        if (m_copiedStab && clipId)
+            m_timeline->setClipStabilization(clipId, *m_copiedStab);
+    };
+    connect(m_stabilizationPanel, &StabilizationPanel::copyRequested, this,
+            [this, copyStab] { copyStab(editClipId()); });
+    connect(m_stabilizationPanel, &StabilizationPanel::pasteRequested, this,
+            [this, pasteStab] { pasteStab(editClipId()); });
+    connect(m_timelineWidget, &TimelineWidget::stabilizationCopyRequested, this, copyStab);
+    connect(m_timelineWidget, &TimelineWidget::stabilizationPasteRequested, this, pasteStab);
+    connect(m_timelineWidget, &TimelineWidget::stabilizationPasteAllRequested, this, [this] {
+        if (!m_copiedStab)
+            return;
+        for (int i = 0; i < m_timeline->count(); ++i)
+            m_timeline->setClipStabilization(m_timeline->clipAt(i).id, *m_copiedStab);
+    });
     connect(m_project, &Project::previewStitchChanged, this,
-            [this, refreshStabPanel](const stitch::PreviewStitchConfig &cfg) {
+            [this](const stitch::PreviewStitchConfig &cfg) {
                 m_stitchingPanel->setConfig(cfg); // setConfig() doesn't re-emit
-                refreshStabPanel();
                 // A seam fine-tune is only valid for the guard it was measured
                 // with; the controller re-opens its sources for the new config
                 // and picks these up.
@@ -256,37 +270,35 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
                     ctrl->setPreviewConfig(cfg);
                 });
             });
-    connect(m_project, &Project::stabilizationChanged, this,
-            [this, refreshStabPanel](const insv::StabConfig &cfg) {
-                // The per-lens capture-time correction is baked into stitched
-                // frames (unlike the stab matrix, applied at present time), so
+    connect(m_timeline, &Timeline::clipStabilizationChanged, this,
+            [this](int id, const insv::StabConfig &) {
+                if (m_rebindingModel)
+                    return; // a load / undo: the rebind after it covers this
+                if (id == editClipId())
+                    syncStabilizationPanel();
+                // The stab matrix is applied at present time, but the per-lens
+                // capture-time correction is baked into stitched frames, so
                 // re-decode in place when it toggles with stabilization.
-                auto rsActive = [](const insv::StabConfig &c) {
-                    return c.mode != insv::StabMode::Off;
-                };
-                const bool rsToggled = rsActive(cfg) != rsActive(m_stabConfig);
-                m_stabConfig = cfg;
-                refreshStabPanel();
-                if (const ClipItem *c = m_timeline->clipById(m_clipId)) {
-                    ensureStabilizerFor(c->sourcePath);
+                const ClipItem *c = m_timeline->clipById(id);
+                const bool rsOn = c && captureTimingOn(*c);
+                const bool rsToggled = m_captureTimingOn.value(id, false) != rsOn;
+                m_captureTimingOn[id] = rsOn;
+                ensureStabilizers();
+                if (id == m_clipId) {
                     applyStabilization(m_lastPositionMs);
+                    updateSyncStatus();
                 }
                 if (rsToggled) {
                     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                               Q_ARG(qint64, m_lastTimelineMs));
                     // The privacy blur was found in one of the two stitches.
                     syncPrivacyPanel();
-                    for (int i = 0; i < m_timeline->count(); ++i) {
-                        const ClipItem &ci = m_timeline->clipAt(i);
-                        if (!privacyStaleness(ci, ci.trimInMs, ci.trimOutMs, false).isEmpty()) {
-                            m_transport->showNotice(
-                                tr("The privacy blur was found with the stabilization %1; it may sit "
-                                   "off the plates now. See the Privacy panel.")
-                                    .arg(captureTimingOn() ? tr("off") : tr("on")),
-                                true);
-                            break;
-                        }
-                    }
+                    if (c && !privacyStaleness(*c, c->trimInMs, c->trimOutMs, false).isEmpty())
+                        m_transport->showNotice(
+                            tr("The privacy blur was found with the stabilization %1; it may sit "
+                               "off the plates now. See the Privacy panel.")
+                                .arg(rsOn ? tr("off") : tr("on")),
+                            true);
                 }
             });
 
@@ -631,9 +643,12 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             return;
         }
         const ClipItem *c = m_timeline->clipById(id);
-        if (!c || c->sourcePath != m_stabilizerClipPath)
+        const ClipItem *cur = m_timeline->clipById(m_clipId);
+        if (!c || !cur || c->sourcePath != cur->sourcePath)
             return;
-        ensureStabilizerFor(c->sourcePath);
+        ensureStabilizers();
+        applyStabilization(m_lastPositionMs);
+        updateSyncStatus();
         QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                   Q_ARG(qint64, m_lastTimelineMs));
     });
@@ -816,8 +831,9 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         if (m_measuredWhilePlaying) { // results held back while playing
             m_measuredWhilePlaying = false;
             pushSeamAdjust();
-            if (const ClipItem *c = m_timeline->clipById(m_clipId))
-                ensureStabilizerFor(c->sourcePath);
+            ensureStabilizers();
+            applyStabilization(m_lastPositionMs);
+            updateSyncStatus();
             QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                       Q_ARG(qint64, m_lastTimelineMs)); // re-stitch
         }
@@ -962,59 +978,63 @@ void MainWindow::applySampledPose(qint64 sourceMs)
     m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
 }
 
-void MainWindow::ensureStabilizerFor(const QString &clipPath)
+const MainWindow::BuiltStab *MainWindow::builtStabFor(const ClipItem &c) const
 {
-    // The stitch's capture-time correction (lens 1 lined up with lens 0)
-    // rides on the stabilizer's gyro track, so it's (re)pushed whenever the
-    // stabilizer is; off otherwise.
-    auto rsOff = [this, &clipPath] {
-        if (!clipPath.isEmpty())
-            m_controller->setCaptureTiming(clipPath, {});
-    };
-    if (m_stabConfig.mode == insv::StabMode::Off) {
-        rsOff();
-        if (m_stabilizer.ready()) {
-            m_stabilizer.build({}, insv::StabConfig{}); // clear
-            const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-            m_viewport->SetStabilization(ident);
-        }
-        m_stabilizerClipPath.clear();
-        publishStabilizer();
-        updateSyncStatus();
-        return;
-    }
-    const double syncMs = std::isnan(syncAdjustFor(clipPath)) ? 0.0 : syncAdjustFor(clipPath);
-    if (clipPath == m_stabilizerClipPath && m_stabilizerBuilt == m_stabConfig &&
-        m_stabilizerSyncMs == syncMs)
-        return;
+    if (c.stabilization.mode == insv::StabMode::Off)
+        return nullptr;
+    const double sync = syncAdjustFor(c.sourcePath);
+    const double syncMs = std::isnan(sync) ? 0.0 : sync;
+    for (const BuiltStab &b : m_stabCache)
+        if (b.path == c.sourcePath && b.config == c.stabilization && b.syncMs == syncMs)
+            return &b;
+    return nullptr;
+}
 
+bool MainWindow::ensureStabilizerFor(const ClipItem &c)
+{
+    if (c.stabilization.mode == insv::StabMode::Off || c.mediaMissing)
+        return false;
+    if (const BuiltStab *b = builtStabFor(c)) { // most recently used goes last
+        std::rotate(m_stabCache.begin() + (b - m_stabCache.data()),
+                    m_stabCache.begin() + (b - m_stabCache.data()) + 1, m_stabCache.end());
+        return false;
+    }
+    BuiltStab built;
+    built.path = c.sourcePath;
+    built.config = c.stabilization;
+    const double sync = syncAdjustFor(c.sourcePath);
+    built.syncMs = std::isnan(sync) ? 0.0 : sync;
     // Trailer read is a seek to the trailer + ~12 MB, not the whole file --
     // fast enough for a clip switch / settings change on the GUI thread.
-    auto tele = insv::ReadInsvTelemetry(clipPath.toStdString());
+    auto tele = insv::ReadInsvTelemetry(c.sourcePath.toStdString());
     if (tele && tele->imu.size() >= 2) {
         // Derive the video<->IMU offset from the 0x400 exposure record
         // ("video t=0 == IMU sample 0" is off by ~tens of ms, varying per clip).
-        double fps = 0.0;
-        for (int i = 0; i < m_timeline->count(); ++i)
-            if (m_timeline->clipAt(i).sourcePath == clipPath) {
-                fps = m_timeline->clipAt(i).fps;
-                break;
-            }
-        m_stabilizer.build(*tele, fps, m_stabConfig, syncMs / 1000.0);
-        m_stabilizerClipPath = clipPath;
-        m_stabilizerBuilt = m_stabConfig;
-        m_stabilizerSyncMs = syncMs;
-        m_controller->setCaptureTiming(
-            clipPath, ReframeExportController::captureTimingFor(
-                          std::make_shared<const insv::GyroStabilizer>(m_stabilizer)));
-    } else {
-        m_stabilizer.build({}, insv::StabConfig{});
-        m_stabilizerClipPath.clear();
-        rsOff();
+        auto stab = std::make_shared<insv::GyroStabilizer>();
+        stab->build(*tele, c.fps, c.stabilization, built.syncMs / 1000.0);
+        if (stab->ready())
+            built.stab = std::move(stab);
     }
+    if (m_stabCache.size() >= kStabCacheSize)
+        m_stabCache.erase(m_stabCache.begin());
+    m_stabCache.push_back(std::move(built));
+    return true;
+}
+
+void MainWindow::ensureStabilizers()
+{
+    // The current clip's first: used last, so the next one's can't evict it.
+    const int idx = m_timeline->indexOfId(m_clipId);
+    bool currentBuilt = false;
+    if (idx >= 0)
+        currentBuilt = ensureStabilizerFor(m_timeline->clipAt(idx));
+    if (idx >= 0 && idx + 1 < m_timeline->count())
+        ensureStabilizerFor(m_timeline->clipAt(idx + 1)); // ready for the cut
     publishStabilizer();
-    applyStabilization(m_lastPositionMs); // the frame on screen, if paused
-    updateSyncStatus();
+    if (currentBuilt) {
+        applyStabilization(m_lastPositionMs); // the frame on screen, if paused
+        updateSyncStatus();
+    }
 }
 
 double MainWindow::syncAdjustFor(const QString &clipPath) const
@@ -1174,7 +1194,7 @@ void MainWindow::updateSeamStatus()
 void MainWindow::updateSyncStatus()
 {
     const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (m_stabConfig.mode == insv::StabMode::Off || !c) {
+    if (!c || c->stabilization.mode == insv::StabMode::Off) {
         m_stabilizationPanel->setSyncStatus(QString());
         return;
     }
@@ -1196,18 +1216,37 @@ void MainWindow::updateSyncStatus()
 
 void MainWindow::publishStabilizer()
 {
-    auto snap = m_stabilizer.ready() ? std::make_shared<const insv::GyroStabilizer>(m_stabilizer)
-                                     : nullptr;
-    std::lock_guard<std::mutex> lk(m_stabShared->mx);
-    m_stabShared->off = m_stabConfig.mode == insv::StabMode::Off || !snap;
-    m_stabShared->path = m_stabilizerClipPath;
-    m_stabShared->stab = std::move(snap);
+    std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
+    std::map<int, stitch::CaptureTiming> timings;
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const ClipItem &c = m_timeline->clipAt(i);
+        if (c.stabilization.mode == insv::StabMode::Off) {
+            clips.emplace(c.id, nullptr); // identity
+            continue;
+        }
+        const BuiltStab *b = builtStabFor(c);
+        if (!b)
+            continue; // not built yet
+        clips.emplace(c.id, b->stab);
+        // The capture-time correction follows the camera's own rotation, the
+        // same under every stabilization setting -- so it's there whichever
+        // of a file's stabilizers is built.
+        if (b->stab)
+            timings.emplace(c.id, ReframeExportController::captureTimingFor(b->stab));
+    }
+    {
+        std::lock_guard<std::mutex> lk(m_stabShared->mx);
+        m_stabShared->clips = std::move(clips);
+    }
+    m_controller->setCaptureTimings(std::move(timings));
 }
 
 void MainWindow::applyStabilization(qint64 sourceMs)
 {
-    float m[3][3];
-    m_stabilizer.correctionMatrix(sourceMs / 1000.0, m); // identity when not ready
+    float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    const ClipItem *c = m_timeline->clipById(m_clipId);
+    if (const BuiltStab *b = c ? builtStabFor(*c) : nullptr; b && b->stab)
+        b->stab->correctionMatrix(sourceMs / 1000.0, m);
     m_viewport->SetStabilization(&m[0][0]);
 }
 
@@ -1242,7 +1281,10 @@ void MainWindow::bindActiveClipAt(qint64 timelineMs)
     // The stab matrix itself rides with each presented frame (the playback
     // controller's stabilization provider) -- setting it here from the clock
     // position would put it up to a frame out of step with the picture.
-    ensureStabilizerFor(c.sourcePath);
+    if (clipChanged) {
+        ensureStabilizers();
+        updateSyncStatus();
+    }
     if (!c.reframe.isEmpty() && !m_viewportDragging)
         applySampledPose(m_lastPositionMs);
     if (!m_viewportDragging)
@@ -1282,16 +1324,38 @@ void MainWindow::refreshClipPanels()
     const ClipItem *c = m_timeline->clipById(editClipId());
     if (!c) {
         m_privacyPanel->setNoClip();
+        m_stabilizationPanel->setNoClip();
         refreshAudioPanel();
         return;
     }
     syncMediaInfoPanel(*c);
     m_colourPanel->setState(c->color);
+    syncStabilizationPanel();
     syncPrivacyPanel();
     refreshAudioPanel(); // the selected audio clip, if any, else this clip
     const ClipItem *playing = m_timeline->clipById(m_clipId);
     m_transport->setHasReframeKeys(playing && !playing->reframe.isEmpty());
     m_reframePanel->setClipUnkeyed(playing && playing->reframe.isEmpty());
+}
+
+void MainWindow::syncStabilizationPanel()
+{
+    const ClipItem *c = m_timeline->clipById(editClipId());
+    if (!c) {
+        m_stabilizationPanel->setNoClip();
+        return;
+    }
+    using M = StabilizationPanel::Mode;
+    const insv::StabConfig &s = c->stabilization;
+    M mode = M::Off;
+    if (s.mode == insv::StabMode::LeanFollow)
+        mode = M::LeanFollow;
+    else if (s.mode == insv::StabMode::HorizonLock)
+        mode = M::HorizonLock;
+    else if (s.mode == insv::StabMode::Custom)
+        mode = M::Custom;
+    m_stabilizationPanel->setState(
+        mode, mode != M::Off ? s : insv::StabConfig::preset(insv::StabMode::LeanFollow));
 }
 
 TimelineWidget::Peaks MainWindow::waveformFor(const QString &path, int stream)
@@ -2226,12 +2290,14 @@ void MainWindow::pushTimelineToController()
     QList<PlaybackController::Segment> segments;
     segments.reserve(m_timeline->count());
     qint64 total = 0;
+    m_captureTimingOn.clear(); // ids don't survive a load / undo
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back(
             {c.sourcePath, c.trimInMs, c.trimOutMs, c.audioGainDb,
-             c.audioMuted || m_timeline->mainAudioMuted(), c.audioTrack, c.speed, c.noise});
+             c.audioMuted || m_timeline->mainAudioMuted(), c.audioTrack, c.speed, c.noise, c.id});
         total += c.timelineDurationMs();
+        m_captureTimingOn[c.id] = captureTimingOn(c);
     }
     m_totalTimelineMs = total;
     // Queued lambda (not a slot) so QList<Segment> needs no metatype.
@@ -2240,6 +2306,7 @@ void MainWindow::pushTimelineToController()
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer->setTimeline(segments); // GUI-thread resident -- no invokeMethod needed
 #endif
+    ensureStabilizers(); // the stabilizers by the clips' (new) ids
 }
 
 void MainWindow::refreshTimelineWidget()
@@ -2407,6 +2474,7 @@ void MainWindow::openClip(const QString &clipPath)
         syncMediaInfoPanel(*c);
         applyColorGrade(c->color);
         m_colourPanel->setState(c->color);
+        syncStabilizationPanel();
         syncPrivacyPanel();
     }
     syncTimeline(); // opens paused on the first frame
@@ -2428,6 +2496,7 @@ void MainWindow::openProject(const QString &projectPath)
         m_fps = 0.0;
         m_audioPanel->setNoClip();
         m_colourPanel->setNoClip();
+        m_stabilizationPanel->setNoClip();
         m_privacyPanel->setNoClip();
         m_mediaInfoPanel->setNoClip();
         syncTimeline(); // empty -> controller goes idle, widget clears
@@ -2442,6 +2511,7 @@ void MainWindow::openProject(const QString &projectPath)
     syncMediaInfoPanel(first);
     applyColorGrade(first.color);
     m_colourPanel->setState(first.color);
+    syncStabilizationPanel();
     syncPrivacyPanel();
 
     if (first.mediaMissing) {
@@ -2688,7 +2758,7 @@ ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) con
     // Stabilization (Lean follow / Horizon Lock / Custom) is a per-frame
     // sphere-frame matrix next to the reframe pose, applied after it like the
     // viewport's pc.stab -- the native stitch itself is never stabilized.
-    const bool nativeStab = m_stabConfig.mode != insv::StabMode::Off;
+    const bool nativeStab = c.stabilization.mode != insv::StabMode::Off;
     ReframeExportController::ClipJob job;
     job.clipPath = c.sourcePath;
     job.trimInMs = c.trimInMs;
@@ -2707,7 +2777,7 @@ ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) con
         if (tele && tele->imu.size() >= 2) {
             auto stab = std::make_shared<insv::GyroStabilizer>();
             const double syncMs = std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs;
-            stab->build(*tele, c.fps, m_stabConfig, syncMs / 1000.0);
+            stab->build(*tele, c.fps, c.stabilization, syncMs / 1000.0);
             if (stab->ready())
                 job.stab = stab;
         }
@@ -2772,16 +2842,16 @@ QString MainWindow::privacyBlocker(const ClipItem &c, qint64 fromMs, qint64 toMs
                       .arg(name);
 }
 
-bool MainWindow::captureTimingOn() const
+bool MainWindow::captureTimingOn(const ClipItem &c)
 {
-    // As ensureStabilizerFor pushes it to playback, and exportJobFor to the
+    // As publishStabilizer pushes it to playback, and exportJobFor to the
     // export.
-    return m_stabConfig.mode != insv::StabMode::Off;
+    return c.stabilization.mode != insv::StabMode::Off;
 }
 
 QString MainWindow::privacyStaleness(const ClipItem &c, qint64 fromMs, qint64 toMs, bool name) const
 {
-    const bool on = captureTimingOn();
+    const bool on = captureTimingOn(c);
     bool scanStale = false;
     if (c.blurPlates)
         if (const PlateScanCache::Scan scan = m_plateScans.get(c.sourcePath))
@@ -3081,7 +3151,7 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     seamAdjustFor(c.sourcePath, req.seamAdjustDeg);
     req.lensGuard = m_project->previewStitch().lensGuard;
     req.depthSeam = m_project->previewStitch().depthSeam;
-    req.captureTiming = captureTimingOn();
+    req.captureTiming = captureTimingOn(c);
     return req;
 }
 #endif

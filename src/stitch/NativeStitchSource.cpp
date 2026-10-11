@@ -305,9 +305,12 @@ void NativeStitchSource::SetLens1Adjust(const double deg[3]) {
         gpu_params_ = stitcher_->gpuParams(); // keeps the per-frame RS fields: set in paramsAt
 }
 
-void NativeStitchSource::SetCaptureTiming(CaptureTiming timing) {
+void NativeStitchSource::SetCaptureTiming(CaptureTiming timing, int64_t untilMs,
+                                          CaptureTiming after) {
     std::lock_guard<std::mutex> lk(rs_mx_);
     capture_timing_ = std::move(timing);
+    capture_until_ms_ = untilMs;
+    capture_after_ = std::move(after);
 }
 
 bool NativeStitchSource::SetBlurQuads(BlurQuadsFn fn) {
@@ -322,7 +325,8 @@ insv::StitchGpuParams NativeStitchSource::paramsAt(int64_t pts_ms) const {
     BlurQuadsFn blur;
     {
         std::lock_guard<std::mutex> lk(rs_mx_);
-        ct = capture_timing_; // copy: call rotationAt outside the lock
+        // copy: call rotationAt outside the lock
+        ct = pts_ms < capture_until_ms_ ? capture_timing_ : capture_after_;
         blur = blur_quads_;
     }
     p.blurCount = 0;

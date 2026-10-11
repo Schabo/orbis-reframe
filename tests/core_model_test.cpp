@@ -680,8 +680,9 @@ void testStabConfig()
         insv::leanWindowFromStrength(0.8f);
     {
         Project p;
-        p.setStabilization(lean);
-        CHECK(p.stabilization() == lean);
+        const int id = p.timeline()->appendClip("a.insv", 1000, 30.0);
+        p.timeline()->setClipStabilization(id, lean);
+        CHECK(p.timeline()->clipAt(0).stabilization == lean);
         QString err;
         CHECK(p.save(projFile, &err));
     }
@@ -689,7 +690,8 @@ void testStabConfig()
         Project p;
         QString err;
         CHECK(p.load(projFile, &err));
-        const insv::StabConfig &st = p.stabilization();
+        CHECK(p.timeline()->count() == 1);
+        const insv::StabConfig &st = p.timeline()->clipAt(0).stabilization;
         CHECK(st.mode == insv::StabMode::LeanFollow);
         CHECK(std::fabs(st.windowRollSec - insv::leanWindowFromStrength(0.8f)) < 1e-4f);
         // the slider position the panel would show on load
@@ -778,9 +780,9 @@ void testProjectJson()
         stab.rollOffsetRad = 0.05f;
         stab.accelLowPassHz = 1.5f;
         stab.autoLevel = false;
-        p.setStabilization(stab);
-        CHECK(p.stabilization() == stab);
-        CHECK(p.stabilization() != insv::StabConfig{});
+        p.timeline()->setClipStabilization(a, stab); // Stabilization panel
+        CHECK(p.timeline()->clipById(a)->stabilization == stab);
+        CHECK(p.timeline()->clipAt(1).stabilization == insv::StabConfig{}); // per clip
 
         OutputSettings out; // Project Settings panel
         out.aspect = OutputSettings::Aspect::Portrait9x16;
@@ -874,7 +876,8 @@ void testProjectJson()
         CHECK(sc.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard);
         CHECK(!sc.depthSeam);
 
-        const insv::StabConfig &st = p.stabilization(); // round-trips
+        CHECK(tl->clipAt(1).stabilization == insv::StabConfig{}); // never touched
+        const insv::StabConfig &st = tl->clipAt(0).stabilization; // round-trips
         CHECK(st.mode == insv::StabMode::Custom);
         CHECK(st.windowYawSec > 0.69f && st.windowYawSec < 0.71f);
         CHECK(st.windowRollSec > 1.29f && st.windowRollSec < 1.31f);
@@ -1371,7 +1374,7 @@ void testProjectTracksJson()
         CHECK(f.open(QIODevice::ReadOnly));
         const QByteArray text = f.readAll();
         CHECK(text.contains("\"music/song.mp3\""));
-        CHECK(text.contains("\"version\":8"));
+        CHECK(text.contains("\"version\":9"));
     }
 
     {
@@ -1803,6 +1806,102 @@ void testKeyNavigation()
     CHECK(tl.adjacentKey(0, 1) == 12000); // the reframe keys, as before
 }
 
+void testPerClipStabilization()
+{
+    const insv::StabConfig lean = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+    const insv::StabConfig level = insv::StabConfig::preset(insv::StabMode::HorizonLock);
+
+    // A new clip takes the setting of the clip before it (after it when it
+    // goes first); the first one on an empty timeline starts Off.
+    {
+        Timeline tl;
+        int changed = 0;
+        QObject::connect(&tl, &Timeline::clipStabilizationChanged, [&](int, insv::StabConfig) {
+            ++changed;
+        });
+        const int a = tl.appendClip("a.insv", 10000, 30.0);
+        CHECK(tl.clipById(a)->stabilization == insv::StabConfig{});
+        tl.setClipStabilization(a, lean);
+        CHECK(changed == 1);
+        tl.setClipStabilization(a, lean); // unchanged: no signal
+        CHECK(changed == 1);
+        const int b = tl.appendClip("b.insv", 10000, 30.0);
+        CHECK(tl.clipById(b)->stabilization == lean);
+        tl.setClipStabilization(b, level);
+        const int c = tl.insertClip(1, "c.insv", 10000, 30.0); // between a and b
+        CHECK(tl.clipById(c)->stabilization == lean);
+        const int d = tl.insertClip(0, "d.insv", 10000, 30.0); // first: takes a's
+        CHECK(tl.clipById(d)->stabilization == lean);
+        CHECK(tl.clipById(b)->stabilization == level); // untouched
+        // A split keeps the setting on both halves.
+        const int e = tl.splitClip(b, 5000);
+        CHECK(e != 0 && tl.clipById(e)->stabilization == level);
+    }
+
+    // Undo covers it.
+    {
+        Project p;
+        p.timeline()->appendClip("a.insv", 10000, 30.0);
+        p.undo(); // settle
+        p.redo();
+        const int id = p.timeline()->clipAt(0).id; // undo()/redo() rebuild -> fresh id
+        p.timeline()->setClipStabilization(id, level);
+        CHECK(p.modified());
+        p.undo();
+        CHECK(p.timeline()->clipAt(0).stabilization == insv::StabConfig{});
+        p.redo();
+        CHECK(p.timeline()->clipAt(0).stabilization == level);
+    }
+
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+
+    // Saved per clip, with no project-wide setting left in the file.
+    {
+        const QString file = tmp.path() + "/perclip.orp";
+        Project p;
+        const int a = p.timeline()->appendClip("a.insv", 10000, 30.0);
+        p.timeline()->appendClip("b.insv", 10000, 30.0);
+        p.timeline()->setClipStabilization(a, level);
+        QString err;
+        CHECK(p.save(file, &err));
+        QFile f(file);
+        CHECK(f.open(QIODevice::ReadOnly));
+        const QByteArray text = f.readAll();
+        CHECK(text.contains("\"version\":9"));
+        CHECK(text.count("\"stabilization\"") == 2); // one per clip
+
+        Project q;
+        CHECK(q.load(file, &err));
+        CHECK(q.timeline()->clipAt(0).stabilization == level);
+        CHECK(q.timeline()->clipAt(1).stabilization == insv::StabConfig{});
+    }
+
+    // A version 8 (0.1.0) project: its project-wide setting goes onto every
+    // clip, and it opens unmodified.
+    {
+        const QString file = tmp.path() + "/v8.orp";
+        writeFile(file, QByteArrayLiteral(
+                            R"({"format":"orbis-reframe-project","version":8,)"
+                            R"("stabilization":{"mode":"horizonLock","horizonLockAmount":0.5},)"
+                            R"("timeline":{"clips":[)"
+                            R"({"source":"a.insv","sourceDurationMs":1000,"fps":30},)"
+                            R"({"source":"b.insv","sourceDurationMs":1000,"fps":30,)"
+                            R"("stabilization":{"mode":"leanFollow"}}]}})"));
+        Project p;
+        QString err;
+        CHECK(p.load(file, &err));
+        CHECK(err.isEmpty());
+        CHECK(!p.modified());
+        CHECK(p.timeline()->count() == 2);
+        for (int i = 0; i < p.timeline()->count(); ++i) {
+            const insv::StabConfig &st = p.timeline()->clipAt(i).stabilization;
+            CHECK(st.mode == insv::StabMode::HorizonLock); // a per-clip value is ignored in v8
+            CHECK(st.horizonLockAmount == 0.5f);
+        }
+    }
+}
+
 int main()
 {
     testClipItemTrim();
@@ -1819,6 +1918,7 @@ int main()
     testStabConfig();
     testProjectJson();
     testProjectUndoRedo();
+    testPerClipStabilization();
     testExportBitrate();
     testAudioTracks();
     testLinkedAudio();

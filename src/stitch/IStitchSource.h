@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace render {
@@ -189,10 +190,19 @@ public:
     virtual const std::string& GetLastError() const = 0;
 
     // Per-lens / per-sensor-row capture-time correction for subsequent frames
-    // (see CaptureTiming, NativeStitchSource). An inactive timing turns it
-    // off. Safe to call from another thread than the reader. Default:
+    // (see CaptureTiming, NativeStitchSource): `timing` for frames before
+    // source time `untilMs`, `after` for frames from it on -- so the reader
+    // can hand over to the next clip of the same file at a cut without
+    // knowing which frame will cross it. An inactive timing turns it off.
+    // Safe to call from another thread than the reader. Default:
     // unsupported, ignored.
-    virtual void SetCaptureTiming(CaptureTiming /*timing*/) {}
+    virtual void SetCaptureTiming(CaptureTiming /*timing*/, int64_t /*untilMs*/,
+                                  CaptureTiming /*after*/) {}
+    // One timing for every frame.
+    void SetCaptureTiming(CaptureTiming timing)
+    {
+        SetCaptureTiming(std::move(timing), INT64_MAX, CaptureTiming{});
+    }
 
     // Seam alignment fine-tune (insv::StitchParams::lens1AdjustDeg, measured
     // by stitch::MeasureClipSeam): lens 1's extra yaw / pitch / roll, degrees,

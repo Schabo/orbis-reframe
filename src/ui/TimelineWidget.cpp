@@ -201,6 +201,11 @@ void TimelineWidget::setCanPasteGrade(bool canPaste)
     m_canPasteGrade = canPaste;
 }
 
+void TimelineWidget::setCanPasteStabilization(bool canPaste)
+{
+    m_canPasteStab = canPaste;
+}
+
 void TimelineWidget::setMainMuted(bool muted)
 {
     if (muted == m_mainMuted)
@@ -1259,6 +1264,12 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         pasteGrade->setEnabled(m_canPasteGrade);
         pasteGradeAll->setEnabled(m_canPasteGrade);
         menu.addSeparator();
+        QAction *copyStab = menu.addAction(tr("Copy stabilization"));
+        QAction *pasteStab = menu.addAction(tr("Paste stabilization"));
+        QAction *pasteStabAll = menu.addAction(tr("Paste stabilization to all clips"));
+        pasteStab->setEnabled(m_canPasteStab);
+        pasteStabAll->setEnabled(m_canPasteStab);
+        menu.addSeparator();
 
         QAction *moveL = menu.addAction(tr("Move left"));
         moveL->setEnabled(h.row > 0);
@@ -1290,6 +1301,12 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             emit gradePasteRequested(r.clip.id);
         else if (chosen == pasteGradeAll)
             emit gradePasteAllRequested();
+        else if (chosen == copyStab)
+            emit stabilizationCopyRequested(r.clip.id);
+        else if (chosen == pasteStab)
+            emit stabilizationPasteRequested(r.clip.id);
+        else if (chosen == pasteStabAll)
+            emit stabilizationPasteAllRequested();
         else if (speedActions.contains(chosen))
             emit clipSpeedRequested(r.clip.id, chosen->data().toDouble());
         return;

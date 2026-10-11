@@ -156,3 +156,11 @@ bool ClipItem::setColorGrade(const ColorGrade &grade)
     color = clamped;
     return true;
 }
+
+bool ClipItem::setStabilization(const insv::StabConfig &config)
+{
+    if (config == stabilization)
+        return false;
+    stabilization = config;
+    return true;
+}

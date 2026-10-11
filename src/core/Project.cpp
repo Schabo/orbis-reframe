@@ -326,6 +326,7 @@ struct ParsedClip {
     int audioTrack = 0;
     insv::NoiseReduction noise;
     ColorGrade color;
+    insv::StabConfig stabilization;
     bool blurPlates = false;
     std::vector<privacy::BlurRemoval> blurRemovals;
     std::vector<privacy::BlurAddition> blurAdditions;
@@ -469,6 +470,7 @@ Project::Project(QObject *parent)
     connect(m_timeline, &Timeline::clipAudioChanged, this, edited);
     connect(m_timeline, &Timeline::mainAudioMutedChanged, this, edited);
     connect(m_timeline, &Timeline::clipColorChanged, this, edited);
+    connect(m_timeline, &Timeline::clipStabilizationChanged, this, edited);
     connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
     connect(m_timeline, &Timeline::clipSpeedChanged, this, edited);
     connect(m_timeline, &Timeline::tracksChanged, this, edited);
@@ -516,18 +518,6 @@ void Project::setPreviewStitch(const stitch::PreviewStitchConfig &config)
     }
 }
 
-void Project::setStabilization(const insv::StabConfig &config)
-{
-    if (m_stabilization == config)
-        return;
-    m_stabilization = config;
-    emit stabilizationChanged(m_stabilization);
-    if (!m_rebuilding) {
-        setModified(true);
-        onUndoableEdited();
-    }
-}
-
 void Project::setOutput(const OutputSettings &output)
 {
     if (m_output == output)
@@ -545,7 +535,6 @@ void Project::newProject()
     m_rebuilding = true;
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
-    setStabilization(insv::StabConfig{});
     setOutput(OutputSettings{});
     m_rebuilding = false;
     setFilePath(QString());
@@ -560,7 +549,6 @@ int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double 
     m_rebuilding = true;
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
-    setStabilization(insv::StabConfig{});
     setOutput(OutputSettings{});
     const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height);
     m_rebuilding = false;
@@ -593,6 +581,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"audioTrack", c.audioTrack},
             {"color", colorGradeToJson(c.color)},
             {"speed", c.speed},
+            {"stabilization", stabilizationToJson(c.stabilization)},
         });
         if (c.noise.mode != insv::NoiseMode::Off)
             clips.back()["noise"] = noiseToJson(c.noise);
@@ -648,7 +637,6 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         {"format", kFormatTag},
         {"version", kFormatVersion},
         {"previewStitch", previewStitchToJson(m_previewStitch)},
-        {"stabilization", stabilizationToJson(m_stabilization)},
         {"output", outputToJson(m_output)},
         {"timeline",
          {{"clips", std::move(clips)},
@@ -666,7 +654,6 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     // it's linked to, or {-1, -1}.
     std::vector<std::vector<std::pair<int, int>>> overlayLinks;
     stitch::PreviewStitchConfig parsedStitch;
-    insv::StabConfig parsedStab;
     OutputSettings parsedOutput;
     bool parsedMainMuted = false;
     try {
@@ -680,7 +667,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             return false;
         }
         const int version = doc.value("version", 0);
-        if (version != kFormatVersion) {
+        if (version < kOldestFormatVersion || version > kFormatVersion) {
             if (error)
                 *error = QStringLiteral("unsupported project version %1").arg(version);
             return false;
@@ -688,8 +675,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
 
         if (doc.contains("previewStitch"))
             parsedStitch = previewStitchFromJson(doc.at("previewStitch"));
-        if (doc.contains("stabilization"))
-            parsedStab = stabilizationFromJson(doc.at("stabilization"));
+        // Version 8: one setting for the whole project, which every clip takes.
+        insv::StabConfig projectStab;
+        if (version == 8 && doc.contains("stabilization"))
+            projectStab = stabilizationFromJson(doc.at("stabilization"));
         if (doc.contains("output"))
             parsedOutput = outputFromJson(doc.at("output"));
 
@@ -717,6 +706,9 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             if (jc.contains("color"))
                 pc.color = colorGradeFromJson(jc.at("color"));
             pc.speed = jc.value("speed", 1.0);
+            pc.stabilization = projectStab;
+            if (version >= 9 && jc.contains("stabilization"))
+                pc.stabilization = stabilizationFromJson(jc.at("stabilization"));
             if (jc.contains("privacy") && jc.at("privacy").is_object()) {
                 pc.blurPlates = jc.at("privacy").value("plates", false);
                 if (jc.at("privacy").contains("removed"))
@@ -793,7 +785,6 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     m_rebuilding = true;
     m_timeline->clear();
     setPreviewStitch(parsedStitch);
-    setStabilization(parsedStab);
     setOutput(parsedOutput);
     m_timeline->setMainAudioMuted(parsedMainMuted);
     std::vector<int> clipIds; // main-track index -> new id, for linked audio
@@ -808,6 +799,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipAudioTrack(id, pc.audioTrack);
         m_timeline->setClipNoise(id, pc.noise);
         m_timeline->setClipColor(id, pc.color);
+        m_timeline->setClipStabilization(id, pc.stabilization);
         m_timeline->setClipBlurPlates(id, pc.blurPlates);
         m_timeline->setClipBlurRemovals(id, pc.blurRemovals);
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);

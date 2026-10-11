@@ -102,7 +102,8 @@ public slots:
     // --- structure ------------------------------------------------------
     // Insert a clip at `index` (clamped to [0, count]). source* come from
     // stitch::ProbeClip. Trim starts as the whole source, reframe path empty.
-    // Returns the new clip's id.
+    // Stabilization is the clip before it's (the one after it's when it goes
+    // first; Off on an empty timeline). Returns the new clip's id.
     int insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
                    double fps, int sourceWidth = 0, int sourceHeight = 0);
     // Append; same as insertClip(count(), ...).
@@ -207,6 +208,9 @@ public slots:
     // Colour grade (clamped to ColorGrade's own ranges); the Colour panel edits
     // all four fields together.
     void setClipColor(int clipId, const ColorGrade &grade);
+    // Gyro stabilization (ClipItem::stabilization); the Stabilization panel
+    // edits it.
+    void setClipStabilization(int clipId, const insv::StabConfig &config);
     // Privacy blur on / off (ClipItem::blurPlates); the Privacy panel edits it.
     void setClipBlurPlates(int clipId, bool on);
     // The blur tracks removed from the clip by hand (ClipItem::blurRemovals).
@@ -241,6 +245,8 @@ signals:
     void mainAudioMutedChanged(bool muted);
     // One clip's colour grade changed. Carries the new value.
     void clipColorChanged(int id, ColorGrade grade);
+    // One clip's stabilization changed. Carries the new value.
+    void clipStabilizationChanged(int id, insv::StabConfig config);
     // One clip's privacy blur was switched on / off, or its removed tracks /
     // hand-added blurs changed.
     void clipPrivacyChanged(int id, bool blurPlates);

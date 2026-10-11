@@ -6,7 +6,6 @@
 #include <QString>
 #include <QTimer>
 
-#include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig (POD; no FFmpeg)
 
 #include "OutputSettings.h"
@@ -29,23 +28,24 @@ class Project : public QObject {
 public:
     explicit Project(QObject *parent = nullptr);
 
-    // The file format. Only kFormatVersion loads: older and newer files are
+    // The file format. kFormatVersion loads, and kOldestFormatVersion up to
+    // it (an older file is converted on load, see applyDocument); others are
     // refused. A field may be added without a bump when absent => today's
     // behaviour; anything an older build would misread bumps the version.
     // Optional fields are written only when set.
     //   "format": kFormatTag, "version": kFormatVersion,
     //   "previewStitch": {quality: "template" | "optflow", width, height
     //     (0 = auto), lensGuard: "none" | "standard" | "premium", depthSeam},
-    //   "stabilization": {mode, windowYawSec, windowPitchSec, windowRollSec,
-    //     horizonLockAmount, horizonGain, accelLowPassHz, pitchOffsetRad,
-    //     rollOffsetRad, autoLevel (absent => true)},
     //   "output": {aspect: "16:9" | "9:16" | "1:1" | "4:3", width, height,
     //     fps (0 = match the first clip)},
     //   "timeline": {clips: [...], mainMuted, tracks: [...]}.
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
     //   fovY}]}, audioGainDb, audioMuted, audioTrack, color {exposureEv,
-    //   contrast, saturation, temperature}, speed; optional: noise {mode:
+    //   contrast, saturation, temperature}, speed, stabilization {mode,
+    //   windowYawSec, windowPitchSec, windowRollSec, horizonLockAmount,
+    //   horizonGain, accelLowPassHz, pitchOffsetRad, rollOffsetRad,
+    //   autoLevel (absent => true)}; optional: noise {mode:
     //   "wind" (motorcycle) | "windGeneral" | "hiss" | "voice" |
     //   "voiceAmbience", strength}, syncAdjustMs and seamAdjust {deg: [yaw,
     //   pitch, roll], lensGuard} once measured, and privacy:
@@ -64,7 +64,10 @@ public:
     //   sourceHeight, inset {centerX, centerY, width, opacity, cornerRadius,
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
     //   centerY, width, opacity}].
-    static constexpr int kFormatVersion = 8;
+    // Version 8 (0.1.0) had one "stabilization" object at the top level for
+    // the whole project instead of one per clip.
+    static constexpr int kFormatVersion = 9;
+    static constexpr int kOldestFormatVersion = 8;
     static constexpr const char *kFormatTag = "orbis-reframe-project";
     static constexpr const char *kFileExtension = "orp"; // no dot
 
@@ -76,12 +79,6 @@ public:
     // Project-wide preview-stitch settings (Stitching panel). The live
     // playback path is handed this via PlaybackController::setPreviewConfig.
     const stitch::PreviewStitchConfig &previewStitch() const { return m_previewStitch; }
-
-    // Project-wide native gyro stabilization (Stabilization panel: Off / Lean
-    // follow / Horizon Lock / Custom). Applied at reprojection time (composed
-    // with the reframe pose) -- not a stitch setting, so a change never
-    // re-stitches.
-    const insv::StabConfig &stabilization() const { return m_stabilization; }
 
     // Project-wide output format (Project Settings panel): the aspect the
     // viewport is pinned to, the default export size, and the export rate.
@@ -117,10 +114,6 @@ public slots:
     // emits previewStitchChanged when the value actually changes.
     void setPreviewStitch(const stitch::PreviewStitchConfig &config);
 
-    // Replace the stabilization settings. Marks the project modified and emits
-    // stabilizationChanged when the value actually changes.
-    void setStabilization(const insv::StabConfig &config);
-
     // Replace the output settings. Marks the project modified and emits
     // outputChanged when the value actually changes.
     void setOutput(const OutputSettings &output);
@@ -138,7 +131,6 @@ signals:
     void modifiedChanged(bool modified);
     void filePathChanged(const QString &path);
     void previewStitchChanged(const stitch::PreviewStitchConfig &config);
-    void stabilizationChanged(const insv::StabConfig &config);
     void outputChanged(const OutputSettings &output);
     // Emitted after newProject() / resetWithClip() / load() -- and now
     // undo()/redo() -- have rebuilt the timeline, so a consumer can rebind in
@@ -154,7 +146,7 @@ private:
 
     // Shared guts of save()/load() and the in-memory undo snapshot() /
     // restoreSnapshot(): serialise / parse the whole document (previewStitch
-    // + stabilization + output + every clip). `projectDir` non-null => clip source
+    // + output + every clip). `projectDir` non-null => clip source
     // paths are stored relative-when-inside-it / resolved against it (the
     // file-facing behaviour); null => paths are used as-is, absolute
     // (the in-memory snapshot behaviour). applyDocument rebuilds the
@@ -165,8 +157,7 @@ private:
 
     // --- undo/redo (see the .cpp's top-of-file comment) -------------------
     // Connected to every Timeline signal that's a real edit (the same set
-    // onTimelineEdited() watches) plus previewStitchChanged/
-    // stabilizationChanged/outputChanged. Starts/restarts the coalescing timer; on the
+    // onTimelineEdited() watches) plus previewStitchChanged/outputChanged. Starts/restarts the coalescing timer; on the
     // first edit of a new burst, snapshots canUndo/canRedo state (redo
     // history dies the moment a new edit happens).
     void onUndoableEdited();
@@ -191,7 +182,6 @@ private:
     Timeline *m_timeline = nullptr;
     QString m_filePath;
     stitch::PreviewStitchConfig m_previewStitch;
-    insv::StabConfig m_stabilization;
     OutputSettings m_output;
     bool m_modified = false;
     // True while load()/newProject()/resetWithClip()/undo()/redo() are

@@ -36,8 +36,9 @@ class QTimer;
 //   * right-click a clip               -> split / speed / move / remove,
 //                                        "detach the other mic",
 //                                        insert a clip before / after it,
-//                                        copy / paste its colour grade
-//                                        (or paste it to all clips)
+//                                        copy / paste its colour grade or
+//                                        its stabilization (or paste
+//                                        either to all clips)
 //   * right-click elsewhere            -> "Add clip here…" at the nearest
 //                                        cut (also on an empty timeline)
 //   Audio and overlay tracks:
@@ -146,6 +147,7 @@ public:
     void setMainMuted(bool muted);  // the main video track's sound
     void setSelectedTrackClip(int clipId); // -1 = none; does not emit
     void setCanPasteGrade(bool canPaste);  // a colour grade has been copied
+    void setCanPasteStabilization(bool canPaste); // a stabilization setting has been copied
 
 public slots:
     void zoomIn();   // around the playhead if it's in view, else the centre
@@ -165,6 +167,9 @@ signals:
     void gradeCopyRequested(int clipId);
     void gradePasteRequested(int clipId);
     void gradePasteAllRequested();
+    void stabilizationCopyRequested(int clipId);
+    void stabilizationPasteRequested(int clipId);
+    void stabilizationPasteAllRequested();
     // "Add clip here…" / "Insert clip before/after…": a file picker, then the
     // clip inserted on the main track at position `index`.
     void addClipRequested(int index);
@@ -277,6 +282,7 @@ private:
     int m_activeClipId = -1;
     bool m_mainMuted = false;
     bool m_canPasteGrade = false;
+    bool m_canPasteStab = false;
     int m_selectedAudioId = -1;
 
     enum class Drag {

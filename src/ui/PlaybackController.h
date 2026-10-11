@@ -90,6 +90,10 @@ public:
         // speed on the timeline. Same rounding as ClipItem::timelineDurationMs.
         double speed = 1.0;
         insv::NoiseReduction noise; // on the clip's own sound (AudioPlayer)
+        // The Timeline clip it plays (ClipItem::id): what the per-clip
+        // capture timing and stabilization are looked up by, since two clips
+        // of one file can differ.
+        int clipId = 0;
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
         qint64 localAtSourceMs(qint64 sourceMs) const
@@ -129,10 +133,11 @@ public:
     void setPreviewConfig(const stitch::PreviewStitchConfig &config);
 
     // Per-clip capture-time correction for the stitch (see
-    // stitch::IStitchSource::SetCaptureTiming). Thread-safe, callable from the
-    // GUI thread; the decoder applies it to that clip's source before its next
-    // frame. An inactive timing = off.
-    void setCaptureTiming(const QString &path, stitch::CaptureTiming timing);
+    // stitch::IStitchSource::SetCaptureTiming), by Segment::clipId; replaces
+    // the whole set, and a clip not in it = off. Thread-safe, callable from
+    // the GUI thread; the decoder applies a clip's timing to its source
+    // before the clip's next frame.
+    void setCaptureTimings(std::map<int, stitch::CaptureTiming> timings);
     // Seam alignment fine-tune for one source (lens-1 yaw/pitch/roll, deg;
     // IStitchSource::SetLens1Adjust). Thread-safe; applies from the next
     // decoded frame -- seek to refresh a paused picture.
@@ -143,12 +148,12 @@ public:
     void setBlurQuads(const QString &path, stitch::BlurQuadsFn fn);
 
     // Gyro de-rotation for a presented frame: fills `m` (row-major 3x3) for
-    // source time `sourceMs` of clip `path` and returns true, or returns false
-    // when it has nothing for that clip (the viewport then keeps its current
-    // matrix). Called on the controller thread for every presented frame, with
+    // source time `sourceMs` of clip `clipId` (Segment::clipId) and returns
+    // true, or returns false when it has nothing for that clip (the viewport
+    // then keeps its current matrix). Called on the controller thread for every presented frame, with
     // the frame's own source time, and handed to the viewport with the frame.
     // Thread-safe to set from the GUI thread.
-    using StabProvider = std::function<bool(const QString &path, qint64 sourceMs, float m[9])>;
+    using StabProvider = std::function<bool(int clipId, qint64 sourceMs, float m[9])>;
     void setStabilizationProvider(StabProvider provider);
 
     // Region outlines for a presented frame (the Privacy panel's "Show
@@ -200,6 +205,7 @@ private:
         uint64_t gen = 0;
         QString sourcePath;  // clip the frame came from
         qint64 sourceMs = 0; // its source time (frame.timestamp_ms is timeline time)
+        int clipId = 0;      // Segment::clipId
     };
 
     void startDecoder();
@@ -325,20 +331,38 @@ private:
     };
     std::optional<HeldRead> m_heldRead;
 
-    // Capture-timing settings per clip path, written by the GUI thread.
+    // Capture-timing settings per clip id, written by the GUI thread.
     using RsSetting = stitch::CaptureTiming;
     std::mutex m_stabMx;
     StabProvider m_stabProvider; // guarded by m_stabMx
     OutlineProvider m_outlineProvider; // guarded by m_stabMx
     std::mutex m_rsMx;
-    std::map<QString, RsSetting> m_rsSettings; // guarded by m_rsMx
+    std::map<int, RsSetting> m_rsSettings; // guarded by m_rsMx
     std::map<QString, std::array<double, 3>> m_seamAdjust; // guarded by m_rsMx, same generation
     std::map<QString, stitch::BlurQuadsFn> m_blurQuads;    // guarded by m_rsMx, same generation
     std::atomic<uint64_t> m_rsGen{0};          // bumped on every change
     uint64_t m_decRsGen = ~uint64_t(0);        // decoder: generation last applied
     QString m_decRsPath;                        // decoder: source it was applied to
+    int m_decRsClipId = 0;                      // decoder: clip it was applied for
+    // The hand-over to the next clip in the same file, if any (see
+    // ClipHandOver): what was applied, so a timeline edit re-applies.
+    qint64 m_decRsUntilMs = 0;
+    int m_decRsAfterClipId = 0;
     void applyCaptureTimingIfChanged();         // decoder thread
-    void applySourceSettings(stitch::IStitchSource &src, const QString &path); // reads m_rsMx
+    // Where segment `index`'s source hands over to the next segment's capture
+    // timing: the next segment reads on in the same file (a split), so the
+    // frame that crosses the cut -- read before the decoder knows it crosses
+    // -- is stitched with the next clip's timing, not this one's. No
+    // hand-over: untilMs = INT64_MAX. Decoder thread (reads m_decPlaced).
+    struct ClipHandOver {
+        qint64 untilMs = INT64_MAX;
+        int afterClipId = 0;
+    };
+    ClipHandOver handOverAfter(int index) const;
+    // Reads m_rsMx: `path`'s settings, and clip `clipId`'s capture timing
+    // (then `handOver.afterClipId`'s from `handOver.untilMs` on).
+    void applySourceSettings(stitch::IStitchSource &src, const QString &path, int clipId,
+                             ClipHandOver handOver);
 
     // The insets' own decoder, and what was last handed to the viewport
     // (frame key + look per inset) so an unchanged picture isn't re-sent.

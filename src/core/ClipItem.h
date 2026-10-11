@@ -6,6 +6,7 @@
 #include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
 #include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
+#include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 
 #include <QString>
 
@@ -107,6 +108,14 @@ struct ClipItem {
     // Colour grade (Colour panel). See ColorGrade's own comment.
     ColorGrade color;
 
+    // Gyro stabilization (Stabilization panel: Off / Lean follow / Horizon
+    // lock / Custom). Applied at reprojection time, composed with the reframe
+    // pose; a cut between clips with different settings switches at the cut.
+    // On (any mode but Off) also turns on the stitch's capture-time
+    // (rolling-shutter) correction, which is baked into the stitched frames.
+    // A new clip takes the setting of its neighbour (Timeline::insertClip).
+    insv::StabConfig stabilization;
+
     // Privacy blur (Privacy panel): mosaic the number plates a plate scan of
     // this clip's source found (src/privacy/PlateScanData.h -- the scan
     // itself is cached per source file, not stored here). Applied in playback
@@ -173,6 +182,7 @@ struct ClipItem {
     bool setAudioTrack(int track); // clamped to >= 0
     bool setNoise(const insv::NoiseReduction &nr); // strength clamped to [0, 1]
     bool setColorGrade(const ColorGrade &grade);
+    bool setStabilization(const insv::StabConfig &config);
     bool setBlurPlates(bool on);
     bool setBlurRemovals(const std::vector<privacy::BlurRemoval> &removals);
     bool setBlurAdditions(const std::vector<privacy::BlurAddition> &additions);

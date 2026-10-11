@@ -56,7 +56,8 @@ shorten or remove a clip, the clips after it move up.
 
 Right-click a clip for its menu: split it, change its speed, insert
 another clip before or after it, copy or paste its colour grade
-([Colour](colour.md)), move it, or remove it.
+([Colour](colour.md)) or its stabilization
+([Stabilization](stabilization.md)), move it, or remove it.
 
 ### Adding clips
 

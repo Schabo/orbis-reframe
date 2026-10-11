@@ -6,9 +6,10 @@ to steady the picture: it turns the 360° view against the camera's shake,
 so the view holds still while the camera moves. It can also keep the
 horizon level.
 
-Stabilization is set in the **Stabilization** panel. The setting is the
-same for the whole project, and applies to playback, screenshots and the
-export alike. Nothing is re-rendered: changing it shows at once.
+Stabilization is set in the **Stabilization** panel, for each clip on its
+own (see [Which clip it changes](#which-clip-it-changes)). It applies to
+playback, screenshots and the export alike. Nothing is re-rendered:
+changing it shows at once.
 
 ![The same frame with stabilization off, Lean follow and Horizon lock](images/stabilization-modes.jpg)
 
@@ -27,9 +28,9 @@ horizon is level, as if the bike were upright.*
 | **Horizon lock** | Removes all of the camera's turning and tilting, and keeps the horizon level. The view still turns with the direction you travel in, smoothly. | Helmet, handheld, boat or drone footage, where you want a level horizon and the camera's lean isn't wanted. |
 | **Custom** | You set the smoothing and levelling yourself. | Fine-tuning, or special effects such as a "virtual tripod". |
 
-A new project starts with stabilization **Off**. For most riding footage,
-start with **Lean follow**; if the horizon should stay level, try **Horizon
-lock**.
+The first clip of a new project starts with stabilization **Off**. For most
+riding footage, start with **Lean follow**; if the horizon should stay
+level, try **Horizon lock**.
 
 ### Lean follow
 
@@ -84,6 +85,37 @@ Long smoothing times on all three axes (3 to 4 seconds) with **Level
 horizon** at 0 give a "virtual tripod": the view hardly moves at all, while
 slow changes in direction still come through.
 
+## Which clip it changes
+
+The setting belongs to one clip on the video track: the clip you selected,
+or the clip under the playhead if none is selected (see
+[Selecting a clip](timeline.md#selecting-a-clip)). Each clip keeps its own
+setting, so a helmet clip can have Horizon lock while the clips around it
+have Lean follow. Where two clips with different settings meet, the picture changes
+over at the cut.
+
+A clip you add takes the setting of the clip before it on the video track
+(the clip after it, if you add it at the start). When you split a clip,
+both halves keep its setting.
+
+To give several clips the same setting:
+
+1. Select the clip whose setting you want, and click **Copy
+   stabilization**.
+2. Select another clip, and click **Paste stabilization**. It gets the
+   mode and all its settings.
+
+The same is on the timeline: right-click a clip for **Copy stabilization**,
+**Paste stabilization**, and **Paste stabilization to all clips**, which
+gives every clip on the video track the copied setting.
+
+The copied setting is kept until you close orbis-reframe. **Edit ▸ Undo**
+(`Ctrl+Z`) takes back a change or a paste; pasting to all clips is undone
+in one step.
+
+Projects saved with orbis-reframe 0.1.0 had one setting for the whole
+project. When you open one, every clip gets that setting.
+
 ## Gyro sync
 
 To remove fast shake, the gyroscope's record has to line up with the
@@ -120,12 +152,13 @@ shake:
   frame rate can leave a jittery look, because each frame catches the
   vibration at a different moment. A higher frame rate when filming helps.
 
-Whenever stabilization is on, orbis-reframe also corrects the rolling
-shutter: the slight bending of the picture during fast movement, because
+Whenever stabilization is on for a clip, orbis-reframe also corrects the
+rolling shutter: the slight bending of the picture during fast movement, because
 the camera's sensor reads the picture line by line.
 
 > **Changing stabilization after a privacy-blur scan.** With stabilization
 > on, the stitched picture is slightly different. A privacy-blur scan made
-> with the other setting may then sit a little off the number plates, and
+> with the clip's stabilization the other way (on or off) may then sit a
+> little off the number plates, and
 > orbis-reframe warns you before an export or screenshot. See
 > [Privacy blur](privacy.md).

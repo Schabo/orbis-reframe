@@ -6,6 +6,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QSlider>
 #include <QWidget>
 
@@ -187,7 +188,23 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     m_syncStatus->hide();
     form()->addRow(m_syncStatus);
 
-    setHint(tr("Steadies the picture with the camera's own motion sensors, in playback and "
+    auto *buttonRow = new QWidget(this);
+    auto *buttons = new QHBoxLayout(buttonRow);
+    buttons->setContentsMargins(0, 0, 0, 0);
+    auto *copy = new QPushButton(tr("Copy stabilization"), buttonRow);
+    copy->setToolTip(tr("Copy this clip's stabilization setting, to paste onto other clips."));
+    m_paste = new QPushButton(tr("Paste stabilization"), buttonRow);
+    m_paste->setToolTip(tr("Give this clip the copied setting. To paste onto every clip, "
+                           "right-click a clip on the timeline."));
+    m_paste->setEnabled(false);
+    buttons->addWidget(copy);
+    buttons->addWidget(m_paste);
+    buttons->addStretch(1);
+    form()->addRow(buttonRow);
+    connect(copy, &QPushButton::clicked, this, &StabilizationPanel::copyRequested);
+    connect(m_paste, &QPushButton::clicked, this, &StabilizationPanel::pasteRequested);
+
+    setHint(tr("Steadies this clip with the camera's own motion sensors, in playback and "
                "export. Lean follow keeps a motorcycle's lean in corners; Horizon lock keeps "
                "the horizon level."));
 
@@ -262,6 +279,7 @@ insv::StabConfig StabilizationPanel::nativeConfigForMode() const
 
 void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
 {
+    setEnabled(true);
     m_updating = true;
     const int idx = m_mode->findData(int(mode));
     m_mode->setCurrentIndex(idx < 0 ? 0 : idx);
@@ -320,4 +338,14 @@ void StabilizationPanel::setSyncStatus(const QString &text)
 {
     m_syncStatus->setText(text);
     m_syncStatus->setVisible(!text.isEmpty());
+}
+
+void StabilizationPanel::setNoClip()
+{
+    setEnabled(false);
+}
+
+void StabilizationPanel::setCanPaste(bool canPaste)
+{
+    m_paste->setEnabled(canPaste);
 }
