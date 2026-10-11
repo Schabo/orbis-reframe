@@ -146,6 +146,24 @@ know why. Typical cases: a camera on a stick (the shake is a swing),
 a sync or axis problem, or parallax that no rotation can fix. Run
 `--diagnose` before changing the stabilizer.
 
+What each `--diagnose` block tells you:
+
+| Block | Shows | Read it as |
+|---|---|---|
+| [0] | shutter time × gyro rate | the motion blur inside each frame; no stabilization removes it |
+| [1] | gyro / accel spectra | a mount resonance, and up to what frequency the IMU still carries real signal |
+| [2] | rotation the gyro records vs. the correction applied | ratio well below 1: the stabilizer leaves rotation in |
+| [3] | image pan vs. the gyro, sweeping axis map, scale and time offset | which gyro setup matches the picture, and whether the IMU carries the shake at all |
+| [4] | forward residual, narrow vs. wide view | ≈ 1: rotation (correctable); ≫ 1: parallax from the camera moving |
+| [5] | video↔IMU time sync | the offset that lines the gyro up with the picture |
+| [6] | Horizon lock's "up" vs. gravity, roll / pitch per 10 s | ≈ 0: level; a steady offset: gyro bias or a bad gravity start |
+
+If the shake is rotation, the IMU has it, and it still shows after
+stabilization, suspect the pipeline before the physics: a sync error of a
+millisecond or two, a wrong gyro axis map, or the lens model. Only rule
+those out before calling a clip's shake parallax, motion blur or vibration
+faster than the frame rate can capture.
+
 ```sh
 build/residual_stab clip.insv --diagnose --trim-in 0 --trim-out 30000
 build/residual_stab clip.insv out.mp4 --render derotate2d --stab-mode horizonLock
