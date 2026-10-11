@@ -29,6 +29,12 @@ aren't in the repository.
 A pull request should build with `./scripts/build.sh` and pass its tests.
 Say in the description which clips and hardware you tried it on.
 
+GitHub Actions (`.github/workflows/ci.yml`) builds every pull request on
+Debian Testing, Debian 13 and Ubuntu 26.04 with every feature on, runs the
+tests, and checks the commit messages. It has no GPU, so it can't replace
+trying the change on real clips. For contributors from outside the project
+the run starts once a maintainer has approved it.
+
 ## Commit messages
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).

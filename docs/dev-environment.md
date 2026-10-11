@@ -19,6 +19,11 @@ Update this file if the toolchain moves.
 - **ONNX Runtime** 1.23 (*optional* — the "Voice only" / "Voice + ambience" noise modes, DeepFilterNet 3): `libonnxruntime-dev`. Only its headers are needed to build; `insv::VoiceIsolator` `dlopen()`s `libonnxruntime.so.1.<ORT_API_VERSION>` (the headers' API version is the 1.x minor version: `.so.1.23` here, `.so.1.21` on Debian 13) on first use; CMake turns the same number into the `.deb`'s `libonnxruntime1.23` and the "install it" hint. CMake hides the voice modes with a `STATUS` message when the headers are absent. Without root, `apt-get download libonnxruntime-dev libonnxruntime1.23` + `dpkg -x` into a folder and configure with `-DONNXRUNTIME_ROOT=<folder>/usr` (how it was developed, 2026-09-30).
 - **Qt6 Multimedia** (*optional* — audio playback): `qt6-multimedia-dev`. CMake skips `AudioPlayer`/`Qt6::Multimedia` with a `STATUS` message when absent; `orbis-reframe` still builds, just silently (no sound).
 
+The full list of build packages is written out again in
+`.github/workflows/ci.yml`, `scripts/package.sh` and
+`tests/release/dev_test.sh`: a new build dependency goes into all of them, or
+CI and the release builds fail.
+
 ## Dependency management decision
 
 Use **Debian Testing's own apt packages**,
