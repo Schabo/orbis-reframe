@@ -34,6 +34,9 @@ Debian Testing, Debian 13 and Ubuntu 26.04 with every feature on, runs the
 tests, and checks the commit messages. It has no GPU, so it can't replace
 trying the change on real clips. For contributors from outside the project
 the run starts once a maintainer has approved it.
+`.github/workflows/gpu.yml` runs the GPU checks (build, tests and the
+headless GPU tools on a real clip) nightly on the maintainer's machine, for
+what is already on `main`; it never runs on pull requests.
 
 ## Commit messages
 

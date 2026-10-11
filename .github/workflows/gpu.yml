@@ -1,0 +1,83 @@
+# The GPU checks GitHub's runners can't do: build, ctest and the headless GPU
+# tools on a real clip, on the maintainer's self-hosted runner (label `gpu`:
+# an NVIDIA GPU, the test footage read-only at /footage). Nightly when main
+# has changed since the last good run, and by hand.
+#
+# Never add pull_request / pull_request_target triggers: the runner is on a
+# private machine, and only code already on this repository's branches may
+# run there.
+name: GPU
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu
+  cancel-in-progress: false
+
+jobs:
+  # On GitHub's runners: skip the night's run when this commit already passed.
+  changed:
+    name: Anything new?
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh run list -R "$GITHUB_REPOSITORY" -w gpu.yml -b "$GITHUB_REF_NAME" -s success -L 1 \
+              --json headSha -q '.[0].headSha')
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
+              echo "$GITHUB_SHA already passed; nothing to do"
+              echo run=false >> "$GITHUB_OUTPUT"
+          else
+              echo run=true >> "$GITHUB_OUTPUT"
+          fi
+
+  gpu:
+    name: Build + GPU tools
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # git describe needs the tags for the version
+      - name: GPU
+        run: |
+          nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+          vulkaninfo --summary 2>&1 | grep -E 'deviceName|driverInfo' | head -2
+      - name: Fetch ncnn
+        run: scripts/fetch_ncnn.sh
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DORBIS_REQUIRE_ALL_FEATURES=ON
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+      - name: GPU tools on the test clip
+        run: tests/release/gpu_tools.sh build gpu-results
+      # Logs only: the tools' pictures and video are of private footage, and
+      # this repository's artifacts are public.
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gpu-logs
+          path: |
+            gpu-results/*.log
+            gpu-results/results.txt
+          if-no-files-found: ignore
+          retention-days: 14

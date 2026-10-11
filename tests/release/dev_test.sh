@@ -40,16 +40,7 @@ step configure cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DORBIS_REQUIR
 step build cmake --build build -j"$(nproc)"
 QT_QPA_PLATFORM=offscreen step ctest ctest --test-dir build --output-on-failure
 
-# The headless GPU tools on tests/release/smoke.orp's clip, 2 s from its trim-in.
-clip=$(sed -nE 's/.*"source": "([^"]+)".*/\1/p' /work/smoke.orp | head -1)
-t0=$(sed -nE 's/.*"trimInMs": ([0-9]+).*/\1/p' /work/smoke.orp | head -1)
-t1=$((t0 + 2000))
-mkdir -p $W/tools && cd $W/tools || exit 1
-step stitch_source_smoke "$src/build/stitch_source_smoke" "$clip" "$t0" "$t1"
-step playback_bench "$src/build/playback_bench" --frames 30 "$clip"
-step view_compare "$src/build/view_compare" --at "$t0" --out $W/tools/view "$clip"
-step reframe_export "$src/build/reframe_export" "$clip" $W/tools/reframe_export.mp4 \
-    --trim-in "$t0" --trim-out "$t1"
-step plate_scan "$src/build/plate_scan" --t0 "$t0" --dur 2 "$clip"
+# The headless GPU tools on the test clip (they write their own results).
+"$src/tests/release/gpu_tools.sh" "$src/build" $W /work/smoke.orp
 result tests_run "$(sed -nE 's/.*tests passed, ([0-9]+) tests failed out of ([0-9]+).*/\2/p' $W/ctest.log)"
 exit 0
