@@ -6,7 +6,7 @@
 - `docs/manual/` — the user manual (for users, not developers), one Markdown file per chapter, indexed in `docs/manual/README.md`. Update the affected chapter when a user-visible feature, menu, shortcut or dependency changes.
 - `docs/dev-environment.md` — toolchain, dependencies and pinned versions. Update it when the build's dependencies change.
 - `tools/README.md` — the developer command-line tools: what each is for, when to use it, what it needs, examples. Update it when a tool is added, removed, or its purpose or options change.
-- `docs/RELEASE.md` — the manual release process, step by step: version bump, packages, GPU test, publishing, undoing a bad bump. Follow it when making a release; update it when packaging, versioning or the release flow changes.
+- `docs/RELEASE.md` — the release process, step by step: version bump, the release workflow's draft, GPU test, publishing, undoing a bad bump. Follow it when making a release; update it when packaging, versioning or the release flow changes.
 
 ## Folders
 

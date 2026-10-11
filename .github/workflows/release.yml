@@ -1,0 +1,167 @@
+# Builds a release (docs/RELEASE.md) when its tag is pushed: per target
+# (scripts/targets.sh) scripts/package.sh in a clean container of that
+# release -- the same script as by hand -- then the .deb installed in a fresh
+# one, then a *draft* GitHub release with the files, their build provenance
+# and the version's CHANGELOG.md section. Publishing stays by hand, after the
+# GPU test of the draft's packages (scripts/release_test.sh).
+#
+# By hand (workflow_dispatch) it's a dry run: build and check the packages of
+# the chosen branch, keep them as workflow artifacts, make no release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Package (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        include:
+          - target: debian-testing
+            image: docker.io/library/debian:testing
+          - target: debian-13
+            image: docker.io/library/debian:trixie
+          - target: ubuntu-26.04
+            image: docker.io/library/ubuntu:26.04
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      # As scripts/package.sh installs them for a container build, plus
+      # what scripts/fetch_ncnn.sh needs.
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+              g++ cmake ninja-build pkgconf \
+              qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev qt6-wayland \
+              libvulkan-dev glslang-tools nlohmann-json3-dev \
+              libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
+              libopencv-dev libopencv-contrib-dev libonnxruntime-dev \
+              git dpkg-dev file desktop-file-utils xz-utils ca-certificates curl unzip > /dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # git describe needs the tags for the version
+      # The container runs as root over a checkout owned by the runner's user.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # cz bump wrote the tag's version into both files; a tag pushed by hand
+      # on another commit would build a version that doesn't match it.
+      - name: The tag is the version
+        if: github.ref_type == 'tag'
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          grep -qx "version = \"$v\"" .cz.toml || { echo ".cz.toml isn't at $v" >&2; exit 1; }
+          sed -nE 's/^project\(orbis-reframe VERSION ([0-9.]+).*/\1/p' CMakeLists.txt | grep -qx "$v" \
+              || { echo "CMakeLists.txt's project() isn't at $v" >&2; exit 1; }
+      - name: Fetch ncnn
+        run: scripts/fetch_ncnn.sh
+      # The container's own release is the target (scripts/targets.sh).
+      - name: Build the packages
+        run: scripts/package.sh
+      - name: The packages carry the tag's version
+        if: github.ref_type == 'tag'
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          test -f "dist/${{ matrix.target }}/orbis-reframe-$v-source.tar.xz" \
+              || { ls dist/${{ matrix.target }}; echo "built a version other than $v" >&2; exit 1; }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  # The .deb in a fresh container of its release: apt finds every dependency,
+  # every library resolves, --version is right.
+  install:
+    name: Install (${{ matrix.target }})
+    needs: package
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: debian-testing
+            image: docker.io/library/debian:testing
+          - target: debian-13
+            image: docker.io/library/debian:trixie
+          - target: ubuntu-26.04
+            image: docker.io/library/ubuntu:26.04
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -c ./*.sha256
+      - name: Install the .deb
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ./dist/orbis-reframe_*_amd64.deb > /dev/null
+      - name: Check it
+        run: |
+          missing=$(ldd /usr/bin/orbis-reframe | grep "not found" || true)
+          [ -z "$missing" ] || { echo "libraries not found:"; echo "$missing"; exit 1; } >&2
+          reported=$(orbis-reframe --version)
+          v=$(ls dist/orbis-reframe-*-source.tar.xz | sed -E 's|.*/orbis-reframe-(.*)-source\.tar\.xz|\1|')
+          echo "$reported"
+          [ "$reported" = "orbis-reframe $v" ] || { echo "expected orbis-reframe $v" >&2; exit 1; }
+
+  release:
+    name: Draft release
+    needs: install
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release
+      id-token: write # the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+      # Every target's folder holds the same source archive: take one.
+      - name: Collect the files
+        run: |
+          mkdir release
+          cp dist/dist-debian-testing/* release/
+          cp dist/dist-debian-13/*.deb13_* dist/dist-debian-13/*-debian-13-* release/
+          cp dist/dist-ubuntu-26.04/*.ubuntu26.04_* dist/dist-ubuntu-26.04/*-ubuntu-26.04-* release/
+          ls -l release
+          [ "$(ls release | wc -l)" -eq 14 ] || { echo "expected 14 files" >&2; exit 1; }
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/*.tar.xz
+            release/*.deb
+      # The version's section of CHANGELOG.md (cz bump wrote it).
+      - name: Release notes
+        run: |
+          awk -v h="## $GITHUB_REF_NAME " 'index($0, h) == 1 { on = 1; next } /^## / { on = 0 } on' \
+              CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "no '## $GITHUB_REF_NAME' section in CHANGELOG.md" >&2; exit 1; }
+          cat notes.md
+      - name: Make the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "orbis-reframe ${GITHUB_REF_NAME#v}" --notes-file notes.md release/*

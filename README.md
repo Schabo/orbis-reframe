@@ -156,6 +156,7 @@ list and the pinned versions.
 ./scripts/build.sh -r       # build and run
 ./scripts/package.sh        # release tarball + .deb into dist/debian-testing/ (all features)
 ./scripts/package.sh --target debian-13      # the same for Debian 13 (or ubuntu-26.04), in a container
+./scripts/fetch_release.sh vX.Y.Z               # or fetch a draft release's packages into dist/
 ./scripts/release_test.sh [--target debian-13]  # test them in GPU containers (podman, docs/RELEASE.md)
 ```
 

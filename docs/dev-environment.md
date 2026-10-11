@@ -20,9 +20,9 @@ Update this file if the toolchain moves.
 - **Qt6 Multimedia** (*optional* — audio playback): `qt6-multimedia-dev`. CMake skips `AudioPlayer`/`Qt6::Multimedia` with a `STATUS` message when absent; `orbis-reframe` still builds, just silently (no sound).
 
 The full list of build packages is written out again in
-`.github/workflows/ci.yml`, `scripts/package.sh` and
-`tests/release/dev_test.sh`: a new build dependency goes into all of them, or
-CI and the release builds fail.
+`.github/workflows/ci.yml`, `.github/workflows/release.yml`,
+`scripts/package.sh` and `tests/release/dev_test.sh`: a new build dependency
+goes into all of them, or CI and the release builds fail.
 
 ## Dependency management decision
 
@@ -148,7 +148,7 @@ containers of that release on this machine's GPU (always with this
 machine's NVIDIA driver, not the release's own packages -- Debian 13's 550
 driver isn't tested and doesn't support RTX 50-series cards): clean installs, a GUI test per package,
 a build of the source archive with ctest and the GPU tools
-(`docs/RELEASE.md` step 5). Setup, once: `sudo apt install podman`, the
+(`docs/RELEASE.md` step 6). Setup, once: `sudo apt install podman`, the
 NVIDIA Container Toolkit from NVIDIA's apt repository
 (<https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>),
 then `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` (again
@@ -158,6 +158,11 @@ a bare image also needs `libegl1` and `libxext6`, which NVIDIA's Vulkan
 driver loads (the app's packages pull them in through Qt). The test image
 and its virtual pointer / keyboard (for a headless Sway) are in
 `tests/release/`.
+
+For a release, the release workflow (`.github/workflows/release.yml`) runs
+`package.sh` per target on GitHub's runners when the tag is pushed and makes
+a draft release; `scripts/fetch_release.sh vX.Y.Z` downloads the draft's
+files into `dist/<target>/` for `release_test.sh`.
 
 `<version>` is the binary's (`cmake/GitVersion.cmake`). The `.deb`'s
 Maintainer is `CPACK_PACKAGE_CONTACT` in `cmake/Packaging.cmake`
