@@ -105,6 +105,10 @@ For releases after 0.1.0, GitHub also signs each release, so you can check
 that a file really comes from it. With the
 [GitHub CLI](https://cli.github.com/) installed, run
 `gh release verify-asset -R Schabo/orbis-reframe v<version> <file>`.
+From 0.2.0 on, the packages and archives were built by GitHub from the
+release's source code, and
+`gh attestation verify <file> -R Schabo/orbis-reframe` shows which commit
+and which build.
 
 ### Option A: the `.deb` package
 
