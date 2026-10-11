@@ -9,7 +9,7 @@ Update this file if the toolchain moves.
 - **GPU**: NVIDIA GeForce RTX 5070
 - **CMake**: 4.3.4
 - **Compiler**: g++ 15.3.0 (Debian 15.3.0-2)
-- **Qt**: 6.10.2 (apt: `qt6-base-dev`, `qt6-base-dev-tools`, `qt6-wayland`)
+- **Qt**: 6.11.2 (6.10.2 until 2026-10-11; apt: `qt6-base-dev`, `qt6-base-dev-tools`, `qt6-wayland`)
 - **Vulkan**: loader/instance 1.4.341 (apt: `libvulkan-dev`, `vulkan-tools`)
 - **Shader compiler**: `glslangValidator` (apt: `glslang-tools`)
 - **Other libs**: `nlohmann-json3-dev`
