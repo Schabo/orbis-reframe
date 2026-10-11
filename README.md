@@ -137,8 +137,7 @@ no closed-source dependencies.
   Audio, Colour, Overlay, Privacy, Project and Media-info panels.
 
 Planned next:
-transitions, a "tiny planet" projection, full 360° export, face blur, and
-builds for other Debian-based distributions.
+transitions, a "tiny planet" projection, and face blur.
 
 ## Building
 
