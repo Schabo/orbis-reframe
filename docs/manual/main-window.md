@@ -67,6 +67,7 @@ to fold it away.
 | Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
 | Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
 | Find a file on disk | Right-click it and choose **Show in file manager**. |
+| Find a moved or renamed file | Double-click it (it's red, *File not found*), or right-click it and choose **Locate file…**, and pick where it is now. See [Projects and export](projects-and-export.md#where-the-clips-are). |
 
 Importing is part of the project, so **Edit ▸ Undo** takes it back like any
 other edit. The `.lrv` preview files the camera writes next to each `.insv`

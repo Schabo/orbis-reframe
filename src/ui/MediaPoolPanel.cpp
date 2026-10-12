@@ -348,7 +348,13 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
             item->setExpanded(!item->isExpanded());
     });
     connect(m_list, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem *item) {
-        if (!item->data(0, FolderRole).toBool() && m_addAction->isEnabled())
+        if (item->data(0, FolderRole).toBool())
+            return;
+        if (item->data(0, MissingRole).toBool()) {
+            emit locateRequested(item->data(0, PathRole).toString());
+            return;
+        }
+        if (m_addAction->isEnabled())
             m_addAction->trigger();
     });
     connect(m_list, &QTreeWidget::itemCollapsed, this, [this](QTreeWidgetItem *item) {
@@ -368,6 +374,16 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         if (!paths.isEmpty())
             emit addToTimelineRequested(paths);
     });
+    m_locateAction = new QAction(theme::icon(QStringLiteral("folder-open")), tr("&Locate file…"),
+                                 m_list);
+    m_locateAction->setObjectName(QStringLiteral("mediaLocateAction"));
+    m_locateAction->setToolTip(tr("Find a moved or renamed file. Other missing files with "
+                                  "the same names in that folder are found too."));
+    connect(m_locateAction, &QAction::triggered, this, [this] {
+        const QStringList paths = selectedPaths();
+        if (paths.size() == 1)
+            emit locateRequested(paths.first());
+    });
     m_showAction = new QAction(tr("Show in &file manager"), m_list);
     m_showAction->setObjectName(QStringLiteral("mediaShowInFileManagerAction"));
     connect(m_showAction, &QAction::triggered, this, &MediaPoolPanel::showInFileManager);
@@ -379,7 +395,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     connect(m_removeAction, &QAction::triggered, this, &MediaPoolPanel::removeSelected);
     auto *separator = new QAction(m_list);
     separator->setSeparator(true);
-    m_list->addActions({m_addAction, m_showAction, separator, m_removeAction});
+    m_list->addActions({m_addAction, m_locateAction, m_showAction, separator, m_removeAction});
     m_list->setContextMenuPolicy(Qt::ActionsContextMenu);
 
     auto *layout = new QVBoxLayout(this);
@@ -508,7 +524,7 @@ void MediaPoolPanel::rebuild()
         const bool inUse = m_inUse.contains(m.path);
         item->setData(0, InUseRole, inUse);
         item->setToolTip(0, QDir::toNativeSeparators(m.path) +
-                                (m.missing ? tr("\nFile not found")
+                                (m.missing ? tr("\nFile not found: double-click to locate it")
                                  : inUse   ? tr("\nUsed on the timeline")
                                            : QString()));
         Qt::ItemFlags flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
@@ -543,6 +559,8 @@ void MediaPoolPanel::updateActions()
         anyInUse |= m_inUse.contains(path);
     }
     m_addAction->setEnabled(anyPresent);
+    const MediaItem *one = paths.size() == 1 ? m_pool->item(paths.first()) : nullptr;
+    m_locateAction->setEnabled(one && one->missing);
     m_showAction->setEnabled(paths.size() == 1 && QFileInfo(paths.first()).absoluteDir().exists());
     m_removeAction->setEnabled(!paths.isEmpty() && !anyInUse);
     m_removeAction->setToolTip(anyInUse ? tr("Files used on the timeline can't be removed")

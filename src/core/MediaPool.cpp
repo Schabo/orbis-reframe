@@ -82,6 +82,24 @@ void MediaPool::remove(const QStringList &paths)
         emit changed();
 }
 
+bool MediaPool::relink(const QString &from, MediaItem item)
+{
+    const int i = indexOf(from);
+    if (i < 0 || item.path.isEmpty())
+        return false;
+    if (item.path == from || contains(item.path)) {
+        if (item.path != from)
+            m_items.removeAt(i);
+        else
+            m_items[i].missing = !QFileInfo::exists(from);
+    } else {
+        item.missing = !QFileInfo::exists(item.path);
+        m_items[i] = std::move(item);
+    }
+    emit changed();
+    return true;
+}
+
 void MediaPool::setItems(const QList<MediaItem> &items)
 {
     if (items == m_items)

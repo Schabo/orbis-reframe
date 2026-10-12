@@ -27,6 +27,12 @@ public:
     // is still served from memory).
     bool store(const QString &source, const privacy::PlateScan &scan, QString *error = nullptr);
 
+    // `from` was moved or renamed to `to`: give `to` the scan `from` had, if
+    // there is one on disk and `to` has none. Found by `from`'s path with
+    // `to`'s size and modification time, which a move keeps (a copy may
+    // not: then the clip is scanned again). True if one was carried over.
+    bool carryOver(const QString &from, const QString &to);
+
     // The folder scans are kept in (plates/ is added); empty = the user
     // cache. A change forgets what was read from the old one.
     void setDirectory(const QString &dir);
@@ -34,6 +40,9 @@ public:
     static QString diskPathIn(const QString &dir, const QString &source);
 
 private:
+    static QString diskPathIn(const QString &dir, const QString &absPath, qint64 size,
+                              qint64 mtimeMs);
+
     QString m_dir;
     QHash<QString, Scan> m_scans; // a null value = looked, there is none
 };

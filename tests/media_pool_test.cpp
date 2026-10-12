@@ -241,6 +241,26 @@ void testMediaTab()
     CHECK(!remove->isEnabled());
     CHECK(add->isEnabled());
 
+    // Locate file…: only for one missing file; double-clicking a missing
+    // file asks for it too, instead of adding it.
+    auto *locate = find<QAction>(&panel, "mediaLocateAction");
+    if (!locate)
+        return;
+    QSignalSpy locateSpy(&panel, &MediaPoolPanel::locateRequested);
+    panel.selectPaths({clip2});
+    CHECK(!locate->isEnabled());
+    panel.selectPaths({gone, clip2});
+    CHECK(!locate->isEnabled());
+    panel.selectPaths({gone});
+    CHECK(locate->isEnabled());
+    locate->trigger();
+    CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == gone);
+    {
+        QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
+        emit list->itemActivated(row(list, QStringLiteral("gone.wav")), 0);
+        CHECK(locateSpy.size() == 2 && addSpy.isEmpty());
+    }
+
     // Drag out: the files as URLs, missing ones left out.
     panel.selectPaths({clip2, gone});
     {

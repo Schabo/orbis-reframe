@@ -2166,6 +2166,7 @@ void testMediaPool()
         CHECK(s.load(old));
         CHECK(s.mediaPool()->count() == 3);
         CHECK(!s.mediaPool()->contains(unused));
+        CHECK(!s.modified() && !s.canUndo()); // filling the pool isn't an edit
         CHECK(s.mediaPool()->contains(song) && s.mediaPool()->contains(phone));
     }
 
@@ -2181,6 +2182,53 @@ void testMediaPool()
     CHECK(u.mediaPool()->count() == 0);
     u.newProject();
     CHECK(u.mediaPool()->count() == 0 && !u.modified());
+
+    // Relink: a missing file found somewhere else.
+    {
+        const QString moved = dir + "/moved";
+        QDir().mkpath(moved);
+        const QString oldClip = dir + "/media/gone.insv"; // never existed
+        const QString newClip = moved + "/gone.insv";
+        touch(newClip);
+        Project v;
+        const int a = v.timeline()->appendClip(oldClip, 20000, 29.97, 3840, 3840);
+        v.timeline()->setClipMediaMissing(a, true);
+        const int b = v.timeline()->appendClip(clip, 20000, 29.97, 3840, 3840);
+        const int t = v.timeline()->addTrack(Track::Kind::Audio);
+        v.timeline()->addAudioClip(t, oldClip, 20000, 0); // its sound, detached
+        CHECK(v.mediaPool()->item(oldClip) && v.mediaPool()->item(oldClip)->missing);
+        v.undo(); v.redo(); // settle the adds into their own step
+        const int before = v.mediaPool()->indexOf(oldClip);
+
+        CHECK(v.relinkMedia(oldClip, {newClip, MediaItem::Kind::Clip360, 20000, 3840, 3840,
+                                      29.97}) == 2);
+        CHECK(!v.mediaPool()->contains(oldClip));
+        CHECK(v.mediaPool()->indexOf(newClip) == before); // in its place
+        CHECK(!v.mediaPool()->item(newClip)->missing);
+        CHECK(v.timeline()->clipAt(0).sourcePath == newClip);
+        CHECK(!v.timeline()->clipAt(0).mediaMissing);
+        CHECK(v.timeline()->clipAt(1).sourcePath == clip);
+        CHECK(v.timeline()->trackAt(0).clips.front().sourcePath == newClip);
+        CHECK(!v.timeline()->trackAt(0).clips.front().mediaMissing);
+        CHECK(v.mediaPool()->count() == 2);
+        Q_UNUSED(b);
+
+        // One undo step back.
+        v.undo();
+        CHECK(v.timeline()->clipAt(0).sourcePath == oldClip);
+        CHECK(v.mediaPool()->contains(oldClip) && !v.mediaPool()->contains(newClip));
+        v.redo();
+        CHECK(v.timeline()->clipAt(0).sourcePath == newClip);
+
+        // Relinked to a file the pool has already: the old entry just goes.
+        Project w;
+        w.mediaPool()->add({oldClip, MediaItem::Kind::Clip360, 20000});
+        w.mediaPool()->add({newClip, MediaItem::Kind::Clip360, 20000});
+        CHECK(w.relinkMedia(oldClip, {newClip, MediaItem::Kind::Clip360, 20000}) == 0);
+        CHECK(w.mediaPool()->count() == 1 && w.mediaPool()->contains(newClip));
+        // Not in the pool: nothing happens.
+        CHECK(!w.mediaPool()->relink(dir + "/nothing.insv", {newClip}));
+    }
 }
 
 int main()

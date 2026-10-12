@@ -71,6 +71,11 @@ public:
     bool add(MediaItem item);
     // Remove these paths; the ones not in the pool are ignored.
     void remove(const QStringList &paths);
+    // The file at `from` is `item` now (found again after a move or rename):
+    // it takes `from`'s place in the list, or `from` just goes when `item`'s
+    // path is in the pool already. `missing` is set from the disk. False if
+    // `from` isn't in the pool.
+    bool relink(const QString &from, MediaItem item);
     // Replace everything (a project load / undo). Emits changed() once.
     void setItems(const QList<MediaItem> &items);
     void clear() { setItems({}); }

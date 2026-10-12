@@ -11,6 +11,7 @@
 #include "OutputSettings.h"
 
 class MediaPool;
+struct MediaItem;
 class QDir;
 class Timeline;
 
@@ -120,6 +121,11 @@ public slots:
     // emits previewStitchChanged when the value actually changes.
     void setPreviewStitch(const stitch::PreviewStitchConfig &config);
 
+    // A moved or renamed media file found again: `from` becomes `to` in the
+    // media pool and in every clip cut from it. One undo step, like any edit.
+    // Returns how many timeline clips changed.
+    int relinkMedia(const QString &from, const MediaItem &to);
+
     // Replace the output settings. Marks the project modified and emits
     // outputChanged when the value actually changes.
     void setOutput(const OutputSettings &output);
@@ -147,8 +153,9 @@ signals:
 
 private:
     void onTimelineEdited();
-    // Add every timeline source that isn't in the media pool yet.
-    void addTimelineSourcesToPool();
+    // Add every timeline source that isn't in the media pool yet. Skipped
+    // while rebuilding, unless `rebuilt` (the rebuild's own call at its end).
+    void addTimelineSourcesToPool(bool rebuilt = false);
     void setModified(bool modified);
     void setFilePath(const QString &path);
 

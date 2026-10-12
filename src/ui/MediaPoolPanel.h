@@ -47,7 +47,8 @@ private:
 // name. Each file shows a thumbnail, its name, kind and length, size and
 // frame rate; files used on the timeline are marked, missing files flagged.
 // Import buttons; drag a file onto the timeline; double-click or Enter adds
-// it there; right-click: add to timeline, show in the file manager, remove.
+// it there (a missing file: asks to locate it); right-click: add to
+// timeline, locate a missing file, show in the file manager, remove.
 // Thumbnails come from a provider run on worker threads (the app's decodes
 // a frame; none in tests).
 class MediaPoolPanel : public QWidget {
@@ -92,6 +93,8 @@ signals:
     // Files / folders dropped in from outside.
     void filesDropped(const QStringList &paths);
     void addToTimelineRequested(const QStringList &paths);
+    // Locate file… on a missing file.
+    void locateRequested(const QString &path);
 
 private:
     void rebuild();
@@ -105,6 +108,7 @@ private:
     MediaPoolList *m_list = nullptr;
     QLabel *m_status = nullptr;
     QAction *m_addAction = nullptr;
+    QAction *m_locateAction = nullptr;
     QAction *m_showAction = nullptr;
     QAction *m_removeAction = nullptr;
     ThumbnailProvider m_thumbnailProvider;

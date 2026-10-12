@@ -222,6 +222,11 @@ public slots:
     // Mark whether a clip's source file is currently resolvable. Set by the
     // project loader; the timeline widget will show missing clips differently.
     void setClipMediaMissing(int clipId, bool missing);
+    // Every clip (main track and extra tracks) cut from `from` now reads
+    // `to` (a moved or renamed file found again); their mediaMissing is set
+    // from whether `to` exists. Emits clipsReordered / tracksChanged for the
+    // tracks that had one. Returns how many clips changed.
+    int relinkSource(const QString &from, const QString &to);
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);

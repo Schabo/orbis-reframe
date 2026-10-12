@@ -483,8 +483,8 @@ Project::Project(QObject *parent)
         onUndoableEdited();
     });
     // Whatever goes on the timeline is in the pool too.
-    connect(m_timeline, &Timeline::clipInserted, this, &Project::addTimelineSourcesToPool);
-    connect(m_timeline, &Timeline::tracksChanged, this, &Project::addTimelineSourcesToPool);
+    connect(m_timeline, &Timeline::clipInserted, this, [this] { addTimelineSourcesToPool(); });
+    connect(m_timeline, &Timeline::tracksChanged, this, [this] { addTimelineSourcesToPool(); });
 
     const auto edited = [this] { onTimelineEdited(); onUndoableEdited(); };
     connect(m_timeline, &Timeline::clipInserted, this, edited);
@@ -509,8 +509,12 @@ Project::Project(QObject *parent)
     m_lastSettledSnapshot = snapshot(); // baseline for the empty starting project
 }
 
-void Project::addTimelineSourcesToPool()
+void Project::addTimelineSourcesToPool(bool rebuilt)
 {
+    // Mid-rebuild the timeline is half old, half new (clear() empties the
+    // tracks before the clips): the rebuild calls this once at its end.
+    if (m_rebuilding && !rebuilt)
+        return;
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         if (!m_mediaPool->contains(c.sourcePath))
@@ -544,6 +548,14 @@ void Project::addTimelineSourcesToPool()
             m_mediaPool->add(m);
         }
     }
+}
+
+int Project::relinkMedia(const QString &from, const MediaItem &to)
+{
+    // The pool first: the timeline's change notices add sources missing from
+    // it, and `to` is there by then.
+    m_mediaPool->relink(from, to);
+    return m_timeline->relinkSource(from, to.path);
 }
 
 void Project::onTimelineEdited()
@@ -615,6 +627,7 @@ int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double 
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
     const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height);
+    addTimelineSourcesToPool(true);
     m_rebuilding = false;
 
     setFilePath(QString());
@@ -949,6 +962,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             m_timeline->insertTrackClip(trackIds[i], c);
         }
     }
+    addTimelineSourcesToPool(true); // an older project's sources; not an edit
     m_rebuilding = false;
     emit projectReset();
     return true;

@@ -173,6 +173,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_mediaPanel, &MediaPoolPanel::filesDropped, this, &MainWindow::importMedia);
     connect(m_mediaPanel, &MediaPoolPanel::addToTimelineRequested, this,
             &MainWindow::addMediaToTimeline);
+    connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
 
     // Left: the sources sidebar and the viewport, over the timeline over the
     // transport strip.
@@ -2709,6 +2710,111 @@ void MainWindow::addMediaToTimeline(const QStringList &paths)
         addAudioFiles(audio, 0, m_lastTimelineMs);
 }
 
+void MainWindow::locateMedia(const QString &path)
+{
+    const MediaItem *missing = m_project->mediaPool()->item(path);
+    if (!missing || !missing->missing)
+        return;
+    const MediaItem old = *missing;
+    const QFileInfo oldInfo(path);
+
+    // Start where it was, or as close to it as still exists.
+    QDir start(oldInfo.absolutePath());
+    while (!start.exists() && start.cdUp()) {
+    }
+    QStringList patterns;
+    for (const QString &ext : media::extensions(old.kind))
+        patterns << QStringLiteral("*.") + ext;
+    const QString picked = QFileDialog::getOpenFileName(
+        this, tr("Locate %1").arg(oldInfo.fileName()),
+        start.exists() ? start.absolutePath() : QDir::homePath(),
+        tr("%1 (%2);;All files (*)")
+            .arg(oldInfo.fileName(), patterns.join(QLatin1Char(' '))));
+    if (picked.isEmpty())
+        return;
+
+    // The same file, moved or renamed: same kind, same length (and size for
+    // video). Anything else would leave the clips' trims and keys pointing
+    // at the wrong frames.
+    const auto probeSame = [](const MediaItem &was, const QString &file, QString *why) {
+        QString error;
+        std::optional<MediaItem> m = probeMedia(file, &error);
+        if (!m) {
+            *why = tr("It can't be read: %1").arg(error);
+            return m;
+        }
+        const auto kindName = [](MediaItem::Kind k) {
+            return k == MediaItem::Kind::Clip360 ? tr("a 360° clip")
+                   : k == MediaItem::Kind::Video ? tr("a video")
+                                                 : tr("an audio file");
+        };
+        const auto length = [](qint64 ms) {
+            const qint64 s = (ms + 500) / 1000;
+            return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
+        };
+        if (m->kind != was.kind)
+            *why = tr("It isn't the same file: it is %1, the missing one %2.").arg(kindName(m->kind), kindName(was.kind));
+        else if (was.durationMs > 0 && std::abs(m->durationMs - was.durationMs) > 1000)
+            *why = tr("It isn't the same file: it is %1 long, the missing one %2.")
+                       .arg(length(m->durationMs), length(was.durationMs));
+        else if (was.width > 0 && m->width > 0 &&
+                 (was.width != m->width || was.height != m->height))
+            *why = tr("It isn't the same file: it is %1×%2, the missing one %3×%4.")
+                       .arg(m->width).arg(m->height).arg(was.width).arg(was.height);
+        else
+            return m;
+        m.reset();
+        return m;
+    };
+    const QString target = QFileInfo(picked).absoluteFilePath();
+    QString why;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    std::optional<MediaItem> found = probeSame(old, target, &why);
+    QApplication::restoreOverrideCursor();
+    if (!found) {
+        QMessageBox::warning(this, tr("Locate file"),
+                             tr("%1 can't replace %2.\n%3")
+                                 .arg(QFileInfo(target).fileName(), oldInfo.fileName(), why));
+        return;
+    }
+
+    QList<std::pair<QString, MediaItem>> relinks{{path, *found}};
+    // Other missing files with their names in the same folder: a card or
+    // folder that moved as a whole.
+    const QDir newDir = QFileInfo(target).absoluteDir();
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    for (const MediaItem &m : m_project->mediaPool()->items()) {
+        if (!m.missing || m.path == path)
+            continue;
+        const QString candidate = newDir.absoluteFilePath(QFileInfo(m.path).fileName());
+        if (!QFileInfo::exists(candidate) || m_project->mediaPool()->contains(candidate))
+            continue;
+        QString ignored;
+        if (std::optional<MediaItem> same = probeSame(m, candidate, &ignored))
+            relinks.append({m.path, *same});
+    }
+    QApplication::restoreOverrideCursor();
+
+    for (const auto &[from, to] : relinks) {
+        m_plateScans.carryOver(from, to.path);
+        m_project->relinkMedia(from, to);
+        if (m_clipPath == from)
+            m_clipPath = to.path;
+    }
+    refreshClipPanels();
+    scheduleClipScans(); // sync / seam for a clip that had no file until now
+    m_mediaPanel->selectPaths({target});
+    if (relinks.size() > 1) {
+        QStringList names;
+        for (qsizetype i = 1; i < relinks.size(); ++i)
+            names << QFileInfo(relinks[i].second.path).fileName();
+        QMessageBox::information(this, tr("Locate file"),
+                                 tr("Other missing files were in the same folder too, and are "
+                                    "found again:\n%1")
+                                     .arg(names.join(QLatin1Char('\n'))));
+    }
+}
+
 void MainWindow::updateMediaInUse()
 {
     QSet<QString> used;
@@ -2804,7 +2910,9 @@ void MainWindow::openProject(const QString &projectPath)
     if (first.mediaMissing) {
         // Keep the loaded model on screen but don't try to play a missing file.
         QMessageBox::warning(this, tr("Missing media"),
-                             tr("A clip's source file was not found:\n%1").arg(first.sourcePath));
+                             tr("A clip's source file was not found:\n%1\n\nIf it was moved or "
+                                "renamed, find it with Locate file… on it in the Media tab.")
+                                 .arg(first.sourcePath));
         syncTimeline();
         return;
     }

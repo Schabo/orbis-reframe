@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
 
@@ -17,14 +18,38 @@ void PlateScanCache::setDirectory(const QString &dir)
 QString PlateScanCache::diskPathIn(const QString &dir, const QString &source)
 {
     const QFileInfo fi(source);
-    const QByteArray id = (fi.absoluteFilePath() + QLatin1Char('|') + QString::number(fi.size()) +
-                           QLatin1Char('|') + QString::number(fi.lastModified().toMSecsSinceEpoch()))
+    return diskPathIn(dir, fi.absoluteFilePath(), fi.size(),
+                      fi.lastModified().toMSecsSinceEpoch());
+}
+
+QString PlateScanCache::diskPathIn(const QString &dir, const QString &absPath, qint64 size,
+                                   qint64 mtimeMs)
+{
+    const QByteArray id = (absPath + QLatin1Char('|') + QString::number(size) + QLatin1Char('|') +
+                           QString::number(mtimeMs))
                               .toUtf8();
     const QString hash =
         QString::fromLatin1(QCryptographicHash::hash(id, QCryptographicHash::Sha1).toHex());
     const QString base =
         dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : dir;
     return base + QStringLiteral("/plates/") + hash + QStringLiteral(".scan");
+}
+
+bool PlateScanCache::carryOver(const QString &from, const QString &to)
+{
+    const QFileInfo fi(to);
+    const QString target = diskPath(to);
+    if (!fi.exists() || QFileInfo::exists(target))
+        return false;
+    const QString old = diskPathIn(m_dir, QFileInfo(from).absoluteFilePath(), fi.size(),
+                                   fi.lastModified().toMSecsSinceEpoch());
+    if (!QFileInfo::exists(old))
+        return false;
+    QDir().mkpath(QFileInfo(target).absolutePath());
+    if (!QFile::copy(old, target))
+        return false;
+    m_scans.remove(to); // a "none" looked up before
+    return true;
 }
 
 PlateScanCache::Scan PlateScanCache::get(const QString &source)

@@ -1,5 +1,7 @@
 #include "Timeline.h"
 
+#include <QFileInfo>
+
 #include <limits>
 #include <cmath>
 #include <algorithm>
@@ -479,6 +481,32 @@ void Timeline::setClipMediaMissing(int clipId, bool missing)
     ClipItem *c = mutableClipById(clipId);
     if (c)
         c->mediaMissing = missing;
+}
+
+int Timeline::relinkSource(const QString &from, const QString &to)
+{
+    if (from == to)
+        return 0;
+    const bool missing = !QFileInfo::exists(to);
+    int mainCount = 0, trackCount = 0;
+    for (ClipItem &c : m_clips)
+        if (c.sourcePath == from) {
+            c.sourcePath = to;
+            c.mediaMissing = missing;
+            ++mainCount;
+        }
+    for (Track &t : m_tracks)
+        for (TrackClip &c : t.clips)
+            if (c.sourcePath == from) {
+                c.sourcePath = to;
+                c.mediaMissing = missing;
+                ++trackCount;
+            }
+    if (mainCount)
+        emit clipsReordered(); // the wholesale-change notice: consumers rebuild
+    if (trackCount)
+        emit tracksChanged();
+    return mainCount + trackCount;
 }
 
 // ---------------------------------------------------------------------------

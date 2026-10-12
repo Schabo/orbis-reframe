@@ -374,6 +374,11 @@ private:
     void addMediaToTimeline(const QStringList &paths);
     // Mark the files the timeline uses in the Media tab.
     void updateMediaInUse();
+    // Locate file… on a missing file: pick where it is now; it must be the
+    // same file (kind and length), then it replaces the old path in the pool
+    // and on the timeline. Other missing files whose names are in the picked
+    // file's folder are relinked with it.
+    void locateMedia(const QString &path);
 
     // File menu project actions.
     // New project…: name, location and output format, then a project folder
