@@ -111,6 +111,10 @@ void testLibraryPage()
     ProjectLibraryPage page(&library);
     page.resize(1000, 700);
     page.show();
+    // Delete is a widget shortcut on the list, and Qt fires shortcuts only in
+    // the active window (Enter and double-click don't need it).
+    page.activateWindow();
+    CHECK(QTest::qWaitForWindowActive(&page));
     QSignalSpy loaded(&page, &ProjectLibraryPage::loaded);
     QSignalSpy open(&page, &ProjectLibraryPage::openRequested);
     QSignalSpy newProject(&page, &ProjectLibraryPage::newProjectRequested);
