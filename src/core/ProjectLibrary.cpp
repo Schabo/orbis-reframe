@@ -104,6 +104,7 @@ bool ProjectLibrary::save(QString *error) const
 
 bool ProjectLibrary::setProjectsFolder(const QString &folder, QString *error)
 {
+    load(); // what's on disk now (another window may have changed it)
     m_projectsFolder = folder.isEmpty() ? standardProjectsFolder() : clean(folder);
     return save(error);
 }
@@ -147,6 +148,7 @@ bool ProjectLibrary::noteOpened(const QString &path, const QDateTime &when, QStr
     const QString p = clean(path);
     if (p.isEmpty())
         return true;
+    load();
     m_listed.removeIf([&](const Entry &e) { return e.path == p; });
     m_hidden.removeAll(p);
     m_listed.push_front({p, when, when});
@@ -156,6 +158,7 @@ bool ProjectLibrary::noteOpened(const QString &path, const QDateTime &when, QStr
 bool ProjectLibrary::remove(const QString &path, QString *error)
 {
     const QString p = clean(path);
+    load();
     m_listed.removeIf([&](const Entry &e) { return e.path == p; });
     if (scanProjectsFolder().contains(p) && !m_hidden.contains(p))
         m_hidden.push_back(p);

@@ -2018,6 +2018,18 @@ void testProjectLibrary()
         CHECK(lib.projectsFolder() == ProjectLibrary::standardProjectsFolder());
     }
     {
+        // A change without load() first (a project opened from the command
+        // line) keeps what's in the file.
+        ProjectLibrary first(listFile);
+        CHECK(first.setProjectsFolder(folder));
+        ProjectLibrary lib(listFile);
+        CHECK(lib.noteOpened(loose, t0.addSecs(300)));
+        lib.load();
+        CHECK(lib.projectsFolder() == folder);
+        CHECK(lib.entries().size() == 3);
+        CHECK(lib.entries().constFirst().path == loose);
+    }
+    {
         // A file that isn't a library is ignored, not fatal.
         QFile f(listFile);
         CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));

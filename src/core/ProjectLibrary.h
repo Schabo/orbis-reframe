@@ -11,8 +11,9 @@
 // default). Remove from list forgets a project without touching its files; one
 // found in the projects folder is then hidden until it's opened again.
 //
-// Plain data, no widgets; the file is rewritten on every change (it's a few
-// lines).
+// Plain data, no widgets. Every change reads the file first and rewrites it
+// (it's a few lines), so a change never drops what's there -- also when
+// load() hasn't been called, or another window changed it meanwhile.
 class ProjectLibrary {
 public:
     struct Entry {
