@@ -187,14 +187,12 @@ int main(int argc, char *argv[])
     // A path on the command line: a *.orp file loads that project, anything
     // else is opened as a source clip. The open and the first stitch happen on
     // the playback worker thread, so the window shows immediately with a
-    // "Buffering…" indicator until the first frame lands.
-    if (argc > 1) {
+    // "Buffering…" indicator until the first frame lands. Without one, the
+    // window starts on the project library.
+    if (argc > 1)
         window.openPath(QString::fromLocal8Bit(argv[1]));
-    } else {
-        std::fprintf(stderr,
-                     "No path given; showing a blank viewport. Usage: %s <clip.insv | project.orp>\n",
-                     argv[0]);
-    }
+    else
+        window.showLibrary();
 
     window.show();
     return app.exec();

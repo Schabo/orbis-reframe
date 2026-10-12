@@ -8,8 +8,11 @@
 
 #include "ClipItem.h"
 #include "Project.h"
+#include "ProjectFolder.h"
+#include "ProjectLibrary.h"
 #include "Timeline.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -1902,6 +1905,174 @@ void testPerClipStabilization()
     }
 }
 
+void testProjectFolder()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString parent = tmp.path();
+
+    CHECK(!projectfolder::nameProblem(QString()).isEmpty());
+    CHECK(!projectfolder::nameProblem("  ").isEmpty());
+    CHECK(!projectfolder::nameProblem(" trip").isEmpty());
+    CHECK(!projectfolder::nameProblem("a/b").isEmpty());
+    CHECK(!projectfolder::nameProblem(".hidden").isEmpty());
+    CHECK(!projectfolder::nameProblem(QString(201, QLatin1Char('x'))).isEmpty());
+    CHECK(projectfolder::nameProblem("Summer trip 2026").isEmpty());
+
+    QString error;
+    const QString file = projectfolder::create(parent, "Summer trip", &error);
+    CHECK(error.isEmpty());
+    CHECK(file == parent + "/Summer trip/Summer trip.orp");
+    CHECK(!QFileInfo::exists(file)); // created by the first save, not here
+    for (const char *sub : {"cache", "exports", "screenshots"})
+        CHECK(QFileInfo(parent + "/Summer trip/" + sub).isDir());
+    CHECK(projectfolder::isProjectFolder(file));
+    CHECK(projectfolder::cacheDir(file) == parent + "/Summer trip/cache");
+    CHECK(projectfolder::exportsDir(file) == parent + "/Summer trip/exports");
+    CHECK(projectfolder::screenshotsDir(file) == parent + "/Summer trip/screenshots");
+
+    // Taken: refused, nothing changed.
+    CHECK(projectfolder::create(parent, "Summer trip", &error).isEmpty());
+    CHECK(!error.isEmpty());
+    CHECK(projectfolder::create(parent, "a/b", &error).isEmpty());
+
+    // A loose project file has no folders of its own.
+    const QString loose = parent + "/old.orp";
+    CHECK(!projectfolder::isProjectFolder(loose));
+    CHECK(projectfolder::cacheDir(loose).isEmpty());
+    CHECK(projectfolder::exportsDir(QString()).isEmpty());
+
+    // ensure() remakes a folder deleted by hand.
+    QDir(parent + "/Summer trip/exports").removeRecursively();
+    CHECK(projectfolder::ensure(projectfolder::exportsDir(file)) == parent + "/Summer trip/exports");
+    CHECK(QFileInfo(parent + "/Summer trip/exports").isDir());
+    CHECK(projectfolder::ensure(QString()).isEmpty());
+}
+
+void testProjectLibrary()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString listFile = tmp.path() + "/data/projects.json";
+    const QString folder = tmp.path() + "/Projects";
+
+    // Two project folders in the projects folder, one loose file elsewhere,
+    // and a folder that isn't a project.
+    const QString a = projectfolder::create(folder, "Alpha");
+    const QString b = projectfolder::create(folder, "Beta");
+    writeFile(a);
+    writeFile(b);
+    QDir().mkpath(folder + "/not a project");
+    const QString loose = tmp.path() + "/loose.orp";
+    writeFile(loose);
+
+    const QDateTime t0 = QDateTime::fromString("2026-10-01T10:00:00.000", Qt::ISODateWithMs);
+    {
+        ProjectLibrary lib(listFile);
+        lib.load(); // no file yet
+        CHECK(lib.projectsFolder() == ProjectLibrary::standardProjectsFolder());
+        CHECK(lib.setProjectsFolder(folder));
+        auto e = lib.entries();
+        CHECK(e.size() == 2); // found by the scan
+        for (const auto &x : e)
+            CHECK(!x.lastOpened.isValid());
+
+        CHECK(lib.noteOpened(loose, t0));
+        CHECK(lib.noteOpened(b, t0.addSecs(60)));
+        e = lib.entries();
+        CHECK(e.size() == 3);
+        if (e.size() == 3) {
+            // Newest first; found-only projects sort by their file time (now).
+            CHECK(e[0].path == a && !e[0].lastOpened.isValid());
+            CHECK(e[1].path == b && e[1].lastOpened == t0.addSecs(60));
+            CHECK(e[2].path == loose);
+        }
+    }
+    {
+        // Persisted: a fresh library reads the same list and folder.
+        ProjectLibrary lib(listFile);
+        lib.load();
+        CHECK(lib.projectsFolder() == folder);
+        CHECK(lib.entries().size() == 3);
+
+        // Remove from list: a listed loose file is gone; a found project is
+        // hidden (its files stay) until it's opened again.
+        CHECK(lib.remove(loose));
+        CHECK(lib.remove(a));
+        auto e = lib.entries();
+        CHECK(e.size() == 1 && e[0].path == b);
+        CHECK(QFileInfo::exists(a) && QFileInfo::exists(loose));
+        CHECK(lib.noteOpened(a, t0.addSecs(120)));
+        e = lib.entries();
+        CHECK(e.size() == 2 && e[0].path == a);
+
+        // A listed project whose file is gone stays listed (the card says so).
+        QFile::remove(b);
+        CHECK(lib.entries().size() == 2);
+    }
+    {
+        ProjectLibrary lib(listFile);
+        lib.load();
+        CHECK(lib.entries().size() == 2);
+        CHECK(lib.setProjectsFolder(QString())); // back to the standard one
+        CHECK(lib.projectsFolder() == ProjectLibrary::standardProjectsFolder());
+    }
+    {
+        // A file that isn't a library is ignored, not fatal.
+        QFile f(listFile);
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("{\"format\": \"something else\"}");
+        f.close();
+        ProjectLibrary lib(listFile);
+        lib.load();
+        CHECK(lib.projectsFolder() == ProjectLibrary::standardProjectsFolder());
+    }
+}
+
+void testProjectSummary()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Trip");
+    const QString clipA = tmp.path() + "/a.insv";
+    const QString clipB = tmp.path() + "/b.insv";
+    const QString song = tmp.path() + "/song.wav";
+    writeFile(clipA);
+    writeFile(clipB);
+    writeFile(song);
+    {
+        Project p;
+        const int a = p.timeline()->appendClip(clipA, 10000, 30.0);
+        p.timeline()->appendClip(clipB, 6000, 30.0);
+        p.timeline()->setClipTrimOut(a, 4000);
+        const int track = p.timeline()->addTrack(Track::Kind::Audio, "Music");
+        p.timeline()->addAudioClip(track, song, 20000, 0);
+        CHECK(p.save(file));
+    }
+    ProjectSummary s = ProjectSummary::read(file);
+    CHECK(s.name == "Trip");
+    CHECK(!s.fileMissing && s.error.isEmpty());
+    CHECK(s.clipCount == 2);
+    CHECK(s.durationMs == 10000);
+    CHECK(s.missingMedia == 0);
+    CHECK(s.firstClip == clipA);
+
+    QFile::remove(clipB);
+    QFile::remove(song);
+    s = ProjectSummary::read(file);
+    CHECK(s.missingMedia == 2);
+
+    QFile f(file);
+    CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("not json");
+    f.close();
+    s = ProjectSummary::read(file);
+    CHECK(!s.error.isEmpty());
+
+    s = ProjectSummary::read(tmp.path() + "/gone/gone.orp");
+    CHECK(s.fileMissing && s.name == "gone");
+}
+
 int main()
 {
     testClipItemTrim();
@@ -1926,6 +2097,9 @@ int main()
     testProjectTracksJson();
     testVideoTracks();
     testProjectVideoTracksJson();
+    testProjectFolder();
+    testProjectLibrary();
+    testProjectSummary();
 
     if (g_failures == 0)
         std::printf("core_model_test: all checks passed\n");

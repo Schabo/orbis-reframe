@@ -186,6 +186,10 @@ add_library(orbis_core STATIC
     src/core/Timeline.h
     src/core/Project.cpp
     src/core/Project.h
+    src/core/ProjectFolder.cpp
+    src/core/ProjectFolder.h
+    src/core/ProjectLibrary.cpp
+    src/core/ProjectLibrary.h
     src/core/OutputSettings.h
     src/core/ReframeTrack.cpp
     src/core/ReframeTrack.h
@@ -414,6 +418,14 @@ if(FFMPEG_FOUND)
         src/render/FrameStats.h
         src/ui/AboutDialog.cpp
         src/ui/AboutDialog.h
+        src/ui/ClipThumbnail.cpp
+        src/ui/ClipThumbnail.h
+        src/ui/NewProjectDialog.cpp
+        src/ui/NewProjectDialog.h
+        src/ui/OutputSettingsEditor.cpp
+        src/ui/OutputSettingsEditor.h
+        src/ui/ProjectLibraryPage.cpp
+        src/ui/ProjectLibraryPage.h
         src/ui/SystemCheck.cpp
         src/ui/SystemCheck.h
     )
@@ -603,6 +615,19 @@ if(Qt6Test_FOUND)
     target_include_directories(timeline_widget_test PRIVATE src/ui)
     target_link_libraries(timeline_widget_test PRIVATE Qt6::Widgets Qt6::Test)
     add_test(NAME timeline_widget_test COMMAND timeline_widget_test)
+
+    # The project library's start screen and New project dialog, found by
+    # objectName (no GPU).
+    add_executable(project_library_test tests/project_library_test.cpp
+        src/ui/ProjectLibraryPage.cpp src/ui/ProjectLibraryPage.h
+        src/ui/NewProjectDialog.cpp src/ui/NewProjectDialog.h
+        src/ui/OutputSettingsEditor.cpp src/ui/OutputSettingsEditor.h
+        src/ui/ClipThumbnail.cpp src/ui/ClipThumbnail.h
+        resources/resources.qrc)
+    set_target_properties(project_library_test PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_include_directories(project_library_test PRIVATE src/ui)
+    target_link_libraries(project_library_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
+    add_test(NAME project_library_test COMMAND project_library_test)
 endif()
 
 # insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.

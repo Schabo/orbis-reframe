@@ -11,18 +11,68 @@ pictures.
 A project holds your whole edit: the clips and their order, trims and
 speeds, reframe keyframes, the stabilization, stitching, colour, audio and
 privacy settings, the audio and overlay tracks, and the output settings.
-Projects are saved as `.orp` files.
+
+### The project library
+
+When orbis-reframe starts without a file to open, it shows the **project
+library**: every project as a card with a picture from its first clip, its
+name, when it was last opened, and how many clips it has and how long it
+is. A card says so in red when the project's file is gone, can't be read,
+or some of its media files are missing.
 
 | To | Do |
 |---|---|
-| Save the project | **File ▸ Save project** (`Ctrl+S`). The first time, it asks for a name and a folder. |
-| Save it under another name | **File ▸ Save project as…** (`Ctrl+Shift+S`). From then on, `Ctrl+S` saves to the new file. |
-| Open a project | **File ▸ Open project…** (`Ctrl+O`), or give the `.orp` file on the command line: `orbis-reframe my-ride.orp`. |
+| Open a project | Double-click its card, or select it and press `Enter`. |
+| Start a new project | **New project…** (`Ctrl+N`). |
+| Open a project file that isn't listed | **Open other…** (`Ctrl+O`). |
+| See a project's files | Right-click its card ▸ **Show in file manager**. |
+| Take a project off the list | Right-click its card ▸ **Remove from list**, or select it and press `Delete`. Its files are not deleted. |
+| Come back to the library | **File ▸ Project library…**. It closes the open project, asking first if there are unsaved changes. |
 
-The window's title shows the project's name, with a `*` while there are
-unsaved changes. There's no automatic saving: save regularly. When you
-close orbis-reframe or open another project with unsaved changes, it asks
-whether to save them.
+The library lists the projects you've opened or saved, and every project
+folder in the **projects folder**, `~/Videos/orbis-reframe` unless you pick
+another with **Change…** at the bottom of the library. New projects go
+there by default.
+
+### One folder per project
+
+**File ▸ New project…** (`Ctrl+N`) asks for the project's **name**, its
+**location** (the projects folder unless you browse to another) and the
+**output**: aspect ratio, resolution and frame rate (see
+[Project settings](#project-settings); you can change them later). It
+then makes a folder for the project and saves the new, empty project in it:
+
+```
+Summer trip/
+  Summer trip.orp   the project file
+  cache/            privacy-blur scans and audio waveforms
+  exports/          where exports are saved by default
+  screenshots/      where screenshots are saved by default
+```
+
+Deleting the folder deletes the whole project, scans included. The video
+and audio files you add stay where they are (see
+[Where the clips are](#where-the-clips-are)).
+
+| To | Do |
+|---|---|
+| Save the project | **File ▸ Save project** (`Ctrl+S`). |
+| Save a copy in a new project folder | **File ▸ Save project as…** (`Ctrl+Shift+S`): give the copy a name and location. From then on, `Ctrl+S` saves to the copy. Its privacy-blur scans are copied along. |
+| Open a project file from anywhere | **File ▸ Open project…** (`Ctrl+O`), or give the `.orp` file on the command line: `orbis-reframe my-ride.orp`. |
+
+The window's title shows the project's file name, with a `*` while there
+are unsaved changes. There's no automatic saving: save regularly. When you
+close orbis-reframe, open another project or go back to the library with
+unsaved changes, it asks whether to save them.
+
+**Projects from before project folders** (a `.orp` file on its own, made
+with version 0.2.0 or older) still open with **Open project…** and save
+where they are. Their scans and waveforms stay in `~/.cache/orbis-reframe/`.
+**Save project as…** puts such a project into a folder of its own.
+
+**A clip opened on the command line** (`orbis-reframe clip.insv`) starts an
+*untitled* project. **Save project** asks for a name and location and makes
+its folder.
 
 ### Where the clips are
 
@@ -31,17 +81,18 @@ are. Your original files are never changed.
 
 - **Keep the files where they are.** If a file is moved or renamed after you
   added it, the project can't find it. When you open the project, it says
-  *Missing media* and the clip can't play. Put the file back where it was
-  (with its old name) and open the project again.
-- **Save the project in the folder with your clips**, or in a folder above
-  it. orbis-reframe then stores the clips' places relative to the project,
-  so you can move or copy the whole folder, for example to another disk or
-  computer, and the project still finds everything.
+  *Missing media* and the clip can't play, and its card in the library says
+  how many files are missing. Put the file back where it was (with its old
+  name) and open the project again.
+- **To move a project with its clips**, put the clips inside the project's
+  folder, for example in a `media` folder next to the `.orp` file. orbis-reframe
+  then stores their places relative to the project, so you can move or copy
+  the whole folder, for example to another disk or computer, and the project
+  still finds everything.
 
 Measurements orbis-reframe makes for each clip (gyro sync and seam
-alignment) are saved in the project. Privacy-blur scans are kept in
-`~/.cache/orbis-reframe/` instead: on another computer, scan the clips
-again.
+alignment) are saved in the project file, and privacy-blur scans in the
+project's `cache/` folder.
 
 ## Project settings
 
@@ -95,7 +146,8 @@ normal, flat MP4 video that plays anywhere.
    The box next to it shows the bitrate in Mbit/s, and **File size** the
    approximate size of the finished file. Your choice is remembered for the
    next export.
-6. Click **Export…** and choose where to save the file.
+6. Click **Export…** and choose where to save the file. It's suggested in
+   the project's `exports/` folder, named after the project.
 7. A progress window shows how far the export has come. **Cancel** stops it
    and deletes the unfinished file.
 
@@ -142,5 +194,6 @@ project's resolution, with the same quality as the export: the viewport's
 current view, with stabilization, colour, privacy blur and overlays.
 
 The suggested file name is the project's name and the playhead's time, in
-the project's folder (or in your Pictures folder while the project hasn't
-been saved yet). The transport bar says when the picture is saved.
+the project's `screenshots/` folder (in the project file's folder for a
+project from before project folders, and in your Pictures folder for an
+untitled one). The transport bar says when the picture is saved.

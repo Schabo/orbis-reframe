@@ -33,9 +33,13 @@
 
 class QAction;
 class QCloseEvent;
+class QShortcut;
+class QStackedWidget;
 class QThread;
 class QVulkanInstance;
 class Project;
+class ProjectLibrary;
+class ProjectLibraryPage;
 class Timeline;
 struct ClipItem;
 class EquirectViewportWindow;
@@ -76,6 +80,8 @@ public:
     void openClip(const QString &clipPath);
     // Load a project file and start playing its timeline.
     void openProject(const QString &projectPath);
+    // The start screen (no project open): the project library.
+    void showLibrary();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -354,7 +360,29 @@ private:
     void addClipFiles(const QStringList &paths, int index);
 
     // File menu project actions.
+    // New project…: name, location and output format, then a project folder
+    // with the (empty) project saved in it.
+    void newProject();
+    // Open project…: any project file, also one outside the library.
+    void openProjectFile();
+    // Project library…: close the project (asking to save) and show the
+    // start screen.
+    void closeToLibrary();
+    // The editor in the window instead of the library; the editor's actions
+    // and shortcuts work only while it's shown.
+    void showEditor();
+    void setEditorActive(bool active);
+    // No clip: the panels' no-clip state, the controller idle.
+    void bindEmptyTimeline();
+    // Plate scans and waveforms in the project folder's cache/ (the user
+    // cache for an untitled or loose project) of `projectFile`; on every
+    // file path change, and before a project loads.
+    void updateCacheDirs(const QString &projectFile);
+    // Saved or opened: to the top of the library.
+    void noteProjectOpened();
     void saveProject();
+    // Save into a new project folder (also how an untitled project and a
+    // loose project file get one).
     void saveProjectAs();
     // Prompt to save if the project is modified. Returns false if the user
     // cancelled (the caller should abort whatever it was about to do).
@@ -363,6 +391,15 @@ private:
     // QFileDialog::getSaveFileName with a "&Save" button (Alt+S / S in the
     // file list): Qt's own label has no mnemonic. `path` may name the file.
     QString askSaveFileName(const QString &caption, const QString &path, const QString &filter);
+
+    // The window's two pages: the library (start screen) and the editor.
+    QStackedWidget *m_pages = nullptr;
+    ProjectLibraryPage *m_libraryPage = nullptr;
+    QWidget *m_editorPage = nullptr;
+    std::unique_ptr<ProjectLibrary> m_library;
+    // Off while the library is shown (they'd act on the hidden editor).
+    QList<QAction *> m_editorActions;
+    QList<QShortcut *> m_editorShortcuts;
 
     EquirectViewportWindow *m_viewport = nullptr;
     TimelineWidget *m_timelineWidget = nullptr;

@@ -5,6 +5,7 @@
      window     #1e1f22    surface    #26282c    raised     #2f3136
      border     #3a3d42    text       #e0e0e0    text-dim   #9aa0a8
      disabled   #5a5f66    accent     #4a9eff    accent-bg  #2b3a4d
+     problem    #e05555
    Links in rich text get the accent from the palette (main.cpp): a
    stylesheet can't colour them.
 */
@@ -284,4 +285,38 @@ QProgressBar::chunk {
 }
 #settingsPanelBody QLabel#mediaInfoValue {
     color: #d0d4da;
+}
+
+/* ================= Project library (start screen) ================= */
+
+#projectLibrary {
+    background-color: #1e1f22;
+}
+#projectLibraryTitle {
+    font-size: 18px;
+    font-weight: 600;
+}
+/* The cards are painted (ProjectCardList); their colours come from here. */
+#projectList {
+    background-color: #1e1f22;
+    selection-background-color: #4a9eff;
+    qproperty-cardColor: #26282c;
+    qproperty-cardHoverColor: #2f3136;
+    qproperty-dimTextColor: #9aa0a8;
+    qproperty-problemColor: #e05555;
+}
+#projectLibraryEmpty, #projectsFolderLabel {
+    color: #9aa0a8;
+}
+
+/* ---- Dialogs: section headings, hints, a line that turns into a problem ---- */
+QLabel#dialogSection {
+    font-weight: 600;
+    padding-top: 8px;
+}
+QLabel#dialogHint, QLabel#projectFolderResult {
+    color: #9aa0a8;
+}
+QLabel#projectFolderResult[problem="true"] {
+    color: #e05555;
 }

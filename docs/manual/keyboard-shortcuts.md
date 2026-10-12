@@ -61,15 +61,19 @@ shortcuts.
 
 | Key | Does |
 |---|---|
-| `Ctrl+O` | Open a project. |
+| `Ctrl+N` | New project. |
+| `Ctrl+O` | Open a project file. |
 | `Ctrl+S` | Save the project. |
-| `Ctrl+Shift+S` | Save the project under another name. |
+| `Ctrl+Shift+S` | Save a copy of the project in a new project folder. |
 | `Ctrl+Shift+A` | Add a clip to the timeline. |
 | `Ctrl+Shift+M` | Add an audio file. |
 | `Ctrl+Shift+V` | Add a video overlay. |
 | `Ctrl+E` | Export the video. |
 | `Ctrl+Shift+P` | Save a screenshot of the frame at the playhead. |
 | `Ctrl+Q` | Quit. |
+
+In the project library: `Enter` opens the selected project, `Delete`
+removes it from the list (its files stay).
 | `F1` | Show the keyboard shortcuts. |
 
 When orbis-reframe asks whether to save unsaved changes, `S` saves, `D`

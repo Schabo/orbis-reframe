@@ -6,7 +6,15 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 
-QString PlateScanCache::diskPath(const QString &source)
+void PlateScanCache::setDirectory(const QString &dir)
+{
+    if (dir == m_dir)
+        return;
+    m_dir = dir;
+    m_scans.clear();
+}
+
+QString PlateScanCache::diskPathIn(const QString &dir, const QString &source)
 {
     const QFileInfo fi(source);
     const QByteArray id = (fi.absoluteFilePath() + QLatin1Char('|') + QString::number(fi.size()) +
@@ -14,8 +22,9 @@ QString PlateScanCache::diskPath(const QString &source)
                               .toUtf8();
     const QString hash =
         QString::fromLatin1(QCryptographicHash::hash(id, QCryptographicHash::Sha1).toHex());
-    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
-           QStringLiteral("/plates/") + hash + QStringLiteral(".scan");
+    const QString base =
+        dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : dir;
+    return base + QStringLiteral("/plates/") + hash + QStringLiteral(".scan");
 }
 
 PlateScanCache::Scan PlateScanCache::get(const QString &source)

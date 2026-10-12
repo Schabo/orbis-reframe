@@ -1,6 +1,8 @@
 #include "MainWindow.h"
 
 #include "AboutDialog.h"
+#include "NewProjectDialog.h"
+#include "ProjectLibraryPage.h"
 #include "SystemCheck.h"
 
 #include "../core/Log.h"
@@ -12,6 +14,7 @@
 #include <QDir>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -31,6 +34,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QStackedWidget>
 #include <QStandardPaths>
 #include <QThread>
 #include <QVBoxLayout>
@@ -81,6 +85,8 @@
 #include "panels/StitchingPanel.h"
 #include "../core/ClipItem.h"
 #include "../core/Project.h"
+#include "../core/ProjectFolder.h"
+#include "../core/ProjectLibrary.h"
 #include "../core/Timeline.h"
 #include "../render/EquirectViewportWindow.h"
 
@@ -120,6 +126,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_project, &Project::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
     connect(m_project, &Project::filePathChanged, this, [this](const QString &) {
         updateWindowTitle();
+        updateCacheDirs(m_project->filePath());
     });
     updateWindowTitle();
 
@@ -157,13 +164,25 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     m_mediaInfoPanel = new MediaInfoPanel; // starts in its no-clip state
     m_sidebar->addPanel(m_mediaInfoPanel);
 
-    auto *central = new QWidget(this);
-    auto *layout = new QHBoxLayout(central);
+    m_editorPage = new QWidget(this);
+    auto *layout = new QHBoxLayout(m_editorPage);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(leftColumn, 1);
     layout->addWidget(m_sidebar, 0);
-    setCentralWidget(central);
+
+    // The start screen (no project open) and the editor share the window.
+    m_library = std::make_unique<ProjectLibrary>();
+    m_libraryPage = new ProjectLibraryPage(m_library.get(), this);
+    connect(m_libraryPage, &ProjectLibraryPage::openRequested, this, &MainWindow::openProject);
+    connect(m_libraryPage, &ProjectLibraryPage::newProjectRequested, this, &MainWindow::newProject);
+    connect(m_libraryPage, &ProjectLibraryPage::openOtherRequested, this,
+            &MainWindow::openProjectFile);
+    m_pages = new QStackedWidget(this);
+    m_pages->addWidget(m_libraryPage);
+    m_pages->addWidget(m_editorPage);
+    m_pages->setCurrentWidget(m_libraryPage); // until a project opens (main.cpp)
+    setCentralWidget(m_pages);
 
     // The controller runs on its own thread: opening a clip and its first
     // stitch block, which must not stall the GUI. No parent
@@ -732,47 +751,62 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     });
 
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
+    QAction *newProjectAction =
+        fileMenu->addAction(tr("&New project…"), this, &MainWindow::newProject);
+    newProjectAction->setObjectName(QStringLiteral("newProjectAction"));
+    newProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
+    newProjectAction->setIcon(QIcon(QStringLiteral(":/icons/file-plus-2.svg")));
     QAction *openProjectAction =
-        fileMenu->addAction(tr("&Open project…"), this, [this] {
-            if (!confirmDiscardChanges())
-                return;
-            const QString path = QFileDialog::getOpenFileName(
-                this, tr("Open project"), QDir::homePath(),
-                tr("orbis-reframe project (*.%1)").arg(Project::kFileExtension));
-            if (!path.isEmpty())
-                openProject(path);
-        });
+        fileMenu->addAction(tr("&Open project…"), this, &MainWindow::openProjectFile);
+    openProjectAction->setObjectName(QStringLiteral("openProjectAction"));
     openProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
     openProjectAction->setIcon(QIcon(QStringLiteral(":/icons/folder-open.svg")));
+    QAction *libraryAction =
+        fileMenu->addAction(tr("Project &library…"), this, &MainWindow::closeToLibrary);
+    libraryAction->setObjectName(QStringLiteral("projectLibraryAction"));
+    libraryAction->setIcon(QIcon(QStringLiteral(":/icons/layers.svg")));
+    fileMenu->addSeparator();
     QAction *addClipAction =
         fileMenu->addAction(tr("&Add clip to timeline…"), this, [this] { addClipToTimeline(); });
+    addClipAction->setObjectName(QStringLiteral("addClipAction"));
     addClipAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
     addClipAction->setIcon(QIcon(QStringLiteral(":/icons/file-plus-2.svg")));
     QAction *addAudioAction = fileMenu->addAction(
         tr("Add a&udio file…"), this, [this] { addAudioFile(0, m_lastTimelineMs); });
+    addAudioAction->setObjectName(QStringLiteral("addAudioAction"));
     addAudioAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
     QAction *addVideoAction = fileMenu->addAction(
         tr("Add &video overlay…"), this, [this] { addVideoFile(0, m_lastTimelineMs); });
+    addVideoAction->setObjectName(QStringLiteral("addVideoAction"));
     addVideoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
     addVideoAction->setIcon(QIcon(QStringLiteral(":/icons/picture-in-picture-2.svg")));
+    fileMenu->addSeparator();
     QAction *saveProjectAction =
         fileMenu->addAction(tr("&Save project"), this, &MainWindow::saveProject);
+    saveProjectAction->setObjectName(QStringLiteral("saveProjectAction"));
     saveProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
     saveProjectAction->setIcon(QIcon(QStringLiteral(":/icons/save.svg")));
     QAction *saveProjectAsAction =
         fileMenu->addAction(tr("Save project &as…"), this, &MainWindow::saveProjectAs);
+    saveProjectAsAction->setObjectName(QStringLiteral("saveProjectAsAction"));
     saveProjectAsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+    // Their own enabled state (a clip open, undo history) is already off
+    // while no project is open; these would act on the hidden editor.
+    m_editorActions = {libraryAction, addClipAction, addAudioAction, addVideoAction,
+                       saveProjectAction, saveProjectAsAction};
     fileMenu->addSeparator();
 
     // File -> Export flat video… (disabled until a clip is open).
     m_exportAction = fileMenu->addAction(tr("&Export flat video…"), this,
                                         &MainWindow::exportFlatVideo);
+    m_exportAction->setObjectName(QStringLiteral("exportAction"));
     m_exportAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     m_exportAction->setIcon(QIcon(QStringLiteral(":/icons/download.svg")));
     m_exportAction->setEnabled(false);
 
     m_screenshotAction = fileMenu->addAction(tr("Save &screenshot"), this,
                                              &MainWindow::takeScreenshot);
+    m_screenshotAction->setObjectName(QStringLiteral("screenshotAction"));
     m_screenshotAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     m_screenshotAction->setIcon(QIcon(QStringLiteral(":/icons/camera.svg")));
     m_screenshotAction->setEnabled(false);
@@ -782,6 +816,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // close() runs closeEvent() -> confirmDiscardChanges(), so an unsaved
     // project still prompts before the app exits.
     QAction *quitAction = fileMenu->addAction(tr("&Quit"), this, &QWidget::close);
+    quitAction->setObjectName(QStringLiteral("quitAction"));
     quitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
     quitAction->setMenuRole(QAction::QuitRole);
 
@@ -790,9 +825,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // per-action label, so these are just "Undo"/"Redo".
     QMenu *editMenu = menuBar()->addMenu(tr("&Edit"));
     m_undoAction = editMenu->addAction(tr("&Undo"), this, &MainWindow::undo);
+    m_undoAction->setObjectName(QStringLiteral("undoAction"));
     m_undoAction->setShortcut(QKeySequence::Undo);
     m_undoAction->setEnabled(m_project->canUndo());
     m_redoAction = editMenu->addAction(tr("&Redo"), this, &MainWindow::redo);
+    m_redoAction->setObjectName(QStringLiteral("redoAction"));
     m_redoAction->setShortcut(QKeySequence::Redo);
     m_redoAction->setEnabled(m_project->canRedo());
     connect(m_project, &Project::canUndoChanged, m_undoAction, &QAction::setEnabled);
@@ -862,6 +899,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
 #endif
 
     m_playbackThread->start();
+    setEditorActive(false); // the library is shown until a project opens
 }
 
 MainWindow::~MainWindow()
@@ -1895,6 +1933,7 @@ void MainWindow::addKey(const QString &group, const QString &what,
         sc->setContext(Qt::ApplicationShortcut);
         sc->setAutoRepeat(true);
         connect(sc, &QShortcut::activated, this, fn);
+        m_editorShortcuts.push_back(sc);
     }
     m_keyHelp.append({group, what, keys, keysLabel});
 }
@@ -2490,29 +2529,40 @@ void MainWindow::openClip(const QString &clipPath)
         syncStabilizationPanel();
         syncPrivacyPanel();
     }
+    showEditor();
     syncTimeline(); // opens paused on the first frame
+}
+
+void MainWindow::bindEmptyTimeline()
+{
+    m_clipId = 0;
+    m_clipPath.clear();
+    m_fps = 0.0;
+    m_audioPanel->setNoClip();
+    m_colourPanel->setNoClip();
+    m_stabilizationPanel->setNoClip();
+    m_privacyPanel->setNoClip();
+    m_mediaInfoPanel->setNoClip();
+    syncTimeline(); // empty -> controller goes idle, widget clears
 }
 
 void MainWindow::openProject(const QString &projectPath)
 {
     QString error;
+    // Before the load: rebuilding the timeline already asks for waveforms.
+    updateCacheDirs(projectPath);
     m_rebindingModel = true;
     const bool loaded = m_project->load(projectPath, &error);
     m_rebindingModel = false;
     if (!loaded) {
+        updateCacheDirs(m_project->filePath());
         QMessageBox::warning(this, tr("Could not open project"), error);
         return;
     }
+    noteProjectOpened();
+    showEditor();
     if (m_timeline->count() == 0) {
-        m_clipId = 0;
-        m_clipPath.clear();
-        m_fps = 0.0;
-        m_audioPanel->setNoClip();
-        m_colourPanel->setNoClip();
-        m_stabilizationPanel->setNoClip();
-        m_privacyPanel->setNoClip();
-        m_mediaInfoPanel->setNoClip();
-        syncTimeline(); // empty -> controller goes idle, widget clears
+        bindEmptyTimeline();
         return;
     }
 
@@ -2537,6 +2587,91 @@ void MainWindow::openProject(const QString &projectPath)
     syncTimeline(); // opens paused on the first frame
 }
 
+void MainWindow::openProjectFile()
+{
+    if (!confirmDiscardChanges())
+        return;
+    const QString current = m_project->filePath();
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Open project"),
+        current.isEmpty() ? m_library->projectsFolder() : QFileInfo(current).absolutePath(),
+        tr("orbis-reframe project (*.%1)").arg(Project::kFileExtension));
+    if (!path.isEmpty())
+        openProject(path);
+}
+
+void MainWindow::newProject()
+{
+    if (!confirmDiscardChanges())
+        return;
+    NewProjectDialog dlg(NewProjectDialog::Mode::NewProject, m_library->projectsFolder(), this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    m_rebindingModel = true;
+    m_project->newProject();
+    m_project->setOutput(dlg.output());
+    m_rebindingModel = false;
+    // Saved straight away, so the project is on disk and in the library
+    // from the start.
+    QString error;
+    if (!m_project->save(dlg.projectFile(), &error))
+        QMessageBox::warning(this, tr("Could not save project"), error);
+    else
+        noteProjectOpened();
+    showEditor();
+    bindEmptyTimeline();
+}
+
+void MainWindow::closeToLibrary()
+{
+    if (!confirmDiscardChanges())
+        return;
+    stopPlateJob(); // its scan is about clips that are going away
+    m_rebindingModel = true;
+    m_project->newProject();
+    m_rebindingModel = false;
+    bindEmptyTimeline();
+    showLibrary();
+}
+
+void MainWindow::showLibrary()
+{
+    setEditorActive(false);
+    if (m_pages->currentWidget() != m_libraryPage) {
+        // Let the viewport release its swapchain while it's still shown (as
+        // closeEvent does): hiding it first crashes some NVIDIA drivers. It
+        // starts again on its own when the editor is shown.
+        QPlatformSurfaceEvent aboutToGo(QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed);
+        QCoreApplication::sendEvent(m_viewport, &aboutToGo);
+        m_pages->setCurrentWidget(m_libraryPage);
+    }
+    m_libraryPage->refresh();
+    m_libraryPage->setFocus();
+    updateWindowTitle();
+}
+
+void MainWindow::showEditor()
+{
+    m_pages->setCurrentWidget(m_editorPage);
+    setEditorActive(true);
+    updateWindowTitle();
+}
+
+void MainWindow::setEditorActive(bool active)
+{
+    for (QAction *a : std::as_const(m_editorActions))
+        a->setEnabled(active);
+    for (QShortcut *sc : std::as_const(m_editorShortcuts))
+        sc->setEnabled(active);
+}
+
+void MainWindow::noteProjectOpened()
+{
+    QString error;
+    if (!m_library->noteOpened(m_project->filePath(), QDateTime::currentDateTime(), &error))
+        std::fprintf(stderr, "%s\n", error.toLocal8Bit().constData());
+}
+
 void MainWindow::saveProject()
 {
     if (m_project->filePath().isEmpty()) {
@@ -2546,24 +2681,47 @@ void MainWindow::saveProject()
     QString error;
     if (!m_project->save(m_project->filePath(), &error))
         QMessageBox::warning(this, tr("Could not save project"), error);
+    else
+        noteProjectOpened();
 }
 
 void MainWindow::saveProjectAs()
 {
-    const QString suggested =
-        m_project->filePath().isEmpty()
-            ? QDir::homePath() + QStringLiteral("/untitled.%1").arg(Project::kFileExtension)
-            : m_project->filePath();
-    QString path = askSaveFileName(
-        tr("Save project as"), suggested,
-        tr("orbis-reframe project (*.%1)").arg(Project::kFileExtension));
-    if (path.isEmpty())
+    NewProjectDialog dlg(NewProjectDialog::Mode::SaveAs, m_library->projectsFolder(), this);
+    // Suggest the project's name, or the first clip's for an untitled one.
+    const QString from = !m_project->filePath().isEmpty() ? m_project->filePath() : m_clipPath;
+    dlg.setName(QFileInfo(from).completeBaseName());
+    if (dlg.exec() != QDialog::Accepted)
         return;
-    if (QFileInfo(path).suffix().isEmpty())
-        path += QStringLiteral(".%1").arg(Project::kFileExtension);
+    // Plate scans take minutes: bring the clips' along into the new folder's
+    // cache (waveforms are quick to redo).
+    const QString newCache = projectfolder::cacheDir(dlg.projectFile());
+    const QString oldCache = projectfolder::cacheDir(m_project->filePath());
+    if (!newCache.isEmpty()) {
+        for (int i = 0; i < m_timeline->count(); ++i) {
+            const QString src = m_timeline->clipAt(i).sourcePath;
+            const QString from = PlateScanCache::diskPathIn(oldCache, src);
+            const QString to = PlateScanCache::diskPathIn(newCache, src);
+            if (QFileInfo::exists(from) && !QFileInfo::exists(to)) {
+                QDir().mkpath(QFileInfo(to).absolutePath());
+                QFile::copy(from, to);
+            }
+        }
+    }
     QString error;
-    if (!m_project->save(path, &error))
+    if (!m_project->save(dlg.projectFile(), &error))
         QMessageBox::warning(this, tr("Could not save project"), error);
+    else
+        noteProjectOpened();
+}
+
+void MainWindow::updateCacheDirs(const QString &projectFile)
+{
+    // A project folder's own cache/; the user cache for an untitled or loose
+    // project (and if the folder can't be made).
+    const QString dir = projectfolder::ensure(projectfolder::cacheDir(projectFile));
+    m_plateScans.setDirectory(dir);
+    m_waveforms->setDirectory(dir);
 }
 
 bool MainWindow::confirmDiscardChanges()
@@ -2602,6 +2760,10 @@ QString MainWindow::askSaveFileName(const QString &caption, const QString &path,
 
 void MainWindow::updateWindowTitle()
 {
+    if (m_pages && m_pages->currentWidget() == m_libraryPage) {
+        setWindowTitle(QStringLiteral("orbis-reframe"));
+        return;
+    }
     QString name = m_project && !m_project->filePath().isEmpty()
                        ? QFileInfo(m_project->filePath()).fileName()
                        : tr("untitled");
@@ -2678,9 +2840,19 @@ void MainWindow::exportFlatVideo()
         return;
     opts.rememberQuality();
 
-    QString path = askSaveFileName(tr("Export flat video"),
-                                   QDir::homePath() + QStringLiteral("/timeline.mp4"),
-                                   tr("MP4 video (*.mp4)"));
+    // Suggested in the project's exports/ folder (a loose project file's own
+    // folder), named after the project, with -2, -3, ... if that's taken.
+    QString suggested = QDir::homePath() + QStringLiteral("/timeline.mp4");
+    if (const QString file = m_project->filePath(); !file.isEmpty()) {
+        QString dir = projectfolder::ensure(projectfolder::exportsDir(file));
+        if (dir.isEmpty())
+            dir = QFileInfo(file).absolutePath();
+        const QString base = QFileInfo(file).completeBaseName();
+        suggested = QDir(dir).filePath(base + QStringLiteral(".mp4"));
+        for (int n = 2; QFileInfo::exists(suggested); ++n)
+            suggested = QDir(dir).filePath(QStringLiteral("%1-%2.mp4").arg(base).arg(n));
+    }
+    QString path = askSaveFileName(tr("Export flat video"), suggested, tr("MP4 video (*.mp4)"));
     if (path.isEmpty())
         return;
     if (QFileInfo(path).suffix().isEmpty())
@@ -3559,14 +3731,17 @@ void MainWindow::takeScreenshot()
     const auto guard = m_project->previewStitch().lensGuard;
     const bool depthSeam = m_project->previewStitch().depthSeam;
 
-    // Suggested in the project's folder, or Pictures while it's unsaved; named
+    // Suggested in the project's screenshots/ folder (a loose project file's
+    // own folder), or Pictures while it's unsaved; named
     // after the project (or the clip) and the playhead's timeline time, with a
     // -2, -3, ... suffix if that name is taken.
     QString dir;
     QString base;
     if (!m_project->filePath().isEmpty()) {
         const QFileInfo fi(m_project->filePath());
-        dir = fi.absolutePath();
+        dir = projectfolder::ensure(projectfolder::screenshotsDir(m_project->filePath()));
+        if (dir.isEmpty())
+            dir = fi.absolutePath();
         base = fi.completeBaseName();
     } else {
         dir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);

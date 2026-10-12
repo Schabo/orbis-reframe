@@ -4,6 +4,10 @@ This page is a tour of orbis-reframe's window: what each part is called,
 what it's for, and which chapter covers it in detail. The later chapters use
 the names from here.
 
+Without a project open, the window shows the **project library**, your
+projects as cards; see [Projects and export](projects-and-export.md#the-project-library).
+With one open, it looks like this:
+
 ![The orbis-reframe window with a project open](images/main-window.jpg)
 
 1. The **viewport**: the picture.
@@ -101,10 +105,11 @@ instead. The **Project** panel applies to the whole project.
 
 | Menu | Contains |
 |---|---|
-| **File** | Open, save, add clips, audio files and video overlays, export, screenshot, quit. |
+| **File** | New project, open project, back to the project library; add clips, audio files and video overlays; save, save as; export, screenshot, quit. |
 | **Edit** | **Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Shift+Z`). Undo steps back through your edits to the project; looking around in the viewport isn't an edit and isn't undone. |
 | **Help** | **Keyboard shortcuts** (`F1`) and **About orbis-reframe**, with the version and the diagnostics to include in a problem report. |
 
-When you close the window or open another project with unsaved changes,
+When you close the window, open another project or go back to the project
+library with unsaved changes,
 orbis-reframe asks whether to save them first: **Save** (`S` or `Enter`),
 **Discard** (`D`) or **Cancel** (`Esc`).

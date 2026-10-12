@@ -224,11 +224,13 @@ To remove the tarball version, delete its folder.
   ~/Applications/orbis-reframe-<version>-<target>-x86_64/orbis-reframe
   ```
 
-You can also give it a clip or a project file to open straight away:
+It opens on the **project library**, the list of your projects (empty the
+first time). You can also give it a clip or a project file to open straight
+away:
 
 ```sh
 orbis-reframe ~/Videos/VID_20260815_143012_00_012.insv
-orbis-reframe ~/Videos/my-ride.orp
+orbis-reframe ~/Videos/orbis-reframe/my-ride/my-ride.orp
 ```
 
 `orbis-reframe --version` prints the version without opening a window.
@@ -238,13 +240,17 @@ orbis-reframe ~/Videos/my-ride.orp
 1. Copy the `.insv` files from the camera's memory card to your computer.
    Keep the original file names. orbis-reframe only needs the `.insv` files.
    The `.lrv` files (low-resolution previews) aren't used.
-2. Choose **File ▸ Add clip to timeline…** (`Ctrl+Shift+A`) and pick an
+2. In the project library, click **New project…** (`Ctrl+N`). Give the
+   project a name and click **Create**. orbis-reframe makes a folder for it
+   in `~/Videos/orbis-reframe`.
+3. Choose **File ▸ Add clip to timeline…** (`Ctrl+Shift+A`) and pick an
    `.insv` file.
-3. The viewport shows *Buffering…* for a moment, then the first frame.
+4. The viewport shows *Buffering…* for a moment, then the first frame.
    Press **Space** to play. Drag in the viewport to look around.
-4. Save your work with **File ▸ Save project** (`Ctrl+S`). Projects are
-   saved as `.orp` files. They store your edits and refer to the original
-   clips, so don't move or rename the clips after adding them.
+5. Save your work with **File ▸ Save project** (`Ctrl+S`). The project
+   stores your edits and refers to the original clips, so don't move or
+   rename the clips after adding them. Next time, open it from the project
+   library.
 
 **Help ▸ Keyboard shortcuts** (`F1`) lists every shortcut, and so does
 [Keyboard shortcuts](keyboard-shortcuts.md), with the mouse actions too.
@@ -255,10 +261,15 @@ For a tour of the window, go on to [The main window](main-window.md).
 orbis-reframe never changes your original clips. Besides the projects and
 exports you save yourself, it only writes:
 
-- `~/.cache/orbis-reframe/`: audio waveforms and privacy-blur scan results,
-  so they don't have to be computed again. You can delete it at any time.
-  The waveforms are rebuilt by themselves; clips with the privacy blur on
-  have to be scanned again.
+- Each project's `cache/` folder: audio waveforms and privacy-blur scan
+  results, so they don't have to be computed again. You can delete it at
+  any time. The waveforms are rebuilt by themselves; clips with the privacy
+  blur on have to be scanned again.
+- `~/.cache/orbis-reframe/`: the same for untitled projects and for project
+  files from before project folders.
+- `~/.local/share/orbis-reframe/projects.json`: the project library's list
+  and the projects folder. Deleting it empties the list (projects in the
+  projects folder still show up); no project is deleted.
 - `~/.config/orbis-reframe/orbis-reframe.conf`: which startup warnings
   you've chosen not to see again. Delete it to see them again.
 

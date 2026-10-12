@@ -81,8 +81,9 @@ QString WaveformCache::diskPath(const QString &path, int stream) const
                               .toUtf8();
     const QString hash =
         QString::fromLatin1(QCryptographicHash::hash(id, QCryptographicHash::Sha1).toHex());
-    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
-           QStringLiteral("/waveforms/") + hash + QStringLiteral(".peaks");
+    const QString base =
+        m_dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : m_dir;
+    return base + QStringLiteral("/waveforms/") + hash + QStringLiteral(".peaks");
 }
 
 WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
