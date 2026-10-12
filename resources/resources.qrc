@@ -23,5 +23,13 @@
     <file>icons/download.svg</file>
     <file>icons/clapperboard.svg</file>
     <file>icons/picture-in-picture-2.svg</file>
+    <file>icons/film.svg</file>
+    <file>icons/folder-plus.svg</file>
+    <file>icons/chevron-left.svg</file>
+    <file>icons/chevron-right.svg</file>
+    <file>icons/chevron-down.svg</file>
+    <file>icons/music.svg</file>
+    <file>icons/circle-check.svg</file>
+    <file>icons/triangle-alert.svg</file>
   </qresource>
 </RCC>

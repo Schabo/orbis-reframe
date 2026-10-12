@@ -57,6 +57,16 @@ shortcuts.
 |---|---|
 | `Alt+1` … `Alt+9` | Show a settings panel, in the order of the rail from top to bottom: Project, Stitching, Reframe, Stabilization, Audio, Colour, Privacy, Overlay, Media information. Press again to hide it. |
 
+## Sidebars
+
+| Key | Does |
+|---|---|
+| `Ctrl+B` | Close or open the left sidebar (**Media**). |
+
+In the **Media** tab: `Enter` (or a double-click) puts the selected files on
+the timeline, `Delete` removes them from the project's media (the files
+stay).
+
 ## Files
 
 | Key | Does |
@@ -65,16 +75,22 @@ shortcuts.
 | `Ctrl+O` | Open a project file. |
 | `Ctrl+S` | Save the project. |
 | `Ctrl+Shift+S` | Save a copy of the project in a new project folder. |
-| `Ctrl+Shift+A` | Add a clip to the timeline. |
-| `Ctrl+Shift+M` | Add an audio file. |
-| `Ctrl+Shift+V` | Add a video overlay. |
 | `Ctrl+E` | Export the video. |
 | `Ctrl+Shift+P` | Save a screenshot of the frame at the playhead. |
 | `Ctrl+Q` | Quit. |
+| `F1` | Show the keyboard shortcuts. |
 
 In the project library: `Enter` opens the selected project, `Delete`
 removes it from the list (its files stay).
-| `F1` | Show the keyboard shortcuts. |
+
+## Media
+
+| Key | Does |
+|---|---|
+| `Ctrl+I` | Import files into the project's media. |
+| `Ctrl+Shift+A` | Add a clip to the timeline. |
+| `Ctrl+Shift+M` | Add an audio file. |
+| `Ctrl+Shift+V` | Add a video overlay. |
 
 When orbis-reframe asks whether to save unsaved changes, `S` saves, `D`
 discards them and `Esc` cancels. In the window for choosing where to save a

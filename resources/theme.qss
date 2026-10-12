@@ -288,6 +288,63 @@ QProgressBar::chunk {
     color: @text;
 }
 
+/* ================= Tab sidebars (the left one: sources) ================= */
+
+TabSidebar {
+    background-color: @panel;
+}
+TabSidebar[sidebarSide="left"] {
+    border-right: 1px solid @border;
+}
+TabSidebar[sidebarSide="right"] {
+    border-left: 1px solid @border;
+}
+/* The icon tabs along the top. */
+QWidget[sidebarPart="tabRow"] {
+    background-color: @menuBar;
+    border-bottom: 1px solid @border;
+}
+QWidget[sidebarPart="tabRow"] QToolButton {
+    border: none;
+    border-radius: 0;
+    padding: 7px;
+    border-bottom: 2px solid transparent;
+}
+QWidget[sidebarPart="tabRow"] QToolButton:hover {
+    background-color: @panel;
+}
+QWidget[sidebarPart="tabRow"] QToolButton:checked {
+    background-color: @panel;
+    border-bottom: 2px solid @accent;
+}
+/* Closed: the slim strip at the edge. */
+QWidget[sidebarPart="strip"] {
+    background-color: @menuBar;
+}
+QWidget[sidebarPart="strip"] QToolButton {
+    border: none;
+    border-radius: 0;
+    padding: 4px 1px;
+}
+QWidget[sidebarPart="strip"] QToolButton:hover {
+    background-color: @panel;
+}
+#sidebarPageTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: @text;
+    padding: 10px 12px 8px 12px;
+}
+
+/* Media tab. */
+#mediaPoolPanel, #mediaPoolList {
+    background-color: @panel;
+}
+#mediaPoolStatus {
+    color: @textDim;
+    padding: 0 12px 6px 12px;
+}
+
 /* ================= Project library (start screen) ================= */
 
 #projectLibrary {

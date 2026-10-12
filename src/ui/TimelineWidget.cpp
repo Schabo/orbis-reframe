@@ -27,6 +27,8 @@
 #include <climits>
 #include <cmath>
 
+#include "../core/MediaPool.h" // media::extensions
+
 namespace {
 
 constexpr int kHeaderW = 180; // track headers, left of the clips
@@ -544,19 +546,11 @@ void TimelineWidget::drawWaveform(QPainter &p, const QRect &rc, const Peaks &pea
 
 QStringList TimelineWidget::droppableFiles(const QMimeData *mime, DropKind kind)
 {
-    static const QStringList kAudioExt = {QStringLiteral("mp3"),  QStringLiteral("wav"),
-                                          QStringLiteral("flac"), QStringLiteral("aac"),
-                                          QStringLiteral("m4a"),  QStringLiteral("ogg"),
-                                          QStringLiteral("opus")};
-    // Flat video for an overlay; not .insv / .lrv (360 footage).
-    static const QStringList kVideoExt = {QStringLiteral("mp4"), QStringLiteral("mov"),
-                                          QStringLiteral("mkv"), QStringLiteral("m4v"),
-                                          QStringLiteral("webm"), QStringLiteral("avi")};
-    // 360 clips for the main track: the master, not the .lrv proxy.
-    static const QStringList kClipExt = {QStringLiteral("insv")};
-    const QStringList &ext = kind == DropKind::Clip      ? kClipExt
-                             : kind == DropKind::Overlay ? kVideoExt
-                                                         : kAudioExt;
+    // Flat video for an overlay; 360 clips (the master, not the .lrv proxy)
+    // for the main track.
+    const QStringList &ext = media::extensions(kind == DropKind::Clip      ? MediaItem::Kind::Clip360
+                                               : kind == DropKind::Overlay ? MediaItem::Kind::Video
+                                                                           : MediaItem::Kind::Audio);
     QStringList out;
     if (!mime || !mime->hasUrls())
         return out;

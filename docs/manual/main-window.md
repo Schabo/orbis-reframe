@@ -16,6 +16,9 @@ With one open, it looks like this:
 4. The **settings panel** that's open, here **Reframe**.
 5. The **rail**, the icons that pick the settings panel.
 
+To the left of the viewport is the **left sidebar**, with the project's
+media; see [The media sidebar](#the-media-sidebar) below.
+
 The title bar shows the project's file name, or *untitled* for a project
 that hasn't been saved yet. A `*` after the name means there are unsaved
 changes.
@@ -37,6 +40,35 @@ here is what you get.
 Looking around only changes what you see right now. To make the export
 follow a view, you set **reframe keyframes**, covered in
 [Reframing](reframing.md).
+
+## The media sidebar
+
+The sidebar on the left of the viewport holds the files you work with. For
+now it has one tab, **Media**. The `<` button at its top-left closes the
+sidebar and leaves a slim strip at the window's edge; the `>` button on the
+strip opens it again. `Ctrl+B` does both. orbis-reframe remembers whether
+it was open.
+
+**Media** lists the project's media: every file you've imported, and every
+file used on the timeline. The files stay where they are on your disk; the
+project only remembers where they are. The list is grouped by the folder
+each file is in, and sorted by name. Each file shows a small picture, its
+name, its kind (*360°*, *Video* or *Audio*) and length, and its resolution
+and frame rate. An orange check mark in a circle, to the right of the name, means the file is used on the timeline. A file that can't be
+found any more is shown in red with *File not found*. Click a folder's name
+to fold it away.
+
+| To | Do |
+|---|---|
+| Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab, or drag files from your file manager onto the list. |
+| Add everything in a folder | **Media ▸ Import folder…**, the second button, or drag the folder onto the list. Every video and audio file directly in it is added (not its subfolders). |
+| Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
+| Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
+| Find a file on disk | Right-click it and choose **Show in file manager**. |
+
+Importing is part of the project, so **Edit ▸ Undo** takes it back like any
+other edit. The `.lrv` preview files the camera writes next to each `.insv`
+aren't listed.
 
 ## The timeline
 
@@ -105,8 +137,9 @@ instead. The **Project** panel applies to the whole project.
 
 | Menu | Contains |
 |---|---|
-| **File** | New project, open project, back to the project library; add clips, audio files and video overlays; save, save as; export, screenshot, quit. |
+| **File** | New project, open project, back to the project library; save, save as; export, screenshot, quit. |
 | **Edit** | **Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Shift+Z`). Undo steps back through your edits to the project; looking around in the viewport isn't an edit and isn't undone. |
+| **Media** | **Import files…** (`Ctrl+I`) and **Import folder…**, into the project's media ([above](#the-media-sidebar)); **Add clip to timeline…** (`Ctrl+Shift+A`), **Add audio file…** (`Ctrl+Shift+M`) and **Add video overlay…** (`Ctrl+Shift+V`), straight onto the timeline; **Add audio track** and **Add overlay track**. |
 | **Help** | **Keyboard shortcuts** (`F1`) and **About orbis-reframe**, with the version and the diagnostics to include in a problem report. |
 
 When you close the window, open another project or go back to the project

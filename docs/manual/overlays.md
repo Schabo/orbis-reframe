@@ -14,10 +14,10 @@ recording of your route.
 
 ## Adding an overlay
 
-Overlays go on overlay tracks, above the video track. Add one with **File ▸
+Overlays go on overlay tracks, above the video track. Add one with **Media ▸
 Add video overlay…** (`Ctrl+Shift+V`), by right-clicking the timeline and
-choosing **Add video overlay here…**, or by dragging video files from your
-file manager onto the timeline. Overlays take `.mp4`, `.mov`, `.mkv`,
+choosing **Add video overlay here…**, or by dragging video files from the
+**Media** tab or your file manager onto the timeline. Overlays take `.mp4`, `.mov`, `.mkv`,
 `.m4v`, `.webm` and `.avi` files. More about overlay tracks (moving,
 trimming, splitting, hiding a track) is in [The timeline](timeline.md).
 

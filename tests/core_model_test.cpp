@@ -7,6 +7,7 @@
 // playbackPlan(), and that the aggregate signals fire.
 
 #include "ClipItem.h"
+#include "MediaPool.h"
 #include "Project.h"
 #include "ProjectFolder.h"
 #include "ProjectLibrary.h"
@@ -2085,6 +2086,103 @@ void testProjectSummary()
     CHECK(s.fileMissing && s.name == "gone");
 }
 
+void testMediaPool()
+{
+    QTemporaryDir tmp;
+    const QString dir = tmp.path();
+    const auto touch = [](const QString &path) {
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly))
+            f.write("x");
+    };
+    QDir().mkpath(dir + "/media");
+    const QString clip = dir + "/media/VID_1.insv";
+    const QString song = dir + "/media/song.mp3";
+    const QString phone = dir + "/media/phone.mp4";
+    const QString unused = dir + "/media/VID_2.insv";
+    for (const QString &f : {clip, song, phone, unused})
+        touch(f);
+
+    // Whatever goes on the timeline goes into the pool, once.
+    Project p;
+    MediaPool *pool = p.mediaPool();
+    CHECK(pool->count() == 0);
+    p.timeline()->appendClip(clip, 20000, 29.97, 3840, 3840);
+    p.timeline()->appendClip(clip, 20000, 29.97, 3840, 3840);
+    CHECK(pool->count() == 1);
+    CHECK(pool->item(clip) && pool->item(clip)->kind == MediaItem::Kind::Clip360 &&
+          pool->item(clip)->durationMs == 20000 && pool->item(clip)->width == 3840 &&
+          pool->item(clip)->fps == 29.97);
+    const int at = p.timeline()->addTrack(Track::Kind::Audio);
+    p.timeline()->addAudioClip(at, song, 60000, 0);
+    const int vt = p.timeline()->addTrack(Track::Kind::Video);
+    p.timeline()->addVideoClip(vt, phone, 5000, 0, 1080, 1920);
+    CHECK(pool->count() == 3);
+    CHECK(pool->item(song) && pool->item(song)->kind == MediaItem::Kind::Audio);
+    CHECK(pool->item(phone) && pool->item(phone)->kind == MediaItem::Kind::Video &&
+          pool->item(phone)->height == 1920);
+    // Imported, not on the timeline.
+    CHECK(pool->add({unused, MediaItem::Kind::Clip360, 7000, 2880, 2880, 59.94}));
+    CHECK(pool->count() == 4);
+
+    // Saved with the project, relative to its folder; read back as it was.
+    const QString file = dir + "/p.orp";
+    CHECK(p.save(file));
+    {
+        QFile f(file);
+        CHECK(f.open(QIODevice::ReadOnly));
+        const QByteArray text = f.readAll();
+        CHECK(text.contains("\"media\""));
+        CHECK(text.contains("\"media/VID_2.insv\""));
+    }
+    Project q;
+    CHECK(q.load(file));
+    CHECK(q.mediaPool()->items() == pool->items());
+    CHECK(!q.modified());
+
+    // A missing file is flagged on load.
+    QFile::remove(unused);
+    Project r;
+    CHECK(r.load(file));
+    CHECK(r.mediaPool()->item(unused) && r.mediaPool()->item(unused)->missing);
+    CHECK(r.mediaPool()->item(clip) && !r.mediaPool()->item(clip)->missing);
+
+    // A project without "media" (an older one) lists its timeline's sources.
+    {
+        QFile f(file);
+        CHECK(f.open(QIODevice::ReadOnly));
+        QByteArray text = f.readAll();
+        f.close();
+        const int start = text.indexOf("\"media\":");
+        const int end = text.indexOf(']', start);
+        CHECK(start > 0 && end > start);
+        text.remove(start, end - start + 2); // the array and its comma
+        const QString old = dir + "/old.orp";
+        QFile o(old);
+        CHECK(o.open(QIODevice::WriteOnly));
+        o.write(text);
+        o.close();
+        Project s;
+        CHECK(s.load(old));
+        CHECK(s.mediaPool()->count() == 3);
+        CHECK(!s.mediaPool()->contains(unused));
+        CHECK(s.mediaPool()->contains(song) && s.mediaPool()->contains(phone));
+    }
+
+    // Pool edits mark the project modified and are undone like any edit.
+    Project u;
+    CHECK(u.mediaPool()->add({song, MediaItem::Kind::Audio, 60000}));
+    CHECK(u.modified() && u.canUndo());
+    u.undo();
+    CHECK(u.mediaPool()->count() == 0);
+    u.redo();
+    CHECK(u.mediaPool()->contains(song));
+    u.mediaPool()->remove({song});
+    CHECK(u.mediaPool()->count() == 0);
+    u.newProject();
+    CHECK(u.mediaPool()->count() == 0 && !u.modified());
+}
+
 int main()
 {
     testClipItemTrim();
@@ -2109,6 +2207,7 @@ int main()
     testProjectTracksJson();
     testVideoTracks();
     testProjectVideoTracksJson();
+    testMediaPool();
     testProjectFolder();
     testProjectLibrary();
     testProjectSummary();

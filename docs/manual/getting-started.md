@@ -243,8 +243,10 @@ orbis-reframe ~/Videos/orbis-reframe/my-ride/my-ride.orp
 2. In the project library, click **New project…** (`Ctrl+N`). Give the
    project a name and click **Create**. orbis-reframe makes a folder for it
    in `~/Videos/orbis-reframe`.
-3. Choose **File ▸ Add clip to timeline…** (`Ctrl+Shift+A`) and pick an
-   `.insv` file.
+3. Choose **Media ▸ Add clip to timeline…** (`Ctrl+Shift+A`) and pick an
+   `.insv` file. (Or import a whole folder of clips with **Media ▸ Import
+   folder…** and drag them from the **Media** tab on the left onto the
+   timeline.)
 4. The viewport shows *Buffering…* for a moment, then the first frame.
    Press **Space** to play. Drag in the viewport to look around.
 5. Save your work with **File ▸ Save project** (`Ctrl+S`). The project

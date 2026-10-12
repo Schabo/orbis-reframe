@@ -10,7 +10,9 @@ pictures.
 
 A project holds your whole edit: the clips and their order, trims and
 speeds, reframe keyframes, the stabilization, stitching, colour, audio and
-privacy settings, the audio and overlay tracks, and the output settings.
+privacy settings, the audio and overlay tracks, the project's media (the
+**Media** tab, see [The main window](main-window.md#the-media-sidebar)),
+and the output settings.
 
 ### The project library
 

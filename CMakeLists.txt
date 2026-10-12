@@ -182,6 +182,8 @@ add_library(orbis_core STATIC
     src/core/InsetGeometry.h
     src/core/KeyTrack.h
     src/core/Log.h
+    src/core/MediaPool.cpp
+    src/core/MediaPool.h
     src/core/Timeline.cpp
     src/core/Timeline.h
     src/core/Project.cpp
@@ -390,6 +392,12 @@ if(FFMPEG_FOUND)
         src/ui/ExportOptionsDialog.h
         src/ui/SettingsSidebar.cpp
         src/ui/SettingsSidebar.h
+        src/ui/TabSidebar.cpp
+        src/ui/TabSidebar.h
+        src/ui/MediaPoolPanel.cpp
+        src/ui/MediaPoolPanel.h
+        src/ui/MediaProbe.cpp
+        src/ui/MediaProbe.h
         src/ui/SettingsPanel.cpp
         src/ui/SettingsPanel.h
         src/ui/panels/ProjectPanel.cpp
@@ -615,7 +623,7 @@ if(Qt6Test_FOUND)
         src/ui/TimelineWidget.cpp src/ui/TimelineWidget.h src/ui/Theme.cpp src/ui/Theme.h)
     set_target_properties(timeline_widget_test PROPERTIES AUTOMOC ON)
     target_include_directories(timeline_widget_test PRIVATE src/ui)
-    target_link_libraries(timeline_widget_test PRIVATE Qt6::Widgets Qt6::Test)
+    target_link_libraries(timeline_widget_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
     add_test(NAME timeline_widget_test COMMAND timeline_widget_test)
 
     # The project library's start screen and New project dialog, found by
@@ -631,6 +639,18 @@ if(Qt6Test_FOUND)
     target_include_directories(project_library_test PRIVATE src/ui)
     target_link_libraries(project_library_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
     add_test(NAME project_library_test COMMAND project_library_test)
+
+    # The left sidebar and its Media tab (the media pool), found by
+    # objectName (no GPU, no FFmpeg: no thumbnails).
+    add_executable(media_pool_test tests/media_pool_test.cpp
+        src/ui/MediaPoolPanel.cpp src/ui/MediaPoolPanel.h
+        src/ui/TabSidebar.cpp src/ui/TabSidebar.h
+        src/ui/Theme.cpp src/ui/Theme.h
+        resources/resources.qrc)
+    set_target_properties(media_pool_test PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_include_directories(media_pool_test PRIVATE src/ui)
+    target_link_libraries(media_pool_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
+    add_test(NAME media_pool_test COMMAND media_pool_test)
 
     # The theme's tokens, stylesheet template and icon tinting.
     add_executable(theme_test tests/theme_test.cpp src/ui/Theme.cpp src/ui/Theme.h

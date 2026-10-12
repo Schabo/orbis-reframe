@@ -103,7 +103,7 @@ choosing a voice mode says so, and the clip keeps its previous setting.
 Sound from a separate recorder (a phone, a voice recorder) doesn't start at
 the same moment as the camera, so it has to be lined up by hand:
 
-1. Add the recording to an audio track (**File ▸ Add audio file…**) and drag
+1. Add the recording to an audio track (**Media ▸ Add audio file…**) and drag
    it roughly into place.
 2. Find a sharp sound that both recorded: a clap, a door, a word.
 3. Zoom in on the timeline (`Ctrl+` mouse wheel) until you can see that

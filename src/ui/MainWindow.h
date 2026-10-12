@@ -54,7 +54,9 @@ class MediaInfoPanel;
 class OverlayPanel;
 class ProjectPanel;
 class ReframePanel;
+class MediaPoolPanel;
 class SettingsSidebar;
+class TabSidebar;
 class StitchingPanel;
 class StabilizationPanel;
 class TimelineWidget;
@@ -359,6 +361,20 @@ private:
     // aren't clips are reported and skipped. Used by the picker and by drops.
     void addClipFiles(const QStringList &paths, int index);
 
+    // Media pool (the left sidebar's Media tab). Import files… / Import
+    // folder…: pick, then importMedia(). importMedia probes `paths` (a folder:
+    // the files in it) on worker threads and adds the ones it can read; the
+    // ones it can't are reported when the last is done.
+    void importMediaFiles();
+    void importMediaFolder();
+    void importMedia(const QStringList &paths);
+    // Add pool files to the timeline by kind: an .insv at the end of the
+    // video track, flat video onto an overlay track and audio onto an audio
+    // track at the playhead (the first track with room, or a new one).
+    void addMediaToTimeline(const QStringList &paths);
+    // Mark the files the timeline uses in the Media tab.
+    void updateMediaInUse();
+
     // File menu project actions.
     // New project…: name, location and output format, then a project folder
     // with the (empty) project saved in it.
@@ -399,6 +415,14 @@ private:
     std::unique_ptr<ProjectLibrary> m_library;
     // Off while the library is shown (they'd act on the hidden editor).
     QList<QAction *> m_editorActions;
+    // The left sidebar (sources) and its Media tab.
+    TabSidebar *m_sourcesSidebar = nullptr;
+    MediaPoolPanel *m_mediaPanel = nullptr;
+    int m_mediaImportsPending = 0; // files still being probed
+    QStringList m_mediaImportFailures;
+    // Bumped whenever another project (or the library) is shown: imports
+    // still being probed for the one before are dropped.
+    int m_projectSession = 0;
     QList<QShortcut *> m_editorShortcuts;
 
     EquirectViewportWindow *m_viewport = nullptr;
@@ -427,6 +451,7 @@ private:
     int m_selectedClipId = 0;       // a video clip selected on the timeline
     QString m_lastAudioDir;         // where the last audio file was picked from
     QString m_lastVideoDir;         // ... and the last overlay video
+    QString m_lastMediaDir;         // ... and the last media imported
     WaveformCache *m_waveforms = nullptr;
 
     // Native gyro stabilization, per clip (ClipItem::stabilization). Built

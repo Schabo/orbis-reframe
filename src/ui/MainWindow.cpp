@@ -34,10 +34,12 @@
 #include <QScreen>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSettings>
 #include <QShortcut>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QThread>
+#include <QThreadPool>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QWindow>
@@ -69,9 +71,12 @@
 #include "PlateJobController.h"
 #endif
 #include "ExportOptionsDialog.h"
+#include "MediaPoolPanel.h"
+#include "MediaProbe.h"
 #include "PlaybackController.h"
 #include "ReframeExportController.h"
 #include "SettingsSidebar.h"
+#include "TabSidebar.h"
 #include "TimelineWidget.h"
 #include "WaveformCache.h"
 #include "TransportBar.h"
@@ -85,6 +90,7 @@
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
 #include "../core/ClipItem.h"
+#include "../core/MediaPool.h"
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
 #include "../core/ProjectLibrary.h"
@@ -134,12 +140,42 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     });
     updateWindowTitle();
 
-    // Left: viewport over the timeline over the transport strip.
+    // The left sidebar (sources), beside the viewport: the Media tab.
+    m_sourcesSidebar = new TabSidebar(TabSidebar::Side::Left, QStringLiteral("sourcesSidebar"), this);
+    m_sourcesSidebar->setPageWidth(std::max(280, fontMetrics().height() * 17));
+    m_mediaPanel = new MediaPoolPanel(m_project->mediaPool());
+    m_mediaPanel->setThumbnailProvider(&mediaThumbnail);
+    m_sourcesSidebar->addTab(m_mediaPanel, QStringLiteral("film"), tr("Media"));
+    m_sourcesSidebar->setToggleKeys(
+        QKeySequence(Qt::CTRL | Qt::Key_B).toString(QKeySequence::NativeText));
+    m_sourcesSidebar->setOpen(
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .value(QStringLiteral("sidebars/sourcesOpen"), true)
+            .toBool());
+    connect(m_sourcesSidebar, &TabSidebar::openChanged, this, [](bool open) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("sidebars/sourcesOpen"), open);
+    });
+    connect(m_mediaPanel, &MediaPoolPanel::importFilesRequested, this,
+            &MainWindow::importMediaFiles);
+    connect(m_mediaPanel, &MediaPoolPanel::importFolderRequested, this,
+            &MainWindow::importMediaFolder);
+    connect(m_mediaPanel, &MediaPoolPanel::filesDropped, this, &MainWindow::importMedia);
+    connect(m_mediaPanel, &MediaPoolPanel::addToTimelineRequested, this,
+            &MainWindow::addMediaToTimeline);
+
+    // Left: the sources sidebar and the viewport, over the timeline over the
+    // transport strip.
+    auto *top = new QHBoxLayout;
+    top->setContentsMargins(0, 0, 0, 0);
+    top->setSpacing(0);
+    top->addWidget(m_sourcesSidebar, 0);
+    top->addWidget(viewportContainer, 1);
     auto *leftColumn = new QWidget(this);
     auto *leftLayout = new QVBoxLayout(leftColumn);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(0);
-    leftLayout->addWidget(viewportContainer, 1);
+    leftLayout->addLayout(top, 1);
     leftLayout->addWidget(m_timelineWidget, 0);
     leftLayout->addWidget(m_transport, 0);
 
@@ -770,21 +806,6 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     libraryAction->setObjectName(QStringLiteral("projectLibraryAction"));
     libraryAction->setIcon(theme::icon(QStringLiteral("layers")));
     fileMenu->addSeparator();
-    QAction *addClipAction =
-        fileMenu->addAction(tr("&Add clip to timeline…"), this, [this] { addClipToTimeline(); });
-    addClipAction->setObjectName(QStringLiteral("addClipAction"));
-    addClipAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
-    addClipAction->setIcon(theme::icon(QStringLiteral("file-plus-2")));
-    QAction *addAudioAction = fileMenu->addAction(
-        tr("Add a&udio file…"), this, [this] { addAudioFile(0, m_lastTimelineMs); });
-    addAudioAction->setObjectName(QStringLiteral("addAudioAction"));
-    addAudioAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
-    QAction *addVideoAction = fileMenu->addAction(
-        tr("Add &video overlay…"), this, [this] { addVideoFile(0, m_lastTimelineMs); });
-    addVideoAction->setObjectName(QStringLiteral("addVideoAction"));
-    addVideoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
-    addVideoAction->setIcon(theme::icon(QStringLiteral("picture-in-picture-2")));
-    fileMenu->addSeparator();
     QAction *saveProjectAction =
         fileMenu->addAction(tr("&Save project"), this, &MainWindow::saveProject);
     saveProjectAction->setObjectName(QStringLiteral("saveProjectAction"));
@@ -796,8 +817,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     saveProjectAsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
     // Their own enabled state (a clip open, undo history) is already off
     // while no project is open; these would act on the hidden editor.
-    m_editorActions = {libraryAction, addClipAction, addAudioAction, addVideoAction,
-                       saveProjectAction, saveProjectAsAction};
+    m_editorActions = {libraryAction, saveProjectAction, saveProjectAsAction};
     fileMenu->addSeparator();
 
     // File -> Export flat video… (disabled until a clip is open).
@@ -838,6 +858,42 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     m_redoAction->setEnabled(m_project->canRedo());
     connect(m_project, &Project::canUndoChanged, m_undoAction, &QAction::setEnabled);
     connect(m_project, &Project::canRedoChanged, m_redoAction, &QAction::setEnabled);
+
+    // Media: into the project's media (the Media tab), or straight onto the
+    // timeline.
+    QMenu *mediaMenu = menuBar()->addMenu(tr("&Media"));
+    QAction *importFilesAction =
+        mediaMenu->addAction(tr("&Import files…"), this, &MainWindow::importMediaFiles);
+    importFilesAction->setObjectName(QStringLiteral("importFilesAction"));
+    importFilesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    importFilesAction->setIcon(theme::icon(QStringLiteral("file-plus-2")));
+    QAction *importFolderAction =
+        mediaMenu->addAction(tr("Import &folder…"), this, &MainWindow::importMediaFolder);
+    importFolderAction->setObjectName(QStringLiteral("importFolderAction"));
+    importFolderAction->setIcon(theme::icon(QStringLiteral("folder-plus")));
+    mediaMenu->addSeparator();
+    QAction *addClipAction =
+        mediaMenu->addAction(tr("&Add clip to timeline…"), this, [this] { addClipToTimeline(); });
+    addClipAction->setObjectName(QStringLiteral("addClipAction"));
+    addClipAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
+    QAction *addAudioAction = mediaMenu->addAction(
+        tr("Add a&udio file…"), this, [this] { addAudioFile(0, m_lastTimelineMs); });
+    addAudioAction->setObjectName(QStringLiteral("addAudioAction"));
+    addAudioAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+    QAction *addVideoAction = mediaMenu->addAction(
+        tr("Add &video overlay…"), this, [this] { addVideoFile(0, m_lastTimelineMs); });
+    addVideoAction->setObjectName(QStringLiteral("addVideoAction"));
+    addVideoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+    addVideoAction->setIcon(theme::icon(QStringLiteral("picture-in-picture-2")));
+    mediaMenu->addSeparator();
+    QAction *addAudioTrackAction = mediaMenu->addAction(
+        tr("Add audio &track"), this, [this] { m_timeline->addTrack(Track::Kind::Audio); });
+    addAudioTrackAction->setObjectName(QStringLiteral("addAudioTrackAction"));
+    QAction *addOverlayTrackAction = mediaMenu->addAction(
+        tr("Add &overlay track"), this, [this] { m_timeline->addTrack(Track::Kind::Video); });
+    addOverlayTrackAction->setObjectName(QStringLiteral("addOverlayTrackAction"));
+    m_editorActions += {importFilesAction, importFolderAction, addClipAction, addAudioAction,
+                        addVideoAction, addAudioTrackAction, addOverlayTrackAction};
 
     setupKeyboardShortcuts();
 
@@ -2053,6 +2109,9 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(view, tr("Zoom to fit"), {QKeySequence(Qt::CTRL | Qt::Key_0)},
            [this] { m_timelineWidget->zoomToFit(); });
 
+    addKey(tr("Sidebars"), tr("Open / close the left sidebar (Media)"),
+           {QKeySequence(Qt::CTRL | Qt::Key_B)}, [this] { m_sourcesSidebar->toggle(); });
+
     // The sidebar's rail, top to bottom; like clicking its icon.
     const QString panels = tr("Settings panels");
     constexpr Qt::Key kDigits[] = {Qt::Key_1, Qt::Key_2, Qt::Key_3, Qt::Key_4, Qt::Key_5,
@@ -2358,6 +2417,7 @@ void MainWindow::pushTimelineToController()
 
 void MainWindow::refreshTimelineWidget()
 {
+    updateMediaInUse();
     QVector<TimelineWidget::Clip> clips;
     clips.reserve(m_timeline->count());
     bool activeHasKeys = false;
@@ -2500,6 +2560,156 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         QMessageBox::warning(this, tr("Could not add clip"), failed.join(QLatin1Char('\n')));
 }
 
+void MainWindow::importMediaFiles()
+{
+    QStringList patterns;
+    for (const auto kind :
+         {MediaItem::Kind::Clip360, MediaItem::Kind::Video, MediaItem::Kind::Audio})
+        for (const QString &ext : media::extensions(kind))
+            patterns << QStringLiteral("*.") + ext;
+    const QStringList paths = QFileDialog::getOpenFileNames(
+        this, tr("Import files"), m_lastMediaDir.isEmpty() ? QDir::homePath() : m_lastMediaDir,
+        tr("Video and audio files (%1);;All files (*)").arg(patterns.join(QLatin1Char(' '))));
+    if (paths.isEmpty())
+        return;
+    m_lastMediaDir = QFileInfo(paths.first()).absolutePath();
+    importMedia(paths);
+}
+
+void MainWindow::importMediaFolder()
+{
+    const QString dir = QFileDialog::getExistingDirectory(
+        this, tr("Import folder"), m_lastMediaDir.isEmpty() ? QDir::homePath() : m_lastMediaDir);
+    if (dir.isEmpty())
+        return;
+    m_lastMediaDir = dir;
+    importMedia({dir});
+}
+
+void MainWindow::importMedia(const QStringList &paths)
+{
+    // Folders: the files in them. Files already in the pool are left as
+    // they are.
+    QStringList files;
+    QStringList emptyFolders;
+    for (const QString &path : paths) {
+        const QFileInfo fi(path);
+        const QStringList found = fi.isDir() ? media::filesInFolder(path) : QStringList{path};
+        if (fi.isDir() && found.isEmpty())
+            emptyFolders << QDir::toNativeSeparators(fi.absoluteFilePath());
+        for (const QString &f : found) {
+            const QString abs = QFileInfo(f).absoluteFilePath();
+            if (!m_project->mediaPool()->contains(abs) && !files.contains(abs))
+                files << abs;
+        }
+    }
+    if (!emptyFolders.isEmpty())
+        QMessageBox::information(this, tr("Import folder"),
+                                 tr("No video or audio files in:\n%1")
+                                     .arg(emptyFolders.join(QLatin1Char('\n'))));
+    if (files.isEmpty()) {
+        // Already there: show them.
+        QStringList present;
+        for (const QString &path : paths)
+            if (m_project->mediaPool()->contains(QFileInfo(path).absoluteFilePath()))
+                present << QFileInfo(path).absoluteFilePath();
+        m_mediaPanel->selectPaths(present);
+        return;
+    }
+
+    // Probing reads every file's header (an .insv's trailer too): on worker
+    // threads, so a card full of clips doesn't stall the window. Results land
+    // one by one; those for a project that has been closed meanwhile are
+    // dropped.
+    m_sourcesSidebar->setOpen(true);
+    m_mediaImportsPending += int(files.size());
+    m_mediaPanel->setStatus(tr("Adding %n file(s)…", nullptr, m_mediaImportsPending));
+    static QThreadPool *pool = [] {
+        auto *p = new QThreadPool;
+        p->setMaxThreadCount(2);
+        return p;
+    }();
+    QPointer<MainWindow> self(this);
+    const int session = m_projectSession;
+    for (const QString &file : files) {
+        pool->start([self, session, file] {
+            QString error;
+            const std::optional<MediaItem> item = probeMedia(file, &error);
+            QMetaObject::invokeMethod(
+                qApp,
+                [self, session, file, item, error] {
+                    if (!self)
+                        return;
+                    if (session == self->m_projectSession) { // still the same project
+                        if (item)
+                            self->m_project->mediaPool()->add(*item);
+                        else
+                            self->m_mediaImportFailures
+                                << QFileInfo(file).fileName() + QStringLiteral(": ") + error;
+                    }
+                    if (--self->m_mediaImportsPending > 0) {
+                        self->m_mediaPanel->setStatus(
+                            tr("Adding %n file(s)…", nullptr, self->m_mediaImportsPending));
+                        return;
+                    }
+                    self->m_mediaPanel->setStatus(QString());
+                    if (!self->m_mediaImportFailures.isEmpty()) {
+                        const QString failed = self->m_mediaImportFailures.join(QLatin1Char('\n'));
+                        self->m_mediaImportFailures.clear();
+                        QMessageBox::warning(self, tr("Could not import"),
+                                             tr("These files can't be read:\n%1").arg(failed));
+                    }
+                },
+                Qt::QueuedConnection);
+        });
+    }
+}
+
+void MainWindow::addMediaToTimeline(const QStringList &paths)
+{
+    QStringList clips, videos, audio;
+    for (const QString &path : paths) {
+        const MediaItem *m = m_project->mediaPool()->item(path);
+        if (!m || m->missing)
+            continue;
+        switch (m->kind) {
+        case MediaItem::Kind::Clip360:
+            clips << path;
+            break;
+        case MediaItem::Kind::Video:
+            videos << path;
+            break;
+        case MediaItem::Kind::Audio:
+            audio << path;
+            break;
+        }
+    }
+    // Clips first: overlays and audio need a video track to lie over.
+    if (!clips.isEmpty())
+        addClipFiles(clips, -1);
+    if ((!videos.isEmpty() || !audio.isEmpty()) && m_timeline->count() == 0) {
+        QMessageBox::information(this, tr("Add to timeline"),
+                                 tr("Overlays and audio go over a 360° clip: add one to the "
+                                    "timeline first."));
+        return;
+    }
+    if (!videos.isEmpty())
+        addVideoFiles(videos, 0, m_lastTimelineMs);
+    if (!audio.isEmpty())
+        addAudioFiles(audio, 0, m_lastTimelineMs);
+}
+
+void MainWindow::updateMediaInUse()
+{
+    QSet<QString> used;
+    for (int i = 0; i < m_timeline->count(); ++i)
+        used.insert(m_timeline->clipAt(i).sourcePath);
+    for (int i = 0; i < m_timeline->trackCount(); ++i)
+        for (const TrackClip &c : m_timeline->trackAt(i).clips)
+            used.insert(c.sourcePath);
+    m_mediaPanel->setInUse(used);
+}
+
 void MainWindow::openPath(const QString &path)
 {
     if (QFileInfo(path).suffix().compare(QLatin1String(Project::kFileExtension),
@@ -2640,6 +2850,7 @@ void MainWindow::closeToLibrary()
 
 void MainWindow::showLibrary()
 {
+    ++m_projectSession;
     setEditorActive(false);
     if (m_pages->currentWidget() != m_libraryPage) {
         // Let the viewport release its swapchain while it's still shown (as
@@ -2656,6 +2867,7 @@ void MainWindow::showLibrary()
 
 void MainWindow::showEditor()
 {
+    ++m_projectSession;
     m_pages->setCurrentWidget(m_editorPage);
     setEditorActive(true);
     updateWindowTitle();

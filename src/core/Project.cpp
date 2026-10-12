@@ -1,5 +1,6 @@
 #include "Project.h"
 
+#include "MediaPool.h"
 #include "Timeline.h"
 
 #include <limits>
@@ -455,12 +456,36 @@ TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
     return c;
 }
 
+const char *mediaKindName(MediaItem::Kind kind)
+{
+    switch (kind) {
+    case MediaItem::Kind::Clip360:
+        return "360";
+    case MediaItem::Kind::Video:
+        return "video";
+    case MediaItem::Kind::Audio:
+        break;
+    }
+    return "audio";
+}
+
 } // namespace
 
 Project::Project(QObject *parent)
     : QObject(parent)
     , m_timeline(new Timeline(this))
+    , m_mediaPool(new MediaPool(this))
 {
+    connect(m_mediaPool, &MediaPool::changed, this, [this] {
+        if (m_rebuilding)
+            return;
+        setModified(true);
+        onUndoableEdited();
+    });
+    // Whatever goes on the timeline is in the pool too.
+    connect(m_timeline, &Timeline::clipInserted, this, &Project::addTimelineSourcesToPool);
+    connect(m_timeline, &Timeline::tracksChanged, this, &Project::addTimelineSourcesToPool);
+
     const auto edited = [this] { onTimelineEdited(); onUndoableEdited(); };
     connect(m_timeline, &Timeline::clipInserted, this, edited);
     connect(m_timeline, &Timeline::clipRemoved, this, edited);
@@ -482,6 +507,43 @@ Project::Project(QObject *parent)
     m_undoDebounce.setSingleShot(true);
     connect(&m_undoDebounce, &QTimer::timeout, this, &Project::commitPendingUndoPoint);
     m_lastSettledSnapshot = snapshot(); // baseline for the empty starting project
+}
+
+void Project::addTimelineSourcesToPool()
+{
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const ClipItem &c = m_timeline->clipAt(i);
+        if (!m_mediaPool->contains(c.sourcePath))
+            m_mediaPool->add({c.sourcePath, MediaItem::Kind::Clip360, c.sourceDurationMs,
+                              c.sourceWidth, c.sourceHeight, c.fps});
+    }
+    for (int i = 0; i < m_timeline->trackCount(); ++i) {
+        const Track &t = m_timeline->trackAt(i);
+        const bool video = t.kind == Track::Kind::Video;
+        for (const TrackClip &c : t.clips) {
+            if (m_mediaPool->contains(c.sourcePath))
+                continue;
+            // A camera mic on an audio track is the .insv's sound: the pool
+            // lists the clip, whose duration and size the main track knows.
+            MediaItem m{c.sourcePath, video ? MediaItem::Kind::Video : MediaItem::Kind::Audio,
+                        c.sourceDurationMs};
+            if (video) {
+                m.width = c.sourceWidth;
+                m.height = c.sourceHeight;
+            } else if (media::kindForPath(c.sourcePath) == MediaItem::Kind::Clip360) {
+                m.kind = MediaItem::Kind::Clip360;
+                for (int j = 0; j < m_timeline->count(); ++j)
+                    if (m_timeline->clipAt(j).sourcePath == c.sourcePath) {
+                        const ClipItem &v = m_timeline->clipAt(j);
+                        m.width = v.sourceWidth;
+                        m.height = v.sourceHeight;
+                        m.fps = v.fps;
+                        break;
+                    }
+            }
+            m_mediaPool->add(m);
+        }
+    }
 }
 
 void Project::onTimelineEdited()
@@ -533,6 +595,7 @@ void Project::setOutput(const OutputSettings &output)
 void Project::newProject()
 {
     m_rebuilding = true;
+    m_mediaPool->clear();
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
@@ -547,6 +610,7 @@ int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double 
                            int height)
 {
     m_rebuilding = true;
+    m_mediaPool->clear();
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
@@ -633,7 +697,22 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         });
     }
 
-    const json doc = {
+    json media = json::array();
+    for (const MediaItem &m : m_mediaPool->items()) {
+        media.push_back({
+            {"source", (projectDir ? storedPath(m.path, *projectDir) : m.path).toStdString()},
+            {"kind", mediaKindName(m.kind)},
+            {"durationMs", m.durationMs},
+        });
+        if (m.width > 0 && m.height > 0) {
+            media.back()["width"] = m.width;
+            media.back()["height"] = m.height;
+        }
+        if (m.fps > 0)
+            media.back()["fps"] = m.fps;
+    }
+
+    json doc = {
         {"format", kFormatTag},
         {"version", kFormatVersion},
         {"previewStitch", previewStitchToJson(m_previewStitch)},
@@ -643,6 +722,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
           {"mainMuted", m_timeline->mainAudioMuted()},
           {"tracks", std::move(tracks)}}},
     };
+    if (!media.empty())
+        doc["media"] = std::move(media);
     return QByteArray::fromStdString(doc.dump());
 }
 
@@ -656,6 +737,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     stitch::PreviewStitchConfig parsedStitch;
     OutputSettings parsedOutput;
     bool parsedMainMuted = false;
+    QList<MediaItem> parsedMedia;
     try {
         const json doc = json::parse(text.begin(), text.end());
 
@@ -774,6 +856,32 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 overlayLinks.push_back(std::move(links));
             }
         }
+
+        // The media pool. An unknown kind is skipped like an unknown track.
+        if (doc.contains("media") && doc.at("media").is_array()) {
+            for (const json &jm : doc.at("media")) {
+                const std::string kind = jm.value("kind", std::string());
+                MediaItem m;
+                if (kind == "360")
+                    m.kind = MediaItem::Kind::Clip360;
+                else if (kind == "video")
+                    m.kind = MediaItem::Kind::Video;
+                else if (kind == "audio")
+                    m.kind = MediaItem::Kind::Audio;
+                else
+                    continue;
+                const QString stored = QString::fromStdString(jm.value("source", std::string()));
+                if (stored.isEmpty())
+                    continue;
+                m.path = projectDir ? resolvedPath(stored, *projectDir) : stored;
+                m.durationMs = jm.value("durationMs", qint64(0));
+                m.width = jm.value("width", 0);
+                m.height = jm.value("height", 0);
+                m.fps = jm.value("fps", 0.0);
+                m.missing = !QFileInfo::exists(m.path);
+                parsedMedia.append(m);
+            }
+        }
     } catch (const std::exception &e) {
         if (error)
             *error = QStringLiteral("could not be read as a project: %1")
@@ -781,8 +889,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         return false;
     }
 
-    // Everything parsed -- now it's safe to replace the model.
+    // Everything parsed -- now it's safe to replace the model. The pool first:
+    // rebuilding the timeline adds the sources it lacks (an older project).
     m_rebuilding = true;
+    m_mediaPool->setItems(parsedMedia);
     m_timeline->clear();
     setPreviewStitch(parsedStitch);
     setOutput(parsedOutput);

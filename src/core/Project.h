@@ -10,6 +10,7 @@
 
 #include "OutputSettings.h"
 
+class MediaPool;
 class QDir;
 class Timeline;
 
@@ -38,7 +39,9 @@ public:
     //     (0 = auto), lensGuard: "none" | "standard" | "premium", depthSeam},
     //   "output": {aspect: "16:9" | "9:16" | "1:1" | "4:3", width, height,
     //     fps (0 = match the first clip)},
-    //   "timeline": {clips: [...], mainMuted, tracks: [...]}.
+    //   "timeline": {clips: [...], mainMuted, tracks: [...]},
+//   "media": [{source, kind: "360" | "video" | "audio", durationMs, width,
+//     height, fps}] -- the media pool (absent => only what the timeline uses).
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
     //   fovY}]}, audioGainDb, audioMuted, audioTrack, color {exposureEv,
@@ -72,6 +75,9 @@ public:
     static constexpr const char *kFileExtension = "orp"; // no dot
 
     Timeline *timeline() const { return m_timeline; }
+    // The project's media (the Media tab). Holds every source the timeline
+    // uses as well: a clip added to the timeline is added here too.
+    MediaPool *mediaPool() const { return m_mediaPool; }
     // Empty until the project is saved or loaded.
     QString filePath() const { return m_filePath; }
     bool modified() const { return m_modified; }
@@ -141,6 +147,8 @@ signals:
 
 private:
     void onTimelineEdited();
+    // Add every timeline source that isn't in the media pool yet.
+    void addTimelineSourcesToPool();
     void setModified(bool modified);
     void setFilePath(const QString &path);
 
@@ -180,6 +188,7 @@ private:
     void clearUndoHistory();
 
     Timeline *m_timeline = nullptr;
+    MediaPool *m_mediaPool = nullptr;
     QString m_filePath;
     stitch::PreviewStitchConfig m_previewStitch;
     OutputSettings m_output;

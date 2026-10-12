@@ -61,11 +61,14 @@ another clip before or after it, copy or paste its colour grade
 
 ### Adding clips
 
-- **File ▸ Add clip to timeline…** (`Ctrl+Shift+A`) adds a clip at the end.
+- **Media ▸ Add clip to timeline…** (`Ctrl+Shift+A`) adds a clip at the end.
 - Right-click a clip and choose **Insert clip before…** or **Insert clip
   after…** to put the new clip next to it.
 - Right-click an empty part of the video track (or of an empty timeline)
   and choose **Add clip here…**. The clip goes in at the nearest cut.
+- Drag clips from the **Media** tab on the left
+  ([The main window](main-window.md#the-media-sidebar)) onto the timeline;
+  double-clicking one there adds it at the end.
 - Drag `.insv` files from your file manager onto the timeline panel (not
   the viewport). They go in at the cut nearest to where you drop them, in
   the order the file manager gives them; on an empty timeline the first one
@@ -157,10 +160,13 @@ overlays.
 
 ### Adding audio and overlays
 
-There are three ways:
+There are four ways:
 
-- **File ▸ Add audio file…** (`Ctrl+Shift+M`) or **File ▸ Add video
+- **Media ▸ Add audio file…** (`Ctrl+Shift+M`) or **Media ▸ Add video
   overlay…** (`Ctrl+Shift+V`). The file goes in at the playhead.
+- Drag files from the **Media** tab onto the timeline, the same way as from
+  a file manager (below), or double-click one there to put it in at the
+  playhead.
 - Right-click on the timeline where the clip should start and choose **Add
   audio file here…** or **Add video overlay here…**.
 - Drag audio files or flat videos from your file manager onto the timeline
@@ -171,8 +177,9 @@ There are three ways:
   `.insv` clips can be dropped.
 
 If there's no track of the right kind with room, orbis-reframe makes a new
-one. To make an empty track yourself, right-click the timeline and choose
-**Add audio track** or **Add overlay track**.
+one. To make an empty track yourself, choose **Media ▸ Add audio track** or
+**Media ▸ Add overlay track**, or right-click the timeline and choose one of
+them.
 
 ### Editing clips on these tracks
 
