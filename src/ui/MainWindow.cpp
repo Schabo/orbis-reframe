@@ -15,6 +15,7 @@
 #include <QCloseEvent>
 #include <QDir>
 #include <QDialog>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QFileDialog>
@@ -85,6 +86,7 @@
 #include "WaveformCache.h"
 #include "PlayerBar.h"
 #include "TransportBar.h"
+#include "UserManual.h"
 #include "panels/AudioPanel.h"
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
@@ -99,6 +101,7 @@
 #include "../core/ProjectFolder.h"
 #include "../core/ProjectLibrary.h"
 #include "../core/Timeline.h"
+#include "../core/Version.h"
 #include "../render/EquirectViewportWindow.h"
 
 MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
@@ -2369,6 +2372,10 @@ void MainWindow::setupKeyboardShortcuts()
                       : QString());
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
+    QAction *manualAction = helpMenu->addAction(tr("&User manual"), this, [] {
+        QDesktopServices::openUrl(userManualUrl(QString::fromUtf8(core::version::string())));
+    });
+    manualAction->setObjectName(QStringLiteral("userManualAction"));
     QAction *keysAction =
         helpMenu->addAction(tr("&Keyboard shortcuts"), this, &MainWindow::showShortcutHelp);
     keysAction->setShortcut(QKeySequence(Qt::Key_F1));

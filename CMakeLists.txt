@@ -426,6 +426,8 @@ if(FFMPEG_FOUND)
         src/render/FrameStats.h
         src/ui/AboutDialog.cpp
         src/ui/AboutDialog.h
+        src/ui/UserManual.cpp
+        src/ui/UserManual.h
         src/ui/ClipThumbnail.cpp
         src/ui/ClipThumbnail.h
         src/ui/NewProjectDialog.cpp
@@ -617,6 +619,13 @@ endif()
 add_executable(core_model_test tests/core_model_test.cpp)
 target_link_libraries(core_model_test PRIVATE orbis_core)
 add_test(NAME core_model_test COMMAND core_model_test)
+
+# Help > User manual's link per version (release tag or main).
+add_executable(user_manual_test tests/user_manual_test.cpp
+    src/ui/UserManual.cpp src/ui/UserManual.h)
+target_include_directories(user_manual_test PRIVATE src/ui)
+target_link_libraries(user_manual_test PRIVATE Qt6::Core)
+add_test(NAME user_manual_test COMMAND user_manual_test)
 
 # TimelineWidget mouse handling on the offscreen platform.
 find_package(Qt6 QUIET COMPONENTS Test)

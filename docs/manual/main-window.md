@@ -206,7 +206,7 @@ in the sidebar: it's in **File ▸ Project settings…**, see
 | **Edit** | **Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Shift+Z`). Undo steps back through your edits to the project; looking around in the viewport isn't an edit and isn't undone. |
 | **Media** | **Import files…** (`Ctrl+I`) and **Import folder…**, into the project's media ([above](#the-media-sidebar)); **Add clip to timeline…** (`Ctrl+Shift+A`), **Add audio file…** (`Ctrl+Shift+M`) and **Add video overlay…** (`Ctrl+Shift+V`), straight onto the timeline; **Add audio track** and **Add overlay track**. |
 | **View** | **Preview quality** and **Preview size**: how the preview in the viewport is stitched. They change only what you see while editing, never the export; see [Stitching](stitching.md#preview-size-and-quality). |
-| **Help** | **Keyboard shortcuts** (`F1`) and **About orbis-reframe**, with the version and the diagnostics to include in a problem report. |
+| **Help** | **User manual** opens this manual in your web browser, on GitHub: for a release, the copy that matches your version. **Keyboard shortcuts** (`F1`), and **About orbis-reframe**, with the version and the diagnostics to include in a problem report. |
 
 When you close the window, open another project or go back to the project
 library with unsaved changes,
