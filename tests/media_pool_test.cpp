@@ -112,6 +112,56 @@ void testSidebar()
     bar.toggle();
     CHECK(!bar.isOpen());
     CHECK(openSpy.size() == 3);
+    bar.toggle();
+}
+
+void testSidebarResize()
+{
+    QWidget window;
+    window.resize(1200, 600);
+    auto *bar = new TabSidebar(TabSidebar::Side::Left, QStringLiteral("sourcesSidebar"), &window);
+    auto *page = new QLabel(QStringLiteral("page"));
+    page->setObjectName(QStringLiteral("mediaPoolPanel"));
+    bar->addTab(page, QStringLiteral("film"), QStringLiteral("Media"));
+    bar->setPageWidthRange(200, 300, 900);
+    bar->setPageWidth(300);
+    bar->resize(bar->sizeHint().width(), 600);
+    window.show();
+    CHECK(bar->pageWidth() == 300);
+    bar->setPageWidth(50); // clamped to the range
+    CHECK(bar->pageWidth() == 200);
+    bar->setPageWidth(300);
+
+    auto *handle = find<QWidget>(bar, "sourcesSidebarHandle");
+    if (!handle)
+        return;
+    CHECK(handle->isVisible());
+    QSignalSpy widthSpy(bar, &TabSidebar::pageWidthChanged);
+    const QPoint at(2, 100);
+    // Drag 120 px right: wider.
+    QTest::mousePress(handle, Qt::LeftButton, {}, at);
+    QMouseEvent move(QEvent::MouseMove, QPointF(at + QPoint(120, 0)),
+                     QPointF(handle->mapToGlobal(at + QPoint(120, 0))), Qt::NoButton,
+                     Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(handle, &move);
+    QTest::mouseRelease(handle, Qt::LeftButton, {}, at + QPoint(120, 0));
+    CHECK(bar->pageWidth() == 420);
+    CHECK(widthSpy.size() == 1 && widthSpy.first().first().toInt() == 420);
+    // Far right: at most half the window.
+    QTest::mousePress(handle, Qt::LeftButton, {}, at);
+    QMouseEvent far(QEvent::MouseMove, QPointF(at + QPoint(2000, 0)),
+                    QPointF(handle->mapToGlobal(at + QPoint(2000, 0))), Qt::NoButton,
+                    Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(handle, &far);
+    QTest::mouseRelease(handle, Qt::LeftButton, {}, at);
+    CHECK(bar->pageWidth() == 600);
+    // Double-click: the default width.
+    QTest::mouseDClick(handle, Qt::LeftButton, {}, at);
+    CHECK(bar->pageWidth() == 300);
+    CHECK(widthSpy.size() == 3);
+    // Closed: no handle.
+    bar->setOpen(false);
+    CHECK(!handle->isVisible());
 }
 
 void testMediaTab()
@@ -294,6 +344,7 @@ int main(int argc, char **argv)
     theme::apply(app, theme::themes().first());
     testKinds();
     testSidebar();
+    testSidebarResize();
     testMediaTab();
     if (g_failures == 0)
         std::printf("media_pool_test: all checks passed\n");

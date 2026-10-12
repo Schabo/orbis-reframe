@@ -2,9 +2,12 @@
 
 #include <QButtonGroup>
 #include <QHBoxLayout>
+#include <QMouseEvent>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 #include "Theme.h"
 
@@ -21,6 +24,59 @@ QToolButton *iconButton(const QString &iconName, QWidget *parent)
 }
 
 } // namespace
+
+// The drag handle on the sidebar's inner edge.
+class TabSidebarHandle : public QWidget {
+public:
+    explicit TabSidebarHandle(TabSidebar *bar) : QWidget(bar), m_bar(bar)
+    {
+        setFixedWidth(5);
+        setCursor(Qt::SizeHorCursor);
+        setAttribute(Qt::WA_StyledBackground);
+        setAttribute(Qt::WA_Hover);
+        setToolTip(TabSidebar::tr("Drag to resize; double-click for the default width"));
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override
+    {
+        if (e->button() != Qt::LeftButton)
+            return;
+        m_dragging = true;
+        m_pressX = e->globalPosition().x();
+        m_pressWidth = m_bar->pageWidth();
+    }
+    void mouseMoveEvent(QMouseEvent *e) override
+    {
+        if (!m_dragging)
+            return;
+        const double dx = e->globalPosition().x() - m_pressX;
+        // The left sidebar grows to the right, the right one to the left.
+        const int width = int(m_pressWidth + (m_bar->m_side == TabSidebar::Side::Left ? dx : -dx));
+        m_bar->m_panel->setFixedWidth(m_bar->clampedWidth(width));
+    }
+    void mouseReleaseEvent(QMouseEvent *e) override
+    {
+        if (e->button() != Qt::LeftButton || !m_dragging)
+            return;
+        m_dragging = false;
+        if (m_bar->pageWidth() != m_pressWidth)
+            emit m_bar->pageWidthChanged(m_bar->pageWidth());
+    }
+    void mouseDoubleClickEvent(QMouseEvent *e) override
+    {
+        if (e->button() != Qt::LeftButton)
+            return;
+        m_bar->setPageWidth(m_bar->m_standardWidth);
+        emit m_bar->pageWidthChanged(m_bar->pageWidth());
+    }
+
+private:
+    TabSidebar *m_bar;
+    bool m_dragging = false;
+    double m_pressX = 0;
+    int m_pressWidth = 0;
+};
 
 TabSidebar::TabSidebar(Side side, const QString &objectName, QWidget *parent)
     : QWidget(parent), m_side(side)
@@ -81,10 +137,21 @@ TabSidebar::TabSidebar(Side side, const QString &objectName, QWidget *parent)
     stripLayout->addStretch(1);
     m_strip->hide();
 
+    m_handle = new TabSidebarHandle(this);
+    m_handle->setObjectName(objectName + QStringLiteral("Handle"));
+    m_handle->setProperty("sidebarPart", "handle");
+
+    // The handle on the inner edge, toward the viewport.
     auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    layout->addWidget(m_panel, 1);
+    if (left) {
+        layout->addWidget(m_panel, 1);
+        layout->addWidget(m_handle, 0);
+    } else {
+        layout->addWidget(m_handle, 0);
+        layout->addWidget(m_panel, 1);
+    }
     layout->addWidget(m_strip, 0);
     updateTooltips();
 }
@@ -120,7 +187,27 @@ int TabSidebar::currentIndex() const { return m_stack->currentIndex(); }
 
 int TabSidebar::count() const { return m_stack->count(); }
 
-void TabSidebar::setPageWidth(int width) { m_panel->setFixedWidth(width); }
+void TabSidebar::setPageWidthRange(int min, int standard, int max)
+{
+    m_minWidth = min;
+    m_maxWidth = std::max(min, max);
+    m_standardWidth = std::clamp(standard, m_minWidth, m_maxWidth);
+}
+
+void TabSidebar::setPageWidth(int width)
+{
+    m_panel->setFixedWidth(std::clamp(width, m_minWidth, m_maxWidth));
+}
+
+int TabSidebar::pageWidth() const { return m_panel->minimumWidth(); } // a fixed width
+
+int TabSidebar::clampedWidth(int width) const
+{
+    int max = m_maxWidth;
+    if (const QWidget *w = window(); w && w != this)
+        max = std::min(max, w->width() / 2);
+    return std::clamp(width, m_minWidth, std::max(m_minWidth, max));
+}
 
 void TabSidebar::setOpen(bool open)
 {
@@ -128,6 +215,7 @@ void TabSidebar::setOpen(bool open)
         return;
     m_open = open;
     m_panel->setVisible(open);
+    m_handle->setVisible(open);
     m_strip->setVisible(!open);
     emit openChanged(open);
 }

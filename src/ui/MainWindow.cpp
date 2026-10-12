@@ -142,7 +142,17 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
 
     // The left sidebar (sources), beside the viewport: the Media tab.
     m_sourcesSidebar = new TabSidebar(TabSidebar::Side::Left, QStringLiteral("sourcesSidebar"), this);
-    m_sourcesSidebar->setPageWidth(std::max(280, fontMetrics().height() * 17));
+    // Resizable (file names can be long); the width is remembered per user.
+    const int sourcesWidth = std::max(280, fontMetrics().height() * 17);
+    m_sourcesSidebar->setPageWidthRange(200, sourcesWidth, 900);
+    m_sourcesSidebar->setPageWidth(
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .value(QStringLiteral("sidebars/sourcesWidth"), sourcesWidth)
+            .toInt());
+    connect(m_sourcesSidebar, &TabSidebar::pageWidthChanged, this, [](int width) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("sidebars/sourcesWidth"), width);
+    });
     m_mediaPanel = new MediaPoolPanel(m_project->mediaPool());
     m_mediaPanel->setThumbnailProvider(&mediaThumbnail);
     m_sourcesSidebar->addTab(m_mediaPanel, QStringLiteral("film"), tr("Media"));

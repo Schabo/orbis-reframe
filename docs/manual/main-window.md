@@ -46,8 +46,10 @@ follow a view, you set **reframe keyframes**, covered in
 The sidebar on the left of the viewport holds the files you work with. For
 now it has one tab, **Media**. The `<` button at its top-left closes the
 sidebar and leaves a slim strip at the window's edge; the `>` button on the
-strip opens it again. `Ctrl+B` does both. orbis-reframe remembers whether
-it was open.
+strip opens it again. `Ctrl+B` does both. To make it wider or narrower,
+for example to read long file names, drag its right edge (the pointer
+becomes a two-way arrow there); double-click the edge to go back to the
+default width. orbis-reframe remembers whether it was open and how wide.
 
 **Media** lists the project's media: every file you've imported, and every
 file used on the timeline. The files stay where they are on your disk; the

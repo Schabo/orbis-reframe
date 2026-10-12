@@ -317,6 +317,13 @@ QWidget[sidebarPart="tabRow"] QToolButton:checked {
     background-color: @panel;
     border-bottom: 2px solid @accent;
 }
+/* The resize handle on the inner edge: shows on hover. */
+QWidget[sidebarPart="handle"] {
+    background-color: transparent;
+}
+QWidget[sidebarPart="handle"]:hover {
+    background-color: @accent;
+}
 /* Closed: the slim strip at the edge. */
 QWidget[sidebarPart="strip"] {
     background-color: @menuBar;
