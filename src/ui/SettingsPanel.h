@@ -14,10 +14,10 @@ class SettingsPanel : public QWidget {
     Q_OBJECT
 
 public:
-    SettingsPanel(const QString &title, const QString &iconPath, QWidget *parent = nullptr);
+    SettingsPanel(const QString &title, const QString &iconName, QWidget *parent = nullptr);
 
     QString title() const { return m_title; }
-    QString iconPath() const { return m_iconPath; }
+    QString iconName() const { return m_iconName; }
 
 protected:
     // Add controls here: form()->addRow(tr("Quality"), combo);
@@ -28,7 +28,7 @@ protected:
 
 private:
     QString m_title;
-    QString m_iconPath;
+    QString m_iconName;
     QLabel *m_titleLabel = nullptr;
     QLabel *m_hintLabel = nullptr;
     QFormLayout *m_form = nullptr;

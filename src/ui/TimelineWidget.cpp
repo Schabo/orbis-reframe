@@ -1,5 +1,7 @@
 #include "TimelineWidget.h"
 
+#include "Theme.h"
+
 #include <QContextMenuEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -72,31 +74,35 @@ qint64 tickIntervalMs(qint64 totalMs, int usableW)
     return steps[sizeof(steps) / sizeof(steps[0]) - 1];
 }
 
-QColor clipFill(int id, bool active, bool missing)
+// The theme's clip colours; the selected (or active) one a little lighter.
+QColor lit(const QColor &c, bool on) { return on ? c.lighter(125) : c; }
+
+// Video clips alternate between two blues, so neighbours stay apart.
+QColor clipFill(int index, bool active, bool missing)
 {
+    const theme::Colors &t = theme::colors();
     if (missing)
-        return active ? QColor(150, 60, 60) : QColor(110, 55, 55);
-    // Stable per-id hue, muted.
-    const int hue = (id * 47) % 360;
-    return QColor::fromHsv(hue, active ? 90 : 55, active ? 165 : 130);
+        return lit(t.clipMissing, active);
+    return lit(index % 2 ? t.clipVideoAlt : t.clipVideo, active);
 }
 
 QColor audioFill(bool selected, bool muted, bool missing)
 {
-    if (missing)
-        return selected ? QColor(150, 60, 60) : QColor(110, 55, 55);
-    if (muted)
-        return selected ? QColor(105, 110, 115) : QColor(80, 84, 88);
-    return selected ? QColor(60, 150, 140) : QColor(45, 115, 110);
+    const theme::Colors &t = theme::colors();
+    return lit(missing ? t.clipMissing : muted ? t.clipMuted : t.clipAudio, selected);
 }
 
 QColor overlayFill(bool selected, bool hidden, bool missing)
 {
-    if (missing)
-        return selected ? QColor(150, 60, 60) : QColor(110, 55, 55);
-    if (hidden)
-        return selected ? QColor(105, 110, 115) : QColor(80, 84, 88);
-    return selected ? QColor(140, 100, 170) : QColor(105, 78, 135);
+    const theme::Colors &t = theme::colors();
+    return lit(missing ? t.clipMissing : hidden ? t.clipMuted : t.clipOverlay, selected);
+}
+
+// A token at `alpha` (0-255), for marks drawn over clips.
+QColor withAlpha(QColor c, int alpha)
+{
+    c.setAlpha(alpha);
+    return c;
 }
 
 QRect muteBox(int rowTop, int rowH)
@@ -630,7 +636,8 @@ void TimelineWidget::dropEvent(QDropEvent *e)
 void TimelineWidget::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
-    p.fillRect(rect(), palette().color(QPalette::Base).darker(115));
+    const theme::Colors &tc = theme::colors();
+    p.fillRect(rect(), tc.panel);
     const QFontMetrics fm(font());
 
     // Everything in timeline time is clipped to the content area (a zoomed
@@ -642,7 +649,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     p.setClipRect(QRect(cLeft, 0, usableW + kMarginX, rowsBottom));
 
     // Ruler ticks, over the visible span.
-    p.setPen(palette().color(QPalette::Mid));
+    p.setPen(tc.textDim);
     if (m_extentMs > 0) {
         const qint64 span = visibleSpanMs();
         const qint64 step = tickIntervalMs(span, usableW);
@@ -659,8 +666,8 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     }
 
     // Row backgrounds.
-    const QColor headerBg = palette().color(QPalette::Window).darker(108);
-    const QColor rowBg = palette().color(QPalette::Base).darker(125);
+    const QColor headerBg = tc.panel;
+    const QColor rowBg = tc.menuBar;
     p.fillRect(QRect(cLeft, mainTop(), usableW, kMainH), rowBg);
     for (int i = 0; i < m_tracks.size(); ++i)
         p.fillRect(QRect(cLeft, trackTop(i), usableW, kTrackH), rowBg);
@@ -668,11 +675,11 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     // Past the end of the main track: audio there isn't played.
     if (m_extentMs > m_totalMs) {
         const int x = std::max(cLeft, xForTimelineMs(m_totalMs));
-        p.fillRect(QRect(x, kRulerH, width() - x, rowsBottom - kRulerH), QColor(0, 0, 0, 70));
+        p.fillRect(QRect(x, kRulerH, width() - x, rowsBottom - kRulerH), tc.shade);
     }
 
     if (m_rows.isEmpty() && m_tracks.isEmpty()) {
-        p.setPen(palette().color(QPalette::Mid));
+        p.setPen(tc.textDim);
         p.drawText(QRect(cLeft, mainTop(), usableW, kMainH), Qt::AlignCenter,
                    tr("No clips — open a clip or add one to the timeline"));
     }
@@ -697,19 +704,18 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             rc.setRight(xForTimelineMs(r.startMs + std::max<qint64>(0, newDur)));
         }
 
-        p.setBrush(clipFill(r.clip.id, active, r.clip.missing));
-        p.setPen(QPen(active ? palette().color(QPalette::Highlight)
-                             : palette().color(QPalette::Dark),
+        p.setBrush(clipFill(i, active, r.clip.missing));
+        p.setPen(QPen(active ? tc.accent : tc.menuBar,
                       active ? 2 : 1));
         p.drawRect(rc.adjusted(0, 0, -1, -1));
         // Its camera audio, faint, in the lower part (to line a detached mic
         // up against).
         drawWaveform(p, QRect(rc.left(), rc.top() + rc.height() / 2, rc.width(), rc.height() / 2 - 1),
                      r.clip.peaks, r.startMs, r.clip.trimInMs, r.clip.speed, r.clip.gain, 0, 0,
-                     r.durMs, QColor(255, 255, 255, 60));
+                     r.durMs, withAlpha(tc.waveform, 60));
 
         // Label.
-        p.setPen(palette().color(QPalette::BrightText));
+        p.setPen(tc.text);
         // A hollow diamond marks a clip without reframe keys: it exports a
         // static forward view, whatever the viewport showed.
         QString label = (r.clip.missing ? QStringLiteral("⚠ ") : QString()) +
@@ -725,7 +731,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         // Keyframe diamonds.
         if (!r.clip.keySourceMs.isEmpty() && r.durMs > 0) {
             p.setRenderHint(QPainter::Antialiasing, true);
-            p.setBrush(palette().color(QPalette::BrightText));
+            p.setBrush(tc.text);
             p.setPen(Qt::NoPen);
             const int cy = rc.bottom() - 5;
             for (qint64 ks : r.clip.keySourceMs) {
@@ -755,21 +761,21 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         if (ghost)
             fill.setAlpha(170);
         p.setBrush(fill);
-        p.setPen(QPen(sel ? palette().color(QPalette::Highlight) : palette().color(QPalette::Dark),
+        p.setPen(QPen(sel ? tc.accent : tc.menuBar,
                       sel ? 2 : 1));
         p.drawRect(rc.adjusted(0, 0, -1, -1));
         drawWaveform(p, rc.adjusted(0, 1, 0, -1), c.peaks, c.startMs, c.trimInMs, c.speed,
                      c.muted ? 0.0 : c.gain, c.fadeInMs, c.fadeOutMs, c.spanMs(),
-                     QColor(255, 255, 255, 90));
+                     withAlpha(tc.waveform, 90));
         // Fade ramps: a line from silence (transparent) at the edge up to full.
         p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(QColor(255, 255, 255, 150), 1));
+        p.setPen(QPen(withAlpha(tc.waveform, 150), 1));
         if (c.fadeInMs > 0)
             p.drawLine(rc.left(), rc.bottom(), xForTimelineMs(c.startMs + c.fadeInMs), rc.top() + 1);
         if (c.fadeOutMs > 0)
             p.drawLine(xForTimelineMs(c.endMs() - c.fadeOutMs), rc.top() + 1, rc.right(), rc.bottom());
         p.setRenderHint(QPainter::Antialiasing, false);
-        p.setPen(palette().color(QPalette::BrightText));
+        p.setPen(tc.text);
         QString label = (c.missing ? QStringLiteral("⚠ ") : QString()) +
                         (c.linked ? QStringLiteral("🔗 ") : QString()) + c.label;
         if (c.speed != 1.0)
@@ -780,7 +786,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         // An overlay's keyframe diamonds, like the main track's reframe keys.
         if (!c.keySourceMs.isEmpty()) {
             p.setRenderHint(QPainter::Antialiasing, true);
-            p.setBrush(palette().color(QPalette::BrightText));
+            p.setBrush(tc.text);
             p.setPen(Qt::NoPen);
             const int cy = rc.bottom() - 4;
             for (qint64 ks : c.keySourceMs) {
@@ -808,16 +814,16 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const int x = m_reorderTarget < m_rows.size()
                           ? m_rows[m_reorderTarget].rect.left()
                           : m_rows.last().rect.right();
-        p.setPen(QPen(palette().color(QPalette::Highlight), 2));
+        p.setPen(QPen(tc.accent, 2));
         p.drawLine(x, mainTop(), x, mainTop() + kMainH);
     }
 
     // Playhead.
     const int px = xForTimelineMs(m_playheadMs);
-    p.setPen(QPen(QColor(230, 70, 70), 1));
+    p.setPen(QPen(tc.playhead, 1));
     p.drawLine(px, 0, px, rowsBottom);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setBrush(QColor(230, 70, 70));
+    p.setBrush(tc.playhead);
     p.setPen(Qt::NoPen);
     const QPointF tri[3] = {{double(px - 4), 0.0}, {double(px + 4), 0.0}, {double(px), 6.0}};
     p.drawPolygon(tri, 3);
@@ -826,7 +832,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     // A file drag: where it would land.
     if (m_dropActive) {
         const int x = xForTimelineMs(m_dropMs);
-        const QColor hl = palette().color(QPalette::Highlight);
+        const QColor hl = tc.accent;
         int top = mainTop() + kMainH, bottom = rowsBottom;
         if (m_dropVideo || m_dropClip) { // over the main track
             top = kRulerH;
@@ -845,17 +851,17 @@ void TimelineWidget::paintEvent(QPaintEvent *)
 
     // Track headers, over anything scrolled under them.
     p.setClipping(false);
-    p.fillRect(QRect(0, 0, kHeaderW + kMarginX, kRulerH), palette().color(QPalette::Base).darker(115));
+    p.fillRect(QRect(0, 0, kHeaderW + kMarginX, kRulerH), tc.panel);
     const auto drawMuteBox = [&](const QRect &mb, bool on, const QString &letter) {
-        p.setBrush(on ? QColor(200, 150, 40) : Qt::transparent);
-        p.setPen(palette().color(QPalette::Mid));
+        p.setBrush(on ? tc.accent : Qt::transparent);
+        p.setPen(tc.border);
         p.drawRect(mb.adjusted(0, 0, -1, -1));
-        p.setPen(on ? QColor(20, 20, 20) : palette().color(QPalette::WindowText));
+        p.setPen(on ? tc.textOnAccent : tc.text);
         p.drawText(mb, Qt::AlignCenter, letter);
     };
     p.fillRect(QRect(0, mainTop(), kHeaderW, kMainH), headerBg);
     const QRect mainMb = muteBox(mainTop(), kMainH);
-    p.setPen(palette().color(QPalette::WindowText));
+    p.setPen(tc.text);
     p.drawText(QRect(6, mainTop(), mainMb.left() - 8, kMainH), Qt::AlignVCenter | Qt::AlignLeft,
                tr("Video"));
     drawMuteBox(mainMb, m_mainMuted, QStringLiteral("M"));
@@ -864,9 +870,9 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const int top = trackTop(i);
         const bool dragged = m_drag == Drag::TrackMove && m_dragMoved && i == m_dragTrackIndex;
         p.fillRect(QRect(0, top, kHeaderW, kTrackH),
-                   dragged ? palette().color(QPalette::Highlight).darker(150) : headerBg);
+                   dragged ? tc.accentSoft : headerBg);
         const QRect mb = muteBox(top, kTrackH);
-        p.setPen(palette().color(QPalette::WindowText));
+        p.setPen(tc.text);
         p.drawText(QRect(6, top, mb.left() - 8, kTrackH), Qt::AlignVCenter | Qt::AlignLeft,
                    fm.elidedText(t.name, Qt::ElideRight, mb.left() - 8));
         drawMuteBox(mb, t.muted, t.video ? QStringLiteral("H") : QStringLiteral("M"));
@@ -879,7 +885,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                                              : trackTop(m_tracks.size()) - kRowGap / 2;
         if (video && m_trackGap == m_videoTracks) // below the last overlay track
             y = mainTop() - kRowGap / 2 - 1;
-        p.setPen(QPen(palette().color(QPalette::Highlight), 2));
+        p.setPen(QPen(tc.accent, 2));
         p.drawLine(0, y, width(), y);
     }
 }

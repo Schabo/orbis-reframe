@@ -1,12 +1,14 @@
 #include "PrivacyPanel.h"
 
+#include "../Theme.h"
+
 #include <QCheckBox>
 #include <QFormLayout>
 #include <QLabel>
 #include <QPushButton>
 
 PrivacyPanel::PrivacyPanel(QWidget *parent)
-    : SettingsPanel(tr("Privacy"), QStringLiteral(":/icons/eye-off.svg"), parent)
+    : SettingsPanel(tr("Privacy"), QStringLiteral("eye-off"), parent)
 {
     setHint(tr("Blurs the number plates a scan of the clip finds, in playback and export. "
                "Right-click a blur in the viewport to remove a false hit."));
@@ -47,16 +49,20 @@ PrivacyPanel::PrivacyPanel(QWidget *parent)
                                  "to remove or restore it."));
     form()->addRow(m_showRegions);
 
-    // The colours match the viewport's (MainWindow::pushRegionOverlay) and the
-    // privacy spike's debug overlay.
+    // The theme's plate colours, as the viewport draws them
+    // (MainWindow::pushRegionOverlay).
     m_legend = new QLabel(this);
-    m_legend->setText(tr("<span style='color:#00ff00'>&#9632;</span> detected &nbsp; "
-                         "<span style='color:#00ffff'>&#9632;</span> tracked<br>"
-                         "<span style='color:#ffdc00'>&#9632;</span> filled in &nbsp; "
-                         "<span style='color:#ff00ff'>&#9632;</span> tracked, not verified<br>"
-                         "<span style='color:#8c8c8c'>&#9632;</span> removed (right-click to "
-                         "restore)<br>"
-                         "<span style='color:#5999ff'>&#9632;</span> blurred by hand"));
+    const theme::Colors &tc = theme::colors();
+    const auto swatch = [](const QColor &c) {
+        return QStringLiteral("<span style='color:%1'>&#9632;</span>").arg(c.name());
+    };
+    m_legend->setText(tr("%1 detected &nbsp; %2 tracked<br>"
+                         "%3 filled in &nbsp; %4 tracked, not verified<br>"
+                         "%5 removed (right-click to restore)<br>"
+                         "%6 blurred by hand")
+                          .arg(swatch(tc.plateDetected), swatch(tc.plateTracked),
+                               swatch(tc.plateFilled), swatch(tc.plateUnverified),
+                               swatch(tc.plateRemoved), swatch(tc.plateAdded)));
     form()->addRow(m_legend);
     form()->setRowVisible(m_legend, false);
 
@@ -109,8 +115,8 @@ void PrivacyPanel::showStatus()
 {
     QString html = m_statusText.toHtmlEscaped();
     if (!m_warningText.isEmpty())
-        html += QStringLiteral("<p style='color:#ffb347; margin-top:6px'>&#9888; %1</p>")
-                    .arg(m_warningText.toHtmlEscaped());
+        html += QStringLiteral("<p style='color:%1; margin-top:6px'>&#9888; %2</p>")
+                    .arg(theme::colors().warning.name(), m_warningText.toHtmlEscaped());
     m_status->setText(html);
 }
 

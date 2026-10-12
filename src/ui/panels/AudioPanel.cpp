@@ -64,7 +64,7 @@ QDoubleSpinBox *secondsBox(QWidget *parent, int decimals, double step)
 } // namespace
 
 AudioPanel::AudioPanel(QWidget *parent)
-    : SettingsPanel(tr("Audio"), QStringLiteral(":/icons/volume-2.svg"), parent)
+    : SettingsPanel(tr("Audio"), QStringLiteral("volume-2"), parent)
 {
     // Audio-clip mode: the track first (it holds the clip), a separator, then
     // the clip itself.

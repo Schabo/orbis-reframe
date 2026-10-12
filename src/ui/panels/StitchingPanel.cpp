@@ -17,7 +17,7 @@ constexpr std::array<int, 7> kPresetWidths{1920, 2560, 3072, 3840, 5120, 5760, 7
 } // namespace
 
 StitchingPanel::StitchingPanel(QWidget *parent)
-    : SettingsPanel(tr("Stitching"), QStringLiteral(":/icons/layers.svg"), parent)
+    : SettingsPanel(tr("Stitching"), QStringLiteral("layers"), parent)
 {
     m_quality = new QComboBox(this);
     m_quality->addItem(tr("Standard"));

@@ -4,8 +4,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-SettingsPanel::SettingsPanel(const QString &title, const QString &iconPath, QWidget *parent)
-    : QWidget(parent), m_title(title), m_iconPath(iconPath)
+SettingsPanel::SettingsPanel(const QString &title, const QString &iconName, QWidget *parent)
+    : QWidget(parent), m_title(title), m_iconName(iconName)
 {
     auto *outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);

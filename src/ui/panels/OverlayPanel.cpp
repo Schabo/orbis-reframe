@@ -44,7 +44,7 @@ QWidget *sliderRow(QWidget *parent, int lo, int hi, QSlider **slider, QLabel **v
 } // namespace
 
 OverlayPanel::OverlayPanel(QWidget *parent)
-    : SettingsPanel(tr("Overlay"), QStringLiteral(":/icons/picture-in-picture-2.svg"), parent)
+    : SettingsPanel(tr("Overlay"), QStringLiteral("picture-in-picture-2"), parent)
 {
     m_trackName = new QLabel(this);
     form()->addRow(tr("Track"), m_trackName);

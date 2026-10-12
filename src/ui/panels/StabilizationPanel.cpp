@@ -47,7 +47,7 @@ QDoubleSpinBox *degBox()
 } // namespace
 
 StabilizationPanel::StabilizationPanel(QWidget *parent)
-    : SettingsPanel(tr("Stabilization"), QStringLiteral(":/icons/vibrate.svg"), parent)
+    : SettingsPanel(tr("Stabilization"), QStringLiteral("vibrate"), parent)
 {
     m_mode = new QComboBox(this);
     m_mode->addItem(tr("Off"), int(Mode::Off));

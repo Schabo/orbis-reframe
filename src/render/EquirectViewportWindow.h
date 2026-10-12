@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QColor>
+
 // Interactive rectilinear ("flat") viewport onto an equirectangular 360
 // frame (or a decoded fisheye pair, SetLensFrame). See
 // src/render/shaders/equirect.frag for the reprojection math.
@@ -112,12 +114,18 @@ public:
     // nullptr / all-zero = neutral. Plain float writes, like SetStabilization.
     void SetColorGrade(const float grade[4]);
     void ColorGradeArr(float out[4]) const;
+    // For the renderer: SetSurroundColor's value.
+    const float *SurroundColor() const { return m_surround; }
 
     // The output frame's width / height. The picture is letterboxed /
     // pillarboxed to this aspect inside the window, and the reprojection uses
     // it instead of the window's, so resizing the window never changes what's
     // framed. <= 0 = fill the window. Plain float write.
     void SetOutputAspect(float aspect) { m_outputAspect = aspect; }
+    // The theme's colours this window paints with: around the picture, and
+    // the marker box while drawing it / tracking / lost (MarkerStyle order).
+    void SetSurroundColor(const QColor &c);
+    void SetMarkerColors(const QColor &select, const QColor &tracking, const QColor &lost);
     float OutputAspect() const { return m_outputAspect; }
 
     // The unit direction in the sphere frame (RegionOutline's) that the
@@ -140,6 +148,11 @@ public:
     // The marker as output-rect fractions {x, y, w, h}; false when none.
     // Called by the renderer.
     bool Marker(float out[4], MarkerStyle *style = nullptr) const;
+    // For the renderer: SetMarkerColors' colour for `style`.
+    const float *MarkerColor(MarkerStyle style) const
+    {
+        return m_markerColors[static_cast<int>(style)];
+    }
 
     // An equirect frame plus the view to show it through and (optionally) the
     // marker, all applied together when the renderer takes the frame -- Track
@@ -228,6 +241,8 @@ private:
     std::vector<RegionOutline> m_pendingOutlines; // with the pending frame, guarded by m_frameMutex
     std::vector<RegionOutline> m_outlines;        // the shown frame's; renderer thread
     float m_colorGrade[4] = {0, 0, 0, 0};  // exposureEv, contrast, saturation, temperature
+    float m_surround[3] = {0, 0, 0};
+    float m_markerColors[3][3] = {{1.0f, 0.8f, 0.1f}, {0.2f, 0.9f, 0.3f}, {1.0f, 0.25f, 0.2f}};
     float m_outputAspect = 16.0f / 9.0f;   // project output width / height
 
     // Insets, guarded by m_insetMutex.

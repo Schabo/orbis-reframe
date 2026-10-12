@@ -27,7 +27,7 @@ QDoubleSpinBox *makeAngleBox(QWidget *parent, double lo, double hi, bool wrappin
 } // namespace
 
 ReframePanel::ReframePanel(QWidget *parent)
-    : SettingsPanel(tr("Reframe"), QStringLiteral(":/icons/move-3d.svg"), parent)
+    : SettingsPanel(tr("Reframe"), QStringLiteral("move-3d"), parent)
 {
     m_yaw = makeAngleBox(this, -180.0, 180.0, true);
     m_pitch = makeAngleBox(this, -89.0, 89.0, false);

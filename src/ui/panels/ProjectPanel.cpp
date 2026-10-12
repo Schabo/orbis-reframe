@@ -3,7 +3,7 @@
 #include "../OutputSettingsEditor.h"
 
 ProjectPanel::ProjectPanel(QWidget *parent)
-    : SettingsPanel(tr("Project"), QStringLiteral(":/icons/clapperboard.svg"), parent)
+    : SettingsPanel(tr("Project"), QStringLiteral("clapperboard"), parent)
 {
     m_editor = new OutputSettingsEditor(this, form());
     setHint(tr("The shape, size and frame rate of the video you export. The viewport shows "

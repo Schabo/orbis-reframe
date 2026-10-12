@@ -3,6 +3,8 @@
 #include <QButtonGroup>
 #include <QHBoxLayout>
 #include <QIcon>
+
+#include "Theme.h"
 #include <QSize>
 #include <QStackedWidget>
 #include <QToolButton>
@@ -15,6 +17,8 @@
 SettingsSidebar::SettingsSidebar(QWidget *parent) : QWidget(parent)
 {
     setObjectName(QStringLiteral("settingsSidebar"));
+    // A QWidget subclass paints its stylesheet background only when asked.
+    setAttribute(Qt::WA_StyledBackground);
 
     // A fixed width: the panels' preferred widths follow what they show (a
     // file name, a word-wrapped note, a stream list), and a sidebar sized
@@ -49,7 +53,7 @@ void SettingsSidebar::addPanel(SettingsPanel *panel)
     auto *button = new QToolButton(m_rail);
     button->setCheckable(true);
     button->setAutoRaise(true);
-    button->setIcon(QIcon(panel->iconPath()));
+    button->setIcon(theme::icon(panel->iconName()));
     button->setIconSize(QSize(20, 20));
     // MainWindow gives the first nine panels Alt+1 … Alt+9.
     button->setToolTip(index < 9 ? tr("%1  ( Alt+%2 )").arg(panel->title()).arg(index + 1)

@@ -428,6 +428,8 @@ if(FFMPEG_FOUND)
         src/ui/ProjectLibraryPage.h
         src/ui/SystemCheck.cpp
         src/ui/SystemCheck.h
+        src/ui/Theme.cpp
+        src/ui/Theme.h
     )
     set_target_properties(orbis-reframe PROPERTIES AUTOMOC ON AUTORCC ON)
     # Audio playback needs Qt6::Multimedia, checked
@@ -610,7 +612,7 @@ add_test(NAME core_model_test COMMAND core_model_test)
 find_package(Qt6 QUIET COMPONENTS Test)
 if(Qt6Test_FOUND)
     add_executable(timeline_widget_test tests/timeline_widget_test.cpp
-        src/ui/TimelineWidget.cpp src/ui/TimelineWidget.h)
+        src/ui/TimelineWidget.cpp src/ui/TimelineWidget.h src/ui/Theme.cpp src/ui/Theme.h)
     set_target_properties(timeline_widget_test PROPERTIES AUTOMOC ON)
     target_include_directories(timeline_widget_test PRIVATE src/ui)
     target_link_libraries(timeline_widget_test PRIVATE Qt6::Widgets Qt6::Test)
@@ -623,11 +625,20 @@ if(Qt6Test_FOUND)
         src/ui/NewProjectDialog.cpp src/ui/NewProjectDialog.h
         src/ui/OutputSettingsEditor.cpp src/ui/OutputSettingsEditor.h
         src/ui/ClipThumbnail.cpp src/ui/ClipThumbnail.h
+        src/ui/Theme.cpp src/ui/Theme.h
         resources/resources.qrc)
     set_target_properties(project_library_test PROPERTIES AUTOMOC ON AUTORCC ON)
     target_include_directories(project_library_test PRIVATE src/ui)
     target_link_libraries(project_library_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
     add_test(NAME project_library_test COMMAND project_library_test)
+
+    # The theme's tokens, stylesheet template and icon tinting.
+    add_executable(theme_test tests/theme_test.cpp src/ui/Theme.cpp src/ui/Theme.h
+        resources/resources.qrc)
+    set_target_properties(theme_test PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_include_directories(theme_test PRIVATE src/ui)
+    target_link_libraries(theme_test PRIVATE Qt6::Widgets)
+    add_test(NAME theme_test COMMAND theme_test)
 endif()
 
 # insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.

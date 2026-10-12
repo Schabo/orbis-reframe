@@ -1,4 +1,5 @@
 #include "ProjectLibraryPage.h"
+#include "Theme.h"
 
 #include "ClipThumbnail.h"
 
@@ -79,9 +80,7 @@ public:
     void paint(QPainter *p, const QStyleOptionViewItem &option,
                const QModelIndex &index) const override
     {
-        const auto *list = qobject_cast<const ProjectCardList *>(option.widget);
-        if (!list)
-            return;
+        const theme::Colors &tc = theme::colors();
         p->save();
         p->setRenderHint(QPainter::Antialiasing);
 
@@ -91,7 +90,7 @@ public:
         const bool hover = option.state & QStyle::State_MouseOver;
         QPainterPath shape;
         shape.addRoundedRect(card, kRadius, kRadius);
-        p->fillPath(shape, hover || selected ? list->cardHoverColor() : list->cardColor());
+        p->fillPath(shape, hover || selected ? tc.button : tc.panel);
 
         // Thumbnail across the top; a plain area with the project icon when
         // there's none (empty project, flat video first, file missing).
@@ -103,9 +102,9 @@ public:
         if (!thumb.isNull()) {
             p->drawImage(thumbRect, thumb);
         } else {
-            p->fillRect(thumbRect, option.palette.color(QPalette::Window));
+            p->fillRect(thumbRect, tc.window);
             const QRect icon(0, 0, 40, 40);
-            QIcon(QStringLiteral(":/icons/clapperboard.svg"))
+            theme::icon(QStringLiteral("clapperboard"))
                 .paint(p, icon.translated(thumbRect.center().toPoint() - icon.center()),
                        Qt::AlignCenter, QIcon::Disabled);
         }
@@ -116,7 +115,7 @@ public:
         QFont bold = option.font;
         bold.setWeight(QFont::DemiBold);
         p->setFont(bold);
-        p->setPen(option.palette.color(QPalette::Text));
+        p->setPen(tc.text);
         QRectF line(text.left(), text.top(), text.width(), kLineH);
         p->drawText(line, Qt::AlignLeft | Qt::AlignVCenter,
                     QFontMetrics(bold).elidedText(index.data(Qt::DisplayRole).toString(),
@@ -129,15 +128,15 @@ public:
             p->drawText(line, Qt::AlignLeft | Qt::AlignVCenter,
                         fm.elidedText(s, Qt::ElideRight, int(line.width())));
         };
-        drawLine(index.data(ProjectLibraryPage::WhenRole).toString(), list->dimTextColor());
+        drawLine(index.data(ProjectLibraryPage::WhenRole).toString(), tc.textDim);
         const QString problem = index.data(ProjectLibraryPage::ProblemRole).toString();
         if (!problem.isEmpty())
-            drawLine(problem, list->problemColor());
+            drawLine(problem, tc.error);
         else
-            drawLine(index.data(ProjectLibraryPage::DetailsRole).toString(), list->dimTextColor());
+            drawLine(index.data(ProjectLibraryPage::DetailsRole).toString(), tc.textDim);
 
         if (selected) {
-            QPen pen(option.palette.color(QPalette::Highlight), 2);
+            QPen pen(tc.accent, 2);
             p->setPen(pen);
             p->setBrush(Qt::NoBrush);
             p->drawRoundedRect(card.adjusted(1, 1, -1, -1), kRadius - 1, kRadius - 1);
@@ -171,14 +170,16 @@ ProjectLibraryPage::ProjectLibraryPage(ProjectLibrary *library, QWidget *parent)
     : QWidget(parent), m_library(library)
 {
     setObjectName(QStringLiteral("projectLibrary"));
+    // A QWidget subclass paints its stylesheet background only when asked.
+    setAttribute(Qt::WA_StyledBackground);
 
     auto *title = new QLabel(tr("Projects"), this);
     title->setObjectName(QStringLiteral("projectLibraryTitle"));
-    auto *openOther = new QPushButton(QIcon(QStringLiteral(":/icons/folder-open.svg")),
+    auto *openOther = new QPushButton(theme::icon(QStringLiteral("folder-open")),
                                       tr("&Open other…"), this);
     openOther->setObjectName(QStringLiteral("openOtherButton"));
     openOther->setToolTip(tr("Open a project file that isn't in this list"));
-    auto *newProject = new QPushButton(QIcon(QStringLiteral(":/icons/file-plus-2.svg")),
+    auto *newProject = new QPushButton(theme::icon(QStringLiteral("file-plus-2")),
                                        tr("&New project…"), this);
     newProject->setObjectName(QStringLiteral("newProjectButton"));
     newProject->setDefault(true);
@@ -207,7 +208,7 @@ ProjectLibraryPage::ProjectLibraryPage(ProjectLibrary *library, QWidget *parent)
     m_showAction = new QAction(tr("Show in &file manager"), m_list);
     m_showAction->setObjectName(QStringLiteral("showProjectFolderAction"));
     connect(m_showAction, &QAction::triggered, this, &ProjectLibraryPage::showSelectedInFileManager);
-    m_removeAction = new QAction(QIcon(QStringLiteral(":/icons/x.svg")), tr("&Remove from list"),
+    m_removeAction = new QAction(theme::icon(QStringLiteral("x")), tr("&Remove from list"),
                                  m_list);
     m_removeAction->setObjectName(QStringLiteral("removeProjectAction"));
     m_removeAction->setToolTip(tr("Remove the project from this list. Its files are not deleted."));

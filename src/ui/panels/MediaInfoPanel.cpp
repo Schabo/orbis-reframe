@@ -52,7 +52,7 @@ QString upperCodec(const std::string &codec, const std::string &profile)
 } // namespace
 
 MediaInfoPanel::MediaInfoPanel(QWidget *parent)
-    : SettingsPanel(tr("Media information"), QStringLiteral(":/icons/info.svg"), parent)
+    : SettingsPanel(tr("Media information"), QStringLiteral("info"), parent)
 {
     setNoClip();
 }

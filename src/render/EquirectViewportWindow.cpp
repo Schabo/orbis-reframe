@@ -1465,7 +1465,8 @@ void EquirectViewportRenderer::startNextFrame()
     // depth-stencil, and the multisample colour when MSAA is on
     // (VUID-VkRenderPassBeginInfo-clearValueCount-00902).
     VkClearValue clearValues[3]{};
-    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    const float *surround = m_window->SurroundColor();
+    clearValues[0].color = {{surround[0], surround[1], surround[2], 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
     clearValues[2].color = clearValues[0].color;
 
@@ -1647,10 +1648,8 @@ void EquirectViewportRenderer::startNextFrame()
         mpc.origin[0] = float(rectX);
         mpc.origin[1] = float(rectY);
         mpc.border = 2.0f * float(m_window->devicePixelRatio());
-        // Yellow while drawing, green while tracking, red while lost.
-        static constexpr float kColors[3][3] = {{1.0f, 0.8f, 0.1f}, {0.2f, 0.9f, 0.3f},
-                                                {1.0f, 0.25f, 0.2f}};
-        const float *col = kColors[static_cast<int>(markerStyle)];
+        // The theme's colours while drawing, tracking, lost.
+        const float *col = m_window->MarkerColor(markerStyle);
         mpc.fill = markerStyle == EquirectViewportWindow::MarkerStyle::Select ? 0.12f : 0.0f;
         mpc.color[0] = col[0];
         mpc.color[1] = col[1];
@@ -1778,6 +1777,25 @@ void EquirectViewportWindow::SetColorGrade(const float grade[4])
     } else {
         for (float &v : m_colorGrade)
             v = 0.0f;
+    }
+}
+
+void EquirectViewportWindow::SetSurroundColor(const QColor &c)
+{
+    m_surround[0] = c.redF();
+    m_surround[1] = c.greenF();
+    m_surround[2] = c.blueF();
+    requestUpdate();
+}
+
+void EquirectViewportWindow::SetMarkerColors(const QColor &select, const QColor &tracking,
+                                             const QColor &lost)
+{
+    const QColor cs[3] = {select, tracking, lost};
+    for (int i = 0; i < 3; ++i) {
+        m_markerColors[i][0] = cs[i].redF();
+        m_markerColors[i][1] = cs[i].greenF();
+        m_markerColors[i][2] = cs[i].blueF();
     }
 }
 

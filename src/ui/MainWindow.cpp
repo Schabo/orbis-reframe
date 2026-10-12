@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "Theme.h"
 
 #include "AboutDialog.h"
 #include "NewProjectDialog.h"
@@ -108,6 +109,9 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // must not encode it again: an *_SRGB format -- the first one a headless
     // Sway offers -- lifted every dark tone.
     m_viewport->setPreferredColorFormats({VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM});
+    const theme::Colors &tc = theme::colors();
+    m_viewport->SetSurroundColor(tc.surround);
+    m_viewport->SetMarkerColors(tc.accent, tc.success, tc.error);
 
     QWidget *viewportContainer = QWidget::createWindowContainer(m_viewport, this);
     viewportContainer->setMinimumSize(320, 160);
@@ -755,22 +759,22 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         fileMenu->addAction(tr("&New project…"), this, &MainWindow::newProject);
     newProjectAction->setObjectName(QStringLiteral("newProjectAction"));
     newProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
-    newProjectAction->setIcon(QIcon(QStringLiteral(":/icons/file-plus-2.svg")));
+    newProjectAction->setIcon(theme::icon(QStringLiteral("file-plus-2")));
     QAction *openProjectAction =
         fileMenu->addAction(tr("&Open project…"), this, &MainWindow::openProjectFile);
     openProjectAction->setObjectName(QStringLiteral("openProjectAction"));
     openProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_O));
-    openProjectAction->setIcon(QIcon(QStringLiteral(":/icons/folder-open.svg")));
+    openProjectAction->setIcon(theme::icon(QStringLiteral("folder-open")));
     QAction *libraryAction =
         fileMenu->addAction(tr("Project &library…"), this, &MainWindow::closeToLibrary);
     libraryAction->setObjectName(QStringLiteral("projectLibraryAction"));
-    libraryAction->setIcon(QIcon(QStringLiteral(":/icons/layers.svg")));
+    libraryAction->setIcon(theme::icon(QStringLiteral("layers")));
     fileMenu->addSeparator();
     QAction *addClipAction =
         fileMenu->addAction(tr("&Add clip to timeline…"), this, [this] { addClipToTimeline(); });
     addClipAction->setObjectName(QStringLiteral("addClipAction"));
     addClipAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
-    addClipAction->setIcon(QIcon(QStringLiteral(":/icons/file-plus-2.svg")));
+    addClipAction->setIcon(theme::icon(QStringLiteral("file-plus-2")));
     QAction *addAudioAction = fileMenu->addAction(
         tr("Add a&udio file…"), this, [this] { addAudioFile(0, m_lastTimelineMs); });
     addAudioAction->setObjectName(QStringLiteral("addAudioAction"));
@@ -779,13 +783,13 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         tr("Add &video overlay…"), this, [this] { addVideoFile(0, m_lastTimelineMs); });
     addVideoAction->setObjectName(QStringLiteral("addVideoAction"));
     addVideoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
-    addVideoAction->setIcon(QIcon(QStringLiteral(":/icons/picture-in-picture-2.svg")));
+    addVideoAction->setIcon(theme::icon(QStringLiteral("picture-in-picture-2")));
     fileMenu->addSeparator();
     QAction *saveProjectAction =
         fileMenu->addAction(tr("&Save project"), this, &MainWindow::saveProject);
     saveProjectAction->setObjectName(QStringLiteral("saveProjectAction"));
     saveProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
-    saveProjectAction->setIcon(QIcon(QStringLiteral(":/icons/save.svg")));
+    saveProjectAction->setIcon(theme::icon(QStringLiteral("save")));
     QAction *saveProjectAsAction =
         fileMenu->addAction(tr("Save project &as…"), this, &MainWindow::saveProjectAs);
     saveProjectAsAction->setObjectName(QStringLiteral("saveProjectAsAction"));
@@ -801,14 +805,14 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
                                         &MainWindow::exportFlatVideo);
     m_exportAction->setObjectName(QStringLiteral("exportAction"));
     m_exportAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
-    m_exportAction->setIcon(QIcon(QStringLiteral(":/icons/download.svg")));
+    m_exportAction->setIcon(theme::icon(QStringLiteral("download")));
     m_exportAction->setEnabled(false);
 
     m_screenshotAction = fileMenu->addAction(tr("Save &screenshot"), this,
                                              &MainWindow::takeScreenshot);
     m_screenshotAction->setObjectName(QStringLiteral("screenshotAction"));
     m_screenshotAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
-    m_screenshotAction->setIcon(QIcon(QStringLiteral(":/icons/camera.svg")));
+    m_screenshotAction->setIcon(theme::icon(QStringLiteral("camera")));
     m_screenshotAction->setEnabled(false);
     connect(m_transport, &TransportBar::screenshotRequested, this, &MainWindow::takeScreenshot);
 
@@ -3163,10 +3167,16 @@ void MainWindow::pushRegionOverlay(const QHash<QString, QList<BlurRange>> &range
             if (r == it->ranges.end())
                 return;
             // Detected, Filled, Tracked, Unverified; removed; added by hand.
-            static constexpr float kColour[4][3] = {
-                {0.0f, 1.0f, 0.0f}, {1.0f, 0.86f, 0.0f}, {0.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}};
-            static constexpr float kRemoved[3] = {0.55f, 0.55f, 0.55f};
-            static constexpr float kAdded[3] = {0.35f, 0.6f, 1.0f};
+            const auto rgb = [](const QColor &c) {
+                return std::array<float, 3>{float(c.redF()), float(c.greenF()), float(c.blueF())};
+            };
+            const theme::Colors &tc = theme::colors();
+            const std::array<float, 3> kColour[4] = {rgb(tc.plateDetected), rgb(tc.plateFilled),
+                                                     rgb(tc.plateTracked), rgb(tc.plateUnverified)};
+            const std::array<float, 3> kRemovedRgb = rgb(tc.plateRemoved);
+            const std::array<float, 3> kAddedRgb = rgb(tc.plateAdded);
+            const float *kRemoved = kRemovedRgb.data();
+            const float *kAdded = kAddedRgb.data();
             if (r->added)
                 for (const privacy::BlurAddition &a : *r->added)
                     if (const privacy::BlurAddition::Frame *af = privacy::addedFrameAt(a, sourceMs, r->fps)) {
@@ -3182,7 +3192,7 @@ void MainWindow::pushRegionOverlay(const QHash<QString, QList<BlurRange>> &range
                 EquirectViewportWindow::RegionOutline o;
                 std::memcpy(o.corner, reg.quad.corner, sizeof(o.corner));
                 const bool removed = privacy::PlateScan::isRemoved(reg, f->tMs, r->removed.get());
-                std::copy_n(removed ? kRemoved : kColour[std::min<int>(static_cast<int>(reg.kind), 3)], 3,
+                std::copy_n(removed ? kRemoved : kColour[std::min<int>(static_cast<int>(reg.kind), 3)].data(), 3,
                             o.rgb);
                 out.push_back(o);
             }

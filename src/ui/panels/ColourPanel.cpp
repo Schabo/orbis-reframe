@@ -49,7 +49,7 @@ SliderRow makeSliderRow(QWidget *parent, int lo, int hi, int step, int page)
 } // namespace
 
 ColourPanel::ColourPanel(QWidget *parent)
-    : SettingsPanel(tr("Colour"), QStringLiteral(":/icons/palette.svg"), parent)
+    : SettingsPanel(tr("Colour"), QStringLiteral("palette"), parent)
 {
     SliderRow exposure = makeSliderRow(this, kMinExposureSteps, kMaxExposureSteps, 1, 5);
     m_exposure = exposure.slider;

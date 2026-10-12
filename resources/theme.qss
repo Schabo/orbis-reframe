@@ -1,45 +1,46 @@
-/* orbis-reframe dark theme. Loaded app-wide from main.cpp via
-   qApp->setStyleSheet(":/theme.qss"). One flat stylesheet -- no external
-   style dependency, works identically under Sway where there is no system
-   theme. Palette:
-     window     #1e1f22    surface    #26282c    raised     #2f3136
-     border     #3a3d42    text       #e0e0e0    text-dim   #9aa0a8
-     disabled   #5a5f66    accent     #4a9eff    accent-bg  #2b3a4d
-     problem    #e05555
-   Links in rich text get the accent from the palette (main.cpp): a
-   stylesheet can't colour them.
+/* orbis-reframe stylesheet. A template: every @-name below (@window,
+   @accent, ...) is replaced by the current theme's colour (src/ui/Theme.h
+   lists the tokens, Theme.cpp the values) before theme::apply() sets it
+   app-wide. No colour is written here
+   directly, so a theme is only a set of token values. One flat stylesheet --
+   no external style dependency, works identically under Sway where there is
+   no system theme. Links in rich text get the accent from the palette
+   (theme::apply): a stylesheet can't colour them.
 */
 
+/* No background here: containers sit on what's behind them, and windows
+   and dialogs fill with the palette's window colour (theme::apply). A
+   background on every QWidget would paint each row of a panel in the
+   window colour. */
 QWidget {
-    background-color: #1e1f22;
-    color: #e0e0e0;
+    color: @text;
     font-size: 13px;
-    selection-background-color: #4a9eff;
-    selection-color: #10141a;
+    selection-background-color: @accent;
+    selection-color: @textOnAccent;
 }
 
 QToolTip {
-    background-color: #2f3136;
-    color: #e0e0e0;
-    border: 1px solid #3a3d42;
+    background-color: @button;
+    color: @text;
+    border: 1px solid @border;
     padding: 3px 6px;
 }
 
 /* ---- Menu bar ---- */
 QMenuBar {
-    background-color: #1a1b1e;
-    border-bottom: 1px solid #33363b;
+    background-color: @menuBar;
+    border-bottom: 1px solid @border;
 }
 QMenuBar::item {
     background: transparent;
     padding: 5px 10px;
 }
 QMenuBar::item:selected {
-    background-color: #2f3136;
+    background-color: @button;
 }
 QMenu {
-    background-color: #26282c;
-    border: 1px solid #3a3d42;
+    background-color: @panel;
+    border: 1px solid @border;
     padding: 4px;
 }
 QMenu::item {
@@ -47,15 +48,15 @@ QMenu::item {
     border-radius: 4px;
 }
 QMenu::item:selected {
-    background-color: #2b3a4d;
-    color: #ffffff;
+    background-color: @accentSoft;
+    color: @text;
 }
 QMenu::item:disabled {
-    color: #5a5f66;
+    color: @textDisabled;
 }
 QMenu::separator {
     height: 1px;
-    background-color: #3a3d42;
+    background-color: @border;
     margin: 4px 6px;
 }
 QMenu::icon {
@@ -64,25 +65,25 @@ QMenu::icon {
 
 /* ---- Buttons ---- */
 QPushButton {
-    background-color: #2f3136;
-    border: 1px solid #3a3d42;
+    background-color: @button;
+    border: 1px solid @border;
     border-radius: 4px;
     padding: 5px 12px;
     min-height: 18px;
 }
 QPushButton:hover {
-    background-color: #3a3d42;
+    background-color: @border;
 }
 QPushButton:pressed {
-    background-color: #262a2f;
+    background-color: @pressed;
 }
 QPushButton:default {
-    border-color: #4a9eff;
+    border-color: @accent;
 }
 QPushButton:disabled {
-    color: #5a5f66;
-    background-color: #26282c;
-    border-color: #33363b;
+    color: @textDisabled;
+    background-color: @panel;
+    border-color: @border;
 }
 
 QToolButton {
@@ -92,15 +93,15 @@ QToolButton {
     padding: 4px;
 }
 QToolButton:hover {
-    background-color: #2f3136;
-    border-color: #3a3d42;
+    background-color: @button;
+    border-color: @border;
 }
 QToolButton:pressed {
-    background-color: #262a2f;
+    background-color: @pressed;
 }
 QToolButton:checked {
-    background-color: #2b3a4d;
-    border-color: #4a9eff;
+    background-color: @accentSoft;
+    border-color: @accent;
 }
 QToolButton:disabled {
     background: transparent;
@@ -109,58 +110,58 @@ QToolButton:disabled {
 
 /* ---- Inputs ---- */
 QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit {
-    background-color: #26282c;
-    border: 1px solid #3a3d42;
+    background-color: @panel;
+    border: 1px solid @border;
     border-radius: 4px;
     padding: 4px 6px;
     min-height: 18px;
 }
 QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QLineEdit:hover {
-    border-color: #4a5058;
+    border-color: @borderHover;
 }
 QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QLineEdit:focus {
-    border-color: #4a9eff;
+    border-color: @accent;
 }
 QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QLineEdit:disabled {
-    color: #5a5f66;
-    background-color: #212327;
+    color: @textDisabled;
+    background-color: @window;
 }
 QComboBox::drop-down {
     border: none;
     width: 18px;
 }
 QComboBox QAbstractItemView {
-    background-color: #26282c;
-    border: 1px solid #3a3d42;
-    selection-background-color: #2b3a4d;
+    background-color: @panel;
+    border: 1px solid @border;
+    selection-background-color: @accentSoft;
     outline: none;
 }
 
 /* ---- Sliders (transport / misc) ---- */
 QSlider::groove:horizontal {
     height: 4px;
-    background: #3a3d42;
+    background: @border;
     border-radius: 2px;
 }
 QSlider::handle:horizontal {
-    background: #c8ccd4;
+    background: @icon;
     width: 12px;
     height: 12px;
     margin: -5px 0;
     border-radius: 6px;
 }
 QSlider::handle:horizontal:hover {
-    background: #ffffff;
+    background: @accent;
 }
 QSlider::sub-page:horizontal {
-    background: #4a9eff;
+    background: @accent;
     border-radius: 2px;
 }
 QSlider::handle:horizontal:disabled {
-    background: #5a5f66;
+    background: @textDisabled;
 }
 QSlider::sub-page:horizontal:disabled {
-    background: #3a3d42;
+    background: @border;
 }
 
 /* ---- Checkboxes / radio ---- */
@@ -170,13 +171,13 @@ QCheckBox, QRadioButton {
 QCheckBox::indicator, QRadioButton::indicator {
     width: 15px;
     height: 15px;
-    border: 1px solid #4a5058;
+    border: 1px solid @borderHover;
     border-radius: 3px;
-    background: #26282c;
+    background: @panel;
 }
 QCheckBox::indicator:checked, QRadioButton::indicator:checked {
-    background: #4a9eff;
-    border-color: #4a9eff;
+    background: @accent;
+    border-color: @accent;
 }
 QRadioButton::indicator {
     border-radius: 8px;
@@ -187,33 +188,33 @@ QScrollArea {
     border: none;
 }
 QScrollBar:vertical {
-    background: #1e1f22;
+    background: @window;
     width: 12px;
     margin: 0;
 }
 QScrollBar::handle:vertical {
-    background: #3a3d42;
+    background: @border;
     border-radius: 5px;
     min-height: 24px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #4a5058;
+    background: @borderHover;
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
 }
 QScrollBar:horizontal {
-    background: #1e1f22;
+    background: @window;
     height: 12px;
     margin: 0;
 }
 QScrollBar::handle:horizontal {
-    background: #3a3d42;
+    background: @border;
     border-radius: 5px;
     min-width: 24px;
 }
 QScrollBar::handle:horizontal:hover {
-    background: #4a5058;
+    background: @borderHover;
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0;
@@ -221,14 +222,14 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 
 /* ---- Progress dialog (export) ---- */
 QProgressBar {
-    background-color: #26282c;
-    border: 1px solid #3a3d42;
+    background-color: @panel;
+    border: 1px solid @border;
     border-radius: 4px;
     text-align: center;
     min-height: 16px;
 }
 QProgressBar::chunk {
-    background-color: #4a9eff;
+    background-color: @accent;
     border-radius: 3px;
 }
 
@@ -236,14 +237,14 @@ QProgressBar::chunk {
 
 /* The whole right-hand dock (rail + panel stack). */
 #settingsSidebar {
-    background-color: #202226;
-    border-left: 1px solid #33363b;
+    background-color: @panel;
+    border-left: 1px solid @border;
 }
 
 /* Vertical icon rail on the far edge. */
 #settingsRail {
-    background-color: #1a1b1e;
-    border-left: 1px solid #33363b;
+    background-color: @menuBar;
+    border-left: 1px solid @border;
 }
 #settingsRail QToolButton {
     border: none;
@@ -252,61 +253,55 @@ QProgressBar::chunk {
     border-left: 2px solid transparent;
 }
 #settingsRail QToolButton:hover {
-    background-color: #26282c;
+    background-color: @panel;
 }
 #settingsRail QToolButton:checked {
-    background-color: #26282c;
-    border-left: 2px solid #4a9eff;
+    background-color: @panel;
+    border-left: 2px solid @accent;
 }
 
 /* Panel header + body. */
 #settingsPanelTitle {
     font-size: 13px;
     font-weight: 600;
-    color: #e0e0e0;
+    color: @text;
     padding: 12px 14px 8px 14px;
 }
 #settingsPanelHint {
-    color: #9aa0a8;
+    color: @textDim;
     padding: 0 14px 12px 14px;
 }
 #settingsPanelBody {
-    background-color: #202226;
+    background-color: @panel;
 }
 #settingsPanelBody QLabel {
-    color: #9aa0a8;
+    color: @textDim;
 }
 
 /* Media information panel: section headers and read-only values. */
 #settingsPanelBody QLabel#mediaInfoSection {
-    color: #e0e0e0;
+    color: @text;
     font-weight: 600;
     padding-top: 6px;
 }
 #settingsPanelBody QLabel#mediaInfoValue {
-    color: #d0d4da;
+    color: @text;
 }
 
 /* ================= Project library (start screen) ================= */
 
 #projectLibrary {
-    background-color: #1e1f22;
+    background-color: @window;
 }
 #projectLibraryTitle {
     font-size: 18px;
     font-weight: 600;
 }
-/* The cards are painted (ProjectCardList); their colours come from here. */
 #projectList {
-    background-color: #1e1f22;
-    selection-background-color: #4a9eff;
-    qproperty-cardColor: #26282c;
-    qproperty-cardHoverColor: #2f3136;
-    qproperty-dimTextColor: #9aa0a8;
-    qproperty-problemColor: #e05555;
+    background-color: @window;
 }
 #projectLibraryEmpty, #projectsFolderLabel {
-    color: #9aa0a8;
+    color: @textDim;
 }
 
 /* ---- Dialogs: section headings, hints, a line that turns into a problem ---- */
@@ -315,8 +310,8 @@ QLabel#dialogSection {
     padding-top: 8px;
 }
 QLabel#dialogHint, QLabel#projectFolderResult {
-    color: #9aa0a8;
+    color: @textDim;
 }
 QLabel#projectFolderResult[problem="true"] {
-    color: #e05555;
+    color: @error;
 }

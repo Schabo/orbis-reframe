@@ -1,4 +1,5 @@
 #include "TransportBar.h"
+#include "Theme.h"
 
 #include <QHBoxLayout>
 #include <QIcon>
@@ -29,30 +30,31 @@ TransportBar::TransportBar(QWidget *parent)
     const QSize kIconSize(18, 18);
 
     auto *playButton = new QToolButton(this);
-    playButton->setIcon(QIcon(QStringLiteral(":/icons/play.svg")));
+    playButton->setObjectName(QStringLiteral("playButton"));
+    playButton->setIcon(theme::icon(QStringLiteral("play"), theme::IconTone::Accent));
     playButton->setIconSize(kIconSize);
     playButton->setAutoRaise(true);
     playButton->setToolTip(tr("Play / pause  ( Space )"));
     connect(playButton, &QToolButton::clicked, this, &TransportBar::playPauseClicked);
     m_playButton = playButton;
 
-    const auto makeButton = [this, kIconSize](const QString &iconPath, const QString &tip) {
+    const auto makeButton = [this, kIconSize](const QString &iconName, const QString &tip) {
         auto *b = new QToolButton(this);
-        b->setIcon(QIcon(iconPath));
+        b->setIcon(theme::icon(iconName));
         b->setIconSize(kIconSize);
         b->setToolTip(tip);
         b->setAutoRaise(true);
         return b;
     };
-    m_setInButton = makeButton(QStringLiteral(":/icons/arrow-right-to-line.svg"),
+    m_setInButton = makeButton(QStringLiteral("arrow-right-to-line"),
                                tr("Set trim in  ( [ ): cut the start of the clip off at the "
                                   "playhead. Trims the selected audio clip, or else the video "
                                   "clip."));
-    m_setOutButton = makeButton(QStringLiteral(":/icons/arrow-left-to-line.svg"),
+    m_setOutButton = makeButton(QStringLiteral("arrow-left-to-line"),
                                 tr("Set trim out  ( ] ): cut the end of the clip off at the "
                                    "playhead. Trims the selected audio clip, or else the video "
                                    "clip."));
-    m_clearTrimButton = makeButton(QStringLiteral(":/icons/rotate-ccw.svg"),
+    m_clearTrimButton = makeButton(QStringLiteral("rotate-ccw"),
                                    tr("Restore  ( R ): give the clip back its full length. The "
                                       "selected audio clip, or else the video clip under the "
                                       "playhead."));
@@ -60,14 +62,14 @@ TransportBar::TransportBar(QWidget *parent)
     connect(m_setOutButton, &QToolButton::clicked, this, &TransportBar::trimOutRequested);
     connect(m_clearTrimButton, &QToolButton::clicked, this, &TransportBar::trimCleared);
 
-    m_armReframeButton = makeButton(QStringLiteral(":/icons/move-3d.svg"),
+    m_armReframeButton = makeButton(QStringLiteral("move-3d"),
         tr("Arm reframe authoring  ( A ): while on, every drag or zoom in the viewport sets a "
            "keyframe at the playhead  ( K sets one without moving )"));
     m_armReframeButton->setCheckable(true);
-    m_deleteKeyButton = makeButton(QStringLiteral(":/icons/trash-2.svg"),
+    m_deleteKeyButton = makeButton(QStringLiteral("trash-2"),
         tr("Delete keyframe  ( Shift+K ): the reframe keyframe at the playhead"));
     m_deleteKeyButton->setEnabled(false);
-    m_clearReframeButton = makeButton(QStringLiteral(":/icons/x.svg"),
+    m_clearReframeButton = makeButton(QStringLiteral("x"),
                                       tr("Delete all keyframes  ( Ctrl+Shift+K ): every reframe "
                                          "keyframe of the clip under the playhead"));
     m_clearReframeButton->setEnabled(false);
@@ -77,7 +79,7 @@ TransportBar::TransportBar(QWidget *parent)
     connect(m_clearReframeButton, &QToolButton::clicked, this,
             &TransportBar::clearReframeRequested);
 
-    m_screenshotButton = makeButton(QStringLiteral(":/icons/camera.svg"),
+    m_screenshotButton = makeButton(QStringLiteral("camera"),
         tr("Screenshot  ( Ctrl+Shift+P ): save the frame at the playhead as a PNG, at the "
            "project's size"));
     m_screenshotButton->setEnabled(false);
@@ -164,8 +166,8 @@ void TransportBar::setPosition(qint64 positionMs)
 void TransportBar::setPlaying(bool playing)
 {
     m_playing = playing;
-    m_playButton->setIcon(QIcon(playing ? QStringLiteral(":/icons/pause.svg")
-                                        : QStringLiteral(":/icons/play.svg")));
+    m_playButton->setIcon(theme::icon(playing ? QStringLiteral("pause") : QStringLiteral("play"),
+                                      theme::IconTone::Accent));
 }
 
 void TransportBar::setBuffering(bool buffering)

@@ -79,8 +79,8 @@ different parts of a long recording.
 Click a clip to select it. The settings panels (stabilization, colour,
 audio and so on) now change this clip, even when the playhead is somewhere
 else. Press `Esc` to clear the selection. The panels then follow the clip
-under the playhead again. The clip the panels are changing always has a
-blue outline.
+under the playhead again. The clip the panels are changing always has an
+orange outline.
 
 ### Reordering
 

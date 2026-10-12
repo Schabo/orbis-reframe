@@ -3,16 +3,15 @@
 #include <vulkan/vulkan.h>
 
 #include <QApplication>
-#include <QFile>
 #include <QLoggingCategory>
 #include <QMessageBox>
-#include <QPalette>
 #include <QTextDocument>
 #include <QVersionNumber>
 #include <QVulkanInstance>
 #include <QWidget>
 
 #include "MainWindow.h"
+#include "Theme.h"
 
 #include "../core/DataPaths.h"
 #include "../core/Log.h"
@@ -119,16 +118,9 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("orbis-reframe"));
     QApplication::setApplicationVersion(QString::fromUtf8(core::version::string()));
 
-    // App-wide dark theme. One flat stylesheet bundled as a Qt resource --
-    // no system theme under the target Wayland/Sway setup. A stylesheet
-    // can't colour links in rich text (they use the palette), so give them
-    // the theme's accent instead of Qt's default dark blue.
-    QPalette palette = QApplication::palette();
-    palette.setColor(QPalette::Link, QColor(0x4a, 0x9e, 0xff));
-    palette.setColor(QPalette::LinkVisited, QColor(0x4a, 0x9e, 0xff));
-    QApplication::setPalette(palette);
-    if (QFile qss(QStringLiteral(":/theme.qss")); qss.open(QIODevice::ReadOnly))
-        app.setStyleSheet(QString::fromUtf8(qss.readAll()));
+    // The theme: palette and stylesheet from one set of colour tokens
+    // (Theme.h). No system theme under the target Wayland / Sway setup.
+    theme::apply(app, theme::themes().constFirst());
     app.installEventFilter(new ToolTipWrapper(&app));
 
     QVulkanInstance vulkanInstance;

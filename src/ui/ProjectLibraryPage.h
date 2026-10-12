@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QColor>
 #include <QListWidget>
 #include <QWidget>
 
@@ -11,33 +10,16 @@ class QStackedWidget;
 class ProjectLibrary;
 struct ProjectSummary;
 
-// The cards of the project library. Its colours beyond the palette's text /
-// highlight come from the stylesheet (qproperty-*), so they live with the
-// rest of the theme.
+// The cards of the project library, painted in the theme's colours.
 class ProjectCardList : public QListWidget {
     Q_OBJECT
-    Q_PROPERTY(QColor cardColor MEMBER m_cardColor)
-    Q_PROPERTY(QColor cardHoverColor MEMBER m_cardHoverColor)
-    Q_PROPERTY(QColor dimTextColor MEMBER m_dimTextColor)
-    Q_PROPERTY(QColor problemColor MEMBER m_problemColor)
 
 public:
     explicit ProjectCardList(QWidget *parent = nullptr);
 
-    QColor cardColor() const { return m_cardColor; }
-    QColor cardHoverColor() const { return m_cardHoverColor; }
-    QColor dimTextColor() const { return m_dimTextColor; }
-    QColor problemColor() const { return m_problemColor; }
-
     // Card and thumbnail size, in device-independent pixels.
     static QSize cardSize();
     static QSize thumbnailSize();
-
-private:
-    QColor m_cardColor{0x26, 0x28, 0x2c};
-    QColor m_cardHoverColor{0x2f, 0x31, 0x36};
-    QColor m_dimTextColor{0x9a, 0xa0, 0xa8};
-    QColor m_problemColor{0xe0, 0x55, 0x55};
 };
 
 // The start screen: every project in the library as a card (thumbnail, name,
