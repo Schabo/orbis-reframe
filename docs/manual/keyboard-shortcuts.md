@@ -14,6 +14,10 @@ shortcuts.
 | `↑` / `↓` | To the previous / next cut or clip edge. |
 | `Shift+↑` / `Shift+↓` | To the previous / next reframe keyframe, on any clip. With an overlay clip selected: to its previous / next keyframe instead. |
 | `Home` / `End` | To the start / end of the timeline. |
+| `Ctrl+G` | Type a time to jump to (the player bar's time display). |
+| `J` / `L` | Play slower / faster, `0.25×` to `2×`; `L` also starts playback. Only for watching; the sound plays at `1×` only. |
+| `F11` | Full screen on / off (or double-click the picture). `Esc` leaves it too. |
+| `Ctrl+Shift+P` | Save a screenshot of the frame at the playhead. |
 
 ## Editing
 
@@ -23,7 +27,7 @@ shortcuts.
 | `R` | Restore: give the clip back its full length. Works on the selected audio or overlay clip, otherwise on the video clip. |
 | `S` | Split at the playhead: the selected audio or overlay clip, otherwise the video clip. |
 | `Delete` or `Backspace` | Delete the selected clip. With no clip selected: delete the reframe keyframe at the playhead. |
-| `Esc` | Clear the selection. While drawing a box for Track subject or Blur a plate: cancel it. |
+| `Esc` | Clear the selection. While drawing a box for Track subject or Blur a plate: cancel it. In full screen: leave full screen. |
 | `Ctrl+Z` | Undo. |
 | `Ctrl+Shift+Z` | Redo. |
 
@@ -72,7 +76,6 @@ stay).
 | `Ctrl+S` | Save the project. |
 | `Ctrl+Shift+S` | Save a copy of the project in a new project folder. |
 | `Ctrl+E` | Export the video. |
-| `Ctrl+Shift+P` | Save a screenshot of the frame at the playhead. |
 | `Ctrl+Q` | Quit. |
 | `F1` | Show the keyboard shortcuts. |
 

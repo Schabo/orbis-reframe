@@ -32,5 +32,13 @@
     <file>icons/circle-check.svg</file>
     <file>icons/triangle-alert.svg</file>
     <file>icons/video.svg</file>
+    <file>icons/skip-back.svg</file>
+    <file>icons/skip-forward.svg</file>
+    <file>icons/chevron-first.svg</file>
+    <file>icons/chevron-last.svg</file>
+    <file>icons/volume-x.svg</file>
+    <file>icons/volume-1.svg</file>
+    <file>icons/maximize.svg</file>
+    <file>icons/minimize.svg</file>
   </qresource>
 </RCC>

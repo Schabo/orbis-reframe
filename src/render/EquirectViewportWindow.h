@@ -195,11 +195,15 @@ signals:
     // RegionOutline / insv::BlurQuad use (the Privacy panel's "Remove this
     // blur").
     void pictureContextMenu(const QPoint &globalPos, const std::array<float, 3> &dir);
+    // A left double-click that isn't drawing a box or on an inset: full
+    // screen on / off.
+    void doubleClicked();
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
 

@@ -382,6 +382,8 @@ if(FFMPEG_FOUND)
         src/ui/InsetFeed.h
         src/ui/TransportBar.cpp
         src/ui/TransportBar.h
+        src/ui/PlayerBar.cpp
+        src/ui/PlayerBar.h
         src/ui/TimelineWidget.cpp
         src/ui/TimelineWidget.h
         src/ui/WaveformCache.cpp
@@ -651,6 +653,16 @@ if(Qt6Test_FOUND)
     target_include_directories(media_pool_test PRIVATE src/ui)
     target_link_libraries(media_pool_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
     add_test(NAME media_pool_test COMMAND media_pool_test)
+
+    # The player bar under the viewport, found by objectName (no GPU).
+    add_executable(player_bar_test tests/player_bar_test.cpp
+        src/ui/PlayerBar.cpp src/ui/PlayerBar.h
+        src/ui/Theme.cpp src/ui/Theme.h
+        resources/resources.qrc)
+    set_target_properties(player_bar_test PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_include_directories(player_bar_test PRIVATE src/ui)
+    target_link_libraries(player_bar_test PRIVATE Qt6::Widgets Qt6::Test)
+    add_test(NAME player_bar_test COMMAND player_bar_test)
 
     # The theme's tokens, stylesheet template and icon tinting.
     add_executable(theme_test tests/theme_test.cpp src/ui/Theme.cpp src/ui/Theme.h

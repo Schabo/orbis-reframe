@@ -181,6 +181,11 @@ public slots:
     // frame. During playback the first scrub pauses and that final seek()
     // resumes, so a drag behaves the same playing or paused.
     void scrub(qint64 timelineMs);
+    // Playback speed of the preview (the player bar's 0.25x .. 2x): the clock
+    // runs at `rate` times real time. Every frame is still decoded, so a fast
+    // rate shows what the decoder keeps up with. Not the clips' own speed
+    // (Segment::speed), which is part of the edit.
+    void setRate(double rate);
 
 signals:
     void openFailed(const QString &error);
@@ -245,6 +250,9 @@ private:
     qint64 m_positionMs = 0; // timeline time
     QElapsedTimer m_clock;
     qint64 m_clockBaseMs = 0;
+    double m_rate = 1.0; // setRate()
+    // Timeline ms played since m_clock's restart, at m_rate.
+    qint64 clockElapsedMs() const { return std::llround(double(m_clock.elapsed()) * m_rate); }
     bool m_presentAfterSeek = false;
     uint64_t m_shownGen = 0; // seek generation of the frame on screen
     qint64 m_shownMs = 0;    // and its timeline time

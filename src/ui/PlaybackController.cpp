@@ -214,7 +214,7 @@ void PlaybackController::pause()
         std::lock_guard<std::mutex> lk(m_mx);
         m_playing = false;
     }
-    m_positionMs = clampTimeline(m_clockBaseMs + m_clock.elapsed());
+    m_positionMs = clampTimeline(m_clockBaseMs + clockElapsedMs());
     emit playingChanged(false);
     emit positionChanged(m_positionMs);
 }
@@ -292,6 +292,19 @@ void PlaybackController::scrub(qint64 timelineMs)
         }
         m_settleTimer->start();
     }
+}
+
+void PlaybackController::setRate(double rate)
+{
+    rate = std::clamp(rate, 0.05, 8.0);
+    if (rate == m_rate)
+        return;
+    // Re-anchor so the time played so far keeps the old rate.
+    if (m_playing && !m_prerolling)
+        m_positionMs = clampTimeline(m_clockBaseMs + clockElapsedMs());
+    m_clockBaseMs = m_positionMs;
+    m_clock.restart();
+    m_rate = rate;
 }
 
 void PlaybackController::settle()
@@ -989,7 +1002,7 @@ void PlaybackController::tick()
 
     qint64 clockMs = m_positionMs;
     if (playing) {
-        clockMs = std::clamp<qint64>(m_clockBaseMs + m_clock.elapsed(), 0, m_totalMs);
+        clockMs = std::clamp<qint64>(m_clockBaseMs + clockElapsedMs(), 0, m_totalMs);
     }
 
     stitch::Frame chosen;

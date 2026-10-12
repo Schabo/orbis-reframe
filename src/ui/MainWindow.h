@@ -32,6 +32,7 @@
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
 
 class QAction;
+class QTimer;
 class QCloseEvent;
 class QShortcut;
 class QStackedWidget;
@@ -64,6 +65,7 @@ class StitchingPanel;
 class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
+class PlayerBar;
 class TransportBar;
 struct Track;
 struct TrackClip;
@@ -345,6 +347,16 @@ private:
     // once, so a held arrow key steps from where the last press went rather
     // than from a position the worker hasn't reported yet.
     void navigateTo(qint64 timelineMs, bool pause);
+    // Full screen (F11, a double-click on the picture): only the viewport and
+    // the player bar, which hides when the mouse rests and comes back when it
+    // moves. Off again with Esc / F11, or when the project closes.
+    void setFullScreenView(bool on);
+    void showPlayerBarForAWhile();
+    // The player bar's time display (the project's output rate) and its cut
+    // ticks, from the timeline.
+    void updatePlayerBar();
+    // The player bar's volume / mute -> the audio output, remembered per user.
+    void applyPreviewVolume();
     // S: split the selected audio / overlay clip at the playhead if there is
     // one, else the video clip under the playhead.
     void splitAtPlayhead();
@@ -442,6 +454,7 @@ private:
 
     EquirectViewportWindow *m_viewport = nullptr;
     TimelineWidget *m_timelineWidget = nullptr;
+    PlayerBar *m_playerBar = nullptr; // under the viewport
     TransportBar *m_transport = nullptr;
     // The right sidebar (settings) and its sections, which it owns.
     SettingsSidebar *m_sidebar = nullptr;
@@ -516,6 +529,10 @@ private:
     QString m_seamLastMessage;
     bool m_scanQueued = false; // scheduleClipScans() already pending
     bool m_playing = false;    // the controller's playingChanged
+    double m_previewRate = 1.0; // the player bar's speed; the sound plays at 1x only
+    bool m_fullScreen = false;  // setFullScreenView()
+    bool m_wasMaximized = false; // before full screen
+    QTimer *m_playerBarHide = nullptr; // full screen: hides the player bar
     // A sync / seam result arrived while playing; applied on the next pause.
     bool m_measuredWhilePlaying = false;
     // Total trimmed timeline length, cached from the last pushTimelineToController.

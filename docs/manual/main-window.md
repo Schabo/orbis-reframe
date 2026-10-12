@@ -12,12 +12,15 @@ With one open, it looks like this:
 
 1. The **viewport**: the picture.
 2. The **timeline**: your clips, overlays and audio, in time order.
-3. The **transport bar**: play, trim and keyframe buttons.
+3. The **transport bar**: trim and keyframe buttons.
 4. The **settings sidebar**, here on its **Video** tab.
 5. The settings sidebar's **tabs**.
 
-To the left of the viewport is the **left sidebar**, with the project's
-media; see [The media sidebar](#the-media-sidebar) below.
+Directly under the viewport is the **player bar**, for watching: play,
+step, jump, the progress bar, speed, volume and full screen; see
+[The player bar](#the-player-bar) below. To the left of the viewport is the
+**left sidebar**, with the project's media; see
+[The media sidebar](#the-media-sidebar) below.
 
 The title bar shows the project's file name, or *untitled* for a project
 that hasn't been saved yet. A `*` after the name means there are unsaved
@@ -88,29 +91,70 @@ From top to bottom it has:
   microphone.
 
 Clicking a clip selects it. It doesn't move the playhead: only the ruler
-does that. [The timeline](timeline.md) explains how to arrange, trim, split and
+and the player bar's progress bar do that. [The timeline](timeline.md) explains how to arrange, trim, split and
 speed up clips.
 
-## The transport bar
+## The player bar
 
-The strip at the bottom of the window. From left to right:
+The bar directly under the viewport is for watching. It has two rows.
+
+**On top**, from left to right:
+
+- **The time**: where the playhead is, and the length of the timeline, as
+  hours:minutes:seconds:frames (`00:01:23:14` is 1 minute, 23 seconds and
+  14 frames), counted at the project's frame rate. Click it (or press
+  `Ctrl+G`) to type a time and press `Enter` to jump there: as shown, or
+  shorter -- `1:23` is 1 minute 23 seconds, `83.5` is 83½ seconds. `Esc`
+  gives up.
+- **The progress bar**: the whole timeline from start to end, however far
+  the timeline below is zoomed in. Click it to jump, or drag along it to
+  scrub, just like the ruler. The small ticks are the cuts between clips.
+  Hover over it to see the time under the pointer.
+- **The speed**: `1×` normally. Click it to play slower or faster, from
+  `0.25×` to `2×`, or press `J` (slower) and `L` (faster; `L` also starts
+  playback). It's only for watching -- the export is never affected (to
+  speed up a clip in the video, see [The timeline](timeline.md)). The sound
+  plays at `1×` only; at any other speed the preview is silent. At `2×` a
+  computer that only just plays the clip in real time may skip frames.
+
+**Below**, in the middle, the playback buttons, each doing what its key
+does:
 
 | Button | What it does |
 |---|---|
+| To start / to end | To the start / end of the timeline (`Home` / `End`). |
+| Previous / next cut | To the previous / next cut or clip edge (`↑` / `↓`). |
+| One frame back / forward | Steps one frame and pauses (`←` / `→`). Hold the button to keep stepping. |
 | <img src="images/icons/play.png" width="24" alt=""> Play / pause | Starts or stops playback (`Space`). |
+
+On the left, *Buffering…* shows while the video loads. On the right:
+
+| Button | What it does |
+|---|---|
+| <img src="images/icons/screenshot.png" width="24" alt=""> Screenshot | Saves the frame the viewport shows (the frame at the playhead) as a PNG (`Ctrl+Shift+P`); see [Screenshots](projects-and-export.md#screenshots). |
+| Volume and mute | How loud the preview plays, and the speaker button to mute it. Only what you hear while editing: the export and the clips' own volume (the **Audio** tab) don't change. orbis-reframe remembers the volume for the next time. |
+| Full screen | Shows only the picture and the player bar, over the whole screen (`F11`, or double-click the picture). The player bar hides when the mouse rests and comes back when you move it. `Esc` or `F11` leaves full screen. |
+
+Hover over a button to see its name and shortcut.
+
+## The transport bar
+
+The strip at the bottom of the window holds the editing tools that act at
+the playhead. From left to right:
+
+| Button | What it does |
+|---|---|
 | <img src="images/icons/trim-in.png" width="24" alt=""> <img src="images/icons/trim-out.png" width="24" alt=""> Set trim in / out | Cuts the start or end of a clip off at the playhead (`[` and `]`). |
 | <img src="images/icons/trim-restore.png" width="24" alt=""> Restore | Gives the clip back its full length (`R`). |
 | <img src="images/icons/reframe-arm.png" width="24" alt=""> Arm reframe authoring | While on, every drag or zoom in the viewport sets a reframe keyframe at the playhead (`A`). |
 | <img src="images/icons/reframe-delete-key.png" width="24" alt=""> Delete keyframe | Deletes the reframe keyframe at the playhead (`Shift+K`). |
 | <img src="images/icons/reframe-delete-all.png" width="24" alt=""> Delete all keyframes | Deletes every reframe keyframe of the clip under the playhead (`Ctrl+Shift+K`). |
-| <img src="images/icons/screenshot.png" width="24" alt=""> Screenshot | Saves the frame at the playhead as a PNG (`Ctrl+Shift+P`). |
 
 Hover over a button to see its name and shortcut.
 
 Next to the buttons, short messages appear: what the program is doing, or
 why something you tried didn't work (for example *"Move the playhead into
-the selected clip to trim it"*). On the right are *Buffering…* while the
-video loads, and the playhead's time and the length of the timeline.
+the selected clip to trim it"*).
 
 ## The settings sidebar
 
@@ -158,7 +202,7 @@ in the sidebar: it's in **File ▸ Project settings…**, see
 
 | Menu | Contains |
 |---|---|
-| **File** | New project, open project, back to the project library; save, save as; **Project settings…** (the output format); export, screenshot, quit. |
+| **File** | New project, open project, back to the project library; save, save as; **Project settings…** (the output format); export, quit. (Screenshots are in the player bar.) |
 | **Edit** | **Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Shift+Z`). Undo steps back through your edits to the project; looking around in the viewport isn't an edit and isn't undone. |
 | **Media** | **Import files…** (`Ctrl+I`) and **Import folder…**, into the project's media ([above](#the-media-sidebar)); **Add clip to timeline…** (`Ctrl+Shift+A`), **Add audio file…** (`Ctrl+Shift+M`) and **Add video overlay…** (`Ctrl+Shift+V`), straight onto the timeline; **Add audio track** and **Add overlay track**. |
 | **View** | **Preview quality** and **Preview size**: how the preview in the viewport is stitched. They change only what you see while editing, never the export; see [Stitching](stitching.md#preview-size-and-quality). |

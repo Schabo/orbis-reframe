@@ -37,6 +37,7 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
+#include <QTimer>
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QThread>
@@ -82,6 +83,7 @@
 #include "TabSidebar.h"
 #include "TimelineWidget.h"
 #include "WaveformCache.h"
+#include "PlayerBar.h"
 #include "TransportBar.h"
 #include "panels/AudioPanel.h"
 #include "panels/ColourPanel.h"
@@ -129,6 +131,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     m_timelineWidget = new TimelineWidget(this);
     m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
     m_transport = new TransportBar(this);
+    m_playerBar = new PlayerBar(this);
 
     // The edit model, owned by the GUI thread: a Project holding a Timeline.
     // The whole timeline is handed to PlaybackController as a segment list
@@ -177,13 +180,18 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             &MainWindow::addMediaToTimeline);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
 
-    // Left: the sources sidebar and the viewport, over the timeline over the
-    // transport strip.
+    // Left: the sources sidebar and the viewport over its player bar, over
+    // the timeline over the edit strip.
+    auto *viewColumn = new QVBoxLayout;
+    viewColumn->setContentsMargins(0, 0, 0, 0);
+    viewColumn->setSpacing(0);
+    viewColumn->addWidget(viewportContainer, 1);
+    viewColumn->addWidget(m_playerBar, 0);
     auto *top = new QHBoxLayout;
     top->setContentsMargins(0, 0, 0, 0);
     top->setSpacing(0);
     top->addWidget(m_sourcesSidebar, 0);
-    top->addWidget(viewportContainer, 1);
+    top->addLayout(viewColumn, 1);
     auto *leftColumn = new QWidget(this);
     auto *leftLayout = new QVBoxLayout(leftColumn);
     leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -389,25 +397,30 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
 
     // View -> controller. These connections cross the thread boundary, so Qt
     // queues them onto the worker's event loop automatically.
-    connect(m_transport, &TransportBar::playPauseClicked,
+    connect(m_playerBar, &PlayerBar::playPauseClicked,
             m_controller, &PlaybackController::togglePlay);
 
     // Timeline widget -> controller / model. It works entirely in timeline
     // time.
-    connect(m_timelineWidget, &TimelineWidget::seekRequested, this, [this](qint64 timelineMs) {
+    const auto seekTo = [this](qint64 timelineMs) {
         QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
         m_audioPlayer->seek(timelineMs);
 #endif
-    });
-    connect(m_timelineWidget, &TimelineWidget::scrubRequested, this, [this](qint64 timelineMs) {
+    };
+    const auto scrubTo = [this](qint64 timelineMs) {
         QMetaObject::invokeMethod(m_controller, "scrub", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
         m_audioPlayer->seek(timelineMs);
 #endif
-    });
+    };
+    connect(m_timelineWidget, &TimelineWidget::seekRequested, this, seekTo);
+    connect(m_timelineWidget, &TimelineWidget::scrubRequested, this, scrubTo);
+    // The player bar's progress strip scrubs like the ruler.
+    connect(m_playerBar, &PlayerBar::seekRequested, this, seekTo);
+    connect(m_playerBar, &PlayerBar::scrubRequested, this, scrubTo);
     connect(m_timelineWidget, &TimelineWidget::clipTrimInRequested, m_timeline,
             &Timeline::setClipTrimIn);
     connect(m_timelineWidget, &TimelineWidget::clipTrimOutRequested, m_timeline,
@@ -860,13 +873,16 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     m_exportAction->setIcon(theme::icon(QStringLiteral("download")));
     m_exportAction->setEnabled(false);
 
-    m_screenshotAction = fileMenu->addAction(tr("Save &screenshot"), this,
-                                             &MainWindow::takeScreenshot);
+    // Save screenshot: the player bar's button and Ctrl+Shift+P, in no menu
+    // -- a window-level action (listed under Playback in the shortcut help).
+    m_screenshotAction = new QAction(tr("Save &screenshot"), this);
     m_screenshotAction->setObjectName(QStringLiteral("screenshotAction"));
     m_screenshotAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
-    m_screenshotAction->setIcon(theme::icon(QStringLiteral("camera")));
+    m_screenshotAction->setShortcutContext(Qt::ApplicationShortcut);
     m_screenshotAction->setEnabled(false);
-    connect(m_transport, &TransportBar::screenshotRequested, this, &MainWindow::takeScreenshot);
+    connect(m_screenshotAction, &QAction::triggered, this, &MainWindow::takeScreenshot);
+    addAction(m_screenshotAction);
+    connect(m_playerBar, &PlayerBar::screenshotRequested, this, &MainWindow::takeScreenshot);
 
     fileMenu->addSeparator();
     // close() runs closeEvent() -> confirmDiscardChanges(), so an unsaved
@@ -932,8 +948,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     setupKeyboardShortcuts();
 
     // Controller -> view.
-    connect(m_controller, &PlaybackController::durationChanged, m_transport,
-            &TransportBar::setDuration);
+    connect(m_controller, &PlaybackController::durationChanged, m_playerBar,
+            &PlayerBar::setDuration);
     connect(m_controller, &PlaybackController::openFailed, this,
             [this](const QString &error) {
                 QMessageBox::warning(this, tr("Playback error"), error);
@@ -941,7 +957,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_controller, &PlaybackController::positionChanged, this,
             [this](qint64 timelineMs) {
                 m_lastTimelineMs = timelineMs;
-                m_transport->setPosition(timelineMs);
+                m_playerBar->setPosition(timelineMs);
                 m_timelineWidget->setPlayhead(timelineMs);
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
                 m_audioPlayer->notePlaybackPosition(timelineMs);
@@ -951,7 +967,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
                     refreshOverlayPanel(); // keyed values / key buttons follow the playhead
             });
     connect(m_controller, &PlaybackController::playingChanged,
-            m_transport, &TransportBar::setPlaying);
+            m_playerBar, &PlayerBar::setPlaying);
     connect(m_controller, &PlaybackController::playingChanged, this, [this](bool playing) {
         m_playing = playing;
         if (playing) {
@@ -974,12 +990,13 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     });
     connect(m_timeline, &Timeline::clipInserted, this, [this] { scheduleClipScans(); });
     connect(m_controller, &PlaybackController::bufferingChanged,
-            m_transport, &TransportBar::setBuffering);
+            m_playerBar, &PlayerBar::setBuffering);
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
     // Every play/pause entry point (transport button, Space, export pausing
     // playback, reaching end-of-timeline) funnels through this one signal.
+    // Off 1x the preview is silent (the player bar's speed).
     connect(m_controller, &PlaybackController::playingChanged, this, [this](bool playing) {
-        if (playing)
+        if (playing && m_previewRate == 1.0)
             m_audioPlayer->play();
         else
             m_audioPlayer->pause();
@@ -991,6 +1008,55 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_controller, &PlaybackController::clockHeldChanged, m_audioPlayer,
             &AudioPlayer::setHold);
 #endif
+
+    // The player bar's speed, volume and full screen.
+    connect(m_playerBar, &PlayerBar::speedChanged, this, [this](double speed) {
+        m_previewRate = speed;
+        QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, speed] { ctrl->setRate(speed); });
+#ifdef ORBIS_REFRAME_HAVE_AUDIO
+        if (m_playing) {
+            if (speed == 1.0) {
+                m_audioPlayer->seek(m_lastTimelineMs);
+                m_audioPlayer->play();
+            } else {
+                m_audioPlayer->pause();
+            }
+        }
+#endif
+    });
+    {
+        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+        m_playerBar->setVolume(settings.value(QStringLiteral("player/volume"), 100).toInt());
+        m_playerBar->setMuted(settings.value(QStringLiteral("player/muted"), false).toBool());
+    }
+    applyPreviewVolume();
+    connect(m_playerBar, &PlayerBar::volumeChanged, this, [this](int percent) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("player/volume"), percent);
+        applyPreviewVolume();
+    });
+    connect(m_playerBar, &PlayerBar::mutedChanged, this, [this](bool muted) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("player/muted"), muted);
+        applyPreviewVolume();
+    });
+    m_playerBarHide = new QTimer(this);
+    m_playerBarHide->setSingleShot(true);
+    m_playerBarHide->setInterval(2500);
+    connect(m_playerBarHide, &QTimer::timeout, this, [this] {
+        // Not while the mouse is on it (or a time is being typed).
+        if (!m_fullScreen)
+            return;
+        if (m_playerBar->underMouse() || m_playerBar->isAncestorOf(QApplication::focusWidget()))
+            m_playerBarHide->start();
+        else
+            m_playerBar->setVisible(false);
+    });
+    connect(m_playerBar, &PlayerBar::fullScreenClicked, this,
+            [this] { setFullScreenView(!m_fullScreen); });
+    connect(m_viewport, &EquirectViewportWindow::doubleClicked, this,
+            [this] { setFullScreenView(!m_fullScreen); });
+    connect(m_project, &Project::outputChanged, this, [this] { updatePlayerBar(); });
 
     m_playbackThread->start();
     setEditorActive(false); // the library is shown until a project opens
@@ -1036,6 +1102,9 @@ bool isTextEntry(const QWidget *w)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (m_fullScreen && event->type() == QEvent::MouseMove)
+        showPlayerBarForAWhile();
+
     // Only the editor's own fields: a dialog's keep Enter (its default
     // button) and their focus.
     QWidget *fw = QApplication::focusWidget();
@@ -2126,22 +2195,41 @@ void MainWindow::editProjectSettings()
 
 void MainWindow::setupKeyboardShortcuts()
 {
+    // The player bar's buttons do what these keys do.
+    const auto playPause = [this] {
+        QMetaObject::invokeMethod(m_controller, "togglePlay", Qt::QueuedConnection);
+    };
+    const auto frameBack = [this] {
+        navigateTo(m_timeline->stepFrames(m_lastTimelineMs, -1), true);
+    };
+    const auto frameForward = [this] {
+        navigateTo(m_timeline->stepFrames(m_lastTimelineMs, 1), true);
+    };
+    const auto previousCut = [this] {
+        navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, -1), false);
+    };
+    const auto nextCut = [this] {
+        navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, 1), false);
+    };
+    const auto toStart = [this] { navigateTo(0, false); };
+    const auto toEnd = [this] { navigateTo(m_timeline->totalDurationMs(), false); };
+    connect(m_playerBar, &PlayerBar::frameBackClicked, this, frameBack);
+    connect(m_playerBar, &PlayerBar::frameForwardClicked, this, frameForward);
+    connect(m_playerBar, &PlayerBar::previousCutClicked, this, previousCut);
+    connect(m_playerBar, &PlayerBar::nextCutClicked, this, nextCut);
+    connect(m_playerBar, &PlayerBar::toStartClicked, this, toStart);
+    connect(m_playerBar, &PlayerBar::toEndClicked, this, toEnd);
+
     const QString play = tr("Playback");
-    addKey(play, tr("Play / pause"), {QKeySequence(Qt::Key_Space)},
-           [this] { QMetaObject::invokeMethod(m_controller, "togglePlay", Qt::QueuedConnection); });
-    addKey(play, tr("Previous / next frame (pauses)"),
-           {QKeySequence(Qt::Key_Left)},
-           [this] { navigateTo(m_timeline->stepFrames(m_lastTimelineMs, -1), true); });
-    addKey(play, QString(), {QKeySequence(Qt::Key_Right)},
-           [this] { navigateTo(m_timeline->stepFrames(m_lastTimelineMs, 1), true); });
+    addKey(play, tr("Play / pause"), {QKeySequence(Qt::Key_Space)}, playPause);
+    addKey(play, tr("Previous / next frame (pauses)"), {QKeySequence(Qt::Key_Left)}, frameBack);
+    addKey(play, QString(), {QKeySequence(Qt::Key_Right)}, frameForward);
     addKey(play, tr("Back / forward 1 second"), {QKeySequence(Qt::SHIFT | Qt::Key_Left)},
            [this] { navigateTo(m_lastTimelineMs - 1000, false); });
     addKey(play, QString(), {QKeySequence(Qt::SHIFT | Qt::Key_Right)},
            [this] { navigateTo(m_lastTimelineMs + 1000, false); });
-    addKey(play, tr("Previous / next cut or clip edge"), {QKeySequence(Qt::Key_Up)},
-           [this] { navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, -1), false); });
-    addKey(play, QString(), {QKeySequence(Qt::Key_Down)},
-           [this] { navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, 1), false); });
+    addKey(play, tr("Previous / next cut or clip edge"), {QKeySequence(Qt::Key_Up)}, previousCut);
+    addKey(play, QString(), {QKeySequence(Qt::Key_Down)}, nextCut);
     // With an overlay clip selected, its keys (as K / Shift+K).
     const auto toKey = [this](int direction) {
         const TrackClip *o = selectedOverlayClip();
@@ -2150,10 +2238,28 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(play, tr("Previous / next keyframe: the selected overlay's, else the reframe ones"),
            {QKeySequence(Qt::SHIFT | Qt::Key_Up)}, [toKey] { toKey(-1); });
     addKey(play, QString(), {QKeySequence(Qt::SHIFT | Qt::Key_Down)}, [toKey] { toKey(1); });
-    addKey(play, tr("Start / end of the timeline"), {QKeySequence(Qt::Key_Home)},
-           [this] { navigateTo(0, false); });
-    addKey(play, QString(), {QKeySequence(Qt::Key_End)},
-           [this] { navigateTo(m_timeline->totalDurationMs(), false); });
+    addKey(play, tr("Start / end of the timeline"), {QKeySequence(Qt::Key_Home)}, toStart);
+    addKey(play, QString(), {QKeySequence(Qt::Key_End)}, toEnd);
+    // J / L: the player bar's speed (K is "set keyframe", so Space stops).
+    addKey(play, tr("Slower / faster playback (L also starts it); the sound plays at 1× only"),
+           {QKeySequence(Qt::Key_J)}, [this] { m_playerBar->stepSpeed(-1); });
+    addKey(play, QString(), {QKeySequence(Qt::Key_L)}, [this, playPause] {
+        if (m_playing)
+            m_playerBar->stepSpeed(1);
+        else
+            playPause();
+    });
+    addKey(play, tr("Type a time to jump to"), {QKeySequence(Qt::CTRL | Qt::Key_G)},
+           [this] {
+               if (m_fullScreen)
+                   showPlayerBarForAWhile();
+               m_playerBar->editTime();
+           });
+    addKey(play, tr("Full screen on / off (also a double-click on the picture; Esc leaves)"),
+           {QKeySequence(Qt::Key_F11)}, [this] { setFullScreenView(!m_fullScreen); });
+    // The window-level screenshot action (no menu holds it) in the list.
+    m_keyHelp.append({play, tr("Save a screenshot of the frame at the playhead"),
+                      m_screenshotAction->shortcuts(), QString()});
 
     const QString edit = tr("Editing");
     addKey(edit, tr("Set the trim in / out point at the playhead"),
@@ -2168,7 +2274,9 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(edit, tr("Delete the selected clip, else the reframe keyframe at the playhead"),
            {QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)},
            [this] { deleteAtPlayhead(); });
-    addKey(edit, tr("Clear the selection (or cancel drawing a Track subject / Blur a plate box)"),
+    addKey(edit,
+           tr("Clear the selection (or cancel drawing a Track subject / Blur a plate box, or "
+              "leave full screen)"),
            {QKeySequence(Qt::Key_Escape)}, [this] {
                if (m_trackSelecting) {
                    setTrackSelecting(false);
@@ -2176,6 +2284,10 @@ void MainWindow::setupKeyboardShortcuts()
                }
                if (m_plateSelecting) {
                    setPlateSelecting(false);
+                   return;
+               }
+               if (m_fullScreen) {
+                   setFullScreenView(false);
                    return;
                }
                selectTrackClip(-1);
@@ -2370,6 +2482,62 @@ void MainWindow::navigateTo(qint64 timelineMs, bool pause)
     m_lastTimelineMs = timelineMs;
     m_timelineWidget->setPlayhead(timelineMs);
     bindActiveClipAt(timelineMs);
+}
+
+void MainWindow::setFullScreenView(bool on)
+{
+    if (on == m_fullScreen || (on && m_pages->currentWidget() != m_editorPage))
+        return;
+    m_fullScreen = on;
+    if (on)
+        m_wasMaximized = isMaximized();
+    // Everything but the viewport and the player bar.
+    for (QWidget *w : {static_cast<QWidget *>(menuBar()), static_cast<QWidget *>(m_sourcesSidebar),
+                       static_cast<QWidget *>(m_sidebar), static_cast<QWidget *>(m_timelineWidget),
+                       static_cast<QWidget *>(m_transport)})
+        w->setVisible(!on);
+    m_playerBar->setFullScreen(on);
+    m_playerBar->setVisible(true);
+    if (on) {
+        showFullScreen();
+        m_playerBarHide->start();
+    } else {
+        m_playerBarHide->stop();
+        if (m_wasMaximized)
+            showMaximized();
+        else
+            showNormal();
+    }
+}
+
+void MainWindow::showPlayerBarForAWhile()
+{
+    if (!m_fullScreen)
+        return;
+    m_playerBar->setVisible(true);
+    m_playerBarHide->start();
+}
+
+void MainWindow::updatePlayerBar()
+{
+    const double firstFps = m_timeline->count() > 0 ? m_timeline->clipAt(0).fps : 0.0;
+    m_playerBar->setFrameRate(m_project->output().effectiveFps(firstFps));
+    QList<qint64> cuts;
+    qint64 t = 0;
+    for (int i = 0; i + 1 < m_timeline->count(); ++i) {
+        t += m_timeline->clipAt(i).timelineDurationMs();
+        cuts.push_back(t);
+    }
+    m_playerBar->setCuts(cuts);
+}
+
+void MainWindow::applyPreviewVolume()
+{
+#ifdef ORBIS_REFRAME_HAVE_AUDIO
+    // Squared: the slider's middle sounds about half as loud, not barely quieter.
+    const double v = m_playerBar->volume() / 100.0;
+    m_audioPlayer->setVolume(m_playerBar->isMuted() ? 0.0f : static_cast<float>(v * v));
+#endif
 }
 
 void MainWindow::splitAtPlayhead()
@@ -2579,6 +2747,7 @@ void MainWindow::refreshTimelineWidget()
     m_timelineWidget->setActiveClip(editClipId());
     refreshTrackRows();
     m_transport->setHasReframeKeys(activeHasKeys);
+    updatePlayerBar();
     m_reframePanel->setClipUnkeyed(m_timeline->clipById(m_clipId) && !activeHasKeys);
     if (!m_exporting)
         m_exportAction->setEnabled(m_timeline->count() > 0 && m_fps > 0.0);
@@ -2647,7 +2816,7 @@ void MainWindow::afterUndoRedo()
     // playhead was already at rather than trying to find the "same" clip id.
     syncTimeline();
     bindActiveClipAt(m_lastTimelineMs);
-    m_transport->setPosition(m_lastTimelineMs);
+    m_playerBar->setPosition(m_lastTimelineMs);
     m_timelineWidget->setPlayhead(m_lastTimelineMs);
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, m_lastTimelineMs));
@@ -3113,6 +3282,8 @@ void MainWindow::showEditor()
 
 void MainWindow::setEditorActive(bool active)
 {
+    if (!active)
+        setFullScreenView(false);
     for (QAction *a : std::as_const(m_editorActions))
         a->setEnabled(active);
     for (QShortcut *sc : std::as_const(m_editorShortcuts))
@@ -4010,7 +4181,7 @@ void MainWindow::updateScreenshotEnabled()
 {
     const bool on = !m_screenshotThread && !m_exporting && m_timeline->count() > 0 && m_fps > 0.0;
     m_screenshotAction->setEnabled(on);
-    m_transport->setScreenshotEnabled(on);
+    m_playerBar->setScreenshotEnabled(on);
     // While tracking, the button is the Stop control.
     m_reframePanel->setTrackEnabled(trackingRunning() ||
                                     (!m_exporting && m_timeline->count() > 0 && m_fps > 0.0));

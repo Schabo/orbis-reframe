@@ -248,6 +248,12 @@ void AudioPlayer::setHold(bool hold)
     m_cv.notify_all();
 }
 
+void AudioPlayer::setVolume(float gain)
+{
+    std::lock_guard<std::mutex> lk(m_mx);
+    m_volume = std::clamp(gain, 0.0f, 1.0f);
+}
+
 void AudioPlayer::seek(qint64 timelineMs)
 {
     const double played = playedFrames();
@@ -486,11 +492,11 @@ qint64 AudioPlayer::pullBytes(char *data, qint64 maxlen)
                 m_current = std::move(m_queue.front());
                 m_queue.pop_front();
             }
-            float gain = 1.0f;
+            float gain = m_volume;
             if (m_fadeOutFrames > 0)
-                gain = static_cast<float>(--m_fadeOutFrames) / kFadeFrames;
+                gain *= static_cast<float>(--m_fadeOutFrames) / kFadeFrames;
             else if (m_fadeInFrames > 0)
-                gain = 1.0f - static_cast<float>(--m_fadeInFrames) / kFadeFrames;
+                gain *= 1.0f - static_cast<float>(--m_fadeInFrames) / kFadeFrames;
             if (m_currentOffset >= frames(m_current)) { // starved
                 for (int c = 0; c < kChannels; ++c)
                     out[i * kChannels + c] = 0.0f;

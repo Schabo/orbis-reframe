@@ -25,8 +25,9 @@ reach past that end are cut off.
 
 ## Moving around
 
-Only the ruler moves the playhead. Click on it to jump to a frame, or drag
-along it to scrub through the video. Clicking a clip selects it but leaves
+Only the ruler (and the player bar's progress bar under the viewport) moves
+the playhead. Click on it to jump to a frame, or drag along it to scrub
+through the video. Clicking a clip selects it but leaves
 the playhead where it is.
 
 | Key | Moves the playhead |

@@ -367,3 +367,16 @@ QLabel#dialogHint, QLabel#projectFolderResult {
 QLabel#projectFolderResult[problem="true"] {
     color: @error;
 }
+
+/* The player bar under the viewport. */
+#playerBar {
+    background-color: @menuBar;
+    border-top: 1px solid @border;
+}
+QToolButton#playerSpeed::menu-indicator {
+    image: none;
+    width: 0;
+}
+#playerBuffering {
+    color: @textDim;
+}

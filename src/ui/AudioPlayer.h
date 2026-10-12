@@ -79,6 +79,10 @@ public:
     // Freeze output while the video clock is frozen (a seek / stall) so the
     // two resume together instead of drifting apart.
     void setHold(bool hold);
+    // The preview's listening volume, a linear gain (0 = silent, 1 = as
+    // mixed): the player bar's volume and mute. Applied at the output only --
+    // never the export or the clips' levels.
+    void setVolume(float gain);
 
 private:
     using Placed = PlaybackController::Placed;
@@ -122,6 +126,7 @@ private:
     bool m_mixDirty = false;
     bool m_playing = false;
     bool m_held = false;
+    float m_volume = 1.0f; // setVolume()
     bool m_stop = false;
     bool m_decoderEof = false;
     bool m_seekPending = false;

@@ -2072,6 +2072,14 @@ void EquirectViewportWindow::mouseReleaseEvent(QMouseEvent *event)
         emit pictureContextMenu(event->globalPosition().toPoint(), {dir[0], dir[1], dir[2]});
 }
 
+void EquirectViewportWindow::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    // The second press has already arrived (and started a look drag, ended
+    // by its release as usual).
+    if (event->button() == Qt::LeftButton && !m_boxSelect && !insetAt(event->position()))
+        emit doubleClicked();
+}
+
 void EquirectViewportWindow::keyPressEvent(QKeyEvent *event)
 {
     if (m_boxSelect && event->key() == Qt::Key_Escape) {

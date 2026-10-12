@@ -247,8 +247,9 @@ orbis-reframe ~/Videos/orbis-reframe/my-ride/my-ride.orp
    `.insv` file. (Or import a whole folder of clips with **Media ▸ Import
    folder…** and drag them from the **Media** tab on the left onto the
    timeline.)
-4. The viewport shows *Buffering…* for a moment, then the first frame.
-   Press **Space** to play. Drag in the viewport to look around.
+4. The player bar under the viewport shows *Buffering…* for a moment, and
+   the viewport the first frame. Press **Space** (or the play button in the
+   player bar) to play. Drag in the viewport to look around.
 5. Save your work with **File ▸ Save project** (`Ctrl+S`). The project
    stores your edits and refers to the original clips, so don't move or
    rename the clips after adding them. Next time, open it from the project

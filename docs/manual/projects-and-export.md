@@ -202,12 +202,12 @@ sound is AAC, stereo, at 48 kHz and 192 kbit/s.
 
 ## Screenshots
 
-**File ▸ Save screenshot** (`Ctrl+Shift+P`), or the camera button in the
-transport bar, saves the frame at the playhead as a PNG picture, at the
+The camera button in the player bar under the viewport, or
+`Ctrl+Shift+P`, saves the frame at the playhead as a PNG picture, at the
 project's resolution, with the same quality as the export: the viewport's
 current view, with stabilization, colour, privacy blur and overlays.
 
 The suggested file name is the project's name and the playhead's time, in
 the project's `screenshots/` folder (in the project file's folder for a
 project from before project folders, and in your Pictures folder for an
-untitled one). The transport bar says when the picture is saved.
+untitled one). The transport bar under the timeline says when the picture is saved.
