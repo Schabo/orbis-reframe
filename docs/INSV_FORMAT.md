@@ -233,7 +233,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 |---|---|---|---|---|---|
 | `0x0000` | 0 | Offsets | 310 | locator table (§4.2) | ✅ |
 | `0x0101` | 1 | **Metadata** (protobuf) | ~4 KB | serial, model, firmware, calibration, timing, IMU config… (§5) | ✅ |
-| `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header + **1280×640** raw 4:2:0 (ExifTool: `PreviewTIFF`; other models store JPEG or H.264 here) | ✅ |
+| `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header (`u32 1, u32 record size, u32 1, u32 0, u32 width, u32 height`, zeros) + **1280×640 NV12**, an already **stitched equirectangular** frame from the start of the recording (ExifTool: `PreviewTIFF`; other models store JPEG or H.264 here). Read by `ReadInsvThumbnail` for the project library's cards | ✅ |
 | `0x0300` | 3 | **Gyro** (IMU) | 877 440 | accel + gyro, ~1 kHz (§6) | ✅ |
 | `0x0400` | 4 | **Exposure** | 20 928 | one per sensor frame (§7) | ✅ |
 | — | 5 | ThumbnailExt | — | not on the X5 samples | |
@@ -251,7 +251,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 
 ExifTool decodes types 1 (partly), 2, 3, 4, 6 and 7. Its source notes that
 0x900/0xa00/0xb00 also occur on X3 / ONE RS / Ace Pro. Our parser reads types
-1, 3 and 4.
+1, 2, 3 and 4 (and counts 7).
 
 ### 4.4 Type 9 — AAAData (48 B per frame) 📖
 

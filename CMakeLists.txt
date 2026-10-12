@@ -625,10 +625,11 @@ if(TARGET reframe_flatten)
 endif()
 
 # --- tests/insv_test: the cleanroom stitch core (calibration parse, radial
-# model, linear algebra, FisheyeStitcher geometry). All synthetic -- links only
-# the dependency-free `insv` lib, no Qt / FFmpeg / .insv file needed.
+# model, linear algebra, FisheyeStitcher geometry, the trailer thumbnail). All
+# synthetic -- links only the dependency-free `insv` and `insv_trailer` libs, no
+# Qt / FFmpeg / .insv file needed.
 add_executable(insv_test tests/insv_test.cpp)
-target_link_libraries(insv_test PRIVATE insv)
+target_link_libraries(insv_test PRIVATE insv insv_trailer)
 add_test(NAME insv_test COMMAND insv_test)
 
 # The privacy blur's plate-scan data (lookup, spans, merge, cache file).

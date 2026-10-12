@@ -126,6 +126,19 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path);
 // Hand the result to insv::ParseExtendedCalibrationString.
 std::optional<std::string> ReadInsvExtendedCalibrationString(const std::string& file_path);
 
+// The camera's own preview picture from the trailer's 0x200 record
+// (docs/INSV_FORMAT.md §4.3): on the X5 an already stitched equirectangular
+// frame, 1280x640, NV12 (a full-size Y plane, then interleaved U/V at half
+// size). Cheap to read -- only that record is loaded, not the video or the
+// IMU. Returns std::nullopt when the file has no trailer, no such record, or
+// one in another layout (other models store a JPEG or H.264 frame there).
+struct InsvThumbnail {
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> nv12; // width * height * 3 / 2 bytes
+};
+std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
+
 // Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure;
 // 0x700 GPS is only counted).
 // Returns std::nullopt only if the file has no recognizable trailer at all; a

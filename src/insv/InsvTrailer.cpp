@@ -61,9 +61,13 @@ double ReadFloatLE(const uint8_t* p) {
 //     included) only make the 0x300/0x400 records reachable this way — the
 //     sequential chain dead-ends at a run of empty 0x0 records after 0x200.
 // The 0x0 directory record itself is consumed here, never handed to `visit`.
+// `wanted`, when set, picks the record ids to read: the others are stepped
+// over without reading their payload (the IMU record of a long clip is
+// hundreds of MB).
 bool WalkTrailerRecords(
     std::istream& file, int64_t file_size,
-    const std::function<bool(uint16_t, const std::vector<uint8_t>&, int64_t)>& visit) {
+    const std::function<bool(uint16_t, const std::vector<uint8_t>&, int64_t)>& visit,
+    const std::function<bool(uint16_t)>& wanted = {}) {
     if (file_size < static_cast<int64_t>(kFooterLen)) return false;
 
     std::vector<uint8_t> footer(kFooterLen);
@@ -92,9 +96,10 @@ bool WalkTrailerRecords(
         if (epos + trailer_len < 0) break;
 
         const int64_t payload_off = file_size + epos; // byte offset of the payload in `file`
+        const bool read = id == 0x0 || !wanted || wanted(id);
         file.seekg(payload_off, std::ios::beg);
-        std::vector<uint8_t> payload(len);
-        if (len > 0) {
+        std::vector<uint8_t> payload(read ? len : 0);
+        if (read && len > 0) {
             file.read(reinterpret_cast<char*>(payload.data()), len);
             if (!file) break;
         }
@@ -102,7 +107,7 @@ bool WalkTrailerRecords(
         if (id == 0x0 && len > 0 && !using_dir) {
             dir_table = std::move(payload); // record-locator table, not a data record
             using_dir = true;
-        } else if (!(id == 0x0 && len == 0)) {
+        } else if (read && !(id == 0x0 && len == 0)) {
             if (!visit(id, payload, payload_off)) return true;
         }
 
@@ -446,6 +451,33 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
     out.first_frame_timestamp = meta.first_frame_timestamp;
     out.gyro_timestamp_ms = meta.gyro_timestamp_ms;
     out.rolling_shutter_ms = meta.rolling_shutter_ms;
+    return out;
+}
+
+std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) return std::nullopt;
+    file.seekg(0, std::ios::end);
+    const int64_t file_size = static_cast<int64_t>(file.tellg());
+
+    // 40-byte header, then the picture: u32 1, u32 record size, u32 1, u32 0,
+    // u32 width, u32 height, zeros (docs/INSV_FORMAT.md §4.3).
+    constexpr size_t kHeader = 40;
+    std::optional<InsvThumbnail> out;
+    WalkTrailerRecords(
+        file, file_size,
+        [&](uint16_t, const std::vector<uint8_t>& p, int64_t) {
+            if (p.size() < kHeader) return false;
+            const uint32_t w = ReadU32LE(&p[16]);
+            const uint32_t h = ReadU32LE(&p[20]);
+            if (w == 0 || h == 0 || w % 2 || h % 2 || w > 8192 || h > 8192 ||
+                p.size() != kHeader + size_t(w) * h * 3 / 2)
+                return false; // another layout (other models: JPEG / H.264)
+            out = InsvThumbnail{static_cast<int>(w), static_cast<int>(h),
+                                std::vector<uint8_t>(p.begin() + kHeader, p.end())};
+            return false;
+        },
+        [](uint16_t id) { return id == 0x200; });
     return out;
 }
 

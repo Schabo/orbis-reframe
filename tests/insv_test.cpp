@@ -1,22 +1,29 @@
 // Standalone checks for the cleanroom stitch core (src/insv/): calibration
 // string parsing, lens profiles, the linear-algebra helpers, and
-// FisheyeStitcher geometry. All synthetic -- no .insv file, no FFmpeg, no Qt --
-// so it links only the dependency-free `insv` lib and runs anywhere. Exit code
+// FisheyeStitcher geometry, the trailer's thumbnail record. All synthetic -- no
+// .insv file, no FFmpeg, no Qt -- so it links only the dependency-free `insv`
+// and `insv_trailer` libs and runs anywhere. Exit code
 // is the failure count. Mirrors tests/core_model_test.cpp's harness.
 
 #include "BlurQuads.h"
 #include "Calibration.h"
 #include "FisheyeProjection.h"
 #include "Image.h"
+#include "InsvTrailer.h"
 #include "SeamDepth.h"
 
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <numbers>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -423,6 +430,65 @@ void testBlurQuads()
     CHECK(!insv::prepareBlurQuad(z, f));
 }
 
+// A file that ends in a minimal Insta360 trailer holding one record:
+// `payload` with id `id`, right before the 78-byte footer (sequential layout).
+std::string writeTrailerFile(const char* name, uint16_t id, const std::vector<uint8_t>& payload)
+{
+    auto put32 = [](uint8_t* p, uint32_t v) {
+        for (int i = 0; i < 4; ++i) p[i] = uint8_t(v >> (8 * i));
+    };
+    std::vector<uint8_t> footer(78, 0);
+    footer[0] = uint8_t(id);
+    footer[1] = uint8_t(id >> 8);
+    put32(&footer[2], uint32_t(payload.size()));
+    put32(&footer[38], uint32_t(payload.size() + footer.size()));
+    std::memcpy(&footer[78 - 32], "8db42d694ccc418790edff439fe026bf", 32);
+    const std::string path = (std::filesystem::temp_directory_path() / name).string();
+    std::ofstream f(path, std::ios::binary);
+    const std::vector<uint8_t> video(64, 0x11); // stands in for the MP4 boxes
+    f.write(reinterpret_cast<const char*>(video.data()), std::streamsize(video.size()));
+    f.write(reinterpret_cast<const char*>(payload.data()), std::streamsize(payload.size()));
+    f.write(reinterpret_cast<const char*>(footer.data()), std::streamsize(footer.size()));
+    return path;
+}
+
+void testTrailerThumbnail()
+{
+    // The X5's layout, shrunk: 40-byte header, then an 8x4 NV12 picture.
+    const int w = 8, h = 4;
+    std::vector<uint8_t> rec(40 + w * h * 3 / 2);
+    auto put32 = [&](size_t at, uint32_t v) {
+        for (int i = 0; i < 4; ++i) rec[at + i] = uint8_t(v >> (8 * i));
+    };
+    put32(0, 1);
+    put32(4, uint32_t(rec.size()));
+    put32(8, 1);
+    put32(16, w);
+    put32(20, h);
+    for (size_t i = 40; i < rec.size(); ++i) rec[i] = uint8_t(i);
+
+    const std::string ok = writeTrailerFile("insv_test_thumb.insv", 0x200, rec);
+    const auto thumb = insv::ReadInsvThumbnail(ok);
+    CHECK(thumb.has_value());
+    if (thumb) {
+        CHECK(thumb->width == w && thumb->height == h);
+        CHECK(thumb->nv12.size() == size_t(w * h * 3 / 2));
+        CHECK(!thumb->nv12.empty() && thumb->nv12.front() == 40 && thumb->nv12.back() == uint8_t(rec.size() - 1));
+    }
+    std::filesystem::remove(ok);
+
+    // A size that doesn't match the header (another model's JPEG), no 0x200
+    // record, no trailer at all: nothing.
+    rec.pop_back();
+    const std::string bad = writeTrailerFile("insv_test_thumb_bad.insv", 0x200, rec);
+    CHECK(!insv::ReadInsvThumbnail(bad).has_value());
+    std::filesystem::remove(bad);
+    const std::string other = writeTrailerFile("insv_test_thumb_other.insv", 0x400, rec);
+    CHECK(!insv::ReadInsvThumbnail(other).has_value());
+    std::filesystem::remove(other);
+    CHECK(!insv::ReadInsvThumbnail("/nonexistent/clip.insv").has_value());
+}
+
 int main()
 {
     testExtendedCalibration();
@@ -433,6 +499,7 @@ int main()
     testSeamDepthGeometry();
     testSeamDepthTracker();
     testBlurQuads();
+    testTrailerThumbnail();
 
     if (g_failures == 0)
         std::printf("insv_test: all checks passed\n");
