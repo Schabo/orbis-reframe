@@ -904,8 +904,10 @@ bool isTextEntry(const QWidget *w)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    // Only the editor's own fields: a dialog's keep Enter (its default
+    // button) and their focus.
     QWidget *fw = QApplication::focusWidget();
-    if (!isTextEntry(fw))
+    if (!isTextEntry(fw) || fw->window() != this)
         return QMainWindow::eventFilter(watched, event);
 
     switch (event->type()) {
