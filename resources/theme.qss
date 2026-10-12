@@ -233,45 +233,33 @@ QProgressBar::chunk {
     border-radius: 3px;
 }
 
-/* ================= Settings sidebar ================= */
+/* ================= Settings sections (the right sidebar's tabs) ================= */
 
-/* The whole right-hand dock (rail + panel stack). */
-#settingsSidebar {
-    background-color: @panel;
-    border-left: 1px solid @border;
-}
-
-/* Vertical icon rail on the far edge. */
-#settingsRail {
-    background-color: @menuBar;
-    border-left: 1px solid @border;
-}
-#settingsRail QToolButton {
-    border: none;
-    border-radius: 0;
-    padding: 10px;
-    border-left: 2px solid transparent;
-}
-#settingsRail QToolButton:hover {
-    background-color: @panel;
-}
-#settingsRail QToolButton:checked {
-    background-color: @panel;
-    border-left: 2px solid @accent;
-}
-
-/* Panel header + body. */
-#settingsPanelTitle {
+/* A section's header row: chevron, title, and what it applies to. */
+QToolButton[settingsPart="header"] {
     font-size: 13px;
     font-weight: 600;
     color: @text;
-    padding: 12px 14px 8px 14px;
+    text-align: left;
+    padding: 9px 10px 9px 10px;
+    border: none;
+    border-radius: 0;
+    border-top: 1px solid @border;
+    background-color: transparent;
+}
+QToolButton[settingsPart="header"][collapsible="true"]:hover {
+    background-color: @menuBar;
+}
+#settingsPanelScope {
+    color: @textDim;
+    font-size: 11px;
+    font-weight: normal;
 }
 #settingsPanelHint {
     color: @textDim;
     padding: 0 14px 12px 14px;
 }
-#settingsPanelBody {
+#settingsPanelBody, #settingsPageContent {
     background-color: @panel;
 }
 #settingsPanelBody QLabel {
@@ -288,7 +276,7 @@ QProgressBar::chunk {
     color: @text;
 }
 
-/* ================= Tab sidebars (the left one: sources) ================= */
+/* ================= Tab sidebars (left: sources, right: settings) ================= */
 
 TabSidebar {
     background-color: @panel;

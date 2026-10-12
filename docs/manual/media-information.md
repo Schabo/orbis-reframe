@@ -1,13 +1,14 @@
 # Media information
 
-The **Media information** panel shows what's inside a clip's `.insv` file:
-how it was recorded, by which camera, and in what format. It only shows
-information; nothing here can be changed.
+The **Media information** section, at the bottom of the settings sidebar's
+**Video** tab, shows what's inside a clip's `.insv` file: how it was
+recorded, by which camera, and in what format. It starts folded: click its
+title to open it. It only shows information; nothing here can be changed.
 
 It shows the file of the clip you selected on the video track, or of the
 clip under the playhead if none is selected. With no clip, it's empty.
 
-<img src="images/media-information-panel.jpg" width="350" alt="The Media information panel for an 8K clip">
+<img src="images/media-information-panel.jpg" width="350" alt="The Media information section for an 8K clip">
 
 *An 8K clip recorded on an X5. The camera's serial number is blurred here.*
 
@@ -52,7 +53,7 @@ the data rate.
 | Row | What it shows |
 |---|---|
 | **Model** | The camera that recorded the file, such as *Insta360 X5*. |
-| **Serial** | The camera's serial number. Blur it out if you share a screenshot of this panel. |
+| **Serial** | The camera's serial number. Blur it out if you share a screenshot of this section. |
 | **Firmware** | The camera's software version at the time of recording. |
 | **Motion data** | How often the camera recorded its movement, which [stabilization](stabilization.md) works from: about 1000 times a second on the X5. *Not recorded* means stabilization can't work for this clip. |
 | **GPS** | Whether a GPS source, such as Insta360's GPS remote, recorded where you were: how often the position was updated (about once a second), or *Not recorded*. A second line says when the track covers only part of the recording, for example because the signal was lost, or *no position fix* if the GPS never found its position. The positions themselves aren't shown, so a screenshot of the panel doesn't give away where you rode. |
@@ -64,6 +65,6 @@ the data rate.
   example to find the 120 fps clips for slow motion.
 - **Reporting a problem:** the mode, codec and firmware help pin down a bug.
   The diagnostics in **Help ▸ About orbis-reframe** describe your computer;
-  this panel describes the clip.
-- **If a clip won't open:** the panel shows **Error** with the reason, such
+  this section describes the clip.
+- **If a clip won't open:** the section shows **Error** with the reason, such
   as *file not found*.

@@ -178,9 +178,24 @@ void TabSidebar::setCurrentIndex(int index)
 {
     if (index < 0 || index >= m_stack->count())
         return;
+    const bool changed = index != m_stack->currentIndex();
     m_stack->setCurrentIndex(index);
     if (QAbstractButton *b = m_tabs->button(index))
         b->setChecked(true);
+    if (changed)
+        emit currentChanged(index);
+}
+
+void TabSidebar::toggleTab(int index)
+{
+    if (index < 0 || index >= m_stack->count())
+        return;
+    if (m_open && index == currentIndex()) {
+        setOpen(false);
+        return;
+    }
+    setCurrentIndex(index);
+    setOpen(true);
 }
 
 int TabSidebar::currentIndex() const { return m_stack->currentIndex(); }

@@ -12,10 +12,12 @@ over the top and under the bottom. Usually you won't see it. It can show
 when something is very close to the camera, or when the settings below
 don't match how the footage was filmed.
 
-<img src="images/stitching-panel.jpg" width="350" alt="The Stitching panel">
+<img src="images/stitching-panel.jpg" width="350" alt="The Stitching section">
 
-The settings are in the **Stitching** panel. They're the same for the whole
-project, and apply to playback, screenshots and the export alike.
+The settings are in the **Stitching** section, at the top of the settings
+sidebar's **Video** tab. It starts folded: click its title to open it. Its
+settings are the same for the whole project (its title row says *Whole
+project*), and apply to playback, screenshots and the export alike.
 
 ## Lens guards
 
@@ -61,7 +63,7 @@ that for a cleaner seam. Like the gyro sync (see
 [Stabilization](stabilization.md)), this runs in the background while
 playback is paused, and the result is saved in the project.
 
-The **Stitching** panel shows the state for the clip under the playhead:
+The **Stitching** section shows the state for the clip under the playhead:
 
 | Message | Meaning |
 |---|---|
@@ -74,12 +76,15 @@ depends on the lens model.
 
 ## Preview size and Quality
 
-- **Preview size** almost never matters. The viewport normally draws
+These two are in the **View** menu, not in the sidebar: they change only the
+preview you see while editing, never the export.
+
+- **View ▸ Preview size** almost never matters. The viewport normally draws
   straight from the two lens pictures at full detail. Only when the graphics
   card or driver can't do that does orbis-reframe stitch a flat 360° preview
   first, and this sets its size. **Auto** uses the clip's full detail, as
   much as can play smoothly at its frame rate.
-- **Quality** has only one choice for now, **Standard**. **Optical flow**,
+- **View ▸ Preview quality** has only one choice for now, **Standard**. **Optical flow**,
   a smoother seam for close objects, isn't available yet.
 
 ## Filming tips

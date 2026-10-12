@@ -52,7 +52,7 @@ QString upperCodec(const std::string &codec, const std::string &profile)
 } // namespace
 
 MediaInfoPanel::MediaInfoPanel(QWidget *parent)
-    : SettingsPanel(tr("Media information"), QStringLiteral("info"), parent)
+    : SettingsPanel(tr("Media information"), parent)
 {
     setNoClip();
 }
@@ -94,7 +94,7 @@ void MediaInfoPanel::addWideValue(const QString &value, const QString &toolTip)
 void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
 {
     clearRows();
-    setEnabled(true);
+    setBodyEnabled(true);
     setHint(tr("The source file of the clip under the playhead."));
     const QLocale locale;
 
@@ -204,7 +204,7 @@ void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
 void MediaInfoPanel::setError(const QString &path, const QString &error)
 {
     clearRows();
-    setEnabled(true);
+    setBodyEnabled(true);
     setHint({});
     addSection(tr("File"));
     addWideValue(QFileInfo(path).fileName(), path);
@@ -215,5 +215,5 @@ void MediaInfoPanel::setNoClip()
 {
     clearRows();
     setHint(tr("No clip under the playhead."));
-    setEnabled(false);
+    setBodyEnabled(false);
 }

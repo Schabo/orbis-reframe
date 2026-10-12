@@ -1,39 +1,60 @@
 #pragma once
 
-#include <QWidget>
+#include <QList>
 
-class QButtonGroup;
-class QStackedWidget;
-class QVBoxLayout;
+#include "TabSidebar.h"
+
+class AudioPanel;
+class ColourPanel;
+class MediaInfoPanel;
+class OverlayPanel;
+class PrivacyPanel;
+class ReframePanel;
 class SettingsPanel;
+class StabilizationPanel;
+class StitchingPanel;
 
-// The right-hand settings dock: a vertical icon rail on the far edge plus a
-// one-at-a-time stack of SettingsPanels. Clicking a rail icon shows that
-// panel; clicking the active icon again collapses the stack (the rail stays).
-// MainWindow adds the panels and wires their controls to the model.
-class SettingsSidebar : public QWidget {
+// The right sidebar: the settings, in icon tabs by subject, each a column of
+// collapsible sections (SettingsPanel) that say what they apply to.
+//   Video   -- stitching, stabilization, reframe, colour, media information
+//              (in workflow order; stitching and media information start
+//              closed);
+//   Audio   -- the selected audio clip, else the clip's own sound;
+//   Overlay -- the selected overlay clip;
+//   Privacy -- the clip's number-plate blur.
+// Owns the sections; MainWindow wires them to the model.
+//
+// Object names: settingsSidebar (TabSidebar's parts follow from it), the
+// pages videoSettings / audioSettings / overlaySettings / privacySettings
+// (their tab buttons <page>Tab), and the sections stitchingPanel,
+// stabilizationPanel, reframePanel, colourPanel, mediaInfoPanel, audioPanel,
+// overlayPanel, privacyPanel (headers <section>Header).
+class SettingsSidebar : public TabSidebar {
     Q_OBJECT
 
 public:
     explicit SettingsSidebar(QWidget *parent = nullptr);
 
-    // Takes ownership of `panel`, adds a rail button using its icon + title.
-    void addPanel(SettingsPanel *panel);
-    // Bring `panel` to the front, unless the stack is collapsed (then it
-    // stays collapsed: the user put it away).
-    void raisePanel(SettingsPanel *panel);
-    // What clicking the index'th rail icon does (Alt+1 … Alt+9): show that
-    // panel, or collapse the stack if it's the one showing.
-    void togglePanel(int index);
+    StitchingPanel *stitching() const { return m_stitching; }
+    StabilizationPanel *stabilization() const { return m_stabilization; }
+    ReframePanel *reframe() const { return m_reframe; }
+    ColourPanel *colour() const { return m_colour; }
+    MediaInfoPanel *mediaInfo() const { return m_mediaInfo; }
+    AudioPanel *audio() const { return m_audio; }
+    OverlayPanel *overlay() const { return m_overlay; }
+    PrivacyPanel *privacy() const { return m_privacy; }
+
+    // Every section, tab by tab, top to bottom.
+    QList<SettingsPanel *> sections() const { return m_sections; }
 
 private:
-    void showPanel(int index);
-    void setCollapsed(bool collapsed);
-
-    QStackedWidget *m_stack = nullptr;
-    QWidget *m_rail = nullptr;
-    QVBoxLayout *m_railLayout = nullptr;
-    QButtonGroup *m_railGroup = nullptr;
-    int m_currentIndex = -1;
-    bool m_collapsed = false;
+    StitchingPanel *m_stitching = nullptr;
+    StabilizationPanel *m_stabilization = nullptr;
+    ReframePanel *m_reframe = nullptr;
+    ColourPanel *m_colour = nullptr;
+    MediaInfoPanel *m_mediaInfo = nullptr;
+    AudioPanel *m_audio = nullptr;
+    OverlayPanel *m_overlay = nullptr;
+    PrivacyPanel *m_privacy = nullptr;
+    QList<SettingsPanel *> m_sections;
 };

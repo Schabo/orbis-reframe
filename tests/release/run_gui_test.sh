@@ -11,7 +11,8 @@
 #   run_gui_test.sh tarball  install the tarball + the install guide's apt line
 #
 # Coordinates are for the 1920x1080 headless output and the app's default
-# layout (the side rail, Privacy panel); the screenshots show where they hit.
+# layout (both sidebars open at their default widths, the Privacy tab's
+# button); the screenshots show where they hit.
 set -uo pipefail
 
 kind=${1:?deb or tarball}
@@ -136,8 +137,10 @@ result track_done $?
 sleep 1
 shot 4-tracked
 
-# Scan clip: the Privacy panel (side rail), then its "Scan clip" button.
-vp move 1897 323 click sleep 800 move 1700 166 click
+# Scan clip: the settings sidebar's Privacy tab (Alt+4), then its "Scan
+# clip" button.
+vk key alt+4 sleep 800
+vp move 1740 206 click
 sleep 2
 shot 5-scanning
 wait_log '^\[plates\]' 300

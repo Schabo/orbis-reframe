@@ -4,42 +4,10 @@
 #include <QComboBox>
 #include <QFormLayout>
 #include <QLabel>
-#include <QStandardItemModel>
-
-#include <array>
-#include <cstdlib>
-
-namespace {
-// 2:1 presets only -- equirect is 360x180 and the reprojection shader assumes
-// it. Width is the source of truth; height is always width / 2.
-// Above 3840, check real time for the clip's mode (tools/playback_bench).
-constexpr std::array<int, 7> kPresetWidths{1920, 2560, 3072, 3840, 5120, 5760, 7680};
-} // namespace
 
 StitchingPanel::StitchingPanel(QWidget *parent)
-    : SettingsPanel(tr("Stitching"), QStringLiteral("layers"), parent)
+    : SettingsPanel(tr("Stitching"), parent)
 {
-    m_quality = new QComboBox(this);
-    m_quality->addItem(tr("Standard"));
-    m_quality->addItem(tr("Optical flow (not yet available)"));
-    // No native optical-flow seam yet: shown, not pickable.
-    if (auto *model = qobject_cast<QStandardItemModel *>(m_quality->model()))
-        model->item(1)->setEnabled(false);
-    m_quality->setToolTip(tr("Only Standard for now. Optical flow, a smoother seam for close "
-                             "objects, isn't available yet."));
-    form()->addRow(tr("Quality"), m_quality);
-
-    m_resolution = new QComboBox(this);
-    m_resolution->addItem(tr("Auto (match source)"), 0);
-    for (int w : kPresetWidths)
-        m_resolution->addItem(QStringLiteral("%1 x %2").arg(w).arg(w / 2), w);
-    m_resolution->setToolTip(
-        tr("Almost never matters: the viewport normally draws straight from the two lens "
-           "pictures at full detail. Only when the graphics card or driver can't do that is a "
-           "flat 360° preview stitched first, and this sets its size. Auto uses the clip's "
-           "full detail, as much as plays smoothly at its frame rate."));
-    form()->addRow(tr("Preview size"), m_resolution);
-
     // Order matches stitch::PreviewStitchConfig::LensGuard.
     m_lensGuard = new QComboBox(this);
     m_lensGuard->addItem(tr("None"));
@@ -65,25 +33,19 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_seamStatus->hide();
     form()->addRow(m_seamStatus);
 
-    setHint(tr("How the two lens pictures are joined into the 360° view. For the whole "
-               "project, in playback, screenshots and export."));
+    setHint(tr("How the two lens pictures are joined into the 360° view, in playback, "
+               "screenshots and export. The preview's own quality and size are in the View "
+               "menu."));
 
     setConfig(stitch::PreviewStitchConfig{}); // sane starting state
 
-    connect(m_quality, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
-    connect(m_resolution, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_depthSeam, &QCheckBox::toggled, this, &StitchingPanel::emitIfEdited);
 }
 
 stitch::PreviewStitchConfig StitchingPanel::currentConfig() const
 {
-    stitch::PreviewStitchConfig c;
-    c.quality = m_quality->currentIndex() == 1 ? stitch::PreviewStitchConfig::Quality::OpticalFlow
-                                               : stitch::PreviewStitchConfig::Quality::Template;
-    const int w = m_resolution->currentData().toInt(); // 0 = Auto
-    c.width = w;
-    c.height = w / 2;
+    stitch::PreviewStitchConfig c = m_config; // the preview's quality and size stay
     c.lensGuard = static_cast<stitch::PreviewStitchConfig::LensGuard>(m_lensGuard->currentIndex());
     c.depthSeam = m_depthSeam->isChecked();
     return c;
@@ -92,25 +54,9 @@ stitch::PreviewStitchConfig StitchingPanel::currentConfig() const
 void StitchingPanel::setConfig(const stitch::PreviewStitchConfig &config)
 {
     m_updating = true;
-
-    m_quality->setCurrentIndex(
-        config.quality == stitch::PreviewStitchConfig::Quality::OpticalFlow ? 1 : 0);
-
-    int resIndex = m_resolution->findData(config.width > 0 ? config.width : 0);
-    if (resIndex < 0) {
-        // Non-preset width (hand-edited .orp): snap to the nearest preset.
-        int best = 0;
-        for (int i = 1; i < static_cast<int>(kPresetWidths.size()); ++i)
-            if (std::abs(kPresetWidths[i] - config.width) <
-                std::abs(kPresetWidths[best] - config.width))
-                best = i;
-        resIndex = best + 1; // after the Auto entry
-    }
-    m_resolution->setCurrentIndex(resIndex);
-
+    m_config = config;
     m_lensGuard->setCurrentIndex(static_cast<int>(config.lensGuard));
     m_depthSeam->setChecked(config.depthSeam);
-
     m_updating = false;
 }
 

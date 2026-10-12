@@ -53,7 +53,7 @@ NewProjectDialog::NewProjectDialog(Mode mode, const QString &location, QWidget *
         heading->setObjectName(QStringLiteral("dialogSection"));
         form->addRow(heading);
         m_output = new OutputSettingsEditor(this, form);
-        auto *hint = new QLabel(tr("Can be changed later in the Project panel."), this);
+        auto *hint = new QLabel(tr("Can be changed later in File ▸ Project settings…"), this);
         hint->setObjectName(QStringLiteral("dialogHint"));
         form->addRow(QString(), hint);
     }

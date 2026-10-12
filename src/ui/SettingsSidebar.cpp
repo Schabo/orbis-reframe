@@ -1,107 +1,71 @@
 #include "SettingsSidebar.h"
 
-#include <QButtonGroup>
-#include <QHBoxLayout>
-#include <QIcon>
-
-#include "Theme.h"
-#include <QSize>
-#include <QStackedWidget>
-#include <QToolButton>
-#include <QVBoxLayout>
+#include <QScrollArea>
+#include <QScrollBar>
 
 #include <algorithm>
 
 #include "SettingsPanel.h"
+#include "panels/AudioPanel.h"
+#include "panels/ColourPanel.h"
+#include "panels/MediaInfoPanel.h"
+#include "panels/OverlayPanel.h"
+#include "panels/PrivacyPanel.h"
+#include "panels/ReframePanel.h"
+#include "panels/StabilizationPanel.h"
+#include "panels/StitchingPanel.h"
 
-SettingsSidebar::SettingsSidebar(QWidget *parent) : QWidget(parent)
+namespace {
+
+template <typename T> T *section(const char *name, const QString &scope)
 {
-    setObjectName(QStringLiteral("settingsSidebar"));
-    // A QWidget subclass paints its stylesheet background only when asked.
-    setAttribute(Qt::WA_StyledBackground);
-
-    // A fixed width: the panels' preferred widths follow what they show (a
-    // file name, a word-wrapped note, a stream list), and a sidebar sized
-    // from them jumps whenever the timeline selection changes. Scaled with
-    // the font; addPanel() widens it if a panel's minimum needs more.
-    m_stack = new QStackedWidget(this);
-    m_stack->setFixedWidth(std::max(340, fontMetrics().height() * 20));
-
-    m_rail = new QWidget(this);
-    m_rail->setObjectName(QStringLiteral("settingsRail"));
-    m_railLayout = new QVBoxLayout(m_rail);
-    m_railLayout->setContentsMargins(0, 6, 0, 6);
-    m_railLayout->setSpacing(2);
-    m_railLayout->addStretch(1);
-
-    m_railGroup = new QButtonGroup(this);
-    m_railGroup->setExclusive(true);
-
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-    layout->addWidget(m_stack, 1);
-    layout->addWidget(m_rail, 0);
+    auto *s = new T;
+    s->setObjectName(QLatin1String(name));
+    s->setScope(scope);
+    return s;
 }
 
-void SettingsSidebar::addPanel(SettingsPanel *panel)
+} // namespace
+
+SettingsSidebar::SettingsSidebar(QWidget *parent)
+    : TabSidebar(Side::Right, QStringLiteral("settingsSidebar"), parent)
 {
-    const int index = m_stack->addWidget(panel);
-    if (panel->minimumSizeHint().width() > m_stack->maximumWidth())
-        m_stack->setFixedWidth(panel->minimumSizeHint().width());
+    const QString thisClip = tr("This clip");
+    m_stitching = section<StitchingPanel>("stitchingPanel", tr("Whole project"));
+    m_stabilization = section<StabilizationPanel>("stabilizationPanel", thisClip);
+    m_reframe = section<ReframePanel>("reframePanel", tr("Keys at the playhead"));
+    m_colour = section<ColourPanel>("colourPanel", thisClip);
+    m_mediaInfo = section<MediaInfoPanel>("mediaInfoPanel", thisClip);
+    m_audio = section<AudioPanel>("audioPanel", thisClip); // the panel retitles it per mode
+    m_overlay = section<OverlayPanel>("overlayPanel", tr("Selected overlay clip"));
+    m_privacy = section<PrivacyPanel>("privacyPanel", thisClip);
+    // Rarely touched: closed until the user opens them.
+    m_stitching->setExpanded(false);
+    m_mediaInfo->setExpanded(false);
 
-    auto *button = new QToolButton(m_rail);
-    button->setCheckable(true);
-    button->setAutoRaise(true);
-    button->setIcon(theme::icon(panel->iconName()));
-    button->setIconSize(QSize(20, 20));
-    // MainWindow gives the first nine panels Alt+1 … Alt+9.
-    button->setToolTip(index < 9 ? tr("%1  ( Alt+%2 )").arg(panel->title()).arg(index + 1)
-                                 : panel->title());
-    // Insert before the trailing stretch.
-    m_railLayout->insertWidget(m_railLayout->count() - 1, button);
-    m_railGroup->addButton(button, index);
+    const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe, m_colour,
+                                          m_mediaInfo};
+    m_sections = video;
+    m_sections << m_audio << m_overlay << m_privacy;
 
-    connect(button, &QToolButton::clicked, this, [this, index] { togglePanel(index); });
+    const QList<QScrollArea *> pages = {
+        makeSettingsPage(QStringLiteral("videoSettings"), video),
+        makeSettingsPage(QStringLiteral("audioSettings"), {m_audio}),
+        makeSettingsPage(QStringLiteral("overlaySettings"), {m_overlay}),
+        makeSettingsPage(QStringLiteral("privacySettings"), {m_privacy}),
+    };
+    addTab(pages[0], QStringLiteral("video"), tr("Video"));
+    addTab(pages[1], QStringLiteral("volume-2"), tr("Audio"));
+    addTab(pages[2], QStringLiteral("picture-in-picture-2"), tr("Overlay"));
+    addTab(pages[3], QStringLiteral("eye-off"), tr("Privacy"));
 
-    if (m_currentIndex < 0)
-        showPanel(index);
-}
-
-void SettingsSidebar::raisePanel(SettingsPanel *panel)
-{
-    const int index = m_stack->indexOf(panel);
-    if (index >= 0 && !m_collapsed && index != m_currentIndex)
-        showPanel(index);
-}
-
-void SettingsSidebar::togglePanel(int index)
-{
-    if (index < 0 || index >= m_stack->count())
-        return;
-    if (index == m_currentIndex)
-        setCollapsed(!m_collapsed);
-    else
-        showPanel(index);
-}
-
-void SettingsSidebar::showPanel(int index)
-{
-    m_currentIndex = index;
-    m_stack->setCurrentIndex(index);
-    if (auto *b = m_railGroup->button(index))
-        b->setChecked(true);
-    setCollapsed(false);
-}
-
-void SettingsSidebar::setCollapsed(bool collapsed)
-{
-    m_collapsed = collapsed;
-    m_stack->setVisible(!collapsed);
-    if (collapsed) {
-        if (auto *b = m_railGroup->button(m_currentIndex))
-            b->setChecked(false);
-    } else if (auto *b = m_railGroup->button(m_currentIndex)) {
-        b->setChecked(true);
-    }
+    // Resizable like the left sidebar, but never narrower than the widest
+    // section needs (the pages don't scroll sideways). Scaled with the font.
+    int needed = 0;
+    for (QScrollArea *page : pages)
+        needed = std::max(needed, page->widget()->minimumSizeHint().width() +
+                                      page->verticalScrollBar()->sizeHint().width());
+    const int standard = std::max({340, fontMetrics().height() * 20, needed});
+    setPageWidthRange(std::max(280, needed), standard, 900);
+    setPageWidth(standard);
 }

@@ -79,10 +79,10 @@ different parts of a long recording.
 
 ### Selecting a clip
 
-Click a clip to select it. The settings panels (stabilization, colour,
-audio and so on) now change this clip, even when the playhead is somewhere
-else. Press `Esc` to clear the selection. The panels then follow the clip
-under the playhead again. The clip the panels are changing always has an
+Click a clip to select it. The settings sidebar's sections (stabilization,
+colour, audio and so on) now change this clip, even when the playhead is
+somewhere else. Press `Esc` to clear the selection. The sections then follow
+the clip under the playhead again. The clip they're changing always has an
 orange outline.
 
 ### Reordering
@@ -136,7 +136,7 @@ choose **Remove clip**. Its linked audio (see below) is removed with it.
 
 The video clips play the sound the camera recorded. Click the **M** box in
 the **Video** track header to mute the camera's sound for all clips, for
-example when your video should only have music. The **Audio** panel sets the
+example when your video should only have music. The **Audio** tab sets the
 volume, picks the microphone and reduces noise and wind for each clip: see
 [Audio and noise reduction](audio.md).
 
@@ -191,8 +191,8 @@ them.
 | Trim it | Drag its left or right edge, or select it and use `[` and `]` as on the video track. |
 | Split it | Select it and press `S`, or right-click it and choose **Split here**. |
 | Remove it | Select it and press `Delete`, or right-click it and choose **Remove audio clip** / **Remove overlay clip**. |
-| Change its volume or fade it in and out | Select it and use the **Audio** panel. |
-| Change an overlay's size, position or look | Select it and use the **Overlay** panel. |
+| Change its volume or fade it in and out | Select it and use the settings sidebar's **Audio** tab. |
+| Change an overlay's size, position or look | Select it and use the settings sidebar's **Overlay** tab. |
 
 `S`, `[`, `]` and `Delete` act on the selected audio or overlay clip if
 there is one, and on the video track otherwise.

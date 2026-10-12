@@ -14,7 +14,7 @@
 // changes the crop window they're seen through.
 //
 // Plain value type, no Qt: shared by Project (persisted as the .orp's
-// "output" block), the Project panel, and ExportOptionsDialog.
+// "output" block), File ▸ Project settings… (ProjectSettingsDialog), and ExportOptionsDialog.
 struct OutputSettings {
     enum class Aspect { Landscape16x9, Portrait9x16, Square1x1, Classic4x3 };
 

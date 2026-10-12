@@ -64,7 +64,7 @@ QDoubleSpinBox *secondsBox(QWidget *parent, int decimals, double step)
 } // namespace
 
 AudioPanel::AudioPanel(QWidget *parent)
-    : SettingsPanel(tr("Audio"), QStringLiteral("volume-2"), parent)
+    : SettingsPanel(tr("Audio"), parent)
 {
     // Audio-clip mode: the track first (it holds the clip), a separator, then
     // the clip itself.
@@ -234,6 +234,7 @@ void AudioPanel::setMode(bool audioClip)
                            "the clip under the playhead.")
                       : tr("Applies to this clip's audio in playback and export. Follows the "
                            "clip's video trim."));
+    setScope(audioClip ? tr("Selected audio clip") : tr("This clip"));
 }
 
 void AudioPanel::setState(double gainDb, bool muted, int track, int trackCount,
@@ -241,7 +242,7 @@ void AudioPanel::setState(double gainDb, bool muted, int track, int trackCount,
                           const insv::NoiseReduction &noise)
 {
     m_updating = true;
-    setEnabled(true);
+    setBodyEnabled(true);
     m_clipName->setText(clipLabel);
     m_clipName->setToolTip(clipLabel);
     m_track->clear();
@@ -289,7 +290,7 @@ void AudioPanel::setState(double gainDb, bool muted, int track, int trackCount,
 void AudioPanel::setAudioClipState(const AudioClipState &s)
 {
     m_updating = true;
-    setEnabled(true);
+    setBodyEnabled(true);
     setMode(true);
     m_clipName->setText(s.label);
     m_clipName->setToolTip(s.label);
@@ -343,7 +344,7 @@ void AudioPanel::emitNoiseIfEdited()
 
 void AudioPanel::setNoClip()
 {
-    setEnabled(false);
+    setBodyEnabled(false);
 }
 
 void AudioPanel::emitIfEdited()

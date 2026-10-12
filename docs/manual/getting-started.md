@@ -174,12 +174,12 @@ What each group is for:
 |---|---|
 | `libqt6core6t64`, `libqt6gui6`, `libqt6widgets6` | The user interface (Qt 6). |
 | `qt6-wayland` | Lets Qt open a window on a Wayland desktop. Without it orbis-reframe exits at startup with *"Could not load the Qt platform plugin "wayland""*. |
-| `qt6-svg-plugins` | Draws the toolbar and panel icons. Without it the buttons show no icons. |
+| `qt6-svg-plugins` | Draws the toolbar and sidebar icons. Without it the buttons show no icons. |
 | `libqt6multimedia6` | Sound during playback. |
 | `libvulkan1` | Talks to the graphics card. |
 | `libavcodec61` … `libswresample5` (Debian 13), `libavcodec63` … `libswresample7` (Testing), `libavcodec62` … `libswresample6` (Ubuntu 26.04) | FFmpeg: reading the video files, audio, and encoding the export. |
-| `libopencv-*` | **Track subject** (Reframe panel) and the privacy blur. |
-| `libonnxruntime1.21` (Debian 13), `libonnxruntime1.23` (Testing, Ubuntu 26.04) | The **Voice only** and **Voice + ambience** noise reduction modes (Audio panel). The app starts without it, but those two modes say they can't load ONNX Runtime. |
+| `libopencv-*` | **Track subject** (Reframe section) and the privacy blur. |
+| `libonnxruntime1.21` (Debian 13), `libonnxruntime1.23` (Testing, Ubuntu 26.04) | The **Voice only** and **Voice + ambience** noise reduction modes (Audio tab). The app starts without it, but those two modes say they can't load ONNX Runtime. |
 | `libgomp1` | Used by the privacy blur's plate scan. Usually installed already. |
 
 If apt can't find a package name, your distribution has a different version

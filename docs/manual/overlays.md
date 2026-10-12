@@ -5,10 +5,10 @@ video: a picture-in-picture. Use it for a second camera, such as a phone on
 the handlebars, an action camera pointing at the rider, or a screen
 recording of your route.
 
-![An overlay in the viewport, the Overlay panel, and the overlay clip on the timeline](images/overlays.jpg)
+![An overlay in the viewport, the Overlay tab, and the overlay clip on the timeline](images/overlays.jpg)
 
 1. The overlay in the viewport. Drag it to move it.
-2. The **Overlay** panel, with the settings of the selected overlay.
+2. The settings sidebar's **Overlay** tab, with the settings of the selected overlay.
 3. The overlay clip on its overlay track. The white diamonds are its
    keyframes.
 
@@ -32,8 +32,8 @@ onto an audio track, linked to the overlay so it stays in step (see
 ## Selecting an overlay
 
 Click the overlay clip on the timeline, or click the overlay itself in the
-viewport. The **Overlay** panel then shows its settings. With no overlay
-selected, the panel is greyed out.
+viewport. The **Overlay** tab then shows its settings. With no overlay
+selected, the tab is greyed out.
 
 ## Position, size and opacity
 
@@ -64,11 +64,11 @@ pace from one to the next. This works like the reframe keyframes of the
    and opacity are stored at the playhead.
 3. Move the playhead to where the change should end, and move, resize or
    fade the overlay. Once an overlay has keyframes, every change you make, in
-   the panel or by dragging it in the viewport, sets a keyframe at the
+   the tab or by dragging it in the viewport, sets a keyframe at the
    playhead.
 4. Play to check, and add keyframes in between to shape the movement.
 
-**Keyframes** in the panel says how many the overlay has.
+**Keyframes** in the tab says how many the overlay has.
 
 - **Delete** (or `Shift+K`) removes the keyframe at the playhead (within
   0.15 seconds of it).
@@ -83,7 +83,7 @@ not the video clip's reframe keyframes. Click the video track (or press
 `Esc`) to get back to those.
 
 > `Delete` on the keyboard removes the selected overlay **clip**, not a
-> keyframe. Use `Shift+K` or the **Delete** button in the panel for
+> keyframe. Use `Shift+K` or the **Delete** button in the tab for
 > keyframes. **Edit ▸ Undo** (`Ctrl+Z`) brings back anything removed by
 > mistake.
 

@@ -52,11 +52,14 @@ class ColourPanel;
 class PrivacyPanel;
 class MediaInfoPanel;
 class OverlayPanel;
-class ProjectPanel;
 class ReframePanel;
 class MediaPoolPanel;
 class SettingsSidebar;
 class TabSidebar;
+class QActionGroup;
+namespace stitch {
+struct PreviewStitchConfig;
+}
 class StitchingPanel;
 class StabilizationPanel;
 class TimelineWidget;
@@ -329,6 +332,11 @@ private:
     // through addKey(), which also lists it in Help -> Keyboard shortcuts
     // (menu actions are listed from the menus themselves).
     void setupKeyboardShortcuts();
+    // View menu: the preview's stitch quality and size.
+    void setupViewMenu();
+    void updatePreviewMenu(const stitch::PreviewStitchConfig &cfg);
+    // File ▸ Project settings…
+    void editProjectSettings();
     // `keysLabel` replaces the keys' own names in the list ("Alt+1 … Alt+9").
     void addKey(const QString &group, const QString &what, const QList<QKeySequence> &keys,
                 const std::function<void()> &fn, const QString &keysLabel = QString());
@@ -429,12 +437,14 @@ private:
     // still being probed for the one before are dropped.
     int m_projectSession = 0;
     QList<QShortcut *> m_editorShortcuts;
+    QActionGroup *m_previewQuality = nullptr; // View menu
+    QActionGroup *m_previewSize = nullptr;
 
     EquirectViewportWindow *m_viewport = nullptr;
     TimelineWidget *m_timelineWidget = nullptr;
     TransportBar *m_transport = nullptr;
+    // The right sidebar (settings) and its sections, which it owns.
     SettingsSidebar *m_sidebar = nullptr;
-    ProjectPanel *m_projectPanel = nullptr;
     StitchingPanel *m_stitchingPanel = nullptr;
     StabilizationPanel *m_stabilizationPanel = nullptr;
     ReframePanel *m_reframePanel = nullptr;

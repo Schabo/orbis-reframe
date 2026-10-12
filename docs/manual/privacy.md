@@ -12,18 +12,18 @@ orbis-reframe blurs **number plates** only. It doesn't blur faces.
    on. Green means the scan detected it in this frame.
 2. A plate further away, outlined in cyan: the scan followed it from frames
    where it was detected.
-3. The **Privacy** panel, with the colour key for the outlines.
+3. The settings sidebar's **Privacy** tab, with the colour key for the outlines.
 
 ## Blurring the plates in a clip
 
 The privacy blur is set for each clip on the video track: the clip you
 selected, or the clip under the playhead.
 
-1. Open the **Privacy** panel and tick **Blur number plates**.
+1. Open the settings sidebar's **Privacy** tab and tick **Blur number plates**.
 2. Click **Scan clip**. orbis-reframe looks for plates in the whole clip
-   (its trimmed part), a little faster than the clip plays. The panel shows
+   (its trimmed part), a little faster than the clip plays. The tab shows
    how far it has come. **Stop scan** stops it and keeps the part scanned.
-3. When the scan is done, the panel says on how many frames it found
+3. When the scan is done, the tab says on how many frames it found
    plates, and every plate it found is blurred, in playback, screenshots and
    the export.
 4. Check the result: play the clip, ideally with **Show regions** on (see
@@ -40,7 +40,7 @@ the cache folder, scan again.
 > must be scanned over its whole trimmed length. If it isn't, the export and
 > screenshots are refused with a message saying which clip still needs
 > scanning. This stops you from publishing a video you think is blurred
-> but isn't. If you lengthen a clip's trim after scanning, the panel says
+> but isn't. If you lengthen a clip's trim after scanning, the tab says
 > *Partly scanned*: scan it again.
 
 ## Checking the scan: Show regions
@@ -70,21 +70,21 @@ or a sticker. Right-click the blur in the viewport:
 
 To bring a removed blur back, turn on **Show regions**, right-click its grey
 outline and choose **Restore this blur**. **Restore removed blurs** in the
-panel brings back all of them at once. **Edit ▸ Undo** works too.
+tab brings back all of them at once. **Edit ▸ Undo** works too.
 
 ## Blurring a plate the scan missed
 
 If the scan missed a plate, blur it by hand:
 
 1. Move the playhead to a frame where the plate is clearly visible.
-2. Click **Blur a plate…** in the **Privacy** panel, or press `B`. Playback
+2. Click **Blur a plate…** in the **Privacy** tab, or press `B`. Playback
    pauses.
 3. Drag a box around the plate in the viewport (`Esc` cancels).
 4. orbis-reframe follows the plate forwards from that frame, then backwards
-   from it, and blurs it for as long as it can follow it. The panel shows
+   from it, and blurs it for as long as it can follow it. The tab shows
    how far it has come. **Stop following** stops it.
 
-The panel counts the plates blurred by hand. A hand-blurred plate is
+The tab counts the plates blurred by hand. A hand-blurred plate is
 blurred even without a scan, and even with **Blur number plates** off. To
 remove one, right-click it in the viewport: **Remove this blur**, or
 **Remove this blur from here on**.
@@ -100,14 +100,14 @@ differently (see [Stabilization](stabilization.md)). If you turn the
 clip's stabilization on or off afterwards, the blurs may sit a little off
 the plates when the camera swings fast.
 
-orbis-reframe notices this. The **Privacy** panel shows a warning, and an
+orbis-reframe notices this. The **Privacy** tab shows a warning, and an
 export or screenshot asks before going ahead. Check the blurs with **Show
 regions**, or scan again and blur the hand-blurred plates again, or set the
 stabilization back to how it was.
 
 ## If the buttons are greyed out
 
-A note in the panel says why: the plate model is missing from the
+A note in the tab says why: the plate model is missing from the
 installation (install orbis-reframe again). **Scan clip** and **Blur a
 plate…** are also greyed out while a scan is running or a plate is being
 followed.

@@ -8,14 +8,13 @@ class QCheckBox;
 class QComboBox;
 class QLabel;
 
-// Preview-stitch settings: quality (shown as "Standard" = Quality::Template /
-// Optical flow), preview equirect resolution (2:1 presets only -- the
-// reprojection shader assumes equirect),
-// lens guards (selects the trailer's lens profile; also used by export) and
-// the depth-aware seam (also used by export). Edits emit configChanged;
-// MainWindow routes that into Project::setPreviewStitch (persisted on the
-// .orp) and PlaybackController::setPreviewConfig (re-stitches the live
-// preview under a new cache tag).
+// The stitch settings that change the output: lens guards (selects the
+// trailer's lens profile) and the depth-aware seam, plus a line about the
+// clip's seam alignment. The preview-only settings of the same config
+// (quality, preview size) are in the View menu; setConfig() keeps them so an
+// edit here hands them back unchanged. Edits emit configChanged; MainWindow
+// routes that into Project::setPreviewStitch (persisted on the .orp) and
+// PlaybackController::setPreviewConfig (re-stitches the live preview).
 class StitchingPanel : public SettingsPanel {
     Q_OBJECT
 
@@ -34,8 +33,7 @@ private:
     stitch::PreviewStitchConfig currentConfig() const;
     void emitIfEdited();
 
-    QComboBox *m_quality = nullptr;
-    QComboBox *m_resolution = nullptr;
+    stitch::PreviewStitchConfig m_config; // the last one set: the View menu's part
     QComboBox *m_lensGuard = nullptr;
     QCheckBox *m_depthSeam = nullptr;
     QLabel *m_seamStatus = nullptr;

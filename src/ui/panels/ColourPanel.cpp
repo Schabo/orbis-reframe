@@ -49,7 +49,7 @@ SliderRow makeSliderRow(QWidget *parent, int lo, int hi, int step, int page)
 } // namespace
 
 ColourPanel::ColourPanel(QWidget *parent)
-    : SettingsPanel(tr("Colour"), QStringLiteral("palette"), parent)
+    : SettingsPanel(tr("Colour"), parent)
 {
     SliderRow exposure = makeSliderRow(this, kMinExposureSteps, kMaxExposureSteps, 1, 5);
     m_exposure = exposure.slider;
@@ -128,7 +128,7 @@ ColorGrade ColourPanel::currentGrade() const
 void ColourPanel::setState(const ColorGrade &grade)
 {
     m_updating = true;
-    setEnabled(true);
+    setBodyEnabled(true);
 
     const int ev = std::clamp(int(std::lround(grade.exposureEv * kExposureStepsPerEv)),
                               kMinExposureSteps, kMaxExposureSteps);
@@ -153,7 +153,7 @@ void ColourPanel::setState(const ColorGrade &grade)
 
 void ColourPanel::setNoClip()
 {
-    setEnabled(false);
+    setBodyEnabled(false);
 }
 
 void ColourPanel::setCanPaste(bool canPaste)

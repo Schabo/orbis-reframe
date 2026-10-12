@@ -51,17 +51,13 @@ shortcuts.
 | `Ctrl+-` | Zoom out. |
 | `Ctrl+0` | Zoom to fit the whole timeline. |
 
-## Settings panels
-
-| Key | Does |
-|---|---|
-| `Alt+1` … `Alt+9` | Show a settings panel, in the order of the rail from top to bottom: Project, Stitching, Reframe, Stabilization, Audio, Colour, Privacy, Overlay, Media information. Press again to hide it. |
-
 ## Sidebars
 
 | Key | Does |
 |---|---|
 | `Ctrl+B` | Close or open the left sidebar (**Media**). |
+| `Ctrl+Shift+B` | Close or open the right sidebar (the settings). |
+| `Alt+1` … `Alt+4` | Show a tab of the settings sidebar, from left to right: Video, Audio, Overlay, Privacy (opening the sidebar if it's closed). The key of the tab already showing closes the sidebar. |
 
 In the **Media** tab: `Enter` (or a double-click) puts the selected files on
 the timeline, `Delete` removes them from the project's media (the files
@@ -125,7 +121,7 @@ file, `Alt+S` saves (`Enter` does too).
 
 ## When typing in a field
 
-While the cursor is in a number or text field of a settings panel, keys
+While the cursor is in a number or text field of the settings sidebar, keys
 like `Space`, the arrow keys, `Delete` and the letters go to the field, not
 to the shortcuts above. Press `Enter` or `Esc`, or click somewhere else, to
 leave the field. Shortcuts with `Ctrl` or `Alt` work in fields too.

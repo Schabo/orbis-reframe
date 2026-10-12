@@ -19,17 +19,18 @@ noise. How to add, move, trim and split audio clips on the timeline is in
 
 Everything plays together, in playback and in the export.
 
-## The Audio panel
+## The Audio tab
 
-The **Audio** panel shows the settings of one clip. Which clip that is
-depends on what's selected:
+The settings sidebar's **Audio** tab shows the settings of one clip. Which
+clip that is depends on what's selected, and the tab's title row says which
+(*This clip* or *Selected audio clip*):
 
 - **A video clip** (`.insv`): the clip you selected on the video track, or
   the clip under the playhead if none is selected.
 - **An audio clip**: click it on an audio track to select it. Press `Esc`,
   or click a clip on the video track, to go back to the video clip.
 
-<img src="images/audio-panel-video.jpg" width="350" alt="The Audio panel for a video clip"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio panel for a music clip on an audio track">
+<img src="images/audio-panel-video.jpg" width="350" alt="The Audio tab for a video clip"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio tab for a music clip on an audio track">
 
 *Left: a video clip. Right: a music clip on an audio track.*
 
@@ -109,7 +110,7 @@ the same moment as the camera, so it has to be lined up by hand:
 3. Zoom in on the timeline (`Ctrl+` mouse wheel) until you can see that
    sound in both waveforms, and drag the clip until they line up.
 4. Select the clip, and fine-tune with the arrows of **Start** in the
-   **Audio** panel (10 milliseconds per click) while you listen.
+   **Audio** tab (10 milliseconds per click) while you listen.
 
 Clapping once in front of the camera at the start of each recording makes
 this much easier.

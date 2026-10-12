@@ -41,7 +41,8 @@ there by default.
 **File ▸ New project…** (`Ctrl+N`) asks for the project's **name**, its
 **location** (the projects folder unless you browse to another) and the
 **output**: aspect ratio, resolution and frame rate (see
-[Project settings](#project-settings); you can change them later). It
+[Project settings](#project-settings); you can change them later in
+**File ▸ Project settings…**). It
 then makes a folder for the project and saves the new, empty project in it:
 
 ```
@@ -107,10 +108,12 @@ project's `cache/` folder.
 
 ## Project settings
 
-<img src="images/project-panel.jpg" width="350" alt="The Project panel">
+<img src="images/project-panel.jpg" width="350" alt="The project settings">
 
-The **Project** panel sets the shape, size and frame rate of the video you
-make:
+**File ▸ Project settings…** sets the shape, size and frame rate of the
+video you make. A new project gets them from **File ▸ New project…**; this
+is where you change them later. Click **OK** to apply your changes, or
+**Cancel** to leave them as they were. **Edit ▸ Undo** takes a change back.
 
 | Setting | What it does |
 |---|---|
@@ -187,7 +190,7 @@ sound is AAC, stereo, at 48 kHz and 192 kbit/s.
 | Message | What to do |
 |---|---|
 | *Exporting needs NVIDIA's hardware video encoder (NVENC)* | Export uses the NVIDIA graphics card to encode. Install `libnvidia-encode1` ([Getting started](getting-started.md), step 2). Without an NVIDIA card, exporting isn't possible yet. |
-| *"…" has the privacy blur on, but it hasn't been scanned for plates yet* (or *only part of it has been scanned*) | Scan that clip in the **Privacy** panel, or turn its blur off. See [Privacy blur](privacy.md). |
+| *"…" has the privacy blur on, but it hasn't been scanned for plates yet* (or *only part of it has been scanned*) | Scan that clip in the **Privacy** tab, or turn its blur off. See [Privacy blur](privacy.md). |
 | *The privacy blur may be out of date and needs checking or redoing.* | The stabilization was changed after the plates were found. **Continue anyway**, or check the blurs first. See [Privacy blur](privacy.md). |
 | *The timeline is too short to export.* | The timeline is shorter than a tenth of a second. |
 

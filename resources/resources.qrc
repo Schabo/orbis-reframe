@@ -31,5 +31,6 @@
     <file>icons/music.svg</file>
     <file>icons/circle-check.svg</file>
     <file>icons/triangle-alert.svg</file>
+    <file>icons/video.svg</file>
   </qresource>
 </RCC>

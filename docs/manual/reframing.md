@@ -7,18 +7,18 @@ view at a few moments, and orbis-reframe moves the camera smoothly from one
 to the next. **Track subject** can also set the keyframes for you, by
 following a person or vehicle.
 
-![Setting a keyframe: reframe authoring armed, the Reframe panel, and the keyframes on the clip](images/reframing.jpg)
+![Setting a keyframe: reframe authoring armed, the Reframe section, and the keyframes on the clip](images/reframing.jpg)
 
 1. **Arm reframe authoring**, in the transport bar. While it's on (shown
    pressed), every look-around in the viewport sets a keyframe.
-2. The **Reframe** panel: the view at the playhead as numbers, and
+2. The **Reframe** section: the view at the playhead as numbers, and
    **Track subject…**.
 3. The clip's keyframes: the white diamonds along the bottom of the clip.
 
 ## The view
 
 The view has four settings. You can see and type them in the **Reframe**
-panel:
+section (settings sidebar, **Video** tab):
 
 | Setting | What it is | Range |
 |---|---|---|
@@ -28,8 +28,8 @@ panel:
 | **Field of view** | How much the view takes in, from top to bottom. Small values zoom in, large values give a wide view. | 20° to 110° |
 
 In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
-the field of view. Roll can only be set in the panel. The project's aspect
-ratio (**Project** panel) decides how wide the picture is for a given field
+the field of view. Roll can only be set in the section. The project's aspect
+ratio (**File ▸ Project settings…**) decides how wide the picture is for a given field
 of view. Changing the aspect ratio later keeps your keyframes; only the
 edges of the picture change.
 
@@ -48,7 +48,7 @@ keyframes that fall inside them.
 > **A clip without keyframes is exported looking straight ahead** (yaw 0°,
 > pitch 0°, field of view 75°), whatever you looked at in the viewport. Give
 > every clip at least one keyframe. A clip without any shows a hollow
-> diamond (◇) before its name on the timeline, the **Reframe** panel warns
+> diamond (◇) before its name on the timeline, the **Reframe** section warns
 > while the playhead is in it, and the export dialog lists it.
 
 ### Setting keyframes
@@ -77,7 +77,7 @@ Pause before you set keyframes: they go in at the frame the playhead is on.
 If there's already a keyframe at that frame, its view is replaced instead
 of a second keyframe being added.
 
-You can also type exact values into the **Reframe** panel. With reframe
+You can also type exact values into the **Reframe** section. With reframe
 authoring armed, each value you enter sets a keyframe at the playhead, the
 same as a drag. Without it, the values only change what the viewport shows.
 
@@ -109,12 +109,12 @@ following the keyframes.
 Track subject follows a person, vehicle or other subject through the clip
 and sets the keyframes for you, so the camera keeps it in view.
 
-![Track subject following a car: the green box around it, and the progress in the Reframe panel](images/reframing-track.jpg)
+![Track subject following a car: the green box around it, and the progress in the Reframe section](images/reframing-track.jpg)
 
 1. Move the playhead to where tracking should start. The subject has to be
    visible there.
 2. Look around in the viewport until the subject is in view.
-3. Click **Track subject…** in the **Reframe** panel, or press `T`.
+3. Click **Track subject…** in the **Reframe** section, or press `T`.
    Playback pauses.
 4. Drag a box around the subject in the viewport. Fit it closely: a box
    with a lot of background around the subject is easier to lose. (`Esc`
@@ -122,7 +122,7 @@ and sets the keyframes for you, so the camera keeps it in view.
 5. Tracking starts. The viewport plays the clip, with the camera following
    the subject and a box drawn around it: **green** while the tracker is
    sure it has the subject, **red** while it has lost it. The **Reframe**
-   panel shows how far it has come.
+   section shows how far it has come.
 6. Tracking runs to the end of the clip. To stop earlier, click **Stop
    tracking**, or press `Space`, `Esc` or `T`.
 

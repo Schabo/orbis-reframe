@@ -44,7 +44,7 @@ QWidget *sliderRow(QWidget *parent, int lo, int hi, QSlider **slider, QLabel **v
 } // namespace
 
 OverlayPanel::OverlayPanel(QWidget *parent)
-    : SettingsPanel(tr("Overlay"), QStringLiteral("picture-in-picture-2"), parent)
+    : SettingsPanel(tr("Overlay"), parent)
 {
     m_trackName = new QLabel(this);
     form()->addRow(tr("Track"), m_trackName);
@@ -246,7 +246,7 @@ void OverlayPanel::setNoClip()
     m_keys->setText(QString());
     for (QWidget *w : m_clipRows)
         w->setEnabled(false);
-    setHint(tr("Select a clip on an overlay track. Add one with File > Add video overlay, or "
+    setHint(tr("Select a clip on an overlay track. Add one with Media > Add video overlay, or "
                "drop a video file on the timeline."));
     m_updating = false;
 }

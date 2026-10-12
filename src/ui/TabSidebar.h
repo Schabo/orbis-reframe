@@ -30,6 +30,9 @@ public:
     void addTab(QWidget *page, const QString &iconName, const QString &title);
     void setCurrentIndex(int index);
     int currentIndex() const;
+    // What a tab's key does (Alt+1 …): show that tab, opening the sidebar if
+    // it's closed; the tab already showing closes the sidebar instead.
+    void toggleTab(int index);
     int count() const;
 
     // The page area's width (the tab row and pages; not the strip). The
@@ -48,6 +51,7 @@ public:
 
 signals:
     void openChanged(bool open);
+    void currentChanged(int index);
     // A drag on the handle (or a double-click) ended at this width.
     void pageWidthChanged(int width);
 

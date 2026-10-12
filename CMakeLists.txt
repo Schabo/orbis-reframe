@@ -400,8 +400,6 @@ if(FFMPEG_FOUND)
         src/ui/MediaProbe.h
         src/ui/SettingsPanel.cpp
         src/ui/SettingsPanel.h
-        src/ui/panels/ProjectPanel.cpp
-        src/ui/panels/ProjectPanel.h
         src/ui/panels/StitchingPanel.cpp
         src/ui/panels/StitchingPanel.h
         src/ui/panels/ReframePanel.cpp
@@ -432,6 +430,8 @@ if(FFMPEG_FOUND)
         src/ui/NewProjectDialog.h
         src/ui/OutputSettingsEditor.cpp
         src/ui/OutputSettingsEditor.h
+        src/ui/ProjectSettingsDialog.cpp
+        src/ui/ProjectSettingsDialog.h
         src/ui/ProjectLibraryPage.cpp
         src/ui/ProjectLibraryPage.h
         src/ui/SystemCheck.cpp
@@ -670,6 +670,33 @@ if(TARGET insv_demux)
     # is off (package builds, scripts/package.sh).
     set_tests_properties(audio_mix_test PROPERTIES ENVIRONMENT
         "ORBIS_DFN_MODEL_DIR=${CMAKE_CURRENT_SOURCE_DIR}/resources/models/deepfilternet3")
+endif()
+
+# The right sidebar (settings tabs and sections) and the Project settings
+# dialog, found by objectName. Its Audio and Media information sections use
+# insv_demux (noise modes, the media probe's types), hence FFmpeg.
+if(TARGET insv_demux AND Qt6Test_FOUND)
+    add_executable(settings_sidebar_test tests/settings_sidebar_test.cpp
+        src/ui/SettingsSidebar.cpp src/ui/SettingsSidebar.h
+        src/ui/SettingsPanel.cpp src/ui/SettingsPanel.h
+        src/ui/TabSidebar.cpp src/ui/TabSidebar.h
+        src/ui/panels/StitchingPanel.cpp src/ui/panels/StitchingPanel.h
+        src/ui/panels/ReframePanel.cpp src/ui/panels/ReframePanel.h
+        src/ui/panels/StabilizationPanel.cpp src/ui/panels/StabilizationPanel.h
+        src/ui/panels/AudioPanel.cpp src/ui/panels/AudioPanel.h
+        src/ui/panels/ColourPanel.cpp src/ui/panels/ColourPanel.h
+        src/ui/panels/OverlayPanel.cpp src/ui/panels/OverlayPanel.h
+        src/ui/panels/PrivacyPanel.cpp src/ui/panels/PrivacyPanel.h
+        src/ui/panels/MediaInfoPanel.cpp src/ui/panels/MediaInfoPanel.h
+        src/ui/ProjectSettingsDialog.cpp src/ui/ProjectSettingsDialog.h
+        src/ui/OutputSettingsEditor.cpp src/ui/OutputSettingsEditor.h
+        src/ui/Theme.cpp src/ui/Theme.h
+        resources/resources.qrc)
+    set_target_properties(settings_sidebar_test PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_include_directories(settings_sidebar_test PRIVATE src/ui)
+    target_link_libraries(settings_sidebar_test PRIVATE orbis_core insv_demux Qt6::Widgets
+        Qt6::Test)
+    add_test(NAME settings_sidebar_test COMMAND settings_sidebar_test)
 endif()
 
 # M7b: the flat-video reader and the inset compositor on generated video.

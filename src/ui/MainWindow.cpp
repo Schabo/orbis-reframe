@@ -10,6 +10,7 @@
 
 #include <QAbstractSpinBox>
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDir>
@@ -75,6 +76,8 @@
 #include "MediaProbe.h"
 #include "PlaybackController.h"
 #include "ReframeExportController.h"
+#include "ProjectSettingsDialog.h"
+#include "SettingsPanel.h"
 #include "SettingsSidebar.h"
 #include "TabSidebar.h"
 #include "TimelineWidget.h"
@@ -85,7 +88,6 @@
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
 #include "panels/PrivacyPanel.h"
-#include "panels/ProjectPanel.h"
 #include "panels/ReframePanel.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
@@ -190,30 +192,52 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     leftLayout->addWidget(m_timelineWidget, 0);
     leftLayout->addWidget(m_transport, 0);
 
-    // Right: the settings sidebar. Each panel is wired to Project /
+    // Right: the settings sidebar. Each section is wired to Project /
     // PlaybackController / the clip under the playhead below.
     m_sidebar = new SettingsSidebar(this);
-    m_projectPanel = new ProjectPanel;
-    m_sidebar->addPanel(m_projectPanel);
-    m_stitchingPanel = new StitchingPanel;
-    m_sidebar->addPanel(m_stitchingPanel);
-    m_reframePanel = new ReframePanel;
-    m_sidebar->addPanel(m_reframePanel);
-    m_stabilizationPanel = new StabilizationPanel;
-    m_sidebar->addPanel(m_stabilizationPanel);
-    m_audioPanel = new AudioPanel;
-    m_audioPanel->setNoClip(); // nothing open yet
-    m_sidebar->addPanel(m_audioPanel);
-    m_colourPanel = new ColourPanel;
-    m_colourPanel->setNoClip(); // nothing open yet
-    m_stabilizationPanel->setNoClip();
-    m_sidebar->addPanel(m_colourPanel);
-    m_privacyPanel = new PrivacyPanel; // starts in its no-clip state
-    m_sidebar->addPanel(m_privacyPanel);
-    m_overlayPanel = new OverlayPanel; // starts with no overlay clip
-    m_sidebar->addPanel(m_overlayPanel);
-    m_mediaInfoPanel = new MediaInfoPanel; // starts in its no-clip state
-    m_sidebar->addPanel(m_mediaInfoPanel);
+    m_stitchingPanel = m_sidebar->stitching();
+    m_reframePanel = m_sidebar->reframe();
+    m_stabilizationPanel = m_sidebar->stabilization();
+    m_stabilizationPanel->setNoClip(); // nothing open yet
+    m_audioPanel = m_sidebar->audio();
+    m_audioPanel->setNoClip();
+    m_colourPanel = m_sidebar->colour();
+    m_colourPanel->setNoClip();
+    m_privacyPanel = m_sidebar->privacy();         // starts in its no-clip state
+    m_overlayPanel = m_sidebar->overlay();         // starts with no overlay clip
+    m_mediaInfoPanel = m_sidebar->mediaInfo();     // starts in its no-clip state
+    // Open / closed, its width, its tab and which sections are open are
+    // remembered per user, like the left sidebar's.
+    {
+        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+        m_sidebar->setPageWidth(
+            settings.value(QStringLiteral("sidebars/settingsWidth"), m_sidebar->pageWidth())
+                .toInt());
+        m_sidebar->setOpen(settings.value(QStringLiteral("sidebars/settingsOpen"), true).toBool());
+        m_sidebar->setCurrentIndex(settings.value(QStringLiteral("sidebars/settingsTab"), 0).toInt());
+        for (SettingsPanel *section : m_sidebar->sections()) {
+            const QString key = QStringLiteral("sidebars/sections/") + section->objectName();
+            section->setExpanded(settings.value(key, section->isExpanded()).toBool());
+            connect(section, &SettingsPanel::expandedToggled, this, [key](bool expanded) {
+                QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+                    .setValue(key, expanded);
+            });
+        }
+    }
+    m_sidebar->setToggleKeys(
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B).toString(QKeySequence::NativeText));
+    connect(m_sidebar, &TabSidebar::pageWidthChanged, this, [](int width) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("sidebars/settingsWidth"), width);
+    });
+    connect(m_sidebar, &TabSidebar::openChanged, this, [](bool open) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("sidebars/settingsOpen"), open);
+    });
+    connect(m_sidebar, &TabSidebar::currentChanged, this, [](int index) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("sidebars/settingsTab"), index);
+    });
 
     m_editorPage = new QWidget(this);
     auto *layout = new QHBoxLayout(m_editorPage);
@@ -274,23 +298,13 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // worker thread, which re-stitches the current frame.
     connect(m_stitchingPanel, &StitchingPanel::configChanged, m_project,
             &Project::setPreviewStitch);
-    // Project settings: output aspect / size / fps. The viewport is pinned to
-    // the output aspect; export reads the size and rate from the Project when
-    // it starts.
-    connect(m_projectPanel, &ProjectPanel::outputChanged, m_project, &Project::setOutput);
+    // Project settings (File ▸ Project settings…): output aspect / size /
+    // fps. The viewport is pinned to the output aspect; export reads the size
+    // and rate from the Project when it starts.
     connect(m_project, &Project::outputChanged, this, [this](const OutputSettings &out) {
-        m_projectPanel->setOutput(out); // setOutput() doesn't re-emit
         m_viewport->SetOutputAspect(static_cast<float>(out.aspectRatio()));
     });
     m_viewport->SetOutputAspect(static_cast<float>(m_project->output().aspectRatio()));
-    auto refreshFirstClipFps = [this] {
-        m_projectPanel->setFirstClipFps(m_timeline->count() > 0 ? m_timeline->clipAt(0).fps
-                                                                : 0.0);
-    };
-    connect(m_project, &Project::projectReset, this, refreshFirstClipFps);
-    connect(m_timeline, &Timeline::clipInserted, this, refreshFirstClipFps);
-    connect(m_timeline, &Timeline::clipRemoved, this, refreshFirstClipFps);
-    connect(m_timeline, &Timeline::clipsReordered, this, refreshFirstClipFps);
     // Stabilization panel -> the clip it shows (the selected one, else the
     // one under the playhead), like the Colour panel. All modes drive the
     // native reprojection-time path; the panel hands back the right
@@ -329,6 +343,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_project, &Project::previewStitchChanged, this,
             [this](const stitch::PreviewStitchConfig &cfg) {
                 m_stitchingPanel->setConfig(cfg); // setConfig() doesn't re-emit
+                updatePreviewMenu(cfg);
                 // A seam fine-tune is only valid for the guard it was measured
                 // with; the controller re-opens its sources for the new config
                 // and picks these up.
@@ -830,6 +845,12 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // while no project is open; these would act on the hidden editor.
     m_editorActions = {libraryAction, saveProjectAction, saveProjectAsAction};
     fileMenu->addSeparator();
+    QAction *projectSettingsAction = fileMenu->addAction(tr("Project se&ttings…"), this,
+                                                         &MainWindow::editProjectSettings);
+    projectSettingsAction->setObjectName(QStringLiteral("projectSettingsAction"));
+    projectSettingsAction->setIcon(theme::icon(QStringLiteral("clapperboard")));
+    m_editorActions += projectSettingsAction;
+    fileMenu->addSeparator();
 
     // File -> Export flat video… (disabled until a clip is open).
     m_exportAction = fileMenu->addAction(tr("&Export flat video…"), this,
@@ -905,6 +926,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     addOverlayTrackAction->setObjectName(QStringLiteral("addOverlayTrackAction"));
     m_editorActions += {importFilesAction, importFolderAction, addClipAction, addAudioAction,
                         addVideoAction, addAudioTrackAction, addOverlayTrackAction};
+
+    setupViewMenu();
 
     setupKeyboardShortcuts();
 
@@ -1574,8 +1597,6 @@ void MainWindow::selectTrackClip(int clipId)
         refreshAudioPanel();
     }
     refreshOverlayPanel();
-    if (changed && selectedOverlayClip())
-        m_sidebar->raisePanel(m_overlayPanel);
 }
 
 void MainWindow::refreshAudioPanel()
@@ -2009,6 +2030,100 @@ void MainWindow::addKey(const QString &group, const QString &what,
     m_keyHelp.append({group, what, keys, keysLabel});
 }
 
+void MainWindow::setupViewMenu()
+{
+    // View: what's seen while editing. The preview's stitch quality and size
+    // are part of the project's stitch settings (Project::previewStitch) but
+    // change only the preview, never the export.
+    QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
+    viewMenu->setToolTipsVisible(true);
+    const auto setPreview = [this](const std::function<void(stitch::PreviewStitchConfig &)> &edit) {
+        stitch::PreviewStitchConfig cfg = m_project->previewStitch();
+        edit(cfg);
+        m_project->setPreviewStitch(cfg);
+    };
+
+    QMenu *qualityMenu = viewMenu->addMenu(tr("Preview &quality"));
+    qualityMenu->setObjectName(QStringLiteral("previewQualityMenu"));
+    qualityMenu->setToolTipsVisible(true);
+    m_previewQuality = new QActionGroup(this);
+    QAction *standard = qualityMenu->addAction(tr("&Standard"));
+    standard->setObjectName(QStringLiteral("previewQualityStandardAction"));
+    standard->setData(int(stitch::PreviewStitchConfig::Quality::Template));
+    QAction *flow = qualityMenu->addAction(tr("&Optical flow (not yet available)"));
+    flow->setObjectName(QStringLiteral("previewQualityFlowAction"));
+    flow->setData(int(stitch::PreviewStitchConfig::Quality::OpticalFlow));
+    flow->setToolTip(tr("Only Standard for now. Optical flow, a smoother seam for close "
+                        "objects, isn't available yet."));
+    flow->setEnabled(false); // no native optical-flow seam yet: shown, not pickable
+    for (QAction *a : {standard, flow}) {
+        a->setCheckable(true);
+        m_previewQuality->addAction(a);
+    }
+    connect(m_previewQuality, &QActionGroup::triggered, this, [setPreview](QAction *a) {
+        setPreview([a](stitch::PreviewStitchConfig &c) {
+            c.quality = static_cast<stitch::PreviewStitchConfig::Quality>(a->data().toInt());
+        });
+    });
+
+    // 2:1 presets only -- equirect is 360x180 and the reprojection shader
+    // assumes it. Width is the source of truth; height is always width / 2.
+    // Above 3840, check real time for the clip's mode (tools/playback_bench).
+    QMenu *sizeMenu = viewMenu->addMenu(tr("Preview &size"));
+    sizeMenu->setObjectName(QStringLiteral("previewSizeMenu"));
+    sizeMenu->setToolTipsVisible(true);
+    const QString sizeTip =
+        tr("Almost never matters: the viewport normally draws straight from the two lens "
+           "pictures at full detail. Only when the graphics card or driver can't do that is a "
+           "flat 360° preview stitched first, and this sets its size. Auto uses the clip's "
+           "full detail, as much as plays smoothly at its frame rate.");
+    m_previewSize = new QActionGroup(this);
+    for (const int w : {0, 1920, 2560, 3072, 3840, 5120, 5760, 7680}) {
+        QAction *a = sizeMenu->addAction(w == 0 ? tr("&Auto (match source)")
+                                                : QStringLiteral("%1 x %2").arg(w).arg(w / 2));
+        a->setObjectName(QStringLiteral("previewSize%1Action").arg(w));
+        a->setData(w);
+        a->setCheckable(true);
+        a->setToolTip(sizeTip);
+        m_previewSize->addAction(a);
+        if (w == 0)
+            sizeMenu->addSeparator();
+    }
+    connect(m_previewSize, &QActionGroup::triggered, this, [setPreview](QAction *a) {
+        setPreview([a](stitch::PreviewStitchConfig &c) {
+            c.width = a->data().toInt(); // 0 = Auto
+            c.height = c.width / 2;
+        });
+    });
+    m_editorActions += {qualityMenu->menuAction(), sizeMenu->menuAction()};
+    updatePreviewMenu(m_project->previewStitch());
+}
+
+void MainWindow::updatePreviewMenu(const stitch::PreviewStitchConfig &cfg)
+{
+    if (!m_previewQuality)
+        return; // a project change before the menu is built
+    for (QAction *a : m_previewQuality->actions())
+        if (a->data().toInt() == int(cfg.quality))
+            a->setChecked(true);
+    // A width that isn't a preset (a hand-edited .orp): the nearest one.
+    QAction *best = nullptr;
+    for (QAction *a : m_previewSize->actions())
+        if (!best || std::abs(a->data().toInt() - cfg.width) <
+                         std::abs(best->data().toInt() - cfg.width))
+            best = a;
+    if (best)
+        best->setChecked(true);
+}
+
+void MainWindow::editProjectSettings()
+{
+    ProjectSettingsDialog dialog(m_project->output(),
+                                 m_timeline->count() > 0 ? m_timeline->clipAt(0).fps : 0.0, this);
+    if (dialog.exec() == QDialog::Accepted)
+        m_project->setOutput(dialog.output()); // a no-op when nothing changed
+}
+
 void MainWindow::setupKeyboardShortcuts()
 {
     const QString play = tr("Playback");
@@ -2120,20 +2235,25 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(view, tr("Zoom to fit"), {QKeySequence(Qt::CTRL | Qt::Key_0)},
            [this] { m_timelineWidget->zoomToFit(); });
 
-    addKey(tr("Sidebars"), tr("Open / close the left sidebar (Media)"),
+    const QString sidebars = tr("Sidebars");
+    addKey(sidebars, tr("Open / close the left sidebar (Media)"),
            {QKeySequence(Qt::CTRL | Qt::Key_B)}, [this] { m_sourcesSidebar->toggle(); });
-
-    // The sidebar's rail, top to bottom; like clicking its icon.
-    const QString panels = tr("Settings panels");
+    addKey(sidebars, tr("Open / close the right sidebar (settings)"),
+           {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B)}, [this] { m_sidebar->toggle(); });
+    // The right sidebar's tabs, left to right; the one showing closes it.
     constexpr Qt::Key kDigits[] = {Qt::Key_1, Qt::Key_2, Qt::Key_3, Qt::Key_4, Qt::Key_5,
                                    Qt::Key_6, Qt::Key_7, Qt::Key_8, Qt::Key_9};
-    for (int i = 0; i < 9; ++i)
-        addKey(panels,
-               i == 0 ? tr("Show / hide a settings panel, top to bottom in the rail") : QString(),
-               {QKeySequence(Qt::ALT | kDigits[i])}, [this, i] { m_sidebar->togglePanel(i); },
+    const int tabs = std::min(m_sidebar->count(), 9);
+    for (int i = 0; i < tabs; ++i)
+        addKey(sidebars,
+               i == 0 ? tr("Show a settings tab (Video, Audio, Overlay, Privacy); again to close "
+                           "the sidebar")
+                      : QString(),
+               {QKeySequence(Qt::ALT | kDigits[i])}, [this, i] { m_sidebar->toggleTab(i); },
                i == 0 ? QKeySequence(Qt::ALT | Qt::Key_1).toString(QKeySequence::NativeText) +
                             QStringLiteral(" … ") +
-                            QKeySequence(Qt::ALT | Qt::Key_9).toString(QKeySequence::NativeText)
+                            QKeySequence(Qt::ALT | kDigits[tabs - 1])
+                                .toString(QKeySequence::NativeText)
                       : QString());
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));

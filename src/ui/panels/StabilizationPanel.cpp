@@ -47,7 +47,7 @@ QDoubleSpinBox *degBox()
 } // namespace
 
 StabilizationPanel::StabilizationPanel(QWidget *parent)
-    : SettingsPanel(tr("Stabilization"), QStringLiteral("vibrate"), parent)
+    : SettingsPanel(tr("Stabilization"), parent)
 {
     m_mode = new QComboBox(this);
     m_mode->addItem(tr("Off"), int(Mode::Off));
@@ -279,7 +279,7 @@ insv::StabConfig StabilizationPanel::nativeConfigForMode() const
 
 void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
 {
-    setEnabled(true);
+    setBodyEnabled(true);
     m_updating = true;
     const int idx = m_mode->findData(int(mode));
     m_mode->setCurrentIndex(idx < 0 ? 0 : idx);
@@ -342,7 +342,7 @@ void StabilizationPanel::setSyncStatus(const QString &text)
 
 void StabilizationPanel::setNoClip()
 {
-    setEnabled(false);
+    setBodyEnabled(false);
 }
 
 void StabilizationPanel::setCanPaste(bool canPaste)

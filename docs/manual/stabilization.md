@@ -6,8 +6,8 @@ to steady the picture: it turns the 360° view against the camera's shake,
 so the view holds still while the camera moves. It can also keep the
 horizon level.
 
-Stabilization is set in the **Stabilization** panel, for each clip on its
-own (see [Which clip it changes](#which-clip-it-changes)). It applies to
+Stabilization is set in the **Stabilization** section (settings sidebar,
+**Video** tab), for each clip on its own (see [Which clip it changes](#which-clip-it-changes)). It applies to
 playback, screenshots and the export alike. Nothing is re-rendered:
 changing it shows at once.
 
@@ -34,7 +34,7 @@ level, try **Horizon lock**.
 
 ### Lean follow
 
-<img src="images/stabilization-lean-follow.jpg" width="350" alt="The Stabilization panel in Lean follow mode">
+<img src="images/stabilization-lean-follow.jpg" width="350" alt="The Stabilization section in Lean follow mode">
 
 **Strength** sets how much movement counts as shake. To the left, the view
 follows the ride more closely and only fast vibration is removed. To the
@@ -52,7 +52,7 @@ when the bike is upright.
 
 ### Horizon lock
 
-<img src="images/stabilization-horizon-lock.jpg" width="350" alt="The Stabilization panel in Horizon lock mode">
+<img src="images/stabilization-horizon-lock.jpg" width="350" alt="The Stabilization section in Horizon lock mode">
 
 - **Amount**: how level to hold the horizon. At 100 % the virtual camera
   never tilts. Lower values let some of the camera's own (smoothed) tilt
@@ -124,7 +124,7 @@ exact, so orbis-reframe measures it for each clip from the video itself.
 This runs in the background while playback is paused, and the result is
 saved in the project, so it's only done once per clip.
 
-The **Stabilization** panel shows the state for the clip under the
+The **Stabilization** section shows the state for the clip under the
 playhead:
 
 | Message | Meaning |

@@ -8,7 +8,7 @@
 #include <QPushButton>
 
 PrivacyPanel::PrivacyPanel(QWidget *parent)
-    : SettingsPanel(tr("Privacy"), QStringLiteral("eye-off"), parent)
+    : SettingsPanel(tr("Privacy"), parent)
 {
     setHint(tr("Blurs the number plates a scan of the clip finds, in playback and export. "
                "Right-click a blur in the viewport to remove a false hit."));

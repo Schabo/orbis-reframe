@@ -1,6 +1,6 @@
 # Colour
 
-The **Colour** panel corrects the brightness and colours of a clip: to
+The **Colour** section (settings sidebar, **Video** tab) corrects the brightness and colours of a clip: to
 brighten a dark clip, make colours richer, or make clips filmed at different
 times of day match.
 
@@ -9,7 +9,7 @@ times of day match.
 *Right: exposure −0.2 EV, contrast +10 %, saturation +30 %, temperature
 +15 %. Warmer and richer colours, with the bright sky kept.*
 
-<img src="images/colour-panel.jpg" width="350" alt="The Colour panel">
+<img src="images/colour-panel.jpg" width="350" alt="The Colour section">
 
 ## The settings
 
