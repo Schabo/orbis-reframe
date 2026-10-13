@@ -2507,6 +2507,57 @@ void testMediaPool()
         // Not in the pool: nothing happens.
         CHECK(!w.mediaPool()->relink(dir + "/nothing.insv", {newClip}));
     }
+
+    // Files going and coming back while the project is open: the flags
+    // follow the disk, and it isn't an edit.
+    {
+        const QString usb = dir + "/usb";
+        QDir().mkpath(usb);
+        const QString vid = usb + "/VID_9.insv";
+        const QString mic = usb + "/mic.wav";
+        const QString pip = usb + "/pip.mp4";
+        for (const QString &f : {vid, mic, pip})
+            touch(f);
+        Project x;
+        x.timeline()->appendClip(vid, 20000, 29.97, 3840, 3840);
+        const int at = x.timeline()->addTrack(Track::Kind::Audio);
+        x.timeline()->addAudioClip(at, mic, 10000, 0);
+        const int vt = x.timeline()->addTrack(Track::Kind::Video);
+        x.timeline()->addVideoClip(vt, pip, 5000, 0, 1920, 1080);
+        CHECK(x.mediaPool()->add({unused, MediaItem::Kind::Clip360, 7000})); // gone already
+        CHECK(x.mediaPool()->item(unused)->missing);
+        CHECK(x.save(dir + "/x.orp")); // not modified from here
+        const bool couldUndo = x.canUndo();
+        CHECK(x.recheckMissingMedia().isEmpty());
+
+        int poolSignals = 0, timelineSignals = 0;
+        QObject::connect(x.mediaPool(), &MediaPool::missingChanged, [&] { ++poolSignals; });
+        QObject::connect(x.timeline(), &Timeline::mediaMissingChanged, [&] { ++timelineSignals; });
+        const QString away = dir + "/away";
+        QDir().rename(usb, away); // the drive unplugged
+        QHash<QString, bool> changed = x.recheckMissingMedia();
+        CHECK(changed.size() == 3 && changed.value(vid) && changed.value(mic) &&
+              changed.value(pip));
+        CHECK(poolSignals == 1 && timelineSignals == 1);
+        CHECK(x.mediaPool()->item(vid)->missing && x.mediaPool()->item(pip)->missing);
+        CHECK(x.timeline()->clipAt(0).mediaMissing);
+        const Track *audio = x.timeline()->trackById(at);
+        const Track *video = x.timeline()->trackById(vt);
+        CHECK(audio && audio->clips.front().mediaMissing);
+        CHECK(video && video->clips.front().mediaMissing);
+        CHECK(!x.modified() && x.canUndo() == couldUndo);
+        CHECK(x.recheckMissingMedia().isEmpty()); // nothing new: no signals
+        CHECK(poolSignals == 1 && timelineSignals == 1);
+
+        QDir().rename(away, usb); // and plugged back in
+        touch(unused);            // a file that was never there turns up
+        changed = x.recheckMissingMedia();
+        CHECK(changed.size() == 4 && !changed.value(vid, true) && !changed.value(unused, true));
+        CHECK(!x.mediaPool()->item(vid)->missing && !x.mediaPool()->item(unused)->missing);
+        CHECK(!x.timeline()->clipAt(0).mediaMissing);
+        CHECK(!x.timeline()->trackById(at)->clips.front().mediaMissing);
+        CHECK(!x.modified() && x.canUndo() == couldUndo);
+    }
 }
 
 int main()

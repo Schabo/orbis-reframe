@@ -484,6 +484,27 @@ int Timeline::relinkSource(const QString &from, const QString &to)
     return mainCount + trackCount;
 }
 
+QStringList Timeline::setSourcesMissing(const QHash<QString, bool> &missing)
+{
+    QStringList changed;
+    const auto apply = [&](const QString &path, bool &flag) {
+        const auto it = missing.constFind(path);
+        if (it == missing.cend() || flag == *it)
+            return;
+        flag = *it;
+        if (!changed.contains(path))
+            changed << path;
+    };
+    for (ClipItem &c : m_clips)
+        apply(c.sourcePath, c.mediaMissing);
+    for (Track &t : m_tracks)
+        for (TrackClip &c : t.clips)
+            apply(c.sourcePath, c.mediaMissing);
+    if (!changed.isEmpty())
+        emit mediaMissingChanged();
+    return changed;
+}
+
 // ---------------------------------------------------------------------------
 // Extra tracks
 // ---------------------------------------------------------------------------

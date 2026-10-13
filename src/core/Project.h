@@ -1,11 +1,13 @@
 #pragma once
 
 #include <QByteArray>
+#include <QHash>
 #include <QList>
 #include <QObject>
 
 #include <functional>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig (POD; no FFmpeg)
@@ -143,6 +145,12 @@ public slots:
     // media pool and in every clip cut from it. One undo step, like any edit.
     // Returns how many timeline clips changed.
     int relinkMedia(const QString &from, const MediaItem &to);
+    // Look on the disk again for every file in the pool and on the timeline,
+    // and set the pool's and the clips' missing flags from it: a drive
+    // unplugged or plugged back in, a file moved away or back. Not an edit
+    // (nothing to undo, not modified). Returns the paths that changed: true
+    // = went missing, false = came back.
+    QHash<QString, bool> recheckMissingMedia();
 
     // Replace the output settings. Marks the project modified and emits
     // outputChanged when the value actually changes.

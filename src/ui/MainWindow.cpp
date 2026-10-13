@@ -1051,6 +1051,22 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             .setValue(QStringLiteral("player/muted"), muted);
         applyPreviewVolume();
     });
+    // Files going missing or coming back while the app runs: looked for every
+    // 2 s while it's in front, and at once when it comes back to the front.
+    m_mediaCheck = new QTimer(this);
+    m_mediaCheck->setInterval(2000);
+    connect(m_mediaCheck, &QTimer::timeout, this, &MainWindow::recheckMissingMedia);
+    connect(qApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+                if (state == Qt::ApplicationActive) {
+                    recheckMissingMedia();
+                    m_mediaCheck->start();
+                } else {
+                    m_mediaCheck->stop();
+                }
+            });
+    if (QGuiApplication::applicationState() == Qt::ApplicationActive)
+        m_mediaCheck->start();
     m_playerBarHide = new QTimer(this);
     m_playerBarHide->setSingleShot(true);
     m_playerBarHide->setInterval(2500);
@@ -3147,6 +3163,43 @@ void MainWindow::locateMedia(const QString &path)
                                     "found again:\n%1")
                                      .arg(names.join(QLatin1Char('\n'))));
     }
+}
+
+void MainWindow::recheckMissingMedia()
+{
+    const QHash<QString, bool> changed = m_project->recheckMissingMedia();
+    if (changed.isEmpty())
+        return;
+    QStringList gone, back;
+    for (auto it = changed.cbegin(); it != changed.cend(); ++it)
+        (*it ? gone : back) << it.key();
+    bool mainTrack = false;
+    for (int i = 0; i < m_timeline->count() && !mainTrack; ++i)
+        mainTrack = changed.contains(m_timeline->clipAt(i).sourcePath);
+
+    // A file that's back is opened afresh: the source cached for it may have
+    // lost its file (a drive unplugged). One that's gone keeps playing from
+    // what's open as long as it can.
+    m_controller->reopenSources(back);
+    if (mainTrack)
+        syncTimeline(); // the ⚠ marks; a clip that's back plays again
+    onTracksChanged(); // the track rows, overlays and sound skip missing clips
+    refreshClipPanels();
+    if (!back.isEmpty())
+        scheduleClipScans(); // sync / seam for a clip that had no file until now
+
+    const auto names = [](QStringList paths) {
+        paths.sort();
+        for (QString &p : paths)
+            p = QFileInfo(p).fileName();
+        return paths.join(QStringLiteral(", "));
+    };
+    QStringList notice;
+    if (!gone.isEmpty())
+        notice << tr("File not found: %1").arg(names(gone));
+    if (!back.isEmpty())
+        notice << tr("Found again: %1").arg(names(back));
+    m_editToolbar->showNotice(notice.join(QStringLiteral(" · ")), false);
 }
 
 void MainWindow::updateMediaInUse()

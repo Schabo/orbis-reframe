@@ -623,6 +623,31 @@ int Project::relinkMedia(const QString &from, const MediaItem &to)
     return m_timeline->relinkSource(from, to.path);
 }
 
+QHash<QString, bool> Project::recheckMissingMedia()
+{
+    // One look per file; the pool lists every timeline source, but a clip
+    // checked here doesn't depend on that.
+    QHash<QString, bool> missing;
+    const auto look = [&](const QString &path) {
+        if (!path.isEmpty() && !missing.contains(path))
+            missing.insert(path, !QFileInfo::exists(path));
+    };
+    for (const MediaItem &m : m_mediaPool->items())
+        look(m.path);
+    for (int i = 0; i < m_timeline->count(); ++i)
+        look(m_timeline->clipAt(i).sourcePath);
+    for (int i = 0; i < m_timeline->trackCount(); ++i)
+        for (const TrackClip &c : m_timeline->trackAt(i).clips)
+            look(c.sourcePath);
+
+    QHash<QString, bool> changed;
+    for (const QString &path : m_mediaPool->setMissing(missing))
+        changed.insert(path, missing.value(path));
+    for (const QString &path : m_timeline->setSourcesMissing(missing))
+        changed.insert(path, missing.value(path));
+    return changed;
+}
+
 void Project::onTimelineEdited()
 {
     if (!m_rebuilding)

@@ -60,7 +60,9 @@ project only remembers where they are. The list is grouped by the folder
 each file is in, and sorted by name. Each file shows a small picture, its
 name, its kind (*360°*, *Video* or *Audio*) and length, and its resolution
 and frame rate. An orange check mark in a circle, to the right of the name, means the file is used on the timeline. A file that can't be
-found any more is shown in red with *File not found*. Click a folder's name
+found any more is shown in red with *File not found*; this follows the disk
+while the app runs, so a file that's put back, or a drive that's plugged in
+again, turns normal again by itself. Click a folder's name
 to fold it away.
 
 | To | Do |

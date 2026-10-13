@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -22,8 +23,8 @@ struct MediaItem {
     int width = 0; // video only
     int height = 0;
     double fps = 0.0; // 0 = not known
-    // The file wasn't found when the item was added or the project loaded.
-    // Not saved.
+    // The file wasn't found when the item was added, the project loaded, or
+    // the files were last checked (Project::recheckMissingMedia). Not saved.
     bool missing = false;
 
     bool operator==(const MediaItem &o) const
@@ -76,6 +77,10 @@ public:
     // path is in the pool already. `missing` is set from the disk. False if
     // `from` isn't in the pool.
     bool relink(const QString &from, MediaItem item);
+    // Set `missing` from `missing` (path -> missing) for the items it names.
+    // Emits missingChanged(), not changed(): a file coming and going isn't an
+    // edit. Returns the paths that changed.
+    QStringList setMissing(const QHash<QString, bool> &missing);
     // Replace everything (a project load / undo). Emits changed() once.
     void setItems(const QList<MediaItem> &items);
     void clear() { setItems({}); }
@@ -83,6 +88,8 @@ public:
 signals:
     // Anything in the pool changed.
     void changed();
+    // Only items' `missing` changed (setMissing).
+    void missingChanged();
 
 private:
     QList<MediaItem> m_items;

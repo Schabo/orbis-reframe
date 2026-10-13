@@ -3,8 +3,10 @@
 #include "TrackClip.h"
 #include "ClipItem.h"
 
+#include <QHash>
 #include <QList>
 #include <QObject>
+#include <QStringList>
 
 #include <cstdint>
 #include <functional>
@@ -261,6 +263,11 @@ public slots:
     // from whether `to` exists. Emits clipsReordered / tracksChanged for the
     // tracks that had one. Returns how many clips changed.
     int relinkSource(const QString &from, const QString &to);
+    // Set mediaMissing from `missing` (path -> missing) on every clip, main
+    // track and extra tracks, cut from a path it names. Emits
+    // mediaMissingChanged() -- not an edit, nothing else. Returns the paths
+    // whose clips changed.
+    QStringList setSourcesMissing(const QHash<QString, bool> &missing);
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);
@@ -297,6 +304,9 @@ signals:
     // re-levelled, or a clip on one added / removed / moved / trimmed /
     // re-levelled. Coarse on purpose -- every consumer rebuilds from scratch.
     void tracksChanged();
+    // Only clips' mediaMissing changed (setSourcesMissing): consumers that
+    // skip or mark missing clips refresh.
+    void mediaMissingChanged();
 
 private:
     ClipItem *mutableClipById(int id);

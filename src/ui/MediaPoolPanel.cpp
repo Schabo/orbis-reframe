@@ -406,6 +406,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     layout->addWidget(m_list, 1);
 
     connect(m_pool, &MediaPool::changed, this, &MediaPoolPanel::rebuild);
+    connect(m_pool, &MediaPool::missingChanged, this, &MediaPoolPanel::rebuild);
     rebuild();
 }
 

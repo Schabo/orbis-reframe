@@ -161,6 +161,14 @@ void PlaybackController::setTimeline(const QList<Segment> &segments)
     emit positionChanged(m_positionMs);
 }
 
+void PlaybackController::reopenSources(const QStringList &paths)
+{
+    std::lock_guard<std::mutex> lk(m_mx);
+    for (const QString &p : paths)
+        if (!m_reopenPaths.contains(p))
+            m_reopenPaths << p;
+}
+
 void PlaybackController::setPreviewConfig(const stitch::PreviewStitchConfig &config)
 {
     {
@@ -668,6 +676,7 @@ void PlaybackController::decoderLoop()
         bool doSeek = false;
         bool tlChanged = false;
         bool cfgChanged = false;
+        QStringList reopen; // m_reopenPaths, taken with the timeline
         qint64 seekMs = 0;
         bool seekToKeyframe = false;
         uint64_t gen = 0;
@@ -689,6 +698,7 @@ void PlaybackController::decoderLoop()
                 m_decPlaced = m_placed;
                 m_timelineDirty = false;
                 tlChanged = true;
+                reopen = std::exchange(m_reopenPaths, {});
             }
             if (m_previewConfigDirty) {
                 m_decPreviewConfig = m_pendingPreviewConfig;
@@ -710,6 +720,15 @@ void PlaybackController::decoderLoop()
 
         if (tlChanged) {
             pruneSourcesToTimeline(); // drop sources no longer on the timeline
+            for (const QString &p : reopen) {
+                m_srcCache.erase(p);
+                m_srcLru.removeAll(p);
+                if (m_activePath == p) {
+                    m_activeSource.reset();
+                    m_activePath.clear();
+                    m_decSegIndex = -1;
+                }
+            }
             if (m_decPlaced.isEmpty()) {
                 m_activeSource.reset();
                 m_activePath.clear();

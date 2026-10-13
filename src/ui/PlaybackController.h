@@ -117,6 +117,10 @@ public:
     // lambda (QMetaObject::invokeMethod), so QList<Segment> needs no metatype
     // registration. Runs on the worker thread.
     void setTimeline(const QList<Segment> &segments);
+    // Open these files afresh from the next setTimeline() on, not from the
+    // sources cached for them: a file that was gone and is back (a drive
+    // plugged in again) left a cached source that can't read any more.
+    void reopenSources(const QStringList &paths);
 
     // Change the preview-stitch settings (Stitching panel). Like
     // setTimeline(), invoked via a queued lambda so it runs on the worker
@@ -273,6 +277,7 @@ private:
     std::condition_variable m_cv;
     QList<Placed> m_placed;       // authoritative timeline
     bool m_timelineDirty = false; // decoder should re-copy m_placed
+    QStringList m_reopenPaths; // drop these cached sources with the next timeline
     stitch::PreviewStitchConfig m_pendingPreviewConfig;
     bool m_previewConfigDirty = false; // decoder should drop sources + re-stitch
     std::deque<QueuedFrame> m_queue;

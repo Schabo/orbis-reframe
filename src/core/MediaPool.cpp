@@ -100,6 +100,21 @@ bool MediaPool::relink(const QString &from, MediaItem item)
     return true;
 }
 
+QStringList MediaPool::setMissing(const QHash<QString, bool> &missing)
+{
+    QStringList changed;
+    for (MediaItem &m : m_items) {
+        const auto it = missing.constFind(m.path);
+        if (it != missing.cend() && m.missing != *it) {
+            m.missing = *it;
+            changed << m.path;
+        }
+    }
+    if (!changed.isEmpty())
+        emit missingChanged();
+    return changed;
+}
+
 void MediaPool::setItems(const QList<MediaItem> &items)
 {
     if (items == m_items)

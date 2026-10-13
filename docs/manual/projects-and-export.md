@@ -86,7 +86,7 @@ are. Your original files are never changed.
   added it, the project can't find it. When you open the project, it says
   *Missing media* and the clip can't play, and its card in the library says
   how many files are missing. Either put the file back where it was (with its
-  old name) and open the project again, or show the project where it is now:
+  old name), or show the project where it is now:
   in the **Media** tab the file is red, *File not found*; double-click it (or
   right-click it ▸ **Locate file…**) and pick the file. It has to be the same
   file, the same kind and length; another file is refused. Every clip cut
@@ -96,6 +96,15 @@ are. Your original files are never changed.
   ([Privacy blur](privacy.md)) comes along when the file was moved; after a
   copy it may not, and then the clip needs **Scan clip** again before it can
   be exported with the blur.
+- **Files that go away while the project is open** -- a USB drive or memory
+  card unplugged, a file moved or renamed in the file manager -- are noticed
+  within a couple of seconds, and as soon as you come back to orbis-reframe
+  from another window. Their clips turn red with a ⚠ on the timeline, the
+  Media tab says *File not found*, overlays and sound from them stop, and
+  the line above the timeline names the files. Put them back (plug the drive
+  in again) and they're found again by themselves, the same way: the line
+  says *Found again*, and the clips play again. Nothing in the project
+  changes, so this is nothing to save or undo.
 - **To move a project with its clips**, put the clips inside the project's
   folder, for example in a `media` folder next to the `.orp` file. orbis-reframe
   then stores their places relative to the project, so you can move or copy

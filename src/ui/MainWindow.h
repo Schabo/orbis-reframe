@@ -405,6 +405,11 @@ private:
     // and on the timeline. Other missing files whose names are in the picked
     // file's folder are relinked with it.
     void locateMedia(const QString &path);
+    // Files that went missing or came back since the last look (a drive
+    // unplugged or plugged in again, a file moved away or back): the Media
+    // tab, the timeline, playback, the overlays and the sound follow, and the
+    // notice line says which.
+    void recheckMissingMedia();
 
     // File menu project actions.
     // New project…: name, location and output format, then a project folder
@@ -541,6 +546,7 @@ private:
     bool m_fullScreen = false;  // setFullScreenView()
     bool m_wasMaximized = false; // before full screen
     QTimer *m_playerBarHide = nullptr; // full screen: hides the player bar
+    QTimer *m_mediaCheck = nullptr; // recheckMissingMedia() while the app is in front
     // A sync / seam result arrived while playing; applied on the next pause.
     bool m_measuredWhilePlaying = false;
     // Total trimmed timeline length, cached from the last pushTimelineToController.
