@@ -452,7 +452,7 @@ void testDropClips()
 }
 
 
-// Overlay tracks are the last group, each with its sound track under it;
+// Overlay tracks are the last group, each with its audio track under it;
 // their clips move only among overlay tracks, and video files drop onto them.
 void testOverlayTracks()
 {
@@ -465,7 +465,7 @@ void testOverlayTracks()
     s1.id = 31;
     s1.name = "Cam audio";
     s1.group = TimelineWidget::TrackView::Group::Overlay;
-    s1.overlaySound = true;
+    s1.overlayAudio = true;
     TimelineWidget::TrackClipView pip;
     pip.id = 200;
     pip.label = "pip.mp4";
@@ -523,10 +523,10 @@ void testOverlayTracks()
     drag(&f.w, QPoint(20, camY), QPoint(20, ov2Y + kTrackH));
     CHECK(trackMoved.count() == 1 && trackMoved.last().at(0).toInt() == 21 &&
           trackMoved.last().at(1).toInt() == 3);
-    // ... never between another one and its sound track; and the sound track
+    // ... never between another one and its audio track; and the audio track
     // only moves with its overlay track.
     drag(&f.w, QPoint(20, ov2Y), QPoint(20, soundY + 2));
-    CHECK(trackMoved.count() == 1); // (lands after the sound track: where it is)
+    CHECK(trackMoved.count() == 1); // (lands after the audio track: where it is)
     drag(&f.w, QPoint(20, ov2Y), QPoint(20, camY - 2));
     CHECK(trackMoved.count() == 2 && trackMoved.last().at(0).toInt() == 22 &&
           trackMoved.last().at(1).toInt() == 1);
@@ -550,7 +550,7 @@ void testOverlayTracks()
     }
     CHECK(dropFiles(&f.w, {"/x/cam.mp4"}, QPoint(Fixture::x(12000), musicY)));
     CHECK(videoDrop.count() == 2 && videoDrop.last().at(1).toInt() == 0);
-    // Audio dropped on an overlay track, or its sound track, goes to the
+    // Audio dropped on an overlay track, or its audio track, goes to the
     // Audio group; on a track there, onto it.
     CHECK(dropFiles(&f.w, {"/x/a.mp3"}, QPoint(Fixture::x(12000), camY)));
     CHECK(audioDrop.count() == 1 && audioDrop.last().at(1).toInt() == 0);

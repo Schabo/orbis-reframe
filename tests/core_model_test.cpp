@@ -1681,8 +1681,8 @@ void testVideoTracks()
 
 // v8: video tracks round-trip through the .orp.
 // An overlay's sound on an audio track, the way
-// MainWindow::putOverlaySoundOnTrack makes it.
-int addOverlaySound(Timeline &tl, int trackId, int overlayId)
+// MainWindow::putOverlayAudioOnTrack makes it.
+int addOverlayAudio(Timeline &tl, int trackId, int overlayId)
 {
     const TrackClip *o = tl.trackClipById(overlayId);
     TrackClip a;
@@ -1695,7 +1695,7 @@ int addOverlaySound(Timeline &tl, int trackId, int overlayId)
     return tl.insertTrackClip(trackId, a);
 }
 
-void testOverlaySound()
+void testOverlayAudio()
 {
     Timeline tl;
     tl.appendClip("/v/a.insv", 60000, 30.0);
@@ -1703,7 +1703,7 @@ void testOverlaySound()
     const int v2 = tl.addTrack(Track::Kind::Video);
     const int t = tl.addTrack(Track::Kind::Audio);
     const int o = tl.addVideoClip(v, "/v/pip.mp4", 10000, 2000, 1920, 1080); // 2..12 s
-    const int s = addOverlaySound(tl, t, o);
+    const int s = addOverlayAudio(tl, t, o);
     auto snd = [&] { return tl.trackClipById(s); };
     const auto trackOf = [&](int clipId) {
         int id = 0;
@@ -1714,23 +1714,23 @@ void testOverlaySound()
     CHECK(snd()->startMs == 2000 && snd()->endMs() == 12000);
     // Not on the free track it was put on: on its overlay track's sound
     // track, made right under it.
-    const int vs = tl.soundTrackId(v);
+    const int vs = tl.audioTrackId(v);
     CHECK(vs && trackOf(s) == vs && tl.trackById(t)->clips.isEmpty());
     CHECK(tl.trackIndexOfId(vs) == tl.trackIndexOfId(v) + 1);
     CHECK(tl.trackById(vs)->name == "Overlay 1 audio" && tl.trackById(vs)->ownerTrackId == v);
-    tl.setTrackName(v, "Phone"); // the sound track's name follows
+    tl.setTrackName(v, "Phone"); // the audio track's name follows
     CHECK(tl.trackById(vs)->name == "Phone audio");
 
-    // Follows a move, also onto another overlay track (and its sound track;
+    // Follows a move, also onto another overlay track (and its audio track;
     // the one it leaves empty goes).
     tl.moveTrackClip(o, v, 5000);
     CHECK(snd()->startMs == 5000);
     tl.moveTrackClip(o, v2, 4000);
     CHECK(snd()->startMs == 4000 && snd()->linkedClipId == o);
-    const int v2s = tl.soundTrackId(v2);
-    CHECK(v2s && trackOf(s) == v2s && !tl.trackById(vs) && !tl.soundTrackId(v));
+    const int v2s = tl.audioTrackId(v2);
+    CHECK(v2s && trackOf(s) == v2s && !tl.trackById(vs) && !tl.audioTrackId(v));
     CHECK(tl.trackIndexOfId(v2s) == tl.trackIndexOfId(v2) + 1);
-    // Can't be moved in time on its own, nor off its sound track.
+    // Can't be moved in time on its own, nor off its audio track.
     tl.moveTrackClip(s, t, 9000);
     CHECK(snd()->startMs == 4000 && trackOf(s) == v2s);
 
@@ -1773,8 +1773,8 @@ void testOverlaySound()
 }
 
 // The track groups: the main video's sound, Audio, then each overlay track
-// with its sound track; reordering stays within a group, an overlay track
-// moving with its sound track.
+// with its audio track; reordering stays within a group, an overlay track
+// moving with its audio track.
 void testTrackGroups()
 {
     Timeline tl;
@@ -1787,9 +1787,9 @@ void testTrackGroups()
     const int o3 = tl.addTrack(Track::Kind::Video);
     const int cam = tl.streamTrackId(Track::Role::CameraMic);
     const int ext = tl.streamTrackId(Track::Role::ExternalMic);
-    const int s1 = tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlaySound, o1);
-    const int s3 = tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlaySound, o3);
-    CHECK(tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlaySound, a1) == 0);
+    const int s1 = tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlayAudio, o1);
+    const int s3 = tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlayAudio, o3);
+    CHECK(tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlayAudio, a1) == 0);
     const auto order = [&] {
         QList<int> ids;
         for (int i = 0; i < tl.trackCount(); ++i)
@@ -1802,17 +1802,17 @@ void testTrackGroups()
     CHECK(!tl.moveTrack(ext, 5) && !tl.moveTrack(a1, 0)); // clamped: already there
     CHECK(tl.moveTrack(a1, 8) && (order() == QList<int>{cam, ext, a2, a1, o1, s1, o2, o3, s3}));
     CHECK(tl.moveTrack(ext, 0) && (order() == QList<int>{ext, cam, a2, a1, o1, s1, o2, o3, s3}));
-    // A sound track only moves with its overlay track, which takes it along.
+    // A audio track only moves with its overlay track, which takes it along.
     CHECK(!tl.moveTrack(s1, 6));
     CHECK(tl.moveTrack(o1, 6) && (order() == QList<int>{ext, cam, a2, a1, o2, o1, s1, o3, s3}));
     CHECK(tl.moveTrack(o1, 8) && (order() == QList<int>{ext, cam, a2, a1, o2, o3, s3, o1, s1}));
-    CHECK(!tl.moveTrack(o1, 8)); // its own sound track: already there
+    CHECK(!tl.moveTrack(o1, 8)); // its own audio track: already there
     CHECK(tl.moveTrack(o3, 4) && (order() == QList<int>{ext, cam, a2, a1, o3, s3, o2, o1, s1}));
     CHECK(tl.moveTrack(o2, 0) && (order() == QList<int>{ext, cam, a2, a1, o2, o3, s3, o1, s1}));
     // New tracks at the end of their group.
     const int a3 = tl.addTrack(Track::Kind::Audio);
     CHECK(tl.trackIndexOfId(a3) == 4);
-    // Removing an overlay track takes its sound track.
+    // Removing an overlay track takes its audio track.
     CHECK(tl.removeTrack(o3) && !tl.trackById(s3));
 }
 
@@ -1880,19 +1880,19 @@ void testProjectVideoTracksJson()
         Timeline *pt = p.timeline();
         const int o = pt->trackAt(1).clips[0].id;
         const int a = pt->trackAt(0).id;
-        const int snd = addOverlaySound(*pt, a, o); // onto Cam's sound track
+        const int snd = addOverlayAudio(*pt, a, o); // onto Cam's audio track
         pt->linkAudioClip(snd, 0);
-        pt->moveTrackClip(snd, pt->soundTrackId(pt->trackAt(1).id),
+        pt->moveTrackClip(snd, pt->audioTrackId(pt->trackAt(1).id),
                           pt->trackClipById(snd)->startMs + 30); // a 30 ms nudge
         pt->linkAudioClip(snd, o);
-        pt->setTrackAudio(pt->soundTrackId(pt->trackAt(1).id), -3.0, false);
+        pt->setTrackAudio(pt->audioTrackId(pt->trackAt(1).id), -3.0, false);
         CHECK(p.save(linked));
     }
     Project r;
     CHECK(r.load(linked));
     const Timeline *rt = r.timeline();
     // Music, Cam, Cam's sound.
-    CHECK(rt->trackCount() == 3 && rt->trackAt(2).role == Track::Role::OverlaySound);
+    CHECK(rt->trackCount() == 3 && rt->trackAt(2).role == Track::Role::OverlayAudio);
     CHECK(rt->trackAt(2).ownerTrackId == rt->trackAt(1).id && rt->trackAt(2).name == "Cam audio");
     CHECK(rt->trackAt(2).gainDb == -3.0 && rt->trackAt(0).clips.isEmpty());
     const TrackClip &ov = rt->trackAt(1).clips[0];
@@ -1905,8 +1905,8 @@ void testProjectVideoTracksJson()
     CHECK(rt->trackAt(2).clips[0].linkedClipId == rt->trackAt(1).clips[0].id);
     CHECK(rt->trackAt(2).clips[0].startMs == 1530);
 
-    // From before overlay sound tracks: the sound on a free track moves to
-    // its overlay's sound track, and the free track it leaves empty goes.
+    // From before overlay audio tracks: the sound on a free track moves to
+    // its overlay's audio track, and the free track it leaves empty goes.
     {
         QFile f(linked);
         CHECK(f.open(QIODevice::ReadOnly));
@@ -1926,7 +1926,7 @@ void testProjectVideoTracksJson()
     CHECK(old.load(linked));
     const Timeline *ot = old.timeline();
     CHECK(ot->trackCount() == 2 && ot->trackAt(0).kind == Track::Kind::Video);
-    CHECK(ot->trackAt(1).role == Track::Role::OverlaySound && ot->trackAt(1).clips.size() == 1);
+    CHECK(ot->trackAt(1).role == Track::Role::OverlayAudio && ot->trackAt(1).clips.size() == 1);
     CHECK(ot->trackAt(1).clips[0].linkedClipId == ot->trackAt(0).clips[0].id);
 }
 
@@ -2456,7 +2456,7 @@ int main()
     testLinkedAudio();
     testClipSound();
     testProjectConvertSound();
-    testOverlaySound();
+    testOverlayAudio();
     testTrackGroups();
     testProjectTracksJson();
     testVideoTracks();

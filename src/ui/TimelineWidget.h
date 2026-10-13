@@ -56,7 +56,7 @@ class QTimer;
 //                                        the stream tracks under it.
 //   * drag a header up / down          -> trackMoved (reorder, within its
 //                                        group; an overlay track takes its
-//                                        sound track along, which can't be
+//                                        audio track along, which can't be
 //                                        dragged on its own)
 //   * double-click a header            -> rename in place: Enter commits,
 //                                        Escape cancels -> trackRenameRequested
@@ -141,7 +141,7 @@ public:
         bool muted = false; // an overlay track: hidden
         bool video = false; // an overlay track
         Group group = Group::Audio;
-        bool overlaySound = false; // an overlay track's audio track, right under it
+        bool overlayAudio = false; // an overlay track's audio track, right under it
         // (Main: the video track's mics. Both have their names indented.)
         QVector<TrackClipView> clips;
     };
@@ -190,7 +190,7 @@ signals:
     void trackClipRemoveRequested(int clipId);
     void trackClipSplitRequested(int clipId, qint64 atTimelineMs);
     void audioClipLinkRequested(int clipId, bool link); // link to its video clip / unlink
-    void overlaySoundRequested(int clipId); // put an overlay's sound on an audio track
+    void overlayAudioRequested(int clipId); // put an overlay's sound on an audio track
     void trackMuteToggled(int trackId, bool muted);
     void trackRemoveRequested(int trackId);
     void trackRenameRequested(int trackId, const QString &name);
@@ -261,7 +261,7 @@ private:
     int trackGapAtY(int y) const; // insertion gap for a header drag, [0, tracks]
     // The span [first, end) of track `index`'s group in m_tracks.
     void groupSpan(int index, int *first, int *end) const;
-    // An overlay track and its sound track(s): the index just past them.
+    // An overlay track and its audio track(s): the index just past them.
     int unitEnd(int index) const;
     void startRename(int trackIndex);
     void finishRename();

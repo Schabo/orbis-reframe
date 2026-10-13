@@ -179,7 +179,7 @@ void TimelineWidget::groupSpan(int index, int *first, int *end) const
 int TimelineWidget::unitEnd(int index) const
 {
     ++index;
-    while (index < m_tracks.size() && m_tracks[index].overlaySound)
+    while (index < m_tracks.size() && m_tracks[index].overlayAudio)
         ++index;
     return index;
 }
@@ -926,8 +926,8 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const QRect mb = muteBox(top, kTrackH);
         // A video's own sound is indented under it: the main track's mics,
         // an overlay track's audio track.
-        const bool sound = t.overlaySound || t.group == TrackView::Group::Main;
-        const int indent = sound ? 18 : 6;
+        const bool ownAudio = t.overlayAudio || t.group == TrackView::Group::Main;
+        const int indent = ownAudio ? 18 : 6;
         p.setPen(tc.text);
         p.drawText(QRect(indent, top, mb.left() - indent - 2, kTrackH),
                    Qt::AlignVCenter | Qt::AlignLeft,
@@ -972,7 +972,7 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
             emit trackMuteToggled(m_tracks[h.track].id, !m_tracks[h.track].muted);
             return;
         }
-        if (m_tracks[h.track].overlaySound)
+        if (m_tracks[h.track].overlayAudio)
             return; // it moves with its overlay track
         m_drag = Drag::TrackMove; // a drag up / down reorders
         m_dragTrackIndex = h.track;
@@ -1156,7 +1156,7 @@ void TimelineWidget::dragTo(QPoint pos)
             int first = 0, end = 0;
             groupSpan(m_dragTrackIndex, &first, &end);
             m_trackGap = std::clamp(trackGapAtY(pos.y()), first, end);
-            while (m_trackGap < end && m_tracks[m_trackGap].overlaySound)
+            while (m_trackGap < end && m_tracks[m_trackGap].overlayAudio)
                 ++m_trackGap;
             setCursor(Qt::ClosedHandCursor);
             update();
@@ -1416,7 +1416,7 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         else if (chosen == link)
             emit audioClipLinkRequested(clipId, !wasLinked);
         else if (chosen == sound)
-            emit overlaySoundRequested(clipId);
+            emit overlayAudioRequested(clipId);
         else if (chosen == remove)
             emit trackClipRemoveRequested(clipId);
         return;
@@ -1445,18 +1445,18 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
     QAction *rename = nullptr, *up = nullptr, *down = nullptr, *removeTrack = nullptr;
     int downTo = -1;
     if (trackIndex >= 0) {
-        // Tracks move within their group, an overlay track with its sound
+        // Tracks move within their group, an overlay track with its audio
         // track; that one only with it.
         int first = 0, end = 0;
         groupSpan(trackIndex, &first, &end);
-        const bool sound = m_tracks[trackIndex].overlaySound;
+        const bool overlayAudio = m_tracks[trackIndex].overlayAudio;
         downTo = m_tracks[trackIndex].video ? unitEnd(trackIndex) : trackIndex + 1;
         menu.addSeparator();
         rename = menu.addAction(tr("Rename track…"));
         up = menu.addAction(tr("Move track up"));
-        up->setEnabled(!sound && trackIndex > first);
+        up->setEnabled(!overlayAudio && trackIndex > first);
         down = menu.addAction(tr("Move track down"));
-        down->setEnabled(!sound && downTo < end);
+        down->setEnabled(!overlayAudio && downTo < end);
         removeTrack = menu.addAction(tr("Remove track “%1”").arg(m_tracks[trackIndex].name));
     }
     menu.addSeparator();

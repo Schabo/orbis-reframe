@@ -320,11 +320,11 @@ private:
     void applyInsetLook(int clipId, const inset::Look &look);
     // Put an overlay clip's sound on an audio track, linked to it so it
     // follows its moves, trims, splits and removal, and select it.
-    void putOverlaySoundOnTrack(int clipId);
+    void putOverlayAudioOnTrack(int clipId);
     // The same without selecting (adding an overlay does it): the audio
     // clip's id -- the one already there if its sound is on a track -- or 0
     // if the file has no sound.
-    int addOverlaySound(int clipId);
+    int addOverlayAudio(int clipId);
     // The video clip an audio clip would link to: a main-track or
     // overlay clip of the same footage, overlapping source range, nearest on
     // the timeline. 0 if none.

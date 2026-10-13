@@ -560,8 +560,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             &MainWindow::clearOverlayKeys);
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
-    connect(m_timelineWidget, &TimelineWidget::overlaySoundRequested, this,
-            &MainWindow::putOverlaySoundOnTrack);
+    connect(m_timelineWidget, &TimelineWidget::overlayAudioRequested, this,
+            &MainWindow::putOverlayAudioOnTrack);
     connect(m_timeline, &Timeline::tracksChanged, this, &MainWindow::onTracksChanged);
     // Audio panel -> the audio clip a section shows, and its track.
     connect(m_audioPanel, &AudioPanel::audioClipEdited, this,
@@ -1584,7 +1584,7 @@ void MainWindow::refreshTrackRows()
         v.group = t.group() == Track::Group::Main    ? TimelineWidget::TrackView::Group::Main
                   : t.group() == Track::Group::Audio ? TimelineWidget::TrackView::Group::Audio
                                                      : TimelineWidget::TrackView::Group::Overlay;
-        v.overlaySound = t.role == Track::Role::OverlaySound;
+        v.overlayAudio = t.role == Track::Role::OverlayAudio;
         for (const TrackClip &c : t.clips) {
             TimelineWidget::TrackClipView a;
             a.id = c.id;
@@ -1876,7 +1876,7 @@ void MainWindow::addVideoFiles(const QStringList &paths, int trackId, qint64 atM
     for (const Probed &p : ok) {
         last = m_timeline->addVideoClip(trackId, p.path, p.info.durationMs, atMs, p.info.width,
                                         p.info.height);
-        addOverlaySound(last); // its sound, linked, like a video clip's
+        addOverlayAudio(last); // its sound, linked, like a video clip's
         atMs += p.info.durationMs;
     }
     selectTrackClip(last);
@@ -2621,13 +2621,13 @@ void MainWindow::clearTrim()
         m_timeline->clearClipTrim(id);
 }
 
-void MainWindow::putOverlaySoundOnTrack(int clipId)
+void MainWindow::putOverlayAudioOnTrack(int clipId)
 {
-    if (const int id = addOverlaySound(clipId))
+    if (const int id = addOverlayAudio(clipId))
         selectTrackClip(id);
 }
 
-int MainWindow::addOverlaySound(int clipId)
+int MainWindow::addOverlayAudio(int clipId)
 {
     int trackId = 0;
     const TrackClip *o = m_timeline->trackClipById(clipId, &trackId);
@@ -2650,11 +2650,11 @@ int MainWindow::addOverlaySound(int clipId)
             if (x.linkedClipId == o->id)
                 return x.id;
 
-    // On its overlay track's sound track, made when missing.
-    int audioTrack = m_timeline->soundTrackId(trackId);
+    // On its overlay track's audio track, made when missing.
+    int audioTrack = m_timeline->audioTrackId(trackId);
     if (!audioTrack)
         audioTrack = m_timeline->addTrack(Track::Kind::Audio, QString(),
-                                          Track::Role::OverlaySound, trackId);
+                                          Track::Role::OverlayAudio, trackId);
     return m_timeline->insertTrackClip(audioTrack, a);
 }
 

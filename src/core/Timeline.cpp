@@ -547,7 +547,7 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, 
     t.kind = kind;
     t.role = kind == Track::Kind::Audio ? role : Track::Role::Free;
     t.name = name;
-    if (t.role == Track::Role::OverlaySound) {
+    if (t.role == Track::Role::OverlayAudio) {
         const Track *owner = trackById(ownerTrackId);
         if (!owner || owner->kind != Track::Kind::Video)
             return 0;
@@ -595,9 +595,9 @@ void Timeline::placeTrack(const Track &t)
         break;
     case Track::Group::Overlay:
         at = static_cast<int>(m_tracks.size());
-        if (t.role == Track::Role::OverlaySound) { // under its overlay and its other sound
+        if (t.role == Track::Role::OverlayAudio) { // under its overlay and its other sound
             at = trackIndexOfId(t.ownerTrackId) + 1;
-            while (at < m_tracks.size() && m_tracks[at].role == Track::Role::OverlaySound)
+            while (at < m_tracks.size() && m_tracks[at].role == Track::Role::OverlayAudio)
                 ++at;
         }
         break;
@@ -613,10 +613,10 @@ int Timeline::streamTrackId(Track::Role role) const
     return 0;
 }
 
-int Timeline::soundTrackId(int overlayTrackId) const
+int Timeline::audioTrackId(int overlayTrackId) const
 {
     for (const Track &t : m_tracks)
-        if (t.role == Track::Role::OverlaySound && t.ownerTrackId == overlayTrackId)
+        if (t.role == Track::Role::OverlayAudio && t.ownerTrackId == overlayTrackId)
             return t.id;
     return 0;
 }
@@ -662,8 +662,8 @@ bool Timeline::removeTrack(int trackId)
     if (i < 0)
         return false;
     QList<int> gone{trackId};
-    for (const Track &t : m_tracks) // an overlay's sound track goes with it
-        if (t.role == Track::Role::OverlaySound && t.ownerTrackId == trackId)
+    for (const Track &t : m_tracks) // an overlay's audio track goes with it
+        if (t.role == Track::Role::OverlayAudio && t.ownerTrackId == trackId)
             gone.append(t.id);
     QList<TrackClip> clips;
     for (int id : gone)
@@ -671,7 +671,7 @@ bool Timeline::removeTrack(int trackId)
     QList<int> emptied;
     for (const TrackClip &c : clips) // an overlay's sound goes with it
         removeLinkedAudio(c.id, &emptied);
-    dropEmptySoundTracks(emptied);
+    dropEmptyOverlayAudioTracks(emptied);
     emit tracksChanged();
     return true;
 }
@@ -686,7 +686,7 @@ bool Timeline::setTrackName(int trackId, const QString &name)
     t->name = n;
     if (t->kind == Track::Kind::Video)
         for (Track &s : m_tracks)
-            if (s.role == Track::Role::OverlaySound && s.ownerTrackId == trackId &&
+            if (s.role == Track::Role::OverlayAudio && s.ownerTrackId == trackId &&
                 s.name == tr("%1 audio").arg(old))
                 s.name = tr("%1 audio").arg(n);
     emit tracksChanged();
@@ -696,7 +696,7 @@ bool Timeline::setTrackName(int trackId, const QString &name)
 bool Timeline::moveTrack(int trackId, int toIndex)
 {
     const int from = trackIndexOfId(trackId);
-    if (from < 0 || m_tracks[from].role == Track::Role::OverlaySound)
+    if (from < 0 || m_tracks[from].role == Track::Role::OverlayAudio)
         return false;
     const Track::Group group = m_tracks[from].group();
     int first = 0, end = 0; // the group's span
@@ -711,14 +711,14 @@ bool Timeline::moveTrack(int trackId, int toIndex)
             return false;
         m_tracks.move(from, toIndex);
     } else {
-        // Whole overlay tracks, each with its sound tracks.
+        // Whole overlay tracks, each with its audio tracks.
         const auto unitEnd = [this](int i) {
             ++i;
-            while (i < m_tracks.size() && m_tracks[i].role == Track::Role::OverlaySound)
+            while (i < m_tracks.size() && m_tracks[i].role == Track::Role::OverlayAudio)
                 ++i;
             return i;
         };
-        while (m_tracks[toIndex].role == Track::Role::OverlaySound)
+        while (m_tracks[toIndex].role == Track::Role::OverlayAudio)
             --toIndex; // its overlay
         if (toIndex == from)
             return false;
@@ -818,7 +818,7 @@ bool Timeline::removeTrackClip(int clipId)
                 t.clips.removeAt(i);
                 QList<int> emptied{t.id};
                 removeLinkedAudio(clipId, &emptied); // an overlay's sound goes with it
-                dropEmptySoundTracks(emptied);
+                dropEmptyOverlayAudioTracks(emptied);
                 emit tracksChanged();
                 return true;
             }
@@ -1066,10 +1066,10 @@ bool Timeline::relinkAudio()
         if (moved)
             t.sortClips();
     }
-    return tidyOverlaySound() || changed;
+    return tidyOverlayAudio() || changed;
 }
 
-bool Timeline::tidyOverlaySound()
+bool Timeline::tidyOverlayAudio()
 {
     struct Move {
         int clipId, fromTrackId, overlayTrackId;
@@ -1082,18 +1082,18 @@ bool Timeline::tidyOverlaySound()
             int overlayTrackId = 0;
             if (!a.linkedClipId || !trackClipById(a.linkedClipId, &overlayTrackId))
                 continue; // free, or the main video's sound
-            if (t.role != Track::Role::OverlaySound || t.ownerTrackId != overlayTrackId)
+            if (t.role != Track::Role::OverlayAudio || t.ownerTrackId != overlayTrackId)
                 moves.append({a.id, t.id, overlayTrackId});
         }
     }
     QList<int> emptied;
     for (const Move &m : moves) {
-        int to = soundTrackId(m.overlayTrackId);
+        int to = audioTrackId(m.overlayTrackId);
         if (!to) {
             const Track &owner = *trackById(m.overlayTrackId);
             Track t;
             t.id = to = m_nextTrackId++;
-            t.role = Track::Role::OverlaySound;
+            t.role = Track::Role::OverlayAudio;
             t.ownerTrackId = owner.id;
             t.name = tr("%1 audio").arg(owner.name);
             placeTrack(t);
@@ -1108,15 +1108,15 @@ bool Timeline::tidyOverlaySound()
         dest->sortClips();
         emptied.append(m.fromTrackId);
     }
-    dropEmptySoundTracks(emptied);
+    dropEmptyOverlayAudioTracks(emptied);
     return !moves.isEmpty();
 }
 
-void Timeline::dropEmptySoundTracks(const QList<int> &trackIds)
+void Timeline::dropEmptyOverlayAudioTracks(const QList<int> &trackIds)
 {
     for (int id : trackIds)
         if (const Track *t = trackById(id);
-            t && t->role == Track::Role::OverlaySound && t->clips.isEmpty())
+            t && t->role == Track::Role::OverlayAudio && t->clips.isEmpty())
             m_tracks.removeAt(trackIndexOfId(id));
 }
 

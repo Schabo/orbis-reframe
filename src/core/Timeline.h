@@ -82,7 +82,7 @@ public:
     // --- extra tracks --------------------------------------------------
     // Ordered top to bottom below the main track, group by group
     // (Track::Group): the main video's stream tracks, the Audio group, then
-    // each overlay track followed by its sound track.
+    // each overlay track followed by its audio track.
     int trackCount() const { return static_cast<int>(m_tracks.size()); }
     const Track &trackAt(int index) const { return m_tracks.at(index); }
     static constexpr qint64 kInsetKeySnapMs = 20;
@@ -90,9 +90,9 @@ public:
     // The audio track holding the main video's `role` stream (Track::Role),
     // or 0 if there is none (yet).
     int streamTrackId(Track::Role role) const;
-    // The sound track of overlay track `overlayTrackId`, or 0 if it has none
+    // The audio track of overlay track `overlayTrackId`, or 0 if it has none
     // (yet).
-    int soundTrackId(int overlayTrackId) const;
+    int audioTrackId(int overlayTrackId) const;
     int trackIndexOfId(int trackId) const;
     const Track *trackById(int trackId) const;
     // The track clip with this id, and (if non-null) the id of its track.
@@ -141,21 +141,21 @@ public slots:
     // the Overlay group. An empty name gets "Audio N" / "Overlay N". A stream
     // track (CameraMic / ExternalMic, audio only) goes first, the camera
     // mic's above the external mic's, named after its role when `name` is
-    // empty. An OverlaySound track goes right under its overlay track
+    // empty. An OverlayAudio track goes right under its overlay track
     // `ownerTrackId` ("<overlay> audio" when unnamed); 0 if there's no such
     // overlay track. Sound linked to an overlay clip is put on its track's
-    // sound track by the timeline itself, which makes the track when needed;
-    // a sound track goes when its last clip is moved or removed. Returns the new track's id.
+    // audio track by the timeline itself, which makes the track when needed;
+    // an audio track goes when its last clip is moved or removed. Returns the new track's id.
     int addTrack(Track::Kind kind, const QString &name = QString(),
                  Track::Role role = Track::Role::Free, int ownerTrackId = 0);
-    bool removeTrack(int trackId); // and its clips; an overlay track's sound track too
+    bool removeTrack(int trackId); // and its clips; an overlay track's audio track too
     // Rename (trimmed; an empty name is refused). Returns true if it changed.
-    // An overlay's sound track still called "<overlay> audio" follows it.
+    // An overlay's audio track still called "<overlay> audio" follows it.
     bool setTrackName(int trackId, const QString &name);
     // Reorder within the track's group: it ends up at `toIndex`, clamped to
-    // the group's span. An overlay track moves with its sound track, into the
-    // place of the overlay track (or sound track) at `toIndex`; a sound
-    // track only moves with its overlay. Returns true if the order changed.
+    // the group's span. An overlay track moves with its audio track, into the
+    // place of the overlay track (or audio track) at `toIndex`; an
+    // overlay's audio track only moves with its overlay. Returns true if the order changed.
     bool moveTrack(int trackId, int toIndex);
     // Track-level gain (clamped to audiolimits::k{Min,Max}GainDb) and mute.
     void setTrackAudio(int trackId, double gainDb, bool muted);
@@ -291,15 +291,15 @@ private:
     bool linkAnchor(int clipId, LinkAnchor *anchor = nullptr) const;
     // Linked audio. After any edit to what it follows: re-derive every linked
     // clip's speed and start, unlink any whose video clip is gone, and
-    // tidyOverlaySound(). Returns true if anything changed (the caller emits
+    // tidyOverlayAudio(). Returns true if anything changed (the caller emits
     // tracksChanged).
     bool relinkAudio();
-    // Sound linked to an overlay clip onto that overlay track's sound track
-    // (made when missing); a sound track left empty by that goes. True if
+    // Sound linked to an overlay clip onto that overlay track's audio track
+    // (made when missing); an audio track left empty by that goes. True if
     // anything changed.
-    bool tidyOverlaySound();
-    // Remove those of these tracks that are empty sound tracks.
-    void dropEmptySoundTracks(const QList<int> &trackIds);
+    bool tidyOverlayAudio();
+    // Remove those of these tracks that are empty overlay audio tracks.
+    void dropEmptyOverlayAudioTracks(const QList<int> &trackIds);
     // Insert `t` at the end of its group (see addTrack). No signal.
     void placeTrack(const Track &t);
     // A video clip's trim went from [oldIn, oldOut] to its current range:

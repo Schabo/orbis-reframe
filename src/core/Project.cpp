@@ -772,8 +772,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             tracks.back()["role"] = "cameraMic";
         else if (t.role == Track::Role::ExternalMic)
             tracks.back()["role"] = "externalMic";
-        else if (t.role == Track::Role::OverlaySound) {
-            tracks.back()["role"] = "overlaySound";
+        else if (t.role == Track::Role::OverlayAudio) {
+            tracks.back()["role"] = "overlayAudio";
             tracks.back()["owner"] = m_timeline->trackIndexOfId(t.ownerTrackId);
         }
     }
@@ -925,8 +925,9 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     t.role = Track::Role::CameraMic;
                 else if (t.kind == Track::Kind::Audio && (role == "externalMic" || role == "micAir"))
                     t.role = Track::Role::ExternalMic;
-                else if (t.kind == Track::Kind::Audio && role == "overlaySound") {
-                    t.role = Track::Role::OverlaySound;
+                else if (t.kind == Track::Kind::Audio &&
+                         (role == "overlayAudio" || role == "overlaySound")) {
+                    t.role = Track::Role::OverlayAudio;
                     t.ownerTrackId = jt.value("owner", -1) + 1; // the owner's index + 1 for now
                 }
                 std::vector<std::pair<int, int>> links;
@@ -1011,16 +1012,16 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         clipIds.push_back(id);
     }
     // Overlay clips before any audio, so sound linked to one finds its new
-    // id; overlay sound tracks after their overlay tracks (one whose overlay
+    // id; overlay audio tracks after their overlay tracks (one whose overlay
     // track is missing becomes a free audio track).
     std::vector<int> trackIds(parsedTracks.size(), 0);
     std::vector<std::vector<int>> overlayIds(parsedTracks.size()); // [track][clip] -> new id
-    for (bool sound : {false, true})
+    for (bool overlayAudio : {false, true})
         for (size_t i = 0; i < parsedTracks.size(); ++i) {
             const Track &t = parsedTracks[i];
-            if ((t.role == Track::Role::OverlaySound) != sound)
+            if ((t.role == Track::Role::OverlayAudio) != overlayAudio)
                 continue;
-            if (sound) {
+            if (overlayAudio) {
                 const int owner = t.ownerTrackId - 1;
                 const bool ok = owner >= 0 && owner < static_cast<int>(parsedTracks.size()) &&
                                 parsedTracks[owner].kind == Track::Kind::Video;
@@ -1051,7 +1052,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         }
     }
     // A free track that held only overlays' sound (from before overlay
-    // sound tracks; it moved to them) goes.
+    // audio tracks; it moved to them) goes.
     for (size_t i = 0; i < parsedTracks.size(); ++i)
         if (const Track *t = m_timeline->trackById(trackIds[i]);
             t && t->group() == Track::Group::Audio && t->clips.isEmpty() &&

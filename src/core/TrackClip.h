@@ -137,22 +137,22 @@ private:
 // groups, top to bottom (Track::Group): the main video's sound (its stream
 // tracks), the Audio group (any number of free audio tracks), and the
 // Overlay group -- each video (overlay) track, whose clips are drawn as
-// insets over the output, followed by its own sound track while it has one.
+// insets over the output, followed by its own audio track while it has one.
 // Among overlay tracks the first is the top row and draws on top.
 struct Track {
     enum class Kind { Audio, Video };
     // What an audio track holds. The main video's sound is on the stream
     // tracks, right under it -- one per kind of .insv audio stream, named by
     // what it is rather than by its order in the file; an overlay's sound is
-    // on its overlay track's sound track (`ownerTrackId`); a Free track holds
+    // on its overlay track's audio track (`ownerTrackId`); a Free track holds
     // anything (music, voice-over, an unlinked mic).
-    enum class Role { Free, CameraMic, ExternalMic, OverlaySound };
+    enum class Role { Free, CameraMic, ExternalMic, OverlayAudio };
     enum class Group { Main, Audio, Overlay };
 
     int id = 0; // unique among the tracks
     Kind kind = Kind::Audio;
     Role role = Role::Free; // audio tracks only
-    int ownerTrackId = 0;   // OverlaySound: the overlay track it belongs to
+    int ownerTrackId = 0;   // OverlayAudio: the overlay track it belongs to
     QString name;
     double gainDb = 0.0; // on top of each clip's own level
     bool muted = false;  // a muted video track is hidden
@@ -160,7 +160,7 @@ struct Track {
 
     Group group() const
     {
-        if (kind == Kind::Video || role == Role::OverlaySound)
+        if (kind == Kind::Video || role == Role::OverlayAudio)
             return Group::Overlay;
         return role == Role::Free ? Group::Audio : Group::Main;
     }
