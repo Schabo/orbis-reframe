@@ -271,6 +271,10 @@ exports you save yourself, it only writes:
   again.
 - `~/.cache/orbis-reframe/`: the same for untitled projects and for project
   files from before project folders.
+- `<name>.orp.autosave` next to a project file, while it has unsaved
+  changes: the autosave recovery file
+  ([Autosave](projects-and-export.md#one-folder-per-project)). It's deleted
+  when you save or discard the changes.
 - `~/.local/share/orbis-reframe/projects.json`: the project library's list
   and the projects folder. Deleting it empties the list (projects in the
   projects folder still show up); no project is deleted.

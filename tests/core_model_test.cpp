@@ -6,6 +6,7 @@
 // mapping, the multi-clip structure ops (insert / append / remove / move),
 // playbackPlan(), and that the aggregate signals fire.
 
+#include "Autosave.h"
 #include "ClipItem.h"
 #include "MediaPool.h"
 #include "Project.h"
@@ -2184,6 +2185,88 @@ void testPerClipStabilization()
     }
 }
 
+// Autosave's recovery file: written while there are unsaved changes, gone
+// once they're saved or discarded, recovered as a modified project, carried
+// along by a rename; an older one than the project file is stale.
+void testAutosave()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    auto setTime = [](const QString &path, const QDateTime &t) {
+        QFile f(path);
+        if (f.open(QIODevice::ReadWrite))
+            f.setFileTime(t, QFileDevice::FileModificationTime);
+    };
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    const QString recovery = Autosave::pathFor(file);
+    CHECK(recovery == file + ".autosave");
+
+    Project p;
+    p.timeline()->appendClip(tmp.path() + "/a.insv", 10000, 30.0);
+    CHECK(p.save(file));
+    setTime(file, QDateTime::currentDateTime().addSecs(-60));
+    Autosave autosave(&p, 3600 * 1000);
+    autosave.tick();
+    CHECK(!QFileInfo::exists(recovery)); // nothing unsaved
+
+    p.timeline()->appendClip(tmp.path() + "/b.insv", 10000, 30.0);
+    CHECK(p.modified());
+    autosave.tick();
+    CHECK(QFileInfo::exists(recovery));
+    CHECK(Autosave::hasRecovery(file));
+    {
+        Project saved;
+        CHECK(saved.load(file) && saved.timeline()->count() == 1); // the file is untouched
+        Project q;
+        CHECK(q.recover(recovery, file));
+        CHECK(q.filePath() == file && q.modified());
+        CHECK(q.timeline()->count() == 2);
+        if (q.timeline()->count() == 2)
+            CHECK(q.timeline()->clipAt(1).sourcePath == tmp.path() + "/b.insv");
+    }
+
+    // Saved: gone.
+    CHECK(p.save(file));
+    CHECK(!QFileInfo::exists(recovery) && !Autosave::hasRecovery(file));
+
+    // Discarded: gone.
+    p.timeline()->appendClip(tmp.path() + "/c.insv", 10000, 30.0);
+    autosave.tick();
+    CHECK(QFileInfo::exists(recovery));
+    autosave.discard();
+    CHECK(!QFileInfo::exists(recovery));
+
+    // Another project: the old one's goes.
+    autosave.tick();
+    CHECK(QFileInfo::exists(recovery));
+    const QString other = projectfolder::create(tmp.path(), "Other");
+    CHECK(p.save(other));
+    CHECK(!QFileInfo::exists(recovery));
+
+    // Stale: older than the project file.
+    {
+        QFile f(recovery);
+        CHECK(f.open(QIODevice::WriteOnly));
+    }
+    setTime(recovery, QDateTime::currentDateTime().addSecs(-3600));
+    CHECK(!Autosave::hasRecovery(file));
+
+    // A rename takes it along, folder and loose.
+    setTime(recovery, QDateTime::currentDateTime().addSecs(3600));
+    const QString renamed = projectfolder::rename(file, "Trip");
+    CHECK(!renamed.isEmpty() && QFileInfo::exists(Autosave::pathFor(renamed)));
+    CHECK(Autosave::hasRecovery(renamed));
+    const QString loose = tmp.path() + "/Loose.orp";
+    CHECK(p.save(loose));
+    {
+        QFile f(Autosave::pathFor(loose));
+        CHECK(f.open(QIODevice::WriteOnly));
+    }
+    const QString free = projectfolder::rename(loose, "Free");
+    CHECK(QFileInfo::exists(Autosave::pathFor(free)) &&
+          !QFileInfo::exists(Autosave::pathFor(loose)));
+}
+
 void testProjectFolder()
 {
     QTemporaryDir tmp;
@@ -2590,6 +2673,7 @@ int main()
     testProjectVideoTracksJson();
     testMediaPool();
     testProjectFolder();
+    testAutosave();
     testProjectLibrary();
     testProjectSummary();
 

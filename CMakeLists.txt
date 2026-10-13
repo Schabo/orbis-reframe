@@ -175,6 +175,8 @@ endif()
 # (stitch::PreviewStitchConfig, privacy::BlurAddition / BlurRemoval).
 add_library(orbis_core STATIC
     src/core/AudioLimits.h
+    src/core/Autosave.cpp
+    src/core/Autosave.h
     src/core/ClipItem.cpp
     src/core/ClipItem.h
     src/core/TrackClip.cpp

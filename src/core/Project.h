@@ -139,6 +139,16 @@ public slots:
     // Duplicating a project; any format version. False with *error set.
     static bool copyFile(const QString &from, const QString &to, QString *error = nullptr);
 
+    // The document save(projectFile) would write, without writing it or
+    // touching the file path / modified flag (autosave's recovery file).
+    QByteArray fileContents(const QString &projectFile) const;
+
+    // Load the recovery file `autosaveFile` (written for `projectFile` by
+    // fileContents()) as project `projectFile` with unsaved changes: like
+    // load(projectFile), but from the recovery file's contents and modified.
+    bool recover(const QString &autosaveFile, const QString &projectFile,
+                 QString *error = nullptr);
+
     // Parse `path` and rebuild the timeline from it. The existing timeline is
     // left untouched if the file is malformed. On success records `path` and
     // clears modified. Returns false with *error set on failure.

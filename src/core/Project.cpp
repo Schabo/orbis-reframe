@@ -1100,8 +1100,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
 
 bool Project::save(const QString &path, QString *error)
 {
-    const QDir projectDir = QFileInfo(path).absoluteDir();
-    const QByteArray text = buildDocument(&projectDir) + "\n";
+    const QByteArray text = fileContents(path);
 
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -1163,6 +1162,33 @@ bool Project::copyFile(const QString &from, const QString &to, QString *error)
         return fail(QStringLiteral("Cannot open %1 for writing: %2").arg(to, out.errorString()));
     if (out.write(text) != text.size() || !out.commit())
         return fail(QStringLiteral("Failed to write %1: %2").arg(to, out.errorString()));
+    return true;
+}
+
+QByteArray Project::fileContents(const QString &projectFile) const
+{
+    const QDir projectDir = QFileInfo(projectFile).absoluteDir();
+    return buildDocument(&projectDir) + "\n";
+}
+
+bool Project::recover(const QString &autosaveFile, const QString &projectFile, QString *error)
+{
+    QFile file(autosaveFile);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (error)
+            *error = QStringLiteral("Cannot open %1: %2").arg(autosaveFile, file.errorString());
+        return false;
+    }
+    const QDir projectDir = QFileInfo(projectFile).absoluteDir();
+    QString innerError;
+    if (!applyDocument(file.readAll(), &projectDir, &innerError)) {
+        if (error)
+            *error = QStringLiteral("%1 %2").arg(autosaveFile, innerError);
+        return false;
+    }
+    setFilePath(projectFile);
+    setModified(true);
+    clearUndoHistory();
     return true;
 }
 

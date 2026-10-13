@@ -1,5 +1,6 @@
 #include "ProjectFolder.h"
 
+#include "Autosave.h"
 #include "Project.h"
 
 #include <QDir>
@@ -146,10 +147,14 @@ QString rename(const QString &projectFile, const QString &newName, QString *erro
         return failWith(error, QObject::tr("%1 already exists. Choose another name.")
                                    .arg(QDir::toNativeSeparators(target.taken)));
 
+    // An autosave recovery file goes along (Autosave::pathFor).
+    const QString recovery = Autosave::pathFor(fi.absoluteFilePath());
     if (!isProjectFolder(projectFile)) {
         if (!QFile::rename(fi.absoluteFilePath(), target.file))
             return failWith(error, QObject::tr("Can't rename %1.")
                                        .arg(QDir::toNativeSeparators(fi.absoluteFilePath())));
+        if (QFileInfo::exists(recovery))
+            QFile::rename(recovery, Autosave::pathFor(target.file));
         return target.file;
     }
     // The file inside first, then the folder; undone if the folder can't move.
@@ -164,6 +169,10 @@ QString rename(const QString &projectFile, const QString &newName, QString *erro
         return failWith(error, QObject::tr("Can't rename the folder %1.")
                                    .arg(QDir::toNativeSeparators(folder)));
     }
+    const QString movedRecovery =
+        Autosave::pathFor(target.taken + QLatin1Char('/') + fi.fileName());
+    if (QFileInfo::exists(movedRecovery))
+        QFile::rename(movedRecovery, Autosave::pathFor(target.file));
     return target.file;
 }
 

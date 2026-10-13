@@ -66,9 +66,19 @@ and audio files you add stay where they are (see
 | Open a project file from anywhere | **File ▸ Open project…** (`Ctrl+O`), or give the `.orp` file on the command line: `orbis-reframe my-ride.orp`. |
 
 The window's title shows the project's file name, with a `*` while there
-are unsaved changes. There's no automatic saving: save regularly. When you
-close orbis-reframe, open another project or go back to the library with
-unsaved changes, it asks whether to save them.
+are unsaved changes. When you close orbis-reframe, open another project or
+go back to the library with unsaved changes, it asks whether to save them.
+
+**Autosave.** While there are unsaved changes, orbis-reframe writes them
+every two minutes to a recovery file next to the project file
+(`<name>.orp.autosave`). Your project file only changes when you save. The
+recovery file is deleted again when you save, or when you choose
+**Discard** on closing. If orbis-reframe stops without closing properly (a
+crash, a power cut), the next time you open the project it offers the
+changes: **Recover** opens the project as it was at the last autosave, with
+the changes unsaved (save them to keep them); **Discard changes** opens it
+as it was last saved and deletes the recovery file. An untitled project
+(below) isn't autosaved until it's saved once.
 
 **Projects from before project folders** (a `.orp` file on its own, made
 with version 0.2.0 or older) still open with **Open project…** and save

@@ -67,6 +67,7 @@ class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
 class ThumbnailCache;
+class Autosave;
 class PlayerBar;
 class EditToolbar;
 struct Track;
@@ -487,6 +488,7 @@ private:
     // edge-drag / context menu act on whichever clip was grabbed. m_timeline
     // is a cached m_project->timeline().
     Project *m_project = nullptr;
+    Autosave *m_autosave = nullptr; // the recovery file of unsaved changes
     Timeline *m_timeline = nullptr;
     int m_clipId = 0;
     int m_selectedTrackClipId = -1; // an audio clip selected on the timeline

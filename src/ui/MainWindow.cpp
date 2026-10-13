@@ -18,6 +18,7 @@
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QLocale>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -85,6 +86,7 @@
 #include "TabSidebar.h"
 #include "TimelineWidget.h"
 #include "ThumbnailCache.h"
+#include "../core/Autosave.h"
 #include "WaveformCache.h"
 #include "PlayerBar.h"
 #include "EditToolbar.h"
@@ -143,6 +145,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // (pushTimelineToController); it plays across the clips in timeline time.
     m_project = new Project(this);
     m_timeline = m_project->timeline();
+    m_autosave = new Autosave(m_project, Autosave::kDefaultIntervalMs, this);
     // An older project's clips have their sound put on the stream tracks.
     m_project->setAudioStreamCounter([this](const QString &path) { return audioStreamCount(path); });
     connect(m_project, &Project::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
@@ -3271,10 +3274,36 @@ void MainWindow::bindEmptyTimeline()
 void MainWindow::openProject(const QString &projectPath)
 {
     QString error;
+    // Changes autosaved but never saved (the app didn't close properly):
+    // offer them. An older recovery file is stale -- a later save has it all.
+    bool recover = false;
+    const QString recovery = Autosave::pathFor(projectPath);
+    if (Autosave::hasRecovery(projectPath)) {
+        QMessageBox box(QMessageBox::Question, tr("Recover unsaved changes?"),
+                        tr("%1 has unsaved changes from %2 that were never saved, probably "
+                           "because orbis-reframe didn't close properly.\n\nRecover them, or "
+                           "open the project as it was last saved and throw them away?")
+                            .arg(QFileInfo(projectPath).completeBaseName(),
+                                 QLocale().toString(QFileInfo(recovery).lastModified(),
+                                                    QLocale::ShortFormat)),
+                        QMessageBox::NoButton, this);
+        QPushButton *recoverButton = box.addButton(tr("&Recover"), QMessageBox::AcceptRole);
+        box.addButton(tr("&Discard changes"), QMessageBox::DestructiveRole);
+        box.setDefaultButton(recoverButton);
+        box.exec();
+        recover = box.clickedButton() == recoverButton;
+        if (!recover)
+            QFile::remove(recovery);
+    } else if (QFileInfo::exists(recovery)) {
+        QFile::remove(recovery);
+    }
     // Before the load: rebuilding the timeline already asks for waveforms.
     updateCacheDirs(projectPath);
     m_rebindingModel = true;
-    const bool loaded = m_project->load(projectPath, &error);
+    const bool loaded = recover ? m_project->recover(recovery, projectPath, &error)
+                                : m_project->load(projectPath, &error);
+    if (loaded && recover)
+        m_autosave->tick(); // the recovery file is this session's now
     m_rebindingModel = false;
     if (!loaded) {
         updateCacheDirs(m_project->filePath());
@@ -3476,6 +3505,7 @@ bool MainWindow::confirmDiscardChanges()
         saveProject();
         return !m_project->modified(); // a cancelled Save-As leaves it modified
     }
+    m_autosave->discard();
     return true; // Discard
 }
 
