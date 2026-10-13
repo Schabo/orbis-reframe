@@ -142,7 +142,7 @@ public slots:
     // track (CameraMic / ExternalMic, audio only) goes first, the camera
     // mic's above the external mic's, named after its role when `name` is
     // empty. An OverlaySound track goes right under its overlay track
-    // `ownerTrackId` ("<overlay> sound" when unnamed); 0 if there's no such
+    // `ownerTrackId` ("<overlay> audio" when unnamed); 0 if there's no such
     // overlay track. Sound linked to an overlay clip is put on its track's
     // sound track by the timeline itself, which makes the track when needed;
     // a sound track goes when its last clip is moved or removed. Returns the new track's id.
@@ -150,7 +150,7 @@ public slots:
                  Track::Role role = Track::Role::Free, int ownerTrackId = 0);
     bool removeTrack(int trackId); // and its clips; an overlay track's sound track too
     // Rename (trimmed; an empty name is refused). Returns true if it changed.
-    // An overlay's sound track still called "<overlay> sound" follows it.
+    // An overlay's sound track still called "<overlay> audio" follows it.
     bool setTrackName(int trackId, const QString &name);
     // Reorder within the track's group: it ends up at `toIndex`, clamped to
     // the group's span. An overlay track moves with its sound track, into the

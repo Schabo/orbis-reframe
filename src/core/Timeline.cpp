@@ -553,7 +553,7 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, 
             return 0;
         t.ownerTrackId = ownerTrackId;
         if (t.name.isEmpty())
-            t.name = tr("%1 sound").arg(owner->name);
+            t.name = tr("%1 audio").arg(owner->name);
     }
     t.id = m_nextTrackId++;
     if (t.name.isEmpty() && t.role == Track::Role::CameraMic)
@@ -687,8 +687,8 @@ bool Timeline::setTrackName(int trackId, const QString &name)
     if (t->kind == Track::Kind::Video)
         for (Track &s : m_tracks)
             if (s.role == Track::Role::OverlaySound && s.ownerTrackId == trackId &&
-                s.name == tr("%1 sound").arg(old))
-                s.name = tr("%1 sound").arg(n);
+                s.name == tr("%1 audio").arg(old))
+                s.name = tr("%1 audio").arg(n);
     emit tracksChanged();
     return true;
 }
@@ -1095,7 +1095,7 @@ bool Timeline::tidyOverlaySound()
             t.id = to = m_nextTrackId++;
             t.role = Track::Role::OverlaySound;
             t.ownerTrackId = owner.id;
-            t.name = tr("%1 sound").arg(owner.name);
+            t.name = tr("%1 audio").arg(owner.name);
             placeTrack(t);
         }
         Track *from = mutableTrackById(m.fromTrackId);

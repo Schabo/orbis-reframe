@@ -141,7 +141,8 @@ public:
         bool muted = false; // an overlay track: hidden
         bool video = false; // an overlay track
         Group group = Group::Audio;
-        bool overlaySound = false; // an overlay track's sound track, right under it
+        bool overlaySound = false; // an overlay track's audio track, right under it
+        // (Main: the video track's mics. Both have their names indented.)
         QVector<TrackClipView> clips;
     };
 

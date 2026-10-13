@@ -463,7 +463,7 @@ void testOverlayTracks()
     v1.video = true;
     v1.group = TimelineWidget::TrackView::Group::Overlay;
     s1.id = 31;
-    s1.name = "Cam sound";
+    s1.name = "Cam audio";
     s1.group = TimelineWidget::TrackView::Group::Overlay;
     s1.overlaySound = true;
     TimelineWidget::TrackClipView pip;
@@ -488,7 +488,7 @@ void testOverlayTracks()
     f.w.setTracks({a1, v1, s1, v2});
     f.w.resize(kWidth, f.w.sizeHint().height());
 
-    // Rows: the main track; Music; Cam, Cam sound, Overlay 2.
+    // Rows: the main track; Music; Cam, Cam audio, Overlay 2.
     const int mainRowY = mainY();
     const int musicY = trackY(0);
     const int camY = trackY(1) + kGroupGap;

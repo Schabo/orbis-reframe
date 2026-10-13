@@ -1717,9 +1717,9 @@ void testOverlaySound()
     const int vs = tl.soundTrackId(v);
     CHECK(vs && trackOf(s) == vs && tl.trackById(t)->clips.isEmpty());
     CHECK(tl.trackIndexOfId(vs) == tl.trackIndexOfId(v) + 1);
-    CHECK(tl.trackById(vs)->name == "Overlay 1 sound" && tl.trackById(vs)->ownerTrackId == v);
+    CHECK(tl.trackById(vs)->name == "Overlay 1 audio" && tl.trackById(vs)->ownerTrackId == v);
     tl.setTrackName(v, "Phone"); // the sound track's name follows
-    CHECK(tl.trackById(vs)->name == "Phone sound");
+    CHECK(tl.trackById(vs)->name == "Phone audio");
 
     // Follows a move, also onto another overlay track (and its sound track;
     // the one it leaves empty goes).
@@ -1893,7 +1893,7 @@ void testProjectVideoTracksJson()
     const Timeline *rt = r.timeline();
     // Music, Cam, Cam's sound.
     CHECK(rt->trackCount() == 3 && rt->trackAt(2).role == Track::Role::OverlaySound);
-    CHECK(rt->trackAt(2).ownerTrackId == rt->trackAt(1).id && rt->trackAt(2).name == "Cam sound");
+    CHECK(rt->trackAt(2).ownerTrackId == rt->trackAt(1).id && rt->trackAt(2).name == "Cam audio");
     CHECK(rt->trackAt(2).gainDb == -3.0 && rt->trackAt(0).clips.isEmpty());
     const TrackClip &ov = rt->trackAt(1).clips[0];
     CHECK(rt->trackAt(2).clips.size() == 1);

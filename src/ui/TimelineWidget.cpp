@@ -924,7 +924,10 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.fillRect(QRect(0, top, kHeaderW, kTrackH),
                    dragged ? tc.accentSoft : headerBg);
         const QRect mb = muteBox(top, kTrackH);
-        const int indent = t.overlaySound ? 18 : 6; // under its overlay track
+        // A video's own sound is indented under it: the main track's mics,
+        // an overlay track's audio track.
+        const bool sound = t.overlaySound || t.group == TrackView::Group::Main;
+        const int indent = sound ? 18 : 6;
         p.setPen(tc.text);
         p.drawText(QRect(indent, top, mb.left() - indent - 2, kTrackH),
                    Qt::AlignVCenter | Qt::AlignLeft,

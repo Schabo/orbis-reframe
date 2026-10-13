@@ -25,9 +25,9 @@ A new overlay starts in the lower right corner, at 30 % of the picture's
 width.
 
 An overlay video with sound brings it along: the sound goes onto the
-overlay track's own sound track, right under it (*Overlay 1 sound*),
+overlay track's own audio track, right under it (*Overlay 1 audio*),
 linked to the overlay so it stays in step. Move the overlay to another
-overlay track and its sound moves to that track's sound track. Select the overlay to set
+overlay track and its sound moves to that track's audio track. Select the overlay to set
 its sound's level, noise reduction and fades in the **Audio** tab (see
 [Audio and noise reduction](audio.md)). If you've removed the sound,
 right-click the overlay and choose **Put its sound on an audio track** to
