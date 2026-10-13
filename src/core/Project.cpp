@@ -629,6 +629,12 @@ void Project::onTimelineEdited()
         setModified(true);
 }
 
+void Project::setAudioStreamCounter(std::function<int(const QString &)> counter)
+{
+    m_audioStreamCounter = std::move(counter);
+    m_timeline->setAudioStreamCounter(m_audioStreamCounter);
+}
+
 void Project::setModified(bool modified)
 {
     if (m_modified == modified)

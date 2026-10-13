@@ -111,7 +111,7 @@ file, `Alt+S` saves (`Enter` does too).
 |---|---|
 | Click or drag on the ruler | Move the playhead / scrub. |
 | Click a clip | Select it. |
-| Drag a clip | Move it: reorder on the video track; move in time or to another track on audio and overlay tracks. |
+| Drag a clip | Move it: reorder on the video track; move in time or to another track on audio and overlay tracks (a linked audio clip stays put). |
 | Drag a clip's edge | Trim it. |
 | Right-click a clip | Its menu: split, speed, insert, move, remove, link, put its sound on an audio track. |
 | Right-click an empty spot | Add clips, audio or overlays there; add, rename, move or remove tracks; zoom. |

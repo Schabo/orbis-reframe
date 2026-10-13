@@ -131,6 +131,8 @@ public:
         // An overlay whose file has sound: the context menu offers to put it
         // on an audio track.
         bool hasSound = false;
+        // The other tracks it may be dragged onto (Timeline::canHoldClip).
+        QVector<int> moveTargets;
         qint64 spanMs() const { return std::llround((trimOutMs - trimInMs) / speed); }
         qint64 endMs() const { return startMs + spanMs(); }
     };

@@ -210,7 +210,7 @@ them.
 |---|---|
 | Select a clip | Click it. |
 | Move it in time | Drag it left or right. It snaps to the playhead, the cuts on the video track and the edges of other clips. |
-| Move it to another track | Drag it up or down onto another track of the same kind. |
+| Move it to another track | Drag it up or down onto another track of the same kind. *Camera mic*, *External mic* and an overlay's audio track only take that video's own sound (see [Linked audio](#linked-audio)). |
 | Trim it | Drag its left or right edge, or select it and use `[` and `]` as on the video track. |
 | Split it | Select it and press `S`, or right-click it and choose **Split here**. |
 | Remove it | Select it and press `Delete`, or right-click it and choose **Remove audio clip** / **Remove overlay clip**. |
@@ -236,8 +236,8 @@ An audio clip can be **linked** to a clip on the video track or on an
 overlay track. A linked clip keeps in step with that clip: when you move,
 trim, split or speed up the video, its linked audio does the same, and when
 you remove the video clip, the linked audio goes with it. Linked clips show
-a chain icon before their name. You can still move a linked clip to another
-audio track, but not to another time.
+a chain icon before their name. A linked clip can't be moved, neither to
+another time nor to another track.
 
 You get linked audio in two ways:
 
@@ -251,8 +251,17 @@ You get linked audio in two ways:
 To link or unlink an audio clip yourself, right-click it and choose **Link
 to video clip** or **Unlink from video clip**. **Link** is only offered when
 a video clip shows the same recording, for example after you've unlinked
-the clip. Linking keeps the audio where it is. To shift a clip's sound
-against its picture, unlink it, move it, and link it again.
+the clip. Unlinking never moves the clip. Linking keeps it at its time, and
+if it isn't on its video's own sound track any more, puts it back there. To
+shift a clip's sound against its picture, unlink it, move it, and link it
+again.
+
+The tracks that hold a video's own sound -- *Camera mic*, *External mic*
+and an overlay's audio track -- take only that sound, linked or unlinked:
+music and other audio clips can't be dragged onto them. An unlinked clip
+can stay where it is, or be dragged onto one of the audio tracks to use it
+like any other audio clip, and back. When you remove a video clip, only its
+linked audio goes with it; clips you unlinked stay.
 
 Audio and overlay clips that aren't linked stay at their time when you edit
 the video track. If you shorten or remove a video clip, check that your

@@ -7,6 +7,7 @@
 #include <QObject>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -99,6 +100,23 @@ public:
     const TrackClip *trackClipById(int clipId, int *trackId = nullptr) const;
     // Latest end of any clip on an extra track (0 if none).
     qint64 extraTracksEndMs() const;
+    // Whether clip `clipId` may be moved onto track `trackId`. The video
+    // and overlay groups' audio tracks hold only their own source's sound:
+    // a stream track the main video's streams of its role, an overlay's
+    // audio track the sound of a file on that overlay track. Anything goes
+    // on an Audio-group track, except linked sound, which stays on its own
+    // track (unlink it to use it freely). A clip may always stay on its
+    // own track; an overlay clip goes on any overlay track.
+    bool canHoldClip(int trackId, int clipId) const;
+
+    // How many audio streams a source file has (InsvAudioDemux::
+    // countAudioStreams; the model has no FFmpeg), which says which stream
+    // is which mic (Track::roleOfStream). Unset, or 0 for a file: as many as
+    // the timeline's clips of it use.
+    void setAudioStreamCounter(std::function<int(const QString &)> counter)
+    {
+        m_audioStreamCounter = std::move(counter);
+    }
 
 public slots:
     // --- structure ------------------------------------------------------
@@ -173,15 +191,17 @@ public slots:
     int addVideoClip(int trackId, const QString &sourcePath, qint64 sourceDurationMs,
                      qint64 startMs, int sourceWidth, int sourceHeight);
     bool removeTrackClip(int clipId);
-    // Move a clip to `startMs` on the track `toTrackId` (may be its own; must
-    // be of the same kind -- else nothing happens). A
-    // linked clip is locked in time to its video clip: only its track changes
-    // (unlink, move, link again to re-sync it -- linking keeps the position).
+    // Move a clip to `startMs` on the track `toTrackId` (may be its own;
+    // canHoldClip must allow it -- else nothing happens). A linked clip is
+    // locked in time to its video clip and stays on its own track (unlink,
+    // move, link again to re-sync it -- linking keeps the position).
     void moveTrackClip(int clipId, int toTrackId, qint64 startMs);
     // Link an audio clip to `videoClipId` (0 = unlink): a main-track clip,
     // or an overlay clip (an overlay's own sound). The offset is chosen
-    // so nothing moves; the audio takes the clip's speed. Returns false if
-    // either clip doesn't exist (or the target is an audio clip).
+    // so nothing moves in time; the audio takes the clip's speed, and goes
+    // back onto its own track (made when missing) if it was moved off it.
+    // Unlinking moves nothing. Returns false if either clip doesn't exist
+    // (or the target is an audio clip).
     bool linkAudioClip(int audioClipId, int videoClipId);
     // Split the clip at timeline `atMs`: it keeps the part before (and its
     // fade-in), a new clip right after it on the same track gets the rest
@@ -316,9 +336,15 @@ private:
     bool removeLinkedAudio(int videoClipId, QList<int> *tracks = nullptr);
     TrackClip *mutableTrackClipById(int id, Track **track = nullptr);
     Track *mutableTrackById(int trackId);
+    // The mic a main-video stream clip is (Track::roleOfStream); Free when
+    // it isn't one (stream < 0) or its kind isn't known.
+    Track::Role streamRole(const TrackClip &a) const;
+    // Move clip `clipId` from `from` to `to` keeping its time. No signal.
+    void transferTrackClip(int clipId, Track *from, Track *to);
 
     QList<ClipItem> m_clips;
     QList<Track> m_tracks;
     int m_nextId = 1; // shared by main and audio clips: ids are timeline-unique
     int m_nextTrackId = 1;
+    std::function<int(const QString &)> m_audioStreamCounter;
 };

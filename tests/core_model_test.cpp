@@ -1329,19 +1329,23 @@ void testLinkedAudio()
     tl.removeClip(c);
     CHECK(mic()->startMs == 10000);
 
-    // A linked clip can't be moved in time: a move only changes its track.
+    // A linked clip can't be moved, in time or off its track.
     const int t2 = tl.addTrack(Track::Kind::Audio);
+    CHECK(!tl.canHoldClip(t2, m) && tl.canHoldClip(t, m));
     tl.moveTrackClip(m, t2, 11000);
-    CHECK(mic()->startMs == 10000 && mic()->syncOffsetMs == 0);
-    CHECK(tl.trackById(t2)->clips.size() == 1);
     tl.moveTrackClip(m, t, 11000);
+    CHECK(mic()->startMs == 10000 && mic()->syncOffsetMs == 0);
+    CHECK(tl.trackById(t2)->clips.isEmpty());
     tl.removeTrack(t2);
     // Re-syncing: unlink, move, link again -- the offset comes from the move
-    // and survives edits.
+    // and survives edits. Linking puts it back on its stream track (it was
+    // put on a free one here).
     tl.linkAudioClip(m, 0);
     tl.moveTrackClip(m, t, 10040);
     tl.linkAudioClip(m, b);
     CHECK(mic()->syncOffsetMs == 40 && mic()->startMs == 10040);
+    const int cam = tl.streamTrackId(Track::Role::CameraMic);
+    CHECK(cam && tl.trackById(cam)->clips.size() == 1 && tl.trackById(t)->clips.isEmpty());
     tl.moveClip(b, 0);
     CHECK(mic()->startMs == 40);
     tl.moveClip(b, 1);
@@ -1382,7 +1386,7 @@ void testLinkedAudio()
     CHECK(b2 != 0);
     CHECK(mic()->trimOutMs == 12000 && mic()->linkedClipId == b);
     const TrackClip *right = nullptr;
-    for (const TrackClip &x : tl.trackById(t)->clips)
+    for (const TrackClip &x : tl.trackById(cam)->clips)
         if (x.linkedClipId == b2)
             right = &x;
     CHECK(right && right->trimInMs == 12000 && right->trimOutMs == 20000);
@@ -1399,7 +1403,7 @@ void testLinkedAudio()
     CHECK(!tl.trackClipById(rightId));
     tl.clearClipTrim(b2);
     tl.setClipTrimIn(b2, 12000);
-    const int rightId2 = addLinkedMic(tl, t, b2);
+    const int rightId2 = addLinkedMic(tl, cam, b2);
     tl.removeClip(b2); // removing the video removes its mic
     CHECK(!tl.trackClipById(rightId2));
 
@@ -1814,6 +1818,77 @@ void testTrackGroups()
     CHECK(tl.trackIndexOfId(a3) == 4);
     // Removing an overlay track takes its audio track.
     CHECK(tl.removeTrack(o3) && !tl.trackById(s3));
+}
+
+// Unlinked audio stays where it is; the video and overlay groups' audio
+// tracks hold only their own source's sound.
+void testOwnSoundTracks()
+{
+    Timeline tl;
+    tl.setAudioStreamCounter([](const QString &path) { return path.endsWith(".insv") ? 2 : 1; });
+    const int a = tl.appendClip("/v/a.insv", 10000, 30.0, 0, 0, 2); // 0..10 s
+    const int b = tl.appendClip("/v/b.insv", 10000, 30.0, 0, 0, 2); // 10..20 s
+    const int cam = tl.streamTrackId(Track::Role::CameraMic);
+    const int ext = tl.streamTrackId(Track::Role::ExternalMic);
+    const int music = tl.addTrack(Track::Kind::Audio);
+    const int ov = tl.addTrack(Track::Kind::Video);
+    const int pip = tl.addVideoClip(ov, "/v/pip.mp4", 5000, 1000, 1920, 1080);
+    const int song = tl.addAudioClip(music, "/m/song.mp3", 30000, 0);
+    const auto trackOf = [&](int clipId) {
+        int id = 0;
+        tl.trackClipById(clipId, &id);
+        return id;
+    };
+    int camA = 0, extA = 0;
+    for (const TrackClip &x : tl.trackById(cam)->clips)
+        if (x.linkedClipId == a)
+            camA = x.id;
+    for (const TrackClip &x : tl.trackById(ext)->clips)
+        if (x.linkedClipId == a)
+            extA = x.id;
+    CHECK(camA && extA);
+
+    // Music goes on no video's sound track; a mic only on its own.
+    CHECK(!tl.canHoldClip(cam, song) && !tl.canHoldClip(ext, song));
+    tl.moveTrackClip(song, cam, 500);
+    CHECK(trackOf(song) == music && tl.trackClipById(song)->startMs == 0);
+    CHECK(!tl.canHoldClip(music, camA) && !tl.canHoldClip(ext, camA));
+
+    // Unlinking moves nothing; the clip may then be nudged on its track, go
+    // to the Audio group and come back, but not onto the other mic's track.
+    CHECK(tl.linkAudioClip(camA, 0));
+    CHECK(trackOf(camA) == cam && tl.trackClipById(camA)->startMs == 0);
+    tl.moveTrackClip(camA, cam, 40);
+    CHECK(tl.trackClipById(camA)->startMs == 40);
+    tl.moveTrackClip(camA, ext, 40);
+    CHECK(trackOf(camA) == cam);
+    tl.moveTrackClip(camA, music, 40);
+    CHECK(trackOf(camA) == music);
+    CHECK(tl.canHoldClip(cam, camA) && !tl.canHoldClip(ext, camA));
+    // Linked again in the Audio group: back on its stream track, time kept.
+    CHECK(tl.linkAudioClip(camA, a));
+    CHECK(trackOf(camA) == cam && tl.trackClipById(camA)->startMs == 40);
+
+    // Removing a video clip takes its linked audio only.
+    int camB = 0;
+    for (const TrackClip &x : tl.trackById(cam)->clips)
+        if (x.linkedClipId == b)
+            camB = x.id;
+    CHECK(tl.linkAudioClip(extA, 0));
+    tl.removeClip(a);
+    CHECK(!tl.trackClipById(camA) && tl.trackClipById(extA) && trackOf(extA) == ext);
+    CHECK(tl.trackClipById(camB)); // b's own sound is untouched
+
+    // An overlay's audio track: only that overlay's sound.
+    const int snd = addOverlayAudio(tl, music, pip);
+    const int ovs = tl.audioTrackId(ov);
+    CHECK(ovs && trackOf(snd) == ovs);
+    CHECK(!tl.canHoldClip(ovs, song) && !tl.canHoldClip(ovs, extA));
+    CHECK(!tl.canHoldClip(music, snd) && !tl.canHoldClip(cam, snd));
+    CHECK(tl.linkAudioClip(snd, 0) && trackOf(snd) == ovs);
+    CHECK(tl.canHoldClip(music, snd) && !tl.canHoldClip(cam, snd));
+    tl.moveTrackClip(snd, music, 1000); // the empty audio track goes
+    CHECK(trackOf(snd) == music && !tl.audioTrackId(ov));
 }
 
 void testProjectVideoTracksJson()
@@ -2458,6 +2533,7 @@ int main()
     testProjectConvertSound();
     testOverlayAudio();
     testTrackGroups();
+    testOwnSoundTracks();
     testProjectTracksJson();
     testVideoTracks();
     testProjectVideoTracksJson();

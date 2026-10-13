@@ -110,12 +110,10 @@ public:
     // How many audio streams a source file has (InsvAudioDemux::
     // countAudioStreams; the model has no FFmpeg). Used to convert a project
     // from before version 10, whose clips' sound has to be put on the stream
-    // tracks. Unset, or for a missing file: as many as the clip's picked
-    // stream needs.
-    void setAudioStreamCounter(std::function<int(const QString &)> counter)
-    {
-        m_audioStreamCounter = std::move(counter);
-    }
+    // tracks, and handed to the timeline (Timeline::setAudioStreamCounter).
+    // Unset, or for a missing file: as many as the clip's picked stream
+    // needs.
+    void setAudioStreamCounter(std::function<int(const QString &)> counter);
 
 public slots:
     // Empty timeline, no file, not modified.

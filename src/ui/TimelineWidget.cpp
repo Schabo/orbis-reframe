@@ -1123,8 +1123,8 @@ void TimelineWidget::dragTo(QPoint pos)
         m_provStartMs = start;
         m_dragAudio.startMs = start;
         const int t = trackAtY(pos.y());
-        if (t >= 0 && m_tracks[t].video == m_tracks[m_dragAudioTrack].video)
-            m_provTrack = t; // only onto a track of its kind
+        if (t >= 0 && (t == m_dragAudioTrack || o.moveTargets.contains(m_tracks[t].id)))
+            m_provTrack = t; // only onto a track that may hold it
         update();
         break;
     }

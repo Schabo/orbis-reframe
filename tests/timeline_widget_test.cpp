@@ -76,6 +76,7 @@ struct Fixture {
         m.trimInMs = 1000;
         m.trimOutMs = 11000;
         m.sourceDurationMs = 60000;
+        m.moveTargets = {12};
         t1.clips = {m};
         t2.id = 12;
         t2.name = "Audio 2";
@@ -84,6 +85,7 @@ struct Fixture {
         n.label = "fx";
         n.startMs = 15000;
         n.trimOutMs = n.sourceDurationMs = 5000;
+        n.moveTargets = {11};
         t2.clips = {n};
         w.setTracks({t1, t2});
         w.resize(kWidth, w.sizeHint().height());
@@ -146,8 +148,8 @@ void testSelectAndMove()
 
 void testLinkedStaysPut()
 {
-    // Clip 100 linked to a video clip: a drag can change its track, not its
-    // time.
+    // Clip 100 linked to a video clip: a drag changes neither its time nor,
+    // with no other track that may hold it, its track.
     Fixture f;
     TimelineWidget::TrackView t1, t2;
     t1.id = 11;
@@ -163,8 +165,30 @@ void testLinkedStaysPut()
     drag(&f.w, QPoint(Fixture::x(5000), trackY(0)), QPoint(Fixture::x(8000), trackY(0)));
     CHECK(moved.count() == 0);
     drag(&f.w, QPoint(Fixture::x(5000), trackY(0)), QPoint(Fixture::x(8000), trackY(1)));
-    CHECK(moved.count() == 1 && moved.last().at(1).toInt() == 12 &&
-          moved.last().at(2).toLongLong() == 2000);
+    CHECK(moved.count() == 0);
+}
+
+void testOnlyOntoTracksThatHoldIt()
+{
+    // A music clip over a track not among its move targets (a video's own
+    // sound) stays on its track; it still moves in time.
+    Fixture f;
+    TimelineWidget::TrackView t1, t2;
+    t1.id = 11;
+    t2.id = 12;
+    t2.group = TimelineWidget::TrackView::Group::Main;
+    TimelineWidget::TrackClipView m;
+    m.id = 100;
+    m.startMs = 2000;
+    m.trimOutMs = m.sourceDurationMs = 5000;
+    t1.clips = {m};
+    f.w.setTracks({t2, t1});
+    QSignalSpy moved(&f.w, &TimelineWidget::trackClipMoved);
+    drag(&f.w, QPoint(Fixture::x(3000), trackY(1) + kGroupGap),
+         QPoint(Fixture::x(3500), trackY(0)));
+    CHECK(moved.count() == 1 && moved.last().at(1).toInt() == 11);
+    if (moved.count() == 1)
+        CHECK(std::abs(moved.last().at(2).toLongLong() - 2500) <= 20);
 }
 
 void testTrims()
@@ -472,6 +496,7 @@ void testOverlayTracks()
     pip.startMs = 4000;
     pip.trimOutMs = pip.sourceDurationMs = 6000;
     pip.keySourceMs = {1000, 3000};
+    pip.moveTargets = {22};
     v1.clips = {pip};
     v2.id = 22;
     v2.name = "Overlay 2";
@@ -610,6 +635,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     testSelectAndMove();
     testLinkedStaysPut();
+    testOnlyOntoTracksThatHoldIt();
     testTrims();
     testHeaderAndMain();
     testZoom();

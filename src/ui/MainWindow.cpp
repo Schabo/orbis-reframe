@@ -1574,6 +1574,14 @@ int MainWindow::audioStreamCount(const QString &path)
 void MainWindow::refreshTrackRows()
 {
     QVector<TimelineWidget::TrackView> tracks;
+    const auto moveTargets = [this](const Track &from, int clipId) {
+        QVector<int> ids;
+        for (int k = 0; k < m_timeline->trackCount(); ++k)
+            if (const int id = m_timeline->trackAt(k).id;
+                id != from.id && m_timeline->canHoldClip(id, clipId))
+                ids.push_back(id);
+        return ids;
+    };
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         TimelineWidget::TrackView v;
@@ -1601,6 +1609,7 @@ void MainWindow::refreshTrackRows()
                 for (const InsetKey &k : c.insetKeys.keys())
                     a.keySourceMs.push_back(k.timeMs);
                 a.hasSound = !c.mediaMissing && audioStreamCount(c.sourcePath) > 0;
+                a.moveTargets = moveTargets(t, c.id);
                 v.clips.push_back(a);
                 continue;
             }
@@ -1618,6 +1627,7 @@ void MainWindow::refreshTrackRows()
                 a.peaks = waveformFor(c.sourcePath, c.stream);
             a.gain = std::pow(10.0, c.gainDb / 20.0);
             a.linkable = !a.linked && linkTargetFor(c) != 0;
+            a.moveTargets = moveTargets(t, c.id);
             v.clips.push_back(a);
         }
         tracks.push_back(std::move(v));

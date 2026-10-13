@@ -825,14 +825,80 @@ bool Timeline::removeTrackClip(int clipId)
     return false;
 }
 
+Track::Role Timeline::streamRole(const TrackClip &a) const
+{
+    if (a.stream < 0)
+        return Track::Role::Free;
+    int count = m_audioStreamCounter ? m_audioStreamCounter(a.sourcePath) : 0;
+    if (count <= 0) // as many as its clips use
+        for (const Track &t : m_tracks)
+            for (const TrackClip &o : t.clips)
+                if (o.sourcePath == a.sourcePath)
+                    count = std::max(count, o.stream + 1);
+    return Track::roleOfStream(a.stream, std::max(count, a.stream + 1));
+}
+
+bool Timeline::canHoldClip(int trackId, int clipId) const
+{
+    int fromId = 0;
+    const TrackClip *a = trackClipById(clipId, &fromId);
+    const Track *to = trackById(trackId);
+    if (!a || !to)
+        return false;
+    const Track &from = *trackById(fromId);
+    if (to->kind != from.kind)
+        return false;
+    if (to->id == from.id || to->kind == Track::Kind::Video)
+        return true;
+    // An overlay's sound: a file on that overlay track (the clip it's linked to).
+    const auto overlaySound = [&] {
+        if (to->role != Track::Role::OverlayAudio)
+            return false;
+        if (a->linkedClipId) {
+            int overlayTrackId = 0;
+            return trackClipById(a->linkedClipId, &overlayTrackId) &&
+                   overlayTrackId == to->ownerTrackId;
+        }
+        const Track *owner = trackById(to->ownerTrackId);
+        return a->stream < 0 && owner &&
+               std::any_of(owner->clips.begin(), owner->clips.end(),
+                           [&](const TrackClip &o) { return o.sourcePath == a->sourcePath; });
+    };
+    // The main video's sound: a stream track of its mic.
+    const auto streamSound = [&] {
+        if (!to->isStreamTrack() || streamRole(*a) != to->role)
+            return false;
+        return !a->linkedClipId || indexOfId(a->linkedClipId) >= 0;
+    };
+    switch (to->group()) {
+    case Track::Group::Audio:
+        return !a->linkedClipId;
+    case Track::Group::Main:
+        return streamSound();
+    case Track::Group::Overlay:
+        return overlaySound();
+    }
+    return false;
+}
+
+void Timeline::transferTrackClip(int clipId, Track *from, Track *to)
+{
+    const auto at = std::find_if(from->clips.begin(), from->clips.end(),
+                                 [&](const TrackClip &a) { return a.id == clipId; });
+    const TrackClip a = *at;
+    from->clips.erase(at);
+    to->clips.push_back(a);
+    to->sortClips();
+}
+
 void Timeline::moveTrackClip(int clipId, int toTrackId, qint64 startMs)
 {
     Track *from = nullptr;
     TrackClip *c = mutableTrackClipById(clipId, &from);
     Track *to = mutableTrackById(toTrackId);
-    if (!c || !to || to->kind != from->kind)
+    if (!c || !to || !canHoldClip(toTrackId, clipId))
         return;
-    if (c->linkedClipId) // locked in time to its video clip: only the track changes
+    if (c->linkedClipId) // locked in time to its video clip
         startMs = c->startMs;
     if (from == to) {
         if (c->setStartMs(startMs)) {
@@ -842,12 +908,11 @@ void Timeline::moveTrackClip(int clipId, int toTrackId, qint64 startMs)
         }
         return;
     }
-    TrackClip moved = *c;
-    moved.setStartMs(startMs);
-    from->clips.removeIf([clipId](const TrackClip &a) { return a.id == clipId; });
-    to->clips.push_back(moved);
-    to->sortClips();
+    c->setStartMs(startMs);
+    transferTrackClip(clipId, from, to);
+    QList<int> emptied{from->id};
     relinkAudio();
+    dropEmptyOverlayAudioTracks(emptied);
     emit tracksChanged();
 }
 
@@ -1028,9 +1093,20 @@ bool Timeline::linkAudioClip(int audioClipId, int videoClipId)
     a->linkedClipId = videoClipId;
     a->speed = v.speed;
     // Where the link alone would put it; the difference is the sync offset,
-    // so linking doesn't move anything.
+    // so linking doesn't move anything in time.
     a->syncOffsetMs =
         a->startMs - (v.startMs + std::llround((a->trimInMs - v.trimInMs) / v.speed));
+    // The main video's sound back onto its stream track (an overlay's:
+    // relinkAudio).
+    if (const Track::Role role = streamRole(*a);
+        indexOfId(videoClipId) >= 0 && role != Track::Role::Free && t->role != role) {
+        const QList<int> emptied{t->id}; // `t` and `a` don't survive addTrack
+        int home = streamTrackId(role);
+        if (!home)
+            home = addTrack(Track::Kind::Audio, QString(), role);
+        transferTrackClip(audioClipId, mutableTrackById(emptied[0]), mutableTrackById(home));
+        dropEmptyOverlayAudioTracks(emptied);
+    }
     relinkAudio();
     emit tracksChanged();
     return true;
@@ -1098,14 +1174,7 @@ bool Timeline::tidyOverlayAudio()
             t.name = tr("%1 audio").arg(owner.name);
             placeTrack(t);
         }
-        Track *from = mutableTrackById(m.fromTrackId);
-        const auto at = std::find_if(from->clips.begin(), from->clips.end(),
-                                     [&](const TrackClip &a) { return a.id == m.clipId; });
-        const TrackClip a = *at;
-        from->clips.erase(at);
-        Track *dest = mutableTrackById(to);
-        dest->clips.push_back(a);
-        dest->sortClips();
+        transferTrackClip(m.clipId, mutableTrackById(m.fromTrackId), mutableTrackById(to));
         emptied.append(m.fromTrackId);
     }
     dropEmptyOverlayAudioTracks(emptied);
