@@ -541,13 +541,21 @@ qint64 Timeline::extraTracksEndMs() const
     return end;
 }
 
-int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role)
+int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, int ownerTrackId)
 {
     Track t;
-    t.id = m_nextTrackId++;
     t.kind = kind;
     t.role = kind == Track::Kind::Audio ? role : Track::Role::Free;
     t.name = name;
+    if (t.role == Track::Role::OverlaySound) {
+        const Track *owner = trackById(ownerTrackId);
+        if (!owner || owner->kind != Track::Kind::Video)
+            return 0;
+        t.ownerTrackId = ownerTrackId;
+        if (t.name.isEmpty())
+            t.name = tr("%1 sound").arg(owner->name);
+    }
+    t.id = m_nextTrackId++;
     if (t.name.isEmpty() && t.role == Track::Role::CameraMic)
         t.name = tr("Camera mic");
     else if (t.name.isEmpty() && t.role == Track::Role::ExternalMic)
@@ -567,26 +575,48 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role)
             ++n;
         t.name = nameFor(n);
     }
-    if (kind == Track::Kind::Video) {
-        m_tracks.insert(videoTrackCount(), t);
-    } else if (t.role != Track::Role::Free) {
-        // Under the video track, the camera mic first.
-        int at = videoTrackCount();
-        while (at < m_tracks.size() && m_tracks[at].role != Track::Role::Free &&
-               (t.role == Track::Role::ExternalMic || m_tracks[at].role == Track::Role::CameraMic))
-            ++at;
-        m_tracks.insert(at, t);
-    } else {
-        m_tracks.push_back(t);
-    }
+    placeTrack(t);
     emit tracksChanged();
     return t.id;
+}
+
+void Timeline::placeTrack(const Track &t)
+{
+    int at = 0;
+    switch (t.group()) {
+    case Track::Group::Main: // the camera mic first
+        while (at < m_tracks.size() && m_tracks[at].isStreamTrack() &&
+               (t.role == Track::Role::ExternalMic || m_tracks[at].role == Track::Role::CameraMic))
+            ++at;
+        break;
+    case Track::Group::Audio:
+        while (at < m_tracks.size() && m_tracks[at].group() != Track::Group::Overlay)
+            ++at;
+        break;
+    case Track::Group::Overlay:
+        at = static_cast<int>(m_tracks.size());
+        if (t.role == Track::Role::OverlaySound) { // under its overlay and its other sound
+            at = trackIndexOfId(t.ownerTrackId) + 1;
+            while (at < m_tracks.size() && m_tracks[at].role == Track::Role::OverlaySound)
+                ++at;
+        }
+        break;
+    }
+    m_tracks.insert(at, t);
 }
 
 int Timeline::streamTrackId(Track::Role role) const
 {
     for (const Track &t : m_tracks)
         if (t.kind == Track::Kind::Audio && t.role == role && role != Track::Role::Free)
+            return t.id;
+    return 0;
+}
+
+int Timeline::soundTrackId(int overlayTrackId) const
+{
+    for (const Track &t : m_tracks)
+        if (t.role == Track::Role::OverlaySound && t.ownerTrackId == overlayTrackId)
             return t.id;
     return 0;
 }
@@ -631,10 +661,17 @@ bool Timeline::removeTrack(int trackId)
     const int i = trackIndexOfId(trackId);
     if (i < 0)
         return false;
-    const QList<TrackClip> clips = m_tracks[i].clips;
-    m_tracks.removeAt(i);
+    QList<int> gone{trackId};
+    for (const Track &t : m_tracks) // an overlay's sound track goes with it
+        if (t.role == Track::Role::OverlaySound && t.ownerTrackId == trackId)
+            gone.append(t.id);
+    QList<TrackClip> clips;
+    for (int id : gone)
+        clips += m_tracks.takeAt(trackIndexOfId(id)).clips;
+    QList<int> emptied;
     for (const TrackClip &c : clips) // an overlay's sound goes with it
-        removeLinkedAudio(c.id);
+        removeLinkedAudio(c.id, &emptied);
+    dropEmptySoundTracks(emptied);
     emit tracksChanged();
     return true;
 }
@@ -645,7 +682,13 @@ bool Timeline::setTrackName(int trackId, const QString &name)
     const QString n = name.trimmed();
     if (!t || n.isEmpty() || n == t->name)
         return false;
+    const QString old = t->name;
     t->name = n;
+    if (t->kind == Track::Kind::Video)
+        for (Track &s : m_tracks)
+            if (s.role == Track::Role::OverlaySound && s.ownerTrackId == trackId &&
+                s.name == tr("%1 sound").arg(old))
+                s.name = tr("%1 sound").arg(n);
     emit tracksChanged();
     return true;
 }
@@ -653,21 +696,39 @@ bool Timeline::setTrackName(int trackId, const QString &name)
 bool Timeline::moveTrack(int trackId, int toIndex)
 {
     const int from = trackIndexOfId(trackId);
-    if (from < 0)
+    if (from < 0 || m_tracks[from].role == Track::Role::OverlaySound)
         return false;
-    const int videos = videoTrackCount();
-    int streams = videos; // the end of the stream tracks
-    while (streams < m_tracks.size() && m_tracks[streams].role != Track::Role::Free)
-        ++streams;
-    if (m_tracks[from].kind == Track::Kind::Video)
-        toIndex = std::clamp(toIndex, 0, videos - 1);
-    else if (m_tracks[from].role != Track::Role::Free)
-        toIndex = std::clamp(toIndex, videos, streams - 1);
-    else
-        toIndex = std::clamp(toIndex, streams, static_cast<int>(m_tracks.size()) - 1);
-    if (toIndex == from)
-        return false;
-    m_tracks.move(from, toIndex);
+    const Track::Group group = m_tracks[from].group();
+    int first = 0, end = 0; // the group's span
+    while (first < m_tracks.size() && m_tracks[first].group() != group)
+        ++first;
+    end = first;
+    while (end < m_tracks.size() && m_tracks[end].group() == group)
+        ++end;
+    toIndex = std::clamp(toIndex, first, end - 1);
+    if (group != Track::Group::Overlay) {
+        if (toIndex == from)
+            return false;
+        m_tracks.move(from, toIndex);
+    } else {
+        // Whole overlay tracks, each with its sound tracks.
+        const auto unitEnd = [this](int i) {
+            ++i;
+            while (i < m_tracks.size() && m_tracks[i].role == Track::Role::OverlaySound)
+                ++i;
+            return i;
+        };
+        while (m_tracks[toIndex].role == Track::Role::OverlaySound)
+            --toIndex; // its overlay
+        if (toIndex == from)
+            return false;
+        const int len = unitEnd(from) - from;
+        const int at = toIndex < from ? toIndex : unitEnd(toIndex) - len;
+        QList<Track> unit = m_tracks.mid(from, len);
+        m_tracks.remove(from, len);
+        for (int k = 0; k < len; ++k)
+            m_tracks.insert(at + k, unit[k]);
+    }
     emit tracksChanged();
     return true;
 }
@@ -755,7 +816,9 @@ bool Timeline::removeTrackClip(int clipId)
         for (int i = 0; i < t.clips.size(); ++i)
             if (t.clips[i].id == clipId) {
                 t.clips.removeAt(i);
-                removeLinkedAudio(clipId); // an overlay's sound goes with it
+                QList<int> emptied{t.id};
+                removeLinkedAudio(clipId, &emptied); // an overlay's sound goes with it
+                dropEmptySoundTracks(emptied);
                 emit tracksChanged();
                 return true;
             }
@@ -922,14 +985,6 @@ void Timeline::clearTrackClipInsetKeys(int clipId, qint64 sourceMs)
     emit tracksChanged();
 }
 
-int Timeline::videoTrackCount() const
-{
-    int n = 0;
-    while (n < m_tracks.size() && m_tracks[n].kind == Track::Kind::Video)
-        ++n;
-    return n;
-}
-
 // ---------------------------------------------------------------------------
 // Linked audio (to main-track or overlay clips)
 // ---------------------------------------------------------------------------
@@ -1011,7 +1066,58 @@ bool Timeline::relinkAudio()
         if (moved)
             t.sortClips();
     }
-    return changed;
+    return tidyOverlaySound() || changed;
+}
+
+bool Timeline::tidyOverlaySound()
+{
+    struct Move {
+        int clipId, fromTrackId, overlayTrackId;
+    };
+    QList<Move> moves;
+    for (const Track &t : m_tracks) {
+        if (t.kind != Track::Kind::Audio)
+            continue;
+        for (const TrackClip &a : t.clips) {
+            int overlayTrackId = 0;
+            if (!a.linkedClipId || !trackClipById(a.linkedClipId, &overlayTrackId))
+                continue; // free, or the main video's sound
+            if (t.role != Track::Role::OverlaySound || t.ownerTrackId != overlayTrackId)
+                moves.append({a.id, t.id, overlayTrackId});
+        }
+    }
+    QList<int> emptied;
+    for (const Move &m : moves) {
+        int to = soundTrackId(m.overlayTrackId);
+        if (!to) {
+            const Track &owner = *trackById(m.overlayTrackId);
+            Track t;
+            t.id = to = m_nextTrackId++;
+            t.role = Track::Role::OverlaySound;
+            t.ownerTrackId = owner.id;
+            t.name = tr("%1 sound").arg(owner.name);
+            placeTrack(t);
+        }
+        Track *from = mutableTrackById(m.fromTrackId);
+        const auto at = std::find_if(from->clips.begin(), from->clips.end(),
+                                     [&](const TrackClip &a) { return a.id == m.clipId; });
+        const TrackClip a = *at;
+        from->clips.erase(at);
+        Track *dest = mutableTrackById(to);
+        dest->clips.push_back(a);
+        dest->sortClips();
+        emptied.append(m.fromTrackId);
+    }
+    dropEmptySoundTracks(emptied);
+    return !moves.isEmpty();
+}
+
+void Timeline::dropEmptySoundTracks(const QList<int> &trackIds)
+{
+    for (int id : trackIds)
+        if (const Track *t = trackById(id);
+            t && t->role == Track::Role::OverlaySound && t->clips.isEmpty())
+            m_tracks.removeAt(trackIndexOfId(id));
 }
 
 bool Timeline::followTrim(int videoClipId, qint64 oldIn, qint64 oldOut)
@@ -1072,12 +1178,16 @@ bool Timeline::splitLinkedAudio(int leftId, int rightId, qint64 atSourceMs)
     return changed;
 }
 
-bool Timeline::removeLinkedAudio(int videoClipId)
+bool Timeline::removeLinkedAudio(int videoClipId, QList<int> *tracks)
 {
     bool changed = false;
     for (Track &t : m_tracks)
-        changed |= t.clips.removeIf([videoClipId](const TrackClip &a) {
-            return a.linkedClipId == videoClipId;
-        }) > 0;
+        if (t.clips.removeIf([videoClipId](const TrackClip &a) {
+                return a.linkedClipId == videoClipId;
+            }) > 0) {
+            changed = true;
+            if (tracks)
+                tracks->append(t.id);
+        }
     return changed;
 }

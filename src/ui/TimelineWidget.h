@@ -15,10 +15,11 @@ class QTimer;
 #include <memory>
 #include <vector>
 
-// The timeline: a ruler, any overlay (video) tracks, the main video track (clip
-// blocks sized by timeline span, butt-joined -- hard cuts; picture only) and
-// any extra audio tracks below it (its own sound first, on the stream
-// tracks), each with a header on the left, and a playhead over all of them.
+// The timeline: a ruler, the main video track (clip blocks sized by timeline
+// span, butt-joined -- hard cuts; picture only) and the extra tracks below it
+// in three groups, a little apart: its own sound (the stream tracks), the
+// Audio group, and the overlay (video) tracks, each followed by its sound
+// track. Each row has a header on the left; a playhead runs over all of them.
 // Everything here is in *timeline time*.
 //
 // Pure view. MainWindow feeds it the clips, tracks and playhead and turns its
@@ -53,8 +54,10 @@ class QTimer;
 //                                        overlay track: hide it). The main
 //                                        track has none: its sound is on
 //                                        the stream tracks under it.
-//   * drag a header up / down          -> trackMoved (reorder, among its
-//                                        own kind)
+//   * drag a header up / down          -> trackMoved (reorder, within its
+//                                        group; an overlay track takes its
+//                                        sound track along, which can't be
+//                                        dragged on its own)
 //   * double-click a header            -> rename in place: Enter commits,
 //                                        Escape cancels -> trackRenameRequested
 //   * right-click                      -> split a clip here / remove it /
@@ -63,8 +66,8 @@ class QTimer;
 //                                        rename, move or remove a track /
 //                                        zoom
 //   Files: audio / video files dragged in from a file manager drop at the
-//   pointer: onto a track of their kind, or anywhere else for the first
-//   track with room (or a new one) -> audioFilesDropped /
+//   pointer: onto an Audio-group / overlay track, or anywhere else for the
+//   first such track with room (or a new one) -> audioFilesDropped /
 //   videoFilesDropped. .insv clips go onto the main track at the cut
 //   nearest the pointer, also on an empty timeline -> clipFilesDropped.
 //   Waveforms: a clip given `peaks` draws its audio's level (dB scale), with
@@ -132,15 +135,18 @@ public:
         qint64 endMs() const { return startMs + spanMs(); }
     };
     struct TrackView {
+        enum class Group { Main, Audio, Overlay }; // as Track::Group
         int id = 0;
         QString name;
         bool muted = false; // an overlay track: hidden
-        bool video = false; // an overlay track, drawn above the main track
+        bool video = false; // an overlay track
+        Group group = Group::Audio;
+        bool overlaySound = false; // an overlay track's sound track, right under it
         QVector<TrackClipView> clips;
     };
 
     void setClips(const QVector<Clip> &clips);
-    // Overlay tracks first (top row first), then audio tracks.
+    // Top to bottom, group by group (TrackView::Group).
     void setTracks(const QVector<TrackView> &tracks);
     void setPlayhead(qint64 timelineMs);
     void setActiveClip(int clipId); // -1 = none
@@ -252,6 +258,10 @@ private:
     void dragTo(QPoint pos);
     void autoScrollTick();
     int trackGapAtY(int y) const; // insertion gap for a header drag, [0, tracks]
+    // The span [first, end) of track `index`'s group in m_tracks.
+    void groupSpan(int index, int *first, int *end) const;
+    // An overlay track and its sound track(s): the index just past them.
+    int unitEnd(int index) const;
     void startRename(int trackIndex);
     void finishRename();
     // Timeline ms at pixel x, unclamped and fractional (waveform columns).
@@ -278,7 +288,6 @@ private:
     QVector<Clip> m_clips;
     QVector<Row> m_rows;
     QVector<TrackView> m_tracks;
-    int m_videoTracks = 0; // leading overlay tracks in m_tracks
     qint64 m_totalMs = 0;  // the main track: the timeline's length
     qint64 m_extentMs = 0; // what the view spans: the main track, or longer audio
     qint64 m_playheadMs = 0;

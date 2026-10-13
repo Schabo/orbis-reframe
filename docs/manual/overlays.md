@@ -14,7 +14,7 @@ recording of your route.
 
 ## Adding an overlay
 
-Overlays go on overlay tracks, above the video track. Add one with **Media ▸
+Overlays go on overlay tracks, the lowest tracks on the timeline. Add one with **Media ▸
 Add video overlay…** (`Ctrl+Shift+V`), by right-clicking the timeline and
 choosing **Add video overlay here…**, or by dragging video files from the
 **Media** tab or your file manager onto the timeline. Overlays take `.mp4`, `.mov`, `.mkv`,
@@ -24,8 +24,10 @@ trimming, splitting, hiding a track) is in [The timeline](timeline.md).
 A new overlay starts in the lower right corner, at 30 % of the picture's
 width.
 
-An overlay video with sound brings it along: the sound goes onto an audio
-track, linked to the overlay so it stays in step. Select the overlay to set
+An overlay video with sound brings it along: the sound goes onto the
+overlay track's own sound track, right under it (*Overlay 1 sound*),
+linked to the overlay so it stays in step. Move the overlay to another
+overlay track and its sound moves to that track's sound track. Select the overlay to set
 its sound's level, noise reduction and fades in the **Audio** tab (see
 [Audio and noise reduction](audio.md)). If you've removed the sound,
 right-click the overlay and choose **Put its sound on an audio track** to

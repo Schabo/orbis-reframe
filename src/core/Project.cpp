@@ -772,6 +772,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             tracks.back()["role"] = "cameraMic";
         else if (t.role == Track::Role::ExternalMic)
             tracks.back()["role"] = "externalMic";
+        else if (t.role == Track::Role::OverlaySound) {
+            tracks.back()["role"] = "overlaySound";
+            tracks.back()["owner"] = m_timeline->trackIndexOfId(t.ownerTrackId);
+        }
     }
 
     json media = json::array();
@@ -921,6 +925,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     t.role = Track::Role::CameraMic;
                 else if (t.kind == Track::Kind::Audio && (role == "externalMic" || role == "micAir"))
                     t.role = Track::Role::ExternalMic;
+                else if (t.kind == Track::Kind::Audio && role == "overlaySound") {
+                    t.role = Track::Role::OverlaySound;
+                    t.ownerTrackId = jt.value("owner", -1) + 1; // the owner's index + 1 for now
+                }
                 std::vector<std::pair<int, int>> links;
                 if (jt.contains("clips"))
                     for (const json &jc : jt.at("clips")) {
@@ -1002,17 +1010,31 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipMediaMissing(id, pc.mediaMissing);
         clipIds.push_back(id);
     }
-    // Overlay clips before any audio, so sound linked to one finds its new id.
-    std::vector<int> trackIds;
+    // Overlay clips before any audio, so sound linked to one finds its new
+    // id; overlay sound tracks after their overlay tracks (one whose overlay
+    // track is missing becomes a free audio track).
+    std::vector<int> trackIds(parsedTracks.size(), 0);
     std::vector<std::vector<int>> overlayIds(parsedTracks.size()); // [track][clip] -> new id
-    for (size_t i = 0; i < parsedTracks.size(); ++i) {
-        const Track &t = parsedTracks[i];
-        trackIds.push_back(m_timeline->addTrack(t.kind, t.name, t.role));
-        m_timeline->setTrackAudio(trackIds.back(), t.gainDb, t.muted);
-        if (t.kind == Track::Kind::Video)
-            for (const TrackClip &c : t.clips)
-                overlayIds[i].push_back(m_timeline->insertTrackClip(trackIds.back(), c));
-    }
+    for (bool sound : {false, true})
+        for (size_t i = 0; i < parsedTracks.size(); ++i) {
+            const Track &t = parsedTracks[i];
+            if ((t.role == Track::Role::OverlaySound) != sound)
+                continue;
+            if (sound) {
+                const int owner = t.ownerTrackId - 1;
+                const bool ok = owner >= 0 && owner < static_cast<int>(parsedTracks.size()) &&
+                                parsedTracks[owner].kind == Track::Kind::Video;
+                trackIds[i] = m_timeline->addTrack(t.kind, t.name,
+                                                   ok ? t.role : Track::Role::Free,
+                                                   ok ? trackIds[owner] : 0);
+            } else {
+                trackIds[i] = m_timeline->addTrack(t.kind, t.name, t.role);
+            }
+            m_timeline->setTrackAudio(trackIds[i], t.gainDb, t.muted);
+            if (t.kind == Track::Kind::Video)
+                for (const TrackClip &c : t.clips)
+                    overlayIds[i].push_back(m_timeline->insertTrackClip(trackIds[i], c));
+        }
     for (size_t i = 0; i < parsedTracks.size(); ++i) {
         const Track &t = parsedTracks[i];
         if (t.kind == Track::Kind::Video)
@@ -1028,6 +1050,13 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             m_timeline->insertTrackClip(trackIds[i], c);
         }
     }
+    // A free track that held only overlays' sound (from before overlay
+    // sound tracks; it moved to them) goes.
+    for (size_t i = 0; i < parsedTracks.size(); ++i)
+        if (const Track *t = m_timeline->trackById(trackIds[i]);
+            t && t->group() == Track::Group::Audio && t->clips.isEmpty() &&
+            !parsedTracks[i].clips.isEmpty())
+            m_timeline->removeTrack(trackIds[i]);
     if (parsedVersion < 10)
         convertClipSound(m_timeline, m_audioStreamCounter, parsed, clipIds, parsedMainMuted);
     addTimelineSourcesToPool(true); // an older project's sources; not an edit

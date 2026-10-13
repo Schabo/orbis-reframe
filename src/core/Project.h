@@ -59,9 +59,13 @@ public:
     //     "added" -- plates blurred by hand, [{frames: [[tMs, kind, 12 corner
     //       coordinates in millionths], ...], timing: "corrected" |
     //       "uncorrected" | "noGyro"}] (privacy::BlurAddition).
-    // A track: {kind: "audio" | "video", name, gainDb, muted, clips}; a
-    //   stream track also has role: "cameraMic" | "externalMic" (Track::Role;
-    //   "micAir" from development builds reads as "externalMic").
+    // A track: {kind: "audio" | "video", name, gainDb, muted, clips}, in
+    //   order (Track::Group); a stream track also has role: "cameraMic" |
+    //   "externalMic" (Track::Role; "micAir" from development builds reads as
+    //   "externalMic"), an overlay's sound track role: "overlaySound" and
+    //   owner: its overlay track's index (an older build reads it as a free
+    //   audio track; an overlay's sound on a free track moves to its sound
+    //   track on load).
     //   An audio clip: source, stream, sourceDurationMs, startMs, trimInMs,
     //   trimOutMs, speed, gainDb, muted, fadeInMs, fadeOutMs; optional: noise
     //   {mode: "wind" (motorcycle) | "windGeneral" | "hiss" | "voice" |

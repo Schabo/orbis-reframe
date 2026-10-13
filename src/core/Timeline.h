@@ -11,9 +11,9 @@
 #include <vector>
 
 // The main video track -- an ordered list of ClipItems laid end to end, hard
-// cuts, no gaps or transitions -- plus any number of extra tracks,
+// cuts, no gaps or transitions -- plus any number of extra tracks under it,
 // whose clips sit at free positions: audio tracks, and video (overlay) tracks
-// whose clips are drawn as insets over the output. The main track
+// whose clips are drawn as insets over the output (grouped, see Track). The main track
 // defines the timeline's length; anything on the extra tracks past its end is
 // not played. The only thing that mutates a ClipItem, so every
 // successful edit becomes a signal here. Lives on the GUI thread.
@@ -80,16 +80,19 @@ public:
     std::vector<ClipPlan> playbackPlan() const;
 
     // --- extra tracks --------------------------------------------------
-    // Ordered top to bottom below the main track.
+    // Ordered top to bottom below the main track, group by group
+    // (Track::Group): the main video's stream tracks, the Audio group, then
+    // each overlay track followed by its sound track.
     int trackCount() const { return static_cast<int>(m_tracks.size()); }
     const Track &trackAt(int index) const { return m_tracks.at(index); }
     static constexpr qint64 kInsetKeySnapMs = 20;
     static constexpr qint64 kInsetKeyDeleteSnapMs = 150;
-    // Video tracks come first (indices 0 .. videoTrackCount() - 1).
-    int videoTrackCount() const;
     // The audio track holding the main video's `role` stream (Track::Role),
     // or 0 if there is none (yet).
     int streamTrackId(Track::Role role) const;
+    // The sound track of overlay track `overlayTrackId`, or 0 if it has none
+    // (yet).
+    int soundTrackId(int overlayTrackId) const;
     int trackIndexOfId(int trackId) const;
     const Track *trackById(int trackId) const;
     // The track clip with this id, and (if non-null) the id of its track.
@@ -133,20 +136,26 @@ public slots:
     void clear();
 
     // --- extra tracks --------------------------------------------------
-    // Add a track: an audio track below the others, a video track below the
-    // other video tracks (all of which stay ahead of the audio ones). An
-    // empty name gets "Audio N" / "Overlay N". A stream track (`role` not
-    // Free, audio only) goes first among the audio tracks instead, the
-    // camera mic's above the external mic's, named after its role when `name` is
-    // empty. Returns its id.
+    // Add a track at the end of its group (Track::Group): a free audio
+    // track at the bottom of the Audio group, a video track at the bottom of
+    // the Overlay group. An empty name gets "Audio N" / "Overlay N". A stream
+    // track (CameraMic / ExternalMic, audio only) goes first, the camera
+    // mic's above the external mic's, named after its role when `name` is
+    // empty. An OverlaySound track goes right under its overlay track
+    // `ownerTrackId` ("<overlay> sound" when unnamed); 0 if there's no such
+    // overlay track. Sound linked to an overlay clip is put on its track's
+    // sound track by the timeline itself, which makes the track when needed;
+    // a sound track goes when its last clip is moved or removed. Returns the new track's id.
     int addTrack(Track::Kind kind, const QString &name = QString(),
-                 Track::Role role = Track::Role::Free);
-    bool removeTrack(int trackId); // and its clips
+                 Track::Role role = Track::Role::Free, int ownerTrackId = 0);
+    bool removeTrack(int trackId); // and its clips; an overlay track's sound track too
     // Rename (trimmed; an empty name is refused). Returns true if it changed.
+    // An overlay's sound track still called "<overlay> sound" follows it.
     bool setTrackName(int trackId, const QString &name);
-    // Reorder: the track ends up at `toIndex`, clamped to the span of its
-    // own kind (video tracks stay ahead of audio, stream tracks ahead of the
-    // free audio tracks). Returns true if the order changed.
+    // Reorder within the track's group: it ends up at `toIndex`, clamped to
+    // the group's span. An overlay track moves with its sound track, into the
+    // place of the overlay track (or sound track) at `toIndex`; a sound
+    // track only moves with its overlay. Returns true if the order changed.
     bool moveTrack(int trackId, int toIndex);
     // Track-level gain (clamped to audiolimits::k{Min,Max}GainDb) and mute.
     void setTrackAudio(int trackId, double gainDb, bool muted);
@@ -281,9 +290,18 @@ private:
     };
     bool linkAnchor(int clipId, LinkAnchor *anchor = nullptr) const;
     // Linked audio. After any edit to what it follows: re-derive every linked
-    // clip's speed and start, and unlink any whose video clip is gone.
-    // Returns true if anything changed (the caller emits tracksChanged).
+    // clip's speed and start, unlink any whose video clip is gone, and
+    // tidyOverlaySound(). Returns true if anything changed (the caller emits
+    // tracksChanged).
     bool relinkAudio();
+    // Sound linked to an overlay clip onto that overlay track's sound track
+    // (made when missing); a sound track left empty by that goes. True if
+    // anything changed.
+    bool tidyOverlaySound();
+    // Remove those of these tracks that are empty sound tracks.
+    void dropEmptySoundTracks(const QList<int> &trackIds);
+    // Insert `t` at the end of its group (see addTrack). No signal.
+    void placeTrack(const Track &t);
     // A video clip's trim went from [oldIn, oldOut] to its current range:
     // linked audio edges that sat on the old edges follow; the rest are
     // clamped into the new range; audio left with nothing inside it is
@@ -293,8 +311,9 @@ private:
     // itself and `rightId`: its linked audio past the cut goes with the right
     // part, split at the same source instant if it spans it.
     bool splitLinkedAudio(int leftId, int rightId, qint64 atSourceMs);
-    // Remove every audio clip linked to this video clip.
-    bool removeLinkedAudio(int videoClipId);
+    // Remove every audio clip linked to this video clip; the ids of the
+    // tracks it was on are added to `tracks`.
+    bool removeLinkedAudio(int videoClipId, QList<int> *tracks = nullptr);
     TrackClip *mutableTrackClipById(int id, Track **track = nullptr);
     Track *mutableTrackById(int trackId);
 

@@ -19,8 +19,8 @@ noise. How to add, move, trim and split audio clips on the timeline is in
 - **Audio files** on the other audio tracks: music, or sound from a
   separate recorder.
 - **An overlay's sound.** When you add an overlay video that has sound, its
-  sound goes onto an audio track as a clip linked to the overlay, the same
-  way as a video clip's.
+  sound goes onto a track right under its overlay track, as a clip linked
+  to the overlay, the same way as a video clip's.
 
 Everything plays together, in playback and in the export.
 

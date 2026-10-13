@@ -1581,6 +1581,10 @@ void MainWindow::refreshTrackRows()
         v.name = t.name;
         v.muted = t.muted;
         v.video = t.kind == Track::Kind::Video;
+        v.group = t.group() == Track::Group::Main    ? TimelineWidget::TrackView::Group::Main
+                  : t.group() == Track::Group::Audio ? TimelineWidget::TrackView::Group::Audio
+                                                     : TimelineWidget::TrackView::Group::Overlay;
+        v.overlaySound = t.role == Track::Role::OverlaySound;
         for (const TrackClip &c : t.clips) {
             TimelineWidget::TrackClipView a;
             a.id = c.id;
@@ -1660,7 +1664,7 @@ QList<int> MainWindow::audioPanelClipIds(QString *scope) const
     // camera mic and external mic, an overlay's sound.
     const auto linkedTo = [this](int clipId) {
         QList<int> ids;
-        for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i)
+        for (int i = 0; i < m_timeline->trackCount(); ++i)
             for (const TrackClip &a : m_timeline->trackAt(i).clips)
                 if (a.linkedClipId == clipId)
                     ids.append(a.id);
@@ -1798,11 +1802,14 @@ void MainWindow::addAudioFiles(const QStringList &paths, int trackId, qint64 atM
         return;
     atMs = std::clamp<qint64>(atMs, 0, m_timeline->totalDurationMs());
 
-    // No track given: the first audio track with room for them there, else a
-    // new one. Several files go one after another.
-    if (trackId <= 0 || !m_timeline->trackById(trackId) ||
-        m_timeline->trackById(trackId)->kind != Track::Kind::Audio) {
-        trackId = freeTrackFor(atMs, atMs + total, false, [](const Track &) { return true; });
+    // No track of the Audio group given (the others hold a video's own
+    // sound): the first there with room for them, else a new one. Several
+    // files go one after another.
+    const Track *given = trackId > 0 ? m_timeline->trackById(trackId) : nullptr;
+    if (!given || given->group() != Track::Group::Audio) {
+        trackId = freeTrackFor(atMs, atMs + total, false, [](const Track &t) {
+            return t.group() == Track::Group::Audio;
+        });
         if (!trackId)
             trackId = m_timeline->addTrack(Track::Kind::Audio);
     }
@@ -1879,10 +1886,10 @@ void MainWindow::pushInsetsToController()
 {
     std::vector<InsetFeed::Clip> clips;
     // Bottom-most first: the lowest overlay row draws first, the top row last.
-    for (int i = m_timeline->videoTrackCount() - 1; i >= 0; --i) {
+    for (int i = m_timeline->trackCount() - 1; i >= 0; --i) {
         const Track &t = m_timeline->trackAt(i);
-        if (t.muted)
-            continue; // hidden
+        if (t.kind != Track::Kind::Video || t.muted)
+            continue; // (hidden)
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
@@ -1908,9 +1915,9 @@ void MainWindow::pushInsetsToController()
 std::vector<exportpipe::InsetClipJob> MainWindow::insetJobs() const
 {
     std::vector<exportpipe::InsetClipJob> jobs;
-    for (int i = m_timeline->videoTrackCount() - 1; i >= 0; --i) {
+    for (int i = m_timeline->trackCount() - 1; i >= 0; --i) {
         const Track &t = m_timeline->trackAt(i);
-        if (t.muted)
+        if (t.kind != Track::Kind::Video || t.muted)
             continue;
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
@@ -2060,9 +2067,9 @@ int MainWindow::linkTargetFor(const TrackClip &a) const
         if (c.sourcePath == a.sourcePath)
             consider(c.id, m_timeline->clipToTimeline(i, 0), c.trimInMs, c.trimOutMs, c.speed);
     }
-    for (int i = 0; i < m_timeline->videoTrackCount(); ++i)
+    for (int i = 0; i < m_timeline->trackCount(); ++i)
         for (const TrackClip &c : m_timeline->trackAt(i).clips)
-            if (c.sourcePath == a.sourcePath)
+            if (m_timeline->trackAt(i).kind == Track::Kind::Video && c.sourcePath == a.sourcePath)
                 consider(c.id, c.startMs, c.trimInMs, c.trimOutMs, c.speed);
     return best;
 }
@@ -2635,21 +2642,19 @@ int MainWindow::addOverlaySound(int clipId)
     a.trimOutMs = o->trimOutMs;
     a.speed = o->speed;
     a.linkedClipId = o->id; // and follows the overlay's edits
-    const qint64 endMs = o->endMs();
 
     // Its sound is already on a track: that one, rather than play it twice.
     // (Only this clip's: another overlay of the same file has its own.)
-    for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i)
+    for (int i = 0; i < m_timeline->trackCount(); ++i)
         for (const TrackClip &x : m_timeline->trackAt(i).clips)
             if (x.linkedClipId == o->id)
                 return x.id;
 
-    // A free audio track with room (not a stream track: those hold the
-    // video clips' own sound), else a new one.
-    int audioTrack = freeTrackFor(a.startMs, endMs, false,
-                                  [](const Track &t) { return t.role == Track::Role::Free; });
+    // On its overlay track's sound track, made when missing.
+    int audioTrack = m_timeline->soundTrackId(trackId);
     if (!audioTrack)
-        audioTrack = m_timeline->addTrack(Track::Kind::Audio);
+        audioTrack = m_timeline->addTrack(Track::Kind::Audio, QString(),
+                                          Track::Role::OverlaySound, trackId);
     return m_timeline->insertTrackClip(audioTrack, a);
 }
 

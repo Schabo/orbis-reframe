@@ -91,13 +91,16 @@ From top to bottom it has:
 
 - the **ruler**, with the time. Click or drag on it to move the **playhead**,
   the vertical line that marks the frame shown in the viewport;
-- any **overlay tracks**: videos shown as picture-in-picture over the 360°
-  video;
 - the **video track**: your `.insv` clips, one after another, with a hard
   cut between each pair;
 - the video clips' sound, on the **Camera mic** track (and **External mic**,
   when an external microphone was connected);
-- any other **audio tracks**: music, or sound from an external recorder.
+- any other **audio tracks**: music, or sound from an external recorder;
+- any **overlay tracks**: videos shown as picture-in-picture over the 360°
+  video, each with its sound on a track right under it.
+
+A little space separates these three groups: the video and its sound, the
+audio tracks, the overlays.
 
 Clicking a clip selects it. It doesn't move the playhead: only the ruler
 and the player bar's progress bar do that. [The timeline](timeline.md) explains how to arrange, trim, split and

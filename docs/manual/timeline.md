@@ -154,13 +154,22 @@ and wind for each clip: see [Audio and noise reduction](audio.md).
 
 Besides the video track, you can add any number of other tracks:
 
-- **Audio tracks**, under the video track and its *Camera mic* and *Mic
-  Air* tracks: music, or sound from an external recorder. Files: `.mp3`, `.wav`, `.flac`, `.aac`,
-  `.m4a`, `.ogg` and `.opus`.
-- **Overlay tracks**, above the video track: ordinary flat videos shown as a
-  picture-in-picture over the 360° video, for example from a phone or an
+- **Audio tracks**, under the video track and its *Camera mic* and
+  *External mic* tracks: music, sound effects, a voice-over, or sound from
+  an external recorder. Files: `.mp3`, `.wav`, `.flac`, `.aac`, `.m4a`,
+  `.ogg` and `.opus`. A new project has none.
+- **Overlay tracks**, under the audio tracks: ordinary flat videos shown as
+  a picture-in-picture over the 360° video, for example from a phone or an
   action camera. Files: `.mp4`, `.mov`, `.mkv`, `.m4v`, `.webm` and `.avi`.
-  How to place and size them is in [Overlays](overlays.md).
+  An overlay's sound goes on a track of its own right under its overlay
+  track, called after it (*Overlay 1 sound*); that track comes when the
+  first overlay with sound is put on the overlay track, and goes when its
+  last clip is removed. How to place and size overlays is in
+  [Overlays](overlays.md).
+
+So from top to bottom the timeline has three groups of tracks, with a
+little space between them: the video track and its sound, the audio
+tracks, and the overlay tracks with their sound.
 
 Unlike the video track, these tracks can have gaps: each clip sits at its
 own time.
@@ -182,7 +191,9 @@ There are four ways:
 - Drag audio files or flat videos from your file manager onto the timeline
   panel (not the viewport). They go in where you drop them: on the track you
   drop them on, or, if you drop them somewhere else on the timeline, on the
-  first track with room for them. Dropped together with `.insv` clips, they
+  first track with room for them. Audio files go on the audio tracks only,
+  not on *Camera mic*, *External mic* or an overlay's sound track: dropped
+  there, they go on the first audio track with room. Dropped together with `.insv` clips, they
   start where the clips go in. Without a clip on the video track, only
   `.insv` clips can be dropped.
 
@@ -214,8 +225,8 @@ there is one, and on the video track otherwise.
 | Mute an audio track | Click the **M** box in its header. Click it again to hear it. |
 | Hide an overlay track | Click the **H** box in its header. |
 | Rename a track | Double-click its name, type the new name and press `Enter` (`Esc` cancels). Or right-click it and choose **Rename track…**. |
-| Change the order of tracks | Drag a track header up or down, or right-click the track and choose **Move track up** / **Move track down**. Overlay tracks stay above the video track and audio tracks below it. A higher overlay track is drawn on top of a lower one. |
-| Remove a track and everything on it | Right-click the track and choose **Remove track**. |
+| Change the order of tracks | Drag a track header up or down, or right-click the track and choose **Move track up** / **Move track down**. A track stays in its group: *Camera mic* and *External mic* under the video track, audio tracks among the audio tracks, overlay tracks among the overlay tracks. An overlay track takes its sound track along; the sound track itself can't be moved. A higher overlay track is drawn on top of a lower one. |
+| Remove a track and everything on it | Right-click the track and choose **Remove track**. Removing an overlay track removes its sound track too. |
 
 ## Linked audio
 

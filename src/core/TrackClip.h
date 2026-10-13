@@ -133,25 +133,38 @@ private:
     void clampFades();
 };
 
-// One extra track: an audio track below the main video track, or a video
-// (overlay) track above it, whose clips are drawn as insets over the output.
-// Timeline keeps every video track ahead of every audio track; among
-// video tracks the first is the top row and draws on top.
+// One extra track, under the main video track. Timeline keeps them in three
+// groups, top to bottom (Track::Group): the main video's sound (its stream
+// tracks), the Audio group (any number of free audio tracks), and the
+// Overlay group -- each video (overlay) track, whose clips are drawn as
+// insets over the output, followed by its own sound track while it has one.
+// Among overlay tracks the first is the top row and draws on top.
 struct Track {
     enum class Kind { Audio, Video };
     // What an audio track holds. The main video's sound is on the stream
     // tracks, right under it -- one per kind of .insv audio stream, named by
-    // what it is rather than by its order in the file; a Free track holds
-    // anything (music, an overlay's sound, an unlinked mic).
-    enum class Role { Free, CameraMic, ExternalMic };
+    // what it is rather than by its order in the file; an overlay's sound is
+    // on its overlay track's sound track (`ownerTrackId`); a Free track holds
+    // anything (music, voice-over, an unlinked mic).
+    enum class Role { Free, CameraMic, ExternalMic, OverlaySound };
+    enum class Group { Main, Audio, Overlay };
 
     int id = 0; // unique among the tracks
     Kind kind = Kind::Audio;
     Role role = Role::Free; // audio tracks only
+    int ownerTrackId = 0;   // OverlaySound: the overlay track it belongs to
     QString name;
     double gainDb = 0.0; // on top of each clip's own level
     bool muted = false;  // a muted video track is hidden
     QList<TrackClip> clips; // kept sorted by startMs
+
+    Group group() const
+    {
+        if (kind == Kind::Video || role == Role::OverlaySound)
+            return Group::Overlay;
+        return role == Role::Free ? Group::Audio : Group::Main;
+    }
+    bool isStreamTrack() const { return role == Role::CameraMic || role == Role::ExternalMic; }
 
     // The role of stream `stream` (InsvAudioDemux's ordinal) of an .insv
     // with `streamCount` audio streams: with an external mic connected the

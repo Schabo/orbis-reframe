@@ -17,6 +17,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QObject>
 #include <QTemporaryDir>
 
@@ -1573,10 +1576,10 @@ void testVideoTracks()
     const int a1 = tl.addTrack(Track::Kind::Audio);
     const int v1 = tl.addTrack(Track::Kind::Video);
     const int v2 = tl.addTrack(Track::Kind::Video);
-    // Video tracks go ahead of the audio ones, in the order added.
-    CHECK(tl.videoTrackCount() == 2);
-    CHECK(tl.trackAt(0).id == v1 && tl.trackAt(1).id == v2 && tl.trackAt(2).id == a1);
-    CHECK(tl.trackAt(0).name == "Overlay 1" && tl.trackAt(1).name == "Overlay 2");
+    // The Audio group goes ahead of the Overlay group; each in the order added.
+    CHECK(tl.trackAt(0).id == a1 && tl.trackAt(1).id == v1 && tl.trackAt(2).id == v2);
+    CHECK(tl.trackAt(0).group() == Track::Group::Audio && tl.trackAt(2).group() == Track::Group::Overlay);
+    CHECK(tl.trackAt(1).name == "Overlay 1" && tl.trackAt(2).name == "Overlay 2");
     { // a new track's name is the lowest number free, not a count
         Timeline n;
         n.appendClip("/v/a.insv", 60000, 30.0);
@@ -1586,11 +1589,12 @@ void testVideoTracks()
         CHECK(n.trackById(n.addTrack(Track::Kind::Video))->name == "Overlay 1");
         CHECK(n.trackById(n.addTrack(Track::Kind::Video))->name == "Overlay 3");
     }
-    // Reordering stays inside the kind.
-    CHECK(!tl.moveTrack(a1, 0) && tl.trackAt(2).id == a1);
-    CHECK(tl.moveTrack(v2, 0) && tl.trackAt(0).id == v2);
-    CHECK(!tl.moveTrack(v2, 5) || tl.trackAt(1).id == v2);
-    tl.moveTrack(v1, 0);
+    // Reordering stays inside the group.
+    CHECK(!tl.moveTrack(a1, 2) && tl.trackAt(0).id == a1);
+    CHECK(tl.moveTrack(v2, 0) && tl.trackAt(1).id == v2);
+    CHECK(!tl.moveTrack(v2, 5) || tl.trackAt(2).id == v2);
+    tl.moveTrack(v1, 1);
+    CHECK(tl.trackAt(1).id == v1 && tl.trackAt(2).id == v2);
 
     // Clips only go on a track of their kind.
     CHECK(tl.addAudioClip(v1, "/m/song.mp3", 5000, 0) == 0);
@@ -1602,7 +1606,7 @@ void testVideoTracks()
     CHECK(std::abs(pc->aspect() - 16.0 / 9.0) < 1e-9);
     const int m = tl.addAudioClip(a1, "/m/song.mp3", 5000, 0);
     tl.moveTrackClip(c, a1, 3000); // wrong kind: nothing moves
-    CHECK(tl.trackClipById(c)->startMs == 2000 && tl.trackAt(0).clips.size() == 1);
+    CHECK(tl.trackClipById(c)->startMs == 2000 && tl.trackById(v1)->clips.size() == 1);
     tl.moveTrackClip(c, v2, 3000);
     CHECK(tl.trackById(v2)->clips.size() == 1 && tl.trackClipById(c)->startMs == 3000);
     CHECK(!tl.linkAudioClip(c, tl.clipAt(0).id)); // no audio link on an overlay
@@ -1701,17 +1705,34 @@ void testOverlaySound()
     const int o = tl.addVideoClip(v, "/v/pip.mp4", 10000, 2000, 1920, 1080); // 2..12 s
     const int s = addOverlaySound(tl, t, o);
     auto snd = [&] { return tl.trackClipById(s); };
+    const auto trackOf = [&](int clipId) {
+        int id = 0;
+        tl.trackClipById(clipId, &id);
+        return id;
+    };
     CHECK(snd() && snd()->linkedClipId == o && snd()->syncOffsetMs == 0);
     CHECK(snd()->startMs == 2000 && snd()->endMs() == 12000);
+    // Not on the free track it was put on: on its overlay track's sound
+    // track, made right under it.
+    const int vs = tl.soundTrackId(v);
+    CHECK(vs && trackOf(s) == vs && tl.trackById(t)->clips.isEmpty());
+    CHECK(tl.trackIndexOfId(vs) == tl.trackIndexOfId(v) + 1);
+    CHECK(tl.trackById(vs)->name == "Overlay 1 sound" && tl.trackById(vs)->ownerTrackId == v);
+    tl.setTrackName(v, "Phone"); // the sound track's name follows
+    CHECK(tl.trackById(vs)->name == "Phone sound");
 
-    // Follows a move, also onto another overlay track.
+    // Follows a move, also onto another overlay track (and its sound track;
+    // the one it leaves empty goes).
     tl.moveTrackClip(o, v, 5000);
     CHECK(snd()->startMs == 5000);
     tl.moveTrackClip(o, v2, 4000);
     CHECK(snd()->startMs == 4000 && snd()->linkedClipId == o);
-    // Can't be moved in time on its own.
+    const int v2s = tl.soundTrackId(v2);
+    CHECK(v2s && trackOf(s) == v2s && !tl.trackById(vs) && !tl.soundTrackId(v));
+    CHECK(tl.trackIndexOfId(v2s) == tl.trackIndexOfId(v2) + 1);
+    // Can't be moved in time on its own, nor off its sound track.
     tl.moveTrackClip(s, t, 9000);
-    CHECK(snd()->startMs == 4000);
+    CHECK(snd()->startMs == 4000 && trackOf(s) == v2s);
 
     // Follows trims: head (the overlay's start moves with it) and tail.
     tl.setTrackClipTrimIn(o, 1000); // overlay 5..13 s, source 1..10 s
@@ -1725,7 +1746,7 @@ void testOverlaySound()
     CHECK(o2 > 0);
     CHECK(snd()->trimOutMs == 4000 && snd()->linkedClipId == o);
     int s2 = 0;
-    for (const TrackClip &x : tl.trackById(t)->clips)
+    for (const TrackClip &x : tl.trackById(v2s)->clips)
         if (x.linkedClipId == o2)
             s2 = x.id;
     CHECK(s2 > 0 && tl.trackClipById(s2)->trimInMs == 4000);
@@ -1733,10 +1754,13 @@ void testOverlaySound()
     tl.moveTrackClip(o2, v2, 20000);
     CHECK(tl.trackClipById(s2)->startMs == 20000);
 
-    // Linking by hand keeps the position; an audio clip is no target.
+    // Linking by hand keeps the position (and puts it back on the sound
+    // track); an audio clip is no target.
     CHECK(tl.linkAudioClip(s, 0) && snd()->linkedClipId == 0);
     tl.moveTrackClip(s, t, 5040);
+    CHECK(trackOf(s) == t);
     CHECK(tl.linkAudioClip(s, o) && snd()->syncOffsetMs == 40 && snd()->startMs == 5040);
+    CHECK(trackOf(s) == v2s);
     tl.moveTrackClip(o, v2, 6000);
     CHECK(snd()->startMs == 6040);
     CHECK(!tl.linkAudioClip(s, s2));
@@ -1745,7 +1769,51 @@ void testOverlaySound()
     tl.removeTrackClip(o);
     CHECK(!tl.trackClipById(s));
     tl.removeTrack(v2);
-    CHECK(!tl.trackClipById(s2) && tl.trackById(t)->clips.isEmpty());
+    CHECK(!tl.trackClipById(s2) && tl.trackById(t)->clips.isEmpty() && !tl.trackById(v2s));
+}
+
+// The track groups: the main video's sound, Audio, then each overlay track
+// with its sound track; reordering stays within a group, an overlay track
+// moving with its sound track.
+void testTrackGroups()
+{
+    Timeline tl;
+    tl.appendClip("/v/a.insv", 60000, 30.0);
+    const int o1 = tl.addTrack(Track::Kind::Video);
+    const int a1 = tl.addTrack(Track::Kind::Audio);
+    const int o2 = tl.addTrack(Track::Kind::Video);
+    tl.addClipSound(tl.clipAt(0).id, 2); // external mic + camera mic
+    const int a2 = tl.addTrack(Track::Kind::Audio);
+    const int o3 = tl.addTrack(Track::Kind::Video);
+    const int cam = tl.streamTrackId(Track::Role::CameraMic);
+    const int ext = tl.streamTrackId(Track::Role::ExternalMic);
+    const int s1 = tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlaySound, o1);
+    const int s3 = tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlaySound, o3);
+    CHECK(tl.addTrack(Track::Kind::Audio, QString(), Track::Role::OverlaySound, a1) == 0);
+    const auto order = [&] {
+        QList<int> ids;
+        for (int i = 0; i < tl.trackCount(); ++i)
+            ids.append(tl.trackAt(i).id);
+        return ids;
+    };
+    CHECK((order() == QList<int>{cam, ext, a1, a2, o1, s1, o2, o3, s3}));
+
+    // Within the group only.
+    CHECK(!tl.moveTrack(ext, 5) && !tl.moveTrack(a1, 0)); // clamped: already there
+    CHECK(tl.moveTrack(a1, 8) && (order() == QList<int>{cam, ext, a2, a1, o1, s1, o2, o3, s3}));
+    CHECK(tl.moveTrack(ext, 0) && (order() == QList<int>{ext, cam, a2, a1, o1, s1, o2, o3, s3}));
+    // A sound track only moves with its overlay track, which takes it along.
+    CHECK(!tl.moveTrack(s1, 6));
+    CHECK(tl.moveTrack(o1, 6) && (order() == QList<int>{ext, cam, a2, a1, o2, o1, s1, o3, s3}));
+    CHECK(tl.moveTrack(o1, 8) && (order() == QList<int>{ext, cam, a2, a1, o2, o3, s3, o1, s1}));
+    CHECK(!tl.moveTrack(o1, 8)); // its own sound track: already there
+    CHECK(tl.moveTrack(o3, 4) && (order() == QList<int>{ext, cam, a2, a1, o3, s3, o2, o1, s1}));
+    CHECK(tl.moveTrack(o2, 0) && (order() == QList<int>{ext, cam, a2, a1, o2, o3, s3, o1, s1}));
+    // New tracks at the end of their group.
+    const int a3 = tl.addTrack(Track::Kind::Audio);
+    CHECK(tl.trackIndexOfId(a3) == 4);
+    // Removing an overlay track takes its sound track.
+    CHECK(tl.removeTrack(o3) && !tl.trackById(s3));
 }
 
 void testProjectVideoTracksJson()
@@ -1791,8 +1859,8 @@ void testProjectVideoTracksJson()
     QString err;
     CHECK(q.load(projFile, &err));
     const Timeline *tl = q.timeline();
-    CHECK(tl->trackCount() == 2 && tl->videoTrackCount() == 1);
-    const Track &t = tl->trackAt(0);
+    CHECK(tl->trackCount() == 2);
+    const Track &t = tl->trackAt(1);
     CHECK(t.kind == Track::Kind::Video && t.name == "Cam" && t.muted && t.clips.size() == 1);
     const TrackClip &c = t.clips[0];
     CHECK(c.sourcePath == QDir::cleanPath(pip) && c.sourceWidth == 1280 && c.sourceHeight == 720);
@@ -1802,7 +1870,7 @@ void testProjectVideoTracksJson()
     CHECK(c.frame.borderRgb == 0x00ff80);
     CHECK(c.insetKeys.count() == 1 && c.insetKeys.keys()[0].timeMs == 2000);
     CHECK(c.insetKeys.keys()[0].look.opacity == 0.25f);
-    CHECK(tl->trackAt(1).kind == Track::Kind::Audio && tl->trackAt(1).name == "Music");
+    CHECK(tl->trackAt(0).kind == Track::Kind::Audio && tl->trackAt(0).name == "Music");
 
     // An overlay's linked sound survives save / load and undo.
     const QString linked = dir + "/sound.orp";
@@ -1810,26 +1878,56 @@ void testProjectVideoTracksJson()
         Project p;
         CHECK(p.load(projFile));
         Timeline *pt = p.timeline();
-        const int o = pt->trackAt(0).clips[0].id;
-        const int a = pt->trackAt(1).id;
-        const int snd = addOverlaySound(*pt, a, o);
+        const int o = pt->trackAt(1).clips[0].id;
+        const int a = pt->trackAt(0).id;
+        const int snd = addOverlaySound(*pt, a, o); // onto Cam's sound track
         pt->linkAudioClip(snd, 0);
-        pt->moveTrackClip(snd, a, pt->trackClipById(snd)->startMs + 30); // a 30 ms nudge
+        pt->moveTrackClip(snd, pt->soundTrackId(pt->trackAt(1).id),
+                          pt->trackClipById(snd)->startMs + 30); // a 30 ms nudge
         pt->linkAudioClip(snd, o);
+        pt->setTrackAudio(pt->soundTrackId(pt->trackAt(1).id), -3.0, false);
         CHECK(p.save(linked));
     }
     Project r;
     CHECK(r.load(linked));
     const Timeline *rt = r.timeline();
-    const TrackClip &ov = rt->trackAt(0).clips[0];
-    CHECK(rt->trackAt(1).clips.size() == 1);
-    const TrackClip &rs = rt->trackAt(1).clips[0];
+    // Music, Cam, Cam's sound.
+    CHECK(rt->trackCount() == 3 && rt->trackAt(2).role == Track::Role::OverlaySound);
+    CHECK(rt->trackAt(2).ownerTrackId == rt->trackAt(1).id && rt->trackAt(2).name == "Cam sound");
+    CHECK(rt->trackAt(2).gainDb == -3.0 && rt->trackAt(0).clips.isEmpty());
+    const TrackClip &ov = rt->trackAt(1).clips[0];
+    CHECK(rt->trackAt(2).clips.size() == 1);
+    const TrackClip &rs = rt->trackAt(2).clips[0];
     CHECK(rs.linkedClipId == ov.id && rs.syncOffsetMs == 30 && rs.startMs == ov.startMs + 30);
-    r.timeline()->moveTrackClip(ov.id, rt->trackAt(0).id, 3000);
-    CHECK(rt->trackAt(1).clips[0].startMs == 3030);
+    r.timeline()->moveTrackClip(ov.id, rt->trackAt(1).id, 3000);
+    CHECK(rt->trackAt(2).clips[0].startMs == 3030);
     r.undo();
-    CHECK(rt->trackAt(1).clips[0].linkedClipId == rt->trackAt(0).clips[0].id);
-    CHECK(rt->trackAt(1).clips[0].startMs == 1530);
+    CHECK(rt->trackAt(2).clips[0].linkedClipId == rt->trackAt(1).clips[0].id);
+    CHECK(rt->trackAt(2).clips[0].startMs == 1530);
+
+    // From before overlay sound tracks: the sound on a free track moves to
+    // its overlay's sound track, and the free track it leaves empty goes.
+    {
+        QFile f(linked);
+        CHECK(f.open(QIODevice::ReadOnly));
+        QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+        QJsonObject doc = d.object(), tlj = doc["timeline"].toObject();
+        QJsonArray tracks = tlj["tracks"].toArray();
+        QJsonObject music = tracks[0].toObject(), sound = tracks[2].toObject();
+        music["clips"] = sound["clips"];
+        tracks = QJsonArray{music, tracks[1]};
+        tlj["tracks"] = tracks;
+        doc["timeline"] = tlj;
+        f.close();
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(doc).toJson());
+    }
+    Project old;
+    CHECK(old.load(linked));
+    const Timeline *ot = old.timeline();
+    CHECK(ot->trackCount() == 2 && ot->trackAt(0).kind == Track::Kind::Video);
+    CHECK(ot->trackAt(1).role == Track::Role::OverlaySound && ot->trackAt(1).clips.size() == 1);
+    CHECK(ot->trackAt(1).clips[0].linkedClipId == ot->trackAt(0).clips[0].id);
 }
 
 } // namespace
@@ -2359,6 +2457,7 @@ int main()
     testClipSound();
     testProjectConvertSound();
     testOverlaySound();
+    testTrackGroups();
     testProjectTracksJson();
     testVideoTracks();
     testProjectVideoTracksJson();

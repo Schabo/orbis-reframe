@@ -41,9 +41,15 @@ constexpr int kRulerH = 14;
 constexpr int kMainH = 40;
 constexpr int kTrackH = 28;
 constexpr int kRowGap = 2;
+constexpr int kGroupGap = 8; // between two groups of tracks (and the main track)
 constexpr int kWidth = kHeaderW + 3 + 1000 + 3; // 1000 px for the extent: 1 px = extent / 1000
 
-int trackY(int i) { return kRulerH + kMainH + kRowGap + i * (kTrackH + kRowGap) + kTrackH / 2; }
+// Row i's centre when all the tracks are in one group (the Audio group, as
+// the Fixture's).
+int trackY(int i)
+{
+    return kRulerH + kMainH + kRowGap + kGroupGap + i * (kTrackH + kRowGap) + kTrackH / 2;
+}
 int mainY() { return kRulerH + kMainH / 2; }
 
 struct Fixture {
@@ -228,7 +234,7 @@ void testHeaderAndMain()
     // The widget grows a row per track.
     const int h2 = f.w.sizeHint().height();
     f.w.setTracks({});
-    CHECK(f.w.sizeHint().height() == h2 - 2 * (kTrackH + kRowGap));
+    CHECK(f.w.sizeHint().height() == h2 - 2 * (kTrackH + kRowGap) - kGroupGap);
 
     if (qEnvironmentVariableIsSet("ORBIS_TIMELINE_SHOT")) {
         Fixture g;
@@ -446,15 +452,20 @@ void testDropClips()
 }
 
 
-// Overlay tracks sit above the main track; their clips move only among
-// overlay tracks, and video files drop onto them.
+// Overlay tracks are the last group, each with its sound track under it;
+// their clips move only among overlay tracks, and video files drop onto them.
 void testOverlayTracks()
 {
     Fixture f;
-    TimelineWidget::TrackView v1, v2, a1;
+    TimelineWidget::TrackView v1, s1, v2, a1;
     v1.id = 21;
     v1.name = "Cam";
     v1.video = true;
+    v1.group = TimelineWidget::TrackView::Group::Overlay;
+    s1.id = 31;
+    s1.name = "Cam sound";
+    s1.group = TimelineWidget::TrackView::Group::Overlay;
+    s1.overlaySound = true;
     TimelineWidget::TrackClipView pip;
     pip.id = 200;
     pip.label = "pip.mp4";
@@ -465,6 +476,7 @@ void testOverlayTracks()
     v2.id = 22;
     v2.name = "Overlay 2";
     v2.video = true;
+    v2.group = TimelineWidget::TrackView::Group::Overlay;
     a1.id = 11;
     a1.name = "Music";
     TimelineWidget::TrackClipView m;
@@ -473,15 +485,16 @@ void testOverlayTracks()
     m.startMs = 2000;
     m.trimOutMs = m.sourceDurationMs = 5000;
     a1.clips = {m};
-    f.w.setTracks({v1, v2, a1});
+    f.w.setTracks({a1, v1, s1, v2});
     f.w.resize(kWidth, f.w.sizeHint().height());
 
-    // Rows: Cam, Overlay 2, then the main track, then Music.
-    const int camY = kRulerH + kTrackH / 2;
-    const int ov2Y = kRulerH + (kTrackH + kRowGap) + kTrackH / 2;
-    const int mainRowY = kRulerH + 2 * (kTrackH + kRowGap) + kMainH / 2;
-    const int musicY = kRulerH + 2 * (kTrackH + kRowGap) + kMainH + kRowGap + kTrackH / 2;
-    CHECK(f.w.sizeHint().height() > musicY + kTrackH / 2);
+    // Rows: the main track; Music; Cam, Cam sound, Overlay 2.
+    const int mainRowY = mainY();
+    const int musicY = trackY(0);
+    const int camY = trackY(1) + kGroupGap;
+    const int soundY = trackY(2) + kGroupGap;
+    const int ov2Y = trackY(3) + kGroupGap;
+    CHECK(f.w.sizeHint().height() > ov2Y + kTrackH / 2);
 
     QSignalSpy sel(&f.w, &TimelineWidget::trackClipSelected);
     QSignalSpy clipSel(&f.w, &TimelineWidget::clipSelected);
@@ -496,17 +509,29 @@ void testOverlayTracks()
     // An overlay clip moves onto the other overlay track...
     drag(&f.w, QPoint(Fixture::x(6000), camY), QPoint(Fixture::x(6500), ov2Y));
     CHECK(moved.count() == 1 && moved.last().at(1).toInt() == 22);
-    // ... but never onto the audio track (it keeps the last overlay row it
+    // ... but never onto an audio track (it keeps the last overlay row it
     // passed over), nor does the audio clip go onto an overlay track.
     drag(&f.w, QPoint(Fixture::x(6000), camY), QPoint(Fixture::x(6500), musicY));
-    CHECK(moved.count() == 2 && moved.last().at(1).toInt() == 22);
+    CHECK(moved.count() == 2 && moved.last().at(1).toInt() == 21);
     drag(&f.w, QPoint(Fixture::x(3000), musicY), QPoint(Fixture::x(3500), camY));
     CHECK(moved.count() == 3 && moved.last().at(1).toInt() == 11);
 
-    // A header drag keeps an overlay track among the overlay tracks.
+    // A header drag keeps an overlay track among the overlay tracks...
     QSignalSpy trackMoved(&f.w, &TimelineWidget::trackMoved);
-    drag(&f.w, QPoint(20, camY), QPoint(20, musicY + kTrackH));
-    CHECK(trackMoved.count() == 1 && trackMoved.last().at(1).toInt() == 1);
+    drag(&f.w, QPoint(20, camY), QPoint(20, musicY - kTrackH));
+    CHECK(trackMoved.count() == 0); // (already the first)
+    drag(&f.w, QPoint(20, camY), QPoint(20, ov2Y + kTrackH));
+    CHECK(trackMoved.count() == 1 && trackMoved.last().at(0).toInt() == 21 &&
+          trackMoved.last().at(1).toInt() == 3);
+    // ... never between another one and its sound track; and the sound track
+    // only moves with its overlay track.
+    drag(&f.w, QPoint(20, ov2Y), QPoint(20, soundY + 2));
+    CHECK(trackMoved.count() == 1); // (lands after the sound track: where it is)
+    drag(&f.w, QPoint(20, ov2Y), QPoint(20, camY - 2));
+    CHECK(trackMoved.count() == 2 && trackMoved.last().at(0).toInt() == 22 &&
+          trackMoved.last().at(1).toInt() == 1);
+    drag(&f.w, QPoint(20, soundY), QPoint(20, ov2Y + kTrackH));
+    CHECK(trackMoved.count() == 2);
 
     // The "H" box hides an overlay track.
     QSignalSpy mute(&f.w, &TimelineWidget::trackMuteToggled);
@@ -525,9 +550,14 @@ void testOverlayTracks()
     }
     CHECK(dropFiles(&f.w, {"/x/cam.mp4"}, QPoint(Fixture::x(12000), musicY)));
     CHECK(videoDrop.count() == 2 && videoDrop.last().at(1).toInt() == 0);
-    // Audio dropped on an overlay track goes to an audio track.
+    // Audio dropped on an overlay track, or its sound track, goes to the
+    // Audio group; on a track there, onto it.
     CHECK(dropFiles(&f.w, {"/x/a.mp3"}, QPoint(Fixture::x(12000), camY)));
     CHECK(audioDrop.count() == 1 && audioDrop.last().at(1).toInt() == 0);
+    CHECK(dropFiles(&f.w, {"/x/a.mp3"}, QPoint(Fixture::x(12000), soundY)));
+    CHECK(audioDrop.count() == 2 && audioDrop.last().at(1).toInt() == 0);
+    CHECK(dropFiles(&f.w, {"/x/a.mp3"}, QPoint(Fixture::x(12000), musicY)));
+    CHECK(audioDrop.count() == 3 && audioDrop.last().at(1).toInt() == 11);
 
     if (const char *shot = std::getenv("ORBIS_TIMELINE_SHOT"))
         f.w.grab().save(QString::fromLocal8Bit(shot));
