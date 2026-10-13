@@ -126,7 +126,7 @@ QList<ProjectLibrary::Entry> ProjectLibrary::entries() const
     QList<Entry> all;
     QSet<QString> seen;
     for (Entry e : m_listed) {
-        e.sortTime = e.lastOpened;
+        e.sortTime = e.lastOpened.isValid() ? e.lastOpened : QFileInfo(e.path).lastModified();
         all.push_back(e);
         seen.insert(e.path);
     }
@@ -162,6 +162,33 @@ bool ProjectLibrary::remove(const QString &path, QString *error)
     m_listed.removeIf([&](const Entry &e) { return e.path == p; });
     if (scanProjectsFolder().contains(p) && !m_hidden.contains(p))
         m_hidden.push_back(p);
+    return save(error);
+}
+
+bool ProjectLibrary::renamed(const QString &from, const QString &to, QString *error)
+{
+    const QString f = clean(from), t = clean(to);
+    if (f.isEmpty() || t.isEmpty() || f == t)
+        return true;
+    load();
+    for (Entry &e : m_listed)
+        if (e.path == f)
+            e.path = t;
+    for (QString &h : m_hidden)
+        if (h == f)
+            h = t;
+    return save(error);
+}
+
+bool ProjectLibrary::add(const QString &path, QString *error)
+{
+    const QString p = clean(path);
+    if (p.isEmpty())
+        return true;
+    load();
+    m_hidden.removeAll(p);
+    if (std::none_of(m_listed.begin(), m_listed.end(), [&](const Entry &e) { return e.path == p; }))
+        m_listed.push_back({p, {}, {}});
     return save(error);
 }
 

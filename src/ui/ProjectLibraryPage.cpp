@@ -3,6 +3,7 @@
 
 #include "ClipThumbnail.h"
 
+#include "../core/ProjectFolder.h"
 #include "../core/ProjectLibrary.h"
 
 #include <QAction>
@@ -13,6 +14,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
@@ -205,6 +207,17 @@ ProjectLibraryPage::ProjectLibraryPage(ProjectLibrary *library, QWidget *parent)
         if (const QString path = selectedPath(); !path.isEmpty())
             emit openRequested(path);
     });
+    m_renameAction = new QAction(tr("Re&name…"), m_list);
+    m_renameAction->setObjectName(QStringLiteral("renameProjectAction"));
+    m_renameAction->setToolTip(tr("Rename the project: its folder and its project file"));
+    m_renameAction->setShortcut(QKeySequence(Qt::Key_F2));
+    m_renameAction->setShortcutContext(Qt::WidgetShortcut);
+    connect(m_renameAction, &QAction::triggered, this, &ProjectLibraryPage::renameSelected);
+    m_duplicateAction = new QAction(tr("&Duplicate…"), m_list);
+    m_duplicateAction->setObjectName(QStringLiteral("duplicateProjectAction"));
+    m_duplicateAction->setToolTip(tr("Copy the project into a new folder beside it, with its "
+                                     "privacy scans and waveforms. Media isn't copied."));
+    connect(m_duplicateAction, &QAction::triggered, this, &ProjectLibraryPage::duplicateSelected);
     m_showAction = new QAction(tr("Show in &file manager"), m_list);
     m_showAction->setObjectName(QStringLiteral("showProjectFolderAction"));
     connect(m_showAction, &QAction::triggered, this, &ProjectLibraryPage::showSelectedInFileManager);
@@ -215,7 +228,10 @@ ProjectLibraryPage::ProjectLibraryPage(ProjectLibrary *library, QWidget *parent)
     m_removeAction->setShortcuts({QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)});
     m_removeAction->setShortcutContext(Qt::WidgetShortcut);
     connect(m_removeAction, &QAction::triggered, this, &ProjectLibraryPage::removeSelected);
-    m_list->addActions({m_openAction, m_showAction, m_removeAction});
+    auto *separator = new QAction(m_list);
+    separator->setSeparator(true);
+    m_list->addActions({m_openAction, m_renameAction, m_duplicateAction, separator, m_showAction,
+                        m_removeAction});
     m_list->setContextMenuPolicy(Qt::ActionsContextMenu);
 
     auto *empty = new QLabel(tr("No projects yet.\n\nNew project… starts one in its own folder. "
@@ -343,10 +359,23 @@ QString ProjectLibraryPage::selectedPath() const
     return items.isEmpty() ? QString() : items.first()->data(PathRole).toString();
 }
 
+void ProjectLibraryPage::selectPath(const QString &path)
+{
+    const QString want = QFileInfo(path).absoluteFilePath();
+    for (int i = 0; i < m_list->count(); ++i)
+        if (QFileInfo(m_list->item(i)->data(PathRole).toString()).absoluteFilePath() == want) {
+            m_list->setCurrentRow(i);
+            m_list->scrollToItem(m_list->item(i));
+            return;
+        }
+}
+
 void ProjectLibraryPage::updateActions()
 {
     const QString path = selectedPath();
     m_openAction->setEnabled(!path.isEmpty() && QFileInfo(path).isFile());
+    m_renameAction->setEnabled(!path.isEmpty() && QFileInfo(path).isFile());
+    m_duplicateAction->setEnabled(!path.isEmpty() && QFileInfo(path).isFile());
     m_showAction->setEnabled(!path.isEmpty() && QFileInfo(path).absoluteDir().exists());
     m_removeAction->setEnabled(!path.isEmpty());
 }
@@ -365,6 +394,64 @@ void ProjectLibraryPage::removeSelected()
         m_list->setCurrentRow(std::min(row, m_list->count() - 1));
     m_body->setCurrentIndex(m_list->count() == 0 ? 1 : 0);
     updateActions();
+}
+
+QString ProjectLibraryPage::askName(const QString &title, const QString &text)
+{
+    if (m_namePrompt)
+        return m_namePrompt(title, text);
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, title, tr("Project name:"), QLineEdit::Normal,
+                                               text, &ok);
+    return ok ? name : QString();
+}
+
+void ProjectLibraryPage::renameSelected()
+{
+    const QString path = selectedPath();
+    if (path.isEmpty() || !QFileInfo(path).isFile())
+        return;
+    QString name = QFileInfo(path).completeBaseName();
+    for (;;) {
+        name = askName(tr("Rename project"), name);
+        if (name.isEmpty() || name == QFileInfo(path).completeBaseName())
+            return;
+        QString error;
+        const QString renamed = projectfolder::rename(path, name, &error);
+        if (renamed.isEmpty()) {
+            QMessageBox::warning(this, tr("Could not rename the project"), error);
+            continue; // ask again, with the name as typed
+        }
+        if (!m_library->renamed(path, renamed, &error))
+            QMessageBox::warning(this, tr("Could not update the project list"), error);
+        refresh();
+        selectPath(renamed);
+        return;
+    }
+}
+
+void ProjectLibraryPage::duplicateSelected()
+{
+    const QString path = selectedPath();
+    if (path.isEmpty() || !QFileInfo(path).isFile())
+        return;
+    QString name = projectfolder::copyName(path);
+    for (;;) {
+        name = askName(tr("Duplicate project"), name);
+        if (name.isEmpty())
+            return;
+        QString error;
+        const QString copy = projectfolder::duplicate(path, name, &error);
+        if (copy.isEmpty()) {
+            QMessageBox::warning(this, tr("Could not duplicate the project"), error);
+            continue;
+        }
+        if (!m_library->add(copy, &error))
+            QMessageBox::warning(this, tr("Could not update the project list"), error);
+        refresh();
+        selectPath(copy);
+        return;
+    }
 }
 
 void ProjectLibraryPage::showSelectedInFileManager()

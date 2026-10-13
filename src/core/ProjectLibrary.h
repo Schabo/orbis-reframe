@@ -18,7 +18,7 @@ class ProjectLibrary {
 public:
     struct Entry {
         QString path;          // the project file
-        QDateTime lastOpened;  // invalid: never opened here (found in the folder)
+        QDateTime lastOpened;  // invalid: never opened here (found, or added)
         QDateTime sortTime;    // lastOpened, else the file's modification time
     };
 
@@ -45,6 +45,12 @@ public:
                     QString *error = nullptr);
     // Forget a project; its files stay.
     bool remove(const QString &path, QString *error = nullptr);
+    // A project was renamed or moved from `from` to `to`: its entry (and a
+    // hidden one) follows, keeping its place and when it was last opened.
+    bool renamed(const QString &from, const QString &to, QString *error = nullptr);
+    // List a project that was never opened here (a duplicate): shown as
+    // saved at its file's time, until it's opened.
+    bool add(const QString &path, QString *error = nullptr);
 
 private:
     bool save(QString *error) const;

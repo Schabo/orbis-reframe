@@ -3,6 +3,8 @@
 #include <QListWidget>
 #include <QWidget>
 
+#include <functional>
+
 class QAction;
 class QLabel;
 class QPushButton;
@@ -24,8 +26,8 @@ public:
 
 // The start screen: every project in the library as a card (thumbnail, name,
 // when it was last opened, clip count and length, missing media), with New
-// project, Open other, and per project Open / Show in file manager / Remove
-// from list. Shown when no project is open. Reading the projects and their
+// project, Open other, and per project Open / Rename / Duplicate / Show in
+// file manager / Remove from list. Shown when no project is open. Reading the projects and their
 // thumbnails happens on worker threads; `loaded` fires when the last arrives.
 class ProjectLibraryPage : public QWidget {
     Q_OBJECT
@@ -40,6 +42,13 @@ public:
 
     // The project file of the selected card, empty if none.
     QString selectedPath() const;
+    // Select the card of project file `path`, if there is one.
+    void selectPath(const QString &path);
+
+    // Asks for a project name (Rename, Duplicate): (title, current text) ->
+    // the name, empty if cancelled. A dialog unless a test sets another.
+    using NamePrompt = std::function<QString(const QString &title, const QString &text)>;
+    void setNamePrompt(NamePrompt prompt) { m_namePrompt = std::move(prompt); }
 
     // Item data roles of a card.
     enum Role {
@@ -62,6 +71,9 @@ signals:
 private:
     void applySummary(int generation, const ProjectSummary &summary, const QImage &thumbnail);
     void removeSelected();
+    void renameSelected();
+    void duplicateSelected();
+    QString askName(const QString &title, const QString &text);
     void showSelectedInFileManager();
     void chooseProjectsFolder();
     void updateActions();
@@ -72,7 +84,10 @@ private:
     QLabel *m_folderLabel = nullptr;
     QAction *m_openAction = nullptr;
     QAction *m_showAction = nullptr;
+    QAction *m_renameAction = nullptr;
+    QAction *m_duplicateAction = nullptr;
     QAction *m_removeAction = nullptr;
+    NamePrompt m_namePrompt;
     int m_generation = 0; // results from an older refresh() are dropped
     int m_pending = 0;
 };

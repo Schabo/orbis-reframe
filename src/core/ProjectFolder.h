@@ -36,6 +36,22 @@ QString cacheDir(const QString &projectFile);
 QString exportsDir(const QString &projectFile);
 QString screenshotsDir(const QString &projectFile);
 
+// Rename the project whose file is `projectFile` to `newName`: a project
+// folder's folder and file (<parent>/<newName>/<newName>.orp), a loose
+// project's file only. Fails, with *error set, on a bad name or when the new
+// name is taken; nothing changes then. Returns the new project file.
+QString rename(const QString &projectFile, const QString &newName, QString *error = nullptr);
+
+// Copy the project whose file is `projectFile` as a new project `newName`
+// beside it: a project folder gets a new folder with the project file and
+// its cache/ (plate scans are slow to redo), not its exports or screenshots;
+// a loose project a new file next to it. Media is referenced, not copied
+// (Project::copyFile). Returns the new project file, empty with *error set.
+QString duplicate(const QString &projectFile, const QString &newName, QString *error = nullptr);
+
+// A free name for a copy of the project: "<name> copy", "<name> copy 2", ...
+QString copyName(const QString &projectFile);
+
 // `dir` made if missing (a folder deleted by hand); `dir` itself on success,
 // empty when it can't be made or `dir` is empty.
 QString ensure(const QString &dir);

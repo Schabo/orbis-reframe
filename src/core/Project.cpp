@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <functional>
 #include <vector>
 
 using nlohmann::json;
@@ -1116,6 +1117,52 @@ bool Project::save(const QString &path, QString *error)
 
     setFilePath(path);
     setModified(false);
+    return true;
+}
+
+bool Project::copyFile(const QString &from, const QString &to, QString *error)
+{
+    auto fail = [error](const QString &message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    QFile in(from);
+    if (!in.open(QIODevice::ReadOnly | QIODevice::Text))
+        return fail(QStringLiteral("Cannot open %1: %2").arg(from, in.errorString()));
+    json doc;
+    try {
+        doc = json::parse(in.readAll().toStdString());
+    } catch (const std::exception &e) {
+        return fail(QStringLiteral("%1 is not a valid project file: %2").arg(from, e.what()));
+    }
+    // Every media path in every version is a "source" string.
+    const QDir fromDir = QFileInfo(from).absoluteDir();
+    const QDir toDir = QFileInfo(to).absoluteDir();
+    std::function<void(json &)> relocate = [&](json &j) {
+        if (j.is_object()) {
+            for (auto it = j.begin(); it != j.end(); ++it) {
+                if (it.key() == "source" && it->is_string()) {
+                    const QString stored = QString::fromStdString(it->get<std::string>());
+                    if (!stored.isEmpty() && !QDir::isAbsolutePath(stored))
+                        *it = storedPath(resolvedPath(stored, fromDir), toDir).toStdString();
+                } else {
+                    relocate(*it);
+                }
+            }
+        } else if (j.is_array()) {
+            for (json &e : j)
+                relocate(e);
+        }
+    };
+    relocate(doc);
+
+    const QByteArray text = QByteArray::fromStdString(doc.dump()) + "\n";
+    QSaveFile out(to);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Text))
+        return fail(QStringLiteral("Cannot open %1 for writing: %2").arg(to, out.errorString()));
+    if (out.write(text) != text.size() || !out.commit())
+        return fail(QStringLiteral("Failed to write %1: %2").arg(to, out.errorString()));
     return true;
 }
 

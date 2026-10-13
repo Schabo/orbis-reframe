@@ -132,6 +132,13 @@ public slots:
     // failure.
     bool save(const QString &path, QString *error = nullptr);
 
+    // Write the project file `from` as `to` without loading it: the same
+    // document, except that media paths stored relative to `from`'s folder
+    // (media inside it) are stored again for `to`'s folder -- relative if
+    // still inside it, else absolute -- so they point at the same files.
+    // Duplicating a project; any format version. False with *error set.
+    static bool copyFile(const QString &from, const QString &to, QString *error = nullptr);
+
     // Parse `path` and rebuild the timeline from it. The existing timeline is
     // left untouched if the file is malformed. On success records `path` and
     // clears modified. Returns false with *error set on failure.

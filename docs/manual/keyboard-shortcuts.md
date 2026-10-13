@@ -79,8 +79,8 @@ stay).
 | `Ctrl+Q` | Quit. |
 | `F1` | Show the keyboard shortcuts. |
 
-In the project library: `Enter` opens the selected project, `Delete`
-removes it from the list (its files stay).
+In the project library: `Enter` opens the selected project, `F2` renames
+it, `Delete` removes it from the list (its files stay).
 
 ## Media
 

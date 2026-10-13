@@ -3,6 +3,7 @@
 #include "Project.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 
 namespace projectfolder {
@@ -74,6 +75,139 @@ bool isProjectFolder(const QString &projectFile)
 QString cacheDir(const QString &projectFile) { return subDir(projectFile, "cache"); }
 QString exportsDir(const QString &projectFile) { return subDir(projectFile, "exports"); }
 QString screenshotsDir(const QString &projectFile) { return subDir(projectFile, "screenshots"); }
+
+namespace {
+
+QString failWith(QString *error, const QString &message)
+{
+    if (error)
+        *error = message;
+    return {};
+}
+
+// Where project `name` would live beside `projectFile`: its file, and the
+// folder or file that must not exist yet.
+struct Target {
+    QString file;
+    QString taken;
+};
+
+Target targetFor(const QString &projectFile, const QString &name)
+{
+    const QFileInfo fi(projectFile);
+    if (isProjectFolder(projectFile)) {
+        const QString parent = QFileInfo(fi.absolutePath()).absolutePath();
+        return {projectFilePath(parent, name), QDir::cleanPath(parent + QLatin1Char('/') + name)};
+    }
+    const QString file = QDir::cleanPath(fi.absolutePath() + QLatin1Char('/') + name +
+                                         QLatin1Char('.') +
+                                         QLatin1String(Project::kFileExtension));
+    return {file, file};
+}
+
+bool copyTree(const QString &from, const QString &to)
+{
+    QDir src(from);
+    if (!src.exists())
+        return true;
+    if (!QDir().mkpath(to))
+        return false;
+    for (const QFileInfo &e :
+         src.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden)) {
+        const QString dest = to + QLatin1Char('/') + e.fileName();
+        if (e.isDir() && !e.isSymLink()) {
+            if (!copyTree(e.absoluteFilePath(), dest))
+                return false;
+        } else if (!QFile::copy(e.absoluteFilePath(), dest)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+QString rename(const QString &projectFile, const QString &newName, QString *error)
+{
+    if (const QString problem = nameProblem(newName); !problem.isEmpty())
+        return failWith(error, problem);
+    const QFileInfo fi(projectFile);
+    if (!fi.isFile())
+        return failWith(error, QObject::tr("%1 doesn't exist.").arg(projectFile));
+    if (newName == fi.completeBaseName())
+        return fi.absoluteFilePath();
+    const Target target = targetFor(projectFile, newName);
+    // A name differing only in case is the same folder on a case-insensitive
+    // file system; there the rename itself is still fine.
+    if (QFileInfo::exists(target.taken) &&
+        QFileInfo(target.taken).canonicalFilePath() !=
+            (isProjectFolder(projectFile) ? QFileInfo(fi.absolutePath()).canonicalFilePath()
+                                          : fi.canonicalFilePath()))
+        return failWith(error, QObject::tr("%1 already exists. Choose another name.")
+                                   .arg(QDir::toNativeSeparators(target.taken)));
+
+    if (!isProjectFolder(projectFile)) {
+        if (!QFile::rename(fi.absoluteFilePath(), target.file))
+            return failWith(error, QObject::tr("Can't rename %1.")
+                                       .arg(QDir::toNativeSeparators(fi.absoluteFilePath())));
+        return target.file;
+    }
+    // The file inside first, then the folder; undone if the folder can't move.
+    const QString folder = fi.absolutePath();
+    const QString renamedFile = folder + QLatin1Char('/') + newName + QLatin1Char('.') +
+                                QLatin1String(Project::kFileExtension);
+    if (!QFile::rename(fi.absoluteFilePath(), renamedFile))
+        return failWith(error, QObject::tr("Can't rename %1.")
+                                   .arg(QDir::toNativeSeparators(fi.absoluteFilePath())));
+    if (!QDir().rename(folder, target.taken)) {
+        QFile::rename(renamedFile, fi.absoluteFilePath());
+        return failWith(error, QObject::tr("Can't rename the folder %1.")
+                                   .arg(QDir::toNativeSeparators(folder)));
+    }
+    return target.file;
+}
+
+QString duplicate(const QString &projectFile, const QString &newName, QString *error)
+{
+    if (const QString problem = nameProblem(newName); !problem.isEmpty())
+        return failWith(error, problem);
+    const QFileInfo fi(projectFile);
+    if (!fi.isFile())
+        return failWith(error, QObject::tr("%1 doesn't exist.").arg(projectFile));
+    const Target target = targetFor(projectFile, newName);
+    if (QFileInfo::exists(target.taken))
+        return failWith(error, QObject::tr("%1 already exists. Choose another name.")
+                                   .arg(QDir::toNativeSeparators(target.taken)));
+
+    if (!isProjectFolder(projectFile)) {
+        QString err;
+        if (!Project::copyFile(fi.absoluteFilePath(), target.file, &err))
+            return failWith(error, err);
+        return target.file;
+    }
+    const QString parent = QFileInfo(fi.absolutePath()).absolutePath();
+    const QString file = create(parent, newName, error);
+    if (file.isEmpty())
+        return {};
+    QString err;
+    if (!Project::copyFile(fi.absoluteFilePath(), file, &err) ||
+        !copyTree(cacheDir(projectFile), cacheDir(file))) {
+        QDir(target.taken).removeRecursively();
+        return failWith(error, err.isEmpty() ? QObject::tr("Can't copy the project's cache.") : err);
+    }
+    return file;
+}
+
+QString copyName(const QString &projectFile)
+{
+    const QString base = QFileInfo(projectFile).completeBaseName();
+    for (int n = 1;; ++n) {
+        const QString name = n == 1 ? QObject::tr("%1 copy").arg(base)
+                                    : QObject::tr("%1 copy %2").arg(base).arg(n);
+        if (!QFileInfo::exists(targetFor(projectFile, name).taken))
+            return name;
+    }
+}
 
 QString ensure(const QString &dir)
 {

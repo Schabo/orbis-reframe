@@ -27,6 +27,8 @@ or some of its media files are missing.
 | Open a project | Double-click its card, or select it and press `Enter`. |
 | Start a new project | **New project…** (`Ctrl+N`). |
 | Open a project file that isn't listed | **Open other…** (`Ctrl+O`). |
+| Rename a project | Right-click its card ▸ **Rename…**, or select it and press `F2`. Both the project's folder and its project file get the new name. |
+| Copy a project | Right-click its card ▸ **Duplicate…** and give the copy a name (`<name> copy` is suggested). The copy gets its own folder beside the original, with the project file and its `cache/` (privacy-blur scans and waveforms), but not its exports or screenshots. The media files aren't copied: both projects use the same clips. |
 | See a project's files | Right-click its card ▸ **Show in file manager**. |
 | Take a project off the list | Right-click its card ▸ **Remove from list**, or select it and press `Delete`. Its files are not deleted. |
 | Come back to the library | **File ▸ Project library…**. It closes the open project, asking first if there are unsaved changes. |

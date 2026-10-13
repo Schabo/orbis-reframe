@@ -1,6 +1,7 @@
 // The project library's widgets, driven with QTest on the offscreen platform
 // and found by objectName: the start screen's cards (listing, summaries,
-// thumbnails, open, remove from list, the empty state) and the New project /
+// thumbnails, open, rename, duplicate, remove from list, the empty state)
+// and the folder operations under them, and the New project /
 // Save project as dialog (name checks, the folder it makes, the output
 // format). No GPU, no media decoding. Exit code is the failure count.
 // ORBIS_LIBRARY_SHOT=<path> saves a picture of the start screen.
@@ -17,6 +18,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
@@ -203,6 +205,145 @@ void testLibraryPage()
         CHECK(!a->isEnabled());
 }
 
+QString readAll(const QString &path)
+{
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+}
+
+// Rename and duplicate, in projectfolder and from the cards.
+void testRenameDuplicate()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString folder = tmp.path() + "/Projects";
+    const QString outside = tmp.path() + "/media";
+    QDir().mkpath(outside);
+
+    // Ride: one clip outside its folder, one inside it (stored relative),
+    // a scan in its cache, an export.
+    const QString ride = projectfolder::create(folder, "Ride");
+    const QString rideDir = folder + "/Ride";
+    QDir().mkpath(rideDir + "/footage");
+    writeFile(outside + "/out.insv");
+    writeFile(rideDir + "/footage/in.insv");
+    {
+        Project p;
+        p.timeline()->appendClip(outside + "/out.insv", 10000, 30.0);
+        p.timeline()->appendClip(rideDir + "/footage/in.insv", 10000, 30.0);
+        CHECK(p.save(ride));
+    }
+    CHECK(readAll(ride).contains("\"footage/in.insv\""));
+    QDir().mkpath(rideDir + "/cache/plates");
+    writeFile(rideDir + "/cache/plates/scan.bin");
+    writeFile(rideDir + "/exports/ride.mp4");
+    projectfolder::create(folder, "Taken");
+
+    // Names: bad, taken, the copy name.
+    QString error;
+    CHECK(projectfolder::rename(ride, "Taken", &error).isEmpty() && error.contains("exists"));
+    CHECK(projectfolder::rename(ride, "a/b", &error).isEmpty());
+    CHECK(QFileInfo(ride).isFile());
+    CHECK(projectfolder::copyName(ride) == "Ride copy");
+
+    // Duplicate: new folder, project file + cache, not exports; the inside
+    // clip now stored absolute (it stayed where it was).
+    const QString copy = projectfolder::duplicate(ride, projectfolder::copyName(ride), &error);
+    CHECK(copy == folder + "/Ride copy/Ride copy.orp");
+    CHECK(QFileInfo(folder + "/Ride copy/cache/plates/scan.bin").isFile());
+    CHECK(!QFileInfo(folder + "/Ride copy/exports/ride.mp4").exists());
+    CHECK(QFileInfo(folder + "/Ride copy/exports").isDir());
+    {
+        Project p;
+        CHECK(p.load(copy));
+        CHECK(p.timeline()->count() == 2);
+        if (p.timeline()->count() == 2) {
+            CHECK(p.timeline()->clipAt(0).sourcePath == outside + "/out.insv");
+            CHECK(p.timeline()->clipAt(1).sourcePath == rideDir + "/footage/in.insv");
+            CHECK(!p.timeline()->clipAt(1).mediaMissing);
+        }
+    }
+    CHECK(projectfolder::copyName(ride) == "Ride copy 2");
+    CHECK(projectfolder::duplicate(ride, "Ride copy", &error).isEmpty());
+
+    // Rename: folder and file; the inside clip moves with it and resolves.
+    const QString renamed = projectfolder::rename(ride, "Trip", &error);
+    CHECK(renamed == folder + "/Trip/Trip.orp");
+    CHECK(QFileInfo(renamed).isFile() && !QFileInfo(rideDir).exists());
+    {
+        Project p;
+        CHECK(p.load(renamed));
+        if (p.timeline()->count() == 2)
+            CHECK(p.timeline()->clipAt(1).sourcePath == folder + "/Trip/footage/in.insv");
+    }
+
+    // A loose project: the file alone.
+    const QString loose = tmp.path() + "/Loose.orp";
+    makeProject(loose, outside, 1);
+    CHECK(projectfolder::rename(loose, "Free", &error) == tmp.path() + "/Free.orp");
+    CHECK(projectfolder::duplicate(tmp.path() + "/Free.orp", "Free copy", &error) ==
+          tmp.path() + "/Free copy.orp");
+
+    // From the cards: F2 renames, Duplicate… copies, the list follows.
+    ProjectLibrary library(tmp.path() + "/projects.json");
+    library.load();
+    CHECK(library.setProjectsFolder(folder));
+    CHECK(library.noteOpened(renamed));
+    ProjectLibraryPage page(&library);
+    QStringList asked;
+    QString answer;
+    page.setNamePrompt([&](const QString &title, const QString &text) {
+        asked << title + ":" + text;
+        return answer;
+    });
+    page.resize(1000, 700);
+    page.show();
+    QSignalSpy loaded(&page, &ProjectLibraryPage::loaded);
+    page.refresh();
+    CHECK(waitLoaded(page, loaded));
+    auto *list = find<QListWidget>(&page, "projectList");
+    if (!list)
+        return;
+    page.selectPath(renamed);
+    CHECK(page.selectedPath() == renamed);
+
+    answer = "Summer";
+    list->setFocus();
+    QTest::keyClick(list, Qt::Key_F2);
+    CHECK(asked.size() == 1 && asked.last() == "Rename project:Trip");
+    CHECK(waitLoaded(page, loaded));
+    const QString summer = folder + "/Summer/Summer.orp";
+    CHECK(QFileInfo(summer).isFile());
+    CHECK(page.selectedPath() == summer);
+    CHECK(cardNamed(list, "Summer") && !cardNamed(list, "Trip"));
+    // Still the one opened here (kept its place in the list file).
+    library.load();
+    const auto entries = library.entries();
+    CHECK(!entries.isEmpty() && entries.first().path == summer &&
+          entries.first().lastOpened.isValid());
+
+    // Cancel does nothing.
+    answer.clear();
+    if (auto *a = find<QAction>(&page, "duplicateProjectAction")) {
+        a->trigger();
+        CHECK(asked.last() == "Duplicate project:Summer copy");
+        CHECK(!QFileInfo(folder + "/Summer copy").exists());
+        answer = "Summer B";
+        a->trigger();
+        CHECK(waitLoaded(page, loaded));
+    }
+    const QString b = folder + "/Summer B/Summer B.orp";
+    CHECK(QFileInfo(b).isFile());
+    CHECK(page.selectedPath() == b);
+    CHECK(cardNamed(list, "Summer B"));
+    library.load();
+    bool listed = false;
+    for (const auto &e : library.entries())
+        if (e.path == b)
+            listed = !e.lastOpened.isValid();
+    CHECK(listed);
+}
+
 void testNewProjectDialog()
 {
     QTemporaryDir tmp;
@@ -283,6 +424,7 @@ int main(int argc, char **argv)
         qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     testLibraryPage();
+    testRenameDuplicate();
     testNewProjectDialog();
     if (g_failures == 0)
         std::printf("project_library_test: all checks passed\n");
