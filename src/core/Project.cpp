@@ -923,7 +923,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 const std::string role = jt.value("role", std::string());
                 if (t.kind == Track::Kind::Audio && role == "cameraMic")
                     t.role = Track::Role::CameraMic;
-                else if (t.kind == Track::Kind::Audio && (role == "externalMic" || role == "micAir"))
+                else if (t.kind == Track::Kind::Audio && role == "externalMic")
                     t.role = Track::Role::ExternalMic;
                 else if (t.kind == Track::Kind::Audio && role == "overlayAudio") {
                     t.role = Track::Role::OverlayAudio;
