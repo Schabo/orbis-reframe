@@ -1898,6 +1898,10 @@ void MainWindow::addVideoFiles(const QStringList &paths, int trackId, qint64 atM
     }
     int last = 0;
     for (const Probed &p : ok) {
+        // Into the pool from the probe first: the timeline's clip doesn't
+        // keep the frame rate, so the pool's own fill-in would go without.
+        m_project->mediaPool()->add({p.path, MediaItem::Kind::Video, p.info.durationMs,
+                                     p.info.width, p.info.height, p.info.fps});
         last = m_timeline->addVideoClip(trackId, p.path, p.info.durationMs, atMs, p.info.width,
                                         p.info.height);
         addOverlayAudio(last); // its sound, linked, like a video clip's
