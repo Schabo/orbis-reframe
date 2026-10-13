@@ -111,7 +111,7 @@ inst           Insta360 trailer, runs to EOF (12.5 MB on a 43 s clip)
   Insta360 Mic Air external mic. They're separate sources, not duplicates
   (−1.3 dB vs −8.9 dB peak). `InsvAudioDemux::open` takes the stream's
   ordinal among the audio streams; orbis-reframe puts each stream on its
-  own track, *Camera mic* or *Mic Air*, by the order below
+  own track, *Camera mic* or *External mic*, by the order below
   (`Track::roleOfStream`). Nothing in the container (`handler_name` =
   `INS.AAC` on both) says which stream is which mic, but on this clip the
   **first (`default`)

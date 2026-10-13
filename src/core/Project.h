@@ -60,7 +60,8 @@ public:
     //       coordinates in millionths], ...], timing: "corrected" |
     //       "uncorrected" | "noGyro"}] (privacy::BlurAddition).
     // A track: {kind: "audio" | "video", name, gainDb, muted, clips}; a
-    //   stream track also has role: "cameraMic" | "micAir" (Track::Role).
+    //   stream track also has role: "cameraMic" | "externalMic" (Track::Role;
+    //   "micAir" from development builds reads as "externalMic").
     //   An audio clip: source, stream, sourceDurationMs, startMs, trimInMs,
     //   trimOutMs, speed, gainDb, muted, fadeInMs, fadeOutMs; optional: noise
     //   {mode: "wind" (motorcycle) | "windGeneral" | "hiss" | "voice" |
@@ -74,7 +75,8 @@ public:
     // the whole project instead of one per clip. Before version 10 a clip
     // played one of its audio streams itself (audioTrack, with audioGainDb,
     // audioMuted, noise, and "mainMuted" on the timeline); on load that
-    // becomes linked clips on the stream tracks, the unpicked streams muted.
+    // becomes linked clips on the stream tracks, the unpicked streams muted;
+    // a stream that was put on a free track by hand moves there too.
     static constexpr int kFormatVersion = 10;
     static constexpr int kOldestFormatVersion = 8;
     static constexpr const char *kFormatTag = "orbis-reframe-project";

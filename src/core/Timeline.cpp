@@ -550,8 +550,8 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role)
     t.name = name;
     if (t.name.isEmpty() && t.role == Track::Role::CameraMic)
         t.name = tr("Camera mic");
-    else if (t.name.isEmpty() && t.role == Track::Role::MicAir)
-        t.name = tr("Mic Air");
+    else if (t.name.isEmpty() && t.role == Track::Role::ExternalMic)
+        t.name = tr("External mic");
     else if (t.name.isEmpty()) {
         int n = 1;
         for (const Track &o : m_tracks)
@@ -565,7 +565,7 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role)
         // Under the video track, the camera mic first.
         int at = videoTrackCount();
         while (at < m_tracks.size() && m_tracks[at].role != Track::Role::Free &&
-               (t.role == Track::Role::MicAir || m_tracks[at].role == Track::Role::CameraMic))
+               (t.role == Track::Role::ExternalMic || m_tracks[at].role == Track::Role::CameraMic))
             ++at;
         m_tracks.insert(at, t);
     } else {

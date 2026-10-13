@@ -152,12 +152,13 @@ void testInsetKeyTrack()
 }
 
 // Which kind of mic an .insv audio stream is (docs/INSV_FORMAT.md): with
-// two streams the first is the Mic Air, else the only one is the camera's.
+// two streams the first is the external mic, else the only one is the
+// camera's.
 void testStreamRoles()
 {
     using R = Track::Role;
     CHECK(Track::roleOfStream(0, 1) == R::CameraMic);
-    CHECK(Track::roleOfStream(0, 2) == R::MicAir);
+    CHECK(Track::roleOfStream(0, 2) == R::ExternalMic);
     CHECK(Track::roleOfStream(1, 2) == R::CameraMic);
     CHECK(Track::roleOfStream(2, 3) == R::Free); // no known kind
     CHECK(Track::roleOfStream(1, 1) == R::Free);
@@ -400,7 +401,7 @@ void testClipSound()
     const int a = tl.appendClip("/x/a.insv", 10000, 30.0, 0, 0, 1); // camera mic only
     CHECK(tl.trackCount() == 1);
     const int camId = tl.streamTrackId(Track::Role::CameraMic);
-    CHECK(camId && !tl.streamTrackId(Track::Role::MicAir));
+    CHECK(camId && !tl.streamTrackId(Track::Role::ExternalMic));
     if (!camId)
         return;
     CHECK(tl.trackById(camId)->name == QLatin1String("Camera mic"));
@@ -408,11 +409,11 @@ void testClipSound()
     const TrackClip &ca = tl.trackById(camId)->clips.first();
     CHECK(ca.linkedClipId == a && ca.stream == 0 && ca.startMs == 0 && ca.trimOutMs == 10000);
 
-    // A free track first, then a clip with a Mic Air: its track goes under
+    // A free track first, then a clip with an external mic: its track goes under
     // the camera mic's, above the free one.
     const int music = tl.addTrack(Track::Kind::Audio, "Music");
     const int b = tl.appendClip("/x/b.insv", 6000, 30.0, 0, 0, 2);
-    const int airId = tl.streamTrackId(Track::Role::MicAir);
+    const int airId = tl.streamTrackId(Track::Role::ExternalMic);
     CHECK(airId && tl.trackIndexOfId(camId) == 0 && tl.trackIndexOfId(airId) == 1 &&
           tl.trackIndexOfId(music) == 2);
     CHECK(tl.trackById(camId)->clips.size() == 2 && tl.trackById(airId)->clips.size() == 1);
@@ -449,7 +450,8 @@ void testClipSound()
 
 // A project from before version 10: each clip played one stream itself; on
 // load every stream goes on its stream track, the picked one with the clip's
-// level / mute / noise, the others muted, the main "M" on the stream tracks.
+// level / mute / noise (and the main "M"), the others muted; a mic put on a
+// track by hand moves to its stream track.
 void testProjectConvertSound()
 {
     QTemporaryDir tmp;
@@ -476,23 +478,33 @@ void testProjectConvertSound()
     CHECK(p.load(orp, &err));
     Timeline *tl = p.timeline();
     const int camId = tl->streamTrackId(Track::Role::CameraMic);
-    CHECK(camId && !tl->streamTrackId(Track::Role::MicAir)); // the Mic Air was detached
-    if (!camId)
+    const int extId = tl->streamTrackId(Track::Role::ExternalMic);
+    CHECK(camId && extId);
+    if (!camId || !extId)
         return;
+    // Camera mic, External mic, then the free tracks; "Mics" is gone (its
+    // one clip moved).
+    CHECK(tl->trackIndexOfId(camId) == 0 && tl->trackIndexOfId(extId) == 1);
+    CHECK(tl->trackCount() == 2);
     const Track &cam = *tl->trackById(camId);
-    CHECK(cam.muted); // "mainMuted"
+    const Track &ext = *tl->trackById(extId);
+    CHECK(cam.name == QLatin1String("Camera mic") && !cam.muted);
+    CHECK(ext.name == QLatin1String("External mic") && !ext.muted);
     CHECK(cam.clips.size() == 2);
     if (cam.clips.size() == 2) {
         const TrackClip &m = cam.clips[0]; // the picked stream: the camera's own mic
         CHECK(m.stream == 1 && m.linkedClipId == tl->clipAt(0).id);
-        CHECK(m.gainDb == -4.0 && !m.muted && m.noise.mode == insv::NoiseMode::MotorcycleWind);
+        // Its level and noise, muted by the video track's old "M".
+        CHECK(m.gainDb == -4.0 && m.muted && m.noise.mode == insv::NoiseMode::MotorcycleWind);
         // The missing file: as many streams as its picked one needs.
         CHECK(cam.clips[1].stream == 0 && cam.clips[1].linkedClipId == tl->clipAt(1).id);
     }
-    // The detached Mic Air stays on its own track, as it was.
-    const Track &mics = tl->trackAt(tl->trackCount() - 1);
-    CHECK(mics.name == QLatin1String("Mics") && mics.clips.size() == 1 &&
-          mics.clips.first().gainDb == -2.0 && mics.role == Track::Role::Free);
+    // The external mic put on "Mics" by hand moved here, its level kept.
+    CHECK(ext.clips.size() == 1);
+    if (ext.clips.size() == 1) {
+        CHECK(ext.clips.first().stream == 0 && ext.clips.first().gainDb == -2.0);
+        CHECK(!ext.clips.first().muted && ext.clips.first().linkedClipId == tl->clipAt(0).id);
+    }
     CHECK(!p.modified()); // a load, not an edit
 
     // Saved again, it's a version-10 file with the roles.
@@ -500,7 +512,8 @@ void testProjectConvertSound()
     QFile f(orp);
     CHECK(f.open(QIODevice::ReadOnly));
     const QByteArray text = f.readAll();
-    CHECK(text.contains("\"version\":10") && text.contains("\"role\":\"cameraMic\""));
+    CHECK(text.contains("\"version\":10") && text.contains("\"role\":\"cameraMic\"") &&
+          text.contains("\"role\":\"externalMic\""));
     CHECK(!text.contains("audioTrack") && !text.contains("mainMuted"));
 }
 
@@ -861,8 +874,8 @@ void testProjectJson()
         out.fps = 25.0;
         p.setOutput(out);
         CHECK(p.output() == out);
-        p.timeline()->setTrackAudio(p.timeline()->streamTrackId(Track::Role::MicAir), 0.0,
-                                    true); // the Mic Air track's "M"
+        p.timeline()->setTrackAudio(p.timeline()->streamTrackId(Track::Role::ExternalMic), 0.0,
+                                    true); // the external mic track's "M"
 
         QString err;
         CHECK(p.save(projFile, &err));
@@ -907,13 +920,13 @@ void testProjectJson()
         // The stream tracks round-trip: roles, order, mute, the clips' links
         // and the Audio panel's level / noise.
         const int camId = tl->streamTrackId(Track::Role::CameraMic);
-        const int airId = tl->streamTrackId(Track::Role::MicAir);
+        const int airId = tl->streamTrackId(Track::Role::ExternalMic);
         CHECK(camId && airId && tl->trackIndexOfId(camId) == 0 && tl->trackIndexOfId(airId) == 1);
         if (camId && airId) {
             const Track &cam = *tl->trackById(camId);
             const Track &air = *tl->trackById(airId);
             CHECK(cam.name == QLatin1String("Camera mic") && !cam.muted);
-            CHECK(air.name == QLatin1String("Mic Air") && air.muted && air.clips.size() == 1);
+            CHECK(air.name == QLatin1String("External mic") && air.muted && air.clips.size() == 1);
             CHECK(cam.clips.size() == 2);
             if (cam.clips.size() == 2) {
                 const TrackClip &m = cam.clips[0];

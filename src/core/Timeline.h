@@ -137,7 +137,7 @@ public slots:
     // other video tracks (all of which stay ahead of the audio ones). An
     // empty name gets "Audio N" / "Overlay N". A stream track (`role` not
     // Free, audio only) goes first among the audio tracks instead, the
-    // camera mic's above the Mic Air's, named after its role when `name` is
+    // camera mic's above the external mic's, named after its role when `name` is
     // empty. Returns its id.
     int addTrack(Track::Kind kind, const QString &name = QString(),
                  Track::Role role = Track::Role::Free);

@@ -476,32 +476,64 @@ void convertClipSound(Timeline *timeline, const std::function<int(const QString 
 {
     // Each clip played one of its streams itself (pc.audioTrack): now every
     // stream is a linked clip on its stream track. The one it played gets
-    // its level, mute and noise reduction; the others are muted, so the
-    // project sounds as it did. A stream already put on a track by hand
-    // ("detached") stays where it is.
+    // its level, mute and noise reduction (and the video track's "M"); the
+    // others are muted, so the project sounds as it did. A stream already put
+    // on a track by hand ("Put the other mic on an audio track") moves to its
+    // stream track too, with its track's level and mute folded into its own;
+    // a track left empty by that goes.
+    QList<int> emptied;
     for (size_t i = 0; i < parsed.size() && i < clipIds.size(); ++i) {
         const ParsedClip &pc = parsed[i];
-        int streams = counter && !pc.mediaMissing
-                          ? counter(pc.sourcePath)
-                          : std::max(1, pc.audioTrack + 1);
+        struct Placed {
+            int id, stream;
+            double gainDb;
+            bool muted;
+        };
+        QList<Placed> placed; // its streams on free tracks
+        int streams = counter && !pc.mediaMissing ? counter(pc.sourcePath)
+                                                  : std::max(1, pc.audioTrack + 1);
+        for (int t = 0; t < timeline->trackCount(); ++t) {
+            const Track &track = timeline->trackAt(t);
+            if (track.kind != Track::Kind::Audio || track.role != Track::Role::Free)
+                continue;
+            for (const TrackClip &a : track.clips)
+                if (a.linkedClipId == clipIds[i] && a.stream >= 0) {
+                    placed.append({a.id, a.stream, a.gainDb + track.gainDb,
+                                   a.muted || track.muted});
+                    if (!emptied.contains(track.id))
+                        emptied.append(track.id);
+                    if (pc.mediaMissing || !counter)
+                        streams = std::max(streams, a.stream + 1);
+                }
+        }
+        for (const Placed &a : placed) {
+            const Track::Role role = Track::roleOfStream(a.stream, streams);
+            if (role == Track::Role::Free)
+                continue;
+            int trackId = timeline->streamTrackId(role);
+            if (!trackId)
+                trackId = timeline->addTrack(Track::Kind::Audio, QString(), role);
+            const TrackClip *c = timeline->trackClipById(a.id);
+            timeline->moveTrackClip(a.id, trackId, c ? c->startMs : 0);
+            timeline->setAudioClipLevel(a.id, a.gainDb, a.muted);
+        }
+
         const QList<int> ids = timeline->addClipSound(clipIds[i], streams);
         const int picked = pc.audioTrack < streams ? pc.audioTrack : 0;
         for (int s = 0; s < ids.size(); ++s) {
             if (!ids[s])
                 continue;
             if (s == picked) {
-                timeline->setAudioClipLevel(ids[s], pc.audioGainDb, pc.audioMuted);
+                timeline->setAudioClipLevel(ids[s], pc.audioGainDb, pc.audioMuted || mainMuted);
                 timeline->setAudioClipNoise(ids[s], pc.noise);
             } else {
                 timeline->setAudioClipLevel(ids[s], 0.0, true);
             }
         }
     }
-    // The video track's "M": its sound is the stream tracks now.
-    if (mainMuted)
-        for (Track::Role role : {Track::Role::CameraMic, Track::Role::MicAir})
-            if (const int trackId = timeline->streamTrackId(role))
-                timeline->setTrackAudio(trackId, timeline->trackById(trackId)->gainDb, true);
+    for (int trackId : emptied)
+        if (const Track *t = timeline->trackById(trackId); t && t->clips.isEmpty())
+            timeline->removeTrack(trackId);
 }
 
 } // namespace
@@ -738,8 +770,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         });
         if (t.role == Track::Role::CameraMic)
             tracks.back()["role"] = "cameraMic";
-        else if (t.role == Track::Role::MicAir)
-            tracks.back()["role"] = "micAir";
+        else if (t.role == Track::Role::ExternalMic)
+            tracks.back()["role"] = "externalMic";
     }
 
     json media = json::array();
@@ -887,8 +919,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 const std::string role = jt.value("role", std::string());
                 if (t.kind == Track::Kind::Audio && role == "cameraMic")
                     t.role = Track::Role::CameraMic;
-                else if (t.kind == Track::Kind::Audio && role == "micAir")
-                    t.role = Track::Role::MicAir;
+                else if (t.kind == Track::Kind::Audio && (role == "externalMic" || role == "micAir"))
+                    t.role = Track::Role::ExternalMic;
                 std::vector<std::pair<int, int>> links;
                 if (jt.contains("clips"))
                     for (const json &jc : jt.at("clips")) {

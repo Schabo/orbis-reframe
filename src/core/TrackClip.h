@@ -42,10 +42,11 @@ private:
 // the main track's ClipItems, which sit back to back, a track clip carries its
 // own timeline start. On an audio track it is a span of an audio file -- a
 // music file (mp3 / wav / aac / flac / ...), or one audio stream of an .insv
-// clip (its camera mic or Mic Air, linked to the video clip). On a video track it is a span of a flat video
-// file shown as an inset over the output; the audio fields (stream, level,
-// link) don't apply, and the fades fade its opacity. Its sound, if wanted, is a
-// linked clip of the same file on an audio track.
+// clip (its camera mic or external mic, linked to the video clip). On a video
+// track it is a span of a flat video file shown as an inset over the output;
+// the audio fields (stream, level, link) don't apply, and the fades fade its
+// opacity. Its sound, if wanted, is a linked clip of the same file on an audio
+// track.
 //
 // Plain value type like ClipItem: Timeline owns it and turns every successful
 // change into a signal; the mutators here clamp, apply, and report whether
@@ -142,7 +143,7 @@ struct Track {
     // tracks, right under it -- one per kind of .insv audio stream, named by
     // what it is rather than by its order in the file; a Free track holds
     // anything (music, an overlay's sound, an unlinked mic).
-    enum class Role { Free, CameraMic, MicAir };
+    enum class Role { Free, CameraMic, ExternalMic };
 
     int id = 0; // unique among the tracks
     Kind kind = Kind::Audio;
@@ -154,12 +155,13 @@ struct Track {
 
     // The role of stream `stream` (InsvAudioDemux's ordinal) of an .insv
     // with `streamCount` audio streams: with an external mic connected the
-    // first stream is the Mic Air and the second the camera's own mic, else
+    // first stream is the external mic (e.g. an Insta360 Mic Air) and the
+    // second the camera's own mic, else
     // the only one is the camera's (see docs/INSV_FORMAT.md).
     static Role roleOfStream(int stream, int streamCount)
     {
         if (streamCount >= 2)
-            return stream == 0 ? Role::MicAir : stream == 1 ? Role::CameraMic : Role::Free;
+            return stream == 0 ? Role::ExternalMic : stream == 1 ? Role::CameraMic : Role::Free;
         return stream == 0 ? Role::CameraMic : Role::Free;
     }
 

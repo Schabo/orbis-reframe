@@ -21,7 +21,7 @@ namespace insv {
 // (Insta360 Mic Air), confirmed by the two streams' differing peak levels
 // (ffmpeg volumedetect: -1.3 dB vs -8.9 dB on the sample clip). The caller
 // picks which one to decode by its ordinal among the file's audio streams
-// (TrackClip::stream: each stream is its own clip on the Camera mic / Mic Air
+// (TrackClip::stream: each stream is its own clip on the Camera mic / External mic
 // track); the container carries nothing that says which stream is which mic.
 //
 // Independent of InsvDemux -- its own AVFormatContext, its own file handle --

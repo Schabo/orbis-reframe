@@ -14,7 +14,7 @@ noise. How to add, move, trim and split audio clips on the timeline is in
   holds only the picture.
 - **An external microphone.** If a microphone such as the Insta360 Mic Air
   was connected to the camera, the clip holds a second sound recording. It
-  goes onto its own track, **Mic Air**, under *Camera mic*, linked the same
+  goes onto its own track, **External mic**, under *Camera mic*, linked the same
   way. Both play, each with its own level, mute and noise reduction.
 - **Audio files** on the other audio tracks: music, or sound from a
   separate recorder.
@@ -34,7 +34,7 @@ which (*Selected audio clip* or *This clip*):
   or click a clip on the video track, to go back.
 - **Otherwise, the sound of the video clip** you selected on the video
   track, or of the clip under the playhead if none is selected: its clip on
-  the *Camera mic* track (or on *Mic Air*, if it has no camera sound).
+  the *Camera mic* track (or on *External mic*, if it has no camera sound).
 
 <img src="images/audio-panel-video.jpg" width="350" alt="The Audio tab for a video clip's sound"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio tab for a music clip on an audio track">
 
@@ -57,13 +57,13 @@ The waveform drawn on each clip shows how loud it is, with its level and
 fades applied, so you can see the effect of your changes.
 
 To mute the camera's sound of all clips at once, click the **M** box in
-the *Camera mic* track's header (or *Mic Air*'s).
+the *Camera mic* track's header (or *External mic*'s).
 
 ## Two microphones
 
 With an external microphone, each clip has a clip on the *Camera mic* track
-and one on the *Mic Air* track. Use both, for example your voice from the
-Mic Air and the engine from the camera, or mute the one you don't want:
+and one on the *External mic* track. Use both, for example your voice from
+the external microphone and the engine from the camera, or mute the one you don't want:
 select its clip, or click the **M** box of its track to mute it for every
 clip.
 
@@ -74,11 +74,13 @@ listen to both and use the one you want.
 ## Projects from earlier versions
 
 A project saved by an earlier version of orbis-reframe is converted when
-you open it: each clip's sound goes onto the *Camera mic* and *Mic Air*
-tracks and keeps its level, mute and noise reduction. A recording you
+you open it: each clip's sound goes onto the *Camera mic* and *External
+mic* tracks and keeps its level, mute and noise reduction. A recording you
 didn't use is muted there, so the project sounds as before. A microphone
-you had put on an audio track yourself stays where it was. Saving the
-project saves it in the new format, which earlier versions can't open.
+you had put on an audio track yourself (**Put the other mic on an audio
+track**) moves to its track too, keeping its level and mute; the track it
+was on goes if nothing else is left on it. Saving the project saves it in
+the new format, which earlier versions can't open.
 
 ## Noise reduction
 

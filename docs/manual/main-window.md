@@ -95,7 +95,7 @@ From top to bottom it has:
   video;
 - the **video track**: your `.insv` clips, one after another, with a hard
   cut between each pair;
-- the video clips' sound, on the **Camera mic** track (and **Mic Air**,
+- the video clips' sound, on the **Camera mic** track (and **External mic**,
   when an external microphone was connected);
 - any other **audio tracks**: music, or sound from an external recorder.
 
