@@ -72,7 +72,10 @@ class QTimer;
 //   a clip without any is labelled with a hollow diamond (and says why in
 //   its tooltip) -- it exports a static forward view.
 //   Zoom: Ctrl+wheel (around the pointer) or zoomIn / zoomOut / zoomToFit;
-//   the wheel or the scrollbar under the tracks pans. While zoomed, the view
+//   the wheel or the scrollbar under the tracks pans.
+//   Height: whatever the window gives it; rows that don't fit scroll up and
+//   down under the ruler (the wheel over the headers, Shift+wheel, or the
+//   scrollbar at the right). While zoomed, the view
 //   follows the playhead when it runs off screen, and a drag past either
 //   edge scrolls.
 class TimelineWidget : public QWidget {
@@ -274,8 +277,10 @@ private:
     // (excluding the clip being dragged).
     qint64 snapMs(qint64 ms, int excludeClipId) const;
     int mainTop() const;
-    int totalHeight() const;
-    int scrollBarTop() const;
+    int rowsHeight() const;   // every row, unscrolled
+    int scrollBarTop() const; // the bottom of the rows' view
+    int maxViewTop() const;   // how far the rows can scroll up
+    void scrollRowsBy(int dy);
 
     QVector<Clip> m_clips;
     QVector<Row> m_rows;
@@ -316,6 +321,9 @@ private:
     qint64 m_visibleMs = 0; // 0 = fit the whole extent
     qint64 m_viewStartMs = 0;
     QScrollBar *m_hscroll = nullptr;
+    // Rows scrolled up under the ruler, in pixels, when they don't fit.
+    int m_viewTopPx = 0;
+    QScrollBar *m_vscroll = nullptr;
     QTimer *m_autoScroll = nullptr;
 
     // A file drag hovering over the timeline: where it would land.

@@ -37,6 +37,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QSplitter>
 #include <QShortcut>
 #include <QTimer>
 #include <QStackedWidget>
@@ -183,8 +184,9 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             &MainWindow::addMediaToTimeline);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
 
-    // Left: the sources sidebar and the viewport over its player bar, over
-    // the timeline over the edit strip.
+    // Top: the sources sidebar, the viewport over its player bar, and the
+    // settings sidebar (below). Bottom, across the full width: the timeline
+    // over the edit strip.
     auto *viewColumn = new QVBoxLayout;
     viewColumn->setContentsMargins(0, 0, 0, 0);
     viewColumn->setSpacing(0);
@@ -195,13 +197,13 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     top->setSpacing(0);
     top->addWidget(m_sourcesSidebar, 0);
     top->addLayout(viewColumn, 1);
-    auto *leftColumn = new QWidget(this);
-    auto *leftLayout = new QVBoxLayout(leftColumn);
-    leftLayout->setContentsMargins(0, 0, 0, 0);
-    leftLayout->setSpacing(0);
-    leftLayout->addLayout(top, 1);
-    leftLayout->addWidget(m_timelineWidget, 0);
-    leftLayout->addWidget(m_transport, 0);
+    m_timelinePane = new QWidget(this);
+    m_timelinePane->setObjectName(QStringLiteral("timelinePane"));
+    auto *timelineLayout = new QVBoxLayout(m_timelinePane);
+    timelineLayout->setContentsMargins(0, 0, 0, 0);
+    timelineLayout->setSpacing(0);
+    timelineLayout->addWidget(m_timelineWidget, 1);
+    timelineLayout->addWidget(m_transport, 0);
 
     // Right: the settings sidebar. Each section is wired to Project /
     // PlaybackController / the clip under the playhead below.
@@ -250,12 +252,34 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             .setValue(QStringLiteral("sidebars/settingsTab"), index);
     });
 
-    m_editorPage = new QWidget(this);
-    auto *layout = new QHBoxLayout(m_editorPage);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);
-    layout->addWidget(leftColumn, 1);
-    layout->addWidget(m_sidebar, 0);
+    top->addWidget(m_sidebar, 0);
+    auto *topPane = new QWidget(this);
+    topPane->setObjectName(QStringLiteral("viewerPane"));
+    topPane->setLayout(top);
+
+    // The split between them is dragged by the user and remembered per user;
+    // the first time, the timeline gets the height its tracks want.
+    m_editorPage = new QSplitter(Qt::Vertical, this);
+    m_editorPage->setObjectName(QStringLiteral("editorSplitter"));
+    m_editorPage->setChildrenCollapsible(false);
+    m_editorPage->addWidget(topPane);
+    m_editorPage->addWidget(m_timelinePane);
+    m_editorPage->setStretchFactor(0, 1);
+    m_editorPage->setStretchFactor(1, 0);
+    {
+        const QByteArray state =
+            QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+                .value(QStringLiteral("layout/editorSplitter"))
+                .toByteArray();
+        m_timelineHeightSet = !state.isEmpty() && m_editorPage->restoreState(state);
+        if (!m_timelineHeightSet)
+            m_editorPage->setSizes({1000, m_timelinePane->sizeHint().height()});
+    }
+    connect(m_editorPage, &QSplitter::splitterMoved, this, [this] {
+        m_timelineHeightSet = true;
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("layout/editorSplitter"), m_editorPage->saveState());
+    });
 
     // The start screen (no project open) and the editor share the window.
     m_library = std::make_unique<ProjectLibrary>();
@@ -1653,6 +1677,22 @@ void MainWindow::refreshTrackRows()
     }
     m_timelineWidget->setTracks(tracks);
     m_timelineWidget->setSelectedTrackClip(m_selectedTrackClipId);
+    fitTimelineHeight();
+}
+
+void MainWindow::fitTimelineHeight()
+{
+    // Until the user drags the split, the timeline is as tall as its tracks
+    // need, but never more than 40 % of the editor; once dragged, their
+    // height stays and extra tracks scroll.
+    if (m_timelineHeightSet)
+        return;
+    const int total = m_editorPage->height();
+    if (total <= 0)
+        return;
+    const int want = std::max(m_timelinePane->minimumSizeHint().height(),
+                              std::min(m_timelinePane->sizeHint().height(), total * 2 / 5));
+    m_editorPage->setSizes({total - want - m_editorPage->handleWidth(), want});
 }
 
 void MainWindow::selectTrackClip(int clipId)
@@ -2500,8 +2540,7 @@ void MainWindow::setFullScreenView(bool on)
         m_wasMaximized = isMaximized();
     // Everything but the viewport and the player bar.
     for (QWidget *w : {static_cast<QWidget *>(menuBar()), static_cast<QWidget *>(m_sourcesSidebar),
-                       static_cast<QWidget *>(m_sidebar), static_cast<QWidget *>(m_timelineWidget),
-                       static_cast<QWidget *>(m_transport)})
+                       static_cast<QWidget *>(m_sidebar), static_cast<QWidget *>(m_timelinePane)})
         w->setVisible(!on);
     m_playerBar->setFullScreen(on);
     m_playerBar->setVisible(true);
@@ -3285,6 +3324,8 @@ void MainWindow::showEditor()
     m_pages->setCurrentWidget(m_editorPage);
     setEditorActive(true);
     updateWindowTitle();
+    // Once the page has its height (the window may still be laying out).
+    QTimer::singleShot(0, this, &MainWindow::fitTimelineHeight);
 }
 
 void MainWindow::setEditorActive(bool active)

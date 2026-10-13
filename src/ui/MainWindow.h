@@ -35,6 +35,7 @@ class QAction;
 class QTimer;
 class QCloseEvent;
 class QShortcut;
+class QSplitter;
 class QStackedWidget;
 class QThread;
 class QVulkanInstance;
@@ -272,6 +273,7 @@ private:
     void stopPlateJob();
 
     void onTracksChanged();
+    void fitTimelineHeight(); // the split, until the user drags it
     // The extra audio tracks as the mixer wants them (muted tracks / clips
     // and missing files left out). Playback and export both use this.
     std::vector<insv::MixClip> mixClips() const;
@@ -436,7 +438,9 @@ private:
     // The window's two pages: the library (start screen) and the editor.
     QStackedWidget *m_pages = nullptr;
     ProjectLibraryPage *m_libraryPage = nullptr;
-    QWidget *m_editorPage = nullptr;
+    QSplitter *m_editorPage = nullptr; // viewer pane over the timeline pane
+    QWidget *m_timelinePane = nullptr; // the timeline and its edit strip
+    bool m_timelineHeightSet = false;  // the user dragged the split (remembered)
     std::unique_ptr<ProjectLibrary> m_library;
     // Off while the library is shown (they'd act on the hidden editor).
     QList<QAction *> m_editorActions;

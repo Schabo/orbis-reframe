@@ -1,7 +1,8 @@
 // TimelineWidget's mouse handling (extra tracks), driven with QTest on the
 // offscreen platform: audio clip select / move / cross-track move / trims,
 // snapping, the track mute box, and that the main track still seeks and
-// reorders; overlay (video) tracks above the main track. Exit code is
+// reorders; overlay (video) tracks above the main track; rows scrolling
+// when the widget is shorter than them. Exit code is
 // the failure count. ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget
 // at the end.
 
@@ -10,6 +11,7 @@
 #include <QApplication>
 #include <QLineEdit>
 #include <QMimeData>
+#include <QScrollBar>
 #include <QUrl>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -536,6 +538,45 @@ void testOverlayTracks()
         f.w.grab().save(QString::fromLocal8Bit(shot));
 }
 
+// Shorter than its rows (the window's splitter): the rows scroll under the
+// ruler -- the wheel over the headers, Shift+wheel, or the scrollbar.
+void testVerticalScroll()
+{
+    Fixture f;
+    constexpr int kScrollH = 12;
+    // The ruler, the main track and the first audio track; the second is
+    // under the scrollbar.
+    f.w.resize(kWidth, trackY(0) + kTrackH / 2 + kRowGap + kScrollH + 4);
+    CHECK(f.w.minimumSizeHint().height() < f.w.height());
+    auto *vscroll = f.w.findChild<QScrollBar *>(QStringLiteral("timelineVScroll"));
+    CHECK(vscroll && vscroll->isVisible() && vscroll->maximum() > 0);
+
+    QSignalSpy sel(&f.w, &TimelineWidget::trackClipSelected);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(17000), trackY(1)));
+    CHECK(sel.count() == 0 || sel.last().at(0).toInt() != 101); // hidden: not hit
+
+    // One notch down over the headers: a track's height.
+    const int step = kTrackH + kRowGap;
+    wheel(&f.w, QPoint(20, trackY(0)), -120, Qt::NoModifier);
+    CHECK(vscroll && vscroll->value() == std::min(step, vscroll->maximum()));
+    const int shift = vscroll ? vscroll->value() : 0;
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(Fixture::x(17000), trackY(1) - shift));
+    CHECK(sel.count() >= 1 && sel.last().at(0).toInt() == 101);
+    // The ruler doesn't scroll: it still seeks.
+    CHECK(rulerMs(&f.w, Fixture::x(0)) == 0);
+
+    // Shift+wheel over the clips scrolls back up; a plain wheel there doesn't.
+    wheel(&f.w, QPoint(Fixture::x(5000), trackY(0)), 120, Qt::NoModifier);
+    CHECK(vscroll && vscroll->value() == shift);
+    wheel(&f.w, QPoint(Fixture::x(5000), trackY(0)), 120, Qt::ShiftModifier);
+    CHECK(vscroll && vscroll->value() == 0);
+
+    // Tall enough again: no scrollbar, nothing scrolled.
+    f.w.resize(kWidth, f.w.sizeHint().height());
+    CHECK(vscroll && !vscroll->isVisible());
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -551,6 +592,7 @@ int main(int argc, char **argv)
     testDrop();
     testDropClips();
     testOverlayTracks();
+    testVerticalScroll();
     if (g_failures == 0)
         std::printf("timeline_widget_test: all checks passed\n");
     else

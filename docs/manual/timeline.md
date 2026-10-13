@@ -47,6 +47,11 @@ While zoomed in, turn the mouse wheel (without `Ctrl`) or drag the scroll
 bar under the tracks to move along the timeline. When the playhead runs
 off the edge, for example during playback, the view follows it.
 
+**More tracks than fit.** Turn the mouse wheel over the track names, or
+hold `Shift` and turn it anywhere on the timeline, to scroll the tracks up
+and down; the scroll bar at the right edge does the same. To make the
+timeline taller, drag the line between it and the viewport up.
+
 ## The video track
 
 The video track holds your `.insv` clips, one after another, with a hard cut

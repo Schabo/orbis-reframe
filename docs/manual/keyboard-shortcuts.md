@@ -120,6 +120,7 @@ file, `Alt+S` saves (`Enter` does too).
 | Drag a track header | Change the order of tracks. |
 | `Ctrl` + mouse wheel | Zoom in / out around the pointer. |
 | Mouse wheel | Scroll along the timeline, while zoomed in. |
+| Mouse wheel over the track names, or `Shift` + mouse wheel | Scroll the tracks up / down, when they don't all fit. |
 | Drop files from the file manager | Add `.insv` clips at the nearest cut, or audio files and flat video overlays where you drop them (those need a clip on the video track first). |
 
 ## When typing in a field

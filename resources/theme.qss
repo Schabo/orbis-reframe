@@ -312,6 +312,14 @@ QWidget[sidebarPart="handle"] {
 QWidget[sidebarPart="handle"]:hover {
     background-color: @accent;
 }
+/* Between the viewer and the timeline: a border line, the accent on hover. */
+QSplitter#editorSplitter::handle:vertical {
+    background-color: @border;
+    height: 3px;
+}
+QSplitter#editorSplitter::handle:vertical:hover {
+    background-color: @accent;
+}
 /* Closed: the slim strip at the edge. */
 QWidget[sidebarPart="strip"] {
     background-color: @menuBar;

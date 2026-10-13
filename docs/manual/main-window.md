@@ -78,7 +78,15 @@ aren't listed.
 
 ## The timeline
 
-Under the viewport is the timeline: your edit, from left to right in time.
+Under the viewport and both sidebars, across the whole width of the window,
+is the timeline: your edit, from left to right in time. To give it more or
+less room, drag the line between it and the viewport up or down;
+orbis-reframe remembers the height. Until you do, the timeline is as tall
+as its tracks need. When the tracks don't fit, scroll them up and down with
+the mouse wheel over the track names, `Shift` + the mouse wheel anywhere
+on the timeline, or the scroll bar at its right edge; the ruler stays in
+place.
+
 From top to bottom it has:
 
 - the **ruler**, with the time. Click or drag on it to move the **playhead**,

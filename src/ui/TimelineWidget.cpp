@@ -119,9 +119,22 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 {
     setMouseTracking(true);
     setContextMenuPolicy(Qt::DefaultContextMenu);
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    // Takes the height it's given (the window's splitter); rows that don't
+    // fit scroll under the ruler.
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
+    m_vscroll = new QScrollBar(Qt::Vertical, this);
+    m_vscroll->setObjectName(QStringLiteral("timelineVScroll"));
+    m_vscroll->hide();
+    connect(m_vscroll, &QScrollBar::valueChanged, this, [this](int v) {
+        if (v == m_viewTopPx)
+            return;
+        m_viewTopPx = v;
+        rebuildLayout();
+        update();
+    });
     m_hscroll = new QScrollBar(Qt::Horizontal, this);
+    m_hscroll->setObjectName(QStringLiteral("timelineHScroll"));
     m_hscroll->setEnabled(false);
     connect(m_hscroll, &QScrollBar::valueChanged, this, [this](int v) {
         m_viewStartMs = v;
@@ -136,35 +149,42 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 
 int TimelineWidget::mainTop() const
 {
-    return kRulerH + m_videoTracks * (kTrackH + kRowGap);
+    return kRulerH - m_viewTopPx + m_videoTracks * (kTrackH + kRowGap);
 }
 
 int TimelineWidget::trackTop(int trackIndex) const
 {
     // Overlay tracks above the main track, audio tracks below it.
     if (trackIndex < m_videoTracks)
-        return kRulerH + trackIndex * (kTrackH + kRowGap);
+        return kRulerH - m_viewTopPx + trackIndex * (kTrackH + kRowGap);
     return mainTop() + kMainH + kRowGap + (trackIndex - m_videoTracks) * (kTrackH + kRowGap);
+}
+
+int TimelineWidget::rowsHeight() const
+{
+    // All rows, unscrolled, plus a little air above the scrollbar.
+    return trackTop(static_cast<int>(m_tracks.size())) + m_viewTopPx - kRulerH + 2;
 }
 
 int TimelineWidget::scrollBarTop() const
 {
-    return trackTop(static_cast<int>(m_tracks.size())) + 2;
+    return std::max(kRulerH, height() - kScrollH);
 }
 
-int TimelineWidget::totalHeight() const
+int TimelineWidget::maxViewTop() const
 {
-    return scrollBarTop() + kScrollH;
+    return std::max(0, rowsHeight() - (scrollBarTop() - kRulerH));
 }
 
 QSize TimelineWidget::sizeHint() const
 {
-    return QSize(480, totalHeight() + 6);
+    return QSize(480, kRulerH + rowsHeight() + kScrollH + 6);
 }
 
 QSize TimelineWidget::minimumSizeHint() const
 {
-    return QSize(200, totalHeight());
+    // The ruler, the main track and the scrollbar; the rest scrolls.
+    return QSize(200, kRulerH + kMainH + kRowGap + 2 + kScrollH);
 }
 
 void TimelineWidget::setClips(const QVector<Clip> &clips)
@@ -254,6 +274,7 @@ void TimelineWidget::rebuildLayout()
     for (const TrackView &t : m_tracks)
         for (const TrackClipView &c : t.clips)
             m_extentMs = std::max(m_extentMs, c.endMs());
+    m_viewTopPx = std::clamp(m_viewTopPx, 0, maxViewTop());
     clampView();
     updateScrollBar();
 
@@ -278,7 +299,8 @@ int TimelineWidget::contentLeft() const
 
 int TimelineWidget::contentWidth() const
 {
-    return std::max(1, width() - contentLeft() - kMarginX);
+    const int vscrollW = maxViewTop() > 0 ? kScrollH : 0;
+    return std::max(1, width() - contentLeft() - kMarginX - vscrollW);
 }
 
 qint64 TimelineWidget::visibleSpanMs() const
@@ -322,6 +344,25 @@ void TimelineWidget::updateScrollBar()
     m_hscroll->setValue(int(std::min<qint64>(m_viewStartMs, INT_MAX)));
     m_hscroll->setEnabled(zoomed());
     m_hscroll->setGeometry(contentLeft(), scrollBarTop(), contentWidth(), kScrollH);
+
+    const QSignalBlocker blockV(m_vscroll);
+    const int rowsView = scrollBarTop() - kRulerH;
+    m_vscroll->setRange(0, maxViewTop());
+    m_vscroll->setPageStep(std::max(1, rowsView));
+    m_vscroll->setSingleStep(kTrackH + kRowGap);
+    m_vscroll->setValue(m_viewTopPx);
+    m_vscroll->setGeometry(width() - kScrollH, kRulerH, kScrollH, rowsView);
+    m_vscroll->setVisible(maxViewTop() > 0);
+}
+
+void TimelineWidget::scrollRowsBy(int dy)
+{
+    const int top = std::clamp(m_viewTopPx + dy, 0, maxViewTop());
+    if (top == m_viewTopPx)
+        return;
+    m_viewTopPx = top;
+    rebuildLayout();
+    update();
 }
 
 void TimelineWidget::scrollToMs(qint64 viewStartMs)
@@ -375,6 +416,11 @@ void TimelineWidget::wheelEvent(QWheelEvent *e)
     if (e->modifiers() & Qt::ControlModifier) {
         if (d.y() != 0)
             zoomBy(std::pow(kWheelZoom, d.y() / 120.0), x);
+    } else if (x < kHeaderW || (e->modifiers() & Qt::ShiftModifier)) {
+        // Over the track headers, or with Shift: up / down through the
+        // tracks, a track per notch.
+        const int notch = d.y() != 0 ? d.y() : d.x();
+        scrollRowsBy(-std::lround(notch / 120.0 * (kTrackH + kRowGap)));
     } else if (zoomed()) {
         // Either wheel axis pans; a notch moves a tenth of the view.
         const int notch = d.x() != 0 ? d.x() : d.y();
@@ -407,6 +453,8 @@ TimelineWidget::Hit TimelineWidget::hitTest(QPoint pos) const
         h.kind = pos.x() < kHeaderW ? Hit::None : Hit::Ruler;
         return h;
     }
+    if (pos.y() >= scrollBarTop()) // rows scrolled under the scrollbar
+        return h;
     const bool inHeader = pos.x() < kHeaderW;
     if (pos.y() >= mainTop() - kRowGap / 2 && pos.y() < mainTop() + kMainH + kRowGap / 2) {
         if (inHeader) {
@@ -642,7 +690,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     const int rowsBottom = scrollBarTop();
     p.setClipRect(QRect(cLeft, 0, usableW + kMarginX, rowsBottom));
 
-    // Ruler ticks, over the visible span.
+    // Ruler ticks, over the visible span (the ruler doesn't scroll).
     p.setPen(tc.textDim);
     if (m_extentMs > 0) {
         const qint64 span = visibleSpanMs();
@@ -658,6 +706,8 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             p.drawText(lx, kRulerH - 4, label);
         }
     }
+    // The rows scroll under the ruler.
+    p.setClipRect(QRect(cLeft, kRulerH, usableW + kMarginX, rowsBottom - kRulerH));
 
     // Row backgrounds.
     const QColor headerBg = tc.panel;
@@ -812,7 +862,8 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.drawLine(x, mainTop(), x, mainTop() + kMainH);
     }
 
-    // Playhead.
+    // Playhead, over the ruler too.
+    p.setClipRect(QRect(cLeft, 0, usableW + kMarginX, rowsBottom));
     const int px = xForTimelineMs(m_playheadMs);
     p.setPen(QPen(tc.playhead, 1));
     p.drawLine(px, 0, px, rowsBottom);
@@ -843,9 +894,9 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.drawLine(x, top, x, bottom);
     }
 
-    // Track headers, over anything scrolled under them.
-    p.setClipping(false);
-    p.fillRect(QRect(0, 0, kHeaderW + kMarginX, kRulerH), tc.panel);
+    // Track headers, over anything scrolled under them, and under the ruler
+    // when the rows scroll.
+    p.setClipRect(QRect(0, kRulerH, width(), rowsBottom - kRulerH));
     const auto drawMuteBox = [&](const QRect &mb, bool on, const QString &letter) {
         p.setBrush(on ? tc.accent : Qt::transparent);
         p.setPen(tc.border);
@@ -882,6 +933,8 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.setPen(QPen(tc.accent, 2));
         p.drawLine(0, y, width(), y);
     }
+    p.setClipping(false);
+    p.fillRect(QRect(0, 0, kHeaderW + kMarginX, kRulerH), tc.panel);
 }
 
 // ---------------------------------------------------------------------------
