@@ -82,7 +82,8 @@ void testLayout(SettingsSidebar &bar)
                                                   "reframePanel", "colourPanel",
                                                   "mediaInfoPanel"}));
     if (auto *audio = find<QScrollArea>(&bar, "audioSettings"))
-        CHECK(sectionNames(audio) == QStringList({"audioPanel"}));
+        CHECK(sectionNames(audio) ==
+              QStringList({"audioNoisePanel", "audioLevelPanel", "audioFadesPanel"}));
 
     // Rarely touched sections start closed; the only section on a tab can't
     // close.
@@ -92,7 +93,9 @@ void testLayout(SettingsSidebar &bar)
     CHECK(bar.colour()->isExpanded());
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
-    CHECK(bar.sections().size() == 8);
+    for (SettingsPanel *audio : bar.audio()->sections()) // three on the Audio tab
+        CHECK(audio->isCollapsible() && audio->isExpanded());
+    CHECK(bar.sections().size() == 10);
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)

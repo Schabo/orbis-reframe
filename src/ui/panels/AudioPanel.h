@@ -2,6 +2,9 @@
 
 #include "../SettingsPanel.h"
 
+#include <QList>
+#include <QObject>
+
 #include <NoiseReduction.h> // insv::NoiseReduction
 
 class QCheckBox;
@@ -11,20 +14,31 @@ class QFrame;
 class QLabel;
 class QSlider;
 
-// The Audio panel: one audio clip -- the one selected on the timeline, or
-// else the sound of the video clip under the playhead (its first linked clip,
-// on the stream tracks: a video clip has no sound of its own). Its level,
-// mute, noise reduction (mode + strength), fades and start position, plus its
-// track's level and mute (audioClipEdited / noiseEdited / trackLevelEdited
-// -> Timeline::setAudioClip* / setTrackAudio).
+// The Audio tab: one audio clip -- the one selected on the timeline, or else
+// the sound of the video clip under the playhead (its linked clip on the
+// stream tracks: a video clip has no sound of its own) -- in three sections,
+// top to bottom:
+//   Noise reduction (audioNoisePanel) -- which clip, its noise mode + strength;
+//   Level (audioLevelPanel)           -- its track's level / mute, its own;
+//   Fades (audioFadesPanel)           -- fade in / out and its start.
+// Edits come back as audioClipEdited / noiseEdited / trackLevelEdited ->
+// Timeline::setAudioClip* / setTrackAudio.
 //
-// Nothing here talks to AudioPlayer directly; it all applies to playback and
-// export alike.
-class AudioPanel : public SettingsPanel {
+// Not a widget itself: it owns the sections (sections(), for the sidebar's
+// Audio page) and keeps their state together. Nothing here talks to
+// AudioPlayer directly; it all applies to playback and export alike.
+class AudioSection;
+
+class AudioPanel : public QObject {
     Q_OBJECT
 
 public:
-    explicit AudioPanel(QWidget *parent = nullptr);
+    explicit AudioPanel(QObject *parent = nullptr);
+
+    // Top to bottom; the sidebar's Audio page shows them.
+    QList<SettingsPanel *> sections() const;
+    // What the sections apply to ("This clip" / "Selected audio clip").
+    QString scope() const;
 
     // No audio clip selected and none under the playhead -- greys the panel
     // out.
@@ -60,6 +74,11 @@ private:
     void emitTrackIfEdited();
     void setNoise(const insv::NoiseReduction &n);
     void emitNoiseIfEdited();
+    void setEnabled(bool enabled);
+
+    AudioSection *m_noiseSection = nullptr;
+    AudioSection *m_levelSection = nullptr;
+    AudioSection *m_fadesSection = nullptr;
 
     QLabel *m_clipName = nullptr;
     QSlider *m_gain = nullptr;

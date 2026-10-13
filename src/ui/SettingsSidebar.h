@@ -19,7 +19,8 @@ class StitchingPanel;
 //   Video   -- stitching, stabilization, reframe, colour, media information
 //              (in workflow order; stitching and media information start
 //              closed);
-//   Audio   -- the selected audio clip, else the clip's own sound;
+//   Audio   -- the selected audio clip, else the clip's sound: noise
+//              reduction, level, fades (AudioPanel's three sections);
 //   Overlay -- the selected overlay clip;
 //   Privacy -- the clip's number-plate blur.
 // Owns the sections; MainWindow wires them to the model.
@@ -27,8 +28,9 @@ class StitchingPanel;
 // Object names: settingsSidebar (TabSidebar's parts follow from it), the
 // pages videoSettings / audioSettings / overlaySettings / privacySettings
 // (their tab buttons <page>Tab), and the sections stitchingPanel,
-// stabilizationPanel, reframePanel, colourPanel, mediaInfoPanel, audioPanel,
-// overlayPanel, privacyPanel (headers <section>Header).
+// stabilizationPanel, reframePanel, colourPanel, mediaInfoPanel,
+// audioNoisePanel, audioLevelPanel, audioFadesPanel, overlayPanel,
+// privacyPanel (headers <section>Header).
 class SettingsSidebar : public TabSidebar {
     Q_OBJECT
 

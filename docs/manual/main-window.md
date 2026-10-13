@@ -184,7 +184,7 @@ key of the tab that's already showing closes the sidebar.
 | Tab | What it sets |
 |---|---|
 | **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles and field of view, keyframes, and **Track subject**, which follows a person or vehicle automatically), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
-| **Audio** | Volume, fades, and noise and wind reduction, for an audio clip or a video clip's sound. |
+| **Audio** | For an audio clip, or a video clip's sound: **Noise reduction** (wind and other noise), **Level** (its volume and its track's) and **Fades** (fading in and out, and where it starts). See [Audio and noise reduction](audio.md). |
 | **Overlay** | Size, position and look of the selected picture-in-picture clip. |
 | **Privacy** | Blurring number plates. |
 
@@ -207,7 +207,7 @@ says what the section applies to:
 | It says | Meaning |
 |---|---|
 | *This clip* | The selected video clip if you've clicked one, otherwise the clip under the playhead. Stabilization, Colour, Privacy, Audio (the clip's sound) and Media information. |
-| *Selected audio clip* | The **Audio** section, when you've selected an audio clip on an audio track. |
+| *Selected audio clip* | The **Audio** tab's sections, when you've selected an audio clip on an audio track. |
 | *Selected overlay clip* | The **Overlay** section: the overlay you've selected. |
 | *Keys at the playhead* | The **Reframe** section: the view at the playhead, and the keyframe there. |
 | *Whole project* | The **Stitching** section: the same for every clip. |
