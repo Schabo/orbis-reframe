@@ -277,6 +277,10 @@ void testNewProjectDialog()
 
 int main(int argc, char **argv)
 {
+    // Offscreen like the other widget tests: on a real Wayland session the
+    // page can't make itself the active window, which Delete needs.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     testLibraryPage();
     testNewProjectDialog();
