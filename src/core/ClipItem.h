@@ -1,9 +1,7 @@
 #pragma once
 
 #include <limits>
-#include "AudioLimits.h"
 #include "ReframeTrack.h"
-#include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
 #include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
 #include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
@@ -87,23 +85,8 @@ struct ClipItem {
     // samples it at trimInMs + <clip-local offset>.
     ReframeTrack reframe;
 
-    // Audio (Audio panel): a per-clip level applied to the decoded PCM on
-    // top of whatever the source stream carries, and a mute flag. Follows the
-    // same trim as the video (there is no separate audio in/out) -- see
-    // AudioPlayer. Applied in both playback and export. Clamped to
-    // audiolimits::k{Min,Max}GainDb.
-    double audioGainDb = 0.0;
-    bool audioMuted = false;
-    // Which of the source's audio streams plays/exports: the ordinal among
-    // its audio streams (0 = first). X5 clips shot with an external mic carry
-    // two -- the camera mic and the Mic Air (insv::InsvAudioDemux). Not
-    // range-checked here (the model doesn't know the stream count); an
-    // out-of-range value falls back to the source's default stream.
-    int audioTrack = 0;
-    // Noise reduction on this clip's own sound (the stream above), e.g.
-    // "MC: Wind reduction" (reduce wind, keep the engine). Per clip, so two clips of the same mic can
-    // differ. Applied in playback and export.
-    insv::NoiseReduction noise;
+    // A clip has no sound of its own: each of its source's audio streams is
+    // a linked clip on an audio track (Timeline::addClipSound).
 
     // Colour grade (Colour panel). See ColorGrade's own comment.
     ColorGrade color;
@@ -177,10 +160,6 @@ struct ClipItem {
     bool upsertReframeKey(qint64 sourceMs, const ReframePose &pose);
     bool removeReframeKeyNear(qint64 sourceMs);
     bool clearReframe();
-    bool setAudioGainDb(double db);
-    bool setAudioMuted(bool muted);
-    bool setAudioTrack(int track); // clamped to >= 0
-    bool setNoise(const insv::NoiseReduction &nr); // strength clamped to [0, 1]
     bool setColorGrade(const ColorGrade &grade);
     bool setStabilization(const insv::StabConfig &config);
     bool setBlurPlates(bool on);

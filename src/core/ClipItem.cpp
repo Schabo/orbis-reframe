@@ -77,32 +77,6 @@ bool ClipItem::clearReframe()
     return true;
 }
 
-bool ClipItem::setAudioGainDb(double db)
-{
-    const double clamped = std::clamp(db, audiolimits::kMinGainDb, audiolimits::kMaxGainDb);
-    if (clamped == audioGainDb)
-        return false;
-    audioGainDb = clamped;
-    return true;
-}
-
-bool ClipItem::setAudioMuted(bool muted)
-{
-    if (muted == audioMuted)
-        return false;
-    audioMuted = muted;
-    return true;
-}
-
-bool ClipItem::setNoise(const insv::NoiseReduction &nr)
-{
-    const insv::NoiseReduction n = nr.clamped();
-    if (n == noise)
-        return false;
-    noise = n;
-    return true;
-}
-
 bool ClipItem::setSpeed(double s)
 {
     if (!std::isfinite(s))
@@ -111,15 +85,6 @@ bool ClipItem::setSpeed(double s)
     if (std::abs(s - speed) < 1e-9)
         return false;
     speed = s;
-    return true;
-}
-
-bool ClipItem::setAudioTrack(int track)
-{
-    track = std::max(track, 0);
-    if (track == audioTrack)
-        return false;
-    audioTrack = track;
     return true;
 }
 

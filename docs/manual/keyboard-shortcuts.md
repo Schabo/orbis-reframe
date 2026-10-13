@@ -115,7 +115,7 @@ file, `Alt+S` saves (`Enter` does too).
 | Drag a clip's edge | Trim it. |
 | Right-click a clip | Its menu: split, speed, insert, move, remove, link, put its sound on an audio track. |
 | Right-click an empty spot | Add clips, audio or overlays there; add, rename, move or remove tracks; zoom. |
-| Click **M** / **H** in a track header | Mute an audio track (or the camera sound, on the video track) / hide an overlay track. |
+| Click **M** / **H** in a track header | Mute an audio track (the camera's sound: the *Camera mic* track) / hide an overlay track. |
 | Double-click a track name | Rename the track. |
 | Drag a track header | Change the order of tracks. |
 | `Ctrl` + mouse wheel | Zoom in / out around the pointer. |

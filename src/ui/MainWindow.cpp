@@ -142,6 +142,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // (pushTimelineToController); it plays across the clips in timeline time.
     m_project = new Project(this);
     m_timeline = m_project->timeline();
+    // An older project's clips have their sound put on the stream tracks.
+    m_project->setAudioStreamCounter([this](const QString &path) { return audioStreamCount(path); });
     connect(m_project, &Project::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
     connect(m_project, &Project::filePathChanged, this, [this](const QString &) {
         updateWindowTitle();
@@ -494,8 +496,6 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         if (const Track *t = m_timeline->trackById(id))
             m_timeline->setTrackAudio(id, t->gainDb, muted);
     });
-    connect(m_timelineWidget, &TimelineWidget::mainMuteToggled, m_timeline,
-            &Timeline::setMainAudioMuted);
     connect(m_timelineWidget, &TimelineWidget::trackRemoveRequested, m_timeline,
             &Timeline::removeTrack);
     connect(m_timelineWidget, &TimelineWidget::trackRenameRequested, m_timeline,
@@ -560,16 +560,14 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             &MainWindow::clearOverlayKeys);
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
-    connect(m_timelineWidget, &TimelineWidget::clipDetachAudioRequested, this,
-            &MainWindow::detachOtherMic);
     connect(m_timelineWidget, &TimelineWidget::overlaySoundRequested, this,
             &MainWindow::putOverlaySoundOnTrack);
     connect(m_timeline, &Timeline::tracksChanged, this, &MainWindow::onTracksChanged);
-    // Audio panel in audio-clip mode -> the selected clip and its track.
+    // Audio panel -> the audio clip it shows (audioPanelClipId) and its track.
     connect(m_audioPanel, &AudioPanel::audioClipEdited, this,
             [this](double gainDb, bool muted, qint64 fadeInMs, qint64 fadeOutMs, qint64 startMs) {
                 int trackId = 0;
-                const int id = m_selectedTrackClipId;
+                const int id = audioPanelClipId();
                 if (id <= 0 || !m_timeline->trackClipById(id, &trackId))
                     return;
                 m_timeline->setAudioClipLevel(id, gainDb, muted);
@@ -578,7 +576,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             });
     connect(m_audioPanel, &AudioPanel::trackLevelEdited, this, [this](double gainDb, bool muted) {
         int trackId = 0;
-        if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId))
+        if (const int id = audioPanelClipId(); id > 0 && m_timeline->trackClipById(id, &trackId))
             m_timeline->setTrackAudio(trackId, gainDb, muted);
     });
     connect(m_project, &Project::projectReset, this, [this] {
@@ -696,40 +694,9 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         }
     });
 
-    // Audio panel: an edit writes both level and mute onto the clip under the
-    // playhead in one Timeline call. clipAudioChanged pushes the new
-    // Segment list to AudioPlayer -- it's the only thing that reads it.
-    connect(m_audioPanel, &AudioPanel::levelEdited, this, [this](double gainDb, bool muted) {
-        if (const int id = editClipId())
-            m_timeline->setClipAudio(id, gainDb, muted);
-    });
-    connect(m_timeline, &Timeline::mainAudioMutedChanged, this, [this] {
-        pushTimelineToController(); // AudioPlayer reads the mute off the Segments
-        refreshTimelineWidget();
-    });
-    connect(m_timeline, &Timeline::clipAudioChanged, this,
-            [this](int id, double, bool) {
-                pushTimelineToController(); // AudioPlayer needs the new gain/mute/track
-                if (id == editClipId())
-                    if (const ClipItem *c = m_timeline->clipById(id))
-                        syncAudioPanel(*c);
-            });
-    // Noise reduction: onto the selected audio clip if the panel shows one
-    // (the same rule as refreshAudioPanel), else the clip under the playhead.
     connect(m_audioPanel, &AudioPanel::noiseEdited, this, [this](const insv::NoiseReduction &n) {
-        int trackId = 0;
-        if (m_selectedTrackClipId > 0 &&
-            m_timeline->trackClipById(m_selectedTrackClipId, &trackId) &&
-            m_timeline->trackById(trackId)->kind == Track::Kind::Audio) {
-            m_timeline->setAudioClipNoise(m_selectedTrackClipId, n);
-            return;
-        }
-        if (const int id = editClipId())
-            m_timeline->setClipNoise(id, n);
-    });
-    connect(m_audioPanel, &AudioPanel::trackEdited, this, [this](int track) {
-        if (const int id = editClipId())
-            m_timeline->setClipAudioTrack(id, track);
+        if (const int id = audioPanelClipId(); id > 0)
+            m_timeline->setAudioClipNoise(id, n);
     });
 
     // Colour panel: an edit writes the grade onto the clip under the playhead;
@@ -1611,27 +1578,6 @@ int MainWindow::audioStreamCount(const QString &path)
     return *it;
 }
 
-void MainWindow::syncAudioPanel(const ClipItem &c)
-{
-    int selTrack = 0;
-    if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &selTrack) &&
-        m_timeline->trackById(selTrack)->kind == Track::Kind::Audio)
-        return; // the panel shows the selected audio clip instead
-    // Streams of this clip's footage that are also on an audio track, so
-    // the picker can't play one twice.
-    QHash<int, QString> detached;
-    for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i) {
-        const Track &t = m_timeline->trackAt(i);
-        for (const TrackClip &a : t.clips)
-            if (a.stream >= 0 && a.sourcePath == c.sourcePath && a.trimInMs < c.trimOutMs &&
-                c.trimInMs < a.trimOutMs)
-                detached.insert(a.stream, t.name);
-    }
-    m_audioPanel->setState(c.audioGainDb, c.audioMuted, c.audioTrack,
-                           audioStreamCount(c.sourcePath), QFileInfo(c.sourcePath).fileName(),
-                           detached, c.noise);
-}
-
 void MainWindow::refreshTrackRows()
 {
     QVector<TimelineWidget::TrackView> tracks;
@@ -1661,8 +1607,6 @@ void MainWindow::refreshTrackRows()
                 v.clips.push_back(a);
                 continue;
             }
-            if (c.stream >= 0) // a detached camera stream
-                a.label += tr(" (stream %1)").arg(c.stream + 1);
             a.startMs = c.startMs;
             a.trimInMs = c.trimInMs;
             a.trimOutMs = c.trimOutMs;
@@ -1717,38 +1661,57 @@ void MainWindow::selectTrackClip(int clipId)
     refreshOverlayPanel();
 }
 
+int MainWindow::audioPanelClipId() const
+{
+    int trackId = 0;
+    if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId))
+        return m_timeline->trackById(trackId)->kind == Track::Kind::Audio ? m_selectedTrackClipId
+                                                                          : 0;
+    // Else the sound of the video clip under the playhead: a clip linked to
+    // it, top track first (the camera mic), the one at the playhead if its
+    // sound was split.
+    const int clipId = editClipId();
+    if (!clipId)
+        return 0;
+    int first = 0;
+    for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i) {
+        for (const TrackClip &a : m_timeline->trackAt(i).clips) {
+            if (a.linkedClipId != clipId)
+                continue;
+            if (a.startMs <= m_lastTimelineMs && m_lastTimelineMs < a.endMs())
+                return a.id;
+            if (!first)
+                first = a.id;
+        }
+    }
+    return first;
+}
+
 void MainWindow::refreshAudioPanel()
 {
     int trackId = 0;
-    const TrackClip *a = m_selectedTrackClipId > 0
-                             ? m_timeline->trackClipById(m_selectedTrackClipId, &trackId)
-                             : nullptr;
-    if (a && m_timeline->trackById(trackId)->kind == Track::Kind::Video)
-        a = nullptr; // an overlay: the Overlay panel's; this one follows the playhead
-    if (a) {
-        const Track *t = m_timeline->trackById(trackId);
-        AudioPanel::AudioClipState st;
-        st.label = QFileInfo(a->sourcePath).fileName();
-        if (a->stream >= 0)
-            st.label += tr(" (stream %1)").arg(a->stream + 1);
-        st.gainDb = a->gainDb;
-        st.muted = a->muted;
-        st.fadeInMs = a->fadeInMs;
-        st.fadeOutMs = a->fadeOutMs;
-        st.spanMs = a->timelineDurationMs();
-        st.startMs = a->startMs;
-        st.linked = a->linkedClipId != 0;
-        st.trackName = t->name;
-        st.trackGainDb = t->gainDb;
-        st.trackMuted = t->muted;
-        st.noise = a->noise;
-        m_audioPanel->setAudioClipState(st);
+    const int id = audioPanelClipId();
+    const TrackClip *a = id > 0 ? m_timeline->trackClipById(id, &trackId) : nullptr;
+    if (!a) {
+        m_audioPanel->setNoClip();
         return;
     }
-    if (const ClipItem *c = m_timeline->clipById(editClipId()))
-        syncAudioPanel(*c);
-    else
-        m_audioPanel->setNoClip();
+    const Track *t = m_timeline->trackById(trackId);
+    AudioPanel::AudioClipState st;
+    st.label = QFileInfo(a->sourcePath).fileName();
+    st.gainDb = a->gainDb;
+    st.muted = a->muted;
+    st.fadeInMs = a->fadeInMs;
+    st.fadeOutMs = a->fadeOutMs;
+    st.spanMs = a->timelineDurationMs();
+    st.startMs = a->startMs;
+    st.linked = a->linkedClipId != 0;
+    st.trackName = t->name;
+    st.trackGainDb = t->gainDb;
+    st.trackMuted = t->muted;
+    st.noise = a->noise;
+    st.selected = id == m_selectedTrackClipId;
+    m_audioPanel->setAudioClipState(st);
 }
 
 std::vector<insv::MixClip> MainWindow::mixClips() const
@@ -2075,7 +2038,7 @@ int MainWindow::linkTargetFor(const TrackClip &a) const
 {
     // A main-track or overlay clip of the same footage whose source range
     // overlaps the audio's; the one nearest on the timeline wins (the audio
-    // was detached from it, or cut from it).
+    // was unlinked from it, or cut from it).
     int best = 0;
     qint64 bestDist = std::numeric_limits<qint64>::max();
     auto consider = [&](int id, qint64 startMs, qint64 trimInMs, qint64 trimOutMs, double speed) {
@@ -2647,52 +2610,6 @@ void MainWindow::clearTrim()
         m_timeline->clearClipTrim(id);
 }
 
-void MainWindow::detachOtherMic(int clipId)
-{
-    const int idx = m_timeline->indexOfId(clipId);
-    if (idx < 0)
-        return;
-    const ClipItem &c = m_timeline->clipAt(idx);
-    const int streams = audioStreamCount(c.sourcePath);
-    if (streams < 2)
-        return;
-    // The clip plays its picked stream; the "other mic" is the first one it
-    // doesn't.
-    const int other = c.audioTrack == 0 ? 1 : 0;
-
-    TrackClip a;
-    a.sourcePath = c.sourcePath;
-    a.sourceDurationMs = c.sourceDurationMs;
-    a.stream = other;
-    a.startMs = m_timeline->clipToTimeline(idx, 0);
-    a.trimInMs = c.trimInMs;
-    a.trimOutMs = c.trimOutMs;
-    a.speed = c.speed; // stays in step with the picture, pitch kept
-    a.linkedClipId = c.id; // and follows the clip's edits
-    const qint64 endMs = a.startMs + c.timelineDurationMs();
-
-    // Already on a track (over this footage): select it rather than add a
-    // second copy that would play the stream twice.
-    for (int i = 0; i < m_timeline->trackCount(); ++i)
-        for (const TrackClip &x : m_timeline->trackAt(i).clips)
-            if (x.stream == other && x.sourcePath == c.sourcePath && x.trimInMs < c.trimOutMs &&
-                c.trimInMs < x.trimOutMs) {
-                selectTrackClip(x.id);
-                return;
-            }
-
-    // Onto a track that already holds detached camera audio, if one has room;
-    // else a new "Mics" track -- keeping mics apart from music.
-    auto holdsMics = [](const Track &t) {
-        return std::any_of(t.clips.begin(), t.clips.end(),
-                           [](const TrackClip &x) { return x.stream >= 0; });
-    };
-    int trackId = freeTrackFor(a.startMs, endMs, false, holdsMics);
-    if (!trackId)
-        trackId = m_timeline->addTrack(Track::Kind::Audio, tr("Mics"));
-    selectTrackClip(m_timeline->insertTrackClip(trackId, a));
-}
-
 void MainWindow::putOverlaySoundOnTrack(int clipId)
 {
     int trackId = 0;
@@ -2750,9 +2667,7 @@ void MainWindow::pushTimelineToController()
     m_captureTimingOn.clear(); // ids don't survive a load / undo
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
-        segments.push_back(
-            {c.sourcePath, c.trimInMs, c.trimOutMs, c.audioGainDb,
-             c.audioMuted || m_timeline->mainAudioMuted(), c.audioTrack, c.speed, c.noise, c.id});
+        segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = captureTimingOn(c);
     }
@@ -2782,12 +2697,6 @@ void MainWindow::refreshTimelineWidget()
         w.sourceDurationMs = c.sourceDurationMs;
         w.missing = c.mediaMissing;
         w.speed = c.speed;
-        w.hasOtherAudioStream = audioStreamCount(c.sourcePath) > 1;
-        if (!c.mediaMissing)
-            w.peaks = waveformFor(c.sourcePath, c.audioTrack);
-        w.gain = c.audioMuted || m_timeline->mainAudioMuted()
-                     ? 0.0
-                     : std::pow(10.0, c.audioGainDb / 20.0);
         for (qint64 t : c.reframe.keyTimes())
             w.keySourceMs.push_back(t);
         clips.push_back(std::move(w));
@@ -2795,7 +2704,6 @@ void MainWindow::refreshTimelineWidget()
             activeHasKeys = true;
     }
     m_timelineWidget->setClips(clips);
-    m_timelineWidget->setMainMuted(m_timeline->mainAudioMuted());
     m_timelineWidget->setActiveClip(editClipId());
     refreshTrackRows();
     m_editToolbar->setHasReframeKeys(activeHasKeys);
@@ -2902,7 +2810,7 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         }
         const bool wasEmpty = m_timeline->count() == 0;
         m_timeline->insertClip(index++, path, probe.duration_ms, probe.fps, probe.width,
-                               probe.height);
+                               probe.height, audioStreamCount(path));
         if (wasEmpty) {
             m_clipPath = path;
             m_fps = probe.fps;
@@ -3190,10 +3098,10 @@ void MainWindow::openClip(const QString &clipPath)
     m_fps = probe.fps;
     m_rebindingModel = true;
     m_clipId = m_project->resetWithClip(clipPath, probe.duration_ms, probe.fps, probe.width,
-                                        probe.height);
+                                        probe.height, audioStreamCount(clipPath));
     m_rebindingModel = false;
     if (const ClipItem *c = m_timeline->clipById(m_clipId)) {
-        syncAudioPanel(*c);
+        refreshAudioPanel();
         syncMediaInfoPanel(*c);
         applyColorGrade(c->color);
         m_colourPanel->setState(c->color);
@@ -3241,7 +3149,7 @@ void MainWindow::openProject(const QString &projectPath)
     m_clipId = first.id;
     m_clipPath = first.sourcePath;
     m_fps = first.fps;
-    syncAudioPanel(first);
+    refreshAudioPanel();
     syncMediaInfoPanel(first);
     applyColorGrade(first.color);
     m_colourPanel->setState(first.color);
@@ -3630,10 +3538,6 @@ ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) con
     job.speed = c.speed;
     const std::array<float, 4> grade = c.color.packed();
     std::copy(grade.begin(), grade.end(), job.colorGrade);
-    job.audioTrack = c.audioTrack;
-    job.audioGainDb = c.audioGainDb;
-    job.audioMuted = c.audioMuted || m_timeline->mainAudioMuted();
-    job.noise = c.noise;
     job.blur = blurFor(c);
     seamAdjustFor(c.sourcePath, job.seamAdjustDeg);
     if (nativeStab) {

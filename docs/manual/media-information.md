@@ -43,8 +43,8 @@ full path, or what a value means.
 ## Audio
 
 One row for each sound recording in the file: **Track 1**, and **Track 2**
-for a clip with an external microphone (see [Audio and noise
-reduction](audio.md), where they're called streams). Each row shows the
+for a clip with an external microphone (on the timeline, the *Mic Air*
+and *Camera mic* tracks; see [Audio and noise reduction](audio.md)). Each row shows the
 format (usually AAC), the channels (mono or stereo), the sample rate and
 the data rate.
 

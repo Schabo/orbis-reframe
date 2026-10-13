@@ -141,18 +141,21 @@ choose **Remove clip**. Its linked audio (see below) is removed with it.
 
 ### The camera's sound
 
-The video clips play the sound the camera recorded. Click the **M** box in
-the **Video** track header to mute the camera's sound for all clips, for
-example when your video should only have music. The **Audio** tab sets the
-volume, picks the microphone and reduces noise and wind for each clip: see
-[Audio and noise reduction](audio.md).
+The video track holds only the picture. The sound the camera recorded goes
+onto an audio track right under it, **Camera mic**, as one audio clip per
+video clip, linked to it (see below). A clip recorded with an external
+microphone such as the Insta360 Mic Air has a second recording, which goes
+onto a **Mic Air** track under that. Click the **M** box in a track's
+header to mute that microphone for all clips, for example when your video
+should only have music. The **Audio** tab sets the volume and reduces noise
+and wind for each clip: see [Audio and noise reduction](audio.md).
 
 ## Audio and overlay tracks
 
 Besides the video track, you can add any number of other tracks:
 
-- **Audio tracks**, under the video track: music, sound from an external
-  recorder, or a second microphone. Files: `.mp3`, `.wav`, `.flac`, `.aac`,
+- **Audio tracks**, under the video track and its *Camera mic* and *Mic
+  Air* tracks: music, or sound from an external recorder. Files: `.mp3`, `.wav`, `.flac`, `.aac`,
   `.m4a`, `.ogg` and `.opus`.
 - **Overlay tracks**, above the video track: ordinary flat videos shown as a
   picture-in-picture over the 360° video, for example from a phone or an
@@ -225,12 +228,9 @@ audio track, but not to another time.
 
 You get linked audio in two ways:
 
-- **A second microphone.** If you recorded with an external microphone
-  connected to the camera (such as the Insta360 Mic Air), the `.insv` file
-  holds two sound recordings. Right-click the clip and choose **Put the
-  other mic on an audio track**. The second recording goes onto an audio
-  track called *Mics*, linked to the clip. You can then set the volume of
-  each microphone on its own, or mute one.
+- **The camera's sound.** Every `.insv` clip's sound is linked audio on the
+  *Camera mic* track, and on the *Mic Air* track when an external
+  microphone was connected (see [above](#the-cameras-sound)).
 - **An overlay's sound.** If an overlay video has sound, right-click it and
   choose **Put its sound on an audio track**.
 

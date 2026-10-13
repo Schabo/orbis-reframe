@@ -7,7 +7,6 @@
 
 #include <IStitchSource.h> // stitch::Frame
 #include <LensFrame.h>     // render::LensFrame
-#include <NoiseReduction.h> // insv::NoiseReduction (Segment::noise)
 
 #include "InsetFeed.h" // video-track insets
 #include "../render/FrameStats.h" // ORBIS_FRAME_STATS
@@ -76,20 +75,15 @@ public:
 
     // One clip on the timeline: a source file and the [in, out) source-time
     // window to play from it. MainWindow builds these from the Timeline.
-    // audioGainDb/audioMuted/audioTrack (Audio panel) are read only by
-    // AudioPlayer, which reuses this same struct for its own setTimeline() --
-    // the video path here ignores them.
+    // AudioPlayer reuses this same struct for its own setTimeline() (the
+    // timeline's length and cuts; the sound is on the audio tracks).
     struct Segment {
         QString sourcePath;
         qint64 inMs = 0;
         qint64 outMs = 0;
-        double audioGainDb = 0.0;
-        bool audioMuted = false;
-        int audioTrack = 0;
         // Playback speed (ClipItem::speed): the segment spans (outMs - inMs) /
         // speed on the timeline. Same rounding as ClipItem::timelineDurationMs.
         double speed = 1.0;
-        insv::NoiseReduction noise; // on the clip's own sound (AudioPlayer)
         // The Timeline clip it plays (ClipItem::id): what the per-clip
         // capture timing and stabilization are looked up by, since two clips
         // of one file can differ.

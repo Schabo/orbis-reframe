@@ -42,7 +42,7 @@ private:
 // the main track's ClipItems, which sit back to back, a track clip carries its
 // own timeline start. On an audio track it is a span of an audio file -- a
 // music file (mp3 / wav / aac / flac / ...), or one audio stream of an .insv
-// detached from its video clip. On a video track it is a span of a flat video
+// clip (its camera mic or Mic Air, linked to the video clip). On a video track it is a span of a flat video
 // file shown as an inset over the output; the audio fields (stream, level,
 // link) don't apply, and the fades fade its opacity. Its sound, if wanted, is a
 // linked clip of the same file on an audio track.
@@ -65,12 +65,12 @@ struct TrackClip {
     qint64 trimInMs = 0; // source time
     qint64 trimOutMs = 0;
     // Playback speed, pitch kept (as ClipItem::speed). Always 1 for a music
-    // file; a detached camera stream keeps its video clip's speed so it stays
-    // in step with the picture.
+    // file; a clip's own stream keeps its video clip's speed so it stays in
+    // step with the picture.
     double speed = 1.0;
 
-    // Linked to a main-track video clip (set when a camera stream is detached),
-    // or to an overlay clip (set when its sound is put on an audio track). Then
+    // Linked to a main-track video clip (each of its streams, put on the
+    // stream tracks when the clip is added), or to an overlay clip (set when its sound is put on an audio track). Then
     // it follows that clip: `speed` is the clip's, and `startMs` is derived --
     // the clip's timeline start, plus where `trimInMs` falls in the clip's
     // source range, plus `syncOffsetMs` (set when linking, from where the clip
@@ -138,13 +138,30 @@ private:
 // video tracks the first is the top row and draws on top.
 struct Track {
     enum class Kind { Audio, Video };
+    // What an audio track holds. The main video's sound is on the stream
+    // tracks, right under it -- one per kind of .insv audio stream, named by
+    // what it is rather than by its order in the file; a Free track holds
+    // anything (music, an overlay's sound, an unlinked mic).
+    enum class Role { Free, CameraMic, MicAir };
 
     int id = 0; // unique among the tracks
     Kind kind = Kind::Audio;
+    Role role = Role::Free; // audio tracks only
     QString name;
     double gainDb = 0.0; // on top of each clip's own level
     bool muted = false;  // a muted video track is hidden
     QList<TrackClip> clips; // kept sorted by startMs
+
+    // The role of stream `stream` (InsvAudioDemux's ordinal) of an .insv
+    // with `streamCount` audio streams: with an external mic connected the
+    // first stream is the Mic Air and the second the camera's own mic, else
+    // the only one is the camera's (see docs/INSV_FORMAT.md).
+    static Role roleOfStream(int stream, int streamCount)
+    {
+        if (streamCount >= 2)
+            return stream == 0 ? Role::MicAir : stream == 1 ? Role::CameraMic : Role::Free;
+        return stream == 0 ? Role::CameraMic : Role::Free;
+    }
 
     void sortClips()
     {

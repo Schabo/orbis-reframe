@@ -7,12 +7,17 @@ noise. How to add, move, trim and split audio clips on the timeline is in
 
 ## Where the sound comes from
 
-- **The camera's sound.** Each `.insv` clip on the video track plays the
-  sound the X5 recorded.
+- **The camera's sound.** When you add an `.insv` clip, its sound goes onto
+  an audio track right under the video track, called **Camera mic**. It's
+  an ordinary audio clip, linked to the video clip: it moves, trims, splits
+  and speeds up with it, and is removed with it. The video track itself
+  holds only the picture.
 - **An external microphone.** If a microphone such as the Insta360 Mic Air
-  was connected to the camera, the clip holds two sound recordings
-  (*streams*): the camera's own microphones, and the external one.
-- **Audio files** on audio tracks: music, or sound from a separate recorder.
+  was connected to the camera, the clip holds a second sound recording. It
+  goes onto its own track, **Mic Air**, under *Camera mic*, linked the same
+  way. Both play, each with its own level, mute and noise reduction.
+- **Audio files** on the other audio tracks: music, or sound from a
+  separate recorder.
 - **An overlay's sound.** Overlay videos are silent until you put their
   sound on an audio track (right-click the overlay clip: **Put its sound on
   an audio track**).
@@ -21,40 +26,26 @@ Everything plays together, in playback and in the export.
 
 ## The Audio tab
 
-The settings sidebar's **Audio** tab shows the settings of one clip. Which
-clip that is depends on what's selected, and the tab's title row says which
-(*This clip* or *Selected audio clip*):
+The settings sidebar's **Audio** tab shows the settings of one audio clip.
+Which clip that is depends on what's selected, and the tab's title row says
+which (*Selected audio clip* or *This clip*):
 
-- **A video clip** (`.insv`): the clip you selected on the video track, or
-  the clip under the playhead if none is selected.
-- **An audio clip**: click it on an audio track to select it. Press `Esc`,
-  or click a clip on the video track, to go back to the video clip.
+- **An audio clip you selected**: click it on an audio track. Press `Esc`,
+  or click a clip on the video track, to go back.
+- **Otherwise, the sound of the video clip** you selected on the video
+  track, or of the clip under the playhead if none is selected: its clip on
+  the *Camera mic* track (or on *Mic Air*, if it has no camera sound).
 
-<img src="images/audio-panel-video.jpg" width="350" alt="The Audio tab for a video clip"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio tab for a music clip on an audio track">
+<img src="images/audio-panel-video.jpg" width="350" alt="The Audio tab for a video clip's sound"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio tab for a music clip on an audio track">
 
-*Left: a video clip. Right: a music clip on an audio track.*
-
-### For a video clip
-
-| Setting | What it does |
-|---|---|
-| **Clip** | The clip's file name. |
-| **Source** | Which of the clip's sound recordings it plays: **Stream 1** or **Stream 2**. Only clips with an external microphone have two. |
-| **Level** | The clip's volume, from −24 dB to +12 dB. 0 dB leaves it as recorded; negative values make it quieter, positive values louder. |
-| **Mute** | Silences this clip. |
-| **Noise** and **Strength** | Noise reduction, see below. |
-
-The **M** box in the **Video** track header on the timeline mutes the sound
-of all video clips at once.
-
-### For an audio clip
+*Left: a video clip's sound. Right: a music clip on an audio track.*
 
 | Setting | What it does |
 |---|---|
 | **Track** | The name of the track the clip is on. |
 | **Track level** and **Mute track** | The volume of the whole track, on top of each clip's own level, and muting it. |
 | **Clip** | The clip's file name. |
-| **Level** and **Mute** | This clip's own volume, and muting it. |
+| **Level** and **Mute** | This clip's own volume, from −24 dB to +12 dB, and muting it. 0 dB leaves it as recorded; negative values make it quieter, positive values louder. |
 | **Noise** and **Strength** | Noise reduction, see below. |
 | **Fade in** / **Fade out** | Fades the clip in from silence at its start, or out to silence at its end, over this many seconds. The fades show as slanted lines over the clip's waveform. |
 | **Start** | Where the clip starts on the timeline, in seconds. The arrows move it by 10 milliseconds, for lining up a separate recorder with the picture (see below). Greyed out for a linked clip, which moves with its video. |
@@ -62,22 +53,34 @@ of all video clips at once.
 The waveform drawn on each clip shows how loud it is, with its level and
 fades applied, so you can see the effect of your changes.
 
+To mute the camera's sound of all clips at once, click the **M** box in
+the *Camera mic* track's header (or *Mic Air*'s).
+
 ## Two microphones
 
-The `.insv` file doesn't say which stream is the camera's microphones and
-which the external microphone. Pick each one under **Source** and listen.
+With an external microphone, each clip has a clip on the *Camera mic* track
+and one on the *Mic Air* track. Use both, for example your voice from the
+Mic Air and the engine from the camera, or mute the one you don't want:
+select its clip, or click the **M** box of its track to mute it for every
+clip.
 
-To use both, for example your voice from the Mic Air and the engine from the
-camera, right-click the clip on the video track and choose **Put the other
-mic on an audio track**. The second stream goes onto an audio track called
-*Mics*, linked to the clip, and the two can now have their own level, mute
-and noise reduction. Its stream is then greyed out under **Source**, so it
-isn't played twice.
+orbis-reframe tells the two apart by their order in the file, which is how
+the X5 records them. If a track ever sounds like the other microphone,
+listen to both and use the one you want.
+
+## Projects from earlier versions
+
+A project saved by an earlier version of orbis-reframe is converted when
+you open it: each clip's sound goes onto the *Camera mic* and *Mic Air*
+tracks and keeps its level, mute and noise reduction. A recording you
+didn't use is muted there, so the project sounds as before. A microphone
+you had put on an audio track yourself stays where it was. Saving the
+project saves it in the new format, which earlier versions can't open.
 
 ## Noise reduction
 
-Each clip, on the video track or on an audio track, can have one kind of
-noise reduction. Pick it under **Noise**, and set how strongly it works with
+Each audio clip, the camera's sound included, can have one kind of noise
+reduction. Pick it under **Noise**, and set how strongly it works with
 **Strength**. Picking a mode sets its usual strength.
 
 | Mode | What it does | Use it for | Default strength |

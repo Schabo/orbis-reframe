@@ -151,40 +151,16 @@ void testInsetKeyTrack()
     CHECK(k.count() == 2 && k.keys()[0].timeMs == 1000 && k.keys()[1].timeMs == 3000);
 }
 
-void testClipItemAudio()
+// Which kind of mic an .insv audio stream is (docs/INSV_FORMAT.md): with
+// two streams the first is the Mic Air, else the only one is the camera's.
+void testStreamRoles()
 {
-    ClipItem c;
-    CHECK(c.audioGainDb == 0.0 && !c.audioMuted); // defaults
-
-    CHECK(c.setAudioGainDb(-6.0));
-    CHECK(c.audioGainDb == -6.0);
-    CHECK(!c.setAudioGainDb(-6.0)); // no-op returns false
-
-    // clamped to audiolimits::k{Min,Max}GainDb
-    CHECK(c.setAudioGainDb(999.0));
-    CHECK(c.audioGainDb == audiolimits::kMaxGainDb);
-    CHECK(c.setAudioGainDb(-999.0));
-    CHECK(c.audioGainDb == audiolimits::kMinGainDb);
-
-    CHECK(c.setAudioMuted(true));
-    CHECK(c.audioMuted);
-    CHECK(!c.setAudioMuted(true)); // no-op returns false
-
-    CHECK(c.audioTrack == 0); // default: the source's first audio stream
-    CHECK(c.setAudioTrack(1));
-    CHECK(c.audioTrack == 1);
-    CHECK(!c.setAudioTrack(1)); // no-op returns false
-    CHECK(c.setAudioTrack(-5)); // clamped to 0
-    CHECK(c.audioTrack == 0);
-
-    // Noise reduction: off by default, strength defaults to 0.7.
-    CHECK(c.noise.mode == insv::NoiseMode::Off && c.noise.strength == 0.7f);
-    CHECK(c.setNoise({insv::NoiseMode::MotorcycleWind, 0.7f}));
-    CHECK(!c.setNoise({insv::NoiseMode::MotorcycleWind, 0.7f})); // no-op returns false
-    CHECK(c.setNoise({insv::NoiseMode::MotorcycleWind, 3.0f}));   // clamped to [0, 1]
-    CHECK(c.noise.strength == 1.0f);
-    CHECK(c.setNoise({insv::NoiseMode::MotorcycleWind, -1.0f}));
-    CHECK(c.noise.strength == 0.0f);
+    using R = Track::Role;
+    CHECK(Track::roleOfStream(0, 1) == R::CameraMic);
+    CHECK(Track::roleOfStream(0, 2) == R::MicAir);
+    CHECK(Track::roleOfStream(1, 2) == R::CameraMic);
+    CHECK(Track::roleOfStream(2, 3) == R::Free); // no known kind
+    CHECK(Track::roleOfStream(1, 1) == R::Free);
 }
 
 void testClipItemColor()
@@ -354,34 +330,6 @@ void testTimelineStructure()
     tl.replaceClipReframeSpan(999, 0, 2000, {}); // unknown id: no signal
     CHECK(reframeTouched == 2);
 
-    // audio: level + mute set together, one signal, unknown-id safety
-    int audioTouched = 0;
-    double lastGain = 0.0;
-    bool lastMuted = false;
-    QObject::connect(&tl, &Timeline::clipAudioChanged, &tl, [&](int, double g, bool m) {
-        ++audioTouched;
-        lastGain = g;
-        lastMuted = m;
-    });
-    tl.setClipAudio(a, -3.0, true);
-    CHECK(audioTouched == 1);
-    CHECK(lastGain == -3.0 && lastMuted);
-    CHECK(tl.clipById(a)->audioGainDb == -3.0 && tl.clipById(a)->audioMuted);
-    tl.setClipAudio(a, -3.0, true); // no-op -> no signal
-    CHECK(audioTouched == 1);
-    tl.setClipAudio(999, -1.0, true); // unknown id -- must not crash / signal
-    CHECK(audioTouched == 1);
-    tl.setClipAudioTrack(a, 1); // track pick shares the signal
-    CHECK(audioTouched == 2 && tl.clipById(a)->audioTrack == 1);
-    tl.setClipAudioTrack(a, 1); // no-op -> no signal
-    tl.setClipAudioTrack(999, 1);
-    CHECK(audioTouched == 2);
-    const int before = audioTouched;
-    tl.setClipNoise(a, {insv::NoiseMode::MotorcycleWind, 0.5f}); // noise shares the signal
-    CHECK(audioTouched == before + 1 && tl.clipById(a)->noise.mode == insv::NoiseMode::MotorcycleWind);
-    tl.setClipNoise(a, {insv::NoiseMode::MotorcycleWind, 0.5f}); // no-op -> no signal
-    CHECK(audioTouched == before + 1);
-
     // colour: all four fields set together, one signal, unknown-id safety
     int colorTouched = 0;
     ColorGrade lastGrade;
@@ -443,6 +391,117 @@ void writeFile(const QString &path, const QByteArray &data = QByteArrayLiteral("
     CHECK(f.open(QIODevice::WriteOnly));
     f.write(data);
     f.close();
+}
+
+// A clip's sound: each .insv stream on its stream track, linked to the clip.
+void testClipSound()
+{
+    Timeline tl;
+    const int a = tl.appendClip("/x/a.insv", 10000, 30.0, 0, 0, 1); // camera mic only
+    CHECK(tl.trackCount() == 1);
+    const int camId = tl.streamTrackId(Track::Role::CameraMic);
+    CHECK(camId && !tl.streamTrackId(Track::Role::MicAir));
+    if (!camId)
+        return;
+    CHECK(tl.trackById(camId)->name == QLatin1String("Camera mic"));
+    CHECK(tl.trackById(camId)->clips.size() == 1);
+    const TrackClip &ca = tl.trackById(camId)->clips.first();
+    CHECK(ca.linkedClipId == a && ca.stream == 0 && ca.startMs == 0 && ca.trimOutMs == 10000);
+
+    // A free track first, then a clip with a Mic Air: its track goes under
+    // the camera mic's, above the free one.
+    const int music = tl.addTrack(Track::Kind::Audio, "Music");
+    const int b = tl.appendClip("/x/b.insv", 6000, 30.0, 0, 0, 2);
+    const int airId = tl.streamTrackId(Track::Role::MicAir);
+    CHECK(airId && tl.trackIndexOfId(camId) == 0 && tl.trackIndexOfId(airId) == 1 &&
+          tl.trackIndexOfId(music) == 2);
+    CHECK(tl.trackById(camId)->clips.size() == 2 && tl.trackById(airId)->clips.size() == 1);
+    if (airId && tl.trackById(airId)->clips.size() == 1) {
+        const TrackClip &air = tl.trackById(airId)->clips.first();
+        CHECK(air.linkedClipId == b && air.stream == 0 && air.startMs == 10000);
+    }
+    CHECK(tl.trackById(camId)->clips[1].stream == 1); // the camera's own mic
+
+    // Again for a stream that's already linked: nothing new.
+    const QList<int> again = tl.addClipSound(b, 2);
+    CHECK(again.size() == 2 && again[0] == 0 && again[1] == 0);
+
+    // Stream tracks stay above the free ones, and among themselves.
+    CHECK(!tl.moveTrack(music, 0));
+    CHECK(!tl.moveTrack(camId, 2) || tl.trackIndexOfId(music) == 2);
+    CHECK(tl.trackIndexOfId(music) == 2);
+
+    // The sound follows its clip: a trim, a split, a move, a removal.
+    tl.setClipTrimIn(a, 2000);
+    CHECK(tl.trackById(camId)->clips.first().trimInMs == 2000);
+    CHECK(tl.trackById(airId)->clips.first().startMs == 8000); // b moved up
+    const int right = tl.splitClip(b, 3000);
+    CHECK(right && tl.trackById(airId)->clips.size() == 2);
+    CHECK(tl.moveClip(a, 2));
+    CHECK(tl.trackById(camId)->clips.last().linkedClipId == a);
+    CHECK(tl.removeClip(b) && tl.trackById(airId)->clips.size() == 1);
+
+    // Nothing for a file without sound.
+    Timeline silent;
+    silent.appendClip("/x/s.insv", 1000, 30.0, 0, 0, 0);
+    CHECK(silent.trackCount() == 0);
+}
+
+// A project from before version 10: each clip played one stream itself; on
+// load every stream goes on its stream track, the picked one with the clip's
+// level / mute / noise, the others muted, the main "M" on the stream tracks.
+void testProjectConvertSound()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString clip = tmp.path() + "/two.insv";
+    writeFile(clip);
+    const QString orp = tmp.path() + "/old.orp";
+    writeFile(orp, QStringLiteral(R"({"format": "orbis-reframe-project", "version": 9,
+        "timeline": {"mainMuted": true, "clips": [
+          {"source": "two.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
+           "fps": 30, "audioGainDb": -4, "audioMuted": false, "audioTrack": 1,
+           "noise": {"mode": "wind", "strength": 0.5}},
+          {"source": "gone.insv", "trimInMs": 0, "trimOutMs": 3000, "sourceDurationMs": 3000,
+           "fps": 30, "audioTrack": 0}],
+         "tracks": [{"kind": "audio", "name": "Mics", "gainDb": 0, "muted": false, "clips": [
+           {"source": "two.insv", "stream": 0, "sourceDurationMs": 5000, "startMs": 0,
+            "trimInMs": 0, "trimOutMs": 5000, "speed": 1, "gainDb": -2, "muted": false,
+            "fadeInMs": 0, "fadeOutMs": 0, "linkedClip": 0}]}]}})")
+                       .toUtf8());
+
+    Project p;
+    p.setAudioStreamCounter([&](const QString &path) { return path == clip ? 2 : 0; });
+    QString err;
+    CHECK(p.load(orp, &err));
+    Timeline *tl = p.timeline();
+    const int camId = tl->streamTrackId(Track::Role::CameraMic);
+    CHECK(camId && !tl->streamTrackId(Track::Role::MicAir)); // the Mic Air was detached
+    if (!camId)
+        return;
+    const Track &cam = *tl->trackById(camId);
+    CHECK(cam.muted); // "mainMuted"
+    CHECK(cam.clips.size() == 2);
+    if (cam.clips.size() == 2) {
+        const TrackClip &m = cam.clips[0]; // the picked stream: the camera's own mic
+        CHECK(m.stream == 1 && m.linkedClipId == tl->clipAt(0).id);
+        CHECK(m.gainDb == -4.0 && !m.muted && m.noise.mode == insv::NoiseMode::MotorcycleWind);
+        // The missing file: as many streams as its picked one needs.
+        CHECK(cam.clips[1].stream == 0 && cam.clips[1].linkedClipId == tl->clipAt(1).id);
+    }
+    // The detached Mic Air stays on its own track, as it was.
+    const Track &mics = tl->trackAt(tl->trackCount() - 1);
+    CHECK(mics.name == QLatin1String("Mics") && mics.clips.size() == 1 &&
+          mics.clips.first().gainDb == -2.0 && mics.role == Track::Role::Free);
+    CHECK(!p.modified()); // a load, not an edit
+
+    // Saved again, it's a version-10 file with the roles.
+    CHECK(p.save(orp, &err));
+    QFile f(orp);
+    CHECK(f.open(QIODevice::ReadOnly));
+    const QByteArray text = f.readAll();
+    CHECK(text.contains("\"version\":10") && text.contains("\"role\":\"cameraMic\""));
+    CHECK(!text.contains("audioTrack") && !text.contains("mainMuted"));
 }
 
 void testStabConfig()
@@ -723,16 +782,23 @@ void testProjectJson()
     {
         Project p;
         CHECK(!p.modified());
-        const int a = p.timeline()->appendClip(insideSrc, 10000, 30.0, 1920, 960);
-        p.timeline()->appendClip(outsideSrc, 6000, 25.0);
+        const int a = p.timeline()->appendClip(insideSrc, 10000, 30.0, 1920, 960, 2);
+        p.timeline()->appendClip(outsideSrc, 6000, 25.0, 0, 0, 1);
         CHECK(p.modified()); // an edit dirtied it
         p.timeline()->setClipTrimIn(a, 1000);
         p.timeline()->setClipTrimOut(a, 8000);
         p.timeline()->upsertClipReframeKey(a, 2000, {0.5f, -0.25f, 0.1f, 1.1f});
         p.timeline()->upsertClipReframeKey(a, 5000, {1.5f, 0.0f, 0.0f, 0.9f});
-        p.timeline()->setClipAudio(a, -4.5, true); // Audio panel
-        p.timeline()->setClipAudioTrack(a, 1);
-        p.timeline()->setClipNoise(a, {insv::NoiseMode::MotorcycleWind, 0.5f});
+        { // Audio panel: the camera mic's clip (stream 1 of 2)
+            const Track *cam = p.timeline()->trackById(
+                p.timeline()->streamTrackId(Track::Role::CameraMic));
+            CHECK(cam && cam->clips.size() == 2);
+            if (cam && !cam->clips.isEmpty()) {
+                const int mic = cam->clips.first().id;
+                p.timeline()->setAudioClipLevel(mic, -4.5, true);
+                p.timeline()->setAudioClipNoise(mic, {insv::NoiseMode::MotorcycleWind, 0.5f});
+            }
+        }
         ColorGrade grade;
         grade.exposureEv = -1.5f;
         grade.contrast = 25.0f;
@@ -795,7 +861,8 @@ void testProjectJson()
         out.fps = 25.0;
         p.setOutput(out);
         CHECK(p.output() == out);
-        p.timeline()->setMainAudioMuted(true); // the main track's "M"
+        p.timeline()->setTrackAudio(p.timeline()->streamTrackId(Track::Role::MicAir), 0.0,
+                                    true); // the Mic Air track's "M"
 
         QString err;
         CHECK(p.save(projFile, &err));
@@ -837,10 +904,26 @@ void testProjectJson()
         CHECK(a.reframe.keys()[0].pose.roll > 0.09f && a.reframe.keys()[0].pose.roll < 0.11f);
         CHECK(a.reframe.keys()[1].pose.roll == 0.0f); // key 2 authored with roll 0
         CHECK(a.reframe.keys()[1].pose.fovY > 0.89f && a.reframe.keys()[1].pose.fovY < 0.91f);
-        CHECK(a.audioGainDb == -4.5 && a.audioMuted); // Audio panel round-trips
-        CHECK(tl->mainAudioMuted());
-        CHECK(a.audioTrack == 1);
-        CHECK(a.noise.mode == insv::NoiseMode::MotorcycleWind && a.noise.strength == 0.5f);
+        // The stream tracks round-trip: roles, order, mute, the clips' links
+        // and the Audio panel's level / noise.
+        const int camId = tl->streamTrackId(Track::Role::CameraMic);
+        const int airId = tl->streamTrackId(Track::Role::MicAir);
+        CHECK(camId && airId && tl->trackIndexOfId(camId) == 0 && tl->trackIndexOfId(airId) == 1);
+        if (camId && airId) {
+            const Track &cam = *tl->trackById(camId);
+            const Track &air = *tl->trackById(airId);
+            CHECK(cam.name == QLatin1String("Camera mic") && !cam.muted);
+            CHECK(air.name == QLatin1String("Mic Air") && air.muted && air.clips.size() == 1);
+            CHECK(cam.clips.size() == 2);
+            if (cam.clips.size() == 2) {
+                const TrackClip &m = cam.clips[0];
+                CHECK(m.linkedClipId == a.id && m.stream == 1);
+                CHECK(m.gainDb == -4.5 && m.muted);
+                CHECK(m.noise.mode == insv::NoiseMode::MotorcycleWind && m.noise.strength == 0.5f);
+                CHECK(cam.clips[1].linkedClipId == tl->clipAt(1).id && cam.clips[1].stream == 0);
+                CHECK(cam.clips[1].noise == insv::NoiseReduction{} && !cam.clips[1].muted);
+            }
+        }
         CHECK(a.speed == 0.5);
         CHECK(a.color.exposureEv == -1.5f && a.color.contrast == 25.0f); // Colour panel
         CHECK(a.color.saturation == -30.0f && a.color.temperature == 15.0f);
@@ -848,8 +931,6 @@ void testProjectJson()
         const ClipItem &b = tl->clipAt(1);
         CHECK(b.sourcePath == outsideSrc);
         CHECK(b.trimOutMs == 6000);
-        CHECK(b.audioGainDb == 0.0 && !b.audioMuted && b.audioTrack == 0); // never touched
-        CHECK(b.noise == insv::NoiseReduction{});
         CHECK(b.color == ColorGrade{}); // never touched -- defaults
         CHECK(a.blurPlates && !b.blurPlates); // privacy blur
         CHECK(a.blurRemovals.size() == 1 && b.blurRemovals.empty());
@@ -1378,7 +1459,7 @@ void testProjectTracksJson()
         CHECK(f.open(QIODevice::ReadOnly));
         const QByteArray text = f.readAll();
         CHECK(text.contains("\"music/song.mp3\""));
-        CHECK(text.contains("\"version\":9"));
+        CHECK(text.contains("\"version\":10"));
     }
 
     {
@@ -1406,7 +1487,8 @@ void testProjectTracksJson()
         CHECK(t2.clips[3].noise.mode == insv::NoiseMode::VoiceAmbience && t2.clips[3].noise.strength == 0.5f);
     }
 
-    // A file without "tracks" loads with no extra tracks.
+    // A file without "tracks" loads with no extra tracks but the clip's
+    // sound (an old file: its one stream on the camera mic track).
     {
         const QString noTracks = projDir + "/notracks.orp";
         writeFile(noTracks, QByteArrayLiteral(
@@ -1416,7 +1498,8 @@ void testProjectTracksJson()
         Project q;
         QString err;
         CHECK(q.load(noTracks, &err));
-        CHECK(q.timeline()->count() == 1 && q.timeline()->trackCount() == 0);
+        CHECK(q.timeline()->count() == 1 && q.timeline()->trackCount() == 1);
+        CHECK(q.timeline()->streamTrackId(Track::Role::CameraMic) != 0);
     }
 
     // A missing music file is flagged, not fatal.
@@ -1872,7 +1955,7 @@ void testPerClipStabilization()
         QFile f(file);
         CHECK(f.open(QIODevice::ReadOnly));
         const QByteArray text = f.readAll();
-        CHECK(text.contains("\"version\":9"));
+        CHECK(text.contains("\"version\":10"));
         CHECK(text.count("\"stabilization\"") == 2); // one per clip
 
         Project q;
@@ -2236,7 +2319,7 @@ int main()
     testClipItemTrim();
     testClipItemReframe();
     testInsetKeyTrack();
-    testClipItemAudio();
+    testStreamRoles();
     testClipItemColor();
     testTimelineMapping();
     testClipSpeed();
@@ -2251,6 +2334,8 @@ int main()
     testExportBitrate();
     testAudioTracks();
     testLinkedAudio();
+    testClipSound();
+    testProjectConvertSound();
     testOverlaySound();
     testProjectTracksJson();
     testVideoTracks();

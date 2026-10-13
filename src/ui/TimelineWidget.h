@@ -16,9 +16,10 @@ class QTimer;
 #include <vector>
 
 // The timeline: a ruler, any overlay (video) tracks, the main video track (clip
-// blocks sized by timeline span, butt-joined -- hard cuts) and any extra audio
-// tracks below it, each with a header on the left, and a playhead over all of
-// them. Everything here is in *timeline time*.
+// blocks sized by timeline span, butt-joined -- hard cuts; picture only) and
+// any extra audio tracks below it (its own sound first, on the stream
+// tracks), each with a header on the left, and a playhead over all of them.
+// Everything here is in *timeline time*.
 //
 // Pure view. MainWindow feeds it the clips, tracks and playhead and turns its
 // signals into Timeline / PlaybackController calls; the widget never touches
@@ -34,7 +35,6 @@ class QTimer;
 //   * click a clip                     -> clipSelected (no seek)
 //   * drag a clip body                 -> clipMoved (reorder)
 //   * right-click a clip               -> split / speed / move / remove,
-//                                        "detach the other mic",
 //                                        insert a clip before / after it,
 //                                        copy / paste its colour grade or
 //                                        its stabilization (or paste
@@ -50,8 +50,9 @@ class QTimer;
 //                                        only changes track.
 //   * drag a clip's edge               -> trackClipTrimIn/OutRequested
 //   * header "M" box                   -> trackMuteToggled ("H" on an
-//                                        overlay track: hide it;
-//                                        mainMuteToggled on the main track)
+//                                        overlay track: hide it). The main
+//                                        track has none: its sound is on
+//                                        the stream tracks under it.
 //   * drag a header up / down          -> trackMoved (reorder, among its
 //                                        own kind)
 //   * double-click a header            -> rename in place: Enter commits,
@@ -100,11 +101,6 @@ public:
         bool missing = false;
         QVector<qint64> keySourceMs; // reframe key times, in the clip's source time
         double speed = 1.0;          // ClipItem::speed
-        // The source has a second audio stream (camera mic + Mic Air), so the
-        // context menu offers to detach the other one onto an audio track.
-        bool hasOtherAudioStream = false;
-        Peaks peaks;               // the clip's picked audio stream
-        double gain = 1.0;         // its level, linear (0 when muted)
         // Span on the timeline, same rounding as ClipItem::timelineDurationMs.
         qint64 timelineSpanMs() const
         {
@@ -148,7 +144,6 @@ public:
     void setTracks(const QVector<TrackView> &tracks);
     void setPlayhead(qint64 timelineMs);
     void setActiveClip(int clipId); // -1 = none
-    void setMainMuted(bool muted);  // the main video track's sound
     void setSelectedTrackClip(int clipId); // -1 = none; does not emit
     void setCanPasteGrade(bool canPaste);  // a colour grade has been copied
     void setCanPasteStabilization(bool canPaste); // a stabilization setting has been copied
@@ -167,7 +162,6 @@ signals:
     void clipRemoveRequested(int clipId);
     void clipSplitRequested(int clipId, qint64 atSourceMs);
     void clipSpeedRequested(int clipId, double speed);
-    void clipDetachAudioRequested(int clipId);
     void gradeCopyRequested(int clipId);
     void gradePasteRequested(int clipId);
     void gradePasteAllRequested();
@@ -191,7 +185,6 @@ signals:
     void audioClipLinkRequested(int clipId, bool link); // link to its video clip / unlink
     void overlaySoundRequested(int clipId); // put an overlay's sound on an audio track
     void trackMuteToggled(int trackId, bool muted);
-    void mainMuteToggled(bool muted); // the "M" on the main video track
     void trackRemoveRequested(int trackId);
     void trackRenameRequested(int trackId, const QString &name);
     void trackMoved(int trackId, int toIndex);
@@ -290,7 +283,6 @@ private:
     qint64 m_extentMs = 0; // what the view spans: the main track, or longer audio
     qint64 m_playheadMs = 0;
     int m_activeClipId = -1;
-    bool m_mainMuted = false;
     bool m_canPasteGrade = false;
     bool m_canPasteStab = false;
     int m_selectedAudioId = -1;

@@ -20,7 +20,6 @@ class QAudioSink;
 class QThread;
 
 namespace insv {
-class ClipAudioReader;
 }
 
 // Plays a timeline's audio track in sync with PlaybackController's video clock.
@@ -36,10 +35,9 @@ class ClipAudioReader;
 // never flushed (see the constructor): a seek lets its ~250 ms buffer play out
 // and starts the new audio where the video will be by then.
 //
-// The decoder emits a sample-exact timeline: each clip's audio is cut at its
-// trim in/out to the sample (insv::ClipAudioReader), and a clip with no audio
-// (or a muted one) is real silence of its exact length, so the PCM stream is
-// contiguous and lines up with the timeline by construction.
+// The decoder emits a sample-exact timeline: the main track's clips are
+// silence of their exact length (their sound is on the audio tracks), so the
+// PCM stream is contiguous and lines up with the timeline by construction.
 //
 // Threads: the public API is GUI-thread. A background std::thread decodes
 // into a bounded queue of PCM chunks; the QAudioSink lives on its own
@@ -47,11 +45,10 @@ class ClipAudioReader;
 // a QIODevice subclass (pull mode -- see PullDevice) drains the queue
 // whenever the backend wants more bytes. A mutex guards everything shared.
 //
-// One audio stream per clip, picked by Segment::audioTrack (Audio panel's
-// track picker -- camera mic vs. Mic Air). Per-clip level/mute comes from
-// Segment::audioGainDb/audioMuted. The extra audio tracks (setMix) are
-// summed on top by an insv::AudioMixer on the decoder thread, then the whole
-// mix goes through AudioMixer::limit -- the same code the export runs.
+// Everything heard is on the audio tracks (setMix) -- the video clips' own
+// streams too, as linked clips: summed by an insv::AudioMixer on the decoder
+// thread, then the whole mix goes through AudioMixer::limit -- the same code
+// the export runs.
 class AudioPlayer : public QObject {
     Q_OBJECT
 
@@ -99,9 +96,6 @@ private:
     void decoderLoop();
     // Caller holds m_mx; playedFrames from playedFrames(), taken before locking.
     void requestSeekLocked(qint64 timelineMs, double playedFrames);
-    // Decoder thread: make m_reader serve segment `index` (reopening only if
-    // its path/track changed) and position it at `sourceFrame`.
-    void openSegment(int index, int64_t sourceFrame);
     // GUI thread. The sink runs iff playing && !held (suspend/resume only --
     // see the constructor for why it's never restarted).
     void updateSinkRunning();
@@ -159,8 +153,5 @@ private:
     QList<Placed> m_decPlaced;
     int m_decSegIndex = -1;
     int64_t m_decCursor = 0; // next timeline frame the decoder emits
-    std::unique_ptr<insv::ClipAudioReader> m_reader;
     std::unique_ptr<insv::AudioMixer> m_mixer;
-    QString m_activePath;
-    int m_activeTrack = 0;
 };

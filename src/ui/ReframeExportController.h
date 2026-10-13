@@ -27,14 +27,12 @@
 // pose straight into exportpipe::FlattenWriter (CPU reproject + NVENC). Every
 // clip goes through one open encoder so the output is a single continuous file.
 //
-// Audio: if any clip's source has an audio stream, the output gets one AAC
-// track. Each clip's picked stream is decoded from its first exported video
-// frame's source time (insv::ClipAudioReader), level/mute applied, and fed
-// after every video frame up to that frame's end on the output timeline -- so
-// each clip's audio spans exactly its exported video, and rounding never
-// accumulates across clips. The extra audio tracks (Request::mix) are
-// summed on top by an insv::AudioMixer at the same timeline frames, and the
-// whole mix is limited -- the same code playback runs (AudioPlayer).
+// Audio: if anything is on the audio tracks (Request::mix -- the video clips'
+// own streams are linked clips there too), the output gets one AAC track.
+// An insv::AudioMixer sums them at the output timeline's frames, fed after
+// every video frame up to that frame's end -- so the audio spans exactly the
+// exported video and rounding never accumulates across clips -- and the
+// whole mix is limited: the same code playback runs (AudioPlayer).
 //
 // Overlays (Request::insets): an exportpipe::InsetCompositor blends the
 // insets showing at each output frame's timeline time into that frame, on
@@ -81,13 +79,6 @@ public:
         float colorGrade[4] = {0.0f, 0.0f, 0.0f, 0.0f};
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg).
         std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
-        // Audio panel: which source audio stream (ordinal among the file's
-        // audio streams), its level, and mute. A muted clip, or one with no
-        // audio stream, contributes silence for its span.
-        int audioTrack = 0;
-        double audioGainDb = 0.0;
-        bool audioMuted = false;
-        insv::NoiseReduction noise;
         // Privacy blur: the plate regions per source time, mosaicked in the
         // stitch (IStitchSource::SetBlurQuads); empty => none. Safe to call
         // from the export thread (captures its scan).

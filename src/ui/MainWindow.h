@@ -195,9 +195,6 @@ private:
     // Rebuild the controller's segment list from the timeline (also updates
     // m_totalTimelineMs). Queued to the worker thread.
     void pushTimelineToController();
-    // Reflect clip `c` in the Audio panel, including how many audio streams
-    // its source has (probed once per path, cached in m_audioTrackCounts).
-    void syncAudioPanel(const ClipItem &c);
     // Audio streams in `path`, cached per source.
     int audioStreamCount(const QString &path);
     // A stream's waveform for the timeline (null until scanned -- the scan
@@ -280,6 +277,9 @@ private:
     // The Audio panel: the selected audio clip if there is one, else the
     // clip under the playhead.
     void refreshAudioPanel();
+    // The audio clip the Audio panel shows and edits: the selected one, else
+    // the first clip linked to the video clip under the playhead. 0 = none.
+    int audioPanelClipId() const;
     // Pick an audio file and put it at `atMs` on track `trackId` (0 = the
     // first track with room there, or a new one).
     void addAudioFile(int trackId, qint64 atMs);
@@ -316,10 +316,6 @@ private:
     // playhead if it has keys (the playhead must be over it), else its one
     // look.
     void applyInsetLook(int clipId, const inset::Look &look);
-    // Put the clip's other audio stream (camera mic vs. Mic Air) on an audio
-    // track as its own clip -- same span, speed and trim, own level / mute /
-    // position for a sync nudge.
-    void detachOtherMic(int clipId);
     // Put an overlay clip's sound on an audio track, linked to it so it
     // follows its moves, trims, splits and removal.
     void putOverlaySoundOnTrack(int clipId);

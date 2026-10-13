@@ -469,6 +469,41 @@ const char *mediaKindName(MediaItem::Kind kind)
     return "audio";
 }
 
+// A project from before version 10 (see kFormatVersion).
+void convertClipSound(Timeline *timeline, const std::function<int(const QString &)> &counter,
+                      const std::vector<ParsedClip> &parsed, const std::vector<int> &clipIds,
+                      bool mainMuted)
+{
+    // Each clip played one of its streams itself (pc.audioTrack): now every
+    // stream is a linked clip on its stream track. The one it played gets
+    // its level, mute and noise reduction; the others are muted, so the
+    // project sounds as it did. A stream already put on a track by hand
+    // ("detached") stays where it is.
+    for (size_t i = 0; i < parsed.size() && i < clipIds.size(); ++i) {
+        const ParsedClip &pc = parsed[i];
+        int streams = counter && !pc.mediaMissing
+                          ? counter(pc.sourcePath)
+                          : std::max(1, pc.audioTrack + 1);
+        const QList<int> ids = timeline->addClipSound(clipIds[i], streams);
+        const int picked = pc.audioTrack < streams ? pc.audioTrack : 0;
+        for (int s = 0; s < ids.size(); ++s) {
+            if (!ids[s])
+                continue;
+            if (s == picked) {
+                timeline->setAudioClipLevel(ids[s], pc.audioGainDb, pc.audioMuted);
+                timeline->setAudioClipNoise(ids[s], pc.noise);
+            } else {
+                timeline->setAudioClipLevel(ids[s], 0.0, true);
+            }
+        }
+    }
+    // The video track's "M": its sound is the stream tracks now.
+    if (mainMuted)
+        for (Track::Role role : {Track::Role::CameraMic, Track::Role::MicAir})
+            if (const int trackId = timeline->streamTrackId(role))
+                timeline->setTrackAudio(trackId, timeline->trackById(trackId)->gainDb, true);
+}
+
 } // namespace
 
 Project::Project(QObject *parent)
@@ -492,8 +527,6 @@ Project::Project(QObject *parent)
     connect(m_timeline, &Timeline::clipsReordered, this, edited);
     connect(m_timeline, &Timeline::clipTrimChanged, this, edited);
     connect(m_timeline, &Timeline::clipReframeChanged, this, edited);
-    connect(m_timeline, &Timeline::clipAudioChanged, this, edited);
-    connect(m_timeline, &Timeline::mainAudioMutedChanged, this, edited);
     connect(m_timeline, &Timeline::clipColorChanged, this, edited);
     connect(m_timeline, &Timeline::clipStabilizationChanged, this, edited);
     connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
@@ -619,14 +652,14 @@ void Project::newProject()
 }
 
 int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double fps, int width,
-                           int height)
+                           int height, int audioStreams)
 {
     m_rebuilding = true;
     m_mediaPool->clear();
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
-    const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height);
+    const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height, audioStreams);
     addTimelineSourcesToPool(true);
     m_rebuilding = false;
 
@@ -653,15 +686,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"sourceWidth", c.sourceWidth},
             {"sourceHeight", c.sourceHeight},
             {"reframe", reframeToJson(c.reframe)},
-            {"audioGainDb", c.audioGainDb},
-            {"audioMuted", c.audioMuted},
-            {"audioTrack", c.audioTrack},
             {"color", colorGradeToJson(c.color)},
             {"speed", c.speed},
             {"stabilization", stabilizationToJson(c.stabilization)},
         });
-        if (c.noise.mode != insv::NoiseMode::Off)
-            clips.back()["noise"] = noiseToJson(c.noise);
         if (c.blurPlates || !c.blurRemovals.empty() || !c.blurAdditions.empty()) {
             json &jp = clips.back()["privacy"] = json::object();
             if (c.blurPlates)
@@ -708,6 +736,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"muted", t.muted},
             {"clips", std::move(tc)},
         });
+        if (t.role == Track::Role::CameraMic)
+            tracks.back()["role"] = "cameraMic";
+        else if (t.role == Track::Role::MicAir)
+            tracks.back()["role"] = "micAir";
     }
 
     json media = json::array();
@@ -732,7 +764,6 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         {"output", outputToJson(m_output)},
         {"timeline",
          {{"clips", std::move(clips)},
-          {"mainMuted", m_timeline->mainAudioMuted()},
           {"tracks", std::move(tracks)}}},
     };
     if (!media.empty())
@@ -750,6 +781,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     stitch::PreviewStitchConfig parsedStitch;
     OutputSettings parsedOutput;
     bool parsedMainMuted = false;
+    int parsedVersion = kFormatVersion;
     QList<MediaItem> parsedMedia;
     try {
         const json doc = json::parse(text.begin(), text.end());
@@ -768,6 +800,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             return false;
         }
 
+        parsedVersion = version;
         if (doc.contains("previewStitch"))
             parsedStitch = previewStitchFromJson(doc.at("previewStitch"));
         // Version 8: one setting for the whole project, which every clip takes.
@@ -851,6 +884,11 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 t.name = QString::fromStdString(jt.value("name", std::string()));
                 t.gainDb = jt.value("gainDb", 0.0);
                 t.muted = jt.value("muted", false);
+                const std::string role = jt.value("role", std::string());
+                if (t.kind == Track::Kind::Audio && role == "cameraMic")
+                    t.role = Track::Role::CameraMic;
+                else if (t.kind == Track::Kind::Audio && role == "micAir")
+                    t.role = Track::Role::MicAir;
                 std::vector<std::pair<int, int>> links;
                 if (jt.contains("clips"))
                     for (const json &jc : jt.at("clips")) {
@@ -909,7 +947,6 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     m_timeline->clear();
     setPreviewStitch(parsedStitch);
     setOutput(parsedOutput);
-    m_timeline->setMainAudioMuted(parsedMainMuted);
     std::vector<int> clipIds; // main-track index -> new id, for linked audio
     for (const ParsedClip &pc : parsed) {
         const int id = m_timeline->appendClip(pc.sourcePath, pc.sourceDurationMs, pc.fps,
@@ -918,9 +955,6 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         // range (in then out, so the min-gap clamp doesn't fight a valid pair).
         m_timeline->setClipTrimIn(id, pc.trimInMs);
         m_timeline->setClipTrimOut(id, pc.trimOutMs);
-        m_timeline->setClipAudio(id, pc.audioGainDb, pc.audioMuted);
-        m_timeline->setClipAudioTrack(id, pc.audioTrack);
-        m_timeline->setClipNoise(id, pc.noise);
         m_timeline->setClipColor(id, pc.color);
         m_timeline->setClipStabilization(id, pc.stabilization);
         m_timeline->setClipBlurPlates(id, pc.blurPlates);
@@ -941,7 +975,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     std::vector<std::vector<int>> overlayIds(parsedTracks.size()); // [track][clip] -> new id
     for (size_t i = 0; i < parsedTracks.size(); ++i) {
         const Track &t = parsedTracks[i];
-        trackIds.push_back(m_timeline->addTrack(t.kind, t.name));
+        trackIds.push_back(m_timeline->addTrack(t.kind, t.name, t.role));
         m_timeline->setTrackAudio(trackIds.back(), t.gainDb, t.muted);
         if (t.kind == Track::Kind::Video)
             for (const TrackClip &c : t.clips)
@@ -962,11 +996,14 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             m_timeline->insertTrackClip(trackIds[i], c);
         }
     }
+    if (parsedVersion < 10)
+        convertClipSound(m_timeline, m_audioStreamCounter, parsed, clipIds, parsedMainMuted);
     addTimelineSourcesToPool(true); // an older project's sources; not an edit
     m_rebuilding = false;
     emit projectReset();
     return true;
 }
+
 
 bool Project::save(const QString &path, QString *error)
 {

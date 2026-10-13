@@ -87,10 +87,9 @@ public:
     static constexpr qint64 kInsetKeyDeleteSnapMs = 150;
     // Video tracks come first (indices 0 .. videoTrackCount() - 1).
     int videoTrackCount() const;
-    // The main video track's own sound muted as a whole (the "M" on its
-    // header), on top of each clip's own mute. Emits mainAudioMutedChanged.
-    bool mainAudioMuted() const { return m_mainAudioMuted; }
-    void setMainAudioMuted(bool muted);
+    // The audio track holding the main video's `role` stream (Track::Role),
+    // or 0 if there is none (yet).
+    int streamTrackId(Track::Role role) const;
     int trackIndexOfId(int trackId) const;
     const Track *trackById(int trackId) const;
     // The track clip with this id, and (if non-null) the id of its track.
@@ -103,12 +102,22 @@ public slots:
     // Insert a clip at `index` (clamped to [0, count]). source* come from
     // stitch::ProbeClip. Trim starts as the whole source, reframe path empty.
     // Stabilization is the clip before it's (the one after it's when it goes
-    // first; Off on an empty timeline). Returns the new clip's id.
+    // first; Off on an empty timeline). Its sound: addClipSound with
+    // `audioStreams`, the source's audio stream count (InsvAudioDemux::
+    // countAudioStreams; 0 = none, or added by the caller -- a project load).
+    // Returns the new clip's id.
     int insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
-                   double fps, int sourceWidth = 0, int sourceHeight = 0);
+                   double fps, int sourceWidth = 0, int sourceHeight = 0,
+                   int audioStreams = 0);
     // Append; same as insertClip(count(), ...).
     int appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
-                   int sourceWidth = 0, int sourceHeight = 0);
+                   int sourceWidth = 0, int sourceHeight = 0, int audioStreams = 0);
+    // Put each of a main-track clip's `streamCount` audio streams on its
+    // stream track (Track::roleOfStream; the track is made when missing) as
+    // an audio clip linked to it, covering its whole trimmed span. Streams
+    // already linked to the clip are skipped. Returns the new clips' ids, by
+    // stream (0 where none was added).
+    QList<int> addClipSound(int clipId, int streamCount);
     // Remove the clip with this id. Returns true if one was removed.
     bool removeClip(int clipId);
     // Reorder so the clip with this id ends up at `toIndex` (clamped to
@@ -126,14 +135,18 @@ public slots:
     // --- extra tracks --------------------------------------------------
     // Add a track: an audio track below the others, a video track below the
     // other video tracks (all of which stay ahead of the audio ones). An
-    // empty name gets "Audio N" / "Overlay N". Returns its id.
-    int addTrack(Track::Kind kind, const QString &name = QString());
+    // empty name gets "Audio N" / "Overlay N". A stream track (`role` not
+    // Free, audio only) goes first among the audio tracks instead, the
+    // camera mic's above the Mic Air's, named after its role when `name` is
+    // empty. Returns its id.
+    int addTrack(Track::Kind kind, const QString &name = QString(),
+                 Track::Role role = Track::Role::Free);
     bool removeTrack(int trackId); // and its clips
     // Rename (trimmed; an empty name is refused). Returns true if it changed.
     bool setTrackName(int trackId, const QString &name);
     // Reorder: the track ends up at `toIndex`, clamped to the span of its
-    // own kind (video tracks stay ahead of audio). Returns true if the order
-    // changed.
+    // own kind (video tracks stay ahead of audio, stream tracks ahead of the
+    // free audio tracks). Returns true if the order changed.
     bool moveTrack(int trackId, int toIndex);
     // Track-level gain (clamped to audiolimits::k{Min,Max}GainDb) and mute.
     void setTrackAudio(int trackId, double gainDb, bool muted);
@@ -194,14 +207,6 @@ public slots:
     // one edit, one undo step (Track subject writes its path this way).
     void replaceClipReframeSpan(int clipId, qint64 fromMs, qint64 toMs,
                                 const QList<ReframeKey> &keys);
-    // Level (dB, clamped to audiolimits::k{Min,Max}GainDb) + mute, set together
-    // since the Audio panel edits both at once.
-    void setClipAudio(int clipId, double gainDb, bool muted);
-    // Pick which of the clip's source audio streams plays/exports. Emits
-    // clipAudioChanged (same signal as level/mute) if it changed.
-    void setClipAudioTrack(int clipId, int track);
-    // Noise reduction on the clip's own sound. Emits clipAudioChanged too.
-    void setClipNoise(int clipId, const insv::NoiseReduction &nr);
     // Playback speed (clamped to ClipItem::kMin/MaxSpeed). Changes the clip's
     // span on the timeline: emits clipSpeedChanged + durationChanged.
     void setClipSpeed(int clipId, double speed);
@@ -244,10 +249,6 @@ signals:
     void clipTrimChanged(int id, qint64 inMs, qint64 outMs);
     // One clip's reframe track changed (key added / moved / removed / cleared).
     void clipReframeChanged(int id);
-    // One clip's audio level/mute/track changed. Carries the new level/mute
-    // (read audioTrack off the clip).
-    void clipAudioChanged(int id, double gainDb, bool muted);
-    void mainAudioMutedChanged(bool muted);
     // One clip's colour grade changed. Carries the new value.
     void clipColorChanged(int id, ColorGrade grade);
     // One clip's stabilization changed. Carries the new value.
@@ -301,5 +302,4 @@ private:
     QList<Track> m_tracks;
     int m_nextId = 1; // shared by main and audio clips: ids are timeline-unique
     int m_nextTrackId = 1;
-    bool m_mainAudioMuted = false;
 };

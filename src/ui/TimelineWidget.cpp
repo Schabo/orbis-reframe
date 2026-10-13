@@ -234,14 +234,6 @@ void TimelineWidget::setCanPasteStabilization(bool canPaste)
     m_canPasteStab = canPaste;
 }
 
-void TimelineWidget::setMainMuted(bool muted)
-{
-    if (muted == m_mainMuted)
-        return;
-    m_mainMuted = muted;
-    update();
-}
-
 void TimelineWidget::setActiveClip(int clipId)
 {
     if (clipId == m_activeClipId)
@@ -752,11 +744,6 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.setPen(QPen(active ? tc.accent : tc.menuBar,
                       active ? 2 : 1));
         p.drawRect(rc.adjusted(0, 0, -1, -1));
-        // Its camera audio, faint, in the lower part (to line a detached mic
-        // up against).
-        drawWaveform(p, QRect(rc.left(), rc.top() + rc.height() / 2, rc.width(), rc.height() / 2 - 1),
-                     r.clip.peaks, r.startMs, r.clip.trimInMs, r.clip.speed, r.clip.gain, 0, 0,
-                     r.durMs, withAlpha(tc.waveform, 60));
 
         // Label.
         p.setPen(tc.text);
@@ -905,11 +892,9 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.drawText(mb, Qt::AlignCenter, letter);
     };
     p.fillRect(QRect(0, mainTop(), kHeaderW, kMainH), headerBg);
-    const QRect mainMb = muteBox(mainTop(), kMainH);
     p.setPen(tc.text);
-    p.drawText(QRect(6, mainTop(), mainMb.left() - 8, kMainH), Qt::AlignVCenter | Qt::AlignLeft,
+    p.drawText(QRect(6, mainTop(), kHeaderW - 12, kMainH), Qt::AlignVCenter | Qt::AlignLeft,
                tr("Video"));
-    drawMuteBox(mainMb, m_mainMuted, QStringLiteral("M"));
     for (int i = 0; i < m_tracks.size(); ++i) {
         const TrackView &t = m_tracks[i];
         const int top = trackTop(i);
@@ -955,11 +940,8 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     const Hit h = hitTest(e->pos());
     switch (h.kind) {
     case Hit::Header:
-        if (h.track < 0) { // the main video track
-            if (muteBox(mainTop(), kMainH).contains(e->pos()))
-                emit mainMuteToggled(!m_mainMuted);
+        if (h.track < 0) // the main video track: picture only, nothing to toggle
             return;
-        }
         if (muteBox(trackTop(h.track), kTrackH).contains(e->pos())) {
             emit trackMuteToggled(m_tracks[h.track].id, !m_tracks[h.track].muted);
             return;
@@ -1320,10 +1302,6 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             speedActions << a;
         }
 
-        QAction *detach = nullptr;
-        if (r.clip.hasOtherAudioStream)
-            detach = menu.addAction(tr("Put the other mic on an audio track"));
-
         QAction *insertBefore = menu.addAction(tr("Insert clip before…"));
         QAction *insertAfter = menu.addAction(tr("Insert clip after…"));
 
@@ -1359,8 +1337,6 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             emit clipMoved(r.clip.id, h.row + 1);
         else if (chosen == remove)
             emit clipRemoveRequested(r.clip.id);
-        else if (chosen == detach)
-            emit clipDetachAudioRequested(r.clip.id);
         else if (chosen == insertBefore)
             emit addClipRequested(h.row);
         else if (chosen == insertAfter)

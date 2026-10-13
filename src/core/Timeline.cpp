@@ -187,7 +187,7 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
 }
 
 int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
-                         double fps, int sourceWidth, int sourceHeight)
+                         double fps, int sourceWidth, int sourceHeight, int audioStreams)
 {
     index = std::clamp(index, 0, static_cast<int>(m_clips.size()));
 
@@ -215,14 +215,15 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
     emit durationChanged(totalDurationMs());
     if (relinkAudio()) // clips after it moved
         emit tracksChanged();
+    addClipSound(c.id, audioStreams);
     return c.id;
 }
 
 int Timeline::appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
-                         int sourceWidth, int sourceHeight)
+                         int sourceWidth, int sourceHeight, int audioStreams)
 {
     return insertClip(static_cast<int>(m_clips.size()), sourcePath, sourceDurationMs, fps,
-                      sourceWidth, sourceHeight);
+                      sourceWidth, sourceHeight, audioStreams);
 }
 
 bool Timeline::removeClip(int clipId)
@@ -230,7 +231,7 @@ bool Timeline::removeClip(int clipId)
     const int i = indexOfId(clipId);
     if (i < 0)
         return false;
-    const bool audio = removeLinkedAudio(clipId); // its detached mic goes with it
+    const bool audio = removeLinkedAudio(clipId); // its sound goes with it
     m_clips.removeAt(i);
     emit clipRemoved(clipId);
     emit durationChanged(totalDurationMs());
@@ -285,7 +286,6 @@ int Timeline::splitClip(int clipId, qint64 atSourceMs)
 
 void Timeline::clear()
 {
-    setMainAudioMuted(false);
     if (!m_tracks.isEmpty()) {
         m_tracks.clear();
         emit tracksChanged();
@@ -380,31 +380,6 @@ void Timeline::clearClipReframe(int clipId)
     ClipItem *c = mutableClipById(clipId);
     if (c && c->clearReframe())
         emit clipReframeChanged(c->id);
-}
-
-void Timeline::setClipAudio(int clipId, double gainDb, bool muted)
-{
-    ClipItem *c = mutableClipById(clipId);
-    if (!c)
-        return;
-    const bool gainChanged = c->setAudioGainDb(gainDb);
-    const bool mutedChanged = c->setAudioMuted(muted);
-    if (gainChanged || mutedChanged)
-        emit clipAudioChanged(c->id, c->audioGainDb, c->audioMuted);
-}
-
-void Timeline::setClipNoise(int clipId, const insv::NoiseReduction &nr)
-{
-    ClipItem *c = mutableClipById(clipId);
-    if (c && c->setNoise(nr))
-        emit clipAudioChanged(c->id, c->audioGainDb, c->audioMuted);
-}
-
-void Timeline::setClipAudioTrack(int clipId, int track)
-{
-    ClipItem *c = mutableClipById(clipId);
-    if (c && c->setAudioTrack(track))
-        emit clipAudioChanged(c->id, c->audioGainDb, c->audioMuted);
 }
 
 void Timeline::setClipSpeed(int clipId, double speed)
@@ -566,25 +541,81 @@ qint64 Timeline::extraTracksEndMs() const
     return end;
 }
 
-int Timeline::addTrack(Track::Kind kind, const QString &name)
+int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role)
 {
     Track t;
     t.id = m_nextTrackId++;
     t.kind = kind;
+    t.role = kind == Track::Kind::Audio ? role : Track::Role::Free;
     t.name = name;
-    if (t.name.isEmpty()) {
+    if (t.name.isEmpty() && t.role == Track::Role::CameraMic)
+        t.name = tr("Camera mic");
+    else if (t.name.isEmpty() && t.role == Track::Role::MicAir)
+        t.name = tr("Mic Air");
+    else if (t.name.isEmpty()) {
         int n = 1;
         for (const Track &o : m_tracks)
-            if (o.kind == kind)
+            if (o.kind == kind && o.role == Track::Role::Free)
                 ++n;
         t.name = kind == Track::Kind::Video ? tr("Overlay %1").arg(n) : tr("Audio %1").arg(n);
     }
-    if (kind == Track::Kind::Video)
+    if (kind == Track::Kind::Video) {
         m_tracks.insert(videoTrackCount(), t);
-    else
+    } else if (t.role != Track::Role::Free) {
+        // Under the video track, the camera mic first.
+        int at = videoTrackCount();
+        while (at < m_tracks.size() && m_tracks[at].role != Track::Role::Free &&
+               (t.role == Track::Role::MicAir || m_tracks[at].role == Track::Role::CameraMic))
+            ++at;
+        m_tracks.insert(at, t);
+    } else {
         m_tracks.push_back(t);
+    }
     emit tracksChanged();
     return t.id;
+}
+
+int Timeline::streamTrackId(Track::Role role) const
+{
+    for (const Track &t : m_tracks)
+        if (t.kind == Track::Kind::Audio && t.role == role && role != Track::Role::Free)
+            return t.id;
+    return 0;
+}
+
+QList<int> Timeline::addClipSound(int clipId, int streamCount)
+{
+    QList<int> ids(std::max(0, streamCount), 0);
+    const int index = indexOfId(clipId);
+    if (index < 0)
+        return ids;
+    for (int stream = 0; stream < streamCount; ++stream) {
+        const Track::Role role = Track::roleOfStream(stream, streamCount);
+        if (role == Track::Role::Free)
+            continue; // a third stream: no known kind
+        bool linked = false;
+        for (const Track &t : m_tracks)
+            for (const TrackClip &a : t.clips)
+                linked = linked || (a.linkedClipId == clipId && a.stream == stream);
+        if (linked)
+            continue;
+        int trackId = streamTrackId(role);
+        if (!trackId)
+            trackId = addTrack(Track::Kind::Audio, QString(), role);
+        const ClipItem &c = m_clips.at(indexOfId(clipId));
+        TrackClip a;
+        a.sourcePath = c.sourcePath;
+        a.sourceDurationMs = c.sourceDurationMs;
+        a.mediaMissing = c.mediaMissing;
+        a.stream = stream;
+        a.startMs = clipToTimeline(indexOfId(clipId), 0);
+        a.trimInMs = c.trimInMs;
+        a.trimOutMs = c.trimOutMs;
+        a.speed = c.speed;
+        a.linkedClipId = clipId;
+        ids[stream] = insertTrackClip(trackId, a);
+    }
+    return ids;
 }
 
 bool Timeline::removeTrack(int trackId)
@@ -617,23 +648,20 @@ bool Timeline::moveTrack(int trackId, int toIndex)
     if (from < 0)
         return false;
     const int videos = videoTrackCount();
+    int streams = videos; // the end of the stream tracks
+    while (streams < m_tracks.size() && m_tracks[streams].role != Track::Role::Free)
+        ++streams;
     if (m_tracks[from].kind == Track::Kind::Video)
         toIndex = std::clamp(toIndex, 0, videos - 1);
+    else if (m_tracks[from].role != Track::Role::Free)
+        toIndex = std::clamp(toIndex, videos, streams - 1);
     else
-        toIndex = std::clamp(toIndex, videos, static_cast<int>(m_tracks.size()) - 1);
+        toIndex = std::clamp(toIndex, streams, static_cast<int>(m_tracks.size()) - 1);
     if (toIndex == from)
         return false;
     m_tracks.move(from, toIndex);
     emit tracksChanged();
     return true;
-}
-
-void Timeline::setMainAudioMuted(bool muted)
-{
-    if (m_mainAudioMuted == muted)
-        return;
-    m_mainAudioMuted = muted;
-    emit mainAudioMutedChanged(muted);
 }
 
 void Timeline::setTrackAudio(int trackId, double gainDb, bool muted)

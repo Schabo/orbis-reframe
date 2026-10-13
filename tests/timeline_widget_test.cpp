@@ -189,15 +189,11 @@ void testHeaderAndMain()
     // The "M" box sits at the right of the header.
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(kHeaderW - 13, trackY(1)));
     CHECK(mute.count() == 1 && mute.last().at(0).toInt() == 12 && mute.last().at(1).toBool());
-    // The main video track has one too; it flips the state it was given.
-    QSignalSpy mainMute(&f.w, &TimelineWidget::mainMuteToggled);
+    // The main video track has none: picture only, its sound is on the
+    // stream tracks.
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(kHeaderW - 13, mainY()));
-    CHECK(mainMute.count() == 1 && mainMute.last().at(0).toBool());
-    f.w.setMainMuted(true);
-    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(kHeaderW - 13, mainY()));
-    CHECK(mainMute.count() == 2 && !mainMute.last().at(0).toBool());
-    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(20, mainY())); // the name: nothing
-    CHECK(mainMute.count() == 2 && mute.count() == 1);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(20, mainY()));
+    CHECK(mute.count() == 1);
 
     // Main track: a click selects that clip without seeking, a drag reorders.
     QSignalSpy sel(&f.w, &TimelineWidget::clipSelected);
@@ -248,7 +244,6 @@ void testHeaderAndMain()
         a.id = 1;
         a.label = "a";
         a.trimOutMs = a.sourceDurationMs = 10000;
-        a.peaks = wave(1000, 0.2);
         b = a;
         b.id = 2;
         b.label = "b";

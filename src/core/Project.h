@@ -3,6 +3,8 @@
 #include <QByteArray>
 #include <QList>
 #include <QObject>
+
+#include <functional>
 #include <QString>
 #include <QTimer>
 
@@ -40,18 +42,16 @@ public:
     //     (0 = auto), lensGuard: "none" | "standard" | "premium", depthSeam},
     //   "output": {aspect: "16:9" | "9:16" | "1:1" | "4:3", width, height,
     //     fps (0 = match the first clip)},
-    //   "timeline": {clips: [...], mainMuted, tracks: [...]},
+    //   "timeline": {clips: [...], tracks: [...]},
 //   "media": [{source, kind: "360" | "video" | "audio", durationMs, width,
 //     height, fps}] -- the media pool (absent => only what the timeline uses).
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
-    //   fovY}]}, audioGainDb, audioMuted, audioTrack, color {exposureEv,
-    //   contrast, saturation, temperature}, speed, stabilization {mode,
-    //   windowYawSec, windowPitchSec, windowRollSec, horizonLockAmount,
-    //   horizonGain, accelLowPassHz, pitchOffsetRad, rollOffsetRad,
-    //   autoLevel (absent => true)}; optional: noise {mode:
-    //   "wind" (motorcycle) | "windGeneral" | "hiss" | "voice" |
-    //   "voiceAmbience", strength}, syncAdjustMs and seamAdjust {deg: [yaw,
+    //   fovY}]}, color {exposureEv, contrast, saturation, temperature},
+    //   speed, stabilization {mode, windowYawSec, windowPitchSec,
+    //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
+    //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true)};
+    //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
     //   pitch, roll], lensGuard} once measured, and privacy:
     //     "plates": true -- the blur is on;
     //     "removed" -- blur tracks removed by hand, [{fromMs, toMs,
@@ -59,18 +59,23 @@ public:
     //     "added" -- plates blurred by hand, [{frames: [[tMs, kind, 12 corner
     //       coordinates in millionths], ...], timing: "corrected" |
     //       "uncorrected" | "noGyro"}] (privacy::BlurAddition).
-    // A track: {kind: "audio" | "video", name, gainDb, muted, clips}.
+    // A track: {kind: "audio" | "video", name, gainDb, muted, clips}; a
+    //   stream track also has role: "cameraMic" | "micAir" (Track::Role).
     //   An audio clip: source, stream, sourceDurationMs, startMs, trimInMs,
-    //   trimOutMs, speed, gainDb, muted, fadeInMs, fadeOutMs; optional: noise,
-    //   and when linked "linkedClip" (main-track index) or "linkedOverlay"
+    //   trimOutMs, speed, gainDb, muted, fadeInMs, fadeOutMs; optional: noise
+    //   {mode: "wind" (motorcycle) | "windGeneral" | "hiss" | "voice" |
+    //   "voiceAmbience", strength}, and when linked "linkedClip" (main-track index) or "linkedOverlay"
     //   [track index, clip index], + syncOffsetMs.
     //   A video (overlay) clip: the audio clip's timing fields + sourceWidth,
     //   sourceHeight, inset {centerX, centerY, width, opacity, cornerRadius,
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
     //   centerY, width, opacity}].
     // Version 8 (0.1.0) had one "stabilization" object at the top level for
-    // the whole project instead of one per clip.
-    static constexpr int kFormatVersion = 9;
+    // the whole project instead of one per clip. Before version 10 a clip
+    // played one of its audio streams itself (audioTrack, with audioGainDb,
+    // audioMuted, noise, and "mainMuted" on the timeline); on load that
+    // becomes linked clips on the stream tracks, the unpicked streams muted.
+    static constexpr int kFormatVersion = 10;
     static constexpr int kOldestFormatVersion = 8;
     static constexpr const char *kFormatTag = "orbis-reframe-project";
     static constexpr const char *kFileExtension = "orp"; // no dot
@@ -97,6 +102,16 @@ public:
     bool canUndo() const { return m_pendingDirty || !m_undoStack.isEmpty(); }
     bool canRedo() const { return !m_redoStack.isEmpty(); }
 
+    // How many audio streams a source file has (InsvAudioDemux::
+    // countAudioStreams; the model has no FFmpeg). Used to convert a project
+    // from before version 10, whose clips' sound has to be put on the stream
+    // tracks. Unset, or for a missing file: as many as the clip's picked
+    // stream needs.
+    void setAudioStreamCounter(std::function<int(const QString &)> counter)
+    {
+        m_audioStreamCounter = std::move(counter);
+    }
+
 public slots:
     // Empty timeline, no file, not modified.
     void newProject();
@@ -105,7 +120,7 @@ public slots:
     // not a project file. Clears the file path and the modified flag. Returns
     // the new clip's id.
     int resetWithClip(const QString &sourcePath, qint64 durationMs, double fps,
-                      int width = 0, int height = 0);
+                      int width = 0, int height = 0, int audioStreams = 0);
 
     // Write the timeline to `path` as JSON. On success records `path` as the
     // current file and clears modified. Returns false with *error set on
@@ -204,6 +219,7 @@ private:
     // rebuilding, so the Timeline signals they cause don't set the modified
     // flag / don't recurse into the undo machinery.
     bool m_rebuilding = false;
+    std::function<int(const QString &)> m_audioStreamCounter;
 
     static constexpr int kMaxUndoDepth = 100;
     // Coalescing window: rapid-fire edits (a slider drag, a spinbox held

@@ -15,7 +15,6 @@
 #include <QMessageBox>
 #include <QSignalBlocker>
 #include <QSlider>
-#include <QStandardItemModel>
 #include <QWidget>
 
 #include <algorithm>
@@ -66,8 +65,7 @@ QDoubleSpinBox *secondsBox(QWidget *parent, int decimals, double step)
 AudioPanel::AudioPanel(QWidget *parent)
     : SettingsPanel(tr("Audio"), parent)
 {
-    // Audio-clip mode: the track first (it holds the clip), a separator, then
-    // the clip itself.
+    // The track first (it holds the clip), a separator, then the clip itself.
     m_trackName = new QLabel(this);
     form()->addRow(tr("Track"), m_trackName);
     form()->addRow(tr("Track level"),
@@ -87,17 +85,6 @@ AudioPanel::AudioPanel(QWidget *parent)
     // tooltip has it whole).
     m_clipName->setMinimumWidth(1);
     form()->addRow(tr("Clip"), m_clipName);
-
-    m_track = new QComboBox(this);
-    m_track->setToolTip(tr("Which of the clip's sound recordings plays. A clip filmed with an "
-                           "external mic, such as the Mic Air, has two: the camera's mic and "
-                           "the external one. The file doesn't say which is which, so listen. "
-                           "To use both, right-click the clip on the timeline and choose \"Put "
-                           "the other mic on an audio track\"."));
-    form()->addRow(tr("Source"), m_track);
-    m_trackNote = new QLabel(this);
-    m_trackNote->setWordWrap(true);
-    form()->addRow(QString(), m_trackNote);
 
     form()->addRow(tr("Level"), gainRow(this, audiolimits::kMinGainDb, audiolimits::kMaxGainDb,
                                         tr("This clip's audio level. 0 dB = unchanged."), &m_gain,
@@ -160,7 +147,9 @@ AudioPanel::AudioPanel(QWidget *parent)
                            "ms, for example to line a separate mic up with the picture."));
     form()->addRow(tr("Start"), m_start);
 
-    setState(0.0, false, 0, 1);
+    setHint(tr("The audio clip selected on the timeline, or else the sound of the video clip "
+               "under the playhead. Applies in playback and export."));
+    setNoClip();
 
     connect(m_gain, &QSlider::valueChanged, this, [this](int v) {
         m_gainValue->setText(tr("%1 dB").arg(v));
@@ -208,10 +197,6 @@ AudioPanel::AudioPanel(QWidget *parent)
     connect(m_fadeIn, &QDoubleSpinBox::valueChanged, this, [this](double) { emitIfEdited(); });
     connect(m_fadeOut, &QDoubleSpinBox::valueChanged, this, [this](double) { emitIfEdited(); });
     connect(m_start, &QDoubleSpinBox::valueChanged, this, [this](double) { emitIfEdited(); });
-    connect(m_track, &QComboBox::currentIndexChanged, this, [this](int index) {
-        if (!m_updating && index >= 0)
-            emit trackEdited(index);
-    });
     connect(m_trackGain, &QSlider::valueChanged, this, [this](int v) {
         m_trackGainValue->setText(tr("%1 dB").arg(v));
         emitTrackIfEdited();
@@ -219,79 +204,11 @@ AudioPanel::AudioPanel(QWidget *parent)
     connect(m_trackMute, &QCheckBox::toggled, this, [this](bool) { emitTrackIfEdited(); });
 }
 
-void AudioPanel::setMode(bool audioClip)
-{
-    m_audioClipMode = audioClip;
-    form()->setRowVisible(m_track, !audioClip);
-    form()->setRowVisible(m_trackNote, !audioClip && !m_trackNote->text().isEmpty());
-    for (QWidget *w : {static_cast<QWidget *>(m_fadeIn), static_cast<QWidget *>(m_fadeOut),
-                       static_cast<QWidget *>(m_start), static_cast<QWidget *>(m_trackName),
-                       m_trackGain->parentWidget(), static_cast<QWidget *>(m_trackMute),
-                       static_cast<QWidget *>(m_separator)})
-        form()->setRowVisible(w, audioClip);
-    setHint(audioClip ? tr("The audio clip selected on the timeline: mixed under the clips' own "
-                           "audio in playback and export. Click the video track to go back to "
-                           "the clip under the playhead.")
-                      : tr("Applies to this clip's audio in playback and export. Follows the "
-                           "clip's video trim."));
-    setScope(audioClip ? tr("Selected audio clip") : tr("This clip"));
-}
-
-void AudioPanel::setState(double gainDb, bool muted, int track, int trackCount,
-                          const QString &clipLabel, const QHash<int, QString> &detached,
-                          const insv::NoiseReduction &noise)
-{
-    m_updating = true;
-    setBodyEnabled(true);
-    m_clipName->setText(clipLabel);
-    m_clipName->setToolTip(clipLabel);
-    m_track->clear();
-    const int current = std::clamp(track, 0, std::max(trackCount, 1) - 1);
-    QString note;
-    if (trackCount <= 0) {
-        m_track->addItem(tr("No audio"));
-    } else {
-        auto *model = qobject_cast<QStandardItemModel *>(m_track->model());
-        for (int i = 0; i < trackCount; ++i) {
-            QString text = tr("Stream %1").arg(i + 1);
-            const auto it = detached.constFind(i);
-            // A stream also playing from an audio track: picking it here would
-            // play it twice (and leave the other stream unheard).
-            if (it != detached.constEnd() && i != current) {
-                text = tr("Stream %1 (on %2)").arg(i + 1).arg(*it);
-                note = tr("Stream %1 plays from the “%2” track; its level and mute are "
-                          "there (select that clip).")
-                           .arg(i + 1)
-                           .arg(*it);
-            } else if (it != detached.constEnd()) {
-                note = tr("⚠ Stream %1 also plays from the “%2” track, so it's heard twice "
-                          "and the other stream not at all. Pick another stream here.")
-                           .arg(i + 1)
-                           .arg(*it);
-            }
-            m_track->addItem(text);
-            if (it != detached.constEnd() && i != current && model)
-                model->item(i)->setEnabled(false);
-        }
-    }
-    m_track->setCurrentIndex(current);
-    m_track->setEnabled(trackCount > 1);
-    m_trackNote->setText(note);
-    setMode(false);
-    const int v = std::clamp(int(std::lround(gainDb)), int(audiolimits::kMinGainDb),
-                             int(audiolimits::kMaxGainDb));
-    m_gain->setValue(v);
-    m_gainValue->setText(tr("%1 dB").arg(v));
-    m_mute->setChecked(muted);
-    setNoise(noise);
-    m_updating = false;
-}
-
 void AudioPanel::setAudioClipState(const AudioClipState &s)
 {
     m_updating = true;
     setBodyEnabled(true);
-    setMode(true);
+    setScope(s.selected ? tr("Selected audio clip") : tr("This clip"));
     m_clipName->setText(s.label);
     m_clipName->setToolTip(s.label);
     const int v = std::clamp(int(std::lround(s.gainDb)), int(audiolimits::kMinGainDb),
@@ -351,10 +268,6 @@ void AudioPanel::emitIfEdited()
 {
     if (m_updating)
         return;
-    if (!m_audioClipMode) {
-        emit levelEdited(m_gain->value(), m_mute->isChecked());
-        return;
-    }
     emit audioClipEdited(m_gain->value(), m_mute->isChecked(),
                          std::llround(m_fadeIn->value() * 1000.0),
                          std::llround(m_fadeOut->value() * 1000.0),
@@ -363,6 +276,6 @@ void AudioPanel::emitIfEdited()
 
 void AudioPanel::emitTrackIfEdited()
 {
-    if (!m_updating && m_audioClipMode)
+    if (!m_updating)
         emit trackLevelEdited(m_trackGain->value(), m_trackMute->isChecked());
 }

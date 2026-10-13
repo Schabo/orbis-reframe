@@ -95,8 +95,9 @@ From top to bottom it has:
   video;
 - the **video track**: your `.insv` clips, one after another, with a hard
   cut between each pair;
-- any **audio tracks**: music, sound from an external recorder, or a second
-  microphone.
+- the video clips' sound, on the **Camera mic** track (and **Mic Air**,
+  when an external microphone was connected);
+- any other **audio tracks**: music, or sound from an external recorder.
 
 Clicking a clip selects it. It doesn't move the playhead: only the ruler
 and the player bar's progress bar do that. [The timeline](timeline.md) explains how to arrange, trim, split and
@@ -183,7 +184,7 @@ key of the tab that's already showing closes the sidebar.
 | Tab | What it sets |
 |---|---|
 | **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles and field of view, keyframes, and **Track subject**, which follows a person or vehicle automatically), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
-| **Audio** | Volume, which microphone to use, and noise and wind reduction. |
+| **Audio** | Volume, fades, and noise and wind reduction, for an audio clip or a video clip's sound. |
 | **Overlay** | Size, position and look of the selected picture-in-picture clip. |
 | **Privacy** | Blurring number plates. |
 
@@ -205,7 +206,7 @@ says what the section applies to:
 
 | It says | Meaning |
 |---|---|
-| *This clip* | The selected video clip if you've clicked one, otherwise the clip under the playhead. Stabilization, Colour, Privacy, Audio and Media information. |
+| *This clip* | The selected video clip if you've clicked one, otherwise the clip under the playhead. Stabilization, Colour, Privacy, Audio (the clip's sound) and Media information. |
 | *Selected audio clip* | The **Audio** section, when you've selected an audio clip on an audio track. |
 | *Selected overlay clip* | The **Overlay** section: the overlay you've selected. |
 | *Keys at the playhead* | The **Reframe** section: the view at the playhead, and the keyframe there. |

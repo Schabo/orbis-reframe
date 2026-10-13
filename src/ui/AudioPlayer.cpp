@@ -1,6 +1,5 @@
 #include "AudioPlayer.h"
 
-#include <ClipAudioReader.h>
 
 #include <QAudioFormat>
 #include <QAudioSink>
@@ -336,24 +335,6 @@ void AudioPlayer::requestSeekLocked(qint64 timelineMs, double playedFrames)
 // Decoder thread
 // ---------------------------------------------------------------------------
 
-void AudioPlayer::openSegment(int index, int64_t sourceFrame)
-{
-    const PlaybackController::Segment &seg = m_decPlaced[index].seg;
-    if (!m_reader || m_activePath != seg.sourcePath || m_activeTrack != seg.audioTrack) {
-        m_reader = std::make_unique<insv::ClipAudioReader>(kSampleRate, kChannels);
-        m_reader->open(seg.sourcePath.toStdString(), seg.audioTrack); // none => silence
-        m_activePath = seg.sourcePath;
-        m_activeTrack = seg.audioTrack;
-    }
-    m_reader->setGainDb(seg.audioGainDb);
-    m_reader->setMuted(seg.audioMuted);
-    // ClipItem::speed: stretched to the clip's timeline span, pitch kept.
-    m_reader->setTempo(seg.speed);
-    m_reader->setNoiseReduction(seg.noise);
-    m_reader->seek(sourceFrame);
-    m_decSegIndex = index;
-}
-
 void AudioPlayer::decoderLoop()
 {
     m_mixer = std::make_unique<insv::AudioMixer>(kSampleRate, kChannels);
@@ -393,11 +374,8 @@ void AudioPlayer::decoderLoop()
         if (mixChanged)
             m_mixer->setClips(std::move(mix));
 
-        if (tlChanged && m_decPlaced.isEmpty()) {
-            m_reader.reset();
-            m_activePath.clear();
+        if (tlChanged && m_decPlaced.isEmpty())
             m_decSegIndex = -1;
-        }
         if (m_decPlaced.isEmpty())
             continue;
 
@@ -406,7 +384,7 @@ void AudioPlayer::decoderLoop()
             const Placed &ps = m_decPlaced[idx];
             const qint64 clamped = std::clamp<qint64>(seekMs, ps.startMs, ps.endMs());
             m_decCursor = clamped * kFramesPerMs;
-            openSegment(idx, ps.seg.sourceAtLocalMs(clamped - ps.startMs) * kFramesPerMs);
+            m_decSegIndex = idx;
             std::lock_guard<std::mutex> lk(m_mx);
             m_decoderEof = false;
             continue;
@@ -426,14 +404,13 @@ void AudioPlayer::decoderLoop()
                 m_decoderEof = true;
                 continue;
             }
-            openSegment(next, m_decPlaced[next].seg.inMs * kFramesPerMs);
+            m_decSegIndex = next;
             continue;
         }
 
         Chunk chunk;
-        chunk.pcm.resize(static_cast<size_t>(n) * kChannels);
-        m_reader->read(chunk.pcm.data(), n); // level/mute baked in; silence if no audio
-        m_mixer->mixInto(chunk.pcm.data(), m_decCursor, n); // the extra audio tracks
+        chunk.pcm.assign(static_cast<size_t>(n) * kChannels, 0.0f);
+        m_mixer->mixInto(chunk.pcm.data(), m_decCursor, n); // the audio tracks
         insv::AudioMixer::limit(chunk.pcm.data(), n * kChannels);
         m_decCursor += n;
 

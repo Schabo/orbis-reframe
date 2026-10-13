@@ -3,8 +3,6 @@
 #include "ReframeFlatten.h"  // exportpipe::FlattenWriter (system FFmpeg)
 #include "ReframeRenderer.h" // exportpipe::RenderRectilinear
 
-#include <ClipAudioReader.h>    // insv::ClipAudioReader
-#include <InsvAudioDemux.h>     // insv::InsvAudioDemux::countAudioStreams
 #include <NativeStitchSource.h> // stitch::NativeStitchSource, stitch::Frame, stitch::PreviewStitchConfig
 #include <ProbeClip.h>          // stitch::ProbeClip
 
@@ -157,13 +155,8 @@ void ReframeExportController::run(const Request &req)
     cfg.fps = req.fps;
     cfg.h265 = req.h265;
     cfg.bitrate_kbps = req.bitrateKbps;
-    // An audio track only if some clip actually has audio to put in it, or
-    // there's something on the audio tracks.
-    const bool withAudio =
-        !req.mix.empty() ||
-        std::any_of(req.clips.begin(), req.clips.end(), [](const ClipJob &c) {
-            return insv::InsvAudioDemux::countAudioStreams(c.clipPath.toStdString()) > 0;
-        });
+    // An audio track only if there's something on the audio tracks.
+    const bool withAudio = !req.mix.empty();
     insv::AudioMixer mixer(kAudioRate, kAudioChannels);
     mixer.setClips(req.mix);
     if (withAudio) {
@@ -254,28 +247,15 @@ void ReframeExportController::run(const Request &req)
             }
         };
 
-        // Opened at the first written frame, positioned at that frame's source
-        // time, so the clip's audio starts on the same instant as its video.
-        std::unique_ptr<insv::ClipAudioReader> audio;
-        auto feedAudio = [&](int64_t frameSourceMs) -> bool {
+        auto feedAudio = [&]() -> bool {
             if (!withAudio)
                 return true;
-            if (!audio) {
-                audio = std::make_unique<insv::ClipAudioReader>(kAudioRate, kAudioChannels);
-                audio->open(c.clipPath.toStdString(), c.audioTrack); // none => silence
-                audio->setGainDb(c.audioGainDb);
-                audio->setMuted(c.audioMuted);
-                audio->setTempo(c.speed); // pitch-preserving stretch at speed != 1
-                audio->setNoiseReduction(c.noise);
-                audio->seek(frameSourceMs * kAudioRate / 1000);
-            }
             // Audio up to the end of output frame `outFrames` on the timeline.
             const int64_t target = std::llround(outFrames * kAudioRate / req.fps);
             const int64_t need = target - writer->audioFramesWritten();
             if (need <= 0)
                 return true;
-            pcm.resize(static_cast<size_t>(need) * kAudioChannels);
-            audio->read(pcm.data(), need);
+            pcm.assign(static_cast<size_t>(need) * kAudioChannels, 0.0f);
             mixer.mixInto(pcm.data(), writer->audioFramesWritten(), need); // the audio tracks
             insv::AudioMixer::limit(pcm.data(), need * kAudioChannels);
             return writer->addAudio(pcm.data(), need, err);
@@ -312,7 +292,7 @@ void ReframeExportController::run(const Request &req)
                 for (int64_t r = 0; r < reps; ++r) {
                     ++outFrames;
                     if (!writer->addNv12Frame(ff.nv12.data(), ff.width, ff.height, err) ||
-                        !feedAudio(ff.timestamp_ms)) {
+                        !feedAudio()) {
                         emit finished(false, QString::fromStdString(err), req.outPath);
                         return;
                     }
@@ -343,7 +323,7 @@ void ReframeExportController::run(const Request &req)
                     if (!writer->addEquirectFrame(eq.rgba.data(), eq.width, eq.height,
                                                   c.poseAt ? pose : nullptr,
                                                   c.stab ? stab : nullptr, c.colorGrade, err) ||
-                        !feedAudio(eq.timestamp_ms)) {
+                        !feedAudio()) {
                         emit finished(false, QString::fromStdString(err), req.outPath);
                         return;
                     }

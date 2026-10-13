@@ -148,7 +148,9 @@ void testScopes(SettingsSidebar &bar)
     s.spanMs = 10000;
     bar.audio()->setAudioClipState(s);
     CHECK(bar.audio()->scope() == QLatin1String("Selected audio clip"));
-    bar.audio()->setState(0.0, false, 0, 1, QStringLiteral("clip.insv"));
+    s.label = QStringLiteral("clip.insv (camera mic)");
+    s.selected = false; // the sound of the video clip under the playhead
+    bar.audio()->setAudioClipState(s);
     CHECK(bar.audio()->scope() == QLatin1String("This clip"));
 }
 
