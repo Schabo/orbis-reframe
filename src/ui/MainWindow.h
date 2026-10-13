@@ -306,6 +306,8 @@ private:
     const TrackClip *selectedOverlayClip(int *trackId = nullptr) const;
     // The Overlay panel: the selected overlay clip, at the playhead.
     void refreshOverlayPanel();
+    // The selected overlay clip's track a layer to the front (-1) / back (1).
+    void moveSelectedOverlayLayer(int step);
     // The selected overlay clip's keys at the playhead (the Overlay panel's
     // Set key / Delete, and K / Shift+K with an overlay selected): set one
     // with its look there (the playhead must be over it), or delete the one

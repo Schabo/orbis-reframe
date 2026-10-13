@@ -3,7 +3,7 @@
 // their sections in order, opening / closing sections (with a greyed-out
 // body too), what each section says it applies to, the tab keys' toggle,
 // the Stitching section keeping the View menu's part of the stitch config,
-// and the Project settings dialog. No GPU, no media.
+// the Overlay tab's layer row, and the Project settings dialog. No GPU, no media.
 // Exit code is the failure count. ORBIS_SETTINGS_SHOT=<path> saves a
 // picture of the sidebar.
 
@@ -25,6 +25,7 @@
 #include <QSlider>
 #include <QComboBox>
 #include <QLabel>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QTest>
@@ -286,6 +287,51 @@ void testProjectSettingsDialog()
 
 } // namespace
 
+// The Overlay tab's layer row: which layer the selected clip's track is,
+// and Bring forward / Send backward only where there's a layer to pass.
+void testOverlayLayer(SettingsSidebar &bar)
+{
+    OverlayPanel *panel = bar.overlay();
+    auto *label = find<QLabel>(panel, "overlayLayerLabel");
+    auto *forward = find<QPushButton>(panel, "overlayBringForward");
+    auto *backward = find<QPushButton>(panel, "overlaySendBackward");
+    if (!label || !forward || !backward)
+        return;
+    QSignalSpy fwd(panel, &OverlayPanel::bringForwardRequested);
+    QSignalSpy back(panel, &OverlayPanel::sendBackwardRequested);
+
+    OverlayPanel::State st;
+    st.trackName = "Cam";
+    st.layer = 1;
+    st.layerCount = 2;
+    st.inFrontOf = "Overlay 2";
+    st.spanMs = 5000;
+    panel->setState(st);
+    CHECK(label->text() == QLatin1String("1 of 2 (front)"));
+    CHECK(label->toolTip().contains(QString::fromUtf8("In front of “Overlay 2”")));
+    CHECK(!forward->isEnabled() && backward->isEnabled());
+    QTest::mouseClick(backward, Qt::LeftButton);
+    CHECK(back.count() == 1 && fwd.count() == 0);
+
+    st.layer = 2;
+    st.inFrontOf.clear();
+    st.behind = "Overlay 2";
+    panel->setState(st);
+    CHECK(label->text() == QLatin1String("2 of 2 (back)"));
+    CHECK(forward->isEnabled() && !backward->isEnabled());
+    QTest::mouseClick(forward, Qt::LeftButton);
+    CHECK(fwd.count() == 1);
+
+    st.layer = st.layerCount = 1;
+    st.behind.clear();
+    panel->setState(st);
+    CHECK(label->text() == QLatin1String("1 of 1"));
+    CHECK(!forward->isEnabled() && !backward->isEnabled());
+
+    panel->setNoClip();
+    CHECK(label->text().isEmpty() && !forward->isEnabled());
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -309,6 +355,7 @@ int main(int argc, char **argv)
     testAudioSections(bar);
     testTabKeys(bar);
     testStitchingKeepsPreview(bar);
+    testOverlayLayer(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

@@ -44,6 +44,7 @@ constexpr int kEdgeGrabPx = 6;
 constexpr int kDragThresholdPx = 4;
 constexpr int kSnapPx = 6;
 constexpr int kMuteBoxW = 16;
+constexpr int kLayerBoxW = 16; // an overlay track's layer number, left of its hide box
 constexpr qint64 kMinTrimMs = 100; // belt-and-braces; Timeline does the real clamp
 constexpr int kScrollH = 12;          // the horizontal scrollbar under the tracks
 constexpr qint64 kMinVisibleMs = 1000; // the furthest zoom in: 1 s across the view
@@ -214,6 +215,42 @@ QRect TimelineWidget::foldBox(int trackIndex) const
     const int top = trackIndex < 0 ? mainTop() : trackTop(trackIndex);
     const int h = trackIndex < 0 ? kMainH : kTrackH;
     return QRect(2, top + (h - 14) / 2, kNameX - 4, 14);
+}
+
+int TimelineWidget::overlayLayer(int trackIndex, int *count) const
+{
+    int layer = 0, n = 0;
+    for (int i = 0; i < m_tracks.size(); ++i)
+        if (m_tracks[i].video) {
+            ++n;
+            if (i == trackIndex)
+                layer = n;
+        }
+    if (count)
+        *count = n;
+    return layer;
+}
+
+QRect TimelineWidget::layerBox(int trackIndex) const
+{
+    const QRect mb = muteBox(trackTop(trackIndex), kTrackH);
+    return QRect(mb.left() - 4 - kLayerBoxW, mb.top(), kLayerBoxW, mb.height());
+}
+
+QString TimelineWidget::layerToolTip(int trackIndex) const
+{
+    int count = 0;
+    const int layer = overlayLayer(trackIndex, &count);
+    if (count <= 1)
+        return tr("Layer 1: the only overlay track, drawn over the main video.");
+    if (layer == 1)
+        return tr("Layer 1 of %1: drawn in front of the other overlays. Send it backward from "
+                  "the right-click menu or by dragging this header down.").arg(count);
+    if (layer == count)
+        return tr("Layer %1 of %1: drawn behind the other overlays. Bring it forward from the "
+                  "right-click menu or by dragging this header up.").arg(count);
+    return tr("Layer %1 of %2: drawn behind the overlay tracks above it and in front of those "
+              "below. Lower numbers are in front.").arg(layer).arg(count);
 }
 
 void TimelineWidget::setSoundCollapsed(int videoTrackId, bool collapsed)
@@ -1023,10 +1060,21 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const int indent = ownAudio ? kOwnSoundX : kNameX;
         if (hasOwnSound(i))
             drawFoldTriangle(p, foldBox(i), isSoundCollapsed(t.id), tc.textDim);
+        // An overlay track's layer: 1 in front.
+        int nameRight = mb.left() - 2;
+        if (t.video) {
+            const QRect lb = layerBox(i);
+            p.setBrush(Qt::NoBrush);
+            p.setPen(tc.clipOverlay);
+            p.drawRoundedRect(QRectF(lb).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+            p.setPen(tc.text);
+            p.drawText(lb, Qt::AlignCenter, QString::number(overlayLayer(i)));
+            nameRight = lb.left() - 2;
+        }
         p.setPen(tc.text);
-        p.drawText(QRect(indent, top, mb.left() - indent - 2, kTrackH),
+        p.drawText(QRect(indent, top, nameRight - indent, kTrackH),
                    Qt::AlignVCenter | Qt::AlignLeft,
-                   fm.elidedText(t.name, Qt::ElideRight, mb.left() - indent - 2));
+                   fm.elidedText(t.name, Qt::ElideRight, nameRight - indent));
         drawMuteBox(mb, t.muted, t.video ? QStringLiteral("H") : QStringLiteral("M"));
     }
     // Where a dragged track header would land.
@@ -1431,6 +1479,9 @@ bool TimelineWidget::event(QEvent *e)
                                tr("Click to fold its sound tracks away or show them again. "
                                   "Folded tracks still play and export."),
                                this);
+        else if (h.kind == Hit::Header && h.track >= 0 && m_tracks[h.track].video &&
+                 !muteBox(trackTop(h.track), kTrackH).contains(he->pos()))
+            QToolTip::showText(he->globalPos(), layerToolTip(h.track), this);
         else if (h.kind == Hit::MainClip && m_rows[h.row].clip.keySourceMs.isEmpty())
             QToolTip::showText(he->globalPos(),
                                tr("No reframe keyframes: this clip exports looking straight "
@@ -1612,9 +1663,13 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         downTo = m_tracks[trackIndex].video ? unitEnd(trackIndex) : trackIndex + 1;
         menu.addSeparator();
         rename = menu.addAction(tr("Rename track…"));
-        up = menu.addAction(tr("Move track up"));
+        // An overlay track's place is its layer: say which way it goes.
+        const bool video = m_tracks[trackIndex].video;
+        up = menu.addAction(video ? tr("Bring forward") : tr("Move track up"));
+        up->setObjectName(QStringLiteral("trackUpAction"));
         up->setEnabled(!overlayAudio && trackIndex > first);
-        down = menu.addAction(tr("Move track down"));
+        down = menu.addAction(video ? tr("Send backward") : tr("Move track down"));
+        down->setObjectName(QStringLiteral("trackDownAction"));
         down->setEnabled(!overlayAudio && downTo < end);
         removeTrack = menu.addAction(tr("Remove track “%1”").arg(m_tracks[trackIndex].name));
     }

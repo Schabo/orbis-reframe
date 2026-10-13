@@ -48,6 +48,23 @@ OverlayPanel::OverlayPanel(QWidget *parent)
 {
     m_trackName = new QLabel(this);
     form()->addRow(tr("Track"), m_trackName);
+    m_layer = new QLabel(this);
+    m_layer->setObjectName(QStringLiteral("overlayLayerLabel"));
+    form()->addRow(tr("Layer"), m_layer);
+    auto *layerRow = new QWidget(this);
+    auto *layerLayout = new QHBoxLayout(layerRow);
+    layerLayout->setContentsMargins(0, 0, 0, 0);
+    m_forward = new QPushButton(tr("Bring forward"), layerRow);
+    m_forward->setObjectName(QStringLiteral("overlayBringForward"));
+    m_forward->setToolTip(tr("Draw this track's overlays in front of the overlay track above "
+                             "it (its track moves up)."));
+    m_backward = new QPushButton(tr("Send backward"), layerRow);
+    m_backward->setObjectName(QStringLiteral("overlaySendBackward"));
+    m_backward->setToolTip(tr("Draw this track's overlays behind the overlay track below it "
+                              "(its track moves down)."));
+    layerLayout->addWidget(m_forward);
+    layerLayout->addWidget(m_backward);
+    form()->addRow(QString(), layerRow);
     m_clipName = new QLabel(this);
     m_clipName->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_clipName->setMinimumWidth(1); // a long name mustn't widen the sidebar
@@ -115,7 +132,7 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     m_start->setToolTip(tr("Where the clip starts on the timeline."));
     form()->addRow(tr("Start"), m_start);
 
-    m_clipRows = {m_x,       m_y,      m_size,        m_opacity, keyRow, m_radius,
+    m_clipRows = {layerRow, m_x,      m_y,      m_size,        m_opacity, keyRow, m_radius,
                   m_border,  m_borderColor, m_fadeIn, m_fadeOut, m_start};
 
     setNoClip();
@@ -160,6 +177,8 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     connect(m_addKey, &QPushButton::clicked, this, &OverlayPanel::addKeyRequested);
     connect(m_removeKey, &QPushButton::clicked, this, &OverlayPanel::removeKeyRequested);
     connect(m_clearKeys, &QPushButton::clicked, this, &OverlayPanel::clearKeysRequested);
+    connect(m_forward, &QPushButton::clicked, this, &OverlayPanel::bringForwardRequested);
+    connect(m_backward, &QPushButton::clicked, this, &OverlayPanel::sendBackwardRequested);
 }
 
 inset::Look OverlayPanel::currentLook() const
@@ -199,6 +218,27 @@ void OverlayPanel::setState(const State &s)
     m_clipName->setText(s.label);
     m_clipName->setToolTip(s.label);
     m_trackName->setText(s.trackName);
+    // Short: a wrapped label here gets clipped by the form layout; the
+    // neighbours go in the tooltip.
+    if (s.layerCount <= 1)
+        m_layer->setText(tr("1 of 1"));
+    else if (s.layer == 1)
+        m_layer->setText(tr("1 of %1 (front)").arg(s.layerCount));
+    else if (s.layer == s.layerCount)
+        m_layer->setText(tr("%1 of %1 (back)").arg(s.layerCount));
+    else
+        m_layer->setText(tr("%1 of %2").arg(s.layer).arg(s.layerCount));
+    QStringList order;
+    if (!s.behind.isEmpty())
+        order << tr("Behind “%1”.").arg(s.behind);
+    if (!s.inFrontOf.isEmpty())
+        order << tr("In front of “%1”.").arg(s.inFrontOf);
+    m_layer->setToolTip(order.isEmpty()
+                            ? tr("The only overlay track: drawn over the main video.")
+                            : order.join(QLatin1Char(' ')) +
+                                  tr(" Lower layers are drawn in front."));
+    m_forward->setEnabled(s.layer > 1);
+    m_backward->setEnabled(s.layer > 0 && s.layer < s.layerCount);
     m_x->setValue(s.look.centerX * 100.0);
     m_y->setValue(s.look.centerY * 100.0);
     m_size->setValue(s.look.width * 100.0);
@@ -243,6 +283,8 @@ void OverlayPanel::setNoClip()
     m_updating = true;
     m_clipName->setText(QString());
     m_trackName->setText(QString());
+    m_layer->setText(QString());
+    m_layer->setToolTip(QString());
     m_keys->setText(QString());
     for (QWidget *w : m_clipRows)
         w->setEnabled(false);

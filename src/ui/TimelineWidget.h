@@ -264,6 +264,13 @@ private:
     // The triangle in a header (the main track's: trackIndex -1).
     QRect foldBox(int trackIndex) const;
     void toggleSound(int trackIndex); // by the user: emits
+    // An overlay track's layer: 1 = in front, counting down the Overlay
+    // group (the first overlay track draws on top); *count the overlay
+    // tracks. 0 for any other track.
+    int overlayLayer(int trackIndex, int *count = nullptr) const;
+    // The layer number's badge in an overlay track's header.
+    QRect layerBox(int trackIndex) const;
+    QString layerToolTip(int trackIndex) const;
     Hit hitTest(QPoint pos) const;
     // Main-track insert position for a clip added at `ms`: the cut nearest to it.
     int insertIndexAt(qint64 ms) const;

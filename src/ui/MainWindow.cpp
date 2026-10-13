@@ -566,6 +566,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
                 m_timeline->setTrackClipFades(id, fadeInMs, fadeOutMs);
                 m_timeline->moveTrackClip(id, trackId, startMs);
             });
+    connect(m_overlayPanel, &OverlayPanel::bringForwardRequested, this,
+            [this] { moveSelectedOverlayLayer(-1); });
+    connect(m_overlayPanel, &OverlayPanel::sendBackwardRequested, this,
+            [this] { moveSelectedOverlayLayer(1); });
     connect(m_overlayPanel, &OverlayPanel::addKeyRequested, this,
             &MainWindow::setOverlayKeyAtPlayhead);
     connect(m_overlayPanel, &OverlayPanel::removeKeyRequested, this,
@@ -1993,6 +1997,21 @@ void MainWindow::refreshOverlayPanel()
     OverlayPanel::State st;
     st.label = QFileInfo(c->sourcePath).fileName();
     st.trackName = m_timeline->trackById(trackId)->name;
+    // The layer: the overlay tracks in order, the first in front.
+    QStringList overlays;
+    for (int i = 0; i < m_timeline->trackCount(); ++i) {
+        const Track &t = m_timeline->trackAt(i);
+        if (t.kind != Track::Kind::Video)
+            continue;
+        overlays << t.name;
+        if (t.id == trackId)
+            st.layer = int(overlays.size());
+    }
+    st.layerCount = int(overlays.size());
+    if (st.layer > 1)
+        st.behind = overlays[st.layer - 2];
+    if (st.layer > 0 && st.layer < st.layerCount)
+        st.inFrontOf = overlays[st.layer];
     st.playheadInClip = m_lastTimelineMs >= c->startMs && m_lastTimelineMs < c->endMs();
     const qint64 src = c->sourceAtLocalMs(
         std::clamp<qint64>(m_lastTimelineMs - c->startMs, 0, c->timelineDurationMs()));
@@ -2007,6 +2026,29 @@ void MainWindow::refreshOverlayPanel()
         st.keyAtPlayhead |= st.playheadInClip &&
                             std::llabs(k.timeMs - src) <= Timeline::kInsetKeyDeleteSnapMs;
     m_overlayPanel->setState(st);
+}
+
+void MainWindow::moveSelectedOverlayLayer(int step)
+{
+    // Past the neighbouring overlay track (with its audio track): moveTrack
+    // puts it before that track going up, after it going down.
+    int trackId = 0;
+    if (!selectedOverlayClip(&trackId))
+        return;
+    int prev = -1, next = -1, at = -1;
+    for (int i = 0; i < m_timeline->trackCount(); ++i) {
+        if (m_timeline->trackAt(i).kind != Track::Kind::Video)
+            continue;
+        if (m_timeline->trackAt(i).id == trackId)
+            at = i;
+        else if (at < 0)
+            prev = i;
+        else if (next < 0)
+            next = i;
+    }
+    const int to = step < 0 ? prev : next;
+    if (to >= 0)
+        m_timeline->moveTrack(trackId, to);
 }
 
 void MainWindow::setOverlayKeyAtPlayhead()

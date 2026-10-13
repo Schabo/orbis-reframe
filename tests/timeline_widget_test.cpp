@@ -19,6 +19,7 @@
 #include <QWheelEvent>
 #include <QSignalSpy>
 #include <QTest>
+#include <QToolTip>
 
 #include <cstdio>
 #include <cstdlib>
@@ -521,6 +522,16 @@ void testOverlayTracks()
     const int soundY = trackY(2) + kGroupGap;
     const int ov2Y = trackY(3) + kGroupGap;
     CHECK(f.w.sizeHint().height() > ov2Y + kTrackH / 2);
+
+    // Each overlay header says its layer: the first overlay track in front.
+    const auto tip = [&](int y) {
+        QHelpEvent he(QEvent::ToolTip, QPoint(60, y), f.w.mapToGlobal(QPoint(60, y)));
+        QApplication::sendEvent(&f.w, &he);
+        return QToolTip::text();
+    };
+    CHECK(tip(camY).startsWith(QLatin1String("Layer 1 of 2: drawn in front")));
+    CHECK(tip(ov2Y).startsWith(QLatin1String("Layer 2 of 2: drawn behind")));
+    QToolTip::hideText();
 
     QSignalSpy sel(&f.w, &TimelineWidget::trackClipSelected);
     QSignalSpy clipSel(&f.w, &TimelineWidget::clipSelected);

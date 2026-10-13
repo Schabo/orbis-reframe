@@ -105,9 +105,23 @@ These settings are the same for the whole clip:
 
 ## Several overlays
 
-You can show several overlays at once, on separate overlay tracks. Where
-they overlap, the one on the higher track is drawn on top. To hide all
-overlays on a track for a while, click the **H** box in its track header.
+You can show several overlays at once, on separate overlay tracks. Each
+overlay track is a **layer**, numbered in the small box in its track header:
+layer **1** is in front, and each number after it is drawn behind the one
+before. Where overlays overlap, the one on the lower-numbered layer covers
+the other. The first overlay track on the timeline is always layer 1.
+Hover over the number to see where the track sits.
+
+To change the order, select an overlay and click **Bring forward** or
+**Send backward** next to **Layer** in the Overlay tab. The tab also shows
+the layer, for example *1 of 2 (front)*; hover over it to see which tracks
+are in front and behind. You can also right-click an overlay track and
+choose **Bring forward** / **Send backward**, or drag its track header up
+or down. The whole track moves, with its audio track, so every overlay on
+it changes layer.
+
+To hide all overlays on a track for a while, click the **H** box in its
+track header.
 
 Overlays appear in playback, screenshots and the export exactly as in the
 viewport. The colour settings of the 360° clip don't change them, and

@@ -17,7 +17,8 @@ overlays. For the names of the window's parts, see
 5. An **audio track**, with a music file. The waveform shows how loud it
    is, and the slanted lines at its ends are fades.
 6. The **track headers**: each track's name and its **M** (mute) or **H**
-   (hide) box.
+   (hide) box. An overlay track also shows its layer number (1 is in
+   front).
 
 The video track sets the length of your video: the export runs from the
 start of the first clip to the end of the last. Audio and overlay clips that
@@ -241,7 +242,7 @@ there is one, and on the video track otherwise.
 | Mute an audio track | Click the **M** box in its header. Click it again to hear it. |
 | Hide an overlay track | Click the **H** box in its header. |
 | Rename a track | Double-click its name, type the new name and press `Enter` (`Esc` cancels). Or right-click it and choose **Rename track…**. |
-| Change the order of tracks | Drag a track header up or down, or right-click the track and choose **Move track up** / **Move track down**. A track stays in its group: *Camera mic* and *External mic* under the video track, audio tracks among the audio tracks, overlay tracks among the overlay tracks. An overlay track takes its audio track along; that audio track can't be moved on its own. A higher overlay track is drawn on top of a lower one. |
+| Change the order of tracks | Drag a track header up or down, or right-click the track and choose **Move track up** / **Move track down**. A track stays in its group: *Camera mic* and *External mic* under the video track, audio tracks among the audio tracks, overlay tracks among the overlay tracks. An overlay track takes its audio track along; that audio track can't be moved on its own. For an overlay track the menu says **Bring forward** / **Send backward**: its place is its layer, the number in its header (1 is drawn in front, see [Overlays](overlays.md#several-overlays)). |
 | Remove a track and everything on it | Right-click the track and choose **Remove track**. Removing an overlay track removes its audio track too. |
 
 ## Linked audio

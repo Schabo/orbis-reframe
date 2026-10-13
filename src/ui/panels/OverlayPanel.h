@@ -11,7 +11,8 @@ class QPushButton;
 class QSlider;
 
 // The Overlay (picture-in-picture) panel: the video-track clip selected on the
-// timeline (or picked in the view) -- where its inset sits (position, size),
+// timeline (or picked in the view) -- its track's layer (which overlays it
+// draws in front of / behind), where its inset sits (position, size),
 // how it looks (opacity, corner radius, border) and its fades and start.
 // Keyframes: with none, an edit sets the clip's one look; once it has some, an
 // edit of position / size / opacity sets a key at the playhead, and the fields
@@ -28,6 +29,11 @@ public:
     struct State {
         QString label;
         QString trackName;
+        // Its track's layer among the overlay tracks: 1 = in front.
+        int layer = 0;
+        int layerCount = 0;
+        QString inFrontOf; // the overlay track just behind it, if any
+        QString behind;    // the one just in front of it, if any
         inset::Look look; // at the playhead (keys sampled), before the fades
         inset::Frame frame;
         qint64 fadeInMs = 0;
@@ -50,6 +56,9 @@ signals:
     void addKeyRequested();
     void removeKeyRequested();
     void clearKeysRequested();
+    // Move its track a layer to the front / back.
+    void bringForwardRequested();
+    void sendBackwardRequested();
 
 private:
     inset::Look currentLook() const;
@@ -58,6 +67,9 @@ private:
 
     QLabel *m_clipName = nullptr;
     QLabel *m_trackName = nullptr;
+    QLabel *m_layer = nullptr;
+    QPushButton *m_forward = nullptr;
+    QPushButton *m_backward = nullptr;
     QDoubleSpinBox *m_x = nullptr;     // centre, % of the output width
     QDoubleSpinBox *m_y = nullptr;     // % of the height
     QDoubleSpinBox *m_size = nullptr;  // width, % of the output width
