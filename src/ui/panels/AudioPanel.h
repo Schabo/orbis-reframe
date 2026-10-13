@@ -10,92 +10,119 @@
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
-class QFrame;
 class QLabel;
+class QScrollArea;
 class QSlider;
+class QVBoxLayout;
 
-// The Audio tab: one audio clip -- the one selected on the timeline, or else
-// the sound of the video clip under the playhead (its linked clip on the
-// stream tracks: a video clip has no sound of its own) -- in three sections,
-// top to bottom:
-//   Noise reduction (audioNoisePanel) -- which clip, its noise mode + strength;
-//   Level (audioLevelPanel)           -- its track's level / mute, its own;
-//   Fades (audioFadesPanel)           -- fade in / out and its start.
-// Edits come back as audioClipEdited / noiseEdited / trackLevelEdited ->
-// Timeline::setAudioClip* / setTrackAudio.
+// What the Audio tab shows of one audio clip.
+struct AudioClipState {
+    int clipId = 0;  // TrackClip::id
+    int trackId = 0; // Track::id
+    // Which kind of track, for the section's name (its open / closed state
+    // is remembered per kind): "cameraMic", "externalMic" or "clip".
+    QString kind = QStringLiteral("clip");
+    QString label; // the clip's file name
+    double gainDb = 0.0;
+    bool muted = false;
+    qint64 fadeInMs = 0;
+    qint64 fadeOutMs = 0;
+    qint64 spanMs = 0; // the clip's timeline span: the fades' combined limit
+    qint64 startMs = 0;
+    bool linked = false; // locked to its video clip: Start is read-only
+    QString trackName;
+    double trackGainDb = 0.0;
+    bool trackMuted = false;
+    insv::NoiseReduction noise;
+};
+
+// One audio clip's section of the Audio tab, titled by its track: which
+// clip, its noise reduction, its track's level and mute, its own, then its
+// fades and start. Edits come back with the clip's (or track's) id.
+class AudioClipSection : public SettingsPanel {
+    Q_OBJECT
+
+public:
+    explicit AudioClipSection(QWidget *parent = nullptr);
+
+    int clipId() const { return m_state.clipId; }
+    // Does not emit.
+    void setState(const AudioClipState &s);
+
+signals:
+    void clipEdited(int clipId, double gainDb, bool muted, qint64 fadeInMs, qint64 fadeOutMs,
+                    qint64 startMs);
+    void noiseEdited(int clipId, const insv::NoiseReduction &noise);
+    void trackLevelEdited(int trackId, double gainDb, bool muted);
+
+private:
+    void setNoise(const insv::NoiseReduction &n);
+    void emitIfEdited();
+    void emitTrackIfEdited();
+    void emitNoiseIfEdited();
+
+    AudioClipState m_state;
+    QLabel *m_clipName = nullptr;
+    QComboBox *m_noiseMode = nullptr;
+    int m_lastNoiseIndex = 0; // to go back to when a voice mode can't run
+    QSlider *m_noiseStrength = nullptr; // percent
+    QLabel *m_noiseStrengthValue = nullptr;
+    QSlider *m_trackGain = nullptr;
+    QLabel *m_trackGainValue = nullptr;
+    QCheckBox *m_trackMute = nullptr;
+    QSlider *m_gain = nullptr;
+    QLabel *m_gainValue = nullptr;
+    QCheckBox *m_mute = nullptr;
+    QDoubleSpinBox *m_fadeIn = nullptr;
+    QDoubleSpinBox *m_fadeOut = nullptr;
+    QDoubleSpinBox *m_start = nullptr;
+    bool m_updating = false;
+};
+
+// The Audio tab: the audio clip selected on the timeline, or else every
+// audio clip linked to the video clip that's selected or under the playhead
+// (its camera mic, its external mic, ...: a video clip has no sound of its
+// own) -- one AudioClipSection each, top to bottom in track order. With none,
+// a greyed placeholder section says what to select.
 //
-// Not a widget itself: it owns the sections (sections(), for the sidebar's
-// Audio page) and keeps their state together. Nothing here talks to
-// AudioPlayer directly; it all applies to playback and export alike.
-class AudioSection;
-
+// Not a widget itself: it fills the sidebar's Audio page (attach()) and
+// rebuilds its sections only when the set of clips changes -- otherwise it
+// updates them in place, so an edit in progress keeps its widgets. Open /
+// closed is remembered per kind of track (QSettings, like the other
+// sections). Nothing here talks to AudioPlayer; it all applies to playback
+// and export alike.
 class AudioPanel : public QObject {
     Q_OBJECT
 
 public:
     explicit AudioPanel(QObject *parent = nullptr);
 
-    // Top to bottom; the sidebar's Audio page shows them.
-    QList<SettingsPanel *> sections() const;
-    // What the sections apply to ("This clip" / "Selected audio clip").
-    QString scope() const;
+    // The page to fill (makeSettingsPage's, with no sections of its own).
+    void attach(QScrollArea *page);
 
-    // No audio clip selected and none under the playhead -- greys the panel
-    // out.
+    // `selected`: the clip was picked on the timeline (one clip) rather than
+    // being a video clip's sound. Does not emit.
+    void setClips(const QList<AudioClipState> &clips, bool selected);
+    // Nothing to show: the placeholder.
     void setNoClip();
 
-    struct AudioClipState {
-        QString label;
-        double gainDb = 0.0;
-        bool muted = false;
-        qint64 fadeInMs = 0;
-        qint64 fadeOutMs = 0;
-        qint64 spanMs = 0; // the clip's timeline span: the fades' combined limit
-        qint64 startMs = 0;
-        bool linked = false; // locked to its video clip: Start is read-only
-        QString trackName;
-        double trackGainDb = 0.0;
-        bool trackMuted = false;
-        insv::NoiseReduction noise;
-        bool selected = true; // picked on the timeline, not just under the playhead
-    };
-    // Does not emit.
-    void setAudioClipState(const AudioClipState &s);
+    // The sections showing now (the placeholder when there are no clips).
+    QList<SettingsPanel *> sections() const;
+    // What the sections apply to ("This clip" / "Selected audio clip"), or
+    // empty with no clip.
+    QString scope() const;
 
 signals:
-    void audioClipEdited(double gainDb, bool muted, qint64 fadeInMs, qint64 fadeOutMs,
-                         qint64 startMs);
-    void trackLevelEdited(double gainDb, bool muted);
-    // The clip's noise reduction.
-    void noiseEdited(const insv::NoiseReduction &noise);
+    void audioClipEdited(int clipId, double gainDb, bool muted, qint64 fadeInMs,
+                         qint64 fadeOutMs, qint64 startMs);
+    void noiseEdited(int clipId, const insv::NoiseReduction &noise);
+    void trackLevelEdited(int trackId, double gainDb, bool muted);
 
 private:
-    void emitIfEdited();
-    void emitTrackIfEdited();
-    void setNoise(const insv::NoiseReduction &n);
-    void emitNoiseIfEdited();
-    void setEnabled(bool enabled);
+    void clearSections();
 
-    AudioSection *m_noiseSection = nullptr;
-    AudioSection *m_levelSection = nullptr;
-    AudioSection *m_fadesSection = nullptr;
-
-    QLabel *m_clipName = nullptr;
-    QSlider *m_gain = nullptr;
-    QLabel *m_gainValue = nullptr;
-    QCheckBox *m_mute = nullptr;
-    QComboBox *m_noiseMode = nullptr;
-    int m_lastNoiseIndex = 0; // to go back to when a voice mode can't run
-    QSlider *m_noiseStrength = nullptr; // percent
-    QLabel *m_noiseStrengthValue = nullptr;
-    QDoubleSpinBox *m_fadeIn = nullptr;
-    QDoubleSpinBox *m_fadeOut = nullptr;
-    QDoubleSpinBox *m_start = nullptr;
-    QLabel *m_trackName = nullptr;
-    QSlider *m_trackGain = nullptr;
-    QLabel *m_trackGainValue = nullptr;
-    QCheckBox *m_trackMute = nullptr;
-    QFrame *m_separator = nullptr; // between the track's rows and the clip's
-    qint64 m_spanMs = 0;
-    bool m_updating = false;
+    QVBoxLayout *m_layout = nullptr; // the page's column of sections
+    SettingsPanel *m_placeholder = nullptr;
+    QList<AudioClipSection *> m_sections;
+    QString m_scope;
 };

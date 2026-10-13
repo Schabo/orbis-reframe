@@ -36,7 +36,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_reframe = section<ReframePanel>("reframePanel", tr("Keys at the playhead"));
     m_colour = section<ColourPanel>("colourPanel", thisClip);
     m_mediaInfo = section<MediaInfoPanel>("mediaInfoPanel", thisClip);
-    m_audio = new AudioPanel(this); // three sections; it sets their scope
+    m_audio = new AudioPanel(this); // a section per clip, made as needed
     m_overlay = section<OverlayPanel>("overlayPanel", tr("Selected overlay clip"));
     m_privacy = section<PrivacyPanel>("privacyPanel", thisClip);
     // Rarely touched: closed until the user opens them.
@@ -46,14 +46,15 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe, m_colour,
                                           m_mediaInfo};
     m_sections = video;
-    m_sections << m_audio->sections() << m_overlay << m_privacy;
+    m_sections << m_overlay << m_privacy;
 
     const QList<QScrollArea *> pages = {
         makeSettingsPage(QStringLiteral("videoSettings"), video),
-        makeSettingsPage(QStringLiteral("audioSettings"), m_audio->sections()),
+        makeSettingsPage(QStringLiteral("audioSettings"), {}),
         makeSettingsPage(QStringLiteral("overlaySettings"), {m_overlay}),
         makeSettingsPage(QStringLiteral("privacySettings"), {m_privacy}),
     };
+    m_audio->attach(pages[1]);
     addTab(pages[0], QStringLiteral("video"), tr("Video"));
     addTab(pages[1], QStringLiteral("volume-2"), tr("Audio"));
     addTab(pages[2], QStringLiteral("picture-in-picture-2"), tr("Overlay"));
@@ -65,6 +66,11 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     for (QScrollArea *page : pages)
         needed = std::max(needed, page->widget()->minimumSizeHint().width() +
                                       page->verticalScrollBar()->sizeHint().width());
+    { // the Audio tab's sections come and go: measure one
+        AudioClipSection probe;
+        needed = std::max(needed, probe.minimumSizeHint().width() +
+                                      pages[1]->verticalScrollBar()->sizeHint().width());
+    }
     const int standard = std::max({340, fontMetrics().height() * 20, needed});
     setPageWidthRange(std::max(280, needed), standard, 900);
     setPageWidth(standard);

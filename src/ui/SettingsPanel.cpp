@@ -75,6 +75,13 @@ void SettingsPanel::setScope(const QString &scope)
 
 QString SettingsPanel::scope() const { return m_scope->text(); }
 
+void SettingsPanel::setTitle(const QString &title)
+{
+    m_title = title;
+    m_header->setText(title);
+    m_header->setAccessibleName(title);
+}
+
 void SettingsPanel::setCollapsible(bool collapsible)
 {
     m_collapsible = collapsible;

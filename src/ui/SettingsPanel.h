@@ -25,6 +25,7 @@ public:
     explicit SettingsPanel(const QString &title, QWidget *parent = nullptr);
 
     QString title() const { return m_title; }
+    void setTitle(const QString &title);
 
     // What the section's settings apply to, shown at the header's right.
     void setScope(const QString &scope);

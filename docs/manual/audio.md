@@ -26,32 +26,34 @@ Everything plays together, in playback and in the export.
 
 ## The Audio tab
 
-The settings sidebar's **Audio** tab shows the settings of one audio clip.
-Which clip that is depends on what's selected, and the tab's title row says
-which (*Selected audio clip* or *This clip*):
+The settings sidebar's **Audio** tab shows audio clips, one section per
+clip, titled with the clip's track. Which clips depends on what's selected,
+and each section's title row says which (*This clip* or *Selected audio
+clip*):
 
-- **An audio clip you selected**: click it on an audio track. Press `Esc`,
-  or click a clip on the video track, to go back.
-- **Otherwise, the sound of the video clip** you selected on the video
-  track, or of the clip under the playhead if none is selected: its clip on
-  the *Camera mic* track (or on *External mic*, if it has no camera sound).
+- **A video clip** you selected on the video track, or the clip under the
+  playhead if none is selected: all of its sound, one section per track:
+  *Camera mic*, and *External mic* if it has one.
+- **An audio clip you selected**: click it on an audio track to see just
+  that clip. Press `Esc`, or click a clip on the video track, to go back.
+
+With neither, the tab says what to select.
 
 <img src="images/audio-panel-video.jpg" width="350" alt="The Audio tab for a video clip's sound"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio tab for a music clip on an audio track">
 
 *Left: a video clip's sound. Right: a music clip on an audio track.*
 
-The tab has three sections. Click a section's title to fold it away or open
-it again; orbis-reframe remembers which are open.
+Click a section's title to fold it away or open it again; orbis-reframe
+remembers this for each kind of track. Each section has:
 
-| Section | Setting | What it does |
-|---|---|---|
-| **Noise reduction** | **Clip** | The clip's file name. |
-| | **Noise** and **Strength** | Noise reduction, see below. |
-| **Level** | **Track** | The name of the track the clip is on. |
-| | **Track level** and **Mute track** | The volume of the whole track, on top of each clip's own level, and muting it. |
-| | **Level** and **Mute** | This clip's own volume, from −24 dB to +12 dB, and muting it. 0 dB leaves it as recorded; negative values make it quieter, positive values louder. |
-| **Fades** | **Fade in** / **Fade out** | Fades the clip in from silence at its start, or out to silence at its end, over this many seconds. The fades show as slanted lines over the clip's waveform. |
-| | **Start** | Where the clip starts on the timeline, in seconds. The arrows move it by 10 milliseconds, for lining up a separate recorder with the picture (see below). Greyed out for a linked clip, which moves with its video. |
+| Setting | What it does |
+|---|---|
+| **Clip** | The clip's file name. |
+| **Noise** and **Strength** | Noise reduction, see below. |
+| **Track level** and **Mute track** | The volume of the whole track the clip is on, on top of each clip's own level, and muting it. |
+| **Level** and **Mute** | This clip's own volume, from −24 dB to +12 dB, and muting it. 0 dB leaves it as recorded; negative values make it quieter, positive values louder. |
+| **Fade in** / **Fade out** | Fades the clip in from silence at its start, or out to silence at its end, over this many seconds. The fades show as slanted lines over the clip's waveform. |
+| **Start** | Where the clip starts on the timeline, in seconds. The arrows move it by 10 milliseconds, for lining up a separate recorder with the picture (see below). Greyed out for a linked clip, which moves with its video. |
 
 The waveform drawn on each clip shows how loud it is, with its level and
 fades applied, so you can see the effect of your changes.
@@ -62,10 +64,10 @@ the *Camera mic* track's header (or *External mic*'s).
 ## Two microphones
 
 With an external microphone, each clip has a clip on the *Camera mic* track
-and one on the *External mic* track. Use both, for example your voice from
-the external microphone and the engine from the camera, or mute the one you don't want:
-select its clip, or click the **M** box of its track to mute it for every
-clip.
+and one on the *External mic* track, and the Audio tab shows both. Use
+both, for example your voice from the external microphone and the engine
+from the camera, or mute the one you don't want: in its section, or with
+the **M** box of its track to mute it for every clip.
 
 orbis-reframe tells the two apart by their order in the file, which is how
 the X5 records them. If a track ever sounds like the other microphone,

@@ -19,8 +19,8 @@ class StitchingPanel;
 //   Video   -- stitching, stabilization, reframe, colour, media information
 //              (in workflow order; stitching and media information start
 //              closed);
-//   Audio   -- the selected audio clip, else the clip's sound: noise
-//              reduction, level, fades (AudioPanel's three sections);
+//   Audio   -- the selected audio clip, else every audio clip of the
+//              video clip (AudioPanel: a section per clip);
 //   Overlay -- the selected overlay clip;
 //   Privacy -- the clip's number-plate blur.
 // Owns the sections; MainWindow wires them to the model.
@@ -29,8 +29,8 @@ class StitchingPanel;
 // pages videoSettings / audioSettings / overlaySettings / privacySettings
 // (their tab buttons <page>Tab), and the sections stitchingPanel,
 // stabilizationPanel, reframePanel, colourPanel, mediaInfoPanel,
-// audioNoisePanel, audioLevelPanel, audioFadesPanel, overlayPanel,
-// privacyPanel (headers <section>Header).
+// overlayPanel, privacyPanel (headers <section>Header); the Audio tab's are
+// AudioPanel's.
 class SettingsSidebar : public TabSidebar {
     Q_OBJECT
 
@@ -46,7 +46,8 @@ public:
     OverlayPanel *overlay() const { return m_overlay; }
     PrivacyPanel *privacy() const { return m_privacy; }
 
-    // Every section, tab by tab, top to bottom.
+    // Every fixed section, tab by tab, top to bottom (not the Audio tab's:
+    // AudioPanel makes those per clip).
     QList<SettingsPanel *> sections() const { return m_sections; }
 
 private:

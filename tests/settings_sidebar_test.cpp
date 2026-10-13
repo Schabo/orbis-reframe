@@ -21,6 +21,8 @@
 #include "panels/StitchingPanel.h"
 
 #include <QApplication>
+#include <QTemporaryDir>
+#include <QSlider>
 #include <QComboBox>
 #include <QLabel>
 #include <QScrollArea>
@@ -81,9 +83,8 @@ void testLayout(SettingsSidebar &bar)
         CHECK(sectionNames(video) == QStringList({"stitchingPanel", "stabilizationPanel",
                                                   "reframePanel", "colourPanel",
                                                   "mediaInfoPanel"}));
-    if (auto *audio = find<QScrollArea>(&bar, "audioSettings"))
-        CHECK(sectionNames(audio) ==
-              QStringList({"audioNoisePanel", "audioLevelPanel", "audioFadesPanel"}));
+    if (auto *audio = find<QScrollArea>(&bar, "audioSettings")) // nothing to show yet
+        CHECK(sectionNames(audio) == QStringList({"audioPanel"}));
 
     // Rarely touched sections start closed; the only section on a tab can't
     // close.
@@ -93,9 +94,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(bar.colour()->isExpanded());
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
-    for (SettingsPanel *audio : bar.audio()->sections()) // three on the Audio tab
-        CHECK(audio->isCollapsible() && audio->isExpanded());
-    CHECK(bar.sections().size() == 10);
+    CHECK(bar.sections().size() == 7); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -145,16 +144,82 @@ void testScopes(SettingsSidebar &bar)
     CHECK(bar.privacy()->scope() == QLatin1String("This clip"));
     if (auto *label = bar.colour()->findChild<QLabel *>(QStringLiteral("settingsPanelScope")))
         CHECK(label->text() == QLatin1String("This clip") && !label->isHidden());
-    // The Audio section follows what it shows.
-    AudioPanel::AudioClipState s;
-    s.label = QStringLiteral("music.mp3");
-    s.spanMs = 10000;
-    bar.audio()->setAudioClipState(s);
-    CHECK(bar.audio()->scope() == QLatin1String("Selected audio clip"));
-    s.label = QStringLiteral("clip.insv (camera mic)");
-    s.selected = false; // the sound of the video clip under the playhead
-    bar.audio()->setAudioClipState(s);
-    CHECK(bar.audio()->scope() == QLatin1String("This clip"));
+}
+
+// The Audio tab: a section per audio clip, titled by its track.
+void testAudioSections(SettingsSidebar &bar)
+{
+    auto *page = find<QScrollArea>(&bar, "audioSettings");
+    if (!page)
+        return;
+    bar.setOpen(true);
+    bar.setCurrentIndex(1);
+    const auto settle = [] {
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QApplication::processEvents();
+    };
+    AudioPanel *audio = bar.audio();
+    CHECK(audio->scope().isEmpty()); // the placeholder
+
+    // A video clip with two mics: both, in track order, "This clip".
+    AudioClipState cam, ext;
+    cam.clipId = 10;
+    cam.trackId = 1;
+    cam.kind = QStringLiteral("cameraMic");
+    cam.trackName = QStringLiteral("Camera mic");
+    cam.label = QStringLiteral("clip.insv");
+    cam.spanMs = 10000;
+    cam.linked = true;
+    ext = cam;
+    ext.clipId = 11;
+    ext.trackId = 2;
+    ext.kind = QStringLiteral("externalMic");
+    ext.trackName = QStringLiteral("External mic");
+    audio->setClips({cam, ext}, false);
+    settle();
+    CHECK(sectionNames(page) == QStringList({"audioCameraMicPanel", "audioExternalMicPanel"}));
+    CHECK(audio->scope() == QLatin1String("This clip"));
+    const QList<SettingsPanel *> two = audio->sections();
+    CHECK(two.size() == 2 && two[0]->title() == QLatin1String("Camera mic") &&
+          two[1]->title() == QLatin1String("External mic") && two[1]->isCollapsible());
+    if (two.size() != 2)
+        return;
+
+    // An edit says which clip / track; the same clips again update in place.
+    QSignalSpy clipEdits(audio, &AudioPanel::audioClipEdited);
+    QSignalSpy trackEdits(audio, &AudioPanel::trackLevelEdited);
+    const QList<QSlider *> sliders = two[1]->findChildren<QSlider *>();
+    // In the order made: noise strength, track level, level.
+    CHECK(sliders.size() == 3);
+    if (sliders.size() == 3) {
+        sliders[2]->setValue(-6);
+        CHECK(clipEdits.size() == 1 && clipEdits.last().at(0).toInt() == 11 &&
+              clipEdits.last().at(1).toDouble() == -6.0);
+        sliders[1]->setValue(-3);
+        CHECK(trackEdits.size() == 1 && trackEdits.last().at(0).toInt() == 2);
+    }
+    ext.gainDb = -6.0;
+    audio->setClips({cam, ext}, false);
+    settle();
+    CHECK(audio->sections() == two); // not rebuilt
+    CHECK(clipEdits.size() == 1);   // and setting doesn't emit
+
+    // One selected audio clip: just it.
+    AudioClipState music;
+    music.clipId = 20;
+    music.trackId = 3;
+    music.trackName = QStringLiteral("Music");
+    music.label = QStringLiteral("song.mp3");
+    music.spanMs = 5000;
+    audio->setClips({music}, true);
+    settle();
+    CHECK(sectionNames(page) == QStringList({"audioClipPanel"}));
+    CHECK(audio->scope() == QLatin1String("Selected audio clip"));
+
+    audio->setNoClip();
+    settle();
+    CHECK(sectionNames(page) == QStringList({"audioPanel"}));
+    bar.setCurrentIndex(0);
 }
 
 void testTabKeys(SettingsSidebar &bar)
@@ -225,6 +290,10 @@ int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
+    // The Audio tab's sections read their open / closed state from QSettings:
+    // not the user's.
+    QTemporaryDir config;
+    qputenv("XDG_CONFIG_HOME", config.path().toLocal8Bit());
     QApplication app(argc, argv);
     theme::apply(app, theme::themes().first());
     qRegisterMetaType<stitch::PreviewStitchConfig>();
@@ -237,6 +306,7 @@ int main(int argc, char **argv)
     testLayout(bar);
     testSections(bar);
     testScopes(bar);
+    testAudioSections(bar);
     testTabKeys(bar);
     testStitchingKeepsPreview(bar);
     testProjectSettingsDialog();

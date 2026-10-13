@@ -184,7 +184,7 @@ key of the tab that's already showing closes the sidebar.
 | Tab | What it sets |
 |---|---|
 | **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles and field of view, keyframes, and **Track subject**, which follows a person or vehicle automatically), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
-| **Audio** | For an audio clip, or a video clip's sound: **Noise reduction** (wind and other noise), **Level** (its volume and its track's) and **Fades** (fading in and out, and where it starts). See [Audio and noise reduction](audio.md). |
+| **Audio** | A section per audio clip: the selected one, or all of a video clip's sound (*Camera mic*, *External mic*). Noise and wind reduction, its volume and its track's, fades. See [Audio and noise reduction](audio.md). |
 | **Overlay** | Size, position and look of the selected picture-in-picture clip. |
 | **Privacy** | Blurring number plates. |
 

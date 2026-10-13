@@ -13,8 +13,11 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
+#include <QScrollArea>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include <algorithm>
@@ -62,39 +65,18 @@ QDoubleSpinBox *secondsBox(QWidget *parent, int decimals, double step)
 
 } // namespace
 
-// A section of the Audio tab, its form open to AudioPanel.
-class AudioSection : public SettingsPanel {
-public:
-    AudioSection(const QString &title, const char *name)
-        : SettingsPanel(title)
-    {
-        setObjectName(QLatin1String(name));
-    }
-    using SettingsPanel::form;
-    using SettingsPanel::setBodyEnabled;
-    using SettingsPanel::setHint;
-};
-
-AudioPanel::AudioPanel(QObject *parent)
-    : QObject(parent)
+AudioClipSection::AudioClipSection(QWidget *parent)
+    : SettingsPanel(tr("Audio"), parent)
 {
-    m_noiseSection = new AudioSection(tr("Noise reduction"), "audioNoisePanel");
-    m_levelSection = new AudioSection(tr("Level"), "audioLevelPanel");
-    m_fadesSection = new AudioSection(tr("Fades"), "audioFadesPanel");
-    m_noiseSection->setHint(tr("The audio clip selected on the timeline, or else the sound of "
-                               "the video clip under the playhead. Applies in playback and "
-                               "export."));
-
-    // Noise reduction: which clip first, then its mode and strength.
-    QWidget *noise = m_noiseSection;
-    m_clipName = new QLabel(noise);
+    m_clipName = new QLabel(this);
     m_clipName->setTextInteractionFlags(Qt::TextSelectableByMouse);
     // A long file name mustn't widen the sidebar: it may be cut short (the
     // tooltip has it whole).
     m_clipName->setMinimumWidth(1);
-    m_noiseSection->form()->addRow(tr("Clip"), m_clipName);
+    form()->addRow(tr("Clip"), m_clipName);
 
-    m_noiseMode = new QComboBox(noise);
+    // Noise reduction.
+    m_noiseMode = new QComboBox(this);
     m_noiseMode->addItem(tr("Off"), int(insv::NoiseMode::Off));
     m_noiseMode->addItem(tr("Wind reduction"), int(insv::NoiseMode::Wind));
     m_noiseMode->addItem(tr("MC: Wind reduction"), int(insv::NoiseMode::MotorcycleWind));
@@ -117,8 +99,8 @@ AudioPanel::AudioPanel(QObject *parent)
            "Voice only: keeps speech and removes everything else.\n"
            "Voice + ambience: keeps speech and turns everything else down evenly.\n"
            "The voice modes make jumping to another point take a moment longer."));
-    m_noiseSection->form()->addRow(tr("Noise"), m_noiseMode);
-    auto *strengthRow = new QWidget(noise);
+    form()->addRow(tr("Noise"), m_noiseMode);
+    auto *strengthRow = new QWidget(this);
     auto *sl = new QHBoxLayout(strengthRow);
     sl->setContentsMargins(0, 0, 0, 0);
     m_noiseStrength = new QSlider(Qt::Horizontal, strengthRow);
@@ -135,47 +117,39 @@ AudioPanel::AudioPanel(QObject *parent)
         strengthRow->fontMetrics().horizontalAdvance(QStringLiteral("100 %")));
     sl->addWidget(m_noiseStrength, 1);
     sl->addWidget(m_noiseStrengthValue);
-    m_noiseSection->form()->addRow(tr("Strength"), strengthRow);
+    form()->addRow(tr("Strength"), strengthRow);
 
-
-    // Level: the track first (it holds the clip), a separator, then the
-    // clip's own.
-    QWidget *level = m_levelSection;
-    QFormLayout *lf = m_levelSection->form();
-    m_trackName = new QLabel(level);
-    lf->addRow(tr("Track"), m_trackName);
-    lf->addRow(tr("Track level"),
-               gainRow(level, audiolimits::kMinGainDb, audiolimits::kMaxGainDb,
-                       tr("The whole track's level, on top of each clip's own."), &m_trackGain,
-                       &m_trackGainValue));
-    m_trackMute = new QCheckBox(tr("Mute track"), level);
-    lf->addRow(QString(), m_trackMute);
-    m_separator = new QFrame(level);
-    m_separator->setFrameShape(QFrame::HLine);
-    m_separator->setFrameShadow(QFrame::Sunken);
-    lf->addRow(m_separator);
-    lf->addRow(tr("Level"), gainRow(level, audiolimits::kMinGainDb, audiolimits::kMaxGainDb,
-                                    tr("This clip's audio level. 0 dB = unchanged."), &m_gain,
-                                    &m_gainValue));
-    m_mute = new QCheckBox(tr("Mute"), level);
-    lf->addRow(QString(), m_mute);
+    // Level: the track's (it holds the clip), then the clip's own.
+    auto separator = [this] {
+        auto *line = new QFrame(this);
+        line->setFrameShape(QFrame::HLine);
+        line->setFrameShadow(QFrame::Sunken);
+        form()->addRow(line);
+    };
+    separator();
+    form()->addRow(tr("Track level"),
+                   gainRow(this, audiolimits::kMinGainDb, audiolimits::kMaxGainDb,
+                           tr("The whole track's level, on top of each clip's own."), &m_trackGain,
+                           &m_trackGainValue));
+    m_trackMute = new QCheckBox(tr("Mute track"), this);
+    form()->addRow(QString(), m_trackMute);
+    form()->addRow(tr("Level"), gainRow(this, audiolimits::kMinGainDb, audiolimits::kMaxGainDb,
+                                        tr("This clip's audio level. 0 dB = unchanged."), &m_gain,
+                                        &m_gainValue));
+    m_mute = new QCheckBox(tr("Mute"), this);
+    form()->addRow(QString(), m_mute);
 
     // Fades, and where the clip starts.
-    QWidget *fades = m_fadesSection;
-    QFormLayout *ff = m_fadesSection->form();
-    m_fadeIn = secondsBox(fades, 1, 0.5);
+    separator();
+    m_fadeIn = secondsBox(this, 1, 0.5);
     m_fadeIn->setToolTip(tr("Fade in from silence over this long at the clip's start."));
-    ff->addRow(tr("Fade in"), m_fadeIn);
-    m_fadeOut = secondsBox(fades, 1, 0.5);
+    form()->addRow(tr("Fade in"), m_fadeIn);
+    m_fadeOut = secondsBox(this, 1, 0.5);
     m_fadeOut->setToolTip(tr("Fade out to silence over this long at the clip's end."));
-    ff->addRow(tr("Fade out"), m_fadeOut);
-    m_start = secondsBox(fades, 3, 0.01);
+    form()->addRow(tr("Fade out"), m_fadeOut);
+    m_start = secondsBox(this, 3, 0.01);
     m_start->setRange(0.0, 24 * 3600.0);
-    m_start->setToolTip(tr("Where the clip starts on the timeline. The arrows nudge it by 10 "
-                           "ms, for example to line a separate mic up with the picture."));
-    ff->addRow(tr("Start"), m_start);
-
-    setNoClip();
+    form()->addRow(tr("Start"), m_start);
 
     connect(m_gain, &QSlider::valueChanged, this, [this](int v) {
         m_gainValue->setText(tr("%1 dB").arg(v));
@@ -196,7 +170,7 @@ AudioPanel::AudioPanel(QObject *parent)
                     m_noiseMode->setCurrentIndex(m_lastNoiseIndex);
                 }
                 QMessageBox::warning(
-                    m_noiseSection, tr("Noise reduction"),
+                    this, tr("Noise reduction"),
                     tr("The voice modes can't run on this computer: %1\n\nThey need ONNX Runtime "
                        "(on Debian: sudo apt install %2) and the DeepFilterNet "
                        "model that comes with orbis-reframe (reinstall orbis-reframe if it's "
@@ -230,37 +204,24 @@ AudioPanel::AudioPanel(QObject *parent)
     connect(m_trackMute, &QCheckBox::toggled, this, [this](bool) { emitTrackIfEdited(); });
 }
 
-QList<SettingsPanel *> AudioPanel::sections() const
-{
-    return {m_noiseSection, m_levelSection, m_fadesSection};
-}
-
-QString AudioPanel::scope() const
-{
-    return m_noiseSection->scope();
-}
-
-void AudioPanel::setEnabled(bool enabled)
-{
-    for (AudioSection *section : {m_noiseSection, m_levelSection, m_fadesSection})
-        section->setBodyEnabled(enabled);
-}
-
-void AudioPanel::setAudioClipState(const AudioClipState &s)
+void AudioClipSection::setState(const AudioClipState &s)
 {
     m_updating = true;
-    setEnabled(true);
-    const QString scope = s.selected ? tr("Selected audio clip") : tr("This clip");
-    for (AudioSection *section : {m_noiseSection, m_levelSection, m_fadesSection})
-        section->setScope(scope);
+    m_state = s;
+    setTitle(s.trackName);
     m_clipName->setText(s.label);
     m_clipName->setToolTip(s.label);
+    setNoise(s.noise);
+    const int tv = std::clamp(int(std::lround(s.trackGainDb)), int(audiolimits::kMinGainDb),
+                              int(audiolimits::kMaxGainDb));
+    m_trackGain->setValue(tv);
+    m_trackGainValue->setText(tr("%1 dB").arg(tv));
+    m_trackMute->setChecked(s.trackMuted);
     const int v = std::clamp(int(std::lround(s.gainDb)), int(audiolimits::kMinGainDb),
                              int(audiolimits::kMaxGainDb));
     m_gain->setValue(v);
     m_gainValue->setText(tr("%1 dB").arg(v));
     m_mute->setChecked(s.muted);
-    m_spanMs = s.spanMs;
     m_fadeIn->setRange(0.0, s.spanMs / 1000.0);
     m_fadeOut->setRange(0.0, s.spanMs / 1000.0);
     m_fadeIn->setValue(s.fadeInMs / 1000.0);
@@ -272,18 +233,11 @@ void AudioPanel::setAudioClipState(const AudioClipState &s)
                       "own. To re-sync it: right-click it, Unlink, move it, then Link again.")
                  : tr("Where the clip starts on the timeline. The arrows nudge it by 10 ms, "
                       "for example to line a separate mic up with the picture."));
-    m_trackName->setText(s.trackName);
-    const int tv = std::clamp(int(std::lround(s.trackGainDb)), int(audiolimits::kMinGainDb),
-                              int(audiolimits::kMaxGainDb));
-    m_trackGain->setValue(tv);
-    m_trackGainValue->setText(tr("%1 dB").arg(tv));
-    m_trackMute->setChecked(s.trackMuted);
-    setNoise(s.noise);
     m_updating = false;
 }
 
 // Called with m_updating set: reflects `n`, doesn't emit.
-void AudioPanel::setNoise(const insv::NoiseReduction &n)
+void AudioClipSection::setNoise(const insv::NoiseReduction &n)
 {
     m_noiseMode->setCurrentIndex(std::max(0, m_noiseMode->findData(int(n.mode))));
     m_lastNoiseIndex = m_noiseMode->currentIndex();
@@ -293,33 +247,141 @@ void AudioPanel::setNoise(const insv::NoiseReduction &n)
     m_noiseStrength->parentWidget()->setEnabled(n.mode != insv::NoiseMode::Off);
 }
 
-void AudioPanel::emitNoiseIfEdited()
+void AudioClipSection::emitNoiseIfEdited()
 {
     if (m_updating)
         return;
     insv::NoiseReduction n;
     n.mode = static_cast<insv::NoiseMode>(m_noiseMode->currentData().toInt());
     n.strength = m_noiseStrength->value() / 100.0f;
-    emit noiseEdited(n);
+    emit noiseEdited(m_state.clipId, n);
+}
+
+void AudioClipSection::emitIfEdited()
+{
+    if (m_updating)
+        return;
+    emit clipEdited(m_state.clipId, m_gain->value(), m_mute->isChecked(),
+                    std::llround(m_fadeIn->value() * 1000.0),
+                    std::llround(m_fadeOut->value() * 1000.0),
+                    std::llround(m_start->value() * 1000.0));
+}
+
+void AudioClipSection::emitTrackIfEdited()
+{
+    if (!m_updating)
+        emit trackLevelEdited(m_state.trackId, m_trackGain->value(), m_trackMute->isChecked());
+}
+
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A section's open / closed state, remembered per user like the sidebar's
+// fixed sections (MainWindow) under the same key.
+void rememberExpanded(SettingsPanel *section)
+{
+    const QString key = QStringLiteral("sidebars/sections/") + section->objectName();
+    section->setExpanded(QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+                             .value(key, true)
+                             .toBool());
+    QObject::connect(section, &SettingsPanel::expandedToggled, section, [key](bool expanded) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(key, expanded);
+    });
+}
+
+class Placeholder : public SettingsPanel {
+public:
+    Placeholder()
+        : SettingsPanel(QObject::tr("Audio"))
+    {
+        setObjectName(QStringLiteral("audioPanel"));
+        setHint(QObject::tr("Select an audio clip on the timeline, or a video clip to see its "
+                            "sound."));
+        setCollapsible(false);
+    }
+};
+
+} // namespace
+
+AudioPanel::AudioPanel(QObject *parent)
+    : QObject(parent)
+{
+}
+
+void AudioPanel::attach(QScrollArea *page)
+{
+    m_layout = qobject_cast<QVBoxLayout *>(page->widget()->layout());
+    setNoClip();
+}
+
+void AudioPanel::clearSections()
+{
+    for (AudioClipSection *s : m_sections)
+        s->deleteLater();
+    m_sections.clear();
+    if (m_placeholder) {
+        m_placeholder->deleteLater();
+        m_placeholder = nullptr;
+    }
 }
 
 void AudioPanel::setNoClip()
 {
-    setEnabled(false);
-}
-
-void AudioPanel::emitIfEdited()
-{
-    if (m_updating)
+    m_scope.clear();
+    if (m_placeholder && m_sections.isEmpty())
         return;
-    emit audioClipEdited(m_gain->value(), m_mute->isChecked(),
-                         std::llround(m_fadeIn->value() * 1000.0),
-                         std::llround(m_fadeOut->value() * 1000.0),
-                         std::llround(m_start->value() * 1000.0));
+    clearSections();
+    m_placeholder = new Placeholder;
+    m_placeholder->nameParts();
+    m_placeholder->setProperty("settingsPart", "section");
+    if (m_layout)
+        m_layout->insertWidget(0, m_placeholder);
 }
 
-void AudioPanel::emitTrackIfEdited()
+void AudioPanel::setClips(const QList<AudioClipState> &clips, bool selected)
 {
-    if (!m_updating)
-        emit trackLevelEdited(m_trackGain->value(), m_trackMute->isChecked());
+    if (clips.isEmpty()) {
+        setNoClip();
+        return;
+    }
+    m_scope = selected ? tr("Selected audio clip") : tr("This clip");
+    bool same = clips.size() == m_sections.size();
+    for (int i = 0; same && i < clips.size(); ++i)
+        same = m_sections[i]->clipId() == clips[i].clipId;
+    if (!same) {
+        clearSections();
+        for (int i = 0; i < clips.size(); ++i) {
+            auto *s = new AudioClipSection;
+            const QString kind = clips[i].kind;
+            s->setObjectName(QStringLiteral("audio") + kind.left(1).toUpper() + kind.mid(1) +
+                             QStringLiteral("Panel"));
+            s->nameParts();
+            s->setProperty("settingsPart", "section");
+            rememberExpanded(s);
+            connect(s, &AudioClipSection::clipEdited, this, &AudioPanel::audioClipEdited);
+            connect(s, &AudioClipSection::noiseEdited, this, &AudioPanel::noiseEdited);
+            connect(s, &AudioClipSection::trackLevelEdited, this, &AudioPanel::trackLevelEdited);
+            if (m_layout)
+                m_layout->insertWidget(i, s);
+            m_sections.append(s);
+        }
+    }
+    for (int i = 0; i < clips.size(); ++i) {
+        m_sections[i]->setState(clips[i]);
+        m_sections[i]->setScope(m_scope);
+    }
+}
+
+QList<SettingsPanel *> AudioPanel::sections() const
+{
+    if (m_sections.isEmpty())
+        return m_placeholder ? QList<SettingsPanel *>{m_placeholder} : QList<SettingsPanel *>{};
+    return QList<SettingsPanel *>(m_sections.begin(), m_sections.end());
+}
+
+QString AudioPanel::scope() const
+{
+    return m_scope;
 }

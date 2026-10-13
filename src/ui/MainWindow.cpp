@@ -563,22 +563,18 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_timelineWidget, &TimelineWidget::overlaySoundRequested, this,
             &MainWindow::putOverlaySoundOnTrack);
     connect(m_timeline, &Timeline::tracksChanged, this, &MainWindow::onTracksChanged);
-    // Audio panel -> the audio clip it shows (audioPanelClipId) and its track.
+    // Audio panel -> the audio clip a section shows, and its track.
     connect(m_audioPanel, &AudioPanel::audioClipEdited, this,
-            [this](double gainDb, bool muted, qint64 fadeInMs, qint64 fadeOutMs, qint64 startMs) {
+            [this](int id, double gainDb, bool muted, qint64 fadeInMs, qint64 fadeOutMs,
+                   qint64 startMs) {
                 int trackId = 0;
-                const int id = audioPanelClipId();
-                if (id <= 0 || !m_timeline->trackClipById(id, &trackId))
+                if (!m_timeline->trackClipById(id, &trackId))
                     return;
                 m_timeline->setAudioClipLevel(id, gainDb, muted);
                 m_timeline->setTrackClipFades(id, fadeInMs, fadeOutMs);
                 m_timeline->moveTrackClip(id, trackId, startMs);
             });
-    connect(m_audioPanel, &AudioPanel::trackLevelEdited, this, [this](double gainDb, bool muted) {
-        int trackId = 0;
-        if (const int id = audioPanelClipId(); id > 0 && m_timeline->trackClipById(id, &trackId))
-            m_timeline->setTrackAudio(trackId, gainDb, muted);
-    });
+    connect(m_audioPanel, &AudioPanel::trackLevelEdited, m_timeline, &Timeline::setTrackAudio);
     connect(m_project, &Project::projectReset, this, [this] {
         selectTrackClip(-1);
         m_selectedClipId = 0; // ids don't survive a load / undo
@@ -694,10 +690,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         }
     });
 
-    connect(m_audioPanel, &AudioPanel::noiseEdited, this, [this](const insv::NoiseReduction &n) {
-        if (const int id = audioPanelClipId(); id > 0)
-            m_timeline->setAudioClipNoise(id, n);
-    });
+    connect(m_audioPanel, &AudioPanel::noiseEdited, m_timeline, &Timeline::setAudioClipNoise);
 
     // Colour panel: an edit writes the grade onto the clip under the playhead;
     // clipColorChanged pushes it straight into the viewport if it's the
@@ -1661,57 +1654,60 @@ void MainWindow::selectTrackClip(int clipId)
     refreshOverlayPanel();
 }
 
-int MainWindow::audioPanelClipId() const
+QList<int> MainWindow::audioPanelClipIds(bool *selected) const
 {
     int trackId = 0;
-    if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId))
-        return m_timeline->trackById(trackId)->kind == Track::Kind::Audio ? m_selectedTrackClipId
-                                                                          : 0;
-    // Else the sound of the video clip under the playhead: a clip linked to
-    // it, top track first (the camera mic), the one at the playhead if its
-    // sound was split.
-    const int clipId = editClipId();
-    if (!clipId)
-        return 0;
-    int first = 0;
-    for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i) {
-        for (const TrackClip &a : m_timeline->trackAt(i).clips) {
-            if (a.linkedClipId != clipId)
-                continue;
-            if (a.startMs <= m_lastTimelineMs && m_lastTimelineMs < a.endMs())
-                return a.id;
-            if (!first)
-                first = a.id;
-        }
+    if (selected)
+        *selected = false;
+    if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId)) {
+        if (m_timeline->trackById(trackId)->kind != Track::Kind::Audio)
+            return {}; // an overlay: the Overlay tab's
+        if (selected)
+            *selected = true;
+        return {m_selectedTrackClipId};
     }
-    return first;
+    // Else every clip linked to the video clip selected or under the
+    // playhead, in track order: its camera mic, its external mic, ...
+    QList<int> ids;
+    if (const int clipId = editClipId())
+        for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i)
+            for (const TrackClip &a : m_timeline->trackAt(i).clips)
+                if (a.linkedClipId == clipId)
+                    ids.append(a.id);
+    return ids;
 }
 
 void MainWindow::refreshAudioPanel()
 {
-    int trackId = 0;
-    const int id = audioPanelClipId();
-    const TrackClip *a = id > 0 ? m_timeline->trackClipById(id, &trackId) : nullptr;
-    if (!a) {
-        m_audioPanel->setNoClip();
-        return;
+    bool selected = false;
+    QList<AudioClipState> states;
+    for (int id : audioPanelClipIds(&selected)) {
+        int trackId = 0;
+        const TrackClip *a = m_timeline->trackClipById(id, &trackId);
+        const Track *t = a ? m_timeline->trackById(trackId) : nullptr;
+        if (!t)
+            continue;
+        AudioClipState st;
+        st.clipId = id;
+        st.trackId = trackId;
+        st.kind = t->role == Track::Role::CameraMic     ? QStringLiteral("cameraMic")
+                  : t->role == Track::Role::ExternalMic ? QStringLiteral("externalMic")
+                                                        : QStringLiteral("clip");
+        st.label = QFileInfo(a->sourcePath).fileName();
+        st.gainDb = a->gainDb;
+        st.muted = a->muted;
+        st.fadeInMs = a->fadeInMs;
+        st.fadeOutMs = a->fadeOutMs;
+        st.spanMs = a->timelineDurationMs();
+        st.startMs = a->startMs;
+        st.linked = a->linkedClipId != 0;
+        st.trackName = t->name;
+        st.trackGainDb = t->gainDb;
+        st.trackMuted = t->muted;
+        st.noise = a->noise;
+        states.append(st);
     }
-    const Track *t = m_timeline->trackById(trackId);
-    AudioPanel::AudioClipState st;
-    st.label = QFileInfo(a->sourcePath).fileName();
-    st.gainDb = a->gainDb;
-    st.muted = a->muted;
-    st.fadeInMs = a->fadeInMs;
-    st.fadeOutMs = a->fadeOutMs;
-    st.spanMs = a->timelineDurationMs();
-    st.startMs = a->startMs;
-    st.linked = a->linkedClipId != 0;
-    st.trackName = t->name;
-    st.trackGainDb = t->gainDb;
-    st.trackMuted = t->muted;
-    st.noise = a->noise;
-    st.selected = id == m_selectedTrackClipId;
-    m_audioPanel->setAudioClipState(st);
+    m_audioPanel->setClips(states, selected);
 }
 
 std::vector<insv::MixClip> MainWindow::mixClips() const

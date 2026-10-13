@@ -277,9 +277,10 @@ private:
     // The Audio panel: the selected audio clip if there is one, else the
     // clip under the playhead.
     void refreshAudioPanel();
-    // The audio clip the Audio panel shows and edits: the selected one, else
-    // the first clip linked to the video clip under the playhead. 0 = none.
-    int audioPanelClipId() const;
+    // The audio clips the Audio tab shows: the selected one (`selected` set),
+    // else every clip linked to the video clip selected or under the
+    // playhead, in track order.
+    QList<int> audioPanelClipIds(bool *selected = nullptr) const;
     // Pick an audio file and put it at `atMs` on track `trackId` (0 = the
     // first track with room there, or a new one).
     void addAudioFile(int trackId, qint64 atMs);
