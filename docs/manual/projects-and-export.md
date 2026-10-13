@@ -48,7 +48,7 @@ then makes a folder for the project and saves the new, empty project in it:
 ```
 Summer trip/
   Summer trip.orp   the project file
-  cache/            privacy-blur scans and audio waveforms
+  cache/            privacy-blur scans, audio waveforms, media thumbnails
   exports/          where exports are saved by default
   screenshots/      where screenshots are saved by default
 ```
@@ -70,7 +70,7 @@ unsaved changes, it asks whether to save them.
 
 **Projects from before project folders** (a `.orp` file on its own, made
 with version 0.2.0 or older) still open with **Open project…** and save
-where they are. Their scans and waveforms stay in `~/.cache/orbis-reframe/`.
+where they are. Their scans, waveforms and thumbnails stay in `~/.cache/orbis-reframe/`.
 **Save project as…** puts such a project into a folder of its own.
 
 **A clip opened on the command line** (`orbis-reframe clip.insv`) starts an

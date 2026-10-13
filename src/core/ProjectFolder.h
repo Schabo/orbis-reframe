@@ -6,7 +6,7 @@
 // so deleting the folder removes it all. Media is referenced, not copied.
 //
 //   <name>/<name>.orp   the project file
-//   <name>/cache/       plate scans, waveforms (rebuilt if deleted)
+//   <name>/cache/       plate scans, waveforms, thumbnails (rebuilt if deleted)
 //   <name>/exports/     where exports are suggested
 //   <name>/screenshots/ where screenshots are suggested
 //

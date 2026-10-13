@@ -66,6 +66,7 @@ class StitchingPanel;
 class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
+class ThumbnailCache;
 class PlayerBar;
 class EditToolbar;
 struct Track;
@@ -494,6 +495,9 @@ private:
     QString m_lastVideoDir;         // ... and the last overlay video
     QString m_lastMediaDir;         // ... and the last media imported
     WaveformCache *m_waveforms = nullptr;
+    // The Media tab's thumbnails on disk; shared with the panel's worker
+    // threads, which may outlive this window's members.
+    std::shared_ptr<ThumbnailCache> m_thumbnailCache;
 
     // Native gyro stabilization, per clip (ClipItem::stabilization). Built
     // stabilizers are kept per source file + setting + sync fine-tune, so

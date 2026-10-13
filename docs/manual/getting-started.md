@@ -264,10 +264,11 @@ For a tour of the window, go on to [The main window](main-window.md).
 orbis-reframe never changes your original clips. Besides the projects and
 exports you save yourself, it only writes:
 
-- Each project's `cache/` folder: audio waveforms and privacy-blur scan
-  results, so they don't have to be computed again. You can delete it at
-  any time. The waveforms are rebuilt by themselves; clips with the privacy
-  blur on have to be scanned again.
+- Each project's `cache/` folder: audio waveforms, privacy-blur scan
+  results and the Media tab's thumbnails, so they don't have to be computed
+  again. You can delete it at any time. The waveforms and thumbnails are
+  rebuilt by themselves; clips with the privacy blur on have to be scanned
+  again.
 - `~/.cache/orbis-reframe/`: the same for untitled projects and for project
   files from before project folders.
 - `~/.local/share/orbis-reframe/projects.json`: the project library's list

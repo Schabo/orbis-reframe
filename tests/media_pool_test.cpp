@@ -1,21 +1,24 @@
 // The left sidebar and its Media tab, driven with QTest on the offscreen
 // platform and found by objectName: the sidebar's close / reopen, the media
 // pool's list (folders, sort order, in use, missing), drag out (file URLs),
-// drops in, add to timeline, remove, thumbnails. No GPU, no media decoding.
+// drops in, add to timeline, remove, thumbnails (and their disk cache). No GPU, no media decoding.
 // Exit code is the failure count. ORBIS_MEDIA_SHOT=<path> saves a picture of
 // the sidebar.
 
 #include "MediaPoolPanel.h"
 #include "TabSidebar.h"
+#include "ThumbnailCache.h"
 #include "Theme.h"
 
 #include "../core/MediaPool.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMimeData>
 #include <QSignalSpy>
@@ -354,6 +357,68 @@ void testKinds()
                                 tmp.path() + QStringLiteral("/d.wav")}));
 }
 
+// Thumbnails kept on disk: made once, read back by a new cache (a reopened
+// project), made again when the file changes; audio never asks.
+void testThumbnailCache()
+{
+    QTemporaryDir tmp;
+    const QString video = tmp.path() + QStringLiteral("/ride.mp4");
+    writeFile(video);
+    MediaItem item;
+    item.path = video;
+    item.kind = MediaItem::Kind::Video;
+    const QSize size(80, 45);
+    int made = 0;
+    const ThumbnailCache::Provider make = [&made](const MediaItem &, const QSize &s) {
+        ++made;
+        QImage img(s, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        return img;
+    };
+
+    ThumbnailCache cache;
+    cache.setDirectory(tmp.path() + QStringLiteral("/cache"));
+    CHECK(cache.get(item, size, make).size() == size);
+    CHECK(made == 1);
+    CHECK(QFileInfo::exists(cache.diskPath(video, size)));
+    CHECK(cache.diskPath(video, size).startsWith(tmp.path() + QStringLiteral("/cache/thumbnails/")));
+
+    ThumbnailCache reopened;
+    reopened.setDirectory(tmp.path() + QStringLiteral("/cache"));
+    const QImage again = reopened.get(item, size, make);
+    CHECK(made == 1);
+    CHECK(again.size() == size && again.pixelColor(10, 10) == QColor(Qt::red));
+
+    // Another size is another picture.
+    reopened.get(item, QSize(160, 90), make);
+    CHECK(made == 2);
+
+    // The file changed: made again.
+    QFile f(video);
+    if (f.open(QIODevice::ReadWrite)) {
+        f.setFileTime(QDateTime::currentDateTime().addSecs(60), QFileDevice::FileModificationTime);
+        f.close();
+    }
+    reopened.get(item, size, make);
+    CHECK(made == 3);
+
+    // Nothing made (a file that can't be read) isn't kept; audio isn't asked.
+    const ThumbnailCache::Provider none = [&made](const MediaItem &, const QSize &) {
+        ++made;
+        return QImage();
+    };
+    MediaItem other = item;
+    other.path = tmp.path() + QStringLiteral("/broken.mp4");
+    writeFile(other.path);
+    CHECK(reopened.get(other, size, none).isNull());
+    CHECK(!QFileInfo::exists(reopened.diskPath(other.path, size)));
+    MediaItem audio = item;
+    audio.kind = MediaItem::Kind::Audio;
+    const int before = made;
+    CHECK(reopened.get(audio, size, make).isNull());
+    CHECK(made == before);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -363,6 +428,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     theme::apply(app, theme::themes().first());
     testKinds();
+    testThumbnailCache();
     testSidebar();
     testSidebarResize();
     testMediaTab();

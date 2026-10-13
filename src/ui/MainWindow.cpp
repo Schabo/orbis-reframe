@@ -84,6 +84,7 @@
 #include "SettingsSidebar.h"
 #include "TabSidebar.h"
 #include "TimelineWidget.h"
+#include "ThumbnailCache.h"
 #include "WaveformCache.h"
 #include "PlayerBar.h"
 #include "EditToolbar.h"
@@ -165,7 +166,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
             .setValue(QStringLiteral("sidebars/sourcesWidth"), width);
     });
     m_mediaPanel = new MediaPoolPanel(m_project->mediaPool());
-    m_mediaPanel->setThumbnailProvider(&mediaThumbnail);
+    m_thumbnailCache = std::make_shared<ThumbnailCache>();
+    m_mediaPanel->setThumbnailProvider(
+        [cache = m_thumbnailCache](const MediaItem &item, const QSize &size) {
+            return cache->get(item, size, &mediaThumbnail);
+        });
     m_sourcesSidebar->addTab(m_mediaPanel, QStringLiteral("film"), tr("Media"));
     m_sourcesSidebar->setToggleKeys(
         QKeySequence(Qt::CTRL | Qt::Key_B).toString(QKeySequence::NativeText));
@@ -3447,6 +3452,8 @@ void MainWindow::updateCacheDirs(const QString &projectFile)
     const QString dir = projectfolder::ensure(projectfolder::cacheDir(projectFile));
     m_plateScans.setDirectory(dir);
     m_waveforms->setDirectory(dir);
+    if (m_thumbnailCache)
+        m_thumbnailCache->setDirectory(dir);
 }
 
 bool MainWindow::confirmDiscardChanges()
