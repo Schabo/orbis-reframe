@@ -380,8 +380,8 @@ if(FFMPEG_FOUND)
         src/ui/PlaybackController.h
         src/ui/InsetFeed.cpp
         src/ui/InsetFeed.h
-        src/ui/TransportBar.cpp
-        src/ui/TransportBar.h
+        src/ui/EditToolbar.cpp
+        src/ui/EditToolbar.h
         src/ui/PlayerBar.cpp
         src/ui/PlayerBar.h
         src/ui/TimelineWidget.cpp
@@ -662,6 +662,16 @@ if(Qt6Test_FOUND)
     target_include_directories(media_pool_test PRIVATE src/ui)
     target_link_libraries(media_pool_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
     add_test(NAME media_pool_test COMMAND media_pool_test)
+
+    # The edit toolbar above the timeline, found by objectName (no GPU).
+    add_executable(edit_toolbar_test tests/edit_toolbar_test.cpp
+        src/ui/EditToolbar.cpp src/ui/EditToolbar.h
+        src/ui/Theme.cpp src/ui/Theme.h
+        resources/resources.qrc)
+    set_target_properties(edit_toolbar_test PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_include_directories(edit_toolbar_test PRIVATE src/ui)
+    target_link_libraries(edit_toolbar_test PRIVATE Qt6::Widgets Qt6::Test)
+    add_test(NAME edit_toolbar_test COMMAND edit_toolbar_test)
 
     # The player bar under the viewport, found by objectName (no GPU).
     add_executable(player_bar_test tests/player_bar_test.cpp

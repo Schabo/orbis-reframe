@@ -210,4 +210,4 @@ current view, with stabilization, colour, privacy blur and overlays.
 The suggested file name is the project's name and the playhead's time, in
 the project's `screenshots/` folder (in the project file's folder for a
 project from before project folders, and in your Pictures folder for an
-untitled one). The transport bar under the timeline says when the picture is saved.
+untitled one). The edit toolbar above the timeline says when the picture is saved.

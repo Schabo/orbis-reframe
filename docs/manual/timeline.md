@@ -41,7 +41,8 @@ the playhead where it is.
 **Zooming.** Hold `Ctrl` and turn the mouse wheel over the timeline to zoom
 in or out around the pointer. `Ctrl++` and `Ctrl+-` zoom around the
 playhead, and `Ctrl+0` fits the whole edit in the window again. The same
-commands are in the menu you get by right-clicking an empty part of a track.
+commands are the zoom buttons at the right end of the edit toolbar, and in
+the menu you get by right-clicking an empty part of a track.
 
 While zoomed in, turn the mouse wheel (without `Ctrl`) or drag the scroll
 bar under the tracks to move along the timeline. When the playhead runs
@@ -104,8 +105,8 @@ from the file: you can always get the frames back.
 - Drag the left or right edge of a clip.
 - Or move the playhead to the frame you want, and press `[` to make the
   clip start there or `]` to make it end there. The two buttons in the
-  transport bar do the same.
-- The **Restore** button in the transport bar (`R`) gives the clip its full
+  edit toolbar do the same.
+- The **Restore** button in the edit toolbar (`R`) gives the clip its full
   length back.
 
 `[`, `]` and **Restore** work on the selected clip, or on the clip under the

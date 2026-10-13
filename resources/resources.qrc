@@ -39,6 +39,9 @@
     <file>icons/volume-x.svg</file>
     <file>icons/volume-1.svg</file>
     <file>icons/maximize.svg</file>
+    <file>icons/move-horizontal.svg</file>
+    <file>icons/zoom-in.svg</file>
+    <file>icons/zoom-out.svg</file>
     <file>icons/minimize.svg</file>
   </qresource>
 </RCC>

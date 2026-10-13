@@ -66,7 +66,7 @@ private:
 // one frame back, play / pause, one frame forward, next cut, to end), then
 // screenshot, preview volume and full screen.
 //
-// Pure view, like TransportBar: it emits the user's intent and shows what
+// Pure view, like EditToolbar: it emits the user's intent and shows what
 // the setters push in. Times are timeline milliseconds. Every widget has an
 // objectName (playerPlayButton, playerProgress, playerTime, …).
 class PlayerBar : public QWidget {

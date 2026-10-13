@@ -9,7 +9,7 @@ following a person or vehicle.
 
 ![Setting a keyframe: reframe authoring armed, the Reframe section, and the keyframes on the clip](images/reframing.jpg)
 
-1. **Arm reframe authoring**, in the transport bar. While it's on (shown
+1. **Arm reframe authoring**, in the edit toolbar. While it's on (shown
    pressed), every look-around in the viewport sets a keyframe.
 2. The **Reframe** section: the view at the playhead as numbers, and
    **Track subject…**.
@@ -63,7 +63,7 @@ time:
 
 To make the camera move during a clip, set more keyframes:
 
-1. Click **Arm reframe authoring** in the transport bar, or press `A`.
+1. Click **Arm reframe authoring** in the edit toolbar, or press `A`.
 2. Move the playhead to where a move should start, and drag the view into
    place. When you let go of the mouse button, a keyframe is set at the
    playhead. Turning the mouse wheel sets one too.
@@ -96,11 +96,11 @@ following the keyframes.
   (with reframe authoring armed, or by pressing `K`). The keyframe's view is
   replaced.
 - **Delete a keyframe:** move the playhead onto it, and press `Shift+K` or
-  click **Delete keyframe** in the transport bar. The playhead doesn't have
+  click **Delete keyframe** in the edit toolbar. The playhead doesn't have
   to be on the exact frame: a keyframe within 0.15 seconds is deleted.
   `Delete` does the same when no clip is selected.
 - **Delete all keyframes of a clip:** move the playhead into the clip, and
-  click **Delete all keyframes** in the transport bar (`Ctrl+Shift+K`).
+  click **Delete all keyframes** in the edit toolbar (`Ctrl+Shift+K`).
 
 **Edit ▸ Undo** (`Ctrl+Z`) undoes keyframe changes like any other edit.
 
@@ -133,7 +133,7 @@ When tracking ends, the tracked path is turned into keyframes, from the
 start of tracking to the last frame where the subject was seen. They replace
 any keyframes the clip had in that stretch. Keyframes before and after it
 stay. The playhead is left at the end of the tracked stretch, and the
-transport bar says how many seconds and keyframes were tracked.
+edit toolbar says how many seconds and keyframes were tracked.
 
 **If the subject is lost.** When the subject is hidden for a while (behind
 a truck, a tree, or out of sight), the box turns red. Tracking goes on and

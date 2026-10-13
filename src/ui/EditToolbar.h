@@ -6,17 +6,19 @@ class QAbstractButton;
 class QLabel;
 class QTimer;
 
-// The edit strip with the timeline: trim in/out buttons, the
-// reframe-authoring buttons and a transient notice line. Playback (and the
-// screenshot) is the player bar's (PlayerBar), under the viewport.
+// The edit toolbar above the timeline: the tools that act on clips at the
+// playhead -- trim in / out / restore and the reframe-authoring buttons --
+// centred, with a transient notice line and the timeline's zoom buttons at
+// its right end. Playback (and the screenshot) is the player bar's
+// (PlayerBar), under the viewport.
 //
 // Pure view: it emits the user's intent and renders whatever state is pushed
 // in through the setters.
-class TransportBar : public QWidget {
+class EditToolbar : public QWidget {
     Q_OBJECT
 
 public:
-    explicit TransportBar(QWidget *parent = nullptr);
+    explicit EditToolbar(QWidget *parent = nullptr);
 
 public slots:
     // Flips the arm toggle (the A key); emits reframeArmedChanged.
@@ -38,6 +40,10 @@ signals:
     void reframeArmedChanged(bool armed);
     void deleteKeyRequested(); // at the playhead -- see trimInRequested()
     void clearReframeRequested();
+    // The timeline's zoom (TimelineWidget's zoomOut / zoomToFit / zoomIn).
+    void zoomOutRequested();
+    void zoomToFitRequested();
+    void zoomInRequested();
 
 private:
     QAbstractButton *m_setInButton = nullptr;
@@ -46,6 +52,9 @@ private:
     QAbstractButton *m_armReframeButton = nullptr;
     QAbstractButton *m_deleteKeyButton = nullptr;
     QAbstractButton *m_clearReframeButton = nullptr;
+    QAbstractButton *m_zoomOutButton = nullptr;
+    QAbstractButton *m_zoomFitButton = nullptr;
+    QAbstractButton *m_zoomInButton = nullptr;
     QLabel *m_noticeLabel = nullptr;
     QTimer *m_noticeClear = nullptr;
 };

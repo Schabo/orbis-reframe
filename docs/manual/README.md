@@ -6,7 +6,7 @@ For how the code works, see the other documents in [`docs/`](..).
 | Chapter | Contents |
 |---|---|
 | [Getting started](getting-started.md) | What your computer needs, which packages to install, starting the program and opening your first clip |
-| [The main window](main-window.md) | A tour of the window: viewport, player bar, timeline, transport bar, sidebars and menus |
+| [The main window](main-window.md) | A tour of the window: viewport, player bar, timeline, edit toolbar, sidebars and menus |
 | [The timeline](timeline.md) | Moving around, arranging, trimming, splitting and speeding up clips, audio and overlay tracks, linked audio |
 | [Reframing](reframing.md) | Choosing where the camera looks: the view, keyframes, and Track subject |
 | [Stabilization](stabilization.md) | Steadying the picture with the camera's gyro: the modes, their settings, gyro sync, and what can't be fixed |

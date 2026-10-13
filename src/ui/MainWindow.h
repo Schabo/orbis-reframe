@@ -67,7 +67,7 @@ class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
 class PlayerBar;
-class TransportBar;
+class EditToolbar;
 struct Track;
 struct TrackClip;
 
@@ -110,7 +110,7 @@ private:
     // seam fine-tune, a stabilizer built from its IMU track (when
     // stabilization is on), and its reframe path.
     ReframeExportController::ClipJob exportJobFor(const ClipItem &c) const;
-    // Transport bar camera button / Ctrl+Shift+P: render the frame at the
+    // Player bar camera button / Ctrl+Shift+P: render the frame at the
     // playhead at the project output size, through the export path (same
     // stitch, stabilization, grade; the viewport's current view), on a scratch
     // thread, and save it as a PNG where a save dialog says (suggested in the
@@ -368,8 +368,8 @@ private:
     // Reflect clip `c`'s source file in the Media information panel (probed
     // once per path, cached in m_mediaInfo; a failed probe isn't cached).
     void syncMediaInfoPanel(const ClipItem &c);
-    // Repaint the timeline widget from the model + refresh the transport
-    // bar's total / reframe-button state + update the export action.
+    // Repaint the timeline widget from the model + refresh the edit
+    // toolbar's reframe-button state + update the export action.
     void refreshTimelineWidget();
     // pushTimelineToController + refreshTimelineWidget.
     void syncTimeline();
@@ -439,7 +439,7 @@ private:
     QStackedWidget *m_pages = nullptr;
     ProjectLibraryPage *m_libraryPage = nullptr;
     QSplitter *m_editorPage = nullptr; // viewer pane over the timeline pane
-    QWidget *m_timelinePane = nullptr; // the timeline and its edit strip
+    QWidget *m_timelinePane = nullptr; // the edit toolbar over the timeline
     bool m_timelineHeightSet = false;  // the user dragged the split (remembered)
     std::unique_ptr<ProjectLibrary> m_library;
     // Off while the library is shown (they'd act on the hidden editor).
@@ -459,7 +459,7 @@ private:
     EquirectViewportWindow *m_viewport = nullptr;
     TimelineWidget *m_timelineWidget = nullptr;
     PlayerBar *m_playerBar = nullptr; // under the viewport
-    TransportBar *m_transport = nullptr;
+    EditToolbar *m_editToolbar = nullptr;
     // The right sidebar (settings) and its sections, which it owns.
     SettingsSidebar *m_sidebar = nullptr;
     StitchingPanel *m_stitchingPanel = nullptr;

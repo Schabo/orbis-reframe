@@ -69,7 +69,7 @@ ReframePanel::ReframePanel(QWidget *parent)
     m_unkeyed->hide();
     form()->addRow(m_unkeyed);
 
-    setHint(tr("With Arm reframe authoring on in the transport bar, each value you enter sets "
+    setHint(tr("With Arm reframe authoring on in the edit toolbar, each value you enter sets "
                "a keyframe at the playhead."));
 
     setPose(ReframePose{});

@@ -86,7 +86,7 @@
 #include "TimelineWidget.h"
 #include "WaveformCache.h"
 #include "PlayerBar.h"
-#include "TransportBar.h"
+#include "EditToolbar.h"
 #include "UserManual.h"
 #include "panels/AudioPanel.h"
 #include "panels/ColourPanel.h"
@@ -134,7 +134,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
 
     m_timelineWidget = new TimelineWidget(this);
     m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
-    m_transport = new TransportBar(this);
+    m_editToolbar = new EditToolbar(this);
     m_playerBar = new PlayerBar(this);
 
     // The edit model, owned by the GUI thread: a Project holding a Timeline.
@@ -186,7 +186,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
 
     // Top: the sources sidebar, the viewport over its player bar, and the
     // settings sidebar (below). Bottom, across the full width: the timeline
-    // over the edit strip.
+    // under its edit toolbar.
     auto *viewColumn = new QVBoxLayout;
     viewColumn->setContentsMargins(0, 0, 0, 0);
     viewColumn->setSpacing(0);
@@ -202,8 +202,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     auto *timelineLayout = new QVBoxLayout(m_timelinePane);
     timelineLayout->setContentsMargins(0, 0, 0, 0);
     timelineLayout->setSpacing(0);
+    timelineLayout->addWidget(m_editToolbar, 0);
     timelineLayout->addWidget(m_timelineWidget, 1);
-    timelineLayout->addWidget(m_transport, 0);
 
     // Right: the settings sidebar. Each section is wired to Project /
     // PlaybackController / the clip under the playhead below.
@@ -414,7 +414,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
                     // The privacy blur was found in one of the two stitches.
                     syncPrivacyPanel();
                     if (c && !privacyStaleness(*c, c->trimInMs, c->trimOutMs, false).isEmpty())
-                        m_transport->showNotice(
+                        m_editToolbar->showNotice(
                             tr("The privacy blur was found with the stabilization %1; it may sit "
                                "off the plates now. See the Privacy panel.")
                                 .arg(rsOn ? tr("off") : tr("on")),
@@ -590,11 +590,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // the playhead, at m_lastPositionMs (that clip's *source* time -- the
     // transport bar only knows timeline time). Timeline owns the clamp /
     // min-gap validation.
-    connect(m_transport, &TransportBar::trimInRequested, this,
+    connect(m_editToolbar, &EditToolbar::trimInRequested, this,
             [this] { trimAtPlayhead(true); });
-    connect(m_transport, &TransportBar::trimOutRequested, this,
+    connect(m_editToolbar, &EditToolbar::trimOutRequested, this,
             [this] { trimAtPlayhead(false); });
-    connect(m_transport, &TransportBar::trimCleared, this,
+    connect(m_editToolbar, &EditToolbar::trimCleared, this,
             [this] { clearTrim(); });
 
     // Any structural or trim change to the timeline -> rebuild the controller's
@@ -617,7 +617,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     //    playhead when armed;
     //  * during a drag we stop pushing the sampled pose so the path doesn't
     //    fight the user's hand.
-    connect(m_transport, &TransportBar::reframeArmedChanged, this,
+    connect(m_editToolbar, &EditToolbar::reframeArmedChanged, this,
             [this](bool armed) { m_reframeArmed = armed; });
     connect(m_viewport, &EquirectViewportWindow::draggingChanged, this,
             [this](bool active) { m_viewportDragging = active; });
@@ -674,11 +674,17 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
         else
             setTrackSelecting(false);
     });
-    connect(m_transport, &TransportBar::deleteKeyRequested, this, [this] {
+    connect(m_editToolbar, &EditToolbar::zoomOutRequested, m_timelineWidget,
+            &TimelineWidget::zoomOut);
+    connect(m_editToolbar, &EditToolbar::zoomToFitRequested, m_timelineWidget,
+            &TimelineWidget::zoomToFit);
+    connect(m_editToolbar, &EditToolbar::zoomInRequested, m_timelineWidget,
+            &TimelineWidget::zoomIn);
+    connect(m_editToolbar, &EditToolbar::deleteKeyRequested, this, [this] {
         if (m_clipId)
             m_timeline->removeClipReframeKeyNear(m_clipId, m_lastPositionMs);
     });
-    connect(m_transport, &TransportBar::clearReframeRequested, this,
+    connect(m_editToolbar, &EditToolbar::clearReframeRequested, this,
             [this] { if (m_clipId) m_timeline->clearClipReframe(m_clipId); });
     connect(m_timeline, &Timeline::clipReframeChanged, this, [this](int id) {
         refreshTimelineWidget(); // re-draw the keyframe diamonds
@@ -1566,7 +1572,7 @@ void MainWindow::refreshClipPanels()
     syncPrivacyPanel();
     refreshAudioPanel(); // the selected audio clip, if any, else this clip
     const ClipItem *playing = m_timeline->clipById(m_clipId);
-    m_transport->setHasReframeKeys(playing && !playing->reframe.isEmpty());
+    m_editToolbar->setHasReframeKeys(playing && !playing->reframe.isEmpty());
     m_reframePanel->setClipUnkeyed(playing && playing->reframe.isEmpty());
 }
 
@@ -2007,7 +2013,7 @@ void MainWindow::setOverlayKeyAtPlayhead()
     if (!c)
         return;
     if (m_lastTimelineMs < c->startMs || m_lastTimelineMs >= c->endMs()) {
-        m_transport->showNotice(tr("Move the playhead into the overlay clip to set a key"), false);
+        m_editToolbar->showNotice(tr("Move the playhead into the overlay clip to set a key"), false);
         return;
     }
     const qint64 src = c->sourceAtLocalMs(m_lastTimelineMs - c->startMs);
@@ -2040,7 +2046,7 @@ void MainWindow::applyInsetLook(int clipId, const inset::Look &look)
     }
     // Keyed: the edit becomes a key at the playhead, which has to be over it.
     if (m_lastTimelineMs < c->startMs || m_lastTimelineMs >= c->endMs()) {
-        m_transport->showNotice(tr("Move the playhead into the overlay clip to set a key"), false);
+        m_editToolbar->showNotice(tr("Move the playhead into the overlay clip to set a key"), false);
         refreshOverlayPanel(); // put the fields back
         pushInsetsToController();
         return;
@@ -2103,7 +2109,7 @@ void MainWindow::trimAtPlayhead(bool in)
                                  ? m_timeline->trackClipById(m_selectedTrackClipId, &trackId)
                                  : nullptr) {
         if (m_lastTimelineMs <= a->startMs || m_lastTimelineMs >= a->endMs()) {
-            m_transport->showNotice(tr("Move the playhead into the selected clip to trim it"),
+            m_editToolbar->showNotice(tr("Move the playhead into the selected clip to trim it"),
                                     false);
             return;
         }
@@ -2119,7 +2125,7 @@ void MainWindow::trimAtPlayhead(bool in)
     if (!m_clipId)
         return;
     if (editClipId() != m_clipId) {
-        m_transport->showNotice(tr("Move the playhead into the selected clip to trim it"), false);
+        m_editToolbar->showNotice(tr("Move the playhead into the selected clip to trim it"), false);
         return;
     }
     if (in)
@@ -2339,7 +2345,7 @@ void MainWindow::setupKeyboardShortcuts()
 
     const QString reframe = tr("Reframe");
     addKey(reframe, tr("Arm / disarm reframe authoring (drags and zooms set keyframes)"),
-           {QKeySequence(Qt::Key_A)}, [this] { m_transport->toggleReframeArmed(); });
+           {QKeySequence(Qt::Key_A)}, [this] { m_editToolbar->toggleReframeArmed(); });
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
     addKey(reframe, tr("Track subject: draw a box around it (again to cancel)"),
            {QKeySequence(Qt::Key_T)}, [this] { setTrackSelecting(!m_trackSelecting); });
@@ -2592,24 +2598,24 @@ void MainWindow::splitAtPlayhead()
                                  ? m_timeline->trackClipById(m_selectedTrackClipId)
                                  : nullptr) {
         if (m_lastTimelineMs <= a->startMs || m_lastTimelineMs >= a->endMs()) {
-            m_transport->showNotice(tr("Move the playhead into the selected clip to split it"),
+            m_editToolbar->showNotice(tr("Move the playhead into the selected clip to split it"),
                                     false);
             return;
         }
         if (const int right = m_timeline->splitTrackClip(a->id, m_lastTimelineMs))
             selectTrackClip(right);
         else
-            m_transport->showNotice(tr("Too close to the clip's edge to split"), false);
+            m_editToolbar->showNotice(tr("Too close to the clip's edge to split"), false);
         return;
     }
     if (!m_clipId)
         return;
     if (editClipId() != m_clipId) {
-        m_transport->showNotice(tr("Move the playhead into the selected clip to split it"), false);
+        m_editToolbar->showNotice(tr("Move the playhead into the selected clip to split it"), false);
         return;
     }
     if (!m_timeline->splitClip(m_clipId, m_lastPositionMs))
-        m_transport->showNotice(tr("Too close to the clip's edge to split"), false);
+        m_editToolbar->showNotice(tr("Too close to the clip's edge to split"), false);
 }
 
 void MainWindow::deleteAtPlayhead()
@@ -2792,7 +2798,7 @@ void MainWindow::refreshTimelineWidget()
     m_timelineWidget->setMainMuted(m_timeline->mainAudioMuted());
     m_timelineWidget->setActiveClip(editClipId());
     refreshTrackRows();
-    m_transport->setHasReframeKeys(activeHasKeys);
+    m_editToolbar->setHasReframeKeys(activeHasKeys);
     updatePlayerBar();
     m_reframePanel->setClipUnkeyed(m_timeline->clipById(m_clipId) && !activeHasKeys);
     if (!m_exporting)
@@ -3950,7 +3956,7 @@ void MainWindow::showPictureMenu(const QPoint &globalPos, const std::array<float
             std::vector<privacy::BlurRemoval> all = c->blurRemovals;
             all.push_back(std::move(rm));
             m_timeline->setClipBlurRemovals(clipId, all);
-            m_transport->showNotice(tr("Blur removed. Right-click it with Show regions on to "
+            m_editToolbar->showNotice(tr("Blur removed. Right-click it with Show regions on to "
                                        "restore it, or undo."));
         };
         menu.addAction(tr("Remove this blur"), this, [remove] { remove(INT64_MIN); })
@@ -4036,12 +4042,12 @@ void MainWindow::setPlateSelecting(bool on)
         QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
         m_viewport->ClearMarker();
         m_viewport->requestActivate(); // so Esc reaches it
-        m_transport->showNotice(tr("Drag a box around the plate to blur (Esc cancels). It is "
+        m_editToolbar->showNotice(tr("Drag a box around the plate to blur (Esc cancels). It is "
                                    "followed from this frame on, then back from it."),
                                 true);
     } else {
         m_viewport->ClearMarker();
-        m_transport->showNotice(QString());
+        m_editToolbar->showNotice(QString());
     }
 #else
     Q_UNUSED(on);
@@ -4069,7 +4075,7 @@ void MainWindow::startPlateFollow(const QRectF &box)
     const qint64 from = m_lastPositionMs, to = c->trimOutMs, back = c->trimInMs;
     if (to - from < 100 && from - back < 100) {
         m_viewport->ClearMarker();
-        m_transport->showNotice(tr("The clip is too short."));
+        m_editToolbar->showNotice(tr("The clip is too short."));
         return;
     }
     // The box's corners on the sphere, through the frame on screen.
@@ -4087,7 +4093,7 @@ void MainWindow::startPlateFollow(const QRectF &box)
     m_plateJobs->startFollow(req, seed, back);
     m_privacyPanel->setPlateState(PrivacyPanel::PlateState::Running);
     m_privacyPanel->setScanStatus(tr("Following the plate…"));
-    m_transport->showNotice(tr("Following the plate. Stop following in the Privacy panel ends it."), true);
+    m_editToolbar->showNotice(tr("Following the plate. Stop following in the Privacy panel ends it."), true);
     syncPrivacyPanel();
 #else
     Q_UNUSED(box);
@@ -4114,7 +4120,7 @@ void MainWindow::finishPlateFollow(const platescan::FollowResult &r)
     };
     // A failed backward pass keeps the forward one (and says so below).
     if (frames.empty() || idx < 0) {
-        m_transport->showNotice(QString());
+        m_editToolbar->showNotice(QString());
         settle(from);
         if (!r.error.empty())
             QMessageBox::warning(this, tr("Blur a plate"),
@@ -4133,13 +4139,13 @@ void MainWindow::finishPlateFollow(const platescan::FollowResult &r)
     const QString secs = QString::number((until - first) / 1000.0, 'f', 1);
     const QString before = QString::number((from - first) / 1000.0, 'f', 1);
     if (r.follow.lost || r.lostBackward)
-        m_transport->showNotice(
+        m_editToolbar->showNotice(
             tr("Blurred the plate for %1 s (%2 s of it before the box), up to where it was lost "
                "-- the playhead is there. Blur a plate again to pick it up.")
                 .arg(secs, before),
             true);
     else
-        m_transport->showNotice(tr("Blurred the plate for %1 s (%2 s of it before the box).")
+        m_editToolbar->showNotice(tr("Blurred the plate for %1 s (%2 s of it before the box).")
                                     .arg(secs, before));
     if (!r.error.empty())
         QMessageBox::warning(this, tr("Blur a plate"),
@@ -4194,7 +4200,7 @@ void MainWindow::finishPlateScan(const platescan::Result &r)
     if (!m_playing)
         QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                   Q_ARG(qint64, m_lastTimelineMs));
-    m_transport->showNotice(r.stopped ? tr("Plate scan stopped; the part scanned is kept.")
+    m_editToolbar->showNotice(r.stopped ? tr("Plate scan stopped; the part scanned is kept.")
                                       : tr("Plate scan done."));
 }
 #endif
@@ -4259,11 +4265,11 @@ void MainWindow::setTrackSelecting(bool on)
         QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
         m_viewport->ClearMarker();
         m_viewport->requestActivate(); // so Esc reaches it
-        m_transport->showNotice(tr("Drag a box around the subject to track (Esc cancels)."), true);
+        m_editToolbar->showNotice(tr("Drag a box around the subject to track (Esc cancels)."), true);
     } else {
         if (!trackingRunning())
             m_viewport->ClearMarker();
-        m_transport->showNotice(QString());
+        m_editToolbar->showNotice(QString());
     }
 #else
     Q_UNUSED(on);
@@ -4283,7 +4289,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     const qint64 from = m_lastPositionMs, to = c->trimOutMs;
     if (to - from < 500) {
         m_viewport->ClearMarker();
-        m_transport->showNotice(tr("Too close to the end of the clip to track."));
+        m_editToolbar->showNotice(tr("Too close to the end of the clip to track."));
         return;
     }
 
@@ -4318,7 +4324,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     m_tracker->start(run);
     m_reframePanel->setTrackRunning(true);
     m_reframePanel->setTrackStatus(tr("Starting…"));
-    m_transport->showNotice(tr("Tracking. Space, Esc or Stop tracking ends it."), true);
+    m_editToolbar->showNotice(tr("Tracking. Space, Esc or Stop tracking ends it."), true);
     updateScreenshotEnabled();
 #else
     Q_UNUSED(box);
@@ -4348,7 +4354,7 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
         navigateTo(m_timeline->clipToTimeline(idx, clip.localAtSourceMs(sourceMs)), true);
     };
     if (!r.error.empty()) {
-        m_transport->showNotice(QString());
+        m_editToolbar->showNotice(QString());
         settle(from);
         QMessageBox::warning(this, tr("Track subject"),
                              tr("Tracking failed: %1").arg(QString::fromStdString(r.error)));
@@ -4356,7 +4362,7 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
     }
     if (r.samples.size() < 2) {
         settle(from);
-        m_transport->showNotice(
+        m_editToolbar->showNotice(
             tr("Lost the subject straight away. Try again with a box that fits it closely."));
         return;
     }
@@ -4369,14 +4375,14 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
     settle(until);
     const QString secs = QString::number((until - from) / 1000.0, 'f', 1);
     if (r.endedLost)
-        m_transport->showNotice(
+        m_editToolbar->showNotice(
             tr("Tracked %1 s (%2 keyframes), up to where the subject was last seen -- "
                "the playhead is there to track on from.")
                 .arg(secs)
                 .arg(list.size()),
             true);
     else
-        m_transport->showNotice(
+        m_editToolbar->showNotice(
             tr("Tracked %1 s (%2 keyframes).").arg(secs).arg(list.size()));
 }
 #endif
@@ -4443,7 +4449,7 @@ void MainWindow::takeScreenshot()
     if (QFileInfo(path).suffix().isEmpty())
         path += QStringLiteral(".png");
 
-    m_transport->showNotice(tr("Saving screenshot…"), true);
+    m_editToolbar->showNotice(tr("Saving screenshot…"), true);
     // The overlays showing at the playhead, composited like the export does.
     std::vector<exportpipe::InsetClipJob> insets = insetJobs();
     m_screenshotThread = QThread::create([this, job, pose, sourceMs, w, h, guard, depthSeam, path, t,
@@ -4468,9 +4474,9 @@ void MainWindow::takeScreenshot()
             m_screenshotThread = nullptr;
             updateScreenshotEnabled();
             if (err.isEmpty()) {
-                m_transport->showNotice(tr("Saved %1").arg(QDir::toNativeSeparators(path)));
+                m_editToolbar->showNotice(tr("Saved %1").arg(QDir::toNativeSeparators(path)));
             } else {
-                m_transport->showNotice(QString());
+                m_editToolbar->showNotice(QString());
                 QMessageBox::warning(this, tr("Screenshot failed"), err);
             }
         }, Qt::QueuedConnection);

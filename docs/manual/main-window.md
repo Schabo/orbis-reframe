@@ -12,7 +12,7 @@ With one open, it looks like this:
 
 1. The **viewport**: the picture.
 2. The **timeline**: your clips, overlays and audio, in time order.
-3. The **transport bar**: trim and keyframe buttons.
+3. The **edit toolbar**: trim and keyframe buttons, and the timeline's zoom.
 4. The **settings sidebar**, here on its **Video** tab.
 5. The settings sidebar's **tabs**.
 
@@ -145,10 +145,10 @@ On the left, *Buffering…* shows while the video loads. On the right:
 
 Hover over a button to see its name and shortcut.
 
-## The transport bar
+## The edit toolbar
 
-The strip at the bottom of the window holds the editing tools that act at
-the playhead. From left to right:
+The strip directly above the timeline holds the editing tools that act at
+the playhead, in the middle of the window. From left to right:
 
 | Button | What it does |
 |---|---|
@@ -158,11 +158,20 @@ the playhead. From left to right:
 | <img src="images/icons/reframe-delete-key.png" width="24" alt=""> Delete keyframe | Deletes the reframe keyframe at the playhead (`Shift+K`). |
 | <img src="images/icons/reframe-delete-all.png" width="24" alt=""> Delete all keyframes | Deletes every reframe keyframe of the clip under the playhead (`Ctrl+Shift+K`). |
 
+At its right end are the timeline's zoom buttons:
+
+| Button | What it does |
+|---|---|
+| Zoom out | Shows more of the timeline (`Ctrl+-`). |
+| Zoom to fit | Shows the whole edit across the timeline (`Ctrl+0`). |
+| Zoom in | Shows less of the timeline, in more detail (`Ctrl++`). |
+
 Hover over a button to see its name and shortcut.
 
-Next to the buttons, short messages appear: what the program is doing, or
-why something you tried didn't work (for example *"Move the playhead into
-the selected clip to trim it"*).
+Left of the zoom buttons, short messages appear: what the program is
+doing, or why something you tried didn't work (for example *"Move the
+playhead into the selected clip to trim it"*). Hover over a message that
+doesn't fit to read all of it.
 
 ## The settings sidebar
 

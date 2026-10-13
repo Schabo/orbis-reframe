@@ -123,7 +123,7 @@ public:
     // equirect + CPU reproject), the clip's stabilization / seam / grade, to
     // outW x outH through `pose` ({yaw, pitch, roll, fovY} radians;
     // clip.poseAt is ignored). RGB, no chroma subsampling -- for the
-    // transport bar's screenshot button. Blocks (opens its own stitch source);
+    // player bar's screenshot button. Blocks (opens its own stitch source);
     // run it off the GUI thread. Null image + `error` on failure.
     static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const float pose[4],
                               int outW, int outH,
