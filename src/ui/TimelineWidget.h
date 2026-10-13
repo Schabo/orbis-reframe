@@ -283,6 +283,12 @@ private:
     void updateScrollBar();
     // The drag in progress, to `pos` (also re-run by the edge auto-scroll).
     void dragTo(QPoint pos);
+    // A file drag over the timeline at `pos`: where it would land.
+    void dropTo(QPoint pos);
+    // How far one auto-scroll tick moves the view for a drag held at `pos`
+    // (x in pixels of timeline, y in pixels of rows; negative = back / up);
+    // null when it's not near an edge it can scroll past.
+    QPoint edgeScrollStep(QPoint pos) const;
     void autoScrollTick();
     int trackGapAtY(int y) const; // insertion gap for a header drag, [0, tracks]
     // The span [first, end) of track `index`'s group in m_tracks.
@@ -334,7 +340,7 @@ private:
     int m_dragRow = -1;
     QPoint m_pressPos;
     qint64 m_pressMs = 0;  // timeline ms under the press (the view may scroll)
-    QPoint m_lastDragPos;
+    QPoint m_lastDragPos; // also a file drag's, for the auto-scroll
     bool m_dragMoved = false;
     qint64 m_provTrimMs = 0; // provisional trim edge during a TrimIn/TrimOut drag
     int m_reorderTarget = -1;

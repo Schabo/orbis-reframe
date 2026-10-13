@@ -46,11 +46,16 @@ the menu you get by right-clicking an empty part of a track.
 
 While zoomed in, turn the mouse wheel (without `Ctrl`) or drag the scroll
 bar under the tracks to move along the timeline. When the playhead runs
-off the edge, for example during playback, the view follows it.
+off the edge, for example during playback, the view follows it. While you
+drag a clip or a trim handle past the left or right edge, the view scrolls
+along until you move back.
 
 **More tracks than fit.** Turn the mouse wheel over the track names, or
 hold `Shift` and turn it anywhere on the timeline, to scroll the tracks up
-and down; the scroll bar at the right edge does the same. To make the
+and down; the scroll bar at the right edge does the same. While you drag a
+clip to another track, a track name to reorder, or files from the media
+pool onto a track, hold the pointer near the top or bottom of the tracks
+and they scroll until the one you want comes into view. To make the
 timeline taller, drag the line between it and the viewport up.
 
 ## The video track

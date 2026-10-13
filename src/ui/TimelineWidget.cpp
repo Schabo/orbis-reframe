@@ -48,6 +48,7 @@ constexpr qint64 kMinTrimMs = 100; // belt-and-braces; Timeline does the real cl
 constexpr int kScrollH = 12;          // the horizontal scrollbar under the tracks
 constexpr qint64 kMinVisibleMs = 1000; // the furthest zoom in: 1 s across the view
 constexpr double kWheelZoom = 1.25;    // per wheel notch / zoomIn()
+constexpr int kEdgeScrollBand = 16;    // a drag this close to the rows' top / bottom scrolls them
 
 // "mm:ss", or "mm:ss.t" when the ruler's ticks are closer than a second.
 QString formatTime(qint64 ms, bool tenths = false)
@@ -721,7 +722,15 @@ void TimelineWidget::dragMoveEvent(QDragMoveEvent *e)
 {
     if (!m_dropActive)
         return;
-    const QPoint pos = e->position().toPoint();
+    m_lastDragPos = e->position().toPoint();
+    dropTo(m_lastDragPos);
+    e->acceptProposedAction();
+    if (!edgeScrollStep(m_lastDragPos).isNull() && !m_autoScroll->isActive())
+        m_autoScroll->start();
+}
+
+void TimelineWidget::dropTo(QPoint pos)
+{
     if (m_dropClip) {
         // Between clips, at the cut nearest the pointer.
         m_dropTrack = -1;
@@ -734,13 +743,13 @@ void TimelineWidget::dragMoveEvent(QDragMoveEvent *e)
             m_dropTrack = -1; // not a track for these files: a video's own sound, or the other kind
         m_dropMs = std::min(snapMs(timelineMsAt(pos.x()), -1), m_totalMs);
     }
-    e->acceptProposedAction();
     update();
 }
 
 void TimelineWidget::dragLeaveEvent(QDragLeaveEvent *)
 {
     m_dropActive = false;
+    m_autoScroll->stop();
     update();
 }
 
@@ -751,6 +760,7 @@ void TimelineWidget::dropEvent(QDropEvent *e)
     const QStringList clips = droppableFiles(e->mimeData(), DropKind::Clip);
     const bool active = m_dropActive;
     m_dropActive = false;
+    m_autoScroll->stop();
     update();
     if (!active || (audio.isEmpty() && video.isEmpty() && clips.isEmpty()))
         return;
@@ -1147,28 +1157,62 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *e)
     m_lastDragPos = e->pos();
     dragTo(e->pos());
 
-    // Zoomed in and dragging past an edge of the view: scroll while it's
-    // held there (a header drag moves vertically only).
-    const bool outside = e->pos().x() < contentLeft() ||
-                         e->pos().x() > contentLeft() + contentWidth();
-    if (zoomed() && m_drag != Drag::TrackMove && outside && !m_autoScroll->isActive())
+    // Dragging past an edge of the view: scroll while it's held there.
+    if (!edgeScrollStep(e->pos()).isNull() && !m_autoScroll->isActive())
         m_autoScroll->start();
+}
+
+QPoint TimelineWidget::edgeScrollStep(QPoint pos) const
+{
+    QPoint step;
+    // Sideways when zoomed in, past the clips' left or right edge (a header
+    // drag moves vertically only).
+    const bool sideways = m_dropActive || (m_drag != Drag::None && m_drag != Drag::TrackMove);
+    const int left = contentLeft(), right = contentLeft() + contentWidth();
+    if (sideways && zoomed() && (pos.x() < left || pos.x() > right)) {
+        // Faster the further past the edge, up to ~a fifth of the view a second.
+        const int over = pos.x() < left ? pos.x() - left : pos.x() - right;
+        const int px = std::clamp(std::abs(over), 4, 40) * (over < 0 ? -1 : 1);
+        const qint64 end = std::max<qint64>(0, m_extentMs - visibleSpanMs());
+        if ((px < 0 && m_viewStartMs > 0) || (px > 0 && m_viewStartMs < end))
+            step.setX(px);
+    }
+    // Up / down through the rows when they don't all fit, near the top or
+    // bottom of the rows (the pointer may not get past them: the ruler is
+    // thin, the window may end there): for a moved clip that can change
+    // track, a header drag, and a file drag that lands on a track. Not on a
+    // press's jitter: a click near the bottom shouldn't scroll.
+    const bool canChangeTrack = m_drag == Drag::AudioMove && !m_dragAudioOrig.moveTargets.isEmpty();
+    const bool vertical = m_dropActive ? !m_dropClip
+                                       : m_dragMoved && (canChangeTrack || m_drag == Drag::TrackMove);
+    const int top = kRulerH + kEdgeScrollBand, bottom = scrollBarTop() - kEdgeScrollBand;
+    if (vertical && maxViewTop() > 0 && (pos.y() < top || pos.y() > bottom)) {
+        // From a couple of pixels a tick at the band's inner edge to most of
+        // a track a tick well past it.
+        const int over = pos.y() < top ? pos.y() - top : pos.y() - bottom;
+        const int py = std::clamp(std::abs(over) / 2, 2, 24) * (over < 0 ? -1 : 1);
+        if ((py < 0 && m_viewTopPx > 0) || (py > 0 && m_viewTopPx < maxViewTop()))
+            step.setY(py);
+    }
+    return step;
 }
 
 void TimelineWidget::autoScrollTick()
 {
     const QPoint pos = m_lastDragPos;
-    const int left = contentLeft(), right = contentLeft() + contentWidth();
-    if (m_drag == Drag::None || m_drag == Drag::TrackMove || !zoomed() ||
-        (pos.x() >= left && pos.x() <= right)) {
+    const QPoint step = (m_drag != Drag::None || m_dropActive) ? edgeScrollStep(pos) : QPoint();
+    if (step.isNull()) {
         m_autoScroll->stop();
         return;
     }
-    // Faster the further past the edge, up to ~a fifth of the view a second.
-    const int over = pos.x() < left ? pos.x() - left : pos.x() - right;
-    const int px = std::clamp(std::abs(over), 4, 40) * (over < 0 ? -1 : 1);
-    scrollToMs(m_viewStartMs + std::llround(double(px) * visibleSpanMs() / contentWidth()));
-    dragTo(pos);
+    m_viewStartMs += std::llround(double(step.x()) * visibleSpanMs() / contentWidth());
+    m_viewTopPx += step.y();
+    rebuildLayout(); // clamps, moves the scrollbars
+    update();
+    if (m_dropActive)
+        dropTo(pos);
+    else
+        dragTo(pos);
 }
 
 void TimelineWidget::dragTo(QPoint pos)

@@ -2,7 +2,8 @@
 // offscreen platform: audio clip select / move / cross-track move / trims,
 // snapping, the track mute box, and that the main track still seeks and
 // reorders; overlay (video) tracks above the main track; rows scrolling
-// when the widget is shorter than them; folding a video's sound tracks. Exit code is
+// when the widget is shorter than them, also while a drag is held at
+// their edge; folding a video's sound tracks. Exit code is
 // the failure count. ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget
 // at the end.
 
@@ -627,6 +628,75 @@ void testVerticalScroll()
     CHECK(vscroll && !vscroll->isVisible());
 }
 
+// Rows scrolled out of view come back while a drag is held near the top or
+// bottom of the rows: a clip can be moved, and files dropped, onto a track
+// that was hidden.
+void testDragAutoScroll()
+{
+    constexpr int kScrollH = 12;
+    const int h = trackY(0) + kTrackH / 2 + kRowGap + kScrollH + 4; // the second track hidden
+    const QPoint bottom(Fixture::x(5000), h - kScrollH - 2);
+    {
+        Fixture f;
+        f.w.resize(kWidth, h);
+        auto *vscroll = f.w.findChild<QScrollBar *>(QStringLiteral("timelineVScroll"));
+        CHECK(vscroll && vscroll->value() == 0 && vscroll->maximum() > 0);
+        QSignalSpy moved(&f.w, &TimelineWidget::trackClipMoved);
+        const QPoint from(Fixture::x(5000), trackY(0));
+        QTest::mousePress(&f.w, Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(&f.w, from + QPoint(0, 6));
+        CHECK(vscroll && vscroll->value() == 0); // not near the edge yet
+        QTest::mouseMove(&f.w, bottom);
+        QTest::qWait(400); // held there
+        CHECK(vscroll && vscroll->value() == vscroll->maximum());
+        QTest::mouseRelease(&f.w, Qt::LeftButton, Qt::NoModifier, bottom);
+        CHECK(moved.count() == 1 && moved.last().at(1).toInt() == 12);
+    }
+    {
+        // A header drag held at the bottom scrolls too.
+        Fixture f;
+        f.w.resize(kWidth, h);
+        auto *vscroll = f.w.findChild<QScrollBar *>(QStringLiteral("timelineVScroll"));
+        QTest::mousePress(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(60, trackY(0)));
+        QTest::mouseMove(&f.w, QPoint(60, trackY(0) + 6));
+        QTest::mouseMove(&f.w, QPoint(60, bottom.y()));
+        QTest::qWait(400);
+        CHECK(vscroll && vscroll->value() == vscroll->maximum());
+        QTest::mouseRelease(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(60, bottom.y()));
+    }
+    {
+        // A click near the bottom doesn't scroll.
+        Fixture f;
+        f.w.resize(kWidth, h);
+        auto *vscroll = f.w.findChild<QScrollBar *>(QStringLiteral("timelineVScroll"));
+        QTest::mousePress(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000), bottom.y()));
+        QTest::mouseMove(&f.w, QPoint(Fixture::x(5000) + 1, bottom.y()));
+        QTest::qWait(200);
+        QTest::mouseRelease(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000) + 1, bottom.y()));
+        CHECK(vscroll && vscroll->value() == 0);
+    }
+    {
+        // A file drag held at the bottom, then dropped there: the hidden track.
+        Fixture f;
+        f.w.resize(kWidth, h);
+        auto *vscroll = f.w.findChild<QScrollBar *>(QStringLiteral("timelineVScroll"));
+        QSignalSpy dropped(&f.w, &TimelineWidget::audioFilesDropped);
+        QMimeData mime;
+        mime.setUrls({QUrl::fromLocalFile("/x/a.mp3")});
+        QDragEnterEvent enter(bottom, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&f.w, &enter);
+        QTest::qWait(400);
+        CHECK(vscroll && vscroll->value() == vscroll->maximum());
+        // Scrolled to the end, the pointer is under the last track: onto it.
+        const QPoint onto(bottom.x(), trackY(1) - (vscroll ? vscroll->value() : 0));
+        QDragMoveEvent move(onto, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&f.w, &move);
+        QDropEvent drop(QPointF(onto), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&f.w, &drop);
+        CHECK(dropped.count() == 1 && dropped.last().at(1).toInt() == 12);
+    }
+}
+
 // A video track's own sound tracks fold away under it: the main track's by
 // a click on its header, an overlay track's by its triangle. Folded tracks
 // take no room and can't be hit; the rest move up.
@@ -730,6 +800,7 @@ int main(int argc, char **argv)
     testDropClips();
     testOverlayTracks();
     testVerticalScroll();
+    testDragAutoScroll();
     testFoldSound();
     if (g_failures == 0)
         std::printf("timeline_widget_test: all checks passed\n");
