@@ -277,10 +277,11 @@ private:
     // The Audio panel: the selected audio clip if there is one, else the
     // clip under the playhead.
     void refreshAudioPanel();
-    // The audio clips the Audio tab shows: the selected one (`selected` set),
-    // else every clip linked to the video clip selected or under the
+    // The audio clips the Audio tab shows, and what they are to it
+    // (`scope`): the selected audio clip; else every clip linked to the
+    // selected overlay clip, or to the video clip selected or under the
     // playhead, in track order.
-    QList<int> audioPanelClipIds(bool *selected = nullptr) const;
+    QList<int> audioPanelClipIds(QString *scope = nullptr) const;
     // Pick an audio file and put it at `atMs` on track `trackId` (0 = the
     // first track with room there, or a new one).
     void addAudioFile(int trackId, qint64 atMs);
@@ -318,8 +319,12 @@ private:
     // look.
     void applyInsetLook(int clipId, const inset::Look &look);
     // Put an overlay clip's sound on an audio track, linked to it so it
-    // follows its moves, trims, splits and removal.
+    // follows its moves, trims, splits and removal, and select it.
     void putOverlaySoundOnTrack(int clipId);
+    // The same without selecting (adding an overlay does it): the audio
+    // clip's id -- the one already there if its sound is on a track -- or 0
+    // if the file has no sound.
+    int addOverlaySound(int clipId);
     // The video clip an audio clip would link to: a main-track or
     // overlay clip of the same footage, overlapping source range, nearest on
     // the timeline. 0 if none.

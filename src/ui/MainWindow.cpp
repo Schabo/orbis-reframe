@@ -1654,34 +1654,41 @@ void MainWindow::selectTrackClip(int clipId)
     refreshOverlayPanel();
 }
 
-QList<int> MainWindow::audioPanelClipIds(bool *selected) const
+QList<int> MainWindow::audioPanelClipIds(QString *scope) const
 {
-    int trackId = 0;
-    if (selected)
-        *selected = false;
-    if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId)) {
-        if (m_timeline->trackById(trackId)->kind != Track::Kind::Audio)
-            return {}; // an overlay: the Overlay tab's
-        if (selected)
-            *selected = true;
-        return {m_selectedTrackClipId};
-    }
-    // Else every clip linked to the video clip selected or under the
-    // playhead, in track order: its camera mic, its external mic, ...
-    QList<int> ids;
-    if (const int clipId = editClipId())
+    // Every audio clip linked to `clipId`, in track order: a video clip's
+    // camera mic and external mic, an overlay's sound.
+    const auto linkedTo = [this](int clipId) {
+        QList<int> ids;
         for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i)
             for (const TrackClip &a : m_timeline->trackAt(i).clips)
                 if (a.linkedClipId == clipId)
                     ids.append(a.id);
-    return ids;
+        return ids;
+    };
+    int trackId = 0;
+    if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId)) {
+        if (m_timeline->trackById(trackId)->kind == Track::Kind::Video) {
+            if (scope)
+                *scope = tr("Selected overlay clip");
+            return linkedTo(m_selectedTrackClipId);
+        }
+        if (scope)
+            *scope = tr("Selected audio clip");
+        return {m_selectedTrackClipId};
+    }
+    // Else the video clip selected or under the playhead.
+    if (scope)
+        *scope = tr("This clip");
+    const int clipId = editClipId();
+    return clipId ? linkedTo(clipId) : QList<int>{};
 }
 
 void MainWindow::refreshAudioPanel()
 {
-    bool selected = false;
+    QString scope;
     QList<AudioClipState> states;
-    for (int id : audioPanelClipIds(&selected)) {
+    for (int id : audioPanelClipIds(&scope)) {
         int trackId = 0;
         const TrackClip *a = m_timeline->trackClipById(id, &trackId);
         const Track *t = a ? m_timeline->trackById(trackId) : nullptr;
@@ -1707,7 +1714,7 @@ void MainWindow::refreshAudioPanel()
         st.noise = a->noise;
         states.append(st);
     }
-    m_audioPanel->setClips(states, selected);
+    m_audioPanel->setClips(states, scope);
 }
 
 std::vector<insv::MixClip> MainWindow::mixClips() const
@@ -1862,6 +1869,7 @@ void MainWindow::addVideoFiles(const QStringList &paths, int trackId, qint64 atM
     for (const Probed &p : ok) {
         last = m_timeline->addVideoClip(trackId, p.path, p.info.durationMs, atMs, p.info.width,
                                         p.info.height);
+        addOverlaySound(last); // its sound, linked, like a video clip's
         atMs += p.info.durationMs;
     }
     selectTrackClip(last);
@@ -2608,11 +2616,17 @@ void MainWindow::clearTrim()
 
 void MainWindow::putOverlaySoundOnTrack(int clipId)
 {
+    if (const int id = addOverlaySound(clipId))
+        selectTrackClip(id);
+}
+
+int MainWindow::addOverlaySound(int clipId)
+{
     int trackId = 0;
     const TrackClip *o = m_timeline->trackClipById(clipId, &trackId);
     if (!o || m_timeline->trackById(trackId)->kind != Track::Kind::Video ||
         audioStreamCount(o->sourcePath) < 1)
-        return;
+        return 0;
     TrackClip a;
     a.sourcePath = o->sourcePath;
     a.sourceDurationMs = o->sourceDurationMs;
@@ -2623,20 +2637,20 @@ void MainWindow::putOverlaySoundOnTrack(int clipId)
     a.linkedClipId = o->id; // and follows the overlay's edits
     const qint64 endMs = o->endMs();
 
-    // Its sound is already on a track: select that rather than play it twice.
+    // Its sound is already on a track: that one, rather than play it twice.
+    // (Only this clip's: another overlay of the same file has its own.)
     for (int i = m_timeline->videoTrackCount(); i < m_timeline->trackCount(); ++i)
         for (const TrackClip &x : m_timeline->trackAt(i).clips)
-            if (x.linkedClipId == o->id ||
-                (x.sourcePath == o->sourcePath && x.trimInMs < o->trimOutMs &&
-                 o->trimInMs < x.trimOutMs)) {
-                selectTrackClip(x.id);
-                return;
-            }
+            if (x.linkedClipId == o->id)
+                return x.id;
 
-    int audioTrack = freeTrackFor(a.startMs, endMs, false, [](const Track &) { return true; });
+    // A free audio track with room (not a stream track: those hold the
+    // video clips' own sound), else a new one.
+    int audioTrack = freeTrackFor(a.startMs, endMs, false,
+                                  [](const Track &t) { return t.role == Track::Role::Free; });
     if (!audioTrack)
         audioTrack = m_timeline->addTrack(Track::Kind::Audio);
-    selectTrackClip(m_timeline->insertTrackClip(audioTrack, a));
+    return m_timeline->insertTrackClip(audioTrack, a);
 }
 
 void MainWindow::syncMediaInfoPanel(const ClipItem &c)

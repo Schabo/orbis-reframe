@@ -80,9 +80,9 @@ private:
 };
 
 // The Audio tab: the audio clip selected on the timeline, or else every
-// audio clip linked to the video clip that's selected or under the playhead
-// (its camera mic, its external mic, ...: a video clip has no sound of its
-// own) -- one AudioClipSection each, top to bottom in track order. With none,
+// audio clip linked to the selected overlay clip, or to the video clip
+// that's selected or under the playhead (its camera mic, its external mic,
+// ...: neither has sound of its own) -- one AudioClipSection each, top to bottom in track order. With none,
 // a greyed placeholder section says what to select.
 //
 // Not a widget itself: it fills the sidebar's Audio page (attach()) and
@@ -100,9 +100,9 @@ public:
     // The page to fill (makeSettingsPage's, with no sections of its own).
     void attach(QScrollArea *page);
 
-    // `selected`: the clip was picked on the timeline (one clip) rather than
-    // being a video clip's sound. Does not emit.
-    void setClips(const QList<AudioClipState> &clips, bool selected);
+    // `scope`: what they are ("This clip", "Selected audio clip", "Selected
+    // overlay clip"), shown on each section. Does not emit.
+    void setClips(const QList<AudioClipState> &clips, const QString &scope);
     // Nothing to show: the placeholder.
     void setNoClip();
 

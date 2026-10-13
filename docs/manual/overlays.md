@@ -24,10 +24,12 @@ trimming, splitting, hiding a track) is in [The timeline](timeline.md).
 A new overlay starts in the lower right corner, at 30 % of the picture's
 width.
 
-Overlays are silent at first. To hear an overlay's sound, right-click it on
-the timeline and choose **Put its sound on an audio track**. The sound goes
-onto an audio track, linked to the overlay so it stays in step (see
-[Audio and noise reduction](audio.md)).
+An overlay video with sound brings it along: the sound goes onto an audio
+track, linked to the overlay so it stays in step. Select the overlay to set
+its sound's level, noise reduction and fades in the **Audio** tab (see
+[Audio and noise reduction](audio.md)). If you've removed the sound,
+right-click the overlay and choose **Put its sound on an audio track** to
+get it back.
 
 ## Selecting an overlay
 

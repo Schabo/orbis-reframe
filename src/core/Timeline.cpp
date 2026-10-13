@@ -553,11 +553,19 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role)
     else if (t.name.isEmpty() && t.role == Track::Role::ExternalMic)
         t.name = tr("External mic");
     else if (t.name.isEmpty()) {
+        // The lowest number no track of its kind has (tracks get renamed,
+        // removed and reordered, so counting them can repeat a name).
+        const auto nameFor = [kind](int n) {
+            return kind == Track::Kind::Video ? tr("Overlay %1").arg(n) : tr("Audio %1").arg(n);
+        };
         int n = 1;
-        for (const Track &o : m_tracks)
-            if (o.kind == kind && o.role == Track::Role::Free)
-                ++n;
-        t.name = kind == Track::Kind::Video ? tr("Overlay %1").arg(n) : tr("Audio %1").arg(n);
+        const auto taken = [&](const QString &name) {
+            return std::any_of(m_tracks.begin(), m_tracks.end(),
+                               [&](const Track &o) { return o.name == name; });
+        };
+        while (taken(nameFor(n)))
+            ++n;
+        t.name = nameFor(n);
     }
     if (kind == Track::Kind::Video) {
         m_tracks.insert(videoTrackCount(), t);

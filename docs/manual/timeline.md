@@ -231,8 +231,9 @@ You get linked audio in two ways:
 - **The camera's sound.** Every `.insv` clip's sound is linked audio on the
   *Camera mic* track, and on the *External mic* track when an external
   microphone was connected (see [above](#the-cameras-sound)).
-- **An overlay's sound.** If an overlay video has sound, right-click it and
-  choose **Put its sound on an audio track**.
+- **An overlay's sound.** An overlay video with sound gets its sound as
+  linked audio when you add it (removed, it comes back with **Put its sound
+  on an audio track** in the overlay's right-click menu).
 
 To link or unlink an audio clip yourself, right-click it and choose **Link
 to video clip** or **Unlink from video clip**. **Link** is only offered when

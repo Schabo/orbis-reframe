@@ -175,7 +175,7 @@ void testAudioSections(SettingsSidebar &bar)
     ext.trackId = 2;
     ext.kind = QStringLiteral("externalMic");
     ext.trackName = QStringLiteral("External mic");
-    audio->setClips({cam, ext}, false);
+    audio->setClips({cam, ext}, QStringLiteral("This clip"));
     settle();
     CHECK(sectionNames(page) == QStringList({"audioCameraMicPanel", "audioExternalMicPanel"}));
     CHECK(audio->scope() == QLatin1String("This clip"));
@@ -199,7 +199,7 @@ void testAudioSections(SettingsSidebar &bar)
         CHECK(trackEdits.size() == 1 && trackEdits.last().at(0).toInt() == 2);
     }
     ext.gainDb = -6.0;
-    audio->setClips({cam, ext}, false);
+    audio->setClips({cam, ext}, QStringLiteral("This clip"));
     settle();
     CHECK(audio->sections() == two); // not rebuilt
     CHECK(clipEdits.size() == 1);   // and setting doesn't emit
@@ -211,7 +211,7 @@ void testAudioSections(SettingsSidebar &bar)
     music.trackName = QStringLiteral("Music");
     music.label = QStringLiteral("song.mp3");
     music.spanMs = 5000;
-    audio->setClips({music}, true);
+    audio->setClips({music}, QStringLiteral("Selected audio clip"));
     settle();
     CHECK(sectionNames(page) == QStringList({"audioClipPanel"}));
     CHECK(audio->scope() == QLatin1String("Selected audio clip"));

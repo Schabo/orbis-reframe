@@ -297,8 +297,8 @@ public:
         : SettingsPanel(QObject::tr("Audio"))
     {
         setObjectName(QStringLiteral("audioPanel"));
-        setHint(QObject::tr("Select an audio clip on the timeline, or a video clip to see its "
-                            "sound."));
+        setHint(QObject::tr("Select an audio clip on the timeline, or a video or overlay clip to "
+                            "see its sound."));
         setCollapsible(false);
     }
 };
@@ -340,13 +340,13 @@ void AudioPanel::setNoClip()
         m_layout->insertWidget(0, m_placeholder);
 }
 
-void AudioPanel::setClips(const QList<AudioClipState> &clips, bool selected)
+void AudioPanel::setClips(const QList<AudioClipState> &clips, const QString &scope)
 {
     if (clips.isEmpty()) {
         setNoClip();
         return;
     }
-    m_scope = selected ? tr("Selected audio clip") : tr("This clip");
+    m_scope = scope;
     bool same = clips.size() == m_sections.size();
     for (int i = 0; same && i < clips.size(); ++i)
         same = m_sections[i]->clipId() == clips[i].clipId;

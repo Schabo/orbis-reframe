@@ -1490,7 +1490,7 @@ void testProjectTracksJson()
         CHECK(m.stream == -1 && m.speed == 1.0);
         CHECK(m.noise.mode == insv::NoiseMode::Off);
         const Track &t2 = tl->trackAt(1);
-        CHECK(t2.name == "Audio 2" && t2.muted && t2.clips.size() == 4);
+        CHECK(t2.name == "Audio 1" && t2.muted && t2.clips.size() == 4);
         CHECK(t2.clips[0].stream == 1 && t2.clips[0].speed == 0.5);
         CHECK(t2.clips[0].noise.mode == insv::NoiseMode::Wind && t2.clips[0].noise.strength == 0.4f);
         CHECK(t2.clips[0].timelineDurationMs() == 8000);
@@ -1577,6 +1577,15 @@ void testVideoTracks()
     CHECK(tl.videoTrackCount() == 2);
     CHECK(tl.trackAt(0).id == v1 && tl.trackAt(1).id == v2 && tl.trackAt(2).id == a1);
     CHECK(tl.trackAt(0).name == "Overlay 1" && tl.trackAt(1).name == "Overlay 2");
+    { // a new track's name is the lowest number free, not a count
+        Timeline n;
+        n.appendClip("/v/a.insv", 60000, 30.0);
+        const int o1 = n.addTrack(Track::Kind::Video);
+        n.addTrack(Track::Kind::Video);
+        n.setTrackName(o1, "Phone");
+        CHECK(n.trackById(n.addTrack(Track::Kind::Video))->name == "Overlay 1");
+        CHECK(n.trackById(n.addTrack(Track::Kind::Video))->name == "Overlay 3");
+    }
     // Reordering stays inside the kind.
     CHECK(!tl.moveTrack(a1, 0) && tl.trackAt(2).id == a1);
     CHECK(tl.moveTrack(v2, 0) && tl.trackAt(0).id == v2);
