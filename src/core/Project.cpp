@@ -925,8 +925,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     t.role = Track::Role::CameraMic;
                 else if (t.kind == Track::Kind::Audio && (role == "externalMic" || role == "micAir"))
                     t.role = Track::Role::ExternalMic;
-                else if (t.kind == Track::Kind::Audio &&
-                         (role == "overlayAudio" || role == "overlaySound")) {
+                else if (t.kind == Track::Kind::Audio && role == "overlayAudio") {
                     t.role = Track::Role::OverlayAudio;
                     t.ownerTrackId = jt.value("owner", -1) + 1; // the owner's index + 1 for now
                 }

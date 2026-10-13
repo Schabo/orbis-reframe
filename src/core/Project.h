@@ -62,11 +62,10 @@ public:
     // A track: {kind: "audio" | "video", name, gainDb, muted, clips}, in
     //   order (Track::Group); a stream track also has role: "cameraMic" |
     //   "externalMic" (Track::Role; "micAir" from development builds reads as
-    //   "externalMic"), an overlay's audio track role: "overlayAudio"
-    //   ("overlaySound" from development builds reads the same) and owner: its
-    //   overlay track's index (an older build reads it as a free audio track;
-    //   an overlay's sound on a free track moves to its overlay audio track
-    //   on load).
+    //   "externalMic"), an overlay's audio track role: "overlayAudio" and
+    //   owner: its overlay track's index (an older build reads it as a free
+    //   audio track; an overlay's sound on a free track moves to its overlay
+    //   audio track on load).
     //   An audio clip: source, stream, sourceDurationMs, startMs, trimInMs,
     //   trimOutMs, speed, gainDb, muted, fadeInMs, fadeOutMs; optional: noise
     //   {mode: "wind" (motorcycle) | "windGeneral" | "hiss" | "voice" |
