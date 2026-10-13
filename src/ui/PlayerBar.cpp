@@ -347,6 +347,7 @@ PlayerBar::PlayerBar(QWidget *parent)
     connect(speedGroup, &QActionGroup::triggered, this,
             [this](QAction *a) { setSpeed(a->data().toDouble()); });
     m_speedButton->setMenu(speedMenu);
+    connect(theme::notifier(), &theme::Notifier::changed, this, &PlayerBar::tintSpeed);
     m_speedButton->setText(speedText(1.0));
 
     // --- bottom row: buffering, playback buttons, screenshot, volume, full screen ---
@@ -518,6 +519,14 @@ void PlayerBar::setScreenshotEnabled(bool enabled)
     m_screenshotButton->setEnabled(enabled);
 }
 
+void PlayerBar::tintSpeed()
+{
+    // Off 1× the speed stands out: the sound is off then.
+    m_speedButton->setStyleSheet(m_speed != 1.0 ? QStringLiteral("color: %1;").arg(
+                                                      theme::cssColor(theme::colors().accent))
+                                                : QString());
+}
+
 void PlayerBar::setSpeed(double speed)
 {
     const QList<double> &s = speeds();
@@ -531,10 +540,7 @@ void PlayerBar::setSpeed(double speed)
         return;
     m_speed = best;
     m_speedButton->setText(speedText(best));
-    // Off 1× the speed stands out: the sound is off then.
-    m_speedButton->setStyleSheet(best != 1.0 ? QStringLiteral("color: %1;").arg(
-                                                   theme::cssColor(theme::colors().accent))
-                                             : QString());
+    tintSpeed();
     emit speedChanged(best);
 }
 

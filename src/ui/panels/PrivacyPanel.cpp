@@ -52,17 +52,11 @@ PrivacyPanel::PrivacyPanel(QWidget *parent)
     // The theme's plate colours, as the viewport draws them
     // (MainWindow::pushRegionOverlay).
     m_legend = new QLabel(this);
-    const theme::Colors &tc = theme::colors();
-    const auto swatch = [](const QColor &c) {
-        return QStringLiteral("<span style='color:%1'>&#9632;</span>").arg(c.name());
-    };
-    m_legend->setText(tr("%1 detected &nbsp; %2 tracked<br>"
-                         "%3 filled in &nbsp; %4 tracked, not verified<br>"
-                         "%5 removed (right-click to restore)<br>"
-                         "%6 blurred by hand")
-                          .arg(swatch(tc.plateDetected), swatch(tc.plateTracked),
-                               swatch(tc.plateFilled), swatch(tc.plateUnverified),
-                               swatch(tc.plateRemoved), swatch(tc.plateAdded)));
+    updateLegend();
+    connect(theme::notifier(), &theme::Notifier::changed, this, [this] {
+        updateLegend();
+        showStatus(); // a warning is in the theme's colour
+    });
     form()->addRow(m_legend);
     form()->setRowVisible(m_legend, false);
 
@@ -159,4 +153,19 @@ void PrivacyPanel::setScanStatus(const QString &text)
 {
     m_statusText = text;
     showStatus();
+}
+
+void PrivacyPanel::updateLegend()
+{
+    const theme::Colors &tc = theme::colors();
+    const auto swatch = [](const QColor &c) {
+        return QStringLiteral("<span style='color:%1'>&#9632;</span>").arg(c.name());
+    };
+    m_legend->setText(tr("%1 detected &nbsp; %2 tracked<br>"
+                         "%3 filled in &nbsp; %4 tracked, not verified<br>"
+                         "%5 removed (right-click to restore)<br>"
+                         "%6 blurred by hand")
+                          .arg(swatch(tc.plateDetected), swatch(tc.plateTracked),
+                               swatch(tc.plateFilled), swatch(tc.plateUnverified),
+                               swatch(tc.plateRemoved), swatch(tc.plateAdded)));
 }

@@ -60,6 +60,68 @@ Theme ember()
     return t;
 }
 
+// "Light": the same rules on light greys. The viewport's surround stays a
+// dark neutral grey -- a bright one makes the picture look darker than it
+// is -- and the accent is a deeper orange that reads on light surfaces. The
+// plate outlines are drawn over the video, so they keep Ember's colours.
+Theme light()
+{
+    Theme t = ember();
+    t.id = QStringLiteral("light");
+    t.name = QObject::tr("Light");
+    Colors &c = t.colors;
+    c.window = QColor(0xeceef1);
+    c.panel = QColor(0xf8f9fa);
+    c.button = QColor(0xe0e3e7);
+    c.pressed = QColor(0xd2d6db);
+    c.border = QColor(0xc8ccd2);
+    c.borderHover = QColor(0xa4abb4);
+    c.menuBar = QColor(0xe3e5e9);
+    c.surround = QColor(0x3a3b3d);
+    c.text = QColor(0x1d1f23);
+    c.textDim = QColor(0x5b616a);
+    c.textDisabled = QColor(0xa3a8b0);
+    c.icon = QColor(0x4a5059);
+    c.iconActive = QColor(0xc8640e);
+    c.accent = QColor(0xc8640e);
+    c.accentSoft = QColor(0xf6dfc8);
+    c.textOnAccent = QColor(0xffffff);
+    c.playhead = QColor(0xc8640e);
+    c.clipVideo = QColor(0x8eabc7);
+    c.clipVideoAlt = QColor(0x84a1bd);
+    c.clipAudio = QColor(0x82b5b1);
+    c.clipOverlay = QColor(0xa898c6);
+    c.clipMuted = QColor(0xc3c7cc);
+    c.clipMissing = QColor(0xd99a9a);
+    c.waveform = QColor(0x24343f);
+    c.shade = QColor(0, 0, 0, 36);
+    c.error = QColor(0xc62828);
+    c.warning = QColor(0x9a6b00);
+    c.success = QColor(0x2e8540);
+    return t;
+}
+
+// "Neutral dark": Ember's greys with a calm blue accent instead of the
+// orange. The clips turn to muted slate, green and violet so the blue
+// selection still stands out on them.
+Theme neutralDark()
+{
+    Theme t = ember();
+    t.id = QStringLiteral("neutral-dark");
+    t.name = QObject::tr("Neutral dark");
+    Colors &c = t.colors;
+    c.iconActive = QColor(0x6fa8dc);
+    c.accent = QColor(0x6fa8dc);
+    c.accentSoft = QColor(0x1f2c39);
+    c.textOnAccent = QColor(0x0b1620);
+    c.playhead = QColor(0x6fa8dc);
+    c.clipVideo = QColor(0x535d69);
+    c.clipVideoAlt = QColor(0x4b545f);
+    c.clipAudio = QColor(0x4a6754);
+    c.clipOverlay = QColor(0x655572);
+    return t;
+}
+
 int g_current = 0;
 
 using Member = QColor Colors::*;
@@ -146,11 +208,25 @@ private:
 
 const QList<Theme> &themes()
 {
-    static const QList<Theme> list = {ember()};
+    static const QList<Theme> list = {ember(), light(), neutralDark()};
     return list;
 }
 
 const Theme &current() { return themes().at(g_current); }
+
+const Theme &byId(const QString &id)
+{
+    for (const Theme &t : themes())
+        if (t.id == id)
+            return t;
+    return themes().constFirst();
+}
+
+Notifier *notifier()
+{
+    static Notifier *n = new Notifier;
+    return n;
+}
 
 QString cssColor(const QColor &c)
 {
@@ -217,6 +293,7 @@ void apply(QApplication &app, const Theme &theme)
         pal.setColor(QPalette::Disabled, role, c.textDisabled);
     QApplication::setPalette(pal);
     app.setStyleSheet(styleSheet(c));
+    emit notifier()->changed();
 }
 
 QIcon icon(const QString &name, IconTone tone) { return QIcon(new TintedSvgEngine(name, tone)); }

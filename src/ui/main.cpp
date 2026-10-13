@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 
 #include <QApplication>
+#include <QSettings>
 #include <QLoggingCategory>
 #include <QMessageBox>
 #include <QTextDocument>
@@ -119,8 +120,12 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(QString::fromUtf8(core::version::string()));
 
     // The theme: palette and stylesheet from one set of colour tokens
-    // (Theme.h). No system theme under the target Wayland / Sway setup.
-    theme::apply(app, theme::themes().constFirst());
+    // (Theme.h). No system theme under the target Wayland / Sway setup; the
+    // user picks one under View ▸ Theme.
+    theme::apply(app, theme::byId(QSettings(QStringLiteral("orbis-reframe"),
+                                            QStringLiteral("orbis-reframe"))
+                                      .value(QStringLiteral("ui/theme"))
+                                      .toString()));
     app.installEventFilter(new ToolTipWrapper(&app));
 
     QVulkanInstance vulkanInstance;

@@ -50,6 +50,7 @@ signals:
     void showRegionsToggled(bool on);
 
 private:
+    void updateLegend(); // the plate colours' key, in the theme's colours
     QCheckBox *m_blur = nullptr;
     QPushButton *m_scan = nullptr;
     QLabel *m_status = nullptr;

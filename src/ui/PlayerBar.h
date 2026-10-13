@@ -133,6 +133,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    void tintSpeed(); // the speed's colour, after a change of speed or theme
     void updateTime();
     void updateVolumeIcon();
     void finishTimeEdit(bool apply);

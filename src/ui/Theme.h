@@ -2,13 +2,14 @@
 
 #include <QColor>
 #include <QIcon>
+#include <QObject>
 #include <QString>
 
 class QApplication;
 
 // The app's colours. Every colour the UI uses is a named token here; a theme
 // is one set of values for all of them (adding a theme = adding a set in
-// Theme.cpp). The stylesheet (resources/theme.qss) is a template that names
+// Theme.cpp and to themes(); the user picks one under View ▸ Theme). The stylesheet (resources/theme.qss) is a template that names
 // the tokens as @token; the palette, custom painting (timeline, project
 // cards, the viewport's surround and outlines) and the icons read them too.
 //
@@ -76,9 +77,22 @@ const QList<Theme> &themes();
 const Theme &current();
 inline const Colors &colors() { return current().colors; }
 
+// The theme with id `id`; the default (the first) when there's none.
+const Theme &byId(const QString &id);
+
 // Make `theme` current: the palette and the stylesheet built from its tokens.
-// Icons made by icon() pick up the new colours the next time they're drawn.
+// Icons made by icon() and widgets that read colors() when they paint pick
+// up the new colours by themselves; what keeps a colour it read once
+// (the viewport's surround, a label's rich text) listens to changed().
 void apply(QApplication &app, const Theme &theme);
+
+// Says when apply() switched the theme.
+class Notifier : public QObject {
+    Q_OBJECT
+signals:
+    void changed();
+};
+Notifier *notifier();
 
 // resources/theme.qss with every @token replaced by `colors`' value. An
 // unknown @token is left as it is (theme_test checks there are none).

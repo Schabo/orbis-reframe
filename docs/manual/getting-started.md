@@ -278,8 +278,9 @@ exports you save yourself, it only writes:
 - `~/.local/share/orbis-reframe/projects.json`: the project library's list
   and the projects folder. Deleting it empties the list (projects in the
   projects folder still show up); no project is deleted.
-- `~/.config/orbis-reframe/orbis-reframe.conf`: which startup warnings
-  you've chosen not to see again. Delete it to see them again.
+- `~/.config/orbis-reframe/orbis-reframe.conf`: your settings, such as the
+  theme, the window layout and which startup warnings you've chosen not to
+  see again. Delete it to go back to the defaults.
 
 ## If it doesn't start
 

@@ -126,9 +126,13 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // must not encode it again: an *_SRGB format -- the first one a headless
     // Sway offers -- lifted every dark tone.
     m_viewport->setPreferredColorFormats({VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM});
-    const theme::Colors &tc = theme::colors();
-    m_viewport->SetSurroundColor(tc.surround);
-    m_viewport->SetMarkerColors(tc.accent, tc.success, tc.error);
+    const auto viewportColors = [this] {
+        const theme::Colors &tc = theme::colors();
+        m_viewport->SetSurroundColor(tc.surround);
+        m_viewport->SetMarkerColors(tc.accent, tc.success, tc.error);
+    };
+    viewportColors();
+    connect(theme::notifier(), &theme::Notifier::changed, this, viewportColors);
 
     QWidget *viewportContainer = QWidget::createWindowContainer(m_viewport, this);
     viewportContainer->setMinimumSize(320, 160);
@@ -2283,6 +2287,29 @@ void MainWindow::setupViewMenu()
     });
     m_editorActions += {qualityMenu->menuAction(), sizeMenu->menuAction()};
     updatePreviewMenu(m_project->previewStitch());
+
+    // The app's colours, per user (QSettings ui/theme, read in main()).
+    // Also on the start screen, unlike the preview's settings.
+    viewMenu->addSeparator();
+    QMenu *themeMenu = viewMenu->addMenu(tr("&Theme"));
+    themeMenu->setObjectName(QStringLiteral("themeMenu"));
+    auto *themeGroup = new QActionGroup(this);
+    for (const theme::Theme &t : theme::themes()) {
+        QAction *a = themeMenu->addAction(t.name);
+        a->setObjectName(QStringLiteral("theme_%1_Action").arg(t.id));
+        a->setData(t.id);
+        a->setCheckable(true);
+        a->setChecked(t.id == theme::current().id);
+        themeGroup->addAction(a);
+    }
+    connect(themeGroup, &QActionGroup::triggered, this, [](QAction *a) {
+        const QString id = a->data().toString();
+        if (id == theme::current().id)
+            return;
+        theme::apply(*qApp, theme::byId(id));
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("ui/theme"), id);
+    });
 }
 
 void MainWindow::updatePreviewMenu(const stitch::PreviewStitchConfig &cfg)

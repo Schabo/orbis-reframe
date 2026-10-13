@@ -1,6 +1,7 @@
-// The theme (src/ui/Theme): every theme sets every colour token, the
-// stylesheet template uses only known tokens, and icons are tinted by mode
-// and state. Offscreen platform; exit code is the failure count.
+// The theme (src/ui/Theme): every theme sets every colour token, its text
+// reads on its surfaces, the stylesheet template uses only known tokens,
+// icons are tinted by mode and state, and switching themes re-tints them and
+// says so. Offscreen platform; exit code is the failure count.
 
 #include "Theme.h"
 
@@ -10,6 +11,8 @@
 #include <QPalette>
 #include <QRegularExpression>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace {
@@ -100,6 +103,67 @@ void testIcons()
     CHECK(theme::icon(QStringLiteral("no-such-icon")).isNull());
 }
 
+// WCAG contrast ratio of two opaque colours.
+double contrast(const QColor &a, const QColor &b)
+{
+    const auto lum = [](const QColor &c) {
+        const auto ch = [](double v) {
+            return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * ch(c.redF()) + 0.7152 * ch(c.greenF()) + 0.0722 * ch(c.blueF());
+    };
+    const double la = lum(a), lb = lum(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+void testContrast()
+{
+    for (const theme::Theme &t : theme::themes()) {
+        const theme::Colors &c = t.colors;
+        const auto atLeast = [&](const QColor &fg, const QColor &bg, double min, const char *what) {
+            const double r = contrast(fg, bg);
+            if (r < min)
+                std::printf("FAIL  theme %s: %s contrast %.2f < %.1f\n", qPrintable(t.id), what, r,
+                            min),
+                    ++g_failures;
+        };
+        for (const QColor &bg : {c.window, c.panel, c.button}) {
+            atLeast(c.text, bg, 7.0, "text");
+            atLeast(c.textDim, bg, 4.5, "dim text");
+            atLeast(c.icon, bg, 3.0, "icon");
+            atLeast(c.accent, bg, 3.0, "accent");
+        }
+        atLeast(c.textOnAccent, c.accent, 3.0, "text on accent");
+        atLeast(c.text, c.clipVideo, 3.0, "clip name on a video clip");
+        atLeast(c.text, c.clipAudio, 3.0, "clip name on an audio clip");
+        atLeast(c.error, c.panel, 3.0, "error");
+        atLeast(c.warning, c.panel, 3.0, "warning");
+    }
+}
+
+// Switching: current() follows, the palette and stylesheet change, icons
+// re-tint on their next draw, changed() fires; an unknown id is the default.
+void testSwitch(QApplication &app)
+{
+    CHECK(theme::themes().size() >= 3);
+    CHECK(theme::byId(QStringLiteral("nope")).id == theme::themes().constFirst().id);
+    CHECK(theme::byId(QString()).id == theme::themes().constFirst().id);
+    int changed = 0;
+    QObject::connect(theme::notifier(), &theme::Notifier::changed, [&changed] { ++changed; });
+    const QIcon play = theme::icon(QStringLiteral("play"));
+    for (const theme::Theme &t : theme::themes()) {
+        theme::apply(app, t);
+        CHECK(theme::current().id == t.id);
+        CHECK(QApplication::palette().color(QPalette::Window) == t.colors.window);
+        CHECK(app.styleSheet().contains(t.colors.accent.name()));
+        CHECK(near(strokeColor(play.pixmap(32, 32, QIcon::Normal)), t.colors.icon));
+    }
+    CHECK(changed == int(theme::themes().size()));
+    CHECK(theme::byId(QStringLiteral("light")).id == QStringLiteral("light"));
+    CHECK(theme::byId(QStringLiteral("neutral-dark")).id == QStringLiteral("neutral-dark"));
+    theme::apply(app, theme::themes().constFirst());
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -110,6 +174,8 @@ int main(int argc, char **argv)
     testTokens();
     testStyleSheet();
     testIcons();
+    testContrast();
+    testSwitch(app);
     if (g_failures == 0)
         std::printf("theme_test: all checks passed\n");
     else
