@@ -173,6 +173,15 @@ tracks, and the overlay tracks with their sound. The names of the tracks
 that hold a video's own sound (*Camera mic*, *External mic*, an overlay's
 audio track) are indented under their video.
 
+To make room, a video's own sound tracks can be **folded away** under it:
+click the **Video** track's header, or the triangle in front of an overlay
+track's name (or right-click the track and choose **Fold sound tracks
+away**). The triangle then points right. Click it again (or choose **Show
+sound tracks**) to bring them back. Folded tracks are only hidden: they
+still play and are exported. Whether the video track's sound is folded is
+remembered for all your projects; an overlay track's opens again the next
+time you start orbis-reframe.
+
 Unlike the video track, these tracks can have gaps: each clip sits at its
 own time.
 

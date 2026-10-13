@@ -2,7 +2,7 @@
 // offscreen platform: audio clip select / move / cross-track move / trims,
 // snapping, the track mute box, and that the main track still seeks and
 // reorders; overlay (video) tracks above the main track; rows scrolling
-// when the widget is shorter than them. Exit code is
+// when the widget is shorter than them; folding a video's sound tracks. Exit code is
 // the failure count. ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget
 // at the end.
 
@@ -627,6 +627,92 @@ void testVerticalScroll()
     CHECK(vscroll && !vscroll->isVisible());
 }
 
+// A video track's own sound tracks fold away under it: the main track's by
+// a click on its header, an overlay track's by its triangle. Folded tracks
+// take no room and can't be hit; the rest move up.
+void testFoldSound()
+{
+    using Group = TimelineWidget::TrackView::Group;
+    Fixture f;
+    TimelineWidget::TrackView mic, music, cam, camAudio;
+    mic.id = 5;
+    mic.name = "Camera mic";
+    mic.group = Group::Main;
+    TimelineWidget::TrackClipView s;
+    s.id = 50;
+    s.trimOutMs = s.sourceDurationMs = 10000;
+    mic.clips = {s};
+    music.id = 11;
+    music.name = "Music";
+    TimelineWidget::TrackClipView song = s;
+    song.id = 100;
+    song.startMs = 2000;
+    music.clips = {song};
+    cam.id = 21;
+    cam.name = "Cam";
+    cam.video = true;
+    cam.group = Group::Overlay;
+    camAudio.id = 31;
+    camAudio.name = "Cam audio";
+    camAudio.group = Group::Overlay;
+    camAudio.overlayAudio = true;
+    TimelineWidget::TrackClipView camSound = s;
+    camSound.id = 300;
+    camAudio.clips = {camSound};
+    f.w.setTracks({mic, music, cam, camAudio});
+    f.w.resize(kWidth, f.w.sizeHint().height());
+
+    QVector<std::pair<int, bool>> toggled;
+    QObject::connect(&f.w, &TimelineWidget::soundCollapsedToggled,
+                     [&](int id, bool c) { toggled.push_back({id, c}); });
+    QSignalSpy sel(&f.w, &TimelineWidget::trackClipSelected);
+    const int step = kTrackH + kRowGap;
+    const int micY = trackY(0) - kGroupGap;
+    const int musicY = trackY(1);
+    const int camY = trackY(2) + kGroupGap;
+    const int camAudioY = trackY(3) + kGroupGap;
+    const int h = f.w.sizeHint().height();
+
+    // The main track's header folds the mic away; Music moves up.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(60, mainY()));
+    CHECK(toggled.size() == 1 && toggled.last() == std::make_pair(0, true));
+    CHECK(f.w.isSoundCollapsed(0));
+    CHECK(f.w.sizeHint().height() == h - step);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000), musicY - step));
+    CHECK(sel.count() >= 1 && sel.last().at(0).toInt() == 100);
+
+    // The overlay track's triangle folds its audio track; the rest of its
+    // header doesn't (it drags / renames).
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(60, camY - step));
+    CHECK(toggled.size() == 1);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(10, camY - step));
+    CHECK(toggled.size() == 2 && toggled.last() == std::make_pair(21, true));
+    CHECK(f.w.sizeHint().height() == h - 2 * step);
+    const int sels = sel.count();
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000), camAudioY - step));
+    CHECK(sel.count() == sels || sel.last().at(0).toInt() != 300);
+
+    // Set from outside: no signal. A track list without the overlay keeps the
+    // main track's state; a track without sound tracks has no triangle.
+    f.w.setSoundCollapsed(21, false);
+    f.w.setSoundCollapsed(0, false);
+    CHECK(toggled.size() == 2 && f.w.sizeHint().height() == h);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000), micY));
+    CHECK(sel.last().at(0).toInt() == 50);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000), camAudioY));
+    CHECK(sel.last().at(0).toInt() == 300);
+    f.w.setTracks({music});
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(60, mainY()));
+    CHECK(toggled.size() == 2);
+
+    if (const char *shot = std::getenv("ORBIS_TIMELINE_SHOT")) {
+        f.w.setTracks({mic, music, cam, camAudio});
+        f.w.setSoundCollapsed(21, true);
+        f.w.resize(kWidth, f.w.sizeHint().height());
+        f.w.grab().save(QString::fromLocal8Bit(shot).replace(".png", "-folded.png"));
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -644,6 +730,7 @@ int main(int argc, char **argv)
     testDropClips();
     testOverlayTracks();
     testVerticalScroll();
+    testFoldSound();
     if (g_failures == 0)
         std::printf("timeline_widget_test: all checks passed\n");
     else

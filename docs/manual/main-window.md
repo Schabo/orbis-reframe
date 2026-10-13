@@ -100,7 +100,9 @@ From top to bottom it has:
   video, each with its sound on a track right under it.
 
 A little space separates these three groups: the video and its sound, the
-audio tracks, the overlays.
+audio tracks, the overlays. A click on the **Video** track's header folds
+its sound tracks away and brings them back; an overlay track has a
+triangle for its audio track.
 
 Clicking a clip selects it. It doesn't move the playhead: only the ruler
 and the player bar's progress bar do that. [The timeline](timeline.md) explains how to arrange, trim, split and

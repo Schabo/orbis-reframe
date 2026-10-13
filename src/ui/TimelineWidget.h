@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSet>
 #include <QVector>
 #include <QWidget>
 
@@ -20,6 +21,8 @@ class QTimer;
 // in three groups, a little apart: its own sound (the stream tracks), the
 // Audio group, and the overlay (video) tracks, each followed by its sound
 // track. Each row has a header on the left; a playhead runs over all of them.
+// A video track's own sound tracks (the main track's stream tracks, an
+// overlay track's audio track) can be folded away under it.
 // Everything here is in *timeline time*.
 //
 // Pure view. MainWindow feeds it the clips, tracks and playhead and turns its
@@ -42,6 +45,9 @@ class QTimer;
 //                                        either to all clips)
 //   * right-click elsewhere            -> "Add clip here…" at the nearest
 //                                        cut (also on an empty timeline)
+//   * click the main track's header    -> fold its sound tracks away / back
+//                                        -> soundCollapsedToggled (they
+//                                        still play and export)
 //   Audio and overlay tracks:
 //   * click a clip                     -> trackClipSelected (no seek)
 //   * drag a clip body                 -> trackClipMoved (any track of its
@@ -50,6 +56,8 @@ class QTimer;
 //                                        A linked clip keeps its time: it
 //                                        only changes track.
 //   * drag a clip's edge               -> trackClipTrimIn/OutRequested
+//   * an overlay track's triangle      -> fold its audio track away / back
+//                                        -> soundCollapsedToggled
 //   * header "M" box                   -> trackMuteToggled ("H" on an
 //                                        overlay track: hide it). The main
 //                                        track has none: its sound is on
@@ -156,6 +164,11 @@ public:
     void setSelectedTrackClip(int clipId); // -1 = none; does not emit
     void setCanPasteGrade(bool canPaste);  // a colour grade has been copied
     void setCanPasteStabilization(bool canPaste); // a stabilization setting has been copied
+    // A video track's own sound tracks folded away under it (view only;
+    // doesn't emit). `videoTrackId` 0 = the main track; else an overlay
+    // track's id.
+    void setSoundCollapsed(int videoTrackId, bool collapsed);
+    bool isSoundCollapsed(int videoTrackId) const { return m_collapsedSound.contains(videoTrackId); }
 
 public slots:
     void zoomIn();   // around the playhead if it's in view, else the centre
@@ -197,6 +210,7 @@ signals:
     void trackRemoveRequested(int trackId);
     void trackRenameRequested(int trackId, const QString &name);
     void trackMoved(int trackId, int toIndex);
+    void soundCollapsedToggled(int videoTrackId, bool collapsed); // by the user; 0 = main track
     void addAudioTrackRequested();
     void addVideoTrackRequested();
     // "Add audio file here…": a file picker, then a clip at `atMs` on the
@@ -240,6 +254,16 @@ private:
     };
 
     void rebuildLayout();
+    // Each extra track's row (m_trackY, m_shown), after the tracks or a
+    // folded state changed.
+    void layoutRows();
+    bool trackShown(int index) const { return m_shown[index]; }
+    // The main track (-1) or an overlay track has sound tracks to fold.
+    bool hasOwnSound(int trackIndex) const;
+    int videoTrackIdAt(int trackIndex) const { return trackIndex < 0 ? 0 : m_tracks[trackIndex].id; }
+    // The triangle in a header (the main track's: trackIndex -1).
+    QRect foldBox(int trackIndex) const;
+    void toggleSound(int trackIndex); // by the user: emits
     Hit hitTest(QPoint pos) const;
     // Main-track insert position for a clip added at `ms`: the cut nearest to it.
     int insertIndexAt(qint64 ms) const;
@@ -291,6 +315,10 @@ private:
     QVector<Clip> m_clips;
     QVector<Row> m_rows;
     QVector<TrackView> m_tracks;
+    QVector<int> m_trackY;  // each track's row, y under the main track's top
+    QVector<bool> m_shown;  // ... not folded away
+    int m_rowsEndY = 0;     // ... and the end of the last one
+    QSet<int> m_collapsedSound; // video track ids, 0 = the main track
     qint64 m_totalMs = 0;  // the main track: the timeline's length
     qint64 m_extentMs = 0; // what the view spans: the main track, or longer audio
     qint64 m_playheadMs = 0;

@@ -38,6 +38,8 @@ constexpr int kMainH = 40;    // the main video track's row
 constexpr int kTrackH = 28;   // an audio track's row
 constexpr int kRowGap = 2;
 constexpr int kGroupGap = 8; // more air between two groups of tracks
+constexpr int kNameX = 20;     // a header's name, right of the fold triangle
+constexpr int kOwnSoundX = 32; // a video's own sound tracks' names, indented under it
 constexpr int kEdgeGrabPx = 6;
 constexpr int kDragThresholdPx = 4;
 constexpr int kSnapPx = 6;
@@ -113,6 +115,21 @@ QRect muteBox(int rowTop, int rowH)
     return QRect(kHeaderW - kMuteBoxW - 5, rowTop + (rowH - 14) / 2, kMuteBoxW, 14);
 }
 
+// A video track's fold triangle, in `box`: pointing down when its sound
+// tracks show, right when they're folded away.
+void drawFoldTriangle(QPainter &p, const QRect &box, bool collapsed, const QColor &color)
+{
+    const QPointF c = QRectF(box).center();
+    const QPointF open[3] = {{c.x() - 4, c.y() - 2}, {c.x() + 4, c.y() - 2}, {c.x(), c.y() + 3}};
+    const QPointF closed[3] = {{c.x() - 2, c.y() - 4}, {c.x() + 3, c.y()}, {c.x() - 2, c.y() + 4}};
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawPolygon(collapsed ? closed : open, 3);
+    p.restore();
+}
+
 } // namespace
 
 TimelineWidget::TimelineWidget(QWidget *parent)
@@ -146,6 +163,7 @@ TimelineWidget::TimelineWidget(QWidget *parent)
     m_autoScroll = new QTimer(this);
     m_autoScroll->setInterval(30);
     connect(m_autoScroll, &QTimer::timeout, this, &TimelineWidget::autoScrollTick);
+    layoutRows();
 }
 
 int TimelineWidget::mainTop() const
@@ -153,18 +171,75 @@ int TimelineWidget::mainTop() const
     return kRulerH - m_viewTopPx;
 }
 
-int TimelineWidget::trackTop(int trackIndex) const
+void TimelineWidget::layoutRows()
 {
     // Under the main track, a gap wherever a new group starts (the main
-    // track's own sound is its group).
-    int gaps = 0;
+    // track's own sound is its group). Folded-away sound tracks take no
+    // room; their rows sit at their video track's, out of sight.
+    m_trackY.resize(m_tracks.size());
+    m_shown.resize(m_tracks.size());
+    int y = kMainH + kRowGap;
     auto prev = TrackView::Group::Main;
-    for (int i = 0; i < std::min<int>(trackIndex + 1, m_tracks.size()); ++i) {
-        if (m_tracks[i].group != prev)
-            ++gaps;
-        prev = m_tracks[i].group;
+    int video = -1; // the overlay track the next audio track belongs to
+    for (int i = 0; i < m_tracks.size(); ++i) {
+        const TrackView &t = m_tracks[i];
+        if (t.group != prev)
+            y += kGroupGap;
+        prev = t.group;
+        if (t.video)
+            video = i;
+        const bool own = t.group == TrackView::Group::Main || (t.overlayAudio && video >= 0);
+        const int owner = t.group == TrackView::Group::Main ? -1 : video;
+        m_shown[i] = !(own && isSoundCollapsed(videoTrackIdAt(owner)));
+        if (!m_shown[i]) {
+            m_trackY[i] = owner < 0 ? 0 : m_trackY[owner];
+            continue;
+        }
+        m_trackY[i] = y;
+        y += kTrackH + kRowGap;
     }
-    return mainTop() + kMainH + kRowGap + trackIndex * (kTrackH + kRowGap) + gaps * kGroupGap;
+    m_rowsEndY = y;
+}
+
+bool TimelineWidget::hasOwnSound(int trackIndex) const
+{
+    if (trackIndex < 0)
+        return !m_tracks.isEmpty() && m_tracks.first().group == TrackView::Group::Main;
+    return m_tracks[trackIndex].video && unitEnd(trackIndex) > trackIndex + 1;
+}
+
+QRect TimelineWidget::foldBox(int trackIndex) const
+{
+    const int top = trackIndex < 0 ? mainTop() : trackTop(trackIndex);
+    const int h = trackIndex < 0 ? kMainH : kTrackH;
+    return QRect(2, top + (h - 14) / 2, kNameX - 4, 14);
+}
+
+void TimelineWidget::setSoundCollapsed(int videoTrackId, bool collapsed)
+{
+    if (collapsed == isSoundCollapsed(videoTrackId))
+        return;
+    if (collapsed)
+        m_collapsedSound.insert(videoTrackId);
+    else
+        m_collapsedSound.remove(videoTrackId);
+    layoutRows();
+    rebuildLayout();
+    updateGeometry();
+    update();
+}
+
+void TimelineWidget::toggleSound(int trackIndex)
+{
+    const int id = videoTrackIdAt(trackIndex);
+    const bool collapsed = !isSoundCollapsed(id);
+    setSoundCollapsed(id, collapsed);
+    emit soundCollapsedToggled(id, collapsed);
+}
+
+int TimelineWidget::trackTop(int trackIndex) const
+{
+    return mainTop() + (trackIndex < m_trackY.size() ? m_trackY[trackIndex] : m_rowsEndY);
 }
 
 void TimelineWidget::groupSpan(int index, int *first, int *end) const
@@ -222,6 +297,7 @@ void TimelineWidget::setTracks(const QVector<TrackView> &tracks)
 {
     const bool resized = tracks.size() != m_tracks.size();
     m_tracks = tracks;
+    layoutRows();
     if (m_drag == Drag::AudioMove || m_drag == Drag::AudioTrimIn || m_drag == Drag::AudioTrimOut)
         m_drag = Drag::None; // the model changed under the drag
     rebuildLayout();
@@ -452,6 +528,8 @@ QRect TimelineWidget::trackClipRect(int trackIndex, const TrackClipView &c) cons
 int TimelineWidget::trackAtY(int y) const
 {
     for (int i = 0; i < m_tracks.size(); ++i) {
+        if (!trackShown(i))
+            continue;
         const int top = trackTop(i);
         if (y >= top - kRowGap / 2 && y < top + kTrackH + kRowGap)
             return i;
@@ -728,7 +806,8 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     const QColor rowBg = tc.menuBar;
     p.fillRect(QRect(cLeft, mainTop(), usableW, kMainH), rowBg);
     for (int i = 0; i < m_tracks.size(); ++i)
-        p.fillRect(QRect(cLeft, trackTop(i), usableW, kTrackH), rowBg);
+        if (trackShown(i))
+            p.fillRect(QRect(cLeft, trackTop(i), usableW, kTrackH), rowBg);
 
     // Past the end of the main track: audio there isn't played.
     if (m_extentMs > m_totalMs) {
@@ -857,7 +936,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     };
     for (int t = 0; t < m_tracks.size(); ++t)
         for (const TrackClipView &c : m_tracks[t].clips)
-            if (!(audioDrag && m_dragMoved && c.id == m_dragAudio.id))
+            if (trackShown(t) && !(audioDrag && m_dragMoved && c.id == m_dragAudio.id))
                 drawAudio(t, c, false);
     if (audioDrag && m_dragMoved && m_provTrack >= 0 && m_provTrack < m_tracks.size())
         drawAudio(m_provTrack, m_dragAudio, true);
@@ -914,10 +993,14 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.drawText(mb, Qt::AlignCenter, letter);
     };
     p.fillRect(QRect(0, mainTop(), kHeaderW, kMainH), headerBg);
+    if (hasOwnSound(-1))
+        drawFoldTriangle(p, foldBox(-1), isSoundCollapsed(0), tc.textDim);
     p.setPen(tc.text);
-    p.drawText(QRect(6, mainTop(), kHeaderW - 12, kMainH), Qt::AlignVCenter | Qt::AlignLeft,
-               tr("Video"));
+    p.drawText(QRect(kNameX, mainTop(), kHeaderW - kNameX - 6, kMainH),
+               Qt::AlignVCenter | Qt::AlignLeft, tr("Video"));
     for (int i = 0; i < m_tracks.size(); ++i) {
+        if (!trackShown(i))
+            continue;
         const TrackView &t = m_tracks[i];
         const int top = trackTop(i);
         const bool dragged = m_drag == Drag::TrackMove && m_dragMoved && i == m_dragTrackIndex;
@@ -927,7 +1010,9 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         // A video's own sound is indented under it: the main track's mics,
         // an overlay track's audio track.
         const bool ownAudio = t.overlayAudio || t.group == TrackView::Group::Main;
-        const int indent = ownAudio ? 18 : 6;
+        const int indent = ownAudio ? kOwnSoundX : kNameX;
+        if (hasOwnSound(i))
+            drawFoldTriangle(p, foldBox(i), isSoundCollapsed(t.id), tc.textDim);
         p.setPen(tc.text);
         p.drawText(QRect(indent, top, mb.left() - indent - 2, kTrackH),
                    Qt::AlignVCenter | Qt::AlignLeft,
@@ -966,8 +1051,15 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     const Hit h = hitTest(e->pos());
     switch (h.kind) {
     case Hit::Header:
-        if (h.track < 0) // the main video track: picture only, nothing to toggle
+        if (h.track < 0) { // the main video track: folds its sound tracks away / back
+            if (hasOwnSound(-1))
+                toggleSound(-1);
             return;
+        }
+        if (hasOwnSound(h.track) && foldBox(h.track).contains(e->pos())) {
+            toggleSound(h.track);
+            return;
+        }
         if (muteBox(trackTop(h.track), kTrackH).contains(e->pos())) {
             emit trackMuteToggled(m_tracks[h.track].id, !m_tracks[h.track].muted);
             return;
@@ -1039,6 +1131,10 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *e)
         if (rc.isValid() && (std::abs(e->pos().x() - rc.left()) <= kEdgeGrabPx ||
                              std::abs(e->pos().x() - rc.right()) <= kEdgeGrabPx))
             shape = Qt::SizeHorCursor;
+        else if (h.kind == Hit::Header &&
+                 (h.track < 0 ? hasOwnSound(-1)
+                              : hasOwnSound(h.track) && foldBox(h.track).contains(e->pos())))
+            shape = Qt::PointingHandCursor; // fold its sound tracks
         else if (h.kind == Hit::Header && h.track >= 0 &&
                  !muteBox(trackTop(h.track), kTrackH).contains(e->pos()))
             shape = Qt::OpenHandCursor; // drag to reorder, double-click to rename
@@ -1236,7 +1332,8 @@ void TimelineWidget::mouseDoubleClickEvent(QMouseEvent *e)
 {
     const Hit h = hitTest(e->pos());
     if (e->button() == Qt::LeftButton && h.kind == Hit::Header && h.track >= 0 &&
-        !muteBox(trackTop(h.track), kTrackH).contains(e->pos())) {
+        !muteBox(trackTop(h.track), kTrackH).contains(e->pos()) &&
+        !(hasOwnSound(h.track) && foldBox(h.track).contains(e->pos()))) {
         m_drag = Drag::None;
         startRename(h.track);
         return;
@@ -1283,7 +1380,14 @@ bool TimelineWidget::event(QEvent *e)
     if (e->type() == QEvent::ToolTip) {
         const auto *he = static_cast<QHelpEvent *>(e);
         const Hit h = hitTest(he->pos());
-        if (h.kind == Hit::MainClip && m_rows[h.row].clip.keySourceMs.isEmpty())
+        if (h.kind == Hit::Header &&
+            (h.track < 0 ? hasOwnSound(-1)
+                         : hasOwnSound(h.track) && foldBox(h.track).contains(he->pos())))
+            QToolTip::showText(he->globalPos(),
+                               tr("Click to fold its sound tracks away or show them again. "
+                                  "Folded tracks still play and export."),
+                               this);
+        else if (h.kind == Hit::MainClip && m_rows[h.row].clip.keySourceMs.isEmpty())
             QToolTip::showText(he->globalPos(),
                                tr("No reframe keyframes: this clip exports looking straight "
                                   "forward. Arm reframe authoring and set a key to frame it."),
@@ -1422,6 +1526,17 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         return;
     }
 
+    // A video track with its own sound tracks: fold them away / back.
+    QAction *fold = nullptr;
+    const int foldTrack = h.track;
+    if ((h.kind == Hit::Header || h.kind == Hit::TrackEmpty || h.kind == Hit::MainEmpty) &&
+        hasOwnSound(foldTrack)) {
+        fold = menu.addAction(isSoundCollapsed(videoTrackIdAt(foldTrack))
+                                  ? tr("Show sound tracks")
+                                  : tr("Fold sound tracks away"));
+        menu.addSeparator();
+    }
+
     // On an extra track: files of its kind; elsewhere, both.
     const int trackIndex = h.track;
     const bool onVideo = trackIndex >= 0 && m_tracks[trackIndex].video;
@@ -1469,7 +1584,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
     QAction *chosen = menu.exec(e->globalPos());
     if (!chosen)
         return;
-    if (chosen == addClip)
+    if (chosen == fold)
+        toggleSound(foldTrack);
+    else if (chosen == addClip)
         emit addClipRequested(insertIndexAt(atMs));
     else if (chosen == addFile)
         emit addAudioFileRequested(onAudioGroup ? trackId : 0, std::min(atMs, m_totalMs));

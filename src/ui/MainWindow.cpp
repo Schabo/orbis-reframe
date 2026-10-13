@@ -501,6 +501,20 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     connect(m_timelineWidget, &TimelineWidget::trackRenameRequested, m_timeline,
             &Timeline::setTrackName);
     connect(m_timelineWidget, &TimelineWidget::trackMoved, m_timeline, &Timeline::moveTrack);
+    // Folded sound tracks are a view setting, not part of the project (no
+    // undo, no unsaved change): the main track's are remembered per user,
+    // an overlay track's for this session.
+    m_timelineWidget->setSoundCollapsed(
+        0, QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+               .value(QStringLiteral("timeline/videoSoundFolded"), false)
+               .toBool());
+    connect(m_timelineWidget, &TimelineWidget::soundCollapsedToggled, this,
+            [this](int videoTrackId, bool collapsed) {
+                if (videoTrackId == 0)
+                    QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+                        .setValue(QStringLiteral("timeline/videoSoundFolded"), collapsed);
+                fitTimelineHeight();
+            });
     connect(m_timelineWidget, &TimelineWidget::addClipRequested, this,
             &MainWindow::addClipToTimeline);
     connect(m_timelineWidget, &TimelineWidget::clipFilesDropped, this,
