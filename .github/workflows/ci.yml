@@ -1,14 +1,18 @@
-# Builds and tests every push to main and every pull request on GitHub's
-# runners (free for a public repository), in a clean container of each
-# release target (scripts/targets.sh) -- the same build dependencies and
-# every feature on, as scripts/package.sh. No GPU here: ctest runs offscreen,
-# and the GPU checks stay with scripts/release_test.sh.
+# Builds and tests every push to main and every pull request that changes
+# more than docs, the site or Markdown, on GitHub's runners (free for a public
+# repository), in a clean container of each release target
+# (scripts/targets.sh) -- the same build dependencies and every feature on,
+# as scripts/package.sh. No GPU here: ctest runs offscreen, and the GPU checks
+# stay with gpu.yml and scripts/release_test.sh. Commit messages are checked
+# by commits.yml, for every push and pull request.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore: ["docs/**", "site/**", "**.md"]
   pull_request:
+    paths-ignore: ["docs/**", "site/**", "**.md"]
   workflow_dispatch:
 
 permissions:
@@ -66,28 +70,3 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure
-
-  # Conventional Commits (CONTRIBUTING.md): what the commit-msg hook checks,
-  # for the commits a push or pull request adds.
-  commits:
-    name: Commit messages
-    runs-on: ubuntu-latest
-    container: docker.io/library/debian:testing
-    steps:
-      - name: Install commitizen
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends commitizen git ca-certificates > /dev/null
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Trust the checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: cz check
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          # A new branch or a manual run has no "before": check just HEAD.
-          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
-              BASE="$HEAD~1"
-          fi
-          cz check --rev-range "$BASE..$HEAD"

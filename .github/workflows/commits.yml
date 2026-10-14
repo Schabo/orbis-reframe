@@ -1,0 +1,41 @@
+# Conventional Commits (CONTRIBUTING.md): what the commit-msg hook checks,
+# for the commits a push to main or a pull request adds. Its own workflow so
+# it runs for every change, docs included, while ci.yml skips docs-only ones.
+name: Commit messages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commits-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  commits:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    container: docker.io/library/debian:testing
+    steps:
+      - name: Install commitizen
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends commitizen git ca-certificates > /dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: cz check
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A new branch or a manual run has no "before": check just HEAD.
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
+              BASE="$HEAD~1"
+          fi
+          cz check --rev-range "$BASE..$HEAD"

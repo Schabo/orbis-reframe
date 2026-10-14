@@ -29,11 +29,12 @@ aren't in the repository.
 A pull request should build with `./scripts/build.sh` and pass its tests.
 Say in the description which clips and hardware you tried it on.
 
-GitHub Actions (`.github/workflows/ci.yml`) builds every pull request on
-Debian Testing, Debian 13 and Ubuntu 26.04 with every feature on, runs the
-tests, and checks the commit messages. It has no GPU, so it can't replace
-trying the change on real clips. For contributors from outside the project
-the run starts once a maintainer has approved it.
+GitHub Actions (`.github/workflows/ci.yml`) builds every pull request that
+changes more than docs on Debian Testing, Debian 13 and Ubuntu 26.04 with
+every feature on, and runs the tests. It has no GPU, so it can't replace
+trying the change on real clips. `.github/workflows/commits.yml` checks the
+commit messages of every pull request, docs included. For contributors from
+outside the project these runs start once a maintainer has approved them.
 `.github/workflows/gpu.yml` runs the GPU checks (build, tests and the
 headless GPU tools on a real clip) on the maintainer's machine, for pushes to
 `main` and for pull requests that change more than docs. For a pull request
