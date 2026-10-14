@@ -562,7 +562,8 @@ qint64 Timeline::extraTracksEndMs() const
     return end;
 }
 
-int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, int ownerTrackId)
+int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, int ownerTrackId,
+                       int id)
 {
     Track t;
     t.kind = kind;
@@ -576,7 +577,12 @@ int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, 
         if (t.name.isEmpty())
             t.name = tr("%1 audio").arg(owner->name);
     }
-    t.id = m_nextTrackId++;
+    if (id > 0 && !trackById(id)) {
+        t.id = id;
+        m_nextTrackId = std::max(m_nextTrackId, id + 1);
+    } else {
+        t.id = m_nextTrackId++;
+    }
     if (t.name.isEmpty() && t.role == Track::Role::CameraMic)
         t.name = tr("Camera mic");
     else if (t.name.isEmpty() && t.role == Track::Role::ExternalMic)

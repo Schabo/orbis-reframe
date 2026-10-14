@@ -166,8 +166,11 @@ public slots:
     // overlay track. Sound linked to an overlay clip is put on its track's
     // audio track by the timeline itself, which makes the track when needed;
     // an audio track goes when its last clip is moved or removed. Returns the new track's id.
+    // `id` > 0 gives the track that id instead of a new one (an undo putting
+    // a track back as it was), unless a track has it already; ids handed out
+    // later stay above it.
     int addTrack(Track::Kind kind, const QString &name = QString(),
-                 Track::Role role = Track::Role::Free, int ownerTrackId = 0);
+                 Track::Role role = Track::Role::Free, int ownerTrackId = 0, int id = 0);
     bool removeTrack(int trackId); // and its clips; an overlay track's audio track too
     // Rename (trimmed; an empty name is refused). Returns true if it changed.
     // An overlay's audio track still called "<overlay> audio" follows it.

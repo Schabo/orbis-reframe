@@ -864,6 +864,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             tracks.back()["role"] = "overlayAudio";
             tracks.back()["owner"] = m_timeline->trackIndexOfId(t.ownerTrackId);
         }
+        // An undo snapshot keeps the track's id, so whatever the view keys by
+        // it (a folded overlay track) survives the undo; not in the file.
+        if (!projectDir)
+            tracks.back()["id"] = t.id;
     }
 
     json media = json::array();
@@ -1008,6 +1012,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 t.name = QString::fromStdString(jt.value("name", std::string()));
                 t.gainDb = jt.value("gainDb", 0.0);
                 t.muted = jt.value("muted", false);
+                t.id = projectDir ? 0 : jt.value("id", 0); // see buildDocument
                 const std::string role = jt.value("role", std::string());
                 if (t.kind == Track::Kind::Audio && role == "cameraMic")
                     t.role = Track::Role::CameraMic;
@@ -1114,9 +1119,9 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                                 parsedTracks[owner].kind == Track::Kind::Video;
                 trackIds[i] = m_timeline->addTrack(t.kind, t.name,
                                                    ok ? t.role : Track::Role::Free,
-                                                   ok ? trackIds[owner] : 0);
+                                                   ok ? trackIds[owner] : 0, t.id);
             } else {
-                trackIds[i] = m_timeline->addTrack(t.kind, t.name, t.role);
+                trackIds[i] = m_timeline->addTrack(t.kind, t.name, t.role, 0, t.id);
             }
             m_timeline->setTrackAudio(trackIds[i], t.gainDb, t.muted);
             if (t.kind == Track::Kind::Video)

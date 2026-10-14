@@ -1569,6 +1569,33 @@ void testProjectTracksJson()
         p.redo();
         CHECK(p.timeline()->trackCount() == 1 && p.timeline()->trackAt(0).clips.size() == 1);
     }
+
+    // Undo / redo keep the tracks' ids (what the view keys by them, a folded
+    // overlay track, survives); a new track gets an id none had; the saved
+    // file has no ids.
+    {
+        Project p;
+        p.timeline()->appendClip(video, 10000, 30.0);
+        const int o = p.timeline()->addTrack(Track::Kind::Video);
+        const int a = p.timeline()->addTrack(Track::Kind::Audio);
+        p.undo(); // settle
+        p.redo();
+        CHECK(p.timeline()->trackById(o) && p.timeline()->trackById(a));
+        const int b = p.timeline()->addTrack(Track::Kind::Audio);
+        p.undo();
+        CHECK(p.timeline()->trackCount() == 2 && !p.timeline()->trackById(b));
+        CHECK(p.timeline()->trackById(o) && p.timeline()->trackById(a));
+        const int c = p.timeline()->addTrack(Track::Kind::Audio);
+        CHECK(c != o && c != a && c != b);
+        CHECK(p.save(projFile));
+        QFile f(projFile);
+        CHECK(f.open(QIODevice::ReadOnly));
+        const QJsonArray tracks = QJsonDocument::fromJson(f.readAll())
+                                      .object()["timeline"].toObject()["tracks"].toArray();
+        CHECK(tracks.size() == 3);
+        for (const QJsonValue &jt : tracks)
+            CHECK(!jt.toObject().contains("id"));
+    }
 }
 
 

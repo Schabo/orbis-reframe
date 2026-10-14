@@ -543,13 +543,9 @@ void testAudioTrack(const Ctx &c)
         CHECK(t->clips.first().trimOutMs - t->clips.first().trimInMs == 1500);
     undo->trigger(); // the delete
     undo->trigger(); // the split
-    // Undo rebuilds the tracks with new ids.
-    const int after = trackIdWhere(c, [&c](const Track &t) {
-        return t.group() == Track::Group::Audio && !t.clips.isEmpty() &&
-               t.clips.first().sourcePath == c.wav;
-    });
-    t = track(c, after);
-    CHECK(t && t->clips.size() == 1);
+    // Undo rebuilds the tracks, with the ids they had.
+    t = track(c, id);
+    CHECK(t && t->clips.size() == 1 && t->clips.first().sourcePath == c.wav);
     key(c, Qt::Key_Escape);
 }
 
@@ -613,8 +609,25 @@ void testOverlayLayers(const Ctx &c)
     forward->click();
     CHECK(overlayTracks() == (QList<int>{before.last(), before.first()}));
     CHECK(!forward->isEnabled() && backward->isEnabled());
+    // A folded overlay track stays folded through an undo, which rebuilds
+    // the tracks.
+    c.timelineWidget->setSoundCollapsed(before.first(), true);
+    settle();
     backward->click();
     CHECK(overlayTracks() == before);
+    QAction *undo = action(c, "undoAction");
+    if (undo)
+        undo->trigger();
+    // (Asked by the tracks there now: a rebuild with new ids left the old
+    // ones folded, matching no track.)
+    CHECK(overlayTracks() == (QList<int>{before.last(), before.first()}));
+    CHECK(c.timelineWidget->isSoundCollapsed(overlayTracks().last()));
+    if (QAction *redo = action(c, "redoAction"))
+        redo->trigger();
+    CHECK(overlayTracks() == before);
+    CHECK(c.timelineWidget->isSoundCollapsed(overlayTracks().first()));
+    CHECK(!c.timelineWidget->isSoundCollapsed(overlayTracks().last()));
+    c.timelineWidget->setSoundCollapsed(before.first(), false);
     key(c, Qt::Key_Escape);
 }
 
