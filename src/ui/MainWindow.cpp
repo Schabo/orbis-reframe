@@ -2531,10 +2531,12 @@ void MainWindow::setupKeyboardShortcuts()
     manualAction->setObjectName(QStringLiteral("userManualAction"));
     QAction *keysAction =
         helpMenu->addAction(tr("&Keyboard shortcuts"), this, &MainWindow::showShortcutHelp);
+    keysAction->setObjectName(QStringLiteral("shortcutHelpAction"));
     keysAction->setShortcut(QKeySequence(Qt::Key_F1));
     helpMenu->addSeparator();
-    helpMenu->addAction(tr("&About orbis-reframe"), this,
-                        [this] { showAboutDialog(this, m_viewport); });
+    QAction *aboutAction = helpMenu->addAction(tr("&About orbis-reframe"), this,
+                                               [this] { showAboutDialog(this, m_viewport); });
+    aboutAction->setObjectName(QStringLiteral("aboutAction"));
 }
 
 void MainWindow::showShortcutHelp()

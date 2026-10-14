@@ -53,23 +53,27 @@ ColourPanel::ColourPanel(QWidget *parent)
 {
     SliderRow exposure = makeSliderRow(this, kMinExposureSteps, kMaxExposureSteps, 1, 5);
     m_exposure = exposure.slider;
+    m_exposure->setObjectName(QStringLiteral("colourExposure"));
     m_exposureValue = exposure.value;
     m_exposure->setToolTip(tr("Brighter or darker, in stops: +1 doubles the light."));
     form()->addRow(tr("Exposure"), exposure.row);
 
     SliderRow contrast = makeSliderRow(this, kMinPercent, kMaxPercent, 1, 10);
     m_contrast = contrast.slider;
+    m_contrast->setObjectName(QStringLiteral("colourContrast"));
     m_contrastValue = contrast.value;
     form()->addRow(tr("Contrast"), contrast.row);
 
     SliderRow saturation = makeSliderRow(this, kMinPercent, kMaxPercent, 1, 10);
     m_saturation = saturation.slider;
+    m_saturation->setObjectName(QStringLiteral("colourSaturation"));
     m_saturationValue = saturation.value;
     saturation.slider->setToolTip(tr("How strong the colours are. -100 % is black and white."));
     form()->addRow(tr("Saturation"), saturation.row);
 
     SliderRow temperature = makeSliderRow(this, kMinPercent, kMaxPercent, 1, 10);
     m_temperature = temperature.slider;
+    m_temperature->setObjectName(QStringLiteral("colourTemperature"));
     m_temperatureValue = temperature.value;
     temperature.slider->setToolTip(tr("Warmer (+, more orange) or cooler (-, more blue)."));
     form()->addRow(tr("Temperature"), temperature.row);
@@ -78,10 +82,13 @@ ColourPanel::ColourPanel(QWidget *parent)
     auto *buttons = new QHBoxLayout(buttonRow);
     buttons->setContentsMargins(0, 0, 0, 0);
     m_reset = new QPushButton(tr("Reset"), buttonRow);
+    m_reset->setObjectName(QStringLiteral("colourReset"));
     m_reset->setToolTip(tr("Set all four back to 0: the clip as the camera recorded it."));
     auto *copy = new QPushButton(tr("Copy grade"), buttonRow);
+    copy->setObjectName(QStringLiteral("colourCopy"));
     copy->setToolTip(tr("Copy this clip's four settings, to paste onto other clips."));
     m_paste = new QPushButton(tr("Paste grade"), buttonRow);
+    m_paste->setObjectName(QStringLiteral("colourPaste"));
     m_paste->setToolTip(tr("Give this clip the copied settings. To paste onto every clip, "
                            "right-click a clip on the timeline."));
     m_paste->setEnabled(false);

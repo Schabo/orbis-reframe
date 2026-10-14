@@ -160,6 +160,7 @@ public:
     // Top to bottom, group by group (TrackView::Group).
     void setTracks(const QVector<TrackView> &tracks);
     void setPlayhead(qint64 timelineMs);
+    qint64 playhead() const { return m_playheadMs; }
     void setActiveClip(int clipId); // -1 = none
     void setSelectedTrackClip(int clipId); // -1 = none; does not emit
     void setCanPasteGrade(bool canPaste);  // a colour grade has been copied

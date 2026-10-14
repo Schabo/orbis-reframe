@@ -17,6 +17,7 @@
 #include "DataPaths.h"
 #endif
 #include "WindReducer.h"
+#include "support/TestMedia.h"
 
 #include <atomic>
 #include <cmath>
@@ -24,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <numbers>
 #include <random>
@@ -47,30 +49,9 @@ constexpr int kCh = 2;
 
 // A 16-bit stereo WAV at 48 kHz. `sample(i)` gives frame i's value (both
 // channels).
-template <typename F>
-void writeWav(const std::string& path, int frames, F sample)
+void writeWav(const std::string& path, int frames, const std::function<double(int)>& sample)
 {
-    std::ofstream f(path, std::ios::binary);
-    auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
-    auto u16 = [&](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
-    const uint32_t dataBytes = static_cast<uint32_t>(frames) * kCh * 2;
-    f.write("RIFF", 4);
-    u32(36 + dataBytes);
-    f.write("WAVEfmt ", 8);
-    u32(16);
-    u16(1);
-    u16(kCh);
-    u32(kRate);
-    u32(kRate * kCh * 2);
-    u16(kCh * 2);
-    u16(16);
-    f.write("data", 4);
-    u32(dataBytes);
-    for (int i = 0; i < frames; ++i) {
-        const int16_t s = static_cast<int16_t>(std::lround(sample(i) * 32768.0));
-        for (int c = 0; c < kCh; ++c)
-            f.write(reinterpret_cast<const char*>(&s), 2);
-    }
+    testmedia::writeWav(path, frames, sample);
 }
 
 bool near(float a, float b, float tol = 1e-4f) { return std::abs(a - b) <= tol; }

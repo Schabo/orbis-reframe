@@ -626,6 +626,14 @@ else()
     message(STATUS "Skipping orbis-reframe and stitch — need the FFmpeg dev packages")
 endif()
 
+# --- tests/support/test_media: WAVs and short videos the tests write
+# themselves (FFmpeg's MPEG-4 encoder), so no test needs footage.
+if(FFMPEG_FOUND)
+    add_library(test_media STATIC tests/support/TestMedia.cpp tests/support/TestMedia.h)
+    target_include_directories(test_media PUBLIC tests)
+    target_link_libraries(test_media PRIVATE PkgConfig::FFMPEG)
+endif()
+
 # --- tests/core_model_test: the src/core edit model (ClipItem + Timeline) has
 # no FFmpeg / Vulkan dependency, so this builds regardless of the block
 # above. Run with `ctest` from the build dir (or the binary directly).
@@ -669,7 +677,7 @@ if(Qt6Test_FOUND)
     if(TARGET orbis_app)
         add_executable(main_window_test tests/main_window_test.cpp resources/resources.qrc)
         set_target_properties(main_window_test PROPERTIES AUTOMOC ON AUTORCC ON)
-        target_link_libraries(main_window_test PRIVATE orbis_app Qt6::Test)
+        target_link_libraries(main_window_test PRIVATE orbis_app test_media Qt6::Test)
         add_test(NAME main_window_test COMMAND main_window_test)
     endif()
 
@@ -718,7 +726,7 @@ endif()
 # insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.
 if(TARGET insv_demux)
     add_executable(audio_mix_test tests/audio_mix_test.cpp)
-    target_link_libraries(audio_mix_test PRIVATE insv_demux orbis_paths)
+    target_link_libraries(audio_mix_test PRIVATE insv_demux orbis_paths test_media)
     add_test(NAME audio_mix_test COMMAND audio_mix_test)
     # The voice-mode checks need the model even when the source-tree fallback
     # is off (package builds, scripts/package.sh).
@@ -757,7 +765,7 @@ endif()
 if(TARGET reframe_flatten)
     add_executable(inset_test tests/inset_test.cpp)
     target_include_directories(inset_test PRIVATE src/core)
-    target_link_libraries(inset_test PRIVATE reframe_flatten PkgConfig::FFMPEG)
+    target_link_libraries(inset_test PRIVATE reframe_flatten test_media)
     add_test(NAME inset_test COMMAND inset_test)
 endif()
 

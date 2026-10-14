@@ -6,12 +6,7 @@
 #include "FlatVideoReader.h"
 #include "InsetCompositor.h"
 #include "ReframeRenderer.h"
-
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/display.h>
-}
+#include "support/TestMedia.h"
 
 #include <algorithm>
 #include <array>
@@ -42,75 +37,16 @@ int lumaFor(int i) { return 20 + i * 4; }
 // right half bright (to see which way a rotation went) instead of solid.
 bool writeVideo(const std::string &path, int rotationCw, bool split)
 {
-    AVFormatContext *fmt = nullptr;
-    avformat_alloc_output_context2(&fmt, nullptr, nullptr, path.c_str());
-    if (!fmt)
-        return false;
-    const AVCodec *enc = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
-    if (!enc)
-        return false;
-    AVCodecContext *ctx = avcodec_alloc_context3(enc);
-    ctx->width = kW;
-    ctx->height = kH;
-    ctx->time_base = AVRational{1, kFps};
-    ctx->framerate = AVRational{kFps, 1};
-    ctx->pix_fmt = AV_PIX_FMT_YUV420P;
-    ctx->gop_size = 10;
-    ctx->max_b_frames = 0;
-    ctx->flags |= AV_CODEC_FLAG_QSCALE;
-    ctx->global_quality = FF_QP2LAMBDA * 2;
-    if (fmt->oformat->flags & AVFMT_GLOBALHEADER)
-        ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    if (avcodec_open2(ctx, enc, nullptr) < 0)
-        return false;
-    AVStream *st = avformat_new_stream(fmt, nullptr);
-    avcodec_parameters_from_context(st->codecpar, ctx);
-    st->time_base = ctx->time_base;
-    if (rotationCw) {
-        AVPacketSideData *sd = av_packet_side_data_new(&st->codecpar->coded_side_data,
-                                                       &st->codecpar->nb_coded_side_data,
-                                                       AV_PKT_DATA_DISPLAYMATRIX, 9 * 4, 0);
-        av_display_rotation_set(reinterpret_cast<int32_t *>(sd->data), rotationCw); // clockwise
-    }
-    if (avio_open(&fmt->pb, path.c_str(), AVIO_FLAG_WRITE) < 0 ||
-        avformat_write_header(fmt, nullptr) < 0)
-        return false;
-    AVFrame *f = av_frame_alloc();
-    f->format = ctx->pix_fmt;
-    f->width = kW;
-    f->height = kH;
-    av_frame_get_buffer(f, 0);
-    AVPacket *pkt = av_packet_alloc();
-    auto drain = [&](AVFrame *in) {
-        avcodec_send_frame(ctx, in);
-        while (avcodec_receive_packet(ctx, pkt) == 0) {
-            av_packet_rescale_ts(pkt, ctx->time_base, st->time_base);
-            pkt->stream_index = st->index;
-            av_interleaved_write_frame(fmt, pkt);
-        }
+    testmedia::VideoSpec spec;
+    spec.width = kW;
+    spec.height = kH;
+    spec.fps = kFps;
+    spec.frames = kFrames;
+    spec.rotationCw = rotationCw;
+    spec.luma = [split](int i, int x, int) {
+        return uint8_t(split ? (x < kW / 2 ? 40 : 220) : lumaFor(i));
     };
-    for (int i = 0; i < kFrames; ++i) {
-        av_frame_make_writable(f);
-        for (int y = 0; y < kH; ++y)
-            for (int x = 0; x < kW; ++x)
-                f->data[0][y * f->linesize[0] + x] =
-                    uint8_t(split ? (x < kW / 2 ? 40 : 220) : lumaFor(i));
-        for (int y = 0; y < kH / 2; ++y)
-            for (int x = 0; x < kW / 2; ++x) {
-                f->data[1][y * f->linesize[1] + x] = 128;
-                f->data[2][y * f->linesize[2] + x] = 128;
-            }
-        f->pts = i;
-        drain(f);
-    }
-    drain(nullptr);
-    av_write_trailer(fmt);
-    av_packet_free(&pkt);
-    av_frame_free(&f);
-    avcodec_free_context(&ctx);
-    avio_closep(&fmt->pb);
-    avformat_free_context(fmt);
-    return true;
+    return testmedia::writeVideo(path, spec);
 }
 
 // Which frame a decoded solid picture is, from its (full-range RGB) grey.
