@@ -420,6 +420,11 @@ void PlaybackController::touchSourceLru(const QString &path)
     }
 }
 
+std::unique_ptr<stitch::IStitchSource> PlaybackController::makeSource() const
+{
+    return m_makeSource ? m_makeSource() : stitch::MakeStitchSource();
+}
+
 std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const QString &path,
                                                                          QString *err)
 {
@@ -429,7 +434,7 @@ std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const Q
         return it->second;
     }
 
-    std::shared_ptr<stitch::IStitchSource> src = stitch::MakeStitchSource();
+    std::shared_ptr<stitch::IStitchSource> src = makeSource();
     if (!src->Open(path.toStdString(), m_decPreviewConfig)) {
         if (err)
             *err = QString::fromStdString(src->GetLastError());
@@ -628,7 +633,7 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
                          [this, job, viewportLens, clipId, handOver, inMs = np.seg.inMs,
                           config = m_decPreviewConfig] {
                              if (!job->src) {
-                                 auto src = stitch::MakeStitchSource();
+                                 auto src = makeSource();
                                  if (!src->Open(job->path.toStdString(), config))
                                      return; // the boundary opens it again and reports why
                                  applySourceSettings(*src, job->path, clipId, handOver);

@@ -8,7 +8,8 @@
 
 #include "ClipThumbnail.h"
 
-std::optional<MediaItem> probeMedia(const QString &path, QString *error)
+std::optional<MediaItem> probeMedia(const QString &path, QString *error,
+                                    const ClipProbeFn &probeClip)
 {
     const auto kind = media::kindForPath(path);
     if (!kind) {
@@ -24,7 +25,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error)
     switch (*kind) {
     case MediaItem::Kind::Clip360: {
         stitch::ClipProbe probe;
-        ok = stitch::ProbeClip(path.toStdString(), probe, err);
+        ok = probeClip ? probeClip(path.toStdString(), probe, err)
+                       : stitch::ProbeClip(path.toStdString(), probe, err);
         m.durationMs = probe.duration_ms;
         m.width = probe.width;
         m.height = probe.height;

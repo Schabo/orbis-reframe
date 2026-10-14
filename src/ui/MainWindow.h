@@ -27,6 +27,7 @@
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
 #include "SubjectTrackJob.h"          // subjecttrack::Result
 #endif
+#include "ClipBackend.h"              // ClipBackend
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
@@ -78,7 +79,12 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent = nullptr);
+    // No Vulkan instance (tests): the viewport is created but never shown,
+    // so it keeps the view's state (pose, marker, frames handed to it)
+    // without rendering; nothing else needs a GPU until a clip is stitched
+    // through `clipBackend`.
+    explicit MainWindow(QVulkanInstance *vulkanInstance,
+                        ClipBackend clipBackend = ClipBackend::real(), QWidget *parent = nullptr);
     ~MainWindow() override;
 
     EquirectViewportWindow *viewport() const { return m_viewport; }
@@ -467,7 +473,10 @@ private:
     QActionGroup *m_previewQuality = nullptr; // View menu
     QActionGroup *m_previewSize = nullptr;
 
+    ClipBackend m_clipBackend;
     EquirectViewportWindow *m_viewport = nullptr;
+    // Without Vulkan: m_viewport, not in a window container, so owned here.
+    std::unique_ptr<EquirectViewportWindow> m_unshownViewport;
     TimelineWidget *m_timelineWidget = nullptr;
     PlayerBar *m_playerBar = nullptr; // under the viewport
     EditToolbar *m_editToolbar = nullptr;

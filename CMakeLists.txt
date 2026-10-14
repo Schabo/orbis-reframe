@@ -374,10 +374,13 @@ if(FFMPEG_FOUND)
     target_include_directories(reframe_flatten PUBLIC src/export src/core)
     target_link_libraries(reframe_flatten PUBLIC PkgConfig::FFMPEG Threads::Threads)
 
-    add_executable(orbis-reframe
-        src/ui/main.cpp
+    # --- orbis_app: the whole app but main() -- the executable below, and
+    # tests/main_window_test, which builds a MainWindow without a GPU.
+    add_library(orbis_app STATIC
         src/ui/MainWindow.cpp
         src/ui/MainWindow.h
+        src/ui/ClipBackend.cpp
+        src/ui/ClipBackend.h
         src/ui/PlaybackController.cpp
         src/ui/PlaybackController.h
         src/ui/InsetFeed.cpp
@@ -424,7 +427,6 @@ if(FFMPEG_FOUND)
         src/ui/PlateScanCache.h
         src/ui/panels/MediaInfoPanel.cpp
         src/ui/panels/MediaInfoPanel.h
-        resources/resources.qrc
         src/render/EquirectViewportWindow.cpp
         src/render/EquirectViewportWindow.h
         src/render/FrameStats.h
@@ -447,21 +449,28 @@ if(FFMPEG_FOUND)
         src/ui/Theme.cpp
         src/ui/Theme.h
     )
-    set_target_properties(orbis-reframe PROPERTIES AUTOMOC ON AUTORCC ON)
+    set_target_properties(orbis_app PROPERTIES AUTOMOC ON)
+    target_include_directories(orbis_app PUBLIC src/ui)
     # Audio playback needs Qt6::Multimedia, checked
     # optional above like FFmpeg/OpenCV -- orbis-reframe still builds without
     # it, just silently (ORBIS_REFRAME_HAVE_AUDIO unset), if the dev package
     # isn't installed.
     if(Qt6Multimedia_FOUND)
-        target_sources(orbis-reframe PRIVATE src/ui/AudioPlayer.cpp src/ui/AudioPlayer.h)
-        target_link_libraries(orbis-reframe PRIVATE Qt6::Multimedia)
-        target_compile_definitions(orbis-reframe PRIVATE ORBIS_REFRAME_HAVE_AUDIO)
+        target_sources(orbis_app PRIVATE src/ui/AudioPlayer.cpp src/ui/AudioPlayer.h)
+        target_link_libraries(orbis_app PUBLIC Qt6::Multimedia)
+        target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_AUDIO)
     endif()
     # reframe_flatten pulls system FFmpeg into orbis-reframe for the export's
     # decode/reproject/encode half.
-    target_link_libraries(orbis-reframe PRIVATE
+    target_link_libraries(orbis_app PUBLIC
         Qt6::Widgets Qt6::Gui Vulkan::Vulkan orbis_core stitch reframe_flatten insv
         privacy_data render_shaders orbis_paths orbis_version)
+
+    # The resources go into each executable: a static library's resource
+    # initializer would be dropped by the linker.
+    add_executable(orbis-reframe src/ui/main.cpp resources/resources.qrc)
+    set_target_properties(orbis-reframe PROPERTIES AUTOMOC ON AUTORCC ON)
+    target_link_libraries(orbis-reframe PRIVATE orbis_app)
 
     # Installed layout -- the same under /usr (.deb)
     # and in the tarball (cmake/Packaging.cmake): bin/orbis-reframe,
@@ -547,15 +556,15 @@ if(FFMPEG_FOUND)
             target_include_directories(plate_scan PRIVATE src/insv src/stitch)
             target_link_libraries(plate_scan PRIVATE stitch privacy_scan)
 
-            target_sources(orbis-reframe PRIVATE src/ui/PlateScanJob.cpp src/ui/PlateScanJob.h
+            target_sources(orbis_app PRIVATE src/ui/PlateScanJob.cpp src/ui/PlateScanJob.h
                 src/ui/PlateJobController.cpp src/ui/PlateJobController.h)
             # ncnn isn't in Debian: installs ship it next to the app, in
             # lib/orbis-reframe/ (orbis-reframe's INSTALL_RPATH, below).
             install(IMPORTED_RUNTIME_ARTIFACTS ncnn LIBRARY DESTINATION lib/orbis-reframe)
             install(FILES packaging/licenses/ncnn-LICENSE.txt
                 DESTINATION share/doc/orbis-reframe/licenses)
-            target_link_libraries(orbis-reframe PRIVATE privacy_scan)
-            target_compile_definitions(orbis-reframe PRIVATE ORBIS_REFRAME_HAVE_PLATE_SCAN)
+            target_link_libraries(orbis_app PUBLIC privacy_scan)
+            target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_PLATE_SCAN)
         else()
             message(STATUS "ncnn not found (scripts/fetch_ncnn.sh, or NCNN_ROOT=<unpacked ncnn release>)"
                 " -- no plate scan")
@@ -598,10 +607,10 @@ if(FFMPEG_FOUND)
             target_link_libraries(track_subject PRIVATE stitch subject_track reframe_flatten
                 opencv_core opencv_imgproc opencv_imgcodecs)
 
-            target_sources(orbis-reframe PRIVATE src/ui/SubjectTrackJob.cpp src/ui/SubjectTrackJob.h
+            target_sources(orbis_app PRIVATE src/ui/SubjectTrackJob.cpp src/ui/SubjectTrackJob.h
                 src/ui/SubjectTrackController.cpp src/ui/SubjectTrackController.h)
-            target_link_libraries(orbis-reframe PRIVATE subject_track)
-            target_compile_definitions(orbis-reframe PRIVATE ORBIS_REFRAME_HAVE_TRACKING)
+            target_link_libraries(orbis_app PUBLIC subject_track)
+            target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_TRACKING)
         else()
             message(STATUS "OpenCV tracking/dnn/imgcodecs modules not found -- no subject tracking"
                 " (libopencv-contrib-dev)")
@@ -609,8 +618,8 @@ if(FFMPEG_FOUND)
 
         # Per-clip gyro sync fine-tune in the app; without
         # OpenCV the app keeps the camera's timing.
-        target_link_libraries(orbis-reframe PRIVATE clip_sync)
-        target_compile_definitions(orbis-reframe PRIVATE ORBIS_REFRAME_HAVE_CLIP_SYNC)
+        target_link_libraries(orbis_app PUBLIC clip_sync)
+        target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_CLIP_SYNC)
     endif()
 
 else()
@@ -654,6 +663,15 @@ if(Qt6Test_FOUND)
     target_include_directories(project_library_test PRIVATE src/ui)
     target_link_libraries(project_library_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
     add_test(NAME project_library_test COMMAND project_library_test)
+
+    # The whole main window offscreen, without a GPU: no Vulkan instance and
+    # stand-in clips (ClipBackend). Needs the app (FFmpeg).
+    if(TARGET orbis_app)
+        add_executable(main_window_test tests/main_window_test.cpp resources/resources.qrc)
+        set_target_properties(main_window_test PROPERTIES AUTOMOC ON AUTORCC ON)
+        target_link_libraries(main_window_test PRIVATE orbis_app Qt6::Test)
+        add_test(NAME main_window_test COMMAND main_window_test)
+    endif()
 
     # The left sidebar and its Media tab (the media pool), found by
     # objectName (no GPU, no FFmpeg: no thumbnails).

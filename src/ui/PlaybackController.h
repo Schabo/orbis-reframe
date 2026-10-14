@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <future>
 #include <map>
 #include <memory>
@@ -72,6 +73,10 @@ public:
 
     // Set once, before the first setTimeline(). Not owned.
     void setViewport(EquirectViewportWindow *viewport) { m_viewport = viewport; }
+    // What opens a clip's stitch source (ClipBackend::makeSource); the
+    // default is stitch::MakeStitchSource. Set before the first clip plays.
+    using SourceFactory = std::function<std::unique_ptr<stitch::IStitchSource>()>;
+    void setSourceFactory(SourceFactory factory) { m_makeSource = std::move(factory); }
 
     // One clip on the timeline: a source file and the [in, out) source-time
     // window to play from it. MainWindow builds these from the Timeline.
@@ -231,6 +236,8 @@ private:
     // Returns the open source for `path` (from the small cache, or freshly
     // opened). nullptr + *err set on failure.
     std::shared_ptr<stitch::IStitchSource> acquireSource(const QString &path, QString *err);
+    // A new, unopened stitch source: m_makeSource's, or the real one. Any thread.
+    std::unique_ptr<stitch::IStitchSource> makeSource() const;
     // Make segment `index` the one being decoded, opening its source if the
     // path changed. Prunes any other cached source. false (openFailed emitted)
     // on open failure.
@@ -305,6 +312,7 @@ private:
     // Preview-stitch config the decoder opens sources with. Updated from
     // m_pendingPreviewConfig when m_previewConfigDirty is seen.
     stitch::PreviewStitchConfig m_decPreviewConfig;
+    SourceFactory m_makeSource;
     int m_decSegIndex = -1;
     qint64 m_decLastSourceMs = -1; // source time of the last frame read; -1 after a seek
     std::map<QString, std::shared_ptr<stitch::IStitchSource>> m_srcCache;

@@ -56,10 +56,9 @@
 #include <limits>
 #include <cstdio>
 
-#include <InsvAudioDemux.h> // insv::InsvAudioDemux::countAudioStreams
+#include <InsvAudioDemux.h> // insv::InsvAudioDemux (audio files)
 #include <InsvTrailer.h>   // insv::ReadInsvTelemetry
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
-#include <ProbeClip.h>     // stitch::ProbeClip
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader::probe (overlays)
 
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
@@ -108,8 +107,8 @@
 #include "../core/Version.h"
 #include "../render/EquirectViewportWindow.h"
 
-MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend, QWidget *parent)
+    : QMainWindow(parent), m_clipBackend(std::move(clipBackend))
 {
     setWindowTitle(QStringLiteral("orbis-reframe"));
 
@@ -134,7 +133,16 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     viewportColors();
     connect(theme::notifier(), &theme::Notifier::changed, this, viewportColors);
 
-    QWidget *viewportContainer = QWidget::createWindowContainer(m_viewport, this);
+    // Without Vulkan (tests) the viewport isn't shown -- it would only warn
+    // that it can't start -- and a blank widget holds its place.
+    QWidget *viewportContainer = nullptr;
+    if (vulkanInstance) {
+        viewportContainer = QWidget::createWindowContainer(m_viewport, this);
+    } else {
+        m_unshownViewport.reset(m_viewport);
+        viewportContainer = new QWidget(this);
+    }
+    viewportContainer->setObjectName(QStringLiteral("viewport"));
     viewportContainer->setMinimumSize(320, 160);
     viewportContainer->setFocusPolicy(Qt::StrongFocus);
     qApp->installEventFilter(this); // see eventFilter(): release text fields
@@ -314,6 +322,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, QWidget *parent)
     // below.
     m_controller = new PlaybackController;
     m_controller->setViewport(m_viewport);
+    m_controller->setSourceFactory(m_clipBackend.makeSource);
     m_controller->setStabilizationProvider(
         [shared = m_stabShared](int clipId, qint64 sourceMs, float m[9]) {
             std::lock_guard<std::mutex> lk(shared->mx);
@@ -1125,6 +1134,7 @@ MainWindow::~MainWindow()
 #endif
     m_playbackThread->quit();
     m_playbackThread->wait();
+    m_unshownViewport.reset(); // its users are gone
 }
 
 namespace {
@@ -1292,7 +1302,8 @@ double MainWindow::syncAdjustFor(const QString &clipPath) const
 void MainWindow::maybeMeasureSync(const QString &clipPath)
 {
 #ifdef ORBIS_REFRAME_HAVE_CLIP_SYNC
-    if (clipPath.isEmpty() || m_syncThread || !std::isnan(syncAdjustFor(clipPath)) ||
+    if (!m_clipBackend.measure || clipPath.isEmpty() || m_syncThread ||
+        !std::isnan(syncAdjustFor(clipPath)) ||
         m_syncFailed.contains(clipPath))
         return;
     const ClipItem *clip = nullptr;
@@ -1360,7 +1371,8 @@ void MainWindow::pushSeamAdjust()
 void MainWindow::maybeMeasureSeam(const QString &clipPath)
 {
     std::array<double, 3> deg;
-    if (clipPath.isEmpty() || m_seamThread || seamAdjustFor(clipPath, deg) ||
+    if (!m_clipBackend.measure || clipPath.isEmpty() || m_seamThread ||
+        seamAdjustFor(clipPath, deg) ||
         m_seamFailed.contains(clipPath))
         return;
     const ClipItem *clip = nullptr;
@@ -1613,7 +1625,7 @@ int MainWindow::audioStreamCount(const QString &path)
     auto it = m_audioTrackCounts.constFind(path);
     if (it == m_audioTrackCounts.constEnd())
         it = m_audioTrackCounts.insert(
-            path, insv::InsvAudioDemux::countAudioStreams(path.toStdString()));
+            path, m_clipBackend.audioStreamCount(path.toStdString()));
     return *it;
 }
 
@@ -2939,7 +2951,7 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
     for (const QString &path : paths) {
         stitch::ClipProbe probe;
         std::string probeErr;
-        if (!stitch::ProbeClip(path.toStdString(), probe, probeErr)) {
+        if (!m_clipBackend.probe(path.toStdString(), probe, probeErr)) {
             failed << (probeErr.empty() ? tr("Unrecognised file: %1").arg(path)
                                         : QString::fromStdString(probeErr));
             continue;
@@ -3028,9 +3040,9 @@ void MainWindow::importMedia(const QStringList &paths)
     QPointer<MainWindow> self(this);
     const int session = m_projectSession;
     for (const QString &file : files) {
-        pool->start([self, session, file] {
+        pool->start([self, session, file, probe = m_clipBackend.probe] {
             QString error;
-            const std::optional<MediaItem> item = probeMedia(file, &error);
+            const std::optional<MediaItem> item = probeMedia(file, &error, probe);
             QMetaObject::invokeMethod(
                 qApp,
                 [self, session, file, item, error] {
@@ -3121,9 +3133,9 @@ void MainWindow::locateMedia(const QString &path)
     // The same file, moved or renamed: same kind, same length (and size for
     // video). Anything else would leave the clips' trims and keys pointing
     // at the wrong frames.
-    const auto probeSame = [](const MediaItem &was, const QString &file, QString *why) {
+    const auto probeSame = [this](const MediaItem &was, const QString &file, QString *why) {
         QString error;
-        std::optional<MediaItem> m = probeMedia(file, &error);
+        std::optional<MediaItem> m = probeMedia(file, &error, m_clipBackend.probe);
         if (!m) {
             *why = tr("It can't be read: %1").arg(error);
             return m;
@@ -3261,7 +3273,7 @@ void MainWindow::openClip(const QString &clipPath)
 {
     stitch::ClipProbe probe;
     std::string probeErr;
-    if (!stitch::ProbeClip(clipPath.toStdString(), probe, probeErr)) {
+    if (!m_clipBackend.probe(clipPath.toStdString(), probe, probeErr)) {
         QMessageBox::warning(this, tr("Could not open clip"),
                              probeErr.empty() ? tr("Unrecognised file: %1").arg(clipPath)
                                               : QString::fromStdString(probeErr));
