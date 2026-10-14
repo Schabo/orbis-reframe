@@ -125,7 +125,9 @@ are. Your original files are never changed.
 
 Measurements orbis-reframe makes for each clip (gyro sync and seam
 alignment) are saved in the project file, and privacy-blur scans in the
-project's `cache/` folder.
+project's `cache/` folder. A measurement is written into the project file as
+soon as it's done, without saving anything else: it doesn't count as an
+unsaved change, and your unsaved edits stay unsaved.
 
 ## Project settings
 

@@ -14,6 +14,7 @@
 
 #include "OutputSettings.h"
 
+struct ClipItem;
 class MediaPool;
 struct MediaItem;
 class QDir;
@@ -191,11 +192,26 @@ signals:
     // undo()/redo() -- have rebuilt the timeline, so a consumer can rebind in
     // one place (the granular Timeline signals fire during the rebuild too).
     void projectReset();
+    // A measured sync or seam fine-tune was written into the project file
+    // (see writeMeasured()): the file is newer than it was.
+    void measurementsWritten();
     void canUndoChanged(bool canUndo);
     void canRedoChanged(bool canRedo);
 
 private:
     void onTimelineEdited();
+    // A clip's sync or seam fine-tune was measured. Not an edit: the project
+    // isn't marked modified (opening a project whose clips were never
+    // measured would otherwise show unsaved changes nobody made). Instead
+    // the value goes straight into the project file, by writeMeasured().
+    void onMeasured(int clipId);
+    // Write `clip`'s measured values into the clips of its source in the
+    // project file on disk, changing nothing else in it -- unsaved edits stay
+    // unsaved. Without a file (untitled) the values wait for the first save;
+    // if writing fails, they're saved with the next save or measured again
+    // next time. (Every clip of a source emits its own signal; once the file
+    // has the value, the writes after the first find nothing to change.)
+    void writeMeasured(const ClipItem &clip);
     // Add every timeline source that isn't in the media pool yet. Skipped
     // while rebuilding, unless `rebuilt` (the rebuild's own call at its end).
     void addTimelineSourcesToPool(bool rebuilt = false);

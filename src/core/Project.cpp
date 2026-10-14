@@ -565,10 +565,10 @@ Project::Project(QObject *parent)
     connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
     connect(m_timeline, &Timeline::clipSpeedChanged, this, edited);
     connect(m_timeline, &Timeline::tracksChanged, this, edited);
-    // A measured sync fine-tune is saved with the project but isn't an edit
-    // to undo.
-    connect(m_timeline, &Timeline::clipSyncChanged, this, [this] { onTimelineEdited(); });
-    connect(m_timeline, &Timeline::clipSeamChanged, this, [this] { onTimelineEdited(); });
+    // A measured sync or seam fine-tune is saved with the project but isn't
+    // an edit: nothing to undo, and not an unsaved change.
+    connect(m_timeline, &Timeline::clipSyncChanged, this, [this](int id) { onMeasured(id); });
+    connect(m_timeline, &Timeline::clipSeamChanged, this, [this](int id) { onMeasured(id); });
 
     m_undoDebounce.setSingleShot(true);
     connect(&m_undoDebounce, &QTimer::timeout, this, &Project::commitPendingUndoPoint);
@@ -653,6 +653,62 @@ void Project::onTimelineEdited()
 {
     if (!m_rebuilding)
         setModified(true);
+}
+
+void Project::onMeasured(int clipId)
+{
+    const ClipItem *clip = m_timeline->clipById(clipId);
+    if (!m_rebuilding && clip)
+        writeMeasured(*clip);
+}
+
+void Project::writeMeasured(const ClipItem &clip)
+{
+    if (m_filePath.isEmpty())
+        return;
+    QFile in(m_filePath);
+    if (!in.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    json doc;
+    try {
+        doc = json::parse(in.readAll().toStdString());
+    } catch (const std::exception &) {
+        return;
+    }
+    in.close();
+    if (!doc.is_object() || !doc.contains("timeline") || !doc.at("timeline").is_object() ||
+        !doc.at("timeline").contains("clips") || !doc.at("timeline").at("clips").is_array())
+        return;
+
+    const QDir projectDir = QFileInfo(m_filePath).absoluteDir();
+    bool changed = false;
+    for (json &jc : doc["timeline"]["clips"]) {
+        if (!jc.is_object())
+            continue;
+        const QString source =
+            resolvedPath(QString::fromStdString(jc.value("source", std::string())), projectDir);
+        if (source != clip.sourcePath)
+            continue;
+        json updated = jc;
+        if (!std::isnan(clip.syncAdjustMs))
+            updated["syncAdjustMs"] = clip.syncAdjustMs;
+        if (clip.seamAdjustGuard >= 0)
+            updated["seamAdjust"] = json{
+                {"deg", {clip.seamAdjustDeg[0], clip.seamAdjustDeg[1], clip.seamAdjustDeg[2]}},
+                {"lensGuard", clip.seamAdjustGuard}};
+        if (updated != jc) {
+            jc = std::move(updated);
+            changed = true;
+        }
+    }
+    if (!changed)
+        return;
+    const QByteArray text = QByteArray::fromStdString(doc.dump()) + "\n";
+    QSaveFile out(m_filePath);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Text) || out.write(text) != text.size() ||
+        !out.commit())
+        return;
+    emit measurementsWritten();
 }
 
 void Project::setAudioStreamCounter(std::function<int(const QString &)> counter)

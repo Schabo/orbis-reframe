@@ -26,7 +26,7 @@ public:
 
     // The recovery file of project file `projectFile`.
     static QString pathFor(const QString &projectFile);
-    // True when `projectFile` has a recovery file newer than itself: changes
+    // True when `projectFile` has a recovery file not older than itself: changes
     // that were never saved. (An older one is stale: a later save has them.)
     static bool hasRecovery(const QString &projectFile);
 

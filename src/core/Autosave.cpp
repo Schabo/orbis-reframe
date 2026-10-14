@@ -20,6 +20,15 @@ Autosave::Autosave(Project *project, int intervalMs, QObject *parent)
     // Another project (opened, new, saved as): the old recovery file is
     // about the old one.
     connect(project, &Project::filePathChanged, this, [this] { removeWritten(); });
+    // A measurement written into the project file made it newer than the
+    // recovery file, which would then look stale (hasRecovery()): write it
+    // again so it's the newer one.
+    connect(project, &Project::measurementsWritten, this, [this] {
+        if (m_written.isEmpty())
+            return;
+        m_content.clear();
+        tick();
+    });
 }
 
 Autosave::~Autosave() = default;
@@ -35,7 +44,9 @@ bool Autosave::hasRecovery(const QString &projectFile)
     if (!recovery.isFile())
         return false;
     const QFileInfo project(projectFile);
-    return !project.exists() || recovery.lastModified() > project.lastModified();
+    // Not older: a measurement written into the project file is followed at
+    // once by the recovery file, often within the same millisecond.
+    return !project.exists() || recovery.lastModified() >= project.lastModified();
 }
 
 void Autosave::tick()

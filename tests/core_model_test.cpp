@@ -2267,6 +2267,58 @@ void testAutosave()
           !QFileInfo::exists(Autosave::pathFor(loose)));
 }
 
+// A measured sync / seam fine-tune isn't an unsaved change: it goes straight
+// into the project file, leaving the file's other contents (and unsaved
+// edits) alone, and keeps a recovery file newer than the project file.
+void testMeasurementsWritten()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    const QString a = tmp.path() + "/a.insv", b = tmp.path() + "/b.insv";
+    auto savedClip = [&](int i) {
+        Project q;
+        CHECK(q.load(file));
+        return i < q.timeline()->count() ? q.timeline()->clipAt(i) : ClipItem{};
+    };
+
+    Project p;
+    p.timeline()->appendClip(a, 10000, 30.0);
+    p.timeline()->appendClip(b, 10000, 30.0);
+    p.timeline()->appendClip(a, 10000, 30.0);
+    p.timeline()->setSourceSyncAdjust(a, -1.5); // untitled: waits for the save
+    CHECK(p.save(file));
+    CHECK(savedClip(0).syncAdjustMs == -1.5);
+
+    p.timeline()->setSourceSyncAdjust(a, -3.1);
+    p.timeline()->setSourceSeamAdjust(b, {-0.5, 0.25, 0.1}, 2);
+    CHECK(!p.modified()); // not an edit
+    CHECK(savedClip(0).syncAdjustMs == -3.1 && savedClip(2).syncAdjustMs == -3.1);
+    CHECK(std::isnan(savedClip(1).syncAdjustMs));
+    CHECK(savedClip(1).seamAdjustGuard == 2 && savedClip(1).seamAdjustDeg[1] == 0.25);
+
+    // With unsaved edits: only the measurement reaches the file.
+    p.timeline()->appendClip(b, 10000, 30.0);
+    CHECK(p.modified());
+    Autosave autosave(&p, 3600 * 1000);
+    autosave.tick();
+    {
+        QFile f(Autosave::pathFor(file)); // make it older than the file will be
+        if (f.open(QIODevice::ReadWrite))
+            f.setFileTime(QDateTime::currentDateTime().addSecs(-60),
+                          QFileDevice::FileModificationTime);
+    }
+    p.timeline()->setSourceSyncAdjust(b, 2.0);
+    CHECK(p.modified());
+    {
+        Project q;
+        CHECK(q.load(file) && q.timeline()->count() == 3);
+        if (q.timeline()->count() == 3)
+            CHECK(q.timeline()->clipAt(1).syncAdjustMs == 2.0);
+    }
+    CHECK(Autosave::hasRecovery(file)); // rewritten after the file
+}
+
 void testProjectFolder()
 {
     QTemporaryDir tmp;
@@ -2674,6 +2726,7 @@ int main()
     testMediaPool();
     testProjectFolder();
     testAutosave();
+    testMeasurementsWritten();
     testProjectLibrary();
     testProjectSummary();
 
