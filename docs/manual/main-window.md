@@ -12,7 +12,7 @@ With one open, it looks like this:
 
 1. The **viewport**: the picture.
 2. The **timeline**: your clips, overlays and audio, in time order.
-3. The **edit toolbar**: trim and keyframe buttons, and the timeline's zoom.
+3. The **edit toolbar**: trim, split and keyframe buttons, and the timeline's zoom.
 4. The **settings sidebar**, here on its **Video** tab.
 5. The settings sidebar's **tabs**.
 
@@ -160,7 +160,9 @@ the playhead, in the middle of the window. From left to right:
 
 | Button | What it does |
 |---|---|
-| <img src="images/icons/trim-in.png" width="24" alt=""> <img src="images/icons/trim-out.png" width="24" alt=""> Set trim in / out | Cuts the start or end of a clip off at the playhead (`[` and `]`). |
+| <img src="images/icons/trim-in.png" width="24" alt=""> Set trim in | Cuts the start of a clip off at the playhead (`[`). |
+| <img src="images/icons/split.png" width="24" alt=""> Split | Cuts the clip in two at the playhead (`S`): the selected audio or overlay clip, otherwise the video clip. |
+| <img src="images/icons/trim-out.png" width="24" alt=""> Set trim out | Cuts the end of a clip off at the playhead (`]`). |
 | <img src="images/icons/trim-restore.png" width="24" alt=""> Restore | Gives the clip back its full length (`R`). |
 | <img src="images/icons/reframe-arm.png" width="24" alt=""> Arm reframe authoring | While on, every drag or zoom in the viewport sets a reframe keyframe at the playhead (`A`). |
 | <img src="images/icons/reframe-delete-key.png" width="24" alt=""> Delete keyframe | Deletes the reframe keyframe at the playhead (`Shift+K`). |

@@ -406,6 +406,14 @@ void testVideoEdits(const Ctx &c)
     CHECK(c.timeline->totalDurationMs() == 2 * kClipMs);
     undo->trigger();
     CHECK(c.timeline->count() == 2);
+    // The edit toolbar's scissors do the same.
+    settle();
+    if (auto *split = find<QToolButton>(c.w, "splitButton")) {
+        split->click();
+        CHECK(c.timeline->count() == 3);
+        undo->trigger();
+        CHECK(c.timeline->count() == 2);
+    }
 
     settle();
     CHECK(seekTo(c, 1000));

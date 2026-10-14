@@ -124,7 +124,8 @@ inside that clip.
 Splitting cuts a clip in two at the playhead, so you can remove the middle
 of a recording, or give each part its own settings.
 
-- Move the playhead to the frame where the cut should be and press `S`.
+- Move the playhead to the frame where the cut should be and press `S`, or
+  click the scissors on the edit toolbar.
 - Or right-click the clip where you want the cut and choose **Split here**.
 
 Both halves keep everything the clip had: its stabilization, colour,

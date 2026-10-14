@@ -25,6 +25,9 @@ EditToolbar::EditToolbar(QWidget *parent)
         b->setAutoRaise(true);
         return b;
     };
+    m_splitButton = makeButton("splitButton", QStringLiteral("scissors"),
+                               tr("Split  ( S ): cut the clip in two at the playhead. Splits the "
+                                  "selected audio or overlay clip, or else the video clip."));
     m_setInButton = makeButton("trimInButton", QStringLiteral("arrow-right-to-line"),
                                tr("Set trim in  ( [ ): cut the start of the clip off at the "
                                   "playhead. Trims the selected audio clip, or else the video "
@@ -37,6 +40,7 @@ EditToolbar::EditToolbar(QWidget *parent)
                                    tr("Restore  ( R ): give the clip back its full length. The "
                                       "selected audio clip, or else the video clip under the "
                                       "playhead."));
+    connect(m_splitButton, &QToolButton::clicked, this, &EditToolbar::splitRequested);
     connect(m_setInButton, &QToolButton::clicked, this, &EditToolbar::trimInRequested);
     connect(m_setOutButton, &QToolButton::clicked, this, &EditToolbar::trimOutRequested);
     connect(m_clearTrimButton, &QToolButton::clicked, this, &EditToolbar::trimCleared);
@@ -86,6 +90,7 @@ EditToolbar::EditToolbar(QWidget *parent)
     auto *tools = new QHBoxLayout;
     tools->setSpacing(2);
     tools->addWidget(m_setInButton);
+    tools->addWidget(m_splitButton);
     tools->addWidget(m_setOutButton);
     tools->addWidget(m_clearTrimButton);
     tools->addSpacing(14);

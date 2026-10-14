@@ -7,7 +7,7 @@ class QLabel;
 class QTimer;
 
 // The edit toolbar above the timeline: the tools that act on clips at the
-// playhead -- trim in / out / restore and the reframe-authoring buttons --
+// playhead -- split, trim in / out / restore and the reframe-authoring buttons --
 // centred, with a transient notice line and the timeline's zoom buttons at
 // its right end. Playback (and the screenshot) is the player bar's
 // (PlayerBar), under the viewport.
@@ -32,6 +32,7 @@ public slots:
 signals:
     // "Set in/out point at the playhead": no payload -- MainWindow uses the
     // current clip's source time (the transport bar only knows timeline time).
+    void splitRequested();
     void trimInRequested();
     void trimOutRequested();
     void trimCleared();
@@ -46,6 +47,7 @@ signals:
     void zoomInRequested();
 
 private:
+    QAbstractButton *m_splitButton = nullptr;
     QAbstractButton *m_setInButton = nullptr;
     QAbstractButton *m_setOutButton = nullptr;
     QAbstractButton *m_clearTrimButton = nullptr;

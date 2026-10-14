@@ -43,5 +43,6 @@
     <file>icons/zoom-in.svg</file>
     <file>icons/zoom-out.svg</file>
     <file>icons/minimize.svg</file>
+    <file>icons/scissors.svg</file>
   </qresource>
 </RCC>

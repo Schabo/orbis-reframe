@@ -623,6 +623,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     // the playhead, at m_lastPositionMs (that clip's *source* time -- the
     // transport bar only knows timeline time). Timeline owns the clamp /
     // min-gap validation.
+    connect(m_editToolbar, &EditToolbar::splitRequested, this, [this] { splitAtPlayhead(); });
     connect(m_editToolbar, &EditToolbar::trimInRequested, this,
             [this] { trimAtPlayhead(true); });
     connect(m_editToolbar, &EditToolbar::trimOutRequested, this,

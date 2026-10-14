@@ -56,6 +56,7 @@ void testButtons()
     EditToolbar bar;
     bar.resize(1200, 34);
     bar.show();
+    checkClick(bar, "splitButton", &EditToolbar::splitRequested);
     checkClick(bar, "trimInButton", &EditToolbar::trimInRequested);
     checkClick(bar, "trimOutButton", &EditToolbar::trimOutRequested);
     checkClick(bar, "trimRestoreButton", &EditToolbar::trimCleared);
