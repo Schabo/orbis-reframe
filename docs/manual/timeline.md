@@ -6,17 +6,19 @@ cutting the 360° clips, and adding music, other sound and picture-in-picture
 overlays. For the names of the window's parts, see
 [The main window](main-window.md).
 
-![The timeline with an overlay track, three clips and a music track](images/timeline.jpg)
+![The timeline with three clips and their sound, a music track and an overlay track](images/timeline.jpg)
 
 1. The **ruler**, with the time in minutes and seconds.
 2. The **playhead**: the frame shown in the viewport.
-3. An **overlay track**, with a picture-in-picture clip.
-4. The **video track**, with your `.insv` clips. The white diamonds along
+3. The **video track**, with your `.insv` clips. The white diamonds along
    the bottom edge are reframe keyframes; a hollow diamond (◇) before a
    clip's name means it has none, and exports looking straight ahead.
+4. The **Camera mic** track: the clips' sound, linked to them (the chain
+   icon).
 5. An **audio track**, with a music file. The waveform shows how loud it
    is, and the slanted lines at its ends are fades.
-6. The **track headers**: each track's name and its **M** (mute) or **H**
+6. An **overlay track**, with a picture-in-picture clip.
+7. The **track headers**: each track's name and its **M** (mute) or **H**
    (hide) box. An overlay track also shows its layer number (1 is in
    front).
 

@@ -74,7 +74,7 @@ The **Stitching** section shows the state for the clip under the playhead:
 Changing **Lens guards** measures every clip again, because the alignment
 depends on the lens model.
 
-## Preview size and Quality
+## Preview size and quality
 
 These two are in the **View** menu, not in the sidebar: they change only the
 preview you see while editing, never the export.

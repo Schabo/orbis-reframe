@@ -9,8 +9,9 @@ following a person or vehicle.
 
 ![Setting a keyframe: reframe authoring armed, the Reframe section, and the keyframes on the clip](images/reframing.jpg)
 
-1. **Arm reframe authoring**, in the edit toolbar. While it's on (shown
-   pressed), every look-around in the viewport sets a keyframe.
+1. The edit toolbar, with **Arm reframe authoring** on: the button
+   outlined in orange. While it's on, every look-around in the viewport
+   sets a keyframe.
 2. The **Reframe** section: the view at the playhead as numbers, and
    **Track subject…**.
 3. The clip's keyframes: the white diamonds along the bottom of the clip.

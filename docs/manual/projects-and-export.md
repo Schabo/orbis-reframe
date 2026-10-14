@@ -22,6 +22,8 @@ name, when it was last opened, and how many clips it has and how long it
 is. A card says so in red when the project's file is gone, can't be read,
 or some of its media files are missing.
 
+![The project library with three projects](images/project-library.jpg)
+
 | To | Do |
 |---|---|
 | Open a project | Double-click its card, or select it and press `Enter`. |
@@ -131,7 +133,7 @@ unsaved change, and your unsaved edits stay unsaved.
 
 ## Project settings
 
-<img src="images/project-panel.jpg" width="350" alt="The project settings">
+<img src="images/project-settings.jpg" width="444" alt="The Project settings dialog">
 
 **File ▸ Project settings…** sets the shape, size and frame rate of the
 video you make. A new project gets them from **File ▸ New project…**; this

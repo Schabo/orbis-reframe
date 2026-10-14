@@ -294,7 +294,7 @@ Start orbis-reframe from a terminal so you can see its messages.
 | At startup: *"Your graphics card or driver can't decode video on the GPU"* | The card or driver has no Vulkan video decoding. orbis-reframe still works, but decodes on the processor, so 5.7K and 8K clips play slowly. Update the NVIDIA driver; cards older than the GTX 16 / RTX 20 series can't decode on the GPU. |
 | At startup or on export: *"Exporting needs NVIDIA's hardware video encoder (NVENC)"* | Install `libnvidia-encode1` (step 2). Without an NVIDIA card, exporting isn't possible yet. |
 | **Track subject** or **Scan clip** is greyed out, with *"… model, which is missing"* under it | A file from the download is missing. Install or unpack orbis-reframe again. |
-| Choosing **Voice only** says *"The voice modes can't run on this computer"* | Install `libonnxruntime1.21` (Debian 13) or `libonnxruntime1.23` (Testing), as the message says (step 3, option B). If the message mentions the model, unpack or install orbis-reframe again. |
+| Choosing **Voice only** says *"The voice modes can't run on this computer"* | Install `libonnxruntime1.21` (Debian 13) or `libonnxruntime1.23` (Testing, Ubuntu 26.04), as the message says (step 3, option B). If the message mentions the model, unpack or install orbis-reframe again. |
 | The window stays black, or the clip never leaves *Buffering…* | Start with `ORBIS_VERBOSE=1 orbis-reframe` and look at the messages, and check **Help ▸ About** (below). |
 | No sound | Check that `libqt6multimedia6` is installed and that the system's sound works in other programs. To send orbis-reframe's sound to another output, use your desktop's sound settings or `pavucontrol`. |
 

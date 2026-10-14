@@ -11,16 +11,15 @@ With one open, it looks like this:
 ![The orbis-reframe window with a project open](images/main-window.jpg)
 
 1. The **viewport**: the picture.
-2. The **timeline**: your clips, overlays and audio, in time order.
-3. The **edit toolbar**: trim, split and keyframe buttons, and the timeline's zoom.
-4. The **settings sidebar**, here on its **Video** tab.
-5. The settings sidebar's **tabs**.
-
-Directly under the viewport is the **player bar**, for watching: play,
-step, jump, the progress bar, speed, volume and full screen; see
-[The player bar](#the-player-bar) below. To the left of the viewport is the
-**left sidebar**, with the project's media; see
-[The media sidebar](#the-media-sidebar) below.
+2. The **player bar**, for watching: play, step, jump, the progress bar,
+   speed, volume and full screen; see [The player bar](#the-player-bar).
+3. The **media sidebar**, with the project's media; see
+   [The media sidebar](#the-media-sidebar).
+4. The **edit toolbar**: trim, split and keyframe buttons, and the
+   timeline's zoom.
+5. The **timeline**: your clips, overlays and audio, in time order.
+6. The **settings sidebar**, here on its **Video** tab.
+7. The settings sidebar's **tabs**.
 
 The title bar shows the project's file name, or *untitled* for a project
 that hasn't been saved yet. A `*` after the name means there are unsaved
@@ -47,7 +46,7 @@ follow a view, you set **reframe keyframes**, covered in
 ## The media sidebar
 
 The sidebar on the left of the viewport holds the files you work with. For
-now it has one tab, **Media**. The `<` button at its top-left closes the
+now it has one tab, **Media** (<img src="images/icons/tab-media.png" width="24" alt="">). The `<` button at its top-left closes the
 sidebar and leaves a slim strip at the window's edge; the `>` button on the
 strip opens it again. `Ctrl+B` does both. To make it wider or narrower,
 for example to read long file names, drag its right edge (the pointer
@@ -67,8 +66,8 @@ to fold it away.
 
 | To | Do |
 |---|---|
-| Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab, or drag files from your file manager onto the list. |
-| Add everything in a folder | **Media ▸ Import folder…**, the second button, or drag the folder onto the list. Every video and audio file directly in it is added (not its subfolders). |
+| Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab (<img src="images/icons/import-files.png" width="24" alt="">), or drag files from your file manager onto the list. |
+| Add everything in a folder | **Media ▸ Import folder…**, the second button (<img src="images/icons/import-folder.png" width="24" alt="">), or drag the folder onto the list. Every video and audio file directly in it is added (not its subfolders). |
 | Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
 | Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
 | Find a file on disk | Right-click it and choose **Show in file manager**. |
@@ -138,9 +137,9 @@ does:
 
 | Button | What it does |
 |---|---|
-| To start / to end | To the start / end of the timeline (`Home` / `End`). |
-| Previous / next cut | To the previous / next cut or clip edge (`↑` / `↓`). |
-| One frame back / forward | Steps one frame and pauses (`←` / `→`). Hold the button to keep stepping. |
+| <img src="images/icons/to-start.png" width="24" alt=""> <img src="images/icons/to-end.png" width="24" alt=""> To start / to end | To the start / end of the timeline (`Home` / `End`). |
+| <img src="images/icons/previous-cut.png" width="24" alt=""> <img src="images/icons/next-cut.png" width="24" alt=""> Previous / next cut | To the previous / next cut or clip edge (`↑` / `↓`). |
+| <img src="images/icons/frame-back.png" width="24" alt=""> <img src="images/icons/frame-forward.png" width="24" alt=""> One frame back / forward | Steps one frame and pauses (`←` / `→`). Hold the button to keep stepping. |
 | <img src="images/icons/play.png" width="24" alt=""> Play / pause | Starts or stops playback (`Space`). |
 
 On the left, *Buffering…* shows while the video loads. On the right:
@@ -148,8 +147,8 @@ On the left, *Buffering…* shows while the video loads. On the right:
 | Button | What it does |
 |---|---|
 | <img src="images/icons/screenshot.png" width="24" alt=""> Screenshot | Saves the frame the viewport shows (the frame at the playhead) as a PNG (`Ctrl+Shift+P`); see [Screenshots](projects-and-export.md#screenshots). |
-| Volume and mute | How loud the preview plays, and the speaker button to mute it. Only what you hear while editing: the export and the clips' own volume (the **Audio** tab) don't change. orbis-reframe remembers the volume for the next time. |
-| Full screen | Shows only the picture and the player bar, over the whole screen (`F11`, or double-click the picture). The player bar hides when the mouse rests and comes back when you move it. `Esc` or `F11` leaves full screen. |
+| <img src="images/icons/volume.png" width="24" alt=""> Volume and mute | How loud the preview plays, and the speaker button to mute it. Only what you hear while editing: the export and the clips' own volume (the **Audio** tab) don't change. orbis-reframe remembers the volume for the next time. |
+| <img src="images/icons/full-screen.png" width="24" alt=""> Full screen | Shows only the picture and the player bar, over the whole screen (`F11`, or double-click the picture). The player bar hides when the mouse rests and comes back when you move it. `Esc` or `F11` leaves full screen. |
 
 Hover over a button to see its name and shortcut.
 
@@ -172,9 +171,9 @@ At its right end are the timeline's zoom buttons:
 
 | Button | What it does |
 |---|---|
-| Zoom out | Shows more of the timeline (`Ctrl+-`). |
-| Zoom to fit | Shows the whole edit across the timeline (`Ctrl+0`). |
-| Zoom in | Shows less of the timeline, in more detail (`Ctrl++`). |
+| <img src="images/icons/zoom-out.png" width="24" alt=""> Zoom out | Shows more of the timeline (`Ctrl+-`). |
+| <img src="images/icons/zoom-fit.png" width="24" alt=""> Zoom to fit | Shows the whole edit across the timeline (`Ctrl+0`). |
+| <img src="images/icons/zoom-in.png" width="24" alt=""> Zoom in | Shows less of the timeline, in more detail (`Ctrl++`). |
 
 Hover over a button to see its name and shortcut.
 
@@ -192,10 +191,10 @@ key of the tab that's already showing closes the sidebar.
 
 | Tab | What it sets |
 |---|---|
-| **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles and field of view, keyframes, and **Track subject**, which follows a person or vehicle automatically), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
-| **Audio** | A section per audio clip: the selected one, or all of a video or overlay clip's sound (*Camera mic*, *External mic*). Noise and wind reduction, its volume and its track's, fades. See [Audio and noise reduction](audio.md). |
-| **Overlay** | Size, position and look of the selected picture-in-picture clip. |
-| **Privacy** | Blurring number plates. |
+| <img src="images/icons/tab-video.png" width="24" alt=""> **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles and field of view, keyframes, and **Track subject**, which follows a person or vehicle automatically), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
+| <img src="images/icons/tab-audio.png" width="24" alt=""> **Audio** | A section per audio clip: the selected one, or all of a video or overlay clip's sound (*Camera mic*, *External mic*). Noise and wind reduction, its volume and its track's, fades. See [Audio and noise reduction](audio.md). |
+| <img src="images/icons/tab-overlay.png" width="24" alt=""> **Overlay** | Size, position and look of the selected picture-in-picture clip. |
+| <img src="images/icons/tab-privacy.png" width="24" alt=""> **Privacy** | Blurring number plates. |
 
 Each tab is made of **sections**, such as **Stabilization** or **Colour**.
 Click a section's title to fold it away to just its title row, and again to
