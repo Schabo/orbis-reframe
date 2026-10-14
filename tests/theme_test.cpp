@@ -7,6 +7,7 @@
 
 #include <QApplication>
 #include <QImage>
+#include <QImageReader>
 #include <QPainter>
 #include <QPalette>
 #include <QRegularExpression>
@@ -79,6 +80,10 @@ bool near(const QColor &a, const QColor &b)
     return std::abs(a.red() - b.red()) <= 2 && std::abs(a.green() - b.green()) <= 2 &&
            std::abs(a.blue() - b.blue()) <= 2;
 }
+
+// Without Qt's SVG image plugin no icon draws at all: main() says so once
+// instead of a wrong colour per icon.
+bool canDrawIcons() { return QImageReader::supportedImageFormats().contains("svg"); }
 
 void testIcons()
 {
@@ -156,7 +161,8 @@ void testSwitch(QApplication &app)
         CHECK(theme::current().id == t.id);
         CHECK(QApplication::palette().color(QPalette::Window) == t.colors.window);
         CHECK(app.styleSheet().contains(t.colors.accent.name()));
-        CHECK(near(strokeColor(play.pixmap(32, 32, QIcon::Normal)), t.colors.icon));
+        if (canDrawIcons())
+            CHECK(near(strokeColor(play.pixmap(32, 32, QIcon::Normal)), t.colors.icon));
     }
     CHECK(changed == int(theme::themes().size()));
     CHECK(theme::byId(QStringLiteral("light")).id == QStringLiteral("light"));
@@ -173,7 +179,12 @@ int main(int argc, char **argv)
     CHECK(QApplication::palette().color(QPalette::Highlight) == theme::colors().accent);
     testTokens();
     testStyleSheet();
-    testIcons();
+    if (canDrawIcons()) {
+        testIcons();
+    } else {
+        std::printf("FAIL  no SVG image plugin, so no icon draws: install qt6-svg-plugins\n");
+        ++g_failures;
+    }
     testContrast();
     testSwitch(app);
     if (g_failures == 0)

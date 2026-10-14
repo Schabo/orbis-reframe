@@ -76,7 +76,7 @@ if [[ "$TARGET" != "$HOST_TARGET" ]]; then
             apt-get update -qq
             apt-get install -y -qq --no-install-recommends \
                 g++ cmake ninja-build pkgconf \
-                qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev qt6-wayland \
+                qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev qt6-wayland qt6-svg-plugins \
                 libvulkan-dev glslang-tools nlohmann-json3-dev \
                 libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
                 libopencv-dev libopencv-contrib-dev libonnxruntime-dev \

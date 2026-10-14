@@ -12,9 +12,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # target below) -- the Qt-free libraries and tools get no _autogen step.
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
-# QIcon renders the bundled Lucide .svg icons via Qt's runtime SVG icon-engine
-# plugin (Debian package qt6-svg-plugins -> libqsvgicon.so), loaded on demand --
-# no link-time Qt6::Svg dependency, so no qt6-svg-dev requirement.
+# The bundled Lucide .svg icons are drawn through QImageReader by Qt's runtime
+# SVG image-format plugin (Debian package qt6-svg-plugins -> libqsvg.so),
+# loaded on demand -- no link-time Qt6::Svg dependency, so no qt6-svg-dev
+# requirement. theme_test needs the plugin to draw them.
 # Qt6::Multimedia (QAudioSink) drives audio playback --
 # optional like FFmpeg/OpenCV below: orbis-reframe still builds without it,
 # just silent, if the dev package isn't installed.
