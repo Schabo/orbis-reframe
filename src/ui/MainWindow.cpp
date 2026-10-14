@@ -683,7 +683,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
         const SubjectTrackController::Run &run = m_tracker->run();
         const int idx = m_timeline->indexOfId(run.clipId);
         if (idx >= 0)
-            m_timelineWidget->setPlayhead(
+            showPlayhead(
                 m_timeline->clipToTimeline(idx, m_timeline->clipAt(idx).localAtSourceMs(ms)));
         const QString t = QString::number((ms - run.req.fromMs) / 1000.0, 'f', 1);
         m_reframePanel->setTrackStatus(
@@ -830,7 +830,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_plateJobs, &PlateJobController::followProgress, this, [this](qint64 tMs, bool backward) {
         const int idx = m_timeline->indexOfId(m_plateJobClipId);
         if (idx >= 0)
-            m_timelineWidget->setPlayhead(
+            showPlayhead(
                 m_timeline->clipToTimeline(idx, m_timeline->clipAt(idx).localAtSourceMs(tMs)));
         const qint64 from = m_plateJobFromMs;
         m_privacyPanel->setScanStatus(
@@ -990,8 +990,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_controller, &PlaybackController::positionChanged, this,
             [this](qint64 timelineMs) {
                 m_lastTimelineMs = timelineMs;
-                m_playerBar->setPosition(timelineMs);
-                m_timelineWidget->setPlayhead(timelineMs);
+                showPlayhead(timelineMs);
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
                 m_audioPlayer->notePlaybackPosition(timelineMs);
 #endif
@@ -2643,7 +2642,7 @@ void MainWindow::navigateTo(qint64 timelineMs, bool pause)
     m_audioPlayer->seek(timelineMs);
 #endif
     m_lastTimelineMs = timelineMs;
-    m_timelineWidget->setPlayhead(timelineMs);
+    showPlayhead(timelineMs);
     bindActiveClipAt(timelineMs);
 }
 
@@ -2920,6 +2919,12 @@ void MainWindow::redo()
     afterUndoRedo();
 }
 
+void MainWindow::showPlayhead(qint64 timelineMs)
+{
+    m_playerBar->setPosition(timelineMs);
+    m_timelineWidget->setPlayhead(timelineMs);
+}
+
 void MainWindow::afterUndoRedo()
 {
     // undo()/redo() replace the whole Timeline (Project::applyDocument), so
@@ -2927,8 +2932,7 @@ void MainWindow::afterUndoRedo()
     // playhead was already at rather than trying to find the "same" clip id.
     syncTimeline();
     bindActiveClipAt(m_lastTimelineMs);
-    m_playerBar->setPosition(m_lastTimelineMs);
-    m_timelineWidget->setPlayhead(m_lastTimelineMs);
+    showPlayhead(m_lastTimelineMs);
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, m_lastTimelineMs));
 #ifdef ORBIS_REFRAME_HAVE_AUDIO

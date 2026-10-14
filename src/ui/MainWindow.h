@@ -193,6 +193,8 @@ private:
     // the playback position tick and undo()/redo() (which replace the whole
     // Timeline, so m_clipId can't just be reused -- rebind by position).
     void bindActiveClipAt(qint64 timelineMs);
+    // Moves the player bar and the timeline's playhead together.
+    void showPlayhead(qint64 timelineMs);
     // Undo/redo: Project::undo()/redo() rebuild the whole Timeline (new
     // clip ids throughout), so this resyncs everything downstream of the
     // model by timeline position rather than trying to preserve m_clipId.
