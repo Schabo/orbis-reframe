@@ -130,7 +130,7 @@ result play_new_frames_max "$(tail -n +"$mark" "$W/app.log" | grep -oE 'new fram
 
 # Track subject: back to the start, T, drag a box around the motorbike ahead.
 vk key Home sleep 500 key t sleep 500
-vp move 632 452 down move 650 480 move 676 520 up
+vp move 808 405 down move 820 430 move 838 460 up
 shot 3-track-box
 wait_log '^\[track\]' 120
 result track_done $?
