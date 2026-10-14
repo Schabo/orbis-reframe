@@ -18,8 +18,9 @@ virtual camera through the sphere over time to get a normal flat video out of a
 **Download:** a `.deb` and a tarball for Debian Testing, Debian 13 and
 Ubuntu 26.04 LTS on the
 [releases page](https://github.com/Schabo/orbis-reframe/releases). The
-[getting-started guide](docs/manual/getting-started.md) covers what your
-computer needs and how to install. **Found a problem?**
+[user manual](docs/manual/README.md) starts with the
+[getting-started guide](docs/manual/getting-started.md): what your computer
+needs and how to install. **Found a problem?**
 [Open an issue](https://github.com/Schabo/orbis-reframe/issues).
 
 
@@ -76,23 +77,26 @@ no closed-source dependencies.
   subject, so the camera shake and the 360° seam don't get in the way.
 
 **Timeline**
-- Multiple clips with trim in/out, split, reorder and hard cuts.
+- Multiple clips with trim in/out, split, reorder and hard cuts, from the
+  keyboard or the edit toolbar above the timeline.
 - Per-clip playback speed (0.1–4×) with pitch-preserving audio time-stretch.
 - Multiple tracks: any number of audio and video (overlay) tracks, which can
-  be renamed, reordered, muted, zoomed and scrolled.
+  be renamed, reordered, muted, zoomed and scrolled. Tracks keep to fixed
+  groups, and a video track folds its sound tracks away under it.
 - Music clips with trim, level and fades. Add them from the menu or drag and
   drop them onto the timeline, where their waveforms are drawn.
-- The camera's built-in mic and an Insta360 Mic Air can be split onto
-  separate tracks, linked to their video clip.
+- Every audio stream in a clip gets its own track, linked to the video: the
+  camera's mic and an external mic such as the Insta360 Mic Air.
 - Keyboard shortcuts for frame stepping, jumping between cuts, split and
   delete (Help ▸ Keyboard shortcuts, F1).
 
 **Picture-in-picture**
 - Flat video files on overlay tracks, drawn as insets over the reframed view:
   position, size, opacity, rounded corners and a border, set in the Overlay
-  panel or by dragging the inset in the viewport.
-- Keyframe an inset's position, size and opacity. An overlay's own sound can
-  go onto an audio track.
+  tab or by dragging the inset in the viewport.
+- Keyframe an inset's position, size and opacity, and bring an overlay forward
+  or send it back. An overlay's own sound comes along on its own track, linked
+  like a video clip's.
 
 **Stabilization** (native, from the camera's own IMU data)
 - Modes: **Off / Lean follow / Horizon lock / Custom** (per-axis strength),
@@ -110,15 +114,15 @@ no closed-source dependencies.
 **Look and sound**
 - Per-clip colour grading: exposure, contrast, saturation, temperature. The
   same formula runs in the viewport and in export.
-- Audio playback, per-clip level and mute, source/track picker, and a mixer
-  used in both playback and export.
+- Audio playback: level, mute and fades for every audio clip, a level and
+  mute per track, and a mixer used in both playback and export.
 - Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that
   tracks the engine's harmonics and turns down the wind between them), hiss
   and mains hum for quiet scenes, and voice isolation ("Voice only", or
   "Voice + ambience" that turns the rest down instead) with DeepFilterNet 3.
 
 **Privacy blur**
-- Blur number plates per clip: "Scan clip" in the Privacy panel finds them
+- Blur number plates per clip: "Scan clip" in the Privacy tab finds them
   faster than real time on the GPU, and the blur shows in the viewport, export
   and screenshots. "Show regions" outlines what the scan found.
 - Right-click a blur to remove a false hit, or use "Blur a plate…" to box a
@@ -129,15 +133,21 @@ no closed-source dependencies.
   the overlays composited in and the audio mixed.
 - Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution and frame
   rate. The viewport is letterboxed to the chosen aspect.
-- Screenshot of the current view at project resolution (PNG).
+- Screenshot of the current view at project resolution (PNG), from the
+  player bar.
 
 **Editor**
-- Project save/load (`.orp`, JSON) and undo/redo.
-- Dark theme and a settings sidebar with Stitching, Stabilization, Reframe,
-  Audio, Colour, Overlay, Privacy, Project and Media-info panels.
+- A project library to start from: one folder per project, with its exports
+  and caches; rename and duplicate projects there.
+- Save/load (`.orp`, JSON), undo/redo, and autosave to a recovery file.
+- A Media sidebar with the project's files, which notices files going missing
+  and helps find moved ones.
+- Settings in tabs (Video, Audio, Overlay, Privacy) with collapsible sections,
+  a player bar under the video, and the timeline across the full window.
+- Three themes: Ember, Light and Neutral dark.
 
-Planned next:
-transitions, a "tiny planet" projection, and face blur.
+Planned next: flat videos as the main video, transitions, titles and an
+effects library. Further out: a "tiny planet" projection and face blur.
 
 ## Building
 
@@ -145,7 +155,7 @@ Linux only, Wayland only, NVIDIA GPU with Vulkan. Playback uses Vulkan video
 decode where the GPU has it and falls back to (slower) CPU decoding where it
 doesn't; export needs NVENC. The app tells you at startup what's missing
 instead of failing. Dependencies are the Debian Testing (or Debian 13, Ubuntu 26.04) packages for Qt 6,
-Vulkan, glslang, GLM, nlohmann-json and FFmpeg. Qt Multimedia (audio), OpenCV
+Vulkan, glslang, nlohmann-json and FFmpeg. Qt Multimedia (audio), OpenCV
 (analysis tools; with the contrib modules also subject tracking), ONNX Runtime
 (voice noise modes) and ncnn (the plate scan; `scripts/fetch_ncnn.sh`) are
 optional. [`docs/dev-environment.md`](docs/dev-environment.md) has the full
