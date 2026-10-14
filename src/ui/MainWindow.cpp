@@ -3001,6 +3001,16 @@ void MainWindow::importMediaFolder()
     importMedia({dir});
 }
 
+namespace {
+
+QString addingFilesText(int pending)
+{
+    return pending == 1 ? MainWindow::tr("Adding 1 file…")
+                        : MainWindow::tr("Adding %1 files…").arg(pending);
+}
+
+} // namespace
+
 void MainWindow::importMedia(const QStringList &paths)
 {
     // Folders: the files in them. Files already in the pool are left as
@@ -3038,7 +3048,7 @@ void MainWindow::importMedia(const QStringList &paths)
     // dropped.
     m_sourcesSidebar->setOpen(true);
     m_mediaImportsPending += int(files.size());
-    m_mediaPanel->setStatus(tr("Adding %n file(s)…", nullptr, m_mediaImportsPending));
+    m_mediaPanel->setStatus(addingFilesText(m_mediaImportsPending));
     static QThreadPool *pool = [] {
         auto *p = new QThreadPool;
         p->setMaxThreadCount(2);
@@ -3064,7 +3074,7 @@ void MainWindow::importMedia(const QStringList &paths)
                     }
                     if (--self->m_mediaImportsPending > 0) {
                         self->m_mediaPanel->setStatus(
-                            tr("Adding %n file(s)…", nullptr, self->m_mediaImportsPending));
+                            addingFilesText(self->m_mediaImportsPending));
                         return;
                     }
                     self->m_mediaPanel->setStatus(QString());
@@ -3856,14 +3866,20 @@ QString MainWindow::privacyStaleness(const ClipItem &c, qint64 fromMs, qint64 to
     const QString then = on ? tr("off") : tr("on");
     QString what;
     if (scanStale && handStale)
-        what = tr("The plate scan and %n plate(s) blurred by hand were found with the stabilization "
-                  "%1",
-                  nullptr, handStale)
+        what = (handStale == 1
+                    ? tr("The plate scan and 1 plate blurred by hand were found with the "
+                         "stabilization %1")
+                    : tr("The plate scan and %1 plates blurred by hand were found with the "
+                         "stabilization %2")
+                          .arg(handStale))
                    .arg(then);
     else if (scanStale)
         what = tr("The plate scan was made with the stabilization %1").arg(then);
     else
-        what = tr("%n plate(s) blurred by hand were followed with the stabilization %1", nullptr, handStale)
+        what = (handStale == 1
+                    ? tr("1 plate blurred by hand was followed with the stabilization %1")
+                    : tr("%1 plates blurred by hand were followed with the stabilization %2")
+                          .arg(handStale))
                    .arg(then);
     QString text = tr("%1, which stitches the picture slightly differently: the blurs may sit a "
                       "little off the plates in fast swings. Check them with \"Show regions\", "
@@ -4126,7 +4142,10 @@ void MainWindow::syncPrivacyPanel()
     if (c->blurPlates && !covered)
         status += QLatin1Char(' ') + tr("Exports with the blur on are refused until it is.");
     if (!c->blurAdditions.empty())
-        status += QLatin1Char(' ') + tr("%n plate(s) blurred by hand.", nullptr, int(c->blurAdditions.size()));
+        status += QLatin1Char(' ') + (c->blurAdditions.size() == 1
+                                          ? tr("1 plate blurred by hand.")
+                                          : tr("%1 plates blurred by hand.")
+                                                .arg(c->blurAdditions.size()));
     if (!cantScan.isEmpty())
         status += QLatin1Char(' ') + cantScan;
     m_privacyPanel->setState(c->blurPlates, status, canScan, static_cast<int>(c->blurRemovals.size()));

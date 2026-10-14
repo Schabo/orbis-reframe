@@ -162,7 +162,7 @@ recorded (see [The timeline](timeline.md)).
 **File ▸ Export flat video…** (`Ctrl+E`) turns the whole timeline into a
 normal, flat MP4 video that plays anywhere.
 
-<img src="images/export-dialog.jpg" width="500" alt="The Export Flat Video dialog">
+<img src="images/export-dialog.jpg" width="489" alt="The Export Flat Video dialog">
 
 1. Choose **File ▸ Export flat video…**.
 2. The dialog sums up what will be exported: how many clips, how long, how

@@ -45,8 +45,9 @@ ExportOptionsDialog::ExportOptionsDialog(int clipCount, qint64 rangeMs, int keyC
             .arg(clips)
             .arg(secs / 60, 2, 10, QLatin1Char('0'))
             .arg(secs % 60, 2, 10, QLatin1Char('0'))
-            .arg(keyCount > 0 ? tr("%n reframe keyframe(s)", nullptr, keyCount)
-                              : tr("no keyframes — static forward view"))
+            .arg(keyCount == 0   ? tr("no keyframes — static forward view")
+                 : keyCount == 1 ? tr("1 reframe keyframe")
+                                 : tr("%1 reframe keyframes").arg(keyCount))
             .arg(QString::number(fps, 'g', 5)),
         this);
     form->addRow(tr("Exporting:"), summary);

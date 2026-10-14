@@ -89,6 +89,7 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     form()->addRow(tr("Opacity"), sliderRow(this, 0, 100, &m_opacity, &m_opacityValue));
 
     m_keys = new QLabel(this);
+    m_keys->setObjectName(QStringLiteral("overlayKeyCount"));
     form()->addRow(tr("Keyframes"), m_keys);
     auto *keyRow = new QWidget(this);
     auto *keyLayout = new QHBoxLayout(keyRow);
@@ -257,7 +258,7 @@ void OverlayPanel::setState(const State &s)
     m_start->setValue(s.startMs / 1000.0);
 
     // Short: a wrapped label here gets clipped by the form layout.
-    m_keys->setText(s.keyCount == 0 ? tr("None") : tr("%n key(s)", "", s.keyCount));
+    m_keys->setText(s.keyCount == 0 ? tr("None") : s.keyCount == 1 ? tr("1 key") : tr("%1 keys").arg(s.keyCount));
     m_keys->setToolTip(s.keyCount == 0
                            ? tr("The same position, size and opacity for the whole clip. \"Set "
                                 "key\" starts animating it.")

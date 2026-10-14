@@ -34,6 +34,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
@@ -575,6 +576,13 @@ void testOverlay(const Ctx &c)
     key(c, Qt::Key_K);
     const TrackClip *clip = c.timeline->trackClipById(clipId);
     CHECK(clip && clip->insetKeys.count() == 1);
+    auto *keyCount = find<QLabel>(c.w, "overlayKeyCount");
+    CHECK(keyCount && keyCount->text() == QStringLiteral("1 key"));
+    CHECK(seekTo(c, 1500)); // the overlay is 2 s long
+    key(c, Qt::Key_K);
+    clip = c.timeline->trackClipById(clipId);
+    CHECK(clip && clip->insetKeys.count() == 2);
+    CHECK(keyCount && keyCount->text() == QStringLiteral("2 keys"));
     key(c, Qt::Key_Escape);
 }
 
