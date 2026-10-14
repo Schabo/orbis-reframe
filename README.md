@@ -5,6 +5,8 @@ gyro stabilization and, above all, **reframing**. Reframing means steering a
 virtual camera through the sphere over time to get a normal flat video out of a
 360° recording.
 
+[![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Overlay tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
+
 > **AI disclaimer:** most of the code in this project was written with AI,
 > using [Claude Code](https://claude.com/claude-code) with Claude Opus 5.5.
 > The design, direction and testing on real footage are human.
