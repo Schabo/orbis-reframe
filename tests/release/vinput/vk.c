@@ -30,8 +30,10 @@ static const struct { const char *n; int c; } keys[] = {
     {"Home", KEY_HOME}, {"End", KEY_END}, {"space", KEY_SPACE}, {"Delete", KEY_DELETE},
     {"BackSpace", KEY_BACKSPACE}, {"Escape", KEY_ESC}, {"Return", KEY_ENTER}, {"F1", KEY_F1},
     {"bracketleft", KEY_LEFTBRACE}, {"bracketright", KEY_RIGHTBRACE}, {"Tab", KEY_TAB},
-    {"a", KEY_A}, {"e", KEY_E}, {"k", KEY_K}, {"q", KEY_Q}, {"s", KEY_S}, {"t", KEY_T}, {"z", KEY_Z}, {"0", KEY_0}, {"minus", KEY_MINUS},
-    {"equal", KEY_EQUAL}, {"1", KEY_1}, {"2", KEY_2}, {"5", KEY_5},
+    {"a", KEY_A}, {"e", KEY_E}, {"k", KEY_K}, {"q", KEY_Q}, {"s", KEY_S}, {"t", KEY_T}, {"z", KEY_Z},
+    {"minus", KEY_MINUS}, {"equal", KEY_EQUAL},
+    {"0", KEY_0}, {"1", KEY_1}, {"2", KEY_2}, {"3", KEY_3}, {"4", KEY_4},
+    {"5", KEY_5}, {"6", KEY_6}, {"7", KEY_7}, {"8", KEY_8}, {"9", KEY_9},
 };
 static int code(const char *n)
 {
@@ -48,8 +50,25 @@ static uint32_t now(void)
     return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+// The key's name after its "mod+" prefixes.
+static const char *keyName(const char *arg)
+{
+    const char *k = arg, *plus;
+    while ((plus = strchr(k, '+')) && plus[1])
+        k = plus + 1;
+    return k;
+}
+
 int main(int argc, char **argv)
 {
+    // Every key name first: an unknown one stops the run before anything is
+    // pressed, rather than halfway with a modifier held.
+    for (int i = 1; i + 1 < argc; ++i)
+        if (!strcmp(argv[i], "key"))
+            code(keyName(argv[++i]));
+        else if (!strcmp(argv[i], "sleep"))
+            ++i;
+
     struct wl_display *dpy = wl_display_connect(NULL);
     if (!dpy) { fprintf(stderr, "no display\n"); return 1; }
     struct wl_registry *reg = wl_display_get_registry(dpy);

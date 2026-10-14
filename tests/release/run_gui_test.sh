@@ -101,6 +101,11 @@ enter_until_gone() {
     return 1
 }
 
+# vk / vp failing (an unknown key name, no display) is a test bug: noted
+# here, judged by release_test.sh before the steps it would have broken.
+vk() { command vk "$@" || result input_error "vk $*"; }
+vp() { command vp "$@" || result input_error "vp $*"; }
+
 # --- the app
 export QT_QPA_PLATFORM=wayland ORBIS_VERBOSE=1 ORBIS_FRAME_STATS=1 HOME=$W
 "$app" "$W/smoke.orp" > "$W/app.log" 2>&1 &
@@ -148,7 +153,8 @@ result scan_done $?
 result scan_line "$(grep -m1 '^\[plates\]' "$W/app.log")"
 shot 6-scanned
 
-# Export: Ctrl+E, accept the options, accept ~/timeline.mp4 (HOME=/work),
+# Export: Ctrl+E, accept the options, accept the suggested /work/smoke.mp4 (a
+# loose project file exports next to itself, named after it),
 # then close the "Export complete" message.
 vk key ctrl+e
 wait_window '^Export Flat Video$' 10

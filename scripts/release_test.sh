@@ -169,6 +169,7 @@ for kind in "${KINDS[@]}"; do
 
     check "$kind: install" "$([[ $(r install) == 0 && $(r ldd_missing) == 0 ]] && echo 1 || echo 0)" \
         "apt $(r install), ldd $(r ldd_missing) missing"
+    check "$kind: input" "$([[ -z $(r input_error) ]] && echo 1 || echo 0)" "$(r input_error)"
     check "$kind: first frame" "$([[ $(r first_frame) == 0 ]] && echo 1 || echo 0)" ""
     frames=$(r play_new_frames_max)
     check "$kind: playback" "$([[ ${frames:-0} -ge 25 ]] && echo 1 || echo 0)" "${frames:-0} new frames/s at best"
@@ -184,9 +185,10 @@ for kind in "${KINDS[@]}"; do
     scan_frames=$(echo "$scan" | sed -nE 's/.*: ([0-9]+) frames.*/\1/p')
     check "$kind: scan clip" "$([[ $(r scan_done) == 0 && ${scan_frames:-0} -gt 0 ]] && echo 1 || echo 0)" \
         "$(echo "$scan" | sed -E 's/^\[plates\] [^:]*: //')"
+    # A loose project file exports next to itself, named after it.
     probe=$(ffprobe -v error -show_entries stream=codec_type,codec_name,width,height:format=duration \
-        -of compact=p=0:nk=1 "$work/timeline.mp4" 2> /dev/null | tr '\n' ' ')
-    export_ok=$(python3 - "$work/timeline.mp4" << 'EOF'
+        -of compact=p=0:nk=1 "$work/smoke.mp4" 2> /dev/null | tr '\n' ' ') || probe="no $kind/smoke.mp4"
+    export_ok=$(python3 - "$work/smoke.mp4" << 'EOF'
 import json, subprocess, sys
 try:
     j = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries",
