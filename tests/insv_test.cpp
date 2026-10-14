@@ -489,6 +489,245 @@ void testTrailerThumbnail()
     CHECK(!insv::ReadInsvThumbnail("/nonexistent/clip.insv").has_value());
 }
 
+// --- a whole X5-shaped trailer, built record by record ---------------------
+
+// Little-endian / protobuf writers for building trailer records.
+struct Bytes {
+    std::vector<uint8_t> b;
+    Bytes& u8(uint8_t v) { b.push_back(v); return *this; }
+    Bytes& u16(uint16_t v) { for (int i = 0; i < 2; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
+    Bytes& u32(uint32_t v) { for (int i = 0; i < 4; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
+    Bytes& u64(uint64_t v) { for (int i = 0; i < 8; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
+    Bytes& f64(double v) { uint64_t u; std::memcpy(&u, &v, 8); return u64(u); }
+    Bytes& raw(const std::vector<uint8_t>& v) { b.insert(b.end(), v.begin(), v.end()); return *this; }
+    Bytes& str(const std::string& v) { b.insert(b.end(), v.begin(), v.end()); return *this; }
+    Bytes& varint(uint64_t v) {
+        do {
+            uint8_t c = v & 0x7f;
+            v >>= 7;
+            b.push_back(uint8_t(c | (v ? 0x80 : 0)));
+        } while (v);
+        return *this;
+    }
+    // Protobuf fields.
+    Bytes& key(uint32_t field, int wt) { return varint((uint64_t(field) << 3) | uint64_t(wt)); }
+    Bytes& pbVarint(uint32_t field, uint64_t v) { return key(field, 0).varint(v); }
+    Bytes& pbDouble(uint32_t field, double v) { return key(field, 1).f64(v); }
+    Bytes& pbBytes(uint32_t field, const std::vector<uint8_t>& v) { return key(field, 2).varint(v.size()).raw(v); }
+    Bytes& pbString(uint32_t field, const std::string& v) {
+        return pbBytes(field, std::vector<uint8_t>(v.begin(), v.end()));
+    }
+};
+
+// The extended (MEI) calibration string's shape: "2_" then >= 55 numbers.
+std::string extendedCalibrationString()
+{
+    std::string s = "2";
+    for (int i = 0; i < 60; ++i) s += "_" + std::to_string(i % 7) + "." + std::to_string(i);
+    return s;
+}
+
+struct TrailerRecord {
+    uint16_t id; // the header's (type << 8 | format)
+    std::vector<uint8_t> payload;
+};
+
+// A file the way the X5 writes one: MP4 boxes (`ftyp`, `moov`), then the
+// `inst` trailer to EOF -- the records, each payload followed by its 6-byte
+// header, an offsets table (record 0x0) locating them, and the 78-byte footer
+// whose header names the table. Only the table reaches the records, as on the
+// X5, where the sequential chain dead-ends.
+std::string writeX5Trailer(const char* name, const std::vector<TrailerRecord>& records)
+{
+    Bytes trailer;
+    Bytes table;
+    for (const TrailerRecord& r : records) {
+        const uint32_t offset = uint32_t(trailer.b.size());
+        trailer.raw(r.payload).u16(r.id).u32(uint32_t(r.payload.size()));
+        // Table entries spell the id the other way round: {type, format}.
+        table.u8(uint8_t(r.id >> 8)).u8(uint8_t(r.id)).u32(uint32_t(r.payload.size())).u32(offset);
+    }
+    table.u8(0).u8(0).u32(0).u32(0); // an empty placeholder, skipped
+    trailer.raw(table.b);
+    Bytes footer;
+    footer.u16(0x0).u32(uint32_t(table.b.size()));
+    footer.raw(std::vector<uint8_t>(32, 0));
+    const uint32_t trailerLen = uint32_t(trailer.b.size() + 78);
+    footer.u32(trailerLen).u32(3).str("8db42d694ccc418790edff439fe026bf");
+
+    auto box = [](const char* type, size_t payloadBytes) {
+        Bytes h;
+        const uint32_t size = uint32_t(8 + payloadBytes);
+        h.u8(uint8_t(size >> 24)).u8(uint8_t(size >> 16)).u8(uint8_t(size >> 8)).u8(uint8_t(size));
+        h.str(type).raw(std::vector<uint8_t>(payloadBytes, 0x22));
+        return h.b;
+    };
+    const std::string path = (std::filesystem::temp_directory_path() / name).string();
+    std::ofstream f(path, std::ios::binary);
+    for (const auto& part : {box("ftyp", 16), box("moov", 40), trailer.b, footer.b})
+        f.write(reinterpret_cast<const char*>(part.data()), std::streamsize(part.size()));
+    return path;
+}
+
+// Record 0x101: the maker-notes strings first (tag, 1-byte length -- what
+// ParseMakerNotes reads), then the protobuf fields timing and IMU scaling use,
+// the extended calibration (field 111) and the lens-profile table (145).
+std::vector<uint8_t> metadataRecord(bool rawGyro)
+{
+    Bytes m;
+    m.pbString(1, "IAHEA2500000001").pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
+    m.pbString(5, "2_1.0_2.0_3.0");
+    m.pbVarint(24, 2468081984ull);
+    m.pbDouble(25, 21.244);
+    m.pbDouble(28, 1.6);
+    if (rawGyro) {
+        m.pbVarint(62, 1);
+        Bytes cfg;
+        cfg.pbVarint(1, 32).pbVarint(2, 2000);
+        m.pbBytes(65, cfg.b);
+    }
+    m.pbString(111, extendedCalibrationString());
+    Bytes table;
+    {
+        Bytes poly;
+        poly.pbString(1, "bare");
+        for (double c : {0.0, 0.05, -1e-5, 2e-8, 0.0, 0.0}) poly.pbDouble(2, c);
+        table.pbBytes(1, poly.b);
+        Bytes protector;
+        protector.pbString(1, "ProtectorA");
+        Bytes packed;
+        for (double c : {0.0, 0.049, 0.0, 0.0, 0.0, 0.0}) packed.f64(c);
+        protector.pbBytes(2, packed.b); // packed doubles
+        table.pbBytes(1, protector.b);
+        Bytes fov;
+        fov.pbString(1, "bare").pbDouble(2, 200.0);
+        table.pbBytes(2, fov.b);
+        Bytes fov2;
+        fov2.pbString(1, "ProtectorA").pbDouble(2, 195.0);
+        table.pbBytes(2, fov2.b);
+    }
+    m.pbBytes(145, table.b);
+    return m.b;
+}
+
+void testTrailerRecords()
+{
+    // 0x300, raw counts (field 62): u64 time + 6 x u16, value = raw - 0x8000;
+    // +-32 g and +-2000 deg/s full scale (field 65).
+    Bytes imu;
+    for (int i = 0; i < 3; ++i) {
+        imu.u64(1000000 + uint64_t(i) * 1000);
+        imu.u16(0x8000 + 1024).u16(0x8000).u16(0x8000 - 1024); // accel: +1 g, 0, -1 g
+        imu.u16(0x8000 + 16384).u16(0x8000).u16(0x8000);       // gyro x: 1000 deg/s
+    }
+    // 0x400: u64 time, f64 exposure seconds.
+    Bytes exposure;
+    exposure.u64(1000500).f64(1.0 / 500).u64(1033833).f64(1.0 / 1000);
+    // 0x700: 53-byte records at 10 Hz, the fix new once a second; the first
+    // second without a fix.
+    Bytes gps;
+    for (int i = 0; i < 30; ++i) {
+        Bytes r;
+        r.u64(1757003465ull + uint64_t(i / 10)).u16(0).u8(i < 10 ? 'V' : 'A');
+        r.raw(std::vector<uint8_t>(53 - 11, 0));
+        gps.raw(r.b);
+    }
+    // 0x8000 TimeMap: one trim, (video ms, source ms) pairs 2002 ms apart.
+    Bytes timeMap;
+    timeMap.u32(32).u32(1).u32(3 * 16).u32(3).raw(std::vector<uint8_t>(16, 0));
+    timeMap.f64(100.0).f64(2002.0).f64(2102.0);
+    for (double v : {0.0, 33.37, 66.73}) timeMap.f64(v).f64(v + 2002.0);
+    // An unknown record, stepped over.
+    const std::vector<uint8_t> unknown(37, 0x5a);
+
+    const std::string path = writeX5Trailer(
+        "insv_test_x5.insv", {{0x101, metadataRecord(true)},
+                              {0x300, imu.b},
+                              {0x400, exposure.b},
+                              {0x1c00, unknown},
+                              {0x700, gps.b},
+                              {0x8000, timeMap.b}});
+
+    const auto notes = insv::ReadInsvMakerNotes(path);
+    CHECK(notes.has_value());
+    if (notes) {
+        CHECK(notes->serial_number == "IAHEA2500000001");
+        CHECK(notes->model == "Insta360 X5");
+        CHECK(notes->firmware == "v1.5.6_build1");
+        CHECK(notes->parameters == "2 1.0 2.0 3.0"); // underscores read as spaces
+        CHECK(notes->lens_profiles.size() == 2);
+        const insv::LensProfile* bare = insv::FindLensProfile(*notes, "bare");
+        CHECK(bare && near(bare->poly[1], 0.05, 1e-12) && near(bare->poly[3], 2e-8, 1e-20));
+        CHECK(bare && bare->fov_deg == 200.0);
+        const insv::LensProfile* protector = insv::FindLensProfile(*notes, "ProtectorA");
+        CHECK(protector && near(protector->poly[1], 0.049, 1e-12) && protector->fov_deg == 195.0);
+        CHECK(!insv::FindLensProfile(*notes, "InvisibleDiveAir"));
+    }
+
+    const auto t = insv::ReadInsvTelemetry(path);
+    CHECK(t.has_value());
+    if (t) {
+        CHECK(t->first_frame_timestamp == 2468081984ull);
+        CHECK(near(t->rolling_shutter_ms, 21.244, 1e-12));
+        CHECK(near(t->gyro_timestamp_ms, 1.6, 1e-12));
+        CHECK(t->imu.size() == 3);
+        if (t->imu.size() == 3) {
+            CHECK(t->imu[1].timestamp == 1001000);
+            CHECK(near(t->imu[0].accel[0], 1.0, 1e-12) && near(t->imu[0].accel[2], -1.0, 1e-12));
+            CHECK(near(t->imu[0].gyro[0], 1000.0 * std::numbers::pi / 180.0, 1e-9));
+            CHECK(t->imu[0].gyro[1] == 0.0);
+        }
+        CHECK(t->exposure.size() == 2);
+        if (t->exposure.size() == 2)
+            CHECK(t->exposure[1].timestamp == 1033833 && t->exposure[1].exposure_time == 1.0 / 1000);
+        CHECK(t->gps_records == 30 && t->gps_fixes == 20);
+        CHECK(near(t->gps_rate_hz, 1.0, 1e-9) && near(t->gps_track_s, 3.0, 1e-9));
+        CHECK(near(t->time_map_offset_ms, 2002.0, 1e-9));
+    }
+    // A capped read stops early.
+    const auto capped = insv::ReadInsvTelemetry(path, 2);
+    CHECK(capped && capped->imu.size() == 2);
+
+    const auto ext = insv::ReadInsvExtendedCalibrationString(path);
+    CHECK(ext && *ext == extendedCalibrationString());
+
+    // Everything after `moov`: the trailer, footer and all.
+    const std::vector<uint8_t> raw = insv::ExtractRawTrailer(path);
+    CHECK(raw.size() == std::filesystem::file_size(path) - 24 - 48);
+    CHECK(raw.size() >= 32 && std::memcmp(raw.data() + raw.size() - 32, "8db42d694ccc418790edff439fe026bf", 32) == 0);
+    std::filesystem::remove(path);
+
+    // Without field 62 the IMU layout is guessed from the record length: 56
+    // bytes of doubles, already in g and rad/s.
+    Bytes doubles;
+    for (int i = 0; i < 2; ++i) {
+        doubles.u64(5000 + uint64_t(i));
+        for (double v : {0.0, 0.0, 1.0, 0.1, 0.2, 0.3}) doubles.f64(v);
+    }
+    const std::string d = writeX5Trailer("insv_test_x5_doubles.insv",
+                                         {{0x101, metadataRecord(false)}, {0x300, doubles.b}});
+    const auto td = insv::ReadInsvTelemetry(d);
+    CHECK(td && td->imu.size() == 2);
+    if (td && td->imu.size() == 2)
+        CHECK(td->imu[1].timestamp == 5001 && td->imu[1].accel[2] == 1.0 && td->imu[1].gyro[2] == 0.3);
+    CHECK(td && td->exposure.empty() && td->gps_records == 0 && td->time_map_offset_ms == 0.0);
+    std::filesystem::remove(d);
+
+    // No trailer (no magic), no moov: nothing, and no crash.
+    const std::string plain = (std::filesystem::temp_directory_path() / "insv_test_plain.mp4").string();
+    {
+        std::ofstream f(plain, std::ios::binary);
+        const std::vector<char> junk(200, 0x33);
+        f.write(junk.data(), std::streamsize(junk.size()));
+    }
+    CHECK(!insv::ReadInsvMakerNotes(plain).has_value());
+    CHECK(!insv::ReadInsvTelemetry(plain).has_value());
+    CHECK(!insv::ReadInsvExtendedCalibrationString(plain).has_value());
+    CHECK(insv::ExtractRawTrailer(plain).empty());
+    std::filesystem::remove(plain);
+    CHECK(!insv::ReadInsvTelemetry("/nonexistent/clip.insv").has_value());
+}
+
 int main()
 {
     testExtendedCalibration();
@@ -500,6 +739,7 @@ int main()
     testSeamDepthTracker();
     testBlurQuads();
     testTrailerThumbnail();
+    testTrailerRecords();
 
     if (g_failures == 0)
         std::printf("insv_test: all checks passed\n");
