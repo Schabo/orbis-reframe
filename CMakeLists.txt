@@ -447,6 +447,9 @@ if(FFMPEG_FOUND)
         src/ui/panels/MediaInfoPanel.cpp
         src/ui/panels/MediaInfoPanel.h
         src/render/EquirectViewportWindow.cpp
+        src/render/EquirectViewportRenderer.h
+        src/render/EquirectViewportRenderer.cpp
+        src/render/EquirectViewportRendererFrame.cpp
         src/render/EquirectViewportWindow.h
         src/render/FrameStats.h
         src/ui/AboutDialog.cpp
