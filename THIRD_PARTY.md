@@ -60,7 +60,7 @@ Gyroflow, ExifTool, insv-stitch) and the published methods the code
 implements (the MEI fisheye camera model, the Mahony complementary filter,
 OpenCV's CSRT tracker) are credited in `README.md` ("Sources and thanks").
 No code was copied from them: the `src/insv/` parser is written from the
-documented layouts (`docs/INSV_FORMAT.md`).
+documented layouts (`docs/formats/insta360-x5.md`).
 
 Insta360, Insta360 Studio and X5 are trademarks of Arashi Vision Inc. This
 project is not affiliated with or endorsed by Insta360.

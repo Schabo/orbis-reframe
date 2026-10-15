@@ -164,7 +164,7 @@ public:
     void build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg);
 
     // As build(), but derive the video<->IMU time offset from the trailer
-    // instead of trusting cfg.timeOffsetSec (docs/INSV_FORMAT.md §7.1). The
+    // instead of trusting cfg.timeOffsetSec (docs/formats/insta360-x5.md §7.1). The
     // IMU starts before recording (sensor pre-roll, 0.16-0.78 s on the
     // samples); metadata field 24 is the device timestamp of video frame 0,
     // so the offset is (field24 - imu[0].timestamp)/1e6 + field28/1e3, plus

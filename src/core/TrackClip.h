@@ -170,7 +170,7 @@ struct Track {
     // with `streamCount` audio streams: with an external mic connected the
     // first stream is the external mic (e.g. an Insta360 Mic Air) and the
     // second the camera's own mic, else
-    // the only one is the camera's (see docs/INSV_FORMAT.md).
+    // the only one is the camera's (see docs/formats/insta360-x5.md).
     static Role roleOfStream(int stream, int streamCount)
     {
         if (streamCount >= 2)

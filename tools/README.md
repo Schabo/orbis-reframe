@@ -42,7 +42,7 @@ a layout that lines up with `exiftool -ee` for comparison.
 
 **When:** a clip behaves oddly (stitch, sync, stabilization) and you want
 to see what the camera recorded; or when working on `src/insv/InsvTrailer`.
-`docs/INSV_FORMAT.md` explains the fields.
+`docs/formats/insta360-x5.md` explains the fields.
 
 ```sh
 build/insv_trailer_dump clip.insv

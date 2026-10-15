@@ -179,7 +179,7 @@ list and the pinned versions.
 | [`docs/manual/`](docs/manual/README.md) | User manual |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Reporting bugs, building, commit messages, licensing of contributions |
 | [`docs/dev-environment.md`](docs/dev-environment.md) | Build dependencies, toolchain, environment switches for diagnosing problems |
-| [`docs/INSV_FORMAT.md`](docs/INSV_FORMAT.md) | Everything known about the X5 `.insv`/`.lrv` format |
+| [`docs/formats/`](docs/formats/README.md) | Camera file formats: everything known about the X5 `.insv`/`.lrv` format, and what's known about other cameras |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | How to make a release, step by step |
 | [`tools/README.md`](tools/README.md) | The developer tools: what each is for, when to use it |
 
@@ -187,7 +187,7 @@ list and the pinned versions.
 
 Everything about the X5 file format was learned from **interoperability
 documentation, published research and camera-produced files**. The Insta360
-SDK was never disassembled. [`docs/INSV_FORMAT.md`](docs/INSV_FORMAT.md) marks
+SDK was never disassembled. [`docs/formats/`](docs/formats/README.md) marks
 every fact with where it came from and how well it's verified. We're grateful
 to these projects and people:
 

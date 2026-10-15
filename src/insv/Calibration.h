@@ -7,7 +7,7 @@
 // Parses the X5 `.insv` lens calibration: the extended per-lens MEI string
 // (insv::ReadInsvExtendedCalibrationString, src/insv/InsvTrailer.h) that every
 // X5 clip carries. The trailer's short "Parameters" maker-note string
-// (InsvMakerNotes::parameters, docs/INSV_FORMAT.md §5.2) is not parsed: it
+// (InsvMakerNotes::parameters, docs/formats/insta360-x5.md §5.2) is not parsed: it
 // only fed a legacy equidistant stitch model, removed once MEI was the default.
 
 namespace insv {

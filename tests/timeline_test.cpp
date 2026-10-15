@@ -8,7 +8,7 @@
 
 namespace {
 
-// Which kind of mic an .insv audio stream is (docs/INSV_FORMAT.md): with
+// Which kind of mic an .insv audio stream is (docs/formats/insta360-x5.md): with
 // two streams the first is the external mic, else the only one is the
 // camera's.
 void testStreamRoles()

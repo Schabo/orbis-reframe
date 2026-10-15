@@ -7,7 +7,7 @@
 
 // Everything the Media information panel shows about a source clip: container
 // and stream facts from FFmpeg, camera and telemetry facts from the trailer
-// (docs/INSV_FORMAT.md). No decode, no stitch.
+// (docs/formats/insta360-x5.md). No decode, no stitch.
 //
 // Part of insv_demux (needs FFmpeg).
 
@@ -67,7 +67,7 @@ struct MediaInfo {
 
     // "8K", "5.7K" or "4K" for a dual-fisheye X5 clip (from the lens size),
     // else "". 5.7K+ records the same stream shape as 5.7K, so it can't be told
-    // apart (docs/INSV_FORMAT.md §3.3).
+    // apart (docs/formats/insta360-x5.md §3.3).
     std::string captureMode() const;
 };
 

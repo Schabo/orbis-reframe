@@ -15,7 +15,7 @@ namespace insv {
 // documentation — see ReadInsvMakerNotes below). Kept raw for reference only:
 // the stitch uses the extended MEI string (ReadInsvExtendedCalibrationString).
 // One entry of the per-accessory lens-profile table (0x101 field 145,
-// docs/INSV_FORMAT.md §5.4): `poly` maps the off-axis angle in degrees to the
+// docs/formats/insta360-x5.md §5.4): `poly` maps the off-axis angle in degrees to the
 // image height on the sensor in mm (sum poly[i] * theta^i), `fov_deg` is the
 // usable field of view. Names seen on the X5: "bare", "ProtectorA",
 // "ProtectorS", "ProtectorAS", "InvisibleDiveWater", "InvisibleDiveAir".
@@ -66,7 +66,7 @@ struct InsvTelemetry {
     std::vector<ImuSample> imu;
     std::vector<ExposureSample> exposure;
 
-    // Timing/IMU fields from the 0x101 metadata protobuf (docs/INSV_FORMAT.md
+    // Timing/IMU fields from the 0x101 metadata protobuf (docs/formats/insta360-x5.md
     // §5.1); 0 when the file doesn't carry them.
     // Field 24: device-clock timestamp of the first *recorded* video frame. The
     // IMU and the 0x400 exposure record start before recording (sensor
@@ -84,7 +84,7 @@ struct InsvTelemetry {
     // "-trim" clip). 0 when absent. Only pure trims are modelled -- a
     // re-timed (speed-ramped) map is reduced to its median offset.
     double time_map_offset_ms = 0;
-    // Record 0x700 (GPS, docs/INSV_FORMAT.md §8), written only when a GPS
+    // Record 0x700 (GPS, docs/formats/insta360-x5.md §8), written only when a GPS
     // source was connected. Only counted, never decoded into positions. All 0
     // when the file has no GPS record.
     std::size_t gps_records = 0; // 10 per second of video
@@ -127,7 +127,7 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path);
 std::optional<std::string> ReadInsvExtendedCalibrationString(const std::string& file_path);
 
 // The camera's own preview picture from the trailer's 0x200 record
-// (docs/INSV_FORMAT.md §4.3): on the X5 an already stitched equirectangular
+// (docs/formats/insta360-x5.md §4.3): on the X5 an already stitched equirectangular
 // frame, 1280x640, NV12 (a full-size Y plane, then interleaved U/V at half
 // size). Cheap to read -- only that record is loaded, not the video or the
 // IMU. Returns std::nullopt when the file has no trailer, no such record, or

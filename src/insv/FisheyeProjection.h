@@ -70,7 +70,7 @@ struct StitchParams {
     // for the X5 lens guards, which is a ~4 deg ghost across the seam if
     // ignored. When `accessory` is set, the MEI image radius is scaled by
     // accessoryPoly(theta) / barePoly(theta), both theta-in-degrees -> mm
-    // polynomials from 0x101 field 145 (docs/INSV_FORMAT.md §5.4).
+    // polynomials from 0x101 field 145 (docs/formats/insta360-x5.md §5.4).
     bool accessory = false;
     double barePoly[6] = {0, 0, 0, 0, 0, 0};
     double accessoryPoly[6] = {0, 0, 0, 0, 0, 0};

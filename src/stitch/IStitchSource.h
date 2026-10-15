@@ -63,7 +63,7 @@ struct PreviewStitchConfig {
 
     // What's fitted over the lenses. The camera doesn't record it, so the user
     // picks it; it selects the matching lens profile in the clip's trailer
-    // (docs/INSV_FORMAT.md §5.4). Guards shift the image ~2 % outward at the
+    // (docs/formats/insta360-x5.md §5.4). Guards shift the image ~2 % outward at the
     // seam -- the wrong choice leaves a ~4 deg ghost there. Defaults to
     // Premium: all the project's footage is shot with them.
     enum class LensGuard { None, Standard, Premium };

@@ -165,7 +165,7 @@ void ParseMakerNotes(const std::vector<uint8_t>& payload, InsvMakerNotes& out) {
     }
 }
 
-// The subset of record 0x101 (the `ExtraMetadata` protobuf, docs/INSV_FORMAT.md
+// The subset of record 0x101 (the `ExtraMetadata` protobuf, docs/formats/insta360-x5.md
 // §5) that timing and IMU scaling need.
 struct ImuMetadata {
     uint64_t first_frame_timestamp = 0; // field 24
@@ -236,7 +236,7 @@ ImuMetadata ParseImuMetadata(const std::vector<uint8_t>& payload) {
 
 // Record 0x300 (IMU). Two on-disk layouts: 20-byte records pack 6 raw 16-bit
 // counts (value = raw - 0x8000) scaled by the metadata's full-scale ranges
-// (field 65: count / (32768 / range) -> g and deg/s; docs/INSV_FORMAT.md §6.1);
+// (field 65: count / (32768 / range) -> g and deg/s; docs/formats/insta360-x5.md §6.1);
 // 56-byte records pack 6 little-endian doubles already in g and rad/s. Both
 // are prefixed by a uint64 device timestamp. First 3 values are the
 // accelerometer, last 3 the gyro. The layout comes from field 62 (is_raw_gyro)
@@ -308,7 +308,7 @@ double ParseTimeMapOffsetMs(const std::vector<uint8_t>& p) {
 }
 
 // Field 145 of record 0x101: repeated {1: name, 2: 6 x double poly} profiles,
-// then repeated {1: name, 2: double fov} entries (docs/INSV_FORMAT.md §5.4).
+// then repeated {1: name, 2: double fov} entries (docs/formats/insta360-x5.md §5.4).
 void ParseLensProfiles(const std::vector<uint8_t>& payload, std::vector<LensProfile>& out) {
     auto entry = [&](const std::string& name) -> LensProfile& {
         for (auto& p : out)
@@ -461,7 +461,7 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path) {
     const int64_t file_size = static_cast<int64_t>(file.tellg());
 
     // 40-byte header, then the picture: u32 1, u32 record size, u32 1, u32 0,
-    // u32 width, u32 height, zeros (docs/INSV_FORMAT.md §4.3).
+    // u32 width, u32 height, zeros (docs/formats/insta360-x5.md §4.3).
     constexpr size_t kHeader = 40;
     std::optional<InsvThumbnail> out;
     WalkTrailerRecords(

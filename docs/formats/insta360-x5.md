@@ -5,12 +5,15 @@ MP4 container, the video/audio streams, the proprietary `inst` trailer, the
 telemetry in it (gyro, accelerometer, exposure, GPS), and the lens calibration.
 It collects the findings from `src/insv/`, the spikes/tools, the project's
 development notes, a direct re-inspection of the sample footage, and a
-cross-check against the external sources in §14 (2026-09-24).
+cross-check against the external sources in §13 (2026-09-24).
+
+The other cameras' formats are in their own files next to this one, indexed
+in [`README.md`](README.md); they describe how each differs from this one.
 
 **Confidence markers** used below:
 - ✅ **verified**: parsed by our code and cross-checked (ExifTool byte-for-byte,
   ffprobe, several clips agreeing, and/or an independent implementation)
-- 📖 **documented externally**: stated by an independent source (§14) and
+- 📖 **documented externally**: stated by an independent source (§13) and
   consistent with our files, but not yet exercised by our code
 - ⚠️ **inferred**: strong evidence, but not validated end to end
 - ❓ **unknown**
@@ -172,7 +175,7 @@ Measured from `sample_footage/Modes/` (2026-09-27, one clip per mode):
   bitrate differs. No 10-bit path is
   needed for these modes. **I-Log** exists on the X5 at 5.7K 60 and below
   (Insta360's manual), but there's no I-Log clip in the sample set: its bit
-  depth and colour tagging are untested (§12).
+  depth and colour tagging are untested.
 - The trailer is identical in shape across modes: the same calibration
   strings (stated at the 10752×5376 reference size and scaled to the
   stream), the same lens profiles, ~1006 Hz IMU, and one exposure record per
@@ -747,93 +750,7 @@ sample set.
 | `ffprobe -show_streams` | container and streams (§3) |
 | `tools/residual_stab --diagnose` | IMU spectra, image-vs-gyro sweep, sync (block [5]) |
 
-## 12. Other cameras: X4, X6, X3, ONE X2 and Antigravity A1 (desk research, 2026-10-15)
-
-No file from these cameras has been examined: this is from public specs,
-Insta360's manuals and telemetry-parser, set against what our code assumes.
-Every point needs a real clip to confirm.
-
-**Shared with the X5** 📖:
-- One `.insv` per take with both lenses, same `VID_…_00_…` / `LRV_…_01_…`
-  naming (the X6 manual: X6, X5, X4 Air and X4 write one file; the X3 two).
-- The same trailer framing: telemetry-parser reads X4 and X5 trailers with one
-  code path (an Offsets table, records "back to back" with a six-byte
-  descriptor after each), and maps both IMUs with `yzX` (§6.3). It has no
-  X6-specific code yet; an unknown model falls back to `Xyz`.
-- Nothing in our code branches on field 2 (`camera_type`); calibration,
-  rolling shutter and sync are read per file.
-
-**X4** ⚠️ (8K 30, 5.7K 60, 4K 100; H.265, up to 200 Mb/s):
-- Expected per-lens sizes 3840² / 2880² / 1920², as on the X5.
-- Unknown: whether it carries the 56-token MEI string (field 111/112, §5.3),
-  without which the native stitch won't open the clip; whether its IMU is raw
-  counts (field 62) and the same full-scale ranges; whether our measured
-  `z,-x,-y` axis map (§6.3) holds — Gyroflow's matching `yzX` suggests it
-  might. One third-party listing claims 10-bit recording; Insta360 doesn't.
-
-**X6** ⚠️ (two 1/1.1" square sensors; H.265, up to 180 Mb/s):
-- 360 modes: 8K 7680×3840 at 50/48/30/25/24, **6K 6016×3008** at up to 60,
-  4K 3840×1920 at up to 100. So per lens 3840², **3008²** (new) and 1920².
-- **I-Log 10-bit** and **Dolby Vision** colour modes. Our GPU path samples
-  the decoder's images as 8-bit NV12 (`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM`)
-  with a BT.709 full-range conversion, so a 10-bit (P010-style) stream needs
-  a second sampler format, and a log or HDR transfer a conversion we don't
-  have. Dolby Vision is presumably BT.2020 / PQ or HLG — unconfirmed.
-- 8K 50 is ~1.5 Gpx/s across both lenses, ~1.7× the X5's 8K 30 (§3.3);
-  real-time decode isn't measured.
-- The larger sensor likely changes the calibration's reference frame
-  (10752×5376 on the X5) and possibly the IMU part (field 51); both are read
-  from the file, but the sanity ranges in `Calibration.cpp` were set from
-  X5 values.
-- The capture-mode label (8K / 5.7K / 4K) is chosen by lens size, so 3008²
-  has no name yet.
-
-**X3 and ONE X2** ⚠️ — the older, **two-file** generation:
-- 360 video up to 5.7K 30 (5760×2880, so presumably 2880² per lens). The X3
-  records **H.264 only** (120 Mb/s); the ONE X2 H.264 or H.265 (100 Mb/s).
-  Our decode path doesn't depend on the codec, and the Vulkan decoder checks
-  for H.264 decode support on its own.
-- **One file per lens** 📖: `VID_…_00_NNN.insv` and `VID_…_10_NNN.insv`
-  (the lens-direction digit, §1). telemetry-parser describes "one lens per
-  file" as a layout the camera declares, and a *sibling hint* naming the
-  other file of the pair; it warns that a split recording is also a group of
-  two, so pairing must not go by name alone. One X3 owner reports that the
-  `_00_` file holds the front lens plus GPS. Which file carries the IMU and
-  calibration is unknown. Our demux opens one file with both lens streams;
-  a pair of files isn't supported.
-- **Calibration**: telemetry-parser builds its lens profile only from
-  `offset_v3` (field 54), and its ONE X2 IMU orientation (`xZy`) sits in
-  the table for clips *without* `offset_v3`. So the ONE X2 most likely
-  carries only the older strings (`offset`, maybe `offset_v2`, §5.2/§5.3),
-  not the 56-token MEI string the native stitch requires. Whether the X3
-  has `offset_v3` or the MEI string is unknown. telemetry-parser's rig code
-  names a ONE X2 lens type 42 with a guard whose optical table differs from
-  its mask table.
-- **IMU**: probably the 56-byte doubles layout (§6.1, `is_raw_gyro` false),
-  which the parser already reads. The axis mapping differs from the X5's:
-  Gyroflow uses `xZy` on the ONE X2, against `yzX` on the X4/X5 (§6.3).
-- **Colour**: a "LOG" profile on both (Insta360's spec table), next to
-  Standard and Vivid; bit depth unstated, presumably 8-bit.
-
-**Antigravity A1** ⚠️ — a 360 drone from Antigravity, a brand incubated by
-Insta360:
-- 360 video 8K 7680×3840 at 30/25/24, **5.2K 5248×2624** at up to 60,
-  4K 3840×1920 at up to 100; H.264 or H.265, up to 170 Mb/s. Two 1/1.28"
-  sensors, 180° lenses (vs ~200° on the X5, so a much thinner overlap at
-  the seam). Per lens presumably 3840², **2624²** (new) and 1920². Files are
-  `.insv`; whether the card holds one file with both lenses is unknown.
-- **The trailer is the same `inst` trailer, laid out differently** 📖
-  (telemetry-parser): the Offsets table (§4.2) is the only index, each
-  record sits at the start of a **256 KiB slot**, and there are **no
-  six-byte descriptors** after the records. Our walker takes each record's
-  position from the table but then reads its id and size from the
-  descriptor after it, which on the A1 is the next slot's bytes: it would
-  read garbage. Taking id and size from the table entry instead (as
-  telemetry-parser does) fixes that and costs the X5 nothing.
-- Calibration, IMU layout and axes, and the drone's own body in the frame
-  (props, arms: a mask) are unknown.
-
-## 13. Open questions (after the 2026-09-24 research)
+## 12. Open questions (after the 2026-09-24 research)
 
 Resolved by the research: the record-type names, the type-9 layout, the
 meaning of most metadata fields, the IMU scale/range, the IMU part, the sync
@@ -854,9 +771,8 @@ Still open:
    8K (HDR on/off), 5.7K+, 5.7K 60 and 4K 120 are now covered (§3.3); log,
    timelapse and `.insp` are still untested.
 6. X5 I-Log: bit depth, colour tagging and transfer curve (§3.3).
-7. Everything in §12: X4, X6, X3, ONE X2 and Antigravity A1 files, from real clips.
 
-## 14. External sources
+## 13. External sources
 
 - Gyroflow **telemetry-parser**, `src/insta360/{mod,record,extra_info}.rs`
   (record framing, record types, `ExtraMetadata` protobuf schema, raw-gyro
@@ -874,18 +790,7 @@ Still open:
   (search result, Insta360 support pages)
 - TDK ICM-40609-D datasheet (full-scale ranges):
   <https://invensense.tdk.com/products/motion-tracking/6-axis/icm-40609-d/>
-- Insta360 X6 manual: shooting specs
-  <https://onlinemanual.insta360.com/x6/en-us/specs/shooting-specs>, file
-  formats <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/storage/fileformat>,
-  I-Log (X5 and X6)
+- Insta360 manual, I-Log mode (X5 and X6):
   <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/capture-preview/features/ilog>
-- Insta360 X-series shooting specs, codecs and colour profiles per model (X6
-  to ONE X): <https://onlinemanual.insta360.com/onex2/en-us/specs/shooting-specs>
-- telemetry-parser `src/insta360/rig.rs` (one-lens-per-file layout, sibling
-  hint, ONE X2 lens type 42) and `mod.rs` (the A1's slotted, descriptor-less
-  trailer)
-- Antigravity A1 specs (Shotkit review): <https://shotkit.com/antigravity-a1-review/>
-- Insta360 X4 manual, shooting specs:
-  <https://onlinemanual.insta360.com/x4/en-us/specs/shooting-specs>
 - Gyroflow docs, Insta360 support (360 models unsupported in Gyroflow itself):
   <https://docs.gyroflow.xyz/app/getting-started/supported-cameras/insta360>

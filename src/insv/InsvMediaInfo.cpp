@@ -31,7 +31,7 @@ std::string tag(AVDictionary* dict, const char* key) {
 }
 
 // VID_<date>_<time>_00_<n>.insv -> LRV_<date>_<time>_01_<n>.lrv, as the X5
-// names them on the card (docs/INSV_FORMAT.md §1).
+// names them on the card (docs/formats/insta360-x5.md §1).
 std::string findProxy(const std::filesystem::path& insv) {
     std::string name = insv.filename().string();
     if (name.rfind("VID_", 0) != 0)
@@ -134,7 +134,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
     }
     if (const auto tele = ReadInsvTelemetry(path, kImuProbeSamples)) {
         if (tele->imu.size() >= 2) {
-            // Raw IMU timestamps are ~microseconds (docs/INSV_FORMAT.md §6.2).
+            // Raw IMU timestamps are ~microseconds (docs/formats/insta360-x5.md §6.2).
             const double spanSec =
                 (tele->imu.back().timestamp - tele->imu.front().timestamp) / 1e6;
             if (spanSec > 0)

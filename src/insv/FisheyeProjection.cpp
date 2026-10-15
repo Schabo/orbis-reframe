@@ -173,7 +173,7 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         const Vec3& u = m_seamU;
         m_seamV = Vec3{a.y * u.z - a.z * u.y, a.z * u.x - a.x * u.z, a.x * u.y - a.y * u.x};
     }
-    // Lens 1 sits |tz| behind lens 0 along the axis (docs/INSV_FORMAT.md,
+    // Lens 1 sits |tz| behind lens 0 along the axis (docs/formats/insta360-x5.md,
     // offset_v3 fields 8-10); the lateral tx/ty (< 1 mm) are ignored.
     double baseline = std::fabs(params.baselineM);
     if (baseline == 0.0)

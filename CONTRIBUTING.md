@@ -82,15 +82,19 @@ git config core.hooksPath .githooks
     changes;
   - [`docs/dev-environment.md`](docs/dev-environment.md) when build
     dependencies change;
-  - [`docs/INSV_FORMAT.md`](docs/INSV_FORMAT.md) for new findings about the
-    file format, with where they come from.
+  - the camera's document in [`docs/formats/`](docs/formats/README.md) for
+    new findings about a file format, with where they come from.
 
-## The X5 file format: interoperability only
+## Camera file formats: interoperability only
 
-Everything orbis-reframe knows about the `.insv` format comes from
-interoperability documentation, published research, and files the camera
-recorded. **Don't disassemble or decompile Insta360's SDK or software**, and
-don't contribute anything derived from that. `docs/INSV_FORMAT.md` records
+Everything orbis-reframe knows about the cameras' files comes from
+interoperability documentation, published research, and files the cameras
+recorded. **Don't disassemble or decompile a camera vendor's SDK or
+software** (Insta360's, DJI's or anyone's), and don't contribute anything you
+derived from that. Facts that other open-source projects found that way are
+usable only as file-format facts, cited and checked against real files; the
+vendor's own tuning is measured, not copied. The rules are in
+[`docs/formats/README.md`](docs/formats/README.md). Each document there records
 where each fact comes from; keep doing that for new ones.
 
 ## License of contributions
