@@ -399,9 +399,12 @@ if(FFMPEG_FOUND)
         src/ui/PlayerBar.cpp
         src/ui/PlayerBar.h
         src/ui/TimelineWidget.cpp
+        src/ui/TimelineWidget.h
+        src/ui/TimelineWidgetInput.cpp
+        src/ui/TimelineWidgetLayout.h
+        src/ui/TimelineWidgetPaint.cpp
         src/ui/TrackFiles.cpp
         src/ui/TrackFiles.h
-        src/ui/TimelineWidget.h
         src/ui/WaveformCache.cpp
         src/ui/WaveformCache.h
         src/ui/ReframeExportController.cpp
@@ -681,7 +684,9 @@ add_test(NAME user_manual_test COMMAND user_manual_test)
 find_package(Qt6 QUIET COMPONENTS Test)
 if(Qt6Test_FOUND)
     add_executable(timeline_widget_test tests/timeline_widget_test.cpp
-        src/ui/TimelineWidget.cpp src/ui/TimelineWidget.h src/ui/Theme.cpp src/ui/Theme.h)
+        src/ui/TimelineWidget.cpp src/ui/TimelineWidget.h
+        src/ui/TimelineWidgetInput.cpp src/ui/TimelineWidgetLayout.h src/ui/TimelineWidgetPaint.cpp
+        src/ui/Theme.cpp src/ui/Theme.h)
     set_target_properties(timeline_widget_test PROPERTIES AUTOMOC ON)
     target_include_directories(timeline_widget_test PRIVATE src/ui)
     target_link_libraries(timeline_widget_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
