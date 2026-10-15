@@ -747,11 +747,11 @@ sample set.
 | `ffprobe -show_streams` | container and streams (§3) |
 | `tools/residual_stab --diagnose` | IMU spectra, image-vs-gyro sweep, sync (block [5]) |
 
-## 12. Other cameras: X4 and X6 (desk research, 2026-10-15)
+## 12. Other cameras: X4, X6, X3 and ONE X2 (desk research, 2026-10-15)
 
-No X4 or X6 file has been examined: this is from public specs, Insta360's
-manuals and telemetry-parser, set against what our code assumes. Every
-point needs a real clip to confirm.
+No file from these cameras has been examined: this is from public specs,
+Insta360's manuals and telemetry-parser, set against what our code assumes.
+Every point needs a real clip to confirm.
 
 **Shared with the X5** 📖:
 - One `.insv` per take with both lenses, same `VID_…_00_…` / `LRV_…_01_…`
@@ -788,6 +788,33 @@ point needs a real clip to confirm.
 - The capture-mode label (8K / 5.7K / 4K) is chosen by lens size, so 3008²
   has no name yet.
 
+**X3 and ONE X2** ⚠️ — the older, **two-file** generation:
+- 360 video up to 5.7K 30 (5760×2880, so presumably 2880² per lens). The X3
+  records **H.264 only** (120 Mb/s); the ONE X2 H.264 or H.265 (100 Mb/s).
+  Our decode path doesn't depend on the codec, and the Vulkan decoder checks
+  for H.264 decode support on its own.
+- **One file per lens** 📖: `VID_…_00_NNN.insv` and `VID_…_10_NNN.insv`
+  (the lens-direction digit, §1). telemetry-parser describes "one lens per
+  file" as a layout the camera declares, and a *sibling hint* naming the
+  other file of the pair; it warns that a split recording is also a group of
+  two, so pairing must not go by name alone. One X3 owner reports that the
+  `_00_` file holds the front lens plus GPS. Which file carries the IMU and
+  calibration is unknown. Our demux opens one file with both lens streams;
+  a pair of files isn't supported.
+- **Calibration**: telemetry-parser builds its lens profile only from
+  `offset_v3` (field 54), and its ONE X2 IMU orientation (`xZy`) sits in
+  the table for clips *without* `offset_v3`. So the ONE X2 most likely
+  carries only the older strings (`offset`, maybe `offset_v2`, §5.2/§5.3),
+  not the 56-token MEI string the native stitch requires. Whether the X3
+  has `offset_v3` or the MEI string is unknown. telemetry-parser's rig code
+  names a ONE X2 lens type 42 with a guard whose optical table differs from
+  its mask table.
+- **IMU**: probably the 56-byte doubles layout (§6.1, `is_raw_gyro` false),
+  which the parser already reads. The axis mapping differs from the X5's:
+  Gyroflow uses `xZy` on the ONE X2, against `yzX` on the X4/X5 (§6.3).
+- **Colour**: a "LOG" profile on both (Insta360's spec table), next to
+  Standard and Vivid; bit depth unstated, presumably 8-bit.
+
 ## 13. Open questions (after the 2026-09-24 research)
 
 Resolved by the research: the record-type names, the type-9 layout, the
@@ -809,7 +836,7 @@ Still open:
    8K (HDR on/off), 5.7K+, 5.7K 60 and 4K 120 are now covered (§3.3); log,
    timelapse and `.insp` are still untested.
 6. X5 I-Log: bit depth, colour tagging and transfer curve (§3.3).
-7. Everything in §12: X4 and X6 files, from real clips.
+7. Everything in §12: X4, X6, X3 and ONE X2 files, from real clips.
 
 ## 14. External sources
 
@@ -834,6 +861,10 @@ Still open:
   formats <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/storage/fileformat>,
   I-Log (X5 and X6)
   <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/capture-preview/features/ilog>
+- Insta360 X-series shooting specs, codecs and colour profiles per model (X6
+  to ONE X): <https://onlinemanual.insta360.com/onex2/en-us/specs/shooting-specs>
+- telemetry-parser `src/insta360/rig.rs` (one-lens-per-file layout, sibling
+  hint, ONE X2 lens type 42)
 - Insta360 X4 manual, shooting specs:
   <https://onlinemanual.insta360.com/x4/en-us/specs/shooting-specs>
 - Gyroflow docs, Insta360 support (360 models unsupported in Gyroflow itself):
