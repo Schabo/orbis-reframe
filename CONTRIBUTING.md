@@ -11,6 +11,9 @@ person, so the best way to start is an issue:
   pull request.
 - **Small fixes** (typos, docs, an obvious bug) can go straight to a pull
   request.
+- **Have a 360 camera other than the X5?** Short sample clips straight from
+  its card are a big help: see
+  [Sample clips wanted](docs/formats/README.md#sample-clips-wanted).
 
 ## Building and testing
 

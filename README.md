@@ -25,6 +25,10 @@ Ubuntu 26.04 LTS on the
 needs and how to install. **Found a problem?**
 [Open an issue](https://github.com/Schabo/orbis-reframe/issues).
 
+**Have another 360 camera?** Support for other Insta360, DJI and GoPro
+cameras is planned, and needs real footage to build on:
+[sample clips wanted](docs/formats/README.md#sample-clips-wanted).
+
 
 ## Why
 

@@ -1,0 +1,48 @@
+name: Sample clips
+description: Offer short clips from a camera orbis-reframe doesn't support yet.
+title: "Sample clips: "
+labels: [sample-clips]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! What we need and why is in [Sample clips wanted](https://github.com/Schabo/orbis-reframe/blob/main/docs/formats/README.md#sample-clips-wanted): short clips straight from the card, untouched, every file the camera wrote for each take.
+
+        **This issue is public, and so is any link you put in it.** If the footage shouldn't be public, leave the link out and say so below.
+  - type: input
+    id: camera
+    attributes:
+      label: Camera
+      description: Make and model, e.g. "Insta360 ONE X2", "DJI Osmo 360", "GoPro MAX2".
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: From the camera's settings or its app.
+    validations:
+      required: false
+  - type: textarea
+    id: clips
+    attributes:
+      label: The clips
+      description: One line per clip -- file names, recording mode (resolution, frame rate), colour profile, lens guard or not, anything else you set.
+      placeholder: |
+        VID_20261015_101500_00_001.insv + _10_001.insv + LRV: 5.7K 30, standard, no guard
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Download link
+      description: Where to fetch them (a cloud-drive or file-transfer link). Leave empty if the footage shouldn't be public.
+    validations:
+      required: false
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Permission
+      options:
+        - label: The clips are mine to share, straight from the camera's card, and may be used to develop and test orbis-reframe (they're never put in the repository or published).
+          required: true

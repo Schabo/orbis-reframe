@@ -16,6 +16,36 @@ differences from it, or, for another vendor, from scratch.
 | DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | not yet; desk research, no clips |
 | GoPro MAX, MAX2 | 360 stitched in the camera, `.360` (EAC) | [`gopro-max.md`](gopro-max.md) | not yet; desk research, no clips |
 
+## Sample clips wanted
+
+Everything except the X5 is desk research: **we need short clips from every
+camera above that isn't supported yet** to find out what the files really
+hold. If you own one, please
+[offer some clips](https://github.com/Schabo/orbis-reframe/issues/new?template=sample_clips.yml).
+
+- **Straight from the card**, untouched: not exported, trimmed or re-saved
+  by Insta360 Studio, DJI Studio, GoPro Quik or any other app (they rewrite
+  the metadata we need to read). Copy the whole set of files the camera
+  wrote for each take: both `_00_` and `_10_` files on two-file cameras, and
+  the `.lrv` / `.LRF` proxies.
+- **Short**: 10–30 s per clip is plenty. Hold the camera still for the
+  first few seconds, then move and turn it: the movement is what the
+  stabilization data is checked against.
+- **One clip per recording mode** if you can (resolution and frame rate),
+  and one in each colour profile the camera has (standard, log, HDR / Dolby
+  Vision). With and without a lens guard, if you have one.
+- **Say** which camera, its firmware version, and the mode and settings of
+  each clip.
+- **Privacy**: clips can hold GPS positions, faces, licence plates and the
+  camera's serial number. Film somewhere you're happy to share. The clips
+  are only used to develop and test orbis-reframe: they're never put in the
+  repository or published. An issue and the links in it are public; if the
+  footage shouldn't be, open the issue without the link and say so.
+
+Wanted most: the **Insta360 ONE X2** (the maintainer has one; clips from
+other units help too), then the **X4**, **X6**, **DJI Osmo 360** family and
+**GoPro MAX / MAX2**, then the rest of the table.
+
 ## Confidence markers
 
 Every document marks its facts the same way:
