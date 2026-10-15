@@ -19,8 +19,8 @@ differences from it, or, for another vendor, from scratch.
 ## Sample clips wanted
 
 Everything except the X5 is desk research: **we need short clips from every
-camera above that isn't supported yet** to find out what the files really
-hold. If you own one, please
+camera above that isn't supported yet** (except the ONE X2: the maintainer
+has one) to find out what the files really hold. If you own one, please
 [offer some clips](https://github.com/Schabo/orbis-reframe/issues/new?template=sample_clips.yml).
 
 - **Straight from the card**, untouched: not exported, trimmed or re-saved
@@ -42,9 +42,8 @@ hold. If you own one, please
   repository or published. An issue and the links in it are public; if the
   footage shouldn't be, open the issue without the link and say so.
 
-Wanted most: the **Insta360 ONE X2** (the maintainer has one; clips from
-other units help too), then the **X4**, **X6**, **DJI Osmo 360** family and
-**GoPro MAX / MAX2**, then the rest of the table.
+Wanted most: the **Insta360 X4** and **X6**, the **DJI Osmo 360** family
+and the **GoPro MAX / MAX2**, then the rest of the table.
 
 ## Confidence markers
 
