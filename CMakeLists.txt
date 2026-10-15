@@ -392,6 +392,8 @@ if(FFMPEG_FOUND)
         src/ui/StabilizerCache.h
         src/ui/PlaybackController.cpp
         src/ui/PlaybackController.h
+        src/ui/PlaybackControllerDecoder.cpp
+        src/ui/PlaybackTuning.h
         src/ui/InsetFeed.cpp
         src/ui/InsetFeed.h
         src/ui/EditToolbar.cpp
