@@ -114,6 +114,41 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
 {
     setWindowTitle(QStringLiteral("orbis-reframe"));
 
+    QWidget *viewportContainer = createViewport(vulkanInstance);
+    qApp->installEventFilter(this); // see eventFilter(): release text fields
+
+    m_timelineWidget = new TimelineWidget(this);
+    m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
+    m_editToolbar = new EditToolbar(this);
+    m_playerBar = new PlayerBar(this);
+
+    setupModel();
+    setupSourcesSidebar();
+    setupLayout(viewportContainer);
+    setupPages();
+    setupPlayback();
+    connectStitchAndStabilization();
+    connectTimeline();
+    connectOverlaysAndAudio();
+    connectEdits();
+    connectReframe();
+    connectColour();
+    connectMeasurements();
+    connectPrivacy();
+    setupMenus();
+    setupViewMenu();
+    setupKeyboardShortcuts();
+    connectController();
+    connectPlayerBar();
+    setupMediaCheck();
+    connectFullScreen();
+
+    m_playbackThread->start();
+    setEditorActive(false); // the library is shown until a project opens
+}
+
+QWidget *MainWindow::createViewport(QVulkanInstance *vulkanInstance)
+{
     m_viewport = new EquirectViewportWindow;
     m_viewport->setVulkanInstance(vulkanInstance);
     // Import decoded lens frames from the decoder's Vulkan device
@@ -147,13 +182,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     viewportContainer->setObjectName(QStringLiteral("viewport"));
     viewportContainer->setMinimumSize(320, 160);
     viewportContainer->setFocusPolicy(Qt::StrongFocus);
-    qApp->installEventFilter(this); // see eventFilter(): release text fields
+    return viewportContainer;
+}
 
-    m_timelineWidget = new TimelineWidget(this);
-    m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
-    m_editToolbar = new EditToolbar(this);
-    m_playerBar = new PlayerBar(this);
-
+void MainWindow::setupModel()
+{
     // The edit model, owned by the GUI thread: a Project holding a Timeline.
     // The whole timeline is handed to PlaybackController as a segment list
     // (pushTimelineToController); it plays across the clips in timeline time.
@@ -187,7 +220,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
         updateCacheDirs(m_project->filePath());
     });
     updateWindowTitle();
+}
 
+void MainWindow::setupSourcesSidebar()
+{
     // The left sidebar (sources), beside the viewport: the Media tab.
     m_sourcesSidebar = new TabSidebar(TabSidebar::Side::Left, QStringLiteral("sourcesSidebar"), this);
     // Resizable (file names can be long); the width is remembered per user.
@@ -228,7 +264,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_mediaPanel, &MediaPoolPanel::addToTimelineRequested, this,
             &MainWindow::addMediaToTimeline);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
+}
 
+void MainWindow::setupLayout(QWidget *viewportContainer)
+{
     // Top: the sources sidebar, the viewport over its player bar, and the
     // settings sidebar (below). Bottom, across the full width: the timeline
     // under its edit toolbar.
@@ -325,7 +364,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
         QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
             .setValue(QStringLiteral("layout/editorSplitter"), m_editorPage->saveState());
     });
+}
 
+void MainWindow::setupPages()
+{
     // The start screen (no project open) and the editor share the window.
     m_library = std::make_unique<ProjectLibrary>();
     m_files = std::make_unique<ProjectFiles>(m_project, m_library.get(), m_autosave, this);
@@ -341,7 +383,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     m_pages->addWidget(m_editorPage);
     m_pages->setCurrentWidget(m_libraryPage); // until a project opens (main.cpp)
     setCentralWidget(m_pages);
+}
 
+void MainWindow::setupPlayback()
+{
     // The controller runs on its own thread: opening a clip and its first
     // stitch block, which must not stall the GUI. No parent
     // -- ownership is handed to the thread via the finished/deleteLater wiring
@@ -360,7 +405,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer = new AudioPlayer(this);
 #endif
+}
 
+void MainWindow::connectStitchAndStabilization()
+{
     // Stitching settings: a panel edit updates the Project (persisted to the
     // .orp, marks it modified); a Project change (an edit, or a project load)
     // is reflected back in the panel and pushed to the stitch path on the
@@ -455,7 +503,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
                             true);
                 }
             });
+}
 
+void MainWindow::connectTimeline()
+{
     // View -> controller. These connections cross the thread boundary, so Qt
     // queues them onto the worker's event loop automatically.
     connect(m_playerBar, &PlayerBar::playPauseClicked,
@@ -568,6 +619,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             [this](const QStringList &paths, int trackId, qint64 atMs) {
                 selectAdded(m_trackFiles->addVideo(paths, trackId, atMs));
             });
+}
+
+void MainWindow::connectOverlaysAndAudio()
+{
     // Picking an inset in the view selects its clip; dragging it moves it.
     connect(m_viewport, &EquirectViewportWindow::insetPressed, this,
             [this](int clipId) { selectTrackClip(clipId); });
@@ -629,11 +684,15 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
                 m_timeline->moveTrackClip(id, trackId, startMs);
             });
     connect(m_audioPanel, &AudioPanel::trackLevelEdited, m_timeline, &Timeline::setTrackAudio);
+    connect(m_audioPanel, &AudioPanel::noiseEdited, m_timeline, &Timeline::setAudioClipNoise);
     connect(m_project, &Project::projectReset, this, [this] {
         selectTrackClip(-1);
         m_selectedClipId = 0; // ids don't survive a load / undo
     });
+}
 
+void MainWindow::connectEdits()
+{
     // Trim from the transport buttons / [ ] shortcuts acts on the clip under
     // the playhead, at m_lastPositionMs (that clip's *source* time -- the
     // transport bar only knows timeline time). Timeline owns the clamp /
@@ -658,7 +717,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_timeline, &Timeline::clipsReordered, this, [this] { remapPlayheadAfterEdit(); });
     connect(m_timeline, &Timeline::clipSpeedChanged, this,
             [this](int, double) { remapPlayheadAfterEdit(); });
+}
 
+void MainWindow::connectReframe()
+{
     // Reframe authoring. The viewport is a dumb pose display + input device; this
     // window is the only thing that knows both the playhead and the Timeline.
     //  * arm toggle gates whether a look gesture writes a keyframe;
@@ -744,9 +806,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             syncReframePanel();
         }
     });
+}
 
-    connect(m_audioPanel, &AudioPanel::noiseEdited, m_timeline, &Timeline::setAudioClipNoise);
-
+void MainWindow::connectColour()
+{
     // Colour panel: an edit writes the grade onto the clip under the playhead;
     // clipColorChanged pushes it straight into the viewport if it's the
     // clip currently showing -- no re-stitch, applied at reprojection time.
@@ -781,6 +844,16 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
         for (int i = 0; i < m_timeline->count(); ++i)
             m_timeline->setClipColor(m_timeline->clipAt(i).id, *m_copiedGrade);
     });
+    connect(m_timeline, &Timeline::clipColorChanged, this, [this](int id, ColorGrade grade) {
+        if (id == m_clipId) // on screen
+            applyColorGrade(grade);
+        if (id == editClipId()) // in the panel
+            m_colourPanel->setState(grade);
+    });
+}
+
+void MainWindow::connectMeasurements()
+{
     // A measured sync fine-tune for the clip under the playhead: rebuild the
     // stabilizer, and re-stitch in place since the capture-time correction is
     // baked into stitched frames. While playing, both wait for the pause: the
@@ -815,6 +888,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                       Q_ARG(qint64, m_lastTimelineMs));
     });
+}
+
+void MainWindow::connectPrivacy()
+{
     // Privacy panel: the flag goes onto the clip being edited; a change
     // re-sends playback's blur regions and re-stitches the paused frame.
     connect(m_privacyPanel, &PrivacyPanel::blurToggled, this, [this](bool on) {
@@ -870,13 +947,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
                                       Q_ARG(qint64, m_lastTimelineMs));
     });
     connect(m_timeline, &Timeline::clipTrimChanged, this, [this] { syncPrivacyPanel(); });
-    connect(m_timeline, &Timeline::clipColorChanged, this, [this](int id, ColorGrade grade) {
-        if (id == m_clipId) // on screen
-            applyColorGrade(grade);
-        if (id == editClipId()) // in the panel
-            m_colourPanel->setState(grade);
-    });
+}
 
+void MainWindow::setupMenus()
+{
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
     QAction *newProjectAction =
         fileMenu->addAction(tr("&New project…"), this, &MainWindow::newProject);
@@ -990,11 +1064,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     addOverlayTrackAction->setObjectName(QStringLiteral("addOverlayTrackAction"));
     m_editorActions += {importFilesAction, importFolderAction, addClipAction, addAudioAction,
                         addVideoAction, addAudioTrackAction, addOverlayTrackAction};
+}
 
-    setupViewMenu();
-
-    setupKeyboardShortcuts();
-
+void MainWindow::connectController()
+{
     // Controller -> view.
     connect(m_controller, &PlaybackController::durationChanged, m_playerBar,
             &PlayerBar::setDuration);
@@ -1050,8 +1123,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_controller, &PlaybackController::clockHeldChanged, m_audioPlayer,
             &AudioPlayer::setHold);
 #endif
+}
 
-    // The player bar's speed, volume and full screen.
+void MainWindow::connectPlayerBar()
+{
+    // The player bar's speed and volume.
     connect(m_playerBar, &PlayerBar::speedChanged, this, [this](double speed) {
         m_previewRate = speed;
         QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, speed] { ctrl->setRate(speed); });
@@ -1082,6 +1158,10 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             .setValue(QStringLiteral("player/muted"), muted);
         applyPreviewVolume();
     });
+}
+
+void MainWindow::setupMediaCheck()
+{
     // Files going missing or coming back while the app runs: looked for every
     // 2 s while it's in front, and at once when it comes back to the front.
     m_mediaCheck = new QTimer(this);
@@ -1098,6 +1178,12 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             });
     if (QGuiApplication::applicationState() == Qt::ApplicationActive)
         m_mediaCheck->start();
+}
+
+void MainWindow::connectFullScreen()
+{
+    // Full screen (the player bar's button, a double-click on the picture):
+    // the player bar hides while the mouse rests.
     m_playerBarHide = new QTimer(this);
     m_playerBarHide->setSingleShot(true);
     m_playerBarHide->setInterval(2500);
@@ -1115,9 +1201,6 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_viewport, &EquirectViewportWindow::doubleClicked, this,
             [this] { setFullScreenView(!m_fullScreen); });
     connect(m_project, &Project::outputChanged, this, [this] { updatePlayerBar(); });
-
-    m_playbackThread->start();
-    setEditorActive(false); // the library is shown until a project opens
 }
 
 MainWindow::~MainWindow()

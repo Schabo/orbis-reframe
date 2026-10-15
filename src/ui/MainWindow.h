@@ -111,6 +111,31 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    // The constructor's parts, in the order it runs them: the viewport (and
+    // the widget holding its place), the edit model, the window's layout and
+    // pages, the playback thread, then each area's wiring and the menus.
+    // Where two parts connect to the same signal, that order is the order
+    // their slots run in.
+    QWidget *createViewport(QVulkanInstance *vulkanInstance);
+    void setupModel();
+    void setupSourcesSidebar();
+    void setupLayout(QWidget *viewportContainer);
+    void setupPages();
+    void setupPlayback();
+    void connectStitchAndStabilization();
+    void connectTimeline();
+    void connectOverlaysAndAudio();
+    void connectEdits();
+    void connectReframe();
+    void connectColour();
+    void connectMeasurements();
+    void connectPrivacy();
+    void setupMenus();
+    void connectController();
+    void connectPlayerBar();
+    void setupMediaCheck();
+    void connectFullScreen();
+
     // File -> "Export flat video…": checks (NVENC, the privacy blur), the
     // options dialog and where to save, then m_exports renders the whole
     // timeline to one flat .mp4.
