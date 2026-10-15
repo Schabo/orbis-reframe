@@ -47,6 +47,7 @@ class PlaybackController;
 class PlateJobController;
 class ClipMeasurements;
 class ExportRunner;
+class MediaImporter;
 class SubjectTrackController;
 class AudioPlayer;
 class AudioPanel;
@@ -342,23 +343,16 @@ private:
     // aren't clips are reported and skipped. Used by the picker and by drops.
     void addClipFiles(const QStringList &paths, int index);
 
-    // Media pool (the left sidebar's Media tab). Import files… / Import
-    // folder…: pick, then importMedia(). importMedia probes `paths` (a folder:
-    // the files in it) on worker threads and adds the ones it can read; the
-    // ones it can't are reported when the last is done.
-    void importMediaFiles();
-    void importMediaFolder();
-    void importMedia(const QStringList &paths);
+    // Media pool (the left sidebar's Media tab; importing is m_mediaImport's).
     // Add pool files to the timeline by kind: an .insv at the end of the
     // video track, flat video onto an overlay track and audio onto an audio
     // track at the playhead (the first track with room, or a new one).
     void addMediaToTimeline(const QStringList &paths);
     // Mark the files the timeline uses in the Media tab.
     void updateMediaInUse();
-    // Locate file… on a missing file: pick where it is now; it must be the
-    // same file (kind and length), then it replaces the old path in the pool
-    // and on the timeline. Other missing files whose names are in the picked
-    // file's folder are relinked with it.
+    // Locate file… on a missing file (MediaImporter::locate): the file found
+    // (and others found with it) replaces the old path in the pool and on
+    // the timeline.
     void locateMedia(const QString &path);
     // Files that went missing or came back since the last look (a drive
     // unplugged or plugged in again, a file moved away or back): the Media
@@ -411,11 +405,7 @@ private:
     // The left sidebar (sources) and its Media tab.
     TabSidebar *m_sourcesSidebar = nullptr;
     MediaPoolPanel *m_mediaPanel = nullptr;
-    int m_mediaImportsPending = 0; // files still being probed
-    QStringList m_mediaImportFailures;
-    // Bumped whenever another project (or the library) is shown: imports
-    // still being probed for the one before are dropped.
-    int m_projectSession = 0;
+    MediaImporter *m_mediaImport = nullptr; // Import files… / folder…, drops, Locate file…
     QList<QShortcut *> m_editorShortcuts;
     QActionGroup *m_previewQuality = nullptr; // View menu
     QActionGroup *m_previewSize = nullptr;
@@ -451,7 +441,6 @@ private:
     int m_selectedClipId = 0;       // a video clip selected on the timeline
     QString m_lastAudioDir;         // where the last audio file was picked from
     QString m_lastVideoDir;         // ... and the last overlay video
-    QString m_lastMediaDir;         // ... and the last media imported
     WaveformCache *m_waveforms = nullptr;
     // The Media tab's thumbnails on disk; shared with the panel's worker
     // threads, which may outlive this window's members.

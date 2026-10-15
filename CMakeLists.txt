@@ -412,6 +412,8 @@ if(FFMPEG_FOUND)
         src/ui/SettingsSidebar.h
         src/ui/TabSidebar.cpp
         src/ui/TabSidebar.h
+        src/ui/MediaImporter.cpp
+        src/ui/MediaImporter.h
         src/ui/MediaPoolPanel.cpp
         src/ui/MediaPoolPanel.h
         src/ui/MediaProbe.cpp
