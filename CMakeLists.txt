@@ -573,6 +573,7 @@ if(FFMPEG_FOUND)
         if(ncnn_FOUND AND TARGET opencv_calib3d AND TARGET opencv_video)
             add_library(privacy_scan STATIC
                 src/privacy/PlateScanner.h src/privacy/PlateScanner.cpp
+                src/privacy/PlateTracking.h src/privacy/PlateTracking.cpp
                 src/privacy/StitchFrameSource.h src/privacy/StitchFrameSource.cpp)
             target_include_directories(privacy_scan PUBLIC src/privacy PRIVATE ${OpenCV_INCLUDE_DIRS})
             target_link_libraries(privacy_scan PUBLIC privacy_data stitch
