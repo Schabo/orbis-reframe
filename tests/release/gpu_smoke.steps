@@ -12,6 +12,7 @@ timeline timeline
 
 play play 5000
 grab played @OUT@/played.png    # viewport
+mapped play_onnxruntime libonnxruntime   # the "Voice only" model
 
 # Track subject from the start: the motorbike ahead, as a box in the
 # viewport (fractions of it, for gpu_smoke.sh's 1920x1080 window).

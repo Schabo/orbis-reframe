@@ -179,19 +179,25 @@ development image's repository is gone). Results then go to
   target's `apt` line from the install guide (option B) -- every library found,
   `--version` right. This is also the check that the guide's package list
   is complete.
-- **GUI test**, per package, on a headless Sway with PipeWire: opens 10 s of
-  a clip from `sample_footage/` (`tests/release/smoke.orp`), plays it with
-  "Voice only" (frames arrive, ONNX Runtime loads, sound reaches the
-  output), Track subject, Scan clip, File ▸ Export flat video (HEVC,
-  1920x1080, 10 s, with audio), saves, quits.
+- **GUI test**, per package: the smoke test (`tests/release/gpu_smoke.sh
+  --sound`, the same one the GPU workflow runs on the dev build) on the
+  installed app, on a headless Sway with PipeWire: opens 10 s of a clip from
+  `sample_footage/` (`tests/release/smoke.orp`), plays it with "Voice only"
+  (frames arrive and are drawn, the viewport shows a picture, ONNX Runtime
+  loads, sound reaches the output), Track subject, Scan clip, File ▸ Export
+  flat video (HEVC, 1920x1080, as long as the timeline, with audio, a
+  picture in its middle frame), saves, quits. The app is driven by
+  `tests/release/gpu_smoke.steps`, by key, action and button names -- no
+  screen positions.
 - **Dev test**: the source archive builds with Debian's `-dev` packages,
   `ctest` passes, the headless GPU tools run (`tests/release/gpu_tools.sh`).
 
-It prints one line per check and ends with "all checks passed", or exits
-non-zero naming the failures. Logs, the saved project, the export and a
-screenshot after each GUI step are in `tmp/release-test/<version>/<target>/` --
-look at the screenshots when a GUI check fails (the clicks are at fixed
-positions for the default layout; a moved button shows there).
+It prints one line per check, with the measured values, and ends with "all
+checks passed", or exits non-zero naming the failures. Logs, the saved
+project, the export and the viewport's grabs are in
+`tmp/release-test/<version>/<target>/` (per package: `app.log`,
+`results.txt`); a step that failed left a `fail-<line>.png` of the window or
+the dialog that was up, `<line>` being its line in `steps.txt` there.
 
 Also check `Maintainer:` in `dpkg-deb --field dist/*/*.deb`
 (`CPACK_PACKAGE_CONTACT` in `cmake/Packaging.cmake`).

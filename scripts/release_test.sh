@@ -9,11 +9,12 @@
 #      line from docs/manual/getting-started.md (option B). Every library
 #      found (ldd), --version prints the version.
 #   3. The GUI test, per package (tests/release/run_gui_test.sh in the image
-#      from tests/release/Containerfile): headless Sway + PipeWire, open
+#      from tests/release/Containerfile): the smoke test (gpu_smoke.sh
+#      --sound) on the installed app -- headless Sway + PipeWire, open
 #      tests/release/smoke.orp (10 s of a clip from sample_footage/, mounted
 #      read-only), play with "Voice only", Track subject, Scan clip, export,
-#      save, quit. Judged here from what it measured, the saved project and
-#      ffprobe on the export.
+#      save, quit, driven by gpu_smoke.steps. Judged here (gpu_smoke.sh
+#      --check: what the app measured, ffprobe on the export).
 #   4. The dev test (tests/release/dev_test.sh, bare image of the target): build
 #      the source archive with docs/dev-environment.md's packages, ctest, and
 #      the headless GPU tools (stitch_source_smoke, playback_bench,
@@ -162,49 +163,22 @@ for kind in "${KINDS[@]}"; do
     echo "== GUI test: $kind"
     work="$OUT/$kind"
     mkdir -p "$work"
-    cp "$REPO_ROOT/tests/release/smoke.orp" "$OUT/apt-packages.txt" "$work/"
+    cp "$OUT/apt-packages.txt" "$work/"
     podman run --rm "${GPU[@]}" "${CACHE[@]}" -v "$DIST_DIR:/dist:ro" -v "$FOOTAGE_DIR:/footage:ro" \
         -v "$work:/work" "$IMAGE" bash -c "$NOCLEAN; run_gui_test.sh $kind" > "$work/run.log" 2>&1 || true
-    r() { sed -n "s/^$1=//p" "$work/results.txt" 2> /dev/null | tail -1; }
+    r() { sed -n "s/^$1=//p" "$work/install.txt" 2> /dev/null | tail -1; }
 
     check "$kind: install" "$([[ $(r install) == 0 && $(r ldd_missing) == 0 ]] && echo 1 || echo 0)" \
         "apt $(r install), ldd $(r ldd_missing) missing"
-    check "$kind: input" "$([[ -z $(r input_error) ]] && echo 1 || echo 0)" "$(r input_error)"
-    check "$kind: first frame" "$([[ $(r first_frame) == 0 ]] && echo 1 || echo 0)" ""
-    frames=$(r play_new_frames_max)
-    check "$kind: playback" "$([[ ${frames:-0} -ge 25 ]] && echo 1 || echo 0)" "${frames:-0} new frames/s at best"
-    check "$kind: voice mode" "$([[ $(r onnxruntime_loaded) -gt 0 ]] && echo 1 || echo 0)" \
-        "ONNX Runtime mapped: $(r onnxruntime_loaded)"
-    peak=$(r audio_peak)
-    check "$kind: sound" "$([[ ${peak:-0} -gt 0 ]] && echo 1 || echo 0)" "peak ${peak:-0} / 32767"
-    keys=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["timeline"]["clips"][0]["reframe"]["keys"]))' \
-        "$work/smoke.orp" 2> /dev/null || echo 0)
-    check "$kind: track subject" "$([[ $(r track_done) == 0 && $keys -gt 1 ]] && echo 1 || echo 0)" \
-        "$keys reframe keys saved"
-    scan=$(r scan_line)
-    scan_frames=$(echo "$scan" | sed -nE 's/.*: ([0-9]+) frames.*/\1/p')
-    check "$kind: scan clip" "$([[ $(r scan_done) == 0 && ${scan_frames:-0} -gt 0 ]] && echo 1 || echo 0)" \
-        "$(echo "$scan" | sed -E 's/^\[plates\] [^:]*: //')"
-    # A loose project file exports next to itself, named after it.
-    probe=$(ffprobe -v error -show_entries stream=codec_type,codec_name,width,height:format=duration \
-        -of compact=p=0:nk=1 "$work/smoke.mp4" 2> /dev/null | tr '\n' ' ') || probe="no $kind/smoke.mp4"
-    export_ok=$(python3 - "$work/smoke.mp4" << 'EOF'
-import json, subprocess, sys
-try:
-    j = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries",
-        "stream=codec_type,codec_name,width,height:format=duration", "-of", "json", sys.argv[1]]))
-except Exception:
-    print(0); sys.exit()
-v = [s for s in j["streams"] if s["codec_type"] == "video"]
-a = [s for s in j["streams"] if s["codec_type"] == "audio"]
-d = float(j["format"]["duration"])
-print(int(len(v) == 1 and v[0]["codec_name"] == "hevc" and (v[0]["width"], v[0]["height"]) == (1920, 1080)
-          and len(a) == 1 and 9.5 < d < 10.5))
-EOF
-)
-    check "$kind: export" "$([[ $(r export_dialog) == 'Export complete' && $export_ok == 1 ]] && echo 1 || echo 0)" \
-        "$probe"
-    check "$kind: save + quit" "$([[ $(r quit) == 0 ]] && echo 1 || echo 0)" ""
+    # The smoke test's own checks (tests/release/gpu_smoke.sh), one line each.
+    "$REPO_ROOT/tests/release/gpu_smoke.sh" --check "$work" > /dev/null 2>&1 || true
+    if ! grep -q '^check_' "$work/results.txt" 2> /dev/null; then
+        check "$kind: smoke test" 0 "no results: $kind/run.log"
+    fi
+    while IFS='=' read -r name verdict; do
+        check "$kind: ${name#check_}" "$([[ $verdict == ok* ]] && echo 1 || echo 0)" \
+            "$(sed -E 's/^(ok|FAIL) \((.*)\)$/\2/' <<< "$verdict")"
+    done < <(grep '^check_' "$work/results.txt" 2> /dev/null)
 done
 
 if [[ $DEV == 1 ]]; then

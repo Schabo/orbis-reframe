@@ -1,29 +1,17 @@
-# The GUI half of the release test (scripts/release_test.sh): the target's Debian release (BASE) with a headless Sway, PipeWire and a virtual
-# pointer / keyboard -- but none of the app's own libraries. Those come from
-# installing the package under test (the .deb's Depends, or the install
-# guide's apt line for the tarball) at run time.
+# The GUI half of the release test (scripts/release_test.sh): the target's
+# Debian release (BASE) with a headless Sway, PipeWire and the smoke test
+# (gpu_smoke.sh, its steps and project) -- but none of the app's own
+# libraries. Those come from installing the package under test (the .deb's
+# Depends, or the install guide's apt line for the tarball) at run time.
 #
 #   podman build -t orbis-release-test:debian-13 --build-arg BASE=docker.io/library/debian:trixie tests/release
 
 ARG BASE=docker.io/library/debian:testing
-FROM ${BASE} AS vinput
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        gcc libc6-dev libwayland-dev libxkbcommon-dev pkgconf wayland-protocols \
-    && rm -rf /var/lib/apt/lists/*
-COPY vinput/ /src/
-RUN cd /src \
-    && wayland-scanner client-header wlr-virtual-pointer-unstable-v1.xml wlr-virtual-pointer-unstable-v1-client.h \
-    && wayland-scanner private-code wlr-virtual-pointer-unstable-v1.xml wlr-virtual-pointer-unstable-v1.c \
-    && wayland-scanner client-header virtual-keyboard-unstable-v1.xml virtual-keyboard-unstable-v1-client.h \
-    && wayland-scanner private-code virtual-keyboard-unstable-v1.xml virtual-keyboard-unstable-v1.c \
-    && gcc -O1 -o /vp vp.c wlr-virtual-pointer-unstable-v1.c $(pkg-config --cflags --libs wayland-client) \
-    && gcc -O1 -o /vk vk.c virtual-keyboard-unstable-v1.c $(pkg-config --cflags --libs wayland-client xkbcommon)
-
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        sway grim pipewire pipewire-pulse wireplumber pulseaudio-utils dbus \
+        sway pipewire pipewire-pulse wireplumber pulseaudio-utils dbus \
         python3 procps xz-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=vinput /vp /vk /usr/local/bin/
 COPY run_gui_test.sh /usr/local/bin/
+COPY gpu_smoke.sh gpu_smoke.steps smoke.orp /opt/smoke/

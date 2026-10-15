@@ -155,18 +155,20 @@ then `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` (again
 after each driver update). A container sees the GPU with
 `podman run --device nvidia.com/gpu=all -e NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute,utility`;
 a bare image also needs `libegl1` and `libxext6`, which NVIDIA's Vulkan
-driver loads (the app's packages pull them in through Qt). The test image
-and its virtual pointer / keyboard (for a headless Sway) are in
-`tests/release/`.
+driver loads (the app's packages pull them in through Qt). The GUI test's
+image is `tests/release/Containerfile`; it runs the smoke test below on the
+installed package.
 
-The GPU workflow (`.github/workflows/gpu.yml`) also runs a smoke test of
-the whole app: `tests/release/gpu_smoke.sh build OUT_DIR` starts the dev
-build on a private headless Sway (needs `sway` and `ffmpeg`), drives it
-through `tests/release/gpu_smoke.steps` -- play, Track subject, Scan clip,
-export -- and checks the viewport's picture, the frames, the tracked path,
-the scan and the exported file; about a minute, also on this machine. The
-GPU runner's jobs can't open the GPU's render node, so there the viewport
-doesn't draw and its checks are left out.
+The GPU workflow (`.github/workflows/gpu.yml`) and the release test's GUI
+test run a smoke test of the whole app: `tests/release/gpu_smoke.sh build
+OUT_DIR` starts the dev build on a private headless Sway (needs `sway` and
+`ffmpeg`), drives it through `tests/release/gpu_smoke.steps` -- play, Track
+subject, Scan clip, export -- and checks the viewport's picture, the frames,
+the tracked path, the scan and the exported file; about a minute, also on
+this machine. `--sound` adds PipeWire with a null sink and checks the sound
+and the voice model (the release test uses it). The GPU runner's jobs can't
+open the GPU's render node, so there the viewport doesn't draw and its
+checks are left out.
 
 For a release, the release workflow (`.github/workflows/release.yml`) runs
 `package.sh` per target on GitHub's runners when the tag is pushed and makes

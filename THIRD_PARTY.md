@@ -52,9 +52,6 @@ GPL-3.0-or-later.
 Used to build, not part of the program: CMake, glslang (`glslangValidator`
 compiles the shaders, whose source is this project's own), Qt's build tools,
 commitizen. Analysis and spike tools under `tools/` aren't installed.
-The release test's virtual pointer / keyboard (`tests/release/vinput/`)
-build against the wlroots protocol files there (MIT-style licenses in each
-file); they run only in the test container.
 
 ## Not code, but credited
 

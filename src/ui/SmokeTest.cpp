@@ -19,6 +19,8 @@
 #include <QDialog>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QPixmap>
 #include <QImage>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -35,14 +37,18 @@ SmokeTest::SmokeTest(MainWindow *window, const QString &scriptPath, QObject *par
     // Qt's own file dialog, whose name field the save-as step types into.
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 
+    m_scriptDir = QFileInfo(scriptPath).absolutePath();
     QFile f(scriptPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         result(QStringLiteral("script"), QStringLiteral("unreadable"));
     } else {
-        for (const QString &raw : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))) {
-            const QString line = raw.section(QLatin1Char('#'), 0, 0).trimmed();
-            if (!line.isEmpty())
+        const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+        for (int i = 0; i < lines.size(); ++i) {
+            const QString line = lines.at(i).section(QLatin1Char('#'), 0, 0).trimmed();
+            if (!line.isEmpty()) {
                 m_steps.append(line);
+                m_lines.append(i + 1);
+            }
         }
     }
 
@@ -96,6 +102,12 @@ void SmokeTest::fail(const QString &why)
     // Steps that measure something record the failure under their name.
     const QString name = args.size() > 1 ? args.at(1) : args.at(0);
     result(name, why);
+    // What was on screen: the dialog that's up, else the window (its
+    // viewport, a Vulkan window of its own, shows blank).
+    QWidget *shown = QApplication::activeModalWidget();
+    if (!shown)
+        shown = m_window;
+    shown->grab().save(QStringLiteral("%1/fail-%2.png").arg(m_scriptDir).arg(m_lines.at(m_step)));
     next();
 }
 
@@ -309,6 +321,15 @@ void SmokeTest::tick()
     } else if (cmd == QLatin1String("timeline")) {
         result(arg(1) + QStringLiteral("_ms"),
                QString::number(timeline ? timeline->totalDurationMs() : -1));
+        next();
+    } else if (cmd == QLatin1String("mapped")) {
+        QFile maps(QStringLiteral("/proc/self/maps"));
+        int n = 0;
+        if (maps.open(QIODevice::ReadOnly | QIODevice::Text))
+            for (const QByteArray &line : maps.readAll().split('\n'))
+                if (line.contains(arg(2).toUtf8()))
+                    ++n;
+        result(arg(1), QString::number(n));
         next();
     } else if (cmd == QLatin1String("quit")) {
         m_timer->stop();

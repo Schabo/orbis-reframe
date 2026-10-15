@@ -20,7 +20,8 @@ class QWidget;
 // keys (the window's shortcuts), menu actions and buttons by objectName,
 // dialogs by title. One step per line, '#' starts a comment; a step that
 // waits gives up after its own timeout, records "<name>=timeout" and the
-// script goes on. Steps:
+// script goes on. A failed step also saves a picture of the window (or of
+// the dialog that's up) as fail-<line>.png next to the script. Steps:
 //
 //   wait-frame NAME SECONDS     until playback has handed the viewport a
 //                               frame; NAME=ms since start
@@ -49,6 +50,9 @@ class QWidget;
 //                               accepting button)
 //   save-as NAME SECONDS PATH   until a file dialog is up; types PATH, accepts
 //   timeline NAME               NAME_ms = the timeline's length
+//   mapped NAME TEXT            NAME = how many of the process's memory
+//                               mappings have TEXT in their path (a library
+//                               loaded on demand, e.g. libonnxruntime)
 //   quit                        quits (as File > Quit does)
 //
 // When the script ends without "quit", the app quits anyway.
@@ -74,7 +78,9 @@ private:
     QWidget *modalTitled(const QString &pattern) const;
 
     MainWindow *m_window;
+    QString m_scriptDir;
     QStringList m_steps;
+    QList<int> m_lines; // each step's line in the script
     int m_step = -1;
     bool m_started = false; // the current step's start has run
     QElapsedTimer m_sinceStart;
