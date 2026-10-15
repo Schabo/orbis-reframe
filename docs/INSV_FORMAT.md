@@ -747,7 +747,7 @@ sample set.
 | `ffprobe -show_streams` | container and streams (§3) |
 | `tools/residual_stab --diagnose` | IMU spectra, image-vs-gyro sweep, sync (block [5]) |
 
-## 12. Other cameras: X4, X6, X3 and ONE X2 (desk research, 2026-10-15)
+## 12. Other cameras: X4, X6, X3, ONE X2 and Antigravity A1 (desk research, 2026-10-15)
 
 No file from these cameras has been examined: this is from public specs,
 Insta360's manuals and telemetry-parser, set against what our code assumes.
@@ -815,6 +815,24 @@ Every point needs a real clip to confirm.
 - **Colour**: a "LOG" profile on both (Insta360's spec table), next to
   Standard and Vivid; bit depth unstated, presumably 8-bit.
 
+**Antigravity A1** ⚠️ — a 360 drone from Antigravity, a brand incubated by
+Insta360:
+- 360 video 8K 7680×3840 at 30/25/24, **5.2K 5248×2624** at up to 60,
+  4K 3840×1920 at up to 100; H.264 or H.265, up to 170 Mb/s. Two 1/1.28"
+  sensors, 180° lenses (vs ~200° on the X5, so a much thinner overlap at
+  the seam). Per lens presumably 3840², **2624²** (new) and 1920². Files are
+  `.insv`; whether the card holds one file with both lenses is unknown.
+- **The trailer is the same `inst` trailer, laid out differently** 📖
+  (telemetry-parser): the Offsets table (§4.2) is the only index, each
+  record sits at the start of a **256 KiB slot**, and there are **no
+  six-byte descriptors** after the records. Our walker takes each record's
+  position from the table but then reads its id and size from the
+  descriptor after it, which on the A1 is the next slot's bytes: it would
+  read garbage. Taking id and size from the table entry instead (as
+  telemetry-parser does) fixes that and costs the X5 nothing.
+- Calibration, IMU layout and axes, and the drone's own body in the frame
+  (props, arms: a mask) are unknown.
+
 ## 13. Open questions (after the 2026-09-24 research)
 
 Resolved by the research: the record-type names, the type-9 layout, the
@@ -836,7 +854,7 @@ Still open:
    8K (HDR on/off), 5.7K+, 5.7K 60 and 4K 120 are now covered (§3.3); log,
    timelapse and `.insp` are still untested.
 6. X5 I-Log: bit depth, colour tagging and transfer curve (§3.3).
-7. Everything in §12: X4, X6, X3 and ONE X2 files, from real clips.
+7. Everything in §12: X4, X6, X3, ONE X2 and Antigravity A1 files, from real clips.
 
 ## 14. External sources
 
@@ -864,7 +882,9 @@ Still open:
 - Insta360 X-series shooting specs, codecs and colour profiles per model (X6
   to ONE X): <https://onlinemanual.insta360.com/onex2/en-us/specs/shooting-specs>
 - telemetry-parser `src/insta360/rig.rs` (one-lens-per-file layout, sibling
-  hint, ONE X2 lens type 42)
+  hint, ONE X2 lens type 42) and `mod.rs` (the A1's slotted, descriptor-less
+  trailer)
+- Antigravity A1 specs (Shotkit review): <https://shotkit.com/antigravity-a1-review/>
 - Insta360 X4 manual, shooting specs:
   <https://onlinemanual.insta360.com/x4/en-us/specs/shooting-specs>
 - Gyroflow docs, Insta360 support (360 models unsupported in Gyroflow itself):
