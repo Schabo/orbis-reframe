@@ -35,8 +35,9 @@ every feature on, and runs the tests. It has no GPU, so it can't replace
 trying the change on real clips. `.github/workflows/commits.yml` checks the
 commit messages of every pull request, docs included. For contributors from
 outside the project these runs start once a maintainer has approved them.
-`.github/workflows/gpu.yml` runs the GPU checks (build, tests and the
-headless GPU tools on a real clip) on the maintainer's machine, for pushes to
+`.github/workflows/gpu.yml` runs the GPU checks (build, tests, the
+headless GPU tools and a smoke test of the whole app on a real clip) on the
+maintainer's machine, for pushes to
 `main` and for pull requests that change more than docs. For a pull request
 from a fork it waits for a second approval, since it runs your code on that
 machine.

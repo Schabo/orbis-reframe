@@ -42,6 +42,7 @@ void EquirectViewportWindow::SetFrame(int width, int height, std::vector<uint8_t
     m_pendingLens.reset();
     m_pendingOutlines = std::move(outlines);
     m_framePending = true;
+    ++m_framesHanded;
     m_pendingHasStab = stab != nullptr;
     if (stab)
         std::copy(stab, stab + 9, m_pendingStab);
@@ -65,6 +66,7 @@ void EquirectViewportWindow::SetLensFrame(std::shared_ptr<const render::LensFram
     m_pendingRgba.clear();
     m_pendingOutlines = std::move(outlines);
     m_framePending = true;
+    ++m_framesHanded;
     m_pendingHasStab = stab != nullptr;
     if (stab)
         std::copy(stab, stab + 9, m_pendingStab);
@@ -92,6 +94,7 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
     m_outlines = std::move(m_pendingOutlines);
     m_pendingOutlines.clear();
     m_framePending = false;
+    ++m_framesTaken;
     if (m_pendingHasStab) // the renderer reads m_stab right after this, same thread
         std::copy(m_pendingStab, m_pendingStab + 9, m_stab);
     if (m_pendingHasOverlay) { // ... and the pose / marker

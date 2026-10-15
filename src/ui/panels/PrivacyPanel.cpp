@@ -19,6 +19,7 @@ PrivacyPanel::PrivacyPanel(QWidget *parent)
     form()->addRow(m_blur);
 
     m_scan = new QPushButton(tr("Scan clip"), this);
+    m_scan->setObjectName(QStringLiteral("privacyScanButton"));
     m_scan->setToolTip(tr("Look for number plates in the clip's trimmed part. Takes a little "
                           "less time than playing it; the result is kept for this file."));
     form()->addRow(m_scan);

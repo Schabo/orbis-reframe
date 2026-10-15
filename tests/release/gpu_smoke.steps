@@ -1,0 +1,37 @@
+# The GPU smoke test's steps (gpu_smoke.sh runs them; the step language is
+# in src/ui/SmokeTest.h). @OUT@ is the output folder. The app is opened on a
+# copy of smoke.orp: 10 s of a motorbike ride, 1920x1080 output. Lines
+# tagged "# viewport" need the viewport to draw; gpu_smoke.sh drops them
+# where it can't (no access to the GPU's render node).
+
+wait-frame first_frame 120
+wait-drawn first_drawn 30       # viewport
+sleep 4                         # the sync fine-tune runs while paused
+grab paused @OUT@/paused.png    # viewport
+timeline timeline
+
+play play 5000
+grab played @OUT@/played.png    # viewport
+
+# Track subject from the start: the motorbike ahead, as a box in the
+# viewport (fractions of it, for gpu_smoke.sh's 1920x1080 window).
+key Home
+sleep 1000
+click trackSubjectButton
+sleep 500
+box 0.420 0.451 0.444 0.517
+wait-track track 180
+
+# Scan the clip for number plates.
+click privacyScanButton
+wait-scan scan 600
+
+# Export the whole timeline with the dialog's settings.
+trigger exportAction
+dialog export_options Export Flat Video 20
+save-as export_file 20 @OUT@/smoke.mp4
+dialog export Export (complete|failed) 900
+
+trigger saveProjectAction
+sleep 1500
+quit

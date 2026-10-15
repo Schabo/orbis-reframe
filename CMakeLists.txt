@@ -388,6 +388,8 @@ if(FFMPEG_FOUND)
         src/ui/ClipMeasurements.h
         src/ui/ShortcutHelp.cpp
         src/ui/ShortcutHelp.h
+        src/ui/SmokeTest.cpp
+        src/ui/SmokeTest.h
         src/ui/StabilizerCache.cpp
         src/ui/StabilizerCache.h
         src/ui/PlaybackController.cpp

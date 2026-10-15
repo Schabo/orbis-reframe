@@ -159,6 +159,15 @@ driver loads (the app's packages pull them in through Qt). The test image
 and its virtual pointer / keyboard (for a headless Sway) are in
 `tests/release/`.
 
+The GPU workflow (`.github/workflows/gpu.yml`) also runs a smoke test of
+the whole app: `tests/release/gpu_smoke.sh build OUT_DIR` starts the dev
+build on a private headless Sway (needs `sway` and `ffmpeg`), drives it
+through `tests/release/gpu_smoke.steps` -- play, Track subject, Scan clip,
+export -- and checks the viewport's picture, the frames, the tracked path,
+the scan and the exported file; about a minute, also on this machine. The
+GPU runner's jobs can't open the GPU's render node, so there the viewport
+doesn't draw and its checks are left out.
+
 For a release, the release workflow (`.github/workflows/release.yml`) runs
 `package.sh` per target on GitHub's runners when the tag is pushed and makes
 a draft release; `scripts/fetch_release.sh vX.Y.Z` downloads the draft's
@@ -206,6 +215,7 @@ set to anything except empty or `0`, unless the table says otherwise.
 | `ORBIS_DFN_MODEL_DIR=<dir>` | Load the DeepFilterNet voice model from `<dir>` instead of the installed one. |
 | `ORBIS_PLATE_MODEL=<file.param>` | Use another ncnn plate model (`.param`, with its `.bin` next to it). |
 | `ORBIS_TRACK_MODEL_DIR=<dir>` | Load the subject-tracking model (`vittrack.onnx`) from `<dir>`. |
+| `ORBIS_SMOKE_TEST=<steps file>` | Run the smoke test's steps against the app and print what it measured as `[smoke]` lines on stdout (`src/ui/SmokeTest.h`; `tests/release/gpu_smoke.sh` sets it). Not for normal use: the app drives itself and quits. |
 
 The app also sets `QT_AUDIO_BACKEND=pulseaudio` unless it's already set, so
 the sound shows up as a normal application in the desktop's sound settings.

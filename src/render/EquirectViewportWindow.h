@@ -69,6 +69,11 @@ public:
     // else exactly one of `rgba` (with width/height) or `lens` is filled.
     bool TakePendingFrame(int &width, int &height, std::vector<uint8_t> &rgba,
                           std::shared_ptr<const render::LensFrame> &lens);
+    // How many frames have been handed in (SetFrame / SetLensFrame), and how
+    // many of them the renderer has taken (one replaced before a render
+    // isn't). Thread-safe; the smoke test reads them.
+    int FramesHanded() const { return m_framesHanded.load(); }
+    int FramesTaken() const { return m_framesTaken.load(); }
     // The shown frame's region outlines. Renderer thread (set by
     // TakePendingFrame).
     const std::vector<RegionOutline> &Outlines() const { return m_outlines; }
@@ -222,6 +227,8 @@ private:
     std::vector<uint8_t> m_pendingRgba;
     std::shared_ptr<const render::LensFrame> m_pendingLens; // set => a lens frame is pending
     std::atomic<bool> m_lensSupported{false};
+    std::atomic<int> m_framesHanded{0};
+    std::atomic<int> m_framesTaken{0};
     int m_pendingWidth = 0;
     int m_pendingHeight = 0;
     bool m_framePending = false;

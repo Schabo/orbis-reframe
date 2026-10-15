@@ -40,6 +40,7 @@ ReframePanel::ReframePanel(QWidget *parent)
     form()->addRow(tr("Field of view"), m_fov);
 
     m_track = new QPushButton(tr("Track subject…"), this);
+    m_track->setObjectName(QStringLiteral("trackSubjectButton"));
     m_track->setCheckable(true);
     m_track->setToolTip(tr("Track subject  ( T ): draw a box around a subject in the view: "
                            "the camera follows it from the playhead on, written as reframe "

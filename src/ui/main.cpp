@@ -12,6 +12,7 @@
 #include <QWidget>
 
 #include "MainWindow.h"
+#include "SmokeTest.h"
 #include "Theme.h"
 
 #include "../core/DataPaths.h"
@@ -192,5 +193,9 @@ int main(int argc, char *argv[])
         window.showLibrary();
 
     window.show();
+    // The GPU smoke test (tests/gpu/smoke_test.sh) drives the app from a
+    // script; nothing of it exists without the variable.
+    if (!qEnvironmentVariableIsEmpty("ORBIS_SMOKE_TEST"))
+        new SmokeTest(&window, qEnvironmentVariable("ORBIS_SMOKE_TEST"), &app);
     return app.exec();
 }
