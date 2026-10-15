@@ -278,6 +278,13 @@ public slots:
     // every clip cut from `sourcePath`.
     void setSourceSeamAdjust(const QString &sourcePath, const std::array<double, 3> &deg,
                              int lensGuard);
+    // A source's sync fine-tune: the first main-track clip cut from it; NaN
+    // when it has none (not measured, or no clip of it).
+    double sourceSyncAdjust(const QString &sourcePath) const;
+    // A source's seam fine-tune if one of its main-track clips has it
+    // measured under `lensGuard`; else false and `deg` zero.
+    bool sourceSeamAdjust(const QString &sourcePath, int lensGuard,
+                          std::array<double, 3> &deg) const;
 
 signals:
     void clipInserted(int index);

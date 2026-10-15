@@ -64,16 +64,13 @@
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
 #include "AudioPlayer.h"
 #endif
-#include <ClipSeam.h> // stitch::MeasureClipSeam
-#ifdef ORBIS_REFRAME_HAVE_CLIP_SYNC
-#include <ClipSync.h> // stitch::MeasureClipSync
-#endif
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
 #include "SubjectTrackController.h" // + track::seedFromViewBox, reduceToKeys
 #endif
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
 #include "PlateJobController.h"
 #endif
+#include "ClipMeasurements.h"
 #include "ExportOptionsDialog.h"
 #include "MediaPoolPanel.h"
 #include "MediaProbe.h"
@@ -158,6 +155,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     m_project = new Project(this);
     m_timeline = m_project->timeline();
     m_autosave = new Autosave(m_project, Autosave::kDefaultIntervalMs, this);
+    m_measurements = new ClipMeasurements(m_project, m_clipBackend.measure, this);
+    connect(m_measurements, &ClipMeasurements::statusChanged, this, [this] {
+        updateSyncStatus();
+        updateSeamStatus();
+    });
     // An older project's clips have their sound put on the stream tracks.
     m_project->setAudioStreamCounter([this](const QString &path) { return audioStreamCount(path); });
     connect(m_project, &Project::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
@@ -323,22 +325,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     m_controller = new PlaybackController;
     m_controller->setViewport(m_viewport);
     m_controller->setSourceFactory(m_clipBackend.makeSource);
-    m_controller->setStabilizationProvider(
-        [shared = m_stabShared](int clipId, qint64 sourceMs, float m[9]) {
-            std::lock_guard<std::mutex> lk(shared->mx);
-            const auto it = shared->clips.find(clipId);
-            if (it == shared->clips.end())
-                return false; // clip not built yet -- keep the current matrix
-            if (!it->second) {
-                const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-                std::copy(ident, ident + 9, m);
-                return true;
-            }
-            float r[3][3];
-            it->second->correctionMatrix(sourceMs / 1000.0, r);
-            std::copy(&r[0][0], &r[0][0] + 9, m);
-            return true;
-        });
+    m_controller->setStabilizationProvider(m_stabilizers.provider());
     m_playbackThread = new QThread(this);
     m_controller->moveToThread(m_playbackThread);
     connect(m_playbackThread, &QThread::finished, m_controller, &QObject::deleteLater);
@@ -406,8 +393,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
                 // with; the controller re-opens its sources for the new config
                 // and picks these up.
                 pushSeamAdjust();
-                m_seamFailed.clear();
-                scheduleClipScans();
+                m_measurements->forgetSeamFailures();
+                m_measurements->schedule();
                 updateSeamStatus();
                 QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, cfg] {
                     ctrl->setPreviewConfig(cfg);
@@ -1002,13 +989,9 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             m_playerBar, &PlayerBar::setPlaying);
     connect(m_controller, &PlaybackController::playingChanged, this, [this](bool playing) {
         m_playing = playing;
-        if (playing) {
-            // A measurement competes with playback for the GPU its whole run:
-            // stop it; the pause starts it again.
-            m_syncCancel = true;
-            m_seamCancel = true;
+        m_measurements->setPlaying(playing);
+        if (playing)
             return;
-        }
         if (m_measuredWhilePlaying) { // results held back while playing
             m_measuredWhilePlaying = false;
             pushSeamAdjust();
@@ -1018,9 +1001,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                       Q_ARG(qint64, m_lastTimelineMs)); // re-stitch
         }
-        scheduleClipScans(); // measurements held back while playing
     });
-    connect(m_timeline, &Timeline::clipInserted, this, [this] { scheduleClipScans(); });
+    connect(m_timeline, &Timeline::clipInserted, m_measurements, &ClipMeasurements::schedule);
     connect(m_controller, &PlaybackController::bufferingChanged,
             m_playerBar, &PlayerBar::setBuffering);
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
@@ -1112,14 +1094,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
 
 MainWindow::~MainWindow()
 {
-    if (m_syncThread) {
-        m_syncCancel = true;
-        m_syncThread->wait();
-    }
-    if (m_seamThread) {
-        m_seamCancel = true;
-        m_seamThread->wait();
-    }
+    delete m_measurements; // waits for a running one
+    m_measurements = nullptr;
     if (m_screenshotThread)
         m_screenshotThread->wait(); // one frame: a second or two at most
     // Background jobs that stitch and draw into the viewport: stopped and
@@ -1232,58 +1208,18 @@ void MainWindow::applySampledPose(qint64 sourceMs)
     m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
 }
 
-const MainWindow::BuiltStab *MainWindow::builtStabFor(const ClipItem &c) const
-{
-    if (c.stabilization.mode == insv::StabMode::Off)
-        return nullptr;
-    const double sync = syncAdjustFor(c.sourcePath);
-    const double syncMs = std::isnan(sync) ? 0.0 : sync;
-    for (const BuiltStab &b : m_stabCache)
-        if (b.path == c.sourcePath && b.config == c.stabilization && b.syncMs == syncMs)
-            return &b;
-    return nullptr;
-}
-
-bool MainWindow::ensureStabilizerFor(const ClipItem &c)
-{
-    if (c.stabilization.mode == insv::StabMode::Off || c.mediaMissing)
-        return false;
-    if (const BuiltStab *b = builtStabFor(c)) { // most recently used goes last
-        std::rotate(m_stabCache.begin() + (b - m_stabCache.data()),
-                    m_stabCache.begin() + (b - m_stabCache.data()) + 1, m_stabCache.end());
-        return false;
-    }
-    BuiltStab built;
-    built.path = c.sourcePath;
-    built.config = c.stabilization;
-    const double sync = syncAdjustFor(c.sourcePath);
-    built.syncMs = std::isnan(sync) ? 0.0 : sync;
-    // Trailer read is a seek to the trailer + ~12 MB, not the whole file --
-    // fast enough for a clip switch / settings change on the GUI thread.
-    auto tele = insv::ReadInsvTelemetry(c.sourcePath.toStdString());
-    if (tele && tele->imu.size() >= 2) {
-        // Derive the video<->IMU offset from the 0x400 exposure record
-        // ("video t=0 == IMU sample 0" is off by ~tens of ms, varying per clip).
-        auto stab = std::make_shared<insv::GyroStabilizer>();
-        stab->build(*tele, c.fps, c.stabilization, built.syncMs / 1000.0);
-        if (stab->ready())
-            built.stab = std::move(stab);
-    }
-    if (m_stabCache.size() >= kStabCacheSize)
-        m_stabCache.erase(m_stabCache.begin());
-    m_stabCache.push_back(std::move(built));
-    return true;
-}
-
 void MainWindow::ensureStabilizers()
 {
     // The current clip's first: used last, so the next one's can't evict it.
     const int idx = m_timeline->indexOfId(m_clipId);
+    auto ensure = [this](const ClipItem &c) {
+        return m_stabilizers.ensure(c, m_timeline->sourceSyncAdjust(c.sourcePath));
+    };
     bool currentBuilt = false;
     if (idx >= 0)
-        currentBuilt = ensureStabilizerFor(m_timeline->clipAt(idx));
+        currentBuilt = ensure(m_timeline->clipAt(idx));
     if (idx >= 0 && idx + 1 < m_timeline->count())
-        ensureStabilizerFor(m_timeline->clipAt(idx + 1)); // ready for the cut
+        ensure(m_timeline->clipAt(idx + 1)); // ready for the cut
     publishStabilizer();
     if (currentBuilt) {
         applyStabilization(m_lastPositionMs); // the frame on screen, if paused
@@ -1291,71 +1227,10 @@ void MainWindow::ensureStabilizers()
     }
 }
 
-double MainWindow::syncAdjustFor(const QString &clipPath) const
-{
-    for (int i = 0; i < m_timeline->count(); ++i)
-        if (m_timeline->clipAt(i).sourcePath == clipPath)
-            return m_timeline->clipAt(i).syncAdjustMs;
-    return std::nan("");
-}
-
-void MainWindow::maybeMeasureSync(const QString &clipPath)
-{
-#ifdef ORBIS_REFRAME_HAVE_CLIP_SYNC
-    if (!m_clipBackend.measure || clipPath.isEmpty() || m_syncThread ||
-        !std::isnan(syncAdjustFor(clipPath)) ||
-        m_syncFailed.contains(clipPath))
-        return;
-    const ClipItem *clip = nullptr;
-    for (int i = 0; i < m_timeline->count() && !clip; ++i)
-        if (m_timeline->clipAt(i).sourcePath == clipPath)
-            clip = &m_timeline->clipAt(i);
-    if (!clip || clip->mediaMissing)
-        return;
-    const std::string path = clipPath.toStdString();
-    const qint64 in = clip->trimInMs, out = clip->trimOutMs;
-    const double fps = clip->fps;
-    m_syncMeasuringPath = clipPath;
-    m_syncCancel = false;
-    const auto guard = m_project->previewStitch().lensGuard;
-    m_syncThread = QThread::create([this, path, in, out, fps, clipPath, guard] {
-        const stitch::ClipSyncResult r =
-            stitch::MeasureClipSync(path, in, out, fps, &m_syncCancel, guard);
-        QMetaObject::invokeMethod(this, [this, clipPath, r] {
-            m_syncThread->wait(); // its function has just returned
-            m_syncThread->deleteLater();
-            m_syncThread = nullptr;
-            m_syncMeasuringPath.clear();
-            m_syncLastMessage = QString::fromStdString(r.message);
-            core::log::Info("[sync] %s: %s\n", qPrintable(clipPath), r.message.c_str());
-            if (r.ok)
-                m_timeline->setSourceSyncAdjust(clipPath, r.adjustMs); // -> clipSyncChanged
-            else if (!m_syncCancel)
-                m_syncFailed.insert(clipPath);
-            updateSyncStatus();
-            scheduleClipScans(); // another source may be waiting for its turn
-        }, Qt::QueuedConnection);
-    });
-    m_syncThread->start(QThread::LowPriority);
-    core::log::Info("[sync] %s: measuring\n", qPrintable(clipPath));
-    updateSyncStatus();
-#else
-    Q_UNUSED(clipPath);
-#endif
-}
-
 bool MainWindow::seamAdjustFor(const QString &clipPath, std::array<double, 3> &deg) const
 {
-    const int guard = static_cast<int>(m_project->previewStitch().lensGuard);
-    for (int i = 0; i < m_timeline->count(); ++i) {
-        const ClipItem &c = m_timeline->clipAt(i);
-        if (c.sourcePath == clipPath && c.seamAdjustGuard == guard) {
-            deg = c.seamAdjustDeg;
-            return true;
-        }
-    }
-    deg = {0.0, 0.0, 0.0};
-    return false;
+    return m_timeline->sourceSeamAdjust(
+        clipPath, static_cast<int>(m_project->previewStitch().lensGuard), deg);
 }
 
 void MainWindow::pushSeamAdjust()
@@ -1368,141 +1243,27 @@ void MainWindow::pushSeamAdjust()
     }
 }
 
-void MainWindow::maybeMeasureSeam(const QString &clipPath)
-{
-    std::array<double, 3> deg;
-    if (!m_clipBackend.measure || clipPath.isEmpty() || m_seamThread ||
-        seamAdjustFor(clipPath, deg) ||
-        m_seamFailed.contains(clipPath))
-        return;
-    const ClipItem *clip = nullptr;
-    for (int i = 0; i < m_timeline->count() && !clip; ++i)
-        if (m_timeline->clipAt(i).sourcePath == clipPath)
-            clip = &m_timeline->clipAt(i);
-    if (!clip || clip->mediaMissing)
-        return;
-    const std::string path = clipPath.toStdString();
-    const qint64 in = clip->trimInMs, out = clip->trimOutMs;
-    const auto guard = m_project->previewStitch().lensGuard;
-    m_seamMeasuringPath = clipPath;
-    m_seamCancel = false;
-    m_seamThread = QThread::create([this, path, in, out, clipPath, guard] {
-        const insv::SeamAlignmentResult r = stitch::MeasureClipSeam(path, in, out, guard, &m_seamCancel);
-        QMetaObject::invokeMethod(this, [this, clipPath, r, guard] {
-            m_seamThread->wait(); // its function has just returned
-            m_seamThread->deleteLater();
-            m_seamThread = nullptr;
-            m_seamMeasuringPath.clear();
-            m_seamLastMessage = QString::fromStdString(r.message);
-            core::log::Info("[seam] %s: %s\n", qPrintable(clipPath), r.message.c_str());
-            // Stale if the guard setting changed meanwhile: drop it and let the
-            // re-measure below run under the new one.
-            if (r.ok && guard == m_project->previewStitch().lensGuard)
-                m_timeline->setSourceSeamAdjust(
-                    clipPath, {r.adjustDeg[0], r.adjustDeg[1], r.adjustDeg[2]},
-                    static_cast<int>(guard)); // -> clipSeamChanged
-            else if (!r.ok && !m_seamCancel)
-                m_seamFailed.insert(clipPath);
-            updateSeamStatus();
-            scheduleClipScans(); // another source may be waiting for its turn
-        }, Qt::QueuedConnection);
-    });
-    m_seamThread->start(QThread::LowPriority);
-    core::log::Info("[seam] %s: measuring\n", qPrintable(clipPath));
-}
-
-void MainWindow::scheduleClipScans()
-{
-    if (m_scanQueued)
-        return;
-    m_scanQueued = true;
-    QMetaObject::invokeMethod(this, [this] {
-        m_scanQueued = false;
-        if (m_playing)
-            return; // picked up again on pause
-        for (int i = 0; i < m_timeline->count(); ++i) {
-            const QString path = m_timeline->clipAt(i).sourcePath;
-            maybeMeasureSync(path);
-            maybeMeasureSeam(path);
-        }
-        updateSyncStatus();
-        updateSeamStatus();
-    }, Qt::QueuedConnection);
-}
-
 void MainWindow::updateSeamStatus()
 {
-    const ClipItem *c = m_timeline->clipById(m_clipId);
-    QString text;
-    std::array<double, 3> deg;
-    if (c && seamAdjustFor(c->sourcePath, deg))
-        text = tr("Seam: aligned for this clip (back lens yaw %1°, pitch %2°, roll %3°).")
-                   .arg(deg[0], 0, 'f', 2)
-                   .arg(deg[1], 0, 'f', 2)
-                   .arg(deg[2], 0, 'f', 2);
-    else if (c && m_seamMeasuringPath == c->sourcePath)
-        text = tr("Seam: measuring this clip…");
-    else if (c && m_seamFailed.contains(c->sourcePath))
-        text = tr("Seam: couldn't align this clip (%1).").arg(m_seamLastMessage);
-    m_stitchingPanel->setSeamStatus(text);
+    m_stitchingPanel->setSeamStatus(m_measurements->seamStatus(m_timeline->clipById(m_clipId)));
 }
 
 void MainWindow::updateSyncStatus()
 {
-    const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (!c || c->stabilization.mode == insv::StabMode::Off) {
-        m_stabilizationPanel->setSyncStatus(QString());
-        return;
-    }
-    const double ms = syncAdjustFor(c->sourcePath);
-    QString text;
-    if (!std::isnan(ms))
-        text = tr("Gyro sync: fine-tuned for this clip (%1 ms).").arg(ms, 0, 'f', 1);
-    else if (m_syncMeasuringPath == c->sourcePath)
-        text = tr("Gyro sync: measuring this clip…");
-    else if (m_syncFailed.contains(c->sourcePath))
-        text = tr("Gyro sync: couldn't fine-tune this clip (%1); using the camera's timing.")
-                   .arg(m_syncLastMessage);
-#ifndef ORBIS_REFRAME_HAVE_CLIP_SYNC
-    else
-        text = tr("Gyro sync: camera timing (fine-tune needs a build with OpenCV).");
-#endif
-    m_stabilizationPanel->setSyncStatus(text);
+    m_stabilizationPanel->setSyncStatus(
+        m_measurements->syncStatus(m_timeline->clipById(m_clipId)));
 }
 
 void MainWindow::publishStabilizer()
 {
-    std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
-    std::map<int, stitch::CaptureTiming> timings;
-    for (int i = 0; i < m_timeline->count(); ++i) {
-        const ClipItem &c = m_timeline->clipAt(i);
-        if (c.stabilization.mode == insv::StabMode::Off) {
-            clips.emplace(c.id, nullptr); // identity
-            continue;
-        }
-        const BuiltStab *b = builtStabFor(c);
-        if (!b)
-            continue; // not built yet
-        clips.emplace(c.id, b->stab);
-        // The capture-time correction follows the camera's own rotation, the
-        // same under every stabilization setting -- so it's there whichever
-        // of a file's stabilizers is built.
-        if (b->stab)
-            timings.emplace(c.id, ReframeExportController::captureTimingFor(b->stab));
-    }
-    {
-        std::lock_guard<std::mutex> lk(m_stabShared->mx);
-        m_stabShared->clips = std::move(clips);
-    }
-    m_controller->setCaptureTimings(std::move(timings));
+    m_controller->setCaptureTimings(m_stabilizers.publish(*m_timeline));
 }
 
 void MainWindow::applyStabilization(qint64 sourceMs)
 {
     float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (const BuiltStab *b = c ? builtStabFor(*c) : nullptr; b && b->stab)
-        b->stab->correctionMatrix(sourceMs / 1000.0, m);
+    if (const ClipItem *c = m_timeline->clipById(m_clipId))
+        m_stabilizers.correctionFor(*c, m_timeline->sourceSyncAdjust(c->sourcePath), sourceMs, m);
     m_viewport->SetStabilization(&m[0][0]);
 }
 
@@ -3216,7 +2977,7 @@ void MainWindow::locateMedia(const QString &path)
             m_clipPath = to.path;
     }
     refreshClipPanels();
-    scheduleClipScans(); // sync / seam for a clip that had no file until now
+    m_measurements->schedule(); // sync / seam for a clip that had no file until now
     m_mediaPanel->selectPaths({target});
     if (relinks.size() > 1) {
         QStringList names;
@@ -3250,7 +3011,7 @@ void MainWindow::recheckMissingMedia()
     onTracksChanged(); // the track rows, overlays and sound skip missing clips
     refreshClipPanels();
     if (!back.isEmpty())
-        scheduleClipScans(); // sync / seam for a clip that had no file until now
+        m_measurements->schedule(); // sync / seam for a clip that had no file until now
 
     const auto names = [](QStringList paths) {
         paths.sort();

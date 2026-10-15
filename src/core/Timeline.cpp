@@ -451,6 +451,27 @@ void Timeline::setSourceSeamAdjust(const QString &sourcePath, const std::array<d
     }
 }
 
+double Timeline::sourceSyncAdjust(const QString &sourcePath) const
+{
+    for (const ClipItem &c : m_clips)
+        if (c.sourcePath == sourcePath)
+            return c.syncAdjustMs;
+    return std::nan("");
+}
+
+bool Timeline::sourceSeamAdjust(const QString &sourcePath, int lensGuard,
+                                std::array<double, 3> &deg) const
+{
+    for (const ClipItem &c : m_clips) {
+        if (c.sourcePath == sourcePath && c.seamAdjustGuard == lensGuard) {
+            deg = c.seamAdjustDeg;
+            return true;
+        }
+    }
+    deg = {0.0, 0.0, 0.0};
+    return false;
+}
+
 void Timeline::setClipMediaMissing(int clipId, bool missing)
 {
     ClipItem *c = mutableClipById(clipId);

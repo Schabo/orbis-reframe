@@ -2320,6 +2320,13 @@ void testMeasurementsWritten()
     p.timeline()->setSourceSyncAdjust(a, -3.1);
     p.timeline()->setSourceSeamAdjust(b, {-0.5, 0.25, 0.1}, 2);
     CHECK(!p.modified()); // not an edit
+    std::array<double, 3> deg{1.0, 1.0, 1.0};
+    CHECK(p.timeline()->sourceSyncAdjust(a) == -3.1);
+    CHECK(std::isnan(p.timeline()->sourceSyncAdjust(b)));
+    CHECK(std::isnan(p.timeline()->sourceSyncAdjust(tmp.path() + "/c.insv")));
+    CHECK(p.timeline()->sourceSeamAdjust(b, 2, deg) && deg[1] == 0.25);
+    CHECK(!p.timeline()->sourceSeamAdjust(b, 1, deg) && deg[1] == 0.0); // another guard
+    CHECK(!p.timeline()->sourceSeamAdjust(a, 2, deg));
     CHECK(savedClip(0).syncAdjustMs == -3.1 && savedClip(2).syncAdjustMs == -3.1);
     CHECK(std::isnan(savedClip(1).syncAdjustMs));
     CHECK(savedClip(1).seamAdjustGuard == 2 && savedClip(1).seamAdjustDeg[1] == 0.25);

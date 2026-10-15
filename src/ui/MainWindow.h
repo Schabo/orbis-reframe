@@ -4,16 +4,12 @@
 #include <QKeySequence>
 #include <QList>
 #include <QMainWindow>
-#include <QSet>
 #include <QString>
 
-#include <atomic>
 #include <functional>
 #include <array>
 #include <memory>
-#include <mutex>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
@@ -28,6 +24,7 @@
 #include "SubjectTrackJob.h"          // subjecttrack::Result
 #endif
 #include "ClipBackend.h"              // ClipBackend
+#include "StabilizerCache.h"          // StabilizerCache
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
@@ -48,6 +45,7 @@ struct ClipItem;
 class EquirectViewportWindow;
 class PlaybackController;
 class PlateJobController;
+class ClipMeasurements;
 class SubjectTrackController;
 class AudioPlayer;
 class AudioPanel;
@@ -141,42 +139,19 @@ private:
     // current clip's (m_clipId) source time. No-op when the track is empty or a
     // viewport drag is in progress.
     void applySampledPose(qint64 sourceMs);
-    // Build a stabilizer for clip `c` (its source's IMU track under its own
-    // stabilization setting and the source's sync fine-tune) into
-    // m_stabCache, unless one is there already or the clip's stabilization is
-    // Off. Reads the clip's trailer (fast: it seeks to the trailer, not the
-    // whole file). Returns true if it built one; the caller then publishes.
-    bool ensureStabilizerFor(const ClipItem &c);
     // The clip under the playhead and the one after it: build their
     // stabilizers (so a cut finds the next one ready), publish, and refresh
     // the paused picture if the current one was new.
     void ensureStabilizers();
-    // The measured sync fine-tune for a source (ClipItem::syncAdjustMs),
-    // NaN if not measured. maybeMeasureSync() starts a background measurement
-    // (stitch::MeasureClipSync) when the source has none; the result lands on
-    // the Timeline, which rebuilds the stabilizer.
-    double syncAdjustFor(const QString &clipPath) const;
-    void maybeMeasureSync(const QString &clipPath);
+    // The current clip's sync / seam status lines from m_measurements.
     void updateSyncStatus();
-    // The seam alignment fine-tune for a source
-    // (ClipItem::seamAdjustDeg), if it was measured under the current
-    // lens-guard setting. pushSeamAdjust() hands every timeline source's value
-    // (or zero) to the playback controller; maybeMeasureSeam() starts a
-    // background measurement (stitch::MeasureClipSeam) when the source has none.
+    void updateSeamStatus();
+    // The seam alignment fine-tune for a source (ClipItem::seamAdjustDeg), if
+    // it was measured under the current lens-guard setting (else zero).
+    // pushSeamAdjust() hands every timeline source's value to the playback
+    // controller.
     bool seamAdjustFor(const QString &clipPath, std::array<double, 3> &deg) const;
     void pushSeamAdjust();
-    void maybeMeasureSeam(const QString &clipPath);
-    void updateSeamStatus();
-    // Start whichever of those two measurements is due next, for the
-    // timeline's sources in order (one of each kind at a time). Runs after the
-    // current event (a load or add finishes first) and never while playing:
-    // a measurement competes with playback for the GPU and shows as a hitch,
-    // so they run when a clip is added or a project opened, and a pause picks
-    // the queue back up. One running when play starts is cancelled (it would
-    // stall playback its whole run) and starts over on the pause; a result
-    // that still lands while playing is applied at the next pause (the
-    // re-stitch is a seek).
-    void scheduleClipScans();
     // Push the current clip's (m_clipId) correction for `sourceMs` (its
     // source time) into the viewport. Identity when its stabilization is Off
     // or its stabilizer isn't built.
@@ -512,32 +487,9 @@ private:
     // threads, which may outlive this window's members.
     std::shared_ptr<ThumbnailCache> m_thumbnailCache;
 
-    // Native gyro stabilization, per clip (ClipItem::stabilization). Built
-    // stabilizers are kept per source file + setting + sync fine-tune, so
-    // clips cut from one file with the same setting share one; the clip under
-    // the playhead and the next one are built ahead (ensureStabilizers()).
-    struct BuiltStab {
-        QString path;
-        insv::StabConfig config;
-        double syncMs = 0.0;
-        std::shared_ptr<const insv::GyroStabilizer> stab; // null: no IMU track
-    };
-    static constexpr size_t kStabCacheSize = 4;
-    std::vector<BuiltStab> m_stabCache; // least recently used first
-    // The cache entry for clip `c`, or null (stabilization Off, or not built).
-    const BuiltStab *builtStabFor(const ClipItem &c) const;
-    // Presented frames get their matrix from m_stabShared (per frame, by the
-    // frame's clip, at its own source time, on the playback thread), the
-    // stitch its capture-time correction from setCaptureTimings; the cache
-    // itself also serves the paused / settings-changed refresh.
-    struct StabShared {
-        std::mutex mx;
-        // Per clip id: its stabilizer, or null for identity (Off, or no IMU
-        // track). A clip not in it isn't built yet: the viewport keeps the
-        // matrix it has.
-        std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
-    };
-    std::shared_ptr<StabShared> m_stabShared = std::make_shared<StabShared>();
+    // Native gyro stabilization, per clip; the clip under the playhead and
+    // the next one are built ahead (ensureStabilizers()).
+    StabilizerCache m_stabilizers;
     // Hand every clip's built stabilizer (and its capture-time correction)
     // to playback. Call after the cache or the clips change.
     void publishStabilizer();
@@ -545,19 +497,9 @@ private:
     // stabilization on) when last seen, to tell when a change toggles it.
     // Rebuilt with the controller's segments.
     QHash<int, bool> m_captureTimingOn;
-    // Background sync measurement: one at a time.
-    QThread *m_syncThread = nullptr;
-    QString m_syncMeasuringPath;
-    std::atomic<bool> m_syncCancel{false};
-    QSet<QString> m_syncFailed; // sources that gave no result this session
-    QString m_syncLastMessage;  // last measurement's summary, for the panel
-    // Background seam measurement: one at a time.
-    QThread *m_seamThread = nullptr;
-    QString m_seamMeasuringPath;
-    std::atomic<bool> m_seamCancel{false};
-    QSet<QString> m_seamFailed; // sources that gave no result this session
-    QString m_seamLastMessage;
-    bool m_scanQueued = false; // scheduleClipScans() already pending
+    // The background sync / seam measurements. A result that lands while
+    // playing is applied at the next pause (the re-stitch is a seek).
+    ClipMeasurements *m_measurements = nullptr;
     bool m_playing = false;    // the controller's playingChanged
     double m_previewRate = 1.0; // the player bar's speed; the sound plays at 1x only
     bool m_fullScreen = false;  // setFullScreenView()
