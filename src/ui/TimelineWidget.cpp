@@ -931,6 +931,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     // Audio clips.
     const bool audioDrag = m_drag == Drag::AudioMove || m_drag == Drag::AudioTrimIn ||
                            m_drag == Drag::AudioTrimOut;
+    const QIcon linkIcon = theme::icon(QStringLiteral("link"));
     auto drawAudio = [&](int trackIndex, const TrackClipView &c, bool ghost) {
         const QRect rc = trackClipRect(trackIndex, c);
         const bool sel = c.id == m_selectedAudioId;
@@ -955,11 +956,19 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             p.drawLine(xForTimelineMs(c.endMs() - c.fadeOutMs), rc.top() + 1, rc.right(), rc.bottom());
         p.setRenderHint(QPainter::Antialiasing, false);
         p.setPen(tc.text);
-        QString label = (c.missing ? QStringLiteral("⚠ ") : QString()) +
-                        (c.linked ? QStringLiteral("🔗 ") : QString()) + c.label;
+        QString label = (c.missing ? QStringLiteral("⚠ ") : QString()) + c.label;
         if (c.speed != 1.0)
             label += QStringLiteral("  %1×").arg(c.speed);
-        const QRect vis = rc.intersected(QRect(cLeft, 0, usableW, height()));
+        QRect vis = rc.intersected(QRect(cLeft, 0, usableW, height()));
+        // A linked clip (the video's own sound) starts with a link icon: an
+        // icon, not an emoji, which needs an emoji font to show.
+        if (c.linked && !vis.isEmpty()) {
+            const int s = std::min(fm.height(), vis.height() - 2);
+            if (s > 0 && vis.width() > s + 10) {
+                linkIcon.paint(&p, QRect(vis.left() + 5, vis.top() + (vis.height() - s) / 2, s, s));
+                vis.setLeft(vis.left() + s + 3);
+            }
+        }
         p.drawText(vis.adjusted(5, 0, -5, 0), Qt::AlignVCenter | Qt::AlignLeft,
                    fm.elidedText(label, Qt::ElideMiddle, std::max(0, vis.width() - 10)));
         // An overlay's keyframe diamonds, like the main track's reframe keys.
