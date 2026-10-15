@@ -5,12 +5,12 @@ MP4 container, the video/audio streams, the proprietary `inst` trailer, the
 telemetry in it (gyro, accelerometer, exposure, GPS), and the lens calibration.
 It collects the findings from `src/insv/`, the spikes/tools, the project's
 development notes, a direct re-inspection of the sample footage, and a
-cross-check against the external sources in §13 (2026-09-24).
+cross-check against the external sources in §14 (2026-09-24).
 
 **Confidence markers** used below:
 - ✅ **verified**: parsed by our code and cross-checked (ExifTool byte-for-byte,
   ffprobe, several clips agreeing, and/or an independent implementation)
-- 📖 **documented externally**: stated by an independent source (§13) and
+- 📖 **documented externally**: stated by an independent source (§14) and
   consistent with our files, but not yet exercised by our code
 - ⚠️ **inferred**: strong evidence, but not validated end to end
 - ❓ **unknown**
@@ -170,7 +170,9 @@ Measured from `sample_footage/Modes/` (2026-09-27, one clip per mode):
   B-frames. HDR is tone-mapped in the camera; nothing in the stream says
   HDR, and the HDR / non-HDR 8K clips probe identically. 5.7K+ has the same stream shape as 5.7K; only the
   bitrate differs. No 10-bit path is
-  needed for these modes. No log profile found yet (not ruled out).
+  needed for these modes. **I-Log** exists on the X5 at 5.7K 60 and below
+  (Insta360's manual), but there's no I-Log clip in the sample set: its bit
+  depth and colour tagging are untested (§12).
 - The trailer is identical in shape across modes: the same calibration
   strings (stated at the 10752×5376 reference size and scaled to the
   stream), the same lens profiles, ~1006 Hz IMU, and one exposure record per
@@ -745,7 +747,48 @@ sample set.
 | `ffprobe -show_streams` | container and streams (§3) |
 | `tools/residual_stab --diagnose` | IMU spectra, image-vs-gyro sweep, sync (block [5]) |
 
-## 12. Open questions (after the 2026-09-24 research)
+## 12. Other cameras: X4 and X6 (desk research, 2026-10-15)
+
+No X4 or X6 file has been examined: this is from public specs, Insta360's
+manuals and telemetry-parser, set against what our code assumes. Every
+point needs a real clip to confirm.
+
+**Shared with the X5** 📖:
+- One `.insv` per take with both lenses, same `VID_…_00_…` / `LRV_…_01_…`
+  naming (the X6 manual: X6, X5, X4 Air and X4 write one file; the X3 two).
+- The same trailer framing: telemetry-parser reads X4 and X5 trailers with one
+  code path (an Offsets table, records "back to back" with a six-byte
+  descriptor after each), and maps both IMUs with `yzX` (§6.3). It has no
+  X6-specific code yet; an unknown model falls back to `Xyz`.
+- Nothing in our code branches on field 2 (`camera_type`); calibration,
+  rolling shutter and sync are read per file.
+
+**X4** ⚠️ (8K 30, 5.7K 60, 4K 100; H.265, up to 200 Mb/s):
+- Expected per-lens sizes 3840² / 2880² / 1920², as on the X5.
+- Unknown: whether it carries the 56-token MEI string (field 111/112, §5.3),
+  without which the native stitch won't open the clip; whether its IMU is raw
+  counts (field 62) and the same full-scale ranges; whether our measured
+  `z,-x,-y` axis map (§6.3) holds — Gyroflow's matching `yzX` suggests it
+  might. One third-party listing claims 10-bit recording; Insta360 doesn't.
+
+**X6** ⚠️ (two 1/1.1" square sensors; H.265, up to 180 Mb/s):
+- 360 modes: 8K 7680×3840 at 50/48/30/25/24, **6K 6016×3008** at up to 60,
+  4K 3840×1920 at up to 100. So per lens 3840², **3008²** (new) and 1920².
+- **I-Log 10-bit** and **Dolby Vision** colour modes. Our GPU path samples
+  the decoder's images as 8-bit NV12 (`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM`)
+  with a BT.709 full-range conversion, so a 10-bit (P010-style) stream needs
+  a second sampler format, and a log or HDR transfer a conversion we don't
+  have. Dolby Vision is presumably BT.2020 / PQ or HLG — unconfirmed.
+- 8K 50 is ~1.5 Gpx/s across both lenses, ~1.7× the X5's 8K 30 (§3.3);
+  real-time decode isn't measured.
+- The larger sensor likely changes the calibration's reference frame
+  (10752×5376 on the X5) and possibly the IMU part (field 51); both are read
+  from the file, but the sanity ranges in `Calibration.cpp` were set from
+  X5 values.
+- The capture-mode label (8K / 5.7K / 4K) is chosen by lens size, so 3008²
+  has no name yet.
+
+## 13. Open questions (after the 2026-09-24 research)
 
 Resolved by the research: the record-type names, the type-9 layout, the
 meaning of most metadata fields, the IMU scale/range, the IMU part, the sync
@@ -765,8 +808,10 @@ Still open:
 5. What sets field 25 per mode (resolution / frame rate / sensor mode).
    8K (HDR on/off), 5.7K+, 5.7K 60 and 4K 120 are now covered (§3.3); log,
    timelapse and `.insp` are still untested.
+6. X5 I-Log: bit depth, colour tagging and transfer curve (§3.3).
+7. Everything in §12: X4 and X6 files, from real clips.
 
-## 13. External sources
+## 14. External sources
 
 - Gyroflow **telemetry-parser**, `src/insta360/{mod,record,extra_info}.rs`
   (record framing, record types, `ExtraMetadata` protobuf schema, raw-gyro
@@ -784,5 +829,12 @@ Still open:
   (search result, Insta360 support pages)
 - TDK ICM-40609-D datasheet (full-scale ranges):
   <https://invensense.tdk.com/products/motion-tracking/6-axis/icm-40609-d/>
+- Insta360 X6 manual: shooting specs
+  <https://onlinemanual.insta360.com/x6/en-us/specs/shooting-specs>, file
+  formats <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/storage/fileformat>,
+  I-Log (X5 and X6)
+  <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/capture-preview/features/ilog>
+- Insta360 X4 manual, shooting specs:
+  <https://onlinemanual.insta360.com/x4/en-us/specs/shooting-specs>
 - Gyroflow docs, Insta360 support (360 models unsupported in Gyroflow itself):
   <https://docs.gyroflow.xyz/app/getting-started/supported-cameras/insta360>
