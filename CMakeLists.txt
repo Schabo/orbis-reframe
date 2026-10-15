@@ -404,6 +404,10 @@ if(FFMPEG_FOUND)
         src/ui/ReframeExportController.h
         src/ui/ExportOptionsDialog.cpp
         src/ui/ExportOptionsDialog.h
+        src/ui/ExportRunner.cpp
+        src/ui/ExportRunner.h
+        src/ui/RenderJobs.cpp
+        src/ui/RenderJobs.h
         src/ui/SettingsSidebar.cpp
         src/ui/SettingsSidebar.h
         src/ui/TabSidebar.cpp
@@ -693,6 +697,12 @@ if(Qt6Test_FOUND)
         add_executable(privacy_blur_test tests/privacy_blur_test.cpp)
         target_link_libraries(privacy_blur_test PRIVATE orbis_app)
         add_test(NAME privacy_blur_test COMMAND privacy_blur_test)
+
+        # The edit model as the renderers are handed it (mix, overlays, export
+        # jobs, suggested file names).
+        add_executable(render_jobs_test tests/render_jobs_test.cpp)
+        target_link_libraries(render_jobs_test PRIVATE orbis_app)
+        add_test(NAME render_jobs_test COMMAND render_jobs_test)
     endif()
 
     # The left sidebar and its Media tab (the media pool), found by

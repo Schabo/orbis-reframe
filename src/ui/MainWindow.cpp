@@ -72,6 +72,8 @@
 #endif
 #include "ClipMeasurements.h"
 #include "ExportOptionsDialog.h"
+#include "ExportRunner.h"
+#include "RenderJobs.h"
 #include "MediaPoolPanel.h"
 #include "MediaProbe.h"
 #include "PlaybackController.h"
@@ -156,6 +158,20 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     m_timeline = m_project->timeline();
     m_autosave = new Autosave(m_project, Autosave::kDefaultIntervalMs, this);
     m_measurements = new ClipMeasurements(m_project, m_clipBackend.measure, this);
+    m_exports = new ExportRunner(this);
+    connect(m_exports, &ExportRunner::busyChanged, this, [this] {
+        updateExportEnabled();
+        updateScreenshotEnabled();
+    });
+    connect(m_exports, &ExportRunner::stillFinished, this,
+            [this](const QString &path, const QString &error) {
+                if (error.isEmpty()) {
+                    m_editToolbar->showNotice(tr("Saved %1").arg(QDir::toNativeSeparators(path)));
+                } else {
+                    m_editToolbar->showNotice(QString());
+                    QMessageBox::warning(this, tr("Screenshot failed"), error);
+                }
+            });
     connect(m_measurements, &ClipMeasurements::statusChanged, this, [this] {
         updateSyncStatus();
         updateSeamStatus();
@@ -1096,8 +1112,8 @@ MainWindow::~MainWindow()
 {
     delete m_measurements; // waits for a running one
     m_measurements = nullptr;
-    if (m_screenshotThread)
-        m_screenshotThread->wait(); // one frame: a second or two at most
+    delete m_exports; // waits for a screenshot being saved
+    m_exports = nullptr;
     // Background jobs that stitch and draw into the viewport: stopped and
     // waited for while the viewport is still there.
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
@@ -1550,34 +1566,6 @@ void MainWindow::refreshAudioPanel()
     m_audioPanel->setClips(states, scope);
 }
 
-std::vector<insv::MixClip> MainWindow::mixClips() const
-{
-    constexpr int kFramesPerMs = 48; // playback and export both mix at 48 kHz
-    std::vector<insv::MixClip> mix;
-    for (int i = 0; i < m_timeline->trackCount(); ++i) {
-        const Track &t = m_timeline->trackAt(i);
-        if (t.muted || t.kind != Track::Kind::Audio)
-            continue;
-        for (const TrackClip &c : t.clips) {
-            if (c.muted || c.mediaMissing)
-                continue;
-            insv::MixClip m;
-            m.path = c.sourcePath.toStdString();
-            m.stream = c.stream;
-            m.startFrame = c.startMs * kFramesPerMs;
-            m.lengthFrames = c.timelineDurationMs() * kFramesPerMs;
-            m.inFrame = c.trimInMs * kFramesPerMs;
-            m.speed = c.speed;
-            m.gain = static_cast<float>(std::pow(10.0, (c.gainDb + t.gainDb) / 20.0));
-            m.fadeInFrames = c.fadeInMs * kFramesPerMs;
-            m.fadeOutFrames = c.fadeOutMs * kFramesPerMs;
-            m.noise = c.noise;
-            mix.push_back(std::move(m));
-        }
-    }
-    return mix;
-}
-
 void MainWindow::onTracksChanged()
 {
     if (m_selectedTrackClipId > 0 && !m_timeline->trackClipById(m_selectedTrackClipId))
@@ -1587,7 +1575,7 @@ void MainWindow::onTracksChanged()
     refreshOverlayPanel();
     pushInsetsToController();
 #ifdef ORBIS_REFRAME_HAVE_AUDIO
-    m_audioPlayer->setMix(mixClips());
+    m_audioPlayer->setMix(renderjobs::mixClips(*m_timeline));
 #endif
 }
 
@@ -1717,62 +1705,7 @@ void MainWindow::addVideoFiles(const QStringList &paths, int trackId, qint64 atM
 
 void MainWindow::pushInsetsToController()
 {
-    std::vector<InsetFeed::Clip> clips;
-    // Bottom-most first: the lowest overlay row draws first, the top row last.
-    for (int i = m_timeline->trackCount() - 1; i >= 0; --i) {
-        const Track &t = m_timeline->trackAt(i);
-        if (t.kind != Track::Kind::Video || t.muted)
-            continue; // (hidden)
-        for (const TrackClip &c : t.clips) {
-            if (c.mediaMissing)
-                continue;
-            InsetFeed::Clip f;
-            f.id = c.id;
-            f.path = c.sourcePath;
-            f.startMs = c.startMs;
-            f.trimInMs = c.trimInMs;
-            f.trimOutMs = c.trimOutMs;
-            f.speed = c.speed;
-            f.aspect = c.aspect();
-            f.fadeInMs = c.fadeInMs;
-            f.fadeOutMs = c.fadeOutMs;
-            f.look = c.look;
-            f.frame = c.frame;
-            f.keys = c.insetKeys;
-            clips.push_back(std::move(f));
-        }
-    }
-    m_controller->setInsets(std::move(clips)); // thread-safe
-}
-
-std::vector<exportpipe::InsetClipJob> MainWindow::insetJobs() const
-{
-    std::vector<exportpipe::InsetClipJob> jobs;
-    for (int i = m_timeline->trackCount() - 1; i >= 0; --i) {
-        const Track &t = m_timeline->trackAt(i);
-        if (t.kind != Track::Kind::Video || t.muted)
-            continue;
-        for (const TrackClip &c : t.clips) {
-            if (c.mediaMissing)
-                continue;
-            exportpipe::InsetClipJob j;
-            j.path = c.sourcePath.toStdString();
-            j.startMs = c.startMs;
-            j.trimInMs = c.trimInMs;
-            j.trimOutMs = c.trimOutMs;
-            j.speed = c.speed;
-            j.aspect = c.aspect();
-            j.fadeInMs = c.fadeInMs;
-            j.fadeOutMs = c.fadeOutMs;
-            j.frame = c.frame;
-            // A copy: the export thread samples it.
-            j.lookAt = [look = c.look, keys = c.insetKeys](int64_t sourceMs) {
-                return keys.isEmpty() ? look : keys.sample(sourceMs);
-            };
-            jobs.push_back(std::move(j));
-        }
-    }
-    return jobs;
+    m_controller->setInsets(renderjobs::insetFeed(*m_timeline)); // thread-safe
 }
 
 const TrackClip *MainWindow::selectedOverlayClip(int *trackId) const
@@ -2531,8 +2464,7 @@ void MainWindow::refreshTimelineWidget()
     m_editToolbar->setHasReframeKeys(activeHasKeys);
     updatePlayerBar();
     m_reframePanel->setClipUnkeyed(m_timeline->clipById(m_clipId) && !activeHasKeys);
-    if (!m_exporting)
-        m_exportAction->setEnabled(m_timeline->count() > 0 && m_fps > 0.0);
+    updateExportEnabled();
     updateScreenshotEnabled();
 }
 
@@ -3264,7 +3196,7 @@ void MainWindow::updateWindowTitle()
 
 void MainWindow::exportFlatVideo()
 {
-    if (m_exporting)
+    if (m_exports->exporting())
         return;
     const int nclips = m_timeline->count();
     if (nclips == 0)
@@ -3330,19 +3262,9 @@ void MainWindow::exportFlatVideo()
         return;
     opts.rememberQuality();
 
-    // Suggested in the project's exports/ folder (a loose project file's own
-    // folder), named after the project, with -2, -3, ... if that's taken.
-    QString suggested = QDir::homePath() + QStringLiteral("/timeline.mp4");
-    if (const QString file = m_project->filePath(); !file.isEmpty()) {
-        QString dir = projectfolder::ensure(projectfolder::exportsDir(file));
-        if (dir.isEmpty())
-            dir = QFileInfo(file).absolutePath();
-        const QString base = QFileInfo(file).completeBaseName();
-        suggested = QDir(dir).filePath(base + QStringLiteral(".mp4"));
-        for (int n = 2; QFileInfo::exists(suggested); ++n)
-            suggested = QDir(dir).filePath(QStringLiteral("%1-%2.mp4").arg(base).arg(n));
-    }
-    QString path = askSaveFileName(tr("Export flat video"), suggested, tr("MP4 video (*.mp4)"));
+    QString path = askSaveFileName(tr("Export flat video"),
+                                   renderjobs::suggestedExportPath(m_project->filePath()),
+                                   tr("MP4 video (*.mp4)"));
     if (path.isEmpty())
         return;
     if (QFileInfo(path).suffix().isEmpty())
@@ -3362,107 +3284,21 @@ void MainWindow::exportFlatVideo()
     // both per decoded frame at its own source time.
     for (int i = 0; i < nclips; ++i)
         req.clips.push_back(exportJobFor(m_timeline->clipAt(i)));
-    req.mix = mixClips(); // the extra audio tracks
-    req.insets = insetJobs(); // the overlay tracks
+    req.mix = renderjobs::mixClips(*m_timeline); // the audio tracks
+    req.insets = renderjobs::insetJobs(*m_timeline); // the overlay tracks
 
     // The export opens its own NativeStitchSource (on the shared decode
     // device) -- pause playback so the two stitch pipelines don't contend
     // for the GPU.
     QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
 
-    auto *thread = new QThread(this);
-    auto *worker = new ReframeExportController;
-    worker->moveToThread(thread);
-    connect(thread, &QThread::finished, worker, &QObject::deleteLater);
-
-    auto *dlg = new QProgressDialog(tr("Preparing…"), tr("Cancel"), 0, 100, this);
-    dlg->setWindowTitle(tr("Exporting flat video"));
-    dlg->setWindowModality(Qt::ApplicationModal);
-    dlg->setMinimumDuration(0);
-    dlg->setAutoClose(false);
-    dlg->setAutoReset(false);
-    dlg->setValue(0);
-
-    m_exporting = true;
-    m_exportAction->setEnabled(false);
-    updateScreenshotEnabled();
-
-    // Cancel: flip the worker's atomic flag (thread-safe -- a lone atomic
-    // store, so calling it straight from the GUI thread is fine), and hold the
-    // dialog up with a "Cancelling…" note until the worker stops and finished()
-    // closes it. The worker deletes the partial output file itself. Context is
-    // `dlg` (GUI thread), NOT `worker` -- the worker thread is blocked in run().
-    connect(dlg, &QProgressDialog::canceled, dlg, [worker, dlg] {
-        worker->cancel();
-        dlg->setLabelText(tr("Cancelling…"));
-        dlg->show();
-    });
-
-    connect(worker, &ReframeExportController::progress, dlg, [dlg](int pct, const QString &label) {
-        if (dlg->wasCanceled())
-            return;
-        if (!label.isEmpty())
-            dlg->setLabelText(label);
-        dlg->setValue(pct);
-    });
-    connect(worker, &ReframeExportController::finished, this,
-            [this, dlg, thread](bool ok, const QString &error, const QString &outPath) {
-                dlg->close();
-                dlg->deleteLater();
-                thread->quit();
-                thread->wait();
-                thread->deleteLater();
-                m_exporting = false;
-                m_exportAction->setEnabled(m_timeline->count() > 0 && m_fps > 0.0);
-                updateScreenshotEnabled();
-                if (ok)
-                    QMessageBox::information(this, tr("Export complete"),
-                                            tr("Wrote %1").arg(outPath));
-                else if (!error.isEmpty())
-                    QMessageBox::warning(this, tr("Export failed"), error);
-                // else: cancelled by the user -- the dialog just closes, and
-                // ReframeExportController has already deleted the partial file.
-            });
-
-    thread->start();
-    QMetaObject::invokeMethod(worker, [worker, req] { worker->run(req); });
+    m_exports->startExport(req);
 }
 
 ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) const
 {
-    // Stabilization (Lean follow / Horizon Lock / Custom) is a per-frame
-    // sphere-frame matrix next to the reframe pose, applied after it like the
-    // viewport's pc.stab -- the native stitch itself is never stabilized.
-    const bool nativeStab = c.stabilization.mode != insv::StabMode::Off;
-    ReframeExportController::ClipJob job;
-    job.clipPath = c.sourcePath;
-    job.trimInMs = c.trimInMs;
-    job.trimOutMs = c.trimOutMs;
-    job.speed = c.speed;
-    const std::array<float, 4> grade = c.color.packed();
-    std::copy(grade.begin(), grade.end(), job.colorGrade);
-    job.blur = m_privacy.blurFor(c);
-    seamAdjustFor(c.sourcePath, job.seamAdjustDeg);
-    if (nativeStab) {
-        auto tele = insv::ReadInsvTelemetry(c.sourcePath.toStdString());
-        if (tele && tele->imu.size() >= 2) {
-            auto stab = std::make_shared<insv::GyroStabilizer>();
-            const double syncMs = std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs;
-            stab->build(*tele, c.fps, c.stabilization, syncMs / 1000.0);
-            if (stab->ready())
-                job.stab = stab;
-        }
-    }
-    // No keyframes -> a static forward view.
-    if (!c.reframe.isEmpty())
-        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[4]) {
-            const ReframePose p = track.sample(sourceMs);
-            pose[0] = p.yaw;
-            pose[1] = p.pitch;
-            pose[2] = p.roll;
-            pose[3] = p.fovY;
-        };
-    return job;
+    return renderjobs::clipJob(c, *m_timeline,
+                               static_cast<int>(m_project->previewStitch().lensGuard), m_privacy);
 }
 
 bool MainWindow::confirmStalePrivacy(const QString &title, const QStringList &warnings)
@@ -3575,7 +3411,7 @@ void MainWindow::setPlateSelecting(bool on)
 {
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
     const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (on && (!c || c->mediaMissing || plateJobRunning() || trackingRunning() || m_exporting))
+    if (on && (!c || c->mediaMissing || plateJobRunning() || trackingRunning() || m_exports->exporting()))
         on = false;
     if (on && m_trackSelecting)
         setTrackSelecting(false);
@@ -3613,7 +3449,7 @@ void MainWindow::startPlateFollow(const QRectF &box)
     m_plateSelecting = false;
     m_privacyPanel->setPlateState(PrivacyPanel::PlateState::Idle);
     const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (!c || c->mediaMissing || plateJobRunning() || trackingRunning() || m_exporting) {
+    if (!c || c->mediaMissing || plateJobRunning() || trackingRunning() || m_exports->exporting()) {
         m_viewport->ClearMarker();
         return;
     }
@@ -3776,14 +3612,20 @@ void MainWindow::stopPlateJob()
 #endif
 }
 
+void MainWindow::updateExportEnabled()
+{
+    m_exportAction->setEnabled(!m_exports->exporting() && m_timeline->count() > 0 && m_fps > 0.0);
+}
+
 void MainWindow::updateScreenshotEnabled()
 {
-    const bool on = !m_screenshotThread && !m_exporting && m_timeline->count() > 0 && m_fps > 0.0;
+    const bool on = !m_exports->savingStill() && !m_exports->exporting() &&
+                    m_timeline->count() > 0 && m_fps > 0.0;
     m_screenshotAction->setEnabled(on);
     m_playerBar->setScreenshotEnabled(on);
     // While tracking, the button is the Stop control.
     m_reframePanel->setTrackEnabled(trackingRunning() ||
-                                    (!m_exporting && m_timeline->count() > 0 && m_fps > 0.0));
+                                    (!m_exports->exporting() && m_timeline->count() > 0 && m_fps > 0.0));
 }
 
 bool MainWindow::trackingRunning() const
@@ -3800,7 +3642,7 @@ void MainWindow::setTrackSelecting(bool on)
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
     if (on && m_plateSelecting)
         setPlateSelecting(false);
-    if (on && (!m_clipId || trackingRunning() || m_exporting))
+    if (on && (!m_clipId || trackingRunning() || m_exports->exporting()))
         on = false;
     m_trackSelecting = on;
     m_reframePanel->setTrackSelecting(on);
@@ -3827,7 +3669,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     m_trackSelecting = false;
     m_reframePanel->setTrackSelecting(false);
     const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (!c || trackingRunning() || m_exporting) {
+    if (!c || trackingRunning() || m_exports->exporting()) {
         m_viewport->ClearMarker();
         return;
     }
@@ -3934,7 +3776,7 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
 
 void MainWindow::takeScreenshot()
 {
-    if (m_screenshotThread || m_exporting)
+    if (m_exports->savingStill() || m_exports->exporting())
         return;
     const ClipItem *c = m_timeline->clipById(m_clipId);
     if (!c)
@@ -3952,80 +3794,28 @@ void MainWindow::takeScreenshot()
     // Captured before the save dialog, so a playing timeline doesn't move the
     // frame on: the export's view of the clip, looked at through whatever the
     // viewport shows now -- the sampled reframe path, or a free look / drag.
-    const ReframeExportController::ClipJob job = exportJobFor(*c);
-    const std::array<float, 4> pose{m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
-                                    m_viewport->FovY()};
-    const qint64 sourceMs = m_lastPositionMs;
-    const int w = m_project->output().width;
-    const int h = m_project->output().height;
-    const auto guard = m_project->previewStitch().lensGuard;
-    const bool depthSeam = m_project->previewStitch().depthSeam;
+    ExportRunner::Still still;
+    still.job = exportJobFor(*c);
+    still.pose = {m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(), m_viewport->FovY()};
+    still.sourceMs = m_lastPositionMs;
+    still.timelineMs = std::max<qint64>(0, m_lastTimelineMs);
+    still.width = m_project->output().width;
+    still.height = m_project->output().height;
+    still.lensGuard = m_project->previewStitch().lensGuard;
+    still.depthSeam = m_project->previewStitch().depthSeam;
 
-    // Suggested in the project's screenshots/ folder (a loose project file's
-    // own folder), or Pictures while it's unsaved; named
-    // after the project (or the clip) and the playhead's timeline time, with a
-    // -2, -3, ... suffix if that name is taken.
-    QString dir;
-    QString base;
-    if (!m_project->filePath().isEmpty()) {
-        const QFileInfo fi(m_project->filePath());
-        dir = projectfolder::ensure(projectfolder::screenshotsDir(m_project->filePath()));
-        if (dir.isEmpty())
-            dir = fi.absolutePath();
-        base = fi.completeBaseName();
-    } else {
-        dir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-        if (dir.isEmpty() || !QDir(dir).exists())
-            dir = QDir::homePath();
-        base = QFileInfo(c->sourcePath).completeBaseName();
-    }
-    const qint64 t = std::max<qint64>(0, m_lastTimelineMs);
-    const QString stamp = QStringLiteral("%1m%2s%3")
-                              .arg(t / 60000, 2, 10, QLatin1Char('0'))
-                              .arg(t / 1000 % 60, 2, 10, QLatin1Char('0'))
-                              .arg(t % 1000, 3, 10, QLatin1Char('0'));
-    QString suggested = QDir(dir).filePath(QStringLiteral("%1_%2.png").arg(base, stamp));
-    for (int n = 2; QFileInfo::exists(suggested); ++n)
-        suggested = QDir(dir).filePath(QStringLiteral("%1_%2-%3.png").arg(base, stamp).arg(n));
-
-    QString path = askSaveFileName(tr("Save screenshot"), suggested, tr("PNG image (*.png)"));
-    if (path.isEmpty() || m_screenshotThread || m_exporting)
+    QString path = askSaveFileName(
+        tr("Save screenshot"),
+        renderjobs::suggestedScreenshotPath(m_project->filePath(), c->sourcePath, still.timelineMs),
+        tr("PNG image (*.png)"));
+    if (path.isEmpty() || m_exports->savingStill() || m_exports->exporting())
         return;
     if (QFileInfo(path).suffix().isEmpty())
         path += QStringLiteral(".png");
+    still.path = path;
 
     m_editToolbar->showNotice(tr("Saving screenshot…"), true);
     // The overlays showing at the playhead, composited like the export does.
-    std::vector<exportpipe::InsetClipJob> insets = insetJobs();
-    m_screenshotThread = QThread::create([this, job, pose, sourceMs, w, h, guard, depthSeam, path, t,
-                                          insets = std::move(insets)] {
-        QString err;
-        QImage img =
-            ReframeExportController::renderStill(job, sourceMs, pose.data(), w, h, guard,
-                                                 depthSeam, err);
-        if (!img.isNull() && !insets.empty()) {
-            exportpipe::InsetCompositor comp(insets, w, h);
-            std::string e;
-            if (!comp.compositeRgb(t, img.bits(), int(img.bytesPerLine()), 3, e))
-                err = QString::fromStdString(e);
-        }
-        if (img.isNull() && err.isEmpty())
-            err = tr("The frame couldn't be rendered.");
-        else if (!img.isNull() && err.isEmpty() && !img.save(path, "PNG"))
-            err = tr("Couldn't write %1").arg(path);
-        QMetaObject::invokeMethod(this, [this, err, path] {
-            m_screenshotThread->wait(); // its function has just returned
-            m_screenshotThread->deleteLater();
-            m_screenshotThread = nullptr;
-            updateScreenshotEnabled();
-            if (err.isEmpty()) {
-                m_editToolbar->showNotice(tr("Saved %1").arg(QDir::toNativeSeparators(path)));
-            } else {
-                m_editToolbar->showNotice(QString());
-                QMessageBox::warning(this, tr("Screenshot failed"), err);
-            }
-        }, Qt::QueuedConnection);
-    });
-    m_screenshotThread->start();
-    updateScreenshotEnabled();
+    still.insets = renderjobs::insetJobs(*m_timeline);
+    m_exports->startStill(std::move(still));
 }

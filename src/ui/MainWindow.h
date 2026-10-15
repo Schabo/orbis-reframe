@@ -13,7 +13,6 @@
 #include <vector>
 
 #include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
-#include <AudioMixer.h>      // insv::MixClip
 #include <InsvMediaInfo.h>   // insv::MediaInfo
 
 #include "PrivacyBlur.h"              // PrivacyBlur
@@ -47,6 +46,7 @@ class EquirectViewportWindow;
 class PlaybackController;
 class PlateJobController;
 class ClipMeasurements;
+class ExportRunner;
 class SubjectTrackController;
 class AudioPlayer;
 class AudioPanel;
@@ -108,21 +108,18 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    // File -> "Export flat video…": bake every timeline clip's reframe path,
-    // then a ReframeExportController on a scratch QThread (options dialog ->
-    // save-path dialog -> modal QProgressDialog) renders the whole timeline to
-    // one flat .mp4.
+    // File -> "Export flat video…": checks (NVENC, the privacy blur), the
+    // options dialog and where to save, then m_exports renders the whole
+    // timeline to one flat .mp4.
     void exportFlatVideo();
-    // One timeline clip as the export renders it: trim, speed, grade, audio,
-    // seam fine-tune, a stabilizer built from its IMU track (when
-    // stabilization is on), and its reframe path.
+    // One timeline clip as the export renders it (renderjobs::clipJob).
     ReframeExportController::ClipJob exportJobFor(const ClipItem &c) const;
     // Player bar camera button / Ctrl+Shift+P: render the frame at the
     // playhead at the project output size, through the export path (same
-    // stitch, stabilization, grade; the viewport's current view), on a scratch
-    // thread, and save it as a PNG where a save dialog says (suggested in the
-    // project's folder, or Pictures when the project is unsaved).
+    // stitch, stabilization, grade; the viewport's current view), and save
+    // it as a PNG where a save dialog says.
     void takeScreenshot();
+    void updateExportEnabled();
     void updateScreenshotEnabled();
     // Track subject (Reframe panel; ORBIS_REFRAME_HAVE_TRACKING): arm / disarm
     // drawing a box in the viewport; a drawn box starts tracking from the
@@ -235,9 +232,6 @@ private:
 
     void onTracksChanged();
     void fitTimelineHeight(); // the split, until the user drags it
-    // The extra audio tracks as the mixer wants them (muted tracks / clips
-    // and missing files left out). Playback and export both use this.
-    std::vector<insv::MixClip> mixClips() const;
     // The Audio panel: the selected audio clip if there is one, else the
     // clip under the playhead.
     void refreshAudioPanel();
@@ -262,10 +256,8 @@ private:
     // Files without a video stream are reported and skipped.
     void addVideoFile(int trackId, qint64 atMs);
     void addVideoFiles(const QStringList &paths, int trackId, qint64 atMs);
-    // The overlay clips as InsetFeed / the export want them (hidden tracks
-    // and missing files left out), bottom-most first.
+    // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
-    std::vector<exportpipe::InsetClipJob> insetJobs() const;
     // The selected track clip if it is on an overlay track (else null).
     const TrackClip *selectedOverlayClip(int *trackId = nullptr) const;
     // The Overlay panel: the selected overlay clip, at the playhead.
@@ -502,9 +494,8 @@ private:
     // independently of playback; empty until a clip opens. Plus its frame rate.
     QString m_clipPath;
     double m_fps = 0.0;
-    bool m_exporting = false;
     QAction *m_screenshotAction = nullptr;
-    QThread *m_screenshotThread = nullptr; // one render at a time
+    ExportRunner *m_exports = nullptr; // the export and screenshots, one of each at a time
     SubjectTrackController *m_tracker = nullptr; // Track subject (null without tracking)
     PrivacyPanel *m_privacyPanel = nullptr;
     PrivacyBlur m_privacy; // the plate scans and each clip's blur resolved against them
