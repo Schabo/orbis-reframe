@@ -14,6 +14,7 @@ differences from it, or, for another vendor, from scratch.
 | Antigravity A1 | 360 drone, `.insv` | [`antigravity-a1.md`](antigravity-a1.md) | not yet; desk research, no clips |
 | Insta360 Luna (Pro / Ultra) | flat gimbal camera, `.mp4` | [`insta360-luna.md`](insta360-luna.md) | not yet; desk research, no clips |
 | DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | not yet; desk research, no clips |
+| GoPro MAX, MAX2 | 360 stitched in the camera, `.360` (EAC) | [`gopro-max.md`](gopro-max.md) | not yet; desk research, no clips |
 
 ## Confidence markers
 
