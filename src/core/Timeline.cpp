@@ -669,6 +669,72 @@ int Timeline::audioTrackId(int overlayTrackId) const
     return 0;
 }
 
+int Timeline::freeTrackFor(qint64 startMs, qint64 endMs, bool video,
+                           const std::function<bool(const Track &)> &accept) const
+{
+    for (const Track &t : m_tracks) {
+        if ((t.kind == Track::Kind::Video) != video)
+            continue;
+        const bool free = std::none_of(t.clips.begin(), t.clips.end(), [&](const TrackClip &c) {
+            return c.startMs < endMs && startMs < c.endMs();
+        });
+        if (free && accept(t))
+            return t.id;
+    }
+    return 0;
+}
+
+int Timeline::linkTargetFor(const TrackClip &a) const
+{
+    int best = 0;
+    qint64 bestDist = std::numeric_limits<qint64>::max();
+    auto consider = [&](int id, qint64 startMs, qint64 trimInMs, qint64 trimOutMs, double speed) {
+        if (a.trimOutMs <= trimInMs || trimOutMs <= a.trimInMs)
+            return;
+        const qint64 where = startMs + std::llround((a.trimInMs - trimInMs) / speed);
+        const qint64 dist = std::abs(where - a.startMs);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = id;
+        }
+    };
+    for (int i = 0; i < count(); ++i) {
+        const ClipItem &c = clipAt(i);
+        if (c.sourcePath == a.sourcePath)
+            consider(c.id, clipToTimeline(i, 0), c.trimInMs, c.trimOutMs, c.speed);
+    }
+    for (const Track &t : m_tracks)
+        for (const TrackClip &c : t.clips)
+            if (t.kind == Track::Kind::Video && c.sourcePath == a.sourcePath)
+                consider(c.id, c.startMs, c.trimInMs, c.trimOutMs, c.speed);
+    return best;
+}
+
+int Timeline::addOverlaySound(int clipId)
+{
+    int trackId = 0;
+    const TrackClip *o = trackClipById(clipId, &trackId);
+    if (!o || trackById(trackId)->kind != Track::Kind::Video)
+        return 0;
+    // (Only this clip's: another overlay of the same file has its own.)
+    for (const Track &t : m_tracks)
+        for (const TrackClip &x : t.clips)
+            if (x.linkedClipId == o->id)
+                return x.id;
+    TrackClip a;
+    a.sourcePath = o->sourcePath;
+    a.sourceDurationMs = o->sourceDurationMs;
+    a.startMs = o->startMs;
+    a.trimInMs = o->trimInMs;
+    a.trimOutMs = o->trimOutMs;
+    a.speed = o->speed;
+    a.linkedClipId = o->id; // and follows the overlay's edits
+    int audioTrack = audioTrackId(trackId);
+    if (!audioTrack)
+        audioTrack = addTrack(Track::Kind::Audio, QString(), Track::Role::OverlayAudio, trackId);
+    return insertTrackClip(audioTrack, a);
+}
+
 QList<int> Timeline::addClipSound(int clipId, int streamCount)
 {
     QList<int> ids(std::max(0, streamCount), 0);

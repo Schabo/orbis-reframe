@@ -85,6 +85,7 @@
 #include "SettingsSidebar.h"
 #include "TabSidebar.h"
 #include "TimelineWidget.h"
+#include "TrackFiles.h"
 #include "ThumbnailCache.h"
 #include "../core/Autosave.h"
 #include "WaveformCache.h"
@@ -328,6 +329,8 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     // The start screen (no project open) and the editor share the window.
     m_library = std::make_unique<ProjectLibrary>();
     m_files = std::make_unique<ProjectFiles>(m_project, m_library.get(), m_autosave, this);
+    m_trackFiles = std::make_unique<TrackFiles>(
+        m_project, [this](int clipId) { addOverlayAudio(clipId); }, this);
     m_libraryPage = new ProjectLibraryPage(m_library.get(), this);
     connect(m_libraryPage, &ProjectLibraryPage::openRequested, this, &MainWindow::openProject);
     connect(m_libraryPage, &ProjectLibraryPage::newProjectRequested, this, &MainWindow::newProject);
@@ -514,7 +517,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
             [this](int id, bool link) {
                 const TrackClip *a = m_timeline->trackClipById(id);
                 if (a)
-                    m_timeline->linkAudioClip(id, link ? linkTargetFor(*a) : 0);
+                    m_timeline->linkAudioClip(id, link ? m_timeline->linkTargetFor(*a) : 0);
             });
     connect(m_timelineWidget, &TimelineWidget::trackClipSplitRequested, this,
             [this](int id, qint64 atMs) {
@@ -551,16 +554,20 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_timelineWidget, &TimelineWidget::addAudioTrackRequested, this,
             [this] { m_timeline->addTrack(Track::Kind::Audio); });
     connect(m_timelineWidget, &TimelineWidget::addAudioFileRequested, this,
-            &MainWindow::addAudioFile);
+            [this](int trackId, qint64 atMs) { selectAdded(m_trackFiles->pickAudio(trackId, atMs)); });
     connect(m_timelineWidget, &TimelineWidget::audioFilesDropped, this,
-            &MainWindow::addAudioFiles);
+            [this](const QStringList &paths, int trackId, qint64 atMs) {
+                selectAdded(m_trackFiles->addAudio(paths, trackId, atMs));
+            });
     // Overlay (video) tracks.
     connect(m_timelineWidget, &TimelineWidget::addVideoTrackRequested, this,
             [this] { m_timeline->addTrack(Track::Kind::Video); });
     connect(m_timelineWidget, &TimelineWidget::addVideoFileRequested, this,
-            &MainWindow::addVideoFile);
+            [this](int trackId, qint64 atMs) { selectAdded(m_trackFiles->pickVideo(trackId, atMs)); });
     connect(m_timelineWidget, &TimelineWidget::videoFilesDropped, this,
-            &MainWindow::addVideoFiles);
+            [this](const QStringList &paths, int trackId, qint64 atMs) {
+                selectAdded(m_trackFiles->addVideo(paths, trackId, atMs));
+            });
     // Picking an inset in the view selects its clip; dragging it moves it.
     connect(m_viewport, &EquirectViewportWindow::insetPressed, this,
             [this](int clipId) { selectTrackClip(clipId); });
@@ -966,11 +973,11 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     addClipAction->setObjectName(QStringLiteral("addClipAction"));
     addClipAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
     QAction *addAudioAction = mediaMenu->addAction(
-        tr("Add a&udio file…"), this, [this] { addAudioFile(0, m_lastTimelineMs); });
+        tr("Add a&udio file…"), this, [this] { selectAdded(m_trackFiles->pickAudio(0, m_lastTimelineMs)); });
     addAudioAction->setObjectName(QStringLiteral("addAudioAction"));
     addAudioAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
     QAction *addVideoAction = mediaMenu->addAction(
-        tr("Add &video overlay…"), this, [this] { addVideoFile(0, m_lastTimelineMs); });
+        tr("Add &video overlay…"), this, [this] { selectAdded(m_trackFiles->pickVideo(0, m_lastTimelineMs)); });
     addVideoAction->setObjectName(QStringLiteral("addVideoAction"));
     addVideoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
     addVideoAction->setIcon(theme::icon(QStringLiteral("picture-in-picture-2")));
@@ -1466,7 +1473,7 @@ void MainWindow::refreshTrackRows()
             if (!c.mediaMissing)
                 a.peaks = waveformFor(c.sourcePath, c.stream);
             a.gain = std::pow(10.0, c.gainDb / 20.0);
-            a.linkable = !a.linked && linkTargetFor(c) != 0;
+            a.linkable = !a.linked && m_timeline->linkTargetFor(c) != 0;
             a.moveTargets = moveTargets(t, c.id);
             v.clips.push_back(a);
         }
@@ -1584,128 +1591,10 @@ void MainWindow::onTracksChanged()
 #endif
 }
 
-void MainWindow::addAudioFile(int trackId, qint64 atMs)
+void MainWindow::selectAdded(std::optional<int> lastClipId)
 {
-    if (m_timeline->count() == 0)
-        return; // the main track sets the timeline's length: nothing to lay audio under
-    const QStringList paths = QFileDialog::getOpenFileNames(
-        this, tr("Add audio files"),
-        m_lastAudioDir.isEmpty() ? QDir::homePath() : m_lastAudioDir,
-        tr("Audio files (*.mp3 *.wav *.flac *.aac *.m4a *.ogg *.opus);;All files (*)"));
-    if (paths.isEmpty())
-        return;
-    m_lastAudioDir = QFileInfo(paths.first()).absolutePath();
-    addAudioFiles(paths, trackId, atMs);
-}
-
-void MainWindow::addAudioFiles(const QStringList &paths, int trackId, qint64 atMs)
-{
-    if (m_timeline->count() == 0)
-        return;
-    // Probe them all first, so the track picked has room for the lot.
-    QList<std::pair<QString, qint64>> ok;
-    QStringList failed;
-    qint64 total = 0;
-    for (const QString &path : paths) {
-        insv::InsvAudioDemux probe;
-        std::string err;
-        if (!probe.open(path.toStdString(), 48000, 2, err) || probe.durationMs() <= 0) {
-            failed << QFileInfo(path).fileName() +
-                          (err.empty() ? QString() : QStringLiteral(": ") + QString::fromStdString(err));
-            continue;
-        }
-        ok.append({path, probe.durationMs()});
-        total += probe.durationMs();
-    }
-    if (!failed.isEmpty())
-        QMessageBox::warning(this, tr("Could not add audio"),
-                             tr("No audio found in:\n%1").arg(failed.join(QLatin1Char('\n'))));
-    if (ok.isEmpty())
-        return;
-    atMs = std::clamp<qint64>(atMs, 0, m_timeline->totalDurationMs());
-
-    // No track of the Audio group given (the others hold a video's own
-    // sound): the first there with room for them, else a new one. Several
-    // files go one after another.
-    const Track *given = trackId > 0 ? m_timeline->trackById(trackId) : nullptr;
-    if (!given || given->group() != Track::Group::Audio) {
-        trackId = freeTrackFor(atMs, atMs + total, false, [](const Track &t) {
-            return t.group() == Track::Group::Audio;
-        });
-        if (!trackId)
-            trackId = m_timeline->addTrack(Track::Kind::Audio);
-    }
-    int last = 0;
-    for (const auto &[path, durMs] : ok) {
-        last = m_timeline->addAudioClip(trackId, path, durMs, atMs);
-        atMs += durMs;
-    }
-    selectTrackClip(last);
-}
-
-void MainWindow::addVideoFile(int trackId, qint64 atMs)
-{
-    if (m_timeline->count() == 0)
-        return; // the main track sets the timeline's length: nothing to lay an overlay over
-    const QStringList paths = QFileDialog::getOpenFileNames(
-        this, tr("Add video overlay"),
-        m_lastVideoDir.isEmpty() ? QDir::homePath() : m_lastVideoDir,
-        tr("Video files (*.mp4 *.mov *.mkv *.m4v *.webm *.avi);;All files (*)"));
-    if (paths.isEmpty())
-        return;
-    m_lastVideoDir = QFileInfo(paths.first()).absolutePath();
-    addVideoFiles(paths, trackId, atMs);
-}
-
-void MainWindow::addVideoFiles(const QStringList &paths, int trackId, qint64 atMs)
-{
-    if (m_timeline->count() == 0)
-        return;
-    struct Probed {
-        QString path;
-        exportpipe::FlatVideoReader::Info info;
-    };
-    QList<Probed> ok;
-    QStringList failed;
-    qint64 total = 0;
-    for (const QString &path : paths) {
-        Probed p{path, {}};
-        std::string err;
-        if (!exportpipe::FlatVideoReader::probe(path.toStdString(), p.info, err)) {
-            failed << QFileInfo(path).fileName() +
-                          (err.empty() ? QString() : QStringLiteral(": ") + QString::fromStdString(err));
-            continue;
-        }
-        ok.append(p);
-        total += p.info.durationMs;
-    }
-    if (!failed.isEmpty())
-        QMessageBox::warning(this, tr("Could not add video"),
-                             tr("No video found in:\n%1").arg(failed.join(QLatin1Char('\n'))));
-    if (ok.isEmpty())
-        return;
-    atMs = std::clamp<qint64>(atMs, 0, m_timeline->totalDurationMs());
-
-    // No overlay track given: the first with room for them there, else a new
-    // one. Several files go one after another.
-    const Track *given = trackId > 0 ? m_timeline->trackById(trackId) : nullptr;
-    if (!given || given->kind != Track::Kind::Video) {
-        trackId = freeTrackFor(atMs, atMs + total, true, [](const Track &) { return true; });
-        if (!trackId)
-            trackId = m_timeline->addTrack(Track::Kind::Video);
-    }
-    int last = 0;
-    for (const Probed &p : ok) {
-        // Into the pool from the probe first: the timeline's clip doesn't
-        // keep the frame rate, so the pool's own fill-in would go without.
-        m_project->mediaPool()->add({p.path, MediaItem::Kind::Video, p.info.durationMs,
-                                     p.info.width, p.info.height, p.info.fps});
-        last = m_timeline->addVideoClip(trackId, p.path, p.info.durationMs, atMs, p.info.width,
-                                        p.info.height);
-        addOverlayAudio(last); // its sound, linked, like a video clip's
-        atMs += p.info.durationMs;
-    }
-    selectTrackClip(last);
+    if (lastClipId)
+        selectTrackClip(*lastClipId);
 }
 
 void MainWindow::pushInsetsToController()
@@ -1836,51 +1725,6 @@ void MainWindow::applyInsetLook(int clipId, const inset::Look &look)
     }
     m_timeline->upsertTrackClipInsetKey(clipId, c->sourceAtLocalMs(m_lastTimelineMs - c->startMs),
                                         look);
-}
-
-int MainWindow::freeTrackFor(qint64 startMs, qint64 endMs, bool video,
-                             const std::function<bool(const Track &)> &accept) const
-{
-    for (int i = 0; i < m_timeline->trackCount(); ++i) {
-        const Track &t = m_timeline->trackAt(i);
-        if ((t.kind == Track::Kind::Video) != video)
-            continue;
-        const bool free = std::none_of(t.clips.begin(), t.clips.end(), [&](const TrackClip &c) {
-            return c.startMs < endMs && startMs < c.endMs();
-        });
-        if (free && accept(t))
-            return t.id;
-    }
-    return 0;
-}
-
-int MainWindow::linkTargetFor(const TrackClip &a) const
-{
-    // A main-track or overlay clip of the same footage whose source range
-    // overlaps the audio's; the one nearest on the timeline wins (the audio
-    // was unlinked from it, or cut from it).
-    int best = 0;
-    qint64 bestDist = std::numeric_limits<qint64>::max();
-    auto consider = [&](int id, qint64 startMs, qint64 trimInMs, qint64 trimOutMs, double speed) {
-        if (a.trimOutMs <= trimInMs || trimOutMs <= a.trimInMs)
-            return;
-        const qint64 where = startMs + std::llround((a.trimInMs - trimInMs) / speed);
-        const qint64 dist = std::abs(where - a.startMs);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = id;
-        }
-    };
-    for (int i = 0; i < m_timeline->count(); ++i) {
-        const ClipItem &c = m_timeline->clipAt(i);
-        if (c.sourcePath == a.sourcePath)
-            consider(c.id, m_timeline->clipToTimeline(i, 0), c.trimInMs, c.trimOutMs, c.speed);
-    }
-    for (int i = 0; i < m_timeline->trackCount(); ++i)
-        for (const TrackClip &c : m_timeline->trackAt(i).clips)
-            if (m_timeline->trackAt(i).kind == Track::Kind::Video && c.sourcePath == a.sourcePath)
-                consider(c.id, c.startMs, c.trimInMs, c.trimOutMs, c.speed);
-    return best;
 }
 
 void MainWindow::trimAtPlayhead(bool in)
@@ -2379,28 +2223,7 @@ int MainWindow::addOverlayAudio(int clipId)
     if (!o || m_timeline->trackById(trackId)->kind != Track::Kind::Video ||
         audioStreamCount(o->sourcePath) < 1)
         return 0;
-    TrackClip a;
-    a.sourcePath = o->sourcePath;
-    a.sourceDurationMs = o->sourceDurationMs;
-    a.startMs = o->startMs;
-    a.trimInMs = o->trimInMs;
-    a.trimOutMs = o->trimOutMs;
-    a.speed = o->speed;
-    a.linkedClipId = o->id; // and follows the overlay's edits
-
-    // Its sound is already on a track: that one, rather than play it twice.
-    // (Only this clip's: another overlay of the same file has its own.)
-    for (int i = 0; i < m_timeline->trackCount(); ++i)
-        for (const TrackClip &x : m_timeline->trackAt(i).clips)
-            if (x.linkedClipId == o->id)
-                return x.id;
-
-    // On its overlay track's audio track, made when missing.
-    int audioTrack = m_timeline->audioTrackId(trackId);
-    if (!audioTrack)
-        audioTrack = m_timeline->addTrack(Track::Kind::Audio, QString(),
-                                          Track::Role::OverlayAudio, trackId);
-    return m_timeline->insertTrackClip(audioTrack, a);
+    return m_timeline->addOverlaySound(clipId);
 }
 
 void MainWindow::syncMediaInfoPanel(const ClipItem &c)
@@ -2613,9 +2436,9 @@ void MainWindow::addMediaToTimeline(const QStringList &paths)
         return;
     }
     if (!videos.isEmpty())
-        addVideoFiles(videos, 0, m_lastTimelineMs);
+        selectAdded(m_trackFiles->addVideo(videos, 0, m_lastTimelineMs));
     if (!audio.isEmpty())
-        addAudioFiles(audio, 0, m_lastTimelineMs);
+        selectAdded(m_trackFiles->addAudio(audio, 0, m_lastTimelineMs));
 }
 
 void MainWindow::locateMedia(const QString &path)

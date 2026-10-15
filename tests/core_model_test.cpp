@@ -2729,6 +2729,54 @@ void testMediaPool()
     }
 }
 
+// Where added files go and what an audio clip links to: the first track
+// with room, the nearest clip of the same footage, an overlay's own sound.
+void testTrackQueries()
+{
+    Timeline t;
+    t.appendClip("/v/ride.insv", 20000, 30.0);
+    const int music = t.addTrack(Track::Kind::Audio, "Music");
+    const int more = t.addTrack(Track::Kind::Audio, "More");
+    t.addAudioClip(music, "/m/a.wav", 5000, 1000); // 1 s .. 6 s
+    auto anyAudio = [](const Track &) { return true; };
+    CHECK(t.freeTrackFor(0, 1000, false, anyAudio) != 0);
+    CHECK(t.freeTrackFor(2000, 3000, false, [&](const Track &tr) { return tr.id == music; }) == 0);
+    CHECK(t.freeTrackFor(2000, 3000, false, [&](const Track &tr) {
+              return tr.id == music || tr.id == more;
+          }) == more);
+    CHECK(t.freeTrackFor(6000, 7000, false, [&](const Track &tr) { return tr.id == music; }) ==
+          music); // touching the end is room
+    CHECK(t.freeTrackFor(0, 1000, true, anyAudio) == 0); // no overlay track yet
+
+    // An overlay of a file with sound: its audio track is made, and asking
+    // again gives the same clip.
+    const int ov = t.addTrack(Track::Kind::Video, "V1");
+    CHECK(t.freeTrackFor(0, 1000, true, anyAudio) == ov);
+    const int clip = t.addVideoClip(ov, "/v/phone.mp4", 4000, 2000, 1080, 1920);
+    const int sound = t.addOverlaySound(clip);
+    CHECK(sound != 0 && t.addOverlaySound(clip) == sound);
+    int soundTrack = 0;
+    const TrackClip *s = t.trackClipById(sound, &soundTrack);
+    CHECK(s && s->linkedClipId == clip && s->startMs == 2000);
+    CHECK(soundTrack == t.audioTrackId(ov));
+    CHECK(t.addOverlaySound(sound) == 0); // not an overlay clip
+
+    // Unlinked, it links back to its overlay; a main-track clip's sound to
+    // that clip.
+    t.linkAudioClip(sound, 0);
+    if (const TrackClip *u = t.trackClipById(sound))
+        CHECK(t.linkTargetFor(*u) == clip);
+    TrackClip stray;
+    stray.sourcePath = "/v/ride.insv";
+    stray.sourceDurationMs = 20000;
+    stray.trimInMs = 5000;
+    stray.trimOutMs = 8000;
+    stray.startMs = 5000;
+    CHECK(t.linkTargetFor(stray) == t.clipAt(0).id);
+    stray.sourcePath = "/v/other.insv";
+    CHECK(t.linkTargetFor(stray) == 0);
+}
+
 int main()
 {
     testClipItemTrim();
@@ -2752,6 +2800,7 @@ int main()
     testClipSound();
     testProjectConvertSound();
     testOverlayAudio();
+    testTrackQueries();
     testTrackGroups();
     testOwnSoundTracks();
     testProjectTracksJson();

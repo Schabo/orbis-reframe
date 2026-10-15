@@ -397,6 +397,8 @@ if(FFMPEG_FOUND)
         src/ui/PlayerBar.cpp
         src/ui/PlayerBar.h
         src/ui/TimelineWidget.cpp
+        src/ui/TrackFiles.cpp
+        src/ui/TrackFiles.h
         src/ui/TimelineWidget.h
         src/ui/WaveformCache.cpp
         src/ui/WaveformCache.h

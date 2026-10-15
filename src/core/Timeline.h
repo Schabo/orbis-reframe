@@ -96,6 +96,15 @@ public:
     // The audio track of overlay track `overlayTrackId`, or 0 if it has none
     // (yet).
     int audioTrackId(int overlayTrackId) const;
+    // The first audio track (`video`: overlay track) that has nothing in
+    // [startMs, endMs) and that `accept` takes; 0 if none.
+    int freeTrackFor(qint64 startMs, qint64 endMs, bool video,
+                     const std::function<bool(const Track &)> &accept) const;
+    // The video clip audio clip `a` would link to: a main-track or overlay
+    // clip of the same footage whose source range overlaps the audio's, the
+    // one nearest on the timeline (the audio was unlinked from it, or cut
+    // from it). 0 if none.
+    int linkTargetFor(const TrackClip &a) const;
     int trackIndexOfId(int trackId) const;
     const Track *trackById(int trackId) const;
     // The track clip with this id, and (if non-null) the id of its track.
@@ -141,6 +150,13 @@ public slots:
     // already linked to the clip are skipped. Returns the new clips' ids, by
     // stream (0 where none was added).
     QList<int> addClipSound(int clipId, int streamCount);
+    // Put overlay clip `clipId`'s sound on its overlay track's audio track
+    // (made when missing) as an audio clip linked to it, over the same span,
+    // so it follows its moves, trims, splits and removal. Its sound already
+    // on a track: that clip, rather than play it twice. Returns the audio
+    // clip's id; 0 if `clipId` isn't an overlay clip. The caller checks the
+    // file has sound.
+    int addOverlaySound(int clipId);
     // Remove the clip with this id. Returns true if one was removed.
     bool removeClip(int clipId);
     // Reorder so the clip with this id ends up at `toIndex` (clamped to

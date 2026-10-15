@@ -40,6 +40,7 @@ class QVulkanInstance;
 class Project;
 class ProjectLibrary;
 class ProjectFiles;
+class TrackFiles;
 class ProjectLibraryPage;
 class Timeline;
 struct ClipItem;
@@ -242,22 +243,8 @@ private:
     // selected overlay clip, or to the video clip selected or under the
     // playhead, in track order.
     QList<int> audioPanelClipIds(QString *scope = nullptr) const;
-    // Pick an audio file and put it at `atMs` on track `trackId` (0 = the
-    // first track with room there, or a new one).
-    void addAudioFile(int trackId, qint64 atMs);
-    // Put `paths` at `atMs` on track `trackId` (0 = the first with room for
-    // all of them, or a new one), one after another. Files without audio are
-    // reported and skipped. Used by the file picker and by drops.
-    void addAudioFiles(const QStringList &paths, int trackId, qint64 atMs);
-    // The first audio track (`video`: overlay track) that has nothing in
-    // [startMs, endMs) and that `accept` takes; 0 if none.
-    int freeTrackFor(qint64 startMs, qint64 endMs, bool video,
-                     const std::function<bool(const Track &)> &accept) const;
-    // Overlays: pick video files / put `paths` at `atMs` on overlay track
-    // `trackId` (0 = the first with room, or a new one), one after another.
-    // Files without a video stream are reported and skipped.
-    void addVideoFile(int trackId, qint64 atMs);
-    void addVideoFiles(const QStringList &paths, int trackId, qint64 atMs);
+    // Select the last clip TrackFiles added, if it added any.
+    void selectAdded(std::optional<int> lastClipId);
     // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
     // The selected track clip if it is on an overlay track (else null).
@@ -285,10 +272,6 @@ private:
     // clip's id -- the one already there if its sound is on a track -- or 0
     // if the file has no sound.
     int addOverlayAudio(int clipId);
-    // The video clip an audio clip would link to: a main-track or
-    // overlay clip of the same footage, overlapping source range, nearest on
-    // the timeline. 0 if none.
-    int linkTargetFor(const TrackClip &a) const;
     // The trim buttons / [ ] keys: the selected audio clip if there is one
     // (at the playhead's point in it), else the video clip under the playhead.
     void trimAtPlayhead(bool in);
@@ -434,8 +417,7 @@ private:
     int m_clipId = 0;
     int m_selectedTrackClipId = -1; // an audio clip selected on the timeline
     int m_selectedClipId = 0;       // a video clip selected on the timeline
-    QString m_lastAudioDir;         // where the last audio file was picked from
-    QString m_lastVideoDir;         // ... and the last overlay video
+    std::unique_ptr<TrackFiles> m_trackFiles; // audio files and overlay videos onto tracks
     WaveformCache *m_waveforms = nullptr;
     // The Media tab's thumbnails on disk; shared with the panel's worker
     // threads, which may outlive this window's members.
