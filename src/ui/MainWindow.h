@@ -24,6 +24,7 @@
 #include "SubjectTrackJob.h"          // subjecttrack::Result
 #endif
 #include "ClipBackend.h"              // ClipBackend
+#include "ShortcutHelp.h"             // KeyHelp
 #include "StabilizerCache.h"          // StabilizerCache
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
@@ -333,7 +334,6 @@ private:
     // `keysLabel` replaces the keys' own names in the list ("Alt+1 … Alt+9").
     void addKey(const QString &group, const QString &what, const QList<QKeySequence> &keys,
                 const std::function<void()> &fn, const QString &keysLabel = QString());
-    void showShortcutHelp();
     // Seek the playhead from the keyboard. Updates the cached position at
     // once, so a held arrow key steps from where the last press went rather
     // than from a position the worker hasn't reported yet.
@@ -552,12 +552,6 @@ private:
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;
     std::optional<insv::StabConfig> m_copiedStab; // Copy / Paste stabilization
-    struct KeyHelp {
-        QString group;
-        QString what;
-        QList<QKeySequence> keys;
-        QString keysLabel;
-    };
     QList<KeyHelp> m_keyHelp; // shortcuts made by addKey(), in order
     QAction *m_redoAction = nullptr;
     // Reframe authoring armed (drag/zoom writes a keyframe); viewport drag in
