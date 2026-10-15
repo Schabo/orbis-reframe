@@ -224,6 +224,8 @@ add_library(render_gpu_stitch STATIC
     src/render/LensFrame.h
     src/render/VulkanFisheyeStitcher.h
     src/render/VulkanFisheyeStitcher.cpp
+    src/render/VulkanFisheyeStitcherImpl.h
+    src/render/VulkanFisheyeStitcherSetup.cpp
 )
 target_include_directories(render_gpu_stitch PUBLIC src/render)
 target_link_libraries(render_gpu_stitch PUBLIC insv Vulkan::Vulkan PRIVATE render_shaders)
