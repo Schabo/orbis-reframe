@@ -170,7 +170,7 @@ if(ORBIS_SOURCE_TREE_FALLBACK)
 endif()
 
 # --- orbis_core: the src/core edit model (ClipItem, Timeline, Project, ...).
-# Qt Core + JSON only -- no FFmpeg / Vulkan -- so core_model_test builds
+# Qt Core + JSON only -- no FFmpeg / Vulkan -- so the model tests build
 # without the FFmpeg block below. src/stitch and src/privacy are on the path
 # for the header-only POD settings Project.h / ClipItem.h store
 # (stitch::PreviewStitchConfig, privacy::BlurAddition / BlurRemoval).
@@ -653,12 +653,17 @@ if(FFMPEG_FOUND)
     target_link_libraries(test_media PRIVATE PkgConfig::FFMPEG)
 endif()
 
-# --- tests/core_model_test: the src/core edit model (ClipItem + Timeline) has
-# no FFmpeg / Vulkan dependency, so this builds regardless of the block
-# above. Run with `ctest` from the build dir (or the binary directly).
-add_executable(core_model_test tests/core_model_test.cpp)
-target_link_libraries(core_model_test PRIVATE orbis_core)
-add_test(NAME core_model_test COMMAND core_model_test)
+# --- the src/core edit model's tests, one per area (tests/support/ModelTest.h
+# is what they share). No FFmpeg / Vulkan dependency, so these build
+# regardless of the block above. Run with `ctest` from the build dir (or
+# the binaries directly).
+foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilization_test
+        project_test)
+    add_executable(${model_test} tests/${model_test}.cpp tests/support/ModelTest.h)
+    target_include_directories(${model_test} PRIVATE tests)
+    target_link_libraries(${model_test} PRIVATE orbis_core)
+    add_test(NAME ${model_test} COMMAND ${model_test})
+endforeach()
 
 # Help > User manual's link per version (release tag or main).
 add_executable(user_manual_test tests/user_manual_test.cpp

@@ -3,7 +3,7 @@
 // FisheyeStitcher geometry, the trailer's thumbnail record. All synthetic -- no
 // .insv file, no FFmpeg, no Qt -- so it links only the dependency-free `insv`
 // and `insv_trailer` libs and runs anywhere. Exit code
-// is the failure count. Mirrors tests/core_model_test.cpp's harness.
+// is the failure count. Mirrors the model tests' harness (tests/support/ModelTest.h).
 
 #include "BlurQuads.h"
 #include "Calibration.h"
