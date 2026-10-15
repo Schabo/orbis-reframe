@@ -13,7 +13,8 @@
 
 #include "PlaybackController.h" // PlaybackController::StabProvider
 
-struct ClipItem;
+#include "../core/ClipItem.h"
+
 class Timeline;
 
 // Native gyro stabilization, per clip (ClipItem::stabilization), for the
@@ -27,6 +28,14 @@ class Timeline;
 class StabilizerCache {
 public:
     StabilizerCache();
+
+    // Whether the stitch has the capture-time correction for `c` (its
+    // stabilization on) -- as publish() hands it to playback and the export
+    // builds it. A plate scan / followed plate is found in that stitch.
+    static bool captureTimingOn(const ClipItem &c)
+    {
+        return c.stabilization.mode != insv::StabMode::Off;
+    }
 
     // For PlaybackController::setStabilizationProvider: a clip that publish()
     // hasn't seen built yet keeps the viewport's current matrix.

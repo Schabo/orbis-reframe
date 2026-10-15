@@ -410,7 +410,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
                 // capture-time correction is baked into stitched frames, so
                 // re-decode in place when it toggles with stabilization.
                 const ClipItem *c = m_timeline->clipById(id);
-                const bool rsOn = c && captureTimingOn(*c);
+                const bool rsOn = c && StabilizerCache::captureTimingOn(*c);
                 const bool rsToggled = m_captureTimingOn.value(id, false) != rsOn;
                 m_captureTimingOn[id] = rsOn;
                 ensureStabilizers();
@@ -423,7 +423,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
                                               Q_ARG(qint64, m_lastTimelineMs));
                     // The privacy blur was found in one of the two stitches.
                     syncPrivacyPanel();
-                    if (c && !privacyStaleness(*c, c->trimInMs, c->trimOutMs, false).isEmpty())
+                    if (c && !m_privacy.staleness(*c, c->trimInMs, c->trimOutMs, false).isEmpty())
                         m_editToolbar->showNotice(
                             tr("The privacy blur was found with the stabilization %1; it may sit "
                                "off the plates now. See the Privacy panel.")
@@ -2491,7 +2491,7 @@ void MainWindow::pushTimelineToController()
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id});
         total += c.timelineDurationMs();
-        m_captureTimingOn[c.id] = captureTimingOn(c);
+        m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }
     m_totalTimelineMs = total;
     // Queued lambda (not a slot) so QList<Segment> needs no metatype.
@@ -2882,7 +2882,7 @@ void MainWindow::locateMedia(const QString &path)
     QApplication::restoreOverrideCursor();
 
     for (const auto &[from, to] : relinks) {
-        m_plateScans.carryOver(from, to.path);
+        m_privacy.scans().carryOver(from, to.path);
         m_project->relinkMedia(from, to);
         if (m_clipPath == from)
             m_clipPath = to.path;
@@ -3207,7 +3207,7 @@ void MainWindow::updateCacheDirs(const QString &projectFile)
     // A project folder's own cache/; the user cache for an untitled or loose
     // project (and if the folder can't be made).
     const QString dir = projectfolder::ensure(projectfolder::cacheDir(projectFile));
-    m_plateScans.setDirectory(dir);
+    m_privacy.scans().setDirectory(dir);
     m_waveforms->setDirectory(dir);
     if (m_thumbnailCache)
         m_thumbnailCache->setDirectory(dir);
@@ -3286,7 +3286,7 @@ void MainWindow::exportFlatVideo()
     // trimmed range has been scanned for plates.
     for (int i = 0; i < nclips; ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
-        if (const QString why = privacyBlocker(c, c.trimInMs, c.trimOutMs); !why.isEmpty()) {
+        if (const QString why = m_privacy.blocker(c, c.trimInMs, c.trimOutMs); !why.isEmpty()) {
             QMessageBox::warning(this, tr("Export flat video"), why);
             return;
         }
@@ -3295,7 +3295,7 @@ void MainWindow::exportFlatVideo()
         QStringList stale;
         for (int i = 0; i < nclips; ++i) {
             const ClipItem &c = m_timeline->clipAt(i);
-            if (const QString w = privacyStaleness(c, c.trimInMs, c.trimOutMs, true); !w.isEmpty())
+            if (const QString w = m_privacy.staleness(c, c.trimInMs, c.trimOutMs, true); !w.isEmpty())
                 stale << w;
         }
         if (!confirmStalePrivacy(tr("Export flat video"), stale))
@@ -3441,7 +3441,7 @@ ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) con
     job.speed = c.speed;
     const std::array<float, 4> grade = c.color.packed();
     std::copy(grade.begin(), grade.end(), job.colorGrade);
-    job.blur = blurFor(c);
+    job.blur = m_privacy.blurFor(c);
     seamAdjustFor(c.sourcePath, job.seamAdjustDeg);
     if (nativeStab) {
         auto tele = insv::ReadInsvTelemetry(c.sourcePath.toStdString());
@@ -3465,104 +3465,6 @@ ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) con
     return job;
 }
 
-namespace {
-
-// The clip's removed blur tracks as they fall in `scan` (null when none).
-std::shared_ptr<const privacy::RemovedSpans> resolveRemovals(const ClipItem &c,
-                                                              const privacy::PlateScan &scan)
-{
-    if (c.blurRemovals.empty())
-        return {};
-    auto r = std::make_shared<privacy::RemovedSpans>(scan.resolveRemovals(c.blurRemovals));
-    return r->empty() ? nullptr : r;
-}
-
-} // namespace
-
-stitch::BlurQuadsFn MainWindow::blurFor(const ClipItem &c) const
-{
-    // The scan's plates (with "Blur number plates" on), and the ones blurred
-    // by hand either way.
-    PlateScanCache::Scan scan = c.blurPlates ? m_plateScans.get(c.sourcePath) : nullptr;
-    if (!scan && c.blurAdditions.empty())
-        return {};
-    std::shared_ptr<const privacy::RemovedSpans> removed;
-    if (scan)
-        removed = resolveRemovals(c, *scan);
-    const double fps = c.fps;
-    return [scan, removed, added = c.blurAdditions, fps](int64_t ptsMs, std::vector<insv::BlurQuad> &out) {
-        if (scan)
-            scan->quadsAt(ptsMs, out, removed.get());
-        privacy::addedQuadsAt(added, ptsMs, fps, out);
-    };
-}
-
-QString MainWindow::privacyBlocker(const ClipItem &c, qint64 fromMs, qint64 toMs) const
-{
-    if (!c.blurPlates)
-        return {};
-    const PlateScanCache::Scan scan = m_plateScans.get(c.sourcePath);
-    if (scan && scan->covers(fromMs, toMs))
-        return {};
-    const QString name = QFileInfo(c.sourcePath).fileName();
-    return scan ? tr("“%1” has the privacy blur on, but only part of it has been scanned for "
-                     "plates. Scan the clip in the Privacy panel first.")
-                      .arg(name)
-                : tr("“%1” has the privacy blur on, but it hasn't been scanned for plates yet. "
-                     "Scan the clip in the Privacy panel first.")
-                      .arg(name);
-}
-
-bool MainWindow::captureTimingOn(const ClipItem &c)
-{
-    // As publishStabilizer pushes it to playback, and exportJobFor to the
-    // export.
-    return c.stabilization.mode != insv::StabMode::Off;
-}
-
-QString MainWindow::privacyStaleness(const ClipItem &c, qint64 fromMs, qint64 toMs, bool name) const
-{
-    const bool on = captureTimingOn(c);
-    bool scanStale = false;
-    if (c.blurPlates)
-        if (const PlateScanCache::Scan scan = m_plateScans.get(c.sourcePath))
-            scanStale = scan->staleOver(fromMs, toMs, on);
-    int handStale = 0;
-    for (const privacy::BlurAddition &a : c.blurAdditions)
-        if (!a.frames.empty() && a.frames.back().tMs >= fromMs && a.frames.front().tMs <= toMs &&
-            privacy::timingStale(a.timing, on))
-            ++handStale;
-    if (!scanStale && !handStale)
-        return {};
-    // Found with the correction = with the stabilization on.
-    const QString then = on ? tr("off") : tr("on");
-    QString what;
-    if (scanStale && handStale)
-        what = (handStale == 1
-                    ? tr("The plate scan and 1 plate blurred by hand were found with the "
-                         "stabilization %1")
-                    : tr("The plate scan and %1 plates blurred by hand were found with the "
-                         "stabilization %2")
-                          .arg(handStale))
-                   .arg(then);
-    else if (scanStale)
-        what = tr("The plate scan was made with the stabilization %1").arg(then);
-    else
-        what = (handStale == 1
-                    ? tr("1 plate blurred by hand was followed with the stabilization %1")
-                    : tr("%1 plates blurred by hand were followed with the stabilization %2")
-                          .arg(handStale))
-                   .arg(then);
-    QString text = tr("%1, which stitches the picture slightly differently: the blurs may sit a "
-                      "little off the plates in fast swings. Check them with \"Show regions\", "
-                      "or redo them (scan again, blur the plate again) -- or set the "
-                      "stabilization back %2.")
-                       .arg(what, then);
-    if (name)
-        text = QStringLiteral("“%1”: ").arg(QFileInfo(c.sourcePath).fileName()) + text;
-    return text;
-}
-
 bool MainWindow::confirmStalePrivacy(const QString &title, const QStringList &warnings)
 {
     if (warnings.isEmpty())
@@ -3579,112 +3481,7 @@ bool MainWindow::confirmStalePrivacy(const QString &title, const QStringList &wa
 
 void MainWindow::pushBlur()
 {
-    // Per source: the trim ranges of its clips with the blur on -- playback
-    // works per source, and two clips of one file may differ.
-    QHash<QString, QList<BlurRange>> ranges;
-    QHash<QString, QList<BlurRange>> allRanges; // the overlay's: every clip
-    QSet<QString> sources;
-    for (int i = 0; i < m_timeline->count(); ++i) {
-        const ClipItem &c = m_timeline->clipAt(i);
-        sources.insert(c.sourcePath);
-        BlurRange r;
-        r.fromMs = c.trimInMs;
-        r.toMs = c.trimOutMs;
-        r.scan = c.blurPlates;
-        r.fps = c.fps;
-        if (const PlateScanCache::Scan scan = m_plateScans.get(c.sourcePath))
-            r.removed = resolveRemovals(c, *scan);
-        if (!c.blurAdditions.empty())
-            r.added = std::make_shared<const std::vector<privacy::BlurAddition>>(c.blurAdditions);
-        allRanges[c.sourcePath].append(r);
-        if (c.blurPlates || r.added)
-            ranges[c.sourcePath].append(r);
-    }
-    pushRegionOverlay(allRanges);
-    for (const QString &path : sources) {
-        if (!ranges.contains(path)) {
-            m_controller->setBlurQuads(path, {});
-            continue;
-        }
-        m_controller->setBlurQuads(
-            path, [scan = m_plateScans.get(path), r = ranges.value(path)](int64_t ptsMs,
-                                                                          std::vector<insv::BlurQuad> &out) {
-                for (const BlurRange &x : r)
-                    if (ptsMs >= x.fromMs - 50 && ptsMs <= x.toMs + 50) {
-                        if (scan && x.scan)
-                            scan->quadsAt(ptsMs, out, x.removed.get());
-                        if (x.added)
-                            privacy::addedQuadsAt(*x.added, ptsMs, x.fps, out);
-                        return;
-                    }
-            });
-    }
-}
-
-void MainWindow::pushRegionOverlay(const QHash<QString, QList<BlurRange>> &ranges)
-{
-    // "Show regions": the scan's regions of every clip with a scan, blur on or
-    // not, in the privacy spike's debug colours (by RegionKind; the Privacy
-    // panel's legend matches); the ones removed by hand in grey.
-    struct Source {
-        PlateScanCache::Scan scan;
-        QList<BlurRange> ranges;
-    };
-    QHash<QString, Source> scanned;
-    if (m_showPlateRegions)
-        for (auto it = ranges.begin(); it != ranges.end(); ++it) {
-            PlateScanCache::Scan scan = m_plateScans.get(it.key());
-            const bool added = std::any_of(it.value().begin(), it.value().end(),
-                                           [](const BlurRange &r) { return r.added != nullptr; });
-            if (scan || added)
-                scanned.insert(it.key(), {std::move(scan), it.value()});
-        }
-    if (scanned.isEmpty()) {
-        m_controller->setOutlineProvider({});
-        return;
-    }
-    m_controller->setOutlineProvider(
-        [scanned](const QString &path, qint64 sourceMs,
-                  std::vector<EquirectViewportWindow::RegionOutline> &out) {
-            const auto it = scanned.find(path);
-            if (it == scanned.end())
-                return;
-            const auto r = std::find_if(it->ranges.begin(), it->ranges.end(), [sourceMs](const BlurRange &x) {
-                return sourceMs >= x.fromMs - 50 && sourceMs <= x.toMs + 50;
-            });
-            if (r == it->ranges.end())
-                return;
-            // Detected, Filled, Tracked, Unverified; removed; added by hand.
-            const auto rgb = [](const QColor &c) {
-                return std::array<float, 3>{float(c.redF()), float(c.greenF()), float(c.blueF())};
-            };
-            const theme::Colors &tc = theme::colors();
-            const std::array<float, 3> kColour[4] = {rgb(tc.plateDetected), rgb(tc.plateFilled),
-                                                     rgb(tc.plateTracked), rgb(tc.plateUnverified)};
-            const std::array<float, 3> kRemovedRgb = rgb(tc.plateRemoved);
-            const std::array<float, 3> kAddedRgb = rgb(tc.plateAdded);
-            const float *kRemoved = kRemovedRgb.data();
-            const float *kAdded = kAddedRgb.data();
-            if (r->added)
-                for (const privacy::BlurAddition &a : *r->added)
-                    if (const privacy::BlurAddition::Frame *af = privacy::addedFrameAt(a, sourceMs, r->fps)) {
-                        EquirectViewportWindow::RegionOutline o;
-                        std::memcpy(o.corner, af->corner, sizeof(o.corner));
-                        std::copy_n(kAdded, 3, o.rgb);
-                        out.push_back(o);
-                    }
-            const privacy::ScanFrame *f = it->scan ? it->scan->frameAt(sourceMs) : nullptr;
-            if (!f)
-                return;
-            for (const privacy::BlurRegion &reg : f->regions) {
-                EquirectViewportWindow::RegionOutline o;
-                std::memcpy(o.corner, reg.quad.corner, sizeof(o.corner));
-                const bool removed = privacy::PlateScan::isRemoved(reg, f->tMs, r->removed.get());
-                std::copy_n(removed ? kRemoved : kColour[std::min<int>(static_cast<int>(reg.kind), 3)].data(), 3,
-                            o.rgb);
-                out.push_back(o);
-            }
-        });
+    m_privacy.pushTo(*m_controller, *m_timeline, m_showPlateRegions);
 }
 
 void MainWindow::showPictureMenu(const QPoint &globalPos, const std::array<float, 3> &dir)
@@ -3695,24 +3492,13 @@ void MainWindow::showPictureMenu(const QPoint &globalPos, const std::array<float
         return;
     const qint64 t = m_lastPositionMs;
     const int clipId = c->id;
-    // A plate blurred by hand (always shown; on top of the scan's).
-    if (const int ai = privacy::addedAt(c->blurAdditions, t, c->fps, dir.data());
-        ai >= 0) {
+    const PrivacyBlur::Hit hit = m_privacy.hitAt(*c, t, dir.data(), m_showPlateRegions);
+    if (hit.added >= 0) {
         QMenu menu;
-        auto edit = [this, clipId, ai](qint64 fromMs) {
+        auto edit = [this, clipId, ai = hit.added](qint64 fromMs) {
             const ClipItem *c = m_timeline->clipById(clipId);
-            if (!c || ai >= int(c->blurAdditions.size()))
-                return;
-            std::vector<privacy::BlurAddition> all = c->blurAdditions;
-            auto &frames = all[ai].frames;
-            frames.erase(std::lower_bound(frames.begin(), frames.end(), fromMs,
-                                          [](const privacy::BlurAddition::Frame &f, qint64 t) {
-                                              return f.tMs < t;
-                                          }),
-                         frames.end());
-            if (frames.empty())
-                all.erase(all.begin() + ai);
-            m_timeline->setClipBlurAdditions(clipId, all);
+            if (c && ai < int(c->blurAdditions.size()))
+                m_timeline->setClipBlurAdditions(clipId, PrivacyBlur::cutAddition(*c, ai, fromMs));
         };
         menu.addAction(tr("Remove this blur"), this, [edit] { edit(INT64_MIN); })
             ->setToolTip(tr("A plate blurred by hand: drop it in every frame."));
@@ -3720,55 +3506,23 @@ void MainWindow::showPictureMenu(const QPoint &globalPos, const std::array<float
         menu.exec(globalPos);
         return;
     }
-    if (!c->blurPlates && !m_showPlateRegions)
-        return; // no blur and no outlines: nothing to point at
-    const PlateScanCache::Scan scan = m_plateScans.get(c->sourcePath);
-    if (!scan)
+    if (!hit.region)
         return;
-    const privacy::ScanFrame *f = scan->frameAt(t);
-    if (!f)
-        return;
-    const auto removed = resolveRemovals(*c, *scan);
-    // The topmost region under the pointer; a removed one only while the
-    // outlines show it.
-    const privacy::BlurRegion *hit = nullptr;
-    for (auto it = f->regions.rbegin(); it != f->regions.rend() && !hit; ++it)
-        if (privacy::quadContains(it->quad, dir.data()) &&
-            (m_showPlateRegions || !privacy::PlateScan::isRemoved(*it, f->tMs, removed.get())))
-            hit = &*it;
-    if (!hit)
-        return;
-    const int32_t track = hit->track;
+    const int32_t track = hit.track;
     QMenu menu;
-    if (privacy::PlateScan::isRemoved(*hit, f->tMs, removed.get())) {
+    if (hit.removed) {
         menu.addAction(tr("Restore this blur"), this, [this, clipId, track, t] {
             const ClipItem *c = m_timeline->clipById(clipId);
-            const PlateScanCache::Scan scan = c ? m_plateScans.get(c->sourcePath) : nullptr;
-            if (!scan)
-                return;
-            // Drop every removal that takes this track away here.
-            std::vector<privacy::BlurRemoval> keep;
-            for (const privacy::BlurRemoval &rm : c->blurRemovals) {
-                const privacy::RemovedSpans spans = scan->resolveRemovals({rm});
-                if (std::none_of(spans.begin(), spans.end(), [track, t](const privacy::RemovedSpan &s) {
-                        return s.track == track && t >= s.fromMs && t <= s.toMs;
-                    }))
-                    keep.push_back(rm);
-            }
-            m_timeline->setClipBlurRemovals(clipId, keep);
+            if (const auto keep = c ? m_privacy.withRestored(*c, track, t) : std::nullopt)
+                m_timeline->setClipBlurRemovals(clipId, *keep);
         });
     } else {
         auto remove = [this, clipId, track](qint64 fromMs) {
             const ClipItem *c = m_timeline->clipById(clipId);
-            const PlateScanCache::Scan scan = c ? m_plateScans.get(c->sourcePath) : nullptr;
-            if (!scan)
+            const auto all = c ? m_privacy.withRemoved(*c, track, fromMs) : std::nullopt;
+            if (!all)
                 return;
-            privacy::BlurRemoval rm = scan->describeRemoval(track, fromMs);
-            if (rm.path.empty())
-                return;
-            std::vector<privacy::BlurRemoval> all = c->blurRemovals;
-            all.push_back(std::move(rm));
-            m_timeline->setClipBlurRemovals(clipId, all);
+            m_timeline->setClipBlurRemovals(clipId, *all);
             m_editToolbar->showNotice(tr("Blur removed. Right-click it with Show regions on to "
                                        "restore it, or undo."));
         };
@@ -3792,36 +3546,11 @@ void MainWindow::syncPrivacyPanel()
 #else
     const bool canScan = false;
 #endif
-    const PlateScanCache::Scan scan = m_plateScans.get(c->sourcePath);
-    const bool covered = scan && scan->covers(c->trimInMs, c->trimOutMs);
-    QString status;
-    if (covered) {
-        int frames = 0, withPlates = 0;
-        for (const privacy::ScanFrame &f : scan->frames)
-            if (f.tMs >= c->trimInMs && f.tMs < c->trimOutMs) {
-                ++frames;
-                withPlates += f.regions.empty() ? 0 : 1;
-            }
-        status = withPlates ? tr("Scanned: plates on %1 of %2 frames.").arg(withPlates).arg(frames)
-                            : tr("Scanned: no plates found.");
-    } else if (scan && std::any_of(scan->spans.begin(), scan->spans.end(), [c](const auto &s) {
-                   return s.toMs >= c->trimInMs && s.fromMs <= c->trimOutMs;
-               })) {
-        status = tr("Partly scanned. Scan the clip to cover all of it.");
-    } else {
-        status = tr("Not scanned yet.");
-    }
-    if (c->blurPlates && !covered)
-        status += QLatin1Char(' ') + tr("Exports with the blur on are refused until it is.");
-    if (!c->blurAdditions.empty())
-        status += QLatin1Char(' ') + (c->blurAdditions.size() == 1
-                                          ? tr("1 plate blurred by hand.")
-                                          : tr("%1 plates blurred by hand.")
-                                                .arg(c->blurAdditions.size()));
+    QString status = m_privacy.status(*c);
     if (!cantScan.isEmpty())
         status += QLatin1Char(' ') + cantScan;
     m_privacyPanel->setState(c->blurPlates, status, canScan, static_cast<int>(c->blurRemovals.size()));
-    m_privacyPanel->setWarning(privacyStaleness(*c, c->trimInMs, c->trimOutMs, false));
+    m_privacyPanel->setWarning(m_privacy.staleness(*c, c->trimInMs, c->trimOutMs, false));
 }
 
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
@@ -3837,7 +3566,7 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     seamAdjustFor(c.sourcePath, req.seamAdjustDeg);
     req.lensGuard = m_project->previewStitch().lensGuard;
     req.depthSeam = m_project->previewStitch().depthSeam;
-    req.captureTiming = captureTimingOn(c);
+    req.captureTiming = StabilizerCache::captureTimingOn(c);
     return req;
 }
 #endif
@@ -4005,7 +3734,7 @@ void MainWindow::finishPlateScan(const platescan::Result &r)
     }
     if (!r.scan.empty()) {
         QString err;
-        if (!m_plateScans.store(source, r.scan, &err))
+        if (!m_privacy.scans().store(source, r.scan, &err))
             QMessageBox::warning(this, tr("Scan for plates"),
                                  tr("The scan couldn't be saved (%1); it holds until the "
                                     "app closes.")
@@ -4210,13 +3939,13 @@ void MainWindow::takeScreenshot()
     const ClipItem *c = m_timeline->clipById(m_clipId);
     if (!c)
         return;
-    if (const QString why = privacyBlocker(*c, m_lastPositionMs, m_lastPositionMs); !why.isEmpty()) {
+    if (const QString why = m_privacy.blocker(*c, m_lastPositionMs, m_lastPositionMs); !why.isEmpty()) {
         QMessageBox::warning(this, tr("Screenshot"), why);
         return;
     }
     // A frame either side: the playhead's time is not the shown frame's.
     const qint64 frameMs = std::llround(1000.0 / c->fps);
-    if (const QString w = privacyStaleness(*c, m_lastPositionMs - frameMs, m_lastPositionMs + frameMs, true);
+    if (const QString w = m_privacy.staleness(*c, m_lastPositionMs - frameMs, m_lastPositionMs + frameMs, true);
         !confirmStalePrivacy(tr("Screenshot"), w.isEmpty() ? QStringList() : QStringList{w}))
         return;
 

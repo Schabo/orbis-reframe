@@ -431,6 +431,8 @@ if(FFMPEG_FOUND)
         src/ui/panels/PrivacyPanel.cpp
         src/ui/panels/PrivacyPanel.h
         src/ui/PlateScanCache.cpp
+        src/ui/PrivacyBlur.cpp
+        src/ui/PrivacyBlur.h
         src/ui/PlateScanCache.h
         src/ui/panels/MediaInfoPanel.cpp
         src/ui/panels/MediaInfoPanel.h
@@ -686,6 +688,11 @@ if(Qt6Test_FOUND)
         set_target_properties(main_window_test PROPERTIES AUTOMOC ON AUTORCC ON)
         target_link_libraries(main_window_test PRIVATE orbis_app test_media Qt6::Test)
         add_test(NAME main_window_test COMMAND main_window_test)
+
+        # The privacy blur's data side against a synthetic plate scan.
+        add_executable(privacy_blur_test tests/privacy_blur_test.cpp)
+        target_link_libraries(privacy_blur_test PRIVATE orbis_app)
+        add_test(NAME privacy_blur_test COMMAND privacy_blur_test)
     endif()
 
     # The left sidebar and its Media tab (the media pool), found by

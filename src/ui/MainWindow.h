@@ -16,7 +16,7 @@
 #include <AudioMixer.h>      // insv::MixClip
 #include <InsvMediaInfo.h>   // insv::MediaInfo
 
-#include "PlateScanCache.h"           // PlateScanCache (privacy blur)
+#include "PrivacyBlur.h"              // PrivacyBlur
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
 #include "PlateScanJob.h"             // platescan::Request, Result, FollowResult
 #endif
@@ -202,35 +202,13 @@ private:
     // Reflect the panel's clip's (editClipId()) stabilization in the
     // Stabilization panel; greyed out without one.
     void syncStabilizationPanel();
-    // Privacy blur (Privacy panel): the panel for the clip being edited; the
-    // blur regions handed to playback, per source, for its clips with the
-    // blur on; a clip's for export (empty when off / not scanned); why a clip
-    // can't be exported blurred over [fromMs, toMs] (empty = it can); the
-    // plate scan of the clip being edited.
+    // Privacy blur (Privacy panel): the panel for the clip being edited;
+    // every source's blur (and "Show regions" outlines) to playback.
     void syncPrivacyPanel();
-    // A clip's trim range on its source, with the blur tracks removed from it
-    // resolved against the source's scan.
-    struct BlurRange {
-        qint64 fromMs = 0, toMs = 0;
-        bool scan = false; // the clip's "Blur number plates"
-        std::shared_ptr<const privacy::RemovedSpans> removed;
-        std::shared_ptr<const std::vector<privacy::BlurAddition>> added; // null = none
-        double fps = 30.0;
-    };
     void pushBlur();
-    void pushRegionOverlay(const QHash<QString, QList<BlurRange>> &ranges);
-    stitch::BlurQuadsFn blurFor(const ClipItem &c) const;
     // Right click on the picture: remove / restore the blur track under it
     // (manual correction).
     void showPictureMenu(const QPoint &globalPos, const std::array<float, 3> &dir);
-    QString privacyBlocker(const ClipItem &c, qint64 fromMs, qint64 toMs) const;
-    // Whether the stitch has the capture-time correction for `c` (its
-    // stabilization on) -- the one a new scan / followed plate is found in.
-    static bool captureTimingOn(const ClipItem &c);
-    // A warning when `c`'s blurs over [fromMs, toMs] were found in a stitch
-    // other than today's, so they may sit off the plates; empty when they
-    // match. `name` = start with the clip's file name.
-    QString privacyStaleness(const ClipItem &c, qint64 fromMs, qint64 toMs, bool name) const;
     // Before an export / screenshot: false when a clip's blur is stale and
     // the user cancels.
     bool confirmStalePrivacy(const QString &title, const QStringList &warnings);
@@ -529,7 +507,7 @@ private:
     QThread *m_screenshotThread = nullptr; // one render at a time
     SubjectTrackController *m_tracker = nullptr; // Track subject (null without tracking)
     PrivacyPanel *m_privacyPanel = nullptr;
-    mutable PlateScanCache m_plateScans; // read lazily, also from const exportJobFor
+    PrivacyBlur m_privacy; // the plate scans and each clip's blur resolved against them
     // Plate scan or "Blur a plate…" follow, one at a time (null without the
     // plate scan). The source / start of the one running, for its handlers.
     PlateJobController *m_plateJobs = nullptr;
