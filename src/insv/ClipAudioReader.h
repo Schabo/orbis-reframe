@@ -34,7 +34,6 @@ public:
     bool open(const std::string& path, int track);
     bool hasAudio() const { return m_demux != nullptr; }
 
-    void setGainDb(double db);
     void setMuted(bool muted) { m_muted = muted; }
     // Playback speed (ClipItem::speed): read() then returns audio stretched to
     // play at this rate with the pitch unchanged -- each output frame covers
@@ -68,7 +67,6 @@ private:
     const int m_rate;
     const int m_channels;
     std::unique_ptr<InsvAudioDemux> m_demux;
-    float m_gain = 1.0f;
     bool m_muted = false;
     bool m_eof = false;
     bool m_seekPending = true; // demux not yet positioned at m_pos

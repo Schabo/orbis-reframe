@@ -23,7 +23,6 @@ public:
     NewProjectDialog(Mode mode, const QString &location, QWidget *parent = nullptr);
 
     void setName(const QString &name);
-    void setOutput(const OutputSettings &output);
 
     QString name() const;
     QString location() const;

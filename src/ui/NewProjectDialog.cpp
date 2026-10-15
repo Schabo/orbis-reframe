@@ -77,12 +77,6 @@ NewProjectDialog::NewProjectDialog(Mode mode, const QString &location, QWidget *
 
 void NewProjectDialog::setName(const QString &name) { m_name->setText(name); }
 
-void NewProjectDialog::setOutput(const OutputSettings &output)
-{
-    if (m_output)
-        m_output->setOutput(output);
-}
-
 QString NewProjectDialog::name() const { return m_name->text(); }
 
 QString NewProjectDialog::location() const

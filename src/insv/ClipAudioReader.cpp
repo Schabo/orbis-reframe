@@ -124,11 +124,6 @@ bool ClipAudioReader::open(const std::string& path, int track)
     return hasAudio();
 }
 
-void ClipAudioReader::setGainDb(double db)
-{
-    m_gain = static_cast<float>(std::pow(10.0, db / 20.0));
-}
-
 void ClipAudioReader::setTempo(double speed)
 {
     if (!(speed > 0.0) || std::abs(speed - m_speed) < 1e-9)
@@ -282,8 +277,7 @@ void ClipAudioReader::readSource(float* out, int64_t frames)
             const int64_t n = std::min(frames - done, chunkFrames - off);
             const float* src = m_chunk.data() + off * ch;
             float* dst = out + done * ch;
-            for (size_t k = 0; k < static_cast<size_t>(n) * ch; ++k)
-                dst[k] = src[k] * m_gain;
+            std::copy_n(src, static_cast<size_t>(n) * ch, dst);
             done += n;
             m_pos += n;
         } else if (m_pos < m_chunkStart) {

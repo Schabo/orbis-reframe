@@ -1213,8 +1213,6 @@ void EquirectViewportRenderer::recordInsetUpload(VkCommandBuffer cmd, InsetSlot 
 
 void EquirectViewportRenderer::initResources()
 {
-    VkDevice device = m_window->device();
-
     createSampler();
     createDescriptorSet();
     createPipeline();

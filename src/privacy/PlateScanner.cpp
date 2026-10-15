@@ -162,7 +162,6 @@ SphereBox lerpBox(const SphereBox& a, const SphereBox& b, double t)
 // the network sees padding-like grey between unrelated tiles. One big
 // inference keeps the GPU far busier than twelve small ones.
 constexpr int kCols = 4, kRows = 3;
-constexpr uint32_t kGrey = 0xFF727272; // RGBA 114, YOLO's letterbox grey
 
 struct TileDet {
     cv::Rect2f box; // tile pixels
