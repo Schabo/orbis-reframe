@@ -1,11 +1,16 @@
 // src/ui/PrivacyBlur: a clip's privacy blur resolved against its source's
 // plate scan -- the Privacy panel's status line, what blocks or warns about
 // an export, the blur handed to the export, and what a right click on the
-// picture finds and edits. A synthetic scan in a temporary cache, no GPU.
+// picture finds and edits; and the scans going along with Save as. A
+// synthetic scan in a temporary cache, no GPU.
 
 #include "PrivacyBlur.h"
 
+#include "ProjectFiles.h"
 #include "../core/ClipItem.h"
+#include "../core/Project.h"
+#include "../core/ProjectFolder.h"
+#include "../core/Timeline.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -191,6 +196,30 @@ void testHandBlurs(const QString &dir)
     CHECK(pb.staleness(c, 500, 1000, false).isEmpty()); // not in that range
 }
 
+// Save as into a new project folder takes the clips' plate scans along
+// (they take minutes to redo), leaving one the new folder has alone.
+void testScansFollowSaveAs(const QString &dir)
+{
+    const QString source = dir + "/c.insv";
+    {
+        QFile f(source);
+        CHECK(f.open(QIODevice::WriteOnly) && f.write("not a real clip either") > 0);
+    }
+    const QString oldFile = projectfolder::create(dir, "Old");
+    const QString newFile = projectfolder::create(dir, "New");
+    CHECK(!oldFile.isEmpty() && !newFile.isEmpty());
+    PlateScanCache old;
+    old.setDirectory(projectfolder::cacheDir(oldFile));
+    CHECK(old.store(source, makeScan(0, 1000)));
+
+    Project p;
+    p.timeline()->appendClip(source, 10000, 30.0);
+    ProjectFiles::copyPlateScans(p, oldFile, newFile);
+    PlateScanCache copied;
+    copied.setDirectory(projectfolder::cacheDir(newFile));
+    CHECK(copied.get(source) && copied.get(source)->covers(0, 1000));
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -200,6 +229,7 @@ int main(int argc, char **argv)
     CHECK(tmp.isValid());
     testScanAndRemovals(tmp.path());
     testHandBlurs(tmp.path());
+    testScansFollowSaveAs(tmp.path());
     if (g_failures == 0)
         std::printf("privacy_blur_test: all checks passed\n");
     else

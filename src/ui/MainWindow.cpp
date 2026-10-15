@@ -79,6 +79,7 @@
 #include "MediaProbe.h"
 #include "PlaybackController.h"
 #include "ReframeExportController.h"
+#include "ProjectFiles.h"
 #include "ProjectSettingsDialog.h"
 #include "SettingsPanel.h"
 #include "SettingsSidebar.h"
@@ -326,6 +327,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
 
     // The start screen (no project open) and the editor share the window.
     m_library = std::make_unique<ProjectLibrary>();
+    m_files = std::make_unique<ProjectFiles>(m_project, m_library.get(), m_autosave, this);
     m_libraryPage = new ProjectLibraryPage(m_library.get(), this);
     connect(m_libraryPage, &ProjectLibraryPage::openRequested, this, &MainWindow::openProject);
     connect(m_libraryPage, &ProjectLibraryPage::newProjectRequested, this, &MainWindow::newProject);
@@ -885,12 +887,12 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     libraryAction->setIcon(theme::icon(QStringLiteral("layers")));
     fileMenu->addSeparator();
     QAction *saveProjectAction =
-        fileMenu->addAction(tr("&Save project"), this, &MainWindow::saveProject);
+        fileMenu->addAction(tr("&Save project"), this, [this] { m_files->save(); });
     saveProjectAction->setObjectName(QStringLiteral("saveProjectAction"));
     saveProjectAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
     saveProjectAction->setIcon(theme::icon(QStringLiteral("save")));
     QAction *saveProjectAsAction =
-        fileMenu->addAction(tr("Save project &as…"), this, &MainWindow::saveProjectAs);
+        fileMenu->addAction(tr("Save project &as…"), this, [this] { m_files->saveAs(m_clipPath); });
     saveProjectAsAction->setObjectName(QStringLiteral("saveProjectAsAction"));
     saveProjectAsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
     // Their own enabled state (a clip open, undo history) is already off
@@ -924,7 +926,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connect(m_playerBar, &PlayerBar::screenshotRequested, this, &MainWindow::takeScreenshot);
 
     fileMenu->addSeparator();
-    // close() runs closeEvent() -> confirmDiscardChanges(), so an unsaved
+    // close() runs closeEvent() -> m_files->confirmDiscard(), so an unsaved
     // project still prompts before the app exits.
     QAction *quitAction = fileMenu->addAction(tr("&Quit"), this, &QWidget::close);
     quitAction->setObjectName(QStringLiteral("quitAction"));
@@ -1205,7 +1207,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (confirmDiscardChanges()) {
+    if (m_files->confirmDiscard()) {
         // Let the viewport release its swapchain while it's still shown.
         // Closing destroys the window, which hides it first and only then
         // tells QVulkanWindow (SurfaceAboutToBeDestroyed); with Qt 6.8 on
@@ -2733,29 +2735,8 @@ void MainWindow::bindEmptyTimeline()
 void MainWindow::openProject(const QString &projectPath)
 {
     QString error;
-    // Changes autosaved but never saved (the app didn't close properly):
-    // offer them. An older recovery file is stale -- a later save has it all.
-    bool recover = false;
+    const bool recover = m_files->askRecover(projectPath);
     const QString recovery = Autosave::pathFor(projectPath);
-    if (Autosave::hasRecovery(projectPath)) {
-        QMessageBox box(QMessageBox::Question, tr("Recover unsaved changes?"),
-                        tr("%1 has unsaved changes from %2 that were never saved, probably "
-                           "because orbis-reframe didn't close properly.\n\nRecover them, or "
-                           "open the project as it was last saved and throw them away?")
-                            .arg(QFileInfo(projectPath).completeBaseName(),
-                                 QLocale().toString(QFileInfo(recovery).lastModified(),
-                                                    QLocale::ShortFormat)),
-                        QMessageBox::NoButton, this);
-        QPushButton *recoverButton = box.addButton(tr("&Recover"), QMessageBox::AcceptRole);
-        box.addButton(tr("&Discard changes"), QMessageBox::DestructiveRole);
-        box.setDefaultButton(recoverButton);
-        box.exec();
-        recover = box.clickedButton() == recoverButton;
-        if (!recover)
-            QFile::remove(recovery);
-    } else if (QFileInfo::exists(recovery)) {
-        QFile::remove(recovery);
-    }
     // Before the load: rebuilding the timeline already asks for waveforms.
     updateCacheDirs(projectPath);
     m_rebindingModel = true;
@@ -2769,7 +2750,7 @@ void MainWindow::openProject(const QString &projectPath)
         QMessageBox::warning(this, tr("Could not open project"), error);
         return;
     }
-    noteProjectOpened();
+    m_files->noteOpened();
     showEditor();
     if (m_timeline->count() == 0) {
         bindEmptyTimeline();
@@ -2801,42 +2782,37 @@ void MainWindow::openProject(const QString &projectPath)
 
 void MainWindow::openProjectFile()
 {
-    if (!confirmDiscardChanges())
+    if (!m_files->confirmDiscard())
         return;
-    const QString current = m_project->filePath();
-    const QString path = QFileDialog::getOpenFileName(
-        this, tr("Open project"),
-        current.isEmpty() ? m_library->projectsFolder() : QFileInfo(current).absolutePath(),
-        tr("orbis-reframe project (*.%1)").arg(Project::kFileExtension));
-    if (!path.isEmpty())
+    if (const QString path = m_files->pickProjectFile(); !path.isEmpty())
         openProject(path);
 }
 
 void MainWindow::newProject()
 {
-    if (!confirmDiscardChanges())
+    if (!m_files->confirmDiscard())
         return;
-    NewProjectDialog dlg(NewProjectDialog::Mode::NewProject, m_library->projectsFolder(), this);
-    if (dlg.exec() != QDialog::Accepted)
+    const std::optional<ProjectFiles::NewProject> made = m_files->askNewProject();
+    if (!made)
         return;
     m_rebindingModel = true;
     m_project->newProject();
-    m_project->setOutput(dlg.output());
+    m_project->setOutput(made->output);
     m_rebindingModel = false;
     // Saved straight away, so the project is on disk and in the library
     // from the start.
     QString error;
-    if (!m_project->save(dlg.projectFile(), &error))
+    if (!m_project->save(made->file, &error))
         QMessageBox::warning(this, tr("Could not save project"), error);
     else
-        noteProjectOpened();
+        m_files->noteOpened();
     showEditor();
     bindEmptyTimeline();
 }
 
 void MainWindow::closeToLibrary()
 {
-    if (!confirmDiscardChanges())
+    if (!m_files->confirmDiscard())
         return;
     stopPlateJob(); // its scan is about clips that are going away
     m_rebindingModel = true;
@@ -2883,56 +2859,6 @@ void MainWindow::setEditorActive(bool active)
         sc->setEnabled(active);
 }
 
-void MainWindow::noteProjectOpened()
-{
-    QString error;
-    if (!m_library->noteOpened(m_project->filePath(), QDateTime::currentDateTime(), &error))
-        std::fprintf(stderr, "%s\n", error.toLocal8Bit().constData());
-}
-
-void MainWindow::saveProject()
-{
-    if (m_project->filePath().isEmpty()) {
-        saveProjectAs();
-        return;
-    }
-    QString error;
-    if (!m_project->save(m_project->filePath(), &error))
-        QMessageBox::warning(this, tr("Could not save project"), error);
-    else
-        noteProjectOpened();
-}
-
-void MainWindow::saveProjectAs()
-{
-    NewProjectDialog dlg(NewProjectDialog::Mode::SaveAs, m_library->projectsFolder(), this);
-    // Suggest the project's name, or the first clip's for an untitled one.
-    const QString from = !m_project->filePath().isEmpty() ? m_project->filePath() : m_clipPath;
-    dlg.setName(QFileInfo(from).completeBaseName());
-    if (dlg.exec() != QDialog::Accepted)
-        return;
-    // Plate scans take minutes: bring the clips' along into the new folder's
-    // cache (waveforms are quick to redo).
-    const QString newCache = projectfolder::cacheDir(dlg.projectFile());
-    const QString oldCache = projectfolder::cacheDir(m_project->filePath());
-    if (!newCache.isEmpty()) {
-        for (int i = 0; i < m_timeline->count(); ++i) {
-            const QString src = m_timeline->clipAt(i).sourcePath;
-            const QString from = PlateScanCache::diskPathIn(oldCache, src);
-            const QString to = PlateScanCache::diskPathIn(newCache, src);
-            if (QFileInfo::exists(from) && !QFileInfo::exists(to)) {
-                QDir().mkpath(QFileInfo(to).absolutePath());
-                QFile::copy(from, to);
-            }
-        }
-    }
-    QString error;
-    if (!m_project->save(dlg.projectFile(), &error))
-        QMessageBox::warning(this, tr("Could not save project"), error);
-    else
-        noteProjectOpened();
-}
-
 void MainWindow::updateCacheDirs(const QString &projectFile)
 {
     // A project folder's own cache/; the user cache for an untitled or loose
@@ -2942,30 +2868,6 @@ void MainWindow::updateCacheDirs(const QString &projectFile)
     m_waveforms->setDirectory(dir);
     if (m_thumbnailCache)
         m_thumbnailCache->setDirectory(dir);
-}
-
-bool MainWindow::confirmDiscardChanges()
-{
-    if (!m_project->modified())
-        return true;
-    // Qt's Save / Discard labels have no mnemonic; with one, S / D (and
-    // Alt+S / Alt+D) press them. Enter saves, Esc cancels.
-    QMessageBox box(QMessageBox::Question, tr("Unsaved changes"),
-                    tr("The project has unsaved changes. Save them?"),
-                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
-    box.button(QMessageBox::Save)->setText(tr("&Save"));
-    box.button(QMessageBox::Discard)->setText(tr("&Discard"));
-    box.setDefaultButton(QMessageBox::Save);
-    box.setEscapeButton(QMessageBox::Cancel);
-    const auto choice = box.exec();
-    if (choice == QMessageBox::Cancel)
-        return false;
-    if (choice == QMessageBox::Save) {
-        saveProject();
-        return !m_project->modified(); // a cancelled Save-As leaves it modified
-    }
-    m_autosave->discard();
-    return true; // Discard
 }
 
 QString MainWindow::askSaveFileName(const QString &caption, const QString &path,

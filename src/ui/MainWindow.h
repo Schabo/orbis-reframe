@@ -39,6 +39,7 @@ class QThread;
 class QVulkanInstance;
 class Project;
 class ProjectLibrary;
+class ProjectFiles;
 class ProjectLibraryPage;
 class Timeline;
 struct ClipItem;
@@ -379,15 +380,6 @@ private:
     // cache for an untitled or loose project) of `projectFile`; on every
     // file path change, and before a project loads.
     void updateCacheDirs(const QString &projectFile);
-    // Saved or opened: to the top of the library.
-    void noteProjectOpened();
-    void saveProject();
-    // Save into a new project folder (also how an untitled project and a
-    // loose project file get one).
-    void saveProjectAs();
-    // Prompt to save if the project is modified. Returns false if the user
-    // cancelled (the caller should abort whatever it was about to do).
-    bool confirmDiscardChanges();
     void updateWindowTitle();
     // QFileDialog::getSaveFileName with a "&Save" button (Alt+S / S in the
     // file list): Qt's own label has no mnemonic. `path` may name the file.
@@ -400,6 +392,9 @@ private:
     QWidget *m_timelinePane = nullptr; // the edit toolbar over the timeline
     bool m_timelineHeightSet = false;  // the user dragged the split (remembered)
     std::unique_ptr<ProjectLibrary> m_library;
+    // Save / Save as, the unsaved-changes and recovery questions, the open
+    // and new-project dialogs.
+    std::unique_ptr<ProjectFiles> m_files;
     // Off while the library is shown (they'd act on the hidden editor).
     QList<QAction *> m_editorActions;
     // The left sidebar (sources) and its Media tab.

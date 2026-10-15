@@ -455,6 +455,8 @@ if(FFMPEG_FOUND)
         src/ui/NewProjectDialog.h
         src/ui/OutputSettingsEditor.cpp
         src/ui/OutputSettingsEditor.h
+        src/ui/ProjectFiles.cpp
+        src/ui/ProjectFiles.h
         src/ui/ProjectSettingsDialog.cpp
         src/ui/ProjectSettingsDialog.h
         src/ui/ProjectLibraryPage.cpp
