@@ -81,7 +81,9 @@ struct FlatVideoReader::Impl {
     bool curConverted = false;
 
     SwsContext *sws = nullptr;
-    std::vector<uint8_t> rotBuf;
+    // swscale's output, before rotation; kSwsSlack bytes longer (convert()).
+    std::vector<uint8_t> scaled;
+    static constexpr size_t kSwsSlack = 256;
 
     ~Impl() { close(); }
 
@@ -221,18 +223,20 @@ struct FlatVideoReader::Impl {
         const int *coef = sws_getCoefficients(swsSpace(f->colorspace, f->height));
         const int srcFull = f->color_range == AVCOL_RANGE_JPEG ? 1 : 0;
         sws_setColorspaceDetails(sws, coef, srcFull, coef, 1, 0, 1 << 16, 1 << 16);
-        uint8_t *dst = rotation ? nullptr : out.rgba.data();
-        if (rotation) {
-            rotBuf.resize(size_t(sw) * sh * 4);
-            dst = rotBuf.data();
-        }
-        uint8_t *dstPlanes[4] = {dst, nullptr, nullptr, nullptr};
+        // Into a scratch buffer with room to spare: swscale's unscaled
+        // converters (output size = the frame's) write whole SIMD blocks, up
+        // to tens of bytes past the last pixel when a row isn't a multiple
+        // of the block -- a 1080-wide frame does that.
+        scaled.resize(size_t(sw) * sh * 4 + kSwsSlack);
+        uint8_t *dstPlanes[4] = {scaled.data(), nullptr, nullptr, nullptr};
         int dstStride[4] = {sw * 4, 0, 0, 0};
         sws_scale(sws, f->data, f->linesize, 0, f->height, dstPlanes, dstStride);
-        if (!rotation)
+        if (!rotation) {
+            std::memcpy(out.rgba.data(), scaled.data(), out.rgba.size());
             return;
+        }
         // Rotate the sw x sh buffer clockwise into the w x h output.
-        const uint32_t *src = reinterpret_cast<const uint32_t *>(rotBuf.data());
+        const uint32_t *src = reinterpret_cast<const uint32_t *>(scaled.data());
         uint32_t *o = reinterpret_cast<uint32_t *>(out.rgba.data());
         for (int y = 0; y < h; ++y)
             for (int x = 0; x < w; ++x) {
