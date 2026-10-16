@@ -53,8 +53,14 @@ SettingsPanel::SettingsPanel(const QString &title, QWidget *parent)
     m_hintLabel->setWordWrap(true);
     m_hintLabel->setVisible(false);
     bodyLayout->addWidget(m_hintLabel);
+    m_notApplicable = new QLabel(m_body);
+    m_notApplicable->setObjectName(QStringLiteral("settingsPanelHint")); // styled as the hint
+    m_notApplicable->setWordWrap(true);
+    m_notApplicable->setVisible(false);
+    bodyLayout->addWidget(m_notApplicable);
 
     auto *formWidget = new QWidget(m_body);
+    m_formWidget = formWidget;
     m_form = new QFormLayout(formWidget);
     m_form->setContentsMargins(14, 4, 14, 14);
     m_form->setSpacing(8);
@@ -105,10 +111,19 @@ void SettingsPanel::nameParts()
 void SettingsPanel::setHint(const QString &text)
 {
     m_hintLabel->setText(text);
-    m_hintLabel->setVisible(!text.isEmpty());
+    m_hintLabel->setVisible(!text.isEmpty() && !m_notApplicable->isVisibleTo(m_body));
 }
 
 void SettingsPanel::setBodyEnabled(bool enabled) { m_body->setEnabled(enabled); }
+
+void SettingsPanel::setNotApplicable(const QString &reason)
+{
+    const bool applies = reason.isEmpty();
+    m_notApplicable->setText(reason);
+    m_notApplicable->setVisible(!applies);
+    m_formWidget->setVisible(applies);
+    m_hintLabel->setVisible(applies && !m_hintLabel->text().isEmpty());
+}
 
 void SettingsPanel::updateHeader()
 {

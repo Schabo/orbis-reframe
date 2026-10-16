@@ -187,7 +187,8 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
 }
 
 int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
-                         double fps, int sourceWidth, int sourceHeight, int audioStreams)
+                         double fps, int sourceWidth, int sourceHeight, int audioStreams,
+                         bool flat)
 {
     index = std::clamp(index, 0, static_cast<int>(m_clips.size()));
 
@@ -198,9 +199,19 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
     c.fps = fps;
     c.sourceWidth = sourceWidth;
     c.sourceHeight = sourceHeight;
+    c.flat = flat;
     c.resetEditsToFullSource();
-    if (!m_clips.isEmpty()) // the neighbour's stabilization: before it, else after it
-        c.stabilization = m_clips.at(index > 0 ? index - 1 : 0).stabilization;
+    if (!flat) { // the nearest 360 clip's stabilization: before it, else after it
+        int from = -1;
+        for (int k = index - 1; k >= 0 && from < 0; --k)
+            if (!m_clips.at(k).flat)
+                from = k;
+        for (int k = index; k < m_clips.size() && from < 0; ++k)
+            if (!m_clips.at(k).flat)
+                from = k;
+        if (from >= 0)
+            c.stabilization = m_clips.at(from).stabilization;
+    }
     for (const ClipItem &o : m_clips) // the sync fine-tune belongs to the source file
         if (o.sourcePath == sourcePath) {
             if (!std::isnan(o.syncAdjustMs))
@@ -220,10 +231,10 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
 }
 
 int Timeline::appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
-                         int sourceWidth, int sourceHeight, int audioStreams)
+                         int sourceWidth, int sourceHeight, int audioStreams, bool flat)
 {
     return insertClip(static_cast<int>(m_clips.size()), sourcePath, sourceDurationMs, fps,
-                      sourceWidth, sourceHeight, audioStreams);
+                      sourceWidth, sourceHeight, audioStreams, flat);
 }
 
 bool Timeline::removeClip(int clipId)
@@ -369,7 +380,7 @@ void Timeline::replaceClipReframeSpan(int clipId, qint64 fromMs, qint64 toMs,
                                       const QList<ReframeKey> &keys)
 {
     ClipItem *c = mutableClipById(clipId);
-    if (!c)
+    if (!c || c->flat)
         return;
     c->reframe.replaceSpan(fromMs, toMs, keys);
     emit clipReframeChanged(c->id);
@@ -391,6 +402,13 @@ void Timeline::setClipSpeed(int clipId, double speed)
         if (relinkAudio()) // its linked audio takes the speed; later clips move
             emit tracksChanged();
     }
+}
+
+void Timeline::setClipFit(int clipId, ClipItem::Fit fit)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->flat && c->setFit(fit))
+        emit clipFitChanged(c->id, fit);
 }
 
 void Timeline::setClipColor(int clipId, const ColorGrade &grade)

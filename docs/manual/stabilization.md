@@ -135,6 +135,9 @@ playhead:
 
 The measurement pauses while the video plays, and continues when you pause.
 
+A flat video on the video track has no motion data, so it can't be
+stabilized: with one selected, the section says so.
+
 ## What stabilization can't fix
 
 Stabilization turns the view; it can't move it. So it removes the camera's

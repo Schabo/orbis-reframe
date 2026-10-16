@@ -108,10 +108,11 @@ void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
     if (created.isValid())
         addValue(tr("Recorded"), locale.toString(created.toLocalTime(), QLocale::ShortFormat));
     addValue(tr("Bitrate"), bitRate(m.totalBitRate));
-    addValue(tr("Preview file"), m.proxyPath.empty() ? tr("Not found") : tr("Found"),
-             m.proxyPath.empty()
-                 ? tr("The camera's low-res preview file (.lrv), expected next to the .insv.")
-                 : QString::fromStdString(m.proxyPath));
+    if (fi.suffix().compare(QLatin1String("insv"), Qt::CaseInsensitive) == 0) // a 360 clip's
+        addValue(tr("Preview file"), m.proxyPath.empty() ? tr("Not found") : tr("Found"),
+                 m.proxyPath.empty()
+                     ? tr("The camera's low-res preview file (.lrv), expected next to the .insv.")
+                     : QString::fromStdString(m.proxyPath));
 
     addSection(tr("Video"));
     if (m.video.empty()) {

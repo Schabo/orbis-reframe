@@ -93,6 +93,11 @@ public:
         // capture timing and stabilization are looked up by, since two clips
         // of one file can differ.
         int clipId = 0;
+        // A flat video (ClipItem::flat): played through a FlatClipSource of
+        // this rate and length, its picture drawn by the insets.
+        bool flat = false;
+        double fps = 0.0;
+        qint64 sourceDurationMs = 0;
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
         qint64 localAtSourceMs(qint64 sourceMs) const
@@ -235,9 +240,10 @@ private:
     // --- decoder-thread helpers ---
     // Returns the open source for `path` (from the small cache, or freshly
     // opened). nullptr + *err set on failure.
-    std::shared_ptr<stitch::IStitchSource> acquireSource(const QString &path, QString *err);
-    // A new, unopened stitch source: m_makeSource's, or the real one. Any thread.
-    std::unique_ptr<stitch::IStitchSource> makeSource() const;
+    std::shared_ptr<stitch::IStitchSource> acquireSource(const Segment &seg, QString *err);
+    // A new, unopened source for `seg`: a FlatClipSource for a flat clip,
+    // else m_makeSource's, or the real one. Any thread.
+    std::unique_ptr<stitch::IStitchSource> makeSource(const Segment &seg) const;
     // Make segment `index` the one being decoded, opening its source if the
     // path changed. Prunes any other cached source. false (openFailed emitted)
     // on open failure.

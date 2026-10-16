@@ -347,7 +347,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const int x = xForTimelineMs(m_dropMs);
         const QColor hl = tc.accent;
         int top = mainTop() + kMainH, bottom = rowsBottom;
-        if (m_dropClip) { // into the main track
+        if (m_dropClip || m_dropMain) { // into the main track
             top = kRulerH;
             bottom = mainTop() + kMainH;
         }

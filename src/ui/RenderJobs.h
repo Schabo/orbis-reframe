@@ -24,9 +24,11 @@ namespace renderjobs {
 std::vector<insv::MixClip> mixClips(const Timeline &timeline);
 
 // The overlay clips (hidden tracks and missing files left out), bottom-most
-// first: for playback's InsetFeed, and for the export / a screenshot.
-std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline);
-std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline);
+// first: for playback's InsetFeed, and for the export / a screenshot. Under
+// them, the flat main-track clips (ClipItem::flat) as full-frame layers,
+// fitted into an output of outW x outH.
+std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH);
+std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH);
 
 // One main-track clip as the export renders it: trim, speed, grade, the
 // privacy blur, the seam fine-tune measured under `lensGuard`, a stabilizer

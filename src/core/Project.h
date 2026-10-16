@@ -54,6 +54,8 @@ public:
     //   speed, stabilization {mode, windowYawSec, windowPitchSec,
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
     //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true)};
+    //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
+    //   "bars"), and none of the 360 fields;
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
     //   pitch, roll], lensGuard} once measured, and privacy:
     //     "plates": true -- the blur is on;
@@ -83,7 +85,11 @@ public:
     // audioMuted, noise, and "mainMuted" on the timeline); on load that
     // becomes linked clips on the stream tracks, the unpicked streams muted;
     // a stream that was put on a free track by hand moves there too.
-    static constexpr int kFormatVersion = 10;
+    // Version 11 added flat clips on the main track; a project without one is
+    // still written as version 10, so the builds before keep opening it.
+    static constexpr int kFormatVersion = 11;
+    static constexpr int kFlatClipFormatVersion = 11;
+    static constexpr int kPlainFormatVersion = 10;
     static constexpr int kOldestFormatVersion = 8;
     static constexpr const char *kFormatTag = "orbis-reframe-project";
     static constexpr const char *kFileExtension = "orp"; // no dot

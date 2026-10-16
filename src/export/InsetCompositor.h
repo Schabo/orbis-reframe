@@ -2,6 +2,7 @@
 
 #include "InsetGeometry.h"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -36,6 +37,9 @@ struct InsetClipJob {
     // The look at a source time (keyframes sampled; fades not applied).
     // Called on the export thread.
     std::function<inset::Look(int64_t sourceMs)> lookAt;
+    // A flat main-track clip's colour grade (ReframeView::colorGrade), all
+    // 0 = none.
+    std::array<float, 4> colorGrade{};
 
     int64_t spanMs() const { return static_cast<int64_t>(std::llround((trimOutMs - trimInMs) / speed)); }
     int64_t endMs() const { return startMs + spanMs(); }

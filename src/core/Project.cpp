@@ -336,6 +336,8 @@ struct ParsedClip {
     double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
     std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
     int seamAdjustGuard = -1;
+    bool flat = false;
+    ClipItem::Fit fit = ClipItem::Fit::Bars;
 };
 
 // `linkedIndex`: the main-track index of the clip it's linked to, -1 if
@@ -584,8 +586,9 @@ void Project::addTimelineSourcesToPool(bool rebuilt)
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         if (!m_mediaPool->contains(c.sourcePath))
-            m_mediaPool->add({c.sourcePath, MediaItem::Kind::Clip360, c.sourceDurationMs,
-                              c.sourceWidth, c.sourceHeight, c.fps});
+            m_mediaPool->add({c.sourcePath,
+                              c.flat ? MediaItem::Kind::Video : MediaItem::Kind::Clip360,
+                              c.sourceDurationMs, c.sourceWidth, c.sourceHeight, c.fps});
     }
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
@@ -793,10 +796,29 @@ int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double 
 QByteArray Project::buildDocument(const QDir *projectDir) const
 {
     json clips = json::array();
+    bool anyFlat = false;
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         const std::string source =
             (projectDir ? storedPath(c.sourcePath, *projectDir) : c.sourcePath).toStdString();
+        if (c.flat) {
+            anyFlat = true;
+            clips.push_back({
+                {"source", source},
+                {"flat", true},
+                {"trimInMs", static_cast<qint64>(c.trimInMs)},
+                {"trimOutMs", static_cast<qint64>(c.trimOutMs)},
+                {"sourceDurationMs", static_cast<qint64>(c.sourceDurationMs)},
+                {"fps", c.fps},
+                {"sourceWidth", c.sourceWidth},
+                {"sourceHeight", c.sourceHeight},
+                {"color", colorGradeToJson(c.color)},
+                {"speed", c.speed},
+            });
+            if (c.fit == ClipItem::Fit::Fill)
+                clips.back()["fit"] = "fill";
+            continue;
+        }
         clips.push_back({
             {"source", source},
             {"trimInMs", static_cast<qint64>(c.trimInMs)},
@@ -887,7 +909,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
 
     json doc = {
         {"format", kFormatTag},
-        {"version", kFormatVersion},
+        {"version", anyFlat ? kFlatClipFormatVersion : kPlainFormatVersion},
         {"previewStitch", previewStitchToJson(m_previewStitch)},
         {"output", outputToJson(m_output)},
         {"timeline",
@@ -962,6 +984,9 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             if (jc.contains("color"))
                 pc.color = colorGradeFromJson(jc.at("color"));
             pc.speed = jc.value("speed", 1.0);
+            pc.flat = jc.value("flat", false);
+            if (pc.flat && jc.value("fit", std::string()) == "fill")
+                pc.fit = ClipItem::Fit::Fill;
             pc.stabilization = projectStab;
             if (version >= 9 && jc.contains("stabilization"))
                 pc.stabilization = stabilizationFromJson(jc.at("stabilization"));
@@ -1083,7 +1108,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     std::vector<int> clipIds; // main-track index -> new id, for linked audio
     for (const ParsedClip &pc : parsed) {
         const int id = m_timeline->appendClip(pc.sourcePath, pc.sourceDurationMs, pc.fps,
-                                              pc.sourceWidth, pc.sourceHeight);
+                                              pc.sourceWidth, pc.sourceHeight, 0, pc.flat);
+        m_timeline->setClipFit(id, pc.fit);
         // appendClip set the trim to the whole source; narrow it to the saved
         // range (in then out, so the min-gap clamp doesn't fight a valid pair).
         m_timeline->setClipTrimIn(id, pc.trimInMs);

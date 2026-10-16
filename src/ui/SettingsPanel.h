@@ -41,6 +41,11 @@ public:
     // Gives the header the section's object name + "Header"; call after
     // setObjectName.
     void nameParts();
+    // The section doesn't apply to what it shows (e.g. stabilization on a
+    // flat video): `reason` replaces its hint and controls. Empty = it
+    // applies again.
+    void setNotApplicable(const QString &reason);
+    bool isApplicable() const { return m_formWidget->isVisibleTo(m_body); }
 
 signals:
     // The user opened or closed the section (not emitted by setExpanded).
@@ -65,6 +70,8 @@ private:
     QLabel *m_scope = nullptr;
     QWidget *m_body = nullptr;
     QLabel *m_hintLabel = nullptr;
+    QLabel *m_notApplicable = nullptr;
+    QWidget *m_formWidget = nullptr;
     QFormLayout *m_form = nullptr;
     bool m_collapsible = true;
     bool m_expanded = true;

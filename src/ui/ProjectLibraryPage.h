@@ -37,6 +37,12 @@ public:
     explicit ProjectLibraryPage(ProjectLibrary *library, QWidget *parent = nullptr);
     ~ProjectLibraryPage() override;
 
+    // What draws a card's picture when the project starts with a flat video
+    // (an .insv's comes from its trailer): a frame of `path` at `size`. Set
+    // before refresh(); called on worker threads. Unset = no picture.
+    using FlatThumbnailFn = std::function<QImage(const QString &path, const QSize &size)>;
+    void setFlatThumbnail(FlatThumbnailFn fn) { m_flatThumbnail = std::move(fn); }
+
     // Re-read the library and every project in it.
     void refresh();
 
@@ -69,6 +75,7 @@ signals:
     void loaded();
 
 private:
+    FlatThumbnailFn m_flatThumbnail;
     void applySummary(int generation, const ProjectSummary &summary, const QImage &thumbnail);
     void removeSelected();
     void renameSelected();

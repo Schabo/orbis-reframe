@@ -152,3 +152,15 @@ again. Without a note, the timeline is empty or an export is running.
 Tracking works on the stabilized picture, so a shaking camera doesn't throw
 it off. It works best with a subject that stands out from its background
 and isn't too small in the view.
+
+## Flat videos
+
+A flat video on the video track ([The timeline](timeline.md#flat-videos-on-the-video-track))
+isn't reframed: there's nothing around it to look at. With one selected, or
+under the playhead, the **Reframe** section has one setting instead of the
+view and **Track subject…**:
+
+| Fit | What you see |
+|---|---|
+| **Whole picture, with bars** | The whole video, with black bars where its shape differs from your video's. The default. |
+| **Fill the frame, edges cropped** | The video fills the frame; what sticks out at two sides is cut off. |

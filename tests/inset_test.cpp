@@ -5,6 +5,7 @@
 
 #include "FlatVideoReader.h"
 #include "InsetCompositor.h"
+#include "InsetGeometry.h"
 #include "ReframeRenderer.h"
 #include "support/TestMedia.h"
 
@@ -207,6 +208,26 @@ void testColorGrade()
 
 } // namespace
 
+// inset::fitted: a flat main-track clip's full-frame layer.
+void testFitted()
+{
+    // 16:9 into 16:9: the whole frame either way
+    CHECK(inset::fitted(16.0 / 9.0, 1920, 1080, false).width == 1.0f);
+    CHECK(inset::fitted(16.0 / 9.0, 1920, 1080, true).width == 1.0f);
+    // portrait 9:16 into 16:9: bars at the sides, or as wide as the frame
+    const inset::Look bars = inset::fitted(9.0 / 16.0, 1920, 1080, false);
+    const inset::Rect r = inset::place(bars, {}, 9.0 / 16.0, 1920, 1080);
+    CHECK(std::abs(r.h - 1080) < 0.5 && std::abs(r.x - (1920 - r.w) / 2) < 0.5 && r.y > -0.5);
+    const inset::Rect f =
+        inset::place(inset::fitted(9.0 / 16.0, 1920, 1080, true), {}, 9.0 / 16.0, 1920, 1080);
+    CHECK(std::abs(f.w - 1920) < 0.5 && f.h > 1080 && std::abs(f.y + (f.h - 1080) / 2) < 0.5);
+    // 16:9 into a 9:16 output: bars above and below, or cropped at the sides
+    const inset::Rect w =
+        inset::place(inset::fitted(16.0 / 9.0, 1080, 1920, false), {}, 16.0 / 9.0, 1080, 1920);
+    CHECK(std::abs(w.w - 1080) < 0.5 && w.h < 1920);
+    CHECK(inset::fitted(16.0 / 9.0, 1080, 1920, true).width > 3.0f);
+}
+
 int main()
 {
     const char *tmp = std::getenv("TMPDIR");
@@ -219,6 +240,7 @@ int main()
     testRotation(dir);
     testCompositor(dir);
     testColorGrade();
+    testFitted();
     if (!std::getenv("INSET_TEST_KEEP")) {
         for (const char *f : {"/solid.mp4", "/rot90.mp4"})
             std::remove((dir + f).c_str());

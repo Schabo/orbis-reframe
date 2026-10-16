@@ -132,18 +132,20 @@ public:
 public slots:
     // --- structure ------------------------------------------------------
     // Insert a clip at `index` (clamped to [0, count]). source* come from
-    // stitch::ProbeClip. Trim starts as the whole source, reframe path empty.
-    // Stabilization is the clip before it's (the one after it's when it goes
-    // first; Off on an empty timeline). Its sound: addClipSound with
-    // `audioStreams`, the source's audio stream count (InsvAudioDemux::
+    // stitch::ProbeClip, or for a `flat` video (ClipItem::flat) from
+    // exportpipe::FlatVideoReader::probe. Trim starts as the whole source,
+    // reframe path empty. A 360 clip's stabilization is the 360 clip before
+    // it's, else the one after it's (Off without one); a flat clip's stays Off.
+    // Its sound: addClipSound with `audioStreams`, the source's audio stream count (InsvAudioDemux::
     // countAudioStreams; 0 = none, or added by the caller -- a project load).
     // Returns the new clip's id.
     int insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
                    double fps, int sourceWidth = 0, int sourceHeight = 0,
-                   int audioStreams = 0);
+                   int audioStreams = 0, bool flat = false);
     // Append; same as insertClip(count(), ...).
     int appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
-                   int sourceWidth = 0, int sourceHeight = 0, int audioStreams = 0);
+                   int sourceWidth = 0, int sourceHeight = 0, int audioStreams = 0,
+                   bool flat = false);
     // Put each of a main-track clip's `streamCount` audio streams on its
     // stream track (Track::roleOfStream; the track is made when missing) as
     // an audio clip linked to it, covering its whole trimmed span. Streams
@@ -260,6 +262,9 @@ public slots:
     // Playback speed (clamped to ClipItem::kMin/MaxSpeed). Changes the clip's
     // span on the timeline: emits clipSpeedChanged + durationChanged.
     void setClipSpeed(int clipId, double speed);
+    // How a flat clip fills the output frame (ClipItem::fit); the Video tab
+    // edits it. No-op on a 360 clip.
+    void setClipFit(int clipId, ClipItem::Fit fit);
     // Colour grade (clamped to ColorGrade's own ranges); the Colour panel edits
     // all four fields together.
     void setClipColor(int clipId, const ColorGrade &grade);
@@ -311,6 +316,8 @@ signals:
     void clipTrimChanged(int id, qint64 inMs, qint64 outMs);
     // One clip's reframe track changed (key added / moved / removed / cleared).
     void clipReframeChanged(int id);
+    // One flat clip's fit changed. Carries the new value.
+    void clipFitChanged(int id, ClipItem::Fit fit);
     // One clip's colour grade changed. Carries the new value.
     void clipColorChanged(int id, ColorGrade grade);
     // One clip's stabilization changed. Carries the new value.

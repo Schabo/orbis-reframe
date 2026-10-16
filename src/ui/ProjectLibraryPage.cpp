@@ -296,12 +296,14 @@ void ProjectLibraryPage::refresh()
         item->setData(DetailsRole, tr("Reading…"));
         item->setToolTip(QDir::toNativeSeparators(e.path));
 
-        summaryPool().start([this, generation, path = e.path] {
+        summaryPool().start([this, generation, path = e.path, flatThumbnail = m_flatThumbnail] {
             const ProjectSummary s = ProjectSummary::read(path);
-            const QImage thumb = s.firstClip.isEmpty()
-                                     ? QImage()
-                                     : clipThumbnail(s.firstClip, ProjectCardList::thumbnailSize() *
-                                                                      devicePixelRatio());
+            const QSize size = ProjectCardList::thumbnailSize() * devicePixelRatio();
+            QImage thumb;
+            if (s.firstClipFlat && flatThumbnail)
+                thumb = flatThumbnail(s.firstClip, size);
+            else if (!s.firstClip.isEmpty() && !s.firstClipFlat)
+                thumb = clipThumbnail(s.firstClip, size);
             QMetaObject::invokeMethod(
                 this, [this, generation, s, thumb] { applySummary(generation, s, thumb); },
                 Qt::QueuedConnection);

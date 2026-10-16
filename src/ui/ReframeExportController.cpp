@@ -42,6 +42,11 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
         error = tr("Invalid output size.");
         return {};
     }
+    if (c.flat) { // the picture is the caller's inset layer
+        QImage black(outW, outH, QImage::Format_RGB888);
+        black.fill(Qt::black);
+        return black;
+    }
     stitch::ClipProbe probe;
     std::string perr;
     if (!stitch::ProbeClip(c.clipPath.toStdString(), probe, perr))
@@ -188,11 +193,49 @@ void ReframeExportController::run(const Request &req)
     int64_t framesBefore = 0;
     int64_t outFrames = 0; // video frames actually written, across every clip
     std::vector<float> pcm;
+    std::vector<uint8_t> black; // a flat clip's frames, NV12 (BT.709 limited range)
     for (int i = 0; i < n && !cancelled; ++i) {
         const ClipJob &c = req.clips[i];
         const double base = framesBefore * 100.0 / totalFrames;
         const double span = frames[i] * 100.0 / totalFrames;
         const QString label = tr("Rendering clip %1 of %2…").arg(i + 1).arg(n);
+
+        auto feedAudio = [&]() -> bool {
+            if (!withAudio)
+                return true;
+            // Audio up to the end of output frame `outFrames` on the timeline.
+            const int64_t target = std::llround(outFrames * kAudioRate / req.fps);
+            const int64_t need = target - writer->audioFramesWritten();
+            if (need <= 0)
+                return true;
+            pcm.assign(static_cast<size_t>(need) * kAudioChannels, 0.0f);
+            mixer.mixInto(pcm.data(), writer->audioFramesWritten(), need); // the audio tracks
+            insv::AudioMixer::limit(pcm.data(), need * kAudioChannels);
+            return writer->addAudio(pcm.data(), need, err);
+        };
+
+        if (c.flat) {
+            // Black frames for its span; the frame hook draws the clip (one of
+            // the insets) over each at its timeline time.
+            black.resize(size_t(req.outWidth) * req.outHeight * 3 / 2);
+            std::fill(black.begin(), black.begin() + size_t(req.outWidth) * req.outHeight, 16);
+            std::fill(black.begin() + size_t(req.outWidth) * req.outHeight, black.end(), 128);
+            for (int64_t k = 0; k < frames[i]; ++k) {
+                if (m_cancel.load(std::memory_order_relaxed)) {
+                    cancelled = true;
+                    break;
+                }
+                ++outFrames;
+                if (!writer->addNv12Frame(black.data(), req.outWidth, req.outHeight, err) ||
+                    !feedAudio()) {
+                    emit finished(false, QString::fromStdString(err), req.outPath);
+                    return;
+                }
+                emitPct(base + span * static_cast<double>(k + 1) / frames[i], label);
+            }
+            framesBefore += frames[i];
+            continue;
+        }
 
         // Equirect intermediate size, 2:1: per clip, the full source sphere (and
         // at least 2x the output width), so the export keeps all the detail
@@ -245,20 +288,6 @@ void ReframeExportController::run(const Request &req)
                 c.stab->correctionMatrix(ptsMs / 1000.0, m);
                 std::copy(&m[0][0], &m[0][0] + 9, stab);
             }
-        };
-
-        auto feedAudio = [&]() -> bool {
-            if (!withAudio)
-                return true;
-            // Audio up to the end of output frame `outFrames` on the timeline.
-            const int64_t target = std::llround(outFrames * kAudioRate / req.fps);
-            const int64_t need = target - writer->audioFramesWritten();
-            if (need <= 0)
-                return true;
-            pcm.assign(static_cast<size_t>(need) * kAudioChannels, 0.0f);
-            mixer.mixInto(pcm.data(), writer->audioFramesWritten(), need); // the audio tracks
-            insv::AudioMixer::limit(pcm.data(), need * kAudioChannels);
-            return writer->addAudio(pcm.data(), need, err);
         };
 
         int64_t written = 0;

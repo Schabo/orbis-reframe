@@ -47,8 +47,9 @@ struct InsetPushConstants {
     float radius;
     float border;
     float borderColor[4]; // rgb, a = opacity
+    float grade[4];       // ColorGrade::packed(), all 0 = none
 };
-static_assert(sizeof(InsetPushConstants) == 48, "InsetPushConstants must match inset.frag");
+static_assert(sizeof(InsetPushConstants) == 64, "InsetPushConstants must match inset.frag");
 
 // marker.frag's push constants (the Track subject box).
 struct MarkerPushConstants {

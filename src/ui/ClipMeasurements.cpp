@@ -41,8 +41,8 @@ const ClipItem *ClipMeasurements::measurableClip(const QString &clipPath) const
 {
     const Timeline *t = m_project->timeline();
     for (int i = 0; i < t->count(); ++i)
-        if (t->clipAt(i).sourcePath == clipPath)
-            return t->clipAt(i).mediaMissing ? nullptr : &t->clipAt(i);
+        if (t->clipAt(i).sourcePath == clipPath) // a flat video has no IMU or seam
+            return t->clipAt(i).mediaMissing || t->clipAt(i).flat ? nullptr : &t->clipAt(i);
     return nullptr;
 }
 
@@ -57,6 +57,8 @@ void ClipMeasurements::schedule()
             return; // picked up again on pause
         const Timeline *t = m_project->timeline();
         for (int i = 0; i < t->count(); ++i) {
+            if (t->clipAt(i).flat)
+                continue;
             const QString path = t->clipAt(i).sourcePath;
             maybeMeasureSync(path);
             maybeMeasureSeam(path);

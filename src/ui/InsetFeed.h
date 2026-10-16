@@ -5,6 +5,7 @@
 
 #include <QString>
 
+#include <array>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -40,6 +41,10 @@ public:
         inset::Look look;
         inset::Frame frame;
         InsetKeyTrack keys;
+        // A flat main-track clip (ClipItem::flat) drawn as a full-frame
+        // layer: decoded at a larger size, with its colour grade.
+        bool fullFrame = false;
+        std::array<float, 4> colorGrade{};
 
         qint64 spanMs() const { return std::llround((trimOutMs - trimInMs) / speed); }
         qint64 endMs() const { return startMs + spanMs(); }

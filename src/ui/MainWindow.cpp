@@ -374,6 +374,9 @@ void MainWindow::setupPages()
     m_trackFiles = std::make_unique<TrackFiles>(
         m_project, [this](int clipId) { addOverlayAudio(clipId); }, this);
     m_libraryPage = new ProjectLibraryPage(m_library.get(), this);
+    m_libraryPage->setFlatThumbnail([](const QString &path, const QSize &size) {
+        return mediaThumbnail({path, MediaItem::Kind::Video}, size);
+    });
     connect(m_libraryPage, &ProjectLibraryPage::openRequested, this, &MainWindow::openProject);
     connect(m_libraryPage, &ProjectLibraryPage::newProjectRequested, this, &MainWindow::newProject);
     connect(m_libraryPage, &ProjectLibraryPage::openOtherRequested, this,
@@ -420,6 +423,7 @@ void MainWindow::connectStitchAndStabilization()
     // and rate from the Project when it starts.
     connect(m_project, &Project::outputChanged, this, [this](const OutputSettings &out) {
         m_viewport->SetOutputAspect(static_cast<float>(out.aspectRatio()));
+        pushInsetsToController(); // flat main clips are fitted to the output's shape
     });
     m_viewport->SetOutputAspect(static_cast<float>(m_project->output().aspectRatio()));
     // Stabilization panel -> the clip it shows (the selected one, else the
@@ -717,6 +721,11 @@ void MainWindow::connectEdits()
     connect(m_timeline, &Timeline::clipsReordered, this, [this] { remapPlayheadAfterEdit(); });
     connect(m_timeline, &Timeline::clipSpeedChanged, this,
             [this](int, double) { remapPlayheadAfterEdit(); });
+    connect(m_timeline, &Timeline::clipFitChanged, this, [this](int id, ClipItem::Fit fit) {
+        pushInsetsToController();
+        if (id == editClipId())
+            m_reframePanel->setFlatClip(true, fit == ClipItem::Fit::Fill);
+    });
 }
 
 void MainWindow::connectReframe()
@@ -742,6 +751,9 @@ void MainWindow::connectReframe()
 
     // Reframe panel: a numeric edit sets the live viewport pose and, when
     // authoring is armed, keyframes it at the playhead -- same as a drag.
+    connect(m_reframePanel, &ReframePanel::fitEdited, this, [this](bool fill) {
+        m_timeline->setClipFit(editClipId(), fill ? ClipItem::Fit::Fill : ClipItem::Fit::Bars);
+    });
     connect(m_reframePanel, &ReframePanel::poseEdited, this, [this](const ReframePose &p) {
         m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
         if (m_reframeArmed && m_clipId)
@@ -845,6 +857,8 @@ void MainWindow::connectColour()
             m_timeline->setClipColor(m_timeline->clipAt(i).id, *m_copiedGrade);
     });
     connect(m_timeline, &Timeline::clipColorChanged, this, [this](int id, ColorGrade grade) {
+        if (const ClipItem *c = m_timeline->clipById(id); c && c->flat)
+            pushInsetsToController(); // its picture is a layer, graded there
         if (id == m_clipId) // on screen
             applyColorGrade(grade);
         if (id == editClipId()) // in the panel
@@ -1451,13 +1465,17 @@ void MainWindow::refreshClipPanels()
     m_timelineWidget->setActiveClip(editClipId());
     const ClipItem *c = m_timeline->clipById(editClipId());
     if (!c) {
+        m_privacyPanel->setNotApplicable(QString());
         m_privacyPanel->setNoClip();
+        m_stabilizationPanel->setNotApplicable(QString());
         m_stabilizationPanel->setNoClip();
+        m_reframePanel->setFlatClip(false);
         refreshAudioPanel();
         return;
     }
     syncMediaInfoPanel(*c);
     m_colourPanel->setState(c->color);
+    m_reframePanel->setFlatClip(c->flat, c->fit == ClipItem::Fit::Fill);
     syncStabilizationPanel();
     syncPrivacyPanel();
     refreshAudioPanel(); // the selected audio clip, if any, else this clip
@@ -1469,7 +1487,9 @@ void MainWindow::refreshClipPanels()
 void MainWindow::syncStabilizationPanel()
 {
     const ClipItem *c = m_timeline->clipById(editClipId());
-    if (!c) {
+    m_stabilizationPanel->setNotApplicable(
+        c && c->flat ? tr("A flat video has no motion data to stabilize with.") : QString());
+    if (!c || c->flat) {
         m_stabilizationPanel->setNoClip();
         return;
     }
@@ -1682,7 +1702,8 @@ void MainWindow::selectAdded(std::optional<int> lastClipId)
 
 void MainWindow::pushInsetsToController()
 {
-    m_controller->setInsets(renderjobs::insetFeed(*m_timeline)); // thread-safe
+    const OutputSettings &out = m_project->output();
+    m_controller->setInsets(renderjobs::insetFeed(*m_timeline, out.width, out.height)); // thread-safe
 }
 
 const TrackClip *MainWindow::selectedOverlayClip(int *trackId) const
@@ -2333,11 +2354,13 @@ void MainWindow::pushTimelineToController()
     m_captureTimingOn.clear(); // ids don't survive a load / undo
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
-        segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id});
+        segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
+                            c.sourceDurationMs});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }
     m_totalTimelineMs = total;
+    pushInsetsToController(); // flat main clips are drawn as layers
     // Queued lambda (not a slot) so QList<Segment> needs no metatype.
     QMetaObject::invokeMethod(m_controller,
                               [ctrl = m_controller, segments] { ctrl->setTimeline(segments); });
@@ -2455,12 +2478,23 @@ void MainWindow::afterUndoRedo()
 #endif
 }
 
+// "*.insv *.mp4 ...": the files the main track takes, 360 clips and flat
+// videos, for a file dialog's filter.
+static QString clipFileGlobs()
+{
+    QStringList globs;
+    for (const auto kind : {MediaItem::Kind::Clip360, MediaItem::Kind::Video})
+        for (const QString &ext : media::extensions(kind))
+            globs << QStringLiteral("*.") + ext;
+    return globs.join(QLatin1Char(' '));
+}
+
 void MainWindow::addClipToTimeline(int index)
 {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Add clip to timeline"),
         m_clipPath.isEmpty() ? QDir::homePath() : QFileInfo(m_clipPath).absolutePath(),
-        tr("Insta360 video (*.insv);;All files (*)"));
+        tr("Videos (%1);;All files (*)").arg(clipFileGlobs()));
     if (!path.isEmpty())
         addClipFiles({path}, index);
 }
@@ -2471,19 +2505,21 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         index = m_timeline->count();
     QStringList failed;
     for (const QString &path : paths) {
-        stitch::ClipProbe probe;
-        std::string probeErr;
-        if (!m_clipBackend.probe(path.toStdString(), probe, probeErr)) {
-            failed << (probeErr.empty() ? tr("Unrecognised file: %1").arg(path)
-                                        : QString::fromStdString(probeErr));
+        // A 360 clip through the clip probe, a flat video through FFmpeg.
+        QString why;
+        const std::optional<MediaItem> m = probeMedia(path, &why, m_clipBackend.probe);
+        if (!m || m->kind == MediaItem::Kind::Audio) {
+            failed << tr("%1: %2").arg(QFileInfo(path).fileName(),
+                                        m ? tr("not a video") : why);
             continue;
         }
+        const bool flat = m->kind == MediaItem::Kind::Video;
         const bool wasEmpty = m_timeline->count() == 0;
-        m_timeline->insertClip(index++, path, probe.duration_ms, probe.fps, probe.width,
-                               probe.height, audioStreamCount(path));
+        m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width, m->height,
+                               audioStreamCount(path), flat);
         if (wasEmpty) {
             m_clipPath = path;
-            m_fps = probe.fps;
+            m_fps = m->fps;
         }
     }
     if (!failed.isEmpty())
@@ -2509,13 +2545,17 @@ void MainWindow::addMediaToTimeline(const QStringList &paths)
             break;
         }
     }
-    // Clips first: overlays and audio need a video track to lie over.
+    // Clips first: overlays and audio need a video track to lie over. Flat
+    // videos are overlays over a main clip; with none, they become the
+    // main clips.
+    if (m_timeline->count() == 0 && clips.isEmpty())
+        std::swap(clips, videos);
     if (!clips.isEmpty())
         addClipFiles(clips, -1);
-    if ((!videos.isEmpty() || !audio.isEmpty()) && m_timeline->count() == 0) {
+    if (!audio.isEmpty() && m_timeline->count() == 0) {
         QMessageBox::information(this, tr("Add to timeline"),
-                                 tr("Overlays and audio go over a 360° clip: add one to the "
-                                    "timeline first."));
+                                 tr("Audio goes under a video: add a clip to the timeline "
+                                    "first."));
         return;
     }
     if (!videos.isEmpty())
@@ -2892,7 +2932,8 @@ void MainWindow::exportFlatVideo()
     for (int i = 0; i < nclips; ++i)
         req.clips.push_back(exportJobFor(m_timeline->clipAt(i)));
     req.mix = renderjobs::mixClips(*m_timeline); // the audio tracks
-    req.insets = renderjobs::insetJobs(*m_timeline); // the overlay tracks
+    // The overlay tracks, over the flat main clips.
+    req.insets = renderjobs::insetJobs(*m_timeline, req.outWidth, req.outHeight);
 
     // The export opens its own NativeStitchSource (on the shared decode
     // device) -- pause playback so the two stitch pipelines don't contend
@@ -2979,7 +3020,9 @@ void MainWindow::showPictureMenu(const QPoint &globalPos, const std::array<float
 void MainWindow::syncPrivacyPanel()
 {
     const ClipItem *c = m_timeline->clipById(editClipId());
-    if (!c) {
+    m_privacyPanel->setNotApplicable(
+        c && c->flat ? tr("The number-plate blur works on 360° clips only for now.") : QString());
+    if (!c || c->flat) {
         m_privacyPanel->setNoClip();
         return;
     }
@@ -3018,7 +3061,8 @@ void MainWindow::setPlateSelecting(bool on)
 {
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
     const ClipItem *c = m_timeline->clipById(m_clipId);
-    if (on && (!c || c->mediaMissing || plateJobRunning() || trackingRunning() || m_exports->exporting()))
+    if (on && (!c || c->flat || c->mediaMissing || plateJobRunning() || trackingRunning() ||
+               m_exports->exporting()))
         on = false;
     if (on && m_trackSelecting)
         setTrackSelecting(false);
@@ -3249,8 +3293,9 @@ void MainWindow::setTrackSelecting(bool on)
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
     if (on && m_plateSelecting)
         setPlateSelecting(false);
-    if (on && (!m_clipId || trackingRunning() || m_exports->exporting()))
-        on = false;
+    const ClipItem *playing = m_timeline->clipById(m_clipId);
+    if (on && (!playing || playing->flat || trackingRunning() || m_exports->exporting()))
+        on = false; // a flat clip isn't reframed: nothing to track with
     m_trackSelecting = on;
     m_reframePanel->setTrackSelecting(on);
     m_viewport->SetBoxSelectMode(on);
@@ -3423,6 +3468,6 @@ void MainWindow::takeScreenshot()
 
     m_editToolbar->showNotice(tr("Saving screenshot…"), true);
     // The overlays showing at the playhead, composited like the export does.
-    still.insets = renderjobs::insetJobs(*m_timeline);
+    still.insets = renderjobs::insetJobs(*m_timeline, still.width, still.height);
     m_exports->startStill(std::move(still));
 }

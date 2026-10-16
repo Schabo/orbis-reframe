@@ -1283,6 +1283,87 @@ void testProjectSummary()
 
 } // namespace
 
+// A flat video on the main track (ClipItem::flat): its fit and edits round
+// trip, the 360 fields aren't written, and the file is version 11 only while
+// it has one -- a project without stays readable by the builds before.
+void testFlatClipJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString insv = tmp.path() + "/ride.insv";
+    const QString phone = tmp.path() + "/phone.mp4";
+    writeFile(insv);
+    writeFile(phone);
+    const QString file = tmp.path() + "/mixed.orp";
+    auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+    auto versionOf = [&document] { return document().value("version").toInt(); };
+    auto clipJson = [&document](int i) {
+        return document().value("timeline").toObject().value("clips").toArray().at(i).toObject();
+    };
+
+    QString err;
+    {
+        Project p;
+        const int a = p.timeline()->appendClip(insv, 10000, 30.0, 7680, 3840, 2);
+        p.timeline()->setClipStabilization(a, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        const int b = p.timeline()->appendClip(phone, 8000, 60.0, 1080, 1920, 1, true);
+        const ClipItem *flat = p.timeline()->clipById(b);
+        CHECK(flat && flat->flat && flat->fit == ClipItem::Fit::Bars);
+        // a flat clip doesn't take its neighbour's stabilization
+        CHECK(flat && flat->stabilization.mode == insv::StabMode::Off);
+        p.timeline()->setClipFit(b, ClipItem::Fit::Fill);
+        p.timeline()->setClipTrimIn(b, 1000);
+        p.timeline()->setClipSpeed(b, 2.0);
+        ColorGrade g;
+        g.saturation = 40.0f;
+        p.timeline()->setClipColor(b, g);
+        // the 360-only edits don't take on a flat clip
+        p.timeline()->upsertClipReframeKey(b, 2000, {0.5f, 0.0f, 0.0f, 1.0f});
+        p.timeline()->setClipBlurPlates(b, true);
+        p.timeline()->setClipStabilization(b, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        CHECK(flat->reframe.isEmpty() && !flat->blurPlates &&
+              flat->stabilization.mode == insv::StabMode::Off);
+        p.timeline()->setClipFit(a, ClipItem::Fit::Fill); // no-op on a 360 clip
+        CHECK(p.timeline()->clipById(a)->fit == ClipItem::Fit::Bars);
+        // a 360 clip after a flat one takes the 360 clip's stabilization
+        const int c = p.timeline()->appendClip(insv, 10000, 30.0, 7680, 3840, 0);
+        CHECK(p.timeline()->clipById(c)->stabilization.mode == insv::StabMode::LeanFollow);
+        CHECK(p.save(file, &err));
+        CHECK(versionOf() == 11);
+        const QJsonObject jb = clipJson(1);
+        CHECK(jb.value("flat").toBool() && jb.value("fit").toString() == "fill");
+        CHECK(!jb.contains("reframe") && !jb.contains("stabilization"));
+        // the pool lists it as a video, not a 360 clip
+        const MediaItem *m = p.mediaPool()->item(phone);
+        CHECK(m && m->kind == MediaItem::Kind::Video);
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        CHECK(p.timeline()->count() == 3);
+        const ClipItem &a = p.timeline()->clipAt(0);
+        const ClipItem &b = p.timeline()->clipAt(1);
+        CHECK(!a.flat && b.flat && b.fit == ClipItem::Fit::Fill);
+        CHECK(b.trimInMs == 1000 && b.speed == 2.0 && b.color.saturation == 40.0f);
+        CHECK(b.sourceWidth == 1080 && b.sourceHeight == 1920 && b.fps == 60.0);
+        // its sound is still linked to it, on the camera mic's track
+        const Track *cam =
+            p.timeline()->trackById(p.timeline()->streamTrackId(Track::Role::CameraMic));
+        bool linked = false;
+        for (const TrackClip &tc : cam ? cam->clips : QList<TrackClip>())
+            linked = linked || tc.linkedClipId == b.id;
+        CHECK(linked);
+        // without the flat clip it's version 10 again
+        p.timeline()->removeClip(b.id);
+        CHECK(p.save(file, &err));
+        CHECK(versionOf() == 10);
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -1298,5 +1379,6 @@ int main(int argc, char **argv)
     testMeasurementsWritten();
     testProjectLibrary();
     testProjectSummary();
+    testFlatClipJson();
     return modeltest::finish("project_test");
 }

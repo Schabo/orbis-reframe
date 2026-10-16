@@ -74,6 +74,7 @@ struct ProjectSummary {
     qint64 durationMs = 0;   // the main track's length
     int missingMedia = 0;    // source files (any track) not found
     QString firstClip;       // the main track's first source, for the thumbnail
+    bool firstClipFlat = false; // ... a flat video (ClipItem::flat), not an .insv
 
     // Reads `path`. Safe to call from a worker thread.
     static ProjectSummary read(const QString &path);

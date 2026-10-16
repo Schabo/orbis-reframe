@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 // CPU equirectangular -> rectilinear ("flat") reprojection for the export
@@ -38,5 +39,10 @@ struct ReframeView {
 void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH,
                        uint8_t* outRgba, int outW, int outH,
                        const ReframeView& view);
+
+// Apply a colour grade ({exposureEv, contrast%, saturation%, temperature%},
+// as ReframeView::colorGrade) to `pixels` interleaved 8-bit RGBA pixels in
+// place -- the same formula RenderRectilinear grades with. All 0 = no-op.
+void GradeRgba(uint8_t* rgba, size_t pixels, const float grade[4]);
 
 } // namespace exportpipe

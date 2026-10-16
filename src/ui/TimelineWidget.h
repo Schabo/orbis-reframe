@@ -377,6 +377,7 @@ private:
     int m_dropTrack = -1; // track index, -1 = first with room / new
     bool m_dropVideo = false; // the drag carries video files (else audio)
     bool m_dropClip = false;  // ... .insv clips, for the main track
+    bool m_dropMain = false;  // the video files go on the main track (pointer over it, or no clips yet)
     int m_dropIndex = 0;      // the main-track position they'd go in at
     qint64 m_dropMs = 0;
 

@@ -13,6 +13,8 @@ constexpr size_t kAhead = 4;
 // Decode pictures no bigger than this on the long side: an inset rarely
 // covers more of the view, and it keeps the per-frame upload small.
 constexpr int kMaxSide = 1280;
+// A flat main-track clip fills the whole view: as large as a full-HD view.
+constexpr int kFullFrameMaxSide = 1920;
 // Start decoding a clip this long before it appears (the first frame then
 // shows on time), and let go of its decoder this long after.
 constexpr qint64 kPrerollMs = 1500;
@@ -145,6 +147,7 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 ms, bo
             d.look.opacity *= inset::fadeGain(local, c.spanMs(), c.fadeInMs, c.fadeOutMs);
             d.frame = c.frame;
             d.aspect = c.aspect;
+            d.colorGrade = c.colorGrade;
             out.push_back(std::move(d));
         }
     }
@@ -185,8 +188,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
             return true;
         }
         const auto &info = s.reader->info();
-        const double scale =
-            std::min(1.0, double(kMaxSide) / std::max(info.width, info.height));
+        const double scale = std::min(1.0, double(clip.fullFrame ? kFullFrameMaxSide : kMaxSide) /
+                                               std::max(info.width, info.height));
         s.reader->setOutputSize(std::max(2, int(std::lround(info.width * scale)) & ~1),
                                 std::max(2, int(std::lround(info.height * scale)) & ~1));
         std::lock_guard<std::mutex> lk(m_mx);

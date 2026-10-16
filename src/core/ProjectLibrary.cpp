@@ -207,8 +207,10 @@ ProjectSummary ProjectSummary::read(const QString &path)
     const Timeline *t = project.timeline();
     s.clipCount = t->count();
     s.durationMs = t->totalDurationMs();
-    if (t->count() > 0)
+    if (t->count() > 0) {
         s.firstClip = t->clipAt(0).sourcePath;
+        s.firstClipFlat = t->clipAt(0).flat;
+    }
     QSet<QString> missing;
     for (int i = 0; i < t->count(); ++i)
         if (t->clipAt(i).mediaMissing)

@@ -1,7 +1,9 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
 
 // A video-track clip's picture-in-picture inset, drawn over the view
-// with alpha blending. The fullscreen triangle covers the output rect; this
+// with alpha blending -- or a flat main-track clip, as a full-frame one with
+// its colour grade. The fullscreen triangle covers the output rect; this
 // shader shades the pixels the inset covers and discards the rest.
 //
 // Coverage (rounded corners, antialiased edge, border) is inset::shade() in
@@ -19,7 +21,10 @@ layout(push_constant) uniform PushConstants {
     float radius;     // corner radius, px
     float border;     // border width, px
     vec4 borderColor; // rgb; a = opacity
+    vec4 grade;       // colour grade (color_grade.glsl), all 0 = none
 } pc;
+
+#include "color_grade.glsl"
 
 void main() {
     vec2 p = gl_FragCoord.xy - pc.origin; // pixel centre, output-rect px
@@ -30,6 +35,6 @@ void main() {
     if (alpha <= 0.0)
         discard;
     float border = pc.border > 0.0 ? clamp(d + pc.border + 0.5, 0.0, 1.0) : 0.0;
-    vec3 c = texture(picture, (p - pc.rect.xy) / pc.rect.zw).rgb;
+    vec3 c = gradeColor(texture(picture, (p - pc.rect.xy) / pc.rect.zw).rgb, pc.grade, 1.0);
     outColor = vec4(mix(c, pc.borderColor.rgb, border), alpha);
 }

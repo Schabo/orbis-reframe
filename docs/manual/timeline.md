@@ -10,7 +10,7 @@ overlays. For the names of the window's parts, see
 
 1. The **ruler**, with the time in minutes and seconds.
 2. The **playhead**: the frame shown in the viewport.
-3. The **video track**, with your `.insv` clips. The white diamonds along
+3. The **video track**, with your clips. The white diamonds along
    the bottom edge are reframe keyframes; a hollow diamond (◇) before a
    clip's name means it has none, and exports looking straight ahead.
 4. The **Camera mic** track: the clips' sound, linked to them (the chain
@@ -63,8 +63,9 @@ timeline taller, drag the line between it and the viewport up.
 
 ## The video track
 
-The video track holds your `.insv` clips, one after another, with a hard cut
-from each clip to the next. There are never gaps between them: when you
+The video track holds your clips, one after another, with a hard cut
+from each clip to the next: 360° `.insv` clips, and flat videos from a
+phone or an action camera if you like ([below](#flat-videos-on-the-video-track)). There are never gaps between them: when you
 shorten or remove a clip, the clips after it move up.
 
 <img src="images/timeline-clip-menu.jpg" width="450" alt="The menu you get by right-clicking a clip on the video track, with the Speed submenu open">
@@ -76,7 +77,8 @@ another clip before or after it, copy or paste its colour grade
 
 ### Adding clips
 
-- **Media ▸ Add clip to timeline…** (`Ctrl+Shift+A`) adds a clip at the end.
+- **Media ▸ Add clip to timeline…** (`Ctrl+Shift+A`) adds a clip at the end:
+  an `.insv` file or a flat video.
 - Right-click a clip and choose **Insert clip before…** or **Insert clip
   after…** to put the new clip next to it.
 - Right-click an empty part of the video track (or of an empty timeline)
@@ -88,9 +90,31 @@ another clip before or after it, copy or paste its colour grade
   the viewport). They go in at the cut nearest to where you drop them, in
   the order the file manager gives them; on an empty timeline the first one
   starts the video track. Drop the `.insv` master, not the `.lrv` proxy.
+- Flat videos dropped on the video track (or on an empty timeline) go in
+  the same way. Dropped anywhere else, they become overlays
+  ([below](#audio-and-overlay-tracks)).
 
 You can add the same `.insv` file more than once, for example to use two
 different parts of a long recording.
+
+### Flat videos on the video track
+
+A flat video (`.mp4`, `.mov`, `.mkv`, `.m4v`, `.webm` or `.avi`, for example
+from a phone or an action camera) can be a clip on the video track like an
+`.insv`: a whole project of phone videos, or a ride that cuts from the 360°
+camera to a phone and back. Its sound goes on the *Camera mic* track,
+linked to it.
+
+A flat video is shown as it is. If its shape differs from your video's (a
+phone video filmed upright in a 16:9 project), it's shown whole with black
+bars at the sides. To fill the frame instead, cropping the edges that don't
+fit, select the clip and set **Fit** in the **Reframe** section to **Fill
+the frame, edges cropped** ([Reframing](reframing.md#flat-videos)).
+
+Trimming, splitting, speed, colour, overlays over it, its sound and
+the export work as for any clip. The parts that need a 360° clip don't
+apply, and their sections say so: reframing and Track subject,
+stabilization, the number-plate blur, and the stitching measurements.
 
 ### Selecting a clip
 
@@ -205,7 +229,8 @@ There are four ways:
   overlay…** (`Ctrl+Shift+V`). The file goes in at the playhead.
 - Drag files from the **Media** tab onto the timeline, the same way as from
   a file manager (below), or double-click one there to put it in at the
-  playhead.
+  playhead. (On an empty timeline, a flat video double-clicked there
+  becomes the first clip on the video track instead.)
 - Right-click on the timeline where the clip should start and choose **Add
   audio file here…** or **Add video overlay here…**.
 - Drag audio files or flat videos from your file manager onto the timeline
@@ -215,7 +240,8 @@ There are four ways:
   not on *Camera mic*, *External mic* or an overlay's audio track: dropped
   there, they go on the first audio track with room. Dropped together with `.insv` clips, they
   start where the clips go in. Without a clip on the video track, only
-  `.insv` clips can be dropped.
+  clips can be dropped: `.insv` files, and flat videos, which then start
+  the video track.
 
 If there's no track of the right kind with room, orbis-reframe makes a new
 one. To make an empty track yourself, choose **Media ▸ Add audio track** or

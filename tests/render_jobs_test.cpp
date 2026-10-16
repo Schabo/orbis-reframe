@@ -76,8 +76,8 @@ void testOverlays()
     keyed.centerX = 0.25f;
     t.upsertTrackClipInsetKey(c2, 1000, keyed);
 
-    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t);
-    const std::vector<exportpipe::InsetClipJob> jobs = renderjobs::insetJobs(t);
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080);
+    const std::vector<exportpipe::InsetClipJob> jobs = renderjobs::insetJobs(t, 1920, 1080);
     CHECK(feed.size() == 2 && jobs.size() == 2);
     if (feed.size() != 2 || jobs.size() != 2)
         return;

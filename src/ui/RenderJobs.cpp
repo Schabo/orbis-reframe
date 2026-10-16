@@ -46,9 +46,26 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline)
     return mix;
 }
 
-std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline)
+std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH)
 {
     std::vector<InsetFeed::Clip> clips;
+    for (int i = 0; i < timeline.count(); ++i) {
+        const ClipItem &c = timeline.clipAt(i);
+        if (!c.flat || c.mediaMissing)
+            continue;
+        InsetFeed::Clip f;
+        f.id = c.id;
+        f.path = c.sourcePath;
+        f.startMs = timeline.clipToTimeline(i, 0);
+        f.trimInMs = c.trimInMs;
+        f.trimOutMs = c.trimOutMs;
+        f.speed = c.speed;
+        f.aspect = c.sourceHeight > 0 ? double(c.sourceWidth) / c.sourceHeight : 16.0 / 9.0;
+        f.look = inset::fitted(f.aspect, outW, outH, c.fit == ClipItem::Fit::Fill);
+        f.fullFrame = true;
+        f.colorGrade = c.color.packed();
+        clips.push_back(std::move(f));
+    }
     // Bottom-most first: the lowest overlay row draws first, the top row last.
     for (int i = timeline.trackCount() - 1; i >= 0; --i) {
         const Track &t = timeline.trackAt(i);
@@ -76,9 +93,24 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline)
     return clips;
 }
 
-std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline)
+std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH)
 {
     std::vector<exportpipe::InsetClipJob> jobs;
+    // The flat main-track clips first, under the overlays -- as insetFeed.
+    for (const InsetFeed::Clip &f : insetFeed(timeline, outW, outH)) {
+        if (!f.fullFrame)
+            break; // the overlays: below
+        exportpipe::InsetClipJob j;
+        j.path = f.path.toStdString();
+        j.startMs = f.startMs;
+        j.trimInMs = f.trimInMs;
+        j.trimOutMs = f.trimOutMs;
+        j.speed = f.speed;
+        j.aspect = f.aspect;
+        j.colorGrade = f.colorGrade;
+        j.lookAt = [look = f.look](int64_t) { return look; };
+        jobs.push_back(std::move(j));
+    }
     for (int i = timeline.trackCount() - 1; i >= 0; --i) {
         const Track &t = timeline.trackAt(i);
         if (t.kind != Track::Kind::Video || t.muted)
@@ -114,6 +146,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     // viewport's pc.stab -- the native stitch itself is never stabilized.
     const bool nativeStab = c.stabilization.mode != insv::StabMode::Off;
     ReframeExportController::ClipJob job;
+    job.flat = c.flat;
     job.clipPath = c.sourcePath;
     job.trimInMs = c.trimInMs;
     job.trimOutMs = c.trimOutMs;

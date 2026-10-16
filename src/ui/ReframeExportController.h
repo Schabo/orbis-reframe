@@ -57,6 +57,10 @@ public:
 
     // One timeline clip's contribution to the export.
     struct ClipJob {
+        // A flat video (ClipItem::flat): nothing is stitched; its span is
+        // black frames that the insets (Request::insets, which carry the
+        // clip itself as a full-frame layer) are drawn over.
+        bool flat = false;
         QString clipPath;
         qint64 trimInMs = 0;
         qint64 trimOutMs = 0;

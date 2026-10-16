@@ -15,6 +15,7 @@
 
 #include "ClipBackend.h"
 #include "MainWindow.h"
+#include "SettingsPanel.h"
 #include "MediaPoolPanel.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
@@ -29,6 +30,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QDialog>
 #include <QDir>
 #include <QElapsedTimer>
@@ -586,6 +588,49 @@ void testOverlay(const Ctx &c)
     key(c, Qt::Key_Escape);
 }
 
+// A flat video dropped on the main track: a main clip of its own, drawn as
+// a full-frame layer; the 360-only panels say they don't apply, and the
+// Reframe section offers Fit instead.
+void testFlatMainClip(const Ctx &c)
+{
+    const int before = c.timeline->count();
+    emit c.timelineWidget->clipFilesDropped({c.mp4}, before);
+    CHECK(c.timeline->count() == before + 1);
+    if (c.timeline->count() != before + 1)
+        return;
+    const ClipItem &flat = c.timeline->clipAt(before);
+    const int id = flat.id;
+    CHECK(flat.flat && flat.sourceWidth == 320 && flat.sourceHeight == 180);
+    CHECK(c.project->mediaPool()->item(c.mp4) &&
+          c.project->mediaPool()->item(c.mp4)->kind == MediaItem::Kind::Video);
+    const qint64 start = c.timeline->clipToTimeline(before, 0);
+    CHECK(seekTo(c, start + 500));
+    CHECK(waitFor([&] {
+        for (const auto &d : c.w->viewport()->Insets())
+            if (d.clipId == id && d.rgba && d.look.width == 1.0f)
+                return true;
+        return false;
+    }));
+    emit c.timelineWidget->clipSelected(id);
+    auto *stab = find<SettingsPanel>(c.w, "stabilizationPanel");
+    auto *privacy = find<SettingsPanel>(c.w, "privacyPanel");
+    CHECK(stab && !stab->isApplicable() && privacy && !privacy->isApplicable());
+    auto *fit = find<QComboBox>(c.w, "reframeFitCombo");
+    CHECK(fit && fit->isVisibleTo(c.w) && fit->currentIndex() == 0);
+    if (fit)
+        emit fit->activated(1);
+    CHECK(c.timeline->clipById(id)->fit == ClipItem::Fit::Fill);
+#ifdef ORBIS_REFRAME_HAVE_TRACKING
+    key(c, Qt::Key_T); // nothing to track on a flat clip
+    CHECK(!c.w->viewport()->BoxSelectMode());
+#endif
+    // Back on a 360 clip, everything applies again.
+    emit c.timelineWidget->clipSelected(c.timeline->clipAt(0).id);
+    CHECK(stab && stab->isApplicable() && fit && !fit->isVisibleTo(c.w));
+    c.timeline->removeClip(id);
+    settle();
+}
+
 // A second overlay track: the selected overlay's Bring forward puts its
 // track above the other (the first overlay track draws on top).
 void testOverlayLayers(const Ctx &c)
@@ -929,6 +974,7 @@ int main(int argc, char **argv)
             testAudioTrack(c);
             testOverlay(c);
             testOverlayLayers(c);
+            testFlatMainClip(c);
             testFullScreen(c);
             testTrackSubjectMode(c);
             testViewMenu(c);

@@ -1,5 +1,6 @@
 #include "ReframePanel.h"
 
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -70,9 +71,17 @@ ReframePanel::ReframePanel(QWidget *parent)
     m_unkeyed->hide();
     form()->addRow(m_unkeyed);
 
-    setHint(tr("With Arm reframe authoring on in the edit toolbar, each value you enter sets "
-               "a keyframe at the playhead."));
+    m_fit = new QComboBox(this);
+    m_fit->setObjectName(QStringLiteral("reframeFitCombo"));
+    m_fit->addItem(tr("Whole picture, with bars"));
+    m_fit->addItem(tr("Fill the frame, edges cropped"));
+    m_fit->setToolTip(tr("How this flat video fills the output frame when its shape "
+                         "differs from it, e.g. a portrait phone video in a 16:9 export."));
+    form()->addRow(tr("Fit"), m_fit);
+    form()->setRowVisible(m_fit, false);
+    connect(m_fit, &QComboBox::activated, this, [this](int i) { emit fitEdited(i == 1); });
 
+    setFlatClip(false);
     setPose(ReframePose{});
 
     for (QDoubleSpinBox *b : {m_yaw, m_pitch, m_roll, m_fov})
@@ -109,7 +118,23 @@ void ReframePanel::setPose(const ReframePose &pose)
 
 void ReframePanel::setClipUnkeyed(bool unkeyed)
 {
-    m_unkeyed->setVisible(unkeyed);
+    m_unkeyed->setVisible(unkeyed && !m_flat);
+}
+
+void ReframePanel::setFlatClip(bool flat, bool fill)
+{
+    m_flat = flat;
+    for (QWidget *w : std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_track})
+        form()->setRowVisible(w, !flat);
+    form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
+    form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);
+    if (flat)
+        m_unkeyed->hide();
+    form()->setRowVisible(m_fit, flat);
+    m_fit->setCurrentIndex(fill ? 1 : 0);
+    setHint(flat ? tr("A flat video is shown as it is, not reframed.")
+                 : tr("With Arm reframe authoring on in the edit toolbar, each value you enter "
+                      "sets a keyframe at the playhead."));
 }
 
 void ReframePanel::setTrackUnavailable(const QString &reason)

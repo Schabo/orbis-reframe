@@ -107,6 +107,9 @@ stabilization back to how it was.
 
 ## If the buttons are greyed out
 
+On a flat video on the video track, the tab says the blur works on 360°
+clips only for now, and has no buttons.
+
 A note in the tab says why: the plate model is missing from the
 installation (install orbis-reframe again). **Scan clip** and **Blur a
 plate…** are also greyed out while a scan is running or a plate is being

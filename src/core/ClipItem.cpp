@@ -59,6 +59,8 @@ bool ClipItem::clearTrim()
 
 bool ClipItem::upsertReframeKey(qint64 sourceMs, const ReframePose &pose)
 {
+    if (flat)
+        return false; // a flat clip isn't reframed
     // upsert always lands a key (insert, or overwrite an existing pose).
     reframe.upsert(sourceMs, pose, frameDurationMs());
     return true;
@@ -88,8 +90,18 @@ bool ClipItem::setSpeed(double s)
     return true;
 }
 
+bool ClipItem::setFit(Fit f)
+{
+    if (fit == f)
+        return false;
+    fit = f;
+    return true;
+}
+
 bool ClipItem::setBlurPlates(bool on)
 {
+    if (flat)
+        return false; // the blur works on the sphere
     if (blurPlates == on)
         return false;
     blurPlates = on;
@@ -98,6 +110,8 @@ bool ClipItem::setBlurPlates(bool on)
 
 bool ClipItem::setBlurAdditions(const std::vector<privacy::BlurAddition> &additions)
 {
+    if (flat)
+        return false;
     if (blurAdditions == additions)
         return false;
     blurAdditions = additions;
@@ -106,6 +120,8 @@ bool ClipItem::setBlurAdditions(const std::vector<privacy::BlurAddition> &additi
 
 bool ClipItem::setBlurRemovals(const std::vector<privacy::BlurRemoval> &removals)
 {
+    if (flat)
+        return false;
     if (blurRemovals == removals)
         return false;
     blurRemovals = removals;
@@ -124,6 +140,8 @@ bool ClipItem::setColorGrade(const ColorGrade &grade)
 
 bool ClipItem::setStabilization(const insv::StabConfig &config)
 {
+    if (flat)
+        return false; // no gyro data
     if (config == stabilization)
         return false;
     stabilization = config;

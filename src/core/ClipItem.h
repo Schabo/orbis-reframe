@@ -47,9 +47,9 @@ struct ColorGrade {
     void clamp();
 };
 
-// One clip on the timeline: a reference to a source .insv plus the edits
-// applied to it -- an in/out trim range and an authored reframe (pan / tilt /
-// zoom) path.
+// One clip on the timeline: a reference to a source .insv -- or a flat video
+// (`flat`) -- plus the edits applied to it: an in/out trim range and, for a
+// 360 clip, an authored reframe (pan / tilt / zoom) path.
 //
 // Plain value type. Timeline owns a QList<ClipItem>, is the only thing that
 // mutates one, and turns every successful change into a signal -- so the
@@ -73,6 +73,17 @@ struct ClipItem {
     double fps = 0.0; // > 0 once added (probed) or loaded
     int sourceWidth = 0;
     int sourceHeight = 0;
+    // A flat video (a phone's or action cam's mp4 / mov) rather than an
+    // .insv: drawn into the output frame as it is (`fit`), not stitched or
+    // reframed. Reframe, stabilization, privacy blur and the sync / seam
+    // measurements don't apply to it: their setters refuse, so they stay at
+    // their defaults.
+    bool flat = false;
+    // How a flat clip whose shape differs from the output fills it: the
+    // whole picture with black bars, or covering the frame with the
+    // overhang cropped. Unused on a 360 clip.
+    enum class Fit { Bars, Fill };
+    Fit fit = Fit::Bars;
     // Set on project load (step 4) when sourcePath can't be found. The clip
     // stays on the timeline so the edit isn't lost.
     bool mediaMissing = false;
@@ -166,6 +177,7 @@ struct ClipItem {
     bool setBlurRemovals(const std::vector<privacy::BlurRemoval> &removals);
     bool setBlurAdditions(const std::vector<privacy::BlurAddition> &additions);
     bool setSpeed(double s); // clamped to [kMinSpeed, kMaxSpeed]
+    bool setFit(Fit f);
 
 private:
     // Clamp [inMs, outMs] into [0, sourceDuration] with the min-gap rule (the

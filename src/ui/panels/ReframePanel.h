@@ -4,6 +4,7 @@
 
 #include "../../core/ReframeTrack.h" // ReframePose
 
+class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
@@ -44,8 +45,14 @@ public:
     void setTrackStatus(const QString &status);
     QWidget *trackStopButton() const;
 
+    // A flat video (ClipItem::flat) isn't reframed: the view fields and
+    // Track subject give way to how it fills the output frame -- the whole
+    // picture with bars, or filling the frame (`fill`).
+    void setFlatClip(bool flat, bool fill = false);
 signals:
     void poseEdited(const ReframePose &pose);
+    // The Fit choice of a flat clip changed.
+    void fitEdited(bool fill);
     // The button was clicked: start drawing a box around the subject (or,
     // while selecting, stop).
     void trackSubjectToggled(bool start);
@@ -64,6 +71,8 @@ private:
     QString m_trackUnavailableReason;
     QLabel *m_trackStatus = nullptr;
     QLabel *m_unkeyed = nullptr;
+    QComboBox *m_fit = nullptr;
+    bool m_flat = false;
     bool m_trackRunning = false;
     bool m_updating = false; // true while setPose() writes the widgets
 };

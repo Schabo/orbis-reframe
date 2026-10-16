@@ -1,4 +1,5 @@
 #include "PlaybackController.h"
+#include "FlatClipSource.h"
 #include "PlaybackTuning.h"
 
 #include "../render/EquirectViewportWindow.h"
@@ -80,21 +81,24 @@ void PlaybackController::touchSourceLru(const QString &path)
     }
 }
 
-std::unique_ptr<stitch::IStitchSource> PlaybackController::makeSource() const
+std::unique_ptr<stitch::IStitchSource> PlaybackController::makeSource(const Segment &seg) const
 {
+    if (seg.flat)
+        return std::make_unique<FlatClipSource>(seg.fps, seg.sourceDurationMs);
     return m_makeSource ? m_makeSource() : stitch::MakeStitchSource();
 }
 
-std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const QString &path,
+std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const Segment &seg,
                                                                          QString *err)
 {
+    const QString &path = seg.sourcePath;
     auto it = m_srcCache.find(path);
     if (it != m_srcCache.end()) {
         touchSourceLru(path);
         return it->second;
     }
 
-    std::shared_ptr<stitch::IStitchSource> src = makeSource();
+    std::shared_ptr<stitch::IStitchSource> src = makeSource(seg);
     if (!src->Open(path.toStdString(), m_decPreviewConfig)) {
         if (err)
             *err = QString::fromStdString(src->GetLastError());
@@ -239,7 +243,7 @@ bool PlaybackController::switchToSegment(int index)
     }
 
     QString err;
-    auto src = acquireSource(path, &err);
+    auto src = acquireSource(m_decPlaced[index].seg, &err);
     if (!src) {
         emit openFailed(err.isEmpty() ? QStringLiteral("could not open %1").arg(path) : err);
         return false;
@@ -290,10 +294,10 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
     const bool viewportLens = m_viewport && m_viewport->LensFramesSupported();
     Prefetch *job = p.get();
     p->done = std::async(std::launch::async,
-                         [this, job, viewportLens, clipId, handOver, inMs = np.seg.inMs,
-                          config = m_decPreviewConfig] {
+                         [this, job, viewportLens, clipId, handOver, seg = np.seg,
+                          inMs = np.seg.inMs, config = m_decPreviewConfig] {
                              if (!job->src) {
-                                 auto src = makeSource();
+                                 auto src = makeSource(seg);
                                  if (!src->Open(job->path.toStdString(), config))
                                      return; // the boundary opens it again and reports why
                                  applySourceSettings(*src, job->path, clipId, handOver);

@@ -81,7 +81,8 @@ public:
     // The video tracks' picture-in-picture insets to draw over the view,
     // bottom-most first (at most kMaxInsets). Thread-safe; replaces the
     // previous list. A picture is uploaded only when its frameKey changes.
-    static constexpr int kMaxInsets = 4;
+    // Four overlays plus a flat main-track clip under them.
+    static constexpr int kMaxInsets = 5;
     struct InsetDraw {
         int clipId = 0;
         uint64_t frameKey = 0; // new for every decoded picture
@@ -91,6 +92,7 @@ public:
         inset::Look look; // fades applied to the opacity
         inset::Frame frame;
         double aspect = 16.0 / 9.0; // the video's display aspect (sizes the rect)
+        std::array<float, 4> colorGrade{}; // ColorGrade::packed(); a flat main clip's
     };
     void SetInsets(std::vector<InsetDraw> insets);
     // The list to draw, with an in-progress drag applied. Renderer thread.

@@ -20,6 +20,8 @@ choosing **Add video overlay here…**, or by dragging video files from the
 **Media** tab or your file manager onto the timeline. Overlays take `.mp4`, `.mov`, `.mkv`,
 `.m4v`, `.webm` and `.avi` files. More about overlay tracks (moving,
 trimming, splitting, hiding a track) is in [The timeline](timeline.md).
+To use a flat video as the main picture instead of a small frame, put it on
+the video track ([Flat videos on the video track](timeline.md#flat-videos-on-the-video-track)).
 
 A new overlay starts in the lower right corner, at 30 % of the picture's
 width.

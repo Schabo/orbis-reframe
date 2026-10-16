@@ -613,6 +613,7 @@ void EquirectViewportRenderer::startNextFrame()
         ipc.borderColor[1] = ((d.frame.borderRgb >> 8) & 0xff) / 255.0f;
         ipc.borderColor[2] = (d.frame.borderRgb & 0xff) / 255.0f;
         ipc.borderColor[3] = d.look.opacity;
+        std::copy(d.colorGrade.begin(), d.colorGrade.end(), ipc.grade);
         vkCmdPushConstants(commandBuffer, m_insetPipelineLayout,
                                        VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ipc), &ipc);
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);

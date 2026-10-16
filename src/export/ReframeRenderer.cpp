@@ -176,4 +176,17 @@ void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba
         t.join();
 }
 
+void GradeRgba(uint8_t* rgba, size_t pixels, const float grade[4])
+{
+    if (grade[0] == 0.0f && grade[1] == 0.0f && grade[2] == 0.0f && grade[3] == 0.0f)
+        return;
+    for (size_t i = 0; i < pixels; ++i) {
+        uint8_t* p = rgba + i * 4;
+        float c[4] = {float(p[0]), float(p[1]), float(p[2]), float(p[3])};
+        gradeRgb(c, grade);
+        for (int k = 0; k < 3; ++k)
+            p[k] = static_cast<uint8_t>(std::lround(c[k]));
+    }
+}
+
 } // namespace exportpipe

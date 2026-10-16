@@ -1,6 +1,7 @@
 #include "InsetCompositor.h"
 
 #include "FlatVideoReader.h"
+#include "ReframeRenderer.h" // GradeRgba
 
 #include <algorithm>
 #include <cmath>
@@ -51,6 +52,10 @@ void sampleBilinear(const uint8_t *rgba, int w, int h, double fx, double fy, flo
 struct InsetCompositor::State {
     std::unique_ptr<FlatVideoReader> reader;
     bool failed = false;
+    // The decoded frame graded (InsetClipJob::colorGrade), when it has one.
+    std::vector<uint8_t> graded;
+    const VideoFrame *gradedFrom = nullptr;
+    int64_t gradedPts = -1;
 };
 
 InsetCompositor::InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH)
@@ -153,7 +158,17 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, Layer &layer, std::s
             err = j.path + ": " + s.reader->lastError();
         return false;
     }
-    layer = {f->rgba.data(), f->width, f->height, rect, look.opacity, j.frame.borderRgb};
+    const uint8_t *rgba = f->rgba.data();
+    if (j.colorGrade != std::array<float, 4>{}) {
+        if (s.gradedFrom != f || s.gradedPts != f->ptsMs || s.graded.size() != f->rgba.size()) {
+            s.graded = f->rgba;
+            GradeRgba(s.graded.data(), size_t(f->width) * f->height, j.colorGrade.data());
+            s.gradedFrom = f;
+            s.gradedPts = f->ptsMs;
+        }
+        rgba = s.graded.data();
+    }
+    layer = {rgba, f->width, f->height, rect, look.opacity, j.frame.borderRgb};
     return true;
 }
 

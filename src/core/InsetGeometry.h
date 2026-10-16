@@ -100,6 +100,23 @@ inline Rect place(const Look &look, const Frame &frame, double aspect, int outW,
     return r;
 }
 
+// A flat main-track clip (ClipItem::flat) as a full-frame layer: centred,
+// the whole picture inside the frame (`fill` false: bars on two sides), or
+// covering it (`fill` true: the overhang cropped). Not clamped -- a fill's
+// width can exceed the frame's.
+inline Look fitted(double aspect, int outW, int outH, bool fill)
+{
+    Look l;
+    l.centerX = 0.5f;
+    l.centerY = 0.5f;
+    l.width = 1.0f;
+    if (outW > 0 && outH > 0 && aspect > 0.0) {
+        const double rel = aspect / (double(outW) / outH); // picture vs frame
+        l.width = static_cast<float>(fill ? std::max(1.0, rel) : std::min(1.0, rel));
+    }
+    return l;
+}
+
 // How the output pixel whose centre is at (px, py) is covered: `alpha` is the
 // inset's coverage there (antialiased over one pixel at the edge and the
 // rounded corners), `border` how much of it is the border colour rather than
