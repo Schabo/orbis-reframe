@@ -620,6 +620,10 @@ void testFlatMainClip(const Ctx &c)
     if (fit)
         emit fit->activated(1);
     CHECK(c.timeline->clipById(id)->fit == ClipItem::Fit::Fill);
+    // Locked in place: the viewport doesn't let it be picked up and dragged.
+    for (const auto &d : c.w->viewport()->Insets())
+        if (d.clipId == id)
+            CHECK(d.locked);
     // Its colour grade reaches the picture, paused (the frame doesn't change).
     ColorGrade grey;
     grey.saturation = -100.0f;

@@ -93,6 +93,7 @@ public:
         inset::Frame frame;
         double aspect = 16.0 / 9.0; // the video's display aspect (sizes the rect)
         std::array<float, 4> colorGrade{}; // ColorGrade::packed(); a flat main clip's
+        bool locked = false; // a flat main clip: fills its place, can't be picked or dragged
     };
     void SetInsets(std::vector<InsetDraw> insets);
     // The list to draw, with an in-progress drag applied. Renderer thread.

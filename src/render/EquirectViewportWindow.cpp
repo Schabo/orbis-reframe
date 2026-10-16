@@ -257,7 +257,7 @@ int EquirectViewportWindow::insetAt(QPointF pos) const
     const int n = std::min<int>(static_cast<int>(insets.size()), kMaxInsets);
     for (int i = n - 1; i >= 0; --i) { // topmost first
         const InsetDraw &d = insets[size_t(i)];
-        if (d.look.opacity <= 0.0f)
+        if (d.look.opacity <= 0.0f || d.locked)
             continue;
         const inset::Rect r =
             inset::place(d.look, d.frame, d.aspect, int(std::lround(out.width())),

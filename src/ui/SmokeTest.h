@@ -39,6 +39,10 @@ class QWidget;
 //                               NAME_luma_mean, NAME_luma_stddev (0-255)
 //   box X0 Y0 X1 Y1             a box drawn in the viewport, in fractions of
 //                               it (after "key T": Track subject)
+//   drag X0 Y0 X1 Y1            a left-button drag in the viewport from
+//                               (X0, Y0) to (X1, Y1), fractions of it, as
+//                               mouse events (looks around, or moves an
+//                               overlay under the pointer)
 //   wait-track NAME SECONDS     until a Track subject run ends; NAME_samples,
 //                               NAME_keys (the clip's reframe keys after),
 //                               NAME_error

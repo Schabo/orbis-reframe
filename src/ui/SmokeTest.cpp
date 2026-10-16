@@ -24,6 +24,7 @@
 #include <QImage>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QRegularExpression>
 #include <QShortcut>
 #include <QTimer>
@@ -260,6 +261,22 @@ void SmokeTest::tick()
         const double x0 = arg(1).toDouble(), y0 = arg(2).toDouble();
         const double x1 = arg(3).toDouble(), y1 = arg(4).toDouble();
         emit viewport->boxSelected(QRectF(QPointF(x0, y0), QPointF(x1, y1)));
+        next();
+    } else if (cmd == QLatin1String("drag")) {
+        if (!viewport) {
+            fail(QStringLiteral("no viewport"));
+            return;
+        }
+        const QPointF a(arg(1).toDouble() * viewport->width(), arg(2).toDouble() * viewport->height());
+        const QPointF b(arg(3).toDouble() * viewport->width(), arg(4).toDouble() * viewport->height());
+        auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButtons buttons) {
+            QMouseEvent e(type, at, viewport->mapToGlobal(at), Qt::LeftButton, buttons, Qt::NoModifier);
+            QCoreApplication::sendEvent(viewport, &e);
+        };
+        send(QEvent::MouseButtonPress, a, Qt::LeftButton);
+        for (int i = 1; i <= 10; ++i)
+            send(QEvent::MouseMove, a + (b - a) * (i / 10.0), Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, b, Qt::NoButton);
         next();
     } else if (cmd == QLatin1String("wait-track") || cmd == QLatin1String("wait-scan")) {
         const bool track = cmd == QLatin1String("wait-track");

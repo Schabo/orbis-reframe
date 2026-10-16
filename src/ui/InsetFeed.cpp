@@ -148,6 +148,7 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 ms, bo
             d.frame = c.frame;
             d.aspect = c.aspect;
             d.colorGrade = c.colorGrade;
+            d.locked = c.fullFrame;
             out.push_back(std::move(d));
         }
     }
