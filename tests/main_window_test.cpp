@@ -620,6 +620,16 @@ void testFlatMainClip(const Ctx &c)
     if (fit)
         emit fit->activated(1);
     CHECK(c.timeline->clipById(id)->fit == ClipItem::Fit::Fill);
+    // Its colour grade reaches the picture, paused (the frame doesn't change).
+    ColorGrade grey;
+    grey.saturation = -100.0f;
+    c.timeline->setClipColor(id, grey);
+    CHECK(waitFor([&] {
+        for (const auto &d : c.w->viewport()->Insets())
+            if (d.clipId == id && d.colorGrade == grey.packed())
+                return true;
+        return false;
+    }));
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
     key(c, Qt::Key_T); // nothing to track on a flat clip
     CHECK(!c.w->viewport()->BoxSelectMode());

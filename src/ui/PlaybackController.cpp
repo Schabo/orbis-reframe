@@ -328,7 +328,7 @@ void PlaybackController::presentInsets(qint64 timelineMs, bool playing)
     auto same = [](const EquirectViewportWindow::InsetDraw &a,
                    const EquirectViewportWindow::InsetDraw &b) {
         return a.clipId == b.clipId && a.frameKey == b.frameKey && a.look == b.look &&
-               a.frame == b.frame && a.aspect == b.aspect;
+               a.frame == b.frame && a.aspect == b.aspect && a.colorGrade == b.colorGrade;
     };
     if (draws.size() == m_lastInsets.size() &&
         std::equal(draws.begin(), draws.end(), m_lastInsets.begin(), same))
