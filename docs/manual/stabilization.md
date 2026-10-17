@@ -11,6 +11,10 @@ Stabilization is set in the **Stabilization** section (settings sidebar,
 playback, screenshots and the export alike. Nothing is re-rendered:
 changing it shows at once.
 
+> **Demo video:** [plate blur and stabilization on a motorcycle ride](https://youtu.be/BER8GgtOpjQ)
+> (YouTube, 3:41). Recorded in October 2026, so the window may look a little
+> different in your version.
+
 ![The same frame with stabilization off, Lean follow and Horizon lock](images/stabilization-modes.jpg)
 
 *The same frame in a corner, with the same reframe keyframe, in

@@ -6,6 +6,10 @@ can find the plates for you and cover them with a mosaic.
 
 orbis-reframe blurs **number plates** only. It doesn't blur faces.
 
+> **Demo video:** [plate blur and stabilization on a motorcycle ride](https://youtu.be/BER8GgtOpjQ)
+> (YouTube, 3:41). Recorded in October 2026, so the window may look a little
+> different in your version.
+
 ![Number plates found and blurred, with Show regions on](images/privacy.jpg)
 
 1. A plate the scan found, blurred, and outlined because **Show regions** is
