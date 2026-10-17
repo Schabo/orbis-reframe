@@ -87,6 +87,9 @@ public:
     //   sourceHeight, inset {centerX, centerY, width, opacity, cornerRadius,
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
     //   centerY, width, opacity, ease}].
+    //   A title (TrackClip::title): no source, sourceWidth or
+    //   sourceHeight; title {text, font, bold, italic, color "#rrggbb"}
+    //   instead, and its inset / key widths are the text size.
     // Version 8 (0.1.0) had one "stabilization" object at the top level for
     // the whole project instead of one per clip. Before version 10 a clip
     // played one of its audio streams itself (audioTrack, with audioGainDb,
@@ -95,8 +98,10 @@ public:
     // a stream that was put on a free track by hand moves there too.
     // Version 11 added flat clips on the main track, and stitch settings
     // that differ between clips; a project with neither is still written as
-    // version 10, so the builds before keep opening it.
-    static constexpr int kFormatVersion = 11;
+    // version 10, so the builds before keep opening it. Version 12 added
+    // titles; a project without one is written as before.
+    static constexpr int kFormatVersion = 12;
+    static constexpr int kTitleFormatVersion = 12;
     static constexpr int kFlatClipFormatVersion = 11;
     static constexpr int kPlainFormatVersion = 10;
     static constexpr int kOldestFormatVersion = 8;

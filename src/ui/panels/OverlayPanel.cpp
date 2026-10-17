@@ -2,6 +2,8 @@
 
 #include "EaseCombo.h"
 
+#include "../../core/TrackClip.h" // TrackClip::kMinTrimMs
+
 #include <QColorDialog>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -45,23 +47,25 @@ QWidget *sliderRow(QWidget *parent, int lo, int hi, QSlider **slider, QLabel **v
 
 } // namespace
 
-OverlayPanel::OverlayPanel(QWidget *parent)
-    : SettingsPanel(tr("Overlay"), parent)
+OverlayPanel::OverlayPanel(Kind kind, QWidget *parent)
+    : SettingsPanel(kind == Kind::Title ? tr("Position and timing") : tr("Overlay"), parent),
+      m_kind(kind)
 {
+    const bool title = kind == Kind::Title;
     m_trackName = new QLabel(this);
     form()->addRow(tr("Track"), m_trackName);
     m_layer = new QLabel(this);
-    m_layer->setObjectName(QStringLiteral("overlayLayerLabel"));
+    m_layer->setObjectName(partName("LayerLabel"));
     form()->addRow(tr("Layer"), m_layer);
     auto *layerRow = new QWidget(this);
     auto *layerLayout = new QHBoxLayout(layerRow);
     layerLayout->setContentsMargins(0, 0, 0, 0);
     m_forward = new QPushButton(tr("Bring forward"), layerRow);
-    m_forward->setObjectName(QStringLiteral("overlayBringForward"));
+    m_forward->setObjectName(partName("BringForward"));
     m_forward->setToolTip(tr("Draw this track's overlays in front of the overlay track above "
                              "it (its track moves up)."));
     m_backward = new QPushButton(tr("Send backward"), layerRow);
-    m_backward->setObjectName(QStringLiteral("overlaySendBackward"));
+    m_backward->setObjectName(partName("SendBackward"));
     m_backward->setToolTip(tr("Draw this track's overlays behind the overlay track below it "
                               "(its track moves down)."));
     layerLayout->addWidget(m_forward);
@@ -85,13 +89,15 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     form()->addRow(tr("Position Y"), m_y);
     m_size = numberBox(this, inset::Look::kMinWidth * 100.0, inset::Look::kMaxWidth * 100.0, 1,
                        1.0, QStringLiteral(" %"));
-    m_size->setToolTip(tr("The inset's width, as a share of the video's. Its height follows "
-                          "the inset video's shape."));
-    form()->addRow(tr("Size"), m_size);
+    m_size->setToolTip(title ? tr("The text's size: its font's height, as a share of the "
+                                  "video's height.")
+                             : tr("The inset's width, as a share of the video's. Its height "
+                                  "follows the inset video's shape."));
+    form()->addRow(title ? tr("Text size") : tr("Size"), m_size);
     form()->addRow(tr("Opacity"), sliderRow(this, 0, 100, &m_opacity, &m_opacityValue));
 
     m_keys = new QLabel(this);
-    m_keys->setObjectName(QStringLiteral("overlayKeyCount"));
+    m_keys->setObjectName(partName("KeyCount"));
     form()->addRow(tr("Keyframes"), m_keys);
     auto *keyRow = new QWidget(this);
     auto *keyLayout = new QHBoxLayout(keyRow);
@@ -110,7 +116,7 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     keyLayout->addWidget(m_clearKeys);
     form()->addRow(QString(), keyRow);
     m_ease = easecombo::make(this);
-    m_ease->setObjectName(QStringLiteral("overlayEaseCombo"));
+    m_ease->setObjectName(partName("EaseCombo"));
     m_ease->setToolTip(tr("How the inset moves from the key at the playhead (or the last one "
                           "before it) to the next key: at an even pace, starting fast and "
                           "slowing into the next key, or starting slowly and speeding up."));
@@ -140,9 +146,19 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     m_start = numberBox(this, 0.0, 24 * 3600.0, 3, 0.04, QStringLiteral(" s"));
     m_start->setToolTip(tr("Where the clip starts on the timeline."));
     form()->addRow(tr("Start"), m_start);
+    m_duration = numberBox(this, TrackClip::kMinTrimMs / 1000.0, 24 * 3600.0, 3, 0.5,
+                           QStringLiteral(" s"));
+    m_duration->setObjectName(partName("Duration"));
+    m_duration->setToolTip(tr("How long the clip shows. Its start stays put; the end moves."));
+    form()->addRow(tr("Duration"), m_duration);
 
     m_clipRows = {layerRow, m_x,      m_y,      m_size,        m_opacity, keyRow, m_ease,
-                  m_radius, m_border, m_borderColor, m_fadeIn, m_fadeOut, m_start};
+                  m_radius, m_border, m_borderColor, m_fadeIn, m_fadeOut, m_start, m_duration};
+    if (title) // a title has no frame
+        for (QWidget *w : {static_cast<QWidget *>(m_radius->parentWidget()),
+                           static_cast<QWidget *>(m_border), static_cast<QWidget *>(m_borderColor),
+                           static_cast<QWidget *>(sep2)})
+            form()->setRowVisible(w, false);
 
     setNoClip();
 
@@ -178,11 +194,13 @@ OverlayPanel::OverlayPanel(QWidget *parent)
         if (!m_updating)
             emit timingEdited(std::llround(m_fadeIn->value() * 1000.0),
                               std::llround(m_fadeOut->value() * 1000.0),
-                              std::llround(m_start->value() * 1000.0));
+                              std::llround(m_start->value() * 1000.0),
+                              std::llround(m_duration->value() * 1000.0));
     };
     connect(m_fadeIn, &QDoubleSpinBox::valueChanged, this, timing);
     connect(m_fadeOut, &QDoubleSpinBox::valueChanged, this, timing);
     connect(m_start, &QDoubleSpinBox::valueChanged, this, timing);
+    connect(m_duration, &QDoubleSpinBox::valueChanged, this, timing);
     connect(m_addKey, &QPushButton::clicked, this, &OverlayPanel::addKeyRequested);
     connect(m_removeKey, &QPushButton::clicked, this, &OverlayPanel::removeKeyRequested);
     connect(m_clearKeys, &QPushButton::clicked, this, &OverlayPanel::clearKeysRequested);
@@ -219,6 +237,12 @@ void OverlayPanel::setBorderColor(uint32_t rgb)
     m_borderColor->setStyleSheet(
         QStringLiteral("QPushButton { background: %1; color: %2; }")
             .arg(c.name(), c.lightness() > 128 ? QStringLiteral("#000") : QStringLiteral("#fff")));
+}
+
+QString OverlayPanel::partName(const char *suffix) const
+{
+    return (m_kind == Kind::Title ? QStringLiteral("title") : QStringLiteral("overlay")) +
+           QLatin1String(suffix);
 }
 
 void OverlayPanel::setState(const State &s)
@@ -266,6 +290,8 @@ void OverlayPanel::setState(const State &s)
     m_fadeIn->setValue(s.fadeInMs / 1000.0);
     m_fadeOut->setValue(s.fadeOutMs / 1000.0);
     m_start->setValue(s.startMs / 1000.0);
+    m_duration->setMaximum(std::max(s.maxSpanMs, s.spanMs) / 1000.0);
+    m_duration->setValue(s.spanMs / 1000.0);
 
     // Short: a wrapped label here gets clipped by the form layout.
     m_keys->setText(s.keyCount == 0 ? tr("None") : s.keyCount == 1 ? tr("1 key") : tr("%1 keys").arg(s.keyCount));
@@ -282,7 +308,13 @@ void OverlayPanel::setState(const State &s)
     for (QWidget *w : {static_cast<QWidget *>(m_x), static_cast<QWidget *>(m_y),
                        static_cast<QWidget *>(m_size), static_cast<QWidget *>(m_opacity)})
         w->setEnabled(lookEditable);
-    setHint(s.keyCount == 0
+    // (A title's Text section above says what's selected.)
+    if (m_kind == Kind::Title)
+        setHint(s.keyCount == 0 ? tr("Drag the title in the view to move it.")
+                                : tr("It is keyframed: moving it, here or in the view, sets a "
+                                     "key at the playhead."));
+    else
+        setHint(s.keyCount == 0
                 ? tr("The overlay clip selected on the timeline or in the view. Drag it in the "
                      "view to move it.")
                 : tr("The overlay clip selected on the timeline or in the view. It is keyframed: "
@@ -290,7 +322,7 @@ void OverlayPanel::setState(const State &s)
     m_updating = false;
 }
 
-void OverlayPanel::setNoClip()
+void OverlayPanel::setNoClip(const QString &hint)
 {
     m_updating = true;
     m_clipName->setText(QString());
@@ -300,7 +332,12 @@ void OverlayPanel::setNoClip()
     m_keys->setText(QString());
     for (QWidget *w : m_clipRows)
         w->setEnabled(false);
-    setHint(tr("Select a clip on an overlay track. Add one with Media > Add video overlay, or "
-               "drop a video file on the timeline."));
+    if (!hint.isEmpty())
+        setHint(hint);
+    else if (m_kind == Kind::Title)
+        setHint(tr("Select a title on the timeline, or add one from the Titles tab on the left."));
+    else
+        setHint(tr("Select a clip on an overlay track. Add one with Media > Add video overlay, or "
+                   "drop a video file on the timeline."));
     m_updating = false;
 }

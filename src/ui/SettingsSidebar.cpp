@@ -14,6 +14,7 @@
 #include "panels/ReframePanel.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
+#include "panels/TitleTextPanel.h"
 
 namespace {
 
@@ -38,6 +39,11 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_mediaInfo = section<MediaInfoPanel>("mediaInfoPanel", thisClip);
     m_audio = new AudioPanel(this); // a section per clip, made as needed
     m_overlay = section<OverlayPanel>("overlayPanel", tr("Selected overlay clip"));
+    const QString selectedTitle = tr("Selected title");
+    m_titleText = section<TitleTextPanel>("titleTextPanel", selectedTitle);
+    m_titlePlacement = new OverlayPanel(OverlayPanel::Kind::Title);
+    m_titlePlacement->setObjectName(QStringLiteral("titlePlacementPanel"));
+    m_titlePlacement->setScope(selectedTitle);
     m_privacy = section<PrivacyPanel>("privacyPanel", thisClip);
     // Rarely touched: closed until the user opens them.
     m_stitching->setExpanded(false);
@@ -46,19 +52,21 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe, m_colour,
                                           m_mediaInfo};
     m_sections = video;
-    m_sections << m_overlay << m_privacy;
+    m_sections << m_overlay << m_titleText << m_titlePlacement << m_privacy;
 
     const QList<QScrollArea *> pages = {
         makeSettingsPage(QStringLiteral("videoSettings"), video),
         makeSettingsPage(QStringLiteral("audioSettings"), {}),
         makeSettingsPage(QStringLiteral("overlaySettings"), {m_overlay}),
+        makeSettingsPage(QStringLiteral("titleSettings"), {m_titleText, m_titlePlacement}),
         makeSettingsPage(QStringLiteral("privacySettings"), {m_privacy}),
     };
     m_audio->attach(pages[1]);
     addTab(pages[0], QStringLiteral("video"), tr("Video"));
     addTab(pages[1], QStringLiteral("volume-2"), tr("Audio"));
     addTab(pages[2], QStringLiteral("picture-in-picture-2"), tr("Overlay"));
-    addTab(pages[3], QStringLiteral("eye-off"), tr("Privacy"));
+    addTab(pages[3], QStringLiteral("type"), tr("Title"));
+    addTab(pages[4], QStringLiteral("eye-off"), tr("Privacy"));
 
     // Resizable like the left sidebar, but never narrower than the widest
     // section needs (the pages don't scroll sideways). Scaled with the font.

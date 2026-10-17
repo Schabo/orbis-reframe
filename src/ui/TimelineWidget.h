@@ -78,6 +78,8 @@ class QTimer;
 //   first such track with room (or a new one) -> audioFilesDropped /
 //   videoFilesDropped. .insv clips go onto the main track at the cut
 //   nearest the pointer, also on an empty timeline -> clipFilesDropped.
+//   Titles: dragged from the Titles tab, onto an overlay track like a video
+//   file -> titleDropped (not on an empty timeline).
 //   Waveforms: a clip given `peaks` draws its audio's level (dB scale), with
 //   its gain and fades applied.
 //   Reframe keys: a main-track clip's keys show as diamonds along its bottom;
@@ -224,6 +226,9 @@ signals:
     // The same for video files, onto an overlay track.
     void addVideoFileRequested(int trackId, qint64 atMs);
     void videoFilesDropped(const QStringList &paths, int trackId, qint64 atMs);
+    // A title dragged from the Titles tab (title::kMimeType), onto overlay
+    // track `trackId` (0 = the first with room there, else a new one).
+    void titleDropped(int trackId, qint64 atMs);
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -378,6 +383,7 @@ private:
     int m_dropTrack = -1; // track index, -1 = first with room / new
     bool m_dropVideo = false; // the drag carries video files (else audio)
     bool m_dropClip = false;  // ... .insv clips, for the main track
+    bool m_dropTitle = false; // ... a title, for an overlay track
     bool m_dropMain = false;  // the video files go on the main track (pointer over it, or no clips yet)
     int m_dropIndex = 0;      // the main-track position they'd go in at
     qint64 m_dropMs = 0;

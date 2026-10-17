@@ -16,6 +16,7 @@
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
+#include "panels/TitleTextPanel.h"
 #include "panels/PrivacyPanel.h"
 #include "panels/ReframePanel.h"
 #include "panels/StabilizationPanel.h"
@@ -29,6 +30,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QDoubleSpinBox>
+#include <QPlainTextEdit>
 #include <QSignalSpy>
 #include <QTest>
 #include <QToolButton>
@@ -71,8 +74,9 @@ QStringList sectionNames(QScrollArea *page)
 void testLayout(SettingsSidebar &bar)
 {
     CHECK(bar.objectName() == QLatin1String("settingsSidebar"));
-    CHECK(bar.count() == 4);
-    const char *pages[] = {"videoSettings", "audioSettings", "overlaySettings", "privacySettings"};
+    CHECK(bar.count() == 5);
+    const char *pages[] = {"videoSettings", "audioSettings", "overlaySettings", "titleSettings",
+                           "privacySettings"};
     for (const char *name : pages) {
         find<QScrollArea>(&bar, name);
         find<QToolButton>(&bar, (QByteArray(name) + "Tab").constData());
@@ -86,6 +90,8 @@ void testLayout(SettingsSidebar &bar)
         CHECK(sectionNames(video) == QStringList({"stitchingPanel", "stabilizationPanel",
                                                   "reframePanel", "colourPanel",
                                                   "mediaInfoPanel"}));
+    if (auto *title = find<QScrollArea>(&bar, "titleSettings"))
+        CHECK(sectionNames(title) == QStringList({"titleTextPanel", "titlePlacementPanel"}));
     if (auto *audio = find<QScrollArea>(&bar, "audioSettings")) // nothing to show yet
         CHECK(sectionNames(audio) == QStringList({"audioPanel"}));
 
@@ -97,7 +103,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(bar.colour()->isExpanded());
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
-    CHECK(bar.sections().size() == 7); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 9); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -391,6 +397,47 @@ void testEasing(SettingsSidebar &bar)
     CHECK(rEase->isVisibleTo(reframe));
 }
 
+// The Title tab: the Text section reflects a title without emitting and
+// reports edits; Position and timing is the overlay panel without a frame,
+// its size the text's.
+void testTitleTab(SettingsSidebar &bar)
+{
+    TitleTextPanel *text = bar.titleText();
+    OverlayPanel *place = bar.titlePlacement();
+    CHECK(place->kind() == OverlayPanel::Kind::Title && place->title() == "Position and timing");
+    auto *edit = find<QPlainTextEdit>(text, "titleText");
+    auto *bold = find<QPushButton>(text, "titleBold");
+    if (!edit || !bold)
+        return;
+    QSignalSpy spy(text, &TitleTextPanel::titleEdited);
+    title::Style s;
+    s.text = "Day 1";
+    s.bold = false;
+    text->setTitle(s);
+    CHECK(spy.isEmpty() && edit->toPlainText() == "Day 1" && !bold->isChecked());
+    bold->click();
+    CHECK(spy.count() == 1 && spy.last().at(0).value<title::Style>().bold &&
+          spy.last().at(0).value<title::Style>().text == "Day 1");
+    text->setNoTitle(QString());
+    CHECK(!edit->isEnabled());
+
+    OverlayPanel::State st;
+    st.layer = st.layerCount = 1;
+    st.spanMs = st.maxSpanMs = 5000;
+    place->setState(st);
+    bar.setCurrentIndex(SettingsSidebar::TitleTab);
+    QApplication::processEvents();
+    auto *size = find<QDoubleSpinBox>(place, "titleDuration");
+    CHECK(size && size->isVisibleTo(&bar));
+    bool border = false, textSize = false;
+    for (QLabel *l : place->findChildren<QLabel *>()) {
+        border |= l->text() == "Border" && l->isVisibleTo(&bar);
+        textSize |= l->text() == "Text size" && l->isVisibleTo(&bar);
+    }
+    CHECK(!border && textSize);
+    place->setNoClip();
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -416,6 +463,7 @@ int main(int argc, char **argv)
     testStitchingPanel(bar);
     testOverlayLayer(bar);
     testEasing(bar);
+    testTitleTab(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

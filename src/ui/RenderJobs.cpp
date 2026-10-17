@@ -12,11 +12,31 @@
 #include <InsvTrailer.h> // insv::ReadInsvTelemetry
 
 #include "PrivacyBlur.h"
+#include "TitleRender.h"
 #include "../core/ClipItem.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
 
 namespace renderjobs {
+
+namespace {
+
+// A title's largest text size, over its keys too.
+float maxTitleSize(const TrackClip &c)
+{
+    float size = c.look.width;
+    for (const InsetKey &k : c.insetKeys.keys())
+        size = std::max(size, k.look.width);
+    return size;
+}
+
+// Playback renders a title's text no bigger than this (the view is mostly
+// smaller than the output); the export at the size it shows at, up to the
+// second.
+constexpr int kViewFontCapPx = 360;
+constexpr int kExportFontCapPx = 2048;
+
+} // namespace
 
 std::vector<insv::MixClip> mixClips(const Timeline &timeline)
 {
@@ -74,6 +94,13 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
+            titlerender::Picture pic;
+            if (c.isTitle()) {
+                pic = titlerender::render(
+                    *c.title, titlerender::fontPxFor(maxTitleSize(c), outH, kViewFontCapPx));
+                if (pic.empty() || outW <= 0)
+                    continue; // no text
+            }
             InsetFeed::Clip f;
             f.id = c.id;
             f.path = c.sourcePath;
@@ -87,6 +114,14 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             f.look = c.look;
             f.frame = c.frame;
             f.keys = c.insetKeys;
+            if (!pic.empty()) {
+                f.still = pic.rgba;
+                f.stillW = pic.width;
+                f.stillH = pic.height;
+                f.stillWidthPerSize = pic.widthPerFontPx * outH / outW;
+                f.aspect = double(pic.width) / pic.height;
+                f.frame = {};
+            }
             clips.push_back(std::move(f));
         }
     }
@@ -118,6 +153,13 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
+            titlerender::Picture pic;
+            if (c.isTitle()) {
+                pic = titlerender::render(
+                    *c.title, titlerender::fontPxFor(maxTitleSize(c), outH, kExportFontCapPx));
+                if (pic.empty() || outW <= 0)
+                    continue; // no text
+            }
             exportpipe::InsetClipJob j;
             j.path = c.sourcePath.toStdString();
             j.startMs = c.startMs;
@@ -132,6 +174,21 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
             j.lookAt = [look = c.look, keys = c.insetKeys](int64_t sourceMs) {
                 return keys.isEmpty() ? look : keys.sample(sourceMs);
             };
+            if (!pic.empty()) {
+                // The look's width is the text size: the picture's is that
+                // much wider.
+                const double widthPerSize = pic.widthPerFontPx * outH / outW;
+                j.lookAt = [look = c.look, keys = c.insetKeys, widthPerSize](int64_t sourceMs) {
+                    inset::Look l = keys.isEmpty() ? look : keys.sample(sourceMs);
+                    l.width = float(l.width * widthPerSize);
+                    return l;
+                };
+                j.still = pic.rgba;
+                j.stillW = pic.width;
+                j.stillH = pic.height;
+                j.aspect = double(pic.width) / pic.height;
+                j.frame = {};
+            }
             jobs.push_back(std::move(j));
         }
     }

@@ -59,6 +59,8 @@ class MediaInfoPanel;
 class OverlayPanel;
 class ReframePanel;
 class MediaPoolPanel;
+class TitlesPanel;
+class TitleTextPanel;
 class SettingsSidebar;
 class TabSidebar;
 class QActionGroup;
@@ -272,6 +274,10 @@ private:
     QList<int> audioPanelClipIds(QString *scope = nullptr) const;
     // Select the last clip TrackFiles added, if it added any.
     void selectAdded(std::optional<int> lastClipId);
+    // A new title at `atMs` (clamped to the timeline) on overlay track
+    // `trackId` if it has room there (else the first that has, else a new
+    // one), selected, with the Overlay tab showing to edit it.
+    void addTitle(int trackId, qint64 atMs);
     // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
     // The selected track clip if it is on an overlay track (else null).
@@ -410,6 +416,7 @@ private:
     // The left sidebar (sources) and its Media tab.
     TabSidebar *m_sourcesSidebar = nullptr;
     MediaPoolPanel *m_mediaPanel = nullptr;
+    TitlesPanel *m_titlesPanel = nullptr;
     MediaImporter *m_mediaImport = nullptr; // Import files… / folder…, drops, Locate file…
     QList<QShortcut *> m_editorShortcuts;
     QActionGroup *m_previewQuality = nullptr; // View menu
@@ -430,7 +437,9 @@ private:
     AudioPanel *m_audioPanel = nullptr;
     QHash<QString, int> m_audioTrackCounts; // source path -> audio stream count
     ColourPanel *m_colourPanel = nullptr;
-    OverlayPanel *m_overlayPanel = nullptr;
+    OverlayPanel *m_overlayPanel = nullptr;        // overlay videos
+    TitleTextPanel *m_titleTextPanel = nullptr;     // the Title tab: a title's text
+    OverlayPanel *m_titlePlacementPanel = nullptr;  // ... and its position and timing
     MediaInfoPanel *m_mediaInfoPanel = nullptr;
     QHash<QString, insv::MediaInfo> m_mediaInfo; // source path -> probe
     // The edit model: a Project owning a Timeline. Authoring (trim via [ ],

@@ -1,7 +1,7 @@
 // src/ui/RenderJobs: the edit model as playback, the export and a
 // screenshot are handed it -- the audio mix, the overlays (what's left out,
-// in which order), a main-track clip's export job, and the suggested file
-// names. No GPU, no media.
+// in which order), titles, a main-track clip's export job, and the suggested
+// file names. No GPU, no media.
 
 #include "RenderJobs.h"
 
@@ -10,7 +10,7 @@
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
 
-#include <QCoreApplication>
+#include <QGuiApplication>
 #include <QDir>
 #include <QFile>
 #include <QHash>
@@ -96,6 +96,46 @@ void testOverlays()
     CHECK(jobs[1 - k2].lookAt(1000).centerX != 0.25f); // the other keeps its own look
 }
 
+// A title is its text's picture, placed by its text size; blank text
+// draws nothing.
+void testTitles()
+{
+    Timeline t;
+    t.appendClip("/c/ride.insv", 20000, 30.0);
+    const int v = t.addTrack(Track::Kind::Video, "Text");
+    title::Style style;
+    style.text = "Hi";
+    const int id = t.addTitleClip(v, 1000, style);
+    title::Style blank;
+    blank.text = "  ";
+    t.addTitleClip(v, 8000, blank);
+
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080);
+    const std::vector<exportpipe::InsetClipJob> jobs = renderjobs::insetJobs(t, 1920, 1080);
+    CHECK(feed.size() == 1 && jobs.size() == 1);
+    if (feed.size() != 1 || jobs.size() != 1)
+        return;
+    const InsetFeed::Clip &f = feed[0];
+    CHECK(f.id == id && f.path.isEmpty() && f.still && f.stillW > 0 && f.stillH > 0);
+    CHECK(f.stillW > f.stillH); // "Hi" is wider than tall
+    // Some of the picture is text, some clear.
+    int opaque = 0, clear = 0;
+    for (size_t i = 3; i < f.still->size(); i += 4)
+        (*f.still)[i] == 255 ? ++opaque : (*f.still)[i] == 0 ? ++clear : 0;
+    CHECK(opaque > 0 && clear > 0);
+    const exportpipe::InsetClipJob &j = jobs[0];
+    CHECK(j.still && near(j.aspect, double(j.stillW) / j.stillH));
+    // The picture's height follows the text size: ~8% of 1080 for the font,
+    // plus the line's leading and padding.
+    const inset::Look l = j.lookAt(t.trackClipById(id)->trimInMs);
+    const inset::Rect r = inset::place(l, j.frame, j.aspect, 1920, 1080);
+    CHECK(r.h > 0.08 * 1080 && r.h < 0.08 * 1080 * 2.0);
+    CHECK(near(r.x + r.w / 2, 960.0, 1.0) && near(r.y + r.h / 2, 540.0, 1.0));
+    // Playback's picture is smaller or the same, placed the same.
+    CHECK(near(double(f.stillW) / f.stillH, j.aspect, 0.05));
+    CHECK(near(l.width, f.look.width * f.stillWidthPerSize, 0.01));
+}
+
 void testClipJob(const QString &dir)
 {
     Timeline t;
@@ -158,11 +198,14 @@ void testSuggestedPaths(const QString &dir)
 
 int main(int argc, char **argv)
 {
-    QCoreApplication app(argc, argv);
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+    QGuiApplication app(argc, argv); // fonts, for the titles
     QTemporaryDir tmp;
     CHECK(tmp.isValid());
     testMix();
     testOverlays();
+    testTitles();
     testClipJob(tmp.path());
     testSuggestedPaths(tmp.path());
     if (g_failures == 0)

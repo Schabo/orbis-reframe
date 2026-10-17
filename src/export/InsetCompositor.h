@@ -43,6 +43,11 @@ struct InsetClipJob {
     // A flat main-track clip's colour grade (ReframeView::colorGrade), all
     // 0 = none.
     std::array<float, 4> colorGrade{};
+    // A title: this picture (premultiplied RGBA, stillW x stillH) for the
+    // whole clip instead of a file's frames (`path` unused). Blended by its
+    // alpha, like every picture.
+    std::shared_ptr<const std::vector<uint8_t>> still;
+    int stillW = 0, stillH = 0;
 
     int64_t spanMs() const { return static_cast<int64_t>(std::llround((trimOutMs - trimInMs) / speed)); }
     int64_t endMs() const { return startMs + spanMs(); }
@@ -67,7 +72,9 @@ public:
                       std::string &err);
 
     // Blend one RGBA picture (picW x picH, already the rect's size or any
-    // size -- it is sampled by position) into NV12 at `rect` with `opacity`.
+    // size -- it is sampled by position; alpha premultiplied, so a video's
+    // opaque frame and a title's transparent one go the same way) into NV12
+    // at `rect` with `opacity`.
     // Exposed for tests.
     static void blendNv12(const uint8_t *rgba, int picW, int picH, const inset::Rect &rect,
                           float opacity, uint32_t borderRgb, uint8_t *y, int yStride,

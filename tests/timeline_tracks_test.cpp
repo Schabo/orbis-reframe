@@ -599,6 +599,53 @@ void testVideoTracks()
     CHECK(inset::fadeGain(4000, 8000, 1000, 1000) == 1.0f);
 }
 
+// A title: a video-track clip with no file, never missing, with room to
+// extend either edge, its own style, and no sound to put on a track.
+void testTitles()
+{
+    Timeline tl;
+    tl.appendClip("/v/a.insv", 60000, 30.0);
+    const int a = tl.addTrack(Track::Kind::Audio);
+    const int v = tl.addTrack(Track::Kind::Video);
+    title::Style style;
+    style.text = "Hello";
+    CHECK(tl.addTitleClip(a, 1000, style) == 0); // not on an audio track
+    const int id = tl.addTitleClip(v, 2000, style);
+    const TrackClip *c = tl.trackClipById(id);
+    CHECK(c && c->isTitle() && c->title->text == "Hello");
+    CHECK(c->sourcePath.isEmpty() && !c->mediaMissing);
+    CHECK(c->startMs == 2000 && c->timelineDurationMs() == title::kDefaultSpanMs);
+    CHECK(c->trimInMs > 0 && c->trimOutMs < c->sourceDurationMs); // either edge can grow
+    CHECK(c->look.centerX == 0.5f && c->look.centerY == 0.5f &&
+          c->look.width == title::kDefaultSize);
+
+    // Its head dragged out keeps the end where it was.
+    tl.setTrackClipTrimIn(id, c->trimInMs - 1000);
+    c = tl.trackClipById(id);
+    CHECK(c->startMs == 1000 && c->timelineDurationMs() == title::kDefaultSpanMs + 1000);
+
+    int changes = 0;
+    QObject::connect(&tl, &Timeline::tracksChanged, [&] { ++changes; });
+    style.text = "Hello\nworld";
+    style.rgb = 0xff2040;
+    tl.setTrackClipTitle(id, style);
+    CHECK(changes == 1 && tl.trackClipById(id)->title->text == "Hello\nworld" &&
+          tl.trackClipById(id)->title->rgb == 0xff2040);
+    tl.setTrackClipTitle(id, style); // no change, no signal
+    CHECK(changes == 1);
+
+    CHECK(tl.addOverlaySound(id) == 0); // nothing to hear
+
+    // A split keeps the style on both halves.
+    const int right = tl.splitTrackClip(id, 3000);
+    CHECK(right && tl.trackClipById(right)->isTitle() &&
+          tl.trackClipById(right)->title->text == "Hello\nworld");
+
+    // A file going missing doesn't touch it.
+    tl.setSourcesMissing({{QString(), true}});
+    CHECK(!tl.trackClipById(id)->mediaMissing);
+}
+
 } // namespace
 
 int main()
@@ -610,5 +657,6 @@ int main()
     testTrackGroups();
     testOwnSoundTracks();
     testVideoTracks();
+    testTitles();
     return modeltest::finish("timeline_tracks_test");
 }

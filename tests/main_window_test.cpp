@@ -16,6 +16,7 @@
 #include "ClipBackend.h"
 #include "MainWindow.h"
 #include "SettingsPanel.h"
+#include "SettingsSidebar.h"
 #include "MediaPoolPanel.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
@@ -34,12 +35,14 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSlider>
@@ -726,6 +729,57 @@ void testFlatMainClip(const Ctx &c)
     settle();
 }
 
+// The Titles tab's "Add to timeline": a title at the playhead, selected, the
+// Title tab showing its text; typing there edits it (the K shortcut
+// doesn't set a key), the picture reaches the viewport, and Duration sets
+// its length.
+void testTitle(const Ctx &c)
+{
+    CHECK(find<QWidget>(c.w, "titlesPanel"));
+    CHECK(seekTo(c, 500));
+    trigger(c, "titleAddToTimelineAction");
+    int clipId = 0;
+    for (int i = 0; i < c.timeline->trackCount(); ++i)
+        for (const TrackClip &tc : c.timeline->trackAt(i).clips)
+            if (tc.isTitle())
+                clipId = tc.id;
+    const TrackClip *clip = c.timeline->trackClipById(clipId);
+    CHECK(clip && clip->startMs == 500 && clip->title->text == QStringLiteral("Title"));
+    if (!clip)
+        return;
+    // The settings sidebar is on the Title tab.
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    CHECK(sidebar && sidebar->currentIndex() == SettingsSidebar::TitleTab);
+    auto *text = find<QPlainTextEdit>(c.w, "titleText");
+    CHECK(text && text->isVisibleTo(c.w) && text->toPlainText() == QStringLiteral("Title"));
+    CHECK(waitFor([&] {
+        for (const auto &d : c.w->viewport()->Insets())
+            if (d.clipId == clipId && d.rgba && d.width > d.height)
+                return true;
+        return false;
+    }));
+    if (text) {
+        text->setFocus();
+        text->moveCursor(QTextCursor::End);
+        key(c, Qt::Key_K);
+        clip = c.timeline->trackClipById(clipId);
+        CHECK(clip && clip->title->text == QStringLiteral("Titlek") && clip->insetKeys.isEmpty());
+        text->clearFocus();
+    }
+    // Its duration, from the tab: the start stays, the end moves.
+    auto *duration = find<QDoubleSpinBox>(c.w, "titleDuration");
+    CHECK(duration && std::abs(duration->value() - 5.0) < 1e-6);
+    if (duration)
+        duration->setValue(8.0);
+    clip = c.timeline->trackClipById(clipId);
+    CHECK(clip && clip->startMs == 500 && clip->timelineDurationMs() == 8000);
+    // The Overlay tab shows overlay videos only.
+    auto *overlayX = find<QDoubleSpinBox>(c.w, "overlayDuration");
+    CHECK(overlayX && !overlayX->isEnabled());
+    c.timeline->removeTrackClip(clipId);
+    settle();
+}
+
 // A second overlay track: the selected overlay's Bring forward puts its
 // track above the other (the first overlay track draws on top).
 void testOverlayLayers(const Ctx &c)
@@ -1072,6 +1126,7 @@ int main(int argc, char **argv)
             testOverlay(c);
             testOverlayLayers(c);
             testFlatMainClip(c);
+            testTitle(c);
             testFullScreen(c);
             testTrackSubjectMode(c);
             testViewMenu(c);

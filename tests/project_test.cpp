@@ -1483,6 +1483,65 @@ void testPlateScansInUse()
     CHECK(p.plateScansInUse() == QSet<QString>{"old"});
 }
 
+// A title round trips with its style, keys and timing; it has no source and
+// isn't in the media pool; the file is version 12 only while it has one.
+void testTitleJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString video = tmp.path() + "/clip.insv";
+    writeFile(video);
+    const QString file = tmp.path() + "/titles.orp";
+    auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+    QString err;
+    {
+        Project p;
+        Timeline *tl = p.timeline();
+        tl->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        const int v = tl->addTrack(Track::Kind::Video, "Text");
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
+        title::Style style;
+        style.text = "Day 1\nAlps";
+        style.font = "DejaVu Serif";
+        style.bold = false;
+        style.italic = true;
+        style.rgb = 0x10ff80;
+        const int id = tl->addTitleClip(v, 1500, style, 3000);
+        tl->setTrackClipFades(id, 250, 500);
+        inset::Look l = tl->trackClipById(id)->look;
+        l.width = 0.12f;
+        tl->upsertTrackClipInsetKey(id, tl->trackClipById(id)->trimInMs, l);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kTitleFormatVersion);
+        const QJsonObject jc = document()
+                                   .value("timeline").toObject()
+                                   .value("tracks").toArray().at(0).toObject()
+                                   .value("clips").toArray().at(0).toObject();
+        CHECK(!jc.contains("source") && !jc.contains("sourceWidth"));
+        CHECK(jc.value("title").toObject().value("color").toString() == "#10ff80");
+        CHECK(p.mediaPool()->count() == 1); // the 360 clip only
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        const Timeline *tl = p.timeline();
+        CHECK(tl->trackCount() == 1 && tl->trackAt(0).clips.size() == 1);
+        const TrackClip &c = tl->trackAt(0).clips.at(0);
+        CHECK(c.isTitle() && c.sourcePath.isEmpty() && !c.mediaMissing);
+        CHECK(c.title->text == "Day 1\nAlps" && c.title->font == "DejaVu Serif");
+        CHECK(!c.title->bold && c.title->italic && c.title->rgb == 0x10ff80);
+        CHECK(c.startMs == 1500 && c.timelineDurationMs() == 3000);
+        CHECK(c.fadeInMs == 250 && c.fadeOutMs == 500);
+        CHECK(c.insetKeys.count() == 1 && c.insetKeys.keys().at(0).look.width == 0.12f);
+        CHECK(p.mediaPool()->count() == 1);
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -1501,5 +1560,6 @@ int main(int argc, char **argv)
     testFlatClipJson();
     testClipStitchJson();
     testPlateScansInUse();
+    testTitleJson();
     return modeltest::finish("project_test");
 }

@@ -31,6 +31,7 @@ struct InsetFeed::Stream {
     std::deque<Frame> queue; // front = showing (or next to)
     bool eof = false;
     bool needAnchor = true;
+    uint64_t stillKey = 0; // a title's picture's frame key
     uint64_t gen = 0; // bumped on every re-anchor request
     bool failed = false;
     bool removed = false;
@@ -79,6 +80,8 @@ void InsetFeed::setClips(std::vector<Clip> clips)
                 if (s->clip.path != c.path)
                     s->failed = false;
             }
+            if (c.still && (s->stillKey == 0 || s->clip.still != c.still))
+                s->stillKey = m_nextKey++; // a new picture: uploaded again
             s->clip = std::move(c);
             next.push_back(std::move(s));
         }
@@ -92,7 +95,8 @@ void InsetFeed::setClips(std::vector<Clip> clips)
 
 bool InsetFeed::active(const Clip &c, qint64 ms) const
 {
-    return ms >= c.startMs - kPrerollMs && ms < c.endMs() + kLingerMs;
+    // (A title has nothing to decode.)
+    return !c.still && ms >= c.startMs - kPrerollMs && ms < c.endMs() + kLingerMs;
 }
 
 std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 ms, bool playing)
@@ -109,6 +113,20 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 ms, bo
             const Clip &c = s.clip;
             if (ms < c.startMs || ms >= c.endMs()) {
                 s.haveShown = false;
+                continue;
+            }
+            if (c.still) {
+                EquirectViewportWindow::InsetDraw d;
+                d.clipId = c.id;
+                d.frameKey = s.stillKey;
+                d.rgba = c.still;
+                d.width = c.stillW;
+                d.height = c.stillH;
+                d.look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
+                d.look.width = float(d.look.width * c.stillWidthPerSize);
+                d.look.opacity *= inset::fadeGain(ms - c.startMs, c.spanMs(), c.fadeInMs, c.fadeOutMs);
+                d.aspect = double(c.stillW) / std::max(1, c.stillH);
+                out.push_back(std::move(d));
                 continue;
             }
             const size_t before = s.queue.size();

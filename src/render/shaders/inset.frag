@@ -3,7 +3,7 @@
 
 // A video-track clip's picture-in-picture inset, drawn over the view
 // with alpha blending -- or a flat main-track clip, as a full-frame one with
-// its colour grade. The fullscreen triangle covers the output rect; this
+// its colour grade, or a title's text. The fullscreen triangle covers the output rect; this
 // shader shades the pixels the inset covers and discards the rest.
 //
 // Coverage (rounded corners, antialiased edge, border) is inset::shade() in
@@ -35,6 +35,13 @@ void main() {
     if (alpha <= 0.0)
         discard;
     float border = pc.border > 0.0 ? clamp(d + pc.border + 0.5, 0.0, 1.0) : 0.0;
-    vec3 c = gradeColor(texture(picture, (p - pc.rect.xy) / pc.rect.zw).rgb, pc.grade, 1.0);
+    // The picture's alpha is premultiplied: a video's frame is opaque, a
+    // title's text transparent around the letters.
+    // The border covers whatever the picture's alpha.
+    vec4 t = texture(picture, (p - pc.rect.xy) / pc.rect.zw);
+    alpha *= t.a + (1.0 - t.a) * border;
+    if (alpha <= 0.0)
+        discard;
+    vec3 c = gradeColor(t.a > 0.0 ? min(t.rgb / t.a, vec3(1.0)) : vec3(0.0), pc.grade, 1.0);
     outColor = vec4(mix(c, pc.borderColor.rgb, border), alpha);
 }

@@ -9,6 +9,8 @@
 #include "../core/Log.h"
 
 #include <QAbstractSpinBox>
+#include <QFontDatabase>
+#include <QPlainTextEdit>
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
@@ -77,6 +79,7 @@
 #include "RenderJobs.h"
 #include "MediaImporter.h"
 #include "MediaPoolPanel.h"
+#include "TitlesPanel.h"
 #include "MediaProbe.h"
 #include "PlaybackController.h"
 #include "ReframeExportController.h"
@@ -97,6 +100,7 @@
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
+#include "panels/TitleTextPanel.h"
 #include "panels/PrivacyPanel.h"
 #include "panels/ReframePanel.h"
 #include "panels/StabilizationPanel.h"
@@ -245,6 +249,10 @@ void MainWindow::setupSourcesSidebar()
             return cache->get(item, size, &mediaThumbnail);
         });
     m_sourcesSidebar->addTab(m_mediaPanel, QStringLiteral("film"), tr("Media"));
+    m_titlesPanel = new TitlesPanel;
+    m_sourcesSidebar->addTab(m_titlesPanel, QStringLiteral("type"), tr("Titles"));
+    connect(m_titlesPanel, &TitlesPanel::addTitleRequested, this,
+            [this] { addTitle(0, m_lastTimelineMs); });
     m_sourcesSidebar->setToggleKeys(
         QKeySequence(Qt::CTRL | Qt::Key_B).toString(QKeySequence::NativeText));
     m_sourcesSidebar->setOpen(
@@ -304,6 +312,8 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_colourPanel->setNoClip();
     m_privacyPanel = m_sidebar->privacy();         // starts in its no-clip state
     m_overlayPanel = m_sidebar->overlay();         // starts with no overlay clip
+    m_titleTextPanel = m_sidebar->titleText();     // ... and no title
+    m_titlePlacementPanel = m_sidebar->titlePlacement();
     m_mediaInfoPanel = m_sidebar->mediaInfo();     // starts in its no-clip state
     // Open / closed, its width, its tab and which sections are open are
     // remembered per user, like the left sidebar's.
@@ -653,6 +663,7 @@ void MainWindow::connectTimeline()
             [this](const QStringList &paths, int trackId, qint64 atMs) {
                 selectAdded(m_trackFiles->addVideo(paths, trackId, atMs));
             });
+    connect(m_timelineWidget, &TimelineWidget::titleDropped, this, &MainWindow::addTitle);
 }
 
 void MainWindow::connectOverlaysAndAudio()
@@ -672,39 +683,50 @@ void MainWindow::connectOverlaysAndAudio()
                 l.centerY = cy;
                 applyInsetLook(clipId, l);
             });
-    // Overlay panel -> the selected overlay clip.
-    connect(m_overlayPanel, &OverlayPanel::lookEdited, this, [this](const inset::Look &l) {
+    // Overlay tab (overlay videos) and the Title tab's Position and timing
+    // (titles) -> the selected overlay clip. Each only ever shows its kind.
+    for (OverlayPanel *panel : {m_overlayPanel, m_titlePlacementPanel}) {
+        connect(panel, &OverlayPanel::lookEdited, this, [this](const inset::Look &l) {
+            if (const TrackClip *c = selectedOverlayClip())
+                applyInsetLook(c->id, l);
+        });
+        connect(panel, &OverlayPanel::frameEdited, this, [this](const inset::Frame &f) {
+            if (const TrackClip *c = selectedOverlayClip())
+                m_timeline->setTrackClipInset(c->id, c->look, f);
+        });
+        connect(panel, &OverlayPanel::timingEdited, this,
+                [this](qint64 fadeInMs, qint64 fadeOutMs, qint64 startMs, qint64 spanMs) {
+                    int trackId = 0;
+                    const TrackClip *c = selectedOverlayClip(&trackId);
+                    if (!c)
+                        return;
+                    const int id = c->id;
+                    // The length first: the fades are clamped to it.
+                    if (spanMs != c->timelineDurationMs())
+                        m_timeline->setTrackClipTrimOut(id, c->trimInMs + std::llround(spanMs * c->speed));
+                    m_timeline->setTrackClipFades(id, fadeInMs, fadeOutMs);
+                    m_timeline->moveTrackClip(id, trackId, startMs);
+                });
+        connect(panel, &OverlayPanel::bringForwardRequested, this,
+                [this] { moveSelectedOverlayLayer(-1); });
+        connect(panel, &OverlayPanel::sendBackwardRequested, this,
+                [this] { moveSelectedOverlayLayer(1); });
+        connect(panel, &OverlayPanel::addKeyRequested, this,
+                &MainWindow::setOverlayKeyAtPlayhead);
+        connect(panel, &OverlayPanel::removeKeyRequested, this,
+                &MainWindow::deleteOverlayKeyAtPlayhead);
+        connect(panel, &OverlayPanel::clearKeysRequested, this,
+                &MainWindow::clearOverlayKeys);
+        connect(panel, &OverlayPanel::easeEdited, this, [this](keytrack::Ease e) {
+            if (const TrackClip *c = selectedOverlayClip())
+                m_timeline->setTrackClipInsetEase(
+                    c->id, c->sourceAtLocalMs(m_lastTimelineMs - c->startMs), e);
+        });
+    }
+    // Title tab's Text -> the selected title.
+    connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, [this](const title::Style &t) {
         if (const TrackClip *c = selectedOverlayClip())
-            applyInsetLook(c->id, l);
-    });
-    connect(m_overlayPanel, &OverlayPanel::frameEdited, this, [this](const inset::Frame &f) {
-        if (const TrackClip *c = selectedOverlayClip())
-            m_timeline->setTrackClipInset(c->id, c->look, f);
-    });
-    connect(m_overlayPanel, &OverlayPanel::timingEdited, this,
-            [this](qint64 fadeInMs, qint64 fadeOutMs, qint64 startMs) {
-                int trackId = 0;
-                const TrackClip *c = selectedOverlayClip(&trackId);
-                if (!c)
-                    return;
-                const int id = c->id;
-                m_timeline->setTrackClipFades(id, fadeInMs, fadeOutMs);
-                m_timeline->moveTrackClip(id, trackId, startMs);
-            });
-    connect(m_overlayPanel, &OverlayPanel::bringForwardRequested, this,
-            [this] { moveSelectedOverlayLayer(-1); });
-    connect(m_overlayPanel, &OverlayPanel::sendBackwardRequested, this,
-            [this] { moveSelectedOverlayLayer(1); });
-    connect(m_overlayPanel, &OverlayPanel::addKeyRequested, this,
-            &MainWindow::setOverlayKeyAtPlayhead);
-    connect(m_overlayPanel, &OverlayPanel::removeKeyRequested, this,
-            &MainWindow::deleteOverlayKeyAtPlayhead);
-    connect(m_overlayPanel, &OverlayPanel::clearKeysRequested, this,
-            &MainWindow::clearOverlayKeys);
-    connect(m_overlayPanel, &OverlayPanel::easeEdited, this, [this](keytrack::Ease e) {
-        if (const TrackClip *c = selectedOverlayClip())
-            m_timeline->setTrackClipInsetEase(
-                c->id, c->sourceAtLocalMs(m_lastTimelineMs - c->startMs), e);
+            m_timeline->setTrackClipTitle(c->id, t);
     });
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
@@ -1286,7 +1308,15 @@ namespace {
 // not their inner QLineEdit.
 bool isTextEntry(const QWidget *w)
 {
-    return qobject_cast<const QAbstractSpinBox *>(w) || qobject_cast<const QLineEdit *>(w);
+    return qobject_cast<const QAbstractSpinBox *>(w) || qobject_cast<const QLineEdit *>(w) ||
+           qobject_cast<const QPlainTextEdit *>(w); // a title's text
+}
+
+// A title as the timeline and the Overlay tab name it: its first line.
+QString titleLabel(const title::Style &t)
+{
+    const QString first = t.text.trimmed().section(QLatin1Char('\n'), 0, 0).trimmed();
+    return first.isEmpty() ? MainWindow::tr("(empty title)") : first;
 }
 
 } // namespace
@@ -1606,7 +1636,7 @@ void MainWindow::refreshTrackRows()
         for (const TrackClip &c : t.clips) {
             TimelineWidget::TrackClipView a;
             a.id = c.id;
-            a.label = QFileInfo(c.sourcePath).fileName();
+            a.label = c.isTitle() ? titleLabel(*c.title) : QFileInfo(c.sourcePath).fileName();
             if (v.video) { // an overlay: no audio to draw, nothing to link
                 a.startMs = c.startMs;
                 a.trimInMs = c.trimInMs;
@@ -1618,7 +1648,8 @@ void MainWindow::refreshTrackRows()
                 a.missing = c.mediaMissing;
                 for (const InsetKey &k : c.insetKeys.keys())
                     a.keySourceMs.push_back(k.timeMs);
-                a.hasSound = !c.mediaMissing && audioStreamCount(c.sourcePath) > 0;
+                a.hasSound =
+                    !c.isTitle() && !c.mediaMissing && audioStreamCount(c.sourcePath) > 0;
                 a.moveTargets = moveTargets(t, c.id);
                 v.clips.push_back(a);
                 continue;
@@ -1669,6 +1700,14 @@ void MainWindow::selectTrackClip(int clipId)
     const bool changed = clipId != m_selectedTrackClipId;
     m_selectedTrackClipId = clipId;
     m_timelineWidget->setSelectedTrackClip(clipId);
+    // Between the Overlay and Title tabs, the one for what's selected.
+    if (const TrackClip *tc = changed && clipId > 0 ? m_timeline->trackClipById(clipId) : nullptr) {
+        const int tab = m_sidebar->currentIndex();
+        if (tc->isTitle() && tab == SettingsSidebar::OverlayTab)
+            m_sidebar->setCurrentIndex(SettingsSidebar::TitleTab);
+        else if (!tc->isTitle() && tab == SettingsSidebar::TitleTab && selectedOverlayClip())
+            m_sidebar->setCurrentIndex(SettingsSidebar::OverlayTab);
+    }
     if (clipId > 0 && m_selectedClipId > 0) { // one selection at a time
         m_selectedClipId = 0;
         refreshClipPanels();
@@ -1760,6 +1799,32 @@ void MainWindow::selectAdded(std::optional<int> lastClipId)
         selectTrackClip(*lastClipId);
 }
 
+void MainWindow::addTitle(int trackId, qint64 atMs)
+{
+    if (m_timeline->count() == 0)
+        return; // the main track sets the length
+    atMs = std::clamp<qint64>(atMs, 0, m_timeline->totalDurationMs());
+    // The track given if it has room there, else the first that has, else a
+    // new one.
+    const qint64 endMs = atMs + title::kDefaultSpanMs;
+    const int given = m_timeline->freeTrackFor(atMs, endMs, true, [trackId](const Track &t) {
+        return t.id == trackId;
+    });
+    trackId = given ? given
+                    : m_timeline->freeTrackFor(atMs, endMs, true, [](const Track &) { return true; });
+    if (!trackId)
+        trackId = m_timeline->addTrack(Track::Kind::Video);
+    title::Style style;
+    style.text = tr("Title");
+    style.font = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+    const int id = m_timeline->addTitleClip(trackId, atMs, style);
+    if (!id)
+        return;
+    selectTrackClip(id);
+    m_sidebar->setCurrentIndex(SettingsSidebar::TitleTab);
+    m_sidebar->setOpen(true);
+}
+
 void MainWindow::pushInsetsToController()
 {
     const OutputSettings &out = m_project->output();
@@ -1784,10 +1849,24 @@ void MainWindow::refreshOverlayPanel()
     const TrackClip *c = selectedOverlayClip(&trackId);
     if (!c) {
         m_overlayPanel->setNoClip();
+        m_titleTextPanel->setNoTitle(QString());
+        m_titlePlacementPanel->setNoClip();
         return;
     }
+    // A title shows on the Title tab, an overlay video on the Overlay tab;
+    // the other says where to look.
+    OverlayPanel *panel = c->isTitle() ? m_titlePlacementPanel : m_overlayPanel;
+    if (c->isTitle()) {
+        m_titleTextPanel->setTitle(*c->title);
+        m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Title tab."));
+    } else {
+        const QString hint = tr("An overlay video is selected: its settings are in the Overlay "
+                                "tab.");
+        m_titleTextPanel->setNoTitle(hint);
+        m_titlePlacementPanel->setNoClip(hint);
+    }
     OverlayPanel::State st;
-    st.label = QFileInfo(c->sourcePath).fileName();
+    st.label = c->isTitle() ? titleLabel(*c->title) : QFileInfo(c->sourcePath).fileName();
     st.trackName = m_timeline->trackById(trackId)->name;
     // The layer: the overlay tracks in order, the first in front.
     QStringList overlays;
@@ -1812,6 +1891,7 @@ void MainWindow::refreshOverlayPanel()
     st.fadeInMs = c->fadeInMs;
     st.fadeOutMs = c->fadeOutMs;
     st.spanMs = c->timelineDurationMs();
+    st.maxSpanMs = std::llround((c->sourceDurationMs - c->trimInMs) / c->speed);
     st.startMs = c->startMs;
     st.keyCount = c->insetKeys.count();
     for (const InsetKey &k : c->insetKeys.keys())
@@ -1823,7 +1903,7 @@ void MainWindow::refreshOverlayPanel()
     st.easeAvailable = seg >= 0;
     if (seg >= 0)
         st.ease = c->insetKeys.keys()[seg].ease;
-    m_overlayPanel->setState(st);
+    panel->setState(st);
 }
 
 void MainWindow::moveSelectedOverlayLayer(int step)
@@ -2227,7 +2307,7 @@ void MainWindow::setupKeyboardShortcuts()
     const int tabs = std::min(m_sidebar->count(), 9);
     for (int i = 0; i < tabs; ++i)
         addKey(sidebars,
-               i == 0 ? tr("Show a settings tab (Video, Audio, Overlay, Privacy); again to close "
+               i == 0 ? tr("Show a settings tab (Video, Audio, Overlay, Title, Privacy); again to close "
                            "the sidebar")
                       : QString(),
                {QKeySequence(Qt::ALT | kDigits[i])}, [this, i] { m_sidebar->toggleTab(i); },
@@ -2390,7 +2470,7 @@ int MainWindow::addOverlayAudio(int clipId)
 {
     int trackId = 0;
     const TrackClip *o = m_timeline->trackClipById(clipId, &trackId);
-    if (!o || m_timeline->trackById(trackId)->kind != Track::Kind::Video ||
+    if (!o || m_timeline->trackById(trackId)->kind != Track::Kind::Video || o->isTitle() ||
         audioStreamCount(o->sourcePath) < 1)
         return 0;
     return m_timeline->addOverlaySound(clipId);

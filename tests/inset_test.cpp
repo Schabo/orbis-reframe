@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -151,7 +152,9 @@ void testCompositor(const std::string &dir)
     std::vector<uint8_t> y2(size_t(W) * H, 200);
     exportpipe::VideoFrame pic;
     pic.width = pic.height = 4;
-    pic.rgba.assign(4 * 4 * 4, 0); // black (limited luma 16)
+    pic.rgba.assign(4 * 4 * 4, 0); // black (limited luma 16), opaque
+    for (size_t i = 3; i < pic.rgba.size(); i += 4)
+        pic.rgba[i] = 255;
     inset::Rect rect;
     rect.x = 100.5;
     rect.y = 100;
@@ -171,6 +174,39 @@ void testCompositor(const std::string &dir)
                                            W, uv.data(), W, W, H);
     CHECK(y3[size_t(120) * W + 101] == 235); // white border
     CHECK(y3[size_t(120) * W + 150] == 16);  // black picture
+
+    // A title's picture: premultiplied, transparent around the letters. A
+    // white left half over a clear right half leaves the right untouched.
+    {
+        exportpipe::InsetClipJob t;
+        t.startMs = 0;
+        t.trimInMs = 0;
+        t.trimOutMs = 1000;
+        t.aspect = 2.0;
+        auto still = std::make_shared<std::vector<uint8_t>>(size_t(8) * 4 * 4, 0);
+        for (int py = 0; py < 4; ++py)
+            for (int px = 0; px < 4; ++px) {
+                uint8_t *p = still->data() + (size_t(py) * 8 + px) * 4;
+                p[0] = p[1] = p[2] = p[3] = 255;
+            }
+        t.still = still;
+        t.stillW = 8;
+        t.stillH = 4;
+        t.lookAt = [](int64_t) {
+            inset::Look l;
+            l.centerX = 0.5f;
+            l.centerY = 0.5f;
+            l.width = 0.5f; // rect (160, 110) .. (480, 270)
+            return l;
+        };
+        std::vector<uint8_t> y4(size_t(W) * H, 100), uv4(size_t(W) * H / 2, 128);
+        exportpipe::InsetCompositor tc({t}, W, H);
+        CHECK(tc.composite(500, y4.data(), W, uv4.data(), W, err));
+        CHECK(y4[size_t(H / 2) * W + 200] == 235);          // white, opaque
+        CHECK(y4[size_t(H / 2) * W + 440] == 100);          // clear: what was under it
+        CHECK(std::abs(int(uv4[size_t(H / 4) * W + 440]) - 128) <= 1);
+        CHECK(tc.composite(1500, y4.data(), W, uv4.data(), W, err)); // past it: no file to read
+    }
 
     // A clip whose file is gone fails the export with the path.
     exportpipe::InsetClipJob bad = j;

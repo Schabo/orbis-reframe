@@ -45,6 +45,12 @@ public:
         // layer: decoded at a larger size, with its colour grade.
         bool fullFrame = false;
         std::array<float, 4> colorGrade{};
+        // A title: this picture all along, nothing decoded (`path` empty).
+        // Its look's width is the text size; the picture's width is that
+        // times `stillWidthPerSize` (titlerender::Picture).
+        std::shared_ptr<const std::vector<uint8_t>> still;
+        int stillW = 0, stillH = 0;
+        double stillWidthPerSize = 0.0;
 
         qint64 spanMs() const { return std::llround((trimOutMs - trimInMs) / speed); }
         qint64 endMs() const { return startMs + spanMs(); }
@@ -59,8 +65,8 @@ public:
         // Same decode: the frames it would show are the same.
         bool sameFrames(const Clip &o) const
         {
-            return path == o.path && startMs == o.startMs && trimInMs == o.trimInMs &&
-                   trimOutMs == o.trimOutMs && speed == o.speed;
+            return path == o.path && still == o.still && startMs == o.startMs &&
+                   trimInMs == o.trimInMs && trimOutMs == o.trimOutMs && speed == o.speed;
         }
     };
 

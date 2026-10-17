@@ -31,9 +31,10 @@ uint8_t clamp8(float v)
     return static_cast<uint8_t>(std::clamp(std::lround(v), 0L, 255L));
 }
 
-// Bilinear sample of an RGBA picture at pixel coordinates (texel centres at
-// +0.5, edges clamped) -- what the viewport's linear sampler does.
-void sampleBilinear(const uint8_t *rgba, int w, int h, double fx, double fy, float out[3])
+// Bilinear sample of a premultiplied RGBA picture at pixel coordinates
+// (texel centres at +0.5, edges clamped) -- what the viewport's linear
+// sampler does. `out` is the straight colour; returns the alpha.
+float sampleBilinear(const uint8_t *rgba, int w, int h, double fx, double fy, float out[3])
 {
     fx = std::clamp(fx - 0.5, 0.0, double(w - 1));
     fy = std::clamp(fy - 0.5, 0.0, double(h - 1));
@@ -42,11 +43,16 @@ void sampleBilinear(const uint8_t *rgba, int w, int h, double fx, double fy, flo
     const float tx = static_cast<float>(fx - x0), ty = static_cast<float>(fy - y0);
     const uint8_t *p00 = rgba + (size_t(y0) * w + x0) * 4, *p10 = rgba + (size_t(y0) * w + x1) * 4;
     const uint8_t *p01 = rgba + (size_t(y1) * w + x0) * 4, *p11 = rgba + (size_t(y1) * w + x1) * 4;
-    for (int c = 0; c < 3; ++c) {
+    float v[4];
+    for (int c = 0; c < 4; ++c) {
         const float top = p00[c] + (p10[c] - p00[c]) * tx;
         const float bot = p01[c] + (p11[c] - p01[c]) * tx;
-        out[c] = (top + (bot - top) * ty) / 255.0f;
+        v[c] = (top + (bot - top) * ty) / 255.0f;
     }
+    const float a = v[3];
+    for (int c = 0; c < 3; ++c)
+        out[c] = a >= 1.0f ? v[c] : a > 0.0f ? std::min(1.0f, v[c] / a) : 0.0f;
+    return a;
 }
 
 // fn(begin, end) over rows [y0, y1) in bands of whole `step`s, across the
@@ -157,12 +163,17 @@ void InsetCompositor::blendNv12(const uint8_t *rgba, int picW, int picH, const i
                         if (px >= outW)
                             continue;
                         const inset::Coverage c = inset::shade(px + 0.5, py + 0.5, r);
-                        const float a = c.alpha * opacity;
+                        float a = c.alpha * opacity;
                         if (a <= 0.0f)
                             continue;
                         // The picture fills the rect.
                         float rgb[3];
-                        sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx, (py + 0.5 - r.y) * sy, rgb);
+                        // The border covers whatever the picture's alpha.
+                        const float pa = sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx,
+                                                        (py + 0.5 - r.y) * sy, rgb);
+                        a *= pa + (1.0f - pa) * c.border;
+                        if (a <= 0.0f)
+                            continue;
                         Yuv col = toYuv(rgb[0], rgb[1], rgb[2]);
                         if (c.border > 0.0f) {
                             col.y += (border.y - col.y) * c.border;
@@ -206,6 +217,10 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
     const inset::Rect rect = inset::place(look, j.frame, j.aspect, m_outW, m_outH);
     if (rect.empty() || look.opacity <= 0.0f)
         return false;
+    if (j.still) { // a title: blended, never copied
+        layer = {j.still->data(), nullptr, j.stillW, j.stillH, rect, look.opacity, 0};
+        return true;
+    }
     if (!s.reader) {
         s.reader = std::make_unique<FlatVideoReader>();
         if (!s.reader->open(j.path, err)) {
@@ -321,11 +336,15 @@ void InsetCompositor::blendRgb(const uint8_t *rgba, int picW, int picH, const in
             uint8_t *row = out + size_t(py) * stride;
             for (int px = x0; px < x1; ++px) {
                 const inset::Coverage c = inset::shade(px + 0.5, py + 0.5, r);
-                const float a = c.alpha * opacity;
+                float a = c.alpha * opacity;
                 if (a <= 0.0f)
                     continue;
                 float col[3];
-                sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx, (py + 0.5 - r.y) * sy, col);
+                const float pa = sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx,
+                                                (py + 0.5 - r.y) * sy, col);
+                a *= pa + (1.0f - pa) * c.border;
+                if (a <= 0.0f)
+                    continue;
                 uint8_t *p = row + size_t(px) * bpp;
                 for (int k = 0; k < 3; ++k) {
                     const float v = col[k] + (border[k] - col[k]) * c.border;

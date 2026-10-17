@@ -3,6 +3,7 @@
 #include "AudioLimits.h"
 #include "InsetGeometry.h"
 #include "KeyTrack.h" // keytrack::Ease
+#include "Title.h"
 #include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
 
 #include <QList>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
 
 // Keyframes of a video-track clip's inset look: position, size and opacity over
 // the clip's source time. Same shape as ReframeTrack; the key search / insert /
@@ -52,7 +54,8 @@ private:
 // track it is a span of a flat video file shown as an inset over the output;
 // the audio fields (stream, level, link) don't apply, and the fades fade its
 // opacity. Its sound, if wanted, is a linked clip of the same file on an audio
-// track.
+// track. A title (`title` set) is a video-track clip with no file: its text
+// drawn over the output, placed like a video's inset (see title::Style).
 //
 // Plain value type like ClipItem: Timeline owns it and turns every successful
 // change into a signal; the mutators here clamp, apply, and report whether
@@ -103,6 +106,11 @@ struct TrackClip {
     inset::Look look;        // where it sits, when it has no keyframes
     inset::Frame frame;      // corner radius / border
     InsetKeyTrack insetKeys; // keyframed look over source time
+    // A title: no file (`sourcePath` empty, never missing), its look's width
+    // is the text size (title::Style).
+    std::optional<title::Style> title;
+
+    bool isTitle() const { return title.has_value(); }
 
     double aspect() const
     {

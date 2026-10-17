@@ -427,6 +427,39 @@ inset::Look lookFromJson(const json &j)
 }
 
 // A video-track clip: the track-clip fields plus its size and inset.
+json colorToJson(uint32_t rgb)
+{
+    return QStringLiteral("#%1").arg(rgb & 0xffffff, 6, 16, QLatin1Char('0')).toStdString();
+}
+
+// "#rrggbb" -> rgb; `fallback` if it isn't one.
+uint32_t colorFromJson(const json &j, const char *key, uint32_t fallback)
+{
+    const QString col = QString::fromStdString(j.value(key, std::string()));
+    bool ok = false;
+    const uint rgb = col.startsWith(QLatin1Char('#')) ? col.mid(1).toUInt(&ok, 16) : 0;
+    return ok ? (rgb & 0xffffff) : fallback;
+}
+
+json titleToJson(const title::Style &t)
+{
+    return json{{"text", t.text.toStdString()}, {"font", t.font.toStdString()},
+                {"bold", t.bold}, {"italic", t.italic}, {"color", colorToJson(t.rgb)}};
+}
+
+title::Style titleFromJson(const json &j)
+{
+    title::Style t;
+    t.text = QString::fromStdString(j.value("text", std::string()));
+    t.font = QString::fromStdString(j.value("font", t.font.toStdString()));
+    t.bold = j.value("bold", t.bold);
+    t.italic = j.value("italic", t.italic);
+    t.rgb = colorFromJson(j, "color", t.rgb);
+    return t;
+}
+
+// A video-track clip: the track-clip fields plus its size and inset; a
+// title has its style instead of a source and size.
 json videoClipToJson(const TrackClip &c, const QDir *projectDir)
 {
     json j = trackClipToJson(c, projectDir, -1);
@@ -434,13 +467,17 @@ json videoClipToJson(const TrackClip &c, const QDir *projectDir)
     j.erase("gainDb");
     j.erase("muted");
     j.erase("noise");
-    j["sourceWidth"] = c.sourceWidth;
-    j["sourceHeight"] = c.sourceHeight;
+    if (c.isTitle()) {
+        j.erase("source");
+        j["title"] = titleToJson(*c.title);
+    } else {
+        j["sourceWidth"] = c.sourceWidth;
+        j["sourceHeight"] = c.sourceHeight;
+    }
     json in = lookToJson(c.look);
     in["cornerRadius"] = c.frame.cornerRadius;
     in["borderWidth"] = c.frame.borderWidth;
-    in["borderColor"] =
-        QStringLiteral("#%1").arg(c.frame.borderRgb, 6, 16, QLatin1Char('0')).toStdString();
+    in["borderColor"] = colorToJson(c.frame.borderRgb);
     j["inset"] = std::move(in);
     json keys = json::array();
     for (const InsetKey &k : c.insetKeys.keys()) {
@@ -461,16 +498,17 @@ TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
     c.linkedClipId = 0;
     c.sourceWidth = j.value("sourceWidth", 0);
     c.sourceHeight = j.value("sourceHeight", 0);
+    if (j.contains("title") && j.at("title").is_object()) {
+        c.title = titleFromJson(j.at("title"));
+        c.sourcePath.clear();
+        c.mediaMissing = false;
+    }
     if (j.contains("inset") && j.at("inset").is_object()) {
         const json &in = j.at("inset");
         c.look = lookFromJson(in);
         c.frame.cornerRadius = in.value("cornerRadius", c.frame.cornerRadius);
         c.frame.borderWidth = in.value("borderWidth", c.frame.borderWidth);
-        const QString col = QString::fromStdString(in.value("borderColor", std::string()));
-        bool ok = false;
-        const uint rgb = col.startsWith(QLatin1Char('#')) ? col.mid(1).toUInt(&ok, 16) : 0;
-        if (ok)
-            c.frame.borderRgb = rgb;
+        c.frame.borderRgb = colorFromJson(in, "borderColor", c.frame.borderRgb);
     }
     if (j.contains("insetKeys") && j.at("insetKeys").is_array()) {
         for (const json &jk : j.at("insetKeys"))
@@ -619,7 +657,7 @@ void Project::addTimelineSourcesToPool(bool rebuilt)
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
         for (const TrackClip &c : t.clips) {
-            if (m_mediaPool->contains(c.sourcePath))
+            if (c.isTitle() || m_mediaPool->contains(c.sourcePath))
                 continue;
             // A camera mic on an audio track is the .insv's sound: the pool
             // lists the clip, whose duration and size the main track knows.
@@ -887,12 +925,14 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
 
     json tracks = json::array();
+    bool anyTitle = false;
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
         json tc = json::array();
         for (const TrackClip &c : t.clips) {
             if (video) {
+                anyTitle |= c.isTitle();
                 tc.push_back(videoClipToJson(c, projectDir));
                 continue;
             }
@@ -952,7 +992,9 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyFlat || mixedStitch ? kFlatClipFormatVersion : kPlainFormatVersion},
+        {"version", anyTitle                ? kTitleFormatVersion
+                    : anyFlat || mixedStitch ? kFlatClipFormatVersion
+                                             : kPlainFormatVersion},
         {"previewStitch", previewStitchToJson(stitchForOlder)},
         {"output", outputToJson(m_output)},
         {"timeline",

@@ -22,6 +22,8 @@ choosing **Add video overlay here…**, or by dragging video files from the
 trimming, splitting, hiding a track) is in [The timeline](timeline.md).
 To use a flat video as the main picture instead of a small frame, put it on
 the video track ([Flat videos on the video track](timeline.md#flat-videos-on-the-video-track)).
+For text over the video, see [Titles](titles.md): titles go on overlay
+tracks too, and most of this chapter applies to them.
 
 A new overlay starts in the lower right corner, at 30 % of the picture's
 width.
@@ -39,7 +41,8 @@ get it back.
 
 Click the overlay clip on the timeline, or click the overlay itself in the
 viewport. The **Overlay** tab then shows its settings. With no overlay
-selected, the tab is greyed out.
+selected, the tab is greyed out. A title's settings are on a tab of their
+own, the **Title** tab ([Titles](titles.md)).
 
 ## Position, size and opacity
 
@@ -110,6 +113,7 @@ These settings are the same for the whole clip:
 | **Border colour** | Click to choose the border's colour. |
 | **Fade in** / **Fade out** | Fades the overlay in at the start of the clip, or out at its end, over this many seconds. |
 | **Start** | Where the clip starts on the timeline, in seconds. |
+| **Duration** | How long the clip shows, in seconds. Its start stays put and its end moves, like dragging its end on the timeline; an overlay video can't run past the end of its file. |
 
 ## Several overlays
 

@@ -208,7 +208,8 @@ Besides the video track, you can add any number of other tracks:
   track, called after it (*Overlay 1 audio*); that track comes when the
   first overlay with sound is put on the overlay track, and goes when its
   last clip is removed. How to place and size overlays is in
-  [Overlays](overlays.md).
+  [Overlays](overlays.md). Overlay tracks also hold **titles**, text over
+  the video ([Titles](titles.md)).
 
 So from top to bottom the timeline has three groups of tracks, with a
 little space between them: the video track and its sound, the audio
@@ -253,6 +254,8 @@ There are four ways:
   clips can be dropped: `.insv` files, and flat videos, which then start
   the video track.
 
+Titles come from the **Titles** tab instead; see [Titles](titles.md).
+
 If there's no track of the right kind with room, orbis-reframe makes a new
 one. To make an empty track yourself, choose **Media ▸ Add audio track** or
 **Media ▸ Add overlay track**, or right-click the timeline and choose one of
@@ -269,7 +272,7 @@ them.
 | Split it | Select it and press `S`, or right-click it and choose **Split here**. |
 | Remove it | Select it and press `Delete`, or right-click it and choose **Remove audio clip** / **Remove overlay clip**. |
 | Change its volume or fade it in and out | Select it and use the settings sidebar's **Audio** tab. |
-| Change an overlay's size, position or look | Select it and use the settings sidebar's **Overlay** tab. |
+| Change an overlay's size, position or look | Select it and use the settings sidebar's **Overlay** tab (a title: the **Title** tab). |
 
 `S`, `[`, `]` and `Delete` act on the selected audio or overlay clip if
 there is one, and on the video track otherwise.

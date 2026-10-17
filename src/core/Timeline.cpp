@@ -610,7 +610,8 @@ QStringList Timeline::setSourcesMissing(const QHash<QString, bool> &missing)
         apply(c.sourcePath, c.mediaMissing);
     for (Track &t : m_tracks)
         for (TrackClip &c : t.clips)
-            apply(c.sourcePath, c.mediaMissing);
+            if (!c.isTitle()) // no file
+                apply(c.sourcePath, c.mediaMissing);
     if (!changed.isEmpty())
         emit mediaMissingChanged();
     return changed;
@@ -804,7 +805,7 @@ int Timeline::addOverlaySound(int clipId)
 {
     int trackId = 0;
     const TrackClip *o = trackClipById(clipId, &trackId);
-    if (!o || trackById(trackId)->kind != Track::Kind::Video)
+    if (!o || trackById(trackId)->kind != Track::Kind::Video || o->isTitle())
         return 0;
     // (Only this clip's: another overlay of the same file has its own.)
     for (const Track &t : m_tracks)
@@ -973,6 +974,12 @@ int Timeline::insertTrackClip(int trackId, const TrackClip &clip)
     if (t->kind == Track::Kind::Video) { // no audio link on an overlay
         c.linkedClipId = 0;
         c.stream = -1;
+    } else {
+        c.title.reset(); // a title is an overlay
+    }
+    if (c.isTitle()) {
+        c.sourcePath.clear();
+        c.mediaMissing = false;
     }
     if (c.linkedClipId && !linkAnchor(c.linkedClipId))
         c.linkedClipId = 0;
@@ -1012,6 +1019,34 @@ int Timeline::addVideoClip(int trackId, const QString &sourcePath, qint64 source
     c.sourceHeight = sourceHeight;
     c.resetToFullSource();
     return insertTrackClip(trackId, c);
+}
+
+int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &style,
+                           qint64 spanMs)
+{
+    const Track *t = trackById(trackId);
+    if (!t || t->kind != Track::Kind::Video)
+        return 0;
+    TrackClip c;
+    c.title = style;
+    c.sourceDurationMs = title::kSourceMs;
+    c.startMs = startMs;
+    c.trimInMs = title::kSourceMs / 2;
+    c.trimOutMs = c.trimInMs + std::clamp<qint64>(spanMs, TrackClip::kMinTrimMs, title::kSourceMs / 2);
+    c.look.centerX = 0.5f;
+    c.look.centerY = 0.5f;
+    c.look.width = title::kDefaultSize;
+    return insertTrackClip(trackId, c);
+}
+
+void Timeline::setTrackClipTitle(int clipId, const title::Style &style)
+{
+    TrackClip *c = mutableTrackClipById(clipId);
+    if (!c || !c->isTitle() || *c->title == style)
+        return;
+    c->title = style;
+    c->title->rgb &= 0xffffff;
+    emit tracksChanged();
 }
 
 bool Timeline::removeTrackClip(int clipId)

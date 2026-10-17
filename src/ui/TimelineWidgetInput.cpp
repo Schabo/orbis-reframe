@@ -22,6 +22,7 @@
 #include <cmath>
 
 #include "../core/MediaPool.h" // media::extensions
+#include "../core/Title.h"     // title::kMimeType
 
 // The timeline's input: files dropped on it, the mouse (select, seek, trim,
 // move, reorder, scrub, scroll near the edges), renaming a track, tooltips
@@ -52,14 +53,17 @@ void TimelineWidget::dragEnterEvent(QDragEnterEvent *e)
     const bool audio = !droppableFiles(e->mimeData(), DropKind::Audio).isEmpty();
     const bool video = !droppableFiles(e->mimeData(), DropKind::Overlay).isEmpty();
     const bool clip = !droppableFiles(e->mimeData(), DropKind::Clip).isEmpty();
-    if (!clip && !video && (m_rows.isEmpty() || !audio)) {
+    // A title, like an overlay video, but only over a timeline.
+    const bool title = e->mimeData()->hasFormat(QString::fromLatin1(title::kMimeType));
+    if (title ? m_rows.isEmpty() : !clip && !video && (m_rows.isEmpty() || !audio)) {
         e->ignore();
         return;
     }
     e->acceptProposedAction();
     m_dropActive = true;
-    m_dropClip = clip; // a mix goes by the clip rules, then the audio rules
-    m_dropVideo = video && !audio;
+    m_dropTitle = title;
+    m_dropClip = clip && !title; // a mix goes by the clip rules, then the audio rules
+    m_dropVideo = title || (video && !audio);
     dragMoveEvent(e);
 }
 
@@ -78,7 +82,7 @@ void TimelineWidget::dropTo(QPoint pos)
 {
     // Flat videos alone go on the main track over it, or when it's empty;
     // elsewhere onto an overlay track. With .insv clips they're overlays.
-    m_dropMain = m_dropVideo && !m_dropClip &&
+    m_dropMain = m_dropVideo && !m_dropClip && !m_dropTitle &&
                  (m_rows.isEmpty() || (pos.y() >= mainTop() - kRowGap / 2 &&
                                        pos.y() < mainTop() + kMainH + kRowGap / 2));
     if (m_dropClip || m_dropMain) {
@@ -112,6 +116,13 @@ void TimelineWidget::dropEvent(QDropEvent *e)
     m_dropActive = false;
     m_autoScroll->stop();
     update();
+    if (active && m_dropTitle) {
+        e->acceptProposedAction();
+        const int trackId =
+            m_dropTrack >= 0 && m_dropTrack < m_tracks.size() ? m_tracks[m_dropTrack].id : 0;
+        emit titleDropped(trackId, m_dropMs);
+        return;
+    }
     if (!active || (audio.isEmpty() && video.isEmpty() && clips.isEmpty()))
         return;
     e->acceptProposedAction();
