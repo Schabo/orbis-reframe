@@ -53,7 +53,8 @@ public:
 //     height, fps}] -- the media pool (absent => only what the timeline uses).
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
-    //   fovY}]}, color {exposureEv, contrast, saturation, temperature},
+    //   fovY, ease}]} (ease: "easeOut" | "easeIn", the move to the next key;
+    //   absent => linear), color {exposureEv, contrast, saturation, temperature},
     //   speed, stabilization {mode, windowYawSec, windowPitchSec,
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
     //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true)},
@@ -85,7 +86,7 @@ public:
     //   A video (overlay) clip: the audio clip's timing fields + sourceWidth,
     //   sourceHeight, inset {centerX, centerY, width, opacity, cornerRadius,
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
-    //   centerY, width, opacity}].
+    //   centerY, width, opacity, ease}].
     // Version 8 (0.1.0) had one "stabilization" object at the top level for
     // the whole project instead of one per clip. Before version 10 a clip
     // played one of its audio streams itself (audioTrack, with audioGainDb,

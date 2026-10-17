@@ -1,5 +1,7 @@
 #include "OverlayPanel.h"
 
+#include "EaseCombo.h"
+
 #include <QColorDialog>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -107,6 +109,12 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     keyLayout->addWidget(m_removeKey);
     keyLayout->addWidget(m_clearKeys);
     form()->addRow(QString(), keyRow);
+    m_ease = easecombo::make(this);
+    m_ease->setObjectName(QStringLiteral("overlayEaseCombo"));
+    m_ease->setToolTip(tr("How the inset moves from the key at the playhead (or the last one "
+                          "before it) to the next key: at an even pace, starting fast and "
+                          "slowing into the next key, or starting slowly and speeding up."));
+    form()->addRow(tr("Easing"), m_ease);
 
     auto *sep2 = new QFrame(this);
     sep2->setFrameShape(QFrame::HLine);
@@ -133,8 +141,8 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     m_start->setToolTip(tr("Where the clip starts on the timeline."));
     form()->addRow(tr("Start"), m_start);
 
-    m_clipRows = {layerRow, m_x,      m_y,      m_size,        m_opacity, keyRow, m_radius,
-                  m_border,  m_borderColor, m_fadeIn, m_fadeOut, m_start};
+    m_clipRows = {layerRow, m_x,      m_y,      m_size,        m_opacity, keyRow, m_ease,
+                  m_radius, m_border, m_borderColor, m_fadeIn, m_fadeOut, m_start};
 
     setNoClip();
 
@@ -178,6 +186,8 @@ OverlayPanel::OverlayPanel(QWidget *parent)
     connect(m_addKey, &QPushButton::clicked, this, &OverlayPanel::addKeyRequested);
     connect(m_removeKey, &QPushButton::clicked, this, &OverlayPanel::removeKeyRequested);
     connect(m_clearKeys, &QPushButton::clicked, this, &OverlayPanel::clearKeysRequested);
+    connect(m_ease, &QComboBox::activated, this,
+            [this] { emit easeEdited(easecombo::ease(m_ease)); });
     connect(m_forward, &QPushButton::clicked, this, &OverlayPanel::bringForwardRequested);
     connect(m_backward, &QPushButton::clicked, this, &OverlayPanel::sendBackwardRequested);
 }
@@ -266,6 +276,7 @@ void OverlayPanel::setState(const State &s)
     m_addKey->setEnabled(s.playheadInClip);
     m_removeKey->setEnabled(s.keyAtPlayhead);
     m_clearKeys->setEnabled(s.keyCount > 0);
+    easecombo::show(m_ease, s.easeAvailable, s.ease);
     // Keyed values can only change where a key can go.
     const bool lookEditable = s.keyCount == 0 || s.playheadInClip;
     for (QWidget *w : {static_cast<QWidget *>(m_x), static_cast<QWidget *>(m_y),

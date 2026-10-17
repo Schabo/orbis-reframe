@@ -3,7 +3,9 @@
 #include "../SettingsPanel.h"
 
 #include "../../core/InsetGeometry.h"
+#include "../../core/KeyTrack.h" // keytrack::Ease
 
+class QComboBox;
 class QDoubleSpinBox;
 class QFrame;
 class QLabel;
@@ -43,6 +45,9 @@ public:
         int keyCount = 0;
         bool keyAtPlayhead = false;  // a key sits at the playhead
         bool playheadInClip = false; // keys can be set here
+        // The playhead is between two keys: the move to the next one eases so.
+        bool easeAvailable = false;
+        keytrack::Ease ease = keytrack::Ease::Linear;
     };
     // Reflect a clip. Does not emit.
     void setState(const State &s);
@@ -56,6 +61,7 @@ signals:
     void addKeyRequested();
     void removeKeyRequested();
     void clearKeysRequested();
+    void easeEdited(keytrack::Ease ease);
     // Move its track a layer to the front / back.
     void bringForwardRequested();
     void sendBackwardRequested();
@@ -86,6 +92,7 @@ private:
     QPushButton *m_addKey = nullptr;
     QPushButton *m_removeKey = nullptr;
     QPushButton *m_clearKeys = nullptr;
+    QComboBox *m_ease = nullptr;
     QList<QWidget *> m_clipRows; // greyed out with no clip
     uint32_t m_borderRgb = 0xffffff;
     bool m_updating = false;

@@ -1,13 +1,16 @@
 #pragma once
 
+#include "KeyTrack.h" // keytrack::Ease
+
 #include <QList>
 
 #include <cstdint>
 
 // The authored pan/tilt/zoom path for a clip: a time-ordered set of camera
 // pose keyframes that the viewport follows during playback and scrubbing.
-// The key search / insert / remove is keytrack:: (KeyTrack.h), shared with
-// InsetKeyTrack; the interpolation is this class's own.
+// The key search / insert / remove and the easing between keys are keytrack::
+// (KeyTrack.h), shared with InsetKeyTrack; the interpolation is this class's
+// own.
 //
 // Pure value type (no QObject) so it's trivially testable and
 // serialisable. Each ClipItem holds one; Timeline wraps every mutation in a
@@ -27,6 +30,7 @@ struct ReframePose {
 struct ReframeKey {
     qint64 timeMs = 0;
     ReframePose pose;
+    keytrack::Ease ease = keytrack::Ease::Linear; // the move to the next key
 };
 
 class ReframeTrack {
@@ -38,8 +42,13 @@ public:
 
     // Insert a key at timeMs, or overwrite the pose of an existing key whose
     // time is within snapMs of timeMs (so re-authoring at "the same" playhead
-    // frame updates rather than piles up near-duplicates).
+    // frame updates rather than piles up near-duplicates). An overwritten key
+    // keeps its ease; a new one is linear.
     void upsert(qint64 timeMs, const ReframePose &pose, qint64 snapMs);
+
+    // Ease of the move from the key at timeMs (within snapMs, else the last
+    // one before) to the next. True if it changed (keytrack::setEase).
+    bool setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease);
 
     // Remove the key nearest timeMs if one is within snapMs. Returns true if a
     // key was removed.
@@ -54,7 +63,7 @@ public:
 
     // Pose at timeMs: the first key's pose at or before the first key, the last
     // key's pose at or after the last, otherwise interpolated between the two
-    // bracketing keys. Returns a default pose if the track is empty (callers are
+    // bracketing keys, eased by the earlier one's ease. Returns a default pose if the track is empty (callers are
     // expected to check isEmpty() and free-look instead).
     ReframePose sample(qint64 timeMs) const;
 

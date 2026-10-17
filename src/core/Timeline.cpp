@@ -413,6 +413,13 @@ void Timeline::removeClipReframeKeyNear(int clipId, qint64 sourceMs)
         emit clipReframeChanged(c->id);
 }
 
+void Timeline::setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->reframe.setEase(sourceMs, ClipItem::kReframeDeleteSnapMs, ease))
+        emit clipReframeChanged(c->id);
+}
+
 void Timeline::replaceClipReframeSpan(int clipId, qint64 fromMs, qint64 toMs,
                                       const QList<ReframeKey> &keys)
 {
@@ -1235,6 +1242,13 @@ void Timeline::removeTrackClipInsetKeyNear(int clipId, qint64 sourceMs)
     if (c->insetKeys.isEmpty())
         c->look = last; // the last key's look stays where it was
     emit tracksChanged();
+}
+
+void Timeline::setTrackClipInsetEase(int clipId, qint64 sourceMs, keytrack::Ease ease)
+{
+    TrackClip *c = mutableTrackClipById(clipId);
+    if (c && c->insetKeys.setEase(sourceMs, kInsetKeyDeleteSnapMs, ease))
+        emit tracksChanged();
 }
 
 void Timeline::clearTrackClipInsetKeys(int clipId, qint64 sourceMs)

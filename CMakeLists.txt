@@ -438,6 +438,7 @@ if(FFMPEG_FOUND)
         src/ui/panels/StitchingPanel.h
         src/ui/panels/ReframePanel.cpp
         src/ui/panels/ReframePanel.h
+        src/ui/panels/EaseCombo.h
         src/ui/panels/StabilizationPanel.cpp
         src/ui/panels/StabilizationPanel.h
         src/ui/panels/AudioPanel.cpp

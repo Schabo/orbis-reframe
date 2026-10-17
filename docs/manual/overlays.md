@@ -61,9 +61,9 @@ stay right if you change the project's resolution or aspect ratio later
 
 Without keyframes, an overlay keeps one position, size and opacity for the
 whole clip. With **keyframes** it can move, grow, shrink or fade during the
-clip: you set the look at a few moments, and the overlay moves at an even
-pace from one to the next. This works like the reframe keyframes of the
-360° view ([Reframing](reframing.md)).
+clip: you set the look at a few moments, and the overlay moves from one to
+the next. This works like the reframe keyframes of the 360° view
+([Reframing](reframing.md)).
 
 1. Select the overlay, and move the playhead to where a change should start.
 2. Click **Set key** (or press `K`). The overlay's current position, size
@@ -80,6 +80,12 @@ pace from one to the next. This works like the reframe keyframes of the
   0.15 seconds of it).
 - **Clear** removes all keyframes. The overlay stays as it looks at the
   playhead.
+- **Easing** sets how the overlay moves from the keyframe at the playhead
+  (or the last one before it) to the next: **Linear** (an even pace),
+  **Fast to slow** (slows down into the next keyframe) or **Slow to fast**
+  (starts slowly and speeds up). It works like the easing of reframe
+  keyframes ([Easing](reframing.md#easing)), and is greyed out where the
+  playhead isn't between two keyframes. New keyframes are linear.
 
 With keyframes, the playhead has to be inside the overlay clip to change
 the overlay: a change needs a moment to store its keyframe at.

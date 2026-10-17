@@ -49,8 +49,14 @@ public:
     // Track subject give way to how it fills the output frame -- the whole
     // picture with bars, or filling the frame (`fill`).
     void setFlatClip(bool flat, bool fill = false);
+
+    // Easing of the move from the key at (or before) the playhead to the next
+    // one; `available` false greys it out (the playhead isn't between two
+    // keys). Does not emit easeEdited.
+    void setEase(bool available, keytrack::Ease ease);
 signals:
     void poseEdited(const ReframePose &pose);
+    void easeEdited(keytrack::Ease ease);
     // The Fit choice of a flat clip changed.
     void fitEdited(bool fill);
     // The button was clicked: start drawing a box around the subject (or,
@@ -66,6 +72,8 @@ private:
     QDoubleSpinBox *m_pitch = nullptr;
     QDoubleSpinBox *m_roll = nullptr;
     QDoubleSpinBox *m_fov = nullptr;
+    QComboBox *m_ease = nullptr;
+    bool m_easeAvailable = false;
     QPushButton *m_track = nullptr;
     QLabel *m_trackUnavailable = nullptr;
     QString m_trackUnavailableReason;

@@ -59,6 +59,11 @@ void ReframeTrack::upsert(qint64 timeMs, const ReframePose &pose, qint64 snapMs)
     keytrack::upsert(m_keys, ReframeKey{timeMs, pose}, snapMs);
 }
 
+bool ReframeTrack::setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease)
+{
+    return keytrack::setEase(m_keys, timeMs, snapMs, ease);
+}
+
 bool ReframeTrack::removeNear(qint64 timeMs, qint64 snapMs)
 {
     return keytrack::removeNear(m_keys, timeMs, snapMs);

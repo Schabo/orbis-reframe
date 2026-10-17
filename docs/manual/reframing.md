@@ -37,10 +37,11 @@ edges of the picture change.
 ## Keyframes
 
 A keyframe stores the view (yaw, pitch, roll and field of view) at one
-moment of a clip. Between two keyframes the camera turns and zooms at an
-even pace from one view to the other, the short way round. Before a clip's
-first keyframe the view stays as at that keyframe, and after the last
-keyframe it stays as at the last one.
+moment of a clip. Between two keyframes the camera turns and zooms from one
+view to the other, the short way round, at the pace the first keyframe's
+**Easing** sets (see [Easing](#easing)). Before a clip's first keyframe the
+view stays as at that keyframe, and after the last keyframe it stays as at
+the last one.
 
 Each clip has its own keyframes, stored with the clip. They move with the
 clip when you reorder or trim it, and a split clip's halves both keep the
@@ -104,6 +105,27 @@ following the keyframes.
   click **Delete all keyframes** in the edit toolbar (`Ctrl+Shift+K`).
 
 **Edit ▸ Undo** (`Ctrl+Z`) undoes keyframe changes like any other edit.
+
+### Easing
+
+**Easing** in the **Reframe** section sets how the camera moves from one
+keyframe to the next:
+
+| Easing | The move |
+|---|---|
+| **Linear** | At an even pace from start to end. It starts and stops abruptly. |
+| **Fast to slow** | Starts fast and slows down, coming to rest at the next keyframe. Good for settling on a subject. |
+| **Slow to fast** | Starts slowly from rest and speeds up into the next keyframe. Good for leaving a view. |
+
+Each keyframe has its own easing, for the move from it to the next keyframe.
+Move the playhead onto a keyframe, or anywhere between it and the next one,
+and pick the easing: it applies to that move. The field shows the easing of
+the move the playhead is in, and is greyed out before a clip's first
+keyframe and from its last keyframe on, where nothing moves. Choosing an
+easing doesn't need reframe authoring armed.
+
+New keyframes, and the keyframes **Track subject** sets, are linear. A
+keyframe keeps its easing when you change its view.
 
 ## Track subject
 

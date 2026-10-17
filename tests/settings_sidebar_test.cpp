@@ -3,7 +3,8 @@
 // their sections in order, opening / closing sections (with a greyed-out
 // body too), what each section says it applies to, the tab keys' toggle,
 // the Stitching section keeping the View menu's part of the stitch config,
-// the Overlay tab's layer row, and the Project settings dialog. No GPU, no media.
+// the Overlay tab's layer row, the Easing field of the Reframe and Overlay
+// sections, and the Project settings dialog. No GPU, no media.
 // Exit code is the failure count. ORBIS_SETTINGS_SHOT=<path> saves a
 // picture of the sidebar.
 
@@ -339,6 +340,57 @@ void testOverlayLayer(SettingsSidebar &bar)
     CHECK(label->text().isEmpty() && !forward->isEnabled());
 }
 
+// The Easing field: greyed out unless the playhead is between two keys, shows
+// that segment's ease without emitting, and a pick emits it; the Reframe
+// one hides on a flat clip and greys out while tracking.
+void testEasing(SettingsSidebar &bar)
+{
+    OverlayPanel *overlay = bar.overlay();
+    auto *oEase = find<QComboBox>(overlay, "overlayEaseCombo");
+    ReframePanel *reframe = bar.reframe();
+    auto *rEase = find<QComboBox>(reframe, "reframeEaseCombo");
+    if (!oEase || !rEase)
+        return;
+    CHECK(oEase->count() == 3 && oEase->itemText(1) == QLatin1String("Fast to slow") &&
+          oEase->itemText(2) == QLatin1String("Slow to fast"));
+
+    QSignalSpy oSpy(overlay, &OverlayPanel::easeEdited);
+    OverlayPanel::State st;
+    st.spanMs = 5000;
+    st.keyCount = 2;
+    st.playheadInClip = true;
+    overlay->setState(st);
+    CHECK(!oEase->isEnabled());
+    st.easeAvailable = true;
+    st.ease = keytrack::Ease::Out;
+    overlay->setState(st);
+    CHECK(oEase->isEnabled() && oEase->currentIndex() == 1 && oSpy.isEmpty());
+    oEase->setFocus();
+    QTest::keyClick(oEase, Qt::Key_Down);
+    CHECK(oSpy.count() == 1 &&
+          oSpy.at(0).at(0).value<keytrack::Ease>() == keytrack::Ease::In);
+    overlay->setNoClip();
+    CHECK(!oEase->isEnabled());
+
+    QSignalSpy rSpy(reframe, &ReframePanel::easeEdited);
+    reframe->setEase(true, keytrack::Ease::In);
+    CHECK(rEase->isEnabled() && rEase->currentIndex() == 2 && rSpy.isEmpty());
+    rEase->setFocus();
+    QTest::keyClick(rEase, Qt::Key_Up);
+    CHECK(rSpy.count() == 1 &&
+          rSpy.at(0).at(0).value<keytrack::Ease>() == keytrack::Ease::Out);
+    reframe->setTrackRunning(true);
+    CHECK(!rEase->isEnabled());
+    reframe->setTrackRunning(false);
+    CHECK(rEase->isEnabled());
+    reframe->setEase(false, keytrack::Ease::Linear);
+    CHECK(!rEase->isEnabled() && rEase->currentIndex() == 0);
+    reframe->setFlatClip(true);
+    CHECK(!rEase->isVisibleTo(reframe));
+    reframe->setFlatClip(false);
+    CHECK(rEase->isVisibleTo(reframe));
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -363,6 +415,7 @@ int main(int argc, char **argv)
     testTabKeys(bar);
     testStitchingPanel(bar);
     testOverlayLayer(bar);
+    testEasing(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

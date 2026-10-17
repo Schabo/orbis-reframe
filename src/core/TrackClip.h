@@ -2,6 +2,7 @@
 
 #include "AudioLimits.h"
 #include "InsetGeometry.h"
+#include "KeyTrack.h" // keytrack::Ease
 #include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
 
 #include <QList>
@@ -13,10 +14,11 @@
 
 // Keyframes of a video-track clip's inset look: position, size and opacity over
 // the clip's source time. Same shape as ReframeTrack; the key search / insert /
-// remove is keytrack:: (KeyTrack.h).
+// remove and the easing are keytrack:: (KeyTrack.h).
 struct InsetKey {
     qint64 timeMs = 0; // source time
     inset::Look look;
+    keytrack::Ease ease = keytrack::Ease::Linear; // the move to the next key
 };
 
 class InsetKeyTrack {
@@ -24,12 +26,16 @@ public:
     bool isEmpty() const { return m_keys.isEmpty(); }
     int count() const { return static_cast<int>(m_keys.size()); }
     const QList<InsetKey> &keys() const { return m_keys; }
-    // Insert a key, or overwrite the one within snapMs of timeMs.
+    // Insert a key, or overwrite the one within snapMs of timeMs (which keeps
+    // its ease; a new key is linear).
     void upsert(qint64 timeMs, const inset::Look &look, qint64 snapMs);
+    // Ease of the move from the key at timeMs (within snapMs, else the last
+    // one before) to the next. True if it changed.
+    bool setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease);
     // Remove the key nearest timeMs within snapMs. True if one was removed.
     bool removeNear(qint64 timeMs, qint64 snapMs);
     void clear() { m_keys.clear(); }
-    // Held before the first key and after the last, linear between.
+    // Held before the first key and after the last, eased between.
     // Default look if empty.
     inset::Look sample(qint64 timeMs) const;
     bool operator==(const InsetKeyTrack &o) const;

@@ -701,6 +701,11 @@ void MainWindow::connectOverlaysAndAudio()
             &MainWindow::deleteOverlayKeyAtPlayhead);
     connect(m_overlayPanel, &OverlayPanel::clearKeysRequested, this,
             &MainWindow::clearOverlayKeys);
+    connect(m_overlayPanel, &OverlayPanel::easeEdited, this, [this](keytrack::Ease e) {
+        if (const TrackClip *c = selectedOverlayClip())
+            m_timeline->setTrackClipInsetEase(
+                c->id, c->sourceAtLocalMs(m_lastTimelineMs - c->startMs), e);
+    });
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
     connect(m_timelineWidget, &TimelineWidget::overlayAudioRequested, this,
@@ -788,6 +793,12 @@ void MainWindow::connectReframe()
         m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(m_clipId, m_lastPositionMs, p);
+    });
+    // Easing needs no arming: it changes keys already there, not the path's
+    // points.
+    connect(m_reframePanel, &ReframePanel::easeEdited, this, [this](keytrack::Ease e) {
+        if (m_clipId)
+            m_timeline->setClipReframeEase(m_clipId, m_lastPositionMs, e);
     });
     // Track subject: the panel arms a box select in the viewport; a drawn box
     // starts tracking from the playhead.
@@ -1425,6 +1436,12 @@ void MainWindow::syncReframePanel()
 {
     m_reframePanel->setPose({m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
                              m_viewport->FovY()});
+    const ClipItem *c = m_timeline->clipById(m_clipId);
+    const int seg = c ? keytrack::segmentAt(c->reframe.keys(), m_lastPositionMs,
+                                            ClipItem::kReframeDeleteSnapMs)
+                      : -1;
+    m_reframePanel->setEase(seg >= 0, seg >= 0 ? c->reframe.keys()[seg].ease
+                                               : keytrack::Ease::Linear);
 }
 
 void MainWindow::applyColorGrade(const ColorGrade &grade)
@@ -1800,6 +1817,12 @@ void MainWindow::refreshOverlayPanel()
     for (const InsetKey &k : c->insetKeys.keys())
         st.keyAtPlayhead |= st.playheadInClip &&
                             std::llabs(k.timeMs - src) <= Timeline::kInsetKeyDeleteSnapMs;
+    const int seg = st.playheadInClip ? keytrack::segmentAt(c->insetKeys.keys(), src,
+                                                            Timeline::kInsetKeyDeleteSnapMs)
+                                      : -1;
+    st.easeAvailable = seg >= 0;
+    if (seg >= 0)
+        st.ease = c->insetKeys.keys()[seg].ease;
     m_overlayPanel->setState(st);
 }
 

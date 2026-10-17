@@ -38,6 +38,7 @@ void testProjectJson()
         p.timeline()->setClipTrimOut(a, 8000);
         p.timeline()->upsertClipReframeKey(a, 2000, {0.5f, -0.25f, 0.1f, 1.1f});
         p.timeline()->upsertClipReframeKey(a, 5000, {1.5f, 0.0f, 0.0f, 0.9f});
+        p.timeline()->setClipReframeEase(a, 3000, keytrack::Ease::Out); // 2000's segment
         { // Audio panel: the camera mic's clip (stream 1 of 2)
             const Track *cam = p.timeline()->trackById(
                 p.timeline()->streamTrackId(Track::Role::CameraMic));
@@ -153,6 +154,8 @@ void testProjectJson()
         CHECK(a.reframe.keys()[0].pose.roll > 0.09f && a.reframe.keys()[0].pose.roll < 0.11f);
         CHECK(a.reframe.keys()[1].pose.roll == 0.0f); // key 2 authored with roll 0
         CHECK(a.reframe.keys()[1].pose.fovY > 0.89f && a.reframe.keys()[1].pose.fovY < 0.91f);
+        CHECK(a.reframe.keys()[0].ease == keytrack::Ease::Out);
+        CHECK(a.reframe.keys()[1].ease == keytrack::Ease::Linear);
         // The stream tracks round-trip: roles, order, mute, the clips' links
         // and the Audio panel's level / noise.
         const int camId = tl->streamTrackId(Track::Role::CameraMic);
@@ -678,6 +681,9 @@ void testProjectVideoTracksJson()
         p.timeline()->setTrackClipInset(c, l, f);
         l.opacity = 0.25f;
         p.timeline()->upsertTrackClipInsetKey(c, 2000, l);
+        l.centerX = 0.6f;
+        p.timeline()->upsertTrackClipInsetKey(c, 4000, l);
+        p.timeline()->setTrackClipInsetEase(c, 2000, keytrack::Ease::In);
         p.timeline()->setTrackAudio(t, 0.0, true); // hidden
         CHECK(p.save(projFile));
     }
@@ -687,6 +693,7 @@ void testProjectVideoTracksJson()
         const QByteArray text = f.readAll();
         CHECK(text.contains("\"kind\":\"video\"") && text.contains("\"pip/cam.mp4\""));
         CHECK(text.contains("\"borderColor\":\"#00ff80\""));
+        CHECK(text.count("\"ease\"") == 1 && text.contains("\"ease\":\"easeIn\""));
     }
     Project q;
     QString err;
@@ -701,8 +708,10 @@ void testProjectVideoTracksJson()
     CHECK(c.look.centerX == 0.3f && c.look.width == 0.4f);
     CHECK(c.frame.cornerRadius == 0.2f && c.frame.borderWidth == 0.004f);
     CHECK(c.frame.borderRgb == 0x00ff80);
-    CHECK(c.insetKeys.count() == 1 && c.insetKeys.keys()[0].timeMs == 2000);
+    CHECK(c.insetKeys.count() == 2 && c.insetKeys.keys()[0].timeMs == 2000);
     CHECK(c.insetKeys.keys()[0].look.opacity == 0.25f);
+    CHECK(c.insetKeys.keys()[0].ease == keytrack::Ease::In);
+    CHECK(c.insetKeys.keys()[1].ease == keytrack::Ease::Linear);
     CHECK(tl->trackAt(0).kind == Track::Kind::Audio && tl->trackAt(0).name == "Music");
 
     // An overlay's linked sound survives save / load and undo.

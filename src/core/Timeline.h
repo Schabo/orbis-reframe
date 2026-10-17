@@ -250,6 +250,9 @@ public slots:
     void removeTrackClipInsetKeyNear(int clipId, qint64 sourceMs);
     // Drop every key; the clip keeps the look at `sourceMs` as its static one.
     void clearTrackClipInsetKeys(int clipId, qint64 sourceMs);
+    // Ease of the move from the key at sourceMs (within kInsetKeyDeleteSnapMs,
+    // else the last one before) to the next (keytrack::segmentAt).
+    void setTrackClipInsetEase(int clipId, qint64 sourceMs, keytrack::Ease ease);
 
     // --- per-clip edits, addressed by clip id ----------------------------
     // positionMs / sourceMs are in the clip's own source time (0 .. its source
@@ -259,6 +262,9 @@ public slots:
     void clearClipTrim(int clipId);
     void upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose);
     void removeClipReframeKeyNear(int clipId, qint64 sourceMs);
+    // Ease of the move from the key at sourceMs (within
+    // ClipItem::kReframeDeleteSnapMs, else the last one before) to the next.
+    void setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease);
     void clearClipReframe(int clipId);
     // Replace the clip's keys in [fromMs, toMs] (source time) with `keys` --
     // one edit, one undo step (Track subject writes its path this way).

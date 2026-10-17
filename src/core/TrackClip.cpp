@@ -100,6 +100,11 @@ void InsetKeyTrack::upsert(qint64 timeMs, const inset::Look &look, qint64 snapMs
     keytrack::upsert(m_keys, InsetKey{timeMs, look.clamped()}, snapMs);
 }
 
+bool InsetKeyTrack::setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease)
+{
+    return keytrack::setEase(m_keys, timeMs, snapMs, ease);
+}
+
 bool InsetKeyTrack::removeNear(qint64 timeMs, qint64 snapMs)
 {
     return keytrack::removeNear(m_keys, timeMs, snapMs);
@@ -120,7 +125,8 @@ bool InsetKeyTrack::operator==(const InsetKeyTrack &o) const
     if (m_keys.size() != o.m_keys.size())
         return false;
     for (int i = 0; i < m_keys.size(); ++i)
-        if (m_keys[i].timeMs != o.m_keys[i].timeMs || m_keys[i].look != o.m_keys[i].look)
+        if (m_keys[i].timeMs != o.m_keys[i].timeMs || m_keys[i].look != o.m_keys[i].look ||
+            m_keys[i].ease != o.m_keys[i].ease)
             return false;
     return true;
 }

@@ -1,5 +1,7 @@
 #include "ReframePanel.h"
 
+#include "EaseCombo.h"
+
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -39,6 +41,15 @@ ReframePanel::ReframePanel(QWidget *parent)
     form()->addRow(tr("Pitch"), m_pitch);
     form()->addRow(tr("Roll"), m_roll);
     form()->addRow(tr("Field of view"), m_fov);
+
+    m_ease = easecombo::make(this);
+    m_ease->setObjectName(QStringLiteral("reframeEaseCombo"));
+    m_ease->setToolTip(tr("How the view moves from the key at the playhead (or the last one "
+                          "before it) to the next key: at an even pace, starting fast and "
+                          "slowing into the next key, or starting slowly and speeding up."));
+    form()->addRow(tr("Easing"), m_ease);
+    connect(m_ease, &QComboBox::activated, this,
+            [this] { emit easeEdited(easecombo::ease(m_ease)); });
 
     m_track = new QPushButton(tr("Track subject…"), this);
     m_track->setObjectName(QStringLiteral("trackSubjectButton"));
@@ -124,7 +135,8 @@ void ReframePanel::setClipUnkeyed(bool unkeyed)
 void ReframePanel::setFlatClip(bool flat, bool fill)
 {
     m_flat = flat;
-    for (QWidget *w : std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_track})
+    for (QWidget *w :
+         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_ease, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);
@@ -135,6 +147,12 @@ void ReframePanel::setFlatClip(bool flat, bool fill)
     setHint(flat ? tr("A flat video is shown as it is, not reframed.")
                  : tr("With Arm reframe authoring on in the edit toolbar, each value you enter "
                       "sets a keyframe at the playhead."));
+}
+
+void ReframePanel::setEase(bool available, keytrack::Ease ease)
+{
+    m_easeAvailable = available;
+    easecombo::show(m_ease, available && !m_trackRunning, ease);
 }
 
 void ReframePanel::setTrackUnavailable(const QString &reason)
@@ -167,6 +185,7 @@ void ReframePanel::setTrackRunning(bool running)
         m_trackStatus->clear();
     for (QDoubleSpinBox *b : {m_yaw, m_pitch, m_roll, m_fov})
         b->setEnabled(!running);
+    m_ease->setEnabled(m_easeAvailable && !running);
 }
 
 void ReframePanel::setTrackStatus(const QString &status)

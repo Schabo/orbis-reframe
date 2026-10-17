@@ -3,13 +3,58 @@
 #include <QList>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
+#include <string_view>
 
 // Search / insert / remove on a keyframe list sorted by time with unique
-// times -- the part ReframeTrack and InsetKeyTrack share. `Key` is any struct
-// with a `qint64 timeMs`; the value it carries and how two values blend stay
-// with each track.
+// times, and the easing between keys -- the part ReframeTrack and
+// InsetKeyTrack share. `Key` is any struct with a `qint64 timeMs` and an
+// `Ease ease`; the value it carries and how two values blend stay with each
+// track.
 namespace keytrack {
+
+// How the value moves from a key to the next one (the key's own setting, for
+// the segment after it): at an even pace, starting fast and slowing into the
+// next key, or starting slowly and speeding up. Quadratic, so the slow end
+// starts / stops at rest and the fast end moves at twice the even pace.
+enum class Ease : std::uint8_t { Linear, Out, In };
+
+inline float eased(Ease e, float t)
+{
+    switch (e) {
+    case Ease::Out:
+        return 1.0f - (1.0f - t) * (1.0f - t);
+    case Ease::In:
+        return t * t;
+    case Ease::Linear:
+        break;
+    }
+    return t;
+}
+
+// The project file's names; Linear is written as no field at all.
+inline const char *easeName(Ease e)
+{
+    switch (e) {
+    case Ease::Out:
+        return "easeOut";
+    case Ease::In:
+        return "easeIn";
+    case Ease::Linear:
+        break;
+    }
+    return "linear";
+}
+
+inline Ease easeFromName(std::string_view name)
+{
+    if (name == "easeOut")
+        return Ease::Out;
+    if (name == "easeIn")
+        return Ease::In;
+    return Ease::Linear; // "linear", absent, or a name from a newer build
+}
 
 // Index of the key nearest timeMs if within snapMs, or -1.
 template <class Key>
@@ -36,14 +81,15 @@ typename QList<Key>::iterator lowerBound(QList<Key> &keys, qint64 timeMs)
 }
 
 // Insert `key`, or give its value to the key within snapMs of key.timeMs
-// (which keeps its own time) -- re-authoring at "the same" playhead frame
-// updates rather than piles up near-duplicates.
+// (which keeps its own time and ease) -- re-authoring at "the same" playhead
+// frame updates rather than piles up near-duplicates.
 template <class Key>
 void upsert(QList<Key> &keys, Key key, qint64 snapMs)
 {
     const int near = indexNear(keys, key.timeMs, snapMs);
     if (near >= 0) {
         key.timeMs = keys[near].timeMs;
+        key.ease = keys[near].ease;
         keys[near] = key;
         return;
     }
@@ -61,8 +107,35 @@ bool removeNear(QList<Key> &keys, qint64 timeMs, qint64 snapMs)
     return true;
 }
 
-// The keys to blend at timeMs: lo + (hi - lo) * t. Before the first key and
-// after the last, lo == hi (the value is held). Both null if `keys` is empty.
+// The key whose segment (to the next key) timeMs is in: the key within snapMs
+// of it, else the last key before it. -1 before the first key, at or after
+// the last, or with no keys -- there's no move there to ease.
+template <class Key>
+int segmentAt(const QList<Key> &keys, qint64 timeMs, qint64 snapMs)
+{
+    int i = indexNear(keys, timeMs, snapMs);
+    if (i < 0) {
+        const auto it = std::upper_bound(keys.begin(), keys.end(), timeMs,
+                                         [](qint64 t, const Key &k) { return t < k.timeMs; });
+        i = static_cast<int>(it - keys.begin()) - 1;
+    }
+    return i >= 0 && i + 1 < keys.size() ? i : -1;
+}
+
+// Set the ease of the segment at timeMs (segmentAt). True if it changed.
+template <class Key>
+bool setEase(QList<Key> &keys, qint64 timeMs, qint64 snapMs, Ease ease)
+{
+    const int i = segmentAt(keys, timeMs, snapMs);
+    if (i < 0 || keys[i].ease == ease)
+        return false;
+    keys[i].ease = ease;
+    return true;
+}
+
+// The keys to blend at timeMs: lo + (hi - lo) * t, t already eased by lo's
+// ease. Before the first key and after the last, lo == hi (the value is
+// held). Both null if `keys` is empty.
 template <class Key>
 struct Bracket {
     const Key *lo = nullptr;
@@ -87,7 +160,7 @@ Bracket<Key> bracket(const QList<Key> &keys, qint64 timeMs)
     const qint64 span = hi.timeMs - lo.timeMs;
     const float t = span > 0 ? static_cast<float>(timeMs - lo.timeMs) / static_cast<float>(span)
                              : 0.0f;
-    return {&lo, &hi, t};
+    return {&lo, &hi, eased(lo.ease, t)};
 }
 
 } // namespace keytrack

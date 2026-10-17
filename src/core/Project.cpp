@@ -156,11 +156,14 @@ json reframeToJson(const ReframeTrack &track)
 {
     json keys = json::array();
     for (const ReframeKey &k : track.keys()) {
-        keys.push_back({{"tMs", static_cast<qint64>(k.timeMs)},
-                        {"yaw", k.pose.yaw},
-                        {"pitch", k.pose.pitch},
-                        {"roll", k.pose.roll},
-                        {"fovY", k.pose.fovY}});
+        json jk{{"tMs", static_cast<qint64>(k.timeMs)},
+                {"yaw", k.pose.yaw},
+                {"pitch", k.pose.pitch},
+                {"roll", k.pose.roll},
+                {"fovY", k.pose.fovY}};
+        if (k.ease != keytrack::Ease::Linear)
+            jk["ease"] = keytrack::easeName(k.ease);
+        keys.push_back(std::move(jk));
     }
     return json{{"keys", std::move(keys)}};
 }
@@ -443,6 +446,8 @@ json videoClipToJson(const TrackClip &c, const QDir *projectDir)
     for (const InsetKey &k : c.insetKeys.keys()) {
         json jk = lookToJson(k.look);
         jk["tMs"] = static_cast<qint64>(k.timeMs);
+        if (k.ease != keytrack::Ease::Linear)
+            jk["ease"] = keytrack::easeName(k.ease);
         keys.push_back(std::move(jk));
     }
     j["insetKeys"] = std::move(keys);
@@ -467,9 +472,14 @@ TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
         if (ok)
             c.frame.borderRgb = rgb;
     }
-    if (j.contains("insetKeys") && j.at("insetKeys").is_array())
+    if (j.contains("insetKeys") && j.at("insetKeys").is_array()) {
         for (const json &jk : j.at("insetKeys"))
             c.insetKeys.upsert(jk.value("tMs", qint64(0)), lookFromJson(jk), 0);
+        // Once every key is in: a key's ease needs the next key there.
+        for (const json &jk : j.at("insetKeys"))
+            c.insetKeys.setEase(jk.value("tMs", qint64(0)), 0,
+                                keytrack::easeFromName(jk.value("ease", std::string())));
+    }
     return c;
 }
 
@@ -1059,6 +1069,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     k.pose.pitch = jk.value("pitch", 0.0f);
                     k.pose.roll = jk.value("roll", 0.0f);
                     k.pose.fovY = jk.value("fovY", 1.309f);
+                    k.ease = keytrack::easeFromName(jk.value("ease", std::string()));
                     pc.reframeKeys.push_back(k);
                 }
             }
@@ -1171,6 +1182,9 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             m_timeline->setSourceSeamAdjust(pc.sourcePath, pc.seamAdjustDeg, pc.seamAdjustGuard);
         for (const ReframeKey &k : pc.reframeKeys)
             m_timeline->upsertClipReframeKey(id, k.timeMs, k.pose);
+        for (const ReframeKey &k : pc.reframeKeys) // once the next key is in
+            if (k.ease != keytrack::Ease::Linear)
+                m_timeline->setClipReframeEase(id, k.timeMs, k.ease);
         m_timeline->setClipMediaMissing(id, pc.mediaMissing);
         clipIds.push_back(id);
     }

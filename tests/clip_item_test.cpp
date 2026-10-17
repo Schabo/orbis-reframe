@@ -120,6 +120,56 @@ void testInsetKeyTrack()
     CHECK(k.count() == 2 && k.keys()[0].timeMs == 1000 && k.keys()[1].timeMs == 3000);
 }
 
+// Easing (keytrack::): a key's ease shapes the move to the next key, the
+// segment is found from anywhere in it or near its key, there's none before
+// the first / at the last key, and re-authoring a key keeps its ease.
+void testKeyEasing()
+{
+    using keytrack::Ease;
+    CHECK(keytrack::eased(Ease::Linear, 0.25f) == 0.25f);
+    CHECK(keytrack::eased(Ease::Out, 0.5f) == 0.75f); // ahead: fast, then slow
+    CHECK(keytrack::eased(Ease::In, 0.5f) == 0.25f);  // behind: slow, then fast
+    for (Ease e : {Ease::Linear, Ease::Out, Ease::In})
+        CHECK(keytrack::eased(e, 0.0f) == 0.0f && keytrack::eased(e, 1.0f) == 1.0f);
+    CHECK(keytrack::easeFromName(keytrack::easeName(Ease::Out)) == Ease::Out);
+    CHECK(keytrack::easeFromName(keytrack::easeName(Ease::In)) == Ease::In);
+    CHECK(keytrack::easeFromName("") == Ease::Linear);
+    CHECK(keytrack::easeFromName("bounce") == Ease::Linear); // a newer build's
+
+    ReframeTrack r;
+    r.upsert(1000, {0.0f, 0.0f, 0.0f, 1.0f}, 40);
+    r.upsert(2000, {1.0f, 0.0f, 0.0f, 2.0f}, 40);
+    r.upsert(3000, {2.0f, 0.0f, 0.0f, 2.0f}, 40);
+    CHECK(keytrack::segmentAt(r.keys(), 500, 150) == -1);  // before the first key
+    CHECK(keytrack::segmentAt(r.keys(), 1500, 150) == 0);
+    CHECK(keytrack::segmentAt(r.keys(), 1900, 150) == 1);  // near the 2000 key: its segment
+    CHECK(keytrack::segmentAt(r.keys(), 3000, 150) == -1); // the last key has none
+    CHECK(keytrack::segmentAt(r.keys(), 2950, 150) == -1);
+    CHECK(!r.setEase(3000, 150, Ease::Out));
+    CHECK(r.setEase(1500, 150, Ease::Out));
+    CHECK(!r.setEase(1000, 150, Ease::Out)); // already so
+    CHECK(r.keys()[0].ease == Ease::Out && r.keys()[1].ease == Ease::Linear);
+    const ReframePose mid = r.sample(1500);
+    CHECK(std::abs(mid.yaw - 0.75f) < 1e-5f && std::abs(mid.fovY - 1.75f) < 1e-5f);
+    CHECK(std::abs(r.sample(2500).yaw - 1.5f) < 1e-5f); // the next segment stays linear
+    CHECK(r.sample(1000).yaw == 0.0f && r.sample(2000).yaw == 1.0f); // keys hit exactly
+    r.upsert(1010, {0.1f, 0.0f, 0.0f, 1.0f}, 40); // re-authored: the ease stays
+    CHECK(r.count() == 3 && r.keys()[0].ease == Ease::Out);
+    r.upsert(1500, {0.5f, 0.0f, 0.0f, 1.0f}, 40); // a new key in the segment: linear
+    CHECK(r.keys()[1].timeMs == 1500 && r.keys()[1].ease == Ease::Linear);
+
+    InsetKeyTrack k;
+    inset::Look a, b;
+    a.centerX = 0.2f;
+    b.centerX = 0.6f;
+    k.upsert(0, a, 40);
+    k.upsert(1000, b, 40);
+    const InsetKeyTrack linear = k;
+    CHECK(k.setEase(500, 150, Ease::In));
+    CHECK(!(k == linear)); // the ease is part of the track's value (undo, change checks)
+    CHECK(std::abs(k.sample(500).centerX - 0.3f) < 1e-5f);
+}
+
 void testClipItemColor()
 {
     ClipItem c;
@@ -154,6 +204,7 @@ int main()
     testClipItemTrim();
     testClipItemReframe();
     testInsetKeyTrack();
+    testKeyEasing();
     testClipItemColor();
     return modeltest::finish("clip_item_test");
 }
