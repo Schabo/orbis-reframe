@@ -112,7 +112,8 @@ bool InsetKeyTrack::removeNear(qint64 timeMs, qint64 snapMs)
 
 inset::Look InsetKeyTrack::sample(qint64 timeMs) const
 {
-    const auto [lo, hi, t] = keytrack::bracket(m_keys, timeMs);
+    const auto [lo, hi, t] = keytrack::bracket(
+        m_keys, timeMs, [](const InsetKey &a, const InsetKey &b) { return a.look == b.look; });
     if (!lo)
         return {};
     if (lo == hi)

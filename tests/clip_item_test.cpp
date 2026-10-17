@@ -120,6 +120,62 @@ void testInsetKeyTrack()
     CHECK(k.count() == 2 && k.keys()[0].timeMs == 1000 && k.keys()[1].timeMs == 3000);
 }
 
+// Moves start and stop gently (keytrack::eased's softStart / softEnd): the
+// speed ramps from and to 0, never jumps; carrying on through a key, it
+// doesn't slow down.
+void testSoftMoves()
+{
+    using keytrack::Ease;
+    using keytrack::eased;
+    for (Ease e : {Ease::Linear, Ease::Out, Ease::In})
+        for (int soft = 0; soft < 4; ++soft) {
+            const bool s0 = soft & 1, s1 = soft & 2;
+            CHECK(eased(e, 0.0f, s0, s1) == 0.0f && eased(e, 1.0f, s0, s1) == 1.0f);
+            float prev = 0.0f;
+            bool rising = true;
+            for (int i = 1; i <= 100; ++i) {
+                const float v = eased(e, i / 100.0f, s0, s1);
+                rising &= v >= prev;
+                prev = v;
+            }
+            CHECK(rising);
+        }
+    // From rest: barely moving at first (a jump would be 1x pace or more).
+    CHECK(eased(Ease::Linear, 0.01f, true, false) / 0.01f < 0.1f);
+    CHECK(eased(Ease::Out, 0.01f, true, false) / 0.01f < 0.1f);
+    // ... and into rest.
+    CHECK((1.0f - eased(Ease::Linear, 0.99f, false, true)) / 0.01f < 0.1f);
+    CHECK((1.0f - eased(Ease::In, 0.99f, false, true)) / 0.01f < 0.1f);
+    // The ramp is an S-curve: no acceleration as it leaves rest, so the
+    // distance grows with t^3 there (an even ramp's with t^2: ratio 1/4) ...
+    const float ramp = keytrack::kSoftRamp;
+    CHECK(std::abs(eased(Ease::Linear, 0.002f, true, false) /
+                   eased(Ease::Linear, 0.004f, true, false) - 0.125f) < 0.01f);
+    // ... and it covers what an even ramp would: by its end, (ramp/2) of the
+    // (1 - ramp/2) the move takes in all.
+    CHECK(std::abs(eased(Ease::Linear, ramp, true, false) - (ramp / 2) / (1 - ramp / 2)) < 1e-6f);
+    // Soft at both ends, Linear is symmetric; in between at its pace.
+    CHECK(std::abs(eased(Ease::Linear, 0.5f, true, true) - 0.5f) < 1e-6f);
+    CHECK(std::abs(eased(Ease::Linear, 0.1f, true, true) +
+                   eased(Ease::Linear, 0.9f, true, true) - 1.0f) < 1e-6f);
+
+    // Through a key: a pan 0 -> 1 -> 2 at an even pace eases out of the first
+    // key and into the last, and doesn't stop at the middle one.
+    ReframeTrack r;
+    r.upsert(0, {0.0f, 0.0f, 0.0f, 1.0f}, 40);
+    r.upsert(1000, {1.0f, 0.0f, 0.0f, 1.0f}, 40);
+    r.upsert(2000, {2.0f, 0.0f, 0.0f, 1.0f}, 40);
+    const auto speed = [&r](qint64 ms) { return (r.sample(ms + 5).yaw - r.sample(ms - 5).yaw) / 10; };
+    CHECK(speed(10) < 0.1f * speed(1000));
+    CHECK(speed(1990) < 0.1f * speed(1000));
+    CHECK(speed(1000) > 0.001f);                                    // no stop at the middle key
+    CHECK(std::abs(speed(995) - speed(1005)) < 0.05f * speed(1000)); // nor a jump
+    // A hold (the same view twice) stops the motion: leaving it starts from rest.
+    r.upsert(3000, {2.0f, 0.0f, 0.0f, 1.0f}, 40);
+    r.upsert(4000, {3.0f, 0.0f, 0.0f, 1.0f}, 40);
+    CHECK(speed(3010) < 0.1f * speed(3500));
+}
+
 // Easing (keytrack::): a key's ease shapes the move to the next key, the
 // segment is found from anywhere in it or near its key, there's none before
 // the first / at the last key, and re-authoring a key keeps its ease.
@@ -149,9 +205,13 @@ void testKeyEasing()
     CHECK(r.setEase(1500, 150, Ease::Out));
     CHECK(!r.setEase(1000, 150, Ease::Out)); // already so
     CHECK(r.keys()[0].ease == Ease::Out && r.keys()[1].ease == Ease::Linear);
+    // Out from the first key: it starts from rest (softened), so at half
+    // time it's 2/3 of the way, not 3/4.
     const ReframePose mid = r.sample(1500);
-    CHECK(std::abs(mid.yaw - 0.75f) < 1e-5f && std::abs(mid.fovY - 1.75f) < 1e-5f);
-    CHECK(std::abs(r.sample(2500).yaw - 1.5f) < 1e-5f); // the next segment stays linear
+    CHECK(std::abs(mid.yaw - 2.0f / 3.0f) < 1e-5f && std::abs(mid.fovY - 5.0f / 3.0f) < 1e-5f);
+    // The next segment stays linear, from rest (Out ended there) to rest (the
+    // last key): symmetric, half way at half time.
+    CHECK(std::abs(r.sample(2500).yaw - 1.5f) < 1e-5f);
     CHECK(r.sample(1000).yaw == 0.0f && r.sample(2000).yaw == 1.0f); // keys hit exactly
     r.upsert(1010, {0.1f, 0.0f, 0.0f, 1.0f}, 40); // re-authored: the ease stays
     CHECK(r.count() == 3 && r.keys()[0].ease == Ease::Out);
@@ -167,7 +227,8 @@ void testKeyEasing()
     const InsetKeyTrack linear = k;
     CHECK(k.setEase(500, 150, Ease::In));
     CHECK(!(k == linear)); // the ease is part of the track's value (undo, change checks)
-    CHECK(std::abs(k.sample(500).centerX - 0.3f) < 1e-5f);
+    // In, into the last key (soft end): 1/3 of the way at half time.
+    CHECK(std::abs(k.sample(500).centerX - (0.2f + 0.4f / 3.0f)) < 1e-5f);
 }
 
 void testClipItemColor()
@@ -205,6 +266,7 @@ int main()
     testClipItemReframe();
     testInsetKeyTrack();
     testKeyEasing();
+    testSoftMoves();
     testClipItemColor();
     return modeltest::finish("clip_item_test");
 }

@@ -113,9 +113,17 @@ keyframe to the next:
 
 | Easing | The move |
 |---|---|
-| **Linear** | At an even pace from start to end. It starts and stops abruptly. |
+| **Linear** | At an even pace. |
 | **Fast to slow** | Starts fast and slows down, coming to rest at the next keyframe. Good for settling on a subject. |
 | **Slow to fast** | Starts slowly from rest and speeds up into the next keyframe. Good for leaving a view. |
+
+Whatever the easing, a move never starts or stops abruptly. Where the
+camera starts moving, it speeds up gently from rest over the first quarter
+of the move; where it comes to a stop, it slows down gently over the last
+quarter. That's at a clip's first and last keyframe, and at a keyframe
+with the same view as the one before or after it (a hold). Where the move
+carries on through a keyframe to the next, it keeps going without slowing
+down.
 
 Each keyframe has its own easing, for the move from it to the next keyframe.
 Move the playhead onto a keyframe, or anywhere between it and the next one,

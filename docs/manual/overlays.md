@@ -87,7 +87,8 @@ the next. This works like the reframe keyframes of the 360° view
   (or the last one before it) to the next: **Linear** (an even pace),
   **Fast to slow** (slows down into the next keyframe) or **Slow to fast**
   (starts slowly and speeds up). It works like the easing of reframe
-  keyframes ([Easing](reframing.md#easing)), and is greyed out where the
+  keyframes ([Easing](reframing.md#easing)), including the gentle start
+  and stop of every move, and is greyed out where the
   playhead isn't between two keyframes. New keyframes are linear.
 
 With keyframes, the playhead has to be inside the overlay clip to change

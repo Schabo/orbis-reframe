@@ -71,7 +71,11 @@ bool ReframeTrack::removeNear(qint64 timeMs, qint64 snapMs)
 
 ReframePose ReframeTrack::sample(qint64 timeMs) const
 {
-    const auto [lo, hi, t] = keytrack::bracket(m_keys, timeMs);
+    const auto [lo, hi, t] = keytrack::bracket(
+        m_keys, timeMs, [](const ReframeKey &a, const ReframeKey &b) {
+            return a.pose.yaw == b.pose.yaw && a.pose.pitch == b.pose.pitch &&
+                   a.pose.roll == b.pose.roll && a.pose.fovY == b.pose.fovY;
+        });
     if (!lo)
         return {};
     if (lo == hi)
