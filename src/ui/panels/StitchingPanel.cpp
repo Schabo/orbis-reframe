@@ -3,22 +3,26 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 
 StitchingPanel::StitchingPanel(QWidget *parent)
     : SettingsPanel(tr("Stitching"), parent)
 {
     // Order matches stitch::PreviewStitchConfig::LensGuard.
     m_lensGuard = new QComboBox(this);
+    m_lensGuard->setObjectName(QStringLiteral("stitchLensGuard"));
     m_lensGuard->addItem(tr("None"));
     m_lensGuard->addItem(tr("Standard lens guards"));
     m_lensGuard->addItem(tr("Premium lens guards"));
-    m_lensGuard->setToolTip(tr("What was fitted over the lenses when you filmed. The file "
-                               "doesn't say, and with the wrong choice the two pictures don't "
-                               "line up at the seam."));
+    m_lensGuard->setToolTip(tr("What was fitted over the lenses when you filmed this clip. The "
+                               "file doesn't say, and with the wrong choice the two pictures "
+                               "don't line up at the seam."));
     form()->addRow(tr("Lens guards"), m_lensGuard);
 
     m_depthSeam = new QCheckBox(tr("Depth-aware seam"), this);
+    m_depthSeam->setObjectName(QStringLiteral("stitchDepthSeam"));
     m_depthSeam->setToolTip(
         tr("The two lenses sit a few centimetres apart, so things close to the camera (the "
            "bike, the rider, the stick) show up twice where the pictures meet. With this on, "
@@ -33,31 +37,40 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_seamStatus->hide();
     form()->addRow(m_seamStatus);
 
-    setHint(tr("How the two lens pictures are joined into the 360° view, in playback, "
-               "screenshots and export. The preview's own quality and size are in the View "
-               "menu."));
+    auto *buttonRow = new QWidget(this);
+    auto *buttons = new QHBoxLayout(buttonRow);
+    buttons->setContentsMargins(0, 0, 0, 0);
+    m_applyToAll = new QPushButton(tr("Apply to all clips"), buttonRow);
+    m_applyToAll->setObjectName(QStringLiteral("stitchApplyToAll"));
+    m_applyToAll->setToolTip(tr("Give every 360° clip these stitching settings: for footage "
+                                "all filmed with the same lens guards."));
+    buttons->addWidget(m_applyToAll);
+    buttons->addStretch(1);
+    form()->addRow(buttonRow);
+    connect(m_applyToAll, &QPushButton::clicked, this, &StitchingPanel::applyToAllRequested);
 
-    setConfig(stitch::PreviewStitchConfig{}); // sane starting state
+    setHint(tr("How this clip's two lens pictures are joined into the 360° view, in playback, "
+               "screenshots and export. Every clip cut from the same file shares them. The "
+               "preview's own quality and size are in the View menu."));
+
+    setState(LensGuard::Premium, true); // sane starting state
 
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_depthSeam, &QCheckBox::toggled, this, &StitchingPanel::emitIfEdited);
 }
 
-stitch::PreviewStitchConfig StitchingPanel::currentConfig() const
+void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam)
 {
-    stitch::PreviewStitchConfig c = m_config; // the preview's quality and size stay
-    c.lensGuard = static_cast<stitch::PreviewStitchConfig::LensGuard>(m_lensGuard->currentIndex());
-    c.depthSeam = m_depthSeam->isChecked();
-    return c;
+    setBodyEnabled(true);
+    m_updating = true;
+    m_lensGuard->setCurrentIndex(static_cast<int>(lensGuard));
+    m_depthSeam->setChecked(depthSeam);
+    m_updating = false;
 }
 
-void StitchingPanel::setConfig(const stitch::PreviewStitchConfig &config)
+void StitchingPanel::setNoClip()
 {
-    m_updating = true;
-    m_config = config;
-    m_lensGuard->setCurrentIndex(static_cast<int>(config.lensGuard));
-    m_depthSeam->setChecked(config.depthSeam);
-    m_updating = false;
+    setBodyEnabled(false);
 }
 
 void StitchingPanel::setSeamStatus(const QString &text)
@@ -69,5 +82,6 @@ void StitchingPanel::setSeamStatus(const QString &text)
 void StitchingPanel::emitIfEdited()
 {
     if (!m_updating)
-        emit configChanged(currentConfig());
+        emit stitchEdited(static_cast<LensGuard>(m_lensGuard->currentIndex()),
+                          m_depthSeam->isChecked());
 }

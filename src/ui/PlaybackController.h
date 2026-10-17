@@ -98,6 +98,11 @@ public:
         bool flat = false;
         double fps = 0.0;
         qint64 sourceDurationMs = 0;
+        // The clip's stitch settings (ClipItem::lensGuard / depthSeam), the
+        // same for every segment of a file; the source is opened with them
+        // over the preview config's (setPreviewConfig).
+        stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+        bool depthSeam = true;
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
         qint64 localAtSourceMs(qint64 sourceMs) const
@@ -244,6 +249,10 @@ private:
     // A new, unopened source for `seg`: a FlatClipSource for a flat clip,
     // else m_makeSource's, or the real one. Any thread.
     std::unique_ptr<stitch::IStitchSource> makeSource(const Segment &seg) const;
+    // What `seg`'s source is opened with: the preview config with the clip's
+    // stitch settings.
+    static stitch::PreviewStitchConfig openConfig(stitch::PreviewStitchConfig preview,
+                                                  const Segment &seg);
     // Make segment `index` the one being decoded, opening its source if the
     // path changed. Prunes any other cached source. false (openFailed emitted)
     // on open failure.

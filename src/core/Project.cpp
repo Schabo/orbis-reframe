@@ -40,6 +40,25 @@ QString resolvedPath(const QString &stored, const QDir &projectDir)
     return QDir::cleanPath(projectDir.absoluteFilePath(stored));
 }
 
+const char *lensGuardName(stitch::PreviewStitchConfig::LensGuard g)
+{
+    return g == stitch::PreviewStitchConfig::LensGuard::None       ? "none"
+           : g == stitch::PreviewStitchConfig::LensGuard::Standard ? "standard"
+                                                                  : "premium";
+}
+
+// An unknown or missing name leaves `g` as it is.
+void lensGuardFromJson(const json &j, stitch::PreviewStitchConfig::LensGuard &g)
+{
+    const std::string guard = j.value("lensGuard", std::string());
+    if (guard == "none")
+        g = stitch::PreviewStitchConfig::LensGuard::None;
+    else if (guard == "standard")
+        g = stitch::PreviewStitchConfig::LensGuard::Standard;
+    else if (guard == "premium")
+        g = stitch::PreviewStitchConfig::LensGuard::Premium;
+}
+
 json previewStitchToJson(const stitch::PreviewStitchConfig &c)
 {
     return json{
@@ -47,9 +66,7 @@ json previewStitchToJson(const stitch::PreviewStitchConfig &c)
                                                                                : "template"},
         {"width", c.width},
         {"height", c.height},
-        {"lensGuard", c.lensGuard == stitch::PreviewStitchConfig::LensGuard::None       ? "none"
-                      : c.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard ? "standard"
-                                                                                     : "premium"},
+        {"lensGuard", lensGuardName(c.lensGuard)},
         {"depthSeam", c.depthSeam},
     };
 }
@@ -64,13 +81,7 @@ stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
                     : stitch::PreviewStitchConfig::Quality::Template;
     c.width = j.value("width", c.width);
     c.height = j.value("height", c.height);
-    const std::string guard = j.value("lensGuard", std::string());
-    if (guard == "none")
-        c.lensGuard = stitch::PreviewStitchConfig::LensGuard::None;
-    else if (guard == "standard")
-        c.lensGuard = stitch::PreviewStitchConfig::LensGuard::Standard;
-    else if (guard == "premium")
-        c.lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    lensGuardFromJson(j, c.lensGuard);
     c.depthSeam = j.value("depthSeam", c.depthSeam);
     return c;
 }
@@ -336,6 +347,8 @@ struct ParsedClip {
     double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
     std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
     int seamAdjustGuard = -1;
+    stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    bool depthSeam = true;
     bool flat = false;
     ClipItem::Fit fit = ClipItem::Fit::Bars;
 };
@@ -566,6 +579,7 @@ Project::Project(QObject *parent)
     connect(m_timeline, &Timeline::clipStabilizationChanged, this, edited);
     connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
     connect(m_timeline, &Timeline::clipSpeedChanged, this, edited);
+    connect(m_timeline, &Timeline::clipStitchChanged, this, edited);
     connect(m_timeline, &Timeline::tracksChanged, this, edited);
     // A measured sync or seam fine-tune is saved with the project but isn't
     // an edit: nothing to undo, and not an unsaved change.
@@ -797,6 +811,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
 {
     json clips = json::array();
     bool anyFlat = false;
+    // The first 360 clip's stitch settings, and whether every 360 clip has
+    // them (else an older build, which reads one setting for all, misreads).
+    const ClipItem *firstStitched = nullptr;
+    bool mixedStitch = false;
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         const std::string source =
@@ -831,7 +849,12 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"color", colorGradeToJson(c.color)},
             {"speed", c.speed},
             {"stabilization", stabilizationToJson(c.stabilization)},
+            {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)}, {"depthSeam", c.depthSeam}}},
         });
+        if (!firstStitched)
+            firstStitched = &c;
+        else if (c.lensGuard != firstStitched->lensGuard || c.depthSeam != firstStitched->depthSeam)
+            mixedStitch = true;
         if (c.blurPlates || !c.blurRemovals.empty() || !c.blurAdditions.empty()) {
             json &jp = clips.back()["privacy"] = json::object();
             if (c.blurPlates)
@@ -907,10 +930,16 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             media.back()["fps"] = m.fps;
     }
 
+    // The project-wide stitch settings an older build reads: the clips' own.
+    stitch::PreviewStitchConfig stitchForOlder = m_previewStitch;
+    if (firstStitched) {
+        stitchForOlder.lensGuard = firstStitched->lensGuard;
+        stitchForOlder.depthSeam = firstStitched->depthSeam;
+    }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyFlat ? kFlatClipFormatVersion : kPlainFormatVersion},
-        {"previewStitch", previewStitchToJson(m_previewStitch)},
+        {"version", anyFlat || mixedStitch ? kFlatClipFormatVersion : kPlainFormatVersion},
+        {"previewStitch", previewStitchToJson(stitchForOlder)},
         {"output", outputToJson(m_output)},
         {"timeline",
          {{"clips", std::move(clips)},
@@ -996,6 +1025,13 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     pc.blurRemovals = blurRemovalsFromJson(jc.at("privacy").at("removed"));
                 if (jc.at("privacy").contains("added"))
                     pc.blurAdditions = blurAdditionsFromJson(jc.at("privacy").at("added"));
+            }
+            // Before per-clip stitch settings: the project's, for every clip.
+            pc.lensGuard = parsedStitch.lensGuard;
+            pc.depthSeam = parsedStitch.depthSeam;
+            if (jc.contains("stitch") && jc.at("stitch").is_object()) {
+                lensGuardFromJson(jc.at("stitch"), pc.lensGuard);
+                pc.depthSeam = jc.at("stitch").value("depthSeam", pc.depthSeam);
             }
             if (jc.contains("syncAdjustMs") && jc.at("syncAdjustMs").is_number())
                 pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
@@ -1120,6 +1156,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipBlurRemovals(id, pc.blurRemovals);
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
         m_timeline->setClipSpeed(id, pc.speed);
+        if (!pc.flat)
+            m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.depthSeam);
         if (!std::isnan(pc.syncAdjustMs))
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
         if (pc.seamAdjustGuard >= 0)

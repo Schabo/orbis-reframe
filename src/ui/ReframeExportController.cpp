@@ -35,8 +35,7 @@ ReframeExportController::captureTimingFor(std::shared_ptr<const insv::GyroStabil
 
 QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
                                             const float pose[4], int outW, int outH,
-                                            stitch::PreviewStitchConfig::LensGuard lensGuard,
-                                            bool depthSeam, QString &error)
+                                            QString &error)
 {
     if (outW <= 0 || outH <= 0) {
         error = tr("Invalid output size.");
@@ -54,8 +53,8 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     stitch::PreviewStitchConfig sc;
     sc.width = stitch::ExportStitchWidth(probe.width, outW) & ~1;
     sc.height = (sc.width / 2) & ~1;
-    sc.lensGuard = lensGuard;
-    sc.depthSeam = depthSeam;
+    sc.lensGuard = c.lensGuard;
+    sc.depthSeam = c.depthSeam;
 
     stitch::NativeStitchSource src;
     if (!src.Open(c.clipPath.toStdString(), sc) || !src.SeekTo(sourceMs)) {
@@ -258,8 +257,8 @@ void ReframeExportController::run(const Request &req)
         stitch::PreviewStitchConfig sc;
         sc.width = eqW;
         sc.height = (req.stitchHeight > 0 ? req.stitchHeight : eqW / 2) & ~1;
-        sc.lensGuard = req.lensGuard;
-        sc.depthSeam = req.depthSeam;
+        sc.lensGuard = c.lensGuard;
+        sc.depthSeam = c.depthSeam;
 
         auto src = std::make_unique<stitch::NativeStitchSource>();
         if (!src->Open(c.clipPath.toStdString(), sc) || !src->SeekTo(c.trimInMs)) {

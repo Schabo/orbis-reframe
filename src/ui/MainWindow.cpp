@@ -296,6 +296,7 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_reframePanel = m_sidebar->reframe();
     m_stabilizationPanel = m_sidebar->stabilization();
     m_stabilizationPanel->setNoClip(); // nothing open yet
+    m_stitchingPanel->setNoClip();
     m_audioPanel = m_sidebar->audio();
     m_audioPanel->setNoClip();
     m_colourPanel = m_sidebar->colour();
@@ -412,12 +413,25 @@ void MainWindow::setupPlayback()
 
 void MainWindow::connectStitchAndStabilization()
 {
-    // Stitching settings: a panel edit updates the Project (persisted to the
-    // .orp, marks it modified); a Project change (an edit, or a project load)
-    // is reflected back in the panel and pushed to the stitch path on the
-    // worker thread, which re-stitches the current frame.
-    connect(m_stitchingPanel, &StitchingPanel::configChanged, m_project,
-            &Project::setPreviewStitch);
+    // Stitching settings: a panel edit goes onto the file of the clip it
+    // shows (every clip cut from it), "Apply to all clips" onto every 360
+    // clip's; clipStitchChanged below re-opens the stitch with them.
+    connect(m_stitchingPanel, &StitchingPanel::stitchEdited, this,
+            [this](StitchingPanel::LensGuard guard, bool depthSeam) {
+                const ClipItem *c = m_timeline->clipById(editClipId());
+                if (c && !c->flat)
+                    m_timeline->setSourceStitch(c->sourcePath, guard, depthSeam);
+            });
+    connect(m_stitchingPanel, &StitchingPanel::applyToAllRequested, this, [this] {
+        const ClipItem *c = m_timeline->clipById(editClipId());
+        if (!c || c->flat)
+            return;
+        const StitchingPanel::LensGuard guard = c->lensGuard;
+        const bool depthSeam = c->depthSeam;
+        for (int i = 0; i < m_timeline->count(); ++i)
+            if (!m_timeline->clipAt(i).flat)
+                m_timeline->setSourceStitch(m_timeline->clipAt(i).sourcePath, guard, depthSeam);
+    });
     // Project settings (File ▸ Project settings…): output aspect / size /
     // fps. The viewport is pinned to the output aspect; export reads the size
     // and rate from the Project when it starts.
@@ -461,21 +475,32 @@ void MainWindow::connectStitchAndStabilization()
         for (int i = 0; i < m_timeline->count(); ++i)
             m_timeline->setClipStabilization(m_timeline->clipAt(i).id, *m_copiedStab);
     });
+    // The preview's quality and size (View menu): the controller re-opens
+    // its sources with them.
     connect(m_project, &Project::previewStitchChanged, this,
             [this](const stitch::PreviewStitchConfig &cfg) {
-                m_stitchingPanel->setConfig(cfg); // setConfig() doesn't re-emit
                 updatePreviewMenu(cfg);
-                // A seam fine-tune is only valid for the guard it was measured
-                // with; the controller re-opens its sources for the new config
-                // and picks these up.
-                pushSeamAdjust();
-                m_measurements->forgetSeamFailures();
-                m_measurements->schedule();
-                updateSeamStatus();
                 QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, cfg] {
                     ctrl->setPreviewConfig(cfg);
                 });
             });
+    // A file's stitch settings: its segments carry them to the controller,
+    // which re-opens its stitch. A seam fine-tune is only valid for the guards
+    // it was measured with, so the file may need measuring again.
+    connect(m_timeline, &Timeline::clipStitchChanged, this, [this](int id) {
+        if (m_rebindingModel)
+            return; // a load / undo: the rebind after it covers this
+        const ClipItem *c = m_timeline->clipById(id);
+        if (!c)
+            return;
+        pushTimelineToController();
+        pushSeamAdjust();
+        m_measurements->forgetSeamFailure(c->sourcePath);
+        m_measurements->schedule();
+        updateSeamStatus();
+        if (id == editClipId())
+            syncStitchingPanel();
+    });
     connect(m_timeline, &Timeline::clipStabilizationChanged, this,
             [this](int id, const insv::StabConfig &) {
                 if (m_rebindingModel)
@@ -1354,8 +1379,7 @@ void MainWindow::ensureStabilizers()
 
 bool MainWindow::seamAdjustFor(const QString &clipPath, std::array<double, 3> &deg) const
 {
-    return m_timeline->sourceSeamAdjust(
-        clipPath, static_cast<int>(m_project->previewStitch().lensGuard), deg);
+    return m_timeline->sourceSeamAdjust(clipPath, deg);
 }
 
 void MainWindow::pushSeamAdjust()
@@ -1469,6 +1493,7 @@ void MainWindow::refreshClipPanels()
         m_privacyPanel->setNoClip();
         m_stabilizationPanel->setNotApplicable(QString());
         m_stabilizationPanel->setNoClip();
+        syncStitchingPanel();
         m_reframePanel->setFlatClip(false);
         refreshAudioPanel();
         return;
@@ -1477,6 +1502,7 @@ void MainWindow::refreshClipPanels()
     m_colourPanel->setState(c->color);
     m_reframePanel->setFlatClip(c->flat, c->fit == ClipItem::Fit::Fill);
     syncStabilizationPanel();
+    syncStitchingPanel();
     syncPrivacyPanel();
     refreshAudioPanel(); // the selected audio clip, if any, else this clip
     const ClipItem *playing = m_timeline->clipById(m_clipId);
@@ -1504,6 +1530,18 @@ void MainWindow::syncStabilizationPanel()
         mode = M::Custom;
     m_stabilizationPanel->setState(
         mode, mode != M::Off ? s : insv::StabConfig::preset(insv::StabMode::LeanFollow));
+}
+
+void MainWindow::syncStitchingPanel()
+{
+    const ClipItem *c = m_timeline->clipById(editClipId());
+    m_stitchingPanel->setNotApplicable(
+        c && c->flat ? tr("A flat video isn't stitched: it has one picture, not two.") : QString());
+    if (!c || c->flat) {
+        m_stitchingPanel->setNoClip();
+        return;
+    }
+    m_stitchingPanel->setState(c->lensGuard, c->depthSeam);
 }
 
 TimelineWidget::Peaks MainWindow::waveformFor(const QString &path, int stream)
@@ -2355,7 +2393,7 @@ void MainWindow::pushTimelineToController()
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
-                            c.sourceDurationMs});
+                            c.sourceDurationMs, c.lensGuard, c.depthSeam});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }
@@ -2659,6 +2697,7 @@ void MainWindow::openClip(const QString &clipPath)
         applyColorGrade(c->color);
         m_colourPanel->setState(c->color);
         syncStabilizationPanel();
+        syncStitchingPanel();
         syncPrivacyPanel();
     }
     showEditor();
@@ -2673,6 +2712,7 @@ void MainWindow::bindEmptyTimeline()
     m_audioPanel->setNoClip();
     m_colourPanel->setNoClip();
     m_stabilizationPanel->setNoClip();
+    m_stitchingPanel->setNoClip();
     m_privacyPanel->setNoClip();
     m_mediaInfoPanel->setNoClip();
     syncTimeline(); // empty -> controller goes idle, widget clears
@@ -2712,6 +2752,7 @@ void MainWindow::openProject(const QString &projectPath)
     applyColorGrade(first.color);
     m_colourPanel->setState(first.color);
     syncStabilizationPanel();
+    syncStitchingPanel();
     syncPrivacyPanel();
 
     if (first.mediaMissing) {
@@ -2924,8 +2965,6 @@ void MainWindow::exportFlatVideo()
     req.outHeight = opts.outHeight();
     req.h265 = opts.h265();
     req.bitrateKbps = opts.bitrateKbps();
-    req.lensGuard = m_project->previewStitch().lensGuard;
-    req.depthSeam = m_project->previewStitch().depthSeam;
 
     // Per clip: the reframe track and the built stabilizer; the export samples
     // both per decoded frame at its own source time.
@@ -2945,8 +2984,7 @@ void MainWindow::exportFlatVideo()
 
 ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) const
 {
-    return renderjobs::clipJob(c, *m_timeline,
-                               static_cast<int>(m_project->previewStitch().lensGuard), m_privacy);
+    return renderjobs::clipJob(c, *m_timeline, m_privacy);
 }
 
 bool MainWindow::confirmStalePrivacy(const QString &title, const QStringList &warnings)
@@ -3050,8 +3088,8 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     req.fps = c.fps;
     req.syncAdjustMs = std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs;
     seamAdjustFor(c.sourcePath, req.seamAdjustDeg);
-    req.lensGuard = m_project->previewStitch().lensGuard;
-    req.depthSeam = m_project->previewStitch().depthSeam;
+    req.lensGuard = c.lensGuard;
+    req.depthSeam = c.depthSeam;
     req.captureTiming = StabilizerCache::captureTimingOn(c);
     return req;
 }
@@ -3352,7 +3390,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     req.stab = job.stab;
     req.seamAdjustDeg = job.seamAdjustDeg;
     req.blur = job.blur;
-    req.lensGuard = m_project->previewStitch().lensGuard;
+    req.lensGuard = job.lensGuard;
     run.clipId = c->id;
     run.look = look;
     run.aspect = aspect;
@@ -3453,8 +3491,6 @@ void MainWindow::takeScreenshot()
     still.timelineMs = std::max<qint64>(0, m_lastTimelineMs);
     still.width = m_project->output().width;
     still.height = m_project->output().height;
-    still.lensGuard = m_project->previewStitch().lensGuard;
-    still.depthSeam = m_project->previewStitch().depthSeam;
 
     QString path = askSaveFileName(
         tr("Save screenshot"),

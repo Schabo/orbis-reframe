@@ -12,7 +12,7 @@ class QVBoxLayout;
 
 // One section of a settings tab in the right sidebar (SettingsSidebar): a
 // header row -- the title, and on its right what the section applies to
-// ("This clip", "Whole project") -- over a body with an optional hint line
+// ("This clip", "Keys at the playhead") -- over a body with an optional hint line
 // and a form. Clicking the header collapses the body to the header row and
 // back. Subclasses add rows via form().
 //

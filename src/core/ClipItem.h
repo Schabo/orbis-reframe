@@ -5,6 +5,7 @@
 #include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
 #include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
+#include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
 
 #include <QString>
 
@@ -131,6 +132,15 @@ struct ClipItem {
     static constexpr double kMinSpeed = 0.1;
     static constexpr double kMaxSpeed = 4.0;
     double speed = 1.0;
+
+    // How the source's two lens pictures are joined (Stitching panel): what
+    // was fitted over the lenses when it was filmed, and the depth-aware seam
+    // (see stitch::PreviewStitchConfig). A property of the source file, so
+    // clips cut from the same file share it (Timeline::setSourceStitch); a
+    // clip of a new file takes the nearest 360 clip's (Timeline::insertClip).
+    // Unused on a flat clip.
+    stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    bool depthSeam = true;
 
     // Measured video<->IMU sync fine-tune for this source, ms, added to the
     // trailer-derived offset (stitch::MeasureClipSync). NaN = not measured yet.

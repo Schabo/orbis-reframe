@@ -35,9 +35,9 @@ public:
     void schedule();
     // Playing: cancel the running ones. Paused: schedule() again.
     void setPlaying(bool playing);
-    // The lens-guard setting changed: the seam results that failed may work
-    // under the new one.
-    void forgetSeamFailures() { m_seamFailed.clear(); }
+    // A source's lens-guard setting changed: its seam measurement, if it
+    // failed, may work under the new one.
+    void forgetSeamFailure(const QString &clipPath) { m_seamFailed.remove(clipPath); }
 
     // The Stabilization / Stitching panels' status lines for clip `c` (null =
     // none): measured, measuring, failed, or empty.
@@ -53,7 +53,6 @@ private:
     void maybeMeasureSeam(const QString &clipPath);
     // The first main-track clip cut from `clipPath`, if its file is there.
     const ClipItem *measurableClip(const QString &clipPath) const;
-    int lensGuard() const;
 
     Project *m_project;
     bool m_enabled;

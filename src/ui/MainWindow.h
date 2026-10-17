@@ -227,6 +227,8 @@ private:
     // Reflect the panel's clip's (editClipId()) stabilization in the
     // Stabilization panel; greyed out without one.
     void syncStabilizationPanel();
+    // The Stitching panel shows the clip it edits (editClipId), or nothing.
+    void syncStitchingPanel();
     // Privacy blur (Privacy panel): the panel for the clip being edited;
     // every source's blur (and "Show regions" outlines) to playback.
     void syncPrivacyPanel();

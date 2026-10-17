@@ -2,40 +2,46 @@
 
 #include "../SettingsPanel.h"
 
-#include <IStitchSource.h> // stitch::PreviewStitchConfig
+#include <IStitchSource.h> // stitch::PreviewStitchConfig::LensGuard
 
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QPushButton;
 
-// The stitch settings that change the output: lens guards (selects the
+// The stitch settings of the clip it shows (the selected one, else the one
+// under the playhead), which change the output: lens guards (selects the
 // trailer's lens profile) and the depth-aware seam, plus a line about the
-// clip's seam alignment. The preview-only settings of the same config
-// (quality, preview size) are in the View menu; setConfig() keeps them so an
-// edit here hands them back unchanged. Edits emit configChanged; MainWindow
-// routes that into Project::setPreviewStitch (persisted on the .orp) and
-// PlaybackController::setPreviewConfig (re-stitches the live preview).
+// clip's seam alignment. They belong to the clip's file, so every clip cut
+// from it shares them (Timeline::setSourceStitch). The preview-only
+// settings (quality, preview size) are project-wide, in the View menu.
+// Edits emit stitchEdited; MainWindow writes them onto the clip's file.
 class StitchingPanel : public SettingsPanel {
     Q_OBJECT
 
 public:
+    using LensGuard = stitch::PreviewStitchConfig::LensGuard;
+
     explicit StitchingPanel(QWidget *parent = nullptr);
 
-    // Reflect a config set elsewhere (project load / reset). Does not emit.
-    void setConfig(const stitch::PreviewStitchConfig &config);
+    // Show a clip's settings. Does not emit.
+    void setState(LensGuard lensGuard, bool depthSeam);
+    // No clip to show: the controls greyed out.
+    void setNoClip();
     // One line about the current clip's seam alignment (empty hides it).
     void setSeamStatus(const QString &text);
 
 signals:
-    void configChanged(const stitch::PreviewStitchConfig &config);
+    void stitchEdited(LensGuard lensGuard, bool depthSeam);
+    // "Apply to all clips": give every 360 clip the settings shown.
+    void applyToAllRequested();
 
 private:
-    stitch::PreviewStitchConfig currentConfig() const;
     void emitIfEdited();
 
-    stitch::PreviewStitchConfig m_config; // the last one set: the View menu's part
     QComboBox *m_lensGuard = nullptr;
     QCheckBox *m_depthSeam = nullptr;
     QLabel *m_seamStatus = nullptr;
-    bool m_updating = false; // true while setConfig() is writing the widgets
+    QPushButton *m_applyToAll = nullptr;
+    bool m_updating = false; // true while setState() is writing the widgets
 };

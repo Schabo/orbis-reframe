@@ -88,6 +88,14 @@ std::unique_ptr<stitch::IStitchSource> PlaybackController::makeSource(const Segm
     return m_makeSource ? m_makeSource() : stitch::MakeStitchSource();
 }
 
+stitch::PreviewStitchConfig PlaybackController::openConfig(stitch::PreviewStitchConfig preview,
+                                                           const Segment &seg)
+{
+    preview.lensGuard = seg.lensGuard;
+    preview.depthSeam = seg.depthSeam;
+    return preview;
+}
+
 std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const Segment &seg,
                                                                          QString *err)
 {
@@ -99,7 +107,7 @@ std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const S
     }
 
     std::shared_ptr<stitch::IStitchSource> src = makeSource(seg);
-    if (!src->Open(path.toStdString(), m_decPreviewConfig)) {
+    if (!src->Open(path.toStdString(), openConfig(m_decPreviewConfig, seg))) {
         if (err)
             *err = QString::fromStdString(src->GetLastError());
         return nullptr;
@@ -295,7 +303,7 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
     Prefetch *job = p.get();
     p->done = std::async(std::launch::async,
                          [this, job, viewportLens, clipId, handOver, seg = np.seg,
-                          inMs = np.seg.inMs, config = m_decPreviewConfig] {
+                          inMs = np.seg.inMs, config = openConfig(m_decPreviewConfig, np.seg)] {
                              if (!job->src) {
                                  auto src = makeSource(seg);
                                  if (!src->Open(job->path.toStdString(), config))
@@ -364,10 +372,21 @@ void PlaybackController::decoderLoop()
             if (m_stop)
                 return;
             if (m_timelineDirty) {
+                // A file whose stitch settings changed is opened afresh, as
+                // one asked for by reopenSources.
+                reopen = std::exchange(m_reopenPaths, {});
+                for (const Placed &now : m_placed)
+                    for (const Placed &was : m_decPlaced)
+                        if (was.seg.sourcePath == now.seg.sourcePath &&
+                            (was.seg.lensGuard != now.seg.lensGuard ||
+                             was.seg.depthSeam != now.seg.depthSeam) &&
+                            !reopen.contains(now.seg.sourcePath)) {
+                            reopen << now.seg.sourcePath;
+                            break;
+                        }
                 m_decPlaced = m_placed;
                 m_timelineDirty = false;
                 tlChanged = true;
-                reopen = std::exchange(m_reopenPaths, {});
             }
             if (m_previewConfigDirty) {
                 m_decPreviewConfig = m_pendingPreviewConfig;

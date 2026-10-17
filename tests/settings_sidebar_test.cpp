@@ -23,6 +23,7 @@
 #include <QApplication>
 #include <QTemporaryDir>
 #include <QSlider>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
 #include <QPushButton>
@@ -137,7 +138,7 @@ void testSections(SettingsSidebar &bar)
 
 void testScopes(SettingsSidebar &bar)
 {
-    CHECK(bar.stitching()->scope() == QLatin1String("Whole project"));
+    CHECK(bar.stitching()->scope() == QLatin1String("This clip"));
     CHECK(bar.stabilization()->scope() == QLatin1String("This clip"));
     CHECK(bar.colour()->scope() == QLatin1String("This clip"));
     CHECK(bar.reframe()->scope() == QLatin1String("Keys at the playhead"));
@@ -240,28 +241,34 @@ void testTabKeys(SettingsSidebar &bar)
     bar.setCurrentIndex(0);
 }
 
-void testStitchingKeepsPreview(SettingsSidebar &bar)
+void testStitchingPanel(SettingsSidebar &bar)
 {
+    using G = StitchingPanel::LensGuard;
     StitchingPanel *stitching = bar.stitching();
-    stitch::PreviewStitchConfig cfg;
-    cfg.width = 3840;
-    cfg.height = 1920;
-    cfg.lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    stitching->setConfig(cfg);
-    QSignalSpy changed(stitching, &StitchingPanel::configChanged);
+    CHECK(stitching->scope() == QLatin1String("This clip"));
+    QSignalSpy edited(stitching, &StitchingPanel::stitchEdited);
+    QSignalSpy all(stitching, &StitchingPanel::applyToAllRequested);
+    stitching->setState(G::Standard, false); // shows a clip: no signal
+    CHECK(edited.isEmpty());
     stitching->setExpanded(true);
-    auto *guard = stitching->findChild<QComboBox *>();
-    if (!guard) {
-        CHECK(guard);
+    auto *guard = stitching->findChild<QComboBox *>(QStringLiteral("stitchLensGuard"));
+    auto *depth = stitching->findChild<QCheckBox *>(QStringLiteral("stitchDepthSeam"));
+    auto *apply = stitching->findChild<QPushButton *>(QStringLiteral("stitchApplyToAll"));
+    if (!guard || !depth || !apply) {
+        CHECK(guard && depth && apply);
         return;
     }
+    CHECK(guard->currentIndex() == int(G::Standard) && !depth->isChecked());
     guard->setCurrentIndex(0); // None
-    CHECK(changed.size() == 1);
-    if (!changed.isEmpty()) {
-        const auto out = changed.first().first().value<stitch::PreviewStitchConfig>();
-        CHECK(out.lensGuard == stitch::PreviewStitchConfig::LensGuard::None);
-        CHECK(out.width == 3840 && out.height == 1920); // the View menu's part, unchanged
+    CHECK(edited.size() == 1);
+    if (!edited.isEmpty()) {
+        CHECK(edited.first().at(0).value<G>() == G::None);
+        CHECK(!edited.first().at(1).toBool());
     }
+    depth->setChecked(true);
+    CHECK(edited.size() == 2 && edited.last().at(1).toBool());
+    apply->click();
+    CHECK(all.size() == 1);
 }
 
 void testProjectSettingsDialog()
@@ -354,7 +361,7 @@ int main(int argc, char **argv)
     testScopes(bar);
     testAudioSections(bar);
     testTabKeys(bar);
-    testStitchingKeepsPreview(bar);
+    testStitchingPanel(bar);
     testOverlayLayer(bar);
     testProjectSettingsDialog();
 

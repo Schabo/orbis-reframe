@@ -32,11 +32,6 @@ ClipMeasurements::~ClipMeasurements()
     }
 }
 
-int ClipMeasurements::lensGuard() const
-{
-    return static_cast<int>(m_project->previewStitch().lensGuard);
-}
-
 const ClipItem *ClipMeasurements::measurableClip(const QString &clipPath) const
 {
     const Timeline *t = m_project->timeline();
@@ -95,7 +90,7 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
     const double fps = clip->fps;
     m_syncMeasuringPath = clipPath;
     m_syncCancel = false;
-    const auto guard = m_project->previewStitch().lensGuard;
+    const auto guard = clip->lensGuard;
     m_syncThread = QThread::create([this, path, in, out, fps, clipPath, guard] {
         const stitch::ClipSyncResult r =
             stitch::MeasureClipSync(path, in, out, fps, &m_syncCancel, guard);
@@ -126,7 +121,7 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
 {
     std::array<double, 3> deg;
     if (!m_enabled || clipPath.isEmpty() || m_seamThread ||
-        m_project->timeline()->sourceSeamAdjust(clipPath, lensGuard(), deg) ||
+        m_project->timeline()->sourceSeamAdjust(clipPath, deg) ||
         m_seamFailed.contains(clipPath))
         return;
     const ClipItem *clip = measurableClip(clipPath);
@@ -134,7 +129,7 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
         return;
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
-    const auto guard = m_project->previewStitch().lensGuard;
+    const auto guard = clip->lensGuard;
     m_seamMeasuringPath = clipPath;
     m_seamCancel = false;
     m_seamThread = QThread::create([this, path, in, out, clipPath, guard] {
@@ -148,7 +143,8 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
             core::log::Info("[seam] %s: %s\n", qPrintable(clipPath), r.message.c_str());
             // Stale if the guard setting changed meanwhile: drop it and let the
             // re-measure below run under the new one.
-            if (r.ok && guard == m_project->previewStitch().lensGuard)
+            const ClipItem *now = measurableClip(clipPath);
+            if (r.ok && now && guard == now->lensGuard)
                 m_project->timeline()->setSourceSeamAdjust(
                     clipPath, {r.adjustDeg[0], r.adjustDeg[1], r.adjustDeg[2]},
                     static_cast<int>(guard)); // -> clipSeamChanged
@@ -165,7 +161,7 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
 QString ClipMeasurements::seamStatus(const ClipItem *c) const
 {
     std::array<double, 3> deg;
-    if (c && m_project->timeline()->sourceSeamAdjust(c->sourcePath, lensGuard(), deg))
+    if (c && m_project->timeline()->sourceSeamAdjust(c->sourcePath, deg))
         return tr("Seam: aligned for this clip (back lens yaw %1°, pitch %2°, roll %3°).")
             .arg(deg[0], 0, 'f', 2)
             .arg(deg[1], 0, 'f', 2)

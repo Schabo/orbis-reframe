@@ -31,11 +31,11 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH);
 
 // One main-track clip as the export renders it: trim, speed, grade, the
-// privacy blur, the seam fine-tune measured under `lensGuard`, a stabilizer
-// built from its IMU track (when its stabilization is on; reads the
-// trailer), and its reframe path.
+// privacy blur, its stitch settings and the seam fine-tune measured under
+// them, a stabilizer built from its IMU track (when its stabilization is on;
+// reads the trailer), and its reframe path.
 ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &timeline,
-                                         int lensGuard, const PrivacyBlur &privacy);
+                                         const PrivacyBlur &privacy);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),

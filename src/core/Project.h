@@ -42,7 +42,9 @@ public:
     // Optional fields are written only when set.
     //   "format": kFormatTag, "version": kFormatVersion,
     //   "previewStitch": {quality: "template" | "optflow", width, height
-    //     (0 = auto), lensGuard: "none" | "standard" | "premium", depthSeam},
+    //     (0 = auto), lensGuard: "none" | "standard" | "premium", depthSeam}
+    //     -- lensGuard / depthSeam: the first 360 clip's, for older builds;
+    //     a clip without its own "stitch" takes them on load,
     //   "output": {aspect: "16:9" | "9:16" | "1:1" | "4:3", width, height,
     //     fps (0 = match the first clip)},
     //   "timeline": {clips: [...], tracks: [...]},
@@ -53,7 +55,8 @@ public:
     //   fovY}]}, color {exposureEv, contrast, saturation, temperature},
     //   speed, stabilization {mode, windowYawSec, windowPitchSec,
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
-    //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true)};
+    //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true)},
+    //   stitch {lensGuard, depthSeam} (absent => previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
@@ -85,8 +88,9 @@ public:
     // audioMuted, noise, and "mainMuted" on the timeline); on load that
     // becomes linked clips on the stream tracks, the unpicked streams muted;
     // a stream that was put on a free track by hand moves there too.
-    // Version 11 added flat clips on the main track; a project without one is
-    // still written as version 10, so the builds before keep opening it.
+    // Version 11 added flat clips on the main track, and stitch settings
+    // that differ between clips; a project with neither is still written as
+    // version 10, so the builds before keep opening it.
     static constexpr int kFormatVersion = 11;
     static constexpr int kFlatClipFormatVersion = 11;
     static constexpr int kPlainFormatVersion = 10;
@@ -102,8 +106,11 @@ public:
     QString filePath() const { return m_filePath; }
     bool modified() const { return m_modified; }
 
-    // Project-wide preview-stitch settings (Stitching panel). The live
-    // playback path is handed this via PlaybackController::setPreviewConfig.
+    // The preview's stitch quality and size (View menu), handed to the live
+    // playback path via PlaybackController::setPreviewConfig. Its lensGuard /
+    // depthSeam are not used: each 360 clip has its own (ClipItem::lensGuard
+    // / depthSeam); they're only what a project from before that gives its
+    // clips on load.
     const stitch::PreviewStitchConfig &previewStitch() const { return m_previewStitch; }
 
     // Project-wide output format (Project Settings panel): the aspect the

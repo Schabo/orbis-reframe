@@ -201,7 +201,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
     c.sourceHeight = sourceHeight;
     c.flat = flat;
     c.resetEditsToFullSource();
-    if (!flat) { // the nearest 360 clip's stabilization: before it, else after it
+    if (!flat) { // the nearest 360 clip's stabilization and stitch: before it, else after it
         int from = -1;
         for (int k = index - 1; k >= 0 && from < 0; --k)
             if (!m_clips.at(k).flat)
@@ -209,11 +209,16 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
         for (int k = index; k < m_clips.size() && from < 0; ++k)
             if (!m_clips.at(k).flat)
                 from = k;
-        if (from >= 0)
+        if (from >= 0) {
             c.stabilization = m_clips.at(from).stabilization;
+            c.lensGuard = m_clips.at(from).lensGuard;
+            c.depthSeam = m_clips.at(from).depthSeam;
+        }
     }
-    for (const ClipItem &o : m_clips) // the sync fine-tune belongs to the source file
+    for (const ClipItem &o : m_clips) // the stitch and fine-tunes belong to the source file
         if (o.sourcePath == sourcePath) {
+            c.lensGuard = o.lensGuard;
+            c.depthSeam = o.depthSeam;
             if (!std::isnan(o.syncAdjustMs))
                 c.syncAdjustMs = o.syncAdjustMs;
             c.seamAdjustDeg = o.seamAdjustDeg;
@@ -446,6 +451,18 @@ void Timeline::setClipBlurRemovals(int clipId, const std::vector<privacy::BlurRe
         emit clipPrivacyChanged(c->id, c->blurPlates);
 }
 
+void Timeline::setSourceStitch(const QString &sourcePath,
+                               stitch::PreviewStitchConfig::LensGuard lensGuard, bool depthSeam)
+{
+    for (ClipItem &c : m_clips) {
+        if (c.sourcePath != sourcePath || (c.lensGuard == lensGuard && c.depthSeam == depthSeam))
+            continue;
+        c.lensGuard = lensGuard;
+        c.depthSeam = depthSeam;
+        emit clipStitchChanged(c.id);
+    }
+}
+
 void Timeline::setSourceSyncAdjust(const QString &sourcePath, double ms)
 {
     for (ClipItem &c : m_clips) {
@@ -486,6 +503,15 @@ bool Timeline::sourceSeamAdjust(const QString &sourcePath, int lensGuard,
             return true;
         }
     }
+    deg = {0.0, 0.0, 0.0};
+    return false;
+}
+
+bool Timeline::sourceSeamAdjust(const QString &sourcePath, std::array<double, 3> &deg) const
+{
+    for (const ClipItem &c : m_clips)
+        if (c.sourcePath == sourcePath)
+            return sourceSeamAdjust(sourcePath, static_cast<int>(c.lensGuard), deg);
     deg = {0.0, 0.0, 0.0};
     return false;
 }

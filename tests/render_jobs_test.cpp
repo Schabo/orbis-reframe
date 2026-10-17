@@ -111,18 +111,22 @@ void testClipJob(const QString &dir)
     privacy.scans().setDirectory(dir);
 
     const ClipItem &c = t.clipAt(0);
-    ReframeExportController::ClipJob job = renderjobs::clipJob(c, t, 2, privacy);
+    ReframeExportController::ClipJob job = renderjobs::clipJob(c, t, privacy);
     CHECK(job.clipPath == "/c/ride.insv" && job.trimInMs == 2000 && job.trimOutMs == 9000);
     CHECK(job.speed == 2.0 && job.colorGrade[0] == 1.0f);
-    CHECK(job.seamAdjustDeg[1] == 0.25);
+    CHECK(job.seamAdjustDeg[1] == 0.25); // measured under Premium (2), the clip's
+    CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Premium && job.depthSeam);
     CHECK(!job.stab);    // stabilization off
     CHECK(!job.poseAt);  // no keys: looking straight ahead
     CHECK(!job.blur);    // no blur
-    job = renderjobs::clipJob(c, t, 1, privacy);
+    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Standard, false);
+    job = renderjobs::clipJob(t.clipAt(0), t, privacy);
+    CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard && !job.depthSeam);
     CHECK(job.seamAdjustDeg[1] == 0.0); // measured under another guard
+    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Premium, true);
 
     t.upsertClipReframeKey(id, 3000, {0.5f, 0.0f, 0.0f, 1.2f});
-    job = renderjobs::clipJob(t.clipAt(0), t, 2, privacy);
+    job = renderjobs::clipJob(t.clipAt(0), t, privacy);
     CHECK(job.poseAt);
     if (job.poseAt) {
         float pose[4] = {};

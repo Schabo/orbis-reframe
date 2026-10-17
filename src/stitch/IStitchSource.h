@@ -45,9 +45,10 @@ struct CaptureTiming {
     }
 };
 
-// Preview-stitch knobs surfaced in the Stitching settings panel. Persisted
-// per-project on the .orp (Project::previewStitch), pushed to the live stitch
-// path via IStitchSource::Open.
+// The stitch knobs, handed to IStitchSource::Open. quality / width / height
+// are the preview's (View menu; Project::previewStitch); lensGuard /
+// depthSeam are the clip's own (Stitching panel; ClipItem::lensGuard /
+// depthSeam).
 //
 // NativeStitchSource honours width/height (the equirect output size),
 // lensGuard and depthSeam. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.

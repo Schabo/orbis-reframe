@@ -214,11 +214,10 @@ says what the section applies to:
 
 | It says | Meaning |
 |---|---|
-| *This clip* | The selected video clip if you've clicked one, otherwise the clip under the playhead. Stabilization, Colour, Privacy, Audio (the clip's sound) and Media information. |
+| *This clip* | The selected video clip if you've clicked one, otherwise the clip under the playhead. Stitching (shared by every clip of the same file), Stabilization, Colour, Privacy, Audio (the clip's sound) and Media information. |
 | *Selected audio clip* | The **Audio** tab's sections, when you've selected an audio clip on an audio track. |
 | *Selected overlay clip* | The **Overlay** section, and the **Audio** tab's sections for its sound: the overlay you've selected. |
 | *Keys at the playhead* | The **Reframe** section: the view at the playhead, and the keyframe there. |
-| *Whole project* | The **Stitching** section: the same for every clip. |
 
 The project's output format (aspect ratio, resolution and frame rate) isn't
 in the sidebar: it's in **File ▸ Project settings…**, see

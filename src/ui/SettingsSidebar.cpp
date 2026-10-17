@@ -31,7 +31,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     : TabSidebar(Side::Right, QStringLiteral("settingsSidebar"), parent)
 {
     const QString thisClip = tr("This clip");
-    m_stitching = section<StitchingPanel>("stitchingPanel", tr("Whole project"));
+    m_stitching = section<StitchingPanel>("stitchingPanel", thisClip);
     m_stabilization = section<StabilizationPanel>("stabilizationPanel", thisClip);
     m_reframe = section<ReframePanel>("reframePanel", tr("Keys at the playhead"));
     m_colour = section<ColourPanel>("colourPanel", thisClip);

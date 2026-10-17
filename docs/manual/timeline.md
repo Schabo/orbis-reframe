@@ -114,7 +114,7 @@ the frame, edges cropped** ([Reframing](reframing.md#flat-videos)).
 Trimming, splitting, speed, colour, overlays over it, its sound and
 the export work as for any clip. The parts that need a 360° clip don't
 apply, and their sections say so: reframing and Track subject,
-stabilization, the number-plate blur, and the stitching measurements.
+stabilization, the number-plate blur, and stitching.
 
 ### Selecting a clip
 

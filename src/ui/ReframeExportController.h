@@ -81,6 +81,10 @@ public:
         // panel grade, static for the whole clip (no colour keyframing).
         // All-zero (the default) => neutral.
         float colorGrade[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        // The clip's stitch settings (ClipItem::lensGuard / depthSeam) --
+        // same geometry as the preview.
+        stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+        bool depthSeam = true;
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg).
         std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
         // Privacy blur: the plate regions per source time, mosaicked in the
@@ -100,10 +104,6 @@ public:
         // stitch::ExportStitchWidth (the full source sphere, >= 2*outWidth).
         int stitchWidth = 0;
         int stitchHeight = 0;
-        // The project's lens-guard choice (Stitching panel) -- same geometry as
-        // the preview.
-        stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-        bool depthSeam = true; // the depth-aware seam, as the preview
         QList<ClipJob> clips;
         // The extra audio tracks' clips, timeline frames at 48 kHz.
         std::vector<insv::MixClip> mix;
@@ -121,9 +121,7 @@ public:
     // player bar's screenshot button. Blocks (opens its own stitch source);
     // run it off the GUI thread. Null image + `error` on failure.
     static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const float pose[4],
-                              int outW, int outH,
-                              stitch::PreviewStitchConfig::LensGuard lensGuard,
-                              bool depthSeam, QString &error);
+                              int outW, int outH, QString &error);
 
     // Blocks the calling thread for the whole export (invoke it queued onto the
     // worker thread). Emits progress along the way and finished() at the end.

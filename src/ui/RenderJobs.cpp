@@ -139,7 +139,7 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
 }
 
 ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &timeline,
-                                         int lensGuard, const PrivacyBlur &privacy)
+                                         const PrivacyBlur &privacy)
 {
     // Stabilization (Lean follow / Horizon Lock / Custom) is a per-frame
     // sphere-frame matrix next to the reframe pose, applied after it like the
@@ -154,7 +154,9 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     const std::array<float, 4> grade = c.color.packed();
     std::copy(grade.begin(), grade.end(), job.colorGrade);
     job.blur = privacy.blurFor(c);
-    timeline.sourceSeamAdjust(c.sourcePath, lensGuard, job.seamAdjustDeg);
+    job.lensGuard = c.lensGuard;
+    job.depthSeam = c.depthSeam;
+    timeline.sourceSeamAdjust(c.sourcePath, job.seamAdjustDeg);
     if (nativeStab) {
         auto tele = insv::ReadInsvTelemetry(c.sourcePath.toStdString());
         if (tele && tele->imu.size() >= 2) {

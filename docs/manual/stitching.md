@@ -15,9 +15,15 @@ don't match how the footage was filmed.
 <img src="images/stitching-panel.jpg" width="350" alt="The Stitching section">
 
 The settings are in the **Stitching** section, at the top of the settings
-sidebar's **Video** tab. It starts folded: click its title to open it. Its
-settings are the same for the whole project (its title row says *Whole
-project*), and apply to playback, screenshots and the export alike.
+sidebar's **Video** tab. It starts folded: click its title to open it. Like
+the other *This clip* sections, it shows the clip you've selected, or else
+the clip under the playhead, and its settings apply to playback, screenshots
+and the export alike.
+
+The settings belong to the clip's **file**: every clip cut from the same
+file (after a split, say) shares them, since one recording is filmed with
+one set of lens guards. Clips from different files can differ, so a
+project can mix footage filmed with and without guards.
 
 ## Lens guards
 
@@ -33,8 +39,12 @@ whether guards were fitted, so you have to tell orbis-reframe. With the
 wrong choice the two pictures don't line up: things along the seam show up
 twice, or have a piece missing.
 
-New projects start with **Premium lens guards**. If you filmed without
-guards, or with the standard ones, change this first.
+The first clip in a project starts with **Premium lens guards**. A clip you
+add later takes the settings of the nearest 360° clip beside it, or of the
+other clips from its file if there are any. If you filmed without guards,
+or with the standard ones, change this first; when the whole project was
+filmed the same way, **Apply to all clips** gives every 360° clip the
+settings shown.
 
 ## Depth-aware seam
 
@@ -71,8 +81,8 @@ The **Stitching** section shows the state for the clip under the playhead:
 | *Seam: aligned for this clip (back lens yaw …, pitch …, roll …).* | Done. The numbers are how far the back lens is turned to line up with the front one, in degrees; a fraction of a degree is normal. |
 | *Seam: couldn't align this clip (…).* | The measurement didn't succeed; the brackets say why. The clip is stitched with the camera's lens model only. |
 
-Changing **Lens guards** measures every clip again, because the alignment
-depends on the lens model.
+Changing **Lens guards** measures the clip's file again, because the
+alignment depends on the lens model.
 
 ## Preview size and quality
 

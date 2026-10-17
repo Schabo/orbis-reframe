@@ -292,6 +292,11 @@ public slots:
     // mediaMissingChanged() -- not an edit, nothing else. Returns the paths
     // whose clips changed.
     QStringList setSourcesMissing(const QHash<QString, bool> &missing);
+    // The stitch settings (ClipItem::lensGuard / depthSeam) for every clip
+    // cut from `sourcePath`; the Stitching panel edits them. Emits
+    // clipStitchChanged per clip that changed.
+    void setSourceStitch(const QString &sourcePath, stitch::PreviewStitchConfig::LensGuard lensGuard,
+                         bool depthSeam);
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);
@@ -306,6 +311,9 @@ public slots:
     // measured under `lensGuard`; else false and `deg` zero.
     bool sourceSeamAdjust(const QString &sourcePath, int lensGuard,
                           std::array<double, 3> &deg) const;
+    // The same, measured under the lens guards the source is set to now
+    // (ClipItem::lensGuard): what its stitch uses.
+    bool sourceSeamAdjust(const QString &sourcePath, std::array<double, 3> &deg) const;
 
 signals:
     void clipInserted(int index);
@@ -327,6 +335,8 @@ signals:
     void clipPrivacyChanged(int id, bool blurPlates);
     // One clip's playback speed changed (its timeline span changed with it).
     void clipSpeedChanged(int id, double speed);
+    // One clip's stitch settings (lens guards, depth-aware seam) changed.
+    void clipStitchChanged(int id);
     // One clip's measured sync fine-tune changed.
     void clipSyncChanged(int id, double ms);
     // One clip's measured seam fine-tune changed.

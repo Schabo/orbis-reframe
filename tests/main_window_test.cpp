@@ -30,6 +30,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
@@ -54,6 +55,7 @@
 #include <cstdio>
 #include <functional>
 #include <mutex>
+#include <map>
 #include <set>
 
 namespace {
@@ -83,6 +85,7 @@ constexpr double kFps = 30.0;
 std::atomic<int> g_framesServed{0};
 std::mutex g_openedMutex;
 std::set<std::string> g_opened; // paths the stand-in source was opened on
+std::map<std::string, stitch::PreviewStitchConfig> g_openedWith; // the last open's config
 
 bool wasOpened(const QString &path)
 {
@@ -90,10 +93,19 @@ bool wasOpened(const QString &path)
     return g_opened.count(path.toStdString()) > 0;
 }
 
+bool lastOpenedWith(const QString &path, stitch::PreviewStitchConfig::LensGuard guard,
+                    bool depthSeam)
+{
+    std::lock_guard<std::mutex> lock(g_openedMutex);
+    const auto it = g_openedWith.find(path.toStdString());
+    return it != g_openedWith.end() && it->second.lensGuard == guard &&
+           it->second.depthSeam == depthSeam;
+}
+
 // Flat grey equirect frames, small, one per 1/30 s.
 class StandInSource : public stitch::IStitchSource {
 public:
-    bool Open(const std::string &path, const stitch::PreviewStitchConfig &) override
+    bool Open(const std::string &path, const stitch::PreviewStitchConfig &config) override
     {
         if (!QFile::exists(QString::fromStdString(path))) {
             m_error = "no such file";
@@ -102,6 +114,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(g_openedMutex);
             g_opened.insert(path);
+            g_openedWith[path] = config;
         }
         m_info = {7680, 3840, kFps, kClipMs};
         return true;
@@ -475,6 +488,43 @@ void testColour(const Ctx &c)
     CHECK(c.timeline->clipAt(0).color.exposureEv == 0.0f);
 }
 
+// Stitching is per clip's file: the panel edits the clip under the playhead,
+// playback re-opens that file with it, Apply to all clips copies it.
+void testStitching(const Ctx &c)
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    auto *guard = find<QComboBox>(c.w, "stitchLensGuard");
+    auto *depth = find<QCheckBox>(c.w, "stitchDepthSeam");
+    auto *all = find<QPushButton>(c.w, "stitchApplyToAll");
+    QAction *undo = action(c, "undoAction");
+    if (!guard || !depth || !all || !undo)
+        return;
+    settle();
+    CHECK(seekTo(c, 500));
+    CHECK(guard->currentIndex() == int(G::Premium) && depth->isChecked());
+    guard->setCurrentIndex(int(G::None));
+    CHECK(c.timeline->clipAt(0).lensGuard == G::None);
+    CHECK(c.timeline->clipAt(1).lensGuard == G::Premium); // another file
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipA, G::None, true); }));
+    settle();
+    CHECK(seekTo(c, kClipMs + 500));
+    CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium); })); // the second clip's
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, true); }));
+    depth->setChecked(false);
+    CHECK(!c.timeline->clipAt(1).depthSeam && c.timeline->clipAt(0).lensGuard == G::None);
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, false); }));
+    settle();
+    all->click();
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && !c.timeline->clipAt(0).depthSeam);
+    undo->trigger();
+    CHECK(c.timeline->clipAt(0).lensGuard == G::None && c.timeline->clipAt(0).depthSeam);
+    undo->trigger();
+    CHECK(c.timeline->clipAt(1).depthSeam);
+    undo->trigger();
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium);
+    CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium) && depth->isChecked(); }));
+}
+
 // Files dropped on the Media tab are probed on worker threads; Add to
 // timeline puts audio on a new audio track at the playhead.
 void testMediaPool(const Ctx &c)
@@ -614,7 +664,9 @@ void testFlatMainClip(const Ctx &c)
     emit c.timelineWidget->clipSelected(id);
     auto *stab = find<SettingsPanel>(c.w, "stabilizationPanel");
     auto *privacy = find<SettingsPanel>(c.w, "privacyPanel");
+    auto *stitching = find<SettingsPanel>(c.w, "stitchingPanel");
     CHECK(stab && !stab->isApplicable() && privacy && !privacy->isApplicable());
+    CHECK(stitching && !stitching->isApplicable());
     auto *fit = find<QComboBox>(c.w, "reframeFitCombo");
     CHECK(fit && fit->isVisibleTo(c.w) && fit->currentIndex() == 0);
     if (fit)
@@ -641,6 +693,7 @@ void testFlatMainClip(const Ctx &c)
     // Back on a 360 clip, everything applies again.
     emit c.timelineWidget->clipSelected(c.timeline->clipAt(0).id);
     CHECK(stab && stab->isApplicable() && fit && !fit->isVisibleTo(c.w));
+    CHECK(stitching && stitching->isApplicable());
     c.timeline->removeClip(id);
     settle();
 }
@@ -984,6 +1037,7 @@ int main(int argc, char **argv)
             testNavigationKeys(c);
             testVideoEdits(c);
             testColour(c);
+            testStitching(c);
             testMediaPool(c);
             testAudioTrack(c);
             testOverlay(c);

@@ -84,9 +84,8 @@ void testProjectJson()
         sc.quality = stitch::PreviewStitchConfig::Quality::OpticalFlow;
         sc.width = 2560;
         sc.height = 1280;
-        sc.lensGuard = stitch::PreviewStitchConfig::LensGuard::Standard;
-        sc.depthSeam = false; // default on
-        p.setPreviewStitch(sc);
+        p.setPreviewStitch(sc); // the preview's part; lens guards are per clip
+
         CHECK(p.previewStitch().width == 2560);
         CHECK(p.previewStitch() == sc);
         CHECK(sc.cacheTag().find("2560x1280") != std::string::npos);
@@ -207,8 +206,6 @@ void testProjectJson()
         const stitch::PreviewStitchConfig &sc = p.previewStitch();
         CHECK(sc.quality == stitch::PreviewStitchConfig::Quality::OpticalFlow);
         CHECK(sc.width == 2560 && sc.height == 1280);
-        CHECK(sc.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard);
-        CHECK(!sc.depthSeam);
 
         CHECK(tl->clipAt(1).stabilization == insv::StabConfig{}); // never touched
         const insv::StabConfig &st = tl->clipAt(0).stabilization; // round-trips
@@ -1286,6 +1283,97 @@ void testProjectSummary()
 // A flat video on the main track (ClipItem::flat): its fit and edits round
 // trip, the 360 fields aren't written, and the file is version 11 only while
 // it has one -- a project without stays readable by the builds before.
+// Stitch settings are per source file: kept on every clip of it, saved per
+// clip, and an older project's one setting becomes every clip's.
+void testClipStitchJson()
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString a = tmp.path() + "/a.insv";
+    const QString b = tmp.path() + "/b.insv";
+    writeFile(a);
+    writeFile(b);
+    const QString file = tmp.path() + "/stitch.orp";
+    auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+
+    QString err;
+    {
+        Project p;
+        Timeline *tl = p.timeline();
+        const int a1 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
+        CHECK(tl->clipById(a1)->lensGuard == G::Premium && tl->clipById(a1)->depthSeam);
+        tl->setSourceStitch(a, G::None, false);
+        const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
+        CHECK(tl->clipById(a2)->lensGuard == G::None && !tl->clipById(a2)->depthSeam);
+        const int b1 = tl->appendClip(b, 8000, 30.0, 7680, 3840, 2); // the neighbour's
+        CHECK(tl->clipById(b1)->lensGuard == G::None);
+        tl->setSourceStitch(b, G::Standard, true);
+        CHECK(tl->clipById(a1)->lensGuard == G::None && tl->clipById(b1)->lensGuard == G::Standard);
+        CHECK(p.save(file, &err));
+        // Mixed: the builds before, which read one setting for all, refuse it.
+        CHECK(document().value("version").toInt() == Project::kFlatClipFormatVersion);
+        const QJsonArray clips = document().value("timeline").toObject().value("clips").toArray();
+        CHECK(clips.at(0).toObject().value("stitch").toObject().value("lensGuard").toString() ==
+              "none");
+        CHECK(clips.at(2).toObject().value("stitch").toObject().value("lensGuard").toString() ==
+              "standard");
+
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        const Timeline *tl = p.timeline();
+        CHECK(tl->count() == 3);
+        CHECK(tl->clipAt(0).lensGuard == G::None && !tl->clipAt(0).depthSeam);
+        CHECK(tl->clipAt(1).lensGuard == G::None);
+        CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).depthSeam);
+
+        // An edit, and undo puts it back.
+        p.timeline()->setSourceStitch(b, G::Premium, false);
+        CHECK(p.canUndo() && p.modified());
+        p.undo();
+        CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).depthSeam);
+
+        // All the same: still the plain version, the project-wide value theirs.
+        p.timeline()->setSourceStitch(b, G::None, false);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
+        const QJsonObject ps = document().value("previewStitch").toObject();
+        CHECK(ps.value("lensGuard").toString() == "none" && !ps.value("depthSeam").toBool(true));
+    }
+    {
+        // An older project: one setting, no "stitch" on the clips.
+        QJsonObject doc = document();
+        QJsonObject ps = doc.value("previewStitch").toObject();
+        ps["lensGuard"] = "standard";
+        ps["depthSeam"] = true;
+        doc["previewStitch"] = ps;
+        QJsonObject timeline = doc.value("timeline").toObject();
+        QJsonArray clips = timeline.value("clips").toArray();
+        for (int i = 0; i < clips.size(); ++i) {
+            QJsonObject c = clips.at(i).toObject();
+            c.remove("stitch");
+            clips[i] = c;
+        }
+        timeline["clips"] = clips;
+        doc["timeline"] = timeline;
+        QFile f(file);
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(doc).toJson());
+        f.close();
+        Project p;
+        CHECK(p.load(file, &err));
+        for (int i = 0; i < p.timeline()->count(); ++i)
+            CHECK(p.timeline()->clipAt(i).lensGuard == G::Standard &&
+                  p.timeline()->clipAt(i).depthSeam);
+    }
+}
+
 void testFlatClipJson()
 {
     QTemporaryDir tmp;
@@ -1380,5 +1468,6 @@ int main(int argc, char **argv)
     testProjectLibrary();
     testProjectSummary();
     testFlatClipJson();
+    testClipStitchJson();
     return modeltest::finish("project_test");
 }

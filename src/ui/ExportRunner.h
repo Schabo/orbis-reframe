@@ -42,8 +42,6 @@ public:
         qint64 sourceMs = 0;
         qint64 timelineMs = 0;
         int width = 0, height = 0;
-        stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-        bool depthSeam = false;
         std::vector<exportpipe::InsetClipJob> insets;
         QString path;
     };
