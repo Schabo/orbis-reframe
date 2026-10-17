@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QList>
 #include <QObject>
+#include <QSet>
 
 #include <functional>
 #include <QString>
@@ -125,6 +126,10 @@ public:
     // "settled" user action).
     bool canUndo() const { return m_pendingDirty || !m_undoStack.isEmpty(); }
     bool canRedo() const { return !m_redoStack.isEmpty(); }
+
+    // The plate scans (ClipItem::plateScan) the clips name, now and in every
+    // undo / redo step: the ones a project's cache must keep.
+    QSet<QString> plateScansInUse() const;
 
     // How many audio streams a source file has (InsvAudioDemux::
     // countAudioStreams; the model has no FFmpeg). Used to convert a project

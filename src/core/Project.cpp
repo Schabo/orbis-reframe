@@ -1348,6 +1348,26 @@ bool Project::load(const QString &path, QString *error)
     return true;
 }
 
+QSet<QString> Project::plateScansInUse() const
+{
+    QSet<QString> keys;
+    for (int i = 0; i < m_timeline->count(); ++i)
+        if (!m_timeline->clipAt(i).plateScan.isEmpty())
+            keys.insert(m_timeline->clipAt(i).plateScan);
+    QList<QByteArray> steps = m_undoStack + m_redoStack;
+    steps.append(m_lastSettledSnapshot); // a burst not settled yet undoes to it
+    for (const QByteArray &bytes : steps) {
+        const json doc = json::parse(bytes.toStdString(), nullptr, false);
+        if (!doc.is_object() || !doc.contains("timeline") || !doc.at("timeline").contains("clips"))
+            continue;
+        for (const json &jc : doc.at("timeline").at("clips"))
+            if (jc.contains("privacy") && jc.at("privacy").is_object())
+                if (const std::string k = jc.at("privacy").value("scan", std::string()); !k.empty())
+                    keys.insert(QString::fromStdString(k));
+    }
+    return keys;
+}
+
 QByteArray Project::snapshot() const
 {
     return buildDocument(nullptr);

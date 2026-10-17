@@ -35,6 +35,7 @@ bool ProjectFiles::save()
         QMessageBox::warning(m_window, tr("Could not save project"), error);
         return false;
     }
+    prunePlateScans();
     noteOpened();
     return true;
 }
@@ -53,6 +54,7 @@ bool ProjectFiles::saveAs(const QString &untitledName)
         QMessageBox::warning(m_window, tr("Could not save project"), error);
         return false;
     }
+    prunePlateScans();
     noteOpened();
     return true;
 }
@@ -74,6 +76,14 @@ void ProjectFiles::copyPlateScans(const Project &project, const QString &fromFil
             QFile::copy(from, to);
         }
     }
+}
+
+void ProjectFiles::prunePlateScans()
+{
+    const int n = PlateScanCache::prune(projectfolder::cacheDir(m_project->filePath()),
+                                        m_project->plateScansInUse());
+    if (n > 0)
+        std::fprintf(stderr, "[plates] removed %d plate scan(s) no clip uses\n", n);
 }
 
 bool ProjectFiles::confirmDiscard()

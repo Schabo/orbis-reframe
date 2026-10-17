@@ -59,6 +59,10 @@ public:
                                const QString &toFile);
 
 private:
+    // Saved: drop the scans in the project's cache no clip or undo step
+    // names (PlateScanCache::prune).
+    void prunePlateScans();
+
     Project *m_project;
     ProjectLibrary *m_library;
     Autosave *m_autosave;

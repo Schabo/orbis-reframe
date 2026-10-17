@@ -12,6 +12,7 @@
 #include <PlateScanData.h>
 
 #include <QHash>
+#include <QSet>
 #include <QString>
 
 #include <memory>
@@ -37,6 +38,12 @@ public:
     // `to`'s size and modification time, which a move keeps (a copy may
     // not: then the clip is scanned again). True if one was carried over.
     bool carryOver(const QString &from, const QString &to, const QString &key);
+
+    // Remove the scans in folder `dir` (as setDirectory's; not the user
+    // cache, which other projects share) whose key isn't in `keep`: those of
+    // earlier scans no clip or undo step names any more. The scans of the
+    // builds before per-clip ones (no key) are left. How many went.
+    static int prune(const QString &dir, const QSet<QString> &keep);
 
     // The folder scans are kept in (plates/ is added); empty = the user
     // cache. A change forgets what was read from the old one.

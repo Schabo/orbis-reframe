@@ -34,7 +34,8 @@ project. Other clips cut from the same file have their own scans, so each
 can be scanned with its own settings (stabilization on in one, off in
 another). A clip you duplicate or split after scanning keeps the scan in
 both copies, until one of them is scanned again. **Undo** after a scan
-brings back the clip's scan from before. Scans are stored in the project's
+brings back the clip's scan from before; scans no clip (nor undo) can
+reach any more are removed when you save. Scans are stored in the project's
 `cache/` folder (in `~/.cache/orbis-reframe/` for an untitled project or
 one from before project folders); **Save project as…** copies them to the
 new folder. If you delete the cache folder, scan again.

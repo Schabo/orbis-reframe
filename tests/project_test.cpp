@@ -1454,6 +1454,26 @@ void testFlatClipJson()
     }
 }
 
+// The plate scans a project's cache must keep: the clips' now, and those
+// an undo or redo would bring back.
+void testPlateScansInUse()
+{
+    Project p;
+    const int a = p.timeline()->appendClip("a.insv", 10000, 30.0);
+    p.timeline()->setClipPlateScan(a, "old");
+    p.undo();
+    p.redo(); // settled
+    const int id = p.timeline()->clipAt(0).id;
+    p.timeline()->setClipPlateScan(id, "new"); // rescanned
+    p.timeline()->duplicateClip(id);
+    CHECK(p.plateScansInUse() == (QSet<QString>{"old", "new"}));
+    p.undo(); // the rescan and duplicate undone: "new" is a redo away
+    CHECK(p.timeline()->clipAt(0).plateScan == "old");
+    CHECK(p.plateScansInUse() == (QSet<QString>{"old", "new"}));
+    p.timeline()->setClipBlurPlates(p.timeline()->clipAt(0).id, true); // drops the redo
+    CHECK(p.plateScansInUse() == QSet<QString>{"old"});
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -1471,5 +1491,6 @@ int main(int argc, char **argv)
     testProjectSummary();
     testFlatClipJson();
     testClipStitchJson();
+    testPlateScansInUse();
     return modeltest::finish("project_test");
 }

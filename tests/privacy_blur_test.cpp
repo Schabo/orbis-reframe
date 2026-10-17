@@ -276,6 +276,26 @@ void testScansFollowSaveAs(const QString &dir)
     CHECK(!copied.get(source, "k2"));
 }
 
+// Saving prunes the scans no clip names; the key-less ones from before
+// per-clip scans stay, and an empty folder (the shared user cache) is left.
+void testPrune(const QString &dir)
+{
+    const QString source = dir + "/e.insv";
+    {
+        QFile f(source);
+        CHECK(f.open(QIODevice::WriteOnly) && f.write("nor this") > 0);
+    }
+    const QString cache = dir + "/prune";
+    PlateScanCache c;
+    c.setDirectory(cache);
+    for (const QString key : {"kept", "gone", ""})
+        CHECK(c.store(source, key, makeScan(0, 500)));
+    CHECK(PlateScanCache::prune(QString(), {}) == 0);
+    CHECK(PlateScanCache::prune(cache, {"kept"}) == 1);
+    CHECK(QFile::exists(c.diskPath(source, "kept")) && QFile::exists(c.diskPath(source, "")));
+    CHECK(!QFile::exists(c.diskPath(source, "gone")));
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -287,6 +307,7 @@ int main(int argc, char **argv)
     testHandBlurs(tmp.path());
     testScansFollowSaveAs(tmp.path());
     testPerClip(tmp.path());
+    testPrune(tmp.path());
     if (g_failures == 0)
         std::printf("privacy_blur_test: all checks passed\n");
     else

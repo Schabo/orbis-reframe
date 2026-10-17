@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUuid>
 
@@ -40,6 +41,22 @@ QString PlateScanCache::diskPathIn(const QString &dir, const QString &absPath, q
         dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : dir;
     const QString suffix = key.isEmpty() ? QString() : QLatin1Char('-') + key;
     return base + QStringLiteral("/plates/") + hash + suffix + QStringLiteral(".scan");
+}
+
+int PlateScanCache::prune(const QString &dir, const QSet<QString> &keep)
+{
+    if (dir.isEmpty())
+        return 0;
+    // <40 hex digits of the file's hash>-<key>.scan
+    static const QRegularExpression name(QStringLiteral("^[0-9a-f]{40}-(.+)\\.scan$"));
+    QDir plates(dir + QStringLiteral("/plates"));
+    int removed = 0;
+    for (const QString &f : plates.entryList({QStringLiteral("*.scan")}, QDir::Files)) {
+        const QRegularExpressionMatch m = name.match(f);
+        if (m.hasMatch() && !keep.contains(m.captured(1)) && plates.remove(f))
+            ++removed;
+    }
+    return removed;
 }
 
 bool PlateScanCache::carryOver(const QString &from, const QString &to, const QString &key)
