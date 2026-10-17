@@ -23,6 +23,8 @@ public:
 public slots:
     // Flips the arm toggle (the A key); emits reframeArmedChanged.
     void toggleReframeArmed();
+    // Sets the arm toggle; emits reframeArmedChanged when it changes.
+    void setReframeArmed(bool armed);
     // Enables/disables the Del Key / Clr Path buttons.
     void setHasReframeKeys(bool hasKeys);
     // A short status line beside the buttons ("Saved …"), cleared after a

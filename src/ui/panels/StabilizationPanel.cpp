@@ -50,6 +50,7 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     : SettingsPanel(tr("Stabilization"), parent)
 {
     m_mode = new QComboBox(this);
+    m_mode->setObjectName(QStringLiteral("stabilizationMode"));
     m_mode->addItem(tr("Off"), int(Mode::Off));
     m_mode->addItem(tr("Lean follow"), int(Mode::LeanFollow));
     m_mode->addItem(tr("Horizon lock"), int(Mode::HorizonLock));
@@ -342,6 +343,7 @@ void StabilizationPanel::setSyncStatus(const QString &text)
 
 void StabilizationPanel::setNoClip()
 {
+    setState(Mode::Off, insv::StabConfig::preset(insv::StabMode::LeanFollow));
     setBodyEnabled(false);
 }
 

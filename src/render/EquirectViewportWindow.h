@@ -64,6 +64,12 @@ public:
     bool LensFramesSupported() const { return m_lensSupported.load(); }
     void setLensFramesSupported(bool on) { m_lensSupported.store(on); } // renderer
 
+    // Nothing to show (an empty timeline): back to the blank picture a new
+    // window starts with, without overlays, outlines, marker, stabilization
+    // or colour grade. Thread-safe, like SetFrame(); not counted in
+    // FramesHanded() / FramesTaken().
+    void ClearPicture();
+
     // Called by the renderer once per frame to pick up a pending SetFrame() /
     // SetLensFrame() call, if any. Returns false if nothing new is pending;
     // else exactly one of `rgba` (with width/height) or `lens` is filled.
@@ -235,6 +241,7 @@ private:
     int m_pendingWidth = 0;
     int m_pendingHeight = 0;
     bool m_framePending = false;
+    bool m_pendingIsClear = false; // ClearPicture()'s blank, not a decoded frame
 
     bool m_dragging = false;
     QPoint m_lastMousePos;

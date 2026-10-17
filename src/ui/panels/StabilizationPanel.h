@@ -42,7 +42,8 @@ public:
     // One line about the active clip's video<->gyro sync fine-tune (measured
     // in the background). Empty hides it.
     void setSyncStatus(const QString &text);
-    // No clip to show (e.g. an empty timeline) -- greys the panel out.
+    // No clip to show (e.g. an empty timeline): a new clip's setting (Off),
+    // greyed out. Does not emit.
     void setNoClip();
     // Whether a setting has been copied (enables Paste).
     void setCanPaste(bool canPaste);

@@ -70,6 +70,7 @@ void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam)
 
 void StitchingPanel::setNoClip()
 {
+    setState(LensGuard::Premium, true); // ClipItem's defaults
     setBodyEnabled(false);
 }
 

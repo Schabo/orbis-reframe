@@ -26,7 +26,7 @@ public:
 
     // Show a clip's settings. Does not emit.
     void setState(LensGuard lensGuard, bool depthSeam);
-    // No clip to show: the controls greyed out.
+    // No clip to show: a new clip's settings, greyed out. Does not emit.
     void setNoClip();
     // One line about the current clip's seam alignment (empty hides it).
     void setSeamStatus(const QString &text);

@@ -2828,7 +2828,17 @@ void MainWindow::bindEmptyTimeline()
     m_stitchingPanel->setNoClip();
     m_privacyPanel->setNoClip();
     m_mediaInfoPanel->setNoClip();
+    // Nothing of the last project carries over: the view looks straight
+    // ahead again, and reframe authoring starts disarmed.
+    const ReframePose ahead;
+    m_viewport->SetPose(ahead.yaw, ahead.pitch, ahead.roll, ahead.fovY);
+    m_reframePanel->setClipUnkeyed(false);
+    m_editToolbar->setReframeArmed(false);
+    m_editToolbar->setHasReframeKeys(false);
     syncTimeline(); // empty -> controller goes idle, widget clears
+    syncReframePanel();
+    updateSeamStatus();
+    updateSyncStatus();
 }
 
 void MainWindow::openProject(const QString &projectPath)

@@ -42,6 +42,7 @@ void EquirectViewportWindow::SetFrame(int width, int height, std::vector<uint8_t
     m_pendingLens.reset();
     m_pendingOutlines = std::move(outlines);
     m_framePending = true;
+    m_pendingIsClear = false;
     ++m_framesHanded;
     m_pendingHasStab = stab != nullptr;
     if (stab)
@@ -66,11 +67,35 @@ void EquirectViewportWindow::SetLensFrame(std::shared_ptr<const render::LensFram
     m_pendingRgba.clear();
     m_pendingOutlines = std::move(outlines);
     m_framePending = true;
+    m_pendingIsClear = false;
     ++m_framesHanded;
     m_pendingHasStab = stab != nullptr;
     if (stab)
         std::copy(stab, stab + 9, m_pendingStab);
     m_pendingHasOverlay = false;
+}
+
+void EquirectViewportWindow::ClearPicture()
+{
+    {
+        // The renderer's placeholder (initResources). Not a frame: the
+        // counters are about decoded pictures.
+        QMutexLocker lock(&m_frameMutex);
+        m_pendingWidth = 1;
+        m_pendingHeight = 1;
+        m_pendingRgba.assign(4, 128);
+        m_pendingLens.reset();
+        m_pendingOutlines.clear();
+        m_framePending = true;
+        m_pendingIsClear = true;
+        m_pendingHasStab = true;
+        std::fill(m_pendingStab, m_pendingStab + 9, 0.0f);
+        m_pendingStab[0] = m_pendingStab[4] = m_pendingStab[8] = 1.0f;
+        m_pendingHasOverlay = false;
+    }
+    SetColorGrade(nullptr);
+    SetInsets({});
+    EndFrameOverlays();
 }
 
 void EquirectViewportWindow::EndFrameOverlays()
@@ -94,7 +119,8 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
     m_outlines = std::move(m_pendingOutlines);
     m_pendingOutlines.clear();
     m_framePending = false;
-    ++m_framesTaken;
+    if (!m_pendingIsClear)
+        ++m_framesTaken;
     if (m_pendingHasStab) // the renderer reads m_stab right after this, same thread
         std::copy(m_pendingStab, m_pendingStab + 9, m_stab);
     if (m_pendingHasOverlay) { // ... and the pose / marker

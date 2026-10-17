@@ -24,7 +24,8 @@ public:
 
     // Reflect a clip's grade. Does not emit gradeEdited.
     void setState(const ColorGrade &grade);
-    // No clip under the playhead (e.g. an empty timeline) -- greys the panel out.
+    // No clip under the playhead (e.g. an empty timeline): the neutral grade,
+    // greyed out. Does not emit.
     void setNoClip();
     // Whether a grade has been copied (enables Paste).
     void setCanPaste(bool canPaste);

@@ -122,6 +122,11 @@ void EditToolbar::toggleReframeArmed()
     m_armReframeButton->toggle();
 }
 
+void EditToolbar::setReframeArmed(bool armed)
+{
+    m_armReframeButton->setChecked(armed);
+}
+
 void EditToolbar::setHasReframeKeys(bool hasKeys)
 {
     m_deleteKeyButton->setEnabled(hasKeys);

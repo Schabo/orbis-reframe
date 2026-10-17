@@ -1064,6 +1064,40 @@ void testNewProject(const Ctx &c)
     CHECK(pages && pages->currentWidget() == find<QSplitter>(c.w, "editorSplitter"));
 }
 
+// A new project starts from scratch: the settings shown for the last
+// project's clip, its view direction and the reframe arm don't carry over.
+void testNewProjectResets(const Ctx &c)
+{
+    auto *exposure = find<QSlider>(c.w, "colourExposure");
+    auto *mode = find<QComboBox>(c.w, "stabilizationMode");
+    auto *arm = find<QToolButton>(c.w, "reframeArmButton");
+    if (!exposure || !mode || !arm)
+        return;
+    c.w->openProject(c.orp);
+    CHECK(c.timeline->count() > 0);
+    settle();
+    CHECK(seekTo(c, 500));
+    const int clipId = c.timeline->clipAt(0).id;
+    c.timeline->setClipStabilization(clipId,
+                                     insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    exposure->setValue(10); // +1.0 EV
+    CHECK(waitFor([&] { return mode->currentIndex() != 0; }));
+    arm->setChecked(true);
+    c.w->viewport()->SetPose(1.0f, 0.3f, 0.1f, 1.0f);
+    CHECK(c.project->save(c.project->filePath())); // nothing to ask about leaving
+
+    fillProjectDialog(c, QStringLiteral("Third"));
+    trigger(c, "newProjectAction");
+    CHECK(c.timeline->count() == 0);
+    CHECK(exposure->value() == 0 && !exposure->isEnabled());
+    CHECK(mode->currentIndex() == 0);
+    CHECK(!arm->isChecked());
+    const EquirectViewportWindow *v = c.w->viewport();
+    const ReframePose ahead;
+    CHECK(v->Yaw() == ahead.yaw && v->Pitch() == ahead.pitch && v->Roll() == ahead.roll &&
+          v->FovY() == ahead.fovY);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -1138,6 +1172,7 @@ int main(int argc, char **argv)
             testSaveAndReopen(c);
             testCloseWithChanges(c);
             testNewProject(c);
+            testNewProjectResets(c);
         }
     }
 

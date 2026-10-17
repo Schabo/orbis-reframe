@@ -160,6 +160,7 @@ void ColourPanel::setState(const ColorGrade &grade)
 
 void ColourPanel::setNoClip()
 {
+    setState(ColorGrade{});
     setBodyEnabled(false);
 }
 

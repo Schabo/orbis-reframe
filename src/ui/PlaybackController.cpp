@@ -87,6 +87,10 @@ void PlaybackController::setTimeline(const QList<Segment> &segments)
         if (!m_timer->isActive())
             m_timer->start(kPresentIntervalMs);
         startDecoder();
+    } else if (m_viewport) {
+        // Nothing to present any more: don't leave the last project's
+        // picture up.
+        m_viewport->ClearPicture();
     }
 
     emit durationChanged(m_totalMs);
