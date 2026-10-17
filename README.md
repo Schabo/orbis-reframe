@@ -7,10 +7,8 @@ virtual camera through the sphere over time to get a normal flat video out of a
 
 [![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Overlay tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
 
-**Demo video:** [plate blur and stabilization on a motorcycle ride](https://youtu.be/BER8GgtOpjQ)
-(YouTube, 3:41).
-
-[![Play the demo video on YouTube: the editor with a motorcycle ride paused, number plates blurred, the Privacy tab open](site/demo-video.jpg)](https://youtu.be/BER8GgtOpjQ)
+▶ **Demo video:** [plate blur and stabilization on a motorcycle ride](https://youtu.be/BER8GgtOpjQ)
+(YouTube, 3:41)
 
 > **AI disclaimer:** most of the code in this project was written with AI,
 > using [Claude Code](https://claude.com/claude-code) with Claude Opus 5.5.
