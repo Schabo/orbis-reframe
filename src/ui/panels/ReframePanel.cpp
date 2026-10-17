@@ -71,6 +71,7 @@ ReframePanel::ReframePanel(QWidget *parent)
     m_trackUnavailable->hide();
     form()->addRow(m_trackUnavailable);
     m_trackStatus = new QLabel(this);
+    m_trackStatus->setObjectName(QStringLiteral("trackStatus"));
     m_trackStatus->setWordWrap(true);
     m_trackStatus->hide();
     form()->addRow(m_trackStatus);
@@ -159,7 +160,9 @@ void ReframePanel::setTrackUnavailable(const QString &reason)
 {
     m_trackUnavailableReason = reason;
     m_trackUnavailable->setText(reason);
-    m_trackUnavailable->setVisible(!reason.isEmpty());
+    // The row, not just the label: setFlatClip may have hidden the row, and
+    // a label shown in a hidden row isn't laid out (it lands top left).
+    form()->setRowVisible(m_trackUnavailable, !reason.isEmpty() && !m_flat);
     if (!reason.isEmpty())
         m_track->setEnabled(false);
 }
@@ -180,7 +183,7 @@ void ReframePanel::setTrackRunning(bool running)
     m_track->setText(running ? tr("Stop tracking") : tr("Track subject…"));
     m_track->setChecked(running);
     m_track->setEnabled(true);
-    m_trackStatus->setVisible(running);
+    form()->setRowVisible(m_trackStatus, running && !m_flat); // as setTrackUnavailable
     if (!running)
         m_trackStatus->clear();
     for (QDoubleSpinBox *b : {m_yaw, m_pitch, m_roll, m_fov})

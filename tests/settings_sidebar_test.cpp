@@ -438,6 +438,28 @@ void testTitleTab(SettingsSidebar &bar)
     place->setNoClip();
 }
 
+// The tracking status shows under the Track subject button, also after a
+// clip has been shown (setFlatClip hides the status row while no run is on).
+void testTrackStatus(SettingsSidebar &bar)
+{
+    ReframePanel *reframe = bar.reframe();
+    QWidget *button = reframe->trackStopButton();
+    auto *status = find<QLabel>(reframe, "trackStatus");
+    if (!status)
+        return;
+    bar.setCurrentIndex(SettingsSidebar::VideoTab);
+    reframe->setExpanded(true);
+    reframe->setFlatClip(false);
+    reframe->setTrackRunning(true);
+    reframe->setTrackStatus(QStringLiteral("1.0 s tracked."));
+    QApplication::processEvents();
+    CHECK(status->isVisible());
+    CHECK(status->mapTo(reframe, QPoint()).y() > button->mapTo(reframe, QPoint()).y());
+    reframe->setTrackRunning(false);
+    QApplication::processEvents();
+    CHECK(!status->isVisible());
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -464,6 +486,7 @@ int main(int argc, char **argv)
     testOverlayLayer(bar);
     testEasing(bar);
     testTitleTab(bar);
+    testTrackStatus(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {
