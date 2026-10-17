@@ -525,6 +525,34 @@ void testStitching(const Ctx &c)
     CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium) && depth->isChecked(); }));
 }
 
+// Duplicate (the clip menu): the copy lands after the clip and is selected,
+// so the panels edit it; one undo step takes it away.
+void testDuplicateClip(const Ctx &c)
+{
+    auto *exposure = find<QSlider>(c.w, "colourExposure");
+    QAction *undo = action(c, "undoAction");
+    if (!exposure || !undo)
+        return;
+    settle();
+    const int before = c.timeline->count();
+    const int a = c.timeline->clipAt(0).id;
+    emit c.timelineWidget->clipDuplicateRequested(a);
+    CHECK(c.timeline->count() == before + 1);
+    if (c.timeline->count() != before + 1)
+        return;
+    const int copy = c.timeline->clipAt(1).id;
+    CHECK(copy != a && c.timeline->clipAt(1).sourcePath == c.timeline->clipAt(0).sourcePath);
+    CHECK(c.timeline->totalDurationMs() == (before + 1) * kClipMs);
+    settle();
+    exposure->setValue(-10); // the selected clip: the copy
+    CHECK(std::abs(c.timeline->clipById(copy)->color.exposureEv + 1.0f) < 1e-4f);
+    CHECK(c.timeline->clipById(a)->color.exposureEv == 0.0f);
+    undo->trigger();
+    undo->trigger();
+    CHECK(c.timeline->count() == before);
+    emit c.timelineWidget->clipSelected(0); // nothing selected again
+}
+
 // Files dropped on the Media tab are probed on worker threads; Add to
 // timeline puts audio on a new audio track at the playhead.
 void testMediaPool(const Ctx &c)
@@ -1038,6 +1066,7 @@ int main(int argc, char **argv)
             testVideoEdits(c);
             testColour(c);
             testStitching(c);
+            testDuplicateClip(c);
             testMediaPool(c);
             testAudioTrack(c);
             testOverlay(c);

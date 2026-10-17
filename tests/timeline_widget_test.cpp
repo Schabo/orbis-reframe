@@ -10,7 +10,10 @@
 #include "TimelineWidget.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QLineEdit>
+#include <QMenu>
+#include <QTimer>
 #include <QMimeData>
 #include <QScrollBar>
 #include <QUrl>
@@ -796,6 +799,30 @@ void testFoldSound()
 
 } // namespace
 
+// The main clip's menu: Duplicate asks for a copy of the clip clicked.
+void testDuplicateMenu()
+{
+    Fixture f;
+    QSignalSpy dup(&f.w, &TimelineWidget::clipDuplicateRequested);
+    bool found = false;
+    QTimer::singleShot(0, [&] { // in the menu's own event loop
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        QAction *a = menu ? menu->findChild<QAction *>(QStringLiteral("clipDuplicateAction"))
+                          : nullptr;
+        found = a != nullptr;
+        if (!menu)
+            return;
+        if (a)
+            menu->setActiveAction(a);
+        QTest::keyClick(menu, a ? Qt::Key_Return : Qt::Key_Escape);
+    });
+    const QPoint at(Fixture::x(14000), mainY());
+    QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+    QApplication::sendEvent(&f.w, &e);
+    CHECK(found);
+    CHECK(dup.count() == 1 && dup.last().at(0).toInt() == 2); // clip "b"
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -805,6 +832,7 @@ int main(int argc, char **argv)
     testOnlyOntoTracksThatHoldIt();
     testTrims();
     testHeaderAndMain();
+    testDuplicateMenu();
     testZoom();
     testTrackHeaders();
     testDrop();

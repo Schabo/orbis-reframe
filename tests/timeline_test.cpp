@@ -297,6 +297,52 @@ void testTimelineSplit()
     CHECK(tl.totalDurationMs() == 16000);
 }
 
+// Duplicate: a copy right after the clip, with its settings and its sound;
+// the clips after it move right.
+void testTimelineDuplicate()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 20000, 30.0, 7680, 3840, 2);
+    const int b = tl.appendClip("b.insv", 10000, 30.0, 7680, 3840, 2);
+    tl.setClipTrimIn(a, 2000);
+    tl.setClipTrimOut(a, 8000);
+    tl.setClipSpeed(a, 2.0); // 3 s on the timeline
+    tl.upsertClipReframeKey(a, 5000, {0.5f, 0.0f, 0.0f, 1.2f});
+    ColorGrade g;
+    g.contrast = 30.0f;
+    tl.setClipColor(a, g);
+    tl.setClipBlurPlates(a, true);
+
+    CHECK(tl.duplicateClip(999) == 0);
+    const int copy = tl.duplicateClip(a);
+    CHECK(copy != 0 && copy != a && copy != b);
+    CHECK(tl.count() == 3 && tl.indexOfId(copy) == 1 && tl.indexOfId(b) == 2);
+    const ClipItem &c = *tl.clipById(copy);
+    CHECK(c.sourcePath == "a.insv" && c.trimInMs == 2000 && c.trimOutMs == 8000);
+    CHECK(c.speed == 2.0 && c.reframe.count() == 1 && c.color == g && c.blurPlates);
+    CHECK(tl.totalDurationMs() == 3000 + 3000 + 10000);
+
+    // Each stream track: the original's sound, the copy's after it, then b's.
+    const Track::Role roles[] = {Track::Role::CameraMic, Track::Role::ExternalMic};
+    for (const Track::Role role : roles) {
+        const Track *t = tl.trackById(tl.streamTrackId(role));
+        CHECK(t && t->clips.size() == 3);
+        if (!t || t->clips.size() != 3)
+            continue;
+        CHECK(t->clips[0].linkedClipId == a && t->clips[0].startMs == 0);
+        CHECK(t->clips[1].linkedClipId == copy && t->clips[1].startMs == 3000);
+        CHECK(t->clips[1].trimInMs == 2000 && t->clips[1].speed == 2.0);
+        CHECK(t->clips[1].id != t->clips[0].id);
+        CHECK(t->clips[2].linkedClipId == b && t->clips[2].startMs == 6000);
+    }
+
+    // Removing the copy takes only its own sound.
+    tl.removeClip(copy);
+    CHECK(tl.count() == 2);
+    const Track *mic = tl.trackById(tl.streamTrackId(Track::Role::CameraMic));
+    CHECK(mic && mic->clips.size() == 2 && mic->clips[0].linkedClipId == a);
+}
+
 // Where added files go and what an audio clip links to: the first track
 // with room, the nearest clip of the same footage, an overlay's own sound.
 void testTrackQueries()
@@ -356,6 +402,7 @@ int main()
     testKeyNavigation();
     testTimelineStructure();
     testTimelineSplit();
+    testTimelineDuplicate();
     testTrackQueries();
     return modeltest::finish("timeline_test");
 }

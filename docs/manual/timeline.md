@@ -70,8 +70,8 @@ shorten or remove a clip, the clips after it move up.
 
 <img src="images/timeline-clip-menu.jpg" width="450" alt="The menu you get by right-clicking a clip on the video track, with the Speed submenu open">
 
-Right-click a clip for its menu: split it, change its speed, insert
-another clip before or after it, copy or paste its colour grade
+Right-click a clip for its menu: split it, change its speed, duplicate
+it, insert another clip before or after it, copy or paste its colour grade
 ([Colour](colour.md)) or its stabilization
 ([Stabilization](stabilization.md)), move it, or remove it.
 
@@ -156,6 +156,16 @@ of a recording, or give each part its own settings.
 
 Both halves keep everything the clip had: its stabilization, colour,
 audio settings and reframe keyframes.
+
+### Duplicating
+
+Right-click a clip and choose **Duplicate**. A copy goes right after it,
+with everything the clip has: trims, speed, reframe keyframes,
+stabilization, stitching, colour, privacy blur, and its sound on the audio
+tracks. The clips after it move up to make room. The copy is selected, so
+the settings sidebar changes the copy, not the original. Use it to show the
+same moment twice, say once from the front and once from behind, with
+different reframe keyframes.
 
 ### Speed: slow motion and fast forward
 

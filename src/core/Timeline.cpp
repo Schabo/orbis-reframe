@@ -300,6 +300,38 @@ int Timeline::splitClip(int clipId, qint64 atSourceMs)
     return right.id;
 }
 
+int Timeline::duplicateClip(int clipId)
+{
+    const int i = indexOfId(clipId);
+    if (i < 0)
+        return 0;
+    ClipItem copy = m_clips.at(i);
+    copy.id = m_nextId++;
+    m_clips.insert(i + 1, copy);
+    bool audio = false;
+    for (Track &t : m_tracks) {
+        QList<TrackClip> added;
+        for (const TrackClip &a : t.clips) {
+            if (a.linkedClipId != clipId)
+                continue;
+            TrackClip d = a; // placed after the copy by relinkAudio
+            d.id = m_nextId++;
+            d.linkedClipId = copy.id;
+            added.push_back(d);
+        }
+        if (!added.isEmpty()) {
+            t.clips.append(added);
+            audio = true;
+        }
+    }
+
+    emit clipInserted(i + 1);
+    emit durationChanged(totalDurationMs());
+    if (relinkAudio() || audio)
+        emit tracksChanged();
+    return copy.id;
+}
+
 void Timeline::clear()
 {
     if (!m_tracks.isEmpty()) {

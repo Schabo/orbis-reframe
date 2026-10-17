@@ -566,6 +566,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             speedActions << a;
         }
 
+        QAction *duplicate = menu.addAction(tr("Duplicate"));
+        duplicate->setObjectName(QStringLiteral("clipDuplicateAction"));
+        duplicate->setToolTip(tr("A copy of the clip right after it, with all its settings"));
         QAction *insertBefore = menu.addAction(tr("Insert clip before…"));
         QAction *insertAfter = menu.addAction(tr("Insert clip after…"));
 
@@ -595,6 +598,8 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             return;
         if (chosen == split)
             emit clipSplitRequested(r.clip.id, splitSrc);
+        else if (chosen == duplicate)
+            emit clipDuplicateRequested(r.clip.id);
         else if (chosen == moveL)
             emit clipMoved(r.clip.id, h.row - 1);
         else if (chosen == moveR)

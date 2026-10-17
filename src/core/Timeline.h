@@ -170,6 +170,11 @@ public slots:
     // or 0 if the point isn't strictly inside the trim range (min gap each
     // side).
     int splitClip(int clipId, qint64 atSourceMs);
+    // Insert a copy of a main-track clip right after it, with everything it
+    // has (trim, speed, reframe keys, colour, stabilization, stitch,
+    // privacy, fit) and a copy of its linked sound; the clips after it move
+    // right. Returns the copy's id, or 0 if there's no such clip.
+    int duplicateClip(int clipId);
     // Drop every clip and every extra track.
     void clear();
 

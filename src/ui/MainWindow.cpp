@@ -571,6 +571,10 @@ void MainWindow::connectTimeline()
             &Timeline::removeClip);
     connect(m_timelineWidget, &TimelineWidget::clipSplitRequested, this,
             [this](int id, qint64 atSourceMs) { m_timeline->splitClip(id, atSourceMs); });
+    connect(m_timelineWidget, &TimelineWidget::clipDuplicateRequested, this, [this](int id) {
+        if (const int copy = m_timeline->duplicateClip(id))
+            selectVideoClip(copy);
+    });
     connect(m_timelineWidget, &TimelineWidget::clipSpeedRequested, m_timeline,
             &Timeline::setClipSpeed);
 

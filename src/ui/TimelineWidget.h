@@ -184,6 +184,7 @@ signals:
     void clipMoved(int clipId, int toIndex);
     void clipRemoveRequested(int clipId);
     void clipSplitRequested(int clipId, qint64 atSourceMs);
+    void clipDuplicateRequested(int clipId);
     void clipSpeedRequested(int clipId, double speed);
     void gradeCopyRequested(int clipId);
     void gradePasteRequested(int clipId);
