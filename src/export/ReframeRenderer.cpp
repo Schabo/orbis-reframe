@@ -53,25 +53,34 @@ constexpr float kGradeTemperaturePush = 40.0f; // levels at temperature +-100%
 constexpr float kGradeContrastPivot = 128.0f;
 constexpr float kGradeWhite = 255.0f;
 
-inline void gradeRgb(float rgba[4], const float g[4])
-{
-    const float t = g[3] / 100.0f;
-    float r = rgba[0] + t * kGradeTemperaturePush;
-    float gr = rgba[1];
-    float b = rgba[2] - t * kGradeTemperaturePush;
+// A grade's factors, worked out once per picture rather than per pixel.
+struct Grade {
+    float t, ef, cf, sf;
+    explicit Grade(const float g[4])
+        : t(g[3] / 100.0f), ef(std::pow(2.0f, g[0])), cf(1.0f + g[1] / 100.0f),
+          sf(1.0f + g[2] / 100.0f)
+    {
+    }
+};
 
-    const float ef = std::pow(2.0f, g[0]);
+inline void gradeRgb(float rgba[4], const Grade &g)
+{
+    float r = rgba[0] + g.t * kGradeTemperaturePush;
+    float gr = rgba[1];
+    float b = rgba[2] - g.t * kGradeTemperaturePush;
+
+    const float ef = g.ef;
     r *= ef;
     gr *= ef;
     b *= ef;
 
-    const float cf = 1.0f + g[1] / 100.0f;
+    const float cf = g.cf;
     r = (r - kGradeContrastPivot) * cf + kGradeContrastPivot;
     gr = (gr - kGradeContrastPivot) * cf + kGradeContrastPivot;
     b = (b - kGradeContrastPivot) * cf + kGradeContrastPivot;
 
     const float luma = 0.299f * r + 0.587f * gr + 0.114f * b;
-    const float sf = 1.0f + g[2] / 100.0f;
+    const float sf = g.sf;
     r = luma + (r - luma) * sf;
     gr = luma + (gr - luma) * sf;
     b = luma + (b - luma) * sf;
@@ -84,6 +93,7 @@ inline void gradeRgb(float rgba[4], const float g[4])
 void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int outH,
                 const ReframeView& view, int rowBegin, int rowEnd)
 {
+    const Grade grade(view.colorGrade);
     const float tanHalfFovY = std::tan(view.fovY * 0.5f);
     const float cosR = std::cos(view.roll);
     const float sinR = std::sin(view.roll);
@@ -129,7 +139,7 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
 
             float rgba[4];
             sampleEquirect(eq, eqW, eqH, u, v, rgba);
-            gradeRgb(rgba, view.colorGrade);
+            gradeRgb(rgba, grade);
 
             uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
             for (int c = 0; c < 4; ++c)
@@ -180,13 +190,27 @@ void GradeRgba(uint8_t* rgba, size_t pixels, const float grade[4])
 {
     if (grade[0] == 0.0f && grade[1] == 0.0f && grade[2] == 0.0f && grade[3] == 0.0f)
         return;
-    for (size_t i = 0; i < pixels; ++i) {
-        uint8_t* p = rgba + i * 4;
-        float c[4] = {float(p[0]), float(p[1]), float(p[2]), float(p[3])};
-        gradeRgb(c, grade);
-        for (int k = 0; k < 3; ++k)
-            p[k] = static_cast<uint8_t>(std::lround(c[k]));
-    }
+    const Grade g(grade);
+    auto run = [rgba, &g](size_t begin, size_t end) {
+        for (size_t i = begin; i < end; ++i) {
+            uint8_t* p = rgba + i * 4;
+            float c[4] = {float(p[0]), float(p[1]), float(p[2]), float(p[3])};
+            gradeRgb(c, g);
+            // lround(), exactly (graded values are >= 0), without the call.
+            for (int k = 0; k < 3; ++k)
+                p[k] = static_cast<uint8_t>(static_cast<double>(c[k]) + 0.5);
+        }
+    };
+    // Across the cores: a flat clip's every frame goes through here.
+    const unsigned hw = std::thread::hardware_concurrency();
+    const size_t workers = pixels < 64 * 1024 ? 1 : std::max(1u, hw == 0 ? 4u : hw);
+    const size_t band = (pixels + workers - 1) / workers;
+    std::vector<std::thread> pool;
+    for (size_t b = band; b < pixels; b += band)
+        pool.emplace_back(run, b, std::min(b + band, pixels));
+    run(0, std::min(band, pixels));
+    for (std::thread& t : pool)
+        t.join();
 }
 
 } // namespace exportpipe

@@ -5,6 +5,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/display.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 }
 
@@ -58,7 +59,133 @@ int swsSpace(AVColorSpace cs, int height)
     }
 }
 
+// One swscale conversion into a caller's buffer, threaded: the "threads"
+// option, which sws_scale_frame() splits the picture across (FFmpeg 5+;
+// sws_scale() would run on one). Rebuilt when the conversion changes.
+struct Scaler {
+    struct Key {
+        int srcW = 0, srcH = 0, srcFmt = -1, dstW = 0, dstH = 0, dstFmt = -1;
+        int space = 0;   // SWS_CS_*: the source's matrix (RGB: none)
+        int srcFull = 0; // the source's range
+        bool operator==(const Key &) const = default;
+    };
+    SwsContext *sws = nullptr;
+    Key key;
+    AVFrame *src = av_frame_alloc();
+    AVFrame *dst = av_frame_alloc();
+
+    ~Scaler()
+    {
+        sws_freeContext(sws);
+        av_frame_free(&src);
+        av_frame_free(&dst);
+    }
+
+    bool setup(const Key &k)
+    {
+        if (sws && k == key)
+            return true;
+        sws_freeContext(sws);
+        sws = sws_alloc_context();
+        if (!sws)
+            return false;
+        av_opt_set_int(sws, "srcw", k.srcW, 0);
+        av_opt_set_int(sws, "srch", k.srcH, 0);
+        av_opt_set_int(sws, "src_format", k.srcFmt, 0);
+        av_opt_set_int(sws, "dstw", k.dstW, 0);
+        av_opt_set_int(sws, "dsth", k.dstH, 0);
+        av_opt_set_int(sws, "dst_format", k.dstFmt, 0);
+        av_opt_set_int(sws, "sws_flags", SWS_BILINEAR, 0);
+        av_opt_set_int(sws, "threads", 0, 0); // auto
+        if (sws_init_context(sws, nullptr, nullptr) < 0) {
+            sws_freeContext(sws);
+            sws = nullptr;
+            return false;
+        }
+        // To RGBA: full range in the source's matrix. To NV12: BT.709
+        // limited range, the export's.
+        const bool toYuv = k.dstFmt == AV_PIX_FMT_NV12;
+        sws_setColorspaceDetails(sws, sws_getCoefficients(k.space), k.srcFull,
+                                 sws_getCoefficients(toYuv ? SWS_CS_ITU709 : k.space),
+                                 toYuv ? 0 : 1, 0, 1 << 16, 1 << 16);
+        key = k;
+        return true;
+    }
+
+    static void noFree(void *, uint8_t *) {}
+
+    // Point `f` at `data` (not owned): sws_scale_frame() wants reference
+    // counted frames, and would allocate its own output otherwise.
+    static void wrap(AVFrame *f, int w, int h, int fmt, uint8_t *const data[4],
+                     const int linesize[4], size_t bytes)
+    {
+        av_frame_unref(f);
+        f->width = w;
+        f->height = h;
+        f->format = fmt;
+        for (int i = 0; i < 4; ++i) {
+            f->data[i] = data[i];
+            f->linesize[i] = linesize[i];
+        }
+        f->buf[0] = av_buffer_create(data[0], bytes, noFree, nullptr, 0);
+    }
+
+    // `in` (decoded, or wrapped) into `out` (dst planes of the key's size).
+    bool scale(const AVFrame *in, uint8_t *const out[4], const int outStride[4], size_t outBytes)
+    {
+        wrap(dst, key.dstW, key.dstH, key.dstFmt, out, outStride, outBytes);
+        const int r = dst->buf[0] ? sws_scale_frame(sws, dst, in) : -1;
+        av_frame_unref(dst);
+        return r >= 0;
+    }
+    bool scale(const uint8_t *in, int inStride, uint8_t *const out[4], const int outStride[4],
+               size_t outBytes)
+    {
+        uint8_t *planes[4] = {const_cast<uint8_t *>(in), nullptr, nullptr, nullptr};
+        const int strides[4] = {inStride, 0, 0, 0};
+        wrap(src, key.srcW, key.srcH, key.srcFmt, planes, strides, size_t(inStride) * key.srcH);
+        const bool ok = src->buf[0] && scale(src, out, outStride, outBytes);
+        av_frame_unref(src);
+        return ok;
+    }
+};
+
+// NV12 planes in one buffer: luma, then the interleaved chroma.
+void nv12Planes(uint8_t *data, int w, int h, uint8_t *planes[4], int strides[4])
+{
+    planes[0] = data;
+    planes[1] = data + size_t(w) * h;
+    planes[2] = planes[3] = nullptr;
+    strides[0] = strides[1] = w;
+    strides[2] = strides[3] = 0;
+}
+
 } // namespace
+
+struct Nv12Converter::Impl {
+    Scaler scaler;
+};
+
+Nv12Converter::Nv12Converter() : d(std::make_unique<Impl>()) {}
+Nv12Converter::~Nv12Converter() = default;
+
+bool Nv12Converter::convert(const uint8_t *rgba, int w, int h, std::vector<uint8_t> &nv12)
+{
+    Scaler::Key k;
+    k.srcW = k.dstW = w;
+    k.srcH = k.dstH = h;
+    k.srcFmt = AV_PIX_FMT_RGBA;
+    k.dstFmt = AV_PIX_FMT_NV12;
+    k.space = SWS_CS_ITU709;
+    k.srcFull = 1;
+    if (w <= 0 || h <= 0 || (w | h) & 1 || !d->scaler.setup(k))
+        return false;
+    nv12.resize(size_t(w) * h * 3 / 2 + kPadding);
+    uint8_t *planes[4];
+    int strides[4];
+    nv12Planes(nv12.data(), w, h, planes, strides);
+    return d->scaler.scale(rgba, w * 4, planes, strides, nv12.size());
+}
 
 struct FlatVideoReader::Impl {
     AVFormatContext *fmt = nullptr;
@@ -80,10 +207,14 @@ struct FlatVideoReader::Impl {
     VideoFrame curOut;
     bool curConverted = false;
 
-    SwsContext *sws = nullptr;
-    // swscale's output, before rotation; kSwsSlack bytes longer (convert()).
+    Format format = Format::Rgba;
+    Scaler scaler;
+    // swscale's RGBA output, before rotation; kPadding bytes longer
+    // (convert()).
     std::vector<uint8_t> scaled;
-    static constexpr size_t kSwsSlack = 256;
+    std::vector<uint8_t> rotated; // a rotated frame on its way to NV12
+    Nv12Converter toNv12;
+    static constexpr size_t kSwsSlack = Nv12Converter::kPadding;
 
     ~Impl() { close(); }
 
@@ -94,10 +225,6 @@ struct FlatVideoReader::Impl {
         ahead.clear();
         if (cur)
             av_frame_free(&cur);
-        if (sws) {
-            sws_freeContext(sws);
-            sws = nullptr;
-        }
         if (pkt)
             av_packet_free(&pkt);
         if (ctx)
@@ -201,43 +328,85 @@ struct FlatVideoReader::Impl {
         return true;
     }
 
-    // Convert `f` to RGBA at the output size, rotation applied.
+    // Convert `f` to the output format and size, rotation applied.
     void convert(const AVFrame *f, VideoFrame &out)
     {
-        const int w = outW > 0 ? outW : info.width;
-        const int h = outH > 0 ? outH : info.height;
-        // Scale into the pre-rotation shape, then rotate.
-        const bool swap = rotation == 90 || rotation == 270;
-        const int sw = swap ? h : w, sh = swap ? w : h;
-        sws = sws_getCachedContext(sws, f->width, f->height, static_cast<AVPixelFormat>(f->format),
-                                   sw, sh, AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr,
-                                   nullptr);
+        int w = outW > 0 ? outW : info.width;
+        int h = outH > 0 ? outH : info.height;
+        if (format == Format::Nv12) {
+            w += w & 1;
+            h += h & 1;
+        }
         out.ptsMs = ptsMs(f);
         out.width = w;
         out.height = h;
-        out.rgba.resize(size_t(w) * h * 4);
-        if (!sws) {
-            std::fill(out.rgba.begin(), out.rgba.end(), 0);
+        const int space = swsSpace(f->colorspace, f->height);
+        const int srcFull = f->color_range == AVCOL_RANGE_JPEG ? 1 : 0;
+        if (format == Format::Nv12) {
+            // Straight to NV12 when there's nothing to turn and the matrix is
+            // already the export's (swscale doesn't convert between YUV
+            // matrices); else via RGBA.
+            if (!rotation && space == SWS_CS_ITU709 &&
+                scaleTo(f, w, h, AV_PIX_FMT_NV12, space, srcFull, out.nv12))
+                return;
+            rotated.resize(size_t(w) * h * 4 + kSwsSlack);
+            if (!toRgba(f, w, h, space, srcFull, rotated.data()) ||
+                !toNv12.convert(rotated.data(), w, h, out.nv12))
+                blackNv12(w, h, out.nv12);
             return;
         }
-        const int *coef = sws_getCoefficients(swsSpace(f->colorspace, f->height));
-        const int srcFull = f->color_range == AVCOL_RANGE_JPEG ? 1 : 0;
-        sws_setColorspaceDetails(sws, coef, srcFull, coef, 1, 0, 1 << 16, 1 << 16);
-        // Into a scratch buffer with room to spare: swscale's unscaled
-        // converters (output size = the frame's) write whole SIMD blocks, up
-        // to tens of bytes past the last pixel when a row isn't a multiple
-        // of the block -- a 1080-wide frame does that.
-        scaled.resize(size_t(sw) * sh * 4 + kSwsSlack);
-        uint8_t *dstPlanes[4] = {scaled.data(), nullptr, nullptr, nullptr};
-        int dstStride[4] = {sw * 4, 0, 0, 0};
-        sws_scale(sws, f->data, f->linesize, 0, f->height, dstPlanes, dstStride);
+        out.rgba.resize(size_t(w) * h * 4);
+        if (!toRgba(f, w, h, space, srcFull, out.rgba.data()))
+            std::fill(out.rgba.begin(), out.rgba.end(), 0);
+    }
+
+    // `f` scaled to w x h in `fmt` into `buf` (resized, kSwsSlack longer).
+    bool scaleTo(const AVFrame *f, int w, int h, AVPixelFormat fmt, int space, int srcFull,
+                 std::vector<uint8_t> &buf)
+    {
+        Scaler::Key k{f->width, f->height, f->format, w, h, fmt, space, srcFull};
+        if (!scaler.setup(k))
+            return false;
+        uint8_t *planes[4];
+        int strides[4];
+        if (fmt == AV_PIX_FMT_NV12) {
+            buf.resize(size_t(w) * h * 3 / 2 + kSwsSlack);
+            nv12Planes(buf.data(), w, h, planes, strides);
+        } else {
+            buf.resize(size_t(w) * h * 4 + kSwsSlack);
+            planes[0] = buf.data();
+            planes[1] = planes[2] = planes[3] = nullptr;
+            strides[0] = w * 4;
+            strides[1] = strides[2] = strides[3] = 0;
+        }
+        return scaler.scale(f, planes, strides, buf.size());
+    }
+
+    static void blackNv12(int w, int h, std::vector<uint8_t> &buf)
+    {
+        buf.assign(size_t(w) * h * 3 / 2 + kSwsSlack, 128);
+        std::fill_n(buf.begin(), size_t(w) * h, 16);
+    }
+
+    // `f` as RGBA at w x h, rotation applied, into `dst` (w * h * 4).
+    bool toRgba(const AVFrame *f, int w, int h, int space, int srcFull, uint8_t *dst)
+    {
+        // Scale into the pre-rotation shape, then rotate. Into a scratch
+        // buffer with room to spare: swscale's unscaled converters (output
+        // size = the frame's) write whole SIMD blocks, up to tens of bytes
+        // past the last pixel when a row isn't a multiple of the block -- a
+        // 1080-wide frame does that.
+        const bool swap = rotation == 90 || rotation == 270;
+        const int sw = swap ? h : w, sh = swap ? w : h;
+        if (!scaleTo(f, sw, sh, AV_PIX_FMT_RGBA, space, srcFull, scaled))
+            return false;
         if (!rotation) {
-            std::memcpy(out.rgba.data(), scaled.data(), out.rgba.size());
-            return;
+            std::memcpy(dst, scaled.data(), size_t(w) * h * 4);
+            return true;
         }
         // Rotate the sw x sh buffer clockwise into the w x h output.
         const uint32_t *src = reinterpret_cast<const uint32_t *>(scaled.data());
-        uint32_t *o = reinterpret_cast<uint32_t *>(out.rgba.data());
+        uint32_t *o = reinterpret_cast<uint32_t *>(dst);
         for (int y = 0; y < h; ++y)
             for (int x = 0; x < w; ++x) {
                 int sx, sy;
@@ -253,6 +422,7 @@ struct FlatVideoReader::Impl {
                 }
                 o[size_t(y) * w + x] = src[size_t(sy) * sw + sx];
             }
+        return true;
     }
 };
 
@@ -344,6 +514,14 @@ void FlatVideoReader::setOutputSize(int width, int height)
         return;
     d->outW = width;
     d->outH = height;
+    d->curConverted = false;
+}
+
+void FlatVideoReader::setOutputFormat(Format format)
+{
+    if (format == d->format)
+        return;
+    d->format = format;
     d->curConverted = false;
 }
 

@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <thread>
 
 namespace exportpipe {
 
@@ -47,15 +49,76 @@ void sampleBilinear(const uint8_t *rgba, int w, int h, double fx, double fy, flo
     }
 }
 
+// fn(begin, end) over rows [y0, y1) in bands of whole `step`s, across the
+// cores; on this thread alone for a small area.
+template <typename Fn>
+void parallelRows(int y0, int y1, int step, int64_t pixels, Fn fn)
+{
+    const unsigned hw = std::thread::hardware_concurrency();
+    int workers = static_cast<int>(hw == 0 ? 4u : hw);
+    if (pixels < 64 * 1024 || y1 - y0 < 2 * step)
+        workers = 1;
+    const int steps = (y1 - y0 + step - 1) / step;
+    workers = std::clamp(workers, 1, std::max(1, steps));
+    if (workers == 1) {
+        fn(y0, y1);
+        return;
+    }
+    const int band = (steps + workers - 1) / workers * step;
+    std::vector<std::thread> pool;
+    for (int b = y0 + band; b < y1; b += band)
+        pool.emplace_back(fn, b, std::min(b + band, y1));
+    fn(y0, std::min(y0 + band, y1));
+    for (std::thread &t : pool)
+        t.join();
+}
+
+// Whether `r` at `opacity` covers its pixels exactly as a copy of a picture
+// of its own size would: opaque, square corners, no border, on whole pixels
+// -- even ones, for NV12's chroma, in an output of even size. inset::shade
+// then gives every pixel inside full coverage and every one outside none.
+bool copyable(const inset::Rect &r, float opacity, int outW, int outH)
+{
+    const auto even = [](double v) {
+        return std::abs(v - std::round(v)) < 1e-3 && (std::llround(v) & 1) == 0;
+    };
+    return opacity >= 1.0f && r.radius <= 0.0 && r.border <= 0.0 && !((outW | outH) & 1) &&
+           even(r.x) && even(r.y) && even(r.w) && even(r.h);
+}
+
+// Copy an NV12 picture w x h (even) into the output at (rx, ry) (even),
+// cropped to it.
+void copyNv12(const uint8_t *pic, int w, int h, int rx, int ry, uint8_t *yPlane, int yStride,
+              uint8_t *uvPlane, int uvStride, int outW, int outH)
+{
+    const int x0 = std::max(0, rx), x1 = std::min(outW, rx + w);
+    const int y0 = std::max(0, ry), y1 = std::min(outH, ry + h);
+    if (x0 >= x1 || y0 >= y1)
+        return;
+    const uint8_t *picUv = pic + size_t(w) * h;
+    parallelRows(y0, y1, 2, int64_t(x1 - x0) * (y1 - y0), [&](int b0, int b1) {
+        for (int py = b0; py < b1; ++py)
+            std::memcpy(yPlane + size_t(py) * yStride + x0, pic + size_t(py - ry) * w + (x0 - rx),
+                        size_t(x1 - x0));
+        for (int cy = b0 / 2; cy < b1 / 2; ++cy)
+            std::memcpy(uvPlane + size_t(cy) * uvStride + x0,
+                        picUv + size_t(cy - ry / 2) * w + (x0 - rx), size_t(x1 - x0));
+    });
+}
+
 } // namespace
 
 struct InsetCompositor::State {
     std::unique_ptr<FlatVideoReader> reader;
     bool failed = false;
-    // The decoded frame graded (InsetClipJob::colorGrade), when it has one.
+    // The decoded frame graded (InsetClipJob::colorGrade), when it has one
+    // (Nv12Converter::kPadding longer), and that as NV12 when it's copied.
     std::vector<uint8_t> graded;
     const VideoFrame *gradedFrom = nullptr;
     int64_t gradedPts = -1;
+    std::vector<uint8_t> gradedNv12;
+    bool gradedNv12Done = false;
+    Nv12Converter toNv12;
 };
 
 InsetCompositor::InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH)
@@ -81,49 +144,52 @@ void InsetCompositor::blendNv12(const uint8_t *rgba, int picW, int picH, const i
     const int x1 = std::min(outW, static_cast<int>(std::ceil(r.x + r.w)) + 1);
     const int y1 = std::min(outH, static_cast<int>(std::ceil(r.y + r.h)) + 1);
     const double sx = picW / r.w, sy = picH / r.h;
-    for (int by = y0; by < y1; by += 2) {
-        for (int bx = x0; bx < x1; bx += 2) {
-            float aSum = 0.0f, uSum = 0.0f, vSum = 0.0f;
-            for (int dy = 0; dy < 2; ++dy) {
-                const int py = by + dy;
-                if (py >= outH)
-                    continue;
-                for (int dx = 0; dx < 2; ++dx) {
-                    const int px = bx + dx;
-                    if (px >= outW)
+    parallelRows(y0, y1, 2, int64_t(x1 - x0) * (y1 - y0), [&](int b0, int b1) {
+        for (int by = b0; by < b1; by += 2) {
+            for (int bx = x0; bx < x1; bx += 2) {
+                float aSum = 0.0f, uSum = 0.0f, vSum = 0.0f;
+                for (int dy = 0; dy < 2; ++dy) {
+                    const int py = by + dy;
+                    if (py >= outH)
                         continue;
-                    const inset::Coverage c = inset::shade(px + 0.5, py + 0.5, r);
-                    const float a = c.alpha * opacity;
-                    if (a <= 0.0f)
-                        continue;
-                    // The picture fills the rect.
-                    float rgb[3];
-                    sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx, (py + 0.5 - r.y) * sy, rgb);
-                    Yuv col = toYuv(rgb[0], rgb[1], rgb[2]);
-                    if (c.border > 0.0f) {
-                        col.y += (border.y - col.y) * c.border;
-                        col.u += (border.u - col.u) * c.border;
-                        col.v += (border.v - col.v) * c.border;
+                    for (int dx = 0; dx < 2; ++dx) {
+                        const int px = bx + dx;
+                        if (px >= outW)
+                            continue;
+                        const inset::Coverage c = inset::shade(px + 0.5, py + 0.5, r);
+                        const float a = c.alpha * opacity;
+                        if (a <= 0.0f)
+                            continue;
+                        // The picture fills the rect.
+                        float rgb[3];
+                        sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx, (py + 0.5 - r.y) * sy, rgb);
+                        Yuv col = toYuv(rgb[0], rgb[1], rgb[2]);
+                        if (c.border > 0.0f) {
+                            col.y += (border.y - col.y) * c.border;
+                            col.u += (border.u - col.u) * c.border;
+                            col.v += (border.v - col.v) * c.border;
+                        }
+                        uint8_t &yv = yPlane[size_t(py) * yStride + px];
+                        yv = clamp8(yv + (col.y - yv) * a);
+                        aSum += a;
+                        uSum += a * col.u;
+                        vSum += a * col.v;
                     }
-                    uint8_t &yv = yPlane[size_t(py) * yStride + px];
-                    yv = clamp8(yv + (col.y - yv) * a);
-                    aSum += a;
-                    uSum += a * col.u;
-                    vSum += a * col.v;
                 }
+                if (aSum <= 0.0f)
+                    continue;
+                // The block's chroma: the average coverage, premultiplied.
+                const float a = aSum / 4.0f;
+                uint8_t *uv = uvPlane + size_t(by / 2) * uvStride + bx;
+                uv[0] = clamp8(uv[0] * (1.0f - a) + uSum / 4.0f);
+                uv[1] = clamp8(uv[1] * (1.0f - a) + vSum / 4.0f);
             }
-            if (aSum <= 0.0f)
-                continue;
-            // The block's chroma: the average coverage, premultiplied.
-            const float a = aSum / 4.0f;
-            uint8_t *uv = uvPlane + size_t(by / 2) * uvStride + bx;
-            uv[0] = clamp8(uv[0] * (1.0f - a) + uSum / 4.0f);
-            uv[1] = clamp8(uv[1] * (1.0f - a) + vSum / 4.0f);
         }
-    }
+    });
 }
 
-bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, Layer &layer, std::string &err)
+bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &layer,
+                              std::string &err)
 {
     const InsetClipJob &j = m_jobs[i];
     State &s = *m_states[i];
@@ -147,28 +213,59 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, Layer &layer, std::s
             return false;
         }
     }
-    // Decode at the rect's size (at most the source's): sampling is then
-    // ~1:1 -- no aliasing from a big source shrunk by a bilinear tap.
-    const auto &info = s.reader->info();
-    s.reader->setOutputSize(std::min(info.width, std::max(2, static_cast<int>(std::lround(rect.w)))),
-                            std::min(info.height, std::max(2, static_cast<int>(std::lround(rect.h)))));
+    // A full-frame flat clip (or an inset like one) is copied into the
+    // output as NV12, decoded straight to it at the rect's size; anything
+    // else is blended from RGBA.
+    const bool copy = nv12 && copyable(rect, look.opacity, m_outW, m_outH);
+    const bool graded = j.colorGrade != std::array<float, 4>{};
+    s.reader->setOutputFormat(copy && !graded ? FlatVideoReader::Format::Nv12
+                                              : FlatVideoReader::Format::Rgba);
+    if (copy) {
+        s.reader->setOutputSize(static_cast<int>(std::lround(rect.w)),
+                                static_cast<int>(std::lround(rect.h)));
+    } else {
+        // Decode at the rect's size (at most the source's): sampling is then
+        // ~1:1 -- no aliasing from a big source shrunk by a bilinear tap.
+        const auto &info = s.reader->info();
+        s.reader->setOutputSize(
+            std::min(info.width, std::max(2, static_cast<int>(std::lround(rect.w)))),
+            std::min(info.height, std::max(2, static_cast<int>(std::lround(rect.h)))));
+    }
     const VideoFrame *f = s.reader->frameAt(srcMs);
     if (!f) {
         if (!s.reader->lastError().empty())
             err = j.path + ": " + s.reader->lastError();
         return false;
     }
+    layer = {nullptr, nullptr, f->width, f->height, rect, look.opacity, j.frame.borderRgb};
+    if (copy && !graded) {
+        layer.nv12 = f->nv12.data();
+        return true;
+    }
     const uint8_t *rgba = f->rgba.data();
-    if (j.colorGrade != std::array<float, 4>{}) {
-        if (s.gradedFrom != f || s.gradedPts != f->ptsMs || s.graded.size() != f->rgba.size()) {
-            s.graded = f->rgba;
+    if (graded) {
+        const size_t bytes = size_t(f->width) * f->height * 4;
+        if (s.gradedFrom != f || s.gradedPts != f->ptsMs ||
+            s.graded.size() != bytes + Nv12Converter::kPadding) {
+            s.graded.resize(bytes + Nv12Converter::kPadding);
+            std::memcpy(s.graded.data(), f->rgba.data(), bytes);
             GradeRgba(s.graded.data(), size_t(f->width) * f->height, j.colorGrade.data());
             s.gradedFrom = f;
             s.gradedPts = f->ptsMs;
+            s.gradedNv12Done = false;
         }
         rgba = s.graded.data();
+        if (copy) {
+            if (!s.gradedNv12Done && !s.toNv12.convert(rgba, f->width, f->height, s.gradedNv12)) {
+                err = j.path + ": can't convert the graded picture";
+                return false;
+            }
+            s.gradedNv12Done = true;
+            layer.nv12 = s.gradedNv12.data();
+            return true;
+        }
     }
-    layer = {rgba, f->width, f->height, rect, look.opacity, j.frame.borderRgb};
+    layer.rgba = rgba;
     return true;
 }
 
@@ -177,11 +274,17 @@ bool InsetCompositor::composite(int64_t timelineMs, uint8_t *y, int yStride, uin
 {
     for (size_t i = 0; i < m_jobs.size(); ++i) {
         Layer l;
-        if (layerAt(i, timelineMs, l, err))
+        if (!layerAt(i, timelineMs, true, l, err)) {
+            if (!err.empty())
+                return false;
+        } else if (l.nv12) {
+            copyNv12(l.nv12, l.w, l.h, static_cast<int>(std::lround(l.rect.x)),
+                     static_cast<int>(std::lround(l.rect.y)), y, yStride, uv, uvStride, m_outW,
+                     m_outH);
+        } else {
             blendNv12(l.rgba, l.w, l.h, l.rect, l.opacity, l.borderRgb, y, yStride, uv, uvStride,
                       m_outW, m_outH);
-        else if (!err.empty())
-            return false;
+        }
     }
     return true;
 }
@@ -191,7 +294,7 @@ bool InsetCompositor::compositeRgb(int64_t timelineMs, uint8_t *rgb, int stride,
 {
     for (size_t i = 0; i < m_jobs.size(); ++i) {
         Layer l;
-        if (layerAt(i, timelineMs, l, err))
+        if (layerAt(i, timelineMs, false, l, err))
             blendRgb(l.rgba, l.w, l.h, l.rect, l.opacity, l.borderRgb, rgb, stride, bytesPerPixel,
                      m_outW, m_outH);
         else if (!err.empty())
@@ -213,22 +316,24 @@ void InsetCompositor::blendRgb(const uint8_t *rgba, int picW, int picH, const in
     const int x1 = std::min(outW, static_cast<int>(std::ceil(r.x + r.w)) + 1);
     const int y1 = std::min(outH, static_cast<int>(std::ceil(r.y + r.h)) + 1);
     const double sx = picW / r.w, sy = picH / r.h;
-    for (int py = y0; py < y1; ++py) {
-        uint8_t *row = out + size_t(py) * stride;
-        for (int px = x0; px < x1; ++px) {
-            const inset::Coverage c = inset::shade(px + 0.5, py + 0.5, r);
-            const float a = c.alpha * opacity;
-            if (a <= 0.0f)
-                continue;
-            float col[3];
-            sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx, (py + 0.5 - r.y) * sy, col);
-            uint8_t *p = row + size_t(px) * bpp;
-            for (int k = 0; k < 3; ++k) {
-                const float v = col[k] + (border[k] - col[k]) * c.border;
-                p[k] = clamp8(p[k] + (v * 255.0f - p[k]) * a);
+    parallelRows(y0, y1, 1, int64_t(x1 - x0) * (y1 - y0), [&](int b0, int b1) {
+        for (int py = b0; py < b1; ++py) {
+            uint8_t *row = out + size_t(py) * stride;
+            for (int px = x0; px < x1; ++px) {
+                const inset::Coverage c = inset::shade(px + 0.5, py + 0.5, r);
+                const float a = c.alpha * opacity;
+                if (a <= 0.0f)
+                    continue;
+                float col[3];
+                sampleBilinear(rgba, picW, picH, (px + 0.5 - r.x) * sx, (py + 0.5 - r.y) * sy, col);
+                uint8_t *p = row + size_t(px) * bpp;
+                for (int k = 0; k < 3; ++k) {
+                    const float v = col[k] + (border[k] - col[k]) * c.border;
+                    p[k] = clamp8(p[k] + (v * 255.0f - p[k]) * a);
+                }
             }
         }
-    }
+    });
 }
 
 } // namespace exportpipe

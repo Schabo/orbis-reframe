@@ -10,12 +10,15 @@
 #include <string>
 #include <vector>
 
-// Composites the video tracks' insets into the export's output frames. Runs on
-// the NV12 frame just before it's encoded, so the GPU export path (frames
-// reprojected straight to NV12) and the CPU fallback (RGBA -> NV12 through
-// swscale) share one implementation -- the same way the colour grade is applied
-// in both. Placement and edge / corner / border shading are inset::place /
-// inset::shade, exactly what the viewport draws.
+// Composites the flat main-track clips and the video tracks' insets into the
+// export's output frames. Runs on the NV12 frame just before it's encoded, so
+// the GPU export path (frames reprojected straight to NV12) and the CPU
+// fallback (RGBA -> NV12 through swscale) share one implementation -- the same
+// way the colour grade is applied in both. Placement and edge / corner /
+// border shading are inset::place / inset::shade, exactly what the viewport
+// draws. A layer that covers its rect fully on whole pixels -- a flat clip
+// filling the frame, mostly -- is decoded to NV12 at its size and copied in;
+// the rest are blended per pixel, across the cores.
 //
 // Each clip's frames come from its own FlatVideoReader, opened on first use
 // and closed once the export is past the clip.
@@ -76,16 +79,19 @@ public:
 
 private:
     struct State;
-    // The picture to blend for job `i` at `timelineMs` and where: false if
-    // it isn't showing (or on error: `err` set).
+    // The picture to draw for job `i` at `timelineMs` and where: false if
+    // it isn't showing (or on error: `err` set). With `nv12` (the output
+    // is), one that's a plain copy (opaque, square, on whole even pixels)
+    // comes as NV12 of the rect's size, to copy; else RGBA, to blend.
     struct Layer {
         const uint8_t *rgba = nullptr;
+        const uint8_t *nv12 = nullptr;
         int w = 0, h = 0;
         inset::Rect rect;
         float opacity = 0.0f;
         uint32_t borderRgb = 0;
     };
-    bool layerAt(size_t i, int64_t timelineMs, Layer &layer, std::string &err);
+    bool layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &layer, std::string &err);
     std::vector<InsetClipJob> m_jobs;
     std::vector<std::unique_ptr<State>> m_states;
     int m_outW, m_outH;

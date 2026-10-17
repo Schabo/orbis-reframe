@@ -179,6 +179,110 @@ void testCompositor(const std::string &dir)
     CHECK(!comp2.composite(1500, y.data(), W, uv.data(), W, err) && !err.empty());
 }
 
+// NV12 frames (Format::Nv12): via RGBA for a small clip (untagged, so
+// BT.601 by its size), straight from the decoder for an HD one (BT.709),
+// and turned for a rotated one.
+void testReaderNv12(const std::string &dir)
+{
+    std::string err;
+    exportpipe::FlatVideoReader r;
+    CHECK(r.open(dir + "/solid.mp4", err));
+    r.setOutputFormat(exportpipe::FlatVideoReader::Format::Nv12);
+    const exportpipe::VideoFrame *f = r.frameAt(1000);
+    CHECK(f && f->width == kW && f->height == kH && f->nv12.size() >= size_t(kW) * kH * 3 / 2);
+    if (f) {
+        CHECK(std::abs(f->nv12[size_t(kH / 2) * kW + kW / 2] - lumaFor(25)) <= 2); // grey
+        CHECK(std::abs(f->nv12[size_t(kW) * kH + size_t(kH / 4) * kW + kW / 2] - 128) <= 2);
+    }
+    r.setOutputSize(161, 91); // NV12 wants even
+    f = r.frameAt(1000);
+    CHECK(f && f->width == 162 && f->height == 92);
+
+    const std::string hd = dir + "/hd.mp4";
+    testmedia::VideoSpec spec;
+    spec.width = 1280;
+    spec.height = 720;
+    spec.frames = 5;
+    spec.luma = [](int, int x, int) { return uint8_t(x < 640 ? 40 : 220); };
+    CHECK(testmedia::writeVideo(hd, spec));
+    exportpipe::FlatVideoReader h;
+    CHECK(h.open(hd, err));
+    h.setOutputFormat(exportpipe::FlatVideoReader::Format::Nv12);
+    f = h.frameAt(0);
+    CHECK(f && f->width == 1280 && f->height == 720);
+    if (f) {
+        CHECK(std::abs(f->nv12[360 * 1280 + 100] - 40) <= 3);
+        CHECK(std::abs(f->nv12[360 * 1280 + 1200] - 220) <= 3);
+        CHECK(std::abs(f->nv12[1280 * 720 + 180 * 1280 + 200] - 128) <= 2);
+    }
+
+    exportpipe::FlatVideoReader rot;
+    CHECK(rot.open(dir + "/rot90.mp4", err));
+    rot.setOutputFormat(exportpipe::FlatVideoReader::Format::Nv12);
+    f = rot.frameAt(0);
+    CHECK(f && f->width == kH && f->height == kW);
+    if (f) { // the dark left half on top
+        CHECK(f->nv12[size_t(20) * kH + kH / 2] < 60);
+        CHECK(f->nv12[size_t(kW - 20) * kH + kH / 2] > 200);
+    }
+}
+
+// A flat clip filling the frame is copied in as NV12, not blended: the same
+// picture to its edges, graded too, and a fill's overhang cropped.
+void testFullFrameCopy(const std::string &dir)
+{
+    constexpr int W = 640, H = 360;
+    auto job = [](const std::string &path, double aspect, bool fill) {
+        exportpipe::InsetClipJob j;
+        j.path = path;
+        j.trimOutMs = 2000;
+        j.aspect = aspect;
+        const inset::Look look = inset::fitted(aspect, W, H, fill);
+        j.lookAt = [look](int64_t) { return look; };
+        return j;
+    };
+    std::string err;
+    std::vector<uint8_t> y(size_t(W) * H, 200), uv(size_t(W) * H / 2, 60);
+    exportpipe::InsetCompositor comp({job(dir + "/solid.mp4", double(kW) / kH, false)}, W, H);
+    CHECK(comp.composite(1000, y.data(), W, uv.data(), W, err));
+    for (const size_t at : {size_t(0), size_t(W - 1), size_t(H / 2) * W + W / 2, size_t(H) * W - 1})
+        CHECK(std::abs(y[at] - lumaFor(25)) <= 3);
+    CHECK(std::abs(uv[0] - 128) <= 2 && std::abs(uv.back() - 128) <= 2);
+
+    // Graded: what the screenshot's blend from RGBA gives, in NV12's luma.
+    exportpipe::InsetClipJob g = job(dir + "/solid.mp4", double(kW) / kH, false);
+    g.colorGrade = {1.0f, 0.0f, 0.0f, 0.0f}; // +1 EV
+    exportpipe::InsetCompositor graded({g}, W, H);
+    CHECK(graded.composite(1000, y.data(), W, uv.data(), W, err));
+    std::vector<uint8_t> rgb(size_t(W) * H * 3, 0);
+    exportpipe::InsetCompositor gradedRgb({g}, W, H);
+    CHECK(gradedRgb.compositeRgb(1000, rgb.data(), W * 3, 3, err));
+    const uint8_t *px = &rgb[(size_t(H / 2) * W + W / 2) * 3];
+    const double luma709 =
+        16.0 + 219.0 * (0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]) / 255.0;
+    CHECK(y[size_t(H / 2) * W + W / 2] > lumaFor(25) + 10);
+    // (The copy decodes at the rect's size, the blend at the source's:
+    // swscale's scaled YUV -> RGB comes out ~2 levels darker -- the ffmpeg
+    // command line's too -- doubled by the +1 EV.)
+    CHECK(std::abs(y[size_t(H / 2) * W + W / 2] - luma709) <= 5);
+
+    // A 4:3 clip filling the 16:9 frame: 640 x 480, 60 rows cropped off the
+    // top and bottom -- its dark top half ends at output row 180.
+    const std::string tall = dir + "/tall.mp4";
+    testmedia::VideoSpec spec;
+    spec.width = 240;
+    spec.height = 180;
+    spec.frames = 5;
+    spec.luma = [](int, int, int py) { return uint8_t(py < 90 ? 40 : 220); };
+    CHECK(testmedia::writeVideo(tall, spec));
+    exportpipe::InsetCompositor fill({job(tall, 4.0 / 3.0, true)}, W, H);
+    std::fill(y.begin(), y.end(), 0);
+    CHECK(fill.composite(0, y.data(), W, uv.data(), W, err));
+    CHECK(std::abs(y[W / 2] - 40) <= 4 && std::abs(y[size_t(170) * W + W / 2] - 40) <= 4);
+    CHECK(std::abs(y[size_t(190) * W + W / 2] - 220) <= 4);
+    CHECK(std::abs(y[size_t(H - 1) * W + W / 2] - 220) <= 4);
+}
+
 // The CPU export's colour grade (ReframeRenderer's gradeRgb(), the twin of
 // src/render/shaders/color_grade.glsl): a flat equirect reprojects to the same
 // flat colour, graded. Expected values worked out by hand from the formula.
@@ -239,10 +343,12 @@ int main()
     testReader(dir);
     testRotation(dir);
     testCompositor(dir);
+    testReaderNv12(dir);
+    testFullFrameCopy(dir);
     testColorGrade();
     testFitted();
     if (!std::getenv("INSET_TEST_KEEP")) {
-        for (const char *f : {"/solid.mp4", "/rot90.mp4"})
+        for (const char *f : {"/solid.mp4", "/rot90.mp4", "/hd.mp4", "/tall.mp4"})
             std::remove((dir + f).c_str());
         std::remove(dir.c_str());
     } else {
