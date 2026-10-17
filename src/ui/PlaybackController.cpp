@@ -501,7 +501,7 @@ void PlaybackController::tick()
             }
             std::vector<EquirectViewportWindow::RegionOutline> outlines;
             if (outlineProvider)
-                outlineProvider(chosenPath, chosenSourceMs, outlines);
+                outlineProvider(chosenClipId, chosenSourceMs, outlines);
             if (chosenLens)
                 m_viewport->SetLensFrame(std::move(chosenLens), haveStab ? stab : nullptr,
                                          std::move(outlines));

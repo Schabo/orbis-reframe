@@ -155,10 +155,13 @@ public:
     // IStitchSource::SetLens1Adjust). Thread-safe; applies from the next
     // decoded frame -- seek to refresh a paused picture.
     void setSeamAdjust(const QString &path, std::array<double, 3> deg);
-    // Privacy blur for one source (IStitchSource::SetBlurQuads); an empty fn
-    // = off. Thread-safe; applies from the next decoded frame -- seek to
-    // refresh a paused picture.
-    void setBlurQuads(const QString &path, stitch::BlurQuadsFn fn);
+    // Privacy blur per clip id (IStitchSource::SetBlurQuads): the whole set,
+    // a clip not in it = none. Per clip, not per source, as two clips of one
+    // file may differ. Thread-safe; applies from the next decoded frame --
+    // seek to refresh a paused picture.
+    void setBlurQuads(std::map<int, stitch::BlurQuadsFn> blurs);
+    // Clip `clipId`'s blur as set; empty = none. Thread-safe.
+    stitch::BlurQuadsFn blurQuads(int clipId);
 
     // Gyro de-rotation for a presented frame: fills `m` (row-major 3x3) for
     // source time `sourceMs` of clip `clipId` (Segment::clipId) and returns
@@ -170,12 +173,12 @@ public:
     void setStabilizationProvider(StabProvider provider);
 
     // Region outlines for a presented frame (the Privacy panel's "Show
-    // regions"): appends those of source time `sourceMs` of clip `path`.
+    // regions"): appends those of source time `sourceMs` of clip `clipId`.
     // Called like the StabProvider, and handed to the viewport with the
     // frame. Empty = none. Thread-safe to set from the GUI thread; seek to
     // refresh a paused picture.
     using OutlineProvider = std::function<void(
-        const QString &path, qint64 sourceMs, std::vector<EquirectViewportWindow::RegionOutline> &out)>;
+        int clipId, qint64 sourceMs, std::vector<EquirectViewportWindow::RegionOutline> &out)>;
     void setOutlineProvider(OutlineProvider provider);
 
     // The video tracks' inset clips, bottom-most first. Thread-safe,
@@ -369,7 +372,7 @@ private:
     std::mutex m_rsMx;
     std::map<int, RsSetting> m_rsSettings; // guarded by m_rsMx
     std::map<QString, std::array<double, 3>> m_seamAdjust; // guarded by m_rsMx, same generation
-    std::map<QString, stitch::BlurQuadsFn> m_blurQuads;    // guarded by m_rsMx, same generation
+    std::map<int, stitch::BlurQuadsFn> m_blurQuads;        // guarded by m_rsMx, same generation
     std::atomic<uint64_t> m_rsGen{0};          // bumped on every change
     uint64_t m_decRsGen = ~uint64_t(0);        // decoder: generation last applied
     QString m_decRsPath;                        // decoder: source it was applied to
@@ -390,7 +393,7 @@ private:
     };
     ClipHandOver handOverAfter(int index) const;
     // Reads m_rsMx: `path`'s settings, and clip `clipId`'s capture timing
-    // (then `handOver.afterClipId`'s from `handOver.untilMs` on).
+    // and blur (then `handOver.afterClipId`'s from `handOver.untilMs` on).
     void applySourceSettings(stitch::IStitchSource &src, const QString &path, int clipId,
                              ClipHandOver handOver);
 

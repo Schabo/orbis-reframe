@@ -135,16 +135,20 @@ void PlaybackController::setSeamAdjust(const QString &path, std::array<double, 3
     m_rsGen.fetch_add(1);
 }
 
-void PlaybackController::setBlurQuads(const QString &path, stitch::BlurQuadsFn fn)
+void PlaybackController::setBlurQuads(std::map<int, stitch::BlurQuadsFn> blurs)
 {
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
-        if (fn)
-            m_blurQuads[path] = std::move(fn);
-        else
-            m_blurQuads.erase(path);
+        m_blurQuads = std::move(blurs);
     }
     m_rsGen.fetch_add(1);
+}
+
+stitch::BlurQuadsFn PlaybackController::blurQuads(int clipId)
+{
+    std::lock_guard<std::mutex> lk(m_rsMx);
+    const auto it = m_blurQuads.find(clipId);
+    return it != m_blurQuads.end() ? it->second : stitch::BlurQuadsFn{};
 }
 
 void PlaybackController::setStabilizationProvider(StabProvider provider)
@@ -200,7 +204,7 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
     RsSetting s;
     RsSetting after;
     std::array<double, 3> seam{0, 0, 0};
-    stitch::BlurQuadsFn blur;
+    stitch::BlurQuadsFn blur, blurAfter;
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
         auto it = m_rsSettings.find(clipId);
@@ -212,10 +216,19 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
         auto st = m_seamAdjust.find(path);
         if (st != m_seamAdjust.end())
             seam = st->second;
-        auto bt = m_blurQuads.find(path);
+        auto bt = m_blurQuads.find(clipId);
         if (bt != m_blurQuads.end())
             blur = bt->second;
+        auto ba = m_blurQuads.find(handOver.afterClipId);
+        if (handOver.afterClipId && ba != m_blurQuads.end())
+            blurAfter = ba->second;
     }
+    if (blurAfter || (blur && handOver.afterClipId))
+        blur = [own = std::move(blur), after = std::move(blurAfter),
+                untilMs = handOver.untilMs](int64_t ptsMs, std::vector<insv::BlurQuad> &out) {
+            if (const stitch::BlurQuadsFn &fn = ptsMs < untilMs ? own : after)
+                fn(ptsMs, out);
+        };
     src.SetCaptureTiming(std::move(s), handOver.untilMs, std::move(after));
     src.SetLens1Adjust(seam.data());
     src.SetBlurQuads(std::move(blur));

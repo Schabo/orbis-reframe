@@ -26,12 +26,13 @@ class PrivacyBlur {
 public:
     PlateScanCache &scans() { return m_scans; }
 
-    // Clip `c`'s blur for the export: the scan's plates (with "Blur number
-    // plates" on) and the ones blurred by hand either way; empty when none.
+    // Clip `c`'s blur for playback and the export: the scan's plates (with
+    // "Blur number plates" on) and the ones blurred by hand either way; empty
+    // when none.
     stitch::BlurQuadsFn blurFor(const ClipItem &c) const;
-    // Hand playback every timeline source's blur (per source: the trim
-    // ranges of its clips with a blur, as two clips of one file may differ)
-    // and, with `showRegions`, the outlines "Show regions" draws.
+    // Hand playback every timeline clip's blur (blurFor, per clip id, as two
+    // clips of one file may differ) and, with `showRegions`, the outlines
+    // "Show regions" draws.
     void pushTo(PlaybackController &controller, const Timeline &timeline, bool showRegions) const;
 
     // Why `c` can't be exported blurred over [fromMs, toMs] (its blur is on

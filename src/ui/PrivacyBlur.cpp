@@ -2,12 +2,11 @@
 
 #include <QFileInfo>
 #include <QHash>
-#include <QList>
-#include <QSet>
 
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <map>
 #include <memory>
 
 #include "PlaybackController.h"
@@ -28,16 +27,6 @@ std::shared_ptr<const privacy::RemovedSpans> resolveRemovals(const ClipItem &c,
     auto r = std::make_shared<privacy::RemovedSpans>(scan.resolveRemovals(c.blurRemovals));
     return r->empty() ? nullptr : r;
 }
-
-// A clip's trim range on its source, with the blur tracks removed from it
-// resolved against the source's scan.
-struct BlurRange {
-    qint64 fromMs = 0, toMs = 0;
-    bool scan = false; // the clip's "Blur number plates"
-    std::shared_ptr<const privacy::RemovedSpans> removed;
-    std::shared_ptr<const std::vector<privacy::BlurAddition>> added; // null = none
-    double fps = 30.0;
-};
 
 } // namespace
 
@@ -60,107 +49,78 @@ stitch::BlurQuadsFn PrivacyBlur::blurFor(const ClipItem &c) const
 void PrivacyBlur::pushTo(PlaybackController &controller, const Timeline &timeline,
                          bool showRegions) const
 {
-    QHash<QString, QList<BlurRange>> ranges;
-    QHash<QString, QList<BlurRange>> allRanges; // the overlay's: every clip
-    QSet<QString> sources;
-    for (int i = 0; i < timeline.count(); ++i) {
-        const ClipItem &c = timeline.clipAt(i);
-        sources.insert(c.sourcePath);
-        BlurRange r;
-        r.fromMs = c.trimInMs;
-        r.toMs = c.trimOutMs;
-        r.scan = c.blurPlates;
-        r.fps = c.fps;
-        if (const PlateScanCache::Scan scan = m_scans.get(c.sourcePath))
-            r.removed = resolveRemovals(c, *scan);
-        if (!c.blurAdditions.empty())
-            r.added = std::make_shared<const std::vector<privacy::BlurAddition>>(c.blurAdditions);
-        allRanges[c.sourcePath].append(r);
-        if (c.blurPlates || r.added)
-            ranges[c.sourcePath].append(r);
-    }
-
+    // Per clip, as two clips of one file -- a split, a duplicate -- may
+    // differ; the export takes the same blurFor.
+    std::map<int, stitch::BlurQuadsFn> blurs;
     // "Show regions": the scan's regions of every clip with a scan, blur on or
     // not, in the privacy spike's debug colours (by RegionKind; the Privacy
     // panel's legend matches); the ones removed by hand in grey.
-    struct Source {
+    struct Outlined {
         PlateScanCache::Scan scan;
-        QList<BlurRange> ranges;
+        std::shared_ptr<const privacy::RemovedSpans> removed;
+        std::shared_ptr<const std::vector<privacy::BlurAddition>> added; // null = none
+        double fps = 30.0;
     };
-    QHash<QString, Source> scanned;
-    if (showRegions)
-        for (auto it = allRanges.begin(); it != allRanges.end(); ++it) {
-            PlateScanCache::Scan scan = m_scans.get(it.key());
-            const bool added = std::any_of(it.value().begin(), it.value().end(),
-                                           [](const BlurRange &r) { return r.added != nullptr; });
-            if (scan || added)
-                scanned.insert(it.key(), {std::move(scan), it.value()});
-        }
-    if (scanned.isEmpty()) {
-        controller.setOutlineProvider({});
-    } else {
-        controller.setOutlineProvider(
-            [scanned](const QString &path, qint64 sourceMs,
-                      std::vector<EquirectViewportWindow::RegionOutline> &out) {
-                const auto it = scanned.find(path);
-                if (it == scanned.end())
-                    return;
-                const auto r = std::find_if(it->ranges.begin(), it->ranges.end(), [sourceMs](const BlurRange &x) {
-                    return sourceMs >= x.fromMs - 50 && sourceMs <= x.toMs + 50;
-                });
-                if (r == it->ranges.end())
-                    return;
-                // Detected, Filled, Tracked, Unverified; removed; added by hand.
-                const auto rgb = [](const QColor &c) {
-                    return std::array<float, 3>{float(c.redF()), float(c.greenF()), float(c.blueF())};
-                };
-                const theme::Colors &tc = theme::colors();
-                const std::array<float, 3> kColour[4] = {rgb(tc.plateDetected), rgb(tc.plateFilled),
-                                                         rgb(tc.plateTracked), rgb(tc.plateUnverified)};
-                const std::array<float, 3> kRemovedRgb = rgb(tc.plateRemoved);
-                const std::array<float, 3> kAddedRgb = rgb(tc.plateAdded);
-                const float *kRemoved = kRemovedRgb.data();
-                const float *kAdded = kAddedRgb.data();
-                if (r->added)
-                    for (const privacy::BlurAddition &a : *r->added)
-                        if (const privacy::BlurAddition::Frame *af = privacy::addedFrameAt(a, sourceMs, r->fps)) {
-                            EquirectViewportWindow::RegionOutline o;
-                            std::memcpy(o.corner, af->corner, sizeof(o.corner));
-                            std::copy_n(kAdded, 3, o.rgb);
-                            out.push_back(o);
-                        }
-                const privacy::ScanFrame *f = it->scan ? it->scan->frameAt(sourceMs) : nullptr;
-                if (!f)
-                    return;
-                for (const privacy::BlurRegion &reg : f->regions) {
-                    EquirectViewportWindow::RegionOutline o;
-                    std::memcpy(o.corner, reg.quad.corner, sizeof(o.corner));
-                    const bool removed = privacy::PlateScan::isRemoved(reg, f->tMs, r->removed.get());
-                    std::copy_n(removed ? kRemoved : kColour[std::min<int>(static_cast<int>(reg.kind), 3)].data(), 3,
-                                o.rgb);
-                    out.push_back(o);
-                }
-            });
-    }
-
-    for (const QString &path : sources) {
-        if (!ranges.contains(path)) {
-            controller.setBlurQuads(path, {});
+    QHash<int, Outlined> outlined;
+    for (int i = 0; i < timeline.count(); ++i) {
+        const ClipItem &c = timeline.clipAt(i);
+        if (stitch::BlurQuadsFn fn = blurFor(c))
+            blurs.emplace(c.id, std::move(fn));
+        if (!showRegions)
             continue;
-        }
-        controller.setBlurQuads(
-            path, [scan = m_scans.get(path), r = ranges.value(path)](int64_t ptsMs,
-                                                                     std::vector<insv::BlurQuad> &out) {
-                for (const BlurRange &x : r)
-                    if (ptsMs >= x.fromMs - 50 && ptsMs <= x.toMs + 50) {
-                        if (scan && x.scan)
-                            scan->quadsAt(ptsMs, out, x.removed.get());
-                        if (x.added)
-                            privacy::addedQuadsAt(*x.added, ptsMs, x.fps, out);
-                        return;
-                    }
-            });
+        Outlined o;
+        o.scan = m_scans.get(c.sourcePath);
+        if (o.scan)
+            o.removed = resolveRemovals(c, *o.scan);
+        if (!c.blurAdditions.empty())
+            o.added = std::make_shared<const std::vector<privacy::BlurAddition>>(c.blurAdditions);
+        o.fps = c.fps;
+        if (o.scan || o.added)
+            outlined.insert(c.id, std::move(o));
     }
+    controller.setBlurQuads(std::move(blurs));
+
+    if (outlined.isEmpty()) {
+        controller.setOutlineProvider({});
+        return;
+    }
+    controller.setOutlineProvider(
+        [outlined](int clipId, qint64 sourceMs,
+                   std::vector<EquirectViewportWindow::RegionOutline> &out) {
+            const auto r = outlined.find(clipId);
+            if (r == outlined.end())
+                return;
+            // Detected, Filled, Tracked, Unverified; removed; added by hand.
+            const auto rgb = [](const QColor &c) {
+                return std::array<float, 3>{float(c.redF()), float(c.greenF()), float(c.blueF())};
+            };
+            const theme::Colors &tc = theme::colors();
+            const std::array<float, 3> kColour[4] = {rgb(tc.plateDetected), rgb(tc.plateFilled),
+                                                     rgb(tc.plateTracked), rgb(tc.plateUnverified)};
+            const std::array<float, 3> kRemovedRgb = rgb(tc.plateRemoved);
+            const std::array<float, 3> kAddedRgb = rgb(tc.plateAdded);
+            const float *kRemoved = kRemovedRgb.data();
+            const float *kAdded = kAddedRgb.data();
+            if (r->added)
+                for (const privacy::BlurAddition &a : *r->added)
+                    if (const privacy::BlurAddition::Frame *af = privacy::addedFrameAt(a, sourceMs, r->fps)) {
+                        EquirectViewportWindow::RegionOutline o;
+                        std::memcpy(o.corner, af->corner, sizeof(o.corner));
+                        std::copy_n(kAdded, 3, o.rgb);
+                        out.push_back(o);
+                    }
+            const privacy::ScanFrame *f = r->scan ? r->scan->frameAt(sourceMs) : nullptr;
+            if (!f)
+                return;
+            for (const privacy::BlurRegion &reg : f->regions) {
+                EquirectViewportWindow::RegionOutline o;
+                std::memcpy(o.corner, reg.quad.corner, sizeof(o.corner));
+                const bool removed = privacy::PlateScan::isRemoved(reg, f->tMs, r->removed.get());
+                std::copy_n(removed ? kRemoved : kColour[std::min<int>(static_cast<int>(reg.kind), 3)].data(), 3,
+                            o.rgb);
+                out.push_back(o);
+            }
+        });
 }
 
 QString PrivacyBlur::blocker(const ClipItem &c, qint64 fromMs, qint64 toMs) const

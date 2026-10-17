@@ -6,6 +6,7 @@
 
 #include "PrivacyBlur.h"
 
+#include "PlaybackController.h"
 #include "ProjectFiles.h"
 #include "../core/ClipItem.h"
 #include "../core/Project.h"
@@ -196,6 +197,38 @@ void testHandBlurs(const QString &dir)
     CHECK(pb.staleness(c, 500, 1000, false).isEmpty()); // not in that range
 }
 
+// Playback's blur is per clip, as the export's is: a duplicate of a clip
+// (same file, same trim) with the blur off isn't blurred along with it.
+void testPlaybackPerClip(const QString &dir)
+{
+    const QString source = dir + "/d.insv";
+    {
+        QFile f(source);
+        CHECK(f.open(QIODevice::WriteOnly) && f.write("not a real clip, still") > 0);
+    }
+    PrivacyBlur pb;
+    pb.scans().setDirectory(dir);
+    CHECK(pb.scans().store(source, makeScan(0, 1000)));
+
+    Timeline t;
+    const int first = t.appendClip(source, 1000, 30.0);
+    const int copy = t.duplicateClip(first);
+    CHECK(first && copy && first != copy);
+    t.setClipBlurPlates(first, true);
+
+    PlaybackController controller;
+    pb.pushTo(controller, t, false);
+    CHECK(quadsAt(controller.blurQuads(first), 500) == 1);
+    CHECK(!controller.blurQuads(copy));
+
+    // And the other way round, once the first is off again.
+    t.setClipBlurPlates(first, false);
+    t.setClipBlurPlates(copy, true);
+    pb.pushTo(controller, t, false);
+    CHECK(!controller.blurQuads(first));
+    CHECK(quadsAt(controller.blurQuads(copy), 500) == 1);
+}
+
 // Save as into a new project folder takes the clips' plate scans along
 // (they take minutes to redo), leaving one the new folder has alone.
 void testScansFollowSaveAs(const QString &dir)
@@ -230,6 +263,7 @@ int main(int argc, char **argv)
     testScanAndRemovals(tmp.path());
     testHandBlurs(tmp.path());
     testScansFollowSaveAs(tmp.path());
+    testPlaybackPerClip(tmp.path());
     if (g_failures == 0)
         std::printf("privacy_blur_test: all checks passed\n");
     else
