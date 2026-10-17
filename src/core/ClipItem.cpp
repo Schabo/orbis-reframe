@@ -108,6 +108,14 @@ bool ClipItem::setBlurPlates(bool on)
     return true;
 }
 
+bool ClipItem::setPlateScan(const QString &key)
+{
+    if (flat || plateScan == key)
+        return false;
+    plateScan = key;
+    return true;
+}
+
 bool ClipItem::setBlurAdditions(const std::vector<privacy::BlurAddition> &additions)
 {
     if (flat)

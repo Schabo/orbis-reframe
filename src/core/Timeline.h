@@ -278,6 +278,9 @@ public slots:
     void setClipStabilization(int clipId, const insv::StabConfig &config);
     // Privacy blur on / off (ClipItem::blurPlates); the Privacy panel edits it.
     void setClipBlurPlates(int clipId, bool on);
+    // The clip's plate scan (ClipItem::plateScan), set when one is made.
+    // Emits clipPrivacyChanged too.
+    void setClipPlateScan(int clipId, const QString &key);
     // The blur tracks removed from the clip by hand (ClipItem::blurRemovals).
     // Emits clipPrivacyChanged too.
     void setClipBlurRemovals(int clipId, const std::vector<privacy::BlurRemoval> &removals);

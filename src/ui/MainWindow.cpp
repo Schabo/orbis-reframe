@@ -37,6 +37,7 @@
 #include <QScreen>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSet>
 #include <QSettings>
 #include <QSplitter>
 #include <QShortcut>
@@ -2612,7 +2613,12 @@ void MainWindow::locateMedia(const QString &path)
     if (relinks.isEmpty())
         return;
     for (const auto &[from, to] : relinks) {
-        m_privacy.scans().carryOver(from, to.path);
+        QSet<QString> keys;
+        for (int i = 0; i < m_timeline->count(); ++i)
+            if (m_timeline->clipAt(i).sourcePath == from)
+                keys.insert(m_timeline->clipAt(i).plateScan);
+        for (const QString &key : keys)
+            m_privacy.scans().carryOver(from, to.path, key);
         m_project->relinkMedia(from, to);
         if (m_clipPath == from)
             m_clipPath = to.path;
@@ -3261,13 +3267,24 @@ void MainWindow::finishPlateScan(const platescan::Result &r)
                              tr("The scan failed: %1").arg(QString::fromStdString(r.error)));
         return;
     }
-    if (!r.scan.empty()) {
+    const ClipItem *c = m_timeline->clipById(m_plateJobClipId);
+    if (!r.scan.empty() && (!c || c->sourcePath != source)) {
+        core::log::Info("[plates] the scanned clip is gone; the scan is dropped\n");
+    } else if (!r.scan.empty()) {
+        // A new scan of the clip's own, from the one it had: a copy or a
+        // split half that shared it keeps that one. Undo goes back to it.
+        privacy::PlateScan scan;
+        if (const PlateScanCache::Scan had = m_privacy.scanOf(*c))
+            scan = *had;
+        scan.merge(r.scan);
+        const QString key = PlateScanCache::newKey();
         QString err;
-        if (!m_privacy.scans().store(source, r.scan, &err))
+        if (!m_privacy.scans().store(source, key, scan, &err))
             QMessageBox::warning(this, tr("Scan for plates"),
                                  tr("The scan couldn't be saved (%1); it holds until the "
                                     "app closes.")
                                      .arg(err));
+        m_timeline->setClipPlateScan(c->id, key);
     }
     pushBlur();
     syncPrivacyPanel();

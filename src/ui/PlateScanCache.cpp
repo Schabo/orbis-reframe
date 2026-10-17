@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QUuid>
 
 void PlateScanCache::setDirectory(const QString &dir)
 {
@@ -15,15 +16,20 @@ void PlateScanCache::setDirectory(const QString &dir)
     m_scans.clear();
 }
 
-QString PlateScanCache::diskPathIn(const QString &dir, const QString &source)
+QString PlateScanCache::newKey()
+{
+    return QUuid::createUuid().toString(QUuid::Id128).left(12);
+}
+
+QString PlateScanCache::diskPathIn(const QString &dir, const QString &source, const QString &key)
 {
     const QFileInfo fi(source);
     return diskPathIn(dir, fi.absoluteFilePath(), fi.size(),
-                      fi.lastModified().toMSecsSinceEpoch());
+                      fi.lastModified().toMSecsSinceEpoch(), key);
 }
 
 QString PlateScanCache::diskPathIn(const QString &dir, const QString &absPath, qint64 size,
-                                   qint64 mtimeMs)
+                                   qint64 mtimeMs, const QString &key)
 {
     const QByteArray id = (absPath + QLatin1Char('|') + QString::number(size) + QLatin1Char('|') +
                            QString::number(mtimeMs))
@@ -32,50 +38,52 @@ QString PlateScanCache::diskPathIn(const QString &dir, const QString &absPath, q
         QString::fromLatin1(QCryptographicHash::hash(id, QCryptographicHash::Sha1).toHex());
     const QString base =
         dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : dir;
-    return base + QStringLiteral("/plates/") + hash + QStringLiteral(".scan");
+    const QString suffix = key.isEmpty() ? QString() : QLatin1Char('-') + key;
+    return base + QStringLiteral("/plates/") + hash + suffix + QStringLiteral(".scan");
 }
 
-bool PlateScanCache::carryOver(const QString &from, const QString &to)
+bool PlateScanCache::carryOver(const QString &from, const QString &to, const QString &key)
 {
     const QFileInfo fi(to);
-    const QString target = diskPath(to);
+    const QString target = diskPath(to, key);
     if (!fi.exists() || QFileInfo::exists(target))
         return false;
     const QString old = diskPathIn(m_dir, QFileInfo(from).absoluteFilePath(), fi.size(),
-                                   fi.lastModified().toMSecsSinceEpoch());
+                                   fi.lastModified().toMSecsSinceEpoch(), key);
     if (!QFileInfo::exists(old))
         return false;
     QDir().mkpath(QFileInfo(target).absolutePath());
     if (!QFile::copy(old, target))
         return false;
-    m_scans.remove(to); // a "none" looked up before
+    m_scans.remove(memoryKey(to, key)); // a "none" looked up before
     return true;
 }
 
-PlateScanCache::Scan PlateScanCache::get(const QString &source)
+PlateScanCache::Scan PlateScanCache::get(const QString &source, const QString &key)
 {
     if (source.isEmpty())
         return nullptr;
-    if (const auto it = m_scans.constFind(source); it != m_scans.constEnd())
+    if (const auto it = m_scans.constFind(memoryKey(source, key)); it != m_scans.constEnd())
         return *it;
     Scan scan;
     auto s = std::make_shared<privacy::PlateScan>();
     std::string err;
-    if (privacy::loadPlateScan(diskPath(source).toStdString(), *s, err))
+    if (privacy::loadPlateScan(diskPath(source, key).toStdString(), *s, err))
         scan = std::move(s);
-    m_scans.insert(source, scan);
+    m_scans.insert(memoryKey(source, key), scan);
     return scan;
 }
 
-bool PlateScanCache::store(const QString &source, const privacy::PlateScan &scan, QString *error)
+bool PlateScanCache::store(const QString &source, const QString &key,
+                           const privacy::PlateScan &scan, QString *error)
 {
     auto merged = std::make_shared<privacy::PlateScan>();
-    if (const Scan old = get(source))
+    if (const Scan old = get(source, key))
         *merged = *old;
     merged->merge(scan);
-    m_scans.insert(source, merged);
+    m_scans.insert(memoryKey(source, key), merged);
 
-    const QString path = diskPath(source);
+    const QString path = diskPath(source, key);
     QDir().mkpath(QFileInfo(path).absolutePath());
     std::string err;
     if (!privacy::savePlateScan(*merged, path.toStdString(), err)) {

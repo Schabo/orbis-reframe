@@ -111,12 +111,16 @@ struct ClipItem {
     // A new clip takes the setting of its neighbour (Timeline::insertClip).
     insv::StabConfig stabilization;
 
-    // Privacy blur (Privacy panel): mosaic the number plates a plate scan of
-    // this clip's source found (src/privacy/PlateScanData.h -- the scan
-    // itself is cached per source file, not stored here). Applied in playback
-    // and export; an export with this on refuses a clip whose trim range
-    // hasn't been scanned.
+    // Privacy blur (Privacy panel): mosaic the number plates this clip's plate
+    // scan found (src/privacy/PlateScanData.h -- the scan itself is cached,
+    // not stored here). Applied in playback and export; an export with this
+    // on refuses a clip whose trim range hasn't been scanned.
     bool blurPlates = false;
+    // Which scan of the source is this clip's (PlateScanCache): every scan
+    // makes a new one, so a copy or a split half shares its clip's until one
+    // of them is scanned again. Empty = the scan kept per source file before
+    // scans were per clip (a project from then; none for a new clip).
+    QString plateScan;
     // Blur tracks the user removed from this clip (false hits, e.g. on the
     // rider's own bike). Kept as each track's path on the sphere, so they stay
     // removed after a rescan (BlurRemoval.h).
@@ -184,6 +188,7 @@ struct ClipItem {
     bool setColorGrade(const ColorGrade &grade);
     bool setStabilization(const insv::StabConfig &config);
     bool setBlurPlates(bool on);
+    bool setPlateScan(const QString &key);
     bool setBlurRemovals(const std::vector<privacy::BlurRemoval> &removals);
     bool setBlurAdditions(const std::vector<privacy::BlurAddition> &additions);
     bool setSpeed(double s); // clamped to [kMinSpeed, kMaxSpeed]

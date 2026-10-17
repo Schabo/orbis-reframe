@@ -14,6 +14,7 @@
 #include "NewProjectDialog.h"
 #include "PlateScanCache.h"
 #include "../core/Autosave.h"
+#include "../core/ClipItem.h"
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
 #include "../core/ProjectLibrary.h"
@@ -65,9 +66,9 @@ void ProjectFiles::copyPlateScans(const Project &project, const QString &fromFil
         return;
     const Timeline *timeline = project.timeline();
     for (int i = 0; i < timeline->count(); ++i) {
-        const QString src = timeline->clipAt(i).sourcePath;
-        const QString from = PlateScanCache::diskPathIn(oldCache, src);
-        const QString to = PlateScanCache::diskPathIn(newCache, src);
+        const ClipItem &c = timeline->clipAt(i);
+        const QString from = PlateScanCache::diskPathIn(oldCache, c.sourcePath, c.plateScan);
+        const QString to = PlateScanCache::diskPathIn(newCache, c.sourcePath, c.plateScan);
         if (QFileInfo::exists(from) && !QFileInfo::exists(to)) {
             QDir().mkpath(QFileInfo(to).absolutePath());
             QFile::copy(from, to);

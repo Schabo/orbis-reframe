@@ -341,6 +341,7 @@ struct ParsedClip {
     ColorGrade color;
     insv::StabConfig stabilization;
     bool blurPlates = false;
+    QString plateScan;
     std::vector<privacy::BlurRemoval> blurRemovals;
     std::vector<privacy::BlurAddition> blurAdditions;
     double speed = 1.0;
@@ -855,10 +856,13 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             firstStitched = &c;
         else if (c.lensGuard != firstStitched->lensGuard || c.depthSeam != firstStitched->depthSeam)
             mixedStitch = true;
-        if (c.blurPlates || !c.blurRemovals.empty() || !c.blurAdditions.empty()) {
+        if (c.blurPlates || !c.plateScan.isEmpty() || !c.blurRemovals.empty() ||
+            !c.blurAdditions.empty()) {
             json &jp = clips.back()["privacy"] = json::object();
             if (c.blurPlates)
                 jp["plates"] = true;
+            if (!c.plateScan.isEmpty())
+                jp["scan"] = c.plateScan.toStdString();
             if (!c.blurRemovals.empty())
                 jp["removed"] = blurRemovalsToJson(c.blurRemovals);
             if (!c.blurAdditions.empty())
@@ -1021,6 +1025,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 pc.stabilization = stabilizationFromJson(jc.at("stabilization"));
             if (jc.contains("privacy") && jc.at("privacy").is_object()) {
                 pc.blurPlates = jc.at("privacy").value("plates", false);
+                pc.plateScan =
+                    QString::fromStdString(jc.at("privacy").value("scan", std::string()));
                 if (jc.at("privacy").contains("removed"))
                     pc.blurRemovals = blurRemovalsFromJson(jc.at("privacy").at("removed"));
                 if (jc.at("privacy").contains("added"))
@@ -1153,6 +1159,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipColor(id, pc.color);
         m_timeline->setClipStabilization(id, pc.stabilization);
         m_timeline->setClipBlurPlates(id, pc.blurPlates);
+        m_timeline->setClipPlateScan(id, pc.plateScan);
         m_timeline->setClipBlurRemovals(id, pc.blurRemovals);
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
         m_timeline->setClipSpeed(id, pc.speed);

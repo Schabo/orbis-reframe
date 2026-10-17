@@ -52,7 +52,7 @@ public:
     // Saved or opened: to the top of the library.
     void noteOpened();
 
-    // Copy the plate scans of the timeline's sources from the cache of
+    // Copy the plate scans of the timeline's clips from the cache of
     // project `fromFile` into that of `toFile` (a project folder's), where
     // it has none: scans take minutes, waveforms are quick to redo.
     static void copyPlateScans(const Project &project, const QString &fromFile,

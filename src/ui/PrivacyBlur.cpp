@@ -30,9 +30,14 @@ std::shared_ptr<const privacy::RemovedSpans> resolveRemovals(const ClipItem &c,
 
 } // namespace
 
+PlateScanCache::Scan PrivacyBlur::scanOf(const ClipItem &c) const
+{
+    return m_scans.get(c.sourcePath, c.plateScan);
+}
+
 stitch::BlurQuadsFn PrivacyBlur::blurFor(const ClipItem &c) const
 {
-    PlateScanCache::Scan scan = c.blurPlates ? m_scans.get(c.sourcePath) : nullptr;
+    PlateScanCache::Scan scan = c.blurPlates ? scanOf(c) : nullptr;
     if (!scan && c.blurAdditions.empty())
         return {};
     std::shared_ptr<const privacy::RemovedSpans> removed;
@@ -69,7 +74,7 @@ void PrivacyBlur::pushTo(PlaybackController &controller, const Timeline &timelin
         if (!showRegions)
             continue;
         Outlined o;
-        o.scan = m_scans.get(c.sourcePath);
+        o.scan = scanOf(c);
         if (o.scan)
             o.removed = resolveRemovals(c, *o.scan);
         if (!c.blurAdditions.empty())
@@ -127,7 +132,7 @@ QString PrivacyBlur::blocker(const ClipItem &c, qint64 fromMs, qint64 toMs) cons
 {
     if (!c.blurPlates)
         return {};
-    const PlateScanCache::Scan scan = m_scans.get(c.sourcePath);
+    const PlateScanCache::Scan scan = scanOf(c);
     if (scan && scan->covers(fromMs, toMs))
         return {};
     const QString name = QFileInfo(c.sourcePath).fileName();
@@ -144,7 +149,7 @@ QString PrivacyBlur::staleness(const ClipItem &c, qint64 fromMs, qint64 toMs, bo
     const bool on = StabilizerCache::captureTimingOn(c);
     bool scanStale = false;
     if (c.blurPlates)
-        if (const PlateScanCache::Scan scan = m_scans.get(c.sourcePath))
+        if (const PlateScanCache::Scan scan = scanOf(c))
             scanStale = scan->staleOver(fromMs, toMs, on);
     int handStale = 0;
     for (const privacy::BlurAddition &a : c.blurAdditions)
@@ -184,7 +189,7 @@ QString PrivacyBlur::staleness(const ClipItem &c, qint64 fromMs, qint64 toMs, bo
 
 QString PrivacyBlur::status(const ClipItem &c) const
 {
-    const PlateScanCache::Scan scan = m_scans.get(c.sourcePath);
+    const PlateScanCache::Scan scan = scanOf(c);
     const bool covered = scan && scan->covers(c.trimInMs, c.trimOutMs);
     QString status;
     if (covered) {
@@ -223,7 +228,7 @@ PrivacyBlur::Hit PrivacyBlur::hitAt(const ClipItem &c, qint64 tMs, const float d
         return hit;
     if (!c.blurPlates && !showRegions)
         return hit; // no blur and no outlines: nothing to point at
-    const PlateScanCache::Scan scan = m_scans.get(c.sourcePath);
+    const PlateScanCache::Scan scan = scanOf(c);
     const privacy::ScanFrame *f = scan ? scan->frameAt(tMs) : nullptr;
     if (!f)
         return hit;
@@ -262,7 +267,7 @@ std::vector<privacy::BlurAddition> PrivacyBlur::cutAddition(const ClipItem &c, i
 std::optional<std::vector<privacy::BlurRemoval>>
 PrivacyBlur::withRemoved(const ClipItem &c, int32_t track, qint64 fromMs) const
 {
-    const PlateScanCache::Scan scan = m_scans.get(c.sourcePath);
+    const PlateScanCache::Scan scan = scanOf(c);
     if (!scan)
         return std::nullopt;
     privacy::BlurRemoval rm = scan->describeRemoval(track, fromMs);
@@ -276,7 +281,7 @@ PrivacyBlur::withRemoved(const ClipItem &c, int32_t track, qint64 fromMs) const
 std::optional<std::vector<privacy::BlurRemoval>>
 PrivacyBlur::withRestored(const ClipItem &c, int32_t track, qint64 tMs) const
 {
-    const PlateScanCache::Scan scan = m_scans.get(c.sourcePath);
+    const PlateScanCache::Scan scan = scanOf(c);
     if (!scan)
         return std::nullopt;
     // Drop every removal that takes this track away here.

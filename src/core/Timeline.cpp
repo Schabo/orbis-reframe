@@ -469,6 +469,13 @@ void Timeline::setClipBlurPlates(int clipId, bool on)
         emit clipPrivacyChanged(c->id, on);
 }
 
+void Timeline::setClipPlateScan(int clipId, const QString &key)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->setPlateScan(key))
+        emit clipPrivacyChanged(c->id, c->blurPlates);
+}
+
 void Timeline::setClipBlurAdditions(int clipId, const std::vector<privacy::BlurAddition> &additions)
 {
     ClipItem *c = mutableClipById(clipId);

@@ -15,7 +15,7 @@ struct ClipItem;
 class PlaybackController;
 class Timeline;
 
-// The privacy blur's data side: the plate scans (one per source, on disk)
+// The privacy blur's data side: the plate scans (each clip's, on disk)
 // and each clip's blur -- "Blur number plates" with its removed tracks, and
 // the plates blurred by hand -- resolved against them, for playback, the
 // export, the Privacy panel and the picture's right-click menu. No widgets:
@@ -68,6 +68,9 @@ public:
     std::optional<std::vector<privacy::BlurRemoval>> withRestored(const ClipItem &c,
                                                                   int32_t track,
                                                                   qint64 tMs) const;
+
+    // Clip `c`'s plate scan (ClipItem::plateScan); null when it has none.
+    PlateScanCache::Scan scanOf(const ClipItem &c) const;
 
 private:
     mutable PlateScanCache m_scans; // reads lazily

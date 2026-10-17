@@ -95,6 +95,7 @@ void testScanAndRemovals(const QString &dir)
     c.trimOutMs = 2000;
     c.fps = 30.0;
     c.blurPlates = true;
+    c.plateScan = "k1";
 
     // Nothing scanned: the blur is on but the export is refused.
     CHECK(pb.status(c) == "Not scanned yet. Exports with the blur on are refused until it is.");
@@ -103,13 +104,13 @@ void testScanAndRemovals(const QString &dir)
     CHECK(pb.hitAt(c, 1500, kAtPlate, true).added < 0 && !pb.hitAt(c, 1500, kAtPlate, true).region);
 
     // Part of the clip scanned.
-    CHECK(pb.scans().store(source, makeScan(1000, 1500)));
+    CHECK(pb.scans().store(source, c.plateScan, makeScan(1000, 1500)));
     CHECK(pb.status(c).startsWith("Partly scanned."));
     CHECK(pb.blocker(c, c.trimInMs, c.trimOutMs).contains("only part"));
     CHECK(pb.blocker(c, 1000, 1400).isEmpty()); // a screenshot in the scanned part
 
     // All of it.
-    CHECK(pb.scans().store(source, makeScan(1500, 2000)));
+    CHECK(pb.scans().store(source, c.plateScan, makeScan(1500, 2000)));
     CHECK(pb.status(c) == "Scanned: plates on 30 of 30 frames.");
     CHECK(pb.blocker(c, c.trimInMs, c.trimOutMs).isEmpty());
     CHECK(quadsAt(pb.blurFor(c), 1500) == 1);
@@ -197,9 +198,11 @@ void testHandBlurs(const QString &dir)
     CHECK(pb.staleness(c, 500, 1000, false).isEmpty()); // not in that range
 }
 
-// Playback's blur is per clip, as the export's is: a duplicate of a clip
-// (same file, same trim) with the blur off isn't blurred along with it.
-void testPlaybackPerClip(const QString &dir)
+// Each clip has its own scan: a duplicate of an unscanned clip isn't
+// scanned along with it, nor rescanned when it is, and its blur in playback
+// is its own, as in the export. A duplicate of a scanned clip shares the
+// scan until one of them is scanned again.
+void testPerClip(const QString &dir)
 {
     const QString source = dir + "/d.insv";
     {
@@ -208,25 +211,44 @@ void testPlaybackPerClip(const QString &dir)
     }
     PrivacyBlur pb;
     pb.scans().setDirectory(dir);
-    CHECK(pb.scans().store(source, makeScan(0, 1000)));
 
     Timeline t;
     const int first = t.appendClip(source, 1000, 30.0);
     const int copy = t.duplicateClip(first);
     CHECK(first && copy && first != copy);
-    t.setClipBlurPlates(first, true);
 
+    // The first scanned with the stabilization off, the copy with it on.
+    privacy::PlateScan off = makeScan(0, 1000);
+    off.spans[0].timing = privacy::StitchTiming::Uncorrected;
+    const QString offKey = PlateScanCache::newKey();
+    CHECK(pb.scans().store(source, offKey, off));
+    t.setClipPlateScan(first, offKey);
+    CHECK(pb.scanOf(*t.clipById(first)) && !pb.scanOf(*t.clipById(copy)));
+    CHECK(pb.status(*t.clipById(copy)) == "Not scanned yet.");
+    t.setClipBlurPlates(first, true);
+    t.setClipBlurPlates(copy, true);
+    const QString onKey = PlateScanCache::newKey();
+    CHECK(onKey != offKey);
+    CHECK(pb.scans().store(source, onKey, makeScan(0, 1000)));
+    t.setClipPlateScan(copy, onKey);
+    CHECK(pb.staleness(*t.clipById(first), 0, 1000, false).isEmpty()); // still its own
+    t.setClipStabilization(copy, [] {
+        insv::StabConfig s;
+        s.mode = insv::StabMode::HorizonLock;
+        return s;
+    }());
+    CHECK(pb.staleness(*t.clipById(copy), 0, 1000, false).isEmpty());
+
+    // Playback: only the clip with the blur on is blurred.
+    t.setClipBlurPlates(copy, false);
     PlaybackController controller;
     pb.pushTo(controller, t, false);
     CHECK(quadsAt(controller.blurQuads(first), 500) == 1);
     CHECK(!controller.blurQuads(copy));
 
-    // And the other way round, once the first is off again.
-    t.setClipBlurPlates(first, false);
-    t.setClipBlurPlates(copy, true);
-    pb.pushTo(controller, t, false);
-    CHECK(!controller.blurQuads(first));
-    CHECK(quadsAt(controller.blurQuads(copy), 500) == 1);
+    // A duplicate of the scanned clip has its scan.
+    const int again = t.duplicateClip(first);
+    CHECK(t.clipById(again)->plateScan == offKey && pb.scanOf(*t.clipById(again)));
 }
 
 // Save as into a new project folder takes the clips' plate scans along
@@ -243,14 +265,15 @@ void testScansFollowSaveAs(const QString &dir)
     CHECK(!oldFile.isEmpty() && !newFile.isEmpty());
     PlateScanCache old;
     old.setDirectory(projectfolder::cacheDir(oldFile));
-    CHECK(old.store(source, makeScan(0, 1000)));
+    CHECK(old.store(source, "k1", makeScan(0, 1000)));
 
     Project p;
-    p.timeline()->appendClip(source, 10000, 30.0);
+    p.timeline()->setClipPlateScan(p.timeline()->appendClip(source, 10000, 30.0), "k1");
     ProjectFiles::copyPlateScans(p, oldFile, newFile);
     PlateScanCache copied;
     copied.setDirectory(projectfolder::cacheDir(newFile));
-    CHECK(copied.get(source) && copied.get(source)->covers(0, 1000));
+    CHECK(copied.get(source, "k1") && copied.get(source, "k1")->covers(0, 1000));
+    CHECK(!copied.get(source, "k2"));
 }
 
 } // namespace
@@ -263,7 +286,7 @@ int main(int argc, char **argv)
     testScanAndRemovals(tmp.path());
     testHandBlurs(tmp.path());
     testScansFollowSaveAs(tmp.path());
-    testPlaybackPerClip(tmp.path());
+    testPerClip(tmp.path());
     if (g_failures == 0)
         std::printf("privacy_blur_test: all checks passed\n");
     else

@@ -55,6 +55,7 @@ void testProjectJson()
         grade.temperature = 15.0f;
         p.timeline()->setClipColor(a, grade); // Colour panel
         p.timeline()->setClipBlurPlates(a, true); // Privacy panel
+        p.timeline()->setClipPlateScan(a, "3f9c0a7d21be"); // its scan
         {
             privacy::BlurRemoval rm; // a blur track removed by hand
             rm.fromMs = 3000;
@@ -181,6 +182,7 @@ void testProjectJson()
         CHECK(b.trimOutMs == 6000);
         CHECK(b.color == ColorGrade{}); // never touched -- defaults
         CHECK(a.blurPlates && !b.blurPlates); // privacy blur
+        CHECK(a.plateScan == "3f9c0a7d21be" && b.plateScan.isEmpty());
         CHECK(a.blurRemovals.size() == 1 && b.blurRemovals.empty());
         CHECK(a.blurAdditions.size() == 1 && b.blurAdditions.empty());
         if (a.blurAdditions.size() == 1) {

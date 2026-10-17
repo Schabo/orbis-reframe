@@ -62,6 +62,9 @@ public:
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
     //   pitch, roll], lensGuard} once measured, and privacy:
     //     "plates": true -- the blur is on;
+    //     "scan" -- the clip's plate scan (ClipItem::plateScan); absent =
+    //       its file's, as before scans were per clip (and as builds from
+    //       then read it);
     //     "removed" -- blur tracks removed by hand, [{fromMs, toMs,
     //       wholeTrack, path: [[tMs, x, y, z], ...]}] (privacy::BlurRemoval);
     //     "added" -- plates blurred by hand, [{frames: [[tMs, kind, 12 corner
