@@ -1,9 +1,11 @@
 # Insta360 X6 file format
 
-**Desk research (2026-10-15), no X6 file examined.** From public specs,
-Insta360's manuals and Gyroflow's telemetry-parser, set against what our code
-assumes. Written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
-"X5 §n" below). Markers as in [`README.md`](README.md).
+**Desk research (2026-10-15) plus empirical findings (2026-10-18) from a
+test set of 24 clips (8K/6K/4K, standard and I-Log, fw v1.2.36).** From
+public specs, Insta360's manuals and Gyroflow's telemetry-parser, set against
+what our code assumes. Written as differences from the X5
+([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
+[`README.md`](README.md).
 
 ## Files and streams
 
@@ -19,27 +21,33 @@ assumes. Written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
   | 4K | 3840×1920 | 100 / 60 / 50 / 48 / 30 / 25 / 24 | 1920² |
 
 - The app names a clip's mode by its lens size (8K / 5.7K / 4K); 3008² has
-  no name yet.
-- 8K 50 is ~1.5 Gpx/s across both lenses, ~1.7× the X5's 8K 30 (X5 §3.3).
-  Real-time decode at that rate isn't measured.
+  no name yet. Clips at all three sizes (3840², 3008², 1920²) open and
+  stitch correctly ✅.
+- ✅ Vulkan decode+stitch on RADV does ~84 fps decode, ~35 fps full-res
+  7680-wide stitch, ~60 fps fused view on 8K30 (Strix Halo iGPU). 8K 50
+  (~1.5 Gpx/s) remains unmeasured.
 
 ## Colour: 10-bit, log and HDR
 
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
+- ✅ Every sample clip is H.265 Main 10 (`yuv420p10le`), VUI-tagged
+  `bt709` for Standard and I-Log clips; **Dolby Vision clips tag
+  `bt2020nc` + `arib-std-b67` (HLG)** with no RPU side data observed
+  (confirmed on 8K/6K/4K clips, fw v1.2.36). The mode marker is record
+  0x101 field 22 `gamma_mode`: `standard` / `I_Log` / `Dolby_Vision`,
+  now parsed into `InsvMakerNotes::gamma_mode`.
 - The app's GPU stitch samples the decoder's pictures through a BT.709
   full-range ycbcr conversion. Since 2026-10-18 it takes 10-bit HEVC (Main
   10) too: FFmpeg's Vulkan decoder gives P010 images
   (`VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16`), the stitcher's
   conversion is made for that format (by the stream's bit depth), and the
-  viewport's shared lens planes are 16-bit (R16 / R16G16). Checked only on
-  a stand-in -- the X5 I-Log clip re-encoded to Main 10 with its trailer
-  kept: export (both GPU paths, and the CPU fallback) and playback match
-  the 8-bit original at 46-48 dB PSNR, in real time. ❓ Whether real X6
-  files are tagged full range like the X5's (the conversion assumes it),
-  and their trailer, are unchecked: it needs a real X6 clip.
-- I-Log is graded with Insta360's LUT (below); Dolby Vision presumably
-  needs BT.2020 with a PQ or HLG transfer (❓ unconfirmed) and a tone map.
-- The X5 has I-Log too, 8-bit (X5 §3.3).
+  viewport's shared lens planes are 16-bit (R16 / R16G16). ✅ Confirmed
+  on real X6 clips as well as the earlier stand-in.
+- I-Log clips still need their log-to-linear conversion (an I-Log clip
+  stitched correctly but flat, sat ~0.16 vs ~0.31); Dolby Vision is
+  plain HLG/BT.2020 limited-range as tagged. I-Log can also be graded
+  with Insta360's LUT (below).
+- The X5 has I-Log too (X5 §3.3).
 - 📖 Insta360's 10-bit I-Log LUTs (`X6_I-Log_LUTs.zip`, version 2.0, made
   2026-05-20): 3D `.cube` files, each at 33³ and 65³, from I-Log to Rec.709
   / BT.1886 (`X6_I-Log_to_Rec709_BT1886_s65_v2.cube`), to Rec.2020 PQ and to
@@ -65,10 +73,13 @@ assumes. Written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
   lands too small and the equirect shows two inscribed discs with gaps.
 - ❌ **No field 145 lens-profile table** on the X6: `lens_profiles` is empty,
   so accessory names ("ProtectorA"/...) never resolve and the stitch always
-  runs as a bare lens at the default `fovDeg` 200. That produced correct
-  output on the sample clip; the X6's usable FOV may differ slightly.
+  runs as a bare lens at the default `fovDeg` 200. Stitched output at all
+  three resolutions shows continuous coverage, so 200° bare appears right;
+  accessory-guard correction is impossible without a profile source.
 - ❓ telemetry-parser has no X6-specific code; an unknown model gets its
-  default IMU orientation, `Xyz`. The IMU axis convention is unconfirmed.
+  default IMU orientation, `Xyz`. The accel/gyro ranges and ~1 kHz rate
+  parse fine at rest; the axis convention still needs a clip with
+  deliberate rotations to confirm.
 
 ## Sources
 
