@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #include <vector>
 
@@ -62,6 +63,18 @@ std::vector<TransitionLayer> transitionLayers(const Timeline &timeline);
 // reads the trailer), and its reframe path.
 ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &timeline,
                                          const PrivacyBlur &privacy);
+
+// The source files an export needs that are missing (ClipItem::mediaMissing,
+// TrackClip::mediaMissing as last checked), each once, in timeline order:
+// `main` for main-track clips, which can't be left out; `other` for overlay
+// and audio clips, which the export would leave out. Clips on hidden or
+// muted tracks and muted audio clips aren't exported, so they don't count.
+struct MissingSources {
+    QStringList main;
+    QStringList other;
+    bool isEmpty() const { return main.isEmpty() && other.isEmpty(); }
+};
+MissingSources missingSources(const Timeline &timeline);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),

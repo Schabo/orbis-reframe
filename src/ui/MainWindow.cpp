@@ -3054,6 +3054,12 @@ void MainWindow::exportFlatVideo()
         QMessageBox::warning(this, tr("Export flat video"), syscheck::nvencMissingText());
         return;
     }
+    // Every source looked for on the disk now (the marks follow), not as last
+    // checked: a missing main clip would only fail partway through, a
+    // missing overlay or sound clip would be left out without a word.
+    recheckMissingMedia();
+    if (!confirmMissingSources(renderjobs::missingSources(*m_timeline)))
+        return;
 
     // One output frame rate for the whole timeline: the project's (Project
     // Settings), or clip 0's when it's "match first clip". Each clip is
@@ -3149,6 +3155,34 @@ void MainWindow::exportFlatVideo()
 ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) const
 {
     return renderjobs::clipJob(c, *m_timeline, m_privacy);
+}
+
+bool MainWindow::confirmMissingSources(const renderjobs::MissingSources &missing)
+{
+    if (missing.isEmpty())
+        return true;
+    const QString locate = tr("If a file was moved or renamed, find it with Locate file… on it "
+                              "in the Media tab.");
+    if (!missing.main.isEmpty()) {
+        QMessageBox box(QMessageBox::Warning, tr("Export flat video"),
+                        tr("The timeline can't be exported: these clips' source files are "
+                           "missing."),
+                        QMessageBox::Ok, this);
+        box.setInformativeText(missing.main.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
+                               locate);
+        box.exec();
+        return false;
+    }
+    QMessageBox box(QMessageBox::Warning, tr("Export flat video"),
+                    tr("These overlay or sound clips' source files are missing. The export "
+                       "would leave them out."),
+                    QMessageBox::Cancel, this);
+    box.setInformativeText(missing.other.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
+                           locate);
+    QPushButton *go = box.addButton(tr("Export without them"), QMessageBox::AcceptRole);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == go;
 }
 
 bool MainWindow::confirmStalePrivacy(const QString &title, const QStringList &warnings)

@@ -477,6 +477,28 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     return job;
 }
 
+MissingSources missingSources(const Timeline &timeline)
+{
+    MissingSources out;
+    const auto add = [](QStringList &list, const QString &path) {
+        if (!list.contains(path))
+            list << path;
+    };
+    for (int i = 0; i < timeline.count(); ++i)
+        if (const ClipItem &c = timeline.clipAt(i); c.mediaMissing)
+            add(out.main, c.sourcePath);
+    for (int i = 0; i < timeline.trackCount(); ++i) {
+        const Track &t = timeline.trackAt(i);
+        if (t.muted)
+            continue; // a hidden video track, a muted audio track
+        for (const TrackClip &c : t.clips)
+            if (c.mediaMissing && !c.isTitle() &&
+                !(t.kind == Track::Kind::Audio && c.muted) && !out.main.contains(c.sourcePath))
+                add(out.other, c.sourcePath);
+    }
+    return out;
+}
+
 QString suggestedExportPath(const QString &projectFile)
 {
     if (projectFile.isEmpty())

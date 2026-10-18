@@ -287,6 +287,39 @@ void testLayerOverMainClip()
     CHECK(drawn(7000, a).empty() && drawn(9000, b).empty());
 }
 
+void testMissingSources()
+{
+    Timeline t;
+    t.appendClip("/c/here.insv", 20000, 30.0);
+    t.appendClip("/c/gone.insv", 20000, 30.0);
+    t.appendClip("/c/gone.insv", 20000, 30.0); // the same file twice: listed once
+    const int music = t.addTrack(Track::Kind::Audio, "Music");
+    const int mutedTrack = t.addTrack(Track::Kind::Audio, "Muted");
+    t.setTrackAudio(mutedTrack, 0.0, true);
+    t.addAudioClip(music, "/m/song.wav", 5000, 0);
+    const int quiet = t.addAudioClip(music, "/m/quiet.wav", 5000, 6000);
+    t.setAudioClipLevel(quiet, 0.0, true);
+    t.addAudioClip(mutedTrack, "/m/off.wav", 5000, 0);
+    const int v1 = t.addTrack(Track::Kind::Video, "V1");
+    const int hidden = t.addTrack(Track::Kind::Video, "Hidden");
+    t.setTrackAudio(hidden, 0.0, true);
+    t.addVideoClip(v1, "/v/inset.mp4", 4000, 0, 1920, 1080);
+    t.addVideoClip(hidden, "/v/hidden.mp4", 4000, 0, 1920, 1080);
+
+    CHECK(renderjobs::missingSources(t).isEmpty());
+
+    t.setSourcesMissing({{"/c/gone.insv", true},
+                         {"/m/song.wav", true},
+                         {"/m/quiet.wav", true},
+                         {"/m/off.wav", true},
+                         {"/v/inset.mp4", true},
+                         {"/v/hidden.mp4", true}});
+    const renderjobs::MissingSources m = renderjobs::missingSources(t);
+    CHECK(m.main == QStringList{"/c/gone.insv"});
+    // Muted clip, muted track and hidden track aren't exported: not listed.
+    CHECK((m.other == QStringList{"/m/song.wav", "/v/inset.mp4"}));
+}
+
 void testClipJob(const QString &dir)
 {
     Timeline t;
@@ -355,6 +388,7 @@ int main(int argc, char **argv)
     QTemporaryDir tmp;
     CHECK(tmp.isValid());
     testMix();
+    testMissingSources();
     testOverlays();
     testTitles();
     testTransitions();
