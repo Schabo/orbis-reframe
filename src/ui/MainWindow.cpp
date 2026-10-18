@@ -415,6 +415,16 @@ void MainWindow::setupPlayback()
     m_controller->setViewport(m_viewport);
     m_controller->setSourceFactory(m_clipBackend.makeSource);
     m_controller->setStabilizationProvider(m_stabilizers.provider());
+    m_controller->setViewProvider(m_frameViews.provider());
+    // The copy of every clip's reframe path and grade that presented frames
+    // take their view from: refreshed with any change to them or the clips.
+    const auto views = [this] { m_frameViews.update(*m_timeline); };
+    connect(m_timeline, &Timeline::clipReframeChanged, this, views);
+    connect(m_timeline, &Timeline::clipColorChanged, this, views);
+    connect(m_timeline, &Timeline::clipInserted, this, views);
+    connect(m_timeline, &Timeline::clipRemoved, this, views);
+    connect(m_timeline, &Timeline::clipsReordered, this, views);
+    views();
     m_playbackThread = new QThread(this);
     m_controller->moveToThread(m_playbackThread);
     connect(m_playbackThread, &QThread::finished, m_controller, &QObject::deleteLater);
@@ -804,7 +814,10 @@ void MainWindow::connectReframe()
     connect(m_editToolbar, &EditToolbar::reframeArmedChanged, this,
             [this](bool armed) { m_reframeArmed = armed; });
     connect(m_viewport, &EquirectViewportWindow::draggingChanged, this,
-            [this](bool active) { m_viewportDragging = active; });
+            [this](bool active) {
+                m_viewportDragging = active;
+                m_frameViews.setDragging(active);
+            });
     connect(m_viewport, &EquirectViewportWindow::lookCommitted, this, [this] {
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(
@@ -1510,12 +1523,16 @@ void MainWindow::bindActiveClipAt(qint64 timelineMs)
         ensureStabilizers();
         updateSyncStatus();
     }
-    if (!c.reframe.isEmpty() && !m_viewportDragging)
+    // While playing, each presented frame brings its own view and grade
+    // (FrameViewCache): set from the clock here, they would change a frame
+    // apart from the picture at a cut.
+    if (!c.reframe.isEmpty() && !m_viewportDragging && !m_playing)
         applySampledPose(m_lastPositionMs);
     if (!m_viewportDragging)
         syncReframePanel();
     if (clipChanged) {
-        applyColorGrade(c.color); // the viewport shows this clip
+        if (!m_playing)
+            applyColorGrade(c.color); // the viewport shows this clip
         if (!selectedVideoClip()) // the panels follow the playhead unless a clip is selected
             refreshClipPanels();
     }

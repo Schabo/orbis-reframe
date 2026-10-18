@@ -339,7 +339,7 @@ void PlaybackController::presentInsets(qint64 timelineMs, bool playing)
         return;
     m_lastInsets = draws;
     if (m_viewport)
-        m_viewport->SetInsets(std::move(draws));
+        m_viewport->SetFrameInsets(std::move(draws)); // with the picture they go over
 }
 
 void PlaybackController::statsTick(bool playing, size_t queued)
@@ -490,10 +490,12 @@ void PlaybackController::tick()
         if (m_viewport) {
             StabProvider provider;
             OutlineProvider outlineProvider;
+            ViewProvider viewProvider;
             {
                 std::lock_guard<std::mutex> lk(m_stabMx);
                 provider = m_stabProvider;
                 outlineProvider = m_outlineProvider;
+                viewProvider = m_viewProvider;
             }
             float stab[9];
             const auto stabT0 = render::framestats::Clock::now();
@@ -508,12 +510,15 @@ void PlaybackController::tick()
             std::vector<EquirectViewportWindow::RegionOutline> outlines;
             if (outlineProvider)
                 outlineProvider(chosenClipId, chosenSourceMs, outlines);
+            EquirectViewportWindow::FrameView view;
+            if (viewProvider)
+                viewProvider(chosenClipId, chosenSourceMs, view);
             if (chosenLens)
                 m_viewport->SetLensFrame(std::move(chosenLens), haveStab ? stab : nullptr,
-                                         std::move(outlines));
+                                         std::move(outlines), view);
             else
                 m_viewport->SetFrame(chosen.width, chosen.height, std::move(chosen.rgba),
-                                     haveStab ? stab : nullptr, std::move(outlines));
+                                     haveStab ? stab : nullptr, std::move(outlines), view);
         }
     }
 

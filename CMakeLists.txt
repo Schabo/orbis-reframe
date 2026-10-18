@@ -396,6 +396,8 @@ if(FFMPEG_FOUND)
         src/ui/SmokeTest.h
         src/ui/StabilizerCache.cpp
         src/ui/StabilizerCache.h
+        src/ui/FrameViewCache.cpp
+        src/ui/FrameViewCache.h
         src/ui/PlaybackController.cpp
         src/ui/PlaybackController.h
         src/ui/PlaybackControllerDecoder.cpp

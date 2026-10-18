@@ -25,6 +25,7 @@
 #include "ClipBackend.h"              // ClipBackend
 #include "ShortcutHelp.h"             // KeyHelp
 #include "StabilizerCache.h"          // StabilizerCache
+#include "FrameViewCache.h"           // FrameViewCache
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
@@ -478,6 +479,7 @@ private:
     // Native gyro stabilization, per clip; the clip under the playhead and
     // the next one are built ahead (ensureStabilizers()).
     StabilizerCache m_stabilizers;
+    FrameViewCache m_frameViews; // each clip's reframe path and grade, for presented frames
     // Hand every clip's built stabilizer (and its capture-time correction)
     // to playback. Call after the cache or the clips change.
     void publishStabilizer();
