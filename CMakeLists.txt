@@ -103,6 +103,21 @@ if(NOT OpenCV_FOUND)
     message(STATUS "OpenCV not found (sudo apt install libopencv-dev)"
         " -- skipping insv_optical and tools/residual_stab")
 endif()
+# OpenCV 5 moved what we use out of two modules: goodFeaturesToTrack from
+# imgproc into `features`, findHomography / estimateAffinePartial2D from
+# calib3d into `geometry`.
+if(OpenCV_FOUND AND OpenCV_VERSION VERSION_GREATER_EQUAL 5)
+    if(NOT TARGET opencv_features)
+        message(STATUS "OpenCV ${OpenCV_VERSION} without its features module"
+            " -- skipping everything that needs OpenCV")
+        set(OpenCV_FOUND FALSE)
+    endif()
+    set(ORBIS_OPENCV_FEATURES opencv_features)
+    set(ORBIS_OPENCV_GEOMETRY opencv_geometry)
+else()
+    set(ORBIS_OPENCV_FEATURES "")
+    set(ORBIS_OPENCV_GEOMETRY opencv_calib3d)
+endif()
 
 # --- src/insv: .insv trailer parser (calibration + IMU/exposure telemetry), no
 # FFmpeg/Qt dependency — see src/insv/InsvTrailer.h. Its own tiny lib
@@ -322,7 +337,8 @@ if(OpenCV_FOUND)
         src/insv/SyncEstimator.cpp
     )
     target_include_directories(insv_optical PUBLIC src/insv PRIVATE ${OpenCV_INCLUDE_DIRS})
-    target_link_libraries(insv_optical PUBLIC insv PRIVATE opencv_core opencv_imgproc opencv_video)
+    target_link_libraries(insv_optical PUBLIC insv
+        PRIVATE opencv_core opencv_imgproc opencv_video ${ORBIS_OPENCV_FEATURES})
 endif()
 
 if(FFMPEG_FOUND)
@@ -592,14 +608,15 @@ if(FFMPEG_FOUND)
         else()
             find_package(ncnn CONFIG QUIET)
         endif()
-        if(ncnn_FOUND AND TARGET opencv_calib3d AND TARGET opencv_video)
+        if(ncnn_FOUND AND TARGET ${ORBIS_OPENCV_GEOMETRY} AND TARGET opencv_video)
             add_library(privacy_scan STATIC
                 src/privacy/PlateScanner.h src/privacy/PlateScanner.cpp
                 src/privacy/PlateTracking.h src/privacy/PlateTracking.cpp
                 src/privacy/StitchFrameSource.h src/privacy/StitchFrameSource.cpp)
             target_include_directories(privacy_scan PUBLIC src/privacy PRIVATE ${OpenCV_INCLUDE_DIRS})
             target_link_libraries(privacy_scan PUBLIC privacy_data stitch
-                PRIVATE orbis_paths ncnn opencv_core opencv_imgproc opencv_video opencv_calib3d)
+                PRIVATE orbis_paths ncnn opencv_core opencv_imgproc opencv_video
+                ${ORBIS_OPENCV_FEATURES} ${ORBIS_OPENCV_GEOMETRY})
 
 
             # tools/plate_scan: the scan from the command line, plus stills of
