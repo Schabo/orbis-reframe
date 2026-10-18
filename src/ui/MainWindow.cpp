@@ -3048,10 +3048,10 @@ void MainWindow::exportFlatVideo()
     const int nclips = m_timeline->count();
     if (nclips == 0)
         return;
-    // Checked first: without NVENC the export would only fail once FFmpeg
-    // opens the encoder, with its own error text.
-    if (!syscheck::nvencAvailable()) {
-        QMessageBox::warning(this, tr("Export flat video"), syscheck::nvencMissingText());
+    // Checked first: without a hardware encoder the export would only fail
+    // once FFmpeg opens the encoder, with its own error text.
+    if (!syscheck::hwEncoderAvailable()) {
+        QMessageBox::warning(this, tr("Export flat video"), syscheck::hwEncoderMissingText());
         return;
     }
     // Every source looked for on the disk now (the marks follow), not as last
