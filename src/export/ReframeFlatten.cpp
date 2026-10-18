@@ -99,8 +99,8 @@ bool nvencLibraryPresent()
 // ("nvenc" / "vulkan" / "vaapi") restricts the choice to one backend.
 const char* const* encoderNames(bool h265)
 {
-    static const char* const h264[] = {"h264_nvenc", "h264_vulkan", "h264_vaapi"};
-    static const char* const hevc[] = {"hevc_nvenc", "hevc_vulkan", "hevc_vaapi"};
+    static const char* const h264[] = {"h264_nvenc", "h264_vaapi", "h264_vulkan"};
+    static const char* const hevc[] = {"hevc_nvenc", "hevc_vaapi", "hevc_vulkan"};
     static const char* const h264vk[] = {"h264_vulkan"};
     static const char* const hevcvk[] = {"hevc_vulkan"};
     static const char* const h264va[] = {"h264_vaapi"};
