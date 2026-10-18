@@ -16,7 +16,7 @@ each tool is for and when you'd reach for it. The examples use clips from
 | [`stitch_source_smoke`](#stitch_source_smoke) | check that the app's stitch, seek and decode work | GPU |
 | [`playback_bench`](#playback_bench) | time each step of playback and export | GPU |
 | [`view_compare`](#view_compare) | compare the direct view render with the equirect path | GPU |
-| [`reframe_export`](#reframe_export) | export a reframed flat video without the app | GPU, NVENC |
+| [`reframe_export`](#reframe_export) | export a reframed flat video without the app | GPU, hw encoder |
 | [`residual_stab`](#residual_stab) | measure the shake left after gyro stabilization | GPU, OpenCV |
 | [`track_subject`](#track_subject) | try subject tracking and make a follow-cam | GPU, OpenCV contrib |
 | [`plate_scan`](#plate_scan) | scan for number plates, check the blur by eye | GPU, OpenCV, ncnn |
@@ -117,7 +117,9 @@ build/view_compare --at 5000 clip.insv
 ## reframe_export
 
 Exports a trimmed range of a clip as a flat H.264 / H.265 video through
-the app's export path: GPU stitch, reprojection, NVENC. The camera path
+the app's export path: GPU stitch, reprojection, hardware encode. The
+encoder is picked from NVENC, VAAPI and Vulkan video in that order;
+`ORBIS_ENCODER=nvenc|vaapi|vulkan` pins one backend. The camera path
 comes from a `--keys` file (one line per keyframe:
 `time_ms yaw pitch fovY [roll]`, in **radians**), or a fixed `--yaw/--pitch/--fov`.
 It also takes the colour grade and a picture-in-picture inset.
