@@ -314,10 +314,9 @@ void testMissingSources()
                          {"/m/off.wav", true},
                          {"/v/inset.mp4", true},
                          {"/v/hidden.mp4", true}});
-    const renderjobs::MissingSources m = renderjobs::missingSources(t);
-    CHECK(m.main == QStringList{"/c/gone.insv"});
     // Muted clip, muted track and hidden track aren't exported: not listed.
-    CHECK((m.other == QStringList{"/m/song.wav", "/v/inset.mp4"}));
+    CHECK((renderjobs::missingSources(t) ==
+           QStringList{"/c/gone.insv", "/m/song.wav", "/v/inset.mp4"}));
 }
 
 void testClipJob(const QString &dir)

@@ -3056,9 +3056,10 @@ void MainWindow::exportFlatVideo()
     }
     // Every source looked for on the disk now (the marks follow), not as last
     // checked: a missing main clip would only fail partway through, a
-    // missing overlay or sound clip would be left out without a word.
+    // missing overlay or sound clip would be left out without a word. Either
+    // way the user sorts it out first.
     recheckMissingMedia();
-    if (!confirmMissingSources(renderjobs::missingSources(*m_timeline)))
+    if (!checkSourcesPresent(renderjobs::missingSources(*m_timeline)))
         return;
 
     // One output frame rate for the whole timeline: the project's (Project
@@ -3157,32 +3158,18 @@ ReframeExportController::ClipJob MainWindow::exportJobFor(const ClipItem &c) con
     return renderjobs::clipJob(c, *m_timeline, m_privacy);
 }
 
-bool MainWindow::confirmMissingSources(const renderjobs::MissingSources &missing)
+bool MainWindow::checkSourcesPresent(const QStringList &missing)
 {
     if (missing.isEmpty())
         return true;
-    const QString locate = tr("If a file was moved or renamed, find it with Locate file… on it "
-                              "in the Media tab.");
-    if (!missing.main.isEmpty()) {
-        QMessageBox box(QMessageBox::Warning, tr("Export flat video"),
-                        tr("The timeline can't be exported: these clips' source files are "
-                           "missing."),
-                        QMessageBox::Ok, this);
-        box.setInformativeText(missing.main.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
-                               locate);
-        box.exec();
-        return false;
-    }
     QMessageBox box(QMessageBox::Warning, tr("Export flat video"),
-                    tr("These overlay or sound clips' source files are missing. The export "
-                       "would leave them out."),
-                    QMessageBox::Cancel, this);
-    box.setInformativeText(missing.other.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
-                           locate);
-    QPushButton *go = box.addButton(tr("Export without them"), QMessageBox::AcceptRole);
-    box.setDefaultButton(QMessageBox::Cancel);
+                    tr("The timeline can't be exported: these source files are missing."),
+                    QMessageBox::Ok, this);
+    box.setInformativeText(missing.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
+                           tr("If a file was moved or renamed, find it with Locate file… on it "
+                              "in the Media tab. Or remove its clips from the timeline."));
     box.exec();
-    return box.clickedButton() == go;
+    return false;
 }
 
 bool MainWindow::confirmStalePrivacy(const QString &title, const QStringList &warnings)

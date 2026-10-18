@@ -66,15 +66,9 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
 
 // The source files an export needs that are missing (ClipItem::mediaMissing,
 // TrackClip::mediaMissing as last checked), each once, in timeline order:
-// `main` for main-track clips, which can't be left out; `other` for overlay
-// and audio clips, which the export would leave out. Clips on hidden or
+// main-track clips first, then overlay and audio clips. Clips on hidden or
 // muted tracks and muted audio clips aren't exported, so they don't count.
-struct MissingSources {
-    QStringList main;
-    QStringList other;
-    bool isEmpty() const { return main.isEmpty() && other.isEmpty(); }
-};
-MissingSources missingSources(const Timeline &timeline);
+QStringList missingSources(const Timeline &timeline);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),

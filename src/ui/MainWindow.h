@@ -45,9 +45,6 @@ class TrackFiles;
 class ProjectLibraryPage;
 class Timeline;
 struct ClipItem;
-namespace renderjobs {
-struct MissingSources;
-}
 class EquirectViewportWindow;
 class PlaybackController;
 class PlateJobController;
@@ -258,10 +255,9 @@ private:
     // Before an export / screenshot: false when a clip's blur is stale and
     // the user cancels.
     bool confirmStalePrivacy(const QString &title, const QStringList &warnings);
-    // Before an export: false when a main-track clip's file is missing
-    // (refused, with the list), or an overlay / sound clip's is and the
-    // user cancels rather than export without it.
-    bool confirmMissingSources(const renderjobs::MissingSources &missing);
+    // Before an export: false, after saying which, when any of `missing`
+    // (source files) is missing -- the user sorts them out first.
+    bool checkSourcesPresent(const QStringList &missing);
     void startPlateScan();
     // "Blur a plate…": arm / disarm the box select for it; follow the plate
     // in a drawn box (output-rect fractions) from the playhead on.
