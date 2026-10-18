@@ -279,6 +279,7 @@ private:
     bool m_presentAfterSeek = false;
     uint64_t m_shownGen = 0; // seek generation of the frame on screen
     qint64 m_shownMs = 0;    // and its timeline time
+    int m_shownClipId = 0;   // and clip (Segment::clipId): what a transition's layer goes over
     QTimer *m_settleTimer = nullptr; // scrub(): the pointer rested -> settle()
     bool m_buffering = false;
     bool m_reachedEnd = false;

@@ -199,6 +199,7 @@ add_library(orbis_core STATIC
     src/core/ReframeTrack.cpp
     src/core/ReframeTrack.h
     src/core/Title.h
+    src/core/Transition.h
 )
 set_target_properties(orbis_core PROPERTIES AUTOMOC ON)
 target_include_directories(orbis_core PUBLIC src/core src/stitch src/privacy)
@@ -373,6 +374,7 @@ if(FFMPEG_FOUND)
         src/export/FlatVideoReader.cpp
         src/export/InsetCompositor.h
         src/export/InsetCompositor.cpp
+        src/export/PictureSource.h
     )
     # src/core for the Qt-free InsetGeometry.h (the shared inset placement).
     target_include_directories(reframe_flatten PUBLIC src/export src/core)
@@ -382,6 +384,7 @@ if(FFMPEG_FOUND)
     # tests/main_window_test, which builds a MainWindow without a GPU.
     add_library(orbis_app STATIC
         src/ui/MainWindow.cpp
+        src/ui/MainWindowTransitions.cpp
         src/ui/MainWindow.h
         src/ui/ClipBackend.cpp
         src/ui/ClipBackend.h
@@ -404,6 +407,10 @@ if(FFMPEG_FOUND)
         src/ui/TitleRender.h
         src/ui/TitlesPanel.cpp
         src/ui/TitlesPanel.h
+        src/ui/TransitionsPanel.cpp
+        src/ui/TransitionsPanel.h
+        src/ui/ClipViewSource.cpp
+        src/ui/ClipViewSource.h
         src/ui/EditToolbar.cpp
         src/ui/EditToolbar.h
         src/ui/PlayerBar.cpp
@@ -454,6 +461,8 @@ if(FFMPEG_FOUND)
         src/ui/panels/OverlayPanel.h
         src/ui/panels/TitleTextPanel.cpp
         src/ui/panels/TitleTextPanel.h
+        src/ui/panels/TransitionPanel.cpp
+        src/ui/panels/TransitionPanel.h
         src/ui/panels/PrivacyPanel.cpp
         src/ui/panels/PrivacyPanel.h
         src/ui/PlateScanCache.cpp
@@ -808,6 +817,7 @@ if(TARGET insv_demux AND Qt6Test_FOUND)
         src/ui/panels/ColourPanel.cpp src/ui/panels/ColourPanel.h
         src/ui/panels/OverlayPanel.cpp src/ui/panels/OverlayPanel.h
         src/ui/panels/TitleTextPanel.cpp src/ui/panels/TitleTextPanel.h
+        src/ui/panels/TransitionPanel.cpp src/ui/panels/TransitionPanel.h
         src/ui/panels/PrivacyPanel.cpp src/ui/panels/PrivacyPanel.h
         src/ui/panels/MediaInfoPanel.cpp src/ui/panels/MediaInfoPanel.h
         src/ui/ProjectSettingsDialog.cpp src/ui/ProjectSettingsDialog.h

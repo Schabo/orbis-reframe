@@ -328,7 +328,7 @@ void PlaybackController::setClockHeld(bool held)
 
 void PlaybackController::presentInsets(qint64 timelineMs, bool playing)
 {
-    std::vector<EquirectViewportWindow::InsetDraw> draws = m_insets.frameFor(timelineMs, playing);
+    std::vector<EquirectViewportWindow::InsetDraw> draws = m_insets.frameFor(timelineMs, playing, m_shownClipId);
     auto same = [](const EquirectViewportWindow::InsetDraw &a,
                    const EquirectViewportWindow::InsetDraw &b) {
         return a.clipId == b.clipId && a.frameKey == b.frameKey && a.look == b.look &&
@@ -451,6 +451,7 @@ void PlaybackController::tick()
                 chosenClipId = m_queue.front().clipId;
                 m_shownGen = m_queue.front().gen;
                 m_shownMs = m_queue.front().frame.timestamp_ms;
+                m_shownClipId = m_queue.front().clipId;
                 m_queue.pop_front();
                 haveChosen = true;
             }
@@ -474,6 +475,7 @@ void PlaybackController::tick()
                 m_queue.erase(m_queue.begin(), std::next(it));
                 m_shownGen = gen;
                 m_shownMs = chosen.timestamp_ms;
+                m_shownClipId = chosenClipId;
                 haveChosen = true;
             }
         }
