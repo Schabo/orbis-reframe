@@ -14,13 +14,23 @@
 
 namespace exportpipe {
 
-// True when one of the hardware encoders FlattenWriter tries -- NVENC,
-// Vulkan video or VAAPI -- exists in this FFmpeg and has a device it can
-// run on. The UI gates the export on this.
+// The hardware encoders FlattenWriter tries -- NVENC, VAAPI, Vulkan video --
+// are probed once per run (a throwaway open of each until one works), on
+// the first call to any of these. The probe can take a few hundred
+// milliseconds (Vulkan device creation), so the app starts it on a thread
+// of its own at startup; the others then wait for it to finish.
+void probeHwEncodersInBackground();
+// True when one of them can encode on this machine. The UI gates the export
+// on this.
 bool hwEncoderAvailable();
-// The encoder FlattenWriter would pick for the codec ("hevc_vulkan"),
+// The encoder FlattenWriter would pick for the codec ("hevc_vaapi"),
 // nullptr when none is usable. For status display.
 const char* hwEncoderName(bool h265);
+// Why the encoders before the picked one (all of them, when none is) can't
+// be used: "hevc_nvenc: libnvidia-encode.so.1 not found; hevc_vaapi: …",
+// plus the ORBIS_ENCODER restriction if set. Empty when the first one
+// works. For the diagnostics.
+std::string hwEncoderReport(bool h265);
 
 struct ReframeView;
 

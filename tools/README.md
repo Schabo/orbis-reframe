@@ -118,8 +118,12 @@ build/view_compare --at 5000 clip.insv
 
 Exports a trimmed range of a clip as a flat H.264 / H.265 video through
 the app's export path: GPU stitch, reprojection, hardware encode. The
-encoder is picked from NVENC, VAAPI and Vulkan video in that order;
-`ORBIS_ENCODER=nvenc|vaapi|vulkan` pins one backend. The camera path
+encoder is picked from NVENC, VAAPI and Vulkan video in that order (the
+first one a throwaway open succeeds with; Vulkan video is skipped on
+NVIDIA); `ORBIS_ENCODER=nvenc|vaapi|vulkan` pins one backend, any other
+value is reported and ignored. With `ORBIS_VERBOSE=1` it prints which
+encoder was picked and why the ones before it can't be used; the "no usable
+hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
 `time_ms yaw pitch fovY [roll]`, in **radians**), or a fixed `--yaw/--pitch/--fov`.
 It also takes the colour grade and a picture-in-picture inset.

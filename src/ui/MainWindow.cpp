@@ -3051,7 +3051,11 @@ void MainWindow::exportFlatVideo()
     // Checked first: without a hardware encoder the export would only fail
     // once FFmpeg opens the encoder, with its own error text.
     if (!syscheck::hwEncoderAvailable()) {
-        QMessageBox::warning(this, tr("Export flat video"), syscheck::hwEncoderMissingText());
+        QMessageBox box(QMessageBox::Warning, tr("Export flat video"),
+                        syscheck::hwEncoderMissingText(), QMessageBox::Ok, this);
+        // What each encoder lacks, for a bug report.
+        box.setDetailedText(syscheck::hwEncoderReport());
+        box.exec();
         return;
     }
     // Every source looked for on the disk now (the marks follow), not as last

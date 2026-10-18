@@ -18,6 +18,7 @@
 #include "../core/DataPaths.h"
 #include "../core/Log.h"
 #include "../core/Version.h"
+#include "../export/ReframeFlatten.h"
 
 #ifdef INSV_HAVE_VOICE
 #include <VoiceIsolator.h>
@@ -179,6 +180,11 @@ int main(int argc, char *argv[])
         QMessageBox::critical(nullptr, QStringLiteral("orbis-reframe"), text);
         return 1;
     }
+
+    // The export encoder probe (a throwaway encoder open per backend, a
+    // Vulkan / VAAPI device each on AMD and Intel) on its own thread, so it
+    // doesn't hold up the window; the startup warning waits for it.
+    exportpipe::probeHwEncodersInBackground();
 
     MainWindow window(&vulkanInstance);
     window.resize(1280, 760);

@@ -338,8 +338,9 @@ If none of these help, please [report the
 problem](https://github.com/Schabo/orbis-reframe/issues) with the terminal
 output and the diagnostics from **Help ▸ About orbis-reframe**. Click **Copy
 diagnostics** and paste them into the report. They list the version, your
-Linux distribution, graphics card and driver, and whether video decoding,
-export and the AI features can run on your computer. If the window doesn't
+Linux distribution, graphics card and driver, whether video decoding and
+the AI features can run on your computer, and which video encoder export
+uses (with why the others can't be used). If the window doesn't
 open at all, include the output of `orbis-reframe --version`, your
 distribution, and your graphics card and driver (`vulkaninfo --summary`)
 instead.
