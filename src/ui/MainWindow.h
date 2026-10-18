@@ -95,6 +95,9 @@ public:
     ~MainWindow() override;
 
     EquirectViewportWindow *viewport() const { return m_viewport; }
+    // The app's own full-screen view (setFullScreenView), whatever the
+    // platform reports as the window's state.
+    bool fullScreenView() const { return m_fullScreen; }
 
     // Open a path given on the command line: a *.orp project file loads the
     // project, anything else is treated as a loose source clip.

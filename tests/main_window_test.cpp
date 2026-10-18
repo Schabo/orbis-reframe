@@ -901,11 +901,13 @@ void testFullScreen(const Ctx &c)
     auto *timelinePane = find<QWidget>(c.w, "timelinePane");
     if (!timelinePane)
         return;
+    // The app's state, not isFullScreen(): Qt 6.12's offscreen platform
+    // doesn't report the window going full screen.
     key(c, Qt::Key_F11);
-    CHECK(c.w->isFullScreen());
+    CHECK(c.w->fullScreenView());
     CHECK(!timelinePane->isVisible());
     key(c, Qt::Key_Escape);
-    CHECK(!c.w->isFullScreen());
+    CHECK(!c.w->fullScreenView());
     CHECK(timelinePane->isVisible());
 }
 
