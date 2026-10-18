@@ -422,7 +422,7 @@ bool NativeStitchSource::GpuViewAvailable() const {
 
 FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const float pose[4],
                                             const float stab[9],
-                                            const float colorGrade[4]) {
+                                            const color::Grade* colorGrade) {
     return ReadFlatFrame(
         outW, outH,
         [pose, stab](int64_t, float p[4], float s[9]) {
@@ -435,7 +435,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const float pose
 }
 
 FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
-                                            const float colorGrade[4]) {
+                                            const color::Grade* colorGrade) {
     if (!GpuReframeAvailable()) {
         last_error_ = "ReadFlatFrame without the all-GPU reproject path";
         return FlatFrame{};
@@ -455,7 +455,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
 }
 
 Frame NativeStitchSource::ReadViewFrame(int outW, int outH, const FramePoseFn& perFrame,
-                                        const float colorGrade[4]) {
+                                        const color::Grade* colorGrade) {
     if (!GpuViewAvailable()) {
         last_error_ = "ReadViewFrame without the fused GPU view path";
         return Frame{};
@@ -470,7 +470,7 @@ Frame NativeStitchSource::ReadViewFrame(int outW, int outH, const FramePoseFn& p
 }
 
 bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFrame,
-                                  const float colorGrade[4], FlatPath path,
+                                  const color::Grade* colorGrade, FlatPath path,
                                   std::vector<uint8_t>& out, int64_t& pts_ms) {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     AVFrame* f0 = nullptr;

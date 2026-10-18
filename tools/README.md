@@ -126,14 +126,18 @@ encoder was picked and why the ones before it can't be used; the "no usable
 hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
 `time_ms yaw pitch fovY [roll]`, in **radians**), or a fixed `--yaw/--pitch/--fov`.
-It also takes the colour grade and a picture-in-picture inset.
+It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
+`--lut-strength PCT`) and a picture-in-picture inset.
 
 **When:** testing export without the app, e.g. to script many renders or
-to replay keys from `track_subject`.
+to replay keys from `track_subject`. With `--lut`, to check the GPU's LUT
+against FFmpeg's own `lut3d` filter on an export without it (both GPU
+paths: set `INSV_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
 
 ```sh
 build/reframe_export clip.insv out.mp4 --trim-in 10000 --trim-out 20000 --yaw 30 --fov 80
 build/reframe_export clip.insv out.mp4 --keys keys.txt --codec h264
+build/reframe_export clip.insv lut.mp4 --trim-in 1000 --trim-out 2000 --lut X5_I-Log_To_Rec.709_V1.0.cube
 ```
 
 ## residual_stab

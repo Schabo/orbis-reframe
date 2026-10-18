@@ -30,7 +30,7 @@ or some of its media files are missing.
 | Start a new project | **New project…** (`Ctrl+N`). |
 | Open a project file that isn't listed | **Open other…** (`Ctrl+O`). |
 | Rename a project | Right-click its card ▸ **Rename…**, or select it and press `F2`. Both the project's folder and its project file get the new name. |
-| Copy a project | Right-click its card ▸ **Duplicate…** and give the copy a name (`<name> copy` is suggested). The copy gets its own folder beside the original, with the project file and its `cache/` (privacy-blur scans and waveforms), but not its exports or screenshots. The media files aren't copied: both projects use the same clips. |
+| Copy a project | Right-click its card ▸ **Duplicate…** and give the copy a name (`<name> copy` is suggested). The copy gets its own folder beside the original, with the project file, its `cache/` (privacy-blur scans and waveforms) and its `luts/`, but not its exports or screenshots. The media files aren't copied: both projects use the same clips. |
 | See a project's files | Right-click its card ▸ **Show in file manager**. |
 | Take a project off the list | Right-click its card ▸ **Remove from list**, or select it and press `Delete`. Its files are not deleted. |
 | Come back to the library | **File ▸ Project library…**. It closes the open project, asking first if there are unsaved changes. |
@@ -55,6 +55,7 @@ Summer trip/
   cache/            privacy-blur scans, audio waveforms, media thumbnails
   exports/          where exports are saved by default
   screenshots/      where screenshots are saved by default
+  luts/             the clips' colour LUTs, copied in when loaded (see Colour)
 ```
 
 Deleting the folder deletes the whole project, scans included. The video
@@ -64,7 +65,7 @@ and audio files you add stay where they are (see
 | To | Do |
 |---|---|
 | Save the project | **File ▸ Save project** (`Ctrl+S`). |
-| Save a copy in a new project folder | **File ▸ Save project as…** (`Ctrl+Shift+S`): give the copy a name and location. From then on, `Ctrl+S` saves to the copy. Its privacy-blur scans are copied along. |
+| Save a copy in a new project folder | **File ▸ Save project as…** (`Ctrl+Shift+S`): give the copy a name and location. From then on, `Ctrl+S` saves to the copy. Its privacy-blur scans and the clips' LUTs are copied along. |
 | Open a project file from anywhere | **File ▸ Open project…** (`Ctrl+O`), or give the `.orp` file on the command line: `orbis-reframe my-ride.orp`. |
 
 The window's title shows the project's file name, with a `*` while there

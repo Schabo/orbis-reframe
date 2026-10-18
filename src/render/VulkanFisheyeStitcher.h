@@ -3,6 +3,7 @@
 #include <FisheyeProjection.h> // insv::StitchGpuParams
 #include <SeamDepth.h>         // insv::SeamCosts
 
+#include "ColorLut.h" // color::Grade
 #include "LensFrame.h"
 
 #include <vulkan/vulkan.h>
@@ -109,13 +110,12 @@ public:
     // Requires reframeReady(). Same semaphore handshake as stitchVk().
     // `stab` (row-major 3x3, nullptr => identity) is the frame's gyro
     // de-rotation in the sphere frame, applied after `pose`. `colorGrade`
-    // ({exposureEv, contrast%, saturation%, temperature%}, nullptr => neutral)
-    // is the Colour panel grade, applied to the equirect sample before it's
+    // (nullptr => neutral) is the Colour panel grade, its LUT included, applied to the equirect sample before it's
     // reprojected.
     bool stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                             const insv::StitchGpuParams& params, int eqW, int eqH, int outW, int outH,
                             const float pose[4], const float stab[9],
-                            const float colorGrade[4], std::vector<uint8_t>& outNv12,
+                            const color::Grade* colorGrade, std::vector<uint8_t>& outNv12,
                             VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
     // Depth-aware seam: measure the seam cost volume of a decoder-owned NV12
@@ -146,7 +146,7 @@ public:
     bool renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                       const insv::StitchGpuParams& params, int measureW, int measureH, int outW,
                       int outH, const float pose[4], const float stab[9],
-                      const float colorGrade[4], ViewFormat fmt, std::vector<uint8_t>& out,
+                      const color::Grade* colorGrade, ViewFormat fmt, std::vector<uint8_t>& out,
                       VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
     // Several RGBA views of one pair in one submission, into one
@@ -208,7 +208,7 @@ private:
     bool renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
                          const insv::StitchGpuParams& params, int measureW, int measureH,
                          int canvasW, int canvasH, const std::vector<ViewRect>& views,
-                         const float stab[9], const float colorGrade[4], ViewFormat fmt,
+                         const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
                          const uint32_t* clear, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
                          VulkanLensOutcome* r1, std::string& err);
 

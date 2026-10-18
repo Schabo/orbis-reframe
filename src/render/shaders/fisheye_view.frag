@@ -49,6 +49,7 @@ layout(push_constant) uniform PushConstants {
     // 12 bytes of std140 padding (mat3 aligns at offset 32).
     mat3 stab;       // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
+    vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
     vec4 gains;      // x, y: photometric gain of lens 0 / 1
 } pc;
 
@@ -71,5 +72,5 @@ void main() {
 
     vec3 dir = mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
     vec3 rgb = blurredLenses(dir, pc.gains.x, pc.gains.y) / 255.0;
-    outColor = vec4(gradeColor(rgb, pc.colorGrade, 1.0), 1.0);
+    outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
 }

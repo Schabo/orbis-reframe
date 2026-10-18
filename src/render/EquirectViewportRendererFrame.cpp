@@ -443,6 +443,15 @@ void EquirectViewportRenderer::startNextFrame()
         slot.key = d.frameKey;
     }
 
+    // The grades' LUTs: uploaded on first use (their own submissions), so
+    // before the render pass is recorded.
+    const color::Grade grade = m_window->CurrentColorGrade();
+    const VkDescriptorSet lutSet = m_luts.setFor(grade.hasLut() ? grade.lut : nullptr);
+    VkDescriptorSet insetLutSets[EquirectViewportWindow::kMaxInsets] = {};
+    for (size_t i = 0; i < insets.size(); ++i)
+        insetLutSets[i] =
+            m_luts.setFor(insets[i].colorGrade.hasLut() ? insets[i].colorGrade.lut : nullptr);
+
     const QSize size = m_window->swapChainImageSize();
 
     // One clear value per attachment the default render pass clears: colour,
@@ -471,13 +480,14 @@ void EquirectViewportRenderer::startNextFrame()
         imp || (m_pipeline != VK_NULL_HANDLE && m_descriptorSet != VK_NULL_HANDLE);
     if (imp) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lensPipeline);
+        const VkDescriptorSet sets[2] = {m_lensSets[frameSlot], lutSet};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            m_lensPipelineLayout, 0, 1, &m_lensSets[frameSlot], 0,
-                                            nullptr);
+                                            m_lensPipelineLayout, 0, 2, sets, 0, nullptr);
     } else if (drawPicture) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+        const VkDescriptorSet sets[2] = {m_descriptorSet, lutSet};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
+                                            m_pipelineLayout, 0, 2, sets, 0, nullptr);
     }
 
     // Letterbox / pillarbox the picture to the project's output aspect: the
@@ -527,7 +537,9 @@ void EquirectViewportRenderer::startNextFrame()
         pc.stab[col * 4 + 2] = stabRm[2 * 3 + col];
         pc.stab[col * 4 + 3] = 0.0f;
     }
-    m_window->ColorGradeArr(pc.colorGrade);
+    std::copy(grade.adjust.begin(), grade.adjust.end(), pc.colorGrade);
+    render::VulkanLutStore::pushValues(grade.hasLut() ? grade.lut.get() : nullptr, grade.lutMix,
+                                       pc.colorLut);
     if (imp) {
         LensPushConstants lpc{};
         lpc.view = pc;
@@ -604,8 +616,9 @@ void EquirectViewportRenderer::startNextFrame()
                                           m_insetPipeline);
             insetBound = true;
         }
+        const VkDescriptorSet sets[2] = {slot.set, insetLutSets[i]};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            m_insetPipelineLayout, 0, 1, &slot.set, 0, nullptr);
+                                            m_insetPipelineLayout, 0, 2, sets, 0, nullptr);
         InsetPushConstants ipc{};
         ipc.rect[0] = float(r.x);
         ipc.rect[1] = float(r.y);
@@ -619,7 +632,9 @@ void EquirectViewportRenderer::startNextFrame()
         ipc.borderColor[1] = ((d.frame.borderRgb >> 8) & 0xff) / 255.0f;
         ipc.borderColor[2] = (d.frame.borderRgb & 0xff) / 255.0f;
         ipc.borderColor[3] = d.look.opacity;
-        std::copy(d.colorGrade.begin(), d.colorGrade.end(), ipc.grade);
+        std::copy(d.colorGrade.adjust.begin(), d.colorGrade.adjust.end(), ipc.grade);
+        render::VulkanLutStore::pushValues(d.colorGrade.hasLut() ? d.colorGrade.lut.get() : nullptr,
+                                           d.colorGrade.lutMix, ipc.lut);
         vkCmdPushConstants(commandBuffer, m_insetPipelineLayout,
                                        VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ipc), &ipc);
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);

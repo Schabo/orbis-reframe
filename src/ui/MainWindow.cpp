@@ -903,52 +903,6 @@ void MainWindow::connectReframe()
     });
 }
 
-void MainWindow::connectColour()
-{
-    // Colour panel: an edit writes the grade onto the clip under the playhead;
-    // clipColorChanged pushes it straight into the viewport if it's the
-    // clip currently showing -- no re-stitch, applied at reprojection time.
-    connect(m_colourPanel, &ColourPanel::gradeEdited, this, [this](const ColorGrade &g) {
-        if (const int id = editClipId())
-            m_timeline->setClipColor(id, g);
-    });
-    // Copy / paste a grade between clips: the panel's buttons act on its clip,
-    // the timeline's right-click menu on the clicked one (or every clip --
-    // one undo step, the edits land in one burst).
-    const auto copyGrade = [this](int clipId) {
-        const ClipItem *c = m_timeline->clipById(clipId);
-        if (!c)
-            return;
-        m_copiedGrade = c->color;
-        m_colourPanel->setCanPaste(true);
-        m_timelineWidget->setCanPasteGrade(true);
-    };
-    const auto pasteGrade = [this](int clipId) {
-        if (m_copiedGrade && clipId)
-            m_timeline->setClipColor(clipId, *m_copiedGrade);
-    };
-    connect(m_colourPanel, &ColourPanel::copyRequested, this,
-            [this, copyGrade] { copyGrade(editClipId()); });
-    connect(m_colourPanel, &ColourPanel::pasteRequested, this,
-            [this, pasteGrade] { pasteGrade(editClipId()); });
-    connect(m_timelineWidget, &TimelineWidget::gradeCopyRequested, this, copyGrade);
-    connect(m_timelineWidget, &TimelineWidget::gradePasteRequested, this, pasteGrade);
-    connect(m_timelineWidget, &TimelineWidget::gradePasteAllRequested, this, [this] {
-        if (!m_copiedGrade)
-            return;
-        for (int i = 0; i < m_timeline->count(); ++i)
-            m_timeline->setClipColor(m_timeline->clipAt(i).id, *m_copiedGrade);
-    });
-    connect(m_timeline, &Timeline::clipColorChanged, this, [this](int id, ColorGrade grade) {
-        if (const ClipItem *c = m_timeline->clipById(id); c && c->flat)
-            pushInsetsToController(); // its picture is a layer, graded there
-        if (id == m_clipId) // on screen
-            applyColorGrade(grade);
-        if (id == editClipId()) // in the panel
-            m_colourPanel->setState(grade);
-    });
-}
-
 void MainWindow::connectMeasurements()
 {
     // A measured sync fine-tune for the clip under the playhead: rebuild the
@@ -1494,11 +1448,6 @@ void MainWindow::syncReframePanel()
                                                : keytrack::Ease::Linear);
 }
 
-void MainWindow::applyColorGrade(const ColorGrade &grade)
-{
-    m_viewport->SetColorGrade(grade.packed().data());
-}
-
 void MainWindow::bindActiveClipAt(qint64 timelineMs)
 {
     const Timeline::Point pt = m_timeline->timelineToClip(timelineMs);
@@ -1577,7 +1526,7 @@ void MainWindow::refreshClipPanels()
         return;
     }
     syncMediaInfoPanel(*c);
-    m_colourPanel->setState(c->color);
+    syncColourPanel(c->color);
     m_reframePanel->setFlatClip(c->flat, c->fit == ClipItem::Fit::Fill);
     syncStabilizationPanel();
     syncStitchingPanel();
@@ -2844,7 +2793,7 @@ void MainWindow::openClip(const QString &clipPath)
         refreshAudioPanel();
         syncMediaInfoPanel(*c);
         applyColorGrade(c->color);
-        m_colourPanel->setState(c->color);
+        syncColourPanel(c->color);
         syncStabilizationPanel();
         syncStitchingPanel();
         syncPrivacyPanel();
@@ -2909,7 +2858,7 @@ void MainWindow::openProject(const QString &projectPath)
     refreshAudioPanel();
     syncMediaInfoPanel(first);
     applyColorGrade(first.color);
-    m_colourPanel->setState(first.color);
+    syncColourPanel(first.color);
     syncStabilizationPanel();
     syncStitchingPanel();
     syncPrivacyPanel();

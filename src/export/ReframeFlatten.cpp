@@ -643,7 +643,7 @@ bool FlattenWriter::encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const R
 }
 
 bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[4],
-                                     const float stab[9], const float colorGrade[4],
+                                     const float stab[9], const color::Grade* colorGrade,
                                      std::string& err)
 {
     if (!d->opened) {
@@ -663,10 +663,8 @@ bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, co
         for (int i = 0; i < 9; ++i)
             view.stab[i] = stab[i];
     }
-    if (colorGrade) {
-        for (int i = 0; i < 4; ++i)
-            view.colorGrade[i] = colorGrade[i];
-    }
+    if (colorGrade)
+        view.colorGrade = *colorGrade;
     return encodeFrame(eqRgba, eqW, eqH, view, err);
 }
 

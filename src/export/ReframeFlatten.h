@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <ColorLut.h> // color::Grade
 #include <functional>
 #include <memory>
 #include <string>
@@ -70,10 +71,10 @@ public:
     // equirect frames in-process (stitch::NativeStitchSource) with no
     // intermediate file. `stab` (row-major 3x3, nullptr => identity) is the
     // frame's gyro de-rotation in the sphere frame, applied after `pose`.
-    // `colorGrade` ({exposureEv, contrast%, saturation%, temperature%}, nullptr
-    // => neutral) is the Colour panel grade. False (with `err`) on failure.
+    // `colorGrade` (nullptr => neutral) is the Colour panel grade, its LUT
+    // included. False (with `err`) on failure.
     bool addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[4],
-                          const float stab[9], const float colorGrade[4],
+                          const float stab[9], const color::Grade* colorGrade,
                           std::string& err);
 
     // Encode one already-reprojected tightly-packed NV12 frame (Y plane w*h,

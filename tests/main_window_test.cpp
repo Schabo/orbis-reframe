@@ -713,7 +713,7 @@ void testFlatMainClip(const Ctx &c)
     c.timeline->setClipColor(id, grey);
     CHECK(waitFor([&] {
         for (const auto &d : c.w->viewport()->Insets())
-            if (d.clipId == id && d.colorGrade == grey.packed())
+            if (d.clipId == id && d.colorGrade.adjust == grey.packed())
                 return true;
         return false;
     }));

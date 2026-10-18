@@ -2,6 +2,7 @@
 
 #include "IStitchSource.h"
 
+#include <ColorLut.h>          // color::Grade
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
 #include <SeamDepth.h>         // insv::SeamDepthTracker (value member below)
 
@@ -98,14 +99,14 @@ public:
     // equirect + reproject. `pose` is ({yaw,pitch,roll,fovY} radians; nullptr
     // => forward view). `stab` (row-major 3x3, nullptr => identity) is the
     // frame's gyro de-rotation in the sphere frame, applied after `pose` like
-    // the viewport. `colorGrade` ({exposureEv, contrast%, saturation%,
-    // temperature%}, nullptr => neutral) is the Colour panel grade. outW must
+    // the viewport. `colorGrade` (nullptr => neutral) is the Colour
+    // panel grade, its LUT included. outW must
     // be a multiple of 4, outH a multiple of 2. Advances the playhead like
     // ReadFrame(). Returns an empty FlatFrame (nv12.empty()) at end-of-clip;
     // also on error, with GetLastError() set. Requires GpuReframeAvailable().
     FlatFrame ReadFlatFrame(int outW, int outH, const float pose[4],
                             const float stab[9] = nullptr,
-                            const float colorGrade[4] = nullptr);
+                            const color::Grade* colorGrade = nullptr);
 
     // As above, but the pose and stab matrix come from `perFrame(ptsMs, pose,
     // stab)`, called once the next frame is decoded and its source time is
@@ -117,14 +118,14 @@ public:
     // prefilled with a forward view and `stab` with identity.
     using FramePoseFn = std::function<void(int64_t ptsMs, float pose[4], float stab[9])>;
     FlatFrame ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
-                            const float colorGrade[4] = nullptr);
+                            const color::Grade* colorGrade = nullptr);
 
     // The fused pass with RGBA8 output (Frame::rgba, outW x outH): the view
     // as a picture rather than an encoder input -- stills, and the viewport
     // later on. Same pose / stab / grade handling as ReadFlatFrame. Requires
     // GpuViewAvailable(); empty Frame at end-of-clip or on error.
     Frame ReadViewFrame(int outW, int outH, const FramePoseFn& perFrame,
-                        const float colorGrade[4] = nullptr);
+                        const color::Grade* colorGrade = nullptr);
 
     // Several views of one frame, rendered when the caller is ready (the
     // privacy blur's plate scan: the detector's tiles first, the quad
@@ -217,7 +218,7 @@ private:
     // render the view into `out` (NV12 via the equirect, NV12 fused, or RGBA
     // fused). False with last_error_ set on error; false with it empty at EOS.
     enum class FlatPath { ViaEquirect, FusedNv12, FusedRgba };
-    bool readView(int outW, int outH, const FramePoseFn& perFrame, const float colorGrade[4],
+    bool readView(int outW, int outH, const FramePoseFn& perFrame, const color::Grade* colorGrade,
                   FlatPath path, std::vector<uint8_t>& out, int64_t& pts_ms);
 
     // Stage 2: GPU-resident decode -> GPU stitch, nothing on the CPU. Used when

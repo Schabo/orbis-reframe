@@ -4,7 +4,8 @@
 // body too), what each section says it applies to, the tab keys' toggle,
 // the Stitching section keeping the View menu's part of the stitch config,
 // the Overlay tab's layer row, the Easing field of the Reframe and Overlay
-// sections, and the Project settings dialog. No GPU, no media.
+// sections, the Colour section's LUT picker, and the Project settings
+// dialog. No GPU, no media.
 // Exit code is the failure count. ORBIS_SETTINGS_SHOT=<path> saves a
 // picture of the sidebar.
 
@@ -510,6 +511,57 @@ void testTransitionTab(SettingsSidebar &bar)
     CHECK(type && !type->isEnabled());
 }
 
+// The Colour section's LUT: the picker lists None, the LUTs it's given and
+// Load LUT...; picking one edits the grade, Load LUT... asks for a file and
+// keeps the clip's; Strength only with a LUT; Reset drops it.
+void testColourLut(SettingsSidebar &bar)
+{
+    ColourPanel *colour = bar.colour();
+    auto *lut = find<QComboBox>(colour, "colourLut");
+    auto *strength = find<QSlider>(colour, "colourLutStrength");
+    auto *problem = find<QLabel>(colour, "colourLutProblem");
+    if (!lut || !strength || !problem)
+        return;
+    colour->setLuts({"/p/luts/X5 Log.cube", "/p/luts/Teal.cube"});
+    colour->setState(ColorGrade{});
+    CHECK(lut->count() == 5); // None, two, separator, Load LUT...
+    CHECK(lut->currentIndex() == 0 && !strength->isEnabled());
+    CHECK(lut->itemText(1) == "X5 Log");
+
+    QSignalSpy edited(colour, &ColourPanel::gradeEdited);
+    QSignalSpy load(colour, &ColourPanel::loadLutRequested);
+    lut->setCurrentIndex(1);
+    emit lut->activated(1);
+    CHECK(!edited.isEmpty());
+    CHECK(edited.last().at(0).value<ColorGrade>().lut == "/p/luts/X5 Log.cube");
+    CHECK(strength->isEnabled());
+
+    // A clip's LUT not in the list is shown anyway; Load LUT... keeps it.
+    ColorGrade g;
+    g.lut = "/elsewhere/Film.cube";
+    g.lutStrength = 60.0f;
+    colour->setState(g);
+    CHECK(lut->currentText() == "Film" && strength->value() == 60);
+    edited.clear();
+    lut->setCurrentIndex(lut->count() - 1);
+    emit lut->activated(lut->count() - 1);
+    CHECK(load.size() == 1 && edited.isEmpty());
+    CHECK(lut->currentData().toString() == "/elsewhere/Film.cube");
+
+    colour->setLutProblem("Film.cube isn't applied: the file is missing.");
+    CHECK(!problem->isHidden());
+    colour->setLutProblem({});
+    CHECK(problem->isHidden());
+
+    auto *reset = find<QPushButton>(colour, "colourReset");
+    CHECK(reset && reset->isEnabled());
+    edited.clear();
+    if (reset)
+        reset->click();
+    CHECK(!edited.isEmpty() && edited.last().at(0).value<ColorGrade>().lut.isEmpty());
+    colour->setState(ColorGrade{});
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -538,6 +590,7 @@ int main(int argc, char **argv)
     testTitleTab(bar);
     testTrackStatus(bar);
     testTransitionTab(bar);
+    testColourLut(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

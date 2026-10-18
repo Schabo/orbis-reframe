@@ -424,6 +424,7 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         for (auto& [img, view] : d->nv12Views)
             vkDestroyImageView(d->device, view, nullptr);
         d->nv12Views.clear();
+        d->luts.destroy();
         if (d->pipeline) vkDestroyPipeline(d->device, d->pipeline, nullptr);
         if (d->pipeLayout) vkDestroyPipelineLayout(d->device, d->pipeLayout, nullptr);
         if (d->descPool) vkDestroyDescriptorPool(d->device, d->descPool, nullptr);
@@ -726,6 +727,25 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
         return false;
     }
 
+    // The grade's LUTs, for the reproject and view passes below. The queue
+    // lock is set after initAdopt(), so look it up at each upload.
+    VulkanLutStore::Device lutDev;
+    lutDev.phys = d->phys;
+    lutDev.device = d->device;
+    lutDev.queue = d->queue;
+    lutDev.queueFamily = d->queueFamily;
+    lutDev.lockQueue = [impl = d] {
+        if (impl->lockQueue)
+            impl->lockQueue();
+    };
+    lutDev.unlockQueue = [impl = d] {
+        if (impl->unlockQueue)
+            impl->unlockQueue();
+    };
+    lutDev.waitIdle = [impl = d] { impl->idleBeforeFree(); };
+    if (!d->luts.init(lutDev, VK_SHADER_STAGE_COMPUTE_BIT, err))
+        return false;
+
     // The export reproject pass is optional -- a build without the SPV, or a
     // pipeline-creation failure, just leaves reframeReady() false and callers
     // fall back to the CPU reproject.
@@ -780,8 +800,9 @@ bool VulkanFisheyeStitcher::buildReframePipeline(std::string& err)
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ReframePush)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    pli.setLayoutCount = 1;
-    pli.pSetLayouts = &d->rfSetLayout;
+    const VkDescriptorSetLayout sets[2] = {d->rfSetLayout, d->luts.layout()};
+    pli.setLayoutCount = 2;
+    pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
     if (vkCreatePipelineLayout(d->device, &pli, nullptr, &d->rfPipeLayout) != VK_SUCCESS) {
@@ -830,8 +851,9 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ViewPush)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    pli.setLayoutCount = 1;
-    pli.pSetLayouts = &d->setLayout;
+    const VkDescriptorSetLayout sets[2] = {d->setLayout, d->luts.layout()};
+    pli.setLayoutCount = 2;
+    pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
     if (vkCreatePipelineLayout(d->device, &pli, nullptr, &d->vwPipeLayout) != VK_SUCCESS) {

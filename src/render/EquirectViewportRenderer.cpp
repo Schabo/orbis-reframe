@@ -237,8 +237,8 @@ VkPipeline EquirectViewportRenderer::makePipeline(render::shaders::Spirv frag, V
 
 void EquirectViewportRenderer::createPipeline()
 {
-    if (m_descriptorSetLayout == VK_NULL_HANDLE)
-        return; // logged by createDescriptorSet; no equirect preview
+    if (m_descriptorSetLayout == VK_NULL_HANDLE || !m_luts.ready())
+        return; // logged by createDescriptorSet / initResources; no equirect preview
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
@@ -246,8 +246,9 @@ void EquirectViewportRenderer::createPipeline()
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = 1;
-    layoutInfo.pSetLayouts = &m_descriptorSetLayout;
+    const VkDescriptorSetLayout sets[2] = {m_descriptorSetLayout, m_luts.layout()};
+    layoutInfo.setLayoutCount = 2;
+    layoutInfo.pSetLayouts = sets;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushConstantRange;
     vkCreatePipelineLayout(m_window->device(), &layoutInfo, nullptr, &m_pipelineLayout);
@@ -265,6 +266,8 @@ void EquirectViewportRenderer::createLensResources()
     QVulkanInstance *inst = m_window->vulkanInstance();
     VkDevice device = m_window->device();
 
+    if (!m_luts.ready())
+        return; // logged by initResources
     // Needs Vulkan 1.1 (external memory / dedicated allocation structs) and
     // FD import, which MainWindow asks QVulkanWindow to enable.
     if (inst->apiVersion() < QVersionNumber(1, 1) ||
@@ -354,8 +357,9 @@ void EquirectViewportRenderer::createLensResources()
     VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(LensPushConstants)};
     VkPipelineLayoutCreateInfo pli{};
     pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pli.setLayoutCount = 1;
-    pli.pSetLayouts = &m_lensSetLayout;
+    const VkDescriptorSetLayout sets[2] = {m_lensSetLayout, m_luts.layout()};
+    pli.setLayoutCount = 2;
+    pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
     if (vkCreatePipelineLayout(device, &pli, nullptr, &m_lensPipelineLayout) != VK_SUCCESS)
@@ -620,12 +624,13 @@ void EquirectViewportRenderer::createInsetResources()
         m_insetSlots[i].key = 0;
     }
 
-    if (setsReady) {
+    if (setsReady && m_luts.ready()) {
         VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(InsetPushConstants)};
         VkPipelineLayoutCreateInfo pli{};
         pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pli.setLayoutCount = 1;
-        pli.pSetLayouts = &m_descriptorSetLayout;
+        const VkDescriptorSetLayout sets[2] = {m_descriptorSetLayout, m_luts.layout()};
+        pli.setLayoutCount = 2;
+        pli.pSetLayouts = sets;
         pli.pushConstantRangeCount = 1;
         pli.pPushConstantRanges = &pcr;
         vkCreatePipelineLayout(device, &pli, nullptr, &m_insetPipelineLayout);
@@ -798,6 +803,15 @@ void EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint
 
 void EquirectViewportRenderer::initResources()
 {
+    render::VulkanLutStore::Device lutDev;
+    lutDev.phys = m_window->physicalDevice();
+    lutDev.device = m_window->device();
+    lutDev.queue = m_window->graphicsQueue();
+    lutDev.queueFamily = m_window->graphicsQueueFamilyIndex();
+    lutDev.waitIdle = [device = lutDev.device] { vkDeviceWaitIdle(device); };
+    std::string lutErr;
+    if (!m_luts.init(lutDev, VK_SHADER_STAGE_FRAGMENT_BIT, lutErr))
+        std::fprintf(stderr, "[viewport] %s; the picture can't be drawn\n", lutErr.c_str());
     createSampler();
     createDescriptorSet();
     createPipeline();
@@ -827,6 +841,7 @@ void EquirectViewportRenderer::releaseResources()
     destroyInsetResources();
     destroyLensResources();
     destroyTextureResources();
+    m_luts.destroy();
 
     if (m_sampler != VK_NULL_HANDLE) {
         vkDestroySampler(device, m_sampler, nullptr);

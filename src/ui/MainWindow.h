@@ -194,10 +194,16 @@ private:
     // Copy the viewport's current pose into the Reframe panel's numeric fields
     // (whatever's on screen -- sampled path, free-look, or a drag result).
     void syncReframePanel();
-    // Push a clip's colour grade into the viewport. Small helper since
-    // every call site has a ColorGrade struct but SetColorGrade takes a flat
-    // float[4].
+    // Push a clip's colour grade into the viewport, its LUT loaded.
     void applyColorGrade(const ColorGrade &grade);
+    // A clip's grade into the Colour panel, with the LUTs it offers and
+    // whether the clip's own can be applied.
+    void syncColourPanel(const ColorGrade &grade);
+    // The project's LUTs (its luts/ folder) and the clips'.
+    QStringList availableLuts() const;
+    // Colour panel ▸ Load LUT...: pick a .cube, copy it into the project,
+    // give it to the clip in the panel.
+    void loadLut();
     // Bind authoring (m_clipId / m_lastPositionMs / stabilizer / viewport pose
     // / Audio+Colour panels) to whichever clip covers `timelineMs`. Shared by
     // the playback position tick and undo()/redo() (which replace the whole
@@ -546,6 +552,7 @@ private:
     // The grade from Copy grade (Colour panel / a clip's right-click menu);
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;
+    QString m_lastLutDir; // where Load LUT... last found one
     std::optional<insv::StabConfig> m_copiedStab; // Copy / Paste stabilization
     QList<KeyHelp> m_keyHelp; // shortcuts made by addKey(), in order
     QAction *m_redoAction = nullptr;
