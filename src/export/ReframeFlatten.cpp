@@ -135,6 +135,24 @@ AVHWDeviceType deviceFor(const char* encName)
     return AV_HWDEVICE_TYPE_NONE;
 }
 
+// The Vulkan device's vendor: NVIDIA cards should keep steering at NVENC --
+// FFmpeg's Vulkan encoders are slower and lower quality there, and silently
+// picking them would hide the "install libnvidia-encode1" hint.
+bool vulkanDeviceIsNvidia(AVBufferRef* device)
+{
+    auto* dctx = reinterpret_cast<AVHWDeviceContext*>(device->data);
+    auto* vk = reinterpret_cast<AVVulkanDeviceContext*>(dctx->hwctx);
+    if (!vk->get_proc_addr)
+        return false;
+    auto getProps = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
+        vk->get_proc_addr(vk->inst, "vkGetPhysicalDeviceProperties"));
+    if (!getProps)
+        return false;
+    VkPhysicalDeviceProperties props{};
+    getProps(vk->phys_dev, &props);
+    return props.vendorID == 0x10de;
+}
+
 // Whether `encName` can run on this machine: the encoder exists in this
 // FFmpeg, plus NVENC's driver library or -- for the hardware-surface
 // encoders -- a device it can use AND a throwaway avcodec_open2 succeeds.
@@ -154,6 +172,10 @@ bool encoderUsable(const char* encName, AVBufferRef** deviceOut)
     AVBufferRef* hw = nullptr;
     if (av_hwdevice_ctx_create(&hw, dev, nullptr, nullptr, 0) < 0)
         return false;
+    if (dev == AV_HWDEVICE_TYPE_VULKAN && vulkanDeviceIsNvidia(hw)) {
+        av_buffer_unref(&hw);
+        return false;
+    }
     // Throwaway open at export-like settings. A frames context is required
     // at open: Vulkan video outright, VAAPI wants it to bind the surfaces.
     AVCodecContext* ctx = avcodec_alloc_context3(enc);
