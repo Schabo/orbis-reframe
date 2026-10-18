@@ -103,6 +103,9 @@ void VulkanFisheyeStitcher::Impl::destroyResources()
 
 VkImageView VulkanFisheyeStitcher::Impl::nv12ViewFor(VkImage img, VkFormat fmt)
 {
+    // The ycbcr conversion is for one format; a view of another is invalid.
+    if (fmt != lensFormat)
+        return VK_NULL_HANDLE;
     auto it = nv12Views.find(img);
     if (it != nv12Views.end())
         return it->second;
@@ -265,7 +268,8 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     const auto deadline = std::chrono::steady_clock::now() + kLensSlotWait;
     for (;;) {
         for (auto& sl : ring->slots)
-            if (!sl->busy && sl->pub.lensW == lensW && sl->pub.lensH == lensH) {
+            if (!sl->busy && sl->pub.lensW == lensW && sl->pub.lensH == lensH &&
+                sl->pub.bitDepth == (deepLens() ? 10 : 8)) {
                 sl->busy = true;
                 return sl.get();
             }
@@ -283,7 +287,8 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     // Drop free slots of another size first (a source's lens size doesn't
     // change, but be tidy).
     for (auto it = ring->slots.begin(); it != ring->slots.end();) {
-        if (!(*it)->busy && ((*it)->pub.lensW != lensW || (*it)->pub.lensH != lensH)) {
+        if (!(*it)->busy && ((*it)->pub.lensW != lensW || (*it)->pub.lensH != lensH ||
+                             (*it)->pub.bitDepth != (deepLens() ? 10 : 8))) {
             ring->destroySlot(**it);
             it = ring->slots.erase(it);
         } else {
@@ -293,11 +298,15 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     auto sl = std::make_unique<LensRingCore::Slot>();
     sl->pub.lensW = lensW;
     sl->pub.lensH = lensH;
+    sl->pub.bitDepth = deepLens() ? 10 : 8;
     sl->pub.id = LensRingCore::nextId.fetch_add(1);
     std::memcpy(sl->pub.deviceUuid, deviceUuid, sizeof deviceUuid);
     for (int i = 0; i < LensSlot::kImages; ++i) {
         const bool uv = (i & 1) != 0;
-        if (!makeExportImage(uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM,
+        // A plane copy needs the plane's size: 16-bit samples for P010.
+        const VkFormat fmt = deepLens() ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
+                                        : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
+        if (!makeExportImage(fmt,
                              uv ? lensW / 2 : lensW, uv ? lensH / 2 : lensH, sl->img[i],
                              sl->mem[i], sl->pub.memSize[i], sl->pub.fd[i], err)) {
             ring->destroySlot(*sl);
@@ -521,8 +530,29 @@ bool VulkanFisheyeStitcher::init(std::string& err)
 
 bool VulkanFisheyeStitcher::initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                                       uint32_t computeQueueFamily,
-                                      VkDeviceQueueCreateFlags queueFlags, std::string& err)
+                                      VkDeviceQueueCreateFlags queueFlags, std::string& err,
+                                      VkFormat lensFormat)
 {
+    if (lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
+        lensFormat != VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16) {
+        err = "unsupported lens picture format " + std::to_string(int(lensFormat));
+        return false;
+    }
+    // The stitch samples the decoder's pictures through a ycbcr conversion,
+    // filtered, with midpoint chroma.
+    VkFormatProperties fp{};
+    vkGetPhysicalDeviceFormatProperties(phys, lensFormat, &fp);
+    const VkFormatFeatureFlags need =
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+        VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT |
+        VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT;
+    if ((fp.optimalTilingFeatures & need) != need) {
+        err = lensFormat == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM
+                  ? "the device can't sample 8-bit (NV12) pictures through a ycbcr conversion"
+                  : "the device can't sample 10-bit (P010) pictures through a ycbcr conversion";
+        return false;
+    }
+    d->lensFormat = lensFormat;
     d->adopted = true;
     d->instance = inst;
     d->phys = phys;
@@ -601,7 +631,7 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     if (nv12Mode) {
         VkSamplerYcbcrConversionCreateInfo ycci{
             VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO};
-        ycci.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM; // NV12
+        ycci.format = d->lensFormat; // NV12, or P010 for 10-bit
         ycci.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
         ycci.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL; // camera HEVC is full range
         ycci.components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -659,7 +689,7 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     if (nv12Mode) {
         VkPhysicalDeviceImageFormatInfo2 fi{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2};
-        fi.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+        fi.format = d->lensFormat;
         fi.type = VK_IMAGE_TYPE_2D;
         fi.tiling = VK_IMAGE_TILING_OPTIMAL;
         fi.usage = VK_IMAGE_USAGE_SAMPLED_BIT;

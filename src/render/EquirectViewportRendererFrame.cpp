@@ -91,7 +91,9 @@ EquirectViewportRenderer::importFor(const render::LensFrame &f)
     LensImport imp;
     for (int i = 0; i < render::LensSlot::kImages; ++i) {
         const bool uv = (i & 1) != 0;
-        const VkFormat fmt = uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM;
+        const bool deep = slot.bitDepth > 8; // 10-bit: 16-bit planes
+        const VkFormat fmt = deep ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
+                                  : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
         // Must match the exporter's image exactly (VulkanFisheyeStitcher).
         VkExternalMemoryImageCreateInfo emi{};
         emi.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
@@ -545,6 +547,12 @@ void EquirectViewportRenderer::startNextFrame()
         lpc.view = pc;
         lpc.gains[0] = m_currentLens->gain[0];
         lpc.gains[1] = m_currentLens->gain[1];
+        // The planes' sample scale and full-range chroma midpoint
+        // (fisheye_view.frag): 8-bit 1 and 128/255; 10-bit in 16-bit planes
+        // (the value at the top) 65535/65472, so 1023 reads as 1, and 512/1023.
+        const bool deep = m_currentLens->slot->bitDepth > 8;
+        lpc.gains[2] = deep ? 65535.0f / 65472.0f : 1.0f;
+        lpc.gains[3] = deep ? 512.0f / 1023.0f : 128.0f / 255.0f;
         vkCmdPushConstants(commandBuffer, m_lensPipelineLayout,
                                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(lpc), &lpc);
     } else if (drawPicture) {

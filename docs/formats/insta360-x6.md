@@ -26,18 +26,27 @@ assumes. Written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
 ## Colour: 10-bit, log and HDR
 
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
-- The app's GPU stitch samples the decoder's pictures as 8-bit NV12
-  (`VK_FORMAT_G8_B8R8_2PLANE_420_UNORM`) through a BT.709 full-range
-  conversion. A 10-bit stream needs a second sampler format and shader
-  variant; I-Log needs a log-to-linear conversion; Dolby Vision presumably
-  BT.2020 with a PQ or HLG transfer (❓ unconfirmed) and a tone map.
-- The X5 has I-Log too (X5 §3.3), so the same work covers it.
+- The app's GPU stitch samples the decoder's pictures through a BT.709
+  full-range ycbcr conversion. Since 2026-10-18 it takes 10-bit HEVC (Main
+  10) too: FFmpeg's Vulkan decoder gives P010 images
+  (`VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16`), the stitcher's
+  conversion is made for that format (by the stream's bit depth), and the
+  viewport's shared lens planes are 16-bit (R16 / R16G16). Checked only on
+  a stand-in -- the X5 I-Log clip re-encoded to Main 10 with its trailer
+  kept: export (both GPU paths, and the CPU fallback) and playback match
+  the 8-bit original at 46-48 dB PSNR, in real time. ❓ Whether real X6
+  files are tagged full range like the X5's (the conversion assumes it),
+  and their trailer, are unchecked: it needs a real X6 clip.
+- I-Log is graded with Insta360's LUT (below); Dolby Vision presumably
+  needs BT.2020 with a PQ or HLG transfer (❓ unconfirmed) and a tone map.
+- The X5 has I-Log too, 8-bit (X5 §3.3).
 - 📖 Insta360's 10-bit I-Log LUTs (`X6_I-Log_LUTs.zip`, version 2.0, made
   2026-05-20): 3D `.cube` files, each at 33³ and 65³, from I-Log to Rec.709
   / BT.1886 (`X6_I-Log_to_Rec709_BT1886_s65_v2.cube`), to Rec.2020 PQ and to
   Rec.2020 HLG (1000 nits, 203 nits diffuse white). The app reads all of
-  them (Colour ▸ LUT); the Rec.709 one is the one for its SDR output. On
-  8-bit samples they band; a 10-bit picture needs the 10-bit path above.
+  them (Colour ▸ LUT); the Rec.709 one is the one for its SDR output. The
+  10-bit pictures are graded in float before the 8-bit output, so they
+  shouldn't band.
 
 ## Trailer
 

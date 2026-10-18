@@ -204,6 +204,10 @@ struct VulkanFisheyeStitcher::Impl {
     std::shared_ptr<void> keepAlive;
     std::shared_ptr<LensRingCore> ring;
     bool nv12 = false;    // stitchVk path: sample decoder NV12 images via ycbcr
+    // The decoder's 2-plane format, the ycbcr conversion's: NV12, or P010
+    // for 10-bit (initAdopt). Every image it hands over must have it.
+    VkFormat lensFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+    bool deepLens() const { return lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM; }
     // Cached ycbcr image views over the decoder's pooled images (nv12 mode).
     std::map<VkImage, VkImageView> nv12Views;
 

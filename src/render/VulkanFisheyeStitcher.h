@@ -76,10 +76,14 @@ public:
     // FFmpeg 9+ with drivers that offer it; those queues need
     // vkGetDeviceQueue2, vkGetDeviceQueue returns NULL for them). False (err
     // set) if the device can't do ycbcr conversion or the NV12 shader is
-    // missing -- caller should fall back to init()+stitch().
+    // missing -- caller should fall back to init()+stitch(). `lensFormat` is
+    // the decoder's picture format: NV12 (8-bit), or P010
+    // (VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16, 10-bit, e.g. the
+    // X6's I-Log); also false when the device can't sample it through a
+    // ycbcr conversion with linear filtering.
     bool initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                    uint32_t computeQueueFamily, VkDeviceQueueCreateFlags queueFlags,
-                   std::string& err);
+                   std::string& err, VkFormat lensFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM);
 
     bool ready() const { return m_ready; }
 
