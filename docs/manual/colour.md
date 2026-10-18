@@ -59,6 +59,15 @@ and then use the sliders for the fine-tuning.
 10-bit I-Log of newer cameras. Use the one for your camera, and only on clips
 filmed in I-Log: on normal clips it makes the colours far too strong.
 
+orbis-reframe recognises a clip filmed in a log profile (the camera notes
+it in the file; **Media information** shows it as the *Colour profile*). For
+now that's Insta360's I-Log. While such a clip has no LUT, the **LUT** field
+has a red frame and the section says which profile the LUT is for:
+
+<img src="images/colour-ilog.jpg" width="350" alt="The Colour section for an I-Log clip without a LUT">
+
+The frame goes away as soon as the clip has a LUT.
+
 If a clip's LUT file is missing or can't be read (for example a project
 copied without its `luts/` folder), the clip is shown without it, and the
 **Colour** section says why under **LUT**. Load the file again to fix it.

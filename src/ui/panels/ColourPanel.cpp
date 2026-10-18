@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QStyle>
 #include <QWidget>
 
 #include <algorithm>
@@ -71,6 +72,11 @@ ColourPanel::ColourPanel(QWidget *parent)
     m_lutProblem->setWordWrap(true);
     m_lutProblem->setVisible(false);
     form()->addRow(m_lutProblem);
+    m_lutWanted = new QLabel(this);
+    m_lutWanted->setObjectName(QStringLiteral("colourLutWanted"));
+    m_lutWanted->setWordWrap(true);
+    m_lutWanted->setVisible(false);
+    form()->addRow(m_lutWanted);
 
     SliderRow strength = makeSliderRow(this, 0, kMaxPercent, 1, 10);
     m_lutStrength = strength.slider;
@@ -213,6 +219,7 @@ void ColourPanel::setState(const ColorGrade &grade)
 void ColourPanel::setNoClip()
 {
     setLutProblem({});
+    setLutWanted({});
     setState(ColorGrade{});
     setBodyEnabled(false);
 }
@@ -251,6 +258,19 @@ void ColourPanel::setLutProblem(const QString &problem)
 {
     m_lutProblem->setText(problem);
     m_lutProblem->setVisible(!problem.isEmpty());
+}
+
+void ColourPanel::setLutWanted(const QString &why)
+{
+    m_lutWanted->setText(why);
+    m_lutWanted->setVisible(!why.isEmpty());
+    // theme.qss: QComboBox[attention="true"] has the error colour's frame.
+    const bool attention = !why.isEmpty();
+    if (m_lut->property("attention").toBool() != attention) {
+        m_lut->setProperty("attention", attention);
+        m_lut->style()->unpolish(m_lut);
+        m_lut->style()->polish(m_lut);
+    }
 }
 
 void ColourPanel::setCanPaste(bool canPaste)

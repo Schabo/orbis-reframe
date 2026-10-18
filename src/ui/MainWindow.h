@@ -371,6 +371,9 @@ private:
     // Reflect clip `c`'s source file in the Media information panel (probed
     // once per path, cached in m_mediaInfo; a failed probe isn't cached).
     void syncMediaInfoPanel(const ClipItem &c);
+    // `path`'s probe, from m_mediaInfo (probed and cached on first use);
+    // nullptr, with *error, when it can't be probed.
+    const insv::MediaInfo *mediaInfoFor(const QString &path, QString *error = nullptr);
     // Repaint the timeline widget from the model + refresh the edit
     // toolbar's reframe-button state + update the export action.
     void refreshTimelineWidget();

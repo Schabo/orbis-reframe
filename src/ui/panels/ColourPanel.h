@@ -39,6 +39,9 @@ public:
     // Why the clip's LUT isn't applied (missing, unreadable), shown under
     // the picker; empty = it is.
     void setLutProblem(const QString &problem);
+    // The clip needs a LUT (filmed in log, and it has none): the picker
+    // gets a red frame and `why` under it. Empty = it doesn't.
+    void setLutWanted(const QString &why);
 
 signals:
     void gradeEdited(const ColorGrade &grade);
@@ -57,6 +60,7 @@ private:
     QSlider *m_lutStrength = nullptr; // percent: 0..100
     QLabel *m_lutStrengthValue = nullptr;
     QLabel *m_lutProblem = nullptr;
+    QLabel *m_lutWanted = nullptr;
     QStringList m_luts;
     QString m_shownLut; // the clip's, while Load LUT... is picked
     QSlider *m_exposure = nullptr; // tenths of a stop: -30..30 -> -3.0..3.0 EV

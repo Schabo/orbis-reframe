@@ -2460,19 +2460,29 @@ int MainWindow::addOverlayAudio(int clipId)
     return m_timeline->addOverlaySound(clipId);
 }
 
-void MainWindow::syncMediaInfoPanel(const ClipItem &c)
+const insv::MediaInfo *MainWindow::mediaInfoFor(const QString &path, QString *error)
 {
-    auto it = m_mediaInfo.constFind(c.sourcePath);
+    auto it = m_mediaInfo.constFind(path);
     if (it == m_mediaInfo.constEnd()) {
         insv::MediaInfo info;
         std::string err;
-        if (!insv::ProbeMediaInfo(c.sourcePath.toStdString(), info, err)) {
-            m_mediaInfoPanel->setError(c.sourcePath, QString::fromStdString(err));
-            return;
+        if (!insv::ProbeMediaInfo(path.toStdString(), info, err)) {
+            if (error)
+                *error = QString::fromStdString(err);
+            return nullptr;
         }
-        it = m_mediaInfo.insert(c.sourcePath, info);
+        it = m_mediaInfo.insert(path, info);
     }
-    m_mediaInfoPanel->setInfo(*it);
+    return &*it;
+}
+
+void MainWindow::syncMediaInfoPanel(const ClipItem &c)
+{
+    QString error;
+    if (const insv::MediaInfo *info = mediaInfoFor(c.sourcePath, &error))
+        m_mediaInfoPanel->setInfo(*info);
+    else
+        m_mediaInfoPanel->setError(c.sourcePath, error);
 }
 
 void MainWindow::pushTimelineToController()

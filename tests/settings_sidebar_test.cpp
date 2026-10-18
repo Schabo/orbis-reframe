@@ -16,6 +16,8 @@
 #include "panels/AudioPanel.h"
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
+
+#include <InsvMediaInfo.h>
 #include "panels/OverlayPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/TransitionPanel.h"
@@ -553,6 +555,14 @@ void testColourLut(SettingsSidebar &bar)
     colour->setLutProblem({});
     CHECK(problem->isHidden());
 
+    // A log clip without a LUT: a red frame on the picker, and why.
+    auto *wanted = find<QLabel>(colour, "colourLutWanted");
+    CHECK(wanted && wanted->isHidden() && !lut->property("attention").toBool());
+    colour->setLutWanted("This clip was filmed in I-Log, a log profile.");
+    CHECK(wanted && !wanted->isHidden() && lut->property("attention").toBool());
+    colour->setLutWanted({});
+    CHECK(wanted && wanted->isHidden() && !lut->property("attention").toBool());
+
     auto *reset = find<QPushButton>(colour, "colourReset");
     CHECK(reset && reset->isEnabled());
     edited.clear();
@@ -560,6 +570,36 @@ void testColourLut(SettingsSidebar &bar)
         reset->click();
     CHECK(!edited.isEmpty() && edited.last().at(0).value<ColorGrade>().lut.isEmpty());
     colour->setState(ColorGrade{});
+}
+
+// Media information: the colour profile the trailer names, I-Log by its
+// own name.
+void testMediaInfoProfile(SettingsSidebar &bar)
+{
+    MediaInfoPanel *panel = bar.mediaInfo();
+    auto shows = [panel](const QString &text) {
+        for (const QLabel *l : panel->findChildren<QLabel *>())
+            if (l->text() == text)
+                return true;
+        return false;
+    };
+    insv::MediaInfo m;
+    m.path = "/c/VID_20261018_185907_00_006.insv";
+    insv::MediaVideoStream v;
+    v.width = v.height = 2880;
+    v.fps = 29.97;
+    m.video = {v, v};
+    m.cameraModel = "Insta360 X5";
+    m.colorProfile = "I_Log";
+    panel->setInfo(m);
+    CHECK(shows("Colour profile") && shows("I-Log"));
+    m.colorProfile = "standard";
+    panel->setInfo(m);
+    CHECK(shows("Colour profile") && shows("Standard"));
+    m.colorProfile.clear(); // a phone video: nothing to say
+    panel->setInfo(m);
+    CHECK(!shows("Colour profile"));
+    panel->setNoClip();
 }
 
 int main(int argc, char **argv)
@@ -591,6 +631,7 @@ int main(int argc, char **argv)
     testTrackStatus(bar);
     testTransitionTab(bar);
     testColourLut(bar);
+    testMediaInfoProfile(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

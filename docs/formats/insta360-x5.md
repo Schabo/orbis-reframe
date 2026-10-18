@@ -179,7 +179,8 @@ Measured from `sample_footage/Modes/` (2026-09-27, one clip per mode):
   **8-bit** HEVC Main too, and tagged exactly like a standard clip
   (full-range BT.709 `yuvj420p`, BT.709 transfer) -- the stream doesn't say
   log; the trailer does: metadata field 22 `gamma_mode` is `I_Log` instead
-  of `standard` (§4, read as a string; the app doesn't parse it yet). The
+  of `standard` (§4; read by `ReadInsvTelemetry` as `gamma_mode`, shown
+  in Media information, and the Colour section asks for the LUT). The
   rest of the trailer (calibration, IMU, exposure) has the same shape. The
   picture is flat as log should be: on a 1280×720 forward view, luma
   53–125 (average 97), mean saturation ~8.5 -- after the X5 LUT 28–99
