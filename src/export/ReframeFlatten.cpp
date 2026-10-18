@@ -6,6 +6,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/hwcontext_vulkan.h>
 #include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 }
@@ -92,8 +93,9 @@ bool nvencLibraryPresent()
     return h != nullptr;
 }
 
-// The encoder names openEncoder() tries, in order: NVENC, then Vulkan video
-// (the same API the decode path already uses), then VAAPI. ORBIS_ENCODER
+// The encoder names openEncoder() tries, in order: NVENC, then VAAPI (the
+// on-by-default route in Mesa; Vulkan video encode is still opt-in on RADV
+// and off on recent Intel GPUs), then Vulkan video. ORBIS_ENCODER
 // ("nvenc" / "vulkan" / "vaapi") restricts the choice to one backend.
 const char* const* encoderNames(bool h265)
 {
@@ -135,11 +137,16 @@ AVHWDeviceType deviceFor(const char* encName)
 
 // Whether `encName` can run on this machine: the encoder exists in this
 // FFmpeg, plus NVENC's driver library or -- for the hardware-surface
-// encoders -- a device it can use. When `deviceOut` is given the working
-// device is handed back (caller unrefs) for the encoder to run on.
+// encoders -- a device it can use AND a throwaway avcodec_open2 succeeds.
+// Creating the device alone doesn't prove the GPU can encode (Intel ANV and
+// RADV without Vulkan encode, the decode-only nvidia-vaapi-driver): the open
+// is what makes the probe match what export will actually pick. When
+// `deviceOut` is given the working device is handed back (caller unrefs)
+// for the encoder to run on.
 bool encoderUsable(const char* encName, AVBufferRef** deviceOut)
 {
-    if (!avcodec_find_encoder_by_name(encName))
+    const AVCodec* enc = avcodec_find_encoder_by_name(encName);
+    if (!enc)
         return false;
     const AVHWDeviceType dev = deviceFor(encName);
     if (dev == AV_HWDEVICE_TYPE_NONE)
@@ -147,6 +154,37 @@ bool encoderUsable(const char* encName, AVBufferRef** deviceOut)
     AVBufferRef* hw = nullptr;
     if (av_hwdevice_ctx_create(&hw, dev, nullptr, nullptr, 0) < 0)
         return false;
+    // Throwaway open at export-like settings. A frames context is required
+    // at open: Vulkan video outright, VAAPI wants it to bind the surfaces.
+    AVCodecContext* ctx = avcodec_alloc_context3(enc);
+    AVBufferRef* frames = nullptr;
+    bool ok = false;
+    if (ctx) {
+        ctx->width = 1920;
+        ctx->height = 1080;
+        ctx->time_base = {1, 30};
+        ctx->framerate = {30, 1};
+        ctx->pix_fmt = dev == AV_HWDEVICE_TYPE_VULKAN ? AV_PIX_FMT_VULKAN : AV_PIX_FMT_VAAPI;
+        ctx->sw_pix_fmt = AV_PIX_FMT_NV12;
+        ctx->hw_device_ctx = av_buffer_ref(hw);
+        frames = av_hwframe_ctx_alloc(hw);
+        if (frames) {
+            auto* fc = reinterpret_cast<AVHWFramesContext*>(frames->data);
+            fc->format = ctx->pix_fmt;
+            fc->sw_format = AV_PIX_FMT_NV12;
+            fc->width = ctx->width;
+            fc->height = ctx->height;
+            if (av_hwframe_ctx_init(frames) == 0)
+                ctx->hw_frames_ctx = av_buffer_ref(frames);
+        }
+        ok = ctx->hw_frames_ctx && avcodec_open2(ctx, enc, nullptr) == 0;
+    }
+    avcodec_free_context(&ctx);
+    av_buffer_unref(&frames);
+    if (!ok) {
+        av_buffer_unref(&hw);
+        return false;
+    }
     if (deviceOut)
         *deviceOut = hw;
     else
@@ -186,31 +224,15 @@ const char* hwEncoderName(bool h265)
 
 namespace {
 
-bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
+// One candidate of openEncoder()'s loop: configure a codec context for
+// `encName` at the export's settings and try avcodec_open2(). False leaves
+// `e` cleaned of the codec-side bits so the next name can be tried.
+bool tryEncoder(const char* encName, const FlattenConfig& p, Encoder& e, std::string& err)
 {
-    const AVCodec* enc = nullptr;
-    const char* encName = nullptr;
-    for (int i = 0; i < encoderNameCount(); ++i) {
-        const char* name = encoderNames(p.h265)[i];
-        if (encoderUsable(name, &e.hwDevice)) {
-            enc = avcodec_find_encoder_by_name(name);
-            encName = name;
-            break;
-        }
-    }
-    if (!enc) {
-        err = "no usable hardware encoder (tried NVENC, Vulkan video and VAAPI"
-              " - ORBIS_ENCODER=narrows the list)";
+    const AVCodec* enc = avcodec_find_encoder_by_name(encName);
+    if (!enc || !encoderUsable(encName, &e.hwDevice))
         return false;
-    }
     const AVHWDeviceType deviceType = deviceFor(encName);
-
-    avformat_alloc_output_context2(&e.fmt, nullptr, nullptr, p.out_path.c_str());
-    if (!e.fmt) {
-        err = "cannot infer output container from " + p.out_path;
-        return false;
-    }
-
     e.ctx = avcodec_alloc_context3(enc);
     e.ctx->width = p.out_w;
     e.ctx->height = p.out_h;
@@ -277,9 +299,51 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
 
     int ret = avcodec_open2(e.ctx, enc, nullptr);
     if (ret < 0) {
+        // The probe passed at 1080p but the real open failed (e.g. a size the
+        // backend can't encode): openEncoder() drops this candidate's state
+        // and tries the next name.
         err = avErr(std::string("open ") + encName, ret);
         return false;
     }
+    return true;
+}
+
+bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
+{
+    avformat_alloc_output_context2(&e.fmt, nullptr, nullptr, p.out_path.c_str());
+    if (!e.fmt) {
+        err = "cannot infer output container from " + p.out_path;
+        return false;
+    }
+
+    const char* encName = nullptr;
+    std::string why;
+    for (int i = 0; i < encoderNameCount(); ++i) {
+        const char* name = encoderNames(p.h265)[i];
+        err.clear();
+        if (tryEncoder(name, p, e, err)) {
+            encName = name;
+            break;
+        }
+        // Drop whatever the failed candidate left behind.
+        if (e.hw)
+            av_frame_free(&e.hw);
+        if (e.hwFrames)
+            av_buffer_unref(&e.hwFrames);
+        if (e.ctx)
+            avcodec_free_context(&e.ctx);
+        if (e.hwDevice)
+            av_buffer_unref(&e.hwDevice);
+        if (!err.empty())
+            why += (why.empty() ? "" : "; ") + err;
+    }
+    if (!encName) {
+        err = "no usable hardware encoder"
+              + (why.empty() ? std::string() : " (" + why + ")")
+              + " - ORBIS_ENCODER= narrows the list";
+        return false;
+    }
+    int ret = 0;
 
     e.stream = avformat_new_stream(e.fmt, nullptr);
     avcodec_parameters_from_context(e.stream->codecpar, e.ctx);
