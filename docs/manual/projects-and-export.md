@@ -214,7 +214,7 @@ sound is AAC, stereo, at 48 kHz and 192 kbit/s.
 
 | Message | What to do |
 |---|---|
-| *Exporting needs NVIDIA's hardware video encoder (NVENC)* | Export uses the NVIDIA graphics card to encode. Install `libnvidia-encode1` ([Getting started](getting-started.md), step 2). Without an NVIDIA card, exporting isn't possible yet. |
+| *Exporting needs a hardware video encoder (NVIDIA NVENC, Vulkan video or VAAPI)* | Export uses the graphics card to encode. On NVIDIA, install `libnvidia-encode1` ([Getting started](getting-started.md), step 2). On AMD/Intel, Mesa's VA-API or Vulkan video encode needs to work on the card - check `vainfo` and `vulkaninfo --summary`. |
 | *The timeline can't be exported: these source files are missing.* | A clip's file isn't where the project expects it -- on the video track, an overlay or an audio track (the list says which). Put it back, find it with **Locate file…** in the **Media** tab (see [Where the clips are](#where-the-clips-are)), or remove its clips from the timeline, then export again. Clips on hidden or muted tracks, and muted audio clips, don't count: they aren't exported anyway. |
 | *"…" has the privacy blur on, but it hasn't been scanned for plates yet* (or *only part of it has been scanned*) | Scan that clip in the **Privacy** tab, or turn its blur off. See [Privacy blur](privacy.md). |
 | *The privacy blur may be out of date and needs checking or redoing.* | The stabilization was changed after the plates were found. **Continue anyway**, or check the blurs first. See [Privacy blur](privacy.md). |
