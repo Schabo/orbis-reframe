@@ -47,7 +47,9 @@ QString hwEncoderMissingText()
               "video or VAAPI), and none was found. Editing and playback work, "
               "but File ▸ Export flat video… doesn't.\n\nWith an NVIDIA card, "
               "install the encoder library: on Debian, sudo apt install "
-              "libnvidia-encode1 (NVIDIA's own driver installer includes it).");
+              "libnvidia-encode1 (NVIDIA's own driver installer includes it). "
+              "With AMD, install the VA-API driver: sudo apt install "
+              "mesa-va-drivers; with Intel, intel-media-va-driver.");
 }
 
 bool gpuVideoDecode(EquirectViewportWindow *viewport)
@@ -62,7 +64,8 @@ QString gpuDecodeMissingText()
     return tr("Your graphics card or driver can't decode video on the GPU (Vulkan video), so "
               "orbis-reframe decodes it on the processor instead. 5.7K and 8K clips will play "
               "slowly and may stutter; exports take longer.\n\nAn NVIDIA card from the GTX 16 / "
-              "RTX 20 series onwards with a current driver decodes on the GPU.");
+              "RTX 20 series onwards with a current driver decodes on the GPU. On AMD and "
+              "Intel, GPU decoding needs a recent Mesa driver.");
 }
 
 QString trackUnavailableReason()

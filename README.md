@@ -17,8 +17,9 @@ virtual camera through the sphere over time to get a normal flat video out of a
 ## Status: "Works on my computer"
 
 > Status: work in progress, built and tested on one machine (Debian Testing,
-> NVIDIA RTX, Wayland, Sway). Other setups that meet the requirements should
-> work but haven't been tried.
+> NVIDIA RTX, Wayland, Sway). AMD and Intel GPUs are supported best-effort:
+> a contributor has run it on an AMD Radeon; Intel hasn't been tried. Other
+> setups that meet the requirements should work but haven't been tried.
 
 **Download:** a `.deb` and a tarball for Debian Testing, Debian 13 and
 Ubuntu 26.04 LTS on the
@@ -69,7 +70,7 @@ no closed-source dependencies.
 - Opens X5 `.insv` files directly, including every capture mode tested so far
   (8K, 5.7K/5.7K+, 5.7K 60, 4K 120).
 - Real-time playback: Vulkan video decode, then a Vulkan compute
-  fisheye→view pass on NVIDIA GPUs, with CPU fallbacks.
+  fisheye→view pass on the GPU, with CPU fallbacks.
 - Interactive 360° viewport: drag to look around during playback and while
   scrubbing.
 - The viewport renders straight from the fisheyes at full source detail.
@@ -160,9 +161,10 @@ effects library. Further out: a "tiny planet" projection and face blur.
 
 ## Building
 
-Linux only, Wayland only, NVIDIA GPU with Vulkan. Playback uses Vulkan video
-decode where the GPU has it and falls back to (slower) CPU decoding where it
-doesn't; export needs NVENC. The app tells you at startup what's missing
+Linux only, Wayland only, a GPU with Vulkan: NVIDIA (tested), AMD or Intel
+on Mesa (best-effort). Playback uses Vulkan video decode where the GPU has it
+and falls back to (slower) CPU decoding where it doesn't; export needs a
+hardware encoder: NVENC on NVIDIA, VA-API or Vulkan video on AMD and Intel. The app tells you at startup what's missing
 instead of failing. Dependencies are the Debian Testing (or Debian 13, Ubuntu 26.04) packages for Qt 6,
 Vulkan, glslang, nlohmann-json and FFmpeg. Qt Multimedia (audio), OpenCV
 (analysis tools; with the contrib modules also subject tracking), ONNX Runtime

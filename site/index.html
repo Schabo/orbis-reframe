@@ -173,7 +173,8 @@
     <div class="wrap">
       <h2>Status: “works on my computer”</h2>
       <p>A work in progress, built and tested on one machine: Debian Testing, an NVIDIA RTX GPU,
-        Wayland and Sway. The <a href="https://github.com/Schabo/orbis-reframe/releases">releases</a> are a <code>.deb</code> and a
+        Wayland and Sway. AMD and Intel GPUs are supported best-effort: a contributor has run it on
+        an AMD Radeon; Intel hasn't been tried. The <a href="https://github.com/Schabo/orbis-reframe/releases">releases</a> are a <code>.deb</code> and a
         tarball each for Debian Testing, Debian 13 and Ubuntu 26.04 LTS; other setups that meet the requirements should work but haven't
         been tried. Found a problem? <a href="https://github.com/Schabo/orbis-reframe/issues">Report it on GitHub</a>.</p>
       <div class="note">
@@ -224,7 +225,7 @@
             <li>Opens X5 <code>.insv</code> files directly, in every capture mode tested so far
               (8K, 5.7K/5.7K+, 5.7K 60, 4K 120).</li>
             <li>Real-time playback: Vulkan video decode, then a Vulkan compute fisheye→view pass on
-              NVIDIA GPUs, with CPU fallbacks.</li>
+              the GPU, with CPU fallbacks.</li>
             <li>Interactive 360° viewport: drag to look around during playback and while scrubbing.</li>
             <li>The viewport renders straight from the fisheyes at full source detail.</li>
           </ul>

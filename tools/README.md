@@ -22,8 +22,8 @@ each tool is for and when you'd reach for it. The examples use clips from
 | [`plate_scan`](#plate_scan) | scan for number plates, check the blur by eye | GPU, OpenCV, ncnn |
 | [`audio_filter_bench`](#audio_filter_bench) | try and score the audio noise filters | FFmpeg |
 
-"GPU" means the app's own requirements: Vulkan with video decode (the
-NVIDIA path), plus FFmpeg. "OpenCV contrib" is `libopencv-contrib-dev`
+"GPU" means the app's own requirements: Vulkan with video decode, plus
+FFmpeg. "OpenCV contrib" is `libopencv-contrib-dev`
 (the `tracking` and `dnn` modules). ncnn comes from `scripts/fetch_ncnn.sh`.
 `docs/dev-environment.md` lists the packages. CMake skips a tool whose
 dependencies are missing and says so.
