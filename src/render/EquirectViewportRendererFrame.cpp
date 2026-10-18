@@ -464,12 +464,17 @@ void EquirectViewportRenderer::startNextFrame()
     beginInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    // Without the equirect texture's set (its creation failed, logged in
+    // initResources) the equirect preview isn't drawn, only the surround;
+    // the view straight from the fisheyes still is.
+    const bool drawPicture =
+        imp || (m_pipeline != VK_NULL_HANDLE && m_descriptorSet != VK_NULL_HANDLE);
     if (imp) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lensPipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             m_lensPipelineLayout, 0, 1, &m_lensSets[frameSlot], 0,
                                             nullptr);
-    } else {
+    } else if (drawPicture) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             m_pipelineLayout, 0, 1, &m_descriptorSet, 0, nullptr);
@@ -530,12 +535,13 @@ void EquirectViewportRenderer::startNextFrame()
         lpc.gains[1] = m_currentLens->gain[1];
         vkCmdPushConstants(commandBuffer, m_lensPipelineLayout,
                                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(lpc), &lpc);
-    } else {
+    } else if (drawPicture) {
         vkCmdPushConstants(commandBuffer, m_pipelineLayout,
                                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
     }
 
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    if (drawPicture)
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
     // The privacy-blur region outlines, on the picture (under the insets):
     // each scissored to its own bounds, so a pass costs only its pixels.
