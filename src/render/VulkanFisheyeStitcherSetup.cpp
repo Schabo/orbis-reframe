@@ -529,8 +529,9 @@ bool VulkanFisheyeStitcher::initAdopt(VkInstance inst, VkPhysicalDevice phys, Vk
     d->queueFamily = computeQueueFamily;
     vkGetPhysicalDeviceMemoryProperties(d->phys, &d->memProps);
     if (queueFlags) {
-        // FFmpeg created its queues with these flags (PROTECTED on some
-        // driver/FFmpeg pairs) -- vkGetDeviceQueue would return NULL.
+        // FFmpeg created its queues with these flags (INTERNALLY_SYNCHRONIZED
+        // on FFmpeg 9+ with drivers that offer it) -- vkGetDeviceQueue would
+        // return NULL.
         VkDeviceQueueInfo2 qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_INFO_2};
         qi.flags = queueFlags;
         qi.queueFamilyIndex = d->queueFamily;
