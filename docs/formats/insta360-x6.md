@@ -32,10 +32,18 @@ what our code assumes. Written as differences from the X5
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
 - ✅ Every sample clip is H.265 Main 10 (`yuv420p10le`), VUI-tagged
   `bt709` for Standard and I-Log clips; **Dolby Vision clips tag
-  `bt2020nc` + `arib-std-b67` (HLG)** with no RPU side data observed
-  (confirmed on 8K/6K/4K clips, fw v1.2.36). The mode marker is record
-  0x101 field 22 `gamma_mode`: `standard` / `I_Log` / `Dolby_Vision`,
-  now parsed into `InsvMakerNotes::gamma_mode`.
+  `bt2020nc` + `arib-std-b67` (HLG)** with no RPU side data observed -
+  the stream is plain HLG/BT.2020 limited-range (confirmed on
+  8K/6K/4K clips, fw v1.2.36). The mode marker is record 0x101 field
+  22 `gamma_mode`: `standard` / `I_Log` / `Dolby_Vision`.
+  `ApplyLensProfile` reads it into `StitchParams::gammaMode` (0/1/2);
+  for the non-standard modes the lens sampling (GPU shader and CPU
+  stitcher alike) decodes to linear light on BT.2020 - the 2026.05.20
+  white-paper curve for I_Log, the HLG inverse OETF plus the BT.2100
+  OOTF evaluated at the SDR system gamma (~0.78 for 100 nits) for
+  Dolby_Vision - then gamut-maps to BT.709 and re-encodes with the
+  BT.709 OETF, so the seam measure, blending and grading see ordinary
+  display-encoded RGB.
 - The app's GPU stitch samples the decoder's pictures through a BT.709
   full-range ycbcr conversion. Since 2026-10-18 it takes 10-bit HEVC (Main
   10) too: FFmpeg's Vulkan decoder gives P010 images
@@ -43,11 +51,10 @@ what our code assumes. Written as differences from the X5
   conversion is made for that format (by the stream's bit depth), and the
   viewport's shared lens planes are 16-bit (R16 / R16G16). ✅ Confirmed
   on real X6 clips as well as the earlier stand-in.
-- I-Log clips still need their log-to-linear conversion (an I-Log clip
-  stitched correctly but flat, sat ~0.16 vs ~0.31); Dolby Vision is
-  plain HLG/BT.2020 limited-range as tagged. I-Log can also be graded
-  with Insta360's LUT (below).
-- The X5 has I-Log too (X5 §3.3).
+- The transfer decode above runs inside the stitch, so an I_Log or
+  Dolby_Vision clip reaches grading already in BT.709: the official
+  I-Log-to-Rec.709 LUT (below) is meant for the still-log samples --
+  applying it on top of a decoded clip double-corrects.
 - 📖 Insta360's 10-bit I-Log LUTs (`X6_I-Log_LUTs.zip`, version 2.0, made
   2026-05-20): 3D `.cube` files, each at 33³ and 65³, from I-Log to Rec.709
   / BT.1886 (`X6_I-Log_to_Rec709_BT1886_s65_v2.cube`), to Rec.2020 PQ and to
@@ -55,6 +62,7 @@ what our code assumes. Written as differences from the X5
   them (Colour ▸ LUT); the Rec.709 one is the one for its SDR output. The
   10-bit pictures are graded in float before the 8-bit output, so they
   shouldn't band.
+- The X5 has I-Log too (X5 §3.3), so the same work covers it.
 
 ## Trailer
 
