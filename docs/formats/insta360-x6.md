@@ -31,6 +31,7 @@ what our code assumes. Written as differences from the X5
 
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
 - ✅ Every sample clip is H.265 Main 10 (`yuv420p10le`), VUI-tagged
+<<<<<<< HEAD
   `bt709` for Standard and I-Log clips; **Dolby Vision clips tag
   `bt2020nc` + `arib-std-b67` (HLG)** with no RPU side data observed -
   the stream is plain HLG/BT.2020 limited-range (confirmed on
@@ -50,7 +51,11 @@ what our code assumes. Written as differences from the X5
   (`VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16`), the stitcher's
   conversion is made for that format (by the stream's bit depth), and the
   viewport's shared lens planes are 16-bit (R16 / R16G16). ✅ Confirmed
-  on real X6 clips as well as the earlier stand-in.
+  on real X6 clips as well as the earlier stand-in. Exports of a 10-bit
+  source keep the precision end to end: they request HEVC Main 10, the
+  fused view packs P010 straight into the encoder's Vulkan frame pool
+  (`hevc_vulkan`), CPU paths widen NV12 staging to P010LE (`hevc_vaapi`),
+  and the open retries at 8-bit when Main 10 can't.
 - The transfer decode above runs inside the stitch, so an I_Log or
   Dolby_Vision clip reaches grading already in BT.709: the official
   I-Log-to-Rec.709 LUT (below) is meant for the still-log samples --
