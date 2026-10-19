@@ -77,6 +77,7 @@ to fold it away.
 | Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
 | Find a file on disk | Right-click it and choose **Show in file manager**. |
 | Find a moved or renamed file | Double-click it (it's red, *File not found*), or right-click it and choose **Locate file…**, and pick where it is now. See [Projects and export](projects-and-export.md#where-the-clips-are). |
+| Copy a device's files into the project | The third button. The files the project uses are copied from the card (or a folder you pick) into a `Media` folder next to the project file, and the project points at the copies -- so the project folder can be moved or archived whole. |
 
 Importing is part of the project, so **Edit ▸ Undo** takes it back like any
 other edit. The `.lrv` preview files the camera writes next to each `.insv`

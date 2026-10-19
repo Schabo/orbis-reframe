@@ -49,6 +49,18 @@ public:
     // say which other files were found with it.
     void showRelinked(const Relinks &relinks);
 
+    // Copy the files the project uses into <project>/Media -- the ones on a
+    // connected device (mounted volumes under the media roots, or one folder
+    // the user picks), or missing and found there. Runs in the background
+    // with a progress dialog; the copies' pool items come back through
+    // relinksReady for the caller to relink. One at a time.
+    void collectIntoProject();
+
+signals:
+    // (old path, the copy's probed item) for each file copied into the
+    // project folder -- same shape locate() returns.
+    void relinksReady(const Relinks &relinks);
+
 private:
     // `file` probed, if it is the same file as `was`; else *why says how not.
     std::optional<MediaItem> probeSame(const MediaItem &was, const QString &file,
@@ -63,4 +75,5 @@ private:
     int m_pending = 0;       // files still being probed
     QStringList m_failures;  // "name: why", reported when the last is done
     int m_session = 0;
+    bool m_collecting = false; // a copy into the project folder is running
 };
