@@ -72,10 +72,11 @@ public:
         // Playback speed (ClipItem::speed): the clip fills (trimOut - trimIn) /
         // speed of the output. Audio is time-stretched to match (pitch kept).
         double speed = 1.0;
-        // The view {yaw, pitch, roll, fovY} at a source time (ms), sampled per
-        // decoded frame at that frame's own timestamp; empty => static forward
+        // The view {yaw, pitch, roll, fovY, projection} at a source time (ms),
+        // sampled per decoded frame at that frame's own timestamp (projection
+        // is ReframeTrack.h's Projection as a float); empty => static forward
         // view. Must be safe to call from the export thread (capture copies).
-        std::function<void(qint64 sourceMs, float pose[4])> poseAt;
+        std::function<void(qint64 sourceMs, float pose[5])> poseAt;
         // The gyro de-rotation, evaluated per decoded frame at its own
         // timestamp (never at trimIn + i/fps: the first decoded frame is the
         // one at-or-after trimIn, and a frame of phase error undoes most of
@@ -120,11 +121,12 @@ public:
     // after it, same as playback's GetFrame), rendered the way run() renders
     // it: the fused GPU pass straight from the fisheyes (else a full-sphere
     // equirect + CPU reproject), the clip's stabilization / seam / grade, to
-    // outW x outH through `pose` ({yaw, pitch, roll, fovY} radians;
-    // clip.poseAt is ignored). RGB, no chroma subsampling -- for the
-    // player bar's screenshot button. Blocks (opens its own stitch source);
-    // run it off the GUI thread. Null image + `error` on failure.
-    static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const float pose[4],
+    // outW x outH through `pose` ({yaw, pitch, roll, fovY, projection} --
+    // radians, then ReframeTrack.h's Projection as a float; clip.poseAt is
+    // ignored). RGB, no chroma subsampling -- for the player bar's screenshot
+    // button. Blocks (opens its own stitch source); run it off the GUI thread.
+    // Null image + `error` on failure.
+    static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const float pose[5],
                               int outW, int outH, QString &error);
 
     // Blocks the calling thread for the whole export (invoke it queued onto the

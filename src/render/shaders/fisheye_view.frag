@@ -29,7 +29,8 @@ layout(push_constant) uniform PushConstants {
     float roll;
     float fovY;
     float aspect;
-    // 12 bytes of std140 padding (mat3 aligns at offset 32).
+    float proj;      // the view's projection (ReframeTrack.h's Projection, as a float)
+    // 8 bytes of std140 padding (mat3 aligns at offset 32).
     mat3 stab;       // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
     vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
@@ -64,10 +65,11 @@ vec3 sampleLens(int i, vec2 uv)
 #include "fisheye_stitch_common.glsl"
 
 #include "color_grade.glsl"
+#include "view_ray.glsl"
 
 void main() {
-    float t = tan(pc.fovY * 0.5);
-    vec3 r = normalize(vec3(inNdc.x * t * pc.aspect, -inNdc.y * t, -1.0));
+    vec4 r4 = viewRayProj(inNdc, pc.fovY, pc.aspect, int(pc.proj));
+    vec3 r = r4.xyz;
 
     float cr = cos(pc.roll), sr = sin(pc.roll);
     float cp = cos(pc.pitch), sp = sin(pc.pitch);
@@ -78,5 +80,6 @@ void main() {
 
     vec3 dir = mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
     vec3 rgb = blurredLenses(dir, pc.gains.x, pc.gains.y) / 255.0;
-    outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
+    outColor = r4.w > 0.0 ? vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0)
+                        : vec4(0.0, 0.0, 0.0, 1.0);
 }

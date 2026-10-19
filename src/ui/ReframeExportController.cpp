@@ -47,7 +47,7 @@ ReframeExportController::buildStabilizer(const QString &path, double fps,
 }
 
 QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
-                                            const float pose[4], int outW, int outH,
+                                            const float pose[5], int outW, int outH,
                                             QString &error)
 {
     if (outW <= 0 || outH <= 0) {
@@ -95,8 +95,8 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     if (src.GpuViewAvailable() && outW % 4 == 0 && outH % 2 == 0) {
         const stitch::Frame f = src.ReadViewFrame(
             outW, outH,
-            [&](int64_t ptsMs, float p[4], float stab[9]) {
-                std::copy(pose, pose + 4, p);
+            [&](int64_t ptsMs, float p[5], float stab[9]) {
+                std::copy(pose, pose + 5, p);
                 stabAt(ptsMs, stab);
             },
             &c.colorGrade);
@@ -122,6 +122,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     view.pitch = pose[1];
     view.roll = pose[2];
     view.fovY = pose[3];
+    view.proj = int(pose[4]);
     view.aspect = static_cast<float>(outW) / outH;
     stabAt(eq.timestamp_ms, view.stab);
     view.colorGrade = c.colorGrade;
@@ -312,7 +313,7 @@ void ReframeExportController::run(const Request &req)
                              (req.outHeight % 2) == 0;
 
         // Pose + stab for a decoded frame, at that frame's source time.
-        auto poseAt = [&c](int64_t ptsMs, float pose[4], float stab[9]) {
+        auto poseAt = [&c](int64_t ptsMs, float pose[5], float stab[9]) {
             if (c.poseAt)
                 c.poseAt(ptsMs, pose);
             if (c.stab) {
@@ -376,7 +377,7 @@ void ReframeExportController::run(const Request &req)
                 const int64_t reps = repeatsFor(eq.timestamp_ms);
                 if (reps == 0)
                     continue; // dropped: skip the CPU reproject too
-                float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+                float pose[5] = {0.0f, 0.0f, 0.0f, 1.309f, 0.0f};
                 float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
                 poseAt(eq.timestamp_ms, pose, stab);
                 for (int64_t r = 0; r < reps; ++r) {

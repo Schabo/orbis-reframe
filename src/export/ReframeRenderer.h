@@ -5,12 +5,12 @@
 
 #include "ColorLut.h" // color::Grade
 
-// CPU equirectangular -> rectilinear ("flat") reprojection for the export
-// pipeline. A direct port of the interactive viewport's fragment shader
-// (src/render/shaders/equirect.frag): for each output pixel, reconstruct the
-// view-space ray implied by the vertical FOV, rotate it by yaw/pitch to a
-// world-space look direction, convert that to equirect UV, and bilinearly
-// sample the source frame.
+// CPU equirectangular -> flat-view reprojection for the export pipeline. A
+// direct port of the interactive viewport's fragment shader
+// (src/render/shaders/equirect.frag + view_ray.glsl): for each output pixel,
+// reconstruct the view-space ray the view's projection implies, rotate it by
+// yaw/pitch/roll to a world-space look direction, convert that to equirect
+// UV, and bilinearly sample the source frame.
 //
 // Deliberately Qt-free and Vulkan-free: it is the reproject half of the export,
 // linked into reframe_flatten alongside system FFmpeg only. Export is offline,
@@ -23,6 +23,9 @@ struct ReframeView {
     float pitch = 0.0f;   // radians, rotation about the horizontal (X) axis
     float roll = 0.0f;    // radians, rotation about the view (Z) axis -- horizon tilt
     float fovY = 1.309f;  // vertical field of view, radians (~75 deg)
+    // The view's shape (ReframeTrack.h's Projection): 0 rectilinear,
+    // 1 planet (stereographic), 2 fisheye (equidistant), 3 mirror ball.
+    int proj = 0;
     float aspect = 1.0f;  // output width / height
     // Gyro de-rotation (row-major 3x3) in the sphere frame, applied to the
     // world ray after the pose -- same as equirect.frag's pc.stab.

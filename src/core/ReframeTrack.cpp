@@ -85,5 +85,6 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
     out.pitch = lerp(lo->pose.pitch, hi->pose.pitch, t);
     out.roll = lerpAngle(lo->pose.roll, hi->pose.roll, t);
     out.fovY = lerp(lo->pose.fovY, hi->pose.fovY, t);
+    out.projection = lo->pose.projection; // a segment keeps its start key's shape
     return out;
 }

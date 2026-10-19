@@ -1,5 +1,6 @@
 #include "SubjectTrackController.h"
 
+#include "../core/ViewProjection.h"
 #include "../render/EquirectViewportWindow.h"
 
 #include <QApplication>
@@ -119,12 +120,15 @@ bool SubjectTrackController::start(const Run &run)
         o.pose[1] = float(live->camPitch);
         o.pose[2] = look.roll;
         o.pose[3] = look.fovY;
+        o.pose[4] = float(int(look.projection));
         const track::Vec3 v = track::stabToView(track::dirFromYawPitch(s.yaw, s.pitch),
                                                 live->camYaw, live->camPitch, look.roll);
-        if (v.z < -1e-6) {
+        const double vv[3] = {v.x, v.y, v.z};
+        double ndc[2];
+        if (viewproj::viewNdc(vv, double(look.fovY), double(aspect), int(look.projection), ndc)) {
             const double t = std::tan(look.fovY * 0.5);
-            const double fx = ((v.x / -v.z) / (t * aspect) + 1.0) * 0.5;
-            const double fy = ((-v.y / -v.z) / t + 1.0) * 0.5;
+            const double fx = (ndc[0] + 1.0) * 0.5;
+            const double fy = (ndc[1] + 1.0) * 0.5;
             const double fw = std::tan(s.width * 0.5) / (t * aspect);
             const double fh = std::tan(s.height * 0.5) / t;
             o.hasMarker = true;

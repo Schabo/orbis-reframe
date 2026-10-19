@@ -51,7 +51,7 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         return false;
     const ReframeExportController::ClipJob &job = m_spec.job;
     // The view and stabilization at the frame's own time, as the export.
-    auto poseAt = [&job](int64_t ptsMs, float pose[4], float stab[9]) {
+    auto poseAt = [&job](int64_t ptsMs, float pose[5], float stab[9]) {
         if (job.poseAt)
             job.poseAt(ptsMs, pose);
         if (job.stab) {
@@ -67,12 +67,13 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         const stitch::Frame eq = m_src->ReadFrame();
         if (!eq.rgba.empty()) {
             exportpipe::ReframeView view;
-            float pose[4] = {view.yaw, view.pitch, view.roll, view.fovY};
+            float pose[5] = {view.yaw, view.pitch, view.roll, view.fovY, float(view.proj)};
             poseAt(eq.timestamp_ms, pose, view.stab);
             view.yaw = pose[0];
             view.pitch = pose[1];
             view.roll = pose[2];
             view.fovY = pose[3];
+            view.proj = int(pose[4]);
             view.aspect = float(m_w) / m_h;
             view.colorGrade = job.colorGrade;
             f.rgba.resize(size_t(m_w) * m_h * 4);

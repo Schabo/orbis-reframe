@@ -822,7 +822,8 @@ void MainWindow::connectReframe()
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(
                 m_clipId, m_lastPositionMs,
-                {m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(), m_viewport->FovY()});
+                {m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
+                 m_viewport->FovY(), m_viewport->ViewProjection()});
         syncReframePanel(); // the drag / zoom moved the pose
     });
 
@@ -832,7 +833,7 @@ void MainWindow::connectReframe()
         m_timeline->setClipFit(editClipId(), fill ? ClipItem::Fit::Fill : ClipItem::Fit::Bars);
     });
     connect(m_reframePanel, &ReframePanel::poseEdited, this, [this](const ReframePose &p) {
-        m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
+        m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY, p.projection);
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(m_clipId, m_lastPositionMs, p);
     });
@@ -1375,7 +1376,7 @@ void MainWindow::applySampledPose(qint64 sourceMs)
     if (!c)
         return;
     const ReframePose p = c->reframe.sample(sourceMs);
-    m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
+    m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY, p.projection);
 }
 
 void MainWindow::ensureStabilizers()
@@ -1439,7 +1440,7 @@ void MainWindow::applyStabilization(qint64 sourceMs)
 void MainWindow::syncReframePanel()
 {
     m_reframePanel->setPose({m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
-                             m_viewport->FovY()});
+                             m_viewport->FovY(), m_viewport->ViewProjection()});
     const ClipItem *c = m_timeline->clipById(m_clipId);
     const int seg = c ? keytrack::segmentAt(c->reframe.keys(), m_lastPositionMs,
                                             ClipItem::kReframeDeleteSnapMs)
@@ -2826,7 +2827,7 @@ void MainWindow::bindEmptyTimeline()
     // Nothing of the last project carries over: the view looks straight
     // ahead again, and reframe authoring starts disarmed.
     const ReframePose ahead;
-    m_viewport->SetPose(ahead.yaw, ahead.pitch, ahead.roll, ahead.fovY);
+    m_viewport->SetPose(ahead.yaw, ahead.pitch, ahead.roll, ahead.fovY, ahead.projection);
     m_reframePanel->setClipUnkeyed(false);
     m_editToolbar->setReframeArmed(false);
     m_editToolbar->setHasReframeKeys(false);
@@ -3542,11 +3543,12 @@ void MainWindow::startSubjectTracking(const QRectF &box)
                              ? m_viewport->OutputAspect()
                              : float(m_viewport->width()) / std::max(1, m_viewport->height());
     const ReframePose look{m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
-                           m_viewport->FovY()};
+                           m_viewport->FovY(), m_viewport->ViewProjection()};
     SubjectTrackController::Run run;
     subjecttrack::Request &req = run.req;
     req.seed = track::seedFromViewBox(box.x(), box.y(), box.width(), box.height(), look.yaw,
-                                      look.pitch, look.roll, look.fovY, aspect);
+                                      look.pitch, look.roll, look.fovY, aspect,
+                                      int(look.projection));
     const ReframeExportController::ClipJob job = exportJobFor(*c); // the stab, as exported
     req.clipPath = c->sourcePath.toStdString();
     req.fromMs = from;
@@ -3611,7 +3613,8 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
     const std::vector<track::PathKey> keys = track::reduceToKeys(r.samples, run.req.fps);
     QList<ReframeKey> list;
     for (const track::PathKey &k : keys)
-        list.append(ReframeKey{k.tMs, {float(k.yaw), float(k.pitch), look.roll, look.fovY}});
+        list.append(ReframeKey{
+            k.tMs, {float(k.yaw), float(k.pitch), look.roll, look.fovY, look.projection}});
     const qint64 until = r.samples.back().tMs;
     m_timeline->replaceClipReframeSpan(clipId, from, until, list); // one undo step
     settle(until);
@@ -3665,7 +3668,8 @@ void MainWindow::takeScreenshot()
     // viewport shows now -- the sampled reframe path, or a free look / drag.
     ExportRunner::Still still;
     still.job = exportJobFor(*c);
-    still.pose = {m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(), m_viewport->FovY()};
+    still.pose = {m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
+                  m_viewport->FovY(), float(m_viewport->ViewProjection())};
     still.sourceMs = m_lastPositionMs;
     still.timelineMs = std::max<qint64>(0, m_lastTimelineMs);
     still.width = m_project->output().width;

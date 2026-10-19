@@ -96,7 +96,8 @@ public:
     // Reads the next lens pair and renders it on the GPU to an outW x outH
     // rectilinear NV12 frame against `pose` -- straight from the fisheyes
     // (fused pass, one resample) when GpuViewAvailable(), else via a GPU
-    // equirect + reproject. `pose` is ({yaw,pitch,roll,fovY} radians; nullptr
+    // equirect + reproject. `pose` is {yaw,pitch,roll,fovY,projection}
+    // (radians, then ReframeTrack.h's Projection as a float; nullptr
     // => forward view). `stab` (row-major 3x3, nullptr => identity) is the
     // frame's gyro de-rotation in the sphere frame, applied after `pose` like
     // the viewport. `colorGrade` (nullptr => neutral) is the Colour
@@ -104,7 +105,7 @@ public:
     // be a multiple of 4, outH a multiple of 2. Advances the playhead like
     // ReadFrame(). Returns an empty FlatFrame (nv12.empty()) at end-of-clip;
     // also on error, with GetLastError() set. Requires GpuReframeAvailable().
-    FlatFrame ReadFlatFrame(int outW, int outH, const float pose[4],
+    FlatFrame ReadFlatFrame(int outW, int outH, const float pose[5],
                             const float stab[9] = nullptr,
                             const color::Grade* colorGrade = nullptr);
 
@@ -116,7 +117,7 @@ public:
     // first frame at-or-after it. At the stick mount's ~11 Hz shake that is a
     // phase error large enough to undo most of the stabilization. `pose` is
     // prefilled with a forward view and `stab` with identity.
-    using FramePoseFn = std::function<void(int64_t ptsMs, float pose[4], float stab[9])>;
+    using FramePoseFn = std::function<void(int64_t ptsMs, float pose[5], float stab[9])>;
     FlatFrame ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                             const color::Grade* colorGrade = nullptr);
 
@@ -137,7 +138,7 @@ public:
     // the next HoldNextPair / Read*) lets it go. Requires GpuViewAvailable().
     // False at end-of-clip (GetLastError() empty) or on error.
     struct ViewRect {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+        float pose[5] = {0.0f, 0.0f, 0.0f, 1.309f, 0.0f}; // + projection
         int x = 0, y = 0, w = 0, h = 0;
     };
     bool HoldNextPair(int64_t& pts_ms);

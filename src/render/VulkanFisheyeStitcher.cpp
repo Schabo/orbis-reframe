@@ -421,7 +421,7 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
 
 bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                                const insv::StitchGpuParams& params, int eqW, int eqH,
-                                               int outW, int outH, const float pose[4],
+                                               int outW, int outH, const float pose[5],
                                                const float stab[9], const color::Grade* colorGrade,
                                                std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0,
                                                VulkanLensOutcome* r1, std::string& err)
@@ -535,6 +535,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
     rp.pitch = pose ? pose[1] : 0.0f;
     rp.roll = pose ? pose[2] : 0.0f;
     rp.fovY = pose ? pose[3] : 1.309f;
+    rp.proj = pose ? pose[4] : 0.0f;
     rp.aspect = static_cast<float>(outW) / static_cast<float>(outH);
     // Row-major stab -> col-major padded vec3 columns; nullptr => identity.
     for (int col = 0; col < 3; ++col)
@@ -608,7 +609,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
 
 bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                          const insv::StitchGpuParams& params, int measureW,
-                                         int measureH, int outW, int outH, const float pose[4],
+                                         int measureH, int outW, int outH, const float pose[5],
                                          const float stab[9], const color::Grade* colorGrade,
                                          ViewFormat fmt, std::vector<uint8_t>& out,
                                          VulkanLensOutcome* r0, VulkanLensOutcome* r1,
@@ -616,7 +617,7 @@ bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const Vulkan
 {
     ViewRect v;
     if (pose)
-        std::copy(pose, pose + 4, v.pose);
+        std::copy(pose, pose + 5, v.pose);
     v.w = outW;
     v.h = outH;
     return renderViewsImpl(f0, f1, params, measureW, measureH, 0, 0, {v}, stab, colorGrade, fmt,
@@ -794,6 +795,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         vp.pitch = v.pose[1];
         vp.roll = v.pose[2];
         vp.fovY = v.pose[3];
+        vp.fmt = (vp.fmt & 0xFF) | (int(v.pose[4]) << 8);
         vp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
         vp.ox = single ? 0 : v.x;
         vp.oy = single ? 0 : v.y;

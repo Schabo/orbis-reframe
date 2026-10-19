@@ -51,12 +51,13 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     job.depthSeam = c.depthSeam;
     timeline.sourceSeamAdjust(c.sourcePath, job.seamAdjustDeg);
     if (!c.reframe.isEmpty())
-        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[4]) {
+        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[5]) {
             const ReframePose p = track.sample(sourceMs);
             pose[0] = p.yaw;
             pose[1] = p.pitch;
             pose[2] = p.roll;
             pose[3] = p.fovY;
+            pose[4] = float(int(p.projection));
         };
     spec.buildStab = c.stabilization;
     spec.fps = c.fps;
@@ -465,12 +466,13 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
             c.sourcePath, c.fps, c.stabilization, std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
     // No keyframes -> a static forward view.
     if (!c.reframe.isEmpty())
-        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[4]) {
+        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[5]) {
             const ReframePose p = track.sample(sourceMs);
             pose[0] = p.yaw;
             pose[1] = p.pitch;
             pose[2] = p.roll;
             pose[3] = p.fovY;
+            pose[4] = float(int(p.projection));
         };
     return job;
 }

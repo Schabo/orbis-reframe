@@ -175,8 +175,8 @@ void benchFlat(const std::string& path, int eqW, int frames, double fps, FlatKin
         std::printf("  fused view pass unavailable\n");
         return;
     }
-    const float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
-    const auto fixedPose = [&pose](int64_t, float p[4], float[9]) { std::copy(pose, pose + 4, p); };
+    const float pose[5] = {0.0f, 0.0f, 0.0f, 1.309f, 0.0f};
+    const auto fixedPose = [&pose](int64_t, float p[5], float[9]) { std::copy(pose, pose + 5, p); };
     Stats total, dec, wait, gpu, rf, copy, seam;
     for (int i = 0; i < frames + kWarmup; ++i) {
         const auto t0 = Clock::now();

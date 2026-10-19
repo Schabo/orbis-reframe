@@ -3,6 +3,7 @@
 
 #include "EquirectViewportWindow.h"
 #include "EquirectViewportRenderer.h"
+#include "../core/ViewProjection.h"
 
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -130,13 +131,14 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
         std::copy(m_pendingStab, m_pendingStab + 9, m_stab);
     if (m_pendingView.hasPose) // ... and the view and grade
         SetPose(m_pendingView.pose[0], m_pendingView.pose[1], m_pendingView.pose[2],
-                m_pendingView.pose[3]);
+                m_pendingView.pose[3], static_cast<Projection>(m_pendingView.pose[4]));
     if (m_pendingView.hasGrade)
         SetColorGrade(&m_pendingView.grade);
     m_pendingView = {};
     if (m_pendingHasOverlay) { // ... and the pose / marker
         const FrameOverlay &o = m_pendingOverlay;
-        SetPose(o.pose[0], o.pose[1], o.pose[2], o.pose[3]);
+        SetPose(o.pose[0], o.pose[1], o.pose[2], o.pose[3],
+                static_cast<Projection>(o.pose[4]));
         if (o.hasMarker)
             SetMarker(o.marker, o.markerStyle);
         else
@@ -150,12 +152,14 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
     return true;
 }
 
-void EquirectViewportWindow::SetPose(float yaw, float pitch, float roll, float fovY)
+void EquirectViewportWindow::SetPose(float yaw, float pitch, float roll, float fovY,
+                                   Projection proj)
 {
     m_yaw = yaw;
     m_pitch = std::clamp(pitch, -kMaxPitch, kMaxPitch);
     m_roll = roll;
     m_fovY = std::clamp(fovY, kMinFovY, kMaxFovY);
+    m_proj = proj;
 }
 
 void EquirectViewportWindow::SetStabilization(const float rowMajor3x3[9])
@@ -286,9 +290,9 @@ void EquirectViewportWindow::SphereDirAtFraction(double fx, double fy, float out
     // stabilization.
     const float ndcX = float(2.0 * fx - 1.0);
     const float ndcY = float(2.0 * fy - 1.0);
-    const float t = std::tan(m_fovY * 0.5f);
     const float aspect = rect.height() > 0 ? float(rect.width() / rect.height()) : 1.0f;
-    float v[3] = {ndcX * t * aspect, -ndcY * t, -1.0f};
+    float v[3];
+    viewproj::viewRay(ndcX, ndcY, m_fovY, aspect, int(m_proj), v);
     const float cr = std::cos(m_roll), sr = std::sin(m_roll);
     const float cp = std::cos(m_pitch), sp = std::sin(m_pitch);
     const float cy = std::cos(m_yaw), sy = std::sin(m_yaw);

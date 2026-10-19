@@ -36,7 +36,8 @@ void testProjectJson()
         CHECK(p.modified()); // an edit dirtied it
         p.timeline()->setClipTrimIn(a, 1000);
         p.timeline()->setClipTrimOut(a, 8000);
-        p.timeline()->upsertClipReframeKey(a, 2000, {0.5f, -0.25f, 0.1f, 1.1f});
+        p.timeline()->upsertClipReframeKey(a, 2000, {0.5f, -0.25f, 0.1f, 1.1f,
+                                                   Projection::TinyPlanet});
         p.timeline()->upsertClipReframeKey(a, 5000, {1.5f, 0.0f, 0.0f, 0.9f});
         p.timeline()->setClipReframeEase(a, 3000, keytrack::Ease::Out); // 2000's segment
         { // Audio panel: the camera mic's clip (stream 1 of 2)
@@ -156,6 +157,12 @@ void testProjectJson()
         CHECK(a.reframe.keys()[1].pose.fovY > 0.89f && a.reframe.keys()[1].pose.fovY < 0.91f);
         CHECK(a.reframe.keys()[0].ease == keytrack::Ease::Out);
         CHECK(a.reframe.keys()[1].ease == keytrack::Ease::Linear);
+        // Key 1's projection round-trips; key 2 (none written) is flat, and a
+        // segment keeps its start key's shape until the next key.
+        CHECK(a.reframe.keys()[0].pose.projection == Projection::TinyPlanet);
+        CHECK(a.reframe.keys()[1].pose.projection == Projection::Rectilinear);
+        CHECK(a.reframe.sample(3500).projection == Projection::TinyPlanet);
+        CHECK(a.reframe.sample(5000).projection == Projection::Rectilinear);
         // The stream tracks round-trip: roles, order, mute, the clips' links
         // and the Audio panel's level / noise.
         const int camId = tl->streamTrackId(Track::Role::CameraMic);

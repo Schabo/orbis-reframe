@@ -17,6 +17,7 @@
 #include "ColorLut.h" // color::Grade
 #include "LensFrame.h"
 #include "../core/InsetGeometry.h"
+#include "../core/ReframeTrack.h" // Projection
 
 #include <array>
 #include <atomic>
@@ -30,7 +31,7 @@
 // clip through the next one's view. (EquirectViewportWindow::FrameView.)
 struct ViewportFrameView {
     bool hasPose = false; // else the view stays (free look, a drag)
-    float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f}; // yaw, pitch, roll, fovY
+    float pose[5] = {0.0f, 0.0f, 0.0f, 1.309f, 0.0f}; // yaw, pitch, roll, fovY, proj
     bool hasGrade = false;
     color::Grade grade; // ColorGrade::render()
 };
@@ -134,12 +135,14 @@ public:
     float Pitch() const { return m_pitch; }
     float Roll() const { return m_roll; }
     float FovY() const { return m_fovY; }
+    Projection ViewProjection() const { return m_proj; }
 
     // Set the camera pose directly. Used by MainWindow to drive the viewport
     // along the authored reframe path during playback / scrubbing, and by the
     // Reframe panel's numeric fields. Plain float writes, matching how the
     // mouse handlers already mutate these while the render thread reads them.
-    void SetPose(float yaw, float pitch, float roll, float fovY);
+    void SetPose(float yaw, float pitch, float roll, float fovY,
+                 Projection proj = Projection::Rectilinear);
 
     // A 3x3 (row-major) gyro de-rotation in the sphere frame, which the
     // shader applies to the world ray *after* the yaw/pitch/roll pose -- so it
@@ -200,7 +203,7 @@ public:
     // frame, so pose and box must change with the picture, not a render early
     // or late. Thread-safe like SetFrame.
     struct FrameOverlay {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f}; // yaw, pitch, roll, fovY
+        float pose[5] = {0.0f, 0.0f, 0.0f, 1.309f, 0.0f}; // yaw, pitch, roll, fovY, proj
         bool hasMarker = false;
         QRectF marker; // output-rect fractions
         MarkerStyle markerStyle = MarkerStyle::Tracking;
@@ -281,6 +284,7 @@ private:
     float m_pitch = 0.0f;
     float m_roll = 0.0f;   // set only via SetPose (numeric panel / reframe path)
     float m_fovY = 1.309f; // ~75 degrees, a reasonable default rectilinear FOV
+    Projection m_proj = Projection::Rectilinear; // the view's shape
     // Row-major 3x3, identity by default (no stabilization).
     float m_stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     float m_pendingStab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1}; // with the pending frame, guarded by m_frameMutex

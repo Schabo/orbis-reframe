@@ -66,14 +66,15 @@ public:
     bool open(const FlattenConfig& cfg, std::string& err);
 
     // Reproject one in-memory RGBA equirect frame (eqW x eqH) against `pose`
-    // ({yaw, pitch, roll, fovY} radians; nullptr => static forward view) and
+    // ({yaw, pitch, roll, fovY, projection} -- radians, then ReframeTrack.h's
+    // Projection as a float; nullptr => static forward view) and
     // encode it, advancing the shared output PTS. For callers that produce
     // equirect frames in-process (stitch::NativeStitchSource) with no
     // intermediate file. `stab` (row-major 3x3, nullptr => identity) is the
     // frame's gyro de-rotation in the sphere frame, applied after `pose`.
     // `colorGrade` (nullptr => neutral) is the Colour panel grade, its LUT
     // included. False (with `err`) on failure.
-    bool addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[4],
+    bool addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[5],
                           const float stab[9], const color::Grade* colorGrade,
                           std::string& err);
 
