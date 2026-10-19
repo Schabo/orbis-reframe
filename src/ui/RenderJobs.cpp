@@ -2,6 +2,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QMap>
+#include <QObject>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -493,6 +495,44 @@ QStringList missingSources(const Timeline &timeline)
             if (c.mediaMissing && !c.isTitle() && !(t.kind == Track::Kind::Audio && c.muted))
                 add(c.sourcePath);
     }
+    return out;
+}
+
+QStringList missingSourceLines(const Timeline &timeline)
+{
+    // Each missing source as "name.ext -- clip 2" (its place on the
+    // timeline): with several gone at once, bare paths don't say which
+    // clip is which. A file used in more than one spot names them all.
+    // The path goes after, indented, under its line.
+    QMap<QString, QStringList> whoFor; // path -> where it's used, in order
+    QStringList order;
+    const auto add = [&](const QString &path, const QString &who) {
+        if (!whoFor.contains(path)) {
+            whoFor[path] = {};
+            order << path;
+        }
+        whoFor[path] << who;
+    };
+    for (int i = 0; i < timeline.count(); ++i)
+        if (const ClipItem &c = timeline.clipAt(i); c.mediaMissing)
+            add(c.sourcePath, QObject::tr("clip %1").arg(i + 1));
+    for (int i = 0; i < timeline.trackCount(); ++i) {
+        const Track &t = timeline.trackAt(i);
+        if (t.muted)
+            continue;
+        for (const TrackClip &c : t.clips) {
+            if (!c.mediaMissing || c.isTitle() || (t.kind == Track::Kind::Audio && c.muted))
+                continue;
+            add(c.sourcePath,
+                t.kind == Track::Kind::Video ? QObject::tr("inset on “%1”").arg(t.name)
+                                           : QObject::tr("sound on “%1”").arg(t.name));
+        }
+    }
+    QStringList out;
+    for (const QString &path : order)
+        out << QObject::tr("%1 -- %2").arg(QFileInfo(path).fileName(),
+                                           whoFor[path].join(QLatin1String(", "))) +
+                   QStringLiteral("\n    %1").arg(path);
     return out;
 }
 

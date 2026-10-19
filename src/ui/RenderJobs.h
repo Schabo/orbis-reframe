@@ -69,6 +69,11 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
 // main-track clips first, then overlay and audio clips. Clips on hidden or
 // muted tracks and muted audio clips aren't exported, so they don't count.
 QStringList missingSources(const Timeline &timeline);
+// The same set as display lines: "name.ext -- clip 2" / "name.ext -- inset on
+// “Overlay 1”" / "name.ext -- sound on “Camera mic”", with the full path
+// indented under each -- for a message when more than one is missing and a
+// bare path wouldn't say which clip it is.
+QStringList missingSourceLines(const Timeline &timeline);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),

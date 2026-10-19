@@ -10,6 +10,8 @@
 #include <NativeStitchSource.h> // stitch::NativeStitchSource, stitch::Frame, stitch::PreviewStitchConfig
 #include <ProbeClip.h>          // stitch::ProbeClip
 
+#include <QFileInfo>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -240,6 +242,16 @@ void ReframeExportController::run(const Request &req)
         const double base = framesBefore * 100.0 / totalFrames;
         const double span = frames[i] * 100.0 / totalFrames;
         const QString label = tr("Rendering clip %1 of %2…").arg(i + 1).arg(n);
+        // Per-clip failures name the clip so a mid-export error is traceable
+        // back to the timeline.
+        auto failClip = [&](const QString &e) {
+            emit finished(false,
+                          tr("Clip %1 of %2 (%3): %4")
+                              .arg(i + 1)
+                              .arg(n)
+                              .arg(QFileInfo(c.clipPath).fileName(), e),
+                          req.outPath);
+        };
 
         auto feedAudio = [&]() -> bool {
             if (!withAudio)
@@ -306,14 +318,14 @@ void ReframeExportController::run(const Request &req)
 
         auto src = std::make_unique<stitch::NativeStitchSource>();
         if (!src->Open(c.clipPath.toStdString(), sc) || !src->SeekTo(c.trimInMs)) {
-            emit finished(false, QString::fromStdString(src->GetLastError()), req.outPath);
+            failClip(QString::fromStdString(src->GetLastError()));
             return;
         }
         src->SetCaptureTiming(captureTimingFor(c.stab));
         src->SetLens1Adjust(c.seamAdjustDeg.data());
         src->SetFlatTenBit(writer->tenBit());
         if (c.blur && !src->SetBlurQuads(c.blur)) {
-            emit finished(false, tr("This stitch can't apply the privacy blur."), req.outPath);
+            failClip(tr("This stitch can't apply the privacy blur."));
             return;
         }
         // Into a 10-bit file, a clip whose frames come as 8-bit (the CPU
@@ -366,7 +378,7 @@ void ReframeExportController::run(const Request &req)
                 if (ff.data.empty()) { // clean end-of-clip, or error
                     const std::string &e = src->GetLastError();
                     if (!e.empty()) {
-                        emit finished(false, QString::fromStdString(e), req.outPath);
+                        failClip(QString::fromStdString(e));
                         return;
                     }
                     break;
@@ -391,7 +403,7 @@ void ReframeExportController::run(const Request &req)
                 if (eq.rgba.empty()) { // clean end-of-clip, or error
                     const std::string &e = src->GetLastError();
                     if (!e.empty()) {
-                        emit finished(false, QString::fromStdString(e), req.outPath);
+                        failClip(QString::fromStdString(e));
                         return;
                     }
                     break;

@@ -6,6 +6,7 @@
 
 #include <NativeStitchSource.h> // stitch::MakeStitchSource
 
+#include <QFileInfo>
 #include <QTimer>
 
 #include <algorithm>
@@ -263,14 +264,20 @@ void PlaybackController::pruneSourcesToTimeline()
 
 bool PlaybackController::switchToSegment(int index)
 {
-    const QString path = m_decPlaced[index].seg.sourcePath;
+    const Segment &seg = m_decPlaced[index].seg;
+    const QString path = seg.sourcePath;
     if (m_activeSource && m_activePath == path) {
         touchSourceLru(path);
         return true;
     }
+    // A file that's gone has no open and no "Playback error" -- the
+    // missing-media UI reports it. The filesystem check stands for segments
+    // pushed before their mediaMissing flag was set (mid-load).
+    if (seg.missing || !QFileInfo::exists(path))
+        return false;
 
     QString err;
-    auto src = acquireSource(m_decPlaced[index].seg, &err);
+    auto src = acquireSource(seg, &err);
     if (!src) {
         emit openFailed(err.isEmpty() ? QStringLiteral("could not open %1").arg(path) : err);
         return false;

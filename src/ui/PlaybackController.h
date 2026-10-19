@@ -103,6 +103,10 @@ public:
         // over the preview config's (setPreviewConfig).
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
         bool depthSeam = true;
+        // The file was gone when the timeline was pushed (ClipItem::
+        // mediaMissing): the decoder doesn't try to open it and doesn't
+        // report it -- the missing-media UI owns that.
+        bool missing = false;
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
         qint64 localAtSourceMs(qint64 sourceMs) const
