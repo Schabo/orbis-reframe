@@ -161,6 +161,8 @@ json reframeToJson(const ReframeTrack &track)
                 {"pitch", k.pose.pitch},
                 {"roll", k.pose.roll},
                 {"fovY", k.pose.fovY}};
+        if (k.pose.projection != Projection::Rectilinear)
+            jk["proj"] = static_cast<int>(k.pose.projection);
         if (k.ease != keytrack::Ease::Linear)
             jk["ease"] = keytrack::easeName(k.ease);
         keys.push_back(std::move(jk));
@@ -1143,6 +1145,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     k.pose.pitch = jk.value("pitch", 0.0f);
                     k.pose.roll = jk.value("roll", 0.0f);
                     k.pose.fovY = jk.value("fovY", 1.309f);
+                    k.pose.projection = static_cast<Projection>(jk.value("proj", 0));
                     k.ease = keytrack::easeFromName(jk.value("ease", std::string()));
                     pc.reframeKeys.push_back(k);
                 }

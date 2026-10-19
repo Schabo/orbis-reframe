@@ -72,6 +72,7 @@ private:
     QDoubleSpinBox *m_pitch = nullptr;
     QDoubleSpinBox *m_roll = nullptr;
     QDoubleSpinBox *m_fov = nullptr;
+    QComboBox *m_proj = nullptr;
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;
     QPushButton *m_track = nullptr;

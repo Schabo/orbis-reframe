@@ -32,7 +32,8 @@ layout(push_constant) uniform PC {
     float roll;
     float fovY;
     float aspect;
-    // 12 bytes of padding here (4 ints + 5 floats -> mat3 aligns at offset 48).
+    float proj; // the view's projection (ReframeTrack.h's Projection, as a float)
+    // 8 bytes of padding here (4 ints + 6 floats -> mat3 aligns at offset 48).
     mat3 stab; // gyro de-rotation in the sphere frame, applied to the world ray
                // AFTER the reframe pose (same as equirect.frag). Identity = off.
     // Colour panel: x=exposureEv (stops), y=contrast (%), z=saturation (%),
@@ -49,6 +50,7 @@ vec3 unpackRgb(uint p)
 }
 
 #include "color_grade.glsl"
+#include "view_ray.glsl"
 
 // Bilinear equirect fetch: U wraps (the seam), V clamps (the poles) -- matches
 // the viewport sampler and exportpipe::ReframeRenderer::sampleEquirect.
@@ -77,12 +79,12 @@ vec3 sampleEq(vec2 uv)
 
 // Output pixel -> world-space look direction. Port of equirect.frag: view-space
 // ray from the FOV, then roll about Z, pitch about X, yaw about Y, then stab.
-vec3 dirFor(int px, int py)
+vec4 dirFor(int px, int py)
 {
-    float ndcX = (float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0;
-    float ndcY = (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0;
-    float t = tan(pc.fovY * 0.5);
-    vec3 r = normalize(vec3(ndcX * t * pc.aspect, -ndcY * t, -1.0));
+    vec2 ndc = vec2((float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0,
+                    (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0);
+    vec4 rv = viewRayProj(ndc, pc.fovY, pc.aspect, int(pc.proj));
+    vec3 r = rv.xyz;
 
     float cr = cos(pc.roll), sr = sin(pc.roll);
     float cp = cos(pc.pitch), sp = sin(pc.pitch);
@@ -90,7 +92,7 @@ vec3 dirFor(int px, int py)
 
     vec3 rr = vec3(r.x * cr - r.y * sr, r.x * sr + r.y * cr, r.z);
     vec3 rp = vec3(rr.x, rr.y * cp - rr.z * sp, rr.y * sp + rr.z * cp);
-    return pc.stab * vec3(rp.x * cy + rp.z * sy, rp.y, -rp.x * sy + rp.z * cy);
+    return vec4(pc.stab * vec3(rp.x * cy + rp.z * sy, rp.y, -rp.x * sy + rp.z * cy), rv.w);
 }
 
 vec2 uvFor(vec3 rw)
@@ -122,7 +124,10 @@ void main()
     vec3 rgb[4];
     uint y[4];
     for (int i = 0; i < 4; ++i) {
-        rgb[i] = gradeColor(sampleEq(uvFor(dirFor(basePx + i, gid.y))), pc.colorGrade, pc.colorLut, 255.0);
+        vec4 d = dirFor(basePx + i, gid.y);
+        rgb[i] = d.w > 0.0 ? gradeColor(sampleEq(uvFor(d.xyz)), pc.colorGrade, pc.colorLut,
+                                        255.0)
+                           : vec3(0.0);
         y[i] = q8(lumaY(rgb[i]));
     }
     outw[gid.y * uintsPerRow + gid.x] = y[0] | (y[1] << 8) | (y[2] << 16) | (y[3] << 24);
@@ -131,10 +136,14 @@ void main()
     // averaging this row and the next.
     if ((gid.y & 1) == 0) {
         int nextY = gid.y + 1 < pc.outH ? gid.y + 1 : gid.y;
-        vec3 n0 = gradeColor(sampleEq(uvFor(dirFor(basePx + 0, nextY))), pc.colorGrade, pc.colorLut, 255.0);
-        vec3 n1 = gradeColor(sampleEq(uvFor(dirFor(basePx + 1, nextY))), pc.colorGrade, pc.colorLut, 255.0);
-        vec3 n2 = gradeColor(sampleEq(uvFor(dirFor(basePx + 2, nextY))), pc.colorGrade, pc.colorLut, 255.0);
-        vec3 n3 = gradeColor(sampleEq(uvFor(dirFor(basePx + 3, nextY))), pc.colorGrade, pc.colorLut, 255.0);
+        vec4 d0 = dirFor(basePx + 0, nextY);
+        vec4 d1 = dirFor(basePx + 1, nextY);
+        vec4 d2 = dirFor(basePx + 2, nextY);
+        vec4 d3 = dirFor(basePx + 3, nextY);
+        vec3 n0 = d0.w > 0.0 ? gradeColor(sampleEq(uvFor(d0.xyz)), pc.colorGrade, pc.colorLut, 255.0) : vec3(0.0);
+        vec3 n1 = d1.w > 0.0 ? gradeColor(sampleEq(uvFor(d1.xyz)), pc.colorGrade, pc.colorLut, 255.0) : vec3(0.0);
+        vec3 n2 = d2.w > 0.0 ? gradeColor(sampleEq(uvFor(d2.xyz)), pc.colorGrade, pc.colorLut, 255.0) : vec3(0.0);
+        vec3 n3 = d3.w > 0.0 ? gradeColor(sampleEq(uvFor(d3.xyz)), pc.colorGrade, pc.colorLut, 255.0) : vec3(0.0);
 
         vec3 c0 = (rgb[0] + rgb[1] + n0 + n1) * 0.25;
         vec3 c1 = (rgb[2] + rgb[3] + n2 + n3) * 0.25;

@@ -4,6 +4,7 @@
 #include "EquirectViewportRenderer.h"
 
 #include "../core/Log.h"
+#include "../core/ViewProjection.h"
 
 #include <QMutexLocker>
 #include <QVersionNumber>
@@ -23,12 +24,14 @@ namespace {
 
 // A region outline as the view shows it: its quad's corners taken from the
 // sphere frame into the view (the inverse of equirect.frag's ray: stab^T,
-// then yaw, pitch and roll undone), clipped to what lies in front of the
-// camera and projected into the output rect, px. Up to 6 corners (4, plus
-// one per edge the clip cuts). Fewer than 3 = nothing to draw.
+// then yaw, pitch and roll undone) and projected into the output rect, px,
+// through the view's projection (viewproj::viewNdc). Rectilinear also clips
+// to what lies in front of the camera (up to 6 corners: 4, plus one per edge
+// the clip cuts) -- the other projections see the whole sphere, so the quad
+// keeps its 4. Fewer than 3 = nothing to draw.
 int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float stabRm[9],
-                   float yaw, float pitch, float roll, float fovY, float aspect, float rectW,
-                   float rectH, float out[12])
+                   float yaw, float pitch, float roll, float fovY, float aspect, int proj,
+                   float rectW, float rectH, float out[12])
 {
     const float cy = std::cos(yaw), sy = std::sin(yaw);
     const float cp = std::cos(pitch), sp = std::sin(pitch);
@@ -47,30 +50,38 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
         v[i][1] = -x1 * sr + y2 * cr;
         v[i][2] = z2;
     }
-    // Keep z <= -kNear (in front); Sutherland-Hodgman against that plane.
-    constexpr float kNear = 1e-3f;
     float c[6][3];
     int n = 0;
-    for (int i = 0; i < 4; ++i) {
-        const float *a = v[i], *b = v[(i + 1) % 4];
-        const bool ina = a[2] <= -kNear, inb = b[2] <= -kNear;
-        if (ina)
-            std::copy(a, a + 3, c[n++]);
-        if (ina != inb) {
-            const float t = (-kNear - a[2]) / (b[2] - a[2]);
-            for (int k = 0; k < 3; ++k)
-                c[n][k] = a[k] + t * (b[k] - a[k]);
-            ++n;
+    if (proj == 0) {
+        // Keep z <= -kNear (in front); Sutherland-Hodgman against that plane.
+        constexpr float kNear = 1e-3f;
+        for (int i = 0; i < 4; ++i) {
+            const float *a = v[i], *b = v[(i + 1) % 4];
+            const bool ina = a[2] <= -kNear, inb = b[2] <= -kNear;
+            if (ina)
+                std::copy(a, a + 3, c[n++]);
+            if (ina != inb) {
+                const float t = (-kNear - a[2]) / (b[2] - a[2]);
+                for (int k = 0; k < 3; ++k)
+                    c[n][k] = a[k] + t * (b[k] - a[k]);
+                ++n;
+            }
         }
+    } else {
+        // The whole sphere is visible: all 4 corners land somewhere.
+        for (int i = 0; i < 4; ++i)
+            std::copy(v[i], v[i] + 3, c[n++]);
     }
-    const float t = std::tan(fovY * 0.5f);
+    int drawn = 0;
     for (int i = 0; i < n; ++i) {
-        const float ndcX = (c[i][0] / -c[i][2]) / (t * aspect);
-        const float ndcY = -(c[i][1] / -c[i][2]) / t;
-        out[i * 2] = (ndcX + 1.0f) * 0.5f * rectW;
-        out[i * 2 + 1] = (ndcY + 1.0f) * 0.5f * rectH;
+        float ndc[2];
+        if (!viewproj::viewNdc(c[i], fovY, aspect, proj, ndc))
+            continue;
+        out[drawn * 2] = (ndc[0] + 1.0f) * 0.5f * rectW;
+        out[drawn * 2 + 1] = (ndc[1] + 1.0f) * 0.5f * rectH;
+        ++drawn;
     }
-    return n;
+    return drawn;
 }
 
 } // namespace
@@ -269,10 +280,11 @@ void EquirectViewportRenderer::statsFrameStart(bool newPicture)
         ++s.newFrames;
     }
     ++s.rendersOfCurrent;
-    const float pose[4] = {m_window->Yaw(), m_window->Pitch(), m_window->Roll(), m_window->FovY()};
-    if (!std::equal(pose, pose + 4, s.lastPose)) {
+    const float pose[5] = {m_window->Yaw(), m_window->Pitch(), m_window->Roll(),
+                           m_window->FovY(), float(int(m_window->ViewProjection()))};
+    if (!std::equal(pose, pose + 5, s.lastPose)) {
         ++s.poseChanges;
-        std::copy(pose, pose + 4, s.lastPose);
+        std::copy(pose, pose + 5, s.lastPose);
     }
 }
 
@@ -529,6 +541,7 @@ void EquirectViewportRenderer::startNextFrame()
     pc.roll = m_window->Roll();
     pc.fovY = m_window->FovY();
     pc.aspect = outAspect;
+    pc.proj = float(int(m_window->ViewProjection()));
     // Stabilization matrix, row-major in the window -> col-major (3 padded
     // vec3 columns) for std140.
     float stabRm[9];
@@ -573,7 +586,7 @@ void EquirectViewportRenderer::startNextFrame()
         for (const auto &o : outlines) {
             RegionPushConstants rpc{};
             const int n = projectOutline(o, stabRm, pc.yaw, pc.pitch, pc.roll, pc.fovY, outAspect,
-                                         float(rectW), float(rectH), rpc.pts);
+                                         int(pc.proj), float(rectW), float(rectH), rpc.pts);
             if (n < 3)
                 continue;
             float lo[2] = {rpc.pts[0], rpc.pts[1]}, hi[2] = {lo[0], lo[1]};

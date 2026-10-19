@@ -42,6 +42,21 @@ ReframePanel::ReframePanel(QWidget *parent)
     form()->addRow(tr("Roll"), m_roll);
     form()->addRow(tr("Field of view"), m_fov);
 
+    // The view's shape, keyframed like the pose itself. Everything but Flat
+    // takes in most or all of the sphere, so the field of view acts as its
+    // zoom rather than a crop.
+    m_proj = new QComboBox(this);
+    m_proj->addItem(tr("Flat"), int(Projection::Rectilinear));
+    m_proj->addItem(tr("Tiny planet"), int(Projection::TinyPlanet));
+    m_proj->addItem(tr("Fisheye"), int(Projection::Fisheye));
+    m_proj->addItem(tr("Mirror ball"), int(Projection::MirrorBall));
+    m_proj->setToolTip(tr("The shape of the picture. Flat is the usual view; tiny planet "
+                          "wraps the sphere around its pole, fisheye draws it as a disc, "
+                          "mirror ball shows it all inside a ball."));
+    form()->addRow(tr("View"), m_proj);
+    connect(m_proj, &QComboBox::activated, this, &ReframePanel::emitIfEdited);
+
+
     m_ease = easecombo::make(this);
     m_ease->setObjectName(QStringLiteral("reframeEaseCombo"));
     m_ease->setToolTip(tr("How the view moves from the key at the playhead (or the last one "
@@ -107,6 +122,7 @@ ReframePose ReframePanel::currentPose() const
     p.pitch = static_cast<float>(m_pitch->value() * kDegToRad);
     p.roll = static_cast<float>(m_roll->value() * kDegToRad);
     p.fovY = static_cast<float>(m_fov->value() * kDegToRad);
+    p.projection = static_cast<Projection>(m_proj->currentData().toInt());
     return p;
 }
 
@@ -125,6 +141,7 @@ void ReframePanel::setPose(const ReframePose &pose)
     m_pitch->setValue(pose.pitch * kRadToDeg);
     m_roll->setValue(wrapDeg(pose.roll * kRadToDeg));
     m_fov->setValue(pose.fovY * kRadToDeg);
+    m_proj->setCurrentIndex(m_proj->findData(int(pose.projection)));
     m_updating = false;
 }
 
@@ -137,7 +154,8 @@ void ReframePanel::setFlatClip(bool flat, bool fill)
 {
     m_flat = flat;
     for (QWidget *w :
-         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_ease, m_track})
+         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_proj,
+                                        m_ease, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);

@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../core/ViewProjection.h"
+
 namespace track {
 
 struct Vec3 {
@@ -66,12 +68,14 @@ inline Vec3 stabToView(const Vec3& q, double yaw, double pitch, double roll = 0.
 }
 
 // A point of a view at fractions (fx, fy) of its width / height (0,0 = top
-// left) -> stabilized direction.
+// left) -> stabilized direction. `proj` is ReframeTrack.h's Projection as an
+// int (0 = rectilinear; the view_ray.glsl shapes, via ViewProjection.h).
 inline Vec3 viewPointToStab(double fx, double fy, double yaw, double pitch, double roll,
-                            double fovY, double aspect)
+                            double fovY, double aspect, int proj = 0)
 {
-    const double t = std::tan(fovY * 0.5);
-    const Vec3 v = normalized({(fx * 2.0 - 1.0) * t * aspect, -(fy * 2.0 - 1.0) * t, -1.0});
+    double vd[3];
+    viewproj::viewRay(fx * 2.0 - 1.0, fy * 2.0 - 1.0, fovY, aspect, proj, vd);
+    const Vec3 v = normalized({vd[0], vd[1], vd[2]});
     return viewToStab(v, yaw, pitch, roll);
 }
 
@@ -84,16 +88,16 @@ struct Seed {
 
 // A box in a view (fractions of the view: x, y = top left, w, h) -> Seed.
 inline Seed seedFromViewBox(double x, double y, double w, double h, double yaw, double pitch,
-                            double roll, double fovY, double aspect)
+                            double roll, double fovY, double aspect, int proj = 0)
 {
     Seed s;
-    yawPitchFromDir(viewPointToStab(x + w * 0.5, y + h * 0.5, yaw, pitch, roll, fovY, aspect),
+    yawPitchFromDir(viewPointToStab(x + w * 0.5, y + h * 0.5, yaw, pitch, roll, fovY, aspect, proj),
                     s.yaw, s.pitch);
     const double cy = y + h * 0.5, cx = x + w * 0.5;
-    s.width = angleBetween(viewPointToStab(x, cy, yaw, pitch, roll, fovY, aspect),
-                           viewPointToStab(x + w, cy, yaw, pitch, roll, fovY, aspect));
-    s.height = angleBetween(viewPointToStab(cx, y, yaw, pitch, roll, fovY, aspect),
-                            viewPointToStab(cx, y + h, yaw, pitch, roll, fovY, aspect));
+    s.width = angleBetween(viewPointToStab(x, cy, yaw, pitch, roll, fovY, aspect, proj),
+                           viewPointToStab(x + w, cy, yaw, pitch, roll, fovY, aspect, proj));
+    s.height = angleBetween(viewPointToStab(cx, y, yaw, pitch, roll, fovY, aspect, proj),
+                            viewPointToStab(cx, y + h, yaw, pitch, roll, fovY, aspect, proj));
     return s;
 }
 

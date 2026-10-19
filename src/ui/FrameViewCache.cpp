@@ -38,5 +38,6 @@ PlaybackController::ViewProvider FrameViewCache::provider() const
         view.pose[1] = p.pitch;
         view.pose[2] = p.roll;
         view.pose[3] = p.fovY;
+        view.pose[4] = float(int(p.projection));
     };
 }

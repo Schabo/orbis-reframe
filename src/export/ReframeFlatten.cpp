@@ -642,7 +642,7 @@ bool FlattenWriter::encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const R
     return true;
 }
 
-bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[4],
+bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[5],
                                      const float stab[9], const color::Grade* colorGrade,
                                      std::string& err)
 {
@@ -658,6 +658,7 @@ bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, co
         view.pitch = pose[1];
         view.roll = pose[2];
         view.fovY = pose[3];
+        view.proj = static_cast<int>(pose[4]);
     }
     if (stab) {
         for (int i = 0; i < 9; ++i)

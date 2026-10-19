@@ -71,20 +71,23 @@ struct ReframePush {
     float roll;
     float fovY;
     float aspect;
-    float _pad[3];
+    float proj; // the view's projection (ReframeTrack.h's Projection)
+    float _pad[2];
     float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major)
     float colorGrade[4]; // exposureEv, contrast%, saturation%, temperature%
     float colorLut[4];   // VulkanLutStore::pushValues
 };
 static_assert(sizeof(ReframePush) == 128, "ReframePush must match the compute push_constant block");
 
-// Push constants for fisheye_view_nv12.comp: 4 ints + 5 floats, pad, then the
-// stab mat3 as padded columns and the grade -- the same tail as ReframePush.
+// Push constants for fisheye_view_nv12.comp: 4 ints + 5 floats + 3 ints, then
+// the stab mat3 as padded columns and the grade -- the same tail as
+// ReframePush. No spare field: the view's projection rides in fmt's high bits
+// (the shader masks fmt with 0xFF and shifts proj out).
 struct ViewPush {
     int32_t pass;
     int32_t outW;
     int32_t outH;
-    int32_t fmt; // 0 = NV12, 1 = RGBA
+    int32_t fmt; // low byte: 0 = NV12, 1 = RGBA; high: projection << 8
     float yaw;
     float pitch;
     float roll;

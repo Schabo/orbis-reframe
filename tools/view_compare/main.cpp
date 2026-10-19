@@ -35,7 +35,7 @@ constexpr int kRefEq = 7680;
 // One NV12 render of the frame at `atMs`: fused (eqW is then only the
 // measure grid) or via an eqW equirect.
 std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fused, int eqW,
-                            const float pose[4])
+                            const float pose[5])
 {
     stitch::NativeStitchSource src;
     stitch::PreviewStitchConfig cfg;
@@ -116,14 +116,14 @@ int main(int argc, char** argv)
 
     struct Pose {
         const char* name;
-        float p[4];
+        float p[5];
     };
     const float deg = std::numbers::pi_v<float> / 180.0f;
     const Pose poses[] = {
-        {"forward75", {0.0f, 0.0f, 0.0f, 75.0f * deg}},
-        {"seam_side75", {90.0f * deg, 0.0f, 0.0f, 75.0f * deg}}, // across the lens seam
-        {"zoom30", {20.0f * deg, -5.0f * deg, 10.0f * deg, 30.0f * deg}},
-        {"up_wide110", {0.0f, 60.0f * deg, 0.0f, 110.0f * deg}},
+        {"forward75", {0.0f, 0.0f, 0.0f, 75.0f * deg, 0.0f}},
+        {"seam_side75", {90.0f * deg, 0.0f, 0.0f, 75.0f * deg, 0.0f}}, // across the lens seam
+        {"zoom30", {20.0f * deg, -5.0f * deg, 10.0f * deg, 30.0f * deg, 0.0f}},
+        {"up_wide110", {0.0f, 60.0f * deg, 0.0f, 110.0f * deg, 0.0f}},
     };
     struct Path {
         const char* name;

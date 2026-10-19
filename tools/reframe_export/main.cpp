@@ -282,7 +282,7 @@ int main(int argc, char** argv)
         static_cast<int64_t>(std::llround((trimOut - trimIn) / 1000.0 * fps));
 
     std::vector<float> poses;
-    poses.reserve(static_cast<size_t>(frameCount) * 4);
+    poses.reserve(static_cast<size_t>(frameCount) * 5);
     if (!a.keysPath.empty()) {
         const ReframeTrack track = loadKeys(a.keysPath, frameDurMs);
         std::printf("keys:   %d from %s\n", track.count(), a.keysPath.c_str());
@@ -293,6 +293,7 @@ int main(int argc, char** argv)
             poses.push_back(p.pitch);
             poses.push_back(p.roll);
             poses.push_back(p.fovY);
+            poses.push_back(float(int(p.projection)));
         }
     } else {
         std::printf("keys:   none (static yaw=%.1f pitch=%.1f roll=%.1f fov=%.1f deg)\n",
@@ -300,9 +301,9 @@ int main(int argc, char** argv)
         poses = {static_cast<float>(a.staticYawDeg * kDegToRad),
                  static_cast<float>(a.staticPitchDeg * kDegToRad),
                  static_cast<float>(a.staticRollDeg * kDegToRad),
-                 static_cast<float>(a.staticFovDeg * kDegToRad)};
+                 static_cast<float>(a.staticFovDeg * kDegToRad), 0.0f};
     }
-    const int poseCount = static_cast<int>(poses.size() / 4);
+    const int poseCount = static_cast<int>(poses.size() / 5);
     color::Grade grade;
     grade.adjust = {a.exposureEv, a.contrast, a.saturation, a.temperature};
     if (!a.lutPath.empty()) {
@@ -390,7 +391,7 @@ int main(int argc, char** argv)
     while (written < frameCount) {
         const float* pose =
             poseCount > 0
-                ? &poses[static_cast<size_t>(std::min<int64_t>(written, poseCount - 1)) * 4]
+                ? &poses[static_cast<size_t>(std::min<int64_t>(written, poseCount - 1)) * 5]
                 : nullptr;
 
         if (gpuFlat) {

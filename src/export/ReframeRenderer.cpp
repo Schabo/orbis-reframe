@@ -1,5 +1,7 @@
 #include "ReframeRenderer.h"
 
+#include "../core/ViewProjection.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -106,7 +108,6 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
                 const ReframeView& view, int rowBegin, int rowEnd)
 {
     const Grade grade(view.colorGrade);
-    const float tanHalfFovY = std::tan(view.fovY * 0.5f);
     const float cosR = std::cos(view.roll);
     const float sinR = std::sin(view.roll);
     const float cosP = std::cos(view.pitch);
@@ -120,14 +121,16 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
             const float ndcX =
                 (static_cast<float>(px) + 0.5f) / static_cast<float>(outW) * 2.0f - 1.0f;
 
-            // View-space ray (matches equirect.frag: +Y up, -Z forward).
-            float vx = ndcX * tanHalfFovY * view.aspect;
-            float vy = -ndcY * tanHalfFovY;
-            float vz = -1.0f;
-            const float invLen = 1.0f / std::sqrt(vx * vx + vy * vy + vz * vz);
-            vx *= invLen;
-            vy *= invLen;
-            vz *= invLen;
+            // View-space ray (matches view_ray.glsl via ViewProjection.h:
+            // +Y up, -Z forward).
+            float vr[3];
+            if (!viewproj::viewRay(ndcX, ndcY, view.fovY, view.aspect, view.proj, vr)) {
+                uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
+                dst[0] = dst[1] = dst[2] = 0;
+                dst[3] = 255;
+                continue;
+            }
+            const float vx = vr[0], vy = vr[1], vz = vr[2];
 
             // Roll about Z (view axis), then pitch about X, then yaw about Y.
             const float rx = vx * cosR - vy * sinR;

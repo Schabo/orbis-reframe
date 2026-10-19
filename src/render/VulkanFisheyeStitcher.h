@@ -106,9 +106,10 @@ public:
                   std::string& err);
 
     // stage 2 + export: stitch the NV12 fisheye pair to an eqW x eqH equirect
-    // (kept GPU-resident), then reproject it to an outW x outH rectilinear
-    // frame against `pose` ({yaw,pitch,roll,fovY} radians; nullptr => forward
-    // view), emitting tightly-packed BT.709 full-range NV12 into `outNv12`
+    // (kept GPU-resident), then reproject it to an outW x outH view frame
+    // against `pose` ({yaw,pitch,roll,fovY,projection} -- radians and
+    // ReframeTrack.h's Projection; nullptr => the forward view), emitting
+    // tightly-packed BT.709 full-range NV12 into `outNv12`
     // (Y plane outW*outH, then interleaved UV outW*outH/2). outW must be a
     // multiple of 4 and outH a multiple of 2. No CPU reproject / swscale.
     // Requires reframeReady(). Same semaphore handshake as stitchVk().
@@ -118,7 +119,7 @@ public:
     // reprojected.
     bool stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                             const insv::StitchGpuParams& params, int eqW, int eqH, int outW, int outH,
-                            const float pose[4], const float stab[9],
+                            const float pose[5], const float stab[9],
                             const color::Grade* colorGrade, std::vector<uint8_t>& outNv12,
                             VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
@@ -149,9 +150,10 @@ public:
     // of 2. Same semaphore handshake as stitchVk(). Requires viewReady().
     bool renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                       const insv::StitchGpuParams& params, int measureW, int measureH, int outW,
-                      int outH, const float pose[4], const float stab[9],
+                      int outH, const float pose[5], const float stab[9],
                       const color::Grade* colorGrade, ViewFormat fmt, std::vector<uint8_t>& out,
                       VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+
 
     // Several RGBA views of one pair in one submission, into one
     // canvasW x canvasH RGBA8 buffer (rows canvasW pixels long), cleared to
@@ -160,7 +162,7 @@ public:
     // the rectangle's. Same stab for all, no colour grade. For the privacy
     // blur's plate scan: the detector's tiles and the quad tracker's views.
     struct ViewRect {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+        float pose[5] = {0.0f, 0.0f, 0.0f, 1.309f, 0.0f}; // + projection
         int x = 0, y = 0, w = 0, h = 0;
     };
     bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,

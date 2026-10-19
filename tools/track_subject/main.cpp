@@ -497,10 +497,11 @@ int main(int argc, char** argv)
     exportpipe::FlattenWriter writer;
     if (!writer.open(fc, err))
         die(err);
-    auto poseAt = [&](int64_t ptsMs, float pose[4], float stab[9]) {
+    auto poseAt = [&](int64_t ptsMs, float pose[5], float stab[9]) {
         keyPose(ptsMs, pose[0], pose[1]);
         pose[2] = 0.0f;
         pose[3] = static_cast<float>(outFov);
+        pose[4] = 0.0f;
         gyroMatrix(gyro, a.stab, ptsMs, stab);
     };
     int64_t written = 0;

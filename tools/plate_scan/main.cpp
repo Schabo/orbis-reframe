@@ -311,7 +311,7 @@ int main(int argc, char** argv)
     auto blurFn = [&scan](int64_t ptsMs, std::vector<insv::BlurQuad>& out) { scan.quadsAt(ptsMs, out); };
     for (const int64_t at : stills) {
         // Aim the view at the frame's first region.
-        float pose[4] = {float(view[0] * kPi / 180), float(view[1] * kPi / 180), 0.0f, float(view[2] * kPi / 180)};
+        float pose[5] = {float(view[0] * kPi / 180), float(view[1] * kPi / 180), 0.0f, float(view[2] * kPi / 180), 0.0f};
         if (!haveView)
             if (const privacy::ScanFrame* fr = scan.frameAt(at); fr && !fr->regions.empty()) {
                 const auto& c = fr->regions.front().quad.corner;
@@ -347,8 +347,8 @@ int main(int argc, char** argv)
                     std::printf("fused view unavailable\n");
                     continue;
                 }
-                const stitch::Frame f = src.ReadViewFrame(1280, 720, [&](int64_t, float p[4], float[9]) {
-                    std::copy(pose, pose + 4, p);
+                const stitch::Frame f = src.ReadViewFrame(1280, 720, [&](int64_t, float p[5], float[9]) {
+                    std::copy(pose, pose + 5, p);
                 });
                 if (f.rgba.empty())
                     die(src.GetLastError());

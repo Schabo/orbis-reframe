@@ -20,11 +20,24 @@
 // so interpolation takes the shortest angular path across the +/-pi seam. pitch
 // and fovY are plain lerp -- both are clamped ranges with no wraparound.
 
+// The shape of the flat picture a keyframe gives. Everything but
+// Rectilinear covers most or all of the sphere, so the corners stretch on
+// purpose; fovY acts as the view's zoom in each.
+enum class Projection : int {
+    Rectilinear = 0, // the flat view (default)
+    TinyPlanet = 1,  // stereographic "little planet": the sphere wrapped around its pole
+    Fisheye = 2,     // equidistant fisheye disc
+    MirrorBall = 3,  // the whole sphere in a ball, as if mirrored
+};
+
 struct ReframePose {
     float yaw = 0.0f;
     float pitch = 0.0f;
     float roll = 0.0f;   // rotation about the view axis; horizon tilt
     float fovY = 1.309f; // ~75 deg, matches EquirectViewportWindow's default
+    // The view's shape. Not interpolated: between two keys the segment keeps
+    // the earlier key's projection and switches at the later one.
+    Projection projection = Projection::Rectilinear;
 };
 
 struct ReframeKey {
