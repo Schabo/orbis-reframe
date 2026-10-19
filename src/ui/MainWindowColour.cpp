@@ -103,17 +103,19 @@ void MainWindow::syncColourPanel(const ColorGrade &grade)
     }
     m_colourPanel->setLutProblem(problem);
 
-    // Filmed in log and no LUT yet: point at the picker.
+    // Filmed in log and no LUT yet: point at the picker -- unless the stitch
+    // decodes the profile to BT.709 itself (MediaInfo::decodedProfile), in
+    // which case a maker LUT would double-correct.
     QString wanted;
     const ClipItem *c = m_timeline->clipById(editClipId());
     if (c && !c->flat && grade.lut.isEmpty() && !c->mediaMissing) {
         const insv::MediaInfo *info = mediaInfoFor(c->sourcePath);
-        if (const QString log = info ? QString::fromStdString(info->logProfile()) : QString();
-            !log.isEmpty())
-            wanted = tr("This clip was filmed in %1, a log profile, so it looks flat and grey. "
-                        "Load the LUT the camera maker publishes for %1 to give it normal "
-                        "colours.")
-                         .arg(log);
+        if (info && info->decodedProfile().empty())
+            if (const QString log = QString::fromStdString(info->logProfile()); !log.isEmpty())
+                wanted = tr("This clip was filmed in %1, a log profile, so it looks flat and grey. "
+                            "Load the LUT the camera maker publishes for %1 to give it normal "
+                            "colours.")
+                             .arg(log);
     }
     m_colourPanel->setLutWanted(wanted);
 }

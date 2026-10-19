@@ -54,7 +54,9 @@ what our code assumes. Written as differences from the X5
 - The transfer decode above runs inside the stitch, so an I_Log or
   Dolby_Vision clip reaches grading already in BT.709: the official
   I-Log-to-Rec.709 LUT (below) is meant for the still-log samples --
-  applying it on top of a decoded clip double-corrects.
+  applying it on top of a decoded clip double-corrects. The Colour
+  section's missing-LUT prompt is therefore suppressed for these
+  profiles; it still fires for a log profile the app doesn't decode.
 - 📖 Insta360's 10-bit I-Log LUTs (`X6_I-Log_LUTs.zip`, version 2.0, made
   2026-05-20): 3D `.cube` files, each at 33³ and 65³, from I-Log to Rec.709
   / BT.1886 (`X6_I-Log_to_Rec709_BT1886_s65_v2.cube`), to Rec.2020 PQ and to

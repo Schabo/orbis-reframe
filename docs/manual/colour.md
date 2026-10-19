@@ -60,9 +60,14 @@ and then use the sliders for the fine-tuning.
 filmed in I-Log: on normal clips it makes the colours far too strong.
 
 orbis-reframe recognises a clip filmed in a log profile (the camera notes
-it in the file; **Media information** shows it as the *Colour profile*). For
-now that's Insta360's I-Log. While such a clip has no LUT, the **LUT** field
-has a red frame and the section says which profile the LUT is for:
+it in the file; **Media information** shows it as the *Colour profile*).
+For now that's Insta360's I-Log and its Dolby Vision mode (HLG). Those two
+the stitch decodes to normal colours itself, so their picture looks right
+with no LUT at all — load one only for a custom look (not the maker's
+I-Log-to-Rec.709 LUT: applying it on top of the decoded picture
+double-corrects). For a profile the app doesn't know, while the clip has
+no LUT the **LUT** field has a red frame and the section says which
+profile the LUT is for:
 
 <img src="images/colour-ilog.jpg" width="350" alt="The Colour section for an I-Log clip without a LUT">
 

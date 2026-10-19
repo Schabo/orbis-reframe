@@ -63,6 +63,16 @@ struct MediaInfo {
     // flat until the maker's LUT for that profile is applied. Other makers'
     // profiles (D-Log M, GP-Log) go here once their files are read.
     std::string logProfile() const { return colorProfile == "I_Log" ? "I-Log" : ""; }
+    // The non-standard transfer the stitch decodes to BT.709 on its own
+    // (StitchParams::gammaMode), by a display name: "I-Log", "Dolby Vision
+    // (HLG)". "" for standard and for profiles it doesn't know -- keep this in
+    // step with the field-22 mapping in ApplyLensProfile.
+    std::string decodedProfile() const
+    {
+        return colorProfile == "I_Log"         ? "I-Log"
+               : colorProfile == "Dolby_Vision" ? "Dolby Vision (HLG)"
+                                                 : "";
+    }
     // GPS track (record 0x700): presence only, never positions -- the panel is
     // what people screenshot for bug reports.
     int64_t gpsRecords = 0; // 0 if the trailer has no GPS record

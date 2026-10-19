@@ -146,7 +146,12 @@ void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
             colour += QStringLiteral(", ");
         colour += v.fullRange ? tr("full range") : tr("limited range");
         addValue(tr("Colour"), colour);
-        if (const QString log = QString::fromStdString(m.logProfile()); !log.isEmpty())
+        if (const QString dec = QString::fromStdString(m.decodedProfile()); !dec.isEmpty())
+            addValue(tr("Colour profile"), dec,
+                     tr("The app decodes %1 to normal colours in the stitch itself; a LUT "
+                        "(Colour section) is only for a custom look.")
+                         .arg(dec));
+        else if (const QString log = QString::fromStdString(m.logProfile()); !log.isEmpty())
             addValue(tr("Colour profile"), log,
                      tr("A log profile: the picture looks flat and grey until the LUT the "
                         "camera maker publishes for %1 is applied (Colour section).")
