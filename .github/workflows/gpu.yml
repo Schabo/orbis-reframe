@@ -1,12 +1,12 @@
 # The GPU checks GitHub's runners can't do: build, ctest, the headless GPU
-# tools and the app's smoke test on a real clip, on the maintainer's self-hosted runner (label `gpu`:
-# an NVIDIA GPU, the test footage read-only at /footage). On pushes to main,
+# tools and the app's smoke test on a real clip, on a runner with a GPU
+# (label `gpu`, the test footage read-only at /footage). On pushes to main,
 # on pull requests, and by hand; not for changes to the docs or the site.
 #
-# The runner is a private machine, so a pull request's code runs there only
-# after two approvals: the repository's approval of outside contributors'
-# runs (Settings > Actions), and, for pull requests from forks, the
-# `gpu-runner` environment's required reviewer (the `approve` job below).
+# A pull request's code runs there only after two approvals: the
+# repository's approval of outside contributors' runs (Settings > Actions),
+# and, for pull requests from forks, the `gpu-runner` environment's required
+# reviewer (the `approve` job below).
 # Never switch this to pull_request_target, and don't drop the gate.
 name: GPU
 
@@ -27,8 +27,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Pull requests from forks wait here, on GitHub's runners, for the
-  # maintainer to approve running them on the GPU machine.
+  # Pull requests from forks wait here, on GitHub's runners, for approval
+  # to run on the GPU runner.
   approve:
     name: Approve the GPU run
     if: github.event.pull_request.head.repo.fork == true
