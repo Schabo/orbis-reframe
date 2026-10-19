@@ -688,7 +688,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     importFiles->setObjectName(QStringLiteral("mediaImportFilesButton"));
     importFiles->setAutoRaise(true);
     importFiles->setIcon(theme::icon(QStringLiteral("file-plus-2")));
-    importFiles->setToolTip(tr("Import files…"));
+    importFiles->setToolTip(tr("Import files…: pick video and audio files"));
     importFiles->setFocusPolicy(Qt::NoFocus);
     connect(importFiles, &QToolButton::clicked, this, &MediaPoolPanel::importFilesRequested);
     auto *importFolder = new QToolButton(this);
@@ -698,6 +698,15 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     importFolder->setToolTip(tr("Import folder…: every video and audio file in it"));
     importFolder->setFocusPolicy(Qt::NoFocus);
     connect(importFolder, &QToolButton::clicked, this, &MediaPoolPanel::importFolderRequested);
+    auto *collect = new QToolButton(this);
+    collect->setObjectName(QStringLiteral("mediaCollectButton"));
+    collect->setAutoRaise(true);
+    collect->setIcon(theme::icon(QStringLiteral("download")));
+    collect->setToolTip(
+        tr("Copy media into the project…: the files it uses, from a connected device"));
+    collect->setFocusPolicy(Qt::NoFocus);
+    connect(collect, &QToolButton::clicked, this,
+            &MediaPoolPanel::collectIntoProjectRequested);
     // The two views; the checked one is the shown one.
     m_viewList = new QToolButton(this);
     m_viewList->setObjectName(QStringLiteral("mediaViewListButton"));
@@ -731,6 +740,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     header->addWidget(title, 1);
     header->addWidget(importFiles);
     header->addWidget(importFolder);
+    header->addWidget(collect);
     header->addWidget(m_viewList);
     header->addWidget(m_viewGrid);
 
