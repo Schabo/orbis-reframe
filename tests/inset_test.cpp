@@ -166,6 +166,21 @@ void testCompositor(const std::string &dir)
     CHECK(y2[size_t(120) * W + 100] == 154); // half-covered: 200 - 0.5 * 0.5 * 184
     CHECK(y2[size_t(120) * W + 99] == 200);
 
+    // The same into P010 (the 10-bit export): the same values, 10-bit codes
+    // (x4) in the high bits of 16; strides in bytes.
+    {
+        const auto p010 = [](int v8) { return uint16_t((v8 * 4) << 6); };
+        std::vector<uint16_t> y16(size_t(W) * H, p010(200)), uv16(size_t(W) * H / 2, p010(128));
+        exportpipe::InsetCompositor::blendP010(pic.rgba.data(), 4, 4, rect, 0.5f, 0xffffff,
+                                               reinterpret_cast<uint8_t *>(y16.data()), W * 2,
+                                               reinterpret_cast<uint8_t *>(uv16.data()), W * 2,
+                                               W, H);
+        CHECK(y16[size_t(120) * W + 150] == p010(108));
+        CHECK(y16[size_t(120) * W + 100] == p010(154));
+        CHECK(y16[size_t(120) * W + 99] == p010(200));
+        CHECK(uv16[size_t(60) * W + 150] == p010(128)); // black on grey: chroma stays
+    }
+
     // A border: its colour at the edge, the picture inside.
     std::vector<uint8_t> y3(size_t(W) * H, 128);
     rect.x = 100;
@@ -206,6 +221,15 @@ void testCompositor(const std::string &dir)
         CHECK(y4[size_t(H / 2) * W + 440] == 100);          // clear: what was under it
         CHECK(std::abs(int(uv4[size_t(H / 4) * W + 440]) - 128) <= 1);
         CHECK(tc.composite(1500, y4.data(), W, uv4.data(), W, err)); // past it: no file to read
+
+        // Into P010: 10-bit white (940), the clear part untouched.
+        std::vector<uint16_t> y16(size_t(W) * H, uint16_t(400 << 6));
+        std::vector<uint16_t> uv16(size_t(W) * H / 2, uint16_t(512 << 6));
+        CHECK(tc.composite(500, reinterpret_cast<uint8_t *>(y16.data()), W * 2,
+                           reinterpret_cast<uint8_t *>(uv16.data()), W * 2, err, true));
+        CHECK(y16[size_t(H / 2) * W + 200] == uint16_t(940 << 6));
+        CHECK(y16[size_t(H / 2) * W + 440] == uint16_t(400 << 6));
+        CHECK(uv16[size_t(H / 4) * W + 440] == uint16_t(512 << 6));
     }
 
     // A clip whose file is gone fails the export with the path.

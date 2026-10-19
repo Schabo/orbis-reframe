@@ -17,6 +17,6 @@ For how the code works, see the other documents in [`docs/`](..).
 | [Titles](titles.md) | Text over the video: adding a title, its text, font, colour and size, placing and keyframing it |
 | [Transitions](transitions.md) | Going over from one clip to the next at a cut: a crossfade or a dip to black, its length, the footage it uses |
 | [Privacy blur](privacy.md) | Finding and blurring number plates, checking and correcting the scan, blurring a plate by hand |
-| [Projects and export](projects-and-export.md) | The project library, project folders, saving and opening projects, where the clips are, aspect ratio, resolution and frame rate, exporting the video, screenshots |
+| [Projects and export](projects-and-export.md) | The project library, project folders, saving and opening projects, where the clips are, aspect ratio, resolution, frame rate and bit depth, exporting the video, screenshots |
 | [Media information](media-information.md) | What the Media information section shows about a clip's file, video, audio and camera |
 | [Keyboard shortcuts](keyboard-shortcuts.md) | Every keyboard shortcut and mouse action on one page |

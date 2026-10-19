@@ -54,6 +54,7 @@ struct Args {
     int outH = 1080;
     double fps = 0.0; // 0 = source fps
     bool h265 = true;
+    bool tenBit = false;
     int64_t bitrateKbps = 40000;
     int stitchW = 0; // equirect intermediate width (0 => auto)
     int stitchH = 0;
@@ -97,6 +98,7 @@ const char kUsage[] =
     "  --size WxH             output resolution (default 1920x1080)\n"
     "  --fps N                output frame rate (default: source fps)\n"
     "  --codec h264|h265     output codec (default h265)\n"
+    "  --bit-depth 8|10      10 = HEVC Main 10 from P010 (h265 only; default 8)\n"
     "  --bitrate KBPS        output bitrate (default 40000)\n"
     "  --stitch-size WxH     equirect intermediate resolution, 2:1 (default: the full\n"
     "                        source sphere, at least 2*outW)\n"
@@ -151,6 +153,14 @@ Args parseArgs(int argc, char** argv)
                 a.h265 = true;
             else
                 die("bad --codec (want h264 or h265)");
+        } else if (k == "--bit-depth") {
+            const std::string b = next("--bit-depth");
+            if (b == "8")
+                a.tenBit = false;
+            else if (b == "10")
+                a.tenBit = true;
+            else
+                die("bad --bit-depth (want 8 or 10)");
         } else if (k == "--bitrate")
             a.bitrateKbps = std::atoll(next("--bitrate").c_str());
         else if (k == "--no-depth-seam")
@@ -215,6 +225,8 @@ Args parseArgs(int argc, char** argv)
         else
             die("unknown option: " + k);
     }
+    if (a.tenBit && !a.h265)
+        die("--bit-depth 10 needs --codec h265");
     return a;
 }
 
@@ -342,11 +354,16 @@ int main(int argc, char** argv)
     fc.out_h = a.outH;
     fc.fps = fps;
     fc.h265 = a.h265;
+    fc.ten_bit = a.tenBit;
     fc.bitrate_kbps = a.bitrateKbps;
 
     exportpipe::FlattenWriter writer;
     if (!writer.open(fc, err))
         die(err);
+    if (a.tenBit && !writer.tenBit())
+        std::printf("10-bit: not available, encoding 8-bit (%s)\n",
+                    writer.tenBitFallback().c_str());
+    src->SetFlatTenBit(writer.tenBit());
 
     // --inset: output frame k is at k / fps on the output timeline.
     std::shared_ptr<exportpipe::InsetCompositor> insets;
@@ -364,8 +381,8 @@ int main(int argc, char** argv)
         insets = std::make_shared<exportpipe::InsetCompositor>(
             std::vector<exportpipe::InsetClipJob>{j}, a.outW, a.outH);
         writer.setFrameHook([insets, fps](int64_t k, uint8_t* y, int ys, uint8_t* uv, int uvs,
-                                          std::string& e) {
-            return insets->composite(std::llround(k * 1000.0 / fps), y, ys, uv, uvs, e);
+                                          bool p010, std::string& e) {
+            return insets->composite(std::llround(k * 1000.0 / fps), y, ys, uv, uvs, e, p010);
         });
         std::printf("inset:  %s (%dx%d, %lld ms) from %lld ms\n", a.insetPath.c_str(),
                     info.width, info.height, static_cast<long long>(info.durationMs),
@@ -373,16 +390,17 @@ int main(int argc, char** argv)
     }
 
     // GPU reproject: when the all-GPU stitch path is active, reproject the
-    // equirect to NV12 on the GPU and hand it straight to the encoder -- no
-    // CPU equirect->rectilinear pass, no RGBA->NV12 swscale. Needs
-    // outW % 4 == 0 and outH % 2 == 0 (the shader's NV12 packing).
+    // equirect to NV12 (P010 for a 10-bit export) on the GPU and hand it
+    // straight to the encoder -- no CPU equirect->rectilinear pass, no
+    // RGBA->YUV swscale. Needs outW % 4 == 0 and outH % 2 == 0 (the shader's
+    // packing).
     const bool gpuFlat =
         src->GpuReframeAvailable() && (a.outW % 4) == 0 && (a.outH % 2) == 0;
     const char* encName = exportpipe::hwEncoderName(a.h265);
-    std::printf("reproject: %s, encoder: %s\n",
-                gpuFlat ? "GPU (NV12 straight to the encoder)"
-                        : "CPU (multithreaded scanlines)",
-                encName ? encName : "none");
+    std::printf("reproject: %s, encoder: %s, %s\n",
+                gpuFlat ? "GPU (straight to the encoder)" : "CPU (multithreaded scanlines)",
+                encName ? encName : "none", writer.tenBit() ? "10-bit (Main 10)" : "8-bit");
+    bool depthReported = !writer.tenBit();
 
     const double halfFrameMs = 500.0 / fps;
     int lastPct = -1;
@@ -395,14 +413,18 @@ int main(int argc, char** argv)
 
         if (gpuFlat) {
             stitch::FlatFrame ff = src->ReadFlatFrame(a.outW, a.outH, pose, nullptr, colorGrade);
-            if (ff.nv12.empty()) {
+            if (ff.data.empty()) {
                 if (!src->GetLastError().empty())
                     die(src->GetLastError());
                 break; // clean end-of-clip
             }
             if (ff.timestamp_ms + halfFrameMs < trimIn)
                 continue; // straggler ahead of the in-point
-            if (!writer.addNv12Frame(ff.nv12.data(), ff.width, ff.height, err))
+            if (!depthReported && !ff.p010)
+                std::printf("frames: 8-bit (no fused GPU pass), widened into the 10-bit file\n");
+            depthReported = true;
+            if (!(ff.p010 ? writer.addP010Frame(ff.data.data(), ff.width, ff.height, err)
+                          : writer.addNv12Frame(ff.data.data(), ff.width, ff.height, err)))
                 die(err);
         } else {
             stitch::Frame eq = src->ReadFrame();
@@ -413,6 +435,9 @@ int main(int argc, char** argv)
             }
             if (eq.timestamp_ms + halfFrameMs < trimIn)
                 continue; // straggler ahead of the in-point
+            if (!depthReported)
+                std::printf("frames: 8-bit (CPU path), widened into the 10-bit file\n");
+            depthReported = true;
             if (!writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, pose, nullptr,
                                          colorGrade, err))
                 die(err);

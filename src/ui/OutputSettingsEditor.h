@@ -9,9 +9,10 @@ class QFormLayout;
 class QWidget;
 
 // The output format's controls -- aspect ratio (16:9 / 9:16 / 1:1 / 4:3), a
-// resolution from that aspect's presets, and the frame rate ("match first
-// clip" or a fixed rate) -- as three rows for a form. Shared by the Project
-// settings and New project dialogs. Edits emit outputChanged.
+// resolution from that aspect's presets, the frame rate ("match first
+// clip" or a fixed rate) and the bit depth (8 / 10) -- as four rows for a
+// form. Shared by the Project settings and New project dialogs. Edits emit
+// outputChanged.
 class OutputSettingsEditor : public QObject {
     Q_OBJECT
 
@@ -36,5 +37,6 @@ private:
     QComboBox *m_aspect = nullptr;
     QComboBox *m_resolution = nullptr;
     QComboBox *m_fps = nullptr;
+    QComboBox *m_bitDepth = nullptr;
     bool m_updating = false; // true while setOutput() is writing the widgets
 };

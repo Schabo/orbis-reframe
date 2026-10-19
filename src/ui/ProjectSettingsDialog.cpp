@@ -22,8 +22,8 @@ ProjectSettingsDialog::ProjectSettingsDialog(const OutputSettings &output, doubl
     m_output->setFirstClipFps(firstClipFps);
     m_output->setOutput(output);
     auto *hint = new QLabel(
-        tr("The shape, size and frame rate of the video you export. The viewport shows this "
-           "shape."),
+        tr("The shape, size, frame rate and bit depth of the video you export. The viewport "
+           "shows this shape."),
         this);
     hint->setObjectName(QStringLiteral("dialogHint"));
     hint->setWordWrap(true);

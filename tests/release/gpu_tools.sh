@@ -1,9 +1,9 @@
 #!/bin/bash
 # The headless GPU tools on tests/release/smoke.orp's clip, 2 s from its
-# trim-in: stitch, playback, view, export and plate scan each have to run
-# through. Used by the release dev test (dev_test.sh) and the GPU workflow
-# (.github/workflows/gpu.yml); needs the NVIDIA GPU and the clip under
-# /footage/.
+# trim-in: stitch, playback, view (with its 10-bit check), export (8- and
+# 10-bit) and plate scan each have to run through. Used by the release dev
+# test (dev_test.sh) and the GPU workflow (.github/workflows/gpu.yml); needs
+# the NVIDIA GPU and the clip under /footage/.
 #
 # Usage: gpu_tools.sh BUILD_DIR OUT_DIR [SMOKE_ORP]
 # Each tool's output goes to OUT_DIR/<tool>.log, what it writes to
@@ -37,5 +37,7 @@ step playback_bench "$build/playback_bench" --frames 30 "$clip"
 step view_compare "$build/view_compare" --at "$t0" --out "$out/tools/view" "$clip"
 step reframe_export "$build/reframe_export" "$clip" "$out/tools/reframe_export.mp4" \
     --trim-in "$t0" --trim-out "$t1"
+step reframe_export_10bit "$build/reframe_export" "$clip" "$out/tools/reframe_export_10bit.mp4" \
+    --trim-in "$t0" --trim-out "$t1" --bit-depth 10
 step plate_scan "$build/plate_scan" --t0 "$t0" --dur 2 "$clip"
 exit $failed

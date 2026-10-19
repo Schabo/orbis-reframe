@@ -44,7 +44,7 @@ there by default.
 
 **File ▸ New project…** (`Ctrl+N`) asks for the project's **name**, its
 **location** (the projects folder unless you browse to another) and the
-**output**: aspect ratio, resolution and frame rate (see
+**output**: aspect ratio, resolution, frame rate and bit depth (see
 [Project settings](#project-settings); you can change them later in
 **File ▸ Project settings…**). It
 then makes a folder for the project and saves the new, empty project in it:
@@ -136,8 +136,8 @@ unsaved change, and your unsaved edits stay unsaved.
 
 <img src="images/project-settings.jpg" width="444" alt="The Project settings dialog">
 
-**File ▸ Project settings…** sets the shape, size and frame rate of the
-video you make. A new project gets them from **File ▸ New project…**; this
+**File ▸ Project settings…** sets the shape, size, frame rate and bit depth
+of the video you make. A new project gets them from **File ▸ New project…**; this
 is where you change them later. Click **OK** to apply your changes, or
 **Cancel** to leave them as they were. **Edit ▸ Undo** takes a change back.
 
@@ -146,11 +146,21 @@ is where you change them later. Click **OK** to apply your changes, or
 | **Aspect ratio** | The shape of the picture: **16:9 Landscape** (YouTube, TV), **9:16 Vertical** (phone, Shorts, Reels, TikTok), **1:1 Square**, or **4:3**. The viewport takes this shape at once, so you see exactly what will be exported. |
 | **Resolution** | The export's size. Each aspect ratio has four sizes, from 720p to 4K (2160p): for 16:9, 1280 × 720, 1920 × 1080, 2560 × 1440 and 3840 × 2160. The export can still pick another size. |
 | **Frame rate** | The export's frames per second. **Match first clip** uses the frame rate of the first clip on the video track. Or pick 23.976, 24, 25, 29.97, 30, 50, 59.94 or 60. |
+| **Bit depth** | **8-bit** (the default) plays everywhere. **10-bit** keeps finer steps between shades; it needs H.265 (see below). |
 
 Changing the aspect ratio keeps your reframe keyframes: the camera still
 looks in the same directions, only the picture is cut to another shape.
 Check your framing afterwards, especially when changing between landscape
 and vertical.
+
+**8-bit or 10-bit.** A 10-bit export stores four times as many shades per
+colour as an 8-bit one, as H.265 "Main 10". It's worth it for clips
+recorded in 10-bit (the X6's I-Log and Dolby Vision modes), above all for
+log footage you export without a LUT to grade in another program: there,
+8 bits show as bands in skies and smooth walls. For a video you upload or
+watch as it is, 8-bit looks the same and plays on more devices; older
+phones, TVs and some editing programs can't play 10-bit. It's still a
+normal (SDR, Rec.709) video, not HDR.
 
 **Frame rate and clips.** Each clip is played at the project's frame rate.
 A clip filmed at a higher rate has frames left out, and one filmed at a
@@ -175,7 +185,10 @@ normal, flat MP4 video that plays anywhere.
      phones, computers and TVs, and YouTube accepts it.
    - **H.264**: plays on almost everything, including older devices and
      some editing programs that don't take H.265. Files are larger.
-5. Pick the **Quality**:
+5. Pick the **Bit depth**: the project's is selected (see
+   [8-bit or 10-bit](#project-settings)). **10-bit** needs H.265; with
+   H.264 the export is 8-bit.
+6. Pick the **Quality**:
    - **Standard**: enough for uploading and further editing.
    - **Smaller file**: half Standard's bitrate, for sharing when size
      matters. Busy scenes, like trees and gravel rushing by, can look soft.
@@ -186,12 +199,17 @@ normal, flat MP4 video that plays anywhere.
    The box next to it shows the bitrate in Mbit/s, and **File size** the
    approximate size of the finished file. Your choice is remembered for the
    next export.
-6. Click **Export…** and choose where to save the file. It's suggested in
+7. Click **Export…** and choose where to save the file. It's suggested in
    the project's `exports/` folder, named after the project.
-7. A progress window shows how far the export has come. **Cancel** stops it
+8. A progress window shows how far the export has come. **Cancel** stops it
    and deletes the unfinished file.
 
-When it's done, orbis-reframe says where it wrote the file.
+When it's done, orbis-reframe says where it wrote the file. For a 10-bit
+export it also says if something kept it from being fully 10-bit: when the
+graphics card's encoder can't write 10-bit H.265, the file is 8-bit
+instead; and a clip that can't use the GPU stitch (when the graphics card
+can't decode it, for example) is exported with 8-bit precision inside the
+10-bit file, named in the message.
 
 ### What goes into the export
 

@@ -93,6 +93,21 @@ ExportOptionsDialog::ExportOptionsDialog(int clipCount, qint64 rangeMs, int keyC
     m_codec->addItem(tr("H.264"));
     form->addRow(tr("Codec:"), m_codec);
 
+    // The project's bit depth preselected, as its size is; 10-bit is HEVC
+    // Main 10, so H.264 is always 8-bit.
+    m_bitDepth = new QComboBox(this);
+    m_bitDepth->addItem(output.tenBit ? tr("8-bit") : tr("8-bit (project)"), false);
+    m_bitDepth->addItem(output.tenBit ? tr("10-bit (project)") : tr("10-bit"), true);
+    m_bitDepth->setCurrentIndex(output.tenBit ? 1 : 0);
+    form->addRow(tr("Bit depth:"), m_bitDepth);
+    const auto followCodec = [this, projectTenBit = output.tenBit] {
+        const bool hevc = h265();
+        m_bitDepth->setEnabled(hevc);
+        m_bitDepth->setCurrentIndex(hevc && projectTenBit ? 1 : 0);
+        m_bitDepth->setToolTip(hevc ? QString() : tr("10-bit needs H.265."));
+    };
+    connect(m_codec, &QComboBox::currentIndexChanged, this, followCodec);
+
     // Quality: a level, or Custom with the Mbit/s typed in. The spin box
     // shows the level's rate and is editable for Custom only; switching to
     // Custom starts from the rate shown.
@@ -179,4 +194,9 @@ void ExportOptionsDialog::rememberQuality() const
 bool ExportOptionsDialog::h265() const
 {
     return m_codec->currentIndex() == 0;
+}
+
+bool ExportOptionsDialog::tenBit() const
+{
+    return h265() && m_bitDepth->currentData().toBool();
 }

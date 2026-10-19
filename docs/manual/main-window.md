@@ -226,7 +226,8 @@ says what the section applies to:
 | *Selected overlay clip* | The **Overlay** section, and the **Audio** tab's sections for its sound: the overlay you've selected. |
 | *Keys at the playhead* | The **Reframe** section: the view at the playhead, and the keyframe there. |
 
-The project's output format (aspect ratio, resolution and frame rate) isn't
+The project's output format (aspect ratio, resolution, frame rate and bit
+depth) isn't
 in the sidebar: it's in **File ▸ Project settings…**, see
 [Projects and export](projects-and-export.md#project-settings).
 

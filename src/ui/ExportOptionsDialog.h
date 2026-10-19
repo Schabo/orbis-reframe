@@ -11,10 +11,11 @@ class QComboBox;
 class QLabel;
 class QSpinBox;
 
-// Small modal dialog shown before a flat reframe export: output resolution and
-// codec. The resolution defaults to the project's (Project Settings) and
-// only offers sizes with the project's aspect -- a different aspect would be
-// a different crop than the one framed in the viewport. The video bitrate
+// Small modal dialog shown before a flat reframe export: output resolution,
+// codec and bit depth. The resolution and bit depth default to the project's
+// (Project Settings); the resolution only offers sizes with the project's
+// aspect -- a different aspect would be a different crop than the one framed
+// in the viewport. The video bitrate
 // comes from a quality level (worked out from resolution, fps and codec) or
 // is typed in; the level and a typed rate are remembered between exports.
 // The caller fills in the clip list / trims / pose arrays separately.
@@ -34,6 +35,8 @@ public:
     int outWidth() const;
     int outHeight() const;
     bool h265() const;
+    // HEVC Main 10 (H.265 only).
+    bool tenBit() const;
     qint64 bitrateKbps() const;
 
     // Saves the quality choice for the next export; call once accepted.
@@ -47,6 +50,7 @@ private:
     qint64 m_rangeMs = 0;
     QComboBox *m_resolution = nullptr;
     QComboBox *m_codec = nullptr;
+    QComboBox *m_bitDepth = nullptr;
     QComboBox *m_quality = nullptr;
     QSpinBox *m_customMbps = nullptr; // the rate; editable for Custom only
     QLabel *m_estimate = nullptr;

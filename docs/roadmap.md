@@ -161,8 +161,10 @@ Bigger, not researched far yet -- talk first.
   "Blur a plate…"; things fixed to the vehicle (speedometer, phone) stay put
   on the sphere with no tracking.
 - **HDR export**: keep HLG / PQ through to a 10-bit HDR export, beside the
-  SDR route. Needs higher precision through the pipeline and an HDR-aware
-  Colour panel; HDR on screen depends on the compositor.
+  SDR route. The 10-bit SDR export (HEVC Main 10) is the base it builds
+  on; it still needs HDR levels kept through the pipeline, HDR tagging and
+  metadata, and an HDR-aware Colour panel; HDR on screen depends on the
+  compositor.
 - **Video noise removal**, **AI quick edit** (a first cut made
   automatically, as an ordinary editable timeline).
 - **AMD and Intel**: best-effort today; testing on real cards is welcome.

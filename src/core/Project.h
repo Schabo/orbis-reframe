@@ -47,7 +47,8 @@ public:
     //     -- lensGuard / depthSeam: the first 360 clip's, for older builds;
     //     a clip without its own "stitch" takes them on load,
     //   "output": {aspect: "16:9" | "9:16" | "1:1" | "4:3", width, height,
-    //     fps (0 = match the first clip)},
+    //     fps (0 = match the first clip); optional: bitDepth (10; absent =
+    //     8)},
     //   "timeline": {clips: [...], tracks: [...]},
 //   "media": [{source, kind: "360" | "video" | "audio", durationMs, width,
 //     height, fps}] -- the media pool (absent => only what the timeline uses).

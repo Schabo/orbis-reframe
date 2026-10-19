@@ -50,6 +50,15 @@ OutputSettingsEditor::OutputSettingsEditor(QWidget *parent, QFormLayout *form) :
                          "frames left out or shown twice."));
     form->addRow(tr("Frame rate"), m_fps);
 
+    m_bitDepth = new QComboBox(parent);
+    m_bitDepth->setObjectName(QStringLiteral("outputBitDepth"));
+    m_bitDepth->addItem(tr("8-bit"), false);
+    m_bitDepth->addItem(tr("10-bit (H.265 only)"), true);
+    m_bitDepth->setToolTip(tr("10-bit keeps the finer gradation of 10-bit clips (log footage you "
+                              "grade in another program, smooth skies). 8-bit plays everywhere; "
+                              "10-bit needs a player that handles HEVC Main 10."));
+    form->addRow(tr("Bit depth"), m_bitDepth);
+
     setFirstClipFps(0.0);
     setOutput(OutputSettings{}); // sane starting state
 
@@ -67,6 +76,7 @@ OutputSettingsEditor::OutputSettingsEditor(QWidget *parent, QFormLayout *form) :
     });
     connect(m_resolution, &QComboBox::currentIndexChanged, this, &OutputSettingsEditor::emitIfEdited);
     connect(m_fps, &QComboBox::currentIndexChanged, this, &OutputSettingsEditor::emitIfEdited);
+    connect(m_bitDepth, &QComboBox::currentIndexChanged, this, &OutputSettingsEditor::emitIfEdited);
 }
 
 void OutputSettingsEditor::fillResolutions(Aspect aspect, int width, int height)
@@ -95,6 +105,7 @@ OutputSettings OutputSettingsEditor::output() const
     o.width = s.width();
     o.height = s.height();
     o.fps = m_fps->currentData().toDouble();
+    o.tenBit = m_bitDepth->currentData().toBool();
     return o;
 }
 
@@ -114,6 +125,7 @@ void OutputSettingsEditor::setOutput(const OutputSettings &output)
         fpsIndex = m_fps->count() - 1;
     }
     m_fps->setCurrentIndex(fpsIndex);
+    m_bitDepth->setCurrentIndex(output.tenBit ? 1 : 0);
     m_updating = false;
 }
 

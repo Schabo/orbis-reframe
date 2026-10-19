@@ -42,6 +42,11 @@ struct FlattenConfig {
     int out_h = 1080;
     double fps = 30.0;
     bool h265 = true;
+    // HEVC Main 10 from P010 frames (addP010Frame) instead of 8-bit Main /
+    // NV12; still BT.709 SDR. H.265 only, ignored for H.264. When no
+    // encoder opens Main 10 the writer falls back to 8 bits rather than
+    // fail: tenBit() / tenBitFallback() say so.
+    bool ten_bit = false;
     int64_t bitrate_kbps = 40000;
     // Optional AAC audio stream, fed through FlattenWriter::addAudio().
     // audio_sample_rate 0 => video-only output (no audio stream at all).
@@ -65,6 +70,12 @@ public:
     // Open the encoder + output container. False (with `err`) on failure.
     bool open(const FlattenConfig& cfg, std::string& err);
 
+    // Whether the open encoder writes 10 bits (FlattenConfig::ten_bit, and
+    // an encoder took Main 10), and, when 10 bits were asked for but none
+    // did, why (each encoder's error; empty otherwise).
+    bool tenBit() const;
+    const std::string& tenBitFallback() const;
+
     // Reproject one in-memory RGBA equirect frame (eqW x eqH) against `pose`
     // ({yaw, pitch, roll, fovY} radians; nullptr => static forward view) and
     // encode it, advancing the shared output PTS. For callers that produce
@@ -82,15 +93,24 @@ public:
     // that reproject on the GPU (stitch::NativeStitchSource::ReadFlatFrame) --
     // skips RenderRectilinear and the RGBA->NV12 swscale entirely. w x h must
     // equal the FlattenConfig out_w x out_h. False (with `err`) on failure.
+    // Into a 10-bit file (tenBit()) the samples are widened exactly: the
+    // picture stays 8-bit (a clip without the fused GPU path, the black
+    // under a flat clip).
     bool addNv12Frame(const uint8_t* nv12, int w, int h, std::string& err);
 
+    // The same for a P010 frame (stitch::FlatFrame::p010: NV12's layout in
+    // 16-bit little-endian samples, the 10-bit code in the high bits), w*h*3
+    // bytes. Requires tenBit().
+    bool addP010Frame(const uint8_t* p010, int w, int h, std::string& err);
+
     // Called on every output frame just before it is encoded, with its index
-    // (0-based, across the whole file) and its NV12 planes (BT.709 limited
-    // range) -- for both addEquirectFrame() and addNv12Frame(), so one
-    // overlay pass serves the CPU and the GPU paths (insets). Returning
-    // false (with `err`) fails that add. Unset = no hook.
+    // (0-based, across the whole file) and its planes (BT.709 limited range):
+    // NV12, or P010 when `p010` (tenBit(); strides in bytes either way) --
+    // for every add*Frame(), so one overlay pass serves the CPU and the GPU
+    // paths (insets). Returning false (with `err`) fails that add. Unset =
+    // no hook.
     using FrameHook = std::function<bool(int64_t index, uint8_t *y, int yStride, uint8_t *uv,
-                                         int uvStride, std::string &err)>;
+                                         int uvStride, bool p010, std::string &err)>;
     void setFrameHook(FrameHook hook);
 
     // Append `frames` frames of interleaved float32 PCM (FlattenConfig
@@ -105,7 +125,7 @@ public:
     int64_t audioFramesWritten() const;
 
     // Flush the encoder(s) and write the container trailer. Returns the total
-    // frames written across every addEquirectFrame() / addNv12Frame(), or -1
+    // frames written across every add*Frame(), or -1
     // (with `err`) on failure.
     int64_t finish(std::string& err);
 
@@ -114,7 +134,7 @@ private:
     std::unique_ptr<Impl> d;
 
     // Tail of addEquirectFrame: RenderRectilinear into the output-sized
-    // buffer, RGBA->NV12, encode at the next shared PTS.
+    // buffer, RGBA->NV12 / P010, encode at the next shared PTS.
     bool encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const ReframeView& view,
                      std::string& err);
 };

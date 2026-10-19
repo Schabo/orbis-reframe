@@ -43,10 +43,13 @@ struct Encoder {
     AVFormatContext* fmt = nullptr;
     AVCodecContext* ctx = nullptr;
     AVStream* stream = nullptr;
-    SwsContext* toNv12 = nullptr;
-    AVFrame* nv12 = nullptr;
+    // The frame each picture is put into before it's encoded: NV12, or P010
+    // when the encoder opened at 10 bits (tenBit).
+    SwsContext* toYuv = nullptr; // RGBA -> frame's format (addEquirectFrame)
+    AVFrame* frame = nullptr;
+    bool tenBit = false;
     AVPacket* pkt = nullptr;
-    // Hardware-surface encoders (Vulkan video, VAAPI): nv12 is uploaded into
+    // Hardware-surface encoders (Vulkan video, VAAPI): `frame` is uploaded into
     // `hw` before it's sent to the encoder. All nullptr when the encoder
     // takes CPU frames as they are (NVENC).
     AVBufferRef* hwDevice = nullptr;
@@ -70,12 +73,12 @@ void closeEncoder(Encoder& e)
         av_buffer_unref(&e.hwFrames);
     if (e.hwDevice)
         av_buffer_unref(&e.hwDevice);
-    if (e.toNv12) {
-        sws_freeContext(e.toNv12);
-        e.toNv12 = nullptr;
+    if (e.toYuv) {
+        sws_freeContext(e.toYuv);
+        e.toYuv = nullptr;
     }
-    if (e.nv12)
-        av_frame_free(&e.nv12);
+    if (e.frame)
+        av_frame_free(&e.frame);
     if (e.pkt)
         av_packet_free(&e.pkt);
     if (e.ctx)
@@ -321,10 +324,14 @@ namespace {
 // One candidate of openEncoder()'s loop: configure a codec context for
 // `encName` -- already probed usable, on `e.hwDevice` for the
 // hardware-surface encoders -- at the export's settings and try
-// avcodec_open2(). False leaves `err` saying why; openEncoder() cleans the
-// codec-side bits out of `e` so the next name can be tried.
-bool tryEncoder(const char* encName, const FlattenConfig& p, Encoder& e, std::string& err)
+// avcodec_open2(). `tenBit`: HEVC Main 10 from P010 frames (the probe opened
+// 8-bit only, so this open is the first that tries it). False leaves `err`
+// saying why; openEncoder() cleans the codec-side bits out of `e` so the next
+// name can be tried.
+bool tryEncoder(const char* encName, const FlattenConfig& p, bool tenBit, Encoder& e,
+                std::string& err)
 {
+    const AVPixelFormat swFormat = tenBit ? AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12;
     const AVCodec* enc = avcodec_find_encoder_by_name(encName);
     const AVHWDeviceType deviceType = deviceFor(encName);
     e.ctx = avcodec_alloc_context3(enc);
@@ -334,14 +341,14 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, Encoder& e, std::st
     e.ctx->time_base = tb;
     e.ctx->framerate = av_inv_q(tb);
     if (deviceType == AV_HWDEVICE_TYPE_NONE) {
-        e.ctx->pix_fmt = AV_PIX_FMT_NV12;
+        e.ctx->pix_fmt = swFormat;
     } else {
-        // *_vulkan / *_vaapi take hardware surfaces only; the NV12 frames are
-        // uploaded into `e.hw` before each send (drainEncoder). sw_pix_fmt
-        // tells the encoder what those surfaces carry.
+        // *_vulkan / *_vaapi take hardware surfaces only; the NV12 / P010
+        // frames are uploaded into `e.hw` before each send (drainEncoder).
+        // sw_pix_fmt tells the encoder what those surfaces carry.
         e.ctx->pix_fmt = deviceType == AV_HWDEVICE_TYPE_VULKAN ? AV_PIX_FMT_VULKAN
                                                              : AV_PIX_FMT_VAAPI;
-        e.ctx->sw_pix_fmt = AV_PIX_FMT_NV12;
+        e.ctx->sw_pix_fmt = swFormat;
         e.ctx->hw_device_ctx = av_buffer_ref(e.hwDevice);
         e.hwFrames = av_hwframe_ctx_alloc(e.hwDevice);
         if (!e.hwFrames) {
@@ -350,7 +357,7 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, Encoder& e, std::st
         }
         auto* fc = reinterpret_cast<AVHWFramesContext*>(e.hwFrames->data);
         fc->format = e.ctx->pix_fmt;
-        fc->sw_format = AV_PIX_FMT_NV12;
+        fc->sw_format = swFormat;
         fc->width = p.out_w;
         fc->height = p.out_h;
         if (av_hwframe_ctx_init(e.hwFrames) < 0) {
@@ -378,7 +385,13 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, Encoder& e, std::st
     e.ctx->gop_size = std::max(1, static_cast<int>(std::lround(p.fps)) * 2);
     if (e.fmt->oformat->flags & AVFMT_GLOBALHEADER)
         e.ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    // Main 10 asked for outright rather than left to each encoder's
+    // inference from the input format (NVENC takes it as its own option).
+    if (tenBit)
+        e.ctx->profile = AV_PROFILE_HEVC_MAIN_10;
     if (deviceType == AV_HWDEVICE_TYPE_NONE) {
+        if (tenBit)
+            av_opt_set(e.ctx->priv_data, "profile", "main10", 0);
         av_opt_set(e.ctx->priv_data, "preset", "p5", 0);
         av_opt_set(e.ctx->priv_data, "tune", "hq", 0);
         av_opt_set(e.ctx->priv_data, "rc", "vbr", 0);
@@ -402,7 +415,8 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, Encoder& e, std::st
     return true;
 }
 
-bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
+// `tenBitWhy`: why a requested Main 10 fell back to 8 bits (else untouched).
+bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std::string& err)
 {
     avformat_alloc_output_context2(&e.fmt, nullptr, nullptr, p.out_path.c_str());
     if (!e.fmt) {
@@ -412,37 +426,50 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
 
     // The probe's pick first, on its device; the backends after it only if
     // the real open fails (a size the 1080p probe didn't catch), probed here.
+    // A 10-bit export tries every backend at Main 10 first, then the same
+    // again at 8 bits, so it never fails for want of Main 10 alone.
     const Probe& pr = probe(p.h265);
     const Backends& b = backends();
     const char* encName = nullptr;
-    std::string why = pr.report;
-    for (int i = 0; i < b.count && pr.picked && !encName; ++i) {
-        const char* name = b.names[p.h265][i];
-        const bool isPick = name == pr.picked;
-        if (!isPick && why.find(std::string(name) + ":") != std::string::npos)
-            continue;  // the probe already found it unusable
-        err.clear();
-        if (isPick) {
-            if (pr.device)
-                e.hwDevice = av_buffer_ref(pr.device);
-        } else if (!encoderUsable(name, &e.hwDevice, err)) {
+    std::string why;
+    const bool wantTenBit = p.ten_bit && p.h265;
+    for (int pass = wantTenBit ? 0 : 1; pass < 2 && !encName; ++pass) {
+        const bool tenBit = pass == 0;
+        why = pr.report;
+        for (int i = 0; i < b.count && pr.picked && !encName; ++i) {
+            const char* name = b.names[p.h265][i];
+            const bool isPick = name == pr.picked;
+            if (!isPick && why.find(std::string(name) + ":") != std::string::npos)
+                continue;  // the probe already found it unusable
+            err.clear();
+            if (isPick) {
+                if (pr.device)
+                    e.hwDevice = av_buffer_ref(pr.device);
+            } else if (!encoderUsable(name, &e.hwDevice, err)) {
+                why += (why.empty() ? "" : "; ") + std::string(name) + ": " + err;
+                continue;
+            }
+            if (tryEncoder(name, p, tenBit, e, err)) {
+                encName = name;
+                e.tenBit = tenBit;
+                break;
+            }
+            // Drop whatever the failed candidate left behind.
+            if (e.hw)
+                av_frame_free(&e.hw);
+            if (e.hwFrames)
+                av_buffer_unref(&e.hwFrames);
+            if (e.ctx)
+                avcodec_free_context(&e.ctx);
+            if (e.hwDevice)
+                av_buffer_unref(&e.hwDevice);
             why += (why.empty() ? "" : "; ") + std::string(name) + ": " + err;
-            continue;
         }
-        if (tryEncoder(name, p, e, err)) {
-            encName = name;
-            break;
+        if (!encName && tenBit) {
+            tenBitWhy = why;
+            std::fprintf(stderr, "export: no encoder opened HEVC Main 10 (%s); encoding 8-bit\n",
+                         why.c_str());
         }
-        // Drop whatever the failed candidate left behind.
-        if (e.hw)
-            av_frame_free(&e.hw);
-        if (e.hwFrames)
-            av_buffer_unref(&e.hwFrames);
-        if (e.ctx)
-            avcodec_free_context(&e.ctx);
-        if (e.hwDevice)
-            av_buffer_unref(&e.hwDevice);
-        why += (why.empty() ? "" : "; ") + std::string(name) + ": " + err;
     }
     if (!encName) {
         if (b.only)
@@ -500,21 +527,22 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
         return false;
     }
 
-    e.nv12 = av_frame_alloc();
-    e.nv12->format = AV_PIX_FMT_NV12;
-    e.nv12->width = p.out_w;
-    e.nv12->height = p.out_h;
-    av_frame_get_buffer(e.nv12, 0);
+    const AVPixelFormat frameFormat = e.tenBit ? AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12;
+    e.frame = av_frame_alloc();
+    e.frame->format = frameFormat;
+    e.frame->width = p.out_w;
+    e.frame->height = p.out_h;
+    av_frame_get_buffer(e.frame, 0);
     e.pkt = av_packet_alloc();
-    e.toNv12 = sws_getContext(p.out_w, p.out_h, AV_PIX_FMT_RGBA, p.out_w, p.out_h, AV_PIX_FMT_NV12,
-                              SWS_BILINEAR, nullptr, nullptr, nullptr);
-    if (!e.toNv12) {
-        err = "cannot create RGBA->NV12 scaler";
+    e.toYuv = sws_getContext(p.out_w, p.out_h, AV_PIX_FMT_RGBA, p.out_w, p.out_h, frameFormat,
+                             SWS_BILINEAR, nullptr, nullptr, nullptr);
+    if (!e.toYuv) {
+        err = "cannot create the RGBA->YUV scaler";
         return false;
     }
     // swscale's RGB->YUV default is BT.601; make it BT.709 limited range.
     const int* bt709 = sws_getCoefficients(SWS_CS_ITU709);
-    sws_setColorspaceDetails(e.toNv12, bt709, 1, bt709, 0, 0, 1 << 16, 1 << 16);
+    sws_setColorspaceDetails(e.toYuv, bt709, 1, bt709, 0, 0, 1 << 16, 1 << 16);
     return true;
 }
 
@@ -544,7 +572,7 @@ bool drainTo(Encoder& e, AVCodecContext* ctx, AVStream* stream, AVFrame* frame, 
 }
 
 // Send `frame` (nullptr => flush) to the video encoder. When it wants
-// hardware surfaces the NV12 frame is uploaded into `e.hw` first.
+// hardware surfaces the NV12 / P010 frame is uploaded into `e.hw` first.
 bool drainEncoder(Encoder& e, AVFrame* frame, std::string& err)
 {
     if (frame && e.hw) {
@@ -580,14 +608,35 @@ struct FlattenWriter::Impl {
     int64_t audioFed = 0;
     int64_t audioEncoded = 0;
     FrameHook hook;
+    std::string tenBitWhy; // openEncoder's
 
-    // Run the hook on the NV12 frame about to be encoded.
-    bool runHook(std::string& err)
+    // Run the hook on the frame about to be encoded, then encode it at the
+    // next shared PTS.
+    bool encodeCurrent(std::string& err)
     {
-        if (!hook)
-            return true;
-        return hook(written, enc.nv12->data[0], enc.nv12->linesize[0], enc.nv12->data[1],
-                    enc.nv12->linesize[1], err);
+        AVFrame* f = enc.frame;
+        if (hook && !hook(written, f->data[0], f->linesize[0], f->data[1], f->linesize[1],
+                          enc.tenBit, err))
+            return false;
+        f->pts = written;
+        if (!drainEncoder(enc, f, err))
+            return false;
+        ++written;
+        return true;
+    }
+
+    // Shared checks of the add*Frame calls.
+    bool checkAdd(const char* what, int w, int h, std::string& err) const
+    {
+        if (!opened) {
+            err = std::string("FlattenWriter::") + what + " before open()";
+            return false;
+        }
+        if (w != cfg.out_w || h != cfg.out_h) {
+            err = std::string(what) + " size does not match the FlattenConfig output size";
+            return false;
+        }
+        return true;
     }
 
     // Encode `frames` frames from the front of audioPending (<= one AAC frame).
@@ -622,7 +671,8 @@ FlattenWriter::~FlattenWriter()
 bool FlattenWriter::open(const FlattenConfig& cfg, std::string& err)
 {
     d->cfg = cfg;
-    if (!openEncoder(d->cfg, d->enc, err)) {
+    d->tenBitWhy.clear();
+    if (!openEncoder(d->cfg, d->enc, d->tenBitWhy, err)) {
         closeEncoder(d->enc);
         return false;
     }
@@ -636,18 +686,12 @@ bool FlattenWriter::encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const R
 {
     RenderRectilinear(eqRgba, eqW, eqH, d->flatRgba.data(), d->cfg.out_w, d->cfg.out_h, view);
 
-    av_frame_make_writable(d->enc.nv12);
+    av_frame_make_writable(d->enc.frame);
     const uint8_t* src[1] = {d->flatRgba.data()};
     int srcStride[1] = {d->cfg.out_w * 4};
-    sws_scale(d->enc.toNv12, src, srcStride, 0, d->cfg.out_h, d->enc.nv12->data,
-              d->enc.nv12->linesize);
-    if (!d->runHook(err))
-        return false;
-    d->enc.nv12->pts = d->written;
-    if (!drainEncoder(d->enc, d->enc.nv12, err))
-        return false;
-    ++d->written;
-    return true;
+    sws_scale(d->enc.toYuv, src, srcStride, 0, d->cfg.out_h, d->enc.frame->data,
+              d->enc.frame->linesize);
+    return d->encodeCurrent(err);
 }
 
 bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, const float pose[4],
@@ -678,32 +722,57 @@ bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, co
 
 bool FlattenWriter::addNv12Frame(const uint8_t* nv12, int w, int h, std::string& err)
 {
-    if (!d->opened) {
-        err = "FlattenWriter::addNv12Frame before open()";
+    if (!d->checkAdd("addNv12Frame", w, h, err))
         return false;
-    }
-    if (w != d->cfg.out_w || h != d->cfg.out_h) {
-        err = "addNv12Frame size does not match the FlattenConfig output size";
-        return false;
-    }
 
-    av_frame_make_writable(d->enc.nv12);
+    AVFrame* f = d->enc.frame;
+    av_frame_make_writable(f);
     const uint8_t* srcY = nv12;
     const uint8_t* srcUV = nv12 + static_cast<size_t>(w) * h;
-    for (int y = 0; y < h; ++y)
-        std::memcpy(d->enc.nv12->data[0] + static_cast<ptrdiff_t>(y) * d->enc.nv12->linesize[0],
-                    srcY + static_cast<size_t>(y) * w, w);
-    for (int y = 0; y < h / 2; ++y)
-        std::memcpy(d->enc.nv12->data[1] + static_cast<ptrdiff_t>(y) * d->enc.nv12->linesize[1],
-                    srcUV + static_cast<size_t>(y) * w, w);
-    if (!d->runHook(err))
-        return false;
-    d->enc.nv12->pts = d->written;
-    if (!drainEncoder(d->enc, d->enc.nv12, err))
-        return false;
-    ++d->written;
-    return true;
+    // Rows of w bytes: h luma, h/2 interleaved chroma. Into a 10-bit file
+    // each byte is widened exactly (code x4): the content stays 8-bit.
+    const auto copyPlane = [&](uint8_t* dst, int stride, const uint8_t* src, int rows) {
+        for (int y = 0; y < rows; ++y) {
+            const uint8_t* s = src + static_cast<size_t>(y) * w;
+            uint8_t* row = dst + static_cast<ptrdiff_t>(y) * stride;
+            if (!d->enc.tenBit) {
+                std::memcpy(row, s, w);
+                continue;
+            }
+            auto* r16 = reinterpret_cast<uint16_t*>(row);
+            for (int x = 0; x < w; ++x)
+                r16[x] = static_cast<uint16_t>(s[x] << 8);
+        }
+    };
+    copyPlane(f->data[0], f->linesize[0], srcY, h);
+    copyPlane(f->data[1], f->linesize[1], srcUV, h / 2);
+    return d->encodeCurrent(err);
 }
+
+bool FlattenWriter::addP010Frame(const uint8_t* p010, int w, int h, std::string& err)
+{
+    if (!d->checkAdd("addP010Frame", w, h, err))
+        return false;
+    if (!d->enc.tenBit) {
+        err = "addP010Frame into an 8-bit encoder (FlattenWriter::tenBit() is false)";
+        return false;
+    }
+    AVFrame* f = d->enc.frame;
+    av_frame_make_writable(f);
+    const size_t rowBytes = static_cast<size_t>(w) * 2;
+    const uint8_t* srcUV = p010 + rowBytes * h;
+    for (int y = 0; y < h; ++y)
+        std::memcpy(f->data[0] + static_cast<ptrdiff_t>(y) * f->linesize[0], p010 + rowBytes * y,
+                    rowBytes);
+    for (int y = 0; y < h / 2; ++y)
+        std::memcpy(f->data[1] + static_cast<ptrdiff_t>(y) * f->linesize[1], srcUV + rowBytes * y,
+                    rowBytes);
+    return d->encodeCurrent(err);
+}
+
+bool FlattenWriter::tenBit() const { return d->enc.tenBit; }
+
+const std::string& FlattenWriter::tenBitFallback() const { return d->tenBitWhy; }
 
 bool FlattenWriter::addAudio(const float* interleaved, int64_t frames, std::string& err)
 {

@@ -29,11 +29,14 @@ struct VulkanLensInput;
 
 namespace stitch {
 
-// One reprojected rectilinear ("flat") frame, tightly-packed NV12 (Y plane
-// width*height, then interleaved UV width*height/2). Produced entirely on the
-// GPU by NativeStitchSource::ReadFlatFrame -- no CPU reproject / swscale.
+// One reprojected rectilinear ("flat") frame, tightly packed: NV12 (Y plane
+// width*height bytes, then interleaved UV width*height/2), or with `p010`
+// the same layout in 16-bit little-endian samples, the 10-bit code in the
+// high bits. Produced entirely on the GPU by NativeStitchSource::ReadFlatFrame
+// -- no CPU reproject / swscale.
 struct FlatFrame {
-    std::vector<uint8_t> nv12;
+    std::vector<uint8_t> data;
+    bool p010 = false;
     int width = 0;
     int height = 0;
     int64_t timestamp_ms = 0;
@@ -104,8 +107,11 @@ public:
     // the viewport. `colorGrade` (nullptr => neutral) is the Colour
     // panel grade, its LUT included. outW must
     // be a multiple of 4, outH a multiple of 2. Advances the playhead like
-    // ReadFrame(). Returns an empty FlatFrame (nv12.empty()) at end-of-clip;
+    // ReadFrame(). Returns an empty FlatFrame (data.empty()) at end-of-clip;
     // also on error, with GetLastError() set. Requires GpuReframeAvailable().
+    // NV12 unless SetFlatTenBit(true) asked for P010 and the fused pass runs
+    // (the equirect is 8-bit, so the via-equirect path stays NV12):
+    // FlatFrame::p010 says which.
     FlatFrame ReadFlatFrame(int outW, int outH, const float pose[4],
                             const float stab[9] = nullptr,
                             const color::Grade* colorGrade = nullptr);
@@ -121,6 +127,10 @@ public:
     using FramePoseFn = std::function<void(int64_t ptsMs, float pose[4], float stab[9])>;
     FlatFrame ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                             const color::Grade* colorGrade = nullptr);
+
+    // ReadFlatFrame renders P010 instead of NV12 where it can (the 10-bit
+    // export). Off by default.
+    void SetFlatTenBit(bool on) { flat_ten_bit_ = on; }
 
     // The fused pass with RGBA8 output (Frame::rgba, outW x outH): the view
     // as a picture rather than an encoder input -- stills, and the viewport
@@ -219,7 +229,7 @@ private:
     // Shared body of ReadFlatFrame / ReadViewFrame: decode the next pair and
     // render the view into `out` (NV12 via the equirect, NV12 fused, or RGBA
     // fused). False with last_error_ set on error; false with it empty at EOS.
-    enum class FlatPath { ViaEquirect, FusedNv12, FusedRgba };
+    enum class FlatPath { ViaEquirect, FusedNv12, FusedP010, FusedRgba };
     bool readView(int outW, int outH, const FramePoseFn& perFrame, const color::Grade* colorGrade,
                   FlatPath path, std::vector<uint8_t>& out, int64_t& pts_ms);
 
@@ -246,6 +256,7 @@ private:
     ClipInfo info_;
     int eq_w_ = 0;
     int eq_h_ = 0;
+    bool flat_ten_bit_ = false; // SetFlatTenBit
     std::string last_error_;
     ReadTiming last_timing_;
 };

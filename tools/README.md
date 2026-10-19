@@ -105,11 +105,15 @@ build/playback_bench --frames 300 --eq 3840,5760 clip.insv
 Renders a flat 1920x1080 view of one frame from a few directions in two
 ways: straight from the fisheyes (the "fused" pass the viewport and export
 use) and through an equirect of several sizes. It compares each with an 8K
-equirect reference: PSNR, and a sharpness figure. `--out DIR` saves the
-renders as raw NV12 images to look at with `ffmpeg`.
+equirect reference: PSNR, and a sharpness figure. It also renders the
+fused view as P010 (the 10-bit export) and checks it against the NV12 one:
+within one 8-bit code, and with samples finer than 8 bits (a widened 8-bit
+picture has none); it exits 1 if not. `--out DIR` saves the renders as raw
+NV12 / P010 images to look at with `ffmpeg`.
 
 **When:** changing the view or stitch shaders, to check that the picture
-still matches and hasn't lost detail.
+still matches, hasn't lost detail, and that the 10-bit output still
+carries 10 bits.
 
 ```sh
 build/view_compare --at 5000 clip.insv
@@ -128,7 +132,10 @@ hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
 `time_ms yaw pitch fovY [roll]`, in **radians**), or a fixed `--yaw/--pitch/--fov`.
 It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
-`--lut-strength PCT`) and a picture-in-picture inset.
+`--lut-strength PCT`) and a picture-in-picture inset. `--bit-depth 10`
+encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
+prints when the encoder falls back to 8-bit, or when the frames are 8-bit
+(no fused GPU pass) widened into the 10-bit file.
 
 **When:** testing export without the app, e.g. to script many renders or
 to replay keys from `track_subject`. With `--lut`, to check the GPU's LUT
@@ -138,6 +145,7 @@ paths: set `INSV_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
 ```sh
 build/reframe_export clip.insv out.mp4 --trim-in 10000 --trim-out 20000 --yaw 30 --fov 80
 build/reframe_export clip.insv out.mp4 --keys keys.txt --codec h264
+build/reframe_export clip.insv out10.mp4 --trim-out 3000 --bit-depth 10
 build/reframe_export clip.insv lut.mp4 --trim-in 1000 --trim-out 2000 --lut X5_I-Log_To_Rec.709_V1.0.cube
 ```
 

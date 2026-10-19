@@ -182,7 +182,7 @@ void benchFlat(const std::string& path, int eqW, int frames, double fps, FlatKin
         const auto t0 = Clock::now();
         const bool got = kind == FlatKind::FusedRgba
                              ? !src->ReadViewFrame(1920, 1080, fixedPose).rgba.empty()
-                             : !src->ReadFlatFrame(1920, 1080, pose).nv12.empty();
+                             : !src->ReadFlatFrame(1920, 1080, pose).data.empty();
         const double ms = msSince(t0);
         if (!got)
             break;

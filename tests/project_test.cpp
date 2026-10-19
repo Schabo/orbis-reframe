@@ -109,6 +109,7 @@ void testProjectJson()
         out.width = 1080;
         out.height = 1920;
         out.fps = 25.0;
+        out.tenBit = true;
         p.setOutput(out);
         CHECK(p.output() == out);
         p.timeline()->setTrackAudio(p.timeline()->streamTrackId(Track::Role::ExternalMic), 0.0,
@@ -228,6 +229,7 @@ void testProjectJson()
         CHECK(out.width == 1080 && out.height == 1920);
         CHECK(out.fps == 25.0);
         CHECK(out.effectiveFps(29.97) == 25.0);
+        CHECK(out.tenBit);
 
     }
 
@@ -242,6 +244,7 @@ void testProjectJson()
         CHECK(p.previewStitch() == stitch::PreviewStitchConfig{});
         CHECK(p.output() == OutputSettings{});
         CHECK(p.output().fps == 0.0 && p.output().effectiveFps(29.97) == 29.97);
+        CHECK(!p.output().tenBit); // no bitDepth: 8-bit, as before it existed
     }
 
     // a hand-broken "output" block falls back to the aspect's default size

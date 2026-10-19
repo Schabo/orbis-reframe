@@ -454,9 +454,12 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
     const bool fused = GpuViewAvailable() &&
                        (!gpu_->reframeReady() || !std::getenv("INSV_FLAT_VIA_EQUIRECT"));
     FlatFrame frame;
+    frame.p010 = fused && flat_ten_bit_;
     if (!readView(outW, outH, perFrame, colorGrade,
-                  fused ? FlatPath::FusedNv12 : FlatPath::ViaEquirect, frame.nv12,
-                  frame.timestamp_ms))
+                  !fused         ? FlatPath::ViaEquirect
+                  : frame.p010   ? FlatPath::FusedP010
+                                 : FlatPath::FusedNv12,
+                  frame.data, frame.timestamp_ms))
         return FlatFrame{};
     frame.width = outW;
     frame.height = outH;
@@ -515,6 +518,8 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
             : gpu_->renderViewVk(in0, in1, params, eq_w_, eq_h_, outW, outH, pose, stab, colorGrade,
                                  path == FlatPath::FusedRgba
                                      ? render::VulkanFisheyeStitcher::ViewFormat::Rgba
+                                 : path == FlatPath::FusedP010
+                                     ? render::VulkanFisheyeStitcher::ViewFormat::P010
                                      : render::VulkanFisheyeStitcher::ViewFormat::Nv12,
                                  out, &oc0, &oc1, gerr);
 

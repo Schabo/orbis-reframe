@@ -13,10 +13,11 @@
 #include <vector>
 
 // Composites the flat main-track clips and the video tracks' insets into the
-// export's output frames. Runs on the NV12 frame just before it's encoded, so
-// the GPU export path (frames reprojected straight to NV12) and the CPU
-// fallback (RGBA -> NV12 through swscale) share one implementation -- the same
-// way the colour grade is applied in both. Placement and edge / corner /
+// export's output frames. Runs on the NV12 (or, for a 10-bit export, P010)
+// frame just before it's encoded, so the GPU export path (frames reprojected
+// straight to NV12 / P010) and the CPU fallback (RGBA -> NV12 through
+// swscale) share one implementation -- the same way the colour grade is
+// applied in both. Placement and edge / corner /
 // border shading are inset::place / inset::shade, exactly what the viewport
 // draws. A layer that covers its rect fully on whole pixels -- a flat clip
 // filling the frame, mostly -- is decoded to NV12 at its size and copied in;
@@ -74,10 +75,11 @@ public:
     bool empty() const { return m_jobs.empty(); }
 
     // Blend every inset showing at timeline time `timelineMs` into an NV12
-    // frame (BT.709 limited range, like the export's). False (with `err`)
-    // when a clip's file can't be read.
+    // frame (BT.709 limited range, like the export's) -- or, with `p010`, a
+    // P010 one (16-bit samples, the 10-bit code in the high bits; strides in
+    // bytes). False (with `err`) when a clip's file can't be read.
     bool composite(int64_t timelineMs, uint8_t *y, int yStride, uint8_t *uv, int uvStride,
-                   std::string &err);
+                   std::string &err, bool p010 = false);
     // The same into a packed RGB (bytesPerPixel 3) or RGBA (4) picture of
     // the output size -- the screenshot button's still.
     bool compositeRgb(int64_t timelineMs, uint8_t *rgb, int stride, int bytesPerPixel,
@@ -89,6 +91,10 @@ public:
     // at `rect` with `opacity`.
     // Exposed for tests.
     static void blendNv12(const uint8_t *rgba, int picW, int picH, const inset::Rect &rect,
+                          float opacity, uint32_t borderRgb, uint8_t *y, int yStride,
+                          uint8_t *uv, int uvStride, int outW, int outH);
+    // The same into P010 (strides in bytes).
+    static void blendP010(const uint8_t *rgba, int picW, int picH, const inset::Rect &rect,
                           float opacity, uint32_t borderRgb, uint8_t *y, int yStride,
                           uint8_t *uv, int uvStride, int outW, int outH);
 

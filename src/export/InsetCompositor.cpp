@@ -31,6 +31,32 @@ uint8_t clamp8(float v)
     return static_cast<uint8_t>(std::clamp(std::lround(v), 0L, 255L));
 }
 
+// The output frame's samples, read and written as values on the 8-bit scale
+// (Y 16-235, as toYuv): NV12's bytes as they are, or P010's 16-bit words
+// (the 10-bit code, x4, in the high bits) -- the 10-bit export.
+struct Nv12Samples {
+    using T = uint8_t;
+    static float get(T v) { return v; }
+    static T put(float v) { return clamp8(v); }
+    static T widen(uint8_t v) { return v; }
+};
+struct P010Samples {
+    using T = uint16_t;
+    static float get(T v) { return v / 256.0f; }
+    static T put(float v)
+    {
+        return static_cast<T>(std::clamp(std::lround(v * 4.0f), 0L, 1023L) << 6);
+    }
+    static T widen(uint8_t v) { return static_cast<T>(v << 8); }
+};
+
+// Sample x of row `row` (stride in bytes) of a plane of S::T.
+template <typename S>
+typename S::T &at(uint8_t *plane, int stride, int row, int x)
+{
+    return reinterpret_cast<typename S::T *>(plane + size_t(row) * stride)[x];
+}
+
 // Bilinear sample of a premultiplied RGBA picture at pixel coordinates
 // (texel centres at +0.5, edges clamped) -- what the viewport's linear
 // sampler does. `out` is the straight colour; returns the alpha.
@@ -93,7 +119,8 @@ bool copyable(const inset::Rect &r, float opacity, int outW, int outH)
 }
 
 // Copy an NV12 picture w x h (even) into the output at (rx, ry) (even),
-// cropped to it.
+// cropped to it; widened sample by sample into a P010 output.
+template <typename S>
 void copyNv12(const uint8_t *pic, int w, int h, int rx, int ry, uint8_t *yPlane, int yStride,
               uint8_t *uvPlane, int uvStride, int outW, int outH)
 {
@@ -102,44 +129,26 @@ void copyNv12(const uint8_t *pic, int w, int h, int rx, int ry, uint8_t *yPlane,
     if (x0 >= x1 || y0 >= y1)
         return;
     const uint8_t *picUv = pic + size_t(w) * h;
+    const auto copyRow = [&](uint8_t *plane, int stride, int row, const uint8_t *src) {
+        if constexpr (sizeof(typename S::T) == 1) {
+            std::memcpy(plane + size_t(row) * stride + x0, src, size_t(x1 - x0));
+        } else {
+            for (int x = x0; x < x1; ++x)
+                at<S>(plane, stride, row, x) = S::widen(src[x - x0]);
+        }
+    };
     parallelRows(y0, y1, 2, int64_t(x1 - x0) * (y1 - y0), [&](int b0, int b1) {
         for (int py = b0; py < b1; ++py)
-            std::memcpy(yPlane + size_t(py) * yStride + x0, pic + size_t(py - ry) * w + (x0 - rx),
-                        size_t(x1 - x0));
+            copyRow(yPlane, yStride, py, pic + size_t(py - ry) * w + (x0 - rx));
         for (int cy = b0 / 2; cy < b1 / 2; ++cy)
-            std::memcpy(uvPlane + size_t(cy) * uvStride + x0,
-                        picUv + size_t(cy - ry / 2) * w + (x0 - rx), size_t(x1 - x0));
+            copyRow(uvPlane, uvStride, cy, picUv + size_t(cy - ry / 2) * w + (x0 - rx));
     });
 }
 
-} // namespace
-
-struct InsetCompositor::State {
-    std::unique_ptr<FlatVideoReader> reader;
-    std::unique_ptr<PictureSource> picture;
-    bool failed = false;
-    // The decoded frame graded (InsetClipJob::colorGrade), when it has one
-    // (Nv12Converter::kPadding longer), and that as NV12 when it's copied.
-    std::vector<uint8_t> graded;
-    const VideoFrame *gradedFrom = nullptr;
-    int64_t gradedPts = -1;
-    std::vector<uint8_t> gradedNv12;
-    bool gradedNv12Done = false;
-    Nv12Converter toNv12;
-};
-
-InsetCompositor::InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH)
-    : m_jobs(std::move(jobs)), m_outW(outW), m_outH(outH)
-{
-    for (size_t i = 0; i < m_jobs.size(); ++i)
-        m_states.push_back(std::make_unique<State>());
-}
-
-InsetCompositor::~InsetCompositor() = default;
-
-void InsetCompositor::blendNv12(const uint8_t *rgba, int picW, int picH, const inset::Rect &r,
-                                float opacity, uint32_t borderRgb, uint8_t *yPlane, int yStride,
-                                uint8_t *uvPlane, int uvStride, int outW, int outH)
+template <typename S>
+void blendYuv(const uint8_t *rgba, int picW, int picH, const inset::Rect &r, float opacity,
+              uint32_t borderRgb, uint8_t *yPlane, int yStride, uint8_t *uvPlane, int uvStride,
+              int outW, int outH)
 {
     if (r.empty() || opacity <= 0.0f || picW <= 0 || picH <= 0)
         return;
@@ -181,8 +190,9 @@ void InsetCompositor::blendNv12(const uint8_t *rgba, int picW, int picH, const i
                             col.u += (border.u - col.u) * c.border;
                             col.v += (border.v - col.v) * c.border;
                         }
-                        uint8_t &yv = yPlane[size_t(py) * yStride + px];
-                        yv = clamp8(yv + (col.y - yv) * a);
+                        auto &yv = at<S>(yPlane, yStride, py, px);
+                        const float yOld = S::get(yv);
+                        yv = S::put(yOld + (col.y - yOld) * a);
                         aSum += a;
                         uSum += a * col.u;
                         vSum += a * col.v;
@@ -192,12 +202,54 @@ void InsetCompositor::blendNv12(const uint8_t *rgba, int picW, int picH, const i
                     continue;
                 // The block's chroma: the average coverage, premultiplied.
                 const float a = aSum / 4.0f;
-                uint8_t *uv = uvPlane + size_t(by / 2) * uvStride + bx;
-                uv[0] = clamp8(uv[0] * (1.0f - a) + uSum / 4.0f);
-                uv[1] = clamp8(uv[1] * (1.0f - a) + vSum / 4.0f);
+                auto &u = at<S>(uvPlane, uvStride, by / 2, bx);
+                auto &v = at<S>(uvPlane, uvStride, by / 2, bx + 1);
+                u = S::put(S::get(u) * (1.0f - a) + uSum / 4.0f);
+                v = S::put(S::get(v) * (1.0f - a) + vSum / 4.0f);
             }
         }
     });
+}
+
+} // namespace
+
+struct InsetCompositor::State {
+    std::unique_ptr<FlatVideoReader> reader;
+    std::unique_ptr<PictureSource> picture;
+    bool failed = false;
+    // The decoded frame graded (InsetClipJob::colorGrade), when it has one
+    // (Nv12Converter::kPadding longer), and that as NV12 when it's copied.
+    std::vector<uint8_t> graded;
+    const VideoFrame *gradedFrom = nullptr;
+    int64_t gradedPts = -1;
+    std::vector<uint8_t> gradedNv12;
+    bool gradedNv12Done = false;
+    Nv12Converter toNv12;
+};
+
+InsetCompositor::InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH)
+    : m_jobs(std::move(jobs)), m_outW(outW), m_outH(outH)
+{
+    for (size_t i = 0; i < m_jobs.size(); ++i)
+        m_states.push_back(std::make_unique<State>());
+}
+
+InsetCompositor::~InsetCompositor() = default;
+
+void InsetCompositor::blendNv12(const uint8_t *rgba, int picW, int picH, const inset::Rect &r,
+                                float opacity, uint32_t borderRgb, uint8_t *yPlane, int yStride,
+                                uint8_t *uvPlane, int uvStride, int outW, int outH)
+{
+    blendYuv<Nv12Samples>(rgba, picW, picH, r, opacity, borderRgb, yPlane, yStride, uvPlane,
+                          uvStride, outW, outH);
+}
+
+void InsetCompositor::blendP010(const uint8_t *rgba, int picW, int picH, const inset::Rect &r,
+                                float opacity, uint32_t borderRgb, uint8_t *yPlane, int yStride,
+                                uint8_t *uvPlane, int uvStride, int outW, int outH)
+{
+    blendYuv<P010Samples>(rgba, picW, picH, r, opacity, borderRgb, yPlane, yStride, uvPlane,
+                          uvStride, outW, outH);
 }
 
 bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &layer,
@@ -309,7 +361,7 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
 }
 
 bool InsetCompositor::composite(int64_t timelineMs, uint8_t *y, int yStride, uint8_t *uv,
-                                int uvStride, std::string &err)
+                                int uvStride, std::string &err, bool p010)
 {
     for (size_t i = 0; i < m_jobs.size(); ++i) {
         Layer l;
@@ -317,9 +369,17 @@ bool InsetCompositor::composite(int64_t timelineMs, uint8_t *y, int yStride, uin
             if (!err.empty())
                 return false;
         } else if (l.nv12) {
-            copyNv12(l.nv12, l.w, l.h, static_cast<int>(std::lround(l.rect.x)),
-                     static_cast<int>(std::lround(l.rect.y)), y, yStride, uv, uvStride, m_outW,
-                     m_outH);
+            const int rx = static_cast<int>(std::lround(l.rect.x));
+            const int ry = static_cast<int>(std::lround(l.rect.y));
+            if (p010)
+                copyNv12<P010Samples>(l.nv12, l.w, l.h, rx, ry, y, yStride, uv, uvStride, m_outW,
+                                      m_outH);
+            else
+                copyNv12<Nv12Samples>(l.nv12, l.w, l.h, rx, ry, y, yStride, uv, uvStride, m_outW,
+                                      m_outH);
+        } else if (p010) {
+            blendP010(l.rgba, l.w, l.h, l.rect, l.opacity, l.borderRgb, y, yStride, uv, uvStride,
+                      m_outW, m_outH);
         } else {
             blendNv12(l.rgba, l.w, l.h, l.rect, l.opacity, l.borderRgb, y, yStride, uv, uvStride,
                       m_outW, m_outH);

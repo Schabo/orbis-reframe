@@ -195,7 +195,8 @@ if [[ $DEV == 1 ]]; then
     done
     check "dev: ctest" "$([[ $(r ctest) == 0 ]] && echo 1 || echo 0)" \
         "$(tail -n 3 "$work/ctest.log" 2> /dev/null | grep -m1 'tests passed' || echo 'dev/ctest.log')"
-    for s in stitch_source_smoke playback_bench view_compare reframe_export plate_scan; do
+    for s in stitch_source_smoke playback_bench view_compare reframe_export reframe_export_10bit \
+        plate_scan; do
         check "dev: $s" "$([[ $(r $s) == 0 ]] && echo 1 || echo 0)" "dev/$s.log"
     done
 fi

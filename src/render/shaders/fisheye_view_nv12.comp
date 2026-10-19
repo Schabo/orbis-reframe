@@ -19,8 +19,10 @@
 //
 // Output (binding 3, uint px[]), 4 horizontal pixels per invocation, so outW
 // must be a multiple of 4 (and outH of 2 for NV12):
-//   fmt 0: tightly-packed BT.709 limited-range NV12 (export -> NVENC);
-//   fmt 1: RGBA8, one uint per pixel (viewport / stills / comparison).
+//   fmt 0: tightly-packed BT.709 limited-range NV12 (the 8-bit export);
+//   fmt 1: RGBA8, one uint per pixel (viewport / stills / comparison);
+//   fmt 2: P010 -- NV12's layout with 16-bit samples, the 10-bit code in
+//          the high bits (the 10-bit export, HEVC Main 10).
 
 layout(local_size_x = 16, local_size_y = 4) in;
 
@@ -36,7 +38,7 @@ layout(push_constant) uniform PC {
     int pass;
     int outW;
     int outH;
-    int fmt; // 0 = NV12, 1 = RGBA
+    int fmt; // 0 = NV12, 1 = RGBA, 2 = P010
     float yaw;
     float pitch;
     float roll;
@@ -62,6 +64,8 @@ layout(push_constant) uniform PC {
 // strided 4-byte stores per thread don't coalesce -- 45 ms vs ~0.3 ms for a
 // 1080p frame (tools/playback_bench).
 layout(std430, binding = 3) writeonly buffer OutBuf4 { uvec4 px4[]; };
+// And as 8-byte words: P010's four 16-bit samples per invocation in one write.
+layout(std430, binding = 3) writeonly buffer OutBuf2 { uvec2 px2[]; };
 
 #include "color_grade.glsl"
 
@@ -104,6 +108,11 @@ float lumaY(vec3 c) { return 16.0 + 0.182586 * c.r + 0.614231 * c.g + 0.062007 *
 float chromaU(vec3 c) { return 128.0 - 0.100644 * c.r - 0.338572 * c.g + 0.439216 * c.b; }
 float chromaV(vec3 c) { return 128.0 + 0.439216 * c.r - 0.398942 * c.g - 0.040274 * c.b; }
 uint q8(float x) { return uint(clamp(x + 0.5, 0.0, 255.0)); }
+// The same value as a P010 sample: 10-bit code (x on the 8-bit scale, x4) in
+// the high bits of 16.
+uint q10(float x) { return uint(clamp(x * 4.0 + 0.5, 0.0, 1023.0)) << 6; }
+// Two samples into one word, the first in the low half (little-endian).
+uint pack10(float a, float b) { return q10(a) | (q10(b) << 16); }
 
 void main()
 {
@@ -141,13 +150,17 @@ void main()
         return;
     }
 
+    const bool p010 = pc.fmt == 2;
     vec3 rgb[4];
-    uint y[4];
+    float y[4];
     for (int i = 0; i < 4; ++i) {
         rgb[i] = shade(basePx + i, gid.y);
-        y[i] = q8(lumaY(rgb[i]));
+        y[i] = lumaY(rgb[i]);
     }
-    px[gid.y * quads + gid.x] = y[0] | (y[1] << 8) | (y[2] << 16) | (y[3] << 24);
+    if (p010)
+        px2[gid.y * quads + gid.x] = uvec2(pack10(y[0], y[1]), pack10(y[2], y[3]));
+    else
+        px[gid.y * quads + gid.x] = q8(y[0]) | (q8(y[1]) << 8) | (q8(y[2]) << 16) | (q8(y[3]) << 24);
 
     // 4:2:0 chroma: even rows write one sample per 2x2 block, averaging this
     // row and the next.
@@ -159,9 +172,15 @@ void main()
         vec3 n3 = shade(basePx + 3, nextY);
         vec3 c0 = (rgb[0] + rgb[1] + n0 + n1) * 0.25;
         vec3 c1 = (rgb[2] + rgb[3] + n2 + n3) * 0.25;
-        uint u0 = q8(chromaU(c0)), v0 = q8(chromaV(c0));
-        uint u1 = q8(chromaU(c1)), v1 = q8(chromaV(c1));
-        int uvBase = pc.outH * quads;
-        px[uvBase + (gid.y >> 1) * quads + gid.x] = u0 | (v0 << 8) | (u1 << 16) | (v1 << 24);
+        // The chroma plane starts after outH rows of `quads` words (NV12) or
+        // double-words (P010).
+        int uvAt = pc.outH * quads + (gid.y >> 1) * quads + gid.x;
+        if (p010) {
+            px2[uvAt] = uvec2(pack10(chromaU(c0), chromaV(c0)), pack10(chromaU(c1), chromaV(c1)));
+        } else {
+            uint u0 = q8(chromaU(c0)), v0 = q8(chromaV(c0));
+            uint u1 = q8(chromaU(c1)), v1 = q8(chromaV(c1));
+            px[uvAt] = u0 | (v0 << 8) | (u1 << 16) | (v1 << 24);
+        }
     }
 }

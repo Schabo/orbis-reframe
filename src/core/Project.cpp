@@ -108,7 +108,10 @@ json outputToJson(const OutputSettings &o)
                          : o.aspect == OutputSettings::Aspect::Square1x1  ? "1:1"
                          : o.aspect == OutputSettings::Aspect::Classic4x3 ? "4:3"
                                                                           : "16:9";
-    return json{{"aspect", aspect}, {"width", o.width}, {"height", o.height}, {"fps", o.fps}};
+    json j{{"aspect", aspect}, {"width", o.width}, {"height", o.height}, {"fps", o.fps}};
+    if (o.tenBit)
+        j["bitDepth"] = 10;
+    return j;
 }
 
 OutputSettings outputFromJson(const json &j)
@@ -131,6 +134,7 @@ OutputSettings outputFromJson(const json &j)
         o.height = def.h;
     }
     o.fps = std::max(0.0, j.value("fps", 0.0));
+    o.tenBit = j.value("bitDepth", 8) == 10;
     return o;
 }
 

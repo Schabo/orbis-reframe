@@ -670,9 +670,10 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         err = "bad dimensions (outW must be a multiple of 4, outH a multiple of 2)";
         return false;
     }
-    const VkDeviceSize outBytes = fmt == ViewFormat::Rgba
-                                      ? static_cast<VkDeviceSize>(outW) * outH * 4
-                                      : static_cast<VkDeviceSize>(outW) * outH * 3 / 2;
+    const VkDeviceSize pixels = static_cast<VkDeviceSize>(outW) * outH;
+    const VkDeviceSize outBytes = fmt == ViewFormat::Rgba   ? pixels * 4
+                                  : fmt == ViewFormat::P010 ? pixels * 3
+                                                            : pixels * 3 / 2;
     if (!d->ensureUbo(err) || !d->ensureFlat(outBytes, err))
         return false;
 
@@ -764,7 +765,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     ViewPush vp{};
     vp.outW = outW;
     vp.outH = outH;
-    vp.fmt = fmt == ViewFormat::Rgba ? 1 : 0;
+    vp.fmt = fmt == ViewFormat::Rgba ? 1 : fmt == ViewFormat::P010 ? 2 : 0;
     for (int col = 0; col < 3; ++col)
         for (int row = 0; row < 3; ++row)
             vp.stab[col * 4 + row] = stab ? stab[row * 3 + col] : (row == col ? 1.0f : 0.0f);

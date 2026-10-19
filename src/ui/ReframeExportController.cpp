@@ -1,5 +1,8 @@
 #include "ReframeExportController.h"
 
+#include <QFileInfo>
+#include <QStringList>
+
 #include "ReframeFlatten.h"  // exportpipe::FlattenWriter (system FFmpeg)
 #include "ReframeRenderer.h" // exportpipe::RenderRectilinear
 
@@ -190,6 +193,7 @@ void ReframeExportController::run(const Request &req)
     cfg.out_h = req.outHeight;
     cfg.fps = req.fps;
     cfg.h265 = req.h265;
+    cfg.ten_bit = req.tenBit;
     cfg.bitrate_kbps = req.bitrateKbps;
     // An audio track only if there's something on the audio tracks.
     const bool withAudio = !req.mix.empty();
@@ -215,9 +219,16 @@ void ReframeExportController::run(const Request &req)
                                                                 req.outHeight);
     if (!insets->empty())
         writer->setFrameHook([insets, outFrameMs](int64_t k, uint8_t *y, int ys, uint8_t *uv,
-                                                  int uvs, std::string &e) {
-            return insets->composite(std::llround(k * outFrameMs), y, ys, uv, uvs, e);
+                                                  int uvs, bool p010, std::string &e) {
+            return insets->composite(std::llround(k * outFrameMs), y, ys, uv, uvs, e, p010);
         });
+    // Said in the "Export complete" message: a 10-bit export that is 8-bit
+    // after all, or has 360 clips that only got 8 bits (no fused GPU pass).
+    QString note;
+    if (cfg.ten_bit && !writer->tenBit())
+        note = tr("Exported as 8-bit: the video encoder couldn't encode 10-bit HEVC (%1).")
+                   .arg(QString::fromStdString(writer->tenBitFallback()));
+    QStringList eightBitClips;
 
     bool cancelled = false;
     int64_t framesBefore = 0;
@@ -300,13 +311,26 @@ void ReframeExportController::run(const Request &req)
         }
         src->SetCaptureTiming(captureTimingFor(c.stab));
         src->SetLens1Adjust(c.seamAdjustDeg.data());
+        src->SetFlatTenBit(writer->tenBit());
         if (c.blur && !src->SetBlurQuads(c.blur)) {
             emit finished(false, tr("This stitch can't apply the privacy blur."), req.outPath);
             return;
         }
+        // Into a 10-bit file, a clip whose frames come as 8-bit (the CPU
+        // path, or the GPU equirect) is named in the note; checked on its
+        // first frame.
+        bool depthChecked = !writer->tenBit();
+        auto checkDepth = [&](bool p010) {
+            if (depthChecked)
+                return;
+            depthChecked = true;
+            if (!p010)
+                eightBitClips << QFileInfo(c.clipPath).fileName();
+        };
 
-        // GPU reproject straight to NV12 -> NVENC when the all-GPU stitch path
-        // is active (no CPU equirect->rectilinear pass, no RGBA->NV12 swscale).
+        // GPU reproject straight to NV12 / P010 -> the encoder when the
+        // all-GPU stitch path is active (no CPU equirect->rectilinear pass,
+        // no RGBA->YUV swscale).
         // Needs outW % 4 == 0 and outH % 2 == 0.
         const bool gpuFlat = src->GpuReframeAvailable() && (req.outWidth % 4) == 0 &&
                              (req.outHeight % 2) == 0;
@@ -339,7 +363,7 @@ void ReframeExportController::run(const Request &req)
 
             if (gpuFlat) {
                 stitch::FlatFrame ff = src->ReadFlatFrame(req.outWidth, req.outHeight, poseAt, &c.colorGrade);
-                if (ff.nv12.empty()) { // clean end-of-clip, or error
+                if (ff.data.empty()) { // clean end-of-clip, or error
                     const std::string &e = src->GetLastError();
                     if (!e.empty()) {
                         emit finished(false, QString::fromStdString(e), req.outPath);
@@ -350,10 +374,13 @@ void ReframeExportController::run(const Request &req)
                 if (ff.timestamp_ms + srcHalfMs < c.trimInMs)
                     continue; // straggler ahead of the in-point
                 const int64_t reps = repeatsFor(ff.timestamp_ms);
+                checkDepth(ff.p010);
                 for (int64_t r = 0; r < reps; ++r) {
                     ++outFrames;
-                    if (!writer->addNv12Frame(ff.nv12.data(), ff.width, ff.height, err) ||
-                        !feedAudio()) {
+                    const bool added =
+                        ff.p010 ? writer->addP010Frame(ff.data.data(), ff.width, ff.height, err)
+                                : writer->addNv12Frame(ff.data.data(), ff.width, ff.height, err);
+                    if (!added || !feedAudio()) {
                         emit finished(false, QString::fromStdString(err), req.outPath);
                         return;
                     }
@@ -376,6 +403,7 @@ void ReframeExportController::run(const Request &req)
                 const int64_t reps = repeatsFor(eq.timestamp_ms);
                 if (reps == 0)
                     continue; // dropped: skip the CPU reproject too
+                checkDepth(false);
                 float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
                 float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
                 poseAt(eq.timestamp_ms, pose, stab);
@@ -411,5 +439,10 @@ void ReframeExportController::run(const Request &req)
         return;
     }
     emitPct(100, tr("Done"));
-    emit finished(true, QString(), req.outPath);
+    eightBitClips.removeDuplicates(); // a file used twice on the timeline
+    if (!eightBitClips.isEmpty())
+        note = tr("These clips were exported with 8-bit precision inside the 10-bit file "
+                  "(the GPU stitch isn't available for them): %1")
+                   .arg(eightBitClips.join(QStringLiteral(", ")));
+    emit finished(true, note, req.outPath);
 }

@@ -85,7 +85,7 @@ struct ViewPush {
     int32_t pass;
     int32_t outW;
     int32_t outH;
-    int32_t fmt; // 0 = NV12, 1 = RGBA
+    int32_t fmt; // 0 = NV12, 1 = RGBA, 2 = P010
     float yaw;
     float pitch;
     float roll;

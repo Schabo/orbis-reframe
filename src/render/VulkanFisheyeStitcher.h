@@ -139,7 +139,7 @@ public:
     // initAdopt(); fisheye_view_nv12.comp).
     bool viewReady() const { return m_viewReady; }
 
-    enum class ViewFormat { Nv12, Rgba };
+    enum class ViewFormat { Nv12, Rgba, P010 };
 
     // Fused render: the outW x outH rectilinear view straight from the
     // NV12 fisheye pair -- no equirect. Each output pixel's view ray (`pose`,
@@ -148,8 +148,10 @@ public:
     // pixels. The seam's photometric gains are measured over the same grid as
     // a measureW x measureH equirect stitch would use, so they match that
     // path. `fmt` Nv12 = tightly-packed BT.709 limited NV12 (outW*outH*3/2
-    // bytes); Rgba = RGBA8 (outW*outH*4). outW must be a multiple of 4, outH
-    // of 2. Same semaphore handshake as stitchVk(). Requires viewReady().
+    // bytes); P010 = the same with 16-bit little-endian samples, the 10-bit
+    // code in the high bits (outW*outH*3 bytes); Rgba = RGBA8 (outW*outH*4).
+    // outW must be a multiple of 4, outH of 2. Same semaphore handshake as
+    // stitchVk(). Requires viewReady().
     bool renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                       const insv::StitchGpuParams& params, int measureW, int measureH, int outW,
                       int outH, const float pose[4], const float stab[9],

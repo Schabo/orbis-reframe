@@ -70,8 +70,9 @@ X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
   / BT.1886 (`X6_I-Log_to_Rec709_BT1886_s65_v2.cube`), to Rec.2020 PQ and to
   Rec.2020 HLG (1000 nits, 203 nits diffuse white). The app reads all of
   them (Colour ▸ LUT); the Rec.709 one is the one for its SDR output. The
-  10-bit pictures are graded in float before the 8-bit output, so they
-  shouldn't band.
+  10-bit pictures are graded in float before the output, so they shouldn't
+  band; a 10-bit export (Project settings ▸ Bit depth) keeps 10 bits
+  through to the file.
 
 ## Trailer
 

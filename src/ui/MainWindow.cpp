@@ -3097,6 +3097,7 @@ void MainWindow::exportFlatVideo()
     req.outWidth = opts.outWidth();
     req.outHeight = opts.outHeight();
     req.h265 = opts.h265();
+    req.tenBit = opts.tenBit();
     req.bitrateKbps = opts.bitrateKbps();
 
     // Per clip: the reframe track and the built stabilizer; the export samples

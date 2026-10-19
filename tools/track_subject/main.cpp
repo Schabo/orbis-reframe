@@ -505,7 +505,7 @@ int main(int argc, char** argv)
     int64_t written = 0;
     for (;;) {
         stitch::FlatFrame ff = rsrc->ReadFlatFrame(a.outW, a.outH, poseAt);
-        if (ff.nv12.empty()) {
+        if (ff.data.empty()) {
             if (!rsrc->GetLastError().empty())
                 die(rsrc->GetLastError());
             break;
@@ -514,7 +514,7 @@ int main(int argc, char** argv)
             continue;
         if (ff.timestamp_ms > t1Ms)
             break;
-        if (!writer.addNv12Frame(ff.nv12.data(), ff.width, ff.height, err))
+        if (!writer.addNv12Frame(ff.data.data(), ff.width, ff.height, err))
             die(err);
         ++written;
     }

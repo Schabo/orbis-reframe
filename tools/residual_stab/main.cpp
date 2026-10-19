@@ -1499,14 +1499,14 @@ int main(int argc, char** argv)
     while (written < frameCount) {
         if (gpuFlat) {
             stitch::FlatFrame ff = rsrc->ReadFlatFrame(a.outW, a.outH, poseAt);
-            if (ff.nv12.empty()) {
+            if (ff.data.empty()) {
                 if (!rsrc->GetLastError().empty())
                     die(rsrc->GetLastError());
                 break;
             }
             if (ff.timestamp_ms + halfFrameMs < trimIn)
                 continue;
-            if (!writer.addNv12Frame(ff.nv12.data(), ff.width, ff.height, err))
+            if (!writer.addNv12Frame(ff.data.data(), ff.width, ff.height, err))
                 die(err);
         } else {
             stitch::Frame eq = rsrc->ReadFrame();

@@ -80,7 +80,11 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 4. **Grade**: the clip's LUT and the Colour panel's adjustments
    (`color::Grade`), applied to the flat picture.
 5. **Compose and encode**: overlays, titles and transitions on top, then the
-   encoder (NVENC, else VA-API, else Vulkan encode).
+   encoder (NVENC, else VA-API, else Vulkan encode). The export is 8-bit
+   NV12, or P010 into HEVC Main 10 when the project asks for 10-bit
+   (`OutputSettings::tenBit`); everything up to this point works in float,
+   so the fused GPU pass's 10-bit output is real 10-bit. The CPU path and
+   the equirect-first GPU path stay 8-bit.
 
 ### One view, several implementations
 

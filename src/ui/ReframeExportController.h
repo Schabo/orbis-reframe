@@ -26,6 +26,9 @@
 // equirect, in-process, no intermediate file), feeding each frame + its baked
 // pose straight into exportpipe::FlattenWriter (CPU reproject + NVENC). Every
 // clip goes through one open encoder so the output is a single continuous file.
+// A 10-bit export (Request::tenBit) gets P010 from the fused GPU pass; clips
+// without it are 8-bit content in the 10-bit file, and the finished message
+// names them.
 //
 // Audio: if anything is on the audio tracks (Request::mix -- the video clips'
 // own streams are linked clips there too), the output gets one AAC track.
@@ -103,6 +106,8 @@ public:
         int outWidth = 1920;
         int outHeight = 1080;
         bool h265 = true;
+        // HEVC Main 10 (OutputSettings::tenBit); H.265 only.
+        bool tenBit = false;
         qint64 bitrateKbps = 40000;
         // Equirect intermediate resolution (2:1). 0 => auto, per clip:
         // stitch::ExportStitchWidth (the full source sphere, >= 2*outWidth).
@@ -141,7 +146,9 @@ signals:
     // overallPct: 0..100 across the whole timeline. label: what's happening now
     // (e.g. "Stitching clip 2 of 3…"), ready to drop straight into the dialog.
     void progress(int overallPct, const QString &label);
-    void finished(bool ok, const QString &error, const QString &outPath);
+    // `message`: on failure the error; on success a note for the user
+    // (a 10-bit export that came out 8-bit), usually empty.
+    void finished(bool ok, const QString &message, const QString &outPath);
 
 private:
     std::atomic<bool> m_cancel{false};

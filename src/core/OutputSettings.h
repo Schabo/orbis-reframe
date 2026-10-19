@@ -25,6 +25,11 @@ struct OutputSettings {
     // behaviour, and what an .orp without an "output" block loads as).
     // Clips at another rate are conformed to it (ReframeExportController).
     double fps = 0.0;
+    // Export 10 bits per sample (HEVC Main 10, still BT.709 SDR) instead of
+    // 8: keeps the gradation of 10-bit clips (log footage to grade in
+    // another program, smooth skies). H.265 only; off by default -- 8-bit
+    // plays everywhere.
+    bool tenBit = false;
 
     double aspectRatio() const { return height > 0 ? double(width) / height : 16.0 / 9.0; }
 
@@ -36,7 +41,8 @@ struct OutputSettings {
 
     bool operator==(const OutputSettings &o) const
     {
-        return aspect == o.aspect && width == o.width && height == o.height && fps == o.fps;
+        return aspect == o.aspect && width == o.width && height == o.height && fps == o.fps &&
+               tenBit == o.tenBit;
     }
     bool operator!=(const OutputSettings &o) const { return !(*this == o); }
 
