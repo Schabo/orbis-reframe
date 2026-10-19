@@ -1067,6 +1067,7 @@ void testLocateMovedFile(const Ctx &c)
 {
     const QString moved = QDir(c.dir).filePath(QStringLiteral("moved.insv"));
     CHECK(QFile::rename(c.clipB, moved));
+    answerMessageBox(QStringLiteral("OK")); // the missing-media warning
     c.w->openProject(c.project->filePath());
     CHECK(waitFor([&] { return c.timeline->count() == 2 && c.timeline->clipAt(1).mediaMissing; }));
 

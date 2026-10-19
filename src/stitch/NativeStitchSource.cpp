@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <numbers>
 #include <string>
 
@@ -89,6 +90,10 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     info_ = ClipInfo{};
     last_error_.clear();
 
+    if (!std::filesystem::exists(clip_path)) {
+        last_error_ = "file not found: " + clip_path;
+        return false;
+    }
     const auto notes = insv::ReadInsvMakerNotes(clip_path);
     if (!notes) {
         last_error_ = "no readable Insta360 trailer in " + clip_path;

@@ -23,6 +23,7 @@
 #include <QLocale>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QKeyEvent>
@@ -43,6 +44,7 @@
 #include <QSettings>
 #include <QSplitter>
 #include <QShortcut>
+#include <QSpacerItem>
 #include <QTimer>
 #include <QStackedWidget>
 #include <QStandardPaths>
@@ -2495,7 +2497,7 @@ void MainWindow::pushTimelineToController()
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
-                            c.sourceDurationMs, c.lensGuard, c.depthSeam});
+                            c.sourceDurationMs, c.lensGuard, c.depthSeam, c.mediaMissing});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }
@@ -2873,12 +2875,24 @@ void MainWindow::openProject(const QString &projectPath)
     syncStitchingPanel();
     syncPrivacyPanel();
 
-    if (first.mediaMissing) {
+    if (const QStringList missing = renderjobs::missingSourceLines(*m_timeline);
+        !missing.isEmpty()) {
         // Keep the loaded model on screen but don't try to play a missing file.
-        QMessageBox::warning(this, tr("Missing media"),
-                             tr("A clip's source file was not found:\n%1\n\nIf it was moved or "
-                                "renamed, find it with Locate file… on it in the Media tab.")
-                                 .arg(first.sourcePath));
+        // All of them, labelled with their place on the timeline: a second
+        // missing file isn't told apart from the first's warning.
+        QMessageBox box(QMessageBox::Warning, tr("Missing media"),
+                        tr("Source files are not where the project expects them:"),
+                        QMessageBox::Ok, this);
+        box.setInformativeText(missing.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
+                               tr("If a file was moved or renamed, find it with Locate file… on "
+                                  "it in the Media tab."));
+        // Full paths run long: hold the box wide enough that they don't wrap.
+        auto *grid = qobject_cast<QGridLayout *>(box.layout());
+        if (grid)
+            grid->addItem(new QSpacerItem(640, 0, QSizePolicy::Minimum,
+                                          QSizePolicy::Expanding),
+                          grid->rowCount(), 0, 1, grid->columnCount());
+        box.exec();
         syncTimeline();
         return;
     }
@@ -3022,7 +3036,7 @@ void MainWindow::exportFlatVideo()
     // missing overlay or sound clip would be left out without a word. Either
     // way the user sorts it out first.
     recheckMissingMedia();
-    if (!checkSourcesPresent(renderjobs::missingSources(*m_timeline)))
+    if (!checkSourcesPresent(renderjobs::missingSourceLines(*m_timeline)))
         return;
 
     // One output frame rate for the whole timeline: the project's (Project
