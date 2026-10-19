@@ -538,6 +538,72 @@ TimelineWidget::Hit TimelineWidget::hitTest(QPoint pos) const
     return h;
 }
 
+TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
+{
+    // Forgiving: the diamonds are 6 px wide, a click shouldn't need a pixel.
+    constexpr int kKeyGrabPx = 6;
+    KeyHit k;
+    auto check = [&](int x, int cy, int index) {
+        if (std::abs(pos.x() - x) <= kKeyGrabPx && std::abs(pos.y() - cy) <= kKeyGrabPx)
+            k.index = index;
+    };
+    for (int i = 0; i < m_rows.size() && k.index < 0; ++i) {
+        const Row &r = m_rows[i];
+        if (pos.y() < r.rect.top() || pos.y() > r.rect.bottom())
+            continue;
+        const int cy = r.rect.bottom() - 5; // as drawn
+        for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
+            const qint64 ks = r.clip.keySourceMs[j];
+            if (ks < r.clip.trimInMs || ks > r.clip.trimOutMs)
+                continue;
+            check(xForTimelineMs(r.startMs + std::llround((ks - r.clip.trimInMs) /
+                                                          r.clip.speed)),
+                  cy, j);
+            if (k.index >= 0) {
+                k.row = i;
+                return k;
+            }
+        }
+    }
+    for (int t = 0; t < m_tracks.size() && k.index < 0; ++t) {
+        if (!trackShown(t) || !m_tracks[t].video)
+            continue;
+        for (int c = 0; c < m_tracks[t].clips.size(); ++c) {
+            const TrackClipView &tc = m_tracks[t].clips[c];
+            if (tc.keySourceMs.isEmpty())
+                continue;
+            const QRect rc = trackClipRect(t, tc);
+            if (pos.y() < rc.top() || pos.y() > rc.bottom())
+                continue;
+            const int cy = rc.bottom() - 4; // as drawn
+            for (int j = 0; j < tc.keySourceMs.size(); ++j) {
+                const qint64 ks = tc.keySourceMs[j];
+                if (ks < tc.trimInMs || ks > tc.trimOutMs)
+                    continue;
+                check(xForTimelineMs(tc.startMs + std::llround((ks - tc.trimInMs) / tc.speed)),
+                      cy, j);
+                if (k.index >= 0) {
+                    k.track = t;
+                    k.clip = c;
+                    return k;
+                }
+            }
+        }
+    }
+    return k;
+}
+
+qint64 TimelineWidget::keyTimelineMs(const KeyHit &k) const
+{
+    if (k.row >= 0) {
+        const Row &r = m_rows[k.row];
+        return r.startMs +
+               std::llround((r.clip.keySourceMs[k.index] - r.clip.trimInMs) / r.clip.speed);
+    }
+    const TrackClipView &c = m_tracks[k.track].clips[k.clip];
+    return c.startMs + std::llround((c.keySourceMs[k.index] - c.trimInMs) / c.speed);
+}
+
 int TimelineWidget::insertIndexAt(qint64 ms) const
 {
     int index = 0;
