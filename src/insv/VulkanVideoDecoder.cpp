@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "VulkanVideoDecoder.h"
 
-#include <mutex>
+#include "VulkanHwDevice.h" // core::sharedVulkanDevice
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -49,18 +49,6 @@ void VulkanVideoDecoder::close()
 
 namespace {
 
-// The process-wide Vulkan hw device (see the header). Created on first use
-// and kept for the process lifetime; returns a new reference, or nullptr.
-AVBufferRef* SharedHwDevice()
-{
-    static std::mutex mx;
-    static AVBufferRef* device = nullptr;
-    std::lock_guard<std::mutex> lk(mx);
-    if (!device && av_hwdevice_ctx_create(&device, AV_HWDEVICE_TYPE_VULKAN, nullptr, nullptr, 0) < 0)
-        device = nullptr;
-    return device ? av_buffer_ref(device) : nullptr;
-}
-
 // Whether the device has a video decode queue for `codec`. FFmpeg opens the
 // Vulkan hwaccel on any Vulkan device and only fails frame by frame ("Device
 // does not support the VK_KHR_video_decode_queue extension", a grey viewport:
@@ -95,7 +83,7 @@ bool CanDecode(const AVBufferRef* hwDevice, AVCodecID codec)
 bool VulkanVideoDecoder::open(const std::string& path, std::string& err)
 {
     close();
-    m_hwDevice = SharedHwDevice();
+    m_hwDevice = core::sharedVulkanDevice();
     if (!m_hwDevice) {
         err = "no Vulkan hw device (FFmpeg built without Vulkan, or no driver support)";
         return false;

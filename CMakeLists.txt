@@ -270,6 +270,15 @@ add_library(render_gpu_stitch STATIC
 target_include_directories(render_gpu_stitch PUBLIC src/render)
 target_link_libraries(render_gpu_stitch PUBLIC insv color_lut Vulkan::Vulkan PRIVATE render_shaders)
 
+if(FFMPEG_FOUND)
+    # --- vulkan_hw_device: the process's one FFmpeg Vulkan device, shared by
+    # the lens decoders (and the stitch that adopts it) and a *_vulkan export
+    # encoder (src/core/VulkanHwDevice).
+    add_library(vulkan_hw_device STATIC src/core/VulkanHwDevice.h src/core/VulkanHwDevice.cpp)
+    target_include_directories(vulkan_hw_device PUBLIC src/core)
+    target_link_libraries(vulkan_hw_device PRIVATE PkgConfig::FFMPEG)
+endif()
+
 # --- insv_demux: the one FFmpeg-dependent piece of src/insv/ (decode a fisheye
 # frame from an .insv at time T). Separate lib so the projection/gyro core above
 # stays dependency-free. Still cleanroom -- no Qt / Vulkan.
@@ -309,7 +318,7 @@ if(FFMPEG_FOUND)
         src/insv/AudioPeaks.cpp
     )
     target_include_directories(insv_demux PUBLIC src/insv)
-    target_link_libraries(insv_demux PUBLIC insv Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG)
+    target_link_libraries(insv_demux PUBLIC insv Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG vulkan_hw_device)
 
     # The "Voice only" / "Voice + ambience" noise modes: DeepFilterNet 3
     # (resources/models/deepfilternet3) run with ONNX Runtime -- optional
@@ -429,7 +438,8 @@ if(FFMPEG_FOUND)
     )
     # src/core for the Qt-free InsetGeometry.h (the shared inset placement).
     target_include_directories(reframe_flatten PUBLIC src/export src/core)
-    target_link_libraries(reframe_flatten PUBLIC PkgConfig::FFMPEG Threads::Threads color_lut)
+    target_link_libraries(reframe_flatten PUBLIC PkgConfig::FFMPEG Threads::Threads color_lut
+        PRIVATE vulkan_hw_device)
 
     # --- orbis_app: the whole app but main() -- the executable below, and
     # tests/main_window_test, which builds a MainWindow without a GPU.

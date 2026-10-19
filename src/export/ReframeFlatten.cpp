@@ -14,6 +14,7 @@ extern "C" {
 #include <dlfcn.h>
 
 #include "Log.h"
+#include "VulkanHwDevice.h" // core::sharedVulkanDevice
 
 #include <algorithm>
 #include <cmath>
@@ -187,16 +188,23 @@ bool encoderUsable(const char* encName, AVBufferRef** deviceOut, std::string& wh
             why = "libnvidia-encode.so.1 not found";
             return false;
         }
+    } else if (dev == AV_HWDEVICE_TYPE_VULKAN) {
+        // The decoders' device, not a second one: no second VkDevice, and the
+        // encoder's submissions take the same queue locks as the stitch's.
+        hw = core::sharedVulkanDevice();
+        if (!hw) {
+            why = "no Vulkan device";
+            return false;
+        }
+        if (vulkanDeviceIsNvidia(hw)) {
+            av_buffer_unref(&hw);
+            why = "skipped on NVIDIA (NVENC is used there)";
+            return false;
+        }
     } else {
         const int ret = av_hwdevice_ctx_create(&hw, dev, nullptr, nullptr, 0);
         if (ret < 0) {
-            why = avErr(dev == AV_HWDEVICE_TYPE_VULKAN ? "no Vulkan device" : "no VAAPI device",
-                        ret);
-            return false;
-        }
-        if (dev == AV_HWDEVICE_TYPE_VULKAN && vulkanDeviceIsNvidia(hw)) {
-            av_buffer_unref(&hw);
-            why = "skipped on NVIDIA (NVENC is used there)";
+            why = avErr("no VAAPI device", ret);
             return false;
         }
     }
