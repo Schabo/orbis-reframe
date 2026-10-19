@@ -31,7 +31,6 @@ what our code assumes. Written as differences from the X5
 
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
 - ✅ Every sample clip is H.265 Main 10 (`yuv420p10le`), VUI-tagged
-<<<<<<< HEAD
   `bt709` for Standard and I-Log clips; **Dolby Vision clips tag
   `bt2020nc` + `arib-std-b67` (HLG)** with no RPU side data observed -
   the stream is plain HLG/BT.2020 limited-range (confirmed on
