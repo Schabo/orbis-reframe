@@ -459,6 +459,15 @@ void hlgTo709(std::array<float, 3>& rgb)
 }
 } // namespace
 
+std::array<float, 3> FisheyeStitcher::decodeSample(std::array<float, 3> rgb) const
+{
+    if (m_params.gammaMode == 1)
+        ilogTo709(rgb);
+    else if (m_params.gammaMode == 2)
+        hlgTo709(rgb);
+    return rgb;
+}
+
 double FisheyeStitcher::edgeWeight(double thetaRad) const
 {
     return circleEdgeWeight(radiusForTheta(thetaRad), m_params.edgeStartFrac, m_params.edgeEndFrac);
@@ -493,12 +502,7 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
 
     // Lens pixel at (u,v), decoded to BT.709 for log/HDR source modes.
     auto pix = [&](int i, double u, double v) {
-        auto s = lim[i]->sample(u, v);
-        if (m_params.gammaMode == 1)
-            ilogTo709(s);
-        else if (m_params.gammaMode == 2)
-            hlgTo709(s);
-        return s;
+        return decodeSample(lim[i]->sample(u, v));
     };
 
     // --- photometric prepass: mean luma of each lens across the overlap band,

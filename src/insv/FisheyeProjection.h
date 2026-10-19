@@ -277,6 +277,10 @@ public:
     // Accessory radial scale at an off-axis angle (radians); 1 without one.
     double accessoryScale(double thetaRad) const;
 
+    // A sampled lens pixel ([0,255] RGB) with the StitchParams::gammaMode
+    // transfer decode applied (I-Log / HLG -> BT.709); identity when 0.
+    std::array<float, 3> decodeSample(std::array<float, 3> rgb) const;
+
     // --- depth-aware seam (StitchParams::depthSeam) -----------------------
     bool depthSeam() const { return m_params.depthSeam; }
     // The seam frame (see StitchGpuParams::seamAxis) and lens i's centre.

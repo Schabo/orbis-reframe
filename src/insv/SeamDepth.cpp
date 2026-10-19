@@ -39,7 +39,7 @@ void MeasureSeamCosts(const FisheyeStitcher& st, const Image& lens0, const Image
             return false;
         if (u < 0 || v < 0 || u > im[i]->w - 1.0 || v > im[i]->h - 1.0)
             return false;
-        const auto c = im[i]->sample(u, v);
+        const auto c = st.decodeSample(im[i]->sample(u, v));
         g = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
         return true;
     };
