@@ -28,6 +28,11 @@ section (settings sidebar, **Video** tab):
 | **Roll** | Tilts the picture, like tilting your head. Usually 0°. | −180° to 180° |
 | **Field of view** | How much the view takes in, from top to bottom. Small values zoom in, large values give a wide view. | 20° to 110° |
 
+The **Allow extra-wide** checkbox next to the field raises the limit to 150° -
+in the field and on the mouse wheel alike - for a wider, more
+fisheye-looking frame. Past about 120° the picture's corners stretch hard, so
+it stays off by default.
+
 In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
 the field of view. Roll can only be set in the section. The project's aspect
 ratio (**File ▸ Project settings…**) decides how wide the picture is for a given field

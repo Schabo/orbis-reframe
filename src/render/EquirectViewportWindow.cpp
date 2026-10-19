@@ -20,7 +20,6 @@
 namespace {
 
 constexpr float kMinFovY = 0.35f;                 // ~20 degrees
-constexpr float kMaxFovY = 1.92f;                 // ~110 degrees
 constexpr float kMaxPitch = 1.55334f;             // ~89 degrees
 constexpr float kMouseSensitivity = 0.005f;        // radians per pixel dragged
 constexpr float kWheelFovStep = 0.05f;             // radians per wheel notch
@@ -155,7 +154,13 @@ void EquirectViewportWindow::SetPose(float yaw, float pitch, float roll, float f
     m_yaw = yaw;
     m_pitch = std::clamp(pitch, -kMaxPitch, kMaxPitch);
     m_roll = roll;
-    m_fovY = std::clamp(fovY, kMinFovY, kMaxFovY);
+    m_fovY = std::clamp(fovY, kMinFovY, m_maxFovY);
+}
+
+void EquirectViewportWindow::SetWideFovAllowed(bool on)
+{
+    m_maxFovY = on ? kMaxFovYWide : kMaxFovYNormal;
+    m_fovY = std::clamp(m_fovY, kMinFovY, m_maxFovY); // pull an over-wide view back in
 }
 
 void EquirectViewportWindow::SetStabilization(const float rowMajor3x3[9])
@@ -514,7 +519,7 @@ void EquirectViewportWindow::wheelEvent(QWheelEvent *event)
         return;
     const float notches = event->angleDelta().y() / 120.0f;
     const float before = m_fovY;
-    m_fovY = std::clamp(m_fovY - notches * kWheelFovStep, kMinFovY, kMaxFovY);
+    m_fovY = std::clamp(m_fovY - notches * kWheelFovStep, kMinFovY, m_maxFovY);
     if (m_fovY != before)
         emit lookCommitted();
 }

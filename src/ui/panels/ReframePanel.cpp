@@ -2,6 +2,7 @@
 
 #include "EaseCombo.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -41,6 +42,18 @@ ReframePanel::ReframePanel(QWidget *parent)
     form()->addRow(tr("Pitch"), m_pitch);
     form()->addRow(tr("Roll"), m_roll);
     form()->addRow(tr("Field of view"), m_fov);
+
+    // Beyond ~110 deg the rectilinear view stretches badly at the corners;
+    // the cap lifts to 150 deg for a more fisheye-looking frame on request,
+    // in this field and on the viewport's scroll wheel alike.
+    m_wideFov = new QCheckBox(tr("Allow extra-wide (to 150°)"), this);
+    m_wideFov->setToolTip(tr("Field of view past 110°, for a wider, more fisheye-looking "
+                             "frame. The corners stretch hard past about 120°."));
+    connect(m_wideFov, &QCheckBox::toggled, this, [this](bool on) {
+        m_fov->setMaximum(on ? 150.0 : 110.0);
+        emit wideFovToggled(on);
+    });
+    form()->addRow(QString(), m_wideFov);
 
     m_ease = easecombo::make(this);
     m_ease->setObjectName(QStringLiteral("reframeEaseCombo"));
@@ -120,6 +133,12 @@ void ReframePanel::setPose(const ReframePose &pose)
         return d - 180.0;
     };
 
+    // A pose wider than the normal cap (a keyframe authored while extra-wide
+    // was on, saved in the project) turns the option on rather than clamping
+    // what the track authored.
+    if (pose.fovY * kRadToDeg > m_fov->maximum())
+        m_wideFov->setChecked(true);
+
     m_updating = true;
     m_yaw->setValue(wrapDeg(pose.yaw * kRadToDeg));
     m_pitch->setValue(pose.pitch * kRadToDeg);
@@ -137,7 +156,8 @@ void ReframePanel::setFlatClip(bool flat, bool fill)
 {
     m_flat = flat;
     for (QWidget *w :
-         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_ease, m_track})
+         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_wideFov, m_ease,
+                                        m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);

@@ -831,6 +831,8 @@ void MainWindow::connectReframe()
     connect(m_reframePanel, &ReframePanel::fitEdited, this, [this](bool fill) {
         m_timeline->setClipFit(editClipId(), fill ? ClipItem::Fit::Fill : ClipItem::Fit::Bars);
     });
+    connect(m_reframePanel, &ReframePanel::wideFovToggled, m_viewport,
+            &EquirectViewportWindow::SetWideFovAllowed);
     connect(m_reframePanel, &ReframePanel::poseEdited, this, [this](const ReframePose &p) {
         m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
         if (m_reframeArmed && m_clipId)

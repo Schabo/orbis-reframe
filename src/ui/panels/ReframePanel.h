@@ -4,6 +4,7 @@
 
 #include "../../core/ReframeTrack.h" // ReframePose
 
+class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
@@ -59,6 +60,9 @@ signals:
     void easeEdited(keytrack::Ease ease);
     // The Fit choice of a flat clip changed.
     void fitEdited(bool fill);
+    // The "extra-wide view" checkbox toggled: the viewport should let the
+    // field of view past its usual cap too.
+    void wideFovToggled(bool allowed);
     // The button was clicked: start drawing a box around the subject (or,
     // while selecting, stop).
     void trackSubjectToggled(bool start);
@@ -72,6 +76,7 @@ private:
     QDoubleSpinBox *m_pitch = nullptr;
     QDoubleSpinBox *m_roll = nullptr;
     QDoubleSpinBox *m_fov = nullptr;
+    QCheckBox *m_wideFov = nullptr;
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;
     QPushButton *m_track = nullptr;

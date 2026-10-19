@@ -141,6 +141,15 @@ public:
     // mouse handlers already mutate these while the render thread reads them.
     void SetPose(float yaw, float pitch, float roll, float fovY);
 
+    // The field-of-view caps: ~110 degrees normally, ~150 when the Reframe
+    // panel's "extra-wide" checkbox is on (wider gets unusably stretched at
+    // the corners anyway).
+    static constexpr float kMaxFovYNormal = 1.92f;
+    static constexpr float kMaxFovYWide = 2.62f;
+    // Whether the wide cap applies. Off by default. Plain float writes, like
+    // SetPose.
+    void SetWideFovAllowed(bool on);
+
     // A 3x3 (row-major) gyro de-rotation in the sphere frame, which the
     // shader applies to the world ray *after* the yaw/pitch/roll pose -- so it
     // stabilizes the picture without touching Yaw()/Pitch()/Roll() (drag +
@@ -281,6 +290,7 @@ private:
     float m_pitch = 0.0f;
     float m_roll = 0.0f;   // set only via SetPose (numeric panel / reframe path)
     float m_fovY = 1.309f; // ~75 degrees, a reasonable default rectilinear FOV
+    float m_maxFovY = kMaxFovYNormal; // SetWideFovAllowed swaps the cap
     // Row-major 3x3, identity by default (no stabilization).
     float m_stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     float m_pendingStab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1}; // with the pending frame, guarded by m_frameMutex
