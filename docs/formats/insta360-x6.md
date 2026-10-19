@@ -59,8 +59,11 @@ X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
   29 dB -- not yet on a Dolby Vision clip.
 - An I-Log clip stitches correctly but looks flat (saturation ~0.16 vs
   ~0.31 for Standard) until Insta360's LUT is applied (below). Dolby
-  Vision clips are HLG / BT.2020 as tagged and need an HLG -> Rec.709 LUT
-  (Insta360 publishes none).
+  Vision clips are HLG / BT.2020 as tagged and need an HLG -> Rec.709 LUT;
+  Insta360 publishes none, so the app ships one (`tools/make_hlg_lut`, from
+  the BT.2100 / BT.2408 formulas) and offers it for any clip whose stream
+  is tagged HLG (`arib-std-b67`). Media information shows the mode as
+  *Dolby Vision (HLG)*. Not checked on a Dolby Vision clip yet.
 - The X5 has I-Log too, 8-bit (X5 §3.3).
 - 📖 Insta360's 10-bit I-Log LUTs (`X6_I-Log_LUTs.zip`, version 2.0, made
   2026-05-20): 3D `.cube` files, each at 33³ and 65³, from I-Log to Rec.709

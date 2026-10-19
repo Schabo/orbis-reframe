@@ -119,7 +119,7 @@ still be undone. Either of:
   `.sha256` files in `dist/<target>/` (replaced each run), and checks the
   unpacked tarball: the launcher, `--version`, that every library is found
   and ncnn comes from the package, that no source-tree or `$HOME` path is
-  left, the models, the license files and the desktop entry. It ends with
+  left, the models, the shipped LUT, the license files and the desktop entry. It ends with
   `== done`, or with `FAIL` lines and a non-zero exit. It refuses
   uncommitted changes unless given `--allow-dirty` (for testing only).
 

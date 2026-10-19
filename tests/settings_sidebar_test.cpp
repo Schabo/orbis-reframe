@@ -573,7 +573,7 @@ void testColourLut(SettingsSidebar &bar)
 }
 
 // Media information: the colour profile the trailer names, I-Log by its
-// own name.
+// own name, an HDR mode with the format its stream is tagged with.
 void testMediaInfoProfile(SettingsSidebar &bar)
 {
     MediaInfoPanel *panel = bar.mediaInfo();
@@ -598,8 +598,17 @@ void testMediaInfoProfile(SettingsSidebar &bar)
     m.logProfile.clear();
     panel->setInfo(m);
     CHECK(shows("Colour profile") && shows("Standard"));
-    m.colorProfile.clear(); // a phone video: nothing to say
+    m.colorProfile = "Dolby_Vision"; // HDR: the camera's name, the stream's format
+    m.hdrFormat = "HLG";
+    m.video[0].colorSpace = m.video[1].colorSpace = "bt2020nc";
     panel->setInfo(m);
+    CHECK(shows("Dolby Vision (HLG)") && shows("BT.2020, HLG, limited range"));
+    m.colorProfile.clear(); // an HDR file without a camera's name for it
+    panel->setInfo(m);
+    CHECK(shows("Colour profile") && shows("HLG"));
+    m.hdrFormat.clear();
+    m.video[0].colorSpace = m.video[1].colorSpace = "";
+    panel->setInfo(m); // a phone video: nothing to say
     CHECK(!shows("Colour profile"));
     panel->setNoClip();
 }

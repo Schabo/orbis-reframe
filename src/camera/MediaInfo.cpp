@@ -77,6 +77,13 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
                           pf == AV_PIX_FMT_YUVJ422P || pf == AV_PIX_FMT_YUVJ444P;
             if (p->color_space != AVCOL_SPC_UNSPECIFIED)
                 v.colorSpace = av_color_space_name(p->color_space);
+            if (const char* trc = av_color_transfer_name(p->color_trc);
+                trc && p->color_trc != AVCOL_TRC_UNSPECIFIED)
+                v.transfer = trc;
+            if (out.video.empty())
+                out.hdrFormat = p->color_trc == AVCOL_TRC_ARIB_STD_B67 ? "HLG"
+                                : p->color_trc == AVCOL_TRC_SMPTE2084  ? "PQ"
+                                                                       : "";
             v.frameCount = st->nb_frames;
             out.video.push_back(v);
         } else if (p->codec_type == AVMEDIA_TYPE_AUDIO) {

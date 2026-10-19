@@ -2,7 +2,7 @@
 
 #include <string>
 
-// Where the app's data files are at run time. Installed --
+// Where the app's data files (models, LUTs) are at run time. Installed --
 // by the .deb (/usr/bin -> /usr/share/orbis-reframe) or an unpacked tarball
 // (<dir>/bin -> <dir>/share/orbis-reframe) -- they sit at <exe
 // dir>/../share/orbis-reframe, found from /proc/self/exe so the install can be
@@ -19,5 +19,9 @@ std::string installedDataDir();
 // builds), else the installed path anyway, so a "missing file" message names
 // where it should be.
 std::string modelDir(const std::string& name);
+
+// The folder of the LUTs the app ships (resources/luts in the source tree),
+// found the same way as modelDir().
+std::string lutsDir();
 
 } // namespace core::paths

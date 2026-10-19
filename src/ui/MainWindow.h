@@ -199,8 +199,12 @@ private:
     // A clip's grade into the Colour panel, with the LUTs it offers and
     // whether the clip's own can be applied.
     void syncColourPanel(const ColorGrade &grade);
-    // The project's LUTs (its luts/ folder) and the clips'.
-    QStringList availableLuts() const;
+    // The project's LUTs (its luts/ folder), the clips', and, for a clip in
+    // HDR format `hdrFormat` ("HLG"), the one the app ships for it (unless
+    // the project has a copy).
+    QStringList availableLuts(const QString &hdrFormat) const;
+    // The folder of the LUTs the app ships (core::paths::lutsDir), absolute.
+    static QString shippedLutsDir();
     // Colour panel ▸ Load LUT...: pick a .cube, copy it into the project,
     // give it to the clip in the panel.
     void loadLut();

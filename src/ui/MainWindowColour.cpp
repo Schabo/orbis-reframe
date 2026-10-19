@@ -1,6 +1,7 @@
 // MainWindow's Colour tab: the clip's grade into the panel and the viewport,
-// copy / paste between clips, and its LUT -- loading a .cube, copied into
-// the project's luts/ folder (projectfolder::importLut).
+// copy / paste between clips, and its LUT -- loading a .cube or picking one
+// the app ships, either copied into the project's luts/ folder
+// (projectfolder::importLut).
 
 #include "MainWindow.h"
 
@@ -13,6 +14,7 @@
 #include "panels/ColourPanel.h"
 #include "../core/ClipItem.h"
 #include "../core/ColorLut.h"
+#include "../core/DataPaths.h"
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
@@ -23,9 +25,23 @@ void MainWindow::connectColour()
     // Colour panel: an edit writes the grade onto the clip under the playhead;
     // clipColorChanged pushes it straight into the viewport if it's the
     // clip currently showing -- no re-stitch, applied at reprojection time.
-    connect(m_colourPanel, &ColourPanel::gradeEdited, this, [this](const ColorGrade &g) {
-        if (const int id = editClipId())
-            m_timeline->setClipColor(id, g);
+    connect(m_colourPanel, &ColourPanel::gradeEdited, this, [this](ColorGrade g) {
+        const int id = editClipId();
+        if (!id)
+            return;
+        // A LUT the app ships goes into the project like a loaded one, so the
+        // project doesn't depend on where the app is installed.
+        if (!g.lut.isEmpty() && QFileInfo(g.lut).absolutePath() == shippedLutsDir()) {
+            QString error;
+            const QString lut = projectfolder::importLut(m_project->filePath(), g.lut, &error);
+            if (lut.isEmpty()) {
+                QMessageBox::warning(this, tr("Can't use this LUT"), error);
+                syncColourPanel(m_timeline->clipById(id)->color);
+                return;
+            }
+            g.lut = lut;
+        }
+        m_timeline->setClipColor(id, g);
     });
     // Copy / paste a grade between clips: the panel's buttons act on its clip,
     // the timeline's right-click menu on the clicked one (or every clip --
@@ -71,28 +87,50 @@ void MainWindow::applyColorGrade(const ColorGrade &grade)
     m_viewport->SetColorGrade(&g);
 }
 
-QStringList MainWindow::availableLuts() const
+QString MainWindow::shippedLutsDir()
 {
+    return QFileInfo(QString::fromStdString(core::paths::lutsDir())).absoluteFilePath();
+}
+
+QStringList MainWindow::availableLuts(const QString &hdrFormat) const
+{
+    const auto cubes = [](const QString &dir) {
+        return QDir(dir).entryInfoList({QStringLiteral("*.cube"), QStringLiteral("*.CUBE")},
+                                       QDir::Files, QDir::Name | QDir::IgnoreCase);
+    };
     QStringList luts;
+    QStringList names; // file names, to leave out a shipped LUT the project has a copy of
     const QString dir = projectfolder::lutsDir(m_project->filePath());
     if (!dir.isEmpty()) {
-        const QFileInfoList files =
-            QDir(dir).entryInfoList({QStringLiteral("*.cube"), QStringLiteral("*.CUBE")},
-                                    QDir::Files, QDir::Name | QDir::IgnoreCase);
-        for (const QFileInfo &f : files)
+        for (const QFileInfo &f : cubes(dir)) {
             luts << f.absoluteFilePath();
+            names << f.fileName();
+        }
     }
     for (int i = 0; i < m_timeline->count(); ++i) {
         const QString &lut = m_timeline->clipAt(i).color.lut;
-        if (!lut.isEmpty() && !luts.contains(lut))
+        if (!lut.isEmpty() && !luts.contains(lut)) {
             luts << lut;
+            names << QFileInfo(lut).fileName();
+        }
     }
+    // A shipped LUT converts one HDR format ("HLG to Rec.709.cube"): offered
+    // only for a clip in that format, where it's the right one -- on any
+    // other picture it's wrong.
+    if (!hdrFormat.isEmpty())
+        for (const QFileInfo &f : cubes(shippedLutsDir()))
+            if (f.fileName().startsWith(hdrFormat + QStringLiteral(" to ")) &&
+                !names.contains(f.fileName()))
+                luts << f.absoluteFilePath();
     return luts;
 }
 
 void MainWindow::syncColourPanel(const ColorGrade &grade)
 {
-    m_colourPanel->setLuts(availableLuts());
+    const ClipItem *c = m_timeline->clipById(editClipId());
+    const camera::MediaInfo *info = c && !c->mediaMissing ? mediaInfoFor(c->sourcePath) : nullptr;
+    const QString hdr = info ? QString::fromStdString(info->hdrFormat) : QString();
+    m_colourPanel->setLuts(availableLuts(hdr));
     m_colourPanel->setState(grade);
     QString problem;
     if (!grade.lut.isEmpty()) {
@@ -103,17 +141,23 @@ void MainWindow::syncColourPanel(const ColorGrade &grade)
     }
     m_colourPanel->setLutProblem(problem);
 
-    // Filmed in log and no LUT yet: point at the picker.
+    // Filmed in log or HDR and no LUT yet: point at the picker. A flat video
+    // can be HDR too (phones film HLG); only camera clips name a log profile.
     QString wanted;
-    const ClipItem *c = m_timeline->clipById(editClipId());
-    if (c && !c->flat && grade.lut.isEmpty() && !c->mediaMissing) {
-        const camera::MediaInfo *info = mediaInfoFor(c->sourcePath);
-        if (const QString log = info ? QString::fromStdString(info->logProfile) : QString();
-            !log.isEmpty())
+    if (c && grade.lut.isEmpty() && !c->mediaMissing) {
+        const QString log = info ? QString::fromStdString(info->logProfile) : QString();
+        if (!log.isEmpty())
             wanted = tr("This clip was filmed in %1, a log profile, so it looks flat and grey. "
                         "Load the LUT the camera maker publishes for %1 to give it normal "
                         "colours.")
                          .arg(log);
+        else if (hdr == QLatin1String("HLG"))
+            wanted = tr("This clip was filmed in HDR (HLG), so it looks dim and flat. Choose "
+                        "\u201cHLG to Rec.709\u201d in the list to give it normal colours.");
+        else if (!hdr.isEmpty())
+            wanted = tr("This clip was filmed in HDR (%1), so it looks dim and flat. Load a "
+                        "LUT that converts %1 to Rec.709 to give it normal colours.")
+                         .arg(hdr);
     }
     m_colourPanel->setLutWanted(wanted);
 }

@@ -22,6 +22,7 @@ struct MediaVideoStream {
     std::string chroma; // "4:2:0"
     bool fullRange = false;
     std::string colorSpace; // "bt709"
+    std::string transfer;   // "bt709", "arib-std-b67" (HLG); "" when untagged
     int64_t frameCount = 0;
 };
 
@@ -56,6 +57,9 @@ struct MediaInfo {
     // See ClipMetadata::colorProfile / logProfile.
     std::string colorProfile;
     std::string logProfile;
+    // The HDR format the first video stream is tagged with: "HLG", "PQ", or
+    // "" for SDR. Like a log clip, it looks wrong as SDR until a LUT converts it.
+    std::string hdrFormat;
     // GPS track: presence only, never positions -- the panel is what people
     // screenshot for bug reports.
     int64_t gpsRecords = 0; // 0 if the file has no GPS track

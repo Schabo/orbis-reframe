@@ -140,21 +140,41 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
         if (!v.chroma.empty())
             format += QLatin1Char(' ') + QString::fromStdString(v.chroma);
         addValue(tr("Format"), format.trimmed(), QString::fromStdString(v.pixelFormat));
-        QString colour = v.colorSpace == "bt709" ? QStringLiteral("BT.709")
-                                                 : QString::fromStdString(v.colorSpace).toUpper();
+        QString colour = v.colorSpace == "bt709"                  ? QStringLiteral("BT.709")
+                         : v.colorSpace.rfind("bt2020", 0) == 0     ? QStringLiteral("BT.2020")
+                         : v.colorSpace == "bt470bg" || v.colorSpace == "smpte170m"
+                             ? QStringLiteral("BT.601")
+                             : QString::fromStdString(v.colorSpace).toUpper();
+        if (!m.hdrFormat.empty())
+            colour += (colour.isEmpty() ? QString() : QStringLiteral(", ")) +
+                      QString::fromStdString(m.hdrFormat);
         if (!colour.isEmpty())
             colour += QStringLiteral(", ");
         colour += v.fullRange ? tr("full range") : tr("limited range");
         addValue(tr("Colour"), colour);
-        if (const QString log = QString::fromStdString(m.logProfile); !log.isEmpty())
+        const QString hdr = QString::fromStdString(m.hdrFormat);
+        if (const QString log = QString::fromStdString(m.logProfile); !log.isEmpty()) {
             addValue(tr("Colour profile"), log,
                      tr("A log profile: the picture looks flat and grey until the LUT the "
                         "camera maker publishes for %1 is applied (Colour section).")
                          .arg(log));
-        else if (m.colorProfile == "standard")
+        } else if (!hdr.isEmpty()) {
+            // The camera's name for the mode ("Dolby_Vision"), with the HDR
+            // format the stream says it is.
+            const QString mode = m.colorProfile == "standard"
+                                     ? QString()
+                                     : QString::fromStdString(m.colorProfile)
+                                           .replace(QLatin1Char('_'), QLatin1Char(' '));
+            addValue(tr("Colour profile"),
+                     mode.isEmpty() ? hdr : tr("%1 (%2)").arg(mode, hdr),
+                     tr("HDR (%1): the picture looks dim and flat until a LUT converts it to "
+                        "normal (Rec.709) colours (Colour section).")
+                         .arg(hdr));
+        } else if (m.colorProfile == "standard") {
             addValue(tr("Colour profile"), tr("Standard"));
-        else if (!m.colorProfile.empty())
+        } else if (!m.colorProfile.empty()) {
             addValue(tr("Colour profile"), QString::fromStdString(m.colorProfile));
+        }
         const QString br = bitRate(v.bitRate);
         addValue(tr("Bitrate"), m.video.size() > 1 && !br.isEmpty() ? tr("%1 per lens").arg(br) : br);
     }

@@ -51,6 +51,11 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     ctx->time_base = AVRational{1, spec.fps};
     ctx->framerate = AVRational{spec.fps, 1};
     ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    if (spec.hlg) {
+        ctx->color_trc = AVCOL_TRC_ARIB_STD_B67;
+        ctx->color_primaries = AVCOL_PRI_BT2020;
+        ctx->colorspace = AVCOL_SPC_BT2020_NCL;
+    }
     ctx->gop_size = 10;
     ctx->max_b_frames = 0;
     ctx->flags |= AV_CODEC_FLAG_QSCALE;

@@ -267,7 +267,7 @@ struct Ctx {
     Timeline *timeline = nullptr;
     TimelineWidget *timelineWidget = nullptr;
     QString dir;
-    QString clipA, clipB, wav, mp4, orp;
+    QString clipA, clipB, wav, mp4, hlgMp4, orp;
 };
 
 QAction *action(const Ctx &c, const char *name) { return find<QAction>(c.w, name); }
@@ -489,6 +489,48 @@ void testColour(const Ctx &c)
     CHECK(c.timeline->clipAt(1).color.exposureEv == 0.0f);
     undo->trigger();
     CHECK(c.timeline->clipAt(0).color.exposureEv == 0.0f);
+
+    // The LUT the app ships for HLG isn't offered for a clip that isn't HLG.
+    if (auto *lut = find<QComboBox>(c.w, "colourLut"))
+        CHECK(lut->findText(QStringLiteral("HLG to Rec.709")) < 0);
+}
+
+// An HLG clip: the Colour section asks for a LUT and offers the one the app
+// ships for HLG; picking it gives the clip a copy (or, without a project
+// folder, the file itself), listed once.
+void testHlgClip(const Ctx &c)
+{
+    auto *lut = find<QComboBox>(c.w, "colourLut");
+    auto *wanted = find<QLabel>(c.w, "colourLutWanted");
+    QAction *undo = action(c, "undoAction");
+    const int before = c.timeline->count();
+    emit c.timelineWidget->clipFilesDropped({c.hlgMp4}, before);
+    CHECK(c.timeline->count() == before + 1);
+    if (!lut || !wanted || !undo || c.timeline->count() != before + 1)
+        return;
+    // By position: undo rebuilds the clips with new ids.
+    const auto clipLut = [&] {
+        return c.timeline->count() > before
+                   ? QFileInfo(c.timeline->clipAt(before).color.lut).fileName()
+                   : QStringLiteral("(gone)");
+    };
+    CHECK(seekTo(c, c.timeline->clipToTimeline(before, 0) + 500));
+    emit c.timelineWidget->clipSelected(c.timeline->clipAt(before).id);
+    CHECK(waitFor([&] { return lut->findText(QStringLiteral("HLG to Rec.709")) > 0; }));
+    CHECK(wanted->isVisibleTo(c.w) && wanted->text().contains(QStringLiteral("HLG")));
+    const int hlg = lut->findText(QStringLiteral("HLG to Rec.709"));
+    if (hlg > 0) {
+        settle();
+        lut->setCurrentIndex(hlg);
+        emit lut->activated(hlg);
+        CHECK(clipLut() == QStringLiteral("HLG to Rec.709.cube"));
+        CHECK(lut->findText(QStringLiteral("HLG to Rec.709")) == lut->currentIndex());
+        undo->trigger();
+        CHECK(clipLut().isEmpty());
+    }
+    if (c.timeline->count() > before)
+        c.timeline->removeClip(c.timeline->clipAt(before).id);
+    settle();
 }
 
 // Stitching is per clip's file: the panel edits the clip under the playhead,
@@ -1186,6 +1228,7 @@ int main(int argc, char **argv)
     c.clipB = home.filePath(QStringLiteral("VID_20260101_121000_00_002.insv"));
     c.wav = home.filePath(QStringLiteral("tone.wav"));
     c.mp4 = home.filePath(QStringLiteral("phone.mp4"));
+    c.hlgMp4 = home.filePath(QStringLiteral("phone-hlg.mp4"));
     c.orp = home.filePath(QStringLiteral("test.orp"));
     writeFile(c.clipA);
     writeFile(c.clipB);
@@ -1195,6 +1238,8 @@ int main(int argc, char **argv)
     testmedia::VideoSpec video;
     video.luma = [](int frame, int, int) { return uint8_t(40 + frame * 3); };
     CHECK(testmedia::writeVideo(c.mp4.toStdString(), video));
+    video.hlg = true;
+    CHECK(testmedia::writeVideo(c.hlgMp4.toStdString(), video));
 
     {
         MainWindow w(nullptr, standIns());
@@ -1224,6 +1269,7 @@ int main(int argc, char **argv)
             testOverlay(c);
             testOverlayLayers(c);
             testFlatMainClip(c);
+            testHlgClip(c);
             testTitle(c);
             testTransition(c);
             testFullScreen(c);

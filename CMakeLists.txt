@@ -138,6 +138,13 @@ target_include_directories(insv_trailer PUBLIC src/insv)
 add_executable(insv_trailer_dump tools/insv_trailer_dump/main.cpp)
 target_link_libraries(insv_trailer_dump PRIVATE insv_trailer)
 
+# --- tools/make_hlg_lut: writes the shipped HLG -> Rec.709 LUT
+# (resources/luts/) from the BT.2100 formulas; the test checks the shipped
+# file is what it writes.
+add_executable(make_hlg_lut tools/make_hlg_lut/main.cpp)
+add_test(NAME hlg_lut_test
+    COMMAND make_hlg_lut --check "${CMAKE_CURRENT_SOURCE_DIR}/resources/luts/HLG to Rec.709.cube")
+
 # --- src/insv: cleanroom .insv processing.
 # GyroStabilizer + the stitch core: calibration-string parse
 # and the CPU fisheye->equirect projection (productised from
@@ -179,17 +186,18 @@ add_dependencies(orbis_version orbis_version_header)
 target_include_directories(orbis_version PUBLIC src/core
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-# --- orbis_paths: where the data files (models) are at run time -- next to
+# --- orbis_paths: where the data files (models, LUTs) are at run time -- next to
 # the executable (<exe>/../share/orbis-reframe), else, in a development build,
 # the source tree (src/core/DataPaths). Packaged builds turn
 # the fallback off so no build-machine path is left in the binary.
 option(ORBIS_SOURCE_TREE_FALLBACK
-    "Look for models in the source tree when they aren't installed (dev builds)" ON)
+    "Look for models and LUTs in the source tree when they aren't installed (dev builds)" ON)
 add_library(orbis_paths STATIC src/core/DataPaths.h src/core/DataPaths.cpp)
 target_include_directories(orbis_paths PUBLIC src/core)
 if(ORBIS_SOURCE_TREE_FALLBACK)
     target_compile_definitions(orbis_paths
-        PRIVATE ORBIS_SOURCE_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/models")
+        PRIVATE ORBIS_SOURCE_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/models"
+                ORBIS_SOURCE_LUTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/luts")
 endif()
 
 # --- color_lut: .cube 3D LUTs and color::Grade, what every layer that grades
@@ -577,6 +585,7 @@ if(FFMPEG_FOUND)
         INSTALL_RPATH "\$ORIGIN/../lib/orbis-reframe")
     install(TARGETS orbis-reframe RUNTIME DESTINATION bin)
     install(DIRECTORY resources/models/ DESTINATION share/orbis-reframe/models)
+    install(DIRECTORY resources/luts/ DESTINATION share/orbis-reframe/luts)
     install(FILES packaging/orbis-reframe.desktop DESTINATION share/applications)
     install(FILES packaging/orbis-reframe.svg DESTINATION share/icons/hicolor/scalable/apps)
     install(FILES LICENSE README.md THIRD_PARTY.md resources/icons/LICENSE.lucide

@@ -3,7 +3,8 @@
 The **Colour** section (settings sidebar, **Video** tab) corrects the brightness and colours of a clip: to
 brighten a dark clip, make colours richer, or make clips filmed at different
 times of day match. It can also apply a LUT, for example the one that turns
-footage filmed in a log mode (Insta360's I-Log) into normal colours.
+footage filmed in a log mode (Insta360's I-Log) or in HDR (HLG) into normal
+colours.
 
 ![The same frame without and with a colour grade](images/colour-before-after.jpg)
 
@@ -40,12 +41,16 @@ most LUT packs use.
 To give a clip a LUT:
 
 1. Select the clip and open **Colour** (settings sidebar, **Video** tab).
-2. In **LUT**, choose **Load LUT…** and pick the `.cube` file.
+2. In **LUT**, choose **Load LUT…** and pick the `.cube` file, or choose one
+   the list already offers.
 
 orbis-reframe copies the file into the project's `luts/` folder (see
 [Projects and export](projects-and-export.md)), so the project keeps working
 when the original is moved or deleted. After that, the LUT is in the **LUT**
 list for every clip of the project: choose it there, no need to load it again.
+The same goes for the LUT orbis-reframe comes with, **HLG to Rec.709** (see
+below): the list offers it for HLG clips, and choosing it copies it into the
+project.
 A project that hasn't been saved yet uses the file where it is, and copies
 it when you save the project. A project file without a folder of its own
 (from before project folders) always uses the file where it is.
@@ -59,10 +64,22 @@ and then use the sliders for the fine-tuning.
 10-bit I-Log of newer cameras. Use the one for your camera, and only on clips
 filmed in I-Log: on normal clips it makes the colours far too strong.
 
+**HDR (HLG) clips.** Some cameras film in HDR: the Insta360 X6's *Dolby
+Vision* mode, for example, records HLG (the HDR format of broadcast TV).
+orbis-reframe shows and exports normal (SDR, Rec.709) video, where an HLG
+picture looks dim and flat. The LUT **HLG to Rec.709**, which comes with
+orbis-reframe, converts it: it keeps the colours and the mid-tones, puts a
+white wall a little below full white, and rolls the brighter parts (sky,
+lamps, reflections) off smoothly instead of clipping them. Use it only on
+HLG clips.
+
 orbis-reframe recognises a clip filmed in a log profile (the camera notes
 it in the file; **Media information** shows it as the *Colour profile*). For
-now that's Insta360's I-Log. While such a clip has no LUT, the **LUT** field
-has a red frame and the section says which profile the LUT is for:
+now that's Insta360's I-Log. It also recognises an HDR clip, 360 or flat
+(phones film HLG too), from the format its video says it is in (HLG or PQ). While such a clip has no LUT, the
+**LUT** field has a red frame and the section says which LUT it needs: for
+an HLG clip, **HLG to Rec.709**; for a PQ clip, a PQ to Rec.709 LUT you
+load yourself. For an I-Log clip:
 
 <img src="images/colour-ilog.jpg" width="350" alt="The Colour section for an I-Log clip without a LUT">
 

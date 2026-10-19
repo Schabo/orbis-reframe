@@ -21,6 +21,7 @@ each tool is for and when you'd reach for it. The examples use clips from
 | [`track_subject`](#track_subject) | try subject tracking and make a follow-cam | GPU, OpenCV contrib |
 | [`plate_scan`](#plate_scan) | scan for number plates, check the blur by eye | GPU, OpenCV, ncnn |
 | [`audio_filter_bench`](#audio_filter_bench) | try and score the audio noise filters | FFmpeg |
+| [`make_hlg_lut`](#make_hlg_lut) | regenerate the HLG to Rec.709 LUT the app ships | — |
 
 "GPU" means the app's own requirements: Vulkan with video decode, plus
 FFmpeg. "OpenCV contrib" is `libopencv-contrib-dev`
@@ -232,4 +233,24 @@ show what changed.
 build/audio_filter_bench extract clip.insv out --stream 1 --start 60 --dur 20
 build/audio_filter_bench analyze out/raw_s1.wav out/wind_s1.wav
 tools/audio_filter_bench/run_all.sh clip.insv 1 60 20 out
+```
+
+## make_hlg_lut
+
+Writes `resources/luts/HLG to Rec.709.cube`, the LUT the app offers for HLG
+clips (the Insta360 X6's Dolby Vision mode), from the BT.2100 / BT.2408
+formulas: HLG to display light on the 1000 cd/m² reference display, BT.2020
+to BT.709, a highlight roll-off that keeps hue, then Rec.709 (gamma 2.4).
+The source says what each step does and holds the curve's two settings
+(where the HDR reference white lands, where the roll-off starts). It prints
+where a few known signals end up. `--check` compares a file with what it
+would write: `ctest` runs it on the shipped LUT, so a change to the curve
+fails until the file is regenerated.
+
+**When:** changing the curve. Regenerate the file, commit both, and look at
+an HLG clip with the new LUT.
+
+```sh
+build/make_hlg_lut "resources/luts/HLG to Rec.709.cube"
+build/make_hlg_lut --check "resources/luts/HLG to Rec.709.cube"
 ```

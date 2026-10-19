@@ -156,6 +156,8 @@ for m in deepfilternet3/enc.onnx vittrack/vittrack.onnx \
          plates/yolo_v9_s_608_license_plates_heads.ncnn.param; do
     [[ -f "$top/share/orbis-reframe/models/$m" ]] || { echo "FAIL: model $m missing" >&2; fail=1; }
 done
+[[ -f "$top/share/orbis-reframe/luts/HLG to Rec.709.cube" ]] \
+    || { echo "FAIL: the HLG to Rec.709 LUT is missing" >&2; fail=1; }
 
 # License texts (THIRD_PARTY.md).
 for f in doc/orbis-reframe/LICENSE doc/orbis-reframe/THIRD_PARTY.md \
