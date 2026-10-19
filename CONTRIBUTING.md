@@ -11,6 +11,11 @@ person, so the best way to start is an issue:
   pull request.
 - **Small fixes** (typos, docs, an obvious bug) can go straight to a pull
   request.
+- **Before you build a feature**, read [`docs/architecture.md`](docs/architecture.md)
+  (the decisions and rules every change keeps) and find it in
+  [`docs/roadmap.md`](docs/roadmap.md): most areas have a planned design to
+  build toward. Using an AI coding agent is fine; point it at
+  [`AGENTS.md`](AGENTS.md) first.
 - **Have a 360 camera other than the X5?** Short sample clips straight from
   its card are a big help: see
   [Sample clips wanted](docs/formats/README.md#sample-clips-wanted).
@@ -40,11 +45,10 @@ trying the change on real clips. `.github/workflows/commits.yml` checks the
 commit messages of every pull request, docs included. For contributors from
 outside the project these runs start once a maintainer has approved them.
 `.github/workflows/gpu.yml` runs the GPU checks (build, tests, the
-headless GPU tools and a smoke test of the whole app on a real clip) on the
-maintainer's machine, for pushes to
-`main` and for pull requests that change more than docs. For a pull request
-from a fork it waits for a second approval, since it runs your code on that
-machine.
+headless GPU tools and a smoke test of the whole app on a real clip) for
+pushes to `main` and for pull requests that change more than docs. For a
+pull request from a fork it waits for a second approval, since it runs your
+code with access to a GPU.
 
 ## Commit messages
 

@@ -167,8 +167,8 @@ test run a smoke test of the whole app: `tests/release/gpu_smoke.sh build
 OUT_DIR` starts the dev build on a private headless Sway (needs `sway` and
 `ffmpeg`), drives it through `tests/release/gpu_smoke.steps` -- play, Track
 subject, Scan clip, export -- and checks the viewport's picture, the frames,
-the tracked path, the scan and the exported file; about a minute, also on
-this machine. `--sound` adds PipeWire with a null sink and checks the sound
+the tracked path, the scan and the exported file; about a minute, also
+locally. `--sound` adds PipeWire with a null sink and checks the sound
 and the voice model (the release test uses it). The GPU runner's jobs can't
 open the GPU's render node, so there the viewport doesn't draw and its
 checks are left out.
