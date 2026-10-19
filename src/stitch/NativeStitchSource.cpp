@@ -166,7 +166,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
             const VkFormat lensFormat = vdec->lens(0).bitDepth > 8
                                             ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
                                             : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-            if (gpu->initAdopt(inst, phys, dev, qf, qflags, gerr, lensFormat)) {
+            if (gpu->initAdopt(inst, phys, dev, qf, qflags, gerr, lensFormat,
+                               vdec->lens(0).ycbcr)) {
                 auto ql = vdec->queueLock(qf, 0);
                 gpu->setQueueLock(std::move(ql.lock), std::move(ql.unlock));
                 gpu->setDeviceKeepAlive(vdec->deviceKeepAlive());

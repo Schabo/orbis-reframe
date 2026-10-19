@@ -2,6 +2,7 @@
 
 #include <FisheyeProjection.h> // insv::StitchGpuParams
 #include <SeamDepth.h>         // insv::SeamCosts
+#include <Ycbcr.h>             // insv::YcbcrCoding
 
 #include "ColorLut.h" // color::Grade
 #include "LensFrame.h"
@@ -80,10 +81,12 @@ public:
     // the decoder's picture format: NV12 (8-bit), or P010
     // (VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16, 10-bit, e.g. the
     // X6's I-Log); also false when the device can't sample it through a
-    // ycbcr conversion with linear filtering.
+    // ycbcr conversion with linear filtering. `ycbcr` is the stream's matrix
+    // and range (insv::InsvStreamInfo), which the conversion and the
+    // viewport's lens frames (fillLensFrameVk) take.
     bool initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                    uint32_t computeQueueFamily, VkDeviceQueueCreateFlags queueFlags,
-                   std::string& err, VkFormat lensFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM);
+                   std::string& err, VkFormat lensFormat, const insv::YcbcrCoding& ycbcr);
 
     bool ready() const { return m_ready; }
 

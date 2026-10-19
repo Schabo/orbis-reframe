@@ -44,8 +44,9 @@ struct LensFrame {
     uint64_t fill = 0;
     // The stitch's std140 Params UBO for this frame (geometry, lens model,
     // per-frame capture-time taps, the depth-aware seam's table, the privacy
-    // blur quads), packed by the exporter.
-    static constexpr int kParamsBytes = 7344;
+    // blur quads, the lenses' Y'CbCr -> R'G'B' conversion), packed by the
+    // exporter.
+    static constexpr int kParamsBytes = 7392;
     std::array<uint8_t, kParamsBytes> params{};
     // Photometric gains for lens 0 / 1, measured on the exporter.
     float gain[2] = {1.0f, 1.0f};

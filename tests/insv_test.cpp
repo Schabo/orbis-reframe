@@ -1,6 +1,7 @@
 // Standalone checks for the cleanroom stitch core (src/insv/): calibration
 // string parsing, lens profiles, the linear-algebra helpers, and
-// FisheyeStitcher geometry, the trailer's thumbnail record. All synthetic -- no
+// FisheyeStitcher geometry, the trailer's thumbnail record, the lens streams'
+// Y'CbCr conversion. All synthetic -- no
 // .insv file, no FFmpeg, no Qt -- so it links only the dependency-free `insv`
 // and `insv_trailer` libs and runs anywhere. Exit code
 // is the failure count. Mirrors the model tests' harness (tests/support/ModelTest.h).
@@ -11,6 +12,7 @@
 #include "Image.h"
 #include "InsvTrailer.h"
 #include "SeamDepth.h"
+#include "Ycbcr.h"
 
 #include <array>
 #include <cmath>
@@ -765,6 +767,58 @@ void testTrailerRecords()
     CHECK(!insv::ReadInsvTelemetry("/nonexistent/clip.insv").has_value());
 }
 
+// The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
+// the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
+void testYcbcrRows()
+{
+    using insv::YcbcrMatrix;
+    // BT.709 full range, 8-bit: the X5's, and the constants the viewport used
+    // before the conversion came from the stream.
+    float r[3][4];
+    insv::YcbcrToRgbRows({YcbcrMatrix::Bt709, true}, 8, r);
+    CHECK(near(r[0][0], 1.0, 1e-6) && near(r[0][1], 0.0, 1e-6) && near(r[0][2], 1.5748, 1e-4));
+    CHECK(near(r[1][1], -0.1873, 1e-4) && near(r[1][2], -0.4681, 1e-4));
+    CHECK(near(r[2][1], 1.8556, 1e-4) && near(r[2][2], 0.0, 1e-6));
+    CHECK(near(r[0][3], -1.5748 * 128.0 / 255.0, 1e-4));
+
+    struct Weights { YcbcrMatrix m; double kr, kb; };
+    for (const Weights w : {Weights{YcbcrMatrix::Bt601, 0.299, 0.114},
+                            Weights{YcbcrMatrix::Bt709, 0.2126, 0.0722},
+                            Weights{YcbcrMatrix::Bt2020, 0.2627, 0.0593}}) {
+        for (const bool full : {false, true}) {
+            for (const int depth : {8, 10}) {
+                insv::YcbcrToRgbRows({w.m, full}, depth, r);
+                const double step = depth == 8 ? 1.0 : 4.0;
+                const double maxCode = depth == 8 ? 255.0 : 1023.0;
+                // A code value as the plane's texel reads it (10-bit: P010).
+                const auto texel = [&](double code) {
+                    return depth == 8 ? code / 255.0 : code * 64.0 / 65535.0;
+                };
+                // Encode R'G'B' as the stream would, then convert back.
+                const auto roundTrip = [&](double R, double G, double B, double out[3]) {
+                    const double y = w.kr * R + (1 - w.kr - w.kb) * G + w.kb * B;
+                    const double cb = (B - y) / (2 * (1 - w.kb));
+                    const double cr = (R - y) / (2 * (1 - w.kr));
+                    const double yc = full ? y * maxCode : 16 * step + 219 * step * y;
+                    const double cs = full ? maxCode : 224 * step;
+                    const double t[3] = {texel(yc), texel(128 * step + cs * cb),
+                                         texel(128 * step + cs * cr)};
+                    for (int i = 0; i < 3; ++i)
+                        out[i] = r[i][0] * t[0] + r[i][1] * t[1] + r[i][2] * t[2] + r[i][3];
+                };
+                const double colours[][3] = {
+                    {0, 0, 0}, {1, 1, 1}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.2, 0.5, 0.8}};
+                for (const auto& c : colours) {
+                    double out[3];
+                    roundTrip(c[0], c[1], c[2], out);
+                    for (int i = 0; i < 3; ++i)
+                        CHECK(near(out[i], c[i], 1e-5));
+                }
+            }
+        }
+    }
+}
+
 int main()
 {
     testExtendedCalibration();
@@ -777,6 +831,7 @@ int main()
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();
+    testYcbcrRows();
 
     if (g_failures == 0)
         std::printf("insv_test: all checks passed\n");

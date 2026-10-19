@@ -76,7 +76,7 @@ public:
 
 private:
     void close();
-    void convert(const AVFrame* frm, Image& out);
+    void convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out);
 
     LensDemuxer m_demux;
     SwsContext* m_sws = nullptr;

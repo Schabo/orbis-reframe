@@ -158,6 +158,8 @@ add_library(insv STATIC
     src/insv/SeamAlignment.cpp
     src/insv/SeamDepth.h
     src/insv/SeamDepth.cpp
+    src/insv/Ycbcr.h
+    src/insv/Ycbcr.cpp
 )
 target_include_directories(insv PUBLIC src/insv)
 target_link_libraries(insv PUBLIC insv_trailer Threads::Threads)

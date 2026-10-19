@@ -3,9 +3,9 @@
 
 // GPU port of insv::FisheyeStitcher::renderEquirect -- NV12 fisheye inputs
 // straight from FFmpeg's Vulkan video decoder. Each lens is a 2-plane
-// G8_B8R8_2PLANE_420_UNORM image sampled through an immutable
-// VkSamplerYcbcrConversion (BT.709, ITU_FULL range), so texture() already
-// returns linear-coded RGB in [0,1]. Shares fisheye_stitch_common.glsl.
+// G8_B8R8_2PLANE_420_UNORM image (P010 for 10-bit) sampled through an
+// immutable VkSamplerYcbcrConversion with the stream's matrix and range, so
+// texture() already returns R'G'B' in [0,1]. Shares fisheye_stitch_common.glsl.
 
 layout(local_size_x = 8, local_size_y = 8) in;
 

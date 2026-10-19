@@ -547,12 +547,6 @@ void EquirectViewportRenderer::startNextFrame()
         lpc.view = pc;
         lpc.gains[0] = m_currentLens->gain[0];
         lpc.gains[1] = m_currentLens->gain[1];
-        // The planes' sample scale and full-range chroma midpoint
-        // (fisheye_view.frag): 8-bit 1 and 128/255; 10-bit in 16-bit planes
-        // (the value at the top) 65535/65472, so 1023 reads as 1, and 512/1023.
-        const bool deep = m_currentLens->slot->bitDepth > 8;
-        lpc.gains[2] = deep ? 65535.0f / 65472.0f : 1.0f;
-        lpc.gains[3] = deep ? 512.0f / 1023.0f : 128.0f / 255.0f;
         vkCmdPushConstants(commandBuffer, m_lensPipelineLayout,
                                         VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(lpc), &lpc);
     } else if (drawPicture) {

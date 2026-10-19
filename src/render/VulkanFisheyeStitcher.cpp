@@ -1045,6 +1045,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
 
     ShaderParams sp{};
     packParams(params, measureW, measureH, sp);
+    // The viewport converts the planes itself (fisheye_view.frag).
+    insv::YcbcrToRgbRows(d->ycbcr, d->deepLens() ? 10 : 8, sp.ycc);
     std::memcpy(d->uboMap, &sp, sizeof(sp));
     {
         VkDescriptorImageInfo img0{VK_NULL_HANDLE, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};

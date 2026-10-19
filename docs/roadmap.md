@@ -27,12 +27,11 @@ Dolby Vision modes. What it needs beyond the X5:
 
 - done: the focal reference (field 27) read from the file, the X6's row in
   the model table (6K named in Media information and the media pool, no
-  lens-guard profiles), the calibration sanity ranges checked on X6 clips;
+  lens-guard profiles), the calibration sanity ranges checked on X6 clips,
+  10-bit clips decoded and stitched (P010) with the stream's own colour
+  matrix and range on every decode path;
 - the IMU axis map confirmed on a clip with deliberate rotations (the X5's
   is used until then);
-- 10-bit clips are already decoded and stitched (P010); what's left is
-  honouring the stream's own colour matrix and range on both decode paths
-  (the GPU conversion is fixed to BT.709 full range today);
 - **Dolby Vision clips** (which are HLG, BT.2020, limited range, no Dolby
   metadata): recognised as their own colour profile, so the Colour panel asks
   for a LUT as it does for I-Log, and an HLG -> Rec.709 LUT shipped with the

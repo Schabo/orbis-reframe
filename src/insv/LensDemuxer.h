@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "Ycbcr.h"
+
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -45,6 +47,9 @@ struct InsvStreamInfo {
     double fps = 0.0;
     int64_t durationMs = 0;
     int bitDepth = 8; // bits per sample: 8, or 10 for HEVC Main 10 (the X6's I-Log)
+    // The stream's matrix and range (its VUI). The X5 tags its streams BT.709
+    // full range, the X6's Dolby Vision mode BT.2020 limited range.
+    YcbcrCoding ycbcr;
 };
 
 class LensDemuxer {

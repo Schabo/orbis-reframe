@@ -1,6 +1,6 @@
 // Shared projection core for the fisheye->equirect compute stitch. The
 // includer must, BEFORE #include-ing this file, declare its two lens image
-// bindings (1 and 2) and define:
+// bindings (1 and 2) and define (or, if it needs Params, declare):
 //
 //     vec3 sampleLens(int i, vec2 uv);   // returns RGB in [0, 255]
 //
@@ -64,6 +64,11 @@ layout(std140, binding = 0) uniform Params {
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
     vec4 blur0; // count, -, -, -
     vec4 blurQ[MAX_BLUR * 6];
+    // The lenses' Y'CbCr -> R'G'B' (insv::YcbcrToRgbRows): component i is
+    // dot(ycc[i].xyz, vec3(y, cb, cr)) + ycc[i].w on the planes' texel values.
+    // For fisheye_view.frag, which samples the planes itself; the stitch's
+    // ycbcr sampler converts on its own.
+    vec4 ycc[3];
 } P;
 
 #ifndef FISHEYE_STITCH_NO_BUFFERS

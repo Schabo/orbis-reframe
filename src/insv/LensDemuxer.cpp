@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 extern "C" {
@@ -24,6 +25,47 @@ double ptsSec(const AVFrame* f, AVRational tb)
 {
     const int64_t p = (f->best_effort_timestamp == AV_NOPTS_VALUE) ? f->pts : f->best_effort_timestamp;
     return (p == AV_NOPTS_VALUE) ? 0.0 : p * av_q2d(tb);
+}
+
+// The stream's matrix and range, as its VUI says. Where it doesn't: limited
+// range, the HEVC / H.264 default when video_full_range_flag is absent, and
+// BT.709, the HD matrix (every lens stream is HD). Logged, as is a matrix the
+// stitch can't do.
+YcbcrCoding StreamYcbcr(const AVCodecParameters* p, int index)
+{
+    YcbcrCoding c;
+    const auto pf = static_cast<AVPixelFormat>(p->format);
+    // yuvj* formats are full range by definition, whatever color_range says.
+    if (p->color_range == AVCOL_RANGE_JPEG || pf == AV_PIX_FMT_YUVJ420P ||
+        pf == AV_PIX_FMT_YUVJ422P || pf == AV_PIX_FMT_YUVJ444P)
+        c.fullRange = true;
+    else if (p->color_range == AVCOL_RANGE_MPEG)
+        c.fullRange = false;
+    else {
+        c.fullRange = false;
+        std::fprintf(stderr, "[insv] video stream %d doesn't say its range; taking limited\n",
+                     index);
+    }
+
+    switch (p->color_space) {
+    case AVCOL_SPC_BT709: c.matrix = YcbcrMatrix::Bt709; break;
+    case AVCOL_SPC_BT470BG:
+    case AVCOL_SPC_SMPTE170M: c.matrix = YcbcrMatrix::Bt601; break;
+    case AVCOL_SPC_BT2020_NCL: c.matrix = YcbcrMatrix::Bt2020; break;
+    case AVCOL_SPC_BT2020_CL:
+        c.matrix = YcbcrMatrix::Bt2020;
+        std::fprintf(stderr, "[insv] video stream %d is BT.2020 constant luminance; decoding it "
+                             "as non-constant\n", index);
+        break;
+    default: {
+        c.matrix = YcbcrMatrix::Bt709;
+        const char* name = av_color_space_name(p->color_space);
+        std::fprintf(stderr, "[insv] video stream %d: %s matrix; taking BT.709\n", index,
+                     p->color_space == AVCOL_SPC_UNSPECIFIED ? "no" : name ? name : "unknown");
+        break;
+    }
+    }
+    return c;
 }
 } // namespace
 
@@ -125,6 +167,7 @@ bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::
         if (const AVPixFmtDescriptor* d =
                 av_pix_fmt_desc_get(static_cast<AVPixelFormat>(st->codecpar->format)))
             info.bitDepth = d->comp[0].depth;
+        info.ycbcr = StreamYcbcr(st->codecpar, static_cast<int>(i));
         info.height = st->codecpar->height;
         const AVRational fr = st->avg_frame_rate;
         if (fr.num <= 0 || fr.den <= 0) {

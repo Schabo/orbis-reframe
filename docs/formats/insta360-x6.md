@@ -35,13 +35,15 @@ X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
   colour modes. Standard and I-Log clips are tagged `bt709`; **Dolby Vision
   clips are tagged `bt2020nc` + `arib-std-b67` (HLG), limited range**, with
   no Dolby Vision RPU side data. ❓ The range Standard and I-Log clips are
-  tagged with (the X5's are full range, and the GPU conversion assumes it).
+  tagged with (the X5's are full range). The app decodes each clip with the
+  matrix and range its stream is tagged with; a stream without a range tag
+  is taken as limited, the HEVC default.
 - ✅ The mode is only in the trailer, record 0x101 field 22 `gamma_mode`:
   `standard`, `I_Log` or `Dolby_Vision` (X5 §3.3 for the X5's values). The
   app reads it as the clip's colour profile; only `I_Log` is recognised as
   a log profile so far.
-- The app's GPU stitch samples the decoder's pictures through a BT.709
-  full-range ycbcr conversion. Since 2026-10-18 it takes 10-bit HEVC (Main
+- The app's GPU stitch samples the decoder's pictures through a ycbcr
+  conversion. Since 2026-10-18 it takes 10-bit HEVC (Main
   10) too: FFmpeg's Vulkan decoder gives P010 images
   (`VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16`), the stitcher's
   conversion is made for that format (by the stream's bit depth), and the
@@ -49,8 +51,12 @@ X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
   stand-in -- the X5 I-Log clip re-encoded to Main 10 with its trailer
   kept: export (both GPU paths, and the CPU fallback) and playback match
   the 8-bit original at 46-48 dB PSNR, in real time -- and ✅ on the
-  contributor's X6 clips. The conversion is still BT.709 full range
-  whatever the stream says, which is wrong for Dolby Vision clips.
+  contributor's X6 clips. Since 2026-10-19 the conversion takes the
+  stream's matrix and range (BT.709 / BT.601 / BT.2020, full or limited)
+  on the GPU, in the viewport and on the CPU path alike. Checked on
+  stand-ins -- an X5 clip re-encoded to BT.2020 limited range, 8- and 10-bit:
+  45-47 dB PSNR against the original, where the old fixed conversion gave
+  29 dB -- not yet on a Dolby Vision clip.
 - An I-Log clip stitches correctly but looks flat (saturation ~0.16 vs
   ~0.31 for Standard) until Insta360's LUT is applied (below). Dolby
   Vision clips are HLG / BT.2020 as tagged and need an HLG -> Rec.709 LUT

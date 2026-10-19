@@ -35,29 +35,27 @@ bool InsvDemux::open(const std::string& path, std::string& err)
         err);
 }
 
-void InsvDemux::convert(const AVFrame* frm, Image& out)
+void InsvDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)
 {
     out.alloc(frm->width, frm->height);
 
     // The camera's HEVC decodes as a deprecated full-range JPEG pixel format
-    // (yuvj420p). Passing that straight to swscale spams "deprecated pixel
-    // format used, make sure you did set range correctly" and, worse, converts
-    // as if it were limited range -- lifted blacks / crushed whites. Remap to
-    // the plain format and tell swscale the source is full range.
+    // (yuvj420p); swscale wants the plain format, with the range set apart.
+    // The matrix and range are the stream's (LensDemuxer), the same the GPU
+    // stitch's ycbcr conversion takes, so both paths give the same RGB.
     AVPixelFormat srcFmt = static_cast<AVPixelFormat>(frm->format);
-    int srcFullRange = (frm->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
     switch (srcFmt) {
-    case AV_PIX_FMT_YUVJ420P: srcFmt = AV_PIX_FMT_YUV420P; srcFullRange = 1; break;
-    case AV_PIX_FMT_YUVJ422P: srcFmt = AV_PIX_FMT_YUV422P; srcFullRange = 1; break;
-    case AV_PIX_FMT_YUVJ444P: srcFmt = AV_PIX_FMT_YUV444P; srcFullRange = 1; break;
-    case AV_PIX_FMT_YUVJ440P: srcFmt = AV_PIX_FMT_YUV440P; srcFullRange = 1; break;
-    case AV_PIX_FMT_YUVJ411P: srcFmt = AV_PIX_FMT_YUV411P; srcFullRange = 1; break;
+    case AV_PIX_FMT_YUVJ420P: srcFmt = AV_PIX_FMT_YUV420P; break;
+    case AV_PIX_FMT_YUVJ422P: srcFmt = AV_PIX_FMT_YUV422P; break;
+    case AV_PIX_FMT_YUVJ444P: srcFmt = AV_PIX_FMT_YUV444P; break;
+    case AV_PIX_FMT_YUVJ440P: srcFmt = AV_PIX_FMT_YUV440P; break;
+    case AV_PIX_FMT_YUVJ411P: srcFmt = AV_PIX_FMT_YUV411P; break;
     default: break;
     }
-
-    // The X5's HEVC is tagged BT.709; swscale's default matrix is BT.601, which
-    // gives a subtle hue/luma error (and disagrees with the GPU ycbcr path).
-    const int coefId = (frm->colorspace == AVCOL_SPC_BT709) ? SWS_CS_ITU709 : SWS_CS_DEFAULT;
+    const int srcFullRange = stream.ycbcr.fullRange ? 1 : 0;
+    const int coefId = stream.ycbcr.matrix == YcbcrMatrix::Bt709   ? SWS_CS_ITU709
+                       : stream.ycbcr.matrix == YcbcrMatrix::Bt2020 ? SWS_CS_BT2020
+                                                              : SWS_CS_ITU601;
 
     SwsContext* prev = m_sws;
     m_sws = sws_getCachedContext(m_sws, frm->width, frm->height, srcFmt, frm->width, frm->height,
@@ -93,8 +91,8 @@ bool InsvDemux::readNextPair(Image& out0, Image& out1, int64_t* ptsMs, std::stri
     AVFrame* f1 = nullptr;
     if (!m_demux.readNextPair(f0, f1, ptsMs, err))
         return false;
-    convert(f0, out0);
-    convert(f1, out1);
+    convert(f0, lens(0), out0);
+    convert(f1, lens(1), out1);
     av_frame_free(&f0);
     av_frame_free(&f1);
     return true;
@@ -116,7 +114,7 @@ bool InsvDemux::readFrameAt(int lens, int64_t timestampMs, Image& out, std::stri
                 err = "no frame decoded for lens " + std::to_string(lens);
             return false;
         }
-        convert(f, out);
+        convert(f, this->lens(lens), out);
         av_frame_free(&f);
         return true;
     }

@@ -115,7 +115,7 @@ VkImageView VulkanFisheyeStitcher::Impl::nv12ViewFor(VkImage img, VkFormat fmt)
     usage.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
     VkSamplerYcbcrConversionInfo yci{VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO};
     yci.pNext = &usage;
-    yci.conversion = ycbcr;
+    yci.conversion = ycbcrConv;
     VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vi.pNext = &yci;
     vi.image = img;
@@ -445,7 +445,7 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         if (d->rfDescPool) vkDestroyDescriptorPool(d->device, d->rfDescPool, nullptr);
         if (d->rfSetLayout) vkDestroyDescriptorSetLayout(d->device, d->rfSetLayout, nullptr);
         if (d->sampler) vkDestroySampler(d->device, d->sampler, nullptr);
-        if (d->ycbcr) vkDestroySamplerYcbcrConversion(d->device, d->ycbcr, nullptr);
+        if (d->ycbcrConv) vkDestroySamplerYcbcrConversion(d->device, d->ycbcrConv, nullptr);
         if (d->tsPool) vkDestroyQueryPool(d->device, d->tsPool, nullptr);
         if (d->fence) vkDestroyFence(d->device, d->fence, nullptr);
         if (d->cmdPool) vkDestroyCommandPool(d->device, d->cmdPool, nullptr);
@@ -531,7 +531,7 @@ bool VulkanFisheyeStitcher::init(std::string& err)
 bool VulkanFisheyeStitcher::initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                                       uint32_t computeQueueFamily,
                                       VkDeviceQueueCreateFlags queueFlags, std::string& err,
-                                      VkFormat lensFormat)
+                                      VkFormat lensFormat, const insv::YcbcrCoding& ycbcr)
 {
     if (lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
         lensFormat != VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16) {
@@ -553,6 +553,7 @@ bool VulkanFisheyeStitcher::initAdopt(VkInstance inst, VkPhysicalDevice phys, Vk
         return false;
     }
     d->lensFormat = lensFormat;
+    d->ycbcr = ycbcr;
     d->adopted = true;
     d->instance = inst;
     d->phys = phys;
@@ -632,18 +633,25 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
         VkSamplerYcbcrConversionCreateInfo ycci{
             VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO};
         ycci.format = d->lensFormat; // NV12, or P010 for 10-bit
-        ycci.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-        ycci.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL; // camera HEVC is full range
+        // The stream's own matrix and range (insv::YcbcrToRgbRows does the
+        // same arithmetic for the viewport).
+        ycci.ycbcrModel = d->ycbcr.matrix == insv::YcbcrMatrix::Bt601
+                              ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601
+                          : d->ycbcr.matrix == insv::YcbcrMatrix::Bt2020
+                              ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020
+                              : VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+        ycci.ycbcrRange = d->ycbcr.fullRange ? VK_SAMPLER_YCBCR_RANGE_ITU_FULL
+                                             : VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
         ycci.components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
                            VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY};
         ycci.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
         ycci.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
         ycci.chromaFilter = VK_FILTER_LINEAR;
-        if (vkCreateSamplerYcbcrConversion(d->device, &ycci, nullptr, &d->ycbcr) != VK_SUCCESS) {
+        if (vkCreateSamplerYcbcrConversion(d->device, &ycci, nullptr, &d->ycbcrConv) != VK_SUCCESS) {
             err = "vkCreateSamplerYcbcrConversion failed (device lacks samplerYcbcrConversion)";
             return false;
         }
-        yci.conversion = d->ycbcr;
+        yci.conversion = d->ycbcrConv;
     }
 
     VkSamplerCreateInfo si{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};

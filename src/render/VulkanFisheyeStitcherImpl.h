@@ -55,8 +55,9 @@ struct ShaderParams {
     float seamQ[insv::kSeamDepthBins]; // vec4[kSeamDepthBins / 4]: per-bin inverse distance
     float blur0[4]; // privacy blur: count, -, -, -
     float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
+    float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
 };
-static_assert(sizeof(ShaderParams) == 7344, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 7392, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
 // Push constants for reframe_reproject.comp. 4 ints + 5 floats, then a mat3
@@ -167,7 +168,7 @@ struct VulkanFisheyeStitcher::Impl {
     StitchTiming timing;
 
     VkSampler sampler = VK_NULL_HANDLE;
-    VkSamplerYcbcrConversion ycbcr = VK_NULL_HANDLE; // nv12 mode only
+    VkSamplerYcbcrConversion ycbcrConv = VK_NULL_HANDLE; // nv12 mode only
     VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
     VkDescriptorPool descPool = VK_NULL_HANDLE;
     VkDescriptorSet descSet = VK_NULL_HANDLE;
@@ -208,6 +209,8 @@ struct VulkanFisheyeStitcher::Impl {
     // for 10-bit (initAdopt). Every image it hands over must have it.
     VkFormat lensFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
     bool deepLens() const { return lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM; }
+    // The decoder's stream's matrix and range (initAdopt).
+    insv::YcbcrCoding ycbcr;
     // Cached ycbcr image views over the decoder's pooled images (nv12 mode).
     std::map<VkImage, VkImageView> nv12Views;
 
