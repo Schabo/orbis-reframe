@@ -50,6 +50,10 @@ struct LensCalibExt {
     double s[4] = {0, 0, 0, 0}; // thin-prism
     double w = 0, h = 0;        // combined-frame dims the cx/cy live in
     int type = 0;
+    // Not in the string: the width of the sensor window fx/fy are given in
+    // (on Insta360 files the trailer's field 27, InsvMakerNotes::crop_dst_w).
+    // The file's reader sets it; 0 = unknown, and the stitch refuses it.
+    double focalRefW = 0;
 };
 
 struct InsvCalibration {

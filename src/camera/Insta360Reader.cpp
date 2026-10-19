@@ -34,6 +34,8 @@ std::string findProxy(const std::filesystem::path& insv) {
 }
 
 std::optional<insv::LensProfile> profile(const insv::InsvMakerNotes& notes, const char* name) {
+    if (!name)
+        return std::nullopt;
     if (const insv::LensProfile* p = insv::FindLensProfile(notes, name))
         return *p;
     return std::nullopt;
@@ -69,9 +71,19 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     insv::InsvCalibration calib;
     if (const auto ext = insv::ReadInsvExtendedCalibrationString(out.path);
         ext && insv::ParseExtendedCalibrationString(*ext, calib) && calib.lensesExt.size() == 2) {
+        // fx / fy are given in field 27's sensor window.
+        double focalRefW = notes->crop_dst_w;
+        if (!(focalRefW > 0)) {
+            focalRefW = model.focalRefW;
+            std::fprintf(stderr, "[camera] no window_crop_info (field 27) in %s; taking the %s's "
+                                 "focal reference, %g\n",
+                         out.path.c_str(), model.name, focalRefW);
+        }
         out.calibrated = true;
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < 2; ++i) {
             out.lenses[i].calibration = calib.lensesExt[i];
+            out.lenses[i].calibration.focalRefW = focalRefW;
+        }
     }
     if (streams[0].width == streams[0].height)
         out.captureMode = model.captureMode(streams[0].width);

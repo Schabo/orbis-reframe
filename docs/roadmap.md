@@ -25,9 +25,11 @@ close to the X5: the same `.insv`
 trailer, larger lenses (6K lens size 3008²), 8K 50, and 10-bit I-Log and
 Dolby Vision modes. What it needs beyond the X5:
 
-- the X6's own crop and calibration fields read from the file, not assumed;
-  the 6K lens size labelled in Media information and the media pool;
-  calibration sanity ranges that fit the larger sensor;
+- done: the focal reference (field 27) read from the file, the X6's row in
+  the model table (6K named in Media information and the media pool, no
+  lens-guard profiles), the calibration sanity ranges checked on X6 clips;
+- the IMU axis map confirmed on a clip with deliberate rotations (the X5's
+  is used until then);
 - 10-bit clips are already decoded and stitched (P010); what's left is
   honouring the stream's own colour matrix and range on both decode paths
   (the GPU conversion is fixed to BT.709 full range today);

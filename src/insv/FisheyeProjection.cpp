@@ -109,9 +109,11 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
     m_thetaMaxRad = (params.seamDeg + featherDeg + 2.0) * kDeg;
 
     // sensor -> video scaling for the MEI intrinsics (insv-stitch
-    // x5_pipeline.py `_sensor_to_video`): fx/fy divide by the crop dst width,
-    // cx/cy by the full single-lens sensor width.
-    constexpr double kCropDstW = 5312.0;
+    // x5_pipeline.py `_sensor_to_video`): fx/fy divide by the focal
+    // reference window's width, cx/cy by the full single-lens sensor width.
+    for (const LensCalibExt& e : cal.lensesExt)
+        if (!(e.focalRefW > 0))
+            return false;
 
     for (int i = 0; i < 2; ++i) {
         const LensCalibExt& e = cal.lensesExt[i];
@@ -137,7 +139,7 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         const double halfW = e.w * 0.5; // side-by-side combined frame
         const double cxLocal = e.cx - (i == 0 ? 0.0 : halfW);
         const double sVideoPerSensor = static_cast<double>(streamW) / halfW;
-        const double sVideoPerCrop = static_cast<double>(streamW) / kCropDstW;
+        const double sVideoPerCrop = static_cast<double>(streamW) / e.focalRefW;
         m_lens[i].xi = e.xi;
         m_lens[i].fx = e.fx * sVideoPerCrop;
         m_lens[i].fy = e.fy * sVideoPerCrop;

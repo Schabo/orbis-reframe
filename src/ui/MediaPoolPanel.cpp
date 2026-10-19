@@ -70,6 +70,8 @@ QString formatText(const MediaItem &m)
         if (m.kind == MediaItem::Kind::Clip360 && m.width == m.height) {
             if (m.width == 3840)
                 size = QStringLiteral("8K");
+            else if (m.width == 3008)
+                size = QStringLiteral("6K");
             else if (m.width == 2880)
                 size = QStringLiteral("5.7K");
             else if (m.width == 1920)

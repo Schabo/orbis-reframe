@@ -20,6 +20,7 @@
 #include <FisheyeProjection.h>
 #include <Image.h>
 #include <InsvDemux.h>
+#include <InsvModels.h>
 #include <InsvTrailer.h> // insv::ReadInsvMakerNotes
 #include <SeamAlignment.h>
 #include <SeamDepth.h>
@@ -122,8 +123,14 @@ int main(int argc, char** argv)
     const auto ext = insv::ReadInsvExtendedCalibrationString(clip);
     if (!ext || !insv::ParseExtendedCalibrationString(*ext, calib))
         die("no extended (MEI) lens calibration in the trailer");
-    std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0)\n", calib.lensesExt[0].xi,
-                calib.lensesExt[0].fx);
+    // fx / fy are in field 27's sensor window; the model's when it's absent.
+    const double focalRefW = rawCalib->crop_dst_w > 0 ? rawCalib->crop_dst_w
+                                                      : insv::FindInsvModel(rawCalib->model).focalRefW;
+    for (insv::LensCalibExt& e : calib.lensesExt)
+        e.focalRefW = focalRefW;
+    std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0), focal reference %g%s\n",
+                calib.lensesExt[0].xi, calib.lensesExt[0].fx, focalRefW,
+                rawCalib->crop_dst_w > 0 ? "" : " (not in the file: the model's)");
 
     // The lens-guard / dive-case profile by its field-145 name; "" = bare.
     const insv::LensProfile* bareProfile = insv::FindLensProfile(*rawCalib, "bare");

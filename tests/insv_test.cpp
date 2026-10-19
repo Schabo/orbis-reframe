@@ -99,10 +99,36 @@ void testExtendedCalibration()
     CHECK(c3.lensesExt.empty());
 }
 
-void testMeiProjection()
+// The X5 calibration as the reader hands it over: with field 27's focal
+// reference, which the string doesn't carry.
+insv::InsvCalibration x5Calibration()
 {
     insv::InsvCalibration c;
     CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c));
+    for (insv::LensCalibExt &e : c.lensesExt)
+        e.focalRefW = 5312.0;
+    return c;
+}
+
+void testMeiProjection()
+{
+    insv::InsvCalibration c = x5Calibration();
+
+    // fx / fy are in field 27's sensor window: no reference, no stitch; the
+    // X6's larger window gives a shorter focal length in video pixels.
+    {
+        insv::InsvCalibration noRef = c;
+        noRef.lensesExt[1].focalRefW = 0;
+        insv::FisheyeStitcher st;
+        CHECK(!st.configure(noRef, 3840, 3840, insv::StitchParams{}));
+        insv::InsvCalibration wide = c;
+        for (insv::LensCalibExt &e : wide.lensesExt)
+            e.focalRefW = 7680.0;
+        insv::FisheyeStitcher a, b;
+        CHECK(a.configure(c, 3840, 3840, insv::StitchParams{}));
+        CHECK(b.configure(wide, 3840, 3840, insv::StitchParams{}));
+        CHECK(near(b.lensProjection(0).fx, a.lensProjection(0).fx * 5312.0 / 7680.0, 1e-9));
+    }
 
     // configure() needs the extended calibration.
     insv::FisheyeStitcher none;
@@ -184,8 +210,7 @@ void testLensProfile()
     CHECK(!insv::ApplyLensProfile(missing, nullptr, insv::FindLensProfile(notes, "ProtectorA")));
     CHECK(!missing.accessory);
 
-    insv::InsvCalibration c;
-    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c));
+    insv::InsvCalibration c = x5Calibration();
     insv::FisheyeStitcher sb, sg;
     CHECK(sb.configure(c, 3840, 3840, bare));
     CHECK(sg.configure(c, 3840, 3840, guard));
@@ -248,8 +273,7 @@ void testSyntheticRender()
     }
 
     insv::FisheyeStitcher st;
-    insv::InsvCalibration c;
-    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c));
+    insv::InsvCalibration c = x5Calibration();
     CHECK(st.configure(c, 800, 800, insv::StitchParams{}));
 
     insv::Image eq = st.renderEquirect(l0, l1, 512);
@@ -274,8 +298,7 @@ void testSyntheticRender()
 // the per-lens rays.
 void testSeamDepthGeometry()
 {
-    insv::InsvCalibration c;
-    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c));
+    insv::InsvCalibration c = x5Calibration();
     insv::StitchParams p;
     p.depthSeam = true;
     insv::FisheyeStitcher st;
@@ -580,8 +603,12 @@ std::vector<uint8_t> metadataRecord(bool rawGyro)
     Bytes m;
     m.pbString(1, "IAHEA2500000001").pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
     m.pbString(5, "2_1.0_2.0_3.0");
-    if (rawGyro)
+    if (rawGyro) {
         m.pbString(22, "I_Log");
+        Bytes crop; // window_crop_info: src 5376², dst 5312²
+        crop.pbVarint(1, 5376).pbVarint(2, 5376).pbVarint(3, 5312).pbVarint(4, 5312);
+        m.pbBytes(27, crop.b);
+    }
     m.pbVarint(24, 2468081984ull);
     m.pbDouble(25, 21.244);
     m.pbDouble(28, 1.6);
@@ -661,6 +688,7 @@ void testTrailerRecords()
         CHECK(notes->firmware == "v1.5.6_build1");
         CHECK(notes->parameters == "2 1.0 2.0 3.0"); // underscores read as spaces
         CHECK(notes->lens_profiles.size() == 2);
+        CHECK(notes->crop_dst_w == 5312.0);
         const insv::LensProfile* bare = insv::FindLensProfile(*notes, "bare");
         CHECK(bare && near(bare->poly[1], 0.05, 1e-12) && near(bare->poly[3], 2e-8, 1e-20));
         CHECK(bare && bare->fov_deg == 200.0);
@@ -718,6 +746,8 @@ void testTrailerRecords()
         CHECK(td->imu[1].timestamp == 5001 && td->imu[1].accel[2] == 1.0 && td->imu[1].gyro[2] == 0.3);
     CHECK(td && td->exposure.empty() && td->gps_records == 0 && td->time_map_offset_ms == 0.0);
     CHECK(td && td->gamma_mode.empty()); // no field 22
+    const auto nd = insv::ReadInsvMakerNotes(d);
+    CHECK(nd && nd->crop_dst_w == 0.0); // no field 27
     std::filesystem::remove(d);
 
     // No trailer (no magic), no moov: nothing, and no crash.

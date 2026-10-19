@@ -24,8 +24,15 @@ struct InsvModel {
     // lens guards. The X5's ProtectorA / ProtectorS / ProtectorAS carry
     // identical data; which letter means which guard is a guess (A = premium,
     // S = standard).
+    // Null when the model's files carry no profile table (the X6: no field
+    // 145, so the stitch takes every lens as bare).
     const char* standardGuard;
     const char* premiumGuard;
+
+    // The focal reference window's width (LensCalibExt::focalRefW) for files
+    // that don't carry field 27. The X5's 5312; the X6's 7680 (its clips
+    // carry the field, docs/formats/insta360-x6.md).
+    double focalRefW;
 
     // Capture modes by the square lens picture's width; unused entries are
     // {0, nullptr}.
