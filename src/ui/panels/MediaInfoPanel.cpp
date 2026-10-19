@@ -1,6 +1,6 @@
 #include "MediaInfoPanel.h"
 
-#include <InsvMediaInfo.h>
+#include <MediaInfo.h>
 
 #include <QDateTime>
 #include <QFileInfo>
@@ -91,7 +91,7 @@ void MediaInfoPanel::addWideValue(const QString &value, const QString &toolTip)
     form()->addRow(v);
 }
 
-void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
+void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
 {
     clearRows();
     setBodyEnabled(true);
@@ -118,8 +118,8 @@ void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
     if (m.video.empty()) {
         addValue(tr("Streams"), tr("None"));
     } else {
-        const insv::MediaVideoStream &v = m.video.front();
-        const QString mode = QString::fromStdString(m.captureMode());
+        const camera::MediaVideoStream &v = m.video.front();
+        const QString mode = QString::fromStdString(m.captureMode);
         if (!mode.isEmpty()) {
             addValue(tr("Mode"), tr("%1 360°").arg(mode),
                      tr("Read from the size of the lens pictures. 5.7K+ records pictures the "
@@ -146,7 +146,7 @@ void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
             colour += QStringLiteral(", ");
         colour += v.fullRange ? tr("full range") : tr("limited range");
         addValue(tr("Colour"), colour);
-        if (const QString log = QString::fromStdString(m.logProfile()); !log.isEmpty())
+        if (const QString log = QString::fromStdString(m.logProfile); !log.isEmpty())
             addValue(tr("Colour profile"), log,
                      tr("A log profile: the picture looks flat and grey until the LUT the "
                         "camera maker publishes for %1 is applied (Colour section).")
@@ -164,7 +164,7 @@ void MediaInfoPanel::setInfo(const insv::MediaInfo &m)
         addValue(tr("Tracks"), tr("None"));
     // Two short lines per track: codec + channels, then rate + bitrate.
     for (size_t i = 0; i < m.audio.size(); ++i) {
-        const insv::MediaAudioStream &a = m.audio[i];
+        const camera::MediaAudioStream &a = m.audio[i];
         QString first = upperCodec(a.codec, a.profile);
         if (!a.channelLayout.empty())
             first += QLatin1Char(' ') + QString::fromStdString(a.channelLayout);

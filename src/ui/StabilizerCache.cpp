@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include <InsvTrailer.h> // insv::ReadInsvTelemetry
+#include <ClipMetadata.h> // camera::ReadClipImu
 
 #include "ReframeExportController.h" // captureTimingFor
 #include "../core/ClipItem.h"
@@ -60,14 +60,12 @@ bool StabilizerCache::ensure(const ClipItem &c, double syncMs)
     built.path = c.sourcePath;
     built.config = c.stabilization;
     built.syncMs = orZero(syncMs);
-    // Trailer read is a seek to the trailer + ~12 MB, not the whole file --
-    // fast enough for a clip switch / settings change on the GUI thread.
-    auto tele = insv::ReadInsvTelemetry(c.sourcePath.toStdString());
-    if (tele && tele->imu.size() >= 2) {
-        // Derive the video<->IMU offset from the 0x400 exposure record
-        // ("video t=0 == IMU sample 0" is off by ~tens of ms, varying per clip).
+    // An .insv's IMU read is a seek to the trailer + ~12 MB, not the whole
+    // file -- fast enough for a clip switch / settings change on the GUI
+    // thread.
+    if (const auto imu = camera::ReadClipImu(c.sourcePath.toStdString())) {
         auto stab = std::make_shared<insv::GyroStabilizer>();
-        stab->build(*tele, c.fps, c.stabilization, built.syncMs / 1000.0);
+        stab->build(*imu, c.stabilization, built.syncMs / 1000.0);
         if (stab->ready())
             built.stab = std::move(stab);
     }

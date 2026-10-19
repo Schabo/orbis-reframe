@@ -125,6 +125,13 @@ int main(int argc, char** argv)
     std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0)\n", calib.lensesExt[0].xi,
                 calib.lensesExt[0].fx);
 
+    // The lens-guard / dive-case profile by its field-145 name; "" = bare.
+    const insv::LensProfile* bareProfile = insv::FindLensProfile(*rawCalib, "bare");
+    const insv::LensProfile* accProfile =
+        lensProfile.empty() || lensProfile == "bare" ? nullptr
+                                                     : insv::FindLensProfile(*rawCalib, lensProfile);
+    const bool profileMissing = !accProfile && !lensProfile.empty() && lensProfile != "bare";
+
     insv::InsvDemux demux;
     std::string err;
     if (!demux.open(clip, err))
@@ -134,7 +141,7 @@ int main(int argc, char** argv)
 
     if (seamIn >= 0) {
         insv::StitchParams params;
-        insv::ApplyLensProfile(params, *rawCalib, lensProfile);
+        insv::ApplyLensProfile(params, bareProfile, accProfile);
         std::vector<insv::SeamFrame> frames;
         for (int k = 0; k < 5; ++k) {
             const int64_t t = insv::SnapToKeyframeMs(seamIn + (seamOut - seamIn) * (2 * k + 1) / 10,
@@ -160,7 +167,7 @@ int main(int argc, char** argv)
 
     insv::FisheyeStitcher stitcher;
     insv::StitchParams params;
-    if (!insv::ApplyLensProfile(params, *rawCalib, lensProfile))
+    if (!insv::ApplyLensProfile(params, bareProfile, accProfile) || profileMissing)
         die("no \"" + lensProfile + "\" lens profile in the trailer");
     for (int k = 0; k < 3; ++k)
         params.lens1AdjustDeg[k] = adj[k];

@@ -60,7 +60,6 @@
 #include <cstdio>
 
 #include <InsvAudioDemux.h> // insv::InsvAudioDemux (audio files)
-#include <InsvTrailer.h>   // insv::ReadInsvTelemetry
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader::probe (overlays)
 
@@ -2460,13 +2459,13 @@ int MainWindow::addOverlayAudio(int clipId)
     return m_timeline->addOverlaySound(clipId);
 }
 
-const insv::MediaInfo *MainWindow::mediaInfoFor(const QString &path, QString *error)
+const camera::MediaInfo *MainWindow::mediaInfoFor(const QString &path, QString *error)
 {
     auto it = m_mediaInfo.constFind(path);
     if (it == m_mediaInfo.constEnd()) {
-        insv::MediaInfo info;
+        camera::MediaInfo info;
         std::string err;
-        if (!insv::ProbeMediaInfo(path.toStdString(), info, err)) {
+        if (!camera::ProbeMediaInfo(path.toStdString(), info, err)) {
             if (error)
                 *error = QString::fromStdString(err);
             return nullptr;
@@ -2479,7 +2478,7 @@ const insv::MediaInfo *MainWindow::mediaInfoFor(const QString &path, QString *er
 void MainWindow::syncMediaInfoPanel(const ClipItem &c)
 {
     QString error;
-    if (const insv::MediaInfo *info = mediaInfoFor(c.sourcePath, &error))
+    if (const camera::MediaInfo *info = mediaInfoFor(c.sourcePath, &error))
         m_mediaInfoPanel->setInfo(*info);
     else
         m_mediaInfoPanel->setError(c.sourcePath, error);

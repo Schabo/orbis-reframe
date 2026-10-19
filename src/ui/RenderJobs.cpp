@@ -462,7 +462,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     timeline.sourceSeamAdjust(c.sourcePath, job.seamAdjustDeg);
     if (nativeStab)
         job.stab = ReframeExportController::buildStabilizer(
-            c.sourcePath, c.fps, c.stabilization, std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
+            c.sourcePath, c.stabilization, std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
     // No keyframes -> a static forward view.
     if (!c.reframe.isEmpty())
         job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[4]) {

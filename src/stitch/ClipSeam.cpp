@@ -1,10 +1,10 @@
 #include "ClipSeam.h"
 
-#include "NativeStitchSource.h" // stitch::LensGuardProfileName
+#include "NativeStitchSource.h" // stitch::DualFisheyeStitchSetup
 
 #include <Calibration.h>
+#include <ClipMetadata.h>
 #include <InsvDemux.h>
-#include <InsvTrailer.h>
 
 #include <algorithm>
 #include <vector>
@@ -21,22 +21,20 @@ insv::SeamAlignmentResult MeasureClipSeam(const std::string& clipPath, int64_t t
                                           const std::atomic<bool>* cancel)
 {
     insv::SeamAlignmentResult out;
-    const auto notes = insv::ReadInsvMakerNotes(clipPath);
-    if (!notes) {
-        out.message = "no readable trailer";
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(clipPath, &err);
+    if (!clip) {
+        out.message = err;
         return out;
     }
     insv::InsvCalibration calib;
-    const auto ext = insv::ReadInsvExtendedCalibrationString(clipPath);
-    if (!ext || !insv::ParseExtendedCalibrationString(*ext, calib)) {
-        out.message = "no extended (MEI) calibration";
+    insv::StitchParams params;
+    if (!DualFisheyeStitchSetup(*clip, lensGuard, calib, params, err)) {
+        out.message = err;
         return out;
     }
-    insv::StitchParams params;
-    insv::ApplyLensProfile(params, *notes, LensGuardProfileName(lensGuard));
 
     insv::InsvDemux demux;
-    std::string err;
     if (!demux.open(clipPath, err) || demux.lensCount() < 2) {
         out.message = "demux open failed: " + err;
         return out;

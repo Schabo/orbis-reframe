@@ -25,7 +25,7 @@ struct ClipSyncResult {
 // spread across it). `cancel` (optional) is polled between frames.
 // `lensGuard` selects the stitch's lens profile, as in the preview.
 ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, int64_t trimOutMs,
-                               double fps, const std::atomic<bool>* cancel = nullptr,
+                               const std::atomic<bool>* cancel = nullptr,
                                PreviewStitchConfig::LensGuard lensGuard =
                                    PreviewStitchConfig::LensGuard::Premium);
 

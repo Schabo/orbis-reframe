@@ -3,7 +3,7 @@
 #include "ReframeFlatten.h"  // exportpipe::FlattenWriter (system FFmpeg)
 #include "ReframeRenderer.h" // exportpipe::RenderRectilinear
 
-#include <InsvTrailer.h>        // insv::ReadInsvTelemetry
+#include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource, stitch::Frame, stitch::PreviewStitchConfig
 #include <ProbeClip.h>          // stitch::ProbeClip
 
@@ -35,14 +35,14 @@ ReframeExportController::captureTimingFor(std::shared_ptr<const insv::GyroStabil
 }
 
 std::shared_ptr<const insv::GyroStabilizer>
-ReframeExportController::buildStabilizer(const QString &path, double fps,
-                                         const insv::StabConfig &config, double syncMs)
+ReframeExportController::buildStabilizer(const QString &path, const insv::StabConfig &config,
+                                         double syncMs)
 {
-    auto tele = insv::ReadInsvTelemetry(path.toStdString());
-    if (!tele || tele->imu.size() < 2)
+    const auto imu = camera::ReadClipImu(path.toStdString());
+    if (!imu)
         return nullptr;
     auto stab = std::make_shared<insv::GyroStabilizer>();
-    stab->build(*tele, fps, config, syncMs / 1000.0);
+    stab->build(*imu, config, syncMs / 1000.0);
     return stab->ready() ? stab : nullptr;
 }
 

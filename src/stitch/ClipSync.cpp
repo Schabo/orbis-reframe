@@ -2,8 +2,8 @@
 
 #include "NativeStitchSource.h"
 
+#include <ClipMetadata.h>
 #include <GyroStabilizer.h>
-#include <InsvTrailer.h>
 #include <SyncEstimator.h>
 
 #include <algorithm>
@@ -13,19 +13,19 @@
 namespace stitch {
 
 ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, int64_t trimOutMs,
-                               double fps, const std::atomic<bool>* cancel,
+                               const std::atomic<bool>* cancel,
                                PreviewStitchConfig::LensGuard lensGuard)
 {
     ClipSyncResult out;
-    const auto tele = insv::ReadInsvTelemetry(clipPath);
-    if (!tele || tele->imu.size() < 2) {
+    const auto imu = camera::ReadClipImu(clipPath);
+    if (!imu) {
         out.message = "no IMU track";
         return out;
     }
     // The raw orientation track, synced exactly as stabilization would be
     // (before any fine-tune); the estimate is relative to it.
     insv::GyroStabilizer gyro;
-    gyro.build(*tele, fps, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    gyro.build(*imu, insv::StabConfig::preset(insv::StabMode::LeanFollow));
     if (!gyro.ready()) {
         out.message = "gyro track not usable";
         return out;

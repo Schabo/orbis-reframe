@@ -6,15 +6,16 @@
 #include <string>
 #include <vector>
 
-#include <InsvTrailer.h> // insv::ImuSample
+#include "Imu.h" // insv::ImuSample, insv::ImuTrack
 
 // GyroStabilizer integrates the camera's own IMU track into a smoothed
 // orientation and produces a per-frame de-rotation to apply at reprojection
 // time. The correction lives in the camera-body (= stitched sphere) frame, so
 // it composes AFTER the reframe pose: d_sphere = C * P * d_view (applying it to
 // the view ray before P turns its axes with the view -- wrong for any reframed
-// look direction; measured 2026-09-25). No Qt, no Vulkan. Depends only on
-// insv::ImuSample (InsvTrailer.h) for the input type.
+// look direction; measured 2026-09-25). No Qt, no Vulkan, and nothing about
+// any camera's file: its input is an insv::ImuTrack (Imu.h) that the
+// camera's reader lined up with the video.
 //
 // Two useful modes over one mechanism:
 //   - LeanFollow  : smooth the fast rotational shake, keep the slow intentional
@@ -29,9 +30,6 @@ enum class StabMode {
     HorizonLock,
     Custom, // caller sets the windows / lock amount directly
 };
-
-// See StabConfig::gyroAxes.
-inline constexpr const char* kDefaultGyroAxes = "z,-x,-y";
 
 struct StabConfig {
     StabMode mode = StabMode::Off;
@@ -51,7 +49,7 @@ struct StabConfig {
 
     // Scales the accel-anchor gain in build() (1 = ~20 s time constant). Only
     // used when horizonLockAmount > 0; 0 = pure gyro (the horizon then drifts
-    // with gyro bias). Only matters when the .insv carries an accel track.
+    // with gyro bias). Only matters when the IMU track carries accel.
     float horizonGain = 1.0f;
 
     // Low-pass cutoff (Hz) applied to the accelerometer before it feeds the
@@ -82,20 +80,14 @@ struct StabConfig {
     // gyro body axis -> world (+X right, +Y up, -Z forward) as a signed
     // permutation, e.g. "y,z,x" or "-y,x,-z". Token k (k=0,1,2 => world X,Y,Z)
     // names the source gyro component feeding world axis k, optionally negated.
-    // Empty => "x,y,z". "z,-x,-y" is the X5's IMU->sphere rotation, measured
-    // 2026-09-25 by fitting essential-matrix camera rotation from raw renders
-    // against the (correctly synced) gyro: three view directions of
-    // VID_20250904_193105 agree to a few degrees, and the since-removed
-    // tools/horizon_spike's gravity fit on another clip found the same
-    // permutation. The earlier "y,z,x" (a sign-blind |corr| pick made with a
-    // ~0.8 s sync error) is ~120 deg off and made the output shakier than
-    // raw.
-    std::string gyroAxes = std::string(kDefaultGyroAxes);
+    // Empty => the track's own (ImuTrack::axisMap) in build(ImuTrack, ...),
+    // "x,y,z" in build(samples, ...). Set only to try another map.
+    std::string gyroAxes;
     float gyroScale = 1.0f;
 
     // Seconds to add to a video source-time to get the matching gyro time,
-    // measured from the earliest IMU sample. 0 = derive it from the trailer
-    // (build(InsvTelemetry, ...)); ~+0.16..+0.78 s on the X5 samples.
+    // measured from the earliest IMU sample. 0 = the track's own
+    // (build(ImuTrack, ...)); ~+0.16..+0.78 s on the X5 samples.
     float timeOffsetSec = 0.0f;
 
     // Fills windows / lock amount for a named mode; leaves axis map / offsets.
@@ -157,36 +149,23 @@ float horizonStrengthFromWindow(float windowSec);
 
 class GyroStabilizer {
 public:
-    // Integrate the clip's full IMU track (from insv::ReadInsvTelemetry) into an
-    // orientation track under `cfg`. Cheap (~1 kHz, a few hundred k samples);
-    // safe to call again to rebuild on a settings change. A track with < 2
-    // samples, or mode == Off, leaves the stabilizer not-ready (identity).
+    // Integrate raw IMU samples into an orientation track under `cfg`, with
+    // cfg.gyroAxes as the full axis map and cfg.timeOffsetSec as the
+    // video->IMU offset (nominal video time, no readout). Cheap (~1 kHz, a few
+    // hundred k samples); safe to call again to rebuild on a settings change.
+    // A track with < 2 samples, or mode == Off, leaves the stabilizer
+    // not-ready (identity).
     void build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg);
 
-    // As build(), but derive the video<->IMU time offset from the trailer
-    // instead of trusting cfg.timeOffsetSec (docs/formats/insta360-x5.md §7.1). The
-    // IMU starts before recording (sensor pre-roll, 0.16-0.78 s on the
-    // samples); metadata field 24 is the device timestamp of video frame 0,
-    // so the offset is (field24 - imu[0].timestamp)/1e6 + field28/1e3, plus
-    // the TimeMap trim offset on files trimmed by Insta360 software.
-    // Verified against image motion on two clips. With field 24 it also fits
-    // the camera frame clock's rate against the nominal `fps` from the
-    // exposure record (the MP4 PTS are nominal; the device clock runs ~+40 /
-    // -15 ppm off, ~20 ms by 8 min). Both sensors are read out top to bottom
-    // over the readout time (field 25), in step (a per-cell survey on four
-    // clip segments); the offset targets the sensor's centre row, kCenterRowMs
-    // from that anchor, and readoutSec() gives the readout for the stitch to
-    // bring every row to that instant (stitch::CaptureTiming). Without field
-    // 24 it falls back to median(exposure[n] - imu[0] - n/fps), which assumes
-    // exposure[0] is frame 0 and is off by the pre-roll. If cfg.timeOffsetSec
-    // is already non-zero it is an explicit override and used as-is (the
-    // clock rate still applies).
+    // As above, on a camera's track lined up with the video by its reader:
+    // its axis map, video->IMU offset, frame-clock rate and readout time.
     // Video time t maps to gyro time  t * (1 + clockRate) + timeOffsetSec.
-    // `syncAdjustSec` is added to the derived offset (not to an explicit
-    // override): the clip's measured fine-tune (insv::SyncEstimator /
-    // stitch::MeasureClipSync), since the trailer only pins the sync to a few ms.
-    void build(const insv::InsvTelemetry& tele, double fps, const StabConfig& cfg,
-               double syncAdjustSec = 0.0);
+    // If cfg.timeOffsetSec is non-zero it is an explicit override and used
+    // as-is (the clock rate still applies); a non-empty cfg.gyroAxes replaces
+    // the track's map. `syncAdjustSec` is added to the track's offset (not to
+    // an override): the clip's measured fine-tune (insv::SyncEstimator /
+    // stitch::MeasureClipSync), since the file only pins the sync to a few ms.
+    void build(const ImuTrack& track, const StabConfig& cfg, double syncAdjustSec = 0.0);
 
     // How far the camera turned between video times tSec and tSec + dtSec, as
     // a rotation vector (axis * angle, rad) in the body (= stitched sphere)
@@ -198,18 +177,18 @@ public:
     // Zero when !ready().
     void bodyRotation(double tSec, double dtSec, float r[3]) const;
 
-    // The video->IMU offset (seconds) build() actually used -- the trailer
-    // estimate, or cfg.timeOffsetSec when that was non-zero / no timing data
-    // was available. For diagnostics.
+    // The video->IMU offset (seconds) build() actually used -- the track's,
+    // or cfg.timeOffsetSec when that was non-zero / the track had none. For
+    // diagnostics.
     float effectiveTimeOffsetSec() const { return m_cfg.timeOffsetSec; }
-    // The fitted frame-clock rate (build(InsvTelemetry, ...) only; 0 otherwise),
+    // The track's frame-clock rate (build(ImuTrack, ...) only; 0 otherwise),
     // parts per million. For diagnostics.
     double clockRatePpm() const { return m_clockRate * 1e6; }
 
-    // Sensor row readout time (field 25), seconds: row v of either lens was
-    // captured (v/height - 0.5) * readoutSec() after the time the correction
-    // is computed for. Set by build(InsvTelemetry, ...) with field 24; 0
-    // otherwise (no per-row correction).
+    // Sensor row readout time, seconds: row v of either lens was captured
+    // (v/height - 0.5) * readoutSec() after the time the correction is
+    // computed for. The track's (build(ImuTrack, ...)); 0 otherwise (no
+    // per-row correction).
     double readoutSec() const { return m_readoutSec; }
 
     // Same smoothing + correction pipeline as build(), but the orientation

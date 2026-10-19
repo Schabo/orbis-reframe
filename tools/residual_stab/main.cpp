@@ -35,7 +35,8 @@
 #include <vector>
 
 #include <GyroStabilizer.h>       // insv::GyroStabilizer, StabConfig, MatrixToYawPitchRoll
-#include <InsvTrailer.h>          // insv::ReadInsvTelemetry
+#include <ClipMetadata.h>         // camera::ReadClipImu
+#include <InsvTrailer.h>          // insv::ReadInsvTelemetry (the exposure record)
 #include <NativeStitchSource.h>   // stitch::NativeStitchSource, stitch::Frame
 #include <ProbeClip.h>            // stitch::ProbeClip
 #include <ClipSync.h>             // stitch::MeasureClipSync
@@ -554,22 +555,21 @@ void diagImuSpectra(const SlicedImu& s, const Args& a)
 // the track's world up with the measured gravity, both in a level heading
 // frame. A tilt here is the track's own error (seed / anchor); ~0 means the
 // track is level and any visible tilt comes from the IMU->sphere mapping.
-void diagHorizonVsGravity(const insv::InsvTelemetry& tele, double fps, double t0Sec,
-                          double t1Sec, const Args& a)
+void diagHorizonVsGravity(const insv::ImuTrack& imu, double t0Sec, double t1Sec, const Args& a)
 {
     insv::StabConfig hc = insv::StabConfig::preset(insv::StabMode::HorizonLock);
-    hc.gyroAxes = a.gyroAxes.empty() ? std::string(insv::kDefaultGyroAxes) : a.gyroAxes;
+    hc.gyroAxes = a.gyroAxes.empty() ? imu.axisMap : a.gyroAxes;
     insv::GyroStabilizer hl;
     if (a.noAutoSync)
-        hl.build(tele.imu, hc);
+        hl.build(imu.samples, hc);
     else
-        hl.build(tele, fps, hc, a.syncAdjustMs / 1000.0);
+        hl.build(imu, hc, a.syncAdjustMs / 1000.0);
     std::printf("\n=== [6] horizon-lock track vs. gravity  (map '%s') ===\n", hc.gyroAxes.c_str());
     if (!hl.ready()) {
         std::printf("  (no track)\n");
         return;
     }
-    std::vector<insv::ImuSample> s = tele.imu;
+    std::vector<insv::ImuSample> s = imu.samples;
     std::sort(s.begin(), s.end(), [](const insv::ImuSample& x, const insv::ImuSample& y) {
         return x.timestamp < y.timestamp;
     });
@@ -1138,30 +1138,45 @@ int main(int argc, char** argv)
 
     // --- per-clip sync fine-tune ---------------------------------------
     if (a.autoSync) {
-        const stitch::ClipSyncResult sr = stitch::MeasureClipSync(a.input, trimIn, trimOut, fps);
+        const stitch::ClipSyncResult sr = stitch::MeasureClipSync(a.input, trimIn, trimOut);
         std::printf("auto-sync: %s\n", sr.message.c_str());
         if (sr.ok)
             a.syncAdjustMs = sr.adjustMs;
     }
 
     // --- gyro track --------------------------------------------------------
-    const insv::StabConfig gcfg = gyroConfig(a);
+    insv::StabConfig gcfg = gyroConfig(a);
     insv::GyroStabilizer gyro;
-    std::optional<insv::InsvTelemetry> tele;
+    // The camera's track, lined up with the video as the app does; the
+    // exposure record only for the diagnostics that read it (Insta360 files).
+    std::optional<insv::ImuTrack> imu;
+    std::vector<insv::ExposureSample> exposure;
+    // The configs the diagnostics print and re-map with: the track's own axis
+    // map unless --gyro-axes overrides it.
+    auto withAxes = [&imu](insv::StabConfig c) {
+        if (c.gyroAxes.empty() && imu)
+            c.gyroAxes = imu->axisMap;
+        return c;
+    };
     if (gcfg.mode != insv::StabMode::Off || a.diagnose || a.rsStitchMs[0] != 0.0f ||
         a.rsStitchMs[1] != 0.0f) {
-        tele = insv::ReadInsvTelemetry(a.input);
-        if (tele && tele->imu.size() >= 2) {
-            const insv::StabConfig bc = gcfg.mode != insv::StabMode::Off
-                                            ? gcfg
-                                            : insv::StabConfig::preset(insv::StabMode::LeanFollow);
+        imu = camera::ReadClipImu(a.input);
+        if (imu && a.diagnose)
+            if (auto tele = insv::ReadInsvTelemetry(a.input))
+                exposure = std::move(tele->exposure);
+        if (imu) {
+            gcfg = withAxes(gcfg);
+            const insv::StabConfig bc =
+                gcfg.mode != insv::StabMode::Off
+                    ? gcfg
+                    : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
             if (a.noAutoSync)
-                gyro.build(tele->imu, bc);
+                gyro.build(imu->samples, bc);
             else
-                gyro.build(*tele, fps, bc, a.syncAdjustMs / 1000.0);
+                gyro.build(*imu, bc, a.syncAdjustMs / 1000.0);
             std::printf("video<->IMU offset: %+.1f ms, frame clock %+.1f ppm %s\n",
                         gyro.effectiveTimeOffsetSec() * 1e3, gyro.clockRatePpm(),
-                        a.noAutoSync ? "(--no-auto-sync)" : "(trailer: first-frame timestamp)");
+                        a.noAutoSync ? "(--no-auto-sync)" : "(the file's timing)");
         } else {
             std::printf("note: no usable IMU track -- residual runs against the raw image\n");
         }
@@ -1180,20 +1195,21 @@ int main(int argc, char** argv)
     }
 
     // --- diagnostic blocks [1] and [2] (IMU-only, no stitch needed) --------
-    if (a.diagnose && tele && tele->imu.size() >= 2) {
-        const SlicedImu sImu = sliceImu(tele->imu, trimIn / 1000.0, trimOut / 1000.0);
-        diagExposureBlur(tele->exposure, sImu, trimIn / 1000.0, trimOut / 1000.0, a.outH, a.fovDeg,
+    if (a.diagnose && imu) {
+        const SlicedImu sImu = sliceImu(imu->samples, trimIn / 1000.0, trimOut / 1000.0);
+        diagExposureBlur(exposure, sImu, trimIn / 1000.0, trimOut / 1000.0, a.outH, a.fovDeg,
                          a);
         diagImuSpectra(sImu, a);
         if (gyro.ready()) {
-            const insv::StabConfig used = gcfg.mode != insv::StabMode::Off
-                                              ? gcfg
-                                              : insv::StabConfig::preset(insv::StabMode::LeanFollow);
+            const insv::StabConfig used =
+                gcfg.mode != insv::StabMode::Off
+                    ? gcfg
+                    : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
             diagIntegratedVsApplied(sImu, gyro, used, a);
         } else {
             std::printf("\n=== [2] skipped -- no gyro track ===\n");
         }
-        diagHorizonVsGravity(*tele, fps, trimIn / 1000.0, trimOut / 1000.0, a);
+        diagHorizonVsGravity(*imu, trimIn / 1000.0, trimOut / 1000.0, a);
     }
 
     // --- analysis pass: stitch small, grayscale, estimate ------------------
@@ -1314,17 +1330,18 @@ int main(int argc, char** argv)
 
     // --- diagnostic blocks [3] and [4] (need the analysed image) ----------
     if (a.diagnose) {
-        insv::StabConfig diagCfg = gcfg.mode != insv::StabMode::Off
-                                       ? gcfg
-                                       : insv::StabConfig::preset(insv::StabMode::LeanFollow);
+        insv::StabConfig diagCfg =
+            gcfg.mode != insv::StabMode::Off
+                ? gcfg
+                : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
         diagCfg.timeOffsetSec = gyro.effectiveTimeOffsetSec();
-        if (tele && tele->imu.size() >= 2)
-            diagImageVsGyro(est, tele->imu, diagCfg, fps, a);
+        if (imu)
+            diagImageVsGyro(est, imu->samples, diagCfg, fps, a);
         else
             std::printf("\n=== [3] skipped -- no IMU track ===\n");
 
-        if (tele && tele->imu.size() >= 2 && estRaw && estRaw->intervalCount() >= 2)
-            diagVideoImuSync(*estRaw, tele->imu, tele->exposure, fps, diagCfg, a);
+        if (imu && estRaw && estRaw->intervalCount() >= 2)
+            diagVideoImuSync(*estRaw, imu->samples, exposure, fps, diagCfg, a);
         else
             std::printf("\n=== [5] skipped -- no IMU / raw-image track ===\n");
 
@@ -1374,11 +1391,10 @@ int main(int argc, char** argv)
     // readout; --rs-stitch / --lens-offset override it for experiments.
     // Camera motion from a pure-gyro track, independent of --stab-mode.
     insv::GyroStabilizer rsGyro;
-    if (tele && tele->imu.size() >= 2 &&
-        (a.rsStitchMs[0] != 0.0f || a.rsStitchMs[1] != 0.0f || !a.noCaptureTiming)) {
+    if (imu && (a.rsStitchMs[0] != 0.0f || a.rsStitchMs[1] != 0.0f || !a.noCaptureTiming)) {
         insv::StabConfig rc = insv::StabConfig::preset(insv::StabMode::LeanFollow);
-        rc.timeOffsetSec = a.timeOffsetMs / 1000.0f; // same sync as the stab (0 = trailer)
-        rsGyro.build(*tele, fps, rc, a.syncAdjustMs / 1000.0);
+        rc.timeOffsetSec = a.timeOffsetMs / 1000.0f; // same sync as the stab (0 = the file's)
+        rsGyro.build(*imu, rc, a.syncAdjustMs / 1000.0);
         stitch::CaptureTiming ct;
         if (a.haveLensOffset) {
             ct.lensOffsetSec[0] = a.lensOffsetMs[0] / 1000.0;

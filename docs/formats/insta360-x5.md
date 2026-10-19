@@ -549,7 +549,8 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
   "~120° from identity", for camera X right / Y down / Z forward). It calls
   that matrix unit-specific. So even Gyroflow's mapping isn't the whole
   answer for 360 reprojection.
-- **Ours** ✅ (measured 2026-09-25): **`gyroAxes = "z,-x,-y"`**, i.e.
+- **Ours** ✅ (measured 2026-09-25): **`"z,-x,-y"`** (the X5 row of
+  `insv::InsvModel::imuAxes`), i.e.
   sphere X ← raw z, Y ← −raw x, Z ← −raw y, in the stitched sphere's frame
   (+X right, +Y up, −Z forward; `reframe_reproject.comp`).
   - Method: render raw pinhole views, estimate per-frame camera rotation with
@@ -621,7 +622,7 @@ video frame n                 ↔ exposure[k + n],   exposure[k].ts == field24
 
 Our code used to assume `exposure[0]` is frame 0 (a "−26.5 ms"
 offset; the real offset is **+0.16 to +0.78 s**). Fixed 2026-09-25:
-`GyroStabilizer::build(InsvTelemetry, …)` anchors on field 24 + field 28,
+`insv::MakeInsvImuTrack` anchors on field 24 + field 28,
 verified against image motion on two clips.
 
 **Trimmed files** ✅ (2026-09-25): a file re-written by Insta360 software after
@@ -648,7 +649,7 @@ readout. Image-measured best lag on 8 segments / 4 clips vs
 rows the tracked features sit in). Rotational shake removed (residual vs
 none, 8-segment mean): 35 % now → 40 % with drift → 43 % with drift +
 readout/2 (per-segment best lag: 48 %).
-`GyroStabilizer::build(InsvTelemetry, …)` now fits the clock rate from the
+`insv::MakeInsvImuTrack` now fits the clock rate from the
 exposure record (least-squares slope vs `n/fps`) and maps video time as
 `t·(1 + rate) + offset`, the derived offset including `field25/2`:
 

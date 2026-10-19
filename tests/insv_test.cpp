@@ -170,16 +170,18 @@ void testLensProfile()
     CHECK(insv::FindLensProfile(notes, "ProtectorA") != nullptr);
     CHECK(insv::FindLensProfile(notes, "ProtectorX") == nullptr);
 
+    const insv::LensProfile* bareProfile = insv::FindLensProfile(notes, "bare");
     insv::StitchParams bare;
-    CHECK(insv::ApplyLensProfile(bare, notes, ""));
+    CHECK(insv::ApplyLensProfile(bare, bareProfile, nullptr));
     CHECK(!bare.accessory && near(bare.fovDeg, 200, 1e-9));
 
     insv::StitchParams guard;
-    CHECK(insv::ApplyLensProfile(guard, notes, "ProtectorA"));
+    CHECK(insv::ApplyLensProfile(guard, bareProfile, insv::FindLensProfile(notes, "ProtectorA")));
     CHECK(guard.accessory && near(guard.fovDeg, 195, 1e-9));
 
+    // An accessory profile without the bare one to scale against.
     insv::StitchParams missing;
-    CHECK(!insv::ApplyLensProfile(missing, notes, "InvisibleDiveAir"));
+    CHECK(!insv::ApplyLensProfile(missing, nullptr, insv::FindLensProfile(notes, "ProtectorA")));
     CHECK(!missing.accessory);
 
     insv::InsvCalibration c;

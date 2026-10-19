@@ -1,6 +1,6 @@
 #include "ClipThumbnail.h"
 
-#include <InsvTrailer.h>
+#include <ClipMetadata.h> // camera::ReadClipThumbnail
 
 #include <algorithm>
 
@@ -14,7 +14,7 @@ QImage clipThumbnail(const QString &path, const QSize &size)
 {
     if (size.isEmpty())
         return {};
-    const auto thumb = insv::ReadInsvThumbnail(path.toStdString());
+    const auto thumb = camera::ReadClipThumbnail(path.toStdString());
     if (!thumb)
         return {};
     const int w = thumb->width, h = thumb->height;

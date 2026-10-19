@@ -5,8 +5,8 @@
 
 // Lightweight source-clip probe: native resolution / fps / duration, so a
 // caller can work out the output frame count it must bake poses for (and fill
-// ClipItem's source-media facts on import). Backed by insv::InsvDemux -- opens
-// the container and reads stream 0's parameters, no decode, no stitch.
+// ClipItem's source-media facts on import). From the clip's description
+// (camera::ReadClipMetadata): no decode, no stitch.
 
 namespace stitch {
 

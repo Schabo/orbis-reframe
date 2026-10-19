@@ -28,8 +28,9 @@
 # sound). libswresample-dev (usually pulled in with the other FFmpeg dev
 # packages) is needed for it too.
 #
-# Stitching is stitch::NativeStitchSource: trailer/calibration parse -> the
-# src/insv/ cleanroom core (insv + insv_demux, the latter carrying the
+# Clips are read through `camera` (src/camera/: the common clip description,
+# a reader per camera family). Stitching is stitch::NativeStitchSource: the
+# clip's description -> the src/insv/ cleanroom core (insv + insv_demux, the latter carrying the
 # Vulkan-video decoder) + render_gpu_stitch (headless Vulkan compute port of
 # the fisheye->equirect stitch: src/render/VulkanFisheyeStitcher +
 # shaders/fisheye_stitch{,_nv12}.comp). The all-GPU path (Vulkan video decode +

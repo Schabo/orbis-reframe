@@ -27,7 +27,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
-#include <InsvTrailer.h>        // insv::ReadInsvTelemetry
+#include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource
 #include <ProbeClip.h>          // stitch::ProbeClip
 #include <SubjectTracker.h>     // track::SubjectTracker, reduceToKeys
@@ -283,9 +283,8 @@ int main(int argc, char** argv)
     // --- gyro (Lean follow, the app's default mode) --------------------------
     insv::GyroStabilizer gyro;
     if (a.stab) {
-        const auto tele = insv::ReadInsvTelemetry(a.input);
-        if (tele && tele->imu.size() >= 2)
-            gyro.build(*tele, fps, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.0);
+        if (const auto imu = camera::ReadClipImu(a.input))
+            gyro.build(*imu, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.0);
     }
     std::printf("gyro: %s\n", gyro.ready() ? "Lean follow de-rotation" : "off");
 

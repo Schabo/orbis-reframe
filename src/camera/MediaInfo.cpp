@@ -1,7 +1,6 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
-#include "InsvMediaInfo.h"
+#include "MediaInfo.h"
 
-#include "InsvTrailer.h"
+#include "ClipMetadata.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -13,12 +12,8 @@ extern "C" {
 #include <filesystem>
 #include <system_error>
 
-namespace insv {
+namespace camera {
 namespace {
-
-// Enough IMU samples for a rate estimate without reading a long clip's whole
-// 0x300 record (tens of MB per hour).
-constexpr std::size_t kImuProbeSamples = 4000;
 
 std::string profileName(const AVCodecParameters* p) {
     const char* name = avcodec_profile_name(p->codec_id, p->profile);
@@ -30,35 +25,7 @@ std::string tag(AVDictionary* dict, const char* key) {
     return e && e->value ? e->value : "";
 }
 
-// VID_<date>_<time>_00_<n>.insv -> LRV_<date>_<time>_01_<n>.lrv, as the X5
-// names them on the card (docs/formats/insta360-x5.md §1).
-std::string findProxy(const std::filesystem::path& insv) {
-    std::string name = insv.filename().string();
-    if (name.rfind("VID_", 0) != 0)
-        return "";
-    const auto lensPos = name.find("_00_");
-    if (lensPos == std::string::npos)
-        return "";
-    name.replace(0, 3, "LRV");
-    name.replace(lensPos, 4, "_01_");
-    std::filesystem::path lrv = insv.parent_path() / name;
-    lrv.replace_extension(".lrv");
-    std::error_code ec;
-    return std::filesystem::exists(lrv, ec) ? lrv.string() : "";
-}
-
 } // namespace
-
-std::string MediaInfo::captureMode() const {
-    if (video.size() != 2 || video[0].width != video[0].height)
-        return "";
-    switch (video[0].width) {
-    case 3840: return "8K";
-    case 2880: return "5.7K";
-    case 1920: return "4K";
-    default: return "";
-    }
-}
 
 bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
     out = MediaInfo{};
@@ -127,29 +94,24 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
     }
     avformat_close_input(&fmt);
 
-    if (const auto notes = ReadInsvMakerNotes(path)) {
-        out.cameraModel = notes->model;
-        out.serialNumber = notes->serial_number;
-        out.firmware = notes->firmware;
+    // Camera facts for a clip a camera reader knows; a plain video has none.
+    if (const auto clip = ReadClipMetadata(path)) {
+        out.cameraModel = clip->model;
+        out.serialNumber = clip->serial;
+        out.firmware = clip->firmware;
+        out.imuRateHz = clip->imuRateHz;
+        out.exposureRecords = clip->exposureRecords;
+        out.rollingShutterMs = clip->rollingShutterMs;
+        out.colorProfile = clip->colorProfile;
+        out.logProfile = clip->logProfile;
+        out.gpsRecords = clip->gpsRecords;
+        out.gpsFixes = clip->gpsFixes;
+        out.gpsRateHz = clip->gpsRateHz;
+        out.gpsTrackSec = clip->gpsTrackSec;
+        out.proxyPath = clip->proxyPath;
+        out.captureMode = clip->captureMode;
     }
-    if (const auto tele = ReadInsvTelemetry(path, kImuProbeSamples)) {
-        if (tele->imu.size() >= 2) {
-            // Raw IMU timestamps are ~microseconds (docs/formats/insta360-x5.md §6.2).
-            const double spanSec =
-                (tele->imu.back().timestamp - tele->imu.front().timestamp) / 1e6;
-            if (spanSec > 0)
-                out.imuRateHz = (tele->imu.size() - 1) / spanSec;
-        }
-        out.exposureRecords = static_cast<int64_t>(tele->exposure.size());
-        out.rollingShutterMs = tele->rolling_shutter_ms;
-        out.colorProfile = tele->gamma_mode;
-        out.gpsRecords = static_cast<int64_t>(tele->gps_records);
-        out.gpsFixes = static_cast<int64_t>(tele->gps_fixes);
-        out.gpsRateHz = tele->gps_rate_hz;
-        out.gpsTrackSec = tele->gps_track_s;
-    }
-    out.proxyPath = findProxy(path);
     return true;
 }
 
-} // namespace insv
+} // namespace camera

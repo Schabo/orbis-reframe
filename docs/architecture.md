@@ -48,9 +48,10 @@ discussion in an issue first, not a pull request.
 
 | Folder | What it is | Depends on |
 |---|---|---|
-| `src/insv/` | The camera-file library: `.insv` trailer, calibration, IMU, demux, Vulkan video decode, the fisheye model, gyro stabilization, seam measurement, audio filters | std C++, FFmpeg (demux / decode parts) -- no Qt |
+| `src/insv/` | The camera-file library: `.insv` trailer, calibration, IMU timing, the Insta360 per-model table, demux, Vulkan video decode, the fisheye model, gyro stabilization, seam measurement, audio filters | std C++, FFmpeg (demux / decode parts) -- no Qt |
+| `src/camera/` | The common clip description (`ClipMetadata`, read once per file and cached), a reader per camera family that fills it, and the Media information probe | `insv`, FFmpeg -- no Qt, no Vulkan |
 | `src/core/` | The project model: media pool, timeline, clips, keyframe tracks, titles, transitions, the colour grade, the `.orp` file, undo, autosave | Qt Core, nlohmann-json -- no widgets, no Vulkan |
-| `src/stitch/` | `IStitchSource` ("the frame at time T of clip X"), `NativeStitchSource` (dual fisheye), clip probing, clip sync, per-clip seam | `insv`, `render` |
+| `src/stitch/` | `IStitchSource` ("the frame at time T of clip X"), `NativeStitchSource` (dual fisheye), clip probing, clip sync, per-clip seam | `camera`, `insv`, `render` |
 | `src/render/` | Vulkan: the fisheye stitch, the viewport renderer and its shaders, LUTs on the GPU | Vulkan |
 | `src/export/` | Export: the CPU reproject (`ReframeRenderer`), flattening the timeline into the encoder, flat-video reading, inset compositing | FFmpeg |
 | `src/privacy/` | Number-plate scan, tracking and blur regions | `insv`, ncnn |
@@ -103,7 +104,9 @@ The camera's gyro (from the file) gives a rotation per frame; the stabilizer
 (`insv/GyroStabilizer`, cached per clip in `ui/StabilizerCache`) smooths it
 and hands the view a de-rotation matrix. It is rotation only. Lining the gyro
 up with the video (timing, axis map, rolling-shutter readout) is
-camera-specific and described in the camera's format document.
+camera-specific: the camera's reader does it and hands the stabilizer an
+`insv::ImuTrack` (`camera::ReadClipImu`); the camera's format document
+describes it.
 
 ## The project file
 
@@ -133,13 +136,20 @@ project expect to see it? Then it's in the project.
 
 ## Cameras
 
-Today the code reads Insta360 `.insv` files from the X5 (and, in progress,
-the X6). Everything known about a format is in its document in
-[`formats/`](formats/README.md). The planned shape for more cameras is one
-pipeline fed by a per-camera reader (*Common camera model* in
-[`roadmap.md`](roadmap.md)): what differs between cameras -- lens layout,
-calibration, IMU timing and axes, colour profile, lens sizes -- is data the
-reader fills in, not a code path per camera.
+Today the code reads Insta360 `.insv` files from the X5. Everything known
+about a format is in its document in [`formats/`](formats/README.md).
+
+The app reads clips only through one description, `camera::ClipMetadata`
+(`src/camera/`), from the cached `camera::ReadClipMetadata(path)`, with the
+IMU (`ReadClipImu`) and the camera's preview picture (`ReadClipThumbnail`)
+read on demand. A reader per camera family fills it (`Insta360Reader`, the
+only one so far), picked by asking each in turn whether the file is its own:
+what differs between cameras -- lens layout and which file and stream each
+lens comes from, calibration, IMU timing and axes, colour profile, lens-guard
+profiles, capture-mode names -- is data the reader fills in, not a code path
+per camera. Differences between models of one family are that reader's
+table (`insv::InsvModel` for Insta360). What's still to come is under
+*Common camera model* in [`roadmap.md`](roadmap.md).
 
 ## Testing
 

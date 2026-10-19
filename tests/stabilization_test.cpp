@@ -6,9 +6,20 @@
 
 #include "support/ModelTest.h"
 
+#include <InsvImu.h>    // insv::MakeInsvImuTrack
+#include <InsvModels.h> // insv::FindInsvModel
+
 #include <QCoreApplication>
 
 namespace {
+
+// The synthetic IMU samples below are in the X5's sensor axes.
+const char *x5Axes() { return insv::FindInsvModel("Insta360 X5").imuAxes; }
+insv::StabConfig x5(insv::StabConfig c)
+{
+    c.gyroAxes = x5Axes();
+    return c;
+}
 
 void testStabConfig()
 {
@@ -42,8 +53,8 @@ void testStabConfig()
               1e-3f);
     CHECK(insv::horizonWindowFromStrength(0.3f) < insv::horizonWindowFromStrength(0.7f));
 
-    // build(InsvTelemetry) fits the frame clock's rate against the nominal
-    // fps from the exposure record. The offset targets the centre sensor
+    // MakeInsvImuTrack fits the frame clock's rate against the nominal fps
+    // from the exposure record. The offset targets the centre sensor
     // row (-2.3 ms), and the readout (field 25) is reported for the stitch.
     // Synthetic: 1 kHz IMU from device t = 1 s, frames on a +40 ppm clock with
     // 5 pre-roll exposures before field 24's frame, 20 ms readout.
@@ -68,32 +79,35 @@ void testStabConfig()
         tele.gyro_timestamp_ms = 1.6;
         tele.rolling_shutter_ms = 20.0;
 
+        const insv::ImuTrack track =
+            insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), fps, x5Axes());
+        CHECK(track.axisMap == x5Axes());
         insv::GyroStabilizer g;
-        g.build(tele, fps, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow));
         CHECK(g.ready());
         CHECK(std::fabs(g.clockRatePpm() - 40.0) < 0.5);
         // 0.5 s pre-roll + 1.6 ms IMU latency - 2.3 ms to the centre sensor row
         CHECK(std::fabs(g.effectiveTimeOffsetSec() - 0.4993f) < 1e-4f);
         CHECK(std::fabs(g.readoutSec() - 0.020) < 1e-12);
         // A measured fine-tune adds to the derived offset.
-        g.build(tele, fps, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.003);
+        g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.003);
         CHECK(std::fabs(g.effectiveTimeOffsetSec() - 0.5023f) < 1e-4f);
 
         // Explicit override: offset kept as-is, clock rate still fitted.
         insv::StabConfig ov = insv::StabConfig::preset(insv::StabMode::LeanFollow);
         ov.timeOffsetSec = 0.25f;
-        g.build(tele, fps, ov);
+        g.build(track, ov);
         CHECK(g.effectiveTimeOffsetSec() == 0.25f);
         CHECK(std::fabs(g.clockRatePpm() - 40.0) < 0.5);
 
         // The plain IMU overload knows nothing about frames: nominal time.
-        g.build(tele.imu, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        g.build(track.samples, x5(insv::StabConfig::preset(insv::StabMode::LeanFollow)));
         CHECK(g.clockRatePpm() == 0.0);
     }
 
     // bodyRotation(): the camera turn in the axis-mapped body frame, for the
     // stitch RS correction. A constant 1 rad/s about raw gyro z lands on body X
-    // under the default "z,-x,-y" map (no accel -> pure gyro integration).
+    // under the X5's "z,-x,-y" map (no accel -> pure gyro integration).
     {
         std::vector<insv::ImuSample> imu;
         for (int i = 0; i < 3000; ++i) {
@@ -103,7 +117,7 @@ void testStabConfig()
             imu.push_back(s);
         }
         insv::GyroStabilizer g;
-        g.build(imu, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::LeanFollow)));
         CHECK(g.ready());
         float r[3];
         g.bodyRotation(1.5, 0.01, r); // 10 ms at 1 rad/s
@@ -132,7 +146,7 @@ void testStabConfig()
             insv::StabConfig lc = insv::StabConfig::preset(insv::StabMode::LeanFollow);
             lc.autoLevel = autoLevel;
             insv::GyroStabilizer g;
-            g.build(imu, lc);
+            g.build(imu, x5(lc));
             CHECK(g.ready());
             float m0[3][3];
             g.correctionMatrix(0.8, m0);
@@ -162,14 +176,14 @@ void testStabConfig()
         for (int i = 0; i < 3000; ++i) {
             insv::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
-            // default map "z,-x,-y": body X <- z, Y <- -x, Z <- -y
+            // the X5's map "z,-x,-y": body X <- z, Y <- -x, Z <- -y
             s.accel[2] = b[0];
             s.accel[0] = -b[1];
             s.accel[1] = -b[2];
             imu.push_back(s);
         }
         insv::GyroStabilizer g;
-        g.build(imu, insv::StabConfig::preset(insv::StabMode::HorizonLock));
+        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
         CHECK(g.ready());
         float m[3][3];
         g.correctionMatrix(1.5, m);
@@ -191,7 +205,7 @@ void testStabConfig()
         for (int i = 0; i < 20000; ++i) {
             insv::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
-            s.accel[2] = b[0]; // default map "z,-x,-y"
+            s.accel[2] = b[0]; // the X5's map "z,-x,-y"
             s.accel[0] = -b[1];
             s.accel[1] = -b[2];
             s.gyro[1] = -0.006; // body Z (forward axis): rolls the horizon
@@ -199,7 +213,7 @@ void testStabConfig()
             imu.push_back(s);
         }
         insv::GyroStabilizer g;
-        g.build(imu, insv::StabConfig::preset(insv::StabMode::HorizonLock));
+        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
         CHECK(g.ready());
         double worst = 0.0;
         for (double t : {0.5, 5.0, 10.0, 19.5}) {
@@ -228,13 +242,13 @@ void testStabConfig()
         insv::StabConfig lc = insv::StabConfig::preset(insv::StabMode::LeanFollow);
         CHECK(lc.autoLevel);
         insv::GyroStabilizer g;
-        g.build(imu, lc);
+        g.build(imu, x5(lc));
         float m[3][3];
         g.correctionMatrix(1.5, m);
         CHECK(std::fabs(m[0][1] - b[0]) < 1e-3f && std::fabs(m[1][1] - b[1]) < 1e-3f &&
               std::fabs(m[2][1] - b[2]) < 1e-3f);
         lc.autoLevel = false;
-        g.build(imu, lc);
+        g.build(imu, x5(lc));
         g.correctionMatrix(1.5, m);
         CHECK(std::fabs(m[0][1]) < 1e-5f && std::fabs(m[1][1] - 1.0f) < 1e-5f);
     }

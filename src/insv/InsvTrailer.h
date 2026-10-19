@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "Imu.h" // insv::ImuSample
+
 namespace insv {
 
 // Insta360's own maker-notes fields from an .insv file's proprietary trailer.
@@ -36,19 +38,10 @@ struct InsvMakerNotes {
 // The profile named `name` in `notes`, or nullptr.
 const LensProfile* FindLensProfile(const InsvMakerNotes& notes, const std::string& name);
 
-// One inertial-measurement sample from the trailer's 0x300 record: the camera's
-// accelerometer + gyroscope at a point in time. GyroStabilizer integrates
-// these into a per-frame orientation; the accel gives it "down".
-struct ImuSample {
-    // Device monotonic clock, raw units. ExifTool displays this as
-    // `timestamp / 1000.0` ("Time Code"); on an X5 the raw step between samples
-    // is ~1000 (≈1 kHz IMU), so the raw unit is ~microseconds. Same clock as
-    // ExposureSample::timestamp and the video-frame timestamps, so IMU samples
-    // and frames can be aligned on it.
-    uint64_t timestamp = 0;
-    double accel[3] = {0, 0, 0};  // accelerometer, g   (x, y, z)
-    double gyro[3] = {0, 0, 0};   // angular velocity, rad/s (x, y, z)
-};
+// The trailer's 0x300 record holds one insv::ImuSample (Imu.h) per IMU
+// reading; its raw timestamp is ExifTool's "Time Code" * 1000, ~1000 apart at
+// the X5's ~1 kHz, so ~microseconds on the same clock as
+// ExposureSample::timestamp and the video-frame timestamps.
 
 // One exposure sample from the trailer's 0x400 record — the rolling-shutter
 // exposure time in effect at `timestamp` (needed to model motion blur / CMOS

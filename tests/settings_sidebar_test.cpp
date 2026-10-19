@@ -17,7 +17,7 @@
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 
-#include <InsvMediaInfo.h>
+#include <MediaInfo.h>
 #include "panels/OverlayPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/TransitionPanel.h"
@@ -583,17 +583,19 @@ void testMediaInfoProfile(SettingsSidebar &bar)
                 return true;
         return false;
     };
-    insv::MediaInfo m;
+    camera::MediaInfo m;
     m.path = "/c/VID_20261018_185907_00_006.insv";
-    insv::MediaVideoStream v;
+    camera::MediaVideoStream v;
     v.width = v.height = 2880;
     v.fps = 29.97;
     m.video = {v, v};
     m.cameraModel = "Insta360 X5";
     m.colorProfile = "I_Log";
+    m.logProfile = "I-Log";
     panel->setInfo(m);
     CHECK(shows("Colour profile") && shows("I-Log"));
     m.colorProfile = "standard";
+    m.logProfile.clear();
     panel->setInfo(m);
     CHECK(shows("Colour profile") && shows("Standard"));
     m.colorProfile.clear(); // a phone video: nothing to say

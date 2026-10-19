@@ -4,7 +4,7 @@
 #include <StitchFrameSource.h>
 
 #include <GyroStabilizer.h>
-#include <InsvTrailer.h>
+#include <ClipMetadata.h>
 #include <NativeStitchSource.h>
 
 #include <chrono>
@@ -20,12 +20,12 @@ namespace {
 // capture-time correction when req.captureTiming, as
 // ReframeExportController::captureTimingFor does for playback / export with
 // the stabilization on). *timing: the stitch it set up.
-bool openStitch(const Request& req, double fps, stitch::NativeStitchSource& src,
+bool openStitch(const Request& req, stitch::NativeStitchSource& src,
                 std::shared_ptr<insv::GyroStabilizer>& level, privacy::StitchTiming* timing, std::string& err)
 {
     level = std::make_shared<insv::GyroStabilizer>();
-    if (const auto tele = insv::ReadInsvTelemetry(req.clipPath); tele && tele->imu.size() >= 2)
-        level->build(*tele, fps, insv::StabConfig::preset(insv::StabMode::HorizonLock),
+    if (const auto imu = camera::ReadClipImu(req.clipPath))
+        level->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock),
                      req.syncAdjustMs / 1000.0);
     // The views come straight from the lenses; 7680 is the photometric
     // measure grid, and the equirect the CPU fallback cuts them from.
@@ -66,7 +66,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const ProgressFn& 
     stitch::NativeStitchSource src;
     std::shared_ptr<insv::GyroStabilizer> level;
     privacy::StitchTiming timing = privacy::StitchTiming::Corrected;
-    if (!openStitch(req, fps, src, level, &timing, res.error))
+    if (!openStitch(req, src, level, &timing, res.error))
         return res;
 
     privacy::StitchFrameSource frames(src, req.fromMs, req.toMs, fps, level);
@@ -107,7 +107,7 @@ FollowResult follow(const Request& req, const insv::BlurQuad& seed, int64_t back
         return res;
     stitch::NativeStitchSource src;
     std::shared_ptr<insv::GyroStabilizer> level;
-    if (!openStitch(req, fps, src, level, &res.timing, res.error))
+    if (!openStitch(req, src, level, &res.timing, res.error))
         return res;
     int n = 0;
     auto step = [&](bool backward) {

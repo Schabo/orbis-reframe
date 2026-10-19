@@ -4,7 +4,7 @@
 #include "BlurQuads.h"
 #include "Calibration.h"
 #include "Image.h"
-#include "InsvTrailer.h" // insv::InsvMakerNotes, insv::LensProfile
+#include "InsvTrailer.h" // insv::LensProfile
 
 #include <array>
 
@@ -123,12 +123,12 @@ struct StitchParams {
     double outRollDeg = 0.0;
 };
 
-// Sets `params` up for the lens accessory named `accessoryName` (a field-145
-// profile name such as "ProtectorA"; empty = bare lens): the usable FOV, and
-// the accessory radial scale against the file's "bare" profile. Returns false
-// (and leaves the bare-lens setup) when the file lacks the needed profiles.
-bool ApplyLensProfile(StitchParams& params, const InsvMakerNotes& notes,
-                      const std::string& accessoryName);
+// Sets `params` up for a lens accessory (a lens guard, a dive case): the
+// usable FOV, and the accessory's radial scale against the bare lens's
+// profile. `accessory` null = the bare lens. Returns false (and leaves the
+// bare-lens setup) when a profile it needs is missing or unusable.
+bool ApplyLensProfile(StitchParams& params, const LensProfile* bare,
+                      const LensProfile* accessory);
 
 // Built per-lens projection data, in decoded per-stream pixels.
 struct LensProjection {

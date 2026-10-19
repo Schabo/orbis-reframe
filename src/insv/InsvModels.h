@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+#pragma once
+
+#include <string>
+
+// What differs between Insta360 models and isn't in the file: measured or
+// documented per model, one row each (docs/formats/). Everything a file does
+// say is read from it instead.
+
+namespace insv {
+
+struct InsvModel {
+    const char* name; // the trailer's model field, "Insta360 X5"
+
+    // IMU sensor axis -> stitched sphere (+X right, +Y up, -Z forward), see
+    // ImuTrack::axisMap. X5: "z,-x,-y", measured 2026-09-25 by fitting
+    // essential-matrix camera rotation from raw renders against the
+    // (correctly synced) gyro: three view directions of VID_20250904_193105
+    // agree to a few degrees, and a gravity fit on another clip found the same
+    // permutation (docs/formats/insta360-x5.md §6.3).
+    const char* imuAxes;
+
+    // The lens-profile names (0x101 field 145) for the standard and premium
+    // lens guards. The X5's ProtectorA / ProtectorS / ProtectorAS carry
+    // identical data; which letter means which guard is a guess (A = premium,
+    // S = standard).
+    const char* standardGuard;
+    const char* premiumGuard;
+
+    // Capture modes by the square lens picture's width; unused entries are
+    // {0, nullptr}.
+    // 5.7K+ records the same stream shape as 5.7K, so it can't be told apart
+    // (docs/formats/insta360-x5.md §3.3).
+    struct CaptureMode {
+        int lensWidth;
+        const char* name; // "8K"
+    };
+    CaptureMode captureModes[4];
+
+    // The capture mode named for a lens picture `lensWidth` wide, or "".
+    const char* captureMode(int lensWidth) const;
+};
+
+// The row for `model` (the trailer's model field). A model without its own
+// row gets the X5's, and `*known` (if given) is set false so the caller can
+// say so.
+const InsvModel& FindInsvModel(const std::string& model, bool* known = nullptr);
+
+} // namespace insv

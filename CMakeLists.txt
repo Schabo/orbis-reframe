@@ -124,8 +124,14 @@ endif()
 # (rather than folded into `insv`) so targets that only need trailer parsing
 # don't pull the rest of the module.
 add_library(insv_trailer STATIC
+    src/insv/Imu.h
     src/insv/InsvTrailer.h
     src/insv/InsvTrailer.cpp
+    # Lining the trailer's IMU up with the video, and what differs per model.
+    src/insv/InsvImu.h
+    src/insv/InsvImu.cpp
+    src/insv/InsvModels.h
+    src/insv/InsvModels.cpp
 )
 target_include_directories(insv_trailer PUBLIC src/insv)
 
@@ -264,9 +270,6 @@ if(FFMPEG_FOUND)
         # The demux / decode / seek core of InsvDemux and VulkanVideoDecoder.
         src/insv/LensDemuxer.h
         src/insv/LensDemuxer.cpp
-        # Media information panel: container / stream / trailer facts.
-        src/insv/InsvMediaInfo.h
-        src/insv/InsvMediaInfo.cpp
         # GPU-resident decode via FFmpeg's Vulkan hwaccel.
         src/insv/VulkanVideoDecoder.h
         src/insv/VulkanVideoDecoder.cpp
@@ -367,6 +370,21 @@ endif()
 # Vulkan video decode + Vulkan compute fisheye->equirect stitch, in-process,
 # frame-at-time-T.
 if(FFMPEG_FOUND)
+    # --- camera: the common clip description (src/camera/ClipMetadata.h) and
+    # a reader per camera family filling it; the rest of the app reads clips
+    # only through it. Also the Media information panel's probe. Links no Qt.
+    add_library(camera STATIC
+        src/camera/ClipMetadata.h
+        src/camera/ClipMetadata.cpp
+        src/camera/CameraReader.h
+        src/camera/Insta360Reader.h
+        src/camera/Insta360Reader.cpp
+        src/camera/MediaInfo.h
+        src/camera/MediaInfo.cpp
+    )
+    target_include_directories(camera PUBLIC src/camera)
+    target_link_libraries(camera PUBLIC insv insv_demux PRIVATE PkgConfig::FFMPEG)
+
     # --- stitch: IStitchSource + NativeStitchSource + the clip probe. Pulls
     # in the src/insv/ cleanroom stitch core (insv + insv_demux, the latter
     # carrying the Vulkan-video decoder) and render_gpu_stitch (the Vulkan
@@ -381,7 +399,7 @@ if(FFMPEG_FOUND)
         src/stitch/ClipSeam.cpp
     )
     target_include_directories(stitch PUBLIC src/stitch)
-    target_link_libraries(stitch PUBLIC insv insv_demux render_gpu_stitch)
+    target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch)
 
     # --- src/export/reframe_flatten: the reproject + encode half of the flat
     # export -- take equirect frames (from stitch::NativeStitchSource in memory, or
@@ -743,18 +761,21 @@ if(Qt6Test_FOUND)
     add_test(NAME timeline_widget_test COMMAND timeline_widget_test)
 
     # The project library's start screen and New project dialog, found by
-    # objectName (no GPU).
-    add_executable(project_library_test tests/project_library_test.cpp
-        src/ui/ProjectLibraryPage.cpp src/ui/ProjectLibraryPage.h
-        src/ui/NewProjectDialog.cpp src/ui/NewProjectDialog.h
-        src/ui/OutputSettingsEditor.cpp src/ui/OutputSettingsEditor.h
-        src/ui/ClipThumbnail.cpp src/ui/ClipThumbnail.h
-        src/ui/Theme.cpp src/ui/Theme.h
-        resources/resources.qrc)
-    set_target_properties(project_library_test PROPERTIES AUTOMOC ON AUTORCC ON)
-    target_include_directories(project_library_test PRIVATE src/ui)
-    target_link_libraries(project_library_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
-    add_test(NAME project_library_test COMMAND project_library_test)
+    # objectName (no GPU). Its cards' pictures come through `camera`.
+    if(TARGET camera)
+        add_executable(project_library_test tests/project_library_test.cpp
+            src/ui/ProjectLibraryPage.cpp src/ui/ProjectLibraryPage.h
+            src/ui/NewProjectDialog.cpp src/ui/NewProjectDialog.h
+            src/ui/OutputSettingsEditor.cpp src/ui/OutputSettingsEditor.h
+            src/ui/ClipThumbnail.cpp src/ui/ClipThumbnail.h
+            src/ui/Theme.cpp src/ui/Theme.h
+            resources/resources.qrc)
+        set_target_properties(project_library_test PROPERTIES AUTOMOC ON AUTORCC ON)
+        target_include_directories(project_library_test PRIVATE src/ui)
+        target_link_libraries(project_library_test PRIVATE orbis_core camera Qt6::Widgets
+            Qt6::Test)
+        add_test(NAME project_library_test COMMAND project_library_test)
+    endif()
 
     # The whole main window offscreen, without a GPU: no Vulkan instance and
     # stand-in clips (ClipBackend). Needs the app (FFmpeg).
@@ -831,8 +852,8 @@ endif()
 
 # The right sidebar (settings tabs and sections) and the Project settings
 # dialog, found by objectName. Its Audio and Media information sections use
-# insv_demux (noise modes, the media probe's types), hence FFmpeg.
-if(TARGET insv_demux AND Qt6Test_FOUND)
+# insv_demux and camera (noise modes, the media probe's types), hence FFmpeg.
+if(TARGET camera AND Qt6Test_FOUND)
     add_executable(settings_sidebar_test tests/settings_sidebar_test.cpp
         src/ui/SettingsSidebar.cpp src/ui/SettingsSidebar.h
         src/ui/SettingsPanel.cpp src/ui/SettingsPanel.h
@@ -853,8 +874,8 @@ if(TARGET insv_demux AND Qt6Test_FOUND)
         resources/resources.qrc)
     set_target_properties(settings_sidebar_test PROPERTIES AUTOMOC ON AUTORCC ON)
     target_include_directories(settings_sidebar_test PRIVATE src/ui)
-    target_link_libraries(settings_sidebar_test PRIVATE orbis_core insv_demux Qt6::Widgets
-        Qt6::Test)
+    target_link_libraries(settings_sidebar_test PRIVATE orbis_core insv_demux camera
+        Qt6::Widgets Qt6::Test)
     add_test(NAME settings_sidebar_test COMMAND settings_sidebar_test)
 endif()
 

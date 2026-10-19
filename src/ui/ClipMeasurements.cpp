@@ -87,13 +87,12 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
         return;
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
-    const double fps = clip->fps;
     m_syncMeasuringPath = clipPath;
     m_syncCancel = false;
     const auto guard = clip->lensGuard;
-    m_syncThread = QThread::create([this, path, in, out, fps, clipPath, guard] {
+    m_syncThread = QThread::create([this, path, in, out, clipPath, guard] {
         const stitch::ClipSyncResult r =
-            stitch::MeasureClipSync(path, in, out, fps, &m_syncCancel, guard);
+            stitch::MeasureClipSync(path, in, out, &m_syncCancel, guard);
         QMetaObject::invokeMethod(this, [this, clipPath, r] {
             m_syncThread->wait(); // its function has just returned
             m_syncThread->deleteLater();

@@ -2,6 +2,8 @@
 
 #include "IStitchSource.h"
 
+#include <ClipMetadata.h>      // camera::ClipMetadata
+
 #include <ColorLut.h>          // color::Grade
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
 #include <SeamDepth.h>         // insv::SeamDepthTracker (value member below)
@@ -49,7 +51,7 @@ struct ReadTiming {
 };
 
 // IStitchSource implemented entirely on the cleanroom src/insv/ module:
-// trailer + calibration parse -> insv::InsvDemux (2 lens streams) ->
+// the clip's description (camera::ReadClipMetadata) -> insv::InsvDemux (2 lens streams) ->
 // insv::FisheyeStitcher, all in-process, with true frame-at-time-T random
 // access. This is the only IStitchSource backend.
 //
@@ -248,9 +250,20 @@ private:
     ReadTiming last_timing_;
 };
 
-// The trailer lens-profile name (0x101 field 145) for a lens-guard choice;
-// "" for none (bare lens).
-const char* LensGuardProfileName(PreviewStitchConfig::LensGuard guard);
+// The clip's lens profile for a lens-guard choice; null for none (bare lens)
+// and when the file doesn't carry it.
+const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
+                                          PreviewStitchConfig::LensGuard guard);
+
+// The calibration of a dual-fisheye clip whose two lenses are streams 0 and
+// 1 of one file -- the layout this source decodes -- and `params` set up for
+// the lens guard. False with `err` set for any other clip. `*guardFound`
+// (if given) is false when the file has no usable profile for the guard and
+// the stitch takes the lens as bare.
+bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
+                            PreviewStitchConfig::LensGuard guard, insv::InsvCalibration& calib,
+                            insv::StitchParams& params, std::string& err,
+                            bool* guardFound = nullptr);
 
 // Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource).
 // Kept as a factory so a second backend could slot back in without touching

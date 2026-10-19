@@ -13,7 +13,7 @@
 #include <vector>
 
 #include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
-#include <InsvMediaInfo.h>   // insv::MediaInfo
+#include <MediaInfo.h>   // camera::MediaInfo
 
 #include "PrivacyBlur.h"              // PrivacyBlur
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
@@ -373,7 +373,7 @@ private:
     void syncMediaInfoPanel(const ClipItem &c);
     // `path`'s probe, from m_mediaInfo (probed and cached on first use);
     // nullptr, with *error, when it can't be probed.
-    const insv::MediaInfo *mediaInfoFor(const QString &path, QString *error = nullptr);
+    const camera::MediaInfo *mediaInfoFor(const QString &path, QString *error = nullptr);
     // Repaint the timeline widget from the model + refresh the edit
     // toolbar's reframe-button state + update the export action.
     void refreshTimelineWidget();
@@ -472,7 +472,7 @@ private:
     OverlayPanel *m_titlePlacementPanel = nullptr;  // ... and its position and timing
     TransitionPanel *m_transitionPanel = nullptr;   // the selected transition
     MediaInfoPanel *m_mediaInfoPanel = nullptr;
-    QHash<QString, insv::MediaInfo> m_mediaInfo; // source path -> probe
+    QHash<QString, camera::MediaInfo> m_mediaInfo; // source path -> probe
     // The edit model: a Project owning a Timeline. Authoring (trim via [ ],
     // reframe via K / viewport drag) targets m_clipId, the clip currently
     // under the playhead (0 == nothing open); the timeline widget's own

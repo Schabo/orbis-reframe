@@ -2,12 +2,12 @@
 
 #include "../SettingsPanel.h"
 
-namespace insv {
+namespace camera {
 struct MediaInfo;
 }
 
 // Read-only facts about the source file of the clip under the playhead:
-// container, video / audio streams, camera and telemetry (insv::ProbeMediaInfo).
+// container, video / audio streams, camera and telemetry (camera::ProbeMediaInfo).
 // MainWindow probes once per source and hands the result in on a clip change.
 class MediaInfoPanel : public SettingsPanel {
     Q_OBJECT
@@ -15,7 +15,7 @@ class MediaInfoPanel : public SettingsPanel {
 public:
     explicit MediaInfoPanel(QWidget *parent = nullptr);
 
-    void setInfo(const insv::MediaInfo &info);
+    void setInfo(const camera::MediaInfo &info);
     // The probe failed (e.g. the file is missing): show why instead.
     void setError(const QString &path, const QString &error);
     // No clip under the playhead.

@@ -2,11 +2,10 @@
 
 #include "../core/Log.h"
 
-#include <Calibration.h>           // insv::ParseExtendedCalibrationString
+#include <Calibration.h>           // insv::InsvCalibration
 #include <FisheyeProjection.h>     // insv::FisheyeStitcher, insv::StitchParams
 #include <Image.h>                 // insv::Image
 #include <InsvDemux.h>             // insv::InsvDemux
-#include <InsvTrailer.h>           // insv::ReadInsvMakerNotes
 #include <VulkanFisheyeStitcher.h> // render::VulkanFisheyeStitcher
 #include <VulkanVideoDecoder.h>    // insv::VulkanVideoDecoder (stage 2, GPU decode)
 
@@ -57,15 +56,39 @@ render::VulkanLensInput toRenderInput(const insv::VulkanLensFrame& lf) {
 
 } // namespace
 
-const char* LensGuardProfileName(PreviewStitchConfig::LensGuard guard) {
-    // ProtectorA / ProtectorS / ProtectorAS carry identical data on the X5;
-    // which letter means which guard is a guess (A = premium, S = standard).
+const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
+                                          PreviewStitchConfig::LensGuard guard) {
+    const std::optional<insv::LensProfile>* p = nullptr;
     switch (guard) {
-        case PreviewStitchConfig::LensGuard::Standard: return "ProtectorS";
-        case PreviewStitchConfig::LensGuard::Premium: return "ProtectorA";
+        case PreviewStitchConfig::LensGuard::Standard: p = &clip.standardGuard; break;
+        case PreviewStitchConfig::LensGuard::Premium: p = &clip.premiumGuard; break;
         case PreviewStitchConfig::LensGuard::None: break;
     }
-    return "";
+    return p && *p ? &**p : nullptr;
+}
+
+bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
+                            PreviewStitchConfig::LensGuard guard, insv::InsvCalibration& calib,
+                            insv::StitchParams& params, std::string& err, bool* guardFound) {
+    if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2 ||
+        clip.lenses[0].source.path != clip.path || clip.lenses[0].source.stream != 0 ||
+        clip.lenses[1].source.path != clip.path || clip.lenses[1].source.stream != 1) {
+        err = "not a dual-fisheye clip with both lenses in one file";
+        return false;
+    }
+    if (!clip.calibrated) {
+        err = "no extended (MEI) lens calibration in the file";
+        return false;
+    }
+    calib.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
+    const insv::LensProfile* bare = clip.bareLens ? &*clip.bareLens : nullptr;
+    const insv::LensProfile* acc = LensGuardProfile(clip, guard);
+    bool found = insv::ApplyLensProfile(params, bare, acc);
+    if (guard != PreviewStitchConfig::LensGuard::None && !acc)
+        found = false;
+    if (guardFound)
+        *guardFound = found;
+    return true;
 }
 
 NativeStitchSource::NativeStitchSource() = default;
@@ -89,52 +112,34 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     info_ = ClipInfo{};
     last_error_.clear();
 
-    const auto notes = insv::ReadInsvMakerNotes(clip_path);
-    if (!notes) {
-        last_error_ = "no readable Insta360 trailer in " + clip_path;
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(clip_path, &err);
+    if (!clip) {
+        last_error_ = err + ": " + clip_path;
         return false;
     }
-    // The extended MEI calibration (what Insta360 Studio stitches with) --
-    // every X5 clip carries it.
     insv::InsvCalibration calib;
-    const auto ext = insv::ReadInsvExtendedCalibrationString(clip_path);
-    if (!ext || !insv::ParseExtendedCalibrationString(*ext, calib)) {
-        last_error_ = "no extended (MEI) lens calibration in the trailer";
+    insv::StitchParams params;
+    bool guardFound = true;
+    if (!DualFisheyeStitchSetup(*clip, config.lensGuard, calib, params, err, &guardFound)) {
+        last_error_ = err;
         return false;
     }
-
-    // Metadata: probe with a lightweight CPU demux open (cheap -- no decode).
-    {
-        insv::InsvDemux probe;
-        std::string err;
-        if (!probe.open(clip_path, err)) {
-            last_error_ = "demux open failed: " + err;
-            return false;
-        }
-        if (probe.lensCount() < 2) {
-            last_error_ = "expected 2 fisheye video streams, found " +
-                          std::to_string(probe.lensCount());
-            return false;
-        }
-        const insv::InsvStreamInfo& l0 = probe.lens(0);
-        info_.width = l0.width;
-        info_.height = l0.height;
-        info_.fps = l0.fps;
-        info_.duration_ms = l0.durationMs;
-    }
+    if (!guardFound)
+        std::fprintf(stderr, "[NativeStitchSource] no lens-guard profile in the file; "
+                             "stitching as a bare lens\n");
+    info_.width = clip->lensWidth;
+    info_.height = clip->lensHeight;
+    info_.fps = clip->fps;
+    info_.duration_ms = clip->durationMs;
 
     eq_w_ = config.width > 0 ? config.width : AutoPreviewWidth(info_.width, info_.fps);
     eq_h_ = config.width > 0 && config.height > 0 ? config.height : eq_w_ / 2;
 
-    insv::StitchParams params;
     params.depthSeam = config.depthSeam;
     depth_.reset();
     if (!seam_costs_)
         seam_costs_ = std::make_unique<insv::SeamCosts>();
-    const char* guardProfile = LensGuardProfileName(config.lensGuard);
-    if (!insv::ApplyLensProfile(params, *notes, guardProfile))
-        std::fprintf(stderr, "[NativeStitchSource] no \"%s\" lens profile in the trailer; "
-                             "stitching as a bare lens\n", guardProfile);
     auto stitcher = std::make_unique<insv::FisheyeStitcher>();
     if (!stitcher->configure(calib, info_.width, info_.height, params)) {
         last_error_ = "FisheyeStitcher::configure failed";
@@ -184,7 +189,6 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
 
     // --- Stage 1 / fallback: CPU decode + (GPU or CPU) stitch ---
     auto demux = std::make_unique<insv::InsvDemux>();
-    std::string err;
     if (!demux->open(clip_path, err)) {
         last_error_ = "demux open failed: " + err;
         return false;

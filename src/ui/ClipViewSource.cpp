@@ -14,8 +14,8 @@ bool ClipViewSource::open(std::string &err)
 {
     const ReframeExportController::ClipJob &job = m_spec.job;
     if (!job.stab && m_spec.buildStab.mode != insv::StabMode::Off)
-        m_spec.job.stab = ReframeExportController::buildStabilizer(job.clipPath, m_spec.fps,
-                                                                   m_spec.buildStab, m_spec.syncMs);
+        m_spec.job.stab = ReframeExportController::buildStabilizer(job.clipPath, m_spec.buildStab,
+                                                                   m_spec.syncMs);
     stitch::PreviewStitchConfig sc;
     sc.width = m_spec.stitchWidth & ~1;
     sc.height = sc.width / 2 & ~1;

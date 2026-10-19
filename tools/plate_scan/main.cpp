@@ -8,7 +8,7 @@
 #include <StitchFrameSource.h>
 
 #include <GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
-#include <InsvTrailer.h>        // insv::ReadInsvTelemetry
+#include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource
 #include <ProbeClip.h>          // stitch::ProbeClip
 
@@ -156,8 +156,8 @@ int main(int argc, char** argv)
     // scan and the stills stitch the way playback / export do with the
     // stabilization on.
     auto level = std::make_shared<insv::GyroStabilizer>();
-    if (const auto tele = insv::ReadInsvTelemetry(input); tele && tele->imu.size() >= 2)
-        level->build(*tele, fps, insv::StabConfig::preset(insv::StabMode::HorizonLock), 0.0);
+    if (const auto imu = camera::ReadClipImu(input))
+        level->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock), 0.0);
     auto captureTiming = [&level] {
         stitch::CaptureTiming t;
         if (level->ready()) {

@@ -66,17 +66,14 @@ Mat3 rotZ(double a)
 
 // --- lens profiles ------------------------------------------------------
 
-bool ApplyLensProfile(StitchParams& params, const InsvMakerNotes& notes,
-                      const std::string& accessoryName)
+bool ApplyLensProfile(StitchParams& params, const LensProfile* bare, const LensProfile* acc)
 {
     params.accessory = false;
-    const LensProfile* bare = FindLensProfile(notes, "bare");
     if (bare && bare->fov_deg > 0)
         params.fovDeg = bare->fov_deg;
-    if (accessoryName.empty() || accessoryName == "bare")
+    if (!acc)
         return bare != nullptr;
-    const LensProfile* acc = FindLensProfile(notes, accessoryName);
-    if (!bare || !acc || bare->poly[1] <= 0 || acc->poly[1] <= 0)
+    if (!bare || bare->poly[1] <= 0 || acc->poly[1] <= 0)
         return false;
     params.accessory = true;
     for (int i = 0; i < 6; ++i) {

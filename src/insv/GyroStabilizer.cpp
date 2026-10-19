@@ -505,98 +505,22 @@ StabConfig StabConfig::preset(StabMode m)
     return c;
 }
 
-void GyroStabilizer::build(const insv::InsvTelemetry& tele, double fps, const StabConfig& cfg,
-                           double syncAdjustSec)
+void GyroStabilizer::build(const ImuTrack& track, const StabConfig& cfg, double syncAdjustSec)
 {
-    const std::vector<insv::ImuSample>& imu = tele.imu;
-    const std::vector<insv::ExposureSample>& exposure = tele.exposure;
     StabConfig c = cfg;
-    // build() sorts the track and puts t = 0 at its earliest sample.
-    uint64_t imuT0 = 0;
-    if (!imu.empty())
-        imuT0 = std::min_element(imu.begin(), imu.end(),
-                                 [](const insv::ImuSample& a, const insv::ImuSample& b) {
-                                     return a.timestamp < b.timestamp;
-                                 })->timestamp;
-    // Frame-clock rate: the exposure record has one device timestamp
-    // per frame from field 24's frame on; least-squares slope of those vs the
-    // nominal n / fps. Linear on every sample clip (~+40 / -15 ppm).
-    double clockRate = 0.0;
-    if (tele.first_frame_timestamp != 0 && fps > 1.0 && exposure.size() >= 300) {
-        size_t k = 0;
-        uint64_t best = UINT64_MAX;
-        for (size_t i = 0; i < exposure.size(); ++i) {
-            const uint64_t ts = exposure[i].timestamp;
-            const uint64_t d = ts > tele.first_frame_timestamp ? ts - tele.first_frame_timestamp
-                                                               : tele.first_frame_timestamp - ts;
-            if (d < best) {
-                best = d;
-                k = i;
-            }
-        }
-        const size_t n = exposure.size() - k;
-        if (n >= 300) {
-            const double xm = 0.5 * static_cast<double>(n - 1) / fps;
-            double ym = 0.0;
-            for (size_t i = 0; i < n; ++i)
-                ym += static_cast<double>(exposure[k + i].timestamp - exposure[k].timestamp) * 1e-6;
-            ym /= static_cast<double>(n);
-            double sxy = 0.0, sxx = 0.0;
-            for (size_t i = 0; i < n; ++i) {
-                const double x = static_cast<double>(i) / fps - xm;
-                const double y =
-                    static_cast<double>(exposure[k + i].timestamp - exposure[k].timestamp) * 1e-6 - ym;
-                sxy += x * y;
-                sxx += x * x;
-            }
-            const double r = sxx > 0.0 ? sxy / sxx - 1.0 : 0.0;
-            if (std::fabs(r) < 500e-6) // sanity: a real crystal is tens of ppm off
-                clockRate = r;
-        }
-    }
-
-    // Capture timing. Per-cell image-motion lags on four clip segments (both
-    // readout modes, ~570 cells mapped to lens + sensor row) show both lenses
-    // read out top to bottom over field 25, in step, with the centre row
-    // kCenterRowMs from field 24 + field 28. The earlier per-lens model (lens 1
-    // a third of the readout late) was this row gradient seen through views
-    // that happened to sit in different rows.
-    constexpr double kCenterRowMs = -2.3;
-    const double readoutSec = tele.first_frame_timestamp != 0 && tele.rolling_shutter_ms > 0.0
-                                  ? tele.rolling_shutter_ms * 1e-3
-                                  : 0.0;
-
-    // An explicit non-zero offset is an override; otherwise anchor on the
-    // first recorded frame (field 24), else estimate from the exposure record.
-    if (cfg.timeOffsetSec == 0.0f && !imu.empty()) {
-        if (tele.first_frame_timestamp != 0) {
-            // A trimmed file's video t = 0 is time_map_offset_ms into the
-            // recording on the (drifting) frame clock.
-            c.timeOffsetSec = static_cast<float>((static_cast<double>(tele.first_frame_timestamp) -
-                                                  static_cast<double>(imuT0)) * 1e-6 +
-                                                 tele.gyro_timestamp_ms * 1e-3 +
-                                                 tele.time_map_offset_ms * 1e-3 * (1.0 + clockRate) +
-                                                 kCenterRowMs * 1e-3 + syncAdjustSec);
-        } else if (exposure.size() >= 32 && fps > 1.0) {
-            const double imu0 = static_cast<double>(imuT0) * 1e-6;
-            const double frameDt = 1.0 / fps;
-            std::vector<double> off;
-            off.reserve(exposure.size());
-            for (size_t n = 0; n < exposure.size(); ++n)
-                off.push_back(static_cast<double>(exposure[n].timestamp) * 1e-6 - imu0 -
-                              static_cast<double>(n) * frameDt);
-            std::nth_element(off.begin(), off.begin() + off.size() / 2, off.end());
-            c.timeOffsetSec = static_cast<float>(off[off.size() / 2] + syncAdjustSec);
-        }
-    }
-    build(imu, c);
-    m_clockRate = clockRate;
-    m_readoutSec = readoutSec;
+    if (c.gyroAxes.empty())
+        c.gyroAxes = track.axisMap;
+    // An explicit non-zero offset is an override; otherwise the track's own.
+    if (cfg.timeOffsetSec == 0.0f && track.hasOffset && !track.samples.empty())
+        c.timeOffsetSec = static_cast<float>(track.offsetSec + syncAdjustSec);
+    build(track.samples, c);
+    m_clockRate = track.clockRate;
+    m_readoutSec = track.readoutSec;
 }
 
 void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg)
 {
-    m_clockRate = 0.0; // build(InsvTelemetry, ...) sets it after this returns
+    m_clockRate = 0.0; // build(ImuTrack, ...) sets it after this returns
     m_readoutSec = 0.0;
     if (cfg.mode == StabMode::Off || imu.size() < 2) {
         m_ready = false;
@@ -627,7 +551,7 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
 
     const AxisMap am = parseAxes(cfg.gyroAxes);
     const double t0 = static_cast<double>(s.front().timestamp);
-    const double tScale = 1e-6; // trailer timestamp unit is microseconds
+    const double tScale = 1e-6; // ImuSample timestamps are microseconds
 
     // Body-frame gyro rate (axis-mapped) at sample i; 0.5*(prev+cur), rad/s,
     // minus the fitted residual bias (horizon leveling only; see fitGyroBias).
@@ -924,7 +848,7 @@ void GyroStabilizer::buildFromOrientation(const std::vector<double>& tSec,
 {
     m_ready = false;
     m_cfg = cfg;
-    m_clockRate = 0.0; // nominal video time; build(InsvTelemetry, ...) sets it after
+    m_clockRate = 0.0; // nominal video time; build(ImuTrack, ...) sets it after
     m_t.clear();
     m_qRaw.clear();
     // m_levelFwd / m_mountLevel are set by build() from the accel; a direct

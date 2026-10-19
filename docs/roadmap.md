@@ -18,7 +18,10 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ### 1. Insta360 X6
 
-Contributor work in progress. The X6 is close to the X5: the same `.insv`
+Contributor work in progress, going in on top of the common camera model
+below: the X6's own facts become its row in the Insta360 reader's table
+(`insv::InsvModel`) and fields its reader reads from the file. The X6 is
+close to the X5: the same `.insv`
 trailer, larger lenses (6K lens size 3008²), 8K 50, and 10-bit I-Log and
 Dolby Vision modes. What it needs beyond the X5:
 
@@ -42,27 +45,32 @@ Before more cameras are added, the camera-specific code is pulled behind one
 description of a clip, so each new camera is a reader, not a set of branches
 through the pipeline.
 
-- Today, about ten places read the `.insv` trailer by path and parse it again,
-  and Insta360 facts sit in generic code: `GyroStabilizer` does the
-  Insta360 video <-> IMU timing itself, the IMU axis map is a setting, the
-  lens-guard choices are Insta360's profile names, and `NativeStitchSource`
-  assumes one file with two fisheye streams.
-- The shape: a `ClipMetadata` behind one cached `ReadClipMetadata(path)`:
-  model / firmware / serial; projection kind (dual fisheye, in-camera
-  cubemap, flat); the lenses, each with its calibration and which file and
-  stream it comes from; the IMU in video seconds and body axes, or an
-  orientation track for cameras that record one; rolling-shutter readout
-  time; colour profile; thumbnail; lens / guard profiles. One reader per
-  camera family, picked by sniffing the file: Insta360 first (per-model
-  differences as a table), DJI and GoPro later. Picture sources stay behind
-  `IStitchSource`.
-- Order: (1) a pure refactor on the X5 -- stabilizer output and stitched
-  frames identical before and after; (2) the ONE X2 as the first real second
-  camera; (3) DJI and GoPro readers only once real clips are available.
+- **Built, step 1** (a pure refactor on the X5; stitched frames, the
+  stabilizer's output and an NVENC export byte-identical before and after on
+  the X5 sample clips): `camera::ClipMetadata` behind one cached
+  `camera::ReadClipMetadata(path)` in `src/camera/` -- model / firmware /
+  serial, projection kind, the lenses with their calibration and which file
+  and stream each comes from, colour and log profile, lens-guard profiles,
+  capture-mode name, the proxy file, telemetry facts -- and on demand the IMU
+  (`ReadClipImu`, an `insv::ImuTrack`: samples, axis map, video <-> IMU
+  timing, readout) and the preview picture (`ReadClipThumbnail`). One reader
+  per camera family, asked in turn (`Insta360Reader`); Insta360's per-model
+  differences are a table (`insv::InsvModel`: IMU axis map, lens-guard
+  profile names, capture-mode names). The stitch, sync, seam, stabilizer,
+  export, plate scan, thumbnails and the Media information panel read clips
+  only through it; `GyroStabilizer` no longer knows the `.insv` timing.
+- Next: (2) the ONE X2 as the first real second camera -- two files per take,
+  one per lens, so the picture sources open each lens from its own
+  `LensSource` instead of assuming streams 0 and 1 of one file; (3) DJI and
+  GoPro readers only once real clips are available: an in-camera cubemap
+  (`Projection`) behind its own `IStitchSource`, an orientation track for
+  cameras that record one, readout time per mode.
+- Left in generic code for now: the media pool's capture-mode names on clip
+  cards (from the lens size alone, as the X5's table names them).
 
-Until this is done, new camera support should keep its differences in data
-(a per-model table, fields read from the file), not in model checks spread
-through the code, so it moves into its reader without being rewritten.
+New camera support keeps its differences in data -- the reader's per-model
+table, fields read from the file -- not in model checks spread through the
+code.
 
 ### 3. Other cameras
 

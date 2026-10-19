@@ -107,8 +107,8 @@ void MainWindow::syncColourPanel(const ColorGrade &grade)
     QString wanted;
     const ClipItem *c = m_timeline->clipById(editClipId());
     if (c && !c->flat && grade.lut.isEmpty() && !c->mediaMissing) {
-        const insv::MediaInfo *info = mediaInfoFor(c->sourcePath);
-        if (const QString log = info ? QString::fromStdString(info->logProfile()) : QString();
+        const camera::MediaInfo *info = mediaInfoFor(c->sourcePath);
+        if (const QString log = info ? QString::fromStdString(info->logProfile) : QString();
             !log.isEmpty())
             wanted = tr("This clip was filmed in %1, a log profile, so it looks flat and grey. "
                         "Load the LUT the camera maker publishes for %1 to give it normal "
