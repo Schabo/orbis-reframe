@@ -47,12 +47,15 @@ ReframePanel::ReframePanel(QWidget *parent)
     // zoom rather than a crop.
     m_proj = new QComboBox(this);
     m_proj->addItem(tr("Flat"), int(Projection::Rectilinear));
-    m_proj->addItem(tr("Tiny planet"), int(Projection::TinyPlanet));
+    m_proj->addItem(tr("Natural view"), int(Projection::Panini));
     m_proj->addItem(tr("Fisheye"), int(Projection::Fisheye));
     m_proj->addItem(tr("Mirror ball"), int(Projection::MirrorBall));
-    m_proj->setToolTip(tr("The shape of the picture. Flat is the usual view; tiny planet "
-                          "wraps the sphere around its pole, fisheye draws it as a disc, "
-                          "mirror ball shows it all inside a ball."));
+    m_proj->addItem(tr("Globe"), int(Projection::Orthographic));
+    m_proj->addItem(tr("Tiny planet"), int(Projection::TinyPlanet));
+    m_proj->addItem(tr("Crystal ball"), int(Projection::CrystalBall));
+    m_proj->setToolTip(tr("The shape of the picture. Flat is the usual view, natural view "
+                          "keeps verticals straight when wide; fisheye draws the sphere as "
+                          "a disc, the balls and planets show all of it."));
     form()->addRow(tr("View"), m_proj);
     connect(m_proj, &QComboBox::activated, this, &ReframePanel::emitIfEdited);
 

@@ -62,6 +62,49 @@ bool viewRay(T ndcX, T ndcY, T fovY, T aspect, int proj, T out[3])
         out[2] = T(2) * nz * nz - T(1);
         return true;
     }
+    if (proj == 4) {
+        // Crystal ball: stereographic from the front pole -- centre shows
+        // what is behind the view, the rim is the horizon.
+        const T edge = std::min(T(2) * fovY, T(kPi) - T(0.02));
+        const T th = T(2) * std::atan(rho * std::tan(edge * T(0.5)));
+        const T s = std::sin(th);
+        out[0] = ax * s;
+        out[1] = ay * s;
+        out[2] = std::cos(th);
+        return true;
+    }
+    if (proj == 5) {
+        // Panini ("natural view"), distance 1. Inverse of
+        // x = 2 sin(l)/(1+cos(l)), y = 2 tan(p)/(1+cos(l)):
+        // sin(l) = 4h/(h^2+4), cos(l) = (2s-h)/h, tan(p) = v(1+c)/2.
+        const T t0 = std::tan(fovY * T(0.5));
+        const T h = x * t0;
+        const T v = y * t0;
+        const T s = T(4) * h / (h * h + T(4));
+        const T c = std::abs(h) > T(1e-6) ? (T(2) * s - h) / h : T(1);
+        const T t = v * (T(1) + c) * T(0.5);
+        const T inv = T(1) / std::sqrt(s * s + t * t + c * c);
+        out[0] = s * inv;
+        out[1] = t * inv;
+        out[2] = -c * inv;
+        return true;
+    }
+    if (proj == 6) {
+        // Orthographic: the sphere as a globe from outside, scaled like the
+        // mirror ball.
+        const T br = std::min(fovY / T(1.75), T(1));
+        const T ux = x / br, uy = y / br;
+        const T r2 = ux * ux + uy * uy;
+        if (r2 > T(1)) {
+            out[0] = out[1] = T(0);
+            out[2] = T(-1);
+            return false;
+        }
+        out[0] = ux;
+        out[1] = uy;
+        out[2] = -std::sqrt(T(1) - r2);
+        return true;
+    }
     // Rectilinear: the plain pinhole ray.
     const T t = std::tan(fovY * T(0.5));
     const T inv = T(1) / std::sqrt(x * t * x * t + y * t * y * t + T(1));
@@ -71,11 +114,11 @@ bool viewRay(T ndcX, T ndcY, T fovY, T aspect, int proj, T out[3])
     return true;
 }
 
-// The inverse: a normalized view-space ray -> NDC in [-1,1]. For the
-// non-pinhole projections every direction lands somewhere in the frame (the
-// whole sphere is visible), so there is no near-plane cull; rectilinear
-// callers keep their own clip. Returns false only for rectilinear rays at or
-// behind the camera plane.
+// The inverse: a normalized view-space ray -> NDC in [-1,1]. Most
+// projections cover the whole sphere, so there is no near-plane cull;
+// rectilinear callers keep their own clip. Returns false for rectilinear
+// rays at or behind the camera plane, and for orthographic rays on the
+// ball's hidden back.
 template <typename T>
 bool viewNdc(const T v[3], T fovY, T aspect, int proj, T out[2])
 {
@@ -85,6 +128,40 @@ bool viewNdc(const T v[3], T fovY, T aspect, int proj, T out[2])
         const T t = std::tan(fovY * T(0.5));
         out[0] = (v[0] / -v[2]) / (t * aspect);
         out[1] = -(v[1] / -v[2]) / t;
+        return true;
+    }
+    if (proj == 4) {
+        // Crystal ball: polar angle off +Z, otherwise the planet's inverse.
+        const T edge = std::min(T(2) * fovY, T(kPi) - T(0.02));
+        const T th = std::acos(std::clamp(v[2], T(-1), T(1)));
+        const T s = std::sin(th);
+        const T ax = s > T(1e-6) ? v[0] / s : T(0);
+        const T ay = s > T(1e-6) ? v[1] / s : T(0);
+        const T rho = std::tan(th * T(0.5)) / std::tan(edge * T(0.5));
+        out[0] = ax * rho / aspect;
+        out[1] = -ay * rho;
+        return true;
+    }
+    if (proj == 5) {
+        // Panini forward: longitude and latitude off -Z onto the plane.
+        const T lam = std::atan2(v[0], -v[2]);
+        const T cl = std::cos(lam);
+        const T sl = std::sin(lam);
+        const T tp = v[1] / std::sqrt(std::max(T(0), T(1) - v[1] * v[1]));
+        const T t0 = std::tan(fovY * T(0.5));
+        const T h = T(2) * sl / (T(1) + cl);
+        const T k = T(2) * tp / (T(1) + cl);
+        out[0] = h / (t0 * aspect);
+        out[1] = -k / t0;
+        return true;
+    }
+    if (proj == 6) {
+        // Orthographic: only the facing hemisphere is on the ball.
+        if (v[2] >= T(0))
+            return false;
+        const T br = std::min(fovY / T(1.75), T(1));
+        out[0] = v[0] * br / aspect;
+        out[1] = -v[1] * br;
         return true;
     }
     const T th = std::acos(std::clamp(-v[2], T(-1), T(1))); // polar angle off -Z

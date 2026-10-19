@@ -28,6 +28,9 @@ enum class Projection : int {
     TinyPlanet = 1,  // stereographic "little planet": the sphere wrapped around its pole
     Fisheye = 2,     // equidistant fisheye disc
     MirrorBall = 3,  // the whole sphere in a ball, as if mirrored
+    CrystalBall = 4, // the inside-out planet: stereographic from the front pole
+    Panini = 5,      // "natural view": cylindrical-leaning, verticals stay straight
+    Orthographic = 6, // the sphere as a globe seen from outside
 };
 
 struct ReframePose {

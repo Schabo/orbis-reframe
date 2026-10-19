@@ -34,9 +34,12 @@ view:
 | View | What it looks like |
 |---|---|
 | **Flat** | The usual rectilinear view. |
-| **Tiny planet** | The whole sphere wrapped around its pole. Point the view down (pitch 90°) for the planet, up for a tunnel. |
+| **Natural view** | A wide view that keeps verticals straight (Panini projection) - like a flat view that refuses to break at its edges. |
 | **Fisheye** | A fisheye disc - the hemisphere ahead, evenly wrapped, with the field of view as its reach. |
 | **Mirror ball** | The whole sphere mirrored in a ball in the frame, so it shows what is behind the camera at its centre. |
+| **Globe** | The sphere seen from outside, like a planet. Point the view down to look down at the earth. |
+| **Tiny planet** | The whole sphere wrapped around its pole. Point the view down (pitch 90°) for the planet, up for a tunnel. |
+| **Crystal ball** | The tiny planet inside out: a ball with the horizon on its rim, showing what is behind the camera at its centre. |
 
 The field of view still works in each - it zooms the shape rather than a
 window. A keyframe stores the view it was made with, and the picture changes
