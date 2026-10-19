@@ -231,21 +231,24 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.drawText(vis.adjusted(5, 0, -5, 0), Qt::AlignVCenter | Qt::AlignLeft,
                    fm.elidedText(label, Qt::ElideMiddle, vis.width() - 10));
 
-        // Keyframe diamonds.
+        // Keyframe diamonds; the hovered one reads as clickable.
         if (!r.clip.keySourceMs.isEmpty() && r.durMs > 0) {
             p.setRenderHint(QPainter::Antialiasing, true);
-            p.setBrush(tc.text);
             p.setPen(Qt::NoPen);
             const int cy = rc.bottom() - 5;
-            for (qint64 ks : r.clip.keySourceMs) {
+            for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
+                const qint64 ks = r.clip.keySourceMs[j];
                 if (ks < r.clip.trimInMs || ks > r.clip.trimOutMs)
                     continue;
+                const bool hov = m_hoverKey.row == i && m_hoverKey.index == j;
+                const int s = hov ? 5 : 3;
                 const int x = xForTimelineMs(r.startMs + std::llround((ks - r.clip.trimInMs) /
                                                                        r.clip.speed));
-                const QPointF d[4] = {{double(x), double(cy - 3)},
-                                      {double(x + 3), double(cy)},
-                                      {double(x), double(cy + 3)},
-                                      {double(x - 3), double(cy)}};
+                p.setBrush(hov ? tc.accent : tc.text);
+                const QPointF d[4] = {{double(x), double(cy - s)},
+                                      {double(x + s), double(cy)},
+                                      {double(x), double(cy + s)},
+                                      {double(x - s), double(cy)}};
                 p.drawPolygon(d, 4);
             }
             p.setRenderHint(QPainter::Antialiasing, false);
@@ -286,7 +289,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     const bool audioDrag = m_drag == Drag::AudioMove || m_drag == Drag::AudioTrimIn ||
                            m_drag == Drag::AudioTrimOut;
     const QIcon linkIcon = theme::icon(QStringLiteral("link"));
-    auto drawAudio = [&](int trackIndex, const TrackClipView &c, bool ghost) {
+    auto drawAudio = [&](int trackIndex, int clipIndex, const TrackClipView &c, bool ghost) {
         const QRect rc = trackClipRect(trackIndex, c);
         const bool sel = c.id == m_selectedAudioId;
         QColor fill = m_tracks[trackIndex].video
@@ -328,28 +331,35 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         // An overlay's keyframe diamonds, like the main track's reframe keys.
         if (!c.keySourceMs.isEmpty()) {
             p.setRenderHint(QPainter::Antialiasing, true);
-            p.setBrush(tc.text);
             p.setPen(Qt::NoPen);
             const int cy = rc.bottom() - 4;
-            for (qint64 ks : c.keySourceMs) {
+            for (int j = 0; j < c.keySourceMs.size(); ++j) {
+                const qint64 ks = c.keySourceMs[j];
                 if (ks < c.trimInMs || ks > c.trimOutMs)
                     continue;
-                const int x = xForTimelineMs(c.startMs + std::llround((ks - c.trimInMs) / c.speed));
-                const QPointF d[4] = {{double(x), double(cy - 3)},
-                                      {double(x + 3), double(cy)},
-                                      {double(x), double(cy + 3)},
-                                      {double(x - 3), double(cy)}};
+                const bool hov = m_hoverKey.track == trackIndex && m_hoverKey.clip == clipIndex &&
+                                 m_hoverKey.index == j;
+                const int s = hov ? 5 : 3;
+                const int x =
+                    xForTimelineMs(c.startMs + std::llround((ks - c.trimInMs) / c.speed));
+                p.setBrush(hov ? tc.accent : tc.text);
+                const QPointF d[4] = {{double(x), double(cy - s)},
+                                      {double(x + s), double(cy)},
+                                      {double(x), double(cy + s)},
+                                      {double(x - s), double(cy)}};
                 p.drawPolygon(d, 4);
             }
             p.setRenderHint(QPainter::Antialiasing, false);
         }
     };
     for (int t = 0; t < m_tracks.size(); ++t)
-        for (const TrackClipView &c : m_tracks[t].clips)
+        for (int ci = 0; ci < m_tracks[t].clips.size(); ++ci) {
+            const TrackClipView &c = m_tracks[t].clips[ci];
             if (trackShown(t) && !(audioDrag && m_dragMoved && c.id == m_dragAudio.id))
-                drawAudio(t, c, false);
+                drawAudio(t, ci, c, false);
+        }
     if (audioDrag && m_dragMoved && m_provTrack >= 0 && m_provTrack < m_tracks.size())
-        drawAudio(m_provTrack, m_dragAudio, true);
+        drawAudio(m_provTrack, -1, m_dragAudio, true);
 
     // Reorder insertion caret.
     if (m_drag == Drag::Reorder && m_dragMoved && m_reorderTarget >= 0 && !m_rows.isEmpty()) {

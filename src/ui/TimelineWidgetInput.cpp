@@ -200,6 +200,12 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     case Hit::MainClip: {
         m_dragRow = h.row;
         emit clipSelected(m_rows[h.row].clip.id);
+        // A keyframe diamond: jump the playhead to it, no drag on the clip.
+        const KeyHit k = keyAt(e->pos());
+        if (k.row >= 0) {
+            emit seekRequested(std::min(keyTimelineMs(k), m_totalMs));
+            return;
+        }
         const QRect &rc = m_rows[m_dragRow].rect;
         if (std::abs(e->pos().x() - rc.left()) <= kEdgeGrabPx) {
             m_drag = Drag::TrimIn;
@@ -217,6 +223,12 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     case Hit::TrackClip: {
         const TrackClipView &c = m_tracks[h.track].clips[h.clip];
         emit trackClipSelected(c.id);
+        // A look-key diamond: jump the playhead to it, no drag on the clip.
+        const KeyHit k = keyAt(e->pos());
+        if (k.index >= 0) {
+            emit seekRequested(std::min(keyTimelineMs(k), m_totalMs));
+            return;
+        }
         m_dragAudioOrig = m_dragAudio = c;
         m_dragAudioTrack = m_provTrack = h.track;
         m_provStartMs = c.startMs;
@@ -247,9 +259,18 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
 void TimelineWidget::mouseMoveEvent(QMouseEvent *e)
 {
     if (m_drag == Drag::None) {
-        // Hover cursor hint over an edge.
+        // Hover cursor hint over an edge, a highlighted keyframe diamond.
         const Hit h = hitTest(e->pos());
         Qt::CursorShape shape = Qt::ArrowCursor;
+        const KeyHit k = keyAt(e->pos());
+        if (k != m_hoverKey) {
+            m_hoverKey = k;
+            update();
+        }
+        if (k.index >= 0) {
+            setCursor(Qt::PointingHandCursor);
+            return;
+        }
         QRect rc;
         if (h.kind == Hit::MainClip)
             rc = m_rows[h.row].rect;
@@ -279,6 +300,14 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *e)
     // Dragging past an edge of the view: scroll while it's held there.
     if (!edgeScrollStep(e->pos()).isNull() && !m_autoScroll->isActive())
         m_autoScroll->start();
+}
+
+void TimelineWidget::leaveEvent(QEvent *)
+{
+    if (m_hoverKey.index >= 0) {
+        m_hoverKey = KeyHit();
+        update();
+    }
 }
 
 QPoint TimelineWidget::edgeScrollStep(QPoint pos) const
@@ -543,7 +572,10 @@ bool TimelineWidget::event(QEvent *e)
     if (e->type() == QEvent::ToolTip) {
         const auto *he = static_cast<QHelpEvent *>(e);
         const Hit h = hitTest(he->pos());
-        if (h.kind == Hit::Header &&
+        if (keyAt(he->pos()).index >= 0)
+            QToolTip::showText(he->globalPos(),
+                               tr("Click to go to this keyframe."), this);
+        else if (h.kind == Hit::Header &&
             (h.track < 0 ? hasOwnSound(-1)
                          : hasOwnSound(h.track) && foldBox(h.track).contains(he->pos())))
             QToolTip::showText(he->globalPos(),

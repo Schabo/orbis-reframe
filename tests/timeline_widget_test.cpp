@@ -215,6 +215,46 @@ void testTrims()
     CHECK(out.count() == 1 && std::abs(out.last().at(1).toLongLong() - 13000) <= 40);
 }
 
+// A keyframe's diamond highlights on hover; a click seeks the playhead to
+// that key's frame and selects its clip. A click just off it stays a plain
+// clip click (selects, no seek, no reorder).
+void testKeyDiamondClick()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.keySourceMs = {3000, 7000};
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    b.keySourceMs = {5000};
+    f.w.setClips({a, b});
+
+    const int keyY = kRulerH + kMainH - 5; // the diamonds' row
+    QSignalSpy seek(&f.w, &TimelineWidget::seekRequested);
+    QSignalSpy sel(&f.w, &TimelineWidget::clipSelected);
+    QSignalSpy moved(&f.w, &TimelineWidget::clipMoved);
+
+    QTest::mouseMove(&f.w, QPoint(Fixture::x(3000), keyY));
+    CHECK(f.w.cursor().shape() == Qt::PointingHandCursor);
+    QTest::mouseMove(&f.w, QPoint(Fixture::x(3000) + 20, keyY));
+    CHECK(f.w.cursor().shape() == Qt::ArrowCursor);
+
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000), keyY));
+    CHECK(seek.count() == 1 && seek.last().at(0).toLongLong() == 3000);
+    CHECK(sel.last().at(0).toInt() == 1);
+
+    // Clip b's key at source 5 s sits at 15 s on the timeline.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(15000), keyY));
+    CHECK(seek.count() == 2 && seek.last().at(0).toLongLong() == 15000);
+    CHECK(sel.last().at(0).toInt() == 2);
+
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000) + 10, keyY));
+    CHECK(seek.count() == 2 && moved.count() == 0);
+}
+
 void testHeaderAndMain()
 {
     Fixture f;
@@ -912,6 +952,7 @@ int main(int argc, char **argv)
     testLinkedStaysPut();
     testOnlyOntoTracksThatHoldIt();
     testTrims();
+    testKeyDiamondClick();
     testHeaderAndMain();
     testDuplicateMenu();
     testTransitions();

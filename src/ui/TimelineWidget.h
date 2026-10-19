@@ -87,9 +87,11 @@ class QTimer;
 //   remove it; its tooltip says what it is.
 //   Waveforms: a clip given `peaks` draws its audio's level (dB scale), with
 //   its gain and fades applied.
-//   Reframe keys: a main-track clip's keys show as diamonds along its bottom;
-//   a clip without any is labelled with a hollow diamond (and says why in
-//   its tooltip) -- it exports a static forward view.
+//   Reframe keys: a main-track clip's keys show as diamonds along its bottom
+//   (an overlay clip's look keys the same on its track); one highlights on
+//   hover, and clicking it seeks the playhead to that frame -> seekRequested
+//   (and selects the clip). A clip without any is labelled with a hollow
+//   diamond (and says why in its tooltip) -- it exports a static forward view.
 //   Zoom: Ctrl+wheel (around the pointer) or zoomIn / zoomOut / zoomToFit;
 //   the wheel or the scrollbar under the tracks pans.
 //   Height: whatever the window gives it; rows that don't fit scroll up and
@@ -256,6 +258,7 @@ protected:
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
+    void leaveEvent(QEvent *) override;
     void mouseDoubleClickEvent(QMouseEvent *) override;
     void wheelEvent(QWheelEvent *) override;
     void dragEnterEvent(QDragEnterEvent *) override;
@@ -299,6 +302,22 @@ private:
     QRect layerBox(int trackIndex) const;
     QString layerToolTip(int trackIndex) const;
     Hit hitTest(QPoint pos) const;
+    // A keyframe diamond under `pos` (small, so forgiven a few px). Main: row
+    // set; an overlay clip's: track + clip; index: into the keySourceMs.
+    struct KeyHit {
+        int row = -1;
+        int track = -1;
+        int clip = -1;
+        int index = -1;
+        bool operator==(const KeyHit &o) const
+        {
+            return row == o.row && track == o.track && clip == o.clip && index == o.index;
+        }
+        bool operator!=(const KeyHit &o) const { return !(*this == o); }
+    };
+    KeyHit keyAt(QPoint pos) const;
+    // The timeline ms a KeyHit seeks to (the key's frame on its clip).
+    qint64 keyTimelineMs(const KeyHit &k) const;
     // Main-track insert position for a clip added at `ms`: the cut nearest to it.
     int insertIndexAt(qint64 ms) const;
     // Transition `index`'s box over its cut; null if its clip isn't laid out.
@@ -370,6 +389,7 @@ private:
     bool m_canPasteGrade = false;
     bool m_canPasteStab = false;
     int m_selectedAudioId = -1;
+    KeyHit m_hoverKey; // the diamond under the pointer (drawn highlighted)
 
     enum class Drag {
         None, Seek, TrimIn, TrimOut, Reorder, AudioMove, AudioTrimIn, AudioTrimOut, TrackMove
