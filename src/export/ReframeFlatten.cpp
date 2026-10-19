@@ -507,8 +507,6 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& err)
         return false;
     }
     int ret = 0;
-
-    int ret;
     e.stream = avformat_new_stream(e.fmt, nullptr);
     avcodec_parameters_from_context(e.stream->codecpar, e.ctx);
     e.stream->time_base = e.ctx->time_base;
