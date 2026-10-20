@@ -26,6 +26,12 @@ Both takes are the same mode: 5.7K (2880² per lens) at 25 fps, H.264.
   first digit being the lens (X5 §1). 📖 The X6 manual: "X6, X5, X4 Air and
   X4 generate only one VID file containing data from both lenses, unlike the
   X3, which produced two".
+- 📖 **Only 5.7K writes two files.** Insta360's file-format table: on the
+  X3, ONE X2 and ONE X, 360 video at 5.7K gives two `VID` files and one
+  `LRV`; below 5.7K (4K, 3K) **one** `VID` file and one `LRV`. ❓ How that
+  one file holds the two lenses (two streams like the X5, or one). No LRV
+  at all in Bullet Time, TimeShift, Timelapse, or video at 4K 60 / 50,
+  3K 100 or above 100 fps.
 - ✅ **The proxy is `LRV_…_11_NNN.insv`**: extension `.insv`, not `.lrv`,
   and lens digit `1` (the X5 writes `LRV_…_01_NNN.lrv`). It holds both
   lenses (§3.2).
@@ -107,6 +113,31 @@ trailer         _00_ and LRV only: the inst records, raw, to EOF
 - **It carries the full trailer**: IMU, exposure and type 9 are
   byte-identical to the `_00_` file's; the metadata differs only in field 9
   and `file_group_info.index` (1); its thumbnails (§5) are a 736×368 frame.
+
+### 3.3 Every mode, and our clips of it
+
+All the ONE X2's modes 📖 (Insta360's shooting specs, Sources), with our
+clips and whether they're enough to build and check the reader on. The
+status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
+
+| Mode | Spec | Files | Our clips | Status |
+|---|---|---|---|---|
+| 360 Video 5.7K | 30 / 25 / 24 | `_00_` + `_10_` + `LRV_…_11_` | two moving takes at 25, H.264, `gamma_mode` `linear` | enough at 25 H.264; **30 / 24 wanted** |
+| 360 Video 4K | 50 / 30 | one `VID` file (+ LRV at 30 only) | none | **wanted**: the one-file layout |
+| 360 Video 3K | 100 | one `VID` file, no LRV | none | **wanted** |
+| HDR Video | 5.7K 25 / 24 | ❓ | none | **wanted** |
+| H.265 encoding | | | none | **wanted** |
+| Filters Vivid / LOG | | | none | **LOG wanted** (needs its LUT); Vivid low |
+| Timelapse | 5.7K 30 | no LRV | none | **wanted** |
+| TimeShift | 5.7K 30 / 25 / 24 | no LRV | none | **wanted** |
+| Bullet Time | 3K 100 | no LRV | none | **wanted** |
+| Steady Cam (Ultra Wide Stabilization, 150°) | 1440p 50 / 30, 1080p 120 / 50 / 30; HDR, Timelapse, TimeShift at 1440p | `.mp4` | none | wanted: a flat clip, may open as one already |
+| Split recording | | ❓ (§13 question 5) | none | **wanted**: one take over the split length |
+| 360 Photo (Burst, Interval, Night Shot, HDR) | 18 MP | `.insp`, `.dng` (RAW) | none | wanted, low |
+| InstaPano (270°), 150° wide-angle photo | 4320×1440; 1440p / 1080p | ❓ | none | wanted, low |
+| Audio: Wind Reduction, Stereo, 360 Direction Focus | | | ❓ which ours used | **one clip of each wanted** |
+| Lens guards | | | ❓ whether ours had them | **one clip with, one without wanted** |
+| IMU axes | | | the two takes (stick swing) | **a clip with deliberate turns about each axis wanted** |
 
 ## 4. The `inst` trailer — framing ✅
 
@@ -296,8 +327,8 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
    apart).
 3. The IMU axis map; whether the gyro doubles are rad/s.
 4. What `gamma_mode` `linear` and `file_group_info.type` 6 mean for the
-   mode set on the camera; other modes (4K 50, 3K 100, H.265, LOG) and the
-   lens guards are untested.
+   mode set on the camera; the other modes and the lens guards are
+   untested (§3.3).
 5. How a long recording is split into files.
 6. Type 9's layout; the `AMBA` box; field 60.
 
@@ -306,7 +337,10 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
 - Our clips (above), 2026-10-20: `ffprobe`, `insv_trailer_dump`, a trailer
   and protobuf walk following X5 §4–§5.
 - Insta360 X6 manual, file formats (one file vs. two):
-  <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/storage/fileformat>
+  <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/storage/fileformat>;
+  the same table in the X5 manual has the X3 / ONE X2 / ONE X rows (two files
+  at 5.7K only, when no LRV is written):
+  <https://onlinemanual.insta360.com/x5/en-us/operating-tutorials/storage/fileformat>
 - Insta360 X-series shooting specs, codecs and colour profiles per model:
   <https://onlinemanual.insta360.com/onex2/en-us/specs/shooting-specs>
 - Mapillary forum, an X3 owner on the `_00_` / `_10_` files:

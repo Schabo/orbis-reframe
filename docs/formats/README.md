@@ -18,9 +18,12 @@ differences from it, or, for another vendor, from scratch.
 
 ## Sample clips wanted
 
-The X5 document lists every mode the camera has and which of them we have
-clips of ([§3.4](insta360-x5.md#34-every-mode-and-our-clips-of-it)); the
-other cameras' documents get the same list as their clips arrive.
+The documents of the cameras we have clips of list every mode the camera
+has and which of them we have clips of: the
+[X5](insta360-x5.md#34-every-mode-and-our-clips-of-it),
+[X6](insta360-x6.md#modes-and-sample-clips) and
+[ONE X2](insta360-one-x2-x3.md#33-every-mode-and-our-clips-of-it). The others
+get the same list as their clips arrive.
 Most of the documents above are desk research: **we need short clips from
 every camera above that isn't supported yet** (except the ONE X2: the
 maintainer has one) to find out what the files really hold. If you own one, please

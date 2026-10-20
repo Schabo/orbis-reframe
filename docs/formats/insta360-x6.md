@@ -28,6 +28,33 @@ X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as in
   the direct view. 8K 50 is ~1.5 Gpx/s across both lenses, ~1.7× the X5's
   8K 30 (X5 §3.3); real-time decode at that rate isn't measured.
 
+## Modes and sample clips
+
+All the X6's modes 📖 (Insta360's shooting specs, Sources). We have no X6
+file; **the contributor's set** is the 24 clips this document's ✅ come from
+(8K, 6K and 4K, Standard, I-Log and Dolby Vision; 8K 30 named, the other
+frame rates not recorded). The status words are the X5's (X5 §3.4), and
+*enough* needs a clip we can run ourselves.
+
+| Mode | Spec | Files | Clips | Status |
+|---|---|---|---|---|
+| 360 Video 8K | 50 / 48 / 30 / 25 / 24 | one `.insv` + `.lrv` | contributor's set | **8K 50 wanted** (real-time decode), and any 8K clip of our own |
+| 360 Video 6K | 60 / 50 / 48 / 30 / 25 / 24 | as above | contributor's set | one clip of our own wanted |
+| 360 Video 4K | 100 / 60 / 50 / 48 / 30 / 25 / 24 | as above | contributor's set | one clip of our own wanted |
+| I-Log 10-bit | | as above | contributor's set | **wanted**, moving |
+| Dolby Vision (HLG) | | as above | contributor's set | **wanted**: the HLG LUT's roll-off |
+| IMU axes | | | none moving deliberately | **a clip with turns about each axis wanted** (stabilization) |
+| PureVideo | 8K / 4K, 30 / 25 / 24; 6K at **5760×2880** | ❓ | none | **wanted**: 2880² lenses, which the X6's modes don't list |
+| InstaFrame 2.0 | 360 8K 30 / 25 / 24 + flat 4K | `.insv` + `.mp4` ("360 Video Backup" on), `.mp4` only (off) | none | **wanted** |
+| Timelapse | 16K 15360×7680, 8K, 30 / 25 | ❓ | none | **wanted**: 16K is 7680² per lens |
+| TimeShift | | ❓ | none | **wanted** |
+| Bullet Time | 8K 7680×1920 100, 6K 6016×1504 120, 4K 3840×960 240 | ❓ | none | **wanted**: not a 2:1 frame |
+| Loop Recording, Road Mode | | ❓ | none | wanted, low |
+| Single-lens Video, PureVideo | 5K / 4K / 2.7K, 4:3 to 9:16, up to 120 | `.mp4` | none | wanted |
+| Single-lens FreeFrame | 6016² 30 / 25, 3040×3840 60…25 | `PRO_VID_….mp4` | none | wanted |
+| 360 Photo (HDR, AEB, Interval, Starlapse) | 120 MP 15520×7760, 30 MP | `.insp`, `.dng`, `.jpg` | none | wanted, low |
+| Audio: Auto, Engine Sound Enhancement, Auto Wind Noise Reduction, Voice Enhancement, Stereo, 360 Audio | 48 kHz AAC | | none | one clip of each wanted |
+
 ## Colour: 10-bit, log and HDR
 
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
