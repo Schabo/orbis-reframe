@@ -22,6 +22,9 @@ the X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n"). Markers as in
 - 📖 **H.264 only**, up to 120 Mb/s. Filters Standard, Vivid and **LOG**.
   ❓ Bit depth (presumably 8-bit, like the ONE X2), the matrix and range
   the streams are tagged with (the ONE X2's say BT.601, ONE X2 §3.1).
+- 📖 Insta360's LOG LUT for the X3 (`Insta360 X3 LUT.zip`,
+  `X3-LUT-V1.0.0.cube`, 65³, exported from Photoshop) is byte-identical to
+  the ONE X2's, so the two cameras' LOG is presumably the same curve.
 - 📖 Audio 48 kHz 16-bit AAC.
 - ❓ Which calibration strings the trailer carries (the ONE X2 has the
   40-token `offset_v3` but not the X5's 56-token one), the IMU layout, rate
@@ -40,7 +43,7 @@ clip yet. The status words are the X5's (X5 §3.4).
 | 360 Video 4K | 3840×1920, 60 / 50 / 30 / 25 / 24 | one `VID` (+ LRV at 30 and below) | none | **wanted**: the one-file layout |
 | 360 Video 3K | 100 | one `VID`, no LRV | none | wanted |
 | Active HDR | ❓ | | none | **wanted** |
-| LOG filter | | | none | **wanted**, with Insta360's LUT if one is published ❓ |
+| LOG filter | | | none | **wanted**: Insta360 publishes a LUT for it (below) |
 | Vivid filter | | | none | wanted, low: probably baked into the picture |
 | Timelapse, TimeShift | ❓ | no LRV | none | wanted |
 | Bullet Time | ❓ | no LRV | none | wanted |
@@ -75,6 +78,8 @@ With the camera's firmware version, and whether lens guards were on.
 - Insta360 file formats (two files at 5.7K, when no LRV is written,
   photo formats):
   <https://onlinemanual.insta360.com/x5/en-us/operating-tutorials/storage/fileformat>
+- Insta360 LUT downloads (the X3's LOG LUT):
+  <https://www.insta360.com/download/i-log>
 - Mapillary forum, an X3 owner on the `_00_` / `_10_` files:
   <https://forum.mapillary.com/t/insta-360-one-x3/6587>
 - Gyroflow telemetry-parser, `src/insta360/mod.rs` (IMU orientation

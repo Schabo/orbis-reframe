@@ -127,7 +127,7 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 | 360 Video 3K | 100 | one `VID` file, no LRV | none | **wanted** |
 | HDR Video | 5.7K 25 / 24 | ❓ | none | **wanted** |
 | H.265 encoding | | | none | **wanted** |
-| Filters Vivid / LOG | | | none | **LOG wanted** (needs its LUT); Vivid low |
+| Filters Vivid / LOG | | | none | **LOG wanted**: Insta360 publishes a LUT for it (`ONE-X2-LUT-Final-V1.0.0.cube`, 65³, the same file as the X3's); Vivid low |
 | Timelapse | 5.7K 30 | no LRV | none | **wanted** |
 | TimeShift | 5.7K 30 / 25 / 24 | no LRV | none | **wanted** |
 | Bullet Time | 3K 100 | no LRV | none | **wanted** |
@@ -337,6 +337,8 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   <https://onlinemanual.insta360.com/onex2/en-us/specs/shooting-specs>
 - Prevu3D, both `.insv` files needed per recording:
   <https://doc.prevu3d.com/en/realityplatform/dataset-preparation-and-upload/input-types/photogrammetry-data/360-video/insta360-capture-setup/>
+- Insta360 LUT downloads (the ONE X2's LOG LUT):
+  <https://www.insta360.com/download/i-log>
 - Clifton Cameras, ONE X2 spec sheet (modes)
 - Gyroflow telemetry-parser, `src/insta360/mod.rs` (IMU orientation tables
   and when each applies, timestamp units, lens profile from `offset_v3`),
