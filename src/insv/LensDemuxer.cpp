@@ -149,8 +149,11 @@ void LensDemuxer::close()
 bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::string& err)
 {
     close();
-    if (avformat_open_input(&m_fmt, path.c_str(), nullptr, nullptr) < 0) {
-        err = "avformat_open_input failed for " + path;
+    // The caller names the file: it knows which clip that is.
+    if (const int rc = avformat_open_input(&m_fmt, path.c_str(), nullptr, nullptr); rc < 0) {
+        char why[AV_ERROR_MAX_STRING_SIZE] = {0};
+        av_strerror(rc, why, sizeof(why));
+        err = std::string("avformat_open_input failed: ") + why;
         return false;
     }
     if (avformat_find_stream_info(m_fmt, nullptr) < 0) {

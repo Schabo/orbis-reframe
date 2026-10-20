@@ -1125,17 +1125,27 @@ void MainWindow::connectController()
     connect(m_controller, &PlaybackController::durationChanged, m_playerBar,
             &PlayerBar::setDuration);
     connect(m_controller, &PlaybackController::openFailed, this,
-            [this](const QString &path, const QString &error) {
+            [this](const QString &path, int clipId, const QString &error) {
+                // Named by its clip as well as its file: two clips cut from
+                // one recording share the file name.
+                QString what = QFileInfo(path).fileName();
+                if (const int i = m_timeline->indexOfId(clipId); i >= 0)
+                    what = tr("%1 (clip %2)").arg(what).arg(i + 1);
                 // A file that's gone is the missing-media marks' to report
                 // (found here too if it went since the last check): a line,
                 // not a dialog on top of the missing-media warning.
                 if (!QFileInfo::exists(path)) {
                     recheckMissingMedia();
-                    m_editToolbar->showNotice(
-                        tr("Can't play %1: the file is missing").arg(QFileInfo(path).fileName()));
+                    m_editToolbar->showNotice(tr("Can't play %1: the file is missing").arg(what));
                     return;
                 }
-                QMessageBox::warning(this, tr("Playback error"), error);
+                // The decoder's own words are for a bug report, not the
+                // first thing the user reads.
+                QMessageBox box(QMessageBox::Warning, tr("Playback error"),
+                                tr("Can't play %1: the file can't be read.").arg(what),
+                                QMessageBox::Ok, this);
+                box.setDetailedText(error);
+                box.exec();
             });
     connect(m_controller, &PlaybackController::positionChanged, this,
             [this](qint64 timelineMs) {

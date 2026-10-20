@@ -279,7 +279,7 @@ void PlaybackController::switchToSegment(int index)
     else if (!(src = acquireSource(seg, &err)) && err.isEmpty())
         err = QStringLiteral("could not open %1").arg(path);
     if (!src) {
-        emit openFailed(path, err);
+        emit openFailed(path, seg.clipId, err);
         // Black for the clip's span, so playback goes on past it. Cached
         // like the file's own source: the next pass plays it without asking
         // again, and a file that comes back is opened afresh (reopenSources).

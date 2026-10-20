@@ -192,7 +192,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     // --- Stage 1 / fallback: CPU decode + (GPU or CPU) stitch ---
     auto demux = std::make_unique<insv::InsvDemux>();
     if (!demux->open(clip_path, err)) {
-        last_error_ = "demux open failed: " + err;
+        last_error_ = "demux open failed: " + err + ": " + clip_path;
         return false;
     }
     if (!std::getenv("INSV_NO_GPU_STITCH")) {

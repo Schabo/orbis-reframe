@@ -218,8 +218,9 @@ public slots:
 
 signals:
     // A source couldn't be opened (or is marked missing): its clip plays
-    // black. `path` is the file, `error` why.
-    void openFailed(const QString &path, const QString &error);
+    // black. `path` is the file, `clipId` the clip that first asked for it
+    // (Segment::clipId), `error` why.
+    void openFailed(const QString &path, int clipId, const QString &error);
     void durationChanged(qint64 totalMs);
     void positionChanged(qint64 timelineMs);
     void playingChanged(bool playing);
