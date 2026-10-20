@@ -1044,7 +1044,7 @@ void MainWindow::setupMenus()
                                         &MainWindow::exportFlatVideo);
     m_exportAction->setObjectName(QStringLiteral("exportAction"));
     m_exportAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
-    m_exportAction->setIcon(theme::icon(QStringLiteral("download")));
+    m_exportAction->setIcon(theme::icon(QStringLiteral("upload")));
     m_exportAction->setEnabled(false);
 
     // Save screenshot: the player bar's button and Ctrl+Shift+P, in no menu

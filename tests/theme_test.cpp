@@ -98,7 +98,7 @@ void testIcons()
     CHECK(near(strokeColor(accent.pixmap(32, 32, QIcon::Normal)), c.accent));
     // Every bundled icon draws (each says currentColor).
     for (const char *name : {"arrow-left-to-line", "arrow-right-to-line", "camera", "clapperboard",
-                             "download", "eye-off", "file-plus-2", "folder-open", "info", "layers",
+                             "download", "upload", "eye-off", "file-plus-2", "folder-open", "info", "layers",
                              "move-3d", "palette", "pause", "picture-in-picture-2", "rotate-ccw",
                              "save", "trash-2", "vibrate", "volume-2", "x"}) {
         const QColor s = strokeColor(theme::icon(QString::fromLatin1(name)).pixmap(24, 24));
