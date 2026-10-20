@@ -5,8 +5,18 @@ to start orbis-reframe and open your first clip.
 
 orbis-reframe is a video editor for **Insta360 X5** 360° footage. It opens the
 camera's `.insv` files directly. You don't need Insta360 Studio or any other
-Insta360 software. Other cameras (other Insta360 models, DJI, GoPro) aren't
-supported yet. If you have one, short clips from it help add it:
+Insta360 software.
+
+The **Insta360 X6** is supported experimentally: its clips open, stitch and
+export, including the 10-bit I-Log and Dolby Vision modes (with a LUT, see
+[Colour](colour.md#luts)), but so far only a contributor has tried it on real
+X6 files. [Stabilization](stabilization.md) may turn the picture the wrong
+way on X6 clips: it reads the camera's motion the X5's way until an X6 clip
+confirms it. If something looks wrong on your X6 clips, please
+[open an issue](https://github.com/Schabo/orbis-reframe/issues).
+
+Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If
+you have one, short clips from it help add it:
 [sample clips wanted](../formats/README.md#sample-clips-wanted).
 
 > **Early software.** orbis-reframe has been built and tested on one computer

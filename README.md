@@ -29,6 +29,10 @@ Ubuntu 26.04 LTS on the
 needs and how to install. **Found a problem?**
 [Open an issue](https://github.com/Schabo/orbis-reframe/issues).
 
+**Insta360 X6:** experimental -- clips open, stitch and export, but only a
+contributor has tried real X6 files so far, and stabilization may turn the
+picture the wrong way until an X6 clip confirms its motion axes.
+
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:
 [sample clips wanted](docs/formats/README.md#sample-clips-wanted).

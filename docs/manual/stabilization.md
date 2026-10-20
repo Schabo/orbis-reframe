@@ -1,7 +1,10 @@
 # Stabilization
 
 The X5 records its own movement with a built-in gyroscope and
-accelerometer, and stores it in every `.insv` file. orbis-reframe uses this
+accelerometer, and stores it in every `.insv` file. (The X6 does too, but
+its support is experimental: see
+[Getting started](getting-started.md); stabilization may turn its picture
+the wrong way.) orbis-reframe uses this
 to steady the picture: it turns the 360° view against the camera's shake,
 so the view holds still while the camera moves. It can also keep the
 horizon level.
