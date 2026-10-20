@@ -281,7 +281,7 @@ void ReframeExportController::run(const Request &req)
                 ++outFrames;
                 if (!writer->addNv12Frame(black.data(), req.outWidth, req.outHeight, err) ||
                     !feedAudio()) {
-                    emit finished(false, QString::fromStdString(err), req.outPath);
+                    failClip(QString::fromStdString(err));
                     return;
                 }
                 emitPct(base + span * static_cast<double>(k + 1) / frames[i], label);
@@ -393,7 +393,7 @@ void ReframeExportController::run(const Request &req)
                         ff.p010 ? writer->addP010Frame(ff.data.data(), ff.width, ff.height, err)
                                 : writer->addNv12Frame(ff.data.data(), ff.width, ff.height, err);
                     if (!added || !feedAudio()) {
-                        emit finished(false, QString::fromStdString(err), req.outPath);
+                        failClip(QString::fromStdString(err));
                         return;
                     }
                 }
@@ -425,7 +425,7 @@ void ReframeExportController::run(const Request &req)
                                                   c.poseAt ? pose : nullptr,
                                                   c.stab ? stab : nullptr, &c.colorGrade, err) ||
                         !feedAudio()) {
-                        emit finished(false, QString::fromStdString(err), req.outPath);
+                        failClip(QString::fromStdString(err));
                         return;
                     }
                 }

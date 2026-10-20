@@ -99,9 +99,12 @@ are. Your original files are never changed.
 
 - **Keep the files where they are.** If a file is moved or renamed after you
   added it, the project can't find it. When you open the project, it says
-  *Missing media* and the clip can't play, and its card in the library says
-  how many files are missing. Either put the file back where it was (with its
-  old name), or show the project where it is now:
+  *Missing media* and lists each missing file with where the timeline uses
+  it (*clip 2*, *inset on “Overlay 1”*, *sound on “Music”*) and its full
+  path. The clip can't play: playback stops where it starts, with *Can't
+  play …: the file is missing* beside the edit buttons. The project's card
+  in the library says how many files are missing. Either put the file back
+  where it was (with its old name), or show the project where it is now:
   in the **Media** tab the file is red, *File not found*; double-click it (or
   right-click it ▸ **Locate file…**) and pick the file. It has to be the same
   file, the same kind and length; another file is refused. Every clip cut

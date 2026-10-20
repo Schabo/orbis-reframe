@@ -104,8 +104,8 @@ public:
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
         bool depthSeam = true;
         // The file was gone when the timeline was pushed (ClipItem::
-        // mediaMissing): the decoder doesn't try to open it and doesn't
-        // report it -- the missing-media UI owns that.
+        // mediaMissing): the decoder doesn't try to open it, or open it
+        // ahead of time, and reports it through openFailed.
         bool missing = false;
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
@@ -217,7 +217,9 @@ public slots:
     void setRate(double rate);
 
 signals:
-    void openFailed(const QString &error);
+    // A source couldn't be opened (or is marked missing): decoding stops
+    // there. `path` is the file, `error` why.
+    void openFailed(const QString &path, const QString &error);
     void durationChanged(qint64 totalMs);
     void positionChanged(qint64 timelineMs);
     void playingChanged(bool playing);
@@ -271,7 +273,7 @@ private:
                                                   const Segment &seg);
     // Make segment `index` the one being decoded, opening its source if the
     // path changed. Prunes any other cached source. false (openFailed emitted)
-    // on open failure.
+    // on open failure, or without trying for a segment marked missing.
     bool switchToSegment(int index);
     qint64 clampTimeline(qint64 ms) const {
         return ms < 0 ? 0 : (ms > m_totalMs ? m_totalMs : ms);

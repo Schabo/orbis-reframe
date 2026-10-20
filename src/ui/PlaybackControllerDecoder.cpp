@@ -6,7 +6,6 @@
 
 #include <NativeStitchSource.h> // stitch::MakeStitchSource
 
-#include <QFileInfo>
 #include <QTimer>
 
 #include <algorithm>
@@ -270,16 +269,17 @@ bool PlaybackController::switchToSegment(int index)
         touchSourceLru(path);
         return true;
     }
-    // A file that's gone has no open and no "Playback error" -- the
-    // missing-media UI reports it. The filesystem check stands for segments
-    // pushed before their mediaMissing flag was set (mid-load).
-    if (seg.missing || !QFileInfo::exists(path))
+    // A file known to be gone isn't opened; the view decides how to tell
+    // the user (it owns the missing-media marks).
+    if (seg.missing) {
+        emit openFailed(path, QStringLiteral("file not found: %1").arg(path));
         return false;
+    }
 
     QString err;
     auto src = acquireSource(seg, &err);
     if (!src) {
-        emit openFailed(err.isEmpty() ? QStringLiteral("could not open %1").arg(path) : err);
+        emit openFailed(path, err.isEmpty() ? QStringLiteral("could not open %1").arg(path) : err);
         return false;
     }
     // The source we leave keeps its lens ring only for frames still queued or
@@ -305,7 +305,9 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
         return;
     const Placed &np = m_decPlaced[next];
     // The same file on from here (a split): the decoder carries on reading.
-    if (np.seg.sourcePath == cur.seg.sourcePath && np.seg.inMs == cur.seg.outMs)
+    // A file known to be gone has nothing to open ahead of time.
+    if ((np.seg.sourcePath == cur.seg.sourcePath && np.seg.inMs == cur.seg.outMs) ||
+        np.seg.missing)
         return;
 
     auto p = std::make_unique<Prefetch>();

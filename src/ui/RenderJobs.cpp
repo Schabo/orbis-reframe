@@ -1,9 +1,8 @@
 #include "RenderJobs.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
-#include <QMap>
-#include <QObject>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -477,62 +476,39 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     return job;
 }
 
-QStringList missingSources(const Timeline &timeline)
+QList<MissingSource> missingSources(const Timeline &timeline)
 {
-    QStringList out;
-    const auto add = [&out](const QString &path) {
-        if (!out.contains(path))
-            out << path;
+    const auto tr = [](const char *text) { return QCoreApplication::translate("RenderJobs", text); };
+    QList<MissingSource> out;
+    const auto add = [&out](const QString &path, const QString &place) {
+        auto it = std::find_if(out.begin(), out.end(),
+                               [&](const MissingSource &m) { return m.path == path; });
+        if (it == out.end())
+            it = out.insert(out.end(), MissingSource{path, {}});
+        it->places << place;
     };
     for (int i = 0; i < timeline.count(); ++i)
         if (const ClipItem &c = timeline.clipAt(i); c.mediaMissing)
-            add(c.sourcePath);
+            add(c.sourcePath, tr("clip %1").arg(i + 1));
     for (int i = 0; i < timeline.trackCount(); ++i) {
         const Track &t = timeline.trackAt(i);
         if (t.muted)
             continue; // a hidden video track, a muted audio track
         for (const TrackClip &c : t.clips)
             if (c.mediaMissing && !c.isTitle() && !(t.kind == Track::Kind::Audio && c.muted))
-                add(c.sourcePath);
+                add(c.sourcePath, t.kind == Track::Kind::Video
+                                      ? tr("inset on “%1”").arg(t.name)
+                                      : tr("sound on “%1”").arg(t.name));
     }
     return out;
 }
 
 QStringList missingSourceLines(const Timeline &timeline)
 {
-    // Each missing source as "name.ext -- clip 2" (its place on the
-    // timeline): with several gone at once, bare paths don't say which
-    // clip is which. A file used in more than one spot names them all.
-    // The path goes after, indented, under its line.
-    QMap<QString, QStringList> whoFor; // path -> where it's used, in order
-    QStringList order;
-    const auto add = [&](const QString &path, const QString &who) {
-        if (!whoFor.contains(path)) {
-            whoFor[path] = {};
-            order << path;
-        }
-        whoFor[path] << who;
-    };
-    for (int i = 0; i < timeline.count(); ++i)
-        if (const ClipItem &c = timeline.clipAt(i); c.mediaMissing)
-            add(c.sourcePath, QObject::tr("clip %1").arg(i + 1));
-    for (int i = 0; i < timeline.trackCount(); ++i) {
-        const Track &t = timeline.trackAt(i);
-        if (t.muted)
-            continue;
-        for (const TrackClip &c : t.clips) {
-            if (!c.mediaMissing || c.isTitle() || (t.kind == Track::Kind::Audio && c.muted))
-                continue;
-            add(c.sourcePath,
-                t.kind == Track::Kind::Video ? QObject::tr("inset on “%1”").arg(t.name)
-                                           : QObject::tr("sound on “%1”").arg(t.name));
-        }
-    }
     QStringList out;
-    for (const QString &path : order)
-        out << QObject::tr("%1 -- %2").arg(QFileInfo(path).fileName(),
-                                           whoFor[path].join(QLatin1String(", "))) +
-                   QStringLiteral("\n    %1").arg(path);
+    for (const MissingSource &m : missingSources(timeline))
+        out << QStringLiteral("%1 -- %2\n    %3")
+                   .arg(QFileInfo(m.path).fileName(), m.places.join(QLatin1String(", ")), m.path);
     return out;
 }
 

@@ -64,15 +64,20 @@ std::vector<TransitionLayer> transitionLayers(const Timeline &timeline);
 ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &timeline,
                                          const PrivacyBlur &privacy);
 
+// A source file an export needs that is missing, and where the timeline
+// uses it: "clip 2", "inset on “Overlay 1”", "sound on “Camera mic”".
+struct MissingSource {
+    QString path;
+    QStringList places;
+};
 // The source files an export needs that are missing (ClipItem::mediaMissing,
 // TrackClip::mediaMissing as last checked), each once, in timeline order:
 // main-track clips first, then overlay and audio clips. Clips on hidden or
 // muted tracks and muted audio clips aren't exported, so they don't count.
-QStringList missingSources(const Timeline &timeline);
-// The same set as display lines: "name.ext -- clip 2" / "name.ext -- inset on
-// “Overlay 1”" / "name.ext -- sound on “Camera mic”", with the full path
-// indented under each -- for a message when more than one is missing and a
-// bare path wouldn't say which clip it is.
+QList<MissingSource> missingSources(const Timeline &timeline);
+// The same as display lines, "name.ext -- clip 2, clip 3" with the full path
+// indented under it: with several gone at once, bare paths don't say which
+// clip is which.
 QStringList missingSourceLines(const Timeline &timeline);
 
 // Where an export of the project in `projectFile` is suggested: its

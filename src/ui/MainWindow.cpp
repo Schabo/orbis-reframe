@@ -1124,7 +1124,16 @@ void MainWindow::connectController()
     connect(m_controller, &PlaybackController::durationChanged, m_playerBar,
             &PlayerBar::setDuration);
     connect(m_controller, &PlaybackController::openFailed, this,
-            [this](const QString &error) {
+            [this](const QString &path, const QString &error) {
+                // A file that's gone is the missing-media marks' to report
+                // (found here too if it went since the last check): a line,
+                // not a dialog on top of the missing-media warning.
+                if (!QFileInfo::exists(path)) {
+                    recheckMissingMedia();
+                    m_editToolbar->showNotice(
+                        tr("Can't play %1: the file is missing").arg(QFileInfo(path).fileName()));
+                    return;
+                }
                 QMessageBox::warning(this, tr("Playback error"), error);
             });
     connect(m_controller, &PlaybackController::positionChanged, this,
@@ -2837,6 +2846,24 @@ void MainWindow::bindEmptyTimeline()
     updateSyncStatus();
 }
 
+namespace {
+
+// A warning listing missing source files (renderjobs::missingSourceLines),
+// then what to do about them.
+void showMissingMedia(QWidget *parent, const QString &title, const QString &text,
+                      const QStringList &lines, const QString &advice)
+{
+    QMessageBox box(QMessageBox::Warning, title, text, QMessageBox::Ok, parent);
+    box.setInformativeText(lines.join(QLatin1Char('\n')) + QStringLiteral("\n\n") + advice);
+    // Full paths run long: hold the box wide enough that they don't wrap.
+    if (auto *grid = qobject_cast<QGridLayout *>(box.layout()))
+        grid->addItem(new QSpacerItem(640, 0, QSizePolicy::Minimum, QSizePolicy::Expanding),
+                      grid->rowCount(), 0, 1, grid->columnCount());
+    box.exec();
+}
+
+} // namespace
+
 void MainWindow::openProject(const QString &projectPath)
 {
     QString error;
@@ -2874,27 +2901,15 @@ void MainWindow::openProject(const QString &projectPath)
     syncStitchingPanel();
     syncPrivacyPanel();
 
+    // All of them, labelled with their place on the timeline: a second
+    // missing file isn't told apart from the first's warning. The model
+    // stays on screen; the decoder doesn't open a file marked missing.
     if (const QStringList missing = renderjobs::missingSourceLines(*m_timeline);
-        !missing.isEmpty()) {
-        // Keep the loaded model on screen but don't try to play a missing file.
-        // All of them, labelled with their place on the timeline: a second
-        // missing file isn't told apart from the first's warning.
-        QMessageBox box(QMessageBox::Warning, tr("Missing media"),
-                        tr("Source files are not where the project expects them:"),
-                        QMessageBox::Ok, this);
-        box.setInformativeText(missing.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
-                               tr("If a file was moved or renamed, find it with Locate file… on "
-                                  "it in the Media tab."));
-        // Full paths run long: hold the box wide enough that they don't wrap.
-        auto *grid = qobject_cast<QGridLayout *>(box.layout());
-        if (grid)
-            grid->addItem(new QSpacerItem(640, 0, QSizePolicy::Minimum,
-                                          QSizePolicy::Expanding),
-                          grid->rowCount(), 0, 1, grid->columnCount());
-        box.exec();
-        syncTimeline();
-        return;
-    }
+        !missing.isEmpty())
+        showMissingMedia(this, tr("Missing media"),
+                         tr("Source files are not where the project expects them:"), missing,
+                         tr("If a file was moved or renamed, find it with Locate file… on it in "
+                            "the Media tab."));
     syncTimeline(); // opens paused on the first frame
 }
 
@@ -3139,13 +3154,11 @@ bool MainWindow::checkSourcesPresent(const QStringList &missing)
 {
     if (missing.isEmpty())
         return true;
-    QMessageBox box(QMessageBox::Warning, tr("Export flat video"),
-                    tr("The timeline can't be exported: these source files are missing."),
-                    QMessageBox::Ok, this);
-    box.setInformativeText(missing.join(QLatin1Char('\n')) + QStringLiteral("\n\n") +
-                           tr("If a file was moved or renamed, find it with Locate file… on it "
-                              "in the Media tab. Or remove its clips from the timeline."));
-    box.exec();
+    showMissingMedia(this, tr("Export flat video"),
+                     tr("The timeline can't be exported: these source files are missing."),
+                     missing,
+                     tr("If a file was moved or renamed, find it with Locate file… on it in the "
+                        "Media tab. Or remove its clips from the timeline."));
     return false;
 }
 

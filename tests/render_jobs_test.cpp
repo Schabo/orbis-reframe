@@ -315,8 +315,13 @@ void testMissingSources()
                          {"/v/inset.mp4", true},
                          {"/v/hidden.mp4", true}});
     // Muted clip, muted track and hidden track aren't exported: not listed.
-    CHECK((renderjobs::missingSources(t) ==
-           QStringList{"/c/gone.insv", "/m/song.wav", "/v/inset.mp4"}));
+    const QList<renderjobs::MissingSource> missing = renderjobs::missingSources(t);
+    QStringList paths;
+    for (const renderjobs::MissingSource &m : missing)
+        paths << m.path;
+    CHECK((paths == QStringList{"/c/gone.insv", "/m/song.wav", "/v/inset.mp4"}));
+    if (missing.size() == 3)
+        CHECK((missing[0].places == QStringList{"clip 2", "clip 3"}));
     // The display lines name each file's place on the timeline (and its
     // path under it), so several missing at once stay tellable apart.
     const QStringList lines = renderjobs::missingSourceLines(t);
