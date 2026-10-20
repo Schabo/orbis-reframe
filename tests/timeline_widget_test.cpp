@@ -262,9 +262,11 @@ void testKeyDiamondClick()
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000) + 10, keyY));
     CHECK(seek.count() == 2 && moved.count() == 0);
 
-    // A key on a's trim-out would be b's first frame: no diamond at the cut.
-    QTest::mouseMove(&f.w, QPoint(Fixture::x(10000), keyY));
-    CHECK(f.w.cursor().shape() != Qt::PointingHandCursor);
+    // A key on a's trim-out (b's first frame) sits on a's last frame, 1 ms
+    // before the cut, and selects a.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(10000), keyY));
+    CHECK(seek.count() == 3 && seek.last().at(0).toLongLong() == 9999);
+    CHECK(sel.last().at(0).toInt() == 1);
 }
 
 void testHeaderAndMain()
@@ -609,9 +611,9 @@ void testOverlayTracks()
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier,
                       QPoint(Fixture::x(7000) + 10, camKeyY));
     CHECK(seek.count() == 1 && moved.count() == 0);
-    // One on the trim-out, where the clip has ended, has none.
-    QTest::mouseMove(&f.w, QPoint(Fixture::x(10000), camKeyY));
-    CHECK(f.w.cursor().shape() != Qt::PointingHandCursor);
+    // One on the trim-out sits 1 ms before the clip's end, still inside it.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(10000), camKeyY));
+    CHECK(seek.count() == 2 && seek.last().at(0).toLongLong() == 9999);
 
     // An overlay clip moves onto the other overlay track...
     drag(&f.w, QPoint(Fixture::x(6000), camY), QPoint(Fixture::x(6500), ov2Y));

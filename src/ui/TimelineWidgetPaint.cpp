@@ -242,7 +242,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                     continue;
                 const bool hov = m_hoverKey.row == i && m_hoverKey.index == j;
                 const int s = hov ? 5 : 3;
-                const int x = xForTimelineMs(r.startMs + r.clip.localAtSourceMs(ks));
+                const int x = xForTimelineMs(r.startMs + r.clip.keyLocalMs(ks));
                 p.setBrush(hov ? tc.accent : tc.text);
                 const QPointF d[4] = {{double(x), double(cy - s)},
                                       {double(x + s), double(cy)},
@@ -339,7 +339,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                 const bool hov = m_hoverKey.track == trackIndex && m_hoverKey.clip == clipIndex &&
                                  m_hoverKey.index == j;
                 const int s = hov ? 5 : 3;
-                const int x = xForTimelineMs(c.timelineAtSourceMs(ks));
+                const int x = xForTimelineMs(c.keyTimelineMs(ks));
                 p.setBrush(hov ? tc.accent : tc.text);
                 const QPointF d[4] = {{double(x), double(cy - s)},
                                       {double(x + s), double(cy)},

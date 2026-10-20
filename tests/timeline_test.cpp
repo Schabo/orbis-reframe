@@ -175,12 +175,40 @@ void testKeyNavigation()
     const int o = tl.addVideoClip(t, "phone.mp4", 20000, 3000, 1080, 1920);
     tl.upsertTrackClipInsetKey(o, 500, {});
     tl.upsertTrackClipInsetKey(o, 4000, {});
-    tl.upsertTrackClipInsetKey(o, 20000, {}); // on the trim-out: the clip has ended
+    tl.upsertTrackClipInsetKey(o, 20000, {}); // on the trim-out: 1 ms before the end
     CHECK(tl.adjacentKey(0, 1, o) == 3500);
     CHECK(tl.adjacentKey(3500, 1, o) == 7000);
-    CHECK(tl.adjacentKey(7000, 1, o) == 7000);
+    CHECK(tl.adjacentKey(7000, 1, o) == 22999);
+    if (const TrackClip *oc = tl.trackClipById(o)) { // K there replaces it
+        tl.upsertTrackClipInsetKey(o, oc->sourceAtLocalMs(22999 - oc->startMs), {});
+        CHECK(tl.trackClipById(o)->insetKeys.count() == 3);
+    }
     CHECK(tl.adjacentKey(9000, -1, o) == 7000);
     CHECK(tl.adjacentKey(0, 1) == 12000); // the reframe keys, as before
+}
+
+// A key a trim left on a clip's trim-out (the next clip's first frame) is
+// reached on the clip's last frame, 1 ms before the cut, and a key set there
+// -- the playhead's source time, as K takes it -- replaces it, at any speed.
+void testKeyOnTrimOut()
+{
+    for (double speed : {1.0, 0.5, 2.0, 4.0}) {
+        Timeline tl;
+        const int a = tl.appendClip("a.insv", 10000, 30.0);
+        tl.appendClip("b.insv", 6000, 25.0);
+        tl.setClipSpeed(a, speed);
+        tl.upsertClipReframeKey(a, 4000, {});
+        tl.upsertClipReframeKey(a, 8000, {});
+        tl.setClipTrimOut(a, 8000);
+        const qint64 cut = tl.clipAt(0).timelineDurationMs();
+        const qint64 at = tl.adjacentKey(tl.clipToTimeline(0, tl.clipAt(0).localAtSourceMs(4000)), 1);
+        CHECK(at == cut - 1);
+        const Timeline::Point pt = tl.timelineToClip(at);
+        CHECK(pt.clipIndex == 0);
+        tl.upsertClipReframeKey(a, tl.clipAt(0).sourceAtLocalMs(pt.clipLocalMs), {0.5f, 0, 0, 1});
+        CHECK(tl.clipAt(0).reframe.keyTimes() == (QList<qint64>{4000, 8000}));
+        CHECK(std::abs(tl.clipAt(0).reframe.sample(8000).yaw - 0.5f) < 1e-6f);
+    }
 }
 
 void testTimelineStructure()
@@ -502,6 +530,7 @@ int main()
     testClipSpeed();
     testKeyboardNavigation();
     testKeyNavigation();
+    testKeyOnTrimOut();
     testTimelineStructure();
     testTimelineSplit();
     testTimelineDuplicate();

@@ -126,17 +126,22 @@ public:
         {
             return std::max<qint64>(0, std::llround((trimOutMs - trimInMs) / speed));
         }
-        // A source time's offset from the clip's start on the timeline, same
-        // rounding as ClipItem::localAtSourceMs.
-        qint64 localAtSourceMs(qint64 sourceMs) const
-        {
-            return std::llround((sourceMs - trimInMs) / speed);
-        }
-        // A key at this source time gets a diamond. Not one on the trim-out:
-        // that's the next clip's first frame (Timeline::adjacentKey).
+        // A key at this source time gets a diamond: one inside the clip, or
+        // on its trim-out (trimming can leave one there; it still steers the
+        // view up to the last frame).
         bool showsKeyAt(qint64 sourceMs) const
         {
-            return sourceMs >= trimInMs && sourceMs < trimOutMs;
+            return sourceMs >= trimInMs && sourceMs <= trimOutMs;
+        }
+        // Where that diamond sits, and where clicking it goes: the key's
+        // offset from the clip's start on the timeline (same rounding as
+        // ClipItem::localAtSourceMs), but 1 ms before the cut for a key on
+        // the trim-out -- that time is the next clip's first frame. The clip's
+        // last frame shows there, and K / Shift+K at it act on the key
+        // (as Timeline::adjacentKey).
+        qint64 keyLocalMs(qint64 sourceMs) const
+        {
+            return std::min(std::llround((sourceMs - trimInMs) / speed), timelineSpanMs() - 1);
         }
     };
 
@@ -164,16 +169,18 @@ public:
         QVector<int> moveTargets;
         qint64 spanMs() const { return std::llround((trimOutMs - trimInMs) / speed); }
         qint64 endMs() const { return startMs + spanMs(); }
-        // Where a source time sits on the timeline.
-        qint64 timelineAtSourceMs(qint64 sourceMs) const
-        {
-            return startMs + std::llround((sourceMs - trimInMs) / speed);
-        }
-        // A key at this source time gets a diamond. Not one on the trim-out:
-        // the clip has ended there, so the Overlay panel couldn't edit it.
+        // A look key at this source time gets a diamond: inside the clip, or
+        // on its trim-out.
         bool showsKeyAt(qint64 sourceMs) const
         {
-            return sourceMs >= trimInMs && sourceMs < trimOutMs;
+            return sourceMs >= trimInMs && sourceMs <= trimOutMs;
+        }
+        // Where that diamond sits on the timeline, and where clicking it
+        // goes; one on the trim-out 1 ms before the clip's end, where the
+        // playhead is still in the clip and the Overlay panel can edit it.
+        qint64 keyTimelineMs(qint64 sourceMs) const
+        {
+            return startMs + std::min(std::llround((sourceMs - trimInMs) / speed), spanMs() - 1);
         }
     };
     struct TrackView {

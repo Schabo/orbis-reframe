@@ -556,7 +556,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
             const qint64 ks = r.clip.keySourceMs[j];
             if (!r.clip.showsKeyAt(ks))
                 continue;
-            check(xForTimelineMs(r.startMs + r.clip.localAtSourceMs(ks)), cy, j);
+            check(xForTimelineMs(r.startMs + r.clip.keyLocalMs(ks)), cy, j);
             if (k.index >= 0) {
                 k.row = i;
                 return k;
@@ -578,7 +578,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
                 const qint64 ks = tc.keySourceMs[j];
                 if (!tc.showsKeyAt(ks))
                     continue;
-                check(xForTimelineMs(tc.timelineAtSourceMs(ks)), cy, j);
+                check(xForTimelineMs(tc.keyTimelineMs(ks)), cy, j);
                 if (k.index >= 0) {
                     k.track = t;
                     k.clip = c;
@@ -594,10 +594,10 @@ qint64 TimelineWidget::keyTimelineMs(const KeyHit &k) const
 {
     if (k.row >= 0) {
         const Row &r = m_rows[k.row];
-        return r.startMs + r.clip.localAtSourceMs(r.clip.keySourceMs[k.index]);
+        return r.startMs + r.clip.keyLocalMs(r.clip.keySourceMs[k.index]);
     }
     const TrackClipView &c = m_tracks[k.track].clips[k.clip];
-    return c.timelineAtSourceMs(c.keySourceMs[k.index]);
+    return c.keyTimelineMs(c.keySourceMs[k.index]);
 }
 
 int TimelineWidget::insertIndexAt(qint64 ms) const

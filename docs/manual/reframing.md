@@ -45,10 +45,12 @@ the last one.
 
 Each clip has its own keyframes, stored with the clip. They move with the
 clip when you reorder or trim it, and a split clip's halves both keep the
-keyframes that fall inside them. A keyframe that a trim leaves outside the
-clip, or exactly on its end, has no diamond and isn't one of the stops for
-`Shift+↓` / `Shift+↑`, but it still steers the view up to the clip's last
-frame.
+keyframes that fall inside them. A keyframe that a trim leaves exactly on
+the clip's end shows its diamond on the clip's last frame, where clicking it
+or `Shift+↓` takes the playhead and you can change or delete it like any
+other. One a trim leaves outside the clip has no diamond until you trim the
+clip back over it, but it still steers the view toward it up to the clip's
+last frame.
 
 > **A clip without keyframes is exported looking straight ahead** (yaw 0°,
 > pitch 0°, field of view 75°), whatever you looked at in the viewport. Give

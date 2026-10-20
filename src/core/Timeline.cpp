@@ -159,21 +159,24 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
     // Mapping a key to the timeline and back can be off by a rounded ms.
     constexpr qint64 kOnKeyMs = 5;
     std::vector<qint64> points;
+    // A key on the trim-out point (a trim can leave one there) is reached 1 ms
+    // before the cut: that time is the next clip's first frame, or past an
+    // overlay's end, while 1 ms earlier the clip's last frame shows and
+    // setting / deleting a key at the playhead acts on it.
     if (overlayClipId > 0) {
-        // A key on the trim-out point is where the clip has ended: the
-        // Overlay panel's keys are for a playhead inside it.
         if (const TrackClip *c = trackClipById(overlayClipId))
             for (const InsetKey &k : c->insetKeys.keys())
-                if (k.timeMs >= c->trimInMs && k.timeMs < c->trimOutMs)
+                if (k.timeMs >= c->trimInMs && k.timeMs <= c->trimOutMs)
                     points.push_back(c->startMs +
-                                     std::llround((k.timeMs - c->trimInMs) / c->speed));
+                                     std::min(std::llround((k.timeMs - c->trimInMs) / c->speed),
+                                              c->timelineDurationMs() - 1));
     } else {
         qint64 acc = 0;
         for (const ClipItem &c : m_clips) {
-            // A key on the trim-out point would be the next clip's first frame.
             for (const ReframeKey &k : c.reframe.keys())
-                if (k.timeMs >= c.trimInMs && k.timeMs < c.trimOutMs)
-                    points.push_back(acc + c.localAtSourceMs(k.timeMs));
+                if (k.timeMs >= c.trimInMs && k.timeMs <= c.trimOutMs)
+                    points.push_back(acc + std::min(c.localAtSourceMs(k.timeMs),
+                                                    c.timelineDurationMs() - 1));
             acc += c.timelineDurationMs();
         }
     }

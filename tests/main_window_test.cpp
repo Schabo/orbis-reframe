@@ -406,6 +406,28 @@ void testNavigationKeys(const Ctx &c)
     CHECK(waitFor([&] { return c.timelineWidget->playhead() == kClipMs + 1000; }));
 }
 
+// A key a trim left on clip 1's trim-out (clip 2's first frame) is reached
+// with Shift+Down on clip 1's last frame, where K replaces it and Shift+K
+// deletes it -- not clip 2's.
+void testKeyOnTrimOut(const Ctx &c)
+{
+    if (c.timeline->count() < 2)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    const qint64 out = c.timeline->clipAt(0).trimOutMs;
+    c.timeline->upsertClipReframeKey(a, out, {});
+    CHECK(seekTo(c, 500));
+    key(c, Qt::Key_Down, Qt::ShiftModifier);
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() == kClipMs - 1; }));
+    settle();
+    key(c, Qt::Key_K);
+    CHECK(c.timeline->clipAt(0).reframe.keyTimes() == QList<qint64>{out});
+    CHECK(c.timeline->clipAt(1).reframe.isEmpty());
+    key(c, Qt::Key_K, Qt::ShiftModifier);
+    CHECK(c.timeline->clipAt(0).reframe.isEmpty());
+    settle();
+}
+
 // Split, trim, restore, delete and speed on the video track, each undone.
 // (Undo rebuilds the timeline, clip ids included: clips are looked up by
 // their place.)
@@ -1329,6 +1351,7 @@ int main(int argc, char **argv)
             testAddClipByMenu(c);
             testPlayAcrossCut(c);
             testNavigationKeys(c);
+            testKeyOnTrimOut(c);
             testVideoEdits(c);
             testColour(c);
             testStitching(c);
