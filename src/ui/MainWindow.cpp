@@ -2902,10 +2902,11 @@ void MainWindow::openProject(const QString &projectPath)
     syncStitchingPanel();
     syncPrivacyPanel();
 
-    // All of them, labelled with their place on the timeline: a second
-    // missing file isn't told apart from the first's warning. The model
-    // stays on screen; the decoder doesn't open a file marked missing.
-    if (const QStringList missing = renderjobs::missingSourceLines(*m_timeline);
+    // All of them, labelled with their place on the timeline (hidden and
+    // muted tracks too: unhiding one later doesn't warn again). The model
+    // stays on screen; playback shows a missing clip black.
+    if (const QStringList missing =
+            renderjobs::missingSourceLines(*m_timeline, renderjobs::MissingFor::Timeline);
         !missing.isEmpty())
         showMissingMedia(this, tr("Missing media"),
                          tr("Source files are not where the project expects them:"), missing,
@@ -3051,7 +3052,8 @@ void MainWindow::exportFlatVideo()
     // missing overlay or sound clip would be left out without a word. Either
     // way the user sorts it out first.
     recheckMissingMedia();
-    if (!checkSourcesPresent(renderjobs::missingSourceLines(*m_timeline)))
+    if (!checkSourcesPresent(
+            renderjobs::missingSourceLines(*m_timeline, renderjobs::MissingFor::Export)))
         return;
 
     // One output frame rate for the whole timeline: the project's (Project

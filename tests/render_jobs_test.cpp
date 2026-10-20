@@ -306,7 +306,7 @@ void testMissingSources()
     t.addVideoClip(v1, "/v/inset.mp4", 4000, 0, 1920, 1080);
     t.addVideoClip(hidden, "/v/hidden.mp4", 4000, 0, 1920, 1080);
 
-    CHECK(renderjobs::missingSources(t).isEmpty());
+    CHECK(renderjobs::missingSources(t, renderjobs::MissingFor::Timeline).isEmpty());
 
     t.setSourcesMissing({{"/c/gone.insv", true},
                          {"/m/song.wav", true},
@@ -315,7 +315,8 @@ void testMissingSources()
                          {"/v/inset.mp4", true},
                          {"/v/hidden.mp4", true}});
     // Muted clip, muted track and hidden track aren't exported: not listed.
-    const QList<renderjobs::MissingSource> missing = renderjobs::missingSources(t);
+    const QList<renderjobs::MissingSource> missing =
+        renderjobs::missingSources(t, renderjobs::MissingFor::Export);
     QStringList paths;
     for (const renderjobs::MissingSource &m : missing)
         paths << m.path;
@@ -324,7 +325,7 @@ void testMissingSources()
         CHECK((missing[0].places == QStringList{"clip 2", "clip 3"}));
     // The display lines name each file's place on the timeline (and its
     // path under it), so several missing at once stay tellable apart.
-    const QStringList lines = renderjobs::missingSourceLines(t);
+    const QStringList lines = renderjobs::missingSourceLines(t, renderjobs::MissingFor::Export);
     CHECK(lines.size() == 3);
     if (lines.size() == 3) {
         CHECK(lines[0].startsWith(QLatin1String("gone.insv -- clip 2, clip 3")));
@@ -332,6 +333,13 @@ void testMissingSources()
         CHECK(lines[1].startsWith(QStringLiteral("song.wav -- sound on “Music”")));
         CHECK(lines[2].startsWith(QStringLiteral("inset.mp4 -- inset on “V1”")));
     }
+    // Opening the project: every file the timeline uses, in the same order.
+    paths.clear();
+    for (const renderjobs::MissingSource &m :
+         renderjobs::missingSources(t, renderjobs::MissingFor::Timeline))
+        paths << m.path;
+    CHECK((paths == QStringList{"/c/gone.insv", "/m/song.wav", "/m/quiet.wav", "/m/off.wav",
+                                "/v/inset.mp4", "/v/hidden.mp4"}));
 }
 
 void testClipJob(const QString &dir)

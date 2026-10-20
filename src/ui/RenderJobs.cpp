@@ -476,7 +476,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     return job;
 }
 
-QList<MissingSource> missingSources(const Timeline &timeline)
+QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which)
 {
     const auto tr = [](const char *text) { return QCoreApplication::translate("RenderJobs", text); };
     QList<MissingSource> out;
@@ -492,10 +492,13 @@ QList<MissingSource> missingSources(const Timeline &timeline)
             add(c.sourcePath, tr("clip %1").arg(i + 1));
     for (int i = 0; i < timeline.trackCount(); ++i) {
         const Track &t = timeline.trackAt(i);
-        if (t.muted)
-            continue; // a hidden video track, a muted audio track
+        // A hidden video track, a muted audio track or clip: not exported.
+        const bool all = which == MissingFor::Timeline;
+        if (t.muted && !all)
+            continue;
         for (const TrackClip &c : t.clips)
-            if (c.mediaMissing && !c.isTitle() && !(t.kind == Track::Kind::Audio && c.muted))
+            if (c.mediaMissing && !c.isTitle() &&
+                (all || !(t.kind == Track::Kind::Audio && c.muted)))
                 add(c.sourcePath, t.kind == Track::Kind::Video
                                       ? tr("inset on “%1”").arg(t.name)
                                       : tr("sound on “%1”").arg(t.name));
@@ -503,10 +506,10 @@ QList<MissingSource> missingSources(const Timeline &timeline)
     return out;
 }
 
-QStringList missingSourceLines(const Timeline &timeline)
+QStringList missingSourceLines(const Timeline &timeline, MissingFor which)
 {
     QStringList out;
-    for (const MissingSource &m : missingSources(timeline))
+    for (const MissingSource &m : missingSources(timeline, which))
         out << QStringLiteral("%1 -- %2\n    %3")
                    .arg(QFileInfo(m.path).fileName(), m.places.join(QLatin1String(", ")), m.path);
     return out;

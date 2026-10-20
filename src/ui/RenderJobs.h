@@ -70,15 +70,18 @@ struct MissingSource {
     QString path;
     QStringList places;
 };
-// The source files an export needs that are missing (ClipItem::mediaMissing,
+// Which missing files count: those an export needs (clips on hidden or muted
+// tracks and muted audio clips aren't exported), or every one the timeline
+// uses (opening a project: unhiding a track later doesn't warn again).
+enum class MissingFor { Export, Timeline };
+// The source files that are missing (ClipItem::mediaMissing,
 // TrackClip::mediaMissing as last checked), each once, in timeline order:
-// main-track clips first, then overlay and audio clips. Clips on hidden or
-// muted tracks and muted audio clips aren't exported, so they don't count.
-QList<MissingSource> missingSources(const Timeline &timeline);
+// main-track clips first, then overlay and audio clips.
+QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which);
 // The same as display lines, "name.ext -- clip 2, clip 3" with the full path
 // indented under it: with several gone at once, bare paths don't say which
 // clip is which.
-QStringList missingSourceLines(const Timeline &timeline);
+QStringList missingSourceLines(const Timeline &timeline, MissingFor which);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),
