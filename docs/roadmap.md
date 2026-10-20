@@ -82,7 +82,8 @@ each is in its document in [`formats/`](formats/README.md).
   IMU flag and scaling, and axis map.
 - **Insta360 ONE X2 / X3**: two files per take, one per lens -- the clip is
   the pair everywhere (adding, the project file, missing media, the `.lrv`).
-  Calibration from the older calibration strings; the IMU axis map per model.
+  Calibration from the 40-token `offset_v3` string (the ONE X2 has no
+  56-token one); telemetry in ms; the IMU axis map per model.
 - **Antigravity A1**: a different trailer layout, 180° lenses (thin seam
   overlap), the drone body in the picture.
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the

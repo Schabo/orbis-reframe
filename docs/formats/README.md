@@ -10,7 +10,7 @@ differences from it, or, for another vendor, from scratch.
 | Insta360 X5 | 360, one `.insv` with both lenses | [`insta360-x5.md`](insta360-x5.md) | supported; every fact checked on our clips |
 | Insta360 X4 | 360, one `.insv` with both lenses | [`insta360-x4.md`](insta360-x4.md) | not yet; desk research, no clips |
 | Insta360 X6 | 360, one `.insv`, 10-bit modes | [`insta360-x6.md`](insta360-x6.md) | partly: opens and stitches (a contributor's clips); log / Dolby Vision colour and IMU axes open |
-| Insta360 ONE X2, X3 | 360, one `.insv` per lens | [`insta360-one-x2-x3.md`](insta360-one-x2-x3.md) | not yet; desk research, no clips |
+| Insta360 ONE X2, X3 | 360, one `.insv` per lens | [`insta360-one-x2-x3.md`](insta360-one-x2-x3.md) | not yet; ONE X2 examined on two clips, X3 desk research |
 | Antigravity A1 | 360 drone, `.insv` | [`antigravity-a1.md`](antigravity-a1.md) | not yet; desk research, no clips |
 | Insta360 Luna (Pro / Ultra) | flat gimbal camera, `.mp4` | [`insta360-luna.md`](insta360-luna.md) | not yet; desk research, no clips |
 | DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | not yet; desk research, no clips |
@@ -18,9 +18,9 @@ differences from it, or, for another vendor, from scratch.
 
 ## Sample clips wanted
 
-Everything except the X5 is desk research: **we need short clips from every
-camera above that isn't supported yet** (except the ONE X2: the maintainer
-has one) to find out what the files really hold. If you own one, please
+Most of the documents above are desk research: **we need short clips from
+every camera above that isn't supported yet** (except the ONE X2: the
+maintainer has one) to find out what the files really hold. If you own one, please
 [offer some clips](https://github.com/Schabo/orbis-reframe/issues/new?template=sample_clips.yml).
 
 - **Straight from the card**, untouched: not exported, trimmed or re-saved
