@@ -41,8 +41,8 @@ discussion in an issue first, not a pull request.
   (strength) or removes. The stitch and decode deliver the camera's picture
   as recorded; they don't convert transfer curves themselves.
 - **Releases**: one build per target on its own system libraries (Debian
-  Testing, Debian 13, Ubuntu 26.04), as a tarball and a `.deb`. No Flatpak,
-  no single portable build.
+  Testing, Debian 13, Ubuntu 26.04), as a tarball and a `.deb`. No Flatpak;
+  a portable AppImage is a stretch goal ([roadmap](roadmap.md)).
 
 ## Modules
 

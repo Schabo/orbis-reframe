@@ -169,6 +169,10 @@ Bigger, not researched far yet -- talk first.
   automatically, as an ordinary editable timeline).
 - **AMD and Intel**: best-effort today; testing on real cards is welcome.
 - **Windows build**: cross-compiled with MinGW-w64.
+- **AppImage**: one portable build for every distribution, the libraries
+  that differ between them bundled, the NVIDIA driver from the system. To
+  research first: GPU decode and NVENC from the bundle on several
+  distributions, shipping our own FFmpeg (and its licence), size.
 
 ## Ruled out
 
@@ -177,7 +181,7 @@ Not wanted, unless something changes a lot:
 - Full 360 (equirect) export for VR / YouTube 360.
 - Colour conversion built into the stitch or decode (it's the clip's LUT).
 - X11 / XWayland.
-- Flatpak, a single portable build for all distributions.
+- Flatpak.
 - Network access outside the opt-in music library.
 - Translational stabilization by depth and view synthesis.
 - Thumbnails along the video track, backward tracking in Track subject --
