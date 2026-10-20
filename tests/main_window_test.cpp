@@ -14,6 +14,7 @@
 // count.
 
 #include "ClipBackend.h"
+#include "ClipMeasurements.h"
 #include "MainWindow.h"
 #include "SettingsPanel.h"
 #include "SettingsSidebar.h"
@@ -1144,6 +1145,26 @@ void testSaveAs(const Ctx &c)
     CHECK(!c.project->modified());
 }
 
+// Two sources whose seam measurement fails for different reasons: each
+// clip's status line gives its own reason, not the last failure's.
+void testMeasurementFailureReasons(const Ctx &c)
+{
+    std::printf("  measurement failure reasons\n");
+    Project project;
+    Timeline *t = project.timeline();
+    const int garbage = t->appendClip(c.clipA, kClipMs, kFps); // not a video at all
+    const int flat = t->appendClip(c.mp4, kClipMs, kFps);      // a video, not a 360 one
+    ClipMeasurements measurements(&project, true);
+    const auto status = [&](int id) { return measurements.seamStatus(t->clipById(id)); };
+    measurements.schedule();
+    CHECK(waitFor([&] {
+        return status(garbage).contains(QStringLiteral("couldn't align")) &&
+               status(flat).contains(QStringLiteral("couldn't align"));
+    }, 20000));
+    CHECK(status(flat).contains(QStringLiteral("not a recognised 360 camera file")));
+    CHECK(!status(garbage).contains(QStringLiteral("not a recognised 360 camera file")));
+}
+
 // A grade pasted from elsewhere (another project's LUT) brings its LUT into
 // this project's luts/ folder, as every other way a LUT reaches a clip does.
 void testPasteGradeFromElsewhere(const Ctx &c)
@@ -1412,6 +1433,7 @@ int main(int argc, char **argv)
             testHelpAndSettingsDialogs(c);
             testSaveAs(c);
             testPasteGradeFromElsewhere(c);
+            testMeasurementFailureReasons(c);
             testMenuFileDialogs(c);
             testRecovery(c);
             testLocateMovedFile(c);

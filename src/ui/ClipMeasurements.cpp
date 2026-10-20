@@ -98,12 +98,11 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
             m_syncThread->deleteLater();
             m_syncThread = nullptr;
             m_syncMeasuringPath.clear();
-            m_syncLastMessage = QString::fromStdString(r.message);
             core::log::Info("[sync] %s: %s\n", qPrintable(clipPath), r.message.c_str());
             if (r.ok)
                 m_project->timeline()->setSourceSyncAdjust(clipPath, r.adjustMs); // -> clipSyncChanged
             else if (!m_syncCancel)
-                m_syncFailed.insert(clipPath);
+                m_syncFailed.insert(clipPath, QString::fromStdString(r.message));
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
@@ -138,7 +137,6 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
             m_seamThread->deleteLater();
             m_seamThread = nullptr;
             m_seamMeasuringPath.clear();
-            m_seamLastMessage = QString::fromStdString(r.message);
             core::log::Info("[seam] %s: %s\n", qPrintable(clipPath), r.message.c_str());
             // Stale if the guard setting changed meanwhile: drop it and let the
             // re-measure below run under the new one.
@@ -148,7 +146,7 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
                     clipPath, {r.adjustDeg[0], r.adjustDeg[1], r.adjustDeg[2]},
                     static_cast<int>(guard)); // -> clipSeamChanged
             else if (!r.ok && !m_seamCancel)
-                m_seamFailed.insert(clipPath);
+                m_seamFailed.insert(clipPath, QString::fromStdString(r.message));
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
@@ -167,8 +165,9 @@ QString ClipMeasurements::seamStatus(const ClipItem *c) const
             .arg(deg[2], 0, 'f', 2);
     if (c && m_seamMeasuringPath == c->sourcePath)
         return tr("Seam: measuring this clip…");
-    if (c && m_seamFailed.contains(c->sourcePath))
-        return tr("Seam: couldn't align this clip (%1).").arg(m_seamLastMessage);
+    if (const auto it = c ? m_seamFailed.constFind(c->sourcePath) : m_seamFailed.cend();
+        it != m_seamFailed.cend())
+        return tr("Seam: couldn't align this clip (%1).").arg(*it);
     return QString();
 }
 
@@ -181,9 +180,9 @@ QString ClipMeasurements::syncStatus(const ClipItem *c) const
         return tr("Gyro sync: fine-tuned for this clip (%1 ms).").arg(ms, 0, 'f', 1);
     if (m_syncMeasuringPath == c->sourcePath)
         return tr("Gyro sync: measuring this clip…");
-    if (m_syncFailed.contains(c->sourcePath))
+    if (const auto it = m_syncFailed.constFind(c->sourcePath); it != m_syncFailed.cend())
         return tr("Gyro sync: couldn't fine-tune this clip (%1); using the camera's timing.")
-            .arg(m_syncLastMessage);
+            .arg(*it);
 #ifndef ORBIS_REFRAME_HAVE_CLIP_SYNC
     return tr("Gyro sync: camera timing (fine-tune needs a build with OpenCV).");
 #else

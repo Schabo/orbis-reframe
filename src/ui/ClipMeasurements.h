@@ -1,7 +1,7 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
-#include <QSet>
 #include <QString>
 
 #include <atomic>
@@ -62,12 +62,12 @@ private:
     QThread *m_syncThread = nullptr;
     QString m_syncMeasuringPath;
     std::atomic<bool> m_syncCancel{false};
-    QSet<QString> m_syncFailed; // sources that gave no result this session
-    QString m_syncLastMessage;  // last measurement's summary, for the panel
+    // Sources that gave no result this session, with why, for the panel:
+    // each its own, two clips can fail differently.
+    QHash<QString, QString> m_syncFailed;
 
     QThread *m_seamThread = nullptr;
     QString m_seamMeasuringPath;
     std::atomic<bool> m_seamCancel{false};
-    QSet<QString> m_seamFailed;
-    QString m_seamLastMessage;
+    QHash<QString, QString> m_seamFailed; // as m_syncFailed
 };
