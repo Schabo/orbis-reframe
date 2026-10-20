@@ -1,5 +1,6 @@
 #include "MediaProbe.h"
 
+#include <ClipMetadata.h>    // camera::ReadClipMetadata
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader
 #include <InsvAudioDemux.h>  // insv::InsvAudioDemux
 #include <ProbeClip.h>       // stitch::ProbeClip
@@ -97,4 +98,12 @@ QImage mediaThumbnail(const MediaItem &item, const QSize &size)
                      size);
     return full.copy(crop.intersected(full.rect()))
         .scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+}
+
+QString mediaMode(const MediaItem &item)
+{
+    if (item.kind != MediaItem::Kind::Clip360)
+        return {};
+    const auto clip = camera::ReadClipMetadata(item.path.toStdString());
+    return clip ? QString::fromStdString(clip->captureMode) : QString();
 }

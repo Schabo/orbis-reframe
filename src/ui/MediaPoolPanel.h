@@ -49,8 +49,9 @@ private:
 // Import buttons; drag a file onto the timeline; double-click or Enter adds
 // it there (a missing file: asks to locate it); right-click: add to
 // timeline, locate a missing file, show in the file manager, remove.
-// Thumbnails come from a provider run on worker threads (the app's decodes
-// a frame; none in tests).
+// Thumbnails and a 360 clip's recording mode ("8K") come from providers run
+// on worker threads (the app's decode a frame and ask the camera's reader;
+// none in tests).
 class MediaPoolPanel : public QWidget {
     Q_OBJECT
 
@@ -69,11 +70,15 @@ public:
     };
 
     using ThumbnailProvider = std::function<QImage(const MediaItem &, const QSize &)>;
+    // A 360 clip's recording mode as its camera names it ("5.7K"); empty when
+    // the reader doesn't know it.
+    using ModeProvider = std::function<QString(const MediaItem &)>;
 
     explicit MediaPoolPanel(MediaPool *pool, QWidget *parent = nullptr);
     ~MediaPoolPanel() override;
 
     void setThumbnailProvider(ThumbnailProvider provider);
+    void setModeProvider(ModeProvider provider);
     // The files the timeline uses (marked in the list; can't be removed).
     void setInUse(const QSet<QString> &paths);
     // A line under the header, e.g. "Adding 3 files…"; empty hides it.
@@ -101,6 +106,8 @@ private:
     void updateActions();
     void requestThumbnail(const MediaItem &m);
     void applyThumbnail(const QString &path, const QImage &image);
+    void requestMode(const MediaItem &m);
+    void applyMode(const QString &path, const QString &mode);
     void removeSelected();
     void showInFileManager();
 
@@ -112,8 +119,10 @@ private:
     QAction *m_showAction = nullptr;
     QAction *m_removeAction = nullptr;
     ThumbnailProvider m_thumbnailProvider;
+    ModeProvider m_modeProvider;
     QSet<QString> m_inUse;
     QSet<QString> m_collapsed; // folders closed by the user
     QHash<QString, QImage> m_thumbnails; // by path; null = none to be had
+    QHash<QString, QString> m_modes;      // by path; empty = none to be had
     QThreadPool m_thumbnailPool;
 };

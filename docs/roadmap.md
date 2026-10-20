@@ -18,12 +18,13 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ### 1. Insta360 X6
 
-Contributor work in progress, going in on top of the common camera model
-below: the X6's own facts become its row in the Insta360 reader's table
+Built on top of the common camera model below, from a contributor's work:
+the X6's own facts are its row in the Insta360 reader's table
 (`insv::InsvModel`) and fields its reader reads from the file. The X6 is
 close to the X5: the same `.insv`
 trailer, larger lenses (6K lens size 3008²), 8K 50, and 10-bit I-Log and
-Dolby Vision modes. What it needs beyond the X5:
+Dolby Vision modes. What it needs beyond the X5 (what's left needs real X6
+clips):
 
 - done: the focal reference (field 27) read from the file, the X6's row in
   the model table (6K named in Media information and the media pool, no
@@ -57,16 +58,15 @@ through the pipeline.
   per camera family, asked in turn (`Insta360Reader`); Insta360's per-model
   differences are a table (`insv::InsvModel`: IMU axis map, lens-guard
   profile names, capture-mode names). The stitch, sync, seam, stabilizer,
-  export, plate scan, thumbnails and the Media information panel read clips
-  only through it; `GyroStabilizer` no longer knows the `.insv` timing.
+  export, plate scan, thumbnails, the Media information panel and the media
+  pool's mode names read clips only through it; `GyroStabilizer` no longer
+  knows the `.insv` timing.
 - Next: (2) the ONE X2 as the first real second camera -- two files per take,
   one per lens, so the picture sources open each lens from its own
   `LensSource` instead of assuming streams 0 and 1 of one file; (3) DJI and
   GoPro readers only once real clips are available: an in-camera cubemap
   (`Projection`) behind its own `IStitchSource`, an orientation track for
   cameras that record one, readout time per mode.
-- Left in generic code for now: the media pool's capture-mode names on clip
-  cards (from the lens size alone, as the X5's table names them).
 
 New camera support keeps its differences in data -- the reader's per-model
 table, fields read from the file -- not in model checks spread through the

@@ -63,7 +63,10 @@ file used on the timeline. The files stay where they are on your disk; the
 project only remembers where they are. The list is grouped by the folder
 each file is in, and sorted by name. Each file shows a small picture, its
 name, its kind (*360°*, *Video* or *Audio*) and length, and its resolution
-and frame rate. An orange check mark in a circle, to the right of the name, means the file is used on the timeline. A file that can't be
+and frame rate. A 360° clip's resolution is the camera's recording mode
+(*8K*, *5.7K*, ...), as in [Media information](media-information.md); a
+clip whose mode the app doesn't know, or can't read because the file is
+missing, shows the size of its lens pictures (*3840×3840*). An orange check mark in a circle, to the right of the name, means the file is used on the timeline. A file that can't be
 found any more is shown in red with *File not found*; this follows the disk
 while the app runs, so a file that's put back, or a drive that's plugged in
 again, turns normal again by itself. Click a folder's name

@@ -12,7 +12,7 @@
 
 #include "../core/MediaPool.h"
 
-// Reading media files for the media pool. Both are safe on a worker thread.
+// Reading media files for the media pool. All are safe on a worker thread.
 
 // What `path` is (by its extension) and its length, size and frame rate, read
 // from the file: an .insv through the clip probe, a flat video and an audio
@@ -27,3 +27,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error = nullpt
 // stitched thumbnail from its trailer (clipThumbnail), a flat video's frame
 // at one second (or its middle when shorter). Null for audio and on failure.
 QImage mediaThumbnail(const MediaItem &item, const QSize &size);
+
+// A 360 clip's recording mode as its camera's reader names it ("8K", "6K"),
+// as the Media information panel shows it; empty for other kinds, for a size
+// the camera has no name for, and on failure.
+QString mediaMode(const MediaItem &item);

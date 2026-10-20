@@ -60,25 +60,16 @@ QString kindText(MediaItem::Kind kind)
     return QObject::tr("Audio");
 }
 
-// "5.7K · 30 fps" for a 360 clip (named by its square lens pictures, as the
-// Media information panel does), "1920×1080 · 25 fps" for a flat video.
-QString formatText(const MediaItem &m)
+// "5.7K · 30 fps" for a 360 clip whose camera names its mode (as the Media
+// information panel does), "1920×1080 · 25 fps" for a flat video, or a 360
+// clip whose mode isn't known (yet).
+QString formatText(const MediaItem &m, const QString &mode)
 {
     QStringList parts;
-    if (m.width > 0 && m.height > 0) {
-        QString size = QStringLiteral("%1×%2").arg(m.width).arg(m.height);
-        if (m.kind == MediaItem::Kind::Clip360 && m.width == m.height) {
-            if (m.width == 3840)
-                size = QStringLiteral("8K");
-            else if (m.width == 3008)
-                size = QStringLiteral("6K");
-            else if (m.width == 2880)
-                size = QStringLiteral("5.7K");
-            else if (m.width == 1920)
-                size = QStringLiteral("4K");
-        }
-        parts << size;
-    }
+    if (!mode.isEmpty())
+        parts << mode;
+    else if (m.width > 0 && m.height > 0)
+        parts << QStringLiteral("%1×%2").arg(m.width).arg(m.height);
     if (m.fps > 0)
         parts << fpsText(m.fps);
     return parts.join(QStringLiteral(" · "));
@@ -426,6 +417,13 @@ void MediaPoolPanel::setThumbnailProvider(ThumbnailProvider provider)
     rebuild();
 }
 
+void MediaPoolPanel::setModeProvider(ModeProvider provider)
+{
+    m_modeProvider = std::move(provider);
+    m_modes.clear();
+    rebuild();
+}
+
 void MediaPoolPanel::setInUse(const QSet<QString> &paths)
 {
     if (paths == m_inUse)
@@ -522,7 +520,7 @@ void MediaPoolPanel::rebuild()
         item->setData(0, KindRole, int(m.kind));
         item->setData(0, DetailsRole,
                       QStringLiteral("%1 · %2").arg(kindText(m.kind), durationText(m.durationMs)));
-        item->setData(0, FormatRole, formatText(m));
+        item->setData(0, FormatRole, formatText(m, m_modes.value(m.path)));
         item->setData(0, MissingRole, m.missing);
         const bool inUse = m_inUse.contains(m.path);
         item->setData(0, InUseRole, inUse);
@@ -540,6 +538,8 @@ void MediaPoolPanel::rebuild()
             item->setData(0, ThumbnailRole, *it);
         else if (!m.missing)
             requestThumbnail(m);
+        if (m.kind == MediaItem::Kind::Clip360 && !m.missing && !m_modes.contains(m.path))
+            requestMode(m);
     }
     for (int i = 0; i < m_list->topLevelItemCount(); ++i) {
         QTreeWidgetItem *f = m_list->topLevelItem(i);
@@ -595,6 +595,32 @@ void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image)
         for (int j = 0; j < folder->childCount(); ++j)
             if (folder->child(j)->data(0, PathRole).toString() == path)
                 folder->child(j)->setData(0, ThumbnailRole, t);
+    }
+}
+
+void MediaPoolPanel::requestMode(const MediaItem &m)
+{
+    if (!m_modeProvider)
+        return;
+    m_modes.insert(m.path, QString()); // asked for: don't ask again
+    m_thumbnailPool.start([this, m, provider = m_modeProvider] {
+        const QString mode = provider(m);
+        QMetaObject::invokeMethod(
+            this, [this, path = m.path, mode] { applyMode(path, mode); }, Qt::QueuedConnection);
+    });
+}
+
+void MediaPoolPanel::applyMode(const QString &path, const QString &mode)
+{
+    m_modes.insert(path, mode);
+    const MediaItem *m = m_pool->item(path);
+    if (!m)
+        return;
+    for (int i = 0; i < m_list->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *folder = m_list->topLevelItem(i);
+        for (int j = 0; j < folder->childCount(); ++j)
+            if (folder->child(j)->data(0, PathRole).toString() == path)
+                folder->child(j)->setData(0, FormatRole, formatText(*m, mode));
     }
 }
 

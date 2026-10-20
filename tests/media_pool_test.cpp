@@ -21,6 +21,8 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QMimeData>
+#include <QMutex>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -211,7 +213,8 @@ void testMediaTab()
     CHECK(list->topLevelItem(0)->isExpanded());
     if (QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"))) {
         CHECK(r->data(0, MediaPoolPanel::DetailsRole).toString() == QStringLiteral("360° · 1:01"));
-        CHECK(r->data(0, MediaPoolPanel::FormatRole).toString() == QStringLiteral("8K · 29.97 fps"));
+        CHECK(r->data(0, MediaPoolPanel::FormatRole).toString() ==
+              QStringLiteral("3840×3840 · 29.97 fps")); // no mode provider: the lens size
     }
     if (QTreeWidgetItem *r = row(list, QStringLiteral("phone.mp4")))
         CHECK(r->data(0, MediaPoolPanel::FormatRole).toString() ==
@@ -324,6 +327,38 @@ void testMediaTab()
             return r && !r->data(0, MediaPoolPanel::ThumbnailRole).value<QImage>().isNull();
         },
         5000));
+
+    // The recording mode from the provider, on a worker thread; asked for 360
+    // clips only (VID_2 was removed above, the phone video isn't one).
+    QSet<QString> askedMode;
+    QMutex askedMx;
+    panel.setModeProvider([&](const MediaItem &m) {
+        QMutexLocker lock(&askedMx);
+        askedMode.insert(QFileInfo(m.path).fileName());
+        return QStringLiteral("8K");
+    });
+    CHECK(QTest::qWaitFor(
+        [&] {
+            const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
+            return r && r->data(0, MediaPoolPanel::FormatRole).toString() ==
+                            QStringLiteral("8K · 29.97 fps");
+        },
+        5000));
+    QTest::qWait(50);
+    {
+        QMutexLocker lock(&askedMx);
+        CHECK(askedMode == QSet<QString>{QStringLiteral("VID_1.insv")});
+        askedMode.clear();
+    }
+    // A rebuild keeps the mode without asking again.
+    pool.setItems(pool.items());
+    if (QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv")))
+        CHECK(r->data(0, MediaPoolPanel::FormatRole).toString() == QStringLiteral("8K · 29.97 fps"));
+    QTest::qWait(50);
+    {
+        QMutexLocker lock(&askedMx);
+        CHECK(askedMode.isEmpty());
+    }
 
     panel.setStatus(QStringLiteral("Adding 2 files…"));
     CHECK(find<QLabel>(&panel, "mediaPoolStatus")->isVisible());

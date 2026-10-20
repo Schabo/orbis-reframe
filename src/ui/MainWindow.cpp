@@ -251,6 +251,7 @@ void MainWindow::setupSourcesSidebar()
         [cache = m_thumbnailCache](const MediaItem &item, const QSize &size) {
             return cache->get(item, size, &mediaThumbnail);
         });
+    m_mediaPanel->setModeProvider(&mediaMode);
     m_sourcesSidebar->addTab(m_mediaPanel, QStringLiteral("film"), tr("Media"));
     m_titlesPanel = new TitlesPanel;
     m_sourcesSidebar->addTab(m_titlesPanel, QStringLiteral("type"), tr("Titles"));
