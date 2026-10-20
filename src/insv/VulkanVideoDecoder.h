@@ -83,6 +83,13 @@ public:
     void deviceHandles(VkInstance& inst, VkPhysicalDevice& phys, VkDevice& dev,
                        uint32_t& computeQueueFamily, VkDeviceQueueCreateFlags& queueFlags) const;
 
+    // The VkFormat of the images the decoders actually produce, read from the
+    // first frame of each lens (decoded now, still handed out by the next
+    // readNextPair): G8_B8R8_2PLANE_420_UNORM for 8-bit, G10X6..._3PACK16 for
+    // Main 10, whatever the driver chose otherwise. VK_FORMAT_UNDEFINED if no
+    // frame decodes or the two lenses differ.
+    VkFormat frameFormat();
+
     // Frame-exact: the next readNextPair returns the frame at `timestampMs`.
     // A target a little ahead, with no keyframe since the last pair read,
     // decodes forward from there instead of from the keyframe again.

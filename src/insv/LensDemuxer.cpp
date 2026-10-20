@@ -392,4 +392,18 @@ bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
     return true;
 }
 
+AVFrame* LensDemuxer::peekFrame(int lens)
+{
+    if (lens < 0 || lens >= static_cast<int>(m_dec.size()))
+        return nullptr;
+    std::string err;
+    for (;;) {
+        dropStale(lens);
+        if (!m_fifo[lens].empty())
+            return m_fifo[lens].front();
+        if (m_streamEof[lens] || !pumpOnce(err))
+            return nullptr;
+    }
+}
+
 } // namespace insv

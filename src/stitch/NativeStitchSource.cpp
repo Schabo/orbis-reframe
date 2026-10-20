@@ -162,10 +162,11 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
             vdec->deviceHandles(inst, phys, dev, qf, qflags);
             auto gpu = std::make_unique<render::VulkanFisheyeStitcher>();
             std::string gerr;
-            // FFmpeg decodes HEVC Main 10 (the X6's I-Log) to P010 images.
-            const VkFormat lensFormat = vdec->lens(0).bitDepth > 8
-                                            ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
-                                            : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+            // The stitcher's ycbcr conversion is built for one image format,
+            // so ask the decoder what it actually produces rather than infer
+            // it from the stream's bit depth. A format the stitcher can't
+            // sample (or none) fails initAdopt: CPU decode below.
+            const VkFormat lensFormat = vdec->frameFormat();
             if (gpu->initAdopt(inst, phys, dev, qf, qflags, gerr, lensFormat,
                                vdec->lens(0).ycbcr)) {
                 auto ql = vdec->queueLock(qf, 0);
