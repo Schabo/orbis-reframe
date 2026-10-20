@@ -1081,6 +1081,43 @@ void testSaveAs(const Ctx &c)
     CHECK(!c.project->modified());
 }
 
+// A grade pasted from elsewhere (another project's LUT) brings its LUT into
+// this project's luts/ folder, as every other way a LUT reaches a clip does.
+void testPasteGradeFromElsewhere(const Ctx &c)
+{
+    auto *copy = find<QPushButton>(c.w, "colourCopy");
+    auto *paste = find<QPushButton>(c.w, "colourPaste");
+    if (!copy || !paste || c.timeline->count() < 2)
+        return;
+    const QString outside = QDir(c.dir).filePath(QStringLiteral("Other/luts/Look.cube"));
+    QDir().mkpath(QFileInfo(outside).absolutePath());
+    {
+        QFile f(outside);
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write("LUT_3D_SIZE 2\n");
+        for (int i = 0; i < 8; ++i)
+            f.write(QByteArray::number(i & 1) + ' ' + QByteArray::number((i >> 1) & 1) + ' ' +
+                    QByteArray::number((i >> 2) & 1) + '\n');
+    }
+    ColorGrade g = c.timeline->clipAt(0).color;
+    g.lut = outside;
+    c.timeline->setClipColor(c.timeline->clipAt(0).id, g);
+    CHECK(seekTo(c, 500));
+    copy->click();
+    CHECK(seekTo(c, c.timeline->clipToTimeline(1, 0) + 500));
+    settle();
+    paste->click();
+    const QString pasted = c.timeline->clipAt(1).color.lut;
+    CHECK(pasted == QDir(c.dir).filePath(QStringLiteral("Ride/luts/Look.cube")));
+    CHECK(QFile::exists(pasted));
+    for (int i = 0; i < 2; ++i) {
+        ColorGrade none = c.timeline->clipAt(i).color;
+        none.lut.clear();
+        c.timeline->setClipColor(c.timeline->clipAt(i).id, none);
+    }
+    settle();
+}
+
 // Changes autosaved but never saved are offered when the project opens.
 void testRecovery(const Ctx &c)
 {
@@ -1309,6 +1346,7 @@ int main(int argc, char **argv)
             testViewMenu(c);
             testHelpAndSettingsDialogs(c);
             testSaveAs(c);
+            testPasteGradeFromElsewhere(c);
             testMenuFileDialogs(c);
             testRecovery(c);
             testLocateMovedFile(c);

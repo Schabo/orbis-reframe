@@ -31,15 +31,9 @@ void MainWindow::connectColour()
             return;
         // A LUT the app ships goes into the project like a loaded one, so the
         // project doesn't depend on where the app is installed.
-        if (!g.lut.isEmpty() && QFileInfo(g.lut).absolutePath() == shippedLutsDir()) {
-            QString error;
-            const QString lut = projectfolder::importLut(m_project->filePath(), g.lut, &error);
-            if (lut.isEmpty()) {
-                QMessageBox::warning(this, tr("Can't use this LUT"), error);
-                syncColourPanel(m_timeline->clipById(id)->color);
-                return;
-            }
-            g.lut = lut;
+        if (!lutIntoProject(g)) {
+            syncColourPanel(m_timeline->clipById(id)->color);
+            return;
         }
         m_timeline->setClipColor(id, g);
     });
@@ -54,8 +48,10 @@ void MainWindow::connectColour()
         m_colourPanel->setCanPaste(true);
         m_timelineWidget->setCanPasteGrade(true);
     };
+    // The grade may come from another project (it's kept across opening
+    // one): its LUT is copied into this one first.
     const auto pasteGrade = [this](int clipId) {
-        if (m_copiedGrade && clipId)
+        if (m_copiedGrade && clipId && lutIntoProject(*m_copiedGrade))
             m_timeline->setClipColor(clipId, *m_copiedGrade);
     };
     connect(m_colourPanel, &ColourPanel::copyRequested, this,
@@ -65,7 +61,7 @@ void MainWindow::connectColour()
     connect(m_timelineWidget, &TimelineWidget::gradeCopyRequested, this, copyGrade);
     connect(m_timelineWidget, &TimelineWidget::gradePasteRequested, this, pasteGrade);
     connect(m_timelineWidget, &TimelineWidget::gradePasteAllRequested, this, [this] {
-        if (!m_copiedGrade)
+        if (!m_copiedGrade || !lutIntoProject(*m_copiedGrade))
             return;
         for (int i = 0; i < m_timeline->count(); ++i)
             m_timeline->setClipColor(m_timeline->clipAt(i).id, *m_copiedGrade);
@@ -160,6 +156,24 @@ void MainWindow::syncColourPanel(const ColorGrade &grade)
                          .arg(hdr);
     }
     m_colourPanel->setLutWanted(wanted);
+}
+
+bool MainWindow::lutIntoProject(ColorGrade &grade)
+{
+    // A loose or untitled project has no luts/ folder (importLut would hand
+    // the file back as it is); saving one as a project folder copies them.
+    const QString dir = projectfolder::lutsDir(m_project->filePath());
+    if (grade.lut.isEmpty() || dir.isEmpty() ||
+        QFileInfo(grade.lut).absolutePath() == QFileInfo(dir).absoluteFilePath())
+        return true;
+    QString error;
+    const QString lut = projectfolder::importLut(m_project->filePath(), grade.lut, &error);
+    if (lut.isEmpty()) {
+        QMessageBox::warning(this, tr("Can't use this LUT"), error);
+        return false;
+    }
+    grade.lut = lut;
+    return true;
 }
 
 void MainWindow::loadLut()

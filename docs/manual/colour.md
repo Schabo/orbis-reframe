@@ -111,7 +111,8 @@ The same is on the timeline: right-click a clip for **Copy colour grade**,
 every clip on the video track the copied look.
 
 The copied grade is kept until you close orbis-reframe, so you can paste it
-as often as you like. **Edit ▸ Undo** (`Ctrl+Z`) takes back a paste or a
+as often as you like, in other projects too: pasted into another project,
+its LUT is copied into that project's `luts/` folder as well. **Edit ▸ Undo** (`Ctrl+Z`) takes back a paste or a
 Reset; pasting to all clips is undone in one step.
 
 ## Tips

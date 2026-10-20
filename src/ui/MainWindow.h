@@ -208,6 +208,11 @@ private:
     // Colour panel ▸ Load LUT...: pick a .cube, copy it into the project,
     // give it to the clip in the panel.
     void loadLut();
+    // `grade` with its LUT in the project's luts/ folder: one from elsewhere
+    // (a LUT the app ships, another project's, through copy / paste) is
+    // copied in, so the project doesn't depend on a file outside its folder.
+    // False, after telling the user why, when the copy fails.
+    bool lutIntoProject(ColorGrade &grade);
     // Bind authoring (m_clipId / m_lastPositionMs / stabilizer / viewport pose
     // / Audio+Colour panels) to whichever clip covers `timelineMs`. Shared by
     // the playback position tick and undo()/redo() (which replace the whole
