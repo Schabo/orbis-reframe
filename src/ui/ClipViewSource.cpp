@@ -4,6 +4,7 @@
 #include <ReframeRenderer.h> // exportpipe::RenderRectilinear
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 ClipViewSource::ClipViewSource(Spec spec) : m_spec(std::move(spec)) {}
@@ -99,10 +100,14 @@ const exportpipe::VideoFrame *ClipViewSource::frameAt(int64_t ms)
     if (!m_src)
         return nullptr;
     const double halfFrame = 500.0 / m_fps;
-    // Behind the frame shown, or well ahead of it: jump there.
+    // Behind the frame shown, or well ahead of it: jump there. The source
+    // seeks to the first frame at or after a time, so half a frame early:
+    // that's the frame whose window holds `ms`, as below. At `ms` itself it
+    // can be the next one, which at a transition layer's end lies past the
+    // layer's span.
     if (!m_haveCur || ms + halfFrame < m_cur.ptsMs || ms > m_cur.ptsMs + 1000) {
         m_haveCur = m_haveNext = false;
-        if (!m_src->SeekTo(ms)) {
+        if (!m_src->SeekTo(std::max<int64_t>(0, std::llround(ms - halfFrame)))) {
             m_error = m_src->GetLastError();
             return nullptr;
         }
