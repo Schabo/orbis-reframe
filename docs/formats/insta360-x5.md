@@ -38,7 +38,7 @@ ones. Which modes they cover is in §3.4.
 | `Analysis/VID_20250927_144221_00_019-trim.insv` / `_020-trim` | 30 min + 7.4 min | one recording split into two files, re-written by Insta360 software, handlebar mount |
 | `Modes/VID_20260927_*_00_001…005.insv` (+ `.lrv`) | ~12 s each | one clip per mode, camera still (§3.3) |
 | `ilog/VID_20261018_185907_00_006.insv` | 11 s | 5.7K 30 I-Log, indoor |
-| `Demo/…/VID_20260815_*.insv` (+ `.lrv`), `IMG_20260815_*.insp` | 18 clips, 77 photos | a day's ride, 8K 30; 72 MP 360 photos with GPS |
+| `Demo/…/VID_20260815_*.insv` (+ `.lrv`), `IMG_20260815_*.insp` | 18 clips, 77 photos | a day's ride, 8K 30: 12 video clips and 6 timelapses (`_078`, `_079`, `_088`, `_089`, `_091`, `_095`, §3.5); 72 MP 360 photos with GPS |
 
 ---
 
@@ -222,7 +222,7 @@ frame rate); **wanted** means no clip yet.
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K, HDR on / off | 30 / 25 / 24 | `VID_…_00_` `.insv` + `.lrv` | 25 at 30 fps, still and moving, one split recording | enough at 30; **25 / 24 wanted** |
+| 360 Video 8K, HDR on / off | 30 / 25 / 24 | `VID_…_00_` `.insv` + `.lrv` | 19 at 30 fps, still and moving, one split recording | enough at 30; **25 / 24 wanted** |
 | 360 Video 5.7K+ | 30 / 25 / 24 | as above | one still clip at 30 | one clip |
 | 360 Video 5.7K | 60 / 50 / 48 / 30 / 25 / 24 | as above | one still clip at 60 | one clip; **50 / 48 / 24 wanted** |
 | 360 Video 4K | 120 / 100 / 60 / 50 / 48 / 30 / 25 / 24 | as above | one still clip at 120 | one clip; **100 / 60 / 30 wanted** |
@@ -231,7 +231,8 @@ frame rate); **wanted** means no clip yet.
 | H.264 encoding | | as above | none | **wanted**: every clip we have is H.265 |
 | PureVideo | 8K / 5.7K / 4K, 30 / 25 / 24 | ❓ | none | **wanted** |
 | InstaFrame 2.0 | 360 5.7K+ + flat 4K / 1080p, 30 / 25 / 24 | `.insv` (360) + `.mp4` (flat) | none | **wanted** |
-| Timelapse, TimeShift | not in the spec table | ❓ | none | **wanted** |
+| Timelapse | not in the spec table | as video, no audio, no IMU (§3.5) | six 8K clips at a 2 s interval, on the move | enough to recognise and play; **another interval and resolution wanted** |
+| TimeShift | not in the spec table | ❓ | none | **wanted** |
 | Bullet Time | not in the spec table | ❓ | none | **wanted** |
 | Loop Recording, Dashcam | | ❓ | none | wanted, low |
 | Split recording (over 29 min 59 s, §1) | | two `.insv` | one, re-written by Insta360 software | one clip; a card original would confirm field 26 |
@@ -247,8 +248,43 @@ frame rate); **wanted** means no clip yet.
 | GPS remote | 10 Hz records | | two clips, one losing the fix (§8) | enough to count fixes; positions aren't read |
 
 The files and timing of the modes we have no clip of are a guess from the
-spec table: Timelapse, TimeShift and Bullet Time may record at other
-frame rates or sizes, or without IMU or an `.lrv`.
+spec table: TimeShift and Bullet Time may record at other frame rates or
+sizes, or without IMU or an `.lrv`, as the timelapse does (§3.5).
+
+### 3.5 Timelapse ✅
+
+From the six Demo timelapses (8K, 2 s interval, firmware v1.11.10):
+
+- **The video looks like an 8K 30 clip**: two 3840² HEVC streams at
+  29.97 fps, full-range BT.709, ~105 Mb/s, one frame per interval (1228
+  frames for 41.5 min on `_078`). **No audio stream.** The `.lrv` is the
+  usual 1664×832 at 29.97 fps, with the same frame count.
+- **Field 26.1 is 2** (`VideoTimelapse` in telemetry-parser's
+  `SubMediaType`), **field 30 `timelapse_interval` is 2000** and **field 59
+  `timelapse_interval_in_millisecond` is true**, so the interval is 2000 ms.
+  Field 120 (audio tracks) is 0. Normal clips have no field 30 or 59.
+- **No IMU record (type 3).** In its place:
+  - **type 6, `TimelapseTimestamp`**: one `u64` device-clock µs timestamp
+    per frame, plus one (1229 on `_078`), an interval apart; the first one
+    equals field 24.
+  - **type 24, `TimelapseQuat`** (telemetry-parser names it; format not
+    published): 40-byte entries `{f64 device time in s, f64 w, x, y, z}`,
+    unit quaternions, **11 per frame, 2.1244 ms apart**: 21.24 ms, the
+    readout time of field 25 at 8K. So the camera stores its orientation
+    across each frame's readout, already integrated, instead of the raw
+    gyro. ❓ The quaternion's frame and handedness (not checked against the
+    picture); why `_091`'s first entries sit 615 s before its first frame.
+- **Exposure (type 4) and GPS (type 7) run in real time**, not per frame:
+  10 Hz over the whole recording (24 894 exposure records on `_078`), so
+  the per-frame exposure sync of §7.1 doesn't apply.
+- **The app** opens, stitches and exports them as 8K 30 clips (`_078`
+  through `reframe_export`, 2026-10-20, clean stitch). Stabilization has
+  no motion data (no type 3); type 24 could give it some.
+
+Field 26.1 isn't a reliable mode field beyond timelapse: it is 0 on the
+8K, 4K 120 and 5.7K+ HDR clips, 6 (`VideoHdr`) on the 5.7K 60 HDR and the
+5.7K I-Log clip, and 20 (past the published list) on four of the 2025
+clips, split or not.
 
 ## 4. The `inst` trailer — framing
 
@@ -305,12 +341,13 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x0300` | 3 | **Gyro** (IMU) | 877 440 | accel + gyro, ~1 kHz (§6) | ✅ |
 | `0x0400` | 4 | **Exposure** | 20 928 | one per sensor frame (§7) | ✅ |
 | — | 5 | ThumbnailExt | — | not on the X5 samples | |
-| — | 6 | FramePts / TimelapseTimestamp | — | u64 per frame; timelapse only (ExifTool: `VideoTimeStamp`) | |
+| `0x0600` | 6 | FramePts / TimelapseTimestamp | 9 832 (`_078`) | `u64` device µs per frame, plus one; timelapse only (§3.5; ExifTool: `VideoTimeStamp`) | ✅ |
 | `0x0700` | 7 | **GPS** | 22 790 | 53 B × 10 Hz, fix updated at 1 Hz (§8); only with a GPS source | ✅ |
 | `0x0900` | 9 | **AAAData** (auto-exposure / white-balance / focus) | 61 536 | **48 B per recorded frame** (§4.4) | 📖 |
 | `0x0a00` | 10 | Anchors / highlights | 35 | `{type u8, count u32}` lists (+ u64 timestamps). Here 7 types (1,2,3,4,16,17,18), all with count 0 | 📖 ✅ |
 | `0x0b00` | 11 | AAASimulation | 342 294 | format unknown | 📖❓ |
 | — | 12–18 | ExposureSecondary, Magnetic, Euler, SecGyro, Speed, TBox, Quaternions | — | not on the X5 samples (other models) | |
+| `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, 11 per frame across the readout; timelapse only (§3.5) | ⚠️ |
 | `0x1600` | 22 | ? | 8 306 836 | 148-byte header (mentions 1664/832) + 3 × 1664×832×2 bytes | ❓ |
 | `0x1c00` | 28 | ? | 12 793 | contains 0..255 byte ramps (tone curve / LUT?) | ❓ |
 | `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz | ❓ |
@@ -366,10 +403,11 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 22 | `gamma_mode` | `standard`; `I_Log` in I-Log | colour profile ✅ (both values seen) |
 | **24** | **`first_frame_timestamp`** | 2468081984 | **device µs of the first recorded video frame**; the sync anchor (§7.1) ✅ 📖 |
 | **25** | **`rolling_shutter_time`** | **21.244** (11.837 on `201257`) | **frame readout time, ms**. Gyroflow's `frame_readout_time` reads it directly ✅ 📖 |
-| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | split-recording group. `index` is non-zero on continuations (2 on `_020`), and `identify` is the first file's path. Type 20 is past the published enum (max 17). |
+| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, otherwise not reliable (§3.5); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`), and `identify` is the first file's path. |
 | 27 | `window_crop_info` | {src 5376×5376, dst 5312×5312} | sensor crop window. `dst` is the focal reference: **`fx_video = fx · 3840/5312`**. Gyroflow computes `fx / (dst_w / dimension_w)` ✅ 📖 |
 | **28** | **`gyro_timestamp`** | **1.6** | **IMU timing offset, ms**. Gyroflow subtracts it from every gyro/accel time (§6.2) 📖 |
 | 29 | `is_has_gyro_timestamp` | true | enables field 28 |
+| 30 | `timelapse_interval` | 2000 (timelapses only) | the interval, in ms when field 59 is set (§3.5) 📖 ✅ |
 | 31 | `gyro_calib` | 6 × f64 + u64 unix ts | per-unit IMU calibration: 6 small values (−0.0069 0.0025 0.0041 −0.0055 −0.0088 0.0043), likely gyro + accel bias; ts 0. Identical on every clip. Whether they're already applied to type 3 data is unknown ❓ |
 | 36 | `first_gps_timestamp` | 1757003465191 | Unix ms |
 | 41 | `is_selfie` | 0 | |
@@ -382,6 +420,7 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 54 | `offset_v3` | 40-token MEI calibration | §5.3. **This is what Gyroflow uses** |
 | 55 / 56 | `original_offset_v2/_v3` | = 53 / 54 | |
 | 57 | `focus_sensor` | 3 = All | |
+| 59 | `timelapse_interval_in_millisecond` | true (timelapses only) | field 30 is in ms 📖 ✅ |
 | 61 | `audio_mode` | 9 | beyond the published enum |
 | **62** | **`is_raw_gyro`** | **true** | **type 3 holds raw integer IMU counts** (§6.1) 📖 |
 | 64 | `pts_type` | **2 = `VideoPtsEexposureFile`** | the video PTS derive from the exposure record, which confirms §7.1 📖 |
