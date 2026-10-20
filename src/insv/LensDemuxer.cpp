@@ -174,7 +174,7 @@ bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::
         info.height = st->codecpar->height;
         const AVRational fr = st->avg_frame_rate;
         if (fr.num <= 0 || fr.den <= 0) {
-            err = "no frame rate in video stream " + std::to_string(i) + " of " + path;
+            err = "no frame rate in video stream " + std::to_string(i);
             close();
             return false;
         }
@@ -208,7 +208,7 @@ bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::
         m_dec.push_back(ctx);
     }
     if (m_dec.empty()) {
-        err = "no video streams in " + path;
+        err = "no video streams";
         close();
         return false;
     }

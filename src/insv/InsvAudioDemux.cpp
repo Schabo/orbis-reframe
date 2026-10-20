@@ -86,7 +86,7 @@ bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outCha
     if (m_streamIndex < 0)
         m_streamIndex = flagged >= 0 ? flagged : fallback;
     if (m_streamIndex < 0) {
-        err = "no audio stream in " + path;
+        err = "no audio stream";
         close();
         return false;
     }
@@ -120,7 +120,7 @@ bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outCha
     if (swr_alloc_set_opts2(&m_swr, &outLayout, AV_SAMPLE_FMT_FLT, m_outRate, &inLayout,
                             m_dec->sample_fmt, m_dec->sample_rate, 0, nullptr) < 0 ||
         swr_init(m_swr) < 0) {
-        err = "swresample setup failed for " + path;
+        err = "swresample setup failed";
         close();
         return false;
     }
