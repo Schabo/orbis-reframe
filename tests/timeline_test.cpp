@@ -175,8 +175,10 @@ void testKeyNavigation()
     const int o = tl.addVideoClip(t, "phone.mp4", 20000, 3000, 1080, 1920);
     tl.upsertTrackClipInsetKey(o, 500, {});
     tl.upsertTrackClipInsetKey(o, 4000, {});
+    tl.upsertTrackClipInsetKey(o, 20000, {}); // on the trim-out: the clip has ended
     CHECK(tl.adjacentKey(0, 1, o) == 3500);
     CHECK(tl.adjacentKey(3500, 1, o) == 7000);
+    CHECK(tl.adjacentKey(7000, 1, o) == 7000);
     CHECK(tl.adjacentKey(9000, -1, o) == 7000);
     CHECK(tl.adjacentKey(0, 1) == 12000); // the reframe keys, as before
 }

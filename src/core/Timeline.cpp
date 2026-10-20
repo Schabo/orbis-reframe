@@ -160,9 +160,11 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
     constexpr qint64 kOnKeyMs = 5;
     std::vector<qint64> points;
     if (overlayClipId > 0) {
+        // A key on the trim-out point is where the clip has ended: the
+        // Overlay panel's keys are for a playhead inside it.
         if (const TrackClip *c = trackClipById(overlayClipId))
             for (const InsetKey &k : c->insetKeys.keys())
-                if (k.timeMs >= c->trimInMs && k.timeMs <= c->trimOutMs)
+                if (k.timeMs >= c->trimInMs && k.timeMs < c->trimOutMs)
                     points.push_back(c->startMs +
                                      std::llround((k.timeMs - c->trimInMs) / c->speed));
     } else {

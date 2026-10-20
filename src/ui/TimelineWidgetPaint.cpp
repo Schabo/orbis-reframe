@@ -238,7 +238,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             const int cy = rc.bottom() - 5;
             for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
                 const qint64 ks = r.clip.keySourceMs[j];
-                if (ks < r.clip.trimInMs || ks > r.clip.trimOutMs)
+                if (!r.clip.showsKeyAt(ks))
                     continue;
                 const bool hov = m_hoverKey.row == i && m_hoverKey.index == j;
                 const int s = hov ? 5 : 3;
@@ -334,7 +334,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             const int cy = rc.bottom() - 4;
             for (int j = 0; j < c.keySourceMs.size(); ++j) {
                 const qint64 ks = c.keySourceMs[j];
-                if (ks < c.trimInMs || ks > c.trimOutMs)
+                if (!c.showsKeyAt(ks))
                     continue;
                 const bool hov = m_hoverKey.track == trackIndex && m_hoverKey.clip == clipIndex &&
                                  m_hoverKey.index == j;

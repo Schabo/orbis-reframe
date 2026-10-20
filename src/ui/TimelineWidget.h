@@ -132,6 +132,12 @@ public:
         {
             return std::llround((sourceMs - trimInMs) / speed);
         }
+        // A key at this source time gets a diamond. Not one on the trim-out:
+        // that's the next clip's first frame (Timeline::adjacentKey).
+        bool showsKeyAt(qint64 sourceMs) const
+        {
+            return sourceMs >= trimInMs && sourceMs < trimOutMs;
+        }
     };
 
     struct TrackClipView {
@@ -162,6 +168,12 @@ public:
         qint64 timelineAtSourceMs(qint64 sourceMs) const
         {
             return startMs + std::llround((sourceMs - trimInMs) / speed);
+        }
+        // A key at this source time gets a diamond. Not one on the trim-out:
+        // the clip has ended there, so the Overlay panel couldn't edit it.
+        bool showsKeyAt(qint64 sourceMs) const
+        {
+            return sourceMs >= trimInMs && sourceMs < trimOutMs;
         }
     };
     struct TrackView {

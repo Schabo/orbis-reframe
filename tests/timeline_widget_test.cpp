@@ -225,7 +225,7 @@ void testKeyDiamondClick()
     a.id = 1;
     a.label = "a";
     a.trimOutMs = a.sourceDurationMs = 10000;
-    a.keySourceMs = {3000, 7000};
+    a.keySourceMs = {3000, 7000, 10000}; // the last on the trim-out
     b.id = 2;
     b.label = "b";
     b.trimOutMs = b.sourceDurationMs = 10000;
@@ -261,6 +261,10 @@ void testKeyDiamondClick()
 
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000) + 10, keyY));
     CHECK(seek.count() == 2 && moved.count() == 0);
+
+    // A key on a's trim-out would be b's first frame: no diamond at the cut.
+    QTest::mouseMove(&f.w, QPoint(Fixture::x(10000), keyY));
+    CHECK(f.w.cursor().shape() != Qt::PointingHandCursor);
 }
 
 void testHeaderAndMain()
@@ -549,7 +553,7 @@ void testOverlayTracks()
     pip.label = "pip.mp4";
     pip.startMs = 4000;
     pip.trimOutMs = pip.sourceDurationMs = 6000;
-    pip.keySourceMs = {1000, 3000};
+    pip.keySourceMs = {1000, 3000, 6000}; // the last on the trim-out
     pip.moveTargets = {22};
     v1.clips = {pip};
     v2.id = 22;
@@ -605,6 +609,9 @@ void testOverlayTracks()
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier,
                       QPoint(Fixture::x(7000) + 10, camKeyY));
     CHECK(seek.count() == 1 && moved.count() == 0);
+    // One on the trim-out, where the clip has ended, has none.
+    QTest::mouseMove(&f.w, QPoint(Fixture::x(10000), camKeyY));
+    CHECK(f.w.cursor().shape() != Qt::PointingHandCursor);
 
     // An overlay clip moves onto the other overlay track...
     drag(&f.w, QPoint(Fixture::x(6000), camY), QPoint(Fixture::x(6500), ov2Y));

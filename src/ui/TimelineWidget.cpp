@@ -554,7 +554,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
         const int cy = r.rect.bottom() - 5; // as drawn
         for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
             const qint64 ks = r.clip.keySourceMs[j];
-            if (ks < r.clip.trimInMs || ks > r.clip.trimOutMs)
+            if (!r.clip.showsKeyAt(ks))
                 continue;
             check(xForTimelineMs(r.startMs + r.clip.localAtSourceMs(ks)), cy, j);
             if (k.index >= 0) {
@@ -576,7 +576,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
             const int cy = rc.bottom() - 4; // as drawn
             for (int j = 0; j < tc.keySourceMs.size(); ++j) {
                 const qint64 ks = tc.keySourceMs[j];
-                if (ks < tc.trimInMs || ks > tc.trimOutMs)
+                if (!tc.showsKeyAt(ks))
                     continue;
                 check(xForTimelineMs(tc.timelineAtSourceMs(ks)), cy, j);
                 if (k.index >= 0) {
