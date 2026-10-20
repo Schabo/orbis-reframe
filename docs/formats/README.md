@@ -10,7 +10,8 @@ differences from it, or, for another vendor, from scratch.
 | Insta360 X5 | 360, one `.insv` with both lenses | [`insta360-x5.md`](insta360-x5.md) | supported; every fact checked on our clips |
 | Insta360 X4 | 360, one `.insv` with both lenses | [`insta360-x4.md`](insta360-x4.md) | not yet; desk research, no clips |
 | Insta360 X6 | 360, one `.insv`, 10-bit modes | [`insta360-x6.md`](insta360-x6.md) | experimental: opens, stitches and exports, 10-bit, I-Log and HLG through LUTs (a contributor's clips; not yet run by the maintainer); open: the IMU axis map (stabilization), the HLG LUT on real Dolby Vision clips, 8K 50 real time |
-| Insta360 ONE X2, X3 | 360, one `.insv` per lens | [`insta360-one-x2-x3.md`](insta360-one-x2-x3.md) | not yet; ONE X2 examined on two clips, X3 desk research |
+| Insta360 ONE X2 | 360, one `.insv` per lens at 5.7K | [`insta360-one-x2.md`](insta360-one-x2.md) | not yet; examined on two clips |
+| Insta360 X3 | 360, one `.insv` per lens at 5.7K | [`insta360-x3.md`](insta360-x3.md) | not yet; desk research, no clips |
 | Antigravity A1 | 360 drone, `.insv` | [`antigravity-a1.md`](antigravity-a1.md) | not yet; desk research, no clips |
 | Insta360 Luna (Pro / Ultra) | flat gimbal camera, `.mp4` | [`insta360-luna.md`](insta360-luna.md) | not yet; desk research, no clips |
 | DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | not yet; desk research, no clips |
@@ -18,12 +19,13 @@ differences from it, or, for another vendor, from scratch.
 
 ## Sample clips wanted
 
-The documents of the cameras we have clips of list every mode the camera
-has and which of them we have clips of: the
+A camera's document lists every mode the camera has and which of them we
+have clips of: so far the
 [X5](insta360-x5.md#34-every-mode-and-our-clips-of-it),
-[X6](insta360-x6.md#modes-and-sample-clips) and
-[ONE X2](insta360-one-x2-x3.md#33-every-mode-and-our-clips-of-it). The others
-get the same list as their clips arrive.
+[X6](insta360-x6.md#modes-and-sample-clips),
+[ONE X2](insta360-one-x2.md#33-every-mode-and-our-clips-of-it) and
+[X3](insta360-x3.md#modes-and-sample-clips). The others get the list when
+their first clips arrive.
 Most of the documents above are desk research: **we need short clips from
 every camera above that isn't supported yet** (except the ONE X2: the
 maintainer has one) to find out what the files really hold. If you own one, please

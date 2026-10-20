@@ -1,6 +1,6 @@
-# Insta360 ONE X2 and X3 file format
+# Insta360 ONE X2 file format
 
-**ONE X2: examined on two clips (2026-10-20). X3: desk research only.**
+**Examined on two clips (2026-10-20).**
 Written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
 "X5 §n" below). Markers as in [`README.md`](README.md). The ONE X2 facts
 come from the clips below, read with `ffprobe`, `insv_trailer_dump` and a
@@ -8,7 +8,9 @@ throw-away trailer / protobuf walker; field names are telemetry-parser's
 (X5 §13). Nothing here is parsed by the app yet: it refuses these clips
 ("expected 2 fisheye video streams, found 1").
 
-The older, **two-file** generation: one file per lens.
+The older, **two-file** generation: one file per lens at 5.7K. The X3
+works the same way and has its own document,
+[`insta360-x3.md`](insta360-x3.md).
 
 Reference clips (`sample_footage/insta-one-x2/`, gitignored), one camera,
 firmware `v1.0.92_build1`, recorded 2025-08-16 with the camera on a stick:
@@ -46,8 +48,6 @@ Both takes are the same mode: 5.7K (2880² per lens) at 25 fps, H.264.
   pair; these files have none. It also warns that a long recording split into
   two files is a group too, so a pair can't be matched by name alone. ❓ How
   a split ONE X2 recording is named (no clip long enough).
-- 📖 ⚠️ One X3 owner reports that the `_00_` file holds the front lens plus
-  the GPS, which matches the ONE X2 layout above.
 
 ## 2. MP4 container ✅
 
@@ -132,7 +132,7 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 | TimeShift | 5.7K 30 / 25 / 24 | no LRV | none | **wanted** |
 | Bullet Time | 3K 100 | no LRV | none | **wanted** |
 | Steady Cam (Ultra Wide Stabilization, 150°) | 1440p 50 / 30, 1080p 120 / 50 / 30; HDR, Timelapse, TimeShift at 1440p | `.mp4` | none | wanted: a flat clip, may open as one already |
-| Split recording | | ❓ (§13 question 5) | none | **wanted**: one take over the split length |
+| Split recording | | ❓ (§12 question 5) | none | **wanted**: one take over the split length |
 | 360 Photo (Burst, Interval, Night Shot, HDR) | 18 MP | `.insp`, `.dng` (RAW) | none | wanted, low |
 | InstaPano (270°), 150° wide-angle photo | 4320×1440; 1440p / 1080p | ❓ | none | wanted, low |
 | Audio: Wind Reduction, Stereo, 360 Direction Focus | | | ❓ which ours used | **one clip of each wanted** |
@@ -311,15 +311,7 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
 - **Thumbnails** from an H.264 frame instead of NV12.
 - The IMU axis map and the frame-time anchor measured on these clips.
 
-## 12. X3 (desk research, no files)
-
-- 📖 Two files per take, like the ONE X2 (X6 manual, Mapillary forum).
-- 📖 360 video up to 5.7K 30 (5760×2880). **H.264 only**, up to 120 Mb/s.
-  Colour profiles Standard, Vivid and LOG. ❓ Bit depth, presumably 8-bit.
-- ❓ Which calibration strings, IMU layout and units it carries; whether it
-  has a trailer on both files.
-
-## 13. Open questions
+## 12. Open questions
 
 1. Are `_00_` and `_10_` frame-locked, frame n for frame n (the `_10_` file
    is one frame shorter)?
@@ -343,8 +335,6 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   <https://onlinemanual.insta360.com/x5/en-us/operating-tutorials/storage/fileformat>
 - Insta360 X-series shooting specs, codecs and colour profiles per model:
   <https://onlinemanual.insta360.com/onex2/en-us/specs/shooting-specs>
-- Mapillary forum, an X3 owner on the `_00_` / `_10_` files:
-  <https://forum.mapillary.com/t/insta-360-one-x3/6587>
 - Prevu3D, both `.insv` files needed per recording:
   <https://doc.prevu3d.com/en/realityplatform/dataset-preparation-and-upload/input-types/photogrammetry-data/360-video/insta360-capture-setup/>
 - Clifton Cameras, ONE X2 spec sheet (modes)
