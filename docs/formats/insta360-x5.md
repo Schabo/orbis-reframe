@@ -26,8 +26,9 @@ The main external sources are Gyroflow's **telemetry-parser**
 datasheet. We use only interoperability documentation and our own files. No
 Insta360 SDK disassembly was used, and none should be.
 
-Reference clips (`sample_footage/`, gitignored), all from one camera, firmware
-`v1.5.6_build1`.
+Reference clips (`sample_footage/`, gitignored), all from one camera:
+firmware `v1.5.6_build1` for the 2025 clips, `v1.11.10_build1` for the 2026
+ones. Which modes they cover is in §3.4.
 
 | clip | length | notes |
 |---|---|---|
@@ -35,6 +36,9 @@ Reference clips (`sample_footage/`, gitignored), all from one camera, firmware
 | `Old/VID_20250828_192900_00_001.insv` | ~9.5 min | curves clip, **two AAC streams** (camera mic + Mic Air), no GPS |
 | `Old/VID_20250828_201257_00_006.insv` | ~10.7 min | 15 GB, GPS for the first ~48 s only (§8), different rolling-shutter value |
 | `Analysis/VID_20250927_144221_00_019-trim.insv` / `_020-trim` | 30 min + 7.4 min | one recording split into two files, re-written by Insta360 software, handlebar mount |
+| `Modes/VID_20260927_*_00_001…005.insv` (+ `.lrv`) | ~12 s each | one clip per mode, camera still (§3.3) |
+| `ilog/VID_20261018_185907_00_006.insv` | 11 s | 5.7K 30 I-Log, indoor |
+| `Demo/…/VID_20260815_*.insv` (+ `.lrv`), `IMG_20260815_*.insp` | 18 clips, 77 photos | a day's ride, 8K 30; 72 MP 360 photos with GPS |
 
 ---
 
@@ -205,6 +209,46 @@ Measured from `sample_footage/Modes/` (2026-09-27, one clip per mode):
   8K30 / 5.7K60 / 4K120, but the per-frame budget is 33 / 16.7 / 8.3 ms.
   Worst-case seek decodes up to a whole GOP: 60 frames at 8K, 120 at 5.7K60
   and 4K120.
+
+### 3.4 Every mode, and our clips of it
+
+All the modes the X5 offers 📖 (Insta360's shooting specs, §13), with the
+clips we have (the reference clips at the top; every one H.265 at 29.97 / 59.94 / 119.88 fps) and
+whether that is enough. **Enough** means the file is examined here and what
+the app reads per mode (lens size, calibration, IMU, exposure timing, field
+25) is checked on it; **one clip** means examined, but a second take would
+check what one still clip can't (a moving camera for stabilization, another
+frame rate); **wanted** means no clip yet.
+
+| Mode | Spec | Files | Our clips | Status |
+|---|---|---|---|---|
+| 360 Video 8K, HDR on / off | 30 / 25 / 24 | `VID_…_00_` `.insv` + `.lrv` | 25 at 30 fps, still and moving, one split recording | enough at 30; **25 / 24 wanted** |
+| 360 Video 5.7K+ | 30 / 25 / 24 | as above | one still clip at 30 | one clip |
+| 360 Video 5.7K | 60 / 50 / 48 / 30 / 25 / 24 | as above | one still clip at 60 | one clip; **50 / 48 / 24 wanted** |
+| 360 Video 4K | 120 / 100 / 60 / 50 / 48 / 30 / 25 / 24 | as above | one still clip at 120 | one clip; **100 / 60 / 30 wanted** |
+| I-Log (5.7K 60 and below) | | as above | one indoor clip, 5.7K 30 | one clip; **moving, at 60 wanted** |
+| Filters Vivid / Flat | | as above | none | wanted, low: probably baked into the picture |
+| H.264 encoding | | as above | none | **wanted**: every clip we have is H.265 |
+| PureVideo | 8K / 5.7K / 4K, 30 / 25 / 24 | ❓ | none | **wanted** |
+| InstaFrame 2.0 | 360 5.7K+ + flat 4K / 1080p, 30 / 25 / 24 | `.insv` (360) + `.mp4` (flat) | none | **wanted** |
+| Timelapse, TimeShift | not in the spec table | ❓ | none | **wanted** |
+| Bullet Time | not in the spec table | ❓ | none | **wanted** |
+| Loop Recording, Dashcam | | ❓ | none | wanted, low |
+| Split recording (over 29 min 59 s, §1) | | two `.insv` | one, re-written by Insta360 software | one clip; a card original would confirm field 26 |
+| Single-lens Video | 4K / 2.7K 60…24, 1080p 120…24 | `VID_….mp4` | none | **wanted** |
+| Single-lens FreeFrame | 3840² 30…24, 2720² / 1920² 60…24 | `PRO_VID_….mp4` | none | **wanted** |
+| Single-lens Me Mode | 4K 30…24, 2.7K / 1080p 120…24 | `.insv` (4K, and 50 fps and up), `.mp4` (2.7K / 1080p at 30 and below) | none | **wanted** |
+| Single-lens PureVideo | | `.mp4` | none | wanted |
+| 360 Photo (HDR, Interval, Starlapse, Burst) | 72 MP, 18 MP | `IMG_…` `.insp` (a JPEG), `.dng` | 77 `.insp` at 72 MP | enough to start `.insp` support; **DNG, 18 MP, HDR wanted** |
+| Single-lens Photo | 36 MP, 9 MP | `.insp`, `.dng` | none | wanted, low |
+| Audio: Auto Wind Noise Reduction, Voice Focus, Stereo, 360 Audio | 48 kHz AAC | | ❓ which ours used; one with a Mic Air too | **one clip of each wanted** (field 121, §5.1) |
+| Lens guards | | | guarded and bare footage | enough (§5.4) |
+| Invisible Dive Case | | | none | wanted if a case is at hand |
+| GPS remote | 10 Hz records | | two clips, one losing the fix (§8) | enough to count fixes; positions aren't read |
+
+The files and timing of the modes we have no clip of are a guess from the
+spec table: Timelapse, TimeShift and Bullet Time may record at other
+frame rates or sizes, or without IMU or an `.lrv`.
 
 ## 4. The `inst` trailer — framing
 
@@ -491,9 +535,9 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
 | **raw counts** (X5) | **20 B** | 6 × `u16`, value = `raw − 32768` (signed count) | `is_raw_gyro` (field 62) true |
 | doubles | 56 B | 6 × `f64` LE, already in g and rad/s | older models / `is_raw_gyro` false |
 
-- **Pick the layout from field 62**. That is what telemetry-parser does. Our
-  code instead guesses from `len % 20` / `len % 56` and a byte peek (the
-  ExifTool method). The guess works for the X5, but the flag is authoritative.
+- **Pick the layout from field 62**, as telemetry-parser does; our parser
+  does too. Only when the field is absent does it fall back to ExifTool's
+  guess from `len % 20` / `len % 56` and a byte peek.
 - **Scaling raw counts** 📖 (telemetry-parser, from field 65 `gyro_cfg_info`):
   - **gyro** in °/s = count / (32768 / `gyro_range`) = count / **16.384**
     (±2000 °/s), so rad/s = count · **0.0010653**
@@ -502,8 +546,9 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
   - Defaults when field 65 is absent: 2000 °/s and 16 g.
   - These are the TDK **ICM-40609-D**'s maximum full-scale ranges (datasheet:
     gyro ±15.6…±2000 °/s, accel ±4…±32 g). Field 51 names that part.
-- **⚠️ Our parser (and ExifTool) use `count / 1000` for both.** That is
-  **wrong for the X5**:
+- **Our parser scales by field 65** (with the defaults above when it's
+  absent). ExifTool, and our parser at first, use `count / 1000`
+  for both, which is **wrong for the X5**:
   - Gyro rad/s comes out **6.1 % low** (×0.9387).
   - Accel comes out 2.4 % high.
   - Checked on three clips: the mean-gravity magnitude is 1.022 / 1.031 /
@@ -786,8 +831,8 @@ Still open:
 4. Unknown record types 11 (layout), 22, 28, 29, 57, and metadata fields
    98+ other than those listed.
 5. What sets field 25 per mode (resolution / frame rate / sensor mode).
-   8K (HDR on/off), 5.7K+, 5.7K 60 and 4K 120 are now covered (§3.3); log,
-   timelapse and `.insp` are still untested.
+   8K (HDR on/off), 5.7K+, 5.7K 60 and 4K 120 are now covered (§3.3); the
+   other modes and rates are in §3.4.
 6. X5 I-Log's transfer curve (§3.3; bit depth and tagging are known now).
    Not needed while the maker's LUT does the conversion.
 
@@ -803,6 +848,9 @@ Still open:
 - **insv-stitch** (`x5_pipeline.py`: 56-token MEI layout, sensor→video
   scaling, `.insv.pb` sidecar, `IMU_TO_CAM`):
   <https://github.com/BenjaminHenriksson/insv-stitch>
+- Insta360 shooting specs (X-series table, X5 column: modes, resolutions,
+  frame rates, file formats, audio modes):
+  <https://onlinemanual.insta360.com/x5/en-us/specs/shooting-specs>
 - Insta360 X5 manual, "File Formats" (naming digits):
   <https://onlinemanual.insta360.com/x5/en-us/operating-tutorials/storage/fileformat>
 - Insta360 support: segmented recording every 29 min 59 s on X5/X4/X3
