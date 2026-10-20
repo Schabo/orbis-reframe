@@ -3,9 +3,9 @@
 // snapping, the track mute box, and that the main track still seeks and
 // reorders; overlay (video) tracks above the main track; rows scrolling
 // when the widget is shorter than them, also while a drag is held at
-// their edge; folding a video's sound tracks. Exit code is
-// the failure count. ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget
-// at the end.
+// their edge; folding a video's sound tracks; keyframe diamonds that
+// highlight and seek. Exit code is the failure count.
+// ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget at the end.
 
 #include "TimelineWidget.h"
 #include "../src/core/Transition.h"
@@ -237,10 +237,18 @@ void testKeyDiamondClick()
     QSignalSpy sel(&f.w, &TimelineWidget::clipSelected);
     QSignalSpy moved(&f.w, &TimelineWidget::clipMoved);
 
+    // The hovered diamond is drawn in another colour, the others stay as
+    // they were.
+    const auto pixel = [&](qint64 ms) {
+        return f.w.grab().toImage().pixelColor(Fixture::x(ms), kRulerH + kMainH - 6);
+    };
+    const QColor plain = pixel(3000), other = pixel(7000);
     QTest::mouseMove(&f.w, QPoint(Fixture::x(3000), keyY));
     CHECK(f.w.cursor().shape() == Qt::PointingHandCursor);
+    CHECK(pixel(3000) != plain && pixel(7000) == other);
     QTest::mouseMove(&f.w, QPoint(Fixture::x(3000) + 20, keyY));
     CHECK(f.w.cursor().shape() == Qt::ArrowCursor);
+    CHECK(pixel(3000) == plain);
 
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000), keyY));
     CHECK(seek.count() == 1 && seek.last().at(0).toLongLong() == 3000);
@@ -586,6 +594,17 @@ void testOverlayTracks()
     CHECK(clipSel.count() >= 1 && clipSel.last().at(0).toInt() == 1);
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000), musicY));
     CHECK(sel.last().at(0).toInt() == 100);
+
+    // A look-key diamond seeks to its key and selects the overlay clip: the
+    // key at source 3 s sits at 7 s on the timeline. Beside it, no seek.
+    QSignalSpy seek(&f.w, &TimelineWidget::seekRequested);
+    const int camKeyY = camY + kTrackH / 2 - 5; // the diamonds' row
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(7000), camKeyY));
+    CHECK(seek.count() == 1 && seek.last().at(0).toLongLong() == 7000);
+    CHECK(sel.last().at(0).toInt() == 200);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier,
+                      QPoint(Fixture::x(7000) + 10, camKeyY));
+    CHECK(seek.count() == 1 && moved.count() == 0);
 
     // An overlay clip moves onto the other overlay track...
     drag(&f.w, QPoint(Fixture::x(6000), camY), QPoint(Fixture::x(6500), ov2Y));

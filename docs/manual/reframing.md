@@ -94,7 +94,7 @@ following the keyframes.
 
 - **Go to a keyframe:** `Shift+↓` and `Shift+↑` move the playhead to the
   next and previous keyframe, across all clips. Or click a keyframe's
-  diamond on the clip - it highlights under the pointer - to move the
+  diamond on the clip -- it highlights under the pointer -- to move the
   playhead to it directly.
 - **Change a keyframe:** move the playhead onto it, and set the view again
   (with reframe authoring armed, or by pressing `K`). The keyframe's view is

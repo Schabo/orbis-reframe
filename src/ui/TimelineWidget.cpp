@@ -556,9 +556,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
             const qint64 ks = r.clip.keySourceMs[j];
             if (ks < r.clip.trimInMs || ks > r.clip.trimOutMs)
                 continue;
-            check(xForTimelineMs(r.startMs + std::llround((ks - r.clip.trimInMs) /
-                                                          r.clip.speed)),
-                  cy, j);
+            check(xForTimelineMs(r.startMs + r.clip.localAtSourceMs(ks)), cy, j);
             if (k.index >= 0) {
                 k.row = i;
                 return k;
@@ -580,8 +578,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
                 const qint64 ks = tc.keySourceMs[j];
                 if (ks < tc.trimInMs || ks > tc.trimOutMs)
                     continue;
-                check(xForTimelineMs(tc.startMs + std::llround((ks - tc.trimInMs) / tc.speed)),
-                      cy, j);
+                check(xForTimelineMs(tc.timelineAtSourceMs(ks)), cy, j);
                 if (k.index >= 0) {
                     k.track = t;
                     k.clip = c;
@@ -597,11 +594,10 @@ qint64 TimelineWidget::keyTimelineMs(const KeyHit &k) const
 {
     if (k.row >= 0) {
         const Row &r = m_rows[k.row];
-        return r.startMs +
-               std::llround((r.clip.keySourceMs[k.index] - r.clip.trimInMs) / r.clip.speed);
+        return r.startMs + r.clip.localAtSourceMs(r.clip.keySourceMs[k.index]);
     }
     const TrackClipView &c = m_tracks[k.track].clips[k.clip];
-    return c.startMs + std::llround((c.keySourceMs[k.index] - c.trimInMs) / c.speed);
+    return c.timelineAtSourceMs(c.keySourceMs[k.index]);
 }
 
 int TimelineWidget::insertIndexAt(qint64 ms) const

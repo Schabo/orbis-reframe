@@ -126,6 +126,12 @@ public:
         {
             return std::max<qint64>(0, std::llround((trimOutMs - trimInMs) / speed));
         }
+        // A source time's offset from the clip's start on the timeline, same
+        // rounding as ClipItem::localAtSourceMs.
+        qint64 localAtSourceMs(qint64 sourceMs) const
+        {
+            return std::llround((sourceMs - trimInMs) / speed);
+        }
     };
 
     struct TrackClipView {
@@ -152,6 +158,11 @@ public:
         QVector<int> moveTargets;
         qint64 spanMs() const { return std::llround((trimOutMs - trimInMs) / speed); }
         qint64 endMs() const { return startMs + spanMs(); }
+        // Where a source time sits on the timeline.
+        qint64 timelineAtSourceMs(qint64 sourceMs) const
+        {
+            return startMs + std::llround((sourceMs - trimInMs) / speed);
+        }
     };
     struct TrackView {
         enum class Group { Main, Audio, Overlay }; // as Track::Group
