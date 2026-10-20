@@ -38,7 +38,7 @@ ones. Which modes they cover is in §3.4.
 | `Analysis/VID_20250927_144221_00_019-trim.insv` / `_020-trim` | 30 min + 7.4 min | one recording split into two files, re-written by Insta360 software, handlebar mount |
 | `Modes/VID_20260927_*_00_001…005.insv` (+ `.lrv`) | ~12 s each | one clip per mode, camera still (§3.3) |
 | `ilog/VID_20261018_185907_00_006.insv` | 11 s | 5.7K 30 I-Log, indoor |
-| `Demo/…/VID_20260815_*.insv` (+ `.lrv`), `IMG_20260815_*.insp` | 18 clips, 77 photos | a day's ride, 8K 30: 12 video clips and 6 timelapses (`_078`, `_079`, `_088`, `_089`, `_091`, `_095`, §3.5); 72 MP 360 photos with GPS |
+| `Demo/…/VID_20260815_*.insv` (+ `.lrv`), `IMG_20260815_*.insp` | 18 clips, 77 photos | a day's ride, 8K 30: 12 video clips and 6 timelapses (`_078`, `_079`, `_088`, `_089`, `_091`, `_095`, §3.5); two Interval series of 72 MP 360 photos with GPS (§3.6) |
 
 ---
 
@@ -240,7 +240,8 @@ frame rate); **wanted** means no clip yet.
 | Single-lens FreeFrame | 3840² 30…24, 2720² / 1920² 60…24 | `PRO_VID_….mp4` | none | **wanted** |
 | Single-lens Me Mode | 4K 30…24, 2.7K / 1080p 120…24 | `.insv` (4K, and 50 fps and up), `.mp4` (2.7K / 1080p at 30 and below) | none | **wanted** |
 | Single-lens PureVideo | | `.mp4` | none | wanted |
-| 360 Photo (HDR, Interval, Starlapse, Burst) | 72 MP, 18 MP | `IMG_…` `.insp` (a JPEG), `.dng` | 77 `.insp` at 72 MP | enough to start `.insp` support; **DNG, 18 MP, HDR wanted** |
+| 360 Photo, Interval | 72 MP, 18 MP | `IMG_…` `.insp` (a JPEG, §3.6), `.dng` | 77 Interval `.insp` at 72 MP, two series | enough to start `.insp` support |
+| 360 Photo single shot, HDR, Starlapse, Burst; DNG; 18 MP | | | none | **wanted** |
 | Single-lens Photo | 36 MP, 9 MP | `.insp`, `.dng` | none | wanted, low |
 | Audio: Auto Wind Noise Reduction, Voice Focus, Stereo, 360 Audio | 48 kHz AAC | | ❓ which ours used; one with a Mic Air too | **one clip of each wanted** (field 121, §5.1) |
 | Lens guards | | | guarded and bare footage | enough (§5.4) |
@@ -285,6 +286,27 @@ Field 26.1 isn't a reliable mode field beyond timelapse: it is 0 on the
 8K, 4K 120 and 5.7K+ HDR clips, 6 (`VideoHdr`) on the 5.7K 60 HDR and the
 5.7K I-Log clip, and 20 (past the published list) on four of the 2025
 clips, split or not.
+
+### 3.6 360 photos (`.insp`) ✅
+
+From the 77 Demo photos, two series shot with **Interval** (firmware
+v1.11.10):
+
+- The `.insp` is a **JPEG** (Exif: `Arashi Vision`, `Insta360 X5`, GPS),
+  11904×5952 for 72 MP: both lenses side by side as fisheye circles
+  (5952² each), not stitched, with the
+  `inst` trailer after the JPEG data (the footer of §4.1).
+- **No Offsets table**: the footer's header points at the last record and
+  the sequential walk (§4.2) reaches them all: type 3 (IMU, 2000 B, 100
+  samples), 11, 9, 1 (metadata), 2 (thumbnail, 4 915 240 B: 2560×1280
+  NV12 after the 40-byte header) and 5 (ThumbnailExt, 76 800 B: 320×160
+  NV12).
+- **Field 26.1 is 5** (`PhotoIntervalshooting`) on every photo, and
+  **26.3 names the series' first photo**: 2 photos under `…_001`, 75 under
+  `…_003`. The interval isn't in the metadata (no field 30); the file
+  names step 10 s, sometimes 11.
+- Field 25 (readout) is 27.7 ms, longer than 8K video's 21.24 ms.
+- The app doesn't open `.insp` files yet.
 
 ## 4. The `inst` trailer — framing
 
@@ -340,7 +362,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header (`u32 1, u32 record size, u32 1, u32 0, u32 width, u32 height`, zeros) + **1280×640 NV12**, an already **stitched equirectangular** frame from the start of the recording (ExifTool: `PreviewTIFF`; other models store JPEG or H.264 here). Read by `ReadInsvThumbnail` for the project library's cards | ✅ |
 | `0x0300` | 3 | **Gyro** (IMU) | 877 440 | accel + gyro, ~1 kHz (§6) | ✅ |
 | `0x0400` | 4 | **Exposure** | 20 928 | one per sensor frame (§7) | ✅ |
-| — | 5 | ThumbnailExt | — | not on the X5 samples | |
+| `0x0500` | 5 | ThumbnailExt | 76 800 (`.insp`) | 320×160 NV12; photos only (§3.6) | ⚠️ |
 | `0x0600` | 6 | FramePts / TimelapseTimestamp | 9 832 (`_078`) | `u64` device µs per frame, plus one; timelapse only (§3.5; ExifTool: `VideoTimeStamp`) | ✅ |
 | `0x0700` | 7 | **GPS** | 22 790 | 53 B × 10 Hz, fix updated at 1 Hz (§8); only with a GPS source | ✅ |
 | `0x0900` | 9 | **AAAData** (auto-exposure / white-balance / focus) | 61 536 | **48 B per recorded frame** (§4.4) | 📖 |
@@ -403,7 +425,7 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 22 | `gamma_mode` | `standard`; `I_Log` in I-Log | colour profile ✅ (both values seen) |
 | **24** | **`first_frame_timestamp`** | 2468081984 | **device µs of the first recorded video frame**; the sync anchor (§7.1) ✅ 📖 |
 | **25** | **`rolling_shutter_time`** | **21.244** (11.837 on `201257`) | **frame readout time, ms**. Gyroflow's `frame_readout_time` reads it directly ✅ 📖 |
-| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, otherwise not reliable (§3.5); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`), and `identify` is the first file's path. |
+| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, 5 on Interval photos, otherwise not reliable (§3.5, §3.6); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`), and `identify` is the first file's path. |
 | 27 | `window_crop_info` | {src 5376×5376, dst 5312×5312} | sensor crop window. `dst` is the focal reference: **`fx_video = fx · 3840/5312`**. Gyroflow computes `fx / (dst_w / dimension_w)` ✅ 📖 |
 | **28** | **`gyro_timestamp`** | **1.6** | **IMU timing offset, ms**. Gyroflow subtracts it from every gyro/accel time (§6.2) 📖 |
 | 29 | `is_has_gyro_timestamp` | true | enables field 28 |
