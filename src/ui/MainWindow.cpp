@@ -278,6 +278,9 @@ void MainWindow::setupSourcesSidebar()
     connect(m_mediaPanel, &MediaPoolPanel::addToTimelineRequested, this,
             &MainWindow::addMediaToTimeline);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
+    connect(m_mediaPanel, &MediaPoolPanel::collectIntoProjectRequested, m_mediaImport,
+            &MediaImporter::collectIntoProject);
+    connect(m_mediaImport, &MediaImporter::relinksReady, this, &MainWindow::applyRelinks);
 }
 
 void MainWindow::setupLayout(QWidget *viewportContainer)
@@ -2715,11 +2718,11 @@ void MainWindow::addMediaToTimeline(const QStringList &paths)
         selectAdded(m_trackFiles->addAudio(audio, 0, m_lastTimelineMs));
 }
 
-void MainWindow::locateMedia(const QString &path)
+// Every relink -- a file found again through Locate file…, or a device file
+// copied into the project folder: pool and timeline point at the new path,
+// its plate scans carry over, and the clip on screen follows.
+void MainWindow::applyRelinks(const MediaImporter::Relinks &relinks)
 {
-    const MediaImporter::Relinks relinks = m_mediaImport->locate(path);
-    if (relinks.isEmpty())
-        return;
     for (const auto &[from, to] : relinks) {
         QSet<QString> keys;
         for (int i = 0; i < m_timeline->count(); ++i)
@@ -2733,6 +2736,14 @@ void MainWindow::locateMedia(const QString &path)
     }
     refreshClipPanels();
     m_measurements->schedule(); // sync / seam for a clip that had no file until now
+}
+
+void MainWindow::locateMedia(const QString &path)
+{
+    const MediaImporter::Relinks relinks = m_mediaImport->locate(path);
+    if (relinks.isEmpty())
+        return;
+    applyRelinks(relinks);
     m_mediaImport->showRelinked(relinks);
 }
 

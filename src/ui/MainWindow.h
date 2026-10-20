@@ -26,6 +26,7 @@
 #include "ShortcutHelp.h"             // KeyHelp
 #include "StabilizerCache.h"          // StabilizerCache
 #include "FrameViewCache.h"           // FrameViewCache
+#include "MediaImporter.h"           // MediaImporter::Relinks
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
@@ -404,6 +405,9 @@ private:
     // (and others found with it) replaces the old path in the pool and on
     // the timeline.
     void locateMedia(const QString &path);
+    // Pool/timeline relinks from Locate file… and from media copied into
+    // the project folder (MediaImporter::relinksReady).
+    void applyRelinks(const MediaImporter::Relinks &relinks);
     // Files that went missing or came back since the last look (a drive
     // unplugged or plugged in again, a file moved away or back): the Media
     // tab, the timeline, playback, the overlays and the sound follow, and the
