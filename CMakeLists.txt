@@ -463,7 +463,7 @@ if(FFMPEG_FOUND)
         src/ui/PlaybackController.cpp
         src/ui/PlaybackController.h
         src/ui/PlaybackControllerDecoder.cpp
-        src/ui/FlatClipSource.cpp
+        src/ui/BlankClipSource.cpp
         src/ui/PlaybackTuning.h
         src/ui/InsetFeed.cpp
         src/ui/InsetFeed.h

@@ -93,7 +93,7 @@ public:
         // capture timing and stabilization are looked up by, since two clips
         // of one file can differ.
         int clipId = 0;
-        // A flat video (ClipItem::flat): played through a FlatClipSource of
+        // A flat video (ClipItem::flat): played through a BlankClipSource of
         // this rate and length, its picture drawn by the insets.
         bool flat = false;
         double fps = 0.0;
@@ -105,7 +105,7 @@ public:
         bool depthSeam = true;
         // The file was gone when the timeline was pushed (ClipItem::
         // mediaMissing): the decoder doesn't try to open it, or open it
-        // ahead of time, and reports it through openFailed.
+        // ahead of time, reports it through openFailed and plays black.
         bool missing = false;
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
@@ -217,8 +217,8 @@ public slots:
     void setRate(double rate);
 
 signals:
-    // A source couldn't be opened (or is marked missing): decoding stops
-    // there. `path` is the file, `error` why.
+    // A source couldn't be opened (or is marked missing): its clip plays
+    // black. `path` is the file, `error` why.
     void openFailed(const QString &path, const QString &error);
     void durationChanged(qint64 totalMs);
     void positionChanged(qint64 timelineMs);
@@ -264,7 +264,7 @@ private:
     // Returns the open source for `path` (from the small cache, or freshly
     // opened). nullptr + *err set on failure.
     std::shared_ptr<stitch::IStitchSource> acquireSource(const Segment &seg, QString *err);
-    // A new, unopened source for `seg`: a FlatClipSource for a flat clip,
+    // A new, unopened source for `seg`: a BlankClipSource for a flat clip,
     // else m_makeSource's, or the real one. Any thread.
     std::unique_ptr<stitch::IStitchSource> makeSource(const Segment &seg) const;
     // What `seg`'s source is opened with: the preview config with the clip's
@@ -272,9 +272,9 @@ private:
     static stitch::PreviewStitchConfig openConfig(stitch::PreviewStitchConfig preview,
                                                   const Segment &seg);
     // Make segment `index` the one being decoded, opening its source if the
-    // path changed. Prunes any other cached source. false (openFailed emitted)
-    // on open failure, or without trying for a segment marked missing.
-    bool switchToSegment(int index);
+    // path changed. A file that can't be opened, or a segment marked missing
+    // (not tried), emits openFailed and plays black for its span.
+    void switchToSegment(int index);
     qint64 clampTimeline(qint64 ms) const {
         return ms < 0 ? 0 : (ms > m_totalMs ? m_totalMs : ms);
     }

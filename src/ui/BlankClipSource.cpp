@@ -1,4 +1,4 @@
-#include "FlatClipSource.h"
+#include "BlankClipSource.h"
 
 #include <cmath>
 #include <filesystem>
@@ -8,7 +8,8 @@ namespace {
 constexpr int kW = 8, kH = 4; // an equirect's 2:1; the viewport scales it up
 } // namespace
 
-FlatClipSource::FlatClipSource(double fps, int64_t durationMs)
+BlankClipSource::BlankClipSource(double fps, int64_t durationMs, bool needsFile)
+    : m_needsFile(needsFile)
 {
     m_info.width = kW;
     m_info.height = kH;
@@ -16,10 +17,10 @@ FlatClipSource::FlatClipSource(double fps, int64_t durationMs)
     m_info.duration_ms = durationMs;
 }
 
-bool FlatClipSource::Open(const std::string &clipPath, const stitch::PreviewStitchConfig &)
+bool BlankClipSource::Open(const std::string &clipPath, const stitch::PreviewStitchConfig &)
 {
     std::error_code ec;
-    if (!std::filesystem::exists(clipPath, ec)) {
+    if (m_needsFile && !std::filesystem::exists(clipPath, ec)) {
         m_error = "no such file: " + clipPath;
         return false;
     }
@@ -27,25 +28,25 @@ bool FlatClipSource::Open(const std::string &clipPath, const stitch::PreviewStit
     return true;
 }
 
-int64_t FlatClipSource::msOfFrame(int64_t frame) const
+int64_t BlankClipSource::msOfFrame(int64_t frame) const
 {
     return static_cast<int64_t>(std::llround(frame * 1000.0 / m_info.fps));
 }
 
-stitch::Frame FlatClipSource::GetFrame(int64_t timestampMs)
+stitch::Frame BlankClipSource::GetFrame(int64_t timestampMs)
 {
     SeekTo(timestampMs);
     return ReadFrame();
 }
 
-bool FlatClipSource::SeekTo(int64_t timestampMs)
+bool BlankClipSource::SeekTo(int64_t timestampMs)
 {
     // The frame showing at `timestampMs`: the last one at or before it.
     m_next = std::max<int64_t>(0, static_cast<int64_t>(std::floor(timestampMs * m_info.fps / 1000.0 + 1e-6)));
     return true;
 }
 
-stitch::Frame FlatClipSource::ReadFrame()
+stitch::Frame BlankClipSource::ReadFrame()
 {
     stitch::Frame f;
     const int64_t ms = msOfFrame(m_next);

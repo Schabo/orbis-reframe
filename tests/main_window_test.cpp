@@ -1104,6 +1104,36 @@ void testRecovery(const Ctx &c)
     CHECK(!Autosave::hasRecovery(orp));
 }
 
+// Playback goes on past a missing clip (black for its span, a notice naming
+// the file) to the clip after it, instead of stopping at the cut; a seek into
+// it plays too.
+void testPlayPastMissingClip(const Ctx &c)
+{
+    if (c.timeline->count() != 2)
+        return;
+    const int third = c.timeline->appendClip(c.clipA, kClipMs, kFps);
+    const qint64 cut1 = c.timeline->clipAt(0).timelineDurationMs();
+    const qint64 cut2 = cut1 + c.timeline->clipAt(1).timelineDurationMs();
+    auto *play = find<QToolButton>(c.w, "playerPlayButton");
+    auto *notice = find<QLabel>(c.w, "editNotice");
+    if (play && notice) {
+        CHECK(seekTo(c, cut1 - 200));
+        play->click();
+        CHECK(waitFor([&] { return c.timelineWidget->playhead() > cut1 + 100; }));
+        const int served = g_framesServed.load(); // the missing clip's are blank
+        CHECK(waitFor([&] { return c.timelineWidget->playhead() > cut2 + 300; }, 10000));
+        play->click();
+        CHECK(g_framesServed.load() > served); // the third clip's frames decoded
+        CHECK(notice->text().contains(QFileInfo(c.clipB).fileName()));
+
+        CHECK(seekTo(c, cut1 + 600));
+        play->click();
+        CHECK(waitFor([&] { return c.timelineWidget->playhead() > cut1 + 800; }));
+        play->click();
+    }
+    c.timeline->removeClip(third);
+}
+
 // A clip's file moved: it shows as missing, and Locate file… relinks it.
 void testLocateMovedFile(const Ctx &c)
 {
@@ -1112,6 +1142,7 @@ void testLocateMovedFile(const Ctx &c)
     answerMessageBox(QStringLiteral("OK")); // the missing-media warning
     c.w->openProject(c.project->filePath());
     CHECK(waitFor([&] { return c.timeline->count() == 2 && c.timeline->clipAt(1).mediaMissing; }));
+    testPlayPastMissingClip(c);
 
     auto *panel = find<MediaPoolPanel>(c.w, "mediaPoolPanel");
     if (!panel)

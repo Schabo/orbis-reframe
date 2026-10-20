@@ -1,5 +1,5 @@
 #include "PlaybackController.h"
-#include "FlatClipSource.h"
+#include "BlankClipSource.h"
 #include "PlaybackTuning.h"
 
 #include "../render/EquirectViewportWindow.h"
@@ -84,7 +84,7 @@ void PlaybackController::touchSourceLru(const QString &path)
 std::unique_ptr<stitch::IStitchSource> PlaybackController::makeSource(const Segment &seg) const
 {
     if (seg.flat)
-        return std::make_unique<FlatClipSource>(seg.fps, seg.sourceDurationMs);
+        return std::make_unique<BlankClipSource>(seg.fps, seg.sourceDurationMs, true);
     return m_makeSource ? m_makeSource() : stitch::MakeStitchSource();
 }
 
@@ -261,26 +261,32 @@ void PlaybackController::pruneSourcesToTimeline()
     }
 }
 
-bool PlaybackController::switchToSegment(int index)
+void PlaybackController::switchToSegment(int index)
 {
     const Segment &seg = m_decPlaced[index].seg;
     const QString path = seg.sourcePath;
     if (m_activeSource && m_activePath == path) {
         touchSourceLru(path);
-        return true;
-    }
-    // A file known to be gone isn't opened; the view decides how to tell
-    // the user (it owns the missing-media marks).
-    if (seg.missing) {
-        emit openFailed(path, QStringLiteral("file not found: %1").arg(path));
-        return false;
+        return;
     }
 
+    // A file known to be gone isn't opened; the view decides how to tell
+    // the user (it owns the missing-media marks).
     QString err;
-    auto src = acquireSource(seg, &err);
+    std::shared_ptr<stitch::IStitchSource> src;
+    if (seg.missing)
+        err = QStringLiteral("file not found: %1").arg(path);
+    else if (!(src = acquireSource(seg, &err)) && err.isEmpty())
+        err = QStringLiteral("could not open %1").arg(path);
     if (!src) {
-        emit openFailed(path, err.isEmpty() ? QStringLiteral("could not open %1").arg(path) : err);
-        return false;
+        emit openFailed(path, err);
+        // Black for the clip's span, so playback goes on past it. Cached
+        // like the file's own source: the next pass plays it without asking
+        // again, and a file that comes back is opened afresh (reopenSources).
+        src = std::make_shared<BlankClipSource>(seg.fps, seg.sourceDurationMs, false);
+        src->Open(path.toStdString(), openConfig(m_decPreviewConfig, seg));
+        m_srcCache[path] = src;
+        touchSourceLru(path);
     }
     // The source we leave keeps its lens ring only for frames still queued or
     // on screen; drop the rest of its GPU memory.
@@ -288,7 +294,6 @@ bool PlaybackController::switchToSegment(int index)
         m_activeSource->TrimLensFrames();
     m_activeSource = std::move(src);
     m_activePath = path;
-    return true;
 }
 
 void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
@@ -471,12 +476,7 @@ void PlaybackController::decoderLoop()
             const int idx = segmentAt(m_decPlaced, seekMs);
             const Placed &ps = m_decPlaced[idx];
             const qint64 clamped = std::clamp<qint64>(seekMs, ps.startMs, ps.endMs());
-            if (!switchToSegment(idx)) {
-                setHardStall(false);
-                std::lock_guard<std::mutex> lk(m_mx);
-                m_decoderEof = true;
-                continue;
-            }
+            switchToSegment(idx);
             // At most the clip's last frame: a seek to its end (or to the last
             // frame's own time, a hair past it once rounded) decoded the frame
             // after the trim-out, read as the end -- and the old picture
@@ -584,13 +584,10 @@ void PlaybackController::decoderLoop()
                 m_decLastSourceMs = -1;
                 m_decSegIndex = next;
                 continue;
-            } else if (!switchToSegment(next)) {
-                std::lock_guard<std::mutex> lk(m_mx);
-                m_decoderEof = true;
-                continue;
             } else {
                 // Until the next clip's first frame is read: its seek and
                 // decode up to the trim-in.
+                switchToSegment(next);
                 setHardStall(true);
                 m_activeSource->SeekTo(m_decPlaced[next].seg.inMs);
                 m_decLastSourceMs = -1;
