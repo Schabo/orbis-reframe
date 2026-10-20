@@ -120,6 +120,8 @@ public:
             g_openedWith[path] = config;
         }
         m_info = {7680, 3840, kFps, kClipMs};
+        // The second clip a lighter grey: which clip a picture came from.
+        m_grey = QString::fromStdString(path).endsWith(QLatin1String("_002.insv")) ? 200 : 128;
         return true;
     }
     const stitch::ClipInfo &GetInfo() const override { return m_info; }
@@ -128,20 +130,25 @@ public:
         SeekTo(ms);
         return ReadFrame();
     }
+    // The first frame at or after `ms`, as the real sources seek (their
+    // times rounded to the ms, as ReadFrame's).
     bool SeekTo(int64_t ms) override
     {
-        m_frame = static_cast<int64_t>(ms * kFps / 1000.0 + 0.5);
+        m_frame = static_cast<int64_t>(std::floor(ms * kFps / 1000.0));
+        while (frameMs(m_frame) < ms)
+            ++m_frame;
         return true;
     }
+    static int64_t frameMs(int64_t frame) { return std::llround(frame * 1000.0 / kFps); }
     stitch::Frame ReadFrame() override
     {
         stitch::Frame f;
-        const int64_t ms = static_cast<int64_t>(m_frame * 1000.0 / kFps);
+        const int64_t ms = frameMs(m_frame);
         if (ms >= m_info.duration_ms)
             return f;
         f.width = 64;
         f.height = 32;
-        f.rgba.assign(size_t(f.width) * f.height * 4, 128);
+        f.rgba.assign(size_t(f.width) * f.height * 4, m_grey);
         f.timestamp_ms = ms;
         ++m_frame;
         ++g_framesServed;
@@ -152,6 +159,7 @@ public:
 private:
     stitch::ClipInfo m_info;
     int64_t m_frame = 0;
+    uint8_t m_grey = 128;
     std::string m_error;
 };
 
@@ -425,6 +433,39 @@ void testKeyOnTrimOut(const Ctx &c)
     CHECK(c.timeline->clipAt(1).reframe.isEmpty());
     key(c, Qt::Key_K, Qt::ShiftModifier);
     CHECK(c.timeline->clipAt(0).reframe.isEmpty());
+    settle();
+}
+
+// One frame step onto a cut shows the next clip's first frame, though it
+// starts a hair after the cut (its trim-in between two frames) -- not the
+// last clip's frame left on screen, which would get the next clip's view.
+void testStepOntoCut(const Ctx &c)
+{
+    EquirectViewportWindow *viewport = c.w->viewport();
+    if (c.timeline->count() < 2 || !viewport)
+        return;
+    const int b = c.timeline->clipAt(1).id;
+    c.timeline->setClipTrimIn(b, 10); // its first frame: source 33 ms
+    const qint64 cut = c.timeline->clipAt(0).timelineDurationMs();
+    int width = 0, height = 0;
+    std::vector<uint8_t> rgba;
+    std::shared_ptr<const render::LensFrame> lens;
+    const auto shownGrey = [&](int grey) {
+        return waitFor([&] {
+            return viewport->TakePendingFrame(width, height, rgba, lens) && !rgba.empty() &&
+                   rgba[0] == grey;
+        });
+    };
+    CHECK(seekTo(c, cut));
+    CHECK(shownGrey(200));
+    key(c, Qt::Key_Left); // a frame back: the first clip's last
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() < cut; }));
+    CHECK(shownGrey(128));
+    key(c, Qt::Key_Right); // and on again
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() == cut; }));
+    CHECK(shownGrey(200)); // the second clip's first
+    settle();
+    c.timeline->setClipTrimIn(b, 0);
     settle();
 }
 
@@ -1352,6 +1393,7 @@ int main(int argc, char **argv)
             testPlayAcrossCut(c);
             testNavigationKeys(c);
             testKeyOnTrimOut(c);
+            testStepOntoCut(c);
             testVideoEdits(c);
             testColour(c);
             testStitching(c);

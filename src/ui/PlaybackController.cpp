@@ -276,6 +276,15 @@ PlaybackController::Handy PlaybackController::frameAtLocked(qint64 timelineMs)
     size_t n = 0;
     while (n < m_queue.size() && m_queue[n].frame.timestamp_ms <= limit)
         ++n;
+    // The frame for a time is its clip's. One step onto a cut, the frame
+    // starting by then is the clip before's (on screen, or queued), and the
+    // next clip's first one may start a hair after the cut: decode it (the
+    // seek lands on it), or that clip's view is drawn on the other clip's
+    // picture.
+    const int idx = segmentAt(m_placed, timelineMs);
+    const int clipId = idx >= 0 ? m_placed[idx].seg.clipId : 0;
+    if ((n == 0 ? m_shownClipId : m_queue[n - 1].clipId) != clipId)
+        return Handy::No;
     if (n == 0) {
         // Before every queued frame: the shown one, if it starts by then --
         // and with nothing queued only if it starts right there.
