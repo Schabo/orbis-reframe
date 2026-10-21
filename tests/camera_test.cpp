@@ -10,6 +10,7 @@
 #include "support/TestTrailer.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -33,7 +34,11 @@ constexpr int kFps = 25;
 
 // The ONE X2's trailer, cut down: the model, the 40-token offset_v3, field 27
 // and 24, and a little IMU stamped in ms, 2 ms apart (500 Hz).
-std::vector<uint8_t> oneX2Trailer()
+// The lens pictures' greys in the trailer's previews (records 0x200 / 0x500).
+constexpr uint8_t kLens0Grey = 220;
+constexpr uint8_t kLens1Grey = 40;
+
+std::vector<uint8_t> oneX2Trailer(bool lensPictures = false)
 {
     Bytes meta;
     meta.pbString(1, "IXSE0000000001").pbString(2, "Insta360 ONE X2").pbString(3, "v1.0.92_build1");
@@ -52,7 +57,13 @@ std::vector<uint8_t> oneX2Trailer()
         imu.u64(2800 + uint64_t(i) * 2);
         for (double v : {0.0, 0.0, 1.0, 0.0, 0.0, 0.0}) imu.f64(v);
     }
-    return testtrailer::insvTrailer({{0x300, imu.b}, {0x101, meta.b}}, false);
+    std::vector<testtrailer::TrailerRecord> records = {{0x300, imu.b}};
+    if (lensPictures) {
+        records.push_back({0x200, testmedia::encodeH264Picture(64, 64, kLens0Grey)});
+        records.push_back({0x500, testmedia::encodeH264Picture(64, 64, kLens1Grey)});
+    }
+    records.push_back({0x101, meta.b});
+    return testtrailer::insvTrailer(records, false);
 }
 
 // An MP4 under the camera's name (the writer goes by the extension).
@@ -173,6 +184,36 @@ void testClipFileOf(const Take& t)
     CHECK(camera::ClipFileOf(other) == other);
 }
 
+// No stitched preview in the trailer, but each lens's first frame: the
+// preview is stitched from them, so both lenses' pictures are in it.
+void testStitchedThumbnail(const Take& t)
+{
+    std::printf("  the preview stitched from the lens pictures\n");
+    if (testmedia::encodeH264Picture(64, 64, 128).empty()) {
+        std::printf("  (skipped: no H.264 encoder in this FFmpeg)\n");
+        return;
+    }
+    CHECK(!camera::ReadClipThumbnail(t.lead)); // no lens pictures yet
+    CHECK(writeLens(t.lead, 64, 50));
+    appendTo(t.lead, oneX2Trailer(true));
+    const auto thumb = camera::ReadClipThumbnail(t.lead);
+    CHECK(thumb.has_value());
+    if (!thumb)
+        return;
+    CHECK(thumb->width == 1024 && thumb->height == 512);
+    CHECK(thumb->nv12.size() == size_t(1024 * 512 * 3 / 2));
+    // A bright half and a dark one. (Not the greys themselves: the stitch's
+    // photometric seam compensation pulls the two lenses' brightness
+    // together, as in playback.)
+    int bright = 0, dark = 0;
+    for (int i = 0; i < 1024 * 512; ++i) {
+        const int y = thumb->nv12[size_t(i)];
+        bright += y > 150;
+        dark += y < 70;
+    }
+    CHECK(bright > 1024 * 512 / 5 && dark > 1024 * 512 / 5);
+}
+
 } // namespace
 
 int main()
@@ -184,6 +225,7 @@ int main()
     testPair(t);
     testSecondLensChecked(t);
     testClipFileOf(t);
+    testStitchedThumbnail(t);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

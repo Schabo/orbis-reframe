@@ -290,6 +290,9 @@ if(FFMPEG_FOUND)
         # The demux / decode / seek core of InsvDemux and VulkanVideoDecoder.
         src/insv/LensDemuxer.h
         src/insv/LensDemuxer.cpp
+        # One picture from an elementary stream (a camera's preview frame).
+        src/insv/StillPicture.h
+        src/insv/StillPicture.cpp
         # GPU-resident decode via FFmpeg's Vulkan hwaccel.
         src/insv/VulkanVideoDecoder.h
         src/insv/VulkanVideoDecoder.cpp

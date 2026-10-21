@@ -145,6 +145,11 @@ struct InsvThumbnail {
 };
 std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 
+// The payload of the trailer's record `id` (e.g. 0x500, the ONE X2's lens-1
+// first frame, docs/formats/insta360-one-x2.md §4), only that record read;
+// std::nullopt when the file has no trailer or no such record.
+std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id);
+
 // Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure;
 // 0x700 GPS is only counted).
 // Returns std::nullopt only if the file has no recognizable trailer at all; a

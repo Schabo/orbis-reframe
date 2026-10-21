@@ -168,8 +168,10 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 
 Types 2 and 5 are each a single H.264 IDR frame that FFmpeg decodes as a raw
 `h264` stream ✅: the `_00_` and `_10_` lens's first frame at full size (X5:
-one stitched 1280×640 NV12 frame). A library card would have to decode one
-and stitch or crop it; `ReadInsvThumbnail` reads the X5's NV12 only.
+one stitched 1280×640 NV12 frame). The app's preview for a ONE X2 clip
+(since 2026-10-21) decodes both, scaled to 720², and stitches them on the
+CPU with the clip's calibration into a 1024×512 frame of the X5's form:
+~0.27 s per clip on the sample takes, once (the media card caches it).
 
 ## 6. Type 1 — Metadata (protobuf) ✅
 
@@ -329,11 +331,10 @@ Read (2026-10-21):
   the clip is missing when either file is.
 - **The stitch from the 40-token `offset_v3`** (field 54; §7).
 - **Telemetry in ms**, turned into µs (§8).
+- **The preview** for the media card, stitched from types 2 and 5 (§5).
 - **The matrix from the stream** (BT.601 here), as for every camera.
 
 Still needed:
-- **Thumbnails** from the trailer's H.264 frames (types 2 and 5) instead of
-  NV12.
 - The IMU axis map (the X5's turns the picture upside down) and the
   frame-time anchor, measured on these clips; the stitch checked against
   Insta360 Studio's.

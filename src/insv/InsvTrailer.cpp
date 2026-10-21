@@ -506,6 +506,22 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path) {
     return out;
 }
 
+std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) return std::nullopt;
+    file.seekg(0, std::ios::end);
+    const int64_t file_size = static_cast<int64_t>(file.tellg());
+    std::optional<std::vector<uint8_t>> out;
+    WalkTrailerRecords(
+        file, file_size,
+        [&](uint16_t, const std::vector<uint8_t>& p, int64_t) {
+            out = p;
+            return false;
+        },
+        [id](uint16_t r) { return r == id; });
+    return out;
+}
+
 std::optional<std::string> ReadInsvExtendedCalibrationString(const std::string& file_path) {
     const std::vector<uint8_t> trailer = ExtractRawTrailer(file_path);
     if (trailer.empty()) return std::nullopt;

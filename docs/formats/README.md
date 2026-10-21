@@ -10,7 +10,7 @@ differences from it, or, for another vendor, from scratch.
 | Insta360 X5 | 360, one `.insv` with both lenses | [`insta360-x5.md`](insta360-x5.md) | supported; every fact checked on our clips |
 | Insta360 X4 | 360, one `.insv` with both lenses | [`insta360-x4.md`](insta360-x4.md) | not yet; desk research, no clips |
 | Insta360 X6 | 360, one `.insv`, 10-bit modes | [`insta360-x6.md`](insta360-x6.md) | experimental: opens, stitches and exports, 10-bit, I-Log and HLG through LUTs (a contributor's clips; not yet run by the maintainer); open: the IMU axis map (stabilization), the HLG LUT on real Dolby Vision clips, 8K 50 real time |
-| Insta360 ONE X2 | 360, one `.insv` per lens at 5.7K | [`insta360-one-x2.md`](insta360-one-x2.md) | being built: 5.7K clips open from the `_00_` file, stitch and export; open: the IMU axis map (stabilization), its media card picture |
+| Insta360 ONE X2 | 360, one `.insv` per lens at 5.7K | [`insta360-one-x2.md`](insta360-one-x2.md) | being built: 5.7K clips open from the `_00_` file, stitch and export; open: the IMU axis map (stabilization) |
 | Insta360 X3 | 360, one `.insv` per lens at 5.7K | [`insta360-x3.md`](insta360-x3.md) | not yet; desk research, no clips |
 | Antigravity A1 | 360 drone, `.insv` | [`antigravity-a1.md`](antigravity-a1.md) | not yet; desk research, no clips |
 | Insta360 Luna (Pro / Ultra) | flat gimbal camera, `.mp4` | [`insta360-luna.md`](insta360-luna.md) | not yet; desk research, no clips |

@@ -1,10 +1,12 @@
 #include "Insta360Reader.h"
 
 #include <Calibration.h>
+#include <FisheyeProjection.h>
 #include <InsvImu.h>
 #include <InsvModels.h>
 #include <InsvTrailer.h>
 #include <LensDemuxer.h>
+#include <StillPicture.h>
 
 #include <algorithm>
 #include <cmath>
@@ -88,6 +90,75 @@ bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
         return false;
     }
     return true;
+}
+
+// RGB24 -> NV12, BT.601 limited range: the form Thumbnail promises (the X5's
+// own preview's).
+Thumbnail toNv12(const insv::Image& rgb) {
+    Thumbnail t{rgb.w & ~1, rgb.h & ~1, {}};
+    t.nv12.resize(static_cast<size_t>(t.width) * t.height * 3 / 2);
+    uint8_t* y = t.nv12.data();
+    uint8_t* uv = y + static_cast<size_t>(t.width) * t.height;
+    const auto px = [&](int x, int yy) { return &rgb.rgb[(static_cast<size_t>(yy) * rgb.w + x) * 3]; };
+    for (int yy = 0; yy < t.height; ++yy)
+        for (int x = 0; x < t.width; ++x) {
+            const uint8_t* p = px(x, yy);
+            y[static_cast<size_t>(yy) * t.width + x] =
+                static_cast<uint8_t>(((66 * p[0] + 129 * p[1] + 25 * p[2] + 128) >> 8) + 16);
+        }
+    for (int yy = 0; yy < t.height; yy += 2)
+        for (int x = 0; x < t.width; x += 2) {
+            int r = 0, g = 0, b = 0;
+            for (int dy = 0; dy < 2; ++dy)
+                for (int dx = 0; dx < 2; ++dx) {
+                    const uint8_t* p = px(x + dx, yy + dy);
+                    r += p[0];
+                    g += p[1];
+                    b += p[2];
+                }
+            r = (r + 2) / 4;
+            g = (g + 2) / 4;
+            b = (b + 2) / 4;
+            uint8_t* o = uv + static_cast<size_t>(yy / 2) * t.width + x;
+            o[0] = static_cast<uint8_t>(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+            o[1] = static_cast<uint8_t>(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+        }
+    return t;
+}
+
+// A preview for a file whose trailer has no stitched one but each lens's
+// first frame as an H.264 picture (the ONE X2: records 0x200 and 0x500,
+// docs/formats/insta360-one-x2.md §4, §5): stitched here, small, with the
+// clip's own calibration and the bare lens, as the playback stitch does.
+constexpr int kThumbLensSide = 720; // a lens picture, decoded down to this
+constexpr int kThumbWidth = 1024;   // the equirect preview's width
+std::optional<Thumbnail> stitchedThumbnail(const std::string& path) {
+    const auto rec0 = insv::ReadInsvRecord(path, 0x200);
+    const auto rec1 = rec0 ? insv::ReadInsvRecord(path, 0x500) : std::nullopt;
+    if (!rec1)
+        return std::nullopt;
+    const auto clip = ReadClipMetadata(path);
+    if (!clip || !clip->calibrated || clip->lenses.size() != 2)
+        return std::nullopt;
+    insv::Image lens[2];
+    std::string err;
+    if (!insv::DecodeStillPicture(*rec0, "h264", kThumbLensSide, lens[0], err) ||
+        !insv::DecodeStillPicture(*rec1, "h264", kThumbLensSide, lens[1], err)) {
+        std::fprintf(stderr, "[camera] no preview from the lens pictures in %s: %s\n",
+                     path.c_str(), err.c_str());
+        return std::nullopt;
+    }
+    if (lens[0].w != lens[1].w || lens[0].h != lens[1].h)
+        return std::nullopt;
+    insv::InsvCalibration calib;
+    for (const Lens& l : clip->lenses)
+        calib.lensesExt.push_back(l.calibration);
+    insv::StitchParams params;
+    insv::ApplyLensProfile(params, clip->bareLens ? &*clip->bareLens : nullptr, nullptr);
+    insv::FisheyeStitcher stitcher;
+    if (!stitcher.configure(calib, lens[0].w, lens[0].h, params))
+        return std::nullopt;
+    return toNv12(stitcher.renderEquirect(lens[0], lens[1], kThumbWidth));
 }
 
 std::optional<insv::LensProfile> profile(const insv::InsvMakerNotes& notes, const char* name) {
@@ -225,7 +296,7 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
 std::optional<Thumbnail> Insta360Reader::readThumbnail(const std::string& path) const {
     auto thumb = insv::ReadInsvThumbnail(path);
     if (!thumb)
-        return std::nullopt;
+        return stitchedThumbnail(path);
     return Thumbnail{thumb->width, thumb->height, std::move(thumb->nv12)};
 }
 

@@ -1,11 +1,12 @@
 #pragma once
 
 // Small media files written by the tests themselves, so no test needs
-// footage: a 16-bit stereo 48 kHz WAV and a short MPEG-4 video.
+// footage: a 16-bit stereo 48 kHz WAV, a short MPEG-4 video, an H.264 picture.
 
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace testmedia {
 
@@ -27,5 +28,10 @@ struct VideoSpec {
 };
 
 bool writeVideo(const std::string &path, const VideoSpec &spec);
+
+// One H.264 keyframe of a flat grey `luma` picture, as an Annex B elementary
+// stream (what a camera keeps as a preview frame). Empty when FFmpeg has no
+// H.264 encoder here.
+std::vector<uint8_t> encodeH264Picture(int width, int height, uint8_t luma);
 
 } // namespace testmedia

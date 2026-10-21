@@ -35,8 +35,10 @@ public:
     // another file of a take (a lens's own file, the camera's proxy);
     // nullopt for any other name. ClipFileOf checks the answer.
     virtual std::optional<std::string> clipFileFor(const std::string& path) const = 0;
-    // Straight from the file, without reading the rest (the media pool asks
-    // for many at once); nullopt when it isn't this family's or has none.
+    // The camera's own preview from the file, without decoding the video
+    // (the media pool asks for many at once): stored ready (the X5), or made
+    // from the lens pictures the file keeps (the ONE X2: a small stitch,
+    // tens of ms). nullopt when it isn't this family's or has none.
     virtual std::optional<Thumbnail> readThumbnail(const std::string& path) const = 0;
 };
 
