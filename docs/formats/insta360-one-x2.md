@@ -161,7 +161,7 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 | TimeShift | 5.7K 30 / 25 / 24 | no LRV | none | **wanted** |
 | Bullet Time | 3K 100 | no LRV | none | **wanted** |
 | Steady Cam (Ultra Wide Stabilization, 150°) | 1440p 50 / 30, 1080p 120 / 50 / 30; HDR, Timelapse, TimeShift at 1440p | `.mp4` | none | wanted: a flat clip, may open as one already |
-| Split recording | | ❓ (§12 question 3) | none split: `_004` is 1323 s, 7.5 GB per lens file, in one file each; a 29 min, 11 GB take wasn't split either (owner's report, no clip here) | **wanted** if longer ones split |
+| Split recording | | ❓ (§12 question 3) | none split: `_004` (1323 s, 7.5 GB per lens file) and `152938_…_003` (1741 s, 11 GB per lens file) are one file per lens each | **wanted** if longer ones split |
 | 360 Photo (Burst, Interval, Night Shot, HDR) | 18 MP | `.insp`, `.dng` (RAW) | none | wanted, low |
 | InstaPano (270°), 150° wide-angle photo | 4320×1440; 1440p / 1080p | ❓ | none | wanted, low |
 | Audio: Wind Reduction, Stereo, 360 Direction Focus | | | ❓ which ours used | **one clip of each wanted** |
@@ -419,7 +419,8 @@ in rad/s (§8).
    mode set on the camera; the other modes and the lens guards are
    untested (§3.3).
 3. How a long recording is split into files: not by 4 GB or by 22 min
-   (`_004`, §1), nor at 29 min / 11 GB (the camera owner's report).
+   (`_004`, §1), nor at 29 min / 11 GB
+   (`152938_…_003`, §1).
 4. Type 9's layout; the `AMBA` box; field 60.
 
 ## Sources
