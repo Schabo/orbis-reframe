@@ -190,6 +190,10 @@ ClipBackend standIns()
         const QString second = QString(clip).replace(QLatin1String("_00_"), QLatin1String("_10_"));
         if (second != clip && QFile::exists(second))
             out.other_files = {second.toStdString()};
+        // A two-file take is a ONE X2's, which records no lens-guard
+        // profiles; the one-file clips stand in for an X5's, which has both.
+        out.lens_guards = out.other_files.empty() ? stitch::LensGuardProfiles::all()
+                                                  : stitch::LensGuardProfiles{};
         return true;
     };
     b.audioStreamCount = [](const std::string &) { return 0; };
@@ -682,6 +686,64 @@ void testStitching(const Ctx &c)
     undo->trigger();
     CHECK(c.timeline->clipAt(0).lensGuard == G::Premium);
     CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium) && depth->isChecked(); }));
+}
+
+// A clip whose file records no lens-guard profiles (a ONE X2 take) comes in
+// with None, and the panel shows it greyed out with a line saying why.
+// Apply to all clips copies only the depth-aware seam from it, and leaves
+// its guard alone when applied from a clip that has profiles.
+void testStitchingWithoutGuards(const Ctx &c)
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    auto *guard = find<QComboBox>(c.w, "stitchLensGuard");
+    auto *depth = find<QCheckBox>(c.w, "stitchDepthSeam");
+    auto *note = find<QLabel>(c.w, "stitchNoGuards");
+    auto *all = find<QPushButton>(c.w, "stitchApplyToAll");
+    QAction *undo = action(c, "undoAction");
+    if (!guard || !depth || !note || !all || !undo)
+        return;
+    settle();
+    const QString dir = QDir(c.dir).filePath(QStringLiteral("x2guards"));
+    QDir().mkpath(dir);
+    const QString lead = dir + QStringLiteral("/VID_20250816_110155_00_004.insv");
+    writeFile(lead);
+    writeFile(dir + QStringLiteral("/VID_20250816_110155_10_004.insv"));
+    const int n = c.timeline->count();
+    CHECK(c.timeline->clipAt(n - 1).lensGuard == G::Premium); // what it would inherit
+    emit c.timelineWidget->clipFilesDropped({lead}, n);
+    CHECK(waitFor([&] { return c.timeline->count() == n + 1; }));
+    if (c.timeline->count() != n + 1)
+        return;
+    CHECK(c.timeline->clipAt(n).lensGuard == G::None);
+
+    // Its panel: None, greyed out, the line shown; an X5 clip's isn't.
+    qint64 start = 0;
+    for (int i = 0; i < n; ++i)
+        start += c.timeline->clipAt(i).timelineDurationMs();
+    settle();
+    CHECK(seekTo(c, start + 500));
+    CHECK(waitFor([&] { return guard->currentIndex() == int(G::None) && !guard->isEnabled(); }));
+    CHECK(!note->isHidden());
+    CHECK(seekTo(c, 500));
+    CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium) && guard->isEnabled(); }));
+    CHECK(note->isHidden());
+
+    // Apply to all from the X5 clip: the take keeps None.
+    all->click();
+    CHECK(c.timeline->clipAt(n).lensGuard == G::None);
+    // ... and from the take: only its depth-aware seam goes onto the X5 clips.
+    settle();
+    CHECK(seekTo(c, start + 500));
+    CHECK(waitFor([&] { return !guard->isEnabled(); }));
+    depth->setChecked(false);
+    settle();
+    all->click();
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && !c.timeline->clipAt(0).depthSeam);
+    undo->trigger();
+    undo->trigger();
+    undo->trigger();
+    CHECK(c.timeline->count() == n);
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && c.timeline->clipAt(0).depthSeam);
 }
 
 // Duplicate (the clip menu): the copy lands after the clip and is selected,
@@ -1513,9 +1575,10 @@ int main(int argc, char **argv)
             testVideoEdits(c);
             testColour(c);
             testStitching(c);
+            testStitchingWithoutGuards(c);
             testDuplicateClip(c);
             testMediaPool(c);
-    testTakeFiles(c);
+            testTakeFiles(c);
             testAudioTrack(c);
             testOverlay(c);
             testOverlayLayers(c);

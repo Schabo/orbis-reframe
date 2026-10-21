@@ -46,6 +46,14 @@ or with the standard ones, change this first; when the whole project was
 filmed the same way, **Apply to all clips** gives every 360° clip the
 settings shown.
 
+Some cameras, the ONE X2 and the X6 among them, record no lens-guard
+models. Their clips are always stitched with bare lenses: **Lens guards**
+shows **None**, greyed out, with a line saying why. A clip from such a
+camera comes in with **None** whatever the clip beside it has, and **Apply
+to all clips** leaves its lens guards alone; applied from one of its clips,
+it copies only **Depth-aware seam** to the others. (A file that has only one
+of the two guard models greys out the other choice.)
+
 ## Depth-aware seam
 
 The two lenses sit a few centimetres apart, so they see things close to the

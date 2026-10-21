@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "IStitchSource.h" // stitch::LensGuardProfiles
+
 // Lightweight source-clip probe: native resolution / fps / duration, so a
 // caller can work out the output frame count it must bake poses for (and fill
 // ClipItem's source-media facts on import). From the clip's description
@@ -23,6 +25,8 @@ struct ClipProbe {
     // The take's other files the clip needs (a ONE X2 clip's lens-1 file);
     // empty for a clip in one file.
     std::vector<std::string> other_files;
+    // The lens-guard profiles the clip's file carries.
+    LensGuardProfiles lens_guards;
 };
 
 // Probes the clip `clip_path` is, or is part of.

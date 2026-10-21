@@ -10,7 +10,8 @@
 #include "ClipThumbnail.h"
 
 std::optional<MediaItem> probeMedia(const QString &path, QString *error,
-                                    const ClipProbeFn &probeClip)
+                                    const ClipProbeFn &probeClip,
+                                    stitch::LensGuardProfiles *lensGuards)
 {
     const auto kind = media::kindForPath(path);
     if (!kind) {
@@ -38,6 +39,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
             m.path = QString::fromStdString(probe.clip_path);
         for (const std::string &f : probe.other_files)
             m.companions << QString::fromStdString(f);
+        if (lensGuards)
+            *lensGuards = probe.lens_guards;
         break;
     }
     case MediaItem::Kind::Video: {

@@ -1,5 +1,6 @@
 // Timeline, the main track: stream roles, mapping timeline time to clips,
-// clip speed, insert / append / remove / move, split, keyboard navigation
+// clip speed, insert / append / remove / move, split, the stitch a new clip
+// starts with, keyboard navigation
 // between cuts and keys, and the track queries behind adding files.
 // Standalone (no event loop: same-thread signals fire inside emit); the
 // exit code is the failure count.
@@ -373,6 +374,41 @@ void testTimelineDuplicate()
     CHECK(mic && mic->clips.size() == 2 && mic->clips[0].linkedClipId == a);
 }
 
+// A new 360 clip's lens guard is the nearest 360 clip's, narrowed to the
+// profiles its file carries: a camera that records none (the ONE X2) gets
+// None, as it would stitch bare anyway. Another clip of the same file keeps
+// that file's guard as stored (an older project's Premium on an X2 clip
+// renders the same and isn't rewritten).
+void testInsertLensGuard()
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    const stitch::LensGuardProfiles none{};
+    const stitch::LensGuardProfiles standardOnly{true, false};
+    CHECK(!none.any() && none.has(G::None) && !none.has(G::Premium));
+    CHECK(standardOnly.usable(G::Premium) == G::None);
+    CHECK(standardOnly.usable(G::Standard) == G::Standard);
+    CHECK(stitch::LensGuardProfiles::all().usable(G::Premium) == G::Premium);
+
+    Timeline tl;
+    const int first = tl.appendClip("x2.insv", 10000, 30.0, 2880, 2880, 0, false, none);
+    CHECK(tl.clipById(first)->lensGuard == G::None); // not the Premium default
+    const int x5 = tl.appendClip("x5.insv", 10000, 30.0, 3840, 3840);
+    CHECK(tl.clipById(x5)->lensGuard == G::None); // inherited from the clip before
+    tl.setSourceStitch("x5.insv", G::Premium, true);
+    const int x2 = tl.appendClip("x2b.insv", 10000, 30.0, 2880, 2880, 0, false, none);
+    CHECK(tl.clipById(x2)->lensGuard == G::None);
+    const int one = tl.appendClip("one.insv", 10000, 30.0, 3840, 3840, 0, false, standardOnly);
+    CHECK(tl.clipById(one)->lensGuard == G::None); // x2b's None, which it has
+    const int x5b = tl.insertClip(2, "x5c.insv", 10000, 30.0, 3840, 3840, 0, false,
+                                  standardOnly);
+    CHECK(tl.clipById(x5b)->lensGuard == G::None); // x5's Premium, which it lacks
+
+    // A stored guard the file lacks stays with the file's other clips.
+    tl.setSourceStitch("x2.insv", G::Premium, true);
+    const int again = tl.appendClip("x2.insv", 10000, 30.0, 2880, 2880, 0, false, none);
+    CHECK(tl.clipById(again)->lensGuard == G::Premium);
+}
+
 // Transitions: one per cut, kept at its cut through a split or a copy of
 // the clip before it, dropped with the cut; what plays is shortened to the
 // footage past the trims and to half of either clip.
@@ -534,6 +570,7 @@ int main()
     testTimelineStructure();
     testTimelineSplit();
     testTimelineDuplicate();
+    testInsertLensGuard();
     testTransitions();
     testTrackQueries();
     return modeltest::finish("timeline_test");

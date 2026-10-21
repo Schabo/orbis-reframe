@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QStandardItemModel>
 
 StitchingPanel::StitchingPanel(QWidget *parent)
     : SettingsPanel(tr("Stitching"), parent)
@@ -20,6 +21,14 @@ StitchingPanel::StitchingPanel(QWidget *parent)
                                "file doesn't say, and with the wrong choice the two pictures "
                                "don't line up at the seam."));
     form()->addRow(tr("Lens guards"), m_lensGuard);
+
+    m_noGuards = new QLabel(tr("This camera records no lens-guard profiles, so its lenses are "
+                               "stitched bare."),
+                            this);
+    m_noGuards->setObjectName(QStringLiteral("stitchNoGuards"));
+    m_noGuards->setWordWrap(true);
+    m_noGuards->hide();
+    form()->addRow(m_noGuards);
 
     m_depthSeam = new QCheckBox(tr("Depth-aware seam"), this);
     m_depthSeam->setObjectName(QStringLiteral("stitchDepthSeam"));
@@ -59,11 +68,17 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     connect(m_depthSeam, &QCheckBox::toggled, this, &StitchingPanel::emitIfEdited);
 }
 
-void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam)
+void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam,
+                              stitch::LensGuardProfiles profiles)
 {
     setBodyEnabled(true);
     m_updating = true;
-    m_lensGuard->setCurrentIndex(static_cast<int>(lensGuard));
+    auto *model = qobject_cast<QStandardItemModel *>(m_lensGuard->model());
+    for (const LensGuard g : {LensGuard::Standard, LensGuard::Premium})
+        model->item(static_cast<int>(g))->setEnabled(profiles.has(g));
+    m_lensGuard->setEnabled(profiles.any());
+    m_noGuards->setVisible(!profiles.any());
+    m_lensGuard->setCurrentIndex(static_cast<int>(profiles.usable(lensGuard)));
     m_depthSeam->setChecked(depthSeam);
     m_updating = false;
 }

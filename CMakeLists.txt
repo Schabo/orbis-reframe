@@ -458,6 +458,8 @@ if(FFMPEG_FOUND)
         src/ui/ClipBackend.h
         src/ui/ClipMeasurements.cpp
         src/ui/ClipMeasurements.h
+        src/ui/LensGuardCache.cpp
+        src/ui/LensGuardCache.h
         src/ui/ShortcutHelp.cpp
         src/ui/ShortcutHelp.h
         src/ui/SmokeTest.cpp

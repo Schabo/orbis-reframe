@@ -91,6 +91,36 @@ struct PreviewStitchConfig {
     bool operator!=(const PreviewStitchConfig& o) const { return !(*this == o); }
 };
 
+// Which lens-guard profiles a clip's file carries (camera::ClipMetadata::
+// standardGuard / premiumGuard). A guard whose profile the file lacks is
+// stitched bare (DualFisheyeStitchSetup), so it is the same as None; a camera
+// that records none (the ONE X2, the X6) has nothing to choose.
+struct LensGuardProfiles {
+    bool standard = false;
+    bool premium = false;
+
+    static LensGuardProfiles all() { return {true, true}; }
+    bool any() const { return standard || premium; }
+    bool has(PreviewStitchConfig::LensGuard g) const
+    {
+        switch (g) {
+        case PreviewStitchConfig::LensGuard::Standard: return standard;
+        case PreviewStitchConfig::LensGuard::Premium: return premium;
+        case PreviewStitchConfig::LensGuard::None: break;
+        }
+        return true;
+    }
+    // `g` as the stitch applies it to this file.
+    PreviewStitchConfig::LensGuard usable(PreviewStitchConfig::LensGuard g) const
+    {
+        return has(g) ? g : PreviewStitchConfig::LensGuard::None;
+    }
+    bool operator==(const LensGuardProfiles& o) const
+    {
+        return standard == o.standard && premium == o.premium;
+    }
+};
+
 // Equirect widths (height = width / 2), from an X5 clip's lens size (each lens
 // is lensWidth square; the full sphere is 2 x lensWidth wide).
 inline int FullSphereWidth(int lensWidth) { return lensWidth > 0 ? 2 * lensWidth : 3840; }

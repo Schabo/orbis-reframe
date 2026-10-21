@@ -74,6 +74,7 @@ class StitchingPanel;
 class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
+class LensGuardCache;
 class ThumbnailCache;
 class Autosave;
 class PlayerBar;
@@ -496,6 +497,7 @@ private:
     int m_selectedTransition = 0;   // a transition selected: the clip before its cut
     std::unique_ptr<TrackFiles> m_trackFiles; // audio files and overlay videos onto tracks
     WaveformCache *m_waveforms = nullptr;
+    LensGuardCache *m_lensGuards = nullptr; // which guard profiles each 360 file has
     // The Media tab's thumbnails on disk; shared with the panel's worker
     // threads, which may outlive this window's members.
     std::shared_ptr<ThumbnailCache> m_thumbnailCache;

@@ -95,6 +95,7 @@
 #include "ThumbnailCache.h"
 #include "../core/Autosave.h"
 #include "WaveformCache.h"
+#include "LensGuardCache.h"
 #include "PlayerBar.h"
 #include "EditToolbar.h"
 #include "UserManual.h"
@@ -126,6 +127,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
 
     m_timelineWidget = new TimelineWidget(this);
     m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
+    m_lensGuards = new LensGuardCache(m_clipBackend.probe, this);
     m_editToolbar = new EditToolbar(this);
     m_playerBar = new PlayerBar(this);
 
@@ -454,11 +456,22 @@ void MainWindow::connectStitchAndStabilization()
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (!c || c->flat)
             return;
-        const StitchingPanel::LensGuard guard = c->lensGuard;
+        // The guard goes only where it means something: from a file with
+        // guard profiles onto a file that has this one. A ONE X2 clip's
+        // None doesn't strip an X5 clip's guards, and an X5 clip's Premium
+        // doesn't land on a file that would stitch bare anyway.
         const bool depthSeam = c->depthSeam;
-        for (int i = 0; i < m_timeline->count(); ++i)
-            if (!m_timeline->clipAt(i).flat)
-                m_timeline->setSourceStitch(m_timeline->clipAt(i).sourcePath, guard, depthSeam);
+        const stitch::LensGuardProfiles from = m_lensGuards->profiles(c->sourcePath);
+        const StitchingPanel::LensGuard guard = from.usable(c->lensGuard);
+        for (int i = 0; i < m_timeline->count(); ++i) {
+            const ClipItem &o = m_timeline->clipAt(i);
+            if (o.flat)
+                continue;
+            const stitch::LensGuardProfiles to = m_lensGuards->profiles(o.sourcePath);
+            const bool takesGuard = from.any() && to.any() && to.has(guard);
+            m_timeline->setSourceStitch(o.sourcePath, takesGuard ? guard : o.lensGuard,
+                                        depthSeam);
+        }
     });
     // Project settings (File ▸ Project settings…): output aspect / size /
     // fps. The viewport is pinned to the output aspect; export reads the size
@@ -749,6 +762,12 @@ void MainWindow::connectOverlaysAndAudio()
     });
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
+    // A file's guard profiles read in the background: the panel may show it.
+    connect(m_lensGuards, &LensGuardCache::ready, this, [this](const QString &path) {
+        const ClipItem *c = m_timeline->clipById(editClipId());
+        if (c && c->sourcePath == path)
+            syncStitchingPanel();
+    });
     connect(m_timelineWidget, &TimelineWidget::overlayAudioRequested, this,
             &MainWindow::putOverlayAudioOnTrack);
     connect(m_timeline, &Timeline::tracksChanged, this, &MainWindow::onTracksChanged);
@@ -1596,7 +1615,7 @@ void MainWindow::syncStitchingPanel()
         m_stitchingPanel->setNoClip();
         return;
     }
-    m_stitchingPanel->setState(c->lensGuard, c->depthSeam);
+    m_stitchingPanel->setState(c->lensGuard, c->depthSeam, m_lensGuards->profiles(c->sourcePath));
 }
 
 TimelineWidget::Peaks MainWindow::waveformFor(const QString &path, int stream)
@@ -2678,7 +2697,8 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
     for (const QString &file : paths) {
         // A 360 clip through the clip probe, a flat video through FFmpeg.
         QString why;
-        const std::optional<MediaItem> m = probeMedia(file, &why, m_clipBackend.probe);
+        stitch::LensGuardProfiles guards = stitch::LensGuardProfiles::all();
+        const std::optional<MediaItem> m = probeMedia(file, &why, m_clipBackend.probe, &guards);
         if (!m || m->kind == MediaItem::Kind::Audio) {
             failed << tr("%1: %2").arg(QFileInfo(file).fileName(),
                                         m ? tr("not a video") : why);
@@ -2698,8 +2718,10 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         m_project->mediaPool()->add(*m);
         const bool flat = m->kind == MediaItem::Kind::Video;
         const bool wasEmpty = m_timeline->count() == 0;
+        if (!flat)
+            m_lensGuards->set(path, guards);
         m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width, m->height,
-                               audioStreamCount(path), flat);
+                               audioStreamCount(path), flat, guards);
         if (wasEmpty) {
             m_clipPath = path;
             m_fps = m->fps;
@@ -2789,6 +2811,7 @@ void MainWindow::recheckMissingMedia()
     m_controller->reopenSources(fresh);
     m_mediaPanel->forgetFiles(fresh);
     m_waveforms->forget(fresh);
+    m_lensGuards->forget(fresh);
     m_measurements->forgetFailures(fresh);
     if (mainTrack)
         syncTimeline(); // the ⚠ marks; a clip that's back plays again
@@ -2854,8 +2877,9 @@ void MainWindow::openClip(const QString &clipPath)
     m_clipPath = clipPath;
     m_fps = probe.fps;
     m_rebindingModel = true;
+    m_lensGuards->set(clipPath, probe.lens_guards);
     m_clipId = m_project->resetWithClip(clipPath, probe.duration_ms, probe.fps, probe.width,
-                                        probe.height, audioStreamCount(clipPath));
+                                        probe.height, audioStreamCount(clipPath), probe.lens_guards);
     m_rebindingModel = false;
     if (const ClipItem *c = m_timeline->clipById(m_clipId)) {
         refreshAudioPanel();

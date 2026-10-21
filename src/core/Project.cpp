@@ -886,14 +886,15 @@ void Project::newProject()
 }
 
 int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double fps, int width,
-                           int height, int audioStreams)
+                           int height, int audioStreams, stitch::LensGuardProfiles lensGuards)
 {
     m_rebuilding = true;
     m_mediaPool->clear();
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
-    const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height, audioStreams);
+    const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height, audioStreams,
+                                          false, lensGuards);
     addTimelineSourcesToPool(true);
     m_rebuilding = false;
 

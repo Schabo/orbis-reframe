@@ -193,7 +193,7 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
 
 int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
                          double fps, int sourceWidth, int sourceHeight, int audioStreams,
-                         bool flat)
+                         bool flat, stitch::LensGuardProfiles lensGuards)
 {
     index = std::clamp(index, 0, static_cast<int>(m_clips.size()));
 
@@ -219,6 +219,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
             c.lensGuard = m_clips.at(from).lensGuard;
             c.depthSeam = m_clips.at(from).depthSeam;
         }
+        c.lensGuard = lensGuards.usable(c.lensGuard);
     }
     for (const ClipItem &o : m_clips) // the stitch and fine-tunes belong to the source file
         if (o.sourcePath == sourcePath) {
@@ -243,10 +244,11 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
 }
 
 int Timeline::appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
-                         int sourceWidth, int sourceHeight, int audioStreams, bool flat)
+                         int sourceWidth, int sourceHeight, int audioStreams, bool flat,
+                         stitch::LensGuardProfiles lensGuards)
 {
     return insertClip(static_cast<int>(m_clips.size()), sourcePath, sourceDurationMs, fps,
-                      sourceWidth, sourceHeight, audioStreams, flat);
+                      sourceWidth, sourceHeight, audioStreams, flat, lensGuards);
 }
 
 bool Timeline::removeClip(int clipId)

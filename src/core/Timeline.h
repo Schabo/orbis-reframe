@@ -164,16 +164,21 @@ public slots:
     // exportpipe::FlatVideoReader::probe. Trim starts as the whole source,
     // reframe path empty. A 360 clip's stabilization is the 360 clip before
     // it's, else the one after it's (Off without one); a flat clip's stays Off.
+    // Its stitch settings are those of the file's other clips, else the
+    // nearest 360 clip's, its lens guard narrowed to what the file carries
+    // (`lensGuards`, stitch::ProbeClip's; a guard without a profile is None).
     // Its sound: addClipSound with `audioStreams`, the source's audio stream count (InsvAudioDemux::
     // countAudioStreams; 0 = none, or added by the caller -- a project load).
     // Returns the new clip's id.
     int insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
                    double fps, int sourceWidth = 0, int sourceHeight = 0,
-                   int audioStreams = 0, bool flat = false);
+                   int audioStreams = 0, bool flat = false,
+                   stitch::LensGuardProfiles lensGuards = stitch::LensGuardProfiles::all());
     // Append; same as insertClip(count(), ...).
     int appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
                    int sourceWidth = 0, int sourceHeight = 0, int audioStreams = 0,
-                   bool flat = false);
+                   bool flat = false,
+                   stitch::LensGuardProfiles lensGuards = stitch::LensGuardProfiles::all());
     // Put each of a main-track clip's `streamCount` audio streams on its
     // stream track (Track::roleOfStream; the track is made when missing) as
     // an audio clip linked to it, covering its whole trimmed span. Streams
