@@ -69,6 +69,9 @@ struct MediaInfo {
 
     // The camera's low-res proxy next to the clip.
     std::string proxyPath; // "" if not found
+    // The take's other lens files (a ONE X2 clip's VID_…_10_…); empty when
+    // the clip is one file.
+    std::vector<std::string> lensFiles;
 
     // The camera's name for the resolution it was filmed at ("8K"), or "".
     std::string captureMode;

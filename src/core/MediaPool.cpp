@@ -47,6 +47,14 @@ QStringList filesInFolder(const QString &folder)
     return out;
 }
 
+QString firstMissingFile(const MediaItem &item)
+{
+    for (const QString &f : item.files())
+        if (!QFileInfo::exists(f))
+            return f;
+    return QString();
+}
+
 } // namespace media
 
 MediaPool::MediaPool(QObject *parent) : QObject(parent) {}
@@ -69,7 +77,7 @@ bool MediaPool::add(MediaItem item)
 {
     if (item.path.isEmpty() || contains(item.path))
         return false;
-    item.missing = !QFileInfo::exists(item.path);
+    item.missing = !media::firstMissingFile(item).isEmpty();
     m_items.append(std::move(item));
     emit changed();
     return true;
@@ -88,12 +96,14 @@ bool MediaPool::relink(const QString &from, MediaItem item)
     if (i < 0 || item.path.isEmpty())
         return false;
     if (item.path == from || contains(item.path)) {
-        if (item.path != from)
+        if (item.path != from) {
             m_items.removeAt(i);
-        else
-            m_items[i].missing = !QFileInfo::exists(from);
+        } else { // the same clip file; its take's other files may have moved
+            m_items[i].companions = item.companions;
+            m_items[i].missing = !media::firstMissingFile(m_items[i]).isEmpty();
+        }
     } else {
-        item.missing = !QFileInfo::exists(item.path);
+        item.missing = !media::firstMissingFile(item).isEmpty();
         m_items[i] = std::move(item);
     }
     emit changed();

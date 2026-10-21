@@ -64,9 +64,10 @@ through the pipeline.
 - In progress: (2) the ONE X2 as the first real second camera -- two files
   per take, one per lens. Built: the picture sources open each lens from its
   own `LensSource`, and the Insta360 reader pairs the take's files, reads the
-  40-token calibration and the ONE X2's ms telemetry. Next: the take as one
-  clip in the project and the media pool, its media card picture, and the
-  IMU axis map measured on a clip. Then (3) DJI and
+  40-token calibration and the ONE X2's ms telemetry; the take is one clip
+  in the media pool and the project (either file names it, both are saved
+  and checked for missing media). Next: its media card picture, and the IMU
+  axis map measured on a clip. Then (3) DJI and
   GoPro readers only once real clips are available: an in-camera cubemap
   (`Projection`) behind its own `IStitchSource`, an orientation track for
   cameras that record one, readout time per mode.

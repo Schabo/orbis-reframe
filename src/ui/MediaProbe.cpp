@@ -36,6 +36,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
         // is the take's.
         if (!probe.clip_path.empty())
             m.path = QString::fromStdString(probe.clip_path);
+        for (const std::string &f : probe.other_files)
+            m.companions << QString::fromStdString(f);
         break;
     }
     case MediaItem::Kind::Video: {

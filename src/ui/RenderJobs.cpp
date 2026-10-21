@@ -16,6 +16,7 @@
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
 #include "../core/ClipItem.h"
+#include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
 
@@ -506,12 +507,18 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which)
     return out;
 }
 
-QStringList missingSourceLines(const Timeline &timeline, MissingFor which)
+QStringList missingSourceLines(const Timeline &timeline, MissingFor which,
+                               const MediaPool *pool)
 {
     QStringList out;
-    for (const MissingSource &m : missingSources(timeline, which))
+    for (const MissingSource &m : missingSources(timeline, which)) {
+        QString file = m.path;
+        if (const MediaItem *item = pool ? pool->item(m.path) : nullptr)
+            if (const QString f = media::firstMissingFile(*item); !f.isEmpty())
+                file = f;
         out << QStringLiteral("%1 -- %2\n    %3")
-                   .arg(QFileInfo(m.path).fileName(), m.places.join(QLatin1String(", ")), m.path);
+                   .arg(QFileInfo(file).fileName(), m.places.join(QLatin1String(", ")), file);
+    }
     return out;
 }
 

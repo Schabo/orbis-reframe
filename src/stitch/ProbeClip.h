@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // Lightweight source-clip probe: native resolution / fps / duration, so a
 // caller can work out the output frame count it must bake poses for (and fill
@@ -19,6 +20,9 @@ struct ClipProbe {
     // take (a lens's own file, the camera's proxy) the take's clip file
     // (camera::ClipFileOf). Empty = the one probed.
     std::string clip_path;
+    // The take's other files the clip needs (a ONE X2 clip's lens-1 file);
+    // empty for a clip in one file.
+    std::vector<std::string> other_files;
 };
 
 // Probes the clip `clip_path` is, or is part of.

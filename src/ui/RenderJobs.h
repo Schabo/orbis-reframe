@@ -12,6 +12,7 @@
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 
 struct ClipItem;
+class MediaPool;
 class PrivacyBlur;
 class Timeline;
 
@@ -81,7 +82,10 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which);
 // The same as display lines, "name.ext -- clip 2, clip 3" with the full path
 // indented under it: with several gone at once, bare paths don't say which
 // clip is which.
-QStringList missingSourceLines(const Timeline &timeline, MissingFor which);
+// With `pool`, a take's line names the file of it that is missing (a ONE X2
+// clip's lens-1 file), not the clip file.
+QStringList missingSourceLines(const Timeline &timeline, MissingFor which,
+                               const MediaPool *pool = nullptr);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),

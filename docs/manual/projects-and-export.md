@@ -131,6 +131,11 @@ are. Your original files are never changed.
   up the same way, within a couple of seconds: the clip plays again and its
   Media card gets its picture and recording mode, without reopening the
   project.
+- **A clip in two files** (the Insta360 ONE X2 writes each lens of a 5.7K
+  clip to its own file, `VID_…_00_…` and `VID_…_10_…`) needs both, in the
+  same folder. The project remembers both; if either is gone, the clip is
+  missing, and the messages name the file that is. Moved together, one
+  **Locate file…** on the clip finds both.
 - **To move a project with its clips**, put the clips inside the project's
   folder, for example in a `media` folder next to the `.orp` file. orbis-reframe
   then stores their places relative to the project, so you can move or copy

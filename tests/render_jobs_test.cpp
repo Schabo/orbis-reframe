@@ -8,6 +8,7 @@
 
 #include "PrivacyBlur.h"
 #include "../core/ClipItem.h"
+#include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
 
@@ -340,6 +341,30 @@ void testMissingSources()
         paths << m.path;
     CHECK((paths == QStringList{"/c/gone.insv", "/m/song.wav", "/m/quiet.wav", "/m/off.wav",
                                 "/v/inset.mp4", "/v/hidden.mp4"}));
+
+    // A take whose clip file is there but whose lens-1 file isn't (a ONE X2
+    // clip): with the pool, the line names the missing file.
+    QTemporaryDir tmp;
+    const QString lead = tmp.filePath(QStringLiteral("VID_20250816_103807_00_001.insv"));
+    const QString second = tmp.filePath(QStringLiteral("VID_20250816_103807_10_001.insv"));
+    {
+        QFile f(lead);
+        CHECK(f.open(QIODevice::WriteOnly));
+    }
+    Timeline take;
+    take.appendClip(lead, 5000, 25.0, 2880, 2880);
+    take.setSourcesMissing({{lead, true}});
+    MediaPool pool;
+    MediaItem item{lead, MediaItem::Kind::Clip360, 5000};
+    item.companions = {second};
+    pool.add(item);
+    const QStringList takeLines =
+        renderjobs::missingSourceLines(take, renderjobs::MissingFor::Timeline, &pool);
+    CHECK(takeLines.size() == 1);
+    if (takeLines.size() == 1) {
+        CHECK(takeLines[0].startsWith(QLatin1String("VID_20250816_103807_10_001.insv -- clip 1")));
+        CHECK(takeLines[0].contains(second));
+    }
 }
 
 void testClipJob(const QString &dir)

@@ -731,7 +731,8 @@ Project::MediaRecheck Project::recheckMissingMedia()
         }
     };
     for (const MediaItem &m : m_mediaPool->items())
-        look(m.path);
+        for (const QString &f : m.files())
+            look(f);
     for (int i = 0; i < m_timeline->count(); ++i)
         look(m_timeline->clipAt(i).sourcePath);
     for (int i = 0; i < m_timeline->trackCount(); ++i)
@@ -740,6 +741,17 @@ Project::MediaRecheck Project::recheckMissingMedia()
     // Files no longer in the project: a stamp kept for one would call it
     // replaced when it's added again.
     m_mediaStamps.removeIf([&](const auto &it) { return !missing.contains(it.key()); });
+    // A take is its clip file and its other files: gone if any of them is,
+    // replaced if any of them was. Reported by the clip file, which is what
+    // everything else keys by.
+    for (const MediaItem &m : m_mediaPool->items()) {
+        for (const QString &f : m.companions) {
+            if (missing.value(f))
+                missing[m.path] = true;
+            if (r.replaced.removeAll(f) > 0 && !r.replaced.contains(m.path))
+                r.replaced << m.path;
+        }
+    }
 
     QSet<QString> changed;
     for (const QString &path : m_mediaPool->setMissing(missing))
@@ -1029,6 +1041,12 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         }
         if (m.fps > 0)
             media.back()["fps"] = m.fps;
+        if (!m.companions.isEmpty()) {
+            json files = json::array();
+            for (const QString &f : m.companions)
+                files.push_back((projectDir ? storedPath(f, *projectDir) : f).toStdString());
+            media.back()["files"] = std::move(files);
+        }
     }
 
     // The project-wide stitch settings an older build reads: the clips' own.
@@ -1247,7 +1265,13 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 m.width = jm.value("width", 0);
                 m.height = jm.value("height", 0);
                 m.fps = jm.value("fps", 0.0);
-                m.missing = !QFileInfo::exists(m.path);
+                if (jm.contains("files") && jm.at("files").is_array())
+                    for (const json &jf : jm.at("files"))
+                        if (jf.is_string() && !jf.get<std::string>().empty()) {
+                            const QString f = QString::fromStdString(jf.get<std::string>());
+                            m.companions << (projectDir ? resolvedPath(f, *projectDir) : f);
+                        }
+                m.missing = !media::firstMissingFile(m).isEmpty();
                 parsedMedia.append(m);
             }
         }
@@ -1348,6 +1372,13 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     if (parsedVersion < 10)
         convertClipSound(m_timeline, m_audioStreamCounter, parsed, clipIds, parsedMainMuted);
     addTimelineSourcesToPool(true); // an older project's sources; not an edit
+    // A take is missing when any of its files is; the clips were marked by
+    // their own file only.
+    QHash<QString, bool> takes;
+    for (const MediaItem &m : m_mediaPool->items())
+        if (!m.companions.isEmpty())
+            takes.insert(m.path, m.missing);
+    m_timeline->setSourcesMissing(takes);
     m_rebuilding = false;
     emit projectReset();
     return true;
@@ -1391,18 +1422,25 @@ bool Project::copyFile(const QString &from, const QString &to, QString *error)
     } catch (const std::exception &e) {
         return fail(QStringLiteral("%1 is not a valid project file: %2").arg(from, e.what()));
     }
-    // Every media path in every version is a "source" string. A clip's
-    // "lut" stays as it is: a project folder's copy brings its luts/ along,
-    // and a loose project's copy goes beside it.
+    // Every media path in every version is a "source" string, or one of a
+    // media item's "files". A clip's "lut" stays as it is: a project folder's
+    // copy brings its luts/ along, and a loose project's copy goes beside it.
     const QDir fromDir = QFileInfo(from).absoluteDir();
     const QDir toDir = QFileInfo(to).absoluteDir();
     std::function<void(json &)> relocate = [&](json &j) {
         if (j.is_object()) {
             for (auto it = j.begin(); it != j.end(); ++it) {
-                if (it.key() == "source" && it->is_string()) {
-                    const QString stored = QString::fromStdString(it->get<std::string>());
+                const auto move = [&](json &path) {
+                    const QString stored = QString::fromStdString(path.get<std::string>());
                     if (!stored.isEmpty() && !QDir::isAbsolutePath(stored))
-                        *it = storedPath(resolvedPath(stored, fromDir), toDir).toStdString();
+                        path = storedPath(resolvedPath(stored, fromDir), toDir).toStdString();
+                };
+                if (it.key() == "source" && it->is_string()) {
+                    move(*it);
+                } else if (it.key() == "files" && it->is_array()) {
+                    for (json &f : *it)
+                        if (f.is_string())
+                            move(f);
                 } else {
                     relocate(*it);
                 }

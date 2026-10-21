@@ -1134,9 +1134,16 @@ void MainWindow::connectController()
                 // A file that's gone is the missing-media marks' to report
                 // (found here too if it went since the last check): a line,
                 // not a dialog on top of the missing-media warning.
-                if (!QFileInfo::exists(path)) {
+                // For a take, any of its files (a ONE X2 clip's lens-1 file).
+                const MediaItem *item = m_project->mediaPool()->item(path);
+                const QString gone = item ? media::firstMissingFile(*item)
+                                          : QFileInfo::exists(path) ? QString() : path;
+                if (!gone.isEmpty()) {
                     recheckMissingMedia();
-                    m_editToolbar->showNotice(tr("Can't play %1: the file is missing").arg(what));
+                    m_editToolbar->showNotice(
+                        gone == path ? tr("Can't play %1: the file is missing").arg(what)
+                                     : tr("Can't play %1: %2 is missing")
+                                           .arg(what, QFileInfo(gone).fileName()));
                     return;
                 }
                 // The decoder's own words are for a bug report, not the
@@ -2686,6 +2693,9 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         added << path;
         if (path != file)
             takes << path;
+        // Into the pool as probed (a take's other files with it); the
+        // timeline would add it from the clip's facts alone.
+        m_project->mediaPool()->add(*m);
         const bool flat = m->kind == MediaItem::Kind::Video;
         const bool wasEmpty = m_timeline->count() == 0;
         m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width, m->height,
@@ -2793,9 +2803,16 @@ void MainWindow::recheckMissingMedia()
             p = QFileInfo(p).fileName();
         return paths.join(QStringLiteral(", "));
     };
+    // A take is gone when one of its files is: name that one.
+    QStringList goneFiles;
+    for (const QString &path : gone) {
+        const MediaItem *item = m_project->mediaPool()->item(path);
+        const QString f = item ? media::firstMissingFile(*item) : QString();
+        goneFiles << (f.isEmpty() ? path : f);
+    }
     QStringList notice;
     if (!gone.isEmpty())
-        notice << tr("File not found: %1").arg(names(gone));
+        notice << tr("File not found: %1").arg(names(goneFiles));
     if (!back.isEmpty())
         notice << tr("Found again: %1").arg(names(back));
     // A replaced file just plays: nothing to tell (and a file being copied
@@ -2936,7 +2953,8 @@ void MainWindow::openProject(const QString &projectPath)
     // muted tracks too: unhiding one later doesn't warn again). The model
     // stays on screen; playback shows a missing clip black.
     if (const QStringList missing =
-            renderjobs::missingSourceLines(*m_timeline, renderjobs::MissingFor::Timeline);
+            renderjobs::missingSourceLines(*m_timeline, renderjobs::MissingFor::Timeline,
+                                            m_project->mediaPool());
         !missing.isEmpty())
         showMissingMedia(this, tr("Missing media"),
                          tr("Source files are not where the project expects them:"), missing,
@@ -3083,7 +3101,8 @@ void MainWindow::exportFlatVideo()
     // way the user sorts it out first.
     recheckMissingMedia();
     if (!checkSourcesPresent(
-            renderjobs::missingSourceLines(*m_timeline, renderjobs::MissingFor::Export)))
+            renderjobs::missingSourceLines(*m_timeline, renderjobs::MissingFor::Export,
+                                            m_project->mediaPool())))
         return;
 
     // One output frame rate for the whole timeline: the project's (Project

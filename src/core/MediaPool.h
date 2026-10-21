@@ -23,14 +23,23 @@ struct MediaItem {
     int width = 0; // video only
     int height = 0;
     double fps = 0.0; // 0 = not known
-    // The file wasn't found when the item was added, the project loaded, or
-    // the files were last checked (Project::recheckMissingMedia). Not saved.
+    // The other files of a take that are part of this clip (absolute): a
+    // ONE X2 clip's lens-1 file. `path` names the clip; it can't play
+    // without these. Empty for a clip in one file.
+    QStringList companions;
+    // The file -- or for a take, one of its files -- wasn't found when the
+    // item was added, the project loaded, or the files were last checked
+    // (Project::recheckMissingMedia). Not saved.
     bool missing = false;
+
+    // `path`, then the companions.
+    QStringList files() const { return QStringList{path} + companions; }
 
     bool operator==(const MediaItem &o) const
     {
         return path == o.path && kind == o.kind && durationMs == o.durationMs &&
-               width == o.width && height == o.height && fps == o.fps && missing == o.missing;
+               width == o.width && height == o.height && fps == o.fps &&
+               companions == o.companions && missing == o.missing;
     }
 };
 
@@ -48,6 +57,9 @@ const QStringList &extensions(MediaItem::Kind kind);
 // The files of a folder (not its subfolders) that kindForPath() knows, sorted
 // by name.
 QStringList filesInFolder(const QString &folder);
+
+// The first of `item`'s files that isn't on the disk, empty when all are.
+QString firstMissingFile(const MediaItem &item);
 
 } // namespace media
 

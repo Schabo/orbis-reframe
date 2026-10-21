@@ -989,6 +989,77 @@ void testMediaPool()
     }
 }
 
+// A clip in two files (a ONE X2 take): the other file is saved with the
+// media item, relative like its source, and comes along in a copy; the clip
+// is missing, back or replaced when that file is.
+void testTakeFiles()
+{
+    QTemporaryDir tmp;
+    const QString dir = tmp.path();
+    const auto write = [](const QString &path, const char *text) {
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly))
+            f.write(text);
+    };
+    QDir().mkpath(dir + "/card");
+    const QString lead = dir + "/card/VID_20250816_103807_00_001.insv";
+    const QString second = dir + "/card/VID_20250816_103807_10_001.insv";
+    write(lead, "lens 0");
+    write(second, "lens 1");
+
+    Project p;
+    MediaItem take{lead, MediaItem::Kind::Clip360, 20000, 2880, 2880, 25.0};
+    take.companions = {second};
+    CHECK(p.mediaPool()->add(take));
+    p.timeline()->appendClip(lead, 20000, 25.0, 2880, 2880);
+    CHECK(p.mediaPool()->count() == 1 && p.mediaPool()->item(lead)->companions == QStringList{second});
+    const QString orp = dir + "/ride.orp";
+    CHECK(p.save(orp));
+    {
+        QFile f(orp);
+        CHECK(f.open(QIODevice::ReadOnly));
+        CHECK(f.readAll().contains("\"files\":[\"card/VID_20250816_103807_10_001.insv\"]"));
+    }
+
+    // Loaded: the other file is back, absolute; with it gone, the clip is
+    // missing from the start.
+    Project q;
+    CHECK(q.load(orp));
+    CHECK(q.mediaPool()->item(lead) && q.mediaPool()->item(lead)->companions == QStringList{second});
+    CHECK(!q.mediaPool()->item(lead)->missing && !q.timeline()->clipAt(0).mediaMissing);
+    CHECK(QFile::rename(second, second + ".away"));
+    Project r;
+    CHECK(r.load(orp));
+    CHECK(r.mediaPool()->item(lead)->missing && r.timeline()->clipAt(0).mediaMissing);
+    CHECK(media::firstMissingFile(*r.mediaPool()->item(lead)) == second);
+
+    // Open meanwhile: the check reports the take by its clip file.
+    CHECK(q.recheckMissingMedia().gone == QStringList{lead});
+    CHECK(q.mediaPool()->item(lead)->missing && q.timeline()->clipAt(0).mediaMissing);
+    CHECK(QFile::rename(second + ".away", second));
+    Project::MediaRecheck back = q.recheckMissingMedia();
+    CHECK(back.back == QStringList{lead} && back.gone.isEmpty());
+    CHECK(!q.timeline()->clipAt(0).mediaMissing);
+    write(second, "lens 1, copied again");
+    Project::MediaRecheck replaced = q.recheckMissingMedia();
+    CHECK(replaced.replaced == QStringList{lead} && replaced.gone.isEmpty());
+
+    // A copy of the project elsewhere keeps finding both files.
+    QDir().mkpath(dir + "/elsewhere");
+    const QString copy = dir + "/elsewhere/ride.orp";
+    CHECK(Project::copyFile(orp, copy));
+    Project c;
+    CHECK(c.load(copy));
+    CHECK(c.mediaPool()->item(lead) && c.mediaPool()->item(lead)->companions == QStringList{second});
+
+    // Relinked to the same clip file: its other files are taken afresh.
+    MediaItem moved = take;
+    moved.companions = {dir + "/card/other.insv"};
+    CHECK(q.mediaPool()->relink(lead, moved));
+    CHECK(q.mediaPool()->item(lead)->companions == moved.companions);
+    CHECK(q.mediaPool()->item(lead)->missing); // that one isn't there
+}
+
 void testProjectFolder()
 {
     QTemporaryDir tmp;
@@ -1715,6 +1786,7 @@ int main(int argc, char **argv)
     testProjectTracksJson();
     testProjectVideoTracksJson();
     testMediaPool();
+    testTakeFiles();
     testProjectFolder();
     testAutosave();
     testMeasurementsWritten();

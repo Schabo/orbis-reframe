@@ -63,7 +63,9 @@ public:
     //     8)},
     //   "timeline": {clips: [...], tracks: [...]},
 //   "media": [{source, kind: "360" | "video" | "audio", durationMs, width,
-//     height, fps}] -- the media pool (absent => only what the timeline uses).
+//     height, fps; optional: files}] -- the media pool (absent => only what
+//     the timeline uses). files: a take's other files, stored like source
+//     (a ONE X2 clip's lens-1 file; absent => the clip is one file).
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
     //   fovY, ease}]} (ease: "easeOut" | "easeIn", the move to the next key;

@@ -185,6 +185,10 @@ ClipBackend standIns()
         }
         if (clip != QString::fromStdString(path))
             out.clip_path = clip.toStdString();
+        // ... and needs its lens-1 file.
+        const QString second = QString(clip).replace(QLatin1String("_00_"), QLatin1String("_10_"));
+        if (second != clip && QFile::exists(second))
+            out.other_files = {second.toStdString()};
         return true;
     };
     b.audioStreamCount = [](const std::string &) { return 0; };
@@ -758,6 +762,9 @@ void testTakeFiles(const Ctx &c)
     QTest::qWait(1500); // every probe in, and no dialog
     CHECK(pool->count() == items + 1);
     CHECK(!pool->contains(second) && !pool->contains(proxy));
+    if (const MediaItem *m = pool->item(lead))
+        CHECK(m->companions == QStringList{second});
+    pool->remove({lead});
 
     const int clips = c.timeline->count();
     failOnDialog(500);
@@ -766,6 +773,9 @@ void testTakeFiles(const Ctx &c)
     CHECK(c.timeline->count() == clips + 1);
     if (c.timeline->count() == clips + 1)
         CHECK(c.timeline->clipAt(clips).sourcePath == lead);
+    // In the pool as probed, the lens-1 file with it.
+    if (const MediaItem *m = pool->item(lead))
+        CHECK(m->companions == QStringList{second});
     if (QAction *undo = action(c, "undoAction"))
         undo->trigger();
     CHECK(c.timeline->count() == clips);

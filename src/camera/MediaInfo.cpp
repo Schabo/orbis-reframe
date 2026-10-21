@@ -9,6 +9,7 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#include <algorithm>
 #include <filesystem>
 #include <system_error>
 
@@ -116,6 +117,11 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
         out.gpsRateHz = clip->gpsRateHz;
         out.gpsTrackSec = clip->gpsTrackSec;
         out.proxyPath = clip->proxyPath;
+        for (const Lens& l : clip->lenses)
+            if (l.source.path != path &&
+                std::find(out.lensFiles.begin(), out.lensFiles.end(), l.source.path) ==
+                    out.lensFiles.end())
+                out.lensFiles.push_back(l.source.path);
         out.captureMode = clip->captureMode;
     }
     return true;

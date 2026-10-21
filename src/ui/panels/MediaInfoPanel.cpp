@@ -108,6 +108,13 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
     if (created.isValid())
         addValue(tr("Recorded"), locale.toString(created.toLocalTime(), QLocale::ShortFormat));
     addValue(tr("Bitrate"), bitRate(m.totalBitRate));
+    // A take in several files: the other lens's file, which the clip needs.
+    for (const std::string &f : m.lensFiles) {
+        const QFileInfo lf(QString::fromStdString(f));
+        addValue(tr("Back lens file"), lf.fileName(),
+                 tr("The back lens's picture is in a file of its own, next to this one: %1")
+                     .arg(lf.absoluteFilePath()));
+    }
     if (fi.suffix().compare(QLatin1String("insv"), Qt::CaseInsensitive) == 0) // a 360 clip's
         addValue(tr("Preview file"), m.proxyPath.empty() ? tr("Not found") : tr("Found"),
                  m.proxyPath.empty()
