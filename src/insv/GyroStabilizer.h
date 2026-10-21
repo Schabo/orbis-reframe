@@ -17,10 +17,13 @@
 // any camera's file: its input is an insv::ImuTrack (Imu.h) that the
 // camera's reader lined up with the video.
 //
-// Two useful modes over one mechanism:
-//   - LeanFollow  : smooth the fast rotational shake, keep the slow intentional
-//                   motion -- crucially a motorcycle's cornering lean.
-//   - HorizonLock : additionally drive roll toward level.
+// Modes over one mechanism:
+//   - LeanFollow    : smooth the fast rotational shake, keep the slow
+//                     intentional motion -- crucially a motorcycle's cornering
+//                     lean.
+//   - HorizonLock   : additionally drive roll toward level.
+//   - DirectionLock : Horizon lock whose heading doesn't follow the camera's
+//                     turns but holds one direction in the world.
 
 namespace insv {
 
@@ -29,6 +32,7 @@ enum class StabMode {
     LeanFollow,
     HorizonLock,
     Custom, // caller sets the windows / lock amount directly
+    DirectionLock,
 };
 
 struct StabConfig {
@@ -69,6 +73,15 @@ struct StabConfig {
     // horizonLockAmount 1 (already level).
     bool autoLevel = true;
 
+    // Hold one heading in the world instead of following the camera's turns:
+    // the heading the camera faced (smoothed over windowYawSec) at video
+    // source time directionSec. Turns the level (horizonLockAmount) or
+    // followed orientation about world up, so pitch and roll are as without
+    // it. The gyro alone gives the heading, so it drifts with the gyro's
+    // residual bias over long clips. Used by the DirectionLock preset.
+    bool lockDirection = false;
+    float directionSec = 0.0f;
+
     // Constant offset added to the virtual-camera orientation, for a tilted
     // camera mount (radians).
     float pitchOffsetRad = 0.0f;
@@ -99,6 +112,7 @@ struct StabConfig {
                windowPitchSec == o.windowPitchSec && windowRollSec == o.windowRollSec &&
                horizonLockAmount == o.horizonLockAmount && horizonGain == o.horizonGain &&
                accelLowPassHz == o.accelLowPassHz && autoLevel == o.autoLevel &&
+               lockDirection == o.lockDirection && directionSec == o.directionSec &&
                pitchOffsetRad == o.pitchOffsetRad && rollOffsetRad == o.rollOffsetRad &&
                gyroAxes == o.gyroAxes && gyroScale == o.gyroScale &&
                timeOffsetSec == o.timeOffsetSec;
@@ -113,6 +127,7 @@ inline const char* stabModeToString(StabMode m)
     case StabMode::LeanFollow: return "leanFollow";
     case StabMode::HorizonLock: return "horizonLock";
     case StabMode::Custom: return "custom";
+    case StabMode::DirectionLock: return "directionLock";
     case StabMode::Off: break;
     }
     return "off";
@@ -125,6 +140,8 @@ inline StabMode stabModeFromString(const std::string& s)
         return StabMode::HorizonLock;
     if (s == "custom")
         return StabMode::Custom;
+    if (s == "directionLock")
+        return StabMode::DirectionLock;
     return StabMode::Off;
 }
 
@@ -243,6 +260,15 @@ private:
         std::array<double, 3> levelFwd{0.0, 0.0, -1.0};
         std::array<double, 4> mountLevel{1.0, 0.0, 0.0, 0.0};
     } m_cache;
+
+    // The camera's heading about world up (radians) at gyro time `t`: m_levelFwd
+    // carried through the track and projected onto the horizontal plane,
+    // Gaussian-smoothed over windowYawSec.
+    double smoothedHeading(double t) const;
+    // Sets m_lockedHeading from directionSec once the track, m_levelFwd and
+    // the clock rate are final (the end of every build).
+    void lockHeading();
+    double m_lockedHeading = 0.0; // StabConfig::lockDirection's heading, radians
 
     // Video source time -> the orientation track's (gyro-relative) time.
     double gyroTime(double tSec) const { return tSec * (1.0 + m_clockRate) + m_cfg.timeOffsetSec; }

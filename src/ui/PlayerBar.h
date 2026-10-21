@@ -97,6 +97,7 @@ public slots:
     // The rate the time display counts frames in (the project's output rate);
     // 0 shows hundredths.
     void setFrameRate(double fps);
+    double frameRate() const { return m_fps; }
     void setCuts(const QList<qint64> &cutsMs);
     void setScreenshotEnabled(bool enabled);
     // Picks the nearest offered speed; emits speedChanged when it changes.

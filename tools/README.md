@@ -188,7 +188,11 @@ faster than the frame rate can capture.
 ```sh
 build/residual_stab clip.insv --diagnose --trim-in 0 --trim-out 30000
 build/residual_stab clip.insv out.mp4 --render derotate2d --stab-mode horizonLock
+build/residual_stab clip.insv out.mp4 --render derotate --stab-mode directionLock --direction-ms 50000
 ```
+
+`--stab-mode directionLock` holds the heading the camera faced at
+`--direction-ms` (video time), as the app's Direction lock does.
 
 ## track_subject
 

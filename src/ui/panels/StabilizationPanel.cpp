@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSlider>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include <algorithm>
@@ -54,6 +55,7 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     m_mode->addItem(tr("Off"), int(Mode::Off));
     m_mode->addItem(tr("Lean follow"), int(Mode::LeanFollow));
     m_mode->addItem(tr("Horizon lock"), int(Mode::HorizonLock));
+    m_mode->addItem(tr("Direction lock"), int(Mode::DirectionLock));
     m_mode->addItem(tr("Custom"), int(Mode::Custom));
     form()->addRow(tr("Mode"), m_mode);
 
@@ -123,6 +125,27 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     hsr->addWidget(m_horizonSmooth, 1);
     hsr->addWidget(m_horizonSmoothValue);
     form()->addRow(tr("Smoothing"), m_horizonSmoothRow);
+
+    // Direction lock: which way the view is held, and a button to take the
+    // direction under the playhead instead.
+    m_directionRow = new QWidget(this);
+    auto *dr = new QVBoxLayout(m_directionRow);
+    dr->setContentsMargins(0, 0, 0, 0);
+    m_directionStatus = new QLabel(m_directionRow);
+    m_directionStatus->setObjectName(QStringLiteral("stabilizationDirectionStatus"));
+    m_directionStatus->setWordWrap(true);
+    auto *lockDirection = new QPushButton(tr("Lock to this direction"), m_directionRow);
+    lockDirection->setObjectName(QStringLiteral("stabilizationLockDirection"));
+    lockDirection->setToolTip(tr("Keep the view pointing the way the camera faced at the "
+                                 "playhead, however the camera turns."));
+    auto *buttonLine = new QHBoxLayout;
+    buttonLine->addWidget(lockDirection);
+    buttonLine->addStretch(1);
+    dr->addWidget(m_directionStatus);
+    dr->addLayout(buttonLine);
+    form()->addRow(m_directionRow);
+    connect(lockDirection, &QPushButton::clicked, this,
+            &StabilizationPanel::lockDirectionRequested);
 
     m_customRows = new QWidget(this);
     auto *cf = new QFormLayout(m_customRows);
@@ -207,7 +230,7 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
 
     setHint(tr("Steadies this clip with the camera's own motion sensors, in playback and "
                "export. Lean follow keeps a motorcycle's lean in corners; Horizon lock keeps "
-               "the horizon level."));
+               "the horizon level; Direction lock also keeps the view pointing one way."));
 
     setState(Mode::Off, insv::StabConfig::preset(insv::StabMode::LeanFollow));
 
@@ -240,10 +263,12 @@ void StabilizationPanel::updateModeVisibility()
     // setRowVisible, not the widget's setVisible: that would leave the row's
     // label showing.
     form()->setRowVisible(m_leanRow, m == int(Mode::LeanFollow));
-    form()->setRowVisible(m_horizonRow, m == int(Mode::HorizonLock));
+    const bool level = m == int(Mode::HorizonLock) || m == int(Mode::DirectionLock);
+    form()->setRowVisible(m_horizonRow, level);
     form()->setRowVisible(m_horizonSmoothRow, m == int(Mode::HorizonLock));
+    form()->setRowVisible(m_directionRow, m == int(Mode::DirectionLock));
     form()->setRowVisible(m_customRows, m == int(Mode::Custom));
-    form()->setRowVisible(m_accelLpRow, m == int(Mode::HorizonLock) || m == int(Mode::Custom));
+    form()->setRowVisible(m_accelLpRow, level || m == int(Mode::Custom));
 }
 
 insv::StabConfig StabilizationPanel::nativeConfigForMode() const
@@ -261,6 +286,13 @@ insv::StabConfig StabilizationPanel::nativeConfigForMode() const
         c.horizonLockAmount = float(m_horizonAmount->value()) / 100.0f;
         c.windowYawSec = insv::horizonWindowFromStrength(float(m_horizonSmooth->value()) / 100.0f);
         c.accelLowPassHz = accelLp;
+        return c;
+    }
+    if (mode == Mode::DirectionLock) {
+        insv::StabConfig c = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        c.horizonLockAmount = float(m_horizonAmount->value()) / 100.0f;
+        c.accelLowPassHz = accelLp;
+        c.directionSec = m_directionSec;
         return c;
     }
     if (mode == Mode::Custom) {
@@ -295,7 +327,7 @@ void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
     m_leanStrength->setValue(pct);
     m_leanStrengthValue->setText(strengthLabel(pct, insv::leanWindowFromStrength(pct / 100.0f)));
 
-    const int hpct = mode == Mode::HorizonLock
+    const int hpct = mode == Mode::HorizonLock || mode == Mode::DirectionLock
                          ? std::clamp(int(std::lround(cfg.horizonLockAmount * 100.0f)), 0, 100)
                          : 100;
     m_horizonAmount->setValue(hpct);
@@ -316,11 +348,12 @@ void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
     m_pitchOffset->setValue(cfg.pitchOffsetRad * kRadToDeg);
     m_rollOffset->setValue(cfg.rollOffsetRad * kRadToDeg);
     m_autoLevel->setChecked(mode != Mode::Custom || cfg.autoLevel);
+    m_directionSec = cfg.directionSec;
     // Like the horizon amount: reflect the config's value only for the modes
     // that carry it; otherwise sit on the preset default so switching into
     // Horizon lock emits the intended low-pass, not a stale 0.
     m_accelLowPass->setValue(
-        (mode == Mode::HorizonLock || mode == Mode::Custom)
+        (mode == Mode::HorizonLock || mode == Mode::DirectionLock || mode == Mode::Custom)
             ? cfg.accelLowPassHz
             : insv::StabConfig::preset(insv::StabMode::HorizonLock).accelLowPassHz);
     updateModeVisibility();
@@ -333,6 +366,11 @@ void StabilizationPanel::emitIfEdited()
         return;
     const auto mode = Mode(m_mode->currentData().toInt());
     emit modeChanged(mode, nativeConfigForMode());
+}
+
+void StabilizationPanel::setDirectionStatus(const QString &text)
+{
+    m_directionStatus->setText(text);
 }
 
 void StabilizationPanel::setSyncStatus(const QString &text)

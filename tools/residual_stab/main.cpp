@@ -66,6 +66,7 @@ struct Args {
     float residStrength = 0.5f;             // 0..1 -> high-pass window
     std::string stabMode = "leanFollow";    // gyro: off | leanFollow | custom | horizonLock
     float stabStrength = 0.5f;              // Lean-follow Strength for the gyro part
+    float directionMs = 0.0f;               // directionLock: the held heading's video time
     float horizonGain = 1.0f;               // accel-fusion gain (horizonLock / any mode)
     float accelLowPassHz = -1.0f;          // LP the accel before Mahony fusion (<0 = keep preset)
     std::string gyroAxes;                   // "" = StabConfig default
@@ -109,8 +110,10 @@ const char kUsage[] =
     "  --trim-in MS / --trim-out MS   analysed (and rendered) range\n"
     "  --work-width PX     analysis equirect width, 2:1 (default 1280)\n"
     "  --strength F        residual high-pass strength 0..1 (default 0.5)\n"
-    "  --stab-mode M       gyro part: off|leanFollow|custom|horizonLock (default leanFollow)\n"
+    "  --stab-mode M       gyro part: off|leanFollow|custom|horizonLock|directionLock\n"
+    "                      (default leanFollow)\n"
     "  --stab-strength F   Lean-follow strength for the gyro part (default 0.5)\n"
+    "  --direction-ms MS   directionLock: hold the heading the camera faced at MS (default 0)\n"
     "  --horizon-gain F    accel-fusion gain, 0=pure gyro (default 1)\n"
     "  --accel-lp HZ      low-pass the accel before horizon fusion, Hz "
     "(0=off; unset=preset, horizonLock defaults 1.5)\n"
@@ -172,6 +175,8 @@ Args parseArgs(int argc, char** argv)
             a.residStrength = static_cast<float>(std::atof(next("--strength").c_str()));
         else if (k == "--stab-mode")
             a.stabMode = next("--stab-mode");
+        else if (k == "--direction-ms")
+            a.directionMs = static_cast<float>(std::atof(next("--direction-ms").c_str()));
         else if (k == "--stab-strength")
             a.stabStrength = static_cast<float>(std::atof(next("--stab-strength").c_str()));
         else if (k == "--horizon-gain")
@@ -268,7 +273,10 @@ insv::StabConfig gyroConfig(const Args& a)
         c = insv::StabConfig::preset(insv::StabMode::Custom);
     else if (a.stabMode == "horizonLock")
         c = insv::StabConfig::preset(insv::StabMode::HorizonLock);
-    else {
+    else if (a.stabMode == "directionLock") {
+        c = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        c.directionSec = a.directionMs / 1000.0f;
+    } else {
         c = insv::StabConfig::preset(insv::StabMode::LeanFollow);
         c.windowYawSec = c.windowPitchSec = c.windowRollSec =
             insv::leanWindowFromStrength(a.stabStrength);

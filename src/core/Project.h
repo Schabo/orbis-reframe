@@ -73,7 +73,8 @@ public:
     //   optional: lut (a .cube file, stored like source), lutStrength},
     //   speed, stabilization {mode, windowYawSec, windowPitchSec,
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
-    //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true)},
+    //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true); optional:
+    //   lockDirection, directionSec},
     //   stitch {lensGuard, depthSeam} (absent => previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
@@ -119,8 +120,11 @@ public:
     // version 10, so the builds before keep opening it. Version 12 added
     // titles; a project without one is written as before. Version 13 added
     // transitions, the same way. Version 14 added a clip's LUT
-    // (color.lut), likewise.
-    static constexpr int kFormatVersion = 14;
+    // (color.lut), likewise. Version 15 added Direction lock (stabilization
+    // mode "directionLock", lockDirection, directionSec), likewise: an older
+    // build would show such a clip unstabilized.
+    static constexpr int kFormatVersion = 15;
+    static constexpr int kDirectionLockFormatVersion = 15;
     static constexpr int kLutFormatVersion = 14;
     static constexpr int kTransitionFormatVersion = 13;
     static constexpr int kTitleFormatVersion = 12;

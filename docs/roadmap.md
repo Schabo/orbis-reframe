@@ -163,8 +163,10 @@ each is in its document in [`formats/`](formats/README.md).
 - **Lens colour matching**: evening out the two lenses' exposure and white
   balance across the seam. A correction between the lenses in the stitch,
   not a grade; it changes stitched output, so it comes with a measurement.
-- **Direction lock**: a stabilization mode that keeps the view pointed at
-  one direction in the world whatever way the camera turns.
+- **Direction lock, less drift**: Direction lock holds its heading from the
+  gyroscope alone, which drifts 8-16° a minute on an X5. The gyro's bias
+  can be measured where the camera stands still (it is stable per camera),
+  and the heading corrected from the GPS course where a clip has one.
 - **ProRes export** (maybe DNxHR) for handing off to other editors, beside
   H.264 / H.265.
 - **GPS and stats overlays**: speed, altitude, distance, heading, the route,

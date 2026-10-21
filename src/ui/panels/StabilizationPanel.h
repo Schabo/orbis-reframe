@@ -21,6 +21,9 @@ class QWidget;
 //                   retunes its shared smoothing window;
 //   Horizon Lock -- accel-referenced level horizon (helmet / boat / handheld /
 //                   bump tilt); one Amount slider (0 = off .. 1 = fully level);
+//   Direction lock -- Horizon lock holding one heading in the world: Amount,
+//                   and Lock to this direction (MainWindow takes the
+//                   playhead's time in the clip);
 //   Custom       -- the raw per-axis windows + level-horizon + mount offsets.
 // MainWindow writes the emitted insv::StabConfig onto the clip
 // (Timeline::setClipStabilization). Copy / Paste ask MainWindow, which holds
@@ -29,7 +32,7 @@ class StabilizationPanel : public SettingsPanel {
     Q_OBJECT
 
 public:
-    enum class Mode { Off, LeanFollow, HorizonLock, Custom };
+    enum class Mode { Off, LeanFollow, HorizonLock, Custom, DirectionLock };
 
     explicit StabilizationPanel(QWidget *parent = nullptr);
 
@@ -39,6 +42,8 @@ public:
     // knobs, otherwise it is ignored.
     void setState(Mode mode, const insv::StabConfig &cfg);
 
+    // Direction lock: where the held direction is (the time it was taken at).
+    void setDirectionStatus(const QString &text);
     // One line about the active clip's video<->gyro sync fine-tune (measured
     // in the background). Empty hides it.
     void setSyncStatus(const QString &text);
@@ -53,6 +58,8 @@ signals:
     // mode (LeanFollow window from the Strength slider, Custom from the raw
     // knobs, an Off config otherwise).
     void modeChanged(StabilizationPanel::Mode mode, const insv::StabConfig &nativeConfig);
+    // Direction lock's button: hold the direction under the playhead.
+    void lockDirectionRequested();
     void copyRequested();
     void pasteRequested();
 
@@ -78,6 +85,9 @@ private:
     QDoubleSpinBox *m_pitchOffset = nullptr;
     QDoubleSpinBox *m_rollOffset = nullptr;
     QCheckBox *m_autoLevel = nullptr; // Custom: StabConfig::autoLevel
+    QWidget *m_directionRow = nullptr; // shown only for Direction lock
+    QLabel *m_directionStatus = nullptr;
+    float m_directionSec = 0.0f; // the shown clip's StabConfig::directionSec, passed back
     QWidget *m_customRows = nullptr; // shown only for Custom
     QWidget *m_accelLpRow = nullptr; // accel low-pass; shown for Horizon lock / Custom
     QDoubleSpinBox *m_accelLowPass = nullptr; // accel fusion low-pass cutoff, Hz (0 = off)

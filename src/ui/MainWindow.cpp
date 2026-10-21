@@ -488,21 +488,39 @@ void MainWindow::connectStitchAndStabilization()
     // slider, Custom from the knobs, Off otherwise).
     connect(m_stabilizationPanel, &StabilizationPanel::modeChanged, this,
             [this](StabilizationPanel::Mode, const insv::StabConfig &nativeCfg) {
-                if (const int id = editClipId())
-                    m_timeline->setClipStabilization(id, nativeCfg);
+                const ClipItem *c = m_timeline->clipById(editClipId());
+                if (!c)
+                    return;
+                insv::StabConfig cfg = nativeCfg;
+                // Switching into Direction lock holds the way the camera
+                // faces under the playhead.
+                if (cfg.lockDirection && !c->stabilization.lockDirection)
+                    cfg.directionSec = directionSecAtPlayhead(*c);
+                m_timeline->setClipStabilization(c->id, cfg);
             });
+    connect(m_stabilizationPanel, &StabilizationPanel::lockDirectionRequested, this, [this] {
+        const ClipItem *c = m_timeline->clipById(editClipId());
+        if (!c || !c->stabilization.lockDirection)
+            return;
+        insv::StabConfig cfg = c->stabilization;
+        cfg.directionSec = directionSecAtPlayhead(*c);
+        m_timeline->setClipStabilization(c->id, cfg);
+    });
     // Copy / paste a clip's stabilization, as the colour grade.
     const auto copyStab = [this](int clipId) {
         const ClipItem *c = m_timeline->clipById(clipId);
         if (!c)
             return;
         m_copiedStab = c->stabilization;
+        m_copiedStabSource = c->sourcePath;
         m_stabilizationPanel->setCanPaste(true);
         m_timelineWidget->setCanPasteStabilization(true);
     };
     const auto pasteStab = [this](int clipId) {
-        if (m_copiedStab && clipId)
-            m_timeline->setClipStabilization(clipId, *m_copiedStab);
+        const ClipItem *c = m_timeline->clipById(clipId);
+        if (m_copiedStab && c)
+            m_timeline->setClipStabilization(
+                clipId, pastedStabilization(*m_copiedStab, m_copiedStabSource, *c));
     };
     connect(m_stabilizationPanel, &StabilizationPanel::copyRequested, this,
             [this, copyStab] { copyStab(editClipId()); });
@@ -513,8 +531,11 @@ void MainWindow::connectStitchAndStabilization()
     connect(m_timelineWidget, &TimelineWidget::stabilizationPasteAllRequested, this, [this] {
         if (!m_copiedStab)
             return;
-        for (int i = 0; i < m_timeline->count(); ++i)
-            m_timeline->setClipStabilization(m_timeline->clipAt(i).id, *m_copiedStab);
+        for (int i = 0; i < m_timeline->count(); ++i) {
+            const ClipItem &c = m_timeline->clipAt(i);
+            m_timeline->setClipStabilization(
+                c.id, pastedStabilization(*m_copiedStab, m_copiedStabSource, c));
+        }
     });
     // The preview's quality and size (View menu): the controller re-opens
     // its sources with them.
@@ -1602,8 +1623,44 @@ void MainWindow::syncStabilizationPanel()
         mode = M::HorizonLock;
     else if (s.mode == insv::StabMode::Custom)
         mode = M::Custom;
+    else if (s.mode == insv::StabMode::DirectionLock)
+        mode = M::DirectionLock;
     m_stabilizationPanel->setState(
         mode, mode != M::Off ? s : insv::StabConfig::preset(insv::StabMode::LeanFollow));
+
+    // Where the held direction is: its time on the timeline, or in the file
+    // when the clip's trim leaves it out.
+    QString where;
+    if (s.lockDirection) {
+        const qint64 sourceMs = std::llround(double(s.directionSec) * 1000.0);
+        const int index = m_timeline->indexOfId(c->id);
+        if (sourceMs >= c->trimInMs && sourceMs <= c->trimOutMs && index >= 0)
+            where = tr("Holds the direction the camera faced at %1.")
+                        .arg(PlayerBar::formatTime(
+                            m_timeline->clipToTimeline(index, c->localAtSourceMs(sourceMs)),
+                            m_playerBar->frameRate()));
+        else
+            where = tr("Holds the direction the camera faced %1 into the clip's file, outside "
+                       "the part on the timeline.")
+                        .arg(PlayerBar::formatTime(sourceMs, 0.0));
+    }
+    m_stabilizationPanel->setDirectionStatus(where);
+}
+
+float MainWindow::directionSecAtPlayhead(const ClipItem &c) const
+{
+    const Timeline::Point p = m_timeline->timelineToClip(m_lastTimelineMs);
+    if (p.clipIndex >= 0 && m_timeline->clipAt(p.clipIndex).id == c.id)
+        return float(c.sourceAtLocalMs(p.clipLocalMs)) / 1000.0f;
+    return float(c.trimInMs) / 1000.0f;
+}
+
+insv::StabConfig MainWindow::pastedStabilization(insv::StabConfig cfg, const QString &fromSource,
+                                                 const ClipItem &target) const
+{
+    if (cfg.lockDirection && target.sourcePath != fromSource)
+        cfg.directionSec = float(target.trimInMs) / 1000.0f;
+    return cfg;
 }
 
 void MainWindow::syncStitchingPanel()

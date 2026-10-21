@@ -97,6 +97,8 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
                .arg(s.pitchOffsetRad)
                .arg(s.rollOffsetRad)
                .arg(std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
+    if (s.lockDirection)
+        key += QStringLiteral(",dir%1").arg(s.directionSec);
     key += QStringLiteral("|%1,%2,%3,%4").arg(c.blurPlates).arg(c.plateScan)
                .arg(c.blurRemovals.size()).arg(c.blurAdditions.size());
     for (const ReframeKey &k : c.reframe.keys())

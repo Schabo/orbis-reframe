@@ -35,6 +35,7 @@ horizon is level, as if the bike were upright.*
 | **Off** | No stabilization: the picture moves exactly as the camera did. | Footage from a tripod or other fixed mount, or to see the raw recording. |
 | **Lean follow** | Removes shake, bumps and vibration, but keeps slow movements: a motorcycle's lean in a corner, going over a crest, turning your head on purpose. | Riding: motorcycle, bicycle, skiing, anything where leaning into a turn is part of the feel. |
 | **Horizon lock** | Removes all of the camera's turning and tilting, and keeps the horizon level. The view still turns with the direction you travel in, smoothly. | Helmet, handheld, boat or drone footage, where you want a level horizon and the camera's lean isn't wanted. |
+| **Direction lock** | Like Horizon lock, but the view doesn't turn with you: it keeps pointing one way, whichever way the camera turns. | Keeping a landmark, a view or the scenery on one side in the picture through bends and turns. |
 | **Custom** | You set the smoothing and levelling yourself. | Fine-tuning, or special effects such as a "virtual tripod". |
 
 The first clip of a new project starts with stabilization **Off**. For most
@@ -77,6 +78,30 @@ when the bike is upright.
 With Horizon lock on, a reframe keyframe with a roll of 0° always gives a
 level horizon, and its yaw is measured from the direction the camera faces,
 smoothed: on a forward-facing mount, the direction of travel.
+
+### Direction lock
+
+Direction lock keeps the horizon level like Horizon lock, and also keeps the
+view pointing the same way: when the road bends, the view doesn't follow
+it, it stays on whatever it was looking at.
+
+The direction it holds is the way the camera faced at the playhead when you
+chose **Direction lock**. To hold another direction, move the playhead to
+where the camera faces that way and click **Lock to this direction**. The
+line above the button says where the held direction was taken. Reframe
+keyframes still turn the view: their yaw is measured from the held
+direction.
+
+**Amount** and **Vibration filter** work as in Horizon lock.
+
+The camera has no compass, so the held direction comes from its gyroscope
+alone, which drifts slowly. On an X5 the view turns by about 8 to 16° a
+minute, so on a long clip it slowly wanders off the direction you locked.
+Lock to a point near the part that matters, or split a long clip and lock
+each part on its own.
+
+When you paste a Direction lock setting onto a clip from another file, it
+holds the way that clip's camera faces at its first frame.
 
 ### Custom
 

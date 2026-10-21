@@ -498,6 +498,11 @@ StabConfig StabConfig::preset(StabMode m)
         // 1.21) to attenuating it (0.83).
         c.accelLowPassHz = 1.5f;
         break;
+    case StabMode::DirectionLock:
+        c = preset(StabMode::HorizonLock);
+        c.mode = StabMode::DirectionLock;
+        c.lockDirection = true;
+        break;
     case StabMode::Custom:
     case StabMode::Off:
         break;
@@ -516,6 +521,7 @@ void GyroStabilizer::build(const ImuTrack& track, const StabConfig& cfg, double 
     build(track.samples, c);
     m_clockRate = track.clockRate;
     m_readoutSec = track.readoutSec;
+    lockHeading(); // again: the clock rate moves directionSec on the track
 }
 
 void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg)
@@ -541,6 +547,7 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
         buildFromOrientation(tc.t, tc.q, cfg); // resets the two below
         m_levelFwd = tc.levelFwd;
         m_mountLevel = tc.mountLevel;
+        lockHeading();
         return;
     }
 
@@ -840,6 +847,7 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
     buildFromOrientation(tc.t, tc.q, cfg); // resets both
     m_levelFwd = tc.levelFwd;
     m_mountLevel = tc.mountLevel;
+    lockHeading();
 }
 
 void GyroStabilizer::buildFromOrientation(const std::vector<double>& tSec,
@@ -865,6 +873,43 @@ void GyroStabilizer::buildFromOrientation(const std::vector<double>& tSec,
     for (const auto& a : qBodyToWorld)
         m_qRaw.push_back(fromQ(qnorm(toQ(a)))); // defensive: an integrated track can drift off unit
     m_ready = true;
+    lockHeading();
+}
+
+double GyroStabilizer::smoothedHeading(double t) const
+{
+    auto heading = [this](const Q& q, double fallback) {
+        double R[3][3];
+        qToMat(q, R);
+        const double* h = m_levelFwd.data();
+        const double fx = R[0][0] * h[0] + R[0][1] * h[1] + R[0][2] * h[2];
+        const double fz = R[2][0] * h[0] + R[2][1] * h[1] + R[2][2] * h[2];
+        if (fx * fx + fz * fz < 1e-6)
+            return fallback; // pointing straight up/down: heading undefined
+        return std::atan2(-fx, -fz); // Ry(psi) * (0,0,-1) = (-sin psi, 0, -cos psi)
+    };
+    constexpr double kPi = std::numbers::pi;
+    const double psiRef = heading(sampleTrack(m_t, m_qRaw, t), 0.0);
+    const double win = std::max(m_cfg.windowYawSec, 1e-3f);
+    const double sig = std::max(win * 0.5, 1e-3);
+    double acc = 0.0, wsum = 0.0;
+    for (size_t i = lowerBound(m_t, t - win); i < m_t.size(); ++i) {
+        const double dtt = m_t[i] - t;
+        if (dtt > win)
+            break;
+        double d = heading(toQ(m_qRaw[i]), psiRef) - psiRef;
+        d -= 2.0 * kPi * std::round(d / (2.0 * kPi)); // unwrap around psiRef
+        const double w = std::exp(-0.5 * dtt * dtt / (sig * sig));
+        acc += w * d;
+        wsum += w;
+    }
+    return psiRef + (wsum > 0.0 ? acc / wsum : 0.0);
+}
+
+void GyroStabilizer::lockHeading()
+{
+    m_lockedHeading = m_ready && m_cfg.lockDirection ? smoothedHeading(gyroTime(m_cfg.directionSec))
+                                                     : 0.0;
 }
 
 void GyroStabilizer::bodyRotation(double tSec, double dtSec, float r[3]) const
@@ -954,35 +999,18 @@ void GyroStabilizer::correctionMatrix(double tSec, float m[3][3]) const
     // any yaw/pitch. Partial amounts slerp from the smoothed follow
     // orientation toward it.
     const double amount = std::clamp(m_cfg.horizonLockAmount, 0.0f, 1.0f);
-    if (amount > 0.0) {
-        auto heading = [this](const Q& q, double fallback) {
-            double R[3][3];
-            qToMat(q, R);
-            const double* h = m_levelFwd.data();
-            const double fx = R[0][0] * h[0] + R[0][1] * h[1] + R[0][2] * h[2];
-            const double fz = R[2][0] * h[0] + R[2][1] * h[1] + R[2][2] * h[2];
-            if (fx * fx + fz * fz < 1e-6)
-                return fallback; // pointing straight up/down: heading undefined
-            return std::atan2(-fx, -fz); // Ry(psi) * (0,0,-1) = (-sin psi, 0, -cos psi)
-        };
-        constexpr double kPi = std::numbers::pi;
-        const double psiRef = heading(qRef, 0.0);
-        const double win = std::max(m_cfg.windowYawSec, 1e-3f);
-        const double sig = std::max(win * 0.5, 1e-3);
-        double acc = 0.0, wsum = 0.0;
-        for (size_t i = lowerBound(m_t, t - win); i < m_t.size(); ++i) {
-            const double dtt = m_t[i] - t;
-            if (dtt > win)
-                break;
-            double d = heading(toQ(m_qRaw[i]), psiRef) - psiRef;
-            d -= 2.0 * kPi * std::round(d / (2.0 * kPi)); // unwrap around psiRef
-            const double w = std::exp(-0.5 * dtt * dtt / (sig * sig));
-            acc += w * d;
-            wsum += w;
+    if (amount > 0.0 || m_cfg.lockDirection) {
+        const double psi = smoothedHeading(t);
+        if (amount > 0.0) {
+            const Q qLevel{std::cos(psi * 0.5), 0.0, std::sin(psi * 0.5), 0.0};
+            qSmooth = amount >= 1.0 ? qLevel : qslerp(qSmooth, qLevel, amount);
         }
-        const double psi = psiRef + (wsum > 0.0 ? acc / wsum : 0.0);
-        const Q qLevel{std::cos(psi * 0.5), 0.0, std::sin(psi * 0.5), 0.0};
-        qSmooth = amount >= 1.0 ? qLevel : qslerp(qSmooth, qLevel, amount);
+        // Direction lock: turn the result about world up from the heading it
+        // follows to the locked one.
+        if (m_cfg.lockDirection) {
+            const double d = 0.5 * (m_lockedHeading - psi);
+            qSmooth = qnorm(qmul(Q{std::cos(d), 0.0, std::sin(d), 0.0}, qSmooth));
+        }
     }
     // Fixed mount offset (tilted rig), in the view frame.
     if (m_cfg.pitchOffsetRad != 0.0f || m_cfg.rollOffsetRad != 0.0f)

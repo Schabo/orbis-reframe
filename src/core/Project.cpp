@@ -89,7 +89,7 @@ stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
 
 json stabilizationToJson(const insv::StabConfig &c)
 {
-    return json{
+    json j{
         {"mode", insv::stabModeToString(c.mode)},
         {"windowYawSec", c.windowYawSec},
         {"windowPitchSec", c.windowPitchSec},
@@ -101,6 +101,11 @@ json stabilizationToJson(const insv::StabConfig &c)
         {"rollOffsetRad", c.rollOffsetRad},
         {"autoLevel", c.autoLevel},
     };
+    if (c.lockDirection) {
+        j["lockDirection"] = true;
+        j["directionSec"] = c.directionSec;
+    }
+    return j;
 }
 
 json outputToJson(const OutputSettings &o)
@@ -154,6 +159,8 @@ insv::StabConfig stabilizationFromJson(const json &j)
     c.pitchOffsetRad = j.value("pitchOffsetRad", c.pitchOffsetRad);
     c.rollOffsetRad = j.value("rollOffsetRad", c.rollOffsetRad);
     c.autoLevel = j.value("autoLevel", c.autoLevel); // absent (older files) => on
+    c.lockDirection = j.value("lockDirection", c.lockDirection);
+    c.directionSec = j.value("directionSec", c.directionSec);
     return c;
 }
 
@@ -910,6 +917,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     json clips = json::array();
     bool anyFlat = false;
     bool anyLut = false;
+    bool anyDirectionLock = false;
     // The first 360 clip's stitch settings, and whether every 360 clip has
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
@@ -952,6 +960,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)}, {"depthSeam", c.depthSeam}}},
         });
         anyLut = anyLut || !c.color.lut.isEmpty();
+        anyDirectionLock = anyDirectionLock || c.stabilization.lockDirection ||
+                           c.stabilization.mode == insv::StabMode::DirectionLock;
         if (!firstStitched)
             firstStitched = &c;
         else if (c.lensGuard != firstStitched->lensGuard || c.depthSeam != firstStitched->depthSeam)
@@ -1058,7 +1068,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyLut                  ? kLutFormatVersion
+        {"version", anyDirectionLock        ? kDirectionLockFormatVersion
+                    : anyLut                  ? kLutFormatVersion
                     : !transitions.empty()    ? kTransitionFormatVersion
                     : anyTitle                ? kTitleFormatVersion
                     : anyFlat || mixedStitch ? kFlatClipFormatVersion

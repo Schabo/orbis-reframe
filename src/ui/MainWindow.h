@@ -262,6 +262,15 @@ private:
     // Reflect the panel's clip's (editClipId()) stabilization in the
     // Stabilization panel; greyed out without one.
     void syncStabilizationPanel();
+    // Direction lock: the source time (s) of clip `c` under the playhead,
+    // whose heading the view holds; the clip's first frame when the playhead
+    // is on another clip.
+    float directionSecAtPlayhead(const ClipItem &c) const;
+    // `cfg` for clip `target`, pasted from a clip of `fromSource`: a held
+    // direction is a time in its file, so on another file's clip it starts
+    // at that clip's first frame.
+    insv::StabConfig pastedStabilization(insv::StabConfig cfg, const QString &fromSource,
+                                         const ClipItem &target) const;
     // The Stitching panel shows the clip it edits (editClipId), or nothing.
     void syncStitchingPanel();
     // Privacy blur (Privacy panel): the panel for the clip being edited;
@@ -568,6 +577,7 @@ private:
     std::optional<ColorGrade> m_copiedGrade;
     QString m_lastLutDir; // where Load LUT... last found one
     std::optional<insv::StabConfig> m_copiedStab; // Copy / Paste stabilization
+    QString m_copiedStabSource;                   // ... and the file it was copied from
     QList<KeyHelp> m_keyHelp; // shortcuts made by addKey(), in order
     QAction *m_redoAction = nullptr;
     // Reframe authoring armed (drag/zoom writes a keyframe); viewport drag in

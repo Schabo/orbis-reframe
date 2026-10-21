@@ -1,6 +1,6 @@
 // Stabilization: insv::StabConfig and the gyro stabilizer on synthetic IMU
-// data (lean follow, horizon lock, auto-level, readout), and the per-clip
-// setting on the Timeline and in the project file.
+// data (lean follow, horizon lock, direction lock, auto-level, readout), and
+// the per-clip setting on the Timeline and in the project file.
 // Standalone (no event loop: same-thread signals fire inside emit); the
 // exit code is the failure count.
 
@@ -253,6 +253,65 @@ void testStabConfig()
         CHECK(std::fabs(m[0][1]) < 1e-5f && std::fabs(m[1][1] - 1.0f) < 1e-5f);
     }
 
+    // Direction lock: a level camera still for 2 s, turning 90 deg left over
+    // 3 s, still again. Horizon lock's view turns with it; Direction lock's
+    // keeps the heading the camera had at directionSec, level, throughout.
+    {
+        constexpr double kPi = std::numbers::pi;
+        std::vector<insv::ImuSample> imu;
+        for (int i = 0; i < 8000; ++i) {
+            insv::ImuSample s;
+            s.timestamp = static_cast<uint64_t>(i) * 1000;
+            s.accel[0] = -1.0; // the X5's map "z,-x,-y": body up (+Y) <- -x
+            const double t = i / 1000.0;
+            if (t >= 2.0 && t < 5.0)
+                s.gyro[0] = -(kPi / 2.0) / 3.0; // body yaw (+Y) <- -x
+            imu.push_back(s);
+        }
+        // The view's forward in the world, as a heading (deg), and its tilt.
+        auto view = [](const insv::GyroStabilizer &g, double t, double *tiltDeg = nullptr) {
+            const std::array<double, 4> q = g.rawOrientation(t);
+            const double w = q[0], x = q[1], y = q[2], z = q[3];
+            const double R[3][3] = {{1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)},
+                                    {2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)},
+                                    {2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)}};
+            float m[3][3];
+            g.correctionMatrix(t, m);
+            double f[3] = {0, 0, 0}, u[3] = {0, 0, 0};
+            for (int r = 0; r < 3; ++r)
+                for (int k = 0; k < 3; ++k) {
+                    f[r] -= R[r][k] * m[k][2]; // R * C * (0,0,-1)
+                    u[r] += R[r][k] * m[k][1]; // R * C * (0,1,0)
+                }
+            if (tiltDeg)
+                *tiltDeg = std::acos(std::min(1.0, u[1])) * 180.0 / kPi;
+            return std::atan2(-f[0], -f[2]) * 180.0 / kPi;
+        };
+        insv::GyroStabilizer hl;
+        hl.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        CHECK(std::fabs(std::fabs(view(hl, 7.0) - view(hl, 1.0)) - 90.0) < 1.0);
+
+        insv::StabConfig dc = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        CHECK(dc.lockDirection && dc.horizonLockAmount == 1.0f);
+        dc.directionSec = 1.0f;
+        insv::GyroStabilizer dl;
+        dl.build(imu, x5(dc));
+        CHECK(dl.ready());
+        const double held = view(dl, 1.0);
+        CHECK(std::fabs(held - view(hl, 1.0)) < 0.5); // no jump where it's locked
+        double worst = 0.0, tilt = 0.0, worstTilt = 0.0;
+        for (double t = 0.5; t < 7.6; t += 0.25) {
+            worst = std::max(worst, std::fabs(view(dl, t, &tilt) - held));
+            worstTilt = std::max(worstTilt, tilt);
+        }
+        CHECK(worst < 0.5);
+        CHECK(worstTilt < 0.5);
+        // Locked at the end instead: the heading the turn ended on, all along.
+        dc.directionSec = 7.0f;
+        dl.build(imu, x5(dc));
+        CHECK(std::fabs(view(dl, 1.0) - view(hl, 7.0)) < 0.5);
+    }
+
     // A LeanFollow config with a retuned (non-default) window round-trips
     // through the .orp like any other StabConfig.
     QTemporaryDir tmp;
@@ -279,6 +338,34 @@ void testStabConfig()
         CHECK(std::fabs(st.windowRollSec - insv::leanWindowFromStrength(0.8f)) < 1e-4f);
         // the slider position the panel would show on load
         CHECK(std::fabs(insv::leanStrengthFromWindow(st.windowRollSec) - 0.8f) < 1e-3f);
+    }
+
+    // Direction lock round-trips with its direction, as version 15; a
+    // project without it keeps the older version, so older builds open it.
+    auto versionOf = [](const QString &file) {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly)
+                   ? QJsonDocument::fromJson(f.readAll()).object().value("version").toInt()
+                   : -1;
+    };
+    CHECK(versionOf(projFile) < 15);
+    insv::StabConfig dir = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+    dir.directionSec = 12.5f;
+    dir.horizonLockAmount = 0.6f;
+    const QString dirFile = tmp.path() + "/direction.orp";
+    {
+        Project p;
+        const int id = p.timeline()->appendClip("a.insv", 20000, 30.0);
+        p.timeline()->setClipStabilization(id, dir);
+        QString err;
+        CHECK(p.save(dirFile, &err));
+    }
+    CHECK(versionOf(dirFile) == 15);
+    {
+        Project p;
+        QString err;
+        CHECK(p.load(dirFile, &err));
+        CHECK(p.timeline()->count() == 1 && p.timeline()->clipAt(0).stabilization == dir);
     }
 }
 

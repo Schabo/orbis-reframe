@@ -18,6 +18,7 @@
 #include "MainWindow.h"
 #include "SettingsPanel.h"
 #include "SettingsSidebar.h"
+#include "panels/StabilizationPanel.h"
 #include "MediaPoolPanel.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
@@ -744,6 +745,51 @@ void testStitchingWithoutGuards(const Ctx &c)
     undo->trigger();
     CHECK(c.timeline->count() == n);
     CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && c.timeline->clipAt(0).depthSeam);
+}
+
+// Direction lock: picking it holds the direction under the playhead, the
+// button takes it again where the playhead is now, and pasting it onto a
+// clip of another file holds that clip's first frame.
+void testDirectionLock(const Ctx &c)
+{
+    auto *mode = find<QComboBox>(c.w, "stabilizationMode");
+    auto *lock = find<QPushButton>(c.w, "stabilizationLockDirection");
+    auto *where = find<QLabel>(c.w, "stabilizationDirectionStatus");
+    QAction *undo = action(c, "undoAction");
+    if (!mode || !lock || !where || !undo)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    const int b = c.timeline->clipAt(1).id;
+    const insv::StabConfig beforeA = c.timeline->clipAt(0).stabilization;
+    const insv::StabConfig beforeB = c.timeline->clipAt(1).stabilization;
+    settle();
+    CHECK(seekTo(c, 1500));
+    settle();
+    mode->setCurrentIndex(mode->findData(int(StabilizationPanel::Mode::DirectionLock)));
+    const insv::StabConfig *s = &c.timeline->clipById(a)->stabilization;
+    CHECK(s->mode == insv::StabMode::DirectionLock && s->lockDirection);
+    CHECK(std::fabs(s->directionSec - 1.5f) < 0.01f);
+    CHECK(waitFor([&] { return where->text().contains(QLatin1String("00:00:01")); }));
+
+    settle();
+    CHECK(seekTo(c, 3000));
+    settle();
+    lock->click();
+    s = &c.timeline->clipById(a)->stabilization;
+    CHECK(std::fabs(s->directionSec - 3.0f) < 0.01f);
+
+    settle();
+    emit c.timelineWidget->stabilizationCopyRequested(a);
+    emit c.timelineWidget->stabilizationPasteRequested(b);
+    const ClipItem *cb = c.timeline->clipById(b);
+    CHECK(cb && cb->stabilization.lockDirection);
+    if (cb)
+        CHECK(std::fabs(cb->stabilization.directionSec - cb->trimInMs / 1000.0f) < 0.01f);
+
+    for (int i = 0; i < 3; ++i)
+        undo->trigger();
+    CHECK(c.timeline->clipAt(0).stabilization == beforeA);
+    CHECK(c.timeline->clipAt(1).stabilization == beforeB);
 }
 
 // Duplicate (the clip menu): the copy lands after the clip and is selected,
@@ -1576,6 +1622,7 @@ int main(int argc, char **argv)
             testColour(c);
             testStitching(c);
             testStitchingWithoutGuards(c);
+            testDirectionLock(c);
             testDuplicateClip(c);
             testMediaPool(c);
             testTakeFiles(c);
