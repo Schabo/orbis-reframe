@@ -21,7 +21,26 @@ firmware `v1.0.92_build1`, recorded 2025-08-16 with the camera on a stick:
 | `103807_…_001` | `VID_…_00_001.insv`, `VID_…_10_001.insv`, `LRV_…_11_001.insv` | 309.4 s, 7736 frames | |
 | `105108_…_003` | `VID_…_00_003.insv`, `VID_…_10_003.insv`, `LRV_…_11_003.insv` | 188.2 s, 4704 frames | |
 
-Both takes are the same mode: 5.7K (2880² per lens) at 25 fps, H.264.
+Twelve more takes from the same day and camera (added 2026-10-21, the same
+three files each): `_002`, `_005`, `_006`, `_008`–`_012` walking around a
+bike meet on the stick (16–215 s), `_004`, `_007`, `_013`, `_014` riding
+(1323, 731, 419, 230 s). All are the same mode: 5.7K (2880² per lens) at
+25 fps, H.264, the same `offset_v3` and firmware, and every `_10_` file is
+one frame shorter than its `_00_` (§3.1).
+
+And one take from 2025-08-04 on older firmware (`v1.0.62_build2`, same
+calibration): `VID_20250804_152938_00_003` + `_10_` + LRV, **5.7K at 29.97
+fps** (30000/1001), 1740.9 s (29 min), 52176 frames, 10.96 GB and 10.91 GB
+-- the longest and only 30 fps clip here. Here the **two files have the
+same frame count**.
+
+Beside them are five flat videos exported from Insta360's software from
+the same day (`1.MP4`, `2.MP4`, `3.MP4`, `CKDH4299.MP4`, `EXAM7155.MP4`):
+3840×2160 30 fps HEVC Main 10, **HLG** (`arib-std-b67`, BT.2020) with a
+Dolby Vision configuration record, tagged make `Insta360`, model
+`ONER.FixFrame`, muxed by `Lavf60.3.100`. Edited (reframed, a tiny planet,
+a title), so they show Insta360's look and HDR export, not a reference
+frame for the stitch.
 
 ## 1. Files
 
@@ -90,8 +109,9 @@ trailer         _00_ and LRV only: the inst records, raw, to EOF
 - The fisheye circle doesn't fill the frame: the calibration radius is
   ~1481 px in the 3040² sensor frame, so ~1403 stream px in the 2880² frame,
   with a black margin around it (X5: the circle touches the frame edge).
-- The `_10_` file is **one frame shorter** than `_00_` (7735 vs 7736, 4703 vs
-  4704) and its `creation_time` can be a second later. ✅ **Frame n of one
+- The `_10_` file is **one frame shorter** than `_00_` on every 25 fps take
+  (7735 vs 7736, 4703 vs 4704, ...), the same length on the 30 fps one; its
+  `creation_time` can be a second later. ✅ **Frame n of one
   file is frame n of the other**; `_10_` only lacks the last frame
   (measured 2026-10-21): the seam match (`EstimateSeamAlignment`'s strip
   score, no lens-1 adjustment) with `_10_` shifted by −2..+2 frames, at 10
@@ -99,7 +119,9 @@ trailer         _00_ and LRV only: the inst records, raw, to EOF
   shift 0 almost everywhere -- mean block NCC 0.63 at 0 against 0.56 / 0.56
   at ±1 on `_001`, 0.59 against 0.56 / 0.52 on `_003`; the few points that
   pick another shift have flat scores (little texture or motion at the
-  seam) and disagree with each other. Both files start at pts 0.
+  seam) and disagree with each other. On the 30 fps take, 10 points over
+  its 29 min: shift 0 at every one (0.38 against 0.29 / 0.30). Both files
+  start at pts 0.
 - **Every file has the same audio**: the AAC streams of `_00_`, `_10_` and the
   LRV decode to identical samples (first 20 s compared, md5). One of them is
   enough.
@@ -129,7 +151,7 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 5.7K | 30 / 25 / 24 | `_00_` + `_10_` + `LRV_…_11_` | two moving takes at 25, H.264, `gamma_mode` `linear` | enough at 25 H.264; **30 / 24 wanted** |
+| 360 Video 5.7K | 30 / 25 / 24 | `_00_` + `_10_` + `LRV_…_11_` | 14 takes at 25 (walking and riding), one 29 min take at 29.97, H.264, `gamma_mode` `linear` | enough at 25 and 30 H.264; **24 wanted** |
 | 360 Video 4K | 50 / 30 | one `VID` file (+ LRV at 30 only) | none | **wanted**: the one-file layout |
 | 360 Video 3K | 100 | one `VID` file, no LRV | none | **wanted** |
 | HDR Video | 5.7K 25 / 24 | ❓ | none | **wanted** |
@@ -139,7 +161,7 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 | TimeShift | 5.7K 30 / 25 / 24 | no LRV | none | **wanted** |
 | Bullet Time | 3K 100 | no LRV | none | **wanted** |
 | Steady Cam (Ultra Wide Stabilization, 150°) | 1440p 50 / 30, 1080p 120 / 50 / 30; HDR, Timelapse, TimeShift at 1440p | `.mp4` | none | wanted: a flat clip, may open as one already |
-| Split recording | | ❓ (§12 question 3) | none | **wanted**: one take over the split length |
+| Split recording | | ❓ (§12 question 3) | none split: `_004` is 1323 s, 7.5 GB per lens file, in one file each; a 29 min, 11 GB take wasn't split either (owner's report, no clip here) | **wanted** if longer ones split |
 | 360 Photo (Burst, Interval, Night Shot, HDR) | 18 MP | `.insp`, `.dng` (RAW) | none | wanted, low |
 | InstaPano (270°), 150° wide-angle photo | 4320×1440; 1440p / 1080p | ❓ | none | wanted, low |
 | Audio: Wind Reduction, Stereo, 360 Direction Focus | | | ❓ which ours used | **one clip of each wanted** |
@@ -287,9 +309,10 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   (`InsvModel::telemetryTickUs`, 1000) and hands them on in µs, like the
   X5's; `insv_trailer_dump`'s summary does the same (its `--imu` /
   `--exposure` columns stay raw).
-- Pre-roll: the IMU starts **1.60–1.63 s before the first frame**. The
-  X5's sync formula with the ms units gives a video ↔ IMU offset of
-  +1619.7 ms on `_001` (`residual_stab`), within that range.
+- Pre-roll: the IMU starts **1.60–1.63 s before the first frame** on the
+  2025-08-16 takes, 1.32 s on the 30 fps take (older firmware). The X5's
+  sync formula with the ms units gives a video ↔ IMU offset of +1619.7 ms
+  on `_001` (`residual_stab`), within that range.
 - 📖 Axes: telemetry-parser has `xZy` for the ONE X2, but only in its branch
   for files *without* `offset_v3`. These files have it, so it would use its
   default `Xyz` after rotating by lens 0's `yaw pitch roll`.
@@ -315,13 +338,18 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
     in the sphere frame it agrees with the picture: at 105–125 s of `_001`
     it puts the camera's forward 28–34° below level, the unstabilized
     forward view's vanishing point ~30°.
+  - Riding (added takes): `_014` 60–90 s gives `z,x,y` 1.4° from the free
+    fit, 0.13°/frame left of 0.82 raw. `_013` 120–150 s ranks it first too,
+    but weakly (0.57 of 0.67°/frame): a ride with near parallax doesn't
+    suit the rotation-only fit.
 
 ## 9. Type 4 — Exposure and sync ✅
 
 - 16-byte samples: `u64` timestamp in **ms**, `f64` exposure time in s
   (0.62–1.31 ms on these sunny clips).
-- Two samples at the IMU's start, a ~1.3 s gap, then one every **exactly
-  40 ms** to the end: no drift at all at ms resolution, where the X5's
+- Two samples at the IMU's start, a ~1.3 s gap (~1.07 s at 30 fps), then
+  one every **exactly 40 ms** to the end (at 29.97 fps: 33 and 34 ms in
+  the nominal 63:37 mix of 1001/30 ms rounded to ms): no drift at all at ms resolution, where the X5's
   measured 15–40 ppm would show (7–12 ms over 309 s). So these are probably
   nominal times, and the clock rate can't be fitted from them.
 - **Field 24 is not an exposure timestamp** (X5: it equals one exactly). It
@@ -334,7 +362,9 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   the app's offset (+1619.7 / +1588.7 ms after the first IMU sample) puts
   it at 4392.7 / 4363.7 ms. The app's sync fine-tune
   (`residual_stab --auto-sync`, `stitch::MeasureClipSync`) finds +1.1 /
-  +0.8 ms on the same ranges. The readout time (field 25, 36.9 ms) is used
+  +0.8 ms on the same ranges, and +2.6 ms on the 30 fps take (600–630 s,
+  a calm stretch: 13 cells), so the formula holds on the older firmware
+  and at 30 fps too. The readout time (field 25, 36.9 ms) is used
   as read; it wasn't measured on its own.
 - Counting from the first exposure at or after field 24: 7750 samples for
   7736 frames (4714 for 4704): 14 / 10 after the last frame.
@@ -388,7 +418,8 @@ in rad/s (§8).
 2. What `gamma_mode` `linear` and `file_group_info.type` 6 mean for the
    mode set on the camera; the other modes and the lens guards are
    untested (§3.3).
-3. How a long recording is split into files.
+3. How a long recording is split into files: not by 4 GB or by 22 min
+   (`_004`, §1), nor at 29 min / 11 GB (the camera owner's report).
 4. Type 9's layout; the `AMBA` box; field 60.
 
 ## Sources
