@@ -15,11 +15,15 @@ way on X6 clips: it reads the camera's motion the X5's way until an X6 clip
 confirms it. If something looks wrong on your X6 clips, please
 [open an issue](https://github.com/Schabo/orbis-reframe/issues).
 
-Support for the **Insta360 ONE X2** is being built. Each 5.7K clip is three
-files: one per lens (`VID_…_00_…` and `VID_…_10_…`) and the camera's preview
-file (`LRV_…_11_…`). Add any of them, or the whole folder, and the clip comes
-in once; it opens, stitches, [stabilizes](stabilization.md) and exports.
-Keep a clip's files together in one folder.
+The **Insta360 ONE X2** is supported experimentally, in its 5.7K mode. Each
+clip is three files: one per lens (`VID_…_00_…` and `VID_…_10_…`) and the
+camera's preview file (`LRV_…_11_…`). Add any of them, or the whole folder,
+and the clip comes in once; it opens, stitches, [stabilizes](stabilization.md)
+and exports. Keep a clip's files together in one folder. The stitch hasn't
+been compared with Insta360 Studio's yet, and on some clips
+[Horizon lock](stabilization.md#horizon-lock) leaves the horizon tilted by
+a few degrees or more. The ONE X2's 4K and 3K modes (one file for both
+lenses) aren't supported yet.
 
 Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If
 you have one, short clips from it help add it:

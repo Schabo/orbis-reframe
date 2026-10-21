@@ -123,8 +123,12 @@ trailer         _00_ and LRV only: the inst records, raw, to EOF
   its 29 min: shift 0 at every one (0.38 against 0.29 / 0.30). Both files
   start at pts 0.
 - **Every file has the same audio**: the AAC streams of `_00_`, `_10_` and the
-  LRV decode to identical samples (first 20 s compared, md5). One of them is
-  enough.
+  LRV decode to identical samples (first 20 s compared, md5; on `_014` the
+  whole 230 s at lag 0, the `_10_` / LRV streams one AAC frame shorter).
+  One of them is enough: the app plays and exports the `_00_` file's, and
+  its decoder gives FFmpeg's samples exactly. Unlike the X5's dual-mono
+  streams, the two channels differ (L − R is about 29 dB below the signal on
+  `_014`), so the camera records real stereo.
 - 📖 Specs (Insta360): 360 video up to 5.7K 30 (5760×2880), also 4K 50 and
   3K 100; H.264 or H.265, up to 100 Mb/s. Only 5.7K 25 H.264 is in our
   clips.

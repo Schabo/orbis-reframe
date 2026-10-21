@@ -33,6 +33,12 @@ needs and how to install. **Found a problem?**
 contributor has tried real X6 files so far, and stabilization may turn the
 picture the wrong way until an X6 clip confirms its motion axes.
 
+**Insta360 ONE X2:** experimental -- 5.7K clips (one file per lens) open,
+stitch, stabilize and export, but the stitch hasn't been checked against
+Insta360 Studio's yet, the motion axes are measured on a few walking and
+riding clips only, and Horizon lock can leave the horizon tilted on some
+clips.
+
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:
 [sample clips wanted](docs/formats/README.md#sample-clips-wanted).
