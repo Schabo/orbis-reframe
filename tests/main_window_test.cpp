@@ -24,6 +24,7 @@
 #include "support/TestMedia.h"
 
 #include "../core/Autosave.h"
+#include "../core/DataPaths.h"
 #include "../core/MediaPool.h"
 #include "../core/Project.h"
 #include "../core/Timeline.h"
@@ -621,8 +622,16 @@ void testHlgClip(const Ctx &c)
     };
     CHECK(seekTo(c, c.timeline->clipToTimeline(before, 0) + 500));
     emit c.timelineWidget->clipSelected(c.timeline->clipAt(before).id);
-    CHECK(waitFor([&] { return lut->findText(QStringLiteral("HLG to Rec.709")) > 0; }));
-    CHECK(wanted->isVisibleTo(c.w) && wanted->text().contains(QStringLiteral("HLG")));
+    CHECK(waitFor([&] { return wanted->isVisibleTo(c.w); }));
+    CHECK(wanted->text().contains(QStringLiteral("HLG")));
+    // A packaged build has no source-tree fallback, so until it's installed
+    // there's no shipped LUT to offer (package.sh checks the package has it).
+    const bool shipped = QFileInfo::exists(QString::fromStdString(core::paths::lutsDir()) +
+                                           QStringLiteral("/HLG to Rec.709.cube"));
+    if (!shipped)
+        std::printf("  (skipped the HLG LUT offer: no shipped LUTs in this build)\n");
+    else
+        CHECK(waitFor([&] { return lut->findText(QStringLiteral("HLG to Rec.709")) > 0; }));
     const int hlg = lut->findText(QStringLiteral("HLG to Rec.709"));
     if (hlg > 0) {
         settle();
