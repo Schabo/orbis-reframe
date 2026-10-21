@@ -99,6 +99,7 @@ void PlaybackController::setTimeline(const QList<Segment> &segments)
 
 void PlaybackController::reopenSources(const QStringList &paths)
 {
+    m_insets.reopen(paths);
     std::lock_guard<std::mutex> lk(m_mx);
     for (const QString &p : paths)
         if (!m_reopenPaths.contains(p))

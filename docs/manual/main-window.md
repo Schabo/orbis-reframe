@@ -69,7 +69,8 @@ clip whose mode the app doesn't know, or can't read because the file is
 missing, shows the size of its lens pictures (*3840×3840*). An orange check mark in a circle, to the right of the name, means the file is used on the timeline. A file that can't be
 found any more is shown in red with *File not found*; this follows the disk
 while the app runs, so a file that's put back, or a drive that's plugged in
-again, turns normal again by itself. Click a folder's name
+again, turns normal again by itself. So does the card of a file that
+couldn't be read, once a good copy replaces it. Click a folder's name
 to fold it away.
 
 | To | Do |

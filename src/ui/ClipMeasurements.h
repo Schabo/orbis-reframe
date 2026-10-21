@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 #include <atomic>
 
@@ -38,6 +39,15 @@ public:
     // A source's lens-guard setting changed: its seam measurement, if it
     // failed, may work under the new one.
     void forgetSeamFailure(const QString &clipPath) { m_seamFailed.remove(clipPath); }
+    // These files were replaced in place or are back after they were gone:
+    // a measurement that failed on what was there may work now.
+    void forgetFailures(const QStringList &clipPaths)
+    {
+        for (const QString &p : clipPaths) {
+            m_syncFailed.remove(p);
+            m_seamFailed.remove(p);
+        }
+    }
 
     // The Stabilization / Stitching panels' status lines for clip `c` (null =
     // none): measured, measuring, failed, or empty.

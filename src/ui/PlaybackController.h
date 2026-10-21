@@ -138,7 +138,10 @@ public:
     void setTimeline(const QList<Segment> &segments);
     // Open these files afresh from the next setTimeline() on, not from the
     // sources cached for them: a file that was gone and is back (a drive
-    // plugged in again) left a cached source that can't read any more.
+    // plugged in again) left a cached source that can't read any more, and
+    // one replaced in place a source of the old file (or the black stand-in
+    // for one that couldn't be read). The video tracks' insets reopen them
+    // at once.
     void reopenSources(const QStringList &paths);
 
     // Change the preview-stitch settings (Stitching panel). Like

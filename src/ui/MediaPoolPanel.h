@@ -81,6 +81,9 @@ public:
     void setModeProvider(ModeProvider provider);
     // The files the timeline uses (marked in the list; can't be removed).
     void setInUse(const QSet<QString> &paths);
+    // Read these files' thumbnails and modes again: a file replaced in
+    // place, or back after it was gone.
+    void forgetFiles(const QStringList &paths);
     // A line under the header, e.g. "Adding 3 files…"; empty hides it.
     void setStatus(const QString &text);
 

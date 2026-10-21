@@ -5,6 +5,7 @@
 
 #include <limits>
 #include <cmath>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -705,14 +706,29 @@ int Project::relinkMedia(const QString &from, const MediaItem &to)
     return m_timeline->relinkSource(from, to.path);
 }
 
-QHash<QString, bool> Project::recheckMissingMedia()
+Project::MediaRecheck Project::recheckMissingMedia()
 {
     // One look per file; the pool lists every timeline source, but a clip
     // checked here doesn't depend on that.
     QHash<QString, bool> missing;
+    MediaRecheck r;
     const auto look = [&](const QString &path) {
-        if (!path.isEmpty() && !missing.contains(path))
-            missing.insert(path, !QFileInfo::exists(path));
+        if (path.isEmpty() || missing.contains(path))
+            return;
+        const QFileInfo fi(path);
+        missing.insert(path, !fi.exists());
+        if (!fi.exists()) {
+            m_mediaStamps.remove(path);
+            return;
+        }
+        const FileStamp stamp{fi.size(), fi.lastModified().toMSecsSinceEpoch()};
+        const auto it = m_mediaStamps.find(path);
+        if (it == m_mediaStamps.end()) {
+            m_mediaStamps.insert(path, stamp);
+        } else if (!(*it == stamp)) {
+            *it = stamp;
+            r.replaced << path;
+        }
     };
     for (const MediaItem &m : m_mediaPool->items())
         look(m.path);
@@ -721,13 +737,18 @@ QHash<QString, bool> Project::recheckMissingMedia()
     for (int i = 0; i < m_timeline->trackCount(); ++i)
         for (const TrackClip &c : m_timeline->trackAt(i).clips)
             look(c.sourcePath);
+    // Files no longer in the project: a stamp kept for one would call it
+    // replaced when it's added again.
+    m_mediaStamps.removeIf([&](const auto &it) { return !missing.contains(it.key()); });
 
-    QHash<QString, bool> changed;
+    QSet<QString> changed;
     for (const QString &path : m_mediaPool->setMissing(missing))
-        changed.insert(path, missing.value(path));
+        changed.insert(path);
     for (const QString &path : m_timeline->setSourcesMissing(missing))
-        changed.insert(path, missing.value(path));
-    return changed;
+        changed.insert(path);
+    for (const QString &path : changed)
+        (missing.value(path) ? r.gone : r.back) << path;
+    return r;
 }
 
 void Project::onTimelineEdited()

@@ -424,6 +424,15 @@ void MediaPoolPanel::setModeProvider(ModeProvider provider)
     rebuild();
 }
 
+void MediaPoolPanel::forgetFiles(const QStringList &paths)
+{
+    bool forgot = false;
+    for (const QString &path : paths)
+        forgot |= m_thumbnails.remove(path) | m_modes.remove(path);
+    if (forgot)
+        rebuild();
+}
+
 void MediaPoolPanel::setInUse(const QSet<QString> &paths)
 {
     if (paths == m_inUse)

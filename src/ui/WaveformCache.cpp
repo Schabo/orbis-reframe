@@ -86,6 +86,13 @@ QString WaveformCache::diskPath(const QString &path, int stream) const
     return base + QStringLiteral("/waveforms/") + hash + QStringLiteral(".peaks");
 }
 
+void WaveformCache::forget(const QStringList &paths)
+{
+    m_done.removeIf([&](const auto &it) {
+        return paths.contains(it.key().section(QLatin1Char('#'), 0, -2));
+    });
+}
+
 WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
 {
     const QString k = key(path, stream);

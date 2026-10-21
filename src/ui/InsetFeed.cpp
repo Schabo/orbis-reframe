@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <utility>
 
 namespace {
 
@@ -38,6 +39,7 @@ struct InsetFeed::Stream {
     uint64_t gen = 0; // bumped on every re-anchor request
     bool failed = false;
     bool removed = false;
+    bool reopen = false; // close the reader / picture before the next step
     Frame shown;
     bool haveShown = false;
     double frameMs = 0.0; // set when the reader opens
@@ -99,6 +101,24 @@ void InsetFeed::setClips(std::vector<Clip> clips)
             if (std::find(next.begin(), next.end(), o) == next.end())
                 o->removed = true;
         m_streams = std::move(next);
+    }
+    m_cv.notify_all();
+}
+
+void InsetFeed::reopen(const QStringList &paths)
+{
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        for (const auto &s : m_streams) {
+            if (s->clip.path.isEmpty() || !paths.contains(s->clip.path))
+                continue;
+            s->reopen = true;
+            s->failed = false;
+            s->queue.clear();
+            s->eof = false;
+            s->needAnchor = true;
+            ++s->gen;
+        }
     }
     m_cv.notify_all();
 }
@@ -215,6 +235,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
             return false;
         if (!anchor && (!playing || s.eof || s.queue.size() >= kAhead))
             return false;
+        if (std::exchange(s.reopen, false))
+            s.close();
     }
 
     // A 360 clip's view: open (or re-open, if what it renders changed) its

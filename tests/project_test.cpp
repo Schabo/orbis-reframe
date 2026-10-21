@@ -946,9 +946,10 @@ void testMediaPool()
         QObject::connect(x.timeline(), &Timeline::mediaMissingChanged, [&] { ++timelineSignals; });
         const QString away = dir + "/away";
         QDir().rename(usb, away); // the drive unplugged
-        QHash<QString, bool> changed = x.recheckMissingMedia();
-        CHECK(changed.size() == 3 && changed.value(vid) && changed.value(mic) &&
-              changed.value(pip));
+        Project::MediaRecheck changed = x.recheckMissingMedia();
+        CHECK(changed.gone.size() == 3 && changed.gone.contains(vid) &&
+              changed.gone.contains(mic) && changed.gone.contains(pip));
+        CHECK(changed.back.isEmpty() && changed.replaced.isEmpty());
         CHECK(poolSignals == 1 && timelineSignals == 1);
         CHECK(x.mediaPool()->item(vid)->missing && x.mediaPool()->item(pip)->missing);
         CHECK(x.timeline()->clipAt(0).mediaMissing);
@@ -963,11 +964,28 @@ void testMediaPool()
         QDir().rename(away, usb); // and plugged back in
         touch(unused);            // a file that was never there turns up
         changed = x.recheckMissingMedia();
-        CHECK(changed.size() == 4 && !changed.value(vid, true) && !changed.value(unused, true));
+        CHECK(changed.back.size() == 4 && changed.back.contains(vid) &&
+              changed.back.contains(unused));
+        CHECK(changed.gone.isEmpty() && changed.replaced.isEmpty());
         CHECK(!x.mediaPool()->item(vid)->missing && !x.mediaPool()->item(unused)->missing);
         CHECK(!x.timeline()->clipAt(0).mediaMissing);
         CHECK(!x.timeline()->trackById(at)->clips.front().mediaMissing);
         CHECK(!x.modified() && x.canUndo() == couldUndo);
+
+        // A broken copy repaired in place: never missing, but not the file
+        // that was read before. Reported once, and not as an edit.
+        poolSignals = timelineSignals = 0;
+        {
+            QFile f(vid);
+            CHECK(f.open(QIODevice::WriteOnly));
+            f.write("the whole recording");
+        }
+        changed = x.recheckMissingMedia();
+        CHECK(changed.replaced == QStringList{vid});
+        CHECK(changed.gone.isEmpty() && changed.back.isEmpty());
+        CHECK(poolSignals == 0 && timelineSignals == 0);
+        CHECK(!x.modified() && x.canUndo() == couldUndo);
+        CHECK(x.recheckMissingMedia().isEmpty());
     }
 }
 

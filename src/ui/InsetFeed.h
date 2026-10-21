@@ -6,6 +6,7 @@
 #include <PictureSource.h> // exportpipe::PictureSource
 
 #include <QString>
+#include <QStringList>
 
 #include <array>
 #include <condition_variable>
@@ -96,6 +97,9 @@ public:
     // Bottom-most first; at most EquirectViewportWindow::kMaxInsets show at
     // once (the topmost win).
     void setClips(std::vector<Clip> clips);
+    // Open these files afresh: the readers open on them, or the open that
+    // failed, were of a file since replaced (a broken copy repaired in place).
+    void reopen(const QStringList &paths);
 
     // What to draw at timeline time `ms`, over main-track clip
     // `mainClipId` (the one showing; 0 = none), and where the decoder should

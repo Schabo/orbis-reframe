@@ -34,6 +34,18 @@ class Project : public QObject {
     Q_OBJECT
 
 public:
+    // What recheckMissingMedia() found since the last look.
+    struct MediaRecheck {
+        QStringList gone; // went missing
+        QStringList back; // came back
+        // There both times but not the same file (its size or modification
+        // time changed): a broken copy repaired or copied over in place.
+        // Whatever was read from it before -- a decoder, a thumbnail, a
+        // failed measurement -- is stale.
+        QStringList replaced;
+        bool isEmpty() const { return gone.isEmpty() && back.isEmpty() && replaced.isEmpty(); }
+    };
+
     explicit Project(QObject *parent = nullptr);
 
     // The file format. kFormatVersion loads, and kOldestFormatVersion up to
@@ -201,9 +213,9 @@ public slots:
     // Look on the disk again for every file in the pool and on the timeline,
     // and set the pool's and the clips' missing flags from it: a drive
     // unplugged or plugged back in, a file moved away or back. Not an edit
-    // (nothing to undo, not modified). Returns the paths that changed: true
-    // = went missing, false = came back.
-    QHash<QString, bool> recheckMissingMedia();
+    // (nothing to undo, not modified). A file seen for the first time is
+    // only noted, not reported as replaced.
+    MediaRecheck recheckMissingMedia();
 
     // Replace the output settings. Marks the project modified and emits
     // outputChanged when the value actually changes.
@@ -299,6 +311,14 @@ private:
     // flag / don't recurse into the undo machinery.
     bool m_rebuilding = false;
     std::function<int(const QString &)> m_audioStreamCounter;
+    // Each media file's size and modification time at the last
+    // recheckMissingMedia(), for telling a file replaced in place. Not saved.
+    struct FileStamp {
+        qint64 size = 0;
+        qint64 modifiedMs = 0;
+        bool operator==(const FileStamp &) const = default;
+    };
+    QHash<QString, FileStamp> m_mediaStamps;
 
     static constexpr int kMaxUndoDepth = 100;
     // Coalescing window: rapid-fire edits (a slider drag, a spinbox held

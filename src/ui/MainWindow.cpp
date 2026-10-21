@@ -2749,25 +2749,31 @@ void MainWindow::locateMedia(const QString &path)
 
 void MainWindow::recheckMissingMedia()
 {
-    const QHash<QString, bool> changed = m_project->recheckMissingMedia();
-    if (changed.isEmpty())
+    const Project::MediaRecheck r = m_project->recheckMissingMedia();
+    if (r.isEmpty())
         return;
-    QStringList gone, back;
-    for (auto it = changed.cbegin(); it != changed.cend(); ++it)
-        (*it ? gone : back) << it.key();
+    const QStringList &gone = r.gone, &back = r.back;
     bool mainTrack = false;
-    for (int i = 0; i < m_timeline->count() && !mainTrack; ++i)
-        mainTrack = changed.contains(m_timeline->clipAt(i).sourcePath);
+    for (int i = 0; i < m_timeline->count() && !mainTrack; ++i) {
+        const QString &path = m_timeline->clipAt(i).sourcePath;
+        mainTrack = gone.contains(path) || back.contains(path) || r.replaced.contains(path);
+    }
 
     // A file that's back is opened afresh: the source cached for it may have
-    // lost its file (a drive unplugged). One that's gone keeps playing from
-    // what's open as long as it can.
-    m_controller->reopenSources(back);
+    // lost its file (a drive unplugged). So is one replaced in place: what
+    // was read from it -- a source, the black stand-in for a file that
+    // couldn't be read, a thumbnail, a failed measurement -- was of the old
+    // file. One that's gone keeps playing from what's open as long as it can.
+    const QStringList fresh = back + r.replaced;
+    m_controller->reopenSources(fresh);
+    m_mediaPanel->forgetFiles(fresh);
+    m_waveforms->forget(fresh);
+    m_measurements->forgetFailures(fresh);
     if (mainTrack)
         syncTimeline(); // the ⚠ marks; a clip that's back plays again
     onTracksChanged(); // the track rows, overlays and sound skip missing clips
     refreshClipPanels();
-    if (!back.isEmpty())
+    if (!fresh.isEmpty())
         m_measurements->schedule(); // sync / seam for a clip that had no file until now
 
     const auto names = [](QStringList paths) {
@@ -2781,7 +2787,10 @@ void MainWindow::recheckMissingMedia()
         notice << tr("File not found: %1").arg(names(gone));
     if (!back.isEmpty())
         notice << tr("Found again: %1").arg(names(back));
-    m_editToolbar->showNotice(notice.join(QStringLiteral(" · ")), false);
+    // A replaced file just plays: nothing to tell (and a file being copied
+    // over changes at every check).
+    if (!notice.isEmpty())
+        m_editToolbar->showNotice(notice.join(QStringLiteral(" · ")), false);
 }
 
 void MainWindow::updateMediaInUse()

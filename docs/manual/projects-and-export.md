@@ -126,6 +126,11 @@ are. Your original files are never changed.
   in again) and they're found again by themselves, the same way: the line
   says *Found again*, and the clips play again. Nothing in the project
   changes, so this is nothing to save or undo.
+- **A file that can't be read** (a broken or half-finished copy) plays
+  black. Copy the good file over it, under the same name, and it's picked
+  up the same way, within a couple of seconds: the clip plays again and its
+  Media card gets its picture and recording mode, without reopening the
+  project.
 - **To move a project with its clips**, put the clips inside the project's
   folder, for example in a `media` folder next to the `.orp` file. orbis-reframe
   then stores their places relative to the project, so you can move or copy
