@@ -266,9 +266,9 @@ private:
 const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
                                           PreviewStitchConfig::LensGuard guard);
 
-// The calibration of a dual-fisheye clip whose two lenses are streams 0 and
-// 1 of one file -- the layout this source decodes -- and `params` set up for
-// the lens guard. False with `err` set for any other clip. `*guardFound`
+// The calibration of a dual-fisheye clip (its two lenses in one file or one
+// each; the decoders open them from the lenses' sources) and `params` set up
+// for the lens guard. False with `err` set for any other clip. `*guardFound`
 // (if given) is false when the file has no usable profile for the guard and
 // the stitch takes the lens as bare.
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,

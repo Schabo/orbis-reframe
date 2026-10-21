@@ -23,16 +23,24 @@ void InsvDemux::close()
     m_swsSrcFullRange = -1;
 }
 
+namespace {
+bool CpuDecoderSetup(const AVStream*, const AVCodec*, AVCodecContext* ctx, std::string&)
+{
+    ctx->thread_count = 0; // let FFmpeg pick; frame+slice threading
+    return true;
+}
+} // namespace
+
 bool InsvDemux::open(const std::string& path, std::string& err)
 {
     close();
-    return m_demux.open(
-        path,
-        [](const AVStream*, const AVCodec*, AVCodecContext* ctx, std::string&) {
-            ctx->thread_count = 0; // let FFmpeg pick; frame+slice threading
-            return true;
-        },
-        err);
+    return m_demux.open(path, CpuDecoderSetup, err);
+}
+
+bool InsvDemux::open(const std::vector<LensSource>& lenses, std::string& err)
+{
+    close();
+    return m_demux.open(lenses, CpuDecoderSetup, err);
 }
 
 void InsvDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)

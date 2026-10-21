@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "LensSource.h"
 #include "Ycbcr.h"
 
 #include <cstdint>
@@ -10,9 +11,11 @@
 #include <vector>
 
 // The demux / decode core shared by InsvDemux (CPU decode, RGB Image out) and
-// VulkanVideoDecoder (Vulkan hwaccel, AVVkFrame out): an `.insv`'s format
-// context, one persistent decoder per fisheye video stream ("lens"), a FIFO of
-// decoded frames per lens, and the strictly-forward pump that fills them.
+// VulkanVideoDecoder (Vulkan hwaccel, AVVkFrame out): a format context per
+// file the lenses come from (one `.insv` holding both on the X5, a file per
+// lens on the ONE X2), one persistent decoder per fisheye video stream
+// ("lens"), a FIFO of decoded frames per lens, and the strictly-forward pump
+// that fills them. A lens's read pumps only its own file.
 // Seeking is frame-exact, and a target a little ahead of the last frame read,
 // with no keyframe in between, decodes on from there instead of seeking back
 // to the keyframe (frame steps, short forward scrubs).
@@ -64,9 +67,13 @@ public:
     LensDemuxer(const LensDemuxer&) = delete;
     LensDemuxer& operator=(const LensDemuxer&) = delete;
 
-    // Opens `path` and a decoder per video stream. False with `err` set on
-    // failure, or if there is no video stream.
+    // Opens `path` and a decoder per video stream, each a lens. False with
+    // `err` set on failure, or if there is no video stream.
     bool open(const std::string& path, const DecoderSetup& setup, std::string& err);
+    // Opens a decoder for each of `lenses`, in that order, and each file they
+    // name once. False with `err` set on failure (naming the file when it
+    // isn't lens 0's), or if `lenses` is empty.
+    bool open(const std::vector<LensSource>& lenses, const DecoderSetup& setup, std::string& err);
     void close();
 
     int lensCount() const { return static_cast<int>(m_dec.size()); }
@@ -92,22 +99,35 @@ public:
     AVFrame* peekFrame(int lens);
 
 private:
+    // One opened file.
+    struct Input {
+        std::string path;
+        AVFormatContext* fmt = nullptr;
+        bool drainStarted = false; // read to its end, flush packet sent to its decoders
+    };
+
     void clearFifos();
     void resetDecoders(); // flush + clear fifos, keep contexts
-    int streamToLens(int streamIndex) const;
-    void drainDecoder(int lens);     // pull ready frames into m_fifo[lens]
-    bool pumpOnce(std::string& err); // read one packet / advance draining
-    void dropStale(int lens);        // frames before the seek target
+    // The input for `path`, opened now if it isn't yet; -1 with `err` set.
+    int openInput(const std::string& path, std::string& err);
+    // A decoder for stream `streamIndex` of input `input`, as the next lens.
+    bool addLens(int input, int streamIndex, const DecoderSetup& setup, std::string& err);
+    bool finishOpen(std::string& err);
+    AVStream* lensStream(int lens) const;
+    int streamToLens(int input, int streamIndex) const;
+    void drainDecoder(int lens);                // pull ready frames into m_fifo[lens]
+    bool pumpOnce(int input, std::string& err); // read one packet of `input` / advance its draining
+    void dropStale(int lens);                   // frames before the seek target
     AVFrame* popFront(int lens);
 
-    AVFormatContext* m_fmt = nullptr;
+    std::vector<Input> m_inputs;
     AVPacket* m_pkt = nullptr;
-    std::vector<int> m_videoStreamIndex; // lens -> AVStream index
+    std::vector<int> m_lensInput;        // lens -> m_inputs index
+    std::vector<int> m_videoStreamIndex; // lens -> AVStream index in its input
     std::vector<InsvStreamInfo> m_lenses;
     std::vector<AVCodecContext*> m_dec;       // lens -> persistent decoder
     std::vector<std::deque<AVFrame*>> m_fifo; // lens -> decoded, not yet consumed
     std::vector<char> m_streamEof;            // lens -> decoder drained (vector<bool> avoided)
-    bool m_drainStarted = false;              // flush packet sent to the decoders
     double m_seekTargetSec = -1.0;            // drop frames earlier than this
     double m_lastReadSec = -1.0;              // pts of the last frame (pair) read; -1 after open / a seek
 };

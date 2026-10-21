@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // Random-access and sequential decode of an Insta360 `.insv` file's fisheye
 // video streams.
@@ -43,6 +44,8 @@ public:
     // Opens `path`, inventories its video streams, and spins up a persistent
     // decoder per lens. Returns false with `err` set on failure.
     bool open(const std::string& path, std::string& err);
+    // The same for lenses that may come from several files (LensDemuxer::open).
+    bool open(const std::vector<LensSource>& lenses, std::string& err);
 
     int lensCount() const { return m_demux.lensCount(); }
     const InsvStreamInfo& lens(int i) const { return m_demux.lens(i); }

@@ -82,6 +82,22 @@ bool CanDecode(const AVBufferRef* hwDevice, AVCodecID codec)
 
 bool VulkanVideoDecoder::open(const std::string& path, std::string& err)
 {
+    return open([this, &path](const LensDemuxer::DecoderSetup& setup,
+                              std::string& e) { return m_demux.open(path, setup, e); },
+                err);
+}
+
+bool VulkanVideoDecoder::open(const std::vector<LensSource>& lenses, std::string& err)
+{
+    return open([this, &lenses](const LensDemuxer::DecoderSetup& setup,
+                                std::string& e) { return m_demux.open(lenses, setup, e); },
+                err);
+}
+
+bool VulkanVideoDecoder::open(
+    const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
+    std::string& err)
+{
     close();
     m_hwDevice = core::sharedVulkanDevice();
     if (!m_hwDevice) {
@@ -89,8 +105,7 @@ bool VulkanVideoDecoder::open(const std::string& path, std::string& err)
         return false;
     }
     AVBufferRef* hw = m_hwDevice;
-    const bool ok = m_demux.open(
-        path,
+    const bool ok = openDemux(
         [hw](const AVStream* st, const AVCodec* dec, AVCodecContext* ctx, std::string& e) {
             if (!CanDecode(hw, st->codecpar->codec_id)) {
                 e = std::string("the GPU has no Vulkan video decode for ") + dec->name;

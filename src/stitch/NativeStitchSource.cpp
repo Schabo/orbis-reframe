@@ -70,10 +70,8 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard, insv::InsvCalibration& calib,
                             insv::StitchParams& params, std::string& err, bool* guardFound) {
-    if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2 ||
-        clip.lenses[0].source.path != clip.path || clip.lenses[0].source.stream != 0 ||
-        clip.lenses[1].source.path != clip.path || clip.lenses[1].source.stream != 1) {
-        err = "not a dual-fisheye clip with both lenses in one file";
+    if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2) {
+        err = "not a dual-fisheye clip";
         return false;
     }
     if (!clip.calibrated) {
@@ -153,7 +151,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     if (!std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<insv::VulkanVideoDecoder>();
         std::string derr;
-        if (vdec->open(clip_path, derr)) {
+        if (vdec->open(clip->lensSources(), derr)) {
             VkInstance inst = VK_NULL_HANDLE;
             VkPhysicalDevice phys = VK_NULL_HANDLE;
             VkDevice dev = VK_NULL_HANDLE;
@@ -191,7 +189,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
 
     // --- Stage 1 / fallback: CPU decode + (GPU or CPU) stitch ---
     auto demux = std::make_unique<insv::InsvDemux>();
-    if (!demux->open(clip_path, err)) {
+    if (!demux->open(clip->lensSources(), err)) {
         last_error_ = "demux open failed: " + err + ": " + clip_path;
         return false;
     }

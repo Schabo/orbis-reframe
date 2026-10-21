@@ -26,12 +26,14 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
     std::string err;
     insv::InsvCalibration calib;
     insv::StitchParams params;
-    if (const MeasureFailure why = PrepareClipMeasurement(clipPath, lensGuard, calib, params, err);
+    std::shared_ptr<const camera::ClipMetadata> clip;
+    if (const MeasureFailure why =
+            PrepareClipMeasurement(clipPath, lensGuard, calib, params, err, &clip);
         why != MeasureFailure::None)
         return fail(why, err);
 
     insv::InsvDemux demux;
-    if (!demux.open(clipPath, err))
+    if (!demux.open(clip->lensSources(), err))
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)
         return fail(MeasureFailure::Unsupported, "one lens stream in the file");

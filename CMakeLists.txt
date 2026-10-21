@@ -159,6 +159,7 @@ add_library(insv STATIC
     src/insv/Image.h
     src/insv/Calibration.h
     src/insv/Calibration.cpp
+    src/insv/LensSource.h
     src/insv/FisheyeProjection.h
     src/insv/FisheyeProjection.cpp
     src/insv/SeamAlignment.h
@@ -860,6 +861,13 @@ if(Qt6Test_FOUND)
     target_include_directories(theme_test PRIVATE src/ui)
     target_link_libraries(theme_test PRIVATE Qt6::Widgets)
     add_test(NAME theme_test COMMAND theme_test)
+endif()
+
+# insv::InsvDemux with a file per lens, on generated videos -- needs FFmpeg.
+if(TARGET insv_demux)
+    add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
+    target_link_libraries(lens_demuxer_test PRIVATE insv_demux test_media)
+    add_test(NAME lens_demuxer_test COMMAND lens_demuxer_test)
 endif()
 
 # insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.

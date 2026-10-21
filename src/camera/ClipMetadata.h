@@ -3,6 +3,7 @@
 #include <Calibration.h> // insv::LensCalibExt
 #include <Imu.h>         // insv::ImuTrack
 #include <InsvTrailer.h> // insv::LensProfile
+#include <LensSource.h>  // insv::LensSource
 
 #include <cstdint>
 #include <memory>
@@ -24,11 +25,9 @@ enum class Projection {
     DualFisheye, // two opposite fisheye lenses, stitched here
 };
 
-// Where a lens's picture comes from: a file and its n-th video stream.
-struct LensSource {
-    std::string path;
-    int stream = 0; // index among the file's video streams
-};
+// Where a lens's picture comes from: a file and its n-th video stream (the
+// decoders take the same type).
+using LensSource = insv::LensSource;
 
 struct Lens {
     LensSource source;
@@ -55,6 +54,14 @@ struct ClipMetadata {
 
     Projection projection = Projection::DualFisheye;
     std::vector<Lens> lenses; // front lens first
+    // Every lens's source, in lens order, as the decoders take them.
+    std::vector<LensSource> lensSources() const
+    {
+        std::vector<LensSource> s;
+        for (const Lens& l : lenses)
+            s.push_back(l.source);
+        return s;
+    }
     bool calibrated = false;  // every lens has its calibration from the file
 
     // Every lens stream's picture: decoded size, rate, length.

@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 // GPU-resident sequential decode of an .insv file's two fisheye HEVC streams
 // via FFmpeg's Vulkan hwaccel. Frames never leave VRAM: readNextPair() hands
@@ -70,6 +71,8 @@ public:
     // Creates the Vulkan hw device and per-lens decoders. Returns false with
     // `err` set if Vulkan video decode is unavailable (caller falls back).
     bool open(const std::string& path, std::string& err);
+    // The same for lenses that may come from several files (LensDemuxer::open).
+    bool open(const std::vector<LensSource>& lenses, std::string& err);
 
     int lensCount() const { return m_demux.lensCount(); }
     const VulkanVideoStreamInfo& lens(int i) const { return m_demux.lens(i); }
@@ -126,6 +129,10 @@ public:
 
 private:
     void close();
+    // Shared by both open()s: the device, then `openDemux` with the hwaccel
+    // decoder set-up.
+    bool open(const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
+              std::string& err);
 
     LensDemuxer m_demux;
     AVBufferRef* m_hwDevice = nullptr;

@@ -85,6 +85,9 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     auto drain = [&](AVFrame *in) {
         avcodec_send_frame(ctx, in);
         while (avcodec_receive_packet(ctx, pkt) == 0) {
+            // A frame long: without it the last frame gets no duration and
+            // falls outside the MP4's edit list, so it never decodes.
+            pkt->duration = 1;
             av_packet_rescale_ts(pkt, ctx->time_base, st->time_base);
             pkt->stream_index = st->index;
             av_interleaved_write_frame(fmt, pkt);
