@@ -1,3 +1,51 @@
+## v0.5.0 (2026-10-21)
+
+### Feat
+
+- **insv**: give a ONE X2 clip its preview picture
+- **core**: keep a ONE X2 clip's second file with it in the project
+- **insv**: read the Insta360 ONE X2's two-file 5.7K clips
+- **timeline**: click a keyframe diamond to go to it
+- **export**: 10-bit export as HEVC Main 10
+- **ui**: recognise HLG clips and ship an HLG to Rec.709 LUT
+- **insv**: read the X6's focal reference from the file and name its 6K mode
+- **stitch**: 10-bit 360 clips (HEVC Main 10)
+- **ui**: recognise log clips and ask for their LUT
+- **render**: 3D LUTs per clip in the Colour panel
+
+### Fix
+
+- **stab**: turn a ONE X2 clip's gyro the right way
+- **ui**: import a ONE X2 take once, from any of its files
+- **stitch**: give a failed seam / gyro-sync measurement's reason in words
+- **playback**: pick up a media file repaired in place
+- **ui**: give each clip its own reason when its measurement fails
+- **playback**: leave the path out of every demuxer error
+- **playback**: name the file and its clip in the playback error box
+- **render**: a transition layer jumps to the frame showing at its time
+- **playback**: show the next clip's frame on a step onto a cut
+- **timeline**: show a key on a clip's trim-out on its last frame
+- **ui**: copy a pasted grade's LUT into the project
+- **ui**: list missing files on hidden and muted tracks when a project opens
+- **timeline**: no keyframe diamond on a clip's trim-out point
+- **playback**: play a missing clip as black and go on past it
+- **ui**: name a 360 clip's mode on media cards from its camera's reader
+- **ui**: give Export an outgoing arrow instead of the download icon
+- **ui**: report a stop at a missing file without a stat per clip switch
+- **ui**: say which file and which clip a missing-media error belongs to
+- **stitch**: build the ycbcr conversion for the format the decoder produces
+- **stitch**: decode lens streams with their own colour matrix and range
+
+### Refactor
+
+- **insv**: decode a clip's lenses from one file or a file each
+- **timeline**: one helper for a key's place on the timeline
+- **insv**: common camera model -- clips read through one description
+
+### Perf
+
+- **export**: run the Vulkan encoder on the decoders' Vulkan device
+
 ## v0.4.0 (2026-10-18)
 
 ### Feat
