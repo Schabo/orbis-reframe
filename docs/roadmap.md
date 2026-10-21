@@ -172,11 +172,17 @@ Bigger, not researched far yet -- talk first.
 - **Video noise removal**, **AI quick edit** (a first cut made
   automatically, as an ordinary editable timeline).
 - **AMD and Intel**: best-effort today; testing on real cards is welcome.
-- **Windows build**: cross-compiled with MinGW-w64.
+- **Windows build**: cross-compiled with MinGW-w64, with the same bundled
+  FFmpeg as the AppImage.
 - **AppImage**: one portable build for every distribution, the libraries
   that differ between them bundled, the NVIDIA driver from the system. To
   research first: GPU decode and NVENC from the bundle on several
-  distributions, shipping our own FFmpeg (and its licence), size.
+  distributions, size. The bundled FFmpeg would be our own build: LGPL only (no
+  `--enable-gpl`: the export uses hardware encoders, not x264 / x265), never
+  `--enable-nonfree` (NVENC doesn't need it), shared libraries, and its
+  exact source and configure line published with each release. The
+  per-distribution packages stay, on the system's FFmpeg and its security
+  updates.
 
 ## Ruled out
 
