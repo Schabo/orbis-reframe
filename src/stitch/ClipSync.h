@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "ClipMeasure.h"   // stitch::MeasureFailure
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard
 
 // Per-clip video <-> IMU sync fine-tune: stitches a few short windows of the
@@ -19,6 +20,7 @@ struct ClipSyncResult {
     int cellsUsed = 0;
     double improvement = 0.0; // 1 - residual(best) / residual(0)
     std::string message;      // why it failed, or a one-line summary
+    MeasureFailure failure = MeasureFailure::None; // why not ok
 };
 
 // Measures over [trimInMs, trimOutMs] of `clipPath` (up to three ~4 s windows

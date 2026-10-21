@@ -1146,7 +1146,8 @@ void testSaveAs(const Ctx &c)
 }
 
 // Two sources whose seam measurement fails for different reasons: each
-// clip's status line gives its own reason, not the last failure's.
+// clip's status line gives its own reason, not the last failure's, in plain
+// words (the decoder's text is for the log).
 void testMeasurementFailureReasons(const Ctx &c)
 {
     std::printf("  measurement failure reasons\n");
@@ -1161,8 +1162,9 @@ void testMeasurementFailureReasons(const Ctx &c)
         return status(garbage).contains(QStringLiteral("couldn't align")) &&
                status(flat).contains(QStringLiteral("couldn't align"));
     }, 20000));
-    CHECK(status(flat).contains(QStringLiteral("not a recognised 360 camera file")));
-    CHECK(!status(garbage).contains(QStringLiteral("not a recognised 360 camera file")));
+    CHECK(status(flat) == QStringLiteral("Seam: couldn't align this clip (not a 360 camera file)."));
+    CHECK(status(garbage) ==
+          QStringLiteral("Seam: couldn't align this clip (the file can't be read)."));
 }
 
 // A grade pasted from elsewhere (another project's LUT) brings its LUT into

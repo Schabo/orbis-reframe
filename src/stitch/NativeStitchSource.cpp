@@ -122,7 +122,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     insv::StitchParams params;
     bool guardFound = true;
     if (!DualFisheyeStitchSetup(*clip, config.lensGuard, calib, params, err, &guardFound)) {
-        last_error_ = err;
+        last_error_ = err + ": " + clip_path;
         return false;
     }
     if (!guardFound)
@@ -142,7 +142,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
         seam_costs_ = std::make_unique<insv::SeamCosts>();
     auto stitcher = std::make_unique<insv::FisheyeStitcher>();
     if (!stitcher->configure(calib, info_.width, info_.height, params)) {
-        last_error_ = "FisheyeStitcher::configure failed";
+        last_error_ = "FisheyeStitcher::configure failed: " + clip_path;
         return false;
     }
     gpu_params_ = stitcher->gpuParams();

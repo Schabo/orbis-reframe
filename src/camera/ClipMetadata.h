@@ -96,11 +96,18 @@ struct ClipMetadata {
     double gpsTrackSec = 0.0; // seconds of track, gaps left out
 };
 
+// Why ReadClipMetadata gave no clip.
+enum class ReadFailure {
+    Unreadable, // missing, not a video, or a camera reader failed on it
+    NotCamera,  // a video, but no camera reader knows it
+};
+
 // The clip at `path`, read once and cached (until the file changes). Null
-// with `err` set when it can't be read or no camera reader knows it. Safe
-// from any thread.
+// with `err` (technical words) and `why` set when it can't be read or no
+// camera reader knows it. Safe from any thread.
 std::shared_ptr<const ClipMetadata> ReadClipMetadata(const std::string& path,
-                                                     std::string* err = nullptr);
+                                                     std::string* err = nullptr,
+                                                     ReadFailure* why = nullptr);
 
 // The clip's IMU, lined up with its video. Not cached: a long clip's track is
 // tens of MB. nullopt when the clip has none (or can't be read).

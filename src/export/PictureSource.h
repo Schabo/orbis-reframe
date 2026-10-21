@@ -25,7 +25,7 @@ public:
 
     virtual ~PictureSource() = default;
 
-    // False (with `err`) if it can't be read.
+    // False (with `err`, naming the file) if it can't be read.
     virtual bool open(std::string &err) = 0;
     // The source's frame rate (valid once open).
     virtual double fps() const = 0;

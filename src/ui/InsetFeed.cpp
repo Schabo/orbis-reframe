@@ -247,7 +247,9 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         s.openedPath = clip.pictureKey;
         std::string err;
         if (!s.picture || !s.picture->open(err)) {
-            std::fprintf(stderr, "[inset] %s: %s\n", qPrintable(clip.path), err.c_str());
+            if (!s.picture)
+                err = "no picture source: " + clip.path.toStdString();
+            std::fprintf(stderr, "[inset] %s\n", err.c_str()); // names the file
             s.picture.reset();
             std::lock_guard<std::mutex> lk(m_mx);
             s.failed = true;

@@ -42,7 +42,9 @@ bool stat(const std::string& path, std::filesystem::file_time_type& mtime, std::
 // The cached entry for `path`, read if it's missing or the file changed.
 // Reads run outside the lock; two threads may read the same new file once
 // each.
-Cached lookup(const std::string& path, std::string* err) {
+Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
+    if (why)
+        *why = ReadFailure::Unreadable;
     std::filesystem::file_time_type mtime;
     std::uintmax_t size = 0;
     if (!stat(path, mtime, size)) {
@@ -95,17 +97,20 @@ Cached lookup(const std::string& path, std::string* err) {
     }
     if (err)
         *err = "not a recognised 360 camera file";
+    if (why)
+        *why = ReadFailure::NotCamera;
     return {};
 }
 
 } // namespace
 
-std::shared_ptr<const ClipMetadata> ReadClipMetadata(const std::string& path, std::string* err) {
-    return lookup(path, err).clip;
+std::shared_ptr<const ClipMetadata> ReadClipMetadata(const std::string& path, std::string* err,
+                                                     ReadFailure* why) {
+    return lookup(path, err, why).clip;
 }
 
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
-    const Cached c = lookup(path, nullptr);
+    const Cached c = lookup(path, nullptr, nullptr);
     if (!c.clip || !c.clip->hasImu)
         return std::nullopt;
     return c.reader->readImu(*c.clip);

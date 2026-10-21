@@ -414,6 +414,8 @@ if(FFMPEG_FOUND)
         src/stitch/NativeStitchSource.cpp
         src/stitch/ProbeClip.h
         src/stitch/ProbeClip.cpp
+        src/stitch/ClipMeasure.h
+        src/stitch/ClipMeasure.cpp
         src/stitch/ClipSeam.h
         src/stitch/ClipSeam.cpp
     )

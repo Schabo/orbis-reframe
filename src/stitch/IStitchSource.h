@@ -151,7 +151,8 @@ public:
     virtual ~IStitchSource() = default;
 
     // Opens the clip for stitching with `config` (preview size, lens guard,
-    // depth seam). Returns false (with GetLastError() set) on failure.
+    // depth seam). Returns false on failure, with GetLastError() set and
+    // naming the file.
     virtual bool Open(const std::string& clip_path, const PreviewStitchConfig& config) = 0;
 
     // Valid only after a successful Open().

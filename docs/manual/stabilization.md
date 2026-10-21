@@ -138,7 +138,17 @@ playhead:
 |---|---|
 | *Gyro sync: measuring this clip…* | The measurement is running. Stabilization already works, with the camera's timing. |
 | *Gyro sync: fine-tuned for this clip (… ms).* | Done: the gyroscope is lined up with the picture. |
-| *Gyro sync: couldn't fine-tune this clip (…); using the camera's timing.* | The measurement didn't succeed; the brackets say why. Stabilization still works, but may leave a little more fast shake. |
+| *Gyro sync: couldn't fine-tune this clip (…); using the camera's timing.* | The measurement didn't succeed; the brackets say why (below). Stabilization still works, but may leave a little more fast shake. |
+
+The reasons a measurement gives:
+
+- *the file can't be read*, *not a 360 camera file*, *this kind of 360 clip
+  isn't supported*: as for the seam (see [Stitching](stitching.md)).
+- *the file has no usable gyroscope data*: the camera didn't record motion
+  data, or it can't be used.
+- *too little detail or movement in the picture*: the measurement lines the
+  picture's movement up with the gyroscope's, and found too little of either
+  (a plain or dark scene, or a very short or very still clip).
 
 The measurement pauses while the video plays, and continues when you pause.
 

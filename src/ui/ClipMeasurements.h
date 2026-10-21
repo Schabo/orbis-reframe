@@ -10,6 +10,9 @@
 class QThread;
 class Project;
 struct ClipItem;
+namespace stitch {
+enum class MeasureFailure;
+}
 
 // The per-source measurements run in the background: the gyro sync
 // fine-tune (stitch::MeasureClipSync, only with ORBIS_REFRAME_HAVE_CLIP_SYNC)
@@ -63,6 +66,9 @@ private:
     void maybeMeasureSeam(const QString &clipPath);
     // The first main-track clip cut from `clipPath`, if its file is there.
     const ClipItem *measurableClip(const QString &clipPath) const;
+    // Why a measurement failed, in plain words for the status lines; the
+    // technical text goes to the log. `seam`: the seam's, else the sync's.
+    static QString failureText(stitch::MeasureFailure why, bool seam);
 
     Project *m_project;
     bool m_enabled;
@@ -74,10 +80,10 @@ private:
     std::atomic<bool> m_syncCancel{false};
     // Sources that gave no result this session, with why, for the panel:
     // each its own, two clips can fail differently.
-    QHash<QString, QString> m_syncFailed;
+    QHash<QString, stitch::MeasureFailure> m_syncFailed;
 
     QThread *m_seamThread = nullptr;
     QString m_seamMeasuringPath;
     std::atomic<bool> m_seamCancel{false};
-    QHash<QString, QString> m_seamFailed; // as m_syncFailed
+    QHash<QString, stitch::MeasureFailure> m_seamFailed; // as m_syncFailed
 };

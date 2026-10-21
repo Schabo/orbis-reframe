@@ -102,7 +102,7 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
             if (r.ok)
                 m_project->timeline()->setSourceSyncAdjust(clipPath, r.adjustMs); // -> clipSyncChanged
             else if (!m_syncCancel)
-                m_syncFailed.insert(clipPath, QString::fromStdString(r.message));
+                m_syncFailed.insert(clipPath, r.failure);
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
@@ -131,7 +131,7 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
     m_seamMeasuringPath = clipPath;
     m_seamCancel = false;
     m_seamThread = QThread::create([this, path, in, out, clipPath, guard] {
-        const insv::SeamAlignmentResult r = stitch::MeasureClipSeam(path, in, out, guard, &m_seamCancel);
+        const stitch::ClipSeamResult r = stitch::MeasureClipSeam(path, in, out, guard, &m_seamCancel);
         QMetaObject::invokeMethod(this, [this, clipPath, r, guard] {
             m_seamThread->wait(); // its function has just returned
             m_seamThread->deleteLater();
@@ -146,13 +146,33 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
                     clipPath, {r.adjustDeg[0], r.adjustDeg[1], r.adjustDeg[2]},
                     static_cast<int>(guard)); // -> clipSeamChanged
             else if (!r.ok && !m_seamCancel)
-                m_seamFailed.insert(clipPath, QString::fromStdString(r.message));
+                m_seamFailed.insert(clipPath, r.failure);
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
     });
     m_seamThread->start(QThread::LowPriority);
     core::log::Info("[seam] %s: measuring\n", qPrintable(clipPath));
+}
+
+QString ClipMeasurements::failureText(stitch::MeasureFailure why, bool seam)
+{
+    switch (why) {
+    case stitch::MeasureFailure::NotCamera:
+        return tr("not a 360 camera file");
+    case stitch::MeasureFailure::Unsupported:
+        return tr("this kind of 360 clip isn't supported");
+    case stitch::MeasureFailure::NoGyro:
+        return tr("the file has no usable gyroscope data");
+    case stitch::MeasureFailure::TooLittleDetail:
+        return seam ? tr("too little detail along the seam")
+                    : tr("too little detail or movement in the picture");
+    case stitch::MeasureFailure::None:
+    case stitch::MeasureFailure::Cancelled: // not kept as a failure
+    case stitch::MeasureFailure::Unreadable:
+        break;
+    }
+    return tr("the file can't be read");
 }
 
 QString ClipMeasurements::seamStatus(const ClipItem *c) const
@@ -167,7 +187,7 @@ QString ClipMeasurements::seamStatus(const ClipItem *c) const
         return tr("Seam: measuring this clip…");
     if (const auto it = c ? m_seamFailed.constFind(c->sourcePath) : m_seamFailed.cend();
         it != m_seamFailed.cend())
-        return tr("Seam: couldn't align this clip (%1).").arg(*it);
+        return tr("Seam: couldn't align this clip (%1).").arg(failureText(*it, true));
     return QString();
 }
 
@@ -182,7 +202,7 @@ QString ClipMeasurements::syncStatus(const ClipItem *c) const
         return tr("Gyro sync: measuring this clip…");
     if (const auto it = m_syncFailed.constFind(c->sourcePath); it != m_syncFailed.cend())
         return tr("Gyro sync: couldn't fine-tune this clip (%1); using the camera's timing.")
-            .arg(*it);
+            .arg(failureText(*it, false));
 #ifndef ORBIS_REFRAME_HAVE_CLIP_SYNC
     return tr("Gyro sync: camera timing (fine-tune needs a build with OpenCV).");
 #else

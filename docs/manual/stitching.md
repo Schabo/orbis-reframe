@@ -79,7 +79,18 @@ The **Stitching** section shows the state for the clip under the playhead:
 |---|---|
 | *Seam: measuring this clip…* | The measurement is running. |
 | *Seam: aligned for this clip (back lens yaw …, pitch …, roll …).* | Done. The numbers are how far the back lens is turned to line up with the front one, in degrees; a fraction of a degree is normal. |
-| *Seam: couldn't align this clip (…).* | The measurement didn't succeed; the brackets say why. The clip is stitched with the camera's lens model only. |
+| *Seam: couldn't align this clip (…).* | The measurement didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only. |
+
+The reasons a measurement gives:
+
+- *the file can't be read*: the file is damaged or not a video. The
+  technical details are in the log.
+- *not a 360 camera file*: the file is a video, but not one from a 360
+  camera orbis-reframe knows.
+- *this kind of 360 clip isn't supported*: the camera's file, in a mode
+  orbis-reframe can't stitch.
+- *too little detail along the seam*: the picture where the two lenses meet
+  is too plain (sky, a wall, darkness) to line them up by.
 
 Changing **Lens guards** measures the clip's file again, because the
 alignment depends on the lens model.
