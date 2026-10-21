@@ -18,7 +18,8 @@
 // from the file: an .insv through the clip probe, a flat video and an audio
 // file through FFmpeg. Nothing, with *error set, when it can't be read as its
 // kind. `probeClip` reads an .insv (ClipBackend::probe); empty =
-// stitch::ProbeClip.
+// stitch::ProbeClip. The item's path is the clip's file: for another file of
+// a take (a ONE X2's `_10_` lens file or its proxy) the take's `_00_` file.
 using ClipProbeFn = std::function<bool(const std::string &, stitch::ClipProbe &, std::string &)>;
 std::optional<MediaItem> probeMedia(const QString &path, QString *error = nullptr,
                                     const ClipProbeFn &probeClip = {});

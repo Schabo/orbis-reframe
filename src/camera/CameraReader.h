@@ -31,6 +31,10 @@ public:
                         std::string& err) const = 0;
 
     virtual std::optional<insv::ImuTrack> readImu(const ClipMetadata& clip) const = 0;
+    // By its name alone: the clip file `path` would belong to if it is
+    // another file of a take (a lens's own file, the camera's proxy);
+    // nullopt for any other name. ClipFileOf checks the answer.
+    virtual std::optional<std::string> clipFileFor(const std::string& path) const = 0;
     // Straight from the file, without reading the rest (the media pool asks
     // for many at once); nullopt when it isn't this family's or has none.
     virtual std::optional<Thumbnail> readThumbnail(const std::string& path) const = 0;

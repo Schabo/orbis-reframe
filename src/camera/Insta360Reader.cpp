@@ -197,6 +197,31 @@ std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) 
     return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model.imuAxes);
 }
 
+std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) const {
+    // VID_<date>_<time>_<lens>_<n>.insv -> the clip's VID_…_00_…, and
+    // LRV_…_<token>_<n>.<ext> likewise, by each model's names. The lens token
+    // is the last `_xx_` (the date and time are longer runs).
+    const std::filesystem::path p(path);
+    const std::string name = p.filename().string();
+    const auto withLens00 = [&](const std::string& token, const char* prefix) {
+        std::string n = name;
+        n.replace(n.rfind(token), token.size(), "_00_");
+        n.replace(0, 3, prefix);
+        std::filesystem::path c = p.parent_path() / n;
+        c.replace_extension(".insv");
+        return c.string();
+    };
+    for (const insv::InsvModel& m : insv::InsvModels()) {
+        if (m.secondLensToken && name.rfind("VID_", 0) == 0 && name.ends_with(".insv") &&
+            name.rfind(m.secondLensToken) != std::string::npos)
+            return withLens00(m.secondLensToken, "VID");
+        if (m.proxyToken && name.rfind("LRV_", 0) == 0 && p.extension() == m.proxyExt &&
+            name.rfind(m.proxyToken) != std::string::npos)
+            return withLens00(m.proxyToken, "VID");
+    }
+    return std::nullopt;
+}
+
 std::optional<Thumbnail> Insta360Reader::readThumbnail(const std::string& path) const {
     auto thumb = insv::ReadInsvThumbnail(path);
     if (!thumb)

@@ -15,8 +15,13 @@ struct ClipProbe {
     int height = 0;
     double fps = 0.0;
     int64_t duration_ms = 0;
+    // The file that names the clip: the one probed, or for another file of a
+    // take (a lens's own file, the camera's proxy) the take's clip file
+    // (camera::ClipFileOf). Empty = the one probed.
+    std::string clip_path;
 };
 
+// Probes the clip `clip_path` is, or is part of.
 bool ProbeClip(const std::string& clip_path, ClipProbe& out, std::string& err);
 
 } // namespace stitch

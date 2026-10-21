@@ -321,14 +321,16 @@ Read (2026-10-21):
   the trailer) is the clip, and its lens 1 comes from the `_10_` file beside
   it, taken only when that is a one-stream video of the same size and rate,
   at most a frame shorter, without a trailer of its own. The clip's length is
-  the shorter file's. The proxy is found as `LRV_…_11_….insv`.
+  the shorter file's. The proxy is found as `LRV_…_11_….insv`. Any of the
+  three files names the clip (`camera::ClipFileOf`: the name says which
+  `_00_` file, which must claim it), so importing, dropping or adding the
+  `_10_` file or the LRV, or the whole folder, gives the clip once.
 - **The stitch from the 40-token `offset_v3`** (field 54; §7).
 - **Telemetry in ms**, turned into µs (§8).
 - **The matrix from the stream** (BT.601 here), as for every camera.
 
 Still needed:
-- **The pair as one clip everywhere else**: adding the take from its `_10_`
-  file or its LRV, the project file, missing media.
+- **The pair as one clip everywhere else**: the project file, missing media.
 - **Thumbnails** from the trailer's H.264 frames (types 2 and 5) instead of
   NV12.
 - The IMU axis map (the X5's turns the picture upside down) and the

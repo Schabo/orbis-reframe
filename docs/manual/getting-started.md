@@ -15,10 +15,11 @@ way on X6 clips: it reads the camera's motion the X5's way until an X6 clip
 confirms it. If something looks wrong on your X6 clips, please
 [open an issue](https://github.com/Schabo/orbis-reframe/issues).
 
-Support for the **Insta360 ONE X2** is being built. Its 5.7K clips are two
-files, one per lens: add the `VID_…_00_…` file and the clip opens, stitches
-and exports, with the `VID_…_10_…` file found beside it -- keep the two in
-the same folder. For now [stabilization](stabilization.md) turns a ONE X2
+Support for the **Insta360 ONE X2** is being built. Each 5.7K clip is three
+files: one per lens (`VID_…_00_…` and `VID_…_10_…`) and the camera's preview
+file (`LRV_…_11_…`). Add any of them, or the whole folder, and the clip comes
+in once; it opens, stitches and exports. Keep a clip's files together in one
+folder. For now [stabilization](stabilization.md) turns a ONE X2
 picture the wrong way.
 
 Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If

@@ -32,6 +32,10 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
         m.width = probe.width;
         m.height = probe.height;
         m.fps = probe.fps;
+        // Another file of a take (a ONE X2's second lens or proxy): the clip
+        // is the take's.
+        if (!probe.clip_path.empty())
+            m.path = QString::fromStdString(probe.clip_path);
         break;
     }
     case MediaItem::Kind::Video: {

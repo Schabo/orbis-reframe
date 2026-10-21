@@ -133,6 +133,42 @@ std::shared_ptr<const ClipMetadata> ReadClipMetadata(const std::string& path, st
     return lookup(path, err, why).clip;
 }
 
+std::string ClipFileOf(const std::string& path, std::string* err) {
+    for (const CameraReader* r : readers()) {
+        const std::optional<std::string> clipFile = r->clipFileFor(path);
+        if (!clipFile)
+            continue;
+        const std::string name = std::filesystem::path(*clipFile).filename().string();
+        std::error_code ec;
+        if (!std::filesystem::exists(*clipFile, ec)) {
+            if (err)
+                *err = "part of the clip " + name + ", which isn't in the same folder";
+            return {};
+        }
+        std::string e;
+        const auto clip = ReadClipMetadata(*clipFile, &e);
+        if (!clip) {
+            if (err)
+                *err = "part of the clip " + name + ", which can't be read (" + e + ")";
+            return {};
+        }
+        const auto same = [&](const std::string& other) {
+            std::error_code ec2;
+            return !other.empty() && std::filesystem::equivalent(other, path, ec2);
+        };
+        bool claimed = same(clip->proxyPath);
+        for (const Lens& l : clip->lenses)
+            claimed = claimed || same(l.source.path);
+        if (!claimed) {
+            if (err)
+                *err = "named as part of the clip " + name + ", which doesn't match it";
+            return {};
+        }
+        return *clipFile;
+    }
+    return path;
+}
+
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
     const Cached c = lookup(path, nullptr, nullptr);
     if (!c.clip || !c.clip->hasImu)

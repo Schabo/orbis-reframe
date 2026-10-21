@@ -2666,15 +2666,26 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
     if (index < 0 || index > m_timeline->count())
         index = m_timeline->count();
     QStringList failed;
-    for (const QString &path : paths) {
+    QSet<QString> added; // clips this drop added ...
+    QSet<QString> takes; // ... and those reached through another file of their take
+    for (const QString &file : paths) {
         // A 360 clip through the clip probe, a flat video through FFmpeg.
         QString why;
-        const std::optional<MediaItem> m = probeMedia(path, &why, m_clipBackend.probe);
+        const std::optional<MediaItem> m = probeMedia(file, &why, m_clipBackend.probe);
         if (!m || m->kind == MediaItem::Kind::Audio) {
-            failed << tr("%1: %2").arg(QFileInfo(path).fileName(),
+            failed << tr("%1: %2").arg(QFileInfo(file).fileName(),
                                         m ? tr("not a video") : why);
             continue;
         }
+        // Another file of a take is its clip; dropped together with the
+        // clip's own file or another of its files, the clip goes in once. (A
+        // file dropped twice still goes in twice.)
+        const QString path = m->path;
+        if (path != file ? added.contains(path) : takes.contains(path))
+            continue;
+        added << path;
+        if (path != file)
+            takes << path;
         const bool flat = m->kind == MediaItem::Kind::Video;
         const bool wasEmpty = m_timeline->count() == 0;
         m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width, m->height,

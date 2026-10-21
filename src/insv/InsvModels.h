@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include <span>
 #include <string>
 
 // What differs between Insta360 models and isn't in the file: measured or
@@ -61,6 +62,9 @@ struct InsvModel {
     const char* proxyToken;
     const char* proxyExt;
 };
+
+// Every row.
+std::span<const InsvModel> InsvModels();
 
 // The row for `model` (the trailer's model field). A model without its own
 // row gets the X5's, and `*known` (if given) is set false so the caller can

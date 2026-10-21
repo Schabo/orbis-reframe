@@ -172,7 +172,19 @@ ClipBackend standIns()
             err = "no such file";
             return false;
         }
-        out = {7680, 3840, kFps, kClipMs};
+        out = {7680, 3840, kFps, kClipMs, {}};
+        // A ONE X2 take's lens-1 file and proxy are its VID_…_00_… clip
+        // (camera::ClipFileOf does this by reading the clip).
+        QString clip = QString::fromStdString(path);
+        const QString name = QFileInfo(clip).fileName();
+        if (name.startsWith(QLatin1String("VID_")) && name.contains(QLatin1String("_10_")))
+            clip.replace(clip.lastIndexOf(QLatin1String("_10_")), 4, QStringLiteral("_00_"));
+        else if (name.startsWith(QLatin1String("LRV_")) && name.contains(QLatin1String("_11_"))) {
+            clip.replace(clip.lastIndexOf(QLatin1String("_11_")), 4, QStringLiteral("_00_"));
+            clip.replace(clip.lastIndexOf(QLatin1String("LRV_")), 4, QStringLiteral("VID_"));
+        }
+        if (clip != QString::fromStdString(path))
+            out.clip_path = clip.toStdString();
         return true;
     };
     b.audioStreamCount = [](const std::string &) { return 0; };
@@ -246,6 +258,31 @@ void answerFileDialog(const QString &path)
             name->setText(path);
         static_cast<QDialog *>(dialog)->accept(); // QFileDialog's own is protected
     });
+}
+
+// For `ms`: any modal dialog that comes up is a failure (its text printed)
+// and is closed, so it can't hang the test.
+void failOnDialog(int ms)
+{
+    auto *timer = new QTimer;
+    auto *elapsed = new QElapsedTimer;
+    elapsed->start();
+    timer->setInterval(20);
+    QObject::connect(timer, &QTimer::timeout, [timer, elapsed, ms] {
+        if (QWidget *modal = QApplication::activeModalWidget()) {
+            const auto *box = qobject_cast<QMessageBox *>(modal);
+            std::printf("FAIL  unexpected dialog: %s\n",
+                        box ? qPrintable(box->text()) : qPrintable(modal->windowTitle()));
+            ++g_failures;
+            modal->close();
+        }
+        if (elapsed->elapsed() < ms)
+            return;
+        timer->stop();
+        timer->deleteLater();
+        delete elapsed;
+    });
+    timer->start();
 }
 
 // Presses the message box's button whose text has `text` (mnemonics ignored).
@@ -696,6 +733,43 @@ void testMediaPool(const Ctx &c)
     if (QAction *undo = action(c, "undoAction"))
         undo->trigger();
     CHECK(c.timeline->trackCount() == tracks);
+}
+
+// A ONE X2 take is three files: lens 0 (the clip), lens 1, the proxy. A
+// folder of them imports as one clip, the take's; all three dropped on the
+// timeline add it once. No error for the other two.
+void testTakeFiles(const Ctx &c)
+{
+    auto *panel = find<MediaPoolPanel>(c.w, "mediaPoolPanel");
+    if (!panel)
+        return;
+    const QString dir = QDir(c.dir).filePath(QStringLiteral("x2card"));
+    QDir().mkpath(dir);
+    const QString lead = dir + QStringLiteral("/VID_20250816_103807_00_001.insv");
+    const QString second = dir + QStringLiteral("/VID_20250816_103807_10_001.insv");
+    const QString proxy = dir + QStringLiteral("/LRV_20250816_103807_11_001.insv");
+    for (const QString &f : {lead, second, proxy})
+        writeFile(f);
+    MediaPool *pool = c.project->mediaPool();
+    const int items = pool->count();
+    failOnDialog(1500);
+    emit panel->filesDropped({dir});
+    CHECK(waitFor([&] { return pool->contains(lead); }));
+    QTest::qWait(1500); // every probe in, and no dialog
+    CHECK(pool->count() == items + 1);
+    CHECK(!pool->contains(second) && !pool->contains(proxy));
+
+    const int clips = c.timeline->count();
+    failOnDialog(500);
+    emit c.timelineWidget->clipFilesDropped({second, lead, proxy}, clips);
+    QTest::qWait(500);
+    CHECK(c.timeline->count() == clips + 1);
+    if (c.timeline->count() == clips + 1)
+        CHECK(c.timeline->clipAt(clips).sourcePath == lead);
+    if (QAction *undo = action(c, "undoAction"))
+        undo->trigger();
+    CHECK(c.timeline->count() == clips);
+    pool->remove({lead});
 }
 
 // Add audio track, an audio file dropped on it, a split and a delete by key
@@ -1422,6 +1496,7 @@ int main(int argc, char **argv)
             testStitching(c);
             testDuplicateClip(c);
             testMediaPool(c);
+    testTakeFiles(c);
             testAudioTrack(c);
             testOverlay(c);
             testOverlayLayers(c);

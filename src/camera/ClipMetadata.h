@@ -116,6 +116,14 @@ std::shared_ptr<const ClipMetadata> ReadClipMetadata(const std::string& path,
                                                      std::string* err = nullptr,
                                                      ReadFailure* why = nullptr);
 
+// The file that names the clip `path` belongs to: for another file of a
+// take -- a lens's own file or the camera's proxy (the ONE X2's
+// `VID_…_10_…` and `LRV_…_11_….insv`) -- the take's clip file, once that
+// file is read and claims `path`; for any other file `path` itself. Empty,
+// with `err` set, when `path` is named as such a file but its clip file
+// isn't there or doesn't claim it. Safe from any thread.
+std::string ClipFileOf(const std::string& path, std::string* err = nullptr);
+
 // The clip's IMU, lined up with its video. Not cached: a long clip's track is
 // tens of MB. nullopt when the clip has none (or can't be read).
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path);

@@ -24,6 +24,8 @@ const InsvModel kModels[] = {
 
 } // namespace
 
+std::span<const InsvModel> InsvModels() { return kModels; }
+
 const char* InsvModel::captureMode(int lensWidth) const {
     for (const CaptureMode& m : captureModes)
         if (m.name && m.lensWidth == lensWidth)

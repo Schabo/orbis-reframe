@@ -1,7 +1,8 @@
 // camera::ReadClipMetadata on a ONE X2-style take: a lens per file, written
 // here as small videos named as the camera names them, the lens-0 file
 // carrying a synthetic trailer. The second lens's file is found beside it and
-// checked; the clip's metadata follows a change to either file. Exit code is
+// checked; the clip's metadata follows a change to either file; every file of
+// the take names the clip. Exit code is
 // the failure count.
 
 #include "ClipMetadata.h"
@@ -154,6 +155,24 @@ void testSecondLensChecked(const Take& t)
     CHECK(camera::ReadClipMetadata(t.lead));
 }
 
+void testClipFileOf(const Take& t)
+{
+    std::printf("  any file of the take names its clip\n");
+    std::string err;
+    CHECK(camera::ClipFileOf(t.lead) == t.lead);
+    CHECK(camera::ClipFileOf(t.second, &err) == t.lead);
+    CHECK(camera::ClipFileOf(t.proxy, &err) == t.lead);
+    // Without its clip file: a reason, not a clip.
+    std::filesystem::rename(t.lead, t.lead + ".away");
+    CHECK(camera::ClipFileOf(t.second, &err).empty());
+    CHECK(err == "part of the clip VID_20250816_103807_00_001.insv, which isn't in the same "
+                 "folder");
+    std::filesystem::rename(t.lead + ".away", t.lead);
+    // Any other name is its own clip, read or not.
+    const std::string other = (std::filesystem::path(t.lead).parent_path() / "clip.insv").string();
+    CHECK(camera::ClipFileOf(other) == other);
+}
+
 } // namespace
 
 int main()
@@ -164,6 +183,7 @@ int main()
     const Take t = writeTake(dir);
     testPair(t);
     testSecondLensChecked(t);
+    testClipFileOf(t);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);
