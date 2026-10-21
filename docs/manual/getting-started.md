@@ -3,9 +3,9 @@
 This page covers what your computer needs, which packages to install, and how
 to start orbis-reframe and open your first clip.
 
-orbis-reframe is a video editor for **Insta360 X5** 360° footage. It opens the
-camera's `.insv` files directly. You don't need Insta360 Studio or any other
-Insta360 software.
+orbis-reframe is a video editor for 360° camera footage. It opens Insta360
+`.insv` files directly, and the **Insta360 X5** is the camera it's built and
+tested on. You don't need Insta360 Studio or any other Insta360 software.
 
 The **Insta360 X6** is supported experimentally: its clips open, stitch and
 export, including the 10-bit I-Log and Dolby Vision modes (with a LUT, see

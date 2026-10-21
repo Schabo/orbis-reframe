@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
         if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             std::printf("Usage: orbis-reframe [clip.insv | project.orp]\n"
                         "\n"
-                        "Video editor for Insta360 X5 360-degree footage.\n"
+                        "Video editor for 360-degree camera footage.\n"
                         "\n"
                         "  --version   print the version and exit\n"
                         "  -h, --help  print this help and exit\n");

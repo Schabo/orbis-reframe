@@ -24,8 +24,8 @@ person, so the best way to start is an issue:
 
 You need Debian Testing (or the same library versions), a GPU with Vulkan
 (NVIDIA is what the maintainer tests on; AMD and Intel on Mesa work
-best-effort), and some Insta360 X5 `.insv` clips to try things on. The clips
-aren't in the repository.
+best-effort), and some 360° clips to try things on (Insta360 X5 `.insv`
+clips are the best supported). The clips aren't in the repository.
 
 - [`docs/dev-environment.md`](docs/dev-environment.md) lists the packages,
   first-time setup, and the environment switches for diagnosing problems.

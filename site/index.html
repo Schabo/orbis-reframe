@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>orbis-reframe</title>
-<meta name="description" content="A native Linux video editor for Insta360 X5 360° footage: stitching, gyro stabilization and reframing.">
+<meta name="description" content="A native Linux video editor for 360° camera footage: stitching, gyro stabilization and reframing.">
 <style>
   :root {
     --bg: #f6f5f2;
@@ -134,17 +134,18 @@
 
 <header class="hero">
   <div class="wrap">
-    <span class="eyebrow">Linux · Insta360 X5 · 360° video</span>
+    <span class="eyebrow">Linux · 360° video · Insta360 X5, X6, ONE X2</span>
     <h1>orbis-reframe</h1>
     <ul class="actions">
       <li><a class="primary" href="https://github.com/Schabo/orbis-reframe/releases/latest">Download</a></li>
       <li><a href="https://github.com/Schabo/orbis-reframe/blob/main/docs/manual/README.md">User manual</a></li>
       <li><a href="https://github.com/Schabo/orbis-reframe">Source code</a></li>
     </ul>
-    <p class="lede">A native Linux video editor for <strong>Insta360 X5</strong> 360° footage:
+    <p class="lede">A native Linux video editor for <strong>360° camera footage</strong>:
       stitching, gyro stabilization and, above all, <strong>reframing</strong>. You steer a
       virtual camera through the sphere over time and get a normal flat video out of a
-      360° recording.</p>
+      360° recording. It opens Insta360 <code>.insv</code> clips directly: the X5 fully, the X6
+      and ONE X2 experimentally.</p>
     <ul class="tags">
       <li>Qt 6</li><li>Vulkan</li><li>FFmpeg + hardware encode</li><li>Wayland</li><li>No closed-source dependencies</li>
     </ul>
@@ -189,9 +190,9 @@
     <div class="wrap">
       <h2>Why</h2>
       <p>Insta360's own editor, <strong>Insta360 Studio</strong>, runs on Windows and macOS only.
-        Linux has no way to edit X5 footage properly:</p>
+        Linux has no way to edit 360° camera footage properly:</p>
       <ul>
-        <li>The X5 records <strong>dual-fisheye <code>.insv</code> files</strong>. They need
+        <li>Cameras like the X5 record <strong>dual-fisheye <code>.insv</code> files</strong>. They need
           lens-calibrated stitching into a sphere before you can do anything with them. General
           players and editors can't read the calibration or the telemetry.</li>
         <li>The camera's <strong>gyro/accelerometer data</strong> sits in a proprietary trailer at the

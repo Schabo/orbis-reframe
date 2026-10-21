@@ -16,7 +16,7 @@
 
 set(CPACK_PACKAGE_NAME orbis-reframe)
 set(CPACK_PACKAGE_VENDOR orbis-reframe)
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Video editor for Insta360 X5 360-degree footage")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Video editor for 360-degree camera footage")
 set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
 # The .deb's Maintainer field.
 set(CPACK_PACKAGE_CONTACT "Markku Kokko <orbis-reframe@techmonkeys.se>")
@@ -71,8 +71,8 @@ set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT) # orbis-reframe_<deb version>_amd64.deb
 set(CPACK_DEBIAN_PACKAGE_SECTION video)
 set(CPACK_DEBIAN_PACKAGE_PRIORITY optional)
 set(CPACK_DEBIAN_PACKAGE_DESCRIPTION
-"Video editor for Insta360 X5 360-degree footage
- Opens the camera's .insv files directly: stitching, stabilization, reframing
+"Video editor for 360-degree camera footage
+ Opens Insta360 .insv files directly (X5; X6 and ONE X2 experimental): stitching, stabilization, reframing
  to a flat video, subject tracking, privacy blur, audio clean-up and export.
  Needs a Wayland desktop and an NVIDIA graphics card (Vulkan, NVENC).")
 # Linked libraries come from dpkg-shlibdeps (it follows the RUNPATH into the

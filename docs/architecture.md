@@ -140,8 +140,9 @@ project expect to see it? Then it's in the project.
 
 ## Cameras
 
-Today the code reads Insta360 `.insv` files from the X5. Everything known
-about a format is in its document in [`formats/`](formats/README.md).
+Today the code reads Insta360 `.insv` files: the X5, and experimentally the
+X6 and the ONE X2. Everything known about a format is in its document in
+[`formats/`](formats/README.md).
 
 The app reads clips only through one description, `camera::ClipMetadata`
 (`src/camera/`), from the cached `camera::ReadClipMetadata(path)`, with the

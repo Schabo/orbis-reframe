@@ -1,9 +1,10 @@
 # orbis-reframe
 
-A native Linux video editor for **Insta360 X5** 360° footage: stitching,
+A native Linux video editor for **360° camera footage**: stitching,
 gyro stabilization and, above all, **reframing**. Reframing means steering a
 virtual camera through the sphere over time to get a normal flat video out of a
-360° recording.
+360° recording. It opens Insta360 `.insv` clips directly: the **X5** is
+fully supported, the **X6** and **ONE X2** experimentally.
 
 [![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Overlay tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
 
@@ -47,9 +48,9 @@ cameras is planned, and needs real footage to build on:
 ## Why
 
 Insta360's own editor, **Insta360 Studio**, runs on Windows and macOS only.
-Linux has no way to edit X5 footage properly:
+Linux has no way to edit 360° camera footage properly:
 
-- The X5 records **dual-fisheye `.insv` files**. They need lens-calibrated
+- Cameras like the X5 record **dual-fisheye `.insv` files**. They need lens-calibrated
   stitching into a sphere before you can do anything with them. General
   players and editors can't read the calibration or the telemetry.
 - The camera's **gyro/accelerometer data** sits in a proprietary trailer at

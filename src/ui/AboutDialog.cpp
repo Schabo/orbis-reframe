@@ -107,7 +107,7 @@ void showAboutDialog(QWidget *parent, EquirectViewportWindow *viewport)
     about->setOpenExternalLinks(true);
     about->setText(QObject::tr(
         "<h3>orbis-reframe %1</h3>"
-        "<p>Video editor for Insta360 X5 360&deg; footage: stitching, gyro stabilization "
+        "<p>Video editor for 360&deg; camera footage: stitching, gyro stabilization "
         "and reframing.</p>"
         "<p>Copyright &copy; 2026 Markku Kokko<br>"
         "Licensed under the GNU General Public License v3.0 or later. The .insv library "

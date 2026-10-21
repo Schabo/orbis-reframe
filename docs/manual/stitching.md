@@ -1,6 +1,6 @@
 # Stitching
 
-The X5 films with two fisheye lenses, back to back. Each one sees a little
+A 360° camera such as the X5 films with two fisheye lenses, back to back. Each one sees a little
 more than half of the world. Stitching joins the two pictures into one
 360° sphere. orbis-reframe does this itself, frame by frame, while it plays
 and exports: there is no separate stitching step, and you don't need
