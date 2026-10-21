@@ -116,7 +116,8 @@ project; what preview costs.
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
 - **Seam quality**: a flow-guided blend inside the seam band, possibly
-  export-only.
+  export-only, and a finer lens calibration for the small offset left on
+  distant content.
 - **`src/insv/` as its own repository**, once its API settles.
 
 ## Planned, not scheduled
@@ -152,7 +153,26 @@ project; what preview costs.
   royalty-free catalogue and downloads tracks as ordinary local files -- the
   one allowed network feature.
 - **Batch export** / render queue.
-- **`.insp` photos**.
+- **360 photos**: `.insp` photos as stills on the timeline, reframed with
+  keyframes like a clip, and exported as a flat photo; later DNG and HDR
+  brackets.
+- **Speed ramps**: speed keyframed inside a clip instead of one speed per
+  clip. Every conversion between timeline and source time follows the
+  curve: playback, export, keyframes, overlays, privacy regions,
+  stabilization.
+- **Lens colour matching**: evening out the two lenses' exposure and white
+  balance across the seam. A correction between the lenses in the stitch,
+  not a grade; it changes stitched output, so it comes with a measurement.
+- **Direction lock**: a stabilization mode that keeps the view pointed at
+  one direction in the world whatever way the camera turns.
+- **ProRes export** (maybe DNxHR) for handing off to other editors, beside
+  H.264 / H.265.
+- **GPS and stats overlays**: speed, altitude, distance, heading, the route,
+  lean / G-force gauges, drawn from the clip's own telemetry; no map tiles
+  (local-only).
+- **Shooting modes**: the camera's special modes recognised and processed
+  as such -- timelapse, TimeShift / hyperlapse, bullet time. Sample clips
+  wanted.
 - **Arch Linux package**: a pacman package on the release, built from a
   PKGBUILD in the repository (no AUR).
 - **GUI tests**: `objectName`s on the remaining actions and widgets, and the
