@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -412,6 +413,7 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
                 ParseLensProfiles(payload, result.lens_profiles);
                 WalkProtobuf(payload, [&](uint32_t f, int wt, uint64_t,
                                           const std::vector<uint8_t>& b) {
+                    if (f == 54 && wt == 2) result.offset_v3.assign(b.begin(), b.end());
                     if (f != 27 || wt != 2) return;
                     WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv,
                                         const std::vector<uint8_t>&) {
@@ -431,7 +433,7 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
 }
 
 std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
-                                               std::size_t max_imu_samples) {
+                                               std::size_t max_imu_samples, double tick_us) {
     std::ifstream file(file_path, std::ios::binary);
     if (!file) return std::nullopt;
     file.seekg(0, std::ios::end);
@@ -461,6 +463,16 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
     if (!ok) return std::nullopt;
     ParseImu(imuPayload, meta, max_imu_samples, out.imu);
     out.first_frame_timestamp = meta.first_frame_timestamp;
+    if (tick_us != 1.0) {
+        const auto us = [tick_us](uint64_t t) {
+            return static_cast<uint64_t>(std::llround(static_cast<double>(t) * tick_us));
+        };
+        for (ImuSample& s : out.imu)
+            s.timestamp = us(s.timestamp);
+        for (ExposureSample& e : out.exposure)
+            e.timestamp = us(e.timestamp);
+        out.first_frame_timestamp = us(out.first_frame_timestamp);
+    }
     out.gyro_timestamp_ms = meta.gyro_timestamp_ms;
     out.rolling_shutter_ms = meta.rolling_shutter_ms;
     out.gamma_mode = meta.gamma_mode;

@@ -870,6 +870,13 @@ if(TARGET insv_demux)
     add_test(NAME lens_demuxer_test COMMAND lens_demuxer_test)
 endif()
 
+# camera::ReadClipMetadata on generated videos with synthetic trailers.
+if(TARGET camera AND TARGET test_media)
+    add_executable(camera_test tests/camera_test.cpp)
+    target_link_libraries(camera_test PRIVATE camera test_media)
+    add_test(NAME camera_test COMMAND camera_test)
+endif()
+
 # insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.
 if(TARGET insv_demux)
     add_executable(audio_mix_test tests/audio_mix_test.cpp)

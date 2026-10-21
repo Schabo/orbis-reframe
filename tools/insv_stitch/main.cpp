@@ -49,6 +49,7 @@ bool writePpm(const std::string& path, const insv::Image& im)
 const char kUsage[] =
     "usage: insv_stitch <clip.insv> [--time-ms N] [--eq-width N] [--out eq.ppm]\n"
     "       [--lens-profile NAME]  (e.g. ProtectorA; default bare)\n"
+    "       [--lens1 FILE]  (lens 1's own file, e.g. a ONE X2's VID_..._10_...)\n"
     "       [--lens1-adjust Y,P,R] [--measure-seam IN_MS OUT_MS]\n"
     "       [--depth-seam] [--baseline M] [--depth-dump]\n"
     "         (depth-aware seam: measure the per-azimuth stitch distance\n"
@@ -73,6 +74,7 @@ int main(int argc, char** argv)
     int eqWidth = 2048;
     std::string outPath = "insv_stitch.ppm";
     std::string lensProfile;
+    std::string lens1File; // empty: both lenses are streams of `clip`
     double adj[3] = {0, 0, 0};
     int64_t seamIn = -1, seamOut = -1;
     bool depthSeam = false, depthDump = false;
@@ -92,6 +94,8 @@ int main(int argc, char** argv)
             outPath = next();
         else if (k == "--lens-profile")
             lensProfile = next();
+        else if (k == "--lens1")
+            lens1File = next();
         else if (k == "--measure-seam") { // IN_MS OUT_MS: fit lens1AdjustDeg, then exit
             seamIn = std::atoll(next().c_str());
             seamOut = std::atoll(next().c_str());
@@ -121,8 +125,10 @@ int main(int argc, char** argv)
     // Extended MEI calibration (Insta360 Studio's model).
     insv::InsvCalibration calib;
     const auto ext = insv::ReadInsvExtendedCalibrationString(clip);
-    if (!ext || !insv::ParseExtendedCalibrationString(*ext, calib))
-        die("no extended (MEI) lens calibration in the trailer");
+    // The 56-token string, else the 40-token offset_v3 (the ONE X2's).
+    if (!(ext && insv::ParseExtendedCalibrationString(*ext, calib)) &&
+        !insv::ParseCalibrationV3String(rawCalib->offset_v3, calib))
+        die("no MEI lens calibration in the trailer");
     // fx / fy are in field 27's sensor window; the model's when it's absent.
     const double focalRefW = rawCalib->crop_dst_w > 0 ? rawCalib->crop_dst_w
                                                       : insv::FindInsvModel(rawCalib->model).focalRefW;
@@ -141,7 +147,8 @@ int main(int argc, char** argv)
 
     insv::InsvDemux demux;
     std::string err;
-    if (!demux.open(clip, err))
+    if (!(lens1File.empty() ? demux.open(clip, err)
+                            : demux.open({{clip, 0}, {lens1File, 0}}, err)))
         die(err);
     if (demux.lensCount() < 2)
         die("expected >= 2 video streams, found " + std::to_string(demux.lensCount()));
@@ -174,7 +181,9 @@ int main(int argc, char** argv)
 
     insv::FisheyeStitcher stitcher;
     insv::StitchParams params;
-    if (!insv::ApplyLensProfile(params, bareProfile, accProfile) || profileMissing)
+    // False without a bare profile too (the ONE X2 has no profile table): a
+    // failure only when a guard was asked for.
+    if ((!insv::ApplyLensProfile(params, bareProfile, accProfile) && accProfile) || profileMissing)
         die("no \"" + lensProfile + "\" lens profile in the trailer");
     for (int k = 0; k < 3; ++k)
         params.lens1AdjustDeg[k] = adj[k];

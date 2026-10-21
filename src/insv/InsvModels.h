@@ -46,6 +46,20 @@ struct InsvModel {
 
     // The capture mode named for a lens picture `lensWidth` wide, or "".
     const char* captureMode(int lensWidth) const;
+
+    // The trailer's telemetry clock tick (IMU, exposure and field 24
+    // timestamps), in microseconds: 1 on the X5 / X6, 1000 on the ONE X2,
+    // whose stamps are milliseconds (docs/formats/insta360-one-x2.md §8).
+    double telemetryTickUs;
+
+    // File names on the card, taken from the clip's own (`VID_…_00_…`, the
+    // file with the trailer): the token that names the second lens's file in
+    // place of `_00_` when the clip's file holds one lens only (null: the
+    // model always writes both lenses into one file), and the proxy's token
+    // and extension (`LRV_…_01_….lrv` on the X5).
+    const char* secondLensToken;
+    const char* proxyToken;
+    const char* proxyExt;
 };
 
 // The row for `model` (the trailer's model field). A model without its own

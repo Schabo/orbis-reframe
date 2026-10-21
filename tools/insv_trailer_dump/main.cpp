@@ -11,6 +11,7 @@
 //   exiftool "Angular Velocity" == columns 6..8    which %g reproduces exactly)
 //   exiftool "Exposure Time"    == column 3 of --exposure
 
+#include <InsvModels.h>
 #include <InsvTrailer.h>
 
 #include <cstdio>
@@ -90,13 +91,17 @@ int main(int argc, char** argv) {
               << "Model:      " << calib->model << "\n"
               << "Firmware:   " << calib->firmware << "\n"
               << "Parameters: " << calib->parameters << "\n";
+    if (!calib->offset_v3.empty())
+        std::cout << "offset_v3:  " << calib->offset_v3 << "\n";
     for (const auto& lp : calib->lens_profiles) {
         std::cout << "Lens profile: " << lp.name << " fov=" << lp.fov_deg << " poly=";
         for (double c : lp.poly) std::cout << " " << c;
         std::cout << "\n";
     }
 
-    const auto tel = insv::ReadInsvTelemetry(path);
+    // At the model's clock tick (ms on the ONE X2), so the rate is in Hz.
+    const auto tel =
+        insv::ReadInsvTelemetry(path, 0, insv::FindInsvModel(calib->model).telemetryTickUs);
     if (tel) PrintSummary(*tel);
     return 0;
 }

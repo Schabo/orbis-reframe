@@ -37,6 +37,11 @@ struct InsvMakerNotes {
     // MEI calibration's fx/fy are given in (5312 on the X5, 7680 on the X6;
     // docs/formats/insta360-x5.md §5.1). 0 when absent.
     double crop_dst_w = 0;
+    // Field 54 `offset_v3`: the 40-token MEI calibration
+    // (ParseCalibrationV3String), what models without the 56-token string
+    // carry (the ONE X2, docs/formats/insta360-one-x2.md §7). Empty when
+    // absent.
+    std::string offset_v3;
 };
 
 // The profile named `name` in `notes`, or nullptr.
@@ -150,8 +155,13 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 // clip's 0x300 record is tens to a couple hundred MB of doubles; the cap is an
 // escape hatch for callers that only need a coarse orientation track. Exposure
 // records are always read in full (one per frame — small).
+//
+// `tick_us` is the model's telemetry clock tick in microseconds
+// (InsvModel::telemetryTickUs): the IMU, exposure and field-24 timestamps are
+// handed out in microseconds, the unit ImuSample promises.
 std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
-                                               std::size_t max_imu_samples = 0);
+                                               std::size_t max_imu_samples = 0,
+                                               double tick_us = 1.0);
 
 // Returns the raw bytes of the trailer itself -- everything from the end of
 // the file's `moov` box to EOF (confirmed empirically: in a real X5 file

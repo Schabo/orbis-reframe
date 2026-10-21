@@ -61,9 +61,12 @@ through the pipeline.
   export, plate scan, thumbnails, the Media information panel and the media
   pool's mode names read clips only through it; `GyroStabilizer` no longer
   knows the `.insv` timing.
-- Next: (2) the ONE X2 as the first real second camera -- two files per take,
-  one per lens, so the picture sources open each lens from its own
-  `LensSource` instead of assuming streams 0 and 1 of one file; (3) DJI and
+- In progress: (2) the ONE X2 as the first real second camera -- two files
+  per take, one per lens. Built: the picture sources open each lens from its
+  own `LensSource`, and the Insta360 reader pairs the take's files, reads the
+  40-token calibration and the ONE X2's ms telemetry. Next: the take as one
+  clip in the project and the media pool, its media card picture, and the
+  IMU axis map measured on a clip. Then (3) DJI and
   GoPro readers only once real clips are available: an in-camera cubemap
   (`Projection`) behind its own `IStitchSource`, an orientation track for
   cameras that record one, readout time per mode.

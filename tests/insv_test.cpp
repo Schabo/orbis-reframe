@@ -10,9 +10,11 @@
 #include "Calibration.h"
 #include "FisheyeProjection.h"
 #include "Image.h"
+#include "InsvModels.h"
 #include "InsvTrailer.h"
 #include "SeamDepth.h"
 #include "Ycbcr.h"
+#include "support/TestTrailer.h"
 
 #include <array>
 #include <cmath>
@@ -38,6 +40,10 @@ int g_failures = 0;
             ++g_failures;                                                                          \
         }                                                                                          \
     } while (0)
+
+using testtrailer::Bytes;
+using testtrailer::TrailerRecord;
+using testtrailer::insvTrailer;
 
 constexpr double kPi = std::numbers::pi;
 constexpr double kDeg = kPi / 180.0;
@@ -99,6 +105,51 @@ void testExtendedCalibration()
     CHECK(!insv::ParseExtendedCalibrationString("", c3));
     CHECK(!insv::ParseExtendedCalibrationString("2_2.0_junk", c3));
     CHECK(c3.lensesExt.empty());
+}
+
+// The ONE X2's 40-token offset_v3 (metadata field 54) from the sample clip
+// VID_20250816_103807_00_001 (docs/formats/insta360-one-x2.md §7).
+const char* kOneX2V3 =
+    "2_1.728590_2322.610_2322.410_1528.430_1521.450_0.799_-0.157_178.977_"
+    "0.000000_0.000000_0.000000_0.22791584_-0.14894706_-0.96843737_"
+    "-0.00185287_0.00115803_6080_3040_41_"
+    "1.728590_2318.480_2318.720_4554.650_1542.810_-0.848_-0.368_1.421_"
+    "0.000174_-0.001947_-0.021072_0.24361213_-0.22786462_-0.84430271_"
+    "0.00129106_-0.00041729_6080_3040_41_199680";
+
+void testCalibrationV3()
+{
+    std::printf("  offset_v3 calibration\n");
+    insv::InsvCalibration c;
+    CHECK(insv::ParseCalibrationV3String(kOneX2V3, c));
+    CHECK(c.lensesExt.size() == 2);
+    if (c.lensesExt.size() != 2)
+        return;
+    const auto& e0 = c.lensesExt[0];
+    const auto& e1 = c.lensesExt[1];
+    CHECK(near(e0.xi, 1.72859, 1e-9));
+    CHECK(near(e0.fx, 2322.610, 1e-3) && near(e0.fy, 2322.410, 1e-3));
+    CHECK(near(e0.cx, 1528.430, 1e-3) && near(e0.cy, 1521.450, 1e-3));
+    CHECK(near(e0.roll, 178.977, 1e-3));
+    CHECK(near(e0.k[0], 0.22791584, 1e-9) && near(e0.k[2], -0.96843737, 1e-9));
+    CHECK(e0.k[3] == 0.0 && e0.s[0] == 0.0 && e0.s[3] == 0.0); // not in this form
+    CHECK(near(e0.p[0], -0.00185287, 1e-9) && near(e0.p[1], 0.00115803, 1e-9));
+    CHECK(e0.w == 6080.0 && e0.h == 3040.0 && e0.type == 41);
+    CHECK(near(e1.cx, 4554.650, 1e-3) && near(e1.tz, -0.021072, 1e-9));
+    CHECK(near(e1.p[1], -0.00041729, 1e-9));
+
+    // Too short, or not a calibration at all: nothing, `out` untouched.
+    insv::InsvCalibration bad;
+    CHECK(!insv::ParseCalibrationV3String(kX5Params, bad)); // 16 tokens
+    CHECK(!insv::ParseCalibrationV3String("", bad));
+    CHECK(bad.lensesExt.empty());
+
+    // The stitch takes it as it takes the X5's: fx in field 27's window
+    // (2880 on the ONE X2), cx / cy in the 3040-wide lens half.
+    for (auto& e : c.lensesExt)
+        e.focalRefW = 2880.0;
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(c, 2880, 2880, insv::StitchParams{}));
 }
 
 // The X5 calibration as the reader hands it over: with field 27's focal
@@ -518,34 +569,6 @@ void testTrailerThumbnail()
 
 // --- a whole X5-shaped trailer, built record by record ---------------------
 
-// Little-endian / protobuf writers for building trailer records.
-struct Bytes {
-    std::vector<uint8_t> b;
-    Bytes& u8(uint8_t v) { b.push_back(v); return *this; }
-    Bytes& u16(uint16_t v) { for (int i = 0; i < 2; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
-    Bytes& u32(uint32_t v) { for (int i = 0; i < 4; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
-    Bytes& u64(uint64_t v) { for (int i = 0; i < 8; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
-    Bytes& f64(double v) { uint64_t u; std::memcpy(&u, &v, 8); return u64(u); }
-    Bytes& raw(const std::vector<uint8_t>& v) { b.insert(b.end(), v.begin(), v.end()); return *this; }
-    Bytes& str(const std::string& v) { b.insert(b.end(), v.begin(), v.end()); return *this; }
-    Bytes& varint(uint64_t v) {
-        do {
-            uint8_t c = v & 0x7f;
-            v >>= 7;
-            b.push_back(uint8_t(c | (v ? 0x80 : 0)));
-        } while (v);
-        return *this;
-    }
-    // Protobuf fields.
-    Bytes& key(uint32_t field, int wt) { return varint((uint64_t(field) << 3) | uint64_t(wt)); }
-    Bytes& pbVarint(uint32_t field, uint64_t v) { return key(field, 0).varint(v); }
-    Bytes& pbDouble(uint32_t field, double v) { return key(field, 1).f64(v); }
-    Bytes& pbBytes(uint32_t field, const std::vector<uint8_t>& v) { return key(field, 2).varint(v.size()).raw(v); }
-    Bytes& pbString(uint32_t field, const std::string& v) {
-        return pbBytes(field, std::vector<uint8_t>(v.begin(), v.end()));
-    }
-};
-
 // The extended (MEI) calibration string's shape: "2_" then >= 55 numbers.
 std::string extendedCalibrationString()
 {
@@ -554,34 +577,10 @@ std::string extendedCalibrationString()
     return s;
 }
 
-struct TrailerRecord {
-    uint16_t id; // the header's (type << 8 | format)
-    std::vector<uint8_t> payload;
-};
-
 // A file the way the X5 writes one: MP4 boxes (`ftyp`, `moov`), then the
-// `inst` trailer to EOF -- the records, each payload followed by its 6-byte
-// header, an offsets table (record 0x0) locating them, and the 78-byte footer
-// whose header names the table. Only the table reaches the records, as on the
-// X5, where the sequential chain dead-ends.
+// `inst` trailer to EOF with its offsets table (testtrailer::insvTrailer).
 std::string writeX5Trailer(const char* name, const std::vector<TrailerRecord>& records)
 {
-    Bytes trailer;
-    Bytes table;
-    for (const TrailerRecord& r : records) {
-        const uint32_t offset = uint32_t(trailer.b.size());
-        trailer.raw(r.payload).u16(r.id).u32(uint32_t(r.payload.size()));
-        // Table entries spell the id the other way round: {type, format}.
-        table.u8(uint8_t(r.id >> 8)).u8(uint8_t(r.id)).u32(uint32_t(r.payload.size())).u32(offset);
-    }
-    table.u8(0).u8(0).u32(0).u32(0); // an empty placeholder, skipped
-    trailer.raw(table.b);
-    Bytes footer;
-    footer.u16(0x0).u32(uint32_t(table.b.size()));
-    footer.raw(std::vector<uint8_t>(32, 0));
-    const uint32_t trailerLen = uint32_t(trailer.b.size() + 78);
-    footer.u32(trailerLen).u32(3).str("8db42d694ccc418790edff439fe026bf");
-
     auto box = [](const char* type, size_t payloadBytes) {
         Bytes h;
         const uint32_t size = uint32_t(8 + payloadBytes);
@@ -591,7 +590,7 @@ std::string writeX5Trailer(const char* name, const std::vector<TrailerRecord>& r
     };
     const std::string path = (std::filesystem::temp_directory_path() / name).string();
     std::ofstream f(path, std::ios::binary);
-    for (const auto& part : {box("ftyp", 16), box("moov", 40), trailer.b, footer.b})
+    for (const auto& part : {box("ftyp", 16), box("moov", 40), insvTrailer(records, true)})
         f.write(reinterpret_cast<const char*>(part.data()), std::streamsize(part.size()));
     return path;
 }
@@ -767,6 +766,71 @@ void testTrailerRecords()
     CHECK(!insv::ReadInsvTelemetry("/nonexistent/clip.insv").has_value());
 }
 
+// A ONE X2-shaped trailer: a plain record chain (no offsets table), the
+// 40-token offset_v3 in field 54 and no 56-token string, and telemetry
+// stamped in milliseconds, which ReadInsvTelemetry hands out in microseconds
+// at the model's tick (docs/formats/insta360-one-x2.md §4, §7, §8).
+void testOneX2Trailer()
+{
+    std::printf("  ONE X2 trailer\n");
+    Bytes meta;
+    meta.pbString(1, "IXSE0000000001").pbString(2, "Insta360 ONE X2").pbString(3, "v1.0.92_build1");
+    meta.pbString(22, "linear");
+    meta.pbVarint(24, 4407);
+    meta.pbDouble(25, 36.94);
+    Bytes crop; // window_crop_info: src 3040², dst 2880²
+    crop.pbVarint(1, 3040).pbVarint(2, 3040).pbVarint(3, 2880).pbVarint(4, 2880);
+    meta.pbBytes(27, crop.b);
+    meta.pbDouble(28, -12.0);
+    meta.pbString(54, kOneX2V3);
+    Bytes imu; // 56-byte doubles, 2 ms apart
+    for (int i = 0; i < 3; ++i) {
+        imu.u64(2800 + uint64_t(i) * 2);
+        for (double v : {0.0, 0.0, 1.0, 0.1, 0.2, 0.3}) imu.f64(v);
+    }
+    Bytes exposure; // one per frame, 40 ms apart
+    exposure.u64(4412).f64(0.001).u64(4452).f64(0.001);
+
+    const std::string path = (std::filesystem::temp_directory_path() / "insv_test_onex2.insv").string();
+    {
+        std::ofstream f(path, std::ios::binary);
+        const std::vector<uint8_t> video(64, 0x11); // stands in for the MP4 boxes
+        const std::vector<uint8_t> t =
+            insvTrailer({{0xa00, std::vector<uint8_t>(35, 0)}, {0x300, imu.b}, {0x400, exposure.b},
+                         {0x101, meta.b}},
+                        false);
+        f.write(reinterpret_cast<const char*>(video.data()), std::streamsize(video.size()));
+        f.write(reinterpret_cast<const char*>(t.data()), std::streamsize(t.size()));
+    }
+
+    const auto notes = insv::ReadInsvMakerNotes(path);
+    CHECK(notes && notes->model == "Insta360 ONE X2" && notes->crop_dst_w == 2880.0);
+    CHECK(notes && notes->offset_v3 == kOneX2V3);
+    CHECK(notes && notes->lens_profiles.empty());
+    CHECK(!insv::ReadInsvExtendedCalibrationString(path).has_value());
+
+    bool known = false;
+    const insv::InsvModel& model = insv::FindInsvModel("Insta360 ONE X2", &known);
+    CHECK(known && model.telemetryTickUs == 1000.0);
+    CHECK(model.secondLensToken && std::string(model.secondLensToken) == "_10_");
+    CHECK(std::string(model.captureMode(2880)) == "5.7K");
+
+    const auto raw = insv::ReadInsvTelemetry(path); // the file's own ticks
+    CHECK(raw && raw->imu.size() == 3 && raw->imu[1].timestamp == 2802);
+    const auto t = insv::ReadInsvTelemetry(path, 0, model.telemetryTickUs);
+    CHECK(t.has_value());
+    if (t) {
+        CHECK(t->imu.size() == 3 && t->imu[1].timestamp == 2802000);
+        CHECK(t->imu.size() == 3 && t->imu[2].accel[2] == 1.0 && t->imu[2].gyro[1] == 0.2);
+        CHECK(t->exposure.size() == 2 && t->exposure[1].timestamp == 4452000);
+        CHECK(t->first_frame_timestamp == 4407000);
+        CHECK(near(t->gyro_timestamp_ms, -12.0, 1e-12)); // already ms, unscaled
+        CHECK(near(t->rolling_shutter_ms, 36.94, 1e-12));
+        CHECK(t->gamma_mode == "linear");
+    }
+    std::filesystem::remove(path);
+}
+
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
 void testYcbcrRows()
@@ -822,6 +886,7 @@ void testYcbcrRows()
 int main()
 {
     testExtendedCalibration();
+    testCalibrationV3();
     testMeiProjection();
     testLensProfile();
     testLinearAlgebra();
@@ -831,6 +896,7 @@ int main()
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();
+    testOneX2Trailer();
     testYcbcrRows();
 
     if (g_failures == 0)

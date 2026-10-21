@@ -60,6 +60,8 @@ two lenses:
 - `--depth-seam` / `--depth-dump` show the depth-aware seam.
 - `--baseline` changes the lens spacing, and its sign tests which lens is
   in front.
+- `--lens1 FILE` takes lens 1 from its own file, for a camera that writes a
+  file per lens (the ONE X2's `VID_…_10_…`); the clip is the `_00_` file.
 
 **When:** working on the stitch geometry, the calibration or the seam;
 checking that the `.insv` library works on its own.

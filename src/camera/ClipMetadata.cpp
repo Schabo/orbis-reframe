@@ -4,6 +4,7 @@
 
 #include <LensDemuxer.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <mutex>
@@ -19,11 +20,21 @@ const std::vector<const CameraReader*>& readers() {
     return all;
 }
 
+// A file as it was read.
+struct Stamp {
+    std::string path;
+    std::filesystem::file_time_type mtime;
+    std::uintmax_t size = 0;
+};
+
 struct Cached {
     std::filesystem::file_time_type mtime;
     std::uintmax_t size = 0;
     std::shared_ptr<const ClipMetadata> clip;
     const CameraReader* reader = nullptr;
+    // The clip's other files (a lens in a file of its own): a change to one
+    // is a change to the clip.
+    std::vector<Stamp> others;
 };
 
 std::mutex g_mx;
@@ -55,7 +66,12 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
     {
         std::lock_guard<std::mutex> lk(g_mx);
         if (auto it = g_cache.find(path);
-            it != g_cache.end() && it->second.mtime == mtime && it->second.size == size)
+            it != g_cache.end() && it->second.mtime == mtime && it->second.size == size &&
+            std::all_of(it->second.others.begin(), it->second.others.end(), [](const Stamp& o) {
+                std::filesystem::file_time_type m;
+                std::uintmax_t n = 0;
+                return stat(o.path, m, n) && m == o.mtime && n == o.size;
+            }))
             return it->second;
     }
 
@@ -88,7 +104,15 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
                 *err = e;
             return {};
         case CameraReader::Result::Read: {
-            Cached c{mtime, size, std::move(clip), r};
+            Cached c{mtime, size, std::move(clip), r, {}};
+            for (const Lens& l : c.clip->lenses) {
+                Stamp o{l.source.path, {}, 0};
+                if (o.path != path &&
+                    std::none_of(c.others.begin(), c.others.end(),
+                                 [&](const Stamp& x) { return x.path == o.path; }) &&
+                    stat(o.path, o.mtime, o.size))
+                    c.others.push_back(std::move(o));
+            }
             std::lock_guard<std::mutex> lk(g_mx);
             g_cache[path] = c;
             return c;

@@ -5,8 +5,9 @@ Written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
 "X5 §n" below). Markers as in [`README.md`](README.md). The ONE X2 facts
 come from the clips below, read with `ffprobe`, `insv_trailer_dump` and a
 throw-away trailer / protobuf walker; field names are telemetry-parser's
-(X5 §13). Nothing here is parsed by the app yet: it refuses these clips
-("expected 2 fisheye video streams, found 1").
+(X5 §13). The app reads the 5.7K two-file take since 2026-10-21 (the
+calibration from `offset_v3`, the lens-1 file found beside the `_00_` one,
+telemetry in ms); what's still open is in §11 and §12.
 
 The older, **two-file** generation: one file per lens at 5.7K. The X3
 works the same way and has its own document,
@@ -252,6 +253,17 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   ty tz` + 4 polynomial coefficients (`1.0 −0.152 0.271 −0.112`) + `6080 3040
   41`, flag 134144 (0x20C00).
 - The `original_` copies (17, 55, 56) equal the working ones.
+- ✅ **The stitch takes it as the X5's string** (checked 2026-10-21 on
+  `_001`, `insv_stitch --lens1`): `cx / cy` scaled by 2880 / 3040 (half the
+  6080 frame), `fx / fy` by 2880 / field 27's dst 2880, and the same roll
+  handling as the X5 (the stored roll less 90°). The stitched frame is
+  continuous, and the seam fine-tune (`--measure-seam 0 300000`, five frames)
+  starts at a seam match of 0.625 and moves lens 1 by under a degree (yaw
+  −0.10°, pitch −0.80°, roll −0.15°; match 0.752). (An X5 clip, for scale:
+  0.262 → 0.284, under half a degree.) Not yet compared with Insta360
+  Studio's stitch of the same frame.
+- With no lens-profile table (field 145) the stitch takes the bare lens at
+  its default 200° field of view.
 - 📖 telemetry-parser's rig code mentions a ONE X2 lens type 42 (a lens guard
   whose optical table differs from its mask table). Our clips say 41,
   presumably the bare lens ⚠️.
@@ -263,9 +275,13 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   doubles layout, X5 §6.1; field 62 is absent). `ReadInsvTelemetry`'s
   `len % 56` guess picks the layout correctly.
 - **Timestamps in milliseconds** (X5: µs), **exactly 2 ms apart: 500 Hz**
-  (X5 ~1006 Hz, irregular). `insv_trailer_dump` reads them as µs and prints
-  "~500000 Hz".
-- Pre-roll: the IMU starts **1.60–1.63 s before the first frame**.
+  (X5 ~1006 Hz, irregular). The app reads them at the model's tick
+  (`InsvModel::telemetryTickUs`, 1000) and hands them on in µs, like the
+  X5's; `insv_trailer_dump`'s summary does the same (its `--imu` /
+  `--exposure` columns stay raw).
+- Pre-roll: the IMU starts **1.60–1.63 s before the first frame**. The
+  X5's sync formula with the ms units gives a video ↔ IMU offset of
+  +1619.7 ms on `_001` (`residual_stab`), within that range.
 - 📖 Axes: telemetry-parser has `xZy` for the ONE X2, but only in its branch
   for files *without* `offset_v3`. These files have it, so it would use its
   default `Xyz` after rotating by lens 0's `yaw pitch roll`. ❓ The app's
@@ -298,18 +314,26 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   ~1e-26), except `luma_struct` (word 4): `>> 19` gives 64–65, so ISO 100
   by the X5 formula.
 
-## 11. What the app would need
+## 11. What the app reads, and what it still needs
 
-- **The pair as one clip** everywhere (adding, the `.orp`, missing media,
-  the proxy): the `_10_` file has no trailer, so the clip's metadata comes
-  from `_00_` only. The LRV has both lenses in one stream, like the X5's.
-- **Stitch from the 40-token `offset_v3`** (fields 54 / 56): the MEI model
-  with `k4` and `s1..s4` at 0, checked against Insta360 Studio's stitch of
-  the same clip.
-- **Units per model**: telemetry and fields 24 / 28 in ms instead of µs.
-- **The matrix from the stream** (BT.601 here).
-- **Thumbnails** from an H.264 frame instead of NV12.
-- The IMU axis map and the frame-time anchor measured on these clips.
+Read (2026-10-21):
+- **The take's two files** as one clip's lenses: the `_00_` file (it has
+  the trailer) is the clip, and its lens 1 comes from the `_10_` file beside
+  it, taken only when that is a one-stream video of the same size and rate,
+  at most a frame shorter, without a trailer of its own. The clip's length is
+  the shorter file's. The proxy is found as `LRV_…_11_….insv`.
+- **The stitch from the 40-token `offset_v3`** (field 54; §7).
+- **Telemetry in ms**, turned into µs (§8).
+- **The matrix from the stream** (BT.601 here), as for every camera.
+
+Still needed:
+- **The pair as one clip everywhere else**: adding the take from its `_10_`
+  file or its LRV, the project file, missing media.
+- **Thumbnails** from the trailer's H.264 frames (types 2 and 5) instead of
+  NV12.
+- The IMU axis map (the X5's turns the picture upside down) and the
+  frame-time anchor, measured on these clips; the stitch checked against
+  Insta360 Studio's.
 
 ## 12. Open questions
 

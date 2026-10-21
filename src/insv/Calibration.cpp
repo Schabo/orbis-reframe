@@ -31,23 +31,37 @@ std::vector<double> tokenizeNumbers(const std::string& s, size_t from)
     return t;
 }
 
-} // namespace
-
-bool ParseExtendedCalibrationString(const std::string& s, InsvCalibration& out)
+// A "2_<digit>" / "2 <digit>" start, so a caller can hand over a longer
+// buffer with the string embedded; npos if there's none.
+size_t findCalibrationStart(const std::string& s)
 {
-    // Find a "2_<digit>" / "2 <digit>" start so a caller can hand us a longer
-    // buffer with the string embedded.
-    size_t start = std::string::npos;
     for (size_t i = 0; i + 2 < s.size(); ++i) {
         if (s[i] != '2')
             continue;
         if ((s[i + 1] == '_' || s[i + 1] == ' ') && (s[i + 2] >= '0' && s[i + 2] <= '9')) {
-            if (i == 0 || !((s[i - 1] >= '0' && s[i - 1] <= '9') || s[i - 1] == '.')) {
-                start = i;
-                break;
-            }
+            if (i == 0 || !((s[i - 1] >= '0' && s[i - 1] <= '9') || s[i - 1] == '.'))
+                return i;
         }
     }
+    return std::string::npos;
+}
+
+// Both mirror params in a believable range (X5 ~2.0, ONE X2 ~1.7), and the
+// combined frame the principal points live in given.
+bool sane(const LensCalibExt (&lens)[2])
+{
+    for (int i = 0; i < 2; ++i)
+        if (!(lens[i].xi > 0.5 && lens[i].xi < 4.0) || !(lens[i].fx > 1.0) ||
+            !(lens[i].fy > 1.0) || !(lens[i].w > 1.0))
+            return false;
+    return true;
+}
+
+} // namespace
+
+bool ParseExtendedCalibrationString(const std::string& s, InsvCalibration& out)
+{
+    const size_t start = findCalibrationStart(s);
     if (start == std::string::npos)
         return false;
 
@@ -90,13 +104,51 @@ bool ParseExtendedCalibrationString(const std::string& s, InsvCalibration& out)
         L.h = b[25];
         L.type = static_cast<int>(b[26]);
     }
-    // Sanity: both mirror params must be in a believable range (X5 ~2.0), and
-    // the combined frame the principal points live in must be given.
-    for (int i = 0; i < 2; ++i)
-        if (!(lens[i].xi > 0.5 && lens[i].xi < 4.0) || !(lens[i].fx > 1.0) ||
-            !(lens[i].fy > 1.0) || !(lens[i].w > 1.0))
-            return false;
+    if (!sane(lens))
+        return false;
+    out.lensesExt.assign(lens, lens + 2);
+    return true;
+}
 
+bool ParseCalibrationV3String(const std::string& s, InsvCalibration& out)
+{
+    const size_t start = findCalibrationStart(s);
+    if (start == std::string::npos)
+        return false;
+
+    const std::vector<double> t = tokenizeNumbers(s, start);
+    constexpr int kPerLens = 19;
+    if (static_cast<int>(t.size()) < 1 + 2 * kPerLens)
+        return false;
+    if (static_cast<int>(t[0]) != 2)
+        return false;
+
+    LensCalibExt lens[2];
+    for (int i = 0; i < 2; ++i) {
+        const double* b = &t[1 + i * kPerLens];
+        LensCalibExt& L = lens[i];
+        L.xi = b[0];
+        L.fx = b[1];
+        L.fy = b[2];
+        L.cx = b[3];
+        L.cy = b[4];
+        L.yaw = b[5];
+        L.pitch = b[6];
+        L.roll = b[7];
+        L.tx = b[8];
+        L.ty = b[9];
+        L.tz = b[10];
+        L.k[0] = b[11];
+        L.k[1] = b[12];
+        L.k[2] = b[13];
+        L.p[0] = b[14];
+        L.p[1] = b[15];
+        L.w = b[16];
+        L.h = b[17];
+        L.type = static_cast<int>(b[18]);
+    }
+    if (!sane(lens))
+        return false;
     out.lensesExt.assign(lens, lens + 2);
     return true;
 }
