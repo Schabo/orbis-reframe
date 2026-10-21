@@ -78,7 +78,29 @@ New camera support keeps its differences in data -- the reader's per-model
 table, fields read from the file -- not in model checks spread through the
 code.
 
-### 3. Other cameras
+### 3. Effects library
+
+A library of video and audio effects in the left sidebar's **Effects** tab,
+dragged onto a clip and adjusted in the right sidebar. Starting with a few
+simple ones: video -- vignette, sharpen, film grain, colour presets (reusing
+the LUT code); audio -- EQ, compressor, the existing noise filters as
+presets. To settle before building: video effects run on the flat picture
+after the colour grade; how effects stack per clip and are stored in the
+project; what preview costs.
+
+### 4. Optional
+
+- **360 clip as an inset**: a second 360 clip's own view as picture in
+  picture.
+- **Seam quality**: a flow-guided blend inside the seam band, possibly
+  export-only, and a finer lens calibration for the small offset left on
+  distant content.
+- **`src/insv/` as its own repository**, once its API settles.
+
+## Other cameras -- ongoing
+
+Not in the order above: each camera is taken up when there are sample clips
+or file facts to build on, so this runs alongside the rest.
 
 Each needs sample clips first ([Sample clips wanted](formats/README.md#sample-clips-wanted)),
 and goes in as a reader behind the common camera model. What's known about
@@ -100,25 +122,6 @@ each is in its document in [`formats/`](formats/README.md).
 - **Insta360 Luna**: a flat camera, so the flat-video path; needs the
   10-bit / log handling there, through LUTs.
 - Not planned: the ONE X / ONE R / ONE RS.
-
-### 4. Effects library
-
-A library of video and audio effects in the left sidebar's **Effects** tab,
-dragged onto a clip and adjusted in the right sidebar. Starting with a few
-simple ones: video -- vignette, sharpen, film grain, colour presets (reusing
-the LUT code); audio -- EQ, compressor, the existing noise filters as
-presets. To settle before building: video effects run on the flat picture
-after the colour grade; how effects stack per clip and are stored in the
-project; what preview costs.
-
-### 5. Optional
-
-- **360 clip as an inset**: a second 360 clip's own view as picture in
-  picture.
-- **Seam quality**: a flow-guided blend inside the seam band, possibly
-  export-only, and a finer lens calibration for the small offset left on
-  distant content.
-- **`src/insv/` as its own repository**, once its API settles.
 
 ## Planned, not scheduled
 
