@@ -73,7 +73,10 @@ inline std::vector<uint8_t> insvTrailer(const std::vector<TrailerRecord>& record
         }
         footer.u16(records.back().id).u32(uint32_t(records.back().payload.size()));
     }
-    footer.raw(std::vector<uint8_t>(32, 0));
+    // 32 zero bytes, written a word at a time: GCC 14 mis-sizes a bulk
+    // insert or resize here (a -Wstringop-overflow false positive).
+    for (int i = 0; i < 4; ++i)
+        footer.u64(0);
     const uint32_t trailerLen = uint32_t(trailer.b.size() + 78);
     footer.u32(trailerLen).u32(3).str("8db42d694ccc418790edff439fe026bf");
     trailer.raw(footer.b);
