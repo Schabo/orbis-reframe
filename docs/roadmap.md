@@ -67,8 +67,9 @@ through the pipeline.
   40-token calibration and the ONE X2's ms telemetry; the take is one clip
   in the media pool and the project (either file names it, both are saved
   and checked for missing media); its media card shows a preview stitched
-  from the lens pictures in the file. Next: the IMU axis map measured on a
-  clip. Then (3) DJI and
+  from the lens pictures in the file; the IMU axis map and the sync are
+  measured on its clips. Next: a check against Insta360 Studio's stitch.
+  Then (3) DJI and
   GoPro readers only once real clips are available: an in-camera cubemap
   (`Projection`) behind its own `IStitchSource`, an orientation track for
   cameras that record one, readout time per mode.

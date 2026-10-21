@@ -16,8 +16,10 @@ const InsvModel kModels[] = {
      1.0, nullptr, "_01_", ".lrv"},
     // A lens per file at 5.7K, proxy LRV_…_11_….insv, telemetry in ms, no
     // lens-guard profiles (docs/formats/insta360-one-x2.md §1, §6, §8). IMU
-    // axes: the X5's, not measured yet.
-    {"Insta360 ONE X2", "z,-x,-y", nullptr, nullptr, 2880.0,
+    // axes: "z,x,y", the X5's turned 180° about sphere X -- measured on both
+    // sample takes by fitting the image rotation of four unstabilized views
+    // against the gyro (doc §8).
+    {"Insta360 ONE X2", "z,x,y", nullptr, nullptr, 2880.0,
      {{2880, "5.7K"}, {0, nullptr}, {0, nullptr}, {0, nullptr}},
      1000.0, "_10_", "_11_", ".insv"},
 };

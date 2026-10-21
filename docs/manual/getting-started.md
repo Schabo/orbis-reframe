@@ -18,9 +18,8 @@ confirms it. If something looks wrong on your X6 clips, please
 Support for the **Insta360 ONE X2** is being built. Each 5.7K clip is three
 files: one per lens (`VID_…_00_…` and `VID_…_10_…`) and the camera's preview
 file (`LRV_…_11_…`). Add any of them, or the whole folder, and the clip comes
-in once; it opens, stitches and exports. Keep a clip's files together in one
-folder. For now [stabilization](stabilization.md) turns a ONE X2
-picture the wrong way.
+in once; it opens, stitches, [stabilizes](stabilization.md) and exports.
+Keep a clip's files together in one folder.
 
 Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If
 you have one, short clips from it help add it:
