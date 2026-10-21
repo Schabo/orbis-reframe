@@ -78,17 +78,7 @@ New camera support keeps its differences in data -- the reader's per-model
 table, fields read from the file -- not in model checks spread through the
 code.
 
-### 3. Effects library
-
-A library of video and audio effects in the left sidebar's **Effects** tab,
-dragged onto a clip and adjusted in the right sidebar. Starting with a few
-simple ones: video -- vignette, sharpen, film grain, colour presets (reusing
-the LUT code); audio -- EQ, compressor, the existing noise filters as
-presets. To settle before building: video effects run on the flat picture
-after the colour grade; how effects stack per clip and are stored in the
-project; what preview costs.
-
-### 4. Optional
+### 3. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -125,6 +115,13 @@ each is in its document in [`formats/`](formats/README.md).
 
 ## Planned, not scheduled
 
+- **Effects library**: a library of video and audio effects in the left
+  sidebar's **Effects** tab, dragged onto a clip and adjusted in the right
+  sidebar. Starting with a few simple ones: video -- vignette, sharpen, film
+  grain, colour presets (reusing the LUT code); audio -- EQ, compressor, the
+  existing noise filters as presets. To settle before building: video effects
+  run on the flat picture after the colour grade; how effects stack per clip
+  and are stored in the project; what preview costs.
 - **Wide views and "tiny earth"**: one per-keyframe **distortion** amount
   `d` from 0 to 1 -- the projection centre moves from the sphere's centre
   (`d = 0`, today's rectilinear) to its back (`d = 1`, stereographic). It
