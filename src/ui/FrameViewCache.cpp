@@ -47,13 +47,12 @@ PlaybackController::ViewProvider FrameViewCache::provider() const
         view.hasPanes = true;
         view.split = c.split;
         for (int i = 0; i < count; ++i) {
-            const ReframePose p = track(i).isEmpty() ? ReframePose{} : track(i).sample(sourceMs);
-            const float pose[4] = {p.yaw, p.pitch, p.roll, p.fovY};
-            std::copy(pose, pose + 4, view.panePoses[i]);
+            view.panePoses[i] =
+                viewPoseOf(track(i).isEmpty() ? ReframePose{} : track(i).sample(sourceMs));
         }
         if (track(active).isEmpty() || shared->dragging)
             return;
         view.hasPose = true;
-        std::copy(view.panePoses[active], view.panePoses[active] + 4, view.pose);
+        view.pose = view.panePoses[active];
     };
 }

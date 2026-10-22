@@ -66,6 +66,8 @@ struct Args {
     double staticPitchDeg = 0.0;
     double staticRollDeg = 0.0;
     double staticFovDeg = 75.0;
+    // The projection's distortion (view::Pose), for every view of the export.
+    double distortion = 0.0;
     // Colour panel grade, applied to the whole export. See
     // ClipItem::ColorGrade for the ranges/units.
     float exposureEv = 0.0f;
@@ -111,6 +113,8 @@ const char kUsage[] =
     "  --lens-guard G        none | standard | premium (default premium)\n"
     "  --no-depth-seam       stitch at infinity (no depth-aware seam)\n"
     "  --yaw DEG --pitch DEG --roll DEG --fov DEG   static pose when --keys is absent\n"
+    "  --distortion D        the projection, 0 rectilinear .. 1 stereographic, for\n"
+    "                        every view and pane (default 0)\n"
     "  --exposure EV --contrast PCT --saturation PCT --temperature PCT\n"
     "                        colour grade (all default 0 = neutral)\n"
     "  --lut FILE.cube        a 3D LUT applied before the grade (e.g. a log-to-Rec.709 one)\n"
@@ -198,6 +202,8 @@ Args parseArgs(int argc, char** argv)
             a.staticRollDeg = std::atof(next("--roll").c_str());
         else if (k == "--fov")
             a.staticFovDeg = std::atof(next("--fov").c_str());
+        else if (k == "--distortion")
+            a.distortion = std::clamp(std::atof(next("--distortion").c_str()), 0.0, 1.0);
         else if (k == "--exposure")
             a.exposureEv = static_cast<float>(std::atof(next("--exposure").c_str()));
         else if (k == "--contrast")
@@ -325,51 +331,54 @@ int main(int argc, char** argv)
     const int64_t frameCount =
         static_cast<int64_t>(std::llround((trimOut - trimIn) / 1000.0 * fps));
 
-    std::vector<float> poses;
-    poses.reserve(static_cast<size_t>(frameCount) * 4);
+    const auto viewOf = [&a](const ReframePose& p) {
+        view::Pose v = viewPoseOf(p);
+        v.distortion = static_cast<float>(a.distortion);
+        return v;
+    };
+    std::vector<view::Pose> poses;
+    poses.reserve(static_cast<size_t>(frameCount));
     if (!a.keysPath.empty()) {
         const ReframeTrack track = loadKeys(a.keysPath, frameDurMs);
         std::printf("keys:   %d from %s\n", track.count(), a.keysPath.c_str());
         for (int64_t i = 0; i < frameCount; ++i) {
             const qint64 tAbs = trimIn + static_cast<qint64>(std::llround(i * 1000.0 / fps));
-            const ReframePose p = track.sample(tAbs);
-            poses.push_back(p.yaw);
-            poses.push_back(p.pitch);
-            poses.push_back(p.roll);
-            poses.push_back(p.fovY);
+            poses.push_back(viewOf(track.sample(tAbs)));
         }
     } else {
         std::printf("keys:   none (static yaw=%.1f pitch=%.1f roll=%.1f fov=%.1f deg)\n",
                     a.staticYawDeg, a.staticPitchDeg, a.staticRollDeg, a.staticFovDeg);
-        poses = {static_cast<float>(a.staticYawDeg * kDegToRad),
-                 static_cast<float>(a.staticPitchDeg * kDegToRad),
-                 static_cast<float>(a.staticRollDeg * kDegToRad),
-                 static_cast<float>(a.staticFovDeg * kDegToRad)};
+        poses = {viewOf({static_cast<float>(a.staticYawDeg * kDegToRad),
+                         static_cast<float>(a.staticPitchDeg * kDegToRad),
+                         static_cast<float>(a.staticRollDeg * kDegToRad),
+                         static_cast<float>(a.staticFovDeg * kDegToRad)})};
     }
-    const int poseCount = static_cast<int>(poses.size() / 4);
+    if (a.distortion > 0.0)
+        std::printf("view:   distortion %.2f\n", a.distortion);
+    const int poseCount = static_cast<int>(poses.size());
 
     // --split: each pane's rectangle and its baked poses, pane 1's above.
     const std::vector<pane::Rect> rects =
         a.split.isSplit() ? pane::rects(a.split, a.outW, a.outH) : std::vector<pane::Rect>{};
-    std::vector<std::vector<float>> panePoses(rects.size());
+    std::vector<std::vector<view::Pose>> panePoses(rects.size());
     for (size_t n = 1; n < rects.size(); ++n) {
-        std::vector<float> &pp = panePoses[n];
+        std::vector<view::Pose> &pp = panePoses[n];
         if (!a.paneKeys[n].empty()) {
             const ReframeTrack track = loadKeys(a.paneKeys[n], frameDurMs);
             std::printf("pane %zu: %d keys from %s\n", n + 1, track.count(), a.paneKeys[n].c_str());
             for (int64_t i = 0; i < frameCount; ++i) {
                 const qint64 tAbs = trimIn + static_cast<qint64>(std::llround(i * 1000.0 / fps));
-                const ReframePose p = track.sample(tAbs);
-                pp.insert(pp.end(), {p.yaw, p.pitch, p.roll, p.fovY});
+                pp.push_back(viewOf(track.sample(tAbs)));
             }
         } else { // Fill panes: turned from pane 1's first view, 90 degrees across
-            pp = {poses[0] + pane::fillYawOffset(a.split.layout, static_cast<int>(n)), poses[1],
-                  poses[2],
-                  std::clamp(pane::fovYFor(static_cast<float>(std::numbers::pi / 2),
-                                           rects[n].aspect()),
-                             0.35f, 1.92f)};
-            std::printf("pane %zu: fixed yaw=%.1f fov=%.1f deg\n", n + 1, pp[0] / kDegToRad,
-                        pp[3] / kDegToRad);
+            view::Pose v = poses[0];
+            v.yaw += pane::fillYawOffset(a.split.layout, static_cast<int>(n));
+            v.fovY = std::clamp(
+                pane::fovYFor(static_cast<float>(std::numbers::pi / 2), rects[n].aspect()), 0.35f,
+                1.92f);
+            pp = {v};
+            std::printf("pane %zu: fixed yaw=%.1f fov=%.1f deg\n", n + 1, v.yaw / kDegToRad,
+                        v.fovY / kDegToRad);
         }
     }
     if (!rects.empty())
@@ -470,25 +479,21 @@ int main(int argc, char** argv)
     int64_t written = 0;
     // Pane n's pose of output frame `written`.
     const auto panePose = [&](size_t n) {
-        const std::vector<float> &pp = panePoses[n];
-        const size_t count = pp.size() / 4;
-        return &pp[std::min<size_t>(static_cast<size_t>(written), count - 1) * 4];
+        const std::vector<view::Pose> &pp = panePoses[n];
+        return pp[std::min<size_t>(static_cast<size_t>(written), pp.size() - 1)];
     };
     if (!rects.empty()) {
         std::vector<stitch::NativeStitchSource::ViewPane> panes;
         for (const pane::Rect &r : rects)
             panes.push_back({r.x, r.y, r.w, r.h});
         src->SetViewPanes(panes,
-                          [&](int64_t, int n, float pose[4]) {
-                              std::copy(panePose(n), panePose(n) + 4, pose);
-                          },
+                          [&](int64_t, int n, view::Pose &pose) { pose = panePose(n); },
                           fillRgba);
     }
     while (written < frameCount) {
-        const float* pose =
-            poseCount > 0
-                ? &poses[static_cast<size_t>(std::min<int64_t>(written, poseCount - 1)) * 4]
-                : nullptr;
+        const view::Pose* pose =
+            poseCount > 0 ? &poses[static_cast<size_t>(std::min<int64_t>(written, poseCount - 1))]
+                          : nullptr;
 
         if (gpuFlat) {
             stitch::FlatFrame ff = src->ReadFlatFrame(a.outW, a.outH, pose, nullptr, colorGrade);
@@ -525,9 +530,9 @@ int main(int argc, char** argv)
                 v.w = rects[n].w;
                 v.h = rects[n].h;
                 if (n > 0)
-                    std::copy(panePose(n), panePose(n) + 4, v.pose);
+                    v.pose = panePose(n);
                 else if (pose)
-                    std::copy(pose, pose + 4, v.pose);
+                    v.pose = *pose;
                 views.push_back(v);
             }
             if (!(views.empty() ? writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, pose,

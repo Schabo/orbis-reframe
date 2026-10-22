@@ -5,6 +5,7 @@
 #include <Ycbcr.h>             // insv::YcbcrCoding
 
 #include "ColorLut.h" // color::Grade
+#include "ViewProjection.h" // view::Pose
 #include "LensFrame.h"
 
 #include <vulkan/vulkan.h>
@@ -110,8 +111,7 @@ public:
 
     // stage 2 + export: stitch the NV12 fisheye pair to an eqW x eqH equirect
     // (kept GPU-resident), then reproject it to an outW x outH rectilinear
-    // frame against `pose` ({yaw,pitch,roll,fovY} radians; nullptr => forward
-    // view), emitting tightly-packed BT.709 full-range NV12 into `outNv12`
+    // frame against `pose` (nullptr => the forward view), emitting tightly-packed BT.709 full-range NV12 into `outNv12`
     // (Y plane outW*outH, then interleaved UV outW*outH/2). outW must be a
     // multiple of 4 and outH a multiple of 2. No CPU reproject / swscale.
     // Requires reframeReady(). Same semaphore handshake as stitchVk().
@@ -121,14 +121,14 @@ public:
     // reprojected.
     bool stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                             const insv::StitchGpuParams& params, int eqW, int eqH, int outW, int outH,
-                            const float pose[4], const float stab[9],
+                            const view::Pose* pose, const float stab[9],
                             const color::Grade* colorGrade, std::vector<uint8_t>& outNv12,
                             VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
-    // A view's rectangle in a canvas of views, and its pose as above
-    // ({yaw,pitch,roll,fovY}); its aspect is the rectangle's.
+    // A view's rectangle in a canvas of views, and its pose; its aspect is
+    // the rectangle's.
     struct ViewRect {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+        view::Pose pose;
         int x = 0, y = 0, w = 0, h = 0;
     };
 
@@ -172,7 +172,7 @@ public:
     // stitchVk(). Requires viewReady().
     bool renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                       const insv::StitchGpuParams& params, int measureW, int measureH, int outW,
-                      int outH, const float pose[4], const float stab[9],
+                      int outH, const view::Pose* pose, const float stab[9],
                       const color::Grade* colorGrade, ViewFormat fmt, std::vector<uint8_t>& out,
                       VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 

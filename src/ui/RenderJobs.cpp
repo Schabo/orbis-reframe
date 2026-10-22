@@ -43,23 +43,16 @@ constexpr int kExportFontCapPx = 2048;
 // static forward view), a split's other panes as panePoseAt.
 void setViews(ReframeExportController::ClipJob &job, const ClipItem &c)
 {
-    const auto sampleInto = [](const ReframeTrack &track, qint64 sourceMs, float pose[4]) {
-        const ReframePose p = track.sample(sourceMs);
-        pose[0] = p.yaw;
-        pose[1] = p.pitch;
-        pose[2] = p.roll;
-        pose[3] = p.fovY;
-    };
     if (!c.reframe.isEmpty())
-        job.poseAt = [track = c.reframe, sampleInto](qint64 sourceMs, float pose[4]) {
-            sampleInto(track, sourceMs, pose);
+        job.poseAt = [track = c.reframe](qint64 sourceMs, view::Pose &pose) {
+            pose = viewPoseOf(track.sample(sourceMs));
         };
     if (c.paneCount() < 2)
         return;
     job.split = c.split;
-    job.panePoseAt = [panes = c.panes, sampleInto](qint64 sourceMs, int pane, float pose[4]) {
+    job.panePoseAt = [panes = c.panes](qint64 sourceMs, int pane, view::Pose &pose) {
         if (pane >= 1 && pane < pane::kMaxPanes && !panes[pane - 1].isEmpty())
-            sampleInto(panes[pane - 1], sourceMs, pose);
+            pose = viewPoseOf(panes[pane - 1].sample(sourceMs));
     };
 }
 

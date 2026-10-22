@@ -206,6 +206,13 @@ endif()
 add_library(color_lut STATIC src/core/ColorLut.h src/core/ColorLut.cpp)
 target_include_directories(color_lut PUBLIC src/core)
 
+# --- view_projection: the flat view's pose and projection, shared by every
+# implementation of the view (viewport, GPU and CPU export, tracker).
+# Header-only, dependency-free; its GLSL twin is
+# src/render/shaders/view_projection.glsl.
+add_library(view_projection INTERFACE src/core/ViewProjection.h)
+target_include_directories(view_projection INTERFACE src/core)
+
 # --- orbis_core: the src/core edit model (ClipItem, Timeline, Project, ...).
 # Qt Core + JSON only -- no FFmpeg / Vulkan -- so the model tests build
 # without the FFmpeg block below. src/stitch and src/privacy are on the path
@@ -241,7 +248,8 @@ add_library(orbis_core STATIC
 )
 set_target_properties(orbis_core PROPERTIES AUTOMOC ON)
 target_include_directories(orbis_core PUBLIC src/core src/stitch src/privacy)
-target_link_libraries(orbis_core PUBLIC Qt6::Core nlohmann_json::nlohmann_json insv color_lut)
+target_link_libraries(orbis_core PUBLIC Qt6::Core nlohmann_json::nlohmann_json insv color_lut
+    view_projection)
 
 # --- privacy_data: the privacy blur's plate-scan result + its cache file
 # (src/privacy/PlateScanData). Dependency-free, so the app can always apply a
@@ -270,7 +278,7 @@ add_library(render_gpu_stitch STATIC
     src/render/VulkanLut.cpp
 )
 target_include_directories(render_gpu_stitch PUBLIC src/render)
-target_link_libraries(render_gpu_stitch PUBLIC insv color_lut Vulkan::Vulkan PRIVATE render_shaders)
+target_link_libraries(render_gpu_stitch PUBLIC insv color_lut view_projection Vulkan::Vulkan PRIVATE render_shaders)
 
 if(FFMPEG_FOUND)
     # --- vulkan_hw_device: the process's one FFmpeg Vulkan device, shared by
@@ -446,6 +454,7 @@ if(FFMPEG_FOUND)
     # src/core for the Qt-free InsetGeometry.h (the shared inset placement).
     target_include_directories(reframe_flatten PUBLIC src/export src/core)
     target_link_libraries(reframe_flatten PUBLIC PkgConfig::FFMPEG Threads::Threads color_lut
+        view_projection
         PRIVATE vulkan_hw_device)
 
     # --- orbis_app: the whole app but main() -- the executable below, and
@@ -766,7 +775,7 @@ endif()
 # regardless of the block above. Run with `ctest` from the build dir (or
 # the binaries directly).
 foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilization_test
-        project_test color_lut_test pane_layout_test)
+        project_test color_lut_test pane_layout_test view_projection_test)
     add_executable(${model_test} tests/${model_test}.cpp tests/support/ModelTest.h)
     target_include_directories(${model_test} PRIVATE tests)
     target_link_libraries(${model_test} PRIVATE orbis_core)

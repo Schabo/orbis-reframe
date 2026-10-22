@@ -32,6 +32,14 @@ to all the view implementations and the subject tracker's crop together
 rectilinear field of view stays capped at 110°: wider rectilinear just
 stretches.
 
+- done: (1) the projection, written once (`src/core/ViewProjection.h` and
+  `view_projection.glsl`) and used by every implementation; a view's pose
+  carries its distortion through the viewport and every export path, all
+  at 0 so far (`reframe_export --distortion` renders any).
+- next: (2) the distortion and the diagonal field of view in the keyframes
+  and the project file, the automatic amount, the Reframe section's
+  controls, the angle limits.
+
 ### 2. Insta360 X6
 
 Built on top of the common camera model below, from a contributor's work:
@@ -130,6 +138,15 @@ each is in its document in [`formats/`](formats/README.md).
 - Not planned: the ONE X / ONE R / ONE RS.
 
 ## Planned, not scheduled
+
+- **More view shapes**, after *Wide views*: a globe (the sphere as a ball
+  seen from outside: the distortion `d` past 1, up to orthographic), a
+  natural view (Panini: the same distortion applied only across, so
+  verticals stay straight), and, if the wide end of `d` isn't enough, a true
+  fisheye and a mirror ball. Each is a continuous amount per keyframe that
+  is the normal view at its rest value, so it blends between keys like the
+  field of view -- not a list of projection modes in the project file. The
+  math goes into the shared view-projection files, like `d`.
 
 - **Effects library**: a library of video and audio effects in the left
   sidebar's **Effects** tab, dragged onto a clip and adjusted in the right

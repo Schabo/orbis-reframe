@@ -60,8 +60,8 @@ struct ShaderParams {
 static_assert(sizeof(ShaderParams) == 7392, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
-// Push constants for reframe_reproject.comp. 4 ints + 5 floats, then a mat3
-// (16-byte aligned in std430 -> 12 bytes pad) for the stabilization matrix.
+// Push constants for reframe_reproject.comp. 4 ints + 8 words, then a mat3
+// (16-byte aligned in std430) for the stabilization matrix.
 struct ReframePush {
     int32_t eqW;
     int32_t eqH;
@@ -72,16 +72,17 @@ struct ReframePush {
     float roll;
     float fovY;
     float aspect;
-    int32_t ox;     // the view's origin in a canvas of views (ox % 4 == 0, oy % 2 == 0) ...
-    int32_t oy;
+    int32_t origin; // the view's top-left in a canvas of views: x | y << 16 (x % 4 == 0,
+                    // y % 2 == 0) ...
     int32_t canvas; // ... and the canvas: width | height << 16; 0 = the view alone
+    float distortion; // view::Pose::distortion
     float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major)
     float colorGrade[4]; // exposureEv, contrast%, saturation%, temperature%
     float colorLut[4];   // VulkanLutStore::pushValues
 };
 static_assert(sizeof(ReframePush) == 128, "ReframePush must match the compute push_constant block");
 
-// Push constants for fisheye_view_nv12.comp: 4 ints + 5 floats, pad, then the
+// Push constants for fisheye_view_nv12.comp: 4 ints + 8 words, then the
 // stab mat3 as padded columns and the grade -- the same tail as ReframePush.
 struct ViewPush {
     int32_t pass;
@@ -93,9 +94,10 @@ struct ViewPush {
     float roll;
     float fovY;
     float aspect;
-    int32_t ox;     // the view's origin in a canvas of views (ox % 4 == 0, oy % 2 == 0) ...
-    int32_t oy;
+    int32_t origin; // the view's top-left in a canvas of views: x | y << 16 (x % 4 == 0,
+                    // y % 2 == 0) ...
     int32_t canvas; // ... and the canvas: width | height << 16; 0 = the view alone
+    float distortion; // view::Pose::distortion
     float stab[12];
     float colorGrade[4];
     float colorLut[4];

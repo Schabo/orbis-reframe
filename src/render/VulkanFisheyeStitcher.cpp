@@ -471,14 +471,14 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
 
 bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                                const insv::StitchGpuParams& params, int eqW, int eqH,
-                                               int outW, int outH, const float pose[4],
+                                               int outW, int outH, const view::Pose* pose,
                                                const float stab[9], const color::Grade* colorGrade,
                                                std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0,
                                                VulkanLensOutcome* r1, std::string& err)
 {
     ViewRect v;
     if (pose)
-        std::copy(pose, pose + 4, v.pose);
+        v.pose = *pose;
     v.w = outW;
     v.h = outH;
     return stitchAndReframeImpl(f0, f1, params, eqW, eqH, 0, 0, {v}, stab, colorGrade, nullptr,
@@ -642,13 +642,13 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
     for (const ViewRect& v : views) { // each view, 4 pixels per invocation
         rp.outW = v.w;
         rp.outH = v.h;
-        rp.yaw = v.pose[0];
-        rp.pitch = v.pose[1];
-        rp.roll = v.pose[2];
-        rp.fovY = v.pose[3];
+        rp.yaw = v.pose.yaw;
+        rp.pitch = v.pose.pitch;
+        rp.roll = v.pose.roll;
+        rp.fovY = v.pose.fovY;
         rp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
-        rp.ox = single ? 0 : v.x;
-        rp.oy = single ? 0 : v.y;
+        rp.origin = single ? 0 : v.x | (v.y << 16);
+        rp.distortion = v.pose.distortion;
         rp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
                            &rp);
@@ -711,7 +711,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
 
 bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                          const insv::StitchGpuParams& params, int measureW,
-                                         int measureH, int outW, int outH, const float pose[4],
+                                         int measureH, int outW, int outH,
+                                         const view::Pose* pose,
                                          const float stab[9], const color::Grade* colorGrade,
                                          ViewFormat fmt, std::vector<uint8_t>& out,
                                          VulkanLensOutcome* r0, VulkanLensOutcome* r1,
@@ -719,7 +720,7 @@ bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const Vulkan
 {
     ViewRect v;
     if (pose)
-        std::copy(pose, pose + 4, v.pose);
+        v.pose = *pose;
     v.w = outW;
     v.h = outH;
     return renderViewsImpl(f0, f1, params, measureW, measureH, 0, 0, {v}, stab, colorGrade, fmt,
@@ -900,13 +901,13 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     for (const ViewRect& v : views) {
         vp.outW = v.w;
         vp.outH = v.h;
-        vp.yaw = v.pose[0];
-        vp.pitch = v.pose[1];
-        vp.roll = v.pose[2];
-        vp.fovY = v.pose[3];
+        vp.yaw = v.pose.yaw;
+        vp.pitch = v.pose.pitch;
+        vp.roll = v.pose.roll;
+        vp.fovY = v.pose.fovY;
         vp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
-        vp.ox = single ? 0 : v.x;
-        vp.oy = single ? 0 : v.y;
+        vp.origin = single ? 0 : v.x | (v.y << 16);
+        vp.distortion = v.pose.distortion;
         vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,

@@ -133,14 +133,13 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
     if (m_pendingView.hasPanes) // ... and the split, before the active pane's view
         SetPanes(m_pendingView.split, m_pendingView.panePoses);
     if (m_pendingView.hasPose) // ... and the view and grade
-        SetPose(m_pendingView.pose[0], m_pendingView.pose[1], m_pendingView.pose[2],
-                m_pendingView.pose[3]);
+        SetPose(m_pendingView.pose);
     if (m_pendingView.hasGrade)
         SetColorGrade(&m_pendingView.grade);
     m_pendingView = {};
     if (m_pendingHasOverlay) { // ... and the pose / marker
         const FrameOverlay &o = m_pendingOverlay;
-        SetPose(o.pose[0], o.pose[1], o.pose[2], o.pose[3]);
+        SetPose(o.pose);
         if (o.hasMarker)
             SetMarker(o.marker, o.markerStyle);
         else
@@ -154,21 +153,21 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
     return true;
 }
 
-void EquirectViewportWindow::SetPose(float yaw, float pitch, float roll, float fovY)
+void EquirectViewportWindow::SetPose(const view::Pose &pose)
 {
-    m_yaw = yaw;
-    m_pitch = std::clamp(pitch, -kMaxPitch, kMaxPitch);
-    m_roll = roll;
-    m_fovY = std::clamp(fovY, kMinFovY, kMaxFovY);
+    m_pose.yaw = pose.yaw;
+    m_pose.pitch = std::clamp(pose.pitch, -kMaxPitch, kMaxPitch);
+    m_pose.roll = pose.roll;
+    m_pose.fovY = std::clamp(pose.fovY, kMinFovY, kMaxFovY);
+    m_pose.distortion = std::clamp(pose.distortion, 0.0f, 1.0f);
 }
 
 void EquirectViewportWindow::SetPanes(const pane::Split &split,
-                                      const float poses[pane::kMaxPanes][4])
+                                      const view::Pose poses[pane::kMaxPanes])
 {
     QMutexLocker lock(&m_paneMutex);
     m_split = split;
-    for (int i = 0; i < pane::kMaxPanes; ++i)
-        std::copy(poses[i], poses[i] + 4, m_panePoses[i]);
+    std::copy(poses, poses + pane::kMaxPanes, m_panePoses);
 }
 
 pane::Split EquirectViewportWindow::Split() const
@@ -195,25 +194,22 @@ void EquirectViewportWindow::SetActivePane(int pane)
     if (after == before)
         return;
     // The pane left keeps the view it showed; the window takes the new one's.
-    float to[4];
+    view::Pose to;
     {
         QMutexLocker lock(&m_paneMutex);
-        const float from[4] = {m_yaw, m_pitch, m_roll, m_fovY};
-        std::copy(from, from + 4, m_panePoses[before]);
-        std::copy(m_panePoses[after], m_panePoses[after] + 4, to);
+        m_panePoses[before] = m_pose;
+        to = m_panePoses[after];
     }
-    SetPose(to[0], to[1], to[2], to[3]);
+    SetPose(to);
 }
 
-void EquirectViewportWindow::PanePoses(float out[pane::kMaxPanes][4]) const
+void EquirectViewportWindow::PanePoses(view::Pose out[pane::kMaxPanes]) const
 {
     {
         QMutexLocker lock(&m_paneMutex);
-        for (int i = 0; i < pane::kMaxPanes; ++i)
-            std::copy(m_panePoses[i], m_panePoses[i] + 4, out[i]);
+        std::copy(m_panePoses, m_panePoses + pane::kMaxPanes, out);
     }
-    const float own[4] = {m_yaw, m_pitch, m_roll, m_fovY};
-    std::copy(own, own + 4, out[EffectiveActivePane()]);
+    out[EffectiveActivePane()] = m_pose;
 }
 
 void EquirectViewportWindow::SetOutputSize(int width, int height)
@@ -394,7 +390,7 @@ bool EquirectViewportWindow::sphereDirAt(QPointF pos, float out[3]) const
     const QRectF rect = paneRect(i);
     if (i < 0 || rect.width() <= 0 || rect.height() <= 0)
         return false;
-    float poses[pane::kMaxPanes][4];
+    view::Pose poses[pane::kMaxPanes];
     PanePoses(poses);
     sphereDir((pos.x() - rect.x()) / rect.width(), (pos.y() - rect.y()) / rect.height(),
               poses[i], float(rect.width() / rect.height()), out);
@@ -403,22 +399,22 @@ bool EquirectViewportWindow::sphereDirAt(QPointF pos, float out[3]) const
 
 void EquirectViewportWindow::SphereDirAtFraction(double fx, double fy, float out[3]) const
 {
-    const float pose[4] = {m_yaw, m_pitch, m_roll, m_fovY};
-    sphereDir(fx, fy, pose, ViewAspect(), out);
+    sphereDir(fx, fy, m_pose, ViewAspect(), out);
 }
 
-void EquirectViewportWindow::sphereDir(double fx, double fy, const float pose[4], float aspect,
+void EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &pose, float aspect,
                                        float out[3]) const
 {
-    // equirect.frag's ray: view ray from the NDC, roll, pitch, yaw, then the
-    // stabilization.
+    // equirect.frag's ray: view ray from the NDC (ViewProjection.h), roll,
+    // pitch, yaw, then the stabilization.
     const float ndcX = float(2.0 * fx - 1.0);
     const float ndcY = float(2.0 * fy - 1.0);
-    const float t = std::tan(pose[3] * 0.5f);
-    float v[3] = {ndcX * t * aspect, -ndcY * t, -1.0f};
-    const float cr = std::cos(pose[2]), sr = std::sin(pose[2]);
-    const float cp = std::cos(pose[1]), sp = std::sin(pose[1]);
-    const float cy = std::cos(pose[0]), sy = std::sin(pose[0]);
+    float v[3];
+    view::ndcToRay(ndcX, ndcY, view::halfHeight(pose.fovY, pose.distortion), aspect,
+                   pose.distortion, v);
+    const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
+    const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
+    const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
     const float x1 = v[0] * cr - v[1] * sr, y1 = v[0] * sr + v[1] * cr, z1 = v[2];
     const float y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp;
     const float p[3] = {x1 * cy + z2 * sy, y2, -x1 * sy + z2 * cy};
@@ -525,8 +521,8 @@ void EquirectViewportWindow::mousePressEvent(QMouseEvent *event)
     m_dragging = true;
     m_dragButton = event->button();
     m_lastMousePos = event->pos();
-    m_pressYaw = m_yaw;
-    m_pressPitch = m_pitch;
+    m_pressYaw = m_pose.yaw;
+    m_pressPitch = m_pose.pitch;
     emit draggingChanged(true);
 }
 
@@ -568,8 +564,8 @@ void EquirectViewportWindow::mouseMoveEvent(QMouseEvent *event)
     const QPoint delta = event->pos() - m_lastMousePos;
     m_lastMousePos = event->pos();
 
-    m_yaw -= delta.x() * kMouseSensitivity;
-    m_pitch = std::clamp(m_pitch - delta.y() * kMouseSensitivity, -kMaxPitch, kMaxPitch);
+    m_pose.yaw -= delta.x() * kMouseSensitivity;
+    m_pose.pitch = std::clamp(m_pose.pitch - delta.y() * kMouseSensitivity, -kMaxPitch, kMaxPitch);
 }
 
 void EquirectViewportWindow::mouseReleaseEvent(QMouseEvent *event)
@@ -613,7 +609,7 @@ void EquirectViewportWindow::mouseReleaseEvent(QMouseEvent *event)
     if (!m_dragging) return;
     m_dragging = false;
     emit draggingChanged(false);
-    if (m_yaw != m_pressYaw || m_pitch != m_pressPitch) {
+    if (m_pose.yaw != m_pressYaw || m_pose.pitch != m_pressPitch) {
         emit lookCommitted();
         return;
     }
@@ -648,8 +644,8 @@ void EquirectViewportWindow::wheelEvent(QWheelEvent *event)
     if (m_boxSelect)
         return;
     const float notches = event->angleDelta().y() / 120.0f;
-    const float before = m_fovY;
-    m_fovY = std::clamp(m_fovY - notches * kWheelFovStep, kMinFovY, kMaxFovY);
-    if (m_fovY != before)
+    const float before = m_pose.fovY;
+    m_pose.fovY = std::clamp(m_pose.fovY - notches * kWheelFovStep, kMinFovY, kMaxFovY);
+    if (m_pose.fovY != before)
         emit lookCommitted();
 }

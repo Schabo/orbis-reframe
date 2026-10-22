@@ -104,8 +104,9 @@ build/playback_bench --frames 300 --eq 3840,5760 clip.insv
 
 ## view_compare
 
-Renders a flat 1920x1080 view of one frame from a few directions in two
-ways: straight from the fisheyes (the "fused" pass the viewport and export
+Renders a flat 1920x1080 view of one frame from a few directions -- two of
+them through the distorted projection (`wide140_d50`, a wide view half way
+to stereographic, and `planet_d100`, a tiny planet) -- in two ways: straight from the fisheyes (the "fused" pass the viewport and export
 use) and through an equirect of several sizes. It compares each with an 8K
 equirect reference: PSNR, and a sharpness figure. It also renders the
 fused view as P010 (the 10-bit export) and checks it against the NV12 one:
@@ -133,6 +134,10 @@ encoder was picked and why the ones before it can't be used; the "no usable
 hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
 `time_ms yaw pitch fovY [roll]`, in **radians**), or a fixed `--yaw/--pitch/--fov`.
+`--distortion D` renders every view and pane through the distorted
+projection, from 0 (rectilinear, the default) to 1 (stereographic: with
+`--pitch -90` and a wide `--fov`, a tiny planet) -- for checking the paths
+against each other before the app keys it.
 It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
 `--lut-strength PCT`) and a picture-in-picture inset. `--bit-depth 10`
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
@@ -155,6 +160,7 @@ single-pane export of one pane's view at the pane's size.
 
 ```sh
 build/reframe_export clip.insv out.mp4 --trim-in 10000 --trim-out 20000 --yaw 30 --fov 80
+build/reframe_export clip.insv planet.mp4 --trim-out 3000 --pitch -90 --fov 250 --distortion 1
 build/reframe_export clip.insv out.mp4 --keys keys.txt --codec h264
 build/reframe_export clip.insv out10.mp4 --trim-out 3000 --bit-depth 10
 build/reframe_export clip.insv lut.mp4 --trim-in 1000 --trim-out 2000 --lut X5_I-Log_To_Rec.709_V1.0.cube

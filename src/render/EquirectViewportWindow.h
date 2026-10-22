@@ -18,6 +18,7 @@
 #include "LensFrame.h"
 #include "../core/InsetGeometry.h"
 #include "../core/PaneLayout.h"
+#include "../core/ViewProjection.h"
 
 #include <array>
 #include <atomic>
@@ -31,14 +32,14 @@
 // clip through the next one's view. (EquirectViewportWindow::FrameView.)
 struct ViewportFrameView {
     bool hasPose = false; // else the view stays (free look, a drag)
-    float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f}; // yaw, pitch, roll, fovY
+    view::Pose pose;
     bool hasGrade = false;
     color::Grade grade; // ColorGrade::render()
     // The clip's split screen (EquirectViewportWindow::SetPanes): its
     // layout and every pane's view; `pose` above is the active pane's.
     bool hasPanes = false;
     pane::Split split;
-    float panePoses[pane::kMaxPanes][4] = {};
+    view::Pose panePoses[pane::kMaxPanes];
 };
 
 class EquirectViewportWindow : public QVulkanWindow {
@@ -136,24 +137,24 @@ public:
     // picture hasn't been taken (TakePendingFrame). Renderer thread.
     std::vector<InsetDraw> RenderInsets();
 
-    float Yaw() const { return m_yaw; }
-    float Pitch() const { return m_pitch; }
-    float Roll() const { return m_roll; }
-    float FovY() const { return m_fovY; }
+    float Yaw() const { return m_pose.yaw; }
+    float Pitch() const { return m_pose.pitch; }
+    float Roll() const { return m_pose.roll; }
+    float FovY() const { return m_pose.fovY; }
+    view::Pose Pose() const { return m_pose; }
 
     // Set the camera pose directly. Used by MainWindow to drive the viewport
     // along the authored reframe path during playback / scrubbing, and by the
     // Reframe panel's numeric fields. Plain float writes, matching how the
     // mouse handlers already mutate these while the render thread reads them.
-    void SetPose(float yaw, float pitch, float roll, float fovY);
+    void SetPose(const view::Pose &pose);
 
     // Split screen: the picture in panes (PaneLayout.h), each with its own
     // view. The window's pose (Yaw() ... FovY(), SetPose, a drag) is the
     // *active* pane's -- the one the user steers; `poses` are every pane's
-    // ({yaw, pitch, roll, fovY}, by pane), of which the active one's is
-    // ignored. Thread-safe; also set with a presented frame (FrameView).
+    // (by pane), of which the active one's is ignored. Thread-safe; also set with a presented frame (FrameView).
     // Single = one picture, as before.
-    void SetPanes(const pane::Split &split, const float poses[pane::kMaxPanes][4]);
+    void SetPanes(const pane::Split &split, const view::Pose poses[pane::kMaxPanes]);
     pane::Split Split() const;
     // The pane the window's pose steers: a click on another pane, or
     // SetActivePane, moves to it -- its view becomes the window's pose, the
@@ -164,7 +165,7 @@ public:
     int EffectiveActivePane() const;
     // Every pane's view as shown now, the active one's being the window's
     // pose. For the renderer.
-    void PanePoses(float out[pane::kMaxPanes][4]) const;
+    void PanePoses(view::Pose out[pane::kMaxPanes]) const;
     // The active pane's width / height: what its field of view, its box
     // select and its marker are relative to (the output aspect when the
     // picture isn't split).
@@ -238,7 +239,7 @@ public:
     // frame, so pose and box must change with the picture, not a render early
     // or late. Thread-safe like SetFrame.
     struct FrameOverlay {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f}; // yaw, pitch, roll, fovY
+        view::Pose pose;
         bool hasMarker = false;
         QRectF marker; // output-rect fractions
         MarkerStyle markerStyle = MarkerStyle::Tracking;
@@ -301,7 +302,7 @@ private:
     int paneAt(QPointF pos) const;
     // The direction at fractions (fx, fy) of a pane `aspect` wide through
     // `pose`, then the stabilization.
-    void sphereDir(double fx, double fy, const float pose[4], float aspect, float out[3]) const;
+    void sphereDir(double fx, double fy, const view::Pose &pose, float aspect, float out[3]) const;
     // The topmost inset under `pos` (window coordinates), or -1.
     int insetAt(QPointF pos) const;
 
@@ -324,10 +325,9 @@ private:
     float m_pressPitch = 0.0f;
     Qt::MouseButton m_dragButton = Qt::NoButton;
 
-    float m_yaw = 0.0f;
-    float m_pitch = 0.0f;
-    float m_roll = 0.0f;   // set only via SetPose (numeric panel / reframe path)
-    float m_fovY = 1.309f; // ~75 degrees, a reasonable default rectilinear FOV
+    // The active pane's view. Its roll and distortion are set only via SetPose
+    // (numeric panel / reframe path).
+    view::Pose m_pose;
     // Row-major 3x3, identity by default (no stabilization).
     float m_stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     float m_pendingStab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1}; // with the pending frame, guarded by m_frameMutex
@@ -345,10 +345,7 @@ private:
     // the GUI thread's.
     mutable QMutex m_paneMutex;
     pane::Split m_split;
-    float m_panePoses[pane::kMaxPanes][4] = {{0.0f, 0.0f, 0.0f, 1.309f},
-                                             {0.0f, 0.0f, 0.0f, 1.309f},
-                                             {0.0f, 0.0f, 0.0f, 1.309f},
-                                             {0.0f, 0.0f, 0.0f, 1.309f}};
+    view::Pose m_panePoses[pane::kMaxPanes];
     std::atomic<int> m_activePane{0};
 
     // Insets, guarded by m_insetMutex.

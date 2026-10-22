@@ -428,14 +428,14 @@ bool NativeStitchSource::GpuViewAvailable() const {
     return vdec_ && gpu_ && gpu_->viewReady();
 }
 
-FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const float pose[4],
+FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const view::Pose* pose,
                                             const float stab[9],
                                             const color::Grade* colorGrade) {
     return ReadFlatFrame(
         outW, outH,
-        [pose, stab](int64_t, float p[4], float s[9]) {
+        [pose, stab](int64_t, view::Pose& p, float s[9]) {
             if (pose)
-                std::copy(pose, pose + 4, p);
+                p = *pose;
             if (stab)
                 std::copy(stab, stab + 9, s);
         },
@@ -509,7 +509,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     vdec_->lockFrame(f0, lf0);
     vdec_->lockFrame(f1, lf1);
 
-    float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f}; // forward view, the reproject's default
+    view::Pose pose; // forward view, the reproject's default
     float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     if (perFrame)
         perFrame(pts_ms, pose, stab);
@@ -526,7 +526,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     for (size_t i = 0; i < panes_.size(); ++i) {
         render::VulkanFisheyeStitcher::ViewRect& v = views[i];
         if (i == 0)
-            std::copy(pose, pose + 4, v.pose);
+            v.pose = pose;
         else if (pane_pose_)
             pane_pose_(pts_ms, static_cast<int>(i), v.pose);
         v.x = panes_[i].x;
@@ -543,9 +543,9 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
                    : gpu_->renderViewsVk(in0, in1, params, eq_w_, eq_h_, outW, outH, views, stab,
                                          colorGrade, fmt, pane_fill_, out, &oc0, &oc1, gerr))
         : path == FlatPath::ViaEquirect
-            ? gpu_->stitchAndReframeVk(in0, in1, params, eq_w_, eq_h_, outW, outH, pose, stab,
+            ? gpu_->stitchAndReframeVk(in0, in1, params, eq_w_, eq_h_, outW, outH, &pose, stab,
                                        colorGrade, out, &oc0, &oc1, gerr)
-            : gpu_->renderViewVk(in0, in1, params, eq_w_, eq_h_, outW, outH, pose, stab, colorGrade,
+            : gpu_->renderViewVk(in0, in1, params, eq_w_, eq_h_, outW, outH, &pose, stab, colorGrade,
                                  fmt, out, &oc0, &oc1, gerr);
 
     insv::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
@@ -617,7 +617,7 @@ bool NativeStitchSource::RenderKeptViews(int handle, int canvasW, int canvasH,
     HeldPair& h = *it->second;
     std::vector<render::VulkanFisheyeStitcher::ViewRect> vr(views.size());
     for (size_t i = 0; i < views.size(); ++i) {
-        std::copy(views[i].pose, views[i].pose + 4, vr[i].pose);
+        vr[i].pose = views[i].pose;
         vr[i].x = views[i].x;
         vr[i].y = views[i].y;
         vr[i].w = views[i].w;

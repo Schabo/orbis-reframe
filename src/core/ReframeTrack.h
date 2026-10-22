@@ -1,6 +1,7 @@
 #pragma once
 
-#include "KeyTrack.h" // keytrack::Ease
+#include "KeyTrack.h"       // keytrack::Ease
+#include "ViewProjection.h" // view::Pose
 
 #include <QList>
 
@@ -26,6 +27,18 @@ struct ReframePose {
     float roll = 0.0f;   // rotation about the view axis; horizon tilt
     float fovY = 1.309f; // ~75 deg, matches EquirectViewportWindow's default
 };
+
+// The view a keyframe pose shows -- what the viewport and the export render
+// -- and the keyframe pose of a view (the viewport's, to key it). Keys are
+// rectilinear for now.
+inline view::Pose viewPoseOf(const ReframePose &p)
+{
+    return {p.yaw, p.pitch, p.roll, p.fovY, 0.0f};
+}
+inline ReframePose reframePoseOf(const view::Pose &v)
+{
+    return {v.yaw, v.pitch, v.roll, v.fovY};
+}
 
 struct ReframeKey {
     qint64 timeMs = 0;

@@ -29,7 +29,8 @@ struct PushConstants {
     float roll;
     float fovY;
     float aspect;
-    float _pad[3];       // std140: mat3 below aligns at offset 32
+    float distortion;    // view::Pose::distortion
+    float _pad[2];       // std140: mat3 below aligns at offset 32
     float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major)
     float colorGrade[4]; // exposureEv, contrast%, saturation%, temperature%
     float colorLut[4];   // render::VulkanLutStore::pushValues
@@ -225,7 +226,7 @@ private:
         int rendersOfCurrent = 0;
         int shownFor[5] = {}; // 1, 2, 3, 4, 5+ renders
         int poseChanges = 0;
-        float lastPose[4] = {};
+        view::Pose lastPose;
     } m_stats;
     void statsFrameStart(bool newPicture);
     void statsFrameEnd(render::framestats::Clock::time_point start);

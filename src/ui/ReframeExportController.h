@@ -82,10 +82,10 @@ public:
         // Playback speed (ClipItem::speed): the clip fills (trimOut - trimIn) /
         // speed of the output. Audio is time-stretched to match (pitch kept).
         double speed = 1.0;
-        // The view {yaw, pitch, roll, fovY} at a source time (ms), sampled per
+        // The view at a source time (ms), sampled per
         // decoded frame at that frame's own timestamp; empty => static forward
         // view. Must be safe to call from the export thread (capture copies).
-        std::function<void(qint64 sourceMs, float pose[4])> poseAt;
+        std::function<void(qint64 sourceMs, view::Pose &pose)> poseAt;
         // The gyro de-rotation, evaluated per decoded frame at its own
         // timestamp (never at trimIn + i/fps: the first decoded frame is the
         // one at-or-after trimIn, and a frame of phase error undoes most of
@@ -111,7 +111,7 @@ public:
         // forward view; empty => forward). Single => one picture. Safe to
         // call from the export thread (captures copies).
         pane::Split split;
-        std::function<void(qint64 sourceMs, int pane, float pose[4])> panePoseAt;
+        std::function<void(qint64 sourceMs, int pane, view::Pose &pose)> panePoseAt;
     };
 
     struct Request {
@@ -139,12 +139,11 @@ public:
     // after it, same as playback's GetFrame), rendered the way run() renders
     // it: the fused GPU pass straight from the fisheyes (else a full-sphere
     // equirect + CPU reproject), the clip's stabilization / seam / grade, to
-    // outW x outH through `pose` ({yaw, pitch, roll, fovY} radians;
-    // clip.poseAt is ignored; a split clip's other panes as
+    // outW x outH through `pose` (clip.poseAt is ignored; a split clip's other panes as
     // clip.panePoseAt). RGB, no chroma subsampling -- for the
     // player bar's screenshot button. Blocks (opens its own stitch source);
     // run it off the GUI thread. Null image + `error` on failure.
-    static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const float pose[4],
+    static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const view::Pose &pose,
                               int outW, int outH, QString &error);
 
     // A split clip's panes on its stitch source for outW x outH reads
@@ -157,7 +156,7 @@ public:
     // The same for the CPU reproject: each pane's rectangle and view at
     // source time `ptsMs`, pane 0's `pose0`. Empty for one picture.
     static std::vector<exportpipe::PaneView> paneViews(const ClipJob &clip, int outW, int outH,
-                                                       int64_t ptsMs, const float pose0[4]);
+                                                       int64_t ptsMs, const view::Pose &pose0);
 
     // Blocks the calling thread for the whole export (invoke it queued onto the
     // worker thread). Emits progress along the way and finished() at the end.

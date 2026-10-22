@@ -4,8 +4,8 @@
 // Equirect -> rectilinear ("flat") reproject for the export pipeline, straight
 // on the GPU: reads the equirect the fisheye stitch just wrote (still the
 // std430 RGBA-uint OutBuf, never downloaded), reprojects it against a baked
-// {yaw,pitch,roll,fovY} pose plus a per-frame stabilization matrix --
-// identical ray math to the interactive viewport
+// {yaw,pitch,roll,fovY,distortion} pose plus a per-frame stabilization
+// matrix -- identical ray math to the interactive viewport
 // (src/render/shaders/equirect.frag) -- and writes BT.709
 // limited-range NV12 into a host-visible buffer that goes straight to NVENC.
 //
@@ -34,13 +34,14 @@ layout(push_constant) uniform PC {
     float fovY;
     float aspect;
     // Where the view goes in a larger frame (the split screen's panes), as
-    // in fisheye_view_nv12.comp: its top-left pixel (ox a multiple of 4, oy
-    // of 2) and the canvas, row length in pixels in the low 16 bits, height
-    // in the high 16; 0 = the view alone. (Fills what was mat3 alignment
-    // padding: 4 ints + 5 floats -> mat3 aligns at offset 48.)
-    int ox;
-    int oy;
+    // in fisheye_view_nv12.comp: its top-left pixel (x in the low 16 bits, a
+    // multiple of 4; y in the high 16, even) and the canvas, row length in
+    // pixels in the low 16 bits, height in the high 16; 0 = the view alone.
+    // (These and the distortion fill what was mat3 alignment padding: 4 ints
+    // + 8 words -> mat3 aligns at offset 48.)
+    int origin;
     int canvas;
+    float distortion; // view_projection.glsl's d
     mat3 stab; // gyro de-rotation in the sphere frame, applied to the world ray
                // AFTER the reframe pose (same as equirect.frag). Identity = off.
     // Colour panel: x=exposureEv (stops), y=contrast (%), z=saturation (%),
@@ -57,6 +58,7 @@ vec3 unpackRgb(uint p)
 }
 
 #include "color_grade.glsl"
+#include "view_projection.glsl"
 
 // Bilinear equirect fetch: U wraps (the seam), V clamps (the poles) -- matches
 // the viewport sampler and exportpipe::ReframeRenderer::sampleEquirect.
@@ -84,13 +86,13 @@ vec3 sampleEq(vec2 uv)
 }
 
 // Output pixel -> world-space look direction. Port of equirect.frag: view-space
-// ray from the FOV, then roll about Z, pitch about X, yaw about Y, then stab.
+// ray from the FOV and the distortion (view_projection.glsl), then roll about
+// Z, pitch about X, yaw about Y, then stab.
 vec3 dirFor(int px, int py)
 {
     float ndcX = (float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0;
     float ndcY = (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0;
-    float t = tan(pc.fovY * 0.5);
-    vec3 r = normalize(vec3(ndcX * t * pc.aspect, -ndcY * t, -1.0));
+    vec3 r = viewRayAt(vec2(ndcX, ndcY), pc.fovY, pc.aspect, pc.distortion);
 
     float cr = cos(pc.roll), sr = sin(pc.roll);
     float cp = cos(pc.pitch), sp = sin(pc.pitch);
@@ -128,8 +130,8 @@ void main()
     int basePx = gid.x * 4;
     int strideQ = (pc.canvas != 0 ? (pc.canvas & 0xFFFF) : pc.outW) / 4;
     int canvasH = pc.canvas != 0 ? (pc.canvas >> 16) & 0xFFFF : pc.outH;
-    int row = gid.y + pc.oy;
-    int col = pc.ox / 4 + gid.x;
+    int row = gid.y + ((pc.origin >> 16) & 0xFFFF);
+    int col = (pc.origin & 0xFFFF) / 4 + gid.x;
 
     vec3 rgb[4];
     uint y[4];

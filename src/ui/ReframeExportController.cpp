@@ -65,7 +65,7 @@ void ReframeExportController::applyPanes(stitch::NativeStitchSource &src, const 
         for (const pane::Rect &r : pane::rects(c.split, outW, outH))
             panes.push_back({r.x, r.y, r.w, r.h});
     src.SetViewPanes(std::move(panes),
-                     [fn = c.panePoseAt](int64_t ptsMs, int i, float pose[4]) {
+                     [fn = c.panePoseAt](int64_t ptsMs, int i, view::Pose &pose) {
                          if (fn)
                              fn(ptsMs, i, pose);
                      },
@@ -74,7 +74,7 @@ void ReframeExportController::applyPanes(stitch::NativeStitchSource &src, const 
 
 std::vector<exportpipe::PaneView> ReframeExportController::paneViews(const ClipJob &c, int outW,
                                                                      int outH, int64_t ptsMs,
-                                                                     const float pose0[4])
+                                                                     const view::Pose &pose0)
 {
     std::vector<exportpipe::PaneView> views;
     if (!c.split.isSplit())
@@ -86,7 +86,7 @@ std::vector<exportpipe::PaneView> ReframeExportController::paneViews(const ClipJ
         v.w = r.w;
         v.h = r.h;
         if (views.empty())
-            std::copy(pose0, pose0 + 4, v.pose);
+            v.pose = pose0;
         else if (c.panePoseAt)
             c.panePoseAt(ptsMs, static_cast<int>(views.size()), v.pose);
         views.push_back(v);
@@ -95,7 +95,7 @@ std::vector<exportpipe::PaneView> ReframeExportController::paneViews(const ClipJ
 }
 
 QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
-                                            const float pose[4], int outW, int outH,
+                                            const view::Pose &pose, int outW, int outH,
                                             QString &error)
 {
     if (outW <= 0 || outH <= 0) {
@@ -144,8 +144,8 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     if (src.GpuViewAvailable() && outW % 4 == 0 && outH % 2 == 0) {
         const stitch::Frame f = src.ReadViewFrame(
             outW, outH,
-            [&](int64_t ptsMs, float p[4], float stab[9]) {
-                std::copy(pose, pose + 4, p);
+            [&](int64_t ptsMs, view::Pose &p, float stab[9]) {
+                p = pose;
                 stabAt(ptsMs, stab);
             },
             &c.colorGrade);
@@ -167,10 +167,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     }
 
     exportpipe::ReframeView view;
-    view.yaw = pose[0];
-    view.pitch = pose[1];
-    view.roll = pose[2];
-    view.fovY = pose[3];
+    view.pose = pose;
     view.aspect = static_cast<float>(outW) / outH;
     stabAt(eq.timestamp_ms, view.stab);
     view.colorGrade = c.colorGrade;
@@ -399,7 +396,7 @@ void ReframeExportController::run(const Request &req)
                              (req.outHeight % 2) == 0;
 
         // Pose + stab for a decoded frame, at that frame's source time.
-        auto poseAt = [&c](int64_t ptsMs, float pose[4], float stab[9]) {
+        auto poseAt = [&c](int64_t ptsMs, view::Pose &pose, float stab[9]) {
             if (c.poseAt)
                 c.poseAt(ptsMs, pose);
             if (c.stab) {
@@ -467,7 +464,7 @@ void ReframeExportController::run(const Request &req)
                 if (reps == 0)
                     continue; // dropped: skip the CPU reproject too
                 checkDepth(false);
-                float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+                view::Pose pose;
                 float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
                 poseAt(eq.timestamp_ms, pose, stab);
                 const std::vector<exportpipe::PaneView> panes =
@@ -477,7 +474,7 @@ void ReframeExportController::run(const Request &req)
                     const bool added =
                         panes.empty()
                             ? writer->addEquirectFrame(eq.rgba.data(), eq.width, eq.height,
-                                                       c.poseAt ? pose : nullptr,
+                                                       c.poseAt ? &pose : nullptr,
                                                        c.stab ? stab : nullptr, &c.colorGrade, err)
                             : writer->addEquirectPanes(eq.rgba.data(), eq.width, eq.height, panes,
                                                        fillRgba(c.split), c.stab ? stab : nullptr,

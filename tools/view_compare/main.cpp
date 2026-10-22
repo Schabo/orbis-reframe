@@ -42,7 +42,7 @@ constexpr int kRefEq = 7680;
 // One NV12 render of the frame at `atMs`: fused (eqW is then only the
 // measure grid) or via an eqW equirect. `p010`: the fused render as P010.
 std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fused, int eqW,
-                                const float pose[4], bool p010 = false)
+                                const view::Pose& pose, bool p010 = false)
 {
     stitch::NativeStitchSource src;
     stitch::PreviewStitchConfig cfg;
@@ -61,7 +61,7 @@ std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fuse
         return {};
     }
     src.SetFlatTenBit(p010);
-    const stitch::FlatFrame f = src.ReadFlatFrame(kW, kH, pose);
+    const stitch::FlatFrame f = src.ReadFlatFrame(kW, kH, &pose);
     if (f.data.empty())
         std::fprintf(stderr, "render failed: %s\n", src.GetLastError().c_str());
     if (f.p010 != p010) {
@@ -153,7 +153,7 @@ int main(int argc, char** argv)
 
     struct Pose {
         const char* name;
-        float p[4];
+        view::Pose p;
     };
     const float deg = std::numbers::pi_v<float> / 180.0f;
     const Pose poses[] = {
@@ -161,6 +161,10 @@ int main(int argc, char** argv)
         {"seam_side75", {90.0f * deg, 0.0f, 0.0f, 75.0f * deg}}, // across the lens seam
         {"zoom30", {20.0f * deg, -5.0f * deg, 10.0f * deg, 30.0f * deg}},
         {"up_wide110", {0.0f, 60.0f * deg, 0.0f, 110.0f * deg}},
+        // The distorted projection (ViewProjection.h): a wide view half way to
+        // stereographic, and a tiny planet looking straight down.
+        {"wide140_d50", {30.0f * deg, -10.0f * deg, 0.0f, 140.0f * deg, 0.5f}},
+        {"planet_d100", {0.0f, -90.0f * deg, 0.0f, 250.0f * deg, 1.0f}},
     };
     struct Path {
         const char* name;

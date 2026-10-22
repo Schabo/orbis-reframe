@@ -155,7 +155,7 @@ Args parseArgs(int argc, char** argv)
                             &w, &h) != 8)
                 die("bad --view-box (want yaw,pitch,fov,aspect,x,y,w,h)");
             const track::Seed s = track::seedFromViewBox(x, y, w, h, vy * kDegToRad, vp * kDegToRad,
-                                                         0.0, vf * kDegToRad, va);
+                                                         0.0, vf * kDegToRad, 0.0, va);
             a.boxYawDeg = s.yaw * kRadToDeg;
             a.boxPitchDeg = s.pitch * kRadToDeg;
             a.boxWDeg = s.width * kRadToDeg;
@@ -496,10 +496,10 @@ int main(int argc, char** argv)
     exportpipe::FlattenWriter writer;
     if (!writer.open(fc, err))
         die(err);
-    auto poseAt = [&](int64_t ptsMs, float pose[4], float stab[9]) {
-        keyPose(ptsMs, pose[0], pose[1]);
-        pose[2] = 0.0f;
-        pose[3] = static_cast<float>(outFov);
+    auto poseAt = [&](int64_t ptsMs, view::Pose &pose, float stab[9]) {
+        keyPose(ptsMs, pose.yaw, pose.pitch);
+        pose.roll = 0.0f;
+        pose.fovY = static_cast<float>(outFov);
         gyroMatrix(gyro, a.stab, ptsMs, stab);
     };
     int64_t written = 0;

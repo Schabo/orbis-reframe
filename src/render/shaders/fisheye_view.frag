@@ -29,7 +29,8 @@ layout(push_constant) uniform PushConstants {
     float roll;
     float fovY;
     float aspect;
-    // 12 bytes of std140 padding (mat3 aligns at offset 32).
+    float distortion; // view_projection.glsl's d
+    // 8 bytes of std140 padding (mat3 aligns at offset 32).
     mat3 stab;       // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
     vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
@@ -63,10 +64,10 @@ vec3 sampleLens(int i, vec2 uv)
 }
 
 #include "color_grade.glsl"
+#include "view_projection.glsl"
 
 void main() {
-    float t = tan(pc.fovY * 0.5);
-    vec3 r = normalize(vec3(inNdc.x * t * pc.aspect, -inNdc.y * t, -1.0));
+    vec3 r = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion);
 
     float cr = cos(pc.roll), sr = sin(pc.roll);
     float cp = cos(pc.pitch), sp = sin(pc.pitch);

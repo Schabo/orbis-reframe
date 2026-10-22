@@ -400,9 +400,9 @@ void testClipJob(const QString &dir)
     job = renderjobs::clipJob(t.clipAt(0), t, privacy);
     CHECK(job.poseAt);
     if (job.poseAt) {
-        float pose[4] = {};
+        view::Pose pose;
         job.poseAt(5000, pose);
-        CHECK(near(pose[0], 0.5f) && near(pose[3], 1.2f));
+        CHECK(near(pose.yaw, 0.5f) && near(pose.fovY, 1.2f) && pose.distortion == 0.0f);
     }
 }
 

@@ -24,15 +24,16 @@ namespace {
 // A region outline as the view shows it: its quad's corners taken from the
 // sphere frame into the view (the inverse of equirect.frag's ray: stab^T,
 // then yaw, pitch and roll undone), clipped to what lies in front of the
-// camera and projected into the output rect, px. Up to 6 corners (4, plus
-// one per edge the clip cuts). Fewer than 3 = nothing to draw.
+// projection centre and projected into the output rect, px
+// (view::pointToPlane: the quad's straight edges stay straight). Up to 6
+// corners (4, plus one per edge the clip cuts). Fewer than 3 = nothing to
+// draw.
 int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float stabRm[9],
-                   float yaw, float pitch, float roll, float fovY, float aspect, float rectW,
-                   float rectH, float out[12])
+                   const view::Pose &pose, float aspect, float rectW, float rectH, float out[12])
 {
-    const float cy = std::cos(yaw), sy = std::sin(yaw);
-    const float cp = std::cos(pitch), sp = std::sin(pitch);
-    const float cr = std::cos(roll), sr = std::sin(roll);
+    const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
+    const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
+    const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
     float v[4][3];
     for (int i = 0; i < 4; ++i) {
         const float *d = o.corner[i];
@@ -47,26 +48,30 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
         v[i][1] = -x1 * sr + y2 * cr;
         v[i][2] = z2;
     }
-    // Keep z <= -kNear (in front); Sutherland-Hodgman against that plane.
+    // Keep z <= d - kNear (in front of the projection centre (0, 0, d));
+    // Sutherland-Hodgman against that plane.
     constexpr float kNear = 1e-3f;
+    const float zMax = pose.distortion - kNear;
     float c[6][3];
     int n = 0;
     for (int i = 0; i < 4; ++i) {
         const float *a = v[i], *b = v[(i + 1) % 4];
-        const bool ina = a[2] <= -kNear, inb = b[2] <= -kNear;
+        const bool ina = a[2] <= zMax, inb = b[2] <= zMax;
         if (ina)
             std::copy(a, a + 3, c[n++]);
         if (ina != inb) {
-            const float t = (-kNear - a[2]) / (b[2] - a[2]);
+            const float t = (zMax - a[2]) / (b[2] - a[2]);
             for (int k = 0; k < 3; ++k)
                 c[n][k] = a[k] + t * (b[k] - a[k]);
             ++n;
         }
     }
-    const float t = std::tan(fovY * 0.5f);
+    const float h = view::halfHeight(pose.fovY, pose.distortion);
     for (int i = 0; i < n; ++i) {
-        const float ndcX = (c[i][0] / -c[i][2]) / (t * aspect);
-        const float ndcY = -(c[i][1] / -c[i][2]) / t;
+        float px = 0.0f, py = 0.0f;
+        view::pointToPlane(c[i], pose.distortion, px, py);
+        const float ndcX = px / (h * aspect);
+        const float ndcY = -py / h;
         out[i * 2] = (ndcX + 1.0f) * 0.5f * rectW;
         out[i * 2 + 1] = (ndcY + 1.0f) * 0.5f * rectH;
     }
@@ -269,10 +274,10 @@ void EquirectViewportRenderer::statsFrameStart(bool newPicture)
         ++s.newFrames;
     }
     ++s.rendersOfCurrent;
-    const float pose[4] = {m_window->Yaw(), m_window->Pitch(), m_window->Roll(), m_window->FovY()};
-    if (!std::equal(pose, pose + 4, s.lastPose)) {
+    const view::Pose pose = m_window->Pose();
+    if (pose != s.lastPose) {
         ++s.poseChanges;
-        std::copy(pose, pose + 4, s.lastPose);
+        s.lastPose = pose;
     }
 }
 
@@ -529,13 +534,13 @@ void EquirectViewportRenderer::startNextFrame()
     struct PaneDraw {
         float x, y, w, h; // framebuffer px
         float aspect;     // at the output size
-        float pose[4];
+        view::Pose pose;
     };
     std::vector<PaneDraw> panes;
     const pane::Split split = m_window->Split();
     const int activePane = m_window->EffectiveActivePane();
     {
-        float poses[pane::kMaxPanes][4];
+        view::Pose poses[pane::kMaxPanes];
         m_window->PanePoses(poses);
         int outW = 0, outH = 0;
         m_window->OutputSize(outW, outH);
@@ -545,14 +550,13 @@ void EquirectViewportRenderer::startNextFrame()
             const pane::Rect &r = rects[i];
             PaneDraw d{rectX + float(r.x) / outW * rectW, rectY + float(r.y) / outH * rectH,
                        float(r.w) / outW * rectW, float(r.h) / outH * rectH,
-                       float(r.aspect()), {}};
-            std::copy(poses[i], poses[i] + 4, d.pose);
+                       float(r.aspect()), poses[i]};
             panes.push_back(d);
         }
         if (panes.empty()) {
-            PaneDraw d{float(rectX), float(rectY), float(rectW), float(rectH), outAspect, {}};
-            std::copy(poses[0], poses[0] + 4, d.pose); // the window's own: one picture
-            panes.push_back(d);
+            // The window's own: one picture.
+            panes.push_back({float(rectX), float(rectY), float(rectW), float(rectH), outAspect,
+                             poses[0]});
         }
     }
     // A pane's integer rect, clipped to the output rect.
@@ -585,6 +589,7 @@ void EquirectViewportRenderer::startNextFrame()
     pc.roll = m_window->Roll();
     pc.fovY = m_window->FovY();
     pc.aspect = outAspect;
+    pc.distortion = m_window->Pose().distortion;
     // Stabilization matrix, row-major in the window -> col-major (3 padded
     // vec3 columns) for std140.
     float stabRm[9];
@@ -608,11 +613,12 @@ void EquirectViewportRenderer::startNextFrame()
             if (ps.extent.width == 0 || ps.extent.height == 0)
                 continue;
             vkCmdSetScissor(commandBuffer, 0, 1, &ps);
-            pc.yaw = d.pose[0];
-            pc.pitch = d.pose[1];
-            pc.roll = d.pose[2];
-            pc.fovY = d.pose[3];
+            pc.yaw = d.pose.yaw;
+            pc.pitch = d.pose.pitch;
+            pc.roll = d.pose.roll;
+            pc.fovY = d.pose.fovY;
             pc.aspect = d.aspect;
+            pc.distortion = d.pose.distortion;
         }
         if (imp) {
             LensPushConstants lpc{};
@@ -644,8 +650,7 @@ void EquirectViewportRenderer::startNextFrame()
             const PaneDraw &d = panes[k / outlines.size()];
             const auto &o = outlines[k % outlines.size()];
             RegionPushConstants rpc{};
-            const int n = projectOutline(o, stabRm, d.pose[0], d.pose[1], d.pose[2], d.pose[3],
-                                         d.aspect, d.w, d.h, rpc.pts);
+            const int n = projectOutline(o, stabRm, d.pose, d.aspect, d.w, d.h, rpc.pts);
             if (n < 3)
                 continue;
             for (int i = 0; i < n; ++i) { // pane px -> output rect px

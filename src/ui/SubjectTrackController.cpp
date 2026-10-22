@@ -115,18 +115,21 @@ bool SubjectTrackController::start(const Run &run)
         live->camYaw += a * dy;
         live->camPitch += a * (s.pitch - live->camPitch);
         EquirectViewportWindow::FrameOverlay o;
-        o.pose[0] = float(live->camYaw);
-        o.pose[1] = float(live->camPitch);
-        o.pose[2] = look.roll;
-        o.pose[3] = look.fovY;
+        o.pose = viewPoseOf(look);
+        o.pose.yaw = float(live->camYaw);
+        o.pose.pitch = float(live->camPitch);
         const track::Vec3 v = track::stabToView(track::dirFromYawPitch(s.yaw, s.pitch),
                                                 live->camYaw, live->camPitch, look.roll);
-        if (v.z < -1e-6) {
-            const double t = std::tan(look.fovY * 0.5);
-            const double fx = ((v.x / -v.z) / (t * aspect) + 1.0) * 0.5;
-            const double fy = ((-v.y / -v.z) / t + 1.0) * 0.5;
-            const double fw = std::tan(s.width * 0.5) / (t * aspect);
-            const double fh = std::tan(s.height * 0.5) / t;
+        const double d = o.pose.distortion;
+        const double p[3] = {v.x, v.y, v.z};
+        double px = 0.0, py = 0.0;
+        if (view::pointToPlane(p, d, px, py, 1e-6)) {
+            // The box at the subject's angular size, as the view's centre shows it.
+            const double t = view::halfHeight<double>(look.fovY, d);
+            const double fx = (px / (t * aspect) + 1.0) * 0.5;
+            const double fy = (-py / t + 1.0) * 0.5;
+            const double fw = view::planeRadius(s.width * 0.5, d) / (t * aspect);
+            const double fh = view::planeRadius(s.height * 0.5, d) / t;
             o.hasMarker = true;
             o.marker = QRectF(fx - fw * 0.5, fy - fh * 0.5, fw, fh);
             o.markerStyle = s.good ? EquirectViewportWindow::MarkerStyle::Tracking

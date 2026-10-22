@@ -20,10 +20,9 @@ constexpr double kDegToRad = kPi / 180.0;
 stitch::NativeStitchSource::ViewRect viewRect(const ScanView& v)
 {
     stitch::NativeStitchSource::ViewRect r;
-    r.pose[0] = static_cast<float>(-v.lonDeg * kDegToRad);
-    r.pose[1] = static_cast<float>(v.latDeg * kDegToRad);
-    r.pose[2] = 0.0f;
-    r.pose[3] = static_cast<float>(2.0 * std::atan(std::tan(0.5 * v.hfovDeg * kDegToRad) * v.h / std::max(1, v.w)));
+    r.pose.yaw = static_cast<float>(-v.lonDeg * kDegToRad);
+    r.pose.pitch = static_cast<float>(v.latDeg * kDegToRad);
+    r.pose.fovY = static_cast<float>(2.0 * std::atan(std::tan(0.5 * v.hfovDeg * kDegToRad) * v.h / std::max(1, v.w)));
     r.x = v.x;
     r.y = v.y;
     r.w = v.w;

@@ -52,7 +52,7 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         return false;
     const ReframeExportController::ClipJob &job = m_spec.job;
     // The view and stabilization at the frame's own time, as the export.
-    auto poseAt = [&job](int64_t ptsMs, float pose[4], float stab[9]) {
+    auto poseAt = [&job](int64_t ptsMs, view::Pose &pose, float stab[9]) {
         if (job.poseAt)
             job.poseAt(ptsMs, pose);
         if (job.stab) {
@@ -69,17 +69,12 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         const stitch::Frame eq = m_src->ReadFrame();
         if (!eq.rgba.empty()) {
             exportpipe::ReframeView view;
-            float pose[4] = {view.yaw, view.pitch, view.roll, view.fovY};
-            poseAt(eq.timestamp_ms, pose, view.stab);
-            view.yaw = pose[0];
-            view.pitch = pose[1];
-            view.roll = pose[2];
-            view.fovY = pose[3];
+            poseAt(eq.timestamp_ms, view.pose, view.stab);
             view.aspect = float(m_w) / m_h;
             view.colorGrade = job.colorGrade;
             f.rgba.resize(size_t(m_w) * m_h * 4);
             const std::vector<exportpipe::PaneView> panes =
-                ReframeExportController::paneViews(job, m_w, m_h, eq.timestamp_ms, pose);
+                ReframeExportController::paneViews(job, m_w, m_h, eq.timestamp_ms, view.pose);
             if (panes.empty())
                 exportpipe::RenderRectilinear(eq.rgba.data(), eq.width, eq.height, f.rgba.data(),
                                               m_w, m_h, view);

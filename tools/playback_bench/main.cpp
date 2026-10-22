@@ -175,14 +175,14 @@ void benchFlat(const std::string& path, int eqW, int frames, double fps, FlatKin
         std::printf("  fused view pass unavailable\n");
         return;
     }
-    const float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
-    const auto fixedPose = [&pose](int64_t, float p[4], float[9]) { std::copy(pose, pose + 4, p); };
+    const view::Pose pose;
+    const auto fixedPose = [&pose](int64_t, view::Pose &p, float[9]) { p = pose; };
     Stats total, dec, wait, gpu, rf, copy, seam;
     for (int i = 0; i < frames + kWarmup; ++i) {
         const auto t0 = Clock::now();
         const bool got = kind == FlatKind::FusedRgba
                              ? !src->ReadViewFrame(1920, 1080, fixedPose).rgba.empty()
-                             : !src->ReadFlatFrame(1920, 1080, pose).data.empty();
+                             : !src->ReadFlatFrame(1920, 1080, &pose).data.empty();
         const double ms = msSince(t0);
         if (!got)
             break;

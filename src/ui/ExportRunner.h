@@ -32,13 +32,13 @@ public:
     // Export `req` (the caller paused playback). No-op while one runs.
     void startExport(const ReframeExportController::Request &req);
 
-    // A screenshot: clip `job`'s frame at `sourceMs` looked at with `pose`
-    // {yaw, pitch, roll, fovY}, at w x h, with `insets` composited at
+    // A screenshot: clip `job`'s frame at `sourceMs` looked at with `pose`,
+    // at w x h, with `insets` composited at
     // `timelineMs` like the export does; written to `path` as a PNG. No-op
     // while one is being saved.
     struct Still {
         ReframeExportController::ClipJob job;
-        std::array<float, 4> pose{};
+        view::Pose pose;
         qint64 sourceMs = 0;
         qint64 timelineMs = 0;
         int width = 0, height = 0;

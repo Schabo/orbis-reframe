@@ -811,7 +811,7 @@ void testSplitScreen(const Ctx &c)
     CHECK(seekTo(c, 1000));
     settle();
     CHECK(!paneCombo->isVisibleTo(c.w) && !gap->isVisibleTo(c.w));
-    v->SetPose(0.5f, 0.0f, 0.0f, 1.2f); // pane 1 looks this way
+    v->SetPose({0.5f, 0.0f, 0.0f, 1.2f}); // pane 1 looks this way
     const int grid = layout->findData(int(pane::Layout::Grid));
     layout->setCurrentIndex(grid);
     emit layout->activated(grid);
@@ -1648,7 +1648,7 @@ void testNewProjectResets(const Ctx &c)
     exposure->setValue(10); // +1.0 EV
     CHECK(waitFor([&] { return mode->currentIndex() != 0; }));
     arm->setChecked(true);
-    c.w->viewport()->SetPose(1.0f, 0.3f, 0.1f, 1.0f);
+    c.w->viewport()->SetPose({1.0f, 0.3f, 0.1f, 1.0f});
     CHECK(c.project->save(c.project->filePath())); // nothing to ask about leaving
 
     fillProjectDialog(c, QStringLiteral("Third"));

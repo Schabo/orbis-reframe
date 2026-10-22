@@ -4,14 +4,15 @@
 #include <cstdint>
 #include <vector>
 
-#include "ColorLut.h" // color::Grade
+#include "ColorLut.h"       // color::Grade
+#include "ViewProjection.h" // view::Pose
 
-// CPU equirectangular -> rectilinear ("flat") reprojection for the export
-// pipeline. A direct port of the interactive viewport's fragment shader
+// CPU equirectangular -> "flat" view reprojection for the export pipeline.
+// A direct port of the interactive viewport's fragment shader
 // (src/render/shaders/equirect.frag): for each output pixel, reconstruct the
-// view-space ray implied by the vertical FOV, rotate it by yaw/pitch to a
-// world-space look direction, convert that to equirect UV, and bilinearly
-// sample the source frame.
+// view-space ray (ViewProjection.h: the vertical FOV and the distortion),
+// rotate it by yaw/pitch to a world-space look direction, convert that to
+// equirect UV, and bilinearly sample the source frame.
 //
 // Deliberately Qt-free and Vulkan-free: it is the reproject half of the export,
 // linked into reframe_flatten alongside system FFmpeg only. Export is offline,
@@ -20,10 +21,7 @@
 namespace exportpipe {
 
 struct ReframeView {
-    float yaw = 0.0f;     // radians, rotation about the vertical (Y) axis
-    float pitch = 0.0f;   // radians, rotation about the horizontal (X) axis
-    float roll = 0.0f;    // radians, rotation about the view (Z) axis -- horizon tilt
-    float fovY = 1.309f;  // vertical field of view, radians (~75 deg)
+    view::Pose pose;
     float aspect = 1.0f;  // output width / height
     // Gyro de-rotation (row-major 3x3) in the sphere frame, applied to the
     // world ray after the pose -- same as equirect.frag's pc.stab.
@@ -44,10 +42,10 @@ void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH,
                        const ReframeView& view);
 
 // Split screen: one pane of the picture, its rectangle in the output frame
-// and its pose ({yaw, pitch, roll, fovY}).
+// and its pose.
 struct PaneView {
     int x = 0, y = 0, w = 0, h = 0;
-    float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+    view::Pose pose;
 };
 
 // RenderRectilinear for a split picture: each of `panes` into its rectangle

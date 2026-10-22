@@ -5,6 +5,7 @@
 #include <ClipMetadata.h>      // camera::ClipMetadata
 
 #include <ColorLut.h>          // color::Grade
+#include <ViewProjection.h>    // view::Pose
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
 #include <SeamDepth.h>         // insv::SeamDepthTracker (value member below)
 
@@ -101,8 +102,7 @@ public:
     // Reads the next lens pair and renders it on the GPU to an outW x outH
     // rectilinear NV12 frame against `pose` -- straight from the fisheyes
     // (fused pass, one resample) when GpuViewAvailable(), else via a GPU
-    // equirect + reproject. `pose` is ({yaw,pitch,roll,fovY} radians; nullptr
-    // => forward view). `stab` (row-major 3x3, nullptr => identity) is the
+    // equirect + reproject. `pose` nullptr => the forward view. `stab` (row-major 3x3, nullptr => identity) is the
     // frame's gyro de-rotation in the sphere frame, applied after `pose` like
     // the viewport. `colorGrade` (nullptr => neutral) is the Colour
     // panel grade, its LUT included. outW must
@@ -112,7 +112,7 @@ public:
     // NV12 unless SetFlatTenBit(true) asked for P010 and the fused pass runs
     // (the equirect is 8-bit, so the via-equirect path stays NV12):
     // FlatFrame::p010 says which.
-    FlatFrame ReadFlatFrame(int outW, int outH, const float pose[4],
+    FlatFrame ReadFlatFrame(int outW, int outH, const view::Pose* pose,
                             const float stab[9] = nullptr,
                             const color::Grade* colorGrade = nullptr);
 
@@ -124,7 +124,7 @@ public:
     // first frame at-or-after it. At the stick mount's ~11 Hz shake that is a
     // phase error large enough to undo most of the stabilization. `pose` is
     // prefilled with a forward view and `stab` with identity.
-    using FramePoseFn = std::function<void(int64_t ptsMs, float pose[4], float stab[9])>;
+    using FramePoseFn = std::function<void(int64_t ptsMs, view::Pose& pose, float stab[9])>;
     FlatFrame ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                             const color::Grade* colorGrade = nullptr);
 
@@ -143,7 +143,7 @@ public:
     struct ViewPane {
         int x = 0, y = 0, w = 0, h = 0;
     };
-    using PanePoseFn = std::function<void(int64_t ptsMs, int pane, float pose[4])>;
+    using PanePoseFn = std::function<void(int64_t ptsMs, int pane, view::Pose& pose)>;
     void SetViewPanes(std::vector<ViewPane> panes, PanePoseFn poseAt, uint32_t fillRgba);
 
     // The fused pass with RGBA8 output (Frame::rgba, outW x outH): the view
@@ -163,7 +163,7 @@ public:
     // the next HoldNextPair / Read*) lets it go. Requires GpuViewAvailable().
     // False at end-of-clip (GetLastError() empty) or on error.
     struct ViewRect {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+        view::Pose pose;
         int x = 0, y = 0, w = 0, h = 0;
     };
     bool HoldNextPair(int64_t& pts_ms);

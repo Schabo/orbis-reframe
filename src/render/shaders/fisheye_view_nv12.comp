@@ -45,14 +45,15 @@ layout(push_constant) uniform PC {
     float fovY;
     float aspect;
     // Where the view goes in a larger canvas (several views in one frame:
-    // the privacy blur's tiles, the split screen's panes) -- its top-left
-    // pixel (ox a multiple of 4, oy of 2) and the canvas: its row length in
-    // pixels in the low 16 bits, its height in the high 16 (NV12 / P010:
-    // where the chroma plane starts); 0 = the view alone, outW x outH.
-    // (Fills what was mat3 alignment padding.)
-    int ox;
-    int oy;
+    // the privacy blur's tiles, the split screen's panes) -- `origin`, its
+    // top-left pixel, x in the low 16 bits (a multiple of 4), y in the high
+    // 16 (even) -- and the canvas: its row length in pixels in the low 16
+    // bits, its height in the high 16 (NV12 / P010: where the chroma plane
+    // starts); 0 = the view alone, outW x outH. (These and the distortion
+    // fill what was mat3 alignment padding.)
+    int origin;
     int canvas;
+    float distortion; // view_projection.glsl's d
     mat3 stab; // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
     vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
@@ -70,16 +71,17 @@ layout(std430, binding = 3) writeonly buffer OutBuf4 { uvec4 px4[]; };
 layout(std430, binding = 3) writeonly buffer OutBuf2 { uvec2 px2[]; };
 
 #include "color_grade.glsl"
+#include "view_projection.glsl"
 
 // Output pixel -> sphere (equirect-frame) direction. Same as
-// reframe_reproject.comp's dirFor(): view ray from the FOV, roll about Z,
-// pitch about X, yaw about Y, then stab.
+// reframe_reproject.comp's dirFor(): view ray from the FOV and the
+// distortion (view_projection.glsl), roll about Z, pitch about X, yaw about
+// Y, then stab.
 vec3 viewDir(int px, int py)
 {
     float ndcX = (float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0;
     float ndcY = (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0;
-    float t = tan(pc.fovY * 0.5);
-    vec3 r = normalize(vec3(ndcX * t * pc.aspect, -ndcY * t, -1.0));
+    vec3 r = viewRayAt(vec2(ndcX, ndcY), pc.fovY, pc.aspect, pc.distortion);
 
     float cr = cos(pc.roll), sr = sin(pc.roll);
     float cp = cos(pc.pitch), sp = sin(pc.pitch);
@@ -144,8 +146,8 @@ void main()
     // The canvas, in 4-pixel words per row, and its height.
     int strideQ = (pc.canvas != 0 ? (pc.canvas & 0xFFFF) : pc.outW) / 4;
     int canvasH = pc.canvas != 0 ? (pc.canvas >> 16) & 0xFFFF : pc.outH;
-    int row = gid.y + pc.oy;
-    int col = pc.ox / 4 + gid.x;
+    int row = gid.y + ((pc.origin >> 16) & 0xFFFF);
+    int col = (pc.origin & 0xFFFF) / 4 + gid.x;
 
     if (pc.fmt == 1) {
         uint w[4];

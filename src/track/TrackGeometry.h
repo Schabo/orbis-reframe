@@ -1,15 +1,17 @@
 #pragma once
 
 // View <-> sphere geometry for subject tracking, in the conventions of
-// equirect.frag / exportpipe::RenderRectilinear: a view ray
-// v = (ndcX * tan(fovY/2) * aspect, -ndcY * tan(fovY/2), -1) (ndc y = -1 at the
-// top) is rolled about Z, pitched about X, then yawed about Y into the
+// equirect.frag / exportpipe::RenderRectilinear: a view ray (ViewProjection.h,
+// from the NDC, ndc y = -1 at the top, the vertical FOV and the distortion)
+// is rolled about Z, pitched about X, then yawed about Y into the
 // *stabilized* direction q -- the frame ReframeTrack keys live in; the gyro
 // de-rotation then takes q to the camera sphere. A pose (yaw, pitch) looks
 // along dirFromYawPitch(yaw, pitch).
 //
 // Header-only and OpenCV-free, so the app can turn a viewport box into a
 // tracking seed without the tracking library.
+
+#include "ViewProjection.h"
 
 #include <algorithm>
 #include <cmath>
@@ -68,11 +70,12 @@ inline Vec3 stabToView(const Vec3& q, double yaw, double pitch, double roll = 0.
 // A point of a view at fractions (fx, fy) of its width / height (0,0 = top
 // left) -> stabilized direction.
 inline Vec3 viewPointToStab(double fx, double fy, double yaw, double pitch, double roll,
-                            double fovY, double aspect)
+                            double fovY, double distortion, double aspect)
 {
-    const double t = std::tan(fovY * 0.5);
-    const Vec3 v = normalized({(fx * 2.0 - 1.0) * t * aspect, -(fy * 2.0 - 1.0) * t, -1.0});
-    return viewToStab(v, yaw, pitch, roll);
+    double r[3];
+    view::ndcToRay(fx * 2.0 - 1.0, fy * 2.0 - 1.0, view::halfHeight(fovY, distortion), aspect,
+                   distortion, r);
+    return viewToStab({r[0], r[1], r[2]}, yaw, pitch, roll);
 }
 
 // What to track: the subject's centre direction (stabilized) and its angular
@@ -84,16 +87,16 @@ struct Seed {
 
 // A box in a view (fractions of the view: x, y = top left, w, h) -> Seed.
 inline Seed seedFromViewBox(double x, double y, double w, double h, double yaw, double pitch,
-                            double roll, double fovY, double aspect)
+                            double roll, double fovY, double distortion, double aspect)
 {
+    const auto at = [&](double fx, double fy) {
+        return viewPointToStab(fx, fy, yaw, pitch, roll, fovY, distortion, aspect);
+    };
     Seed s;
-    yawPitchFromDir(viewPointToStab(x + w * 0.5, y + h * 0.5, yaw, pitch, roll, fovY, aspect),
-                    s.yaw, s.pitch);
+    yawPitchFromDir(at(x + w * 0.5, y + h * 0.5), s.yaw, s.pitch);
     const double cy = y + h * 0.5, cx = x + w * 0.5;
-    s.width = angleBetween(viewPointToStab(x, cy, yaw, pitch, roll, fovY, aspect),
-                           viewPointToStab(x + w, cy, yaw, pitch, roll, fovY, aspect));
-    s.height = angleBetween(viewPointToStab(cx, y, yaw, pitch, roll, fovY, aspect),
-                            viewPointToStab(cx, y + h, yaw, pitch, roll, fovY, aspect));
+    s.width = angleBetween(at(x, cy), at(x + w, cy));
+    s.height = angleBetween(at(cx, y), at(cx, y + h));
     return s;
 }
 

@@ -1467,7 +1467,7 @@ int main(int argc, char** argv)
         if (stabInT.empty())
             die("--stab-in: no matrices");
     }
-    auto poseAt = [&](int64_t ptsMs, float pose[4], float stab[9]) {
+    auto poseAt = [&](int64_t ptsMs, view::Pose &pose, float stab[9]) {
         const double tSec = ptsMs / 1000.0;
         float corr[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         if (!stabInT.empty()) {
@@ -1496,10 +1496,10 @@ int main(int argc, char** argv)
             y += dY;
             p += dP;
         }
-        pose[0] = y;
-        pose[1] = p;
-        pose[2] = r;
-        pose[3] = fovY;
+        pose.yaw = y;
+        pose.pitch = p;
+        pose.roll = r;
+        pose.fovY = fovY;
     };
 
     int64_t written = 0;
@@ -1525,9 +1525,10 @@ int main(int argc, char** argv)
             }
             if (eq.timestamp_ms + halfFrameMs < trimIn)
                 continue;
-            float pose[4], stab[9];
+            view::Pose pose;
+            float stab[9];
             poseAt(eq.timestamp_ms, pose, stab);
-            if (!writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, pose, stab, nullptr, err))
+            if (!writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, &pose, stab, nullptr, err))
                 die(err);
         }
         ++written;

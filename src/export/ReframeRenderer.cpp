@@ -108,13 +108,13 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
                 const ReframeView& view, int rowBegin, int rowEnd)
 {
     const Grade grade(view.colorGrade);
-    const float tanHalfFovY = std::tan(view.fovY * 0.5f);
-    const float cosR = std::cos(view.roll);
-    const float sinR = std::sin(view.roll);
-    const float cosP = std::cos(view.pitch);
-    const float sinP = std::sin(view.pitch);
-    const float cosY = std::cos(view.yaw);
-    const float sinY = std::sin(view.yaw);
+    const float h = view::halfHeight(view.pose.fovY, view.pose.distortion);
+    const float cosR = std::cos(view.pose.roll);
+    const float sinR = std::sin(view.pose.roll);
+    const float cosP = std::cos(view.pose.pitch);
+    const float sinP = std::sin(view.pose.pitch);
+    const float cosY = std::cos(view.pose.yaw);
+    const float sinY = std::sin(view.pose.yaw);
 
     for (int py = rowBegin; py < rowEnd; ++py) {
         const float ndcY = (static_cast<float>(py) + 0.5f) / static_cast<float>(outH) * 2.0f - 1.0f;
@@ -123,13 +123,9 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
                 (static_cast<float>(px) + 0.5f) / static_cast<float>(outW) * 2.0f - 1.0f;
 
             // View-space ray (matches equirect.frag: +Y up, -Z forward).
-            float vx = ndcX * tanHalfFovY * view.aspect;
-            float vy = -ndcY * tanHalfFovY;
-            float vz = -1.0f;
-            const float invLen = 1.0f / std::sqrt(vx * vx + vy * vy + vz * vz);
-            vx *= invLen;
-            vy *= invLen;
-            vz *= invLen;
+            float ray[3];
+            view::ndcToRay(ndcX, ndcY, h, view.aspect, view.pose.distortion, ray);
+            const float vx = ray[0], vy = ray[1], vz = ray[2];
 
             // Roll about Z (view axis), then pitch about X, then yaw about Y.
             const float rx = vx * cosR - vy * sinR;
@@ -215,10 +211,7 @@ void RenderRectilinearPanes(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* ou
         if (w <= 0 || h <= 0)
             continue;
         ReframeView v = view;
-        v.yaw = p.pose[0];
-        v.pitch = p.pose[1];
-        v.roll = p.pose[2];
-        v.fovY = p.pose[3];
+        v.pose = p.pose;
         v.aspect = static_cast<float>(p.w) / static_cast<float>(p.h);
         pane.resize(static_cast<size_t>(p.w) * p.h * 4);
         RenderRectilinear(eqRgba, eqW, eqH, pane.data(), p.w, p.h, v);

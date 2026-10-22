@@ -868,9 +868,7 @@ void MainWindow::connectReframe()
     connect(m_viewport, &EquirectViewportWindow::lookCommitted, this, [this] {
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(
-                m_clipId, m_lastPositionMs,
-                {m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(), m_viewport->FovY()},
-                playingPane());
+                m_clipId, m_lastPositionMs, reframePoseOf(m_viewport->Pose()), playingPane());
         syncReframePanel(); // the drag / zoom moved the pose
     });
     // Split screen: a click on another pane steers it from now on.
@@ -886,12 +884,10 @@ void MainWindow::connectReframe()
                 // the way Fill panes points them, from pane 1's view at the playhead.
                 std::vector<Timeline::PanePose> keys;
                 const qint64 at = c->id == m_clipId ? m_lastPositionMs : c->trimInMs;
-                float poses[pane::kMaxPanes][4];
+                view::Pose poses[pane::kMaxPanes];
                 m_viewport->PanePoses(poses);
                 const ReframePose base =
-                    c->id == m_clipId
-                        ? ReframePose{poses[0][0], poses[0][1], poses[0][2], poses[0][3]}
-                        : c->reframe.sample(at);
+                    c->id == m_clipId ? reframePoseOf(poses[0]) : c->reframe.sample(at);
                 for (const Timeline::PanePose &k : fillPoses(split, base))
                     if (c->paneTrack(k.first).isEmpty())
                         keys.push_back(k);
@@ -906,7 +902,7 @@ void MainWindow::connectReframe()
         m_timeline->setClipFit(editClipId(), fill ? ClipItem::Fit::Fill : ClipItem::Fit::Bars);
     });
     connect(m_reframePanel, &ReframePanel::poseEdited, this, [this](const ReframePose &p) {
-        m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
+        m_viewport->SetPose(viewPoseOf(p));
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(m_clipId, m_lastPositionMs, p, playingPane());
     });
@@ -1482,19 +1478,16 @@ void MainWindow::applySampledPose(qint64 sourceMs)
         return;
     // Every pane's view as it exports, the split first: the active pane is
     // the window's own pose, set after it.
-    float poses[pane::kMaxPanes][4] = {};
+    view::Pose poses[pane::kMaxPanes];
     for (int i = 0; i < c->paneCount(); ++i) {
         const ReframeTrack &t = c->paneTrack(i);
-        const ReframePose p = t.isEmpty() ? ReframePose{} : t.sample(sourceMs);
-        const float pose[4] = {p.yaw, p.pitch, p.roll, p.fovY};
-        std::copy(pose, pose + 4, poses[i]);
+        poses[i] = viewPoseOf(t.isEmpty() ? ReframePose{} : t.sample(sourceMs));
     }
     m_viewport->SetPanes(c->flat ? pane::Split{} : c->split, poses);
     const ReframeTrack &active = c->paneTrack(paneOf(*c));
     if (active.isEmpty() || m_viewportDragging)
         return; // free look
-    const ReframePose p = active.sample(sourceMs);
-    m_viewport->SetPose(p.yaw, p.pitch, p.roll, p.fovY);
+    m_viewport->SetPose(viewPoseOf(active.sample(sourceMs)));
 }
 
 int MainWindow::paneOf(const ClipItem &c) const
@@ -1545,9 +1538,9 @@ void MainWindow::fillPanes()
     const ClipItem *c = m_timeline->clipById(m_clipId);
     if (!c || c->flat || !c->split.isSplit())
         return;
-    float poses[pane::kMaxPanes][4];
+    view::Pose poses[pane::kMaxPanes];
     m_viewport->PanePoses(poses);
-    const ReframePose base{poses[0][0], poses[0][1], poses[0][2], poses[0][3]};
+    const ReframePose base = reframePoseOf(poses[0]);
     std::vector<Timeline::PanePose> keys = fillPoses(c->split, base);
     keys.insert(keys.begin(), {0, base}); // pane 1 keeps its view, keyed too
     m_timeline->setClipSplit(c->id, c->split, m_lastPositionMs, &keys);
@@ -1613,8 +1606,7 @@ void MainWindow::applyStabilization(qint64 sourceMs)
 
 void MainWindow::syncReframePanel()
 {
-    m_reframePanel->setPose({m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
-                             m_viewport->FovY()});
+    m_reframePanel->setPose(reframePoseOf(m_viewport->Pose()));
     const ClipItem *c = m_timeline->clipById(m_clipId);
     const ReframeTrack *t = c ? &c->paneTrack(paneOf(*c)) : nullptr;
     const int seg =
@@ -2461,8 +2453,7 @@ void MainWindow::setupKeyboardShortcuts()
                    setOverlayKeyAtPlayhead();
                else if (m_clipId)
                    m_timeline->upsertClipReframeKey(m_clipId, m_lastPositionMs,
-                                                    {m_viewport->Yaw(), m_viewport->Pitch(),
-                                                     m_viewport->Roll(), m_viewport->FovY()},
+                                                    reframePoseOf(m_viewport->Pose()),
                                                     playingPane());
            });
     addKey(reframe,
@@ -3081,8 +3072,7 @@ void MainWindow::bindEmptyTimeline()
     // ahead again, from the first pane, and reframe authoring starts
     // disarmed.
     setActivePane(0);
-    const ReframePose ahead;
-    m_viewport->SetPose(ahead.yaw, ahead.pitch, ahead.roll, ahead.fovY);
+    m_viewport->SetPose(viewPoseOf(ReframePose{}));
     m_reframePanel->setClipUnkeyed(false);
     m_editToolbar->setReframeArmed(false);
     m_editToolbar->setHasReframeKeys(false);
@@ -3813,12 +3803,13 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     // The active pane's: the box is drawn in it, its view is what the
     // tracker steers.
     const float aspect = m_viewport->ViewAspect();
-    const ReframePose look{m_viewport->Yaw(), m_viewport->Pitch(), m_viewport->Roll(),
-                           m_viewport->FovY()};
+    const view::Pose shown = m_viewport->Pose();
+    const ReframePose look = reframePoseOf(shown);
     SubjectTrackController::Run run;
     subjecttrack::Request &req = run.req;
-    req.seed = track::seedFromViewBox(box.x(), box.y(), box.width(), box.height(), look.yaw,
-                                      look.pitch, look.roll, look.fovY, aspect);
+    req.seed = track::seedFromViewBox(box.x(), box.y(), box.width(), box.height(), shown.yaw,
+                                      shown.pitch, shown.roll, shown.fovY, shown.distortion,
+                                      aspect);
     const ReframeExportController::ClipJob job = exportJobFor(*c); // the stab, as exported
     req.clipPath = c->sourcePath.toStdString();
     req.fromMs = from;
@@ -3942,16 +3933,13 @@ void MainWindow::takeScreenshot()
     // view being the viewport's own.
     ExportRunner::Still still;
     still.job = exportJobFor(*c);
-    float poses[pane::kMaxPanes][4];
-    m_viewport->PanePoses(poses);
-    std::array<std::array<float, 4>, pane::kMaxPanes> shown;
-    for (int i = 0; i < pane::kMaxPanes; ++i)
-        std::copy(poses[i], poses[i] + 4, shown[size_t(i)].begin());
+    std::array<view::Pose, pane::kMaxPanes> shown;
+    m_viewport->PanePoses(shown.data());
     still.pose = shown[0];
     if (still.job.split.isSplit())
-        still.job.panePoseAt = [shown](qint64, int pane, float pose[4]) {
+        still.job.panePoseAt = [shown](qint64, int pane, view::Pose &pose) {
             if (pane >= 0 && pane < pane::kMaxPanes)
-                std::copy(shown[size_t(pane)].begin(), shown[size_t(pane)].end(), pose);
+                pose = shown[size_t(pane)];
         };
     still.sourceMs = m_lastPositionMs;
     still.timelineMs = std::max<qint64>(0, m_lastTimelineMs);

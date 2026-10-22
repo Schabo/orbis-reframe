@@ -84,7 +84,7 @@ void ExportRunner::startStill(Still still)
         return;
     m_stillThread = QThread::create([this, s = std::move(still)] {
         QString err;
-        QImage img = ReframeExportController::renderStill(s.job, s.sourceMs, s.pose.data(), s.width,
+        QImage img = ReframeExportController::renderStill(s.job, s.sourceMs, s.pose, s.width,
                                                           s.height, err);
         if (!img.isNull() && !s.insets.empty()) {
             exportpipe::InsetCompositor comp(s.insets, s.width, s.height);

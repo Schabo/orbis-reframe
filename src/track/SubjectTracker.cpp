@@ -47,7 +47,7 @@ struct Crop {
     double tanHalf() const { return std::tan(fov * 0.5); }
     Vec3 pixelToDir(double px, double py) const
     {
-        return viewPointToStab(px / size, py / size, yaw, pitch, 0.0, fov, 1.0);
+        return viewPointToStab(px / size, py / size, yaw, pitch, 0.0, fov, 0.0, 1.0);
     }
     double pxToAngle(double px) const { return 2.0 * std::atan(px / size * tanHalf()); }
     double angleToPx(double ang) const { return std::tan(ang * 0.5) / tanHalf() * size; }
@@ -56,9 +56,9 @@ struct Crop {
 cv::Mat renderCrop(const uint8_t* eq, int w, int h, const Crop& c, const float stab[9])
 {
     exportpipe::ReframeView v;
-    v.yaw = static_cast<float>(c.yaw);
-    v.pitch = static_cast<float>(c.pitch);
-    v.fovY = static_cast<float>(c.fov);
+    v.pose.yaw = static_cast<float>(c.yaw);
+    v.pose.pitch = static_cast<float>(c.pitch);
+    v.pose.fovY = static_cast<float>(c.fov);
     v.aspect = 1.0f;
     std::copy(stab, stab + 9, v.stab);
     cv::Mat rgba(c.size, c.size, CV_8UC4);

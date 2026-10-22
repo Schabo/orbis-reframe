@@ -95,6 +95,12 @@ The same view math exists in several places, and they must agree:
 - the CPU export: `src/export/ReframeRenderer`;
 - the subject tracker's crop (`src/track/`).
 
+The projection itself -- a view's pose (`view::Pose`: yaw, pitch, roll,
+vertical field of view, distortion) and how its pixels become rays and
+back -- is written once, in `src/core/ViewProjection.h` and its GLSL twin
+`src/render/shaders/view_projection.glsl`; every implementation above, and
+viewport picking and overlays, goes through them. Keep the two in step.
+
 A split clip's picture is several views, one per pane: where each pane
 goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)
 in every one of them, computed at the output size.

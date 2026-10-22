@@ -1,10 +1,10 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-// Reprojects an equirectangular 360 frame to a rectilinear "flat" viewport:
-// for each pixel, reconstruct the view-space ray implied by the vertical
-// FOV, rotate it by yaw/pitch to get a world-space look direction, then
-// convert that direction to equirect UV coordinates.
+// Reprojects an equirectangular 360 frame to the "flat" viewport: for each
+// pixel, reconstruct the view-space ray (view_projection.glsl: the vertical
+// FOV and the distortion), rotate it by yaw/pitch to get a world-space look
+// direction, then convert that direction to equirect UV coordinates.
 
 layout(location = 0) in vec2 inNdc;
 layout(location = 0) out vec4 outColor;
@@ -17,7 +17,8 @@ layout(push_constant) uniform PushConstants {
     float roll;   // radians, rotation around the view (Z) axis -- horizon tilt
     float fovY;   // vertical field of view, radians
     float aspect; // viewport width / height
-    // 12 bytes of std140 padding here (5 floats -> mat3 aligns at offset 32).
+    float distortion; // the projection's d: 0 rectilinear .. 1 stereographic
+    // 8 bytes of std140 padding here (6 floats -> mat3 aligns at offset 32).
     mat3 stab;    // Gyro de-rotation in the sphere frame, applied to the
                   // world ray AFTER the yaw/pitch/roll reframe pose.
                   // Identity when stabilization off.
@@ -30,10 +31,10 @@ layout(push_constant) uniform PushConstants {
 const float PI = 3.14159265358979323846;
 
 #include "color_grade.glsl"
+#include "view_projection.glsl"
 
 void main() {
-    float tanHalfFovY = tan(pc.fovY * 0.5);
-    vec3 rayView = normalize(vec3(inNdc.x * tanHalfFovY * pc.aspect, -inNdc.y * tanHalfFovY, -1.0));
+    vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion);
 
     float cosRoll = cos(pc.roll);
     float sinRoll = sin(pc.roll);
