@@ -23,6 +23,7 @@
 #include "panels/TransitionPanel.h"
 #include "panels/PrivacyPanel.h"
 #include "panels/ReframePanel.h"
+#include "panels/SplitScreenPanel.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
 
@@ -92,8 +93,8 @@ void testLayout(SettingsSidebar &bar)
     }
     if (auto *video = find<QScrollArea>(&bar, "videoSettings"))
         CHECK(sectionNames(video) == QStringList({"stitchingPanel", "stabilizationPanel",
-                                                  "reframePanel", "colourPanel",
-                                                  "mediaInfoPanel"}));
+                                                  "reframePanel", "splitScreenPanel",
+                                                  "colourPanel", "mediaInfoPanel"}));
     if (auto *title = find<QScrollArea>(&bar, "titleSettings"))
         CHECK(sectionNames(title) == QStringList({"titleTextPanel", "titlePlacementPanel"}));
     if (auto *audio = find<QScrollArea>(&bar, "audioSettings")) // nothing to show yet
@@ -108,7 +109,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
     CHECK(!bar.transition()->isCollapsible());
-    CHECK(bar.sections().size() == 10); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 11); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -154,6 +155,7 @@ void testScopes(SettingsSidebar &bar)
     CHECK(bar.stabilization()->scope() == QLatin1String("This clip"));
     CHECK(bar.colour()->scope() == QLatin1String("This clip"));
     CHECK(bar.reframe()->scope() == QLatin1String("Keys at the playhead"));
+    CHECK(bar.splitScreen()->scope() == QLatin1String("This clip"));
     CHECK(bar.overlay()->scope() == QLatin1String("Selected overlay clip"));
     CHECK(bar.privacy()->scope() == QLatin1String("This clip"));
     if (auto *label = bar.colour()->findChild<QLabel *>(QStringLiteral("settingsPanelScope")))

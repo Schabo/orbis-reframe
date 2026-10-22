@@ -792,9 +792,9 @@ void testDirectionLock(const Ctx &c)
     CHECK(c.timeline->clipAt(1).stabilization == beforeB);
 }
 
-// Split screen from the Reframe section: a grid gives the new panes Fill
-// panes' views; the pane picked there (or by a click in the view) is what
-// keys go to; Fill panes keys every pane; undo takes it all back.
+// Split screen from its section: a grid gives the new panes Fill panes'
+// views; the pane picked in the Reframe section (or by a click in the view)
+// is what keys go to; Fill panes keys every pane; undo takes it all back.
 void testSplitScreen(const Ctx &c)
 {
     auto *layout = find<QComboBox>(c.w, "splitLayoutCombo");
@@ -810,7 +810,7 @@ void testSplitScreen(const Ctx &c)
     settle();
     CHECK(seekTo(c, 1000));
     settle();
-    CHECK(!paneCombo->isVisibleTo(c.w));
+    CHECK(!paneCombo->isVisibleTo(c.w) && !gap->isVisibleTo(c.w));
     v->SetPose(0.5f, 0.0f, 0.0f, 1.2f); // pane 1 looks this way
     const int grid = layout->findData(int(pane::Layout::Grid));
     layout->setCurrentIndex(grid);
@@ -829,7 +829,7 @@ void testSplitScreen(const Ctx &c)
     }
     // The viewport draws the grid; its own pose is the active pane's.
     CHECK(v->Split().layout == pane::Layout::Grid);
-    CHECK(paneCombo->isVisibleTo(c.w) && paneCombo->count() == 4);
+    CHECK(paneCombo->isVisibleTo(c.w) && paneCombo->count() == 4 && gap->isVisibleTo(c.w));
     CHECK(std::fabs(v->ViewAspect() - 16.0f / 9.0f) < 0.05f); // a quarter of 16:9 is 16:9
 
     // Pane 3 (bottom left) picked: the view shows it, keys go to it.

@@ -523,6 +523,8 @@ if(FFMPEG_FOUND)
         src/ui/panels/StitchingPanel.h
         src/ui/panels/ReframePanel.cpp
         src/ui/panels/ReframePanel.h
+        src/ui/panels/SplitScreenPanel.cpp
+        src/ui/panels/SplitScreenPanel.h
         src/ui/panels/EaseCombo.h
         src/ui/panels/StabilizationPanel.cpp
         src/ui/panels/StabilizationPanel.h
@@ -904,6 +906,7 @@ if(TARGET camera AND Qt6Test_FOUND)
         src/ui/TabSidebar.cpp src/ui/TabSidebar.h
         src/ui/panels/StitchingPanel.cpp src/ui/panels/StitchingPanel.h
         src/ui/panels/ReframePanel.cpp src/ui/panels/ReframePanel.h
+        src/ui/panels/SplitScreenPanel.cpp src/ui/panels/SplitScreenPanel.h
         src/ui/panels/StabilizationPanel.cpp src/ui/panels/StabilizationPanel.h
         src/ui/panels/AudioPanel.cpp src/ui/panels/AudioPanel.h
         src/ui/panels/ColourPanel.cpp src/ui/panels/ColourPanel.h

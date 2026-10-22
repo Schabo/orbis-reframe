@@ -12,6 +12,7 @@
 #include "panels/OverlayPanel.h"
 #include "panels/PrivacyPanel.h"
 #include "panels/ReframePanel.h"
+#include "panels/SplitScreenPanel.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
 #include "panels/TitleTextPanel.h"
@@ -36,6 +37,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_stitching = section<StitchingPanel>("stitchingPanel", thisClip);
     m_stabilization = section<StabilizationPanel>("stabilizationPanel", thisClip);
     m_reframe = section<ReframePanel>("reframePanel", tr("Keys at the playhead"));
+    m_splitScreen = section<SplitScreenPanel>("splitScreenPanel", thisClip);
     m_colour = section<ColourPanel>("colourPanel", thisClip);
     m_mediaInfo = section<MediaInfoPanel>("mediaInfoPanel", thisClip);
     m_audio = new AudioPanel(this); // a section per clip, made as needed
@@ -51,8 +53,8 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_stitching->setExpanded(false);
     m_mediaInfo->setExpanded(false);
 
-    const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe, m_colour,
-                                          m_mediaInfo};
+    const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe,
+                                          m_splitScreen, m_colour, m_mediaInfo};
     m_sections = video;
     m_sections << m_overlay << m_titleText << m_titlePlacement << m_transition << m_privacy;
 

@@ -106,6 +106,7 @@
 #include "panels/TitleTextPanel.h"
 #include "panels/PrivacyPanel.h"
 #include "panels/ReframePanel.h"
+#include "panels/SplitScreenPanel.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
 #include "../core/ClipItem.h"
@@ -311,6 +312,8 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_sidebar = new SettingsSidebar(this);
     m_stitchingPanel = m_sidebar->stitching();
     m_reframePanel = m_sidebar->reframe();
+    m_splitScreenPanel = m_sidebar->splitScreen();
+    m_splitScreenPanel->setNoClip();
     m_stabilizationPanel = m_sidebar->stabilization();
     m_stabilizationPanel->setNoClip(); // nothing open yet
     m_stitchingPanel->setNoClip();
@@ -874,25 +877,28 @@ void MainWindow::connectReframe()
     connect(m_viewport, &EquirectViewportWindow::activePaneChanged, this,
             &MainWindow::setActivePane);
     connect(m_reframePanel, &ReframePanel::activePaneEdited, this, &MainWindow::setActivePane);
-    connect(m_reframePanel, &ReframePanel::splitEdited, this, [this](const pane::Split &split) {
-        const ClipItem *c = m_timeline->clipById(editClipId());
-        if (!c || c->flat)
-            return;
-        // Panes a layout brings in without a camera of their own yet look
-        // the way Fill panes points them, from pane 1's view at the playhead.
-        std::vector<Timeline::PanePose> keys;
-        const qint64 at = c->id == m_clipId ? m_lastPositionMs : c->trimInMs;
-        float poses[pane::kMaxPanes][4];
-        m_viewport->PanePoses(poses);
-        const ReframePose base = c->id == m_clipId
-                                     ? ReframePose{poses[0][0], poses[0][1], poses[0][2], poses[0][3]}
-                                     : c->reframe.sample(at);
-        for (const Timeline::PanePose &k : fillPoses(split, base))
-            if (c->paneTrack(k.first).isEmpty())
-                keys.push_back(k);
-        m_timeline->setClipSplit(c->id, split, at, &keys);
-    });
-    connect(m_reframePanel, &ReframePanel::fillPanesRequested, this, &MainWindow::fillPanes);
+    connect(m_splitScreenPanel, &SplitScreenPanel::splitEdited, this,
+            [this](const pane::Split &split) {
+                const ClipItem *c = m_timeline->clipById(editClipId());
+                if (!c || c->flat)
+                    return;
+                // Panes a layout brings in without a camera of their own yet look
+                // the way Fill panes points them, from pane 1's view at the playhead.
+                std::vector<Timeline::PanePose> keys;
+                const qint64 at = c->id == m_clipId ? m_lastPositionMs : c->trimInMs;
+                float poses[pane::kMaxPanes][4];
+                m_viewport->PanePoses(poses);
+                const ReframePose base =
+                    c->id == m_clipId
+                        ? ReframePose{poses[0][0], poses[0][1], poses[0][2], poses[0][3]}
+                        : c->reframe.sample(at);
+                for (const Timeline::PanePose &k : fillPoses(split, base))
+                    if (c->paneTrack(k.first).isEmpty())
+                        keys.push_back(k);
+                m_timeline->setClipSplit(c->id, split, at, &keys);
+            });
+    connect(m_splitScreenPanel, &SplitScreenPanel::fillPanesRequested, this,
+            &MainWindow::fillPanes);
 
     // Reframe panel: a numeric edit sets the live viewport pose and, when
     // authoring is armed, keyframes it at the playhead -- same as a drag.
@@ -970,8 +976,10 @@ void MainWindow::connectReframe()
             syncReframePanel();
         }
         if (id == editClipId())
-            if (const ClipItem *c = m_timeline->clipById(id))
-                m_reframePanel->setSplit(c->split);
+            if (const ClipItem *c = m_timeline->clipById(id)) {
+                m_reframePanel->setPaneLayout(c->split.layout);
+                m_splitScreenPanel->setSplit(c->split);
+            }
     });
 }
 
@@ -1688,13 +1696,19 @@ void MainWindow::refreshClipPanels()
         m_stabilizationPanel->setNoClip();
         syncStitchingPanel();
         m_reframePanel->setFlatClip(false);
+        m_reframePanel->setPaneLayout(pane::Layout::Single);
+        m_splitScreenPanel->setNotApplicable(QString());
+        m_splitScreenPanel->setNoClip();
         refreshAudioPanel();
         return;
     }
     syncMediaInfoPanel(*c);
     syncColourPanel(c->color);
     m_reframePanel->setFlatClip(c->flat, c->fit == ClipItem::Fit::Fill);
-    m_reframePanel->setSplit(c->split);
+    m_reframePanel->setPaneLayout(c->split.layout);
+    m_splitScreenPanel->setNotApplicable(c->flat ? tr("A flat video isn't split into panes.")
+                                                 : QString());
+    m_splitScreenPanel->setSplit(c->split);
     m_reframePanel->setActivePane(paneOf(*c));
     syncStabilizationPanel();
     syncStitchingPanel();
@@ -3835,6 +3849,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
     m_tracker->start(run);
     m_reframePanel->setTrackRunning(true);
+    m_splitScreenPanel->setEditable(false);
     m_reframePanel->setTrackStatus(tr("Starting…"));
     m_editToolbar->showNotice(tr("Tracking. Space, Esc or Stop tracking ends it."), true);
     updateScreenshotEnabled();
@@ -3851,6 +3866,7 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
     const qint64 from = run.req.fromMs;
     const ReframePose look = run.look;
     m_reframePanel->setTrackRunning(false);
+    m_splitScreenPanel->setEditable(true);
     updateScreenshotEnabled();
     core::log::Info("[track] %zu frames, tracker %.1f fps%s%s\n", r.samples.size(),
                     r.fpsAchieved, r.endedLost ? ", ended lost" : "",

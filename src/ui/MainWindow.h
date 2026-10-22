@@ -60,6 +60,7 @@ class PrivacyPanel;
 class MediaInfoPanel;
 class OverlayPanel;
 class ReframePanel;
+class SplitScreenPanel;
 class MediaPoolPanel;
 class TitlesPanel;
 class TitleTextPanel;
@@ -499,6 +500,7 @@ private:
     StitchingPanel *m_stitchingPanel = nullptr;
     StabilizationPanel *m_stabilizationPanel = nullptr;
     ReframePanel *m_reframePanel = nullptr;
+    SplitScreenPanel *m_splitScreenPanel = nullptr;
     AudioPanel *m_audioPanel = nullptr;
     QHash<QString, int> m_audioTrackCounts; // source path -> audio stream count
     ColourPanel *m_colourPanel = nullptr;

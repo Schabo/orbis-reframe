@@ -2,7 +2,7 @@
 
 #include "../SettingsPanel.h"
 
-#include "../../core/PaneLayout.h"   // pane::Split
+#include "../../core/PaneLayout.h"   // pane::Layout
 #include "../../core/ReframeTrack.h" // ReframePose
 
 class QComboBox;
@@ -20,10 +20,8 @@ class QPushButton;
 // All fields are shown in degrees; the signal / setter use radians to match
 // ReframePose.
 //
-// Split screen: the clip's layout (one picture, side by side, stacked, a
-// 2 x 2 grid), the divider between the panes, which pane the fields and the
-// viewport steer (the active pane) and Fill panes, which points the panes
-// front / back / left / right in one go.
+// A split clip (SplitScreenPanel sets the layout): which pane the fields and
+// the viewport steer, the active pane.
 class ReframePanel : public SettingsPanel {
     Q_OBJECT
 
@@ -61,15 +59,13 @@ public:
     // keys). Does not emit easeEdited.
     void setEase(bool available, keytrack::Ease ease);
 
-    // The clip's split and the active pane (0-based). Do not emit.
-    void setSplit(const pane::Split &split);
+    // The clip's split layout, which names its panes, and the active pane
+    // (0-based). Do not emit.
+    void setPaneLayout(pane::Layout layout);
     void setActivePane(int pane);
 signals:
-    // The layout or the divider changed.
-    void splitEdited(const pane::Split &split);
     // Another pane picked to steer.
     void activePaneEdited(int pane);
-    void fillPanesRequested();
     void poseEdited(const ReframePose &pose);
     void easeEdited(keytrack::Ease ease);
     // The Fit choice of a flat clip changed.
@@ -82,9 +78,7 @@ signals:
 private:
     ReframePose currentPose() const;
     void emitIfEdited();
-    pane::Split currentSplit() const;
-    void showSplitRows();
-    void setGapColor(uint32_t rgb);
+    void showPaneRow();
 
     QDoubleSpinBox *m_yaw = nullptr;
     QDoubleSpinBox *m_pitch = nullptr;
@@ -98,12 +92,8 @@ private:
     QLabel *m_trackStatus = nullptr;
     QLabel *m_unkeyed = nullptr;
     QComboBox *m_fit = nullptr;
-    QComboBox *m_layout = nullptr;
     QComboBox *m_pane = nullptr;
-    QDoubleSpinBox *m_gap = nullptr;
-    QPushButton *m_gapColor = nullptr;
-    QPushButton *m_fillPanes = nullptr;
-    uint32_t m_gapRgb = 0;
+    pane::Layout m_paneLayout = pane::Layout::Single;
     bool m_flat = false;
     bool m_trackRunning = false;
     bool m_updating = false; // true while setPose() writes the widgets

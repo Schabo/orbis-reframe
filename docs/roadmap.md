@@ -119,9 +119,14 @@ each is in its document in [`formats/`](formats/README.md).
   sidebar's **Effects** tab, dragged onto a clip and adjusted in the right
   sidebar. Starting with a few simple ones: video -- vignette, sharpen, film
   grain, colour presets (reusing the LUT code); audio -- EQ, compressor, the
-  existing noise filters as presets. To settle before building: video effects
-  run on the flat picture after the colour grade; how effects stack per clip
-  and are stored in the project; what preview costs.
+  existing noise filters as presets. The split screen layouts (side by
+  side, stacked, grid) join the library as **Layouts** to drop on a clip:
+  a drop sets the clip's split, as its **Split screen** section does. Split
+  screen isn't an effect -- it is several views into the sphere, not a
+  filter on the flat picture -- so it keeps its own section and its place in
+  the clip. To settle before building: video effects run on the flat
+  picture after the colour grade; how effects stack per clip and are stored
+  in the project; what preview costs.
 - **Wide views and "tiny earth"**: one per-keyframe **distortion** amount
   `d` from 0 to 1 -- the projection centre moves from the sphere's centre
   (`d = 0`, today's rectilinear) to its back (`d = 1`, stereographic). It

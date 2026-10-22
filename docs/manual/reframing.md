@@ -199,16 +199,18 @@ ahead and the road behind at once, or the four sides of the camera.
 
 ![Split screen: a 2 × 2 grid with the top right pane active](images/split-screen.jpg)
 
-1. **Split screen**: the layout.
-2. **Pane**: the pane you're steering, the *active pane*.
+1. **Layout**, in the **Split screen** section: one picture or how the
+   panes are arranged.
+2. **Pane**, in the **Reframe** section: the pane you're steering, the
+   *active pane*.
 3. The active pane, outlined in the viewport.
 4. **Fill panes**: points every pane in its own direction in one go.
 
 ### Splitting a clip
 
 1. Move the playhead into the clip, or select it.
-2. In the **Reframe** section (settings sidebar, **Video** tab), pick a
-   layout under **Split screen**:
+2. In the **Split screen** section (settings sidebar, **Video** tab, under
+   **Reframe**), pick a **Layout**:
 
    | Layout | Panes |
    |---|---|
@@ -237,16 +239,18 @@ viewport, the **Yaw**, **Pitch**, **Roll**, **Field of view** and
 pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
 
 To make another pane active, click it in the viewport, or pick it under
-**Pane**. A press on another pane also starts a drag there, so with reframe
+**Pane** at the top of the **Reframe** section (it's there only while the
+clip is split). A press on another pane also starts a drag there, so with reframe
 authoring armed you can click and drag in one go. The outline is only in
 the viewport, not in the export or a screenshot.
 
 Track subject works in the active pane: draw the box in it, and the
 tracked path becomes that pane's keyframes.
 
-**Fill panes** sets a keyframe at the playhead in every pane: the first
-pane keeps its view, and the others look back (two panes) or right, left
-and back (the grid) from it, as when you first split the clip.
+**Fill panes**, in the **Split screen** section, sets a keyframe at the
+playhead in every pane: the first pane keeps its view, and the others look
+back (two panes) or right, left and back (the grid) from it, as when you
+first split the clip.
 
 ### The divider
 
@@ -283,3 +287,6 @@ view and **Track subject…**:
 |---|---|
 | **Whole picture, with bars** | The whole video, with black bars where its shape differs from your video's. The default. |
 | **Fill the frame, edges cropped** | The video fills the frame; what sticks out at two sides is cut off. |
+
+A flat video isn't split into panes either: the **Split screen** section
+says so instead of showing its settings.
