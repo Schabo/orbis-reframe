@@ -76,8 +76,9 @@ sidebar's **Transition** tab then shows:
 - **The picture.** Each clip looks as it does on its own: its own reframe
   view, stabilization, colour grade, stitching and privacy blur. In a
   crossfade, the first clip's view past its end is where its last reframe
-  keyframe looks. Overlays and titles stay on top: a dip to black doesn't
-  darken them.
+  keyframe looks. A split clip ([Split screen](reframing.md#split-screen))
+  blends in or out as its whole split picture. Overlays and titles stay on
+  top: a dip to black doesn't darken them.
 - **The clips' own sound.** In a crossfade the first clip's sound fades
   out while the second clip's fades in, over the whole transition. In a
   dip to black it follows the picture: the first fades out up to the cut,

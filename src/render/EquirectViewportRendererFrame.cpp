@@ -523,6 +523,62 @@ void EquirectViewportRenderer::startNextFrame()
     scissor.extent.height = static_cast<uint32_t>(rectH);
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+    // Split screen: each pane its part of the output rect (as the export
+    // places them, pane::rects at the output size) and its own view; the
+    // gap between them cleared to its colour first. One pane = the rect.
+    struct PaneDraw {
+        float x, y, w, h; // framebuffer px
+        float aspect;     // at the output size
+        float pose[4];
+    };
+    std::vector<PaneDraw> panes;
+    const pane::Split split = m_window->Split();
+    const int activePane = m_window->EffectiveActivePane();
+    {
+        float poses[pane::kMaxPanes][4];
+        m_window->PanePoses(poses);
+        int outW = 0, outH = 0;
+        m_window->OutputSize(outW, outH);
+        const std::vector<pane::Rect> rects =
+            split.isSplit() ? pane::rects(split, outW, outH) : std::vector<pane::Rect>{};
+        for (size_t i = 0; i < rects.size(); ++i) {
+            const pane::Rect &r = rects[i];
+            PaneDraw d{rectX + float(r.x) / outW * rectW, rectY + float(r.y) / outH * rectH,
+                       float(r.w) / outW * rectW, float(r.h) / outH * rectH,
+                       float(r.aspect()), {}};
+            std::copy(poses[i], poses[i] + 4, d.pose);
+            panes.push_back(d);
+        }
+        if (panes.empty()) {
+            PaneDraw d{float(rectX), float(rectY), float(rectW), float(rectH), outAspect, {}};
+            std::copy(poses[0], poses[0] + 4, d.pose); // the window's own: one picture
+            panes.push_back(d);
+        }
+    }
+    // A pane's integer rect, clipped to the output rect.
+    const auto paneScissor = [&](const PaneDraw &d) {
+        const int x0 = std::max(rectX, int(std::lround(d.x)));
+        const int y0 = std::max(rectY, int(std::lround(d.y)));
+        const int x1 = std::min(rectX + rectW, int(std::lround(d.x + d.w)));
+        const int y1 = std::min(rectY + rectH, int(std::lround(d.y + d.h)));
+        VkRect2D r{};
+        r.offset = {x0, y0};
+        r.extent = {uint32_t(std::max(0, x1 - x0)), uint32_t(std::max(0, y1 - y0))};
+        return r;
+    };
+    if (panes.size() > 1 && drawPicture) {
+        VkClearAttachment gap{};
+        gap.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        gap.colorAttachment = 0;
+        gap.clearValue.color = {{((split.gapRgb >> 16) & 0xff) / 255.0f,
+                                 ((split.gapRgb >> 8) & 0xff) / 255.0f,
+                                 (split.gapRgb & 0xff) / 255.0f, 1.0f}};
+        VkClearRect cr{};
+        cr.rect = scissor;
+        cr.layerCount = 1;
+        vkCmdClearAttachments(commandBuffer, 1, &gap, 1, &cr);
+    }
+
     PushConstants pc{};
     pc.yaw = m_window->Yaw();
     pc.pitch = m_window->Pitch();
@@ -542,20 +598,39 @@ void EquirectViewportRenderer::startNextFrame()
     std::copy(grade.adjust.begin(), grade.adjust.end(), pc.colorGrade);
     render::VulkanLutStore::pushValues(grade.hasLut() ? grade.lut.get() : nullptr, grade.lutMix,
                                        pc.colorLut);
-    if (imp) {
-        LensPushConstants lpc{};
-        lpc.view = pc;
-        lpc.gains[0] = m_currentLens->gain[0];
-        lpc.gains[1] = m_currentLens->gain[1];
-        vkCmdPushConstants(commandBuffer, m_lensPipelineLayout,
-                                        VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(lpc), &lpc);
-    } else if (drawPicture) {
-        vkCmdPushConstants(commandBuffer, m_pipelineLayout,
-                                        VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
-    }
-
-    if (drawPicture)
+    for (const PaneDraw &d : panes) {
+        if (!drawPicture)
+            break;
+        if (panes.size() > 1) {
+            const VkViewport pv{d.x, d.y, d.w, d.h, 0.0f, 1.0f};
+            vkCmdSetViewport(commandBuffer, 0, 1, &pv);
+            const VkRect2D ps = paneScissor(d);
+            if (ps.extent.width == 0 || ps.extent.height == 0)
+                continue;
+            vkCmdSetScissor(commandBuffer, 0, 1, &ps);
+            pc.yaw = d.pose[0];
+            pc.pitch = d.pose[1];
+            pc.roll = d.pose[2];
+            pc.fovY = d.pose[3];
+            pc.aspect = d.aspect;
+        }
+        if (imp) {
+            LensPushConstants lpc{};
+            lpc.view = pc;
+            lpc.gains[0] = m_currentLens->gain[0];
+            lpc.gains[1] = m_currentLens->gain[1];
+            vkCmdPushConstants(commandBuffer, m_lensPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(lpc), &lpc);
+        } else {
+            vkCmdPushConstants(commandBuffer, m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                               sizeof(PushConstants), &pc);
+        }
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    }
+    if (panes.size() > 1) { // back to the whole output rect for what's drawn over
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    }
 
     // The privacy-blur region outlines, on the picture (under the insets):
     // each scissored to its own bounds, so a pass costs only its pixels.
@@ -564,12 +639,19 @@ void EquirectViewportRenderer::startNextFrame()
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                       m_regionPipeline);
         const float border = 2.0f * float(m_window->devicePixelRatio());
-        for (const auto &o : outlines) {
+        // Every outline in every pane, through its view, in its own rect.
+        for (size_t k = 0; k < panes.size() * outlines.size(); ++k) {
+            const PaneDraw &d = panes[k / outlines.size()];
+            const auto &o = outlines[k % outlines.size()];
             RegionPushConstants rpc{};
-            const int n = projectOutline(o, stabRm, pc.yaw, pc.pitch, pc.roll, pc.fovY, outAspect,
-                                         float(rectW), float(rectH), rpc.pts);
+            const int n = projectOutline(o, stabRm, d.pose[0], d.pose[1], d.pose[2], d.pose[3],
+                                         d.aspect, d.w, d.h, rpc.pts);
             if (n < 3)
                 continue;
+            for (int i = 0; i < n; ++i) { // pane px -> output rect px
+                rpc.pts[i * 2] += d.x - float(rectX);
+                rpc.pts[i * 2 + 1] += d.y - float(rectY);
+            }
             float lo[2] = {rpc.pts[0], rpc.pts[1]}, hi[2] = {lo[0], lo[1]};
             for (int i = 1; i < n; ++i)
                 for (int k = 0; k < 2; ++k) {
@@ -577,10 +659,13 @@ void EquirectViewportRenderer::startNextFrame()
                     hi[k] = std::max(hi[k], rpc.pts[i * 2 + k]);
                 }
             const float pad = border + 1.0f;
-            const int x0 = std::max(0, int(std::floor(lo[0] - pad)));
-            const int y0 = std::max(0, int(std::floor(lo[1] - pad)));
-            const int x1 = std::min(rectW, int(std::ceil(std::min(hi[0] + pad, 1e6f))));
-            const int y1 = std::min(rectH, int(std::ceil(std::min(hi[1] + pad, 1e6f))));
+            const VkRect2D ps = paneScissor(d);
+            const int x0 = std::max(ps.offset.x - rectX, int(std::floor(lo[0] - pad)));
+            const int y0 = std::max(ps.offset.y - rectY, int(std::floor(lo[1] - pad)));
+            const int x1 = std::min(ps.offset.x - rectX + int(ps.extent.width),
+                                    int(std::ceil(std::min(hi[0] + pad, 1e6f))));
+            const int y1 = std::min(ps.offset.y - rectY + int(ps.extent.height),
+                                    int(std::ceil(std::min(hi[1] + pad, 1e6f))));
             if (x1 <= x0 || y1 <= y0)
                 continue;
             VkRect2D rs{};
@@ -642,17 +727,38 @@ void EquirectViewportRenderer::startNextFrame()
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
     }
 
-    // The Track subject box, over everything.
+    // The active pane of a split picture, outlined in the selection
+    // colour (the viewport's alone: the export has no outline).
+    const PaneDraw &active = panes[std::min(size_t(activePane), panes.size() - 1)];
+    if (m_markerPipeline && panes.size() > 1) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_markerPipeline);
+        MarkerPushConstants mpc{};
+        mpc.rect[0] = active.x - float(rectX);
+        mpc.rect[1] = active.y - float(rectY);
+        mpc.rect[2] = active.w;
+        mpc.rect[3] = active.h;
+        mpc.origin[0] = float(rectX);
+        mpc.origin[1] = float(rectY);
+        mpc.border = 2.0f * float(m_window->devicePixelRatio());
+        const float *col = m_window->MarkerColor(EquirectViewportWindow::MarkerStyle::Select);
+        std::copy(col, col + 3, mpc.color);
+        mpc.color[3] = 0.9f;
+        vkCmdPushConstants(commandBuffer, m_markerPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(mpc), &mpc);
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    }
+
+    // The Track subject box, over everything: fractions of the active pane.
     float marker[4];
     EquirectViewportWindow::MarkerStyle markerStyle{};
     if (m_markerPipeline && m_window->Marker(marker, &markerStyle)) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                       m_markerPipeline);
         MarkerPushConstants mpc{};
-        mpc.rect[0] = marker[0] * rectW;
-        mpc.rect[1] = marker[1] * rectH;
-        mpc.rect[2] = marker[2] * rectW;
-        mpc.rect[3] = marker[3] * rectH;
+        mpc.rect[0] = active.x - float(rectX) + marker[0] * active.w;
+        mpc.rect[1] = active.y - float(rectY) + marker[1] * active.h;
+        mpc.rect[2] = marker[2] * active.w;
+        mpc.rect[3] = marker[3] * active.h;
         mpc.origin[0] = float(rectX);
         mpc.origin[1] = float(rectY);
         mpc.border = 2.0f * float(m_window->devicePixelRatio());

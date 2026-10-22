@@ -9,8 +9,8 @@ pictures.
 ## Projects
 
 A project holds your whole edit: the clips and their order, trims and
-speeds, reframe keyframes, the stabilization, stitching, colour, audio and
-privacy settings, the audio and overlay tracks, the project's media (the
+speeds, reframe keyframes and split screens, the stabilization, stitching,
+colour, audio and privacy settings, the audio and overlay tracks, the project's media (the
 **Media** tab, see [The main window](main-window.md#the-media-sidebar)),
 and the output settings.
 
@@ -230,7 +230,8 @@ can't decode it, for example) is exported with 8-bit precision inside the
 ### What goes into the export
 
 Everything you see and hear in playback: every clip on the video track with
-its trims, speed, reframe keyframes, stabilization, colour and privacy blur;
+its trims, speed, reframe keyframes, split screen, stabilization, colour and
+privacy blur;
 the overlays; and the sound of the clips and the audio tracks, with their
 levels, fades and noise reduction. Muted tracks and clips stay silent, and
 hidden overlay tracks are left out.

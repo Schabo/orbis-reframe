@@ -101,6 +101,8 @@ void EquirectViewportWindow::ClearPicture()
     SetColorGrade(nullptr);
     SetInsets({});
     EndFrameOverlays();
+    QMutexLocker lock(&m_paneMutex);
+    m_split = pane::Split{};
 }
 
 void EquirectViewportWindow::EndFrameOverlays()
@@ -128,6 +130,8 @@ bool EquirectViewportWindow::TakePendingFrame(int &width, int &height, std::vect
         ++m_framesTaken;
     if (m_pendingHasStab) // the renderer reads m_stab right after this, same thread
         std::copy(m_pendingStab, m_pendingStab + 9, m_stab);
+    if (m_pendingView.hasPanes) // ... and the split, before the active pane's view
+        SetPanes(m_pendingView.split, m_pendingView.panePoses);
     if (m_pendingView.hasPose) // ... and the view and grade
         SetPose(m_pendingView.pose[0], m_pendingView.pose[1], m_pendingView.pose[2],
                 m_pendingView.pose[3]);
@@ -156,6 +160,120 @@ void EquirectViewportWindow::SetPose(float yaw, float pitch, float roll, float f
     m_pitch = std::clamp(pitch, -kMaxPitch, kMaxPitch);
     m_roll = roll;
     m_fovY = std::clamp(fovY, kMinFovY, kMaxFovY);
+}
+
+void EquirectViewportWindow::SetPanes(const pane::Split &split,
+                                      const float poses[pane::kMaxPanes][4])
+{
+    QMutexLocker lock(&m_paneMutex);
+    m_split = split;
+    for (int i = 0; i < pane::kMaxPanes; ++i)
+        std::copy(poses[i], poses[i] + 4, m_panePoses[i]);
+}
+
+pane::Split EquirectViewportWindow::Split() const
+{
+    QMutexLocker lock(&m_paneMutex);
+    return m_split;
+}
+
+int EquirectViewportWindow::EffectiveActivePane() const
+{
+    const int n = Split().count();
+    const int active = m_activePane.load();
+    return active < n ? active : 0;
+}
+
+void EquirectViewportWindow::SetActivePane(int pane)
+{
+    pane = std::clamp(pane, 0, pane::kMaxPanes - 1);
+    if (pane == m_activePane.load())
+        return;
+    const int before = EffectiveActivePane();
+    m_activePane.store(pane);
+    const int after = EffectiveActivePane();
+    if (after == before)
+        return;
+    // The pane left keeps the view it showed; the window takes the new one's.
+    float to[4];
+    {
+        QMutexLocker lock(&m_paneMutex);
+        const float from[4] = {m_yaw, m_pitch, m_roll, m_fovY};
+        std::copy(from, from + 4, m_panePoses[before]);
+        std::copy(m_panePoses[after], m_panePoses[after] + 4, to);
+    }
+    SetPose(to[0], to[1], to[2], to[3]);
+}
+
+void EquirectViewportWindow::PanePoses(float out[pane::kMaxPanes][4]) const
+{
+    {
+        QMutexLocker lock(&m_paneMutex);
+        for (int i = 0; i < pane::kMaxPanes; ++i)
+            std::copy(m_panePoses[i], m_panePoses[i] + 4, out[i]);
+    }
+    const float own[4] = {m_yaw, m_pitch, m_roll, m_fovY};
+    std::copy(own, own + 4, out[EffectiveActivePane()]);
+}
+
+void EquirectViewportWindow::SetOutputSize(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+        return;
+    QMutexLocker lock(&m_paneMutex);
+    m_outputW = width;
+    m_outputH = height;
+}
+
+void EquirectViewportWindow::OutputSize(int &width, int &height) const
+{
+    QMutexLocker lock(&m_paneMutex);
+    width = m_outputW;
+    height = m_outputH;
+}
+
+std::vector<QRectF> EquirectViewportWindow::PaneFractions() const
+{
+    int w = 0, h = 0;
+    OutputSize(w, h);
+    std::vector<QRectF> out;
+    for (const pane::Rect &r : pane::rects(Split(), w, h))
+        out.emplace_back(double(r.x) / w, double(r.y) / h, double(r.w) / w, double(r.h) / h);
+    if (out.empty())
+        out.emplace_back(0.0, 0.0, 1.0, 1.0);
+    return out;
+}
+
+float EquirectViewportWindow::ViewAspect() const
+{
+    int w = 0, h = 0;
+    OutputSize(w, h);
+    const std::vector<pane::Rect> r = pane::rects(Split(), w, h);
+    const int active = EffectiveActivePane();
+    if (r.size() > 1 && active < static_cast<int>(r.size()))
+        return static_cast<float>(r[size_t(active)].aspect());
+    const QRectF rect = outputRect();
+    return rect.height() > 0 ? float(rect.width() / rect.height()) : 1.0f;
+}
+
+QRectF EquirectViewportWindow::paneRect(int i) const
+{
+    const QRectF out = outputRect();
+    const std::vector<QRectF> f = PaneFractions();
+    if (i < 0 || i >= static_cast<int>(f.size()))
+        return out;
+    const QRectF &p = f[size_t(i)];
+    return QRectF(out.x() + p.x() * out.width(), out.y() + p.y() * out.height(),
+                  p.width() * out.width(), p.height() * out.height());
+}
+
+int EquirectViewportWindow::paneAt(QPointF pos) const
+{
+    const int n = static_cast<int>(PaneFractions().size());
+    for (int i = 0; i < n; ++i)
+        if (paneRect(i).contains(pos))
+            return i;
+    return -1;
 }
 
 void EquirectViewportWindow::SetStabilization(const float rowMajor3x3[9])
@@ -272,26 +390,35 @@ QRectF EquirectViewportWindow::outputRect() const
 
 bool EquirectViewportWindow::sphereDirAt(QPointF pos, float out[3]) const
 {
-    const QRectF rect = outputRect();
-    if (!rect.contains(pos) || rect.width() <= 0 || rect.height() <= 0)
+    const int i = paneAt(pos);
+    const QRectF rect = paneRect(i);
+    if (i < 0 || rect.width() <= 0 || rect.height() <= 0)
         return false;
-    SphereDirAtFraction((pos.x() - rect.x()) / rect.width(), (pos.y() - rect.y()) / rect.height(), out);
+    float poses[pane::kMaxPanes][4];
+    PanePoses(poses);
+    sphereDir((pos.x() - rect.x()) / rect.width(), (pos.y() - rect.y()) / rect.height(),
+              poses[i], float(rect.width() / rect.height()), out);
     return true;
 }
 
 void EquirectViewportWindow::SphereDirAtFraction(double fx, double fy, float out[3]) const
 {
-    const QRectF rect = outputRect();
+    const float pose[4] = {m_yaw, m_pitch, m_roll, m_fovY};
+    sphereDir(fx, fy, pose, ViewAspect(), out);
+}
+
+void EquirectViewportWindow::sphereDir(double fx, double fy, const float pose[4], float aspect,
+                                       float out[3]) const
+{
     // equirect.frag's ray: view ray from the NDC, roll, pitch, yaw, then the
     // stabilization.
     const float ndcX = float(2.0 * fx - 1.0);
     const float ndcY = float(2.0 * fy - 1.0);
-    const float t = std::tan(m_fovY * 0.5f);
-    const float aspect = rect.height() > 0 ? float(rect.width() / rect.height()) : 1.0f;
+    const float t = std::tan(pose[3] * 0.5f);
     float v[3] = {ndcX * t * aspect, -ndcY * t, -1.0f};
-    const float cr = std::cos(m_roll), sr = std::sin(m_roll);
-    const float cp = std::cos(m_pitch), sp = std::sin(m_pitch);
-    const float cy = std::cos(m_yaw), sy = std::sin(m_yaw);
+    const float cr = std::cos(pose[2]), sr = std::sin(pose[2]);
+    const float cp = std::cos(pose[1]), sp = std::sin(pose[1]);
+    const float cy = std::cos(pose[0]), sy = std::sin(pose[0]);
     const float x1 = v[0] * cr - v[1] * sr, y1 = v[0] * sr + v[1] * cr, z1 = v[2];
     const float y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp;
     const float p[3] = {x1 * cy + z2 * sy, y2, -x1 * sy + z2 * cy};
@@ -387,6 +514,14 @@ void EquirectViewportWindow::mousePressEvent(QMouseEvent *event)
             return;
         }
     }
+    // A press on another pane of a split picture makes it the one steered.
+    if (Split().isSplit()) {
+        const int i = paneAt(event->position());
+        if (i >= 0 && i != EffectiveActivePane()) {
+            SetActivePane(i);
+            emit activePaneChanged(i);
+        }
+    }
     m_dragging = true;
     m_dragButton = event->button();
     m_lastMousePos = event->pos();
@@ -399,7 +534,7 @@ void EquirectViewportWindow::mouseMoveEvent(QMouseEvent *event)
 {
     if (m_boxSelect) {
         if (m_boxDragging) {
-            const QRectF out = outputRect();
+            const QRectF out = paneRect(EffectiveActivePane());
             auto frac = [&out](QPointF p) {
                 return QPointF(std::clamp((p.x() - out.x()) / std::max(1.0, out.width()), 0.0, 1.0),
                                std::clamp((p.y() - out.y()) / std::max(1.0, out.height()), 0.0, 1.0));
@@ -444,7 +579,7 @@ void EquirectViewportWindow::mouseReleaseEvent(QMouseEvent *event)
             return;
         m_boxDragging = false;
         float m[4];
-        const QRectF out = outputRect();
+        const QRectF out = paneRect(EffectiveActivePane());
         // At least a few pixels each way, or it was a click: cancel.
         if (Marker(m) && m[2] * out.width() >= 6.0 && m[3] * out.height() >= 6.0) {
             SetBoxSelectMode(false);

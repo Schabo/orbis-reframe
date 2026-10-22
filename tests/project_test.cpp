@@ -1803,9 +1803,10 @@ void testSplitJson()
         grid.layout = pane::Layout::Grid;
         grid.gap = 0.01f;
         grid.gapRgb = 0x204060;
-        const std::vector<ReframePose> poses{
-            {0.1f, 0.0f, 0.0f, 1.0f}, {0.2f, 0.1f, 0.0f, 1.1f}, {0.3f, 0.0f, 0.2f, 1.2f},
-            {0.4f, -0.1f, 0.0f, 1.3f}};
+        const std::vector<Timeline::PanePose> poses{{0, {0.1f, 0.0f, 0.0f, 1.0f}},
+                                                    {1, {0.2f, 0.1f, 0.0f, 1.1f}},
+                                                    {2, {0.3f, 0.0f, 0.2f, 1.2f}},
+                                                    {3, {0.4f, -0.1f, 0.0f, 1.3f}}};
         p.timeline()->setClipSplit(id, grid, 2000, &poses);
         p.timeline()->upsertClipReframeKey(id, 5000, {1.0f, 0.0f, 0.0f, 0.9f}, 2);
         p.timeline()->setClipReframeEase(id, 2000, keytrack::Ease::Out, 2);

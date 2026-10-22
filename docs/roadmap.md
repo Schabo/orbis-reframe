@@ -172,13 +172,12 @@ each is in its document in [`formats/`](formats/README.md).
 - **GPS and stats overlays**: speed, altitude, distance, heading, the route,
   lean / G-force gauges, drawn from the clip's own telemetry; no map tiles
   (local-only).
-- **Split screen**: the picture split into 2 or 4 panes, each showing the
-  same 360 clip from its own direction with its own keyframed view. One
-  decode and stitch per frame, one view pass per pane; the layout and every
-  pane's camera are saved in the project. All the view implementations and
-  the subject tracker's crop change together, each pane using its own
-  aspect. Manual layouts first, with a preset that fills the panes (front /
-  back / left / right); angles picked automatically later.
+- **Split screen, angles picked automatically**: split screen is built (a
+  clip's picture in 2 or 4 panes, each with its own keyframes, placed by
+  `pane::rects` in `src/core/PaneLayout.h` everywhere a view is drawn).
+  Next, panes that choose their own direction -- e.g. one following a
+  subject found in the clip -- written as ordinary pane keyframes, so they
+  stay editable.
 - **Shooting modes**: the camera's special modes recognised and processed
   as such -- timelapse, TimeShift / hyperlapse, bullet time. Sample clips
   wanted.

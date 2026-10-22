@@ -95,6 +95,10 @@ The same view math exists in several places, and they must agree:
 - the CPU export: `src/export/ReframeRenderer`;
 - the subject tracker's crop (`src/track/`).
 
+A split clip's picture is several views, one per pane: where each pane
+goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)
+in every one of them, computed at the output size.
+
 Anything that changes how a pose becomes a picture (a new projection, a
 field-of-view limit, a new per-keyframe parameter) changes all of them in the
 same pull request, and is checked by comparing the paths on the same frame:

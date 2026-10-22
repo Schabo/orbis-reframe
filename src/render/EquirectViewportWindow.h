@@ -17,6 +17,7 @@
 #include "ColorLut.h" // color::Grade
 #include "LensFrame.h"
 #include "../core/InsetGeometry.h"
+#include "../core/PaneLayout.h"
 
 #include <array>
 #include <atomic>
@@ -33,6 +34,11 @@ struct ViewportFrameView {
     float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f}; // yaw, pitch, roll, fovY
     bool hasGrade = false;
     color::Grade grade; // ColorGrade::render()
+    // The clip's split screen (EquirectViewportWindow::SetPanes): its
+    // layout and every pane's view; `pose` above is the active pane's.
+    bool hasPanes = false;
+    pane::Split split;
+    float panePoses[pane::kMaxPanes][4] = {};
 };
 
 class EquirectViewportWindow : public QVulkanWindow {
@@ -80,8 +86,8 @@ public:
     void setLensFramesSupported(bool on) { m_lensSupported.store(on); } // renderer
 
     // Nothing to show (an empty timeline): back to the blank picture a new
-    // window starts with, without overlays, outlines, marker, stabilization
-    // or colour grade. Thread-safe, like SetFrame(); not counted in
+    // window starts with, without overlays, outlines, marker, stabilization,
+    // split or colour grade. Thread-safe, like SetFrame(); not counted in
     // FramesHanded() / FramesTaken().
     void ClearPicture();
 
@@ -141,6 +147,29 @@ public:
     // mouse handlers already mutate these while the render thread reads them.
     void SetPose(float yaw, float pitch, float roll, float fovY);
 
+    // Split screen: the picture in panes (PaneLayout.h), each with its own
+    // view. The window's pose (Yaw() ... FovY(), SetPose, a drag) is the
+    // *active* pane's -- the one the user steers; `poses` are every pane's
+    // ({yaw, pitch, roll, fovY}, by pane), of which the active one's is
+    // ignored. Thread-safe; also set with a presented frame (FrameView).
+    // Single = one picture, as before.
+    void SetPanes(const pane::Split &split, const float poses[pane::kMaxPanes][4]);
+    pane::Split Split() const;
+    // The pane the window's pose steers: a click on another pane, or
+    // SetActivePane, moves to it -- its view becomes the window's pose, the
+    // one left keeps its own (activePaneChanged). On a picture with fewer
+    // panes it is pane 0 (EffectiveActivePane). GUI thread.
+    void SetActivePane(int pane);
+    int ActivePane() const { return m_activePane.load(); }
+    int EffectiveActivePane() const;
+    // Every pane's view as shown now, the active one's being the window's
+    // pose. For the renderer.
+    void PanePoses(float out[pane::kMaxPanes][4]) const;
+    // The active pane's width / height: what its field of view, its box
+    // select and its marker are relative to (the output aspect when the
+    // picture isn't split).
+    float ViewAspect() const;
+
     // A 3x3 (row-major) gyro de-rotation in the sphere frame, which the
     // shader applies to the world ray *after* the yaw/pitch/roll pose -- so it
     // stabilizes the picture without touching Yaw()/Pitch()/Roll() (drag +
@@ -162,6 +191,13 @@ public:
     // it instead of the window's, so resizing the window never changes what's
     // framed. <= 0 = fill the window. Plain float write.
     void SetOutputAspect(float aspect) { m_outputAspect = aspect; }
+    // The output frame's size: the split screen's panes are placed at it
+    // (pane::rects), as the export places them.
+    void SetOutputSize(int width, int height);
+    void OutputSize(int &width, int &height) const;
+    // The panes' rectangles as fractions of the output rect, by pane (one
+    // filling it when the picture isn't split).
+    std::vector<QRectF> PaneFractions() const;
     // The theme's colours this window paints with: around the picture, and
     // the marker box while drawing it / tracking / lost (MarkerStyle order).
     void SetSurroundColor(const QColor &c);
@@ -169,13 +205,15 @@ public:
     float OutputAspect() const { return m_outputAspect; }
 
     // The unit direction in the sphere frame (RegionOutline's) that the
-    // picture shows at output-rect fractions (fx, fy) -- the shown frame's
-    // pose and stabilization. "Blur a plate…" maps its box with it.
+    // picture shows at fractions (fx, fy) of the active pane's rect -- the
+    // shown frame's pose and stabilization. "Blur a plate…" maps its box
+    // with it.
     void SphereDirAtFraction(double fx, double fy, float out[3]) const;
 
     // Track subject / "Blur a plate…": while on, a left drag draws a box (instead of looking
     // around) and releasing emits boxSelected with it -- fractions of the
-    // output rect, {x, y, w, h}, top left 0,0 -- and leaves the mode; Esc or
+    // active pane's rect (the output rect unsplit), {x, y, w, h}, top left
+    // 0,0 -- and leaves the mode; Esc or
     // a click without a drag emits boxSelectCanceled. The box stays drawn
     // (the marker) until ClearMarker().
     void SetBoxSelectMode(bool on);
@@ -238,6 +276,8 @@ signals:
     // A left double-click that isn't drawing a box or on an inset: full
     // screen on / off.
     void doubleClicked();
+    // A press on a split picture's other pane made it the active one.
+    void activePaneChanged(int pane);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -252,9 +292,16 @@ private:
     // the same letterbox the renderer draws.
     QRectF outputRect() const;
     // The unit direction in the sphere frame that the picture shows at `pos`
-    // (window coordinates) -- equirect.frag's ray. False outside the output
-    // rect.
+    // (window coordinates) -- equirect.frag's ray, through the view of the
+    // pane under it. False outside the panes.
     bool sphereDirAt(QPointF pos, float out[3]) const;
+    // Pane `i`'s rect in window coordinates (the output rect unsplit).
+    QRectF paneRect(int i) const;
+    // The pane under `pos` (window coordinates), or -1.
+    int paneAt(QPointF pos) const;
+    // The direction at fractions (fx, fy) of a pane `aspect` wide through
+    // `pose`, then the stabilization.
+    void sphereDir(double fx, double fy, const float pose[4], float aspect, float out[3]) const;
     // The topmost inset under `pos` (window coordinates), or -1.
     int insetAt(QPointF pos) const;
 
@@ -292,6 +339,17 @@ private:
     float m_surround[3] = {0, 0, 0};
     float m_markerColors[3][3] = {{1.0f, 0.8f, 0.1f}, {0.2f, 0.9f, 0.3f}, {1.0f, 0.25f, 0.2f}};
     float m_outputAspect = 16.0f / 9.0f;   // project output width / height
+    int m_outputW = 1920, m_outputH = 1080; // SetOutputSize
+
+    // Split screen (SetPanes), guarded by m_paneMutex; the active pane is
+    // the GUI thread's.
+    mutable QMutex m_paneMutex;
+    pane::Split m_split;
+    float m_panePoses[pane::kMaxPanes][4] = {{0.0f, 0.0f, 0.0f, 1.309f},
+                                             {0.0f, 0.0f, 0.0f, 1.309f},
+                                             {0.0f, 0.0f, 0.0f, 1.309f},
+                                             {0.0f, 0.0f, 0.0f, 1.309f}};
+    std::atomic<int> m_activePane{0};
 
     // Insets, guarded by m_insetMutex.
     mutable QMutex m_insetMutex;

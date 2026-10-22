@@ -792,6 +792,96 @@ void testDirectionLock(const Ctx &c)
     CHECK(c.timeline->clipAt(1).stabilization == beforeB);
 }
 
+// Split screen from the Reframe section: a grid gives the new panes Fill
+// panes' views; the pane picked there (or by a click in the view) is what
+// keys go to; Fill panes keys every pane; undo takes it all back.
+void testSplitScreen(const Ctx &c)
+{
+    auto *layout = find<QComboBox>(c.w, "splitLayoutCombo");
+    auto *paneCombo = find<QComboBox>(c.w, "activePaneCombo");
+    auto *gap = find<QDoubleSpinBox>(c.w, "splitGapBox");
+    auto *fill = find<QPushButton>(c.w, "fillPanesButton");
+    QAction *undo = action(c, "undoAction");
+    if (!layout || !paneCombo || !gap || !fill || !undo)
+        return;
+    EquirectViewportWindow *v = c.w->viewport();
+    const int a = c.timeline->clipAt(0).id;
+    const ClipItem before = c.timeline->clipAt(0);
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    CHECK(!paneCombo->isVisibleTo(c.w));
+    v->SetPose(0.5f, 0.0f, 0.0f, 1.2f); // pane 1 looks this way
+    const int grid = layout->findData(int(pane::Layout::Grid));
+    layout->setCurrentIndex(grid);
+    emit layout->activated(grid);
+    const ClipItem *clip = c.timeline->clipById(a);
+    CHECK(clip->split.layout == pane::Layout::Grid && clip->paneCount() == 4);
+    CHECK(clip->reframe.keyTimes() == before.reframe.keyTimes()); // pane 1 untouched
+    const qint64 at = clip->sourceAtLocalMs(1000);
+    for (int i = 1; i < 4; ++i) {
+        const ReframeTrack &t = clip->paneTrack(i);
+        CHECK(t.count() == 1);
+        if (t.count() == 1)
+            CHECK(t.keys()[0].timeMs == at &&
+                  std::fabs(t.keys()[0].pose.yaw -
+                            (0.5f + pane::fillYawOffset(pane::Layout::Grid, i))) < 1e-4f);
+    }
+    // The viewport draws the grid; its own pose is the active pane's.
+    CHECK(v->Split().layout == pane::Layout::Grid);
+    CHECK(paneCombo->isVisibleTo(c.w) && paneCombo->count() == 4);
+    CHECK(std::fabs(v->ViewAspect() - 16.0f / 9.0f) < 0.05f); // a quarter of 16:9 is 16:9
+
+    // Pane 3 (bottom left) picked: the view shows it, keys go to it.
+    settle();
+    emit paneCombo->activated(2);
+    CHECK(v->ActivePane() == 2);
+    CHECK(std::fabs(v->Yaw() - (0.5f + pane::fillYawOffset(pane::Layout::Grid, 2))) < 1e-4f);
+    CHECK(seekTo(c, 2000));
+    key(c, Qt::Key_K);
+    clip = c.timeline->clipById(a);
+    CHECK(clip->paneTrack(2).count() == 2 && clip->reframe.keyTimes() == before.reframe.keyTimes());
+    key(c, Qt::Key_K, Qt::ShiftModifier); // and come off it
+    CHECK(c.timeline->clipById(a)->paneTrack(2).count() == 1);
+
+    // Fill panes: a key in every pane at the playhead.
+    settle();
+    fill->click();
+    clip = c.timeline->clipById(a);
+    for (int i = 0; i < 4; ++i)
+        CHECK(clip->paneTrack(i).keyTimes().contains(clip->sourceAtLocalMs(2000)));
+
+    // The divider.
+    settle();
+    gap->setValue(1.0);
+    CHECK(std::fabs(c.timeline->clipById(a)->split.gap - 0.01f) < 1e-6f);
+
+    // Side by side: the panes are named by where they are; pane 3 isn't
+    // there, so the view steers pane 1.
+    settle();
+    const int side = layout->findData(int(pane::Layout::SideBySide));
+    layout->setCurrentIndex(side);
+    emit layout->activated(side);
+    CHECK(c.timeline->clipById(a)->paneCount() == 2);
+    CHECK(paneCombo->count() == 2 && paneCombo->itemText(1) == QLatin1String("Right"));
+    CHECK(v->EffectiveActivePane() == 0);
+
+    // Undo back to before the split (undo rebuilds the clips: new ids).
+    settle();
+    const auto unsplit = [&] {
+        const ClipItem &first = c.timeline->clipAt(0);
+        return first.split == before.split && first.panes[0].isEmpty() &&
+               first.panes[1].isEmpty() && first.panes[2].isEmpty();
+    };
+    for (int i = 0; i < 8 && !unsplit(); ++i)
+        undo->trigger();
+    CHECK(unsplit());
+    CHECK(c.timeline->clipAt(0).reframe.keyTimes() == before.reframe.keyTimes());
+    c.w->viewport()->SetActivePane(0);
+    emit paneCombo->activated(0);
+    settle();
+}
+
 // Duplicate (the clip menu): the copy lands after the clip and is selected,
 // so the panels edit it; one undo step takes it away.
 void testDuplicateClip(const Ctx &c)
@@ -1623,6 +1713,7 @@ int main(int argc, char **argv)
             testStitching(c);
             testStitchingWithoutGuards(c);
             testDirectionLock(c);
+            testSplitScreen(c);
             testDuplicateClip(c);
             testMediaPool(c);
             testTakeFiles(c);

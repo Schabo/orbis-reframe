@@ -344,9 +344,9 @@ void testSplitScreen()
     QObject::connect(&tl, &Timeline::clipReframeChanged, [&](int) { ++changes; });
     pane::Split grid;
     grid.layout = pane::Layout::Grid;
-    std::vector<ReframePose> poses;
+    std::vector<Timeline::PanePose> poses;
     for (int i = 0; i < 4; ++i)
-        poses.push_back({pane::fillYawOffset(grid.layout, i), 0.0f, 0.0f, 1.0f});
+        poses.push_back({i, {pane::fillYawOffset(grid.layout, i), 0.0f, 0.0f, 1.0f}});
     tl.setClipSplit(a, grid, 3000, &poses);
     CHECK(changes == 1); // one edit
     const ClipItem *c = tl.clipById(a);

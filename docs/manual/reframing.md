@@ -5,7 +5,8 @@ your flat video shows: where the virtual camera looks at each moment, and
 how wide its view is. You do this with **reframe keyframes**: you set the
 view at a few moments, and orbis-reframe moves the camera smoothly from one
 to the next. **Track subject** can also set the keyframes for you, by
-following a person or vehicle.
+following a person or vehicle. With **split screen**, one clip shows two or
+four views at once.
 
 ![Setting a keyframe: reframe authoring armed, the Reframe section, and the keyframes on the clip](images/reframing.jpg)
 
@@ -189,6 +190,87 @@ again. Without a note, the timeline is empty or an export is running.
 Tracking works on the stabilized picture, so a shaking camera doesn't throw
 it off. It works best with a subject that stands out from its background
 and isn't too small in the view.
+
+## Split screen
+
+A clip's picture can be split into two or four **panes**. Each pane shows
+the same 360° clip from its own direction, with its own keyframes: the road
+ahead and the road behind at once, or the four sides of the camera.
+
+![Split screen: a 2 × 2 grid with the top right pane active](images/split-screen.jpg)
+
+1. **Split screen**: the layout.
+2. **Pane**: the pane you're steering, the *active pane*.
+3. The active pane, outlined in the viewport.
+4. **Fill panes**: points every pane in its own direction in one go.
+
+### Splitting a clip
+
+1. Move the playhead into the clip, or select it.
+2. In the **Reframe** section (settings sidebar, **Video** tab), pick a
+   layout under **Split screen**:
+
+   | Layout | Panes |
+   |---|---|
+   | **One picture** | No split: the whole picture is one view. |
+   | **Side by side** | Left and right. |
+   | **Stacked** | Top and bottom. |
+   | **Grid (2 × 2)** | Top left, top right, bottom left, bottom right. |
+
+The first pane keeps the clip's view and keyframes. Each new pane gets a
+keyframe at the playhead that looks away from the first pane's view: back
+for two panes; right, left and back for the grid, with opposite views
+diagonal. A new pane's field of view is set so that the pane takes in 90°
+from side to side.
+
+Each pane has its own shape, so the same field of view shows less from
+side to side in a narrow pane. Side by side in a 16:9 video, each pane is
+almost square; stacked, each is very wide.
+
+### Steering a pane
+
+The **active pane** is the one with the outline in the viewport. Everything
+that changes the view acts on it: dragging and the mouse wheel in the
+viewport, the **Yaw**, **Pitch**, **Roll**, **Field of view** and
+**Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
+**Track subject…**. The keyframe diamonds on the clip are the active
+pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
+
+To make another pane active, click it in the viewport, or pick it under
+**Pane**. A press on another pane also starts a drag there, so with reframe
+authoring armed you can click and drag in one go. The outline is only in
+the viewport, not in the export or a screenshot.
+
+Track subject works in the active pane: draw the box in it, and the
+tracked path becomes that pane's keyframes.
+
+**Fill panes** sets a keyframe at the playhead in every pane: the first
+pane keeps its view, and the others look back (two panes) or right, left
+and back (the grid) from it, as when you first split the clip.
+
+### The divider
+
+**Divider** sets the line between the panes: its width, as a share of the
+video's height (0.4 % is about 4 pixels at 1080p; 0 lets the panes touch),
+and its colour.
+
+### Split clips on the timeline
+
+The split belongs to the clip, like its keyframes. At a cut the picture
+changes to the next clip's layout. A split clip's halves and a duplicate
+keep the split. A transition into or out of a split clip blends the whole
+split picture.
+
+Going back to **One picture** keeps the other panes' keyframes: pick the
+layout again and they're back. **Edit ▸ Undo** (`Ctrl+Z`) undoes a split
+like any other edit.
+
+> **A pane without keyframes is exported looking straight ahead**, like a
+> clip without them. The **Reframe** section warns while the playhead is
+> in a clip whose active pane has none.
+
+A project with a split clip can't be opened by orbis-reframe versions
+before split screen.
 
 ## Flat videos
 

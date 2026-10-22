@@ -31,8 +31,9 @@ public:
     struct Run {
         subjecttrack::Request req;
         int clipId = 0;
-        ReframePose look;   // the view the box was drawn in
-        float aspect = 1.0f; // the viewport's output aspect
+        int pane = 0;        // the split clip's pane whose camera it writes
+        ReframePose look;    // the view the box was drawn in
+        float aspect = 1.0f; // that view's aspect (the active pane's)
     };
 
     SubjectTrackController(EquirectViewportWindow *viewport, QWidget *stopButton,

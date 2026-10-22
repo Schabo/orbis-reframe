@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 #include <vector>
 
@@ -27,6 +28,9 @@ class Timeline : public QObject {
     Q_OBJECT
 
 public:
+    // A key for one pane of a split clip: {pane, pose} (setClipSplit).
+    using PanePose = std::pair<int, ReframePose>;
+
     explicit Timeline(QObject *parent = nullptr);
 
     // A timeline instant expressed as (which clip, how far into its span on the
@@ -325,11 +329,12 @@ public slots:
     // one edit, one undo step (Track subject writes its path this way).
     void replaceClipReframeSpan(int clipId, qint64 fromMs, qint64 toMs,
                                 const QList<ReframeKey> &keys, int pane = 0);
-    // Split screen (ClipItem::split, clamped). `poses`, when given, also
-    // puts a key at `sourceMs` into each pane's camera (Fill panes) -- one
-    // edit, one undo step. No-op on a flat clip. Emits clipReframeChanged.
+    // Split screen (ClipItem::split, clamped). `keys`, when given, also
+    // puts a key at `sourceMs` into each of those panes' cameras ({pane,
+    // pose}; Fill panes) -- one edit, one undo step. No-op on a flat clip.
+    // Emits clipReframeChanged.
     void setClipSplit(int clipId, const pane::Split &split, qint64 sourceMs = 0,
-                      const std::vector<ReframePose> *poses = nullptr);
+                      const std::vector<PanePose> *keys = nullptr);
     // Playback speed (clamped to ClipItem::kMin/MaxSpeed). Changes the clip's
     // span on the timeline: emits clipSpeedChanged + durationChanged.
     void setClipSpeed(int clipId, double speed);

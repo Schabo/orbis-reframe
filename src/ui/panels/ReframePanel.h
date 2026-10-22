@@ -2,6 +2,7 @@
 
 #include "../SettingsPanel.h"
 
+#include "../../core/PaneLayout.h"   // pane::Split
 #include "../../core/ReframeTrack.h" // ReframePose
 
 class QComboBox;
@@ -18,6 +19,11 @@ class QPushButton;
 //
 // All fields are shown in degrees; the signal / setter use radians to match
 // ReframePose.
+//
+// Split screen: the clip's layout (one picture, side by side, stacked, a
+// 2 x 2 grid), the divider between the panes, which pane the fields and the
+// viewport steer (the active pane) and Fill panes, which points the panes
+// front / back / left / right in one go.
 class ReframePanel : public SettingsPanel {
     Q_OBJECT
 
@@ -54,7 +60,16 @@ public:
     // one; `available` false greys it out (the playhead isn't between two
     // keys). Does not emit easeEdited.
     void setEase(bool available, keytrack::Ease ease);
+
+    // The clip's split and the active pane (0-based). Do not emit.
+    void setSplit(const pane::Split &split);
+    void setActivePane(int pane);
 signals:
+    // The layout or the divider changed.
+    void splitEdited(const pane::Split &split);
+    // Another pane picked to steer.
+    void activePaneEdited(int pane);
+    void fillPanesRequested();
     void poseEdited(const ReframePose &pose);
     void easeEdited(keytrack::Ease ease);
     // The Fit choice of a flat clip changed.
@@ -67,6 +82,9 @@ signals:
 private:
     ReframePose currentPose() const;
     void emitIfEdited();
+    pane::Split currentSplit() const;
+    void showSplitRows();
+    void setGapColor(uint32_t rgb);
 
     QDoubleSpinBox *m_yaw = nullptr;
     QDoubleSpinBox *m_pitch = nullptr;
@@ -80,6 +98,12 @@ private:
     QLabel *m_trackStatus = nullptr;
     QLabel *m_unkeyed = nullptr;
     QComboBox *m_fit = nullptr;
+    QComboBox *m_layout = nullptr;
+    QComboBox *m_pane = nullptr;
+    QDoubleSpinBox *m_gap = nullptr;
+    QPushButton *m_gapColor = nullptr;
+    QPushButton *m_fillPanes = nullptr;
+    uint32_t m_gapRgb = 0;
     bool m_flat = false;
     bool m_trackRunning = false;
     bool m_updating = false; // true while setPose() writes the widgets

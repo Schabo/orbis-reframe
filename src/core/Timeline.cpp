@@ -569,15 +569,16 @@ void Timeline::clearClipReframe(int clipId, int pane)
 }
 
 void Timeline::setClipSplit(int clipId, const pane::Split &split, qint64 sourceMs,
-                            const std::vector<ReframePose> *poses)
+                            const std::vector<PanePose> *keys)
 {
     ClipItem *c = mutableClipById(clipId);
     if (!c || c->flat)
         return;
     bool changed = c->setSplit(split);
-    if (poses)
-        for (int i = 0; i < static_cast<int>(poses->size()) && i < pane::kMaxPanes; ++i)
-            changed = c->upsertReframeKey(sourceMs, (*poses)[i], i) || changed;
+    if (keys)
+        for (const PanePose &k : *keys)
+            if (k.first >= 0 && k.first < pane::kMaxPanes)
+                changed = c->upsertReframeKey(sourceMs, k.second, k.first) || changed;
     if (changed)
         emit clipReframeChanged(c->id);
 }

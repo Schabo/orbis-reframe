@@ -10,6 +10,7 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
@@ -172,9 +173,24 @@ private:
     // A Track subject run is going (always false without tracking).
     bool trackingRunning() const;
     // Point the viewport along the authored reframe path. `sourceMs` is in the
-    // current clip's (m_clipId) source time. No-op when the track is empty or a
-    // viewport drag is in progress.
+    // current clip's (m_clipId) source time. A split clip's every pane, the
+    // active one's view only when it has keys.
     void applySampledPose(qint64 sourceMs);
+    // Split screen: the pane of `c` the viewport and the reframe edits steer
+    // -- the viewport's active pane, or pane 0 on a clip with fewer panes.
+    int paneOf(const ClipItem &c) const;
+    // ... of the clip under the playhead (0 when there is none).
+    int playingPane() const;
+    // Make `pane` the active one (the Reframe panel's Pane, a click in the
+    // viewport), and show its view and keys.
+    void setActivePane(int pane);
+    // Fill panes: every pane of the clip under the playhead a key at the
+    // playhead, turned from pane 1's view (pane::fillYawOffset).
+    void fillPanes();
+    // The poses Fill panes gives the clip's panes 1.. (pane 0 keeps
+    // `base`), for `split`: {pane, pose} (Timeline::PanePose).
+    std::vector<std::pair<int, ReframePose>> fillPoses(const pane::Split &split,
+                                                       const ReframePose &base) const;
     // The clip under the playhead and the one after it: build their
     // stabilizers (so a cut finds the next one ready), publish, and refresh
     // the paused picture if the current one was new.
