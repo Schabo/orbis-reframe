@@ -28,17 +28,15 @@ to corner), so landscape and portrait frame alike. By default `d` follows it
 per keyframe; the field-of-view limit then depends on `d`. Old projects load
 with the automatic `d`, so their wide views lose the stretch. It is a change
 to all the view implementations and the subject tracker's crop together
-(`architecture.md`, *One view, several implementations*). Until then the
-rectilinear field of view stays capped at 110°: wider rectilinear just
-stretches.
+(`architecture.md`, *One view, several implementations*).
 
 - done: (1) the projection, written once (`src/core/ViewProjection.h` and
-  `view_projection.glsl`) and used by every implementation; a view's pose
-  carries its distortion through the viewport and every export path, all
-  at 0 so far (`reframe_export --distortion` renders any).
-- next: (2) the distortion and the diagonal field of view in the keyframes
-  and the project file, the automatic amount, the Reframe section's
-  controls, the angle limits.
+  `view_projection.glsl`) and used by every implementation; (2) the
+  distortion and the diagonal field of view in the keyframes and the
+  project file (format 17), the automatic amount, the Reframe section's
+  **Distortion** row, the angle limits (145° rectilinear up to 330°).
+- next: the default angle and the automatic curve's ends tuned by eye on
+  clips with straight lines.
 
 ### 2. Insta360 X6
 

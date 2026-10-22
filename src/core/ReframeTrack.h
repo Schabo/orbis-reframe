@@ -17,28 +17,15 @@
 // serialisable. Each ClipItem holds one; Timeline wraps every mutation in a
 // signal.
 //
-// yaw and roll are unbounded radians (the reprojection wraps them via cos/sin),
-// so interpolation takes the shortest angular path across the +/-pi seam. pitch
-// and fovY are plain lerp -- both are clamped ranges with no wraparound.
+// A keyframe's pose is a view's (view::Pose). yaw and roll are unbounded
+// radians (the reprojection wraps them via cos/sin), so interpolation takes
+// the shortest angular path across the +/-pi seam. pitch and the field of
+// view are plain lerp -- both are clamped ranges with no wraparound. Between
+// two Auto keys the distortion stays Auto, following the blended field of
+// view (a zoom out turns into the wide look by itself); otherwise the two
+// keys' distortions blend, an Auto key's being the one it shows.
 
-struct ReframePose {
-    float yaw = 0.0f;
-    float pitch = 0.0f;
-    float roll = 0.0f;   // rotation about the view axis; horizon tilt
-    float fovY = 1.309f; // ~75 deg, matches EquirectViewportWindow's default
-};
-
-// The view a keyframe pose shows -- what the viewport and the export render
-// -- and the keyframe pose of a view (the viewport's, to key it). Keys are
-// rectilinear for now.
-inline view::Pose viewPoseOf(const ReframePose &p)
-{
-    return {p.yaw, p.pitch, p.roll, p.fovY, 0.0f};
-}
-inline ReframePose reframePoseOf(const view::Pose &v)
-{
-    return {v.yaw, v.pitch, v.roll, v.fovY};
-}
+using ReframePose = view::Pose;
 
 struct ReframeKey {
     qint64 timeMs = 0;

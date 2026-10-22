@@ -45,14 +45,14 @@ void setViews(ReframeExportController::ClipJob &job, const ClipItem &c)
 {
     if (!c.reframe.isEmpty())
         job.poseAt = [track = c.reframe](qint64 sourceMs, view::Pose &pose) {
-            pose = viewPoseOf(track.sample(sourceMs));
+            pose = track.sample(sourceMs);
         };
     if (c.paneCount() < 2)
         return;
     job.split = c.split;
     job.panePoseAt = [panes = c.panes](qint64 sourceMs, int pane, view::Pose &pose) {
         if (pane >= 1 && pane < pane::kMaxPanes && !panes[pane - 1].isEmpty())
-            pose = viewPoseOf(panes[pane - 1].sample(sourceMs));
+            pose = panes[pane - 1].sample(sourceMs);
     };
 }
 
@@ -115,12 +115,13 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
         if (pane > 0)
             key += QStringLiteral("|pane%1").arg(pane);
         for (const ReframeKey &k : c.paneTrack(pane).keys())
-            key += QStringLiteral("|%1:%2,%3,%4,%5,%6")
+            key += QStringLiteral("|%1:%2,%3,%4,%5,%6,%7")
                        .arg(k.timeMs)
                        .arg(k.pose.yaw)
                        .arg(k.pose.pitch)
                        .arg(k.pose.roll)
-                       .arg(k.pose.fovY)
+                       .arg(k.pose.fov, 0, 'g', 17)
+                       .arg(k.pose.distortion)
                        .arg(int(k.ease));
     }
     if (c.paneCount() > 1)

@@ -133,11 +133,11 @@ value is reported and ignored. With `ORBIS_VERBOSE=1` it prints which
 encoder was picked and why the ones before it can't be used; the "no usable
 hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
-`time_ms yaw pitch fovY [roll]`, in **radians**), or a fixed `--yaw/--pitch/--fov`.
-`--distortion D` renders every view and pane through the distorted
-projection, from 0 (rectilinear, the default) to 1 (stereographic: with
-`--pitch -90` and a wide `--fov`, a tiny planet) -- for checking the paths
-against each other before the app keys it.
+`time_ms yaw pitch fov [roll] [distortion]`, angles in **radians**, the
+field of view corner to corner as the app's keys; distortion 0..1, left out
+= automatic), or a fixed `--yaw/--pitch/--fov` (degrees, corner to corner)
+and `--distortion D|auto` (default auto): 0 is rectilinear, 1
+stereographic (with `--pitch -90` and a wide `--fov`, a tiny planet).
 It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
 `--lut-strength PCT`) and a picture-in-picture inset. `--bit-depth 10`
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
@@ -159,8 +159,8 @@ With `--split`, to check the panes on every path (`INSV_FLAT_VIA_EQUIRECT=1`,
 single-pane export of one pane's view at the pane's size.
 
 ```sh
-build/reframe_export clip.insv out.mp4 --trim-in 10000 --trim-out 20000 --yaw 30 --fov 80
-build/reframe_export clip.insv planet.mp4 --trim-out 3000 --pitch -90 --fov 250 --distortion 1
+build/reframe_export clip.insv out.mp4 --trim-in 10000 --trim-out 20000 --yaw 30 --fov 120
+build/reframe_export clip.insv planet.mp4 --trim-out 3000 --pitch -90 --fov 300
 build/reframe_export clip.insv out.mp4 --keys keys.txt --codec h264
 build/reframe_export clip.insv out10.mp4 --trim-out 3000 --bit-depth 10
 build/reframe_export clip.insv lut.mp4 --trim-in 1000 --trim-out 2000 --lut X5_I-Log_To_Rec.709_V1.0.cube

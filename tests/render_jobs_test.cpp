@@ -402,7 +402,7 @@ void testClipJob(const QString &dir)
     if (job.poseAt) {
         view::Pose pose;
         job.poseAt(5000, pose);
-        CHECK(near(pose.yaw, 0.5f) && near(pose.fovY, 1.2f) && pose.distortion == 0.0f);
+        CHECK(near(pose.yaw, 0.5f) && near(float(pose.fov), 1.2f) && pose.distortionIsAuto());
     }
 }
 

@@ -25,29 +25,44 @@
 // rectilinear expressions, operation for operation, so the picture is
 // unchanged to the bit.
 //
+// A pose gives its field of view as the diagonal angle, corner to corner,
+// so a landscape and a portrait frame take in alike, and its distortion
+// either fixed or Auto (following the field of view: none for a normal view,
+// stereographic for a very wide one). What a renderer draws with is lens():
+// the vertical angle through the centre and the d, for the aspect it draws
+// at -- the picture's, or its pane's.
+//
 // Header-only, no Qt: the export (reframe_flatten) and the tracker use it
 // too.
 
+#include <algorithm>
 #include <cmath>
 
 namespace view {
+
+// The distortion of a pose that follows its field of view (autoDistortion).
+inline constexpr float kAutoDistortion = -1.0f;
 
 // A view's pose: where it looks and how much it takes in.
 struct Pose {
     float yaw = 0.0f;   // radians, about the vertical (Y) axis
     float pitch = 0.0f; // radians, about the horizontal (X) axis
     float roll = 0.0f;  // radians, about the view (Z) axis -- horizon tilt
-    // The angle the picture spans from its top edge to its bottom edge
-    // through the centre, radians (~75 deg).
-    float fovY = 1.309f;
-    // The projection's d, 0 (rectilinear) to 1 (stereographic).
-    float distortion = 0.0f;
+    // The angle the picture spans corner to corner, radians: ~115 deg, what
+    // 75 deg up and down takes in at 16:9. A double so that a vertical angle
+    // turned into it (fovFor) comes back as the same float.
+    double fov = 2.004501002893341;
+    // The projection's d, 0 (rectilinear) to 1 (stereographic), or
+    // kAutoDistortion.
+    float distortion = kAutoDistortion;
 
+    bool distortionIsAuto() const { return distortion < 0.0f; }
     bool operator==(const Pose&) const = default;
 };
 
 // The plane radius of a ray `angle` radians off the view axis (r above).
-// For the picture's half-height, pass half the vertical field of view.
+// For the picture's half-height, pass half the vertical field of view
+// (Lens::fovY).
 template <class T>
 inline T planeRadius(T angle, T distortion)
 {
@@ -56,7 +71,7 @@ inline T planeRadius(T angle, T distortion)
     return (T(1) + distortion) * std::sin(angle) / (distortion + std::cos(angle));
 }
 
-// The plane's half-height for `pose`'s vertical field of view.
+// The plane's half-height for a vertical field of view (Lens::fovY).
 template <class T>
 inline T halfHeight(T fovY, T distortion)
 {
@@ -114,6 +129,92 @@ inline bool pointToPlane(const T p[3], T distortion, T& x, T& y, T near = T(0))
     x = p[0] * k;
     y = p[1] * k;
     return true;
+}
+
+// The distortion Auto gives a diagonal field of view `fov`: none up to
+// 90 deg, where rectilinear still looks natural, easing to stereographic at
+// 170 deg and wider.
+template <class T>
+inline T autoDistortion(T fov)
+{
+    constexpr T kFrom = T(1.5707963267948966); // 90 deg
+    constexpr T kTo = T(2.9670597283903604);   // 170 deg
+    const T t = std::clamp((fov - kFrom) / (kTo - kFrom), T(0), T(1));
+    return t * t * (T(3) - T(2) * t);
+}
+
+// The d a pose renders with: its own, or Auto's for its field of view.
+inline double distortionOf(const Pose& pose)
+{
+    return pose.distortionIsAuto() ? autoDistortion(pose.fov)
+                                 : std::clamp(double(pose.distortion), 0.0, 1.0);
+}
+
+// The field of view's range, radians diagonal. The widest keeps the corners
+// short of where the projection runs off to infinity (d + cos(theta) = 0):
+// 145 deg rectilinear, 330 deg stereographic (a tiny planet with the sky
+// round it). Auto: the widest stereographic, its distortion grows with the
+// angle fast enough to stay within it.
+inline constexpr double kMinFov = 0.3490658503988659; // 20 deg
+template <class T>
+inline T maxFov(T distortion)
+{
+    const T d = std::clamp(distortion, T(0), T(1));
+    const T margin = T(0.30543261909900765) - T(0.04363323129985824) * d; // 17.5 .. 15 deg
+    return T(2) * (std::acos(-d) - margin);
+}
+inline double maxFov(const Pose& pose)
+{
+    return maxFov(pose.distortionIsAuto() ? 1.0 : double(pose.distortion));
+}
+
+// The ray angle off the axis that lands at plane radius `r`, planeRadius's
+// inverse.
+template <class T>
+inline T angleOfRadius(T r, T distortion)
+{
+    if (distortion <= T(0))
+        return std::atan(r);
+    T ray[3];
+    planeToRay(r, T(0), distortion, ray);
+    return std::atan2(ray[0], -ray[2]);
+}
+
+// The vertical angle through the centre of a picture `aspect` (width /
+// height) wide whose diagonal angle is `fov`, and back. Its corner's plane
+// radius is the half-height times sqrt(1 + aspect^2).
+template <class T>
+inline T fovYFor(T fov, T distortion, T aspect)
+{
+    const T k = std::sqrt(T(1) + aspect * aspect);
+    if (distortion <= T(0))
+        return T(2) * std::atan(std::tan(fov * T(0.5)) / k);
+    return T(2) * angleOfRadius(planeRadius(fov * T(0.5), distortion) / k, distortion);
+}
+template <class T>
+inline T fovFor(T fovY, T distortion, T aspect)
+{
+    const T k = std::sqrt(T(1) + aspect * aspect);
+    if (distortion <= T(0))
+        return T(2) * std::atan(std::tan(fovY * T(0.5)) * k);
+    return T(2) * angleOfRadius(planeRadius(fovY * T(0.5), distortion) * k, distortion);
+}
+
+// What a renderer draws `pose` with at `aspect` (width / height): the
+// vertical angle through the centre (halfHeight's) and the d. The field of
+// view is held in its range for that d -- between two keys with different
+// distortions the blend can reach past it.
+struct Lens {
+    float fovY = 1.309f;
+    float distortion = 0.0f;
+};
+inline Lens lens(const Pose& pose, double aspect)
+{
+    if (!(aspect > 0.0))
+        aspect = 16.0 / 9.0;
+    const double d = distortionOf(pose);
+    const double fov = std::clamp(pose.fov, kMinFov, maxFov(d));
+    return {static_cast<float>(fovYFor(fov, d, aspect)), static_cast<float>(d)};
 }
 
 } // namespace view

@@ -68,8 +68,9 @@ public:
 //     (a ONE X2 clip's lens-1 file; absent => the clip is one file).
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
-    //   fovY, ease}]} (ease: "easeOut" | "easeIn", the move to the next key;
-    //   absent => linear), color {exposureEv, contrast, saturation, temperature;
+    //   diag, distortion, ease}]} (diag: the field of view, radians corner
+    //   to corner; distortion: 0..1, absent => automatic; ease: "easeOut" |
+    //   "easeIn", the move to the next key; absent => linear), color {exposureEv, contrast, saturation, temperature;
     //   optional: lut (a .cube file, stored like source), lutStrength},
     //   speed, stabilization {mode, windowYawSec, windowPitchSec,
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
@@ -126,8 +127,14 @@ public:
     // screen ("split" on a clip: {layout, gap, gapColor "#rrggbb", panes:
     // [3 x {keys}], the cameras of panes 2-4}), written only when a clip is
     // split (a kept pane camera on an unsplit clip doesn't change what an
-    // older build shows).
-    static constexpr int kFormatVersion = 16;
+    // older build shows). Version 17 gave the reframe keys the diagonal
+    // field of view and the distortion ({tMs, yaw, pitch, roll, diag,
+    // distortion} instead of fovY), written whenever a clip has a key; a
+    // key from an older file takes the diagonal that frames what its
+    // rectilinear fovY framed, at the output's or its pane's aspect, and
+    // the automatic distortion.
+    static constexpr int kFormatVersion = 17;
+    static constexpr int kWideViewFormatVersion = 17;
     static constexpr int kSplitFormatVersion = 16;
     static constexpr int kDirectionLockFormatVersion = 15;
     static constexpr int kLutFormatVersion = 14;

@@ -1499,7 +1499,8 @@ int main(int argc, char** argv)
         pose.yaw = y;
         pose.pitch = p;
         pose.roll = r;
-        pose.fovY = fovY;
+        pose.fov = view::fovFor<double>(fovY, 0.0, double(a.outW) / double(a.outH)); // rectilinear
+        pose.distortion = 0.0f;
     };
 
     int64_t written = 0;

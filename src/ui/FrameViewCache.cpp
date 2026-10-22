@@ -48,7 +48,7 @@ PlaybackController::ViewProvider FrameViewCache::provider() const
         view.split = c.split;
         for (int i = 0; i < count; ++i) {
             view.panePoses[i] =
-                viewPoseOf(track(i).isEmpty() ? ReframePose{} : track(i).sample(sourceMs));
+                track(i).isEmpty() ? ReframePose{} : track(i).sample(sourceMs);
         }
         if (track(active).isEmpty() || shared->dragging)
             return;

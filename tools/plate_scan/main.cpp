@@ -311,7 +311,11 @@ int main(int argc, char** argv)
     auto blurFn = [&scan](int64_t ptsMs, std::vector<insv::BlurQuad>& out) { scan.quadsAt(ptsMs, out); };
     for (const int64_t at : stills) {
         // Aim the view at the frame's first region.
-        view::Pose pose{float(view[0] * kPi / 180), float(view[1] * kPi / 180), 0.0f, float(view[2] * kPi / 180)};
+        // The still is 1280x720, rectilinear, FOV its vertical angle.
+        const auto fovOf = [](double fovYDeg) {
+            return view::fovFor<double>(static_cast<float>(fovYDeg * kPi / 180), 0.0, 1280.0 / 720.0);
+        };
+        view::Pose pose{float(view[0] * kPi / 180), float(view[1] * kPi / 180), 0.0f, fovOf(view[2]), 0.0f};
         if (!haveView)
             if (const privacy::ScanFrame* fr = scan.frameAt(at); fr && !fr->regions.empty()) {
                 const auto& c = fr->regions.front().quad.corner;
@@ -323,7 +327,7 @@ int main(int argc, char** argv)
                 // view dir = (-cos p sin y, sin p, -cos p cos y)
                 pose.yaw = static_cast<float>(-std::atan2(d[0], -d[2]));
                 pose.pitch = static_cast<float>(std::asin(d[1] / n));
-                pose.fovY = static_cast<float>(20.0 * kPi / 180);
+                pose.fov = fovOf(20.0);
             }
         const std::string base = stillsDir + "/" + std::to_string(at);
         for (int path = 0; path < 3; ++path) {
@@ -353,7 +357,8 @@ int main(int argc, char** argv)
                 if (f.rgba.empty())
                     die(src.GetLastError());
                 std::printf("view at %lld ms (yaw %.1f pitch %.1f fov %.1f)\n", (long long)f.timestamp_ms,
-                            pose.yaw * 180 / kPi, pose.pitch * 180 / kPi, pose.fovY * 180 / kPi);
+                            pose.yaw * 180 / kPi, pose.pitch * 180 / kPi,
+                            view::lens(pose, 1280.0 / 720.0).fovY * 180 / kPi);
                 writePpm(base + "_view.ppm", f.rgba.data(), f.width, f.height);
             } else {
                 const stitch::Frame f = src.ReadFrame();

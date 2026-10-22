@@ -140,7 +140,6 @@ public:
     float Yaw() const { return m_pose.yaw; }
     float Pitch() const { return m_pose.pitch; }
     float Roll() const { return m_pose.roll; }
-    float FovY() const { return m_pose.fovY; }
     view::Pose Pose() const { return m_pose; }
 
     // Set the camera pose directly. Used by MainWindow to drive the viewport
@@ -150,7 +149,7 @@ public:
     void SetPose(const view::Pose &pose);
 
     // Split screen: the picture in panes (PaneLayout.h), each with its own
-    // view. The window's pose (Yaw() ... FovY(), SetPose, a drag) is the
+    // view. The window's pose (Pose(), SetPose, a drag) is the
     // *active* pane's -- the one the user steers; `poses` are every pane's
     // (by pane), of which the active one's is ignored. Thread-safe; also set with a presented frame (FrameView).
     // Single = one picture, as before.

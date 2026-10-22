@@ -29,7 +29,8 @@ namespace {
 // corners (4, plus one per edge the clip cuts). Fewer than 3 = nothing to
 // draw.
 int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float stabRm[9],
-                   const view::Pose &pose, float aspect, float rectW, float rectH, float out[12])
+                   const view::Pose &pose, const view::Lens &lens, float aspect, float rectW,
+                   float rectH, float out[12])
 {
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
     const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
@@ -51,7 +52,7 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
     // Keep z <= d - kNear (in front of the projection centre (0, 0, d));
     // Sutherland-Hodgman against that plane.
     constexpr float kNear = 1e-3f;
-    const float zMax = pose.distortion - kNear;
+    const float zMax = lens.distortion - kNear;
     float c[6][3];
     int n = 0;
     for (int i = 0; i < 4; ++i) {
@@ -66,10 +67,10 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
             ++n;
         }
     }
-    const float h = view::halfHeight(pose.fovY, pose.distortion);
+    const float h = view::halfHeight(lens.fovY, lens.distortion);
     for (int i = 0; i < n; ++i) {
         float px = 0.0f, py = 0.0f;
-        view::pointToPlane(c[i], pose.distortion, px, py);
+        view::pointToPlane(c[i], lens.distortion, px, py);
         const float ndcX = px / (h * aspect);
         const float ndcY = -py / h;
         out[i * 2] = (ndcX + 1.0f) * 0.5f * rectW;
@@ -535,6 +536,7 @@ void EquirectViewportRenderer::startNextFrame()
         float x, y, w, h; // framebuffer px
         float aspect;     // at the output size
         view::Pose pose;
+        view::Lens lens; // the pose at that aspect
     };
     std::vector<PaneDraw> panes;
     const pane::Split split = m_window->Split();
@@ -550,13 +552,17 @@ void EquirectViewportRenderer::startNextFrame()
             const pane::Rect &r = rects[i];
             PaneDraw d{rectX + float(r.x) / outW * rectW, rectY + float(r.y) / outH * rectH,
                        float(r.w) / outW * rectW, float(r.h) / outH * rectH,
-                       float(r.aspect()), poses[i]};
+                       float(r.aspect()), poses[i], view::lens(poses[i], r.aspect())};
             panes.push_back(d);
         }
         if (panes.empty()) {
             // The window's own: one picture.
+            // The export's aspect, to the bit, when the output size is known.
+            const double aspect = m_window->OutputAspect() > 0.0f && outW > 0 && outH > 0
+                                      ? double(outW) / double(outH)
+                                      : double(outAspect);
             panes.push_back({float(rectX), float(rectY), float(rectW), float(rectH), outAspect,
-                             poses[0]});
+                             poses[0], view::lens(poses[0], aspect)});
         }
     }
     // A pane's integer rect, clipped to the output rect.
@@ -584,12 +590,12 @@ void EquirectViewportRenderer::startNextFrame()
     }
 
     PushConstants pc{};
-    pc.yaw = m_window->Yaw();
-    pc.pitch = m_window->Pitch();
-    pc.roll = m_window->Roll();
-    pc.fovY = m_window->FovY();
+    pc.yaw = panes[0].pose.yaw;
+    pc.pitch = panes[0].pose.pitch;
+    pc.roll = panes[0].pose.roll;
+    pc.fovY = panes[0].lens.fovY;
     pc.aspect = outAspect;
-    pc.distortion = m_window->Pose().distortion;
+    pc.distortion = panes[0].lens.distortion;
     // Stabilization matrix, row-major in the window -> col-major (3 padded
     // vec3 columns) for std140.
     float stabRm[9];
@@ -616,9 +622,9 @@ void EquirectViewportRenderer::startNextFrame()
             pc.yaw = d.pose.yaw;
             pc.pitch = d.pose.pitch;
             pc.roll = d.pose.roll;
-            pc.fovY = d.pose.fovY;
+            pc.fovY = d.lens.fovY;
             pc.aspect = d.aspect;
-            pc.distortion = d.pose.distortion;
+            pc.distortion = d.lens.distortion;
         }
         if (imp) {
             LensPushConstants lpc{};
@@ -650,7 +656,7 @@ void EquirectViewportRenderer::startNextFrame()
             const PaneDraw &d = panes[k / outlines.size()];
             const auto &o = outlines[k % outlines.size()];
             RegionPushConstants rpc{};
-            const int n = projectOutline(o, stabRm, d.pose, d.aspect, d.w, d.h, rpc.pts);
+            const int n = projectOutline(o, stabRm, d.pose, d.lens, d.aspect, d.w, d.h, rpc.pts);
             if (n < 3)
                 continue;
             for (int i = 0; i < n; ++i) { // pane px -> output rect px

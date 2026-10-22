@@ -108,7 +108,8 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
                 const ReframeView& view, int rowBegin, int rowEnd)
 {
     const Grade grade(view.colorGrade);
-    const float h = view::halfHeight(view.pose.fovY, view.pose.distortion);
+    const view::Lens lens = view::lens(view.pose, double(outW) / double(outH));
+    const float h = view::halfHeight(lens.fovY, lens.distortion);
     const float cosR = std::cos(view.pose.roll);
     const float sinR = std::sin(view.pose.roll);
     const float cosP = std::cos(view.pose.pitch);
@@ -124,7 +125,7 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
 
             // View-space ray (matches equirect.frag: +Y up, -Z forward).
             float ray[3];
-            view::ndcToRay(ndcX, ndcY, h, view.aspect, view.pose.distortion, ray);
+            view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray);
             const float vx = ray[0], vy = ray[1], vz = ray[2];
 
             // Roll about Z (view axis), then pitch about X, then yaw about Y.

@@ -645,10 +645,11 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         rp.yaw = v.pose.yaw;
         rp.pitch = v.pose.pitch;
         rp.roll = v.pose.roll;
-        rp.fovY = v.pose.fovY;
+        const view::Lens lens = view::lens(v.pose, double(v.w) / double(v.h));
+        rp.fovY = lens.fovY;
         rp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
         rp.origin = single ? 0 : v.x | (v.y << 16);
-        rp.distortion = v.pose.distortion;
+        rp.distortion = lens.distortion;
         rp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
                            &rp);
@@ -904,10 +905,11 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         vp.yaw = v.pose.yaw;
         vp.pitch = v.pose.pitch;
         vp.roll = v.pose.roll;
-        vp.fovY = v.pose.fovY;
+        const view::Lens lens = view::lens(v.pose, double(v.w) / double(v.h));
+        vp.fovY = lens.fovY;
         vp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
         vp.origin = single ? 0 : v.x | (v.y << 16);
-        vp.distortion = v.pose.distortion;
+        vp.distortion = lens.distortion;
         vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,

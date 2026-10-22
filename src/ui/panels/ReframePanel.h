@@ -5,20 +5,25 @@
 #include "../../core/PaneLayout.h"   // pane::Layout
 #include "../../core/ReframeTrack.h" // ReframePose
 
+#include <functional>
+
+class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
+class QSlider;
 
-// Numeric yaw / pitch / roll / field-of-view fields for the view orientation,
-// an alternative to drag-authoring in the viewport. An edit sets the live
+// Numeric yaw / pitch / roll / field-of-view / distortion fields for the
+// view, an alternative to drag-authoring in the viewport. An edit sets the live
 // viewport pose immediately; when reframe authoring is armed (the transport
 // bar's Reframe toggle) it also writes a keyframe at the playhead, exactly
 // like a viewport drag commit. The fields reflect the current pose as playback
 // / scrubbing moves.
 //
-// All fields are shown in degrees; the signal / setter use radians to match
-// ReframePose.
+// All angles are shown in degrees, the field of view corner to corner; the
+// signal / setter use radians to match ReframePose. Distortion is Auto
+// (following the field of view) or a fixed 0-100 %.
 //
 // A split clip (SplitScreenPanel sets the layout): which pane the fields and
 // the viewport steer, the active pane.
@@ -76,14 +81,22 @@ signals:
     void trackStopRequested();
 
 private:
-    ReframePose currentPose() const;
-    void emitIfEdited();
+    // Show `pose` in the fields; the field of view's range is its
+    // distortion's.
+    void showPose(const ReframePose &pose);
+    // One field edited: the pose shown with it changed, emitted.
+    void edited(const std::function<void(ReframePose &)> &change);
     void showPaneRow();
 
     QDoubleSpinBox *m_yaw = nullptr;
     QDoubleSpinBox *m_pitch = nullptr;
     QDoubleSpinBox *m_roll = nullptr;
     QDoubleSpinBox *m_fov = nullptr;
+    QCheckBox *m_distortionAuto = nullptr;
+    QSlider *m_distortion = nullptr; // percent
+    QLabel *m_distortionValue = nullptr;
+    QWidget *m_distortionRow = nullptr;
+    ReframePose m_pose; // the pose shown: an edit changes only its own field
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;
     QPushButton *m_track = nullptr;

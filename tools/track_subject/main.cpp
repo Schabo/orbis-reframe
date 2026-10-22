@@ -67,7 +67,7 @@ struct Args {
     int64_t occludeFromMs = -1, occludeToMs = -1; // simulated occlusion (frame greyed out)
     float smoothStrength = 0.2f;  // lean-follow strength -> smoothing window
     double rdpTolDeg = 0.5;
-    double outFovDeg = 70.0;
+    double outFovDeg = 110.0; // diagonal
     std::string keysOut;
     std::string pathOut;          // per-frame raw track (diagnostic)
     std::string debugDir;         // per-frame crop JPGs with the box drawn
@@ -93,7 +93,7 @@ const char kUsage[] =
     "  --dump-equirect F.jpg write the stabilized equirect at t0 with a yaw/pitch grid, exit\n"
     "  --box Y,P,W,H         seed: centre yaw/pitch + angular width/height, degrees,\n"
     "                        stabilized frame (read it off --dump-equirect)\n"
-    "  --view-box Y,P,F,A,X,Y,W,H  seed from a box drawn in a view (yaw/pitch/fov deg,\n"
+    "  --view-box Y,P,F,A,X,Y,W,H  seed from a box drawn in a view (yaw/pitch/diagonal fov deg,\n"
     "                        aspect; box as fractions of the view), like the app\n"
     "  --tracker T           hybrid | csrt | vit | nano (default hybrid); hybrid = CSRT\n"
     "                        tracks, VitTrack scores it (track::SubjectTracker)\n"
@@ -109,7 +109,7 @@ const char kUsage[] =
     "  --lost-score S        tracker score below this = lost (default 0.4)\n"
     "  --smooth F            lean-follow strength 0..1 for path smoothing (default 0.2)\n"
     "  --rdp-tol DEG         key reduction tolerance (default 0.5)\n"
-    "  --out-fov DEG         FOV written into the keys (default 70)\n"
+    "  --out-fov DEG         FOV written into the keys, corner to corner (default 110)\n"
     "  --keys-out F          reduced keys (reframe_export --keys format)\n"
     "  --path-out F          per-frame raw track\n"
     "  --debug-dir D         per-frame crop JPGs with the box\n"
@@ -154,8 +154,11 @@ Args parseArgs(int argc, char** argv)
             if (std::sscanf(v.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &vy, &vp, &vf, &va, &x, &y,
                             &w, &h) != 8)
                 die("bad --view-box (want yaw,pitch,fov,aspect,x,y,w,h)");
+            view::Pose shown;
+            shown.fov = vf * kDegToRad; // automatic distortion, as the app's default
+            const view::Lens lens = view::lens(shown, va);
             const track::Seed s = track::seedFromViewBox(x, y, w, h, vy * kDegToRad, vp * kDegToRad,
-                                                         0.0, vf * kDegToRad, 0.0, va);
+                                                         0.0, lens.fovY, lens.distortion, va);
             a.boxYawDeg = s.yaw * kRadToDeg;
             a.boxPitchDeg = s.pitch * kRadToDeg;
             a.boxWDeg = s.width * kRadToDeg;
@@ -448,7 +451,7 @@ int main(int argc, char** argv)
         FILE* fk = std::fopen(a.keysOut.c_str(), "w");
         if (!fk)
             die("could not open --keys-out");
-        std::fprintf(fk, "# track_subject %s: time_ms yaw_rad pitch_rad fovY_rad roll_rad (stabilized frame)\n",
+        std::fprintf(fk, "# track_subject %s: time_ms yaw_rad pitch_rad fov_rad roll_rad (fov diagonal; stabilized frame)\n",
                      a.tracker.c_str());
         for (const track::PathKey& k : keys)
             std::fprintf(fk, "%lld %.6f %.6f %.6f 0\n", (long long)k.tMs, k.yaw, k.pitch, outFov);
@@ -499,7 +502,7 @@ int main(int argc, char** argv)
     auto poseAt = [&](int64_t ptsMs, view::Pose &pose, float stab[9]) {
         keyPose(ptsMs, pose.yaw, pose.pitch);
         pose.roll = 0.0f;
-        pose.fovY = static_cast<float>(outFov);
+        pose.fov = outFov;
         gyroMatrix(gyro, a.stab, ptsMs, stab);
     };
     int64_t written = 0;

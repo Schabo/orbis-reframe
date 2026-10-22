@@ -19,11 +19,9 @@
 
 namespace {
 
-constexpr float kMinFovY = 0.35f;                 // ~20 degrees
-constexpr float kMaxFovY = 1.92f;                 // ~110 degrees
 constexpr float kMaxPitch = 1.55334f;             // ~89 degrees
 constexpr float kMouseSensitivity = 0.005f;        // radians per pixel dragged
-constexpr float kWheelFovStep = 0.05f;             // radians per wheel notch
+constexpr double kWheelFovStep = 0.035;            // field of view change per wheel notch, log
 
 } // namespace
 
@@ -158,8 +156,9 @@ void EquirectViewportWindow::SetPose(const view::Pose &pose)
     m_pose.yaw = pose.yaw;
     m_pose.pitch = std::clamp(pose.pitch, -kMaxPitch, kMaxPitch);
     m_pose.roll = pose.roll;
-    m_pose.fovY = std::clamp(pose.fovY, kMinFovY, kMaxFovY);
-    m_pose.distortion = std::clamp(pose.distortion, 0.0f, 1.0f);
+    m_pose.distortion = pose.distortionIsAuto() ? view::kAutoDistortion
+                                                : std::clamp(pose.distortion, 0.0f, 1.0f);
+    m_pose.fov = std::clamp(pose.fov, view::kMinFov, view::maxFov(m_pose));
 }
 
 void EquirectViewportWindow::SetPanes(const pane::Split &split,
@@ -409,9 +408,10 @@ void EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &p
     // pitch, yaw, then the stabilization.
     const float ndcX = float(2.0 * fx - 1.0);
     const float ndcY = float(2.0 * fy - 1.0);
+    const view::Lens lens = view::lens(pose, aspect);
     float v[3];
-    view::ndcToRay(ndcX, ndcY, view::halfHeight(pose.fovY, pose.distortion), aspect,
-                   pose.distortion, v);
+    view::ndcToRay(ndcX, ndcY, view::halfHeight(lens.fovY, lens.distortion), aspect,
+                   lens.distortion, v);
     const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
     const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
@@ -644,8 +644,11 @@ void EquirectViewportWindow::wheelEvent(QWheelEvent *event)
     if (m_boxSelect)
         return;
     const float notches = event->angleDelta().y() / 120.0f;
-    const float before = m_pose.fovY;
-    m_pose.fovY = std::clamp(m_pose.fovY - notches * kWheelFovStep, kMinFovY, kMaxFovY);
-    if (m_pose.fovY != before)
+    // In even ratios, so a notch changes the picture alike from a close-up
+    // to a tiny planet.
+    const double before = m_pose.fov;
+    m_pose.fov = std::clamp(m_pose.fov * std::exp(-notches * kWheelFovStep), view::kMinFov,
+                            view::maxFov(m_pose));
+    if (m_pose.fov != before)
         emit lookCommitted();
 }

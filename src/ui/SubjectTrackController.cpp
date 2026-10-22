@@ -115,17 +115,18 @@ bool SubjectTrackController::start(const Run &run)
         live->camYaw += a * dy;
         live->camPitch += a * (s.pitch - live->camPitch);
         EquirectViewportWindow::FrameOverlay o;
-        o.pose = viewPoseOf(look);
+        o.pose = look;
         o.pose.yaw = float(live->camYaw);
         o.pose.pitch = float(live->camPitch);
         const track::Vec3 v = track::stabToView(track::dirFromYawPitch(s.yaw, s.pitch),
                                                 live->camYaw, live->camPitch, look.roll);
-        const double d = o.pose.distortion;
+        const view::Lens lens = view::lens(look, aspect);
+        const double d = lens.distortion;
         const double p[3] = {v.x, v.y, v.z};
         double px = 0.0, py = 0.0;
         if (view::pointToPlane(p, d, px, py, 1e-6)) {
             // The box at the subject's angular size, as the view's centre shows it.
-            const double t = view::halfHeight<double>(look.fovY, d);
+            const double t = view::halfHeight<double>(lens.fovY, d);
             const double fx = (px / (t * aspect) + 1.0) * 0.5;
             const double fy = (-py / t + 1.0) * 0.5;
             const double fw = view::planeRadius(s.width * 0.5, d) / (t * aspect);

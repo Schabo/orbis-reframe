@@ -154,7 +154,8 @@ void testProjectJson()
         CHECK(a.reframe.keys()[0].pose.yaw > 0.49f && a.reframe.keys()[0].pose.yaw < 0.51f);
         CHECK(a.reframe.keys()[0].pose.roll > 0.09f && a.reframe.keys()[0].pose.roll < 0.11f);
         CHECK(a.reframe.keys()[1].pose.roll == 0.0f); // key 2 authored with roll 0
-        CHECK(a.reframe.keys()[1].pose.fovY > 0.89f && a.reframe.keys()[1].pose.fovY < 0.91f);
+        CHECK(a.reframe.keys()[1].pose.fov == 0.9f); // exactly: saved as a double
+        CHECK(a.reframe.keys()[1].pose.distortionIsAuto());
         CHECK(a.reframe.keys()[0].ease == keytrack::Ease::Out);
         CHECK(a.reframe.keys()[1].ease == keytrack::Ease::Linear);
         // The stream tracks round-trip: roles, order, mute, the clips' links
@@ -1815,7 +1816,8 @@ void testSplitJson()
         CHECK(c.reframe.count() == 1 && c.reframe.keys()[0].pose.yaw == 0.1f);
         CHECK(c.panes[1].count() == 2 && c.panes[2].count() == 1);
         CHECK(p.save(file, &err));
-        CHECK(document(file).value("version").toInt() == Project::kSplitFormatVersion);
+        // Split, with keys holding the diagonal field of view.
+        CHECK(document(file).value("version").toInt() == Project::kWideViewFormatVersion);
         const QJsonObject js = firstClip(file).value("split").toObject();
         CHECK(js.value("layout").toString() == "grid");
         CHECK(js.value("gapColor").toString() == "#204060");
@@ -1828,18 +1830,17 @@ void testSplitJson()
         CHECK(c.split.layout == pane::Layout::Grid && c.split.gap == 0.01f &&
               c.split.gapRgb == 0x204060);
         CHECK(c.reframe.count() == 1 && c.reframe.keys()[0].pose.yaw == 0.1f);
-        CHECK(c.panes[0].count() == 1 && c.panes[0].keys()[0].pose.fovY == 1.1f);
+        CHECK(c.panes[0].count() == 1 && c.panes[0].keys()[0].pose.fov == 1.1f);
         CHECK(c.panes[1].count() == 2 && c.panes[1].keys()[0].ease == keytrack::Ease::Out);
         CHECK(c.panes[1].keys()[1].pose.yaw == 1.0f);
         CHECK(c.panes[2].keys()[0].pose.pitch == -0.1f);
 
-        // Back to one picture: the pane cameras stay (in the file too), the
-        // file goes back to the version an older build reads.
+        // Back to one picture: the pane cameras stay (in the file too).
         p.timeline()->setClipSplit(c.id, pane::Split{});
         CHECK(p.timeline()->clipAt(0).paneCount() == 1);
         CHECK(p.timeline()->clipAt(0).panes[1].count() == 2);
         CHECK(p.save(file, &err));
-        CHECK(document(file).value("version").toInt() == Project::kPlainFormatVersion);
+        CHECK(document(file).value("version").toInt() == Project::kWideViewFormatVersion);
         CHECK(firstClip(file).value("split").toObject().value("layout").toString() == "single");
 
         // Undo brings the grid back.
@@ -1869,6 +1870,82 @@ void testSplitJson()
     }
 }
 
+// Version 17: keys hold the diagonal field of view and the distortion. An
+// older file's vertical angle becomes the diagonal that frames the same
+// corners at the output's aspect (or its pane's), with Auto.
+void testWideViewJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    writeFile(tmp.path() + "/clip.insv");
+    const QString old = tmp.path() + "/old.orp";
+    writeFile(old, QStringLiteral(R"({"format": "orbis-reframe-project", "version": 16,
+        "output": {"aspect": "9:16", "width": 1080, "height": 1920, "fps": 0},
+        "timeline": {"clips": [
+          {"source": "clip.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
+           "fps": 30, "reframe": {"keys": [{"tMs": 1000, "yaw": 0.5, "pitch": 0, "roll": 0,
+                                            "fovY": 1.309}]},
+           "split": {"layout": "stacked", "gap": 0, "gapColor": "#000000", "panes": [
+             {"keys": [{"tMs": 0, "yaw": 3.0, "pitch": 0, "roll": 0, "fovY": 1.0}]},
+             {"keys": []}, {"keys": []}]}}]}})")
+                       .toUtf8());
+    QString err;
+    const QString file = tmp.path() + "/new.orp";
+    {
+        Project p;
+        CHECK(p.load(old, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.reframe.count() == 1 && c.panes[0].count() == 1);
+        if (c.reframe.count() != 1 || c.panes[0].count() != 1)
+            return;
+        const ReframePose &k = c.reframe.keys()[0].pose;
+        CHECK(k.fov == view::fovFor<double>(1.309f, 0.0, 1080.0 / 1920.0) && k.distortionIsAuto());
+        // At d = 0 it is the same picture, to the bit.
+        view::Pose rect = k;
+        rect.distortion = 0.0f;
+        CHECK(view::lens(rect, 1080.0 / 1920.0).fovY == 1.309f);
+        // The bottom pane's key at its own aspect.
+        pane::Split stacked;
+        stacked.layout = pane::Layout::Stacked;
+        stacked.gap = 0.0f;
+        const double paneAspect = pane::rects(stacked, 1080, 1920)[1].aspect();
+        const ReframePose &pk = c.panes[0].keys()[0].pose;
+        CHECK(pk.fov == view::fovFor<double>(1.0f, 0.0, paneAspect));
+        CHECK(paneAspect > 1080.0 / 1920.0);
+
+        ReframePose fixed = k;
+        fixed.distortion = 0.35f;
+        p.timeline()->upsertClipReframeKey(c.id, 3000, fixed);
+        CHECK(p.save(file, &err));
+    }
+    {
+        QFile f(file);
+        CHECK(f.open(QIODevice::ReadOnly));
+        const QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+        CHECK(doc.value("version").toInt() == Project::kWideViewFormatVersion);
+        const QJsonArray keys = doc.value("timeline").toObject().value("clips").toArray().at(0)
+                                    .toObject().value("reframe").toObject().value("keys").toArray();
+        CHECK(keys.size() == 2);
+        const QJsonObject k0 = keys.at(0).toObject(), k1 = keys.at(1).toObject();
+        CHECK(k0.contains("diag") && !k0.contains("fovY") && !k0.contains("distortion"));
+        CHECK(std::abs(k1.value("distortion").toDouble() - 0.35) < 1e-6);
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.reframe.count() == 2);
+        if (c.reframe.count() != 2)
+            return;
+        // The diagonal round trips exactly (a double in the file).
+        CHECK(c.reframe.keys()[0].pose.fov == view::fovFor<double>(1.309f, 0.0, 1080.0 / 1920.0));
+        CHECK(c.reframe.keys()[0].pose.distortionIsAuto());
+        CHECK(c.reframe.keys()[1].pose.distortion == 0.35f);
+        CHECK(c.panes[0].keys()[0].pose.fov == view::fovFor<double>(
+                  1.0f, 0.0, pane::rects(c.split, 1080, 1920)[1].aspect()));
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -1892,5 +1969,6 @@ int main(int argc, char **argv)
     testTransitionJson();
     testLutJson();
     testSplitJson();
+    testWideViewJson();
     return modeltest::finish("project_test");
 }

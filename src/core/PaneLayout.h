@@ -175,13 +175,13 @@ inline float fillYawOffset(Layout l, int index)
     return 0.0f;
 }
 
-// The vertical field of view (radians) that gives a pane of `aspect`
-// (width / height) the horizontal field of view `hfov`.
-inline float fovYFor(float hfov, double aspect)
+// The diagonal field of view (radians, view::Pose::fov) of a rectilinear
+// pane of `aspect` (width / height) that spans `hfov` across.
+inline double fovFor(double hfov, double aspect)
 {
     if (!(aspect > 0.0))
         aspect = 16.0 / 9.0;
-    return static_cast<float>(2.0 * std::atan(std::tan(hfov / 2.0) / aspect));
+    return 2.0 * std::atan(std::tan(hfov / 2.0) * std::sqrt(1.0 + 1.0 / (aspect * aspect)));
 }
 
 } // namespace pane

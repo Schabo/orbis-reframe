@@ -71,12 +71,12 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    lens calibration from the file, the lens-guard profile and the
    depth-aware seam turn the two fisheyes into the sphere. Privacy blur
    regions are applied here, on the sphere.
-3. **View**: a virtual camera (yaw, pitch, roll, field of view from the
-   clip's reframe keyframes, plus the stabilizer's per-frame rotation) looks
-   into the sphere and produces the flat picture. For speed, the viewport and
-   the GPU export usually go straight from the fisheyes to the view
-   (`fisheye_view.frag`, `fisheye_view_nv12.comp`) instead of building an
-   equirect first.
+3. **View**: a virtual camera (yaw, pitch, roll, field of view and
+   distortion from the clip's reframe keyframes, plus the stabilizer's
+   per-frame rotation) looks into the sphere and produces the flat picture.
+   For speed, the viewport and the GPU export usually go straight from the
+   fisheyes to the view (`fisheye_view.frag`, `fisheye_view_nv12.comp`)
+   instead of building an equirect first.
 4. **Grade**: the clip's LUT and the Colour panel's adjustments
    (`color::Grade`), applied to the flat picture.
 5. **Compose and encode**: overlays, titles and transitions on top, then the
@@ -96,10 +96,13 @@ The same view math exists in several places, and they must agree:
 - the subject tracker's crop (`src/track/`).
 
 The projection itself -- a view's pose (`view::Pose`: yaw, pitch, roll,
-vertical field of view, distortion) and how its pixels become rays and
-back -- is written once, in `src/core/ViewProjection.h` and its GLSL twin
+the diagonal field of view, the distortion or Auto), what it renders with
+at an aspect (`view::lens`: the vertical angle and the distortion), and how
+its pixels become rays and back -- is written once, in
+`src/core/ViewProjection.h` and its GLSL twin
 `src/render/shaders/view_projection.glsl`; every implementation above, and
-viewport picking and overlays, goes through them. Keep the two in step.
+viewport picking and overlays, goes through them, each turning the pose
+into a lens at the aspect it draws. Keep the two in step.
 
 A split clip's picture is several views, one per pane: where each pane
 goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)

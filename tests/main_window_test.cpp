@@ -1660,7 +1660,7 @@ void testNewProjectResets(const Ctx &c)
     const EquirectViewportWindow *v = c.w->viewport();
     const ReframePose ahead;
     CHECK(v->Yaw() == ahead.yaw && v->Pitch() == ahead.pitch && v->Roll() == ahead.roll &&
-          v->FovY() == ahead.fovY);
+          v->Pose().fov == ahead.fov && v->Pose().distortion == ahead.distortion);
 }
 
 } // namespace

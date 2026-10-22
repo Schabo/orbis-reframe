@@ -82,9 +82,11 @@ void testHitAndFill()
     CHECK(std::abs(pane::fillYawOffset(pane::Layout::Grid, 3) - pi) < 1e-6f);
     CHECK(std::abs(pane::fillYawOffset(pane::Layout::Grid, 1) + pane::fillYawOffset(pane::Layout::Grid, 2)) < 1e-6f);
     CHECK(std::abs(pane::fillYawOffset(pane::Layout::Stacked, 1) - pi) < 1e-6f);
-    // 90 degrees across a square pane is 90 up and down; across a 16:9 one less.
-    CHECK(std::abs(pane::fovYFor(pi / 2, 1.0) - pi / 2) < 1e-6f);
-    CHECK(pane::fovYFor(pi / 2, 16.0 / 9.0) < pi / 2);
+    // 90 degrees across a square pane is 2 atan(sqrt 2) corner to corner;
+    // a 16:9 one, as wide, has nearer corners.
+    CHECK(std::abs(pane::fovFor(pi / 2, 1.0) - 2.0 * std::atan(std::sqrt(2.0))) < 1e-6);
+    CHECK(pane::fovFor(pi / 2, 16.0 / 9.0) < pane::fovFor(pi / 2, 1.0));
+    CHECK(pane::fovFor(pi / 2, 16.0 / 9.0) > pi / 2);
 }
 
 void testNames()

@@ -19,7 +19,7 @@ four views at once.
 
 ## The view
 
-The view has four settings. You can see and type them in the **Reframe**
+The view has five settings. You can see and type them in the **Reframe**
 section (settings sidebar, **Video** tab):
 
 | Setting | What it is | Range |
@@ -27,20 +27,62 @@ section (settings sidebar, **Video** tab):
 | **Yaw** | Left / right: the compass direction the camera looks in. 0° is straight ahead of the camera. | −180° to 180° |
 | **Pitch** | Up / down. 0° is level, 90° straight up. | −89° to 89° |
 | **Roll** | Tilts the picture, like tilting your head. Usually 0°. | −180° to 180° |
-| **Field of view** | How much the view takes in, from top to bottom. Small values zoom in, large values give a wide view. | 20° to 110° |
+| **Field of view** | How much the view takes in, from one corner of the picture to the opposite one. Small values zoom in, large values give a wide view. | 20° to 330°, depending on **Distortion** |
+| **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 % (see [Wide views and tiny planets](#wide-views-and-tiny-planets)). | Auto, 0 % to 100 % |
 
 In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
-the field of view. Roll can only be set in the section. The project's aspect
-ratio (**File ▸ Project settings…**) decides how wide the picture is for a given field
-of view. Changing the aspect ratio later keeps your keyframes; only the
-edges of the picture change.
+the field of view. Roll and distortion can only be set in the section.
+
+The field of view is measured corner to corner, so the same value takes in
+as much in a landscape picture as in a portrait one; only the shape of the
+picture differs. The project's aspect ratio (**File ▸ Project settings…**)
+sets that shape. Changing the aspect ratio later keeps your keyframes; the
+corners stay where they were, the edges of the picture move.
+
+### Wide views and tiny planets
+
+![The same 140° view at 0 % distortion and at Auto, and a tiny planet](images/wide-views.jpg)
+
+1. 140° at 0 %: straight lines stay straight, but the rider in the middle
+   is small and everything toward the edges is stretched.
+2. The same 140° at **Auto**: the middle is larger and the edges are no
+   longer stretched; lines away from the middle bend a little.
+3. A tiny planet: pitch −89° (straight down), field of view 300°.
+
+A normal camera view keeps straight lines straight. That works up to a
+field of view of about 90°; wider, the edges of the picture stretch more and
+more, and the middle shrinks. **Distortion** draws a wide view the way a
+fisheye lens would instead: the edges keep their shapes, and lines away from
+the middle bend.
+
+With **Auto** ticked (the default), the distortion follows the field of
+view: none up to about 90°, rising to full at 170° and wider. The slider
+shows the amount Auto uses. Untick **Auto** to set the amount yourself with
+the slider: 0 % keeps every line straight, 100 % keeps every shape. The
+widest field of view depends on the amount: 145° at 0 %, 330° at 100 % or
+with Auto. Lowering the amount narrows a view that is wider than it allows.
+
+For a **tiny planet**, look straight down (pitch −89°) and widen the field
+of view to 250° or more: the ground curls into a small globe with the sky
+around it. Looking straight up instead turns the sky into a tunnel. A
+keyframe move from a normal view to a tiny planet zooms out smoothly, and
+with Auto on both keyframes the picture bends more and more as it widens.
+
+> **Projects from earlier versions** keep their views: each keyframe takes
+> the corner-to-corner angle that frames what it framed before, with
+> distortion on Auto. Views wider than about 90° corner to corner now
+> look less stretched at the edges; that is most of them, since the old
+> default, 75° from top to bottom, is 115° corner to corner in a 16:9
+> picture. To get the old look back, untick **Auto** and set 0 %.
 
 ## Keyframes
 
-A keyframe stores the view (yaw, pitch, roll and field of view) at one
-moment of a clip. Between two keyframes the camera turns and zooms from one
+A keyframe stores the view (yaw, pitch, roll, field of view and distortion)
+at one moment of a clip. Between two keyframes the camera turns and zooms from one
 view to the other, the short way round, at the pace the first keyframe's
-**Easing** sets (see [Easing](#easing)). Before a clip's first keyframe the
+**Easing** sets (see [Easing](#easing)). Distortion changes along with the
+field of view: between two keyframes on **Auto** it follows the field of view
+as it zooms; otherwise it moves from one keyframe's amount to the other's. Before a clip's first keyframe the
 view stays as at that keyframe, and after the last keyframe it stays as at
 the last one.
 
@@ -54,7 +96,8 @@ clip back over it, but it still steers the view toward it up to the clip's
 last frame.
 
 > **A clip without keyframes is exported looking straight ahead** (yaw 0°,
-> pitch 0°, field of view 75°), whatever you looked at in the viewport. Give
+> pitch 0°, field of view 115°, distortion Auto), whatever you looked at in
+> the viewport. Give
 > every clip at least one keyframe. A clip without any shows a hollow
 > diamond (◇) before its name on the timeline, the **Reframe** section warns
 > while the playhead is in it, and the export dialog lists it.
@@ -165,8 +208,9 @@ and sets the keyframes for you, so the camera keeps it in view.
 6. Tracking runs to the end of the clip. To stop earlier, click **Stop
    tracking**, or press `Space`, `Esc` or `T`.
 
-The camera only turns to follow the subject. It keeps the field of view and
-roll of the view you drew the box in, so choose the zoom before you start.
+The camera only turns to follow the subject. It keeps the field of view,
+distortion and roll of the view you drew the box in, so choose the zoom
+before you start.
 
 When tracking ends, the tracked path is turned into keyframes, from the
 start of tracking to the last frame where the subject was seen. They replace
@@ -225,16 +269,17 @@ for two panes; right, left and back for the grid, with opposite views
 diagonal. A new pane's field of view is set so that the pane takes in 90°
 from side to side.
 
-Each pane has its own shape, so the same field of view shows less from
-side to side in a narrow pane. Side by side in a 16:9 video, each pane is
-almost square; stacked, each is very wide.
+Each pane has its own shape. The field of view is corner to corner, so a
+very wide pane takes in a lot from side to side and little up and down.
+Side by side in a 16:9 video, each pane is almost square; stacked, each is
+very wide.
 
 ### Steering a pane
 
 The **active pane** is the one with the outline in the viewport. Everything
 that changes the view acts on it: dragging and the mouse wheel in the
-viewport, the **Yaw**, **Pitch**, **Roll**, **Field of view** and
-**Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
+viewport, the **Yaw**, **Pitch**, **Roll**, **Field of view**,
+**Distortion** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
 **Track subject…**. The keyframe diamonds on the clip are the active
 pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
 

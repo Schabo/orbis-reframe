@@ -868,7 +868,7 @@ void MainWindow::connectReframe()
     connect(m_viewport, &EquirectViewportWindow::lookCommitted, this, [this] {
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(
-                m_clipId, m_lastPositionMs, reframePoseOf(m_viewport->Pose()), playingPane());
+                m_clipId, m_lastPositionMs, m_viewport->Pose(), playingPane());
         syncReframePanel(); // the drag / zoom moved the pose
     });
     // Split screen: a click on another pane steers it from now on.
@@ -887,7 +887,7 @@ void MainWindow::connectReframe()
                 view::Pose poses[pane::kMaxPanes];
                 m_viewport->PanePoses(poses);
                 const ReframePose base =
-                    c->id == m_clipId ? reframePoseOf(poses[0]) : c->reframe.sample(at);
+                    c->id == m_clipId ? poses[0] : c->reframe.sample(at);
                 for (const Timeline::PanePose &k : fillPoses(split, base))
                     if (c->paneTrack(k.first).isEmpty())
                         keys.push_back(k);
@@ -902,7 +902,7 @@ void MainWindow::connectReframe()
         m_timeline->setClipFit(editClipId(), fill ? ClipItem::Fit::Fill : ClipItem::Fit::Bars);
     });
     connect(m_reframePanel, &ReframePanel::poseEdited, this, [this](const ReframePose &p) {
-        m_viewport->SetPose(viewPoseOf(p));
+        m_viewport->SetPose(p);
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(m_clipId, m_lastPositionMs, p, playingPane());
     });
@@ -1481,13 +1481,13 @@ void MainWindow::applySampledPose(qint64 sourceMs)
     view::Pose poses[pane::kMaxPanes];
     for (int i = 0; i < c->paneCount(); ++i) {
         const ReframeTrack &t = c->paneTrack(i);
-        poses[i] = viewPoseOf(t.isEmpty() ? ReframePose{} : t.sample(sourceMs));
+        poses[i] = t.isEmpty() ? ReframePose{} : t.sample(sourceMs);
     }
     m_viewport->SetPanes(c->flat ? pane::Split{} : c->split, poses);
     const ReframeTrack &active = c->paneTrack(paneOf(*c));
     if (active.isEmpty() || m_viewportDragging)
         return; // free look
-    m_viewport->SetPose(viewPoseOf(active.sample(sourceMs)));
+    m_viewport->SetPose(active.sample(sourceMs));
 }
 
 int MainWindow::paneOf(const ClipItem &c) const
@@ -1523,11 +1523,9 @@ std::vector<Timeline::PanePose> MainWindow::fillPoses(const pane::Split &split,
     for (int i = 1; i < split.count() && i < static_cast<int>(rects.size()); ++i) {
         ReframePose p = base;
         p.yaw = base.yaw + pane::fillYawOffset(split.layout, i);
-        // 90 degrees across, within what the view allows (20-110 degrees up
-        // and down).
-        p.fovY = std::clamp(pane::fovYFor(std::numbers::pi_v<float> / 2.0f,
-                                          rects[size_t(i)].aspect()),
-                            0.35f, 1.92f);
+        // 90 degrees across (rectilinear), within what the view allows.
+        p.fov = std::clamp(pane::fovFor(std::numbers::pi / 2.0, rects[size_t(i)].aspect()),
+                           view::kMinFov, view::maxFov(p));
         keys.push_back({i, p});
     }
     return keys;
@@ -1540,7 +1538,7 @@ void MainWindow::fillPanes()
         return;
     view::Pose poses[pane::kMaxPanes];
     m_viewport->PanePoses(poses);
-    const ReframePose base = reframePoseOf(poses[0]);
+    const ReframePose base = poses[0];
     std::vector<Timeline::PanePose> keys = fillPoses(c->split, base);
     keys.insert(keys.begin(), {0, base}); // pane 1 keeps its view, keyed too
     m_timeline->setClipSplit(c->id, c->split, m_lastPositionMs, &keys);
@@ -1606,7 +1604,7 @@ void MainWindow::applyStabilization(qint64 sourceMs)
 
 void MainWindow::syncReframePanel()
 {
-    m_reframePanel->setPose(reframePoseOf(m_viewport->Pose()));
+    m_reframePanel->setPose(m_viewport->Pose());
     const ClipItem *c = m_timeline->clipById(m_clipId);
     const ReframeTrack *t = c ? &c->paneTrack(paneOf(*c)) : nullptr;
     const int seg =
@@ -2453,7 +2451,7 @@ void MainWindow::setupKeyboardShortcuts()
                    setOverlayKeyAtPlayhead();
                else if (m_clipId)
                    m_timeline->upsertClipReframeKey(m_clipId, m_lastPositionMs,
-                                                    reframePoseOf(m_viewport->Pose()),
+                                                    m_viewport->Pose(),
                                                     playingPane());
            });
     addKey(reframe,
@@ -3072,7 +3070,7 @@ void MainWindow::bindEmptyTimeline()
     // ahead again, from the first pane, and reframe authoring starts
     // disarmed.
     setActivePane(0);
-    m_viewport->SetPose(viewPoseOf(ReframePose{}));
+    m_viewport->SetPose(ReframePose{});
     m_reframePanel->setClipUnkeyed(false);
     m_editToolbar->setReframeArmed(false);
     m_editToolbar->setHasReframeKeys(false);
@@ -3804,11 +3802,12 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     // tracker steers.
     const float aspect = m_viewport->ViewAspect();
     const view::Pose shown = m_viewport->Pose();
-    const ReframePose look = reframePoseOf(shown);
+    const ReframePose look = shown;
     SubjectTrackController::Run run;
     subjecttrack::Request &req = run.req;
+    const view::Lens lens = view::lens(shown, aspect);
     req.seed = track::seedFromViewBox(box.x(), box.y(), box.width(), box.height(), shown.yaw,
-                                      shown.pitch, shown.roll, shown.fovY, shown.distortion,
+                                      shown.pitch, shown.roll, lens.fovY, lens.distortion,
                                       aspect);
     const ReframeExportController::ClipJob job = exportJobFor(*c); // the stab, as exported
     req.clipPath = c->sourcePath.toStdString();
@@ -3877,7 +3876,8 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
     const std::vector<track::PathKey> keys = track::reduceToKeys(r.samples, run.req.fps);
     QList<ReframeKey> list;
     for (const track::PathKey &k : keys)
-        list.append(ReframeKey{k.tMs, {float(k.yaw), float(k.pitch), look.roll, look.fovY}});
+        list.append(ReframeKey{
+            k.tMs, {float(k.yaw), float(k.pitch), look.roll, look.fov, look.distortion}});
     const qint64 until = r.samples.back().tMs;
     m_timeline->replaceClipReframeSpan(clipId, from, until, list, run.pane); // one undo step
     settle(until);

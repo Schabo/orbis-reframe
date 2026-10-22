@@ -172,7 +172,9 @@ json reframeToJson(const ReframeTrack &track)
                 {"yaw", k.pose.yaw},
                 {"pitch", k.pose.pitch},
                 {"roll", k.pose.roll},
-                {"fovY", k.pose.fovY}};
+                {"diag", k.pose.fov}};
+        if (!k.pose.distortionIsAuto())
+            jk["distortion"] = k.pose.distortion;
         if (k.ease != keytrack::Ease::Linear)
             jk["ease"] = keytrack::easeName(k.ease);
         keys.push_back(std::move(jk));
@@ -180,7 +182,11 @@ json reframeToJson(const ReframeTrack &track)
     return json{{"keys", std::move(keys)}};
 }
 
-std::vector<ReframeKey> reframeKeysFromJson(const json &j)
+// `version` is the file's; before kWideViewFormatVersion a key held the
+// vertical angle of a rectilinear view of `aspect` (the output's, or its
+// pane's): it takes the diagonal that frames the same corners, and the
+// automatic distortion.
+std::vector<ReframeKey> reframeKeysFromJson(const json &j, int version, double aspect)
 {
     std::vector<ReframeKey> keys;
     if (!j.is_object() || !j.contains("keys") || !j.at("keys").is_array())
@@ -191,7 +197,13 @@ std::vector<ReframeKey> reframeKeysFromJson(const json &j)
         k.pose.yaw = jk.value("yaw", 0.0f);
         k.pose.pitch = jk.value("pitch", 0.0f);
         k.pose.roll = jk.value("roll", 0.0f);
-        k.pose.fovY = jk.value("fovY", 1.309f);
+        if (version >= Project::kWideViewFormatVersion) {
+            k.pose.fov = jk.value("diag", k.pose.fov);
+            if (jk.contains("distortion"))
+                k.pose.distortion = std::clamp(jk.value("distortion", 0.0f), 0.0f, 1.0f);
+        } else {
+            k.pose.fov = view::fovFor<double>(jk.value("fovY", 1.309f), 0.0, aspect);
+        }
         k.ease = keytrack::easeFromName(jk.value("ease", std::string()));
         keys.push_back(k);
     }
@@ -939,6 +951,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyLut = false;
     bool anyDirectionLock = false;
     bool anySplit = false;
+    bool anyReframeKey = false; // keys hold the diagonal field of view
     // The first 360 clip's stitch settings, and whether every 360 clip has
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
@@ -984,6 +997,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         // too); absent when there's neither.
         const bool paneKeys = std::any_of(c.panes.begin(), c.panes.end(),
                                           [](const ReframeTrack &t) { return !t.isEmpty(); });
+        anyReframeKey = anyReframeKey || paneKeys || !c.reframe.isEmpty();
         if (c.split.isSplit() || paneKeys) {
             json jp = json::array();
             for (const ReframeTrack &t : c.panes)
@@ -1103,7 +1117,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anySplit                ? kSplitFormatVersion
+        {"version", anyReframeKey           ? kWideViewFormatVersion
+                    : anySplit                ? kSplitFormatVersion
                     : anyDirectionLock        ? kDirectionLockFormatVersion
                     : anyLut                  ? kLutFormatVersion
                     : !transitions.empty()    ? kTransitionFormatVersion
@@ -1226,16 +1241,23 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 }
             }
             pc.mediaMissing = !QFileInfo::exists(pc.sourcePath);
+            const double outAspect =
+                double(parsedOutput.width) / double(std::max(1, parsedOutput.height));
             if (jc.contains("reframe"))
-                pc.reframeKeys = reframeKeysFromJson(jc.at("reframe"));
+                pc.reframeKeys = reframeKeysFromJson(jc.at("reframe"), version, outAspect);
             if (jc.contains("split") && jc.at("split").is_object()) {
                 const json &js = jc.at("split");
                 pc.split.layout = pane::layoutFromName(js.value("layout", std::string()).c_str());
                 pc.split.gap = js.value("gap", pc.split.gap);
                 pc.split.gapRgb = colorFromJson(js, "gapColor", pc.split.gapRgb);
+                // A pane's keys are relative to its own aspect.
+                const std::vector<pane::Rect> rects =
+                    pane::rects(pc.split, parsedOutput.width, parsedOutput.height);
                 if (js.contains("panes") && js.at("panes").is_array())
                     for (size_t i = 0; i < js.at("panes").size() && i < pc.paneKeys.size(); ++i)
-                        pc.paneKeys[i] = reframeKeysFromJson(js.at("panes")[i]);
+                        pc.paneKeys[i] = reframeKeysFromJson(
+                            js.at("panes")[i], version,
+                            i + 1 < rects.size() ? rects[i + 1].aspect() : outAspect);
             }
             parsed.push_back(std::move(pc));
         }

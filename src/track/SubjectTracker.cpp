@@ -58,7 +58,8 @@ cv::Mat renderCrop(const uint8_t* eq, int w, int h, const Crop& c, const float s
     exportpipe::ReframeView v;
     v.pose.yaw = static_cast<float>(c.yaw);
     v.pose.pitch = static_cast<float>(c.pitch);
-    v.pose.fovY = static_cast<float>(c.fov);
+    v.pose.fov = view::fovFor<double>(static_cast<float>(c.fov), 0.0, 1.0); // rectilinear, square
+    v.pose.distortion = 0.0f;
     v.aspect = 1.0f;
     std::copy(stab, stab + 9, v.stab);
     cv::Mat rgba(c.size, c.size, CV_8UC4);

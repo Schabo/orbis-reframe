@@ -22,7 +22,10 @@ stitch::NativeStitchSource::ViewRect viewRect(const ScanView& v)
     stitch::NativeStitchSource::ViewRect r;
     r.pose.yaw = static_cast<float>(-v.lonDeg * kDegToRad);
     r.pose.pitch = static_cast<float>(v.latDeg * kDegToRad);
-    r.pose.fovY = static_cast<float>(2.0 * std::atan(std::tan(0.5 * v.hfovDeg * kDegToRad) * v.h / std::max(1, v.w)));
+    // A rectilinear view, its width spanning hfovDeg.
+    const float fovY = static_cast<float>(2.0 * std::atan(std::tan(0.5 * v.hfovDeg * kDegToRad) * v.h / std::max(1, v.w)));
+    r.pose.fov = view::fovFor<double>(fovY, 0.0, double(v.w) / double(std::max(1, v.h)));
+    r.pose.distortion = 0.0f;
     r.x = v.x;
     r.y = v.y;
     r.w = v.w;

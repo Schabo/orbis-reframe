@@ -156,15 +156,20 @@ int main(int argc, char** argv)
         view::Pose p;
     };
     const float deg = std::numbers::pi_v<float> / 180.0f;
+    // A pose by its vertical angle through the centre at distortion d.
+    const auto vert = [](float fovYDeg, float d) {
+        return view::fovFor<double>(fovYDeg * std::numbers::pi_v<float> / 180.0f, d,
+                                    double(kW) / double(kH));
+    };
     const Pose poses[] = {
-        {"forward75", {0.0f, 0.0f, 0.0f, 75.0f * deg}},
-        {"seam_side75", {90.0f * deg, 0.0f, 0.0f, 75.0f * deg}}, // across the lens seam
-        {"zoom30", {20.0f * deg, -5.0f * deg, 10.0f * deg, 30.0f * deg}},
-        {"up_wide110", {0.0f, 60.0f * deg, 0.0f, 110.0f * deg}},
+        {"forward75", {0.0f, 0.0f, 0.0f, vert(75.0f, 0.0f), 0.0f}},
+        {"seam_side75", {90.0f * deg, 0.0f, 0.0f, vert(75.0f, 0.0f), 0.0f}}, // across the lens seam
+        {"zoom30", {20.0f * deg, -5.0f * deg, 10.0f * deg, vert(30.0f, 0.0f), 0.0f}},
+        {"up_wide110", {0.0f, 60.0f * deg, 0.0f, vert(110.0f, 0.0f), 0.0f}},
         // The distorted projection (ViewProjection.h): a wide view half way to
         // stereographic, and a tiny planet looking straight down.
-        {"wide140_d50", {30.0f * deg, -10.0f * deg, 0.0f, 140.0f * deg, 0.5f}},
-        {"planet_d100", {0.0f, -90.0f * deg, 0.0f, 250.0f * deg, 1.0f}},
+        {"wide140_d50", {30.0f * deg, -10.0f * deg, 0.0f, vert(140.0f, 0.5f), 0.5f}},
+        {"planet_d100", {0.0f, -90.0f * deg, 0.0f, vert(250.0f, 1.0f), 1.0f}},
     };
     struct Path {
         const char* name;

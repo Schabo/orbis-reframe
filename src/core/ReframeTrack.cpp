@@ -74,7 +74,8 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
     const auto [lo, hi, t] = keytrack::bracket(
         m_keys, timeMs, [](const ReframeKey &a, const ReframeKey &b) {
             return a.pose.yaw == b.pose.yaw && a.pose.pitch == b.pose.pitch &&
-                   a.pose.roll == b.pose.roll && a.pose.fovY == b.pose.fovY;
+                   a.pose.roll == b.pose.roll && a.pose.fov == b.pose.fov &&
+                   a.pose.distortion == b.pose.distortion;
         });
     if (!lo)
         return {};
@@ -84,6 +85,11 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
     out.yaw = lerpAngle(lo->pose.yaw, hi->pose.yaw, t);
     out.pitch = lerp(lo->pose.pitch, hi->pose.pitch, t);
     out.roll = lerpAngle(lo->pose.roll, hi->pose.roll, t);
-    out.fovY = lerp(lo->pose.fovY, hi->pose.fovY, t);
+    out.fov = lo->pose.fov + (hi->pose.fov - lo->pose.fov) * t;
+    if (lo->pose.distortionIsAuto() && hi->pose.distortionIsAuto())
+        out.distortion = view::kAutoDistortion;
+    else
+        out.distortion = lerp(static_cast<float>(view::distortionOf(lo->pose)),
+                              static_cast<float>(view::distortionOf(hi->pose)), t);
     return out;
 }

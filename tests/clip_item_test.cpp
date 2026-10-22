@@ -47,7 +47,7 @@ void testClipItemReframe()
     c.resetEditsToFullSource();
     CHECK(c.frameDurationMs() == 40);
 
-    CHECK(c.upsertReframeKey(1000, {0.5f, 0.0f, 0.0f, 1.3f})); // {yaw,pitch,roll,fovY}
+    CHECK(c.upsertReframeKey(1000, {0.5f, 0.0f, 0.0f, 1.3f})); // {yaw,pitch,roll,fov}
     CHECK(c.reframe.count() == 1);
     CHECK(c.upsertReframeKey(1020, {0.6f, 0.0f, 0.2f, 1.3f})); // within a frame -> overwrite
     CHECK(c.reframe.count() == 1);
@@ -208,7 +208,7 @@ void testKeyEasing()
     // Out from the first key: it starts from rest (softened), so at half
     // time it's 2/3 of the way, not 3/4.
     const ReframePose mid = r.sample(1500);
-    CHECK(std::abs(mid.yaw - 2.0f / 3.0f) < 1e-5f && std::abs(mid.fovY - 5.0f / 3.0f) < 1e-5f);
+    CHECK(std::abs(mid.yaw - 2.0f / 3.0f) < 1e-5f && std::abs(mid.fov - 5.0 / 3.0) < 1e-5);
     // The next segment stays linear, from rest (Out ended there) to rest (the
     // last key): symmetric, half way at half time.
     CHECK(std::abs(r.sample(2500).yaw - 1.5f) < 1e-5f);
@@ -229,6 +229,38 @@ void testKeyEasing()
     CHECK(!(k == linear)); // the ease is part of the track's value (undo, change checks)
     // In, into the last key (soft end): 1/3 of the way at half time.
     CHECK(std::abs(k.sample(500).centerX - (0.2f + 0.4f / 3.0f)) < 1e-5f);
+}
+
+// The field of view and the distortion between keys: two Auto keys stay
+// Auto (the blended angle picks the distortion), a fixed one blends with
+// what an Auto one shows.
+void testWideViewKeys()
+{
+    constexpr double deg = 3.14159265358979 / 180.0;
+    ReframeTrack r;
+    ReframePose narrow, wide;
+    narrow.fov = 80.0 * deg;
+    wide.fov = 180.0 * deg;
+    r.upsert(0, narrow, 40);
+    r.upsert(1000, wide, 40);
+    ReframePose mid = r.sample(500);
+    CHECK(std::abs(mid.fov - 130.0 * deg) < 1e-9 && mid.distortionIsAuto());
+    CHECK(std::abs(view::distortionOf(mid) - 0.5) < 1e-6);
+
+    wide.distortion = 0.6f; // fixed; narrow's Auto shows 0
+    r.upsert(1000, wide, 40);
+    mid = r.sample(500);
+    CHECK(!mid.distortionIsAuto() && std::abs(mid.distortion - 0.3f) < 1e-6f);
+    CHECK(r.sample(1000).distortion == 0.6f && r.sample(0).distortionIsAuto());
+    // Keys that differ only in distortion are a move.
+    ReframeTrack s;
+    ReframePose flat = narrow;
+    flat.distortion = 0.0f;
+    ReframePose bent = narrow;
+    bent.distortion = 1.0f;
+    s.upsert(0, flat, 40);
+    s.upsert(1000, bent, 40);
+    CHECK(std::abs(s.sample(500).distortion - 0.5f) < 1e-6f);
 }
 
 void testClipItemColor()
@@ -267,6 +299,7 @@ int main()
     testInsetKeyTrack();
     testKeyEasing();
     testSoftMoves();
+    testWideViewKeys();
     testClipItemColor();
     return modeltest::finish("clip_item_test");
 }

@@ -2,11 +2,14 @@
 
 #include "EaseCombo.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QSlider>
 
 #include <algorithm>
 #include <cmath>
@@ -45,12 +48,39 @@ ReframePanel::ReframePanel(QWidget *parent)
     m_yaw = makeAngleBox(this, -180.0, 180.0, true);
     m_pitch = makeAngleBox(this, -89.0, 89.0, false);
     m_roll = makeAngleBox(this, -180.0, 180.0, true);
-    m_fov = makeAngleBox(this, 20.0, 110.0, false);
+    m_fov = makeAngleBox(this, view::kMinFov * kRadToDeg, view::maxFov(1.0) * kRadToDeg, false);
+    m_fov->setObjectName(QStringLiteral("reframeFov"));
+    m_fov->setToolTip(tr("How much the view takes in, corner to corner. Wider than about "
+                         "90° the picture bends to keep the edges from stretching (see "
+                         "Distortion); looking down at 250° or more makes a tiny planet."));
+
+    m_distortionRow = new QWidget(this);
+    auto *distortionLayout = new QHBoxLayout(m_distortionRow);
+    distortionLayout->setContentsMargins(0, 0, 0, 0);
+    m_distortionAuto = new QCheckBox(tr("Auto"), m_distortionRow);
+    m_distortionAuto->setObjectName(QStringLiteral("reframeDistortionAuto"));
+    m_distortionAuto->setToolTip(tr("Follow the field of view: none up to about 90°, rising "
+                                    "to full at 170° and wider."));
+    m_distortion = new QSlider(Qt::Horizontal, m_distortionRow);
+    m_distortion->setObjectName(QStringLiteral("reframeDistortion"));
+    m_distortion->setRange(0, 100);
+    m_distortion->setPageStep(10);
+    m_distortion->setTracking(false); // one edit (and keyframe) per release
+    m_distortion->setToolTip(tr("0 % keeps straight lines straight but stretches the edges "
+                                "of a wide view; 100 % keeps shapes and bends lines away from "
+                                "the centre, the fisheye and tiny-planet look."));
+    m_distortionValue = new QLabel(m_distortionRow);
+    m_distortionValue->setMinimumWidth(
+        m_distortionValue->fontMetrics().horizontalAdvance(QStringLiteral("100%")));
+    distortionLayout->addWidget(m_distortionAuto);
+    distortionLayout->addWidget(m_distortion, 1);
+    distortionLayout->addWidget(m_distortionValue);
 
     form()->addRow(tr("Yaw"), m_yaw);
     form()->addRow(tr("Pitch"), m_pitch);
     form()->addRow(tr("Roll"), m_roll);
     form()->addRow(tr("Field of view"), m_fov);
+    form()->addRow(tr("Distortion"), m_distortionRow);
 
     m_ease = easecombo::make(this);
     m_ease->setObjectName(QStringLiteral("reframeEaseCombo"));
@@ -107,21 +137,54 @@ ReframePanel::ReframePanel(QWidget *parent)
     setPose(ReframePose{});
     setPaneLayout(pane::Layout::Single);
 
-    for (QDoubleSpinBox *b : {m_yaw, m_pitch, m_roll, m_fov})
-        connect(b, &QDoubleSpinBox::valueChanged, this, &ReframePanel::emitIfEdited);
+    connect(m_yaw, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        edited([v](ReframePose &p) { p.yaw = static_cast<float>(v * kDegToRad); });
+    });
+    connect(m_pitch, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        edited([v](ReframePose &p) { p.pitch = static_cast<float>(v * kDegToRad); });
+    });
+    connect(m_roll, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        edited([v](ReframePose &p) { p.roll = static_cast<float>(v * kDegToRad); });
+    });
+    connect(m_fov, &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        edited([v](ReframePose &p) { p.fov = v * kDegToRad; });
+    });
+    // Unticking Auto keeps the distortion it showed, ticking it follows the
+    // field of view again.
+    connect(m_distortionAuto, &QCheckBox::toggled, this, [this](bool on) {
+        edited([on](ReframePose &p) {
+            p.distortion = on ? view::kAutoDistortion
+                              : static_cast<float>(std::round(view::distortionOf(p) * 100.0) /
+                                                   100.0);
+        });
+    });
+    connect(m_distortion, &QSlider::sliderMoved, this,
+            [this](int v) { m_distortionValue->setText(tr("%1%").arg(v)); });
+    connect(m_distortion, &QSlider::valueChanged, this, [this](int v) {
+        edited([v](ReframePose &p) {
+            p.distortion = static_cast<float>(v) / 100.0f;
+            // Less distortion reaches less wide.
+            p.fov = std::min(p.fov, view::maxFov(p));
+        });
+    });
 }
 
-ReframePose ReframePanel::currentPose() const
+void ReframePanel::edited(const std::function<void(ReframePose &)> &change)
 {
-    ReframePose p;
-    p.yaw = static_cast<float>(m_yaw->value() * kDegToRad);
-    p.pitch = static_cast<float>(m_pitch->value() * kDegToRad);
-    p.roll = static_cast<float>(m_roll->value() * kDegToRad);
-    p.fovY = static_cast<float>(m_fov->value() * kDegToRad);
-    return p;
+    if (m_updating)
+        return;
+    ReframePose p = m_pose;
+    change(p);
+    showPose(p);
+    emit poseEdited(p);
 }
 
 void ReframePanel::setPose(const ReframePose &pose)
+{
+    showPose(pose);
+}
+
+void ReframePanel::showPose(const ReframePose &pose)
 {
     // Wrap yaw/roll into (-180, 180] so the spinboxes show a canonical value.
     const auto wrapDeg = [](double d) {
@@ -131,11 +194,18 @@ void ReframePanel::setPose(const ReframePose &pose)
         return d - 180.0;
     };
 
+    m_pose = pose;
     m_updating = true;
     m_yaw->setValue(wrapDeg(pose.yaw * kRadToDeg));
     m_pitch->setValue(pose.pitch * kRadToDeg);
     m_roll->setValue(wrapDeg(pose.roll * kRadToDeg));
-    m_fov->setValue(pose.fovY * kRadToDeg);
+    m_fov->setMaximum(view::maxFov(pose) * kRadToDeg);
+    m_fov->setValue(pose.fov * kRadToDeg);
+    const int percent = static_cast<int>(std::lround(view::distortionOf(pose) * 100.0));
+    m_distortionAuto->setChecked(pose.distortionIsAuto());
+    m_distortion->setEnabled(!pose.distortionIsAuto() && !m_trackRunning);
+    m_distortion->setValue(percent);
+    m_distortionValue->setText(tr("%1%").arg(percent));
     m_updating = false;
 }
 
@@ -193,7 +263,8 @@ void ReframePanel::setFlatClip(bool flat, bool fill)
 {
     m_flat = flat;
     for (QWidget *w :
-         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_ease, m_track})
+         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionRow,
+                                          m_ease, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);
@@ -243,8 +314,10 @@ void ReframePanel::setTrackRunning(bool running)
     form()->setRowVisible(m_trackStatus, running && !m_flat); // as setTrackUnavailable
     if (!running)
         m_trackStatus->clear();
-    for (QWidget *w : std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_pane})
+    for (QWidget *w :
+         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionAuto, m_pane})
         w->setEnabled(!running);
+    m_distortion->setEnabled(!running && !m_pose.distortionIsAuto());
     m_ease->setEnabled(m_easeAvailable && !running);
 }
 
@@ -258,8 +331,3 @@ QWidget *ReframePanel::trackStopButton() const
     return m_track;
 }
 
-void ReframePanel::emitIfEdited()
-{
-    if (!m_updating)
-        emit poseEdited(currentPose());
-}

@@ -65,9 +65,9 @@ struct Args {
     double staticYawDeg = 0.0;
     double staticPitchDeg = 0.0;
     double staticRollDeg = 0.0;
-    double staticFovDeg = 75.0;
-    // The projection's distortion (view::Pose), for every view of the export.
-    double distortion = 0.0;
+    double staticFovDeg = view::Pose{}.fov / kDegToRad; // diagonal
+    // The static view's distortion (view::Pose), < 0 = automatic.
+    double distortion = view::kAutoDistortion;
     // Colour panel grade, applied to the whole export. See
     // ClipItem::ColorGrade for the ranges/units.
     float exposureEv = 0.0f;
@@ -101,8 +101,10 @@ const char kUsage[] =
     "usage: reframe_export <clip.insv> <out.mp4> [options]\n"
     "  --trim-in MS           start of the exported range (default 0)\n"
     "  --trim-out MS          end of the exported range (default: clip end)\n"
-    "  --keys FILE            reframe keyframes; lines of: time_ms yaw_rad pitch_rad fovY_rad [roll_rad]\n"
-    "                        ('#' comments allowed; times are clip-absolute; roll optional, default 0)\n"
+    "  --keys FILE            reframe keyframes; lines of: time_ms yaw_rad pitch_rad fov_rad\n"
+    "                        [roll_rad] [distortion] (fov: the diagonal; '#' comments\n"
+    "                        allowed; times are clip-absolute; roll default 0,\n"
+    "                        distortion 0..1, default automatic)\n"
     "  --size WxH             output resolution (default 1920x1080)\n"
     "  --fps N                output frame rate (default: source fps)\n"
     "  --codec h264|h265     output codec (default h265)\n"
@@ -113,8 +115,9 @@ const char kUsage[] =
     "  --lens-guard G        none | standard | premium (default premium)\n"
     "  --no-depth-seam       stitch at infinity (no depth-aware seam)\n"
     "  --yaw DEG --pitch DEG --roll DEG --fov DEG   static pose when --keys is absent\n"
-    "  --distortion D        the projection, 0 rectilinear .. 1 stereographic, for\n"
-    "                        every view and pane (default 0)\n"
+    "                        (fov: the diagonal, corner to corner; default 114.85)\n"
+    "  --distortion D|auto   the static pose's projection, 0 rectilinear .. 1\n"
+    "                        stereographic (default auto: follows the fov)\n"
     "  --exposure EV --contrast PCT --saturation PCT --temperature PCT\n"
     "                        colour grade (all default 0 = neutral)\n"
     "  --lut FILE.cube        a 3D LUT applied before the grade (e.g. a log-to-Rec.709 one)\n"
@@ -202,8 +205,11 @@ Args parseArgs(int argc, char** argv)
             a.staticRollDeg = std::atof(next("--roll").c_str());
         else if (k == "--fov")
             a.staticFovDeg = std::atof(next("--fov").c_str());
-        else if (k == "--distortion")
-            a.distortion = std::clamp(std::atof(next("--distortion").c_str()), 0.0, 1.0);
+        else if (k == "--distortion") {
+            const std::string d = next("--distortion");
+            a.distortion = d == "auto" ? view::kAutoDistortion
+                                       : std::clamp(std::atof(d.c_str()), 0.0, 1.0);
+        }
         else if (k == "--exposure")
             a.exposureEv = static_cast<float>(std::atof(next("--exposure").c_str()));
         else if (k == "--contrast")
@@ -283,15 +289,19 @@ ReframeTrack loadKeys(const std::string& path, qint64 frameDurMs)
             line.erase(hash);
         std::istringstream ls(line);
         long long tms;
-        float yaw, pitch, fovY;
-        if (!(ls >> tms >> yaw >> pitch >> fovY)) {
+        float yaw, pitch;
+        double fov;
+        if (!(ls >> tms >> yaw >> pitch >> fov)) {
             if (line.find_first_not_of(" \t\r\n") == std::string::npos)
                 continue;
             die("bad --keys line " + std::to_string(lineno) + ": " + line);
         }
-        float roll = 0.0f;
-        ls >> roll; // optional 5th column
-        track.upsert(static_cast<qint64>(tms), ReframePose{yaw, pitch, roll, fovY}, frameDurMs);
+        float roll = 0.0f, distortion = view::kAutoDistortion;
+        if (ls >> roll) // optional 5th and 6th columns
+            if (ls >> distortion)
+                distortion = std::clamp(distortion, 0.0f, 1.0f);
+        track.upsert(static_cast<qint64>(tms), ReframePose{yaw, pitch, roll, fov, distortion},
+                     frameDurMs);
     }
     if (track.isEmpty())
         die("--keys file has no keyframes: " + path);
@@ -331,11 +341,6 @@ int main(int argc, char** argv)
     const int64_t frameCount =
         static_cast<int64_t>(std::llround((trimOut - trimIn) / 1000.0 * fps));
 
-    const auto viewOf = [&a](const ReframePose& p) {
-        view::Pose v = viewPoseOf(p);
-        v.distortion = static_cast<float>(a.distortion);
-        return v;
-    };
     std::vector<view::Pose> poses;
     poses.reserve(static_cast<size_t>(frameCount));
     if (!a.keysPath.empty()) {
@@ -343,18 +348,19 @@ int main(int argc, char** argv)
         std::printf("keys:   %d from %s\n", track.count(), a.keysPath.c_str());
         for (int64_t i = 0; i < frameCount; ++i) {
             const qint64 tAbs = trimIn + static_cast<qint64>(std::llround(i * 1000.0 / fps));
-            poses.push_back(viewOf(track.sample(tAbs)));
+            poses.push_back(track.sample(tAbs));
         }
     } else {
         std::printf("keys:   none (static yaw=%.1f pitch=%.1f roll=%.1f fov=%.1f deg)\n",
                     a.staticYawDeg, a.staticPitchDeg, a.staticRollDeg, a.staticFovDeg);
-        poses = {viewOf({static_cast<float>(a.staticYawDeg * kDegToRad),
-                         static_cast<float>(a.staticPitchDeg * kDegToRad),
-                         static_cast<float>(a.staticRollDeg * kDegToRad),
-                         static_cast<float>(a.staticFovDeg * kDegToRad)})};
+        poses = {{static_cast<float>(a.staticYawDeg * kDegToRad),
+                  static_cast<float>(a.staticPitchDeg * kDegToRad),
+                  static_cast<float>(a.staticRollDeg * kDegToRad), a.staticFovDeg * kDegToRad,
+                  static_cast<float>(a.distortion)}};
+        const view::Lens lens = view::lens(poses[0], double(a.outW) / double(a.outH));
+        std::printf("view:   distortion %.2f%s, %.2f deg up and down\n", lens.distortion,
+                    a.distortion < 0.0 ? " (auto)" : "", lens.fovY / kDegToRad);
     }
-    if (a.distortion > 0.0)
-        std::printf("view:   distortion %.2f\n", a.distortion);
     const int poseCount = static_cast<int>(poses.size());
 
     // --split: each pane's rectangle and its baked poses, pane 1's above.
@@ -368,17 +374,16 @@ int main(int argc, char** argv)
             std::printf("pane %zu: %d keys from %s\n", n + 1, track.count(), a.paneKeys[n].c_str());
             for (int64_t i = 0; i < frameCount; ++i) {
                 const qint64 tAbs = trimIn + static_cast<qint64>(std::llround(i * 1000.0 / fps));
-                pp.push_back(viewOf(track.sample(tAbs)));
+                pp.push_back(track.sample(tAbs));
             }
         } else { // Fill panes: turned from pane 1's first view, 90 degrees across
             view::Pose v = poses[0];
             v.yaw += pane::fillYawOffset(a.split.layout, static_cast<int>(n));
-            v.fovY = std::clamp(
-                pane::fovYFor(static_cast<float>(std::numbers::pi / 2), rects[n].aspect()), 0.35f,
-                1.92f);
+            v.fov = std::clamp(pane::fovFor(std::numbers::pi / 2, rects[n].aspect()),
+                               view::kMinFov, view::maxFov(v));
             pp = {v};
             std::printf("pane %zu: fixed yaw=%.1f fov=%.1f deg\n", n + 1, v.yaw / kDegToRad,
-                        v.fovY / kDegToRad);
+                        v.fov / kDegToRad);
         }
     }
     if (!rects.empty())
