@@ -25,8 +25,10 @@ bool VulkanFisheyeStitcher::Impl::ensureFlat(VkDeviceSize bytes, std::string& er
     flatBuf = VK_NULL_HANDLE;
     flatMem = VK_NULL_HANDLE;
     flatBytes = 0;
-    if (!makeReadbackBuffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, flatBuf, flatMem,
-                            &flatMap)) {
+    // TRANSFER_DST: a canvas of views is filled first (vkCmdFillBuffer).
+    if (!makeReadbackBuffer(bytes,
+                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                            flatBuf, flatMem, &flatMap)) {
         err = "flat output buffer allocation failed";
         return false;
     }

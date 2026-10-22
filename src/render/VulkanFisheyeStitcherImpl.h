@@ -72,7 +72,9 @@ struct ReframePush {
     float roll;
     float fovY;
     float aspect;
-    float _pad[3];
+    int32_t ox;     // the view's origin in a canvas of views (ox % 4 == 0, oy % 2 == 0) ...
+    int32_t oy;
+    int32_t canvas; // ... and the canvas: width | height << 16; 0 = the view alone
     float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major)
     float colorGrade[4]; // exposureEv, contrast%, saturation%, temperature%
     float colorLut[4];   // VulkanLutStore::pushValues
@@ -91,9 +93,9 @@ struct ViewPush {
     float roll;
     float fovY;
     float aspect;
-    int32_t ox;     // RGBA: the view's origin in the canvas (ox % 4 == 0) ...
+    int32_t ox;     // the view's origin in a canvas of views (ox % 4 == 0, oy % 2 == 0) ...
     int32_t oy;
-    int32_t stride; // ... and the canvas row length; 0 = outW
+    int32_t canvas; // ... and the canvas: width | height << 16; 0 = the view alone
     float stab[12];
     float colorGrade[4];
     float colorLut[4];

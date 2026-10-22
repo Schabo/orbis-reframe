@@ -63,6 +63,7 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
     };
     stitch::Frame f;
     if (m_src->GpuViewAvailable()) {
+        ReframeExportController::applyPanes(*m_src, job, m_w, m_h); // at this size
         f = m_src->ReadViewFrame(m_w, m_h, poseAt, &job.colorGrade);
     } else {
         const stitch::Frame eq = m_src->ReadFrame();
@@ -77,8 +78,16 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
             view.aspect = float(m_w) / m_h;
             view.colorGrade = job.colorGrade;
             f.rgba.resize(size_t(m_w) * m_h * 4);
-            exportpipe::RenderRectilinear(eq.rgba.data(), eq.width, eq.height, f.rgba.data(), m_w,
-                                          m_h, view);
+            const std::vector<exportpipe::PaneView> panes =
+                ReframeExportController::paneViews(job, m_w, m_h, eq.timestamp_ms, pose);
+            if (panes.empty())
+                exportpipe::RenderRectilinear(eq.rgba.data(), eq.width, eq.height, f.rgba.data(),
+                                              m_w, m_h, view);
+            else
+                exportpipe::RenderRectilinearPanes(eq.rgba.data(), eq.width, eq.height,
+                                                   f.rgba.data(), m_w, m_h, panes,
+                                                   ReframeExportController::fillRgba(job.split),
+                                                   view);
             f.width = m_w;
             f.height = m_h;
             f.timestamp_ms = eq.timestamp_ms;

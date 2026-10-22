@@ -39,6 +39,30 @@ float maxTitleSize(const TrackClip &c)
 constexpr int kViewFontCapPx = 360;
 constexpr int kExportFontCapPx = 2048;
 
+// A clip's cameras on a job: pane 0's reframe track as poseAt (none: a
+// static forward view), a split's other panes as panePoseAt.
+void setViews(ReframeExportController::ClipJob &job, const ClipItem &c)
+{
+    const auto sampleInto = [](const ReframeTrack &track, qint64 sourceMs, float pose[4]) {
+        const ReframePose p = track.sample(sourceMs);
+        pose[0] = p.yaw;
+        pose[1] = p.pitch;
+        pose[2] = p.roll;
+        pose[3] = p.fovY;
+    };
+    if (!c.reframe.isEmpty())
+        job.poseAt = [track = c.reframe, sampleInto](qint64 sourceMs, float pose[4]) {
+            sampleInto(track, sourceMs, pose);
+        };
+    if (c.paneCount() < 2)
+        return;
+    job.split = c.split;
+    job.panePoseAt = [panes = c.panes, sampleInto](qint64 sourceMs, int pane, float pose[4]) {
+        if (pane >= 1 && pane < pane::kMaxPanes && !panes[pane - 1].isEmpty())
+            sampleInto(panes[pane - 1], sourceMs, pose);
+    };
+}
+
 // A 360 clip's view as a layer's pictures (ClipViewSource): what the export
 // renders it with, its stabilizer built when the source opens.
 ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
@@ -52,14 +76,7 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     job.lensGuard = c.lensGuard;
     job.depthSeam = c.depthSeam;
     timeline.sourceSeamAdjust(c.sourcePath, job.seamAdjustDeg);
-    if (!c.reframe.isEmpty())
-        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[4]) {
-            const ReframePose p = track.sample(sourceMs);
-            pose[0] = p.yaw;
-            pose[1] = p.pitch;
-            pose[2] = p.roll;
-            pose[3] = p.fovY;
-        };
+    setViews(job, c);
     spec.buildStab = c.stabilization;
     spec.fps = c.fps;
     spec.syncMs = std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs;
@@ -101,14 +118,23 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
         key += QStringLiteral(",dir%1").arg(s.directionSec);
     key += QStringLiteral("|%1,%2,%3,%4").arg(c.blurPlates).arg(c.plateScan)
                .arg(c.blurRemovals.size()).arg(c.blurAdditions.size());
-    for (const ReframeKey &k : c.reframe.keys())
-        key += QStringLiteral("|%1:%2,%3,%4,%5,%6")
-                   .arg(k.timeMs)
-                   .arg(k.pose.yaw)
-                   .arg(k.pose.pitch)
-                   .arg(k.pose.roll)
-                   .arg(k.pose.fovY)
-                   .arg(int(k.ease));
+    for (int pane = 0; pane < c.paneCount(); ++pane) {
+        if (pane > 0)
+            key += QStringLiteral("|pane%1").arg(pane);
+        for (const ReframeKey &k : c.paneTrack(pane).keys())
+            key += QStringLiteral("|%1:%2,%3,%4,%5,%6")
+                       .arg(k.timeMs)
+                       .arg(k.pose.yaw)
+                       .arg(k.pose.pitch)
+                       .arg(k.pose.roll)
+                       .arg(k.pose.fovY)
+                       .arg(int(k.ease));
+    }
+    if (c.paneCount() > 1)
+        key += QStringLiteral("|split%1,%2,%3")
+                   .arg(int(c.split.layout))
+                   .arg(c.split.gap)
+                   .arg(c.split.gapRgb);
     return key;
 }
 
@@ -467,15 +493,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     if (nativeStab)
         job.stab = ReframeExportController::buildStabilizer(
             c.sourcePath, c.stabilization, std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
-    // No keyframes -> a static forward view.
-    if (!c.reframe.isEmpty())
-        job.poseAt = [track = c.reframe](qint64 sourceMs, float pose[4]) {
-            const ReframePose p = track.sample(sourceMs);
-            pose[0] = p.yaw;
-            pose[1] = p.pitch;
-            pose[2] = p.roll;
-            pose[3] = p.fovY;
-        };
+    setViews(job, c); // no keyframes -> a static forward view
     return job;
 }
 

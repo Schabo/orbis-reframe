@@ -138,17 +138,27 @@ It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
 prints when the encoder falls back to 8-bit, or when the frames are 8-bit
 (no fused GPU pass) widened into the 10-bit file.
+`--split side|stacked|grid` exports a split screen, as a clip split in the
+app does: the `--keys` / fixed view is pane 1, `--pane-keys N FILE` gives
+pane N (2-4) its own keys, and a pane without them looks the way the app's
+Fill panes sets it (turned from pane 1's first view, 90° across).
+`--gap PCT` (of the output height, default 0.4) and `--gap-color RRGGBB`
+set the divider.
 
 **When:** testing export without the app, e.g. to script many renders or
 to replay keys from `track_subject`. With `--lut`, to check the GPU's LUT
 against FFmpeg's own `lut3d` filter on an export without it (both GPU
 paths: set `INSV_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
+With `--split`, to check the panes on every path (`INSV_FLAT_VIA_EQUIRECT=1`,
+`INSV_NO_GPU_STITCH=1` for the CPU one) against each other and against a
+single-pane export of one pane's view at the pane's size.
 
 ```sh
 build/reframe_export clip.insv out.mp4 --trim-in 10000 --trim-out 20000 --yaw 30 --fov 80
 build/reframe_export clip.insv out.mp4 --keys keys.txt --codec h264
 build/reframe_export clip.insv out10.mp4 --trim-out 3000 --bit-depth 10
 build/reframe_export clip.insv lut.mp4 --trim-in 1000 --trim-out 2000 --lut X5_I-Log_To_Rec.709_V1.0.cube
+build/reframe_export clip.insv grid.mp4 --trim-out 3000 --split grid --gap 1 --gap-color ffffff
 ```
 
 ## residual_stab

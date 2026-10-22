@@ -636,7 +636,7 @@ if(FFMPEG_FOUND)
     # a real ReframeTrack, bake one pose per output frame, then drive
     # stitch::NativeStitchSource -> exportpipe::FlattenWriter (reproject + NVENC).
     add_executable(reframe_export tools/reframe_export/main.cpp)
-    target_include_directories(reframe_export PRIVATE src/stitch src/export)
+    target_include_directories(reframe_export PRIVATE src/stitch src/export src/core)
     target_link_libraries(reframe_export PRIVATE orbis_core stitch reframe_flatten)
 
     # --- tools/residual_stab: residual 2-D stabilization end to end.

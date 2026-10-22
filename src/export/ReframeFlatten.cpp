@@ -685,7 +685,11 @@ bool FlattenWriter::encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const R
                                 std::string& err)
 {
     RenderRectilinear(eqRgba, eqW, eqH, d->flatRgba.data(), d->cfg.out_w, d->cfg.out_h, view);
+    return encodeRgba(err);
+}
 
+bool FlattenWriter::encodeRgba(std::string& err)
+{
     av_frame_make_writable(d->enc.frame);
     const uint8_t* src[1] = {d->flatRgba.data()};
     int srcStride[1] = {d->cfg.out_w * 4};
@@ -718,6 +722,25 @@ bool FlattenWriter::addEquirectFrame(const uint8_t* eqRgba, int eqW, int eqH, co
     if (colorGrade)
         view.colorGrade = *colorGrade;
     return encodeFrame(eqRgba, eqW, eqH, view, err);
+}
+
+bool FlattenWriter::addEquirectPanes(const uint8_t* eqRgba, int eqW, int eqH,
+                                     const std::vector<PaneView>& panes, uint32_t fillRgba,
+                                     const float stab[9], const color::Grade* colorGrade,
+                                     std::string& err)
+{
+    if (!d->opened) {
+        err = "FlattenWriter::addEquirectPanes before open()";
+        return false;
+    }
+    ReframeView view{};
+    if (stab)
+        std::copy(stab, stab + 9, view.stab);
+    if (colorGrade)
+        view.colorGrade = *colorGrade;
+    RenderRectilinearPanes(eqRgba, eqW, eqH, d->flatRgba.data(), d->cfg.out_w, d->cfg.out_h, panes,
+                           fillRgba, view);
+    return encodeRgba(err);
 }
 
 bool FlattenWriter::addNv12Frame(const uint8_t* nv12, int w, int h, std::string& err)

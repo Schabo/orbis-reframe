@@ -132,6 +132,20 @@ public:
     // export). Off by default.
     void SetFlatTenBit(bool on) { flat_ten_bit_ = on; }
 
+    // Split screen: the frame ReadFlatFrame / ReadViewFrame render divided
+    // into views, its panes -- each its rectangle in the frame (x and w
+    // multiples of 4, y and h of 2) and its own pose. The first pane's pose
+    // (and every pane's stab) comes from the read's perFrame as usual, the
+    // others' from `poseAt(ptsMs, pane, pose)` at the same frame time
+    // (prefilled with a forward view). What no pane covers is `fillRgba` (R
+    // in the low byte). The panes are for the outW x outH the reads ask
+    // for; fewer than two = one view filling the frame (the default).
+    struct ViewPane {
+        int x = 0, y = 0, w = 0, h = 0;
+    };
+    using PanePoseFn = std::function<void(int64_t ptsMs, int pane, float pose[4])>;
+    void SetViewPanes(std::vector<ViewPane> panes, PanePoseFn poseAt, uint32_t fillRgba);
+
     // The fused pass with RGBA8 output (Frame::rgba, outW x outH): the view
     // as a picture rather than an encoder input -- stills, and the viewport
     // later on. Same pose / stab / grade handling as ReadFlatFrame. Requires
@@ -257,6 +271,9 @@ private:
     int eq_w_ = 0;
     int eq_h_ = 0;
     bool flat_ten_bit_ = false; // SetFlatTenBit
+    std::vector<ViewPane> panes_; // SetViewPanes
+    PanePoseFn pane_pose_;
+    uint32_t pane_fill_ = 0;
     std::string last_error_;
     ReadTiming last_timing_;
 };

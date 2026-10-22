@@ -9,6 +9,9 @@
 #include <InsetCompositor.h> // exportpipe::InsetClipJob (Request::insets)
 #include <GyroStabilizer.h> // insv::GyroStabilizer (ClipJob::stab)
 #include <IStitchSource.h>  // stitch::CaptureTiming
+#include <PaneLayout.h>     // pane::Split (ClipJob::split)
+
+#include <ReframeRenderer.h> // exportpipe::PaneView
 
 #include <array>
 #include <atomic>
@@ -16,6 +19,10 @@
 #include <memory>
 #include <cstdint>
 #include <vector>
+
+namespace stitch {
+class NativeStitchSource;
+}
 
 // Runs a whole-timeline flat reframe export off the GUI thread. MainWindow
 // creates one, moves it onto a worker QThread, connects the signals to a
@@ -98,6 +105,13 @@ public:
         // stitch (IStitchSource::SetBlurQuads); empty => none. Safe to call
         // from the export thread (captures its scan).
         stitch::BlurQuadsFn blur;
+        // Split screen (ClipItem::split): the picture in panes,
+        // pane::rects(split, the output size). Pane 0's view is poseAt's,
+        // the others' panePoseAt(sourceMs, pane, pose) (prefilled with a
+        // forward view; empty => forward). Single => one picture. Safe to
+        // call from the export thread (captures copies).
+        pane::Split split;
+        std::function<void(qint64 sourceMs, int pane, float pose[4])> panePoseAt;
     };
 
     struct Request {
@@ -126,11 +140,24 @@ public:
     // it: the fused GPU pass straight from the fisheyes (else a full-sphere
     // equirect + CPU reproject), the clip's stabilization / seam / grade, to
     // outW x outH through `pose` ({yaw, pitch, roll, fovY} radians;
-    // clip.poseAt is ignored). RGB, no chroma subsampling -- for the
+    // clip.poseAt is ignored; a split clip's other panes as
+    // clip.panePoseAt). RGB, no chroma subsampling -- for the
     // player bar's screenshot button. Blocks (opens its own stitch source);
     // run it off the GUI thread. Null image + `error` on failure.
     static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const float pose[4],
                               int outW, int outH, QString &error);
+
+    // A split clip's panes on its stitch source for outW x outH reads
+    // (NativeStitchSource::SetViewPanes); a no-op for one picture.
+    static void applyPanes(stitch::NativeStitchSource &src, const ClipJob &clip, int outW,
+                           int outH);
+    // A split's gap colour as the renderers fill with it: R in the low
+    // byte, opaque.
+    static uint32_t fillRgba(const pane::Split &split);
+    // The same for the CPU reproject: each pane's rectangle and view at
+    // source time `ptsMs`, pane 0's `pose0`. Empty for one picture.
+    static std::vector<exportpipe::PaneView> paneViews(const ClipJob &clip, int outW, int outH,
+                                                       int64_t ptsMs, const float pose0[4]);
 
     // Blocks the calling thread for the whole export (invoke it queued onto the
     // worker thread). Emits progress along the way and finished() at the end.

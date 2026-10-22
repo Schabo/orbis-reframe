@@ -15,7 +15,8 @@
 // Packing: one invocation per Y-plane uint = 4 horizontal luma pixels, so
 // outW must be a multiple of 4 and outH a multiple of 2 (every export preset
 // is). FlatBuf is [Y: outH*(outW/4) uints][UV: (outH/2)*(outW/4) uints], which
-// is exactly tightly-packed NV12 (row stride == width) in little-endian.
+// is exactly tightly-packed NV12 (row stride == width) in little-endian --
+// of the whole canvas when the view is one pane of several.
 
 layout(local_size_x = 16, local_size_y = 4) in;
 
@@ -32,7 +33,14 @@ layout(push_constant) uniform PC {
     float roll;
     float fovY;
     float aspect;
-    // 12 bytes of padding here (4 ints + 5 floats -> mat3 aligns at offset 48).
+    // Where the view goes in a larger frame (the split screen's panes), as
+    // in fisheye_view_nv12.comp: its top-left pixel (ox a multiple of 4, oy
+    // of 2) and the canvas, row length in pixels in the low 16 bits, height
+    // in the high 16; 0 = the view alone. (Fills what was mat3 alignment
+    // padding: 4 ints + 5 floats -> mat3 aligns at offset 48.)
+    int ox;
+    int oy;
+    int canvas;
     mat3 stab; // gyro de-rotation in the sphere frame, applied to the world ray
                // AFTER the reframe pose (same as equirect.frag). Identity = off.
     // Colour panel: x=exposureEv (stops), y=contrast (%), z=saturation (%),
@@ -118,6 +126,10 @@ void main()
         return;
 
     int basePx = gid.x * 4;
+    int strideQ = (pc.canvas != 0 ? (pc.canvas & 0xFFFF) : pc.outW) / 4;
+    int canvasH = pc.canvas != 0 ? (pc.canvas >> 16) & 0xFFFF : pc.outH;
+    int row = gid.y + pc.oy;
+    int col = pc.ox / 4 + gid.x;
 
     vec3 rgb[4];
     uint y[4];
@@ -125,7 +137,7 @@ void main()
         rgb[i] = gradeColor(sampleEq(uvFor(dirFor(basePx + i, gid.y))), pc.colorGrade, pc.colorLut, 255.0);
         y[i] = q8(lumaY(rgb[i]));
     }
-    outw[gid.y * uintsPerRow + gid.x] = y[0] | (y[1] << 8) | (y[2] << 16) | (y[3] << 24);
+    outw[row * strideQ + col] = y[0] | (y[1] << 8) | (y[2] << 16) | (y[3] << 24);
 
     // Chroma is 4:2:0 -- one sample per 2x2 luma block, so only even rows write,
     // averaging this row and the next.
@@ -141,8 +153,7 @@ void main()
         uint u0 = q8(chromaU(c0)), v0 = q8(chromaV(c0));
         uint u1 = q8(chromaU(c1)), v1 = q8(chromaV(c1));
 
-        int uvBase = pc.outH * uintsPerRow;
-        outw[uvBase + (gid.y >> 1) * uintsPerRow + gid.x] =
+        outw[canvasH * strideQ + (row >> 1) * strideQ + col] =
             u0 | (v0 << 8) | (u1 << 16) | (v1 << 24);
     }
 }

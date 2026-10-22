@@ -125,6 +125,24 @@ public:
                             const color::Grade* colorGrade, std::vector<uint8_t>& outNv12,
                             VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
+    // A view's rectangle in a canvas of views, and its pose as above
+    // ({yaw,pitch,roll,fovY}); its aspect is the rectangle's.
+    struct ViewRect {
+        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+        int x = 0, y = 0, w = 0, h = 0;
+    };
+
+    // stitchAndReframeVk with several views of the one equirect in one
+    // canvasW x canvasH NV12 frame (the split screen's panes), filled with
+    // `fillRgba` (R in the low byte) where no view goes. Each view's x and w
+    // multiples of 4, y and h of 2. Same stab and grade for all.
+    bool stitchAndReframeViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                                 const insv::StitchGpuParams& params, int eqW, int eqH,
+                                 int canvasW, int canvasH, const std::vector<ViewRect>& views,
+                                 const float stab[9], const color::Grade* colorGrade,
+                                 uint32_t fillRgba, std::vector<uint8_t>& outNv12,
+                                 VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+
     // Depth-aware seam: measure the seam cost volume of a decoder-owned NV12
     // pair (pass 2 of the stitch shaders -- per azimuth bin and candidate
     // distance, the NCC of the two lenses) into `out`, in its own submission,
@@ -164,15 +182,21 @@ public:
     // rectangle in the canvas (x and w multiples of 4, h of 2); the aspect is
     // the rectangle's. Same stab for all, no colour grade. For the privacy
     // blur's plate scan: the detector's tiles and the quad tracker's views.
-    struct ViewRect {
-        float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
-        int x = 0, y = 0, w = 0, h = 0;
-    };
     bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                        const insv::StitchGpuParams& params, int measureW, int measureH,
                        int canvasW, int canvasH, const std::vector<ViewRect>& views,
                        const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& out,
                        VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+    // The same in any ViewFormat with a colour grade, filled with `fillRgba`
+    // where no view goes (the split screen's panes: NV12 / P010 for the
+    // export, RGBA for a transition's layer). For NV12 / P010 each view's y
+    // is even too.
+    bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                       const insv::StitchGpuParams& params, int measureW, int measureH,
+                       int canvasW, int canvasH, const std::vector<ViewRect>& views,
+                       const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
+                       uint32_t fillRgba, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
+                       VulkanLensOutcome* r1, std::string& err);
 
     // Whether fillLensFrameVk() is usable -- the fused view pipeline (its
     // measure pass) plus exportable memory on this device.
@@ -212,6 +236,15 @@ private:
     bool bringUp(bool nv12Mode, std::string& err);
     bool buildReframePipeline(std::string& err);
     bool buildViewPipeline(std::string& err);
+    // stitchAndReframeVk / stitchAndReframeViewsVk: `views` of one stitched
+    // equirect into one NV12 buffer (canvas 0 x 0 = the single view); `fill`
+    // fills it first.
+    bool stitchAndReframeImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                              const insv::StitchGpuParams& params, int eqW, int eqH, int canvasW,
+                              int canvasH, const std::vector<ViewRect>& views, const float stab[9],
+                              const color::Grade* colorGrade, const uint32_t* fill,
+                              std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0,
+                              VulkanLensOutcome* r1, std::string& err);
     // renderViewVk / renderViewsVk: `views` into one buffer (canvas 0 x 0 =
     // the single view, NV12 or RGBA as `fmt`); `clear` fills it first.
     bool renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,

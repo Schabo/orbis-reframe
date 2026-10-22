@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "ColorLut.h" // color::Grade
 
@@ -41,6 +42,21 @@ struct ReframeView {
 void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH,
                        uint8_t* outRgba, int outW, int outH,
                        const ReframeView& view);
+
+// Split screen: one pane of the picture, its rectangle in the output frame
+// and its pose ({yaw, pitch, roll, fovY}).
+struct PaneView {
+    int x = 0, y = 0, w = 0, h = 0;
+    float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
+};
+
+// RenderRectilinear for a split picture: each of `panes` into its rectangle
+// of the outW x outH frame, with its own pose and its rectangle's aspect
+// (view's pose and aspect are ignored; its stab and grade go for all), the
+// rest of the frame `fillRgba` (R in the low byte).
+void RenderRectilinearPanes(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba, int outW,
+                            int outH, const std::vector<PaneView>& panes, uint32_t fillRgba,
+                            const ReframeView& view);
 
 // Apply a colour grade (as ReframeView::colorGrade) to `pixels` interleaved
 // 8-bit RGBA pixels in place -- the same formula RenderRectilinear grades

@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 // The reproject + encode half of the reframe export: take equirect frames
 // straight from stitch::NativeStitchSource in memory, CPU-reproject each against
@@ -34,6 +35,7 @@ const char* hwEncoderName(bool h265);
 std::string hwEncoderReport(bool h265);
 
 struct ReframeView;
+struct PaneView;
 
 // Encoder / muxer configuration, fixed for the whole output file.
 struct FlattenConfig {
@@ -88,6 +90,12 @@ public:
                           const float stab[9], const color::Grade* colorGrade,
                           std::string& err);
 
+    // addEquirectFrame for a split picture (RenderRectilinearPanes): each
+    // pane with its own pose, the rest of the frame `fillRgba`.
+    bool addEquirectPanes(const uint8_t* eqRgba, int eqW, int eqH,
+                          const std::vector<PaneView>& panes, uint32_t fillRgba,
+                          const float stab[9], const color::Grade* colorGrade, std::string& err);
+
     // Encode one already-reprojected tightly-packed NV12 frame (Y plane w*h,
     // then interleaved UV w*h/2), advancing the shared output PTS. For callers
     // that reproject on the GPU (stitch::NativeStitchSource::ReadFlatFrame) --
@@ -137,6 +145,8 @@ private:
     // buffer, RGBA->NV12 / P010, encode at the next shared PTS.
     bool encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const ReframeView& view,
                      std::string& err);
+    // The output-sized RGBA buffer -> NV12 / P010, encoded at the next PTS.
+    bool encodeRgba(std::string& err);
 };
 
 } // namespace exportpipe

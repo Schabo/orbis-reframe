@@ -1,5 +1,7 @@
 #include "ReframeRenderer.h"
 
+#include <cstring>
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -196,6 +198,35 @@ void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba
     }
     for (auto& t : pool)
         t.join();
+}
+
+void RenderRectilinearPanes(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba, int outW,
+                            int outH, const std::vector<PaneView>& panes, uint32_t fillRgba,
+                            const ReframeView& view)
+{
+    if (outW <= 0 || outH <= 0)
+        return;
+    uint32_t* px = reinterpret_cast<uint32_t*>(outRgba);
+    std::fill(px, px + static_cast<size_t>(outW) * outH, fillRgba); // little-endian: R first
+    std::vector<uint8_t> pane;
+    for (const PaneView& p : panes) {
+        const int x0 = std::clamp(p.x, 0, outW), y0 = std::clamp(p.y, 0, outH);
+        const int w = std::min(p.w, outW - x0), h = std::min(p.h, outH - y0);
+        if (w <= 0 || h <= 0)
+            continue;
+        ReframeView v = view;
+        v.yaw = p.pose[0];
+        v.pitch = p.pose[1];
+        v.roll = p.pose[2];
+        v.fovY = p.pose[3];
+        v.aspect = static_cast<float>(p.w) / static_cast<float>(p.h);
+        pane.resize(static_cast<size_t>(p.w) * p.h * 4);
+        RenderRectilinear(eqRgba, eqW, eqH, pane.data(), p.w, p.h, v);
+        for (int row = 0; row < h; ++row)
+            std::memcpy(outRgba + (static_cast<size_t>(y0 + row) * outW + x0) * 4,
+                        pane.data() + static_cast<size_t>(row) * p.w * 4,
+                        static_cast<size_t>(w) * 4);
+    }
 }
 
 void GradeRgba(uint8_t* rgba, size_t pixels, const color::Grade& grade)

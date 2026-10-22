@@ -166,6 +166,56 @@ void expandRgbToRgba(const uint8_t* src, uint8_t* dst, int w, int h)
         t.join();
 }
 
+// BT.709 limited range from 8-bit RGB, as the views convert their pixels
+// (fisheye_view_nv12.comp, reframe_reproject.comp).
+float lumaY(float r, float g, float b) { return 16.0f + 0.182586f * r + 0.614231f * g + 0.062007f * b; }
+float chromaU(float r, float g, float b) { return 128.0f - 0.100644f * r - 0.338572f * g + 0.439216f * b; }
+float chromaV(float r, float g, float b) { return 128.0f + 0.439216f * r - 0.398942f * g - 0.040274f * b; }
+uint32_t q8(float x) { return static_cast<uint32_t>(std::clamp(x + 0.5f, 0.0f, 255.0f)); }
+uint32_t q10(float x) { return static_cast<uint32_t>(std::clamp(x * 4.0f + 0.5f, 0.0f, 1023.0f)) << 6; }
+
+// Fill a w x h canvas of views in `buf` with `rgba` (R in the low byte)
+// before the views are drawn into it: what no view covers keeps it. RGBA8
+// as it is; NV12 / P010 as its Y and CbCr, each plane its own fill.
+void recordCanvasFill(VkCommandBuffer cmd, VkBuffer buf, VulkanFisheyeStitcher::ViewFormat fmt,
+                      int w, int h, uint32_t rgba)
+{
+    const VkDeviceSize pixels = static_cast<VkDeviceSize>(w) * h;
+    if (fmt == VulkanFisheyeStitcher::ViewFormat::Rgba) {
+        vkCmdFillBuffer(cmd, buf, 0, pixels * 4, rgba);
+        return;
+    }
+    const float r = float(rgba & 0xFF), g = float((rgba >> 8) & 0xFF), b = float((rgba >> 16) & 0xFF);
+    const float y = lumaY(r, g, b), u = chromaU(r, g, b), v = chromaV(r, g, b);
+    if (fmt == VulkanFisheyeStitcher::ViewFormat::P010) {
+        vkCmdFillBuffer(cmd, buf, 0, pixels * 2, q10(y) | (q10(y) << 16));
+        vkCmdFillBuffer(cmd, buf, pixels * 2, pixels, q10(u) | (q10(v) << 16));
+        return;
+    }
+    vkCmdFillBuffer(cmd, buf, 0, pixels, q8(y) * 0x01010101u);
+    vkCmdFillBuffer(cmd, buf, pixels, pixels / 2, (q8(u) | (q8(v) << 8)) * 0x00010001u);
+}
+
+// Whether `views` fit a canvasW x canvasH canvas of `fmt`: inside it, x and
+// w on multiples of 4, h -- and for NV12 / P010's 2 x 2 chroma, y -- even.
+bool viewsFit(int canvasW, int canvasH, const std::vector<VulkanFisheyeStitcher::ViewRect>& views,
+              VulkanFisheyeStitcher::ViewFormat fmt, std::string& err)
+{
+    if (canvasW <= 0 || canvasH <= 0 || (canvasW & 3) != 0 || (canvasH & 1) != 0 ||
+        canvasW > 0xFFFF || canvasH > 0xFFFF || views.empty()) {
+        err = "bad canvas (width a multiple of 4, height of 2, at least one view)";
+        return false;
+    }
+    const bool yuv = fmt != VulkanFisheyeStitcher::ViewFormat::Rgba;
+    for (const VulkanFisheyeStitcher::ViewRect& v : views)
+        if (v.x < 0 || v.y < 0 || (v.x & 3) != 0 || (yuv && (v.y & 1) != 0) ||
+            v.x + v.w > canvasW || v.y + v.h > canvasH) {
+            err = "view outside the canvas (or x not a multiple of 4, y not even)";
+            return false;
+        }
+    return true;
+}
+
 } // namespace
 
 void VulkanFisheyeStitcher::Impl::recordStitchPasses(int eqW, int eqH)
@@ -426,6 +476,37 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
                                                std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0,
                                                VulkanLensOutcome* r1, std::string& err)
 {
+    ViewRect v;
+    if (pose)
+        std::copy(pose, pose + 4, v.pose);
+    v.w = outW;
+    v.h = outH;
+    return stitchAndReframeImpl(f0, f1, params, eqW, eqH, 0, 0, {v}, stab, colorGrade, nullptr,
+                                outNv12, r0, r1, err);
+}
+
+bool VulkanFisheyeStitcher::stitchAndReframeViewsVk(
+    const VulkanLensInput& f0, const VulkanLensInput& f1, const insv::StitchGpuParams& params,
+    int eqW, int eqH, int canvasW, int canvasH, const std::vector<ViewRect>& views,
+    const float stab[9], const color::Grade* colorGrade, uint32_t fillRgba,
+    std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err)
+{
+    if (!viewsFit(canvasW, canvasH, views, ViewFormat::Nv12, err))
+        return false;
+    return stitchAndReframeImpl(f0, f1, params, eqW, eqH, canvasW, canvasH, views, stab,
+                                colorGrade, &fillRgba, outNv12, r0, r1, err);
+}
+
+bool VulkanFisheyeStitcher::stitchAndReframeImpl(
+    const VulkanLensInput& f0, const VulkanLensInput& f1, const insv::StitchGpuParams& params,
+    int eqW, int eqH, int canvasW, int canvasH, const std::vector<ViewRect>& views,
+    const float stab[9], const color::Grade* colorGrade, const uint32_t* fill,
+    std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err)
+{
+    // A single view is its own canvas.
+    const bool single = canvasW == 0;
+    const int outW = single ? views[0].w : canvasW;
+    const int outH = single ? views[0].h : canvasH;
     if (!m_ready || !d->nv12) {
         err = "stitchAndReframeVk requires initAdopt()";
         return false;
@@ -438,6 +519,11 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
         err = "bad dimensions (outW must be a multiple of 4, outH a multiple of 2)";
         return false;
     }
+    for (const ViewRect& v : views)
+        if (v.w <= 0 || v.h <= 0 || (v.w & 3) != 0 || (v.h & 1) != 0) {
+            err = "bad dimensions (outW must be a multiple of 4, outH a multiple of 2)";
+            return false;
+        }
     if (!d->ensureOutput(eqW, eqH, err) ||
         !d->ensureFlat(static_cast<VkDeviceSize>(outW) * outH * 3 / 2, err))
         return false;
@@ -525,17 +611,22 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
     eqRW.size = VK_WHOLE_SIZE;
     vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &eqRW, 0, nullptr);
+    if (fill) { // the canvas background, where no view goes
+        recordCanvasFill(d->cmd, d->flatBuf, ViewFormat::Nv12, outW, outH, *fill);
+        VkBufferMemoryBarrier fb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        fb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        fb.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        fb.srcQueueFamilyIndex = fb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        fb.buffer = d->flatBuf;
+        fb.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &fb, 0,
+                             nullptr);
+    }
 
     ReframePush rp{};
     rp.eqW = eqW;
     rp.eqH = eqH;
-    rp.outW = outW;
-    rp.outH = outH;
-    rp.yaw = pose ? pose[0] : 0.0f;
-    rp.pitch = pose ? pose[1] : 0.0f;
-    rp.roll = pose ? pose[2] : 0.0f;
-    rp.fovY = pose ? pose[3] : 1.309f;
-    rp.aspect = static_cast<float>(outW) / static_cast<float>(outH);
     // Row-major stab -> col-major padded vec3 columns; nullptr => identity.
     for (int col = 0; col < 3; ++col)
         for (int row = 0; row < 3; ++row)
@@ -548,10 +639,22 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
     const VkDescriptorSet rfSets[2] = {d->rfSet, lutSet};
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 0, 2, rfSets,
                             0, nullptr);
-    vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp), &rp);
-    const uint32_t gx = (static_cast<uint32_t>(outW / 4) + 15) / 16;
-    const uint32_t gy = (static_cast<uint32_t>(outH) + 3) / 4;
-    vkCmdDispatch(d->cmd, gx, gy, 1);
+    for (const ViewRect& v : views) { // each view, 4 pixels per invocation
+        rp.outW = v.w;
+        rp.outH = v.h;
+        rp.yaw = v.pose[0];
+        rp.pitch = v.pose[1];
+        rp.roll = v.pose[2];
+        rp.fovY = v.pose[3];
+        rp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
+        rp.ox = single ? 0 : v.x;
+        rp.oy = single ? 0 : v.y;
+        rp.canvas = single ? 0 : canvasW | (canvasH << 16);
+        vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
+                           &rp);
+        vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,
+                      (static_cast<uint32_t>(v.h) + 3) / 4, 1);
+    }
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 2);
 
     VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -631,17 +734,23 @@ bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const Vulka
                                           VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                                           std::string& err)
 {
-    if (canvasW <= 0 || canvasH <= 0 || (canvasW & 3) != 0 || views.empty()) {
-        err = "bad canvas (width a multiple of 4, at least one view)";
+    return renderViewsVk(f0, f1, params, measureW, measureH, canvasW, canvasH, views, stab, nullptr,
+                         ViewFormat::Rgba, clearRgba, out, r0, r1, err);
+}
+
+bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                                          const insv::StitchGpuParams& params, int measureW,
+                                          int measureH, int canvasW, int canvasH,
+                                          const std::vector<ViewRect>& views, const float stab[9],
+                                          const color::Grade* colorGrade, ViewFormat fmt,
+                                          uint32_t fillRgba, std::vector<uint8_t>& out,
+                                          VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                          std::string& err)
+{
+    if (!viewsFit(canvasW, canvasH, views, fmt, err))
         return false;
-    }
-    for (const ViewRect& v : views)
-        if (v.x < 0 || v.y < 0 || (v.x & 3) != 0 || v.x + v.w > canvasW || v.y + v.h > canvasH) {
-            err = "view outside the canvas (or x not a multiple of 4)";
-            return false;
-        }
     return renderViewsImpl(f0, f1, params, measureW, measureH, canvasW, canvasH, views, stab,
-                           nullptr, ViewFormat::Rgba, &clearRgba, out, r0, r1, err);
+                           colorGrade, fmt, &fillRgba, out, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
@@ -743,7 +852,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
     vkCmdFillBuffer(d->cmd, d->gainBuf, 0, 12, 0);
     if (clear) // the canvas background, where no view goes
-        vkCmdFillBuffer(d->cmd, d->flatBuf, 0, outBytes, *clear);
+        recordCanvasFill(d->cmd, d->flatBuf, fmt, outW, outH, *clear);
     VkBufferMemoryBarrier zb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
     zb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     zb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
@@ -798,7 +907,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         vp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
         vp.ox = single ? 0 : v.x;
         vp.oy = single ? 0 : v.y;
-        vp.stride = single ? 0 : canvasW;
+        vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,
                       (static_cast<uint32_t>(v.h) + 3) / 4, 1);

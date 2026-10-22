@@ -31,7 +31,9 @@
 
 #include "FlatVideoReader.h" // exportpipe::FlatVideoReader::probe (--inset)
 #include "InsetCompositor.h" // exportpipe::InsetCompositor (--inset)
+#include "PaneLayout.h"     // pane::rects (--split)
 #include "ReframeFlatten.h" // exportpipe::FlattenWriter
+#include "ReframeRenderer.h" // exportpipe::PaneView (--split on the CPU path)
 #include "ReframeTrack.h"
 
 namespace {
@@ -77,6 +79,10 @@ struct Args {
     int64_t insetStartMs = 0; // on the output timeline (0 = the in-point)
     inset::Look insetLook;
     inset::Frame insetFrame;
+    // Split screen, as a clip's ClipItem::split: pane 1 is --keys / the
+    // static pose, panes 2-4 their --pane-keys, else Fill panes' angles.
+    pane::Split split;
+    std::string paneKeys[pane::kMaxPanes]; // [0] unused
 };
 
 bool parseWxH(const std::string& s, int& w, int& h)
@@ -111,7 +117,13 @@ const char kUsage[] =
     "  --lut-strength PCT     how much of the LUT (default 100)\n"
     "  --inset FILE[:START_MS]  a flat video overlaid from START_MS of the output\n"
     "  --inset-look CX,CY,W,OPACITY    its centre / width (fractions) and opacity\n"
-    "  --inset-frame RADIUS,BORDER,RRGGBB  corner radius, border width (fractions)\n";
+    "  --inset-frame RADIUS,BORDER,RRGGBB  corner radius, border width (fractions)\n"
+    "  --split L              split screen: side | stacked | grid (default: one picture)\n"
+    "  --gap PCT              the divider between the panes, % of the output height\n"
+    "                        (default 0.4)\n"
+    "  --gap-color RRGGBB     its colour (default 000000)\n"
+    "  --pane-keys N FILE     keyframes of pane N (2-4), as --keys; a pane without\n"
+    "                        them looks the way Fill panes sets it, from pane 1's view\n";
 
 Args parseArgs(int argc, char** argv)
 {
@@ -221,12 +233,32 @@ Args parseArgs(int argc, char** argv)
             a.insetFrame.borderWidth = b;
             a.insetFrame.borderRgb = rgb;
             a.insetFrame = a.insetFrame.clamped();
+        } else if (k == "--split") {
+            const std::string l = next("--split");
+            a.split.layout = l == "side"      ? pane::Layout::SideBySide
+                             : l == "stacked" ? pane::Layout::Stacked
+                             : l == "grid"    ? pane::Layout::Grid
+                                              : (die("bad --split (want side, stacked or grid)"),
+                                                 pane::Layout::Single);
+        } else if (k == "--gap")
+            a.split.gap = static_cast<float>(std::atof(next("--gap").c_str()) / 100.0);
+        else if (k == "--gap-color")
+            a.split.gapRgb = static_cast<uint32_t>(std::strtoul(next("--gap-color").c_str(), nullptr, 16));
+        else if (k == "--pane-keys") {
+            const int n = std::atoi(next("--pane-keys").c_str());
+            if (n < 2 || n > pane::kMaxPanes)
+                die("bad --pane-keys pane (want 2-4)");
+            a.paneKeys[n - 1] = next("--pane-keys");
         }
         else
             die("unknown option: " + k);
     }
     if (a.tenBit && !a.h265)
         die("--bit-depth 10 needs --codec h265");
+    a.split = a.split.clamped();
+    for (int n = a.split.count(); n < pane::kMaxPanes; ++n)
+        if (!a.paneKeys[n].empty())
+            die("--pane-keys " + std::to_string(n + 1) + " without a --split that has that pane");
     return a;
 }
 
@@ -315,6 +347,37 @@ int main(int argc, char** argv)
                  static_cast<float>(a.staticFovDeg * kDegToRad)};
     }
     const int poseCount = static_cast<int>(poses.size() / 4);
+
+    // --split: each pane's rectangle and its baked poses, pane 1's above.
+    const std::vector<pane::Rect> rects =
+        a.split.isSplit() ? pane::rects(a.split, a.outW, a.outH) : std::vector<pane::Rect>{};
+    std::vector<std::vector<float>> panePoses(rects.size());
+    for (size_t n = 1; n < rects.size(); ++n) {
+        std::vector<float> &pp = panePoses[n];
+        if (!a.paneKeys[n].empty()) {
+            const ReframeTrack track = loadKeys(a.paneKeys[n], frameDurMs);
+            std::printf("pane %zu: %d keys from %s\n", n + 1, track.count(), a.paneKeys[n].c_str());
+            for (int64_t i = 0; i < frameCount; ++i) {
+                const qint64 tAbs = trimIn + static_cast<qint64>(std::llround(i * 1000.0 / fps));
+                const ReframePose p = track.sample(tAbs);
+                pp.insert(pp.end(), {p.yaw, p.pitch, p.roll, p.fovY});
+            }
+        } else { // Fill panes: turned from pane 1's first view, 90 degrees across
+            pp = {poses[0] + pane::fillYawOffset(a.split.layout, static_cast<int>(n)), poses[1],
+                  poses[2],
+                  std::clamp(pane::fovYFor(static_cast<float>(std::numbers::pi / 2),
+                                           rects[n].aspect()),
+                             0.35f, 1.92f)};
+            std::printf("pane %zu: fixed yaw=%.1f fov=%.1f deg\n", n + 1, pp[0] / kDegToRad,
+                        pp[3] / kDegToRad);
+        }
+    }
+    if (!rects.empty())
+        std::printf("split:  %s, %d panes, gap %.2f%% #%06x\n", pane::layoutName(a.split.layout),
+                    static_cast<int>(rects.size()), a.split.gap * 100.0,
+                    static_cast<unsigned>(a.split.gapRgb));
+    const uint32_t fillRgba = ((a.split.gapRgb >> 16) & 0xFFu) | (a.split.gapRgb & 0xFF00u) |
+                              ((a.split.gapRgb & 0xFFu) << 16) | 0xFF000000u;
     color::Grade grade;
     grade.adjust = {a.exposureEv, a.contrast, a.saturation, a.temperature};
     if (!a.lutPath.empty()) {
@@ -405,6 +468,22 @@ int main(int argc, char** argv)
     const double halfFrameMs = 500.0 / fps;
     int lastPct = -1;
     int64_t written = 0;
+    // Pane n's pose of output frame `written`.
+    const auto panePose = [&](size_t n) {
+        const std::vector<float> &pp = panePoses[n];
+        const size_t count = pp.size() / 4;
+        return &pp[std::min<size_t>(static_cast<size_t>(written), count - 1) * 4];
+    };
+    if (!rects.empty()) {
+        std::vector<stitch::NativeStitchSource::ViewPane> panes;
+        for (const pane::Rect &r : rects)
+            panes.push_back({r.x, r.y, r.w, r.h});
+        src->SetViewPanes(panes,
+                          [&](int64_t, int n, float pose[4]) {
+                              std::copy(panePose(n), panePose(n) + 4, pose);
+                          },
+                          fillRgba);
+    }
     while (written < frameCount) {
         const float* pose =
             poseCount > 0
@@ -438,8 +517,24 @@ int main(int argc, char** argv)
             if (!depthReported)
                 std::printf("frames: 8-bit (CPU path), widened into the 10-bit file\n");
             depthReported = true;
-            if (!writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, pose, nullptr,
-                                         colorGrade, err))
+            std::vector<exportpipe::PaneView> views;
+            for (size_t n = 0; n < rects.size(); ++n) {
+                exportpipe::PaneView v;
+                v.x = rects[n].x;
+                v.y = rects[n].y;
+                v.w = rects[n].w;
+                v.h = rects[n].h;
+                if (n > 0)
+                    std::copy(panePose(n), panePose(n) + 4, v.pose);
+                else if (pose)
+                    std::copy(pose, pose + 4, v.pose);
+                views.push_back(v);
+            }
+            if (!(views.empty() ? writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, pose,
+                                                          nullptr, colorGrade, err)
+                                : writer.addEquirectPanes(eq.rgba.data(), eq.width, eq.height,
+                                                          views, fillRgba, nullptr, colorGrade,
+                                                          err)))
                 die(err);
         }
         ++written;

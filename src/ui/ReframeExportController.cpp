@@ -51,6 +51,49 @@ ReframeExportController::buildStabilizer(const QString &path, const insv::StabCo
     return stab->ready() ? stab : nullptr;
 }
 
+uint32_t ReframeExportController::fillRgba(const pane::Split &split)
+{
+    const uint32_t rgb = split.gapRgb;
+    return ((rgb >> 16) & 0xFFu) | (rgb & 0xFF00u) | ((rgb & 0xFFu) << 16) | 0xFF000000u;
+}
+
+void ReframeExportController::applyPanes(stitch::NativeStitchSource &src, const ClipJob &c,
+                                         int outW, int outH)
+{
+    std::vector<stitch::NativeStitchSource::ViewPane> panes;
+    if (c.split.isSplit())
+        for (const pane::Rect &r : pane::rects(c.split, outW, outH))
+            panes.push_back({r.x, r.y, r.w, r.h});
+    src.SetViewPanes(std::move(panes),
+                     [fn = c.panePoseAt](int64_t ptsMs, int i, float pose[4]) {
+                         if (fn)
+                             fn(ptsMs, i, pose);
+                     },
+                     fillRgba(c.split));
+}
+
+std::vector<exportpipe::PaneView> ReframeExportController::paneViews(const ClipJob &c, int outW,
+                                                                     int outH, int64_t ptsMs,
+                                                                     const float pose0[4])
+{
+    std::vector<exportpipe::PaneView> views;
+    if (!c.split.isSplit())
+        return views;
+    for (const pane::Rect &r : pane::rects(c.split, outW, outH)) {
+        exportpipe::PaneView v;
+        v.x = r.x;
+        v.y = r.y;
+        v.w = r.w;
+        v.h = r.h;
+        if (views.empty())
+            std::copy(pose0, pose0 + 4, v.pose);
+        else if (c.panePoseAt)
+            c.panePoseAt(ptsMs, static_cast<int>(views.size()), v.pose);
+        views.push_back(v);
+    }
+    return views;
+}
+
 QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
                                             const float pose[4], int outW, int outH,
                                             QString &error)
@@ -85,6 +128,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
         error = tr("This stitch can't apply the privacy blur.");
         return {};
     }
+    applyPanes(src, c, outW, outH);
 
     // Stab at the decoded frame's own time, as the export does.
     auto stabAt = [&c](int64_t ptsMs, float stab[9]) {
@@ -132,8 +176,14 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     view.colorGrade = c.colorGrade;
 
     QImage img(outW, outH, QImage::Format_RGBA8888);
-    exportpipe::RenderRectilinear(eq.rgba.data(), eq.width, eq.height, img.bits(), outW, outH,
-                                  view);
+    const std::vector<exportpipe::PaneView> panes =
+        paneViews(c, outW, outH, eq.timestamp_ms, pose);
+    if (panes.empty())
+        exportpipe::RenderRectilinear(eq.rgba.data(), eq.width, eq.height, img.bits(), outW, outH,
+                                      view);
+    else
+        exportpipe::RenderRectilinearPanes(eq.rgba.data(), eq.width, eq.height, img.bits(), outW,
+                                           outH, panes, fillRgba(c.split), view);
     return img.convertToFormat(QImage::Format_RGB888); // opaque: alpha is always 255
 }
 
@@ -324,6 +374,7 @@ void ReframeExportController::run(const Request &req)
         src->SetCaptureTiming(captureTimingFor(c.stab));
         src->SetLens1Adjust(c.seamAdjustDeg.data());
         src->SetFlatTenBit(writer->tenBit());
+        applyPanes(*src, c, req.outWidth, req.outHeight);
         if (c.blur && !src->SetBlurQuads(c.blur)) {
             failClip(tr("This stitch can't apply the privacy blur."));
             return;
@@ -419,12 +470,19 @@ void ReframeExportController::run(const Request &req)
                 float pose[4] = {0.0f, 0.0f, 0.0f, 1.309f};
                 float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
                 poseAt(eq.timestamp_ms, pose, stab);
+                const std::vector<exportpipe::PaneView> panes =
+                    paneViews(c, req.outWidth, req.outHeight, eq.timestamp_ms, pose);
                 for (int64_t r = 0; r < reps; ++r) {
                     ++outFrames;
-                    if (!writer->addEquirectFrame(eq.rgba.data(), eq.width, eq.height,
-                                                  c.poseAt ? pose : nullptr,
-                                                  c.stab ? stab : nullptr, &c.colorGrade, err) ||
-                        !feedAudio()) {
+                    const bool added =
+                        panes.empty()
+                            ? writer->addEquirectFrame(eq.rgba.data(), eq.width, eq.height,
+                                                       c.poseAt ? pose : nullptr,
+                                                       c.stab ? stab : nullptr, &c.colorGrade, err)
+                            : writer->addEquirectPanes(eq.rgba.data(), eq.width, eq.height, panes,
+                                                       fillRgba(c.split), c.stab ? stab : nullptr,
+                                                       &c.colorGrade, err);
+                    if (!added || !feedAudio()) {
                         failClip(QString::fromStdString(err));
                         return;
                     }
