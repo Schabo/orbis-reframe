@@ -16,7 +16,23 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. Insta360 X6
+### 1. Wide views and "tiny earth"
+
+One per-keyframe **distortion** amount `d` from 0 to 1 -- the projection
+centre moves from the sphere's centre (`d = 0`, today's rectilinear) to its
+back (`d = 1`, stereographic). It blends between keyframes like the field of
+view, so a move can go from a normal view into a wide fisheye look or a
+tiny-earth planet. The field of view becomes the **diagonal** angle (corner
+to corner), so landscape and portrait frame alike. By default `d` follows it
+(0 up to about 90° diagonal, rising to 1 around 170°) with a manual override
+per keyframe; the field-of-view limit then depends on `d`. Old projects load
+with the automatic `d`, so their wide views lose the stretch. It is a change
+to all the view implementations and the subject tracker's crop together
+(`architecture.md`, *One view, several implementations*). Until then the
+rectilinear field of view stays capped at 110°: wider rectilinear just
+stretches.
+
+### 2. Insta360 X6
 
 Built on top of the common camera model below, from a contributor's work:
 the X6's own facts are its row in the Insta360 reader's table
@@ -40,7 +56,7 @@ clips):
   real X6 clips (built on stand-ins);
 - real-time decode at 8K 50 checked.
 
-### 2. Common camera model -- *maintainer*
+### 3. Common camera model -- *maintainer*
 
 Before more cameras are added, the camera-specific code is pulled behind one
 description of a clip, so each new camera is a reader, not a set of branches
@@ -78,7 +94,7 @@ New camera support keeps its differences in data -- the reader's per-model
 table, fields read from the file -- not in model checks spread through the
 code.
 
-### 3. Optional
+### 4. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -127,18 +143,6 @@ each is in its document in [`formats/`](formats/README.md).
   the clip. To settle before building: video effects run on the flat
   picture after the colour grade; how effects stack per clip and are stored
   in the project; what preview costs.
-- **Wide views and "tiny earth"**: one per-keyframe **distortion** amount
-  `d` from 0 to 1 -- the projection centre moves from the sphere's centre
-  (`d = 0`, today's rectilinear) to its back (`d = 1`, stereographic). It
-  blends between keyframes like the field of view, so a move can go from a
-  normal view into a wide fisheye look or a tiny-earth planet. By default `d`
-  follows the horizontal field of view (0 up to about 70-80°, rising to 1
-  around 150°) with a manual override per keyframe; the field-of-view limit
-  then depends on `d`. Old projects load as `d = 0`. It is a change to all the
-  view implementations and the subject tracker's crop together
-  (`architecture.md`, *One view, several implementations*). Until then the
-  rectilinear field of view stays capped at 110°: wider rectilinear just
-  stretches.
 - **LUT download**: a "Get the LUT" link next to the Colour panel's log
   prompt that opens the camera maker's download page, and Load LUT taking the
   downloaded zip directly. The makers' LUTs carry no licence, so they aren't
