@@ -3059,15 +3059,9 @@ void MainWindow::openClip(const QString &clipPath)
     m_clipId = m_project->resetWithClip(clipPath, probe.duration_ms, probe.fps, probe.width,
                                         probe.height, audioStreamCount(clipPath), probe.lens_guards);
     m_rebindingModel = false;
-    if (const ClipItem *c = m_timeline->clipById(m_clipId)) {
-        refreshAudioPanel();
-        syncMediaInfoPanel(*c);
+    if (const ClipItem *c = m_timeline->clipById(m_clipId))
         applyColorGrade(c->color);
-        syncColourPanel(c->color);
-        syncStabilizationPanel();
-        syncStitchingPanel();
-        syncPrivacyPanel();
-    }
+    refreshClipPanels();
     showEditor();
     syncTimeline(); // opens paused on the first frame
 }
@@ -3145,13 +3139,8 @@ void MainWindow::openProject(const QString &projectPath)
     m_clipId = first.id;
     m_clipPath = first.sourcePath;
     m_fps = first.fps;
-    refreshAudioPanel();
-    syncMediaInfoPanel(first);
     applyColorGrade(first.color);
-    syncColourPanel(first.color);
-    syncStabilizationPanel();
-    syncStitchingPanel();
-    syncPrivacyPanel();
+    refreshClipPanels(); // the first clip's: a load clears the selection
 
     // All of them, labelled with their place on the timeline (hidden and
     // muted tracks too: unhiding one later doesn't warn again). The model

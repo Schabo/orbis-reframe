@@ -1575,6 +1575,12 @@ void testSaveAndReopen(const Ctx &c)
     CHECK(c.project->save(c.orp, &error));
     const int tracks = c.timeline->trackCount();
     trigger(c, "addAudioTrackAction");
+    // The first clip split: the panels show its split on opening, before
+    // anything is clicked.
+    const pane::Split before = c.timeline->clipAt(0).split;
+    pane::Split grid;
+    grid.layout = pane::Layout::Grid;
+    c.timeline->setClipSplit(c.timeline->clipAt(0).id, grid, 0);
     CHECK(c.project->modified());
     trigger(c, "saveProjectAction");
     CHECK(!c.project->modified());
@@ -1585,6 +1591,13 @@ void testSaveAndReopen(const Ctx &c)
     CHECK(project2 && project2->timeline()->count() == c.timeline->count());
     CHECK(project2 && project2->timeline()->trackCount() == tracks + 1);
     CHECK(project2 && !project2->modified());
+    auto *layout = find<QComboBox>(&again, "splitLayoutCombo");
+    auto *paneCombo = find<QComboBox>(&again, "activePaneCombo");
+    CHECK(layout && layout->currentData().toInt() == int(pane::Layout::Grid) &&
+          layout->isEnabledTo(&again));
+    CHECK(paneCombo && paneCombo->count() == 4);
+
+    c.timeline->setClipSplit(c.timeline->clipAt(0).id, before, 0);
 }
 
 // Leaving a modified project asks first: Cancel stays, Discard leaves.
