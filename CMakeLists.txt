@@ -233,6 +233,7 @@ add_library(orbis_core STATIC
     src/core/ProjectLibrary.cpp
     src/core/ProjectLibrary.h
     src/core/OutputSettings.h
+    src/core/PaneLayout.h
     src/core/ReframeTrack.cpp
     src/core/ReframeTrack.h
     src/core/Title.h
@@ -763,7 +764,7 @@ endif()
 # regardless of the block above. Run with `ctest` from the build dir (or
 # the binaries directly).
 foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilization_test
-        project_test color_lut_test)
+        project_test color_lut_test pane_layout_test)
     add_executable(${model_test} tests/${model_test}.cpp tests/support/ModelTest.h)
     target_include_directories(${model_test} PRIVATE tests)
     target_link_libraries(${model_test} PRIVATE orbis_core)

@@ -304,6 +304,10 @@ void testTimelineSplit()
     tl.setClipTrimOut(a, 18000); // clip a spans source [2000, 18000)
     tl.upsertClipReframeKey(a, 5000, {0.5f, 0.0f, 0.0f, 1.2f});
     tl.upsertClipReframeKey(a, 15000, {1.0f, 0.0f, 0.0f, 1.0f});
+    pane::Split side;
+    side.layout = pane::Layout::SideBySide;
+    tl.setClipSplit(a, side);
+    tl.upsertClipReframeKey(a, 6000, {2.0f, 0.0f, 0.0f, 1.0f}, 1);
 
     // invalid split points -> 0, nothing changes
     CHECK(tl.splitClip(a, 2000) == 0);        // at the in-point
@@ -324,8 +328,64 @@ void testTimelineSplit()
     CHECK(right.sourcePath == left.sourcePath);
     // reframe track copied to both halves
     CHECK(left.reframe.count() == 2 && right.reframe.count() == 2);
+    // ... and the split with its pane cameras
+    CHECK(right.split == side && right.panes[0].count() == 1);
     // total trimmed length unchanged by a split
     CHECK(tl.totalDurationMs() == 16000);
+}
+
+// Split screen: the layout and the pane cameras (ClipItem::paneTrack); the
+// key edits address a pane; a flat clip refuses a split.
+void testSplitScreen()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 20000, 30.0);
+    int changes = 0;
+    QObject::connect(&tl, &Timeline::clipReframeChanged, [&](int) { ++changes; });
+    pane::Split grid;
+    grid.layout = pane::Layout::Grid;
+    std::vector<ReframePose> poses;
+    for (int i = 0; i < 4; ++i)
+        poses.push_back({pane::fillYawOffset(grid.layout, i), 0.0f, 0.0f, 1.0f});
+    tl.setClipSplit(a, grid, 3000, &poses);
+    CHECK(changes == 1); // one edit
+    const ClipItem *c = tl.clipById(a);
+    CHECK(c->paneCount() == 4);
+    for (int i = 0; i < 4; ++i)
+        CHECK(c->paneTrack(i).count() == 1 && c->paneTrack(i).keys()[0].timeMs == 3000);
+    CHECK(&c->paneTrack(0) == &c->reframe && &c->paneTrack(7) == &c->reframe);
+    CHECK(std::abs(c->paneTrack(3).keys()[0].pose.yaw - 3.14159265f) < 1e-5f);
+
+    tl.setClipSplit(a, grid); // unchanged
+    CHECK(changes == 1);
+    tl.upsertClipReframeKey(a, 8000, {0.5f, 0.0f, 0.0f, 1.0f}, 2);
+    CHECK(c->panes[1].count() == 2 && c->reframe.count() == 1);
+    tl.removeClipReframeKeyNear(a, 8010, 2);
+    CHECK(c->panes[1].count() == 1);
+    tl.clearClipReframe(a, 3);
+    CHECK(c->panes[2].isEmpty() && c->reframe.count() == 1);
+    tl.replaceClipReframeSpan(a, 0, 20000, {ReframeKey{1000, {}, keytrack::Ease::Linear}}, 1);
+    CHECK(c->panes[0].count() == 1 && c->panes[0].keys()[0].timeMs == 1000);
+
+    // Next / previous key: the pane's, pane 0's on a clip with fewer panes.
+    CHECK(tl.adjacentKey(0, 1, 0, 1) == 1000);
+    CHECK(tl.adjacentKey(0, 1, 0, 0) == 3000);
+    pane::Split side;
+    side.layout = pane::Layout::SideBySide;
+    tl.setClipSplit(a, side);
+    CHECK(tl.adjacentKey(0, 1, 0, 3) == 3000);
+    CHECK(c->panes[2].isEmpty() && c->panes[0].count() == 1); // kept
+
+    // The gap is clamped.
+    pane::Split wide = side;
+    wide.gap = 1.0f;
+    tl.setClipSplit(a, wide);
+    CHECK(c->split.gap == pane::Split::kMaxGap);
+
+    const int f = tl.appendClip("f.mp4", 5000, 30.0, 1920, 1080, 0, true);
+    tl.setClipSplit(f, grid);
+    CHECK(tl.clipById(f)->split.layout == pane::Layout::Single);
+    CHECK(tl.clipById(f)->paneCount() == 1);
 }
 
 // Duplicate: a copy right after the clip, with its settings and its sound;
@@ -343,6 +403,9 @@ void testTimelineDuplicate()
     g.contrast = 30.0f;
     tl.setClipColor(a, g);
     tl.setClipBlurPlates(a, true);
+    pane::Split stacked;
+    stacked.layout = pane::Layout::Stacked;
+    tl.setClipSplit(a, stacked);
 
     CHECK(tl.duplicateClip(999) == 0);
     const int copy = tl.duplicateClip(a);
@@ -351,6 +414,7 @@ void testTimelineDuplicate()
     const ClipItem &c = *tl.clipById(copy);
     CHECK(c.sourcePath == "a.insv" && c.trimInMs == 2000 && c.trimOutMs == 8000);
     CHECK(c.speed == 2.0 && c.reframe.count() == 1 && c.color == g && c.blurPlates);
+    CHECK(c.split == stacked);
     CHECK(tl.totalDurationMs() == 3000 + 3000 + 10000);
 
     // Each stream track: the original's sound, the copy's after it, then b's.
@@ -569,6 +633,7 @@ int main()
     testKeyOnTrimOut();
     testTimelineStructure();
     testTimelineSplit();
+    testSplitScreen();
     testTimelineDuplicate();
     testInsertLensGuard();
     testTransitions();

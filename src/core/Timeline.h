@@ -13,6 +13,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <vector>
 
 // The main video track -- an ordered list of ClipItems laid end to end, no
 // gaps, a cut between two clips either hard or a transition (Transition.h)
@@ -67,10 +68,12 @@ public:
     qint64 adjacentEditPoint(qint64 timelineMs, int direction) const;
     // The nearest keyframe strictly after / before `timelineMs`, in timeline
     // ms: a reframe key of any video clip, or with `overlayClipId` > 0 a key
-    // of that overlay clip. Keys trimmed out of view are skipped, and so is
-    // one within a few ms of `timelineMs` (the playhead already on it).
+    // of that overlay clip. A split clip's are its pane `pane`'s (pane 0's
+    // where it has fewer panes). Keys trimmed out of view are skipped, and so
+    // is one within a few ms of `timelineMs` (the playhead already on it).
     // Returns `timelineMs` if there is none that way.
-    qint64 adjacentKey(qint64 timelineMs, int direction, int overlayClipId = 0) const;
+    qint64 adjacentKey(qint64 timelineMs, int direction, int overlayClipId = 0,
+                       int pane = 0) const;
 
     // A flattened, playback-facing view: one entry per clip in order, carrying
     // just what the playback layer needs to decode it. std::string (not
@@ -310,16 +313,23 @@ public slots:
     void setClipTrimIn(int clipId, qint64 positionMs);
     void setClipTrimOut(int clipId, qint64 positionMs);
     void clearClipTrim(int clipId);
-    void upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose);
-    void removeClipReframeKeyNear(int clipId, qint64 sourceMs);
+    // The reframe edits act on the camera of pane `pane` (0 = the clip's
+    // own reframe track; ClipItem::paneTrack).
+    void upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose, int pane = 0);
+    void removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane = 0);
     // Ease of the move from the key at sourceMs (within
     // ClipItem::kReframeDeleteSnapMs, else the last one before) to the next.
-    void setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease);
-    void clearClipReframe(int clipId);
+    void setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease, int pane = 0);
+    void clearClipReframe(int clipId, int pane = 0);
     // Replace the clip's keys in [fromMs, toMs] (source time) with `keys` --
     // one edit, one undo step (Track subject writes its path this way).
     void replaceClipReframeSpan(int clipId, qint64 fromMs, qint64 toMs,
-                                const QList<ReframeKey> &keys);
+                                const QList<ReframeKey> &keys, int pane = 0);
+    // Split screen (ClipItem::split, clamped). `poses`, when given, also
+    // puts a key at `sourceMs` into each pane's camera (Fill panes) -- one
+    // edit, one undo step. No-op on a flat clip. Emits clipReframeChanged.
+    void setClipSplit(int clipId, const pane::Split &split, qint64 sourceMs = 0,
+                      const std::vector<ReframePose> *poses = nullptr);
     // Playback speed (clamped to ClipItem::kMin/MaxSpeed). Changes the clip's
     // span on the timeline: emits clipSpeedChanged + durationChanged.
     void setClipSpeed(int clipId, double speed);
@@ -386,7 +396,8 @@ signals:
     // One clip's trim range changed. Carries the new range so a consumer can
     // forward it without re-reading.
     void clipTrimChanged(int id, qint64 inMs, qint64 outMs);
-    // One clip's reframe track changed (key added / moved / removed / cleared).
+    // One clip's reframe tracks changed (key added / moved / removed /
+    // cleared, in any pane), or its split.
     void clipReframeChanged(int id);
     // One flat clip's fit changed. Carries the new value.
     void clipFitChanged(int id, ClipItem::Fit fit);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include "PaneLayout.h"
 #include "ReframeTrack.h"
 #include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
@@ -107,6 +108,23 @@ struct ClipItem {
     // moment of footage, so trimming doesn't move it). Timeline playback
     // samples it at trimInMs + <clip-local offset>.
     ReframeTrack reframe;
+    // Split screen: the picture divided into panes (PaneLayout.h), each
+    // with its own camera -- pane 0 is `reframe`, panes 1..3 these, keyed
+    // like it. A pane track outlives a smaller layout (switching from four
+    // panes to two and back keeps them). Unused on a flat clip.
+    pane::Split split;
+    std::array<ReframeTrack, pane::kMaxPanes - 1> panes;
+    // The camera of pane `index` (0 = reframe); out of range = pane 0.
+    const ReframeTrack &paneTrack(int index) const
+    {
+        return index >= 1 && index < pane::kMaxPanes ? panes[index - 1] : reframe;
+    }
+    ReframeTrack &paneTrack(int index)
+    {
+        return index >= 1 && index < pane::kMaxPanes ? panes[index - 1] : reframe;
+    }
+    // Panes shown: 1 unless split.
+    int paneCount() const { return flat ? 1 : split.count(); }
 
     // A clip has no sound of its own: each of its source's audio streams is
     // a linked clip on an audio track (Timeline::addClipSound).
@@ -193,9 +211,11 @@ struct ClipItem {
     bool setTrimIn(qint64 positionMs);
     bool setTrimOut(qint64 positionMs);
     bool clearTrim();
-    bool upsertReframeKey(qint64 sourceMs, const ReframePose &pose);
-    bool removeReframeKeyNear(qint64 sourceMs);
-    bool clearReframe();
+    // The reframe edits act on pane `pane`'s camera (0 = `reframe`).
+    bool upsertReframeKey(qint64 sourceMs, const ReframePose &pose, int pane = 0);
+    bool removeReframeKeyNear(qint64 sourceMs, int pane = 0);
+    bool clearReframe(int pane = 0);
+    bool setSplit(const pane::Split &s); // clamped; refused on a flat clip
     bool setColorGrade(const ColorGrade &grade);
     bool setStabilization(const insv::StabConfig &config);
     bool setBlurPlates(bool on);

@@ -154,7 +154,7 @@ qint64 Timeline::adjacentEditPoint(qint64 timelineMs, int direction) const
     return best;
 }
 
-qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId) const
+qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId, int pane) const
 {
     // Mapping a key to the timeline and back can be off by a rounded ms.
     constexpr qint64 kOnKeyMs = 5;
@@ -173,7 +173,7 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
     } else {
         qint64 acc = 0;
         for (const ClipItem &c : m_clips) {
-            for (const ReframeKey &k : c.reframe.keys())
+            for (const ReframeKey &k : c.paneTrack(pane < c.paneCount() ? pane : 0).keys())
                 if (k.timeMs >= c.trimInMs && k.timeMs <= c.trimOutMs)
                     points.push_back(acc + std::min(c.localAtSourceMs(k.timeMs),
                                                     c.timelineDurationMs() - 1));
@@ -530,41 +530,55 @@ void Timeline::clearClipTrim(int clipId)
     }
 }
 
-void Timeline::upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose)
+void Timeline::upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose, int pane)
 {
     ClipItem *c = mutableClipById(clipId);
-    if (c && c->upsertReframeKey(sourceMs, pose))
+    if (c && c->upsertReframeKey(sourceMs, pose, pane))
         emit clipReframeChanged(c->id);
 }
 
-void Timeline::removeClipReframeKeyNear(int clipId, qint64 sourceMs)
+void Timeline::removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane)
 {
     ClipItem *c = mutableClipById(clipId);
-    if (c && c->removeReframeKeyNear(sourceMs))
+    if (c && c->removeReframeKeyNear(sourceMs, pane))
         emit clipReframeChanged(c->id);
 }
 
-void Timeline::setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease)
+void Timeline::setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease, int pane)
 {
     ClipItem *c = mutableClipById(clipId);
-    if (c && c->reframe.setEase(sourceMs, ClipItem::kReframeDeleteSnapMs, ease))
+    if (c && c->paneTrack(pane).setEase(sourceMs, ClipItem::kReframeDeleteSnapMs, ease))
         emit clipReframeChanged(c->id);
 }
 
 void Timeline::replaceClipReframeSpan(int clipId, qint64 fromMs, qint64 toMs,
-                                      const QList<ReframeKey> &keys)
+                                      const QList<ReframeKey> &keys, int pane)
 {
     ClipItem *c = mutableClipById(clipId);
     if (!c || c->flat)
         return;
-    c->reframe.replaceSpan(fromMs, toMs, keys);
+    c->paneTrack(pane).replaceSpan(fromMs, toMs, keys);
     emit clipReframeChanged(c->id);
 }
 
-void Timeline::clearClipReframe(int clipId)
+void Timeline::clearClipReframe(int clipId, int pane)
 {
     ClipItem *c = mutableClipById(clipId);
-    if (c && c->clearReframe())
+    if (c && c->clearReframe(pane))
+        emit clipReframeChanged(c->id);
+}
+
+void Timeline::setClipSplit(int clipId, const pane::Split &split, qint64 sourceMs,
+                            const std::vector<ReframePose> *poses)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (!c || c->flat)
+        return;
+    bool changed = c->setSplit(split);
+    if (poses)
+        for (int i = 0; i < static_cast<int>(poses->size()) && i < pane::kMaxPanes; ++i)
+            changed = c->upsertReframeKey(sourceMs, (*poses)[i], i) || changed;
+    if (changed)
         emit clipReframeChanged(c->id);
 }
 

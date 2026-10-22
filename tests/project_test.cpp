@@ -1776,6 +1776,98 @@ void testLutJson()
     }
 }
 
+void testSplitJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString video = tmp.path() + "/clip.insv";
+    writeFile(video);
+    const QString file = tmp.path() + "/split.orp";
+    QString err;
+    auto document = [](const QString &path) {
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+    auto firstClip = [&](const QString &path) {
+        return document(path).value("timeline").toObject().value("clips").toArray().at(0).toObject();
+    };
+    {
+        Project p;
+        const int id = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        CHECK(p.save(file, &err));
+        CHECK(document(file).value("version").toInt() == Project::kPlainFormatVersion);
+        CHECK(!firstClip(file).contains("split"));
+
+        pane::Split grid;
+        grid.layout = pane::Layout::Grid;
+        grid.gap = 0.01f;
+        grid.gapRgb = 0x204060;
+        const std::vector<ReframePose> poses{
+            {0.1f, 0.0f, 0.0f, 1.0f}, {0.2f, 0.1f, 0.0f, 1.1f}, {0.3f, 0.0f, 0.2f, 1.2f},
+            {0.4f, -0.1f, 0.0f, 1.3f}};
+        p.timeline()->setClipSplit(id, grid, 2000, &poses);
+        p.timeline()->upsertClipReframeKey(id, 5000, {1.0f, 0.0f, 0.0f, 0.9f}, 2);
+        p.timeline()->setClipReframeEase(id, 2000, keytrack::Ease::Out, 2);
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.split == grid && c.paneCount() == 4);
+        CHECK(c.reframe.count() == 1 && c.reframe.keys()[0].pose.yaw == 0.1f);
+        CHECK(c.panes[1].count() == 2 && c.panes[2].count() == 1);
+        CHECK(p.save(file, &err));
+        CHECK(document(file).value("version").toInt() == Project::kSplitFormatVersion);
+        const QJsonObject js = firstClip(file).value("split").toObject();
+        CHECK(js.value("layout").toString() == "grid");
+        CHECK(js.value("gapColor").toString() == "#204060");
+        CHECK(js.value("panes").toArray().size() == 3);
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.split.layout == pane::Layout::Grid && c.split.gap == 0.01f &&
+              c.split.gapRgb == 0x204060);
+        CHECK(c.reframe.count() == 1 && c.reframe.keys()[0].pose.yaw == 0.1f);
+        CHECK(c.panes[0].count() == 1 && c.panes[0].keys()[0].pose.fovY == 1.1f);
+        CHECK(c.panes[1].count() == 2 && c.panes[1].keys()[0].ease == keytrack::Ease::Out);
+        CHECK(c.panes[1].keys()[1].pose.yaw == 1.0f);
+        CHECK(c.panes[2].keys()[0].pose.pitch == -0.1f);
+
+        // Back to one picture: the pane cameras stay (in the file too), the
+        // file goes back to the version an older build reads.
+        p.timeline()->setClipSplit(c.id, pane::Split{});
+        CHECK(p.timeline()->clipAt(0).paneCount() == 1);
+        CHECK(p.timeline()->clipAt(0).panes[1].count() == 2);
+        CHECK(p.save(file, &err));
+        CHECK(document(file).value("version").toInt() == Project::kPlainFormatVersion);
+        CHECK(firstClip(file).value("split").toObject().value("layout").toString() == "single");
+
+        // Undo brings the grid back.
+        p.undo();
+        CHECK(p.timeline()->clipAt(0).split.layout == pane::Layout::Grid);
+    }
+    {
+        // An unknown layout (a newer build's) reads as no split.
+        Project p;
+        CHECK(p.load(file, &err));
+        CHECK(p.timeline()->clipAt(0).panes[1].count() == 2);
+        pane::Split side;
+        side.layout = pane::Layout::SideBySide;
+        p.timeline()->setClipSplit(p.timeline()->clipAt(0).id, side);
+        CHECK(p.save(file, &err));
+        QFile f(file);
+        CHECK(f.open(QIODevice::ReadOnly));
+        QByteArray text = f.readAll();
+        f.close();
+        text.replace("\"sideBySide\"", "\"hexagon\"");
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(text);
+        f.close();
+        Project q;
+        CHECK(q.load(file, &err));
+        CHECK(q.timeline()->clipAt(0).split.layout == pane::Layout::Single);
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -1798,5 +1890,6 @@ int main(int argc, char **argv)
     testTitleJson();
     testTransitionJson();
     testLutJson();
+    testSplitJson();
     return modeltest::finish("project_test");
 }

@@ -33,6 +33,8 @@ void ClipItem::resetEditsToFullSource()
     trimInMs = 0;
     trimOutMs = sourceDurationMs;
     reframe.clear();
+    for (ReframeTrack &t : panes)
+        t.clear();
 }
 
 bool ClipItem::setRange(qint64 inMs, qint64 outMs)
@@ -69,25 +71,35 @@ bool ClipItem::clearTrim()
     return setRange(0, sourceDurationMs);
 }
 
-bool ClipItem::upsertReframeKey(qint64 sourceMs, const ReframePose &pose)
+bool ClipItem::upsertReframeKey(qint64 sourceMs, const ReframePose &pose, int pane)
 {
     if (flat)
         return false; // a flat clip isn't reframed
     // upsert always lands a key (insert, or overwrite an existing pose).
-    reframe.upsert(sourceMs, pose, frameDurationMs());
+    paneTrack(pane).upsert(sourceMs, pose, frameDurationMs());
     return true;
 }
 
-bool ClipItem::removeReframeKeyNear(qint64 sourceMs)
+bool ClipItem::removeReframeKeyNear(qint64 sourceMs, int pane)
 {
-    return reframe.removeNear(sourceMs, kReframeDeleteSnapMs);
+    return paneTrack(pane).removeNear(sourceMs, kReframeDeleteSnapMs);
 }
 
-bool ClipItem::clearReframe()
+bool ClipItem::clearReframe(int pane)
 {
-    if (reframe.isEmpty())
+    ReframeTrack &t = paneTrack(pane);
+    if (t.isEmpty())
         return false;
-    reframe.clear();
+    t.clear();
+    return true;
+}
+
+bool ClipItem::setSplit(const pane::Split &s)
+{
+    const pane::Split c = s.clamped();
+    if (flat || c == split)
+        return false;
+    split = c;
     return true;
 }
 

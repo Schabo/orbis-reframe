@@ -180,6 +180,24 @@ json reframeToJson(const ReframeTrack &track)
     return json{{"keys", std::move(keys)}};
 }
 
+std::vector<ReframeKey> reframeKeysFromJson(const json &j)
+{
+    std::vector<ReframeKey> keys;
+    if (!j.is_object() || !j.contains("keys") || !j.at("keys").is_array())
+        return keys;
+    for (const json &jk : j.at("keys")) {
+        ReframeKey k;
+        k.timeMs = jk.value("tMs", qint64(0));
+        k.pose.yaw = jk.value("yaw", 0.0f);
+        k.pose.pitch = jk.value("pitch", 0.0f);
+        k.pose.roll = jk.value("roll", 0.0f);
+        k.pose.fovY = jk.value("fovY", 1.309f);
+        k.ease = keytrack::easeFromName(jk.value("ease", std::string()));
+        keys.push_back(k);
+    }
+    return keys;
+}
+
 json colorGradeToJson(const ColorGrade &g, const QDir *projectDir)
 {
     json j{
@@ -359,6 +377,8 @@ struct ParsedClip {
     int sourceHeight = 0;
     bool mediaMissing = false;
     std::vector<ReframeKey> reframeKeys;
+    pane::Split split;
+    std::array<std::vector<ReframeKey>, pane::kMaxPanes - 1> paneKeys;
     double audioGainDb = 0.0;
     bool audioMuted = false;
     int audioTrack = 0;
@@ -918,6 +938,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyFlat = false;
     bool anyLut = false;
     bool anyDirectionLock = false;
+    bool anySplit = false;
     // The first 360 clip's stitch settings, and whether every 360 clip has
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
@@ -959,6 +980,20 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"stabilization", stabilizationToJson(c.stabilization)},
             {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)}, {"depthSeam", c.depthSeam}}},
         });
+        // The split, with every pane camera (kept ones of a smaller layout
+        // too); absent when there's neither.
+        const bool paneKeys = std::any_of(c.panes.begin(), c.panes.end(),
+                                          [](const ReframeTrack &t) { return !t.isEmpty(); });
+        if (c.split.isSplit() || paneKeys) {
+            json jp = json::array();
+            for (const ReframeTrack &t : c.panes)
+                jp.push_back(reframeToJson(t));
+            clips.back()["split"] = json{{"layout", pane::layoutName(c.split.layout)},
+                                         {"gap", c.split.gap},
+                                         {"gapColor", colorToJson(c.split.gapRgb)},
+                                         {"panes", std::move(jp)}};
+            anySplit = anySplit || c.split.isSplit();
+        }
         anyLut = anyLut || !c.color.lut.isEmpty();
         anyDirectionLock = anyDirectionLock || c.stabilization.lockDirection ||
                            c.stabilization.mode == insv::StabMode::DirectionLock;
@@ -1068,7 +1103,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyDirectionLock        ? kDirectionLockFormatVersion
+        {"version", anySplit                ? kSplitFormatVersion
+                    : anyDirectionLock        ? kDirectionLockFormatVersion
                     : anyLut                  ? kLutFormatVersion
                     : !transitions.empty()    ? kTransitionFormatVersion
                     : anyTitle                ? kTitleFormatVersion
@@ -1190,17 +1226,16 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 }
             }
             pc.mediaMissing = !QFileInfo::exists(pc.sourcePath);
-            if (jc.contains("reframe") && jc.at("reframe").contains("keys")) {
-                for (const json &jk : jc.at("reframe").at("keys")) {
-                    ReframeKey k;
-                    k.timeMs = jk.value("tMs", qint64(0));
-                    k.pose.yaw = jk.value("yaw", 0.0f);
-                    k.pose.pitch = jk.value("pitch", 0.0f);
-                    k.pose.roll = jk.value("roll", 0.0f);
-                    k.pose.fovY = jk.value("fovY", 1.309f);
-                    k.ease = keytrack::easeFromName(jk.value("ease", std::string()));
-                    pc.reframeKeys.push_back(k);
-                }
+            if (jc.contains("reframe"))
+                pc.reframeKeys = reframeKeysFromJson(jc.at("reframe"));
+            if (jc.contains("split") && jc.at("split").is_object()) {
+                const json &js = jc.at("split");
+                pc.split.layout = pane::layoutFromName(js.value("layout", std::string()).c_str());
+                pc.split.gap = js.value("gap", pc.split.gap);
+                pc.split.gapRgb = colorFromJson(js, "gapColor", pc.split.gapRgb);
+                if (js.contains("panes") && js.at("panes").is_array())
+                    for (size_t i = 0; i < js.at("panes").size() && i < pc.paneKeys.size(); ++i)
+                        pc.paneKeys[i] = reframeKeysFromJson(js.at("panes")[i]);
             }
             parsed.push_back(std::move(pc));
         }
@@ -1323,11 +1358,15 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
         if (pc.seamAdjustGuard >= 0)
             m_timeline->setSourceSeamAdjust(pc.sourcePath, pc.seamAdjustDeg, pc.seamAdjustGuard);
-        for (const ReframeKey &k : pc.reframeKeys)
-            m_timeline->upsertClipReframeKey(id, k.timeMs, k.pose);
-        for (const ReframeKey &k : pc.reframeKeys) // once the next key is in
-            if (k.ease != keytrack::Ease::Linear)
-                m_timeline->setClipReframeEase(id, k.timeMs, k.ease);
+        for (int pane = 0; pane < pane::kMaxPanes; ++pane) {
+            const std::vector<ReframeKey> &keys = pane ? pc.paneKeys[pane - 1] : pc.reframeKeys;
+            for (const ReframeKey &k : keys)
+                m_timeline->upsertClipReframeKey(id, k.timeMs, k.pose, pane);
+            for (const ReframeKey &k : keys) // once the next key is in
+                if (k.ease != keytrack::Ease::Linear)
+                    m_timeline->setClipReframeEase(id, k.timeMs, k.ease, pane);
+        }
+        m_timeline->setClipSplit(id, pc.split);
         m_timeline->setClipMediaMissing(id, pc.mediaMissing);
         clipIds.push_back(id);
     }

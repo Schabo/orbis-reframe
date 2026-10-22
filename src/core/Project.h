@@ -122,8 +122,13 @@ public:
     // transitions, the same way. Version 14 added a clip's LUT
     // (color.lut), likewise. Version 15 added Direction lock (stabilization
     // mode "directionLock", lockDirection, directionSec), likewise: an older
-    // build would show such a clip unstabilized.
-    static constexpr int kFormatVersion = 15;
+    // build would show such a clip unstabilized. Version 16 added split
+    // screen ("split" on a clip: {layout, gap, gapColor "#rrggbb", panes:
+    // [3 x {keys}], the cameras of panes 2-4}), written only when a clip is
+    // split (a kept pane camera on an unsplit clip doesn't change what an
+    // older build shows).
+    static constexpr int kFormatVersion = 16;
+    static constexpr int kSplitFormatVersion = 16;
     static constexpr int kDirectionLockFormatVersion = 15;
     static constexpr int kLutFormatVersion = 14;
     static constexpr int kTransitionFormatVersion = 13;
