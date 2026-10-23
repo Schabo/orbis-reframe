@@ -62,7 +62,17 @@ clips):
   real X6 clips (built on stand-ins);
 - real-time decode at 8K 50 checked.
 
-### 3. GPS and stats overlays -- *maintainer*
+### 3. Titles -- *maintainer*
+
+Titles on overlay tracks are built (plain text, keyframed position and
+size). Next, first and for the next release: a **font picker** that
+previews the fonts. Then: an outline, a drop
+shadow and a background box (legible over a bright sky), left / right
+alignment, line and letter spacing, a few ready-made styles as tiles in the
+Titles tab (lower third, heading, date / place), keyframed colour and
+simple text animations (type-on, slide).
+
+### 4. GPS and stats overlays -- *maintainer*
 
 Speed, altitude, distance, heading, the route, and lean / G-force gauges,
 drawn on the picture from the clip's own telemetry and following the
@@ -75,7 +85,7 @@ style and position, and the viewport and the export draw the same. The
 design (clips without GPS, gaps and the 1 Hz rate, units, gauge styles) is
 still to be planned.
 
-### 4. Optional
+### 5. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -180,8 +190,6 @@ each is in its document in [`formats/`](formats/README.md).
 - **Transitions**: more types (dip to a colour, wipes, a move through the
   sphere), dragging the edges to set the length, an equal-power sound
   crossfade, transitions on overlay tracks.
-- **Titles**: outline, shadow, background box, alignment, ready-made styles,
-  simple text animations.
 - **Track subject**: automatic zoom; finding a lost subject again.
 - **Smaller project files**: privacy regions dominate the file; store fewer
   frames per region (those interpolation reproduces) and fewer numbers per
