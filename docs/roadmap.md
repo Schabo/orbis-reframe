@@ -40,7 +40,7 @@ to all the view implementations and the subject tracker's crop together
 
 ### 2. Insta360 X6
 
-Built on top of the common camera model below, from a contributor's work:
+Built on top of the common camera model (under *Planned, not scheduled*), from a contributor's work:
 the X6's own facts are its row in the Insta360 reader's table
 (`insv::InsvModel`) and fields its reader reads from the file. The X6 is
 close to the X5: the same `.insv`
@@ -62,44 +62,7 @@ clips):
   real X6 clips (built on stand-ins);
 - real-time decode at 8K 50 checked.
 
-### 3. Common camera model -- *maintainer*
-
-Before more cameras are added, the camera-specific code is pulled behind one
-description of a clip, so each new camera is a reader, not a set of branches
-through the pipeline.
-
-- **Built, step 1** (a pure refactor on the X5; stitched frames, the
-  stabilizer's output and an NVENC export byte-identical before and after on
-  the X5 sample clips): `camera::ClipMetadata` behind one cached
-  `camera::ReadClipMetadata(path)` in `src/camera/` -- model / firmware /
-  serial, projection kind, the lenses with their calibration and which file
-  and stream each comes from, colour and log profile, lens-guard profiles,
-  capture-mode name, the proxy file, telemetry facts -- and on demand the IMU
-  (`ReadClipImu`, an `insv::ImuTrack`: samples, axis map, video <-> IMU
-  timing, readout) and the preview picture (`ReadClipThumbnail`). One reader
-  per camera family, asked in turn (`Insta360Reader`); Insta360's per-model
-  differences are a table (`insv::InsvModel`: IMU axis map, lens-guard
-  profile names, capture-mode names). The stitch, sync, seam, stabilizer,
-  export, plate scan, thumbnails, the Media information panel and the media
-  pool's mode names read clips only through it; `GyroStabilizer` no longer
-  knows the `.insv` timing.
-- **Built, step 2**: the ONE X2 as the first real second camera -- two
-  files per take, one per lens (experimental, see *Other cameras*). The
-  picture sources open each lens from its own `LensSource`, and the Insta360 reader pairs the take's files, reads the
-  40-token calibration and the ONE X2's ms telemetry; the take is one clip
-  in the media pool and the project (either file names it, both are saved
-  and checked for missing media); its media card shows a preview stitched
-  from the lens pictures in the file; the IMU axis map and the sync are
-  measured on its clips.
-- Next, step 3: DJI and GoPro readers only once real clips are available:
-  an in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
-  orientation track for cameras that record one, readout time per mode.
-
-New camera support keeps its differences in data -- the reader's per-model
-table, fields read from the file -- not in model checks spread through the
-code.
-
-### 4. Optional
+### 3. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -137,6 +100,42 @@ each is in its document in [`formats/`](formats/README.md).
 - Not planned: the ONE X / ONE R / ONE RS.
 
 ## Planned, not scheduled
+
+- **Common camera model** -- waiting for clips: the camera-specific code
+  sits behind one description of a clip, so each new camera is a reader, not
+  a set of branches through the pipeline. Its next step needs real clips
+  from the cameras it is for.
+  - Built, step 1 (a pure refactor on the X5; stitched frames, the
+    stabilizer's output and an NVENC export byte-identical before and after
+    on the X5 sample clips): `camera::ClipMetadata` behind one cached
+    `camera::ReadClipMetadata(path)` in `src/camera/` -- model / firmware /
+    serial, projection kind, the lenses with their calibration and which
+    file and stream each comes from, colour and log profile, lens-guard
+    profiles, capture-mode name, the proxy file, telemetry facts -- and on
+    demand the IMU (`ReadClipImu`, an `insv::ImuTrack`: samples, axis map,
+    video <-> IMU timing, readout) and the preview picture
+    (`ReadClipThumbnail`). One reader per camera family, asked in turn
+    (`Insta360Reader`); Insta360's per-model differences are a table
+    (`insv::InsvModel`: IMU axis map, lens-guard profile names,
+    capture-mode names). The stitch, sync, seam, stabilizer, export, plate
+    scan, thumbnails, the Media information panel and the media pool's mode
+    names read clips only through it; `GyroStabilizer` no longer knows the
+    `.insv` timing.
+  - Built, step 2: the ONE X2 as the first real second camera -- two files
+    per take, one per lens (experimental, see *Other cameras*). The picture
+    sources open each lens from its own `LensSource`, and the Insta360
+    reader pairs the take's files, reads the 40-token calibration and the
+    ONE X2's ms telemetry; the take is one clip in the media pool and the
+    project (either file names it, both are saved and checked for missing
+    media); its media card shows a preview stitched from the lens pictures
+    in the file; the IMU axis map and the sync are measured on its clips.
+  - Step 3, once real clips are available: DJI and GoPro readers -- an
+    in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
+    orientation track for cameras that record one, readout time per mode.
+
+  New camera support keeps its differences in data -- the reader's
+  per-model table, fields read from the file -- not in model checks spread
+  through the code.
 
 - **More view shapes**, after *Wide views*: a globe (the sphere as a ball
   seen from outside: the distortion `d` past 1, up to orthographic), a
