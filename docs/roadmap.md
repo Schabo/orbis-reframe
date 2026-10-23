@@ -105,8 +105,9 @@ code.
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
 - **Seam quality**: a flow-guided blend inside the seam band, possibly
-  export-only, and a finer lens calibration for the small offset left on
-  distant content.
+  export-only, where the depth-aware seam's cut still leaves something
+  doubled (very close things the lenses see against different
+  backgrounds).
 - **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing
@@ -184,9 +185,6 @@ each is in its document in [`formats/`](formats/README.md).
   clip. Every conversion between timeline and source time follows the
   curve: playback, export, keyframes, overlays, privacy regions,
   stabilization.
-- **Lens colour matching**: evening out the two lenses' exposure and white
-  balance across the seam. A correction between the lenses in the stitch,
-  not a grade; it changes stitched output, so it comes with a measurement.
 - **Direction lock, less drift**: Direction lock holds its heading from the
   gyroscope alone, which drifts 8-16° a minute on an X5. The gyro's bias
   can be measured where the camera stands still (it is stable per camera),
