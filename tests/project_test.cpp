@@ -79,7 +79,8 @@ void testProjectJson()
         }
         p.timeline()->setClipSpeed(a, 0.5);
         p.timeline()->setSourceSyncAdjust(insideSrc, -3.1); // sync fine-tune
-        p.timeline()->setSourceSeamCorrection(insideSrc, {{-0.55, 0.05, -0.05}}, 2); // seam fine-tune
+        p.timeline()->setSourceSeamCorrection(insideSrc, {{-0.55, 0.05, -0.05}, {0.0012, -0.0004}, 0.9992},
+                                              2); // seam fine-tune
         CHECK(p.modified());
 
         stitch::PreviewStitchConfig sc;
@@ -209,6 +210,9 @@ void testProjectJson()
         CHECK(tl->clipById(a2)->syncAdjustMs == a.syncAdjustMs);
         CHECK(tl->clipById(a2)->seamAdjustGuard == 2);
         CHECK(tl->clipById(a2)->seamCorrection.lens1RotDeg[0] == -0.55);
+        CHECK(tl->clipById(a2)->seamCorrection.lens1Centre[0] == 0.0012 &&
+              tl->clipById(a2)->seamCorrection.lens1Centre[1] == -0.0004);
+        CHECK(tl->clipById(a2)->seamCorrection.radialScale == 0.9992);
 
         const stitch::PreviewStitchConfig &sc = p.previewStitch();
         CHECK(sc.quality == stitch::PreviewStitchConfig::Quality::OpticalFlow);
@@ -1246,6 +1250,48 @@ void testMeasurementsWritten()
     CHECK(Autosave::hasRecovery(file)); // rewritten after the file
 }
 
+// A seam fine-tune measured by the older estimator (lens-1 rotation only, no
+// "method") isn't read back: the clip is measured again.
+void testOldSeamMeasurement()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    const QString a = tmp.path() + "/a.insv";
+    {
+        Project p;
+        p.timeline()->appendClip(a, 10000, 30.0);
+        p.timeline()->setSourceSeamCorrection(a, {{-0.5, 0.25, 0.1}, {0.001, 0.0}, 1.001}, 2);
+        CHECK(p.save(file));
+    }
+    {
+        Project q;
+        CHECK(q.load(file) && q.timeline()->count() == 1);
+        insv::SeamCorrection seam;
+        CHECK(q.timeline()->sourceSeamCorrection(a, 2, seam) && seam.radialScale == 1.001);
+    }
+    // Rewritten as the older estimator saved it.
+    QFile f(file);
+    CHECK(f.open(QIODevice::ReadOnly));
+    QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+    QJsonObject timeline = doc["timeline"].toObject();
+    QJsonArray clips = timeline["clips"].toArray();
+    QJsonObject clip = clips[0].toObject();
+    clip["seamAdjust"] = QJsonObject{{"deg", QJsonArray{-0.5, 0.25, 0.1}}, {"lensGuard", 2}};
+    clips[0] = clip;
+    timeline["clips"] = clips;
+    doc["timeline"] = timeline;
+    CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(QJsonDocument(doc).toJson());
+    f.close();
+    Project q;
+    CHECK(q.load(file) && q.timeline()->count() == 1);
+    insv::SeamCorrection seam;
+    CHECK(!q.timeline()->sourceSeamCorrection(a, 2, seam) && seam == insv::SeamCorrection{});
+    CHECK(q.timeline()->clipAt(0).seamAdjustGuard == -1);
+}
+
 void testProjectLibrary()
 {
     QTemporaryDir tmp;
@@ -1960,6 +2006,7 @@ int main(int argc, char **argv)
     testProjectFolder();
     testAutosave();
     testMeasurementsWritten();
+    testOldSeamMeasurement();
     testProjectLibrary();
     testProjectSummary();
     testFlatClipJson();

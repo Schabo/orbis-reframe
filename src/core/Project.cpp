@@ -87,6 +87,37 @@ stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
     return c;
 }
 
+// A source's measured seam fine-tune. "method" says which estimator measured
+// it; one from an older estimator (no "method": lens-1 rotation only) isn't
+// read back, so the clip is measured again.
+json seamAdjustToJson(const insv::SeamCorrection &c, int lensGuard)
+{
+    return json{
+        {"deg", {c.lens1RotDeg[0], c.lens1RotDeg[1], c.lens1RotDeg[2]}},
+        {"centre", {c.lens1Centre[0], c.lens1Centre[1]}},
+        {"scale", c.radialScale},
+        {"lensGuard", lensGuard},
+        {"method", insv::kSeamCorrectionMethod},
+    };
+}
+
+bool seamAdjustFromJson(const json &j, insv::SeamCorrection &c, int &lensGuard)
+{
+    if (!j.is_object() || j.value("method", 1) != insv::kSeamCorrectionMethod ||
+        !j.contains("deg") || !j.at("deg").is_array() || j.at("deg").size() != 3 ||
+        !j.contains("centre") || !j.at("centre").is_array() || j.at("centre").size() != 2 ||
+        !j.contains("scale") || !j.at("scale").is_number() || !j.contains("lensGuard") ||
+        !j.at("lensGuard").is_number_integer())
+        return false;
+    for (int k = 0; k < 3; ++k)
+        c.lens1RotDeg[k] = j.at("deg")[k].get<double>();
+    for (int k = 0; k < 2; ++k)
+        c.lens1Centre[k] = j.at("centre")[k].get<double>();
+    c.radialScale = j.at("scale").get<double>();
+    lensGuard = j.at("lensGuard").get<int>();
+    return true;
+}
+
 json stabilizationToJson(const insv::StabConfig &c)
 {
     json j{
@@ -846,11 +877,7 @@ void Project::writeMeasured(const ClipItem &clip)
         if (!std::isnan(clip.syncAdjustMs))
             updated["syncAdjustMs"] = clip.syncAdjustMs;
         if (clip.seamAdjustGuard >= 0)
-            updated["seamAdjust"] = json{
-                {"deg",
-                 {clip.seamCorrection.lens1RotDeg[0], clip.seamCorrection.lens1RotDeg[1],
-                  clip.seamCorrection.lens1RotDeg[2]}},
-                {"lensGuard", clip.seamAdjustGuard}};
+            updated["seamAdjust"] = seamAdjustToJson(clip.seamCorrection, clip.seamAdjustGuard);
         if (updated != jc) {
             jc = std::move(updated);
             changed = true;
@@ -1032,11 +1059,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         if (!std::isnan(c.syncAdjustMs))
             clips.back()["syncAdjustMs"] = c.syncAdjustMs; // absent until measured
         if (c.seamAdjustGuard >= 0) // absent until measured
-            clips.back()["seamAdjust"] = json{
-                {"deg",
-                 {c.seamCorrection.lens1RotDeg[0], c.seamCorrection.lens1RotDeg[1],
-                  c.seamCorrection.lens1RotDeg[2]}},
-                {"lensGuard", c.seamAdjustGuard}};
+            clips.back()["seamAdjust"] = seamAdjustToJson(c.seamCorrection, c.seamAdjustGuard);
     }
 
     // Each at its cut: the index of the clip before it.
@@ -1235,15 +1258,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             }
             if (jc.contains("syncAdjustMs") && jc.at("syncAdjustMs").is_number())
                 pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
-            if (jc.contains("seamAdjust") && jc.at("seamAdjust").is_object()) {
-                const json &js = jc.at("seamAdjust");
-                if (js.contains("deg") && js.at("deg").is_array() && js.at("deg").size() == 3 &&
-                    js.contains("lensGuard") && js.at("lensGuard").is_number_integer()) {
-                    for (int k = 0; k < 3; ++k)
-                        pc.seamCorrection.lens1RotDeg[k] = js.at("deg")[k].get<double>();
-                    pc.seamAdjustGuard = js.at("lensGuard").get<int>();
-                }
-            }
+            if (jc.contains("seamAdjust"))
+                seamAdjustFromJson(jc.at("seamAdjust"), pc.seamCorrection, pc.seamAdjustGuard);
             pc.mediaMissing = !QFileInfo::exists(pc.sourcePath);
             const double outAspect =
                 double(parsedOutput.width) / double(std::max(1, parsedOutput.height));

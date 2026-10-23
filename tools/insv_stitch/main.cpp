@@ -9,6 +9,7 @@
 // insv::ParseExtendedCalibrationString -> insv::InsvDemux (FFmpeg) x2 lenses ->
 // insv::FisheyeStitcher -> PPM.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -50,7 +51,12 @@ const char kUsage[] =
     "usage: insv_stitch <clip.insv> [--time-ms N] [--eq-width N] [--out eq.ppm]\n"
     "       [--lens-profile NAME]  (e.g. ProtectorA; default bare)\n"
     "       [--lens1 FILE]  (lens 1's own file, e.g. a ONE X2's VID_..._10_...)\n"
-    "       [--lens1-adjust Y,P,R] [--measure-seam IN_MS OUT_MS]\n"
+    "       [--seam Y,P,R[,CU,CV,S]]  (seam correction: lens 1 yaw / pitch / roll,\n"
+    "          deg; its centre offset, % of the lens width; radial scale, %)\n"
+    "       [--measure-seam IN_MS OUT_MS]  (fit the seam correction on frames\n"
+    "          spread over the range)\n"
+    "       [--seam-offset IN_MS OUT_MS]  (the lenses' offset at --seam, deg)\n"
+    "       [--seam-frames N]  (frames for both; default 8)\n"
     "       [--depth-seam] [--baseline M] [--depth-dump]\n"
     "         (depth-aware seam: measure the per-azimuth stitch distance\n"
     "          on this frame and stitch with it; --baseline < 0 flips which\n"
@@ -75,8 +81,9 @@ int main(int argc, char** argv)
     std::string outPath = "insv_stitch.ppm";
     std::string lensProfile;
     std::string lens1File; // empty: both lenses are streams of `clip`
-    double adj[3] = {0, 0, 0};
-    int64_t seamIn = -1, seamOut = -1;
+    double seamArg[6] = {0, 0, 0, 0, 0, 0}; // --seam: deg, deg, deg, %, %, %
+    int64_t seamIn = -1, seamOut = -1, offsetIn = -1, offsetOut = -1;
+    int seamFrames = 8;
     bool depthSeam = false, depthDump = false;
     double baselineM = 0.0;
     for (int i = 2; i < argc; ++i) {
@@ -99,16 +106,23 @@ int main(int argc, char** argv)
         else if (k == "--measure-seam") { // IN_MS OUT_MS: fit the seam correction, then exit
             seamIn = std::atoll(next().c_str());
             seamOut = std::atoll(next().c_str());
-        } else if (k == "--depth-seam")
+        } else if (k == "--seam-offset") { // IN_MS OUT_MS: offset at --seam, then exit
+            offsetIn = std::atoll(next().c_str());
+            offsetOut = std::atoll(next().c_str());
+        } else if (k == "--seam-frames")
+            seamFrames = std::max(1, std::atoi(next().c_str()));
+        else if (k == "--depth-seam")
             depthSeam = true;
         else if (k == "--depth-dump")
             depthDump = depthSeam = true;
         else if (k == "--baseline")
             baselineM = std::atof(next().c_str());
-        else if (k == "--lens1-adjust") { // yaw,pitch,roll degrees
+        else if (k == "--seam") {
             const std::string v = next();
-            if (std::sscanf(v.c_str(), "%lf,%lf,%lf", &adj[0], &adj[1], &adj[2]) != 3)
-                die("--lens1-adjust wants yaw,pitch,roll");
+            const int n = std::sscanf(v.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf", &seamArg[0], &seamArg[1],
+                                      &seamArg[2], &seamArg[3], &seamArg[4], &seamArg[5]);
+            if (n != 3 && n != 6)
+                die("--seam wants yaw,pitch,roll[,cu,cv,scale]");
         }
         else
             die("unknown option: " + k);
@@ -153,21 +167,40 @@ int main(int argc, char** argv)
     if (demux.lensCount() < 2)
         die("expected >= 2 video streams, found " + std::to_string(demux.lensCount()));
 
-    if (seamIn >= 0) {
+    // --seam in the stitch's units: fractions instead of percentages.
+    const auto seamCorrection = [&] {
+        insv::SeamCorrection c;
+        for (int k = 0; k < 3; ++k)
+            c.lens1RotDeg[k] = seamArg[k];
+        c.lens1Centre[0] = seamArg[3] * 0.01;
+        c.lens1Centre[1] = seamArg[4] * 0.01;
+        c.radialScale = 1.0 + seamArg[5] * 0.01;
+        return c;
+    };
+
+    if (seamIn >= 0 || offsetIn >= 0) {
+        const bool fit = seamIn >= 0;
+        const int64_t in = fit ? seamIn : offsetIn, out = fit ? seamOut : offsetOut;
         insv::StitchParams params;
         insv::ApplyLensProfile(params, bareProfile, accProfile);
         std::vector<insv::SeamFrame> frames;
-        for (int k = 0; k < 5; ++k) {
-            const int64_t t = insv::SnapToKeyframeMs(seamIn + (seamOut - seamIn) * (2 * k + 1) / 10,
-                                                     demux.lens(0).fps);
+        for (int k = 0; k < seamFrames; ++k) {
+            const int64_t t = insv::SnapToKeyframeMs(
+                in + (out - in) * (2 * k + 1) / (2 * seamFrames), demux.lens(0).fps);
             insv::Image a, b;
             if (demux.seekTo(t, err) && demux.readNextPair(a, b, nullptr, err))
                 frames.push_back(insv::MakeSeamFrame(a, b));
         }
-        const auto r = insv::EstimateSeamAlignment(calib, params, demux.lens(0).width,
-                                                   demux.lens(0).height, frames);
-        std::printf("seam: %s (%s)\n", r.ok ? "ok" : "FAILED", r.message.c_str());
-        return r.ok ? 0 : 1;
+        const int w = demux.lens(0).width, h = demux.lens(0).height;
+        if (fit) {
+            const auto r = insv::EstimateSeamAlignment(calib, params, w, h, frames);
+            std::printf("seam: %s (%s)\n", r.ok ? "ok" : "FAILED", r.message.c_str());
+            return r.ok ? 0 : 1;
+        }
+        params.seam = seamCorrection();
+        const double o = insv::MeasureSeamOffset(calib, params, w, h, frames);
+        std::printf("seam offset: %.3f deg over %zu frames\n", o, frames.size());
+        return o >= 0 ? 0 : 1;
     }
 
     insv::Image lens0, lens1;
@@ -185,8 +218,7 @@ int main(int argc, char** argv)
     // failure only when a guard was asked for.
     if ((!insv::ApplyLensProfile(params, bareProfile, accProfile) && accProfile) || profileMissing)
         die("no \"" + lensProfile + "\" lens profile in the trailer");
-    for (int k = 0; k < 3; ++k)
-        params.seam.lens1RotDeg[k] = adj[k];
+    params.seam = seamCorrection();
     std::printf("lens profile: %s (fov %.0f deg)\n", lensProfile.empty() ? "bare" : lensProfile.c_str(),
                 params.fovDeg);
     if (!stitcher.configure(calib, lens0.w, lens0.h, params))

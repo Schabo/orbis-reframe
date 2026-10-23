@@ -532,9 +532,20 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
 - The extrinsic `yaw pitch` are rotations about the calibration's x / y
   axes. In a frame with x and y negated (ours), they flip sign; `roll` doesn't.
   Getting this wrong misaligns the seam by up to ~0.8°.
-  Even with it right, the sample unit shows a further lens-1 yaw of
-  −0.3 to −0.7° that the calibration doesn't carry. The app measures it per
-  clip from the video.
+  Even with it right, the two lenses still disagree on far content by
+  ~0.2° at the seam, in a way a lens-1 rotation alone only partly takes up
+  (measured 2026-10-23 on `192900`, `193105`, `201257`, one camera, standard
+  guards; per 5° block, the shift of lens 1's seam strip that matches lens
+  0's): an offset *along* the seam that varies as cos / sin of the azimuth
+  (+0.06 to +0.18°, which a principal-point shift of lens 1 makes and a
+  rotation can't; parallax only moves things across the seam), and an
+  offset *across* it of +0.25 to +0.34° all round (the lenses disagree on
+  the image radius near 90°: a radial scale), plus a small tilt. Fitted
+  per clip (`insv::EstimateSeamAlignment`): lens 1 centre −0.08 to −0.15 %
+  of the width across and −0.03 to −0.04 % down, both lenses' radius
+  −0.06 to −0.08 %, pitch +0.3 to +0.4°; the offset on other frames of the
+  clip drops from 0.16–0.18° (rotation only) to 0.04–0.10°. The app
+  measures it per clip from the video.
 - The MEI calibration is the **bare-lens** model. With a lens guard or dive
   case fitted, scale its image radius by the accessory profile (§5.4).
 - Gyroflow's X5 path multiplies `cx` by 2 ("`cx_fix`", because of the

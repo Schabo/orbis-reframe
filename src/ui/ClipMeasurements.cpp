@@ -178,10 +178,14 @@ QString ClipMeasurements::seamStatus(const ClipItem *c) const
 {
     insv::SeamCorrection seam;
     if (c && m_project->timeline()->sourceSeamCorrection(c->sourcePath, seam))
-        return tr("Seam: aligned for this clip (back lens yaw %1°, pitch %2°, roll %3°).")
+        return tr("Seam: aligned for this clip (back lens yaw %1°, pitch %2°, roll %3°, "
+                  "centre %4 %, %5 %; lens scale %6 %).")
             .arg(seam.lens1RotDeg[0], 0, 'f', 2)
             .arg(seam.lens1RotDeg[1], 0, 'f', 2)
-            .arg(seam.lens1RotDeg[2], 0, 'f', 2);
+            .arg(seam.lens1RotDeg[2], 0, 'f', 2)
+            .arg(seam.lens1Centre[0] * 100.0, 0, 'f', 2)
+            .arg(seam.lens1Centre[1] * 100.0, 0, 'f', 2)
+            .arg((seam.radialScale - 1.0) * 100.0, 0, 'f', 2);
     if (c && m_seamMeasuringPath == c->sourcePath)
         return tr("Seam: measuring this clip…");
     if (const auto it = c ? m_seamFailed.constFind(c->sourcePath) : m_seamFailed.cend();

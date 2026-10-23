@@ -10,7 +10,7 @@
 namespace stitch {
 
 namespace {
-constexpr int kSeamFrames = 5;
+constexpr int kSeamFrames = 8;
 } // namespace
 
 ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, int64_t trimOutMs,

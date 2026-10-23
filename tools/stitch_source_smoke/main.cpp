@@ -27,7 +27,7 @@ void WritePpm(const stitch::Frame& frame, const std::string& path) {
 
 const char kUsage[] =
     "usage: stitch_source_smoke [--width N] [--lens-guard none|standard|premium]\n"
-    "       [--lens1-adjust Y,P,R] [--no-depth-seam] [--dump-depth]\n"
+    "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam] [--dump-depth]\n"
     "       [--measure-seam IN_MS OUT_MS]\n"
     "       <input.insv> <timestamp_ms>...\n"
     "   or: stitch_source_smoke [options] --range START END STEP <input.insv>\n";
@@ -62,10 +62,18 @@ int main(int argc, char** argv) {
             config.lensGuard = g == "none"       ? stitch::PreviewStitchConfig::LensGuard::None
                                : g == "standard" ? stitch::PreviewStitchConfig::LensGuard::Standard
                                                  : stitch::PreviewStitchConfig::LensGuard::Premium;
-        } else if (a == "--lens1-adjust" && arg + 1 < argc) {
-            // --lens1-adjust Y,P,R : a known seam fine-tune (degrees)
-            seam_ok = std::sscanf(argv[++arg], "%lf,%lf,%lf", &seam.lens1RotDeg[0],
-                                  &seam.lens1RotDeg[1], &seam.lens1RotDeg[2]) == 3;
+        } else if (a == "--seam" && arg + 1 < argc) {
+            // --seam Y,P,R[,CU,CV,S] : a known seam fine-tune -- lens 1 yaw /
+            // pitch / roll (deg), its centre and the radial scale (% of the
+            // lens width, %), as the app's status line shows it
+            double cu = 0, cv = 0, scalePct = 0;
+            const int n = std::sscanf(argv[++arg], "%lf,%lf,%lf,%lf,%lf,%lf", &seam.lens1RotDeg[0],
+                                      &seam.lens1RotDeg[1], &seam.lens1RotDeg[2], &cu, &cv,
+                                      &scalePct);
+            seam_ok = n == 3 || n == 6;
+            seam.lens1Centre[0] = cu * 0.01;
+            seam.lens1Centre[1] = cv * 0.01;
+            seam.radialScale = 1.0 + scalePct * 0.01;
         } else if (a == "--no-depth-seam") {
             config.depthSeam = false;
         } else if (a == "--dump-depth") {

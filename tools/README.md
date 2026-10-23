@@ -56,7 +56,13 @@ Stitches one frame into an equirect with the CPU stitcher in `src/insv/`
 alone. No Qt, no Vulkan. This is the reference the GPU stitch is checked
 against, and the app's fallback. It can also measure the seam between the
 two lenses:
-- `--measure-seam IN OUT` fits the extra lens-1 rotation over a range.
+- `--measure-seam IN OUT` fits the seam correction (lens-1 rotation, its
+  centre, the radial scale) on frames spread over a range, as the app does.
+- `--seam-offset IN OUT` measures how far the lenses still disagree, in
+  degrees, with the correction given by `--seam Y,P,R,CU,CV,S` (as the fit
+  and the app's status line print it); pick other frames than the fit's to
+  check that it holds. `--seam-frames N` sets the frames for both (8).
+- `--seam` also stitches the frame with that correction.
 - `--depth-seam` / `--depth-dump` show the depth-aware seam.
 - `--baseline` changes the lens spacing, and its sign tests which lens is
   in front.
@@ -69,6 +75,8 @@ checking that the `.insv` library works on its own.
 ```sh
 build/insv_stitch clip.insv --time-ms 5000 --eq-width 3840 --out eq.ppm
 build/insv_stitch clip.insv --measure-seam 0 10000
+build/insv_stitch clip.insv --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 \
+    --seam-frames 16 --seam-offset 500 9500
 ```
 
 ## stitch_source_smoke
@@ -77,6 +85,8 @@ Opens a clip through `stitch::NativeStitchSource` (the app's own stitch:
 Vulkan video decode and the GPU stitch) and writes the frames at the given
 times as PPM images. Times far apart exercise seeking. `--range START END
 STEP` reads a run of frames instead and writes one every STEP ms.
+`--measure-seam IN OUT` measures the seam correction as the app does and
+stitches with it; `--seam Y,P,R[,CU,CV,S]` stitches with a given one.
 
 **When:** a quick check that decode, seek and stitch still work after a
 change, before starting the app. The release test runs it on a build from
@@ -111,8 +121,9 @@ use) and through an equirect of several sizes. It compares each with an 8K
 equirect reference: PSNR, and a sharpness figure. It also renders the
 fused view as P010 (the 10-bit export) and checks it against the NV12 one:
 within one 8-bit code, and with samples finer than 8 bits (a widened 8-bit
-picture has none); it exits 1 if not. `--out DIR` saves the renders as raw
-NV12 / P010 images to look at with `ffmpeg`.
+picture has none); it exits 1 if not. `--seam Y,P,R,CU,CV,S` stitches
+with a seam correction, to check one on every path. `--out DIR` saves the
+renders as raw NV12 / P010 images to look at with `ffmpeg`.
 
 **When:** changing the view or stitch shaders, to check that the picture
 still matches, hasn't lost detail, and that the 10-bit output still

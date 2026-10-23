@@ -141,10 +141,14 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         const double sVideoPerSensor = static_cast<double>(streamW) / halfW;
         const double sVideoPerCrop = static_cast<double>(streamW) / e.focalRefW;
         m_lens[i].xi = e.xi;
-        m_lens[i].fx = e.fx * sVideoPerCrop;
-        m_lens[i].fy = e.fy * sVideoPerCrop;
+        m_lens[i].fx = e.fx * sVideoPerCrop * params.seam.radialScale;
+        m_lens[i].fy = e.fy * sVideoPerCrop * params.seam.radialScale;
         m_lens[i].cx = cxLocal * sVideoPerSensor;
         m_lens[i].cy = e.cy * sVideoPerSensor;
+        if (i == 1) {
+            m_lens[i].cx += params.seam.lens1Centre[0] * streamW;
+            m_lens[i].cy += params.seam.lens1Centre[1] * streamW;
+        }
         for (int k = 0; k < 4; ++k) {
             m_lens[i].k[k] = e.k[k];
             m_lens[i].s[k] = e.s[k];

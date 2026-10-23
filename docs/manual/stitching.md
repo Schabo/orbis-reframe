@@ -74,10 +74,15 @@ It's on in new projects, and there's rarely a reason to turn it off.
 
 ## Seam alignment
 
-The X5's two lenses are never mounted quite perfectly, and the lens model in
-the file doesn't capture every small difference. orbis-reframe measures how
-the two lenses line up from the video itself, once for each clip, and uses
-that for a cleaner seam. Like the gyro sync (see
+A camera's two lenses are never mounted quite perfectly, and the lens model
+in the file doesn't capture every small difference: on far-away things the
+two pictures can disagree by a few tenths of a degree, which shows as fine
+detail (branches, wires, window frames) slightly doubled along the seam.
+orbis-reframe measures how the two lenses line up from the video itself,
+once for each clip, and corrects the lens model by that: how the back lens
+is turned, where its centre is, and how large both lenses draw the picture
+near the seam. Things close to the camera don't line up by this alone; see
+*Depth-aware seam* above. Like the gyro sync (see
 [Stabilization](stabilization.md)), this runs in the background while
 playback is paused, and the result is saved in the project.
 
@@ -86,7 +91,7 @@ The **Stitching** section shows the state for the clip under the playhead:
 | Message | Meaning |
 |---|---|
 | *Seam: measuring this clip…* | The measurement is running. |
-| *Seam: aligned for this clip (back lens yaw …, pitch …, roll …).* | Done. The numbers are how far the back lens is turned to line up with the front one, in degrees; a fraction of a degree is normal. |
+| *Seam: aligned for this clip (back lens yaw …, pitch …, roll …, centre …, …; lens scale …).* | Done. Yaw, pitch and roll are how far the back lens is turned to line up with the front one, in degrees; the centre is how far its picture's centre moves, in percent of the picture's width; the lens scale is how much larger (or, negative, smaller) both lenses draw the picture near the seam, in percent. A fraction of a degree, and a few hundredths of a percent, are normal. |
 | *Seam: couldn't align this clip (…).* | The measurement didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only. |
 
 The reasons a measurement gives:
@@ -101,7 +106,9 @@ The reasons a measurement gives:
   is too plain (sky, a wall, darkness) to line them up by.
 
 Changing **Lens guards** measures the clip's file again, because the
-alignment depends on the lens model.
+alignment depends on the lens model. Projects from orbis-reframe 0.5 and
+older measured only how the back lens is turned; their clips are measured
+again when the project opens.
 
 ## Preview size and quality
 

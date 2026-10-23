@@ -12,10 +12,12 @@
 #include "Image.h"
 #include "InsvModels.h"
 #include "InsvTrailer.h"
+#include "SeamAlignment.h"
 #include "SeamDepth.h"
 #include "Ycbcr.h"
 #include "support/TestTrailer.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -444,6 +446,99 @@ void testSeamDepthTracker()
 }
 
 // Privacy blur quads: (s, t) <-> direction round trip, corners, rejects, cells.
+// Seam alignment fine-tune on synthetic lens pictures: a textured sphere
+// seen through a stitch with a known correction, from which the estimator,
+// starting at none, has to find its way back -- with a stretch of near
+// content (parallax) that it must not take for the calibration.
+namespace {
+
+// Grey texture on the sphere: plane waves of ~1.5-2.5 deg wavelength in
+// scattered directions, so every block matches in one place only.
+double seamTexture(const insv::Vec3 &d, int seed)
+{
+    double v = 128.0;
+    for (int j = 0; j < 7; ++j) {
+        const double t = 1.7 * j + 0.9 * seed, f = 150.0 + 17.0 * ((j * 5 + seed) % 7);
+        const insv::Vec3 k{std::cos(t) * std::sin(1.1 * t + 0.4), std::sin(t) * std::sin(1.1 * t + 0.4),
+                           std::cos(1.1 * t + 0.4)};
+        v += 15.0 * std::sin(f * (k.x * d.x + k.y * d.y + k.z * d.z) + 0.7 * j + seed);
+    }
+    return std::clamp(v, 0.0, 255.0);
+}
+
+// Lens i's picture around the seam (78..102 deg off lens 0's axis) through
+// `st`. Between azimuths nearFrom..nearTo (deg) the scene is 1/nearQ m away,
+// so each lens sees it from its own centre.
+insv::Image seamLensPicture(const insv::FisheyeStitcher &st, int lens, int size, int seed,
+                            double nearFrom, double nearTo, double nearQ)
+{
+    insv::Image im;
+    im.alloc(size, size);
+    const insv::Mat3 l2w = insv::transpose(st.lensProjection(0).worldToLens);
+    const insv::Vec3 c = st.lensCentre(lens);
+    constexpr double step = 0.05;
+    for (double th = 78.0; th <= 102.0; th += step)
+        for (double a = 0.0; a < 360.0; a += step) {
+            const insv::Vec3 d = insv::apply(
+                l2w, {std::cos(a * kDeg) * std::sin(th * kDeg), std::sin(a * kDeg) * std::sin(th * kDeg),
+                      std::cos(th * kDeg)});
+            insv::Vec3 scene = d;
+            if (a >= nearFrom && a < nearTo) {
+                // The point on the sphere of radius 1/q that lens `lens` sees
+                // along d: |c + s d| = 1/q.
+                const double R = 1.0 / nearQ, cd = c.x * d.x + c.y * d.y + c.z * d.z;
+                const double cc = c.x * c.x + c.y * c.y + c.z * c.z;
+                const double s = -cd + std::sqrt(cd * cd - cc + R * R);
+                scene = insv::normalize({c.x + s * d.x, c.y + s * d.y, c.z + s * d.z});
+            }
+            double u, v, t;
+            if (!st.project(lens, d, u, v, t))
+                continue;
+            const int x = static_cast<int>(std::lround(u)), y = static_cast<int>(std::lround(v));
+            if (x < 0 || y < 0 || x >= size || y >= size)
+                continue;
+            const auto g = static_cast<uint8_t>(std::lround(seamTexture(scene, seed)));
+            uint8_t *p = &im.rgb[(static_cast<size_t>(y) * size + x) * 3];
+            p[0] = p[1] = p[2] = g;
+        }
+    return im;
+}
+
+} // namespace
+
+void testSeamAlignment()
+{
+    const insv::InsvCalibration cal = x5Calibration();
+    constexpr int kSize = 1536;
+    insv::StitchParams truthParams;
+    truthParams.seam = {{0.3, -0.4, 0.15}, {0.002, -0.0015}, 1.0015};
+    insv::FisheyeStitcher truth;
+    CHECK(truth.configure(cal, kSize, kSize, truthParams));
+
+    // Far everywhere but 140..220 deg, 3 m away there.
+    std::vector<insv::SeamFrame> frames;
+    for (int seed = 0; seed < 2; ++seed)
+        frames.push_back(insv::MakeSeamFrame(
+            seamLensPicture(truth, 0, kSize, seed, 140.0, 220.0, 1.0 / 3.0),
+            seamLensPicture(truth, 1, kSize, seed, 140.0, 220.0, 1.0 / 3.0)));
+
+    const insv::StitchParams none;
+    const insv::SeamAlignmentResult r = insv::EstimateSeamAlignment(cal, none, kSize, kSize, frames);
+    std::printf("seam alignment: %s\n", r.message.c_str());
+    CHECK(r.ok);
+    CHECK(r.offsetBeforeDeg > 0.3 && r.offsetAfterDeg < 0.04);
+    // Roll and the scale are pinned down; a tilt and the principal point's
+    // shift across the seam look alike there, so only their sum is.
+    CHECK(near(r.correction.lens1RotDeg[2], 0.15, 0.03));
+    CHECK(near(r.correction.radialScale, 1.0015, 0.0003));
+
+    // The correction applied, the lenses agree on far content.
+    insv::StitchParams fitted;
+    fitted.seam = r.correction;
+    CHECK(insv::MeasureSeamOffset(cal, fitted, kSize, kSize, frames) < 0.04);
+    CHECK(insv::MeasureSeamOffset(cal, none, kSize, kSize, frames) > 0.3);
+}
+
 void testBlurQuads()
 {
     auto dirOf = [](double lonDeg, double latDeg, float out[3]) {
@@ -893,6 +988,7 @@ int main()
     testSyntheticRender();
     testSeamDepthGeometry();
     testSeamDepthTracker();
+    testSeamAlignment();
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();

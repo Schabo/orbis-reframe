@@ -291,11 +291,16 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   `_001`, `insv_stitch --lens1`): `cx / cy` scaled by 2880 / 3040 (half the
   6080 frame), `fx / fy` by 2880 / field 27's dst 2880, and the same roll
   handling as the X5 (the stored roll less 90°). The stitched frame is
-  continuous, and the seam fine-tune (`--measure-seam 0 300000`, five frames)
-  starts at a seam match of 0.625 and moves lens 1 by under a degree (yaw
-  −0.10°, pitch −0.80°, roll −0.15°; match 0.752). (An X5 clip, for scale:
-  0.262 → 0.284, under half a degree.) Not yet compared with Insta360
-  Studio's stitch of the same frame.
+  continuous. Not yet compared with Insta360 Studio's stitch of the same
+  frame.
+- The seam fine-tune (measured 2026-10-23, `_001`, `_004`, `_007`, `_013`,
+  one camera): far content is 0.24–0.46° off at the seam with the file's
+  calibration alone, more than on the X5. Lens 1 is tilted (pitch −0.6 to
+  −1.2°; the yaw varies between takes, −0.9 to +0.5°, traded against the
+  centre, which looks alike at the seam), its centre +0.07 to +0.13 % of the
+  width across and −0.03 to −0.12 % down, both lenses' radius −0.05 to
+  −0.06 %, roll −0.08 to −0.09°. Fitted per clip, the offset on other
+  frames of the take is 0.07–0.10°.
 - With no lens-profile table (field 145) the stitch takes the bare lens at
   its default 200° field of view.
 - 📖 telemetry-parser's rig code mentions a ONE X2 lens type 42 (a lens guard
