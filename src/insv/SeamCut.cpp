@@ -7,6 +7,8 @@
 #include <limits>
 #include <numbers>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace insv {
 
@@ -49,13 +51,15 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
 {
     const double band = st.gpuParams().bandRad;
     const Image* im[2] = {&lens0, &lens1};
-    auto grey = [&](int i, const Vec3& ray, double& g) {
+    auto colour = [&](int i, const Vec3& ray, double rgb[3], double& g) {
         double u, v, theta;
         if (!st.project(i, ray, u, v, theta))
             return false;
         if (u < 0 || v < 0 || u > im[i]->w - 1.0 || v > im[i]->h - 1.0)
             return false;
         const auto c = im[i]->sample(u, v);
+        for (int k = 0; k < 3; ++k)
+            rgb[k] = c[k];
         g = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
         return true;
     };
@@ -66,21 +70,31 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
         double g0[kCutSamples], g1[kCutSamples];
         for (int c = next.fetch_add(1); c < kCells; c = next.fetch_add(1)) {
             const int b = c / kSeamCutRows, r = c % kSeamCutRows;
-            int n = 0;
-            double s0 = 0, s1 = 0;
+            int n = 0, nc = 0;
+            double s0 = 0, s1 = 0, m[2][3] = {};
             for (int s = 0; s < kCutSamples; ++s) {
-                double phi, e;
+                double phi, e, c0[3], c1[3];
                 SeamCutSample(b, r, s, band, phi, e);
                 const Vec3 dir = st.seamDir(phi, e);
                 const double q = st.seamQAt(dir, seamQ);
-                if (!grey(0, st.lensRay(0, dir, q), g0[n]) || !grey(1, st.lensRay(1, dir, q), g1[n]))
+                if (!colour(0, st.lensRay(0, dir, q), c0, g0[n]) ||
+                    !colour(1, st.lensRay(1, dir, q), c1, g1[n]))
                     continue;
                 s0 += g0[n], s1 += g1[n];
                 ++n;
+                if (std::max({c0[0], c0[1], c0[2], c1[0], c1[1], c1[2]}) > kSeamCutClip)
+                    continue;
+                for (int k = 0; k < 3; ++k)
+                    m[0][k] += c0[k], m[1][k] += c1[k];
+                ++nc;
             }
             SeamCutStats::Cell& cell = out.cell[b][r];
             cell = SeamCutStats::Cell{};
             cell.n = static_cast<float>(n);
+            cell.nColour = static_cast<float>(nc);
+            for (int i = 0; i < 2 && nc > 0; ++i)
+                for (int k = 0; k < 3; ++k)
+                    cell.mean[i][k] = static_cast<float>(m[i][k] / nc);
             if (n == 0)
                 continue;
             const double m0 = s0 / n, m1 = s1 / n;
@@ -111,6 +125,7 @@ void SeamCutTracker::reset()
 {
     m_blend = SeamBlend{};
     m_has = false;
+    m_gainHas = false;
     m_avgDis.clear();
     m_row.assign(kSeamDepthBins, -1);
     m_dis.assign(kSeamDepthBins, 0.0f);
@@ -200,8 +215,153 @@ void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double ban
         m_blend.cut[b] = static_cast<float>(SeamCutRowE(m_row[b], bandRad) * (1.0 - s));
         m_blend.fade[b] = static_cast<float>(narrow + (bandRad - narrow) * s);
     }
+    updateGain(stats, ptsMs);
     m_has = true;
     m_lastPts = ptsMs;
+}
+
+void SeamCutTracker::updateGain(const SeamCutStats& stats, int64_t ptsMs)
+{
+    constexpr int B = kSeamDepthBins, R = kSeamCutRows;
+    const SeamCutTuning& T = tuning;
+
+    // Per bin: both lenses' mean colour over the rows they agree on, as
+    // log(lens 0 / lens 1).
+    double logRatio[B][3] = {}, weight[B] = {};
+    for (int b = 0; b < B; ++b) {
+        double m[2][3] = {}, ws = 0;
+        for (int r = 0; r < R; ++r) {
+            const SeamCutStats::Cell& c = stats.cell[b][r];
+            if (c.nColour < kCutSamples / 2)
+                continue;
+            const double w = 1.0 - smoothstep(T.agreeLo, T.agreeHi,
+                                              m_avgDis[static_cast<size_t>(b) * R + r]);
+            for (int i = 0; i < 2; ++i)
+                for (int k = 0; k < 3; ++k)
+                    m[i][k] += w * c.mean[i][k];
+            ws += w;
+        }
+        if (ws < 0.5)
+            continue;
+        bool ok = true;
+        for (int i = 0; i < 2; ++i)
+            for (int k = 0; k < 3; ++k)
+                ok = ok && m[i][k] > T.gainMinLevel * ws;
+        if (!ok)
+            continue;
+        weight[b] = ws;
+        for (int k = 0; k < 3; ++k)
+            logRatio[b][k] = std::log(m[0][k] / m[1][k]);
+    }
+
+    // A smooth curve round the seam per channel -- a constant and the first
+    // gainHarmonics harmonics of the azimuth -- by weighted least squares,
+    // refitted with the bins that stray far from it down-weighted (Tukey).
+    // An exposure or white-balance difference between the lenses changes
+    // slowly round the seam; a shiny surface that reflects something else
+    // into each lens (a tank under the camera) is a few bins of ratios far
+    // off, and must not darken or brighten that stretch. The harmonics are
+    // pulled lightly towards 0, so a stretch with nothing to go by gets the
+    // overall match rather than a swing.
+    const int H = std::clamp(T.gainHarmonics, 0, 4), P = 1 + 2 * H;
+    double basis[B][9];
+    int bins = 0;
+    for (int b = 0; b < B; ++b) {
+        const double phi = (b + 0.5) * 2.0 * kPi / B;
+        basis[b][0] = 1.0;
+        for (int h = 1; h <= H; ++h) {
+            basis[b][2 * h - 1] = std::cos(h * phi);
+            basis[b][2 * h] = std::sin(h * phi);
+        }
+        bins += weight[b] > 0 ? 1 : 0;
+    }
+    const bool fitted = bins >= T.gainMinBins;
+    double coef[3][9] = {};
+    if (fitted) {
+        double robust[B];
+        std::fill(robust, robust + B, 1.0);
+        for (int round = 0; round < 6; ++round) {
+            double A[9][9] = {}, rhs[3][9] = {}, wAll = 0;
+            for (int b = 0; b < B; ++b) {
+                const double w = weight[b] * robust[b];
+                if (w <= 0)
+                    continue;
+                wAll += w;
+                for (int i = 0; i < P; ++i) {
+                    for (int j = 0; j < P; ++j)
+                        A[i][j] += w * basis[b][i] * basis[b][j];
+                    for (int k = 0; k < 3; ++k)
+                        rhs[k][i] += w * basis[b][i] * logRatio[b][k];
+                }
+            }
+            for (int i = 1; i < P; ++i)
+                A[i][i] += T.gainRidge * wAll;
+            // Gaussian elimination (A is symmetric positive definite).
+            for (int i = 0; i < P; ++i)
+                for (int r = i + 1; r < P; ++r) {
+                    const double f = A[r][i] / A[i][i];
+                    for (int j = i; j < P; ++j)
+                        A[r][j] -= f * A[i][j];
+                    for (int k = 0; k < 3; ++k)
+                        rhs[k][r] -= f * rhs[k][i];
+                }
+            for (int k = 0; k < 3; ++k)
+                for (int i = P - 1; i >= 0; --i) {
+                    double v = rhs[k][i];
+                    for (int j = i + 1; j < P; ++j)
+                        v -= A[i][j] * coef[k][j];
+                    coef[k][i] = v / A[i][i];
+                }
+            // Each bin's worst channel against the curve; the scale from
+            // their weighted median, never below the noise.
+            std::vector<std::pair<double, double>> res;
+            double resOf[B] = {};
+            for (int b = 0; b < B; ++b) {
+                if (weight[b] <= 0)
+                    continue;
+                for (int k = 0; k < 3; ++k) {
+                    double f = 0;
+                    for (int i = 0; i < P; ++i)
+                        f += coef[k][i] * basis[b][i];
+                    resOf[b] = std::max(resOf[b], std::fabs(logRatio[b][k] - f));
+                }
+                res.emplace_back(resOf[b], weight[b]);
+            }
+            std::sort(res.begin(), res.end());
+            double half = 0, med = 0;
+            for (const auto& [r, w] : res)
+                half += w;
+            half *= 0.5;
+            for (const auto& [r, w] : res)
+                if ((half -= w) <= 0) {
+                    med = r;
+                    break;
+                }
+            const double c = 4.685 * std::max(T.gainNoise, 1.4826 * med);
+            for (int b = 0; b < B; ++b) {
+                const double u = resOf[b] / c;
+                robust[b] = u >= 1.0 ? 0.0 : (1 - u * u) * (1 - u * u);
+            }
+        }
+    }
+
+    // Then over time; without a fit the match fades to the photometric gain.
+    const double keep = m_gainHas && T.gainMemoryMs > 0
+                            ? std::exp(-static_cast<double>(ptsMs - m_lastPts) / T.gainMemoryMs)
+                            : 0.0;
+    const double maxLog = 2.0 * std::log(T.gainMax);
+    for (int b = 0; b < B; ++b) {
+        float* g = m_blend.gain[b];
+        for (int k = 0; k < 3; ++k) {
+            double f = 0;
+            for (int i = 0; i < P; ++i)
+                f += coef[k][i] * basis[b][i];
+            const double target = fitted ? std::clamp(f, -maxLog, maxLog) : g[k];
+            g[k] = static_cast<float>(keep * g[k] + (1.0 - keep) * target);
+        }
+        g[3] = static_cast<float>(keep * g[3] + (1.0 - keep) * (fitted ? 1.0 : 0.0));
+    }
+    m_gainHas = true;
 }
 
 } // namespace insv

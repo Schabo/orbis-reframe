@@ -74,6 +74,12 @@ distance. So the seam also looks for the line across the overlap where the
 two lenses agree best, and joins them there with a short blend, instead of
 fading one into the other over the whole overlap.
 
+A short blend would show any difference in brightness or colour between
+the two lenses as a step, so around the seam the two lenses are also
+matched to each other, colour by colour. The match follows slow changes
+round the seam (the sunny side against the shady one) but not a shiny
+surface close to the camera that shows each lens a different reflection.
+
 Very close things that the two lenses see against different backgrounds
 (a crash bar and a cable right under the camera) can still look doubled in
 places: no single distance lines everything up there, and there's no line

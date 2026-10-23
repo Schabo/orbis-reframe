@@ -164,12 +164,22 @@ constexpr int kSeamDepthBins = 128;
 // where the lenses agree at the meeting line, today's full-band cross-fade
 // where they don't. A fade of 0 (no frame measured yet) is the plain
 // cross-fade of StitchParams::featherDeg.
+//
+// And the lenses' colour there: with a narrow fade, a difference in exposure
+// or white balance between the lenses would show as a step. Each lens's gain
+// goes from the photometric one (one per lens, the whole band) to the bin's
+// colour match -- both lenses to the geometric mean of their colours, per
+// channel -- inside the band, and back over kSeamGainRampDeg past it.
+constexpr double kSeamGainRampDeg = 10.0;
 struct SeamBlend {
     // Elevation of the fade's centre off the seam circle, radians, towards
     // lens 0 (the seam frame, FisheyeStitcher::seamDir).
     float cut[kSeamDepthBins] = {};
     // Half-width of the fade, radians.
     float fade[kSeamDepthBins] = {};
+    // log(lens 0 / lens 1) of the R, G, B means, and how much of it applies
+    // (0 = the photometric gain alone, 1 = the full match).
+    float gain[kSeamDepthBins][4] = {};
 };
 
 // Everything a GPU port of renderEquirect() needs, as plain floats -- one
@@ -304,6 +314,11 @@ public:
     // plain cross-fade (seamBlendWeight) when depthSeam is off, `blend` is
     // null or not measured yet.
     void seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const;
+    // Lens i's gain per channel for `dir`, from its photometric gain
+    // `photo[i]` (the pair's product is 1) and the per-bin colour match
+    // (SeamBlend::gain); just `photo` off the seam or without a blend.
+    void seamGains(const Vec3& dir, const SeamBlend* blend, const double photo[2],
+                   double gain[2][3]) const;
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
 

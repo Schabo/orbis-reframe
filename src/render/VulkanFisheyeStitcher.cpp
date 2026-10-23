@@ -117,6 +117,7 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
         sp.seamCF[b][0] = p.seamBlend.cut[b];
         sp.seamCF[b][1] = p.seamBlend.fade[b];
     }
+    std::memcpy(sp.seamG, p.seamBlend.gain, sizeof sp.seamG);
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
     const int nBlur = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
@@ -1125,8 +1126,16 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
         const float* s = c + d->kSeamCostBytes / sizeof(float);
         for (int b = 0; b < insv::kSeamDepthBins; ++b)
             for (int r = 0; r < insv::kSeamCutRows; ++r) {
-                const float* v = s + 4 * (b * insv::kSeamCutRows + r);
-                cutOut->cell[b][r] = {v[0], v[1], v[2], 0.0f};
+                const float* v = s + 12 * (b * insv::kSeamCutRows + r);
+                insv::SeamCutStats::Cell& cell = cutOut->cell[b][r];
+                cell.n = v[0];
+                cell.zsad = v[1];
+                cell.texture = v[2];
+                cell.nColour = v[3];
+                for (int k = 0; k < 3; ++k) {
+                    cell.mean[0][k] = v[4 + k];
+                    cell.mean[1][k] = v[8 + k];
+                }
             }
     }
     return true;

@@ -55,11 +55,12 @@ struct ShaderParams {
     float seamC[4]; // cost pass: q min, q max (1/m), patch elevation half-range (rad); cut pass: row max (rad)
     float seamQ[insv::kSeamDepthBins]; // vec4[kSeamDepthBins / 4]: per-bin inverse distance
     float seamCF[insv::kSeamDepthBins][2]; // vec4[kSeamDepthBins / 2]: per-bin fade centre, half-width
+    float seamG[insv::kSeamDepthBins][4];  // per-bin colour match: log(lens 0 / lens 1) RGB, amount
     float blur0[4]; // privacy blur: count, -, -, -
     float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
     float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
 };
-static_assert(sizeof(ShaderParams) == 8416, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 10464, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then a mat3
@@ -234,11 +235,11 @@ struct VulkanFisheyeStitcher::Impl {
     VkDeviceMemory gainMem = VK_NULL_HANDLE;
     void* gainMap = nullptr;
     // Depth-aware seam measures (binding 5): the cost volume, (NCC, texture)
-    // per bin x candidate, then the cut statistics, a vec4 per bin x row.
+    // per bin x candidate, then the cut statistics, three vec4 per bin x row.
     static constexpr VkDeviceSize kSeamCostBytes =
         sizeof(float) * 2 * insv::kSeamDepthBins * insv::kSeamDepthCands;
     static constexpr VkDeviceSize kSeamBufBytes =
-        kSeamCostBytes + sizeof(float) * 4 * insv::kSeamDepthBins * insv::kSeamCutRows;
+        kSeamCostBytes + sizeof(float) * 12 * insv::kSeamDepthBins * insv::kSeamCutRows;
     VkBuffer seamBuf = VK_NULL_HANDLE;
     VkDeviceMemory seamMem = VK_NULL_HANDLE;
     void* seamMap = nullptr;

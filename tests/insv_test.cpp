@@ -624,12 +624,37 @@ void testSeamBlend()
         CHECK(near(w[0], st.seamBlendWeight(0, d), 0.02) && near(w[1], st.seamBlendWeight(1, d), 0.02));
     }
 
+    // The colour match: lens 0 20 % brighter in red, 10 % darker in blue.
+    // Inside the band both go to the geometric mean, whatever the
+    // photometric gain; half way along the ramp past it half way; then the
+    // photometric gain alone.
+    insv::SeamBlend colour;
+    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+        colour.gain[b][0] = static_cast<float>(std::log(1.2));
+        colour.gain[b][2] = static_cast<float>(std::log(0.9));
+        colour.gain[b][3] = 1.0f;
+    }
+    const double photo[2] = {0.95, 1.0 / 0.95};
+    double g[2][3];
+    st.seamGains(st.seamDir(phi, 2.0 * kDeg), &colour, photo, g);
+    CHECK(near(g[0][0] * 1.2, g[1][0], 1e-5) && near(g[0][0] * g[1][0], 1.0, 1e-5));
+    CHECK(near(g[0][1], 1.0, 1e-6) && near(g[1][1], 1.0, 1e-6));
+    CHECK(near(g[0][2] * 0.9, g[1][2], 1e-5));
+    st.seamGains(st.seamDir(phi, band + insv::kSeamGainRampDeg * kDeg / 2), &colour, photo, g);
+    CHECK(near(std::log(g[0][1]), 0.5 * std::log(0.95), 1e-4));
+    st.seamGains(st.seamDir(phi, -(band + insv::kSeamGainRampDeg * kDeg + 0.01)), &colour, photo, g);
+    CHECK(g[0][0] == 0.95 && g[1][2] == 1.0 / 0.95);
+    st.seamGains(st.seamDir(phi, 0.0), nullptr, photo, g);
+    CHECK(g[0][0] == 0.95 && g[1][0] == 1.0 / 0.95);
+
     // Off: the blend is ignored.
     insv::FisheyeStitcher off;
     CHECK(off.configure(c, 3840, 3840, insv::StitchParams{}));
     const insv::Vec3 d = off.seamDir(phi, 0.2 * kDeg);
     off.seamBlendWeights(d, &narrow, w);
     CHECK(w[0] == off.seamBlendWeight(0, d) && w[1] == off.seamBlendWeight(1, d));
+    off.seamGains(d, &colour, photo, g);
+    CHECK(g[0][0] == 0.95 && g[1][0] == 1.0 / 0.95);
 }
 
 // SeamCutTracker on synthetic statistics: the lenses agree best on one row
@@ -683,6 +708,45 @@ void testSeamCutTracker()
 
     tr.reset();
     CHECK(!tr.hasHistory() && tr.blend().fade[20] == 0.0f);
+
+    // The colour match: lens 0 (120, 100, 80) against lens 1 (100, 100, 100)
+    // where the lenses agree; nothing usable (clipped) over bins 20..39; and
+    // bins 60..63 far off (a reflection each lens sees differently).
+    fill(6, 2.0f);
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r) {
+            insv::SeamCutStats::Cell& cell = stats->cell[b][r];
+            cell.nColour = b >= 20 && b < 40 ? 0.0f : 64.0f;
+            const float m0[3] = {120, 100, 80};
+            for (int k = 0; k < 3; ++k)
+                cell.mean[0][k] = m0[k], cell.mean[1][k] = 100;
+            if (b >= 60 && b < 64)
+                cell.mean[0][1] = 160;
+        }
+    t = 5000;
+    tr.update(*stats, t, band);
+    const float* g = tr.blend().gain[100];
+    CHECK(near(g[0], std::log(1.2), 1e-3) && near(g[1], 0.0, 1e-3) && near(g[2], std::log(0.8), 1e-3));
+    CHECK(g[3] == 1.0f);
+    CHECK(near(tr.blend().gain[61][1], 0.0, 1e-3));            // the reflection: ignored
+    CHECK(near(tr.blend().gain[85][0], std::log(1.2), 1e-3)); // occluded: from the curve
+    CHECK(near(tr.blend().gain[30][0], std::log(1.2), 1e-3)); // clipped: likewise
+    // Nothing usable anywhere: no match.
+    insv::SeamCutTracker blind;
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r)
+            stats->cell[b][r].nColour = 0;
+    blind.update(*stats, 0, band);
+    CHECK(blind.blend().gain[50][3] == 0.0f);
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r)
+            stats->cell[b][r].nColour = 64;
+    // Over time, not at once: a frame of equal lenses moves it ~15 %.
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r)
+            stats->cell[b][r].mean[0][0] = 100;
+    tr.update(*stats, t += 33, band);
+    CHECK(g[0] > 0.8 * std::log(1.2) && g[0] < 0.9 * std::log(1.2));
 }
 
 // The cut statistics on synthetic lens pictures: the lenses agree on far
@@ -738,6 +802,20 @@ void testSeamCutStats()
                 farAtFar, nearAtFar, nearAtDepth);
     CHECK(farAtFar < 0.2 && nearAtDepth < 0.2);
     CHECK(nearAtFar > 0.5);
+
+    // Lens 1 a fifth darker: the colour match finds it, and with it the two
+    // lenses' stitched colour meets in the band.
+    insv::Image dark = l1;
+    for (auto& v : dark.rgb)
+        v = static_cast<uint8_t>(std::lround(v * 0.8));
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    insv::MeasureSeamCutStats(st, l0, dark, depth, *stats);
+    insv::SeamCutTracker tr;
+    tr.update(*stats, 0, st.gpuParams().bandRad);
+    const float* g = tr.blend().gain[10];
+    std::printf("seam cut: colour match lens 0 / lens 1 %.3f %.3f %.3f (1.25)\n", std::exp(g[0]),
+                std::exp(g[1]), std::exp(g[2]));
+    CHECK(near(std::exp(g[0]), 1.25, 0.02) && near(std::exp(g[1]), 1.25, 0.02) && g[3] == 1.0f);
 }
 
 void testBlurQuads()

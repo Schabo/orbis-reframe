@@ -421,6 +421,36 @@ void FisheyeStitcher::seamBlendWeights(const Vec3& dir, const SeamBlend* blend, 
     w[1] = 1.0 - w[0];
 }
 
+void FisheyeStitcher::seamGains(const Vec3& dir, const SeamBlend* blend, const double photo[2],
+                                double gain[2][3]) const
+{
+    for (int i = 0; i < 2; ++i)
+        for (int c = 0; c < 3; ++c)
+            gain[i][c] = photo[i];
+    if (!m_params.depthSeam || !blend)
+        return;
+    double e, t;
+    int i0, i1;
+    seamPosition(dir, e, i0, i1, t);
+    e = std::fabs(e);
+    const double rampRad = kSeamGainRampDeg * kDeg;
+    if (e >= m_bandRad + rampRad)
+        return;
+    double a = blend->gain[i0][3] * (1.0 - t) + blend->gain[i1][3] * t;
+    if (e > m_bandRad)
+        a *= 0.5 * (1.0 + std::cos(kPi * (e - m_bandRad) / rampRad));
+    if (a <= 0.0)
+        return;
+    for (int c = 0; c < 3; ++c) {
+        // Both to the geometric mean: lens 0 by exp(-L/2), lens 1 by exp(L/2).
+        const double half = 0.5 * (blend->gain[i0][c] * (1.0 - t) + blend->gain[i1][c] * t);
+        for (int i = 0; i < 2; ++i) {
+            const double lp = std::log(photo[i]);
+            gain[i][c] = std::exp(lp + a * ((i == 0 ? -half : half) - lp));
+        }
+    }
+}
+
 double FisheyeStitcher::edgeWeight(double thetaRad) const
 {
     return circleEdgeWeight(radiusForTheta(thetaRad), m_params.edgeStartFrac, m_params.edgeEndFrac);
@@ -496,8 +526,9 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
     // The blended lenses at stitch-world direction `dir`, [0, 255].
     auto shade = [&](const Vec3& dir, double rgb[3]) {
         const double q = seamQAt(dir, seamQ);
-        double ws[2];
+        double ws[2], g[2][3];
         seamBlendWeights(dir, blend, ws);
+        seamGains(dir, m_params.photometric ? blend : nullptr, gain, g);
         double acc[3] = {0, 0, 0};
         double wsum = 0;
         for (int i = 0; i < 2; ++i) {
@@ -505,9 +536,9 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
             if (!lensSample(i, dir, q, ws[i], u, v, w))
                 continue;
             const auto s = lim[i]->sample(u, v);
-            acc[0] += w * gain[i] * s[0];
-            acc[1] += w * gain[i] * s[1];
-            acc[2] += w * gain[i] * s[2];
+            acc[0] += w * g[i][0] * s[0];
+            acc[1] += w * g[i][1] * s[1];
+            acc[2] += w * g[i][2] * s[2];
             wsum += w;
         }
         for (int c = 0; c < 3; ++c)

@@ -26,6 +26,11 @@
 // fisheye_stitch_common.glsl, beside the depth cost volume) or by
 // MeasureSeamCutStats on the CPU, with the previous frame's depth table, and
 // averaged over ~150 ms, so the cut and its width don't flicker.
+//
+// The same rows give the lenses' colour match (SeamBlend::gain): each lens's
+// mean R, G, B where neither is clipped, from the rows the lenses agree on
+// (so an occlusion's other content doesn't count), as a smooth curve round
+// the seam that ignores the few bins far off it, and smoothed over time.
 // Dependency-free (insv lib).
 
 namespace insv {
@@ -40,6 +45,9 @@ constexpr int kSeamCutPatchEl = 4;
 constexpr double kSeamCutPatchElDeg = 0.6;
 // Half-width of the narrow fade, degrees.
 constexpr double kSeamCutFadeDeg = 0.75;
+// A sample with a channel above this (0..255) is clipped: its colour says
+// nothing about the lenses' exposure.
+constexpr double kSeamCutClip = 250.0;
 
 // The outermost row's elevation for a blend band of half-width bandRad: the
 // narrow fade and a margin stay inside the band. Radians, >= 0.
@@ -56,7 +64,8 @@ struct SeamCutStats {
         float n = 0;       // samples both lenses see (of kSeamCutPatchAz * kSeamCutPatchEl)
         float zsad = 0;    // mean |(g0 - mean g0) - (g1 - mean g1)| of the grey, levels
         float texture = 0; // min of the two lenses' grey standard deviation, levels
-        float pad = 0;
+        float nColour = 0; // of those, the samples neither lens has a channel above kSeamCutClip in
+        float mean[2][3] = {}; // each lens's mean R, G, B over those, levels
     };
     Cell cell[kSeamDepthBins][kSeamCutRows];
 };
@@ -76,6 +85,13 @@ struct SeamCutTuning {
     double offCentre = 0.01;  // cost per degree away from the seam circle
     double stay = 0.15;       // cost for leaving last frame's row in a bin
     double widthSigma = 1.0;  // smoothing of the fade width along the azimuth, bins
+    double gainMemoryMs = 200.0; // time constant of the colour match
+    int gainHarmonics = 2;    // of the azimuth, in the colour match's curve round the seam
+    double gainRidge = 0.05;  // pull of the harmonics towards 0, per unit of data weight
+    double gainNoise = 0.02;  // log ratio a bin may stray from the curve by as noise
+    int gainMinBins = 8;      // bins with a usable colour for a fit at all
+    double gainMinLevel = 8.0; // a channel darker than this in either lens isn't matched
+    double gainMax = 1.12;    // most a lens is pulled per channel (and 1 / it)
     int64_t resetGapMs = 250; // a jump this big (or backwards) starts over
 };
 
@@ -102,11 +118,16 @@ public:
     SeamCutTuning tuning;
 
 private:
+    // The colour match (m_blend.gain), from this frame's statistics and the
+    // cells' running disagreement; before m_lastPts moves on.
+    void updateGain(const SeamCutStats& stats, int64_t ptsMs);
+
     SeamBlend m_blend;
     // The running average of each cell's disagreement (bin-major,
     // kSeamCutRows per bin), valid while m_has.
     std::vector<float> m_avgDis;
     std::vector<int> m_row; // last frame's row per bin
+    bool m_gainHas = false; // m_blend.gain holds a running average
     std::vector<float> m_dis, m_width;
     bool m_has = false;
     int64_t m_lastPts = 0;
