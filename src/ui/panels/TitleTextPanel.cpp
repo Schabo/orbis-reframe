@@ -1,11 +1,58 @@
 #include "TitleTextPanel.h"
 
 #include <QColorDialog>
-#include <QFontComboBox>
+#include <QComboBox>
+#include <QFontDatabase>
+#include <QFontMetrics>
 #include <QFormLayout>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSettings>
+
+namespace {
+
+constexpr int kRecentFonts = 3;
+const QString kRecentKey = QStringLiteral("titles/recentFonts");
+
+QSettings settings()
+{
+    return QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+}
+
+// The installed families a title can use, sorted (private system families
+// aren't fonts to pick).
+QStringList installedFamilies()
+{
+    QStringList out;
+    for (const QString &f : QFontDatabase::families())
+        if (!QFontDatabase::isPrivateFamily(f))
+            out << f;
+    return out;
+}
+
+// The family's name drawn in its own face, when the face can draw it: symbol
+// and maths fonts that claim Latin may have no letters or empty ones.
+QFont previewFont(const QString &family, const QFont &base)
+{
+    static QHash<QString, bool> drawsName;
+    auto it = drawsName.find(family);
+    if (it == drawsName.end()) {
+        bool ok = QFontDatabase::writingSystems(family).contains(QFontDatabase::Latin);
+        const QFontMetrics m{QFont(family)};
+        for (const QChar ch : family)
+            ok = ok && m.inFont(ch);
+        it = drawsName.insert(family, ok && m.horizontalAdvance(family) > 0);
+    }
+    if (!*it)
+        return base;
+    QFont f(family);
+    f.setPointSizeF(base.pointSizeF());
+    return f;
+}
+
+} // namespace
 
 TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), parent)
 {
@@ -16,10 +63,13 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     m_text->setFixedHeight(m_text->fontMetrics().lineSpacing() * 3 + 12);
     m_text->setToolTip(tr("The title's text. Enter starts a new line."));
     form()->addRow(tr("Text"), m_text);
-    m_font = new QFontComboBox(this);
+    m_font = new QComboBox(this);
     m_font->setObjectName(QStringLiteral("titleFont"));
-    m_font->setToolTip(tr("The title's font."));
+    m_font->setToolTip(tr("The title's font: the fonts installed on this computer, the last "
+                          "ones you picked at the top. Type a name's first letters to jump "
+                          "to it."));
     m_font->setMinimumWidth(1); // long font names mustn't widen the sidebar
+    fillFonts(QString());
     form()->addRow(tr("Font"), m_font);
     m_styleRow = new QWidget(this);
     auto *styleLayout = new QHBoxLayout(m_styleRow);
@@ -45,7 +95,10 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     };
     // Every keystroke: undo gathers a burst of edits into one step.
     connect(m_text, &QPlainTextEdit::textChanged, this, edited);
-    connect(m_font, &QFontComboBox::currentFontChanged, this, edited);
+    connect(m_font, &QComboBox::activated, this, [this, edited](int index) {
+        fontPicked(index);
+        edited();
+    });
     connect(m_bold, &QPushButton::toggled, this, edited);
     connect(m_italic, &QPushButton::toggled, this, edited);
     connect(m_color, &QPushButton::clicked, this, [this, edited] {
@@ -62,7 +115,7 @@ title::Style TitleTextPanel::current() const
 {
     title::Style t;
     t.text = m_text->toPlainText();
-    t.font = m_font->currentFont().family();
+    t.font = m_font->currentData().toString();
     t.bold = m_bold->isChecked();
     t.italic = m_italic->isChecked();
     t.rgb = m_rgb;
@@ -87,8 +140,8 @@ void TitleTextPanel::setTitle(const title::Style &s)
         w->setEnabled(true);
     if (m_text->toPlainText() != s.text)
         m_text->setPlainText(s.text);
-    if (m_font->currentFont().family() != s.font)
-        m_font->setCurrentFont(QFont(s.font));
+    if (m_font->currentData().toString() != s.font)
+        fillFonts(s.font);
     m_bold->setChecked(s.bold);
     m_italic->setChecked(s.italic);
     setColor(s.rgb);
@@ -110,4 +163,42 @@ void TitleTextPanel::setNoTitle(const QString &hint)
                                 "on the left: drag it onto the timeline or double-click it.")
                            : hint);
     m_updating = false;
+}
+
+void TitleTextPanel::fillFonts(const QString &family)
+{
+    const QStringList installed = installedFamilies();
+    QStringList recent;
+    for (const QString &f : settings().value(kRecentKey).toStringList())
+        if (installed.contains(f) && recent.size() < kRecentFonts)
+            recent << f;
+    const QFont base = m_font->font();
+    const auto add = [&](const QString &text, const QString &f, const QFont &look) {
+        m_font->addItem(text, f);
+        m_font->setItemData(m_font->count() - 1, look, Qt::FontRole);
+    };
+    const QSignalBlocker block(m_font);
+    m_font->clear();
+    if (!family.isEmpty() && !installed.contains(family))
+        add(tr("%1 (not installed)").arg(family), family, base);
+    for (const QString &f : recent)
+        add(f, f, previewFont(f, base));
+    if (m_font->count() > 0)
+        m_font->insertSeparator(m_font->count());
+    for (const QString &f : installed)
+        add(f, f, previewFont(f, base));
+    m_font->setCurrentIndex(family.isEmpty() ? -1 : m_font->findData(family));
+}
+
+void TitleTextPanel::fontPicked(int index)
+{
+    const QString family = m_font->itemData(index).toString();
+    if (family.isEmpty() || !installedFamilies().contains(family))
+        return;
+    QSettings s = settings();
+    QStringList recent = s.value(kRecentKey).toStringList();
+    recent.removeAll(family);
+    recent.prepend(family);
+    s.setValue(kRecentKey, recent.mid(0, kRecentFonts));
+    fillFonts(family);
 }

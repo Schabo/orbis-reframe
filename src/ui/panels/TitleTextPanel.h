@@ -4,13 +4,15 @@
 
 #include "../../core/Title.h"
 
-class QFontComboBox;
+class QComboBox;
 class QPlainTextEdit;
 class QPushButton;
 class QWidget;
 
 // The Title tab's Text section: the selected title's text (several lines,
-// centred), font, bold / italic and colour (title::Style). Where it sits,
+// centred), font, bold / italic and colour (title::Style). The font list is
+// the installed families, each in its own face, with the last few picked
+// (app-wide, not the project's) at the top. Where it sits,
 // its size and timing are the tab's other section, an OverlayPanel of kind
 // Title.
 //
@@ -33,9 +35,14 @@ signals:
 private:
     title::Style current() const;
     void setColor(uint32_t rgb);
+    // Fill the font list: recent fonts, the installed ones, and `family` at
+    // the top when it isn't installed (a project from another computer), so
+    // it is kept until the user picks another. Selects `family`.
+    void fillFonts(const QString &family);
+    void fontPicked(int index);
 
     QPlainTextEdit *m_text = nullptr;
-    QFontComboBox *m_font = nullptr;
+    QComboBox *m_font = nullptr;
     QWidget *m_styleRow = nullptr;
     QPushButton *m_bold = nullptr;
     QPushButton *m_italic = nullptr;

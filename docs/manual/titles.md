@@ -40,7 +40,7 @@ back again when you select an overlay video). The **Text** section:
 | Setting | What it does |
 |---|---|
 | **Text** | The title's text. `Enter` starts a new line; the lines are centred under each other. The title changes as you type. |
-| **Font** | The typeface. Every font installed on your computer is listed. |
+| **Font** | The typeface, picked from a list of every font installed on your computer, each shown in its own face. The three fonts you picked last are at the top. Type a name's first letters to jump to it. A project made on another computer may use a font that isn't installed here: it is listed as *(not installed)*, kept, and drawn with a similar font until you pick another. |
 | **Style** | **Bold** and **Italic**; click to switch them on or off. |
 | **Colour** | Click to choose the text's colour. |
 

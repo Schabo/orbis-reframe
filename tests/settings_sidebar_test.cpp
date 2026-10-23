@@ -28,6 +28,7 @@
 #include "panels/StitchingPanel.h"
 
 #include <QApplication>
+#include <QFontDatabase>
 #include <QTemporaryDir>
 #include <QSlider>
 #include <QCheckBox>
@@ -425,6 +426,36 @@ void testTitleTab(SettingsSidebar &bar)
     bold->click();
     CHECK(spy.count() == 1 && spy.last().at(0).value<title::Style>().bold &&
           spy.last().at(0).value<title::Style>().text == "Day 1");
+
+    // The font: a list to pick from, not a field; a pick is reported and goes
+    // to the top; a font that isn't installed is kept, not replaced.
+    auto *font = find<QComboBox>(text, "titleFont");
+    QStringList families;
+    for (const QString &f : QFontDatabase::families())
+        if (!QFontDatabase::isPrivateFamily(f))
+            families << f;
+    if (font && families.size() >= 2) {
+        CHECK(!font->isEditable());
+        s.font = families.at(0);
+        text->setTitle(s);
+        CHECK(font->currentData().toString() == families.at(0) && spy.count() == 1);
+        const int other = font->findData(families.at(1));
+        CHECK(other >= 0);
+        font->setCurrentIndex(other);
+        emit font->activated(other);
+        CHECK(spy.count() == 2 && spy.last().at(0).value<title::Style>().font == families.at(1));
+        CHECK(font->itemData(0).toString() == families.at(1)); // recent, on top
+        CHECK(font->currentData().toString() == families.at(1));
+        s.font = "No Such Font 12";
+        text->setTitle(s);
+        CHECK(spy.count() == 2 && font->currentIndex() == 0 &&
+              font->currentText().contains("not installed"));
+        bold->click();
+        CHECK(spy.count() == 3 && spy.last().at(0).value<title::Style>().font == "No Such Font 12");
+        bold->click();
+    } else {
+        CHECK(font);
+    }
     text->setNoTitle(QString());
     CHECK(!edit->isEnabled());
 
