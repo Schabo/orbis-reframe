@@ -62,7 +62,20 @@ clips):
   real X6 clips (built on stand-ins);
 - real-time decode at 8K 50 checked.
 
-### 3. Optional
+### 3. GPS and stats overlays -- *maintainer*
+
+Speed, altitude, distance, heading, the route, and lean / G-force gauges,
+drawn on the picture from the clip's own telemetry and following the
+clip's time (speed changes and trims included). The X5 records GPS in its
+`.insv` trailer when a GPS source was connected, about once a second and
+sometimes only for part of the clip ([`formats/insta360-x5.md`](formats/insta360-x5.md));
+lean comes from the gyroscope. No map tiles: the route is a drawn line,
+editing stays local-only. The overlays are saved in the project with their
+style and position, and the viewport and the export draw the same. The
+design (clips without GPS, gaps and the 1 Hz rate, units, gauge styles) is
+still to be planned.
+
+### 4. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -190,9 +203,6 @@ each is in its document in [`formats/`](formats/README.md).
   and the heading corrected from the GPS course where a clip has one.
 - **ProRes export** (maybe DNxHR) for handing off to other editors, beside
   H.264 / H.265.
-- **GPS and stats overlays**: speed, altitude, distance, heading, the route,
-  lean / G-force gauges, drawn from the clip's own telemetry; no map tiles
-  (local-only).
 - **Split screen, angles picked automatically**: split screen is built (a
   clip's picture in 2 or 4 panes, each with its own keyframes, placed by
   `pane::rects` in `src/core/PaneLayout.h` everywhere a view is drawn).
