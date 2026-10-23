@@ -140,6 +140,19 @@ QComboBox::drop-down {
     border: none;
     width: 18px;
 }
+/* The arrow says it's a list; without an image a styled combo box draws
+   none and looks like a text field. */
+QComboBox::down-arrow {
+    image: url(icon:chevron-down/@icon);
+    width: 12px;
+    height: 12px;
+}
+QComboBox::down-arrow:hover, QComboBox::down-arrow:on {
+    image: url(icon:chevron-down/@iconActive);
+}
+QComboBox::down-arrow:disabled {
+    image: url(icon:chevron-down/@textDisabled);
+}
 QComboBox QAbstractItemView {
     background-color: @panel;
     border: 1px solid @border;

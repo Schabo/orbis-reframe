@@ -96,6 +96,8 @@ Notifier *notifier();
 
 // resources/theme.qss with every @token replaced by `colors`' value. An
 // unknown @token is left as it is (theme_test checks there are none).
+// url(icon:NAME/@token) becomes the url of a file holding the bundled icon
+// NAME drawn in that token's colour (an opaque one).
 QString styleSheet(const Colors &colors);
 
 // How an icon is tinted.

@@ -10,6 +10,7 @@
 #include <QPalette>
 #include <QPixmap>
 #include <QRegularExpression>
+#include <QTemporaryDir>
 
 namespace theme {
 
@@ -235,6 +236,25 @@ QString cssColor(const QColor &c)
     return QStringLiteral("rgba(%1, %2, %3, %4)").arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha());
 }
 
+// A bundled icon in one colour as an SVG file, for the stylesheet's image
+// urls (they take a file, not an icon engine). Written once per name and
+// colour into a directory that lives as long as the app; empty if it can't.
+QString tintedIconFile(const QString &name, const QString &color)
+{
+    static QTemporaryDir dir;
+    if (!dir.isValid())
+        return {};
+    const QString path = dir.filePath(QStringLiteral("%1-%2.svg").arg(name, color.mid(1)));
+    if (QFile::exists(path))
+        return path;
+    QFile in(QStringLiteral(":/icons/%1.svg").arg(name));
+    QFile out(path);
+    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly))
+        return {};
+    out.write(in.readAll().replace("currentColor", color.toLatin1()));
+    return path;
+}
+
 QString styleSheet(const Colors &colors)
 {
     QFile f(QStringLiteral(":/theme.qss"));
@@ -256,7 +276,20 @@ QString styleSheet(const Colors &colors)
         last = m.capturedEnd();
     }
     out += QStringView(qss).mid(last);
-    return out;
+    // url(icon:NAME/@token): the bundled icon NAME in that token's colour.
+    static const QRegularExpression iconUrl(
+        QStringLiteral("url\\(icon:([a-z0-9-]+)/(#[0-9a-f]{6})\\)"));
+    QString tinted;
+    tinted.reserve(out.size());
+    last = 0;
+    for (auto it = iconUrl.globalMatch(out); it.hasNext();) {
+        const QRegularExpressionMatch m = it.next();
+        tinted += QStringView(out).mid(last, m.capturedStart() - last);
+        tinted += QStringLiteral("url(%1)").arg(tintedIconFile(m.captured(1), m.captured(2)));
+        last = m.capturedEnd();
+    }
+    tinted += QStringView(out).mid(last);
+    return tinted;
 }
 
 void apply(QApplication &app, const Theme &theme)

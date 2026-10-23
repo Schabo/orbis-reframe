@@ -6,6 +6,7 @@
 #include "Theme.h"
 
 #include <QApplication>
+#include <QFile>
 #include <QImage>
 #include <QImageReader>
 #include <QPainter>
@@ -56,6 +57,15 @@ void testStyleSheet()
         CHECK(!m.hasMatch());
         // Colours come from the tokens, not written into the template.
         CHECK(qss.contains(t.colors.accent.name()));
+        // Icon urls name files holding the icon in the token's colour.
+        CHECK(!qss.contains(QStringLiteral("url(icon:")));
+        const QRegularExpression arrow(QStringLiteral("down-arrow \\{[^}]*url\\(([^)]+)\\)"));
+        const auto a = arrow.match(qss);
+        CHECK(a.hasMatch());
+        QFile file(a.captured(1));
+        CHECK(file.open(QIODevice::ReadOnly));
+        const QByteArray svg = file.readAll();
+        CHECK(svg.contains(t.colors.icon.name().toLatin1()) && !svg.contains("currentColor"));
     }
     CHECK(theme::cssColor(QColor(1, 2, 3)) == "#010203");
     CHECK(theme::cssColor(QColor(0, 0, 0, 77)) == "rgba(0, 0, 0, 77)");
