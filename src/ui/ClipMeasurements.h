@@ -18,7 +18,7 @@ enum class MeasureFailure;
 // fine-tune (stitch::MeasureClipSync, only with ORBIS_REFRAME_HAVE_CLIP_SYNC)
 // and the seam alignment (stitch::MeasureClipSeam), one of each kind at a
 // time, for the timeline's sources in order. A result lands on the Timeline
-// (setSourceSyncAdjust / setSourceSeamAdjust), whose clipSyncChanged /
+// (setSourceSyncAdjust / setSourceSeamCorrection), whose clipSyncChanged /
 // clipSeamChanged say what to rebuild.
 //
 // They run when a clip is added or a project opened, never while playing:

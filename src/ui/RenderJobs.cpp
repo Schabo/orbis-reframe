@@ -68,7 +68,7 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     job.blur = privacy.blurFor(c);
     job.lensGuard = c.lensGuard;
     job.depthSeam = c.depthSeam;
-    timeline.sourceSeamAdjust(c.sourcePath, job.seamAdjustDeg);
+    timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
     setViews(job, c);
     spec.buildStab = c.stabilization;
     spec.fps = c.fps;
@@ -80,8 +80,8 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
 // layer's InsetFeed::Clip::pictureKey.
 QString viewKey(const ClipItem &c, const Timeline &timeline)
 {
-    std::array<double, 3> seam{};
-    timeline.sourceSeamAdjust(c.sourcePath, seam);
+    insv::SeamCorrection seam;
+    timeline.sourceSeamCorrection(c.sourcePath, seam);
     const insv::StabConfig &s = c.stabilization;
     QString key = QStringLiteral("%1|%2|%3,%4,%5,%6|%7,%8|%9,%10,%11")
                       .arg(c.id)
@@ -92,9 +92,9 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
                       .arg(c.color.temperature)
                       .arg(int(c.lensGuard))
                       .arg(c.depthSeam)
-                      .arg(seam[0])
-                      .arg(seam[1])
-                      .arg(seam[2]);
+                      .arg(seam.lens1RotDeg[0])
+                      .arg(seam.lens1RotDeg[1])
+                      .arg(seam.lens1RotDeg[2]);
     key += QStringLiteral("|%1,%2,%3,%4,%5,%6,%7,%8,%9,%10,%11")
                .arg(int(s.mode))
                .arg(s.windowYawSec)
@@ -483,7 +483,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     job.blur = privacy.blurFor(c);
     job.lensGuard = c.lensGuard;
     job.depthSeam = c.depthSeam;
-    timeline.sourceSeamAdjust(c.sourcePath, job.seamAdjustDeg);
+    timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
     if (nativeStab)
         job.stab = ReframeExportController::buildStabilizer(
             c.sourcePath, c.stabilization, std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);

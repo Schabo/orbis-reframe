@@ -561,7 +561,7 @@ void MainWindow::connectStitchAndStabilization()
         if (!c)
             return;
         pushTimelineToController();
-        pushSeamAdjust();
+        pushSeamCorrection();
         m_measurements->forgetSeamFailure(c->sourcePath);
         m_measurements->schedule();
         updateSeamStatus();
@@ -1008,7 +1008,7 @@ void MainWindow::connectMeasurements()
             m_measuredWhilePlaying = true;
             return;
         }
-        pushSeamAdjust();
+        pushSeamCorrection();
         const ClipItem *c = m_timeline->clipById(id);
         const ClipItem *cur = m_timeline->clipById(m_clipId);
         if (c && cur && c->sourcePath == cur->sourcePath)
@@ -1248,7 +1248,7 @@ void MainWindow::connectController()
             return;
         if (m_measuredWhilePlaying) { // results held back while playing
             m_measuredWhilePlaying = false;
-            pushSeamAdjust();
+            pushSeamCorrection();
             ensureStabilizers();
             applyStabilization(m_lastPositionMs);
             updateSyncStatus();
@@ -1563,18 +1563,18 @@ void MainWindow::ensureStabilizers()
     }
 }
 
-bool MainWindow::seamAdjustFor(const QString &clipPath, std::array<double, 3> &deg) const
+bool MainWindow::seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam) const
 {
-    return m_timeline->sourceSeamAdjust(clipPath, deg);
+    return m_timeline->sourceSeamCorrection(clipPath, seam);
 }
 
-void MainWindow::pushSeamAdjust()
+void MainWindow::pushSeamCorrection()
 {
     for (int i = 0; i < m_timeline->count(); ++i) {
         const QString &path = m_timeline->clipAt(i).sourcePath;
-        std::array<double, 3> deg;
-        seamAdjustFor(path, deg);
-        m_controller->setSeamAdjust(path, deg);
+        insv::SeamCorrection seam;
+        seamCorrectionFor(path, seam);
+        m_controller->setSeamCorrection(path, seam);
     }
 }
 
@@ -1624,7 +1624,7 @@ void MainWindow::bindActiveClipAt(qint64 timelineMs)
     const bool clipChanged = c.id != m_clipId;
     m_clipId = c.id;
     if (clipChanged) {
-        pushSeamAdjust();
+        pushSeamCorrection();
         updateSeamStatus();
     }
     m_timelineWidget->setActiveClip(editClipId());
@@ -3500,7 +3500,7 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     req.toMs = to;
     req.fps = c.fps;
     req.syncAdjustMs = std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs;
-    seamAdjustFor(c.sourcePath, req.seamAdjustDeg);
+    seamCorrectionFor(c.sourcePath, req.seamCorrection);
     req.lensGuard = c.lensGuard;
     req.depthSeam = c.depthSeam;
     req.captureTiming = StabilizerCache::captureTimingOn(c);
@@ -3815,7 +3815,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     req.toMs = to;
     req.fps = c->fps;
     req.stab = job.stab;
-    req.seamAdjustDeg = job.seamAdjustDeg;
+    req.seamCorrection = job.seamCorrection;
     req.blur = job.blur;
     req.lensGuard = job.lensGuard;
     run.clipId = c->id;

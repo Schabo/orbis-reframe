@@ -8,6 +8,7 @@
 #include <ColorLut.h>       // color::Grade (no Qt)
 #include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
+#include <SeamCorrection.h> // insv::SeamCorrection (POD)
 
 #include <QString>
 
@@ -181,12 +182,12 @@ struct ClipItem {
     double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
 
     // Measured seam alignment fine-tune for this source
-    // (stitch::MeasureClipSeam): lens 1's extra yaw / pitch / roll,
-    // degrees. Measured under a lens-guard profile, recorded in
+    // (stitch::MeasureClipSeam), a correction of the lens calibration.
+    // Measured under a lens-guard profile, recorded in
     // seamAdjustGuard (stitch::PreviewStitchConfig::LensGuard as int; -1 = not
     // measured) -- a different guard setting needs a new measurement. Shared
     // by clips of the same source, like syncAdjustMs.
-    std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+    insv::SeamCorrection seamCorrection;
     int seamAdjustGuard = -1;
 
     qint64 trimmedDurationMs() const { return trimOutMs - trimInMs; }

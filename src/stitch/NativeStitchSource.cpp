@@ -306,10 +306,10 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     return frame;
 }
 
-void NativeStitchSource::SetLens1Adjust(const double deg[3]) {
-    if (!stitcher_ || std::equal(deg, deg + 3, params_.lens1AdjustDeg))
+void NativeStitchSource::SetSeamCorrection(const insv::SeamCorrection& c) {
+    if (!stitcher_ || c == params_.seam)
         return;
-    std::copy(deg, deg + 3, params_.lens1AdjustDeg);
+    params_.seam = c;
     if (stitcher_->configure(calib_, info_.width, info_.height, params_))
         gpu_params_ = stitcher_->gpuParams(); // keeps the per-frame RS fields: set in paramsAt
 }

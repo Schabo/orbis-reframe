@@ -227,7 +227,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
             c.depthSeam = o.depthSeam;
             if (!std::isnan(o.syncAdjustMs))
                 c.syncAdjustMs = o.syncAdjustMs;
-            c.seamAdjustDeg = o.seamAdjustDeg;
+            c.seamCorrection = o.seamCorrection;
             c.seamAdjustGuard = o.seamAdjustGuard;
             break;
         }
@@ -665,14 +665,14 @@ void Timeline::setSourceSyncAdjust(const QString &sourcePath, double ms)
     }
 }
 
-void Timeline::setSourceSeamAdjust(const QString &sourcePath, const std::array<double, 3> &deg,
-                                   int lensGuard)
+void Timeline::setSourceSeamCorrection(const QString &sourcePath,
+                                       const insv::SeamCorrection &seam, int lensGuard)
 {
     for (ClipItem &c : m_clips) {
         if (c.sourcePath != sourcePath ||
-            (c.seamAdjustDeg == deg && c.seamAdjustGuard == lensGuard))
+            (c.seamCorrection == seam && c.seamAdjustGuard == lensGuard))
             continue;
-        c.seamAdjustDeg = deg;
+        c.seamCorrection = seam;
         c.seamAdjustGuard = lensGuard;
         emit clipSeamChanged(c.id);
     }
@@ -686,25 +686,25 @@ double Timeline::sourceSyncAdjust(const QString &sourcePath) const
     return std::nan("");
 }
 
-bool Timeline::sourceSeamAdjust(const QString &sourcePath, int lensGuard,
-                                std::array<double, 3> &deg) const
+bool Timeline::sourceSeamCorrection(const QString &sourcePath, int lensGuard,
+                                    insv::SeamCorrection &seam) const
 {
     for (const ClipItem &c : m_clips) {
         if (c.sourcePath == sourcePath && c.seamAdjustGuard == lensGuard) {
-            deg = c.seamAdjustDeg;
+            seam = c.seamCorrection;
             return true;
         }
     }
-    deg = {0.0, 0.0, 0.0};
+    seam = {};
     return false;
 }
 
-bool Timeline::sourceSeamAdjust(const QString &sourcePath, std::array<double, 3> &deg) const
+bool Timeline::sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrection &seam) const
 {
     for (const ClipItem &c : m_clips)
         if (c.sourcePath == sourcePath)
-            return sourceSeamAdjust(sourcePath, static_cast<int>(c.lensGuard), deg);
-    deg = {0.0, 0.0, 0.0};
+            return sourceSeamCorrection(sourcePath, static_cast<int>(c.lensGuard), seam);
+    seam = {};
     return false;
 }
 

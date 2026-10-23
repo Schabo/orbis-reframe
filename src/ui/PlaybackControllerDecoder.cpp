@@ -126,11 +126,11 @@ void PlaybackController::setCaptureTimings(std::map<int, stitch::CaptureTiming> 
     m_rsGen.fetch_add(1);
 }
 
-void PlaybackController::setSeamAdjust(const QString &path, std::array<double, 3> deg)
+void PlaybackController::setSeamCorrection(const QString &path, const insv::SeamCorrection &seam)
 {
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
-        m_seamAdjust[path] = deg;
+        m_seamCorrection[path] = seam;
     }
     m_rsGen.fetch_add(1);
 }
@@ -209,7 +209,7 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
 {
     RsSetting s;
     RsSetting after;
-    std::array<double, 3> seam{0, 0, 0};
+    insv::SeamCorrection seam;
     stitch::BlurQuadsFn blur, blurAfter;
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
@@ -219,8 +219,8 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
         auto at = m_rsSettings.find(handOver.afterClipId);
         if (handOver.afterClipId && at != m_rsSettings.end())
             after = at->second;
-        auto st = m_seamAdjust.find(path);
-        if (st != m_seamAdjust.end())
+        auto st = m_seamCorrection.find(path);
+        if (st != m_seamCorrection.end())
             seam = st->second;
         auto bt = m_blurQuads.find(clipId);
         if (bt != m_blurQuads.end())
@@ -236,7 +236,7 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
                 fn(ptsMs, out);
         };
     src.SetCaptureTiming(std::move(s), handOver.untilMs, std::move(after));
-    src.SetLens1Adjust(seam.data());
+    src.SetSeamCorrection(seam);
     src.SetBlurQuads(std::move(blur));
 }
 

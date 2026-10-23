@@ -379,20 +379,20 @@ public slots:
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);
-    // Measured seam fine-tune (ClipItem::seamAdjustDeg / seamAdjustGuard) for
+    // Measured seam fine-tune (ClipItem::seamCorrection / seamAdjustGuard) for
     // every clip cut from `sourcePath`.
-    void setSourceSeamAdjust(const QString &sourcePath, const std::array<double, 3> &deg,
+    void setSourceSeamCorrection(const QString &sourcePath, const insv::SeamCorrection &seam,
                              int lensGuard);
     // A source's sync fine-tune: the first main-track clip cut from it; NaN
     // when it has none (not measured, or no clip of it).
     double sourceSyncAdjust(const QString &sourcePath) const;
     // A source's seam fine-tune if one of its main-track clips has it
-    // measured under `lensGuard`; else false and `deg` zero.
-    bool sourceSeamAdjust(const QString &sourcePath, int lensGuard,
-                          std::array<double, 3> &deg) const;
+    // measured under `lensGuard`; else false and `seam` none.
+    bool sourceSeamCorrection(const QString &sourcePath, int lensGuard,
+                              insv::SeamCorrection &seam) const;
     // The same, measured under the lens guards the source is set to now
     // (ClipItem::lensGuard): what its stitch uses.
-    bool sourceSeamAdjust(const QString &sourcePath, std::array<double, 3> &deg) const;
+    bool sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrection &seam) const;
 
 signals:
     void clipInserted(int index);

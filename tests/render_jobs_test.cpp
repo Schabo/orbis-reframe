@@ -377,7 +377,7 @@ void testClipJob(const QString &dir)
     ColorGrade g;
     g.exposureEv = 1.0f;
     t.setClipColor(id, g);
-    t.setSourceSeamAdjust("/c/ride.insv", {-0.5, 0.25, 0.1}, 2);
+    t.setSourceSeamCorrection("/c/ride.insv", {{-0.5, 0.25, 0.1}}, 2);
     PrivacyBlur privacy;
     privacy.scans().setDirectory(dir);
 
@@ -385,7 +385,7 @@ void testClipJob(const QString &dir)
     ReframeExportController::ClipJob job = renderjobs::clipJob(c, t, privacy);
     CHECK(job.clipPath == "/c/ride.insv" && job.trimInMs == 2000 && job.trimOutMs == 9000);
     CHECK(job.speed == 2.0 && job.colorGrade.adjust[0] == 1.0f);
-    CHECK(job.seamAdjustDeg[1] == 0.25); // measured under Premium (2), the clip's
+    CHECK(job.seamCorrection.lens1RotDeg[1] == 0.25); // measured under Premium (2), the clip's
     CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Premium && job.depthSeam);
     CHECK(!job.stab);    // stabilization off
     CHECK(!job.poseAt);  // no keys: looking straight ahead
@@ -393,7 +393,7 @@ void testClipJob(const QString &dir)
     t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Standard, false);
     job = renderjobs::clipJob(t.clipAt(0), t, privacy);
     CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard && !job.depthSeam);
-    CHECK(job.seamAdjustDeg[1] == 0.0); // measured under another guard
+    CHECK(job.seamCorrection.lens1RotDeg[1] == 0.0); // measured under another guard
     t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Premium, true);
 
     t.upsertClipReframeKey(id, 3000, {0.5f, 0.0f, 0.0f, 1.2f});

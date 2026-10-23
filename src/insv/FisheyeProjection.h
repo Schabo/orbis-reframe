@@ -5,6 +5,7 @@
 #include "Calibration.h"
 #include "Image.h"
 #include "InsvTrailer.h" // insv::LensProfile
+#include "SeamCorrection.h"
 
 #include <array>
 
@@ -75,9 +76,9 @@ struct StitchParams {
     double barePoly[6] = {0, 0, 0, 0, 0, 0};
     double accessoryPoly[6] = {0, 0, 0, 0, 0, 0};
 
-    // Measured correction to lens 1's extrinsic, degrees, added to its yaw
-    // (about x), pitch (about y) and roll (about z) in our lens frame: the seam alignment fine-tune (insv::EstimateSeamAlignment).
-    double lens1AdjustDeg[3] = {0, 0, 0};
+    // Measured correction to the lens calibration: the seam alignment
+    // fine-tune (insv::EstimateSeamAlignment).
+    SeamCorrection seam;
 
     // Depth-aware seam. The two lenses sit `baselineM` apart along their common
     // axis (the calibration's lens-1 tz, ~32 mm on the X5), so an object at

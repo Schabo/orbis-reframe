@@ -403,7 +403,7 @@ struct ParsedClip {
     std::vector<privacy::BlurAddition> blurAdditions;
     double speed = 1.0;
     double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
-    std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+    insv::SeamCorrection seamCorrection;
     int seamAdjustGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     bool depthSeam = true;
@@ -847,7 +847,9 @@ void Project::writeMeasured(const ClipItem &clip)
             updated["syncAdjustMs"] = clip.syncAdjustMs;
         if (clip.seamAdjustGuard >= 0)
             updated["seamAdjust"] = json{
-                {"deg", {clip.seamAdjustDeg[0], clip.seamAdjustDeg[1], clip.seamAdjustDeg[2]}},
+                {"deg",
+                 {clip.seamCorrection.lens1RotDeg[0], clip.seamCorrection.lens1RotDeg[1],
+                  clip.seamCorrection.lens1RotDeg[2]}},
                 {"lensGuard", clip.seamAdjustGuard}};
         if (updated != jc) {
             jc = std::move(updated);
@@ -1031,7 +1033,9 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             clips.back()["syncAdjustMs"] = c.syncAdjustMs; // absent until measured
         if (c.seamAdjustGuard >= 0) // absent until measured
             clips.back()["seamAdjust"] = json{
-                {"deg", {c.seamAdjustDeg[0], c.seamAdjustDeg[1], c.seamAdjustDeg[2]}},
+                {"deg",
+                 {c.seamCorrection.lens1RotDeg[0], c.seamCorrection.lens1RotDeg[1],
+                  c.seamCorrection.lens1RotDeg[2]}},
                 {"lensGuard", c.seamAdjustGuard}};
     }
 
@@ -1236,7 +1240,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 if (js.contains("deg") && js.at("deg").is_array() && js.at("deg").size() == 3 &&
                     js.contains("lensGuard") && js.at("lensGuard").is_number_integer()) {
                     for (int k = 0; k < 3; ++k)
-                        pc.seamAdjustDeg[k] = js.at("deg")[k].get<double>();
+                        pc.seamCorrection.lens1RotDeg[k] = js.at("deg")[k].get<double>();
                     pc.seamAdjustGuard = js.at("lensGuard").get<int>();
                 }
             }
@@ -1379,7 +1383,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         if (!std::isnan(pc.syncAdjustMs))
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
         if (pc.seamAdjustGuard >= 0)
-            m_timeline->setSourceSeamAdjust(pc.sourcePath, pc.seamAdjustDeg, pc.seamAdjustGuard);
+            m_timeline->setSourceSeamCorrection(pc.sourcePath, pc.seamCorrection, pc.seamAdjustGuard);
         for (int pane = 0; pane < pane::kMaxPanes; ++pane) {
             const std::vector<ReframeKey> &keys = pane ? pc.paneKeys[pane - 1] : pc.reframeKeys;
             for (const ReframeKey &k : keys)

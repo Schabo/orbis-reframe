@@ -9,6 +9,7 @@
 #include <InsetCompositor.h> // exportpipe::InsetClipJob (Request::insets)
 #include <GyroStabilizer.h> // insv::GyroStabilizer (ClipJob::stab)
 #include <IStitchSource.h>  // stitch::CaptureTiming
+#include <SeamCorrection.h> // insv::SeamCorrection (ClipJob::seamCorrection)
 #include <PaneLayout.h>     // pane::Split (ClipJob::split)
 
 #include <ReframeRenderer.h> // exportpipe::PaneView
@@ -100,7 +101,7 @@ public:
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
         bool depthSeam = true;
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg).
-        std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+        insv::SeamCorrection seamCorrection;
         // Privacy blur: the plate regions per source time, mosaicked in the
         // stitch (IStitchSource::SetBlurQuads); empty => none. Safe to call
         // from the export thread (captures its scan).

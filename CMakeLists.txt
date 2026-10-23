@@ -163,6 +163,7 @@ add_library(insv STATIC
     src/insv/FisheyeProjection.h
     src/insv/FisheyeProjection.cpp
     src/insv/SeamAlignment.h
+    src/insv/SeamCorrection.h
     src/insv/SeamAlignment.cpp
     src/insv/SeamDepth.h
     src/insv/SeamDepth.cpp

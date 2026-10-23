@@ -10,7 +10,7 @@
 #include <vector>
 
 // Seam alignment fine-tune: fits a small extra rotation of lens 1
-// (StitchParams::lens1AdjustDeg) so the two lenses agree across the stitch
+// (StitchParams::seam) so the two lenses agree across the stitch
 // seam.
 //
 // With the guard profile and the right extrinsic signs, the sample clips still
@@ -29,9 +29,9 @@ namespace insv {
 
 struct SeamAlignmentResult {
     bool ok = false;
-    double adjustDeg[3] = {0, 0, 0}; // lens-1 yaw, pitch, roll to add
-    double scoreBefore = 0;          // mean block NCC at no adjustment
-    double scoreAfter = 0;           // ... at adjustDeg
+    SeamCorrection correction;
+    double scoreBefore = 0; // mean block NCC at no correction
+    double scoreAfter = 0;  // ... at `correction`
     int frames = 0;
     std::string message; // why it failed, or a one-line summary
 };
@@ -50,7 +50,7 @@ int64_t SnapToKeyframeMs(int64_t ms, double fps);
 SeamFrame MakeSeamFrame(const Image& lens0, const Image& lens1);
 
 // `cal` / `params` / `streamW` / `streamH` are what the stitch is configured
-// with (params.lens1AdjustDeg is ignored -- the fit starts from zero). Needs
+// with (params.seam is ignored -- the fit starts from zero). Needs
 // the extended MEI calibration. `cancel` (optional) is polled between steps.
 SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const StitchParams& params,
                                           int streamW, int streamH,

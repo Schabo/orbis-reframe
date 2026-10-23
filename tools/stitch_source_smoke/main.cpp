@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     int64_t range_start = -1, range_end = -1, range_step = 0;
     int64_t seam_in = -1, seam_out = -1;
     bool seam_ok = false;
-    double seam_deg[3] = {0, 0, 0};
+    insv::SeamCorrection seam;
     bool dump_depth = false;
     int arg = 1;
     for (; arg < argc; ++arg) {
@@ -64,8 +64,8 @@ int main(int argc, char** argv) {
                                                  : stitch::PreviewStitchConfig::LensGuard::Premium;
         } else if (a == "--lens1-adjust" && arg + 1 < argc) {
             // --lens1-adjust Y,P,R : a known seam fine-tune (degrees)
-            seam_ok = std::sscanf(argv[++arg], "%lf,%lf,%lf", &seam_deg[0], &seam_deg[1],
-                                  &seam_deg[2]) == 3;
+            seam_ok = std::sscanf(argv[++arg], "%lf,%lf,%lf", &seam.lens1RotDeg[0],
+                                  &seam.lens1RotDeg[1], &seam.lens1RotDeg[2]) == 3;
         } else if (a == "--no-depth-seam") {
             config.depthSeam = false;
         } else if (a == "--dump-depth") {
@@ -102,14 +102,14 @@ int main(int argc, char** argv) {
         const auto r = stitch::MeasureClipSeam(input_path, seam_in, seam_out, config.lensGuard);
         std::cout << "Seam: " << (r.ok ? "ok" : "FAILED") << " (" << r.message << ")" << std::endl;
         seam_ok = r.ok;
-        std::copy(r.adjustDeg, r.adjustDeg + 3, seam_deg);
+        seam = r.correction;
     }
     if (!source->Open(input_path, config)) {
         std::cerr << "Open failed: " << source->GetLastError() << std::endl;
         return 1;
     }
     if (seam_ok)
-        source->SetLens1Adjust(seam_deg);
+        source->SetSeamCorrection(seam);
 
     const stitch::ClipInfo& info = source->GetInfo();
     std::cout << "Source: " << info.width << "x" << info.height << " @ " << info.fps << " fps, "

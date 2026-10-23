@@ -11,8 +11,8 @@
 #include <SubjectTracker.h> // track::Seed, TrackSample
 
 #include <NativeStitchSource.h> // stitch::PreviewStitchConfig, stitch::Frame
+#include <SeamCorrection.h>     // insv::SeamCorrection
 
-#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -35,7 +35,7 @@ struct Request {
     // The clip's gyro de-rotation, as the viewport applies it; null => off.
     std::shared_ptr<const insv::GyroStabilizer> stab;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+    insv::SeamCorrection seamCorrection;
     int workWidth = 3840;     // analysis equirect width (2:1)
     bool realTime = true;     // no faster than the footage plays, so it can be watched
     double maxLostSec = 0.0;  // stop after this long without a verified frame; 0 = never

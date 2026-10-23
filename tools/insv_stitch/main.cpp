@@ -96,7 +96,7 @@ int main(int argc, char** argv)
             lensProfile = next();
         else if (k == "--lens1")
             lens1File = next();
-        else if (k == "--measure-seam") { // IN_MS OUT_MS: fit lens1AdjustDeg, then exit
+        else if (k == "--measure-seam") { // IN_MS OUT_MS: fit the seam correction, then exit
             seamIn = std::atoll(next().c_str());
             seamOut = std::atoll(next().c_str());
         } else if (k == "--depth-seam")
@@ -186,7 +186,7 @@ int main(int argc, char** argv)
     if ((!insv::ApplyLensProfile(params, bareProfile, accProfile) && accProfile) || profileMissing)
         die("no \"" + lensProfile + "\" lens profile in the trailer");
     for (int k = 0; k < 3; ++k)
-        params.lens1AdjustDeg[k] = adj[k];
+        params.seam.lens1RotDeg[k] = adj[k];
     std::printf("lens profile: %s (fov %.0f deg)\n", lensProfile.empty() ? "bare" : lensProfile.c_str(),
                 params.fovDeg);
     if (!stitcher.configure(calib, lens0.w, lens0.h, params))

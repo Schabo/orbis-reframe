@@ -126,8 +126,9 @@ SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const Stit
 
     auto score = [&](const double adj[3]) {
         StitchParams p = params;
+        p.seam = {};
         for (int k = 0; k < 3; ++k)
-            p.lens1AdjustDeg[k] = adj[k];
+            p.seam.lens1RotDeg[k] = adj[k];
         FisheyeStitcher st;
         if (!st.configure(cal, streamW, streamH, p))
             return -2.0;
@@ -176,7 +177,7 @@ SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const Stit
         }
     }
     out.ok = true;
-    std::copy(best, best + 3, out.adjustDeg);
+    std::copy(best, best + 3, out.correction.lens1RotDeg);
     out.scoreAfter = bestScore;
     out.frames = static_cast<int>(frames.size());
     char buf[160];

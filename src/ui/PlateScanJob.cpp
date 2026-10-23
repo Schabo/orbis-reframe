@@ -38,7 +38,7 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
         err = src.GetLastError();
         return false;
     }
-    src.SetLens1Adjust(req.seamAdjustDeg.data());
+    src.SetSeamCorrection(req.seamCorrection);
     *timing = !level->ready()       ? privacy::StitchTiming::NoGyro
               : req.captureTiming ? privacy::StitchTiming::Corrected
                                   : privacy::StitchTiming::Uncorrected;

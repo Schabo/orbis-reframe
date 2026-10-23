@@ -79,7 +79,7 @@ void testProjectJson()
         }
         p.timeline()->setClipSpeed(a, 0.5);
         p.timeline()->setSourceSyncAdjust(insideSrc, -3.1); // sync fine-tune
-        p.timeline()->setSourceSeamAdjust(insideSrc, {-0.55, 0.05, -0.05}, 2); // seam fine-tune
+        p.timeline()->setSourceSeamCorrection(insideSrc, {{-0.55, 0.05, -0.05}}, 2); // seam fine-tune
         CHECK(p.modified());
 
         stitch::PreviewStitchConfig sc;
@@ -208,7 +208,7 @@ void testProjectJson()
         const int a2 = tl->appendClip(insideSrc, 10000, 29.97, 1920, 960);
         CHECK(tl->clipById(a2)->syncAdjustMs == a.syncAdjustMs);
         CHECK(tl->clipById(a2)->seamAdjustGuard == 2);
-        CHECK(tl->clipById(a2)->seamAdjustDeg[0] == -0.55);
+        CHECK(tl->clipById(a2)->seamCorrection.lens1RotDeg[0] == -0.55);
 
         const stitch::PreviewStitchConfig &sc = p.previewStitch();
         CHECK(sc.quality == stitch::PreviewStitchConfig::Quality::OpticalFlow);
@@ -1211,18 +1211,18 @@ void testMeasurementsWritten()
     CHECK(savedClip(0).syncAdjustMs == -1.5);
 
     p.timeline()->setSourceSyncAdjust(a, -3.1);
-    p.timeline()->setSourceSeamAdjust(b, {-0.5, 0.25, 0.1}, 2);
+    p.timeline()->setSourceSeamCorrection(b, {{-0.5, 0.25, 0.1}}, 2);
     CHECK(!p.modified()); // not an edit
-    std::array<double, 3> deg{1.0, 1.0, 1.0};
+    insv::SeamCorrection seam{{1.0, 1.0, 1.0}};
     CHECK(p.timeline()->sourceSyncAdjust(a) == -3.1);
     CHECK(std::isnan(p.timeline()->sourceSyncAdjust(b)));
     CHECK(std::isnan(p.timeline()->sourceSyncAdjust(tmp.path() + "/c.insv")));
-    CHECK(p.timeline()->sourceSeamAdjust(b, 2, deg) && deg[1] == 0.25);
-    CHECK(!p.timeline()->sourceSeamAdjust(b, 1, deg) && deg[1] == 0.0); // another guard
-    CHECK(!p.timeline()->sourceSeamAdjust(a, 2, deg));
+    CHECK(p.timeline()->sourceSeamCorrection(b, 2, seam) && seam.lens1RotDeg[1] == 0.25);
+    CHECK(!p.timeline()->sourceSeamCorrection(b, 1, seam) && seam.lens1RotDeg[1] == 0.0); // another guard
+    CHECK(!p.timeline()->sourceSeamCorrection(a, 2, seam));
     CHECK(savedClip(0).syncAdjustMs == -3.1 && savedClip(2).syncAdjustMs == -3.1);
     CHECK(std::isnan(savedClip(1).syncAdjustMs));
-    CHECK(savedClip(1).seamAdjustGuard == 2 && savedClip(1).seamAdjustDeg[1] == 0.25);
+    CHECK(savedClip(1).seamAdjustGuard == 2 && savedClip(1).seamCorrection.lens1RotDeg[1] == 0.25);
 
     // With unsaved edits: only the measurement reaches the file.
     p.timeline()->appendClip(b, 10000, 30.0);

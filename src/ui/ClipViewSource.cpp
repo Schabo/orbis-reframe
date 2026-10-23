@@ -29,7 +29,7 @@ bool ClipViewSource::open(std::string &err)
         return false;
     }
     m_src->SetCaptureTiming(ReframeExportController::captureTimingFor(job.stab));
-    m_src->SetLens1Adjust(job.seamAdjustDeg.data());
+    m_src->SetSeamCorrection(job.seamCorrection);
     if (job.blur && !m_src->SetBlurQuads(job.blur)) {
         err = "this stitch can't apply the privacy blur: " + job.clipPath.toStdString();
         m_src.reset();

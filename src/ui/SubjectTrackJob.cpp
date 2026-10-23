@@ -21,7 +21,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onF
         res.error = src.GetLastError();
         return res;
     }
-    src.SetLens1Adjust(req.seamAdjustDeg.data());
+    src.SetSeamCorrection(req.seamCorrection);
     if (req.blur)
         src.SetBlurQuads(req.blur);
 

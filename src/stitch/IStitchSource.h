@@ -10,7 +10,8 @@ namespace render {
 struct LensFrame; // src/render/LensFrame.h
 }
 namespace insv {
-struct BlurQuad; // src/insv/BlurQuads.h
+struct BlurQuad;       // src/insv/BlurQuads.h
+struct SeamCorrection; // src/insv/SeamCorrection.h
 }
 
 namespace stitch {
@@ -236,11 +237,10 @@ public:
         SetCaptureTiming(std::move(timing), INT64_MAX, CaptureTiming{});
     }
 
-    // Seam alignment fine-tune (insv::StitchParams::lens1AdjustDeg, measured
-    // by stitch::MeasureClipSeam): lens 1's extra yaw / pitch / roll, degrees,
-    // for subsequently stitched frames. Call from the reading thread.
-    // Default: unsupported, ignored.
-    virtual void SetLens1Adjust(const double /*deg*/[3]) {}
+    // Seam alignment fine-tune (insv::StitchParams::seam, measured by
+    // stitch::MeasureClipSeam) for subsequently stitched frames. Call from
+    // the reading thread. Default: unsupported, ignored.
+    virtual void SetSeamCorrection(const insv::SeamCorrection& /*c*/) {}
 
     // Privacy blur for subsequent frames: every frame stitched is mosaicked
     // inside the quads `fn` returns for its time (empty fn = off). Safe to

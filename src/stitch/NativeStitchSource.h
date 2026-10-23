@@ -193,9 +193,9 @@ public:
     using IStitchSource::SetCaptureTiming;
     void SetCaptureTiming(CaptureTiming timing, int64_t untilMs, CaptureTiming after) override;
 
-    // Re-configures the stitch geometry with lens 1 adjusted (see
-    // IStitchSource::SetLens1Adjust). Cheap; a no-op when unchanged.
-    void SetLens1Adjust(const double deg[3]) override;
+    // Re-configures the stitch geometry with the seam correction (see
+    // IStitchSource::SetSeamCorrection). Cheap; a no-op when unchanged.
+    void SetSeamCorrection(const insv::SeamCorrection& c) override;
 
     // Privacy blur (IStitchSource::SetBlurQuads): applied in paramsAt, so
     // every path -- equirect, fused view / flat, lens frames for the

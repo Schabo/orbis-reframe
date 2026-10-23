@@ -127,9 +127,9 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         double ay = -e.pitch * kDeg;
         double az = (e.roll - params.tzNominalDeg) * kDeg;
         if (i == 1) {
-            ax += params.lens1AdjustDeg[0] * kDeg;
-            ay += params.lens1AdjustDeg[1] * kDeg;
-            az += params.lens1AdjustDeg[2] * kDeg;
+            ax += params.seam.lens1RotDeg[0] * kDeg;
+            ay += params.seam.lens1RotDeg[1] * kDeg;
+            az += params.seam.lens1RotDeg[2] * kDeg;
         }
         const Mat3 corr = mul(mul(rotZ(az), rotY(ay)), rotX(ax)); // Rz Ry Rx
         const double nominalYaw =

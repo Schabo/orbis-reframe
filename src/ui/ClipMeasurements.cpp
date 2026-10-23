@@ -117,9 +117,9 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
 
 void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
 {
-    std::array<double, 3> deg;
+    insv::SeamCorrection seam;
     if (!m_enabled || clipPath.isEmpty() || m_seamThread ||
-        m_project->timeline()->sourceSeamAdjust(clipPath, deg) ||
+        m_project->timeline()->sourceSeamCorrection(clipPath, seam) ||
         m_seamFailed.contains(clipPath))
         return;
     const ClipItem *clip = measurableClip(clipPath);
@@ -142,9 +142,8 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
             // re-measure below run under the new one.
             const ClipItem *now = measurableClip(clipPath);
             if (r.ok && now && guard == now->lensGuard)
-                m_project->timeline()->setSourceSeamAdjust(
-                    clipPath, {r.adjustDeg[0], r.adjustDeg[1], r.adjustDeg[2]},
-                    static_cast<int>(guard)); // -> clipSeamChanged
+                m_project->timeline()->setSourceSeamCorrection(
+                    clipPath, r.correction, static_cast<int>(guard)); // -> clipSeamChanged
             else if (!r.ok && !m_seamCancel)
                 m_seamFailed.insert(clipPath, r.failure);
             emit statusChanged();
@@ -177,12 +176,12 @@ QString ClipMeasurements::failureText(stitch::MeasureFailure why, bool seam)
 
 QString ClipMeasurements::seamStatus(const ClipItem *c) const
 {
-    std::array<double, 3> deg;
-    if (c && m_project->timeline()->sourceSeamAdjust(c->sourcePath, deg))
+    insv::SeamCorrection seam;
+    if (c && m_project->timeline()->sourceSeamCorrection(c->sourcePath, seam))
         return tr("Seam: aligned for this clip (back lens yaw %1°, pitch %2°, roll %3°).")
-            .arg(deg[0], 0, 'f', 2)
-            .arg(deg[1], 0, 'f', 2)
-            .arg(deg[2], 0, 'f', 2);
+            .arg(seam.lens1RotDeg[0], 0, 'f', 2)
+            .arg(seam.lens1RotDeg[1], 0, 'f', 2)
+            .arg(seam.lens1RotDeg[2], 0, 'f', 2);
     if (c && m_seamMeasuringPath == c->sourcePath)
         return tr("Seam: measuring this clip…");
     if (const auto it = c ? m_seamFailed.constFind(c->sourcePath) : m_seamFailed.cend();

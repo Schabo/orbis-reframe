@@ -14,8 +14,8 @@
 #include <PlateScanner.h> // privacy::FollowResult
 
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
+#include <SeamCorrection.h> // insv::SeamCorrection
 
-#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -31,7 +31,7 @@ struct Request {
     int64_t toMs = 0;
     double fps = 30.0;
     double syncAdjustMs = 0.0; // the clip's video <-> IMU fine-tune
-    std::array<double, 3> seamAdjustDeg{0.0, 0.0, 0.0};
+    insv::SeamCorrection seamCorrection;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     bool depthSeam = true;
     // The capture-time correction, as playback has it: on with the
