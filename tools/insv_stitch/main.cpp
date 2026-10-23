@@ -24,6 +24,7 @@
 #include <InsvModels.h>
 #include <InsvTrailer.h> // insv::ReadInsvMakerNotes
 #include <SeamAlignment.h>
+#include <SeamCut.h>
 #include <SeamDepth.h>
 
 #include <cmath>
@@ -229,10 +230,16 @@ int main(int argc, char** argv)
     if (!stitcher.configure(calib, lens0.w, lens0.h, params))
         die("stitcher configure failed");
     insv::SeamDepthTracker depth;
+    insv::SeamCutTracker cut;
     if (depthSeam) {
         auto costs = std::make_unique<insv::SeamCosts>();
         insv::MeasureSeamCosts(stitcher, lens0, lens1, *costs);
         depth.update(*costs, timeMs);
+        // One frame, so the cut is measured with this frame's table (the
+        // app uses the one before).
+        auto cutStats = std::make_unique<insv::SeamCutStats>();
+        insv::MeasureSeamCutStats(stitcher, lens0, lens1, depth.table(), *cutStats);
+        cut.update(*cutStats, timeMs, stitcher.gpuParams().bandRad);
         const float* q = depth.table();
         std::printf("depth seam: baseline %+.4f m, mean confidence %.2f\n",
                     2 * stitcher.lensCentre(0).x * stitcher.seamAxis().x +
@@ -275,7 +282,8 @@ int main(int argc, char** argv)
         }
     }
 
-    insv::Image eq = stitcher.renderEquirect(lens0, lens1, eqWidth, depthSeam ? depth.table() : nullptr);
+    insv::Image eq = stitcher.renderEquirect(lens0, lens1, eqWidth, depthSeam ? depth.table() : nullptr,
+                                             depthSeam ? &cut.blend() : nullptr);
     std::printf("rendered equirect %dx%d\n", eq.w, eq.h);
 
     if (!writePpm(outPath, eq))

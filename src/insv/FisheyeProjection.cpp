@@ -208,18 +208,10 @@ Vec3 FisheyeStitcher::seamDir(double phi, double e) const
             ce * (cp * m_seamU.z + sp * m_seamV.z) + se * m_seamAxis.z};
 }
 
-double FisheyeStitcher::seamQAt(const Vec3& dir, const float* seamQ) const
+void FisheyeStitcher::seamPosition(const Vec3& dir, double& e, int& i0, int& i1, double& t) const
 {
-    if (!m_params.depthSeam || !seamQ)
-        return 0.0;
     const double sa = dir.x * m_seamAxis.x + dir.y * m_seamAxis.y + dir.z * m_seamAxis.z;
-    const double e = std::fabs(std::asin(std::clamp(sa, -1.0, 1.0)));
-    const double rampRad = m_params.depthRampDeg * kDeg;
-    double ramp = 1.0;
-    if (e >= m_bandRad + rampRad)
-        return 0.0;
-    if (e > m_bandRad)
-        ramp = 0.5 * (1.0 + std::cos(kPi * (e - m_bandRad) / rampRad));
+    e = std::asin(std::clamp(sa, -1.0, 1.0));
     const double pu = dir.x * m_seamU.x + dir.y * m_seamU.y + dir.z * m_seamU.z;
     const double pv = dir.x * m_seamV.x + dir.y * m_seamV.y + dir.z * m_seamV.z;
     double phi = std::atan2(pv, pu);
@@ -227,9 +219,25 @@ double FisheyeStitcher::seamQAt(const Vec3& dir, const float* seamQ) const
         phi += 2 * kPi;
     const double f = phi / (2 * kPi) * kSeamDepthBins - 0.5;
     const double fl = std::floor(f);
-    const double t = f - fl;
-    const int i0 = (static_cast<int>(fl) + kSeamDepthBins) % kSeamDepthBins;
-    const int i1 = (i0 + 1) % kSeamDepthBins;
+    t = f - fl;
+    i0 = (static_cast<int>(fl) + kSeamDepthBins) % kSeamDepthBins;
+    i1 = (i0 + 1) % kSeamDepthBins;
+}
+
+double FisheyeStitcher::seamQAt(const Vec3& dir, const float* seamQ) const
+{
+    if (!m_params.depthSeam || !seamQ)
+        return 0.0;
+    double e, t;
+    int i0, i1;
+    seamPosition(dir, e, i0, i1, t);
+    e = std::fabs(e);
+    const double rampRad = m_params.depthRampDeg * kDeg;
+    double ramp = 1.0;
+    if (e >= m_bandRad + rampRad)
+        return 0.0;
+    if (e > m_bandRad)
+        ramp = 0.5 * (1.0 + std::cos(kPi * (e - m_bandRad) / rampRad));
     return ramp * (seamQ[i0] * (1.0 - t) + seamQ[i1] * t);
 }
 
@@ -393,14 +401,34 @@ double FisheyeStitcher::seamBlendWeight(int lens, const Vec3& dir) const
     return seamWeight(std::acos(std::clamp(c, -1.0, 1.0)), m_thetaSeamRad, m_bandRad);
 }
 
+void FisheyeStitcher::seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const
+{
+    double e = 0, t = 0;
+    int i0 = 0, i1 = 0;
+    if (m_params.depthSeam && blend)
+        seamPosition(dir, e, i0, i1, t);
+    if (!m_params.depthSeam || !blend || blend->fade[i0] <= 0.0f || blend->fade[i1] <= 0.0f) {
+        w[0] = seamBlendWeight(0, dir);
+        w[1] = seamBlendWeight(1, dir);
+        return;
+    }
+    // The cross-fade's cosine ramp (seamWeight), centred on the bin's cut
+    // with its own half-width; the two weights add up to 1.
+    const double cut = blend->cut[i0] * (1.0 - t) + blend->cut[i1] * t;
+    const double fade = blend->fade[i0] * (1.0 - t) + blend->fade[i1] * t;
+    const double x = (e - cut) / fade;
+    w[0] = x >= 1.0 ? 1.0 : x <= -1.0 ? 0.0 : 0.5 * (1.0 + std::sin(0.5 * kPi * x));
+    w[1] = 1.0 - w[0];
+}
+
 double FisheyeStitcher::edgeWeight(double thetaRad) const
 {
     return circleEdgeWeight(radiusForTheta(thetaRad), m_params.edgeStartFrac, m_params.edgeEndFrac);
 }
 
 void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Image& out,
-                                     const float* seamQ, const BlurQuadFrame* blur,
-                                     int blurCount) const
+                                     const float* seamQ, const SeamBlend* blend,
+                                     const BlurQuadFrame* blur, int blurCount) const
 {
     if (!m_ready || out.w <= 0 || out.h <= 0)
         return;
@@ -409,11 +437,12 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
     const Image* lim[2] = {&lens0, &lens1};
 
     // Lens i's sample position and blend weight for world dir `dir`: the
-    // seam feather from dir itself, the circle edge from the ray actually
-    // sampled (shifted by the depth-aware seam). False = no contribution.
-    auto lensSample = [&](int i, const Vec3& dir, double q, double& u, double& v,
+    // seam feather `ws` (from dir itself), the circle edge from the ray
+    // actually sampled (shifted by the depth-aware seam). False = no
+    // contribution.
+    auto lensSample = [&](int i, const Vec3& dir, double q, double ws, double& u, double& v,
                           double& w) {
-        w = seamBlendWeight(i, dir);
+        w = ws;
         if (w <= 0.0)
             return false;
         double theta;
@@ -441,7 +470,9 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
                     apply(m_outRot, Vec3{cl * std::sin(lon), sl, -cl * std::cos(lon)});
                 const double q = seamQAt(dir, seamQ);
                 double u0, v0, w0, u1, v1, w1;
-                if (!lensSample(0, dir, q, u0, v0, w0) || !lensSample(1, dir, q, u1, v1, w1))
+                // Measured over the plain cross-fade, whatever the blend.
+                if (!lensSample(0, dir, q, seamBlendWeight(0, dir), u0, v0, w0) ||
+                    !lensSample(1, dir, q, seamBlendWeight(1, dir), u1, v1, w1))
                     continue;
                 if (w0 <= 0.25 || w1 <= 0.25)
                     continue;
@@ -465,11 +496,13 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
     // The blended lenses at stitch-world direction `dir`, [0, 255].
     auto shade = [&](const Vec3& dir, double rgb[3]) {
         const double q = seamQAt(dir, seamQ);
+        double ws[2];
+        seamBlendWeights(dir, blend, ws);
         double acc[3] = {0, 0, 0};
         double wsum = 0;
         for (int i = 0; i < 2; ++i) {
             double u, v, w;
-            if (!lensSample(i, dir, q, u, v, w))
+            if (!lensSample(i, dir, q, ws[i], u, v, w))
                 continue;
             const auto s = lim[i]->sample(u, v);
             acc[0] += w * gain[i] * s[0];
@@ -529,11 +562,11 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
 }
 
 Image FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, int width,
-                                      const float* seamQ) const
+                                      const float* seamQ, const SeamBlend* blend) const
 {
     Image out;
     out.alloc(width, width / 2);
-    renderEquirect(lens0, lens1, out, seamQ);
+    renderEquirect(lens0, lens1, out, seamQ, blend);
     return out;
 }
 

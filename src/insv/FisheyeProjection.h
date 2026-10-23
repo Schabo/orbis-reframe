@@ -159,6 +159,19 @@ struct LensProjection {
 // infinity). Must match SEAM_BINS in fisheye_stitch_common.glsl.
 constexpr int kSeamDepthBins = 128;
 
+// The depth-aware seam's blend per azimuth bin (insv::SeamCutTracker): where
+// across the band the two lenses meet and how wide the fade there is. Narrow
+// where the lenses agree at the meeting line, today's full-band cross-fade
+// where they don't. A fade of 0 (no frame measured yet) is the plain
+// cross-fade of StitchParams::featherDeg.
+struct SeamBlend {
+    // Elevation of the fade's centre off the seam circle, radians, towards
+    // lens 0 (the seam frame, FisheyeStitcher::seamDir).
+    float cut[kSeamDepthBins] = {};
+    // Half-width of the fade, radians.
+    float fade[kSeamDepthBins] = {};
+};
+
 // Everything a GPU port of renderEquirect() needs, as plain floats -- one
 // source of truth for the geometry so the compute shader stays a faithful
 // mirror of the CPU path. Populated by FisheyeStitcher::gpuParams(). All
@@ -214,6 +227,8 @@ struct StitchGpuParams {
     float halfBaseline = 0;
     float depthRampRad = 0;
     float seamQ[kSeamDepthBins] = {};
+    // Per frame: the blend across the band (all 0 = the plain cross-fade).
+    SeamBlend seamBlend;
     // Privacy blur (BlurQuads.h): regions mosaicked in this frame, equirect
     // (sphere) frame, prepared. Per frame, like the RS taps.
     int blurCount = 0;
@@ -233,15 +248,16 @@ public:
     // alloc()'d to the desired 2:1 equirect size. No-op (leaves `out` as given)
     // when !ready(). Multithreaded over scanlines. `seamQ` (kSeamDepthBins
     // values, nullptr = all 0) is the depth-aware seam's per-azimuth inverse
-    // stitch distance; used only with StitchParams::depthSeam.
+    // stitch distance and `blend` its blend across the band (nullptr = the
+    // plain cross-fade); both used only with StitchParams::depthSeam.
     // `blur` (`blurCount` prepared quads, BlurQuads.h) are mosaicked.
     void renderEquirect(const Image& lens0, const Image& lens1, Image& out,
-                        const float* seamQ = nullptr, const BlurQuadFrame* blur = nullptr,
-                        int blurCount = 0) const;
+                        const float* seamQ = nullptr, const SeamBlend* blend = nullptr,
+                        const BlurQuadFrame* blur = nullptr, int blurCount = 0) const;
 
     // Convenience: allocate a `width x width/2` equirect and render into it.
     Image renderEquirect(const Image& lens0, const Image& lens1, int width,
-                         const float* seamQ = nullptr) const;
+                         const float* seamQ = nullptr, const SeamBlend* blend = nullptr) const;
 
     // Flattened geometry for a GPU port (see StitchGpuParams). Valid after a
     // successful configure().
@@ -273,11 +289,21 @@ public:
     // The inverse stitch distance for world dir `dir` from the per-bin table:
     // linear in azimuth, faded to 0 past the blend band. 0 when off / null.
     double seamQAt(const Vec3& dir, const float* seamQ) const;
+    // Where `dir` is on the seam: elevation e off the seam circle (radians,
+    // towards lens 0) and its position among the azimuth bins -- bins i0 and
+    // i1 = i0 + 1 (mod kSeamDepthBins) around it, t its fraction from i0 to
+    // i1 (bin centres at (b + 0.5) * 2pi / kSeamDepthBins).
+    void seamPosition(const Vec3& dir, double& e, int& i0, int& i1, double& t) const;
     // The direction lens i sees the point at distance 1/q along `dir` in.
     Vec3 lensRay(int lens, const Vec3& dir, double q) const;
     // Blend weight of lens i for world dir `dir` (seam feather only, no
     // circle edge): from dir's own off-axis angle, whatever the depth.
     double seamBlendWeight(int lens, const Vec3& dir) const;
+    // Both lenses' blend weights for `dir` with the per-bin `blend` (seam
+    // feather only): the fade from dir's elevation off the seam circle. The
+    // plain cross-fade (seamBlendWeight) when depthSeam is off, `blend` is
+    // null or not measured yet.
+    void seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const;
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
 

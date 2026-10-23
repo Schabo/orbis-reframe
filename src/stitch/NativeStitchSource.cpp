@@ -136,8 +136,11 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
 
     params.depthSeam = config.depthSeam;
     depth_.reset();
+    cut_.reset();
     if (!seam_costs_)
         seam_costs_ = std::make_unique<insv::SeamCosts>();
+    if (!cut_stats_)
+        cut_stats_ = std::make_unique<insv::SeamCutStats>();
     auto stitcher = std::make_unique<insv::FisheyeStitcher>();
     if (!stitcher->configure(calib, info_.width, info_.height, params)) {
         last_error_ = "FisheyeStitcher::configure failed: " + clip_path;
@@ -211,6 +214,7 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     const int64_t t = timestamp_ms < 0 ? 0 : timestamp_ms;
     depth_.reset(); // the seam's temporal history is about the frames before
+    cut_.reset();
     std::string err;
     if (vdec_) {
         if (!vdec_->seekTo(t, err)) {
@@ -381,12 +385,17 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
     const auto t0 = std::chrono::steady_clock::now();
     render::VulkanLensOutcome o0, o1;
     std::string err;
-    if (gpu_->measureSeamVk(in0, in1, p, *seam_costs_, &o0, &o1, err)) {
+    // The cut is measured with the table so far: one frame old, in the same
+    // submission as the cost volume (its statistics are averaged over
+    // several frames anyway).
+    std::copy(depth_.table(), depth_.table() + insv::kSeamDepthBins, p.seamQ);
+    if (gpu_->measureSeamVk(in0, in1, p, *seam_costs_, cut_stats_.get(), &o0, &o1, err)) {
         in0.semWaitValue = o0.semSignalValue;
         in0.layout = o0.newLayout;
         in1.semWaitValue = o1.semSignalValue;
         in1.layout = o1.newLayout;
         depth_.update(*seam_costs_, pts_ms);
+        cut_.update(*cut_stats_, pts_ms, p.bandRad);
     } else if (!seam_warned_) {
         seam_warned_ = true;
         std::fprintf(stderr, "[NativeStitchSource] seam depth measure failed (%s); keeping the "
@@ -394,6 +403,7 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
                      err.c_str());
     }
     std::copy(depth_.table(), depth_.table() + insv::kSeamDepthBins, p.seamQ);
+    p.seamBlend = cut_.blend();
     seam_ms_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
                    .count();
     return p;
@@ -756,13 +766,16 @@ Frame NativeStitchSource::readCpuDecode() {
     // lenses to run the GPU pass on).
     if (params_.depthSeam) {
         const auto t0 = std::chrono::steady_clock::now();
+        insv::MeasureSeamCutStats(*stitcher_, a, b, depth_.table(), *cut_stats_); // as the GPU path
         insv::MeasureSeamCosts(*stitcher_, a, b, *seam_costs_);
         depth_.update(*seam_costs_, pts_ms);
+        cut_.update(*cut_stats_, pts_ms, gpu_params_.bandRad);
         last_timing_.seamMs = std::chrono::duration<double, std::milli>(
                                   std::chrono::steady_clock::now() - t0)
                                   .count();
     }
     const float* seamQ = params_.depthSeam ? depth_.table() : nullptr;
+    const insv::SeamBlend* blend = params_.depthSeam ? &cut_.blend() : nullptr;
 
     if (gpu_) {
         Frame f;
@@ -771,8 +784,10 @@ Frame NativeStitchSource::readCpuDecode() {
         f.timestamp_ms = pts_ms;
         std::string gerr;
         insv::StitchGpuParams p = paramsAt(pts_ms);
-        if (seamQ)
+        if (seamQ) {
             std::copy(seamQ, seamQ + insv::kSeamDepthBins, p.seamQ);
+            p.seamBlend = *blend;
+        }
         if (gpu_->stitch(a.rgb.data(), b.rgb.data(), p, eq_w_, eq_h_, f.rgba, gerr))
             return f;
         std::fprintf(stderr, "[NativeStitchSource] GPU stitch failed (%s); falling back to CPU\n",
@@ -783,7 +798,7 @@ Frame NativeStitchSource::readCpuDecode() {
     insv::Image eq;
     eq.alloc(eq_w_, eq_h_);
     const insv::StitchGpuParams p = paramsAt(pts_ms); // the privacy blur quads
-    stitcher_->renderEquirect(a, b, eq, seamQ, p.blur, p.blurCount);
+    stitcher_->renderEquirect(a, b, eq, seamQ, blend, p.blur, p.blurCount);
     return ToRgbaFrame(eq, pts_ms);
 }
 

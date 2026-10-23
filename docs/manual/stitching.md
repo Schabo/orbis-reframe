@@ -68,9 +68,17 @@ doesn't jump between a close object and the road behind it when both match
 about equally well; something close that really moves onto the seam is
 followed within a fraction of a second.
 
+Things at different distances side by side (a rack in front of the bike's
+tail, a mirror stem in front of the road) can't all line up at one
+distance. So the seam also looks for the line across the overlap where the
+two lenses agree best, and joins them there with a short blend, instead of
+fading one into the other over the whole overlap.
+
 Very close things that the two lenses see against different backgrounds
 (a crash bar and a cable right under the camera) can still look doubled in
-places: no single distance lines everything up there.
+places: no single distance lines everything up there, and there's no line
+the lenses agree on either. There the seam keeps the long fade, which
+shows them softly doubled rather than broken.
 
 ![The handlebar at the seam, with depth-aware seam off and on](images/stitching-depth-seam.jpg)
 

@@ -167,6 +167,8 @@ add_library(insv STATIC
     src/insv/SeamAlignment.cpp
     src/insv/SeamDepth.h
     src/insv/SeamDepth.cpp
+    src/insv/SeamCut.h
+    src/insv/SeamCut.cpp
     src/insv/Ycbcr.h
     src/insv/Ycbcr.cpp
 )

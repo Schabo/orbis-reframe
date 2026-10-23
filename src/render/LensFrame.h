@@ -46,7 +46,7 @@ struct LensFrame {
     // per-frame capture-time taps, the depth-aware seam's table, the privacy
     // blur quads, the lenses' Y'CbCr -> R'G'B' conversion), packed by the
     // exporter.
-    static constexpr int kParamsBytes = 7392;
+    static constexpr int kParamsBytes = 8416;
     std::array<uint8_t, kParamsBytes> params{};
     // Photometric gains for lens 0 / 1, measured on the exporter.
     float gain[2] = {1.0f, 1.0f};

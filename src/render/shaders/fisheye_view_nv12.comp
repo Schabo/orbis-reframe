@@ -124,6 +124,10 @@ void main()
         seamCostPass(gl_WorkGroupID, gl_LocalInvocationIndex);
         return;
     }
+    if (pc.pass == 3) { // the seam cut's statistics (fisheye_stitch_common.glsl)
+        seamCutPass(gl_WorkGroupID, gl_LocalInvocationIndex);
+        return;
+    }
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
 
     if (pc.pass == 0) {

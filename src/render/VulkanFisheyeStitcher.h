@@ -1,6 +1,7 @@
 #pragma once
 
 #include <FisheyeProjection.h> // insv::StitchGpuParams
+#include <SeamCut.h>           // insv::SeamCutStats
 #include <SeamDepth.h>         // insv::SeamCosts
 #include <Ycbcr.h>             // insv::YcbcrCoding
 
@@ -148,10 +149,13 @@ public:
     // distance, the NCC of the two lenses) into `out`, in its own submission,
     // so the table solved from it can go into this same frame's stitch. Same
     // semaphore handshake as stitchVk(): pass r0 / r1's value and layout on as
-    // the next call's semWaitValue / layout. Blocking.
+    // the next call's semWaitValue / layout. Blocking. With `cutOut`, the
+    // same submission also measures the seam cut's statistics (pass 3, with
+    // params.seamQ -- the table the frame before) into it.
     bool measureSeamVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                        const insv::StitchGpuParams& params, insv::SeamCosts& out,
-                       VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+                       insv::SeamCutStats* cutOut, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                       std::string& err);
 
     // Whether renderViewVk() is usable (the fused view pipeline built -- needs
     // initAdopt(); fisheye_view_nv12.comp).

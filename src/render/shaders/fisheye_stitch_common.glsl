@@ -11,10 +11,11 @@
 //
 // Dispatched twice per frame: pass 0 (pc.pass==0) measures the two lenses' mean
 // luma in the overlap band into GainBuf; pass 1 renders, applying a per-lens
-// photometric gain so the seam has no brightness step. Pass 2 (its own
-// submission, before the others) is the depth-aware seam's cost volume
-// (seamCostPass): one workgroup per (azimuth bin, candidate distance), NCC of
-// the two lenses over the bin's patch.
+// photometric gain so the seam has no brightness step. Passes 2 and 3 (their
+// own submission, before the others) measure for the depth-aware seam: the
+// cost volume (seamCostPass, one workgroup per azimuth bin and candidate
+// distance, NCC of the two lenses over the bin's patch) and the cut
+// statistics (seamCutPass, one workgroup per bin and row across the band).
 //
 // An includer that defines FISHEYE_STITCH_NO_MAIN (fisheye_view_nv12.comp,
 // the fused fisheye -> view render) gets only the projection core and the
@@ -28,6 +29,10 @@
 #define SEAM_BINS 128 // == insv::kSeamDepthBins
 #define SEAM_CANDS 40 // == insv::kSeamDepthCands
 #define SEAM_PATCH 16 // == insv::kSeamPatchAz == insv::kSeamPatchEl
+#define SEAM_ROWS 9 // == insv::kSeamCutRows
+#define SEAM_CUT_AZ 16 // == insv::kSeamCutPatchAz (x insv::kSeamCutPatchEl = 64 samples)
+#define SEAM_CUT_EL 4 // == insv::kSeamCutPatchEl
+#define SEAM_CUT_EL_RAD 0.010471976 // == insv::kSeamCutPatchElDeg (0.6 deg)
 #define MAX_BLUR 64 // == insv::kMaxBlurQuads
 #define BLUR_TAPS 3 // == insv::kBlurTaps
 #define BLUR_FEATHER 0.08 // == insv::kBlurFeather
@@ -57,8 +62,10 @@ layout(std140, binding = 0) uniform Params {
     vec4 seamA;     // seam axis (lens 0's way) xyz, depth active (0/1)
     vec4 seamU;     // seam-plane basis u xyz, half baseline (m; lens 0 at +h * axis)
     vec4 seamV;     // seam-plane basis v xyz, ramp past the band (rad)
-    vec4 seamC;     // cost pass: candidate q min, q max (1/m), patch elevation half-range (rad), -
+    vec4 seamC;     // cost pass: candidate q min, q max (1/m), patch elevation half-range (rad);
+                    // cut pass: outermost row's elevation (rad, insv::SeamCutRowMax)
     vec4 seamQ[SEAM_BINS / 4]; // per azimuth bin: inverse stitch distance (1/m)
+    vec4 seamCF[SEAM_BINS / 2]; // per azimuth bin: the fade's centre, half-width (rad; insv::SeamBlend), 2 bins per vec4
     // Privacy blur (insv::BlurQuadFrame, carried into the stitch world frame):
     // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
@@ -75,8 +82,12 @@ layout(std140, binding = 0) uniform Params {
 layout(std430, binding = 3) writeonly buffer OutBuf { uint px[]; };
 layout(std430, binding = 4) buffer GainBuf { uint gsum[3]; }; // luma0*4, luma1*4, count
 // Pass 2 output: per (bin, candidate) = bin * SEAM_CANDS + k: (NCC, texture),
-// as insv::SeamCosts.
-layout(std430, binding = 5) writeonly buffer SeamBuf { vec2 seamCost[]; };
+// as insv::SeamCosts. Pass 3's after it: per (bin, row) = bin * SEAM_ROWS + r:
+// (samples, zero-mean difference, texture, -), as insv::SeamCutStats::Cell.
+layout(std430, binding = 5) writeonly buffer SeamBuf {
+    vec2 seamCost[SEAM_BINS * SEAM_CANDS];
+    vec4 seamCutStat[];
+};
 #endif
 
 #ifndef FISHEYE_STITCH_NO_MAIN
@@ -229,25 +240,36 @@ vec3 eqTexelDir(ivec2 t, int W, int H)
 
 float seamQBin(int b) { return P.seamQ[b >> 2][b & 3]; }
 
+// Where `dir` is on the seam (insv::FisheyeStitcher::seamPosition): x the
+// elevation off the seam circle (rad, towards lens 0), y the bin position
+// (bin centres at integers; i0 = floor, i1 = i0 + 1 wrapped).
+vec2 seamPosition(vec3 dir, out int i0, out int i1)
+{
+    float e = asin(clamp(dot(dir, P.seamA.xyz), -1.0, 1.0));
+    float phi = atan(dot(dir, P.seamV.xyz), dot(dir, P.seamU.xyz));
+    if (phi < 0.0)
+        phi += 2.0 * PI;
+    float f = phi / (2.0 * PI) * float(SEAM_BINS) - 0.5;
+    float fl = floor(f);
+    i0 = (int(fl) + SEAM_BINS) % SEAM_BINS;
+    i1 = (i0 + 1) % SEAM_BINS;
+    return vec2(e, f - fl);
+}
+
 // Inverse stitch distance for stitch-world direction `dir`: the per-bin table,
 // linear in azimuth, faded to 0 over the ramp past the blend band.
 float seamQAt(vec3 dir)
 {
     if (P.seamA.w == 0.0)
         return 0.0;
-    float e = abs(asin(clamp(dot(dir, P.seamA.xyz), -1.0, 1.0)));
+    int i0, i1;
+    vec2 pos = seamPosition(dir, i0, i1);
+    float e = abs(pos.x);
     float band = P.seam.y, ramp = P.seamV.w;
     if (e >= band + ramp)
         return 0.0;
     float r = e > band ? 0.5 * (1.0 + cos(PI * (e - band) / ramp)) : 1.0;
-    float phi = atan(dot(dir, P.seamV.xyz), dot(dir, P.seamU.xyz));
-    if (phi < 0.0)
-        phi += 2.0 * PI;
-    float f = phi / (2.0 * PI) * float(SEAM_BINS) - 0.5;
-    float fl = floor(f);
-    int i0 = (int(fl) + SEAM_BINS) % SEAM_BINS;
-    int i1 = (i0 + 1) % SEAM_BINS;
-    return r * mix(seamQBin(i0), seamQBin(i1), f - fl);
+    return r * mix(seamQBin(i0), seamQBin(i1), pos.y);
 }
 
 // The direction lens i sees the point at distance 1/q along `dir` in.
@@ -267,9 +289,32 @@ float seamBlendWeight(int i, vec3 dir)
     return seamWeight(acos(clamp(dot(z, dir), -1.0, 1.0)));
 }
 
+vec2 seamCFBin(int b) { vec4 v = P.seamCF[b >> 1]; return (b & 1) == 0 ? v.xy : v.zw; }
+
+// Both lenses' seam feather for `dir` (insv::FisheyeStitcher::seamBlendWeights):
+// with `cut` and a measured blend, the cosine ramp around the bin's cut with
+// its own half-width; else the plain cross-fade.
+vec2 seamBlendWeights(vec3 dir, bool cut)
+{
+    if (cut && P.seamA.w != 0.0) {
+        int i0, i1;
+        vec2 pos = seamPosition(dir, i0, i1);
+        vec2 c0 = seamCFBin(i0), c1 = seamCFBin(i1);
+        if (c0.y > 0.0 && c1.y > 0.0) {
+            vec2 cf = mix(c0, c1, pos.y);
+            float x = (pos.x - cf.x) / cf.y;
+            float w0 = x >= 1.0 ? 1.0 : (x <= -1.0 ? 0.0 : 0.5 * (1.0 + sin(0.5 * PI * x)));
+            return vec2(w0, 1.0 - w0);
+        }
+    }
+    return vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
+}
+
 // Per-lens sample uv + blend weight for stitch-world direction `dir` (a
-// weight of 0 means that lens doesn't contribute).
-void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w1)
+// weight of 0 means that lens doesn't contribute); `cut`: with the seam's
+// per-bin blend (the picture), else the plain cross-fade (the exposure
+// measure).
+void lensWeights(vec3 dir, bool cut, out vec2 uv0, out vec2 uv1, out float w0, out float w1)
 {
     float fw = float(P.dims.x), fh = float(P.dims.y);
     uv0 = vec2(0.0);
@@ -277,8 +322,9 @@ void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w
     w0 = 0.0;
     w1 = 0.0;
     float q = seamQAt(dir);
+    vec2 wsl = seamBlendWeights(dir, cut);
     for (int i = 0; i < 2; ++i) {
-        float ws = seamBlendWeight(i, dir);
+        float ws = wsl[i];
         if (ws <= 0.0)
             continue;
         vec3 pr = projectRS(i, lensRay(i, dir, q));
@@ -303,7 +349,7 @@ void measureAt(vec3 dir)
 {
     vec2 uv0, uv1;
     float w0, w1;
-    lensWeights(dir, uv0, uv1, w0, w1);
+    lensWeights(dir, false, uv0, uv1, w0, w1);
     if (w0 > 0.25 && w1 > 0.25) {
         atomicAdd(gsum[0], uint(luma(sampleLens(0, uv0)) * GAIN_FP));
         atomicAdd(gsum[1], uint(luma(sampleLens(1, uv1)) * GAIN_FP));
@@ -387,6 +433,69 @@ void seamCostPass(uvec3 wg, uint lid)
     }
     seamCost[bin * SEAM_CANDS + k] = res;
 }
+
+// Pass 3: the seam cut's statistics. Workgroup (bin, row) of 64 invocations,
+// one sample of the row's patch each, both lenses warped by the depth table
+// in P.seamQ (the frame before): the zero-mean grey difference and the
+// texture -- insv::MeasureSeamCutStats on the GPU (same sample pattern,
+// insv::SeamCutSample). Reduces in pass 2's shared memory.
+void seamCutPass(uvec3 wg, uint lid)
+{
+    int bin = int(wg.x), row = int(wg.y);
+    if (bin >= SEAM_BINS || row >= SEAM_ROWS)
+        return;
+    float fw = float(P.dims.x), fh = float(P.dims.y);
+    int az = int(lid) % SEAM_CUT_AZ, el = int(lid) / SEAM_CUT_AZ;
+    float rowMax = P.seamC.w;
+    float phi = (float(bin) + (float(az) + 0.5) / float(SEAM_CUT_AZ)) * (2.0 * PI / float(SEAM_BINS));
+    float e = -rowMax + 2.0 * rowMax * float(row) / float(SEAM_ROWS - 1) +
+              (-1.0 + (2.0 * float(el) + 1.0) / float(SEAM_CUT_EL)) * SEAM_CUT_EL_RAD;
+    vec3 dir = cos(e) * (cos(phi) * P.seamU.xyz + sin(phi) * P.seamV.xyz) + sin(e) * P.seamA.xyz;
+    float q = seamQAt(dir);
+    vec3 p0 = projectRS(0, lensRay(0, dir, q));
+    vec3 p1 = projectRS(1, lensRay(1, dir, q));
+    bool ok = p0.z >= 0.0 && p1.z >= 0.0 &&
+              p0.x >= 0.0 && p0.y >= 0.0 && p0.x <= fw - 1.0 && p0.y <= fh - 1.0 &&
+              p1.x >= 0.0 && p1.y >= 0.0 && p1.x <= fw - 1.0 && p1.y <= fh - 1.0;
+    float x = 0.0, y = 0.0;
+    if (ok) {
+        x = luma(sampleLens(0, (p0.xy + 0.5) / vec2(fw, fh)));
+        y = luma(sampleLens(1, (p1.xy + 0.5) / vec2(fw, fh)));
+    }
+    float n1 = ok ? 1.0 : 0.0;
+    seamRed[0][lid] = x;
+    seamRed[1][lid] = y;
+    seamRed[2][lid] = n1;
+    barrier();
+    for (uint stride = 32u; stride > 0u; stride >>= 1) {
+        if (lid < stride)
+            for (int c = 0; c < 3; ++c)
+                seamRed[c][lid] += seamRed[c][lid + stride];
+        barrier();
+    }
+    float n = seamRed[2][0];
+    float mx = n > 0.0 ? seamRed[0][0] / n : 0.0, my = n > 0.0 ? seamRed[1][0] / n : 0.0;
+    barrier(); // everyone has read the sums before they're overwritten
+    float dx = x - mx, dy = y - my;
+    seamRed[0][lid] = n1 * abs(dx - dy);
+    seamRed[1][lid] = n1 * dx * dx;
+    seamRed[2][lid] = n1 * dy * dy;
+    barrier();
+    for (uint stride = 32u; stride > 0u; stride >>= 1) {
+        if (lid < stride)
+            for (int c = 0; c < 3; ++c)
+                seamRed[c][lid] += seamRed[c][lid + stride];
+        barrier();
+    }
+    if (lid != 0u)
+        return;
+    vec4 res = vec4(n, 0.0, 0.0, 0.0);
+    if (n > 0.0) {
+        res.y = seamRed[0][0] / n;
+        res.z = sqrt(min(seamRed[1][0], seamRed[2][0]) / n);
+    }
+    seamCutStat[bin * SEAM_ROWS + row] = res;
+}
 #endif
 
 // The stitched colour for `dir`, RGB in [0, 255] (unquantised); black outside
@@ -395,7 +504,7 @@ vec3 blendLenses(vec3 dir, float g0, float g1)
 {
     vec2 uv0, uv1;
     float w0, w1;
-    lensWeights(dir, uv0, uv1, w0, w1);
+    lensWeights(dir, true, uv0, uv1, w0, w1);
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
     if (w0 > 0.0) { acc += w0 * g0 * sampleLens(0, uv0); wsum += w0; }
@@ -488,6 +597,10 @@ void main()
 {
     if (pc.pass == 2) {
         seamCostPass(gl_WorkGroupID, gl_LocalInvocationIndex);
+        return;
+    }
+    if (pc.pass == 3) {
+        seamCutPass(gl_WorkGroupID, gl_LocalInvocationIndex);
         return;
     }
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);

@@ -13,6 +13,7 @@
 #include "InsvModels.h"
 #include "InsvTrailer.h"
 #include "SeamAlignment.h"
+#include "SeamCut.h"
 #include "SeamDepth.h"
 #include "Ycbcr.h"
 #include "support/TestTrailer.h"
@@ -572,6 +573,173 @@ void testSeamAlignment()
     CHECK(insv::MeasureSeamOffset(cal, none, kSize, kSize, frames) > 0.3);
 }
 
+// The seam cut's blend: weights from the per-bin cut and fade, the plain
+// cross-fade without one.
+void testSeamBlend()
+{
+    insv::InsvCalibration c = x5Calibration();
+    insv::StitchParams p;
+    p.depthSeam = true;
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(c, 3840, 3840, p));
+    const double band = st.gpuParams().bandRad;
+    const double phi = 1.234;
+
+    // No blend, or one not measured yet (fade 0): today's cross-fade.
+    insv::SeamBlend none;
+    for (double e : {-6.0, -2.0, 0.0, 1.0, 4.5}) {
+        const insv::Vec3 d = st.seamDir(phi, e * kDeg);
+        double w[2], wz[2];
+        st.seamBlendWeights(d, nullptr, w);
+        st.seamBlendWeights(d, &none, wz);
+        for (int i = 0; i < 2; ++i)
+            CHECK(w[i] == st.seamBlendWeight(i, d) && wz[i] == w[i]);
+    }
+
+    // A narrow fade around a cut 1 deg towards lens 0: lens 0 alone above
+    // it, lens 1 alone below, half and half on it, adding up to 1.
+    insv::SeamBlend narrow;
+    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+        narrow.cut[b] = static_cast<float>(1.0 * kDeg);
+        narrow.fade[b] = static_cast<float>(0.75 * kDeg);
+    }
+    double w[2];
+    st.seamBlendWeights(st.seamDir(phi, 1.0 * kDeg), &narrow, w);
+    CHECK(near(w[0], 0.5, 1e-4) && near(w[0] + w[1], 1.0, 1e-12));
+    st.seamBlendWeights(st.seamDir(phi, 1.8 * kDeg), &narrow, w);
+    CHECK(w[0] == 1.0 && w[1] == 0.0);
+    st.seamBlendWeights(st.seamDir(phi, 0.2 * kDeg), &narrow, w);
+    CHECK(w[0] == 0.0 && w[1] == 1.0);
+    st.seamBlendWeights(st.seamDir(phi, 1.4 * kDeg), &narrow, w);
+    CHECK(w[0] > 0.8 && w[0] < 1.0);
+
+    // The full band around the seam circle is today's cross-fade (up to the
+    // lens axes being a little off the seam frame's).
+    insv::SeamBlend wide;
+    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+        wide.fade[b] = static_cast<float>(band);
+    for (double e : {-4.0, -1.0, 0.0, 2.0, 4.0}) {
+        const insv::Vec3 d = st.seamDir(phi, e * kDeg);
+        st.seamBlendWeights(d, &wide, w);
+        CHECK(near(w[0], st.seamBlendWeight(0, d), 0.02) && near(w[1], st.seamBlendWeight(1, d), 0.02));
+    }
+
+    // Off: the blend is ignored.
+    insv::FisheyeStitcher off;
+    CHECK(off.configure(c, 3840, 3840, insv::StitchParams{}));
+    const insv::Vec3 d = off.seamDir(phi, 0.2 * kDeg);
+    off.seamBlendWeights(d, &narrow, w);
+    CHECK(w[0] == off.seamBlendWeight(0, d) && w[1] == off.seamBlendWeight(1, d));
+}
+
+// SeamCutTracker on synthetic statistics: the lenses agree best on one row
+// everywhere but an arc where no row agrees (an occlusion).
+void testSeamCutTracker()
+{
+    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    const double band = 5.0 * kDeg, narrow = insv::kSeamCutFadeDeg * kDeg;
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto fill = [&](int bestRow, float bestZsad) {
+        for (int b = 0; b < B; ++b)
+            for (int r = 0; r < R; ++r) {
+                insv::SeamCutStats::Cell& cell = stats->cell[b][r];
+                cell.n = 64;
+                cell.texture = 20;
+                cell.zsad = (b >= 80 && b < 90) ? 40.0f : (r == bestRow ? bestZsad : 12.0f);
+            }
+    };
+    insv::SeamCutTracker tr;
+    CHECK(!tr.hasHistory() && tr.blend().fade[0] == 0.0f);
+    fill(6, 2.0f);
+    int64_t t = 1000;
+    tr.update(*stats, t, band);
+    const insv::SeamBlend& bl = tr.blend();
+    CHECK(tr.hasHistory());
+    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), 1e-6) && near(bl.fade[20], narrow, 1e-6));
+    CHECK(near(bl.cut[84], 0.0, 1e-6) && near(bl.fade[84], band, 1e-6)); // occluded: the full fade
+    CHECK(bl.fade[79] > narrow && bl.fade[79] < band);                    // widening gradually
+    CHECK(near(bl.fade[76], narrow, 1e-4));
+    for (int b = 0; b < B; ++b) // inside the band
+        CHECK(std::fabs(bl.cut[b]) + bl.fade[b] <= band + 1e-6);
+
+    // One frame of a slightly better row elsewhere doesn't move the cut ...
+    fill(2, 1.5f);
+    tr.update(*stats, t += 33, band);
+    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), 1e-6));
+    // ... a clearly better one, kept up, does.
+    fill(2, 0.5f);
+    for (int f = 0; f < 15; ++f)
+        tr.update(*stats, t += 33, band);
+    CHECK(near(bl.cut[20], insv::SeamCutRowE(2, band), 1e-6));
+
+    // Rows the lenses don't both see are never cut through.
+    fill(6, 2.0f);
+    for (int b = 0; b < B; ++b)
+        stats->cell[b][6].n = 10;
+    insv::SeamCutTracker fresh;
+    fresh.update(*stats, 0, band);
+    for (int b = 0; b < 80; ++b)
+        CHECK(fresh.blend().cut[b] != static_cast<float>(insv::SeamCutRowE(6, band)));
+
+    tr.reset();
+    CHECK(!tr.hasHistory() && tr.blend().fade[20] == 0.0f);
+}
+
+// The cut statistics on synthetic lens pictures: the lenses agree on far
+// content; on content 0.33 m away only once the depth table says so.
+void testSeamCutStats()
+{
+    const insv::InsvCalibration cal = x5Calibration();
+    constexpr int kSize = 1536;
+    insv::StitchParams p;
+    p.depthSeam = true;
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(cal, kSize, kSize, p));
+    const double nearQ = 3.0;
+    const insv::Image l0 = seamLensPicture(st, 0, kSize, 1, 140.0, 220.0, nearQ);
+    const insv::Image l1 = seamLensPicture(st, 1, kSize, 1, 140.0, 220.0, nearQ);
+    // Bins whose patch lies wholly inside / outside the near stretch, by
+    // lens 0's azimuth (seamLensPicture's) at the patch centre.
+    const insv::Mat3& w2l = st.lensProjection(0).worldToLens;
+    auto nearBin = [&](int b, int r) {
+        double phi, e, lo = 400, hi = -400;
+        for (int s : {0, insv::kSeamCutPatchAz - 1}) {
+            insv::SeamCutSample(b, r, s, st.gpuParams().bandRad, phi, e);
+            const insv::Vec3 d = insv::apply(w2l, st.seamDir(phi, e));
+            double a = std::atan2(d.y, d.x) / kDeg;
+            if (a < 0)
+                a += 360;
+            lo = std::min(lo, a), hi = std::max(hi, a);
+        }
+        return hi - lo > 180 ? 0 : (lo > 142 && hi < 218) ? 1 : (hi < 138 || lo > 222) ? -1 : 0;
+    };
+    auto disagreement = [&](const float* table, int want) {
+        auto stats = std::make_unique<insv::SeamCutStats>();
+        insv::MeasureSeamCutStats(st, l0, l1, table, *stats);
+        double sum = 0;
+        int n = 0;
+        for (int b = 0; b < insv::kSeamDepthBins; ++b)
+            for (int r = 0; r < insv::kSeamCutRows; ++r) {
+                const insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                if (nearBin(b, r) != want || c.n < 32)
+                    continue;
+                sum += c.zsad / (c.texture + 4.0);
+                ++n;
+            }
+        CHECK(n > 50);
+        return sum / std::max(n, 1);
+    };
+    float far[insv::kSeamDepthBins] = {}, depth[insv::kSeamDepthBins];
+    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+        depth[b] = nearBin(b, insv::kSeamCutRows / 2) >= 0 ? static_cast<float>(nearQ) : 0.0f;
+    const double farAtFar = disagreement(far, -1), nearAtFar = disagreement(far, 1);
+    const double nearAtDepth = disagreement(depth, 1);
+    std::printf("seam cut: disagreement far %.3f, near with the far table %.3f, with its depth %.3f\n",
+                farAtFar, nearAtFar, nearAtDepth);
+    CHECK(farAtFar < 0.2 && nearAtDepth < 0.2);
+    CHECK(nearAtFar > 0.5);
+}
+
 void testBlurQuads()
 {
     auto dirOf = [](double lonDeg, double latDeg, float out[3]) {
@@ -1022,6 +1190,9 @@ int main()
     testSeamDepthGeometry();
     testSeamDepthTracker();
     testSeamAlignment();
+    testSeamBlend();
+    testSeamCutTracker();
+    testSeamCutStats();
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();

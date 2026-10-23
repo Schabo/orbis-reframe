@@ -111,8 +111,12 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.seamC[0] = static_cast<float>(insv::kSeamQMin);
     sp.seamC[1] = static_cast<float>(insv::kSeamQMax);
     sp.seamC[2] = static_cast<float>(insv::kSeamPatchElDeg * std::numbers::pi / 180.0);
-    sp.seamC[3] = 0.0f;
+    sp.seamC[3] = static_cast<float>(insv::SeamCutRowMax(p.bandRad));
     std::memcpy(sp.seamQ, p.seamQ, sizeof sp.seamQ);
+    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+        sp.seamCF[b][0] = p.seamBlend.cut[b];
+        sp.seamCF[b][1] = p.seamBlend.fade[b];
+    }
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
     const int nBlur = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
@@ -970,7 +974,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
 bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                           const insv::StitchGpuParams& params,
-                                          insv::SeamCosts& out, VulkanLensOutcome* r0,
+                                          insv::SeamCosts& out, insv::SeamCutStats* cutOut,
+                                          VulkanLensOutcome* r0,
                                           VulkanLensOutcome* r1, std::string& err)
 {
     if (!m_ready || !d->nv12) {
@@ -1057,6 +1062,19 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
     }
     // One 64-invocation workgroup per (bin, candidate).
     vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamDepthCands, 1);
+    // Pass 3, the cut statistics: one per (bin, row); writes its own part of
+    // the buffer, so no barrier between the two.
+    if (cutOut) {
+        if (viaView) {
+            ViewPush vp{};
+            vp.pass = 3;
+            vkCmdPushConstants(cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
+        } else {
+            const int32_t pass = 3;
+            vkCmdPushConstants(cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
+        }
+        vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamCutRows, 1);
+    }
 
     VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
     toHost.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -1103,6 +1121,14 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
             out.ncc[b][k] = v[0];
             out.texture[b][k] = v[1];
         }
+    if (cutOut) {
+        const float* s = c + d->kSeamCostBytes / sizeof(float);
+        for (int b = 0; b < insv::kSeamDepthBins; ++b)
+            for (int r = 0; r < insv::kSeamCutRows; ++r) {
+                const float* v = s + 4 * (b * insv::kSeamCutRows + r);
+                cutOut->cell[b][r] = {v[0], v[1], v[2], 0.0f};
+            }
+    }
     return true;
 }
 

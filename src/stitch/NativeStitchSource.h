@@ -7,6 +7,7 @@
 #include <ColorLut.h>          // color::Grade
 #include <ViewProjection.h>    // view::Pose
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
+#include <SeamCut.h>           // insv::SeamCutTracker (value member below)
 #include <SeamDepth.h>         // insv::SeamDepthTracker (value member below)
 
 #include <functional>
@@ -64,7 +65,10 @@ struct ReadTiming {
 // (PreviewStitchConfig::depthSeam): every frame the seam's cost volume is
 // measured first (render::VulkanFisheyeStitcher::measureSeamVk, or
 // insv::MeasureSeamCosts on the CPU path), insv::SeamDepthTracker solves the
-// per-azimuth stitch distance, and that frame is stitched with it. Of
+// per-azimuth stitch distance, and that frame is stitched with it; the same
+// submission measures the cut across the band (with the table the frame
+// before), and insv::SeamCutTracker sets where the lenses meet and how wide
+// the fade there is. Of
 // PreviewStitchConfig, width/height (the equirect output size), lensGuard (the
 // trailer lens profile) and depthSeam are honoured; quality is inert (no
 // optical-flow seam yet). Stabilization is applied at reprojection time
@@ -232,9 +236,10 @@ private:
     std::map<int, std::unique_ptr<HeldPair>> kept_; // KeepNextPair; the held pair too
     int held_ = 0;                                  // HoldNextPair's handle in kept_, 0 = none
     int next_kept_ = 1;
-    // paramsAt() plus the depth-aware seam's table for this frame: measures
-    // the pair's seam costs on the GPU first (advancing in0 / in1 past that
-    // submission) and folds them into depth_. Just paramsAt() when it's off.
+    // paramsAt() plus the depth-aware seam's table and blend for this frame:
+    // measures the pair's seam costs and cut statistics on the GPU first
+    // (advancing in0 / in1 past that submission) and folds them into depth_
+    // and cut_. Just paramsAt() when it's off.
     insv::StitchGpuParams paramsWithSeam(int64_t pts_ms, render::VulkanLensInput& in0,
                                          render::VulkanLensInput& in1);
     Frame readGpuAllVulkan();  // vdec_ + gpu_->stitchVk (stage 2, all-GPU)
@@ -265,6 +270,8 @@ private:
     mutable bool blur_warned_ = false;
     insv::SeamDepthTracker depth_;                    // depth-aware seam, per frame
     std::unique_ptr<insv::SeamCosts> seam_costs_;     // its cost volume (scratch)
+    insv::SeamCutTracker cut_;                        // the blend across the band, per frame
+    std::unique_ptr<insv::SeamCutStats> cut_stats_;   // its statistics (scratch)
     bool seam_warned_ = false;
     double seam_ms_ = 0.0; // the last paramsWithSeam(), for ReadTiming::seamMs
     ClipInfo info_;
