@@ -83,18 +83,17 @@ through the pipeline.
   export, plate scan, thumbnails, the Media information panel and the media
   pool's mode names read clips only through it; `GyroStabilizer` no longer
   knows the `.insv` timing.
-- In progress: (2) the ONE X2 as the first real second camera -- two files
-  per take, one per lens. Built: the picture sources open each lens from its
-  own `LensSource`, and the Insta360 reader pairs the take's files, reads the
+- **Built, step 2**: the ONE X2 as the first real second camera -- two
+  files per take, one per lens (experimental, see *Other cameras*). The
+  picture sources open each lens from its own `LensSource`, and the Insta360 reader pairs the take's files, reads the
   40-token calibration and the ONE X2's ms telemetry; the take is one clip
   in the media pool and the project (either file names it, both are saved
   and checked for missing media); its media card shows a preview stitched
   from the lens pictures in the file; the IMU axis map and the sync are
-  measured on its clips. Next: a check against Insta360 Studio's stitch.
-  Then (3) DJI and
-  GoPro readers only once real clips are available: an in-camera cubemap
-  (`Projection`) behind its own `IStitchSource`, an orientation track for
-  cameras that record one, readout time per mode.
+  measured on its clips.
+- Next, step 3: DJI and GoPro readers only once real clips are available:
+  an in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
+  orientation track for cameras that record one, readout time per mode.
 
 New camera support keeps its differences in data -- the reader's per-model
 table, fields read from the file -- not in model checks spread through the
@@ -121,10 +120,11 @@ each is in its document in [`formats/`](formats/README.md).
 
 - **Insta360 X4**: probably close to working; confirm the calibration string,
   IMU flag and scaling, and axis map.
-- **Insta360 ONE X2 / X3**: two files per take, one per lens -- the clip is
-  the pair everywhere (adding, the project file, missing media, the `.lrv`).
-  Calibration from the 40-token `offset_v3` string (the ONE X2 has no
-  56-token one); telemetry in ms; the IMU axis map per model.
+- **Insta360 ONE X2**: built, experimental (step 2 of the common camera
+  model). Left: the stitch checked against Insta360 Studio's on the same
+  frame, and the IMU axis map confirmed on a clip with deliberate turns.
+- **Insta360 X3**: two files per take like the ONE X2, so its own row in the
+  Insta360 reader's table; see what calibration it carries.
 - **Antigravity A1**: a different trailer layout, 180° lenses (thin seam
   overlap), the drone body in the picture.
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
