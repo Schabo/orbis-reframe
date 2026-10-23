@@ -69,6 +69,11 @@ bool ReframeTrack::removeNear(qint64 timeMs, qint64 snapMs)
     return keytrack::removeNear(m_keys, timeMs, snapMs);
 }
 
+bool ReframeTrack::removeOutside(qint64 fromMs, qint64 toMs)
+{
+    return keytrack::removeOutside(m_keys, fromMs, toMs);
+}
+
 ReframePose ReframeTrack::sample(qint64 timeMs) const
 {
     const auto [lo, hi, t] = keytrack::bracket(

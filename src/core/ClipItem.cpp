@@ -80,6 +80,14 @@ bool ClipItem::upsertReframeKey(qint64 sourceMs, const ReframePose &pose, int pa
     return true;
 }
 
+bool ClipItem::removeKeysOutsideTrim()
+{
+    bool removed = reframe.removeOutside(trimInMs, trimOutMs);
+    for (ReframeTrack &t : panes)
+        removed = t.removeOutside(trimInMs, trimOutMs) || removed;
+    return removed;
+}
+
 bool ClipItem::removeReframeKeyNear(qint64 sourceMs, int pane)
 {
     return paneTrack(pane).removeNear(sourceMs, kReframeDeleteSnapMs);

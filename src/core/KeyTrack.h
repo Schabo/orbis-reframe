@@ -161,6 +161,14 @@ bool removeNear(QList<Key> &keys, qint64 timeMs, qint64 snapMs)
     return true;
 }
 
+// Remove the keys outside [fromMs, toMs] (a trim or split left them out of
+// the clip); keys on either end stay. True if any was removed.
+template <class Key>
+bool removeOutside(QList<Key> &keys, qint64 fromMs, qint64 toMs)
+{
+    return keys.removeIf([&](const Key &k) { return k.timeMs < fromMs || k.timeMs > toMs; }) > 0;
+}
+
 // The key whose segment (to the next key) timeMs is in: the key within snapMs
 // of it, else the last key before it. -1 before the first key, at or after
 // the last, or with no keys -- there's no move there to ease.

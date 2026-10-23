@@ -216,6 +216,10 @@ struct ClipItem {
     bool upsertReframeKey(qint64 sourceMs, const ReframePose &pose, int pane = 0);
     bool removeReframeKeyNear(qint64 sourceMs, int pane = 0);
     bool clearReframe(int pane = 0);
+    // Remove every pane's keys outside the trim: a trim or split takes the
+    // keys it leaves out of the clip with it (keys on the in / out point
+    // stay).
+    bool removeKeysOutsideTrim();
     bool setSplit(const pane::Split &s); // clamped; refused on a flat clip
     bool setColorGrade(const ColorGrade &grade);
     bool setStabilization(const insv::StabConfig &config);

@@ -54,6 +54,10 @@ public:
     // key was removed.
     bool removeNear(qint64 timeMs, qint64 snapMs);
 
+    // Remove the keys outside [fromMs, toMs]; keys on either end stay. True
+    // if any was removed.
+    bool removeOutside(qint64 fromMs, qint64 toMs);
+
     void clear() { m_keys.clear(); }
 
     // Drop every key in [fromMs, toMs] and put `keys` there instead (a tracked

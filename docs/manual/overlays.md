@@ -94,6 +94,11 @@ the next. This works like the reframe keyframes of the 360° view
 With keyframes, the playhead has to be inside the overlay clip to change
 the overlay: a change needs a moment to store its keyframe at.
 
+Trimming or splitting an overlay clip deletes the keyframes it leaves
+outside the clip, as for reframe keyframes
+([Keyframes](reframing.md#keyframes)). If none are left, the overlay keeps
+the look it had at the clip's new start.
+
 While an overlay clip is selected, `K` and `Shift+K` work on its keyframes,
 not the video clip's reframe keyframes. Click the video track (or press
 `Esc`) to get back to those.

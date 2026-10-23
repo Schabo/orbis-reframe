@@ -87,13 +87,20 @@ view stays as at that keyframe, and after the last keyframe it stays as at
 the last one.
 
 Each clip has its own keyframes, stored with the clip. They move with the
-clip when you reorder or trim it, and a split clip's halves both keep the
-keyframes that fall inside them. A keyframe that a trim leaves exactly on
-the clip's end shows its diamond on the clip's last frame, where clicking it
-or `Shift+↓` takes the playhead and you can change or delete it like any
-other. One a trim leaves outside the clip has no diamond until you trim the
-clip back over it, but it still steers the view toward it up to the clip's
-last frame.
+clip when you reorder or trim it, and each half of a split clip keeps the
+keyframes inside it. A keyframe that a trim leaves exactly on the clip's
+end shows its diamond on the clip's last frame, where clicking it or
+`Shift+↓` takes the playhead and you can change or delete it like any
+other. A trim deletes the keyframes it leaves outside the clip, so the
+view in what's left is set by the keyframes you can see. Where the view
+was turning toward a deleted keyframe, it now holds at the nearest one
+that's left: set a keyframe at the clip's start or end to keep it turning.
+Trimming the clip longer again doesn't bring the deleted keyframes back;
+`Ctrl+Z` does.
+
+A project saved with an older version can still have keyframes outside a clip:
+they have no diamond, but they steer the view up to the clip's edge. The
+next trim of that clip deletes them.
 
 > **A clip without keyframes is exported looking straight ahead** (yaw 0°,
 > pitch 0°, field of view 115°, distortion Auto), whatever you looked at in

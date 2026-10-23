@@ -205,10 +205,10 @@ public slots:
     // [0, count-1]). Returns true if the order actually changed.
     bool moveClip(int clipId, int toIndex);
     // Split the clip at `atSourceMs` (its own source time). The clip keeps
-    // [trimIn, atSourceMs]; a new clip with [atSourceMs, trimOut] and a copy
-    // of the reframe track is inserted right after. Returns the new clip's id,
-    // or 0 if the point isn't strictly inside the trim range (min gap each
-    // side).
+    // [trimIn, atSourceMs]; a new clip with [atSourceMs, trimOut] is inserted
+    // right after. Each half keeps the reframe keys inside it (one on the cut
+    // goes to both). Returns the new clip's id, or 0 if the point isn't
+    // strictly inside the trim range (min gap each side).
     int splitClip(int clipId, qint64 atSourceMs);
     // Insert a copy of a main-track clip right after it, with everything it
     // has (trim, speed, reframe keys, colour, stabilization, stitch,
@@ -290,9 +290,12 @@ public slots:
     bool linkAudioClip(int audioClipId, int videoClipId);
     // Split the clip at timeline `atMs`: it keeps the part before (and its
     // fade-in), a new clip right after it on the same track gets the rest
-    // (and the fade-out). Returns the new clip's id, or 0 if `atMs` isn't
-    // strictly inside it (min gap each side).
+    // (and the fade-out); each keeps the inset keys inside it. Returns the
+    // new clip's id, or 0 if `atMs` isn't strictly inside it (min gap each
+    // side).
     int splitTrackClip(int clipId, qint64 atMs);
+    // A trim removes the inset keys it leaves outside the clip, like
+    // setClipTrimIn / setClipTrimOut.
     void setTrackClipTrimIn(int clipId, qint64 sourceMs);
     void setTrackClipTrimOut(int clipId, qint64 sourceMs);
     void setAudioClipLevel(int clipId, double gainDb, bool muted);
@@ -313,7 +316,9 @@ public slots:
 
     // --- per-clip edits, addressed by clip id ----------------------------
     // positionMs / sourceMs are in the clip's own source time (0 .. its source
-    // duration).
+    // duration). A trim removes the reframe keys it leaves outside the clip
+    // (ClipItem::removeKeysOutsideTrim): out of view they'd still steer the
+    // view inside it, with no way to see or reach them.
     void setClipTrimIn(int clipId, qint64 positionMs);
     void setClipTrimOut(int clipId, qint64 positionMs);
     void clearClipTrim(int clipId);

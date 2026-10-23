@@ -563,13 +563,21 @@ void testVideoTracks()
     CHECK(std::abs(pc->lookAt(2000).opacity - 0.75f) < 1e-6f);
     tl.upsertTrackClipInsetKey(c, 3010, k0); // snaps onto the 3000 key
     CHECK(tl.trackClipById(c)->insetKeys.count() == 2);
-    // A split copies the keys to both halves.
+    // A split gives each half the keys inside it.
     const int right = tl.splitTrackClip(c, 5000); // source 2000
-    CHECK(right > 0 && tl.trackClipById(right)->insetKeys.count() == 2);
+    CHECK(right > 0);
+    CHECK(tl.trackClipById(right)->insetKeys.keys().size() == 1 &&
+          tl.trackClipById(right)->insetKeys.keys()[0].timeMs == 3000);
+    CHECK(tl.trackClipById(c)->insetKeys.keys().size() == 1 &&
+          tl.trackClipById(c)->insetKeys.keys()[0].timeMs == 1000);
+    // A trim removes the keys it leaves out; with none left, the look stays
+    // as the clip showed it at its in-point (the 3000 key's, k0 since the
+    // snap), not the static look it had before its keys.
+    tl.setTrackClipTrimIn(right, 3500);
+    pc = tl.trackClipById(right);
+    CHECK(pc->insetKeys.isEmpty() && pc->look.centerX == 0.2f);
     tl.removeTrackClip(right);
     tl.removeTrackClipInsetKeyNear(c, 1100);
-    CHECK(tl.trackClipById(c)->insetKeys.count() == 1);
-    tl.removeTrackClipInsetKeyNear(c, 2950);
     pc = tl.trackClipById(c);
     CHECK(pc->insetKeys.isEmpty() && pc->look.centerX == 0.2f);
 

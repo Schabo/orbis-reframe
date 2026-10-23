@@ -36,6 +36,9 @@ public:
     bool setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease);
     // Remove the key nearest timeMs within snapMs. True if one was removed.
     bool removeNear(qint64 timeMs, qint64 snapMs);
+    // Remove the keys outside [fromMs, toMs]; keys on either end stay. True
+    // if any was removed.
+    bool removeOutside(qint64 fromMs, qint64 toMs);
     void clear() { m_keys.clear(); }
     // Held before the first key and after the last, eased between.
     // Default look if empty.
@@ -138,6 +141,10 @@ struct TrackClip {
     // timeline: the start moves with it (clamped at 0).
     bool setTrimIn(qint64 sourceMs);
     bool setTrimOut(qint64 sourceMs);
+    // Remove the inset keys outside the trim (keys on the in / out point
+    // stay), as a trim or split leaves them out of the clip. When none is
+    // left, the look stays as the clip showed it at its in-point.
+    bool removeKeysOutsideTrim();
     bool setGainDb(double db);
     bool setMuted(bool m);
     bool setFades(qint64 inMs, qint64 outMs);

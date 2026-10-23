@@ -134,7 +134,9 @@ it and choose **Move left** or **Move right**.
 ### Trimming
 
 Trimming cuts frames off the start or end of a clip. Nothing is deleted
-from the file: you can always get the frames back.
+from the file: you can always get the frames back. The clip's keyframes in
+the part you cut off are deleted, though, and don't come back when you
+trim the clip longer again (`Ctrl+Z` does bring them back).
 
 - Drag the left or right edge of a clip.
 - Or move the playhead to the frame you want, and press `[` to make the
@@ -156,8 +158,9 @@ of a recording, or give each part its own settings.
   click the scissors on the edit toolbar.
 - Or right-click the clip where you want the cut and choose **Split here**.
 
-Both halves keep everything the clip had: its stabilization, colour,
-audio settings and reframe keyframes.
+Both halves keep everything the clip had: its stabilization, colour and
+audio settings. Each half keeps the keyframes inside it; a keyframe right on
+the cut goes to both.
 
 ### Duplicating
 

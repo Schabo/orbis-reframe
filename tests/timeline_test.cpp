@@ -326,12 +326,49 @@ void testTimelineSplit()
     CHECK(left.trimInMs == 2000 && left.trimOutMs == 10000);
     CHECK(right.trimInMs == 10000 && right.trimOutMs == 18000);
     CHECK(right.sourcePath == left.sourcePath);
-    // reframe track copied to both halves
-    CHECK(left.reframe.count() == 2 && right.reframe.count() == 2);
-    // ... and the split with its pane cameras
-    CHECK(right.split == side && right.panes[0].count() == 1);
+    // each half keeps the reframe keys inside it, every pane's
+    CHECK(left.reframe.keyTimes() == QList<qint64>{5000});
+    CHECK(right.reframe.keyTimes() == QList<qint64>{15000});
+    CHECK(left.split == side && left.panes[0].keyTimes() == QList<qint64>{6000});
+    CHECK(right.split == side && right.panes[0].isEmpty());
     // total trimmed length unchanged by a split
     CHECK(tl.totalDurationMs() == 16000);
+
+    // A key on the cut goes to both halves.
+    tl.upsertClipReframeKey(b, 14000, {});
+    const int c = tl.splitClip(b, 14000);
+    CHECK(tl.clipById(b)->reframe.keyTimes() == QList<qint64>{14000});
+    CHECK(tl.clipById(c)->reframe.keyTimes() == (QList<qint64>{14000, 15000}));
+}
+
+// A trim removes the keys it leaves outside the clip, every pane's; keys on
+// the in / out point stay. Widening the trim doesn't bring them back.
+void testTrimRemovesKeys()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 20000, 30.0);
+    pane::Split side;
+    side.layout = pane::Layout::SideBySide;
+    tl.setClipSplit(a, side);
+    for (qint64 t : {1000, 4000, 9000, 16000})
+        tl.upsertClipReframeKey(a, t, {});
+    tl.upsertClipReframeKey(a, 2000, {}, 1);
+    tl.upsertClipReframeKey(a, 12000, {}, 1);
+    int reframeTouched = 0;
+    QObject::connect(&tl, &Timeline::clipReframeChanged, &tl, [&](int) { ++reframeTouched; });
+
+    tl.setClipTrimIn(a, 4000);
+    CHECK(tl.clipById(a)->reframe.keyTimes() == (QList<qint64>{4000, 9000, 16000}));
+    CHECK(tl.clipById(a)->panes[0].keyTimes() == QList<qint64>{12000});
+    CHECK(reframeTouched == 1);
+    tl.setClipTrimOut(a, 10000);
+    CHECK(tl.clipById(a)->reframe.keyTimes() == (QList<qint64>{4000, 9000}));
+    CHECK(tl.clipById(a)->panes[0].isEmpty());
+    CHECK(reframeTouched == 2);
+    tl.setClipTrimOut(a, 9500); // nothing left out: no reframe signal
+    CHECK(reframeTouched == 2);
+    tl.clearClipTrim(a);
+    CHECK(tl.clipById(a)->reframe.keyTimes() == (QList<qint64>{4000, 9000}));
 }
 
 // Split screen: the layout and the pane cameras (ClipItem::paneTrack); the
@@ -631,6 +668,7 @@ int main()
     testKeyboardNavigation();
     testKeyNavigation();
     testKeyOnTrimOut();
+    testTrimRemovesKeys();
     testTimelineStructure();
     testTimelineSplit();
     testSplitScreen();

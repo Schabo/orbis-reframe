@@ -294,10 +294,12 @@ int Timeline::splitClip(int clipId, qint64 atSourceMs)
         || atSourceMs >= left.trimOutMs - ClipItem::kMinTrimMs)
         return 0;
 
-    ClipItem right = left; // same source / metadata / reframe track
+    ClipItem right = left; // same source / metadata, each half its own keys
     right.id = m_nextId++;
     right.trimInMs = atSourceMs;
     left.trimOutMs = atSourceMs;
+    const bool leftKeys = left.removeKeysOutsideTrim();
+    right.removeKeysOutsideTrim();
     const int leftId = left.id;
     const qint64 leftIn = left.trimInMs;
     const qint64 leftOut = left.trimOutMs;
@@ -309,6 +311,8 @@ int Timeline::splitClip(int clipId, qint64 atSourceMs)
 
     emit clipInserted(i + 1);
     emit clipTrimChanged(leftId, leftIn, leftOut);
+    if (leftKeys)
+        emit clipReframeChanged(leftId);
     emit durationChanged(totalDurationMs());
     if (relinkAudio() || audio)
         emit tracksChanged();
@@ -492,8 +496,11 @@ void Timeline::setClipTrimIn(int clipId, qint64 positionMs)
         return;
     const qint64 oldIn = c->trimInMs, oldOut = c->trimOutMs;
     if (c->setTrimIn(positionMs)) {
+        const bool keys = c->removeKeysOutsideTrim();
         const bool audio = followTrim(clipId, oldIn, oldOut);
         emit clipTrimChanged(c->id, c->trimInMs, c->trimOutMs);
+        if (keys)
+            emit clipReframeChanged(c->id);
         emit durationChanged(totalDurationMs());
         if (relinkAudio() || audio)
             emit tracksChanged();
@@ -507,8 +514,11 @@ void Timeline::setClipTrimOut(int clipId, qint64 positionMs)
         return;
     const qint64 oldIn = c->trimInMs, oldOut = c->trimOutMs;
     if (c->setTrimOut(positionMs)) {
+        const bool keys = c->removeKeysOutsideTrim();
         const bool audio = followTrim(clipId, oldIn, oldOut);
         emit clipTrimChanged(c->id, c->trimInMs, c->trimOutMs);
+        if (keys)
+            emit clipReframeChanged(c->id);
         emit durationChanged(totalDurationMs());
         if (relinkAudio() || audio)
             emit tracksChanged();
@@ -1321,6 +1331,8 @@ int Timeline::splitTrackClip(int clipId, qint64 atMs)
     c->fadeOutMs = 0;
     c->setFades(c->fadeInMs, 0);     // clamp to the shorter span
     right.setFades(0, right.fadeOutMs);
+    c->removeKeysOutsideTrim();
+    right.removeKeysOutsideTrim();
     t->clips.push_back(right); // may reallocate -- don't touch `c` after this
     t->sortClips();
     if (t->kind == Track::Kind::Video) // an overlay's sound splits with it
@@ -1338,6 +1350,7 @@ void Timeline::setTrackClipTrimIn(int clipId, qint64 sourceMs)
         return;
     const qint64 oldIn = c->trimInMs, oldOut = c->trimOutMs;
     if (c->setTrimIn(sourceMs)) {
+        c->removeKeysOutsideTrim();
         t->sortClips();
         if (t->kind == Track::Kind::Video) // an overlay's sound follows the trim
             followTrim(clipId, oldIn, oldOut);
@@ -1354,6 +1367,7 @@ void Timeline::setTrackClipTrimOut(int clipId, qint64 sourceMs)
         return;
     const qint64 oldIn = c->trimInMs, oldOut = c->trimOutMs;
     if (c->setTrimOut(sourceMs)) {
+        c->removeKeysOutsideTrim();
         if (t->kind == Track::Kind::Video) {
             followTrim(clipId, oldIn, oldOut);
             relinkAudio();

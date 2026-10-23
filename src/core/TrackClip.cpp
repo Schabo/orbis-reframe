@@ -51,6 +51,16 @@ bool TrackClip::setTrimOut(qint64 sourceMs)
     return true;
 }
 
+bool TrackClip::removeKeysOutsideTrim()
+{
+    const inset::Look edge = lookAt(trimInMs);
+    if (!insetKeys.removeOutside(trimInMs, trimOutMs))
+        return false;
+    if (insetKeys.isEmpty())
+        look = edge;
+    return true;
+}
+
 bool TrackClip::setGainDb(double db)
 {
     db = std::clamp(db, audiolimits::kMinGainDb, audiolimits::kMaxGainDb);
@@ -108,6 +118,11 @@ bool InsetKeyTrack::setEase(qint64 timeMs, qint64 snapMs, keytrack::Ease ease)
 bool InsetKeyTrack::removeNear(qint64 timeMs, qint64 snapMs)
 {
     return keytrack::removeNear(m_keys, timeMs, snapMs);
+}
+
+bool InsetKeyTrack::removeOutside(qint64 fromMs, qint64 toMs)
+{
+    return keytrack::removeOutside(m_keys, fromMs, toMs);
 }
 
 inset::Look InsetKeyTrack::sample(qint64 timeMs) const
