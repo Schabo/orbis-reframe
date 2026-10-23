@@ -382,7 +382,8 @@ void seamCostPass(uvec3 wg, uint lid)
         float vy = max(seamRed[3][0] / n - my * my, 0.0);
         float cxy = seamRed[4][0] / n - mx * my;
         res.y = sqrt(min(vx, vy));
-        res.x = (vx > 1e-6 && vy > 1e-6) ? cxy / sqrt(vx * vy) : 0.0;
+        // == insv::kSeamMinVariance: a flat patch's variance is float noise.
+        res.x = (vx > 0.25 && vy > 0.25) ? clamp(cxy / sqrt(vx * vy), -1.0, 1.0) : 0.0;
     }
     seamCost[bin * SEAM_CANDS + k] = res;
 }

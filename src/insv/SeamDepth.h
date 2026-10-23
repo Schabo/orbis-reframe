@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // Depth-aware seam: per frame, find the stitch distance along the seam circle
 // at which the two lenses agree, so near content (the bike, the rider, the
@@ -21,10 +22,18 @@
 // by MeasureSeamCosts on the CPU -- the same sample pattern, see below.
 //
 // SeamDepthTracker turns a frame's costs into the per-bin q table the stitch
-// uses (StitchGpuParams::seamQ): confidence-weighted costs, a 1-D dynamic
-// programme along the azimuth (smooth, but depth edges allowed), a pull
-// towards the previous frame's table, sub-candidate refinement, and a light
-// temporal blend. Dependency-free (insv lib).
+// uses (StitchGpuParams::seamQ): confidence-weighted costs averaged over the
+// last ~150 ms, a 1-D dynamic programme along the azimuth (smooth, but depth
+// edges allowed), a pull towards the previous frame's table, sub-candidate
+// refinement, and a light temporal blend.
+//
+// The average keeps a bin from flipping for a few frames to the road 3 m
+// behind a crash bar 0.6 m away when the road's texture matches a little
+// better; its neighbours, steadier now too, carry the bar's depth across.
+// Longer averages hold more, but follow something near really moving onto
+// the seam later (~0.4 s at 500 ms, where 150 ms costs ~0.1 s). The costs
+// are weighted by confidence before averaging, so a frame that can't tell
+// (blown-out sky) adds nothing. Dependency-free (insv lib).
 
 namespace insv {
 
@@ -45,6 +54,12 @@ inline double SeamCandQ(int k)
 constexpr int kSeamPatchAz = 16;
 constexpr int kSeamPatchEl = 16;
 constexpr double kSeamPatchElDeg = 3.0;
+
+// A patch flatter than this (grey variance, levels^2) has no NCC (0): on a
+// blown-out or flat patch the variance is rounding noise -- the GPU's float
+// sums make it large enough to give NCC far outside [-1, 1]. Mirrored by the
+// GPU pass.
+constexpr double kSeamMinVariance = 0.25;
 
 // One frame's cost volume.
 struct SeamCosts {
@@ -73,6 +88,7 @@ struct SeamDepthTuning {
     double temporal = 0.08;            // cost per 1/m away from the previous frame's q
     double farPrior = 0.01;            // cost per 1/m of |q| (textureless -> far)
     double blend = 0.5;                // temporal blend of the new table (1 = no memory)
+    double costMemoryMs = 150.0;       // time constant of the data term's running average (0 = none)
     int64_t resetGapMs = 250;          // a jump this big (or backwards) starts over
 };
 
@@ -97,6 +113,9 @@ public:
 
 private:
     float m_q[kSeamDepthBins];
+    // The running average of the confidence-weighted data term (bin-major,
+    // kSeamDepthCands per bin), valid while m_has.
+    std::vector<float> m_avgData;
     bool m_has = false;
     int64_t m_lastPts = 0;
     double m_lastConf = 0;

@@ -63,7 +63,14 @@ stick) don't, and show up twice or broken where the lenses meet.
 
 With **Depth-aware seam** on, orbis-reframe works out for every frame how
 far away the things along the seam are, and lines the two pictures up at
-that distance.
+that distance. It goes by the last few frames rather than one, so the seam
+doesn't jump between a close object and the road behind it when both match
+about equally well; something close that really moves onto the seam is
+followed within a fraction of a second.
+
+Very close things that the two lenses see against different backgrounds
+(a crash bar and a cable right under the camera) can still look doubled in
+places: no single distance lines everything up there.
 
 ![The handlebar at the seam, with depth-aware seam off and on](images/stitching-depth-seam.jpg)
 

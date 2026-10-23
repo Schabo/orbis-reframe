@@ -71,8 +71,9 @@ void MeasureSeamCosts(const FisheyeStitcher& st, const Image& lens0, const Image
                     const double vy = std::max(syy / n - (sy / n) * (sy / n), 0.0);
                     const double cxy = sxy / n - (sx / n) * (sy / n);
                     tex = static_cast<float>(std::sqrt(std::min(vx, vy)));
-                    ncc = vx > 1e-6 && vy > 1e-6 ? static_cast<float>(cxy / std::sqrt(vx * vy))
-                                                 : 0.0f;
+                    ncc = vx > kSeamMinVariance && vy > kSeamMinVariance
+                              ? static_cast<float>(std::clamp(cxy / std::sqrt(vx * vy), -1.0, 1.0))
+                              : 0.0f;
                 }
                 out.ncc[b][k] = ncc;
                 out.texture[b][k] = tex;
@@ -99,7 +100,7 @@ void SeamDepthTracker::reset()
     m_lastConf = 0;
 }
 
-void SeamDepthTracker::update(const SeamCosts& c, int64_t ptsMs)
+void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
 {
     constexpr int B = kSeamDepthBins, K = kSeamDepthCands;
     const SeamDepthTuning& T = tuning;
@@ -111,27 +112,41 @@ void SeamDepthTracker::update(const SeamCosts& c, int64_t ptsMs)
         if (std::fabs(SeamCandQ(k)) < std::fabs(SeamCandQ(k0)))
             k0 = k;
 
-    // Data term: confidence-weighted (1 - NCC), plus the far and temporal priors.
-    static thread_local std::vector<double> D;
-    D.assign(static_cast<size_t>(B) * K, 0.0);
+    // This frame's data term, confidence-weighted (1 - NCC), folded into its
+    // running average. Weighting before averaging matters: a frame with no
+    // confidence in a bin (blown-out sky, a plain wall) adds nothing there,
+    // whatever its NCC values say.
+    const double keep = m_has && T.costMemoryMs > 0
+                            ? std::exp(-static_cast<double>(ptsMs - m_lastPts) / T.costMemoryMs)
+                            : 0.0;
+    m_avgData.resize(static_cast<size_t>(B) * K);
     double confSum = 0;
     for (int b = 0; b < B; ++b) {
         double best = -2.0;
         for (int k = 0; k < K; ++k)
-            best = std::max(best, static_cast<double>(c.ncc[b][k]));
+            best = std::max(best, static_cast<double>(std::min(frame.ncc[b][k], 1.0f)));
         const double conf = best < -1.5 ? 0.0
-                                        : ramp01(c.texture[b][k0], T.texLo, T.texHi) *
+                                        : ramp01(frame.texture[b][k0], T.texLo, T.texHi) *
                                               ramp01(best, T.nccLo, T.nccHi);
         confSum += conf;
         for (int k = 0; k < K; ++k) {
+            const double n = frame.ncc[b][k] < -1.5 ? -1.0 : std::clamp(frame.ncc[b][k], -1.0f, 1.0f);
+            float& a = m_avgData[static_cast<size_t>(b) * K + k];
+            a = static_cast<float>(keep * a + (1 - keep) * conf * (1.0 - n));
+        }
+    }
+
+    // Data term plus the far and temporal priors.
+    static thread_local std::vector<double> D;
+    D.assign(static_cast<size_t>(B) * K, 0.0);
+    for (int b = 0; b < B; ++b)
+        for (int k = 0; k < K; ++k) {
             const double q = SeamCandQ(k);
-            const double ncc = c.ncc[b][k] < -1.5 ? -1.0 : c.ncc[b][k];
-            double d = conf * (1.0 - ncc) + T.farPrior * std::fabs(q);
+            double d = m_avgData[static_cast<size_t>(b) * K + k] + T.farPrior * std::fabs(q);
             if (m_has)
                 d += T.temporal * std::fabs(q - m_q[b]);
             D[static_cast<size_t>(b) * K + k] = d;
         }
-    }
     m_lastConf = confSum / B;
 
     // Smoothness between neighbouring bins, truncated so depth edges stay.

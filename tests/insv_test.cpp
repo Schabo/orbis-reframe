@@ -434,13 +434,46 @@ void testSeamDepthTracker()
     CHECK(near(q[10], 0.0, 0.1) && near(q[100], 0.0, 0.1) && near(q[120], 0.0, 0.1));
     CHECK(q[40 - 3] < 0.3 && q[70 + 2] < 0.3);         // the edge stays an edge
 
-    // Next frame, the object moved closer: the table follows, partly (blend).
+    // A rival depth that matches clearly better for 200 ms (the road behind
+    // a crash bar) doesn't take the bins over; with no cost memory it does.
+    auto rival = [&](double nearQ, double farQ, int from, int to) {
+        fill(nearQ);
+        for (int b = from; b < to; ++b)
+            for (int k = 0; k < K; ++k) {
+                const double q = insv::SeamCandQ(k);
+                const double dn = std::fabs(q - nearQ), df = std::fabs(q - farQ);
+                costs->ncc[b][k] = static_cast<float>(
+                    std::max(0.70 - 0.8 * std::min(dn, 1.0), 0.95 - 0.8 * std::min(df, 1.0)));
+            }
+    };
+    insv::SeamDepthTracker forgetful;
+    forgetful.tuning.costMemoryMs = 0;
+    int64_t t = 1000;
+    for (int f = 0; f < 15; ++f, t += 33) {
+        fill(1.8);
+        tr.update(*costs, t);
+        forgetful.update(*costs, t);
+    }
+    float lowest = 9, lowestForgetful = 9;
+    for (int f = 0; f < 6; ++f, t += 33) {
+        rival(1.8, 0.3, 55, 62);
+        tr.update(*costs, t);
+        forgetful.update(*costs, t);
+        lowest = std::min(lowest, q[58]);
+        lowestForgetful = std::min(lowestForgetful, forgetful.table()[58]);
+    }
+    CHECK(lowest > 1.6);
+    CHECK(lowestForgetful < 1.0);
+
+    // The object moves closer and stays there: followed within half a second.
     fill(2.4);
-    tr.update(*costs, 1033);
-    CHECK(q[60] > 1.9 && q[60] < 2.45);
-    // A jump in time starts over: no blend with the old table.
-    tr.update(*costs, 5000);
+    for (int f = 0; f < 15; ++f, t += 33)
+        tr.update(*costs, t);
     CHECK(near(q[60], 2.4, 0.1));
+    // A jump in time starts over: no memory of the old costs or table.
+    fill(1.2);
+    tr.update(*costs, t + 5000);
+    CHECK(near(q[60], 1.2, 0.1));
     tr.reset();
     CHECK(!tr.hasHistory() && tr.table()[60] == 0.0f);
 }
