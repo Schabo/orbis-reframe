@@ -280,8 +280,9 @@ To remove the tarball version, delete its folder.
 
 ### Option C: the AppImage
 
-Each release also has `orbis-reframe-<version>-x86_64.AppImage`: one file that runs on any 64-bit
-distribution whose C library (glibc) is version 2.41 or newer, such as
+Each release also has `orbis-reframe-<version>-x86_64.AppImage`: one file
+that runs on any 64-bit distribution whose C library (glibc) is version 2.41
+or newer, such as
 Debian 13, Ubuntu 26.04, Fedora 42 and newer, Arch and openSUSE Tumbleweed.
 It works on Debian and Ubuntu too, but there the `.deb` fits in better.
 
