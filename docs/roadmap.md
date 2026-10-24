@@ -16,31 +16,7 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. Wide views and "tiny earth"
-
-One per-keyframe **distortion** amount `d` from 0 to 1 -- the projection
-centre moves from the sphere's centre (`d = 0`, today's rectilinear) to its
-back (`d = 1`, stereographic). It blends between keyframes like the field of
-view, so a move can go from a normal view into a wide fisheye look or a
-tiny-earth planet. The field of view becomes the **diagonal** angle (corner
-to corner), so landscape and portrait frame alike. By default `d` follows it
-(the least `d` that keeps a shape in the corner from stretching more than
-1.5 times: 0 up to about 96° diagonal, 0.46 at 145°) with a manual override
-per keyframe; the field-of-view limit then depends on `d`. Old projects load
-with the automatic `d`, so their wide views lose the stretch. It is a change
-to all the view implementations and the subject tracker's crop together
-(`architecture.md`, *One view, several implementations*).
-
-- done: (1) the projection, written once (`src/core/ViewProjection.h` and
-  `view_projection.glsl`) and used by every implementation; (2) the
-  distortion and the diagonal field of view in the keyframes and the
-  project file (format 17), the automatic amount, the Reframe section's
-  **Distortion** row, the angle limits (145° rectilinear up to 330°);
-  (3) the automatic amount chosen on riding clips with straight lines.
-- next: whether Horizon lock keeps a tiny planet upright looking straight
-  down.
-
-### 2. Insta360 X6
+### 1. Insta360 X6
 
 Built on top of the common camera model (under *Planned, not scheduled*), from a contributor's work:
 the X6's own facts are its row in the Insta360 reader's table
@@ -64,7 +40,7 @@ clips):
   real X6 clips (built on stand-ins);
 - real-time decode at 8K 50 checked.
 
-### 3. Titles -- *maintainer*
+### 2. Titles -- *maintainer*
 
 Titles on overlay tracks are built (plain text, keyframed position and
 size). Next, first and for the next release: a **font picker** that
@@ -74,7 +50,7 @@ alignment, line and letter spacing, a few ready-made styles as tiles in the
 Titles tab (lower third, heading, date / place), keyframed colour and
 simple text animations (type-on, slide).
 
-### 4. GPS and stats overlays -- *maintainer*
+### 3. GPS and stats overlays -- *maintainer*
 
 Speed, altitude, distance, heading, the route, and lean / G-force gauges,
 drawn on the picture from the clip's own telemetry and following the
@@ -87,7 +63,7 @@ style and position, and the viewport and the export draw the same. The
 design (clips without GPS, gaps and the 1 Hz rate, units, gauge styles) is
 still to be planned.
 
-### 5. Optional
+### 4. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -162,8 +138,9 @@ each is in its document in [`formats/`](formats/README.md).
   per-model table, fields read from the file -- not in model checks spread
   through the code.
 
-- **More view shapes**, after *Wide views*: a globe (the sphere as a ball
-  seen from outside: the distortion `d` past 1, up to orthographic), a
+- **More view shapes**, on top of the per-keyframe distortion (built): a
+  globe (the sphere as a ball seen from outside: the distortion `d` past 1,
+  up to orthographic), a
   natural view (Panini: the same distortion applied only across, so
   verticals stay straight), and, if the wide end of `d` isn't enough, a true
   fisheye and a mirror ball. Each is a continuous amount per keyframe that
