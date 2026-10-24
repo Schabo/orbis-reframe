@@ -619,13 +619,16 @@ if(FFMPEG_FOUND)
     # lib/orbis-reframe/ (bundled ncnn, found through $ORIGIN),
     # share/orbis-reframe/models/ (core::paths finds it from the binary's own
     # location), share/doc/orbis-reframe/ (licenses, the manual), the desktop
-    # entry and icon.
+    # entry, icon and file types (the .deb's install runs shared-mime-info's
+    # and desktop-file-utils' triggers on them).
     set_target_properties(orbis-reframe PROPERTIES
         INSTALL_RPATH "\$ORIGIN/../lib/orbis-reframe")
     install(TARGETS orbis-reframe RUNTIME DESTINATION bin)
     install(DIRECTORY resources/models/ DESTINATION share/orbis-reframe/models)
     install(DIRECTORY resources/luts/ DESTINATION share/orbis-reframe/luts)
     install(FILES packaging/orbis-reframe.desktop DESTINATION share/applications)
+    install(FILES packaging/orbis-reframe-mime.xml DESTINATION share/mime/packages
+        RENAME orbis-reframe.xml)
     install(FILES packaging/orbis-reframe.svg DESTINATION share/icons/hicolor/scalable/apps)
     install(FILES LICENSE README.md THIRD_PARTY.md resources/icons/LICENSE.lucide
         DESTINATION share/doc/orbis-reframe)

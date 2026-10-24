@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- File types orbis-reframe opens, so file managers offer it for them
+     (MimeType= in orbis-reframe.desktop). Installed as
+     share/mime/packages/orbis-reframe.xml. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <!-- The project file: JSON (docs/architecture.md, "The project file"). -->
+  <mime-type type="application/x-orbis-reframe-project">
+    <comment>orbis-reframe project</comment>
+    <sub-class-of type="application/json"/>
+    <icon name="orbis-reframe"/>
+    <glob pattern="*.orp"/>
+  </mime-type>
+  <!-- An Insta360 clip: an MP4 file with the camera's trailer after it
+       (docs/formats/). Only the name tells it from any other MP4, so no
+       magic: that would claim every .mp4 file. -->
+  <mime-type type="video/x-insta360-insv">
+    <comment>Insta360 360° video</comment>
+    <sub-class-of type="video/mp4"/>
+    <generic-icon name="video-x-generic"/>
+    <glob pattern="*.insv"/>
+  </mime-type>
+</mime-info>

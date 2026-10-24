@@ -145,7 +145,8 @@ Vulkan and OpenCV libraries:
 | Archive | `orbis-reframe-<version>-debian-13-x86_64.tar.xz` | `orbis-reframe-<version>-debian-testing-x86_64.tar.xz` | `orbis-reframe-<version>-ubuntu-26.04-x86_64.tar.xz` |
 
 - The **`.deb`** is a Debian package. apt installs the libraries it needs,
-  and it adds orbis-reframe to your desktop's application menu. Use this
+  it adds orbis-reframe to your desktop's application menu, and your file
+  manager then opens `.orp` and `.insv` files with it. Use this
   one unless you can't install packages.
 - The **archive** (tarball) unpacks anywhere, without root. You install the
   libraries yourself.
@@ -288,6 +289,15 @@ away:
 orbis-reframe ~/Videos/VID_20260815_143012_00_012.insv
 orbis-reframe ~/Videos/orbis-reframe/my-ride/my-ride.orp
 ```
+
+With the `.deb` installed, you can also open a project (`.orp`) or a clip
+(`.insv`) from your file manager: double-click it, or right-click it and
+choose **Open With** > **orbis-reframe**. A clip opens in a new, unsaved
+project, as from the command line. If double-clicking an `.insv` file starts a
+video player instead (some file managers keep the default you chose for
+all videos), choose orbis-reframe as the default for *Insta360 360° video*
+in the file manager's *Open With* dialog. The tarball doesn't register itself with
+the file manager.
 
 `orbis-reframe --version` prints the version without opening a window.
 

@@ -83,7 +83,9 @@ whole release, from bump to publishing, is in `docs/RELEASE.md`.
 `cmake --install build --prefix <dir>` gives the
 layout packages use: `bin/orbis-reframe`, `lib/orbis-reframe/libncnn.so.1`,
 `share/orbis-reframe/models/`, `share/doc/orbis-reframe/` (licenses, the
-manual), `share/applications/orbis-reframe.desktop` and
+manual), `share/applications/orbis-reframe.desktop`,
+`share/mime/packages/orbis-reframe.xml` (the `.orp` and `.insv` file types,
+from `packaging/orbis-reframe-mime.xml`) and
 `share/icons/hicolor/scalable/apps/orbis-reframe.svg` (`packaging/`). Shaders are compiled into the binary
 (`render_shaders`); models are found from the binary's own location
 (`src/core/DataPaths`), falling back to the source tree in dev builds
@@ -104,7 +106,7 @@ override.
 
 A target other than this machine's is built in a podman container of that
 release (`target_image` in `scripts/targets.sh`), which installs the build
-dependencies below plus `git dpkg-dev file desktop-file-utils` and runs
+dependencies below plus `git dpkg-dev file desktop-file-utils shared-mime-info` and runs
 `package.sh` again inside, with the source tree mounted at the same path
 (downloaded `.deb`s are kept in `tmp/package-apt-cache/<target>/`). The same
 source builds on all three: Debian 13 has Qt 6.8, FFmpeg 7.1, ONNX Runtime 1.21

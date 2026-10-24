@@ -80,7 +80,7 @@ if [[ "$TARGET" != "$HOST_TARGET" ]]; then
                 libvulkan-dev glslang-tools nlohmann-json3-dev zlib1g-dev \
                 libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
                 libopencv-dev libopencv-contrib-dev libonnxruntime-dev \
-                git dpkg-dev file desktop-file-utils xz-utils ca-certificates > /dev/null
+                git dpkg-dev file desktop-file-utils shared-mime-info xz-utils ca-certificates > /dev/null
             scripts/package.sh --target $TARGET $([[ $ALLOW_DIRTY -eq 1 ]] && echo --allow-dirty)"
     exit $?
 fi
@@ -170,6 +170,23 @@ for f in doc/orbis-reframe/LICENSE doc/orbis-reframe/THIRD_PARTY.md \
 done
 
 desktop-file-validate "$top/share/applications/orbis-reframe.desktop" || fail=1
+# The file types compile, and give .orp and .insv the types the desktop entry
+# names.
+mime_db=$(mktemp -d)
+mkdir "$mime_db/packages"
+cp "$top/share/mime/packages/orbis-reframe.xml" "$mime_db/packages/" 2>/dev/null \
+    || { echo "FAIL: share/mime/packages/orbis-reframe.xml missing" >&2; fail=1; }
+if update-mime-database "$mime_db" 2>/dev/null; then
+    for glob in application/x-orbis-reframe-project:\*.orp video/x-insta360-insv:\*.insv; do
+        cut -d: -f2- "$mime_db/globs2" | grep -qxF "$glob" \
+            || { echo "FAIL: no $glob in the file types" >&2; fail=1; }
+        grep -q "^MimeType=.*${glob%%:*};" "$top/share/applications/orbis-reframe.desktop" \
+            || { echo "FAIL: ${glob%%:*} not in the desktop entry's MimeType" >&2; fail=1; }
+    done
+else
+    echo "FAIL: the file types don't compile" >&2; fail=1
+fi
+rm -rf "$mime_db"
 
 dpkg-deb --field "$deb" Package Version Depends Suggests
 [[ $(dpkg-deb --contents "$deb" | grep -c "/usr/bin/orbis-reframe$") -eq 1 ]] \

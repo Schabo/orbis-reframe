@@ -42,8 +42,8 @@ A release is:
   dependencies from `docs/dev-environment.md`, **all of them** -- a release
   has every feature, and `scripts/package.sh` refuses to configure if one is
   missing (`ORBIS_REQUIRE_ALL_FEATURES`) -- plus `ninja-build`, `dpkg-dev`
-  (`dpkg-shlibdeps`), `desktop-file-utils` (`desktop-file-validate`) and
-  `xz-utils`.
+  (`dpkg-shlibdeps`), `desktop-file-utils` (`desktop-file-validate`), `shared-mime-info`
+  (`update-mime-database`) and `xz-utils`.
 
 ## 2. Get `main` ready
 
@@ -119,7 +119,8 @@ still be undone. Either of:
   `.sha256` files in `dist/<target>/` (replaced each run), and checks the
   unpacked tarball: the launcher, `--version`, that every library is found
   and ncnn comes from the package, that no source-tree or `$HOME` path is
-  left, the models, the shipped LUT, the license files and the desktop entry. It ends with
+  left, the models, the shipped LUT, the license files, the desktop entry and the file types (`.orp`,
+  `.insv`). It ends with
   `== done`, or with `FAIL` lines and a non-zero exit. It refuses
   uncommitted changes unless given `--allow-dirty` (for testing only).
 
