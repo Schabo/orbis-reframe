@@ -245,7 +245,7 @@ void testWideViewKeys()
     r.upsert(1000, wide, 40);
     ReframePose mid = r.sample(500);
     CHECK(std::abs(mid.fov - 130.0 * deg) < 1e-9 && mid.distortionIsAuto());
-    CHECK(std::abs(view::distortionOf(mid) - 0.5) < 1e-6);
+    CHECK(std::abs(view::distortionOf(mid) - view::autoDistortion(130.0 * deg)) < 1e-12);
 
     wide.distortion = 0.6f; // fixed; narrow's Auto shows 0
     r.upsert(1000, wide, 40);

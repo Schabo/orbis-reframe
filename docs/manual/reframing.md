@@ -45,8 +45,8 @@ corners stay where they were, the edges of the picture move.
 
 1. 140° at 0 %: straight lines stay straight, but the rider in the middle
    is small and everything toward the edges is stretched.
-2. The same 140° at **Auto**: the middle is larger and the edges are no
-   longer stretched; lines away from the middle bend a little.
+2. The same 140° at **Auto**: the middle is larger and the edges stretch
+   much less; lines away from the middle bend a little.
 3. A tiny planet: pitch −89° (straight down), field of view 300°.
 
 A normal camera view keeps straight lines straight. That works up to a
@@ -56,11 +56,14 @@ fisheye lens would instead: the edges keep their shapes, and lines away from
 the middle bend.
 
 With **Auto** ticked (the default), the distortion follows the field of
-view: none up to about 90°, rising to full at 170° and wider. The slider
-shows the amount Auto uses. Untick **Auto** to set the amount yourself with
-the slider: 0 % keeps every line straight, 100 % keeps every shape. The
-widest field of view depends on the amount: 145° at 0 %, 330° at 100 % or
-with Auto. Lowering the amount narrows a view that is wider than it allows.
+view: it uses the least amount that keeps shapes in the corners from
+stretching more than half again their size, so lines stay as straight as
+that allows. That is none up to about 95°, about 20 % at the default 115°,
+45 % at 145° and 75 % at 200°. The slider shows the amount Auto uses.
+Untick **Auto** to set the amount yourself with the slider: 0 % keeps every
+line straight, 100 % keeps every shape. The widest field of view depends on
+the amount: 145° at 0 %, 330° at 100 %, 300° with Auto. Lowering the amount
+narrows a view that is wider than it allows.
 
 For a **tiny planet**, look straight down (pitch −89°) and widen the field
 of view to 250° or more: the ground curls into a small globe with the sky
@@ -70,7 +73,7 @@ with Auto on both keyframes the picture bends more and more as it widens.
 
 > **Projects from earlier versions** keep their views: each keyframe takes
 > the corner-to-corner angle that frames what it framed before, with
-> distortion on Auto. Views wider than about 90° corner to corner now
+> distortion on Auto. Views wider than about 95° corner to corner now
 > look less stretched at the edges; that is most of them, since the old
 > default, 75° from top to bottom, is 115° corner to corner in a 16:9
 > picture. To get the old look back, untick **Auto** and set 0 %.

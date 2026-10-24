@@ -24,7 +24,8 @@ back (`d = 1`, stereographic). It blends between keyframes like the field of
 view, so a move can go from a normal view into a wide fisheye look or a
 tiny-earth planet. The field of view becomes the **diagonal** angle (corner
 to corner), so landscape and portrait frame alike. By default `d` follows it
-(0 up to about 90° diagonal, rising to 1 around 170°) with a manual override
+(the least `d` that keeps a shape in the corner from stretching more than
+1.5 times: 0 up to about 96° diagonal, 0.46 at 145°) with a manual override
 per keyframe; the field-of-view limit then depends on `d`. Old projects load
 with the automatic `d`, so their wide views lose the stretch. It is a change
 to all the view implementations and the subject tracker's crop together
@@ -34,9 +35,10 @@ to all the view implementations and the subject tracker's crop together
   `view_projection.glsl`) and used by every implementation; (2) the
   distortion and the diagonal field of view in the keyframes and the
   project file (format 17), the automatic amount, the Reframe section's
-  **Distortion** row, the angle limits (145° rectilinear up to 330°).
-- next: the default angle and the automatic curve's ends tuned by eye on
-  clips with straight lines.
+  **Distortion** row, the angle limits (145° rectilinear up to 330°);
+  (3) the automatic amount chosen on riding clips with straight lines.
+- next: whether Horizon lock keeps a tiny planet upright looking straight
+  down.
 
 ### 2. Insta360 X6
 
