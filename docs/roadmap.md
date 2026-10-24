@@ -204,11 +204,14 @@ each is in its document in [`formats/`](formats/README.md).
   latest release: LGPL only (no `--enable-gpl`: the export uses hardware
   encoders, not x264 / x265), never `--enable-nonfree` (NVENC doesn't need
   it), shared libraries. The NVIDIA, Mesa and VA drivers come from the
-  system. Each release publishes the source of every (L)GPL library it
-  bundles and the licence texts of all of them, and is rebuilt when a
-  bundled library gets a security fix. First a spike: GPU decode, NVENC
-  and the viewport from the bundle on several distributions, size, and
-  whether OpenCV and ONNX Runtime come from Debian or our own builds.
+  system. Each release carries the licence texts of everything it bundles
+  and makes the source of every (L)GPL part available: Debian's packages
+  linked by exact version on snapshot.debian.org, our FFmpeg's and the
+  runtime's source on the release. It is rebuilt when a bundled library
+  gets a security fix. Qt, OpenCV and ONNX Runtime come from Debian 13's
+  packages (Debian's ONNX Runtime has no telemetry). A test build ran the
+  full GPU smoke test on all five distributions (about 110 MB). Planned
+  for the next release.
 - **GUI tests**: `objectName`s on the remaining actions and widgets, and the
   offscreen main-window test grown panel by panel.
 
