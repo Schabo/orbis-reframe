@@ -24,9 +24,9 @@ fully supported, the **X6** and **ONE X2** experimentally.
 
 **Download:** a `.deb` and a tarball for Debian Testing, Debian 13 and
 Ubuntu 26.04 LTS on the
-[releases page](https://github.com/Schabo/orbis-reframe/releases); from
-0.6.0 on also an AppImage for other distributions with glibc 2.41 or newer
-(Fedora, Arch, openSUSE Tumbleweed, ...). The
+[releases page](https://github.com/Schabo/orbis-reframe/releases), and an
+AppImage for other distributions with glibc 2.41 or newer (Fedora, Arch,
+openSUSE Tumbleweed, ...). The
 [user manual](docs/manual/README.md) starts with the
 [getting-started guide](docs/manual/getting-started.md): what your computer
 needs and how to install. **Found a problem?**

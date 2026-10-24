@@ -41,7 +41,7 @@ you have one, short clips from it help add it:
 
 | | Needed |
 |---|---|
-| **Operating system** | Linux, 64-bit (x86_64). On **Debian 13** ("trixie"), **Debian Testing** and **Ubuntu 26.04 LTS** there's a package for each, built on the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8); download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ. To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. **Other distributions** (Fedora, Arch, openSUSE Tumbleweed, ...): the **AppImage**, from version 0.6.0 on, which brings its own libraries and runs where the system's C library is version 2.41 or newer (`ldd --version` prints it on its first line). |
+| **Operating system** | Linux, 64-bit (x86_64). On **Debian 13** ("trixie"), **Debian Testing** and **Ubuntu 26.04 LTS** there's a package for each, built on the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8); download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ. To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. **Other distributions** (Fedora, Arch, openSUSE Tumbleweed, ...): the **AppImage**, which brings its own libraries and runs where the system's C library is version 2.41 or newer (`ldd --version` prints it on its first line). |
 | **Desktop session** | **Wayland**: Sway, GNOME, KDE Plasma or another Wayland desktop. An X11 session doesn't work: orbis-reframe exits at startup instead of falling back to X11. |
 | **Graphics card** | A card with **Vulkan**, including Vulkan video decoding. Export uses the card's hardware encoder: NVENC on NVIDIA, VAAPI or Vulkan video on AMD and Intel. **NVIDIA** with the proprietary driver is what orbis-reframe is tested on (an RTX 5070, driver 595); other NVIDIA cards from the GTX 16 / RTX 20 series onwards should work. **AMD** and **Intel** use the Mesa drivers that come with the system, and are supported best-effort: a contributor has tested playback and export on an AMD Radeon 8060S (Mesa 26.2); other AMD cards and Intel GPUs haven't been tried. If something doesn't work on yours, please [report it](#if-it-doesnt-start). |
 | **Memory** | 16 GB RAM or more. 8K clips are large. |
@@ -280,8 +280,7 @@ To remove the tarball version, delete its folder.
 
 ### Option C: the AppImage
 
-From version 0.6.0 on, each release also has
-`orbis-reframe-<version>-x86_64.AppImage`: one file that runs on any 64-bit
+Each release also has `orbis-reframe-<version>-x86_64.AppImage`: one file that runs on any 64-bit
 distribution whose C library (glibc) is version 2.41 or newer, such as
 Debian 13, Ubuntu 26.04, Fedora 42 and newer, Arch and openSUSE Tumbleweed.
 It works on Debian and Ubuntu too, but there the `.deb` fits in better.
