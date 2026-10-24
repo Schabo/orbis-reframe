@@ -32,10 +32,12 @@ public:
     void setActivePane(int pane);
 
     // For PlaybackController::setViewProvider. A clip without keys keeps
-    // the view as it is (free look); one not in the copy keeps both. Of a
-    // split clip, the active pane's view is the viewport's own pose (free
-    // look when that pane has no keys); the other panes show what they
-    // export.
+    // the view as it is (free look), except that its first frame after
+    // another clip's starts at the forward view it exports with -- a view
+    // carried over from the clip before would show it as it never exports.
+    // One not in the copy keeps both. Of a split clip, the active pane's
+    // view is the viewport's own pose (free look when that pane has no
+    // keys); the other panes show what they export.
     PlaybackController::ViewProvider provider() const;
 
 private:
@@ -48,6 +50,7 @@ private:
     struct Shared {
         std::mutex mx;
         std::map<int, Clip> clips; // by ClipItem::id
+        int lastClipId = 0;        // the clip of the frame asked for last
         std::atomic<bool> dragging{false};
         std::atomic<int> activePane{0};
     };

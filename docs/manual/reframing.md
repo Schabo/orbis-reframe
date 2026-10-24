@@ -108,7 +108,8 @@ next trim of that clip deletes them.
 
 > **A clip without keyframes is exported looking straight ahead** (yaw 0°,
 > pitch 0°, field of view 115°, distortion Auto), whatever you looked at in
-> the viewport. Give
+> the viewport. The viewport starts there too when playback or the playhead
+> enters such a clip, so it doesn't keep the previous clip's view. Give
 > every clip at least one keyframe. A clip without any shows a hollow
 > diamond (◇) before its name on the timeline, the **Reframe** section warns
 > while the playhead is in it, and the export dialog lists it.

@@ -1471,7 +1471,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
         event->ignore();
 }
 
-void MainWindow::applySampledPose(qint64 sourceMs)
+void MainWindow::applySampledPose(qint64 sourceMs, bool clipChanged)
 {
     const ClipItem *c = m_timeline->clipById(m_clipId);
     if (!c)
@@ -1484,10 +1484,14 @@ void MainWindow::applySampledPose(qint64 sourceMs)
         poses[i] = t.isEmpty() ? ReframePose{} : t.sample(sourceMs);
     }
     m_viewport->SetPanes(c->flat ? pane::Split{} : c->split, poses);
+    if (m_viewportDragging)
+        return;
     const ReframeTrack &active = c->paneTrack(paneOf(*c));
-    if (active.isEmpty() || m_viewportDragging)
-        return; // free look
-    m_viewport->SetPose(active.sample(sourceMs));
+    if (!active.isEmpty())
+        m_viewport->SetPose(active.sample(sourceMs));
+    else if (clipChanged)
+        m_viewport->SetPose(ReframePose{});
+    // else free look
 }
 
 int MainWindow::paneOf(const ClipItem &c) const
@@ -1640,7 +1644,7 @@ void MainWindow::bindActiveClipAt(qint64 timelineMs)
     // (FrameViewCache): set from the clock here, they would change a frame
     // apart from the picture at a cut.
     if (!m_viewportDragging && !m_playing)
-        applySampledPose(m_lastPositionMs);
+        applySampledPose(m_lastPositionMs, clipChanged);
     if (!m_viewportDragging)
         syncReframePanel();
     if (clipChanged) {

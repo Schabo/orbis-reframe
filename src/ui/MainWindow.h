@@ -175,8 +175,9 @@ private:
     bool trackingRunning() const;
     // Point the viewport along the authored reframe path. `sourceMs` is in the
     // current clip's (m_clipId) source time. A split clip's every pane, the
-    // active one's view only when it has keys.
-    void applySampledPose(qint64 sourceMs);
+    // active one's view only when it has keys -- or, on `clipChanged`, the
+    // forward view it exports with (FrameViewCache::provider).
+    void applySampledPose(qint64 sourceMs, bool clipChanged = false);
     // Split screen: the pane of `c` the viewport and the reframe edits steer
     // -- the viewport's active pane, or pane 0 on a clip with fewer panes.
     int paneOf(const ClipItem &c) const;

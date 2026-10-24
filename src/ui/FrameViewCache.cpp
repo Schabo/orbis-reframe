@@ -35,6 +35,8 @@ PlaybackController::ViewProvider FrameViewCache::provider() const
         const auto it = shared->clips.find(clipId);
         if (it == shared->clips.end())
             return;
+        const bool clipChanged = clipId != shared->lastClipId;
+        shared->lastClipId = clipId;
         const Clip &c = it->second;
         view.hasGrade = true;
         view.grade = c.grade;
@@ -50,7 +52,7 @@ PlaybackController::ViewProvider FrameViewCache::provider() const
             view.panePoses[i] =
                 track(i).isEmpty() ? ReframePose{} : track(i).sample(sourceMs);
         }
-        if (track(active).isEmpty() || shared->dragging)
+        if (shared->dragging || (track(active).isEmpty() && !clipChanged))
             return;
         view.hasPose = true;
         view.pose = view.panePoses[active];
