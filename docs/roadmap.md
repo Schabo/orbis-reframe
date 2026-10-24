@@ -16,41 +16,16 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. Insta360 X6
-
-Built on top of the common camera model (under *Planned, not scheduled*), from a contributor's work:
-the X6's own facts are its row in the Insta360 reader's table
-(`insv::InsvModel`) and fields its reader reads from the file. The X6 is
-close to the X5: the same `.insv`
-trailer, larger lenses (6K lens size 3008²), 8K 50, and 10-bit I-Log and
-Dolby Vision modes. What it needs beyond the X5 (what's left needs real X6
-clips):
-
-- done: the focal reference (field 27) read from the file, the X6's row in
-  the model table (6K named in Media information and the media pool, no
-  lens-guard profiles), the calibration sanity ranges checked on X6 clips,
-  10-bit clips decoded and stitched (P010) with the stream's own colour
-  matrix and range on every decode path, HLG clips (the Dolby Vision mode)
-  recognised from their stream with a shipped HLG -> Rec.709 LUT
-  (`tools/make_hlg_lut`; colour conversion stays the clip's LUT, see
-  `architecture.md`);
-- the IMU axis map confirmed on a clip with deliberate rotations (the X5's
-  is used until then);
-- the Dolby Vision mode and the HLG LUT's highlight roll-off checked on
-  real X6 clips (built on stand-ins);
-- real-time decode at 8K 50 checked.
-
-### 2. Titles -- *maintainer*
+### 1. Titles -- *maintainer*
 
 Titles on overlay tracks are built (plain text, keyframed position and
-size). Next, first and for the next release: a **font picker** that
-previews the fonts. Then: an outline, a drop
+size, a font picker that previews the fonts). Next: an outline, a drop
 shadow and a background box (legible over a bright sky), left / right
 alignment, line and letter spacing, a few ready-made styles as tiles in the
 Titles tab (lower third, heading, date / place), keyframed colour and
 simple text animations (type-on, slide).
 
-### 3. GPS and stats overlays -- *maintainer*
+### 2. GPS and stats overlays -- *maintainer*
 
 Speed, altitude, distance, heading, the route, and lean / G-force gauges,
 drawn on the picture from the clip's own telemetry and following the
@@ -63,7 +38,7 @@ style and position, and the viewport and the export draw the same. The
 design (clips without GPS, gaps and the 1 Hz rate, units, gauge styles) is
 still to be planned.
 
-### 4. Optional
+### 3. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
@@ -82,6 +57,19 @@ Each needs sample clips first ([Sample clips wanted](formats/README.md#sample-cl
 and goes in as a reader behind the common camera model. What's known about
 each is in its document in [`formats/`](formats/README.md).
 
+- **Insta360 X6**: built, experimental, from a contributor's work on the
+  common camera model: the X6's facts are its row in the Insta360 reader's
+  table (`insv::InsvModel`) and fields read from the file (the focal
+  reference, field 27); 6K named, 10-bit clips decoded and stitched with
+  the stream's own colour matrix and range, HLG (Dolby Vision mode) clips
+  recognised with a shipped HLG -> Rec.709 LUT. Left, all needing real X6
+  clips: the IMU axis map confirmed on a clip with deliberate rotations
+  (the X5's is used until then); the Dolby Vision mode and the HLG LUT's
+  highlight roll-off; real-time decode at 8K 50; and **lens guards** -- the
+  X6 has Standard and Premium guards, but the clips we have carry no
+  lens-guard profiles, so X6 clips are stitched as bare lenses until a
+  clip filmed with each guard shows what the file records
+  ([`formats/insta360-x6.md`](formats/insta360-x6.md)).
 - **Insta360 X4**: probably close to working; confirm the calibration string,
   IMU flag and scaling, and axis map.
 - **Insta360 ONE X2**: built, experimental (step 2 of the common camera
