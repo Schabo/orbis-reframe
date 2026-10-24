@@ -187,6 +187,36 @@ Don't use Qt's private-ABI classes (`QVulkanDeviceFunctions` and friends,
 `objdump -T ... | grep Qt_6_PRIVATE_API`): the `.deb` then depends on
 `qt6-base-private-abi (= <exact Qt version>)`.
 
+### Our own FFmpeg
+
+The `.deb`s and tarballs link the system's FFmpeg. The planned AppImage
+bundles our own build instead, the same everywhere:
+`scripts/build_ffmpeg.sh` builds the pinned release (9.0.2) into
+`third_party/ffmpeg/<version>-<os>/usr/` (gitignored; `<os>` is
+`/etc/os-release`'s `ID-VERSION_CODENAME`, e.g. `debian-trixie`) and reuses
+a finished build. `--print-dir` prints that folder. Point CMake at it with
+`PKG_CONFIG_PATH=<folder>/usr/lib/pkgconfig`; the libraries have no RUNPATH,
+so running against them needs `LD_LIBRARY_PATH=<folder>/usr/lib`.
+
+- **Checked**: the tarball against its pinned SHA-256 and the signature
+  against FFmpeg's release key, kept in `scripts/ffmpeg-release-key.asc`
+  (fingerprint `FCF9 86EA 15E6 E293 A564 4F10 B432 2F04 D676 58D8`, as on
+  <https://ffmpeg.org/download.html>). The verified tarball stays in
+  `third_party/ffmpeg/`: it's the source hosted next to a release that
+  bundles the build.
+- **Configured** LGPL only (no `--enable-gpl`, never `--enable-nonfree`;
+  the script stops unless configure reports "LGPL version 2.1 or later"),
+  shared, `--disable-autodetect` with only Vulkan, VAAPI + libdrm, NVENC,
+  zlib, iconv and pthreads enabled. `--prefix=/usr` keeps build-machine
+  paths out of the configure line the libraries embed; the `.pc` files are
+  rewritten to the build folder. The licence texts and the configure line
+  are in `usr/share/doc/ffmpeg/`.
+- **Needs**: `gcc make nasm pkgconf curl gpg xz-utils libvulkan-dev
+  libva-dev libdrm-dev libffmpeg-nvenc-dev zlib1g-dev`. The AppImage's
+  build runs it in `debian:trixie`, so the libraries need no newer glibc
+  than Debian 13's. A new FFmpeg release means a new version and SHA-256
+  at the top of the script, checked against the signature.
+
 ## Build & run
 
 ```sh
