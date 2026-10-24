@@ -43,6 +43,7 @@ frame rates not recorded). The status words are the X5's (X5 §3.4), and
 | 360 Video 4K | 100 / 60 / 50 / 48 / 30 / 25 / 24 | as above | contributor's set | one clip of our own wanted |
 | I-Log 10-bit | | as above | contributor's set | **wanted**, moving |
 | Dolby Vision (HLG) | | as above | contributor's set | **wanted**: the HLG LUT's roll-off |
+| Lens guards (Standard, Premium) | | as above | none known (the set is presumably bare) | **one clip with each guard, and the same scene bare, wanted**: whether the trailer has field 145 |
 | IMU axes | | | none moving deliberately | **a clip with turns about each axis wanted** (stabilization) |
 | PureVideo | 8K / 4K, 30 / 25 / 24; 6K at **5760×2880** | ❓ | none | **wanted**: 2880² lenses, which the X6's modes don't list |
 | InstaFrame 2.0 | 360 8K 30 / 25 / 24 + flat 4K | `.insv` + `.mp4` ("360 Video Backup" on), `.mp4` only (off) | none | **wanted** |
@@ -116,10 +117,23 @@ frame rates not recorded). The status words are the X5's (X5 §3.4), and
   `LensCalibExt::focalRefW`); with the X5's 5312 the lens circles come out
   too small and the sphere has gaps between them. A file without the field
   takes its model's value from `insv::InsvModel`, with a log line.
-- ✅ **No field 145 lens-profile table**: there are no lens-guard or
-  dive-case profiles, so the stitch takes every lens as bare at the default
-  200° field of view. Stitches at all three sizes cover the sphere without
-  gaps, so 200° looks right; guards can't be corrected without a profile.
+- ✅ **No field 145 lens-profile table** in the contributor's set: no
+  lens-guard or dive-case profiles, so the stitch takes every lens as bare
+  at the default 200° field of view. Stitches at all three sizes cover the
+  sphere without gaps, so 200° looks right for bare lenses.
+- 📖 The X6 has **lens guards** as accessories, in a Standard and a Premium
+  version, like the X5 (Insta360 store; retailers, Sources). A retailer
+  says the camera detects fitted guards and adjusts its stitching.
+- ❓ What a guarded X6 clip records: whether the trailer then has a field
+  145 table in the X5's numbering and layout (X5 §5.4: `ProtectorS`,
+  `ProtectorA`, ... with a θ→height polynomial and field of view each), the
+  profiles under another field or name, or only a flag saying which guard
+  was fitted. The contributor's clips are presumably bare (not recorded).
+  If it is the X5's table, the shared trailer reader already parses it;
+  only the profile names for the two guards go into the X6 row of
+  `insv::InsvModel` (null now). Until a clip with each guard shows it, the
+  app stitches every X6 clip as bare lenses and greys out **Lens guards**;
+  a guarded clip then stitches with a slightly wrong lens model.
 - ❓ The IMU axis map. telemetry-parser has no X6-specific code (an unknown
   model gets its default orientation, `Xyz`); the app uses the X5's map,
   `z,-x,-y` (X5 §6.3), until a clip with deliberate rotations about each
@@ -135,6 +149,12 @@ frame rates not recorded). The status words are the X5's (X5 §3.4), and
 - Insta360 manual, I-Log mode (X5 and X6):
   <https://onlinemanual.insta360.com/x6/en-us/operating-tutorials/capture-preview/features/ilog>
 - Insta360 X6 specs page: <https://www.insta360.com/specs/x6>
+- Insta360 store, X6 Standard Lens Guards:
+  <https://store.insta360.com/ca/product/x6-standard-lens-guards>
+- Clifton Cameras, Insta360 X6 Lens Guards (Standard and Premium):
+  <https://www.cliftoncameras.co.uk/insta360-x6-lens-guards/kit-variation/premium>
+- George's, Insta360 X6 Standard Lens Guards (the camera detects them):
+  <https://www.georges.com.au/products/insta360-x6-standard-lens-guards>
 - Insta360 I-Log LUT downloads: <https://www.insta360.com/download/i-log>
 - Gyroflow telemetry-parser, `src/insta360/mod.rs`:
   <https://github.com/AdrianEddy/telemetry-parser>
