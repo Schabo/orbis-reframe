@@ -52,11 +52,13 @@ OUT="$CACHE/$FFMPEG_VERSION-$OS_TAG"
 
 case "${1:-}" in
     --print-dir) echo "$OUT"; exit 0 ;;
+    --print-version) echo "$FFMPEG_VERSION"; exit 0 ;;
     "") ;;
     -h|--help)
-        echo "Usage: $(basename "$0") [--print-dir]"
+        echo "Usage: $(basename "$0") [--print-dir | --print-version]"
         echo "Builds FFmpeg $FFMPEG_VERSION into $CACHE/$FFMPEG_VERSION-<os>/ (reused when done)."
-        echo "  --print-dir  print that folder for this system and exit"
+        echo "  --print-dir      print that folder for this system and exit"
+        echo "  --print-version  print the FFmpeg version and exit"
         exit 0
         ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;

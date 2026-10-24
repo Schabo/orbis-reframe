@@ -15,6 +15,9 @@
 #                                          libfuse's and squashfuse's
 #                                          tarballs, the build's Alpine
 #                                          packages, how to rebuild
+#   licenses/                              the licence texts of the runtime
+#                                          and what it links, for the
+#                                          AppImage's licence folder
 # A finished build is reused. Runs upstream's build in an Alpine container
 # (scripts/docker/Dockerfile in their tree), so it needs podman, network
 # access and the host's /dev/fuse (see below). Not run inside another
@@ -50,8 +53,53 @@ case "${1:-}" in
     *) echo "Unknown option: $1" >&2; exit 1 ;;
 esac
 
+# The licence texts of the runtime and of everything linked into it, from
+# the source archive's tree and tarballs and, for the Alpine packages, from
+# upstream at the version packages.txt lists. Into $OUT/licenses/.
+collect_licenses() {
+    local src=$1 lic="$OUT/licenses" tmp v
+    tmp="$lic.tmp"
+    rm -rf "$tmp"
+    mkdir -p "$tmp"
+    cp "$src/type2-runtime-$SHORT/LICENSE" "$tmp/type2-runtime-$SHORT-LICENSE"
+    # libfuse (LICENSE says which files are LGPL, LGPL2.txt is that
+    # licence) and squashfuse, named by their tarballs' top folder.
+    local t top f
+    for t in "$src"/*.tar.*; do
+        top=$(tar -tf "$t" | sed -n '1s,/.*,,p')
+        for f in LICENSE LGPL2.txt; do
+            tar -xf "$t" -O "$top/$f" > "$tmp/$top-$f" 2> /dev/null || rm -f "$tmp/$top-$f"
+        done
+        [[ -f "$tmp/$top-LICENSE" ]] || { echo "no LICENSE in $t" >&2; return 1; }
+    done
+    pkg_version() {
+        sed -n "s/^$1-\([0-9][0-9.]*\)-r[0-9]*\$/\1/p" "$src/packages.txt"
+    }
+    local -A urls=(
+        [zstd]="https://raw.githubusercontent.com/facebook/zstd/v%s/LICENSE"
+        [zlib]="https://raw.githubusercontent.com/madler/zlib/v%s/LICENSE"
+        [mimalloc2]="https://raw.githubusercontent.com/microsoft/mimalloc/v%s/LICENSE"
+        [musl]="https://git.musl-libc.org/cgit/musl/plain/COPYRIGHT?h=v%s"
+    )
+    for p in "${!urls[@]}"; do
+        v=$(pkg_version "$p")
+        [[ -n "$v" ]] || { echo "no $p in $src/packages.txt" >&2; return 1; }
+        # shellcheck disable=SC2059
+        curl -fsSL --retry 3 -o "$tmp/${p%2}-$v-LICENSE" "$(printf "${urls[$p]}" "$v")"
+    done
+    rm -rf "$lic"
+    mv "$tmp" "$lic"
+}
+
 if [[ -f "$SOURCE_ARCHIVE" && -f "$OUT/runtime-x86_64" ]] \
         && echo "$RUNTIME_SHA256  $OUT/runtime-x86_64" | sha256sum -c --status -; then
+    if [[ ! -d "$OUT/licenses" ]]; then
+        mkdir -p "$REPO_ROOT/tmp"
+        WORK=$(mktemp -d "$REPO_ROOT/tmp/appimage-runtime.XXXXXX")
+        trap 'rm -rf "$WORK"' EXIT
+        tar -xJf "$SOURCE_ARCHIVE" -C "$WORK"
+        collect_licenses "$WORK/type2-runtime-$SHORT-source"
+    fi
     echo "AppImage runtime $SHORT already built in $OUT"
     exit 0
 fi
@@ -135,4 +183,5 @@ EOF
 mkdir -p "$OUT"
 cp "$WORK/out/runtime-x86_64" "$OUT/"
 tar -C "$WORK" --sort=name --owner=0 --group=0 --numeric-owner -cJf "$SOURCE_ARCHIVE" "$(basename "$SRC")"
+collect_licenses "$SRC"
 echo "AppImage runtime $SHORT ready in $OUT"

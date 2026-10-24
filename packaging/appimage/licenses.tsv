@@ -1,12 +1,16 @@
 # Licence review of everything the AppImage bundles.
 #
 # One row per source package (Debian 13's, or our own build). The AppImage
-# build maps every bundled file to its source package and fails on one that
-# isn't listed here, or whose upstream version differs from the one reviewed
-# (the part of `version` before the last '-'; a new Debian revision of the
-# same upstream version doesn't need a new review). A new or updated package
-# is read by hand -- the copyright file, and the source where it is unclear
-# which files the shipped library is built from -- before it is added.
+# build maps every bundled file to its binary and source package
+# (usr/share/doc/orbis-reframe/bundled.txt in the AppImage) and fails on one
+# that isn't listed here, from a binary package not in `ships`, or whose
+# upstream version differs from the one reviewed (the part of `version`
+# before the last '-'; a new Debian revision of the same upstream version
+# doesn't need a new review); also on a row nothing bundled needs any more.
+# A new or updated package is read by hand -- the copyright file, and the
+# source where it is unclear which files the shipped library is built from
+# -- before it is added. THIRD_PARTY.md's AppImage table is made from this
+# file (scripts/appimage_third_party.sh --update).
 #
 # Columns:
 #   package   Debian source package, or the project for our own builds
@@ -21,9 +25,11 @@
 #             doesn't have it or the licence doesn't allow a third-party server)
 #   why       why it can be shipped inside a GPL-3.0-or-later program
 #
-# Every bundled package's copyright file is copied into the AppImage
-# (usr/share/doc/orbis-reframe/licenses/), which carries the notices and the
-# acknowledgements the permissive licences ask for.
+# Every row's licence texts are copied into the AppImage, into
+# usr/share/doc/orbis-reframe/licenses/<package>/ (for Debian's packages,
+# their copyright file), which carries the notices and the acknowledgements
+# the permissive licences ask for. The `snapshot` and `hosted` rows make up
+# the release's orbis-reframe-<version>-appimage-sources.txt.
 #
 # Where a package offers a choice of licences, the one named first in `why`
 # is the one we distribute under. LGPL-2.1-or-later and GPL-2.0-or-later
@@ -48,7 +54,7 @@ lapack	3.12.1-6	libblas3, liblapack3	BSD-3-Clause	no	Permissive.
 libb2	0.98.1-1.1	libb2-1	CC0-1.0	no	Public-domain dedication.
 libcap2	1:2.75-10+deb13u1	libcap2	BSD-3-Clause OR GPL-2.0-only	no	BSD-3-Clause (the GPL-2.0-only option is not used).
 libffi	3.4.8-2	libffi8	MIT	no	Permissive; the GPL files are build helpers and the test suite.
-libglvnd	1.7.0-1	libglx0, libopengl0	MIT	no	Permissive (uthash BSD-1-Clause). The glvnd fallback, loaded only where the host has none.
+libglvnd	1.7.0-1	libglvnd0, libglx0, libopengl0	MIT	no	Permissive (uthash BSD-1-Clause). The glvnd fallback, loaded only where the host has none.
 libpng1.6	1.6.48-1+deb13u6	libpng16-16t64	libpng-2.0	no	Permissive; the advertising-clause files are contrib/gregbook examples, not in the library.
 libva	2.22.0-3	libva2, libva-drm2	MIT	no	Permissive. The advertising-clause files (va/x11) are in libva-x11, not bundled.
 libxau	1:1.0.11-1	libxau6	MIT-open-group	no	Permissive.

@@ -7,7 +7,8 @@ else goes into the program and its packages, under which license, and where
 the license text is.
 
 Paths are given in the source tree. In the packages (`/usr` for the `.deb`,
-the unpacked folder for the tarball) they are in `share/doc/orbis-reframe/`:
+the unpacked folder for the tarball, `usr/` inside the AppImage) they are in
+`share/doc/orbis-reframe/`:
 this file, `LICENSE`, `LICENSE.lucide`, and `licenses/` (ncnn, nlohmann/json,
 miniaudio, and `src/insv/`'s two as `insv-LICENSE-MIT` /
 `insv-LICENSE-APACHE`). The
@@ -28,6 +29,82 @@ models' licenses are next to each model, in
 
 Each model folder also has a `README.md` with its source, checksums and any
 changes made to it.
+
+## Bundled in the AppImage
+
+The AppImage (`orbis-reframe-<version>-x86_64.AppImage`) contains what the
+packages above ship and also the libraries the `.deb`s and the tarball take
+from the system: Qt, FFmpeg, OpenCV, ONNX Runtime and what they need, from
+Debian 13's packages or our own builds. Only glibc, `libstdc++`, the Vulkan
+loader, the graphics and VA-API drivers, GL / EGL, fontconfig, freetype,
+X11 / xcb, `libwayland-client` and the sound server's client library come
+from the system it runs on.
+
+Inside the AppImage, in `usr/share/doc/orbis-reframe/`:
+
+- `bundled.txt` lists every bundled file with the package and the exact
+  version it comes from;
+- `licenses/<component>/` holds each component's license texts (for
+  Debian's packages, the package's `copyright` file);
+- `licenses/appimage-sources.txt` says where the source of each copyleft
+  component is. Each release has the same list as
+  `orbis-reframe-<version>-appimage-sources.txt`: Debian's packages are
+  linked by their exact version on snapshot.debian.org, and the source of
+  our FFmpeg build and of the runtime is on the release.
+
+Every component's license was reviewed in `packaging/appimage/licenses.tsv`,
+which says why each one can be shipped inside a GPL-3.0-or-later program;
+the build fails on a bundled file that review doesn't cover. Unlike
+Debian's, the AppImage's FFmpeg is LGPL-2.1-or-later (built without
+`--enable-gpl`). To run the program with a changed version of an LGPL
+library, unpack the AppImage (`--appimage-extract`), replace the library in
+`squashfs-root/usr/lib/` and start `squashfs-root/AppRun`.
+
+<!-- Generated from packaging/appimage/licenses.tsv by scripts/appimage_third_party.sh --update; the AppImage build checks it. -->
+
+| Component | From | Version | License | Source |
+|---|---|---|---|---|
+| abseil | Debian 13 | 20240722.0 | Apache-2.0 | -- |
+| brotli | Debian 13 | 1.1.0 | MIT | -- |
+| bzip2 | Debian 13 | 1.0.8 | bzip2-1.0.6 | -- |
+| cpuinfo | Debian 13 | 0.0~git20250327.39ea79a | BSD-2-Clause | -- |
+| dbus | Debian 13 | 1.16.2 | GPL-2.0-or-later OR AFL-2.1 | snapshot.debian.org |
+| double-conversion | Debian 13 | 3.3.1 | BSD-3-Clause | -- |
+| gcc-14 | Debian 13 | 14.2.0 | GPL-3.0-or-later WITH GCC-exception-3.1 | snapshot.debian.org |
+| glib2.0 | Debian 13 | 2.84.4 | LGPL-2.1-or-later | snapshot.debian.org |
+| graphite2 | Debian 13 | 1.3.14 | LGPL-2.1-or-later OR MPL-1.1 OR GPL-2.0-or-later | snapshot.debian.org |
+| icu | Debian 13 | 76.1 | Unicode-3.0 | -- |
+| lapack | Debian 13 | 3.12.1 | BSD-3-Clause | -- |
+| libb2 | Debian 13 | 0.98.1 | CC0-1.0 | -- |
+| libcap2 | Debian 13 | 2.75 | BSD-3-Clause OR GPL-2.0-only | -- |
+| libffi | Debian 13 | 3.4.8 | MIT | -- |
+| libglvnd | Debian 13 | 1.7.0 | MIT | -- |
+| libpng1.6 | Debian 13 | 1.6.48 | libpng-2.0 | -- |
+| libva | Debian 13 | 2.22.0 | MIT | -- |
+| libxau | Debian 13 | 1.0.11 | MIT-open-group | -- |
+| libxdmcp | Debian 13 | 1.1.5 | MIT-open-group | -- |
+| libxkbcommon | Debian 13 | 1.7.0 | MIT AND HPND | -- |
+| libzstd | Debian 13 | 1.5.7+dfsg | BSD-3-Clause OR GPL-2.0-only | -- |
+| md4c | Debian 13 | 0.5.2 | MIT | -- |
+| onetbb | Debian 13 | 2022.1.0 | Apache-2.0 | -- |
+| onnx | Debian 13 | 1.17.0 | MIT AND Apache-2.0 | -- |
+| onnxruntime | Debian 13 | 1.21.0+dfsg | MIT AND Apache-2.0 AND MPL-2.0 | -- |
+| opencv | Debian 13 | 4.10.0+dfsg | Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause | -- |
+| pcre2 | Debian 13 | 10.46 | BSD-3-Clause WITH PCRE2-exception | -- |
+| protobuf | Debian 13 | 3.21.12 | BSD-3-Clause | -- |
+| pthreadpool | Debian 13 | 0.0~git20240616.560c60d | BSD-2-Clause | -- |
+| qt6-base | Debian 13 | 6.8.2+dfsg | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only | snapshot.debian.org |
+| qt6-svg | Debian 13 | 6.8.2 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only | snapshot.debian.org |
+| qt6-wayland | Debian 13 | 6.8.2 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only | snapshot.debian.org |
+| re2 | Debian 13 | 20240702 | BSD-3-Clause | -- |
+| systemd | Debian 13 | 257.13 | LGPL-2.1-or-later | snapshot.debian.org |
+| wayland | Debian 13 | 1.23.1 | MIT | -- |
+| xnnpack | Debian 13 | 0.0~git20241108.4ea82e5 | BSD-3-Clause | -- |
+| ffmpeg | our build (`scripts/build_ffmpeg.sh`), configure line in `licenses/ffmpeg/configure.txt` | 9.0.2 | LGPL-2.1-or-later | on the release |
+| ncnn | Tencent's release | 20260526 | BSD-3-Clause AND Zlib AND BSD-2-Clause | -- |
+| type2-runtime | our build (`scripts/build_appimage_runtime.sh`), the AppImage's runtime | fedfad5 | MIT AND LGPL-2.1-only AND BSD-2-Clause AND Zlib AND BSD-3-Clause | on the release |
+
+<!-- End of the generated table. -->
 
 ## Used from the system, not shipped
 

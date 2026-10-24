@@ -190,9 +190,12 @@ Don't use Qt's private-ABI classes (`QVulkanDeviceFunctions` and friends,
 ### The AppImage
 
 `./scripts/package.sh --target appimage` builds
-`dist/appimage/orbis-reframe-<version>-x86_64.AppImage` (+ `.zsync`, each
-with a `.sha256`): one file for every distribution with glibc 2.41 or newer,
-built on Debian 13. It builds the runtime (below) on the host, then runs
+`dist/appimage/orbis-reframe-<version>-x86_64.AppImage` (+ `.zsync`): one
+file for every distribution with glibc 2.41 or newer, built on Debian 13.
+Next to it go the release's files for the sources:
+`orbis-reframe-<version>-appimage-sources.txt` and the source archives it
+names (`ffmpeg-<version>.tar.xz` + `.asc`,
+`type2-runtime-<commit>-source.tar.xz`), each file with a `.sha256`. It builds the runtime (below) on the host, then runs
 `scripts/package_appimage.sh` in a `debian:trixie` container (`.deb`s cached
 in `tmp/package-apt-cache/appimage/`), which, on any Debian 13 system with
 the packages `package.sh` installs, can also run directly:
@@ -219,6 +222,24 @@ the packages `package.sh` installs, can also run directly:
   adds the bundled copy in `usr/lib/glvnd-fallback/<soname>/` to
   `LD_LIBRARY_PATH`. Nothing else: the bundled libraries come through
   RUNPATH, so programs the app starts (`xdg-open`) don't inherit them;
+- every file in `usr/lib/` and `usr/plugins/` is mapped to the package it
+  came from (`dpkg -S`; our FFmpeg and ncnn by their folders) and listed with
+  its binary package, source package and version in
+  `usr/share/doc/orbis-reframe/bundled.txt`. The build stops on a file it
+  can't place, on anything else in the AppDir that isn't in CMake's
+  `install_manifest.txt`, and when the list and the licence review
+  (`packaging/appimage/licenses.tsv`) differ: a source package without a
+  row, another upstream version than the one reviewed, a binary package not
+  in the row's `ships`, or a row nothing needs any more. A new library or
+  version is reviewed by hand into that file first;
+- each source package's licence texts go into
+  `usr/share/doc/orbis-reframe/licenses/<package>/` (Debian's `copyright`
+  file; FFmpeg's texts and configure line; ncnn's; the runtime's and those of
+  what it links), and the sources list into `licenses/appimage-sources.txt`:
+  the copyleft packages (`snapshot` in the review) linked by exact version
+  on snapshot.debian.org, each link checked, and the archives the release
+  hosts. A Debian security update just out may not be on snapshot.debian.org
+  for a few hours, which stops the build;
 - `appimagetool` packs it behind our runtime with the update information
   `gh-releases-zsync|Schabo|orbis-reframe|latest|orbis-reframe-*-x86_64.AppImage.zsync`
   (AppImageUpdate, Gear Lever and AppImageLauncher read it; the app never
@@ -227,7 +248,9 @@ the packages `package.sh` installs, can also run directly:
   information, every bundled ELF file's libraries found (`ldd` with no
   `LD_LIBRARY_PATH`), FFmpeg (ours, by its configure line), ncnn and ONNX
   Runtime from `usr/lib/`, no Vulkan loader, the Qt plugins, the glvnd
-  fallback, and the tarball's checks (`scripts/package_checks.sh`: no
+  fallback, every bundled file in `bundled.txt` with licence texts for its
+  package, the sources list and archives next to the AppImage,
+  `THIRD_PARTY.md`'s AppImage table (below), and the tarball's checks (`scripts/package_checks.sh`: no
   source-tree / `$HOME` strings, models, licence files, desktop entry, file
   types).
 
@@ -236,6 +259,17 @@ linuxdeploy and appimagetool are pinned by SHA-256 to tagged releases in
 `third_party/appimage-tools/`; both are AppImages and run with
 `APPIMAGE_EXTRACT_AND_RUN=1`, as a container has no FUSE.
 
+`THIRD_PARTY.md`'s "Bundled in the AppImage" table is made from
+`packaging/appimage/licenses.tsv`: after changing the review, run
+`scripts/appimage_third_party.sh --update` (`--check` is what the build
+runs).
+
+`scripts/archive_appimage_sources.sh SOURCES_TXT DIR` keeps a copy of the
+Debian sources a release links: it reads that release's
+`orbis-reframe-<version>-appimage-sources.txt` and downloads each linked
+version from snapshot.debian.org into `DIR/<package>/<version>/`, checked
+against snapshot's SHA-1s; versions already there are kept. Needs `jq`.
+
 ### Our own FFmpeg
 
 The `.deb`s and tarballs link the system's FFmpeg. The AppImage
@@ -243,7 +277,8 @@ bundles our own build instead, the same everywhere:
 `scripts/build_ffmpeg.sh` builds the pinned release (9.0.2) into
 `third_party/ffmpeg/<version>-<os>/usr/` (gitignored; `<os>` is
 `/etc/os-release`'s `ID-VERSION_CODENAME`, e.g. `debian-trixie`) and reuses
-a finished build. `--print-dir` prints that folder. Point CMake at it with
+a finished build. `--print-dir` prints that folder, `--print-version` the
+version. Point CMake at it with
 `PKG_CONFIG_PATH=<folder>/usr/lib/pkgconfig`; the libraries have no RUNPATH,
 so running against them needs `LD_LIBRARY_PATH=<folder>/usr/lib`.
 
@@ -277,10 +312,14 @@ builds it from a pinned commit (`RUNTIME_COMMIT`, now `fedfad5`) with
 upstream's own Alpine container, in podman, and fails unless the result is
 byte-identical to upstream's release binary for that commit
 (`RUNTIME_SHA256`); the source archive is then exactly what's in the file.
-Output in `third_party/appimage-runtime/<commit>/`: `runtime-x86_64` and
+Output in `third_party/appimage-runtime/<commit>/`: `runtime-x86_64`,
 `type2-runtime-<commit>-source.tar.xz` (the runtime's tree, the libfuse and
 squashfuse tarballs its build downloads, the container's Alpine package
-list, and how to rebuild). Reused when done; about 30 s otherwise.
+list, and how to rebuild) and `licenses/` (the runtime's licence and those of
+what it links: libfuse and squashfuse from their tarballs; zstd, zlib,
+mimalloc and musl from upstream at the versions the Alpine packages have,
+as Alpine ships no licence texts for them). Reused when done; about 30 s
+otherwise.
 
 - **Needs**: podman, network access and `/dev/fuse` on the host (libfuse's
   install step would `mknod` it, which a rootless build can't). It runs on
