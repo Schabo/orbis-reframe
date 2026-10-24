@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build our own FFmpeg: the pinned release, LGPL only, shared libraries, with
-# only what the program uses (Vulkan, VAAPI, NVENC). The AppImage bundles it
-# instead of a distribution's FFmpeg (docs/dev-environment.md, "Our own
-# FFmpeg"); the per-distribution .debs keep the system's.
+# only what the program uses (Vulkan, VAAPI, NVENC; no network, no capture
+# devices). The AppImage bundles it instead of a distribution's FFmpeg
+# (docs/dev-environment.md, "Our own FFmpeg"); the per-distribution .debs
+# keep the system's.
 #
 # The tarball is checked against its pinned SHA-256 and FFmpeg's release
 # signing key (scripts/ffmpeg-release-key.asc, fingerprint below, as listed on
@@ -32,10 +33,13 @@ URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
 # LGPL only: never --enable-gpl (we encode on the GPU, so no x264 / x265) or
 # --enable-nonfree (makes the build unredistributable; NVENC doesn't need it).
 # --disable-autodetect: nothing is linked that isn't named here.
+# --disable-network: the program only reads and writes local files, so no
+# network protocol is built in (and none of their security fixes are ours to
+# ship); --disable-avdevice: capture devices aren't used.
 CONFIGURE_FLAGS=(
     --prefix=/usr
     --enable-shared --disable-static --disable-programs --disable-doc
-    --disable-debug --disable-autodetect
+    --disable-debug --disable-autodetect --disable-network --disable-avdevice
     --enable-pthreads --enable-zlib --enable-iconv
     --enable-vulkan --enable-vaapi --enable-libdrm --enable-ffnvcodec --enable-nvenc
 )

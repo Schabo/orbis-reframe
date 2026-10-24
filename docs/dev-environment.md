@@ -207,7 +207,9 @@ so running against them needs `LD_LIBRARY_PATH=<folder>/usr/lib`.
 - **Configured** LGPL only (no `--enable-gpl`, never `--enable-nonfree`;
   the script stops unless configure reports "LGPL version 2.1 or later"),
   shared, `--disable-autodetect` with only Vulkan, VAAPI + libdrm, NVENC,
-  zlib, iconv and pthreads enabled. `--prefix=/usr` keeps build-machine
+  zlib, iconv and pthreads enabled; no network protocols
+  (`--disable-network`: the app only touches local files) and no
+  libavdevice. `--prefix=/usr` keeps build-machine
   paths out of the configure line the libraries embed; the `.pc` files are
   rewritten to the build folder. The licence texts and the configure line
   are in `usr/share/doc/ffmpeg/`.
