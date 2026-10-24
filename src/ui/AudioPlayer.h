@@ -13,14 +13,11 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
-class QAudioSink;
-class QThread;
-
-namespace insv {
-}
+class AudioOutput;
 
 // Plays a timeline's audio track in sync with PlaybackController's video clock.
 // A *slave*, not a second master clock: MainWindow forwards it the same
@@ -28,22 +25,24 @@ namespace insv {
 // silence) while the video clock is frozen (setHold, driven by
 // PlaybackController::clockHeldChanged), and every
 // PlaybackController::positionChanged tick calls notePlaybackPosition(). That
-// compares the video clock with what's audible (QAudioSink::processedUSecs(),
+// compares the video clock with what's audible (AudioOutput::playedFrames(),
 // the sound server's playback clock) and corrects in two tiers, never by
 // resampling: a faded splice of the read position (skip or pad) once the
-// smoothed drift passes ~10 ms, and a re-seek for a real jump. The sink is
-// never flushed (see the constructor): a seek lets its ~250 ms buffer play out
-// and starts the new audio where the video will be by then.
+// smoothed drift passes ~10 ms, and a re-seek for a real jump. The output is
+// never flushed: a seek lets its ~30 ms buffer play out and starts the new
+// audio where the video will be by then.
 //
 // The decoder emits a sample-exact timeline: the main track's clips are
 // silence of their exact length (their sound is on the audio tracks), so the
 // PCM stream is contiguous and lines up with the timeline by construction.
 //
 // Threads: the public API is GUI-thread. A background std::thread decodes
-// into a bounded queue of PCM chunks; the QAudioSink lives on its own
-// QThread (m_sinkThread, so GUI stalls can't starve its small buffer), where
-// a QIODevice subclass (pull mode -- see PullDevice) drains the queue
-// whenever the backend wants more bytes. A mutex guards everything shared.
+// into a bounded queue of PCM chunks; the AudioOutput's own thread drains it
+// (pullFrames) whenever the sound server wants more, so GUI stalls can't
+// starve its small buffer. A mutex guards everything shared.
+//
+// Without a sound output (no sound server) the player stays silent and
+// idle -- no decoding -- and the video plays on its own clock.
 //
 // Everything heard is on the audio tracks (setMix) -- the video clips' own
 // streams too, as linked clips: summed by an insv::AudioMixer on the decoder
@@ -81,6 +80,11 @@ public:
     // never the export or the clips' levels.
     void setVolume(float gain);
 
+    // Whether there's a sound output to play to (AudioOutput::ok()), and one
+    // line describing it, or why there's none.
+    bool hasOutput() const;
+    std::string outputDescription() const;
+
 private:
     using Placed = PlaybackController::Placed;
     // One decoded chunk of interleaved float32 PCM (kChannels-wide). Chunks
@@ -89,27 +93,20 @@ private:
         std::vector<float> pcm;
     };
 
-    class PullDevice;
-
     void startDecoder();
     void stopDecoder();
     void decoderLoop();
     // Caller holds m_mx; playedFrames from playedFrames(), taken before locking.
     void requestSeekLocked(qint64 timelineMs, double playedFrames);
-    // GUI thread. The sink runs iff playing && !held (suspend/resume only --
-    // see the constructor for why it's never restarted).
-    void updateSinkRunning();
-    // The sink's playback clock in output frames since start() -- a blocking
-    // call to the sink thread. Caller must not hold m_mx.
+    // GUI thread. The output runs iff playing (a hold keeps it running on
+    // silence -- see setHold()).
+    void updateOutputRunning();
+    // The output's playback clock in output frames since it opened. Caller
+    // must not hold m_mx.
     double playedFrames() const;
-    qint64 pullBytes(char *data, qint64 maxlen); // PullDevice::readData, any thread
+    void pullFrames(float *out, uint32_t frames); // AudioOutput's thread
 
-    // The sink, its pull device and their host object live on m_sinkThread
-    // and are only touched there (invokeMethod).
-    QThread *m_sinkThread = nullptr;
-    QObject *m_sinkHost = nullptr;
-    QAudioSink *m_sink = nullptr;
-    PullDevice *m_device = nullptr;
+    std::unique_ptr<AudioOutput> m_out;
 
     // --- shared, guarded by m_mx ---
     std::mutex m_mx;
@@ -127,9 +124,9 @@ private:
     qint64 m_seekTargetMs = 0;
     uint64_t m_seekGen = 0;
     std::deque<Chunk> m_queue;
-    Chunk m_current;             // the chunk pullBytes() is part-way through
+    Chunk m_current;             // the chunk pullFrames() is part-way through
     size_t m_currentOffset = 0;  // frames (not floats) already consumed from m_current
-    // A pending drift splice (notePlaybackPosition -> pullBytes): frames to
+    // A pending drift splice (notePlaybackPosition -> pullFrames): frames to
     // skip (> 0) or pad with silence (< 0), applied once m_fadeOutFrames has
     // run out, followed by m_fadeInFrames of fade-in.
     int64_t m_pendingJumpFrames = 0;
@@ -139,14 +136,14 @@ private:
     bool m_haveDrift = false;
     // This player's own playback clock: exact at every seek/resync
     // (m_seekBaseTimelineMs), advanced by the timeline frames handed to the
-    // sink since then (m_srcFramesPlayed) -- see pullBytes().
+    // output since then (m_srcFramesPlayed) -- see pullFrames().
     // Advances through an underrun (silence) too, so it stays a true clock.
     qint64 m_seekBaseTimelineMs = 0;
     double m_srcFramesPlayed = 0.0;
-    double m_outFramesPulled = 0.0; // output frames pulled since the sink's start() (cumulative)
+    double m_outFramesPulled = 0.0; // output frames pulled since the output opened (cumulative)
     qint64 m_lastVideoMs = 0;       // last notePlaybackPosition() -- where a hold parks
     int64_t m_padFrames = 0;        // silence to output before reading on (a jump back)
-    double m_jumpGuardOutFrames = 0.0; // ignore drift until the sink has played this far
+    double m_jumpGuardOutFrames = 0.0; // ignore drift until the output has played this far
     std::thread m_decoder;
 
     // --- decoder thread only ---

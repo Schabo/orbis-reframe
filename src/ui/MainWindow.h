@@ -561,12 +561,10 @@ private:
 
     PlaybackController *m_controller = nullptr;
     QThread *m_playbackThread = nullptr;
-    // Audio playback, only when the app was built with Qt6::Multimedia (see
-    // CMakeLists.txt) -- a slave of m_controller's clock, not a separate
+    // Audio playback -- a slave of m_controller's clock, not a separate
     // playback path; see AudioPlayer's own comment.
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     AudioPlayer *m_audioPlayer = nullptr;
-#endif
+    bool m_noSoundNoticeShown = false; // "No sound output found", once a session
     QAction *m_exportAction = nullptr;
     // The clip under the playhead, remembered so the export can re-open it
     // independently of playback; empty until a clip opens. Plus its frame rate.

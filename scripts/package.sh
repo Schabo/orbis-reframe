@@ -76,7 +76,7 @@ if [[ "$TARGET" != "$HOST_TARGET" ]]; then
             apt-get update -qq
             apt-get install -y -qq --no-install-recommends \
                 g++ cmake ninja-build pkgconf \
-                qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev qt6-wayland qt6-svg-plugins \
+                qt6-base-dev qt6-base-dev-tools qt6-wayland qt6-svg-plugins \
                 libvulkan-dev glslang-tools nlohmann-json3-dev zlib1g-dev \
                 libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
                 libopencv-dev libopencv-contrib-dev libonnxruntime-dev \
@@ -162,7 +162,7 @@ done
 # License texts (THIRD_PARTY.md).
 for f in doc/orbis-reframe/LICENSE doc/orbis-reframe/THIRD_PARTY.md \
          doc/orbis-reframe/LICENSE.lucide doc/orbis-reframe/licenses/ncnn-LICENSE.txt \
-         doc/orbis-reframe/licenses/nlohmann-json-LICENSE.MIT \
+         doc/orbis-reframe/licenses/nlohmann-json-LICENSE.MIT doc/orbis-reframe/licenses/miniaudio-LICENSE \
          doc/orbis-reframe/licenses/insv-LICENSE-MIT doc/orbis-reframe/licenses/insv-LICENSE-APACHE \
          orbis-reframe/models/deepfilternet3/LICENSE-MIT orbis-reframe/models/deepfilternet3/LICENSE-APACHE \
          orbis-reframe/models/vittrack/LICENSE-APACHE orbis-reframe/models/plates/LICENSE-MIT; do
@@ -188,7 +188,7 @@ else
 fi
 rm -rf "$mime_db"
 
-dpkg-deb --field "$deb" Package Version Depends Suggests
+dpkg-deb --field "$deb" Package Version Depends Recommends Suggests
 [[ $(dpkg-deb --contents "$deb" | grep -c "/usr/bin/orbis-reframe$") -eq 1 ]] \
     || { echo "FAIL: no /usr/bin/orbis-reframe in the .deb" >&2; fail=1; }
 

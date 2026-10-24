@@ -190,10 +190,10 @@ on Mesa (best-effort). Playback uses Vulkan video decode where the GPU has it
 and falls back to (slower) CPU decoding where it doesn't; export needs a
 hardware encoder: NVENC on NVIDIA, VA-API or Vulkan video on AMD and Intel.
 The app tells you at startup what's missing instead of failing. Dependencies are the Debian Testing (or Debian 13, Ubuntu 26.04) packages for Qt 6,
-Vulkan, glslang, nlohmann-json, zlib and FFmpeg. Qt Multimedia (audio), OpenCV
-(analysis tools; with the contrib modules also subject tracking), ONNX Runtime
-(voice noise modes) and ncnn (the plate scan; `scripts/fetch_ncnn.sh`) are
-optional. [`docs/dev-environment.md`](docs/dev-environment.md) has the full
+Vulkan, glslang, nlohmann-json, zlib and FFmpeg; sound goes through miniaudio,
+which is in the repository (`external/miniaudio/`). OpenCV (analysis tools;
+with the contrib modules also subject tracking), ONNX Runtime (voice noise
+modes) and ncnn (the plate scan; `scripts/fetch_ncnn.sh`) are optional. [`docs/dev-environment.md`](docs/dev-environment.md) has the full
 list and the pinned versions.
 
 ```sh

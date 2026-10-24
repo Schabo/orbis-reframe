@@ -156,7 +156,7 @@ On the left, *Buffering…* shows while the video loads. On the right:
 | Button | What it does |
 |---|---|
 | <img src="images/icons/screenshot.png" width="24" alt=""> Screenshot | Saves the frame the viewport shows (the frame at the playhead) as a PNG (`Ctrl+Shift+P`); see [Screenshots](projects-and-export.md#screenshots). |
-| <img src="images/icons/volume.png" width="24" alt=""> Volume and mute | How loud the preview plays, and the speaker button to mute it. Only what you hear while editing: the export and the clips' own volume (the **Audio** tab) don't change. orbis-reframe remembers the volume for the next time. |
+| <img src="images/icons/volume.png" width="24" alt=""> Volume and mute | How loud the preview plays, and the speaker button to mute it. Only what you hear while editing: the export and the clips' own volume (the **Audio** tab) don't change. orbis-reframe remembers the volume for the next time. The sound plays on your desktop's default output; to move it to another, use the desktop's sound settings or `pavucontrol`. |
 | <img src="images/icons/full-screen.png" width="24" alt=""> Full screen | Shows only the picture and the player bar, over the whole screen (`F11`, or double-click the picture). The player bar hides when the mouse rests and comes back when you move it. `Esc` or `F11` leaves full screen. |
 
 Hover over a button to see its name and shortcut.

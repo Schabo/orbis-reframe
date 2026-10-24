@@ -16,14 +16,6 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 # SVG image-format plugin (Debian package qt6-svg-plugins -> libqsvg.so),
 # loaded on demand -- no link-time Qt6::Svg dependency, so no qt6-svg-dev
 # requirement. theme_test needs the plugin to draw them.
-# Qt6::Multimedia (QAudioSink) drives audio playback --
-# optional like FFmpeg/OpenCV below: orbis-reframe still builds without it,
-# just silent, if the dev package isn't installed.
-find_package(Qt6 QUIET COMPONENTS Multimedia)
-if(NOT Qt6Multimedia_FOUND)
-    message(STATUS "Qt6 Multimedia not found (sudo apt install qt6-multimedia-dev)"
-        " -- orbis-reframe will build but stay silent (no audio playback)")
-endif()
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED) # project file (JSON) serialisation, src/core/Project
@@ -214,6 +206,15 @@ target_include_directories(color_lut PUBLIC src/core)
 add_library(zip_reader STATIC src/core/ZipReader.h src/core/ZipReader.cpp)
 target_include_directories(zip_reader PUBLIC src/core)
 target_link_libraries(zip_reader PRIVATE ZLIB::ZLIB)
+
+# --- audio_output: the sound card, through miniaudio (external/miniaudio,
+# one header, compiled into this library alone). miniaudio loads libpulse /
+# ALSA / JACK at run time, so nothing is linked and no dev package needed.
+# Qt-free, so its test needs no Qt either.
+add_library(audio_output STATIC src/ui/AudioOutput.h src/ui/AudioOutput.cpp)
+target_include_directories(audio_output PUBLIC src/ui)
+target_include_directories(audio_output SYSTEM PRIVATE external/miniaudio)
+target_link_libraries(audio_output PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
 
 # --- view_projection: the flat view's pose and projection, shared by every
 # implementation of the view (viewport, GPU and CPU export, tracker).
@@ -473,6 +474,8 @@ if(FFMPEG_FOUND)
         src/ui/MainWindowColour.cpp
         src/ui/MainWindowTransitions.cpp
         src/ui/MainWindow.h
+        src/ui/AudioPlayer.cpp
+        src/ui/AudioPlayer.h
         src/ui/ClipBackend.cpp
         src/ui/ClipBackend.h
         src/ui/ClipMeasurements.cpp
@@ -593,20 +596,11 @@ if(FFMPEG_FOUND)
     )
     set_target_properties(orbis_app PROPERTIES AUTOMOC ON)
     target_include_directories(orbis_app PUBLIC src/ui)
-    # Audio playback needs Qt6::Multimedia, checked
-    # optional above like FFmpeg/OpenCV -- orbis-reframe still builds without
-    # it, just silently (ORBIS_REFRAME_HAVE_AUDIO unset), if the dev package
-    # isn't installed.
-    if(Qt6Multimedia_FOUND)
-        target_sources(orbis_app PRIVATE src/ui/AudioPlayer.cpp src/ui/AudioPlayer.h)
-        target_link_libraries(orbis_app PUBLIC Qt6::Multimedia)
-        target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_AUDIO)
-    endif()
     # reframe_flatten pulls system FFmpeg into orbis-reframe for the export's
     # decode/reproject/encode half.
     target_link_libraries(orbis_app PUBLIC
         Qt6::Widgets Qt6::Gui Vulkan::Vulkan orbis_core stitch reframe_flatten insv
-        privacy_data render_shaders orbis_paths orbis_version)
+        privacy_data render_shaders orbis_paths orbis_version audio_output)
 
     # The resources go into each executable: a static library's resource
     # initializer would be dropped by the linker.
@@ -636,6 +630,8 @@ if(FFMPEG_FOUND)
     # own come with resources/models/. ncnn's is installed with ncnn, below.
     install(FILES packaging/licenses/nlohmann-json-LICENSE.MIT
         DESTINATION share/doc/orbis-reframe/licenses)
+    install(FILES external/miniaudio/LICENSE DESTINATION share/doc/orbis-reframe/licenses
+        RENAME miniaudio-LICENSE)
     install(FILES src/insv/LICENSE-MIT DESTINATION share/doc/orbis-reframe/licenses
         RENAME insv-LICENSE-MIT)
     install(FILES src/insv/LICENSE-APACHE DESTINATION share/doc/orbis-reframe/licenses
@@ -795,6 +791,12 @@ foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilizati
 endforeach()
 # Makes its test zips with zlib.
 target_link_libraries(zip_reader_test PRIVATE zip_reader ZLIB::ZLIB)
+
+# The sound output on miniaudio's null device: pulls arrive, start / stop /
+# reopen, the clock. No sound server needed.
+add_executable(audio_output_test tests/audio_output_test.cpp)
+target_link_libraries(audio_output_test PRIVATE audio_output Threads::Threads)
+add_test(NAME audio_output_test COMMAND audio_output_test)
 
 # Help > User manual's link per version (release tag or main).
 add_executable(user_manual_test tests/user_manual_test.cpp
@@ -977,9 +979,6 @@ if(ORBIS_REQUIRE_ALL_FEATURES)
     set(missing "")
     if(NOT TARGET orbis-reframe)
         list(APPEND missing "the app itself (FFmpeg dev packages)")
-    endif()
-    if(NOT Qt6Multimedia_FOUND)
-        list(APPEND missing "audio playback (qt6-multimedia-dev)")
     endif()
     if(NOT ONNXRUNTIME_INCLUDE_DIR)
         list(APPEND missing "voice modes (libonnxruntime-dev)")

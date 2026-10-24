@@ -9,9 +9,7 @@
 #include <cmath>
 #include <limits>
 
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
 #include "AudioPlayer.h"
-#endif
 #include "EditToolbar.h"
 #include "PlaybackController.h"
 #include "RenderJobs.h"
@@ -112,9 +110,7 @@ void MainWindow::connectTransitions()
     connect(m_timeline, &Timeline::transitionsChanged, this, [this] {
         refreshTransitions();
         pushInsetsToController(); // the other clips' layers
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
         m_audioPlayer->setMix(renderjobs::mixClips(*m_timeline)); // the crossfading sound
-#endif
     });
     // A transition's other clip is drawn with its own settings: when one
     // changes, so does the layer. (Trims, speed and moves rebuild the

@@ -1,32 +1,20 @@
 #include "AudioPlayer.h"
 
-
-#include <QAudioFormat>
-#include <QAudioSink>
-#include <QIODevice>
-#include <QThread>
+#include "AudioOutput.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
-#include <limits>
 
 namespace {
-// The X5's audio is fixed-format (48 kHz stereo AAC); InsvAudioDemux
-// resamples/remixes to this regardless of what a given clip actually carries,
-// so QAudioSink's format never has to change mid-timeline.
-constexpr int kSampleRate = 48000;
-constexpr int kChannels = 2;
+// The mixer resamples / remixes every clip to the output's format, so it
+// never has to change mid-timeline.
+constexpr int kSampleRate = AudioOutput::kSampleRate;
+constexpr int kChannels = AudioOutput::kChannels;
 constexpr int kFramesPerMs = kSampleRate / 1000;
 // One decoded chunk (~21 ms, an AAC frame's worth); ~0.8 s of lookahead.
 constexpr int64_t kChunkFrames = 1024;
 constexpr size_t kQueueMaxChunks = 40;
-// The sink's own buffer. Everything already in it plays out after a seek (it
-// can't be dropped -- see the constructor), so it's kept small; it can be,
-// because the sink lives on its own thread and is refilled promptly
-// regardless of what the GUI thread is doing. Qt's default is ~250 ms.
-constexpr int kSinkBufferMs = 50;
 // Drift (video clock vs. what's audible) past this is a jump, not drift --
 // e.g. the video clock stepping back after a stall it didn't show as
 // "Buffering…": re-seek. The reading itself is steady to ~1 ms.
@@ -46,85 +34,34 @@ constexpr double kDriftAlpha = 0.2;
 
 } // namespace
 
-// Pull-mode QIODevice: QAudioSink calls readData() whenever its backend wants
-// more bytes (on the GUI thread on most Linux backends, but not guaranteed --
-// AudioPlayer::pullBytes takes the lock accordingly).
-class AudioPlayer::PullDevice : public QIODevice {
-public:
-    explicit PullDevice(AudioPlayer *owner, QObject *parent = nullptr)
-        : QIODevice(parent), m_owner(owner)
-    {
-    }
-
-protected:
-    qint64 readData(char *data, qint64 maxlen) override { return m_owner->pullBytes(data, maxlen); }
-    qint64 writeData(const char *, qint64) override { return -1; }
-    bool isSequential() const override { return true; }
-    // This device always has "data" (real PCM or silence-fill -- see
-    // pullBytes) for as long as the sink wants it. Without this override the
-    // base QIODevice::bytesAvailable() returns 0, and at least one backend
-    // (Qt Multimedia's PipeWire backend) reads that as "nothing to pull" and
-    // never calls readData() at all (silent playback).
-    qint64 bytesAvailable() const override
-    {
-        return std::numeric_limits<qint64>::max() - 1024;
-    }
-
-private:
-    AudioPlayer *m_owner;
-};
-
 AudioPlayer::AudioPlayer(QObject *parent)
     : QObject(parent)
 {
-    QAudioFormat fmt;
-    fmt.setSampleRate(kSampleRate);
-    fmt.setChannelCount(kChannels);
-    fmt.setSampleFormat(QAudioFormat::Float);
-    // One sink, started once, for the player's whole life -- only ever
-    // suspended/resumed. Never reset()/stop()+start() or recreate it to drop
-    // buffered audio: on Qt 6.10's PulseAudio backend, tearing down a stream
-    // that hasn't finished connecting (rapid seeks) orphans it on the server
-    // until the process exits -- a stream leaked per seek, until
-    // pipewire-pulse ran out of file descriptors and refused every client on
-    // the desktop. requestSeekLocked() schedules around the buffer instead.
-    //
-    // It lives on its own thread: in pull mode QAudioSink's backend calls
-    // readData() from the thread that owns it, and on the GUI thread any
-    // stall longer than the buffer would starve it. There the buffer can be
-    // small (kSinkBufferMs), which keeps the unavoidable post-seek tail short.
-    m_sinkThread = new QThread(this);
-    m_sinkThread->setObjectName(QStringLiteral("AudioSink"));
-    m_sinkHost = new QObject;
-    m_sinkHost->moveToThread(m_sinkThread);
-    m_sinkThread->start();
-    QMetaObject::invokeMethod(
-        m_sinkHost,
-        [this, fmt] {
-            m_device = new PullDevice(this, m_sinkHost);
-            m_device->open(QIODevice::ReadOnly);
-            m_sink = new QAudioSink(fmt, m_sinkHost);
-            m_sink->setBufferSize(kSinkBufferMs * kFramesPerMs * kChannels *
-                                  static_cast<int>(sizeof(float)));
-            m_sink->start(m_device);
-            m_sink->suspend(); // nothing playing yet; play() resumes
-        },
-        Qt::BlockingQueuedConnection);
-
-    startDecoder();
+    // One stream for the player's whole life, only ever started and
+    // stopped; requestSeekLocked() schedules around what's buffered in it.
+    // Never a new stream to drop buffered audio: every stream costs the
+    // sound server and its watchers (pavucontrol opens a level meter per
+    // stream), and rapid churn has exhausted pipewire-pulse's file
+    // descriptors, which takes sound away from the whole desktop.
+    m_out = std::make_unique<AudioOutput>([this](float *out, uint32_t frames) { pullFrames(out, frames); });
+    if (m_out->ok())
+        startDecoder();
 }
 
 AudioPlayer::~AudioPlayer()
 {
-    // reset(), not stop(): stop() plays out what's buffered first, and Qt
-    // 6.8's PulseAudio sink (Debian 13) waits for that forever while the
-    // stream is suspended -- quitting while paused hung.
-    QMetaObject::invokeMethod(
-        m_sinkHost, [this] { m_sink->reset(); }, Qt::BlockingQueuedConnection);
-    m_sinkThread->quit();
-    m_sinkThread->wait();
-    delete m_sinkHost; // and the sink + device, its children
+    m_out.reset(); // stops the callback before the queue it reads goes
     stopDecoder();
+}
+
+bool AudioPlayer::hasOutput() const
+{
+    return m_out->ok();
+}
+
+std::string AudioPlayer::outputDescription() const
+{
+    return m_out->description();
 }
 
 void AudioPlayer::startDecoder()
@@ -175,32 +112,25 @@ void AudioPlayer::setMix(std::vector<insv::MixClip> clips)
     m_cv.notify_all();
 }
 
-void AudioPlayer::updateSinkRunning()
+void AudioPlayer::updateOutputRunning()
 {
     bool run;
     {
         std::lock_guard<std::mutex> lk(m_mx);
         run = m_playing; // a hold keeps it running on silence -- see setHold()
     }
-    QMetaObject::invokeMethod(m_sinkHost, [this, run] {
-        if (run)
-            m_sink->resume();
-        else
-            m_sink->suspend();
-    });
+    // Not under m_mx: stopping waits for the callback, which takes it.
+    if (run)
+        m_out->start();
+    else
+        m_out->stop();
 }
 
 double AudioPlayer::playedFrames() const
 {
-    // The sink's playback clock (the sound server's, not bytes handed over --
-    // it tracks the video clock to a few ms), in output frames since start().
-    // Asked on the sink's thread; the caller mustn't hold m_mx (pullBytes,
-    // on that thread, takes it).
-    qint64 us = 0;
-    QMetaObject::invokeMethod(
-        m_sinkHost, [this, &us] { us = m_sink->processedUSecs(); },
-        Qt::BlockingQueuedConnection);
-    return us * (kSampleRate / 1e6);
+    // The sound server's clock, not frames handed over (it tracks the video
+    // clock to a few ms). Takes the output's own lock, never m_mx.
+    return m_out->playedFrames();
 }
 
 void AudioPlayer::play()
@@ -213,7 +143,7 @@ void AudioPlayer::play()
         m_haveDrift = false;
     }
     m_cv.notify_all();
-    updateSinkRunning();
+    updateOutputRunning();
 }
 
 void AudioPlayer::pause()
@@ -224,12 +154,12 @@ void AudioPlayer::pause()
             return;
         m_playing = false;
     }
-    updateSinkRunning();
+    updateOutputRunning();
 }
 
 void AudioPlayer::setHold(bool hold)
 {
-    // The sink isn't suspended for a hold: pullBytes() feeds it silence
+    // The output isn't stopped for a hold: pullFrames() feeds it silence
     // instead. That way the few ms of audio already in its buffer finish
     // playing right away (at the seek / stall, where they belong) instead of
     // after the hold, and on release the audio re-seeks to exactly where the
@@ -276,7 +206,7 @@ void AudioPlayer::notePlaybackPosition(qint64 timelineMs)
         std::lock_guard<std::mutex> lk(m_mx);
         if (!m_playing || m_held || m_seekPending)
             return;
-        // A jump isn't audible until the sink plays past where it was made;
+        // A jump isn't audible until the output plays past where it was made;
         // until then the reading below would count it early.
         if (m_pendingJumpFrames != 0 || played < m_jumpGuardOutFrames)
             return;
@@ -293,7 +223,7 @@ void AudioPlayer::notePlaybackPosition(qint64 timelineMs)
                                        : driftMs;
             m_haveDrift = true;
             if (std::abs(m_driftEmaMs) > kJumpMs) {
-                // Splice (pullBytes): fade out, skip (> 0, audio behind) or
+                // Splice (pullFrames): fade out, skip (> 0, audio behind) or
                 // pad (< 0, ahead), fade in.
                 m_pendingJumpFrames = std::llround(m_driftEmaMs * kFramesPerMs);
                 m_fadeOutFrames = kFadeFrames;
@@ -307,8 +237,8 @@ void AudioPlayer::notePlaybackPosition(qint64 timelineMs)
 
 void AudioPlayer::requestSeekLocked(qint64 timelineMs, double playedFrames)
 {
-    // The sink still holds up to a buffer (kSinkBufferMs) of pre-seek audio
-    // that can't be dropped (see the constructor) and plays out first, while
+    // The output still holds up to a buffer (~30 ms) of pre-seek audio that
+    // isn't dropped (miniaudio has no flush) and plays out first, while
     // the video moves on from timelineMs. Start the new audio where the video
     // will be when that runs out, so it lands in step.
     const double bufferedFrames = std::max(0.0, m_outFramesPulled - playedFrames);
@@ -422,14 +352,13 @@ void AudioPlayer::decoderLoop()
 }
 
 // ---------------------------------------------------------------------------
-// Pull side (QAudioSink's backend, any thread)
+// Pull side (AudioOutput's thread)
 // ---------------------------------------------------------------------------
 
-qint64 AudioPlayer::pullBytes(char *data, qint64 maxlen)
+void AudioPlayer::pullFrames(float *out, uint32_t frames)
 {
     const size_t frameBytes = kChannels * sizeof(float);
-    auto *out = reinterpret_cast<float *>(data);
-    const qint64 framesWanted = maxlen / static_cast<qint64>(frameBytes);
+    const qint64 framesWanted = frames;
 
     {
         std::lock_guard<std::mutex> lk(m_mx);
@@ -437,7 +366,7 @@ qint64 AudioPlayer::pullBytes(char *data, qint64 maxlen)
         if (m_held) { // silence, timeline position untouched -- see setHold()
             std::memset(out, 0, static_cast<size_t>(framesWanted) * frameBytes);
             m_outFramesPulled += static_cast<double>(framesWanted);
-            return framesWanted * static_cast<qint64>(frameBytes);
+            return;
         }
         // A straight copy of the queue -- no resampling. The queue is
         // contiguous on the timeline, so the read position *is* the timeline
@@ -455,7 +384,7 @@ qint64 AudioPlayer::pullBytes(char *data, qint64 maxlen)
                 }
                 m_pendingJumpFrames = 0;
                 m_fadeInFrames = kFadeFrames;
-                // Readings are stale until the sink has played past the splice.
+                // Readings are stale until the output has played past the splice.
                 m_jumpGuardOutFrames = m_outFramesPulled + static_cast<double>(i + m_padFrames);
             }
             if (m_padFrames > 0) { // a jump back: silence, read position held
@@ -488,5 +417,4 @@ qint64 AudioPlayer::pullBytes(char *data, qint64 maxlen)
         m_outFramesPulled += static_cast<double>(framesWanted);
     }
     m_cv.notify_all(); // the queue may have room now
-    return framesWanted * static_cast<qint64>(frameBytes);
 }

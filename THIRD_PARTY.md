@@ -9,7 +9,8 @@ the license text is.
 Paths are given in the source tree. In the packages (`/usr` for the `.deb`,
 the unpacked folder for the tarball) they are in `share/doc/orbis-reframe/`:
 this file, `LICENSE`, `LICENSE.lucide`, and `licenses/` (ncnn, nlohmann/json,
-and `src/insv/`'s two as `insv-LICENSE-MIT` / `insv-LICENSE-APACHE`). The
+miniaudio, and `src/insv/`'s two as `insv-LICENSE-MIT` /
+`insv-LICENSE-APACHE`). The
 models' licenses are next to each model, in
 `share/orbis-reframe/models/<model>/`.
 
@@ -19,6 +20,7 @@ models' licenses are next to each model, in
 |---|---|---|---|---|
 | [ncnn](https://github.com/Tencent/ncnn) (Tencent) | 20260526, the `ubuntu-2404-shared` release | BSD-3-Clause (its third-party parts: zlib, BSD-2-Clause, BSD-3-Clause) | Runs the number-plate model on the GPU (plate scan). `libncnn.so.1` is bundled in `lib/orbis-reframe/` -- it isn't packaged in Debian | `packaging/licenses/ncnn-LICENSE.txt` |
 | [nlohmann/json](https://github.com/nlohmann/json) (Niels Lohmann) | 3.11.3 (Debian's `nlohmann-json3-dev`) | MIT | Reads and writes project files. Header-only, compiled into the binary | `packaging/licenses/nlohmann-json-LICENSE.MIT` |
+| [miniaudio](https://miniaud.io/) (David Reid) | 0.11.25, in `external/miniaudio/` | Unlicense OR MIT-0 | Plays the sound: compiled into the binary, it loads the system's libpulse / ALSA / JACK at run time | `external/miniaudio/LICENSE` |
 | [Lucide](https://lucide.dev/) icons (some derived from [Feather](https://feathericons.com/)) | -- | ISC (Feather parts: MIT) | Toolbar and panel icons, compiled into the binary | `resources/icons/LICENSE.lucide` |
 | [DeepFilterNet 3](https://github.com/Rikorose/DeepFilterNet) model (Hendrik Schröter and contributors) | repository commit `84d57ec` | MIT OR Apache-2.0 | The "Voice only" / "Voice + ambience" noise modes | `resources/models/deepfilternet3/LICENSE-MIT`, `LICENSE-APACHE` |
 | [VitTrack](https://github.com/opencv/opencv_zoo) model (OpenCV Zoo) | `object_tracking_vittrack_2023sep` | Apache-2.0 | Checks that subject tracking still follows the same subject | `resources/models/vittrack/LICENSE-APACHE` |
@@ -35,11 +37,12 @@ with them, in `/usr/share/doc/<package>/copyright`.
 
 | Component | Debian package (Debian Testing) | License | Linked how |
 |---|---|---|---|
-| Qt 6 (Core, Gui, Widgets, Multimedia; Wayland and SVG plugins) | `libqt6core6t64` etc., 6.10 | LGPL-3.0 (also GPL-2.0 / GPL-3.0) | Shared libraries; the Wayland and SVG plugins loaded by Qt |
+| Qt 6 (Core, Gui, Widgets; Wayland and SVG plugins) | `libqt6core6t64` etc., 6.10 | LGPL-3.0 (also GPL-2.0 / GPL-3.0) | Shared libraries; the Wayland and SVG plugins loaded by Qt |
 | FFmpeg (libavcodec, libavformat, libavfilter, libavutil, libswscale, libswresample) | `libavcodec63` etc., 9.0 | LGPL-2.1-or-later; Debian builds it with `--enable-gpl`, which makes it GPL-2.0-or-later | Shared libraries |
 | OpenCV (core, imgproc, video, calib3d; contrib: tracking) | `libopencv-*410`, 4.10 | Apache-2.0 | Shared libraries |
 | ONNX Runtime | `libonnxruntime1.23` | MIT | Loaded with `dlopen()` when a voice mode is first used |
 | Vulkan loader | `libvulkan1` | Apache-2.0 | Shared library |
+| PulseAudio client library | `libpulse0` (recommended, not required) | LGPL-2.1-or-later | Loaded with `dlopen()` by miniaudio to play sound (PipeWire's `pipewire-pulse` or PulseAudio); ALSA's `libasound2` the same way when there's no sound server |
 | zlib | `zlib1g` | Zlib | Shared library (unpacking zipped LUTs) |
 | GNU OpenMP runtime (`libgomp`), C++ runtime (`libstdc++`, `libgcc_s`) | `libgomp1`, `libstdc++6`, `libgcc-s1` | GPL-3.0 with the GCC Runtime Library Exception | Shared libraries (`libgomp` through ncnn) |
 | GNU C library | `libc6` | LGPL-2.1-or-later | Shared library |

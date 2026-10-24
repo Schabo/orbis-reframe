@@ -40,7 +40,7 @@ QString driverVersion(const VkPhysicalDeviceProperties &p)
     return QStringLiteral("%1.%2.%3").arg(VK_API_VERSION_MAJOR(v)).arg(VK_API_VERSION_MINOR(v)).arg(VK_API_VERSION_PATCH(v));
 }
 
-QString diagnostics(EquirectViewportWindow *viewport)
+QString diagnostics(EquirectViewportWindow *viewport, const QString &audioOutput)
 {
     QStringList out;
     out << QStringLiteral("orbis-reframe %1").arg(QString::fromUtf8(core::version::string()));
@@ -75,11 +75,7 @@ QString diagnostics(EquirectViewportWindow *viewport)
             out << QStringLiteral("  %1 not usable: %2")
                        .arg(h265 ? QStringLiteral("H.265") : QStringLiteral("H.264"),
                             QString::fromStdString(why));
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
-    out << QStringLiteral("Audio playback: built in");
-#else
-    out << QStringLiteral("Audio playback: not in this build");
-#endif
+    out << QStringLiteral("Sound output: %1").arg(audioOutput);
 
     const QString cantTrack = syscheck::trackUnavailableReason();
     out << QStringLiteral("Track subject: %1").arg(cantTrack.isEmpty() ? QStringLiteral("ready") : cantTrack);
@@ -95,7 +91,7 @@ QString diagnostics(EquirectViewportWindow *viewport)
 
 } // namespace
 
-void showAboutDialog(QWidget *parent, EquirectViewportWindow *viewport)
+void showAboutDialog(QWidget *parent, EquirectViewportWindow *viewport, const QString &audioOutput)
 {
     QDialog dlg(parent);
     dlg.setWindowTitle(QObject::tr("About orbis-reframe"));
@@ -138,7 +134,7 @@ void showAboutDialog(QWidget *parent, EquirectViewportWindow *viewport)
     diag->setReadOnly(true);
     diag->setFont(QFont(QStringLiteral("monospace")));
     QApplication::setOverrideCursor(Qt::WaitCursor); // the voice check may load ONNX Runtime
-    diag->setPlainText(diagnostics(viewport));
+    diag->setPlainText(diagnostics(viewport, audioOutput));
     QApplication::restoreOverrideCursor();
     diag->setMinimumSize(kMinTextWidth, 200);
     layout->addWidget(diag);

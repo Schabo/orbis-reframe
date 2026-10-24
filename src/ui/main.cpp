@@ -16,7 +16,6 @@
 #include "Theme.h"
 
 #include "../core/DataPaths.h"
-#include "../core/Log.h"
 #include "../core/Version.h"
 #include "../export/ReframeFlatten.h"
 
@@ -87,18 +86,6 @@ int main(int argc, char *argv[])
     if (qEnvironmentVariableIsEmpty("QT_VULKAN_LIB"))
         qputenv("QT_VULKAN_LIB", "libvulkan.so.1");
 
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
-    // Qt Multimedia's native PipeWire audio backend pins its stream to
-    // whatever sink was default at creation (`node.dont-reconnect=true`) --
-    // pavucontrol's per-app output-device switch, and `pactl
-    // move-sink-input`, silently no-op against it. The
-    // pulseaudio-compat backend behaves like an ordinary desktop app instead
-    // (movable, and reports our actual application name). Must be set before
-    // any Qt Multimedia object is created; respects an explicit override.
-    if (qEnvironmentVariableIsEmpty("QT_AUDIO_BACKEND"))
-        qputenv("QT_AUDIO_BACKEND", "pulseaudio");
-#endif
-
     QApplication app(argc, argv);
 #ifdef INSV_HAVE_VOICE
     // The voice noise modes' DeepFilterNet model ships with the app (installed
@@ -109,13 +96,9 @@ int main(int argc, char *argv[])
     // Qt's Wayland text-input-v3 warns "Try to disable surface X with focusing
     // surface Y" whenever focus has already moved to another surface (e.g. a
     // file dialog closing) before it disables input on the old one -- it
-    // disables it regardless, so the warning is noise. Qt Multimedia's FFmpeg
-    // version banner is only shown with ORBIS_VERBOSE (core/Log.h).
-    // QT_LOGGING_RULES still overrides both.
-    QString logRules = QStringLiteral("qt.qpa.wayland.textinput.warning=false");
-    if (!core::log::Verbose())
-        logRules += QStringLiteral("\nqt.multimedia.ffmpeg.info=false");
-    QLoggingCategory::setFilterRules(logRules);
+    // disables it regardless, so the warning is noise. QT_LOGGING_RULES
+    // still overrides it.
+    QLoggingCategory::setFilterRules(QStringLiteral("qt.qpa.wayland.textinput.warning=false"));
     // Explicit rather than taken from the binary name: it names the cache
     // directory (~/.cache/orbis-reframe).
     QApplication::setApplicationName(QStringLiteral("orbis-reframe"));

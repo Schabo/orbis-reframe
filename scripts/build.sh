@@ -23,10 +23,9 @@
 # ONNX Runtime (libonnxruntime-dev, headers only at build time; the library is
 # dlopen()ed) -> the "Voice only" / "Voice + ambience" noise modes, optional.
 # An unpacked copy instead: ONNXRUNTIME_ROOT=<dir>/usr scripts/build.sh.
-# Qt6 Multimedia (qt6-multimedia-dev) -> audio playback,
-# also optional -- orbis-reframe still builds without it, just silently (no
-# sound). libswresample-dev (usually pulled in with the other FFmpeg dev
-# packages) is needed for it too.
+# Audio playback is always built: miniaudio is in the repository
+# (external/miniaudio) and loads libpulse / ALSA / JACK at run time, so it
+# needs no dev package.
 #
 # Clips are read through `camera` (src/camera/: the common clip description,
 # a reader per camera family). Stitching is stitch::NativeStitchSource: the

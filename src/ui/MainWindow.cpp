@@ -65,9 +65,7 @@
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader::probe (overlays)
 
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
 #include "AudioPlayer.h"
-#endif
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
 #include "SubjectTrackController.h" // + track::seedFromViewBox, reduceToKeys
 #endif
@@ -439,9 +437,7 @@ void MainWindow::setupPlayback()
     // Audio: a slave of m_controller's clock, entirely on the GUI thread --
     // see AudioPlayer's own comment for why. A normal child, unlike
     // m_controller.
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer = new AudioPlayer(this);
-#endif
 }
 
 void MainWindow::connectStitchAndStabilization()
@@ -615,16 +611,12 @@ void MainWindow::connectTimeline()
     const auto seekTo = [this](qint64 timelineMs) {
         QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
         m_audioPlayer->seek(timelineMs);
-#endif
     };
     const auto scrubTo = [this](qint64 timelineMs) {
         QMetaObject::invokeMethod(m_controller, "scrub", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
         m_audioPlayer->seek(timelineMs);
-#endif
     };
     connect(m_timelineWidget, &TimelineWidget::seekRequested, this, seekTo);
     connect(m_timelineWidget, &TimelineWidget::scrubRequested, this, scrubTo);
@@ -1232,9 +1224,7 @@ void MainWindow::connectController()
             [this](qint64 timelineMs) {
                 m_lastTimelineMs = timelineMs;
                 showPlayhead(timelineMs);
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
                 m_audioPlayer->notePlaybackPosition(timelineMs);
-#endif
                 bindActiveClipAt(timelineMs);
                 if (selectedOverlayClip())
                     refreshOverlayPanel(); // keyed values / key buttons follow the playhead
@@ -1259,7 +1249,6 @@ void MainWindow::connectController()
     connect(m_timeline, &Timeline::clipInserted, m_measurements, &ClipMeasurements::schedule);
     connect(m_controller, &PlaybackController::bufferingChanged,
             m_playerBar, &PlayerBar::setBuffering);
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     // Every play/pause entry point (transport button, Space, export pausing
     // playback, reaching end-of-timeline) funnels through this one signal.
     // Off 1x the preview is silent (the player bar's speed).
@@ -1268,6 +1257,12 @@ void MainWindow::connectController()
             m_audioPlayer->play();
         else
             m_audioPlayer->pause();
+        // Said once, where the user is looking when they expect sound; the
+        // reason is in the log and Help > About.
+        if (playing && !m_audioPlayer->hasOutput() && !m_noSoundNoticeShown) {
+            m_noSoundNoticeShown = true;
+            m_editToolbar->showNotice(tr("No sound output found — playing without sound"));
+        }
     });
     // Hold the audio exactly while the video clock is frozen (a seek / stall)
     // so the two resume in step. Not bufferingChanged: that also fires
@@ -1275,7 +1270,6 @@ void MainWindow::connectController()
     // holding the audio then chopped it for a second after every seek.
     connect(m_controller, &PlaybackController::clockHeldChanged, m_audioPlayer,
             &AudioPlayer::setHold);
-#endif
 }
 
 void MainWindow::connectPlayerBar()
@@ -1284,7 +1278,6 @@ void MainWindow::connectPlayerBar()
     connect(m_playerBar, &PlayerBar::speedChanged, this, [this](double speed) {
         m_previewRate = speed;
         QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, speed] { ctrl->setRate(speed); });
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
         if (m_playing) {
             if (speed == 1.0) {
                 m_audioPlayer->seek(m_lastTimelineMs);
@@ -1293,7 +1286,6 @@ void MainWindow::connectPlayerBar()
                 m_audioPlayer->pause();
             }
         }
-#endif
     });
     {
         QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
@@ -1978,9 +1970,7 @@ void MainWindow::onTracksChanged()
     refreshAudioPanel();
     refreshOverlayPanel();
     pushInsetsToController();
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer->setMix(renderjobs::mixClips(*m_timeline));
-#endif
 }
 
 void MainWindow::selectAdded(std::optional<int> lastClipId)
@@ -2525,7 +2515,9 @@ void MainWindow::setupKeyboardShortcuts()
     keysAction->setShortcut(QKeySequence(Qt::Key_F1));
     helpMenu->addSeparator();
     QAction *aboutAction = helpMenu->addAction(tr("&About orbis-reframe"), this,
-                                               [this] { showAboutDialog(this, m_viewport); });
+                                               [this] {
+        showAboutDialog(this, m_viewport, QString::fromStdString(m_audioPlayer->outputDescription()));
+    });
     aboutAction->setObjectName(QStringLiteral("aboutAction"));
 }
 
@@ -2538,9 +2530,7 @@ void MainWindow::navigateTo(qint64 timelineMs, bool pause)
         QMetaObject::invokeMethod(m_controller, "pause", Qt::QueuedConnection);
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, timelineMs));
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer->seek(timelineMs);
-#endif
     m_lastTimelineMs = timelineMs;
     showPlayhead(timelineMs);
     bindActiveClipAt(timelineMs);
@@ -2594,11 +2584,9 @@ void MainWindow::updatePlayerBar()
 
 void MainWindow::applyPreviewVolume()
 {
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     // Squared: the slider's middle sounds about half as loud, not barely quieter.
     const double v = m_playerBar->volume() / 100.0;
     m_audioPlayer->setVolume(m_playerBar->isMuted() ? 0.0f : static_cast<float>(v * v));
-#endif
 }
 
 void MainWindow::splitAtPlayhead()
@@ -2720,9 +2708,7 @@ void MainWindow::pushTimelineToController()
     // Queued lambda (not a slot) so QList<Segment> needs no metatype.
     QMetaObject::invokeMethod(m_controller,
                               [ctrl = m_controller, segments] { ctrl->setTimeline(segments); });
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer->setTimeline(segments); // GUI-thread resident -- no invokeMethod needed
-#endif
     ensureStabilizers(); // the stabilizers by the clips' (new) ids
 }
 
@@ -2791,9 +2777,7 @@ void MainWindow::remapPlayheadAfterEdit()
     m_lastPositionMs = srcClamped;
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, newTimelineMs));
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer->seek(newTimelineMs);
-#endif
 }
 
 void MainWindow::undo()
@@ -2832,9 +2816,7 @@ void MainWindow::afterUndoRedo()
     showPlayhead(m_lastTimelineMs);
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, m_lastTimelineMs));
-#ifdef ORBIS_REFRAME_HAVE_AUDIO
     m_audioPlayer->seek(m_lastTimelineMs);
-#endif
 }
 
 // "*.insv *.mp4 ...": the files the main track takes, 360 clips and flat

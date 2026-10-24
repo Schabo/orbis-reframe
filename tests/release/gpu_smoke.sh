@@ -15,9 +15,10 @@
 #   gpu_smoke.sh --check OUT_DIR
 #
 # APP is a build folder (with orbis-reframe in it) or the program to start.
-# --sound starts PipeWire with a null sink as the output and records it: the
-# smoke project plays with "Voice only", so sound reaching the sink and
-# ONNX Runtime loaded are checked too (needs pipewire, pipewire-pulse,
+# --sound starts PipeWire with a null sink as the default output (listed
+# after another null sink, so following the default is checked) and records
+# it: the smoke project plays with "Voice only", so sound reaching the sink
+# and ONNX Runtime loaded are checked too (needs pipewire, pipewire-pulse,
 # wireplumber, pulseaudio-utils, dbus, python3). Without it there's no sound
 # server and playback runs on the wall clock. --no-check only runs the app;
 # --check judges an OUT_DIR such a run left (the release test runs the app
@@ -121,7 +122,9 @@ EOF
         export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
     fi
 
-    # Sound: PipeWire with a null sink as the default output.
+    # Sound: PipeWire with a null sink as the default output, behind a decoy
+    # sink listed first -- the app must follow the default, not take the
+    # first output.
     local pulse=(PULSE_SERVER=unix:/nonexistent)
     if ((sound)); then
         pipewire > "$out/pipewire.log" 2>&1 &
@@ -132,6 +135,7 @@ EOF
         pipewire-pulse > /dev/null 2>&1 &
         pids+=($!)
         sleep 2
+        pactl load-module module-null-sink sink_name=decoysink > /dev/null
         pactl load-module module-null-sink sink_name=smokesink > /dev/null
         pactl set-default-sink smokesink
         pulse=()

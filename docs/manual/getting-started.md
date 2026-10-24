@@ -191,7 +191,7 @@ On Debian 13, use this command:
 ```sh
 sudo apt install \
     libqt6core6t64 libqt6gui6 libqt6widgets6 qt6-wayland qt6-svg-plugins \
-    libqt6multimedia6 \
+    libpulse0 \
     libvulkan1 \
     libavcodec61 libavformat61 libavutil59 libavfilter10 libswscale8 libswresample5 \
     libopencv-core410 libopencv-imgproc410 libopencv-video410 \
@@ -204,7 +204,7 @@ On Debian Testing, use this command:
 ```sh
 sudo apt install \
     libqt6core6t64 libqt6gui6 libqt6widgets6 qt6-wayland qt6-svg-plugins \
-    libqt6multimedia6 \
+    libpulse0 \
     libvulkan1 \
     libavcodec63 libavformat63 libavutil61 libavfilter12 libswscale10 libswresample7 \
     libopencv-core410 libopencv-imgproc410 libopencv-video410 \
@@ -217,7 +217,7 @@ On Ubuntu 26.04, use this command:
 ```sh
 sudo apt install \
     libqt6core6t64 libqt6gui6 libqt6widgets6 qt6-wayland qt6-svg-plugins \
-    libqt6multimedia6 \
+    libpulse0 \
     libvulkan1 \
     libavcodec62 libavformat62 libavutil60 libavfilter11 libswscale9 libswresample6 \
     libopencv-core410 libopencv-imgproc410 libopencv-video410 \
@@ -232,7 +232,7 @@ What each group is for:
 | `libqt6core6t64`, `libqt6gui6`, `libqt6widgets6` | The user interface (Qt 6). |
 | `qt6-wayland` | Lets Qt open a window on a Wayland desktop. Without it orbis-reframe exits at startup with *"Could not load the Qt platform plugin "wayland""*. |
 | `qt6-svg-plugins` | Draws the toolbar and sidebar icons. Without it the buttons show no icons. |
-| `libqt6multimedia6` | Sound during playback. |
+| `libpulse0` | Sound during playback, through PipeWire (`pipewire-pulse`) or PulseAudio. Usually installed already. Without it orbis-reframe plays without sound. |
 | `libvulkan1` | Talks to the graphics card. |
 | `libavcodec61` … `libswresample5` (Debian 13), `libavcodec63` … `libswresample7` (Testing), `libavcodec62` … `libswresample6` (Ubuntu 26.04) | FFmpeg: reading the video files, audio, and encoding the export. |
 | `libopencv-*` | **Track subject** (Reframe section) and the privacy blur. |
@@ -362,15 +362,15 @@ Start orbis-reframe from a terminal so you can see its messages.
 | **Track subject** or **Scan clip** is greyed out, with *"… model, which is missing"* under it | A file from the download is missing. Install or unpack orbis-reframe again. |
 | Choosing **Voice only** says *"The voice modes can't run on this computer"* | Install `libonnxruntime1.21` (Debian 13) or `libonnxruntime1.23` (Testing, Ubuntu 26.04), as the message says (step 3, option B). If the message mentions the model, unpack or install orbis-reframe again. |
 | The window stays black, or the clip never leaves *Buffering…* | Start with `ORBIS_VERBOSE=1 orbis-reframe` and look at the messages, and check **Help ▸ About** (below). |
-| No sound | Check that `libqt6multimedia6` is installed and that the system's sound works in other programs. To send orbis-reframe's sound to another output, use your desktop's sound settings or `pavucontrol`. |
+| No sound, or *"No sound output found — playing without sound"* when you press play | Check that the system's sound works in other programs, that `libpulse0` is installed, and on PipeWire that `pipewire-pulse` is running. **Help ▸ About** shows the sound output orbis-reframe uses, or why it found none. To send orbis-reframe's sound to another output, use your desktop's sound settings or `pavucontrol`. |
 
 If none of these help, please [report the
 problem](https://github.com/Schabo/orbis-reframe/issues) with the terminal
 output and the diagnostics from **Help ▸ About orbis-reframe**. Click **Copy
 diagnostics** and paste them into the report. They list the version, your
 Linux distribution, graphics card and driver, whether video decoding and
-the AI features can run on your computer, and which video encoder export
-uses (with why the others can't be used). If the window doesn't
-open at all, include the output of `orbis-reframe --version`, your
+the AI features can run on your computer, which video encoder export uses
+(with why the others can't be used), and the sound output. If the window
+doesn't open at all, include the output of `orbis-reframe --version`, your
 distribution, and your graphics card and driver (`vulkaninfo --summary`)
 instead.

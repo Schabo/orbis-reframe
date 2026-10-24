@@ -77,14 +77,18 @@ set(CPACK_DEBIAN_PACKAGE_DESCRIPTION
  Needs a Wayland desktop and an NVIDIA graphics card (Vulkan, NVENC).")
 # Linked libraries come from dpkg-shlibdeps (it follows the RUNPATH into the
 # bundled ncnn, so libgomp1 is found too). It can't see what is loaded at run
-# time: Qt's Wayland platform and SVG icon plugins, and ONNX Runtime
-# (dlopen()ed for the voice modes, insv::VoiceIsolator).
+# time: Qt's Wayland platform and SVG icon plugins, ONNX Runtime
+# (dlopen()ed for the voice modes, insv::VoiceIsolator) and libpulse (the
+# sound output's, loaded by miniaudio).
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 # ORBIS_ORT_PACKAGE (CMakeLists.txt) is the ONNX Runtime built against.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-wayland, qt6-svg-plugins")
 if(ORBIS_ORT_PACKAGE)
     string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", ${ORBIS_ORT_PACKAGE}")
 endif()
+# Sound is optional (without a sound server the app plays silently), and
+# every desktop has libpulse -- PipeWire's pipewire-pulse speaks its protocol.
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "libpulse0")
 # The graphics drivers only as suggestions: a driver installed from NVIDIA's
 # .run installer has no Debian packages and would conflict with them. No
 # NVIDIA packages on Ubuntu: its driver packages carry the driver version in

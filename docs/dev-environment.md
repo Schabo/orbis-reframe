@@ -17,7 +17,7 @@ Update this file if the toolchain moves.
 - **OpenCV** 4.10 (*optional* — the per-clip gyro sync fine-tune, the plate scan, `tools/residual_stab`; subject tracking also needs the contrib `tracking` + `dnn` modules, `libopencv-contrib-dev`): `libopencv-dev`. CMake skips what needs it with a `STATUS` message when absent; the app still builds. OpenCV 5 builds too (Arch's 5.0.0, checked 2026-10-18): it moved `goodFeaturesToTrack` into the `features` module and `findHomography` / `estimateAffinePartial2D` from `calib3d` into `geometry`, and `CMakeLists.txt` links those by version.
 - **ncnn** 20260526 (*optional* — the privacy blur's plate scan, "Scan clip" in the Privacy tab, and `tools/plate_scan`): not in Debian. `scripts/fetch_ncnn.sh` downloads the pinned release `ncnn-20260526-ubuntu-2404-shared.zip` (<https://github.com/Tencent/ncnn/releases>; Vulkan built in, "simplevk", no `libvulkan` link; needs only `libgomp1` besides libc/libstdc++), checks its SHA-256 and unpacks it into `third_party/ncnn/` (gitignored), where CMake finds it on its own; `-DNCNN_ROOT=<folder>` (`NCNN_ROOT=<folder> scripts/build.sh`) points at another copy. `cmake --install` ships `libncnn.so.1` in `lib/orbis-reframe/` (the binary's `INSTALL_RPATH` is `$ORIGIN/../lib/orbis-reframe`). Without it CMake prints a `STATUS` line; the app can't scan then, but still applies scans it has. After switching copies, clear the cached one: `cmake -U ncnn_DIR -U NCNN_ROOT build`.
 - **ONNX Runtime** 1.23 (*optional* — the "Voice only" / "Voice + ambience" noise modes, DeepFilterNet 3): `libonnxruntime-dev`. Only its headers are needed to build; `insv::VoiceIsolator` `dlopen()`s `libonnxruntime.so.1.<ORT_API_VERSION>` (the headers' API version is the 1.x minor version: `.so.1.23` here, `.so.1.21` on Debian 13) on first use; CMake turns the same number into the `.deb`'s `libonnxruntime1.23` and the "install it" hint. CMake hides the voice modes with a `STATUS` message when the headers are absent. Without root, `apt-get download libonnxruntime-dev libonnxruntime1.23` + `dpkg -x` into a folder and configure with `-DONNXRUNTIME_ROOT=<folder>/usr` (how it was developed, 2026-09-30).
-- **Qt6 Multimedia** (*optional* — audio playback): `qt6-multimedia-dev`. CMake skips `AudioPlayer`/`Qt6::Multimedia` with a `STATUS` message when absent; `orbis-reframe` still builds, just silently (no sound).
+- **miniaudio** 0.11.25 (sound output, `src/ui/AudioOutput`): in the repository, `external/miniaudio/miniaudio.h` + its `LICENSE` (Unlicense OR MIT-0), copied unchanged from the release tarball `miniaudio-0.11.25.tar.gz` (<https://github.com/mackron/miniaudio/releases/tag/0.11.25>, SHA-256 `b900edcffe979816e2560a0580b9b1216d674b4f17fbadeca8f777a7f8ab0274`; `miniaudio.h` itself `ac7af4de748b7e26b777f37e01cee313a308a7296a3eb080e2906b320cc55c89`). In the tree rather than fetched so package and offline builds need nothing extra. No dev package: miniaudio `dlopen()`s libpulse (PipeWire's `pipewire-pulse` or PulseAudio), ALSA or JACK at run time. `AudioOutput` reads PulseAudio's timing info from miniaudio's stream (`ma_device::pulse.pStreamPlayback`), an internal member: a new miniaudio version means checking that still holds and measuring A/V sync again (`audio_output_test`, and by ear).
 
 The full list of build packages is written out again in
 `.github/workflows/ci.yml`, `.github/workflows/release.yml`,
@@ -40,7 +40,7 @@ Debian Testing container and builds there):
 
 ```sh
 sudo apt install g++ cmake ninja-build pkgconf \
-    qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev qt6-wayland qt6-svg-plugins \
+    qt6-base-dev qt6-base-dev-tools qt6-wayland qt6-svg-plugins \
     libvulkan-dev glslang-tools nlohmann-json3-dev zlib1g-dev \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
     libopencv-dev libopencv-contrib-dev libonnxruntime-dev \
@@ -224,7 +224,5 @@ set to anything except empty or `0`, unless the table says otherwise.
 | `ORBIS_TRACK_MODEL_DIR=<dir>` | Load the subject-tracking model (`vittrack.onnx`) from `<dir>`. |
 | `ORBIS_SMOKE_TEST=<steps file>` | Run the smoke test's steps against the app and print what it measured as `[smoke]` lines on stdout (`src/ui/SmokeTest.h`; `tests/release/gpu_smoke.sh` sets it). Not for normal use: the app drives itself and quits. |
 
-The app also sets `QT_AUDIO_BACKEND=pulseaudio` unless it's already set, so
-the sound shows up as a normal application in the desktop's sound settings.
 `plate_scan` has a few switches of its own (`FOLLOW_*`, `BACK_CHUNK`); its
 `--help` lists them.
