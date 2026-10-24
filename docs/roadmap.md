@@ -140,14 +140,23 @@ each is in its document in [`formats/`](formats/README.md).
   sidebar's **Effects** tab, dragged onto a clip and adjusted in the right
   sidebar. Starting with a few simple ones: video -- vignette, sharpen, film
   grain, colour presets (reusing the LUT code); audio -- EQ, compressor, the
-  existing noise filters as presets. The split screen layouts (side by
-  side, stacked, grid) join the library as **Layouts** to drop on a clip:
-  a drop sets the clip's split, as its **Split screen** section does. Split
-  screen isn't an effect -- it is several views into the sphere, not a
-  filter on the flat picture -- so it keeps its own section and its place in
-  the clip. To settle before building: video effects run on the flat
-  picture after the colour grade; how effects stack per clip and are stored
-  in the project; what preview costs.
+  existing noise filters as presets. Lens filters are video effects too: a
+  **computed ND** filter -- the motion blur a longer shutter would give,
+  with a strength in stops and ND16 / ND32 / ND64 presets that multiply the
+  exposure time the camera recorded per frame (up to one frame interval),
+  blurred along the stabilized view's motion (from the gyro and the
+  keyframes) and the scene's (optical flow, with the view's motion alone as
+  the fallback); a **graduated ND** that darkens the sky against the
+  horizon on the sphere, so it stays on the sky however the view is
+  reframed; diffusion / mist and a star filter. The split screen layouts
+  (side by side, stacked, grid) join the library as **Layouts** to drop
+  on a clip: a drop sets the clip's split, as its **Split screen** section
+  does. Split screen isn't an effect -- it is several views into the
+  sphere, not a filter on the flat picture -- so it keeps its own section
+  and its place in the clip. To settle before building: video effects run on the flat
+  picture after the colour grade, a few (graduated ND) on the sphere before
+  the reframe; how effects stack per clip and are stored in the project;
+  what preview costs (the viewport shows the same blur as the export).
 - **Keyframes**: hold keys, a smooth curve through all keys (no overshoot on
   the field of view), a default easing for new keys.
 - **Transitions**: more types (dip to a colour, wipes, a move through the
