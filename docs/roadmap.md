@@ -160,10 +160,6 @@ each is in its document in [`formats/`](formats/README.md).
   the clip. To settle before building: video effects run on the flat
   picture after the colour grade; how effects stack per clip and are stored
   in the project; what preview costs.
-- **LUT download**: a "Get the LUT" link next to the Colour panel's log
-  prompt that opens the camera maker's download page, and Load LUT taking the
-  downloaded zip directly. The makers' LUTs carry no licence, so they aren't
-  bundled.
 - **Keyframes**: hold keys, a smooth curve through all keys (no overshoot on
   the field of view), a default easing for new keys.
 - **Transitions**: more types (dip to a colour, wipes, a move through the
@@ -239,6 +235,8 @@ Not wanted, unless something changes a lot:
 
 - Full 360 (equirect) export for VR / YouTube 360.
 - Colour conversion built into the stitch or decode (it's the clip's LUT).
+- Shipping or downloading camera makers' LUTs: they carry no licence. Users
+  download the maker's zip and load it as it is.
 - X11 / XWayland.
 - Flatpak.
 - Network access outside the opt-in music library.

@@ -12,7 +12,7 @@ Update this file if the toolchain moves.
 - **Qt**: 6.11.2 (6.10.2 until 2026-10-11; apt: `qt6-base-dev`, `qt6-base-dev-tools`, `qt6-wayland`; `qt6-svg-plugins` draws the icons at run time, and `theme_test` needs it)
 - **Vulkan**: loader/instance 1.4.341 (apt: `libvulkan-dev`, `vulkan-tools`)
 - **Shader compiler**: `glslangValidator` (apt: `glslang-tools`)
-- **Other libs**: `nlohmann-json3-dev`
+- **Other libs**: `nlohmann-json3-dev`, `zlib1g-dev` (unpacking the zips LUTs come in)
 - **FFmpeg dev** (demux/decode/encode for the stitch layer, export and tools): `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev` (libavfilter since 2026-09-27: `atempo` audio time-stretch for clips at speed ≠ 1)
 - **OpenCV** 4.10 (*optional* — the per-clip gyro sync fine-tune, the plate scan, `tools/residual_stab`; subject tracking also needs the contrib `tracking` + `dnn` modules, `libopencv-contrib-dev`): `libopencv-dev`. CMake skips what needs it with a `STATUS` message when absent; the app still builds. OpenCV 5 builds too (Arch's 5.0.0, checked 2026-10-18): it moved `goodFeaturesToTrack` into the `features` module and `findHomography` / `estimateAffinePartial2D` from `calib3d` into `geometry`, and `CMakeLists.txt` links those by version.
 - **ncnn** 20260526 (*optional* — the privacy blur's plate scan, "Scan clip" in the Privacy tab, and `tools/plate_scan`): not in Debian. `scripts/fetch_ncnn.sh` downloads the pinned release `ncnn-20260526-ubuntu-2404-shared.zip` (<https://github.com/Tencent/ncnn/releases>; Vulkan built in, "simplevk", no `libvulkan` link; needs only `libgomp1` besides libc/libstdc++), checks its SHA-256 and unpacks it into `third_party/ncnn/` (gitignored), where CMake finds it on its own; `-DNCNN_ROOT=<folder>` (`NCNN_ROOT=<folder> scripts/build.sh`) points at another copy. `cmake --install` ships `libncnn.so.1` in `lib/orbis-reframe/` (the binary's `INSTALL_RPATH` is `$ORIGIN/../lib/orbis-reframe`). Without it CMake prints a `STATUS` line; the app can't scan then, but still applies scans it has. After switching copies, clear the cached one: `cmake -U ncnn_DIR -U NCNN_ROOT build`.
@@ -41,7 +41,7 @@ Debian Testing container and builds there):
 ```sh
 sudo apt install g++ cmake ninja-build pkgconf \
     qt6-base-dev qt6-base-dev-tools qt6-multimedia-dev qt6-wayland qt6-svg-plugins \
-    libvulkan-dev glslang-tools nlohmann-json3-dev \
+    libvulkan-dev glslang-tools nlohmann-json3-dev zlib1g-dev \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
     libopencv-dev libopencv-contrib-dev libonnxruntime-dev \
     curl unzip

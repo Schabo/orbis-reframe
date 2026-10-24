@@ -23,6 +23,7 @@
 #include "Theme.h"
 #include "TimelineWidget.h"
 #include "support/TestMedia.h"
+#include "support/TestZip.h"
 
 #include "../core/Autosave.h"
 #include "../core/DataPaths.h"
@@ -42,6 +43,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -1495,6 +1497,70 @@ void testPasteGradeFromElsewhere(const Ctx &c)
     settle();
 }
 
+// Load LUT... takes a camera maker's zip as downloaded: with several .cube
+// files in it the user picks one (the largest Rec.709 one offered first), and
+// it is unpacked into the project's luts/ folder.
+void testLoadLutFromZip(const Ctx &c)
+{
+    auto *lut = find<QComboBox>(c.w, "colourLut");
+    QAction *undo = action(c, "undoAction");
+    if (!lut || !undo || c.timeline->count() < 1)
+        return;
+    std::string cube = "LUT_3D_SIZE 2\n";
+    for (int i = 0; i < 8; ++i)
+        cube += std::to_string(i & 1) + ' ' + std::to_string((i >> 1) & 1) + ' ' +
+                std::to_string((i >> 2) & 1) + '\n';
+    const QString zipFile = QDir(c.dir).filePath(QStringLiteral("Downloads/Cam_LUTs.zip"));
+    QDir().mkpath(QFileInfo(zipFile).absolutePath());
+    {
+        const std::string zip = testzip::makeZip(
+            {{"Cam_LUTs/Cam_to_HLG_s65.cube", "# a larger one\n# really\n" + cube},
+             {"__MACOSX/Cam_LUTs/._Cam_to_Rec709_s33.cube", "x"},
+             {"Cam_LUTs/Cam_to_Rec709_s33.cube", cube}});
+        QFile f(zipFile);
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write(zip.data(), qint64(zip.size()));
+    }
+    CHECK(seekTo(c, 500));
+    settle();
+    QStringList offered;
+    QString first;
+    whenDialog([&](QWidget *w) {
+        auto *files = qobject_cast<QFileDialog *>(w);
+        CHECK(files);
+        if (!files) {
+            w->close();
+            return;
+        }
+        files->findChild<QLineEdit *>(QStringLiteral("fileNameEdit"))->setText(zipFile);
+        whenDialog([&](QWidget *w) {
+            auto *pick = qobject_cast<QInputDialog *>(w);
+            CHECK(pick);
+            if (!pick) {
+                w->close();
+                return;
+            }
+            offered = pick->comboBoxItems();
+            first = pick->textValue();
+            pick->accept();
+        });
+        static_cast<QDialog *>(files)->accept();
+    });
+    const int load = lut->count() - 1; // the picker's last item
+    lut->setCurrentIndex(load);
+    emit lut->activated(load);
+    CHECK(offered == QStringList({QStringLiteral("Cam_to_HLG_s65.cube"),
+                                  QStringLiteral("Cam_to_Rec709_s33.cube")}));
+    CHECK(first == QStringLiteral("Cam_to_Rec709_s33.cube"));
+    const QString picked = c.timeline->clipAt(0).color.lut;
+    CHECK(picked == QDir(c.dir).filePath(QStringLiteral("Ride/luts/Cam_to_Rec709_s33.cube")));
+    CHECK(QFile::exists(picked));
+    CHECK(lut->currentText() == QStringLiteral("Cam_to_Rec709_s33"));
+    undo->trigger();
+    CHECK(c.timeline->clipAt(0).color.lut.isEmpty());
+    settle();
+}
+
 // Changes autosaved but never saved are offered when the project opens.
 void testRecovery(const Ctx &c)
 {
@@ -1743,6 +1809,7 @@ int main(int argc, char **argv)
             testHelpAndSettingsDialogs(c);
             testSaveAs(c);
             testPasteGradeFromElsewhere(c);
+            testLoadLutFromZip(c);
             testMeasurementFailureReasons(c);
             testMenuFileDialogs(c);
             testRecovery(c);

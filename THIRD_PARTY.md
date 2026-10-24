@@ -40,6 +40,7 @@ with them, in `/usr/share/doc/<package>/copyright`.
 | OpenCV (core, imgproc, video, calib3d; contrib: tracking) | `libopencv-*410`, 4.10 | Apache-2.0 | Shared libraries |
 | ONNX Runtime | `libonnxruntime1.23` | MIT | Loaded with `dlopen()` when a voice mode is first used |
 | Vulkan loader | `libvulkan1` | Apache-2.0 | Shared library |
+| zlib | `zlib1g` | Zlib | Shared library (unpacking zipped LUTs) |
 | GNU OpenMP runtime (`libgomp`), C++ runtime (`libstdc++`, `libgcc_s`) | `libgomp1`, `libstdc++6`, `libgcc-s1` | GPL-3.0 with the GCC Runtime Library Exception | Shared libraries (`libgomp` through ncnn) |
 | GNU C library | `libc6` | LGPL-2.1-or-later | Shared library |
 | NVIDIA driver (Vulkan driver, video decode, NVENC) | none needed -- the user's driver | NVIDIA's proprietary license | Loaded at run time through the Vulkan loader and FFmpeg; `libnvidia-encode.so.1` is `dlopen()`ed to check that NVENC is there |

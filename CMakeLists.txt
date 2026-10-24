@@ -27,6 +27,7 @@ endif()
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED) # project file (JSON) serialisation, src/core/Project
+find_package(ZLIB REQUIRED) # unpacking zips (camera makers' LUT downloads), src/core/ZipReader
 find_program(GLSLANG_VALIDATOR NAMES glslangValidator REQUIRED)
 
 enable_testing()
@@ -209,6 +210,11 @@ endif()
 add_library(color_lut STATIC src/core/ColorLut.h src/core/ColorLut.cpp)
 target_include_directories(color_lut PUBLIC src/core)
 
+# --- zip_reader: files out of a .zip (LUT downloads come zipped). zlib only.
+add_library(zip_reader STATIC src/core/ZipReader.h src/core/ZipReader.cpp)
+target_include_directories(zip_reader PUBLIC src/core)
+target_link_libraries(zip_reader PRIVATE ZLIB::ZLIB)
+
 # --- view_projection: the flat view's pose and projection, shared by every
 # implementation of the view (viewport, GPU and CPU export, tracker).
 # Header-only, dependency-free; its GLSL twin is
@@ -252,7 +258,7 @@ add_library(orbis_core STATIC
 set_target_properties(orbis_core PROPERTIES AUTOMOC ON)
 target_include_directories(orbis_core PUBLIC src/core src/stitch src/privacy)
 target_link_libraries(orbis_core PUBLIC Qt6::Core nlohmann_json::nlohmann_json insv color_lut
-    view_projection)
+    view_projection PRIVATE zip_reader)
 
 # --- privacy_data: the privacy blur's plate-scan result + its cache file
 # (src/privacy/PlateScanData). Dependency-free, so the app can always apply a
@@ -778,12 +784,14 @@ endif()
 # regardless of the block above. Run with `ctest` from the build dir (or
 # the binaries directly).
 foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilization_test
-        project_test color_lut_test pane_layout_test view_projection_test)
+        project_test color_lut_test pane_layout_test view_projection_test zip_reader_test)
     add_executable(${model_test} tests/${model_test}.cpp tests/support/ModelTest.h)
     target_include_directories(${model_test} PRIVATE tests)
     target_link_libraries(${model_test} PRIVATE orbis_core)
     add_test(NAME ${model_test} COMMAND ${model_test})
 endforeach()
+# Makes its test zips with zlib.
+target_link_libraries(zip_reader_test PRIVATE zip_reader ZLIB::ZLIB)
 
 # Help > User manual's link per version (release tag or main).
 add_executable(user_manual_test tests/user_manual_test.cpp
@@ -826,7 +834,7 @@ if(Qt6Test_FOUND)
     if(TARGET orbis_app)
         add_executable(main_window_test tests/main_window_test.cpp resources/resources.qrc)
         set_target_properties(main_window_test PROPERTIES AUTOMOC ON AUTORCC ON)
-        target_link_libraries(main_window_test PRIVATE orbis_app test_media Qt6::Test)
+        target_link_libraries(main_window_test PRIVATE orbis_app test_media Qt6::Test ZLIB::ZLIB)
         add_test(NAME main_window_test COMMAND main_window_test)
 
         # The privacy blur's data side against a synthetic plate scan.

@@ -44,6 +44,12 @@ To give a clip a LUT:
 2. In **LUT**, choose **Load LUT…** and pick the `.cube` file, or choose one
    the list already offers.
 
+**Load LUT…** also takes the `.zip` file a camera maker's download comes
+in, without unpacking it first. If the zip holds one LUT, that one is used.
+If it holds several (one per target and size, or one per lens), a list asks
+which one; it starts on the largest Rec.709 one, the right choice for a
+normal export. Only the LUT you pick is taken out of the zip.
+
 orbis-reframe copies the file into the project's `luts/` folder (see
 [Projects and export](projects-and-export.md)), so the project keeps working
 when the original is moved or deleted. After that, the LUT is in the **LUT**
@@ -53,7 +59,10 @@ below): the list offers it for HLG clips, and choosing it copies it into the
 project.
 A project that hasn't been saved yet uses the file where it is, and copies
 it when you save the project. A project file without a folder of its own
-(from before project folders) always uses the file where it is.
+(from before project folders) always uses the file where it is. A LUT
+taken out of a zip has no file of its own to point at, so for those two it
+is put in the `luts` folder of orbis-reframe's data folder
+(`~/.local/share/orbis-reframe/luts`) instead.
 
 The LUT is applied first, then **Exposure**, **Contrast**, **Saturation** and
 **Temperature** adjust the result. So with log footage, choose the LUT first
@@ -62,7 +71,11 @@ and then use the sliders for the fine-tuning.
 **Insta360 I-Log.** Insta360 publishes its LUTs on its
 [I-Log download page](https://www.insta360.com/download/i-log): one for the X5's 8-bit I-Log and one for the
 10-bit I-Log of newer cameras. Use the one for your camera, and only on clips
-filmed in I-Log: on normal clips it makes the colours far too strong.
+filmed in I-Log: on normal clips it makes the colours far too strong. Load
+the downloaded zip as it is. The X5's holds one LUT; the X6's holds six, and
+the one to pick for a normal export is *X6_I-Log_to_Rec709_BT1886_s65_v2*,
+where the list starts (the others are for HDR video, which orbis-reframe
+doesn't export, or a smaller grid).
 
 **HDR (HLG) clips.** Some cameras film in HDR: the Insta360 X6's *Dolby
 Vision* mode, for example, records HLG (the HDR format of broadcast TV).

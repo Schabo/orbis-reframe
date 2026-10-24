@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QString>
 
 // A project's own folder: everything that belongs to one project in one place,
@@ -45,6 +46,32 @@ QString lutsDir(const QString &projectFile);
 // untitled project has no folder: `lutFile` itself. Empty, with *error set,
 // when the copy fails.
 QString importLut(const QString &projectFile, const QString &lutFile, QString *error = nullptr);
+
+// A .cube file in a zip: camera makers publish their LUTs as zip downloads.
+struct ZippedLut {
+    QString name;  // its file name, without the zip's folders
+    QString entry; // its path in the zip
+    qint64 size = 0;
+};
+
+// The .cube files in the zip at `zipFile`, in the zip's order, leaving out
+// what macOS adds to zips it makes (__MACOSX/, "._" and other hidden files).
+// *preferred is the one to offer first: the largest (the finest grid) of the
+// Rec.709 ones, or of all when none says 709 -- makers ship one per target
+// and size, and Rec.709 is what a normal export is in. Empty, with *error
+// set, when the zip can't be read or has no .cube in it.
+QList<ZippedLut> lutsInZip(const QString &zipFile, int *preferred = nullptr, QString *error = nullptr);
+
+// The .cube `entry` unpacked from the zip at `zipFile`, checked to be a LUT
+// we can use, and put into the project's luts/ folder like importLut(). A
+// loose or untitled project has no folder, and a zip leaves no file to point
+// at, so it goes into unpackedLutsDir() then (saving the project as a folder
+// copies it in from there). Empty, with *error set, when that fails.
+QString importLutFromZip(const QString &projectFile, const QString &zipFile, const QString &entry,
+                         QString *error = nullptr);
+
+// Where LUTs from zips go for projects without a folder: <app data>/luts.
+QString unpackedLutsDir();
 
 // Rename the project whose file is `projectFile` to `newName`: a project
 // folder's folder and file (<parent>/<newName>/<newName>.orp), a loose

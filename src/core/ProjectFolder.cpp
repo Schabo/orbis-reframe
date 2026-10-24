@@ -1,15 +1,29 @@
 #include "ProjectFolder.h"
 
 #include "Autosave.h"
+#include "ColorLut.h"
 #include "Project.h"
+#include "ZipReader.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
+
+#include <algorithm>
+#include <memory>
+#include <string>
 
 namespace projectfolder {
 
 namespace {
+
+QString failWith(QString *error, const QString &message)
+{
+    if (error)
+        *error = message;
+    return {};
+}
 
 QString subDir(const QString &projectFile, const char *name)
 {
@@ -78,27 +92,17 @@ QString exportsDir(const QString &projectFile) { return subDir(projectFile, "exp
 QString screenshotsDir(const QString &projectFile) { return subDir(projectFile, "screenshots"); }
 QString lutsDir(const QString &projectFile) { return subDir(projectFile, "luts"); }
 
-QString importLut(const QString &projectFile, const QString &lutFile, QString *error)
+namespace {
+
+// `bytes` written into `dir` as `fileName`, or as "<name> 2.cube", ... when a
+// different file has that name; a file with the same bytes is reused.
+QString writeLut(const QString &dir, const QString &fileName, const QByteArray &bytes, QString *error)
 {
-    const QString dir = lutsDir(projectFile);
-    const QFileInfo src(lutFile);
-    if (dir.isEmpty())
-        return src.absoluteFilePath();
-    if (src.absolutePath() == QFileInfo(dir).absoluteFilePath())
-        return src.absoluteFilePath(); // already there
-    auto fail = [error](const QString &message) {
-        if (error)
-            *error = message;
-        return QString();
-    };
-    QFile in(lutFile);
-    if (!in.open(QIODevice::ReadOnly))
-        return fail(QObject::tr("Can't read %1.").arg(QDir::toNativeSeparators(lutFile)));
-    const QByteArray bytes = in.readAll();
     if (!QDir().mkpath(dir))
-        return fail(QObject::tr("Can't create the folder %1.").arg(QDir::toNativeSeparators(dir)));
+        return failWith(error, QObject::tr("Can't create the folder %1.").arg(QDir::toNativeSeparators(dir)));
+    const QFileInfo src(fileName);
     for (int n = 1;; ++n) {
-        const QString name = n == 1 ? src.fileName()
+        const QString name = n == 1 ? fileName
                                     : QStringLiteral("%1 %2.%3")
                                           .arg(src.completeBaseName())
                                           .arg(n)
@@ -112,20 +116,102 @@ QString importLut(const QString &projectFile, const QString &lutFile, QString *e
         }
         if (!out.open(QIODevice::WriteOnly) || out.write(bytes) != bytes.size() || !out.flush()) {
             out.remove();
-            return fail(QObject::tr("Can't copy the LUT to %1.").arg(QDir::toNativeSeparators(dir)));
+            return failWith(error,
+                            QObject::tr("Can't copy the LUT to %1.").arg(QDir::toNativeSeparators(dir)));
         }
         return dest;
     }
 }
 
-namespace {
-
-QString failWith(QString *error, const QString &message)
+std::unique_ptr<zip::Archive> openZip(const QString &zipFile, QString *error)
 {
-    if (error)
-        *error = message;
-    return {};
+    std::string why;
+    auto archive = zip::Archive::open(zipFile.toStdString(), &why);
+    if (!archive)
+        failWith(error, QObject::tr("%1 can't be opened: %2.")
+                            .arg(QFileInfo(zipFile).fileName(), QString::fromStdString(why)));
+    return archive;
 }
+
+} // namespace
+
+QString importLut(const QString &projectFile, const QString &lutFile, QString *error)
+{
+    const QString dir = lutsDir(projectFile);
+    const QFileInfo src(lutFile);
+    if (dir.isEmpty())
+        return src.absoluteFilePath();
+    if (src.absolutePath() == QFileInfo(dir).absoluteFilePath())
+        return src.absoluteFilePath(); // already there
+    QFile in(lutFile);
+    if (!in.open(QIODevice::ReadOnly))
+        return failWith(error, QObject::tr("Can't read %1.").arg(QDir::toNativeSeparators(lutFile)));
+    return writeLut(dir, src.fileName(), in.readAll(), error);
+}
+
+QList<ZippedLut> lutsInZip(const QString &zipFile, int *preferred, QString *error)
+{
+    if (preferred)
+        *preferred = -1;
+    const auto archive = openZip(zipFile, error);
+    if (!archive)
+        return {};
+    QList<ZippedLut> luts;
+    for (const zip::Entry &e : archive->entries()) {
+        const QString entry = QString::fromStdString(e.name);
+        const QString name = entry.section(QLatin1Char('/'), -1);
+        if (e.isDirectory() || entry.startsWith(QLatin1String("__MACOSX/")) ||
+            name.startsWith(QLatin1Char('.')) ||
+            !name.endsWith(QLatin1String(".cube"), Qt::CaseInsensitive))
+            continue;
+        luts.append({name, entry, qint64(e.size)});
+    }
+    if (luts.isEmpty()) {
+        failWith(error, QObject::tr("%1 has no .cube LUT in it.").arg(QFileInfo(zipFile).fileName()));
+        return {};
+    }
+    if (preferred) {
+        auto rec709 = [](const ZippedLut &l) { return l.name.contains(QLatin1String("709")); };
+        const bool any709 = std::any_of(luts.begin(), luts.end(), rec709);
+        for (int i = 0; i < luts.size(); ++i) {
+            if (any709 && !rec709(luts[i]))
+                continue;
+            if (*preferred < 0 || luts[i].size > luts[*preferred].size)
+                *preferred = i;
+        }
+    }
+    return luts;
+}
+
+QString importLutFromZip(const QString &projectFile, const QString &zipFile, const QString &entry,
+                         QString *error)
+{
+    const auto archive = openZip(zipFile, error);
+    if (!archive)
+        return {};
+    const auto &entries = archive->entries();
+    const auto it = std::find_if(entries.begin(), entries.end(),
+                                 [&](const zip::Entry &e) { return e.name == entry.toStdString(); });
+    const QString name = entry.section(QLatin1Char('/'), -1);
+    std::string text, why;
+    if (it == entries.end() || name.isEmpty() || name.startsWith(QLatin1Char('.')))
+        return failWith(error, QObject::tr("%1 isn't in %2.").arg(entry, QFileInfo(zipFile).fileName()));
+    if (!archive->read(std::size_t(it - entries.begin()), &text, &why) ||
+        !color::parseCube(text, &why))
+        return failWith(error, QObject::tr("%1 can't be used as a LUT: %2.")
+                                   .arg(name, QString::fromStdString(why)));
+    QString dir = lutsDir(projectFile);
+    if (dir.isEmpty())
+        dir = unpackedLutsDir();
+    return writeLut(dir, name, QByteArray::fromStdString(text), error);
+}
+
+QString unpackedLutsDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/luts");
+}
+
+namespace {
 
 // Where project `name` would live beside `projectFile`: its file, and the
 // folder or file that must not exist yet.

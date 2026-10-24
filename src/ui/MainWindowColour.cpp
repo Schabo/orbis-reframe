@@ -1,13 +1,14 @@
 // MainWindow's Colour tab: the clip's grade into the panel and the viewport,
-// copy / paste between clips, and its LUT -- loading a .cube or picking one
-// the app ships, either copied into the project's luts/ folder
-// (projectfolder::importLut).
+// copy / paste between clips, and its LUT -- loading a .cube (or one out of
+// the camera maker's zip) or picking one the app ships, either copied into the
+// project's luts/ folder (projectfolder::importLut / importLutFromZip).
 
 #include "MainWindow.h"
 
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QMessageBox>
 
 #include "TimelineWidget.h"
@@ -184,19 +185,27 @@ void MainWindow::loadLut()
         return;
     const QString picked = QFileDialog::getOpenFileName(
         this, tr("Load LUT"), m_lastLutDir.isEmpty() ? QDir::homePath() : m_lastLutDir,
-        tr("3D LUTs (*.cube);;All files (*)"));
+        tr("3D LUTs (*.cube *.zip);;All files (*)"));
     if (picked.isEmpty())
         return;
     m_lastLutDir = QFileInfo(picked).absolutePath();
-    std::string why;
-    if (!color::loadCube(picked.toStdString(), &why)) {
-        QMessageBox::warning(this, tr("Can't use this LUT"),
-                             tr("%1 can't be used as a LUT: %2.")
-                                 .arg(QFileInfo(picked).fileName(), QString::fromStdString(why)));
-        return;
-    }
     QString error;
-    const QString lut = projectfolder::importLut(m_project->filePath(), picked, &error);
+    QString lut;
+    if (QFileInfo(picked).suffix().compare(QLatin1String("zip"), Qt::CaseInsensitive) == 0) {
+        // The maker's download as it is: pick the .cube out of it.
+        lut = lutFromZip(picked, &error);
+        if (lut.isEmpty() && error.isEmpty())
+            return; // the choice was cancelled
+    } else {
+        std::string why;
+        if (!color::loadCube(picked.toStdString(), &why)) {
+            QMessageBox::warning(this, tr("Can't use this LUT"),
+                                 tr("%1 can't be used as a LUT: %2.")
+                                     .arg(QFileInfo(picked).fileName(), QString::fromStdString(why)));
+            return;
+        }
+        lut = projectfolder::importLut(m_project->filePath(), picked, &error);
+    }
     if (lut.isEmpty()) {
         QMessageBox::warning(this, tr("Can't use this LUT"), error);
         return;
@@ -205,4 +214,34 @@ void MainWindow::loadLut()
     g.lut = lut;
     m_timeline->setClipColor(id, g);
     syncColourPanel(m_timeline->clipById(id)->color); // the new LUT in the list
+}
+
+QString MainWindow::lutFromZip(const QString &zipFile, QString *error)
+{
+    int preferred = 0;
+    const QList<projectfolder::ZippedLut> luts = projectfolder::lutsInZip(zipFile, &preferred, error);
+    if (luts.isEmpty())
+        return {};
+    QString entry = luts.first().entry;
+    if (luts.size() > 1) {
+        // Makers ship one per target (Rec.709, HDR) and grid size, or one per
+        // lens: which one fits is the user's to say. Offered first: the
+        // largest Rec.709 one.
+        QStringList names;
+        for (const projectfolder::ZippedLut &l : luts)
+            names << l.name;
+        for (int i = 0; i < luts.size(); ++i) {
+            if (names.count(luts[i].name) > 1)
+                names[i] = luts[i].entry; // the same name in two folders
+        }
+        bool ok = false;
+        const QString name = QInputDialog::getItem(
+            this, tr("Load LUT"),
+            tr("%1 has %n LUTs. Which one?", nullptr, int(luts.size())).arg(QFileInfo(zipFile).fileName()),
+            names, preferred, false, &ok);
+        if (!ok)
+            return {};
+        entry = luts[names.indexOf(name)].entry;
+    }
+    return projectfolder::importLutFromZip(m_project->filePath(), zipFile, entry, error);
 }
