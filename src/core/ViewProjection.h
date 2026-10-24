@@ -140,14 +140,21 @@ inline constexpr double kAutoCornerStretch = 1.5;
 
 // The distortion Auto gives a diagonal field of view `fov`: the least that
 // keeps the corners' stretch at kAutoCornerStretch, so lines stay as
-// straight as that allows. None up to ~96 deg, 20 % at the default 115,
-// ~46 % at 145, ~75 % at 200, nearing stereographic only at a tiny planet.
+// straight as that allows -- none up to ~96 deg, 20 % at the default 115,
+// ~46 % at 145, ~75 % at 200. That only nears stereographic at 360, so from
+// 270 deg, where the view is a tiny planet with no straight lines left to
+// keep, it eases on to full at 300 and stays there, which lets Auto go as
+// wide as stereographic does.
 template <class T>
 inline T autoDistortion(T fov)
 {
     constexpr T s = T(kAutoCornerStretch);
+    constexpr T kPlanetFrom = T(4.71238898038469); // 270 deg
+    constexpr T kPlanetTo = T(5.235987755982989);  // 300 deg
     const T c = std::cos(fov * T(0.5));
-    return std::clamp((T(1) - s * c) / (s - c), T(0), T(1));
+    const T d = std::clamp((T(1) - s * c) / (s - c), T(0), T(1));
+    const T t = std::clamp((fov - kPlanetFrom) / (kPlanetTo - kPlanetFrom), T(0), T(1));
+    return d + (T(1) - d) * (t * t * (T(3) - T(2) * t));
 }
 
 // The d a pose renders with: its own, or Auto's for its field of view.
@@ -160,10 +167,9 @@ inline double distortionOf(const Pose& pose)
 // The field of view's range, radians diagonal. The widest keeps the corners
 // short of where the projection runs off to infinity (d + cos(theta) = 0):
 // 145 deg rectilinear, 330 deg stereographic (a tiny planet with the sky
-// round it). Auto: 300 deg, within the limit of the distortion it gives
-// there (97 %; the two meet at ~305 deg).
+// round it). Auto: the widest stereographic, its distortion grows with the
+// angle fast enough to stay within it.
 inline constexpr double kMinFov = 0.3490658503988659; // 20 deg
-inline constexpr double kMaxAutoFov = 5.235987755982989; // 300 deg
 template <class T>
 inline T maxFov(T distortion)
 {
@@ -173,7 +179,7 @@ inline T maxFov(T distortion)
 }
 inline double maxFov(const Pose& pose)
 {
-    return pose.distortionIsAuto() ? kMaxAutoFov : maxFov(double(pose.distortion));
+    return maxFov(pose.distortionIsAuto() ? 1.0 : double(pose.distortion));
 }
 
 // The ray angle off the axis that lands at plane radius `r`, planeRadius's

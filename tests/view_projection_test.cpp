@@ -180,8 +180,10 @@ void testAutoDistortion()
     double last = 0.0;
     for (double fov = 20.0; fov < 360.0; fov += 1.0) {
         const double d = view::autoDistortion(fov * deg);
-        CHECK(d >= last && d >= 0.0 && d < 1.0);
+        CHECK(d >= last && d >= 0.0 && d <= 1.0);
         last = d;
+        if (fov > 270.0)
+            continue; // a tiny planet: on to stereographic
         // The corner's shape stretch: rectilinear's where that is under the
         // limit, else held at the limit.
         const double c = std::cos(fov * deg / 2.0);
@@ -191,6 +193,8 @@ void testAutoDistortion()
         else
             CHECK(c <= 0.0 || 1.0 / c <= view::kAutoCornerStretch + 1e-12);
     }
+    CHECK(view::autoDistortion(300.0 * deg) == 1.0);
+    CHECK(view::autoDistortion(330.0 * deg) == 1.0);
     view::Pose p;
     p.fov = 145.0 * deg;
     CHECK(near(view::distortionOf(p), 0.4577, 1e-4));
@@ -211,7 +215,7 @@ void testLimits()
     // Auto's distortion grows with the angle fast enough: every angle up to
     // its limit is within the limit of the distortion it gets.
     view::Pose a;
-    CHECK(near(view::maxFov(a), 300.0 * deg));
+    CHECK(near(view::maxFov(a), 330.0 * deg));
     for (double fov = view::kMinFov; fov <= view::maxFov(a); fov += 0.01)
         CHECK(fov <= view::maxFov(view::autoDistortion(fov)) + 1e-12);
     // A renderer holds the angle in its distortion's range.

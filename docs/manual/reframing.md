@@ -59,10 +59,11 @@ With **Auto** ticked (the default), the distortion follows the field of
 view: it uses the least amount that keeps shapes in the corners from
 stretching more than half again their size, so lines stay as straight as
 that allows. That is none up to about 95°, about 20 % at the default 115°,
-45 % at 145° and 75 % at 200°. The slider shows the amount Auto uses.
+45 % at 145° and 75 % at 200°. From 270° on, where the view is a tiny
+planet, it rises to full at 300°. The slider shows the amount Auto uses.
 Untick **Auto** to set the amount yourself with the slider: 0 % keeps every
 line straight, 100 % keeps every shape. The widest field of view depends on
-the amount: 145° at 0 %, 330° at 100 %, 300° with Auto. Lowering the amount
+the amount: 145° at 0 %, 330° at 100 % or with Auto. Lowering the amount
 narrows a view that is wider than it allows.
 
 For a **tiny planet**, look straight down (pitch −89°) and widen the field
