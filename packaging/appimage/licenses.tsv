@@ -49,7 +49,6 @@ libb2	0.98.1-1.1	libb2-1	CC0-1.0	no	Public-domain dedication.
 libcap2	1:2.75-10+deb13u1	libcap2	BSD-3-Clause OR GPL-2.0-only	no	BSD-3-Clause (the GPL-2.0-only option is not used).
 libffi	3.4.8-2	libffi8	MIT	no	Permissive; the GPL files are build helpers and the test suite.
 libglvnd	1.7.0-1	libglx0, libopengl0	MIT	no	Permissive (uthash BSD-1-Clause). The glvnd fallback, loaded only where the host has none.
-libjpeg-turbo	1:2.1.5-4	libjpeg62-turbo	IJG AND BSD-3-Clause AND Zlib	no	Permissive (the IJG licence is GPL-compatible).
 libpng1.6	1.6.48-1+deb13u6	libpng16-16t64	libpng-2.0	no	Permissive; the advertising-clause files are contrib/gregbook examples, not in the library.
 libva	2.22.0-3	libva2, libva-drm2	MIT	no	Permissive. The advertising-clause files (va/x11) are in libva-x11, not bundled.
 libxau	1:1.0.11-1	libxau6	MIT-open-group	no	Permissive.

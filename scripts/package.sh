@@ -17,6 +17,8 @@
 # The target is this machine's (Debian Testing: debian-testing). Another one
 # (--target debian-13, ubuntu-26.04) is built in a podman container of that release, which
 # installs the build dependencies itself; the source tree is mounted into it.
+# --target appimage builds the AppImage instead (scripts/package_appimage.sh,
+# in a Debian 13 container) into dist/appimage/.
 #
 # The .deb's Maintainer is CPACK_PACKAGE_CONTACT in cmake/Packaging.cmake;
 # ORBIS_MAINTAINER="Name <email>" overrides it for one run.
@@ -25,6 +27,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=targets.sh
 . "$REPO_ROOT/scripts/targets.sh"
+# shellcheck source=package_checks.sh
+. "$REPO_ROOT/scripts/package_checks.sh"
 HOST_TARGET=$(host_target)
 TARGET=$HOST_TARGET
 ALLOW_DIRTY=0
@@ -36,7 +40,8 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $(basename "$0") [--target TARGET] [--allow-dirty]"
             echo "  --target TARGET  ${ORBIS_TARGETS[*]} (default: this machine's, $HOST_TARGET);"
-            echo "                   another one is built in a podman container"
+            echo "                   another one is built in a podman container;"
+            echo "                   appimage: the AppImage, built in a Debian 13 container"
             echo "  --allow-dirty    package uncommitted changes (version gets .dirty;"
             echo "                   the source archive is still HEAD)"
             echo "Output: dist/<target>/ (replaced). Build dir: build-package/<target>/ (rebuilt from scratch)."
@@ -48,7 +53,7 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-target_image "$TARGET" > /dev/null || { echo "Unknown target: $TARGET (${ORBIS_TARGETS[*]})" >&2; exit 1; }
+target_image "$TARGET" > /dev/null || { echo "Unknown target: $TARGET (${ORBIS_TARGETS[*]} appimage)" >&2; exit 1; }
 BUILD_DIR="$REPO_ROOT/build-package/$TARGET"
 DIST_DIR="$REPO_ROOT/dist/$TARGET"
 
@@ -56,6 +61,34 @@ cd "$REPO_ROOT"
 if [[ "$ALLOW_DIRTY" -eq 0 && -n "$(git status --porcelain --untracked-files=no)" ]]; then
     echo "Uncommitted changes -- commit them, or pass --allow-dirty" >&2
     exit 1
+fi
+
+if [[ "$TARGET" == appimage ]]; then
+    # scripts/package_appimage.sh, in Debian 13 with what it needs. Its
+    # runtime is built first, here: that build runs in a container of its own.
+    command -v podman > /dev/null || { echo "podman isn't installed (needed for --target appimage)" >&2; exit 1; }
+    "$REPO_ROOT/scripts/build_appimage_runtime.sh"
+    apt_cache="$REPO_ROOT/tmp/package-apt-cache/$TARGET"
+    mkdir -p "$apt_cache"
+    echo "== $TARGET: building in $(target_image "$TARGET")"
+    podman run --rm -v "$REPO_ROOT:$REPO_ROOT" -v "$apt_cache:/var/cache/apt/archives" \
+        -w "$REPO_ROOT" -e DEBIAN_FRONTEND=noninteractive -e HOME="$HOME" \
+        ${NCNN_ROOT:+-e NCNN_ROOT="$NCNN_ROOT"} \
+        "$(target_image "$TARGET")" bash -c "
+            set -e
+            rm -f /etc/apt/apt.conf.d/docker-clean
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends \
+                g++ cmake ninja-build pkgconf make nasm \
+                qt6-base-dev qt6-base-dev-tools qt6-wayland qt6-svg-plugins \
+                qt6-xdgdesktopportal-platformtheme \
+                libvulkan-dev glslang-tools nlohmann-json3-dev zlib1g-dev \
+                libva-dev libdrm-dev libffmpeg-nvenc-dev \
+                libopencv-dev libopencv-contrib-dev libonnxruntime-dev libglx0 libopengl0 \
+                git curl gpg file desktop-file-utils shared-mime-info zsync \
+                xz-utils ca-certificates > /dev/null
+            scripts/package_appimage.sh"
+    exit $?
 fi
 
 if [[ "$TARGET" != "$HOST_TARGET" ]]; then
@@ -147,46 +180,7 @@ missing=$(ldd "$top/bin/orbis-reframe" | grep "not found" || true)
 grep -q "lib/orbis-reframe/libncnn" <(ldd "$top/bin/orbis-reframe") \
     || { echo "FAIL: libncnn isn't taken from the package's lib/orbis-reframe/" >&2; fail=1; }
 
-for needle in "$REPO_ROOT" "$HOME"; do
-    hits=$(grep -rlF "$needle" "$top" || true)
-    [[ -z "$hits" ]] || { echo "FAIL: '$needle' found in:" >&2; echo "$hits" >&2; fail=1; }
-done
-
-for m in deepfilternet3/enc.onnx vittrack/vittrack.onnx \
-         plates/yolo_v9_s_608_license_plates_heads.ncnn.param; do
-    [[ -f "$top/share/orbis-reframe/models/$m" ]] || { echo "FAIL: model $m missing" >&2; fail=1; }
-done
-[[ -f "$top/share/orbis-reframe/luts/HLG to Rec.709.cube" ]] \
-    || { echo "FAIL: the HLG to Rec.709 LUT is missing" >&2; fail=1; }
-
-# License texts (THIRD_PARTY.md).
-for f in doc/orbis-reframe/LICENSE doc/orbis-reframe/THIRD_PARTY.md \
-         doc/orbis-reframe/LICENSE.lucide doc/orbis-reframe/licenses/ncnn-LICENSE.txt \
-         doc/orbis-reframe/licenses/nlohmann-json-LICENSE.MIT doc/orbis-reframe/licenses/miniaudio-LICENSE \
-         doc/orbis-reframe/licenses/insv-LICENSE-MIT doc/orbis-reframe/licenses/insv-LICENSE-APACHE \
-         orbis-reframe/models/deepfilternet3/LICENSE-MIT orbis-reframe/models/deepfilternet3/LICENSE-APACHE \
-         orbis-reframe/models/vittrack/LICENSE-APACHE orbis-reframe/models/plates/LICENSE-MIT; do
-    [[ -f "$top/share/$f" ]] || { echo "FAIL: license file share/$f missing" >&2; fail=1; }
-done
-
-desktop-file-validate "$top/share/applications/orbis-reframe.desktop" || fail=1
-# The file types compile, and give .orp and .insv the types the desktop entry
-# names.
-mime_db=$(mktemp -d)
-mkdir "$mime_db/packages"
-cp "$top/share/mime/packages/orbis-reframe.xml" "$mime_db/packages/" 2>/dev/null \
-    || { echo "FAIL: share/mime/packages/orbis-reframe.xml missing" >&2; fail=1; }
-if update-mime-database "$mime_db" 2>/dev/null; then
-    for glob in application/x-orbis-reframe-project:\*.orp video/x-insta360-insv:\*.insv; do
-        cut -d: -f2- "$mime_db/globs2" | grep -qxF "$glob" \
-            || { echo "FAIL: no $glob in the file types" >&2; fail=1; }
-        grep -q "^MimeType=.*${glob%%:*};" "$top/share/applications/orbis-reframe.desktop" \
-            || { echo "FAIL: ${glob%%:*} not in the desktop entry's MimeType" >&2; fail=1; }
-    done
-else
-    echo "FAIL: the file types don't compile" >&2; fail=1
-fi
-rm -rf "$mime_db"
+check_install_tree "$top" || fail=1
 
 dpkg-deb --field "$deb" Package Version Depends Recommends Suggests
 [[ $(dpkg-deb --contents "$deb" | grep -c "/usr/bin/orbis-reframe$") -eq 1 ]] \

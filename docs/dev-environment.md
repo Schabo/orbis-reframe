@@ -187,9 +187,58 @@ Don't use Qt's private-ABI classes (`QVulkanDeviceFunctions` and friends,
 `objdump -T ... | grep Qt_6_PRIVATE_API`): the `.deb` then depends on
 `qt6-base-private-abi (= <exact Qt version>)`.
 
+### The AppImage
+
+`./scripts/package.sh --target appimage` builds
+`dist/appimage/orbis-reframe-<version>-x86_64.AppImage` (+ `.zsync`, each
+with a `.sha256`): one file for every distribution with glibc 2.41 or newer,
+built on Debian 13. It builds the runtime (below) on the host, then runs
+`scripts/package_appimage.sh` in a `debian:trixie` container (`.deb`s cached
+in `tmp/package-apt-cache/appimage/`), which, on any Debian 13 system with
+the packages `package.sh` installs, can also run directly:
+
+- our FFmpeg (below), then the same clean Release build with every feature as
+  for the other targets, against it, and ctest. No distribution FFmpeg is
+  installed in the container, so nothing else can be linked.
+  `-DORBIS_ORT_BUILD_PATH=OFF`: ONNX Runtime is loaded by its soname only,
+  so the bundled copy is found and not the build machine's path;
+- `cmake --install` into `build-package/appimage/AppDir/usr/`, the Qt
+  plugins in `packaging/appimage/qt-plugins.txt` (Wayland and its
+  decorations, the xdg-desktop-portal theme, SVG; picked by hand --
+  `linuxdeploy-plugin-qt` would add xcb, Qt Quick and more) and
+  `packaging/appimage/qt.conf`;
+- `linuxdeploy` copies what the program, the plugins and ONNX Runtime need
+  into `usr/lib/` and sets the RUNPATHs, leaving out what its exclude list
+  takes from the system (glibc, `libstdc++`, GL / EGL, fontconfig,
+  freetype, X11 / xcb, `libwayland-client`); the Vulkan loader is removed
+  too. ncnn ends up in `usr/lib/` with the rest;
+- `packaging/appimage/AppRun` starts the program. It sets
+  `LIBVA_DRIVERS_PATH` to the system's VA-API driver folders when unset (the
+  bundled libva only looks where Debian keeps them) and, for each of glvnd's
+  `libOpenGL.so.0`, `libGLX.so.0`, `libGLdispatch.so.0` the system lacks,
+  adds the bundled copy in `usr/lib/glvnd-fallback/<soname>/` to
+  `LD_LIBRARY_PATH`. Nothing else: the bundled libraries come through
+  RUNPATH, so programs the app starts (`xdg-open`) don't inherit them;
+- `appimagetool` packs it behind our runtime with the update information
+  `gh-releases-zsync|Schabo|orbis-reframe|latest|orbis-reframe-*-x86_64.AppImage.zsync`
+  (AppImageUpdate, Gear Lever and AppImageLauncher read it; the app never
+  looks for updates) and `zsyncmake` writes the `.zsync`;
+- checks on the unpacked AppImage: `AppRun`, `--version`, the update
+  information, every bundled ELF file's libraries found (`ldd` with no
+  `LD_LIBRARY_PATH`), FFmpeg (ours, by its configure line), ncnn and ONNX
+  Runtime from `usr/lib/`, no Vulkan loader, the Qt plugins, the glvnd
+  fallback, and the tarball's checks (`scripts/package_checks.sh`: no
+  source-tree / `$HOME` strings, models, licence files, desktop entry, file
+  types).
+
+linuxdeploy and appimagetool are pinned by SHA-256 to tagged releases in
+`packaging/appimage/tools.sha256` and downloaded into
+`third_party/appimage-tools/`; both are AppImages and run with
+`APPIMAGE_EXTRACT_AND_RUN=1`, as a container has no FUSE.
+
 ### Our own FFmpeg
 
-The `.deb`s and tarballs link the system's FFmpeg. The planned AppImage
+The `.deb`s and tarballs link the system's FFmpeg. The AppImage
 bundles our own build instead, the same everywhere:
 `scripts/build_ffmpeg.sh` builds the pinned release (9.0.2) into
 `third_party/ffmpeg/<version>-<os>/usr/` (gitignored; `<os>` is

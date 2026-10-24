@@ -8,6 +8,11 @@
 #
 # cmake/Packaging.cmake works the target out the same way when configured
 # without -DORBIS_PACKAGE_TARGET.
+#
+# The AppImage (scripts/package_appimage.sh) is a target of its own,
+# `appimage`, outside ORBIS_TARGETS: one file for every distribution, built
+# in Debian 13 with the libraries that differ between distributions bundled,
+# and no .deb or tarball.
 
 ORBIS_TARGETS=(debian-testing debian-13 ubuntu-26.04)
 
@@ -31,6 +36,7 @@ target_image() {
         debian-testing) echo docker.io/library/debian:testing ;;
         debian-13) echo docker.io/library/debian:trixie ;;
         ubuntu-26.04) echo docker.io/library/ubuntu:26.04 ;;
+        appimage) echo docker.io/library/debian:trixie ;;
         *) return 1 ;;
     esac
 }

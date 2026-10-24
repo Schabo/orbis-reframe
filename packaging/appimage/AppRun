@@ -1,0 +1,50 @@
+#!/bin/sh
+# The AppImage's entry point: starts usr/bin/orbis-reframe from wherever the
+# image is mounted (or unpacked with --appimage-extract). The bundled
+# libraries are found through the binary's RUNPATH, so nothing goes on
+# LD_LIBRARY_PATH for the programs the app starts (xdg-open, a file manager)
+# to inherit -- only the glvnd fallback below, on a system that has none of
+# those libraries itself.
+here=$(dirname "$(readlink -f "$0")")
+
+# The bundled libva looks for VA-API drivers only where Debian keeps them;
+# other distributions keep them in /usr/lib64/dri (Fedora, openSUSE) or
+# /usr/lib/dri (Arch). Give it the host's folders, unless the user has set
+# them.
+if [ -z "${LIBVA_DRIVERS_PATH:-}" ]; then
+    dirs=
+    for d in /usr/lib/x86_64-linux-gnu/dri /usr/lib64/dri /usr/lib/dri; do
+        if [ -d "$d" ]; then dirs=${dirs:+$dirs:}$d; fi
+    done
+    if [ -n "$dirs" ]; then export LIBVA_DRIVERS_PATH="$dirs"; fi
+fi
+
+# Qt Gui links glvnd's libOpenGL.so.0 and libGLX.so.0. A system with Mesa or
+# the NVIDIA driver has them, and the host's must be used then (one glvnd
+# dispatching to the host's drivers); without them Qt doesn't load at all. So
+# each library in usr/lib/glvnd-fallback/<soname>/ is added only when the
+# host lacks that one. The loader's cache says what the host has; without
+# ldconfig (some minimal systems), the usual library folders.
+cache=
+for c in ldconfig /sbin/ldconfig /usr/sbin/ldconfig; do
+    if command -v "$c" > /dev/null 2>&1 && cache=$("$c" -p 2> /dev/null); then break; fi
+    cache=
+done
+host_has() {
+    if [ -n "$cache" ]; then
+        printf '%s\n' "$cache" | grep -q "^[[:space:]]*$1 (libc6,x86-64)"
+        return
+    fi
+    for d in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /lib/x86_64-linux-gnu /lib64; do
+        if [ -e "$d/$1" ]; then return 0; fi
+    done
+    return 1
+}
+for d in "$here"/usr/lib/glvnd-fallback/*; do
+    if [ -d "$d" ] && ! host_has "$(basename "$d")"; then
+        LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}$d
+        export LD_LIBRARY_PATH
+    fi
+done
+
+exec "$here/usr/bin/orbis-reframe" "$@"

@@ -368,7 +368,13 @@ if(FFMPEG_FOUND)
         string(REGEX MATCH "[0-9]+$" ORT_API_MINOR "${ORT_API_LINE}")
         set(ORBIS_ORT_PACKAGE libonnxruntime1.${ORT_API_MINOR})
         target_compile_definitions(insv_demux PUBLIC INSV_ORT_PACKAGE="${ORBIS_ORT_PACKAGE}")
-        if(ONNXRUNTIME_LIBRARY)
+        # The library found here is tried first (an ONNXRUNTIME_ROOT copy
+        # isn't on the loader's path). A bundle that carries its own (the
+        # AppImage) turns it off, so the bundled one loads, not the build
+        # machine's path on the user's system.
+        option(ORBIS_ORT_BUILD_PATH
+            "Try the ONNX Runtime library found at build time before the loader's search" ON)
+        if(ONNXRUNTIME_LIBRARY AND ORBIS_ORT_BUILD_PATH)
             target_compile_definitions(insv_demux PRIVATE INSV_ORT_LIBRARY="${ONNXRUNTIME_LIBRARY}")
         endif()
     else()

@@ -1,0 +1,23 @@
+# The Qt plugins the AppImage bundles, relative to Qt's plugin folder
+# (qtpaths6 --query QT_INSTALL_PLUGINS); scripts/package_appimage.sh copies
+# them to usr/plugins/ and fails on one that is missing. Picked by hand, not
+# by linuxdeploy-plugin-qt, which also bundles xcb, Qt Quick and the Wayland
+# compositor plugins. Wayland only, like the app.
+
+# The Wayland platform, its window shell and the EGL client integration.
+platforms/libqwayland-generic.so
+platforms/libqwayland-egl.so
+wayland-shell-integration/libxdg-shell.so
+wayland-graphics-integration-client/libqt-plugin-wayland-egl.so
+# Window decorations drawn by Qt, for compositors without server-side ones
+# (GNOME).
+wayland-decoration-client/libbradient.so
+wayland-decoration-client/libadwaita.so
+# Native file dialogs through xdg-desktop-portal.
+platformthemes/libqxdgdesktopportal.so
+# SVG icons (the UI's). PNG, the only format the app writes, is built into
+# Qt Gui.
+iconengines/libqsvgicon.so
+imageformats/libqsvg.so
+# Dead keys and compose sequences in text fields.
+platforminputcontexts/libcomposeplatforminputcontextplugin.so
