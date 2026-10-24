@@ -42,7 +42,8 @@ discussion in an issue first, not a pull request.
   as recorded; they don't convert transfer curves themselves.
 - **Releases**: one build per target on its own system libraries (Debian
   Testing, Debian 13, Ubuntu 26.04), as a tarball and a `.deb`. No Flatpak;
-  a portable AppImage is a stretch goal ([roadmap](roadmap.md)).
+  a portable AppImage built on Debian 13 is planned beside them
+  ([roadmap](roadmap.md)).
 
 ## Modules
 
