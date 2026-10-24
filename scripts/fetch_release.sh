@@ -45,5 +45,7 @@ if [[ -f "$download/orbis-reframe-$version-x86_64.AppImage" ]]; then
     mkdir -p "$dir"
     cp "$download/orbis-reframe-$version-x86_64.AppImage"* "$download/orbis-reframe-$version-appimage-sources.txt"* \
         "$download"/ffmpeg-* "$download"/type2-runtime-* "$dir/"
+    # A download isn't executable; package.sh leaves the AppImage so.
+    chmod +x "$dir/orbis-reframe-$version-x86_64.AppImage"
     echo "== appimage: $(ls "$dir" | tr '\n' ' ')"
 fi

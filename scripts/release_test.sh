@@ -131,6 +131,7 @@ appimages=("$DIST_DIR"/orbis-reframe-*-x86_64.AppImage)
 shopt -u nullglob
 if [[ ${#appimages[@]} -gt 0 ]]; then
     [[ ${#appimages[@]} -eq 1 ]] || die "$DIST_DIR has more than one AppImage"
+    [[ -x "${appimages[0]}" ]] || die "${appimages[0]} isn't executable (chmod +x, as a user would)"
     app=$(basename "${appimages[0]}")
     version=${app#orbis-reframe-}
     version=${version%-x86_64.AppImage}
