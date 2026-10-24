@@ -45,6 +45,9 @@ A release is:
   for another folder).
 - Push access to `github.com/Schabo/orbis-reframe` and the GitHub CLI,
   `gh auth login` (the draft is only visible to maintainers).
+- `jq`, and a folder outside the repository for the copy of the Debian
+  sources the AppImage links (step 9), kept for as long as any release's
+  AppImage is offered.
 - Only for building packages yourself (step 4, optional): the build
   dependencies from `docs/dev-environment.md`, **all of them** -- a release
   has every feature, and `scripts/package.sh` refuses to configure if one is
@@ -74,6 +77,12 @@ A release is:
    a bundled one like ncnn, a model, icons), update `THIRD_PARTY.md` and
    its license text (`packaging/licenses/`, or the model's folder);
    `scripts/package.sh` checks that the listed license files are packaged.
+   For the AppImage, a library it bundles that is new, or at a new upstream
+   version, needs its row in `packaging/appimage/licenses.tsv` reviewed
+   first (the file's header says how), then
+   `scripts/appimage_third_party.sh --update` for `THIRD_PARTY.md`'s table.
+   `package.sh --target appimage` stops until both are done, so try it
+   before tagging (step 4) when Debian 13 or the bundle changed.
 
 ## 3. Bump the version and tag
 
@@ -117,7 +126,8 @@ still be undone. Either of:
   ./scripts/package.sh                         # dist/debian-testing/
   ./scripts/package.sh --target debian-13      # in a debian:trixie container
   ./scripts/package.sh --target ubuntu-26.04   # in an ubuntu:26.04 container
-  scripts/release_test.sh --target debian-testing   # and the other two
+  ./scripts/package.sh --target appimage       # in a debian:trixie container
+  scripts/release_test.sh --target debian-testing   # and the other two, then appimage
   ```
 
   `package.sh` builds from scratch in `build-package/<target>/` (Release,
@@ -296,6 +306,21 @@ Publishing locks its files and tag for good.
   (`.github/workflows/pages.yml`).
 - From the next commit on, builds call themselves `Y+1.gabc1234`, so a
   dev build is never mistaken for the release.
+- Keep a copy of the Debian sources the AppImage links, in case
+  snapshot.debian.org loses them while the release is offered:
+
+  ```sh
+  scripts/archive_appimage_sources.sh dist/appimage/orbis-reframe-Y-appimage-sources.txt <archive folder>
+  ```
+
+  It downloads each linked source package version into
+  `<archive folder>/<package>/<version>/`, checked against snapshot's
+  hashes; versions an earlier release already stored are kept, so a release
+  usually adds little. FFmpeg's and the runtime's sources are on the release
+  itself. If snapshot.debian.org ever goes away, host the sources the
+  published AppImages link from this copy, on a release of their own, and
+  point the old releases' notes to it: published releases can't take new
+  files, nor lose their AppImage.
 
 ## Between releases: the AppImage's libraries
 

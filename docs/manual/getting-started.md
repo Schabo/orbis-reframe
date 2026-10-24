@@ -31,7 +31,9 @@ you have one, short clips from it help add it:
 
 > **Early software.** orbis-reframe has been built and tested on one computer
 > so far (Debian Testing, an NVIDIA RTX 5070, the Sway desktop; the Debian 13
-> and Ubuntu 26.04 builds in containers of those systems on that computer).
+> and Ubuntu 26.04 builds in containers of those systems on that computer,
+> the AppImage in containers of Debian 13, Ubuntu 26.04, Fedora 44, Arch and
+> openSUSE Tumbleweed).
 > One contributor has also run it on an AMD Radeon. Other setups that meet
 > the requirements below should work but haven't been tried.
 
@@ -39,7 +41,7 @@ you have one, short clips from it help add it:
 
 | | Needed |
 |---|---|
-| **Operating system** | Linux, 64-bit (x86_64): **Debian 13** ("trixie"), **Debian Testing** or **Ubuntu 26.04 LTS**. There is a separate build for each, because each needs the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8). Download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ. To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. |
+| **Operating system** | Linux, 64-bit (x86_64). On **Debian 13** ("trixie"), **Debian Testing** and **Ubuntu 26.04 LTS** there's a package for each, built on the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8); download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ. To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. **Other distributions** (Fedora, Arch, openSUSE Tumbleweed, ...): the **AppImage**, from version 0.6.0 on, which brings its own libraries and runs where the system's C library is version 2.41 or newer (`ldd --version` prints it on its first line). |
 | **Desktop session** | **Wayland**: Sway, GNOME, KDE Plasma or another Wayland desktop. An X11 session doesn't work: orbis-reframe exits at startup instead of falling back to X11. |
 | **Graphics card** | A card with **Vulkan**, including Vulkan video decoding. Export uses the card's hardware encoder: NVENC on NVIDIA, VAAPI or Vulkan video on AMD and Intel. **NVIDIA** with the proprietary driver is what orbis-reframe is tested on (an RTX 5070, driver 595); other NVIDIA cards from the GTX 16 / RTX 20 series onwards should work. **AMD** and **Intel** use the Mesa drivers that come with the system, and are supported best-effort: a contributor has tested playback and export on an AMD Radeon 8060S (Mesa 26.2); other AMD cards and Intel GPUs haven't been tried. If something doesn't work on yours, please [report it](#if-it-doesnt-start). |
 | **Memory** | 16 GB RAM or more. 8K clips are large. |
@@ -63,6 +65,11 @@ If `vulkaninfo` above showed your card, the driver is installed. With an
 NVIDIA card, check that the export encoder is installed too
 (`libnvidia-encode1`, below), then go on to step 3. With AMD or Intel, see
 [AMD and Intel](#amd-and-intel).
+
+The commands below are for Debian and Ubuntu. On other distributions,
+install the driver as your distribution's documentation says; orbis-reframe
+needs the same parts: the Vulkan driver, and for export NVIDIA's encoder
+library (NVENC) or Mesa's VA-API driver.
 
 ### NVIDIA
 
@@ -137,7 +144,8 @@ page](https://github.com/Schabo/orbis-reframe/releases). There's a build for
 Debian 13, one for Debian Testing and one for Ubuntu 26.04 (step 1), and each
 comes in two forms.
 Both forms contain the same program and use the system's own Qt, FFmpeg,
-Vulkan and OpenCV libraries:
+Vulkan and OpenCV libraries. For other distributions there's the AppImage
+([option C](#option-c-the-appimage)), one file for all of them.
 
 | | Debian 13 | Debian Testing | Ubuntu 26.04 |
 |---|---|---|---|
@@ -270,6 +278,60 @@ it.
 
 To remove the tarball version, delete its folder.
 
+### Option C: the AppImage
+
+From version 0.6.0 on, each release also has
+`orbis-reframe-<version>-x86_64.AppImage`: one file that runs on any 64-bit
+distribution whose C library (glibc) is version 2.41 or newer, such as
+Debian 13, Ubuntu 26.04, Fedora 42 and newer, Arch and openSUSE Tumbleweed.
+It works on Debian and Ubuntu too, but there the `.deb` fits in better.
+
+The AppImage carries the libraries that differ between distributions: Qt,
+FFmpeg, OpenCV, ONNX Runtime and what they need. It takes from your system
+only the C and C++ libraries, the graphics driver (step 2), the Vulkan
+loader, the OpenGL / EGL libraries, fonts (fontconfig, freetype, harfbuzz),
+`libX11`, `libwayland-client` and the sound server's client library (for
+sound). Every desktop installation has these.
+
+Make the file executable and start it:
+
+```sh
+chmod +x orbis-reframe-<version>-x86_64.AppImage
+./orbis-reframe-<version>-x86_64.AppImage
+```
+
+(or set *Allow executing file as program* in the file's properties in your
+file manager, then double-click it). Keep it wherever you like, for example
+in `~/Applications`.
+
+The AppImage mounts itself with FUSE, which needs the `fusermount3` program
+from the `fuse3` package. Desktop installations usually have it. If it's
+missing, the AppImage says *"No suitable fusermount binary found"*: install
+`fuse3` (`sudo apt install fuse3`, `sudo dnf install fuse3`, `sudo pacman
+-S fuse3`, `sudo zypper install fuse3`), or start it with
+`--appimage-extract-and-run`, which unpacks it into a temporary folder
+each time instead.
+
+On its own the AppImage doesn't appear in the application menu and doesn't
+register itself with the file manager. A tool such as
+[Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) (GNOME) or
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) adds it
+to the menu, and can check for a new version and download it (the AppImage
+tells them where its releases are; orbis-reframe itself never goes online to
+check). Without one, download the new version from the
+releases page as before.
+
+To remove the AppImage, delete the file (and its menu entry, if a tool
+added one).
+
+The licences of everything the AppImage contains, and where the source code
+of each part is, are inside it: `./orbis-reframe-<version>-x86_64.AppImage
+--appimage-extract` unpacks it into `squashfs-root/`, and
+`squashfs-root/usr/share/doc/orbis-reframe/` has them (`THIRD_PARTY.md`,
+`licenses/`). To run it with a changed version of one of its LGPL
+libraries, put that library in place of the one in `squashfs-root/usr/lib/`
+and start `squashfs-root/AppRun`.
+
 ## 4. Start orbis-reframe
 
 - **`.deb`:** choose **orbis-reframe** in your desktop's application menu,
@@ -280,6 +342,10 @@ To remove the tarball version, delete its folder.
   ```sh
   ~/Applications/orbis-reframe-<version>-<target>-x86_64/orbis-reframe
   ```
+
+- **AppImage:** run the file, or choose it in the menu if a tool added it
+  there (option C). In the commands below, use the AppImage's path in place
+  of `orbis-reframe`.
 
 It opens on the **project library**, the list of your projects (empty the
 first time). You can also give it a clip or a project file to open straight
@@ -296,8 +362,8 @@ choose **Open With** > **orbis-reframe**. A clip opens in a new, unsaved
 project, as from the command line. If double-clicking an `.insv` file starts a
 video player instead (some file managers keep the default you chose for
 all videos), choose orbis-reframe as the default for *Insta360 360° video*
-in the file manager's *Open With* dialog. The tarball doesn't register itself with
-the file manager.
+in the file manager's *Open With* dialog. The tarball and the AppImage don't
+register themselves with the file manager.
 
 `orbis-reframe --version` prints the version without opening a window.
 
@@ -354,7 +420,9 @@ Start orbis-reframe from a terminal so you can see its messages.
 
 | Message or symptom | Cause and fix |
 |---|---|
-| `error while loading shared libraries: libXYZ.so…` | A library is missing (tarball only: the `.deb` installs them). Use the `ldd` check from step 3, option B, to find which ones. |
+| `error while loading shared libraries: libXYZ.so…` | A library is missing (tarball only: the `.deb` installs them). Use the `ldd` check from step 3, option B, to find which ones. With the AppImage, it's one of the few libraries it takes from the system (step 3, option C): install the package that has it, e.g. `libharfbuzz.so.0` is in `harfbuzz` or `libharfbuzz0b`. |
+| AppImage: *"No suitable fusermount binary found"* or *"Cannot mount AppImage"* | FUSE is missing: install `fuse3`, or start it with `--appimage-extract-and-run` (step 3, option C). |
+| AppImage: ``version `GLIBC_2.41' not found`` | The system is older than the AppImage supports (glibc 2.41, step 1). |
 | `Could not load the Qt platform plugin "wayland"` | Install `qt6-wayland`. If it's installed, you are probably in an X11 session: log out and choose a Wayland session on the login screen. |
 | *"Vulkan couldn't be started"* or *"Vulkan found no graphics card"* | Vulkan isn't working. Check that `vulkaninfo --summary` lists your card. If it doesn't, install the card's Vulkan driver (step 2: `nvidia-vulkan-icd` for NVIDIA, `mesa-vulkan-drivers` for AMD and Intel) and restart. |
 | At startup: *"Your graphics card or driver can't decode video on the GPU"* | The card or driver has no Vulkan video decoding. orbis-reframe still works, but decodes on the processor, so 5.7K and 8K clips play slowly. On NVIDIA, update the driver; cards older than the GTX 16 / RTX 20 series can't decode on the GPU. On AMD and Intel, decoding needs a newer Mesa (step 2); `vulkaninfo \| grep video_decode` shows whether the driver has it. |

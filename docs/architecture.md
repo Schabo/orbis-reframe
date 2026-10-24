@@ -41,9 +41,15 @@ discussion in an issue first, not a pull request.
   (strength) or removes. The stitch and decode deliver the camera's picture
   as recorded; they don't convert transfer curves themselves.
 - **Releases**: one build per target on its own system libraries (Debian
-  Testing, Debian 13, Ubuntu 26.04), as a tarball and a `.deb`. No Flatpak;
-  a portable AppImage built on Debian 13 is planned beside them
-  ([roadmap](roadmap.md)).
+  Testing, Debian 13, Ubuntu 26.04), as a tarball and a `.deb`; beside them
+  an AppImage for every distribution with glibc 2.41 or newer, built on
+  Debian 13 with the libraries that differ between distributions bundled
+  (Qt, OpenCV and ONNX Runtime from Debian 13, FFmpeg our own LGPL build;
+  the drivers, Vulkan loader, GL / EGL and fonts from the system). Every
+  bundled library is mapped to its package and checked against a reviewed
+  licence list at build time, and a weekly job fails when one has a
+  security update, which then ships as a patch release
+  (`docs/dev-environment.md`, "The AppImage"). No Flatpak.
 
 ## Modules
 

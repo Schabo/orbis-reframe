@@ -24,7 +24,9 @@ fully supported, the **X6** and **ONE X2** experimentally.
 
 **Download:** a `.deb` and a tarball for Debian Testing, Debian 13 and
 Ubuntu 26.04 LTS on the
-[releases page](https://github.com/Schabo/orbis-reframe/releases). The
+[releases page](https://github.com/Schabo/orbis-reframe/releases); from
+0.6.0 on also an AppImage for other distributions with glibc 2.41 or newer
+(Fedora, Arch, openSUSE Tumbleweed, ...). The
 [user manual](docs/manual/README.md) starts with the
 [getting-started guide](docs/manual/getting-started.md): what your computer
 needs and how to install. **Found a problem?**
@@ -201,8 +203,9 @@ list and the pinned versions.
 ./scripts/build.sh -r       # build and run
 ./scripts/package.sh        # release tarball + .deb into dist/debian-testing/ (all features)
 ./scripts/package.sh --target debian-13      # the same for Debian 13 (or ubuntu-26.04), in a container
+./scripts/package.sh --target appimage       # the AppImage into dist/appimage/, built in a Debian 13 container
 ./scripts/fetch_release.sh vX.Y.Z               # or fetch a draft release's packages into dist/
-./scripts/release_test.sh [--target debian-13]  # test them in GPU containers (podman, docs/RELEASE.md)
+./scripts/release_test.sh [--target debian-13]  # test them in GPU containers (podman, docs/RELEASE.md; --target appimage too)
 ```
 
 ## Documentation

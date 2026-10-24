@@ -197,21 +197,6 @@ each is in its document in [`formats/`](formats/README.md).
   wanted.
 - **Arch Linux package**: a pacman package on the release, built from a
   PKGBUILD in the repository (no AUR).
-- **AppImage**: one portable build for every distribution with glibc 2.41
-  or newer (Debian 13, Ubuntu 26.04, current Fedora, Arch, Tumbleweed),
-  built on Debian 13 and released beside the `.deb`s, with every feature.
-  Qt comes from Debian 13's packages; FFmpeg is our own build of the
-  latest release: LGPL only (no `--enable-gpl`: the export uses hardware
-  encoders, not x264 / x265), never `--enable-nonfree` (NVENC doesn't need
-  it), shared libraries. The NVIDIA, Mesa and VA drivers come from the
-  system. Each release carries the licence texts of everything it bundles
-  and makes the source of every (L)GPL part available: Debian's packages
-  linked by exact version on snapshot.debian.org, our FFmpeg's and the
-  runtime's source on the release. It is rebuilt when a bundled library
-  gets a security fix. Qt, OpenCV and ONNX Runtime come from Debian 13's
-  packages (Debian's ONNX Runtime has no telemetry). A test build ran the
-  full GPU smoke test on all five distributions (about 100 MB). Planned
-  for the next release.
 - **GUI tests**: `objectName`s on the remaining actions and widgets, and the
   offscreen main-window test grown panel by panel.
 
