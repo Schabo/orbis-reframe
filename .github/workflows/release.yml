@@ -1,8 +1,9 @@
 # Builds a release (docs/RELEASE.md) when its tag is pushed: per target
 # (scripts/targets.sh) scripts/package.sh in a clean container of that
 # release -- the same script as by hand -- then the .deb installed in a fresh
-# one, then a *draft* GitHub release with the files, their build provenance
-# and the version's CHANGELOG.md section. Publishing stays by hand, after the
+# one; the AppImage (scripts/package.sh --target appimage) and its check in
+# bare Debian 13 and Ubuntu 26.04; then a *draft* GitHub release with the
+# files, their build provenance and the version's CHANGELOG.md section. Publishing stays by hand, after the
 # GPU test of the draft's packages (scripts/release_test.sh).
 #
 # By hand (workflow_dispatch) it's a dry run: build and check the packages of
@@ -84,6 +85,95 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Not in a container: scripts/package.sh builds the AppImage's runtime
+  # with podman and the machine's /dev/fuse, then everything else in its own
+  # debian:trixie container -- as by hand, so the bundle is built against
+  # Debian 13's glibc, not this machine's.
+  package-appimage:
+    name: Package (appimage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # git describe needs the tags for the version
+      - name: The tag is the version
+        if: github.ref_type == 'tag'
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          grep -qx "version = \"$v\"" .cz.toml || { echo ".cz.toml isn't at $v" >&2; exit 1; }
+          sed -nE 's/^project\(orbis-reframe VERSION ([0-9.]+).*/\1/p' CMakeLists.txt | grep -qx "$v" \
+              || { echo "CMakeLists.txt's project() isn't at $v" >&2; exit 1; }
+      # Our FFmpeg and the runtime, each reused by its script when its
+      # configuration is unchanged (the runtime's hash is checked on reuse).
+      - name: Cache FFmpeg and the runtime
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            third_party/ffmpeg
+            third_party/appimage-runtime
+          key: appimage-${{ hashFiles('scripts/build_ffmpeg.sh', 'scripts/build_appimage_runtime.sh') }}
+      - name: Fetch ncnn
+        run: scripts/fetch_ncnn.sh
+      - name: Build the AppImage
+        run: scripts/package.sh --target appimage
+      - name: The AppImage carries the tag's version
+        if: github.ref_type == 'tag'
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          test -f "dist/appimage/orbis-reframe-$v-x86_64.AppImage" \
+              || { ls dist/appimage; echo "built a version other than $v" >&2; exit 1; }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-appimage
+          path: dist/appimage/
+          if-no-files-found: error
+          retention-days: 14
+
+  # The AppImage in bare images with only the libraries it takes from the
+  # system (no glvnd's libOpenGL / libGLX: the bundled fallback is used):
+  # every bundled library resolves, --version is right.
+  install-appimage:
+    name: Install (appimage, ${{ matrix.image }})
+    needs: package-appimage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ["docker.io/library/debian:trixie", "docker.io/library/ubuntu:26.04"]
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-appimage
+          path: dist
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -c ./*.sha256
+      - name: The system's part
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends libegl1 libx11-6 libdrm2 libfontconfig1 \
+              libfreetype6 libharfbuzz0b libvulkan1 libwayland-client0 > /dev/null
+      - name: Check it
+        working-directory: dist
+        run: |
+          app=$(ls orbis-reframe-*-x86_64.AppImage)
+          chmod +x "$app"
+          "./$app" --appimage-extract > /dev/null
+          fallback=$(ls -d "$PWD"/squashfs-root/usr/lib/glvnd-fallback/* | tr '\n' :)
+          missing=$(find squashfs-root/usr -type f \( -name '*.so*' -o -path '*/bin/*' \) ! -path '*/glvnd-fallback/*' \
+              -exec sh -c '[ "$(head -c 4 "$1" | tail -c 3)" = ELF ] || exit 0
+                  LD_LIBRARY_PATH=$2 ldd "$1" | grep "not found" | sed "s|^|$1: |"' _ {} "$fallback" \;)
+          [ -z "$missing" ] || { echo "libraries not found:"; echo "$missing"; exit 1; } >&2
+          # No FUSE in a container.
+          reported=$(APPIMAGE_EXTRACT_AND_RUN=1 "./$app" --version)
+          v=${app#orbis-reframe-}
+          v=${v%-x86_64.AppImage}
+          echo "$reported"
+          [ "$reported" = "orbis-reframe $v" ] || { echo "expected orbis-reframe $v" >&2; exit 1; }
+
   # The .deb in a fresh container of its release: apt finds every dependency,
   # every library resolves, --version is right.
   install:
@@ -125,7 +215,7 @@ jobs:
 
   release:
     name: Draft release
-    needs: install
+    needs: [install, install-appimage]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -145,13 +235,16 @@ jobs:
           cp dist/dist-debian-testing/* release/
           cp dist/dist-debian-13/*.deb13_* dist/dist-debian-13/*-debian-13-* release/
           cp dist/dist-ubuntu-26.04/*.ubuntu26.04_* dist/dist-ubuntu-26.04/*-ubuntu-26.04-* release/
+          # The AppImage, its .zsync, sources list and the sources it hosts.
+          cp dist/dist-appimage/* release/
           ls -l release
-          [ "$(ls release | wc -l)" -eq 14 ] || { echo "expected 14 files" >&2; exit 1; }
+          [ "$(ls release | wc -l)" -eq 26 ] || { echo "expected 26 files" >&2; exit 1; }
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             release/*.tar.xz
             release/*.deb
+            release/*.AppImage
       # The version's section of CHANGELOG.md (cz bump wrote it).
       - name: Release notes
         run: |

@@ -1,0 +1,49 @@
+# Weekly: is the latest release's AppImage still current? Fails when Debian
+# 13 has a security update for a library it bundles, or FFmpeg a newer point
+# release (scripts/check_appimage_updates.sh); a failure means a patch
+# release (docs/RELEASE.md). By hand (workflow_dispatch) any time.
+name: AppImage updates
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Bundled libraries current
+    runs-on: ubuntu-latest
+    container: docker.io/library/debian:trixie
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends curl ca-certificates jq > /dev/null
+      # The latest published release (no drafts or pre-releases), as the
+      # AppImage's update information finds it.
+      - name: The latest release's bundled.txt
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          json=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest" || true)
+          url=$(printf %s "$json" | jq -r '[.assets[]? | select(.name | endswith("-x86_64.AppImage"))][0].browser_download_url // empty')
+          if [ -z "$url" ]; then
+              echo "::notice::The latest release ($(printf %s "$json" | jq -r '.tag_name // "none"')) has no AppImage"
+              exit 0
+          fi
+          echo "Checking $url"
+          curl -fsSL -o app.AppImage "$url"
+          chmod +x app.AppImage
+          ./app.AppImage --appimage-extract usr/share/doc/orbis-reframe/bundled.txt > /dev/null
+          echo "bundled=squashfs-root/usr/share/doc/orbis-reframe/bundled.txt" >> "$GITHUB_OUTPUT"
+      - name: Check it
+        if: steps.release.outputs.bundled != ''
+        run: scripts/check_appimage_updates.sh "${{ steps.release.outputs.bundled }}"

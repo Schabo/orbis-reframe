@@ -178,7 +178,14 @@ checks are left out.
 For a release, the release workflow (`.github/workflows/release.yml`) runs
 `package.sh` per target on GitHub's runners when the tag is pushed and makes
 a draft release; `scripts/fetch_release.sh vX.Y.Z` downloads the draft's
-files into `dist/<target>/` for `release_test.sh`.
+files into `dist/<target>/` (and `dist/appimage/`) for `release_test.sh`.
+The AppImage job runs on the runner itself, not in a `container:`:
+`package.sh --target appimage` needs podman and `/dev/fuse` for the
+runtime, then builds the rest in its own `debian:trixie` container. Its
+FFmpeg and runtime are cached (`actions/cache`, keyed on their two
+scripts). `.github/workflows/appimage-updates.yml` checks the latest
+release's AppImage weekly (`docs/RELEASE.md`). Workflows are linted with
+`actionlint` (`.github/actionlint.yaml` names the GPU runner's label).
 
 `<version>` is the binary's (`cmake/GitVersion.cmake`). The `.deb`'s
 Maintainer is `CPACK_PACKAGE_CONTACT` in `cmake/Packaging.cmake`
@@ -224,7 +231,7 @@ the packages `package.sh` installs, can also run directly:
   RUNPATH, so programs the app starts (`xdg-open`) don't inherit them;
 - every file in `usr/lib/` and `usr/plugins/` is mapped to the package it
   came from (`dpkg -S`; our FFmpeg and ncnn by their folders) and listed with
-  its binary package, source package and version in
+  its binary package, source package, source version and binary version in
   `usr/share/doc/orbis-reframe/bundled.txt`. The build stops on a file it
   can't place, on anything else in the AppDir that isn't in CMake's
   `install_manifest.txt`, and when the list and the licence review

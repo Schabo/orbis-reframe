@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Download a GitHub release's files -- usually the draft the release workflow
-# (.github/workflows/release.yml) made -- into dist/<target>/, laid out as
-# scripts/package.sh leaves them, so scripts/release_test.sh tests exactly
+# (.github/workflows/release.yml) made -- into dist/<target>/ and
+# dist/appimage/, laid out as scripts/package.sh leaves them, so
+# scripts/release_test.sh tests exactly
 # what will be published (docs/RELEASE.md). Needs the GitHub CLI, logged in
 # (drafts are only visible to the repository's maintainers).
 #
@@ -35,3 +36,14 @@ for target in "${ORBIS_TARGETS[@]}"; do
     done
     echo "== $target: $(ls "$dir" | tr '\n' ' ')"
 done
+
+# The AppImage and the files that go with it, as package.sh --target
+# appimage leaves them (releases before the AppImage have none).
+dir="$REPO_ROOT/dist/appimage"
+rm -rf "$dir"
+if [[ -f "$download/orbis-reframe-$version-x86_64.AppImage" ]]; then
+    mkdir -p "$dir"
+    cp "$download/orbis-reframe-$version-x86_64.AppImage"* "$download/orbis-reframe-$version-appimage-sources.txt"* \
+        "$download"/ffmpeg-* "$download"/type2-runtime-* "$dir/"
+    echo "== appimage: $(ls "$dir" | tr '\n' ' ')"
+fi

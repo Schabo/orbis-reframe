@@ -1,0 +1,4 @@
+# actionlint (rhysd/actionlint) settings.
+self-hosted-runner:
+  # The GPU runner (.github/workflows/gpu.yml).
+  labels: [gpu]

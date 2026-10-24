@@ -9,7 +9,9 @@ draft's packages on the GPU machine and publish it.
 A release has three targets (`scripts/targets.sh`), each its own build:
 `debian-testing`, `debian-13` and `ubuntu-26.04`, each built in a clean
 container of that release with `scripts/package.sh` -- the same script you
-can run by hand (step 4).
+can run by hand (step 4). Next to them, the AppImage for every distribution
+(`scripts/package.sh --target appimage`, built in a `debian:trixie`
+container; `docs/dev-environment.md`, "The AppImage").
 
 A release is:
 
@@ -22,6 +24,11 @@ A release is:
 | `orbis-reframe-<version>-ubuntu-26.04-x86_64.tar.xz` | The same for Ubuntu 26.04 |
 | `orbis-reframe_<version>.ubuntu26.04_amd64.deb` | Ubuntu 26.04's `.deb` (version `<version>~ubuntu26.04`) |
 | `orbis-reframe-<version>-source.tar.xz` | `git archive` of the release tag (GPL-3.0: the source goes with every binary) |
+| `orbis-reframe-<version>-x86_64.AppImage` | One file for every distribution with glibc 2.41 or newer, the libraries bundled |
+| `orbis-reframe-<version>-x86_64.AppImage.zsync` | What AppImageUpdate and its kind download a new version with (the AppImage's update information points at the latest release's) |
+| `orbis-reframe-<version>-appimage-sources.txt` | Where the source of each copyleft library in the AppImage is: Debian's on snapshot.debian.org, by exact version, and the two files below |
+| `ffmpeg-<version>.tar.xz` (+ `.asc`) | The FFmpeg release the AppImage's FFmpeg is built from, with FFmpeg's signature |
+| `type2-runtime-<commit>-source.tar.xz` | The source of the AppImage's runtime and of the libfuse it links |
 | `*.sha256` | One per file above |
 | Release notes | The version's section of `CHANGELOG.md` |
 
@@ -135,8 +142,12 @@ The tag starts the release workflow. Per target, in a clean container of
 that release: it checks that the tag is the version in `.cz.toml` and
 `CMakeLists.txt`, runs `scripts/package.sh` (all of step 4's checks), then
 installs the `.deb` in a fresh container (apt finds every dependency, every
-library resolves, `--version` is right). Then it makes a draft release
-`vY` with the fourteen files, their build provenance (`gh attestation
+library resolves, `--version` is right). The AppImage is built on the
+runner itself, as by hand (`package.sh` needs podman there for the runtime
+and starts its own `debian:trixie` container), with our FFmpeg and the
+runtime cached between runs, then checked in bare `debian:trixie` and
+`ubuntu:26.04` containers with only the libraries it takes from the system.
+Then it makes a draft release `vY` with the 26 files, their build provenance (`gh attestation
 verify <file> --repo Schabo/orbis-reframe`) and the version's section of
 `CHANGELOG.md` as notes. About 15 minutes.
 
@@ -144,7 +155,8 @@ If a job fails for a passing reason (a mirror or download hiccup), re-run
 the failed jobs: `gh run rerun <run id> --failed`. If the draft was already
 made, delete it first (`gh release delete vY`; the tag stays).
 
-In the run's log, check the "Build the packages" step of each target: the
+In the run's log, check the "Build the packages" step of each target (and
+"Build the AppImage"): the
 first line says `== orbis-reframe Y (<target>)`, **exactly the new
 version**, and the printed `Depends:` has nothing unexpected -- in
 particular no `qt6-base-private-abi` (from Qt's private-ABI classes; it
@@ -241,7 +253,7 @@ old release's notes pointing to it.
 
 ## 8. Publish
 
-Check the draft on GitHub (Releases ▸ vY): all fourteen files, the notes.
+Check the draft on GitHub (Releases ▸ vY): all 26 files, the notes.
 Add anything the notes are missing (known issues, changed dependencies),
 then publish it there or with `gh release edit vY --draft=false`.
 Publishing locks its files and tag for good.
@@ -256,3 +268,18 @@ Publishing locks its files and tag for good.
   (`.github/workflows/pages.yml`).
 - From the next commit on, builds call themselves `Y+1.gabc1234`, so a
   dev build is never mistaken for the release.
+
+## Between releases: the AppImage's libraries
+
+The AppImage carries its own libraries, so their security fixes reach users
+only through a new release. Every Monday the workflow
+`.github/workflows/appimage-updates.yml` (also by hand: `gh workflow run
+appimage-updates.yml`) reads the latest release's
+`usr/share/doc/orbis-reframe/bundled.txt` and runs
+`scripts/check_appimage_updates.sh` on it in `debian:trixie`. It fails when
+Debian 13's security archive has a newer version of a bundled package or
+FFmpeg has a newer point release of the bundled series, and lists newer
+versions that aren't security fixes without failing. GitHub mails the
+failure. Then make a patch release with the steps above (a `fix(build)`
+commit, e.g. FFmpeg's new version in `scripts/build_ffmpeg.sh`, or an empty
+one naming the Debian update); don't rebuild the old version.

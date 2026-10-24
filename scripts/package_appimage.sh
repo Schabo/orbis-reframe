@@ -178,8 +178,11 @@ ncnn_version=$(sed -n 's/^set(PACKAGE_VERSION "\(.*\)")$/\1/p' "$ncnn_dir/ncnnCo
 # Debian's upstream version: what licenses.tsv's review holds to.
 upstream() { if [[ "$1" == *-* ]]; then echo "${1%-*}"; else echo "$1"; fi; }
 
-# path <TAB> binary package <TAB> source package <TAB> version ("-": not
-# from a Debian package).
+# path <TAB> binary package <TAB> source package <TAB> source version <TAB>
+# binary package version ("-": not from a Debian package). Debian's updates
+# come per binary package, whose version can differ from its source's
+# (rebuilds), so the weekly check (scripts/check_appimage_updates.sh) reads
+# the last column.
 manifest="$BUILD_DIR/bundled.tsv"
 : > "$manifest"
 while IFS= read -r rel; do
@@ -187,9 +190,9 @@ while IFS= read -r rel; do
     if [[ "$rel" == usr/plugins/* ]]; then
         sys="$qt_plugins/${rel#usr/plugins/}"
     elif [[ -e "$FFMPEG/lib/$name" ]]; then
-        printf '%s\t-\tffmpeg\t%s\n' "$rel" "$ffmpeg_version" >> "$manifest"; continue
+        printf '%s\t-\tffmpeg\t%s\t-\n' "$rel" "$ffmpeg_version" >> "$manifest"; continue
     elif [[ -e "$ncnn_dir/../../$name" ]]; then
-        printf '%s\t-\tncnn\t%s\n' "$rel" "$ncnn_version" >> "$manifest"; continue
+        printf '%s\t-\tncnn\t%s\t-\n' "$rel" "$ncnn_version" >> "$manifest"; continue
     else
         sys="/usr/lib/x86_64-linux-gnu/$name"
     fi
@@ -199,9 +202,9 @@ while IFS= read -r rel; do
     owner=$(grep -v '^diversion ' <<< "$owner" | sed -n '1s/:.*//p' || true)
     [[ -n "$owner" ]] || die "$rel: can't tell which package it comes from (looked for $sys)"
     printf '%s\t%s\t%s\n' "$rel" "$owner" \
-        "$(dpkg-query -W -f '${source:Package}\t${source:Version}' "$owner")" >> "$manifest"
+        "$(dpkg-query -W -f '${source:Package}\t${source:Version}\t${Version}' "$owner")" >> "$manifest"
 done < <(cd "$APPDIR" && find usr/lib usr/plugins -type f | sort)
-printf 'runtime\t-\ttype2-runtime\t%s\n' "$runtime_version" >> "$manifest"
+printf 'runtime\t-\ttype2-runtime\t%s\t-\n' "$runtime_version" >> "$manifest"
 
 # Nothing else in the AppDir that isn't ours: the install's files and what
 # this script puts there.
@@ -223,7 +226,7 @@ while IFS=$'\t' read -r pkg ver ships _ offer _; do
 done < "$LICENSES_TSV"
 lic_fail=0
 declare -A USED
-while IFS=$'\t' read -r rel bin src ver; do
+while IFS=$'\t' read -r rel bin src ver _; do
     if [[ -z "${REVIEW_VERSION[$src]:-}" ]]; then
         echo "FAIL: $rel: $src $ver isn't in packaging/appimage/licenses.tsv (review it)" >&2; lic_fail=1; continue
     fi
@@ -240,8 +243,9 @@ done
 
 {
     echo "# The files orbis-reframe $version's AppImage bundles and where each comes"
-    echo "# from: path, Debian 13 binary package, source package, version (\"-\": our"
-    echo "# own build). \"runtime\" is the AppImage's runtime, in front of the image."
+    echo "# from: path, Debian 13 binary package, source package, source version,"
+    echo "# binary package version (\"-\": our own build). \"runtime\" is the"
+    echo "# AppImage's runtime, in front of the image."
     echo "# Licence texts: licenses/<source package>/; where the sources are:"
     echo "# licenses/appimage-sources.txt."
     cat "$manifest"
