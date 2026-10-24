@@ -238,7 +238,7 @@ jobs:
           # The AppImage, its .zsync, sources list and the sources it hosts.
           cp dist/dist-appimage/* release/
           ls -l release
-          [ "$(ls release | wc -l)" -eq 26 ] || { echo "expected 26 files" >&2; exit 1; }
+          [ "$(ls release | wc -l)" -eq 24 ] || { echo "expected 24 files" >&2; exit 1; }
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |

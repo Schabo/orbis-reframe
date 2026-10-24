@@ -202,7 +202,8 @@ file for every distribution with glibc 2.41 or newer, built on Debian 13.
 Next to it go the release's files for the sources:
 `orbis-reframe-<version>-appimage-sources.txt` and the source archives it
 names (`ffmpeg-<version>.tar.xz` + `.asc`,
-`type2-runtime-<commit>-source.tar.xz`), each file with a `.sha256`. It builds the runtime (below) on the host, then runs
+`type2-runtime-<commit>-source.tar.xz`), each file with a `.sha256` except
+the `.asc` and the `.zsync`. It builds the runtime (below) on the host, then runs
 `scripts/package_appimage.sh` in a `debian:trixie` container (`.deb`s cached
 in `tmp/package-apt-cache/appimage/`), which, on any Debian 13 system with
 the packages `package.sh` installs, can also run directly:

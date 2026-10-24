@@ -29,7 +29,7 @@ A release is:
 | `orbis-reframe-<version>-appimage-sources.txt` | Where the source of each copyleft library in the AppImage is: Debian's on snapshot.debian.org, by exact version, and the two files below |
 | `ffmpeg-<version>.tar.xz` (+ `.asc`) | The FFmpeg release the AppImage's FFmpeg is built from, with FFmpeg's signature |
 | `type2-runtime-<commit>-source.tar.xz` | The source of the AppImage's runtime and of the libfuse it links |
-| `*.sha256` | One per file above |
+| `*.sha256` | One per file above, except the `.asc` (a signature is its own check) and the `.zsync` (only update tools read it, and they check the AppImage against the hash in it) |
 | Release notes | The version's section of `CHANGELOG.md` |
 
 ## 1. One-time setup
@@ -147,7 +147,7 @@ runner itself, as by hand (`package.sh` needs podman there for the runtime
 and starts its own `debian:trixie` container), with our FFmpeg and the
 runtime cached between runs, then checked in bare `debian:trixie` and
 `ubuntu:26.04` containers with only the libraries it takes from the system.
-Then it makes a draft release `vY` with the 26 files, their build provenance (`gh attestation
+Then it makes a draft release `vY` with the 24 files, their build provenance (`gh attestation
 verify <file> --repo Schabo/orbis-reframe`) and the version's section of
 `CHANGELOG.md` as notes. About 15 minutes.
 
@@ -253,7 +253,7 @@ old release's notes pointing to it.
 
 ## 8. Publish
 
-Check the draft on GitHub (Releases ▸ vY): all 26 files, the notes.
+Check the draft on GitHub (Releases ▸ vY): all 24 files, the notes.
 Add anything the notes are missing (known issues, changed dependencies),
 then publish it there or with `gh release edit vY --draft=false`.
 Publishing locks its files and tag for good.

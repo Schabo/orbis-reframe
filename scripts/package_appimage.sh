@@ -8,7 +8,8 @@
 #   dist/appimage/orbis-reframe-<version>-x86_64.AppImage   (+ .zsync)
 #   dist/appimage/orbis-reframe-<version>-appimage-sources.txt
 #   dist/appimage/ffmpeg-<version>.tar.xz (+ .asc), type2-runtime-<commit>-source.tar.xz
-# each with a .sha256 file, followed by the cheap checks.
+# each with a .sha256 file (but the .zsync and the .asc), followed by the
+# cheap checks.
 #
 # Run by `scripts/package.sh --target appimage`, which builds the runtime
 # (scripts/build_appimage_runtime.sh) on the host and then runs this in a
@@ -334,7 +335,12 @@ appimage="$DIST_DIR/orbis-reframe-$version-x86_64.AppImage"
 # The sources this release hosts, and the list of all of them.
 cp "$ffmpeg_tarball" "$ffmpeg_tarball.asc" "$runtime_dir/type2-runtime-$runtime_version-source.tar.xz" "$DIST_DIR/"
 cp "$sources_txt" "$DIST_DIR/orbis-reframe-$version-appimage-sources.txt"
-(cd "$DIST_DIR" && for f in *; do sha256sum "$f" > "$f.sha256"; done)
+# No checksum for the signature (it is the tarball's check) or the .zsync
+# (only update tools read it, and they check the AppImage against the hash
+# in it).
+(cd "$DIST_DIR" && for f in *; do
+    [[ "$f" == *.asc || "$f" == *.zsync ]] || sha256sum "$f" > "$f.sha256"
+done)
 
 # --- cheap checks, on the unpacked AppImage
 echo "== checks"
