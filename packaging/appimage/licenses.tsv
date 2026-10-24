@@ -30,78 +30,45 @@
 # packages are distributed under their version-3 option, whose section 6(d)
 # allows the source on a third-party server (snapshot.debian.org).
 #
-# Nothing here is GPL-2.0-only, which is what matters next to OpenSSL 3 and
-# the other Apache-2.0 parts: Apache-2.0 is compatible with GPL-3 but not
-# GPL-2.
+# Nothing here is GPL-2.0-only, which is what matters next to the Apache-2.0
+# parts (OpenCV, ONNX Runtime, ONNX, abseil, oneTBB): Apache-2.0 is
+# compatible with GPL-3 but not GPL-2.
 package	version	ships	licence	offer	why
 abseil	20240722.0-4	libabsl20240722	Apache-2.0	no	Permissive; Apache-2.0 is GPL-3 compatible.
 brotli	1.1.0-2+deb13u1	libbrotli1	MIT	no	Permissive.
 bzip2	1.0.8-6	libbz2-1.0	bzip2-1.0.6	no	Permissive (BSD-style). Debian's GPL-2 packaging patches change the bzip2 program, not the library.
 cpuinfo	0.0~git20250327.39ea79a-1	libcpuinfo0	BSD-2-Clause	no	Permissive.
-curl	8.14.1-2+deb13u7	libcurl3t64-gnutls	curl	no	Permissive (MIT-style). The GPL and BSD-4-Clause files in the copyright file are build scripts and test servers, not in the library.
-cyrus-sasl2	2.1.28+dfsg1-9	libsasl2-2	BSD-3-Clause-Attribution	no	CMU's clause 4 asks every redistribution to keep an acknowledgement; that is an author-attribution term GPL-3 section 7(b) allows, met by the copyright file in the licences folder. The BSD-4-Clause-UC files (getsubopt) aren't built against glibc, and UC withdrew that clause in 1999. Bundled only as a dependency of OpenLDAP (Qt6Network -> libproxy -> curl -> OpenLDAP).
 dbus	1.16.2-2	libdbus-1-3	GPL-2.0-or-later OR AFL-2.1	snapshot	GPL-2.0-or-later, as GPL-3.0-or-later (AFL-2.1 is not GPL-compatible, so not that option). Copyleft, so the source is owed.
 double-conversion	3.3.1-1	libdouble-conversion3	BSD-3-Clause	no	Permissive.
-duktape	2.7.0-2	libduktape207	MIT	no	Permissive (plus Unicode data, CC0 file).
-e2fsprogs	1.47.2-3	libcom-err2	MIT	no	Only libcom_err (lib/et, MIT; com_right.c BSD-3-Clause). The GPL-2 / LGPL-2 parts of e2fsprogs are the filesystem tools and libext2fs, not shipped.
-flac	1.5.0+ds-2	libflac14	BSD-3-Clause	no	src/libFLAC is BSD-3-Clause (md5.c public domain); the GPL / LGPL files are the flac and metaflac tools.
 gcc-14	14.2.0-19	libatomic1, libgfortran5, libgomp1	GPL-3.0-or-later WITH GCC-exception-3.1	snapshot	The runtime library exception allows linking from any program; the libraries themselves are GPL-3.0-or-later, so their source is owed.
 glib2.0	2.84.4-3~deb13u5	libglib2.0-0t64	LGPL-2.1-or-later	snapshot	LGPL-2.1-or-later, as LGPL-3.0-or-later (xdgmime: its LGPL option; gnulib parts LGPL-2.0-or-later; small permissive parts).
-gnutls28	3.8.9-3+deb13u4	libgnutls30t64	LGPL-2.1-or-later	snapshot	The library is LGPL-2.1-or-later (the GPL-3 parts are gnutls-extra and the tools, not shipped); as LGPL-3.0-or-later.
 graphite2	1.3.14-2+deb13u1	libgraphite2-3	LGPL-2.1-or-later OR MPL-1.1 OR GPL-2.0-or-later	snapshot	LGPL-2.1-or-later, as LGPL-3.0-or-later.
 icu	76.1-4	libicu76	Unicode-3.0	no	Permissive (ICU licence, with the third-party data notices in the copyright file).
-keyutils	1.6.3-6	libkeyutils1	LGPL-2.0-or-later	snapshot	The library (keyutils.*) is LGPL-2.0-or-later, as LGPL-3.0-or-later; the GPL-2.0-or-later parts are the keyctl tool.
-krb5	1.21.3-5+deb13u1	libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0	MIT AND BSD-2-Clause AND BSD-3-Clause AND LicenseRef-MIT-Kerberos-notices	no	Permissive (MIT's and contributors' BSD / MIT-style notices, export notice). Checked in the source: the advertising-clause notices cover the KDC's db2 plugin and ksu (Harvard, USC), not shipped, strptime.c (NetBSD, removed the clause in 2008) and mkstemp.c / getopt.c (UC, withdrawn in 1999), the last three only built where the C library lacks them.
-lame	3.100-6	libmp3lame0	LGPL-2.0-or-later AND GPL-1.0-or-later	snapshot	LGPL-2.0-or-later; Debian lists libmp3lame/fft.c as GPL-1.0-or-later (its header only says it may fall under the GPL), so the library is treated as GPL-3.0-or-later. Copyleft either way, source owed. Bundled as a dependency of libsndfile.
 lapack	3.12.1-6	libblas3, liblapack3	BSD-3-Clause	no	Permissive.
-libasyncns	0.8-6	libasyncns0	LGPL-2.1-or-later	snapshot	As LGPL-3.0-or-later.
 libb2	0.98.1-1.1	libb2-1	CC0-1.0	no	Public-domain dedication.
 libcap2	1:2.75-10+deb13u1	libcap2	BSD-3-Clause OR GPL-2.0-only	no	BSD-3-Clause (the GPL-2.0-only option is not used).
 libffi	3.4.8-2	libffi8	MIT	no	Permissive; the GPL files are build helpers and the test suite.
 libglvnd	1.7.0-1	libglx0, libopengl0	MIT	no	Permissive (uthash BSD-1-Clause). The glvnd fallback, loaded only where the host has none.
-libidn2	2.3.8-2	libidn2-0	LGPL-3.0-or-later OR GPL-2.0-or-later	snapshot	LGPL-3.0-or-later (lib/; the GPL-3.0-or-later parts are the idn2 tool).
 libjpeg-turbo	1:2.1.5-4	libjpeg62-turbo	IJG AND BSD-3-Clause AND Zlib	no	Permissive (the IJG licence is GPL-compatible).
-libogg	1.3.5-3	libogg0	BSD-3-Clause	no	Permissive.
 libpng1.6	1.6.48-1+deb13u6	libpng16-16t64	libpng-2.0	no	Permissive; the advertising-clause files are contrib/gregbook examples, not in the library.
-libproxy	0.5.9-1	libproxy1v5	LGPL-2.1-or-later	snapshot	As LGPL-3.0-or-later (pacutils.h: its LGPL option).
-libpsl	0.21.2-1.1	libpsl5t64	MIT AND BSD-3-Clause	no	Permissive (the DAFSA lookup is Chromium's BSD-3-Clause).
-libselinux	3.8.1-1	libselinux1	LicenseRef-libselinux-public-domain	no	Public domain; the GPL-2 file is the avcstat tool.
-libsndfile	1.2.2-2+deb13u1	libsndfile1	LGPL-2.1-or-later AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-GSM AND LicenseRef-Sun-G72x	snapshot	LGPL-2.1-or-later, as LGPL-3.0-or-later; ALAC Apache-2.0, GSM 06.10 and Sun G.72x permissive. Bundled as a dependency of libpulse.
-libssh2	1.11.1-1+deb13u2	libssh2-1t64	BSD-3-Clause	no	Permissive (bcrypt_pbkdf.c ISC).
-libtasn1-6	4.20.0-2+deb13u1	libtasn1-6	LGPL-2.1-or-later	snapshot	The library is LGPL-2.1-or-later (the GPL-3 parts are the tools), as LGPL-3.0-or-later.
-libunistring	1.3-2	libunistring5	LGPL-3.0-or-later OR GPL-2.0-or-later	snapshot	LGPL-3.0-or-later (lib/; some files LGPL-2.0/2.1-or-later, LGPL-3.0).
 libva	2.22.0-3	libva2, libva-drm2	MIT	no	Permissive. The advertising-clause files (va/x11) are in libva-x11, not bundled.
-libvorbis	1.3.7-3	libvorbis0a, libvorbisenc2	BSD-3-Clause	no	Permissive.
 libxau	1:1.0.11-1	libxau6	MIT-open-group	no	Permissive.
 libxdmcp	1:1.1.5-1	libxdmcp6	MIT-open-group	no	Permissive.
 libxkbcommon	1.7.0-2	libxkbcommon0	MIT AND HPND	no	Permissive (X11 / SGI-style notices).
 libzstd	1.5.7+dfsg-1	libzstd1	BSD-3-Clause OR GPL-2.0-only	no	BSD-3-Clause (the GPL-2.0-only option is not used).
 md4c	0.5.2-2	libmd4c0	MIT	no	Permissive.
-mpg123	1.32.10-1+deb13u1	libmpg123-0t64	LGPL-2.1-only	hosted	LGPL-2.1-only (COPYING and every file header): compatible, but 2.1 has no third-party-server option (only accompanying source, the same place, or a written offer), so its source is hosted on the release next to the AppImage. Bundled as a dependency of libsndfile.
-nettle	3.10.1-1	libnettle8t64, libhogweed6t64	LGPL-3.0-or-later OR GPL-2.0-or-later	snapshot	LGPL-3.0-or-later (desCode.h LGPL-2.0-or-later; gost files MIT). libhogweed's libgmp comes from the host.
-nghttp2	1.64.0-1.1+deb13u1	libnghttp2-14	MIT	no	Permissive.
-nghttp3	1.8.0-1	libnghttp3-9	MIT	no	Permissive.
-ngtcp2	1.11.0-1+deb13u1	libngtcp2-16, libngtcp2-crypto-gnutls8	MIT	no	Permissive.
 onetbb	2022.1.0-1+deb13u1	libtbb12	Apache-2.0	no	Permissive.
 onnx	1.17.0-3	libonnx1t64	MIT AND Apache-2.0	no	Permissive.
 onnxruntime	1.21.0+dfsg-1	libonnxruntime1.21	MIT AND Apache-2.0 AND MPL-2.0	no	Permissive; the MPL-2.0 files (Eigen's thread pool) aren't marked incompatible with secondary licences, so MPL-2.0 is GPL-compatible. Shipped as built (no changes), so MPL owes no source of ours.
 opencv	4.10.0+dfsg-5	libopencv-calib3d410, libopencv-contrib410, libopencv-core410, libopencv-dnn410, libopencv-features2d410, libopencv-flann410, libopencv-imgproc410, libopencv-video410	Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause	no	Permissive.
-openldap	2.6.10+dfsg-1	libldap2	OLDAP-2.8	no	Permissive (keep notices and a copy of the licence; no advertising clause), the same conditions as 2.7, which the FSF lists as GPL-compatible. UMich notice: keep the credit. ldap_queue.h's UC advertising clause was withdrawn in 1999.
-openssl	3.5.7-1~deb13u3	libssl3t64	Apache-2.0	no	Apache-2.0: compatible with GPL-3 (not with GPL-2, and nothing here is GPL-2.0-only).
-opus	1.5.2-2	libopus0	BSD-3-Clause AND BSD-2-Clause	no	Permissive.
-p11-kit	0.25.5-3	libp11-kit0	BSD-3-Clause	no	Permissive (some ISC files).
 pcre2	10.46-1~deb13u3	libpcre2-8-0, libpcre2-16-0	BSD-3-Clause WITH PCRE2-exception	no	Permissive (sljit BSD-2-Clause).
 protobuf	3.21.12-11+deb13u1	libprotobuf32t64	BSD-3-Clause	no	Permissive.
 pthreadpool	0.0~git20240616.560c60d-1	libpthreadpool0	BSD-2-Clause	no	Permissive.
-pulseaudio	17.0+dfsg1-2	libpulse0	LGPL-2.1-or-later	snapshot	libpulse and libpulsecommon are LGPL-2.1-or-later, as LGPL-3.0-or-later (g711 Sun permissive); the GPL files are server modules.
-qt6-base	6.8.2+dfsg-9+deb13u2	libqt6core6t64, libqt6dbus6, libqt6gui6, libqt6network6, libqt6opengl6, libqt6widgets6, qt6-xdgdesktopportal-platformtheme	LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only	snapshot	LGPL-3.0-only (Qt's GPL-2 and GPL-3-only parts are tools, wasm and examples, not shipped); bundled third-party code is permissive (forkfd, pixman, easing, rfc6234, md4 / md5, tinycbor, Unicode data, sRGB ICC). Shared libraries, so the user can replace them.
-qt6-multimedia	6.8.2-8	libqt6multimedia6	LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only	snapshot	LGPL-3.0-only. The third-party code in the source package (PFFFT, Eigen MPL-2.0, resonance-audio Apache-2.0, the LGPL-3-only spatial audio) belongs to Qt6SpatialAudio, not shipped -- no trace of it in the shipped library -- and FFTReal only to an example.
+qt6-base	6.8.2+dfsg-9+deb13u2	libqt6core6t64, libqt6dbus6, libqt6gui6, libqt6opengl6, libqt6widgets6, qt6-xdgdesktopportal-platformtheme	LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only	snapshot	LGPL-3.0-only (Qt's GPL-2 and GPL-3-only parts are tools, wasm and examples, not shipped); bundled third-party code is permissive (forkfd, pixman, easing, rfc6234, md4 / md5, tinycbor, Unicode data, sRGB ICC). Shared libraries, so the user can replace them.
 qt6-svg	6.8.2-3	libqt6svg6, qt6-svg-plugins	LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only	snapshot	LGPL-3.0-only (qsvghandler.cpp also carries an HPND notice).
 qt6-wayland	6.8.2-4	libqt6waylandclient6, qt6-wayland	LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only	snapshot	LGPL-3.0-only (protocol XML MIT / HPND); the GPL-3-only compositor parts aren't shipped.
 re2	20240702-3	libre2-11	BSD-3-Clause	no	Permissive (UTF-8 code: Lucent's permissive notice).
-rtmpdump	2.4+20151223.gitfa8646d.1-2	librtmp1	LGPL-2.1-or-later	snapshot	librtmp is LGPL-2.1-or-later, as LGPL-3.0-or-later (the rtmpdump programs are GPL-2.0-or-later, not shipped). Bundled as a dependency of curl.
 systemd	257.13-1~deb13u1	libsystemd0	LGPL-2.1-or-later	snapshot	As LGPL-3.0-or-later (siphash CC0, MurmurHash public domain; kernel headers GPL-2.0 WITH Linux-syscall-note).
-util-linux	2.41.5-0+deb13u1	libblkid1, libmount1	LGPL-2.1-or-later	snapshot	libblkid and libmount are LGPL-2.1-or-later, as LGPL-3.0-or-later (shared lib/ helpers LGPL or public domain); the GPL-2.0-only files are tools.
 wayland	1.23.1-3	libwayland-cursor0, libwayland-egl1	MIT	no	Permissive.
 xnnpack	0.0~git20241108.4ea82e5-2	libxnnpack0.20241108	BSD-3-Clause	no	Permissive.
 ffmpeg	9.0.2	our build: libavcodec, libavfilter, libavformat, libavutil, libswresample, libswscale	LGPL-2.1-or-later	hosted	Configured without --enable-gpl, --enable-version3 or --enable-nonfree (configure reports "LGPL version 2.1 or later"); nv-codec-headers MIT. Debian doesn't have our build, so the source tarball and the configure line are hosted on the release.

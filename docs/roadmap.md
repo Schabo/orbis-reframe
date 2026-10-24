@@ -210,7 +210,7 @@ each is in its document in [`formats/`](formats/README.md).
   runtime's source on the release. It is rebuilt when a bundled library
   gets a security fix. Qt, OpenCV and ONNX Runtime come from Debian 13's
   packages (Debian's ONNX Runtime has no telemetry). A test build ran the
-  full GPU smoke test on all five distributions (about 110 MB). Planned
+  full GPU smoke test on all five distributions (about 100 MB). Planned
   for the next release.
 - **GUI tests**: `objectName`s on the remaining actions and widgets, and the
   offscreen main-window test grown panel by panel.
