@@ -143,6 +143,10 @@ no closed-source dependencies.
 **Look and sound**
 - Per-clip colour grading: exposure, contrast, saturation, temperature. The
   same formula runs in the viewport and in export.
+- A 3D LUT (`.cube`) per clip, with a strength: the camera maker's LUT for
+  log footage (Insta360 I-Log; load the downloaded zip as it is) or a look.
+  HDR (HLG) clips are recognised and converted to normal video with the LUT
+  that comes with the app.
 - Audio playback: level, mute and fades for every audio clip, a level and
   mute per track, and a mixer used in both playback and export.
 - Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that
