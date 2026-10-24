@@ -1,0 +1,9 @@
+# The AppImage's GUI test image for openSUSE Tumbleweed
+# (scripts/release_test.sh, as tests/release/Containerfile for Debian and
+# Ubuntu): headless Sway, PipeWire, the smoke test.
+FROM registry.opensuse.org/opensuse/tumbleweed:latest
+RUN zypper -n install --no-recommends sway pipewire pipewire-pulseaudio wireplumber pulseaudio-utils \
+        dbus-1 python3 procps findutils \
+    && zypper clean -a
+COPY run_appimage_test.sh /usr/local/bin/
+COPY gpu_smoke.sh gpu_smoke.steps smoke.orp /opt/smoke/

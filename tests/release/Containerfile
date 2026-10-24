@@ -3,15 +3,20 @@
 # (gpu_smoke.sh, its steps and project) -- but none of the app's own
 # libraries. Those come from installing the package under test (the .deb's
 # Depends, or the install guide's apt line for the tarball) at run time.
+# EXTRA adds packages: for the AppImage, which installs nothing, what a
+# desktop has besides Sway (glvnd's libOpenGL / libGLX).
 #
 #   podman build -t orbis-release-test:debian-13 --build-arg BASE=docker.io/library/debian:trixie tests/release
+#
+# Fedora, Arch and Tumbleweed, for the AppImage only: Containerfile.<distro>.
 
 ARG BASE=docker.io/library/debian:testing
 FROM ${BASE}
+ARG EXTRA=
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         sway pipewire pipewire-pulse wireplumber pulseaudio-utils dbus \
-        python3 procps xz-utils ca-certificates \
+        python3 procps xz-utils ca-certificates ${EXTRA} \
     && rm -rf /var/lib/apt/lists/*
-COPY run_gui_test.sh /usr/local/bin/
+COPY run_gui_test.sh run_appimage_test.sh /usr/local/bin/
 COPY gpu_smoke.sh gpu_smoke.steps smoke.orp /opt/smoke/

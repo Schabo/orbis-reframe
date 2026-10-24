@@ -1,0 +1,10 @@
+# The AppImage's GUI test image for Fedora (scripts/release_test.sh, as
+# tests/release/Containerfile for Debian and Ubuntu): headless Sway,
+# PipeWire, glvnd as on a desktop, the smoke test. Sway carries file
+# capabilities that a rootless container refuses to start, so they go.
+FROM registry.fedoraproject.org/fedora:latest
+RUN dnf -y install --setopt=install_weak_deps=False sway pipewire pipewire-pulseaudio wireplumber \
+        pulseaudio-utils dbus-daemon python3 procps-ng findutils libglvnd-opengl libglvnd-glx libcap \
+    && setcap -r /usr/bin/sway && dnf clean all
+COPY run_appimage_test.sh /usr/local/bin/
+COPY gpu_smoke.sh gpu_smoke.steps smoke.orp /opt/smoke/

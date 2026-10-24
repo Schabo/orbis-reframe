@@ -212,6 +212,27 @@ project, the export and the viewport's grabs are in
 `results.txt`); a step that failed left a `fail-<line>.png` of the window or
 the dialog that was up, `<line>` being its line in `steps.txt` there.
 
+Then the AppImage, after the Debian Testing run (its export is compared
+with that one's):
+
+```sh
+scripts/release_test.sh --target appimage    # tests dist/appimage/; ~25 minutes
+```
+
+It runs in Debian 13, Ubuntu 26.04, Fedora, Arch and openSUSE Tumbleweed
+(the latter three from their current images), results in
+`tmp/release-test/<version>/appimage/<distro>/`:
+
+- **Bare images** of Fedora, Arch and Tumbleweed with only the libraries
+  the AppImage takes from the system (`tests/release/appimage_bare.sh`;
+  the release workflow did Debian 13 and Ubuntu 26.04): every bundled
+  library found, `--version` right. On Fedora, glvnd's `libOpenGL` and
+  `libGLX` come from the AppImage's fallback (the line says which).
+- **GUI test** in each: the same smoke test as for the packages, with the
+  AppImage started as it is (extracted, as a container has no FUSE).
+- **The export** of each has the same video and audio streams as the Debian
+  Testing `.deb`'s: our FFmpeg against Debian's, the same NVENC encode.
+
 Also check `Maintainer:` in `dpkg-deb --field dist/*/*.deb`
 (`CPACK_PACKAGE_CONTACT` in `cmake/Packaging.cmake`).
 
@@ -229,6 +250,13 @@ something there:
 - [ ] Playback sounds right on the real speakers; dragging looks around.
 - [ ] GNOME or KDE (the reference desktop is Sway), drag and drop of a clip
       from the file manager.
+- [ ] **The AppImage**, on Sway and on **GNOME** (KDE if at hand):
+      `chmod +x` and start `dist/appimage/orbis-reframe-*-x86_64.AppImage`
+      from the file manager or a terminal (it mounts through FUSE here,
+      unlike in the containers); open a clip, play it with sound, export.
+      On GNOME, Qt draws the window's title bar itself, with the decoration
+      plugin from inside the AppImage: it shows, it moves and resizes the
+      window, its buttons work. The file dialog (through the portal) opens.
 
 ## 7. If something is wrong
 
