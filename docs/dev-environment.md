@@ -219,6 +219,31 @@ so running against them needs `LD_LIBRARY_PATH=<folder>/usr/lib`.
   than Debian 13's. A new FFmpeg release means a new version and SHA-256
   at the top of the script, checked against the signature.
 
+### The AppImage runtime
+
+The runtime at the front of the AppImage (AppImage/type2-runtime, the part
+that mounts the image) links libfuse (LGPL-2.1-only) statically, so its
+source is hosted next to the AppImage. `scripts/build_appimage_runtime.sh`
+builds it from a pinned commit (`RUNTIME_COMMIT`, now `fedfad5`) with
+upstream's own Alpine container, in podman, and fails unless the result is
+byte-identical to upstream's release binary for that commit
+(`RUNTIME_SHA256`); the source archive is then exactly what's in the file.
+Output in `third_party/appimage-runtime/<commit>/`: `runtime-x86_64` and
+`type2-runtime-<commit>-source.tar.xz` (the runtime's tree, the libfuse and
+squashfuse tarballs its build downloads, the container's Alpine package
+list, and how to rebuild). Reused when done; about 30 s otherwise.
+
+- **Needs**: podman, network access and `/dev/fuse` on the host (libfuse's
+  install step would `mknod` it, which a rootless build can't). It runs on
+  the host, not inside the AppImage's `debian:trixie` build container.
+- **When it fails** on an unchanged commit, Alpine 3.21 has updated a
+  package the runtime links (zstd, zlib, mimalloc, musl; the error lists the
+  build's versions). Upstream's next release is built with them: move to
+  it as below.
+- **A new runtime**: set `RUNTIME_COMMIT` and `RUNTIME_SHA256` (that
+  release's `runtime-x86_64`), and review its row in
+  `packaging/appimage/licenses.tsv`.
+
 ## Build & run
 
 ```sh

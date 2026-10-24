@@ -16,8 +16,8 @@ compile_commands.json
 /sample_footage/
 
 *.ppm
-# Downloaded third-party SDKs and our FFmpeg build (scripts/fetch_ncnn.sh,
-# scripts/build_ffmpeg.sh) -- not for git.
+# Downloaded third-party SDKs and our own builds (scripts/fetch_ncnn.sh,
+# scripts/build_ffmpeg.sh, scripts/build_appimage_runtime.sh) -- not for git.
 /third_party/
 
 # Private maintainer notes and tooling (separate repo: orbis-reframe-internal) -- not for git.
