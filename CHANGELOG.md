@@ -1,3 +1,37 @@
+## v0.6.0 (2026-10-24)
+
+### Feat
+
+- **audio**: play sound through miniaudio instead of Qt Multimedia
+- **build**: file types for .orp and .insv
+- **ui**: Load LUT takes the camera maker's zip
+- **render**: Auto eases on to stereographic for tiny planets
+- **render**: Auto distortion holds the corners' stretch at 1.5
+- **ui**: pick a title's font from a list, the last three on top
+- **stitch**: match the lenses' colour along the depth-aware seam
+- **stitch**: cut the depth-aware seam where the lenses agree
+- **stitch**: fit the lens centre and scale in the seam fine-tune
+- **render**: diagonal field of view and per-keyframe distortion
+- **ui**: split screen gets its own section in the Video tab
+- **ui**: split screen in the viewport and the Reframe section
+- **export**: draw a split clip's panes on every render path
+- **core**: split screen in the clip model and the project file
+- **stab**: Direction lock, a level view that keeps pointing one way
+
+### Fix
+
+- **playback**: a clip without keys starts at its forward view
+- **ui**: draw the arrow on drop-down lists
+- **timeline**: delete the keyframes a trim or split leaves outside the clip
+- **stitch**: keep the depth-aware seam steady between near and far matches
+- **ui**: fill every clip section when a project or clip opens
+- **stitch**: offer only the lens guards a clip's file has profiles for
+
+### Refactor
+
+- **stitch**: one SeamCorrection for the per-clip seam fine-tune
+- **render**: one view projection with a distortion, shared by every path
+
 ## v0.5.0 (2026-10-21)
 
 ### Feat
