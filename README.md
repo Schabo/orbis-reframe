@@ -20,7 +20,8 @@ fully supported, the **X6** and **ONE X2** experimentally.
 > Status: work in progress, built and tested on one machine (Debian Testing,
 > NVIDIA RTX, Wayland, Sway). AMD and Intel GPUs are supported best-effort:
 > a contributor has run it on an AMD Radeon; Intel hasn't been tried. Other
-> setups that meet the requirements should work but haven't been tried.
+> setups that meet the requirements should work but haven't been tried;
+> what users have confirmed is under [Confirmed working](#confirmed-working).
 
 **Download:** a `.deb` and a tarball for Debian Testing, Debian 13 and
 Ubuntu 26.04 LTS on the
@@ -46,6 +47,19 @@ clips.
 cameras is planned, and needs real footage to build on:
 [sample clips wanted](docs/formats/README.md#sample-clips-wanted).
 
+
+## Confirmed working
+
+Setups other people have run orbis-reframe on and told us about, until
+there are enough that a list stops being useful. Each row says what was
+confirmed, not more. Run it somewhere else? Tell us in
+[Discussions](https://github.com/Schabo/orbis-reframe/discussions) -- what
+works is as useful to know as what doesn't.
+
+| System | Graphics | orbis-reframe | Confirmed |
+|---|---|---|---|
+| Fedora 44 | NVIDIA | 0.6.1 AppImage | NVIDIA hardware acceleration, sound, stitching |
+| Manjaro | AMD Radeon 8060S (Strix Halo), Mesa RADV 26.2.4 | built from source, before 0.5.0 | Vulkan video decode, stitch, the view; export with VA-API and Vulkan video encoders; Insta360 X6 clips (8K30, 6K, 4K; firmware 1.2.36) open and stitch |
 
 ## Why
 

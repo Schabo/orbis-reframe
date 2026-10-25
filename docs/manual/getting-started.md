@@ -34,8 +34,10 @@ you have one, short clips from it help add it:
 > and Ubuntu 26.04 builds in containers of those systems on that computer,
 > the AppImage in containers of Debian 13, Ubuntu 26.04, Fedora 44, Arch and
 > openSUSE Tumbleweed).
-> One contributor has also run it on an AMD Radeon. Other setups that meet
-> the requirements below should work but haven't been tried.
+> Setups users have confirmed are listed under
+> [Confirmed working](../../README.md#confirmed-working) in the README.
+> Others that meet the requirements below should work but haven't been
+> tried.
 
 ## 1. Check your computer
 
