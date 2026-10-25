@@ -7,6 +7,8 @@
 
 #include "support/ModelTest.h"
 
+#include "TitleClock.h"
+
 #include <QCoreApplication>
 
 namespace {
@@ -1786,6 +1788,46 @@ void testTitleJson()
                    .value("tracks").toArray().at(0).toObject()
                    .value("clips").toArray().at(0).toObject()
                    .contains("motion"));
+    }
+    // A clock field (a brace in the text): written with the version that
+    // added fields, read back as it was.
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        title::Style clock = *tl->trackAt(0).clips.at(0).title;
+        clock.text = "{time:ss} {{ok}";
+        tl->setTrackClipTitle(tl->trackAt(0).clips.at(0).id, clock);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kClockFormatVersion);
+        Project back;
+        CHECK(back.load(file, &err));
+        CHECK(back.timeline()->trackAt(0).clips.at(0).title->text == "{time:ss} {{ok}");
+    }
+    // A brace in an older file's title is a brace: escaped, so it shows as
+    // it did.
+    {
+        QJsonObject doc = document();
+        doc["version"] = Project::kTitleLookFormatVersion;
+        QJsonObject tlj = doc.value("timeline").toObject();
+        QJsonArray tracks = tlj.value("tracks").toArray();
+        QJsonObject track = tracks.at(0).toObject();
+        QJsonArray clips = track.value("clips").toArray();
+        QJsonObject clip = clips.at(0).toObject();
+        QJsonObject jt = clip.value("title").toObject();
+        jt["text"] = "Price {time} {{";
+        clip["title"] = jt;
+        clips[0] = clip;
+        track["clips"] = clips;
+        tracks[0] = track;
+        tlj["tracks"] = tracks;
+        doc["timeline"] = tlj;
+        writeFile(file, QJsonDocument(doc).toJson());
+        Project p;
+        CHECK(p.load(file, &err));
+        const QString text = p.timeline()->trackAt(0).clips.at(0).title->text;
+        CHECK(text == "Price {{time} {{{{");
+        CHECK(title::withFields(text, QDateTime()) == "Price {time} {{");
     }
 }
 

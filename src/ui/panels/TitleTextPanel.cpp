@@ -10,9 +10,13 @@
 #include <QFormLayout>
 #include <QHash>
 #include <QHBoxLayout>
+#include <QLabel>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
+
+#include "../../core/TitleClock.h"
 
 namespace {
 
@@ -67,6 +71,43 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     m_text->setFixedHeight(m_text->fontMetrics().lineSpacing() * 3 + 12);
     m_text->setToolTip(tr("The title's text. Enter starts a new line."));
     form()->addRow(tr("Text"), m_text);
+    // The clock's fields, put in where the cursor is.
+    m_insert = new QPushButton(tr("Insert"), this);
+    m_insert->setObjectName(QStringLiteral("titleInsert"));
+    m_insert->setToolTip(tr("Put the time or the date the picture under the title was "
+                            "recorded into the text, where the cursor is. The text shows it "
+                            "as a field in braces; the picture shows its value, which "
+                            "follows the clip under the title as it plays."));
+    auto *insertMenu = new QMenu(m_insert);
+    const struct {
+        const char *name;
+        QString text;
+        QString field;
+    } fields[] = {
+        {"titleInsertTime", tr("Time"), title::kTimeField},
+        {"titleInsertTimeSeconds", tr("Time with seconds"), title::kTimeSecondsField},
+        {"titleInsertDate", tr("Date"), title::kDateField},
+    };
+    for (const auto &f : fields) {
+        QAction *a = insertMenu->addAction(f.text + QStringLiteral("\t") + f.field);
+        a->setObjectName(QLatin1String(f.name));
+        connect(a, &QAction::triggered, this, [this, field = f.field] {
+            m_text->insertPlainText(field);
+            m_text->setFocus();
+        });
+    }
+    m_insert->setMenu(insertMenu);
+    auto *insertRow = new QWidget(this);
+    auto *insertLayout = new QHBoxLayout(insertRow);
+    insertLayout->setContentsMargins(0, 0, 0, 0);
+    insertLayout->addWidget(m_insert);
+    insertLayout->addStretch(1);
+    form()->addRow(QString(), insertRow);
+    m_clockNote = new QLabel(this);
+    m_clockNote->setObjectName(QStringLiteral("titleClockNote"));
+    m_clockNote->setWordWrap(true);
+    m_clockNote->setVisible(false);
+    form()->addRow(m_clockNote);
     m_font = new QComboBox(this);
     m_font->setObjectName(QStringLiteral("titleFont"));
     m_font->setToolTip(tr("The title's font: the fonts installed on this computer, the last "
@@ -167,13 +208,16 @@ void TitleTextPanel::setColor(uint32_t rgb)
     panelfields::showColor(m_color, m_rgb);
 }
 
-void TitleTextPanel::setTitle(const title::Style &s)
+void TitleTextPanel::setTitle(const title::Style &s, const QString &clockNote)
 {
     m_updating = true;
     m_style = s;
-    for (QWidget *w : {static_cast<QWidget *>(m_text), static_cast<QWidget *>(m_font),
-                       m_styleRow, static_cast<QWidget *>(m_color), m_alignRow})
+    for (QWidget *w : {static_cast<QWidget *>(m_text), static_cast<QWidget *>(m_insert),
+                       static_cast<QWidget *>(m_font), m_styleRow,
+                       static_cast<QWidget *>(m_color), m_alignRow})
         w->setEnabled(true);
+    m_clockNote->setText(clockNote);
+    m_clockNote->setVisible(!clockNote.isEmpty());
     if (m_text->toPlainText() != s.text)
         m_text->setPlainText(s.text);
     if (m_font->currentData().toString() != s.font)
@@ -192,9 +236,12 @@ void TitleTextPanel::setNoTitle(const QString &hint)
     m_updating = true;
     m_text->clear();
     panelfields::clearColor(m_color);
-    for (QWidget *w : {static_cast<QWidget *>(m_text), static_cast<QWidget *>(m_font),
-                       m_styleRow, static_cast<QWidget *>(m_color), m_alignRow})
+    for (QWidget *w : {static_cast<QWidget *>(m_text), static_cast<QWidget *>(m_insert),
+                       static_cast<QWidget *>(m_font), m_styleRow,
+                       static_cast<QWidget *>(m_color), m_alignRow})
         w->setEnabled(false);
+    m_clockNote->clear();
+    m_clockNote->setVisible(false);
     setHint(hint.isEmpty() ? tr("Select a title on the timeline, or add one from the Titles tab "
                                 "on the left: drag it onto the timeline or double-click it.")
                            : hint);

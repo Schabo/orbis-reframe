@@ -41,12 +41,28 @@ constexpr int kViewFontCapPx = 360;
 constexpr int kExportFontCapPx = 2048;
 
 // A title clip's pictures in an output of outW x outH, its text rendered at
-// its largest size, at most `capPx`.
-std::shared_ptr<TitleSource> titleSource(const TrackClip &c, int outW, int outH, int capPx)
+// its largest size, at most `capPx`; `clock` fills in its fields.
+std::shared_ptr<TitleSource> titleSource(const TrackClip &c, int outW, int outH, int capPx,
+                                         const title::Clock &clock)
 {
-    return std::make_shared<TitleSource>(*c.title, c.motion, c.timelineDurationMs(),
-                                         titlerender::fontPxFor(maxTitleSize(c), outH, capPx),
-                                         outW, outH);
+    return std::make_shared<TitleSource>(
+        *c.title, c.motion, c.timelineDurationMs(),
+        titlerender::fontPxFor(maxTitleSize(c), outH, capPx), outW, outH,
+        title::hasFields(c.title->text) ? clock : title::Clock(), c.startMs);
+}
+
+// Is a title worth a layer: has it text to show, now or as its clock runs?
+// `pic`: its picture at its start.
+bool showsTitle(const TrackClip &c, const exportpipe::Still &pic)
+{
+    return !pic.empty() || title::hasFields(c.title->text);
+}
+
+// A title's picture's shape at its start (exportpipe::Still: each picture
+// is placed by its own), 1 if it shows nothing then.
+double titleAspect(const exportpipe::Still &pic)
+{
+    return pic.empty() ? 1.0 : double(pic.width) / pic.height;
 }
 
 // A clip's cameras on a job: pane 0's reframe track as poseAt (none: a
@@ -288,9 +304,37 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline)
     return mix;
 }
 
-std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
-                                       const PrivacyBlur &privacy)
+title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded)
 {
+    std::vector<title::Clock::Span> spans;
+    qint64 at = 0;
+    for (int i = 0; i < timeline.count(); ++i) {
+        const ClipItem &c = timeline.clipAt(i);
+        title::Clock::Span s;
+        s.startMs = at;
+        s.endMs = at + c.timelineDurationMs();
+        s.recorded = recorded.value(c.sourcePath);
+        s.trimInMs = c.trimInMs;
+        s.speed = c.speed;
+        spans.push_back(s);
+        at = s.endMs;
+    }
+    return title::Clock(std::move(spans));
+}
+
+bool anyTitleClock(const Timeline &timeline)
+{
+    for (int i = 0; i < timeline.trackCount(); ++i)
+        for (const TrackClip &c : timeline.trackAt(i).clips)
+            if (c.isTitle() && title::hasFields(c.title->text))
+                return true;
+    return false;
+}
+
+std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
+                                       const PrivacyBlur &privacy, const RecordedTimes &recorded)
+{
+    const title::Clock clock = titleClock(timeline, recorded);
     std::vector<InsetFeed::Clip> clips;
     for (int i = 0; i < timeline.count(); ++i) {
         const ClipItem &c = timeline.clipAt(i);
@@ -371,9 +415,9 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             std::shared_ptr<TitleSource> title;
             exportpipe::Still pic;
             if (c.isTitle()) {
-                title = titleSource(c, outW, outH, kViewFontCapPx);
+                title = titleSource(c, outW, outH, kViewFontCapPx, clock);
                 pic = title->full();
-                if (pic.empty() || outW <= 0)
+                if (!showsTitle(c, pic) || outW <= 0)
                     continue; // no text
             }
             InsetFeed::Clip f;
@@ -393,7 +437,7 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             f.outAspect = outH > 0 ? double(outW) / outH : 16.0 / 9.0;
             if (title) {
                 f.still = title;
-                f.aspect = double(pic.width) / pic.height;
+                f.aspect = titleAspect(pic);
                 f.frame = {};
             }
             clips.push_back(std::move(f));
@@ -402,14 +446,21 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
     return clips;
 }
 
-double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH)
+double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH,
+                        const QDateTime &at)
 {
     if (from.align == to.align || outW <= 0 || outH <= 0)
         return 0.0;
     // The picture's shape doesn't depend on its size: any size will do.
     constexpr int kFontPx = 200;
-    const titlerender::Picture a = titlerender::render(from, kFontPx);
-    const titlerender::Picture b = titlerender::render(to, kFontPx);
+    const auto shown = [&at](title::Style s) {
+        s.text = title::withFields(s.text, at);
+        return s;
+    };
+    const titlerender::Picture a =
+        titlerender::render(shown(from), kFontPx, -1, title::hasFields(from.text));
+    const titlerender::Picture b =
+        titlerender::render(shown(to), kFontPx, -1, title::hasFields(to.text));
     if (a.empty() || b.empty())
         return 0.0;
     const double aspect = double(outH) / outW;
@@ -419,12 +470,14 @@ double titleAnchorShift(const title::Style &from, const title::Style &to, int ou
 }
 
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
-                                                const PrivacyBlur &privacy)
+                                                const PrivacyBlur &privacy,
+                                                const RecordedTimes &recorded)
 {
+    const title::Clock clock = titleClock(timeline, recorded);
     std::vector<exportpipe::InsetClipJob> jobs;
     // The flat main-track clips first, then the transitions' other clips,
     // under the overlays -- as insetFeed.
-    for (const InsetFeed::Clip &f : insetFeed(timeline, outW, outH, privacy)) {
+    for (const InsetFeed::Clip &f : insetFeed(timeline, outW, outH, privacy, recorded)) {
         if (!f.fullFrame)
             break; // the overlays: below
         exportpipe::InsetClipJob j;
@@ -452,9 +505,9 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
             std::shared_ptr<TitleSource> title;
             exportpipe::Still pic;
             if (c.isTitle()) {
-                title = titleSource(c, outW, outH, kExportFontCapPx);
+                title = titleSource(c, outW, outH, kExportFontCapPx, clock);
                 pic = title->full();
-                if (pic.empty() || outW <= 0)
+                if (!showsTitle(c, pic) || outW <= 0)
                     continue; // no text
             }
             exportpipe::InsetClipJob j;
@@ -477,7 +530,7 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
                 // anchor: each picture is placed by its own numbers, as
                 // playback places it.
                 j.still = title;
-                j.aspect = double(pic.width) / pic.height;
+                j.aspect = titleAspect(pic);
                 j.frame = {};
             }
             jobs.push_back(std::move(j));

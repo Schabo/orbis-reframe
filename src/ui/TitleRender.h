@@ -29,14 +29,18 @@ struct Picture {
 };
 
 // The text at a font of `fontPx` pixels, one picture per (style, size,
-// visible) kept for reuse. Empty for blank text. With `visible` >= 0 only
-// its first `visible` graphemes are drawn (a title typing on): the picture
-// is otherwise the same -- its size, anchor, box and where each letter
-// sits in a line typed in full -- and the line being typed lines up by its
-// typed part.
-Picture render(const title::Style &style, int fontPx, int visible = -1);
+// visible, digits) kept for reuse. Empty for blank text. With `visible` >= 0
+// only its first `visible` graphemes are drawn (a title typing on): the
+// picture is otherwise the same -- its size, anchor, box and where each
+// letter sits in a line typed in full -- and the line being typed lines up
+// by its typed part. `tabularDigits`: every digit as wide as the others (the
+// font's "tnum" feature, where it has one), so a clock doesn't shift as it
+// ticks.
+Picture render(const title::Style &style, int fontPx, int visible = -1,
+               bool tabularDigits = false);
 // The same if it has been made and is still kept, else an empty picture.
-Picture cached(const title::Style &style, int fontPx, int visible = -1);
+Picture cached(const title::Style &style, int fontPx, int visible = -1,
+               bool tabularDigits = false);
 
 // How many graphemes (letters as a reader counts them; spaces and line
 // breaks count too) `text` has.

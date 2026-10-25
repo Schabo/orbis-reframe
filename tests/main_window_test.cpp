@@ -1402,6 +1402,21 @@ void testTitlePresets(const Ctx &c)
     if (clip)
         c.timeline->removeTrackClip(clip->id);
 
+    // A clock: its field kept in the text; the Text section says when the
+    // clip under it doesn't know its recording time.
+    const titlepresets::Preset *clock = titlepresets::find(QStringLiteral("clock"));
+    CHECK(clock);
+    if (!clock)
+        return;
+    emit c.timelineWidget->titleDropped(0, 700, clock->id);
+    clip = added(*clock, 700);
+    CHECK(clip && clip->title->text == QStringLiteral("{time}"));
+    auto *note = c.w->findChild<QLabel *>(QStringLiteral("titleClockNote"));
+    CHECK(note && note->isHidden() == recorded.isValid());
+    CHECK(note && (recorded.isValid() || note->text().startsWith(QStringLiteral("Clip"))));
+    if (clip)
+        c.timeline->removeTrackClip(clip->id);
+
     // An id this build doesn't know: the plain title.
     emit c.timelineWidget->titleDropped(0, 700, QStringLiteral("no-such-tile"));
     clip = added(presets.front(), 700);

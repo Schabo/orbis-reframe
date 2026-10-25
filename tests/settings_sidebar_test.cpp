@@ -29,6 +29,7 @@
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QDateTime>
 #include <QLocale>
@@ -45,6 +46,7 @@
 #include <QPlainTextEdit>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTextCursor>
 #include <QToolButton>
 
 #include <cstdio>
@@ -562,6 +564,26 @@ void testTitleTab(SettingsSidebar &bar)
         left->click();
         CHECK(spy.count() == before + 1 && !centre->isChecked() &&
               spy.last().at(0).value<title::Style>().align == title::Align::Left);
+    }
+    // Insert: a clock field where the cursor is, reported as an edit; the
+    // note on a missing recording time shows only when given.
+    auto *insertDate = text->findChild<QAction *>("titleInsertDate");
+    auto *note = find<QLabel>(text, "titleClockNote");
+    if (insertDate && note) {
+        s.text = "Day 1";
+        text->setTitle(s);
+        CHECK(note->isHidden());
+        QTextCursor cur = edit->textCursor();
+        cur.setPosition(4);
+        edit->setTextCursor(cur);
+        insertDate->trigger();
+        CHECK(spy.last().at(0).value<title::Style>().text == "Day {date}1");
+        text->setTitle(s, "Clip 2 doesn't say when it was recorded.");
+        CHECK(!note->isHidden() && note->text().startsWith("Clip 2"));
+        text->setTitle(s);
+        CHECK(note->isHidden());
+    } else {
+        CHECK(insertDate && note);
     }
     // Each section reports the whole style, keeping what the other set.
     s.box.on = true;

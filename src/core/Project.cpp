@@ -1,4 +1,5 @@
 #include "Project.h"
+#include "TitleClock.h"
 
 #include "MediaPool.h"
 #include "Timeline.h"
@@ -564,10 +565,14 @@ bool styledTitle(const title::Style &t)
            t.letterSpacing != plain.letterSpacing || t.outline.on || t.shadow.on || t.box.on;
 }
 
-title::Style titleFromJson(const json &j)
+// `version` is the file's: before kClockFormatVersion a brace was just a
+// brace, and is escaped so it stays one (title::escapeBraces).
+title::Style titleFromJson(const json &j, int version)
 {
     title::Style t;
     t.text = QString::fromStdString(j.value("text", std::string()));
+    if (version < Project::kClockFormatVersion)
+        t.text = title::escapeBraces(t.text);
     t.font = QString::fromStdString(j.value("font", t.font.toStdString()));
     t.bold = j.value("bold", t.bold);
     t.italic = j.value("italic", t.italic);
@@ -687,7 +692,7 @@ json videoClipToJson(const TrackClip &c, const QDir *projectDir)
     return j;
 }
 
-TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
+TrackClip videoClipFromJson(const json &j, const QDir *projectDir, int version)
 {
     TrackClip c = trackClipFromJson(j, projectDir);
     c.stream = -1;
@@ -695,7 +700,7 @@ TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
     c.sourceWidth = j.value("sourceWidth", 0);
     c.sourceHeight = j.value("sourceHeight", 0);
     if (j.contains("title") && j.at("title").is_object()) {
-        c.title = titleFromJson(j.at("title"));
+        c.title = titleFromJson(j.at("title"), version);
         c.sourcePath.clear();
         c.mediaMissing = false;
     }
@@ -1187,6 +1192,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyTitle = false;
     bool anyStyledTitle = false; // outline, shadow, box, alignment or spacing
     bool anyMotion = false;
+    bool anyBrace = false; // a clock field, or an escaped brace
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
@@ -1196,6 +1202,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 anyTitle |= c.isTitle();
                 anyStyledTitle |= c.isTitle() && styledTitle(*c.title);
                 anyMotion |= !c.motion.isNone();
+                anyBrace |= c.isTitle() && c.title->text.contains(QLatin1Char('{'));
                 tc.push_back(videoClipToJson(c, projectDir));
                 continue;
             }
@@ -1261,7 +1268,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyMotion               ? kMotionFormatVersion
+        {"version", anyBrace                ? kClockFormatVersion
+                    : anyMotion               ? kMotionFormatVersion
                     : anyStyledTitle          ? kTitleLookFormatVersion
                     : anyReframeKey           ? kWideViewFormatVersion
                     : anySplit                ? kSplitFormatVersion
@@ -1437,7 +1445,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 if (jt.contains("clips"))
                     for (const json &jc : jt.at("clips")) {
                         t.clips.push_back(t.kind == Track::Kind::Video
-                                              ? videoClipFromJson(jc, projectDir)
+                                              ? videoClipFromJson(jc, projectDir, version)
                                               : trackClipFromJson(jc, projectDir));
                         std::pair<int, int> link{-1, -1};
                         if (t.kind == Track::Kind::Audio && jc.contains("linkedOverlay")) {

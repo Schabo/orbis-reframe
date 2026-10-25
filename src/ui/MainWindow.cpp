@@ -802,8 +802,13 @@ void MainWindow::connectOverlaysAndAudio()
         if (!c || !c->isTitle())
             return;
         const OutputSettings &out = m_project->output();
+        // Measured with the clock as it shows at the playhead.
+        const QDateTime at = title::hasFields(c->title->text) || title::hasFields(t.text)
+                                 ? renderjobs::titleClock(*m_timeline, recordedTimes())
+                                       .at(m_lastTimelineMs)
+                                 : QDateTime();
         m_timeline->setTrackClipTitle(
-            c->id, t, renderjobs::titleAnchorShift(*c->title, t, out.width, out.height));
+            c->id, t, renderjobs::titleAnchorShift(*c->title, t, out.width, out.height, at));
     };
     connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, titleEdited);
     connect(m_titleLookPanel, &TitleLookPanel::titleEdited, this, titleEdited);
@@ -2082,7 +2087,54 @@ void MainWindow::addTitle(int trackId, qint64 atMs, const QString &presetId)
 void MainWindow::pushInsetsToController()
 {
     const OutputSettings &out = m_project->output();
-    m_controller->setInsets(renderjobs::insetFeed(*m_timeline, out.width, out.height, m_privacy)); // thread-safe
+    m_controller->setInsets(renderjobs::insetFeed(*m_timeline, out.width, out.height, m_privacy,
+                                                  recordedTimes())); // thread-safe
+}
+
+QHash<QString, QDateTime> MainWindow::recordedTimes()
+{
+    renderjobs::RecordedTimes times;
+    if (!renderjobs::anyTitleClock(*m_timeline))
+        return times;
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const ClipItem &c = m_timeline->clipAt(i);
+        if (c.mediaMissing || times.contains(c.sourcePath))
+            continue;
+        auto it = m_recordedTimes.constFind(c.sourcePath);
+        if (it == m_recordedTimes.constEnd()) {
+            const camera::MediaInfo *info = mediaInfoFor(c.sourcePath);
+            it = m_recordedTimes.insert(c.sourcePath, info ? recordedTime(*info) : QDateTime());
+        }
+        times.insert(c.sourcePath, *it);
+    }
+    return times;
+}
+
+QString MainWindow::titleClockNote(const TrackClip &c)
+{
+    if (!c.isTitle() || !title::hasFields(c.title->text))
+        return {};
+    const renderjobs::RecordedTimes times = recordedTimes();
+    QStringList unknown;
+    const qint64 endMs = c.startMs + c.timelineDurationMs();
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const qint64 from = m_timeline->clipToTimeline(i, 0);
+        const qint64 to = from + m_timeline->clipAt(i).timelineDurationMs();
+        // Under the title, or the last clip if the title runs past the end.
+        const bool under = (from < endMs && to > c.startMs) ||
+                           (i == m_timeline->count() - 1 && c.startMs >= to);
+        if (under && !times.value(m_timeline->clipAt(i).sourcePath).isValid())
+            unknown << QString::number(i + 1);
+    }
+    if (unknown.isEmpty())
+        return {};
+    return unknown.size() == 1
+               ? tr("Clip %1 doesn't say when it was recorded: the time shows --:-- and the "
+                    "date nothing while the title is over it.")
+                     .arg(unknown.front())
+               : tr("Clips %1 don't say when they were recorded: the time shows --:-- and the "
+                    "date nothing while the title is over them.")
+                     .arg(QLocale().createSeparatedList(unknown));
 }
 
 const TrackClip *MainWindow::selectedOverlayClip(int *trackId) const
@@ -2113,7 +2165,7 @@ void MainWindow::refreshOverlayPanel()
     // the other says where to look.
     OverlayPanel *panel = c->isTitle() ? m_titlePlacementPanel : m_overlayPanel;
     if (c->isTitle()) {
-        m_titleTextPanel->setTitle(*c->title);
+        m_titleTextPanel->setTitle(*c->title, titleClockNote(*c));
         m_titleLookPanel->setTitle(*c->title);
         m_titleAnimationPanel->setMotion(c->motion);
         m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Title tab."));
@@ -3432,7 +3484,8 @@ void MainWindow::exportFlatVideo()
         req.clips.push_back(exportJobFor(m_timeline->clipAt(i)));
     req.mix = renderjobs::mixClips(*m_timeline); // the audio tracks
     // The overlay tracks, over the flat main clips.
-    req.insets = renderjobs::insetJobs(*m_timeline, req.outWidth, req.outHeight, m_privacy);
+    req.insets = renderjobs::insetJobs(*m_timeline, req.outWidth, req.outHeight, m_privacy,
+                                       recordedTimes());
 
     // The export opens its own NativeStitchSource (on the shared decode
     // device) -- pause playback so the two stitch pipelines don't contend
@@ -4022,6 +4075,7 @@ void MainWindow::takeScreenshot()
 
     m_editToolbar->showNotice(tr("Saving screenshot…"), true);
     // The overlays showing at the playhead, composited like the export does.
-    still.insets = renderjobs::insetJobs(*m_timeline, still.width, still.height, m_privacy);
+    still.insets = renderjobs::insetJobs(*m_timeline, still.width, still.height, m_privacy,
+                                         recordedTimes());
     m_exports->startStill(std::move(still));
 }

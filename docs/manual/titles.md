@@ -4,7 +4,8 @@ A title is text shown over your video: the name of the ride, a place, a
 date. Titles sit on overlay tracks, like picture-in-picture videos
 ([Overlays](overlays.md)), and are placed, keyframed and faded the same way.
 They can also slide in and out, pop up, or type themselves on letter by
-letter.
+letter, and show the time of day the video was recorded, running as it
+plays.
 
 ![A title with a drop shadow in the viewport, the Titles tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -35,6 +36,7 @@ picture. An animated one plays its animation while the mouse is over it:
 | **Caption** | Small text at the bottom in the middle, on a rounded box. |
 | **Caption, typed** | The caption, typing itself on at the start and off again at the end. |
 | **Date** | The date in the lower right. |
+| **Clock** | The time of day in the lower right, running as the clip plays. |
 | **Date and place** | The date and, below it, *Place* to type over, in the lower left. |
 
 To add one:
@@ -57,6 +59,10 @@ from the camera's clock, as the clip's file records it; for a clip whose
 file doesn't say, the title says *Date* for you to type over. orbis-reframe
 doesn't look up places: type the place yourself.
 
+The **Clock** tile shows the time the picture under it was recorded, and
+keeps time as the video plays; see [The recording time as a
+clock](#the-recording-time-as-a-clock).
+
 A tile is only where a title starts. Once added it is an ordinary title:
 everything below can be changed, and nothing ties it to its tile.
 
@@ -70,12 +76,49 @@ back again when you select an overlay video). The **Text** section:
 | Setting | What it does |
 |---|---|
 | **Text** | The title's text. `Enter` starts a new line. The title changes as you type. |
+| **Insert** | Puts the recording time or date into the text where the cursor is: **Time**, **Time with seconds** or **Date**. See [The recording time as a clock](#the-recording-time-as-a-clock). |
 | **Font** | The typeface, picked from a list of every font installed on your computer, each shown in its own face. The three fonts you picked last are at the top. Type a name's first letters to jump to it. A project made on another computer may use a font that isn't installed here: it is listed as *(not installed)*, kept, and drawn with a similar font until you pick another. |
 | **Style** | **Bold** and **Italic**; click to switch them on or off. |
 | **Colour** | Click to choose the text's colour. |
 | **Align** | **Left**, **Centre** or **Right**: how the lines line up under each other, and which point of the title its position is. A left-aligned title's position is its left edge, so the text keeps its start where you put it as you type more, as a caption in a corner should; a right-aligned one keeps its right edge. Changing the alignment doesn't move the text. |
 
 On the timeline, a title is labelled with its first line.
+
+## The recording time as a clock
+
+A title can show when the video under it was recorded: the time of day, or
+the date, from the camera's clock as the clip's file records it. It is a
+*field* in the title's text, which the **Insert** button below the text puts
+in where the cursor is, or which you type:
+
+| Field | Shows | Example (US English) |
+|---|---|---|
+| `{time}` | The time, hours and minutes | *2:56 PM* |
+| `{time:ss}` | The time with seconds | *2:56:48 PM* |
+| `{date}` | The date, written in full | *Saturday, September 27, 2025* |
+
+The text box shows the field; the picture shows its value. A field can sit
+among other text (*Leaving camp at {time}*), and a title can have several.
+To show a brace itself, type it twice: `{{` shows as `{`.
+
+The value follows the video. At every moment it is the recording time of
+the clip on the video track under the title at that moment, so it keeps
+running as the clip plays; a trim starts it later, a clip at double speed
+makes it run twice as fast, and after a cut it jumps to the next clip's
+time. The time is written as your computer writes it: 24 hours or AM / PM,
+as the system's language and region settings say. The digits are all drawn
+as wide as each other, so a centred or right-aligned clock doesn't shift as
+it ticks.
+
+The camera writes the recording's start to the second, not the fraction of
+a second the first frame began at, so the clock can be up to a second
+behind the real time.
+
+Where the clip under the title doesn't say when it was recorded (a phone
+or action-cam video: the recording time is read only from the 360 cameras
+orbis-reframe knows), the time
+shows `--:--` (`--:--:--` with seconds) and the date nothing. The **Text**
+section then says which clips those are.
 
 ## Outline, shadow, box and spacing
 

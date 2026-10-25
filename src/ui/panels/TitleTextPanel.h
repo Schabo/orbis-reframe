@@ -5,11 +5,13 @@
 #include "../../core/Title.h"
 
 class QComboBox;
+class QLabel;
 class QPlainTextEdit;
 class QPushButton;
 class QWidget;
 
 // The Title tab's Text section: the selected title's text (several lines),
+// with an Insert menu for the clock's fields (title::withFields), its
 // font, bold / italic, colour and alignment (title::Style). The font list is
 // the installed families, each in its own face, with the last few picked
 // (app-wide, not the project's) at the top. Where it sits,
@@ -24,8 +26,10 @@ public:
     explicit TitleTextPanel(QWidget *parent = nullptr);
 
     // Reflect a title. Does not emit. The text is only replaced when it
-    // differs, so the cursor stays put while the user types.
-    void setTitle(const title::Style &style);
+    // differs, so the cursor stays put while the user types. `clockNote`,
+    // shown under the text when not empty: why its clock fields show
+    // nothing somewhere.
+    void setTitle(const title::Style &style, const QString &clockNote = QString());
     // No title selected: `hint` says why, the fields are greyed out.
     void setNoTitle(const QString &hint);
 
@@ -43,6 +47,8 @@ private:
     void fontPicked(int index);
 
     QPlainTextEdit *m_text = nullptr;
+    QPushButton *m_insert = nullptr;
+    QLabel *m_clockNote = nullptr;
     QComboBox *m_font = nullptr;
     QWidget *m_styleRow = nullptr;
     QPushButton *m_bold = nullptr;

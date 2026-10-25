@@ -9,6 +9,7 @@
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
 #include "TitleSource.h"
+#include "../core/TitleClock.h"
 #include "../core/ClipItem.h"
 #include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
@@ -19,6 +20,7 @@
 #include <QFile>
 #include <QHash>
 #include <QTemporaryDir>
+#include <QTimeZone>
 
 #include <chrono>
 #include <cmath>
@@ -464,6 +466,179 @@ void testTypeOnFeedVsExport()
     CHECK(pictures.size() == 7);
 }
 
+// The clock's fields: their values per locale, without a recording time,
+// escaped braces.
+void testClockFields()
+{
+    const QDateTime at(QDate(2025, 8, 16), QTime(14, 5, 9), QTimeZone::UTC);
+    const QLocale gb(QLocale::English, QLocale::UnitedKingdom);
+    const QLocale us(QLocale::English, QLocale::UnitedStates);
+    const QLocale de(QLocale::German, QLocale::Germany);
+    CHECK(title::withFields("{time}", at, gb) == "14:05");
+    CHECK(title::withFields("{time:ss}", at, gb) == "14:05:09");
+    CHECK(title::withFields("{time:ss}", at, de) == "14:05:09");
+    CHECK(title::withFields("{date}", at, gb) == gb.toString(at.date(), QLocale::LongFormat));
+    // 12-hour where the locale writes it so.
+    const QString usTime = title::withFields("{time}", at, us);
+    const QString usSeconds = title::withFields("{time:ss}", at, us);
+    CHECK(usTime == us.toString(at.time(), QLocale::ShortFormat));
+    CHECK(usTime.startsWith("2:05") && usTime.contains("PM"));
+    CHECK(usSeconds.startsWith("2:05:09") && usSeconds.contains("PM"));
+    CHECK(title::withFields("At {time} on {date}.", at, gb) ==
+          "At 14:05 on " + gb.toString(at.date(), QLocale::LongFormat) + ".");
+    // Nothing says when: placeholders, no date.
+    CHECK(title::withFields("{time}|{time:ss}|{date}", QDateTime(), gb) == "--:--|--:--:--|");
+    // Braces that aren't fields.
+    CHECK(title::withFields("{{time} {x} {time", at, gb) == "{time} {x} {time");
+    CHECK(title::withFields("}{{{time}", at, gb) == "}{14:05");
+    CHECK(title::hasFields("a {date}") && title::hasFields("{{{time}"));
+    CHECK(!title::hasFields("{{time}") && !title::hasFields("{x}") && !title::hasFields("plain"));
+    const QString old = "Price {time} {{";
+    CHECK(title::withFields(title::escapeBraces(old), at, gb) == old);
+}
+
+// The clock over the main track: trims, speed, cuts, a clip without a
+// recording time; when it ticks.
+void testClock()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    const int b = t.appendClip("/c/b.insv", 20000, 30.0);
+    t.appendClip("/c/c.mp4", 20000, 30.0, 1920, 1080, 0, true);
+    t.setClipTrimIn(a, 2000);
+    t.setClipTrimOut(a, 10000); // 0..8 s
+    t.setClipTrimIn(b, 3000);
+    t.setClipTrimOut(b, 13000);
+    t.setClipSpeed(b, 2.0); // 8..13 s; c from 13 s
+    renderjobs::RecordedTimes rec;
+    rec.insert("/c/a.insv", QDateTime(QDate(2025, 8, 16), QTime(10, 0, 0)));
+    rec.insert("/c/b.insv", QDateTime(QDate(2025, 8, 16), QTime(23, 59, 50)));
+    const title::Clock clock = renderjobs::titleClock(t, rec);
+    const auto time = [&](qint64 ms) { return clock.at(ms).time(); };
+    CHECK(time(0) == QTime(10, 0, 2)); // the trim-in's source time
+    CHECK(time(999) == QTime(10, 0, 2) && time(1000) == QTime(10, 0, 3));
+    CHECK(time(7999) == QTime(10, 0, 9));
+    CHECK(time(8000) == QTime(23, 59, 53)); // the cut: the later clip
+    CHECK(time(9000) == QTime(23, 59, 55)); // at double speed
+    CHECK(clock.at(12999).date() == QDate(2025, 8, 17) && time(12999) == QTime(0, 0, 2));
+    CHECK(!clock.at(13000).isValid() && !clock.at(40000).isValid());
+    CHECK(clock.nextTick(0, 1) == 1000);
+    CHECK(clock.nextTick(7500, 1) == 8000); // the next clip
+    CHECK(clock.nextTick(8000, 1) == 8500);
+    CHECK(clock.nextTick(0, 60) == 8000);
+    CHECK(clock.nextTick(8000, 60) == 11500); // midnight
+    CHECK(clock.nextTick(12999, 1) == 13000);
+    CHECK(clock.nextTick(13000, 1) == -1);
+    // Against every ms.
+    for (qint64 ms = 0; ms < 13500; ms += 37) {
+        const QDateTime now = clock.at(ms);
+        qint64 expect = -1;
+        for (qint64 u = ms + 1; u <= 13500; ++u)
+            if (clock.at(u) != now || u == 8000 || u == 13000) {
+                expect = u;
+                break;
+            }
+        CHECK(clock.nextTick(ms, 1) == expect);
+    }
+
+    // A title's text over it, typing on, against every few ms: its state
+    // and when the picture next changes.
+    title::Style style;
+    style.text = "{time:ss}";
+    inset::Motion m;
+    m.in = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 1500};
+    TitleSource src(style, m, 3000, 40, 1920, 1080, clock, 6500);
+    CHECK(src.textAt(0) == title::withFields(style.text, clock.at(6500)));
+    CHECK(clock.at(6500).time() == QTime(10, 0, 8));
+    CHECK(src.textAt(1500) != src.textAt(0)); // the cut at 8 s
+    const auto state = [&](qint64 ms) { return std::pair(src.textAt(ms), src.stateAt(ms)); };
+    for (qint64 ms = 0; ms <= 3000; ms += 13) {
+        const auto now = state(ms);
+        qint64 expect = -1;
+        for (qint64 u = ms + 1; u <= 3000; ++u)
+            if (state(u) != now) {
+                expect = u;
+                break;
+            }
+        CHECK(src.nextChange(ms) == expect);
+    }
+    // Without fields the clock is never read: the text as it was, its one
+    // picture.
+    title::Style plain;
+    plain.text = "Plain {x}";
+    TitleSource fixed(plain, {}, 3000, 40, 1920, 1080, clock, 6500);
+    CHECK(fixed.nextChange(0) == -1 && fixed.textAt(1500) == "Plain {x}");
+    CHECK(fixed.at(0).rgba == titlerender::render(plain, 40).rgba);
+}
+
+// Playback and the export show the same clock at the same moment, across
+// a second and a cut; a date with no recording time shows nothing.
+void testClockFeedVsExport()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    t.appendClip("/c/b.insv", 20000, 30.0);
+    t.setClipTrimOut(a, 3000);
+    const int v = t.addTrack(Track::Kind::Video, "Clock");
+    title::Style style;
+    style.text = "{time:ss}";
+    style.align = title::Align::Right;
+    inset::Look look = title::defaultLook();
+    look.centerX = 0.95f;
+    const int id = t.addTitleClip(v, 1000, style, 4000, look);
+    const int none = t.addTitleClip(t.addTrack(Track::Kind::Video, "Date"), 0, [] {
+        title::Style s;
+        s.text = "{date}";
+        return s;
+    }(), 2000);
+    renderjobs::RecordedTimes rec;
+    rec.insert("/c/a.insv", QDateTime(QDate(2025, 8, 16), QTime(10, 0, 0)));
+    const PrivacyBlur privacy;
+    // No recording time: kept as a layer, nothing drawn.
+    {
+        const auto jobs = renderjobs::insetJobs(t, 1920, 1080, privacy);
+        CHECK(jobs.size() == 2);
+        for (const auto &j : jobs)
+            CHECK(j.still && j.still->at(500).empty() == (j.startMs == 0));
+    }
+    t.removeTrackClip(none);
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080, privacy, rec);
+    const std::vector<exportpipe::InsetClipJob> jobs =
+        renderjobs::insetJobs(t, 1920, 1080, privacy, rec);
+    CHECK(feed.size() == 1 && jobs.size() == 1);
+    if (feed.size() != 1 || jobs.size() != 1)
+        return;
+    InsetFeed player;
+    player.setClips(feed);
+    const exportpipe::InsetClipJob &j = jobs[0];
+    const TrackClip &c = *t.trackClipById(id);
+    std::set<const void *> pictures;
+    // 10:00:01, :01, :02; the cut at 3 s: b has no time -- "--:--:--".
+    for (qint64 ms : {1000, 1999, 2000, 2999, 3000, 4999}) {
+        exportpipe::Still jp;
+        const inset::Rect er = titleRect(j, ms - c.startMs, 1920, 1080, &jp);
+        CHECK(!jp.empty());
+        if (jp.empty())
+            continue;
+        pictures.insert(jp.rgba.get());
+        std::vector<EquirectViewportWindow::InsetDraw> drawn;
+        for (int i = 0; i < 400; ++i) {
+            drawn = player.frameFor(ms, false);
+            if (drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        CHECK(drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba);
+        if (drawn.size() != 1)
+            continue;
+        const inset::Rect pr = inset::place(drawn[0].look, {}, drawn[0].aspect, 1920, 1080);
+        // Right-aligned: its right edge stays put as the digits change.
+        CHECK(near(pr.x + pr.w, er.x + er.w, 1.0) && near(pr.y, er.y, 1.0) &&
+              near(pr.w, er.w, 1.0));
+    }
+    CHECK(pictures.size() == 3);
+}
+
 // A transition: the other clip as a layer over each half, blending through
 // the cut; the clips' own sound running on past it, crossfading.
 void testTransitions()
@@ -767,6 +942,9 @@ int main(int argc, char **argv)
     testTitleMotion();
     testTypeOn();
     testTypeOnFeedVsExport();
+    testClockFields();
+    testClock();
+    testClockFeedVsExport();
     testTransitions();
     testLayerOverMainClip();
     testClipJob(tmp.path());

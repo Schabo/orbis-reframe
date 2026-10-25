@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QDateTime>
+#include <QHash>
 #include <QString>
 #include <QStringList>
 
@@ -10,6 +12,7 @@
 
 #include "InsetFeed.h"               // InsetFeed::Clip
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
+#include "../core/TitleClock.h"
 
 struct ClipItem;
 class MediaPool;
@@ -28,23 +31,39 @@ namespace renderjobs {
 // both use this.
 std::vector<insv::MixClip> mixClips(const Timeline &timeline);
 
+// When each source file was recorded (recordedTime), by its path: what a
+// title's clock reads. Looked up on the GUI thread (the files' media
+// information), only for the main track's clips.
+using RecordedTimes = QHash<QString, QDateTime>;
+
 // The overlay clips (hidden tracks and missing files left out), bottom-most
 // first: for playback's InsetFeed, and for the export / a screenshot. Under
 // them, the flat main-track clips (ClipItem::flat) as full-frame layers,
 // fitted into an output of outW x outH, and over those each transition's
 // other clip (transitionLayers): a 360 clip's view through `privacy`'s
-// blur, or a flat clip.
+// blur, or a flat clip. A title's clock fields read `recorded`.
 std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
-                                       const PrivacyBlur &privacy);
+                                       const PrivacyBlur &privacy,
+                                       const RecordedTimes &recorded = {});
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
-                                                const PrivacyBlur &privacy);
+                                                const PrivacyBlur &privacy,
+                                                const RecordedTimes &recorded = {});
+
+// The main track's recording times as a title's clock: each clip's span on
+// the timeline with its file's recording start (`recorded`, invalid if not
+// there), trim and speed.
+title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded);
+// Does any title on the timeline have clock fields (title::hasFields)? Only
+// then are the recording times worth looking up.
+bool anyTitleClock(const Timeline &timeline);
 
 // How far a title's position has to move, in its text size times output
 // widths (Timeline::setTrackClipTitle's shiftPerSize), for its text to stay
 // where it is as its style changes from `from` to `to`: 0 unless the
 // alignment changes, since the alignment says which point of the text the
-// position pins (title::drawnLook).
-double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH);
+// position pins (title::drawnLook). Their clock fields read `at`.
+double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH,
+                        const QDateTime &at = QDateTime());
 
 // What a transition shows besides the main track, in timeline order. A
 // crossfade: over the first half of it the clip after the cut, from before

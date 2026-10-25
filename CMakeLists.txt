@@ -254,6 +254,8 @@ add_library(orbis_core STATIC
     src/core/ReframeTrack.cpp
     src/core/ReframeTrack.h
     src/core/Title.h
+    src/core/TitleClock.cpp
+    src/core/TitleClock.h
     src/core/Transition.h
 )
 set_target_properties(orbis_core PROPERTIES AUTOMOC ON)

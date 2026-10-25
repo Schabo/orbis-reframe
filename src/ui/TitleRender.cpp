@@ -29,6 +29,7 @@ struct Cached {
     title::Style style;
     int fontPx = 0;
     int visible = -1;
+    bool tabular = false;
     Picture picture;
     size_t bytes() const { return picture.rgba ? picture.rgba->size() : 0; }
 };
@@ -110,7 +111,7 @@ void blur(QImage &alpha, double extentPx)
 
 // `visible` < 0: all of the text; else its first `visible` graphemes, the
 // picture otherwise as it would be with all of it.
-Picture draw(const title::Style &style, int fontPx, int visible)
+Picture draw(const title::Style &style, int fontPx, int visible, bool tabularDigits)
 {
     Picture pic;
     if (style.text.trimmed().isEmpty() || fontPx <= 0)
@@ -123,6 +124,8 @@ Picture draw(const title::Style &style, int fontPx, int visible)
     // Unhinted: the shapes then scale evenly, so the view (rendered smaller)
     // and the export match.
     font.setHintingPreference(QFont::PreferNoHinting);
+    if (tabularDigits)
+        font.setFeature(QFont::Tag("tnum"), 1);
     const double letterPx = style.letterSpacing * em;
     if (letterPx != 0.0)
         font.setLetterSpacing(QFont::AbsoluteSpacing, letterPx);
@@ -322,14 +325,15 @@ int visibleAt(int count, const inset::Motion &motion, int64_t localMs, int64_t s
     return k >= count ? -1 : std::max(0, k);
 }
 
-Picture cached(const title::Style &style, int fontPx, int visible)
+Picture cached(const title::Style &style, int fontPx, int visible, bool tabularDigits)
 {
     if (visible >= 0 && visible >= graphemeCount(style.text))
         visible = -1; // all of it
     Cache &c = cache();
     std::lock_guard<std::mutex> lk(c.mx);
     for (auto it = c.list.begin(); it != c.list.end(); ++it)
-        if (it->fontPx == fontPx && it->visible == visible && it->style == style) {
+        if (it->fontPx == fontPx && it->visible == visible && it->tabular == tabularDigits &&
+            it->style == style) {
             Cached hit = *it; // most recent to the front
             c.list.erase(it);
             c.list.push_front(hit);
@@ -338,21 +342,22 @@ Picture cached(const title::Style &style, int fontPx, int visible)
     return {};
 }
 
-Picture render(const title::Style &style, int fontPx, int visible)
+Picture render(const title::Style &style, int fontPx, int visible, bool tabularDigits)
 {
     if (visible >= 0 && visible >= graphemeCount(style.text))
         visible = -1; // all of it
-    if (Picture hit = cached(style, fontPx, visible); !hit.empty())
+    if (Picture hit = cached(style, fontPx, visible, tabularDigits); !hit.empty())
         return hit;
     // Drawn outside the lock: two threads may both draw the same picture,
     // and the cache then keeps one.
-    Picture pic = draw(style, fontPx, visible);
+    Picture pic = draw(style, fontPx, visible, tabularDigits);
     Cache &c = cache();
     std::lock_guard<std::mutex> lk(c.mx);
     for (const Cached &o : c.list)
-        if (o.fontPx == fontPx && o.visible == visible && o.style == style)
+        if (o.fontPx == fontPx && o.visible == visible && o.tabular == tabularDigits &&
+            o.style == style)
             return o.picture;
-    c.list.push_front({style, fontPx, visible, pic});
+    c.list.push_front({style, fontPx, visible, tabularDigits, pic});
     c.bytes += c.list.front().bytes();
     while (c.list.size() > 1 && (c.list.size() > kCacheSize || c.bytes > kCacheBytes)) {
         c.bytes -= c.list.back().bytes();

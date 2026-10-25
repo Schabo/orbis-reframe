@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDateTime>
 #include <QHash>
 #include <QKeySequence>
 #include <QList>
@@ -350,6 +351,12 @@ private:
     void addTitle(int trackId, qint64 atMs, const QString &presetId);
     // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
+    // When the main track's files were recorded (renderjobs::RecordedTimes),
+    // for the titles' clocks; empty when no title has a clock field.
+    QHash<QString, QDateTime> recordedTimes();
+    // Why title `c`'s clock fields show nothing somewhere (the main-track
+    // clips under it whose files don't say when they were recorded), or "".
+    QString titleClockNote(const TrackClip &c);
     // The selected track clip if it is on an overlay track (else null).
     const TrackClip *selectedOverlayClip(int *trackId = nullptr) const;
     // The Overlay panel: the selected overlay clip, at the playhead.
@@ -520,6 +527,9 @@ private:
     TransitionPanel *m_transitionPanel = nullptr;   // the selected transition
     MediaInfoPanel *m_mediaInfoPanel = nullptr;
     QHash<QString, camera::MediaInfo> m_mediaInfo; // source path -> probe
+    // Source path -> recording start (recordedTimes), also when unknown: a
+    // file that can't be probed isn't probed again on every refresh.
+    QHash<QString, QDateTime> m_recordedTimes;
     // The edit model: a Project owning a Timeline. Authoring (trim via [ ],
     // reframe via K / viewport drag) targets m_clipId, the clip currently
     // under the playhead (0 == nothing open); the timeline widget's own

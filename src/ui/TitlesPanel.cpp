@@ -1,6 +1,7 @@
 #include "TitlesPanel.h"
 
 #include "../core/Title.h"
+#include "../core/TitleClock.h"
 #include "TitlePresets.h"
 #include "TitleRender.h"
 
@@ -63,7 +64,11 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     constexpr double kScale = 1.5;  // the text, larger than in a frame
     constexpr double kMinFontPx = 7; // logical pixels
     const double W = size.width(), H = size.height();
-    const title::Style style = titlepresets::styleFor(preset, QDateTime::currentDateTime());
+    const QDateTime now = QDateTime::currentDateTime();
+    title::Style style = titlepresets::styleFor(preset, now);
+    // A clock tile shows the time now.
+    const bool clock = title::hasFields(style.text);
+    style.text = title::withFields(style.text, now);
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);
     // Typing on or off: the picture changes as the frame's would.
     const int visible =
@@ -71,7 +76,8 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
             ? titlerender::visibleAt(titlerender::graphemeCount(style.text), preset.motion,
                                      localMs, spanMs)
             : -1;
-    const titlerender::Picture pic = titlerender::render(style, qRound(fontPx * dpr), visible);
+    const titlerender::Picture pic =
+        titlerender::render(style, qRound(fontPx * dpr), visible, clock);
     if (pic.empty())
         return QIcon(pm);
     inset::Look look = preset.look;

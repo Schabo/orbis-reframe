@@ -1,5 +1,7 @@
 #include "TitlePresets.h"
 
+#include "../core/TitleClock.h"
+
 #include <QCoreApplication>
 #include <QFontDatabase>
 #include <QLocale>
@@ -156,6 +158,19 @@ QList<Preset> make()
     date.look = at(0.95f, 0.92f, 0.04f);
     date.date = true;
     list.push_back(date);
+
+    // A clock runs with the picture: the time the clip under it was
+    // recorded, moment by moment.
+    Preset clock{QStringLiteral("clock"), tr("Clock"),
+                 tr("The time of day in the lower right, running as the clip plays: when the "
+                    "clip under it was recorded, where its file says.") +
+                     QLatin1Char(' ') + hint};
+    clock.style.text = title::kTimeField;
+    clock.style.bold = false;
+    clock.style.align = title::Align::Right;
+    clock.style.shadow = softShadow(0.7f, 0.05f, 0.06f);
+    clock.look = at(0.95f, 0.92f, 0.04f);
+    list.push_back(clock);
 
     Preset place{QStringLiteral("date-place"), tr("Date and place"),
                  tr("The date and, below it, a place to type, in the lower left.") +

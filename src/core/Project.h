@@ -144,8 +144,12 @@ public:
     // title shows one: an older build would draw it plain, and a left- or
     // right-aligned one in the wrong place. Version 19 added a clip's
     // motion (slides and pops at its edges), written only when a clip has
-    // one: an older build would show it standing still.
+    // one: an older build would show it standing still. It also added the
+    // clock fields in a title's text (title::withFields), written as a
+    // title with a brace in its text: an older build would show the field,
+    // and a brace read from an older file is escaped.
     static constexpr int kFormatVersion = 19;
+    static constexpr int kClockFormatVersion = 19;
     static constexpr int kMotionFormatVersion = 19;
     static constexpr int kTitleLookFormatVersion = 18;
     static constexpr int kWideViewFormatVersion = 17;
