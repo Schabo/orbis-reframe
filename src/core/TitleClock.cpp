@@ -24,12 +24,66 @@ Field fieldAt(const QString &text, qsizetype i, qsizetype *length)
     return Field::None;
 }
 
+// A time format (QLocale's) with its hours as `hours` says: 24-hour drops
+// the AM / PM and counts the hours to 23 ("HH"), 12-hour counts them to 12
+// ("h") and adds AM / PM after the time if the format has none. Quoted text
+// is kept as it is.
+QString withHours(const QString &format, Hours hours)
+{
+    if (hours == Hours::System)
+        return format;
+    const auto isAmPm = [](QChar c) { return c == QLatin1Char('a') || c == QLatin1Char('A'); };
+    bool amPm = false;
+    for (qsizetype i = 0, quoted = 0; i < format.size(); ++i) {
+        if (format.at(i) == QLatin1Char('\''))
+            quoted ^= 1;
+        else if (!quoted && isAmPm(format.at(i)))
+            amPm = true;
+    }
+    if (hours == Hours::H12 && amPm)
+        return format;
+    QString out;
+    bool dropSpace = false; // after a dropped AM / PM
+    for (qsizetype i = 0; i < format.size(); ++i) {
+        const QChar c = format.at(i);
+        if (c == QLatin1Char('\'')) { // a quoted literal, to its end
+            const qsizetype end = format.indexOf(QLatin1Char('\''), i + 1);
+            const qsizetype stop = end < 0 ? format.size() : end + 1;
+            out += format.mid(i, stop - i);
+            i = stop - 1;
+            dropSpace = false;
+            continue;
+        }
+        if (c == QLatin1Char('h') || c == QLatin1Char('H')) {
+            while (i + 1 < format.size() && format.at(i + 1) == c)
+                ++i;
+            out += hours == Hours::H24 ? QStringLiteral("HH") : QStringLiteral("h");
+            dropSpace = false;
+            continue;
+        }
+        if (isAmPm(c)) { // only with H24 here: "a", "A", "ap", "AP", ...
+            if (i + 1 < format.size() && format.at(i + 1).toLower() == QLatin1Char('p'))
+                ++i;
+            while (!out.isEmpty() && out.back().isSpace())
+                out.chop(1);
+            dropSpace = true;
+            continue;
+        }
+        if (dropSpace && c.isSpace())
+            continue;
+        dropSpace = false;
+        out += c;
+    }
+    if (hours == Hours::H12)
+        out += QStringLiteral(" Ap"); // as the locale writes AM / PM
+    return out.trimmed();
+}
+
 // The locale's short time with seconds after the minutes, separated as it
 // separates the minutes from the hours. (Its long format adds the time
 // zone, which a camera's clock doesn't know.)
-QString secondsFormat(const QLocale &locale)
+QString secondsFormat(QString format)
 {
-    QString format = locale.timeFormat(QLocale::ShortFormat);
     if (format.contains(QLatin1Char('s')))
         return format;
     const qsizetype mm = format.indexOf(QLatin1String("mm"));
@@ -63,10 +117,12 @@ bool hasFields(const QString &text)
     return false;
 }
 
-QString withFields(const QString &text, const QDateTime &at, const QLocale &locale)
+QString withFields(const QString &text, const QDateTime &at, const QLocale &locale,
+                   Hours hours)
 {
     if (!text.contains(QLatin1Char('{')))
         return text;
+    const QString timeFormat = withHours(locale.timeFormat(QLocale::ShortFormat), hours);
     QString out;
     out.reserve(text.size());
     for (qsizetype i = 0; i < text.size(); ++i) {
@@ -84,11 +140,11 @@ QString withFields(const QString &text, const QDateTime &at, const QLocale &loca
         switch (fieldAt(text, i, &length)) {
         case Field::None: out += ch; continue;
         case Field::Time:
-            out += at.isValid() ? locale.toString(at.time(), QLocale::ShortFormat)
+            out += at.isValid() ? locale.toString(at.time(), timeFormat)
                                 : QStringLiteral("--:--");
             break;
         case Field::TimeSeconds:
-            out += at.isValid() ? locale.toString(at.time(), secondsFormat(locale))
+            out += at.isValid() ? locale.toString(at.time(), secondsFormat(timeFormat))
                                 : QStringLiteral("--:--:--");
             break;
         case Field::Date:
@@ -99,6 +155,23 @@ QString withFields(const QString &text, const QDateTime &at, const QLocale &loca
         i += length - 1;
     }
     return out;
+}
+
+bool hasTimeField(const QString &text)
+{
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text.at(i) != QLatin1Char('{'))
+            continue;
+        if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('{')) {
+            ++i;
+            continue;
+        }
+        qsizetype length = 0;
+        const Field f = fieldAt(text, i, &length);
+        if (f == Field::Time || f == Field::TimeSeconds)
+            return true;
+    }
+    return false;
 }
 
 QString escapeBraces(const QString &text)

@@ -1797,12 +1797,14 @@ void testTitleJson()
         Timeline *tl = p.timeline();
         title::Style clock = *tl->trackAt(0).clips.at(0).title;
         clock.text = "{time:ss} {{ok}";
+        clock.hours = title::Hours::H24;
         tl->setTrackClipTitle(tl->trackAt(0).clips.at(0).id, clock);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kClockFormatVersion);
         Project back;
         CHECK(back.load(file, &err));
         CHECK(back.timeline()->trackAt(0).clips.at(0).title->text == "{time:ss} {{ok}");
+        CHECK(back.timeline()->trackAt(0).clips.at(0).title->hours == title::Hours::H24);
     }
     // A brace in an older file's title is a brace: escaped, so it shows as
     // it did.

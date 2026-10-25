@@ -43,6 +43,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QPlainTextEdit>
 #include <QSignalSpy>
 #include <QTest>
@@ -578,6 +579,21 @@ void testTitleTab(SettingsSidebar &bar)
         edit->setTextCursor(cur);
         insertDate->trigger();
         CHECK(spy.last().at(0).value<title::Style>().text == "Day {date}1");
+        // The hours: only while the text shows a time; a pick is reported.
+        auto *hours = find<QComboBox>(text, "titleHours");
+        auto *form = text->findChild<QFormLayout *>();
+        if (hours && form) {
+            CHECK(!form->isRowVisible(hours)); // a date only
+            text->setTitle(s);
+            edit->setPlainText("At {time}");
+            CHECK(form->isRowVisible(hours));
+            hours->setCurrentIndex(1);
+            emit hours->activated(1);
+            CHECK(spy.last().at(0).value<title::Style>().hours == title::Hours::H24);
+            s.text = "Day 1";
+        } else {
+            CHECK(hours && form);
+        }
         text->setTitle(s, "Clip 2 doesn't say when it was recorded.");
         CHECK(!note->isHidden() && note->text().startsWith("Clip 2"));
         text->setTitle(s);

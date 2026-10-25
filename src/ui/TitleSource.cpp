@@ -20,7 +20,8 @@ TitleSource::TitleSource(title::Style style, inset::Motion motion, int64_t spanM
 QString TitleSource::textAt(int64_t localMs) const
 {
     return title::withFields(m_style.text,
-                             m_fields ? m_clock.at(m_startMs + localMs) : QDateTime());
+                             m_fields ? m_clock.at(m_startMs + localMs) : QDateTime(), QLocale(),
+                             m_style.hours);
 }
 
 exportpipe::Still TitleSource::still(int64_t localMs, int visible, bool make)

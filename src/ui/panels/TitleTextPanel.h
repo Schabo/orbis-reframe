@@ -11,7 +11,8 @@ class QPushButton;
 class QWidget;
 
 // The Title tab's Text section: the selected title's text (several lines),
-// with an Insert menu for the clock's fields (title::withFields), its
+// with an Insert menu for the clock's fields (title::withFields) and, when
+// it shows a time, how the clock writes the hours; its
 // font, bold / italic, colour and alignment (title::Style). The font list is
 // the installed families, each in its own face, with the last few picked
 // (app-wide, not the project's) at the top. Where it sits,
@@ -48,6 +49,9 @@ private:
 
     QPlainTextEdit *m_text = nullptr;
     QPushButton *m_insert = nullptr;
+    QComboBox *m_hours = nullptr; // title::Hours order
+    // Show the hours row while the text has a time field.
+    void showHours();
     QLabel *m_clockNote = nullptr;
     QComboBox *m_font = nullptr;
     QWidget *m_styleRow = nullptr;

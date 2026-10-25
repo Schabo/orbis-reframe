@@ -77,6 +77,7 @@ back again when you select an overlay video). The **Text** section:
 |---|---|
 | **Text** | The title's text. `Enter` starts a new line. The title changes as you type. |
 | **Insert** | Puts the recording time or date into the text where the cursor is: **Time**, **Time with seconds** or **Date**. See [The recording time as a clock](#the-recording-time-as-a-clock). |
+| **Clock** | Shown while the text has a time in it: how it writes the hours. **As the system writes it**, **24-hour** or **12-hour (AM / PM)**. |
 | **Font** | The typeface, picked from a list of every font installed on your computer, each shown in its own face. The three fonts you picked last are at the top. Type a name's first letters to jump to it. A project made on another computer may use a font that isn't installed here: it is listed as *(not installed)*, kept, and drawn with a similar font until you pick another. |
 | **Style** | **Bold** and **Italic**; click to switch them on or off. |
 | **Colour** | Click to choose the text's colour. |
@@ -105,8 +106,13 @@ The value follows the video. At every moment it is the recording time of
 the clip on the video track under the title at that moment, so it keeps
 running as the clip plays; a trim starts it later, a clip at double speed
 makes it run twice as fast, and after a cut it jumps to the next clip's
-time. The time is written as your computer writes it: 24 hours or AM / PM,
-as the system's language and region settings say. The digits are all drawn
+time. The time is written as your computer writes it -- 24 hours or AM /
+PM, as the system's language and region settings say -- unless the
+**Clock** setting below the text picks **24-hour** or **12-hour (AM /
+PM)**. The language setting decides, not a desktop clock's own format: a
+system set to US English writes 2:56 PM even if the clock in your panel
+shows 14:56. A title set to 24 or 12 hours looks the same when the project
+is exported on another computer. The digits are all drawn
 as wide as each other, so a centred or right-aligned clock doesn't shift as
 it ticks.
 

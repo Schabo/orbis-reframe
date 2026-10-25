@@ -454,7 +454,7 @@ double titleAnchorShift(const title::Style &from, const title::Style &to, int ou
     // The picture's shape doesn't depend on its size: any size will do.
     constexpr int kFontPx = 200;
     const auto shown = [&at](title::Style s) {
-        s.text = title::withFields(s.text, at);
+        s.text = title::withFields(s.text, at, QLocale(), s.hours);
         return s;
     };
     const titlerender::Picture a =

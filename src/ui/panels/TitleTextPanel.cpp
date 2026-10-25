@@ -18,6 +18,8 @@
 
 #include "../../core/TitleClock.h"
 
+#include <algorithm>
+
 namespace {
 
 constexpr int kRecentFonts = 3;
@@ -103,6 +105,16 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     insertLayout->addWidget(m_insert);
     insertLayout->addStretch(1);
     form()->addRow(QString(), insertRow);
+    m_hours = new QComboBox(this);
+    m_hours->setObjectName(QStringLiteral("titleHours"));
+    m_hours->addItem(tr("As the system writes it"));
+    m_hours->addItem(tr("24-hour"));
+    m_hours->addItem(tr("12-hour (AM / PM)"));
+    m_hours->setToolTip(tr("How the time in the text writes the hours: as this computer's "
+                           "language and region settings write a time, or always 24-hour or "
+                           "12-hour. Saved with the title, so the export looks the same on "
+                           "any computer when it isn't the system's."));
+    form()->addRow(tr("Clock"), m_hours);
     m_clockNote = new QLabel(this);
     m_clockNote->setObjectName(QStringLiteral("titleClockNote"));
     m_clockNote->setWordWrap(true);
@@ -168,6 +180,8 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     };
     // Every keystroke: undo gathers a burst of edits into one step.
     connect(m_text, &QPlainTextEdit::textChanged, this, edited);
+    connect(m_text, &QPlainTextEdit::textChanged, this, &TitleTextPanel::showHours);
+    connect(m_hours, &QComboBox::activated, this, edited);
     connect(m_font, &QComboBox::activated, this, [this, edited](int index) {
         fontPicked(index);
         edited();
@@ -196,6 +210,7 @@ title::Style TitleTextPanel::current() const
     t.bold = m_bold->isChecked();
     t.italic = m_italic->isChecked();
     t.rgb = m_rgb;
+    t.hours = static_cast<title::Hours>(std::max(0, m_hours->currentIndex()));
     for (int i = 0; i < 3; ++i)
         if (m_align[i]->isChecked())
             t.align = static_cast<title::Align>(i);
@@ -224,6 +239,9 @@ void TitleTextPanel::setTitle(const title::Style &s, const QString &clockNote)
         fillFonts(s.font);
     m_bold->setChecked(s.bold);
     m_italic->setChecked(s.italic);
+    m_hours->setCurrentIndex(static_cast<int>(s.hours));
+    m_hours->setEnabled(true);
+    showHours();
     m_align[static_cast<int>(s.align)]->setChecked(true);
     setColor(s.rgb);
     setHint(tr("The title selected on the timeline or in the view. The title changes as you "
@@ -242,10 +260,17 @@ void TitleTextPanel::setNoTitle(const QString &hint)
         w->setEnabled(false);
     m_clockNote->clear();
     m_clockNote->setVisible(false);
+    m_hours->setEnabled(false);
+    showHours();
     setHint(hint.isEmpty() ? tr("Select a title on the timeline, or add one from the Titles tab "
                                 "on the left: drag it onto the timeline or double-click it.")
                            : hint);
     m_updating = false;
+}
+
+void TitleTextPanel::showHours()
+{
+    form()->setRowVisible(m_hours, title::hasTimeField(m_text->toPlainText()));
 }
 
 void TitleTextPanel::fillFonts(const QString &family)

@@ -68,7 +68,7 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     title::Style style = titlepresets::styleFor(preset, now);
     // A clock tile shows the time now.
     const bool clock = title::hasFields(style.text);
-    style.text = title::withFields(style.text, now);
+    style.text = title::withFields(style.text, now, QLocale(), style.hours);
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);
     // Typing on or off: the picture changes as the frame's would.
     const int visible =

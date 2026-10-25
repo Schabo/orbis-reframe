@@ -59,6 +59,10 @@ struct Box {
     bool operator==(const Box &) const = default;
 };
 
+// How a clock field writes the hours (title::withFields): as the system's
+// locale does, or always 24-hour / 12-hour.
+enum class Hours { System, H24, H12 };
+
 struct Style {
     QString text;
     QString font = QStringLiteral("Sans Serif"); // family
@@ -71,6 +75,7 @@ struct Style {
     Outline outline;
     Shadow shadow;
     Box box;
+    Hours hours = Hours::System;
 
     static constexpr float kMinLineSpacing = 0.5f;
     static constexpr float kMaxLineSpacing = 3.0f;

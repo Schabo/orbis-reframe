@@ -493,6 +493,23 @@ void testClockFields()
     CHECK(title::withFields("}{{{time}", at, gb) == "}{14:05");
     CHECK(title::hasFields("a {date}") && title::hasFields("{{{time}"));
     CHECK(!title::hasFields("{{time}") && !title::hasFields("{x}") && !title::hasFields("plain"));
+    // The hours chosen rather than the system's.
+    using title::Hours;
+    CHECK(title::withFields("{time}", at, us, Hours::H24) == "14:05");
+    CHECK(title::withFields("{time:ss}", at, us, Hours::H24) == "14:05:09");
+    CHECK(title::withFields("{time}", at, us, Hours::H12) == usTime);
+    CHECK(title::withFields("{time}", at, gb, Hours::H24) == "14:05");
+    const QString gb12 = title::withFields("{time:ss}", at, gb, Hours::H12);
+    CHECK(gb12.startsWith("2:05:09 ") && gb12.endsWith(gb.pmText()));
+    const QString de12 = title::withFields("{time}", at, de, Hours::H12);
+    CHECK(de12.startsWith("2:05 ") && de12.endsWith(de.pmText()));
+    const QDateTime morning(QDate(2025, 8, 16), QTime(9, 5, 0), QTimeZone::UTC);
+    CHECK(title::withFields("{time}", morning, us, Hours::H24) == "09:05");
+    // A quoted literal in the locale's format is kept (Canadian French).
+    const QLocale ca(QLocale::French, QLocale::Canada);
+    CHECK(title::withFields("{time}", at, ca, Hours::H24) ==
+          ca.toString(at.time(), QLocale::ShortFormat));
+    CHECK(title::hasTimeField("{time:ss}") && !title::hasTimeField("{date} {{time}"));
     const QString old = "Price {time} {{";
     CHECK(title::withFields(title::escapeBraces(old), at, gb) == old);
 }

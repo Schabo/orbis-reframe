@@ -552,6 +552,8 @@ json titleToJson(const title::Style &t)
         j["box"] = {{"on", t.box.on}, {"color", colorToJson(t.box.rgb)},
                     {"opacity", t.box.opacity}, {"padding", t.box.padding},
                     {"cornerRadius", t.box.cornerRadius}};
+    if (t.hours != plain.hours)
+        j["hours"] = t.hours == title::Hours::H24 ? "24" : "12";
     return j;
 }
 
@@ -583,6 +585,10 @@ title::Style titleFromJson(const json &j, int version)
                                  : title::Align::Centre;
     t.lineSpacing = j.value("lineSpacing", t.lineSpacing);
     t.letterSpacing = j.value("letterSpacing", t.letterSpacing);
+    const std::string hours = j.value("hours", std::string());
+    t.hours = hours == "24"   ? title::Hours::H24
+              : hours == "12" ? title::Hours::H12
+                              : title::Hours::System;
     if (j.contains("outline") && j.at("outline").is_object()) {
         const json &o = j.at("outline");
         t.outline.on = o.value("on", true);

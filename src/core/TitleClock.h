@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Title.h"
+
 #include <QDateTime>
 #include <QLocale>
 #include <QString>
@@ -19,11 +21,13 @@ bool hasFields(const QString &text);
 
 // `text` with its fields filled in for the moment `at` (a wall-clock time,
 // read as written: its date() and time()), written as `locale` writes a
-// time and a date; an invalid `at` (nothing says when it was recorded)
-// gives `--:--`, `--:--:--` and an empty date. `{{` becomes `{`; a brace
-// that isn't a field stays as it is.
-QString withFields(const QString &text, const QDateTime &at,
-                   const QLocale &locale = QLocale());
+// time and a date -- the hours as `hours` says; an invalid `at` (nothing
+// says when it was recorded) gives `--:--`, `--:--:--` and an empty date.
+// `{{` becomes `{`; a brace that isn't a field stays as it is.
+QString withFields(const QString &text, const QDateTime &at, const QLocale &locale = QLocale(),
+                   Hours hours = Hours::System);
+// Does `text` have a field that shows the time (so Hours matters)?
+bool hasTimeField(const QString &text);
 
 // The text of an older project's title (before fields): every brace
 // escaped, so it reads as the text it was.
