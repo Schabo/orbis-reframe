@@ -202,6 +202,16 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {
     background: @accent;
     border-color: @accent;
 }
+/* Disabled boxes grey out like the fields next to them; a ticked one keeps
+   a filled indicator, in the disabled colour, so its state still reads. */
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {
+    background: @window;
+    border-color: @border;
+}
+QCheckBox::indicator:checked:disabled, QRadioButton::indicator:checked:disabled {
+    background: @textDisabled;
+    border-color: @textDisabled;
+}
 QRadioButton::indicator {
     border-radius: 8px;
 }
