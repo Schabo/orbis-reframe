@@ -282,6 +282,16 @@ void AudioOutput::stop()
         std::fprintf(stderr, "[audio] can't stop the output: %s\n", ma_result_description(r));
     std::lock_guard<std::mutex> lk(d->mx); // the callback has stopped
     d->deliveredAtStop = d->delivered;
+    // Hold the clock where the stream stopped. Left marked as playing, the
+    // last reading would be run on after the next start() -- by the length
+    // of the pause, up to kMaxExtrapolationS -- until a fresh one came in,
+    // and a seek made then would start the audio that much late.
+    if (d->haveReading && d->readingPlaying) {
+        const double now = wallSeconds();
+        d->readingFrames += std::clamp(now - d->readingAt, 0.0, kMaxExtrapolationS) * kSampleRate;
+        d->readingAt = now;
+        d->readingPlaying = false;
+    }
 }
 
 double AudioOutput::playedFrames() const
