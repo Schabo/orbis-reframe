@@ -1,3 +1,15 @@
+## v0.6.1 (2026-10-25)
+
+### Fix
+
+- **playback**: compare the audio with where the video is now
+- **audio**: hold the output clock still while the sound is stopped
+- **playback**: seek the audio when the video seek lands, not before
+- **insv**: read calibration and LUT numbers regardless of the locale
+- **ui**: grey out the Reframe section when there is no clip
+- **ui**: grey out the text of disabled widgets
+- **ui**: grey out disabled checkboxes and radio buttons
+
 ## v0.6.0 (2026-10-24)
 
 ### Feat

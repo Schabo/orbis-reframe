@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 if(POLICY CMP0144)
     cmake_policy(SET CMP0144 NEW)
 endif()
-project(orbis-reframe VERSION 0.6.0 LANGUAGES CXX)
+project(orbis-reframe VERSION 0.6.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
