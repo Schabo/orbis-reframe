@@ -141,6 +141,9 @@ void AudioPlayer::play()
             return;
         m_playing = true;
         m_haveDrift = false;
+        // Start where the first tick says the video is (silence until then):
+        // the controller's clock started before this reached us.
+        m_resumePending = !m_held;
     }
     m_cv.notify_all();
     updateOutputRunning();
@@ -171,10 +174,11 @@ void AudioPlayer::setHold(bool hold)
             return;
         m_held = hold;
         m_haveDrift = false; // the reading across a stall is meaningless
-        if (!hold && m_playing)
-            requestSeekLocked(m_lastVideoMs, played);
+        // Not a seek to m_lastVideoMs here: that is the frozen position, and
+        // the clock has run on from it by the time this reaches us. The
+        // release's own tick follows at once and says when it started.
+        m_resumePending = !hold && m_playing;
     }
-    m_cv.notify_all();
 }
 
 void AudioPlayer::setVolume(float gain)
@@ -189,45 +193,58 @@ void AudioPlayer::seek(qint64 timelineMs)
     {
         std::lock_guard<std::mutex> lk(m_mx);
         requestSeekLocked(timelineMs, played);
+        // Playing, the clock runs on from timelineMs while this reaches us:
+        // the seek's own tick (right behind it) places the audio exactly.
+        if (m_playing && !m_held)
+            m_resumePending = true;
     }
     m_cv.notify_all();
 }
 
-void AudioPlayer::notePlaybackPosition(qint64 timelineMs)
+void AudioPlayer::notePlaybackPosition(qint64 timelineMs, qint64 atNs)
 {
     {
         std::lock_guard<std::mutex> lk(m_mx);
         m_lastVideoMs = timelineMs;
     }
     const double played = playedFrames();
+    // Where the video is now: the tick read its clock at atNs and the clock
+    // has run on since (the preview is silent off 1x, so at 1 ms per ms).
+    const double videoMs =
+        timelineMs + std::max<qint64>(0, PlaybackController::steadyNs() - atNs) * 1e-6;
 
     bool resynced = false;
     {
         std::lock_guard<std::mutex> lk(m_mx);
-        if (!m_playing || m_held || m_seekPending)
+        if (!m_playing || m_held)
             return;
-        // A jump isn't audible until the output plays past where it was made;
-        // until then the reading below would count it early.
-        if (m_pendingJumpFrames != 0 || played < m_jumpGuardOutFrames)
-            return;
-        // Pulled but not yet heard, mapped back to timeline frames.
-        const double queuedFrames = std::max(0.0, m_outFramesPulled - played);
-        const double audibleMs =
-            m_seekBaseTimelineMs + (m_srcFramesPlayed - queuedFrames) / kFramesPerMs;
-        const double driftMs = timelineMs - audibleMs; // > 0: audio is behind
-        if (std::abs(driftMs) > kHardResyncMs) {
-            requestSeekLocked(timelineMs, played);
+        if (m_resumePending) { // a hold released or a seek: start the audio here
+            m_resumePending = false;
+            requestSeekLocked(std::llround(videoMs), played);
             resynced = true;
-        } else {
-            m_driftEmaMs = m_haveDrift ? m_driftEmaMs + kDriftAlpha * (driftMs - m_driftEmaMs)
-                                       : driftMs;
-            m_haveDrift = true;
-            if (std::abs(m_driftEmaMs) > kJumpMs) {
-                // Splice (pullFrames): fade out, skip (> 0, audio behind) or
-                // pad (< 0, ahead), fade in.
-                m_pendingJumpFrames = std::llround(m_driftEmaMs * kFramesPerMs);
-                m_fadeOutFrames = kFadeFrames;
-                m_haveDrift = false;
+        } else if (!m_seekPending && m_pendingJumpFrames == 0 && played >= m_jumpGuardOutFrames) {
+            // Not mid-seek, nor before a splice is heard: a jump isn't
+            // audible until the output plays past where it was made, and the
+            // reading would count it early.
+            // Pulled but not yet heard, mapped back to timeline frames.
+            const double queuedFrames = std::max(0.0, m_outFramesPulled - played);
+            const double audibleMs =
+                m_seekBaseTimelineMs + (m_srcFramesPlayed - queuedFrames) / kFramesPerMs;
+            const double driftMs = videoMs - audibleMs; // > 0: audio is behind
+            if (std::abs(driftMs) > kHardResyncMs) {
+                requestSeekLocked(std::llround(videoMs), played);
+                resynced = true;
+            } else {
+                m_driftEmaMs = m_haveDrift ? m_driftEmaMs + kDriftAlpha * (driftMs - m_driftEmaMs)
+                                           : driftMs;
+                m_haveDrift = true;
+                if (std::abs(m_driftEmaMs) > kJumpMs) {
+                    // Splice (pullFrames): fade out, skip (> 0, audio behind)
+                    // or pad (< 0, ahead), fade in.
+                    m_pendingJumpFrames = std::llround(m_driftEmaMs * kFramesPerMs);
+                    m_fadeOutFrames = kFadeFrames;
+                    m_haveDrift = false;
+                }
             }
         }
     }
@@ -363,7 +380,7 @@ void AudioPlayer::pullFrames(float *out, uint32_t frames)
     {
         std::lock_guard<std::mutex> lk(m_mx);
         auto frames = [](const Chunk &c) { return c.pcm.size() / kChannels; };
-        if (m_held) { // silence, timeline position untouched -- see setHold()
+        if (m_held || m_resumePending) { // silence, timeline position untouched -- see setHold()
             std::memset(out, 0, static_cast<size_t>(framesWanted) * frameBytes);
             m_outFramesPulled += static_cast<double>(framesWanted);
             return;

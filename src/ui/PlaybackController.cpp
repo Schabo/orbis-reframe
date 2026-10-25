@@ -94,7 +94,7 @@ void PlaybackController::setTimeline(const QList<Segment> &segments)
     }
 
     emit durationChanged(m_totalMs);
-    emit positionChanged(m_positionMs);
+    emit positionChanged(m_positionMs, steadyNs());
 }
 
 void PlaybackController::reopenSources(const QStringList &paths)
@@ -161,7 +161,7 @@ void PlaybackController::pause()
     }
     m_positionMs = clampTimeline(m_clockBaseMs + clockElapsedMs());
     emit playingChanged(false);
-    emit positionChanged(m_positionMs);
+    emit positionChanged(m_positionMs, steadyNs());
 }
 
 void PlaybackController::togglePlay()
@@ -195,7 +195,7 @@ void PlaybackController::seek(qint64 timelineMs)
     }
     m_cv.notify_all();
     emit seeked(m_positionMs);
-    emit positionChanged(m_positionMs);
+    emit positionChanged(m_positionMs, steadyNs());
     if (m_resumeAfterScrub) { // the end of a drag that started during playback
         m_resumeAfterScrub = false;
         play();
@@ -227,7 +227,7 @@ void PlaybackController::scrub(qint64 timelineMs)
     }
     m_cv.notify_all();
     emit seeked(m_positionMs);
-    emit positionChanged(m_positionMs);
+    emit positionChanged(m_positionMs, steadyNs());
     // The decoder may land on a keyframe; once the pointer rests, settle()
     // brings the exact frame.
     if (h == Handy::No) {
@@ -432,11 +432,19 @@ void PlaybackController::tick()
                 return;
             }
             m_prerolling = false;
+            // Resume from where the clock froze, now: the last held tick's
+            // re-anchor is a tick old, and counting it would start the
+            // picture a tick ahead of the audio, which resumes from here.
+            if (m_clockHeld) {
+                m_clockBaseMs = m_positionMs;
+                m_clock.restart();
+            }
         }
         setClockHeld(false);
     }
 
     qint64 clockMs = m_positionMs;
+    const qint64 clockAtNs = steadyNs();
     if (playing) {
         clockMs = std::clamp<qint64>(m_clockBaseMs + clockElapsedMs(), 0, m_totalMs);
     }
@@ -547,7 +555,7 @@ void PlaybackController::tick()
 
     if (playing) {
         m_positionMs = clockMs;
-        emit positionChanged(m_positionMs);
+        emit positionChanged(m_positionMs, clockAtNs);
         const bool clockAtEnd = clockMs >= m_totalMs - kEndEpsilonMs;
         if ((clockAtEnd || (queueEmpty && eof)) && !m_reachedEnd) {
             m_reachedEnd = true;
@@ -563,7 +571,7 @@ void PlaybackController::tick()
             }
             setClockHeld(false);
             emit playingChanged(false);
-            emit positionChanged(m_positionMs);
+            emit positionChanged(m_positionMs, steadyNs());
         }
     }
 }

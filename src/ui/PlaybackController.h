@@ -16,6 +16,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
@@ -132,6 +133,13 @@ public:
     // Index into `placed` whose timeline span contains `timelineMs` (past the
     // end -> the last); -1 only if `placed` is empty.
     static int segmentAt(const QList<Placed> &placed, qint64 timelineMs);
+    // The monotonic clock positionChanged's atNs is on, in ns.
+    static qint64 steadyNs()
+    {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    }
 
     // Replace the timeline. NOT a slot: MainWindow invokes it through a queued
     // lambda (QMetaObject::invokeMethod), so QList<Segment> needs no metatype
@@ -226,7 +234,10 @@ signals:
     // (Segment::clipId), `error` why.
     void openFailed(const QString &path, int clipId, const QString &error);
     void durationChanged(qint64 totalMs);
-    void positionChanged(qint64 timelineMs);
+    // The playhead is at timelineMs, read at atNs (steadyNs()). While playing
+    // the clock runs on from there: a listener on another thread gets this
+    // late, and adds the time since atNs to know where the video is now.
+    void positionChanged(qint64 timelineMs, qint64 atNs);
     // A seek() or scrub() was applied: the playhead is at timelineMs (clamped
     // to the timeline) from here on. Emitted just before that positionChanged,
     // so a listener on another thread sees it in order with the ticks: every
@@ -302,7 +313,7 @@ private:
     qint64 m_clockBaseMs = 0;
     double m_rate = 1.0; // setRate()
     // Timeline ms played since m_clock's restart, at m_rate.
-    qint64 clockElapsedMs() const { return std::llround(double(m_clock.elapsed()) * m_rate); }
+    qint64 clockElapsedMs() const { return std::llround(double(m_clock.nsecsElapsed()) * 1e-6 * m_rate); }
     bool m_presentAfterSeek = false;
     uint64_t m_shownGen = 0; // seek generation of the frame on screen
     qint64 m_shownMs = 0;    // and its timeline time

@@ -1225,10 +1225,10 @@ void MainWindow::connectController()
     // seeked at the request, the next of those would read as a jump back.
     connect(m_controller, &PlaybackController::seeked, m_audioPlayer, &AudioPlayer::seek);
     connect(m_controller, &PlaybackController::positionChanged, this,
-            [this](qint64 timelineMs) {
+            [this](qint64 timelineMs, qint64 atNs) {
                 m_lastTimelineMs = timelineMs;
                 showPlayhead(timelineMs);
-                m_audioPlayer->notePlaybackPosition(timelineMs);
+                m_audioPlayer->notePlaybackPosition(timelineMs, atNs);
                 bindActiveClipAt(timelineMs);
                 if (selectedOverlayClip())
                     refreshOverlayPanel(); // keyed values / key buttons follow the playhead

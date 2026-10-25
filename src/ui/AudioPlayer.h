@@ -26,12 +26,13 @@ class AudioOutput;
 // silence) while the video clock is frozen (setHold, driven by
 // PlaybackController::clockHeldChanged), and every
 // PlaybackController::positionChanged tick calls notePlaybackPosition(). That
-// compares the video clock with what's audible (AudioOutput::playedFrames(),
-// the sound server's playback clock) and corrects in two tiers, never by
-// resampling: a faded splice of the read position (skip or pad) once the
-// smoothed drift passes ~10 ms, and a re-seek for a real jump. The output is
-// never flushed: a seek lets its ~30 ms buffer play out and starts the new
-// audio where the video will be by then.
+// compares the video clock -- carried forward from the tick's time to now,
+// as the tick reaches the GUI thread up to a frame late -- with what's
+// audible (AudioOutput::playedFrames(), the sound server's playback clock)
+// and corrects in two tiers, never by resampling: a faded splice of the read
+// position (skip or pad) once the smoothed drift passes ~10 ms, and a re-seek
+// for a real jump. The output is never flushed: a seek lets its ~30 ms buffer
+// play out and starts the new audio where the video will be by then.
 //
 // The decoder emits a sample-exact timeline: the main track's clips are
 // silence of their exact length (their sound is on the audio tracks), so the
@@ -68,13 +69,16 @@ public:
     void play();
     void pause();
     void seek(qint64 timelineMs);
-    // Call on every PlaybackController::positionChanged. Compares the
-    // controller's timeline position against what's audible now and splices
-    // the read position toward it past kJumpMs; re-seeks past kHardResyncMs.
-    // No-op while paused, held, or mid-seek.
-    void notePlaybackPosition(qint64 timelineMs);
+    // Call on every PlaybackController::positionChanged (timelineMs as read
+    // at atNs, PlaybackController::steadyNs()). Compares where the video is
+    // now against what's audible now and splices the read position toward it
+    // past kJumpMs; re-seeks past kHardResyncMs. No-op while paused, held, or
+    // mid-seek.
+    void notePlaybackPosition(qint64 timelineMs, qint64 atNs);
     // Freeze output while the video clock is frozen (a seek / stall) so the
-    // two resume together instead of drifting apart.
+    // two resume together instead of drifting apart. On release the audio
+    // re-seeks at the next notePlaybackPosition(), the first tick the clock
+    // runs again.
     void setHold(bool hold);
     // The preview's listening volume, a linear gain (0 = silent, 1 = as
     // mixed): the player bar's volume and mute. Applied at the output only --
@@ -118,6 +122,10 @@ private:
     bool m_mixDirty = false;
     bool m_playing = false;
     bool m_held = false;
+    // Playing starts, a seek, or a hold released: the next
+    // notePlaybackPosition() seeks to where the video is by then (silence
+    // until it does, as held).
+    bool m_resumePending = false;
     float m_volume = 1.0f; // setVolume()
     bool m_stop = false;
     bool m_decoderEof = false;
