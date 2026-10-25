@@ -52,16 +52,14 @@ that is, or a new one. The title is selected and the settings sidebar shows
 its **Title** tab (<img src="images/icons/tab-title.png" width="24" alt="">),
 ready to type the text. There must be a clip on the video track first.
 
-The **Date** tiles write the day the clip under the title was recorded, as
+The **Date** tiles show the day the clip under the title was recorded, as
 your computer writes a date in full (in US English, *Thursday, August 28,
-2025*). It comes
-from the camera's clock, as the clip's file records it; for a clip whose
-file doesn't say, the title says *Date* for you to type over. orbis-reframe
-doesn't look up places: type the place yourself.
-
-The **Clock** tile shows the time the picture under it was recorded, and
-keeps time as the video plays; see [The recording time as a
-clock](#the-recording-time-as-a-clock).
+2025*), and the **Clock** tile the time of day, running as the video
+plays. Both come from the camera's clock, as the clip's file records it,
+and follow the video: after a cut to a clip recorded on another day, the
+date changes with it. In the text they are fields, `{date}` and `{time}`;
+see [The recording time as a clock](#the-recording-time-as-a-clock).
+orbis-reframe doesn't look up places: type the place yourself.
 
 A tile is only where a title starts. Once added it is an ordinary title:
 everything below can be changed, and nothing ties it to its tile.

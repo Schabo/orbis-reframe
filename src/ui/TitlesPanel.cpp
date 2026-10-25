@@ -65,8 +65,8 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     constexpr double kMinFontPx = 7; // logical pixels
     const double W = size.width(), H = size.height();
     const QDateTime now = QDateTime::currentDateTime();
-    title::Style style = titlepresets::styleFor(preset, now);
-    // A clock tile shows the time now.
+    title::Style style = titlepresets::styleFor(preset);
+    // A date or clock tile shows the time now.
     const bool clock = title::hasFields(style.text);
     style.text = title::withFields(style.text, now, QLocale(), style.hours);
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);

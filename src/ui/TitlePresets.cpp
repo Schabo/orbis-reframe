@@ -4,7 +4,6 @@
 
 #include <QCoreApplication>
 #include <QFontDatabase>
-#include <QLocale>
 
 namespace titlepresets {
 namespace {
@@ -147,20 +146,20 @@ QList<Preset> make()
     list.push_back(typed);
 
     // Dates go where they stay out of the way: a corner.
-    const QString dateHint = tr("The date is the clip's recording date, where its file says.");
+    // The date and the clock are fields (title::withFields): they show when
+    // the clip under the title was recorded, following it across cuts.
+    const QString dateHint = tr("The date is the recording date of the clip under it, where "
+                                "its file says.");
     Preset date{QStringLiteral("date"), tr("Date"),
                 tr("The date in the lower right.") + QLatin1Char(' ') + dateHint +
                     QLatin1Char(' ') + hint};
-    date.style.text = tr("Date");
+    date.style.text = title::kDateField;
     date.style.bold = false;
     date.style.align = title::Align::Right;
     date.style.shadow = softShadow(0.7f, 0.05f, 0.06f);
     date.look = at(0.95f, 0.92f, 0.04f);
-    date.date = true;
     list.push_back(date);
 
-    // A clock runs with the picture: the time the clip under it was
-    // recorded, moment by moment.
     Preset clock{QStringLiteral("clock"), tr("Clock"),
                  tr("The time of day in the lower right, running as the clip plays: when the "
                     "clip under it was recorded, where its file says.") +
@@ -175,13 +174,12 @@ QList<Preset> make()
     Preset place{QStringLiteral("date-place"), tr("Date and place"),
                  tr("The date and, below it, a place to type, in the lower left.") +
                      QLatin1Char(' ') + dateHint + QLatin1Char(' ') + hint};
-    place.style.text = tr("Date") + QLatin1Char('\n') + tr("Place");
+    place.style.text = title::kDateField + QLatin1Char('\n') + tr("Place");
     place.style.bold = false;
     place.style.align = title::Align::Left;
     place.style.lineSpacing = 1.1f;
     place.style.shadow = softShadow(0.7f, 0.05f, 0.06f);
     place.look = at(0.05f, 0.88f, 0.04f);
-    place.date = true;
     list.push_back(place);
 
     return list;
@@ -203,15 +201,10 @@ const Preset *find(const QString &id)
     return nullptr;
 }
 
-title::Style styleFor(const Preset &p, const QDateTime &recorded)
+title::Style styleFor(const Preset &p)
 {
     title::Style s = p.style;
     s.font = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
-    if (p.date && recorded.isValid()) {
-        const qsizetype newline = s.text.indexOf(QLatin1Char('\n'));
-        const QString rest = newline < 0 ? QString() : s.text.mid(newline);
-        s.text = QLocale().toString(recorded.date(), QLocale::LongFormat) + rest;
-    }
     return s;
 }
 

@@ -2064,18 +2064,7 @@ void MainWindow::addTitle(int trackId, qint64 atMs, const QString &presetId)
                     : m_timeline->freeTrackFor(atMs, endMs, true, [](const Track &) { return true; });
     if (!trackId)
         trackId = m_timeline->addTrack(Track::Kind::Video);
-    // A date title's date: the recording's, of the main-track clip it starts
-    // over.
-    QDateTime recorded;
-    if (preset->date) {
-        const ClipItem &under = m_timeline->clipAt(m_timeline->timelineToClip(atMs).clipIndex);
-        if (const camera::MediaInfo *info = mediaInfoFor(under.sourcePath))
-            recorded = recordedTime(*info);
-        if (!recorded.isValid())
-            qInfo("[titles] %s doesn't say when it was recorded; the title keeps its placeholder",
-                  qPrintable(under.sourcePath));
-    }
-    const int id = m_timeline->addTitleClip(trackId, atMs, titlepresets::styleFor(*preset, recorded),
+    const int id = m_timeline->addTitleClip(trackId, atMs, titlepresets::styleFor(*preset),
                                             title::kDefaultSpanMs, preset->look, preset->motion);
     if (!id)
         return;

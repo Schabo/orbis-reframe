@@ -1384,7 +1384,8 @@ void testTitlePresets(const Ctx &c)
     if (clip)
         c.timeline->removeTrackClip(clip->id);
 
-    // Dropped on the timeline; a date tile's date is the main clip's.
+    // Dropped on the timeline; a date tile's date is a field (the clip's
+    // under it, moment by moment).
     const titlepresets::Preset *date = titlepresets::find(QStringLiteral("date-place"));
     CHECK(date);
     if (!date)
@@ -1397,8 +1398,7 @@ void testTitlePresets(const Ctx &c)
         camera::ProbeMediaInfo(c.timeline->clipAt(0).sourcePath.toStdString(), info, err)
             ? recordedTime(info)
             : QDateTime();
-    CHECK(clip && clip->title->text == titlepresets::styleFor(*date, recorded).text);
-    CHECK(clip && clip->title->text.endsWith(QStringLiteral("\nPlace")));
+    CHECK(clip && clip->title->text == QStringLiteral("{date}\nPlace"));
     if (clip)
         c.timeline->removeTrackClip(clip->id);
 
