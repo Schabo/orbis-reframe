@@ -227,6 +227,13 @@ signals:
     void openFailed(const QString &path, int clipId, const QString &error);
     void durationChanged(qint64 totalMs);
     void positionChanged(qint64 timelineMs);
+    // A seek() or scrub() was applied: the playhead is at timelineMs (clamped
+    // to the timeline) from here on. Emitted just before that positionChanged,
+    // so a listener on another thread sees it in order with the ticks: every
+    // positionChanged before it is from the old position, every one after
+    // from the new. AudioPlayer::seek follows this, not the request, so a
+    // tick still queued from before the seek can't read as a jump.
+    void seeked(qint64 timelineMs);
     void playingChanged(bool playing);
     // True while the presenter wants a frame it doesn't have (decoder behind,
     // or a new clip still opening). The UI debounces this.

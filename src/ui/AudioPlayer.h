@@ -21,7 +21,8 @@ class AudioOutput;
 
 // Plays a timeline's audio track in sync with PlaybackController's video clock.
 // A *slave*, not a second master clock: MainWindow forwards it the same
-// setTimeline/play/pause/seek calls it sends the controller, holds it (on
+// setTimeline/play/pause calls it sends the controller, seeks it on
+// PlaybackController::seeked (in order with the ticks), holds it (on
 // silence) while the video clock is frozen (setHold, driven by
 // PlaybackController::clockHeldChanged), and every
 // PlaybackController::positionChanged tick calls notePlaybackPosition(). That

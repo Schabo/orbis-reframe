@@ -194,6 +194,7 @@ void PlaybackController::seek(qint64 timelineMs)
         m_presentAfterSeek = h != Handy::OnScreen;
     }
     m_cv.notify_all();
+    emit seeked(m_positionMs);
     emit positionChanged(m_positionMs);
     if (m_resumeAfterScrub) { // the end of a drag that started during playback
         m_resumeAfterScrub = false;
@@ -225,6 +226,7 @@ void PlaybackController::scrub(qint64 timelineMs)
         m_presentAfterSeek = h != Handy::OnScreen;
     }
     m_cv.notify_all();
+    emit seeked(m_positionMs);
     emit positionChanged(m_positionMs);
     // The decoder may land on a keyframe; once the pointer rests, settle()
     // brings the exact frame.

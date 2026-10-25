@@ -612,12 +612,10 @@ void MainWindow::connectTimeline()
     const auto seekTo = [this](qint64 timelineMs) {
         QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
-        m_audioPlayer->seek(timelineMs);
     };
     const auto scrubTo = [this](qint64 timelineMs) {
         QMetaObject::invokeMethod(m_controller, "scrub", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
-        m_audioPlayer->seek(timelineMs);
     };
     connect(m_timelineWidget, &TimelineWidget::seekRequested, this, seekTo);
     connect(m_timelineWidget, &TimelineWidget::scrubRequested, this, scrubTo);
@@ -1221,6 +1219,11 @@ void MainWindow::connectController()
                 box.setDetailedText(error);
                 box.exec();
             });
+    // The audio follows the seeks the controller has applied, not the
+    // requests: the controller runs on its own thread, and ticks it queued
+    // before taking a seek still carry the old position -- had the audio
+    // seeked at the request, the next of those would read as a jump back.
+    connect(m_controller, &PlaybackController::seeked, m_audioPlayer, &AudioPlayer::seek);
     connect(m_controller, &PlaybackController::positionChanged, this,
             [this](qint64 timelineMs) {
                 m_lastTimelineMs = timelineMs;
@@ -2530,7 +2533,6 @@ void MainWindow::navigateTo(qint64 timelineMs, bool pause)
         QMetaObject::invokeMethod(m_controller, "pause", Qt::QueuedConnection);
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, timelineMs));
-    m_audioPlayer->seek(timelineMs);
     m_lastTimelineMs = timelineMs;
     showPlayhead(timelineMs);
     bindActiveClipAt(timelineMs);
@@ -2777,7 +2779,6 @@ void MainWindow::remapPlayheadAfterEdit()
     m_lastPositionMs = srcClamped;
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, newTimelineMs));
-    m_audioPlayer->seek(newTimelineMs);
 }
 
 void MainWindow::undo()
@@ -2816,7 +2817,6 @@ void MainWindow::afterUndoRedo()
     showPlayhead(m_lastTimelineMs);
     QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                               Q_ARG(qint64, m_lastTimelineMs));
-    m_audioPlayer->seek(m_lastTimelineMs);
 }
 
 // "*.insv *.mp4 ...": the files the main track takes, 360 clips and flat
