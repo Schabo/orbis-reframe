@@ -44,6 +44,7 @@ you have one, short clips from it help add it:
 | **Operating system** | Linux, 64-bit (x86_64). On **Debian 13** ("trixie"), **Debian Testing** and **Ubuntu 26.04 LTS** there's a package for each, built on the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8); download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ. To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. **Other distributions** (Fedora, Arch, openSUSE Tumbleweed, ...): the **AppImage**, which brings its own libraries and runs where the system's C library is version 2.41 or newer (`ldd --version` prints it on its first line). |
 | **Desktop session** | **Wayland**: Sway, GNOME, KDE Plasma or another Wayland desktop. An X11 session doesn't work: orbis-reframe exits at startup instead of falling back to X11. |
 | **Graphics card** | A card with **Vulkan**, including Vulkan video decoding. Export uses the card's hardware encoder: NVENC on NVIDIA, VAAPI or Vulkan video on AMD and Intel. **NVIDIA** with the proprietary driver is what orbis-reframe is tested on (an RTX 5070, driver 595); other NVIDIA cards from the GTX 16 / RTX 20 series onwards should work. **AMD** and **Intel** use the Mesa drivers that come with the system, and are supported best-effort: a contributor has tested playback and export on an AMD Radeon 8060S (Mesa 26.2); other AMD cards and Intel GPUs haven't been tried. If something doesn't work on yours, please [report it](#if-it-doesnt-start). |
+| **Graphics memory** | **8 GB** or more on the graphics card for projects of 8K clips (Insta360 X5); 12 GB is better. Each 8K clip that's open needs about 1 GB, and orbis-reframe keeps up to four clips open while you play across a project, plus about 1 GB more while exporting. A project of a single 8K clip runs on 4 GB. The desktop and other programs, such as a web browser, also use graphics memory. With too little, the picture may not show, or clips decode on the processor and play slowly. |
 | **Memory** | 16 GB RAM or more. 8K clips are large. |
 | **Sound** | PipeWire (with `pipewire-pulse`) or PulseAudio. This is the default on current desktops. |
 
@@ -53,6 +54,7 @@ To check your session and graphics card, run these in a terminal:
 echo $XDG_SESSION_TYPE          # should print: wayland
 vulkaninfo --summary | grep deviceName   # should name your graphics card
 vulkaninfo | grep video_decode_h265      # should print VK_KHR_video_decode_h265
+vulkaninfo | grep -B4 HEAP_DEVICE_LOCAL | grep size   # each device's memory, in the order above
 ```
 
 `vulkaninfo` comes from the `vulkan-tools` package. If the second command
