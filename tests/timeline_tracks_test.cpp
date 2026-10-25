@@ -679,10 +679,30 @@ void testTitles()
 
     CHECK(tl.addOverlaySound(id) == 0); // nothing to hear
 
-    // A split keeps the style on both halves.
+    // How it comes and goes: clamped, one change, none when the same.
+    inset::Motion m;
+    m.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Top, 50};
+    m.out = {inset::Motion::Kind::Pop, inset::Motion::Side::Left, 800};
+    {
+        const int at = changes;
+        tl.setTrackClipMotion(id, m);
+        tl.setTrackClipMotion(id, m.clamped());
+        CHECK(changes == at + 1 && tl.trackClipById(id)->motion.in.ms == inset::Motion::kMinMs &&
+              tl.trackClipById(id)->motion.out == m.out);
+    }
+
+    // A split keeps the style on both halves; the left one comes on, the
+    // right one goes off.
     const int right = tl.splitTrackClip(id, 3000);
     CHECK(right && tl.trackClipById(right)->isTitle() &&
           tl.trackClipById(right)->title->text == "Hello\nworld");
+    CHECK(tl.trackClipById(id)->motion.in.kind == inset::Motion::Kind::Slide &&
+          tl.trackClipById(id)->motion.out.kind == inset::Motion::Kind::None);
+    CHECK(tl.trackClipById(right)->motion.in.kind == inset::Motion::Kind::None &&
+          tl.trackClipById(right)->motion.out == m.out);
+    // A preset's motion comes with it on add.
+    const int moving = tl.addTitleClip(v, 20000, style, 3000, title::defaultLook(), m);
+    CHECK(moving && tl.trackClipById(moving)->motion == m.clamped());
 
     // A file going missing doesn't touch it.
     tl.setSourcesMissing({{QString(), true}});

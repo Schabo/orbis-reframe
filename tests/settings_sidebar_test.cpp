@@ -19,6 +19,7 @@
 
 #include <MediaInfo.h>
 #include "panels/OverlayPanel.h"
+#include "panels/TitleAnimationPanel.h"
 #include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/TransitionPanel.h"
@@ -102,7 +103,8 @@ void testLayout(SettingsSidebar &bar)
                                                   "colourPanel", "mediaInfoPanel"}));
     if (auto *title = find<QScrollArea>(&bar, "titleSettings"))
         CHECK(sectionNames(title) ==
-              QStringList({"titleTextPanel", "titleLookPanel", "titlePlacementPanel"}));
+              QStringList({"titleTextPanel", "titleLookPanel", "titleAnimationPanel",
+                           "titlePlacementPanel"}));
     if (auto *audio = find<QScrollArea>(&bar, "audioSettings")) // nothing to show yet
         CHECK(sectionNames(audio) == QStringList({"audioPanel"}));
 
@@ -115,7 +117,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
     CHECK(!bar.transition()->isCollapsible());
-    CHECK(bar.sections().size() == 12); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 13); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -463,6 +465,36 @@ void testTitleLook(SettingsSidebar &bar)
     CHECK(!outline->isEnabled() && !corners->isEnabled());
 }
 
+// The Title tab's Animation section: reflects a title's motion without
+// emitting, greys out a length with nothing to time, reports edits.
+void testTitleAnimation(SettingsSidebar &bar)
+{
+    TitleAnimationPanel *anim = bar.titleAnimation();
+    CHECK(anim->title() == "Animation");
+    auto *in = find<QComboBox>(anim, "titleMotionIn");
+    auto *inLength = find<QDoubleSpinBox>(anim, "titleMotionInLength");
+    auto *out = find<QComboBox>(anim, "titleMotionOut");
+    auto *outLength = find<QDoubleSpinBox>(anim, "titleMotionOutLength");
+    if (!in || !inLength || !out || !outLength)
+        return;
+    CHECK(!in->isEnabled() && !outLength->isEnabled()); // no title
+    QSignalSpy spy(anim, &TitleAnimationPanel::motionEdited);
+    inset::Motion m;
+    m.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Bottom, 1500};
+    anim->setMotion(m);
+    CHECK(spy.isEmpty() && in->isEnabled() && in->currentText().contains("bottom"));
+    CHECK(inLength->isEnabled() && std::abs(inLength->value() - 1.5) < 1e-9);
+    CHECK(out->currentIndex() == 0 && !outLength->isEnabled());
+    out->setCurrentIndex(out->count() - 1); // shrink away
+    CHECK(spy.count() == 1 && outLength->isEnabled());
+    const inset::Motion got = spy.last().at(0).value<inset::Motion>();
+    CHECK(got.in == m.in && got.out.kind == inset::Motion::Kind::Pop);
+    inLength->setValue(0.3);
+    CHECK(spy.count() == 2 && spy.last().at(0).value<inset::Motion>().in.ms == 300);
+    anim->setNoTitle(QString());
+    CHECK(!in->isEnabled() && !inLength->isEnabled());
+}
+
 // The Title tab: the Text section reflects a title without emitting and
 // reports edits; Position and timing is the overlay panel without a frame,
 // its size the text's.
@@ -534,6 +566,7 @@ void testTitleTab(SettingsSidebar &bar)
     CHECK(!edit->isEnabled() && !left->isEnabled());
 
     testTitleLook(bar);
+    testTitleAnimation(bar);
 
     OverlayPanel::State st;
     st.layer = st.layerCount = 1;

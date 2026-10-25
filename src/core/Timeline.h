@@ -269,11 +269,12 @@ public slots:
     int addVideoClip(int trackId, const QString &sourcePath, qint64 sourceDurationMs,
                      qint64 startMs, int sourceWidth, int sourceHeight);
     // A title (TrackClip::title) `spanMs` long at `startMs` on a video
-    // track, placed by `look` (its width the text size). 0 if the track
-    // isn't a video track.
+    // track, placed by `look` (its width the text size), coming on and
+    // going off by `motion`. 0 if the track isn't a video track.
     int addTitleClip(int trackId, qint64 startMs, const title::Style &style,
                      qint64 spanMs = title::kDefaultSpanMs,
-                     const inset::Look &look = title::defaultLook());
+                     const inset::Look &look = title::defaultLook(),
+                     const inset::Motion &motion = {});
     // A title's text and how it's drawn. No-op on a clip that isn't one.
     // `shiftPerSize` also moves its position and every key's across by that
     // many times their text size (in output widths): what keeps the text
@@ -305,6 +306,8 @@ public slots:
     void setAudioClipLevel(int clipId, double gainDb, bool muted);
     void setAudioClipNoise(int clipId, const insv::NoiseReduction &nr);
     void setTrackClipFades(int clipId, qint64 fadeInMs, qint64 fadeOutMs);
+    // How a clip comes on and goes off (TrackClip::motion).
+    void setTrackClipMotion(int clipId, const inset::Motion &motion);
     // A video-track clip's inset: its static look (used while it has no
     // keyframes) and frame, both clamped.
     void setTrackClipInset(int clipId, const inset::Look &look, const inset::Frame &frame);

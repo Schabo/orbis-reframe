@@ -49,6 +49,9 @@ struct InsetClipJob {
     // The look at a source time (keyframes sampled; fades not applied).
     // Called on the export thread.
     std::function<inset::Look(int64_t sourceMs)> lookAt;
+    // How it comes on and goes off: where lookAt's look is drawn, moved at
+    // the clip's edges (inset::moved).
+    inset::Motion motion;
     // A flat main-track clip's colour grade (ReframeView::colorGrade);
     // default = none.
     color::Grade colorGrade;

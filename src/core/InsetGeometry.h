@@ -165,4 +165,91 @@ inline float rampGain(int64_t localMs, int64_t spanMs, float from, float to)
     return static_cast<float>(from + (to - from) * t);
 }
 
+// How a clip comes on at its start and goes off at its end, besides its
+// fades: tied to the clip's edges like the fades, so it survives trims and
+// moves, and on top of its keyframes, so a moving clip can still slide in.
+struct Motion {
+    enum class Kind {
+        None,
+        Slide, // in from just past the frame's `side` edge, out to it
+        Pop,   // grows from nothing with a small overshoot; out: the reverse
+    };
+    enum class Side { Left, Right, Top, Bottom };
+    struct Part {
+        Kind kind = Kind::None;
+        Side side = Side::Left;
+        int64_t ms = 500;
+        bool operator==(const Part &) const = default;
+    };
+    Part in;
+    Part out;
+
+    static constexpr int64_t kMinMs = 100;
+    static constexpr int64_t kMaxMs = 10000;
+
+    bool isNone() const { return in.kind == Kind::None && out.kind == Kind::None; }
+    Motion clamped() const
+    {
+        Motion m = *this;
+        m.in.ms = std::clamp(m.in.ms, kMinMs, kMaxMs);
+        m.out.ms = std::clamp(m.out.ms, kMinMs, kMaxMs);
+        return m;
+    }
+    bool operator==(const Motion &) const = default;
+};
+
+// `drawn` -- where the picture is drawn: its centre and width -- moved by `m`
+// at clip-local timeline time `localMs` of a clip `spanMs` long.
+// `pictureAspect` is the picture's width / height, `outAspect` the output's.
+// A clip too short for both parts plays each in its share of the span.
+inline Look moved(Look drawn, const Motion &m, int64_t localMs, int64_t spanMs,
+                  double pictureAspect, double outAspect)
+{
+    using Kind = Motion::Kind;
+    double inMs = m.in.kind == Kind::None ? 0.0 : double(m.in.ms);
+    double outMs = m.out.kind == Kind::None ? 0.0 : double(m.out.ms);
+    if (spanMs <= 0 || inMs + outMs <= 0.0)
+        return drawn;
+    if (inMs + outMs > double(spanMs)) {
+        const double k = double(spanMs) / (inMs + outMs);
+        inMs *= k;
+        outMs *= k;
+    }
+    // How far along to rest (1 = at rest): the out part is the in part
+    // played backwards, so it leaves the way it would have come.
+    const Motion::Part *part = nullptr;
+    double q = 1.0;
+    if (inMs > 0.0 && localMs < inMs) {
+        part = &m.in;
+        q = double(localMs) / inMs;
+    } else if (outMs > 0.0 && localMs > spanMs - outMs) {
+        part = &m.out;
+        q = double(spanMs - localMs) / outMs;
+    }
+    if (!part)
+        return drawn;
+    q = std::clamp(q, 0.0, 1.0);
+    if (part->kind == Kind::Slide) {
+        const double ease = 1.0 - std::pow(1.0 - q, 3.0); // slows to a stop
+        const double halfW = drawn.width / 2.0;
+        const double halfH =
+            pictureAspect > 0.0 ? drawn.width * outAspect / pictureAspect / 2.0 : 0.0;
+        auto from = [ease](float rest, double edge) {
+            return static_cast<float>(edge + (rest - edge) * ease);
+        };
+        switch (part->side) {
+        case Motion::Side::Left: drawn.centerX = from(drawn.centerX, -halfW); break;
+        case Motion::Side::Right: drawn.centerX = from(drawn.centerX, 1.0 + halfW); break;
+        case Motion::Side::Top: drawn.centerY = from(drawn.centerY, -halfH); break;
+        case Motion::Side::Bottom: drawn.centerY = from(drawn.centerY, 1.0 + halfH); break;
+        }
+    } else if (part->kind == Kind::Pop) {
+        // Ease-out-back: past full size by about 10 %, then back to it.
+        constexpr double c1 = 1.70158, c3 = c1 + 1.0;
+        const double s = 1.0 + c3 * std::pow(q - 1.0, 3.0) + c1 * std::pow(q - 1.0, 2.0);
+        drawn.width = static_cast<float>(drawn.width * std::max(0.0, s));
+    }
+    return drawn;
+}
+
 } // namespace inset

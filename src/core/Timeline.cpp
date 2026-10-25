@@ -1178,7 +1178,8 @@ int Timeline::addVideoClip(int trackId, const QString &sourcePath, qint64 source
 }
 
 int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &style,
-                           qint64 spanMs, const inset::Look &look)
+                           qint64 spanMs, const inset::Look &look,
+                           const inset::Motion &motion)
 {
     const Track *t = trackById(trackId);
     if (!t || t->kind != Track::Kind::Video)
@@ -1190,6 +1191,7 @@ int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &styl
     c.trimInMs = title::kSourceMs / 2;
     c.trimOutMs = c.trimInMs + std::clamp<qint64>(spanMs, TrackClip::kMinTrimMs, title::kSourceMs / 2);
     c.look = look.clamped();
+    c.motion = motion.clamped();
     return insertTrackClip(trackId, c);
 }
 
@@ -1335,8 +1337,10 @@ int Timeline::splitTrackClip(int clipId, qint64 atMs)
     right.startMs = c->startMs + std::llround((atSrc - c->trimInMs) / c->speed);
     right.trimInMs = atSrc;
     right.fadeInMs = 0;
+    right.motion.in = {}; // the left part comes on, the right goes off
     c->trimOutMs = atSrc;
     c->fadeOutMs = 0;
+    c->motion.out = {};
     c->setFades(c->fadeInMs, 0);     // clamp to the shorter span
     right.setFades(0, right.fadeOutMs);
     c->removeKeysOutsideTrim();
@@ -1407,6 +1411,16 @@ void Timeline::setTrackClipFades(int clipId, qint64 fadeInMs, qint64 fadeOutMs)
     TrackClip *c = mutableTrackClipById(clipId);
     if (c && c->setFades(fadeInMs, fadeOutMs))
         emit tracksChanged();
+}
+
+void Timeline::setTrackClipMotion(int clipId, const inset::Motion &motion)
+{
+    TrackClip *c = mutableTrackClipById(clipId);
+    const inset::Motion m = motion.clamped();
+    if (!c || c->motion == m)
+        return;
+    c->motion = m;
+    emit tracksChanged();
 }
 
 void Timeline::setTrackClipInset(int clipId, const inset::Look &look, const inset::Frame &frame)

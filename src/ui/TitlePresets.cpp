@@ -31,6 +31,12 @@ title::Shadow softShadow(float opacity, float distance, float blur)
     return s;
 }
 
+inset::Motion::Part part(inset::Motion::Kind kind, int64_t ms,
+                         inset::Motion::Side side = inset::Motion::Side::Left)
+{
+    return {kind, side, ms};
+}
+
 title::Box box(uint32_t rgb, float opacity, float padding, float cornerRadius)
 {
     title::Box b;
@@ -75,6 +81,17 @@ QList<Preset> make()
     outlined.look = at(0.5f, 0.45f, 0.11f);
     list.push_back(outlined);
 
+    // A heading that pops up and away.
+    Preset pop{QStringLiteral("heading-pop"), tr("Heading, pop"),
+               tr("A big title in the middle that pops up at the start and shrinks away at "
+                  "the end.") +
+                   QLatin1Char(' ') + hint};
+    pop.style = heading.style;
+    pop.look = heading.look;
+    pop.motion.in = part(inset::Motion::Kind::Pop, 400);
+    pop.motion.out = part(inset::Motion::Kind::Pop, 300);
+    list.push_back(pop);
+
     // Lower thirds: left-aligned, so the text grows to the right from where
     // it starts.
     Preset lower{QStringLiteral("lower-third"), tr("Lower third"),
@@ -96,6 +113,17 @@ QList<Preset> make()
     bar.style.box = box(0xc8441c, 1.0f, 0.35f, 0.0f);
     bar.look = at(0.06f, 0.82f, 0.05f);
     list.push_back(bar);
+
+    // A lower third that slides in from the left and back out.
+    Preset sliding{QStringLiteral("lower-third-slide"), tr("Lower third, sliding"),
+                   tr("A lower third on a dark box that slides in from the left and back out "
+                      "at the end.") +
+                       QLatin1Char(' ') + hint};
+    sliding.style = lower.style;
+    sliding.look = lower.look;
+    sliding.motion.in = part(inset::Motion::Kind::Slide, 600);
+    sliding.motion.out = part(inset::Motion::Kind::Slide, 600);
+    list.push_back(sliding);
 
     Preset caption{QStringLiteral("caption"), tr("Caption"),
                    tr("Small text at the bottom in the middle, on a rounded box.") +

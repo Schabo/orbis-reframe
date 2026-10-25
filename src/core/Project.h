@@ -104,7 +104,10 @@ public:
     //   A video (overlay) clip: the audio clip's timing fields + sourceWidth,
     //   sourceHeight, inset {centerX, centerY, width, opacity, cornerRadius,
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
-    //   centerY, width, opacity, ease}].
+    //   centerY, width, opacity, ease}]; optional: motion {in, out}, each
+    //   {kind: "slide" | "pop", ms, side: "left" | "right" | "top" |
+    //   "bottom" (a slide's)} (inset::Motion; a part written only when it
+    //   has a kind).
     //   A title (TrackClip::title): no source, sourceWidth or
     //   sourceHeight; title {text, font, bold, italic, color "#rrggbb";
     //   optional: align "left" | "right" (else centred), lineSpacing,
@@ -139,8 +142,11 @@ public:
     // the automatic distortion. Version 18 added a title's look (its
     // alignment, spacing, outline, shadow and box), written only when a
     // title shows one: an older build would draw it plain, and a left- or
-    // right-aligned one in the wrong place.
-    static constexpr int kFormatVersion = 18;
+    // right-aligned one in the wrong place. Version 19 added a clip's
+    // motion (slides and pops at its edges), written only when a clip has
+    // one: an older build would show it standing still.
+    static constexpr int kFormatVersion = 19;
+    static constexpr int kMotionFormatVersion = 19;
     static constexpr int kTitleLookFormatVersion = 18;
     static constexpr int kWideViewFormatVersion = 17;
     static constexpr int kSplitFormatVersion = 16;

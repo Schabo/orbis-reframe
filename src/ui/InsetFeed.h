@@ -48,6 +48,10 @@ public:
         inset::Look look;
         inset::Frame frame;
         InsetKeyTrack keys;
+        // How it comes on and goes off, moving where it's drawn (the
+        // output's width / height: `outAspect`).
+        inset::Motion motion;
+        double outAspect = 16.0 / 9.0;
         // A flat main-track clip (ClipItem::flat) drawn as a full-frame
         // layer: decoded at a larger size, with its colour grade.
         bool fullFrame = false;

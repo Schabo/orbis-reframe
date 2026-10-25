@@ -3,6 +3,7 @@
 A title is text shown over your video: the name of the ride, a place, a
 date. Titles sit on overlay tracks, like picture-in-picture videos
 ([Overlays](overlays.md)), and are placed, keyframed and faded the same way.
+They can also slide in and out or pop up.
 
 ![A title with a drop shadow in the viewport, the Titles tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -10,7 +11,8 @@ date. Titles sit on overlay tracks, like picture-in-picture videos
 2. The media sidebar's **Titles** tab.
 3. The settings sidebar's **Title** tab, with the selected title's
    text, font, colour and alignment, then how its text is drawn (outline,
-   shadow, box, spacing), and below them its position, size and timing.
+   shadow, box, spacing), and below them how it comes and goes, and its
+   position, size and timing.
 4. The title on its overlay track.
 
 ## Adding a title
@@ -25,8 +27,10 @@ picture:
 | **Text** | *Title* in white bold letters in the middle of the picture. |
 | **Heading** | A big title in the middle, with a soft shadow. |
 | **Heading, outlined** | A big title in spaced-out capitals with a black outline, readable over a bright sky or snow. |
+| **Heading, pop** | The heading, popping up at the start and shrinking away at the end. |
 | **Lower third** | Two lines in the lower left on a dark box: a name, and a line about it. |
 | **Lower third, bar** | One line in the lower left on a solid coloured bar. |
+| **Lower third, sliding** | The lower third, sliding in from the left and back out at the end. |
 | **Caption** | Small text at the bottom in the middle, on a rounded box. |
 | **Date** | The date in the lower right. |
 | **Date and place** | The date and, below it, *Place* to type over, in the lower left. |
@@ -57,7 +61,7 @@ everything below can be changed, and nothing ties it to its tile.
 ## Text, font, colour and alignment
 
 Select the title on the timeline, or click it in the viewport. The settings
-sidebar's **Title** tab then shows its settings, in three sections. If the
+sidebar's **Title** tab then shows its settings, in four sections. If the
 **Overlay** tab is showing, it switches to the **Title** tab by itself (and
 back again when you select an overlay video). The **Text** section:
 
@@ -89,6 +93,27 @@ Each can be switched on and off with its tick box; switched off, it keeps
 its settings for when you switch it on again. With a box, a left- or
 right-aligned title's position is the box's edge.
 
+## Sliding in and out
+
+The **Animation** section sets how the title comes on at its start and
+goes off at its end:
+
+| Setting | What it does |
+|---|---|
+| **In** | **Slide in from the left**, **right**, **top** or **bottom**: the title starts just outside that edge of the picture and slides to its place, slowing down as it arrives. **Pop up**: it grows from nothing, a little past its full size, and settles. **None**: it is simply there. |
+| **Length** | How long coming on takes, in seconds. |
+| **Out** | The same backwards: **Slide out to the left**, **right**, **top** or **bottom**, speeding up as it leaves, or **Shrink away**. |
+| **Length** | How long going off takes. |
+
+The animation is tied to the title's start and end, so it stays right when
+you make the title longer, shorter or move it. It adds to everything else:
+a title with keyframes slides in to where its keys put it, and a fade in
+fades it in as it slides. If the title is shorter than both lengths
+together, each takes its share of the title's time.
+
+Splitting a title keeps its **In** on the first part and its **Out** on the
+second.
+
 ## Position, size, keyframes and fades
 
 The Title tab's **Position and timing** section. These work as for an
@@ -97,7 +122,7 @@ overlay video ([Overlays](overlays.md)):
 - **Position X** and **Position Y**: where the title is, as a percentage
   of the picture's width and height: across, its left edge, middle or right
   edge, as its **Align** says; down, its middle. Or drag the title in the
-  viewport.
+  viewport; dragging it while it slides moves where it slides to.
 - **Text size**: how tall the letters are, as a percentage of the picture's
   height. 8 % is a good size for a heading; the box around the text grows
   with the text, so typing more doesn't make the letters smaller.

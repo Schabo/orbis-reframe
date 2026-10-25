@@ -112,6 +112,9 @@ struct TrackClip {
     // A title: no file (`sourcePath` empty, never missing), its look's width
     // is the text size (title::Style).
     std::optional<title::Style> title;
+    // How it comes on and goes off (inset::Motion); only titles offer one
+    // so far.
+    inset::Motion motion;
 
     bool isTitle() const { return title.has_value(); }
 

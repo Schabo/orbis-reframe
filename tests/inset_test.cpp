@@ -471,6 +471,102 @@ void testPictureLayer()
     CHECK(err.find("/c/b.insv") != std::string::npos && err.find("no such clip") != std::string::npos);
 }
 
+// inset::moved: a slide from / to an edge of the frame, a pop; the out part
+// is the in part backwards; a clip too short for both shares its span.
+void testMotion()
+{
+    using M = inset::Motion;
+    inset::Look rest;
+    rest.centerX = 0.3f;
+    rest.centerY = 0.7f;
+    rest.width = 0.2f;
+    constexpr double pic = 4.0, out = 16.0 / 9.0; // picture 4:1 on a 16:9 frame
+    const auto near = [](double a, double b) { return std::abs(a - b) < 1e-5; };
+    CHECK(inset::moved(rest, M{}, 0, 5000, pic, out) == rest);
+
+    M m;
+    m.in = {M::Kind::Slide, M::Side::Left, 1000};
+    m.out = {M::Kind::Slide, M::Side::Bottom, 500};
+    const inset::Look start = inset::moved(rest, m, 0, 5000, pic, out);
+    CHECK(near(start.centerX, -0.1) && start.centerY == rest.centerY && start.width == rest.width);
+    const inset::Look half = inset::moved(rest, m, 500, 5000, pic, out);
+    CHECK(half.centerX > (start.centerX + rest.centerX) / 2 && half.centerX < rest.centerX);
+    CHECK(inset::moved(rest, m, 1000, 5000, pic, out) == rest);
+    CHECK(inset::moved(rest, m, 4500, 5000, pic, out) == rest);
+    // Out at the bottom: just below the frame at the end (height = 0.2 *
+    // 16/9 / 4 of the frame's), as far along at 4900 as the in was at 200.
+    const inset::Look end = inset::moved(rest, m, 5000, 5000, pic, out);
+    CHECK(near(end.centerY, 1.0 + 0.2 * out / pic / 2) && end.centerX == rest.centerX);
+    const double inAt200 = (inset::moved(rest, m, 200, 5000, pic, out).centerX - rest.centerX) /
+                           (start.centerX - rest.centerX);
+    const double outAt4900 = (inset::moved(rest, m, 4900, 5000, pic, out).centerY - rest.centerY) /
+                             (end.centerY - rest.centerY);
+    CHECK(near(inAt200, outAt4900));
+    // The other sides.
+    m.in.side = M::Side::Right;
+    CHECK(near(inset::moved(rest, m, 0, 5000, pic, out).centerX, 1.1));
+    m.in.side = M::Side::Top;
+    CHECK(near(inset::moved(rest, m, 0, 5000, pic, out).centerY, -0.2 * out / pic / 2));
+
+    // A pop: from nothing, past full size, back to it; in place.
+    m.in = {M::Kind::Pop, M::Side::Left, 400};
+    m.out = {};
+    CHECK(inset::moved(rest, m, 0, 5000, pic, out).width < 1e-6f);
+    float widest = 0.0f;
+    for (int t = 0; t <= 400; t += 10) {
+        const inset::Look l = inset::moved(rest, m, t, 5000, pic, out);
+        widest = std::max(widest, l.width);
+        CHECK(l.centerX == rest.centerX && l.centerY == rest.centerY);
+    }
+    CHECK(widest > rest.width * 1.05f && widest < rest.width * 1.15f);
+    CHECK(inset::moved(rest, m, 400, 5000, pic, out) == rest);
+
+    // Too short for both: each gets its share (here half of 600 ms).
+    m.in = {M::Kind::Slide, M::Side::Left, 1000};
+    m.out = {M::Kind::Slide, M::Side::Left, 1000};
+    CHECK(inset::moved(rest, m, 300, 600, pic, out) == rest);
+    CHECK(inset::moved(rest, m, 150, 600, pic, out).centerX < rest.centerX);
+    CHECK(near(inset::moved(rest, m, 600, 600, pic, out).centerX, -0.1));
+}
+
+// A title's picture sliding in, in the export: off the frame at its start,
+// in place once in.
+void testMotionLayer()
+{
+    constexpr int W = 64, H = 36;
+    exportpipe::InsetClipJob j;
+    j.startMs = 1000;
+    j.trimInMs = 0;
+    j.trimOutMs = 3000;
+    j.aspect = 2.0;
+    j.still = std::make_shared<const std::vector<uint8_t>>(size_t(8) * 4 * 4, uint8_t(255));
+    j.stillW = 8;
+    j.stillH = 4;
+    j.lookAt = [](int64_t) {
+        inset::Look l;
+        l.centerX = 0.5f;
+        l.centerY = 0.5f;
+        l.width = 0.25f;
+        return l;
+    };
+    j.motion.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Left, 1000};
+    exportpipe::InsetCompositor comp({j}, W, H);
+    std::vector<uint8_t> y(size_t(W) * H), uv(size_t(W) * H / 2);
+    std::string err;
+    const auto lit = [&](int64_t ms) {
+        std::fill(y.begin(), y.end(), 16);
+        std::fill(uv.begin(), uv.end(), 128);
+        CHECK(comp.composite(ms, y.data(), W, uv.data(), W, err));
+        int n = 0;
+        for (uint8_t v : y)
+            n += v > 128;
+        return n;
+    };
+    CHECK(lit(1000) == 0);                                     // just past the left edge
+    CHECK(lit(1100) > 0 && y[size_t(H / 2) * W + W / 2] < 128); // on its way, not there yet
+    CHECK(lit(2500) > 0 && y[size_t(H / 2) * W + W / 2] > 200); // in place
+}
+
 // inset::fitted: a flat main-track clip's full-frame layer.
 void testFitted()
 {
@@ -507,6 +603,8 @@ int main()
     testColorGrade();
     testFitted();
     testPictureLayer();
+    testMotion();
+    testMotionLayer();
     if (!std::getenv("INSET_TEST_KEEP")) {
         for (const char *f : {"/solid.mp4", "/rot90.mp4", "/hd.mp4", "/tall.mp4"})
             std::remove((dir + f).c_str());

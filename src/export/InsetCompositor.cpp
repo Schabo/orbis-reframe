@@ -266,7 +266,8 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
         return false;
     const int64_t localMs = timelineMs - j.startMs;
     const int64_t srcMs = j.trimInMs + static_cast<int64_t>(std::llround(localMs * j.speed));
-    inset::Look look = j.lookAt ? j.lookAt(srcMs) : inset::Look{};
+    inset::Look look = inset::moved(j.lookAt ? j.lookAt(srcMs) : inset::Look{}, j.motion, localMs,
+                                    j.spanMs(), j.aspect, double(m_outW) / std::max(1, m_outH));
     look.opacity *= inset::fadeGain(localMs, j.spanMs(), j.fadeInMs, j.fadeOutMs) *
                     inset::rampGain(localMs, j.spanMs(), j.rampFrom, j.rampTo);
     const inset::Rect rect = inset::place(look, j.frame, j.aspect, m_outW, m_outH);

@@ -1258,6 +1258,25 @@ void testTitle(const Ctx &c)
         if (clip)
             clipId = clip->id;
     }
+    // An animation from the Animation section: on the clip, one undo step.
+    auto *motionIn = find<QComboBox>(c.w, "titleMotionIn");
+    if (clip && motionIn && undo) {
+        emit c.w->viewport()->insetPressed(clipId); // the undo let go of the selection
+        settle();
+        motionIn->setCurrentIndex(1); // slide in from the left
+        clip = c.timeline->trackClipById(clipId);
+        CHECK(clip && clip->motion.in.kind == inset::Motion::Kind::Slide &&
+              clip->motion.in.side == inset::Motion::Side::Left);
+        undo->trigger();
+        clip = nullptr;
+        for (int i = 0; i < c.timeline->trackCount(); ++i)
+            for (const TrackClip &tc : c.timeline->trackAt(i).clips)
+                if (tc.isTitle())
+                    clip = &tc;
+        CHECK(clip && clip->motion.isNone());
+        if (clip)
+            clipId = clip->id;
+    }
     // The Overlay tab shows overlay videos only.
     auto *overlayX = find<QDoubleSpinBox>(c.w, "overlayDuration");
     CHECK(overlayX && !overlayX->isEnabled());

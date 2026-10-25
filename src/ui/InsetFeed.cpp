@@ -163,11 +163,13 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
                 d.width = c.stillW;
                 d.height = c.stillH;
                 const inset::Look look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
-                d.look = title::drawnLook(look, c.stillWidthPerSize, c.stillAnchorX);
+                d.aspect = c.fullFrame ? c.aspect : double(c.stillW) / std::max(1, c.stillH);
+                d.look = inset::moved(title::drawnLook(look, c.stillWidthPerSize, c.stillAnchorX),
+                                      c.motion, ms - c.startMs, c.spanMs(), d.aspect, c.outAspect);
                 d.anchorDx = d.look.centerX - look.centerX;
+                d.anchorDy = d.look.centerY - look.centerY;
                 d.look.opacity *= inset::fadeGain(ms - c.startMs, c.spanMs(), c.fadeInMs, c.fadeOutMs) *
                                   inset::rampGain(ms - c.startMs, c.spanMs(), c.rampFrom, c.rampTo);
-                d.aspect = c.fullFrame ? c.aspect : double(c.stillW) / std::max(1, c.stillH);
                 d.locked = c.fullFrame;
                 out.push_back(std::move(d));
                 continue;
@@ -204,7 +206,10 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
             d.rgba = s.shown.rgba;
             d.width = s.shown.width;
             d.height = s.shown.height;
-            d.look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
+            const inset::Look look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
+            d.look = inset::moved(look, c.motion, local, c.spanMs(), c.aspect, c.outAspect);
+            d.anchorDx = d.look.centerX - look.centerX;
+            d.anchorDy = d.look.centerY - look.centerY;
             d.look.opacity *= inset::fadeGain(local, c.spanMs(), c.fadeInMs, c.fadeOutMs) *
                               inset::rampGain(local, c.spanMs(), c.rampFrom, c.rampTo);
             d.frame = c.frame;

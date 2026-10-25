@@ -377,6 +377,8 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             f.look = c.look;
             f.frame = c.frame;
             f.keys = c.insetKeys;
+            f.motion = c.motion;
+            f.outAspect = outH > 0 ? double(outW) / outH : 16.0 / 9.0;
             if (!pic.empty()) {
                 f.still = pic.rgba;
                 f.stillW = pic.width;
@@ -458,6 +460,7 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
             j.fadeInMs = c.fadeInMs;
             j.fadeOutMs = c.fadeOutMs;
             j.frame = c.frame;
+            j.motion = c.motion;
             // A copy: the export thread samples it.
             j.lookAt = [look = c.look, keys = c.insetKeys](int64_t sourceMs) {
                 return keys.isEmpty() ? look : keys.sample(sourceMs);

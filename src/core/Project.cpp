@@ -603,6 +603,52 @@ title::Style titleFromJson(const json &j)
     return t.clamped();
 }
 
+// How a clip comes on and goes off: only the parts it has.
+json motionToJson(const inset::Motion &m)
+{
+    const auto part = [](const inset::Motion::Part &p) {
+        json j{{"kind", p.kind == inset::Motion::Kind::Pop ? "pop" : "slide"},
+               {"ms", static_cast<qint64>(p.ms)}};
+        if (p.kind == inset::Motion::Kind::Slide)
+            j["side"] = p.side == inset::Motion::Side::Left    ? "left"
+                        : p.side == inset::Motion::Side::Right ? "right"
+                        : p.side == inset::Motion::Side::Top   ? "top"
+                                                               : "bottom";
+        return j;
+    };
+    json j = json::object();
+    if (m.in.kind != inset::Motion::Kind::None)
+        j["in"] = part(m.in);
+    if (m.out.kind != inset::Motion::Kind::None)
+        j["out"] = part(m.out);
+    return j;
+}
+
+inset::Motion motionFromJson(const json &j)
+{
+    const auto part = [&j](const char *key) {
+        inset::Motion::Part p;
+        if (!j.contains(key) || !j.at(key).is_object())
+            return p;
+        const json &o = j.at(key);
+        const std::string kind = o.value("kind", std::string());
+        p.kind = kind == "slide" ? inset::Motion::Kind::Slide
+                 : kind == "pop" ? inset::Motion::Kind::Pop
+                                 : inset::Motion::Kind::None;
+        const std::string side = o.value("side", std::string());
+        p.side = side == "right"    ? inset::Motion::Side::Right
+                 : side == "top"    ? inset::Motion::Side::Top
+                 : side == "bottom" ? inset::Motion::Side::Bottom
+                                    : inset::Motion::Side::Left;
+        p.ms = o.value("ms", p.ms);
+        return p;
+    };
+    inset::Motion m;
+    m.in = part("in");
+    m.out = part("out");
+    return m.clamped();
+}
+
 // A video-track clip: the track-clip fields plus its size and inset; a
 // title has its style instead of a source and size.
 json videoClipToJson(const TrackClip &c, const QDir *projectDir)
@@ -633,6 +679,8 @@ json videoClipToJson(const TrackClip &c, const QDir *projectDir)
         keys.push_back(std::move(jk));
     }
     j["insetKeys"] = std::move(keys);
+    if (!c.motion.isNone())
+        j["motion"] = motionToJson(c.motion);
     return j;
 }
 
@@ -663,6 +711,8 @@ TrackClip videoClipFromJson(const json &j, const QDir *projectDir)
             c.insetKeys.setEase(jk.value("tMs", qint64(0)), 0,
                                 keytrack::easeFromName(jk.value("ease", std::string())));
     }
+    if (j.contains("motion") && j.at("motion").is_object())
+        c.motion = motionFromJson(j.at("motion"));
     return c;
 }
 
@@ -1133,6 +1183,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     json tracks = json::array();
     bool anyTitle = false;
     bool anyStyledTitle = false; // outline, shadow, box, alignment or spacing
+    bool anyMotion = false;
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
@@ -1141,6 +1192,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             if (video) {
                 anyTitle |= c.isTitle();
                 anyStyledTitle |= c.isTitle() && styledTitle(*c.title);
+                anyMotion |= !c.motion.isNone();
                 tc.push_back(videoClipToJson(c, projectDir));
                 continue;
             }
@@ -1206,7 +1258,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyStyledTitle          ? kTitleLookFormatVersion
+        {"version", anyMotion               ? kMotionFormatVersion
+                    : anyStyledTitle          ? kTitleLookFormatVersion
                     : anyReframeKey           ? kWideViewFormatVersion
                     : anySplit                ? kSplitFormatVersion
                     : anyDirectionLock        ? kDirectionLockFormatVersion

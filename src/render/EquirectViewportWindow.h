@@ -128,10 +128,12 @@ public:
         double aspect = 16.0 / 9.0; // the video's display aspect (sizes the rect)
         color::Grade colorGrade; // ColorGrade::render(); a flat main clip's
         bool locked = false; // a flat main clip: fills its place, can't be picked or dragged
-        // Where it's drawn (look.centerX) less where the clip says it is: a
-        // title pinned by its left or right edge (title::drawnLook). A drag
-        // reports the clip's position.
+        // Where it's drawn (look's centre) less where the clip says it is: a
+        // title pinned by its left or right edge (title::drawnLook), a clip
+        // sliding in or out (inset::moved). A drag reports the clip's
+        // position.
         float anchorDx = 0.0f;
+        float anchorDy = 0.0f;
     };
     void SetInsets(std::vector<InsetDraw> insets);
     // SetInsets for the insets that go with the picture last set (SetFrame /
@@ -376,6 +378,7 @@ private:
     QPointF m_insetDragStart;
     float m_insetDragCx0 = 0.0f, m_insetDragCy0 = 0.0f;
     float m_insetDragAnchorDx = 0.0f; // the dragged inset's InsetDraw::anchorDx
+    float m_insetDragAnchorDy = 0.0f; // ... and anchorDy
     bool m_insetDragMoved = false;
 
     // Track subject box select (GUI thread) and the marker (read by the renderer).

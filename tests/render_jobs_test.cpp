@@ -204,6 +204,53 @@ void testTitles()
     }
 }
 
+// A title's motion: playback and the export move it the same way, and
+// playback says how far it's from where the clip puts it (a drag then
+// reports the clip's position).
+void testTitleMotion()
+{
+    Timeline t;
+    t.appendClip("/c/ride.insv", 20000, 30.0);
+    const int v = t.addTrack(Track::Kind::Video, "Text");
+    title::Style style;
+    style.text = "Moving";
+    style.align = title::Align::Left;
+    inset::Motion m;
+    m.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Bottom, 1000};
+    m.out = {inset::Motion::Kind::Pop, inset::Motion::Side::Left, 500};
+    const int id = t.addTitleClip(v, 2000, style, 4000, title::defaultLook(), m);
+    const PrivacyBlur privacy;
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080, privacy);
+    const std::vector<exportpipe::InsetClipJob> jobs = renderjobs::insetJobs(t, 1920, 1080, privacy);
+    CHECK(feed.size() == 1 && jobs.size() == 1);
+    if (feed.size() != 1 || jobs.size() != 1)
+        return;
+    CHECK(feed[0].motion == m && jobs[0].motion == m && near(feed[0].outAspect, 1920.0 / 1080));
+    InsetFeed player;
+    player.setClips(feed);
+    const exportpipe::InsetClipJob &j = jobs[0];
+    const TrackClip &c = *t.trackClipById(id);
+    for (qint64 ms : {2000, 2300, 2999, 4000, 5700, 5999}) {
+        const std::vector<EquirectViewportWindow::InsetDraw> drawn = player.frameFor(ms, false);
+        CHECK(drawn.size() == 1);
+        if (drawn.size() != 1)
+            continue;
+        const EquirectViewportWindow::InsetDraw &d = drawn[0];
+        const qint64 local = ms - c.startMs;
+        const inset::Look el = inset::moved(j.lookAt(c.sourceAtLocalMs(local)), j.motion, local,
+                                            j.spanMs(), j.aspect, 1920.0 / 1080);
+        const inset::Rect er = inset::place(el, {}, j.aspect, 1920, 1080);
+        const inset::Rect pr = inset::place(d.look, {}, d.aspect, 1920, 1080);
+        CHECK(near(pr.x, er.x, 2.0) && near(pr.y, er.y, 2.0) && near(pr.w, er.w, 2.0));
+        // Where the clip puts it, back from where it's drawn.
+        CHECK(near(d.look.centerY - d.anchorDy, c.look.centerY, 1e-5));
+        if (ms == 2000)
+            CHECK(er.y >= 1080 - 1); // just below the frame
+        if (ms == 4000)
+            CHECK(near(el.centerY, c.look.centerY, 1e-6)); // at rest
+    }
+}
+
 // A transition: the other clip as a layer over each half, blending through
 // the cut; the clips' own sound running on past it, crossfading.
 void testTransitions()
@@ -502,6 +549,7 @@ int main(int argc, char **argv)
     testMissingSources();
     testOverlays();
     testTitles();
+    testTitleMotion();
     testTransitions();
     testLayerOverMainClip();
     testClipJob(tmp.path());

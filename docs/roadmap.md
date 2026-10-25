@@ -24,18 +24,23 @@ shadow and a background box, line and letter spacing, and left / centre /
 right alignment, which also says which point of the text the title's
 position pins. All of it is part of the title's style (`title::Style`),
 drawn into the one picture the viewport and the export both place
-(`src/ui/TitleRender`). The Titles tab offers ready-made titles as tiles
-(headings, lower thirds, a caption, date / place; `src/ui/TitlePresets`):
-a tile is only where a title starts, a style and a position, and once on
-the timeline it is an ordinary title. A date tile writes the clip's
-recording date by the camera's clock (`camera::ClipMetadata::recordedLocal`);
-the place is typed, as nothing local can name it.
+(`src/ui/TitleRender`). A title comes on and goes off with an In and an Out
+animation -- a slide from or to an edge of the frame, or a pop -- tied to
+the clip's edges like its fades and added to its keyframes
+(`inset::Motion`, applied where the viewport and the export place it). The
+Titles tab offers ready-made titles as tiles (headings, lower thirds, a
+caption, date / place, two animated ones; `src/ui/TitlePresets`): a tile is
+only where a title starts, a style, a position and its animation, and once
+on the timeline it is an ordinary title. A date tile writes the clip's
+recording date by the camera's clock
+(`camera::ClipMetadata::recordedLocal`); the place is typed, as nothing
+local can name it.
 
-Next: **animations** -- tiles for animated titles (type-on, slide in) and
-an *Animation* section in the Title tab to give any title one. A slide is
-the title's own position keys; type-on and keyframed colour change the
-picture over time, so the title's picture becomes one per moment (cached),
-still the same for the viewport and the export.
+Next: **a live clock title** -- a title whose text is the time of day at
+each moment of the video, from the camera's clock and the source time of
+the clip under it. Its picture changes over time, so the title's picture
+becomes one per moment (rendered ahead, cached), still the same for the
+viewport and the export; the GPS overlays below then reuse that path.
 
 When non-text items arrive (the GPS gauges below), the Titles tab gets a
 broader name.

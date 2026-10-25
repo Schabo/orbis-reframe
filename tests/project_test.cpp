@@ -1736,6 +1736,41 @@ void testTitleJson()
         const title::Style &t = *p.timeline()->trackAt(0).clips.at(0).title;
         CHECK(!t.box.on && t.box.rgb == 0xffcc00 && !t.outline.on && t.outline.width == 0.08f);
     }
+    // Its motion: written only when it has one, with the version that added
+    // it, and read back; none again, and the file goes back.
+    inset::Motion motion;
+    motion.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Bottom, 750};
+    motion.out = {inset::Motion::Kind::Pop, inset::Motion::Side::Left, 300};
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        tl->setTrackClipMotion(tl->trackAt(0).clips.at(0).id, motion);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kMotionFormatVersion);
+        const QJsonObject jm = document()
+                                   .value("timeline").toObject()
+                                   .value("tracks").toArray().at(0).toObject()
+                                   .value("clips").toArray().at(0).toObject()
+                                   .value("motion").toObject();
+        CHECK(jm.value("in").toObject().value("side").toString() == "bottom");
+        CHECK(jm.value("out").toObject().value("kind").toString() == "pop" &&
+              !jm.value("out").toObject().contains("side"));
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        CHECK(tl->trackAt(0).clips.at(0).motion == motion);
+        tl->setTrackClipMotion(tl->trackAt(0).clips.at(0).id, {});
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kTitleFormatVersion);
+        CHECK(!document()
+                   .value("timeline").toObject()
+                   .value("tracks").toArray().at(0).toObject()
+                   .value("clips").toArray().at(0).toObject()
+                   .contains("motion"));
+    }
 }
 
 // Transitions: saved at their cut (the index of the clip before it), with
