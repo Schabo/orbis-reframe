@@ -16,41 +16,7 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. Titles -- *maintainer*
-
-Titles on overlay tracks are built: text with a font picker that previews
-the fonts, keyframed position and size, and a look -- an outline, a drop
-shadow and a background box, line and letter spacing, and left / centre /
-right alignment, which also says which point of the text the title's
-position pins. All of it is part of the title's style (`title::Style`),
-drawn into the one picture the viewport and the export both place
-(`src/ui/TitleRender`). A title comes on and goes off with an In and an Out
-animation -- a slide from or to an edge of the frame, a pop, or typing on /
-off letter by letter -- tied to the clip's edges like its fades and added
-to its keyframes (`inset::Motion`, applied where the viewport and the
-export place it). A title's picture can change over its time: a
-`TitleSource` (`src/ui/TitleSource`, an `exportpipe::StillSource`) gives
-the picture at each moment and when it next changes; the export asks for
-it at each frame, playback renders the one for now and the next on its
-decoder thread. The Titles tab offers ready-made titles as tiles
-(headings, lower thirds, captions, date / place, three animated ones;
-`src/ui/TitlePresets`): a tile is
-only where a title starts, a style, a position and its animation, and once
-on the timeline it is an ordinary title. A date tile writes the clip's
-recording date by the camera's clock
-(`camera::ClipMetadata::recordedLocal`); the place is typed, as nothing
-local can name it.
-
-Next: **a live clock title** -- a title whose text is the time of day at
-each moment of the video, from the camera's clock and the source time of
-the clip under it: fields in the title's text, its state at a moment the
-clock's text, on the same per-moment pictures. The GPS overlays below then
-reuse that path.
-
-When non-text items arrive (the GPS gauges below), the Titles tab gets a
-broader name.
-
-### 2. GPS and stats overlays -- *maintainer*
+### 1. GPS and stats overlays -- *maintainer*
 
 Speed, altitude, distance, heading, the route, and lean / G-force gauges,
 drawn on the picture from the clip's own telemetry and following the
@@ -59,11 +25,19 @@ clip's time (speed changes and trims included). The X5 records GPS in its
 sometimes only for part of the clip ([`formats/insta360-x5.md`](formats/insta360-x5.md));
 lean comes from the gyroscope. No map tiles: the route is a drawn line,
 editing stays local-only. The overlays are saved in the project with their
-style and position, and the viewport and the export draw the same. The
-design (clips without GPS, gaps and the 1 Hz rate, units, gauge styles) is
-still to be planned.
+style and position, and the viewport and the export draw the same: they
+are per-moment pictures on the title clock's path (`TitleSource`), with the
+clock's map from timeline time to each clip's source time shared by both.
 
-### 3. Optional
+In steps: the GPS track read from the trailer (one fix a second, smoothed
+between fixes, a gap of a few seconds is "no data") and its values at any
+moment; then text fields in titles (`{speed}`, `{altitude}`, `{distance}`,
+`{heading}`, with units per title); then drawn gauges as their own overlay
+clips (dial, bar, heading tape); then the route, lean and G-force. Where a
+clip has no GPS, a field or gauge shows `--`. Place names from coordinates
+are not planned: they'd need an offline place database.
+
+### 2. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
