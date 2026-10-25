@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "Calibration.h"
 
-#include <cstdlib>
+#include <charconv>
 #include <string>
 #include <vector>
 
@@ -11,22 +11,24 @@ namespace {
 
 // Tokenise a run of numbers separated by '_' or whitespace, starting at `from`.
 // Stops at the first byte that can't extend a number or separator.
+// from_chars, not strtod: strtod follows the host's LC_NUMERIC, and with a
+// decimal comma it stops at the file's '.'.
 std::vector<double> tokenizeNumbers(const std::string& s, size_t from)
 {
     std::vector<double> t;
-    const char* base = s.c_str();
-    const char* p = base + from;
-    while (*p) {
-        while (*p == '_' || *p == ' ' || *p == '\t')
+    const char* p = s.data() + from;
+    const char* const last = s.data() + s.size();
+    while (p < last) {
+        while (p < last && (*p == '_' || *p == ' ' || *p == '\t'))
             ++p;
-        if (!*p)
-            break;
-        char* end = nullptr;
-        const double v = std::strtod(p, &end);
-        if (end == p)
+        if (p < last && *p == '+')
+            ++p;
+        double v = 0;
+        const auto r = std::from_chars(p, last, v);
+        if (r.ec != std::errc())
             break;
         t.push_back(v);
-        p = end;
+        p = r.ptr;
     }
     return t;
 }

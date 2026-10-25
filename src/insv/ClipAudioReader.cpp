@@ -64,7 +64,7 @@ struct ClipAudioReader::Tempo {
             chain += "atempo=0.5,";
             s /= 0.5;
         }
-        // to_chars, not to_string: a Qt app runs under the user's LC_NUMERIC,
+        // to_chars, not to_string: to_string follows the host's LC_NUMERIC,
         // which may use a decimal comma ("0,5" breaks the filter string).
         char num[32];
         const auto r = std::to_chars(num, num + sizeof num, s);

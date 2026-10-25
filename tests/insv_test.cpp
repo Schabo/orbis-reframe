@@ -16,6 +16,7 @@
 #include "SeamCut.h"
 #include "SeamDepth.h"
 #include "Ycbcr.h"
+#include "support/CommaLocale.h"
 #include "support/TestTrailer.h"
 
 #include <algorithm>
@@ -108,6 +109,16 @@ void testExtendedCalibration()
     CHECK(!insv::ParseExtendedCalibrationString("", c3));
     CHECK(!insv::ParseExtendedCalibrationString("2_2.0_junk", c3));
     CHECK(c3.lensesExt.empty());
+
+    // The file's '.' decimals parse the same under a decimal-comma locale.
+    const testlocale::CommaLocale comma;
+    if (comma.name().empty()) {
+        std::printf("  (no decimal-comma locale installed; skipping the locale check)\n");
+        return;
+    }
+    insv::InsvCalibration c4;
+    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c4));
+    CHECK(c4.lensesExt.size() == 2 && near(c4.lensesExt[0].fx, 4294.030, 1e-3));
 }
 
 // The ONE X2's 40-token offset_v3 (metadata field 54) from the sample clip

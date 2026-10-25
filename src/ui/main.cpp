@@ -23,6 +23,7 @@
 #include <VoiceIsolator.h>
 #endif
 
+#include <clocale>
 #include <cstdio>
 #include <cstring>
 
@@ -87,6 +88,12 @@ int main(int argc, char *argv[])
         qputenv("QT_VULKAN_LIB", "libvulkan.so.1");
 
     QApplication app(argc, argv);
+    // QApplication has applied the user's locale to the C library; a decimal
+    // comma there makes strtod / printf in FFmpeg and the other libraries
+    // misread and miswrite '.' numbers (an X5 clip's calibration, filter
+    // options). Put numbers back to "C" before any thread starts; widgets
+    // format through QLocale, which still follows the user's language.
+    std::setlocale(LC_NUMERIC, "C");
 #ifdef INSV_HAVE_VOICE
     // The voice noise modes' DeepFilterNet model ships with the app (installed
     // next to it, or the source tree in a dev build); ORBIS_DFN_MODEL_DIR wins.

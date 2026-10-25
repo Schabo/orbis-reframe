@@ -1,9 +1,8 @@
 #include "ColorLut.h"
 
 #include <algorithm>
-#include <cerrno>
+#include <charconv>
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -27,22 +26,24 @@ bool isSpace(char c)
 }
 
 // Up to `n` floats from `s`; how many were read, and whether anything but
-// space followed them.
+// space followed them. from_chars, not strtof: strtof follows the host's
+// LC_NUMERIC, and with a decimal comma it stops at the file's '.'.
 int readFloats(const char *s, float *out, int n, bool *trailing)
 {
+    const char *const last = s + std::strlen(s);
     int got = 0;
     while (got < n) {
         while (isSpace(*s))
             ++s;
         if (!*s)
             break;
-        char *end = nullptr;
-        errno = 0;
-        const float v = std::strtof(s, &end);
-        if (end == s || errno == ERANGE || !std::isfinite(v))
+        const char *p = *s == '+' ? s + 1 : s;
+        float v = 0;
+        const auto r = std::from_chars(p, last, v);
+        if (r.ec != std::errc() || !std::isfinite(v))
             break;
         out[got++] = v;
-        s = end;
+        s = r.ptr;
     }
     while (isSpace(*s))
         ++s;

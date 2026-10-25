@@ -34,6 +34,14 @@ discussion in an issue first, not a pull request.
   behaviour, but don't take on real complexity for other compositors.
 - **Local only**: editing, playback and export never touch the network. The
   one planned exception is an opt-in royalty-free music library panel.
+- **Numbers in text for machines are locale-free**: `main()` sets
+  `LC_NUMERIC` back to "C" right after `QApplication` has applied the
+  user's locale, so the C library, FFmpeg and the other libraries read and
+  write `.` decimals on every desktop. Code that parses or writes numbers
+  in files, FFmpeg option strings and the like uses `std::from_chars` /
+  `std::to_chars` or `QString::number` anyway, so it holds in the tools,
+  the tests and any other host. Numbers shown to people go through
+  `QLocale`, which still follows the user's language.
 - **Export is a flat reframe**: the product is the flat video you steer
   through the sphere. Full 360 (equirect) export is ruled out.
 - **Colour conversion is the clip's LUT**: log and HDR footage is converted

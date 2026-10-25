@@ -3,6 +3,7 @@
 // clip's ColorGrade carrying one (render(), equality).
 // Standalone; the exit code is the failure count.
 
+#include "support/CommaLocale.h"
 #include "support/ModelTest.h"
 
 #include "ColorLut.h"
@@ -77,6 +78,18 @@ void testParse()
           err.find("DOMAIN") != std::string::npos);
     std::string extra = cubeText(2, [](float, float, float, float *o) { o[0] = o[1] = o[2] = 0; });
     CHECK(!color::parseCube(extra + "0 0 0\n", &err));
+
+    // The file's '.' decimals parse the same under a decimal-comma locale.
+    // Literal text: std::to_string would itself write commas there.
+    const testlocale::CommaLocale comma;
+    if (comma.name().empty()) {
+        std::printf("  (no decimal-comma locale installed; skipping the locale check)\n");
+        return;
+    }
+    lut = color::parseCube("DOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.5 1.5 1.5\nLUT_3D_SIZE 2\n"
+                           "0.25 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 +1.0\n",
+                           &err);
+    CHECK(lut && near(lut->rgb[0], 0.25f) && near(lut->domainMax, 1.5f));
 }
 
 void testApply()
