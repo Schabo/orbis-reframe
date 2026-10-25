@@ -31,7 +31,9 @@ section (settings sidebar, **Video** tab):
 | **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 % (see [Wide views and tiny planets](#wide-views-and-tiny-planets)). | Auto, 0 % to 100 % |
 
 In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
-the field of view. Roll and distortion can only be set in the section.
+the field of view. Roll and distortion can only be set in the section. The
+section is greyed out while there's no clip to reframe: none selected and
+none under the playhead.
 
 The field of view is measured corner to corner, so the same value takes in
 as much in a landscape picture as in a portrait one; only the shape of the

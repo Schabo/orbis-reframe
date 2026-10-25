@@ -310,6 +310,7 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_sidebar = new SettingsSidebar(this);
     m_stitchingPanel = m_sidebar->stitching();
     m_reframePanel = m_sidebar->reframe();
+    m_reframePanel->setNoClip();
     m_splitScreenPanel = m_sidebar->splitScreen();
     m_splitScreenPanel->setNoClip();
     m_stabilizationPanel = m_sidebar->stabilization();
@@ -837,7 +838,7 @@ void MainWindow::connectEdits()
     connect(m_timeline, &Timeline::clipFitChanged, this, [this](int id, ClipItem::Fit fit) {
         pushInsetsToController();
         if (id == editClipId())
-            m_reframePanel->setFlatClip(true, fit == ClipItem::Fit::Fill);
+            m_reframePanel->setClip(true, fit == ClipItem::Fit::Fill);
     });
 }
 
@@ -1681,8 +1682,7 @@ void MainWindow::refreshClipPanels()
         m_stabilizationPanel->setNotApplicable(QString());
         m_stabilizationPanel->setNoClip();
         syncStitchingPanel();
-        m_reframePanel->setFlatClip(false);
-        m_reframePanel->setPaneLayout(pane::Layout::Single);
+        m_reframePanel->setNoClip();
         m_splitScreenPanel->setNotApplicable(QString());
         m_splitScreenPanel->setNoClip();
         refreshAudioPanel();
@@ -1690,7 +1690,7 @@ void MainWindow::refreshClipPanels()
     }
     syncMediaInfoPanel(*c);
     syncColourPanel(c->color);
-    m_reframePanel->setFlatClip(c->flat, c->fit == ClipItem::Fit::Fill);
+    m_reframePanel->setClip(c->flat, c->fit == ClipItem::Fit::Fill);
     m_reframePanel->setPaneLayout(c->split.layout);
     m_splitScreenPanel->setNotApplicable(c->flat ? tr("A flat video isn't split into panes.")
                                                  : QString());
@@ -3052,6 +3052,7 @@ void MainWindow::bindEmptyTimeline()
     m_stitchingPanel->setNoClip();
     m_privacyPanel->setNoClip();
     m_mediaInfoPanel->setNoClip();
+    m_reframePanel->setNoClip();
     // Nothing of the last project carries over: the view looks straight
     // ahead again, from the first pane, and reframe authoring starts
     // disarmed.

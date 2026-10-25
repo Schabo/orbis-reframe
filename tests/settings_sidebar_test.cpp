@@ -399,10 +399,21 @@ void testEasing(SettingsSidebar &bar)
     CHECK(rEase->isEnabled());
     reframe->setEase(false, keytrack::Ease::Linear);
     CHECK(!rEase->isEnabled() && rEase->currentIndex() == 0);
-    reframe->setFlatClip(true);
+    reframe->setClip(true);
     CHECK(!rEase->isVisibleTo(reframe));
-    reframe->setFlatClip(false);
+    reframe->setClip(false);
     CHECK(rEase->isVisibleTo(reframe));
+
+    // No clip: the fields grey out, except Stop tracking while a run is on.
+    QWidget *stop = reframe->trackStopButton();
+    reframe->setNoClip();
+    CHECK(!find<QDoubleSpinBox>(reframe, "reframeFov")->isEnabled());
+    reframe->setTrackRunning(true);
+    CHECK(stop->isEnabled());
+    reframe->setTrackRunning(false);
+    CHECK(!stop->isEnabled());
+    reframe->setClip(false);
+    CHECK(find<QDoubleSpinBox>(reframe, "reframeFov")->isEnabled() && stop->isEnabled());
 }
 
 // The Title tab: the Text section reflects a title without emitting and
@@ -477,7 +488,7 @@ void testTitleTab(SettingsSidebar &bar)
 }
 
 // The tracking status shows under the Track subject button, also after a
-// clip has been shown (setFlatClip hides the status row while no run is on).
+// clip has been shown (setClip hides the status row while no run is on).
 void testTrackStatus(SettingsSidebar &bar)
 {
     ReframePanel *reframe = bar.reframe();
@@ -487,7 +498,7 @@ void testTrackStatus(SettingsSidebar &bar)
         return;
     bar.setCurrentIndex(SettingsSidebar::VideoTab);
     reframe->setExpanded(true);
-    reframe->setFlatClip(false);
+    reframe->setClip(false);
     reframe->setTrackRunning(true);
     reframe->setTrackStatus(QStringLiteral("1.0 s tracked."));
     QApplication::processEvents();

@@ -54,10 +54,13 @@ public:
     void setTrackStatus(const QString &status);
     QWidget *trackStopButton() const;
 
-    // A flat video (ClipItem::flat) isn't reframed: the view fields and
-    // Track subject give way to how it fills the output frame -- the whole
-    // picture with bars, or filling the frame (`fill`).
-    void setFlatClip(bool flat, bool fill = false);
+    // A clip is shown. A flat video (ClipItem::flat) isn't reframed: the
+    // view fields and Track subject give way to how it fills the output
+    // frame -- the whole picture with bars, or filling the frame (`fill`).
+    void setClip(bool flat, bool fill = false);
+    // No clip to reframe: the body greys out, as a 360 clip's with one pane.
+    // While tracking runs it stays live, so Stop tracking can be clicked.
+    void setNoClip();
 
     // Easing of the move from the key at (or before) the playhead to the next
     // one; `available` false greys it out (the playhead isn't between two
@@ -87,6 +90,7 @@ private:
     // One field edited: the pose shown with it changed, emitted.
     void edited(const std::function<void(ReframePose &)> &change);
     void showPaneRow();
+    void updateBodyEnabled();
 
     QDoubleSpinBox *m_yaw = nullptr;
     QDoubleSpinBox *m_pitch = nullptr;
@@ -108,6 +112,7 @@ private:
     QComboBox *m_pane = nullptr;
     pane::Layout m_paneLayout = pane::Layout::Single;
     bool m_flat = false;
+    bool m_hasClip = true;
     bool m_trackRunning = false;
     bool m_updating = false; // true while setPose() writes the widgets
 };

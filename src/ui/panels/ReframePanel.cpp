@@ -133,7 +133,7 @@ ReframePanel::ReframePanel(QWidget *parent)
     form()->setRowVisible(m_fit, false);
     connect(m_fit, &QComboBox::activated, this, [this](int i) { emit fitEdited(i == 1); });
 
-    setFlatClip(false);
+    setClip(false);
     setPose(ReframePose{});
     setPaneLayout(pane::Layout::Single);
 
@@ -259,8 +259,10 @@ void ReframePanel::setClipUnkeyed(bool unkeyed)
     m_unkeyed->setVisible(unkeyed && !m_flat);
 }
 
-void ReframePanel::setFlatClip(bool flat, bool fill)
+void ReframePanel::setClip(bool flat, bool fill)
 {
+    m_hasClip = true;
+    updateBodyEnabled();
     m_flat = flat;
     for (QWidget *w :
          std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionRow,
@@ -278,6 +280,19 @@ void ReframePanel::setFlatClip(bool flat, bool fill)
                       "sets a keyframe at the playhead."));
 }
 
+void ReframePanel::setNoClip()
+{
+    setClip(false);
+    setPaneLayout(pane::Layout::Single);
+    m_hasClip = false;
+    updateBodyEnabled();
+}
+
+void ReframePanel::updateBodyEnabled()
+{
+    setBodyEnabled(m_hasClip || m_trackRunning);
+}
+
 void ReframePanel::setEase(bool available, keytrack::Ease ease)
 {
     m_easeAvailable = available;
@@ -288,7 +303,7 @@ void ReframePanel::setTrackUnavailable(const QString &reason)
 {
     m_trackUnavailableReason = reason;
     m_trackUnavailable->setText(reason);
-    // The row, not just the label: setFlatClip may have hidden the row, and
+    // The row, not just the label: setClip may have hidden the row, and
     // a label shown in a hidden row isn't laid out (it lands top left).
     form()->setRowVisible(m_trackUnavailable, !reason.isEmpty() && !m_flat);
     if (!reason.isEmpty())
@@ -308,6 +323,7 @@ void ReframePanel::setTrackSelecting(bool selecting)
 void ReframePanel::setTrackRunning(bool running)
 {
     m_trackRunning = running;
+    updateBodyEnabled();
     m_track->setText(running ? tr("Stop tracking") : tr("Track subject…"));
     m_track->setChecked(running);
     m_track->setEnabled(true);
