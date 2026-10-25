@@ -18,6 +18,11 @@ QWidget {
     selection-background-color: @accent;
     selection-color: @textOnAccent;
 }
+/* The color above would otherwise win over the palette's disabled text
+   colour, leaving disabled labels, checkboxes and group titles bright. */
+QWidget:disabled {
+    color: @textDisabled;
+}
 
 QToolTip {
     background-color: @button;
@@ -297,6 +302,9 @@ QToolButton[settingsPart="header"][collapsible="true"]:hover {
 }
 #settingsPanelBody QLabel {
     color: @textDim;
+}
+#settingsPanelBody QLabel:disabled {
+    color: @textDisabled;
 }
 
 /* Media information panel: section headers and read-only values. */
