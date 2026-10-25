@@ -42,6 +42,8 @@ struct MediaInfo {
     int64_t durationMs = 0;
     int64_t totalBitRate = 0;
     std::string creationTime; // ISO 8601 from the container, "" if absent
+    // See ClipMetadata::recordedLocal; "" for a file no camera reader knows.
+    std::string recordedLocal;
 
     std::vector<MediaVideoStream> video; // a dual-fisheye clip: one per lens
     std::vector<MediaAudioStream> audio;

@@ -88,6 +88,10 @@ trailer         _00_ and LRV only: the inst records, raw, to EOF
   1 MiB (1 761 607 680 = 1680 MiB).
 - Metadata field 9 (`file_size`) is the trailer's start offset (the size
   before the trailer, padding included), as on the X5.
+- ✅ The container's `creation_time` is camera-local time marked UTC
+  (`Z`), and 9-10 s before the time in the file name (`110155` →
+  `2025-08-16T11:01:45Z`, on all 15 takes). The trailer has no recording
+  time (field 7 is absent, §6), so the app takes the file name's.
 - No thumbnail in `moov` (the X5 has a ThumbnailTIFF there). The `AMBA`
   box's content is unknown ❓; it holds the frame count (7736 / 7735).
 - Track timescale 25000; handlers `Ambarella AVC` / `Ambarella AAC`, encoder
@@ -407,6 +411,7 @@ Read (2026-10-21):
 - **Telemetry in ms**, turned into µs (§8).
 - **The preview** for the media card, stitched from types 2 and 5 (§5).
 - **The matrix from the stream** (BT.601 here), as for every camera.
+- **The recording time from the file name** (2026-10-25; no field 7, §2).
 
 - **The IMU axis map** `z,x,y` (§8) and the X5's sync formula with ms
   units (§9), both measured on these clips; the two files paired frame n

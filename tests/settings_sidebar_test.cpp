@@ -29,6 +29,9 @@
 #include "panels/StitchingPanel.h"
 
 #include <QApplication>
+#include <QDateTime>
+#include <QLocale>
+#include <QTimeZone>
 #include <QFontDatabase>
 #include <QTemporaryDir>
 #include <QSlider>
@@ -714,8 +717,26 @@ void testMediaInfoProfile(SettingsSidebar &bar)
     CHECK(shows("Colour profile") && shows("HLG"));
     m.hdrFormat.clear();
     m.video[0].colorSpace = m.video[1].colorSpace = "";
-    panel->setInfo(m); // a phone video: nothing to say
+
+    // Recorded: by the camera's clock, not the container's (UTC) time; a
+    // camera's file that doesn't say has no row.
+    const QLocale locale;
+    m.creationTime = "2026-10-18T16:59:07.000000Z";
+    m.recordedLocal = "2026-10-18T18:59:07";
+    panel->setInfo(m);
+    CHECK(shows("Recorded") &&
+          shows(locale.toString(QDateTime(QDate(2026, 10, 18), QTime(18, 59, 7)),
+                                QLocale::ShortFormat)));
+    m.recordedLocal.clear();
+    panel->setInfo(m);
+    CHECK(!shows("Recorded"));
+
+    m.cameraModel.clear();
+    panel->setInfo(m); // a phone video: nothing to say, the container's time
     CHECK(!shows("Colour profile"));
+    CHECK(shows(locale.toString(
+        QDateTime(QDate(2026, 10, 18), QTime(16, 59, 7), QTimeZone::UTC).toLocalTime(),
+        QLocale::ShortFormat)));
     panel->setNoClip();
 }
 

@@ -411,8 +411,9 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
             if (id == 0x101) {
                 ParseMakerNotes(payload, result);
                 ParseLensProfiles(payload, result.lens_profiles);
-                WalkProtobuf(payload, [&](uint32_t f, int wt, uint64_t,
+                WalkProtobuf(payload, [&](uint32_t f, int wt, uint64_t v,
                                           const std::vector<uint8_t>& b) {
+                    if (f == 7 && wt == 0) result.creation_time = v;
                     if (f == 54 && wt == 2) result.offset_v3.assign(b.begin(), b.end());
                     if (f != 27 || wt != 2) return;
                     WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv,

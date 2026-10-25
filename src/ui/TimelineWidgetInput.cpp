@@ -141,7 +141,9 @@ void TimelineWidget::dropEvent(QDropEvent *e)
         e->acceptProposedAction();
         const int trackId =
             m_dropTrack >= 0 && m_dropTrack < m_tracks.size() ? m_tracks[m_dropTrack].id : 0;
-        emit titleDropped(trackId, m_dropMs);
+        emit titleDropped(
+            trackId, m_dropMs,
+            QString::fromLatin1(e->mimeData()->data(QString::fromLatin1(title::kMimeType))));
         return;
     }
     if (!active || (audio.isEmpty() && video.isEmpty() && clips.isEmpty()))

@@ -86,6 +86,11 @@ struct ClipMetadata {
     std::optional<insv::LensProfile> standardGuard;
     std::optional<insv::LensProfile> premiumGuard;
 
+    // When recording started, by the camera's own clock: local time with no
+    // zone, "YYYY-MM-DDThh:mm:ss"; "" when the file doesn't say. The date a
+    // title shows, and what the Media information panel lists.
+    std::string recordedLocal;
+
     // The camera's low-res proxy next to the clip, "" if not found.
     std::string proxyPath;
 

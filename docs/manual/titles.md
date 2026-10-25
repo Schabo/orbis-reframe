@@ -16,20 +16,43 @@ date. Titles sit on overlay tracks, like picture-in-picture videos
 ## Adding a title
 
 Open the media sidebar's **Titles** tab
-(<img src="images/icons/tab-titles.png" width="24" alt="">), then:
+(<img src="images/icons/tab-titles.png" width="24" alt="">). Its tiles are
+ready-made titles, each showing roughly how and where it lands in the
+picture:
 
-- drag **Text** onto the timeline, onto an overlay track or anywhere under
+| Tile | What you get |
+|---|---|
+| **Text** | *Title* in white bold letters in the middle of the picture. |
+| **Heading** | A big title in the middle, with a soft shadow. |
+| **Heading, outlined** | A big title in spaced-out capitals with a black outline, readable over a bright sky or snow. |
+| **Lower third** | Two lines in the lower left on a dark box: a name, and a line about it. |
+| **Lower third, bar** | One line in the lower left on a solid coloured bar. |
+| **Caption** | Small text at the bottom in the middle, on a rounded box. |
+| **Date** | The date in the lower right. |
+| **Date and place** | The date and, below it, *Place* to type over, in the lower left. |
+
+To add one:
+
+- drag its tile onto the timeline, onto an overlay track or anywhere under
   the tracks; or
-- double-click **Text** (or select it and press `Enter`, or right-click it
+- double-click the tile (or select it and press `Enter`, or right-click it
   and choose **Add to timeline**) to add it at the playhead.
 
-A new title says *Title*, in white bold letters in the middle of the
-picture, and lasts 5 seconds. It goes onto the overlay track you dropped it
-on if that track is free there; otherwise onto the first overlay track that
-is, or a new one. The title is selected and the settings sidebar shows its
-**Title** tab (<img src="images/icons/tab-title.png" width="24" alt="">),
-ready to type the text. There must be a clip on the video
-track first.
+The new title lasts 5 seconds. It goes onto the overlay track you dropped
+it on if that track is free there; otherwise onto the first overlay track
+that is, or a new one. The title is selected and the settings sidebar shows
+its **Title** tab (<img src="images/icons/tab-title.png" width="24" alt="">),
+ready to type the text. There must be a clip on the video track first.
+
+The **Date** tiles write the day the clip under the title was recorded, as
+your computer writes a date in full (in US English, *Thursday, August 28,
+2025*). It comes
+from the camera's clock, as the clip's file records it; for a clip whose
+file doesn't say, the title says *Date* for you to type over. orbis-reframe
+doesn't look up places: type the place yourself.
+
+A tile is only where a title starts. Once added it is an ordinary title:
+everything below can be changed, and nothing ties it to its tile.
 
 ## Text, font, colour and alignment
 

@@ -42,6 +42,11 @@ struct InsvMakerNotes {
     // carry (the ONE X2, docs/formats/insta360-one-x2.md §7). Empty when
     // absent.
     std::string offset_v3;
+    // Field 7 `creation_time`: when recording started, by the camera's clock
+    // (local time, no zone), as the decimal number YYYYMMDDhhmmss
+    // (20250904193105; docs/formats/insta360-x5.md §5.1). 0 when absent (the
+    // ONE X2 doesn't write it).
+    uint64_t creation_time = 0;
 };
 
 // The profile named `name` in `notes`, or nullptr.

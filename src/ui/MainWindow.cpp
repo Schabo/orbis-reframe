@@ -9,7 +9,6 @@
 #include "../core/Log.h"
 
 #include <QAbstractSpinBox>
-#include <QFontDatabase>
 #include <QPlainTextEdit>
 #include <QAction>
 #include <QActionGroup>
@@ -78,6 +77,7 @@
 #include "RenderJobs.h"
 #include "MediaImporter.h"
 #include "MediaPoolPanel.h"
+#include "TitlePresets.h"
 #include "TitlesPanel.h"
 #include "TransitionsPanel.h"
 #include "MediaProbe.h"
@@ -277,7 +277,7 @@ void MainWindow::setupSourcesSidebar()
     m_titlesPanel = new TitlesPanel;
     m_sourcesSidebar->addTab(m_titlesPanel, QStringLiteral("type"), tr("Titles"));
     connect(m_titlesPanel, &TitlesPanel::addTitleRequested, this,
-            [this] { addTitle(0, m_lastTimelineMs); });
+            [this](const QString &presetId) { addTitle(0, m_lastTimelineMs, presetId); });
     m_transitionsPanel = new TransitionsPanel;
     m_sourcesSidebar->addTab(m_transitionsPanel, QStringLiteral("blend"), tr("Transitions"));
     m_sourcesSidebar->setToggleKeys(
@@ -2031,10 +2031,15 @@ void MainWindow::selectAdded(std::optional<int> lastClipId)
         selectTrackClip(*lastClipId);
 }
 
-void MainWindow::addTitle(int trackId, qint64 atMs)
+void MainWindow::addTitle(int trackId, qint64 atMs, const QString &presetId)
 {
     if (m_timeline->count() == 0)
         return; // the main track sets the length
+    const titlepresets::Preset *preset = titlepresets::find(presetId);
+    if (!preset) {
+        qWarning("[titles] no title preset \"%s\"; adding the plain one", qPrintable(presetId));
+        preset = &titlepresets::all().front();
+    }
     atMs = std::clamp<qint64>(atMs, 0, m_timeline->totalDurationMs());
     // The track given if it has room there, else the first that has, else a
     // new one.
@@ -2046,10 +2051,19 @@ void MainWindow::addTitle(int trackId, qint64 atMs)
                     : m_timeline->freeTrackFor(atMs, endMs, true, [](const Track &) { return true; });
     if (!trackId)
         trackId = m_timeline->addTrack(Track::Kind::Video);
-    title::Style style;
-    style.text = tr("Title");
-    style.font = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
-    const int id = m_timeline->addTitleClip(trackId, atMs, style);
+    // A date title's date: the recording's, of the main-track clip it starts
+    // over.
+    QDateTime recorded;
+    if (preset->date) {
+        const ClipItem &under = m_timeline->clipAt(m_timeline->timelineToClip(atMs).clipIndex);
+        if (const camera::MediaInfo *info = mediaInfoFor(under.sourcePath))
+            recorded = recordedTime(*info);
+        if (!recorded.isValid())
+            qInfo("[titles] %s doesn't say when it was recorded; the title keeps its placeholder",
+                  qPrintable(under.sourcePath));
+    }
+    const int id = m_timeline->addTitleClip(trackId, atMs, titlepresets::styleFor(*preset, recorded),
+                                            title::kDefaultSpanMs, preset->look);
     if (!id)
         return;
     selectTrackClip(id);

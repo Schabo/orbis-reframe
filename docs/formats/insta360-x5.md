@@ -413,7 +413,7 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 2 | `camera_type` | `Insta360 X5` | ✅ |
 | 3 | `fw_version` | `v1.5.6_build1` | ✅ |
 | 5 | `offset` | 16-token short calibration | §5.2 ✅ |
-| 7 | `creation_time` | `20250904193105` | local `YYYYMMDDhhmmss` |
+| 7 | `creation_time` | `20250904193105` | recording start by the camera's clock, local: a varint holding the decimal `YYYYMMDDhhmmss`. ✅ The same time as the file name, on every X5 clip we have. The container's `creation_time` is that moment in UTC (`2025-09-04T16:31:05Z`; on `201257` 2 h earlier, here 3 h) ⚠️ the offset is presumably the camera's time-zone setting |
 | 9 | `file_size` | 1012672185 | size of the file *before* the trailer body (= `inst` box offset + 8) ✅ |
 | 10 | `total_time` | 42 | seconds |
 | 11 | `gps` | 3 doubles | start fix: lat, lon, alt |

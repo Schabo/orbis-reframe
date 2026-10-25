@@ -2,9 +2,18 @@
 
 #include "../SettingsPanel.h"
 
+#include <QDateTime>
+
 namespace camera {
 struct MediaInfo;
 }
+
+// When the recording started, as the camera's clock showed it -- the time a
+// title's date and the panel's Recorded row give. A camera's own record of
+// it where the file has one; the container's time is UTC on some cameras and
+// local time marked UTC on others, so only a file no camera reader knows
+// falls back to it, in this computer's time zone. Invalid when neither says.
+QDateTime recordedTime(const camera::MediaInfo &info);
 
 // Read-only facts about the source file of the clip under the playhead:
 // container, video / audio streams, camera and telemetry (camera::ProbeMediaInfo).

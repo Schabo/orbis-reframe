@@ -51,6 +51,16 @@ QString upperCodec(const std::string &codec, const std::string &profile)
 
 } // namespace
 
+QDateTime recordedTime(const camera::MediaInfo &info)
+{
+    if (!info.recordedLocal.empty())
+        return QDateTime::fromString(QString::fromStdString(info.recordedLocal), Qt::ISODate);
+    if (!info.cameraModel.empty())
+        return {}; // a camera's file that doesn't say
+    return QDateTime::fromString(QString::fromStdString(info.creationTime), Qt::ISODateWithMs)
+        .toLocalTime();
+}
+
 MediaInfoPanel::MediaInfoPanel(QWidget *parent)
     : SettingsPanel(tr("Media information"), parent)
 {
@@ -103,10 +113,8 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
     addWideValue(fi.fileName(), fi.absoluteFilePath());
     addValue(tr("Size"), locale.formattedDataSize(m.fileBytes, 2, QLocale::DataSizeSIFormat));
     addValue(tr("Duration"), duration(m.durationMs));
-    const QDateTime created =
-        QDateTime::fromString(QString::fromStdString(m.creationTime), Qt::ISODateWithMs);
-    if (created.isValid())
-        addValue(tr("Recorded"), locale.toString(created.toLocalTime(), QLocale::ShortFormat));
+    if (const QDateTime recorded = recordedTime(m); recorded.isValid())
+        addValue(tr("Recorded"), locale.toString(recorded, QLocale::ShortFormat));
     addValue(tr("Bitrate"), bitRate(m.totalBitRate));
     // A take in several files: the other lens's file, which the clip needs.
     for (const std::string &f : m.lensFiles) {

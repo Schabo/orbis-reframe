@@ -989,6 +989,7 @@ std::vector<uint8_t> metadataRecord(bool rawGyro)
     Bytes m;
     m.pbString(1, "IAHEA2500000001").pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
     m.pbString(5, "2_1.0_2.0_3.0");
+    m.pbVarint(7, 20250904193105ull);
     if (rawGyro) {
         m.pbString(22, "I_Log");
         Bytes crop; // window_crop_info: src 5376², dst 5312²
@@ -1075,6 +1076,7 @@ void testTrailerRecords()
         CHECK(notes->parameters == "2 1.0 2.0 3.0"); // underscores read as spaces
         CHECK(notes->lens_profiles.size() == 2);
         CHECK(notes->crop_dst_w == 5312.0);
+        CHECK(notes->creation_time == 20250904193105ull);
         const insv::LensProfile* bare = insv::FindLensProfile(*notes, "bare");
         CHECK(bare && near(bare->poly[1], 0.05, 1e-12) && near(bare->poly[3], 2e-8, 1e-20));
         CHECK(bare && bare->fov_deg == 200.0);

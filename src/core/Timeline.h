@@ -269,10 +269,11 @@ public slots:
     int addVideoClip(int trackId, const QString &sourcePath, qint64 sourceDurationMs,
                      qint64 startMs, int sourceWidth, int sourceHeight);
     // A title (TrackClip::title) `spanMs` long at `startMs` on a video
-    // track, centred, at title::kDefaultSize. 0 if the track isn't a video
-    // track.
+    // track, placed by `look` (its width the text size). 0 if the track
+    // isn't a video track.
     int addTitleClip(int trackId, qint64 startMs, const title::Style &style,
-                     qint64 spanMs = title::kDefaultSpanMs);
+                     qint64 spanMs = title::kDefaultSpanMs,
+                     const inset::Look &look = title::defaultLook());
     // A title's text and how it's drawn. No-op on a clip that isn't one.
     // `shiftPerSize` also moves its position and every key's across by that
     // many times their text size (in output widths): what keeps the text

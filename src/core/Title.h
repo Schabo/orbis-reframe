@@ -115,8 +115,16 @@ inline inset::Look drawnLook(inset::Look l, double widthPerSize, double anchorX)
 // either edge can be dragged out.
 constexpr qint64 kSourceMs = 4LL * 3600 * 1000;
 constexpr qint64 kDefaultSpanMs = 5000;
-// Its look when added: centred, text 8% of the frame high.
+// The plain title's look when added: centred, text 8% of the frame high.
 constexpr float kDefaultSize = 0.08f;
+inline inset::Look defaultLook()
+{
+    inset::Look l;
+    l.centerX = 0.5f;
+    l.centerY = 0.5f;
+    l.width = kDefaultSize;
+    return l;
+}
 
 // A title dragged from the Titles tab onto the timeline.
 constexpr const char *kMimeType = "application/x-orbis-reframe-title";

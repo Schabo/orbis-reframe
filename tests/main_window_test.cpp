@@ -22,6 +22,8 @@
 #include "MediaPoolPanel.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
+#include "TitlePresets.h"
+#include "panels/MediaInfoPanel.h"
 #include "support/TestMedia.h"
 #include "support/TestZip.h"
 
@@ -46,6 +48,8 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QMimeData>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -1261,6 +1265,80 @@ void testTitle(const Ctx &c)
     settle();
 }
 
+// The Titles tab's ready-made titles: a tile per preset, dragged out as its
+// id; adding one, by the tab or by a drop, gives an ordinary title with the
+// preset's style and place. A date tile writes the clip's recording date,
+// where its file says.
+void testTitlePresets(const Ctx &c)
+{
+    const QList<titlepresets::Preset> &presets = titlepresets::all();
+    auto *list = find<QListWidget>(c.w, "titleList");
+    CHECK(list && list->count() == presets.size());
+    if (!list || list->count() != presets.size())
+        return;
+    const auto titles = [&c] {
+        QList<const TrackClip *> out;
+        for (int i = 0; i < c.timeline->trackCount(); ++i)
+            for (const TrackClip &tc : c.timeline->trackAt(i).clips)
+                if (tc.isTitle())
+                    out << &tc;
+        return out;
+    };
+    const auto added = [&](const titlepresets::Preset &p, qint64 atMs) {
+        const QList<const TrackClip *> all = titles();
+        const TrackClip *clip = all.size() == 1 ? all.front() : nullptr;
+        CHECK(clip && clip->startMs == atMs && clip->look == p.look.clamped());
+        CHECK(clip && clip->title->align == p.style.align && clip->title->box == p.style.box &&
+              clip->title->shadow == p.style.shadow && clip->title->outline == p.style.outline);
+        return clip;
+    };
+    for (int row = 0; row < list->count(); ++row) {
+        const titlepresets::Preset &p = presets[row];
+        CHECK(p.style == p.style.clamped() && p.look == p.look.clamped());
+        std::unique_ptr<QMimeData> mime(list->model()->mimeData({list->model()->index(row, 0)}));
+        CHECK(mime && mime->data(QString::fromLatin1(title::kMimeType)) == p.id.toLatin1());
+    }
+
+    // From the tab, at the playhead.
+    CHECK(seekTo(c, 500));
+    const titlepresets::Preset *lower = titlepresets::find(QStringLiteral("lower-third"));
+    CHECK(lower);
+    if (!lower)
+        return;
+    list->setCurrentRow(int(lower - presets.data()));
+    trigger(c, "titleAddToTimelineAction");
+    const TrackClip *clip = added(*lower, 500);
+    CHECK(clip && clip->title->text == lower->style.text);
+    if (clip)
+        c.timeline->removeTrackClip(clip->id);
+
+    // Dropped on the timeline; a date tile's date is the main clip's.
+    const titlepresets::Preset *date = titlepresets::find(QStringLiteral("date-place"));
+    CHECK(date);
+    if (!date)
+        return;
+    emit c.timelineWidget->titleDropped(0, 700, date->id);
+    clip = added(*date, 700);
+    camera::MediaInfo info;
+    std::string err;
+    const QDateTime recorded =
+        camera::ProbeMediaInfo(c.timeline->clipAt(0).sourcePath.toStdString(), info, err)
+            ? recordedTime(info)
+            : QDateTime();
+    CHECK(clip && clip->title->text == titlepresets::styleFor(*date, recorded).text);
+    CHECK(clip && clip->title->text.endsWith(QStringLiteral("\nPlace")));
+    if (clip)
+        c.timeline->removeTrackClip(clip->id);
+
+    // An id this build doesn't know: the plain title.
+    emit c.timelineWidget->titleDropped(0, 700, QStringLiteral("no-such-tile"));
+    clip = added(presets.front(), 700);
+    CHECK(clip && clip->title->text == QStringLiteral("Title"));
+    if (clip)
+        c.timeline->removeTrackClip(clip->id);
+    settle();
+}
+
 // A second overlay track: the selected overlay's Bring forward puts its
 // track above the other (the first overlay track draws on top).
 void testOverlayLayers(const Ctx &c)
@@ -1822,6 +1900,7 @@ int main(int argc, char **argv)
             testFlatMainClip(c);
             testHlgClip(c);
             testTitle(c);
+            testTitlePresets(c);
             testTransition(c);
             testFullScreen(c);
             testTrackSubjectMode(c);

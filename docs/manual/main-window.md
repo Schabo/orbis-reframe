@@ -48,7 +48,7 @@ follow a view, you set **reframe keyframes**, covered in
 The sidebar on the left of the viewport holds what you put on the
 timeline, on three tabs: **Media** (<img src="images/icons/tab-media.png" width="24" alt="">),
 the files you work with, **Titles** (<img src="images/icons/tab-titles.png" width="24" alt="">),
-text to put over the video (see [Titles](titles.md)), and **Transitions**
+ready-made titles to put over the video (see [Titles](titles.md)), and **Transitions**
 (<img src="images/icons/tab-transitions.png" width="24" alt="">), to go
 over from one clip to the next at a cut (see [Transitions](transitions.md)). The icons along its
 top pick the tab. The `<` button at its top-left closes the

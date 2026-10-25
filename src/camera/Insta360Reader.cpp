@@ -161,6 +161,36 @@ std::optional<Thumbnail> stitchedThumbnail(const std::string& path) {
     return toNv12(stitcher.renderEquirect(lens[0], lens[1], kThumbWidth));
 }
 
+// "YYYY-MM-DDThh:mm:ss" from the 14 digits YYYYMMDDhhmmss, "" unless they
+// make a date and time.
+std::string localTime(const std::string& digits) {
+    if (digits.size() != 14 ||
+        !std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; }))
+        return {};
+    const auto num = [&](int pos, int n) { return std::stoi(digits.substr(pos, n)); };
+    const int month = num(4, 2), day = num(6, 2), hour = num(8, 2), minute = num(10, 2),
+              second = num(12, 2);
+    if (num(0, 4) < 2000 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 ||
+        minute > 59 || second > 59)
+        return {};
+    return digits.substr(0, 4) + '-' + digits.substr(4, 2) + '-' + digits.substr(6, 2) + 'T' +
+           digits.substr(8, 2) + ':' + digits.substr(10, 2) + ':' + digits.substr(12, 2);
+}
+
+// The recording start in the file's name, `<prefix>_YYYYMMDD_hhmmss_…`
+// (VID_, PRO_VID_; docs/formats/insta360-x5.md §1), "" when it isn't named so.
+std::string nameTime(const std::filesystem::path& p) {
+    const std::string name = p.filename().string();
+    for (std::size_t i = name.find('_'); i != std::string::npos; i = name.find('_', i + 1)) {
+        if (i + 17 <= name.size() && name[i + 9] == '_') {
+            const std::string t = localTime(name.substr(i + 1, 8) + name.substr(i + 10, 6));
+            if (!t.empty())
+                return t;
+        }
+    }
+    return {};
+}
+
 std::optional<insv::LensProfile> profile(const insv::InsvMakerNotes& notes, const char* name) {
     if (!name)
         return std::nullopt;
@@ -236,6 +266,16 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     out.standardGuard = profile(*notes, model.standardGuard);
     out.premiumGuard = profile(*notes, model.premiumGuard);
     out.proxyPath = findProxy(out.path, model);
+    // By the camera's clock: field 7 where the model writes it, else the
+    // file's name, which the camera gives the same time.
+    out.recordedLocal = localTime(std::to_string(notes->creation_time));
+    if (out.recordedLocal.empty()) {
+        out.recordedLocal = nameTime(out.path);
+        std::fprintf(stderr, "[camera] no creation_time (field 7) in %s; recording time from "
+                             "the file name: %s\n",
+                     out.path.c_str(),
+                     out.recordedLocal.empty() ? "none" : out.recordedLocal.c_str());
+    }
 
     if (const auto tele =
             insv::ReadInsvTelemetry(out.path, kImuProbeSamples, model.telemetryTickUs)) {

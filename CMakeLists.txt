@@ -503,6 +503,8 @@ if(FFMPEG_FOUND)
         src/ui/PlaybackTuning.h
         src/ui/InsetFeed.cpp
         src/ui/InsetFeed.h
+        src/ui/TitlePresets.cpp
+        src/ui/TitlePresets.h
         src/ui/TitleRender.cpp
         src/ui/TitleRender.h
         src/ui/TitlesPanel.cpp

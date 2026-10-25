@@ -1178,7 +1178,7 @@ int Timeline::addVideoClip(int trackId, const QString &sourcePath, qint64 source
 }
 
 int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &style,
-                           qint64 spanMs)
+                           qint64 spanMs, const inset::Look &look)
 {
     const Track *t = trackById(trackId);
     if (!t || t->kind != Track::Kind::Video)
@@ -1189,9 +1189,7 @@ int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &styl
     c.startMs = startMs;
     c.trimInMs = title::kSourceMs / 2;
     c.trimOutMs = c.trimInMs + std::clamp<qint64>(spanMs, TrackClip::kMinTrimMs, title::kSourceMs / 2);
-    c.look.centerX = 0.5f;
-    c.look.centerY = 0.5f;
-    c.look.width = title::kDefaultSize;
+    c.look = look.clamped();
     return insertTrackClip(trackId, c);
 }
 

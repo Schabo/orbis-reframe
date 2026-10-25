@@ -33,15 +33,19 @@ using testtrailer::Bytes;
 constexpr int kFps = 25;
 
 // The ONE X2's trailer, cut down: the model, the 40-token offset_v3, field 27
-// and 24, and a little IMU stamped in ms, 2 ms apart (500 Hz).
+// and 24, and a little IMU stamped in ms, 2 ms apart (500 Hz). The real one
+// has no field 7 (the recording time); `creationTime` adds it, as the X5
+// writes it.
 // The lens pictures' greys in the trailer's previews (records 0x200 / 0x500).
 constexpr uint8_t kLens0Grey = 220;
 constexpr uint8_t kLens1Grey = 40;
 
-std::vector<uint8_t> oneX2Trailer(bool lensPictures = false)
+std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTime = 0)
 {
     Bytes meta;
     meta.pbString(1, "IXSE0000000001").pbString(2, "Insta360 ONE X2").pbString(3, "v1.0.92_build1");
+    if (creationTime)
+        meta.pbVarint(7, creationTime);
     meta.pbVarint(24, 4407);
     meta.pbDouble(25, 36.94);
     Bytes crop;
@@ -90,14 +94,15 @@ struct Take {
 };
 
 // Writes the take: lens 0 with the trailer, lens 1 one frame shorter (as the
-// camera writes it), the proxy.
-Take writeTake(const std::filesystem::path& dir)
+// camera writes it), the proxy. `stamp` is the name's date and time.
+Take writeTake(const std::filesystem::path& dir, const std::string& stamp = "20250816_103807",
+               uint64_t creationTime = 0)
 {
-    Take t{(dir / "VID_20250816_103807_00_001.insv").string(),
-           (dir / "VID_20250816_103807_10_001.insv").string(),
-           (dir / "LRV_20250816_103807_11_001.insv").string()};
+    Take t{(dir / ("VID_" + stamp + "_00_001.insv")).string(),
+           (dir / ("VID_" + stamp + "_10_001.insv")).string(),
+           (dir / ("LRV_" + stamp + "_11_001.insv")).string()};
     CHECK(writeLens(t.lead, 64, 50));
-    appendTo(t.lead, oneX2Trailer());
+    appendTo(t.lead, oneX2Trailer(false, creationTime));
     CHECK(writeLens(t.second, 64, 49));
     CHECK(writeLens(t.proxy, 32, 49));
     return t;
@@ -126,6 +131,31 @@ void testPair(const Take& t)
     CHECK(clip->proxyPath == t.proxy);
     CHECK(clip->hasImu);
     CHECK(clip->imuRateHz > 499.0 && clip->imuRateHz < 501.0); // ms ticks read as such
+}
+
+// When recording started, by the camera's clock: field 7 where the file has
+// it, else the file's name; nothing when neither makes a date and time.
+void testRecordingTime(const Take& t, const std::filesystem::path& dir)
+{
+    std::printf("  the recording time: field 7, else the file name\n");
+    const auto named = camera::ReadClipMetadata(t.lead);
+    CHECK(named && named->recordedLocal == "2025-08-16T10:38:07");
+
+    std::filesystem::create_directories(dir / "field7");
+    const Take withField = writeTake(dir / "field7", "20250816_103807", 20250817123456ull);
+    const auto field = camera::ReadClipMetadata(withField.lead);
+    CHECK(field && field->recordedLocal == "2025-08-17T12:34:56");
+
+    // Month 13 isn't a date: the name's time then, and a name without one
+    // gives none.
+    std::filesystem::create_directories(dir / "bad");
+    const Take bad = writeTake(dir / "bad", "20250816_103807", 20251316123456ull);
+    const auto badField = camera::ReadClipMetadata(bad.lead);
+    CHECK(badField && badField->recordedLocal == "2025-08-16T10:38:07");
+    std::filesystem::create_directories(dir / "renamed");
+    const Take renamed = writeTake(dir / "renamed", "ride");
+    const auto none = camera::ReadClipMetadata(renamed.lead);
+    CHECK(none && none->recordedLocal.empty());
 }
 
 void testSecondLensChecked(const Take& t)
@@ -223,6 +253,7 @@ int main()
     std::filesystem::create_directories(dir);
     const Take t = writeTake(dir);
     testPair(t);
+    testRecordingTime(t, dir);
     testSecondLensChecked(t);
     testClipFileOf(t);
     testStitchedThumbnail(t);

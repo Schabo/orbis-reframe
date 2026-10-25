@@ -22,7 +22,7 @@ full path, or what a value means.
 | (file name) | The name of the `.insv` file (for a ONE X2 5.7K clip, the front lens's `VID_…_00_…`). Hover over it for the full path. |
 | **Size** | The file's size on disk. |
 | **Duration** | How long the whole recording is, in minutes, seconds and thousandths, before any trimming. |
-| **Recorded** | When the recording was made, by the camera's clock, in your computer's time zone. |
+| **Recorded** | When the recording started, by the camera's clock: the time the camera showed. For a video that isn't from a 360 camera, the time the file says, in your computer's time zone. |
 | **Bitrate** | How much data the file holds per second of video, sound included. Higher means more detail, and larger files. |
 | **Back lens file** | Only for a clip whose back lens is in a file of its own (the Insta360 ONE X2's 5.7K clips): that file's name. Hover over it for the full path. The clip needs it, in the same folder. |
 | **Preview file** | Whether the camera's low-resolution preview file (`.lrv`, or the ONE X2's `LRV_…_11_….insv`) is next to the `.insv`. orbis-reframe doesn't need it, so *Not found* is fine. |

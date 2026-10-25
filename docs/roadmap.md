@@ -24,20 +24,18 @@ shadow and a background box, line and letter spacing, and left / centre /
 right alignment, which also says which point of the text the title's
 position pins. All of it is part of the title's style (`title::Style`),
 drawn into the one picture the viewport and the export both place
-(`src/ui/TitleRender`).
+(`src/ui/TitleRender`). The Titles tab offers ready-made titles as tiles
+(headings, lower thirds, a caption, date / place; `src/ui/TitlePresets`):
+a tile is only where a title starts, a style and a position, and once on
+the timeline it is an ordinary title. A date tile writes the clip's
+recording date by the camera's clock (`camera::ClipMetadata::recordedLocal`);
+the place is typed, as nothing local can name it.
 
-Next, in this order:
-
-1. **Ready-made styles**: more tiles in the left sidebar's Titles tab
-   beside *Text* -- a lower third, a big heading, date / place, each a few
-   looks. A tile is only where a title starts (a style and a position);
-   once on the timeline it is an ordinary title, nothing ties it to the
-   tile.
-2. **Animations**: tiles for animated titles (type-on, slide in) and an
-   *Animation* section in the Title tab to give any title one. A slide is
-   the title's own position keys; type-on and keyframed colour change the
-   picture over time, so the title's picture becomes one per moment
-   (cached), still the same for the viewport and the export.
+Next: **animations** -- tiles for animated titles (type-on, slide in) and
+an *Animation* section in the Title tab to give any title one. A slide is
+the title's own position keys; type-on and keyframed colour change the
+picture over time, so the title's picture becomes one per moment (cached),
+still the same for the viewport and the export.
 
 When non-text items arrive (the GPS gauges below), the Titles tab gets a
 broader name.

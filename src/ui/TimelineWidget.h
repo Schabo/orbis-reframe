@@ -278,9 +278,10 @@ signals:
     // The same for video files, onto an overlay track.
     void addVideoFileRequested(int trackId, qint64 atMs);
     void videoFilesDropped(const QStringList &paths, int trackId, qint64 atMs);
-    // A title dragged from the Titles tab (title::kMimeType), onto overlay
-    // track `trackId` (0 = the first with room there, else a new one).
-    void titleDropped(int trackId, qint64 atMs);
+    // A title dragged from the Titles tab (title::kMimeType, the data its
+    // preset's id), onto overlay track `trackId` (0 = the first with room
+    // there, else a new one).
+    void titleDropped(int trackId, qint64 atMs, const QString &presetId);
 
 protected:
     void paintEvent(QPaintEvent *) override;
