@@ -485,12 +485,19 @@ void testTitleAnimation(SettingsSidebar &bar)
     CHECK(spy.isEmpty() && in->isEnabled() && in->currentText().contains("bottom"));
     CHECK(inLength->isEnabled() && std::abs(inLength->value() - 1.5) < 1e-9);
     CHECK(out->currentIndex() == 0 && !outLength->isEnabled());
-    out->setCurrentIndex(out->count() - 1); // shrink away
+    out->setCurrentIndex(out->count() - 2); // shrink away
     CHECK(spy.count() == 1 && outLength->isEnabled());
     const inset::Motion got = spy.last().at(0).value<inset::Motion>();
     CHECK(got.in == m.in && got.out.kind == inset::Motion::Kind::Pop);
     inLength->setValue(0.3);
     CHECK(spy.count() == 2 && spy.last().at(0).value<inset::Motion>().in.ms == 300);
+    // Typing on and off: last in each list.
+    out->setCurrentIndex(out->count() - 1);
+    CHECK(out->currentText() == "Type off" &&
+          spy.last().at(0).value<inset::Motion>().out.kind == inset::Motion::Kind::Type);
+    m.in.kind = inset::Motion::Kind::Type;
+    anim->setMotion(m);
+    CHECK(in->currentText() == "Type on" && in->currentIndex() == in->count() - 1);
     anim->setNoTitle(QString());
     CHECK(!in->isEnabled() && !inLength->isEnabled());
 }

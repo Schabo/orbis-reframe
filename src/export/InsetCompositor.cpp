@@ -266,15 +266,28 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
         return false;
     const int64_t localMs = timelineMs - j.startMs;
     const int64_t srcMs = j.trimInMs + static_cast<int64_t>(std::llround(localMs * j.speed));
-    inset::Look look = inset::moved(j.lookAt ? j.lookAt(srcMs) : inset::Look{}, j.motion, localMs,
-                                    j.spanMs(), j.aspect, double(m_outW) / std::max(1, m_outH));
+    inset::Look look = j.lookAt ? j.lookAt(srcMs) : inset::Look{};
+    double aspect = j.aspect;
+    Still still;
+    if (j.still) {
+        still = j.still->at(localMs);
+        if (still.empty())
+            return false;
+        if (still.widthPerSize > 0.0) { // a title: placed by its picture
+            look = inset::anchored(look, still.widthPerSize, still.anchorX);
+            aspect = double(still.width) / std::max(1, still.height);
+        }
+    }
+    look = inset::moved(look, j.motion, localMs, j.spanMs(), aspect,
+                        double(m_outW) / std::max(1, m_outH));
     look.opacity *= inset::fadeGain(localMs, j.spanMs(), j.fadeInMs, j.fadeOutMs) *
                     inset::rampGain(localMs, j.spanMs(), j.rampFrom, j.rampTo);
-    const inset::Rect rect = inset::place(look, j.frame, j.aspect, m_outW, m_outH);
+    const inset::Rect rect = inset::place(look, j.frame, aspect, m_outW, m_outH);
     if (rect.empty() || look.opacity <= 0.0f)
         return false;
-    if (j.still) { // a title: blended, never copied
-        layer = {j.still->data(), nullptr, j.stillW, j.stillH, rect, look.opacity, 0};
+    if (j.still) { // blended, never copied
+        layer = {still.rgba, still.rgba->data(), nullptr, still.width, still.height, rect,
+                 look.opacity, 0};
         return true;
     }
     if (j.picture) { // a 360 clip's view, rendered at the rect's size
@@ -295,7 +308,8 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
                 err = j.path + ": " + s.picture->lastError();
             return false;
         }
-        layer = {f->rgba.data(), nullptr, f->width, f->height, rect, look.opacity, j.frame.borderRgb};
+        layer = {{}, f->rgba.data(), nullptr, f->width, f->height, rect, look.opacity,
+                 j.frame.borderRgb};
         return true;
     }
     if (!s.reader) {
@@ -329,7 +343,7 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
             err = j.path + ": " + s.reader->lastError();
         return false;
     }
-    layer = {nullptr, nullptr, f->width, f->height, rect, look.opacity, j.frame.borderRgb};
+    layer = {{}, nullptr, nullptr, f->width, f->height, rect, look.opacity, j.frame.borderRgb};
     if (copy && !graded) {
         layer.nv12 = f->nv12.data();
         return true;

@@ -607,7 +607,9 @@ title::Style titleFromJson(const json &j)
 json motionToJson(const inset::Motion &m)
 {
     const auto part = [](const inset::Motion::Part &p) {
-        json j{{"kind", p.kind == inset::Motion::Kind::Pop ? "pop" : "slide"},
+        json j{{"kind", p.kind == inset::Motion::Kind::Pop    ? "pop"
+                        : p.kind == inset::Motion::Kind::Type ? "type"
+                                                              : "slide"},
                {"ms", static_cast<qint64>(p.ms)}};
         if (p.kind == inset::Motion::Kind::Slide)
             j["side"] = p.side == inset::Motion::Side::Left    ? "left"
@@ -633,8 +635,9 @@ inset::Motion motionFromJson(const json &j)
         const json &o = j.at(key);
         const std::string kind = o.value("kind", std::string());
         p.kind = kind == "slide" ? inset::Motion::Kind::Slide
-                 : kind == "pop" ? inset::Motion::Kind::Pop
-                                 : inset::Motion::Kind::None;
+                 : kind == "pop"  ? inset::Motion::Kind::Pop
+                 : kind == "type" ? inset::Motion::Kind::Type
+                                  : inset::Motion::Kind::None;
         const std::string side = o.value("side", std::string());
         p.side = side == "right"    ? inset::Motion::Side::Right
                  : side == "top"    ? inset::Motion::Side::Top

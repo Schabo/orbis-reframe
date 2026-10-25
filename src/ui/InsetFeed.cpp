@@ -35,7 +35,9 @@ struct InsetFeed::Stream {
     std::deque<Frame> queue; // front = showing (or next to)
     bool eof = false;
     bool needAnchor = true;
-    uint64_t stillKey = 0; // a title's picture's frame key
+    // A title's picture showing, and its frame key.
+    exportpipe::Still still;
+    uint64_t stillKey = 0;
     uint64_t gen = 0; // bumped on every re-anchor request
     bool failed = false;
     bool removed = false;
@@ -92,8 +94,6 @@ void InsetFeed::setClips(std::vector<Clip> clips)
                 if (s->clip.path != c.path || s->clip.pictureKey != c.pictureKey)
                     s->failed = false;
             }
-            if (c.still && (s->stillKey == 0 || s->clip.still != c.still))
-                s->stillKey = m_nextKey++; // a new picture: uploaded again
             s->clip = std::move(c);
             next.push_back(std::move(s));
         }
@@ -125,9 +125,27 @@ void InsetFeed::reopen(const QStringList &paths)
 
 bool InsetFeed::active(const Clip &c, qint64 ms) const
 {
-    // (A title has nothing to decode.)
-    return !c.still && ms >= c.startMs - kPrerollMs && ms < c.endMs() + kLingerMs;
+    return ms >= c.startMs - kPrerollMs && ms < c.endMs() + kLingerMs;
 }
+
+namespace {
+
+// A still's clip-local time to have ready for timeline time `ms`, and the
+// one after it.
+std::pair<qint64, qint64> stillTimes(const InsetFeed::Clip &c, qint64 ms)
+{
+    const qint64 now = std::clamp(ms - c.startMs, qint64(0), std::max(qint64(0), c.spanMs() - 1));
+    return {now, c.still->nextChange(now)};
+}
+
+// Does a still want a picture made?
+bool stillWants(const InsetFeed::Clip &c, qint64 ms)
+{
+    const auto [now, next] = stillTimes(c, ms);
+    return c.still->ready(now).empty() || (next >= 0 && c.still->ready(next).empty());
+}
+
+} // namespace
 
 std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockMs, bool playing,
                                                                    int mainClipId)
@@ -156,16 +174,32 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
                 continue;
             }
             if (c.still) {
+                // The picture for now when it's ready, else the last one
+                // (the decoder thread is making it).
+                const exportpipe::Still now = c.still->ready(ms - c.startMs);
+                if (now.empty()) {
+                    wake = true;
+                } else if (now.rgba != s.still.rgba) {
+                    s.still = now;
+                    s.stillKey = m_nextKey++; // a new picture: uploaded again
+                }
+                if (s.still.empty())
+                    continue;
+                const exportpipe::Still &pic = s.still;
                 EquirectViewportWindow::InsetDraw d;
                 d.clipId = c.id;
                 d.frameKey = s.stillKey;
-                d.rgba = c.still;
-                d.width = c.stillW;
-                d.height = c.stillH;
+                d.rgba = pic.rgba;
+                d.width = pic.width;
+                d.height = pic.height;
                 const inset::Look look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
-                d.aspect = c.fullFrame ? c.aspect : double(c.stillW) / std::max(1, c.stillH);
-                d.look = inset::moved(title::drawnLook(look, c.stillWidthPerSize, c.stillAnchorX),
-                                      c.motion, ms - c.startMs, c.spanMs(), d.aspect, c.outAspect);
+                d.aspect = pic.widthPerSize > 0.0 ? double(pic.width) / std::max(1, pic.height)
+                                                  : c.aspect;
+                d.look = pic.widthPerSize > 0.0
+                             ? inset::anchored(look, pic.widthPerSize, pic.anchorX)
+                             : look;
+                d.look = inset::moved(d.look, c.motion, ms - c.startMs, c.spanMs(), d.aspect,
+                                      c.outAspect);
                 d.anchorDx = d.look.centerX - look.centerX;
                 d.anchorDy = d.look.centerY - look.centerY;
                 d.look.opacity *= inset::fadeGain(ms - c.startMs, c.spanMs(), c.fadeInMs, c.fadeOutMs) *
@@ -239,10 +273,22 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         anchor = s.needAnchor;
         if (s.removed || s.failed || !active(clip, target))
             return false;
-        if (!anchor && (!playing || s.eof || s.queue.size() >= kAhead))
+        if (!clip.still && !anchor && (!playing || s.eof || s.queue.size() >= kAhead))
             return false;
         if (std::exchange(s.reopen, false))
             s.close();
+    }
+
+    // A title: make the picture for now, then the next one.
+    if (clip.still) {
+        const auto [now, next] = stillTimes(clip, target);
+        if (clip.still->ready(now).empty())
+            clip.still->at(now);
+        else if (next >= 0 && clip.still->ready(next).empty())
+            clip.still->at(next);
+        else
+            return false;
+        return true;
     }
 
     // A 360 clip's view: open (or re-open, if what it renders changed) its
@@ -352,6 +398,11 @@ void InsetFeed::decoderLoop()
                     const bool live = !s->removed && !s->failed && active(s->clip, m_targetMs);
                     if (!live && s->open())
                         return true; // a decoder to let go of
+                    if (live && s->clip.still) {
+                        if (stillWants(s->clip, m_targetMs))
+                            return true;
+                        continue;
+                    }
                     if (live && (s->needAnchor ||
                                  (m_playing && !s->eof && s->queue.size() < kAhead)))
                         return true;

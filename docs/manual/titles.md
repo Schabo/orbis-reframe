@@ -3,7 +3,8 @@
 A title is text shown over your video: the name of the ride, a place, a
 date. Titles sit on overlay tracks, like picture-in-picture videos
 ([Overlays](overlays.md)), and are placed, keyframed and faded the same way.
-They can also slide in and out or pop up.
+They can also slide in and out, pop up, or type themselves on letter by
+letter.
 
 ![A title with a drop shadow in the viewport, the Titles tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -32,6 +33,7 @@ picture. An animated one plays its animation while the mouse is over it:
 | **Lower third, bar** | One line in the lower left on a solid coloured bar. |
 | **Lower third, sliding** | The lower third, sliding in from the left and back out at the end. |
 | **Caption** | Small text at the bottom in the middle, on a rounded box. |
+| **Caption, typed** | The caption, typing itself on at the start and off again at the end. |
 | **Date** | The date in the lower right. |
 | **Date and place** | The date and, below it, *Place* to type over, in the lower left. |
 
@@ -93,16 +95,16 @@ Each can be switched on and off with its tick box; switched off, it keeps
 its settings for when you switch it on again. With a box, a left- or
 right-aligned title's position is the box's edge.
 
-## Sliding in and out
+## Sliding, popping and typing in and out
 
 The **Animation** section sets how the title comes on at its start and
 goes off at its end:
 
 | Setting | What it does |
 |---|---|
-| **In** | **Slide in from the left**, **right**, **top** or **bottom**: the title starts just outside that edge of the picture and slides to its place, slowing down as it arrives. **Pop up**: it grows from nothing, a little past its full size, and settles. **None**: it is simply there. |
+| **In** | **Slide in from the left**, **right**, **top** or **bottom**: the title starts just outside that edge of the picture and slides to its place, slowing down as it arrives. **Pop up**: it grows from nothing, a little past its full size, and settles. **Type on**: its text appears letter by letter, evenly over the length. **None**: it is simply there. |
 | **Length** | How long coming on takes, in seconds. |
-| **Out** | The same backwards: **Slide out to the left**, **right**, **top** or **bottom**, speeding up as it leaves, or **Shrink away**. |
+| **Out** | The same backwards: **Slide out to the left**, **right**, **top** or **bottom**, speeding up as it leaves, **Shrink away**, or **Type off**, taking the letters away from the end. |
 | **Length** | How long going off takes. |
 
 The animation is tied to the title's start and end, so it stays right when
@@ -110,6 +112,13 @@ you make the title longer, shorter or move it. It adds to everything else:
 a title with keyframes slides in to where its keys put it, and a fade in
 fades it in as it slides. If the title is shorter than both lengths
 together, each takes its share of the title's time.
+
+While a title types on, the letters already typed stay where they are in
+the finished text, and a line being typed grows from the side its **Align**
+names: from the left edge, out from the middle, or leftwards from the right
+edge. Spaces and line breaks count as letters. A box behind the text is
+there at its full size from the start, and the outline and shadow come
+with each letter.
 
 Splitting a title keeps its **In** on the first part and its **Out** on the
 second.

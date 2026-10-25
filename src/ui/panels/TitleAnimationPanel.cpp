@@ -15,14 +15,16 @@ namespace {
 using Kind = inset::Motion::Kind;
 using Side = inset::Motion::Side;
 
-// The choices in each list, in order: none, a slide from each side, a pop.
+// The choices in each list, in order: none, a slide from each side, a pop,
+// typing.
 struct Choice {
     Kind kind;
     Side side;
 };
-constexpr Choice kChoices[] = {{Kind::None, Side::Left},   {Kind::Slide, Side::Left},
-                               {Kind::Slide, Side::Right}, {Kind::Slide, Side::Top},
-                               {Kind::Slide, Side::Bottom}, {Kind::Pop, Side::Left}};
+constexpr Choice kChoices[] = {{Kind::None, Side::Left},    {Kind::Slide, Side::Left},
+                               {Kind::Slide, Side::Right},  {Kind::Slide, Side::Top},
+                               {Kind::Slide, Side::Bottom}, {Kind::Pop, Side::Left},
+                               {Kind::Type, Side::Left}};
 
 int indexOf(const inset::Motion::Part &p)
 {
@@ -45,9 +47,11 @@ TitleAnimationPanel::TitleAnimationPanel(QWidget *parent) : SettingsPanel(tr("An
     m_in = new QComboBox(this);
     m_in->setObjectName(QStringLiteral("titleMotionIn"));
     m_in->addItems({tr("None"), tr("Slide in from the left"), tr("Slide in from the right"),
-                    tr("Slide in from the top"), tr("Slide in from the bottom"), tr("Pop up")});
+                    tr("Slide in from the top"), tr("Slide in from the bottom"), tr("Pop up"),
+                    tr("Type on")});
     m_in->setToolTip(tr("How the title comes on at its start: sliding in from just past an edge "
-                        "of the frame, or growing from nothing. Fades come on top."));
+                        "of the frame, growing from nothing, or typed on letter by letter over "
+                        "the length. Fades come on top."));
     form()->addRow(tr("In"), m_in);
     m_inLength = lengthBox("titleMotionInLength");
     m_inLength->setToolTip(tr("How long it takes to come on."));
@@ -56,9 +60,10 @@ TitleAnimationPanel::TitleAnimationPanel(QWidget *parent) : SettingsPanel(tr("An
     m_out = new QComboBox(this);
     m_out->setObjectName(QStringLiteral("titleMotionOut"));
     m_out->addItems({tr("None"), tr("Slide out to the left"), tr("Slide out to the right"),
-                     tr("Slide out to the top"), tr("Slide out to the bottom"), tr("Shrink away")});
+                     tr("Slide out to the top"), tr("Slide out to the bottom"), tr("Shrink away"),
+                     tr("Type off")});
     m_out->setToolTip(tr("How the title goes off at its end: sliding out past an edge of the "
-                         "frame, or shrinking to nothing."));
+                         "frame, shrinking to nothing, or typed off from the end."));
     form()->addRow(tr("Out"), m_out);
     m_outLength = lengthBox("titleMotionOutLength");
     m_outLength->setToolTip(tr("How long it takes to go off."));

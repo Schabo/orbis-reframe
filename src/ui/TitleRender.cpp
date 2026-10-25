@@ -7,29 +7,58 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QRawFont>
+#include <QTextBoundaryFinder>
 #include <QTextLayout>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <deque>
+#include <mutex>
 
 namespace titlerender {
 
 namespace {
 
 // Pictures made lately: a title is re-pushed to playback on every edit, and
-// its text only changes on some.
-constexpr size_t kCacheSize = 32;
+// its text only changes on some; a title typing on makes one per letter.
+// Kept by number and by size, so a few big export pictures don't pile up.
+constexpr size_t kCacheSize = 64;
+constexpr size_t kCacheBytes = size_t(256) << 20;
 struct Cached {
     title::Style style;
     int fontPx = 0;
+    int visible = -1;
     Picture picture;
+    size_t bytes() const { return picture.rgba ? picture.rgba->size() : 0; }
 };
-std::deque<Cached> &cache()
+struct Cache {
+    std::mutex mx;
+    std::deque<Cached> list; // most recent first
+    size_t bytes = 0;
+};
+Cache &cache()
 {
-    static std::deque<Cached> c;
+    static Cache c;
     return c;
+}
+
+// The text as it is laid out: a line break is a line separator.
+QString layoutText(const QString &text)
+{
+    QString t = text;
+    t.replace(QLatin1Char('\n'), QChar::LineSeparator);
+    return t;
+}
+
+// Where the first `n` graphemes of `text` end.
+qsizetype graphemeEnd(const QString &text, int n)
+{
+    QTextBoundaryFinder f(QTextBoundaryFinder::Grapheme, text);
+    for (int i = 0; i < n; ++i)
+        if (f.toNextBoundary() < 0)
+            return text.size();
+    return std::max<qsizetype>(0, f.position());
 }
 
 QColor colorOf(uint32_t rgb, float opacity = 1.0f)
@@ -79,7 +108,9 @@ void blur(QImage &alpha, double extentPx)
     }
 }
 
-Picture draw(const title::Style &style, int fontPx)
+// `visible` < 0: all of the text; else its first `visible` graphemes, the
+// picture otherwise as it would be with all of it.
+Picture draw(const title::Style &style, int fontPx, int visible)
 {
     Picture pic;
     if (style.text.trimmed().isEmpty() || fontPx <= 0)
@@ -103,11 +134,17 @@ Picture draw(const title::Style &style, int fontPx)
     // letter, so the letters themselves line up. Not clipped to that
     // rectangle, as QPainter would: an italic's overhang and the last line's
     // descenders reach past it.
-    QString text = style.text;
-    text.replace(QLatin1Char('\n'), QChar::LineSeparator);
+    const QString text = layoutText(style.text);
+    // Typed up to here: the text's end, or the end of its first `visible`
+    // graphemes.
+    const qsizetype shownTo = visible < 0 ? text.size() : graphemeEnd(text, visible);
     QTextLayout layout(text, font);
     layout.setCacheEnabled(true);
     std::vector<double> advance;
+    // Typed so far: each line's first `shown` characters, `shownAdvance`
+    // wide (all of a line: `advance`).
+    std::vector<int> letterCount, shown;
+    std::vector<double> shownAdvance;
     double textW = 0.0;
     double textH = 0.0;
     layout.beginLayout();
@@ -126,6 +163,17 @@ Picture draw(const title::Style &style, int fontPx)
         const double trailing = letters.isEmpty() ? 0.0 : letterPx;
         advance.push_back(std::max(0.0, line.horizontalAdvance() - trailing));
         textW = std::max(textW, advance.back());
+        const int n = static_cast<int>(
+            std::clamp<qsizetype>(shownTo - line.textStart(), 0, letters.size()));
+        letterCount.push_back(static_cast<int>(letters.size()));
+        shown.push_back(n);
+        // Measured in the full line's shaping, as its glyphs are drawn.
+        shownAdvance.push_back(
+            n == letters.size()
+                ? advance.back()
+                : n == 0 ? 0.0
+                         : std::max(0.0, line.cursorToX(line.textStart() + n) -
+                                             line.cursorToX(line.textStart()) - letterPx));
     }
     layout.endLayout();
 
@@ -149,18 +197,29 @@ Picture draw(const title::Style &style, int fontPx)
     const int w = static_cast<int>(textRect.width()) + 2 * padX;
     const int h = static_cast<int>(textRect.height()) + 2 * padY;
 
-    // Where each line is drawn: its layout position moved by this.
+    // Where each line is drawn: its layout position moved by this. A line
+    // being typed lines up by what is typed of it, so its typed part grows
+    // from the edge (or the middle) the alignment names.
     auto lineOffset = [&](int i) {
-        const double free = textRect.width() - advance[size_t(i)];
+        const double free = textRect.width() - shownAdvance[size_t(i)];
         const double x = style.align == title::Align::Left    ? 0.0
                          : style.align == title::Align::Right ? free
                                                               : free / 2.0;
         return QPointF(textRect.left() + x, textRect.top());
     };
+    // A line's glyphs that are typed: those of its first characters, as the
+    // whole line shapes them -- no reshaping as letters come.
+    const auto whole = [&](int i) { return shown[size_t(i)] == letterCount[size_t(i)]; };
+    const auto shownRuns = [&](int i) {
+        const QTextLine line = layout.lineAt(i);
+        return whole(i)               ? line.glyphRuns()
+               : shown[size_t(i)] == 0 ? QList<QGlyphRun>()
+                                       : line.glyphRuns(line.textStart(), shown[size_t(i)]);
+    };
     QPainterPath letters; // the outline's and the shadow's shapes
     if (outlinePx > 0.0 || style.shadow.on)
         for (int i = 0; i < layout.lineCount(); ++i)
-            for (const QGlyphRun &run : layout.lineAt(i).glyphRuns()) {
+            for (const QGlyphRun &run : shownRuns(i)) {
                 const QRawFont raw = run.rawFont();
                 const QList<quint32> glyphs = run.glyphIndexes();
                 const QList<QPointF> at = run.positions();
@@ -216,8 +275,14 @@ Picture draw(const title::Style &style, int fontPx)
             p.strokePath(letters, pen);
         }
         p.setPen(colorOf(style.rgb));
-        for (int i = 0; i < layout.lineCount(); ++i)
-            layout.lineAt(i).draw(&p, lineOffset(i));
+        for (int i = 0; i < layout.lineCount(); ++i) {
+            if (whole(i)) {
+                layout.lineAt(i).draw(&p, lineOffset(i)); // typed in full
+                continue;
+            }
+            for (const QGlyphRun &run : shownRuns(i))
+                p.drawGlyphRun(lineOffset(i), run);
+        }
     }
     auto rgba = std::make_shared<std::vector<uint8_t>>(size_t(w) * h * 4);
     for (int y = 0; y < h; ++y)
@@ -237,20 +302,62 @@ Picture draw(const title::Style &style, int fontPx)
 
 } // namespace
 
-Picture render(const title::Style &style, int fontPx)
+int graphemeCount(const QString &text)
 {
-    std::deque<Cached> &c = cache();
-    for (auto it = c.begin(); it != c.end(); ++it)
-        if (it->fontPx == fontPx && it->style == style) {
+    const QString t = layoutText(text);
+    QTextBoundaryFinder f(QTextBoundaryFinder::Grapheme, t);
+    int n = 0;
+    while (f.toNextBoundary() >= 0)
+        ++n;
+    return n;
+}
+
+int visibleAt(int count, const inset::Motion &motion, int64_t localMs, int64_t spanMs)
+{
+    const inset::MotionPhase phase = inset::motionPhase(motion, localMs, spanMs);
+    if (!phase.part || phase.part->kind != inset::Motion::Kind::Type)
+        return -1;
+    // (Less a hair, so a q * count that should be whole isn't rounded up.)
+    const int k = static_cast<int>(std::ceil(phase.q * count - 1e-9));
+    return k >= count ? -1 : std::max(0, k);
+}
+
+Picture cached(const title::Style &style, int fontPx, int visible)
+{
+    if (visible >= 0 && visible >= graphemeCount(style.text))
+        visible = -1; // all of it
+    Cache &c = cache();
+    std::lock_guard<std::mutex> lk(c.mx);
+    for (auto it = c.list.begin(); it != c.list.end(); ++it)
+        if (it->fontPx == fontPx && it->visible == visible && it->style == style) {
             Cached hit = *it; // most recent to the front
-            c.erase(it);
-            c.push_front(hit);
+            c.list.erase(it);
+            c.list.push_front(hit);
             return hit.picture;
         }
-    Picture pic = draw(style, fontPx);
-    c.push_front({style, fontPx, pic});
-    if (c.size() > kCacheSize)
-        c.pop_back();
+    return {};
+}
+
+Picture render(const title::Style &style, int fontPx, int visible)
+{
+    if (visible >= 0 && visible >= graphemeCount(style.text))
+        visible = -1; // all of it
+    if (Picture hit = cached(style, fontPx, visible); !hit.empty())
+        return hit;
+    // Drawn outside the lock: two threads may both draw the same picture,
+    // and the cache then keeps one.
+    Picture pic = draw(style, fontPx, visible);
+    Cache &c = cache();
+    std::lock_guard<std::mutex> lk(c.mx);
+    for (const Cached &o : c.list)
+        if (o.fontPx == fontPx && o.visible == visible && o.style == style)
+            return o.picture;
+    c.list.push_front({style, fontPx, visible, pic});
+    c.bytes += c.list.front().bytes();
+    while (c.list.size() > 1 && (c.list.size() > kCacheSize || c.bytes > kCacheBytes)) {
+        c.bytes -= c.list.back().bytes();
+        c.list.pop_back();
+    }
     return pic;
 }
 

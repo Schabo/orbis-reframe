@@ -105,7 +105,7 @@ public:
     //   sourceHeight, inset {centerX, centerY, width, opacity, cornerRadius,
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
     //   centerY, width, opacity, ease}]; optional: motion {in, out}, each
-    //   {kind: "slide" | "pop", ms, side: "left" | "right" | "top" |
+    //   {kind: "slide" | "pop" | "type", ms, side: "left" | "right" | "top" |
     //   "bottom" (a slide's)} (inset::Motion; a part written only when it
     //   has a kind).
     //   A title (TrackClip::title): no source, sourceWidth or

@@ -1762,6 +1762,22 @@ void testTitleJson()
         CHECK(p.load(file, &err));
         Timeline *tl = p.timeline();
         CHECK(tl->trackAt(0).clips.at(0).motion == motion);
+        // Typing on and off.
+        inset::Motion typed;
+        typed.in = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 1200};
+        typed.out = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 400};
+        tl->setTrackClipMotion(tl->trackAt(0).clips.at(0).id, typed);
+        CHECK(p.save(file, &err));
+        const QJsonObject jm = document()
+                                   .value("timeline").toObject()
+                                   .value("tracks").toArray().at(0).toObject()
+                                   .value("clips").toArray().at(0).toObject()
+                                   .value("motion").toObject();
+        CHECK(jm.value("in").toObject().value("kind").toString() == "type" &&
+              !jm.value("in").toObject().contains("side"));
+        Project back;
+        CHECK(back.load(file, &err));
+        CHECK(back.timeline()->trackAt(0).clips.at(0).motion == typed);
         tl->setTrackClipMotion(tl->trackAt(0).clips.at(0).id, {});
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kTitleFormatVersion);

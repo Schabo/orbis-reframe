@@ -134,6 +134,16 @@ QList<Preset> make()
     caption.look = at(0.5f, 0.88f, 0.04f);
     list.push_back(caption);
 
+    // A caption typed on letter by letter, and off again.
+    Preset typed{QStringLiteral("caption-typed"), tr("Caption, typed"),
+                 tr("A caption that types itself on at the start and off at the end.") +
+                     QLatin1Char(' ') + hint};
+    typed.style = caption.style;
+    typed.look = caption.look;
+    typed.motion.in = part(inset::Motion::Kind::Type, 1500);
+    typed.motion.out = part(inset::Motion::Kind::Type, 600);
+    list.push_back(typed);
+
     // Dates go where they stay out of the way: a corner.
     const QString dateHint = tr("The date is the clip's recording date, where its file says.");
     Preset date{QStringLiteral("date"), tr("Date"),

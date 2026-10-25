@@ -37,7 +37,7 @@ qint64 previewSpanMs(const titlepresets::Preset &p)
 // in a real frame -- at the true size a caption would be a few pixels high
 // -- and kept inside the tile. At `localMs` into a title `spanMs` long
 // (spanMs > 0), moved by the preset's motion from there: an animated tile
-// playing.
+// playing, its text typed as far as it is then.
 QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dpr,
                  qint64 localMs = 0, qint64 spanMs = 0)
 {
@@ -65,7 +65,13 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     const double W = size.width(), H = size.height();
     const title::Style style = titlepresets::styleFor(preset, QDateTime::currentDateTime());
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);
-    const titlerender::Picture pic = titlerender::render(style, qRound(fontPx * dpr));
+    // Typing on or off: the picture changes as the frame's would.
+    const int visible =
+        spanMs > 0
+            ? titlerender::visibleAt(titlerender::graphemeCount(style.text), preset.motion,
+                                     localMs, spanMs)
+            : -1;
+    const titlerender::Picture pic = titlerender::render(style, qRound(fontPx * dpr), visible);
     if (pic.empty())
         return QIcon(pm);
     inset::Look look = preset.look;

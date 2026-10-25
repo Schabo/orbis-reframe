@@ -9,7 +9,7 @@ class QDoubleSpinBox;
 
 // The Title tab's Animation section: how the selected title comes on at
 // its start and goes off at its end (inset::Motion) -- a slide from or to
-// an edge of the frame, or a pop -- each with its length.
+// an edge of the frame, a pop, or typing on / off -- each with its length.
 //
 // Pure view like the other panels: edits go back to MainWindow as signals.
 class TitleAnimationPanel : public SettingsPanel {

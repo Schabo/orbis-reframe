@@ -8,6 +8,7 @@
 
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
+#include "TitleSource.h"
 #include "../core/ClipItem.h"
 #include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
@@ -19,8 +20,11 @@
 #include <QHash>
 #include <QTemporaryDir>
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <set>
+#include <thread>
 
 namespace {
 
@@ -35,6 +39,19 @@ int g_failures = 0;
     } while (0)
 
 bool near(double a, double b, double eps = 1e-4) { return std::abs(a - b) < eps; }
+
+// Where the export draws a title job's picture at clip-local `localMs`
+// (before its motion), and that picture.
+inset::Rect titleRect(const exportpipe::InsetClipJob &j, qint64 localMs, int outW = 1920,
+                      int outH = 1080, exportpipe::Still *still = nullptr)
+{
+    const exportpipe::Still pic = j.still->at(localMs);
+    if (still)
+        *still = pic;
+    const inset::Look l = inset::anchored(j.lookAt(j.trimInMs + localMs), pic.widthPerSize,
+                                          pic.anchorX);
+    return inset::place(l, {}, double(pic.width) / pic.height, outW, outH);
+}
 
 void testMix()
 {
@@ -121,42 +138,43 @@ void testTitles()
     if (feed.size() != 1 || jobs.size() != 1)
         return;
     const InsetFeed::Clip &f = feed[0];
-    CHECK(f.id == id && f.path.isEmpty() && f.still && f.stillW > 0 && f.stillH > 0);
-    CHECK(f.stillW > f.stillH); // "Hi" is wider than tall
+    CHECK(f.id == id && f.path.isEmpty() && f.still);
+    const exportpipe::Still fp = f.still->at(0);
+    CHECK(fp.rgba && fp.width > 0 && fp.height > 0);
+    CHECK(fp.width > fp.height); // "Hi" is wider than tall
+    CHECK(f.still->nextChange(0) == -1); // the same all along
     // Some of the picture is text, some clear.
     int opaque = 0, clear = 0;
-    for (size_t i = 3; i < f.still->size(); i += 4)
-        (*f.still)[i] == 255 ? ++opaque : (*f.still)[i] == 0 ? ++clear : 0;
+    for (size_t i = 3; i < fp.rgba->size(); i += 4)
+        (*fp.rgba)[i] == 255 ? ++opaque : (*fp.rgba)[i] == 0 ? ++clear : 0;
     CHECK(opaque > 0 && clear > 0);
     const exportpipe::InsetClipJob &j = jobs[0];
-    CHECK(j.still && near(j.aspect, double(j.stillW) / j.stillH));
+    exportpipe::Still jp;
     // The picture's height follows the text size: ~8% of 1080 for the font,
     // plus the line's leading and padding.
-    const inset::Look l = j.lookAt(t.trackClipById(id)->trimInMs);
-    const inset::Rect r = inset::place(l, j.frame, j.aspect, 1920, 1080);
+    const inset::Rect r = titleRect(j, 0, 1920, 1080, &jp);
+    CHECK(j.still && near(j.aspect, double(jp.width) / jp.height));
     CHECK(r.h > 0.08 * 1080 && r.h < 0.08 * 1080 * 2.0);
     CHECK(near(r.x + r.w / 2, 960.0, 1.0) && near(r.y + r.h / 2, 540.0, 1.0));
     // Playback's picture is smaller or the same, placed the same.
-    CHECK(near(double(f.stillW) / f.stillH, j.aspect, 0.05));
-    CHECK(near(l.width, f.look.width * f.stillWidthPerSize, 0.01));
+    CHECK(near(double(fp.width) / fp.height, j.aspect, 0.05));
+    CHECK(near(r.w / 1920, f.look.width * fp.widthPerSize, 0.01));
 
     // Left-aligned, its position is its left edge, in playback and the
     // export alike, and stays there as the text grows; a box's edge, when
     // it has one.
-    const auto leftEdge = [&t, &privacy](int clipId) {
+    const auto leftEdge = [&t, &privacy] {
         const std::vector<exportpipe::InsetClipJob> js =
             renderjobs::insetJobs(t, 1920, 1080, privacy);
         const std::vector<InsetFeed::Clip> fs = renderjobs::insetFeed(t, 1920, 1080, privacy);
         if (js.size() != 1 || fs.size() != 1)
             return -1.0;
-        const exportpipe::InsetClipJob &jj = js[0];
-        const inset::Rect r = inset::place(jj.lookAt(t.trackClipById(clipId)->trimInMs), jj.frame,
-                                           jj.aspect, 1920, 1080);
+        const inset::Rect r = titleRect(js[0], 0);
         // Playback places it the same (title::drawnLook, its own picture).
         const InsetFeed::Clip &ff = fs[0];
-        const inset::Look pl = title::drawnLook(ff.look, ff.stillWidthPerSize, ff.stillAnchorX);
-        const inset::Rect pr =
-            inset::place(pl, {}, double(ff.stillW) / ff.stillH, 1920, 1080);
+        const exportpipe::Still fp = ff.still->at(0);
+        const inset::Look pl = title::drawnLook(ff.look, fp.widthPerSize, fp.anchorX);
+        const inset::Rect pr = inset::place(pl, {}, double(fp.width) / fp.height, 1920, 1080);
         return near(pr.x, r.x, 2.0) ? r.x : -2.0;
     };
     style.align = title::Align::Left;
@@ -166,11 +184,11 @@ void testTitles()
     t.setTrackClipInset(id, at, {});
     const titlerender::Picture pic = titlerender::render(style, 400);
     const double pad = pic.anchorX * pic.width; // the picture's margin left of the text
-    const double x0 = leftEdge(id);
+    const double x0 = leftEdge();
     CHECK(x0 > 0.0 && near(x0 + pad * (0.08 * 1080 / 400.0), 0.1 * 1920, 2.0));
     style.text = "Hi there, a longer line";
     t.setTrackClipTitle(id, style);
-    CHECK(near(leftEdge(id), x0, 1.0));
+    CHECK(near(leftEdge(), x0, 1.0));
     // Right-aligned: its right edge.
     style.align = title::Align::Right;
     t.setTrackClipTitle(id, style);
@@ -178,8 +196,7 @@ void testTitles()
         const std::vector<exportpipe::InsetClipJob> js =
             renderjobs::insetJobs(t, 1920, 1080, privacy);
         const titlerender::Picture rp = titlerender::render(style, 400);
-        const inset::Rect r = inset::place(js[0].lookAt(t.trackClipById(id)->trimInMs), js[0].frame,
-                                           js[0].aspect, 1920, 1080);
+        const inset::Rect r = titleRect(js[0], 0);
         const double margin = (1.0 - rp.anchorX) * r.w;
         CHECK(near(r.x + r.w - margin, 0.1 * 1920, 2.0));
     }
@@ -191,15 +208,13 @@ void testTitles()
     }();
     const double before = [&] {
         const auto js = renderjobs::insetJobs(t, 1920, 1080, privacy);
-        const inset::Rect r = inset::place(js[0].lookAt(t.trackClipById(id)->trimInMs), js[0].frame,
-                                           js[0].aspect, 1920, 1080);
+        const inset::Rect r = titleRect(js[0], 0);
         return r.x + r.w / 2;
     }();
     t.setTrackClipTitle(id, centred, renderjobs::titleAnchorShift(style, centred, 1920, 1080));
     {
         const auto js = renderjobs::insetJobs(t, 1920, 1080, privacy);
-        const inset::Rect r = inset::place(js[0].lookAt(t.trackClipById(id)->trimInMs), js[0].frame,
-                                           js[0].aspect, 1920, 1080);
+        const inset::Rect r = titleRect(js[0], 0);
         CHECK(near(r.x + r.w / 2, before, 1.0));
     }
 }
@@ -237,8 +252,10 @@ void testTitleMotion()
             continue;
         const EquirectViewportWindow::InsetDraw &d = drawn[0];
         const qint64 local = ms - c.startMs;
-        const inset::Look el = inset::moved(j.lookAt(c.sourceAtLocalMs(local)), j.motion, local,
-                                            j.spanMs(), j.aspect, 1920.0 / 1080);
+        const exportpipe::Still jp = j.still->at(local);
+        const inset::Look el = inset::moved(
+            inset::anchored(j.lookAt(c.sourceAtLocalMs(local)), jp.widthPerSize, jp.anchorX),
+            j.motion, local, j.spanMs(), j.aspect, 1920.0 / 1080);
         const inset::Rect er = inset::place(el, {}, j.aspect, 1920, 1080);
         const inset::Rect pr = inset::place(d.look, {}, d.aspect, 1920, 1080);
         CHECK(near(pr.x, er.x, 2.0) && near(pr.y, er.y, 2.0) && near(pr.w, er.w, 2.0));
@@ -249,6 +266,202 @@ void testTitleMotion()
         if (ms == 4000)
             CHECK(near(el.centerY, c.look.centerY, 1e-6)); // at rest
     }
+}
+
+// The columns of a picture with any ink (alpha above `min`): first, last.
+std::pair<int, int> inkColumns(const titlerender::Picture &p, int min = 16)
+{
+    int first = p.width, last = -1;
+    for (int y = 0; y < p.height; ++y)
+        for (int x = 0; x < p.width; ++x)
+            if ((*p.rgba)[(size_t(y) * p.width + x) * 4 + 3] > min) {
+                first = std::min(first, x);
+                last = std::max(last, x);
+            }
+    return {first, last};
+}
+
+// Typing on: how many letters show when, the picture at each state, and the
+// typed part lined up by the alignment.
+void testTypeOn()
+{
+    // Letters as a reader counts them: an accent on its letter is one, a
+    // line break and a space are one each.
+    CHECK(titlerender::graphemeCount(QString::fromUtf8("He\xcc\x81\ny o")) == 6);
+    CHECK(titlerender::graphemeCount(QString()) == 0);
+
+    inset::Motion m;
+    m.in = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 1000};
+    m.out = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 500};
+    // Over the In: ceil(q * n), all (-1) once typed; at rest all; over the
+    // Out the reverse.
+    CHECK(titlerender::visibleAt(10, m, 0, 4000) == 0);
+    CHECK(titlerender::visibleAt(10, m, 1, 4000) == 1);
+    CHECK(titlerender::visibleAt(10, m, 100, 4000) == 1);
+    CHECK(titlerender::visibleAt(10, m, 101, 4000) == 2);
+    CHECK(titlerender::visibleAt(10, m, 300, 4000) == 3); // not 4: 0.3 * 10 is 3
+    CHECK(titlerender::visibleAt(10, m, 999, 4000) == -1);
+    CHECK(titlerender::visibleAt(10, m, 2000, 4000) == -1);
+    CHECK(titlerender::visibleAt(10, m, 3500, 4000) == -1);
+    CHECK(titlerender::visibleAt(10, m, 3550, 4000) == 9);
+    CHECK(titlerender::visibleAt(10, m, 3999, 4000) == 1);
+    CHECK(titlerender::visibleAt(10, m, 4000, 4000) == 0);
+    // Too short for both: each in its share, as the slides.
+    CHECK(titlerender::visibleAt(10, m, 500, 750) == -1);
+    CHECK(titlerender::visibleAt(10, m, 250, 750) == 5);
+    // A slide doesn't type.
+    inset::Motion slide;
+    slide.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Left, 1000};
+    CHECK(titlerender::visibleAt(10, slide, 100, 4000) == -1);
+
+    // The pictures: the same size, anchor and box all along; the typed part
+    // lined up by the alignment; a line typed in full as in the full text.
+    for (const title::Align align :
+         {title::Align::Left, title::Align::Centre, title::Align::Right}) {
+        title::Style style;
+        style.text = "Typing on\nslowly";
+        style.align = align;
+        style.box.on = true;
+        style.outline.on = true;
+        const titlerender::Picture full = titlerender::render(style, 60);
+        const titlerender::Picture none = titlerender::render(style, 60, 0);
+        const titlerender::Picture some = titlerender::render(style, 60, 3); // "Typ"
+        const titlerender::Picture line2 = titlerender::render(style, 60, 13); // + "\nslo"
+        const titlerender::Picture all = titlerender::render(style, 60, 16);
+        CHECK(all.rgba == full.rgba); // every letter: the full picture
+        for (const titlerender::Picture *p : {&none, &some, &line2}) {
+            CHECK(p->width == full.width && p->height == full.height &&
+                  p->widthPerFontPx == full.widthPerFontPx && p->anchorX == full.anchorX);
+            CHECK(p->rgba != full.rgba && *p->rgba != *full.rgba);
+            // The box is there from the start: its corner as in the full one.
+            const size_t corner = (size_t(full.height / 2) * full.width + 3) * 4 + 3;
+            CHECK((*p->rgba)[corner] == (*full.rgba)[corner]);
+        }
+        // Without a box: nothing at all before the first letter.
+        title::Style bare = style;
+        bare.box.on = false;
+        const titlerender::Picture blank = titlerender::render(bare, 60, 0);
+        CHECK(inkColumns(blank).second < 0);
+        // The typed part of a line sits where the alignment says: from the
+        // text's left edge, round its middle, or up to its right edge.
+        const titlerender::Picture part = titlerender::render(bare, 60, 3);
+        const titlerender::Picture whole = titlerender::render(bare, 60);
+        const auto [pf, pl] = inkColumns(part);
+        const auto [wf, wl] = inkColumns(whole);
+        CHECK(pf > wf - 1 && pl < wl + 1 && pl - pf < (wl - wf) / 2);
+        if (align == title::Align::Left)
+            CHECK(std::abs(pf - wf) <= 1);
+        else if (align == title::Align::Right)
+            CHECK(std::abs(pl - wl) <= 6); // the last letter's side bearing
+        else
+            CHECK(std::abs((pf + pl) / 2.0 - part.width / 2.0) <= 6);
+        // The second line under way: the first drawn whole, as in the full
+        // picture -- the top rows match.
+        const titlerender::Picture l2 = titlerender::render(bare, 60, 13);
+        int differ = 0;
+        for (int y = 0; y < l2.height / 3; ++y)
+            for (int x = 0; x < l2.width; ++x)
+                differ += (*l2.rgba)[(size_t(y) * l2.width + x) * 4 + 3] !=
+                          (*whole.rgba)[(size_t(y) * l2.width + x) * 4 + 3];
+        CHECK(differ == 0);
+    }
+    // Left-aligned, the typed letters are where the full line has them: no
+    // reshaping as more come.
+    {
+        title::Style style;
+        style.text = "AVATAR Wave";
+        style.align = title::Align::Left;
+        const titlerender::Picture whole = titlerender::render(style, 60);
+        const titlerender::Picture part = titlerender::render(style, 60, 4); // "AVAT"
+        const int split = inkColumns(titlerender::render(style, 60, 3)).second - 2;
+        int differ = 0;
+        for (int y = 0; y < whole.height; ++y)
+            for (int x = 0; x < split; ++x)
+                differ += std::abs((*part.rgba)[(size_t(y) * whole.width + x) * 4 + 3] -
+                                   (*whole.rgba)[(size_t(y) * whole.width + x) * 4 + 3]) > 1;
+        CHECK(differ == 0);
+    }
+
+    // TitleSource: its state and when it next changes, against every ms.
+    title::Style style;
+    style.text = "Typed caption";
+    const int n = titlerender::graphemeCount(style.text);
+    TitleSource src(style, m, 3000, 40, 1920, 1080);
+    for (qint64 t = 0; t <= 3000; t += 7) {
+        const int now = src.stateAt(t);
+        CHECK(now == titlerender::visibleAt(n, m, t, 3000));
+        qint64 expect = -1;
+        for (qint64 u = t + 1; u <= 3000; ++u)
+            if (src.stateAt(u) != now) {
+                expect = u;
+                break;
+            }
+        CHECK(src.nextChange(t) == expect);
+    }
+    // A title that doesn't type: one picture, today's.
+    TitleSource still(style, slide, 3000, 40, 1920, 1080);
+    CHECK(still.nextChange(0) == -1 && still.stateAt(500) == -1);
+    CHECK(still.at(0).rgba == titlerender::render(style, 40).rgba);
+    CHECK(still.at(0).widthPerSize ==
+          titlerender::render(style, 40).widthPerFontPx * 1080.0 / 1920.0);
+}
+
+// Playback and the export show the same typed picture at the same moment,
+// placed the same: playback once its decoder thread has made it.
+void testTypeOnFeedVsExport()
+{
+    Timeline t;
+    t.appendClip("/c/ride.insv", 20000, 30.0);
+    const int v = t.addTrack(Track::Kind::Video, "Text");
+    title::Style style;
+    style.text = "Typed on, and off";
+    style.align = title::Align::Right;
+    style.shadow.on = true;
+    inset::Motion m;
+    m.in = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 1500};
+    m.out = {inset::Motion::Kind::Type, inset::Motion::Side::Left, 600};
+    inset::Look look = title::defaultLook();
+    look.centerX = 0.9f;
+    const int id = t.addTitleClip(v, 2000, style, 4000, look, m);
+    const PrivacyBlur privacy;
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080, privacy);
+    const std::vector<exportpipe::InsetClipJob> jobs = renderjobs::insetJobs(t, 1920, 1080, privacy);
+    CHECK(feed.size() == 1 && jobs.size() == 1);
+    if (feed.size() != 1 || jobs.size() != 1)
+        return;
+    InsetFeed player;
+    player.setClips(feed);
+    const exportpipe::InsetClipJob &j = jobs[0];
+    const TrackClip &c = *t.trackClipById(id);
+    const auto shown = [&](qint64 ms, const exportpipe::Still &want) {
+        // Ready within a while (the decoder thread renders it).
+        for (int i = 0; i < 400; ++i) {
+            const auto drawn = player.frameFor(ms, false);
+            if (drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *want.rgba)
+                return drawn;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return std::vector<EquirectViewportWindow::InsetDraw>();
+    };
+    std::set<const void *> pictures;
+    for (qint64 ms : {2000, 2010, 2500, 3000, 3499, 3600, 5000, 5450, 5700, 5999}) {
+        const qint64 local = ms - c.startMs;
+        exportpipe::Still jp;
+        const inset::Rect er = titleRect(j, local, 1920, 1080, &jp);
+        CHECK(!jp.empty());
+        if (jp.empty())
+            continue;
+        pictures.insert(jp.rgba.get());
+        const auto drawn = shown(ms, jp);
+        CHECK(drawn.size() == 1);
+        if (drawn.size() != 1)
+            continue;
+        const inset::Rect pr = inset::place(drawn[0].look, {}, drawn[0].aspect, 1920, 1080);
+        CHECK(near(pr.x, er.x, 1.0) && near(pr.y, er.y, 1.0) && near(pr.w, er.w, 1.0));
+    }
+    // A picture per state: 0, 1, 6 and 12 letters typed on, all of them, 16
+    // and 9 typed off -- and 1 again (the same picture as before).
+    CHECK(pictures.size() == 7);
 }
 
 // A transition: the other clip as a layer over each half, blending through
@@ -356,8 +569,10 @@ void testTransitions()
     const InsetFeed::Clip &black = dipFeed[1];
     CHECK(black.id == dip[0].id && black.still && black.fullFrame && black.speed == 1.0);
     CHECK(black.spanMs() == 500 && black.rampTo == 1.0f && near(black.look.width, 1.0));
-    CHECK(black.stillW > 0 && black.still->size() == size_t(black.stillW * black.stillH * 4));
-    CHECK(black.still->at(0) == 0 && black.still->at(3) == 255); // opaque black
+    const exportpipe::Still bp = black.still->at(0);
+    CHECK(bp.width > 0 && bp.rgba->size() == size_t(bp.width * bp.height * 4));
+    CHECK(bp.rgba->at(0) == 0 && bp.rgba->at(3) == 255); // opaque black
+    CHECK(bp.widthPerSize == 0.0); // fills the layer
     CHECK(dipJobs[1].still == black.still && dipJobs[1].rampTo == 1.0f &&
           dipJobs[1].startMs == 7500);
     mix = renderjobs::mixClips(t);
@@ -550,6 +765,8 @@ int main(int argc, char **argv)
     testOverlays();
     testTitles();
     testTitleMotion();
+    testTypeOn();
+    testTypeOnFeedVsExport();
     testTransitions();
     testLayerOverMainClip();
     testClipJob(tmp.path());

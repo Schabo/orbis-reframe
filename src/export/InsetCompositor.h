@@ -3,6 +3,7 @@
 #include "ColorLut.h" // color::Grade
 #include "InsetGeometry.h"
 #include "PictureSource.h"
+#include "StillSource.h"
 
 #include <array>
 #include <cmath>
@@ -55,11 +56,11 @@ struct InsetClipJob {
     // A flat main-track clip's colour grade (ReframeView::colorGrade);
     // default = none.
     color::Grade colorGrade;
-    // A title: this picture (premultiplied RGBA, stillW x stillH) for the
-    // whole clip instead of a file's frames (`path` unused). Blended by its
-    // alpha, like every picture.
-    std::shared_ptr<const std::vector<uint8_t>> still;
-    int stillW = 0, stillH = 0;
+    // A title (or a dip's black): its pictures from this instead of a
+    // file's frames (`path` unused), asked for at each frame. A title's is
+    // placed by its own numbers (Still::widthPerSize, inset::anchored) and
+    // shape. Blended by its alpha, like every picture.
+    std::shared_ptr<StillSource> still;
     // A 360 clip's view (a transition's other clip): its frames from this
     // instead of a file's (`path` names it in messages). It carries its own
     // grade.
@@ -112,6 +113,7 @@ private:
     // is), one that's a plain copy (opaque, square, on whole even pixels)
     // comes as NV12 of the rect's size, to copy; else RGBA, to blend.
     struct Layer {
+        std::shared_ptr<const std::vector<uint8_t>> keep; // a still's picture, held
         const uint8_t *rgba = nullptr;
         const uint8_t *nv12 = nullptr;
         int w = 0, h = 0;

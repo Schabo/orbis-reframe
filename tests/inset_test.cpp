@@ -204,9 +204,11 @@ void testCompositor(const std::string &dir)
                 uint8_t *p = still->data() + (size_t(py) * 8 + px) * 4;
                 p[0] = p[1] = p[2] = p[3] = 255;
             }
-        t.still = still;
-        t.stillW = 8;
-        t.stillH = 4;
+        exportpipe::Still pic;
+        pic.rgba = still;
+        pic.width = 8;
+        pic.height = 4;
+        t.still = std::make_shared<exportpipe::FixedStill>(pic);
         t.lookAt = [](int64_t) {
             inset::Look l;
             l.centerX = 0.5f;
@@ -539,9 +541,11 @@ void testMotionLayer()
     j.trimInMs = 0;
     j.trimOutMs = 3000;
     j.aspect = 2.0;
-    j.still = std::make_shared<const std::vector<uint8_t>>(size_t(8) * 4 * 4, uint8_t(255));
-    j.stillW = 8;
-    j.stillH = 4;
+    exportpipe::Still pic;
+    pic.rgba = std::make_shared<const std::vector<uint8_t>>(size_t(8) * 4 * 4, uint8_t(255));
+    pic.width = 8;
+    pic.height = 4;
+    j.still = std::make_shared<exportpipe::FixedStill>(pic);
     j.lookAt = [](int64_t) {
         inset::Look l;
         l.centerX = 0.5f;

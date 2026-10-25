@@ -15,6 +15,7 @@
 #include "ClipViewSource.h"
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
+#include "TitleSource.h"
 #include "../core/ClipItem.h"
 #include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
@@ -38,6 +39,15 @@ float maxTitleSize(const TrackClip &c)
 // second.
 constexpr int kViewFontCapPx = 360;
 constexpr int kExportFontCapPx = 2048;
+
+// A title clip's pictures in an output of outW x outH, its text rendered at
+// its largest size, at most `capPx`.
+std::shared_ptr<TitleSource> titleSource(const TrackClip &c, int outW, int outH, int capPx)
+{
+    return std::make_shared<TitleSource>(*c.title, c.motion, c.timelineDurationMs(),
+                                         titlerender::fontPxFor(maxTitleSize(c), outH, capPx),
+                                         outW, outH);
+}
 
 // A clip's cameras on a job: pane 0's reframe track as poseAt (none: a
 // static forward view), a split's other panes as panePoseAt.
@@ -135,13 +145,16 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
 // A dip to black's picture: a few opaque black pixels (premultiplied RGBA),
 // stretched over the frame. One, shared: playback uploads it once.
 constexpr int kBlackPx = 4;
-std::shared_ptr<const std::vector<uint8_t>> blackPicture()
+std::shared_ptr<exportpipe::StillSource> blackStill()
 {
     static const auto black = [] {
         auto px = std::make_shared<std::vector<uint8_t>>(kBlackPx * kBlackPx * 4, 0);
         for (size_t i = 3; i < px->size(); i += 4)
             (*px)[i] = 255;
-        return std::shared_ptr<const std::vector<uint8_t>>(std::move(px));
+        exportpipe::Still s;
+        s.rgba = std::move(px);
+        s.width = s.height = kBlackPx;
+        return std::make_shared<exportpipe::FixedStill>(std::move(s));
     }();
     return black;
 }
@@ -313,9 +326,7 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             f.fullFrame = true;
             f.aspect = double(outW) / outH;
             f.look = inset::fitted(f.aspect, outW, outH, false);
-            f.still = blackPicture();
-            f.stillW = f.stillH = kBlackPx;
-            f.stillWidthPerSize = 1.0;
+            f.still = blackStill();
             clips.push_back(std::move(f));
             continue;
         }
@@ -357,10 +368,11 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
-            titlerender::Picture pic;
+            std::shared_ptr<TitleSource> title;
+            exportpipe::Still pic;
             if (c.isTitle()) {
-                pic = titlerender::render(
-                    *c.title, titlerender::fontPxFor(maxTitleSize(c), outH, kViewFontCapPx));
+                title = titleSource(c, outW, outH, kViewFontCapPx);
+                pic = title->full();
                 if (pic.empty() || outW <= 0)
                     continue; // no text
             }
@@ -379,12 +391,8 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             f.keys = c.insetKeys;
             f.motion = c.motion;
             f.outAspect = outH > 0 ? double(outW) / outH : 16.0 / 9.0;
-            if (!pic.empty()) {
-                f.still = pic.rgba;
-                f.stillW = pic.width;
-                f.stillH = pic.height;
-                f.stillWidthPerSize = pic.widthPerFontPx * outH / outW;
-                f.stillAnchorX = pic.anchorX;
+            if (title) {
+                f.still = title;
                 f.aspect = double(pic.width) / pic.height;
                 f.frame = {};
             }
@@ -431,8 +439,6 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
         j.rampTo = f.rampTo;
         j.picture = f.picture;
         j.still = f.still; // a dip's black
-        j.stillW = f.stillW;
-        j.stillH = f.stillH;
         j.lookAt = [look = f.look](int64_t) { return look; };
         jobs.push_back(std::move(j));
     }
@@ -443,10 +449,11 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
-            titlerender::Picture pic;
+            std::shared_ptr<TitleSource> title;
+            exportpipe::Still pic;
             if (c.isTitle()) {
-                pic = titlerender::render(
-                    *c.title, titlerender::fontPxFor(maxTitleSize(c), outH, kExportFontCapPx));
+                title = titleSource(c, outW, outH, kExportFontCapPx);
+                pic = title->full();
                 if (pic.empty() || outW <= 0)
                     continue; // no text
             }
@@ -465,18 +472,11 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
             j.lookAt = [look = c.look, keys = c.insetKeys](int64_t sourceMs) {
                 return keys.isEmpty() ? look : keys.sample(sourceMs);
             };
-            if (!pic.empty()) {
+            if (title) {
                 // The look's width is the text size, its centreX the text's
-                // anchor: placed as playback places it.
-                const double widthPerSize = pic.widthPerFontPx * outH / outW;
-                j.lookAt = [look = c.look, keys = c.insetKeys, widthPerSize,
-                            anchorX = pic.anchorX](int64_t sourceMs) {
-                    return title::drawnLook(keys.isEmpty() ? look : keys.sample(sourceMs),
-                                            widthPerSize, anchorX);
-                };
-                j.still = pic.rgba;
-                j.stillW = pic.width;
-                j.stillH = pic.height;
+                // anchor: each picture is placed by its own numbers, as
+                // playback places it.
+                j.still = title;
                 j.aspect = double(pic.width) / pic.height;
                 j.frame = {};
             }

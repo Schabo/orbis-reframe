@@ -100,6 +100,17 @@ inline Rect place(const Look &look, const Frame &frame, double aspect, int outW,
     return r;
 }
 
+// Where a picture is drawn whose width is `widthPerSize` times the look's
+// width and whose point `anchorX` of the way across sits at the look's
+// centreX: a title's picture, its look's width the text size
+// (title::drawnLook).
+inline Look anchored(Look l, double widthPerSize, double anchorX)
+{
+    l.width = static_cast<float>(l.width * widthPerSize);
+    l.centerX = static_cast<float>(l.centerX + (0.5 - anchorX) * l.width);
+    return l;
+}
+
 // A flat main-track clip (ClipItem::flat) as a full-frame layer: centred,
 // the whole picture inside the frame (`fill` false: bars on two sides), or
 // covering it (`fill` true: the overhang cropped). Not clamped -- a fill's
@@ -173,6 +184,10 @@ struct Motion {
         None,
         Slide, // in from just past the frame's `side` edge, out to it
         Pop,   // grows from nothing with a small overshoot; out: the reverse
+        // A title's text typed on letter by letter; out: typed off from the
+        // end. Doesn't move the picture: the title's picture changes
+        // (titlerender::visibleAt).
+        Type,
     };
     enum class Side { Left, Right, Top, Bottom };
     struct Part {
@@ -198,37 +213,57 @@ struct Motion {
     bool operator==(const Motion &) const = default;
 };
 
-// `drawn` -- where the picture is drawn: its centre and width -- moved by `m`
-// at clip-local timeline time `localMs` of a clip `spanMs` long.
-// `pictureAspect` is the picture's width / height, `outAspect` the output's.
-// A clip too short for both parts plays each in its share of the span.
-inline Look moved(Look drawn, const Motion &m, int64_t localMs, int64_t spanMs,
-                  double pictureAspect, double outAspect)
+// Which part of `m` plays at clip-local timeline time `localMs` of a clip
+// `spanMs` long, and how far along to rest it is there (`q`, 1 = at rest):
+// the out part is the in part played backwards, so it leaves the way it
+// would have come. A clip too short for both parts plays each in its share
+// of the span. `part` null: at rest.
+struct MotionPhase {
+    const Motion::Part *part = nullptr;
+    double q = 1.0;
+    // Where the in part ends and the out part starts, clip-local.
+    double inEndMs = 0.0;
+    double outStartMs = 0.0;
+};
+inline MotionPhase motionPhase(const Motion &m, int64_t localMs, int64_t spanMs)
 {
     using Kind = Motion::Kind;
     double inMs = m.in.kind == Kind::None ? 0.0 : double(m.in.ms);
     double outMs = m.out.kind == Kind::None ? 0.0 : double(m.out.ms);
+    MotionPhase p;
+    p.outStartMs = double(spanMs);
     if (spanMs <= 0 || inMs + outMs <= 0.0)
-        return drawn;
+        return p;
     if (inMs + outMs > double(spanMs)) {
         const double k = double(spanMs) / (inMs + outMs);
         inMs *= k;
         outMs *= k;
     }
-    // How far along to rest (1 = at rest): the out part is the in part
-    // played backwards, so it leaves the way it would have come.
-    const Motion::Part *part = nullptr;
-    double q = 1.0;
+    p.inEndMs = inMs;
+    p.outStartMs = double(spanMs) - outMs;
     if (inMs > 0.0 && localMs < inMs) {
-        part = &m.in;
-        q = double(localMs) / inMs;
+        p.part = &m.in;
+        p.q = double(localMs) / inMs;
     } else if (outMs > 0.0 && localMs > spanMs - outMs) {
-        part = &m.out;
-        q = double(spanMs - localMs) / outMs;
+        p.part = &m.out;
+        p.q = double(spanMs - localMs) / outMs;
     }
+    p.q = std::clamp(p.q, 0.0, 1.0);
+    return p;
+}
+
+// `drawn` -- where the picture is drawn: its centre and width -- moved by `m`
+// at clip-local timeline time `localMs` of a clip `spanMs` long.
+// `pictureAspect` is the picture's width / height, `outAspect` the output's.
+inline Look moved(Look drawn, const Motion &m, int64_t localMs, int64_t spanMs,
+                  double pictureAspect, double outAspect)
+{
+    using Kind = Motion::Kind;
+    const MotionPhase phase = motionPhase(m, localMs, spanMs);
+    const Motion::Part *part = phase.part;
     if (!part)
         return drawn;
-    q = std::clamp(q, 0.0, 1.0);
+    const double q = phase.q;
     if (part->kind == Kind::Slide) {
         const double ease = 1.0 - std::pow(1.0 - q, 3.0); // slows to a stop
         const double halfW = drawn.width / 2.0;

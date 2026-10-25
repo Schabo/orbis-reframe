@@ -466,6 +466,7 @@ if(FFMPEG_FOUND)
         src/export/InsetCompositor.h
         src/export/InsetCompositor.cpp
         src/export/PictureSource.h
+        src/export/StillSource.h
     )
     # src/core for the Qt-free InsetGeometry.h (the shared inset placement).
     target_include_directories(reframe_flatten PUBLIC src/export src/core)
@@ -507,6 +508,8 @@ if(FFMPEG_FOUND)
         src/ui/TitlePresets.h
         src/ui/TitleRender.cpp
         src/ui/TitleRender.h
+        src/ui/TitleSource.cpp
+        src/ui/TitleSource.h
         src/ui/TitlesPanel.cpp
         src/ui/TitlesPanel.h
         src/ui/TransitionsPanel.cpp

@@ -105,9 +105,7 @@ struct Style {
 // export and dragging in the view all place a title through this.
 inline inset::Look drawnLook(inset::Look l, double widthPerSize, double anchorX)
 {
-    l.width = static_cast<float>(l.width * widthPerSize);
-    l.centerX = static_cast<float>(l.centerX + (0.5 - anchorX) * l.width);
-    return l;
+    return inset::anchored(l, widthPerSize, anchorX);
 }
 
 // A title has no source file, but trims and keyframes work in source time

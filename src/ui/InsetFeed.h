@@ -4,6 +4,7 @@
 #include "../render/EquirectViewportWindow.h"
 
 #include <PictureSource.h> // exportpipe::PictureSource
+#include <StillSource.h>   // exportpipe::StillSource
 
 #include <QString>
 #include <QStringList>
@@ -25,7 +26,8 @@
 // for what to draw at its clock time each tick. A playhead jump -- a seek, a
 // scrub, or a clip edit that moves the frames -- re-anchors that clip's
 // decode at the new time; until the frame for it is ready the previous
-// picture stays up.
+// picture stays up. A title's pictures (a StillSource) are rendered there
+// too, the one for now and the next one ahead.
 //
 // setClips() may be called from any thread; frameFor() from one presenter
 // thread (PlaybackController's).
@@ -56,14 +58,13 @@ public:
         // layer: decoded at a larger size, with its colour grade.
         bool fullFrame = false;
         color::Grade colorGrade;
-        // A title: this picture all along, nothing decoded (`path` empty).
-        // Its look's width is the text size; the picture's width is that
-        // times `stillWidthPerSize`, its look's centreX the point
-        // `stillAnchorX` across it (title::drawnLook).
-        std::shared_ptr<const std::vector<uint8_t>> still;
-        int stillW = 0, stillH = 0;
-        double stillWidthPerSize = 0.0;
-        double stillAnchorX = 0.5;
+        // A title (or a dip's black): its pictures from this, nothing
+        // decoded (`path` empty). A title's look's width is its text size,
+        // and each picture says how it sits on the look
+        // (exportpipe::Still::widthPerSize / anchorX, title::drawnLook). The
+        // picture for now is shown once it is ready -- until then the one
+        // before -- and the decoder thread makes it and the next one.
+        std::shared_ptr<exportpipe::StillSource> still;
         // A 360 clip's view (a transition's other clip): drawn full frame
         // from this instead of `path`'s frames, at the output's shape
         // (`aspect`). `pictureKey` names what it renders -- the clip and
