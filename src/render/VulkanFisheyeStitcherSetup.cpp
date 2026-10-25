@@ -521,8 +521,8 @@ bool VulkanFisheyeStitcher::init(std::string& err)
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;
-    if (vkCreateDevice(d->phys, &dci, nullptr, &d->device) != VK_SUCCESS) {
-        err = "vkCreateDevice failed";
+    if (const VkResult r = vkCreateDevice(d->phys, &dci, nullptr, &d->device); r != VK_SUCCESS) {
+        err = "vkCreateDevice failed, VkResult " + std::to_string(r);
         return false;
     }
     vkGetDeviceQueue(d->device, d->queueFamily, 0, &d->queue);

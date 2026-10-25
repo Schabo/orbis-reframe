@@ -4,6 +4,7 @@
 #include <QKeySequence>
 #include <QList>
 #include <QMainWindow>
+#include <QSet>
 #include <QString>
 
 #include <functional>
@@ -565,6 +566,7 @@ private:
     // playback path; see AudioPlayer's own comment.
     AudioPlayer *m_audioPlayer = nullptr;
     bool m_noSoundNoticeShown = false; // "No sound output found", once a session
+    QSet<QString> m_gpuFallbackNoticed; // files said to play slowly, once a session each
     QAction *m_exportAction = nullptr;
     // The clip under the playhead, remembered so the export can re-open it
     // independently of playback; empty until a clip opens. Plus its frame rate.

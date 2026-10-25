@@ -109,6 +109,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     gpu_.reset();
     info_ = ClipInfo{};
     last_error_.clear();
+    gpu_fallback_ = {};
 
     std::string err;
     const auto clip = camera::ReadClipMetadata(clip_path, &err);
@@ -151,6 +152,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     params_ = params;
 
     // --- Stage 2: all-GPU (Vulkan video decode -> GPU stitch on one device) ---
+    // Set when the GPU should have decoded and didn't (GetGpuFallback).
+    bool decodeFailed = false;
     if (!std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<insv::VulkanVideoDecoder>();
         std::string derr;
@@ -180,13 +183,15 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
                                 "compute stitch\n");
                 return true;
             }
-            std::fprintf(stderr, "[NativeStitchSource] GPU stitch adopt failed (%s); "
-                                 "falling back to CPU decode\n",
+            std::fprintf(stderr, "[NativeStitchSource] GPU stitch on the decoder's device "
+                                 "failed (%s); falling back to CPU decode\n",
                          gerr.c_str());
+            decodeFailed = true;
         } else {
             std::fprintf(stderr, "[NativeStitchSource] Vulkan video decode unavailable (%s); "
                                  "CPU decode\n",
                          derr.c_str());
+            decodeFailed = !vdec->unsupported();
         }
     }
 
@@ -205,6 +210,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
             std::fprintf(stderr, "[NativeStitchSource] GPU stitch unavailable (%s); using CPU\n",
                          gerr.c_str());
     }
+    gpu_fallback_.decode = decodeFailed;
+    gpu_fallback_.stitch = !gpu_ && !std::getenv("INSV_NO_GPU_STITCH");
     demux_ = std::move(demux);
     stitcher_ = std::move(stitcher);
     return true;
@@ -793,6 +800,7 @@ Frame NativeStitchSource::readCpuDecode() {
         std::fprintf(stderr, "[NativeStitchSource] GPU stitch failed (%s); falling back to CPU\n",
                      gerr.c_str());
         gpu_.reset();
+        gpu_fallback_.stitch = true;
     }
 
     insv::Image eq;

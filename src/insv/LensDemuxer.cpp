@@ -481,17 +481,20 @@ bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
     return true;
 }
 
-AVFrame* LensDemuxer::peekFrame(int lens)
+AVFrame* LensDemuxer::peekFrame(int lens, std::string* err)
 {
     if (lens < 0 || lens >= static_cast<int>(m_dec.size()))
         return nullptr;
-    std::string err;
+    std::string e;
     for (;;) {
         dropStale(lens);
         if (!m_fifo[lens].empty())
             return m_fifo[lens].front();
-        if (m_streamEof[lens] || !pumpOnce(m_lensInput[lens], err))
+        if (m_streamEof[lens] || !pumpOnce(m_lensInput[lens], e)) {
+            if (err)
+                *err = e;
             return nullptr;
+        }
     }
 }
 

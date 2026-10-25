@@ -148,6 +148,14 @@ inline int ExportStitchWidth(int lensWidth, int outWidth) {
     return w & ~1;
 }
 
+// The parts of a clip's stitch that fell back from the GPU to the CPU
+// (IStitchSource::GetGpuFallback).
+struct GpuFallback {
+    bool decode = false; // the lenses decode on the CPU
+    bool stitch = false; // the equirect is stitched on the CPU
+    bool any() const { return decode || stitch; }
+};
+
 // Describes the source clip itself (native resolution/fps/duration) — not
 // necessarily the resolution frames are actually served at. See Frame.
 struct ClipInfo {
@@ -221,6 +229,15 @@ public:
     virtual Frame ReadFrame() = 0;
 
     virtual const std::string& GetLastError() const = 0;
+
+    // After a successful Open(): what of this clip runs on the CPU although
+    // the GPU should do it -- the GPU part failed to start, most often
+    // because the graphics memory is full. Can grow on a read (the GPU
+    // stitch gives up at a frame it can't allocate for); call from the
+    // reading thread. A GPU that can't decode video at
+    // all is said once at startup, so it isn't a fallback here; nor is a GPU
+    // path turned off on purpose (INSV_NO_GPU_*). Default: none.
+    virtual GpuFallback GetGpuFallback() const { return {}; }
 
     // Per-lens / per-sensor-row capture-time correction for subsequent frames
     // (see CaptureTiming, NativeStitchSource): `timing` for frames before

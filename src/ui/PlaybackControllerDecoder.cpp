@@ -296,6 +296,20 @@ void PlaybackController::switchToSegment(int index)
     m_activePath = path;
 }
 
+void PlaybackController::noteGpuFallback(int clipId)
+{
+    if (m_fallbackSource.lock() != m_activeSource) {
+        m_fallbackSource = m_activeSource;
+        m_fallbackSeen = {};
+    }
+    const stitch::GpuFallback fb = m_activeSource->GetGpuFallback();
+    if (fb.decode == m_fallbackSeen.decode && fb.stitch == m_fallbackSeen.stitch)
+        return;
+    m_fallbackSeen = fb;
+    if (fb.any())
+        emit gpuFallback(m_activePath, clipId, fb.decode, fb.stitch);
+}
+
 void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
 {
     if (m_prefetch) {
@@ -548,6 +562,7 @@ void PlaybackController::decoderLoop()
         } else {
             got = readSourceFrame(*m_activeSource, useLens, frame, lens);
         }
+        noteGpuFallback(cur.seg.clipId);
         const auto t1 = std::chrono::steady_clock::now();
         if (render::framestats::Enabled() && got) {
             std::lock_guard<std::mutex> lk(m_mx);

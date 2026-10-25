@@ -99,15 +99,22 @@ bool VulkanVideoDecoder::open(
     std::string& err)
 {
     close();
+    m_unsupported = false;
     m_hwDevice = core::sharedVulkanDevice();
     if (!m_hwDevice) {
-        err = "no Vulkan hw device (FFmpeg built without Vulkan, or no driver support)";
+        // Not "unsupported": the device also fails to create when the
+        // graphics memory is full, and without any Vulkan the app says so
+        // at startup.
+        err = "no Vulkan hw device (no driver support, or the graphics memory is full)";
         return false;
     }
     AVBufferRef* hw = m_hwDevice;
+    bool unsupported = false;
     const bool ok = openDemux(
-        [hw](const AVStream* st, const AVCodec* dec, AVCodecContext* ctx, std::string& e) {
+        [hw, &unsupported](const AVStream* st, const AVCodec* dec, AVCodecContext* ctx,
+                           std::string& e) {
             if (!CanDecode(hw, st->codecpar->codec_id)) {
+                unsupported = true;
                 e = std::string("the GPU has no Vulkan video decode for ") + dec->name;
                 return false;
             }
@@ -119,6 +126,23 @@ bool VulkanVideoDecoder::open(
     if (ok && m_demux.lensCount() < 2)
         err = "expected 2 video streams, found " + std::to_string(m_demux.lensCount());
     if (!ok || m_demux.lensCount() < 2) {
+        m_unsupported = unsupported;
+        close();
+        return false;
+    }
+    // FFmpeg sets the hwaccel up at the first frame, not in avcodec_open2,
+    // so a decoder that can't start (its frame pool or video session doesn't
+    // fit in the graphics memory) only shows here: as no frame, or a frame
+    // that isn't on the GPU.
+    for (int l = 0; l < 2; ++l) {
+        std::string e;
+        const AVFrame* f = m_demux.peekFrame(l, &e);
+        if (f && f->hw_frames_ctx)
+            continue;
+        err = "the Vulkan video decoder didn't start on lens " + std::to_string(l) +
+              (e.empty() ? std::string(f ? " (frames not on the GPU)" : " (no frame decoded)")
+                         : " (" + e + ")") +
+              "; the graphics memory may be full";
         close();
         return false;
     }

@@ -68,11 +68,17 @@ public:
     VulkanVideoDecoder(const VulkanVideoDecoder&) = delete;
     VulkanVideoDecoder& operator=(const VulkanVideoDecoder&) = delete;
 
-    // Creates the Vulkan hw device and per-lens decoders. Returns false with
-    // `err` set if Vulkan video decode is unavailable (caller falls back).
+    // Creates the Vulkan hw device and per-lens decoders, and decodes each
+    // lens's first frame. Returns false with `err` set if Vulkan video decode
+    // is unavailable or doesn't start (caller falls back).
     bool open(const std::string& path, std::string& err);
     // The same for lenses that may come from several files (LensDemuxer::open).
     bool open(const std::vector<LensSource>& lenses, std::string& err);
+    // After a failed open(): true when the GPU can't decode this video at all
+    // (no decode queue for the codec), false when it should have and the
+    // decoder or its device failed to start (most often out of graphics
+    // memory).
+    bool unsupported() const { return m_unsupported; }
 
     int lensCount() const { return m_demux.lensCount(); }
     const VulkanVideoStreamInfo& lens(int i) const { return m_demux.lens(i); }
@@ -87,8 +93,8 @@ public:
                        uint32_t& computeQueueFamily, VkDeviceQueueCreateFlags& queueFlags) const;
 
     // The VkFormat of the images the decoders actually produce, read from the
-    // first frame of each lens (decoded now, still handed out by the next
-    // readNextPair): G8_B8R8_2PLANE_420_UNORM for 8-bit, G10X6..._3PACK16 for
+    // first frame of each lens (decoded by open(), still handed out by the
+    // next readNextPair): G8_B8R8_2PLANE_420_UNORM for 8-bit, G10X6..._3PACK16 for
     // Main 10, whatever the driver chose otherwise. VK_FORMAT_UNDEFINED if no
     // frame decodes or the two lenses differ.
     VkFormat frameFormat();
@@ -136,6 +142,7 @@ private:
 
     LensDemuxer m_demux;
     AVBufferRef* m_hwDevice = nullptr;
+    bool m_unsupported = false;
 };
 
 } // namespace insv

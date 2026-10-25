@@ -93,6 +93,7 @@ public:
     void KeyframesAround(int64_t timestamp_ms, int64_t& before, int64_t& after) const override;
     Frame ReadFrame() override;
     const std::string& GetLastError() const override { return last_error_; }
+    GpuFallback GetGpuFallback() const override { return gpu_fallback_; }
 
     // True when ReadFlatFrame() can run: the all-GPU path is active and either
     // the fused view pipeline or the reproject pipeline built. Otherwise
@@ -282,6 +283,7 @@ private:
     PanePoseFn pane_pose_;
     uint32_t pane_fill_ = 0;
     std::string last_error_;
+    GpuFallback gpu_fallback_;
     ReadTiming last_timing_;
 };
 

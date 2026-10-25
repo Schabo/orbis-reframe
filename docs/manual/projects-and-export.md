@@ -225,7 +225,10 @@ export it also says if something kept it from being fully 10-bit: when the
 graphics card's encoder can't write 10-bit H.265, the file is 8-bit
 instead; and a clip that can't use the GPU stitch (when the graphics card
 can't decode it, for example) is exported with 8-bit precision inside the
-10-bit file, named in the message.
+10-bit file, named in the message. It also names the clips the graphics card
+couldn't decode or stitch, most often because its memory was full: they were
+done on the processor, which gives the same picture but takes much longer
+(see [If it doesn't start](getting-started.md#if-it-doesnt-start)).
 
 ### What goes into the export
 

@@ -95,8 +95,9 @@ public:
     bool readNextFrame(int lens, AVFrame*& out, std::string& err);
     // Lens `lens`'s next frame without consuming it: the next read still hands
     // it out. For reading the decoded frames' properties before the first
-    // read. Null at end of stream or on error.
-    AVFrame* peekFrame(int lens);
+    // read. Null at end of stream or on error (then `err`, if given, says
+    // why; empty at end of stream).
+    AVFrame* peekFrame(int lens, std::string* err = nullptr);
 
 private:
     // One opened file.

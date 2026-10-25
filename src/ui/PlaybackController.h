@@ -233,6 +233,10 @@ signals:
     // black. `path` is the file, `clipId` the clip that first asked for it
     // (Segment::clipId), `error` why.
     void openFailed(const QString &path, int clipId, const QString &error);
+    // Part of the playing source's stitch runs on the CPU because the GPU
+    // part didn't start (IStitchSource::GetGpuFallback): it plays, slowly.
+    // May come again for the same file when it's opened again.
+    void gpuFallback(const QString &path, int clipId, bool decode, bool stitch);
     void durationChanged(qint64 totalMs);
     // The playhead is at timelineMs, read at atNs (steadyNs()). While playing
     // the clock runs on from there: a listener on another thread gets this
@@ -287,6 +291,10 @@ private:
     // Returns the open source for `path` (from the small cache, or freshly
     // opened). nullptr + *err set on failure.
     std::shared_ptr<stitch::IStitchSource> acquireSource(const Segment &seg, QString *err);
+    // After a read from the active source: emits gpuFallback when part of it
+    // has newly fallen back to the CPU (at its open, or at a frame the GPU
+    // stitch couldn't allocate for).
+    void noteGpuFallback(int clipId);
     // A new, unopened source for `seg`: a BlankClipSource for a flat clip,
     // else m_makeSource's, or the real one. Any thread.
     std::unique_ptr<stitch::IStitchSource> makeSource(const Segment &seg) const;
@@ -376,6 +384,10 @@ private:
     QStringList m_srcLru; // paths, least-recently-used first
     std::shared_ptr<stitch::IStitchSource> m_activeSource;
     QString m_activePath;
+    // What of the active source has been reported as fallen back to the CPU
+    // (noteGpuFallback), and for which source.
+    std::weak_ptr<stitch::IStitchSource> m_fallbackSource;
+    stitch::GpuFallback m_fallbackSeen;
 
     // The next segment's source, sought and its first frame read on a worker
     // thread shortly before the boundary, so the cut doesn't wait for the

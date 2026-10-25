@@ -278,6 +278,9 @@ void ReframeExportController::run(const Request &req)
         note = tr("Exported as 8-bit: the video encoder couldn't encode 10-bit HEVC (%1).")
                    .arg(QString::fromStdString(writer->tenBitFallback()));
     QStringList eightBitClips;
+    // ...and clips that went through the CPU because the GPU part didn't
+    // start: the picture is the same, but the export took much longer.
+    QStringList cpuClips;
 
     bool cancelled = false;
     int64_t framesBefore = 0;
@@ -489,6 +492,9 @@ void ReframeExportController::run(const Request &req)
             if (frames[i] > 0)
                 emitPct(base + span * static_cast<double>(written) / frames[i], label);
         }
+        // After the frames: the GPU stitch can also give up part-way.
+        if (src->GetGpuFallback().any())
+            cpuClips << QFileInfo(c.clipPath).fileName();
         framesBefore += frames[i];
     }
 
@@ -511,5 +517,13 @@ void ReframeExportController::run(const Request &req)
         note = tr("These clips were exported with 8-bit precision inside the 10-bit file "
                   "(the GPU stitch isn't available for them): %1")
                    .arg(eightBitClips.join(QStringLiteral(", ")));
+    cpuClips.removeDuplicates();
+    if (!cpuClips.isEmpty()) {
+        if (!note.isEmpty())
+            note += QStringLiteral("\n\n");
+        note += tr("The graphics card couldn't decode or stitch these clips, most often because "
+                   "its memory was full, so they were done on the processor, more slowly: %1")
+                    .arg(cpuClips.join(QStringLiteral(", ")));
+    }
     emit finished(true, note, req.outPath);
 }
