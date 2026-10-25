@@ -55,7 +55,8 @@ void ExportRunner::startExport(const ReframeExportController::Request &req)
         dlg->setValue(pct);
     });
     connect(worker, &ReframeExportController::finished, this,
-            [this, dlg, thread](bool ok, const QString &message, const QString &outPath) {
+            [this, dlg, thread](bool ok, const QString &message, const QString &outPath,
+                                const QString &details) {
                 dlg->close();
                 dlg->deleteLater();
                 thread->quit();
@@ -68,8 +69,12 @@ void ExportRunner::startExport(const ReframeExportController::Request &req)
                                              message.isEmpty() ? tr("Wrote %1").arg(outPath)
                                                              : tr("Wrote %1\n\n%2")
                                                                    .arg(outPath, message));
-                else if (!message.isEmpty())
-                    QMessageBox::warning(m_window, tr("Export failed"), message);
+                else if (!message.isEmpty()) {
+                    QMessageBox box(QMessageBox::Warning, tr("Export failed"), message,
+                                    QMessageBox::Ok, m_window);
+                    box.setDetailedText(details); // none: no "Show Details" button
+                    box.exec();
+                }
                 // else: cancelled by the user -- the dialog just closes, and
                 // ReframeExportController has already deleted the partial file.
             });

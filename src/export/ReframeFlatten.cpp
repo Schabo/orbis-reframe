@@ -55,6 +55,9 @@ struct Encoder {
     AVBufferRef* hwDevice = nullptr;
     AVBufferRef* hwFrames = nullptr;
     AVFrame* hw = nullptr;
+    // The hardware video encoder failed: it didn't open although the probe
+    // found it usable, or it failed on a frame (FlattenWriter::encoderFailed).
+    bool encoderFailed = false;
     // Optional AAC audio stream (FlattenConfig::audio_sample_rate > 0).
     AVCodecContext* actx = nullptr;
     AVStream* astream = nullptr;
@@ -472,6 +475,7 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std
         }
     }
     if (!encName) {
+        e.encoderFailed = pr.picked != nullptr;
         if (b.only)
             why += (why.empty() ? "" : "; ") + std::string("ORBIS_ENCODER=") + b.only;
         err = "no usable hardware encoder" + (why.empty() ? std::string() : " (" + why + ")");
@@ -575,6 +579,7 @@ bool drainTo(Encoder& e, AVCodecContext* ctx, AVStream* stream, AVFrame* frame, 
 // hardware surfaces the NV12 / P010 frame is uploaded into `e.hw` first.
 bool drainEncoder(Encoder& e, AVFrame* frame, std::string& err)
 {
+    e.encoderFailed = true; // until it's done
     if (frame && e.hw) {
         av_frame_unref(e.hw);
         int ret = av_hwframe_get_buffer(e.hwFrames, e.hw, 0);
@@ -589,7 +594,10 @@ bool drainEncoder(Encoder& e, AVFrame* frame, std::string& err)
         av_frame_copy_props(e.hw, frame);
         frame = e.hw;
     }
-    return drainTo(e, e.ctx, e.stream, frame, err);
+    if (!drainTo(e, e.ctx, e.stream, frame, err))
+        return false;
+    e.encoderFailed = false;
+    return true;
 }
 
 } // namespace
@@ -791,6 +799,8 @@ bool FlattenWriter::addP010Frame(const uint8_t* p010, int w, int h, std::string&
 bool FlattenWriter::tenBit() const { return d->enc.tenBit; }
 
 const std::string& FlattenWriter::tenBitFallback() const { return d->tenBitWhy; }
+
+bool FlattenWriter::encoderFailed() const { return d->enc.encoderFailed; }
 
 bool FlattenWriter::addAudio(const float* interleaved, int64_t frames, std::string& err)
 {

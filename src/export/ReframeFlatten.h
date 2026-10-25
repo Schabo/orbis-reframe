@@ -79,6 +79,13 @@ public:
     bool tenBit() const;
     const std::string& tenBitFallback() const;
 
+    // After a failed open(), add*Frame() or finish(): whether it was the
+    // hardware video encoder that failed -- it didn't open although the
+    // startup probe found it usable, or it stopped on a frame. Most often
+    // the graphics memory (or the card's encoder sessions) ran out; the
+    // caller says so in words, with `err` as the detail.
+    bool encoderFailed() const;
+
     // Reproject one in-memory RGBA equirect frame (eqW x eqH) against `pose`
     // (nullptr => static forward view) and
     // encode it, advancing the shared output PTS. For callers that produce

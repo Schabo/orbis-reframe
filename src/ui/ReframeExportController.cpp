@@ -258,8 +258,31 @@ void ReframeExportController::run(const Request &req)
     // Held by pointer so a cancelled export can close (destroy) the encoder and
     // its half-written output file *before* deleting that file below.
     auto writer = std::make_unique<exportpipe::FlattenWriter>();
+    int64_t outFrames = 0; // video frames sent to the encoder (the one being encoded included)
+    // The hardware encoder failing is said in words -- its own errors
+    // ("Function not implemented") don't point at the usual cause -- with
+    // them as the details.
+    auto failed = [&](const QString &e) {
+        if (!writer->encoderFailed()) {
+            emit finished(false, e, req.outPath);
+            return;
+        }
+        const QString why =
+            outFrames > 0
+                ? tr("The graphics card's video encoder stopped at frame %1 of %2, most "
+                     "often because the graphics memory is full.")
+                      .arg(outFrames)
+                      .arg(totalFrames)
+                : tr("The graphics card's video encoder couldn't start, most often because the "
+                     "graphics memory is full.");
+        emit finished(false,
+                      why + QLatin1Char(' ') +
+                          tr("Close other programs that use the graphics card (another "
+                             "orbis-reframe, games, a web browser) and export again."),
+                      req.outPath, e);
+    };
     if (!writer->open(cfg, err)) {
-        emit finished(false, QString::fromStdString(err), req.outPath);
+        failed(QString::fromStdString(err));
         return;
     }
     // Overlays: output frame k is timeline time k / fps (the audio mix's
@@ -284,7 +307,6 @@ void ReframeExportController::run(const Request &req)
 
     bool cancelled = false;
     int64_t framesBefore = 0;
-    int64_t outFrames = 0; // video frames actually written, across every clip
     std::vector<float> pcm;
     std::vector<uint8_t> black; // a flat clip's frames, NV12 (BT.709 limited range)
     for (int i = 0; i < n && !cancelled; ++i) {
@@ -295,12 +317,10 @@ void ReframeExportController::run(const Request &req)
         // Per-clip failures name the clip so a mid-export error is traceable
         // back to the timeline.
         auto failClip = [&](const QString &e) {
-            emit finished(false,
-                          tr("Clip %1 of %2 (%3): %4")
-                              .arg(i + 1)
-                              .arg(n)
-                              .arg(QFileInfo(c.clipPath).fileName(), e),
-                          req.outPath);
+            failed(tr("Clip %1 of %2 (%3): %4")
+                       .arg(i + 1)
+                       .arg(n)
+                       .arg(QFileInfo(c.clipPath).fileName(), e));
         };
 
         auto feedAudio = [&]() -> bool {
@@ -508,7 +528,7 @@ void ReframeExportController::run(const Request &req)
 
     const int64_t total = writer->finish(err);
     if (total < 0) {
-        emit finished(false, QString::fromStdString(err), req.outPath);
+        failed(QString::fromStdString(err));
         return;
     }
     emitPct(100, tr("Done"));

@@ -174,8 +174,10 @@ signals:
     // (e.g. "Stitching clip 2 of 3…"), ready to drop straight into the dialog.
     void progress(int overallPct, const QString &label);
     // `message`: on failure the error; on success a note for the user
-    // (a 10-bit export that came out 8-bit), usually empty.
-    void finished(bool ok, const QString &message, const QString &outPath);
+    // (a 10-bit export that came out 8-bit), usually empty. `details`: on a
+    // failure told in words (the video encoder stopped), the error itself.
+    void finished(bool ok, const QString &message, const QString &outPath,
+                  const QString &details = QString());
 
 private:
     std::atomic<bool> m_cancel{false};
