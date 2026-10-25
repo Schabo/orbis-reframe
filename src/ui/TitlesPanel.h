@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QListWidget>
+#include <QTimer>
 #include <QWidget>
 
 // The titles to pick from, as tiles. Dragging one out hands it over as a
@@ -20,7 +22,8 @@ protected:
 // The left sidebar's Titles tab: text to put over the output, as tiles of
 // ready-made titles (titlepresets); drag one onto the timeline, or
 // double-click (Enter) to add it at the playhead. It is edited in the right
-// sidebar's Title tab.
+// sidebar's Title tab. An animated tile plays its animation while the mouse
+// is over it.
 class TitlesPanel : public QWidget {
     Q_OBJECT
 
@@ -31,6 +34,20 @@ signals:
     // Add the title preset `presetId` names at the playhead.
     void addTitleRequested(const QString &presetId);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
+    static constexpr QSize kTileSize{128, 72};
+    // Play `item`'s animation (nothing for null or a still tile), the one
+    // playing before back at rest.
+    void preview(QListWidgetItem *item);
+    void stepPreview();
+    // Is the pointer still over the tile playing?
+    bool pointerOnPreview() const;
+
     TitleList *m_list = nullptr;
+    QListWidgetItem *m_previewItem = nullptr;
+    QTimer m_previewTimer;
+    QElapsedTimer m_previewClock;
 };

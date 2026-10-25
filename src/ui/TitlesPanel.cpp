@@ -5,10 +5,13 @@
 #include "TitleRender.h"
 
 #include <QAction>
+#include <QCursor>
 #include <QLabel>
 #include <QLinearGradient>
+#include <QEvent>
 #include <QMimeData>
 #include <QPainter>
+#include <QPainterPath>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -17,11 +20,26 @@ namespace {
 
 constexpr int kPresetRole = Qt::UserRole;
 
+// How long an animated tile's title rests between its In and its Out, and
+// how long it stays off before the next round, while the mouse is over it.
+constexpr qint64 kPreviewHoldMs = 1200;
+constexpr qint64 kPreviewGapMs = 500;
+
+qint64 previewSpanMs(const titlepresets::Preset &p)
+{
+    using Kind = inset::Motion::Kind;
+    return (p.motion.in.kind == Kind::None ? 0 : p.motion.in.ms) + kPreviewHoldMs +
+           (p.motion.out.kind == Kind::None ? 0 : p.motion.out.ms);
+}
+
 // A tile's picture: the preset's title over a made-up landscape (sky, then
 // ground), roughly where and how it lands. Its text is drawn larger than
 // in a real frame -- at the true size a caption would be a few pixels high
-// -- and kept inside the tile.
-QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dpr)
+// -- and kept inside the tile. At `localMs` into a title `spanMs` long
+// (spanMs > 0), moved by the preset's motion from there: an animated tile
+// playing.
+QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dpr,
+                 qint64 localMs = 0, qint64 spanMs = 0)
 {
     QPixmap pm(size * dpr);
     pm.setDevicePixelRatio(dpr);
@@ -38,6 +56,9 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     p.setPen(Qt::NoPen);
     p.setBrush(g);
     p.drawRoundedRect(r, 4, 4);
+    QPainterPath clip;
+    clip.addRoundedRect(r, 4, 4);
+    p.setClipPath(clip); // a slide comes in past the tile's edge
 
     constexpr double kScale = 1.5;  // the text, larger than in a frame
     constexpr double kMinFontPx = 7; // logical pixels
@@ -54,9 +75,19 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     constexpr double kMargin = 3;
     const double x = std::clamp(d.centerX * W - w / 2, kMargin, std::max(kMargin, W - kMargin - w));
     const double y = std::clamp(d.centerY * H - h / 2, kMargin, std::max(kMargin, H - kMargin - h));
+    // Moved from where it rests in the tile, as the frame would move it.
+    inset::Look rest = d;
+    rest.centerX = static_cast<float>((x + w / 2) / W);
+    rest.centerY = static_cast<float>((y + h / 2) / H);
+    const inset::Look m = spanMs > 0 ? inset::moved(rest, preset.motion, localMs, spanMs,
+                                                    double(pic.width) / pic.height, W / H)
+                                     : rest;
+    const double mw = m.width * W, mh = mw * pic.height / pic.width;
+    if (mw < 0.5)
+        return QIcon(pm); // popped down to nothing
     const QImage img(pic.rgba->data(), pic.width, pic.height, pic.width * 4,
                      QImage::Format_RGBA8888_Premultiplied);
-    p.drawImage(QRectF(x, y, w, h), img);
+    p.drawImage(QRectF(m.centerX * W - mw / 2, m.centerY * H - mh / 2, mw, mh), img);
     return QIcon(pm);
 }
 
@@ -100,11 +131,10 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
     heading->setObjectName(QStringLiteral("sidebarPageTitle"));
 
     m_list = new TitleList(this);
-    const QSize tile(128, 72);
-    m_list->setIconSize(tile);
+    m_list->setIconSize(kTileSize);
     for (const titlepresets::Preset &preset : titlepresets::all()) {
-        auto *item =
-            new QListWidgetItem(presetTile(preset, tile, devicePixelRatioF()), preset.name, m_list);
+        auto *item = new QListWidgetItem(presetTile(preset, kTileSize, devicePixelRatioF()),
+                                         preset.name, m_list);
         item->setData(kPresetRole, preset.id);
         item->setToolTip(preset.toolTip);
     }
@@ -114,6 +144,13 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
             emit addTitleRequested(item->data(kPresetRole).toString());
     };
     connect(m_list, &QListWidget::itemActivated, this, addCurrent);
+
+    // An animated tile plays its In and Out while the mouse is over it.
+    m_list->viewport()->setMouseTracking(true);
+    m_list->viewport()->installEventFilter(this);
+    connect(m_list, &QListWidget::itemEntered, this, &TitlesPanel::preview);
+    m_previewTimer.setInterval(33);
+    connect(&m_previewTimer, &QTimer::timeout, this, &TitlesPanel::stepPreview);
 
     auto *add = new QAction(tr("&Add to timeline"), m_list);
     add->setObjectName(QStringLiteral("titleAddToTimelineAction"));
@@ -134,4 +171,53 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
     layout->addWidget(heading);
     layout->addWidget(hint);
     layout->addWidget(m_list, 1);
+}
+
+bool TitlesPanel::eventFilter(QObject *watched, QEvent *event)
+{
+    // A Leave can come while the pointer is still on the tile (seen on
+    // Sway): only stop if it really is elsewhere.
+    if (watched == m_list->viewport() && event->type() == QEvent::Leave && !pointerOnPreview())
+        preview(nullptr);
+    return QWidget::eventFilter(watched, event);
+}
+
+bool TitlesPanel::pointerOnPreview() const
+{
+    return m_previewItem && isVisible() &&
+           m_list->itemAt(m_list->viewport()->mapFromGlobal(QCursor::pos())) == m_previewItem;
+}
+
+void TitlesPanel::preview(QListWidgetItem *item)
+{
+    if (item == m_previewItem)
+        return;
+    const auto presetOf = [](const QListWidgetItem *it) {
+        return it ? titlepresets::find(it->data(kPresetRole).toString()) : nullptr;
+    };
+    if (const titlepresets::Preset *p = presetOf(m_previewItem)) // back to rest
+        m_previewItem->setIcon(presetTile(*p, kTileSize, devicePixelRatioF()));
+    const titlepresets::Preset *p = presetOf(item);
+    m_previewItem = p && !p->motion.isNone() ? item : nullptr;
+    if (!m_previewItem) {
+        m_previewTimer.stop();
+        return;
+    }
+    m_previewClock.start();
+    stepPreview();
+    m_previewTimer.start();
+}
+
+void TitlesPanel::stepPreview()
+{
+    const titlepresets::Preset *p =
+        m_previewItem ? titlepresets::find(m_previewItem->data(kPresetRole).toString()) : nullptr;
+    if (!p || !pointerOnPreview()) {
+        preview(nullptr);
+        return;
+    }
+    const qint64 span = previewSpanMs(*p);
+    const qint64 t = m_previewClock.elapsed() % (span + kPreviewGapMs);
+    m_previewItem->setIcon(
+        presetTile(*p, kTileSize, devicePixelRatioF(), std::min(t, span), span));
 }

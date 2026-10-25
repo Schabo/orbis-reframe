@@ -22,6 +22,7 @@
 #include "MediaPoolPanel.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
+#include "TabSidebar.h"
 #include "TitlePresets.h"
 #include "panels/MediaInfoPanel.h"
 #include "support/TestMedia.h"
@@ -1316,6 +1317,58 @@ void testTitlePresets(const Ctx &c)
         CHECK(p.style == p.style.clamped() && p.look == p.look.clamped());
         std::unique_ptr<QMimeData> mime(list->model()->mimeData({list->model()->index(row, 0)}));
         CHECK(mime && mime->data(QString::fromLatin1(title::kMimeType)) == p.id.toLatin1());
+    }
+
+    // An animated tile plays while the mouse is over it, and is back at
+    // rest when it leaves; a still one stays as it is.
+    {
+        const auto tileImage = [list](int row) {
+            return list->item(row)->icon().pixmap(list->iconSize()).toImage();
+        };
+        // Only a tile on screen plays: the Titles tab showing.
+        TabSidebar *sources = nullptr;
+        for (QObject *o = list; o && !sources; o = o->parent())
+            sources = qobject_cast<TabSidebar *>(o);
+        const int tabBefore = sources ? sources->currentIndex() : 0;
+        const bool openBefore = sources && sources->isOpen();
+        if (sources) {
+            sources->setOpen(true);
+            sources->setCurrentIndex(1); // Media, Titles, Transitions
+        }
+        settle();
+        CHECK(list->isVisible());
+        const int sliding = int(titlepresets::find(QStringLiteral("lower-third-slide")) -
+                                presets.data());
+        const QImage rest = tileImage(sliding);
+        const auto pointAt = [list](int row) {
+            QCursor::setPos(list->viewport()->mapToGlobal(
+                list->visualItemRect(list->item(row)).center()));
+        };
+        list->scrollToItem(list->item(sliding));
+        pointAt(sliding);
+        emit list->itemEntered(list->item(sliding));
+        QTest::qWait(100); // sliding in
+        const QImage early = tileImage(sliding);
+        // A Leave while still on it changes nothing (it keeps sliding); off
+        // it, the tile rests.
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(list->viewport(), &leave);
+        QTest::qWait(150);
+        CHECK(early != rest && tileImage(sliding) != early && tileImage(sliding) != rest);
+        QCursor::setPos(c.w->mapToGlobal(QPoint(c.w->width() / 2, c.w->height() / 2)));
+        QTest::qWait(100);
+        CHECK(tileImage(sliding) == rest);
+        const QImage plain = tileImage(0);
+        list->scrollToItem(list->item(0));
+        pointAt(0);
+        emit list->itemEntered(list->item(0));
+        QTest::qWait(150);
+        CHECK(tileImage(0) == plain);
+        QCoreApplication::sendEvent(list->viewport(), &leave);
+        if (sources) {
+            sources->setCurrentIndex(tabBefore);
+            sources->setOpen(openBefore);
+        }
     }
 
     // From the tab, at the playhead.

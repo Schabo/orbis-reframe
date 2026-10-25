@@ -20,7 +20,7 @@ They can also slide in and out or pop up.
 Open the media sidebar's **Titles** tab
 (<img src="images/icons/tab-titles.png" width="24" alt="">). Its tiles are
 ready-made titles, each showing roughly how and where it lands in the
-picture:
+picture. An animated one plays its animation while the mouse is over it:
 
 | Tile | What you get |
 |---|---|
