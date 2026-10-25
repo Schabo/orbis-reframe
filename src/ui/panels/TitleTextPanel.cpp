@@ -50,8 +50,9 @@ QFont previewFont(const QString &family, const QFont &base)
     }
     if (!*it)
         return base;
-    QFont f(family);
-    f.setPointSizeF(base.pointSizeF());
+    // The list's own size, whether the theme gives it in points or pixels.
+    QFont f = base;
+    f.setFamilies({family});
     return f;
 }
 
