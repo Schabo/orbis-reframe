@@ -1195,13 +1195,23 @@ int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &styl
     return insertTrackClip(trackId, c);
 }
 
-void Timeline::setTrackClipTitle(int clipId, const title::Style &style)
+void Timeline::setTrackClipTitle(int clipId, const title::Style &style, double shiftPerSize)
 {
     TrackClip *c = mutableTrackClipById(clipId);
-    if (!c || !c->isTitle() || *c->title == style)
+    const title::Style s = style.clamped();
+    if (!c || !c->isTitle() || (*c->title == s && shiftPerSize == 0.0))
         return;
-    c->title = style;
-    c->title->rgb &= 0xffffff;
+    c->title = s;
+    if (shiftPerSize != 0.0) {
+        auto shifted = [shiftPerSize](inset::Look l) {
+            l.centerX = static_cast<float>(l.centerX + shiftPerSize * l.width);
+            return l.clamped();
+        };
+        c->look = shifted(c->look);
+        const QList<InsetKey> keys = c->insetKeys.keys();
+        for (const InsetKey &k : keys)
+            c->insetKeys.upsert(k.timeMs, shifted(k.look), 0);
+    }
     emit tracksChanged();
 }
 

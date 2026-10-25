@@ -15,6 +15,7 @@
 #include "panels/SplitScreenPanel.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
+#include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/TransitionPanel.h"
 
@@ -44,6 +45,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_overlay = section<OverlayPanel>("overlayPanel", tr("Selected overlay clip"));
     const QString selectedTitle = tr("Selected title");
     m_titleText = section<TitleTextPanel>("titleTextPanel", selectedTitle);
+    m_titleLook = section<TitleLookPanel>("titleLookPanel", selectedTitle);
     m_titlePlacement = new OverlayPanel(OverlayPanel::Kind::Title);
     m_titlePlacement->setObjectName(QStringLiteral("titlePlacementPanel"));
     m_titlePlacement->setScope(selectedTitle);
@@ -56,13 +58,15 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe,
                                           m_splitScreen, m_colour, m_mediaInfo};
     m_sections = video;
-    m_sections << m_overlay << m_titleText << m_titlePlacement << m_transition << m_privacy;
+    m_sections << m_overlay << m_titleText << m_titleLook << m_titlePlacement << m_transition
+               << m_privacy;
 
     const QList<QScrollArea *> pages = {
         makeSettingsPage(QStringLiteral("videoSettings"), video),
         makeSettingsPage(QStringLiteral("audioSettings"), {}),
         makeSettingsPage(QStringLiteral("overlaySettings"), {m_overlay}),
-        makeSettingsPage(QStringLiteral("titleSettings"), {m_titleText, m_titlePlacement}),
+        makeSettingsPage(QStringLiteral("titleSettings"),
+                         {m_titleText, m_titleLook, m_titlePlacement}),
         makeSettingsPage(QStringLiteral("transitionSettings"), {m_transition}),
         makeSettingsPage(QStringLiteral("privacySettings"), {m_privacy}),
     };

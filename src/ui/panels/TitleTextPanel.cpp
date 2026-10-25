@@ -1,5 +1,8 @@
 #include "TitleTextPanel.h"
 
+#include "PanelFields.h"
+
+#include <QButtonGroup>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QFontDatabase>
@@ -88,6 +91,34 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     m_color->setObjectName(QStringLiteral("titleColor"));
     m_color->setToolTip(tr("The text's colour."));
     form()->addRow(tr("Colour"), m_color);
+    m_alignRow = new QWidget(this);
+    auto *alignLayout = new QHBoxLayout(m_alignRow);
+    alignLayout->setContentsMargins(0, 0, 0, 0);
+    auto *alignGroup = new QButtonGroup(this);
+    const struct {
+        const char *name;
+        QString text;
+        QString tip;
+    } aligns[] = {
+        {"titleAlignLeft", tr("Left"),
+         tr("Lines start under each other. The title's position is its left edge: it "
+            "stays put as the text grows.")},
+        {"titleAlignCentre", tr("Centre"),
+         tr("Lines centred under each other. The title's position is its middle.")},
+        {"titleAlignRight", tr("Right"),
+         tr("Lines end under each other. The title's position is its right edge: it "
+            "stays put as the text grows.")},
+    };
+    for (int i = 0; i < 3; ++i) {
+        m_align[i] = new QPushButton(aligns[i].text, m_alignRow);
+        m_align[i]->setObjectName(QLatin1String(aligns[i].name));
+        m_align[i]->setCheckable(true);
+        m_align[i]->setToolTip(aligns[i].tip);
+        alignGroup->addButton(m_align[i], i);
+        alignLayout->addWidget(m_align[i]);
+    }
+    alignLayout->addStretch(1);
+    form()->addRow(tr("Align"), m_alignRow);
 
     auto edited = [this] {
         if (!m_updating)
@@ -101,6 +132,10 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     });
     connect(m_bold, &QPushButton::toggled, this, edited);
     connect(m_italic, &QPushButton::toggled, this, edited);
+    connect(alignGroup, &QButtonGroup::idToggled, this, [edited](int, bool on) {
+        if (on)
+            edited();
+    });
     connect(m_color, &QPushButton::clicked, this, [this, edited] {
         const QColor c = QColorDialog::getColor(QColor::fromRgb(m_rgb), this, tr("Text colour"));
         if (!c.isValid())
@@ -113,30 +148,30 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
 
 title::Style TitleTextPanel::current() const
 {
-    title::Style t;
+    title::Style t = m_style;
     t.text = m_text->toPlainText();
     t.font = m_font->currentData().toString();
     t.bold = m_bold->isChecked();
     t.italic = m_italic->isChecked();
     t.rgb = m_rgb;
+    for (int i = 0; i < 3; ++i)
+        if (m_align[i]->isChecked())
+            t.align = static_cast<title::Align>(i);
     return t;
 }
 
 void TitleTextPanel::setColor(uint32_t rgb)
 {
     m_rgb = rgb & 0xffffff;
-    const QColor c = QColor::fromRgb(m_rgb);
-    m_color->setText(c.name());
-    m_color->setStyleSheet(
-        QStringLiteral("QPushButton { background: %1; color: %2; }")
-            .arg(c.name(), c.lightness() > 128 ? QStringLiteral("#000") : QStringLiteral("#fff")));
+    panelfields::showColor(m_color, m_rgb);
 }
 
 void TitleTextPanel::setTitle(const title::Style &s)
 {
     m_updating = true;
+    m_style = s;
     for (QWidget *w : {static_cast<QWidget *>(m_text), static_cast<QWidget *>(m_font),
-                       m_styleRow, static_cast<QWidget *>(m_color)})
+                       m_styleRow, static_cast<QWidget *>(m_color), m_alignRow})
         w->setEnabled(true);
     if (m_text->toPlainText() != s.text)
         m_text->setPlainText(s.text);
@@ -144,6 +179,7 @@ void TitleTextPanel::setTitle(const title::Style &s)
         fillFonts(s.font);
     m_bold->setChecked(s.bold);
     m_italic->setChecked(s.italic);
+    m_align[static_cast<int>(s.align)]->setChecked(true);
     setColor(s.rgb);
     setHint(tr("The title selected on the timeline or in the view. The title changes as you "
                "type."));
@@ -154,10 +190,9 @@ void TitleTextPanel::setNoTitle(const QString &hint)
 {
     m_updating = true;
     m_text->clear();
-    m_color->setText(QString());
-    m_color->setStyleSheet(QString());
+    panelfields::clearColor(m_color);
     for (QWidget *w : {static_cast<QWidget *>(m_text), static_cast<QWidget *>(m_font),
-                       m_styleRow, static_cast<QWidget *>(m_color)})
+                       m_styleRow, static_cast<QWidget *>(m_color), m_alignRow})
         w->setEnabled(false);
     setHint(hint.isEmpty() ? tr("Select a title on the timeline, or add one from the Titles tab "
                                 "on the left: drag it onto the timeline or double-click it.")

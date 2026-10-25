@@ -162,8 +162,9 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
                 d.rgba = c.still;
                 d.width = c.stillW;
                 d.height = c.stillH;
-                d.look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
-                d.look.width = float(d.look.width * c.stillWidthPerSize);
+                const inset::Look look = c.keys.isEmpty() ? c.look : c.keys.sample(c.sourceAt(ms));
+                d.look = title::drawnLook(look, c.stillWidthPerSize, c.stillAnchorX);
+                d.anchorDx = d.look.centerX - look.centerX;
                 d.look.opacity *= inset::fadeGain(ms - c.startMs, c.spanMs(), c.fadeInMs, c.fadeOutMs) *
                                   inset::rampGain(ms - c.startMs, c.spanMs(), c.rampFrom, c.rampTo);
                 d.aspect = c.fullFrame ? c.aspect : double(c.stillW) / std::max(1, c.stillH);

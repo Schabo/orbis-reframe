@@ -64,6 +64,7 @@ class ReframePanel;
 class SplitScreenPanel;
 class MediaPoolPanel;
 class TitlesPanel;
+class TitleLookPanel;
 class TitleTextPanel;
 class TransitionsPanel;
 class TransitionPanel;
@@ -512,6 +513,7 @@ private:
     ColourPanel *m_colourPanel = nullptr;
     OverlayPanel *m_overlayPanel = nullptr;        // overlay videos
     TitleTextPanel *m_titleTextPanel = nullptr;     // the Title tab: a title's text
+    TitleLookPanel *m_titleLookPanel = nullptr;     // ... and how it's drawn
     OverlayPanel *m_titlePlacementPanel = nullptr;  // ... and its position and timing
     TransitionPanel *m_transitionPanel = nullptr;   // the selected transition
     MediaInfoPanel *m_mediaInfoPanel = nullptr;

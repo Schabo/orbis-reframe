@@ -101,6 +101,7 @@
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
+#include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/PrivacyPanel.h"
 #include "panels/ReframePanel.h"
@@ -342,6 +343,7 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_privacyPanel = m_sidebar->privacy();         // starts in its no-clip state
     m_overlayPanel = m_sidebar->overlay();         // starts with no overlay clip
     m_titleTextPanel = m_sidebar->titleText();     // ... and no title
+    m_titleLookPanel = m_sidebar->titleLook();
     m_titlePlacementPanel = m_sidebar->titlePlacement();
     m_transitionPanel = m_sidebar->transition();   // ... and no transition
     m_mediaInfoPanel = m_sidebar->mediaInfo();     // starts in its no-clip state
@@ -791,11 +793,18 @@ void MainWindow::connectOverlaysAndAudio()
                     c->id, c->sourceAtLocalMs(m_lastTimelineMs - c->startMs), e);
         });
     }
-    // Title tab's Text -> the selected title.
-    connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, [this](const title::Style &t) {
-        if (const TrackClip *c = selectedOverlayClip())
-            m_timeline->setTrackClipTitle(c->id, t);
-    });
+    // Title tab's Text and Look -> the selected title. A new alignment pins
+    // another point of the text: the title moves so its text stays put.
+    const auto titleEdited = [this](const title::Style &t) {
+        const TrackClip *c = selectedOverlayClip();
+        if (!c || !c->isTitle())
+            return;
+        const OutputSettings &out = m_project->output();
+        m_timeline->setTrackClipTitle(
+            c->id, t, renderjobs::titleAnchorShift(*c->title, t, out.width, out.height));
+    };
+    connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, titleEdited);
+    connect(m_titleLookPanel, &TitleLookPanel::titleEdited, this, titleEdited);
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
     // A file's guard profiles read in the background: the panel may show it.
@@ -2073,6 +2082,7 @@ void MainWindow::refreshOverlayPanel()
     if (!c) {
         m_overlayPanel->setNoClip();
         m_titleTextPanel->setNoTitle(QString());
+        m_titleLookPanel->setNoTitle(QString());
         m_titlePlacementPanel->setNoClip();
         return;
     }
@@ -2081,11 +2091,13 @@ void MainWindow::refreshOverlayPanel()
     OverlayPanel *panel = c->isTitle() ? m_titlePlacementPanel : m_overlayPanel;
     if (c->isTitle()) {
         m_titleTextPanel->setTitle(*c->title);
+        m_titleLookPanel->setTitle(*c->title);
         m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Title tab."));
     } else {
         const QString hint = tr("An overlay video is selected: its settings are in the Overlay "
                                 "tab.");
         m_titleTextPanel->setNoTitle(hint);
+        m_titleLookPanel->setNoTitle(hint);
         m_titlePlacementPanel->setNoClip(hint);
     }
     OverlayPanel::State st;

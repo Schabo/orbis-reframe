@@ -274,7 +274,10 @@ public slots:
     int addTitleClip(int trackId, qint64 startMs, const title::Style &style,
                      qint64 spanMs = title::kDefaultSpanMs);
     // A title's text and how it's drawn. No-op on a clip that isn't one.
-    void setTrackClipTitle(int clipId, const title::Style &style);
+    // `shiftPerSize` also moves its position and every key's across by that
+    // many times their text size (in output widths): what keeps the text
+    // where it is when its anchor moves (a new title::Align).
+    void setTrackClipTitle(int clipId, const title::Style &style, double shiftPerSize = 0.0);
     bool removeTrackClip(int clipId);
     // Move a clip to `startMs` on the track `toTrackId` (may be its own;
     // canHoldClip must allow it -- else nothing happens). A linked clip is

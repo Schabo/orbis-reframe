@@ -6,6 +6,8 @@
 
 #include "support/ModelTest.h"
 
+#include <cmath>
+
 namespace {
 
 void testAudioTracks()
@@ -641,6 +643,39 @@ void testTitles()
           tl.trackClipById(id)->title->rgb == 0xff2040);
     tl.setTrackClipTitle(id, style); // no change, no signal
     CHECK(changes == 1);
+
+    // Out-of-range look values are clamped.
+    style.lineSpacing = 9.0f;
+    style.box.cornerRadius = -1.0f;
+    tl.setTrackClipTitle(id, style);
+    CHECK(changes == 2 &&
+          tl.trackClipById(id)->title->lineSpacing == title::Style::kMaxLineSpacing &&
+          tl.trackClipById(id)->title->box.cornerRadius == 0.0f);
+    style = *tl.trackClipById(id)->title;
+
+    // A new alignment with a shift moves the position and every key by that
+    // many text sizes, in one change; the keys keep their times and sizes.
+    {
+        const TrackClip before = *tl.trackClipById(id);
+        inset::Look k = before.look;
+        k.width = 0.2f;
+        tl.upsertTrackClipInsetKey(id, before.trimInMs + 500, k);
+        const float keyX = tl.trackClipById(id)->insetKeys.keys().first().look.centerX;
+        const int at = changes;
+        style.align = title::Align::Left;
+        tl.setTrackClipTitle(id, style, -1.5);
+        const TrackClip &after = *tl.trackClipById(id);
+        CHECK(changes == at + 1 && after.title->align == title::Align::Left);
+        const float wantX = before.look.centerX - 1.5f * before.look.width;
+        CHECK(std::abs(after.look.centerX - wantX) < 1e-5f);
+        const inset::Look key = after.insetKeys.keys().first().look;
+        CHECK(after.insetKeys.count() == 1 && key.width == 0.2f &&
+              std::abs(key.centerX - (keyX - 1.5f * 0.2f)) < 1e-5f);
+        tl.clearTrackClipInsetKeys(id, before.trimInMs);
+        tl.setTrackClipInset(id, before.look, before.frame);
+        style.align = title::Align::Centre;
+        tl.setTrackClipTitle(id, style);
+    }
 
     CHECK(tl.addOverlaySound(id) == 0); // nothing to hear
 

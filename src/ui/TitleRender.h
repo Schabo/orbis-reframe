@@ -20,6 +20,9 @@ struct Picture {
     // (title::Style, a fraction of the output height) the picture covers
     // s * outH * widthPerFontPx pixels across.
     double widthPerFontPx = 0.0;
+    // How far across the picture its anchor is (title::drawnLook): the left
+    // or right edge of the text -- or of its box -- or the middle.
+    double anchorX = 0.5;
 
     bool empty() const { return !rgba; }
 };

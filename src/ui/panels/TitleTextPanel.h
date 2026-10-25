@@ -9,12 +9,12 @@ class QPlainTextEdit;
 class QPushButton;
 class QWidget;
 
-// The Title tab's Text section: the selected title's text (several lines,
-// centred), font, bold / italic and colour (title::Style). The font list is
+// The Title tab's Text section: the selected title's text (several lines),
+// font, bold / italic, colour and alignment (title::Style). The font list is
 // the installed families, each in its own face, with the last few picked
 // (app-wide, not the project's) at the top. Where it sits,
-// its size and timing are the tab's other section, an OverlayPanel of kind
-// Title.
+// its size and timing are the tab's last section, an OverlayPanel of kind
+// Title; the outline, shadow, box and spacing are TitleLookPanel's.
 //
 // Pure view like the other panels: edits go back to MainWindow as signals.
 class TitleTextPanel : public SettingsPanel {
@@ -30,6 +30,7 @@ public:
     void setNoTitle(const QString &hint);
 
 signals:
+    // The whole style: the last one set with this section's fields changed.
     void titleEdited(const title::Style &style);
 
 private:
@@ -47,6 +48,9 @@ private:
     QPushButton *m_bold = nullptr;
     QPushButton *m_italic = nullptr;
     QPushButton *m_color = nullptr;
+    QWidget *m_alignRow = nullptr;
+    QPushButton *m_align[3] = {}; // title::Align order
+    title::Style m_style; // as last set
     uint32_t m_rgb = 0xffffff;
     bool m_updating = false;
 };

@@ -54,10 +54,12 @@ public:
         color::Grade colorGrade;
         // A title: this picture all along, nothing decoded (`path` empty).
         // Its look's width is the text size; the picture's width is that
-        // times `stillWidthPerSize` (titlerender::Picture).
+        // times `stillWidthPerSize`, its look's centreX the point
+        // `stillAnchorX` across it (title::drawnLook).
         std::shared_ptr<const std::vector<uint8_t>> still;
         int stillW = 0, stillH = 0;
         double stillWidthPerSize = 0.0;
+        double stillAnchorX = 0.5;
         // A 360 clip's view (a transition's other clip): drawn full frame
         // from this instead of `path`'s frames, at the output's shape
         // (`aspect`). `pictureKey` names what it renders -- the clip and

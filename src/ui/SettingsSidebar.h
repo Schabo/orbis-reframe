@@ -14,6 +14,7 @@ class SettingsPanel;
 class SplitScreenPanel;
 class StabilizationPanel;
 class StitchingPanel;
+class TitleLookPanel;
 class TitleTextPanel;
 class TransitionPanel;
 
@@ -36,7 +37,7 @@ class TransitionPanel;
 // transitionSettings / privacySettings (their tab buttons <page>Tab), and
 // the sections stitchingPanel, stabilizationPanel, reframePanel,
 // splitScreenPanel, colourPanel, mediaInfoPanel, overlayPanel, titleTextPanel,
-// titlePlacementPanel, transitionPanel, privacyPanel (headers
+// titleLookPanel, titlePlacementPanel, transitionPanel, privacyPanel (headers
 // <section>Header); the Audio tab's are AudioPanel's.
 class SettingsSidebar : public TabSidebar {
     Q_OBJECT
@@ -56,6 +57,7 @@ public:
     AudioPanel *audio() const { return m_audio; }
     OverlayPanel *overlay() const { return m_overlay; }
     TitleTextPanel *titleText() const { return m_titleText; }
+    TitleLookPanel *titleLook() const { return m_titleLook; }
     OverlayPanel *titlePlacement() const { return m_titlePlacement; } // kind Title
     TransitionPanel *transition() const { return m_transition; }
     PrivacyPanel *privacy() const { return m_privacy; }
@@ -74,6 +76,7 @@ private:
     AudioPanel *m_audio = nullptr;
     OverlayPanel *m_overlay = nullptr;
     TitleTextPanel *m_titleText = nullptr;
+    TitleLookPanel *m_titleLook = nullptr;
     OverlayPanel *m_titlePlacement = nullptr;
     TransitionPanel *m_transition = nullptr;
     PrivacyPanel *m_privacy = nullptr;

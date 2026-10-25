@@ -1,6 +1,7 @@
 #include "OverlayPanel.h"
 
 #include "EaseCombo.h"
+#include "PanelFields.h"
 
 #include "../../core/TrackClip.h" // TrackClip::kMinTrimMs
 
@@ -16,36 +17,8 @@
 #include <algorithm>
 #include <cmath>
 
-namespace {
-
-QDoubleSpinBox *numberBox(QWidget *parent, double lo, double hi, int decimals, double step,
-                          const QString &suffix)
-{
-    auto *b = new QDoubleSpinBox(parent);
-    b->setRange(lo, hi);
-    b->setDecimals(decimals);
-    b->setSingleStep(step);
-    b->setSuffix(suffix);
-    b->setKeyboardTracking(false); // commit on Enter / focus-out / arrows, not per keystroke
-    return b;
-}
-
-QWidget *sliderRow(QWidget *parent, int lo, int hi, QSlider **slider, QLabel **value)
-{
-    auto *row = new QWidget(parent);
-    auto *layout = new QHBoxLayout(row);
-    layout->setContentsMargins(0, 0, 0, 0);
-    *slider = new QSlider(Qt::Horizontal, row);
-    (*slider)->setRange(lo, hi);
-    (*slider)->setPageStep(10);
-    *value = new QLabel(row);
-    (*value)->setMinimumWidth(row->fontMetrics().horizontalAdvance(QStringLiteral("100%")));
-    layout->addWidget(*slider, 1);
-    layout->addWidget(*value);
-    return row;
-}
-
-} // namespace
+using panelfields::numberBox;
+using panelfields::sliderRow;
 
 OverlayPanel::OverlayPanel(Kind kind, QWidget *parent)
     : SettingsPanel(kind == Kind::Title ? tr("Position and timing") : tr("Overlay"), parent),
@@ -232,11 +205,7 @@ inset::Frame OverlayPanel::currentFrame() const
 void OverlayPanel::setBorderColor(uint32_t rgb)
 {
     m_borderRgb = rgb & 0xffffff;
-    const QColor c = QColor::fromRgb(m_borderRgb);
-    m_borderColor->setText(c.name());
-    m_borderColor->setStyleSheet(
-        QStringLiteral("QPushButton { background: %1; color: %2; }")
-            .arg(c.name(), c.lightness() > 128 ? QStringLiteral("#000") : QStringLiteral("#fff")));
+    panelfields::showColor(m_borderColor, m_borderRgb);
 }
 
 QString OverlayPanel::partName(const char *suffix) const

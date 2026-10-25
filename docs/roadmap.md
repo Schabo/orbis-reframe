@@ -18,12 +18,29 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ### 1. Titles -- *maintainer*
 
-Titles on overlay tracks are built (plain text, keyframed position and
-size, a font picker that previews the fonts). Next: an outline, a drop
-shadow and a background box (legible over a bright sky), left / right
-alignment, line and letter spacing, a few ready-made styles as tiles in the
-Titles tab (lower third, heading, date / place), keyframed colour and
-simple text animations (type-on, slide).
+Titles on overlay tracks are built: text with a font picker that previews
+the fonts, keyframed position and size, and a look -- an outline, a drop
+shadow and a background box, line and letter spacing, and left / centre /
+right alignment, which also says which point of the text the title's
+position pins. All of it is part of the title's style (`title::Style`),
+drawn into the one picture the viewport and the export both place
+(`src/ui/TitleRender`).
+
+Next, in this order:
+
+1. **Ready-made styles**: more tiles in the left sidebar's Titles tab
+   beside *Text* -- a lower third, a big heading, date / place, each a few
+   looks. A tile is only where a title starts (a style and a position);
+   once on the timeline it is an ordinary title, nothing ties it to the
+   tile.
+2. **Animations**: tiles for animated titles (type-on, slide in) and an
+   *Animation* section in the Title tab to give any title one. A slide is
+   the title's own position keys; type-on and keyframed colour change the
+   picture over time, so the title's picture becomes one per moment
+   (cached), still the same for the viewport and the export.
+
+When non-text items arrive (the GPS gauges below), the Titles tab gets a
+broader name.
 
 ### 2. GPS and stats overlays -- *maintainer*
 

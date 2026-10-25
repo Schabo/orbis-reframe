@@ -7,6 +7,7 @@
 #include "RenderJobs.h"
 
 #include "PrivacyBlur.h"
+#include "TitleRender.h"
 #include "../core/ClipItem.h"
 #include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
@@ -138,6 +139,69 @@ void testTitles()
     // Playback's picture is smaller or the same, placed the same.
     CHECK(near(double(f.stillW) / f.stillH, j.aspect, 0.05));
     CHECK(near(l.width, f.look.width * f.stillWidthPerSize, 0.01));
+
+    // Left-aligned, its position is its left edge, in playback and the
+    // export alike, and stays there as the text grows; a box's edge, when
+    // it has one.
+    const auto leftEdge = [&t, &privacy](int clipId) {
+        const std::vector<exportpipe::InsetClipJob> js =
+            renderjobs::insetJobs(t, 1920, 1080, privacy);
+        const std::vector<InsetFeed::Clip> fs = renderjobs::insetFeed(t, 1920, 1080, privacy);
+        if (js.size() != 1 || fs.size() != 1)
+            return -1.0;
+        const exportpipe::InsetClipJob &jj = js[0];
+        const inset::Rect r = inset::place(jj.lookAt(t.trackClipById(clipId)->trimInMs), jj.frame,
+                                           jj.aspect, 1920, 1080);
+        // Playback places it the same (title::drawnLook, its own picture).
+        const InsetFeed::Clip &ff = fs[0];
+        const inset::Look pl = title::drawnLook(ff.look, ff.stillWidthPerSize, ff.stillAnchorX);
+        const inset::Rect pr =
+            inset::place(pl, {}, double(ff.stillW) / ff.stillH, 1920, 1080);
+        return near(pr.x, r.x, 2.0) ? r.x : -2.0;
+    };
+    style.align = title::Align::Left;
+    t.setTrackClipTitle(id, style);
+    inset::Look at = t.trackClipById(id)->look;
+    at.centerX = 0.1f;
+    t.setTrackClipInset(id, at, {});
+    const titlerender::Picture pic = titlerender::render(style, 400);
+    const double pad = pic.anchorX * pic.width; // the picture's margin left of the text
+    const double x0 = leftEdge(id);
+    CHECK(x0 > 0.0 && near(x0 + pad * (0.08 * 1080 / 400.0), 0.1 * 1920, 2.0));
+    style.text = "Hi there, a longer line";
+    t.setTrackClipTitle(id, style);
+    CHECK(near(leftEdge(id), x0, 1.0));
+    // Right-aligned: its right edge.
+    style.align = title::Align::Right;
+    t.setTrackClipTitle(id, style);
+    {
+        const std::vector<exportpipe::InsetClipJob> js =
+            renderjobs::insetJobs(t, 1920, 1080, privacy);
+        const titlerender::Picture rp = titlerender::render(style, 400);
+        const inset::Rect r = inset::place(js[0].lookAt(t.trackClipById(id)->trimInMs), js[0].frame,
+                                           js[0].aspect, 1920, 1080);
+        const double margin = (1.0 - rp.anchorX) * r.w;
+        CHECK(near(r.x + r.w - margin, 0.1 * 1920, 2.0));
+    }
+    // A new alignment moves the title so its text stays where it was.
+    const title::Style centred = [&] {
+        title::Style c = style;
+        c.align = title::Align::Centre;
+        return c;
+    }();
+    const double before = [&] {
+        const auto js = renderjobs::insetJobs(t, 1920, 1080, privacy);
+        const inset::Rect r = inset::place(js[0].lookAt(t.trackClipById(id)->trimInMs), js[0].frame,
+                                           js[0].aspect, 1920, 1080);
+        return r.x + r.w / 2;
+    }();
+    t.setTrackClipTitle(id, centred, renderjobs::titleAnchorShift(style, centred, 1920, 1080));
+    {
+        const auto js = renderjobs::insetJobs(t, 1920, 1080, privacy);
+        const inset::Rect r = inset::place(js[0].lookAt(t.trackClipById(id)->trimInMs), js[0].frame,
+                                           js[0].aspect, 1920, 1080);
+        CHECK(near(r.x + r.w / 2, before, 1.0));
+    }
 }
 
 // A transition: the other clip as a layer over each half, blending through

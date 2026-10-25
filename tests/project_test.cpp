@@ -1678,6 +1678,63 @@ void testTitleJson()
         CHECK(c.fadeInMs == 250 && c.fadeOutMs == 500);
         CHECK(c.insetKeys.count() == 1 && c.insetKeys.keys().at(0).look.width == 0.12f);
         CHECK(p.mediaPool()->count() == 1);
+        CHECK(c.title->align == title::Align::Centre && !c.title->outline.on &&
+              !c.title->shadow.on && !c.title->box.on); // a plain title's look
+    }
+    // Its look: written only as far as it isn't plain, with the version that
+    // added it, and read back.
+    title::Style look;
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        look = *tl->trackAt(0).clips.at(0).title;
+        look.align = title::Align::Right;
+        look.lineSpacing = 1.25f;
+        look.letterSpacing = -0.05f;
+        look.outline = {true, 0.08f, 0x202020};
+        look.shadow = {true, 0x000040, 0.5f, 0.1f, 0.2f};
+        look.box = {true, 0xffcc00, 0.75f, 0.4f, 0.25f};
+        tl->setTrackClipTitle(tl->trackAt(0).clips.at(0).id, look);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kTitleLookFormatVersion);
+        const QJsonObject jt = document()
+                                   .value("timeline").toObject()
+                                   .value("tracks").toArray().at(0).toObject()
+                                   .value("clips").toArray().at(0).toObject()
+                                   .value("title").toObject();
+        CHECK(jt.value("align").toString() == "right");
+        CHECK(jt.value("box").toObject().value("color").toString() == "#ffcc00");
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        CHECK(*tl->trackAt(0).clips.at(0).title == look);
+        // Drawn plain again: the file goes back to the version a plain title
+        // needs, and keeps the parts switched off for switching on again.
+        title::Style plain = look;
+        plain.align = title::Align::Centre;
+        plain.lineSpacing = 1.0f;
+        plain.letterSpacing = 0.0f;
+        plain.outline.on = plain.shadow.on = plain.box.on = false;
+        tl->setTrackClipTitle(tl->trackAt(0).clips.at(0).id, plain);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kTitleFormatVersion);
+        const QJsonObject jt = document()
+                                   .value("timeline").toObject()
+                                   .value("tracks").toArray().at(0).toObject()
+                                   .value("clips").toArray().at(0).toObject()
+                                   .value("title").toObject();
+        for (const char *key : {"align", "lineSpacing", "letterSpacing"})
+            CHECK(!jt.contains(QLatin1String(key)));
+        CHECK(!jt.value("box").toObject().value("on").toBool(true));
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        const title::Style &t = *p.timeline()->trackAt(0).clips.at(0).title;
+        CHECK(!t.box.on && t.box.rgb == 0xffcc00 && !t.outline.on && t.outline.width == 0.08f);
     }
 }
 

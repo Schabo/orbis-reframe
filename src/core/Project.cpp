@@ -526,10 +526,42 @@ uint32_t colorFromJson(const json &j, const char *key, uint32_t fallback)
     return ok ? (rgb & 0xffffff) : fallback;
 }
 
+// Only what differs from a plain title (title::Style's defaults) is written:
+// a plain one reads in every build since version 12.
 json titleToJson(const title::Style &t)
 {
-    return json{{"text", t.text.toStdString()}, {"font", t.font.toStdString()},
-                {"bold", t.bold}, {"italic", t.italic}, {"color", colorToJson(t.rgb)}};
+    json j{{"text", t.text.toStdString()}, {"font", t.font.toStdString()},
+           {"bold", t.bold}, {"italic", t.italic}, {"color", colorToJson(t.rgb)}};
+    const title::Style plain;
+    if (t.align != plain.align)
+        j["align"] = t.align == title::Align::Left ? "left" : "right";
+    if (t.lineSpacing != plain.lineSpacing)
+        j["lineSpacing"] = t.lineSpacing;
+    if (t.letterSpacing != plain.letterSpacing)
+        j["letterSpacing"] = t.letterSpacing;
+    // Kept while switched off too, so switching on again brings them back.
+    if (t.outline != plain.outline)
+        j["outline"] = {{"on", t.outline.on}, {"width", t.outline.width},
+                        {"color", colorToJson(t.outline.rgb)}};
+    if (t.shadow != plain.shadow)
+        j["shadow"] = {{"on", t.shadow.on}, {"color", colorToJson(t.shadow.rgb)},
+                       {"opacity", t.shadow.opacity}, {"distance", t.shadow.distance},
+                       {"blur", t.shadow.blur}};
+    if (t.box != plain.box)
+        j["box"] = {{"on", t.box.on}, {"color", colorToJson(t.box.rgb)},
+                    {"opacity", t.box.opacity}, {"padding", t.box.padding},
+                    {"cornerRadius", t.box.cornerRadius}};
+    return j;
+}
+
+// Is the title drawn other than a plain one (kTitleLookFormatVersion)? An
+// outline, shadow or box that's off isn't drawn: an older build shows it
+// right.
+bool styledTitle(const title::Style &t)
+{
+    const title::Style plain;
+    return t.align != plain.align || t.lineSpacing != plain.lineSpacing ||
+           t.letterSpacing != plain.letterSpacing || t.outline.on || t.shadow.on || t.box.on;
 }
 
 title::Style titleFromJson(const json &j)
@@ -540,7 +572,35 @@ title::Style titleFromJson(const json &j)
     t.bold = j.value("bold", t.bold);
     t.italic = j.value("italic", t.italic);
     t.rgb = colorFromJson(j, "color", t.rgb);
-    return t;
+    const std::string align = j.value("align", std::string());
+    t.align = align == "left" ? title::Align::Left
+              : align == "right" ? title::Align::Right
+                                 : title::Align::Centre;
+    t.lineSpacing = j.value("lineSpacing", t.lineSpacing);
+    t.letterSpacing = j.value("letterSpacing", t.letterSpacing);
+    if (j.contains("outline") && j.at("outline").is_object()) {
+        const json &o = j.at("outline");
+        t.outline.on = o.value("on", true);
+        t.outline.width = o.value("width", t.outline.width);
+        t.outline.rgb = colorFromJson(o, "color", t.outline.rgb);
+    }
+    if (j.contains("shadow") && j.at("shadow").is_object()) {
+        const json &o = j.at("shadow");
+        t.shadow.on = o.value("on", true);
+        t.shadow.rgb = colorFromJson(o, "color", t.shadow.rgb);
+        t.shadow.opacity = o.value("opacity", t.shadow.opacity);
+        t.shadow.distance = o.value("distance", t.shadow.distance);
+        t.shadow.blur = o.value("blur", t.shadow.blur);
+    }
+    if (j.contains("box") && j.at("box").is_object()) {
+        const json &o = j.at("box");
+        t.box.on = o.value("on", true);
+        t.box.rgb = colorFromJson(o, "color", t.box.rgb);
+        t.box.opacity = o.value("opacity", t.box.opacity);
+        t.box.padding = o.value("padding", t.box.padding);
+        t.box.cornerRadius = o.value("cornerRadius", t.box.cornerRadius);
+    }
+    return t.clamped();
 }
 
 // A video-track clip: the track-clip fields plus its size and inset; a
@@ -1072,6 +1132,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
 
     json tracks = json::array();
     bool anyTitle = false;
+    bool anyStyledTitle = false; // outline, shadow, box, alignment or spacing
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
@@ -1079,6 +1140,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         for (const TrackClip &c : t.clips) {
             if (video) {
                 anyTitle |= c.isTitle();
+                anyStyledTitle |= c.isTitle() && styledTitle(*c.title);
                 tc.push_back(videoClipToJson(c, projectDir));
                 continue;
             }
@@ -1144,7 +1206,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyReframeKey           ? kWideViewFormatVersion
+        {"version", anyStyledTitle          ? kTitleLookFormatVersion
+                    : anyReframeKey           ? kWideViewFormatVersion
                     : anySplit                ? kSplitFormatVersion
                     : anyDirectionLock        ? kDirectionLockFormatVersion
                     : anyLut                  ? kLutFormatVersion

@@ -19,6 +19,7 @@
 
 #include <MediaInfo.h>
 #include "panels/OverlayPanel.h"
+#include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/TransitionPanel.h"
 #include "panels/PrivacyPanel.h"
@@ -97,7 +98,8 @@ void testLayout(SettingsSidebar &bar)
                                                   "reframePanel", "splitScreenPanel",
                                                   "colourPanel", "mediaInfoPanel"}));
     if (auto *title = find<QScrollArea>(&bar, "titleSettings"))
-        CHECK(sectionNames(title) == QStringList({"titleTextPanel", "titlePlacementPanel"}));
+        CHECK(sectionNames(title) ==
+              QStringList({"titleTextPanel", "titleLookPanel", "titlePlacementPanel"}));
     if (auto *audio = find<QScrollArea>(&bar, "audioSettings")) // nothing to show yet
         CHECK(sectionNames(audio) == QStringList({"audioPanel"}));
 
@@ -110,7 +112,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
     CHECK(!bar.transition()->isCollapsible());
-    CHECK(bar.sections().size() == 11); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 12); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -416,6 +418,48 @@ void testEasing(SettingsSidebar &bar)
     CHECK(find<QDoubleSpinBox>(reframe, "reframeFov")->isEnabled() && stop->isEnabled());
 }
 
+// The Title tab's Look section: reflects a title without emitting, greys out
+// what is off, reports edits as the whole style.
+void testTitleLook(SettingsSidebar &bar)
+{
+    TitleLookPanel *look = bar.titleLook();
+    CHECK(look->title() == "Look");
+    auto *outline = find<QCheckBox>(look, "titleOutline");
+    auto *width = find<QDoubleSpinBox>(look, "titleOutlineWidth");
+    auto *shadow = find<QCheckBox>(look, "titleShadow");
+    auto *blur = find<QDoubleSpinBox>(look, "titleShadowBlur");
+    auto *box = find<QCheckBox>(look, "titleBox");
+    auto *corners = find<QSlider>(look, "titleBoxCorners");
+    auto *lines = find<QDoubleSpinBox>(look, "titleLineSpacing");
+    if (!outline || !width || !shadow || !blur || !box || !corners || !lines)
+        return;
+    CHECK(!outline->isEnabled()); // no title
+    QSignalSpy spy(look, &TitleLookPanel::titleEdited);
+    title::Style s;
+    s.text = "Pass";
+    s.align = title::Align::Right;
+    s.shadow.on = true;
+    s.shadow.blur = 0.1f;
+    look->setTitle(s);
+    CHECK(spy.isEmpty() && outline->isEnabled() && !outline->isChecked() && !width->isEnabled());
+    CHECK(shadow->isChecked() && blur->isEnabled() && std::abs(blur->value() - 10.0) < 1e-9);
+    CHECK(!box->isChecked() && !corners->isEnabled() && std::abs(lines->value() - 100.0) < 1e-9);
+    outline->click();
+    CHECK(spy.count() == 1 && width->isEnabled());
+    title::Style got = spy.last().at(0).value<title::Style>();
+    CHECK(got.outline.on && got.text == "Pass" && got.align == title::Align::Right &&
+          got.shadow == s.shadow);
+    lines->setValue(150.0);
+    CHECK(spy.count() == 2 &&
+          std::abs(spy.last().at(0).value<title::Style>().lineSpacing - 1.5f) < 1e-6f);
+    box->click();
+    corners->setValue(20);
+    got = spy.last().at(0).value<title::Style>();
+    CHECK(got.box.on && std::abs(got.box.cornerRadius - 0.2f) < 1e-6f && got.outline.on);
+    look->setNoTitle(QString());
+    CHECK(!outline->isEnabled() && !corners->isEnabled());
+}
+
 // The Title tab: the Text section reflects a title without emitting and
 // reports edits; Position and timing is the overlay panel without a frame,
 // its size the text's.
@@ -467,8 +511,26 @@ void testTitleTab(SettingsSidebar &bar)
     } else {
         CHECK(font);
     }
+    // Alignment: one of three, reported as the style's.
+    auto *left = find<QPushButton>(text, "titleAlignLeft");
+    auto *centre = find<QPushButton>(text, "titleAlignCentre");
+    if (left && centre) {
+        CHECK(centre->isChecked() && !left->isChecked());
+        const qsizetype before = spy.count();
+        left->click();
+        CHECK(spy.count() == before + 1 && !centre->isChecked() &&
+              spy.last().at(0).value<title::Style>().align == title::Align::Left);
+    }
+    // Each section reports the whole style, keeping what the other set.
+    s.box.on = true;
+    s.box.padding = 0.4f;
+    text->setTitle(s);
+    bold->click();
+    CHECK(spy.last().at(0).value<title::Style>().box == s.box);
     text->setNoTitle(QString());
-    CHECK(!edit->isEnabled());
+    CHECK(!edit->isEnabled() && !left->isEnabled());
+
+    testTitleLook(bar);
 
     OverlayPanel::State st;
     st.layer = st.layerCount = 1;

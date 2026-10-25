@@ -1234,6 +1234,26 @@ void testTitle(const Ctx &c)
         duration->setValue(8.0);
     clip = c.timeline->trackClipById(clipId);
     CHECK(clip && clip->startMs == 500 && clip->timelineDurationMs() == 8000);
+    // Left-aligned from the Text section: the text stays where it was (its
+    // position becomes the text's left edge), and one undo puts both back.
+    auto *left = find<QPushButton>(c.w, "titleAlignLeft");
+    QAction *undo = action(c, "undoAction");
+    if (clip && left && undo) {
+        settle();
+        const float x0 = clip->look.centerX;
+        left->click();
+        clip = c.timeline->trackClipById(clipId);
+        CHECK(clip && clip->title->align == title::Align::Left && clip->look.centerX < x0 - 0.01f);
+        undo->trigger();
+        clip = nullptr; // undo rebuilds the timeline, ids included
+        for (int i = 0; i < c.timeline->trackCount(); ++i)
+            for (const TrackClip &tc : c.timeline->trackAt(i).clips)
+                if (tc.isTitle())
+                    clip = &tc;
+        CHECK(clip && clip->title->align == title::Align::Centre && clip->look.centerX == x0);
+        if (clip)
+            clipId = clip->id;
+    }
     // The Overlay tab shows overlay videos only.
     auto *overlayX = find<QDoubleSpinBox>(c.w, "overlayDuration");
     CHECK(overlayX && !overlayX->isEnabled());

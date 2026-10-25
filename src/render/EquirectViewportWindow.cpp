@@ -524,6 +524,7 @@ void EquirectViewportWindow::mousePressEvent(QMouseEvent *event)
                 if (d.clipId == clipId) {
                     m_insetDragCx0 = d.look.centerX;
                     m_insetDragCy0 = d.look.centerY;
+                    m_insetDragAnchorDx = d.anchorDx;
                 }
             m_insetDragClipId = clipId;
             m_insetDragStart = event->position();
@@ -615,7 +616,7 @@ void EquirectViewportWindow::mouseReleaseEvent(QMouseEvent *event)
         float cx = 0.0f, cy = 0.0f;
         {
             QMutexLocker lock(&m_insetMutex);
-            cx = m_overrideCx;
+            cx = m_overrideCx - m_insetDragAnchorDx;
             cy = m_overrideCy;
             if (m_insetDragMoved) {
                 m_clearOverride = true; // until the model's position comes back

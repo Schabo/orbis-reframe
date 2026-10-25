@@ -106,8 +106,12 @@ public:
     //   borderWidth, borderColor "#rrggbb"}, insetKeys [{tMs, centerX,
     //   centerY, width, opacity, ease}].
     //   A title (TrackClip::title): no source, sourceWidth or
-    //   sourceHeight; title {text, font, bold, italic, color "#rrggbb"}
-    //   instead, and its inset / key widths are the text size.
+    //   sourceHeight; title {text, font, bold, italic, color "#rrggbb";
+    //   optional: align "left" | "right" (else centred), lineSpacing,
+    //   letterSpacing, outline {on, width, color}, shadow {on, color,
+    //   opacity, distance, blur}, box {on, color, opacity, padding,
+    //   cornerRadius}} instead (title::Style; each written when it isn't the
+    //   default), and its inset / key widths are the text size.
     // "transitions" in "timeline": [{cut: the index of the clip before it,
     //   type: "crossfade", durationMs}] (Transition), absent when none.
     // Version 8 (0.1.0) had one "stabilization" object at the top level for
@@ -132,8 +136,12 @@ public:
     // distortion} instead of fovY), written whenever a clip has a key; a
     // key from an older file takes the diagonal that frames what its
     // rectilinear fovY framed, at the output's or its pane's aspect, and
-    // the automatic distortion.
-    static constexpr int kFormatVersion = 17;
+    // the automatic distortion. Version 18 added a title's look (its
+    // alignment, spacing, outline, shadow and box), written only when a
+    // title shows one: an older build would draw it plain, and a left- or
+    // right-aligned one in the wrong place.
+    static constexpr int kFormatVersion = 18;
+    static constexpr int kTitleLookFormatVersion = 18;
     static constexpr int kWideViewFormatVersion = 17;
     static constexpr int kSplitFormatVersion = 16;
     static constexpr int kDirectionLockFormatVersion = 15;

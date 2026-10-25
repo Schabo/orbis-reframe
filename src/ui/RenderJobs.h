@@ -39,6 +39,13 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
                                                 const PrivacyBlur &privacy);
 
+// How far a title's position has to move, in its text size times output
+// widths (Timeline::setTrackClipTitle's shiftPerSize), for its text to stay
+// where it is as its style changes from `from` to `to`: 0 unless the
+// alignment changes, since the alignment says which point of the text the
+// position pins (title::drawnLook).
+double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH);
+
 // What a transition shows besides the main track, in timeline order. A
 // crossfade: over the first half of it the clip after the cut, from before
 // its trim-in, blending in to half; over the second half the clip before

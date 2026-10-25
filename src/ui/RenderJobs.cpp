@@ -382,6 +382,7 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
                 f.stillW = pic.width;
                 f.stillH = pic.height;
                 f.stillWidthPerSize = pic.widthPerFontPx * outH / outW;
+                f.stillAnchorX = pic.anchorX;
                 f.aspect = double(pic.width) / pic.height;
                 f.frame = {};
             }
@@ -389,6 +390,22 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         }
     }
     return clips;
+}
+
+double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH)
+{
+    if (from.align == to.align || outW <= 0 || outH <= 0)
+        return 0.0;
+    // The picture's shape doesn't depend on its size: any size will do.
+    constexpr int kFontPx = 200;
+    const titlerender::Picture a = titlerender::render(from, kFontPx);
+    const titlerender::Picture b = titlerender::render(to, kFontPx);
+    if (a.empty() || b.empty())
+        return 0.0;
+    const double aspect = double(outH) / outW;
+    // Keep the drawn centre: x + (0.5 - anchor) * widthPerSize the same.
+    return (0.5 - a.anchorX) * a.widthPerFontPx * aspect -
+           (0.5 - b.anchorX) * b.widthPerFontPx * aspect;
 }
 
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
@@ -446,13 +463,13 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
                 return keys.isEmpty() ? look : keys.sample(sourceMs);
             };
             if (!pic.empty()) {
-                // The look's width is the text size: the picture's is that
-                // much wider.
+                // The look's width is the text size, its centreX the text's
+                // anchor: placed as playback places it.
                 const double widthPerSize = pic.widthPerFontPx * outH / outW;
-                j.lookAt = [look = c.look, keys = c.insetKeys, widthPerSize](int64_t sourceMs) {
-                    inset::Look l = keys.isEmpty() ? look : keys.sample(sourceMs);
-                    l.width = float(l.width * widthPerSize);
-                    return l;
+                j.lookAt = [look = c.look, keys = c.insetKeys, widthPerSize,
+                            anchorX = pic.anchorX](int64_t sourceMs) {
+                    return title::drawnLook(keys.isEmpty() ? look : keys.sample(sourceMs),
+                                            widthPerSize, anchorX);
                 };
                 j.still = pic.rgba;
                 j.stillW = pic.width;
