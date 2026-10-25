@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 // The viewport window: the state the renderer draws (pose, frames, insets,
@@ -28,6 +29,27 @@ constexpr double kWheelFovStep = 0.035;            // field of view change per w
 QVulkanWindowRenderer *EquirectViewportWindow::createRenderer()
 {
     return new EquirectViewportRenderer(this);
+}
+
+void EquirectViewportWindow::exposeEvent(QExposeEvent *event)
+{
+    // QVulkanWindow creates its device and swapchain here. Shown and sized,
+    // it is ready afterwards unless one of them failed. (A device lost while
+    // being created is the one failure Qt tries again, in 2 s; it's rare
+    // enough that the message for it stands.)
+    QVulkanWindow::exposeEvent(event);
+    if (isExposed() && !size().isEmpty() && !isValid())
+        ReportVulkanFailure(device() ? "couldn't create the swapchain"
+                                     : "couldn't create the Vulkan device");
+}
+
+void EquirectViewportWindow::ReportVulkanFailure(const char *what)
+{
+    if (m_vulkanFailed.exchange(true))
+        return;
+    std::fprintf(stderr, "[viewport] %s (is the graphics memory full?); the viewport stops\n",
+                 what);
+    QMetaObject::invokeMethod(this, &EquirectViewportWindow::vulkanFailed, Qt::QueuedConnection);
 }
 
 void EquirectViewportWindow::SetFrame(int width, int height, std::vector<uint8_t> rgba,

@@ -80,6 +80,12 @@ public:
     void SetLensFrame(std::shared_ptr<const render::LensFrame> frame,
                       const float stab[9] = nullptr, std::vector<RegionOutline> outlines = {},
                       const FrameView &view = {});
+    // The viewport can't draw: QVulkanWindow couldn't create its device or
+    // build its swapchain -- with a GPU present, most often because the
+    // graphics memory is full. QVulkanWindow doesn't try again after that,
+    // so this logs `what` and emits vulkanFailed once. Any thread.
+    void ReportVulkanFailure(const char *what);
+
     // Whether this viewport can import lens frames (its Vulkan device has
     // external-memory FD import on the same GPU). False until the renderer
     // has initialised, and after a failed import. Thread-safe.
@@ -254,6 +260,9 @@ signals:
     // physicalDeviceProperties() and supportedDeviceExtensions() are valid.
     // Again after a device loss.
     void vulkanReady();
+    // The viewport couldn't start Vulkan, or couldn't rebuild its swapchain
+    // (ReportVulkanFailure): it draws nothing from here on. Once; queued.
+    void vulkanFailed();
     // The user is (true) / is no longer (false) dragging the view. MainWindow
     // suppresses reframe-path pose updates while a drag is in progress so the
     // authored path doesn't fight the user's hand.
@@ -280,6 +289,7 @@ signals:
     void activePaneChanged(int pane);
 
 protected:
+    void exposeEvent(QExposeEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
@@ -309,6 +319,7 @@ private:
     std::vector<uint8_t> m_pendingRgba;
     std::shared_ptr<const render::LensFrame> m_pendingLens; // set => a lens frame is pending
     std::atomic<bool> m_lensSupported{false};
+    std::atomic<bool> m_vulkanFailed{false};
     std::atomic<int> m_framesHanded{0};
     std::atomic<int> m_framesTaken{0};
     int m_pendingWidth = 0;

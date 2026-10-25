@@ -183,14 +183,33 @@ QWidget *MainWindow::createViewport(QVulkanInstance *vulkanInstance)
     // that it can't start -- and a blank widget holds its place.
     QWidget *viewportContainer = nullptr;
     if (vulkanInstance) {
-        viewportContainer = QWidget::createWindowContainer(m_viewport, this);
+        // A viewport that can't start Vulkan stays grey for good (Qt doesn't
+        // try again), so its place says why instead. Hiding the window also
+        // releases what Vulkan it has.
+        auto *stack = new QStackedWidget(this);
+        QWidget *container = QWidget::createWindowContainer(m_viewport, stack);
+        container->setFocusPolicy(Qt::StrongFocus);
+        stack->addWidget(container);
+        auto *failed = new QLabel(
+            tr("The viewport can't show the picture: the graphics card's memory is probably "
+               "full.\n\n"
+               "Save the project, close other programs that use the graphics card (another "
+               "orbis-reframe, games, a web browser) and start orbis-reframe again."),
+            stack);
+        failed->setWordWrap(true);
+        failed->setAlignment(Qt::AlignCenter);
+        failed->setContentsMargins(32, 32, 32, 32);
+        stack->addWidget(failed);
+        connect(m_viewport, &EquirectViewportWindow::vulkanFailed, stack,
+                [stack, failed] { stack->setCurrentWidget(failed); });
+        viewportContainer = stack;
     } else {
         m_unshownViewport.reset(m_viewport);
         viewportContainer = new QWidget(this);
+        viewportContainer->setFocusPolicy(Qt::StrongFocus);
     }
     viewportContainer->setObjectName(QStringLiteral("viewport"));
     viewportContainer->setMinimumSize(320, 160);
-    viewportContainer->setFocusPolicy(Qt::StrongFocus);
     return viewportContainer;
 }
 

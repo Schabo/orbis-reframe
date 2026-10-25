@@ -305,6 +305,17 @@ void EquirectViewportRenderer::statsFrameEnd(render::framestats::Clock::time_poi
 
 void EquirectViewportRenderer::startNextFrame()
 {
+    // A swapchain rebuild (a resize) that ran out of memory half-way leaves
+    // QVulkanWindow not ready, yet it still starts the frame -- with no
+    // framebuffer, semaphores or fence. Drawing would use the null
+    // framebuffer, and frameReady() would submit and present with the null
+    // semaphores; both crash. So neither: the frame stays pending, Qt starts
+    // no other, and the window is taken down (vulkanFailed), which releases
+    // the swapchain.
+    if (!m_window->isValid()) {
+        m_window->ReportVulkanFailure("couldn't rebuild the swapchain");
+        return;
+    }
     const auto statsStart = render::framestats::Clock::now();
     VkCommandBuffer commandBuffer = m_window->currentCommandBuffer();
     ++m_frameCounter;
