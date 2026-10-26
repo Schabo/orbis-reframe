@@ -77,9 +77,10 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     m_insert = new QPushButton(tr("Insert"), this);
     m_insert->setObjectName(QStringLiteral("titleInsert"));
     m_insert->setToolTip(tr("Put the time or the date the picture under the title was "
-                            "recorded into the text, where the cursor is. The text shows it "
-                            "as a field in braces; the picture shows its value, which "
-                            "follows the clip under the title as it plays."));
+                            "recorded, or the speed, altitude or heading from its GPS, into "
+                            "the text, where the cursor is. The text shows it as a field in "
+                            "braces; the picture shows its value, which follows the clip "
+                            "under the title as it plays."));
     auto *insertMenu = new QMenu(m_insert);
     const struct {
         const char *name;
@@ -89,8 +90,17 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
         {"titleInsertTime", tr("Time"), title::kTimeField},
         {"titleInsertTimeSeconds", tr("Time with seconds"), title::kTimeSecondsField},
         {"titleInsertDate", tr("Date"), title::kDateField},
+        {nullptr, {}, {}},
+        {"titleInsertSpeed", tr("Speed"), title::kSpeedField},
+        {"titleInsertAltitude", tr("Altitude"), title::kAltitudeField},
+        {"titleInsertHeading", tr("Heading in degrees"), title::kHeadingField},
+        {"titleInsertCompass", tr("Heading as a compass point"), title::kCompassField},
     };
     for (const auto &f : fields) {
+        if (!f.name) {
+            insertMenu->addSeparator();
+            continue;
+        }
         QAction *a = insertMenu->addAction(f.text + QStringLiteral("\t") + f.field);
         a->setObjectName(QLatin1String(f.name));
         connect(a, &QAction::triggered, this, [this, field = f.field] {
@@ -115,6 +125,22 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
                            "12-hour. Saved with the title, so the export looks the same on "
                            "any computer when it isn't the system's."));
     form()->addRow(tr("Clock"), m_hours);
+    m_speedUnit = new QComboBox(this);
+    m_speedUnit->setObjectName(QStringLiteral("titleSpeedUnit"));
+    m_speedUnit->addItem(tr("km/h"));
+    m_speedUnit->addItem(tr("mph"));
+    m_speedUnit->setToolTip(tr("The unit the speed in the text is written in. Saved with the "
+                               "title; a new title takes the one this computer's region "
+                               "uses."));
+    form()->addRow(tr("Speed in"), m_speedUnit);
+    m_altitudeUnit = new QComboBox(this);
+    m_altitudeUnit->setObjectName(QStringLiteral("titleAltitudeUnit"));
+    m_altitudeUnit->addItem(tr("metres"));
+    m_altitudeUnit->addItem(tr("feet"));
+    m_altitudeUnit->setToolTip(tr("The unit the altitude in the text is written in. Saved with "
+                                  "the title; a new title takes the one this computer's "
+                                  "region uses."));
+    form()->addRow(tr("Altitude in"), m_altitudeUnit);
     m_clockNote = new QLabel(this);
     m_clockNote->setObjectName(QStringLiteral("titleClockNote"));
     m_clockNote->setWordWrap(true);
@@ -182,6 +208,8 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     connect(m_text, &QPlainTextEdit::textChanged, this, edited);
     connect(m_text, &QPlainTextEdit::textChanged, this, &TitleTextPanel::showHours);
     connect(m_hours, &QComboBox::activated, this, edited);
+    connect(m_speedUnit, &QComboBox::activated, this, edited);
+    connect(m_altitudeUnit, &QComboBox::activated, this, edited);
     connect(m_font, &QComboBox::activated, this, [this, edited](int index) {
         fontPicked(index);
         edited();
@@ -211,6 +239,9 @@ title::Style TitleTextPanel::current() const
     t.italic = m_italic->isChecked();
     t.rgb = m_rgb;
     t.hours = static_cast<title::Hours>(std::max(0, m_hours->currentIndex()));
+    t.units.speed = static_cast<title::SpeedUnit>(std::max(0, m_speedUnit->currentIndex()));
+    t.units.altitude =
+        static_cast<title::AltitudeUnit>(std::max(0, m_altitudeUnit->currentIndex()));
     for (int i = 0; i < 3; ++i)
         if (m_align[i]->isChecked())
             t.align = static_cast<title::Align>(i);
@@ -241,6 +272,10 @@ void TitleTextPanel::setTitle(const title::Style &s, const QString &clockNote)
     m_italic->setChecked(s.italic);
     m_hours->setCurrentIndex(static_cast<int>(s.hours));
     m_hours->setEnabled(true);
+    m_speedUnit->setCurrentIndex(static_cast<int>(s.units.speed));
+    m_speedUnit->setEnabled(true);
+    m_altitudeUnit->setCurrentIndex(static_cast<int>(s.units.altitude));
+    m_altitudeUnit->setEnabled(true);
     showHours();
     m_align[static_cast<int>(s.align)]->setChecked(true);
     setColor(s.rgb);
@@ -261,6 +296,8 @@ void TitleTextPanel::setNoTitle(const QString &hint)
     m_clockNote->clear();
     m_clockNote->setVisible(false);
     m_hours->setEnabled(false);
+    m_speedUnit->setEnabled(false);
+    m_altitudeUnit->setEnabled(false);
     showHours();
     setHint(hint.isEmpty() ? tr("Select a title on the timeline, or add one from the Overlays tab "
                                 "on the left: drag it onto the timeline or double-click it.")
@@ -270,7 +307,10 @@ void TitleTextPanel::setNoTitle(const QString &hint)
 
 void TitleTextPanel::showHours()
 {
-    form()->setRowVisible(m_hours, title::hasTimeField(m_text->toPlainText()));
+    const QString text = m_text->toPlainText();
+    form()->setRowVisible(m_hours, title::hasTimeField(text));
+    form()->setRowVisible(m_speedUnit, text.contains(title::kSpeedField));
+    form()->setRowVisible(m_altitudeUnit, text.contains(title::kAltitudeField));
 }
 
 void TitleTextPanel::fillFonts(const QString &family)

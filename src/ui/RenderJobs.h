@@ -35,37 +35,49 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline);
 // title's clock reads. Looked up on the GUI thread (the files' media
 // information), only for the main track's clips.
 using RecordedTimes = QHash<QString, QDateTime>;
+// What titles' fields read from the main track's files, by path: when each
+// was recorded, and its GPS telemetry (camera::ReadClipGps). Either is
+// gathered only when a title has a field that reads it.
+struct FieldSources {
+    RecordedTimes recorded;
+    title::Clock::Telemetries gps;
+};
 
 // The overlay clips (hidden tracks and missing files left out), bottom-most
 // first: for playback's InsetFeed, and for the export / a screenshot. Under
 // them, the flat main-track clips (ClipItem::flat) as full-frame layers,
 // fitted into an output of outW x outH, and over those each transition's
 // other clip (transitionLayers): a 360 clip's view through `privacy`'s
-// blur, or a flat clip. A title's clock fields read `recorded`.
+// blur, or a flat clip. A title's fields read `sources`.
 std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
                                        const PrivacyBlur &privacy,
-                                       const RecordedTimes &recorded = {});
+                                       const FieldSources &sources = {});
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
                                                 const PrivacyBlur &privacy,
-                                                const RecordedTimes &recorded = {});
+                                                const FieldSources &sources = {});
 
 // Which file plays where on the timeline, and how far into it: each
 // main-track clip's span with its trim and speed.
 SourceTimeMap sourceTimeMap(const Timeline &timeline);
-// The main track's recording times as a title's clock: sourceTimeMap with
-// each file's recording start (`recorded`, invalid if not there).
-title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded);
-// Does any title on the timeline have clock fields (title::hasFields)? Only
-// then are the recording times worth looking up.
+// What the titles' fields read along the main track: sourceTimeMap with
+// each file's recording start and GPS (`sources`; a file not there has
+// none).
+title::Clock titleClock(const Timeline &timeline, const FieldSources &sources);
+// Does any title on the timeline have time or date fields
+// (title::hasClockFields)? Only then are the recording times worth looking
+// up.
 bool anyTitleClock(const Timeline &timeline);
+// ... GPS fields (title::hasGpsFields)? Only then are the GPS tracks read.
+bool anyTitleGps(const Timeline &timeline);
 
 // How far a title's position has to move, in its text size times output
 // widths (Timeline::setTrackClipTitle's shiftPerSize), for its text to stay
 // where it is as its style changes from `from` to `to`: 0 unless the
 // alignment changes, since the alignment says which point of the text the
-// position pins (title::drawnLook). Their clock fields read `at`.
+// position pins (title::drawnLook). Their fields read `at` and `gps`.
 double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH,
-                        const QDateTime &at = QDateTime());
+                        const QDateTime &at = QDateTime(),
+                        const std::optional<Telemetry::Values> &gps = std::nullopt);
 
 // What a transition shows besides the main track, in timeline order. A
 // crossfade: over the first half of it the clip after the cut, from before

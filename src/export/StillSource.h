@@ -40,7 +40,9 @@ public:
     // The same if it is ready, else an empty Still; never makes one.
     virtual Still ready(int64_t localMs) = 0;
     // The first clip-local time after `localMs` whose picture differs from
-    // the one at `localMs`, or -1 if it never changes again.
+    // the one at `localMs`, or -1 if it never changes again -- or, for a
+    // source that can only look a little ahead (a title's GPS fields), not
+    // within that. Only for having the next picture ready in time.
     virtual int64_t nextChange(int64_t localMs) = 0;
 };
 

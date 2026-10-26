@@ -5,7 +5,7 @@ date. Titles sit on overlay tracks, like picture-in-picture videos
 ([Picture in picture](picture-in-picture.md)), and are placed, keyframed and faded the same way.
 They can also slide in and out, pop up, or type themselves on letter by
 letter, and show the time of day the video was recorded, running as it
-plays.
+plays, or the speed, altitude and heading from the camera's GPS.
 
 ![A title with a drop shadow in the viewport, the Overlays tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -38,6 +38,9 @@ lands in the picture. An animated one plays its animation while the mouse is ove
 | **Date** | The date in the lower right. |
 | **Clock** | The time of day in the lower right, running as the clip plays. |
 | **Date and place** | The date and, below it, *Place* to type over, in the lower left. |
+| **Speed** | The speed in the lower left, running as the clip plays. |
+| **Speed and altitude** | The speed and, below it, the altitude, in the lower left. |
+| **Direction** | The direction of travel at the top in the middle, as a compass point and in degrees, on a rounded box. |
 
 To add one:
 
@@ -61,6 +64,12 @@ date changes with it. In the text they are fields, `{date}` and `{time}`;
 see [The recording time as a clock](#the-recording-time-as-a-clock).
 orbis-reframe doesn't look up places: type the place yourself.
 
+The **Speed**, **Speed and altitude** and **Direction** tiles show values
+from the GPS track the camera recorded with the clip, following the video
+the same way; see [Speed, altitude and heading from the
+GPS](#speed-altitude-and-heading-from-the-gps). On the tile they show
+sample values.
+
 A tile is only where a title starts. Once added it is an ordinary title:
 everything below can be changed, and nothing ties it to its tile.
 
@@ -74,8 +83,10 @@ itself (and back again when you select a PiP). The **Text** section:
 | Setting | What it does |
 |---|---|
 | **Text** | The title's text. `Enter` starts a new line. The title changes as you type. |
-| **Insert** | Puts the recording time or date into the text where the cursor is: **Time**, **Time with seconds** or **Date**. See [The recording time as a clock](#the-recording-time-as-a-clock). |
+| **Insert** | Puts the recording time or date into the text where the cursor is: **Time**, **Time with seconds** or **Date** (see [The recording time as a clock](#the-recording-time-as-a-clock)); or a value from the camera's GPS: **Speed**, **Altitude**, **Heading in degrees** or **Heading as a compass point** (see [Speed, altitude and heading from the GPS](#speed-altitude-and-heading-from-the-gps)). |
 | **Clock** | Shown while the text has a time in it: how it writes the hours. **As the system writes it**, **24-hour** or **12-hour (AM / PM)**. |
+| **Speed in** | Shown while the text has a speed in it: **km/h** or **mph**. |
+| **Altitude in** | Shown while the text has an altitude in it: **metres** or **feet**. |
 | **Font** | The typeface, picked from a list of every font installed on your computer, each shown in its own face. The three fonts you picked last are at the top. Type a name's first letters to jump to it. A project made on another computer may use a font that isn't installed here: it is listed as *(not installed)*, kept, and drawn with a similar font until you pick another. |
 | **Style** | **Bold** and **Italic**; click to switch them on or off. |
 | **Colour** | Click to choose the text's colour. |
@@ -123,6 +134,46 @@ or action-cam video: the recording time is read only from the 360 cameras
 orbis-reframe knows), the time
 shows `--:--` (`--:--:--` with seconds) and the date nothing. The **Text**
 section then says which clips those are.
+
+## Speed, altitude and heading from the GPS
+
+The Insta360 X5 records a GPS track in the clip's file while a GPS source
+is connected to it, such as Insta360's GPS remote. A title can show values
+from it, as fields like the clock's:
+
+| Field | Shows | Example |
+|---|---|---|
+| `{speed}` | The speed over the ground | *72 km/h* |
+| `{altitude}` | The height above sea level | *120 m* |
+| `{heading}` | The direction of travel in degrees, clockwise from north | *45°* |
+| `{heading:compass}` | The direction of travel as a compass point: N, NE, E, SE, S, SW, W or NW | *NE* |
+
+Each field writes its unit after the number. Speed and altitude are in
+the units the **Speed in** and **Altitude in** settings below the text
+pick (**km/h** or **mph**, **metres** or **feet**), saved with the title.
+A new title starts with the units your computer's region uses: miles and
+feet where it measures in imperial units, else kilometres and metres.
+
+The values follow the video like the clock: at every moment they come
+from the clip under the title at that moment, through trims, speed changes
+and cuts. The camera fixes its position about once a second; between two
+fixes the values run smoothly from one to the next, so a speed counts up
+or down instead of jumping. Numbers are whole: the speed in km/h or mph,
+the altitude in metres or feet, the heading in degrees. Below a walking
+pace the speed shows 0, so a bike standing still doesn't flicker between
+0 and 1. While standing still the GPS doesn't know a direction: the
+heading keeps the last one it had.
+
+Where there is no GPS, a field shows `--` with its unit (*-- km/h*):
+
+- a clip from a camera or phone that orbis-reframe reads no GPS from;
+- a clip recorded without a GPS source connected;
+- a stretch where the camera lost the signal for more than about 3
+  seconds, in a tunnel for example. The GPS track can also start a moment
+  after the video, or stop a moment before it.
+
+The **Text** section then says which clips under the title have no GPS
+there, or have it for only part of the time.
 
 ## Outline, shadow, box and spacing
 

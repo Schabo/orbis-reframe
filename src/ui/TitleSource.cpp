@@ -13,15 +13,17 @@ TitleSource::TitleSource(title::Style style, inset::Motion motion, int64_t spanM
       m_types(motion.in.kind == inset::Motion::Kind::Type ||
               motion.out.kind == inset::Motion::Kind::Type),
       m_clock(std::move(clock)), m_startMs(startMs), m_fields(title::hasFields(m_style.text)),
+      m_gpsFields(title::hasGpsFields(m_style.text)),
       m_clockStepS(m_style.text.contains(title::kTimeSecondsField) ? 1 : 60)
 {
 }
 
 QString TitleSource::textAt(int64_t localMs) const
 {
-    return title::withFields(m_style.text,
-                             m_fields ? m_clock.at(m_startMs + localMs) : QDateTime(), QLocale(),
-                             m_style.hours);
+    const int64_t t = m_startMs + localMs;
+    return title::withFields(m_style.text, m_fields ? m_clock.at(t) : QDateTime(), QLocale(),
+                             m_style.hours,
+                             m_gpsFields ? m_clock.gpsAt(t) : std::nullopt, m_style.units);
 }
 
 exportpipe::Still TitleSource::still(int64_t localMs, int visible, bool make)
@@ -69,9 +71,25 @@ int64_t TitleSource::nextTextChange(int64_t localMs) const
 {
     if (!m_fields)
         return -1;
+    const QString now = textAt(localMs);
+    if (m_gpsFields) {
+        // GPS values run smoothly, with no tick to jump to: looked for a
+        // step at a time, only a little ahead -- playback asks again as it
+        // goes, and has the change ready before it shows.
+        const int64_t end = std::min(m_spanMs, localMs + kGpsLookaheadMs);
+        for (int64_t t = localMs + kGpsStepMs; t <= end; t += kGpsStepMs)
+            if (textAt(t) != now) {
+                int64_t lo = t - kGpsStepMs, hi = t; // same at lo, differs at hi
+                while (hi - lo > 1) {
+                    const int64_t mid = lo + (hi - lo) / 2;
+                    (textAt(mid) == now ? lo : hi) = mid;
+                }
+                return hi;
+            }
+        return -1;
+    }
     // The clock ticks each second or minute, but the text needn't change
     // with it (a date at a new minute).
-    const QString now = textAt(localMs);
     for (int64_t t = m_startMs + localMs;;) {
         t = m_clock.nextTick(t, m_clockStepS);
         if (t < 0 || t - m_startMs > m_spanMs)

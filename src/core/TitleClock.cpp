@@ -9,19 +9,86 @@ namespace title {
 
 namespace {
 
-enum class Field { None, Time, TimeSeconds, Date };
+enum class Field { None, Time, TimeSeconds, Date, Speed, Altitude, Heading, Compass };
 
 // The field starting at `i` (a '{'), and how long it is.
 Field fieldAt(const QString &text, qsizetype i, qsizetype *length)
 {
     for (const auto &[name, field] : {std::pair{&kTimeField, Field::Time},
                                       std::pair{&kTimeSecondsField, Field::TimeSeconds},
-                                      std::pair{&kDateField, Field::Date}})
+                                      std::pair{&kDateField, Field::Date},
+                                      std::pair{&kSpeedField, Field::Speed},
+                                      std::pair{&kAltitudeField, Field::Altitude},
+                                      std::pair{&kHeadingField, Field::Heading},
+                                      std::pair{&kCompassField, Field::Compass}})
         if (QStringView(text).mid(i).startsWith(*name)) {
             *length = name->size();
             return field;
         }
     return Field::None;
+}
+
+bool isGps(Field f)
+{
+    return f == Field::Speed || f == Field::Altitude || f == Field::Heading ||
+           f == Field::Compass;
+}
+
+// Is there a field in `text` that `wanted` picks?
+template <typename Pred>
+bool anyField(const QString &text, Pred wanted)
+{
+    for (qsizetype i = 0; i < text.size(); ++i) {
+        if (text.at(i) != QLatin1Char('{'))
+            continue;
+        if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('{')) {
+            ++i; // an escaped brace
+            continue;
+        }
+        qsizetype length = 0;
+        const Field f = fieldAt(text, i, &length);
+        if (f != Field::None && wanted(f))
+            return true;
+    }
+    return false;
+}
+
+// Below this a GPS reads as standing still: its jitter at rest stays under
+// it (up to 0.37 m/s on the X5's samples), a walk is above.
+constexpr double kStillMps = 0.5;
+
+QString gpsValue(Field f, const std::optional<Telemetry::Values> &gps, Units units,
+                 const QLocale &locale)
+{
+    const QString none = QStringLiteral("--");
+    switch (f) {
+    case Field::Speed: {
+        const bool mph = units.speed == SpeedUnit::Mph;
+        const QString unit = mph ? QStringLiteral(" mph") : QStringLiteral(" km/h");
+        if (!gps)
+            return none + unit;
+        const double v = gps->speedMps < kStillMps ? 0.0 : gps->speedMps * (mph ? 2.236936 : 3.6);
+        return locale.toString(qRound(v)) + unit;
+    }
+    case Field::Altitude: {
+        const bool feet = units.altitude == AltitudeUnit::Feet;
+        const QString unit = feet ? QStringLiteral(" ft") : QStringLiteral(" m");
+        if (!gps)
+            return none + unit;
+        return locale.toString(qRound(gps->altitudeM / (feet ? 0.3048 : 1.0))) + unit;
+    }
+    case Field::Heading:
+        if (!gps || !gps->headingDeg)
+            return none + QChar(0x00b0);
+        return locale.toString(qRound(*gps->headingDeg) % 360) + QChar(0x00b0);
+    case Field::Compass: {
+        if (!gps || !gps->headingDeg)
+            return none;
+        static const char *const points[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        return QLatin1String(points[qRound(*gps->headingDeg / 45.0) % 8]);
+    }
+    default: return {};
+    }
 }
 
 // A time format (QLocale's) with its hours as `hours` says: 24-hour drops
@@ -103,22 +170,28 @@ qint64 floorDiv(qint64 a, qint64 b)
 
 bool hasFields(const QString &text)
 {
-    for (qsizetype i = 0; i < text.size(); ++i) {
-        if (text.at(i) != QLatin1Char('{'))
-            continue;
-        if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('{')) {
-            ++i; // an escaped brace
-            continue;
-        }
-        qsizetype length = 0;
-        if (fieldAt(text, i, &length) != Field::None)
-            return true;
-    }
-    return false;
+    return anyField(text, [](Field) { return true; });
+}
+
+bool hasClockFields(const QString &text)
+{
+    return anyField(text, [](Field f) { return !isGps(f); });
+}
+
+bool hasGpsFields(const QString &text)
+{
+    return anyField(text, isGps);
+}
+
+Units defaultUnits(const QLocale &locale)
+{
+    if (locale.measurementSystem() == QLocale::MetricSystem)
+        return {};
+    return {SpeedUnit::Mph, AltitudeUnit::Feet};
 }
 
 QString withFields(const QString &text, const QDateTime &at, const QLocale &locale,
-                   Hours hours)
+                   Hours hours, const std::optional<Telemetry::Values> &gps, Units units)
 {
     if (!text.contains(QLatin1Char('{')))
         return text;
@@ -137,7 +210,8 @@ QString withFields(const QString &text, const QDateTime &at, const QLocale &loca
             continue;
         }
         qsizetype length = 0;
-        switch (fieldAt(text, i, &length)) {
+        const Field f = fieldAt(text, i, &length);
+        switch (f) {
         case Field::None: out += ch; continue;
         case Field::Time:
             out += at.isValid() ? locale.toString(at.time(), timeFormat)
@@ -151,6 +225,10 @@ QString withFields(const QString &text, const QDateTime &at, const QLocale &loca
             if (at.isValid())
                 out += locale.toString(at.date(), QLocale::LongFormat);
             break;
+        case Field::Speed:
+        case Field::Altitude:
+        case Field::Heading:
+        case Field::Compass: out += gpsValue(f, gps, units, locale); break;
         }
         i += length - 1;
     }
@@ -159,19 +237,7 @@ QString withFields(const QString &text, const QDateTime &at, const QLocale &loca
 
 bool hasTimeField(const QString &text)
 {
-    for (qsizetype i = 0; i < text.size(); ++i) {
-        if (text.at(i) != QLatin1Char('{'))
-            continue;
-        if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('{')) {
-            ++i;
-            continue;
-        }
-        qsizetype length = 0;
-        const Field f = fieldAt(text, i, &length);
-        if (f == Field::Time || f == Field::TimeSeconds)
-            return true;
-    }
-    return false;
+    return anyField(text, [](Field f) { return f == Field::Time || f == Field::TimeSeconds; });
 }
 
 QString escapeBraces(const QString &text)
@@ -180,11 +246,21 @@ QString escapeBraces(const QString &text)
     return out.replace(QLatin1Char('{'), QStringLiteral("{{"));
 }
 
-Clock::Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded)
+Clock::Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded, const Telemetries &gps)
     : m_map(std::move(map))
 {
-    for (const SourceTimeMap::Span &s : m_map.spans())
+    for (const SourceTimeMap::Span &s : m_map.spans()) {
         m_recorded.push_back(recorded.value(s.path));
+        m_gps.push_back(gps.value(s.path));
+    }
+}
+
+std::optional<Telemetry::Values> Clock::gpsAt(qint64 timelineMs) const
+{
+    const int i = m_map.spanAt(timelineMs);
+    if (i < 0 || !m_gps[size_t(i)])
+        return std::nullopt;
+    return m_gps[size_t(i)]->at(double(m_map.sourceMs(i, timelineMs)));
 }
 
 qint64 Clock::baseMs(int i) const

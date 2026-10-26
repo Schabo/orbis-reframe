@@ -63,6 +63,17 @@ struct Box {
 // locale does, or always 24-hour / 12-hour.
 enum class Hours { System, H24, H12 };
 
+// The units a title's GPS fields write their values in (title::withFields).
+// A new title takes the system's (defaultUnits); a plain Style's are metric,
+// so a project reads the same on any computer.
+enum class SpeedUnit { Kmh, Mph };
+enum class AltitudeUnit { Metres, Feet };
+struct Units {
+    SpeedUnit speed = SpeedUnit::Kmh;
+    AltitudeUnit altitude = AltitudeUnit::Metres;
+    bool operator==(const Units &) const = default;
+};
+
 struct Style {
     QString text;
     QString font = QStringLiteral("Sans Serif"); // family
@@ -76,6 +87,7 @@ struct Style {
     Shadow shadow;
     Box box;
     Hours hours = Hours::System;
+    Units units;
 
     static constexpr float kMinLineSpacing = 0.5f;
     static constexpr float kMaxLineSpacing = 3.0f;

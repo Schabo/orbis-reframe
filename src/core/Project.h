@@ -147,7 +147,9 @@ public:
     // one: an older build would show it standing still. It also added the
     // clock fields in a title's text (title::withFields), written as a
     // title with a brace in its text: an older build would show the field,
-    // and a brace read from an older file is escaped.
+    // and a brace read from an older file is escaped. The GPS fields came
+    // with them, their units as a title's `speedUnit` / `altitudeUnit`,
+    // written only when not km/h and metres.
     static constexpr int kFormatVersion = 19;
     static constexpr int kClockFormatVersion = 19;
     static constexpr int kMotionFormatVersion = 19;

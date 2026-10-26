@@ -30,6 +30,7 @@
 #include "StabilizerCache.h"          // StabilizerCache
 #include "FrameViewCache.h"           // FrameViewCache
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
+#include "RenderJobs.h"               // renderjobs::FieldSources
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
 
@@ -351,11 +352,13 @@ private:
     void addTitle(int trackId, qint64 atMs, const QString &presetId);
     // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
-    // When the main track's files were recorded (renderjobs::RecordedTimes),
-    // for the titles' clocks; empty when no title has a clock field.
-    QHash<QString, QDateTime> recordedTimes();
-    // Why title `c`'s clock fields show nothing somewhere (the main-track
-    // clips under it whose files don't say when they were recorded), or "".
+    // What the titles' fields read from the main track's files
+    // (renderjobs::FieldSources): when each was recorded, and its GPS --
+    // each only gathered when a title has a field that reads it.
+    renderjobs::FieldSources fieldSources();
+    // Why title `c`'s fields show nothing somewhere (the main-track clips
+    // under it whose files don't say when they were recorded, or that have
+    // no GPS there or only for part of it), or "".
     QString titleClockNote(const TrackClip &c);
     // The selected track clip if it is on an overlay track (else null).
     const TrackClip *selectedOverlayClip(int *trackId = nullptr) const;
@@ -530,6 +533,9 @@ private:
     // Source path -> recording start (recordedTimes), also when unknown: a
     // file that can't be probed isn't probed again on every refresh.
     QHash<QString, QDateTime> m_recordedTimes;
+    // Source path -> its GPS telemetry (fieldSources), null when it has
+    // none; read once.
+    QHash<QString, std::shared_ptr<const Telemetry>> m_telemetry;
     // The edit model: a Project owning a Timeline. Authoring (trim via [ ],
     // reframe via K / viewport drag) targets m_clipId, the clip currently
     // under the playhead (0 == nothing open); the timeline widget's own

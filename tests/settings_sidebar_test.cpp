@@ -594,6 +594,33 @@ void testTitleTab(SettingsSidebar &bar)
         } else {
             CHECK(hours && form);
         }
+        // GPS fields from the menu; each unit's row only while the text
+        // has a field in it, a pick reported.
+        auto *insertSpeed = text->findChild<QAction *>("titleInsertSpeed");
+        auto *speedUnit = find<QComboBox>(text, "titleSpeedUnit");
+        auto *altitudeUnit = find<QComboBox>(text, "titleAltitudeUnit");
+        if (insertSpeed && speedUnit && altitudeUnit && form) {
+            CHECK(text->findChild<QAction *>("titleInsertAltitude") &&
+                  text->findChild<QAction *>("titleInsertHeading") &&
+                  text->findChild<QAction *>("titleInsertCompass"));
+            text->setTitle(s);
+            CHECK(!form->isRowVisible(speedUnit) && !form->isRowVisible(altitudeUnit));
+            edit->moveCursor(QTextCursor::End);
+            insertSpeed->trigger();
+            CHECK(spy.last().at(0).value<title::Style>().text == "Day 1{speed}");
+            CHECK(form->isRowVisible(speedUnit) && !form->isRowVisible(altitudeUnit));
+            speedUnit->setCurrentIndex(1);
+            emit speedUnit->activated(1);
+            CHECK(spy.last().at(0).value<title::Style>().units.speed == title::SpeedUnit::Mph);
+            s.text = "{altitude}";
+            s.units.altitude = title::AltitudeUnit::Feet;
+            text->setTitle(s);
+            CHECK(form->isRowVisible(altitudeUnit) && altitudeUnit->currentIndex() == 1);
+            s.text = "Day 1";
+            s.units = {};
+        } else {
+            CHECK(insertSpeed && speedUnit && altitudeUnit && form);
+        }
         text->setTitle(s, "Clip 2 doesn't say when it was recorded.");
         CHECK(!note->isHidden() && note->text().startsWith("Clip 2"));
         text->setTitle(s);

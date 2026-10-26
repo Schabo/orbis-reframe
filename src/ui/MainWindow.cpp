@@ -60,6 +60,7 @@
 #include <limits>
 #include <cstdio>
 
+#include <ClipMetadata.h>  // camera::ReadClipGps
 #include <InsvAudioDemux.h> // insv::InsvAudioDemux (audio files)
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader::probe (overlays)
@@ -802,13 +803,15 @@ void MainWindow::connectOverlaysAndAudio()
         if (!c || !c->isTitle())
             return;
         const OutputSettings &out = m_project->output();
-        // Measured with the clock as it shows at the playhead.
-        const QDateTime at = title::hasFields(c->title->text) || title::hasFields(t.text)
-                                 ? renderjobs::titleClock(*m_timeline, recordedTimes())
-                                       .at(m_lastTimelineMs)
-                                 : QDateTime();
+        // Measured with the fields as they show at the playhead.
+        const title::Clock clock = title::hasFields(c->title->text) || title::hasFields(t.text)
+                                       ? renderjobs::titleClock(*m_timeline, fieldSources())
+                                       : title::Clock();
         m_timeline->setTrackClipTitle(
-            c->id, t, renderjobs::titleAnchorShift(*c->title, t, out.width, out.height, at));
+            c->id, t,
+            renderjobs::titleAnchorShift(*c->title, t, out.width, out.height,
+                                         clock.at(m_lastTimelineMs),
+                                         clock.gpsAt(m_lastTimelineMs)));
     };
     connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, titleEdited);
     connect(m_titleLookPanel, &TitleLookPanel::titleEdited, this, titleEdited);
@@ -2077,53 +2080,106 @@ void MainWindow::pushInsetsToController()
 {
     const OutputSettings &out = m_project->output();
     m_controller->setInsets(renderjobs::insetFeed(*m_timeline, out.width, out.height, m_privacy,
-                                                  recordedTimes())); // thread-safe
+                                                  fieldSources())); // thread-safe
 }
 
-QHash<QString, QDateTime> MainWindow::recordedTimes()
+renderjobs::FieldSources MainWindow::fieldSources()
 {
-    renderjobs::RecordedTimes times;
-    if (!renderjobs::anyTitleClock(*m_timeline))
-        return times;
+    renderjobs::FieldSources out;
+    const bool clock = renderjobs::anyTitleClock(*m_timeline);
+    const bool gps = renderjobs::anyTitleGps(*m_timeline);
+    if (!clock && !gps)
+        return out;
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
-        if (c.mediaMissing || times.contains(c.sourcePath))
+        if (c.mediaMissing)
             continue;
-        auto it = m_recordedTimes.constFind(c.sourcePath);
-        if (it == m_recordedTimes.constEnd()) {
-            const camera::MediaInfo *info = mediaInfoFor(c.sourcePath);
-            it = m_recordedTimes.insert(c.sourcePath, info ? recordedTime(*info) : QDateTime());
+        if (clock && !out.recorded.contains(c.sourcePath)) {
+            auto it = m_recordedTimes.constFind(c.sourcePath);
+            if (it == m_recordedTimes.constEnd()) {
+                const camera::MediaInfo *info = mediaInfoFor(c.sourcePath);
+                it = m_recordedTimes.insert(c.sourcePath,
+                                            info ? recordedTime(*info) : QDateTime());
+            }
+            out.recorded.insert(c.sourcePath, *it);
         }
-        times.insert(c.sourcePath, *it);
+        if (gps && !out.gps.contains(c.sourcePath)) {
+            auto it = m_telemetry.constFind(c.sourcePath);
+            if (it == m_telemetry.constEnd()) {
+                std::shared_ptr<const Telemetry> t;
+                if (!c.flat)
+                    if (const auto track = camera::ReadClipGps(c.sourcePath.toStdString()))
+                        t = std::make_shared<const Telemetry>(*track);
+                it = m_telemetry.insert(c.sourcePath, t && !t->isEmpty() ? t : nullptr);
+            }
+            out.gps.insert(c.sourcePath, *it);
+        }
     }
-    return times;
+    return out;
 }
 
 QString MainWindow::titleClockNote(const TrackClip &c)
 {
-    if (!c.isTitle() || !title::hasFields(c.title->text))
+    if (!c.isTitle())
         return {};
-    const renderjobs::RecordedTimes times = recordedTimes();
-    QStringList unknown;
+    const bool clock = title::hasClockFields(c.title->text);
+    const bool gps = title::hasGpsFields(c.title->text);
+    if (!clock && !gps)
+        return {};
+    const renderjobs::FieldSources sources = fieldSources();
+    const title::Clock readings = renderjobs::titleClock(*m_timeline, sources);
+    QStringList unknown, noGps, partGps;
     const qint64 endMs = c.startMs + c.timelineDurationMs();
     for (int i = 0; i < m_timeline->count(); ++i) {
         const qint64 from = m_timeline->clipToTimeline(i, 0);
         const qint64 to = from + m_timeline->clipAt(i).timelineDurationMs();
         // Under the title, or the last clip if the title runs past the end.
-        const bool under = (from < endMs && to > c.startMs) ||
-                           (i == m_timeline->count() - 1 && c.startMs >= to);
-        if (under && !times.value(m_timeline->clipAt(i).sourcePath).isValid())
+        const bool last = i == m_timeline->count() - 1 && c.startMs >= to;
+        if (!(from < endMs && to > c.startMs) && !last)
+            continue;
+        const QString &path = m_timeline->clipAt(i).sourcePath;
+        if (clock && !sources.recorded.value(path).isValid())
             unknown << QString::number(i + 1);
+        if (!gps)
+            continue;
+        // A track may cover only part of its clip: looked at where the
+        // title is over it, every half second.
+        const qint64 a = last ? to - 1 : std::max(from, c.startMs);
+        const qint64 b = last ? to : std::min(to, endMs);
+        int have = 0, looked = 0;
+        for (qint64 t = a; t < b; t += 500, ++looked)
+            have += readings.gpsAt(t).has_value();
+        if (have == 0)
+            noGps << QString::number(i + 1);
+        else if (have < looked)
+            partGps << QString::number(i + 1);
     }
-    if (unknown.isEmpty())
-        return {};
-    return unknown.size() == 1
-               ? tr("Clip %1 doesn't say when it was recorded: the time shows --:-- and the "
-                    "date nothing while the title is over it.")
-                     .arg(unknown.front())
-               : tr("Clips %1 don't say when they were recorded: the time shows --:-- and the "
-                    "date nothing while the title is over them.")
-                     .arg(QLocale().createSeparatedList(unknown));
+    QStringList notes;
+    if (!unknown.isEmpty())
+        notes << (unknown.size() == 1
+                      ? tr("Clip %1 doesn't say when it was recorded: the time shows --:-- and "
+                           "the date nothing while the title is over it.")
+                            .arg(unknown.front())
+                      : tr("Clips %1 don't say when they were recorded: the time shows --:-- "
+                           "and the date nothing while the title is over them.")
+                            .arg(QLocale().createSeparatedList(unknown)));
+    if (!noGps.isEmpty())
+        notes << (noGps.size() == 1
+                      ? tr("Clip %1 has no GPS where the title is over it: speed, altitude "
+                           "and heading show -- there.")
+                            .arg(noGps.front())
+                      : tr("Clips %1 have no GPS where the title is over them: speed, altitude "
+                           "and heading show -- there.")
+                            .arg(QLocale().createSeparatedList(noGps)));
+    if (!partGps.isEmpty())
+        notes << (partGps.size() == 1
+                      ? tr("Clip %1 has GPS for only part of the time the title is over it: "
+                           "elsewhere speed, altitude and heading show --.")
+                            .arg(partGps.front())
+                      : tr("Clips %1 have GPS for only part of the time the title is over "
+                           "them: elsewhere speed, altitude and heading show --.")
+                            .arg(QLocale().createSeparatedList(partGps)));
+    return notes.join(QLatin1Char(' '));
 }
 
 const TrackClip *MainWindow::selectedOverlayClip(int *trackId) const
@@ -3474,7 +3530,7 @@ void MainWindow::exportFlatVideo()
     req.mix = renderjobs::mixClips(*m_timeline); // the audio tracks
     // The overlay tracks, over the flat main clips.
     req.insets = renderjobs::insetJobs(*m_timeline, req.outWidth, req.outHeight, m_privacy,
-                                       recordedTimes());
+                                       fieldSources());
 
     // The export opens its own NativeStitchSource (on the shared decode
     // device) -- pause playback so the two stitch pipelines don't contend
@@ -4065,6 +4121,6 @@ void MainWindow::takeScreenshot()
     m_editToolbar->showNotice(tr("Saving screenshot…"), true);
     // The overlays showing at the playhead, composited like the export does.
     still.insets = renderjobs::insetJobs(*m_timeline, still.width, still.height, m_privacy,
-                                         recordedTimes());
+                                         fieldSources());
     m_exports->startStill(std::move(still));
 }

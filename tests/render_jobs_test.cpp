@@ -556,9 +556,9 @@ void testClock()
     t.setClipTrimIn(b, 3000);
     t.setClipTrimOut(b, 13000);
     t.setClipSpeed(b, 2.0); // 8..13 s; c from 13 s
-    renderjobs::RecordedTimes rec;
-    rec.insert("/c/a.insv", QDateTime(QDate(2025, 8, 16), QTime(10, 0, 0)));
-    rec.insert("/c/b.insv", QDateTime(QDate(2025, 8, 16), QTime(23, 59, 50)));
+    renderjobs::FieldSources rec;
+    rec.recorded.insert("/c/a.insv", QDateTime(QDate(2025, 8, 16), QTime(10, 0, 0)));
+    rec.recorded.insert("/c/b.insv", QDateTime(QDate(2025, 8, 16), QTime(23, 59, 50)));
     const title::Clock clock = renderjobs::titleClock(t, rec);
     const auto time = [&](qint64 ms) { return clock.at(ms).time(); };
     CHECK(time(0) == QTime(10, 0, 2)); // the trim-in's source time
@@ -637,8 +637,8 @@ void testClockFeedVsExport()
         s.text = "{date}";
         return s;
     }(), 2000);
-    renderjobs::RecordedTimes rec;
-    rec.insert("/c/a.insv", QDateTime(QDate(2025, 8, 16), QTime(10, 0, 0)));
+    renderjobs::FieldSources rec;
+    rec.recorded.insert("/c/a.insv", QDateTime(QDate(2025, 8, 16), QTime(10, 0, 0)));
     const PrivacyBlur privacy;
     // No recording time: kept as a layer, nothing drawn.
     {
@@ -683,6 +683,154 @@ void testClockFeedVsExport()
               near(pr.w, er.w, 1.0));
     }
     CHECK(pictures.size() == 3);
+}
+
+// The GPS fields: whole values in the title's units, a stop as 0, the
+// heading round to north, `--` with no data.
+void testGpsFields()
+{
+    const QLocale gb(QLocale::English, QLocale::UnitedKingdom);
+    const QLocale de(QLocale::German, QLocale::Germany);
+    Telemetry::Values v;
+    v.speedMps = 20.0;
+    v.altitudeM = 120.0;
+    v.headingDeg = 45.0;
+    const title::Units metric;
+    const title::Units imperial{title::SpeedUnit::Mph, title::AltitudeUnit::Feet};
+    const auto fields = [&](const QString &text, const std::optional<Telemetry::Values> &gps,
+                            title::Units u = {}, const QLocale &l = QLocale(QLocale::C)) {
+        return title::withFields(text, QDateTime(), l, title::Hours::System, gps, u);
+    };
+    CHECK(fields("{speed}", v, metric, gb) == "72 km/h");
+    CHECK(fields("{speed}", v, imperial, gb) == "45 mph"); // 44.7
+    CHECK(fields("{altitude}", v, metric, gb) == "120 m");
+    CHECK(fields("{altitude}", v, imperial, gb) == "394 ft"); // 393.7
+    CHECK(fields("{heading}|{heading:compass}", v, metric, gb) == QString("45\u00b0|NE"));
+    v.altitudeM = 1234.4;
+    CHECK(fields("{altitude}", v, metric, de) == "1.234 m"); // as the locale writes numbers
+    v.speedMps = 0.4; // GPS jitter standing still
+    v.headingDeg = 359.6;
+    CHECK(fields("{speed} {heading} {heading:compass}", v) == QString("0 km/h 0\u00b0 N"));
+    v.speedMps = 0.5;
+    CHECK(fields("{speed}", v) == "2 km/h");
+    v.headingDeg = 202.0;
+    CHECK(fields("{heading:compass}", v) == "S");
+    v.headingDeg = 203.0;
+    CHECK(fields("{heading:compass}", v) == "SW");
+    v.headingDeg.reset(); // never moved in this stretch
+    CHECK(fields("{heading}|{heading:compass}|{speed}", v) == QString("--\u00b0|--|2 km/h"));
+    CHECK(fields("{speed}|{altitude}|{heading:compass}", std::nullopt, imperial) ==
+          "-- mph|-- ft|--");
+    CHECK(fields("{{speed} {speedx}", v) == "{speed} {speedx}");
+    CHECK(fields("At {speed}, {time}", v).startsWith("At 2 km/h, --:--"));
+    CHECK(title::hasGpsFields("{heading:compass}") && !title::hasGpsFields("{time} {{speed}"));
+    CHECK(title::hasClockFields("{date} {speed}") && !title::hasClockFields("{speed}"));
+    CHECK(title::hasFields("{altitude}"));
+    CHECK(title::defaultUnits(QLocale(QLocale::English, QLocale::UnitedStates)) == imperial);
+    CHECK(title::defaultUnits(de) == metric);
+}
+
+// A clip's GPS: telemetry 10 m/s at its start, a metre per second faster
+// each second -- a speed every 3.6 km/h, so the shown value changes every
+// ~280 ms.
+std::shared_ptr<const Telemetry> rampTelemetry()
+{
+    insv::GpsTrack track;
+    for (int s = 0; s <= 20; ++s)
+        track.fixes.push_back({s * 1000, 59.0, 18.0, 10.0 + s, 90.0, 100.0 + s});
+    return std::make_shared<const Telemetry>(track);
+}
+
+// The GPS read along the timeline: trims, speed, cuts; a clip without GPS
+// shows none. A title's text over it, and when it next changes.
+void testGpsClock()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    const int b = t.appendClip("/c/b.insv", 20000, 30.0);
+    t.setClipTrimIn(a, 2000);
+    t.setClipTrimOut(a, 10000); // 0..8 s
+    t.setClipSpeed(b, 2.0);     // 8..18 s
+    renderjobs::FieldSources sources;
+    sources.gps.insert("/c/a.insv", rampTelemetry());
+    const title::Clock clock = renderjobs::titleClock(t, sources);
+    CHECK(clock.gpsAt(0) && near(clock.gpsAt(0)->speedMps, 12.0, 1e-9)); // source 2 s
+    CHECK(clock.gpsAt(7500) && near(clock.gpsAt(7500)->altitudeM, 109.5, 1e-9));
+    CHECK(!clock.gpsAt(8000) && !clock.gpsAt(30000)); // b: no GPS
+    CHECK(!clock.at(0).isValid());                     // and no recording time
+
+    title::Style style;
+    style.text = "{speed}";
+    TitleSource src(style, {}, 9000, 40, 1920, 1080, clock, 0);
+    CHECK(src.textAt(0) == title::withFields("{speed}", QDateTime(), QLocale(),
+                                             title::Hours::System, Telemetry::Values{0, 0, 12.0}));
+    CHECK(src.textAt(8500).startsWith("--"));
+    // Against every ms, as far ahead as it looks.
+    for (qint64 ms = 0; ms < 9000; ms += 41) {
+        const QString now = src.textAt(ms);
+        qint64 expect = -1;
+        for (qint64 u = ms + 1; u <= std::min<qint64>(9000, ms + TitleSource::kGpsLookaheadMs);
+             ++u)
+            if (src.textAt(u) != now) {
+                expect = u;
+                break;
+            }
+        CHECK(src.nextChange(ms) == expect);
+    }
+}
+
+// Playback and the export show the same speed at the same moment, across
+// value changes and into a clip without GPS.
+void testGpsFeedVsExport()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    t.appendClip("/c/b.insv", 20000, 30.0);
+    t.setClipTrimOut(a, 3000);
+    const int v = t.addTrack(Track::Kind::Video, "Speed");
+    title::Style style;
+    style.text = "{speed}";
+    style.align = title::Align::Left;
+    inset::Look look = title::defaultLook();
+    look.centerX = 0.05f;
+    const int id = t.addTitleClip(v, 1000, style, 4000, look);
+    renderjobs::FieldSources sources;
+    sources.gps.insert("/c/a.insv", rampTelemetry());
+    const PrivacyBlur privacy;
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080, privacy, sources);
+    const std::vector<exportpipe::InsetClipJob> jobs =
+        renderjobs::insetJobs(t, 1920, 1080, privacy, sources);
+    CHECK(feed.size() == 1 && jobs.size() == 1);
+    if (feed.size() != 1 || jobs.size() != 1)
+        return;
+    InsetFeed player;
+    player.setClips(feed);
+    const exportpipe::InsetClipJob &j = jobs[0];
+    const TrackClip &c = *t.trackClipById(id);
+    std::set<std::vector<uint8_t>> pictures;
+    // 40, 41 and 43 km/h; the cut at 3 s: b has no GPS -- "-- km/h".
+    for (qint64 ms : {1000, 1300, 1999, 3000, 4999}) {
+        exportpipe::Still jp;
+        const inset::Rect er = titleRect(j, ms - c.startMs, 1920, 1080, &jp);
+        CHECK(!jp.empty());
+        if (jp.empty())
+            continue;
+        pictures.insert(*jp.rgba);
+        std::vector<EquirectViewportWindow::InsetDraw> drawn;
+        for (int i = 0; i < 400; ++i) {
+            drawn = player.frameFor(ms, false);
+            if (drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        CHECK(drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba);
+        if (drawn.size() != 1)
+            continue;
+        const inset::Rect pr = inset::place(drawn[0].look, {}, drawn[0].aspect, 1920, 1080);
+        // Left-aligned: its left edge stays put as the digits change.
+        CHECK(near(pr.x, er.x, 1.0) && near(pr.y, er.y, 1.0) && near(pr.w, er.w, 1.0));
+    }
+    CHECK(pictures.size() == 4); // 3000 and 4999 both "-- km/h"
 }
 
 // A transition: the other clip as a layer over each half, blending through
@@ -992,6 +1140,9 @@ int main(int argc, char **argv)
     testSourceTimeMap();
     testClock();
     testClockFeedVsExport();
+    testGpsFields();
+    testGpsClock();
+    testGpsFeedVsExport();
     testTransitions();
     testLayerOverMainClip();
     testClipJob(tmp.path());

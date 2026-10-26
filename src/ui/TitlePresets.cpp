@@ -182,6 +182,40 @@ QList<Preset> make()
     place.look = at(0.05f, 0.88f, 0.04f);
     list.push_back(place);
 
+    // The GPS fields (title::withFields): where the camera was, from the
+    // clip under the title, as it plays. Bottom left, out of the clock's
+    // corner.
+    const QString gpsHint = tr("The values come from the GPS track of the clip under it, where "
+                               "the camera recorded one; without one they show --.");
+    Preset speed{QStringLiteral("speed"), tr("Speed"),
+                 tr("The speed in the lower left, running as the clip plays.") +
+                     QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    speed.style.text = title::kSpeedField;
+    speed.style.align = title::Align::Left;
+    speed.style.shadow = softShadow(0.7f, 0.05f, 0.06f);
+    speed.look = at(0.05f, 0.9f, 0.06f);
+    list.push_back(speed);
+
+    Preset speedAltitude{QStringLiteral("speed-altitude"), tr("Speed and altitude"),
+                         tr("The speed and, below it, the altitude, in the lower left.") +
+                             QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    speedAltitude.style.text = title::kSpeedField + QLatin1Char('\n') + title::kAltitudeField;
+    speedAltitude.style.align = title::Align::Left;
+    speedAltitude.style.lineSpacing = 1.1f;
+    speedAltitude.style.shadow = softShadow(0.7f, 0.05f, 0.06f);
+    speedAltitude.look = at(0.05f, 0.87f, 0.05f);
+    list.push_back(speedAltitude);
+
+    Preset direction{QStringLiteral("direction"), tr("Direction"),
+                     tr("The direction of travel at the top in the middle, as a compass point "
+                        "and in degrees.") +
+                         QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    direction.style.text = title::kCompassField + QStringLiteral("  ") + title::kHeadingField;
+    direction.style.bold = false;
+    direction.style.box = box(0x000000, 0.5f, 0.35f, 0.5f);
+    direction.look = at(0.5f, 0.07f, 0.04f);
+    list.push_back(direction);
+
     return list;
 }
 
@@ -205,6 +239,7 @@ title::Style styleFor(const Preset &p)
 {
     title::Style s = p.style;
     s.font = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+    s.units = title::defaultUnits();
     return s;
 }
 

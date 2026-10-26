@@ -1805,6 +1805,26 @@ void testTitleJson()
         CHECK(back.load(file, &err));
         CHECK(back.timeline()->trackAt(0).clips.at(0).title->text == "{time:ss} {{ok}");
         CHECK(back.timeline()->trackAt(0).clips.at(0).title->hours == title::Hours::H24);
+        // Metric units aren't written; others are, and read back.
+        CHECK(!document().value("timeline").toObject().value("tracks").toArray().at(0)
+                   .toObject().value("clips").toArray().at(0).toObject().value("title")
+                   .toObject().contains("speedUnit"));
+        clock.text = "{speed} {altitude}";
+        clock.units = {title::SpeedUnit::Mph, title::AltitudeUnit::Feet};
+        tl->setTrackClipTitle(tl->trackAt(0).clips.at(0).id, clock);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kFormatVersion);
+        Project gps;
+        CHECK(gps.load(file, &err));
+        const title::Style &g = *gps.timeline()->trackAt(0).clips.at(0).title;
+        CHECK(g.text == "{speed} {altitude}" && g.units == clock.units);
+        // A unit change is an undo step like any edit.
+        title::Style metric = g;
+        metric.units = {};
+        gps.timeline()->setTrackClipTitle(gps.timeline()->trackAt(0).clips.at(0).id, metric);
+        CHECK(gps.canUndo());
+        gps.undo();
+        CHECK(gps.timeline()->trackAt(0).clips.at(0).title->units == clock.units);
     }
     // A brace in an older file's title is a brace: escaped, so it shows as
     // it did.

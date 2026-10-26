@@ -9,7 +9,8 @@
 
 // A title clip's pictures over its time, for playback (InsetFeed) and the
 // export (InsetCompositor) alike: the title's *state* at a clip-local time
-// -- its text with the clock's fields filled in (title::withFields), and
+// -- its text with the clock's and the GPS's fields filled in
+// (title::withFields), and
 // how much of it is typed -- and the picture for it, rendered by
 // titlerender on the calling thread and kept in its cache. A title without
 // fields that doesn't type on or off has one state, all of its text: the
@@ -30,7 +31,12 @@ public:
 
     exportpipe::Still at(int64_t localMs) override;
     exportpipe::Still ready(int64_t localMs) override;
+    // With GPS fields only within kGpsLookaheadMs: -1 when nothing changes
+    // before then, though it may later.
     int64_t nextChange(int64_t localMs) override;
+
+    static constexpr int64_t kGpsLookaheadMs = 1000;
+    static constexpr int64_t kGpsStepMs = 20; // a value lasts longer than this
 
     // How many graphemes show at `localMs` (titlerender::visibleAt; -1: all).
     int stateAt(int64_t localMs) const;
@@ -50,6 +56,7 @@ private:
     const bool m_types;        // types on or off
     const title::Clock m_clock;
     const int64_t m_startMs;
-    const bool m_fields;     // has clock fields
+    const bool m_fields;     // has clock or GPS fields
+    const bool m_gpsFields;  // has GPS fields
     const int m_clockStepS;  // how often they can change: a second, or a minute
 };

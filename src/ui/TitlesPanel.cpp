@@ -66,9 +66,13 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     const double W = size.width(), H = size.height();
     const QDateTime now = QDateTime::currentDateTime();
     title::Style style = titlepresets::styleFor(preset);
-    // A date or clock tile shows the time now.
+    // A date or clock tile shows the time now, a GPS one a ride's values.
     const bool clock = title::hasFields(style.text);
-    style.text = title::withFields(style.text, now, QLocale(), style.hours);
+    Telemetry::Values ride;
+    ride.speedMps = 20.0; // 72 km/h
+    ride.headingDeg = 45.0;
+    ride.altitudeM = 120.0;
+    style.text = title::withFields(style.text, now, QLocale(), style.hours, ride, style.units);
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);
     // Typing on or off: the picture changes as the frame's would.
     const int visible =

@@ -322,24 +322,38 @@ SourceTimeMap sourceTimeMap(const Timeline &timeline)
     return SourceTimeMap(std::move(spans));
 }
 
-title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded)
+title::Clock titleClock(const Timeline &timeline, const FieldSources &sources)
 {
-    return title::Clock(sourceTimeMap(timeline), recorded);
+    return title::Clock(sourceTimeMap(timeline), sources.recorded, sources.gps);
 }
 
-bool anyTitleClock(const Timeline &timeline)
+namespace {
+
+bool anyTitleText(const Timeline &timeline, bool (*has)(const QString &))
 {
     for (int i = 0; i < timeline.trackCount(); ++i)
         for (const TrackClip &c : timeline.trackAt(i).clips)
-            if (c.isTitle() && title::hasFields(c.title->text))
+            if (c.isTitle() && has(c.title->text))
                 return true;
     return false;
 }
 
-std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
-                                       const PrivacyBlur &privacy, const RecordedTimes &recorded)
+} // namespace
+
+bool anyTitleClock(const Timeline &timeline)
 {
-    const title::Clock clock = titleClock(timeline, recorded);
+    return anyTitleText(timeline, title::hasClockFields);
+}
+
+bool anyTitleGps(const Timeline &timeline)
+{
+    return anyTitleText(timeline, title::hasGpsFields);
+}
+
+std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
+                                       const PrivacyBlur &privacy, const FieldSources &sources)
+{
+    const title::Clock clock = titleClock(timeline, sources);
     std::vector<InsetFeed::Clip> clips;
     for (int i = 0; i < timeline.count(); ++i) {
         const ClipItem &c = timeline.clipAt(i);
@@ -452,14 +466,14 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
 }
 
 double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH,
-                        const QDateTime &at)
+                        const QDateTime &at, const std::optional<Telemetry::Values> &gps)
 {
     if (from.align == to.align || outW <= 0 || outH <= 0)
         return 0.0;
     // The picture's shape doesn't depend on its size: any size will do.
     constexpr int kFontPx = 200;
-    const auto shown = [&at](title::Style s) {
-        s.text = title::withFields(s.text, at, QLocale(), s.hours);
+    const auto shown = [&](title::Style s) {
+        s.text = title::withFields(s.text, at, QLocale(), s.hours, gps, s.units);
         return s;
     };
     const titlerender::Picture a =
@@ -476,13 +490,13 @@ double titleAnchorShift(const title::Style &from, const title::Style &to, int ou
 
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
                                                 const PrivacyBlur &privacy,
-                                                const RecordedTimes &recorded)
+                                                const FieldSources &sources)
 {
-    const title::Clock clock = titleClock(timeline, recorded);
+    const title::Clock clock = titleClock(timeline, sources);
     std::vector<exportpipe::InsetClipJob> jobs;
     // The flat main-track clips first, then the transitions' other clips,
     // under the overlays -- as insetFeed.
-    for (const InsetFeed::Clip &f : insetFeed(timeline, outW, outH, privacy, recorded)) {
+    for (const InsetFeed::Clip &f : insetFeed(timeline, outW, outH, privacy, sources)) {
         if (!f.fullFrame)
             break; // the overlays: below
         exportpipe::InsetClipJob j;

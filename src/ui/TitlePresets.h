@@ -24,8 +24,9 @@ const QList<Preset> &all();
 // The preset `id` names, or null.
 const Preset *find(const QString &id);
 
-// The title preset `p` adds: its style in the system's font. A date or a
-// clock is a field in its text (title::withFields).
+// The title preset `p` adds: its style in the system's font and units
+// (title::defaultUnits). A date, a clock or a GPS value is a field in its
+// text (title::withFields).
 title::Style styleFor(const Preset &p);
 
 } // namespace titlepresets

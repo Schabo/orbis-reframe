@@ -554,6 +554,10 @@ json titleToJson(const title::Style &t)
                     {"cornerRadius", t.box.cornerRadius}};
     if (t.hours != plain.hours)
         j["hours"] = t.hours == title::Hours::H24 ? "24" : "12";
+    if (t.units.speed != plain.units.speed)
+        j["speedUnit"] = "mph";
+    if (t.units.altitude != plain.units.altitude)
+        j["altitudeUnit"] = "ft";
     return j;
 }
 
@@ -589,6 +593,10 @@ title::Style titleFromJson(const json &j, int version)
     t.hours = hours == "24"   ? title::Hours::H24
               : hours == "12" ? title::Hours::H12
                               : title::Hours::System;
+    t.units.speed = j.value("speedUnit", std::string()) == "mph" ? title::SpeedUnit::Mph
+                                                                 : title::SpeedUnit::Kmh;
+    t.units.altitude = j.value("altitudeUnit", std::string()) == "ft" ? title::AltitudeUnit::Feet
+                                                                      : title::AltitudeUnit::Metres;
     if (j.contains("outline") && j.at("outline").is_object()) {
         const json &o = j.at("outline");
         t.outline.on = o.value("on", true);

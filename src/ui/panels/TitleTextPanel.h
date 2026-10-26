@@ -11,8 +11,9 @@ class QPushButton;
 class QWidget;
 
 // The Title tab's Text section: the selected title's text (several lines),
-// with an Insert menu for the clock's fields (title::withFields) and, when
-// it shows a time, how the clock writes the hours; its
+// with an Insert menu for the clock's and the GPS's fields
+// (title::withFields) and, when it shows a time, how the clock writes the
+// hours, and when it shows a speed or an altitude, their units; its
 // font, bold / italic, colour and alignment (title::Style). The font list is
 // the installed families, each in its own face, with the last few picked
 // (app-wide, not the project's) at the top. Where it sits,
@@ -28,8 +29,8 @@ public:
 
     // Reflect a title. Does not emit. The text is only replaced when it
     // differs, so the cursor stays put while the user types. `clockNote`,
-    // shown under the text when not empty: why its clock fields show
-    // nothing somewhere.
+    // shown under the text when not empty: why its fields show nothing
+    // somewhere.
     void setTitle(const title::Style &style, const QString &clockNote = QString());
     // No title selected: `hint` says why, the fields are greyed out.
     void setNoTitle(const QString &hint);
@@ -50,7 +51,10 @@ private:
     QPlainTextEdit *m_text = nullptr;
     QPushButton *m_insert = nullptr;
     QComboBox *m_hours = nullptr; // title::Hours order
-    // Show the hours row while the text has a time field.
+    QComboBox *m_speedUnit = nullptr;    // title::SpeedUnit order
+    QComboBox *m_altitudeUnit = nullptr; // title::AltitudeUnit order
+    // Show the hours row while the text has a time field, a unit's while
+    // it has a field in that unit.
     void showHours();
     QLabel *m_clockNote = nullptr;
     QComboBox *m_font = nullptr;
