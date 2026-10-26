@@ -4,12 +4,18 @@
 //   insv_trailer_dump <input.insv>              maker notes + telemetry summary
 //   insv_trailer_dump <input.insv> --imu        every IMU sample, one per line
 //   insv_trailer_dump <input.insv> --exposure   every exposure sample
+//   insv_trailer_dump <input.insv> --gps        every GPS fix
 //
 // The --imu / --exposure output is laid out to diff against `exiftool -ee`:
 //   exiftool "Time Code"        == column 2 here (timestamp / 1000, 3 decimals)
 //   exiftool "Accelerometer"    == columns 3..5   (X5 uses the 20-byte layout,
 //   exiftool "Angular Velocity" == columns 6..8    which %g reproduces exactly)
 //   exiftool "Exposure Time"    == column 3 of --exposure
+// --gps prints each fix once (the file repeats it over ~10 records), lined
+// up with the video by field 98.3; with `exiftool -ee -n`:
+//   exiftool "GPS Date/Time"    == column 3 (Unix seconds, 3 decimals)
+//   exiftool "GPS Latitude", "GPS Longitude", "GPS Speed" (m/s),
+//   "GPS Track", "GPS Altitude" == columns 4..8
 
 #include <InsvModels.h>
 #include <InsvTrailer.h>
@@ -39,10 +45,12 @@ void PrintSummary(const insv::InsvTelemetry& t) {
 }
 
 const char kUsage[] =
-    "usage: insv_trailer_dump <input.insv> [--imu | --exposure]\n"
+    "usage: insv_trailer_dump <input.insv> [--imu | --exposure | --gps]\n"
     "  (no option)   maker notes + telemetry summary\n"
     "  --imu         every IMU sample, one per line\n"
-    "  --exposure    every exposure sample, one per line\n";
+    "  --exposure    every exposure sample, one per line\n"
+    "  --gps         every GPS fix, one per line: index, video ms, Unix s, latitude,\n"
+    "                longitude, speed m/s, heading, altitude m\n";
 
 } // namespace
 
@@ -59,6 +67,25 @@ int main(int argc, char** argv) {
     const char* path = argv[1];
     const bool want_imu = argc > 2 && std::strcmp(argv[2], "--imu") == 0;
     const bool want_exposure = argc > 2 && std::strcmp(argv[2], "--exposure") == 0;
+    const bool want_gps = argc > 2 && std::strcmp(argv[2], "--gps") == 0;
+
+    if (want_gps) {
+        const auto gps = insv::ReadInsvGps(path);
+        if (!gps) {
+            std::cerr << "No Insta360 trailer found in " << path << std::endl;
+            return 1;
+        }
+        if (gps->first_frame_unix_ms == 0)
+            std::printf("# no first-frame time (field 98.3): video ms not known\n");
+        for (size_t i = 0; i < gps->fixes.size(); ++i) {
+            const auto& f = gps->fixes[i];
+            const long long video = gps->first_frame_unix_ms ? f.unix_ms - gps->first_frame_unix_ms : 0;
+            std::printf("%zu %lld %.3f %.15g %.15g %.15g %.15g %.15g\n", i, video,
+                        f.unix_ms / 1000.0, f.latitude, f.longitude, f.speed_mps,
+                        f.heading_deg, f.altitude_m);
+        }
+        return 0;
+    }
 
     if (want_imu || want_exposure) {
         const auto tel = insv::ReadInsvTelemetry(path);

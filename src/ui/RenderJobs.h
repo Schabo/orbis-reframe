@@ -49,9 +49,11 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
                                                 const PrivacyBlur &privacy,
                                                 const RecordedTimes &recorded = {});
 
-// The main track's recording times as a title's clock: each clip's span on
-// the timeline with its file's recording start (`recorded`, invalid if not
-// there), trim and speed.
+// Which file plays where on the timeline, and how far into it: each
+// main-track clip's span with its trim and speed.
+SourceTimeMap sourceTimeMap(const Timeline &timeline);
+// The main track's recording times as a title's clock: sourceTimeMap with
+// each file's recording start (`recorded`, invalid if not there).
 title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded);
 // Does any title on the timeline have clock fields (title::hasFields)? Only
 // then are the recording times worth looking up.

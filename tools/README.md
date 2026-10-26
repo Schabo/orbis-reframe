@@ -39,15 +39,20 @@ milliseconds of clip (source) time unless they're marked `S` (seconds).
 Prints what the X5 writes into a clip's `inst` trailer: camera model,
 firmware, lens calibration, capture settings, and a summary of the IMU and
 exposure data. `--imu` / `--exposure` print every sample, one per line, in
-a layout that lines up with `exiftool -ee` for comparison.
+a layout that lines up with `exiftool -ee` for comparison. `--gps` prints
+each GPS fix once (the file repeats it ten times a second): its time in the
+clip in ms, Unix seconds, latitude, longitude, speed in m/s, heading (-1:
+standing still) and altitude; `exiftool -ee -n` gives the same values, the
+speed in km/h.
 
-**When:** a clip behaves oddly (stitch, sync, stabilization) and you want
+**When:** a clip behaves oddly (stitch, sync, stabilization, GPS) and you want
 to see what the camera recorded; or when working on `src/insv/InsvTrailer`.
 `docs/formats/insta360-x5.md` explains the fields.
 
 ```sh
 build/insv_trailer_dump clip.insv
 build/insv_trailer_dump clip.insv --imu > imu.txt
+build/insv_trailer_dump clip.insv --gps > gps.txt
 ```
 
 ## insv_stitch

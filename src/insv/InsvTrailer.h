@@ -96,8 +96,9 @@ struct InsvTelemetry {
     // re-timed (speed-ramped) map is reduced to its median offset.
     double time_map_offset_ms = 0;
     // Record 0x700 (GPS, docs/formats/insta360-x5.md §8), written only when a GPS
-    // source was connected. Only counted, never decoded into positions. All 0
-    // when the file has no GPS record.
+    // source was connected: counted here for the Media information panel,
+    // decoded into positions by ReadInsvGps. All 0 when the file has no GPS
+    // record.
     std::size_t gps_records = 0; // 10 per second of video
     std::size_t gps_fixes = 0;   // records with an acquired ('A') position
     double gps_rate_hz = 0;      // how often the position updates (1 Hz on the X5)
@@ -117,9 +118,8 @@ struct InsvTelemetry {
 // "Parameters" field specifically at
 // https://exiftool.org/forum/index.php?msg=78942). This is an independent
 // reimplementation of just the record types we need — 0x101 (maker notes),
-// 0x300 (IMU), 0x400 (exposure) — from that documentation, not a port of
-// ExifTool's code. GPS (0x700) is only counted (see InsvTelemetry), and the
-// various unknown records are skipped.
+// 0x300 (IMU), 0x400 (exposure), 0x700 (GPS) — from that documentation, not
+// a port of ExifTool's code. The various unknown records are skipped.
 //
 // Returns std::nullopt if the file has no recognizable trailer (magic number
 // mismatch) or the maker-notes record isn't found.
@@ -156,7 +156,7 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id);
 
 // Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure;
-// 0x700 GPS is only counted).
+// 0x700 GPS is only counted here; ReadInsvGps decodes it).
 // Returns std::nullopt only if the file has no recognizable trailer at all; a
 // trailer that is present but carries neither record yields an InsvTelemetry
 // with two empty lists.
@@ -172,6 +172,35 @@ std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path,
 std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                                                std::size_t max_imu_samples = 0,
                                                double tick_us = 1.0);
+
+// One GPS fix from the trailer's 0x700 record (docs/formats/insta360-x5.md §8).
+struct InsvGpsFix {
+    int64_t unix_ms = 0;      // when the fix was taken, Unix time (UTC)
+    double latitude = 0;      // degrees, north positive
+    double longitude = 0;     // degrees, east positive
+    double speed_mps = 0;     // over ground
+    double heading_deg = 0;   // course over ground, clockwise from north; -1 standing still
+    double altitude_m = 0;
+};
+
+// The GPS track from the trailer, with what lines it up with the video.
+struct InsvGps {
+    // Acquired ('A') fixes, one per position update, in time order. The X5
+    // writes a record every 100 ms but the fix behind it only changes once a
+    // second, and keeps repeating the last fix when the signal is lost: each
+    // fix is kept once, from the first record that carries it.
+    std::vector<InsvGpsFix> fixes;
+    // Field 98.3: Unix ms of the first recorded video frame, on the camera's
+    // clock. 0 when the file doesn't say (Insta360's own trimmed exports).
+    int64_t first_frame_unix_ms = 0;
+};
+
+// Decodes the 0x700 payload `payload` into fixes (as InsvGps::fixes).
+std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& payload);
+
+// The clip's GPS track; only records 0x101 and 0x700 are read. nullopt when
+// the file has no trailer; empty fixes when it has no GPS record.
+std::optional<InsvGps> ReadInsvGps(const std::string& file_path);
 
 // Returns the raw bytes of the trailer itself -- everything from the end of
 // the file's `moov` box to EOF (confirmed empirically: in a real X5 file

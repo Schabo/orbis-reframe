@@ -1,8 +1,10 @@
 #pragma once
 
+#include "SourceTimeMap.h"
 #include "Title.h"
 
 #include <QDateTime>
+#include <QHash>
 #include <QLocale>
 #include <QString>
 
@@ -38,26 +40,17 @@ inline const QString kTimeField = QStringLiteral("{time}");
 inline const QString kTimeSecondsField = QStringLiteral("{time:ss}");
 inline const QString kDateField = QStringLiteral("{date}");
 
-// When the picture at each moment of the timeline was recorded: the
-// main-track clip there (at a cut the later one, as Timeline::timelineToClip)
-// gives its recording start plus how far into its file it is, so trims,
-// speed changes and cuts carry through. A copy of the timeline's numbers,
-// safe to use on any thread.
+// When the picture at each moment of the timeline was recorded: the file
+// playing there (SourceTimeMap) gives its recording start plus how far into
+// it the picture is. A copy, safe to use on any thread.
 class Clock {
 public:
-    struct Span {
-        qint64 startMs = 0;   // timeline
-        qint64 endMs = 0;
-        QDateTime recorded;   // the file's start, invalid if unknown
-        qint64 trimInMs = 0;  // source time at startMs
-        double speed = 1.0;
-    };
-
     Clock() = default;
-    // `spans` in timeline order, back to back from 0.
-    explicit Clock(std::vector<Span> spans) : m_spans(std::move(spans)) {}
+    // `recorded`: each file's recording start by its path; a file that
+    // isn't there, or an invalid time, is a clip nothing says the time of.
+    Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded);
 
-    bool isEmpty() const { return m_spans.empty(); }
+    bool isEmpty() const { return m_map.isEmpty(); }
     // The wall-clock time at `timelineMs` in whole seconds (the camera
     // writes its recording start to the second; the first frame's fraction
     // of a second isn't known), invalid where nothing says.
@@ -68,12 +61,12 @@ public:
     qint64 nextTick(qint64 timelineMs, int stepSeconds) const;
 
 private:
-    const Span *spanAt(qint64 timelineMs) const;
-    // The span's wall clock at `timelineMs`, ms since the epoch of a clock
-    // read as UTC (no daylight-saving jumps).
-    static qint64 wallMs(const Span &s, qint64 timelineMs);
+    // Span `i`'s recording start, ms since the epoch of a clock read as UTC
+    // (no daylight-saving jumps).
+    qint64 baseMs(int i) const;
 
-    std::vector<Span> m_spans;
+    SourceTimeMap m_map;
+    std::vector<QDateTime> m_recorded; // per span
 };
 
 } // namespace title

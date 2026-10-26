@@ -1029,6 +1029,68 @@ std::vector<uint8_t> metadataRecord(bool rawGyro)
     return m.b;
 }
 
+// Record 0x700 decoded: acquired fixes only, each once although the file
+// repeats it every 100 ms, the hemispheres as signs, and field 98.3 to line
+// it up with the video.
+void testGps()
+{
+    using testtrailer::gpsRecord;
+    constexpr uint64_t t0 = 1757003465000ull;
+    Bytes gps;
+    for (int i = 0; i < 10; ++i) // no fix yet
+        gps.raw(gpsRecord(t0 - 1000, 'V', 0, 0, 0, 0, 0, 0, 0));
+    for (int i = 0; i < 30; ++i) { // three fixes, each over 10 records
+        const int k = i / 10;
+        gps.raw(gpsRecord(t0 + uint64_t(k) * 1000 + 999, 'A', 33.5 + k * 0.001, 'S',
+                          70.25, k == 2 ? 'O' : 'W', 10.0 + k, 350.0 + k * 10.0, -2.5));
+    }
+    for (int i = 0; i < 25; ++i) // the signal lost: the last fix repeats
+        gps.raw(gpsRecord(t0 + 2999, 'A', 33.502, 'S', 70.25, 'W', 12.0, 10.0, -2.5));
+    gps.raw(gpsRecord(t0 + 1500, 'A', 1, 'N', 1, 'E', 0, 0, 0)); // out of order
+    gps.raw(gpsRecord(t0 + 9000, 'A', 33.6, 'N', 70.3, 'E', 0.0, -1.0, 4.0));
+    gps.raw(std::vector<uint8_t>(20, 0)); // a cut-off record, ignored
+
+    Bytes meta;
+    meta.pbString(2, "Insta360 X5");
+    Bytes times; // field 98: first / last frame device us, Unix ms, frames
+    times.pbVarint(1, 2468081984ull).pbVarint(2, 2510815317ull).pbVarint(3, t0 + 871);
+    times.pbVarint(4, t0 + 43604).pbVarint(5, 1282);
+    meta.pbBytes(98, times.b);
+
+    const std::string path =
+        writeX5Trailer("insv_test_gps.insv", {{0x101, meta.b}, {0x700, gps.b}});
+    const auto g = insv::ReadInsvGps(path);
+    CHECK(g && g->first_frame_unix_ms == int64_t(t0 + 871));
+    CHECK(g && g->fixes.size() == 4);
+    if (g && g->fixes.size() == 4) {
+        const insv::InsvGpsFix& a = g->fixes[0];
+        CHECK(a.unix_ms == int64_t(t0 + 999));
+        CHECK(a.latitude == -33.5 && a.longitude == -70.25);
+        CHECK(a.speed_mps == 10.0 && a.heading_deg == 350.0 && a.altitude_m == -2.5);
+        CHECK(g->fixes[2].longitude == -70.25); // 'O' is west
+        CHECK(g->fixes[3].unix_ms == int64_t(t0 + 9000));
+        CHECK(g->fixes[3].latitude == 33.6 && g->fixes[3].longitude == 70.3);
+        CHECK(g->fixes[3].heading_deg == -1.0); // standing still: kept as written
+    }
+    // The count for the Media information panel is unchanged by the decode.
+    const auto t = insv::ReadInsvTelemetry(path);
+    CHECK(t && t->gps_records == 67 && t->gps_fixes == 57);
+    std::filesystem::remove(path);
+
+    // No field 98 (Insta360's trimmed exports), no GPS record, no trailer.
+    const std::string bare = writeX5Trailer("insv_test_gps_bare.insv",
+                                            {{0x101, metadataRecord(false)}, {0x700, gps.b}});
+    const auto b = insv::ReadInsvGps(bare);
+    CHECK(b && b->first_frame_unix_ms == 0 && b->fixes.size() == 4);
+    std::filesystem::remove(bare);
+    const std::string none =
+        writeX5Trailer("insv_test_gps_none.insv", {{0x101, metadataRecord(false)}});
+    const auto n = insv::ReadInsvGps(none);
+    CHECK(n && n->fixes.empty());
+    std::filesystem::remove(none);
+    CHECK(!insv::ReadInsvGps("/nonexistent/clip.insv"));
+}
+
 void testTrailerRecords()
 {
     // 0x300, raw counts (field 62): u64 time + 6 x u16, value = raw - 0x8000;
@@ -1287,6 +1349,7 @@ int main()
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();
+    testGps();
     testOneX2Trailer();
     testYcbcrRows();
 

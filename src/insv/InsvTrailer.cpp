@@ -390,7 +390,69 @@ void CountGps(const std::vector<uint8_t>& p, InsvTelemetry& out) {
     out.gps_track_s = distinct * *mid / 1000.0;
 }
 
+// Field 98 of record 0x101: {1: first frame device us, 2: last, 3: first
+// frame Unix ms, 4: last, 5: frame count, ...} (docs/formats/insta360-x5.md
+// §5.1). 0 when absent.
+int64_t FirstFrameUnixMs(const std::vector<uint8_t>& payload) {
+    int64_t out = 0;
+    WalkProtobuf(payload, [&](uint32_t f, int wt, uint64_t, const std::vector<uint8_t>& b) {
+        if (f != 98 || wt != 2) return;
+        WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv, const std::vector<uint8_t>&) {
+            if (g == 3 && gwt == 0) out = static_cast<int64_t>(gv);
+        });
+    });
+    return out;
+}
+
 } // namespace
+
+std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& p) {
+    // u64 Unix seconds, u16 ms, 'A' / 'V', f64 latitude, 'N' / 'S',
+    // f64 longitude, 'E' / 'W' (ExifTool has also seen 'O' for west),
+    // f64 speed m/s, f64 track degrees, f64 altitude m.
+    constexpr size_t kRec = 53;
+    std::vector<InsvGpsFix> out;
+    for (size_t off = 0; off + kRec <= p.size(); off += kRec) {
+        const uint8_t* r = &p[off];
+        if (r[10] != 'A') continue;
+        InsvGpsFix f;
+        f.unix_ms = static_cast<int64_t>(ReadU64LE(r)) * 1000 + ReadU16LE(r + 8);
+        // A repeat of the fix already kept (the 10 Hz records, a lost
+        // signal), or one out of order.
+        if (!out.empty() && f.unix_ms <= out.back().unix_ms) continue;
+        f.latitude = std::abs(ReadDoubleLE(r + 11));
+        if (r[19] == 'S') f.latitude = -f.latitude;
+        f.longitude = std::abs(ReadDoubleLE(r + 20));
+        if (r[28] == 'W' || r[28] == 'O') f.longitude = -f.longitude;
+        f.speed_mps = ReadDoubleLE(r + 29);
+        f.heading_deg = ReadDoubleLE(r + 37);
+        f.altitude_m = ReadDoubleLE(r + 45);
+        if (!std::isfinite(f.latitude) || !std::isfinite(f.longitude) || f.latitude > 90.0 ||
+            f.longitude > 180.0 || !std::isfinite(f.speed_mps) || !std::isfinite(f.heading_deg) ||
+            !std::isfinite(f.altitude_m))
+            continue;
+        out.push_back(f);
+    }
+    return out;
+}
+
+std::optional<InsvGps> ReadInsvGps(const std::string& file_path) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) return std::nullopt;
+    file.seekg(0, std::ios::end);
+    const int64_t file_size = static_cast<int64_t>(file.tellg());
+    InsvGps out;
+    const bool ok = WalkTrailerRecords(
+        file, file_size,
+        [&](uint16_t id, const std::vector<uint8_t>& payload, int64_t) {
+            if (id == 0x101) out.first_frame_unix_ms = FirstFrameUnixMs(payload);
+            else out.fixes = ParseInsvGps(payload);
+            return true;
+        },
+        [](uint16_t id) { return id == 0x101 || id == 0x700; });
+    if (!ok) return std::nullopt;
+    return out;
+}
 
 const LensProfile* FindLensProfile(const InsvMakerNotes& notes, const std::string& name) {
     for (const auto& p : notes.lens_profiles)

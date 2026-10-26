@@ -15,6 +15,7 @@ public:
     Result read(const std::vector<insv::InsvStreamInfo>& streams, ClipMetadata& out,
                 std::string& err) const override;
     std::optional<insv::ImuTrack> readImu(const ClipMetadata& clip) const override;
+    std::optional<insv::GpsTrack> readGps(const ClipMetadata& clip) const override;
     std::optional<Thumbnail> readThumbnail(const std::string& path) const override;
     std::optional<std::string> clipFileFor(const std::string& path) const override;
 };

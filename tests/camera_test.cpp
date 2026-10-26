@@ -9,6 +9,7 @@
 #include "support/TestMedia.h"
 #include "support/TestTrailer.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -35,12 +36,15 @@ constexpr int kFps = 25;
 // The ONE X2's trailer, cut down: the model, the 40-token offset_v3, field 27
 // and 24, and a little IMU stamped in ms, 2 ms apart (500 Hz). The real one
 // has no field 7 (the recording time); `creationTime` adds it, as the X5
-// writes it.
+// writes it. `gps` adds a GPS record, and `firstFrameUnixMs` field 98 to line
+// it up with the video (neither is on the ONE X2: the X5 writes them).
 // The lens pictures' greys in the trailer's previews (records 0x200 / 0x500).
 constexpr uint8_t kLens0Grey = 220;
 constexpr uint8_t kLens1Grey = 40;
 
-std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTime = 0)
+std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTime = 0,
+                                  const std::vector<uint8_t>& gps = {},
+                                  uint64_t firstFrameUnixMs = 0)
 {
     Bytes meta;
     meta.pbString(1, "IXSE0000000001").pbString(2, "Insta360 ONE X2").pbString(3, "v1.0.92_build1");
@@ -51,6 +55,11 @@ std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTi
     Bytes crop;
     crop.pbVarint(1, 3040).pbVarint(2, 3040).pbVarint(3, 2880).pbVarint(4, 2880);
     meta.pbBytes(27, crop.b);
+    if (firstFrameUnixMs) {
+        Bytes times;
+        times.pbVarint(1, 4407).pbVarint(3, firstFrameUnixMs);
+        meta.pbBytes(98, times.b);
+    }
     meta.pbString(54, "2_1.728590_2322.610_2322.410_1528.430_1521.450_0.799_-0.157_178.977_"
                       "0_0_0_0.2279_-0.1489_-0.9684_-0.0019_0.0012_6080_3040_41_"
                       "1.728590_2318.480_2318.720_4554.650_1542.810_-0.848_-0.368_1.421_"
@@ -62,6 +71,8 @@ std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTi
         for (double v : {0.0, 0.0, 1.0, 0.0, 0.0, 0.0}) imu.f64(v);
     }
     std::vector<testtrailer::TrailerRecord> records = {{0x300, imu.b}};
+    if (!gps.empty())
+        records.push_back({0x700, gps});
     if (lensPictures) {
         records.push_back({0x200, testmedia::encodeH264Picture(64, 64, kLens0Grey)});
         records.push_back({0x500, testmedia::encodeH264Picture(64, 64, kLens1Grey)});
@@ -244,6 +255,40 @@ void testStitchedThumbnail(const Take& t)
     CHECK(bright > 1024 * 512 / 5 && dark > 1024 * 512 / 5);
 }
 
+// The GPS track in the clip's video time: field 98.3 is its first frame.
+// Without field 98 it isn't used; without GPS there's none.
+void testGps(const std::filesystem::path& dir)
+{
+    std::printf("  the GPS track, lined up with the video\n");
+    constexpr uint64_t t0 = 1700000000000ull;
+    Bytes gps;
+    for (int i = 0; i < 30; ++i) // a fix a second, each over 10 records
+        gps.raw(testtrailer::gpsRecord(t0 + uint64_t(i / 10) * 1000 + 996, 'A', 45.5, 'N', 7.25,
+                                       'E', i < 20 ? 0.1 : 5.0, i < 20 ? -1.0 : 90.0, 8.0));
+    const auto take = [&](const char* sub, uint64_t firstFrame) {
+        std::filesystem::create_directories(dir / sub);
+        const Take t = writeTake(dir / sub);
+        CHECK(writeLens(t.lead, 64, 50));
+        appendTo(t.lead, oneX2Trailer(false, 0, gps.b, firstFrame));
+        return t;
+    };
+    const Take lined = take("gps", t0 + 404);
+    const auto clip = camera::ReadClipMetadata(lined.lead);
+    CHECK(clip && clip->gpsFixes == 30);
+    const auto track = camera::ReadClipGps(lined.lead);
+    CHECK(track && track->fixes.size() == 3);
+    if (track && track->fixes.size() == 3) {
+        CHECK(track->fixes[0].timeMs == 592 && track->fixes[2].timeMs == 2592);
+        CHECK(track->fixes[0].latitude == 45.5 && track->fixes[0].longitude == 7.25);
+        CHECK(std::isnan(track->fixes[0].headingDeg)); // -1: standing still
+        CHECK(track->fixes[2].headingDeg == 90.0 && track->fixes[2].speedMps == 5.0);
+    }
+    const Take unaligned = take("gps_no98", 0);
+    CHECK(camera::ReadClipMetadata(unaligned.lead));
+    CHECK(!camera::ReadClipGps(unaligned.lead));
+    CHECK(!camera::ReadClipGps((dir / "missing.insv").string()));
+}
+
 } // namespace
 
 int main()
@@ -257,6 +302,7 @@ int main()
     testSecondLensChecked(t);
     testClipFileOf(t);
     testStitchedThumbnail(t);
+    testGps(dir);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

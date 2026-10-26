@@ -39,6 +39,20 @@ struct Bytes {
     }
 };
 
+// One 53-byte record of the GPS record 0x700 (docs/formats/insta360-x5.md
+// §8): Unix time, 'A' / 'V', latitude and longitude as positive degrees with
+// their hemisphere letters, speed m/s, heading, altitude m.
+inline std::vector<uint8_t> gpsRecord(uint64_t unixMs, char status, double latitude, char ns,
+                                      double longitude, char ew, double speedMps,
+                                      double headingDeg, double altitudeM)
+{
+    Bytes r;
+    r.u64(unixMs / 1000).u16(uint16_t(unixMs % 1000)).u8(uint8_t(status));
+    r.f64(latitude).u8(uint8_t(ns)).f64(longitude).u8(uint8_t(ew));
+    r.f64(speedMps).f64(headingDeg).f64(altitudeM);
+    return r.b;
+}
+
 struct TrailerRecord {
     uint16_t id; // the header's (type << 8 | format)
     std::vector<uint8_t> payload;

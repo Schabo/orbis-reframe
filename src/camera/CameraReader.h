@@ -31,6 +31,9 @@ public:
                         std::string& err) const = 0;
 
     virtual std::optional<insv::ImuTrack> readImu(const ClipMetadata& clip) const = 0;
+    // The GPS track lined up with the video; nullopt when the clip has none
+    // or the file doesn't say how it lines up.
+    virtual std::optional<insv::GpsTrack> readGps(const ClipMetadata& clip) const = 0;
     // By its name alone: the clip file `path` would belong to if it is
     // another file of a take (a lens's own file, the camera's proxy);
     // nullopt for any other name. ClipFileOf checks the answer.

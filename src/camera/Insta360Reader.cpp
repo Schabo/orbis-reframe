@@ -308,6 +308,31 @@ std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) 
     return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model.imuAxes);
 }
 
+std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {
+    if (clip.gpsFixes == 0)
+        return std::nullopt;
+    const auto gps = insv::ReadInsvGps(clip.path);
+    if (!gps || gps->fixes.empty())
+        return std::nullopt;
+    // The fixes carry Unix time; field 98.3 says when the first frame was
+    // recorded on the same scale (docs/formats/insta360-x5.md §8). The file
+    // gives no other anchor, so without it the track isn't used.
+    if (gps->first_frame_unix_ms == 0) {
+        std::fprintf(stderr, "[camera] GPS in %s but no first-frame time (field 98); not used\n",
+                     clip.path.c_str());
+        return std::nullopt;
+    }
+    insv::GpsTrack track;
+    track.fixes.reserve(gps->fixes.size());
+    // A heading of -1 is the camera's "don't know", written while standing
+    // still (§8).
+    for (const insv::InsvGpsFix& f : gps->fixes)
+        track.fixes.push_back({f.unix_ms - gps->first_frame_unix_ms, f.latitude, f.longitude,
+                               f.speed_mps, f.heading_deg < 0.0 ? std::nan("") : f.heading_deg,
+                               f.altitude_m});
+    return track;
+}
+
 std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) const {
     // VID_<date>_<time>_<lens>_<n>.insv -> the clip's VID_…_00_…, and
     // LRV_…_<token>_<n>.<ext> likewise, by each model's names. The lens token

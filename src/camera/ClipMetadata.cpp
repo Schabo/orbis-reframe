@@ -176,6 +176,13 @@ std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
     return c.reader->readImu(*c.clip);
 }
 
+std::optional<insv::GpsTrack> ReadClipGps(const std::string& path) {
+    const Cached c = lookup(path, nullptr, nullptr);
+    if (!c.clip || c.clip->gpsFixes == 0)
+        return std::nullopt;
+    return c.reader->readGps(*c.clip);
+}
+
 std::optional<Thumbnail> ReadClipThumbnail(const std::string& path) {
     for (const CameraReader* r : readers())
         if (auto t = r->readThumbnail(path))

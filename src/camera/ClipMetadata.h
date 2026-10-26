@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Calibration.h> // insv::LensCalibExt
+#include <Gps.h>         // insv::GpsTrack
 #include <Imu.h>         // insv::ImuTrack
 #include <InsvTrailer.h> // insv::LensProfile
 #include <LensSource.h>  // insv::LensSource
@@ -101,7 +102,7 @@ struct ClipMetadata {
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
     // GPS track: presence only, never positions -- the panel is what people
-    // screenshot for bug reports.
+    // screenshot for bug reports. The track itself comes from ReadClipGps.
     int64_t gpsRecords = 0;
     int64_t gpsFixes = 0;     // records with an acquired position
     double gpsRateHz = 0.0;   // position updates per second
@@ -132,6 +133,11 @@ std::string ClipFileOf(const std::string& path, std::string* err = nullptr);
 // The clip's IMU, lined up with its video. Not cached: a long clip's track is
 // tens of MB. nullopt when the clip has none (or can't be read).
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path);
+
+// The clip's GPS track, lined up with its video. Not cached, like the IMU:
+// read when an overlay needs it. nullopt when the clip has none (or can't be
+// read).
+std::optional<insv::GpsTrack> ReadClipGps(const std::string& path);
 
 // The camera's own preview picture, nullopt when the file has none.
 std::optional<Thumbnail> ReadClipThumbnail(const std::string& path);

@@ -20,9 +20,10 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 Speed, altitude, heading, the route, and lean / G-force gauges, drawn on
 the picture from the clip's own telemetry and following the clip's time
-(speed changes and trims included). Distance travelled is left for later. The X5 records GPS in its
-`.insv` trailer when a GPS source was connected, about once a second and
-sometimes only for part of the clip ([`formats/insta360-x5.md`](formats/insta360-x5.md));
+(speed changes and trims included). Distance travelled is left for later.
+The X5 records GPS in its `.insv` trailer when a GPS source was connected,
+about once a second and sometimes only for part of the clip
+([`formats/insta360-x5.md`](formats/insta360-x5.md));
 lean comes from the gyroscope. No map tiles: the route is a drawn line,
 editing stays local-only. The overlays are saved in the project with their
 style and position, and the viewport and the export draw the same: they
@@ -31,7 +32,8 @@ clock's map from timeline time to each clip's source time shared by both.
 
 In steps: the GPS track read from the trailer (one fix a second, smoothed
 between fixes, a gap of a few seconds is "no data") and its values at any
-moment; then text fields in titles (`{speed}`, `{altitude}`, `{heading}`,
+moment -- built: `camera::ReadClipGps`, `core/Telemetry` and the shared
+`SourceTimeMap`; then text fields in titles (`{speed}`, `{altitude}`, `{heading}`,
 with units per title); then drawn gauges as their own overlay clips (dial,
 bar, heading tape); then the route, lean and G-force. Where a
 clip has no GPS, a field or gauge shows `--`. Place names from coordinates
@@ -101,7 +103,8 @@ each is in its document in [`formats/`](formats/README.md).
     file and stream each comes from, colour and log profile, lens-guard
     profiles, capture-mode name, the proxy file, telemetry facts -- and on
     demand the IMU (`ReadClipImu`, an `insv::ImuTrack`: samples, axis map,
-    video <-> IMU timing, readout) and the preview picture
+    video <-> IMU timing, readout), the GPS track (`ReadClipGps`, an
+    `insv::GpsTrack` in the clip's video time) and the preview picture
     (`ReadClipThumbnail`). One reader per camera family, asked in turn
     (`Insta360Reader`); Insta360's per-model differences are a table
     (`insv::InsvModel`: IMU axis map, lens-guard profile names,

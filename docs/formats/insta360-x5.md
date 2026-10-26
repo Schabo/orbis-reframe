@@ -246,7 +246,7 @@ frame rate); **wanted** means no clip yet.
 | Audio: Auto Wind Noise Reduction, Voice Focus, Stereo, 360 Audio | 48 kHz AAC | | ❓ which ours used; one with a Mic Air too | **one clip of each wanted** (field 121, §5.1) |
 | Lens guards | | | guarded and bare footage | enough (§5.4) |
 | Invisible Dive Case | | | none | wanted if a case is at hand |
-| GPS remote | 10 Hz records | | two clips, one losing the fix (§8) | enough to count fixes; positions aren't read |
+| GPS remote | 10 Hz records | | two clips, one losing the fix (§8) | decoded and lined up with the video (§8) |
 
 The files and timing of the modes we have no clip of are a guess from the
 spec table: TimeShift and Bullet Time may record at other frame rates or
@@ -378,7 +378,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 
 ExifTool decodes types 1 (partly), 2, 3, 4, 6 and 7. Its source notes that
 0x900/0xa00/0xb00 also occur on X3 / ONE RS / Ace Pro. Our parser reads types
-1, 2, 3 and 4 (and counts 7).
+1, 2, 3, 4 and 7.
 
 ### 4.4 Type 9 — AAAData (48 B per frame) 📖
 
@@ -431,7 +431,7 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 29 | `is_has_gyro_timestamp` | true | enables field 28 |
 | 30 | `timelapse_interval` | 2000 (timelapses only) | the interval, in ms when field 59 is set (§3.5) 📖 ✅ |
 | 31 | `gyro_calib` | 6 × f64 + u64 unix ts | per-unit IMU calibration: 6 small values (−0.0069 0.0025 0.0041 −0.0055 −0.0088 0.0043), likely gyro + accel bias; ts 0. Identical on every clip. Whether they're already applied to type 3 data is unknown ❓ |
-| 36 | `first_gps_timestamp` | 1757003465191 | Unix ms |
+| 36 | `first_gps_timestamp` | 1757003465191 | Unix ms. Not the first fix's time (that's 1757003464999 here), nor the first frame's; up to ~1 s off either on the samples, meaning unknown ❓. GPS lines up by field 98.3 (§8) |
 | 41 | `is_selfie` | 0 | |
 | 42 | `is_flowstate_online` | 0 | in-camera FlowState off |
 | 44 | `resolution_size` | {3840, 3840} | |
@@ -844,12 +844,34 @@ and the record ends ~48 s into a 10:41 recording. So neither the record count
 nor the first-to-last time span measures the track; count distinct
 timestamps.
 
-GPS is timed in Unix time. Align it to video with field 98.3 (Unix ms of the
-first frame) or field 36. `ReadInsvTelemetry` only counts the record --
-records, `A` records, the fix rate (median step between distinct timestamps)
-and the track length (distinct timestamps × that step) -- for the Media
-information panel; positions aren't parsed. They could feed a speed-aware
-lean estimate.
+**Heading -1** means the camera doesn't know the course: it writes it while
+standing still (speeds up to 0.37 m/s on `_080`, `_081`, `_083`; 47 of
+`_080`'s 1222 fixes). Every other heading is 0-360.
+
+**Lining up with the video: the timestamps, by field 98.3.** GPS is timed
+in Unix time (UTC); field 98.3 is the first frame's Unix ms on the camera's
+clock, so a fix's video time is `fix ms - field 98.3`. The record order
+doesn't carry the time: `201257`'s lone record after the lost-fix repeat
+sits at ~48 s of video but is stamped 206 s, and its position is ~3 km on
+from the last fix -- what 180 s at the speed before covers, not 22 s. Field
+36 (`first_gps_timestamp`) is neither the first fix's time nor the first
+frame's (up to ~1 s off either way on the samples), so it isn't used. Not
+measured: how far the camera's clock (set from the phone) sits from GPS
+time; a second or so would shift the overlays by that much ❓. The first fix
+lands between -0.9 s and +1.4 s of video on the samples, and the record
+stops up to ~1.6 s before the video ends (`193105`). Insta360's trimmed
+exports have no field 98, and their GPS isn't lined up.
+
+`ReadInsvGps` (`src/insv/InsvTrailer`) decodes the record: acquired fixes,
+each once (the first record carrying it; the lost-fix repeat and anything
+out of order dropped), the hemisphere letters as signs, with field 98.3.
+Checked against `exiftool -ee -n` on `193105` (43 fixes) and `_080` (1222):
+every value equal (ExifTool gives the speed in km/h). `Insta360Reader`
+turns it into the common `insv::GpsTrack` in video time (heading -1 as
+unknown), read through `camera::ReadClipGps`. `ReadInsvTelemetry` still
+only counts the record for the Media information panel -- records, `A`
+records, the fix rate (median step between distinct timestamps) and the
+track length (distinct timestamps × that step); positions stay out of it.
 
 ## 9. `MISC/Camera01/<file>.insv.pb` sidecar 📖
 
@@ -879,7 +901,7 @@ sample set.
 
 | tool | use |
 |---|---|
-| `build/insv_trailer_dump <file>` | serial, model, firmware, Parameters, IMU/exposure summary; `--imu` / `--exposure` dumps |
+| `build/insv_trailer_dump <file>` | serial, model, firmware, Parameters, IMU/exposure summary; `--imu` / `--exposure` / `--gps` dumps |
 | `exiftool -ee -G3 <file>` | independent decode of types 1 (partly), 2, 3 (first 20 000, `/1000` scaling), 4, 7 |
 | Gyroflow `telemetry-parser` (`gyro2bb`, or the Python `telemetry_parser`) | full metadata JSON (`Extra metadata`), correctly scaled and synced IMU, Insta360 lens profile |
 | `ffprobe -show_streams` | container and streams (§3) |

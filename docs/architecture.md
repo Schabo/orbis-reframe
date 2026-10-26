@@ -174,8 +174,8 @@ X6 and the ONE X2. Everything known about a format is in its document in
 
 The app reads clips only through one description, `camera::ClipMetadata`
 (`src/camera/`), from the cached `camera::ReadClipMetadata(path)`, with the
-IMU (`ReadClipImu`) and the camera's preview picture (`ReadClipThumbnail`)
-read on demand. A reader per camera family fills it (`Insta360Reader`, the
+IMU (`ReadClipImu`), the GPS track (`ReadClipGps`) and the camera's preview
+picture (`ReadClipThumbnail`) read on demand. A reader per camera family fills it (`Insta360Reader`, the
 only one so far), picked by asking each in turn whether the file is its own:
 what differs between cameras -- lens layout and which file and stream each
 lens comes from, calibration, IMU timing and axes, colour profile, lens-guard

@@ -180,53 +180,45 @@ QString escapeBraces(const QString &text)
     return out.replace(QLatin1Char('{'), QStringLiteral("{{"));
 }
 
-const Clock::Span *Clock::spanAt(qint64 timelineMs) const
+Clock::Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded)
+    : m_map(std::move(map))
 {
-    if (m_spans.empty())
-        return nullptr;
-    for (const Span &s : m_spans)
-        if (timelineMs < s.endMs)
-            return &s;
-    return &m_spans.back();
+    for (const SourceTimeMap::Span &s : m_map.spans())
+        m_recorded.push_back(recorded.value(s.path));
 }
 
-qint64 Clock::wallMs(const Span &s, qint64 timelineMs)
+qint64 Clock::baseMs(int i) const
 {
-    const qint64 local = std::clamp(timelineMs, s.startMs, s.endMs) - s.startMs;
-    const qint64 base =
-        QDateTime(s.recorded.date(), s.recorded.time(), QTimeZone::UTC).toMSecsSinceEpoch();
-    return base + s.trimInMs + std::llround(local * s.speed);
+    const QDateTime &r = m_recorded[size_t(i)];
+    return QDateTime(r.date(), r.time(), QTimeZone::UTC).toMSecsSinceEpoch();
 }
 
 QDateTime Clock::at(qint64 timelineMs) const
 {
-    const Span *s = spanAt(timelineMs);
-    if (!s || !s->recorded.isValid())
+    const int i = m_map.spanAt(timelineMs);
+    if (i < 0 || !m_recorded[size_t(i)].isValid())
         return {};
-    const qint64 seconds = floorDiv(wallMs(*s, timelineMs), 1000);
+    const qint64 seconds = floorDiv(baseMs(i) + m_map.sourceMs(i, timelineMs), 1000);
     return QDateTime::fromMSecsSinceEpoch(seconds * 1000, QTimeZone::UTC);
 }
 
 qint64 Clock::nextTick(qint64 timelineMs, int stepSeconds) const
 {
-    const Span *s = spanAt(timelineMs);
-    if (!s)
+    const int i = m_map.spanAt(timelineMs);
+    if (i < 0)
         return -1;
-    if (s->recorded.isValid() && s->speed > 0.0 && stepSeconds > 0) {
+    const SourceTimeMap::Span &s = m_map.spans()[size_t(i)];
+    if (m_recorded[size_t(i)].isValid() && stepSeconds > 0) {
         const qint64 step = qint64(stepSeconds) * 1000;
-        const qint64 target = (floorDiv(wallMs(*s, timelineMs), step) + 1) * step;
-        // Close below the answer from the speed, then up to it (rounding).
-        const qint64 base = wallMs(*s, s->startMs);
-        qint64 t = s->startMs + static_cast<qint64>(std::floor((target - base) / s->speed)) - 2;
-        t = std::max(t, timelineMs + 1);
-        while (t < s->endMs && wallMs(*s, t) < target)
-            ++t;
-        if (t < s->endMs)
+        const qint64 base = baseMs(i);
+        const qint64 target = (floorDiv(base + m_map.sourceMs(i, timelineMs), step) + 1) * step;
+        const qint64 t = m_map.timelineMsAt(i, timelineMs + 1, target - base);
+        if (t >= 0)
             return t;
     }
     // The next clip's clock, if there is one after this.
-    if (s != &m_spans.back() && s->endMs > timelineMs)
-        return s->endMs;
+    if (i + 1 < int(m_map.spans().size()) && s.endMs > timelineMs)
+        return s.endMs;
     return -1;
 }
 

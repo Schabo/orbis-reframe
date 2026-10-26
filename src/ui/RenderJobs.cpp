@@ -304,22 +304,27 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline)
     return mix;
 }
 
-title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded)
+SourceTimeMap sourceTimeMap(const Timeline &timeline)
 {
-    std::vector<title::Clock::Span> spans;
+    std::vector<SourceTimeMap::Span> spans;
     qint64 at = 0;
     for (int i = 0; i < timeline.count(); ++i) {
         const ClipItem &c = timeline.clipAt(i);
-        title::Clock::Span s;
+        SourceTimeMap::Span s;
         s.startMs = at;
         s.endMs = at + c.timelineDurationMs();
-        s.recorded = recorded.value(c.sourcePath);
+        s.path = c.sourcePath;
         s.trimInMs = c.trimInMs;
         s.speed = c.speed;
         spans.push_back(s);
         at = s.endMs;
     }
-    return title::Clock(std::move(spans));
+    return SourceTimeMap(std::move(spans));
+}
+
+title::Clock titleClock(const Timeline &timeline, const RecordedTimes &recorded)
+{
+    return title::Clock(sourceTimeMap(timeline), recorded);
 }
 
 bool anyTitleClock(const Timeline &timeline)

@@ -117,6 +117,7 @@ endif()
 # (rather than folded into `insv`) so targets that only need trailer parsing
 # don't pull the rest of the module.
 add_library(insv_trailer STATIC
+    src/insv/Gps.h
     src/insv/Imu.h
     src/insv/InsvTrailer.h
     src/insv/InsvTrailer.cpp
@@ -253,6 +254,10 @@ add_library(orbis_core STATIC
     src/core/PaneLayout.h
     src/core/ReframeTrack.cpp
     src/core/ReframeTrack.h
+    src/core/SourceTimeMap.cpp
+    src/core/SourceTimeMap.h
+    src/core/Telemetry.cpp
+    src/core/Telemetry.h
     src/core/Title.h
     src/core/TitleClock.cpp
     src/core/TitleClock.h
@@ -801,7 +806,8 @@ endif()
 # regardless of the block above. Run with `ctest` from the build dir (or
 # the binaries directly).
 foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilization_test
-        project_test color_lut_test pane_layout_test view_projection_test zip_reader_test)
+        project_test color_lut_test pane_layout_test view_projection_test zip_reader_test
+        telemetry_test)
     add_executable(${model_test} tests/${model_test}.cpp tests/support/ModelTest.h)
     target_include_directories(${model_test} PRIVATE tests)
     target_link_libraries(${model_test} PRIVATE orbis_core)

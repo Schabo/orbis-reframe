@@ -514,6 +514,35 @@ void testClockFields()
     CHECK(title::withFields(title::escapeBraces(old), at, gb) == old);
 }
 
+// Which file plays where, and how far into it: trims, speed, cuts.
+void testSourceTimeMap()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    const int b = t.appendClip("/c/b.insv", 20000, 30.0);
+    t.appendClip("/c/c.mp4", 20000, 30.0, 1920, 1080, 0, true);
+    t.setClipTrimIn(a, 2000);
+    t.setClipTrimOut(a, 10000); // 0..8 s
+    t.setClipTrimIn(b, 3000);
+    t.setClipTrimOut(b, 13000);
+    t.setClipSpeed(b, 2.0); // 8..13 s; c 13..33 s
+    const SourceTimeMap map = renderjobs::sourceTimeMap(t);
+    CHECK(map.spans().size() == 3);
+    CHECK(map.spanAt(0) == 0 && map.spanAt(7999) == 0);
+    CHECK(map.spanAt(8000) == 1); // at the cut the later clip
+    CHECK(map.spanAt(13000) == 2 && map.spanAt(99999) == 2);
+    CHECK(map.spans()[1].path == "/c/b.insv");
+    CHECK(map.sourceMs(0, 0) == 2000 && map.sourceMs(0, 7999) == 9999);
+    CHECK(map.sourceMs(1, 8000) == 3000 && map.sourceMs(1, 9000) == 5000); // double speed
+    CHECK(map.sourceMs(1, 20000) == 13000); // clamped to the span
+    CHECK(map.sourceMs(2, 13000) == 0);
+    CHECK(map.timelineMsAt(1, 8000, 5000) == 9000);
+    CHECK(map.timelineMsAt(1, 8000, 5001) == 9001); // 5002 there: the first that reaches it
+    CHECK(map.timelineMsAt(1, 9500, 5000) == 9500);
+    CHECK(map.timelineMsAt(1, 8000, 13000) == -1); // only at the span's end
+    CHECK(SourceTimeMap().spanAt(0) == -1);
+}
+
 // The clock over the main track: trims, speed, cuts, a clip without a
 // recording time; when it ticks.
 void testClock()
@@ -960,6 +989,7 @@ int main(int argc, char **argv)
     testTypeOn();
     testTypeOnFeedVsExport();
     testClockFields();
+    testSourceTimeMap();
     testClock();
     testClockFeedVsExport();
     testTransitions();
