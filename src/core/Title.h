@@ -129,7 +129,7 @@ inline inset::Look defaultLook()
     return l;
 }
 
-// A title dragged from the Titles tab onto the timeline.
+// A title dragged from the Overlays tab onto the timeline.
 constexpr const char *kMimeType = "application/x-orbis-reframe-title";
 
 } // namespace title

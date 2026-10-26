@@ -79,7 +79,7 @@ class QTimer;
 //   first such track with room (or a new one) -> audioFilesDropped /
 //   videoFilesDropped. .insv clips go onto the main track at the cut
 //   nearest the pointer, also on an empty timeline -> clipFilesDropped.
-//   Titles: dragged from the Titles tab, onto an overlay track like a video
+//   Titles: dragged from the Overlays tab, onto an overlay track like a video
 //   file -> titleDropped (not on an empty timeline).
 //   Transitions: dragged from the Transitions tab onto the main track, at
 //   the cut nearest the pointer -> transitionDropped (with two clips or
@@ -278,7 +278,7 @@ signals:
     // The same for video files, onto an overlay track.
     void addVideoFileRequested(int trackId, qint64 atMs);
     void videoFilesDropped(const QStringList &paths, int trackId, qint64 atMs);
-    // A title dragged from the Titles tab (title::kMimeType, the data its
+    // A title dragged from the Overlays tab (title::kMimeType, the data its
     // preset's id), onto overlay track `trackId` (0 = the first with room
     // there, else a new one).
     void titleDropped(int trackId, qint64 atMs, const QString &presetId);

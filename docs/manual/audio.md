@@ -18,9 +18,9 @@ noise. How to add, move, trim and split audio clips on the timeline is in
   way. Both play, each with its own level, mute and noise reduction.
 - **Audio files** on the other audio tracks: music, or sound from a
   separate recorder.
-- **An overlay's sound.** When you add an overlay video that has sound, its
-  sound goes onto a track right under its overlay track, as a clip linked
-  to the overlay, the same way as a video clip's.
+- **A PiP's sound.** When you add a picture-in-picture video that has
+  sound, its sound goes onto a track right under its overlay track, as a
+  clip linked to the PiP, the same way as a video clip's.
 
 Everything plays together, in playback and in the export.
 
@@ -28,13 +28,13 @@ Everything plays together, in playback and in the export.
 
 The settings sidebar's **Audio** tab shows audio clips, one section per
 clip, titled with the clip's track. Which clips depends on what's selected,
-and each section's title row says which (*This clip*, *Selected overlay
+and each section's title row says which (*This clip*, *Selected PiP
 clip* or *Selected audio clip*):
 
 - **A video clip** you selected on the video track, or the clip under the
   playhead if none is selected: all of its sound, one section per track:
   *Camera mic*, and *External mic* if it has one.
-- **An overlay clip you selected**: its sound.
+- **A PiP clip you selected**: its sound.
 - **An audio clip you selected**: click it on an audio track to see just
   that clip. Press `Esc`, or click a clip on the video track, to go back.
 

@@ -110,8 +110,8 @@ selected, or the clip under the playhead if none is selected (see
 you split a clip, both halves keep them.
 
 The settings are the same for the whole clip: they don't change over time.
-They apply to playback, screenshots and the export. Overlay videos aren't
-changed.
+They apply to playback, screenshots and the export. Picture-in-picture videos
+aren't changed.
 
 ## Giving several clips the same look
 

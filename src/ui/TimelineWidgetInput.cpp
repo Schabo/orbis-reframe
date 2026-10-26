@@ -769,7 +769,7 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         addFile->setEnabled(!m_rows.isEmpty());
     }
     if (!onAudio) {
-        addVideo = menu.addAction(tr("Add video overlay here…"));
+        addVideo = menu.addAction(tr("Add PiP here…"));
         addVideo->setEnabled(!m_rows.isEmpty());
     }
     QAction *addTrack = menu.addAction(tr("Add audio track"));

@@ -88,7 +88,7 @@ std::optional<int> TrackFiles::pickVideo(int trackId, qint64 atMs)
     if (m_project->timeline()->count() == 0)
         return std::nullopt; // the main track sets the timeline's length: nothing to lay an overlay over
     const QStringList paths = QFileDialog::getOpenFileNames(
-        m_window, tr("Add video overlay"),
+        m_window, tr("Add picture in picture"),
         m_lastVideoDir.isEmpty() ? QDir::homePath() : m_lastVideoDir,
         tr("Video files (*.mp4 *.mov *.mkv *.m4v *.webm *.avi);;All files (*)"));
     if (paths.isEmpty())

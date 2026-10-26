@@ -5,7 +5,7 @@
 #include <QList>
 #include <QString>
 
-// The ready-made titles the Titles tab offers as tiles: where a title
+// The ready-made titles the Overlays tab offers as tiles: where a title
 // starts, a style, a place in the picture and how it comes and goes. Nothing about the tile is
 // kept -- once added it is an ordinary title, edited like any other.
 namespace titlepresets {

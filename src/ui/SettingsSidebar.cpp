@@ -43,7 +43,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_colour = section<ColourPanel>("colourPanel", thisClip);
     m_mediaInfo = section<MediaInfoPanel>("mediaInfoPanel", thisClip);
     m_audio = new AudioPanel(this); // a section per clip, made as needed
-    m_overlay = section<OverlayPanel>("overlayPanel", tr("Selected overlay clip"));
+    m_overlay = section<OverlayPanel>("overlayPanel", tr("Selected PiP clip"));
     const QString selectedTitle = tr("Selected title");
     m_titleText = section<TitleTextPanel>("titleTextPanel", selectedTitle);
     m_titleLook = section<TitleLookPanel>("titleLookPanel", selectedTitle);
@@ -75,7 +75,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_audio->attach(pages[1]);
     addTab(pages[0], QStringLiteral("video"), tr("Video"));
     addTab(pages[1], QStringLiteral("volume-2"), tr("Audio"));
-    addTab(pages[2], QStringLiteral("picture-in-picture-2"), tr("Overlay"));
+    addTab(pages[2], QStringLiteral("picture-in-picture-2"), tr("Picture in picture"));
     addTab(pages[3], QStringLiteral("type"), tr("Title"));
     addTab(pages[4], QStringLiteral("blend"), tr("Transition"));
     addTab(pages[5], QStringLiteral("eye-off"), tr("Privacy"));

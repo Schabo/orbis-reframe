@@ -27,7 +27,7 @@ class TransitionPanel;
 //              closed);
 //   Audio   -- the selected audio clip, else every audio clip of the
 //              video clip (AudioPanel: a section per clip);
-//   Overlay -- the selected overlay video;
+//   Picture in picture -- the selected PiP video;
 //   Title   -- the selected title: its text, then where it sits and when;
 //   Transition -- the selected transition: its length;
 //   Privacy -- the clip's number-plate blur.

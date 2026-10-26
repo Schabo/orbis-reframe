@@ -19,7 +19,7 @@ protected:
     QMimeData *mimeData(const QList<QListWidgetItem *> &items) const override;
 };
 
-// The left sidebar's Titles tab: text to put over the output, as tiles of
+// The left sidebar's Overlays tab: text to put over the output, as tiles of
 // ready-made titles (titlepresets); drag one onto the timeline, or
 // double-click (Enter) to add it at the playhead. It is edited in the right
 // sidebar's Title tab. An animated tile plays its animation while the mouse

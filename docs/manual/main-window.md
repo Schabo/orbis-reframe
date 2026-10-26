@@ -36,7 +36,7 @@ here is what you get.
 |---|---|
 | Look around | Drag with the left mouse button. |
 | Zoom in or out (narrower or wider view) | Turn the mouse wheel. |
-| Move an overlay (picture-in-picture) | Drag it. The pointer changes to a four-way arrow over one. |
+| Move an overlay (a picture in picture or a title) | Drag it. The pointer changes to a four-way arrow over one. |
 | Remove a privacy blur | Right-click it. See [Privacy blur](privacy.md). |
 
 Looking around only changes what you see right now. To make the export
@@ -47,7 +47,7 @@ follow a view, you set **reframe keyframes**, covered in
 
 The sidebar on the left of the viewport holds what you put on the
 timeline, on three tabs: **Media** (<img src="images/icons/tab-media.png" width="24" alt="">),
-the files you work with, **Titles** (<img src="images/icons/tab-titles.png" width="24" alt="">),
+the files you work with, **Overlays** (<img src="images/icons/tab-overlays.png" width="24" alt="">),
 ready-made titles to put over the video (see [Titles](titles.md)), and **Transitions**
 (<img src="images/icons/tab-transitions.png" width="24" alt="">), to go
 over from one clip to the next at a cut (see [Transitions](transitions.md)). The icons along its
@@ -77,7 +77,7 @@ to fold it away.
 |---|---|
 | Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab (<img src="images/icons/import-files.png" width="24" alt="">), or drag files from your file manager onto the list. |
 | Add everything in a folder | **Media ▸ Import folder…**, the second button (<img src="images/icons/import-folder.png" width="24" alt="">), or drag the folder onto the list. Every video and audio file directly in it is added (not its subfolders). |
-| Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
+| Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track as a picture in picture, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
 | Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
 | Find a file on disk | Right-click it and choose **Show in file manager**. |
 | Find a moved or renamed file | Double-click it (it's red, *File not found*), or right-click it and choose **Locate file…**, and pick where it is now. See [Projects and export](projects-and-export.md#where-the-clips-are). |
@@ -106,8 +106,8 @@ From top to bottom it has:
 - the video clips' sound, on the **Camera mic** track (and **External mic**,
   when an external microphone was connected);
 - any other **audio tracks**: music, or sound from an external recorder;
-- any **overlay tracks**: videos shown as picture-in-picture over the 360°
-  video, each with its sound on a track right under it.
+- any **overlay tracks**: videos shown as picture in picture (PiP) over the
+  360° video, and titles, each track with its sound on a track right under it.
 
 A little space separates these three groups: the video and its sound, the
 audio tracks, the overlays. A click on the **Video** track's header folds
@@ -201,8 +201,8 @@ key of the tab that's already showing closes the sidebar.
 | Tab | What it sets |
 |---|---|
 | <img src="images/icons/tab-video.png" width="24" alt=""> **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles, field of view and distortion, keyframes and their easing, and **Track subject**, which follows a person or vehicle automatically), **Split screen** (the clip in two or four panes, each looking its own way; see [Split screen](reframing.md#split-screen)), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
-| <img src="images/icons/tab-audio.png" width="24" alt=""> **Audio** | A section per audio clip: the selected one, or all of a video or overlay clip's sound (*Camera mic*, *External mic*). Noise and wind reduction, its volume and its track's, fades. See [Audio and noise reduction](audio.md). |
-| <img src="images/icons/tab-overlay.png" width="24" alt=""> **Overlay** | Size, position and look of the selected picture-in-picture clip. |
+| <img src="images/icons/tab-audio.png" width="24" alt=""> **Audio** | A section per audio clip: the selected one, or all of a video or PiP clip's sound (*Camera mic*, *External mic*). Noise and wind reduction, its volume and its track's, fades. See [Audio and noise reduction](audio.md). |
+| <img src="images/icons/tab-pip.png" width="24" alt=""> **Picture in picture** | Size, position and look of the selected PiP clip. |
 | <img src="images/icons/tab-title.png" width="24" alt=""> **Title** | The selected title's text, font, colour and alignment, its look (outline, shadow, box, spacing), how it slides, pops or types in and out, and its position, size and timing. See [Titles](titles.md). |
 | <img src="images/icons/tab-transition.png" width="24" alt=""> **Transition** | The selected transition's length. See [Transitions](transitions.md). |
 | <img src="images/icons/tab-privacy.png" width="24" alt=""> **Privacy** | Blurring number plates. |
@@ -227,7 +227,7 @@ says what the section applies to:
 |---|---|
 | *This clip* | The selected video clip if you've clicked one, otherwise the clip under the playhead. Stitching (shared by every clip of the same file), Stabilization, Colour, Privacy, Audio (the clip's sound) and Media information. |
 | *Selected audio clip* | The **Audio** tab's sections, when you've selected an audio clip on an audio track. |
-| *Selected overlay clip* | The **Overlay** section, and the **Audio** tab's sections for its sound: the overlay you've selected. |
+| *Selected PiP clip* | The **Picture in picture** section, and the **Audio** tab's sections for its sound: the PiP you've selected. |
 | *Keys at the playhead* | The **Reframe** section: the view at the playhead, and the keyframe there. |
 
 The project's output format (aspect ratio, resolution, frame rate and bit
@@ -241,7 +241,7 @@ in the sidebar: it's in **File ▸ Project settings…**, see
 |---|---|
 | **File** | New project, open project, back to the project library; save, save as; **Project settings…** (the output format); export, quit. (Screenshots are in the player bar.) |
 | **Edit** | **Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Shift+Z`). Undo steps back through your edits to the project; looking around in the viewport isn't an edit and isn't undone. |
-| **Media** | **Import files…** (`Ctrl+I`) and **Import folder…**, into the project's media ([above](#the-media-sidebar)); **Add clip to timeline…** (`Ctrl+Shift+A`), **Add audio file…** (`Ctrl+Shift+M`) and **Add video overlay…** (`Ctrl+Shift+V`), straight onto the timeline; **Add audio track** and **Add overlay track**. |
+| **Media** | **Import files…** (`Ctrl+I`) and **Import folder…**, into the project's media ([above](#the-media-sidebar)); **Add clip to timeline…** (`Ctrl+Shift+A`), **Add audio file…** (`Ctrl+Shift+M`) and **Add picture in picture…** (`Ctrl+Shift+V`), straight onto the timeline; **Add audio track** and **Add overlay track**. |
 | **View** | **Preview quality** and **Preview size**: how the preview in the viewport is stitched. They change only what you see while editing, never the export; see [Stitching](stitching.md#preview-size-and-quality). **Theme**: the app's colours -- **Ember** (dark grey with an orange accent, the default), **Light**, or **Neutral dark** (dark grey with a blue accent). It changes at once and is remembered; the area around the picture stays dark in every theme, so the picture's brightness is judged the same way. |
 | **Help** | **User manual** opens this manual in your web browser, on GitHub: for a release, the copy that matches your version. **Keyboard shortcuts** (`F1`), and **About orbis-reframe**, with the version and the diagnostics to include in a problem report. |
 

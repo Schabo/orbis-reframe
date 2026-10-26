@@ -11,7 +11,7 @@ class Project;
 class QWidget;
 
 // Putting audio files and overlay videos onto the timeline's tracks: Add
-// audio file… / Add video overlay… (a file picker), drops and the Media tab
+// audio file… / Add picture in picture… (a file picker), drops and the Media tab
 // (paths). Files are probed first; the ones without audio / video are
 // reported and skipped, the rest go one after another from `atMs` (clamped
 // to the timeline) on track `trackId`, or -- when that isn't a track of the

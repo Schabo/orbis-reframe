@@ -2,15 +2,15 @@
 
 A title is text shown over your video: the name of the ride, a place, a
 date. Titles sit on overlay tracks, like picture-in-picture videos
-([Overlays](overlays.md)), and are placed, keyframed and faded the same way.
+([Picture in picture](picture-in-picture.md)), and are placed, keyframed and faded the same way.
 They can also slide in and out, pop up, or type themselves on letter by
 letter, and show the time of day the video was recorded, running as it
 plays.
 
-![A title with a drop shadow in the viewport, the Titles tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
+![A title with a drop shadow in the viewport, the Overlays tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
 1. The title in the viewport. Drag it to move it.
-2. The media sidebar's **Titles** tab.
+2. The media sidebar's **Overlays** tab, with its **Titles** tiles.
 3. The settings sidebar's **Title** tab, with the selected title's
    text, font, colour and alignment, then how its text is drawn (outline,
    shadow, box, spacing), and below them how it comes and goes, and its
@@ -19,10 +19,10 @@ plays.
 
 ## Adding a title
 
-Open the media sidebar's **Titles** tab
-(<img src="images/icons/tab-titles.png" width="24" alt="">). Its tiles are
-ready-made titles, each showing roughly how and where it lands in the
-picture. An animated one plays its animation while the mouse is over it:
+Open the media sidebar's **Overlays** tab
+(<img src="images/icons/tab-overlays.png" width="24" alt="">). The tiles under
+**Titles** are ready-made titles, each showing roughly how and where it
+lands in the picture. An animated one plays its animation while the mouse is over it:
 
 | Tile | What you get |
 |---|---|
@@ -68,8 +68,8 @@ everything below can be changed, and nothing ties it to its tile.
 
 Select the title on the timeline, or click it in the viewport. The settings
 sidebar's **Title** tab then shows its settings, in four sections. If the
-**Overlay** tab is showing, it switches to the **Title** tab by itself (and
-back again when you select an overlay video). The **Text** section:
+**Picture in picture** tab is showing, it switches to the **Title** tab by
+itself (and back again when you select a PiP). The **Text** section:
 
 | Setting | What it does |
 |---|---|
@@ -172,8 +172,8 @@ second.
 
 ## Position, size, keyframes and fades
 
-The Title tab's **Position and timing** section. These work as for an
-overlay video ([Overlays](overlays.md)):
+The Title tab's **Position and timing** section. These work as for a
+picture in picture ([Picture in picture](picture-in-picture.md)):
 
 - **Position X** and **Position Y**: where the title is, as a percentage
   of the picture's width and height: across, its left edge, middle or right
@@ -184,10 +184,10 @@ overlay video ([Overlays](overlays.md)):
   with the text, so typing more doesn't make the letters smaller.
 - **Opacity**: 100 % is solid.
 - **Keyframes**: with **Set key** (`K`) a title can move, grow, shrink or
-  fade during its clip, exactly like an overlay video
-  ([Moving an overlay during a clip](overlays.md#moving-an-overlay-during-a-clip)).
+  fade during its clip, exactly like a PiP
+  ([Moving a picture in picture during a clip](picture-in-picture.md#moving-a-picture-in-picture-during-a-clip)).
   Its text and how it's drawn stay the same for the whole clip.
-- **Fade in** / **Fade out** and **Start**: as for an overlay.
+- **Fade in** / **Fade out** and **Start**: as for a PiP.
 - **Duration**: how long the title shows, in seconds. Its start stays put
   and its end moves.
 
@@ -196,8 +196,8 @@ A title has no corners or border settings, and no sound.
 To make a title longer or shorter, set its **Duration**, or drag its ends
 on the timeline. Trimming,
 splitting, moving it to another overlay track, hiding its track and the
-layer order all work as for an overlay clip ([The timeline](timeline.md#audio-and-overlay-tracks),
-[Several overlays](overlays.md#several-overlays)).
+layer order all work as for a PiP clip ([The timeline](timeline.md#audio-and-overlay-tracks),
+[Several overlays](picture-in-picture.md#several-overlays)).
 
 Titles appear in playback, screenshots and the export exactly as in the
 viewport. The text is drawn at the export's resolution, so it stays sharp

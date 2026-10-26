@@ -6,7 +6,7 @@ virtual camera through the sphere over time to get a normal flat video out of a
 360° recording. It opens Insta360 `.insv` clips directly: the **X5** is
 fully supported, the **X6** and **ONE X2** experimentally.
 
-[![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Overlay tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
+[![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Picture in picture tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
 
 ▶ **Demo video:** [plate blur and stabilization on a motorcycle ride](https://youtu.be/BER8GgtOpjQ)
 (YouTube, 3:41)
@@ -134,10 +134,10 @@ no closed-source dependencies.
 
 **Picture-in-picture and titles**
 - Flat video files on overlay tracks, drawn as insets over the reframed view:
-  position, size, opacity, rounded corners and a border, set in the Overlay
-  tab or by dragging the inset in the viewport.
+  position, size, opacity, rounded corners and a border, set in the Picture in
+  picture tab or by dragging the inset in the viewport.
 - Keyframe an inset's position, size and opacity, and bring an overlay forward
-  or send it back. An overlay's own sound comes along on its own track, linked
+  or send it back. A PiP's own sound comes along on its own track, linked
   like a video clip's.
 - Text titles on overlay tracks: font, colour, position and size, keyframed
   and faded like an inset.
@@ -192,8 +192,9 @@ no closed-source dependencies.
 - Save/load (`.orp`, JSON), undo/redo, and autosave to a recovery file.
 - A Media sidebar with the project's files, which notices files going missing
   and helps find moved ones.
-- Settings in tabs (Video, Audio, Overlay, Privacy) with collapsible sections,
-  a player bar under the video, and the timeline across the full window.
+- Settings in tabs (Video, Audio, Picture in picture, Title, Transition,
+  Privacy) with collapsible sections, a player bar under the video, and the
+  timeline across the full window.
 - Three themes: Ember, Light and Neutral dark.
 
 Planned next: other 360° cameras (other Insta360 models, DJI, GoPro) and an

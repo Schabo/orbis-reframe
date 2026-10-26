@@ -3,8 +3,8 @@
 // their sections in order, opening / closing sections (with a greyed-out
 // body too), what each section says it applies to, the tab keys' toggle,
 // the Stitching section keeping the View menu's part of the stitch config,
-// the Overlay tab's layer row, the Easing field of the Reframe and Overlay
-// sections, the Colour section's LUT picker, and the Project settings
+// the Picture in picture tab's layer row, the Easing field of the Reframe
+// and Overlay sections, the Colour section's LUT picker, and the Project settings
 // dialog. No GPU, no media.
 // Exit code is the failure count. ORBIS_SETTINGS_SHOT=<path> saves a
 // picture of the sidebar.
@@ -167,7 +167,7 @@ void testScopes(SettingsSidebar &bar)
     CHECK(bar.colour()->scope() == QLatin1String("This clip"));
     CHECK(bar.reframe()->scope() == QLatin1String("Keys at the playhead"));
     CHECK(bar.splitScreen()->scope() == QLatin1String("This clip"));
-    CHECK(bar.overlay()->scope() == QLatin1String("Selected overlay clip"));
+    CHECK(bar.overlay()->scope() == QLatin1String("Selected PiP clip"));
     CHECK(bar.privacy()->scope() == QLatin1String("This clip"));
     if (auto *label = bar.colour()->findChild<QLabel *>(QStringLiteral("settingsPanelScope")))
         CHECK(label->text() == QLatin1String("This clip") && !label->isHidden());
@@ -319,8 +319,8 @@ void testProjectSettingsDialog()
 
 } // namespace
 
-// The Overlay tab's layer row: which layer the selected clip's track is,
-// and Bring forward / Send backward only where there's a layer to pass.
+// The Picture in picture tab's layer row: which layer the selected clip's
+// track is, and Bring forward / Send backward only where there's a layer to pass.
 void testOverlayLayer(SettingsSidebar &bar)
 {
     OverlayPanel *panel = bar.overlay();

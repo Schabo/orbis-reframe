@@ -93,7 +93,7 @@ it, insert another clip before or after it, copy or paste its colour grade
   the order the file manager gives them; on an empty timeline the first one
   starts the video track. Drop the `.insv` master, not the `.lrv` proxy.
 - Flat videos dropped on the video track (or on an empty timeline) go in
-  the same way. Dropped anywhere else, they become overlays
+  the same way. Dropped anywhere else, they become pictures in picture
   ([below](#audio-and-overlay-tracks)).
 
 You can add the same `.insv` file more than once, for example to use two
@@ -207,19 +207,19 @@ Besides the video track, you can add any number of other tracks:
   an external recorder. Files: `.mp3`, `.wav`, `.flac`, `.aac`, `.m4a`,
   `.ogg` and `.opus`. A new project has none.
 - **Overlay tracks**, under the audio tracks: ordinary flat videos shown as
-  a picture-in-picture over the 360° video, for example from a phone or an
+  a picture in picture (PiP) over the 360° video, for example from a phone or an
   action camera. Files: `.mp4`, `.mov`, `.mkv`, `.m4v`, `.webm` and `.avi`.
-  An overlay's sound goes on a track of its own right under its overlay
+  A PiP's sound goes on a track of its own right under its overlay
   track, called after it (*Overlay 1 audio*); that track comes when the
-  first overlay with sound is put on the overlay track, and goes when its
-  last clip is removed. How to place and size overlays is in
-  [Overlays](overlays.md). Overlay tracks also hold **titles**, text over
+  first PiP with sound is put on the overlay track, and goes when its
+  last clip is removed. How to place and size PiPs is in
+  [Picture in picture](picture-in-picture.md). Overlay tracks also hold **titles**, text over
   the video ([Titles](titles.md)).
 
 So from top to bottom the timeline has three groups of tracks, with a
 little space between them: the video track and its sound, the audio
 tracks, and the overlay tracks with their sound. The names of the tracks
-that hold a video's own sound (*Camera mic*, *External mic*, an overlay's
+that hold a video's own sound (*Camera mic*, *External mic*, a PiP's
 audio track) are indented under their video.
 
 To make room, a video's own sound tracks can be **folded away** under it:
@@ -241,25 +241,25 @@ overlays.
 
 There are four ways:
 
-- **Media ▸ Add audio file…** (`Ctrl+Shift+M`) or **Media ▸ Add video
-  overlay…** (`Ctrl+Shift+V`). The file goes in at the playhead.
+- **Media ▸ Add audio file…** (`Ctrl+Shift+M`) or **Media ▸ Add picture
+  in picture…** (`Ctrl+Shift+V`). The file goes in at the playhead.
 - Drag files from the **Media** tab onto the timeline, the same way as from
   a file manager (below), or double-click one there to put it in at the
   playhead. (On an empty timeline, a flat video double-clicked there
   becomes the first clip on the video track instead.)
 - Right-click on the timeline where the clip should start and choose **Add
-  audio file here…** or **Add video overlay here…**.
+  audio file here…** or **Add PiP here…**.
 - Drag audio files or flat videos from your file manager onto the timeline
   panel (not the viewport). They go in where you drop them: on the track you
   drop them on, or, if you drop them somewhere else on the timeline, on the
   first track with room for them. Audio files go on the audio tracks only,
-  not on *Camera mic*, *External mic* or an overlay's audio track: dropped
+  not on *Camera mic*, *External mic* or a PiP's audio track: dropped
   there, they go on the first audio track with room. Dropped together with `.insv` clips, they
   start where the clips go in. Without a clip on the video track, only
   clips can be dropped: `.insv` files, and flat videos, which then start
   the video track.
 
-Titles come from the **Titles** tab instead; see [Titles](titles.md).
+Titles come from the **Overlays** tab instead; see [Titles](titles.md).
 
 If there's no track of the right kind with room, orbis-reframe makes a new
 one. To make an empty track yourself, choose **Media ▸ Add audio track** or
@@ -272,12 +272,12 @@ them.
 |---|---|
 | Select a clip | Click it. |
 | Move it in time | Drag it left or right. It snaps to the playhead, the cuts on the video track and the edges of other clips. |
-| Move it to another track | Drag it up or down onto another track of the same kind. *Camera mic*, *External mic* and an overlay's audio track only take that video's own sound (see [Linked audio](#linked-audio)). |
+| Move it to another track | Drag it up or down onto another track of the same kind. *Camera mic*, *External mic* and a PiP's audio track only take that video's own sound (see [Linked audio](#linked-audio)). |
 | Trim it | Drag its left or right edge, or select it and use `[` and `]` as on the video track. |
 | Split it | Select it and press `S`, or right-click it and choose **Split here**. |
 | Remove it | Select it and press `Delete`, or right-click it and choose **Remove audio clip** / **Remove overlay clip**. |
 | Change its volume or fade it in and out | Select it and use the settings sidebar's **Audio** tab. |
-| Change an overlay's size, position or look | Select it and use the settings sidebar's **Overlay** tab (a title: the **Title** tab). |
+| Change an overlay's size, position or look | Select it and use the settings sidebar's **Picture in picture** tab (a title: the **Title** tab). |
 
 `S`, `[`, `]` and `Delete` act on the selected audio or overlay clip if
 there is one, and on the video track otherwise.
@@ -289,7 +289,7 @@ there is one, and on the video track otherwise.
 | Mute an audio track | Click the **M** box in its header. Click it again to hear it. |
 | Hide an overlay track | Click the **H** box in its header. |
 | Rename a track | Double-click its name, type the new name and press `Enter` (`Esc` cancels). Or right-click it and choose **Rename track…**. |
-| Change the order of tracks | Drag a track header up or down, or right-click the track and choose **Move track up** / **Move track down**. A track stays in its group: *Camera mic* and *External mic* under the video track, audio tracks among the audio tracks, overlay tracks among the overlay tracks. An overlay track takes its audio track along; that audio track can't be moved on its own. For an overlay track the menu says **Bring forward** / **Send backward**: its place is its layer, the number in its header (1 is drawn in front, see [Overlays](overlays.md#several-overlays)). |
+| Change the order of tracks | Drag a track header up or down, or right-click the track and choose **Move track up** / **Move track down**. A track stays in its group: *Camera mic* and *External mic* under the video track, audio tracks among the audio tracks, overlay tracks among the overlay tracks. An overlay track takes its audio track along; that audio track can't be moved on its own. For an overlay track the menu says **Bring forward** / **Send backward**: its place is its layer, the number in its header (1 is drawn in front, see [Several overlays](picture-in-picture.md#several-overlays)). |
 | Remove a track and everything on it | Right-click the track and choose **Remove track**. Removing an overlay track removes its audio track too. |
 
 ## Linked audio
@@ -306,9 +306,9 @@ You get linked audio in two ways:
 - **The camera's sound.** Every `.insv` clip's sound is linked audio on the
   *Camera mic* track, and on the *External mic* track when an external
   microphone was connected (see [above](#the-cameras-sound)).
-- **An overlay's sound.** An overlay video with sound gets its sound as
+- **A PiP's sound.** A PiP video with sound gets its sound as
   linked audio when you add it (removed, it comes back with **Put its sound
-  on an audio track** in the overlay's right-click menu).
+  on an audio track** in the PiP's right-click menu).
 
 To link or unlink an audio clip yourself, right-click it and choose **Link
 to video clip** or **Unlink from video clip**. **Link** is only offered when
@@ -319,7 +319,7 @@ shift a clip's sound against its picture, unlink it, move it, and link it
 again.
 
 The tracks that hold a video's own sound -- *Camera mic*, *External mic*
-and an overlay's audio track -- take only that sound, linked or unlinked:
+and a PiP's audio track -- take only that sound, linked or unlinked:
 music and other audio clips can't be dragged onto them. An unlinked clip
 can stay where it is, or be dragged onto one of the audio tracks to use it
 like any other audio clip, and back. When you remove a video clip, only its

@@ -21,7 +21,7 @@ using panelfields::numberBox;
 using panelfields::sliderRow;
 
 OverlayPanel::OverlayPanel(Kind kind, QWidget *parent)
-    : SettingsPanel(kind == Kind::Title ? tr("Position and timing") : tr("Overlay"), parent),
+    : SettingsPanel(kind == Kind::Title ? tr("Position and timing") : tr("Picture in picture"), parent),
       m_kind(kind)
 {
     const bool title = kind == Kind::Title;
@@ -284,9 +284,9 @@ void OverlayPanel::setState(const State &s)
                                      "key at the playhead."));
     else
         setHint(s.keyCount == 0
-                ? tr("The overlay clip selected on the timeline or in the view. Drag it in the "
+                ? tr("The PiP clip selected on the timeline or in the view. Drag it in the "
                      "view to move it.")
-                : tr("The overlay clip selected on the timeline or in the view. It is keyframed: "
+                : tr("The PiP clip selected on the timeline or in the view. It is keyframed: "
                      "moving it, here or in the view, sets a key at the playhead."));
     m_updating = false;
 }
@@ -304,9 +304,9 @@ void OverlayPanel::setNoClip(const QString &hint)
     if (!hint.isEmpty())
         setHint(hint);
     else if (m_kind == Kind::Title)
-        setHint(tr("Select a title on the timeline, or add one from the Titles tab on the left."));
+        setHint(tr("Select a title on the timeline, or add one from the Overlays tab on the left."));
     else
-        setHint(tr("Select a clip on an overlay track. Add one with Media > Add video overlay, or "
-                   "drop a video file on the timeline."));
+        setHint(tr("Select a clip on an overlay track. Add one with Media > Add picture in "
+                   "picture, or drop a video file on the timeline."));
     m_updating = false;
 }

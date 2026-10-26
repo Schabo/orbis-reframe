@@ -276,7 +276,7 @@ void MainWindow::setupSourcesSidebar()
     m_mediaPanel->setModeProvider(&mediaMode);
     m_sourcesSidebar->addTab(m_mediaPanel, QStringLiteral("film"), tr("Media"));
     m_titlesPanel = new TitlesPanel;
-    m_sourcesSidebar->addTab(m_titlesPanel, QStringLiteral("type"), tr("Titles"));
+    m_sourcesSidebar->addTab(m_titlesPanel, QStringLiteral("shapes"), tr("Overlays"));
     connect(m_titlesPanel, &TitlesPanel::addTitleRequested, this,
             [this](const QString &presetId) { addTitle(0, m_lastTimelineMs, presetId); });
     m_transitionsPanel = new TransitionsPanel;
@@ -755,7 +755,7 @@ void MainWindow::connectOverlaysAndAudio()
                 l.centerY = cy;
                 applyInsetLook(clipId, l);
             });
-    // Overlay tab (overlay videos) and the Title tab's Position and timing
+    // Picture in picture tab (overlay videos) and the Title tab's Position and timing
     // (titles) -> the selected overlay clip. Each only ever shows its kind.
     for (OverlayPanel *panel : {m_overlayPanel, m_titlePlacementPanel}) {
         connect(panel, &OverlayPanel::lookEdited, this, [this](const inset::Look &l) {
@@ -1210,7 +1210,7 @@ void MainWindow::setupMenus()
     addAudioAction->setObjectName(QStringLiteral("addAudioAction"));
     addAudioAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
     QAction *addVideoAction = mediaMenu->addAction(
-        tr("Add &video overlay…"), this, [this] { selectAdded(m_trackFiles->pickVideo(0, m_lastTimelineMs)); });
+        tr("Add &picture in picture…"), this, [this] { selectAdded(m_trackFiles->pickVideo(0, m_lastTimelineMs)); });
     addVideoAction->setObjectName(QStringLiteral("addVideoAction"));
     addVideoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
     addVideoAction->setIcon(theme::icon(QStringLiteral("picture-in-picture-2")));
@@ -1446,7 +1446,7 @@ bool isTextEntry(const QWidget *w)
            qobject_cast<const QPlainTextEdit *>(w); // a title's text
 }
 
-// A title as the timeline and the Overlay tab name it: its first line.
+// A title as the timeline and the Title tab name it: its first line.
 QString titleLabel(const title::Style &t)
 {
     const QString first = t.text.trimmed().section(QLatin1Char('\n'), 0, 0).trimmed();
@@ -1980,7 +1980,7 @@ QList<int> MainWindow::audioPanelClipIds(QString *scope) const
     if (m_selectedTrackClipId > 0 && m_timeline->trackClipById(m_selectedTrackClipId, &trackId)) {
         if (m_timeline->trackById(trackId)->kind == Track::Kind::Video) {
             if (scope)
-                *scope = tr("Selected overlay clip");
+                *scope = tr("Selected PiP clip");
             return linkedTo(m_selectedTrackClipId);
         }
         if (scope)
@@ -2150,7 +2150,7 @@ void MainWindow::refreshOverlayPanel()
         m_titlePlacementPanel->setNoClip();
         return;
     }
-    // A title shows on the Title tab, an overlay video on the Overlay tab;
+    // A title shows on the Title tab, an overlay video on the Picture in picture tab;
     // the other says where to look.
     OverlayPanel *panel = c->isTitle() ? m_titlePlacementPanel : m_overlayPanel;
     if (c->isTitle()) {
@@ -2159,8 +2159,8 @@ void MainWindow::refreshOverlayPanel()
         m_titleAnimationPanel->setMotion(c->motion);
         m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Title tab."));
     } else {
-        const QString hint = tr("An overlay video is selected: its settings are in the Overlay "
-                                "tab.");
+        const QString hint = tr("A picture in picture is selected: its settings are in the "
+                                "Picture in picture tab.");
         m_titleTextPanel->setNoTitle(hint);
         m_titleLookPanel->setNoTitle(hint);
         m_titleAnimationPanel->setNoTitle(hint);
@@ -2614,7 +2614,7 @@ void MainWindow::setupKeyboardShortcuts()
     const int tabs = std::min(m_sidebar->count(), 9);
     for (int i = 0; i < tabs; ++i)
         addKey(sidebars,
-               i == 0 ? tr("Show a settings tab (Video, Audio, Overlay, Title, Transition, "
+               i == 0 ? tr("Show a settings tab (Video, Audio, PiP, Title, Transition, "
                            "Privacy); again to close the sidebar")
                       : QString(),
                {QKeySequence(Qt::ALT | kDigits[i])}, [this, i] { m_sidebar->toggleTab(i); },

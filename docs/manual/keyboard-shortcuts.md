@@ -61,7 +61,7 @@ shortcuts.
 |---|---|
 | `Ctrl+B` | Close or open the left sidebar (**Media**). |
 | `Ctrl+Shift+B` | Close or open the right sidebar (the settings). |
-| `Alt+1` … `Alt+6` | Show a tab of the settings sidebar, from left to right: Video, Audio, Overlay, Title, Transition, Privacy (opening the sidebar if it's closed). The key of the tab already showing closes the sidebar. |
+| `Alt+1` … `Alt+6` | Show a tab of the settings sidebar, from left to right: Video, Audio, Picture in picture, Title, Transition, Privacy (opening the sidebar if it's closed). The key of the tab already showing closes the sidebar. |
 
 In the **Media** tab: `Enter` (or a double-click) puts the selected files on
 the timeline, `Delete` removes them from the project's media (the files
@@ -89,7 +89,7 @@ it, `Delete` removes it from the list (its files stay).
 | `Ctrl+I` | Import files into the project's media. |
 | `Ctrl+Shift+A` | Add a clip to the timeline. |
 | `Ctrl+Shift+M` | Add an audio file. |
-| `Ctrl+Shift+V` | Add a video overlay. |
+| `Ctrl+Shift+V` | Add a picture in picture. |
 
 When orbis-reframe asks whether to save unsaved changes, `S` saves, `D`
 discards them and `Esc` cancels. In the window for choosing where to save a
@@ -101,8 +101,8 @@ file, `Alt+S` saves (`Enter` does too).
 |---|---|
 | Drag | Look around. With reframe authoring armed, sets a keyframe when you let go. |
 | Mouse wheel | Zoom in / out (field of view). With reframe authoring armed, sets a keyframe. |
-| Click an overlay or title | Select it. |
-| Drag an overlay or title | Move it. |
+| Click a PiP or title | Select it. |
+| Drag a PiP or title | Move it. |
 | Right-click a privacy blur | Remove it (or, with **Show regions** on, restore a removed one). |
 
 ## Mouse: timeline
@@ -121,8 +121,8 @@ file, `Alt+S` saves (`Enter` does too).
 | `Ctrl` + mouse wheel | Zoom in / out around the pointer. |
 | Mouse wheel | Scroll along the timeline, while zoomed in. |
 | Mouse wheel over the track names, or `Shift` + mouse wheel | Scroll the tracks up / down, when they don't all fit. |
-| Drop files from the file manager | Add `.insv` clips at the nearest cut, flat videos too when dropped on the video track, or audio files and flat video overlays where you drop them (those need a clip on the video track first). |
-| Drop a title from the **Titles** tab | Add a title where you drop it, on an overlay track (needs a clip on the video track first). |
+| Drop files from the file manager | Add `.insv` clips at the nearest cut, flat videos too when dropped on the video track, or audio files and flat videos (as picture in picture) where you drop them (those need a clip on the video track first). |
+| Drop a title from the **Overlays** tab | Add a title where you drop it, on an overlay track (needs a clip on the video track first). |
 | Drop a transition from the **Transitions** tab | Put it on the cut nearest where you drop it (needs two clips on the video track). |
 | Click a transition's box | Select it. Right-click: remove it. |
 

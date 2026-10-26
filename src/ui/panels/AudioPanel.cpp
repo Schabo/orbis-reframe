@@ -297,7 +297,7 @@ public:
         : SettingsPanel(QObject::tr("Audio"))
     {
         setObjectName(QStringLiteral("audioPanel"));
-        setHint(QObject::tr("Select an audio clip on the timeline, or a video or overlay clip to "
+        setHint(QObject::tr("Select an audio clip on the timeline, or a video or PiP clip to "
                             "see its sound."));
         setCollapsible(false);
     }

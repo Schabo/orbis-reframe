@@ -262,7 +262,7 @@ void TitleTextPanel::setNoTitle(const QString &hint)
     m_clockNote->setVisible(false);
     m_hours->setEnabled(false);
     showHours();
-    setHint(hint.isEmpty() ? tr("Select a title on the timeline, or add one from the Titles tab "
+    setHint(hint.isEmpty() ? tr("Select a title on the timeline, or add one from the Overlays tab "
                                 "on the left: drag it onto the timeline or double-click it.")
                            : hint);
     m_updating = false;

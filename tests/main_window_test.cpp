@@ -1195,7 +1195,7 @@ void testTransition(const Ctx &c)
     settle();
 }
 
-// The Titles tab's "Add to timeline": a title at the playhead, selected, the
+// The Overlays tab's "Add to timeline": a title at the playhead, selected, the
 // Title tab showing its text; typing there edits it (the K shortcut
 // doesn't set a key), the picture reaches the viewport, and Duration sets
 // its length.
@@ -1278,14 +1278,14 @@ void testTitle(const Ctx &c)
         if (clip)
             clipId = clip->id;
     }
-    // The Overlay tab shows overlay videos only.
+    // The Picture in picture tab shows overlay videos only.
     auto *overlayX = find<QDoubleSpinBox>(c.w, "overlayDuration");
     CHECK(overlayX && !overlayX->isEnabled());
     c.timeline->removeTrackClip(clipId);
     settle();
 }
 
-// The Titles tab's ready-made titles: a tile per preset, dragged out as its
+// The Overlays tab's ready-made titles: a tile per preset, dragged out as its
 // id; adding one, by the tab or by a drop, gives an ordinary title with the
 // preset's style and place. A date tile writes the clip's recording date,
 // where its file says.
@@ -1325,7 +1325,7 @@ void testTitlePresets(const Ctx &c)
         const auto tileImage = [list](int row) {
             return list->item(row)->icon().pixmap(list->iconSize()).toImage();
         };
-        // Only a tile on screen plays: the Titles tab showing.
+        // Only a tile on screen plays: the Overlays tab showing.
         TabSidebar *sources = nullptr;
         for (QObject *o = list; o && !sources; o = o->parent())
             sources = qobject_cast<TabSidebar *>(o);

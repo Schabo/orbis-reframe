@@ -347,7 +347,7 @@ private:
     void selectAdded(std::optional<int> lastClipId);
     // A new title at `atMs` (clamped to the timeline) on overlay track
     // `trackId` if it has room there (else the first that has, else a new
-    // one), selected, with the Overlay tab showing to edit it.
+    // one), selected, with the Picture in picture tab showing to edit it.
     void addTitle(int trackId, qint64 atMs, const QString &presetId);
     // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
