@@ -18,9 +18,9 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ### 1. GPS and stats overlays -- *maintainer*
 
-Speed, altitude, distance, heading, the route, and lean / G-force gauges,
-drawn on the picture from the clip's own telemetry and following the
-clip's time (speed changes and trims included). The X5 records GPS in its
+Speed, altitude, heading, the route, and lean / G-force gauges, drawn on
+the picture from the clip's own telemetry and following the clip's time
+(speed changes and trims included). Distance travelled is left for later. The X5 records GPS in its
 `.insv` trailer when a GPS source was connected, about once a second and
 sometimes only for part of the clip ([`formats/insta360-x5.md`](formats/insta360-x5.md));
 lean comes from the gyroscope. No map tiles: the route is a drawn line,
@@ -31,9 +31,9 @@ clock's map from timeline time to each clip's source time shared by both.
 
 In steps: the GPS track read from the trailer (one fix a second, smoothed
 between fixes, a gap of a few seconds is "no data") and its values at any
-moment; then text fields in titles (`{speed}`, `{altitude}`, `{distance}`,
-`{heading}`, with units per title); then drawn gauges as their own overlay
-clips (dial, bar, heading tape); then the route, lean and G-force. Where a
+moment; then text fields in titles (`{speed}`, `{altitude}`, `{heading}`,
+with units per title); then drawn gauges as their own overlay clips (dial,
+bar, heading tape); then the route, lean and G-force. Where a
 clip has no GPS, a field or gauge shows `--`. Place names from coordinates
 are not planned: they'd need an offline place database.
 
