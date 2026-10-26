@@ -102,6 +102,7 @@
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
+#include "panels/GaugePanel.h"
 #include "panels/TitleAnimationPanel.h"
 #include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
@@ -818,9 +819,14 @@ void MainWindow::connectOverlaysAndAudio()
     connect(m_titleAnimationPanel, &TitleAnimationPanel::motionEdited, this,
             [this](const inset::Motion &m) {
                 const TrackClip *c = selectedOverlayClip();
-                if (c && c->isTitle())
+                if (c && c->isDrawn())
                     m_timeline->setTrackClipMotion(c->id, m);
             });
+    connect(m_sidebar->gauge(), &GaugePanel::gaugeEdited, this, [this](const gauge::Style &g) {
+        const TrackClip *c = selectedOverlayClip();
+        if (c && c->isGauge())
+            m_timeline->setTrackClipGauge(c->id, g);
+    });
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
     // A file's guard profiles read in the background: the panel may show it.
@@ -1456,6 +1462,25 @@ QString titleLabel(const title::Style &t)
     return first.isEmpty() ? MainWindow::tr("(empty title)") : first;
 }
 
+// A gauge as they name it: what it shows, and how.
+QString gaugeLabel(const gauge::Style &g)
+{
+    if (g.kind == gauge::Kind::Tape)
+        return MainWindow::tr("Heading tape");
+    const bool speed = g.reads == gauge::Reads::Speed;
+    return g.kind == gauge::Kind::Dial
+               ? (speed ? MainWindow::tr("Speed dial") : MainWindow::tr("Altitude dial"))
+               : (speed ? MainWindow::tr("Speed bar") : MainWindow::tr("Altitude bar"));
+}
+
+// An overlay clip's name on the timeline and in the panels.
+QString overlayLabel(const TrackClip &c)
+{
+    return c.isTitle()   ? titleLabel(*c.title)
+           : c.isGauge() ? gaugeLabel(*c.gauge)
+                         : QFileInfo(c.sourcePath).fileName();
+}
+
 } // namespace
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -1884,7 +1909,7 @@ void MainWindow::refreshTrackRows()
         for (const TrackClip &c : t.clips) {
             TimelineWidget::TrackClipView a;
             a.id = c.id;
-            a.label = c.isTitle() ? titleLabel(*c.title) : QFileInfo(c.sourcePath).fileName();
+            a.label = overlayLabel(c);
             if (v.video) { // an overlay: no audio to draw, nothing to link
                 a.startMs = c.startMs;
                 a.trimInMs = c.trimInMs;
@@ -1897,7 +1922,7 @@ void MainWindow::refreshTrackRows()
                 for (const InsetKey &k : c.insetKeys.keys())
                     a.keySourceMs.push_back(k.timeMs);
                 a.hasSound =
-                    !c.isTitle() && !c.mediaMissing && audioStreamCount(c.sourcePath) > 0;
+                    !c.isDrawn() && !c.mediaMissing && audioStreamCount(c.sourcePath) > 0;
                 a.moveTargets = moveTargets(t, c.id);
                 v.clips.push_back(a);
                 continue;
@@ -1951,9 +1976,9 @@ void MainWindow::selectTrackClip(int clipId)
     // Between the Overlay and Title tabs, the one for what's selected.
     if (const TrackClip *tc = changed && clipId > 0 ? m_timeline->trackClipById(clipId) : nullptr) {
         const int tab = m_sidebar->currentIndex();
-        if (tc->isTitle() && tab == SettingsSidebar::OverlayTab)
+        if (tc->isDrawn() && tab == SettingsSidebar::OverlayTab)
             m_sidebar->setCurrentIndex(SettingsSidebar::TitleTab);
-        else if (!tc->isTitle() && tab == SettingsSidebar::TitleTab && selectedOverlayClip())
+        else if (!tc->isDrawn() && tab == SettingsSidebar::TitleTab && selectedOverlayClip())
             m_sidebar->setCurrentIndex(SettingsSidebar::OverlayTab);
     }
     if (clipId > 0 && m_selectedTransition)
@@ -2051,8 +2076,9 @@ void MainWindow::addTitle(int trackId, qint64 atMs, const QString &presetId)
 {
     if (m_timeline->count() == 0)
         return; // the main track sets the length
-    const titlepresets::Preset *preset = titlepresets::find(presetId);
-    if (!preset) {
+    const titlepresets::GaugePreset *gaugePreset = titlepresets::findGauge(presetId);
+    const titlepresets::Preset *preset = gaugePreset ? nullptr : titlepresets::find(presetId);
+    if (!preset && !gaugePreset) {
         qWarning("[titles] no title preset \"%s\"; adding the plain one", qPrintable(presetId));
         preset = &titlepresets::all().front();
     }
@@ -2067,8 +2093,12 @@ void MainWindow::addTitle(int trackId, qint64 atMs, const QString &presetId)
                     : m_timeline->freeTrackFor(atMs, endMs, true, [](const Track &) { return true; });
     if (!trackId)
         trackId = m_timeline->addTrack(Track::Kind::Video);
-    const int id = m_timeline->addTitleClip(trackId, atMs, titlepresets::styleFor(*preset),
-                                            title::kDefaultSpanMs, preset->look, preset->motion);
+    const int id =
+        gaugePreset
+            ? m_timeline->addGaugeClip(trackId, atMs, titlepresets::gaugeStyleFor(*gaugePreset),
+                                       title::kDefaultSpanMs, gaugePreset->look)
+            : m_timeline->addTitleClip(trackId, atMs, titlepresets::styleFor(*preset),
+                                       title::kDefaultSpanMs, preset->look, preset->motion);
     if (!id)
         return;
     selectTrackClip(id);
@@ -2120,10 +2150,10 @@ renderjobs::FieldSources MainWindow::fieldSources()
 
 QString MainWindow::titleClockNote(const TrackClip &c)
 {
-    if (!c.isTitle())
+    if (!c.isDrawn())
         return {};
-    const bool clock = title::hasClockFields(c.title->text);
-    const bool gps = title::hasGpsFields(c.title->text);
+    const bool clock = c.isTitle() && title::hasClockFields(c.title->text);
+    const bool gps = c.isGauge() || title::hasGpsFields(c.title->text);
     if (!clock && !gps)
         return {};
     const renderjobs::FieldSources sources = fieldSources();
@@ -2163,21 +2193,31 @@ QString MainWindow::titleClockNote(const TrackClip &c)
                       : tr("Clips %1 don't say when they were recorded: the time shows --:-- "
                            "and the date nothing while the title is over them.")
                             .arg(QLocale().createSeparatedList(unknown)));
+    // A gauge stays empty where a title's GPS fields show "--".
+    const bool gauge = c.isGauge();
     if (!noGps.isEmpty())
         notes << (noGps.size() == 1
-                      ? tr("Clip %1 has no GPS where the title is over it: speed, altitude "
-                           "and heading show -- there.")
+                      ? (gauge ? tr("Clip %1 has no GPS where the gauge is over it: the gauge "
+                                    "stays empty there.")
+                               : tr("Clip %1 has no GPS where the title is over it: speed, "
+                                    "altitude and heading show -- there."))
                             .arg(noGps.front())
-                      : tr("Clips %1 have no GPS where the title is over them: speed, altitude "
-                           "and heading show -- there.")
+                      : (gauge ? tr("Clips %1 have no GPS where the gauge is over them: the "
+                                    "gauge stays empty there.")
+                               : tr("Clips %1 have no GPS where the title is over them: speed, "
+                                    "altitude and heading show -- there."))
                             .arg(QLocale().createSeparatedList(noGps)));
     if (!partGps.isEmpty())
         notes << (partGps.size() == 1
-                      ? tr("Clip %1 has GPS for only part of the time the title is over it: "
-                           "elsewhere speed, altitude and heading show --.")
+                      ? (gauge ? tr("Clip %1 has GPS for only part of the time the gauge is "
+                                    "over it: elsewhere the gauge stays empty.")
+                               : tr("Clip %1 has GPS for only part of the time the title is "
+                                    "over it: elsewhere speed, altitude and heading show --."))
                             .arg(partGps.front())
-                      : tr("Clips %1 have GPS for only part of the time the title is over "
-                           "them: elsewhere speed, altitude and heading show --.")
+                      : (gauge ? tr("Clips %1 have GPS for only part of the time the gauge is "
+                                    "over them: elsewhere the gauge stays empty.")
+                               : tr("Clips %1 have GPS for only part of the time the title is "
+                                    "over them: elsewhere speed, altitude and heading show --."))
                             .arg(QLocale().createSeparatedList(partGps)));
     return notes.join(QLatin1Char(' '));
 }
@@ -2208,12 +2248,22 @@ void MainWindow::refreshOverlayPanel()
     }
     // A title shows on the Title tab, an overlay video on the Picture in picture tab;
     // the other says where to look.
-    OverlayPanel *panel = c->isTitle() ? m_titlePlacementPanel : m_overlayPanel;
+    OverlayPanel *panel = c->isDrawn() ? m_titlePlacementPanel : m_overlayPanel;
+    m_sidebar->showGaugeSections(c->isGauge());
+    if (c->isDrawn()) {
+        const QString scope = c->isGauge() ? tr("Selected gauge") : tr("Selected title");
+        m_titleAnimationPanel->setScope(scope);
+        m_titlePlacementPanel->setScope(scope);
+    }
     if (c->isTitle()) {
         m_titleTextPanel->setTitle(*c->title, titleClockNote(*c));
         m_titleLookPanel->setTitle(*c->title);
         m_titleAnimationPanel->setMotion(c->motion);
         m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Title tab."));
+    } else if (c->isGauge()) {
+        m_sidebar->gauge()->setGauge(*c->gauge, titleClockNote(*c));
+        m_titleAnimationPanel->setMotion(c->motion, false);
+        m_overlayPanel->setNoClip(tr("A gauge is selected: its settings are in the Title tab."));
     } else {
         const QString hint = tr("A picture in picture is selected: its settings are in the "
                                 "Picture in picture tab.");
@@ -2223,7 +2273,8 @@ void MainWindow::refreshOverlayPanel()
         m_titlePlacementPanel->setNoClip(hint);
     }
     OverlayPanel::State st;
-    st.label = c->isTitle() ? titleLabel(*c->title) : QFileInfo(c->sourcePath).fileName();
+    st.label = overlayLabel(*c);
+    st.gauge = c->isGauge();
     st.trackName = m_timeline->trackById(trackId)->name;
     // The layer: the overlay tracks in order, the first in front.
     QStringList overlays;
@@ -2834,7 +2885,7 @@ int MainWindow::addOverlayAudio(int clipId)
 {
     int trackId = 0;
     const TrackClip *o = m_timeline->trackClipById(clipId, &trackId);
-    if (!o || m_timeline->trackById(trackId)->kind != Track::Kind::Video || o->isTitle() ||
+    if (!o || m_timeline->trackById(trackId)->kind != Track::Kind::Video || o->isDrawn() ||
         audioStreamCount(o->sourcePath) < 1)
         return 0;
     return m_timeline->addOverlaySound(clipId);

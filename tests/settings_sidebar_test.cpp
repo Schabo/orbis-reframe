@@ -19,6 +19,7 @@
 
 #include <MediaInfo.h>
 #include "panels/OverlayPanel.h"
+#include "panels/GaugePanel.h"
 #include "panels/TitleAnimationPanel.h"
 #include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
@@ -40,6 +41,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
+#include <QListView>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QDoubleSpinBox>
@@ -81,7 +83,8 @@ QStringList sectionNames(QScrollArea *page)
     std::sort(sections.begin(), sections.end(),
               [](SettingsPanel *a, SettingsPanel *b) { return a->y() < b->y(); });
     for (SettingsPanel *s : sections)
-        out << s->objectName();
+        if (s->isVisibleTo(page->widget())) // the Title tab swaps some
+            out << s->objectName();
     return out;
 }
 
@@ -108,6 +111,16 @@ void testLayout(SettingsSidebar &bar)
         CHECK(sectionNames(title) ==
               QStringList({"titleTextPanel", "titleLookPanel", "titleAnimationPanel",
                            "titlePlacementPanel"}));
+    // A gauge: its section in the place of Text and Look, and back.
+    if (auto *title = find<QScrollArea>(&bar, "titleSettings")) {
+        bar.showGaugeSections(true);
+        title->widget()->layout()->activate();
+        CHECK(sectionNames(title) ==
+              QStringList({"gaugePanel", "titleAnimationPanel", "titlePlacementPanel"}));
+        bar.showGaugeSections(false);
+        title->widget()->layout()->activate();
+        CHECK(sectionNames(title).size() == 4 && !bar.gauge()->isVisibleTo(title->widget()));
+    }
     if (auto *audio = find<QScrollArea>(&bar, "audioSettings")) // nothing to show yet
         CHECK(sectionNames(audio) == QStringList({"audioPanel"}));
 
@@ -120,7 +133,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
     CHECK(!bar.transition()->isCollapsible());
-    CHECK(bar.sections().size() == 13); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 14); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -470,6 +483,66 @@ void testTitleLook(SettingsSidebar &bar)
 
 // The Title tab's Animation section: reflects a title's motion without
 // emitting, greys out a length with nothing to time, reports edits.
+// The Gauge section: its fields from the style, each edit the whole style;
+// another value sets a scale to suit it, another unit converts the scale;
+// a tape has no scale.
+void testGaugePanel(SettingsSidebar &bar)
+{
+    GaugePanel *panel = bar.gauge();
+    CHECK(panel->title() == "Gauge");
+    auto *kind = find<QComboBox>(panel, "gaugeKind");
+    auto *reads = find<QComboBox>(panel, "gaugeReads");
+    auto *unit = find<QComboBox>(panel, "gaugeUnit");
+    auto *min = find<QDoubleSpinBox>(panel, "gaugeMin");
+    auto *max = find<QDoubleSpinBox>(panel, "gaugeMax");
+    auto *opacity = find<QSlider>(panel, "gaugeFaceOpacity");
+    auto *note = find<QLabel>(panel, "gaugeNote");
+    auto *form = panel->findChild<QFormLayout *>();
+    if (!kind || !reads || !unit || !min || !max || !opacity || !note || !form)
+        return;
+    QSignalSpy spy(panel, &GaugePanel::gaugeEdited);
+    gauge::Style g;
+    g.max = 180.0;
+    g.faceOpacity = 0.3f;
+    panel->setGauge(g, "Clip 2 has no GPS.");
+    CHECK(spy.isEmpty() && kind->currentIndex() == 0 && reads->currentIndex() == 0);
+    CHECK(unit->currentText() == "km/h" && max->value() == 180.0 && opacity->value() == 30);
+    CHECK(!note->isHidden() && note->text() == "Clip 2 has no GPS.");
+    const auto last = [&] { return spy.last().at(0).value<gauge::Style>(); };
+    // km/h -> mph: 180 km/h is 112 mph.
+    unit->setCurrentIndex(1);
+    emit unit->activated(1);
+    CHECK(last().units.speed == title::SpeedUnit::Mph && last().max == 112.0 &&
+          max->value() == 112.0);
+    max->setValue(150.0);
+    CHECK(last().max == 150.0 && last().units.speed == title::SpeedUnit::Mph);
+    // Altitude: its own units, a scale that suits it.
+    reads->setCurrentIndex(1);
+    emit reads->activated(1);
+    CHECK(last().reads == gauge::Reads::Altitude && unit->currentText() == "metres");
+    CHECK(last().min == 0.0 && last().max == 1000.0);
+    // A tape: no scale or value to pick.
+    CHECK(form->isRowVisible(min) && form->isRowVisible(reads));
+    kind->setCurrentIndex(2);
+    emit kind->activated(2);
+    CHECK(last().kind == gauge::Kind::Tape && !form->isRowVisible(min) &&
+          !form->isRowVisible(reads) && !form->isRowVisible(unit));
+    opacity->setValue(80);
+    CHECK(std::abs(last().faceOpacity - 0.8f) < 1e-6f && last().kind == gauge::Kind::Tape);
+    panel->setGauge(g);
+    CHECK(note->isHidden() && form->isRowVisible(min));
+
+    // Its animation can't type: that's for text.
+    TitleAnimationPanel *anim = bar.titleAnimation();
+    auto *in = find<QComboBox>(anim, "titleMotionIn");
+    if (in) {
+        anim->setMotion({}, false);
+        CHECK(static_cast<QListView *>(in->view())->isRowHidden(in->count() - 1));
+        anim->setMotion({});
+        CHECK(!static_cast<QListView *>(in->view())->isRowHidden(in->count() - 1));
+    }
+}
+
 void testTitleAnimation(SettingsSidebar &bar)
 {
     TitleAnimationPanel *anim = bar.titleAnimation();
@@ -639,6 +712,7 @@ void testTitleTab(SettingsSidebar &bar)
 
     testTitleLook(bar);
     testTitleAnimation(bar);
+    testGaugePanel(bar);
 
     OverlayPanel::State st;
     st.layer = st.layerCount = 1;

@@ -15,6 +15,7 @@
 #include "ClipViewSource.h"
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
+#include "GaugeSource.h"
 #include "TitleSource.h"
 #include "../core/ClipItem.h"
 #include "../core/MediaPool.h"
@@ -25,7 +26,7 @@ namespace renderjobs {
 
 namespace {
 
-// A title's largest text size, over its keys too.
+// A title's largest text size (a gauge's height), over its keys too.
 float maxTitleSize(const TrackClip &c)
 {
     float size = c.look.width;
@@ -49,6 +50,16 @@ std::shared_ptr<TitleSource> titleSource(const TrackClip &c, int outW, int outH,
         *c.title, c.motion, c.timelineDurationMs(),
         titlerender::fontPxFor(maxTitleSize(c), outH, capPx), outW, outH,
         title::hasFields(c.title->text) ? clock : title::Clock(), c.startMs);
+}
+
+// A gauge clip's pictures in an output of outW x outH, rendered at its
+// largest size, at most `capPx` high; `clock` gives its values.
+std::shared_ptr<GaugeSource> gaugeSource(const TrackClip &c, int outW, int outH, int capPx,
+                                         const title::Clock &clock)
+{
+    return std::make_shared<GaugeSource>(*c.gauge, c.timelineDurationMs(),
+                                         titlerender::fontPxFor(maxTitleSize(c), outH, capPx), outW,
+                                         outH, clock, c.startMs);
 }
 
 // Is a title worth a layer: has it text to show, now or as its clock runs?
@@ -347,6 +358,10 @@ bool anyTitleClock(const Timeline &timeline)
 
 bool anyTitleGps(const Timeline &timeline)
 {
+    for (int i = 0; i < timeline.trackCount(); ++i)
+        for (const TrackClip &c : timeline.trackAt(i).clips)
+            if (c.isGauge())
+                return true;
     return anyTitleText(timeline, title::hasGpsFields);
 }
 
@@ -431,13 +446,18 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
-            std::shared_ptr<TitleSource> title;
+            std::shared_ptr<exportpipe::StillSource> drawn;
             exportpipe::Still pic;
             if (c.isTitle()) {
-                title = titleSource(c, outW, outH, kViewFontCapPx, clock);
+                auto title = titleSource(c, outW, outH, kViewFontCapPx, clock);
                 pic = title->full();
                 if (!showsTitle(c, pic) || outW <= 0)
                     continue; // no text
+                drawn = title;
+            } else if (c.isGauge()) {
+                if (outW <= 0 || outH <= 0)
+                    continue;
+                drawn = gaugeSource(c, outW, outH, kViewFontCapPx, clock);
             }
             InsetFeed::Clip f;
             f.id = c.id;
@@ -454,9 +474,9 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
             f.keys = c.insetKeys;
             f.motion = c.motion;
             f.outAspect = outH > 0 ? double(outW) / outH : 16.0 / 9.0;
-            if (title) {
-                f.still = title;
-                f.aspect = titleAspect(pic);
+            if (drawn) {
+                f.still = drawn;
+                f.aspect = c.isGauge() ? gauge::aspect(c.gauge->kind) : titleAspect(pic);
                 f.frame = {};
             }
             clips.push_back(std::move(f));
@@ -521,13 +541,18 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
         for (const TrackClip &c : t.clips) {
             if (c.mediaMissing)
                 continue;
-            std::shared_ptr<TitleSource> title;
+            std::shared_ptr<exportpipe::StillSource> drawn;
             exportpipe::Still pic;
             if (c.isTitle()) {
-                title = titleSource(c, outW, outH, kExportFontCapPx, clock);
+                auto title = titleSource(c, outW, outH, kExportFontCapPx, clock);
                 pic = title->full();
                 if (!showsTitle(c, pic) || outW <= 0)
                     continue; // no text
+                drawn = title;
+            } else if (c.isGauge()) {
+                if (outW <= 0 || outH <= 0)
+                    continue;
+                drawn = gaugeSource(c, outW, outH, kExportFontCapPx, clock);
             }
             exportpipe::InsetClipJob j;
             j.path = c.sourcePath.toStdString();
@@ -544,12 +569,12 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
             j.lookAt = [look = c.look, keys = c.insetKeys](int64_t sourceMs) {
                 return keys.isEmpty() ? look : keys.sample(sourceMs);
             };
-            if (title) {
-                // The look's width is the text size, its centreX the text's
-                // anchor: each picture is placed by its own numbers, as
-                // playback places it.
-                j.still = title;
-                j.aspect = titleAspect(pic);
+            if (drawn) {
+                // The look's width is the text size (a gauge's height), its
+                // centreX the text's anchor: each picture is placed by its
+                // own numbers, as playback places it.
+                j.still = drawn;
+                j.aspect = c.isGauge() ? gauge::aspect(c.gauge->kind) : titleAspect(pic);
                 j.frame = {};
             }
             jobs.push_back(std::move(j));
@@ -604,7 +629,7 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which)
         if (t.muted && !all)
             continue;
         for (const TrackClip &c : t.clips)
-            if (c.mediaMissing && !c.isTitle() &&
+            if (c.mediaMissing && !c.isDrawn() &&
                 (all || !(t.kind == Track::Kind::Audio && c.muted)))
                 add(c.sourcePath, t.kind == Track::Kind::Video
                                       ? tr("inset on “%1”").arg(t.name)

@@ -3,6 +3,7 @@
 #include "AudioLimits.h"
 #include "InsetGeometry.h"
 #include "KeyTrack.h" // keytrack::Ease
+#include "Gauge.h"
 #include "Title.h"
 #include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
 
@@ -58,7 +59,9 @@ private:
 // the audio fields (stream, level, link) don't apply, and the fades fade its
 // opacity. Its sound, if wanted, is a linked clip of the same file on an audio
 // track. A title (`title` set) is a video-track clip with no file: its text
-// drawn over the output, placed like a video's inset (see title::Style).
+// drawn over the output, placed like a video's inset (see title::Style); a
+// gauge (`gauge` set) likewise, a GPS value drawn as an instrument
+// (gauge::Style).
 //
 // Plain value type like ClipItem: Timeline owns it and turns every successful
 // change into a signal; the mutators here clamp, apply, and report whether
@@ -112,11 +115,16 @@ struct TrackClip {
     // A title: no file (`sourcePath` empty, never missing), its look's width
     // is the text size (title::Style).
     std::optional<title::Style> title;
-    // How it comes on and goes off (inset::Motion); only titles offer one
-    // so far.
+    // A gauge: no file either, its look's width is its height (gauge::Style).
+    std::optional<gauge::Style> gauge;
+    // How it comes on and goes off (inset::Motion); only titles and gauges
+    // offer one so far.
     inset::Motion motion;
 
     bool isTitle() const { return title.has_value(); }
+    bool isGauge() const { return gauge.has_value(); }
+    // Drawn by the app, with no file behind it: a title or a gauge.
+    bool isDrawn() const { return isTitle() || isGauge(); }
 
     double aspect() const
     {

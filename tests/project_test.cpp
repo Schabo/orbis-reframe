@@ -1853,6 +1853,49 @@ void testTitleJson()
     }
 }
 
+// A gauge: written with its style in place of a source, with the version
+// that added gauges, read back as it was; not a media pool item.
+void testGaugeJson()
+{
+    QTemporaryDir tmp;
+    const QString file = tmp.filePath("g.orp");
+    QString err;
+    gauge::Style g;
+    g.kind = gauge::Kind::Tape;
+    g.reads = gauge::Reads::Altitude;
+    g.units = {title::SpeedUnit::Mph, title::AltitudeUnit::Feet};
+    g.min = -100.0;
+    g.max = 4000.0;
+    g.accent = 0x12ab34;
+    g.face = 0x202020;
+    g.faceOpacity = 0.25f;
+    g.text = 0xfafafa;
+    g.font = "DejaVu Sans";
+    {
+        Project p;
+        p.timeline()->appendClip("a.insv", 60000, 30.0);
+        const int v = p.timeline()->addTrack(Track::Kind::Video);
+        inset::Look look = gauge::defaultLook();
+        look.centerX = 0.3f;
+        CHECK(p.timeline()->addGaugeClip(v, 1500, g, 8000, look));
+        CHECK(p.save(file, &err));
+    }
+    QFile f(file);
+    CHECK(f.open(QIODevice::ReadOnly));
+    const QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+    CHECK(doc.value("version").toInt() == Project::kGaugeFormatVersion);
+    const QJsonObject clip = doc.value("timeline").toObject().value("tracks").toArray().at(0)
+                                 .toObject().value("clips").toArray().at(0).toObject();
+    CHECK(clip.contains("gauge") && !clip.contains("source"));
+    CHECK(clip.value("gauge").toObject().value("kind").toString() == "tape");
+    Project back;
+    CHECK(back.load(file, &err));
+    const TrackClip &c = back.timeline()->trackAt(0).clips.at(0);
+    CHECK(c.isGauge() && *c.gauge == g && c.startMs == 1500 && c.timelineDurationMs() == 8000);
+    CHECK(c.look.centerX == 0.3f && c.sourcePath.isEmpty() && !c.mediaMissing);
+    CHECK(back.mediaPool()->items().size() == 1); // the main clip only
+}
+
 // Transitions: saved at their cut (the index of the clip before it), with
 // the version that added them; loaded back; an undo step like any edit.
 void testTransitionJson()
@@ -2185,6 +2228,7 @@ int main(int argc, char **argv)
     testClipStitchJson();
     testPlateScansInUse();
     testTitleJson();
+    testGaugeJson();
     testTransitionJson();
     testLutJson();
     testSplitJson();

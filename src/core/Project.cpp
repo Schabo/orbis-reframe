@@ -561,6 +561,50 @@ json titleToJson(const title::Style &t)
     return j;
 }
 
+// A gauge's whole style: what it reads, its scale, units and colours.
+json gaugeToJson(const gauge::Style &g)
+{
+    static const char *const kinds[] = {"dial", "bar", "tape"};
+    json j{{"kind", kinds[static_cast<int>(g.kind)]},
+           {"reads", g.reads == gauge::Reads::Altitude ? "altitude" : "speed"},
+           {"min", g.min},
+           {"max", g.max},
+           {"accent", colorToJson(g.accent)},
+           {"face", colorToJson(g.face)},
+           {"faceOpacity", g.faceOpacity},
+           {"textColor", colorToJson(g.text)},
+           {"font", g.font.toStdString()}};
+    if (g.units.speed == title::SpeedUnit::Mph)
+        j["speedUnit"] = "mph";
+    if (g.units.altitude == title::AltitudeUnit::Feet)
+        j["altitudeUnit"] = "ft";
+    return j;
+}
+
+gauge::Style gaugeFromJson(const json &j)
+{
+    gauge::Style g;
+    const std::string kind = j.value("kind", std::string());
+    g.kind = kind == "bar"    ? gauge::Kind::Bar
+             : kind == "tape" ? gauge::Kind::Tape
+                              : gauge::Kind::Dial;
+    g.reads = j.value("reads", std::string()) == "altitude" ? gauge::Reads::Altitude
+                                                            : gauge::Reads::Speed;
+    g.units.speed = j.value("speedUnit", std::string()) == "mph" ? title::SpeedUnit::Mph
+                                                                 : title::SpeedUnit::Kmh;
+    g.units.altitude = j.value("altitudeUnit", std::string()) == "ft"
+                           ? title::AltitudeUnit::Feet
+                           : title::AltitudeUnit::Metres;
+    g.min = j.value("min", g.min);
+    g.max = j.value("max", g.max);
+    g.accent = colorFromJson(j, "accent", g.accent);
+    g.face = colorFromJson(j, "face", g.face);
+    g.faceOpacity = j.value("faceOpacity", g.faceOpacity);
+    g.text = colorFromJson(j, "textColor", g.text);
+    g.font = QString::fromStdString(j.value("font", g.font.toStdString()));
+    return g.clamped();
+}
+
 // Is the title drawn other than a plain one (kTitleLookFormatVersion)? An
 // outline, shadow or box that's off isn't drawn: an older build shows it
 // right.
@@ -683,6 +727,9 @@ json videoClipToJson(const TrackClip &c, const QDir *projectDir)
     if (c.isTitle()) {
         j.erase("source");
         j["title"] = titleToJson(*c.title);
+    } else if (c.isGauge()) {
+        j.erase("source");
+        j["gauge"] = gaugeToJson(*c.gauge);
     } else {
         j["sourceWidth"] = c.sourceWidth;
         j["sourceHeight"] = c.sourceHeight;
@@ -715,6 +762,10 @@ TrackClip videoClipFromJson(const json &j, const QDir *projectDir, int version)
     c.sourceHeight = j.value("sourceHeight", 0);
     if (j.contains("title") && j.at("title").is_object()) {
         c.title = titleFromJson(j.at("title"), version);
+        c.sourcePath.clear();
+        c.mediaMissing = false;
+    } else if (j.contains("gauge") && j.at("gauge").is_object()) {
+        c.gauge = gaugeFromJson(j.at("gauge"));
         c.sourcePath.clear();
         c.mediaMissing = false;
     }
@@ -875,7 +926,7 @@ void Project::addTimelineSourcesToPool(bool rebuilt)
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
         for (const TrackClip &c : t.clips) {
-            if (c.isTitle() || m_mediaPool->contains(c.sourcePath))
+            if (c.isDrawn() || m_mediaPool->contains(c.sourcePath))
                 continue;
             // A camera mic on an audio track is the .insv's sound: the pool
             // lists the clip, whose duration and size the main track knows.
@@ -1207,6 +1258,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyStyledTitle = false; // outline, shadow, box, alignment or spacing
     bool anyMotion = false;
     bool anyBrace = false; // a clock field, or an escaped brace
+    bool anyGauge = false;
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
@@ -1217,6 +1269,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 anyStyledTitle |= c.isTitle() && styledTitle(*c.title);
                 anyMotion |= !c.motion.isNone();
                 anyBrace |= c.isTitle() && c.title->text.contains(QLatin1Char('{'));
+                anyGauge |= c.isGauge();
                 tc.push_back(videoClipToJson(c, projectDir));
                 continue;
             }
@@ -1282,7 +1335,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyBrace                ? kClockFormatVersion
+        {"version", anyGauge                ? kGaugeFormatVersion
+                    : anyBrace                ? kClockFormatVersion
                     : anyMotion               ? kMotionFormatVersion
                     : anyStyledTitle          ? kTitleLookFormatVersion
                     : anyReframeKey           ? kWideViewFormatVersion

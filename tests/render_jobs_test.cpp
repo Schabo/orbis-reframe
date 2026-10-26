@@ -8,6 +8,8 @@
 
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
+#include "GaugeRender.h"
+#include "GaugeSource.h"
 #include "TitleSource.h"
 #include "../core/TitleClock.h"
 #include "../core/ClipItem.h"
@@ -833,6 +835,136 @@ void testGpsFeedVsExport()
     CHECK(pictures.size() == 4); // 3000 and 4999 both "-- km/h"
 }
 
+// A gauge's reading: its number as a title's field writes it, its
+// position clamped to the scale and rounded only as finely as it shows; a
+// tape the heading; none without GPS. Its pictures: its kind's shape, one
+// per reading, kept.
+void testGaugeReadings()
+{
+    Telemetry::Values v;
+    v.speedMps = 20.0; // 72 km/h, 44.7 mph
+    v.altitudeM = 1234.4;
+    v.headingDeg = 359.6;
+    gauge::Style dial;
+    const gaugerender::Reading r = gaugerender::readingOf(dial, v, 200);
+    CHECK(r.hasValue && r.number == 72 && near(r.position, 72.0, 0.5));
+    dial.units.speed = title::SpeedUnit::Mph;
+    CHECK(gaugerender::readingOf(dial, v, 200).number == 45);
+    dial.max = 40.0; // past the end: the needle there, the number as it is
+    const gaugerender::Reading over = gaugerender::readingOf(dial, v, 200);
+    CHECK(over.number == 45 && near(over.position, 40.0, 0.06)); // to the half pixel
+    v.speedMps = 0.4; // standing still
+    CHECK(gaugerender::readingOf(dial, v, 200).number == 0);
+    gauge::Style bar;
+    bar.kind = gauge::Kind::Bar;
+    bar.reads = gauge::Reads::Altitude;
+    bar.max = 2000.0;
+    CHECK(gaugerender::readingOf(bar, v, 100).number == 1234);
+    // Finer on a bigger picture.
+    v.altitudeM = 1234.37;
+    const double small = gaugerender::readingOf(bar, v, 50).position;
+    const double big = gaugerender::readingOf(bar, v, 1000).position;
+    CHECK(std::abs(big - 1234.37) < std::abs(small - 1234.37) + 1e-9 &&
+          std::abs(small - 1234.37) <= 2000.0 / (2.84 * 50) + 1e-9);
+    gauge::Style tape;
+    tape.kind = gauge::Kind::Tape;
+    const gaugerender::Reading heading = gaugerender::readingOf(tape, v, 100);
+    CHECK(heading.hasValue && heading.number == 0 && near(heading.position, 359.6, 0.2));
+    v.headingDeg.reset();
+    CHECK(!gaugerender::readingOf(tape, v, 100).hasValue);
+    CHECK(!gaugerender::readingOf(bar, std::nullopt, 100).hasValue);
+
+    for (const gauge::Style &s : {gauge::Style{}, bar, tape}) {
+        const gaugerender::Picture p = gaugerender::render(s, 120, r);
+        CHECK(!p.empty() && p.height == 120 &&
+              p.width == int(std::lround(gauge::aspect(s.kind) * 120)));
+        CHECK(gaugerender::cached(s, 120, r).rgba == p.rgba); // kept
+        // Something drawn, and the value shows.
+        CHECK(*gaugerender::render(s, 120, gaugerender::Reading{}).rgba != *p.rgba);
+    }
+}
+
+// A gauge's next change against every ms, as far ahead as it looks.
+void testGaugeSource()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    t.appendClip("/c/b.insv", 20000, 30.0);
+    t.setClipTrimOut(a, 3000);
+    renderjobs::FieldSources sources;
+    sources.gps.insert("/c/a.insv", rampTelemetry());
+    const title::Clock clock = renderjobs::titleClock(t, sources);
+    gauge::Style style;
+    style.kind = gauge::Kind::Bar;
+    GaugeSource src(style, 5000, 60, 1920, 1080, clock, 0);
+    CHECK(src.readingAt(0).hasValue && src.readingAt(0).number == 36);
+    CHECK(!src.readingAt(3500).hasValue); // b: no GPS
+    const exportpipe::Still still = src.at(1000);
+    CHECK(!still.empty() && still.height == 60 &&
+          near(still.widthPerSize, gauge::aspect(style.kind) * 1080.0 / 1920.0, 1e-12));
+    CHECK(src.ready(1000).rgba == still.rgba);
+    for (qint64 ms = 0; ms < 5000; ms += 53) {
+        const gaugerender::Reading now = src.readingAt(ms);
+        qint64 expect = -1;
+        for (qint64 u = ms + 1; u <= std::min<qint64>(5000, ms + GaugeSource::kLookaheadMs); ++u)
+            if (src.readingAt(u) != now) {
+                expect = u;
+                break;
+            }
+        CHECK(src.nextChange(ms) == expect);
+    }
+}
+
+// Playback and the export show a gauge alike: the same picture, the same
+// place, across value changes and into a clip without GPS.
+void testGaugeFeedVsExport()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    t.appendClip("/c/b.insv", 20000, 30.0);
+    t.setClipTrimOut(a, 3000);
+    const int v = t.addTrack(Track::Kind::Video, "Gauge");
+    const int id = t.addGaugeClip(v, 1000, gauge::Style{}, 4000);
+    renderjobs::FieldSources sources;
+    sources.gps.insert("/c/a.insv", rampTelemetry());
+    const PrivacyBlur privacy;
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080, privacy, sources);
+    const std::vector<exportpipe::InsetClipJob> jobs =
+        renderjobs::insetJobs(t, 1920, 1080, privacy, sources);
+    CHECK(feed.size() == 1 && jobs.size() == 1);
+    if (feed.size() != 1 || jobs.size() != 1)
+        return;
+    CHECK(near(feed[0].aspect, 1.0, 1e-12) && near(jobs[0].aspect, 1.0, 1e-12));
+    InsetFeed player;
+    player.setClips(feed);
+    const TrackClip &c = *t.trackClipById(id);
+    std::set<std::vector<uint8_t>> pictures;
+    for (qint64 ms : {1000, 1500, 2999, 3000, 4999}) {
+        exportpipe::Still jp;
+        const inset::Rect er = titleRect(jobs[0], ms - c.startMs, 1920, 1080, &jp);
+        CHECK(!jp.empty());
+        if (jp.empty())
+            continue;
+        pictures.insert(*jp.rgba);
+        std::vector<EquirectViewportWindow::InsetDraw> drawn;
+        for (int i = 0; i < 400; ++i) {
+            drawn = player.frameFor(ms, false);
+            if (drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        CHECK(drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba);
+        if (drawn.size() != 1)
+            continue;
+        const inset::Rect pr = inset::place(drawn[0].look, {}, drawn[0].aspect, 1920, 1080);
+        CHECK(near(pr.x, er.x, 1.0) && near(pr.y, er.y, 1.0) && near(pr.w, er.w, 1.0));
+        // Its height the look's width, of the output height; centred on it.
+        CHECK(near(er.h, gauge::defaultLook().width * 1080.0, 1.5));
+        CHECK(near(er.x + er.w / 2.0, gauge::defaultLook().centerX * 1920.0, 1.0));
+    }
+    CHECK(pictures.size() == 4); // 3000 and 4999 both empty
+}
+
 // A transition: the other clip as a layer over each half, blending through
 // the cut; the clips' own sound running on past it, crossfading.
 void testTransitions()
@@ -1143,6 +1275,9 @@ int main(int argc, char **argv)
     testGpsFields();
     testGpsClock();
     testGpsFeedVsExport();
+    testGaugeReadings();
+    testGaugeSource();
+    testGaugeFeedVsExport();
     testTransitions();
     testLayerOverMainClip();
     testClipJob(tmp.path());

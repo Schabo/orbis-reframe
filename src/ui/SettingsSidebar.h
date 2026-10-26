@@ -6,6 +6,7 @@
 
 class AudioPanel;
 class ColourPanel;
+class GaugePanel;
 class MediaInfoPanel;
 class OverlayPanel;
 class PrivacyPanel;
@@ -38,7 +39,7 @@ class TransitionPanel;
 // transitionSettings / privacySettings (their tab buttons <page>Tab), and
 // the sections stitchingPanel, stabilizationPanel, reframePanel,
 // splitScreenPanel, colourPanel, mediaInfoPanel, overlayPanel, titleTextPanel,
-// titleLookPanel, titleAnimationPanel, titlePlacementPanel, transitionPanel, privacyPanel (headers
+// titleLookPanel, gaugePanel, titleAnimationPanel, titlePlacementPanel, transitionPanel, privacyPanel (headers
 // <section>Header); the Audio tab's are AudioPanel's.
 class SettingsSidebar : public TabSidebar {
     Q_OBJECT
@@ -59,10 +60,15 @@ public:
     OverlayPanel *overlay() const { return m_overlay; }
     TitleTextPanel *titleText() const { return m_titleText; }
     TitleLookPanel *titleLook() const { return m_titleLook; }
+    GaugePanel *gauge() const { return m_gauge; }
     TitleAnimationPanel *titleAnimation() const { return m_titleAnimation; }
     OverlayPanel *titlePlacement() const { return m_titlePlacement; } // kind Title
     TransitionPanel *transition() const { return m_transition; }
     PrivacyPanel *privacy() const { return m_privacy; }
+
+    // The Title tab for a gauge (its Gauge section in the place of Text and
+    // Look) or for a title.
+    void showGaugeSections(bool gauge);
 
     // Every fixed section, tab by tab, top to bottom (not the Audio tab's:
     // AudioPanel makes those per clip).
@@ -78,6 +84,7 @@ private:
     AudioPanel *m_audio = nullptr;
     OverlayPanel *m_overlay = nullptr;
     TitleTextPanel *m_titleText = nullptr;
+    GaugePanel *m_gauge = nullptr;
     TitleLookPanel *m_titleLook = nullptr;
     TitleAnimationPanel *m_titleAnimation = nullptr;
     OverlayPanel *m_titlePlacement = nullptr;

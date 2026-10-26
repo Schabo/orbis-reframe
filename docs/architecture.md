@@ -65,7 +65,7 @@ discussion in an issue first, not a pull request.
 |---|---|---|
 | `src/insv/` | The camera-file library: `.insv` trailer, calibration, IMU timing, the Insta360 per-model table, demux, Vulkan video decode, the fisheye model, gyro stabilization, seam measurement, audio filters | std C++, FFmpeg (demux / decode parts) -- no Qt |
 | `src/camera/` | The common clip description (`ClipMetadata`, read once per file and cached), a reader per camera family that fills it, and the Media information probe | `insv`, FFmpeg -- no Qt, no Vulkan |
-| `src/core/` | The project model: media pool, timeline, clips, keyframe tracks, titles, transitions, the colour grade, the `.orp` file, undo, autosave | Qt Core, nlohmann-json, zlib (LUT zips) -- no widgets, no Vulkan |
+| `src/core/` | The project model: media pool, timeline, clips, keyframe tracks, titles, gauges, transitions, the colour grade, the `.orp` file, undo, autosave | Qt Core, nlohmann-json, zlib (LUT zips) -- no widgets, no Vulkan |
 | `src/stitch/` | `IStitchSource` ("the frame at time T of clip X"), `NativeStitchSource` (dual fisheye), clip probing, clip sync, per-clip seam | `camera`, `insv`, `render` |
 | `src/render/` | Vulkan: the fisheye stitch, the viewport renderer and its shaders, LUTs on the GPU | Vulkan |
 | `src/export/` | Export: the CPU reproject (`ReframeRenderer`), flattening the timeline into the encoder, flat-video reading, inset compositing | FFmpeg |
@@ -94,7 +94,7 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    instead of building an equirect first.
 4. **Grade**: the clip's LUT and the Colour panel's adjustments
    (`color::Grade`), applied to the flat picture.
-5. **Compose and encode**: overlays, titles and transitions on top, then the
+5. **Compose and encode**: overlays, titles, gauges and transitions on top, then the
    encoder (NVENC, else VA-API, else Vulkan encode). The export is 8-bit
    NV12, or P010 into HEVC Main 10 when the project asks for 10-bit
    (`OutputSettings::tenBit`); everything up to this point works in float,

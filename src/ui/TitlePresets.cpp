@@ -243,4 +243,80 @@ title::Style styleFor(const Preset &p)
     return s;
 }
 
+namespace {
+
+QList<GaugePreset> makeGauges()
+{
+    QList<GaugePreset> list;
+    const QString hint = tr("Drag it onto the timeline, or double-click to add it at the "
+                            "playhead; edit it in the Title tab on the right.");
+    const QString gpsHint = tr("It shows the GPS track of the clip under it, where the camera "
+                               "recorded one; without one it stays empty.");
+    const auto at = [](float x, float y, float size) {
+        inset::Look l;
+        l.centerX = x;
+        l.centerY = y;
+        l.width = size;
+        return l;
+    };
+    GaugePreset dial{QStringLiteral("gauge-speed-dial"), tr("Speedometer"),
+                     tr("A round speedometer in the lower right: a needle over the scale, the "
+                        "speed in the middle.") +
+                         QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    dial.look = at(0.88f, 0.75f, 0.28f);
+    list.push_back(dial);
+
+    GaugePreset speedBar{QStringLiteral("gauge-speed-bar"), tr("Speed bar"),
+                         tr("The speed in the lower left, over a bar that fills up with it.") +
+                             QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    speedBar.style.kind = gauge::Kind::Bar;
+    speedBar.look = at(0.15f, 0.88f, 0.13f);
+    list.push_back(speedBar);
+
+    GaugePreset altitudeBar{QStringLiteral("gauge-altitude-bar"), tr("Altitude bar"),
+                            tr("The altitude in the lower left, over a bar that fills up with "
+                               "it.") +
+                                QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    altitudeBar.style.kind = gauge::Kind::Bar;
+    altitudeBar.style.reads = gauge::Reads::Altitude;
+    altitudeBar.look = at(0.15f, 0.88f, 0.13f);
+    list.push_back(altitudeBar);
+
+    GaugePreset tape{QStringLiteral("gauge-heading-tape"), tr("Heading tape"),
+                     tr("The direction of travel at the top in the middle: a compass strip "
+                        "sliding under a marker, the degrees above it.") +
+                         QLatin1Char(' ') + gpsHint + QLatin1Char(' ') + hint};
+    tape.style.kind = gauge::Kind::Tape;
+    tape.look = at(0.5f, 0.1f, 0.12f);
+    list.push_back(tape);
+    return list;
+}
+
+} // namespace
+
+const QList<GaugePreset> &gauges()
+{
+    static const QList<GaugePreset> presets = makeGauges();
+    return presets;
+}
+
+const GaugePreset *findGauge(const QString &id)
+{
+    for (const GaugePreset &p : gauges())
+        if (p.id == id)
+            return &p;
+    return nullptr;
+}
+
+gauge::Style gaugeStyleFor(const GaugePreset &p)
+{
+    gauge::Style s = p.style;
+    s.font = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+    s.units = title::defaultUnits();
+    const gauge::Range r = gauge::defaultRange(s.reads, s.units);
+    s.min = r.min;
+    s.max = r.max;
+    return s;
+}
+
 } // namespace titlepresets

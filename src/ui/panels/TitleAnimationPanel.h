@@ -18,8 +18,9 @@ class TitleAnimationPanel : public SettingsPanel {
 public:
     explicit TitleAnimationPanel(QWidget *parent = nullptr);
 
-    // Reflect a title's motion. Does not emit.
-    void setMotion(const inset::Motion &motion);
+    // Reflect a title's motion (a gauge's: `canType` false, without typing on
+    // or off, which only text does). Does not emit.
+    void setMotion(const inset::Motion &motion, bool canType = true);
     // No title selected: `hint` says why, the fields are greyed out.
     void setNoTitle(const QString &hint);
 

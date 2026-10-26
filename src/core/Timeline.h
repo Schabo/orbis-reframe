@@ -275,6 +275,15 @@ public slots:
                      qint64 spanMs = title::kDefaultSpanMs,
                      const inset::Look &look = title::defaultLook(),
                      const inset::Motion &motion = {});
+    // A gauge (TrackClip::gauge) `spanMs` long at `startMs` on a video
+    // track, placed by `look` (its width the gauge's height), coming on and
+    // going off by `motion`. 0 if the track isn't a video track.
+    int addGaugeClip(int trackId, qint64 startMs, const gauge::Style &style,
+                     qint64 spanMs = title::kDefaultSpanMs,
+                     const inset::Look &look = gauge::defaultLook(),
+                     const inset::Motion &motion = {});
+    // What a gauge shows and how it's drawn. No-op on a clip that isn't one.
+    void setTrackClipGauge(int clipId, const gauge::Style &style);
     // A title's text and how it's drawn. No-op on a clip that isn't one.
     // `shiftPerSize` also moves its position and every key's across by that
     // many times their text size (in output widths): what keeps the text

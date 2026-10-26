@@ -237,6 +237,7 @@ add_library(orbis_core STATIC
     src/core/ClipItem.h
     src/core/TrackClip.cpp
     src/core/TrackClip.h
+    src/core/Gauge.h
     src/core/InsetGeometry.h
     src/core/KeyTrack.h
     src/core/Log.h
@@ -511,6 +512,10 @@ if(FFMPEG_FOUND)
         src/ui/PlaybackTuning.h
         src/ui/InsetFeed.cpp
         src/ui/InsetFeed.h
+        src/ui/GaugeRender.cpp
+        src/ui/GaugeRender.h
+        src/ui/GaugeSource.cpp
+        src/ui/GaugeSource.h
         src/ui/TitlePresets.cpp
         src/ui/TitlePresets.h
         src/ui/TitleRender.cpp
@@ -568,6 +573,8 @@ if(FFMPEG_FOUND)
         src/ui/panels/PanelFields.h
         src/ui/panels/TitleLookPanel.cpp
         src/ui/panels/TitleLookPanel.h
+        src/ui/panels/GaugePanel.cpp
+        src/ui/panels/GaugePanel.h
         src/ui/panels/TitleAnimationPanel.cpp
         src/ui/panels/TitleAnimationPanel.h
         src/ui/panels/StabilizationPanel.cpp
@@ -963,6 +970,7 @@ if(TARGET camera AND Qt6Test_FOUND)
         src/ui/panels/TitleTextPanel.cpp src/ui/panels/TitleTextPanel.h
         src/ui/panels/TitleLookPanel.cpp src/ui/panels/TitleLookPanel.h
         src/ui/panels/TitleAnimationPanel.cpp src/ui/panels/TitleAnimationPanel.h
+        src/ui/panels/GaugePanel.cpp src/ui/panels/GaugePanel.h
         src/ui/panels/TransitionPanel.cpp src/ui/panels/TransitionPanel.h
         src/ui/panels/PrivacyPanel.cpp src/ui/panels/PrivacyPanel.h
         src/ui/panels/MediaInfoPanel.cpp src/ui/panels/MediaInfoPanel.h

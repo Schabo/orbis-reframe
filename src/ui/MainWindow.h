@@ -356,7 +356,7 @@ private:
     // (renderjobs::FieldSources): when each was recorded, and its GPS --
     // each only gathered when a title has a field that reads it.
     renderjobs::FieldSources fieldSources();
-    // Why title `c`'s fields show nothing somewhere (the main-track clips
+    // Why title `c`'s fields (gauge `c`) show nothing somewhere (the main-track clips
     // under it whose files don't say when they were recorded, or that have
     // no GPS there or only for part of it), or "".
     QString titleClockNote(const TrackClip &c);

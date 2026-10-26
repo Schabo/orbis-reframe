@@ -5,7 +5,8 @@ date. Titles sit on overlay tracks, like picture-in-picture videos
 ([Picture in picture](picture-in-picture.md)), and are placed, keyframed and faded the same way.
 They can also slide in and out, pop up, or type themselves on letter by
 letter, and show the time of day the video was recorded, running as it
-plays, or the speed, altitude and heading from the camera's GPS.
+plays, or the speed, altitude and heading from the camera's GPS -- as
+text, or drawn as a gauge.
 
 ![A title with a drop shadow in the viewport, the Overlays tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -41,6 +42,16 @@ lands in the picture. An animated one plays its animation while the mouse is ove
 | **Speed** | The speed in the lower left, running as the clip plays. |
 | **Speed and altitude** | The speed and, below it, the altitude, in the lower left. |
 | **Direction** | The direction of travel at the top in the middle, as a compass point and in degrees, on a rounded box. |
+
+Under them, **Gauges** draw a GPS value as an instrument (see
+[Gauges](#gauges)):
+
+| Tile | What you get |
+|---|---|
+| **Speedometer** | A round dial in the lower right: a needle over the scale, the speed in the middle. |
+| **Speed bar** | The speed in the lower left, over a bar that fills up with it. |
+| **Altitude bar** | The altitude in the lower left, over a bar that fills up with it. |
+| **Heading tape** | The direction of travel at the top in the middle: a compass strip sliding under a marker, the degrees above it. |
 
 To add one:
 
@@ -175,6 +186,37 @@ Where there is no GPS, a field shows `--` with its unit (*-- km/h*):
 The **Text** section then says which clips under the title have no GPS
 there, or have it for only part of the time.
 
+## Gauges
+
+A gauge draws a value from the GPS as an instrument: a **Dial** with a
+needle over a scale and the number in the middle, a **Bar** with the
+number over a bar that fills up along a scale, or a **Heading tape**, a
+compass strip that slides under a marker as the direction of travel
+changes, with the degrees above it. Add one from the **Gauges** tiles of
+the **Overlays** tab like a title. It is a clip on an overlay track like
+a title, and follows the video the same way: the value is the one a
+title's GPS field shows at that moment, the number rounded the same, and
+the needle, bar or tape moves smoothly between the fixes.
+
+Selecting a gauge shows its **Gauge** section in the **Title** tab, in
+the place of **Text** and **Look**:
+
+| Setting | What it does |
+|---|---|
+| **Kind** | **Dial**, **Bar** or **Heading tape**. |
+| **Shows** | **Speed** or **Altitude** (not for a tape, which always shows the heading). Picking the other sets a scale that suits it. |
+| **Unit** | **km/h** or **mph** for a speed, **metres** or **feet** for an altitude. The scale's ends are converted to it. A new gauge starts with the units your computer's region uses. |
+| **Scale from** / **Scale to** | The scale's low and high end, in the unit. A new speed gauge goes to 200 km/h (120 mph), an altitude gauge to 1000 m (3000 ft). A value past an end puts the needle or bar at that end; the number still shows the value. |
+| **Accent** | The colour of the needle, the bar and the tape's marker. |
+| **Face** and **Face opacity** | The colour behind the gauge, and how solid it is. At 0 % only the scale and the numbers sit over the picture. |
+| **Text** | The colour of the scale and the numbers. |
+
+Where the clip under it has no GPS, a gauge stays empty and its number
+shows `--`; the **Gauge** section then says which clips those are. Its
+**Animation** works as a title's, without typing on or off, and its
+**Position and timing** too, except that its **Size** is the gauge's
+height, as a percentage of the picture's height.
+
 ## Outline, shadow, box and spacing
 
 The **Look** section draws more than the letters, to keep a title readable
@@ -250,6 +292,6 @@ splitting, moving it to another overlay track, hiding its track and the
 layer order all work as for a PiP clip ([The timeline](timeline.md#audio-and-overlay-tracks),
 [Several overlays](picture-in-picture.md#several-overlays)).
 
-Titles appear in playback, screenshots and the export exactly as in the
-viewport. The text is drawn at the export's resolution, so it stays sharp
-in a 4K export.
+Titles and gauges appear in playback, screenshots and the export exactly
+as in the viewport. They are drawn at the export's resolution, so they
+stay sharp in a 4K export.

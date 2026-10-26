@@ -56,6 +56,9 @@ public:
         // The playhead is between two keys: the move to the next one eases so.
         bool easeAvailable = false;
         keytrack::Ease ease = keytrack::Ease::Linear;
+        // Kind Title: the clip is a gauge -- its size is its height, not a
+        // text size.
+        bool gauge = false;
     };
     // Reflect a clip. Does not emit.
     void setState(const State &s);

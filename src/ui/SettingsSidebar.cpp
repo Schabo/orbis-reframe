@@ -7,6 +7,7 @@
 
 #include "SettingsPanel.h"
 #include "panels/AudioPanel.h"
+#include "panels/GaugePanel.h"
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
@@ -47,6 +48,8 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     const QString selectedTitle = tr("Selected title");
     m_titleText = section<TitleTextPanel>("titleTextPanel", selectedTitle);
     m_titleLook = section<TitleLookPanel>("titleLookPanel", selectedTitle);
+    m_gauge = section<GaugePanel>("gaugePanel", tr("Selected gauge"));
+    m_gauge->setVisible(false); // in the place of Text and Look, for a gauge
     m_titleAnimation = section<TitleAnimationPanel>("titleAnimationPanel", selectedTitle);
     m_titlePlacement = new OverlayPanel(OverlayPanel::Kind::Title);
     m_titlePlacement->setObjectName(QStringLiteral("titlePlacementPanel"));
@@ -60,7 +63,8 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe,
                                           m_splitScreen, m_colour, m_mediaInfo};
     m_sections = video;
-    m_sections << m_overlay << m_titleText << m_titleLook << m_titleAnimation << m_titlePlacement << m_transition
+    m_sections << m_overlay << m_titleText << m_titleLook << m_gauge << m_titleAnimation
+               << m_titlePlacement << m_transition
                << m_privacy;
 
     const QList<QScrollArea *> pages = {
@@ -68,7 +72,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
         makeSettingsPage(QStringLiteral("audioSettings"), {}),
         makeSettingsPage(QStringLiteral("overlaySettings"), {m_overlay}),
         makeSettingsPage(QStringLiteral("titleSettings"),
-                         {m_titleText, m_titleLook, m_titleAnimation, m_titlePlacement}),
+                         {m_titleText, m_titleLook, m_gauge, m_titleAnimation, m_titlePlacement}),
         makeSettingsPage(QStringLiteral("transitionSettings"), {m_transition}),
         makeSettingsPage(QStringLiteral("privacySettings"), {m_privacy}),
     };
@@ -91,7 +95,16 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
         needed = std::max(needed, probe.minimumSizeHint().width() +
                                       pages[1]->verticalScrollBar()->sizeHint().width());
     }
-    const int standard = std::max({340, fontMetrics().height() * 20, needed});
+    const int standard = std::max({340, fontMetrics().height() * 20, needed,
+                                   m_gauge->minimumSizeHint().width() +
+                                       pages[3]->verticalScrollBar()->sizeHint().width()});
     setPageWidthRange(std::max(280, needed), standard, 900);
     setPageWidth(standard);
+}
+
+void SettingsSidebar::showGaugeSections(bool gauge)
+{
+    m_titleText->setVisible(!gauge);
+    m_titleLook->setVisible(!gauge);
+    m_gauge->setVisible(gauge);
 }

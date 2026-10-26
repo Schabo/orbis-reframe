@@ -149,9 +149,12 @@ public:
     // title with a brace in its text: an older build would show the field,
     // and a brace read from an older file is escaped. The GPS fields came
     // with them, their units as a title's `speedUnit` / `altitudeUnit`,
-    // written only when not km/h and metres.
+    // written only when not km/h and metres, and the gauges: an overlay
+    // clip with a `gauge` object instead of a source, which an older build
+    // would take for a missing file.
     static constexpr int kFormatVersion = 19;
     static constexpr int kClockFormatVersion = 19;
+    static constexpr int kGaugeFormatVersion = 19;
     static constexpr int kMotionFormatVersion = 19;
     static constexpr int kTitleLookFormatVersion = 18;
     static constexpr int kWideViewFormatVersion = 17;

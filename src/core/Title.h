@@ -74,6 +74,26 @@ struct Units {
     bool operator==(const Units &) const = default;
 };
 
+// A GPS speed in `unit`: under a walking pace -- the GPS's jitter standing
+// still stays under it (up to 0.37 m/s on the X5's samples) -- 0.
+constexpr double kStillMps = 0.5;
+inline double speedIn(double mps, SpeedUnit unit)
+{
+    return mps < kStillMps ? 0.0 : mps * (unit == SpeedUnit::Mph ? 2.236936 : 3.6);
+}
+inline double altitudeIn(double metres, AltitudeUnit unit)
+{
+    return unit == AltitudeUnit::Feet ? metres / 0.3048 : metres;
+}
+inline const char *unitName(SpeedUnit unit)
+{
+    return unit == SpeedUnit::Mph ? "mph" : "km/h";
+}
+inline const char *unitName(AltitudeUnit unit)
+{
+    return unit == AltitudeUnit::Feet ? "ft" : "m";
+}
+
 struct Style {
     QString text;
     QString font = QStringLiteral("Sans Serif"); // family

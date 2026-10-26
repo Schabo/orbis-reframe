@@ -67,7 +67,8 @@ title::Clock titleClock(const Timeline &timeline, const FieldSources &sources);
 // (title::hasClockFields)? Only then are the recording times worth looking
 // up.
 bool anyTitleClock(const Timeline &timeline);
-// ... GPS fields (title::hasGpsFields)? Only then are the GPS tracks read.
+// ... GPS fields (title::hasGpsFields), or is there a gauge? Only then are
+// the GPS tracks read.
 bool anyTitleGps(const Timeline &timeline);
 
 // How far a title's position has to move, in its text size times output

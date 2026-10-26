@@ -3,6 +3,7 @@
 #include "PanelFields.h"
 
 #include <QComboBox>
+#include <QListView>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 
@@ -101,10 +102,12 @@ void TitleAnimationPanel::updateEnabled()
     m_outLength->setEnabled(m_enabled && m_out->currentIndex() > 0);
 }
 
-void TitleAnimationPanel::setMotion(const inset::Motion &m)
+void TitleAnimationPanel::setMotion(const inset::Motion &m, bool canType)
 {
     m_updating = true;
     m_enabled = true;
+    for (QComboBox *c : {m_in, m_out})
+        static_cast<QListView *>(c->view())->setRowHidden(c->count() - 1, !canType);
     m_in->setCurrentIndex(indexOf(m.in));
     m_inLength->setValue(m.in.ms / 1000.0);
     m_out->setCurrentIndex(indexOf(m.out));

@@ -390,7 +390,7 @@ QWidget[sidebarPart="strip"] QToolButton:hover {
 }
 
 /* Titles tab. */
-#titlesPanel, #titleList {
+#titlesPanel, #titleList, #gaugeList, #titlesScroll, #titlesPage {
     background-color: @panel;
 }
 #titlesHint {

@@ -35,10 +35,10 @@ between fixes, a gap of a few seconds is "no data") and its values at any
 moment -- built: `camera::ReadClipGps`, `core/Telemetry` and the shared
 `SourceTimeMap`; then text fields in titles (`{speed}`, `{altitude}`,
 `{heading}`, `{heading:compass}`, with units per title) -- built; then
-drawn gauges as their own overlay clips (dial, bar, heading tape); then the
-route, lean and G-force. Where a clip has no GPS, a field or gauge shows
-`--`. Place names from coordinates
-are not planned: they'd need an offline place database.
+drawn gauges as their own overlay clips (dial, bar, heading tape) -- built;
+then the route, lean and G-force. Where a clip has no GPS, a field or gauge
+shows `--`. Place names from coordinates are not planned: they'd need an
+offline place database.
 
 ### 2. Optional
 

@@ -611,6 +611,48 @@ void testVideoTracks()
 
 // A title: a video-track clip with no file, never missing, with room to
 // extend either edge, its own style, and no sound to put on a track.
+// A gauge: an overlay clip with no file, like a title; its style clamped,
+// a change one signal, none for the same; a title stays a title.
+void testGauges()
+{
+    Timeline tl;
+    tl.appendClip("/v/a.insv", 60000, 30.0);
+    const int a = tl.addTrack(Track::Kind::Audio);
+    const int v = tl.addTrack(Track::Kind::Video);
+    gauge::Style style;
+    style.kind = gauge::Kind::Bar;
+    CHECK(tl.addGaugeClip(a, 1000, style) == 0); // not on an audio track
+    const int id = tl.addGaugeClip(v, 2000, style);
+    const TrackClip *c = tl.trackClipById(id);
+    CHECK(c && c->isGauge() && c->isDrawn() && !c->isTitle() && c->gauge->kind == gauge::Kind::Bar);
+    CHECK(c->sourcePath.isEmpty() && !c->mediaMissing);
+    CHECK(c->startMs == 2000 && c->timelineDurationMs() == title::kDefaultSpanMs);
+    CHECK(c->look == gauge::defaultLook().clamped());
+    CHECK(tl.addOverlaySound(id) == 0); // nothing to hear
+
+    int changes = 0;
+    QObject::connect(&tl, &Timeline::tracksChanged, [&] { ++changes; });
+    style.reads = gauge::Reads::Altitude;
+    style.min = 50.0;
+    style.max = 20.0; // below its low end: a span of at least kMinSpan
+    style.faceOpacity = 3.0f;
+    style.accent = 0xff123456;
+    tl.setTrackClipGauge(id, style);
+    c = tl.trackClipById(id);
+    CHECK(changes == 1 && c->gauge->reads == gauge::Reads::Altitude);
+    CHECK(c->gauge->min == 50.0 && c->gauge->max == 50.0 + gauge::Style::kMinSpan);
+    CHECK(c->gauge->faceOpacity == 1.0f && c->gauge->accent == 0x123456);
+    tl.setTrackClipGauge(id, style); // the same after clamping: no change
+    CHECK(changes == 1);
+    const int t = tl.addTitleClip(v, 20000, title::Style{});
+    tl.setTrackClipGauge(t, style); // not a gauge
+    CHECK(changes == 2 && tl.trackClipById(t)->isTitle() && !tl.trackClipById(t)->isGauge());
+    // Split, it is two gauges.
+    const int right = tl.splitTrackClip(id, 4000);
+    CHECK(right && tl.trackClipById(right)->isGauge() &&
+          *tl.trackClipById(right)->gauge == *tl.trackClipById(id)->gauge);
+}
+
 void testTitles()
 {
     Timeline tl;
@@ -721,5 +763,6 @@ int main()
     testOwnSoundTracks();
     testVideoTracks();
     testTitles();
+    testGauges();
     return modeltest::finish("timeline_tracks_test");
 }

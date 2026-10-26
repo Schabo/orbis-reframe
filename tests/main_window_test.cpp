@@ -16,6 +16,7 @@
 #include "ClipBackend.h"
 #include "ClipMeasurements.h"
 #include "MainWindow.h"
+#include "panels/GaugePanel.h"
 #include "SettingsPanel.h"
 #include "SettingsSidebar.h"
 #include "panels/StabilizationPanel.h"
@@ -1426,6 +1427,72 @@ void testTitlePresets(const Ctx &c)
     settle();
 }
 
+// The Overlays tab's gauges: a tile per preset, dragged out as its id;
+// adding one gives a gauge with the preset's kind and place, in the
+// system's units, and the Title tab shows its Gauge section in the place of
+// Text and Look -- and the title's again for a title.
+void testGaugePresets(const Ctx &c)
+{
+    const QList<titlepresets::GaugePreset> &presets = titlepresets::gauges();
+    auto *list = find<QListWidget>(c.w, "gaugeList");
+    CHECK(list && list->count() == presets.size());
+    if (!list || list->count() != presets.size())
+        return;
+    for (int row = 0; row < list->count(); ++row) {
+        const titlepresets::GaugePreset &p = presets[row];
+        CHECK(p.style == p.style.clamped() && p.look == p.look.clamped());
+        CHECK(!titlepresets::find(p.id)); // never a title's id
+        std::unique_ptr<QMimeData> mime(list->model()->mimeData({list->model()->index(row, 0)}));
+        CHECK(mime && mime->data(QString::fromLatin1(title::kMimeType)) == p.id.toLatin1());
+    }
+    const auto gauges = [&c] {
+        QList<const TrackClip *> out;
+        for (int i = 0; i < c.timeline->trackCount(); ++i)
+            for (const TrackClip &tc : c.timeline->trackAt(i).clips)
+                if (tc.isGauge())
+                    out << &tc;
+        return out;
+    };
+    const titlepresets::GaugePreset *bar = titlepresets::findGauge("gauge-altitude-bar");
+    CHECK(bar);
+    if (!bar)
+        return;
+    emit c.timelineWidget->titleDropped(0, 900, bar->id);
+    settle();
+    const QList<const TrackClip *> added = gauges();
+    const TrackClip *clip = added.size() == 1 ? added.front() : nullptr;
+    CHECK(clip && clip->startMs == 900 && clip->look == bar->look.clamped());
+    CHECK(clip && clip->gauge->kind == gauge::Kind::Bar &&
+          clip->gauge->reads == gauge::Reads::Altitude &&
+          clip->gauge->units == title::defaultUnits() &&
+          clip->gauge->max == gauge::defaultRange(gauge::Reads::Altitude, title::defaultUnits()).max);
+    auto *gaugePanel = c.w->findChild<GaugePanel *>(QStringLiteral("gaugePanel"));
+    auto *textPanel = c.w->findChild<QWidget *>(QStringLiteral("titleTextPanel"));
+    CHECK(gaugePanel && textPanel && !gaugePanel->isHidden() && textPanel->isHidden());
+    // The clip under it has no GPS: the section says so.
+    auto *note = c.w->findChild<QLabel *>(QStringLiteral("gaugeNote"));
+    CHECK(note && !note->isHidden() && note->text().startsWith(QStringLiteral("Clip")));
+    // Edited from the section: the gauge on the timeline.
+    if (auto *kind = c.w->findChild<QComboBox *>(QStringLiteral("gaugeKind")); kind && clip) {
+        kind->setCurrentIndex(0);
+        emit kind->activated(0);
+        CHECK(c.timeline->trackClipById(clip->id)->gauge->kind == gauge::Kind::Dial);
+    }
+    // A title: Text and Look back.
+    emit c.timelineWidget->titleDropped(0, 900 + title::kDefaultSpanMs, QStringLiteral("plain"));
+    settle();
+    CHECK(gaugePanel && textPanel && gaugePanel->isHidden() && !textPanel->isHidden());
+    for (const TrackClip *g : gauges())
+        c.timeline->removeTrackClip(g->id);
+    for (int i = 0; i < c.timeline->trackCount(); ++i)
+        for (const TrackClip &tc : c.timeline->trackAt(i).clips)
+            if (tc.isTitle()) {
+                c.timeline->removeTrackClip(tc.id);
+                break;
+            }
+    settle();
+}
+
 // A second overlay track: the selected overlay's Bring forward puts its
 // track above the other (the first overlay track draws on top).
 void testOverlayLayers(const Ctx &c)
@@ -1988,6 +2055,7 @@ int main(int argc, char **argv)
             testHlgClip(c);
             testTitle(c);
             testTitlePresets(c);
+            testGaugePresets(c);
             testTransition(c);
             testFullScreen(c);
             testTrackSubjectMode(c);

@@ -53,29 +53,22 @@ bool anyField(const QString &text, Pred wanted)
     return false;
 }
 
-// Below this a GPS reads as standing still: its jitter at rest stays under
-// it (up to 0.37 m/s on the X5's samples), a walk is above.
-constexpr double kStillMps = 0.5;
-
 QString gpsValue(Field f, const std::optional<Telemetry::Values> &gps, Units units,
                  const QLocale &locale)
 {
     const QString none = QStringLiteral("--");
     switch (f) {
     case Field::Speed: {
-        const bool mph = units.speed == SpeedUnit::Mph;
-        const QString unit = mph ? QStringLiteral(" mph") : QStringLiteral(" km/h");
+        const QString unit = QLatin1Char(' ') + QLatin1String(unitName(units.speed));
         if (!gps)
             return none + unit;
-        const double v = gps->speedMps < kStillMps ? 0.0 : gps->speedMps * (mph ? 2.236936 : 3.6);
-        return locale.toString(qRound(v)) + unit;
+        return locale.toString(qRound(speedIn(gps->speedMps, units.speed))) + unit;
     }
     case Field::Altitude: {
-        const bool feet = units.altitude == AltitudeUnit::Feet;
-        const QString unit = feet ? QStringLiteral(" ft") : QStringLiteral(" m");
+        const QString unit = QLatin1Char(' ') + QLatin1String(unitName(units.altitude));
         if (!gps)
             return none + unit;
-        return locale.toString(qRound(gps->altitudeM / (feet ? 0.3048 : 1.0))) + unit;
+        return locale.toString(qRound(altitudeIn(gps->altitudeM, units.altitude))) + unit;
     }
     case Field::Heading:
         if (!gps || !gps->headingDeg)

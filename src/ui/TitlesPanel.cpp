@@ -4,6 +4,7 @@
 #include "../core/TitleClock.h"
 #include "TitlePresets.h"
 #include "TitleRender.h"
+#include "GaugeRender.h"
 
 #include <QAction>
 #include <QCursor>
@@ -13,6 +14,7 @@
 #include <QMimeData>
 #include <QPainter>
 #include <QPainterPath>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -33,19 +35,10 @@ qint64 previewSpanMs(const titlepresets::Preset &p)
            (p.motion.out.kind == Kind::None ? 0 : p.motion.out.ms);
 }
 
-// A tile's picture: the preset's title over a made-up landscape (sky, then
-// ground), roughly where and how it lands. Its text is drawn larger than
-// in a real frame -- at the true size a caption would be a few pixels high
-// -- and kept inside the tile. At `localMs` into a title `spanMs` long
-// (spanMs > 0), moved by the preset's motion from there: an animated tile
-// playing, its text typed as far as it is then.
-QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dpr,
-                 qint64 localMs = 0, qint64 spanMs = 0)
+// A tile's made-up landscape (sky, then ground), its painter clipped to
+// the tile's rounded corners: what a preset is shown over.
+void tileBackground(QPainter &p, const QSize &size)
 {
-    QPixmap pm(size * dpr);
-    pm.setDevicePixelRatio(dpr);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     const QRectF r(QPointF(0, 0), QSizeF(size));
@@ -60,6 +53,32 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     QPainterPath clip;
     clip.addRoundedRect(r, 4, 4);
     p.setClipPath(clip); // a slide comes in past the tile's edge
+}
+
+// A ride's values, for a tile that shows GPS values.
+Telemetry::Values sampleRide()
+{
+    Telemetry::Values ride;
+    ride.speedMps = 20.0; // 72 km/h
+    ride.headingDeg = 45.0;
+    ride.altitudeM = 120.0;
+    return ride;
+}
+
+// A tile's picture: the preset's title over a made-up landscape (sky, then
+// ground), roughly where and how it lands. Its text is drawn larger than
+// in a real frame -- at the true size a caption would be a few pixels high
+// -- and kept inside the tile. At `localMs` into a title `spanMs` long
+// (spanMs > 0), moved by the preset's motion from there: an animated tile
+// playing, its text typed as far as it is then.
+QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dpr,
+                 qint64 localMs = 0, qint64 spanMs = 0)
+{
+    QPixmap pm(size * dpr);
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    tileBackground(p, size);
 
     constexpr double kScale = 1.5;  // the text, larger than in a frame
     constexpr double kMinFontPx = 7; // logical pixels
@@ -68,11 +87,8 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     title::Style style = titlepresets::styleFor(preset);
     // A date or clock tile shows the time now, a GPS one a ride's values.
     const bool clock = title::hasFields(style.text);
-    Telemetry::Values ride;
-    ride.speedMps = 20.0; // 72 km/h
-    ride.headingDeg = 45.0;
-    ride.altitudeM = 120.0;
-    style.text = title::withFields(style.text, now, QLocale(), style.hours, ride, style.units);
+    style.text =
+        title::withFields(style.text, now, QLocale(), style.hours, sampleRide(), style.units);
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);
     // Typing on or off: the picture changes as the frame's would.
     const int visible =
@@ -104,6 +120,39 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     const QImage img(pic.rgba->data(), pic.width, pic.height, pic.width * 4,
                      QImage::Format_RGBA8888_Premultiplied);
     p.drawImage(QRectF(m.centerX * W - mw / 2, m.centerY * H - mh / 2, mw, mh), img);
+    return QIcon(pm);
+}
+
+// A gauge tile: the gauge showing a ride's values over the landscape,
+// roughly where it lands, larger than in a frame and kept inside the tile.
+QIcon gaugeTile(const titlepresets::GaugePreset &preset, const QSize &size, qreal dpr)
+{
+    QPixmap pm(size * dpr);
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    tileBackground(p, size);
+    constexpr double kScale = 1.4;
+    const gauge::Style style = titlepresets::gaugeStyleFor(preset);
+    const double W = size.width(), H = size.height();
+    const double aspect = gauge::aspect(style.kind);
+    // Big enough to read on a tile, and inside it.
+    const double h = std::min({std::max(preset.look.width * H * kScale, 0.45 * H), H - 6.0,
+                               (W - 6.0) / aspect});
+    const double w = h * aspect;
+    const int px = std::max(8, int(std::lround(h * dpr)));
+    const gaugerender::Picture pic =
+        gaugerender::render(style, px, gaugerender::readingOf(style, sampleRide(), px));
+    if (pic.empty())
+        return QIcon(pm);
+    constexpr double kMargin = 3;
+    const double x =
+        std::clamp(preset.look.centerX * W - w / 2, kMargin, std::max(kMargin, W - kMargin - w));
+    const double y =
+        std::clamp(preset.look.centerY * H - h / 2, kMargin, std::max(kMargin, H - kMargin - h));
+    const QImage img(pic.rgba->data(), pic.width, pic.height, pic.width * 4,
+                     QImage::Format_RGBA8888_Premultiplied);
+    p.drawImage(QRectF(x, y, w, h), img);
     return QIcon(pm);
 }
 
@@ -174,23 +223,86 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
     m_list->addAction(add);
     m_list->setContextMenuPolicy(Qt::ActionsContextMenu);
 
-    auto *hint = new QLabel(tr("Drag a title onto the timeline, or double-click it to add it at "
-                               "the playhead. Its text, font, colour, size and timing are in the "
+    auto *hint = new QLabel(tr("Drag a title or a gauge onto the timeline, or double-click it to "
+                               "add it at the playhead. Its settings, size and timing are in the "
                                "Title tab on the right."),
                             this);
     hint->setObjectName(QStringLiteral("titlesHint"));
     hint->setWordWrap(true);
+
+    // The gauges: a GPS value drawn as an instrument, added and edited the
+    // same way.
+    auto *gaugeHeading = new QLabel(tr("Gauges"), this);
+    gaugeHeading->setObjectName(QStringLiteral("sidebarPageTitle"));
+    m_gauges = new TitleList(this);
+    m_gauges->setObjectName(QStringLiteral("gaugeList"));
+    m_gauges->setIconSize(kTileSize);
+    for (const titlepresets::GaugePreset &preset : titlepresets::gauges()) {
+        auto *item = new QListWidgetItem(gaugeTile(preset, kTileSize, devicePixelRatioF()),
+                                         preset.name, m_gauges);
+        item->setData(kPresetRole, preset.id);
+        item->setToolTip(preset.toolTip);
+    }
+    connect(m_gauges, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        emit addTitleRequested(item->data(kPresetRole).toString());
+    });
+    auto *addGauge = new QAction(tr("&Add to timeline"), m_gauges);
+    addGauge->setObjectName(QStringLiteral("gaugeAddToTimelineAction"));
+    connect(addGauge, &QAction::triggered, this, [this] {
+        if (const QListWidgetItem *item = m_gauges->currentItem())
+            emit addTitleRequested(item->data(kPresetRole).toString());
+    });
+    m_gauges->addAction(addGauge);
+    m_gauges->setContextMenuPolicy(Qt::ActionsContextMenu);
+
+    // Both groups in one scrolling page: each list as tall as its tiles.
+    for (TitleList *l : {m_list, m_gauges}) {
+        l->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        l->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        l->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    }
+    auto *page = new QWidget;
+    page->setObjectName(QStringLiteral("titlesPage"));
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(0);
+    pageLayout->addWidget(m_list);
+    pageLayout->addWidget(gaugeHeading);
+    pageLayout->addWidget(m_gauges);
+    pageLayout->addStretch(1);
+    m_scroll = new QScrollArea(this);
+    m_scroll->setObjectName(QStringLiteral("titlesScroll"));
+    m_scroll->setFrameShape(QFrame::NoFrame);
+    m_scroll->setWidgetResizable(true);
+    m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_scroll->setWidget(page);
+    m_scroll->viewport()->installEventFilter(this);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(heading);
     layout->addWidget(hint);
-    layout->addWidget(m_list, 1);
+    layout->addWidget(m_scroll, 1);
+}
+
+void TitlesPanel::fitLists()
+{
+    const int width = m_scroll->viewport()->width();
+    for (TitleList *l : {m_list, m_gauges}) {
+        l->setFixedWidth(width);
+        l->doItemsLayout();
+        int bottom = 0;
+        for (int i = 0; i < l->count(); ++i)
+            bottom = std::max(bottom, l->visualItemRect(l->item(i)).bottom());
+        l->setFixedHeight(bottom + l->spacing() + 2 * l->frameWidth() + 1);
+    }
 }
 
 bool TitlesPanel::eventFilter(QObject *watched, QEvent *event)
 {
+    if (m_scroll && watched == m_scroll->viewport() && event->type() == QEvent::Resize)
+        fitLists();
     // A Leave can come while the pointer is still on the tile (seen on
     // Sway): only stop if it really is elsewhere.
     if (watched == m_list->viewport() && event->type() == QEvent::Leave && !pointerOnPreview())

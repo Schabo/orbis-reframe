@@ -221,6 +221,13 @@ void OverlayPanel::setState(const State &s)
         w->setEnabled(true);
     m_clipName->setText(s.label);
     m_clipName->setToolTip(s.label);
+    if (m_kind == Kind::Title) {
+        if (auto *label = qobject_cast<QLabel *>(form()->labelForField(m_size)))
+            label->setText(s.gauge ? tr("Size") : tr("Text size"));
+        m_size->setToolTip(s.gauge ? tr("The gauge's height, as a share of the video's height.")
+                                   : tr("The text's size: its font's height, as a share of the "
+                                        "video's height."));
+    }
     m_trackName->setText(s.trackName);
     // Short: a wrapped label here gets clipped by the form layout; the
     // neighbours go in the tooltip.
@@ -279,9 +286,10 @@ void OverlayPanel::setState(const State &s)
         w->setEnabled(lookEditable);
     // (A title's Text section above says what's selected.)
     if (m_kind == Kind::Title)
-        setHint(s.keyCount == 0 ? tr("Drag the title in the view to move it.")
-                                : tr("It is keyframed: moving it, here or in the view, sets a "
-                                     "key at the playhead."));
+        setHint(s.keyCount > 0 ? tr("It is keyframed: moving it, here or in the view, sets a "
+                                    "key at the playhead.")
+                : s.gauge      ? tr("Drag the gauge in the view to move it.")
+                               : tr("Drag the title in the view to move it."));
     else
         setHint(s.keyCount == 0
                 ? tr("The PiP clip selected on the timeline or in the view. Drag it in the "

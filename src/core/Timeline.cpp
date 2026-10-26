@@ -766,7 +766,7 @@ QStringList Timeline::setSourcesMissing(const QHash<QString, bool> &missing)
         apply(c.sourcePath, c.mediaMissing);
     for (Track &t : m_tracks)
         for (TrackClip &c : t.clips)
-            if (!c.isTitle()) // no file
+            if (!c.isDrawn()) // no file
                 apply(c.sourcePath, c.mediaMissing);
     if (!changed.isEmpty())
         emit mediaMissingChanged();
@@ -961,7 +961,7 @@ int Timeline::addOverlaySound(int clipId)
 {
     int trackId = 0;
     const TrackClip *o = trackClipById(clipId, &trackId);
-    if (!o || trackById(trackId)->kind != Track::Kind::Video || o->isTitle())
+    if (!o || trackById(trackId)->kind != Track::Kind::Video || o->isDrawn())
         return 0;
     // (Only this clip's: another overlay of the same file has its own.)
     for (const Track &t : m_tracks)
@@ -1131,9 +1131,14 @@ int Timeline::insertTrackClip(int trackId, const TrackClip &clip)
         c.linkedClipId = 0;
         c.stream = -1;
     } else {
-        c.title.reset(); // a title is an overlay
+        c.title.reset(); // titles and gauges are overlays
+        c.gauge.reset();
     }
-    if (c.isTitle()) {
+    if (c.isTitle())
+        c.gauge.reset(); // one or the other
+    if (c.isGauge())
+        c.gauge = c.gauge->clamped();
+    if (c.isDrawn()) {
         c.sourcePath.clear();
         c.mediaMissing = false;
     }
@@ -1193,6 +1198,34 @@ int Timeline::addTitleClip(int trackId, qint64 startMs, const title::Style &styl
     c.look = look.clamped();
     c.motion = motion.clamped();
     return insertTrackClip(trackId, c);
+}
+
+int Timeline::addGaugeClip(int trackId, qint64 startMs, const gauge::Style &style,
+                           qint64 spanMs, const inset::Look &look,
+                           const inset::Motion &motion)
+{
+    const Track *t = trackById(trackId);
+    if (!t || t->kind != Track::Kind::Video)
+        return 0;
+    TrackClip c;
+    c.gauge = style;
+    c.sourceDurationMs = title::kSourceMs;
+    c.startMs = startMs;
+    c.trimInMs = title::kSourceMs / 2;
+    c.trimOutMs = c.trimInMs + std::clamp<qint64>(spanMs, TrackClip::kMinTrimMs, title::kSourceMs / 2);
+    c.look = look.clamped();
+    c.motion = motion.clamped();
+    return insertTrackClip(trackId, c);
+}
+
+void Timeline::setTrackClipGauge(int clipId, const gauge::Style &style)
+{
+    TrackClip *c = mutableTrackClipById(clipId);
+    const gauge::Style s = style.clamped();
+    if (!c || !c->isGauge() || *c->gauge == s)
+        return;
+    c->gauge = s;
+    emit tracksChanged();
 }
 
 void Timeline::setTrackClipTitle(int clipId, const title::Style &style, double shiftPerSize)
