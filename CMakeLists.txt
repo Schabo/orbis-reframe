@@ -489,6 +489,7 @@ if(FFMPEG_FOUND)
         src/ui/MainWindow.cpp
         src/ui/MainWindowColour.cpp
         src/ui/MainWindowPrivacy.cpp
+        src/ui/MainWindowStitchStab.cpp
         src/ui/MainWindowTransitions.cpp
         src/ui/MainWindow.h
         src/ui/AudioPlayer.cpp
