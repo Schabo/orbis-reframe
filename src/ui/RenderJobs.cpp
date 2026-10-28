@@ -3,6 +3,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QGridLayout>
+#include <QMessageBox>
+#include <QSizePolicy>
+#include <QSpacerItem>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -651,6 +655,18 @@ QStringList missingSourceLines(const Timeline &timeline, MissingFor which,
                    .arg(QFileInfo(file).fileName(), m.places.join(QLatin1String(", ")), file);
     }
     return out;
+}
+
+void showMissingMedia(QWidget *parent, const QString &title, const QString &text,
+                      const QStringList &lines, const QString &advice)
+{
+    QMessageBox box(QMessageBox::Warning, title, text, QMessageBox::Ok, parent);
+    box.setInformativeText(lines.join(QLatin1Char('\n')) + QStringLiteral("\n\n") + advice);
+    // Full paths run long: hold the box wide enough that they don't wrap.
+    if (auto *grid = qobject_cast<QGridLayout *>(box.layout()))
+        grid->addItem(new QSpacerItem(640, 0, QSizePolicy::Minimum, QSizePolicy::Expanding),
+                      grid->rowCount(), 0, 1, grid->columnCount());
+    box.exec();
 }
 
 QString suggestedExportPath(const QString &projectFile)

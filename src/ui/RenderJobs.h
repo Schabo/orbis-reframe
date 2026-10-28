@@ -17,6 +17,7 @@
 struct ClipItem;
 class MediaPool;
 class PrivacyBlur;
+class QWidget;
 class Timeline;
 
 // The edit model as the renderers want it: what playback, the export and a
@@ -127,6 +128,11 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which);
 // clip's lens-1 file), not the clip file.
 QStringList missingSourceLines(const Timeline &timeline, MissingFor which,
                                const MediaPool *pool = nullptr);
+// Warn that source files are missing (missingSourceLines), then what to do
+// about them. Shared by open-project and export so the wording and layout
+// don't drift.
+void showMissingMedia(QWidget *parent, const QString &title, const QString &text,
+                      const QStringList &lines, const QString &advice);
 
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),
