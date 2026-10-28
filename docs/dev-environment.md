@@ -5,15 +5,15 @@ Update this file if the toolchain moves.
 
 - **OS**: Debian Testing, x86_64
 - **Compositor**: Sway (wlroots), Wayland-only session. GNOME/Mutter available as a secondary test target. No X11/XWayland.
-- **NVIDIA driver**: 595.99.02 (was 595.84 when this was first written)
+- **NVIDIA driver**: 595.112.07 (was 595.84 when this was first written)
 - **GPU**: NVIDIA GeForce RTX 5070
 - **CMake**: 4.3.4
-- **Compiler**: g++ 15.3.0 (Debian 15.3.0-2)
+- **Compiler**: g++ 16.2.0 (Debian 16.2.0-3; g++ 15.3.0 until 2026-10-26)
 - **Qt**: 6.11.2 (6.10.2 until 2026-10-11; apt: `qt6-base-dev`, `qt6-base-dev-tools`, `qt6-wayland`; `qt6-svg-plugins` draws the icons at run time, and `theme_test` needs it)
-- **Vulkan**: loader/instance 1.4.341 (apt: `libvulkan-dev`, `vulkan-tools`)
+- **Vulkan**: loader/instance 1.4.363 (apt: `libvulkan-dev`, `vulkan-tools`)
 - **Shader compiler**: `glslangValidator` (apt: `glslang-tools`)
 - **Other libs**: `nlohmann-json3-dev`, `zlib1g-dev` (unpacking the zips LUTs come in)
-- **FFmpeg dev** (demux/decode/encode for the stitch layer, export and tools): `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev` (libavfilter since 2026-09-27: `atempo` audio time-stretch for clips at speed ≠ 1)
+- **FFmpeg dev** 9.0.2 (demux/decode/encode for the stitch layer, export and tools): `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev` (libavfilter since 2026-09-27: `atempo` audio time-stretch for clips at speed ≠ 1)
 - **OpenCV** 4.10 (*optional* — the per-clip gyro sync fine-tune, the plate scan, `tools/residual_stab`; subject tracking also needs the contrib `tracking` + `dnn` modules, `libopencv-contrib-dev`): `libopencv-dev`. CMake skips what needs it with a `STATUS` message when absent; the app still builds. OpenCV 5 builds too (Arch's 5.0.0, checked 2026-10-18): it moved `goodFeaturesToTrack` into the `features` module and `findHomography` / `estimateAffinePartial2D` from `calib3d` into `geometry`, and `CMakeLists.txt` links those by version.
 - **ncnn** 20260526 (*optional* — the privacy blur's plate scan, "Scan clip" in the Privacy tab, and `tools/plate_scan`): not in Debian. `scripts/fetch_ncnn.sh` downloads the pinned release `ncnn-20260526-ubuntu-2404-shared.zip` (<https://github.com/Tencent/ncnn/releases>; Vulkan built in, "simplevk", no `libvulkan` link; needs only `libgomp1` besides libc/libstdc++), checks its SHA-256 and unpacks it into `third_party/ncnn/` (gitignored), where CMake finds it on its own; `-DNCNN_ROOT=<folder>` (`NCNN_ROOT=<folder> scripts/build.sh`) points at another copy. `cmake --install` ships `libncnn.so.1` in `lib/orbis-reframe/` (the binary's `INSTALL_RPATH` is `$ORIGIN/../lib/orbis-reframe`). Without it CMake prints a `STATUS` line; the app can't scan then, but still applies scans it has. After switching copies, clear the cached one: `cmake -U ncnn_DIR -U NCNN_ROOT build`.
 - **ONNX Runtime** 1.23 (*optional* — the "Voice only" / "Voice + ambience" noise modes, DeepFilterNet 3): `libonnxruntime-dev`. Only its headers are needed to build; `insv::VoiceIsolator` `dlopen()`s `libonnxruntime.so.1.<ORT_API_VERSION>` (the headers' API version is the 1.x minor version: `.so.1.23` here, `.so.1.21` on Debian 13) on first use; CMake turns the same number into the `.deb`'s `libonnxruntime1.23` and the "install it" hint. CMake hides the voice modes with a `STATUS` message when the headers are absent. Without root, `apt-get download libonnxruntime-dev libonnxruntime1.23` + `dpkg -x` into a folder and configure with `-DONNXRUNTIME_ROOT=<folder>/usr` (how it was developed, 2026-09-30).
