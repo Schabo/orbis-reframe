@@ -6,7 +6,9 @@
 
 // Opt-in progress log: with ORBIS_VERBOSE=1 set, informational lines (which
 // decode/stitch path a clip got, sync / seam measurements starting and their
-// results) go to stderr. Warnings and fallbacks print regardless.
+// results) go to stderr. Warnings and fallbacks print regardless. The app
+// also routes FFmpeg's own log here (src/ui/main.cpp), so the variable brings
+// back everything its libraries have to say short of an error.
 namespace core::log {
 
 inline bool Verbose()

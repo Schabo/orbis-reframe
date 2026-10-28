@@ -365,7 +365,7 @@ set to anything except empty or `0`, unless the table says otherwise.
 
 | Variable | Effect |
 |---|---|
-| `ORBIS_VERBOSE=1` | Progress messages on stderr: which decode / stitch path a clip got, sync and seam measurements and their results. Warnings and fallbacks print without it. The first thing to ask for in a bug report. |
+| `ORBIS_VERBOSE=1` | Progress messages on stderr: which decode / stitch path a clip got, sync and seam measurements and their results, and FFmpeg's own log (the app keeps it quiet otherwise; its errors print without the variable, prefixed `[ffmpeg]`). The app's warnings and fallbacks print without it. The first thing to ask for in a bug report. |
 | `ORBIS_FRAME_STATS=1` | About once a second, the viewport and the playback presenter each print a one-line timing summary to stderr. For checking smooth playback. |
 | `INSV_NO_GPU_DECODE` | Decode video on the CPU (FFmpeg) instead of with Vulkan video. Set to any value, even empty. |
 | `INSV_NO_GPU_STITCH` | Stitch on the CPU too (implies CPU decode). Slow; the reference path. Set to any value. |

@@ -16,8 +16,13 @@
 #include "Theme.h"
 
 #include "../core/DataPaths.h"
+#include "../core/Log.h"
 #include "../core/Version.h"
 #include "../export/ReframeFlatten.h"
+
+extern "C" {
+#include <libavutil/log.h>
+}
 
 #ifdef INSV_HAVE_VOICE
 #include <VoiceIsolator.h>
@@ -52,6 +57,34 @@ protected:
         return false;
     }
 };
+
+// FFmpeg's libraries write their own log to stderr, at a level meant for a
+// command-line tool: how a container's atoms parsed, which decoder options
+// were ignored. In the app that is noise about files the user can't change --
+// a screen recording whose metadata atom only parses loosely gets a "UDTA
+// parsing failed retrying raw" warning, twice, while the library page makes
+// its thumbnail -- and what actually fails is reported in the window instead.
+// Send it to the opt-in log, so ORBIS_VERBOSE=1 brings all of it back (with
+// FFmpeg's own verbose level on top), and leave errors on stderr, where a bug
+// report picks them up.
+void routeFfmpegLogToOrbisLog()
+{
+    av_log_set_level(core::log::Verbose() ? AV_LOG_VERBOSE : AV_LOG_WARNING);
+    av_log_set_callback([](void *context, int level, const char *fmt, va_list args) {
+        if (level > av_log_get_level() || (level > AV_LOG_ERROR && !core::log::Verbose()))
+            return;
+        // The context prefix ("[mov,mp4,… @ 0x…]") says which demuxer, decoder
+        // or filter spoke, which is the useful half of a verbose log.
+        char line[1024];
+        int prefix = 1;
+        if (av_log_format_line2(context, level, fmt, args, line, sizeof(line), &prefix) < 0)
+            return;
+        if (level <= AV_LOG_ERROR)
+            std::fprintf(stderr, "[ffmpeg] %s", line);
+        else
+            core::log::Info("[ffmpeg] %s", line);
+    });
+}
 
 } // namespace
 
@@ -106,6 +139,8 @@ int main(int argc, char *argv[])
     // disables it regardless, so the warning is noise. QT_LOGGING_RULES
     // still overrides it.
     QLoggingCategory::setFilterRules(QStringLiteral("qt.qpa.wayland.textinput.warning=false"));
+    // Before anything opens a file: the encoder probe below is the first.
+    routeFfmpegLogToOrbisLog();
     // Explicit rather than taken from the binary name: it names the cache
     // directory (~/.cache/orbis-reframe).
     QApplication::setApplicationName(QStringLiteral("orbis-reframe"));
