@@ -492,6 +492,7 @@ if(FFMPEG_FOUND)
         src/ui/MainWindowStitchStab.cpp
         src/ui/MainWindowSubject.cpp
         src/ui/MainWindowLibrary.cpp
+        src/ui/MainWindowExport.cpp
         src/ui/MainWindowTransitions.cpp
         src/ui/MainWindow.h
         src/ui/AudioPlayer.cpp
