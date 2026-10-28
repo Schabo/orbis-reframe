@@ -488,6 +488,7 @@ if(FFMPEG_FOUND)
     add_library(orbis_app STATIC
         src/ui/MainWindow.cpp
         src/ui/MainWindowColour.cpp
+        src/ui/MainWindowPrivacy.cpp
         src/ui/MainWindowTransitions.cpp
         src/ui/MainWindow.h
         src/ui/AudioPlayer.cpp
