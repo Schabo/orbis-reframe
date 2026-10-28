@@ -12,10 +12,20 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 
+#include <charconv>
 #include <string>
 #include <vector>
 
 namespace {
+
+// Locale-independent float text. std::to_string follows LC_NUMERIC and emits
+// a decimal comma under it_IT / de_DE / ...; parseCube only accepts '.'.
+std::string cubeFloat(float v)
+{
+    char buf[64];
+    const auto r = std::to_chars(buf, buf + sizeof(buf), v, std::chars_format::fixed, 6);
+    return std::string(buf, r.ptr);
+}
 
 // A size^3 identity .cube, `pad` comment lines making it bigger than others.
 std::string cube(int size, int pad = 0)
@@ -27,8 +37,8 @@ std::string cube(int size, int pad = 0)
     for (int b = 0; b < size; ++b)
         for (int g = 0; g < size; ++g)
             for (int r = 0; r < size; ++r)
-                s += std::to_string(r / float(size - 1)) + " " + std::to_string(g / float(size - 1)) +
-                     " " + std::to_string(b / float(size - 1)) + "\n";
+                s += cubeFloat(r / float(size - 1)) + " " + cubeFloat(g / float(size - 1)) +
+                     " " + cubeFloat(b / float(size - 1)) + "\n";
     return s;
 }
 

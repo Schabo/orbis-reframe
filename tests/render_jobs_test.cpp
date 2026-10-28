@@ -129,7 +129,9 @@ void testTitles()
     t.appendClip("/c/ride.insv", 20000, 30.0);
     const int v = t.addTrack(Track::Kind::Video, "Text");
     title::Style style;
-    style.text = "Hi";
+    // Longer than "Hi": with Sans Serif, padding can make a two-letter picture
+    // square on some systems (padX is larger than padY relative to the glyphs).
+    style.text = "Hello";
     const int id = t.addTitleClip(v, 1000, style);
     title::Style blank;
     blank.text = "  ";
@@ -145,7 +147,7 @@ void testTitles()
     CHECK(f.id == id && f.path.isEmpty() && f.still);
     const exportpipe::Still fp = f.still->at(0);
     CHECK(fp.rgba && fp.width > 0 && fp.height > 0);
-    CHECK(fp.width > fp.height); // "Hi" is wider than tall
+    CHECK(fp.width > fp.height); // a single line of text is wider than tall
     CHECK(f.still->nextChange(0) == -1); // the same all along
     // Some of the picture is text, some clear.
     int opaque = 0, clear = 0;
@@ -406,8 +408,9 @@ void testTypeOn()
     TitleSource still(style, slide, 3000, 40, 1920, 1080);
     CHECK(still.nextChange(0) == -1 && still.stateAt(500) == -1);
     CHECK(still.at(0).rgba == titlerender::render(style, 40).rgba);
+    // Same order as TitleSource: widthScale = outH/outW, then *= widthPerFontPx.
     CHECK(still.at(0).widthPerSize ==
-          titlerender::render(style, 40).widthPerFontPx * 1080.0 / 1920.0);
+          titlerender::render(style, 40).widthPerFontPx * (1080.0 / 1920.0));
 }
 
 // Playback and the export show the same typed picture at the same moment,
