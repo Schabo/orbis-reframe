@@ -23,9 +23,10 @@ A camera's document lists every mode the camera has and which of them we
 have clips of: so far the
 [X5](insta360-x5.md#34-every-mode-and-our-clips-of-it),
 [X6](insta360-x6.md#modes-and-sample-clips),
-[ONE X2](insta360-one-x2.md#33-every-mode-and-our-clips-of-it) and
-[X3](insta360-x3.md#modes-and-sample-clips). The others get the list when
-their first clips arrive.
+[ONE X2](insta360-one-x2.md#33-every-mode-and-our-clips-of-it),
+[X3](insta360-x3.md#modes-and-sample-clips) and
+[Antigravity A1](antigravity-a1.md#modes-and-sample-clips). The others get
+the list when their first clips arrive.
 Most of the documents above are desk research: **we need short clips from
 every camera above that isn't supported yet** (except the ONE X2: the
 maintainer has one) to find out what the files really hold. If you own one, please
