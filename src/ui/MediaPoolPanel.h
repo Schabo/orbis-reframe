@@ -98,6 +98,9 @@ public:
 signals:
     void importFilesRequested();
     void importFolderRequested();
+    // Copy the files the project uses from a connected device into the
+    // project folder, and relink them there.
+    void collectIntoProjectRequested();
     // Files / folders dropped in from outside.
     void filesDropped(const QStringList &paths);
     void addToTimelineRequested(const QStringList &paths);
