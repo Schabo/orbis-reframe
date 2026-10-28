@@ -1,3 +1,28 @@
+## v0.7.0 (2026-10-28)
+
+### Feat
+
+- **ui**: gauges draw GPS values as a dial, a bar or a heading tape
+- **ui**: titles show speed, altitude and heading from the GPS
+- **insv**: read the GPS track and its values between fixes
+- **ui**: name the tabs Picture in picture and Overlays
+- **ui**: date tiles show the date as a field
+- **ui**: a title's clock in 24 or 12 hours
+- **ui**: titles show the recording time as a running clock
+- **ui**: type titles on and off
+- **ui**: animated title tiles play while hovered
+- **ui**: slide and pop titles in and out
+- **ui**: ready-made titles as tiles in the Titles tab
+- **ui**: outline, shadow, box, spacing and alignment for titles
+
+### Fix
+
+- **ui**: send FFmpeg's log to the opt-in verbose log
+- **ui**: no font size warnings from the title font list
+- **export**: say when the video encoder fails, not just its error
+- **render**: say when the viewport runs out of graphics memory
+- **stitch**: say when a clip decodes or stitches on the CPU
+
 ## v0.6.1 (2026-10-25)
 
 ### Fix
