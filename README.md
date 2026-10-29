@@ -60,8 +60,9 @@ clips.
 export, from one contributor's flights; the horizon is leveled by the
 drone's own flight controller. Its GPS shows in titles and gauges once the
 drone has moved (a hover or a clip shorter than about 8 seconds gives
-nothing to line it up with the video by), and the 5.2K and 4K modes are
-untried.
+nothing to line it up with the video by). Clips in the 5.2K and 4K 100
+modes and in H.264 open and stitch; playing, stabilizing and exporting them
+is unchecked.
 
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:

@@ -33,8 +33,13 @@ facing the drone's nose and level by its flight controller. It records no
 sound. Titles and gauges show its GPS once the drone has moved: the clip
 doesn't say when its GPS track starts, so orbis-reframe lines it up by
 matching the GPS speed against the drone's own, which a hover or a clip
-shorter than about 8 seconds doesn't allow. The 5.2K and 4K modes and H.264 clips haven't been
-tried.
+shorter than about 8 seconds doesn't allow. Clips in the 5.2K and 4K 100
+modes and in H.264 open and stitch too; playing, stabilizing and exporting
+them hasn't been checked yet. The A1's photos (`.insp`) don't open yet. The
+recording time and the preview file are found by the clip's name: a clip
+renamed from the drone's `VID_…` name shows no recording time, and
+[Media information](media-information.md) says its preview file wasn't
+found.
 
 Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If
 you have one, short clips from it help add it:

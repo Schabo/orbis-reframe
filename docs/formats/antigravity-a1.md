@@ -1,11 +1,13 @@
 # Antigravity A1 file format
 
 **Desk research (2026-10-15); measured on clips 2026-10-29**: three
-contributed 8K flights. What's marked ✅ below is checked on them; the
-modes we have no clips of are still desk research, from reviews and
-Gyroflow's telemetry-parser. The app supports the A1 **experimentally**
-from 2026-10-29: 8K clips open, stitch, stabilize (leveled by the drone's
-own attitude) and export. The A1 is a 360 drone from Antigravity, a
+contributed 8K H.265 flights, then a second set from the same drone: one
+H.264 clip in each of nine video modes (8K, 5.2K, 4K 100) and two photos.
+What's marked ✅ below is checked on them; the modes we have no clips of
+are still desk research, from reviews and Gyroflow's telemetry-parser. The
+app supports the A1 **experimentally** from 2026-10-29: 8K clips open,
+stitch, stabilize (leveled by the drone's own attitude) and export; 5.2K
+and 4K 100 clips open and stitch (below). The A1 is a 360 drone from Antigravity, a
 brand incubated by Insta360, and writes the same `.insv` family; written as
 differences from the X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below).
 Markers as in [`README.md`](README.md).
@@ -22,21 +24,38 @@ Markers as in [`README.md`](README.md).
   nearly fills the 3840² stream.
 - 📖 360 modes, H.264 or H.265, up to 170 Mb/s:
 
-  | mode | frame | fps | per lens (⚠️) |
+  | mode | frame | fps | per lens (✅) |
   |---|---|---|---|
   | 8K | 7680×3840 | 30 / 25 / 24 | 3840² |
   | **5.2K** (new) | 5248×2624 | 60 / 50 / 30 / 25 / 24 | **2624²** |
   | 4K | 3840×1920 | 100 / 30 / 25 / 24 | 1920² |
 
-- ✅ **One `.insv` holds both lenses** as two square HEVC Main streams
-  (8-bit, full range, BT.709 on our 8K clips), lens 0 (looking **down**)
+  ✅ on our clips: 8K at 30 (29.97, 30000/1001), 25 and 24; 5.2K at 60
+  (59.94, 60000/1001), 50, 30 (29.97), 25 and 24; 4K at 100 (exactly 100,
+  stored at the capture rate). Every mode writes the same calibration
+  (below), so the per-lens sizes are the one 5248² sensor window scaled.
+  The camera's target bitrate is field 135, in units of 2²⁰ b/s: 170 for
+  8K (both codecs), 105 for 5.2K, 140 for 4K 100; the two streams together
+  measure 177 / 109 / 147 Mb/s (decimal).
+- ✅ **One `.insv` holds both lenses** as two square streams, HEVC Main
+  or H.264 High, 8-bit, full range (`yuvj420p`), BT.709 on all our clips
+  (handler `INS.AVC` for H.264), lens 0 (looking **down**)
   first, lens 1 (looking **up**) second. No audio track; a `mov_text` track
   holds only a sensor frame counter per frame (`F:13776`, ...).
 - ✅ File names: **`VID_<date>_<time>_<n>.insv`**, with no lens token
   (the X5's is `VID_…_00_…`), and the proxy beside it
   **`PRX_<date>_<time>_<n>.prx`**: the same name with `PRX` and `.prx`, both
   fisheyes side by side at 2560×1280 (the X5's `.lrv`, X5 §3.2), with a
-  trailer of its own (records 1 and 2).
+  trailer of its own (records 1 and 2). ✅ The MP4's `creation_time` is
+  the recording start in UTC to the second: on our first three clips it is
+  the name's time, which is local, four hours ahead. So a renamed clip's
+  name can be rebuilt from it and field 7 (below), all but the take number
+  `_<n>`; the second set came renamed (`Video5.2K60.insv`,
+  `Video5.2K60.prx`, ...) and was checked so.
+- ✅ **Untouched files can be told apart.** Field 9 of record 1 is the
+  byte size of the file before the trailer, exactly, on every `.insv` and
+  `.prx` we have (12 clips, 9 proxies): a re-muxed or trimmed file no
+  longer matches it.
 - ✅ **The drone in the picture**: on our clips, only a light bar with a
   dark edge at the very rim of lens 0 (the downward one), 94-97° off its
   axis, in the same place on every clip -- the drone's body or an arm
@@ -70,11 +89,16 @@ Markers as in [`README.md`](README.md).
   side-by-side frame, `xi` 1.504, lens type 155; fields 24, 25 (readout
   ~21.25 ms), 28 (3.7 ms), 62 (raw IMU) and 65 (±32 g, ±2000 °/s) as on the
   X5, and the IMU (~1 kHz) and exposure records decode with the X5's
-  layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, without the X5's seconds, so
-  the recording time comes from the file name, which has them. Fields 195
-  / 196 are 30000 / 1001, the video's frame rate as a fraction; fields 51
-  (1) and 64 (2) are set, meaning ❓. The serial is in field 1 as on the
-  X5.
+  layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, local time, without the
+  X5's seconds, so the recording time comes from the file name, which has
+  them. Fields 195 / 196 are the video's frame rate as a fraction (30000 /
+  1001, 100000 / 1000, ...), field 20 the rounded rate (30, 100); field 10
+  the length in whole seconds, field 93 in ms (30730 on the 4K 100 clip,
+  whose streams last 30710: the proxy's length); field 9 the file's size
+  before the trailer (above); field 25 the sensor readout, ~21.2 ms at 8K,
+  ~12.3 ms at 5.2K, 6.3 ms at 4K 100; **field 132 the codec**, 1 H.264, 2
+  H.265; field 135 the target bitrate (*Streams*). Fields 51 (1) and 64
+  (2) are set, meaning ❓. The serial is in field 1 as on the X5.
 - ⚠️ The calibration's extrinsics are yaw / pitch / roll ≈ (−177.5, −89.95,
   90.4) and (−179.4, −89.9, 89.4): pitch −90° puts yaw and roll about the
   same axis, so the order they compose in matters (it doesn't on the X5).
@@ -84,7 +108,12 @@ Markers as in [`README.md`](README.md).
   +0.42°, centre −0.06 to −0.08 %, radius −0.17 to −0.20 %). Before the
   fit the lenses are 0.24-0.53° apart at the seam (X5: ~0.17°). The app's
   per-clip measurement gives the same on all three clips, over each whole
-  clip (0.47-0.52° -> 0.02°).
+  clip (0.47-0.52° -> 0.02°). ✅ **The same at every resolution**: on the
+  second set the lenses are 0.40-0.49° apart before the fit in all nine
+  modes, and the fit finds the same correction at 8K 30, 5.2K 60 and 4K
+  100 (lens 1 pitch +0.23 to +0.27°, roll +0.43 to +0.54°, centre −0.07 to
+  −0.09 %, radius −0.10 to −0.15 %), ending at 0.14-0.15°: these clips fly
+  low, a few metres over a field and trees, so parallax is left.
 - ✅ The lenses are **71 mm apart** (lens 1 `tz` −0.0711; X5: 32 mm), lens 0
   in front along its own axis as on the X5: the depth-aware seam lines up
   houses, poles and wires along the horizon when the drone flies low
@@ -130,7 +159,7 @@ Markers as in [`README.md`](README.md).
   under BT.601 or BT.709. The app shows the picture on the A1's cards
   (Media tab, project library), cut to the card's shape.
 - ✅ **GPS, record type 7**, in the X5's layout (X5 §8): a fix every
-  **1.6 s** on all three clips (the X5 with the GPS remote: once a second),
+  **1.6 s** on all twelve clips (the X5 with the GPS remote: once a second),
   one record per fix, from the first one the drone has after recording
   starts. Field 98 (X5 §5.1), which on the X5 gives the first frame's Unix
   time, is absent, and nothing else in the file ties the GPS clock to the
@@ -144,7 +173,8 @@ Markers as in [`README.md`](README.md).
   into the video, matched to 0.20 / 0.06 / 0.08 m/s RMS, 0.8-2.0 m/s a
   second either way. A check that doesn't use the fit's own clip: the
   three put the drone's clock (field 24) at the same offset from Unix time
-  to within 31 ms. A shift is taken only when it is clear: at least 5
+  to within 31 ms; the nine clips of the second set, one per mode, 24 to
+  100 fps, 15-70 s at 0.1-15 m/s, to within 11 ms. A shift is taken only when it is clear: at least 5
   fixes over the attitude track, their speeds spread by 0.5 m/s or more,
   matched to 1 m/s RMS or better, and every shift a second or more away
   fitting at least twice as badly (+0.1 m/s). A hover, or a clip too
@@ -200,24 +230,52 @@ Markers as in [`README.md`](README.md).
   layout (its first quaternion is type 14's, sign flipped). ❓ Field 91 (a
   unit quaternion, none of the attitude, the IMU mount or their products).
 
+## Photos
+
+✅ Two 55 MP single shots (2026-10-29, the same drone):
+
+- An **`.insp` is a JPEG**, 10496×5248, the two fisheyes side by side
+  (5248² each, lens 0 left as in the video), with a small Exif block:
+  maker `Yingling Innovations Pte. Ltd.`, model `Antigravity A1`,
+  exposure, ISO, GPS position and altitude; **no date** and no Software
+  tag (the X5 writes both).
+- After the JPEG, **the same `inst` trailer** as the video's: record 1
+  with the same calibration and fields (field 26.1 is 3, 0 on the videos;
+  field 91 is all zeros; no field 36, 93, 132 or 135), the IMU (record 3, 2 kB), and records
+  9, 11, 32, 38 and 56; no GPS record (the position is in the Exif) and no
+  attitude (record 37). Field 9 here is 2329 bytes more than the JPEG's
+  size on both photos, ❓ why.
+- Unlike the video's, the photo's trailer also has the X5's six-byte
+  header after each record (X5 §4.2), besides the Offsets table.
+- **Thumbnail, record type 2**, in the X5's 40-byte header layout --
+  `u32 1`, `u32` the record's size, `u32 1`, `u32 0`, width, height -- then
+  a 256×192 NV12 flat view, the same kind of picture as the video's.
+
+The app doesn't open 360 photos yet (roadmap, *360 photos*); the trailer
+holds all the stitch needs.
+
 ## Modes and sample clips
 
 All the A1's modes 📖 (Antigravity's spec table as retailers and reviews
-reprint it, and the spring 2026 update for timelapse; Sources). Our clips:
-three 8K clips from one contributor (firmware `10.0.397.3_5.5`, 2026-10-29).
+reprint it, and the spring 2026 update for timelapse; Sources). Our clips,
+from one contributor and one drone (firmware `10.0.397.3_5.5`): three 8K
+H.265 flights (2026-10-28), and a set of nine H.264 clips, one per mode,
+plus two photos (2026-10-29), flown low over a field. The second set was
+renamed by mode (`Video8K24.insv`, `Photo55MP-1.insp`, ...) but is
+otherwise straight from the drone (field 9, *Streams*).
 The status words are the X5's (X5 §3.4).
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² HEVC streams), and a `PRX_….prx` proxy | 3, 29.97 fps, H.265, standard colour | experimental: opens, stitches, stabilizes and exports; GPS lined up by its speed |
-| 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | as above | none | **wanted**: a lens size no Insta360 camera has (2624² ⚠️), and 60 fps |
-| 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | as above | none | **wanted**: 100 fps |
+| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² streams), and a `PRX_….prx` proxy | 3 at 29.97 fps, H.265; 3 at 29.97 / 25 / 24, H.264; standard colour | experimental: opens, stitches, stabilizes and exports; GPS lined up by its speed |
+| 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | ✅ as above, two 2624² streams | 5, one at each rate, H.264 | opens and stitches (GPU and CPU), seam fit and GPS as at 8K; playback speed, stabilization and export not checked yet |
+| 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | ✅ as above, two 1920² streams; 100 fps stored at 100 | 1 at 100 fps, H.264 | as 5.2K; wanted: 30 / 25 / 24 |
 | 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ❓ | none | **wanted**: whether the file is tagged at the playback rate or the capture rate (100 ⚠️) |
-| H.264 encoding | up to 170 Mb/s, as H.265 | as above | none | **wanted**: one clip in each codec |
+| H.264 encoding | up to 170 Mb/s, as H.265 | ✅ as above, H.264 High; field 132 = 1 | 9 | opens and stitches; wanted: 5.2K and 4K in H.265 |
 | Timelapse | added by the spring 2026 update; ❓ sizes and intervals | ❓ | none | wanted |
-| 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | `.insp`; `.dng` | none | wanted, low |
+| 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | ✅ `.insp` (*Photos*); `.dng` ❓ | 2 Standard at 55 MP | not supported (no photos in the app yet); wanted, low: HDR, 14 MP, DNG |
 | Internal storage (20 GB) vs microSD | | ❓ the same files | none | low: say which a clip came from |
-| Audio | not in the spec table | ✅ no audio track in our clips | 3 | done: opens and exports as picture only |
+| Audio | not in the spec table | ✅ no audio track in our clips | 12 | done: opens and exports as picture only |
 | Drone in the picture (props, arms, landing gear) | | | 3, in flight | done in flight: a part at lens 0's rim only, outside the stitched picture; wanted: a take-off or landing |
 | Replaceable lenses | | | none | wanted, low: whether the calibration in the file follows a lens swap |
 | IMU axes | | | `_010` (flight turns) | done (`-x,y,-z`) |
@@ -225,19 +283,18 @@ The status words are the X5's (X5 §3.4).
 Cinematic, Normal and Sport are flight modes, not recording modes; they
 change how the drone moves, which matters only for the stabilization check.
 
-The most useful first set, 10–30 s each, straight from the card with the
-whole folder, as in "Sample clips wanted"
+Still wanted, 10–30 s each, straight from the card with the whole folder
+and **with the drone's own file names**, as in "Sample clips wanted"
 ([`README.md`](README.md#sample-clips-wanted)):
 
-1. 8K 30, H.265, hovering for a few seconds, then slow deliberate turns:
-   yaw left-right, pitch up-down, a roll.
-2. 5.2K 60.
-3. 4K 100, and 4K Slow Motion.
-4. One clip in H.264.
-5. A short timelapse.
+1. 8K 30, hovering for a few seconds, then slow deliberate turns: yaw
+   left-right, pitch up-down, a roll.
+2. 4K Slow Motion.
+3. 5.2K 60 in H.265.
+4. A short timelapse.
+5. A take-off or landing, for the landing gear in the picture.
 
-With the drone's firmware version, and whether the clip came from the
-internal storage or the microSD card.
+With whether the clip came from the internal storage or the microSD card.
 
 ## Sources
 
