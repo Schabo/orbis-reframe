@@ -443,23 +443,45 @@ void EquirectViewportRenderer::startNextFrame()
         }
     }
 
-    // Insets: upload any new pictures (outside the render pass).
+    // Insets: upload any new pictures (outside the render pass). Each has
+    // its clip's slot; one not drawn for a while is freed (nothing in
+    // flight uses it any more).
     std::vector<EquirectViewportWindow::InsetDraw> insets;
     if (m_insetPipeline != VK_NULL_HANDLE)
         insets = m_window->RenderInsets();
-    if (insets.size() > size_t(EquirectViewportWindow::kMaxInsets))
-        insets.resize(EquirectViewportWindow::kMaxInsets);
-    for (size_t i = 0; i < insets.size(); ++i) {
-        const auto &d = insets[i];
-        InsetSlot &slot = m_insetSlots[i];
-        if (!d.rgba || d.width <= 0 || d.height <= 0 ||
-            d.rgba->size() < size_t(d.width) * d.height * 4)
-            continue;
-        if (slot.key == d.frameKey && slot.w == uint32_t(d.width) && slot.h == uint32_t(d.height))
-            continue;
-        ensureInsetSlot(slot, uint32_t(d.width), uint32_t(d.height));
-        recordInsetUpload(commandBuffer, slot, *d.rgba);
-        slot.key = d.frameKey;
+    std::vector<InsetSlot *> insetSlots(insets.size(), nullptr);
+    {
+        std::map<int, int> seen; // clip id -> its insets so far this frame
+        for (size_t i = 0; i < insets.size(); ++i) {
+            const auto &d = insets[i];
+            InsetSlot *slot = insetSlot({d.clipId, seen[d.clipId]++});
+            if (!slot)
+                continue;
+            slot->lastUsed = m_frameCounter;
+            if (!d.rgba || d.width <= 0 || d.height <= 0 ||
+                d.rgba->size() < size_t(d.width) * d.height * 4)
+                continue;
+            if (slot->key == d.frameKey && slot->w == uint32_t(d.width) &&
+                slot->h == uint32_t(d.height)) {
+                insetSlots[i] = slot;
+                continue;
+            }
+            if (!ensureInsetSlot(*slot, uint32_t(d.width), uint32_t(d.height)))
+                continue;
+            recordInsetUpload(commandBuffer, *slot, *d.rgba);
+            slot->key = d.frameKey;
+            insetSlots[i] = slot;
+        }
+    }
+    for (auto it = m_insetSlots.begin(); it != m_insetSlots.end();) {
+        InsetSlot &slot = it->second;
+        if (slot.lastUsed + 120 < m_frameCounter) {
+            destroyInsetSlot(slot);
+            vkFreeDescriptorSets(m_window->device(), slot.pool, 1, &slot.set);
+            it = m_insetSlots.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     // The grades' LUTs: uploaded on first use (their own submissions), so
@@ -468,10 +490,11 @@ void EquirectViewportRenderer::startNextFrame()
     m_luts.beginFrame();
     const color::Grade grade = m_window->CurrentColorGrade();
     const VkDescriptorSet lutSet = m_luts.setFor(grade.hasLut() ? grade.lut : nullptr);
-    VkDescriptorSet insetLutSets[EquirectViewportWindow::kMaxInsets] = {};
+    std::vector<VkDescriptorSet> insetLutSets(insets.size(), VK_NULL_HANDLE);
     for (size_t i = 0; i < insets.size(); ++i)
-        insetLutSets[i] =
-            m_luts.setFor(insets[i].colorGrade.hasLut() ? insets[i].colorGrade.lut : nullptr);
+        if (insetSlots[i])
+            insetLutSets[i] =
+                m_luts.setFor(insets[i].colorGrade.hasLut() ? insets[i].colorGrade.lut : nullptr);
 
     const QSize size = m_window->swapChainImageSize();
 
@@ -716,9 +739,9 @@ void EquirectViewportRenderer::startNextFrame()
     bool insetBound = false;
     for (size_t i = 0; i < insets.size(); ++i) {
         const auto &d = insets[i];
-        const InsetSlot &slot = m_insetSlots[i];
-        if (!slot.img || slot.key != d.frameKey)
-            continue;
+        if (!insetSlots[i])
+            continue; // no picture yet, or no memory for it
+        const InsetSlot &slot = *insetSlots[i];
         const inset::Rect r = inset::place(d.look, d.frame, d.aspect, rectW, rectH);
         if (r.empty() || d.look.opacity <= 0.0f)
             continue;

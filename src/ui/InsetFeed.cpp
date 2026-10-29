@@ -255,9 +255,6 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
     }
     if (wake)
         m_cv.notify_all();
-    // Too many at once: the topmost win.
-    if (out.size() > size_t(EquirectViewportWindow::kMaxInsets))
-        out.erase(out.begin(), out.end() - EquirectViewportWindow::kMaxInsets);
     return out;
 }
 

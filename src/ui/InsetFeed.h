@@ -101,8 +101,7 @@ public:
     InsetFeed();
     ~InsetFeed();
 
-    // Bottom-most first; at most EquirectViewportWindow::kMaxInsets show at
-    // once (the topmost win).
+    // Bottom-most first.
     void setClips(std::vector<Clip> clips);
     // Open these files afresh: the readers open on them, or the open that
     // failed, were of a file since replaced (a broken copy repaired in place).

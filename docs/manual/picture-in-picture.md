@@ -126,8 +126,12 @@ These settings are the same for the whole clip:
 
 ## Several overlays
 
-You can show several overlays (PiPs and titles) at once, on separate overlay tracks. Each
-overlay track is a **layer**, numbered in the small box in its track header:
+You can show several overlays (PiPs, titles and gauges) at once, on separate overlay tracks,
+with no fixed limit. Each overlay keeps its picture in graphics memory while
+it's on screen; if the graphics card runs out, the overlays it has no room
+for are left out of the viewport (the export still has them), and the app's
+log says so. Each overlay track is a **layer**, numbered in the small box in
+its track header:
 layer **1** is in front, and each number after it is drawn behind the one
 before. Where overlays overlap, the one on the lower-numbered layer covers
 the other. The first overlay track on the timeline is always layer 1.

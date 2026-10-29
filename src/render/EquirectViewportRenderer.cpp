@@ -583,48 +583,15 @@ void EquirectViewportRenderer::createInsetResources()
     if (vkCreateSampler(device, &si, nullptr, &m_insetSampler) != VK_SUCCESS)
         m_insetSampler = VK_NULL_HANDLE;
 
-    // One combined image sampler per slot -- the same set layout as the
-    // equirect texture's. Without the sets there's no inset pipeline, and
-    // startNextFrame draws no insets.
-    constexpr uint32_t n = EquirectViewportWindow::kMaxInsets;
-    VkDescriptorSet sets[n]{};
-    bool setsReady = false;
-    if (m_insetSampler != VK_NULL_HANDLE && m_descriptorSetLayout != VK_NULL_HANDLE) {
-        VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, n};
-        VkDescriptorPoolCreateInfo dpi{};
-        dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        dpi.maxSets = n;
-        dpi.poolSizeCount = 1;
-        dpi.pPoolSizes = &ps;
-        VkResult r = vkCreateDescriptorPool(device, &dpi, nullptr, &m_insetPool);
-        if (r == VK_SUCCESS) {
-            VkDescriptorSetLayout layouts[n];
-            std::fill(layouts, layouts + n, m_descriptorSetLayout);
-            VkDescriptorSetAllocateInfo dsi{};
-            dsi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            dsi.descriptorPool = m_insetPool;
-            dsi.descriptorSetCount = n;
-            dsi.pSetLayouts = layouts;
-            r = vkAllocateDescriptorSets(device, &dsi, sets);
-            if (r == VK_SUCCESS)
-                setsReady = true;
-            else
-                std::fill(sets, sets + n, VK_NULL_HANDLE);
-        } else {
-            m_insetPool = VK_NULL_HANDLE;
-        }
-        if (!setsReady)
-            std::fprintf(stderr, "[viewport] inset descriptor sets failed (VkResult %d); insets "
-                                 "won't show\n", r);
-    } else if (m_insetSampler == VK_NULL_HANDLE) {
+    // The slots' sets (one combined image sampler each, the equirect
+    // texture's layout) come from pools made as overlays need them
+    // (insetSlot). Without the sampler or the layout there's no inset
+    // pipeline, and startNextFrame draws no insets.
+    if (m_insetSampler == VK_NULL_HANDLE)
         std::fprintf(stderr, "[viewport] inset sampler failed; insets won't show\n");
-    }
-    for (uint32_t i = 0; i < n; ++i) {
-        m_insetSlots[i].set = sets[i];
-        m_insetSlots[i].key = 0;
-    }
 
-    if (setsReady && m_luts.ready()) {
+    if (m_insetSampler != VK_NULL_HANDLE && m_descriptorSetLayout != VK_NULL_HANDLE &&
+        m_luts.ready()) {
         VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(InsetPushConstants)};
         VkPipelineLayoutCreateInfo pli{};
         pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -689,19 +656,64 @@ void EquirectViewportRenderer::destroyInsetSlot(InsetSlot &slot)
     slot.key = 0;
 }
 
+EquirectViewportRenderer::InsetSlot *EquirectViewportRenderer::insetSlot(const InsetSlotKey &key)
+{
+    if (auto it = m_insetSlots.find(key); it != m_insetSlots.end())
+        return &it->second;
+    VkDevice device = m_window->device();
+    VkDescriptorSetAllocateInfo dsi{};
+    dsi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    dsi.descriptorSetCount = 1;
+    dsi.pSetLayouts = &m_descriptorSetLayout;
+    InsetSlot slot;
+    for (VkDescriptorPool pool : m_insetPools) {
+        dsi.descriptorPool = pool;
+        if (vkAllocateDescriptorSets(device, &dsi, &slot.set) == VK_SUCCESS) {
+            slot.pool = pool;
+            break;
+        }
+    }
+    if (slot.set == VK_NULL_HANDLE) { // all taken: another pool
+        VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kInsetPoolSets};
+        VkDescriptorPoolCreateInfo dpi{};
+        dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        dpi.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        dpi.maxSets = kInsetPoolSets;
+        dpi.poolSizeCount = 1;
+        dpi.pPoolSizes = &ps;
+        VkDescriptorPool pool = VK_NULL_HANDLE;
+        VkResult r = vkCreateDescriptorPool(device, &dpi, nullptr, &pool);
+        if (r == VK_SUCCESS) {
+            m_insetPools.push_back(pool);
+            dsi.descriptorPool = pool;
+            r = vkAllocateDescriptorSets(device, &dsi, &slot.set);
+            if (r == VK_SUCCESS)
+                slot.pool = pool;
+            else
+                slot.set = VK_NULL_HANDLE;
+        }
+        if (slot.set == VK_NULL_HANDLE) {
+            std::fprintf(stderr, "[viewport] no descriptor set for an inset (VkResult %d); it "
+                                 "won't show\n", r);
+            return nullptr;
+        }
+    }
+    return &m_insetSlots.emplace(key, std::move(slot)).first->second;
+}
+
 void EquirectViewportRenderer::destroyInsetResources()
 {
     VkDevice device = m_window->device();
-    for (InsetSlot &slot : m_insetSlots) {
-        destroyInsetSlot(slot);
-        slot.set = VK_NULL_HANDLE; // freed with the pool
-    }
+    for (auto &[key, slot] : m_insetSlots)
+        destroyInsetSlot(slot); // the sets go with the pools
+    m_insetSlots.clear();
     if (m_insetPipeline)
         vkDestroyPipeline(device, m_insetPipeline, nullptr);
     if (m_insetPipelineLayout)
         vkDestroyPipelineLayout(device, m_insetPipelineLayout, nullptr);
-    if (m_insetPool)
-        vkDestroyDescriptorPool(device, m_insetPool, nullptr);
+    for (VkDescriptorPool pool : m_insetPools)
+        vkDestroyDescriptorPool(device, pool, nullptr);
+    m_insetPools.clear();
     if (m_markerPipeline)
         vkDestroyPipeline(device, m_markerPipeline, nullptr);
     if (m_markerPipelineLayout)
@@ -718,23 +730,23 @@ void EquirectViewportRenderer::destroyInsetResources()
         vkDestroySampler(device, m_insetSampler, nullptr);
     m_insetPipeline = VK_NULL_HANDLE;
     m_insetPipelineLayout = VK_NULL_HANDLE;
-    m_insetPool = VK_NULL_HANDLE;
     m_insetSampler = VK_NULL_HANDLE;
 }
 
-void EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h)
+bool EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h)
 {
     if (slot.img && slot.w == w && slot.h == h)
-        return;
+        return true;
+    if (slot.failedW == w && slot.failedH == h)
+        return false; // tried at this size already
     VkDevice device = m_window->device();
     // A new clip size: rare (per clip, not per frame). Nothing in flight may
     // still read the old image or its descriptor.
     if (slot.img)
         vkDeviceWaitIdle(device);
-    const VkDescriptorSet set = slot.set;
     destroyInsetSlot(slot);
-    slot.set = set;
 
+    bool ok = true;
     VkImageCreateInfo ii{};
     ii.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ii.imageType = VK_IMAGE_TYPE_2D;
@@ -747,45 +759,64 @@ void EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint
     ii.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    vkCreateImage(device, &ii, nullptr, &slot.img);
-    VkMemoryRequirements req{};
-    vkGetImageMemoryRequirements(device, slot.img, &req);
-    VkMemoryAllocateInfo ai{};
-    ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    ai.allocationSize = req.size;
-    ai.memoryTypeIndex = m_window->deviceLocalMemoryIndex();
-    vkAllocateMemory(device, &ai, nullptr, &slot.mem);
-    vkBindImageMemory(device, slot.img, slot.mem, 0);
-    VkImageViewCreateInfo vi{};
-    vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    vi.image = slot.img;
-    vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    vi.format = VK_FORMAT_R8G8B8A8_UNORM;
-    vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCreateImageView(device, &vi, nullptr, &slot.view);
+    ok = vkCreateImage(device, &ii, nullptr, &slot.img) == VK_SUCCESS;
+    if (ok) {
+        VkMemoryRequirements req{};
+        vkGetImageMemoryRequirements(device, slot.img, &req);
+        VkMemoryAllocateInfo ai{};
+        ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        ai.allocationSize = req.size;
+        ai.memoryTypeIndex = m_window->deviceLocalMemoryIndex();
+        ok = vkAllocateMemory(device, &ai, nullptr, &slot.mem) == VK_SUCCESS &&
+             vkBindImageMemory(device, slot.img, slot.mem, 0) == VK_SUCCESS;
+    }
+    if (ok) {
+        VkImageViewCreateInfo vi{};
+        vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vi.image = slot.img;
+        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        vi.format = VK_FORMAT_R8G8B8A8_UNORM;
+        vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        ok = vkCreateImageView(device, &vi, nullptr, &slot.view) == VK_SUCCESS;
+    }
 
     const VkDeviceSize bytes = VkDeviceSize(w) * h * 4;
     const int frames = std::max(1, m_window->concurrentFrameCount());
     slot.staging.assign(frames, VK_NULL_HANDLE);
     slot.stagingMem.assign(frames, VK_NULL_HANDLE);
     slot.stagingMap.assign(frames, nullptr);
-    for (int i = 0; i < frames; ++i) {
+    for (int i = 0; ok && i < frames; ++i) {
         VkBufferCreateInfo bi{};
         bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bi.size = bytes;
         bi.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        vkCreateBuffer(device, &bi, nullptr, &slot.staging[i]);
+        ok = vkCreateBuffer(device, &bi, nullptr, &slot.staging[i]) == VK_SUCCESS;
+        if (!ok)
+            break;
         VkMemoryRequirements br{};
         vkGetBufferMemoryRequirements(device, slot.staging[i], &br);
         VkMemoryAllocateInfo bai{};
         bai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         bai.allocationSize = br.size;
         bai.memoryTypeIndex = m_window->hostVisibleMemoryIndex();
-        vkAllocateMemory(device, &bai, nullptr, &slot.stagingMem[i]);
-        vkBindBufferMemory(device, slot.staging[i], slot.stagingMem[i], 0);
-        vkMapMemory(device, slot.stagingMem[i], 0, bytes, 0, &slot.stagingMap[i]);
+        ok = vkAllocateMemory(device, &bai, nullptr, &slot.stagingMem[i]) == VK_SUCCESS &&
+             vkBindBufferMemory(device, slot.staging[i], slot.stagingMem[i], 0) == VK_SUCCESS &&
+             vkMapMemory(device, slot.stagingMem[i], 0, bytes, 0, &slot.stagingMap[i]) ==
+                 VK_SUCCESS;
     }
+    if (!ok) {
+        // Out of graphics memory, most likely: this overlay is left out of
+        // the preview (the export draws it on the CPU), the others still
+        // show.
+        std::fprintf(stderr, "[viewport] no graphics memory for a %ux%u inset; it won't show\n",
+                     w, h);
+        destroyInsetSlot(slot);
+        slot.failedW = w;
+        slot.failedH = h;
+        return false;
+    }
+    slot.failedW = slot.failedH = 0;
 
     VkDescriptorImageInfo di{m_insetSampler, slot.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkWriteDescriptorSet wr{};
@@ -799,6 +830,7 @@ void EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint
     slot.w = w;
     slot.h = h;
     slot.undefined = true;
+    return true;
 }
 
 void EquirectViewportRenderer::initResources()

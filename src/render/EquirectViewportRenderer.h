@@ -21,6 +21,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 struct PushConstants {
@@ -112,6 +113,9 @@ private:
     VkPipeline makePipeline(render::shaders::Spirv frag, VkPipelineLayout layout, bool blend = false);
 
     // --- Picture-in-picture insets (inset.frag) ---
+    // One per overlay on screen (PiP, title, gauge, a flat main clip), kept
+    // by its clip so a picture isn't uploaded again when the overlays under
+    // it change; freed when not drawn for a while.
     struct InsetSlot {
         VkImage img = VK_NULL_HANDLE;
         VkDeviceMemory mem = VK_NULL_HANDLE;
@@ -123,13 +127,26 @@ private:
         std::vector<VkDeviceMemory> stagingMem;
         std::vector<void *> stagingMap;
         VkDescriptorSet set = VK_NULL_HANDLE;
+        VkDescriptorPool pool = VK_NULL_HANDLE; // the set's
         uint64_t key = 0; // frameKey of the picture in `img`
+        uint64_t lastUsed = 0; // m_frameCounter
+        // The size that couldn't be made (out of memory): not tried again
+        // until the picture's size changes.
+        uint32_t failedW = 0, failedH = 0;
     };
+    // The clip's id and which of that id's insets this frame it is (a clip
+    // id may show twice, e.g. a dip's black).
+    using InsetSlotKey = std::pair<int, int>;
     void createInsetResources();
     void destroyInsetResources();
-    // (Re)size slot `i` for a w x h picture; waits for the device if it had
-    // to recreate it.
-    void ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h);
+    // The slot for `key`, made (with its descriptor set) on first use;
+    // nullptr if no set could be had.
+    InsetSlot *insetSlot(const InsetSlotKey &key);
+    // (Re)size `slot` for a w x h picture; waits for the device if it had
+    // to recreate it. False (slot left empty, logged) when the GPU has no
+    // memory for it.
+    bool ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h);
+    // Frees the slot's image and buffers; its descriptor set stays.
     void destroyInsetSlot(InsetSlot &slot);
     // Upload `rgba` into the slot's image, recorded into `cmd`.
     void recordInsetUpload(VkCommandBuffer cmd, InsetSlot &slot, const std::vector<uint8_t> &rgba);
@@ -232,9 +249,11 @@ private:
     void statsFrameEnd(render::framestats::Clock::time_point start);
 
     // --- insets ---
-    InsetSlot m_insetSlots[EquirectViewportWindow::kMaxInsets];
+    std::map<InsetSlotKey, InsetSlot> m_insetSlots;
     VkSampler m_insetSampler = VK_NULL_HANDLE;
-    VkDescriptorPool m_insetPool = VK_NULL_HANDLE;
+    // Sets for kInsetPoolSets slots each; another one when they're all taken.
+    static constexpr uint32_t kInsetPoolSets = 16;
+    std::vector<VkDescriptorPool> m_insetPools;
     VkPipelineLayout m_insetPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_insetPipeline = VK_NULL_HANDLE;
 

@@ -25,6 +25,7 @@
 #include <QTemporaryDir>
 #include <QTimeZone>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -1568,6 +1569,40 @@ void testLayerOverMainClip()
     CHECK(drawn(7000, a).empty() && drawn(9000, b).empty());
 }
 
+// More overlays at once than the viewport used to draw (5): playback hands
+// the viewport every one, bottom-most first, as many as the export draws.
+void testManyOverlays()
+{
+    Timeline t;
+    t.appendClip("/c/ride.insv", 20000, 30.0);
+    constexpr int kOverlays = 8;
+    std::vector<int> ids; // top track first
+    for (int i = 0; i < kOverlays; ++i) {
+        const int v = t.addTrack(Track::Kind::Video, QString("Text %1").arg(i));
+        title::Style style;
+        style.text = QString("Overlay %1").arg(i);
+        ids.push_back(t.addTitleClip(v, 1000, style, 4000));
+    }
+    std::vector<int> bottomFirst; // the order both should draw in
+    for (int i = t.trackCount() - 1; i >= 0; --i)
+        for (const TrackClip &c : t.trackAt(i).clips)
+            if (std::find(ids.begin(), ids.end(), c.id) != ids.end())
+                bottomFirst.push_back(c.id);
+    CHECK(bottomFirst.size() == size_t(kOverlays));
+    const PrivacyBlur privacy;
+    const std::vector<InsetFeed::Clip> feed = renderjobs::insetFeed(t, 1920, 1080, privacy);
+    CHECK(feed.size() == size_t(kOverlays));
+    CHECK(renderjobs::insetJobs(t, 1920, 1080, privacy).size() == size_t(kOverlays));
+    InsetFeed player;
+    player.setClips(feed);
+    const std::vector<EquirectViewportWindow::InsetDraw> drawn = player.frameFor(3000, false);
+    CHECK(drawn.size() == size_t(kOverlays));
+    std::vector<int> drawnIds;
+    for (const EquirectViewportWindow::InsetDraw &d : drawn)
+        drawnIds.push_back(d.clipId);
+    CHECK(drawnIds == bottomFirst);
+}
+
 void testMissingSources()
 {
     Timeline t;
@@ -1717,6 +1752,7 @@ int main(int argc, char **argv)
     testMix();
     testMissingSources();
     testOverlays();
+    testManyOverlays();
     testTitles();
     testTitleMotion();
     testTypeOn();

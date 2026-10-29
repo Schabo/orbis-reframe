@@ -113,10 +113,10 @@ public:
     const std::vector<RegionOutline> &Outlines() const { return m_outlines; }
 
     // The video tracks' picture-in-picture insets to draw over the view,
-    // bottom-most first (at most kMaxInsets). Thread-safe; replaces the
-    // previous list. A picture is uploaded only when its frameKey changes.
-    // Four overlays plus a flat main-track clip under them.
-    static constexpr int kMaxInsets = 5;
+    // bottom-most first: every overlay on screen (PiPs, titles, gauges) and
+    // a flat main-track clip under them, as many as the export draws.
+    // Thread-safe; replaces the previous list. A picture is uploaded only
+    // when its frameKey changes.
     struct InsetDraw {
         int clipId = 0;
         uint64_t frameKey = 0; // new for every decoded picture
