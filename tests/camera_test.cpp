@@ -333,6 +333,9 @@ void testAntigravityA1(const std::filesystem::path& dir)
         CHECK(clip->lenses[1].source.path == vid && clip->lenses[1].source.stream == 1);
     }
     CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5248.0);
+    // Its lenses look down and up: turned so the picture is level and faces
+    // the drone's nose.
+    CHECK(clip->mountYawDeg == -90.0 && clip->mountPitchDeg == 90.0 && clip->mountRollDeg == 0.0);
     CHECK(clip->proxyPath == prx);
     CHECK(camera::ClipFileOf(vid) == vid);
     CHECK(camera::ClipFileOf(prx, &err) == vid);

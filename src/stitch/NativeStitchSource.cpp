@@ -79,6 +79,9 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
         return false;
     }
     calib.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
+    params.outYawDeg = clip.mountYawDeg;
+    params.outPitchDeg = clip.mountPitchDeg;
+    params.outRollDeg = clip.mountRollDeg;
     const insv::LensProfile* bare = clip.bareLens ? &*clip.bareLens : nullptr;
     const insv::LensProfile* acc = LensGuardProfile(clip, guard);
     bool found = insv::ApplyLensProfile(params, bare, acc);

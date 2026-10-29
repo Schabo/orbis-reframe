@@ -64,6 +64,14 @@ struct ClipMetadata {
         return s;
     }
     bool calibrated = false;  // every lens has its calibration from the file
+    // How the lenses sit in the picture: the turn from the stitch's lens
+    // frame to the sphere's forward and up, yaw / pitch / roll in degrees
+    // (insv::StitchParams::outYawDeg / outPitchDeg / outRollDeg). The
+    // camera's, not the file's: the calibration places the lenses relative
+    // to each other, not how the camera is held.
+    double mountYawDeg = 180.0;
+    double mountPitchDeg = 0.0;
+    double mountRollDeg = 0.0;
 
     // Every lens stream's picture: decoded size, rate, length.
     int lensWidth = 0;

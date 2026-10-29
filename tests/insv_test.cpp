@@ -1349,6 +1349,13 @@ void testA1Trailer()
     CHECK(!model.secondLensToken && !model.clipToken);
     CHECK(std::string(model.captureMode(3840)) == "8K");
     CHECK(std::string(model.captureMode(2624)) == "5.2K");
+    CHECK(model.mountDeg[0] == -90.0 && model.mountDeg[1] == 90.0 && model.mountDeg[2] == 0.0);
+    // Insta360's cameras keep the stitch's default: lens 0's opposite forward.
+    const insv::StitchParams defaults;
+    for (const insv::InsvModel& m : insv::InsvModels())
+        if (std::string(m.maker) == "Insta360")
+            CHECK(m.mountDeg[0] == defaults.outYawDeg && m.mountDeg[1] == defaults.outPitchDeg &&
+                  m.mountDeg[2] == defaults.outRollDeg);
     const auto t = insv::ReadInsvTelemetry(path);
     CHECK(t.has_value());
     if (t) {

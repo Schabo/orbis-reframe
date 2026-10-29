@@ -153,6 +153,14 @@ int main(int argc, char** argv)
                 calib.lensesExt[0].xi, calib.lensesExt[0].fx, focalRefW,
                 rawCalib->crop_dst_w > 0 ? "" : " (not in the file: the model's)");
 
+    // How the camera holds its lenses: the model's (InsvModel::mountDeg).
+    const insv::InsvModel& model = insv::FindInsvModel(rawCalib->model);
+    const auto mount = [&model](insv::StitchParams& p) {
+        p.outYawDeg = model.mountDeg[0];
+        p.outPitchDeg = model.mountDeg[1];
+        p.outRollDeg = model.mountDeg[2];
+    };
+
     // The lens-guard / dive-case profile by its field-145 name; "" = bare.
     const insv::LensProfile* bareProfile = insv::FindLensProfile(*rawCalib, "bare");
     const insv::LensProfile* accProfile =
@@ -184,6 +192,7 @@ int main(int argc, char** argv)
         const int64_t in = fit ? seamIn : offsetIn, out = fit ? seamOut : offsetOut;
         insv::StitchParams params;
         insv::ApplyLensProfile(params, bareProfile, accProfile);
+        mount(params);
         std::vector<insv::SeamFrame> frames;
         for (int k = 0; k < seamFrames; ++k) {
             const int64_t t = insv::SnapToKeyframeMs(
@@ -215,6 +224,7 @@ int main(int argc, char** argv)
 
     insv::FisheyeStitcher stitcher;
     insv::StitchParams params;
+    mount(params);
     // False without a bare profile too (the ONE X2 has no profile table): a
     // failure only when a guard was asked for.
     if ((!insv::ApplyLensProfile(params, bareProfile, accProfile) && accProfile) || profileMissing)

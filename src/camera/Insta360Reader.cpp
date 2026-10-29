@@ -164,6 +164,9 @@ std::optional<Thumbnail> stitchedThumbnail(const std::string& path) {
         calib.lensesExt.push_back(l.calibration);
     insv::StitchParams params;
     insv::ApplyLensProfile(params, clip->bareLens ? &*clip->bareLens : nullptr, nullptr);
+    params.outYawDeg = clip->mountYawDeg;
+    params.outPitchDeg = clip->mountPitchDeg;
+    params.outRollDeg = clip->mountRollDeg;
     insv::FisheyeStitcher stitcher;
     if (!stitcher.configure(calib, lens[0].w, lens[0].h, params))
         return std::nullopt;
@@ -268,6 +271,9 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
             out.lenses[i].calibration.focalRefW = focalRefW;
         }
     }
+    out.mountYawDeg = model.mountDeg[0];
+    out.mountPitchDeg = model.mountDeg[1];
+    out.mountRollDeg = model.mountDeg[2];
     if (streams[0].width == streams[0].height)
         out.captureMode = model.captureMode(streams[0].width);
 

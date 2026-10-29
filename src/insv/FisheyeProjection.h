@@ -117,8 +117,10 @@ struct StitchParams {
     double nominalYaw1Deg = 180.0;
 
     // Global equirect orientation applied to the sampling ray (Ry(yaw) Rx(pitch)
-    // Rz(roll)) -- levels the sensors' common mount clock and matches
-    // Insta360's "forward". 180 = Insta360 forward vs our lens 0.
+    // Rz(roll)): how the camera holds its lenses, so the picture is level and
+    // faces the camera's "forward". A clip's comes from its camera
+    // (camera::ClipMetadata::mountYawDeg ...); the default is Insta360's, 180 =
+    // Insta360 forward vs our lens 0.
     double outYawDeg = 180.0;
     double outPitchDeg = 0.0;
     double outRollDeg = 0.0;

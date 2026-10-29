@@ -64,6 +64,19 @@ Markers as in [`README.md`](README.md).
   with small corrections (lens 1 pitch +0.14 to +0.24°, roll +0.40 to
   +0.42°, centre −0.06 to −0.08 %, radius −0.17 to −0.20 %). Before the
   fit the lenses are 0.24-0.53° apart at the seam (X5: ~0.17°).
+- ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
+  stitch's output turn): not in the file -- the calibration places the
+  lenses relative to each other, as on the X5, where lens 0 faces forward.
+  Stitched the X5's way, the A1's lens axes lie on the horizon. Turned so
+  lens 0 looks straight down and the picture's forward is the drone's
+  nose: yaw −90°, pitch 90°, roll 0 (the X5's: 180, 0, 0). The nose found
+  from the horizon on 2026-10-29: a drone flying fast tilts nose down, so
+  the horizon in the stitched picture is highest toward the nose. A fitted
+  sinusoid on six frames of clip `_010` at a steady 15.7 m/s (62-72 s,
+  tilt 16-19°) puts the high point at −86° ± 6° from lens 0's side; taken
+  as −90°, the body square to the lens frame. It puts the trailer's
+  thumbnail (type 2) of `_011` at the picture's centre too; `_012`'s
+  thumbnail looks elsewhere, so the thumbnail is a view, not the nose.
 - ❓ The IMU axes, fields 69 and 91 (unit quaternions; 69 is (w, x, y, z) =
   (0.5, 0.5, −0.5, 0.5), a pure axis permutation), field 98 (absent: GPS
   not yet lined up with the video).

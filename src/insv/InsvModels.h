@@ -50,6 +50,15 @@ struct InsvModel {
     // The capture mode named for a lens picture `lensWidth` wide, or "".
     const char* captureMode(int lensWidth) const;
 
+    // How the lenses sit in the picture: the turn from the stitch's lens
+    // frame to the sphere's forward and up, as yaw, pitch, roll in degrees
+    // (StitchParams::outYawDeg / outPitchDeg / outRollDeg). The calibration
+    // places the lenses relative to each other; how the camera is held isn't
+    // in the file. Insta360's cameras: {180, 0, 0}, lens 0's opposite
+    // forward and the lenses level. The Antigravity A1 carries its lenses
+    // looking down and up.
+    double mountDeg[3];
+
     // The trailer's telemetry clock tick (IMU, exposure and field 24
     // timestamps), in microseconds: 1 on the X5 / X6, 1000 on the ONE X2,
     // whose stamps are milliseconds (docs/formats/insta360-one-x2.md §8).
