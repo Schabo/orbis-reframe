@@ -149,7 +149,8 @@ section then says which clips those are.
 ## Speed, altitude and heading from the GPS
 
 The Insta360 X5 records a GPS track in the clip's file while a GPS source
-is connected to it, such as Insta360's GPS remote. A title can show values
+is connected to it, such as Insta360's GPS remote; the Antigravity A1
+drone records its own. A title can show values
 from it, as fields like the clock's:
 
 | Field | Shows | Example |
@@ -179,6 +180,8 @@ Where there is no GPS, a field shows `--` with its unit (*-- km/h*):
 
 - a clip from a camera or phone that orbis-reframe reads no GPS from;
 - a clip recorded without a GPS source connected;
+- an Antigravity A1 clip where the drone hovered, or one shorter than
+  about 8 seconds: the GPS can't be lined up with the video;
 - a stretch where the camera lost the signal for more than about 3
   seconds, in a tunnel for example. The GPS track can also start a moment
   after the video, or stop a moment before it.

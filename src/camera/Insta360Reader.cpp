@@ -325,17 +325,24 @@ std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) 
 std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {
     if (clip.gpsFixes == 0)
         return std::nullopt;
-    const auto gps = insv::ReadInsvGps(clip.path);
+    const auto gps = insv::ReadInsvGps(clip.path, insv::FindInsvModel(clip.model).telemetryTickUs);
     if (!gps || gps->fixes.empty())
         return std::nullopt;
     // The fixes carry Unix time; field 98.3 says when the first frame was
-    // recorded on the same scale (docs/formats/insta360-x5.md §8). The file
-    // gives no other anchor, so without it the track isn't used.
+    // recorded on the same scale (docs/formats/insta360-x5.md §8), or, on a
+    // drone without it, the fixes' speeds matched against the flight
+    // controller's (docs/formats/antigravity-a1.md). Without either the
+    // track isn't used.
     if (gps->first_frame_unix_ms == 0) {
-        std::fprintf(stderr, "[camera] GPS in %s but no first-frame time (field 98); not used\n",
+        std::fprintf(stderr, "[camera] GPS in %s but nothing lines it up with the video (no field "
+                             "98, no flight-controller speed to match); not used\n",
                      clip.path.c_str());
         return std::nullopt;
     }
+    if (gps->aligned_by_speed)
+        std::fprintf(stderr, "[camera] GPS in %s lined up with the video by its speed: first frame "
+                             "at Unix %.3f s\n",
+                     clip.path.c_str(), static_cast<double>(gps->first_frame_unix_ms) * 1e-3);
     insv::GpsTrack track;
     track.fixes.reserve(gps->fixes.size());
     // A heading of -1 is the camera's "don't know", written while standing

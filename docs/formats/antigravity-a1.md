@@ -131,12 +131,25 @@ Markers as in [`README.md`](README.md).
   (Media tab, project library), cut to the card's shape.
 - ✅ **GPS, record type 7**, in the X5's layout (X5 §8): a fix every
   **1.6 s** on all three clips (the X5 with the GPS remote: once a second),
-  its speed matching record 37's horizontal speed. ⚠️ **Not lined up with
-  the video**: field 98 (X5 §5.1), which on the X5 gives the first frame's
-  Unix time, is absent, so the app doesn't use the track -- titles and
-  gauges show no GPS values on A1 clips, though the Media information
-  panel lists the GPS as recorded. Record 37's speed against the GPS speed
-  could line them up (not built).
+  one record per fix, from the first one the drone has after recording
+  starts. Field 98 (X5 §5.1), which on the X5 gives the first frame's Unix
+  time, is absent, and nothing else in the file ties the GPS clock to the
+  video: field 36 is the first fix's own Unix time (to the ms on all
+  three), the MP4's `creation_time` is in whole seconds, and no other
+  record holds a Unix time.
+- ✅ **The GPS lined up with the video by its speed** (`AlignGpsBySpeed`,
+  `Gps.h`): the fixes' speed against record 37's horizontal speed, timed
+  in video time by field 24, over every shift; the best to the ms. On
+  `_010` / `_011` / `_012` the first fix is **1.129 / 0.911 / 0.526 s**
+  into the video, matched to 0.20 / 0.06 / 0.08 m/s RMS, 0.8-2.0 m/s a
+  second either way. A check that doesn't use the fit's own clip: the
+  three put the drone's clock (field 24) at the same offset from Unix time
+  to within 31 ms. A shift is taken only when it is clear: at least 5
+  fixes over the attitude track, their speeds spread by 0.5 m/s or more,
+  matched to 1 m/s RMS or better, and every shift a second or more away
+  fitting at least twice as badly (+0.1 m/s). A hover, or a clip too
+  short for 5 fixes (8 s), stays without GPS in titles and gauges, and the
+  log says why.
 - ✅ **Sync**: the X5's formula (field 24 + field 28, X5 §7.1) holds; the
   app's per-clip fine-tune finds +0.9 to +1.2 ms on all three clips, and
   the image fit above agrees within ~1 ms.
@@ -181,7 +194,7 @@ The status words are the X5's (X5 §3.4).
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² HEVC streams), and a `PRX_….prx` proxy | 3, 29.97 fps, H.265, standard colour | experimental: opens, stitches, stabilizes and exports; GPS not used |
+| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² HEVC streams), and a `PRX_….prx` proxy | 3, 29.97 fps, H.265, standard colour | experimental: opens, stitches, stabilizes and exports; GPS lined up by its speed |
 | 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | as above | none | **wanted**: a lens size no Insta360 camera has (2624² ⚠️), and 60 fps |
 | 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | as above | none | **wanted**: 100 fps |
 | 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ❓ | none | **wanted**: whether the file is tagged at the playback rate or the capture rate (100 ⚠️) |

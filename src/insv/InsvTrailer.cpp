@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "InsvTrailer.h"
 
+#include "Gps.h" // insv::AlignGpsBySpeed
+
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
@@ -469,21 +471,59 @@ std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& p) {
     return out;
 }
 
-std::optional<InsvGps> ReadInsvGps(const std::string& file_path) {
+std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us) {
     std::ifstream file(file_path, std::ios::binary);
     if (!file) return std::nullopt;
     file.seekg(0, std::ios::end);
     const int64_t file_size = static_cast<int64_t>(file.tellg());
     InsvGps out;
+    uint64_t firstFrameTicks = 0;
+    std::vector<AttitudeSample> attitude;
+    double timeMapOffsetMs = 0.0;
     const bool ok = WalkTrailerRecords(
         file, file_size,
         [&](uint16_t id, const std::vector<uint8_t>& payload, int64_t) {
-            if (id == 0x101) out.first_frame_unix_ms = FirstFrameUnixMs(payload);
-            else out.fixes = ParseInsvGps(payload);
+            if (id == 0x101) {
+                out.first_frame_unix_ms = FirstFrameUnixMs(payload);
+                firstFrameTicks = ParseImuMetadata(payload).first_frame_timestamp;
+            } else if (id == 0x700) {
+                out.fixes = ParseInsvGps(payload);
+            } else if (id == 0x2500) {
+                ParseAttitude(payload, attitude);
+            } else {
+                timeMapOffsetMs = ParseTimeMapOffsetMs(payload);
+            }
             return true;
         },
-        [](uint16_t id) { return id == 0x101 || id == 0x700; });
+        [](uint16_t id) { return id == 0x101 || id == 0x700 || id == 0x2500 || id == 0x8000; });
     if (!ok) return std::nullopt;
+
+    // No field 98 (the A1): the flight controller's velocity is timed on the
+    // IMU's clock, which field 24 ties to the video (a trimmed file's video
+    // starting the time map's offset later), and its horizontal speed is the
+    // GPS speed (docs/formats/antigravity-a1.md).
+    if (out.first_frame_unix_ms == 0 && !out.fixes.empty() && !attitude.empty() &&
+        firstFrameTicks != 0) {
+        std::vector<SpeedSample> reference;
+        reference.reserve(attitude.size());
+        for (const AttitudeSample& a : attitude)
+            reference.push_back(
+                {(static_cast<double>(a.timestamp) - static_cast<double>(firstFrameTicks)) *
+                         tick_us * 1e-6 -
+                     timeMapOffsetMs * 1e-3,
+                 std::hypot(a.velocity_ned[0], a.velocity_ned[1])});
+        std::sort(reference.begin(), reference.end(),
+                  [](const SpeedSample& a, const SpeedSample& b) { return a.timeSec < b.timeSec; });
+        const int64_t u0 = out.fixes.front().unix_ms;
+        std::vector<SpeedSample> fixes;
+        fixes.reserve(out.fixes.size());
+        for (const InsvGpsFix& f : out.fixes)
+            fixes.push_back({static_cast<double>(f.unix_ms - u0) * 1e-3, f.speed_mps});
+        if (const auto shift = AlignGpsBySpeed(fixes, reference)) {
+            out.first_frame_unix_ms = u0 - std::llround(*shift * 1e3);
+            out.aligned_by_speed = true;
+        }
+    }
     return out;
 }
 

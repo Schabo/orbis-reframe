@@ -9,6 +9,7 @@
 #include "BlurQuads.h"
 #include "Calibration.h"
 #include "FisheyeProjection.h"
+#include "Gps.h"
 #include "Image.h"
 #include "InsvModels.h"
 #include "InsvTrailer.h"
@@ -1429,6 +1430,71 @@ void testA1Trailer()
     std::filesystem::remove(path);
 }
 
+// A drone's GPS without field 98 (the Antigravity A1): its fixes lined up
+// with the video by matching their speeds against the flight controller's
+// velocity, timed by field 24 on the IMU's clock. Not when the speed hardly
+// changes, or when another shift fits as well.
+void testGpsAlignedBySpeed()
+{
+    std::printf("  GPS lined up by the flight controller's speed\n");
+    // Speeding up, a turn and braking: no two stretches alike.
+    const auto speed = [](double t) {
+        return t < 4.0 ? 2.0 * t : 8.0 + 3.0 * std::sin(0.4 * (t - 4.0)) * std::exp(-0.03 * t);
+    };
+    constexpr uint64_t kFirstFrameUs = 2000000, kFirstFrameUnixMs = 1793220455470ull;
+    const auto clip = [&](const char* name, bool hover) {
+        Bytes meta;
+        meta.pbString(2, "Antigravity A1").pbString(54, kOneX2V3).pbVarint(24, kFirstFrameUs);
+        Bytes attitude; // 50 Hz from just before the first frame, the speed north-east
+        for (int k = -10; k < 1500; ++k) {
+            const double t = k * 0.02, v = hover ? 0.1 : speed(t);
+            attitude.u64(kFirstFrameUs + int64_t(k) * 20000).f32(0).f32(0).f32(0).f32(1);
+            attitude.f32(float(v * 0.6)).f32(float(v * 0.8)).f32(0.3f);
+        }
+        Bytes gps; // a fix every 1.6 s from 1.13 s into the video
+        for (int k = 0; k < 18; ++k) {
+            const double t = 1.13 + k * 1.6;
+            gps.raw(testtrailer::gpsRecord(kFirstFrameUnixMs + uint64_t(std::llround(t * 1000)),
+                                           'A', 43.3, 'N', 73.6, 'W', hover ? 0.1 : speed(t),
+                                           190.0, 105.0));
+        }
+        const std::string path = (std::filesystem::temp_directory_path() / name).string();
+        std::ofstream f(path, std::ios::binary);
+        const std::vector<uint8_t> video(64, 0x11);
+        const std::vector<uint8_t> t = insvTrailer(
+            {{0x101, meta.b}, {0x700, gps.b}, {0x2500, attitude.b}}, true, 256);
+        f.write(reinterpret_cast<const char*>(video.data()), std::streamsize(video.size()));
+        f.write(reinterpret_cast<const char*>(t.data()), std::streamsize(t.size()));
+        return path;
+    };
+    const std::string flying = clip("insv_test_gps_speed.insv", false);
+    const auto g = insv::ReadInsvGps(flying);
+    CHECK(g && g->fixes.size() == 18 && g->aligned_by_speed);
+    CHECK(g && std::llabs(g->first_frame_unix_ms - int64_t(kFirstFrameUnixMs)) <= 2);
+    std::filesystem::remove(flying);
+    const std::string hovering = clip("insv_test_gps_hover.insv", true);
+    const auto h = insv::ReadInsvGps(hovering);
+    CHECK(h && h->fixes.size() == 18 && h->first_frame_unix_ms == 0 && !h->aligned_by_speed);
+    std::filesystem::remove(hovering);
+
+    // A speed that repeats every 3.2 s fits two fixes on as well as on time.
+    std::vector<insv::SpeedSample> reference, fixes;
+    for (int k = 0; k < 1500; ++k)
+        reference.push_back({k * 0.02, 6.0 + 3.0 * std::sin(2.0 * kPi * k * 0.02 / 3.2)});
+    for (int k = 0; k < 15; ++k)
+        fixes.push_back({k * 1.6, 6.0 + 3.0 * std::sin(2.0 * kPi * (k * 1.6 + 0.7) / 3.2)});
+    CHECK(!insv::AlignGpsBySpeed(fixes, reference));
+    // The same fixes against a speed that doesn't repeat: on time.
+    reference.clear(), fixes.clear();
+    for (int k = 0; k < 1500; ++k)
+        reference.push_back({k * 0.02, speed(k * 0.02)});
+    for (int k = 0; k < 15; ++k)
+        fixes.push_back({k * 1.6, speed(k * 1.6 + 0.7)});
+    const auto shift = insv::AlignGpsBySpeed(fixes, reference);
+    CHECK(shift && near(*shift, 0.7, 0.002));
+    CHECK(!insv::AlignGpsBySpeed({fixes.begin(), fixes.begin() + 4}, reference)); // too few
+}
+
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
 void testYcbcrRows()
@@ -1502,6 +1568,7 @@ int main()
     testGps();
     testOneX2Trailer();
     testA1Trailer();
+    testGpsAlignedBySpeed();
     testYcbcrRows();
 
     if (g_failures == 0)

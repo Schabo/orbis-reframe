@@ -118,6 +118,7 @@ endif()
 # don't pull the rest of the module.
 add_library(insv_trailer STATIC
     src/insv/Gps.h
+    src/insv/Gps.cpp
     src/insv/Imu.h
     src/insv/InsvTrailer.h
     src/insv/InsvTrailer.cpp

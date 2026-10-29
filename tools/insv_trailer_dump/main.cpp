@@ -12,7 +12,8 @@
 //   exiftool "Angular Velocity" == columns 6..8    which %g reproduces exactly)
 //   exiftool "Exposure Time"    == column 3 of --exposure
 // --gps prints each fix once (the file repeats it over ~10 records), lined
-// up with the video by field 98.3; with `exiftool -ee -n`:
+// up with the video by field 98.3 (on a drone without it, by matching the
+// fixes' speeds against the flight controller's); with `exiftool -ee -n`:
 //   exiftool "GPS Date/Time"    == column 3 (Unix seconds, 3 decimals)
 //   exiftool "GPS Latitude", "GPS Longitude", "GPS Speed" (m/s),
 //   "GPS Track", "GPS Altitude" == columns 4..8
@@ -70,13 +71,18 @@ int main(int argc, char** argv) {
     const bool want_gps = argc > 2 && std::strcmp(argv[2], "--gps") == 0;
 
     if (want_gps) {
-        const auto gps = insv::ReadInsvGps(path);
+        const auto notes = insv::ReadInsvMakerNotes(path);
+        const auto gps = insv::ReadInsvGps(
+            path, notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0);
         if (!gps) {
             std::cerr << "No Insta360 trailer found in " << path << std::endl;
             return 1;
         }
         if (gps->first_frame_unix_ms == 0)
-            std::printf("# no first-frame time (field 98.3): video ms not known\n");
+            std::printf("# no first-frame time (field 98.3, or a flight controller's speed to "
+                        "match): video ms not known\n");
+        else if (gps->aligned_by_speed)
+            std::printf("# no field 98: video ms from the flight controller's speed\n");
         for (size_t i = 0; i < gps->fixes.size(); ++i) {
             const auto& f = gps->fixes[i];
             const long long video = gps->first_frame_unix_ms ? f.unix_ms - gps->first_frame_unix_ms : 0;

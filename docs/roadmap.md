@@ -88,11 +88,10 @@ each is in its document in [`formats/`](formats/README.md).
   Horizon lock in flight leveled by the drone's own attitude track (the
   accelerometer also reads the drone's acceleration; a first part of step
   3's orientation track, see *Common camera model*), its own flat preview
-  picture on the cards, and clips with no audio track. Left: the GPS
-  lined up with the video (the file has no first-frame Unix time; the
-  attitude record's speed against the GPS speed could give it), Direction
-  lock's heading from the attitude's yaw, and clips in the 5.2K, 4K and
-  H.264 modes ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
+  picture on the cards, clips with no audio track, and its GPS lined up
+  with the video by matching the GPS speed against the attitude record's
+  (the file has no first-frame Unix time). Left: Direction lock's heading
+  from the attitude's yaw, and clips in the 5.2K, 4K and H.264 modes ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two

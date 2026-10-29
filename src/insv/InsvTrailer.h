@@ -216,17 +216,23 @@ struct InsvGps {
     // second, and keeps repeating the last fix when the signal is lost: each
     // fix is kept once, from the first record that carries it.
     std::vector<InsvGpsFix> fixes;
-    // Field 98.3: Unix ms of the first recorded video frame, on the camera's
-    // clock. 0 when the file doesn't say (Insta360's own trimmed exports).
+    // Unix ms of the first recorded video frame: field 98.3, on the camera's
+    // clock. Where the file has no field 98 but a flight controller's
+    // velocity (record 0x2500, the Antigravity A1), from matching the fixes'
+    // speeds against it (AlignGpsBySpeed, Gps.h); `aligned_by_speed` says so.
+    // 0 when neither gives it (Insta360's own trimmed exports, a hover).
     int64_t first_frame_unix_ms = 0;
+    bool aligned_by_speed = false;
 };
 
 // Decodes the 0x700 payload `payload` into fixes (as InsvGps::fixes).
 std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& payload);
 
-// The clip's GPS track; only records 0x101 and 0x700 are read. nullopt when
-// the file has no trailer; empty fixes when it has no GPS record.
-std::optional<InsvGps> ReadInsvGps(const std::string& file_path);
+// The clip's GPS track; only records 0x101, 0x700 and, to line it up
+// without field 98, 0x2500 and 0x8000 are read. `tick_us` as for
+// ReadInsvTelemetry. nullopt when the file has no trailer; empty fixes when
+// it has no GPS record.
+std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us = 1.0);
 
 // Returns the raw bytes of the trailer itself -- everything from the end of
 // the file's `moov` box to EOF (confirmed empirically: in a real X5 file

@@ -43,7 +43,9 @@ a layout that lines up with `exiftool -ee` for comparison. `--gps` prints
 each GPS fix once (the file repeats it ten times a second): its time in the
 clip in ms, Unix seconds, latitude, longitude, speed in m/s, heading (-1:
 standing still) and altitude; `exiftool -ee -n` gives the same values, the
-speed in km/h.
+speed in km/h. On a clip without field 98 (the Antigravity A1) the time in
+the clip comes from matching the GPS speed against the drone's own, and a
+first line says so.
 
 **When:** a clip behaves oddly (stitch, sync, stabilization, GPS) and you want
 to see what the camera recorded; or when working on `src/insv/InsvTrailer`.
