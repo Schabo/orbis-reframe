@@ -28,6 +28,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <mutex>
 #include <set>
@@ -732,7 +733,8 @@ void testGpsFields()
           "-- mph|-- ft|--");
     CHECK(fields("{{speed} {speedx}", v) == "{speed} {speedx}");
     CHECK(fields("At {speed}, {time}", v).startsWith("At 2 km/h, --:--"));
-    CHECK(title::hasGpsFields("{heading:compass}") && !title::hasGpsFields("{time} {{speed}"));
+    CHECK(title::hasTelemetryFields("{heading:compass}") &&
+          !title::hasTelemetryFields("{time} {{speed}"));
     CHECK(title::hasClockFields("{date} {speed}") && !title::hasClockFields("{speed}"));
     CHECK(title::hasFields("{altitude}"));
     CHECK(title::defaultUnits(QLocale(QLocale::English, QLocale::UnitedStates)) == imperial);
@@ -989,6 +991,180 @@ void testGaugeReadings()
         // Something drawn, and the value shows.
         CHECK(*gaugerender::render(s, 120, gaugerender::Reading{}).rgba != *p.rgba);
     }
+}
+
+// The lean and G fields: whole degrees and the side, hundredths of a g as
+// the locale writes them; "--" without motion, and the G-force also where
+// the direction of travel isn't known.
+void testMotionFields()
+{
+    const QLocale c(QLocale::C);
+    const QLocale de(QLocale::German, QLocale::Germany);
+    const auto fields = [&](const QString &text, const std::optional<MotionTelemetry::Values> &m,
+                            const QLocale &l) {
+        return title::withFields(text, QDateTime(), l, title::Hours::System, std::nullopt, {}, m);
+    };
+    MotionTelemetry::Values m;
+    m.leanDeg = 23.6;
+    m.lateralG = 0.3;
+    m.forwardG = -0.4;
+    CHECK(fields("{lean}|{g}", m, c) == QString("24\u00b0 R|0.50 g"));
+    CHECK(fields("{g}", m, de) == "0,50 g");
+    m.leanDeg = -12.2;
+    CHECK(fields("{lean}", m, c) == QString("12\u00b0 L"));
+    m.leanDeg = -0.4;
+    CHECK(fields("{lean}", m, c) == QString("0\u00b0"));
+    m.travelKnown = false; // the lean still shows, the G-force doesn't
+    CHECK(fields("{lean}|{g}", m, c) == QString("0\u00b0|-- g"));
+    CHECK(fields("{lean}|{g}|{{g}", std::nullopt, c) == QString("--\u00b0|-- g|{g}"));
+    CHECK(title::hasTelemetryFields("{lean}") && title::hasMotionFields("{g}") &&
+          !title::hasMotionFields("{speed} {{lean}"));
+    CHECK(title::hasGpsFields("{speed}") && !title::hasGpsFields("{lean} {g}"));
+    CHECK(title::hasGForceField("{lean} {g}") && !title::hasGForceField("{lean}"));
+}
+
+// The lean dial and the G circle: their numbers as the fields write them,
+// their needle and dot clamped to the scale (the dot as a vector), none
+// without motion or, for the G circle, without a direction of travel. Their
+// pictures, and a route's: their kind's shape, the value showing.
+void testMotionGaugeReadings()
+{
+    gauge::Style lean;
+    lean.kind = gauge::Kind::Lean;
+    lean.max = 45.0;
+    lean = lean.clamped();
+    CHECK(lean.min == -45.0);
+    gauge::Style g;
+    g.kind = gauge::Kind::GForce;
+    g.max = 0.5;
+    g = g.clamped();
+    CHECK(g.min == -0.5 && g.max == 0.5);
+    gauge::Style tiny = g;
+    tiny.max = 0.0;
+    CHECK(tiny.clamped().max == gauge::Style::kMinG);
+
+    MotionTelemetry::Values m;
+    m.leanDeg = -51.3;
+    m.lateralG = 0.6;
+    m.forwardG = 0.8;
+    gaugerender::Moment at{std::nullopt, m, 0};
+    const gaugerender::Reading l = gaugerender::readingOf(lean, at, 200);
+    CHECK(l.hasValue && l.number == -51 && near(l.position, -45.0, 0.1));
+    const gaugerender::Reading f = gaugerender::readingOf(g, at, 200);
+    CHECK(f.hasValue && f.number == 100);
+    CHECK(near(f.position, 0.3, 0.005) && near(f.position2, 0.4, 0.005)); // on the edge
+    m.travelKnown = false;
+    at.motion = m;
+    CHECK(!gaugerender::readingOf(g, at, 200).hasValue);
+    CHECK(gaugerender::readingOf(lean, at, 200).hasValue);
+    CHECK(!gaugerender::readingOf(lean, gaugerender::Moment{}, 200).hasValue);
+
+    gauge::Style route;
+    route.kind = gauge::Kind::Route;
+    gaugerender::Route r;
+    r.stretches.push_back({{0, 0.1, 0.9, 0.0}, {1000, 0.9, 0.1, std::hypot(0.8, 0.8)}});
+    r.key = 77;
+    Telemetry::Values here;
+    const gaugerender::Reading half =
+        gaugerender::readingOf(route, gaugerender::Moment{here, std::nullopt, 500}, 200, &r);
+    CHECK(half.hasValue && near(half.position, std::hypot(0.8, 0.8) / 2.0, 0.005));
+    CHECK(!gaugerender::readingOf(route, gaugerender::Moment{}, 200, &r).hasValue); // no dot
+    CHECK(!gaugerender::readingOf(route, gaugerender::Moment{here, std::nullopt, 500}, 200)
+               .hasValue); // no route
+
+    for (const auto &[s, reading] : {std::pair{lean, l}, std::pair{g, f}, std::pair{route, half}}) {
+        const gaugerender::Picture p = gaugerender::render(s, 120, reading, &r);
+        CHECK(!p.empty() && p.height == 120 &&
+              p.width == int(std::lround(gauge::aspect(s.kind) * 120)));
+        CHECK(gaugerender::cached(s, 120, reading, &r).rgba == p.rgba);
+        CHECK(*gaugerender::render(s, 120, gaugerender::Reading{}, &r).rgba != *p.rgba);
+    }
+    // Another route is another picture.
+    gaugerender::Route other = r;
+    other.stretches.front().back().y = 0.5;
+    other.key = 78;
+    CHECK(gaugerender::cached(route, 120, half, &other).empty());
+    CHECK(*gaugerender::render(route, 120, half, &other).rgba !=
+          *gaugerender::render(route, 120, half, &r).rgba);
+}
+
+// A clip's GPS heading north-east: a fix a second, 0.0001 degrees north and
+// 0.0002 east each.
+std::shared_ptr<const Telemetry> movingTelemetry()
+{
+    insv::GpsTrack track;
+    for (int s = 0; s <= 20; ++s)
+        track.fixes.push_back({s * 1000, 59.0 + s * 1e-4, 18.0 + s * 2e-4, 10.0, 45.0, 100.0});
+    return std::make_shared<const Telemetry>(track);
+}
+
+// The route over the whole timeline: each clip's used part, a stretch per
+// clip, at its speed; a clip without GPS left out, the ride standing still
+// across it. North up, east to the right, fitted into the square with its
+// shape kept. A route gauge reads how far along it the ride is.
+void testRoute()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    const int b = t.appendClip("/c/b.insv", 20000, 30.0);
+    t.appendClip("/c/c.insv", 20000, 30.0);
+    t.setClipTrimIn(a, 2000);
+    t.setClipTrimOut(a, 10000); // 0..8 s: source 2..10 s
+    t.setClipSpeed(b, 2.0);     // 8..18 s: source 0..20 s
+    renderjobs::FieldSources sources;
+    sources.gps.insert("/c/a.insv", movingTelemetry());
+    sources.gps.insert("/c/b.insv", movingTelemetry()); // starts back where a did
+    const title::Clock clock = renderjobs::titleClock(t, sources);
+
+    const auto fixes = clock.route(500);
+    CHECK(fixes.size() == 2);
+    if (fixes.size() == 2) {
+        CHECK(fixes[0].front().timelineMs == 0 && fixes[0].back().timelineMs == 7999);
+        CHECK(near(fixes[0].front().latitude, 59.0002, 1e-9)); // source 2 s
+        CHECK(fixes[1].front().timelineMs == 8000 && fixes[1].back().timelineMs == 17999);
+        CHECK(near(fixes[1].back().longitude, 18.0 + 19.998 * 2e-4, 1e-7)); // at 2x
+    }
+
+    const std::shared_ptr<const gaugerender::Route> route = gaugerender::routeOf(clock);
+    CHECK(route && route->stretches.size() == 2);
+    if (!route || route->stretches.size() != 2)
+        return;
+    const auto &sa = route->stretches[0], &sb = route->stretches[1];
+    // b covers the whole track a's trim only part of: b fills the square's
+    // width, east to the right, north up; its height keeps the shape.
+    const double cosLat = std::cos(59.001 * std::numbers::pi / 180.0);
+    CHECK(near(sb.front().x, 0.0, 1e-6) && near(sb.back().x, 1.0, 1e-3));
+    CHECK(sb.back().y < sb.front().y);
+    CHECK(near((sb.front().y - sb.back().y) / (sb.back().x - sb.front().x), 0.5 / cosLat, 1e-3));
+    CHECK(sa.front().x > sb.front().x && sa.back().x < sb.back().x);
+    // How far along: a's length, then held through the cut, then b's.
+    CHECK(near(route->alongAt(-5), 0.0, 1e-12) && near(route->alongAt(0), 0.0, 1e-12));
+    CHECK(near(route->alongAt(7999), sa.back().along, 1e-12));
+    CHECK(near(sb.front().along, sa.back().along, 1e-12)); // no length across the cut
+    CHECK(route->alongAt(13000) > sb.front().along && route->alongAt(13000) < sb.back().along);
+    CHECK(near(route->alongAt(25000), sb.back().along, 1e-12)); // over c, held
+    double last = -1.0;
+    for (qint64 ms = 0; ms < 30000; ms += 37) {
+        const double along = route->alongAt(ms);
+        CHECK(along >= last - 1e-12);
+        last = along;
+    }
+    // The same route, the same key; another trim, another.
+    CHECK(gaugerender::routeOf(clock)->key == route->key);
+    t.setClipTrimIn(a, 3000);
+    CHECK(gaugerender::routeOf(renderjobs::titleClock(t, sources))->key != route->key);
+    t.setClipTrimIn(a, 2000);
+
+    gauge::Style style;
+    style.kind = gauge::Kind::Route;
+    GaugeSource src(style, 30000, 200, 1920, 1080, clock, 0);
+    CHECK(src.readingAt(4000).hasValue && !src.readingAt(20000).hasValue); // c: no dot
+    CHECK(near(src.readingAt(20000).position, sb.back().along, 0.005));
+    // Nothing with GPS: no route, an empty gauge.
+    const title::Clock none = renderjobs::titleClock(t, {});
+    CHECK(!gaugerender::routeOf(none));
+    GaugeSource empty(style, 30000, 200, 1920, 1080, none, 0);
+    CHECK(!empty.readingAt(4000).hasValue && !empty.at(4000).empty());
 }
 
 // A gauge's next change against every ms, as far ahead as it looks.
@@ -1385,6 +1561,9 @@ int main(int argc, char **argv)
     testMotionClock();
     testTelemetryCache();
     testGaugeReadings();
+    testMotionFields();
+    testMotionGaugeReadings();
+    testRoute();
     testGaugeSource();
     testGaugeFeedVsExport();
     testTransitions();

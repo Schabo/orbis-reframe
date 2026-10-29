@@ -360,13 +360,13 @@ bool anyTitleClock(const Timeline &timeline)
     return anyTitleText(timeline, title::hasClockFields);
 }
 
-bool anyTitleGps(const Timeline &timeline)
+bool anyTitleTelemetry(const Timeline &timeline)
 {
     for (int i = 0; i < timeline.trackCount(); ++i)
         for (const TrackClip &c : timeline.trackAt(i).clips)
             if (c.isGauge())
                 return true;
-    return anyTitleText(timeline, title::hasGpsFields);
+    return anyTitleText(timeline, title::hasTelemetryFields);
 }
 
 std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
@@ -490,14 +490,15 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
 }
 
 double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH,
-                        const QDateTime &at, const std::optional<Telemetry::Values> &gps)
+                        const QDateTime &at, const std::optional<Telemetry::Values> &gps,
+                        const std::optional<MotionTelemetry::Values> &motion)
 {
     if (from.align == to.align || outW <= 0 || outH <= 0)
         return 0.0;
     // The picture's shape doesn't depend on its size: any size will do.
     constexpr int kFontPx = 200;
     const auto shown = [&](title::Style s) {
-        s.text = title::withFields(s.text, at, QLocale(), s.hours, gps, s.units);
+        s.text = title::withFields(s.text, at, QLocale(), s.hours, gps, s.units, motion);
         return s;
     };
     const titlerender::Picture a =

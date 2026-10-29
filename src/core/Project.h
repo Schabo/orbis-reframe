@@ -151,8 +151,13 @@ public:
     // with them, their units as a title's `speedUnit` / `altitudeUnit`,
     // written only when not km/h and metres, and the gauges: an overlay
     // clip with a `gauge` object instead of a source, which an older build
-    // would take for a missing file.
-    static constexpr int kFormatVersion = 19;
+    // would take for a missing file. Version 20 added the lean dial, the G
+    // circle and the route (a gauge's kind "lean", "g", "route") and the
+    // `{lean}` and `{g}` fields, written only when a project has one: an
+    // older build would draw such a gauge as a speed dial, and show the
+    // field's braces.
+    static constexpr int kFormatVersion = 20;
+    static constexpr int kMotionOverlayFormatVersion = 20;
     static constexpr int kClockFormatVersion = 19;
     static constexpr int kGaugeFormatVersion = 19;
     static constexpr int kMotionFormatVersion = 19;

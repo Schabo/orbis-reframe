@@ -18,9 +18,12 @@ GaugePanel::GaugePanel(QWidget *parent) : SettingsPanel(tr("Gauge"), parent)
 {
     m_kind = new QComboBox(this);
     m_kind->setObjectName(QStringLiteral("gaugeKind"));
-    m_kind->addItems({tr("Dial"), tr("Bar"), tr("Heading tape")});
-    m_kind->setToolTip(tr("A round dial with a needle, a bar that fills up, or a compass strip "
-                          "that slides with the direction of travel."));
+    m_kind->addItems(
+        {tr("Dial"), tr("Bar"), tr("Heading tape"), tr("Lean dial"), tr("G circle"), tr("Route")});
+    m_kind->setToolTip(tr("A round dial with a needle, a bar that fills up, a compass strip "
+                          "that slides with the direction of travel, a half dial showing the "
+                          "lean, a circle with a dot showing the G-forces, or the trip's route "
+                          "seen from above."));
     form()->addRow(tr("Kind"), m_kind);
     m_reads = new QComboBox(this);
     m_reads->setObjectName(QStringLiteral("gaugeReads"));
@@ -44,7 +47,8 @@ GaugePanel::GaugePanel(QWidget *parent) : SettingsPanel(tr("Gauge"), parent)
     form()->addRow(tr("Scale to"), m_max);
     m_accent = new QPushButton(this);
     m_accent->setObjectName(QStringLiteral("gaugeAccent"));
-    m_accent->setToolTip(tr("The needle, the bar, the tape's marker."));
+    m_accent->setToolTip(tr("The needle, the bar, the tape's marker, the G circle's dot, the "
+                            "part of the route ridden so far."));
     form()->addRow(tr("Accent"), m_accent);
     m_face = new QPushButton(this);
     m_face->setObjectName(QStringLiteral("gaugeFace"));
@@ -70,14 +74,27 @@ GaugePanel::GaugePanel(QWidget *parent) : SettingsPanel(tr("Gauge"), parent)
         m_style = current();
         emit gaugeEdited(m_style);
     };
+    // A kind that reads something else: a scale that suits it.
     connect(m_kind, &QComboBox::activated, this, [this, edited] {
+        const gauge::Kind was = m_style.kind;
+        m_style.kind = static_cast<gauge::Kind>(m_kind->currentIndex());
+        const auto scaleOf = [](gauge::Kind k) {
+            return k == gauge::Kind::Dial || k == gauge::Kind::Bar ? gauge::Kind::Dial : k;
+        };
+        m_updating = true;
         showRows();
+        if (scaleOf(was) != scaleOf(m_style.kind)) {
+            const gauge::Range r = gauge::defaultRange(m_style.kind, m_style.reads, m_style.units);
+            m_min->setValue(r.min);
+            m_max->setValue(r.max);
+        }
+        m_updating = false;
         edited();
     });
     // Another value or unit: a scale that suits it.
     connect(m_reads, &QComboBox::activated, this, [this, edited] {
         m_style.reads = static_cast<gauge::Reads>(m_reads->currentIndex());
-        const gauge::Range r = gauge::defaultRange(m_style.reads, m_style.units);
+        const gauge::Range r = gauge::defaultRange(m_style.kind, m_style.reads, m_style.units);
         m_updating = true;
         showRows();
         m_min->setValue(r.min);
@@ -132,8 +149,8 @@ gauge::Style GaugePanel::current() const
     gauge::Style s = m_style;
     s.kind = static_cast<gauge::Kind>(std::max(0, m_kind->currentIndex()));
     s.reads = static_cast<gauge::Reads>(std::max(0, m_reads->currentIndex()));
-    s.min = m_min->value();
     s.max = m_max->value();
+    s.min = s.symmetric() ? -s.max : m_min->value();
     s.faceOpacity = float(m_faceOpacity->value() / 100.0);
     return s;
 }
@@ -145,10 +162,38 @@ void GaugePanel::setColor(QPushButton *button, uint32_t rgb)
 
 void GaugePanel::showRows()
 {
-    const bool scale = m_kind->currentIndex() != static_cast<int>(gauge::Kind::Tape);
+    const auto kind = static_cast<gauge::Kind>(std::max(0, m_kind->currentIndex()));
+    // A dial or a bar reads a value of your choice on a scale from one end
+    // to the other; a lean dial or a G circle its own, on a scale the same
+    // either side of 0; a tape and a route have none.
+    const bool reads = kind == gauge::Kind::Dial || kind == gauge::Kind::Bar;
+    const bool symmetric = kind == gauge::Kind::Lean || kind == gauge::Kind::GForce;
     for (QWidget *w : {static_cast<QWidget *>(m_reads), static_cast<QWidget *>(m_unit),
-                       static_cast<QWidget *>(m_min), static_cast<QWidget *>(m_max)})
-        form()->setRowVisible(w, scale);
+                       static_cast<QWidget *>(m_min)})
+        form()->setRowVisible(w, reads);
+    form()->setRowVisible(m_max, reads || symmetric);
+    if (auto *label = qobject_cast<QLabel *>(form()->labelForField(m_max)))
+        label->setText(kind == gauge::Kind::Lean     ? tr("Scale (\u00b1\u00b0)")
+                       : kind == gauge::Kind::GForce ? tr("Scale (g)")
+                                                     : tr("Scale to"));
+    {
+        const QSignalBlocker block(m_max);
+        if (kind == gauge::Kind::GForce) {
+            m_max->setDecimals(2);
+            m_max->setSingleStep(0.25);
+        } else {
+            m_max->setDecimals(0);
+            m_max->setSingleStep(kind == gauge::Kind::Lean ? 5.0 : 10.0);
+        }
+    }
+    m_max->setToolTip(symmetric ? (kind == gauge::Kind::Lean
+                                       ? tr("How far the dial reaches either side of upright, "
+                                            "in degrees. A lean past it shows at its end; the "
+                                            "number still shows the lean.")
+                                       : tr("The G-force at the circle's edge. A force past it "
+                                            "shows on the edge; the number still shows it."))
+                                : tr("The scale's high end. A value above it shows there; the "
+                                     "number still shows the value."));
     const bool speed = m_reads->currentIndex() == static_cast<int>(gauge::Reads::Speed);
     const QSignalBlocker block(m_unit);
     m_unit->clear();
@@ -178,6 +223,6 @@ void GaugePanel::setGauge(const gauge::Style &s, const QString &note)
     m_note->setText(note);
     m_note->setVisible(!note.isEmpty());
     setHint(tr("The gauge selected on the timeline or in the view. Its value comes from the GPS "
-               "track of the clip under it."));
+               "track or the motion of the clip under it; a route shows every clip's track."));
     m_updating = false;
 }

@@ -9,7 +9,9 @@ namespace title {
 
 namespace {
 
-enum class Field { None, Time, TimeSeconds, Date, Speed, Altitude, Heading, Compass };
+enum class Field {
+    None, Time, TimeSeconds, Date, Speed, Altitude, Heading, Compass, Lean, G
+};
 
 // The field starting at `i` (a '{'), and how long it is.
 Field fieldAt(const QString &text, qsizetype i, qsizetype *length)
@@ -20,7 +22,9 @@ Field fieldAt(const QString &text, qsizetype i, qsizetype *length)
                                       std::pair{&kSpeedField, Field::Speed},
                                       std::pair{&kAltitudeField, Field::Altitude},
                                       std::pair{&kHeadingField, Field::Heading},
-                                      std::pair{&kCompassField, Field::Compass}})
+                                      std::pair{&kCompassField, Field::Compass},
+                                      std::pair{&kLeanField, Field::Lean},
+                                      std::pair{&kGField, Field::G}})
         if (QStringView(text).mid(i).startsWith(*name)) {
             *length = name->size();
             return field;
@@ -28,10 +32,10 @@ Field fieldAt(const QString &text, qsizetype i, qsizetype *length)
     return Field::None;
 }
 
-bool isGps(Field f)
+bool isTelemetry(Field f)
 {
     return f == Field::Speed || f == Field::Altitude || f == Field::Heading ||
-           f == Field::Compass;
+           f == Field::Compass || f == Field::Lean || f == Field::G;
 }
 
 // Is there a field in `text` that `wanted` picks?
@@ -168,12 +172,66 @@ bool hasFields(const QString &text)
 
 bool hasClockFields(const QString &text)
 {
-    return anyField(text, [](Field f) { return !isGps(f); });
+    return anyField(text, [](Field f) { return !isTelemetry(f); });
+}
+
+bool hasTelemetryFields(const QString &text)
+{
+    return anyField(text, isTelemetry);
 }
 
 bool hasGpsFields(const QString &text)
 {
-    return anyField(text, isGps);
+    return anyField(text,
+                    [](Field f) { return isTelemetry(f) && f != Field::Lean && f != Field::G; });
+}
+
+bool hasMotionFields(const QString &text)
+{
+    return anyField(text, [](Field f) { return f == Field::Lean || f == Field::G; });
+}
+
+bool hasGForceField(const QString &text)
+{
+    return anyField(text, [](Field f) { return f == Field::G; });
+}
+
+int leanDegrees(double leanDeg)
+{
+    return int(std::lround(leanDeg));
+}
+
+QString leanSide(int degrees)
+{
+    return degrees > 0 ? QStringLiteral("R") : degrees < 0 ? QStringLiteral("L") : QString();
+}
+
+QString leanText(const std::optional<MotionTelemetry::Values> &motion, const QLocale &locale)
+{
+    if (!motion)
+        return QStringLiteral("--") + QChar(0x00b0);
+    const int d = leanDegrees(motion->leanDeg);
+    const QString side = leanSide(d);
+    return locale.toString(std::abs(d)) + QChar(0x00b0) +
+           (side.isEmpty() ? QString() : QLatin1Char(' ') + side);
+}
+
+std::optional<int> gHundredths(const std::optional<MotionTelemetry::Values> &motion)
+{
+    if (!motion || !motion->travelKnown)
+        return std::nullopt;
+    return int(std::lround(100.0 * std::hypot(motion->lateralG, motion->forwardG)));
+}
+
+QString gNumber(int hundredths, const QLocale &locale)
+{
+    return locale.toString(hundredths / 100.0, 'f', 2);
+}
+
+QString gText(const std::optional<MotionTelemetry::Values> &motion, const QLocale &locale)
+{
+    const std::optional<int> g = gHundredths(motion);
+    return (g ? gNumber(*g, locale) : QStringLiteral("--")) + QStringLiteral(" g");
 }
 
 Units defaultUnits(const QLocale &locale)
@@ -184,7 +242,8 @@ Units defaultUnits(const QLocale &locale)
 }
 
 QString withFields(const QString &text, const QDateTime &at, const QLocale &locale,
-                   Hours hours, const std::optional<Telemetry::Values> &gps, Units units)
+                   Hours hours, const std::optional<Telemetry::Values> &gps, Units units,
+                   const std::optional<MotionTelemetry::Values> &motion)
 {
     if (!text.contains(QLatin1Char('{')))
         return text;
@@ -222,6 +281,8 @@ QString withFields(const QString &text, const QDateTime &at, const QLocale &loca
         case Field::Altitude:
         case Field::Heading:
         case Field::Compass: out += gpsValue(f, gps, units, locale); break;
+        case Field::Lean: out += leanText(motion, locale); break;
+        case Field::G: out += gText(motion, locale); break;
         }
         i += length - 1;
     }
@@ -264,6 +325,34 @@ std::optional<MotionTelemetry::Values> Clock::motionAt(qint64 timelineMs) const
     if (i < 0 || !m_motion[size_t(i)])
         return std::nullopt;
     return m_motion[size_t(i)]->at(double(m_map.sourceMs(i, timelineMs)));
+}
+
+std::vector<std::vector<Clock::Fix>> Clock::route(qint64 stepMs) const
+{
+    std::vector<std::vector<Fix>> out;
+    stepMs = std::max<qint64>(1, stepMs);
+    for (size_t i = 0; i < m_map.spans().size(); ++i) {
+        const SourceTimeMap::Span &s = m_map.spans()[i];
+        if (!m_gps[i])
+            continue;
+        bool open = false; // the last stretch still runs
+        for (qint64 t = s.startMs;; t += stepMs) {
+            const qint64 at = std::min(t, s.endMs - 1); // the clip's last ms
+            const std::optional<Telemetry::Values> v =
+                m_gps[i]->at(double(m_map.sourceMs(int(i), at)));
+            if (!v)
+                open = false;
+            else {
+                if (!open)
+                    out.emplace_back();
+                out.back().push_back({at, v->latitude, v->longitude});
+                open = true;
+            }
+            if (at >= s.endMs - 1)
+                break;
+        }
+    }
+    return out;
 }
 
 qint64 Clock::baseMs(int i) const

@@ -1813,7 +1813,7 @@ void testTitleJson()
         clock.units = {title::SpeedUnit::Mph, title::AltitudeUnit::Feet};
         tl->setTrackClipTitle(tl->trackAt(0).clips.at(0).id, clock);
         CHECK(p.save(file, &err));
-        CHECK(document().value("version").toInt() == Project::kFormatVersion);
+        CHECK(document().value("version").toInt() == Project::kClockFormatVersion);
         Project gps;
         CHECK(gps.load(file, &err));
         const title::Style &g = *gps.timeline()->trackAt(0).clips.at(0).title;
@@ -1894,6 +1894,44 @@ void testGaugeJson()
     CHECK(c.isGauge() && *c.gauge == g && c.startMs == 1500 && c.timelineDurationMs() == 8000);
     CHECK(c.look.centerX == 0.3f && c.sourcePath.isEmpty() && !c.mediaMissing);
     CHECK(back.mediaPool()->items().size() == 1); // the main clip only
+
+    // The lean dial, the G circle and the route need version 20, as do the
+    // lean and G fields; their scales read back the same either side of 0.
+    for (const gauge::Kind kind : {gauge::Kind::Lean, gauge::Kind::GForce, gauge::Kind::Route}) {
+        gauge::Style m;
+        m.kind = kind;
+        const gauge::Range r = gauge::defaultRange(kind, m.reads, m.units);
+        m.min = r.min;
+        m.max = r.max;
+        m = m.clamped();
+        Project p;
+        p.timeline()->appendClip("a.insv", 60000, 30.0);
+        const int v = p.timeline()->addTrack(Track::Kind::Video);
+        CHECK(p.timeline()->addGaugeClip(v, 0, m, 5000));
+        CHECK(p.save(file, &err));
+        QFile mf(file);
+        CHECK(mf.open(QIODevice::ReadOnly));
+        CHECK(QJsonDocument::fromJson(mf.readAll()).object().value("version").toInt() ==
+              Project::kMotionOverlayFormatVersion);
+        Project mb;
+        CHECK(mb.load(file, &err));
+        CHECK(*mb.timeline()->trackAt(0).clips.at(0).gauge == m);
+    }
+    for (const QString &text : {QStringLiteral("{lean}"), QStringLiteral("{g}"),
+                                QStringLiteral("{{lean} {speed}")}) {
+        Project p;
+        p.timeline()->appendClip("a.insv", 60000, 30.0);
+        const int v = p.timeline()->addTrack(Track::Kind::Video);
+        title::Style t;
+        t.text = text;
+        CHECK(p.timeline()->addTitleClip(v, 0, t, 5000));
+        CHECK(p.save(file, &err));
+        QFile tf(file);
+        CHECK(tf.open(QIODevice::ReadOnly));
+        CHECK(QJsonDocument::fromJson(tf.readAll()).object().value("version").toInt() ==
+              (text.startsWith("{{") ? Project::kClockFormatVersion
+                                     : Project::kMotionOverlayFormatVersion));
+    }
 }
 
 // Transitions: saved at their cut (the index of the clip before it), with

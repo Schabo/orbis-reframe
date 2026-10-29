@@ -44,9 +44,14 @@ fitted per clip, since the camera needn't face it) and
 title clock next to the GPS, read off the GUI thread -- built:
 `core/MotionTelemetry` and the main window's `TelemetryCache`; then a lean
 half-dial, a G circle and the whole trip's route as gauges, with `{lean}`
-and `{g}` fields; then the project format (version 20) and the manual.
-Where a clip has no GPS, a field or gauge shows `--`. Place names from coordinates are not planned: they'd need an
-offline place database.
+and `{g}` fields, saved as project version 20 -- built:
+`gauge::Kind::Lean` / `GForce` / `Route`, `title::Clock::route`,
+`gaugerender::Route`; then the remaining checks (synthetic IMU and GPS lag
+tests, viewport against export, NVENC unchanged without the new gauges).
+Where a clip has no GPS, a field or gauge shows `--`; the G-force also
+where a clip hardly turns and its direction of travel isn't known. Place
+names from coordinates are not planned: they'd need an offline place
+database.
 
 ### 2. Optional
 

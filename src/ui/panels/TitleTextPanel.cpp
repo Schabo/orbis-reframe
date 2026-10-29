@@ -77,10 +77,10 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
     m_insert = new QPushButton(tr("Insert"), this);
     m_insert->setObjectName(QStringLiteral("titleInsert"));
     m_insert->setToolTip(tr("Put the time or the date the picture under the title was "
-                            "recorded, or the speed, altitude or heading from its GPS, into "
-                            "the text, where the cursor is. The text shows it as a field in "
-                            "braces; the picture shows its value, which follows the clip "
-                            "under the title as it plays."));
+                            "recorded, the speed, altitude or heading from its GPS, or the "
+                            "lean or G-force from its motion, into the text, where the cursor "
+                            "is. The text shows it as a field in braces; the picture shows its "
+                            "value, which follows the clip under the title as it plays."));
     auto *insertMenu = new QMenu(m_insert);
     const struct {
         const char *name;
@@ -95,6 +95,9 @@ TitleTextPanel::TitleTextPanel(QWidget *parent) : SettingsPanel(tr("Text"), pare
         {"titleInsertAltitude", tr("Altitude"), title::kAltitudeField},
         {"titleInsertHeading", tr("Heading in degrees"), title::kHeadingField},
         {"titleInsertCompass", tr("Heading as a compass point"), title::kCompassField},
+        {nullptr, {}, {}},
+        {"titleInsertLean", tr("Lean angle"), title::kLeanField},
+        {"titleInsertG", tr("G-force"), title::kGField},
     };
     for (const auto &f : fields) {
         if (!f.name) {

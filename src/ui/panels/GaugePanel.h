@@ -24,7 +24,7 @@ public:
     explicit GaugePanel(QWidget *parent = nullptr);
 
     // Reflect a gauge. Does not emit. `note`, shown under the fields when
-    // not empty: where it has no GPS to show.
+    // not empty: where it has no GPS or motion to show.
     void setGauge(const gauge::Style &style, const QString &note = QString());
 
 signals:

@@ -5,8 +5,9 @@ date. Titles sit on overlay tracks, like picture-in-picture videos
 ([Picture in picture](picture-in-picture.md)), and are placed, keyframed and faded the same way.
 They can also slide in and out, pop up, or type themselves on letter by
 letter, and show the time of day the video was recorded, running as it
-plays, or the speed, altitude and heading from the camera's GPS -- as
-text, or drawn as a gauge.
+plays, the speed, altitude and heading from the camera's GPS, or how far
+you lean and the G-forces -- as text, or drawn as a gauge, and the route
+of the whole trip as a map.
 
 ![A title with a drop shadow in the viewport, the Overlays tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -43,8 +44,8 @@ lands in the picture. An animated one plays its animation while the mouse is ove
 | **Speed and altitude** | The speed and, below it, the altitude, in the lower left. |
 | **Direction** | The direction of travel at the top in the middle, as a compass point and in degrees, on a rounded box. |
 
-Under them, **Gauges** draw a GPS value as an instrument (see
-[Gauges](#gauges)):
+Under them, **Gauges** draw a value from the GPS or the camera's motion
+as an instrument (see [Gauges](#gauges)):
 
 | Tile | What you get |
 |---|---|
@@ -52,6 +53,9 @@ Under them, **Gauges** draw a GPS value as an instrument (see
 | **Speed bar** | The speed in the lower left, over a bar that fills up with it. |
 | **Altitude bar** | The altitude in the lower left, over a bar that fills up with it. |
 | **Heading tape** | The direction of travel at the top in the middle: a compass strip sliding under a marker, the degrees above it. |
+| **Lean angle** | How far the vehicle leans, at the bottom in the middle: a half dial, upright at the top, the degrees and the side in the middle. |
+| **G-force** | The acceleration in the lower left: a dot in a circle, to the side in a bend, up speeding up and down braking, the total in g under it. |
+| **Route** | The whole trip seen from above in the upper right, north up: the route of every clip on the timeline, the part ridden so far coloured, a dot where the camera is. |
 
 To add one:
 
@@ -94,7 +98,7 @@ itself (and back again when you select a PiP). The **Text** section:
 | Setting | What it does |
 |---|---|
 | **Text** | The title's text. `Enter` starts a new line. The title changes as you type. |
-| **Insert** | Puts the recording time or date into the text where the cursor is: **Time**, **Time with seconds** or **Date** (see [The recording time as a clock](#the-recording-time-as-a-clock)); or a value from the camera's GPS: **Speed**, **Altitude**, **Heading in degrees** or **Heading as a compass point** (see [Speed, altitude and heading from the GPS](#speed-altitude-and-heading-from-the-gps)). |
+| **Insert** | Puts the recording time or date into the text where the cursor is: **Time**, **Time with seconds** or **Date** (see [The recording time as a clock](#the-recording-time-as-a-clock)); a value from the camera's GPS: **Speed**, **Altitude**, **Heading in degrees** or **Heading as a compass point** (see [Speed, altitude and heading from the GPS](#speed-altitude-and-heading-from-the-gps)); or from its motion: **Lean angle** or **G-force** (see [Lean and G-force](#lean-and-g-force)). |
 | **Clock** | Shown while the text has a time in it: how it writes the hours. **As the system writes it**, **24-hour** or **12-hour (AM / PM)**. |
 | **Speed in** | Shown while the text has a speed in it: **km/h** or **mph**. |
 | **Altitude in** | Shown while the text has an altitude in it: **metres** or **feet**. |
@@ -200,33 +204,75 @@ Where there is no GPS, a field shows `--` with its unit (*-- km/h*):
 The **Text** section then says which clips under the title have no GPS
 there, or have it for only part of the time.
 
+## Lean and G-force
+
+The camera's motion sensor records how it turns and accelerates, GPS or
+not. From it, a title can show how far the vehicle leans and the
+G-force it feels, as fields like the GPS's:
+
+| Field | Shows | Example |
+|---|---|---|
+| `{lean}` | How far the vehicle leans from upright, in whole degrees, and to which side: L or R | *24° R* |
+| `{g}` | The total G-force in the level plane, braking, speeding up and cornering together, in g | *0.42 g* |
+
+They follow the video like the GPS fields. The camera needn't face the
+way you ride, and on a stick it often doesn't: orbis-reframe finds the
+direction of travel in each clip from how the camera tilts as the vehicle
+turns, and measures the lean about it and the G-forces along and across
+it. The values are smoothed a little (the lean over about a quarter of a
+second, the G-force over about half a second), so a stick's shake doesn't
+show. Upright is the camera's average posture over the clip.
+
+A clip that hardly turns gives nothing to find the direction of travel
+by. There the G-force shows `-- g`, since forward could point any way;
+the lean still shows. A clip from a camera orbis-reframe reads no motion
+from shows `--` in both. The **Text** section then says which clips those
+are.
+
 ## Gauges
 
-A gauge draws a value from the GPS as an instrument: a **Dial** with a
-needle over a scale and the number in the middle, a **Bar** with the
-number over a bar that fills up along a scale, or a **Heading tape**, a
-compass strip that slides under a marker as the direction of travel
-changes, with the degrees above it. Add one from the **Gauges** tiles of
-the **Overlays** tab like a title. It is a clip on an overlay track like
-a title, and follows the video the same way: the value is the one a
-title's GPS field shows at that moment, the number rounded the same, and
-the needle, bar or tape moves smoothly between the fixes.
+A gauge draws a value as an instrument: a **Dial** with a needle over a
+scale and the number in the middle, a **Bar** with the number over a bar
+that fills up along a scale, a **Heading tape**, a compass strip that
+slides under a marker as the direction of travel changes, with the
+degrees above it, a **Lean dial**, a half dial upright at the top with
+the lean's degrees and side in the middle, a **G circle**, a dot that
+moves across the circle with the acceleration (right in a right-hand
+bend, up speeding up, down braking) over the total in g, or a **Route**.
+Add one from the **Gauges** tiles of the **Overlays** tab like a title.
+It is a clip on an overlay track like a title, and follows the video the
+same way: the value is the one a title's field shows at that moment, the
+number rounded the same, and the needle, bar, tape or dot moves smoothly.
+
+A **Route** shows the whole trip, not just the clip under it: every clip
+on the timeline that has a GPS track, the part of it each clip uses, seen
+from above with north up and its shape kept. The route is drawn faint,
+the part ridden up to this moment in the accent colour, and a dot marks
+where the camera is. Clips are drawn separately, so a cut doesn't draw a
+line across the map; a clip with no GPS is left out, and over it the dot
+is hidden. A route shows where you rode, and so where you started or
+live: think about that before you share the video.
 
 Selecting a gauge shows its **Gauge** section in the **Title** tab, in
 the place of **Text** and **Look**:
 
 | Setting | What it does |
 |---|---|
-| **Kind** | **Dial**, **Bar** or **Heading tape**. |
-| **Shows** | **Speed** or **Altitude** (not for a tape, which always shows the heading). Picking the other sets a scale that suits it. |
+| **Kind** | **Dial**, **Bar**, **Heading tape**, **Lean dial**, **G circle** or **Route**. Changing to a kind that shows something else sets a scale that suits it. |
+| **Shows** | For a dial or a bar: **Speed** or **Altitude**. Picking the other sets a scale that suits it. |
 | **Unit** | **km/h** or **mph** for a speed, **metres** or **feet** for an altitude. The scale's ends are converted to it. A new gauge starts with the units your computer's region uses. |
-| **Scale from** / **Scale to** | The scale's low and high end, in the unit. A new speed gauge goes to 200 km/h (120 mph), an altitude gauge to 1000 m (3000 ft). A value past an end puts the needle or bar at that end; the number still shows the value. |
-| **Accent** | The colour of the needle, the bar and the tape's marker. |
+| **Scale from** / **Scale to** | For a dial or a bar: the scale's low and high end, in the unit. A new speed gauge goes to 200 km/h (120 mph), an altitude gauge to 1000 m (3000 ft). A value past an end puts the needle or bar at that end; the number still shows the value. |
+| **Scale (±°)** | For a lean dial: how far it reaches either side of upright, 60° when added (5° to 90°). A lean past it shows at the end; the number still shows the lean. |
+| **Scale (g)** | For a G circle: the G-force at the circle's edge, 1 g when added (0.1 g to 5 g). A force past it puts the dot on the edge, the way it points; the number still shows it. |
+| **Accent** | The colour of the needle, the bar, the tape's marker, the G circle's dot and the part of the route ridden so far. |
 | **Face** and **Face opacity** | The colour behind the gauge, and how solid it is. At 0 % only the scale and the numbers sit over the picture. |
 | **Text** | The colour of the scale and the numbers. |
 
-Where the clip under it has no GPS, a gauge stays empty and its number
-shows `--`; the **Gauge** section then says which clips those are. Its
+Where the clip under it has no GPS (for a lean dial or a G circle, no
+motion; for a G circle, also no direction of travel, see [Lean and
+G-force](#lean-and-g-force)), a gauge stays empty and its number shows
+`--`; the **Gauge** section then says which clips those are. A route
+with no GPS on the whole timeline shows only `--`. Its
 **Animation** works as a title's, without typing on or off, and its
 **Position and timing** too, except that its **Size** is the gauge's
 height, as a percentage of the picture's height.

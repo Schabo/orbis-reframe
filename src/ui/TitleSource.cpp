@@ -13,7 +13,7 @@ TitleSource::TitleSource(title::Style style, inset::Motion motion, int64_t spanM
       m_types(motion.in.kind == inset::Motion::Kind::Type ||
               motion.out.kind == inset::Motion::Kind::Type),
       m_clock(std::move(clock)), m_startMs(startMs), m_fields(title::hasFields(m_style.text)),
-      m_gpsFields(title::hasGpsFields(m_style.text)),
+      m_gpsFields(title::hasTelemetryFields(m_style.text)),
       m_clockStepS(m_style.text.contains(title::kTimeSecondsField) ? 1 : 60)
 {
 }
@@ -23,7 +23,8 @@ QString TitleSource::textAt(int64_t localMs) const
     const int64_t t = m_startMs + localMs;
     return title::withFields(m_style.text, m_fields ? m_clock.at(t) : QDateTime(), QLocale(),
                              m_style.hours,
-                             m_gpsFields ? m_clock.gpsAt(t) : std::nullopt, m_style.units);
+                             m_gpsFields ? m_clock.gpsAt(t) : std::nullopt, m_style.units,
+                             m_gpsFields ? m_clock.motionAt(t) : std::nullopt);
 }
 
 exportpipe::Still TitleSource::still(int64_t localMs, int visible, bool make)

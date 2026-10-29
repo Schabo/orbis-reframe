@@ -289,6 +289,41 @@ QList<GaugePreset> makeGauges()
     tape.style.kind = gauge::Kind::Tape;
     tape.look = at(0.5f, 0.1f, 0.12f);
     list.push_back(tape);
+
+    // The motion gauges read the camera's motion sensor, GPS or not.
+    const QString motionHint = tr("It shows the motion the camera's sensors recorded in the "
+                                  "clip under it, about the direction it travels.");
+    GaugePreset lean{QStringLiteral("gauge-lean"), tr("Lean angle"),
+                     tr("How far the vehicle leans, at the bottom in the middle: a half dial, "
+                        "upright at the top, the degrees and the side in the middle.") +
+                         QLatin1Char(' ') + motionHint + QLatin1Char(' ') + hint};
+    lean.style.kind = gauge::Kind::Lean;
+    lean.style.min = -60.0; // its scale either side of upright
+    lean.style.max = 60.0;
+    lean.look = at(0.5f, 0.86f, 0.18f);
+    list.push_back(lean);
+
+    GaugePreset g{QStringLiteral("gauge-g-force"), tr("G-force"),
+                  tr("The acceleration in the lower left: a dot in a circle, to the side in a "
+                     "bend, up speeding up and down braking, the total in g under it. Where a "
+                     "clip hardly turns the direction of travel isn't known, and it stays "
+                     "empty.") +
+                      QLatin1Char(' ') + motionHint + QLatin1Char(' ') + hint};
+    g.style.kind = gauge::Kind::GForce;
+    g.style.min = -1.0;
+    g.style.max = 1.0;
+    g.look = at(0.12f, 0.75f, 0.25f);
+    list.push_back(g);
+
+    GaugePreset route{QStringLiteral("gauge-route"), tr("Route"),
+                      tr("The whole trip seen from above in the upper right, north up: the "
+                         "route of every clip on the timeline, the part ridden so far "
+                         "coloured, a dot where the camera is; clips with no GPS track are "
+                         "left out. It shows where you rode: think before sharing it.") +
+                          QLatin1Char(' ') + hint};
+    route.style.kind = gauge::Kind::Route;
+    route.look = at(0.87f, 0.22f, 0.3f);
+    list.push_back(route);
     return list;
 }
 
@@ -313,7 +348,7 @@ gauge::Style gaugeStyleFor(const GaugePreset &p)
     gauge::Style s = p.style;
     s.font = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
     s.units = title::defaultUnits();
-    const gauge::Range r = gauge::defaultRange(s.reads, s.units);
+    const gauge::Range r = gauge::defaultRange(s.kind, s.reads, s.units);
     s.min = r.min;
     s.max = r.max;
     return s;

@@ -564,7 +564,7 @@ json titleToJson(const title::Style &t)
 // A gauge's whole style: what it reads, its scale, units and colours.
 json gaugeToJson(const gauge::Style &g)
 {
-    static const char *const kinds[] = {"dial", "bar", "tape"};
+    static const char *const kinds[] = {"dial", "bar", "tape", "lean", "g", "route"};
     json j{{"kind", kinds[static_cast<int>(g.kind)]},
            {"reads", g.reads == gauge::Reads::Altitude ? "altitude" : "speed"},
            {"min", g.min},
@@ -585,9 +585,12 @@ gauge::Style gaugeFromJson(const json &j)
 {
     gauge::Style g;
     const std::string kind = j.value("kind", std::string());
-    g.kind = kind == "bar"    ? gauge::Kind::Bar
-             : kind == "tape" ? gauge::Kind::Tape
-                              : gauge::Kind::Dial;
+    g.kind = kind == "bar"     ? gauge::Kind::Bar
+             : kind == "tape"  ? gauge::Kind::Tape
+             : kind == "lean"  ? gauge::Kind::Lean
+             : kind == "g"     ? gauge::Kind::GForce
+             : kind == "route" ? gauge::Kind::Route
+                               : gauge::Kind::Dial;
     g.reads = j.value("reads", std::string()) == "altitude" ? gauge::Reads::Altitude
                                                             : gauge::Reads::Speed;
     g.units.speed = j.value("speedUnit", std::string()) == "mph" ? title::SpeedUnit::Mph
@@ -1259,6 +1262,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyMotion = false;
     bool anyBrace = false; // a clock field, or an escaped brace
     bool anyGauge = false;
+    bool anyMotionOverlay = false; // a lean, G or route gauge, a lean or G field
     for (int i = 0; i < m_timeline->trackCount(); ++i) {
         const Track &t = m_timeline->trackAt(i);
         const bool video = t.kind == Track::Kind::Video;
@@ -1270,6 +1274,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 anyMotion |= !c.motion.isNone();
                 anyBrace |= c.isTitle() && c.title->text.contains(QLatin1Char('{'));
                 anyGauge |= c.isGauge();
+                anyMotionOverlay |= (c.isGauge() && (c.gauge->kind == gauge::Kind::Lean ||
+                                                     c.gauge->kind == gauge::Kind::GForce ||
+                                                     c.gauge->kind == gauge::Kind::Route)) ||
+                                    (c.isTitle() && title::hasMotionFields(c.title->text));
                 tc.push_back(videoClipToJson(c, projectDir));
                 continue;
             }
@@ -1335,7 +1343,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyGauge                ? kGaugeFormatVersion
+        {"version", anyMotionOverlay        ? kMotionOverlayFormatVersion
+                    : anyGauge                ? kGaugeFormatVersion
                     : anyBrace                ? kClockFormatVersion
                     : anyMotion               ? kMotionFormatVersion
                     : anyStyledTitle          ? kTitleLookFormatVersion

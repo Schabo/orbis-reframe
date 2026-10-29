@@ -56,7 +56,7 @@ private:
     const bool m_types;        // types on or off
     const title::Clock m_clock;
     const int64_t m_startMs;
-    const bool m_fields;     // has clock or GPS fields
-    const bool m_gpsFields;  // has GPS fields
+    const bool m_fields;     // has clock, GPS or motion fields
+    const bool m_gpsFields;  // has GPS or motion fields (title::hasTelemetryFields)
     const int m_clockStepS;  // how often they can change: a second, or a minute
 };

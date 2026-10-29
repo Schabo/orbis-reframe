@@ -15,6 +15,11 @@ public:
         double leanDeg = 0.0;  // positive leaning right, 0 upright
         double lateralG = 0.0; // across the travel, positive toward the right
         double forwardG = 0.0; // along the travel, positive speeding up
+        // Was the direction of travel found (insv::MotionTrack::travelFit)?
+        // Where the clip hardly turns it wasn't, and the G-forces are along
+        // and across the camera's forward, which may point any way: they
+        // aren't shown then.
+        bool travelKnown = true;
     };
 
     MotionTelemetry() = default;

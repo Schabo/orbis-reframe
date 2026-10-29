@@ -70,9 +70,9 @@ title::Clock titleClock(const Timeline &timeline, const FieldSources &sources);
 // (title::hasClockFields)? Only then are the recording times worth looking
 // up.
 bool anyTitleClock(const Timeline &timeline);
-// ... GPS fields (title::hasGpsFields), or is there a gauge? Only then are
-// the GPS tracks read.
-bool anyTitleGps(const Timeline &timeline);
+// ... GPS or motion fields (title::hasTelemetryFields), or is there a
+// gauge? Only then are the files' telemetry read.
+bool anyTitleTelemetry(const Timeline &timeline);
 
 // How far a title's position has to move, in its text size times output
 // widths (Timeline::setTrackClipTitle's shiftPerSize), for its text to stay
@@ -81,7 +81,8 @@ bool anyTitleGps(const Timeline &timeline);
 // position pins (title::drawnLook). Their fields read `at` and `gps`.
 double titleAnchorShift(const title::Style &from, const title::Style &to, int outW, int outH,
                         const QDateTime &at = QDateTime(),
-                        const std::optional<Telemetry::Values> &gps = std::nullopt);
+                        const std::optional<Telemetry::Values> &gps = std::nullopt,
+                        const std::optional<MotionTelemetry::Values> &motion = std::nullopt);
 
 // What a transition shows besides the main track, in timeline order. A
 // crossfade: over the first half of it the clip after the cut, from before

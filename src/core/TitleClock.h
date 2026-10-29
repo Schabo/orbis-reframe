@@ -19,7 +19,8 @@
 // in hours and minutes, `{time:ss}` with seconds, `{date}` the date written
 // in full; `{speed}`, `{altitude}`, `{heading}` (in degrees) and
 // `{heading:compass}` (N, NE, ...) come from the clip's GPS (Telemetry),
-// with their unit; `{{` is a brace of its own. The text box shows the
+// with their unit, `{lean}` and `{g}` (the total G-force) from its motion
+// (MotionTelemetry); `{{` is a brace of its own. The text box shows the
 // fields, the picture their values (withFields) at each moment, from the
 // main-track clip under the title then (title::Clock).
 namespace title {
@@ -28,8 +29,13 @@ namespace title {
 bool hasFields(const QString &text);
 // ... one that shows the time or the date (read from the recording time)?
 bool hasClockFields(const QString &text);
+// ... one that shows a value from the clip's telemetry, GPS or motion?
+bool hasTelemetryFields(const QString &text);
 // ... one that shows a GPS value?
 bool hasGpsFields(const QString &text);
+// ... one that shows the lean or the G-force (from the motion)? The G-force?
+bool hasMotionFields(const QString &text);
+bool hasGForceField(const QString &text);
 
 // `text` with its fields filled in for the moment `at` (a wall-clock time,
 // read as written: its date() and time()), written as `locale` writes a
@@ -37,11 +43,12 @@ bool hasGpsFields(const QString &text);
 // says when it was recorded) gives `--:--`, `--:--:--` and an empty date.
 // The GPS fields show `gps` in whole `units` (a speed under a walking
 // pace, the GPS's jitter when standing still, as 0), or `--` with the unit
-// when there's none. `{{` becomes `{`; a brace that isn't a field stays as
-// it is.
+// when there's none; the motion fields show `motion` likewise (leanText,
+// gText). `{{` becomes `{`; a brace that isn't a field stays as it is.
 QString withFields(const QString &text, const QDateTime &at, const QLocale &locale = QLocale(),
                    Hours hours = Hours::System,
-                   const std::optional<Telemetry::Values> &gps = std::nullopt, Units units = {});
+                   const std::optional<Telemetry::Values> &gps = std::nullopt, Units units = {},
+                   const std::optional<MotionTelemetry::Values> &motion = std::nullopt);
 // Does `text` have a field that shows the time (so Hours matters)?
 bool hasTimeField(const QString &text);
 
@@ -57,6 +64,20 @@ inline const QString kSpeedField = QStringLiteral("{speed}");
 inline const QString kAltitudeField = QStringLiteral("{altitude}");
 inline const QString kHeadingField = QStringLiteral("{heading}");
 inline const QString kCompassField = QStringLiteral("{heading:compass}");
+inline const QString kLeanField = QStringLiteral("{lean}");
+inline const QString kGField = QStringLiteral("{g}");
+
+// A lean in whole degrees, positive to the right, as `{lean}` and the lean
+// dial write it: the degrees and the side, "23° R", upright "0°".
+int leanDegrees(double leanDeg);
+QString leanSide(int degrees); // "L", "R", or nothing upright
+QString leanText(const std::optional<MotionTelemetry::Values> &motion, const QLocale &locale);
+// The total G-force in hundredths of a g, as `{g}` and the G circle write
+// it ("0.42 g"); nullopt where there's no motion or no known direction of
+// travel (MotionTelemetry::Values::travelKnown).
+std::optional<int> gHundredths(const std::optional<MotionTelemetry::Values> &motion);
+QString gNumber(int hundredths, const QLocale &locale); // "0.42"
+QString gText(const std::optional<MotionTelemetry::Values> &motion, const QLocale &locale);
 
 // The units the system's region writes in: miles and feet where it
 // measures in imperial units, else kilometres and metres.
@@ -88,6 +109,16 @@ public:
     std::optional<Telemetry::Values> gpsAt(qint64 timelineMs) const;
     // The lean and G-forces at `timelineMs`, nullopt where there are none.
     std::optional<MotionTelemetry::Values> motionAt(qint64 timelineMs) const;
+    // Where the camera was over the whole timeline, for a route: its
+    // position every `stepMs` of the timeline and at each clip's end, one
+    // stretch for each run of GPS with no gap in it and no cut to another
+    // clip (the clips may be miles apart).
+    struct Fix {
+        qint64 timelineMs = 0;
+        double latitude = 0.0;
+        double longitude = 0.0;
+    };
+    std::vector<std::vector<Fix>> route(qint64 stepMs = 500) const;
     // The first timeline ms after `timelineMs` where at() lands in another
     // `stepSeconds`-long stretch of the wall clock (a new second or minute)
     // or another clip starts, or -1 if none does.

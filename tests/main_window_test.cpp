@@ -1465,7 +1465,9 @@ void testGaugePresets(const Ctx &c)
     CHECK(clip && clip->gauge->kind == gauge::Kind::Bar &&
           clip->gauge->reads == gauge::Reads::Altitude &&
           clip->gauge->units == title::defaultUnits() &&
-          clip->gauge->max == gauge::defaultRange(gauge::Reads::Altitude, title::defaultUnits()).max);
+          clip->gauge->max == gauge::defaultRange(gauge::Kind::Bar, gauge::Reads::Altitude,
+                                                  title::defaultUnits())
+                                  .max);
     auto *gaugePanel = c.w->findChild<GaugePanel *>(QStringLiteral("gaugePanel"));
     auto *textPanel = c.w->findChild<QWidget *>(QStringLiteral("titleTextPanel"));
     CHECK(gaugePanel && textPanel && !gaugePanel->isHidden() && textPanel->isHidden());

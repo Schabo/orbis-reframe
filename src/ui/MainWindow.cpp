@@ -631,7 +631,8 @@ void MainWindow::connectOverlaysAndAudio()
             c->id, t,
             renderjobs::titleAnchorShift(*c->title, t, out.width, out.height,
                                          clock.at(m_lastTimelineMs),
-                                         clock.gpsAt(m_lastTimelineMs)));
+                                         clock.gpsAt(m_lastTimelineMs),
+                                         clock.motionAt(m_lastTimelineMs)));
     };
     connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, titleEdited);
     connect(m_titleLookPanel, &TitleLookPanel::titleEdited, this, titleEdited);
@@ -1198,8 +1199,14 @@ QString titleLabel(const title::Style &t)
 // A gauge as they name it: what it shows, and how.
 QString gaugeLabel(const gauge::Style &g)
 {
-    if (g.kind == gauge::Kind::Tape)
-        return MainWindow::tr("Heading tape");
+    switch (g.kind) {
+    case gauge::Kind::Tape: return MainWindow::tr("Heading tape");
+    case gauge::Kind::Lean: return MainWindow::tr("Lean dial");
+    case gauge::Kind::GForce: return MainWindow::tr("G circle");
+    case gauge::Kind::Route: return MainWindow::tr("Route");
+    case gauge::Kind::Dial:
+    case gauge::Kind::Bar: break;
+    }
     const bool speed = g.reads == gauge::Reads::Speed;
     return g.kind == gauge::Kind::Dial
                ? (speed ? MainWindow::tr("Speed dial") : MainWindow::tr("Altitude dial"))
@@ -1724,7 +1731,7 @@ renderjobs::FieldSources MainWindow::fieldSources(bool wait)
 {
     renderjobs::FieldSources out;
     const bool clock = renderjobs::anyTitleClock(*m_timeline);
-    const bool gps = renderjobs::anyTitleGps(*m_timeline);
+    const bool gps = renderjobs::anyTitleTelemetry(*m_timeline);
     if (!clock && !gps)
         return out;
     for (int i = 0; i < m_timeline->count(); ++i) {
@@ -1754,13 +1761,17 @@ QString MainWindow::titleClockNote(const TrackClip &c)
 {
     if (!c.isDrawn())
         return {};
+    const bool gaugeMotion = c.isGauge() && gauge::readsMotion(c.gauge->kind);
     const bool clock = c.isTitle() && title::hasClockFields(c.title->text);
-    const bool gps = c.isGauge() || title::hasGpsFields(c.title->text);
-    if (!clock && !gps)
+    const bool gps = c.isGauge() ? !gaugeMotion : title::hasGpsFields(c.title->text);
+    const bool motion = c.isGauge() ? gaugeMotion : title::hasMotionFields(c.title->text);
+    const bool gForce = c.isGauge() ? c.gauge->kind == gauge::Kind::GForce
+                                    : title::hasGForceField(c.title->text);
+    if (!clock && !gps && !motion)
         return {};
     const renderjobs::FieldSources sources = fieldSources();
     const title::Clock readings = renderjobs::titleClock(*m_timeline, sources);
-    QStringList unknown, noGps, partGps;
+    QStringList unknown, noGps, partGps, noMotion, noTravel;
     const qint64 endMs = c.startMs + c.timelineDurationMs();
     for (int i = 0; i < m_timeline->count(); ++i) {
         const qint64 from = m_timeline->clipToTimeline(i, 0);
@@ -1774,19 +1785,29 @@ QString MainWindow::titleClockNote(const TrackClip &c)
             unknown << QString::number(i + 1);
         // Nothing said of a file still being read: the note is set again
         // when it's in.
-        if (!gps || m_telemetry->pending(path))
+        if ((!gps && !motion) || m_telemetry->pending(path))
             continue;
         // A track may cover only part of its clip: looked at where the
         // title is over it, every half second.
         const qint64 a = last ? to - 1 : std::max(from, c.startMs);
         const qint64 b = last ? to : std::min(to, endMs);
-        int have = 0, looked = 0;
-        for (qint64 t = a; t < b; t += 500, ++looked)
-            have += readings.gpsAt(t).has_value();
-        if (have == 0)
+        int have = 0, moving = 0, travelling = 0, looked = 0;
+        for (qint64 t = a; t < b; t += 500, ++looked) {
+            have += gps && readings.gpsAt(t).has_value();
+            if (motion) {
+                const std::optional<MotionTelemetry::Values> m = readings.motionAt(t);
+                moving += m.has_value();
+                travelling += m && m->travelKnown;
+            }
+        }
+        if (gps && have == 0)
             noGps << QString::number(i + 1);
-        else if (have < looked)
+        else if (gps && have < looked)
             partGps << QString::number(i + 1);
+        if (motion && moving == 0)
+            noMotion << QString::number(i + 1);
+        else if (gForce && travelling == 0)
+            noTravel << QString::number(i + 1);
     }
     QStringList notes;
     if (!unknown.isEmpty())
@@ -1797,7 +1818,7 @@ QString MainWindow::titleClockNote(const TrackClip &c)
                       : tr("Clips %1 don't say when they were recorded: the time shows --:-- "
                            "and the date nothing while the title is over them.")
                             .arg(QLocale().createSeparatedList(unknown)));
-    // A gauge stays empty where a title's GPS fields show "--".
+    // A gauge stays empty where a title's fields show "--".
     const bool gauge = c.isGauge();
     if (!noGps.isEmpty())
         notes << (noGps.size() == 1
@@ -1823,6 +1844,30 @@ QString MainWindow::titleClockNote(const TrackClip &c)
                                : tr("Clips %1 have GPS for only part of the time the title is "
                                     "over them: elsewhere speed, altitude and heading show --."))
                             .arg(QLocale().createSeparatedList(partGps)));
+    if (!noMotion.isEmpty())
+        notes << (noMotion.size() == 1
+                      ? (gauge ? tr("Clip %1 has no motion data where the gauge is over it: "
+                                    "the gauge stays empty there.")
+                               : tr("Clip %1 has no motion data where the title is over it: "
+                                    "lean and G-force show -- there."))
+                            .arg(noMotion.front())
+                      : (gauge ? tr("Clips %1 have no motion data where the gauge is over "
+                                    "them: the gauge stays empty there.")
+                               : tr("Clips %1 have no motion data where the title is over "
+                                    "them: lean and G-force show -- there."))
+                            .arg(QLocale().createSeparatedList(noMotion)));
+    if (!noTravel.isEmpty())
+        notes << (noTravel.size() == 1
+                      ? (gauge ? tr("Clip %1 hardly turns, so which way it travels isn't "
+                                    "known: the G circle stays empty there.")
+                               : tr("Clip %1 hardly turns, so which way it travels isn't "
+                                    "known: the G-force shows -- there."))
+                            .arg(noTravel.front())
+                      : (gauge ? tr("Clips %1 hardly turn, so which way they travel isn't "
+                                    "known: the G circle stays empty there.")
+                               : tr("Clips %1 hardly turn, so which way they travel isn't "
+                                    "known: the G-force shows -- there."))
+                            .arg(QLocale().createSeparatedList(noTravel)));
     return notes.join(QLatin1Char(' '));
 }
 

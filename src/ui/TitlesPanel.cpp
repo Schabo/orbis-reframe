@@ -18,6 +18,8 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 
 namespace {
 
@@ -65,6 +67,38 @@ Telemetry::Values sampleRide()
     return ride;
 }
 
+// ... leaning into a right-hand bend, a little on the brakes.
+MotionTelemetry::Values sampleMotion()
+{
+    MotionTelemetry::Values m;
+    m.leanDeg = 24.0;
+    m.lateralG = 0.42;
+    m.forwardG = -0.18;
+    return m;
+}
+
+// ... on a winding road, two thirds of the way along.
+gaugerender::Route sampleRoute()
+{
+    gaugerender::Route route;
+    std::vector<gaugerender::Route::Point> st;
+    double along = 0.0;
+    for (int i = 0; i <= 60; ++i) {
+        const double t = i / 60.0;
+        gaugerender::Route::Point q;
+        q.timelineMs = i * 1000;
+        q.x = 0.1 + 0.8 * t;
+        q.y = 0.5 - 0.3 * std::sin(2.2 * std::numbers::pi * t) * (1.0 - 0.4 * t);
+        if (!st.empty())
+            along += std::hypot(q.x - st.back().x, q.y - st.back().y);
+        q.along = along;
+        st.push_back(q);
+    }
+    route.stretches.push_back(std::move(st));
+    route.key = 1; // the tiles' own
+    return route;
+}
+
 // A tile's picture: the preset's title over a made-up landscape (sky, then
 // ground), roughly where and how it lands. Its text is drawn larger than
 // in a real frame -- at the true size a caption would be a few pixels high
@@ -88,7 +122,8 @@ QIcon presetTile(const titlepresets::Preset &preset, const QSize &size, qreal dp
     // A date or clock tile shows the time now, a GPS one a ride's values.
     const bool clock = title::hasFields(style.text);
     style.text =
-        title::withFields(style.text, now, QLocale(), style.hours, sampleRide(), style.units);
+        title::withFields(style.text, now, QLocale(), style.hours, sampleRide(), style.units,
+                          sampleMotion());
     const double fontPx = std::max(preset.look.width * H * kScale, kMinFontPx);
     // Typing on or off: the picture changes as the frame's would.
     const int visible =
@@ -141,8 +176,12 @@ QIcon gaugeTile(const titlepresets::GaugePreset &preset, const QSize &size, qrea
                                (W - 6.0) / aspect});
     const double w = h * aspect;
     const int px = std::max(8, int(std::lround(h * dpr)));
-    const gaugerender::Picture pic =
-        gaugerender::render(style, px, gaugerender::readingOf(style, sampleRide(), px));
+    static const gaugerender::Route route = sampleRoute();
+    const gaugerender::Picture pic = gaugerender::render(
+        style, px,
+        gaugerender::readingOf(style, gaugerender::Moment{sampleRide(), sampleMotion(), 40000}, px,
+                               &route),
+        &route);
     if (pic.empty())
         return QIcon(pm);
     constexpr double kMargin = 3;

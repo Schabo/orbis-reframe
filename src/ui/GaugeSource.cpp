@@ -7,13 +7,21 @@ GaugeSource::GaugeSource(gauge::Style style, int64_t spanMs, int heightPx, int o
                          title::Clock clock, int64_t startMs)
     : m_style(std::move(style)), m_spanMs(spanMs), m_heightPx(heightPx),
       m_widthPerSize(outW > 0 ? gauge::aspect(m_style.kind) * outH / outW : 0.0),
-      m_clock(std::move(clock)), m_startMs(startMs)
+      m_clock(std::move(clock)), m_startMs(startMs),
+      m_route(m_style.kind == gauge::Kind::Route ? gaugerender::routeOf(m_clock) : nullptr)
 {
 }
 
 gaugerender::Reading GaugeSource::readingAt(int64_t localMs) const
 {
-    return gaugerender::readingOf(m_style, m_clock.gpsAt(m_startMs + localMs), m_heightPx);
+    const int64_t t = m_startMs + localMs;
+    gaugerender::Moment m;
+    m.timelineMs = t;
+    if (gauge::readsMotion(m_style.kind))
+        m.motion = m_clock.motionAt(t);
+    else
+        m.gps = m_clock.gpsAt(t);
+    return gaugerender::readingOf(m_style, m, m_heightPx, m_route.get());
 }
 
 exportpipe::Still GaugeSource::still(const gaugerender::Picture &pic) const
@@ -31,12 +39,12 @@ exportpipe::Still GaugeSource::still(const gaugerender::Picture &pic) const
 
 exportpipe::Still GaugeSource::at(int64_t localMs)
 {
-    return still(gaugerender::render(m_style, m_heightPx, readingAt(localMs)));
+    return still(gaugerender::render(m_style, m_heightPx, readingAt(localMs), m_route.get()));
 }
 
 exportpipe::Still GaugeSource::ready(int64_t localMs)
 {
-    return still(gaugerender::cached(m_style, m_heightPx, readingAt(localMs)));
+    return still(gaugerender::cached(m_style, m_heightPx, readingAt(localMs), m_route.get()));
 }
 
 int64_t GaugeSource::nextChange(int64_t localMs)
