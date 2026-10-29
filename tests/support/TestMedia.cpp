@@ -65,14 +65,18 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
         ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     if (avcodec_open2(ctx, enc, nullptr) < 0)
         return false;
-    AVStream *st = avformat_new_stream(fmt, nullptr);
-    avcodec_parameters_from_context(st->codecpar, ctx);
-    st->time_base = ctx->time_base;
-    if (spec.rotationCw) {
-        AVPacketSideData *sd = av_packet_side_data_new(&st->codecpar->coded_side_data,
-                                                       &st->codecpar->nb_coded_side_data,
-                                                       AV_PKT_DATA_DISPLAYMATRIX, 9 * 4, 0);
-        av_display_rotation_set(reinterpret_cast<int32_t *>(sd->data), spec.rotationCw); // clockwise
+    std::vector<AVStream *> streams;
+    for (int s = 0; s < spec.streams; ++s) {
+        AVStream *st = avformat_new_stream(fmt, nullptr);
+        avcodec_parameters_from_context(st->codecpar, ctx);
+        st->time_base = ctx->time_base;
+        if (spec.rotationCw) {
+            AVPacketSideData *sd = av_packet_side_data_new(&st->codecpar->coded_side_data,
+                                                           &st->codecpar->nb_coded_side_data,
+                                                           AV_PKT_DATA_DISPLAYMATRIX, 9 * 4, 0);
+            av_display_rotation_set(reinterpret_cast<int32_t *>(sd->data), spec.rotationCw); // clockwise
+        }
+        streams.push_back(st);
     }
     if (avio_open(&fmt->pb, path.c_str(), AVIO_FLAG_WRITE) < 0 ||
         avformat_write_header(fmt, nullptr) < 0)
@@ -83,15 +87,20 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     f->height = spec.height;
     av_frame_get_buffer(f, 0);
     AVPacket *pkt = av_packet_alloc();
+    AVPacket *copy = av_packet_alloc();
     auto drain = [&](AVFrame *in) {
         avcodec_send_frame(ctx, in);
         while (avcodec_receive_packet(ctx, pkt) == 0) {
             // A frame long: without it the last frame gets no duration and
             // falls outside the MP4's edit list, so it never decodes.
             pkt->duration = 1;
-            av_packet_rescale_ts(pkt, ctx->time_base, st->time_base);
-            pkt->stream_index = st->index;
-            av_interleaved_write_frame(fmt, pkt);
+            for (AVStream *st : streams) {
+                av_packet_ref(copy, pkt);
+                av_packet_rescale_ts(copy, ctx->time_base, st->time_base);
+                copy->stream_index = st->index;
+                av_interleaved_write_frame(fmt, copy);
+            }
+            av_packet_unref(pkt);
         }
     };
     for (int i = 0; i < spec.frames; ++i) {
@@ -109,6 +118,7 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     }
     drain(nullptr);
     av_write_trailer(fmt);
+    av_packet_free(&copy);
     av_packet_free(&pkt);
     av_frame_free(&f);
     avcodec_free_context(&ctx);

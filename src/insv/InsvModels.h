@@ -4,14 +4,16 @@
 #include <span>
 #include <string>
 
-// What differs between Insta360 models and isn't in the file: measured or
-// documented per model, one row each (docs/formats/). Everything a file does
-// say is read from it instead.
+// What differs between models that write Insta360's `.insv` (Insta360's own,
+// and the Antigravity A1) and isn't in the file: measured or documented per
+// model, one row each (docs/formats/). Everything a file does say is read
+// from it instead.
 
 namespace insv {
 
 struct InsvModel {
-    const char* name; // the trailer's model field, "Insta360 X5"
+    const char* name;  // the trailer's model field, "Insta360 X5"
+    const char* maker; // "Insta360"
 
     // IMU sensor axis -> stitched sphere (+X right, +Y up, -Z forward), see
     // ImuTrack::axisMap. X5: "z,-x,-y", measured 2026-09-25 by fitting
@@ -53,12 +55,17 @@ struct InsvModel {
     // whose stamps are milliseconds (docs/formats/insta360-one-x2.md §8).
     double telemetryTickUs;
 
-    // File names on the card, taken from the clip's own (`VID_…_00_…`, the
-    // file with the trailer): the token that names the second lens's file in
-    // place of `_00_` when the clip's file holds one lens only (null: the
-    // model always writes both lenses into one file), and the proxy's token
-    // and extension (`LRV_…_01_….lrv` on the X5).
+    // File names on the card, taken from the clip's own (`VID_…`, the file
+    // with the trailer). `clipToken`: the lens token in the clip's name
+    // (`_00_`), null when the names carry none (the A1's `VID_<date>_<time>
+    // _<n>.insv`). `secondLensToken`: the token that names the second lens's
+    // file in its place when the clip's file holds one lens only (null: the
+    // model always writes both lenses into one file). The proxy's prefix,
+    // token in place of `clipToken` (null with it) and extension:
+    // `LRV_…_01_….lrv` on the X5, `PRX_….prx` on the A1.
+    const char* clipToken;
     const char* secondLensToken;
+    const char* proxyPrefix;
     const char* proxyToken;
     const char* proxyExt;
 };

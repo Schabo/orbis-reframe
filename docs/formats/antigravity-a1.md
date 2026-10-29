@@ -20,8 +20,15 @@ Markers as in [`README.md`](README.md).
   | **5.2K** (new) | 5248×2624 | 60 / 50 / 30 / 25 / 24 | **2624²** |
   | 4K | 3840×1920 | 100 / 30 / 25 / 24 | 1920² |
 
-- 📖 Files are `.insv`, offloaded from the card. ❓ Whether one file holds
-  both lenses.
+- ✅ **One `.insv` holds both lenses** as two square HEVC Main streams
+  (8-bit, full range, BT.709 on our 8K clips), lens 0 (looking **down**)
+  first, lens 1 (looking **up**) second. No audio track; a `mov_text` track
+  holds only a sensor frame counter per frame (`F:13776`, ...).
+- ✅ File names: **`VID_<date>_<time>_<n>.insv`**, with no lens token
+  (the X5's is `VID_…_00_…`), and the proxy beside it
+  **`PRX_<date>_<time>_<n>.prx`**: the same name with `PRX` and `.prx`, both
+  fisheyes side by side at 2560×1280 (the X5's `.lrv`, X5 §3.2), with a
+  trailer of its own (records 1 and 2).
 - ❓ How much of the drone itself (props, arms) is in the picture -- it would
   need a mask.
 
@@ -40,7 +47,19 @@ Markers as in [`README.md`](README.md).
 - ✅ Records in the clips: types 1 (Metadata, protobuf), 2, 3, 4, 7, 9, 11,
   14, 23, 32, 33, 37, 38 and 56; the proxy holds 1 and 2. What the ones the
   X5 doesn't have hold is ❓.
-- ❓ Calibration strings, IMU layout and axes.
+- ✅ Record 1 is the X5's protobuf (X5 §5.1); on our clips: model (field 2)
+  `Antigravity A1`, firmware `10.0.397.3_5.5`; field 27 `{5248, 5248, 5248,
+  5248}`, so the focal reference is 5248; only the **40-token `offset_v3`**
+  MEI calibration (field 54, X5 §5.3; no 56-token string), in a 10496×5248
+  side-by-side frame, `xi` 1.504, lens type 155; fields 24, 25 (readout
+  ~21.25 ms), 28 (3.7 ms), 62 (raw IMU) and 65 (±32 g, ±2000 °/s) as on the
+  X5, and the IMU (~1 kHz) and exposure records decode with the X5's
+  layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, without the X5's seconds, so
+  the recording time comes from the file name, which has them.
+- ❓ The calibration's extrinsics (yaw / pitch / roll ≈ −178, −90, 90: how
+  they turn the up / down lenses into the sphere), the IMU axes, fields 69
+  and 91 (unit quaternions), field 98 (absent: GPS not yet lined up with
+  the video).
 
 ## Modes and sample clips
 

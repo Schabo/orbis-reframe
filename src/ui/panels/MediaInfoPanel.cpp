@@ -126,7 +126,7 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
     if (fi.suffix().compare(QLatin1String("insv"), Qt::CaseInsensitive) == 0) // a 360 clip's
         addValue(tr("Preview file"), m.proxyPath.empty() ? tr("Not found") : tr("Found"),
                  m.proxyPath.empty()
-                     ? tr("The camera's low-res preview file (.lrv), expected next to the .insv.")
+                     ? tr("The camera's low-res preview file, expected next to the .insv.")
                      : QString::fromStdString(m.proxyPath));
 
     addSection(tr("Video"));

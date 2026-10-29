@@ -1314,6 +1314,12 @@ void testA1Trailer()
     const auto notes = insv::ReadInsvMakerNotes(path);
     CHECK(notes && notes->model == "Antigravity A1" && notes->firmware == "10.0.397.3_5.5");
     CHECK(notes && notes->offset_v3 == kOneX2V3);
+    bool known = false;
+    const insv::InsvModel& model = insv::FindInsvModel("Antigravity A1", &known);
+    CHECK(known && std::string(model.maker) == "Antigravity" && model.telemetryTickUs == 1.0);
+    CHECK(!model.secondLensToken && !model.clipToken);
+    CHECK(std::string(model.captureMode(3840)) == "8K");
+    CHECK(std::string(model.captureMode(2624)) == "5.2K");
     const auto t = insv::ReadInsvTelemetry(path);
     CHECK(t.has_value());
     if (t) {

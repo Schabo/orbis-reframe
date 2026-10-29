@@ -2,7 +2,8 @@
 // here as small videos named as the camera names them, the lens-0 file
 // carrying a synthetic trailer. The second lens's file is found beside it and
 // checked; the clip's metadata follows a change to either file; every file of
-// the take names the clip. Exit code is
+// the take names the clip. And an Antigravity A1 clip: both lenses in one
+// file, a slotted trailer, the proxy named without a lens token. Exit code is
 // the failure count.
 
 #include "ClipMetadata.h"
@@ -289,6 +290,54 @@ void testGps(const std::filesystem::path& dir)
     CHECK(!camera::ReadClipGps((dir / "missing.insv").string()));
 }
 
+// An Antigravity A1 clip (docs/formats/antigravity-a1.md): both lenses as
+// streams of one VID_<date>_<time>_<n>.insv, the trailer in 256 KiB slots
+// with no record headers (cut down here), the proxy PRX_….prx with the
+// clip's own name.
+void testAntigravityA1(const std::filesystem::path& dir)
+{
+    std::printf("  Antigravity A1: one file, a proxy named without a lens token\n");
+    const std::string vid = (dir / "VID_20261028_165044_011.insv").string();
+    const std::string prx = (dir / "PRX_20261028_165044_011.prx").string();
+    testmedia::VideoSpec spec;
+    spec.width = spec.height = 64;
+    spec.fps = kFps;
+    spec.frames = 50;
+    spec.streams = 2;
+    CHECK(testmedia::writeVideo(vid + ".mp4", spec));
+    std::filesystem::rename(vid + ".mp4", vid);
+    Bytes meta;
+    meta.pbString(1, "A1000000000000000001").pbString(2, "Antigravity A1");
+    meta.pbString(3, "10.0.397.3_5.5").pbVarint(24, 1000300).pbDouble(25, 21.247);
+    Bytes crop; // window_crop_info: src 5248², dst 5248²
+    crop.pbVarint(1, 5248).pbVarint(2, 5248).pbVarint(3, 5248).pbVarint(4, 5248);
+    meta.pbBytes(27, crop.b);
+    meta.pbString(54, "2_1.5_3742.5_3741.8_2620.9_2617.6_-177.5_-89.95_90.4_0_0_0_"
+                      "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
+                      "1.5_3754.8_3755.1_7875.9_2606.2_-179.4_-89.9_89.4_-0.0001_0.00002_"
+                      "-0.071_-0.050_0.170_-0.499_0.0001_0.00003_10496_5248_155_197632");
+    appendTo(vid, testtrailer::insvTrailer({{0x101, meta.b}}, true, 256));
+    CHECK(writeLens(prx, 32, 50));
+
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(vid, &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    CHECK(clip->maker == "Antigravity" && clip->model == "Antigravity A1");
+    CHECK(clip->lenses.size() == 2);
+    if (clip->lenses.size() == 2) {
+        CHECK(clip->lenses[0].source.path == vid && clip->lenses[0].source.stream == 0);
+        CHECK(clip->lenses[1].source.path == vid && clip->lenses[1].source.stream == 1);
+    }
+    CHECK(clip->calibrated && clip->lenses[0].calibration.focalRefW == 5248.0);
+    CHECK(clip->proxyPath == prx);
+    CHECK(camera::ClipFileOf(vid) == vid);
+    CHECK(camera::ClipFileOf(prx, &err) == vid);
+}
+
 } // namespace
 
 int main()
@@ -303,6 +352,7 @@ int main()
     testClipFileOf(t);
     testStitchedThumbnail(t);
     testGps(dir);
+    testAntigravityA1(dir);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

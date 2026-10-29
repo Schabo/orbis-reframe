@@ -23,6 +23,7 @@ struct VideoSpec {
     int frames = 50;
     int rotationCw = 0; // tags the stream with a display matrix
     bool hlg = false;   // tags the stream HDR: HLG transfer, BT.2020
+    int streams = 1;    // video streams carrying the same picture (a lens each)
     // Pixel (x, y)'s luma in frame `frame`; chroma is neutral. Empty = mid grey.
     std::function<uint8_t(int frame, int x, int y)> luma;
 };

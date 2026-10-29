@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <system_error>
 #include <utility>
@@ -22,18 +23,25 @@ namespace {
 // 0x300 record (tens of MB per hour).
 constexpr std::size_t kImuProbeSamples = 4000;
 
-// `insv`'s name with its `_00_` lens token replaced by `token` and, if
-// given, its prefix (`VID`) by `prefix` and its extension by `ext`; "" when
-// the name isn't a camera's `VID_…_00_…` (docs/formats/insta360-x5.md §1).
-std::filesystem::path sibling(const std::filesystem::path& insv, const char* token,
-                              const char* prefix = nullptr, const char* ext = nullptr) {
+// `insv`'s name with its lens token (the model's `clipToken`, `_00_`)
+// replaced by `token` and, if given, its prefix (`VID`) by `prefix` and its
+// extension by `ext`; "" when the name isn't the model's `VID_…` clip name
+// (docs/formats/insta360-x5.md §1). A model whose names carry no lens token
+// takes no `token`: only the prefix and extension change.
+std::filesystem::path sibling(const std::filesystem::path& insv, const insv::InsvModel& model,
+                              const char* token, const char* prefix = nullptr,
+                              const char* ext = nullptr) {
     std::string name = insv.filename().string();
     if (name.rfind("VID_", 0) != 0)
         return {};
-    const auto lensPos = name.find("_00_");
-    if (lensPos == std::string::npos)
+    if (model.clipToken) {
+        const auto lensPos = name.find(model.clipToken);
+        if (!token || lensPos == std::string::npos)
+            return {};
+        name.replace(lensPos, std::strlen(model.clipToken), token);
+    } else if (token) {
         return {};
-    name.replace(lensPos, 4, token);
+    }
     if (prefix)
         name.replace(0, 3, prefix);
     std::filesystem::path p = insv.parent_path() / name;
@@ -43,9 +51,10 @@ std::filesystem::path sibling(const std::filesystem::path& insv, const char* tok
 }
 
 // The camera's proxy beside the clip (the X5's LRV_…_01_….lrv, the ONE X2's
-// LRV_…_11_….insv), "" if it isn't there.
+// LRV_…_11_….insv, the A1's PRX_….prx), "" if it isn't there.
 std::string findProxy(const std::filesystem::path& insv, const insv::InsvModel& model) {
-    const std::filesystem::path lrv = sibling(insv, model.proxyToken, "LRV", model.proxyExt);
+    const std::filesystem::path lrv =
+        sibling(insv, model, model.proxyToken, model.proxyPrefix, model.proxyExt);
     std::error_code ec;
     return !lrv.empty() && std::filesystem::exists(lrv, ec) ? lrv.string() : "";
 }
@@ -59,7 +68,7 @@ std::string findProxy(const std::filesystem::path& insv, const insv::InsvModel& 
 bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
                     const insv::InsvModel& model, std::string& other, insv::InsvStreamInfo& info,
                     std::string& err) {
-    const std::filesystem::path p = sibling(path, model.secondLensToken);
+    const std::filesystem::path p = sibling(path, model, model.secondLensToken);
     std::error_code ec;
     if (p.empty() || !std::filesystem::exists(p, ec)) {
         err = "the second lens's file is missing" +
@@ -206,15 +215,15 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     const auto notes = insv::ReadInsvMakerNotes(out.path);
     if (!notes)
         return Result::NotMine;
-    out.maker = "Insta360";
-    out.model = notes->model;
-    out.firmware = notes->firmware;
-    out.serial = notes->serial_number;
     bool known = false;
     const insv::InsvModel& model = insv::FindInsvModel(notes->model, &known);
     if (!known)
         std::fprintf(stderr, "[camera] no table entry for \"%s\"; using the %s's\n",
                      notes->model.c_str(), model.name);
+    out.maker = model.maker;
+    out.model = notes->model;
+    out.firmware = notes->firmware;
+    out.serial = notes->serial_number;
 
     // Both lenses as streams of this file, or lens 0 here and lens 1 in a
     // file of its own beside it.
@@ -335,25 +344,28 @@ std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) 
 
 std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) const {
     // VID_<date>_<time>_<lens>_<n>.insv -> the clip's VID_…_00_…, and
-    // LRV_…_<token>_<n>.<ext> likewise, by each model's names. The lens token
-    // is the last `_xx_` (the date and time are longer runs).
+    // LRV_…_<token>_<n>.<ext> likewise, by each model's names; a proxy whose
+    // name carries no lens token (the A1's PRX_….prx) -> VID_….insv. The
+    // lens token is the last `_xx_` (the date and time are longer runs).
     const std::filesystem::path p(path);
     const std::string name = p.filename().string();
-    const auto withLens00 = [&](const std::string& token, const char* prefix) {
+    const auto clipName = [&](const insv::InsvModel& m, const char* token) {
         std::string n = name;
-        n.replace(n.rfind(token), token.size(), "_00_");
-        n.replace(0, 3, prefix);
+        if (token)
+            n.replace(n.rfind(token), std::strlen(token), m.clipToken);
+        n.replace(0, 3, "VID");
         std::filesystem::path c = p.parent_path() / n;
         c.replace_extension(".insv");
         return c.string();
     };
     for (const insv::InsvModel& m : insv::InsvModels()) {
-        if (m.secondLensToken && name.rfind("VID_", 0) == 0 && name.ends_with(".insv") &&
-            name.rfind(m.secondLensToken) != std::string::npos)
-            return withLens00(m.secondLensToken, "VID");
-        if (m.proxyToken && name.rfind("LRV_", 0) == 0 && p.extension() == m.proxyExt &&
-            name.rfind(m.proxyToken) != std::string::npos)
-            return withLens00(m.proxyToken, "VID");
+        if (m.secondLensToken && m.clipToken && name.rfind("VID_", 0) == 0 &&
+            name.ends_with(".insv") && name.rfind(m.secondLensToken) != std::string::npos)
+            return clipName(m, m.secondLensToken);
+        if (name.rfind(std::string(m.proxyPrefix) + "_", 0) == 0 && p.extension() == m.proxyExt &&
+            (m.proxyToken ? m.clipToken && name.rfind(m.proxyToken) != std::string::npos
+                          : !m.clipToken))
+            return clipName(m, m.proxyToken);
     }
     return std::nullopt;
 }
