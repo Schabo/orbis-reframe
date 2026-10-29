@@ -25,6 +25,15 @@ been compared with Insta360 Studio's yet, and on some clips
 a few degrees or more. The ONE X2's 4K and 3K modes (one file for both
 lenses) aren't supported yet.
 
+The **Antigravity A1**, a 360° drone, is supported experimentally in its 8K
+mode, from one contributor's flights: its clips (`VID_….insv`, with the
+`PRX_….prx` preview file beside them) open, stitch,
+[stabilize](stabilization.md#on-the-antigravity-a1) and export, the picture
+facing the drone's nose and level by its flight controller. It records no
+sound. Its GPS isn't used yet, so titles and gauges show no speed or
+altitude on A1 clips. The 5.2K and 4K modes and H.264 clips haven't been
+tried.
+
 Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If
 you have one, short clips from it help add it:
 [sample clips wanted](../formats/README.md#sample-clips-wanted).

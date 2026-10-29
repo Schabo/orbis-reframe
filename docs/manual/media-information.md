@@ -31,7 +31,7 @@ full path, or what a value means.
 
 | Row | What it shows |
 |---|---|
-| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. |
+| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. |
 | **Lenses** | The size of each of the two fisheye pictures, in pixels. |
 | **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. |
 | **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. |
@@ -58,7 +58,7 @@ the data rate.
 | **Serial** | The camera's serial number. Blur it out if you share a screenshot of this section. |
 | **Firmware** | The camera's software version at the time of recording. |
 | **Motion data** | How often the camera recorded its movement, which [stabilization](stabilization.md) works from: about 1000 times a second on the X5. *Not recorded* means stabilization can't work for this clip. |
-| **GPS** | Whether a GPS source, such as Insta360's GPS remote, recorded where you were: how often the position was updated (about once a second), or *Not recorded*. A second line says when the track covers only part of the recording, for example because the signal was lost, or *no position fix* if the GPS never found its position. The positions themselves aren't shown, so a screenshot of the section doesn't give away where you rode. |
+| **GPS** | Whether a GPS source, such as Insta360's GPS remote, recorded where you were: how often the position was updated (about once a second), or *Not recorded*. A second line says when the track covers only part of the recording, for example because the signal was lost, or *no position fix* if the GPS never found its position. The positions themselves aren't shown, so a screenshot of the section doesn't give away where you rode. An Antigravity A1 records its GPS too, but titles and gauges can't use it yet: the file doesn't say when the track starts against the video. |
 | **Sensor readout** | How long the camera's sensor takes to read one picture from top to bottom (the rolling shutter). orbis-reframe uses it to straighten the picture during fast movement. |
 
 ## When it's useful

@@ -1,9 +1,11 @@
 # Antigravity A1 file format
 
-**Desk research (2026-10-15); first clips examined 2026-10-29**: three
-contributed 8K clips. The trailer framing below is checked on them; the rest
-is still desk research, from reviews and Gyroflow's telemetry-parser, set
-against what our code assumes. The A1 is a 360 drone from Antigravity, a
+**Desk research (2026-10-15); measured on clips 2026-10-29**: three
+contributed 8K flights. What's marked ✅ below is checked on them; the
+modes we have no clips of are still desk research, from reviews and
+Gyroflow's telemetry-parser. The app supports the A1 **experimentally**
+from 2026-10-29: 8K clips open, stitch, stabilize (leveled by the drone's
+own attitude) and export. The A1 is a 360 drone from Antigravity, a
 brand incubated by Insta360, and writes the same `.insv` family; written as
 differences from the X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below).
 Markers as in [`README.md`](README.md).
@@ -56,9 +58,11 @@ Markers as in [`README.md`](README.md).
   walker takes each record's type and size from its table entry, as
   telemetry-parser does; reading them from the header after the record
   finds nothing. Checked on all three clips and the `.prx` proxy.
-- ✅ Records in the clips: types 1 (Metadata, protobuf), 2, 3, 4, 7, 9, 11,
-  14, 23, 32, 33, 37, 38 and 56; the proxy holds 1 and 2. What the ones the
-  X5 doesn't have hold is ❓.
+- ✅ Records in the clips: types 1 (Metadata, protobuf), 2 (thumbnail), 3
+  (IMU), 4 (exposure), 7 (GPS), 9, 11, 14, 23, 32, 33, 37 (attitude), 38
+  and 56; the proxy holds 1 and 2. Of the ones the X5 doesn't have, 37 is
+  read and 14 / 56 partly understood (below); 23, 32, 33 and 38 hold
+  timestamped floats, meaning ❓ (a flight log?).
 - ✅ Record 1 is the X5's protobuf (X5 §5.1); on our clips: model (field 2)
   `Antigravity A1`, firmware `10.0.397.3_5.5`; field 27 `{5248, 5248, 5248,
   5248}`, so the focal reference is 5248; only the **40-token `offset_v3`**
@@ -67,7 +71,10 @@ Markers as in [`README.md`](README.md).
   ~21.25 ms), 28 (3.7 ms), 62 (raw IMU) and 65 (±32 g, ±2000 °/s) as on the
   X5, and the IMU (~1 kHz) and exposure records decode with the X5's
   layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, without the X5's seconds, so
-  the recording time comes from the file name, which has them.
+  the recording time comes from the file name, which has them. Fields 195
+  / 196 are 30000 / 1001, the video's frame rate as a fraction; fields 51
+  (1) and 64 (2) are set, meaning ❓. The serial is in field 1 as on the
+  X5.
 - ⚠️ The calibration's extrinsics are yaw / pitch / roll ≈ (−177.5, −89.95,
   90.4) and (−179.4, −89.9, 89.4): pitch −90° puts yaw and roll about the
   same axis, so the order they compose in matters (it doesn't on the X5).
@@ -122,6 +129,14 @@ Markers as in [`README.md`](README.md).
   measured: a view fitted from the stitched first frame matched no better
   under BT.601 or BT.709. The app shows the picture on the A1's cards
   (Media tab, project library), cut to the card's shape.
+- ✅ **GPS, record type 7**, in the X5's layout (X5 §8): a fix every
+  **1.6 s** on all three clips (the X5 with the GPS remote: once a second),
+  its speed matching record 37's horizontal speed. ⚠️ **Not lined up with
+  the video**: field 98 (X5 §5.1), which on the X5 gives the first frame's
+  Unix time, is absent, so the app doesn't use the track -- titles and
+  gauges show no GPS values on A1 clips, though the Media information
+  panel lists the GPS as recorded. Record 37's speed against the GPS speed
+  could line them up (not built).
 - ✅ **Sync**: the X5's formula (field 24 + field 28, X5 §7.1) holds; the
   app's per-clip fine-tune finds +0.9 to +1.2 ms on all three clips, and
   the image fit above agrees within ~1 ms.
@@ -155,8 +170,7 @@ Markers as in [`README.md`](README.md).
   inferred, not used): type 14 has one 36-byte entry per video frame with a
   unit quaternion in it; type 56 holds the same orientation in another
   layout (its first quaternion is type 14's, sign flipped). ❓ Field 91 (a
-  unit quaternion, none of the attitude, the IMU mount or their products);
-  field 98 is absent, so the GPS isn't lined up with the video yet.
+  unit quaternion, none of the attitude, the IMU mount or their products).
 
 ## Modes and sample clips
 
@@ -167,7 +181,7 @@ The status words are the X5's (X5 §3.4).
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² HEVC streams), and a `PRX_….prx` proxy | 3, 29.97 fps, H.265, standard colour | trailer read; stitch, orientation and IMU axes not yet |
+| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² HEVC streams), and a `PRX_….prx` proxy | 3, 29.97 fps, H.265, standard colour | experimental: opens, stitches, stabilizes and exports; GPS not used |
 | 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | as above | none | **wanted**: a lens size no Insta360 camera has (2624² ⚠️), and 60 fps |
 | 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | as above | none | **wanted**: 100 fps |
 | 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ❓ | none | **wanted**: whether the file is tagged at the playback rate or the capture rate (100 ⚠️) |
@@ -175,7 +189,7 @@ The status words are the X5's (X5 §3.4).
 | Timelapse | added by the spring 2026 update; ❓ sizes and intervals | ❓ | none | wanted |
 | 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | `.insp`; `.dng` | none | wanted, low |
 | Internal storage (20 GB) vs microSD | | ❓ the same files | none | low: say which a clip came from |
-| Audio | not in the spec table | ✅ no audio track in our clips | 3 | done |
+| Audio | not in the spec table | ✅ no audio track in our clips | 3 | done: opens and exports as picture only |
 | Drone in the picture (props, arms, landing gear) | | | 3, in flight | done in flight: a part at lens 0's rim only, outside the stitched picture; wanted: a take-off or landing |
 | Replaceable lenses | | | none | wanted, low: whether the calibration in the file follows a lens swap |
 | IMU axes | | | `_010` (flight turns) | done (`-x,y,-z`) |

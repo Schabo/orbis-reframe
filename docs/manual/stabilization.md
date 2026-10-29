@@ -5,7 +5,9 @@ accelerometer, and stores it in every `.insv` file. (The X6 does too, but
 its support is experimental: see
 [Getting started](getting-started.md); stabilization may turn its picture
 the wrong way. The ONE X2 does too, also experimentally: on some ONE X2
-clips Horizon lock leaves the horizon tilted.)
+clips Horizon lock leaves the horizon tilted. So does the Antigravity A1,
+also experimentally, and its horizon comes from the drone's flight
+controller: see [On the Antigravity A1](#on-the-antigravity-a1).)
 orbis-reframe uses this
 to steady the picture: it turns the 360° view against the camera's shake,
 so the view holds still while the camera moves. It can also keep the
@@ -118,6 +120,21 @@ Custom shows the stabilizer's own settings:
 Long smoothing times on all three axes (3 to 4 seconds) with **Level
 horizon** at 0 give a "virtual tripod": the view hardly moves at all, while
 slow changes in direction still come through.
+
+### On the Antigravity A1
+
+A drone tilts to fly: nose down to speed up, sideways in a turn, and it
+speeds up, brakes and turns most of the time. A camera's accelerometer
+feels all of that as well as gravity, so it can't tell where "up" is in
+flight. The A1 records its flight controller's own idea of level with each
+clip, and orbis-reframe levels A1 clips by that instead: **Horizon lock**
+and **Direction lock** keep the real horizon level through the whole
+flight, and **Lean follow**'s level and Custom's **Level to mount's
+average** come from it too. The **Vibration filter** works on
+the accelerometer, so it does nothing on A1 clips.
+
+**Direction lock** still holds its direction by the gyroscope alone, so it
+drifts slowly on the A1 as on any camera.
 
 ## Which clip it changes
 

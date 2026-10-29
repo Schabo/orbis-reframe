@@ -79,18 +79,20 @@ each is in its document in [`formats/`](formats/README.md).
   frame, and the IMU axis map confirmed on a clip with deliberate turns.
 - **Insta360 X3**: two files per take like the ONE X2, so its own row in the
   Insta360 reader's table; see what calibration it carries.
-- **Antigravity A1**: in progress, from a contributor's 8K clips: the
-  trailer's slotted layout read, its own row in the Insta360 reader's
+- **Antigravity A1**: built, experimental, from a contributor's 8K clips:
+  the trailer's slotted layout read, its own row in the Insta360 reader's
   table (names, proxy, focal reference, how the camera holds its lenses --
   down and up -- so the picture is level and faces the drone's nose), and
   the seam measured (the lens extrinsics' order, the 71 mm baseline, ~200°
   lenses, no drone parts in the stitched picture), the IMU axis map, and
   Horizon lock in flight leveled by the drone's own attitude track (the
   accelerometer also reads the drone's acceleration; a first part of step
-  3's orientation track, see *Common camera model*). Left: the trailer's
-  flat preview picture, a clip with no audio track checked end to end,
-  then *experimental*
-  ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
+  3's orientation track, see *Common camera model*), its own flat preview
+  picture on the cards, and clips with no audio track. Left: the GPS
+  lined up with the video (the file has no first-frame Unix time; the
+  attitude record's speed against the GPS speed could give it), Direction
+  lock's heading from the attitude's yaw, and clips in the 5.2K, 4K and
+  H.264 modes ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two

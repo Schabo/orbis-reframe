@@ -4,7 +4,8 @@ A native Linux video editor for **360° camera footage**: stitching,
 gyro stabilization and, above all, **reframing**. Reframing means steering a
 virtual camera through the sphere over time to get a normal flat video out of a
 360° recording. It opens Insta360 `.insv` clips directly: the **X5** is
-fully supported, the **X6** and **ONE X2** experimentally.
+fully supported, the **X6**, **ONE X2** and **Antigravity A1** (a 360
+drone) experimentally.
 
 [![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Picture in picture tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
 
@@ -42,6 +43,11 @@ stitch, stabilize and export, but the stitch hasn't been checked against
 Insta360 Studio's yet, the motion axes are measured on a few walking and
 riding clips only, and Horizon lock can leave the horizon tilted on some
 clips.
+
+**Antigravity A1:** experimental -- 8K clips open, stitch, stabilize and
+export, from one contributor's flights; the horizon is leveled by the
+drone's own flight controller. Its GPS isn't used yet (no speed or
+altitude in titles), and the 5.2K and 4K modes are untried.
 
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:
