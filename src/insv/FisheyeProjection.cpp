@@ -131,7 +131,14 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
             ay += params.seam.lens1RotDeg[1] * kDeg;
             az += params.seam.lens1RotDeg[2] * kDeg;
         }
-        const Mat3 corr = mul(mul(rotZ(az), rotY(ay)), rotX(ax)); // Rz Ry Rx
+        // Composed Rz Rx Ry: pitch first, then yaw, then roll. On the X5 the
+        // angles are all near zero and any order gives the same lens, but
+        // the Antigravity A1 stores pitch -90 (yaw and roll about the same
+        // axis) and the ONE X2 roll ~180: only this order fits the seam on
+        // both (Rz Ry Rx tilts the A1's lens 0 2.9 deg off lens 1's axis and
+        // finds no seam; Rx Rz Ry breaks the ONE X2's), and it leaves the
+        // per-clip seam fit only small corrections on all three cameras.
+        const Mat3 corr = mul(mul(rotZ(az), rotX(ax)), rotY(ay));
         const double nominalYaw =
             (i == 0 ? params.nominalYaw0Deg : params.nominalYaw1Deg) * kDeg;
         m_lens[i].worldToLens = transpose(mul(rotY(nominalYaw), corr));

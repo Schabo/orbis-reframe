@@ -56,10 +56,17 @@ Markers as in [`README.md`](README.md).
   X5, and the IMU (~1 kHz) and exposure records decode with the X5's
   layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, without the X5's seconds, so
   the recording time comes from the file name, which has them.
-- ❓ The calibration's extrinsics (yaw / pitch / roll ≈ −178, −90, 90: how
-  they turn the up / down lenses into the sphere), the IMU axes, fields 69
-  and 91 (unit quaternions), field 98 (absent: GPS not yet lined up with
-  the video).
+- ⚠️ The calibration's extrinsics are yaw / pitch / roll ≈ (−177.5, −89.95,
+  90.4) and (−179.4, −89.9, 89.4): pitch −90° puts yaw and roll about the
+  same axis, so the order they compose in matters (it doesn't on the X5).
+  Pitch, then yaw, then roll (X5 §5.3) leaves the lens axes opposite to
+  0.2°, and the per-clip seam fit converges to 0.02° on all three clips
+  with small corrections (lens 1 pitch +0.14 to +0.24°, roll +0.40 to
+  +0.42°, centre −0.06 to −0.08 %, radius −0.17 to −0.20 %). Before the
+  fit the lenses are 0.24-0.53° apart at the seam (X5: ~0.17°).
+- ❓ The IMU axes, fields 69 and 91 (unit quaternions; 69 is (w, x, y, z) =
+  (0.5, 0.5, −0.5, 0.5), a pure axis permutation), field 98 (absent: GPS
+  not yet lined up with the video).
 
 ## Modes and sample clips
 

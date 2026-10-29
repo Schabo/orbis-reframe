@@ -166,6 +166,35 @@ void testCalibrationV3()
     CHECK(st.configure(c, 2880, 2880, insv::StitchParams{}));
 }
 
+// The extrinsics compose pitch, then yaw, then roll. With the Antigravity
+// A1's pitch -90, yaw then turns about the lens's own axis, so it doesn't
+// tilt that axis: the two lens axes stay opposite to within the roll
+// residuals (0.4 and 0.56 deg here, 0.17 deg apart). Composed yaw last,
+// lens 0's 2.5 deg yaw deviation tilted its axis 2.9 deg off lens 1's.
+void testExtrinsicsOrder()
+{
+    std::printf("  extrinsics: pitch, yaw, roll\n");
+    insv::InsvCalibration c;
+    CHECK(insv::ParseCalibrationV3String(
+        "2_1.5_3742.5_3741.8_2620.9_2617.6_-177.49_-89.95_90.397_0_0_0_"
+        "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
+        "1.5_3754.8_3755.1_7875.9_2606.2_-179.449_-89.922_89.441_-0.0001_0.00002_"
+        "-0.071_-0.050_0.170_-0.499_0.0001_0.00003_10496_5248_155_197632",
+        c));
+    for (auto& e : c.lensesExt)
+        e.focalRefW = 5248.0;
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(c, 3840, 3840, insv::StitchParams{}));
+    if (!st.ready())
+        return;
+    // Each lens's optical axis in the world is its worldToLens's third row.
+    const double* a0 = st.lensProjection(0).worldToLens.m[2];
+    const double* a1 = st.lensProjection(1).worldToLens.m[2];
+    const double dot = a0[0] * a1[0] + a0[1] * a1[1] + a0[2] * a1[2];
+    const double offOppositeDeg = std::acos(std::clamp(-dot, -1.0, 1.0)) * 180.0 / M_PI;
+    CHECK(offOppositeDeg < 0.3);
+}
+
 // The X5 calibration as the reader hands it over: with field 27's focal
 // reference, which the string doesn't carry.
 insv::InsvCalibration x5Calibration()
@@ -1387,6 +1416,7 @@ int main()
 {
     testExtendedCalibration();
     testCalibrationV3();
+    testExtrinsicsOrder();
     testMeiProjection();
     testLensProfile();
     testLinearAlgebra();

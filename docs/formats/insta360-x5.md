@@ -536,6 +536,16 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
 - The extrinsic `yaw pitch` are rotations about the calibration's x / y
   axes. In a frame with x and y negated (ours), they flip sign; `roll` doesn't.
   Getting this wrong misaligns the seam by up to ~0.8°.
+  They compose **pitch first, then yaw, then roll** (`Rz(roll) Rx(yaw)
+  Ry(pitch)`, roll less its fixed 90°) ⚠️. The X5 can't tell: its angles are
+  all near zero, and every order gives the same lens (65-70 dB apart).
+  Cameras with large angles can: the Antigravity A1 (pitch −90°) and the
+  ONE X2 (roll ~180°). Measured 2026-10-29 with the per-clip seam fit on
+  three clips of each: only this order fits both (residual 0.02° on the
+  A1, 0.04-0.16° on the ONE X2, small corrections). Roll last (`Rz Ry
+  Rx`, the order used until then) tilts the A1's lens 0 2.9° off lens 1's
+  axis, and the fit finds no seam; `Rx Rz Ry` fits the A1 but breaks the
+  ONE X2.
   Even with it right, the two lenses still disagree on far content by
   ~0.2° at the seam, in a way a lens-1 rotation alone only partly takes up
   (measured 2026-10-23 on `192900`, `193105`, `201257`, one camera, standard
