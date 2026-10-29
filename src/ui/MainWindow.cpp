@@ -50,6 +50,9 @@
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
 #include "SubjectTrackController.h"
 #endif
+#ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
+#include "PlateJobController.h" // ~MainWindow deletes m_plateJobs
+#endif
 #include "ClipMeasurements.h"
 #include "ExportRunner.h"
 #include "RenderJobs.h"
