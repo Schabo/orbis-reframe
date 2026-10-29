@@ -67,7 +67,7 @@ To add one:
 The new title lasts 5 seconds. It goes onto the overlay track you dropped
 it on if that track is free there; otherwise onto the first overlay track
 that is, or a new one. The title is selected and the settings sidebar shows
-its **Overlay** tab (<img src="images/icons/tab-title.png" width="24" alt="">),
+its **Overlay** tab (<img src="images/icons/tab-overlay.png" width="24" alt="">),
 ready to type the text. There must be a clip on the video track first.
 
 The **Date** tiles show the day the clip under the title was recorded, as

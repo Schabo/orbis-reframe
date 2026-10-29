@@ -80,7 +80,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     addTab(pages[0], QStringLiteral("video"), tr("Video"));
     addTab(pages[1], QStringLiteral("volume-2"), tr("Audio"));
     addTab(pages[2], QStringLiteral("picture-in-picture-2"), tr("Picture in picture"));
-    addTab(pages[3], QStringLiteral("type"), tr("Overlay"));
+    addTab(pages[3], QStringLiteral("shapes"), tr("Overlay"));
     addTab(pages[4], QStringLiteral("blend"), tr("Transition"));
     addTab(pages[5], QStringLiteral("eye-off"), tr("Privacy"));
 
