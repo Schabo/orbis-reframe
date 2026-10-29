@@ -278,7 +278,7 @@ void testGps(const std::filesystem::path& dir)
     const auto clip = camera::ReadClipMetadata(lined.lead);
     CHECK(clip && clip->gpsFixes == 30);
     const auto track = camera::ReadClipGps(lined.lead);
-    CHECK(track && track->fixes.size() == 3);
+    CHECK(track && track->fixes.size() == 3 && track->clockStamped); // nothing for the IMU to match: as stamped
     if (track && track->fixes.size() == 3) {
         CHECK(track->fixes[0].timeMs == 592 && track->fixes[2].timeMs == 2592);
         CHECK(track->fixes[0].latitude == 45.5 && track->fixes[0].longitude == 7.25);

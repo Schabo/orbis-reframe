@@ -869,12 +869,25 @@ doesn't carry the time: `201257`'s lone record after the lost-fix repeat
 sits at ~48 s of video but is stamped 206 s, and its position is ~3 km on
 from the last fix -- what 180 s at the speed before covers, not 22 s. Field
 36 (`first_gps_timestamp`) is neither the first fix's time nor the first
-frame's (up to ~1 s off either way on the samples), so it isn't used. Not
-measured: how far the camera's clock (set from the phone) sits from GPS
-time; a second or so would shift the overlays by that much ❓. The first fix
-lands between -0.9 s and +1.4 s of video on the samples, and the record
-stops up to ~1.6 s before the video ends (`193105`). Insta360's trimmed
-exports have no field 98, and their GPS isn't lined up.
+frame's (up to ~1 s off either way on the samples), so it isn't used. The
+first fix lands between -0.9 s and +1.4 s of video on the samples, and the
+record stops up to ~1.6 s before the video ends (`193105`). Insta360's
+trimmed exports have no field 98, and their GPS isn't lined up.
+
+**Field 98.3 alone leaves the GPS 0.5-2.4 s late** (measured 2026-10-29): the
+change of the fixes' speed lines up with the IMU's acceleration along the
+travel only with the fixes moved that much earlier -- `193105` 2.0 s,
+`201257` 1.6 s, `_083` 2.4-1.9 s, `_085` 0.6 s, `_086` 0.5 s, and `_080`
+2.0 s at the start of its 21 min, 1.5 s at the end (r 0.81-0.99 per 2 min
+of track). The picture agrees: `_080` sets off at 44.2 s of video (frame
+differences on the LRV), the speed by field 98.3 at ~46.2 s, lined up at
+~44.1 s. Whether it's the camera's clock (set from the phone) against GPS
+time, the GPS source's latency or both isn't known; it differs per clip and
+drifts within one ❓. `camera::ReadClipGps` therefore lines a field-98 track
+up against the IMU (`insv::AlignGpsByAcceleration`, `src/insv/Gps.h`, on
+`insv::BuildMotion`'s forward acceleration): the shift over each ~2 min,
+straight between them. A clip that stands still or keeps a steady speed
+(`_081`, `_082`, `_084`) stays on field 98.3.
 
 `ReadInsvGps` (`src/insv/InsvTrailer`) decodes the record: acquired fixes,
 each once (the first record carrying it; the lost-fix repeat and anything

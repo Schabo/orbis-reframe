@@ -45,7 +45,9 @@ clip in ms, Unix seconds, latitude, longitude, speed in m/s, heading (-1:
 standing still) and altitude; `exiftool -ee -n` gives the same values, the
 speed in km/h. On a clip without field 98 (the Antigravity A1) the time in
 the clip comes from matching the GPS speed against the drone's own, and a
-first line says so.
+first line says so. The times are field 98's alone: the app then lines an
+X5 track up against the IMU (it runs 0.5-2.4 s late by field 98; the log
+line `GPS in … lined up with the IMU` says by how much).
 
 **When:** a clip behaves oddly (stitch, sync, stabilization, GPS) and you want
 to see what the camera recorded; or when working on `src/insv/InsvTrailer`.

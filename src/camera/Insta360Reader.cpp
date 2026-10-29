@@ -344,6 +344,7 @@ std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) 
                              "at Unix %.3f s\n",
                      clip.path.c_str(), static_cast<double>(gps->first_frame_unix_ms) * 1e-3);
     insv::GpsTrack track;
+    track.clockStamped = !gps->aligned_by_speed;
     track.fixes.reserve(gps->fixes.size());
     // A heading of -1 is the camera's "don't know", written while standing
     // still (§8).

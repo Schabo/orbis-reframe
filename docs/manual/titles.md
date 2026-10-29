@@ -176,6 +176,12 @@ pace the speed shows 0, so a bike standing still doesn't flicker between
 0 and 1. While standing still the GPS doesn't know a direction: the
 heading keeps the last one it had.
 
+The camera's GPS reaches the video a second or two late. On an Insta360
+X5 clip orbis-reframe lines it up with the camera's own motion sensor:
+when you speed up or brake, the speed changes on the picture's moment. A
+clip where you stood still or kept a steady speed throughout has nothing
+to line it up by, and its values can run up to about 2 seconds behind.
+
 Where there is no GPS, a field shows `--` with its unit (*-- km/h*):
 
 - a clip from a camera or phone that orbis-reframe reads no GPS from;

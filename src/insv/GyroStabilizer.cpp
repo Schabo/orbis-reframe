@@ -127,39 +127,6 @@ void qDecomposeYPR(const Q& q, double& yaw, double& pitch, double& roll)
     matYPR(m, yaw, pitch, roll);
 }
 
-struct AxisMap {
-    int idx[3] = {0, 1, 2};
-    double sign[3] = {1, 1, 1};
-};
-
-AxisMap parseAxes(const std::string& s)
-{
-    AxisMap am;
-    if (s.empty())
-        return am;
-    size_t start = 0;
-    for (int k = 0; k < 3; ++k) {
-        const size_t comma = s.find(',', start);
-        std::string tok =
-            s.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
-        start = comma == std::string::npos ? s.size() : comma + 1;
-        while (!tok.empty() && (tok.front() == ' ' || tok.front() == '\t'))
-            tok.erase(tok.begin());
-        while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t'))
-            tok.pop_back();
-        double sgn = 1.0;
-        if (!tok.empty() && (tok[0] == '-' || tok[0] == '+')) {
-            sgn = tok[0] == '-' ? -1.0 : 1.0;
-            tok.erase(tok.begin());
-        }
-        if (tok.size() != 1 || tok[0] < 'x' || tok[0] > 'z')
-            return AxisMap{}; // malformed -> identity
-        am.idx[k] = tok[0] - 'x';
-        am.sign[k] = sgn;
-    }
-    return am;
-}
-
 Q sampleTrack(const std::vector<double>& ts, const std::vector<std::array<double, 4>>& qs, double t)
 {
     if (qs.empty())
@@ -551,6 +518,34 @@ constexpr StrengthCurve kLeanCurve{0.20f, 0.90f, 5.0f};    // Lean follow, share
 constexpr StrengthCurve kHorizonCurve{0.30f, 1.50f, 10.0f}; // Horizon lock heading
 } // namespace
 
+AxisMap ParseAxisMap(const std::string& s)
+{
+    AxisMap am;
+    if (s.empty())
+        return am;
+    size_t start = 0;
+    for (int k = 0; k < 3; ++k) {
+        const size_t comma = s.find(',', start);
+        std::string tok =
+            s.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        start = comma == std::string::npos ? s.size() : comma + 1;
+        while (!tok.empty() && (tok.front() == ' ' || tok.front() == '\t'))
+            tok.erase(tok.begin());
+        while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t'))
+            tok.pop_back();
+        double sgn = 1.0;
+        if (!tok.empty() && (tok[0] == '-' || tok[0] == '+')) {
+            sgn = tok[0] == '-' ? -1.0 : 1.0;
+            tok.erase(tok.begin());
+        }
+        if (tok.size() != 1 || tok[0] < 'x' || tok[0] > 'z')
+            return AxisMap{}; // malformed -> identity
+        am.idx[k] = tok[0] - 'x';
+        am.sign[k] = sgn;
+    }
+    return am;
+}
+
 float leanWindowFromStrength(float s) { return kLeanCurve.window(s); }
 float leanStrengthFromWindow(float w) { return kLeanCurve.strength(w); }
 float horizonWindowFromStrength(float s) { return kHorizonCurve.window(s); }
@@ -649,7 +644,7 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
         return a.timestamp < b.timestamp;
     });
 
-    const AxisMap am = parseAxes(cfg.gyroAxes);
+    const AxisMap am = ParseAxisMap(cfg.gyroAxes);
     const double t0 = static_cast<double>(s.front().timestamp);
     const double tScale = 1e-6; // ImuSample timestamps are microseconds
 

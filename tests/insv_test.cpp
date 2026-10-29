@@ -13,9 +13,11 @@
 #include "Image.h"
 #include "InsvModels.h"
 #include "InsvTrailer.h"
+#include "Motion.h"
 #include "SeamAlignment.h"
 #include "SeamCut.h"
 #include "SeamDepth.h"
+#include "Smooth.h"
 #include "Ycbcr.h"
 #include "support/CommaLocale.h"
 #include "support/TestTrailer.h"
@@ -1495,6 +1497,191 @@ void testGpsAlignedBySpeed()
     CHECK(!insv::AlignGpsBySpeed({fixes.begin(), fixes.begin() + 4}, reference)); // too few
 }
 
+// A ride as the camera's IMU records it: a vehicle taking corners between
+// straights while it speeds up and slows down, leaning into each turn as a motorcycle
+// does, the camera on it turned 40 deg off its travel and tilted 8 deg.
+// Samples in the sphere's axes (+X right, +Y up, -Z forward), 500 Hz.
+namespace ride {
+using M3 = std::array<std::array<double, 3>, 3>;
+M3 mul(const M3& a, const M3& b)
+{
+    M3 c{};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k)
+                c[i][j] += a[i][k] * b[k][j];
+    return c;
+}
+M3 rotY(double a) { return {{{std::cos(a), 0, std::sin(a)}, {0, 1, 0}, {-std::sin(a), 0, std::cos(a)}}}; }
+M3 rotZ(double a) { return {{{std::cos(a), -std::sin(a), 0}, {std::sin(a), std::cos(a), 0}, {0, 0, 1}}}; }
+M3 rotX(double a) { return {{{1, 0, 0}, {0, std::cos(a), -std::sin(a)}, {0, std::sin(a), std::cos(a)}}}; }
+
+constexpr double kG = 9.80665;
+struct Ride {
+    double turnRate; // rad/s amplitude, 0: straight on
+    double speed(double t) const { return 12.0 + 3.0 * std::sin(2 * kPi * t / 23.0); }
+    double accel(double t) const { return 3.0 * 2 * kPi / 23.0 * std::cos(2 * kPi * t / 23.0); }
+    // Positive turning right: from 10 s on, a corner every 10 s (4 s long,
+    // left and right in turn) with straights between.
+    double turn(double t) const
+    {
+        if (t < 10.0)
+            return 0.0;
+        const double u = std::fmod(t - 10.0, 10.0);
+        const double side = std::fmod(std::floor((t - 10.0) / 10.0), 2.0) == 0.0 ? 1.0 : -1.0;
+        return u < 4.0 ? side * turnRate * std::sin(kPi * u / 4.0) : 0.0;
+    }
+    // The heading the turns add up to: each corner turns by 8 rad/s * rate / pi.
+    double heading(double t) const
+    {
+        if (t < 10.0)
+            return 0.0;
+        double psi = 0.0;
+        const int corners = static_cast<int>(std::floor((t - 10.0) / 10.0));
+        for (int c = 0; c < corners; ++c)
+            psi += (c % 2 == 0 ? 1.0 : -1.0) * turnRate * 8.0 / kPi;
+        const double u = std::min(std::fmod(t - 10.0, 10.0), 4.0);
+        return psi + (corners % 2 == 0 ? 1.0 : -1.0) * turnRate * 4.0 / kPi * (1.0 - std::cos(kPi * u / 4.0));
+    }
+    double lean(double t) const { return std::atan(speed(t) * turn(t) / kG); } // positive right
+    // Camera body -> world: the heading (turning right is clockwise from
+    // above), the lean about the travel (-Z), then the mount.
+    M3 orientation(double t) const
+    {
+        return mul(mul(rotY(-heading(t)), rotZ(-lean(t))), mul(rotY(40 * kDeg), rotX(8 * kDeg)));
+    }
+};
+
+insv::ImuTrack record(const Ride& r, double seconds)
+{
+    insv::ImuTrack track;
+    track.hasOffset = true;
+    const double dt = 0.002, h = 1e-4;
+    for (double t = 0.0; t < seconds; t += dt) {
+        insv::ImuSample s;
+        s.timestamp = static_cast<uint64_t>(std::llround(t * 1e6));
+        const M3 q = r.orientation(t);
+        // Specific force in g: the acceleration plus gravity's reaction (up).
+        const double psi = r.heading(t);
+        const double fwd[3] = {std::sin(psi), 0, -std::cos(psi)}, right[3] = {std::cos(psi), 0, std::sin(psi)};
+        const double lat = r.speed(t) * r.turn(t);
+        double world[3];
+        for (int k = 0; k < 3; ++k)
+            world[k] = (r.accel(t) * fwd[k] + lat * right[k]) / kG + (k == 1 ? 1.0 : 0.0);
+        for (int i = 0; i < 3; ++i)
+            s.accel[i] = q[0][i] * world[0] + q[1][i] * world[1] + q[2][i] * world[2];
+        // Body rate from R(t-h)^T R(t+h) ~ I + 2h [w]x.
+        const M3 a = r.orientation(t - h), b = r.orientation(t + h);
+        M3 d{};
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                for (int k = 0; k < 3; ++k)
+                    d[i][j] += a[k][i] * b[k][j];
+        s.gyro[0] = (d[2][1] - d[1][2]) / (4 * h);
+        s.gyro[1] = (d[0][2] - d[2][0]) / (4 * h);
+        s.gyro[2] = (d[1][0] - d[0][1]) / (4 * h);
+        track.samples.push_back(s);
+    }
+    return track;
+}
+} // namespace ride
+
+// The lean and the acceleration along and across the travel, with the camera
+// turned off the travel and tilted on the vehicle.
+void testMotion()
+{
+    std::printf("  motion: lean and G about the travel, a turned and tilted mount\n");
+    const ride::Ride weave{0.35};
+    const insv::MotionTrack m = insv::BuildMotion(ride::record(weave, 90.0));
+    CHECK(m.size() > 8900 && m.travelFit > 0.9);
+    // Against the truth smoothed as the track is (0.25 s lean, 0.5 s G).
+    std::vector<double> lean, lat, fwd;
+    for (size_t i = 0; i < m.size(); ++i) {
+        const double t = static_cast<double>(i) * m.stepSec;
+        lean.push_back(weave.lean(t) / kDeg);
+        lat.push_back(weave.speed(t) * weave.turn(t) / ride::kG);
+        fwd.push_back(weave.accel(t) / ride::kG);
+    }
+    lean = insv::GaussianSmooth(lean, m.stepSec, 0.25);
+    lat = insv::GaussianSmooth(lat, m.stepSec, 0.5);
+    fwd = insv::GaussianSmooth(fwd, m.stepSec, 0.5);
+    double leanErr = 0, latErr = 0, fwdErr = 0, maxLean = 0;
+    for (size_t i = 500; i + 500 < m.size(); ++i) { // the smoothing's ends aside
+        leanErr = std::max(leanErr, std::fabs(m.leanDeg[i] - lean[i]));
+        latErr = std::max(latErr, std::fabs(m.lateralG[i] - lat[i]));
+        fwdErr = std::max(fwdErr, std::fabs(m.forwardG[i] - fwd[i]));
+        maxLean = std::max(maxLean, std::fabs(lean[i]));
+    }
+    std::printf("    lean to %.1f deg off by %.2f, lateral G by %.3f, forward G by %.3f\n", maxLean,
+                leanErr, latErr, fwdErr);
+    CHECK(maxLean > 25.0);
+    CHECK(leanErr < 2.5 && latErr < 0.04 && fwdErr < 0.04);
+
+    // Straight on: nothing to fit the travel to, so the camera's forward --
+    // 40 deg off it, so the speeding up shows mostly along it.
+    const ride::Ride straight{0.0};
+    const insv::MotionTrack s = insv::BuildMotion(ride::record(straight, 60.0));
+    CHECK(s.size() > 5900 && s.travelFit == 0.0);
+    double sLean = 0, sFwd = 0, sRatio = 0;
+    for (size_t i = 500; i + 500 < s.size(); ++i) {
+        const double t = static_cast<double>(i) * s.stepSec;
+        sLean = std::max(sLean, double(std::fabs(s.leanDeg[i])));
+        sFwd = std::max(sFwd, std::fabs(s.forwardG[i] - std::cos(40 * kDeg) * straight.accel(t) / ride::kG));
+        sRatio = std::max(sRatio, double(std::fabs(s.forwardG[i])));
+    }
+    CHECK(sLean < 0.5 && sFwd < 0.01 && sRatio > 0.02);
+
+    insv::ImuTrack noAccel = ride::record(weave, 5.0);
+    for (insv::ImuSample& x : noAccel.samples)
+        x.accel[0] = x.accel[1] = x.accel[2] = 0.0;
+    CHECK(insv::BuildMotion(noAccel).empty());
+    CHECK(insv::BuildMotion({}).empty());
+}
+
+// A GPS track timed by the camera's clock stamp, running behind the video by
+// 2.1 s at the start and 1.5 s ten minutes later, lined up against the
+// acceleration the IMU felt.
+void testGpsAlignedByAcceleration()
+{
+    std::printf("  GPS lined up by the IMU's acceleration\n");
+    const double step = 0.01, seconds = 600.0;
+    // A speed that changes now and then, not in a repeating pattern.
+    const auto speed = [](double t) {
+        return 15.0 + 4.0 * std::sin(2 * kPi * t / 37.0) + 2.5 * std::sin(2 * kPi * t / 13.3 + 1.0) +
+               1.5 * std::sin(2 * kPi * t / 5.9 + 2.0);
+    };
+    const auto behind = [&](double t) { return 2.1 - 0.6 * t / seconds; };
+    std::vector<float> forwardG;
+    for (double t = 0.0; t < seconds; t += step)
+        forwardG.push_back(float((speed(t + 0.001) - speed(t - 0.001)) / 0.002 / ride::kG));
+    insv::GpsTrack track;
+    track.clockStamped = true;
+    for (double t = 0.4; t < seconds; t += 1.0) // a fix a second, stamped late
+        track.fixes.push_back({std::llround((t + behind(t)) * 1e3), 45.0, 7.0, speed(t), 90.0, 10.0});
+    const auto fit = insv::AlignGpsByAcceleration(track, forwardG, step);
+    CHECK(fit && fit->shifts.size() >= 4);
+    if (fit) {
+        double worst = 0.0;
+        for (double t = 30.0; t < seconds - 30.0; t += 10.0)
+            worst = std::max(worst, std::fabs(fit->shiftAt(t) - behind(t)));
+        std::printf("    shift off by %.0f ms at most\n", worst * 1e3);
+        CHECK(worst < 0.08);
+        CHECK(fit->videoMs(2500) == 2500 - std::llround(fit->shiftAt(2.5) * 1e3));
+    }
+
+    // Standing still, or a steady speed: nothing to match.
+    insv::GpsTrack steady = track;
+    for (insv::GpsFix& f : steady.fixes)
+        f.speedMps = 0.0;
+    CHECK(!insv::AlignGpsByAcceleration(steady, forwardG, step));
+    // A speed that has nothing to do with the IMU's.
+    insv::GpsTrack other = track;
+    for (size_t i = 0; i < other.fixes.size(); ++i)
+        other.fixes[i].speedMps = speed(3.7 * double(i) + 100.0);
+    CHECK(!insv::AlignGpsByAcceleration(other, forwardG, step));
+    CHECK(!insv::AlignGpsByAcceleration({}, forwardG, step));
+}
+
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
 void testYcbcrRows()
@@ -1569,6 +1756,8 @@ int main()
     testOneX2Trailer();
     testA1Trailer();
     testGpsAlignedBySpeed();
+    testMotion();
+    testGpsAlignedByAcceleration();
     testYcbcrRows();
 
     if (g_failures == 0)

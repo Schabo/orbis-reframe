@@ -120,6 +120,7 @@ add_library(insv_trailer STATIC
     src/insv/Gps.h
     src/insv/Gps.cpp
     src/insv/Imu.h
+    src/insv/Smooth.h
     src/insv/InsvTrailer.h
     src/insv/InsvTrailer.cpp
     # Lining the trailer's IMU up with the video, and what differs per model.
@@ -152,6 +153,8 @@ add_library(insv STATIC
     src/insv/GyroStabilizer.h
     src/insv/GyroStabilizer.cpp
     src/insv/Image.h
+    src/insv/Motion.h
+    src/insv/Motion.cpp
     src/insv/Calibration.h
     src/insv/Calibration.cpp
     src/insv/LensSource.h

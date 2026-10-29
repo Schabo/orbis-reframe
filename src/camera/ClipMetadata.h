@@ -147,9 +147,11 @@ std::string ClipFileOf(const std::string& path, std::string* err = nullptr);
 // tens of MB. nullopt when the clip has none (or can't be read).
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path);
 
-// The clip's GPS track, lined up with its video. Not cached, like the IMU:
-// read when an overlay needs it. nullopt when the clip has none (or can't be
-// read).
+// The clip's GPS track, lined up with its video: a track the camera timed
+// only by its clock stamp (GpsTrack::clockStamped) is matched against the
+// clip's IMU (insv::AlignGpsByAcceleration), which reads the IMU too. Not
+// cached, like the IMU: read when an overlay needs it. nullopt when the clip
+// has none (or can't be read).
 std::optional<insv::GpsTrack> ReadClipGps(const std::string& path);
 
 // The camera's own preview picture, nullopt when the file has none.

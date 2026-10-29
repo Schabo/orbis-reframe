@@ -3,8 +3,10 @@
 #include "Insta360Reader.h"
 
 #include <LensDemuxer.h>
+#include <Motion.h> // insv::BuildMotion
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <map>
 #include <mutex>
@@ -180,7 +182,24 @@ std::optional<insv::GpsTrack> ReadClipGps(const std::string& path) {
     const Cached c = lookup(path, nullptr, nullptr);
     if (!c.clip || c.clip->gpsFixes == 0)
         return std::nullopt;
-    return c.reader->readGps(*c.clip);
+    auto track = c.reader->readGps(*c.clip);
+    if (!track || !track->clockStamped || !c.clip->hasImu)
+        return track;
+    const auto imu = c.reader->readImu(*c.clip);
+    const insv::MotionTrack motion = imu ? insv::BuildMotion(*imu) : insv::MotionTrack{};
+    const auto fit = insv::AlignGpsByAcceleration(*track, motion.forwardG, motion.stepSec);
+    if (!fit) {
+        std::fprintf(stderr, "[camera] GPS in %s: its speed doesn't match the IMU clearly; timed "
+                             "by the camera's clock alone\n",
+                     path.c_str());
+        return track;
+    }
+    std::fprintf(stderr, "[camera] GPS in %s lined up with the IMU: it ran %.2f s behind the video "
+                         "at the start, %.2f s at the end\n",
+                 path.c_str(), fit->shifts.front().second, fit->shifts.back().second);
+    for (insv::GpsFix& f : track->fixes)
+        f.timeMs = fit->videoMs(f.timeMs);
+    return track;
 }
 
 std::optional<Thumbnail> ReadClipThumbnail(const std::string& path) {

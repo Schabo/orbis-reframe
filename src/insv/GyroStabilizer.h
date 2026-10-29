@@ -148,6 +148,22 @@ inline StabMode stabModeFromString(const std::string& s)
     return StabMode::Off;
 }
 
+// A sensor vector in the sphere's axes: a signed permutation, written as
+// StabConfig::gyroAxes is ("-y,x,-z"). Token k names the sensor component
+// that feeds sphere axis k.
+struct AxisMap {
+    int idx[3] = {0, 1, 2};
+    double sign[3] = {1, 1, 1};
+
+    void apply(const double in[3], double out[3]) const
+    {
+        for (int k = 0; k < 3; ++k)
+            out[k] = sign[k] * in[idx[k]];
+    }
+};
+// Empty or malformed: identity.
+AxisMap ParseAxisMap(const std::string& s);
+
 // Lean-follow "Strength" (0..1) <-> the shared per-axis smoothing window, seconds.
 // The UI exposes one Strength slider instead of three raw windows; this is the
 // single place that mapping lives. Monotonic and mutually inverse: 0 => a short

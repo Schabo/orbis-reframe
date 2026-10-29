@@ -36,8 +36,15 @@ moment -- built: `camera::ReadClipGps`, `core/Telemetry` and the shared
 `SourceTimeMap`; then text fields in titles (`{speed}`, `{altitude}`,
 `{heading}`, `{heading:compass}`, with units per title) -- built; then
 drawn gauges as their own overlay clips (dial, bar, heading tape) -- built;
-then the route, lean and G-force. Where a clip has no GPS, a field or gauge
-shows `--`. Place names from coordinates are not planned: they'd need an
+then the route, lean and G-force, in four steps: the X5's GPS lined up with
+the video by the IMU (field 98 alone leaves it 0.5-2.4 s late) -- built:
+`insv::BuildMotion` (lean and acceleration about the direction of travel,
+fitted per clip, since the camera needn't face it) and
+`insv::AlignGpsByAcceleration`; then lean and acceleration carried by the
+title clock next to the GPS, read off the GUI thread; then a lean
+half-dial, a G circle and the whole trip's route as gauges, with `{lean}`
+and `{g}` fields; then the project format (version 20) and the manual.
+Where a clip has no GPS, a field or gauge shows `--`. Place names from coordinates are not planned: they'd need an
 offline place database.
 
 ### 2. Optional
