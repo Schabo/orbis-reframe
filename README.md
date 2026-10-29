@@ -19,7 +19,9 @@ drone) experimentally.
 ## Status: "Works on my computer"
 
 > Status: work in progress, built and tested on one machine (Debian Testing,
-> NVIDIA RTX, Wayland, Sway). AMD and Intel GPUs are supported best-effort:
+> an NVIDIA RTX 5070, Wayland, Sway; the Debian 13 and Ubuntu 26.04 packages
+> and the AppImage in containers of those and other distributions on it).
+> AMD and Intel GPUs are supported best-effort:
 > a contributor has run it on an AMD Radeon; Intel hasn't been tried. Other
 > setups that meet the requirements should work but haven't been tried;
 > what users have confirmed is under [Confirmed working](#confirmed-working).
@@ -34,11 +36,21 @@ openSUSE Tumbleweed, ...). The
 needs and how to install. **Found a problem?**
 [Open an issue](https://github.com/Schabo/orbis-reframe/issues).
 
-**Insta360 X6:** experimental -- clips open, stitch and export, but only a
-contributor has tried real X6 files so far, and stabilization may turn the
-picture the wrong way until an X6 clip confirms its motion axes.
+**Insta360 X5:** fully supported, the camera orbis-reframe is built and
+tested on: every capture mode tried so far (8K, 5.7K/5.7K+, 5.7K 60,
+4K 120), I-Log through the camera maker's LUT, stabilization with its motion
+axes measured, lens guards, and GPS from a connected GPS remote.
 
-**Insta360 ONE X2:** experimental -- 5.7K clips (one file per lens) open,
+**Insta360 X6:** experimental -- clips open, stitch and export, including the
+10-bit I-Log and Dolby Vision (HLG) modes through LUTs, but only a
+contributor has tried real X6 files so far. Stabilization may turn the
+picture the wrong way until an X6 clip confirms its motion axes; how the
+HLG LUT handles highlights on real Dolby Vision footage, real-time playback
+of 8K 50, and lens guards (the clips so far carry no lens-guard profiles)
+are unchecked.
+
+**Insta360 ONE X2:** experimental -- 5.7K clips (one file per lens, added
+from any of them) open,
 stitch, stabilize and export, but the stitch hasn't been checked against
 Insta360 Studio's yet, the motion axes are measured on a few walking and
 riding clips only, and Horizon lock can leave the horizon tilted on some
@@ -46,8 +58,10 @@ clips.
 
 **Antigravity A1:** experimental -- 8K clips open, stitch, stabilize and
 export, from one contributor's flights; the horizon is leveled by the
-drone's own flight controller. Its GPS isn't used yet (no speed or
-altitude in titles), and the 5.2K and 4K modes are untried.
+drone's own flight controller. Its GPS shows in titles and gauges once the
+drone has moved (a hover or a clip shorter than about 8 seconds gives
+nothing to line it up with the video by), and the 5.2K and 4K modes are
+untried.
 
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:
@@ -101,17 +115,23 @@ no closed-source dependencies.
 
 **Import and playback**
 - Opens X5 `.insv` files directly, including every capture mode tested so far
-  (8K, 5.7K/5.7K+, 5.7K 60, 4K 120).
+  (8K, 5.7K/5.7K+, 5.7K 60, 4K 120); X6 (including its 10-bit I-Log and
+  Dolby Vision modes), ONE X2 and Antigravity A1 clips experimentally.
 - Real-time playback: Vulkan video decode, then a Vulkan compute
   fisheye→view pass on the GPU, with CPU fallbacks.
 - Interactive 360° viewport: drag to look around during playback and while
   scrubbing.
+- `.orp` projects and `.insv` clips open from the file manager.
 - The viewport renders straight from the fisheyes at full source detail.
 
 **Reframing**
-- Keyframed virtual camera: yaw, pitch, roll and field of view, interpolated
-  between keyframes. Set keyframes by dragging the viewport or by typing
-  values into the sidebar.
+- Keyframed virtual camera: yaw, pitch, roll, field of view and distortion,
+  interpolated between keyframes. Set keyframes by dragging the viewport or
+  by typing values into the sidebar. Click a keyframe's diamond on the
+  timeline to go to it.
+- Wide views drawn like a fisheye lens so the edges don't stretch, set
+  automatically from the field of view, all the way to **tiny planets**
+  (a keyframe move zooms smoothly from a normal view into one).
 - Easing per keyframe (Linear, Fast to slow, Slow to fast), and moves that
   start and stop gently instead of abruptly.
 - **Track subject**: draw a box around a rider, car or anything else in the
@@ -120,6 +140,8 @@ no closed-source dependencies.
   it's lost, and you stop it when you've seen enough. The result is ordinary
   keyframes you can edit. It works in a gyro-stabilized flat view around the
   subject, so the camera shake and the 360° seam don't get in the way.
+- **Split screen**: a clip in two or four panes, each looking its own way
+  with its own keyframes, e.g. the road ahead and behind at once.
 
 **Timeline**
 - Multiple clips with trim in/out, split, duplicate and reorder, from the
@@ -138,37 +160,51 @@ no closed-source dependencies.
 - Keyboard shortcuts for frame stepping, jumping between cuts, split and
   delete (Help ▸ Keyboard shortcuts, F1).
 
-**Picture-in-picture and titles**
+**Picture-in-picture, titles and gauges**
 - Flat video files on overlay tracks, drawn as insets over the reframed view:
   position, size, opacity, rounded corners and a border, set in the Picture in
   picture tab or by dragging the inset in the viewport.
 - Keyframe an inset's position, size and opacity, and bring an overlay forward
   or send it back. A PiP's own sound comes along on its own track, linked
   like a video clip's.
-- Text titles on overlay tracks: font, colour, position and size, keyframed
-  and faded like an inset.
+- Text titles on overlay tracks, started from ready-made tiles in the
+  Overlays tab: font (from a list of the installed fonts, the last three
+  used on top), colour, alignment, outline, shadow, box and spacing,
+  keyframed and faded like an inset, and sliding, popping or typing in and
+  out.
+- Titles show the recording time as a running clock and the date, and,
+  from the camera's GPS, the speed, altitude and heading; from its motion
+  sensor, the lean angle and G-force. On the X5 the GPS is lined up with
+  the video by the motion sensor.
+- **Gauges** draw those values as a dial, a bar, a heading tape, a lean
+  dial or a G circle, and a **route** map: the road around you, turning as
+  you ride, or the whole trip seen from above.
 
 **Stabilization** (native, from the camera's own IMU data)
-- Modes: **Off / Lean follow / Horizon lock / Custom** (per-axis strength),
-  à la Gyroflow.
+- Modes: **Off / Lean follow / Horizon lock / Direction lock / Custom**
+  (per-axis strength), à la Gyroflow. Direction lock keeps the horizon
+  level and the view pointing one way through bends.
 - Accelerometer-fused horizon reference, gyro↔video time sync and optional
-  rolling-shutter correction.
+  rolling-shutter correction. Antigravity A1 clips are leveled by the
+  drone's own flight controller.
 
 **Stitching**
 - Stitch based on the MEI fisheye model, using the per-camera calibration
   stored in each file.
 - Lens-guard profiles and a seam fine-tune per clip, so clips filmed with and
-  without lens guards mix in one project.
+  without lens guards mix in one project. The fine-tune is measured from the
+  video: how the back lens is turned, where its centre is, and its scale.
 - Depth-aware seam: the stitch distance is measured along the seam every
-  frame, so near objects (the bike, handlebars, hands) aren't doubled.
+  frame, so near objects (the bike, handlebars, hands) aren't doubled; the
+  seam is cut where the lenses agree, and their colour matched along it.
 
 **Look and sound**
 - Per-clip colour grading: exposure, contrast, saturation, temperature. The
   same formula runs in the viewport and in export.
 - A 3D LUT (`.cube`) per clip, with a strength: the camera maker's LUT for
   log footage (Insta360 I-Log; load the downloaded zip as it is) or a look.
-  HDR (HLG) clips are recognised and converted to normal video with the LUT
-  that comes with the app.
+  Log clips are recognised and ask for their LUT; HDR (HLG) clips are
+  converted to normal video with the LUT that comes with the app.
 - Audio playback: level, mute and fades for every audio clip, a level and
   mute per track, and a mixer used in both playback and export.
 - Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that
@@ -186,9 +222,11 @@ no closed-source dependencies.
 **Output**
 - Flat reframed export of the whole timeline to H.264/H.265 on the GPU's
   hardware encoder (NVENC on NVIDIA, VA-API or Vulkan video on AMD and
-  Intel), with the overlays and titles composited in and the audio mixed.
-- Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution and frame
-  rate. The viewport is letterboxed to the chosen aspect.
+  Intel), with the overlays, titles and gauges composited in and the audio
+  mixed.
+- Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution, frame
+  rate and bit depth (8-bit, or 10-bit as H.265 Main 10). The viewport is
+  letterboxed to the chosen aspect.
 - Screenshot of the current view at project resolution (PNG), from the
   player bar.
 
@@ -196,15 +234,20 @@ no closed-source dependencies.
 - A project library to start from: one folder per project, with its exports
   and caches; rename and duplicate projects there.
 - Save/load (`.orp`, JSON), undo/redo, and autosave to a recovery file.
-- A Media sidebar with the project's files, which notices files going missing
-  and helps find moved ones.
-- Settings in tabs (Video, Audio, Picture in picture, Title, Transition,
-  Privacy) with collapsible sections, a player bar under the video, and the
-  timeline across the full window.
+- A Media tab with the project's files, which notices files going missing
+  and helps find moved ones, and a Media information section with what a
+  clip's file says: its mode, lenses, frame rate, bitrate, recording time,
+  camera and more.
+- A media sidebar in tabs (Media, Overlays, Transitions), settings in tabs
+  (Video, Audio, Picture in picture, Overlay, Transition, Privacy) with
+  collapsible sections, a player bar under the video, and the timeline
+  across the full window.
 - Three themes: Ember, Light and Neutral dark.
 
-Planned next: other 360° cameras (other Insta360 models, DJI, GoPro) and an
-effects library. Further out: a "tiny planet" projection and face blur.
+Planned: more 360° cameras as sample clips come in (Insta360 X4 and X3, DJI
+Osmo 360, GoPro MAX), a second 360° clip as an inset, and an effects
+library. Further out: face and object blur, and HDR export. The
+[roadmap](docs/roadmap.md) has the details.
 
 ## Building
 
@@ -233,8 +276,11 @@ list and the pinned versions.
 
 | Doc | Contents |
 |---|---|
-| [`docs/manual/`](docs/manual/README.md) | User manual |
+| [`docs/manual/`](docs/manual/README.md) | User manual: [getting started](docs/manual/getting-started.md), [the main window](docs/manual/main-window.md), [timeline](docs/manual/timeline.md), [reframing](docs/manual/reframing.md), [stabilization](docs/manual/stabilization.md), [stitching](docs/manual/stitching.md), [audio](docs/manual/audio.md), [colour](docs/manual/colour.md), [picture in picture](docs/manual/picture-in-picture.md), [titles and gauges](docs/manual/titles.md), [transitions](docs/manual/transitions.md), [privacy blur](docs/manual/privacy.md), [projects and export](docs/manual/projects-and-export.md), [media information](docs/manual/media-information.md), [keyboard shortcuts](docs/manual/keyboard-shortcuts.md) |
+| [`docs/architecture.md`](docs/architecture.md) | How the pieces fit, the standing decisions and the rules every change keeps |
+| [`docs/roadmap.md`](docs/roadmap.md) | What's planned and how each piece is meant to work |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Reporting bugs, building, commit messages, licensing of contributions |
+| [`AGENTS.md`](AGENTS.md) | Instructions for AI coding agents (and people) working on the code |
 | [`docs/dev-environment.md`](docs/dev-environment.md) | Build dependencies, toolchain, environment switches for diagnosing problems |
 | [`docs/formats/`](docs/formats/README.md) | Camera file formats: everything known about the X5 `.insv`/`.lrv` format, and what's known about other cameras |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | How to make a release, step by step |
@@ -242,9 +288,10 @@ list and the pinned versions.
 
 ## Sources and thanks
 
-Everything about the X5 file format was learned from **interoperability
-documentation, published research and camera-produced files**. The Insta360
-SDK was never disassembled. [`docs/formats/`](docs/formats/README.md) marks
+Everything about the cameras' file formats (Insta360 X5, X6, ONE X2,
+Antigravity A1) was learned from **interoperability documentation,
+published research and camera-produced files**. No vendor's SDK or software
+was ever disassembled. [`docs/formats/`](docs/formats/README.md) marks
 every fact with where it came from and how well it's verified. We're grateful
 to these projects and people:
 
@@ -299,15 +346,18 @@ to these projects and people:
 Built with [Qt 6](https://www.qt.io/), [Vulkan](https://www.vulkan.org/),
 [FFmpeg](https://ffmpeg.org/) (demux, decode, hardware encode, audio, time-stretch),
 [glslang](https://github.com/KhronosGroup/glslang) (shader compiler),
-[nlohmann/json](https://github.com/nlohmann/json), optionally
+[nlohmann/json](https://github.com/nlohmann/json),
+[miniaudio](https://miniaud.io/) (David Reid, Unlicense OR MIT-0; sound
+output), optionally
 [OpenCV](https://opencv.org/) (analysis tools, subject tracking) and
 [ONNX Runtime](https://onnxruntime.ai/) (the voice noise modes) and
 [ncnn](https://github.com/Tencent/ncnn) (Tencent, BSD-3-Clause; the plate
-scan), and [Lucide](https://lucide.dev/) icons (ISC
-license).
+scan), and [Lucide](https://lucide.dev/) icons (ISC license; the parts
+derived from [Feather](https://feathericons.com/) MIT).
 
-Insta360, Insta360 Studio and X5 are trademarks of Arashi Vision Inc. This
-project is not affiliated with or endorsed by Insta360.
+Insta360, Insta360 Studio, X5, X6 and ONE X2 are trademarks of Arashi
+Vision Inc.; Antigravity and A1 are trademarks of their owner. This project
+is not affiliated with or endorsed by Insta360 or Antigravity.
 
 ## License
 

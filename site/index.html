@@ -173,12 +173,22 @@
   <section>
     <div class="wrap">
       <h2>Status: “works on my computer”</h2>
-      <p>A work in progress, built and tested on one machine: Debian Testing, an NVIDIA RTX GPU,
-        Wayland and Sway. AMD and Intel GPUs are supported best-effort: a contributor has run it on
+      <p>A work in progress, built and tested on one machine: Debian Testing, an NVIDIA RTX 5070,
+        Wayland and Sway, with the other packages tested in containers on it. AMD and Intel GPUs are supported best-effort: a contributor has run it on
         an AMD Radeon; Intel hasn't been tried. The <a href="https://github.com/Schabo/orbis-reframe/releases">releases</a> are a <code>.deb</code> and a
         tarball each for Debian Testing, Debian 13 and Ubuntu 26.04 LTS, and an AppImage for
         other distributions with glibc 2.41 or newer (Fedora, Arch, openSUSE Tumbleweed, ...); other setups that meet the
         requirements should work but haven't been tried. Found a problem? <a href="https://github.com/Schabo/orbis-reframe/issues">Report it on GitHub</a>.</p>
+      <p>The <strong>X5</strong> is the camera it's built and tested on, and fully supported: every
+        capture mode tried so far, I-Log through the camera maker's LUT, stabilization, lens guards
+        and GPS. The <strong>X6</strong>,
+        <strong>ONE X2</strong> (5.7K) and <strong>Antigravity A1</strong> (8K) are experimental:
+        their clips open, stitch and export, tried on a contributor's or a few test clips;
+        the <a href="https://github.com/Schabo/orbis-reframe#status-works-on-my-computer">README</a>
+        says what's still unchecked on each. Have another 360 camera? Support for other Insta360,
+        DJI and GoPro cameras needs real footage to build on:
+        <a href="https://github.com/Schabo/orbis-reframe/blob/main/docs/formats/README.md#sample-clips-wanted">sample
+        clips wanted</a>.</p>
       <div class="note">
         <p><strong>AI disclaimer:</strong> most of the code in this project was written with AI, using
           <a href="https://claude.com/claude-code">Claude Code</a> with Claude Opus 5.5. The design,
@@ -225,25 +235,33 @@
           <h3>Import and playback</h3>
           <ul>
             <li>Opens X5 <code>.insv</code> files directly, in every capture mode tested so far
-              (8K, 5.7K/5.7K+, 5.7K 60, 4K 120).</li>
+              (8K, 5.7K/5.7K+, 5.7K 60, 4K 120); X6 (including its 10-bit I-Log and Dolby Vision
+              modes), ONE X2 and Antigravity A1 clips experimentally.</li>
             <li>Real-time playback: Vulkan video decode, then a Vulkan compute fisheye→view pass on
               the GPU, with CPU fallbacks.</li>
             <li>Interactive 360° viewport: drag to look around during playback and while scrubbing.</li>
             <li>The viewport renders straight from the fisheyes at full source detail.</li>
+            <li><code>.orp</code> projects and <code>.insv</code> clips open from the file
+              manager.</li>
           </ul>
         </div>
         <div class="card">
           <h3>Reframing</h3>
           <ul>
-            <li>Keyframed virtual camera: yaw, pitch, roll and field of view, interpolated between
-              keyframes.</li>
-            <li>Set keyframes by dragging the viewport or by typing values into the sidebar.</li>
+            <li>Keyframed virtual camera: yaw, pitch, roll, field of view and distortion,
+              interpolated between keyframes.</li>
+            <li>Set keyframes by dragging the viewport or by typing values into the sidebar; click a
+              keyframe's diamond on the timeline to go to it.</li>
+            <li>Wide views drawn like a fisheye lens so the edges don't stretch, set automatically
+              from the field of view, all the way to <strong>tiny planets</strong>.</li>
             <li>Easing per keyframe (Linear, Fast to slow, Slow to fast), and moves that start and
               stop gently instead of abruptly.</li>
             <li><strong>Track subject</strong>: draw a box around a rider, car or anything else, and
               the camera follows it through the sphere. Tracking plays back live, with the box green
               while the subject is found and red when it's lost, and you stop it when you've seen
               enough. The result is ordinary keyframes you can edit.</li>
+            <li><strong>Split screen</strong>: a clip in two or four panes, each looking its own
+              way with its own keyframes, e.g. the road ahead and behind at once.</li>
           </ul>
         </div>
         <div class="card">
@@ -275,18 +293,33 @@
             <li>Keyframe an inset's position, size and opacity, and bring an overlay forward or send
               it back. A PiP's own sound comes along on its own track, linked like a video
               clip's.</li>
-            <li>Text titles on overlay tracks: font, colour, position and size, keyframed and faded
-              like an inset.</li>
+            <li>Text titles on overlay tracks, started from ready-made tiles: font (the last three used on top), colour,
+              alignment, outline, shadow, box and spacing, keyframed and faded like an inset, and
+              sliding, popping or typing in and out.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>GPS, motion and gauges</h3>
+          <ul>
+            <li>Titles show the recording time as a running clock and the date.</li>
+            <li>From the camera's GPS: speed, altitude and heading. On the X5 the GPS is lined up
+              with the video by the motion sensor.</li>
+            <li>From its motion sensor: the lean angle and G-force.</li>
+            <li><strong>Gauges</strong> draw them as a dial, a bar, a heading tape, a lean dial or a
+              G circle, and a <strong>route</strong> map: the road around you, turning as you ride,
+              or the whole trip seen from above.</li>
           </ul>
         </div>
         <div class="card">
           <h3>Stabilization</h3>
           <ul>
             <li>Native, from the camera's own IMU data.</li>
-            <li>Modes: <strong>Off / Lean follow / Horizon lock / Custom</strong> (per-axis
-              strength), à la Gyroflow.</li>
+            <li>Modes: <strong>Off / Lean follow / Horizon lock / Direction lock / Custom</strong>
+              (per-axis strength), à la Gyroflow. Direction lock keeps the horizon level and the
+              view pointing one way through bends.</li>
             <li>Accelerometer-fused horizon reference, gyro↔video time sync and optional
               rolling-shutter correction.</li>
+            <li>Antigravity A1 clips are leveled by the drone's own flight controller.</li>
           </ul>
         </div>
         <div class="card">
@@ -295,9 +328,10 @@
             <li>Based on the MEI fisheye model, using the per-camera calibration stored in each
               file.</li>
             <li>Lens-guard profiles and a seam fine-tune per clip, so clips filmed with and without
-              lens guards mix in one project.</li>
+              lens guards mix in one project. The fine-tune is measured from the video.</li>
             <li>Depth-aware seam: the stitch distance is measured along the seam every frame, so near
-              objects (the bike, handlebars, hands) aren't doubled.</li>
+              objects (the bike, handlebars, hands) aren't doubled; the seam is cut where the lenses
+              agree, and their colour matched along it.</li>
           </ul>
         </div>
         <div class="card">
@@ -305,6 +339,10 @@
           <ul>
             <li>Per-clip colour grading: exposure, contrast, saturation, temperature. The same
               formula runs in the viewport and in export.</li>
+            <li>A 3D LUT (<code>.cube</code>) per clip, with a strength: the camera maker's LUT for
+              log footage (Insta360 I-Log; load the downloaded zip as it is) or a look. Log clips
+              are recognised and ask for their LUT; HDR (HLG) clips are converted to normal video
+              with the LUT that comes with the app.</li>
             <li>Level, mute and fades for every audio clip, a level and mute per track, and a mixer
               used in both playback and export.</li>
             <li>Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that tracks the
@@ -327,10 +365,11 @@
           <h3>Output</h3>
           <ul>
             <li>Flat reframed export of the whole timeline to H.264/H.265 on the GPU's hardware
-              encoder (NVENC on NVIDIA, VA-API or Vulkan video on AMD and Intel), with the overlays
-              and titles composited in and the audio mixed.</li>
-            <li>Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution and frame rate;
-              the viewport is letterboxed to match.</li>
+              encoder (NVENC on NVIDIA, VA-API or Vulkan video on AMD and Intel), with the overlays,
+              titles and gauges composited in and the audio mixed.</li>
+            <li>Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution, frame rate and
+              bit depth (8-bit, or 10-bit as H.265 Main 10); the viewport is letterboxed to
+              match.</li>
             <li>Screenshot of the current view at project resolution (PNG), from the player
               bar.</li>
           </ul>
@@ -341,27 +380,30 @@
             <li>A project library to start from: one folder per project, with its exports and
               caches; rename and duplicate projects there.</li>
             <li>Save/load (<code>.orp</code>, JSON), undo/redo, and autosave to a recovery file.</li>
-            <li>A Media sidebar with the project's files, which notices files going missing and
-              helps find moved ones.</li>
-            <li>Settings in tabs (Video, Audio, Picture in picture, Title, Transition, Privacy) with
-              collapsible sections, a player bar under the video, and the timeline across the full
-              window.</li>
+            <li>A Media tab with the project's files, which notices files going missing and
+              helps find moved ones, and a Media information section with what a clip's file
+              says.</li>
+            <li>A media sidebar in tabs (Media, Overlays, Transitions), settings in tabs (Video,
+              Audio, Picture in picture, Overlay, Transition, Privacy) with collapsible sections, a
+              player bar under the video, and the timeline across the full window.</li>
             <li>Three themes: Ember, Light and Neutral dark.</li>
           </ul>
         </div>
       </div>
-      <p style="margin-top:20px"><strong>Planned next:</strong> other 360° cameras (other Insta360
-        models, DJI, GoPro) and an effects library. Further out: a “tiny planet” projection and
-        face blur.</p>
+      <p style="margin-top:20px"><strong>Planned:</strong> more 360° cameras as sample clips come
+        in (Insta360 X4 and X3, DJI Osmo 360, GoPro MAX), a second 360° clip as an inset, and an
+        effects library. Further out: face and object blur, and HDR export. The
+        <a href="https://github.com/Schabo/orbis-reframe/blob/main/docs/roadmap.md">roadmap</a> has
+        the details.</p>
     </div>
   </section>
 
   <section>
     <div class="wrap">
       <h2>Sources and thanks</h2>
-      <p>Everything about the X5 file format was learned from <strong>interoperability
-        documentation, published research and camera-produced files</strong>. The Insta360 SDK was
-        never disassembled. The project's format notes mark every fact with where it came from and
+      <p>Everything about the cameras' file formats (Insta360 X5, X6, ONE X2, Antigravity A1) was
+        learned from <strong>interoperability documentation, published research and camera-produced
+        files</strong>. No vendor's SDK or software was ever disassembled. The project's format notes mark every fact with where it came from and
         how well it's verified. We're grateful to these projects and people:</p>
       <ul class="sources">
         <li><strong><a href="https://gyroflow.xyz/">Gyroflow</a> and
@@ -411,11 +453,14 @@
       <p>Built with <a href="https://www.qt.io/">Qt 6</a>, <a href="https://www.vulkan.org/">Vulkan</a>,
         <a href="https://ffmpeg.org/">FFmpeg</a> (demux, decode, hardware encode, audio, time-stretch),
         <a href="https://github.com/KhronosGroup/glslang">glslang</a> (shader compiler),
-        <a href="https://github.com/nlohmann/json">nlohmann/json</a>, optionally
+        <a href="https://github.com/nlohmann/json">nlohmann/json</a>,
+        <a href="https://miniaud.io/">miniaudio</a> (David Reid, Unlicense OR MIT-0; sound output),
+        optionally
         <a href="https://opencv.org/">OpenCV</a> (analysis tools, subject tracking) and
         <a href="https://onnxruntime.ai/">ONNX Runtime</a> (the voice noise modes) and
         <a href="https://github.com/Tencent/ncnn">ncnn</a> (Tencent, BSD-3-Clause; the plate scan), and <a href="https://lucide.dev/">Lucide</a> icons
-        (ISC license).</p>
+        (ISC license; the parts derived from <a href="https://feathericons.com/">Feather</a>
+        MIT).</p>
     </div>
   </section>
 </main>
@@ -427,8 +472,9 @@
     <p>The <code>.insv</code> library (<code>src/insv/</code>) is licensed under
       <a href="https://opensource.org/license/mit">MIT</a> or
       <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache-2.0</a>, at your option.</p>
-    <p class="gap">Insta360, Insta360 Studio and X5 are trademarks of Arashi Vision Inc. This project is not
-      affiliated with or endorsed by Insta360.</p>
+    <p class="gap">Insta360, Insta360 Studio, X5, X6 and ONE X2 are trademarks of Arashi Vision Inc.;
+      Antigravity and A1 are trademarks of their owner. This project is not affiliated with or
+      endorsed by Insta360 or Antigravity.</p>
     <p class="gap"><a href="https://github.com/Schabo/orbis-reframe">Source code</a> · <a href="https://github.com/Schabo/orbis-reframe/issues">Report a problem</a> ·
       Contact: <a href="mailto:orbis-reframe@techmonkeys.se">orbis-reframe@techmonkeys.se</a></p>
   </div>
