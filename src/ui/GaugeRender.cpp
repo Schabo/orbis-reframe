@@ -468,6 +468,13 @@ void drawRoute(QPainter &p, const gauge::Style &s, const Reading &r, const Route
          QPen(rgbColor(s.text, 0.4), 0.02 * h, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     line(r.position,
          QPen(rgbColor(s.accent), 0.03 * h, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    // A stretch that stays in one place (the GPS repeating a fix it lost)
+    // has no line to draw: a mark where it is.
+    p.setPen(Qt::NoPen);
+    p.setBrush(rgbColor(s.text, 0.4));
+    for (const std::vector<Route::Point> &st : route->stretches)
+        if (st.back().along - st.front().along < 1e-9)
+            p.drawEllipse(px(QPointF(st.front().x, st.front().y)), 0.02 * h, 0.02 * h);
     if (!r.hasValue)
         return;
     p.setPen(QPen(rgbColor(s.text), 0.012 * h));
