@@ -1,10 +1,12 @@
 # Antigravity A1 file format
 
-**Desk research (2026-10-15), no A1 file examined.** From reviews and Gyroflow's
-telemetry-parser, set against what our code assumes. The A1 is a 360 drone
-from Antigravity, a brand incubated by Insta360, and writes the same `.insv`
-family; written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
-"X5 §n" below). Markers as in [`README.md`](README.md).
+**Desk research (2026-10-15); first clips examined 2026-10-29**: three
+contributed 8K clips. The trailer framing below is checked on them; the rest
+is still desk research, from reviews and Gyroflow's telemetry-parser, set
+against what our code assumes. The A1 is a 360 drone from Antigravity, a
+brand incubated by Insta360, and writes the same `.insv` family; written as
+differences from the X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below).
+Markers as in [`README.md`](README.md).
 
 ## Streams
 
@@ -25,25 +27,31 @@ family; written as differences from the X5 ([`insta360-x5.md`](insta360-x5.md),
 
 ## Trailer
 
-- 📖 The same `inst` trailer, **laid out differently** (telemetry-parser): the
-  Offsets table (X5 §4.2) is the only index; each record sits at the start
-  of a **256 KiB slot**, and there are **no six-byte descriptors** after the
-  records.
-- The app's trailer walker takes each record's position from the table, but
-  then reads its id and size from the descriptor after it -- on the A1, the
-  next slot's bytes. Taking id and size from the table entry instead (as
-  telemetry-parser does) fixes that and costs the X5 nothing.
+- ✅ The same 78-byte footer as the X5 (X5 §4.1): magic
+  `8db42d694ccc418790edff439fe026bf`, trailer version 3. The footer's
+  header names the Offsets table (type 0, 570 bytes: 57 entries).
+- ✅ **The Offsets table (X5 §4.2) is the only index.** Each record's payload
+  starts a **256 KiB slot** (the entries' offsets are 0x40000 apart, a few
+  records packed between them), and **no six-byte header follows a
+  record**: the bytes after it are zeros or the next record's data. So the
+  walker takes each record's type and size from its table entry, as
+  telemetry-parser does; reading them from the header after the record
+  finds nothing. Checked on all three clips and the `.prx` proxy.
+- ✅ Records in the clips: types 1 (Metadata, protobuf), 2, 3, 4, 7, 9, 11,
+  14, 23, 32, 33, 37, 38 and 56; the proxy holds 1 and 2. What the ones the
+  X5 doesn't have hold is ❓.
 - ❓ Calibration strings, IMU layout and axes.
 
 ## Modes and sample clips
 
 All the A1's modes 📖 (Antigravity's spec table as retailers and reviews
-reprint it, and the spring 2026 update for timelapse; Sources). We have no
-A1 clip yet. The status words are the X5's (X5 §3.4).
+reprint it, and the spring 2026 update for timelapse; Sources). Our clips:
+three 8K clips from one contributor (firmware `10.0.397.3_5.5`, 2026-10-29).
+The status words are the X5's (X5 §3.4).
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K | 7680×3840, 30 / 25 / 24 | `.insv` ❓ one file or one per lens, ❓ LRV | none | **wanted first**: the trailer layout, the 180° lens calibration |
+| 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² HEVC streams), and a `PRX_….prx` proxy | 3, 29.97 fps, H.265, standard colour | trailer read; stitch, orientation and IMU axes not yet |
 | 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | as above | none | **wanted**: a lens size no Insta360 camera has (2624² ⚠️), and 60 fps |
 | 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | as above | none | **wanted**: 100 fps |
 | 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ❓ | none | **wanted**: whether the file is tagged at the playback rate or the capture rate (100 ⚠️) |
@@ -51,7 +59,7 @@ A1 clip yet. The status words are the X5's (X5 §3.4).
 | Timelapse | added by the spring 2026 update; ❓ sizes and intervals | ❓ | none | wanted |
 | 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | `.insp`; `.dng` | none | wanted, low |
 | Internal storage (20 GB) vs microSD | | ❓ the same files | none | low: say which a clip came from |
-| Audio | not in the spec table | ❓ whether a track is recorded | none | checked on the first clip |
+| Audio | not in the spec table | ✅ no audio track in our clips | 3 | done |
 | Drone in the picture (props, arms, landing gear) | | | none | **wanted**: a clip with sky above and ground below, to see what a mask must cover |
 | Replaceable lenses | | | none | wanted, low: whether the calibration in the file follows a lens swap |
 | IMU axes | | | none | **a flight with deliberate yaw, pitch and roll**, e.g. in Sport mode |

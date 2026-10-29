@@ -62,9 +62,12 @@ struct TrailerRecord {
 // header, and the 78-byte footer. `offsetsTable`: as the X5 writes it, with
 // an offsets table (record 0x0) locating the records and named by the
 // footer's header, so only the table reaches them; else as the ONE X2 writes
-// it, a plain chain whose last header is the footer's.
+// it, a plain chain whose last header is the footer's. `slotBytes` (with the
+// table): as the Antigravity A1 writes it, each record at the start of a slot
+// this size and no header after it, the rest of the slot filled with bytes
+// that read as a bogus header.
 inline std::vector<uint8_t> insvTrailer(const std::vector<TrailerRecord>& records,
-                                        bool offsetsTable)
+                                        bool offsetsTable, size_t slotBytes = 0)
 {
     Bytes trailer;
     Bytes footer;
@@ -72,7 +75,13 @@ inline std::vector<uint8_t> insvTrailer(const std::vector<TrailerRecord>& record
         Bytes table;
         for (const TrailerRecord& r : records) {
             const uint32_t offset = uint32_t(trailer.b.size());
-            trailer.raw(r.payload).u16(r.id).u32(uint32_t(r.payload.size()));
+            trailer.raw(r.payload);
+            if (slotBytes == 0) {
+                trailer.u16(r.id).u32(uint32_t(r.payload.size()));
+            } else {
+                while (trailer.b.size() % slotBytes != 0)
+                    trailer.u8(0xa5);
+            }
             // Table entries spell the id the other way round: {type, format}.
             table.u8(uint8_t(r.id >> 8)).u8(uint8_t(r.id)).u32(uint32_t(r.payload.size())).u32(offset);
         }

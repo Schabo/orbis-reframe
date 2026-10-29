@@ -61,6 +61,7 @@ double ReadFloatLE(const uint8_t* p) {
 //     record by its offset from the start of the trailer. Newer cameras (X5
 //     included) only make the 0x300/0x400 records reachable this way — the
 //     sequential chain dead-ends at a run of empty 0x0 records after 0x200.
+//     The entry also gives the record's id and size, so no header is read.
 // The 0x0 directory record itself is consumed here, never handed to `visit`.
 // `wanted`, when set, picks the record ids to read: the others are stepped
 // over without reading their payload (the IMU record of a long clip is
@@ -112,7 +113,11 @@ bool WalkTrailerRecords(
             if (!visit(id, payload, payload_off)) return true;
         }
 
-        // Advance to the next record's header and read its (id, len).
+        // Advance to the next record. With the Offsets table, its entry gives
+        // the record's type and size: the Antigravity A1 puts each record in a
+        // 256 KiB slot with no header after it, and on the X5 the header
+        // repeats the entry. The entry is {type, format}, the header
+        // {format, type}, so swap to the header's id.
         if (using_dir) {
             bool advanced = false;
             while (dir_pos + 10 <= dir_table.size()) {
@@ -123,15 +128,17 @@ bool WalkTrailerRecords(
                 if (d_id != 0 && d_siz != 0 &&
                     static_cast<int64_t>(d_off) + d_siz < trailer_len) {
                     epos = static_cast<int64_t>(d_off) + d_siz - trailer_len;
+                    id = static_cast<uint16_t>((d_id >> 8) | (d_id << 8));
+                    len = d_siz;
                     advanced = true;
                     break;
                 }
             }
             if (!advanced) break;
-        } else {
-            epos -= 6;
-            if (epos + trailer_len < 0) break;
+            continue;
         }
+        epos -= 6;
+        if (epos + trailer_len < 0) break;
 
         file.seekg(file_size + epos, std::ios::beg);
         uint8_t header[6];

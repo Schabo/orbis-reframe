@@ -1280,6 +1280,51 @@ void testOneX2Trailer()
     std::filesystem::remove(path);
 }
 
+// An Antigravity A1-shaped trailer: the offsets table is the only index, each
+// record starts a slot and no header follows it, so the walker takes every
+// record's id and size from its table entry (docs/formats/antigravity-a1.md).
+void testA1Trailer()
+{
+    std::printf("  Antigravity A1 trailer\n");
+    Bytes meta;
+    meta.pbString(1, "A1000000000000000001").pbString(2, "Antigravity A1");
+    meta.pbString(3, "10.0.397.3_5.5").pbString(54, kOneX2V3);
+    meta.pbVarint(24, 1000300);
+    meta.pbDouble(25, 21.247);
+    Bytes imu; // 56-byte doubles, 1 ms apart
+    for (int i = 0; i < 4; ++i) {
+        imu.u64(1000000 + uint64_t(i) * 1000);
+        for (double v : {0.0, 0.0, 1.0, 0.1, 0.2, 0.3}) imu.f64(v);
+    }
+    Bytes exposure;
+    exposure.u64(1000300).f64(0.001).u64(1033667).f64(0.001);
+
+    const std::string path = (std::filesystem::temp_directory_path() / "insv_test_a1.insv").string();
+    {
+        std::ofstream f(path, std::ios::binary);
+        const std::vector<uint8_t> video(64, 0x11); // stands in for the MP4 boxes
+        const std::vector<uint8_t> t =
+            insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x400, exposure.b},
+                         {0x3800, std::vector<uint8_t>(40, 0x5a)}},
+                        true, 256);
+        f.write(reinterpret_cast<const char*>(video.data()), std::streamsize(video.size()));
+        f.write(reinterpret_cast<const char*>(t.data()), std::streamsize(t.size()));
+    }
+
+    const auto notes = insv::ReadInsvMakerNotes(path);
+    CHECK(notes && notes->model == "Antigravity A1" && notes->firmware == "10.0.397.3_5.5");
+    CHECK(notes && notes->offset_v3 == kOneX2V3);
+    const auto t = insv::ReadInsvTelemetry(path);
+    CHECK(t.has_value());
+    if (t) {
+        CHECK(t->imu.size() == 4 && t->imu[3].timestamp == 1003000);
+        CHECK(t->exposure.size() == 2 && t->exposure[1].timestamp == 1033667);
+        CHECK(t->first_frame_timestamp == 1000300);
+        CHECK(near(t->rolling_shutter_ms, 21.247, 1e-12));
+    }
+    std::filesystem::remove(path);
+}
+
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
 void testYcbcrRows()
@@ -1351,6 +1396,7 @@ int main()
     testTrailerRecords();
     testGps();
     testOneX2Trailer();
+    testA1Trailer();
     testYcbcrRows();
 
     if (g_failures == 0)

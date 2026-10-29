@@ -347,7 +347,11 @@ protobuf format**.
   - On the X5 the sequential chain dead-ends after type 2 in a run of empty
     records. **The telemetry records can only be reached through this table.**
   - telemetry-parser checks each record header against its table entry
-    (matching type and size). Our walker just uses the table for position.
+    (matching type and size). Our walker takes each record's position, type
+    and size from its table entry and doesn't read the header: on all 61
+    X5 samples (`.insv` and `.lrv`) the header repeats the entry ✅, and the
+    Antigravity A1 writes no headers at all
+    ([`antigravity-a1.md`](antigravity-a1.md)).
   - Empty entries are placeholders for types the clip doesn't have.
 
 ### 4.3 Record types
