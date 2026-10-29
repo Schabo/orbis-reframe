@@ -239,12 +239,14 @@ QString escapeBraces(const QString &text)
     return out.replace(QLatin1Char('{'), QStringLiteral("{{"));
 }
 
-Clock::Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded, const Telemetries &gps)
+Clock::Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded, const Telemetries &gps,
+             const Motions &motion)
     : m_map(std::move(map))
 {
     for (const SourceTimeMap::Span &s : m_map.spans()) {
         m_recorded.push_back(recorded.value(s.path));
         m_gps.push_back(gps.value(s.path));
+        m_motion.push_back(motion.value(s.path));
     }
 }
 
@@ -254,6 +256,14 @@ std::optional<Telemetry::Values> Clock::gpsAt(qint64 timelineMs) const
     if (i < 0 || !m_gps[size_t(i)])
         return std::nullopt;
     return m_gps[size_t(i)]->at(double(m_map.sourceMs(i, timelineMs)));
+}
+
+std::optional<MotionTelemetry::Values> Clock::motionAt(qint64 timelineMs) const
+{
+    const int i = m_map.spanAt(timelineMs);
+    if (i < 0 || !m_motion[size_t(i)])
+        return std::nullopt;
+    return m_motion[size_t(i)]->at(double(m_map.sourceMs(i, timelineMs)));
 }
 
 qint64 Clock::baseMs(int i) const

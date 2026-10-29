@@ -43,7 +43,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include <ClipMetadata.h>  // camera::ReadClipGps
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 
 #include "AudioPlayer.h"
@@ -73,6 +72,7 @@
 #include "../core/Autosave.h"
 #include "WaveformCache.h"
 #include "LensGuardCache.h"
+#include "TelemetryCache.h"
 #include "PlayerBar.h"
 #include "EditToolbar.h"
 #include "UserManual.h"
@@ -108,6 +108,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     m_timelineWidget = new TimelineWidget(this);
     m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
     m_lensGuards = new LensGuardCache(m_clipBackend.probe, this);
+    m_telemetry = new TelemetryCache({}, this);
     m_editToolbar = new EditToolbar(this);
     m_playerBar = new PlayerBar(this);
 
@@ -652,6 +653,17 @@ void MainWindow::connectOverlaysAndAudio()
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && c->sourcePath == path)
             syncStitchingPanel();
+    });
+    // A file's GPS and motion read in the background: the overlays reading
+    // them, and the selected one's note on where there's none.
+    connect(m_telemetry, &TelemetryCache::ready, this, [this](const QString &path) {
+        bool used = false;
+        for (int i = 0; i < m_timeline->count() && !used; ++i)
+            used = m_timeline->clipAt(i).sourcePath == path;
+        if (!used)
+            return;
+        pushInsetsToController();
+        refreshOverlayPanel();
     });
     connect(m_timelineWidget, &TimelineWidget::overlayAudioRequested, this,
             &MainWindow::putOverlayAudioOnTrack);
@@ -1708,7 +1720,7 @@ void MainWindow::pushInsetsToController()
                                                   fieldSources())); // thread-safe
 }
 
-renderjobs::FieldSources MainWindow::fieldSources()
+renderjobs::FieldSources MainWindow::fieldSources(bool wait)
 {
     renderjobs::FieldSources out;
     const bool clock = renderjobs::anyTitleClock(*m_timeline);
@@ -1728,16 +1740,11 @@ renderjobs::FieldSources MainWindow::fieldSources()
             }
             out.recorded.insert(c.sourcePath, *it);
         }
-        if (gps && !out.gps.contains(c.sourcePath)) {
-            auto it = m_telemetry.constFind(c.sourcePath);
-            if (it == m_telemetry.constEnd()) {
-                std::shared_ptr<const Telemetry> t;
-                if (!c.flat)
-                    if (const auto track = camera::ReadClipGps(c.sourcePath.toStdString()))
-                        t = std::make_shared<const Telemetry>(*track);
-                it = m_telemetry.insert(c.sourcePath, t && !t->isEmpty() ? t : nullptr);
-            }
-            out.gps.insert(c.sourcePath, *it);
+        if (gps && !c.flat && !out.gps.contains(c.sourcePath)) {
+            const TelemetryCache::Readings r = wait ? m_telemetry->await(c.sourcePath)
+                                                    : m_telemetry->readings(c.sourcePath);
+            out.gps.insert(c.sourcePath, r.gps);
+            out.motion.insert(c.sourcePath, r.motion);
         }
     }
     return out;
@@ -1765,7 +1772,9 @@ QString MainWindow::titleClockNote(const TrackClip &c)
         const QString &path = m_timeline->clipAt(i).sourcePath;
         if (clock && !sources.recorded.value(path).isValid())
             unknown << QString::number(i + 1);
-        if (!gps)
+        // Nothing said of a file still being read: the note is set again
+        // when it's in.
+        if (!gps || m_telemetry->pending(path))
             continue;
         // A track may cover only part of its clip: looked at where the
         // title is over it, every half second.
@@ -2768,6 +2777,7 @@ void MainWindow::recheckMissingMedia()
     m_mediaPanel->forgetFiles(fresh);
     m_waveforms->forget(fresh);
     m_lensGuards->forget(fresh);
+    m_telemetry->forget(fresh);
     m_measurements->forgetFailures(fresh);
     if (mainTrack)
         syncTimeline(); // the ⚠ marks; a clip that's back plays again

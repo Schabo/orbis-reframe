@@ -277,7 +277,8 @@ void testGps(const std::filesystem::path& dir)
     const Take lined = take("gps", t0 + 404);
     const auto clip = camera::ReadClipMetadata(lined.lead);
     CHECK(clip && clip->gpsFixes == 30);
-    const auto track = camera::ReadClipGps(lined.lead);
+    const camera::ClipTelemetry tele = camera::ReadClipTelemetry(lined.lead);
+    const auto& track = tele.gps;
     CHECK(track && track->fixes.size() == 3 && track->clockStamped); // nothing for the IMU to match: as stamped
     if (track && track->fixes.size() == 3) {
         CHECK(track->fixes[0].timeMs == 592 && track->fixes[2].timeMs == 2592);
@@ -287,8 +288,13 @@ void testGps(const std::filesystem::path& dir)
     }
     const Take unaligned = take("gps_no98", 0);
     CHECK(camera::ReadClipMetadata(unaligned.lead));
-    CHECK(!camera::ReadClipGps(unaligned.lead));
-    CHECK(!camera::ReadClipGps((dir / "missing.insv").string()));
+    // The trailer's IMU spans 200 us, less than a step of motion (insv_test
+    // has BuildMotion on a ride).
+    CHECK(tele.motion.empty());
+    CHECK(!camera::ReadClipTelemetry(unaligned.lead).gps);
+    const camera::ClipTelemetry missing =
+        camera::ReadClipTelemetry((dir / "missing.insv").string());
+    CHECK(!missing.gps && missing.motion.empty());
 }
 
 // An Antigravity A1 clip (docs/formats/antigravity-a1.md): both lenses as

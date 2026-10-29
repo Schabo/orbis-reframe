@@ -82,6 +82,7 @@ class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
 class LensGuardCache;
+class TelemetryCache;
 class ThumbnailCache;
 class Autosave;
 class PlayerBar;
@@ -352,10 +353,13 @@ private:
     void addTitle(int trackId, qint64 atMs, const QString &presetId);
     // The overlay clips to playback's InsetFeed.
     void pushInsetsToController();
-    // What the titles' fields read from the main track's files
-    // (renderjobs::FieldSources): when each was recorded, and its GPS --
-    // each only gathered when a title has a field that reads it.
-    renderjobs::FieldSources fieldSources();
+    // What the titles' fields and the gauges read from the main track's
+    // files (renderjobs::FieldSources): when each was recorded, and its GPS
+    // and motion -- each only gathered when something reads it. A file's
+    // GPS and motion are read in the background: until they're in it has
+    // none (the overlays update when they arrive), unless `wait` -- for an
+    // export or a screenshot.
+    renderjobs::FieldSources fieldSources(bool wait = false);
     // Why title `c`'s fields (gauge `c`) show nothing somewhere (the main-track clips
     // under it whose files don't say when they were recorded, or that have
     // no GPS there or only for part of it), or "".
@@ -533,9 +537,6 @@ private:
     // Source path -> recording start (recordedTimes), also when unknown: a
     // file that can't be probed isn't probed again on every refresh.
     QHash<QString, QDateTime> m_recordedTimes;
-    // Source path -> its GPS telemetry (fieldSources), null when it has
-    // none; read once.
-    QHash<QString, std::shared_ptr<const Telemetry>> m_telemetry;
     // The edit model: a Project owning a Timeline. Authoring (trim via [ ],
     // reframe via K / viewport drag) targets m_clipId, the clip currently
     // under the playhead (0 == nothing open); the timeline widget's own
@@ -551,6 +552,7 @@ private:
     std::unique_ptr<TrackFiles> m_trackFiles; // audio files and overlay videos onto tracks
     WaveformCache *m_waveforms = nullptr;
     LensGuardCache *m_lensGuards = nullptr; // which guard profiles each 360 file has
+    TelemetryCache *m_telemetry = nullptr; // each 360 file's GPS and motion (fieldSources)
     // The Media tab's thumbnails on disk; shared with the panel's worker
     // threads, which may outlive this window's members.
     std::shared_ptr<ThumbnailCache> m_thumbnailCache;

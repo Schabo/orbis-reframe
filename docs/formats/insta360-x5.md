@@ -883,8 +883,8 @@ of track). The picture agrees: `_080` sets off at 44.2 s of video (frame
 differences on the LRV), the speed by field 98.3 at ~46.2 s, lined up at
 ~44.1 s. Whether it's the camera's clock (set from the phone) against GPS
 time, the GPS source's latency or both isn't known; it differs per clip and
-drifts within one ❓. `camera::ReadClipGps` therefore lines a field-98 track
-up against the IMU (`insv::AlignGpsByAcceleration`, `src/insv/Gps.h`, on
+drifts within one ❓. `camera::ReadClipTelemetry` therefore lines a field-98
+track up against the IMU (`insv::AlignGpsByAcceleration`, `src/insv/Gps.h`, on
 `insv::BuildMotion`'s forward acceleration): the shift over each ~2 min,
 straight between them. A clip that stands still or keeps a steady speed
 (`_081`, `_082`, `_084`) stays on field 98.3.
@@ -895,7 +895,8 @@ out of order dropped), the hemisphere letters as signs, with field 98.3.
 Checked against `exiftool -ee -n` on `193105` (43 fixes) and `_080` (1222):
 every value equal (ExifTool gives the speed in km/h). `Insta360Reader`
 turns it into the common `insv::GpsTrack` in video time (heading -1 as
-unknown), read through `camera::ReadClipGps`. `ReadInsvTelemetry` still
+unknown), read through `camera::ReadClipTelemetry`. `ReadInsvTelemetry`
+still
 only counts the record for the Media information panel -- records, `A`
 records, the fix rate (median step between distinct timestamps) and the
 track length (distinct timestamps × that step); positions stay out of it.

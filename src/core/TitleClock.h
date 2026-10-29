@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MotionTelemetry.h"
 #include "SourceTimeMap.h"
 #include "Telemetry.h"
 #include "Title.h"
@@ -62,20 +63,21 @@ inline const QString kCompassField = QStringLiteral("{heading:compass}");
 Units defaultUnits(const QLocale &locale = QLocale());
 
 // When the picture at each moment of the timeline was recorded, and the GPS
-// then: the file playing there (SourceTimeMap) gives its recording start
-// plus how far into it the picture is, and its telemetry at that point. A
-// copy, safe to use on any thread.
+// and the vehicle's motion then: the file playing there (SourceTimeMap)
+// gives its recording start plus how far into it the picture is, and its
+// telemetry at that point. A copy, safe to use on any thread.
 class Clock {
 public:
     using Telemetries = QHash<QString, std::shared_ptr<const Telemetry>>;
+    using Motions = QHash<QString, std::shared_ptr<const MotionTelemetry>>;
 
     Clock() = default;
     // `recorded`: each file's recording start by its path; a file that
     // isn't there, or an invalid time, is a clip nothing says the time of.
     // `gps` likewise each file's telemetry; none (or null) is a clip
-    // without GPS.
+    // without GPS; `motion` each file's lean and G-forces.
     Clock(SourceTimeMap map, const QHash<QString, QDateTime> &recorded,
-          const Telemetries &gps = {});
+          const Telemetries &gps = {}, const Motions &motion = {});
 
     bool isEmpty() const { return m_map.isEmpty(); }
     // The wall-clock time at `timelineMs` in whole seconds (the camera
@@ -84,6 +86,8 @@ public:
     QDateTime at(qint64 timelineMs) const;
     // The GPS values at `timelineMs`, nullopt where there are none.
     std::optional<Telemetry::Values> gpsAt(qint64 timelineMs) const;
+    // The lean and G-forces at `timelineMs`, nullopt where there are none.
+    std::optional<MotionTelemetry::Values> motionAt(qint64 timelineMs) const;
     // The first timeline ms after `timelineMs` where at() lands in another
     // `stepSeconds`-long stretch of the wall clock (a new second or minute)
     // or another clip starts, or -1 if none does.
@@ -97,6 +101,7 @@ private:
     SourceTimeMap m_map;
     std::vector<QDateTime> m_recorded; // per span
     std::vector<std::shared_ptr<const Telemetry>> m_gps; // per span, null: none
+    std::vector<std::shared_ptr<const MotionTelemetry>> m_motion; // likewise
 };
 
 } // namespace title

@@ -135,7 +135,7 @@ void MainWindow::exportFlatVideo()
     req.mix = renderjobs::mixClips(*m_timeline); // the audio tracks
     // The overlay tracks, over the flat main clips.
     req.insets = renderjobs::insetJobs(*m_timeline, req.outWidth, req.outHeight, m_privacy,
-                                       fieldSources());
+                                       fieldSources(true));
 
     // The export opens its own NativeStitchSource (on the shared decode
     // device) -- pause playback so the two stitch pipelines don't contend
@@ -242,6 +242,6 @@ void MainWindow::takeScreenshot()
     m_editToolbar->showNotice(tr("Saving screenshot…"), true);
     // The overlays showing at the playhead, composited like the export does.
     still.insets = renderjobs::insetJobs(*m_timeline, still.width, still.height, m_privacy,
-                                         fieldSources());
+                                         fieldSources(true));
     m_exports->startStill(std::move(still));
 }

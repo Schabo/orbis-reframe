@@ -1,8 +1,11 @@
 // Telemetry: a clip's GPS values between the fixes, the gaps where there are
-// none, and the heading through a stop. Exit code is the failure count.
+// none, and the heading through a stop; MotionTelemetry: the lean and
+// G-forces between their samples, gaps and ends. Exit code is the failure
+// count.
 
 #include "support/ModelTest.h"
 
+#include "MotionTelemetry.h"
 #include "Telemetry.h"
 
 namespace {
@@ -112,6 +115,30 @@ void testUnknownHeading()
     CHECK(parked.at(9000) && near(*parked.at(9000)->headingDeg, 45.0));
 }
 
+// Straight between the 10 ms samples; nothing where the IMU had none (a
+// sample next to a gap is held for half a step), and the ends held for one
+// step.
+void testMotion()
+{
+    CHECK(MotionTelemetry().isEmpty() && !MotionTelemetry().at(0));
+    const float none = std::nanf("");
+    insv::MotionTrack m;
+    m.leanDeg = {0, 10, 20, none, none, 50, 60};
+    m.lateralG = {0, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f};
+    m.forwardG = {0, -0.1f, -0.2f, -0.3f, -0.4f, -0.5f, -0.6f};
+    const MotionTelemetry t(m);
+    CHECK(!t.isEmpty());
+    CHECK(t.at(0) && t.at(0)->leanDeg == 0.0);
+    const auto mid = t.at(15);
+    CHECK(mid && near(mid->leanDeg, 15.0, 1e-4) && near(mid->lateralG, 0.15, 1e-6) &&
+          near(mid->forwardG, -0.15, 1e-6));
+    CHECK(t.at(24) && near(t.at(24)->leanDeg, 20.0, 1e-4)); // nearer the sample before the gap
+    CHECK(!t.at(26) && !t.at(35) && !t.at(44));
+    CHECK(t.at(46) && near(t.at(46)->leanDeg, 50.0, 1e-4)); // ... after it
+    CHECK(t.at(-9) && t.at(-9)->leanDeg == 0.0 && !t.at(-11));
+    CHECK(t.at(69) && near(t.at(69)->leanDeg, 60.0, 1e-4) && !t.at(71));
+}
+
 } // namespace
 
 int main()
@@ -120,5 +147,6 @@ int main()
     testGaps();
     testWrap();
     testUnknownHeading();
+    testMotion();
     return modeltest::finish("telemetry_test");
 }

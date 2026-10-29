@@ -339,7 +339,7 @@ SourceTimeMap sourceTimeMap(const Timeline &timeline)
 
 title::Clock titleClock(const Timeline &timeline, const FieldSources &sources)
 {
-    return title::Clock(sourceTimeMap(timeline), sources.recorded, sources.gps);
+    return title::Clock(sourceTimeMap(timeline), sources.recorded, sources.gps, sources.motion);
 }
 
 namespace {

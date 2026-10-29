@@ -32,7 +32,7 @@ clock's map from timeline time to each clip's source time shared by both.
 
 In steps: the GPS track read from the trailer (one fix a second, smoothed
 between fixes, a gap of a few seconds is "no data") and its values at any
-moment -- built: `camera::ReadClipGps`, `core/Telemetry` and the shared
+moment -- built: `camera::ReadClipTelemetry`, `core/Telemetry` and the shared
 `SourceTimeMap`; then text fields in titles (`{speed}`, `{altitude}`,
 `{heading}`, `{heading:compass}`, with units per title) -- built; then
 drawn gauges as their own overlay clips (dial, bar, heading tape) -- built;
@@ -41,7 +41,8 @@ the video by the IMU (field 98 alone leaves it 0.5-2.4 s late) -- built:
 `insv::BuildMotion` (lean and acceleration about the direction of travel,
 fitted per clip, since the camera needn't face it) and
 `insv::AlignGpsByAcceleration`; then lean and acceleration carried by the
-title clock next to the GPS, read off the GUI thread; then a lean
+title clock next to the GPS, read off the GUI thread -- built:
+`core/MotionTelemetry` and the main window's `TelemetryCache`; then a lean
 half-dial, a G circle and the whole trip's route as gauges, with `{lean}`
 and `{g}` fields; then the project format (version 20) and the manual.
 Where a clip has no GPS, a field or gauge shows `--`. Place names from coordinates are not planned: they'd need an
@@ -123,8 +124,9 @@ each is in its document in [`formats/`](formats/README.md).
     file and stream each comes from, colour and log profile, lens-guard
     profiles, capture-mode name, the proxy file, telemetry facts -- and on
     demand the IMU (`ReadClipImu`, an `insv::ImuTrack`: samples, axis map,
-    video <-> IMU timing, readout), the GPS track (`ReadClipGps`, an
-    `insv::GpsTrack` in the clip's video time) and the preview picture
+    video <-> IMU timing, readout), the GPS track and the vehicle's lean and
+    G-forces (`ReadClipTelemetry`: an `insv::GpsTrack` and an
+    `insv::MotionTrack` in the clip's video time) and the preview picture
     (`ReadClipThumbnail`). One reader per camera family, asked in turn
     (`Insta360Reader`); Insta360's per-model differences are a table
     (`insv::InsvModel`: IMU axis map, lens-guard profile names,

@@ -259,6 +259,8 @@ add_library(orbis_core STATIC
     src/core/PaneLayout.h
     src/core/ReframeTrack.cpp
     src/core/ReframeTrack.h
+    src/core/MotionTelemetry.cpp
+    src/core/MotionTelemetry.h
     src/core/SourceTimeMap.cpp
     src/core/SourceTimeMap.h
     src/core/Telemetry.cpp
@@ -506,6 +508,8 @@ if(FFMPEG_FOUND)
         src/ui/ClipMeasurements.h
         src/ui/LensGuardCache.cpp
         src/ui/LensGuardCache.h
+        src/ui/TelemetryCache.cpp
+        src/ui/TelemetryCache.h
         src/ui/ShortcutHelp.cpp
         src/ui/ShortcutHelp.h
         src/ui/SmokeTest.cpp

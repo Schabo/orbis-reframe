@@ -5,6 +5,7 @@
 #include <Imu.h>         // insv::ImuTrack
 #include <InsvTrailer.h> // insv::LensProfile
 #include <LensSource.h>  // insv::LensSource
+#include <Motion.h>      // insv::MotionTrack
 #include <Ycbcr.h>       // insv::YcbcrCoding
 
 #include <cstdint>
@@ -115,7 +116,7 @@ struct ClipMetadata {
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
     // GPS track: presence only, never positions -- the panel is what people
-    // screenshot for bug reports. The track itself comes from ReadClipGps.
+    // screenshot for bug reports. The track itself comes from ReadClipTelemetry.
     int64_t gpsRecords = 0;
     int64_t gpsFixes = 0;     // records with an acquired position
     double gpsRateHz = 0.0;   // position updates per second
@@ -147,12 +148,18 @@ std::string ClipFileOf(const std::string& path, std::string* err = nullptr);
 // tens of MB. nullopt when the clip has none (or can't be read).
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path);
 
-// The clip's GPS track, lined up with its video: a track the camera timed
-// only by its clock stamp (GpsTrack::clockStamped) is matched against the
-// clip's IMU (insv::AlignGpsByAcceleration), which reads the IMU too. Not
-// cached, like the IMU: read when an overlay needs it. nullopt when the clip
-// has none (or can't be read).
-std::optional<insv::GpsTrack> ReadClipGps(const std::string& path);
+// What the overlays read from a clip besides the picture, lined up with its
+// video: the GPS track, and the vehicle's lean and G-forces from the IMU
+// (insv::BuildMotion). A GPS track the camera timed only by its clock stamp
+// (GpsTrack::clockStamped) is matched against that motion
+// (insv::AlignGpsByAcceleration). Not cached, like the IMU: read when an
+// overlay needs it, seconds for a long clip, so off the GUI thread. Each part
+// is empty when the clip has none (or can't be read).
+struct ClipTelemetry {
+    std::optional<insv::GpsTrack> gps;
+    insv::MotionTrack motion;
+};
+ClipTelemetry ReadClipTelemetry(const std::string& path);
 
 // The camera's own preview picture, nullopt when the file has none.
 std::optional<Thumbnail> ReadClipThumbnail(const std::string& path);

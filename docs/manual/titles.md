@@ -182,6 +182,11 @@ when you speed up or brake, the speed changes on the picture's moment. A
 clip where you stood still or kept a steady speed throughout has nothing
 to line it up by, and its values can run up to about 2 seconds behind.
 
+The GPS is read from a clip's file the first time a title or gauge needs
+it, in the background: on a long clip the values can take a second or two
+to appear (until then they show `--`). An export or a screenshot waits for
+them.
+
 Where there is no GPS, a field shows `--` with its unit (*-- km/h*):
 
 - a clip from a camera or phone that orbis-reframe reads no GPS from;

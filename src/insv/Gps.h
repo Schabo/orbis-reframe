@@ -29,8 +29,8 @@ struct GpsTrack {
     std::vector<GpsFix> fixes; // in time order, one per position update
     // The fixes are timed by the camera's clock stamp of its first frame
     // (the X5's field 98.3, docs/formats/insta360-x5.md §8), which sits up
-    // to ~2 s off the video and drifts from the GPS clock: camera::ReadClipGps
-    // then lines them up against the camera's own motion
+    // to ~2 s off the video and drifts from the GPS clock:
+    // camera::ReadClipTelemetry then lines them up against the camera's own motion
     // (AlignGpsByAcceleration) where the clip lets it.
     bool clockStamped = false;
 };

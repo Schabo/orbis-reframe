@@ -3,7 +3,6 @@
 #include "Insta360Reader.h"
 
 #include <LensDemuxer.h>
-#include <Motion.h> // insv::BuildMotion
 
 #include <algorithm>
 #include <cstdio>
@@ -178,28 +177,33 @@ std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
     return c.reader->readImu(*c.clip);
 }
 
-std::optional<insv::GpsTrack> ReadClipGps(const std::string& path) {
+ClipTelemetry ReadClipTelemetry(const std::string& path) {
+    ClipTelemetry out;
     const Cached c = lookup(path, nullptr, nullptr);
-    if (!c.clip || c.clip->gpsFixes == 0)
-        return std::nullopt;
-    auto track = c.reader->readGps(*c.clip);
-    if (!track || !track->clockStamped || !c.clip->hasImu)
-        return track;
-    const auto imu = c.reader->readImu(*c.clip);
-    const insv::MotionTrack motion = imu ? insv::BuildMotion(*imu) : insv::MotionTrack{};
-    const auto fit = insv::AlignGpsByAcceleration(*track, motion.forwardG, motion.stepSec);
+    if (!c.clip)
+        return out;
+    if (c.clip->hasImu)
+        if (const auto imu = c.reader->readImu(*c.clip))
+            out.motion = insv::BuildMotion(*imu);
+    if (c.clip->gpsFixes == 0)
+        return out;
+    out.gps = c.reader->readGps(*c.clip);
+    if (!out.gps || !out.gps->clockStamped || !c.clip->hasImu)
+        return out;
+    const auto fit = insv::AlignGpsByAcceleration(*out.gps, out.motion.forwardG,
+                                                  out.motion.stepSec);
     if (!fit) {
         std::fprintf(stderr, "[camera] GPS in %s: its speed doesn't match the IMU clearly; timed "
                              "by the camera's clock alone\n",
                      path.c_str());
-        return track;
+        return out;
     }
     std::fprintf(stderr, "[camera] GPS in %s lined up with the IMU: it ran %.2f s behind the video "
                          "at the start, %.2f s at the end\n",
                  path.c_str(), fit->shifts.front().second, fit->shifts.back().second);
-    for (insv::GpsFix& f : track->fixes)
+    for (insv::GpsFix& f : out.gps->fixes)
         f.timeMs = fit->videoMs(f.timeMs);
-    return track;
+    return out;
 }
 
 std::optional<Thumbnail> ReadClipThumbnail(const std::string& path) {

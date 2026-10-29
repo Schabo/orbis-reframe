@@ -36,12 +36,14 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline);
 // title's clock reads. Looked up on the GUI thread (the files' media
 // information), only for the main track's clips.
 using RecordedTimes = QHash<QString, QDateTime>;
-// What titles' fields read from the main track's files, by path: when each
-// was recorded, and its GPS telemetry (camera::ReadClipGps). Either is
-// gathered only when a title has a field that reads it.
+// What titles' fields and gauges read from the main track's files, by path:
+// when each was recorded, and its GPS and motion telemetry
+// (camera::ReadClipTelemetry). Each is gathered only when a title has a
+// field, or there's a gauge, that reads it.
 struct FieldSources {
     RecordedTimes recorded;
     title::Clock::Telemetries gps;
+    title::Clock::Motions motion;
 };
 
 // The overlay clips (hidden tracks and missing files left out), bottom-most
@@ -61,8 +63,8 @@ std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int ou
 // main-track clip's span with its trim and speed.
 SourceTimeMap sourceTimeMap(const Timeline &timeline);
 // What the titles' fields read along the main track: sourceTimeMap with
-// each file's recording start and GPS (`sources`; a file not there has
-// none).
+// each file's recording start, GPS and motion (`sources`; a file not there
+// has none).
 title::Clock titleClock(const Timeline &timeline, const FieldSources &sources);
 // Does any title on the timeline have time or date fields
 // (title::hasClockFields)? Only then are the recording times worth looking

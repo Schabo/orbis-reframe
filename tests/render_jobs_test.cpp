@@ -10,6 +10,7 @@
 #include "TitleRender.h"
 #include "GaugeRender.h"
 #include "GaugeSource.h"
+#include "TelemetryCache.h"
 #include "TitleSource.h"
 #include "../core/TitleClock.h"
 #include "../core/ClipItem.h"
@@ -24,11 +25,14 @@
 #include <QTemporaryDir>
 #include <QTimeZone>
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <mutex>
 #include <set>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -784,6 +788,106 @@ void testGpsClock()
     }
 }
 
+// A clip's motion: leaning 1 degree further right each second, from upright
+// at its start, the G-forces likewise in hundredths of a g.
+insv::MotionTrack rampMotion(int seconds)
+{
+    insv::MotionTrack m;
+    for (int i = 0; i <= seconds * 100; ++i) {
+        m.leanDeg.push_back(float(i) / 100.0f);
+        m.lateralG.push_back(float(i) / 10000.0f);
+        m.forwardG.push_back(-float(i) / 10000.0f);
+    }
+    return m;
+}
+
+// The lean and G-forces read along the timeline like the GPS: trims, speed,
+// cuts; a clip without them has none.
+void testMotionClock()
+{
+    Timeline t;
+    const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+    const int b = t.appendClip("/c/b.insv", 20000, 30.0);
+    t.appendClip("/c/c.insv", 20000, 30.0);
+    t.setClipTrimIn(a, 2000);
+    t.setClipTrimOut(a, 10000); // 0..8 s
+    t.setClipSpeed(b, 2.0);     // 8..18 s
+    renderjobs::FieldSources sources;
+    sources.motion.insert("/c/a.insv", std::make_shared<const MotionTelemetry>(rampMotion(20)));
+    sources.motion.insert("/c/b.insv", std::make_shared<const MotionTelemetry>(rampMotion(20)));
+    const title::Clock clock = renderjobs::titleClock(t, sources);
+    const auto at = [&](qint64 ms) { return clock.motionAt(ms); };
+    CHECK(at(0) && near(at(0)->leanDeg, 2.0, 1e-4)); // source 2 s
+    CHECK(at(7500) && near(at(7500)->lateralG, 0.095, 1e-6) &&
+          near(at(7500)->forwardG, -0.095, 1e-6));
+    CHECK(at(8000) && near(at(8000)->leanDeg, 0.0, 1e-4));  // b from its start ...
+    CHECK(at(13000) && near(at(13000)->leanDeg, 10.0, 1e-4)); // ... at twice the speed
+    CHECK(!at(18000) && !at(30000)); // c: none
+    CHECK(!clock.gpsAt(0));          // and no GPS
+}
+
+// Each file's GPS and motion read once in the background; nothing until
+// it's in, then ready(); await() waits for it; a forgotten file is read
+// again, and the read it replaced isn't announced.
+void testTelemetryCache()
+{
+    std::atomic<int> reads{0};
+    std::mutex gate; // held: a read waits for it
+    const auto read = [&](const std::string &path) {
+        ++reads;
+        std::lock_guard<std::mutex> wait(gate);
+        camera::ClipTelemetry t;
+        if (path == "/c/ride.insv") {
+            t.gps = insv::GpsTrack{{{0, 59.0, 18.0, 10.0, 90.0, 5.0},
+                                    {1000, 59.0, 18.0, 11.0, 90.0, 5.0}}};
+            t.motion = rampMotion(2);
+        }
+        return t;
+    };
+    TelemetryCache cache(read);
+    QStringList announced;
+    QObject::connect(&cache, &TelemetryCache::ready, [&](const QString &p) { announced << p; });
+    // ready() is queued from the read's thread.
+    const auto announcements = [&] {
+        for (int i = 0; i < 200 && announced.isEmpty(); ++i) {
+            QCoreApplication::processEvents();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        QCoreApplication::processEvents();
+        return std::exchange(announced, {});
+    };
+
+    gate.lock();
+    const TelemetryCache::Readings first = cache.readings("/c/ride.insv");
+    CHECK(!first.gps && !first.motion && cache.pending("/c/ride.insv"));
+    gate.unlock();
+    const TelemetryCache::Readings waited = cache.await("/c/ride.insv");
+    CHECK(waited.gps && waited.motion && !cache.pending("/c/ride.insv"));
+    CHECK(waited.motion && waited.motion->at(1000) &&
+          near(waited.motion->at(1000)->leanDeg, 1.0, 1e-4));
+    CHECK(announcements() == QStringList{"/c/ride.insv"});
+    CHECK(cache.readings("/c/ride.insv").gps == waited.gps); // the same, not read again
+    CHECK(reads == 1);
+
+    // A file without either: none, and not read again either.
+    const TelemetryCache::Readings none = cache.await("/c/plain.mp4");
+    CHECK(!none.gps && !none.motion);
+    cache.readings("/c/plain.mp4");
+    CHECK(reads == 2);
+    CHECK(announcements() == QStringList{"/c/plain.mp4"});
+
+    // Forgotten while it's read: read again, only the new read announced.
+    cache.forget({"/c/ride.insv"});
+    gate.lock();
+    CHECK(!cache.readings("/c/ride.insv").gps);
+    cache.forget({"/c/ride.insv"});
+    CHECK(!cache.pending("/c/ride.insv"));
+    gate.unlock();
+    const TelemetryCache::Readings again = cache.await("/c/ride.insv");
+    CHECK(again.gps && again.gps != waited.gps && reads == 4);
+    CHECK(announcements() == QStringList{"/c/ride.insv"});
+}
+
 // Playback and the export show the same speed at the same moment, across
 // value changes and into a clip without GPS.
 void testGpsFeedVsExport()
@@ -1278,6 +1382,8 @@ int main(int argc, char **argv)
     testGpsFields();
     testGpsClock();
     testGpsFeedVsExport();
+    testMotionClock();
+    testTelemetryCache();
     testGaugeReadings();
     testGaugeSource();
     testGaugeFeedVsExport();
