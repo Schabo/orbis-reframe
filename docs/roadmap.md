@@ -16,45 +16,7 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. GPS and stats overlays -- *maintainer*
-
-Speed, altitude, heading, the route, and lean / G-force gauges, drawn on
-the picture from the clip's own telemetry and following the clip's time
-(speed changes and trims included). Distance travelled is left for later.
-The X5 records GPS in its `.insv` trailer when a GPS source was connected,
-about once a second and sometimes only for part of the clip
-([`formats/insta360-x5.md`](formats/insta360-x5.md));
-lean comes from the gyroscope. No map tiles: the route is a drawn line,
-editing stays local-only. The overlays are saved in the project with their
-style and position, and the viewport and the export draw the same: they
-are per-moment pictures on the title clock's path (`TitleSource`), with the
-clock's map from timeline time to each clip's source time shared by both.
-
-In steps: the GPS track read from the trailer (one fix a second, smoothed
-between fixes, a gap of a few seconds is "no data") and its values at any
-moment -- built: `camera::ReadClipTelemetry`, `core/Telemetry` and the shared
-`SourceTimeMap`; then text fields in titles (`{speed}`, `{altitude}`,
-`{heading}`, `{heading:compass}`, with units per title) -- built; then
-drawn gauges as their own overlay clips (dial, bar, heading tape) -- built;
-then the route, lean and G-force, in four steps: the X5's GPS lined up with
-the video by the IMU (field 98 alone leaves it 0.5-2.4 s late) -- built:
-`insv::BuildMotion` (lean and acceleration about the direction of travel,
-fitted per clip, since the camera needn't face it) and
-`insv::AlignGpsByAcceleration`; then lean and acceleration carried by the
-title clock next to the GPS, read off the GUI thread -- built:
-`core/MotionTelemetry` and the main window's `TelemetryCache`; then a lean
-half-dial, a G circle and the whole trip's route as gauges, with `{lean}`
-and `{g}` fields, saved as project version 20 -- built:
-`gauge::Kind::Lean` / `GForce` / `Route`, `title::Clock::route`,
-`gaugerender::Route`; the route seen ahead (heading up, the next minute
-or two of road around the camera) or as the whole trip; then the remaining checks (synthetic IMU and GPS lag
-tests, viewport against export, NVENC unchanged without the new gauges).
-Where a clip has no GPS, a field or gauge shows `--`; the G-force also
-where a clip hardly turns and its direction of travel isn't known. Place
-names from coordinates are not planned: they'd need an offline place
-database.
-
-### 2. Optional
+### 1. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
