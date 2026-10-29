@@ -38,7 +38,9 @@ clip* or *Selected audio clip*):
 - **An audio clip you selected**: click it on an audio track to see just
   that clip. Press `Esc`, or click a clip on the video track, to go back.
 
-With neither, the tab says what to select.
+With none of these, the tab says what to select. For a clip with no sound
+-- from a camera that records none, or one whose sound you deleted from the
+timeline -- it says *No sound*; the clip is silent in playback and export.
 
 <img src="images/audio-panel-video.jpg" width="350" alt="The Audio tab for a video clip's sound"> <img src="images/audio-panel-clip.jpg" width="350" alt="The Audio tab for a music clip on an audio track">
 

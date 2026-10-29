@@ -259,6 +259,29 @@ void testAudioSections(SettingsSidebar &bar)
     audio->setNoClip();
     settle();
     CHECK(sectionNames(page) == QStringList({"audioPanel"}));
+    // The placeholder's hint: its label that isn't the header's scope.
+    const auto hint = [&] {
+        const auto *p = audio->sections().value(0);
+        if (!p)
+            return QString();
+        for (const QLabel *l : p->findChildren<QLabel *>())
+            if (l->text().size() > 20)
+                return l->text();
+        return QString();
+    };
+    const QString selectHint = hint();
+
+    // A clip with no sound (a camera that records none): the placeholder,
+    // saying so for that clip, and back.
+    audio->setClips({}, QStringLiteral("This clip"));
+    settle();
+    CHECK(sectionNames(page) == QStringList({"audioPanel"}));
+    CHECK(audio->sections().value(0) && audio->sections().value(0)->scope() == QLatin1String("This clip"));
+    CHECK(hint().startsWith(QLatin1String("No sound")));
+    CHECK(audio->scope().isEmpty());
+    audio->setNoClip();
+    settle();
+    CHECK(hint() == selectHint && selectHint.startsWith(QLatin1String("Select")));
     bar.setCurrentIndex(0);
 }
 

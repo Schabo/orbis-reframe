@@ -291,14 +291,22 @@ void rememberExpanded(SettingsPanel *section)
     });
 }
 
+// With no clip, what to select; with a clip that has no sound (`scope` says
+// which, "This clip"), that it has none.
 class Placeholder : public SettingsPanel {
 public:
-    Placeholder()
+    explicit Placeholder(const QString &scope = {})
         : SettingsPanel(QObject::tr("Audio"))
     {
         setObjectName(QStringLiteral("audioPanel"));
-        setHint(QObject::tr("Select an audio clip on the timeline, or a video or PiP clip to "
-                            "see its sound."));
+        if (scope.isEmpty()) {
+            setHint(QObject::tr("Select an audio clip on the timeline, or a video or PiP clip "
+                                "to see its sound."));
+        } else {
+            setScope(scope);
+            setHint(QObject::tr("No sound: the clip's file records none, or its sound was "
+                                "deleted from the timeline."));
+        }
         setCollapsible(false);
     }
 };
@@ -329,11 +337,17 @@ void AudioPanel::clearSections()
 
 void AudioPanel::setNoClip()
 {
+    showPlaceholder({});
+}
+
+void AudioPanel::showPlaceholder(const QString &scope)
+{
     m_scope.clear();
-    if (m_placeholder && m_sections.isEmpty())
+    if (m_placeholder && m_sections.isEmpty() && m_placeholderScope == scope)
         return;
     clearSections();
-    m_placeholder = new Placeholder;
+    m_placeholder = new Placeholder(scope);
+    m_placeholderScope = scope;
     m_placeholder->nameParts();
     m_placeholder->setProperty("settingsPart", "section");
     if (m_layout)
@@ -343,7 +357,7 @@ void AudioPanel::setNoClip()
 void AudioPanel::setClips(const QList<AudioClipState> &clips, const QString &scope)
 {
     if (clips.isEmpty()) {
-        setNoClip();
+        showPlaceholder(scope);
         return;
     }
     m_scope = scope;

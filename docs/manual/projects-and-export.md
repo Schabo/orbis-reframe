@@ -247,7 +247,8 @@ The quality levels' bitrates depend on the resolution, frame rate and
 codec. **Standard** is 40 Mbit/s for 1080p at 30 fps in H.264, about
 120 Mbit/s at 4K; 60 fps gets about one and a half times as much, and
 H.265 30 % less, because it needs fewer bits for the same picture. The
-sound is AAC, stereo, at 48 kHz and 192 kbit/s.
+sound is AAC, stereo, at 48 kHz and 192 kbit/s; when nothing on the
+timeline has sound, the file has no sound track at all.
 
 ### When the export won't start
 

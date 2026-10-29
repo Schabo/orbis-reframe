@@ -101,7 +101,8 @@ public:
     void attach(QScrollArea *page);
 
     // `scope`: what they are ("This clip", "Selected audio clip", "Selected
-    // overlay clip"), shown on each section. Does not emit.
+    // overlay clip"), shown on each section. No clips with a scope: the clip
+    // it names has no sound, and the placeholder says so. Does not emit.
     void setClips(const QList<AudioClipState> &clips, const QString &scope);
     // Nothing to show: the placeholder.
     void setNoClip();
@@ -120,9 +121,12 @@ signals:
 
 private:
     void clearSections();
+    // The placeholder: what to select, or (`scope` set) that clip has no sound.
+    void showPlaceholder(const QString &scope);
 
     QVBoxLayout *m_layout = nullptr; // the page's column of sections
     SettingsPanel *m_placeholder = nullptr;
+    QString m_placeholderScope; // the placeholder's: empty = no clip
     QList<AudioClipSection *> m_sections;
     QString m_scope;
 };

@@ -2016,10 +2016,12 @@ QList<int> MainWindow::audioPanelClipIds(QString *scope) const
         return {m_selectedTrackClipId};
     }
     // Else the video clip selected or under the playhead.
+    const int clipId = editClipId();
+    if (!clipId)
+        return {};
     if (scope)
         *scope = tr("This clip");
-    const int clipId = editClipId();
-    return clipId ? linkedTo(clipId) : QList<int>{};
+    return linkedTo(clipId);
 }
 
 void MainWindow::refreshAudioPanel()
