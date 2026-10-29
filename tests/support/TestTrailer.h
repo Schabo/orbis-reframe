@@ -19,6 +19,7 @@ struct Bytes {
     Bytes& u32(uint32_t v) { for (int i = 0; i < 4; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
     Bytes& u64(uint64_t v) { for (int i = 0; i < 8; ++i) b.push_back(uint8_t(v >> (8 * i))); return *this; }
     Bytes& f64(double v) { uint64_t u; std::memcpy(&u, &v, 8); return u64(u); }
+    Bytes& f32(float v) { uint32_t u; std::memcpy(&u, &v, 4); return u32(u); }
     Bytes& raw(const std::vector<uint8_t>& v) { b.insert(b.end(), v.begin(), v.end()); return *this; }
     Bytes& str(const std::string& v) { b.insert(b.end(), v.begin(), v.end()); return *this; }
     Bytes& varint(uint64_t v) {
@@ -33,6 +34,7 @@ struct Bytes {
     Bytes& key(uint32_t field, int wt) { return varint((uint64_t(field) << 3) | uint64_t(wt)); }
     Bytes& pbVarint(uint32_t field, uint64_t v) { return key(field, 0).varint(v); }
     Bytes& pbDouble(uint32_t field, double v) { return key(field, 1).f64(v); }
+    Bytes& pbFloat(uint32_t field, float v) { return key(field, 5).f32(v); }
     Bytes& pbBytes(uint32_t field, const std::vector<uint8_t>& v) { return key(field, 2).varint(v.size()).raw(v); }
     Bytes& pbString(uint32_t field, const std::string& v) {
         return pbBytes(field, std::vector<uint8_t>(v.begin(), v.end()));

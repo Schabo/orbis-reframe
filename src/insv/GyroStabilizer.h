@@ -48,7 +48,8 @@ struct StabConfig {
     // (zero pitch/roll against gravity, heading smoothed over windowYawSec).
     // Blends in between. > 0 also turns on build()'s weak, gravity-seeded
     // accel anchor that keeps the track's world +Y on "up" (2026-09-25
-    // redesign). Used by the HorizonLock preset and available in Custom.
+    // redesign); a track with ImuTrack::up anchors on that instead, more
+    // firmly. Used by the HorizonLock preset and available in Custom.
     float horizonLockAmount = 0.0f;
 
     // Scales the accel-anchor gain in build() (1 = ~20 s time constant). Only
@@ -69,7 +70,9 @@ struct StabConfig {
     // mean accelerometer vector): a tilted mount then reads level, and only
     // departures from its average posture -- a cornering lean -- tilt the
     // view. Without it Lean follow's "up" is the camera body's, so a tilted
-    // stick tilts the horizon. Needs an accel track; no effect at
+    // stick tilts the horizon. Needs an accel track; a track with
+    // ImuTrack::up takes the mean of that instead (a drone's mean posture
+    // against true gravity, not against its thrust). No effect at
     // horizonLockAmount 1 (already level).
     bool autoLevel = true;
 
@@ -175,7 +178,8 @@ public:
     void build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg);
 
     // As above, on a camera's track lined up with the video by its reader:
-    // its axis map, video->IMU offset, frame-clock rate and readout time.
+    // its axis map, video->IMU offset, frame-clock rate and readout time, and
+    // its up reference (ImuTrack::up) where it has one.
     // Video time t maps to gyro time  t * (1 + clockRate) + timeOffsetSec.
     // If cfg.timeOffsetSec is non-zero it is an explicit override and used
     // as-is (the clock rate still applies); a non-empty cfg.gyroAxes replaces
@@ -232,22 +236,27 @@ public:
     std::array<double, 4> rawOrientation(double tSec) const;
 
 private:
+    // Both build()s: `upRef` is the track's ImuTrack::up (empty: level
+    // against the accelerometer).
+    void buildTrack(const std::vector<insv::ImuSample>& imu, const std::vector<UpSample>& upRef,
+                    const StabConfig& cfg);
+
     bool m_ready = false;
     StabConfig m_cfg;
     std::vector<double> m_t;                  // sample time, seconds, gyro-relative
     std::vector<std::array<double, 4>> m_qRaw; // integrated body->world orientation {w,x,y,z}
     // Body direction whose horizontal heading the horizon-lock camera follows:
-    // body forward with the mount's mean accel "up" removed (set by build()).
+    // body forward with the mount's mean "up" removed (set by build()).
     std::array<double, 3> m_levelFwd{0.0, 0.0, -1.0};
-    // Body-frame rotation taking the view frame onto (m_levelFwd, mean accel
-    // up): the auto-level offset (StabConfig::autoLevel). {w,x,y,z}.
+    // Body-frame rotation taking the view frame onto (m_levelFwd, mean up):
+    // the auto-level offset (StabConfig::autoLevel). {w,x,y,z}.
     std::array<double, 4> m_mountLevel{1.0, 0.0, 0.0, 0.0};
     // Device frame clock vs nominal video time: 0 = nominal.
     double m_clockRate = 0.0;
     double m_readoutSec = 0.0; // see readoutSec()
     // build()'s integrated, levelled track, kept across rebuilds: it depends
-    // on the IMU track, the axis map / scale / accel low-pass / gain and
-    // whether leveling is on -- not on the windows or lock amount the
+    // on the IMU track and its up reference, the axis map / scale / accel
+    // low-pass / gain and whether leveling is on -- not on the windows or lock amount the
     // Stabilization panel's sliders change (the 10 min ride: ~400 ms to build).
     struct TrackCache {
         bool valid = false, fuse = false;
@@ -255,6 +264,8 @@ private:
         uint64_t tFirst = 0, tLast = 0;
         std::string axes;
         float scale = 0.0f, lowPassHz = 0.0f, gain = 0.0f;
+        size_t upN = 0;
+        uint64_t upFirst = 0, upLast = 0;
         std::vector<double> t;
         std::vector<std::array<double, 4>> q;
         std::array<double, 3> levelFwd{0.0, 0.0, -1.0};

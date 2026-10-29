@@ -83,6 +83,7 @@ struct Args {
     int64_t bitrateKbps = 40000;
     bool diagnose = false;           // measure-only stabilization diagnostic
     bool noAutoSync = false;         // don't derive timeOffsetSec from the 0x400 record
+    bool noUpRef = false;            // level against the accel even with ImuTrack::up
     double stickLoHz = 1.0;          // shake / stick-resonance band of interest
     double stickHiHz = 12.0;
     std::string diagCsv;             // optional: write per-frame diagnostic tracks here
@@ -124,6 +125,8 @@ const char kUsage[] =
     "  --rs-cols           ... scanning fisheye columns instead of rows\n"
     "  --auto-sync         measure the clip's sync fine-tune (stitch::MeasureClipSync) and use it\n"
     "  --sync-adjust MS    add MS to the derived video->IMU offset (the fine-tune, by hand)\n"
+    "  --no-up-ref         level against the accelerometer even when the clip records\n"
+    "                      its own up (a drone's attitude); [6] still compares against it\n"
     "  --no-capture-timing no per-row capture-time (rolling-shutter) correction in the stitch\n"
     "  --lens-offset MS[,MS1] per-lens capture time vs the stab time, ms (overrides the model)\n"
     "  --render MODE       off|none|derotate|derotate2d (default off; needs out.mp4)\n"
@@ -222,6 +225,8 @@ Args parseArgs(int argc, char** argv)
             a.diagnose = true;
         else if (k == "--no-auto-sync")
             a.noAutoSync = true;
+        else if (k == "--no-up-ref")
+            a.noUpRef = true;
         else if (k == "--stick-band") {
             const std::string v = next("--stick-band");
             const auto comma = v.find(',');
@@ -563,7 +568,10 @@ void diagImuSpectra(const SlicedImu& s, const Args& a)
 // the track's world up with the measured gravity, both in a level heading
 // frame. A tilt here is the track's own error (seed / anchor); ~0 means the
 // track is level and any visible tilt comes from the IMU->sphere mapping.
-void diagHorizonVsGravity(const insv::ImuTrack& imu, double t0Sec, double t1Sec, const Args& a)
+// A clip that records its own up (ImuTrack::up, a drone's attitude; `ref`,
+// kept with --no-up-ref) is compared against that too, on every sample.
+void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::UpSample>& ref,
+                          double t0Sec, double t1Sec, const Args& a)
 {
     insv::StabConfig hc = insv::StabConfig::preset(insv::StabMode::HorizonLock);
     hc.gyroAxes = a.gyroAxes.empty() ? imu.axisMap : a.gyroAxes;
@@ -593,7 +601,11 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, double t0Sec, double t1Sec,
     struct Acc {
         double r = 0, p = 0;
         long n = 0, all = 0;
+        double rr = 0, rp = 0; // against ImuTrack::up
+        long rn = 0;
     };
+    const bool haveRef = ref.size() >= 2;
+    size_t j = 0;
     Acc total;
     std::vector<Acc> bins;
     for (size_t i = 1; i < s.size(); ++i) {
@@ -629,12 +641,6 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, double t0Sec, double t1Sec,
             bins.resize(b + 1);
         ++bins[b].all;
         ++total.all;
-        const double m = std::sqrt(aLP[0] * aLP[0] + aLP[1] * aLP[1] + aLP[2] * aLP[2]);
-        if (std::fabs(m - 1.0) > 0.12 || std::fabs(yawLp) > 0.08)
-            continue;
-        double u[3]; // measured up, world frame
-        for (int r = 0; r < 3; ++r)
-            u[r] = (R[r][0] * aLP[0] + R[r][1] * aLP[1] + R[r][2] * aLP[2]) / m;
         // Level heading frame from the body forward (-Z).
         double fx = -R[0][2], fz = -R[2][2];
         const double fn = std::sqrt(fx * fx + fz * fz);
@@ -642,8 +648,46 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, double t0Sec, double t1Sec,
             continue;
         fx /= fn;
         fz /= fn;
-        const double rollDeg = std::asin(std::clamp(-fz * u[0] + fx * u[2], -1.0, 1.0)) * kRadToDeg;
-        const double pitchDeg = std::asin(std::clamp(fx * u[0] + fz * u[2], -1.0, 1.0)) * kRadToDeg;
+        // Roll / pitch of a body-frame up `v` (unit) carried into the world.
+        auto tilt = [&](const std::array<double, 3>& v, double& rollDeg, double& pitchDeg) {
+            double u[3];
+            for (int r = 0; r < 3; ++r)
+                u[r] = R[r][0] * v[0] + R[r][1] * v[1] + R[r][2] * v[2];
+            rollDeg = std::asin(std::clamp(-fz * u[0] + fx * u[2], -1.0, 1.0)) * kRadToDeg;
+            pitchDeg = std::asin(std::clamp(fx * u[0] + fz * u[2], -1.0, 1.0)) * kRadToDeg;
+        };
+        if (haveRef && s[i].timestamp >= ref.front().timestamp &&
+            s[i].timestamp <= ref.back().timestamp) {
+            while (j + 2 < ref.size() && ref[j + 1].timestamp <= s[i].timestamp)
+                ++j;
+            const insv::UpSample& u0 = ref[j];
+            const insv::UpSample& u1 = ref[j + 1];
+            const double span = static_cast<double>(u1.timestamp) - static_cast<double>(u0.timestamp);
+            const double f =
+                span > 0.0 ? (static_cast<double>(s[i].timestamp) - static_cast<double>(u0.timestamp)) / span
+                           : 0.0;
+            std::array<double, 3> raw;
+            for (int k = 0; k < 3; ++k)
+                raw[k] = u0.up[k] + f * (u1.up[k] - u0.up[k]);
+            std::array<double, 3> v = applyAxisMap(am, raw);
+            const double vn = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            if (vn > 0.5) {
+                for (double& c : v)
+                    c /= vn;
+                double rollDeg, pitchDeg;
+                tilt(v, rollDeg, pitchDeg);
+                for (Acc* acc : {&total, &bins[b]}) {
+                    acc->rr += rollDeg;
+                    acc->rp += pitchDeg;
+                    ++acc->rn;
+                }
+            }
+        }
+        const double m = std::sqrt(aLP[0] * aLP[0] + aLP[1] * aLP[1] + aLP[2] * aLP[2]);
+        if (std::fabs(m - 1.0) > 0.12 || std::fabs(yawLp) > 0.08)
+            continue;
+        double rollDeg, pitchDeg;
+        tilt({aLP[0] / m, aLP[1] / m, aLP[2] / m}, rollDeg, pitchDeg);
         for (Acc* acc : {&total, &bins[b]}) {
             acc->r += rollDeg;
             acc->p += pitchDeg;
@@ -651,19 +695,32 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, double t0Sec, double t1Sec,
         }
     }
     std::printf("  tilt of measured gravity vs. the track's up, in the forward view\n"
-                "  (roll: + = gravity leans right; pitch: + = gravity leans forward)\n");
-    std::printf("  %8s %8s %9s %9s\n", "t (s)", "quiet%", "roll(deg)", "pitch(deg)");
-    for (size_t b = 0; b < bins.size(); ++b) {
-        const Acc& acc = bins[b];
+                "  (roll: + = gravity leans right; pitch: + = gravity leans forward)%s\n",
+                haveRef ? "\n  accel on the quiet samples; ref = the track's own up, every sample" : "");
+    auto row = [&](const char* label, const Acc& acc) {
+        std::printf("  %8s", label);
         if (acc.n == 0)
-            std::printf("  %8.0f %7.0f%% %9s %9s\n", t0Sec + b * kBin, 0.0, "-", "-");
+            std::printf(" %7.0f%% %9s %9s", 0.0, "-", "-");
         else
-            std::printf("  %8.0f %7.0f%% %9.2f %9.2f\n", t0Sec + b * kBin,
-                        100.0 * acc.n / std::max(1L, acc.all), acc.r / acc.n, acc.p / acc.n);
+            std::printf(" %7.0f%% %9.2f %9.2f", 100.0 * acc.n / std::max(1L, acc.all), acc.r / acc.n,
+                        acc.p / acc.n);
+        if (haveRef) {
+            if (acc.rn == 0)
+                std::printf(" %9s %9s", "-", "-");
+            else
+                std::printf(" %9.2f %9.2f", acc.rr / acc.rn, acc.rp / acc.rn);
+        }
+        std::printf("\n");
+    };
+    std::printf("  %8s %8s %9s %9s%s\n", "t (s)", "quiet%", "roll(deg)", "pitch(deg)",
+                haveRef ? "  ref roll ref pitch" : "");
+    for (size_t b = 0; b < bins.size(); ++b) {
+        char label[32];
+        std::snprintf(label, sizeof label, "%.0f", t0Sec + b * kBin);
+        row(label, bins[b]);
     }
-    if (total.n > 0)
-        std::printf("  %8s %7.0f%% %9.2f %9.2f\n", "all", 100.0 * total.n / std::max(1L, total.all),
-                    total.r / total.n, total.p / total.n);
+    if (total.all > 0)
+        row("all", total);
 }
 
 // --- Block 2: what GyroStabilizer removes vs. the raw rotation ---------------
@@ -1158,6 +1215,7 @@ int main(int argc, char** argv)
     // The camera's track, lined up with the video as the app does; the
     // exposure record only for the diagnostics that read it (Insta360 files).
     std::optional<insv::ImuTrack> imu;
+    std::vector<insv::UpSample> upRef; // the clip's own up, kept for [6] under --no-up-ref
     std::vector<insv::ExposureSample> exposure;
     // The configs the diagnostics print and re-map with: the track's own axis
     // map unless --gyro-axes overrides it.
@@ -1169,6 +1227,11 @@ int main(int argc, char** argv)
     if (gcfg.mode != insv::StabMode::Off || a.diagnose || a.rsStitchMs[0] != 0.0f ||
         a.rsStitchMs[1] != 0.0f) {
         imu = camera::ReadClipImu(a.input);
+        if (imu) {
+            upRef = imu->up;
+            if (a.noUpRef)
+                imu->up.clear();
+        }
         if (imu && a.diagnose)
             if (auto tele = insv::ReadInsvTelemetry(a.input))
                 exposure = std::move(tele->exposure);
@@ -1217,7 +1280,7 @@ int main(int argc, char** argv)
         } else {
             std::printf("\n=== [2] skipped -- no gyro track ===\n");
         }
-        diagHorizonVsGravity(*imu, trimIn / 1000.0, trimOut / 1000.0, a);
+        diagHorizonVsGravity(*imu, upRef, trimIn / 1000.0, trimOut / 1000.0, a);
     }
 
     // --- analysis pass: stitch small, grayscale, estimate ------------------

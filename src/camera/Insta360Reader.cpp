@@ -320,7 +320,7 @@ std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) 
     auto tele = insv::ReadInsvTelemetry(clip.path, 0, model.telemetryTickUs);
     if (!tele || tele->imu.size() < 2)
         return std::nullopt;
-    return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model.imuAxes);
+    return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model);
 }
 
 std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {

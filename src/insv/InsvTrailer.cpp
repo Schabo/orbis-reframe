@@ -183,6 +183,7 @@ struct ImuMetadata {
     double acc_range_g = 16;            // field 65.1; telemetry-parser's defaults
     double gyro_range_dps = 2000;       // field 65.2
     std::string gamma_mode;             // field 22
+    std::vector<double> imu_mount;      // field 69, {w, x, y, z} when complete
 };
 
 bool ReadVarint(const std::vector<uint8_t>& b, size_t& i, uint64_t& v) {
@@ -233,6 +234,11 @@ ImuMetadata ParseImuMetadata(const std::vector<uint8_t>& payload) {
         else if (f == 28 && wt == 1) m.gyro_timestamp_ms = ReadDoubleLE(b.data());
         else if (f == 62 && wt == 0) m.is_raw_gyro = v ? 1 : 0;
         else if (f == 22 && wt == 2) m.gamma_mode.assign(b.begin(), b.end());
+        // Repeated floats; the A1 writes them unpacked, accept packed too.
+        else if (f == 69 && wt == 5) m.imu_mount.push_back(ReadFloatLE(b.data()));
+        else if (f == 69 && wt == 2)
+            for (size_t k = 0; k + 4 <= b.size(); k += 4)
+                m.imu_mount.push_back(ReadFloatLE(&b[k]));
         else if (f == 65 && wt == 2) {
             WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv, const std::vector<uint8_t>&) {
                 if (gwt != 0 || gv == 0) return;
@@ -362,6 +368,26 @@ void ParseExposure(const std::vector<uint8_t>& p, std::vector<ExposureSample>& o
         ExposureSample s;
         s.timestamp = ReadU64LE(&p[off]);
         s.exposure_time = ReadDoubleLE(&p[off + 8]);
+        out.push_back(s);
+    }
+}
+
+// Record 0x2500 (attitude, the A1's flight controller): fixed 36-byte records
+// -- u64 timestamp, quaternion x, y, z, w, velocity north, east, down, all
+// float (docs/formats/antigravity-a1.md). Non-unit quaternions are dropped.
+void ParseAttitude(const std::vector<uint8_t>& p, std::vector<AttitudeSample>& out) {
+    constexpr size_t kRec = 36;
+    out.reserve(out.size() + p.size() / kRec);
+    for (size_t off = 0; off + kRec <= p.size(); off += kRec) {
+        AttitudeSample s;
+        s.timestamp = ReadU64LE(&p[off]);
+        const double x = ReadFloatLE(&p[off + 8]), y = ReadFloatLE(&p[off + 12]),
+                     z = ReadFloatLE(&p[off + 16]), w = ReadFloatLE(&p[off + 20]);
+        const double n = std::sqrt(w * w + x * x + y * y + z * z);
+        if (!(std::fabs(n - 1.0) < 0.01)) continue;
+        s.q[0] = w / n, s.q[1] = x / n, s.q[2] = y / n, s.q[3] = z / n;
+        for (int k = 0; k < 3; ++k)
+            s.velocity_ned[k] = ReadFloatLE(&p[off + 24 + 4 * k]);
         out.push_back(s);
     }
 }
@@ -522,6 +548,8 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                 imuPayload = payload;
             } else if (id == 0x400) {
                 ParseExposure(payload, out.exposure);
+            } else if (id == 0x2500) {
+                ParseAttitude(payload, out.attitude);
             } else if (id == 0x700) {
                 CountGps(payload, out);
             } else if (id == 0x8000) {
@@ -541,7 +569,18 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
             s.timestamp = us(s.timestamp);
         for (ExposureSample& e : out.exposure)
             e.timestamp = us(e.timestamp);
+        for (AttitudeSample& a : out.attitude)
+            a.timestamp = us(a.timestamp);
         out.first_frame_timestamp = us(out.first_frame_timestamp);
+    }
+    if (meta.imu_mount.size() == 4) {
+        const double* m = meta.imu_mount.data();
+        const double n = std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2] + m[3] * m[3]);
+        if (std::fabs(n - 1.0) < 0.01) {
+            out.has_imu_mount = true;
+            for (int k = 0; k < 4; ++k)
+                out.imu_mount[k] = m[k] / n;
+        }
     }
     out.gyro_timestamp_ms = meta.gyro_timestamp_ms;
     out.rolling_shutter_ms = meta.rolling_shutter_ms;

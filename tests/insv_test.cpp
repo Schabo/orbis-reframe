@@ -1320,6 +1320,15 @@ void testA1Trailer()
     meta.pbString(3, "10.0.397.3_5.5").pbString(54, kOneX2V3);
     meta.pbVarint(24, 1000300);
     meta.pbDouble(25, 21.247);
+    for (float v : {0.5f, 0.5f, -0.5f, 0.5f}) // field 69, unpacked as the A1 writes it
+        meta.pbFloat(69, v);
+    // Attitude: x, y, z, w then velocity N, E, D; the third quaternion isn't
+    // unit and is dropped.
+    Bytes attitude;
+    const float s30 = 0.25881904f, c30 = 0.96592583f; // 30 deg about body y
+    attitude.u64(1000000).f32(0).f32(0).f32(0).f32(1).f32(1.5f).f32(-2.0f).f32(0.25f);
+    attitude.u64(1020000).f32(0).f32(s30).f32(0).f32(c30).f32(0).f32(0).f32(0);
+    attitude.u64(1040000).f32(0).f32(0).f32(0).f32(0.5f).f32(0).f32(0).f32(0);
     Bytes imu; // 56-byte doubles, 1 ms apart
     for (int i = 0; i < 4; ++i) {
         imu.u64(1000000 + uint64_t(i) * 1000);
@@ -1334,7 +1343,7 @@ void testA1Trailer()
         const std::vector<uint8_t> video(64, 0x11); // stands in for the MP4 boxes
         const std::vector<uint8_t> t =
             insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x400, exposure.b},
-                         {0x3800, std::vector<uint8_t>(40, 0x5a)}},
+                         {0x2500, attitude.b}, {0x3800, std::vector<uint8_t>(40, 0x5a)}},
                         true, 256);
         f.write(reinterpret_cast<const char*>(video.data()), std::streamsize(video.size()));
         f.write(reinterpret_cast<const char*>(t.data()), std::streamsize(t.size()));
@@ -1364,6 +1373,17 @@ void testA1Trailer()
         CHECK(t->exposure.size() == 2 && t->exposure[1].timestamp == 1033667);
         CHECK(t->first_frame_timestamp == 1000300);
         CHECK(near(t->rolling_shutter_ms, 21.247, 1e-12));
+        CHECK(t->has_imu_mount && t->imu_mount[0] == 0.5 && t->imu_mount[1] == 0.5 &&
+              t->imu_mount[2] == -0.5 && t->imu_mount[3] == 0.5);
+        CHECK(t->attitude.size() == 2);
+        if (t->attitude.size() == 2) {
+            const insv::AttitudeSample& a = t->attitude[0];
+            CHECK(a.timestamp == 1000000 && a.q[0] == 1.0 && a.q[1] == 0.0 && a.q[3] == 0.0);
+            CHECK(a.velocity_ned[0] == 1.5 && a.velocity_ned[1] == -2.0 &&
+                  a.velocity_ned[2] == 0.25);
+            const insv::AttitudeSample& b = t->attitude[1];
+            CHECK(b.timestamp == 1020000 && near(b.q[0], c30, 1e-6) && near(b.q[2], s30, 1e-6));
+        }
     }
     std::filesystem::remove(path);
 }

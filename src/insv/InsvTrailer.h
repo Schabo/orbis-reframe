@@ -65,13 +65,33 @@ struct ExposureSample {
     double exposure_time = 0;  // seconds
 };
 
+// One sample of the flight controller's attitude from the trailer's 0x2500
+// record (the Antigravity A1, docs/formats/antigravity-a1.md): 36 bytes, u64
+// timestamp, the unit quaternion as x, y, z, w floats, then the velocity as
+// three floats. ~50 Hz, a few ms behind the gyro.
+struct AttitudeSample {
+    uint64_t timestamp = 0; // same clock as ImuSample::timestamp
+    // Body -> world, {w, x, y, z}: body x forward, y right, z down (the
+    // airframe's, not the IMU's); world north, east, down.
+    double q[4] = {1, 0, 0, 0};
+    double velocity_ned[3] = {0, 0, 0}; // m/s north, east, down
+};
+
 // Timed telemetry recovered from the trailer. `imu` comes from record 0x300,
-// `exposure` from record 0x400. Either list can be empty if the file doesn't
-// carry that record (older firmware, .insp stills, a remuxed chunk that only
-// had the calibration trailer spliced on).
+// `exposure` from record 0x400, `attitude` from record 0x2500. Each list can
+// be empty if the file doesn't carry that record (older firmware, .insp
+// stills, a remuxed chunk that only had the calibration trailer spliced on,
+// every camera but a drone's).
 struct InsvTelemetry {
     std::vector<ImuSample> imu;
     std::vector<ExposureSample> exposure;
+    std::vector<AttitudeSample> attitude;
+    // Field 69 of record 0x101: four floats, a unit quaternion {w, x, y, z}
+    // whose rotation turns the attitude's body axes into the IMU's (on the
+    // A1 an exact axis permutation; the camera's tilt in the airframe isn't
+    // in it, InsvModel::attitudeTiltDeg). has_imu_mount false when absent.
+    bool has_imu_mount = false;
+    double imu_mount[4] = {1, 0, 0, 0};
 
     // Timing/IMU fields from the 0x101 metadata protobuf (docs/formats/insta360-x5.md
     // §5.1); 0 when the file doesn't carry them.
@@ -155,8 +175,8 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 // std::nullopt when the file has no trailer or no such record.
 std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id);
 
-// Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure;
-// 0x700 GPS is only counted here; ReadInsvGps decodes it).
+// Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure,
+// 0x2500 attitude; 0x700 GPS is only counted here; ReadInsvGps decodes it).
 // Returns std::nullopt only if the file has no recognizable trailer at all; a
 // trailer that is present but carries neither record yields an InsvTelemetry
 // with two empty lists.
@@ -167,8 +187,8 @@ std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path,
 // records are always read in full (one per frame — small).
 //
 // `tick_us` is the model's telemetry clock tick in microseconds
-// (InsvModel::telemetryTickUs): the IMU, exposure and field-24 timestamps are
-// handed out in microseconds, the unit ImuSample promises.
+// (InsvModel::telemetryTickUs): the IMU, exposure, attitude and field-24
+// timestamps are handed out in microseconds, the unit ImuSample promises.
 std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                                                std::size_t max_imu_samples = 0,
                                                double tick_us = 1.0);

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -316,7 +317,29 @@ void testAntigravityA1(const std::filesystem::path& dir)
                       "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
                       "1.5_3754.8_3755.1_7875.9_2606.2_-179.4_-89.9_89.4_-0.0001_0.00002_"
                       "-0.071_-0.050_0.170_-0.499_0.0001_0.00003_10496_5248_155_197632");
-    appendTo(vid, testtrailer::insvTrailer({{0x101, meta.b}}, true, 256));
+    for (float v : {0.5f, 0.5f, -0.5f, 0.5f}) // field 69
+        meta.pbFloat(69, v);
+    Bytes imu; // 56-byte doubles, 1 ms apart
+    for (int i = 0; i < 100; ++i) {
+        imu.u64(1000000 + uint64_t(i) * 1000);
+        for (double v : {0.0, 1.0, 0.0, 0.0, 0.0, 0.0})
+            imu.f64(v);
+    }
+    // The flight controller's attitude: level, then the nose 26 deg down
+    // (fast forward flight), x, y, z, w about body y.
+    const double nose = -26.0 * std::numbers::pi / 180.0;
+    Bytes attitude;
+    attitude.u64(1000000).f32(0).f32(0).f32(0).f32(1).f32(0).f32(0).f32(0);
+    attitude.u64(1020000)
+        .f32(0)
+        .f32(float(std::sin(nose / 2)))
+        .f32(0)
+        .f32(float(std::cos(nose / 2)))
+        .f32(15)
+        .f32(0)
+        .f32(0);
+    appendTo(vid, testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x2500, attitude.b}},
+                                           true, 256));
     CHECK(writeLens(prx, 32, 50));
 
     std::string err;
@@ -339,6 +362,21 @@ void testAntigravityA1(const std::filesystem::path& dir)
     CHECK(clip->proxyPath == prx);
     CHECK(camera::ClipFileOf(vid) == vid);
     CHECK(camera::ClipFileOf(prx, &err) == vid);
+
+    // Up from the attitude in the IMU's axes: body <- IMU is field 69's
+    // permutation and the camera's 9.7 deg pitch up in the airframe, so a
+    // body pitched by p puts up at (0, cos(p + 9.7), sin(p + 9.7)).
+    const auto track = camera::ReadClipImu(vid);
+    CHECK(track && track->up.size() == 2);
+    if (track && track->up.size() == 2) {
+        for (int k = 0; k < 2; ++k) {
+            const double p = (k == 0 ? 0.0 : nose) + 9.7 * std::numbers::pi / 180.0;
+            const insv::UpSample& u = track->up[k];
+            CHECK(u.timestamp == (k == 0 ? 1000000u : 1020000u));
+            CHECK(std::fabs(u.up[0]) < 1e-6 && std::fabs(u.up[1] - std::cos(p)) < 1e-6 &&
+                  std::fabs(u.up[2] - std::sin(p)) < 1e-6);
+        }
+    }
 }
 
 } // namespace

@@ -368,17 +368,16 @@ void boxBlur3(std::vector<std::array<double, 4>>& v, size_t w)
 // Level an integrated track against gravity, non-causally. The world up the
 // accel shows on the quiet samples, w = R(t) u(t), would be a constant +Y if
 // the track were exact; residual gyro bias (it drifts over a long ride) makes
-// it wander slowly. Smooth w over +-kLevelSigmaSec (zero-phase, so no
-// start-up transient and no lag), drop samples more than kOutlierDeg off that
-// (braking, a lean the turn gate missed) and smooth again, then turn the
-// track at each time by the small world rotation that takes the smoothed up
-// onto +Y. Gaps with no quiet samples hold the clip-wide mean.
+// it wander slowly. Smooth w over +-sigmaSec (zero-phase, so no start-up
+// transient and no lag), drop samples more than outlierDeg off that (braking,
+// a lean the turn gate missed) and smooth again, then turn the track at each
+// time by the small world rotation that takes the smoothed up onto +Y. Gaps
+// with no quiet samples hold the clip-wide mean.
 void levelTrack(const std::vector<double>& tSec, std::vector<std::array<double, 4>>& qTrack,
-                const std::vector<std::array<double, 3>>& up, const std::vector<char>& quiet)
+                const std::vector<std::array<double, 3>>& up, const std::vector<char>& quiet,
+                double sigmaSec, double outlierDeg)
 {
     constexpr double kBinSec = 0.1;
-    constexpr double kLevelSigmaSec = 10.0;
-    constexpr double kOutlierDeg = 5.0;
     const size_t n = qTrack.size();
     if (n < 2 || up.size() != n || quiet.size() != n)
         return;
@@ -394,9 +393,9 @@ void levelTrack(const std::vector<double>& tSec, std::vector<std::array<double, 
             w[i][a] = R[a][0] * up[i][0] + R[a][1] * up[i][1] + R[a][2] * up[i][2];
     }
     // Three boxes of width 2 sigma make a Gaussian of ~sigma (variance 3 w^2/12).
-    const size_t width = static_cast<size_t>(2.0 * kLevelSigmaSec / kBinSec);
+    const size_t width = static_cast<size_t>(2.0 * sigmaSec / kBinSec);
     std::vector<std::array<double, 3>> g(nb, {0.0, 1.0, 0.0});
-    const double cosOut = std::cos(kOutlierDeg * std::numbers::pi / 180.0);
+    const double cosOut = std::cos(outlierDeg * std::numbers::pi / 180.0);
     for (int pass = 0; pass < 2; ++pass) {
         std::vector<std::array<double, 4>> acc(nb, {0.0, 0.0, 0.0, 0.0});
         double tot[3] = {0, 0, 0};
@@ -518,13 +517,19 @@ void GyroStabilizer::build(const ImuTrack& track, const StabConfig& cfg, double 
     // An explicit non-zero offset is an override; otherwise the track's own.
     if (cfg.timeOffsetSec == 0.0f && track.hasOffset && !track.samples.empty())
         c.timeOffsetSec = static_cast<float>(track.offsetSec + syncAdjustSec);
-    build(track.samples, c);
+    buildTrack(track.samples, track.up, c);
     m_clockRate = track.clockRate;
     m_readoutSec = track.readoutSec;
     lockHeading(); // again: the clock rate moves directionSec on the track
 }
 
 void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg)
+{
+    buildTrack(imu, {}, cfg);
+}
+
+void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
+                                const std::vector<UpSample>& upRef, const StabConfig& cfg)
 {
     m_clockRate = 0.0; // build(ImuTrack, ...) sets it after this returns
     m_readoutSec = 0.0;
@@ -540,10 +545,14 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
     const auto [lo, hi] = std::minmax_element(
         imu.begin(), imu.end(),
         [](const insv::ImuSample& a, const insv::ImuSample& b) { return a.timestamp < b.timestamp; });
+    const size_t upN = upRef.size() >= 2 ? upRef.size() : 0;
+    const uint64_t upFirst = upN ? upRef.front().timestamp : 0;
+    const uint64_t upLast = upN ? upRef.back().timestamp : 0;
     TrackCache& tc = m_cache;
     if (tc.valid && tc.fuse == fuse && tc.n == imu.size() && tc.tFirst == lo->timestamp &&
         tc.tLast == hi->timestamp && tc.axes == cfg.gyroAxes && tc.scale == cfg.gyroScale &&
-        tc.lowPassHz == cfg.accelLowPassHz && tc.gain == cfg.horizonGain) {
+        tc.lowPassHz == cfg.accelLowPassHz && tc.gain == cfg.horizonGain && tc.upN == upN &&
+        tc.upFirst == upFirst && tc.upLast == upLast) {
         buildFromOrientation(tc.t, tc.q, cfg); // resets the two below
         m_levelFwd = tc.levelFwd;
         m_mountLevel = tc.mountLevel;
@@ -559,6 +568,46 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
     const AxisMap am = parseAxes(cfg.gyroAxes);
     const double t0 = static_cast<double>(s.front().timestamp);
     const double tScale = 1e-6; // ImuSample timestamps are microseconds
+
+    // The track's own up (ImuTrack::up), where it has one: axis-mapped like
+    // the accel, interpolated to each IMU sample. It takes the accel's place
+    // as gravity everywhere below; refOk is false outside its span and across
+    // gaps longer than kRefGapSec.
+    constexpr double kRefGapSec = 0.5;
+    const bool haveRef = upN > 0;
+    std::vector<std::array<double, 3>> refUp;
+    std::vector<char> refOk;
+    if (haveRef) {
+        refUp.assign(s.size(), {0.0, 1.0, 0.0});
+        refOk.assign(s.size(), 0);
+        size_t j = 0;
+        for (size_t i = 0; i < s.size(); ++i) {
+            const uint64_t ts = s[i].timestamp;
+            if (ts < upFirst || ts > upLast)
+                continue;
+            while (j + 2 < upRef.size() && upRef[j + 1].timestamp <= ts)
+                ++j;
+            const UpSample& a = upRef[j];
+            const UpSample& b = upRef[j + 1];
+            const double span = (static_cast<double>(b.timestamp) -
+                                 static_cast<double>(a.timestamp)) * tScale;
+            if (span > kRefGapSec)
+                continue;
+            const double f = span > 0.0 ? (static_cast<double>(ts) -
+                                           static_cast<double>(a.timestamp)) * tScale / span
+                                        : 0.0;
+            double v[3];
+            for (int k = 0; k < 3; ++k) {
+                const int src = am.idx[k];
+                v[k] = am.sign[k] * (a.up[src] + f * (b.up[src] - a.up[src]));
+            }
+            const double m = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            if (m < 0.5)
+                continue;
+            refUp[i] = {v[0] / m, v[1] / m, v[2] / m};
+            refOk[i] = 1;
+        }
+    }
 
     // Body-frame gyro rate (axis-mapped) at sample i; 0.5*(prev+cur), rad/s,
     // minus the fitted residual bias (horizon leveling only; see fitGyroBias).
@@ -708,6 +757,16 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
                 quiet[i] = 0;
             nQuiet += quiet[i] ? 1 : 0;
         }
+        // A true up needs none of the accel's gating: thrust, braking and
+        // turns don't move it, so every sample it covers counts.
+        if (haveRef) {
+            nQuiet = 0;
+            for (size_t i = 0; i < n; ++i) {
+                up[i] = refUp[i];
+                quiet[i] = refOk[i];
+                nQuiet += quiet[i] ? 1 : 0;
+            }
+        }
     }
 
     if (fuse) {
@@ -744,11 +803,27 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
             q = qexp(ax / sn * ang, 0.0, az / sn * ang);
     } else {
         double a0[3] = {0, 0, 0};
-        for (size_t i = 0; i < s.size(); ++i) {
-            if ((static_cast<double>(s[i].timestamp) - t0) * tScale > 0.5)
-                break;
-            for (int k = 0; k < 3; ++k)
-                a0[k] += am.sign[k] * s[i].accel[am.idx[k]];
+        if (haveRef) {
+            // The reference's first 0.5 s (it may start after the IMU).
+            const auto first = std::find(refOk.begin(), refOk.end(), 1);
+            const double tr0 =
+                first == refOk.end()
+                    ? 0.0
+                    : static_cast<double>(s[static_cast<size_t>(first - refOk.begin())].timestamp);
+            for (size_t i = static_cast<size_t>(first - refOk.begin()); i < s.size(); ++i) {
+                if ((static_cast<double>(s[i].timestamp) - tr0) * tScale > 0.5)
+                    break;
+                if (refOk[i])
+                    for (int k = 0; k < 3; ++k)
+                        a0[k] += refUp[i][k];
+            }
+        } else {
+            for (size_t i = 0; i < s.size(); ++i) {
+                if ((static_cast<double>(s[i].timestamp) - t0) * tScale > 0.5)
+                    break;
+                for (int k = 0; k < 3; ++k)
+                    a0[k] += am.sign[k] * s[i].accel[am.idx[k]];
+            }
         }
         const double n = std::sqrt(a0[0] * a0[0] + a0[1] * a0[1] + a0[2] * a0[2]);
         if (n > 1e-9) {
@@ -769,7 +844,8 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
     // turn's specific force points along the leaned bike), so it levels Lean
     // follow (m_mountLevel) and picks the heading the level camera follows.
     // A plain vector mean of the raw accel: per-sample gating of the ~0.75 g
-    // stick resonance would bias it.
+    // stick resonance would bias it. With a true up (refUp) the mean of that:
+    // a drone's accel points along its thrust, not up.
     double sumAccel[3] = {0, 0, 0};
     long accelN = 0;
     double yawLp = 0.0; // low-passed world yaw rate, for the turn freeze
@@ -785,16 +861,28 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
 
             double u[3]; // measured up, body frame (unit)
             double mag = 0.0;
-            const bool haveUp = accelUp(i, dt, u, &mag);
-            for (int k = 0; k < 3; ++k)
-                sumAccel[k] += am.sign[k] * s[i].accel[am.idx[k]];
-            ++accelN;
+            bool haveUp = accelUp(i, dt, u, &mag);
+            if (haveRef) {
+                haveUp = refOk[i];
+                for (int k = 0; k < 3; ++k)
+                    u[k] = refUp[i][k];
+                mag = 1.0;
+                if (haveUp) {
+                    for (int k = 0; k < 3; ++k)
+                        sumAccel[k] += u[k];
+                    ++accelN;
+                }
+            } else {
+                for (int k = 0; k < 3; ++k)
+                    sumAccel[k] += am.sign[k] * s[i].accel[am.idx[k]];
+                ++accelN;
+            }
             if (kp > 0.0) {
                 double R[3][3];
                 qToMat(q, R);
                 const double worldYaw = R[1][0] * wx + R[1][1] * wy + R[1][2] * wz;
                 yawLp += (1.0 - std::exp(-kTwoPi * kTurnLpHz * dt)) * (worldYaw - yawLp);
-                const bool turning = std::fabs(yawLp) > kTurnYawRate;
+                const bool turning = !haveRef && std::fabs(yawLp) > kTurnYawRate;
                 if (haveUp && !turning && std::fabs(mag - 1.0) < kOneGTolerance) {
                     const double v[3] = {R[1][0], R[1][1], R[1][2]}; // estimated up, body (R^T*(0,1,0))
                     // e = u x v : a body rate that rotates the estimated up toward
@@ -813,8 +901,11 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
         qTrack.push_back(fromQ(q));
     }
 
+    // Against a true up the anchor can be much firmer: 2 s instead of 10 s
+    // takes the gyro's drift out within seconds, and nothing it is fed is
+    // an outlier to drop.
     if (fitted)
-        levelTrack(tSec, qTrack, up, quiet);
+        levelTrack(tSec, qTrack, up, quiet, haveRef ? 2.0 : 10.0, haveRef ? 180.0 : 5.0);
 
     // Level-camera heading reference: body forward (-Z) with the mount's mean
     // up removed, i.e. "forward" of the mount made horizontal. m_mountLevel
@@ -842,8 +933,8 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
     }
 
     tc = {true, fuse, imu.size(), lo->timestamp, hi->timestamp, cfg.gyroAxes, cfg.gyroScale,
-          cfg.accelLowPassHz, cfg.horizonGain, std::move(tSec), std::move(qTrack), m_levelFwd,
-          m_mountLevel};
+          cfg.accelLowPassHz, cfg.horizonGain, upN, upFirst, upLast, std::move(tSec),
+          std::move(qTrack), m_levelFwd, m_mountLevel};
     buildFromOrientation(tc.t, tc.q, cfg); // resets both
     m_levelFwd = tc.levelFwd;
     m_mountLevel = tc.mountLevel;

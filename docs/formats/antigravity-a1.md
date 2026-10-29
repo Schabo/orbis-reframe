@@ -110,20 +110,38 @@ Markers as in [`README.md`](README.md).
 - ✅ **Sync**: the X5's formula (field 24 + field 28, X5 §7.1) holds; the
   app's per-clip fine-tune finds +0.9 to +1.2 ms on all three clips, and
   the image fit above agrees within ~1 ms.
-- ⚠️ **The accelerometer reads thrust, not gravity, in flight**: in steady
-  fast flight the drone tilts (16-19° at 15.7 m/s on `_010`) and the
-  accelerometer points along its tilted body, so leveling by it (Horizon
-  lock) levels the drone's body: on `_010` 61-72 s the forward view looks
-  ~17° down. Level in a hover.
-- ⚠️ **Orientation records** (layouts from the bytes, meaning inferred):
-  type 37 is 50 Hz, 36 bytes each: `u64` µs on the IMU's clock, a unit
-  quaternion (4 × f32), 3 more f32 (velocity?); type 14 has one 36-byte
-  entry per video frame with a unit quaternion in it; type 56 holds the
-  same orientation in another layout (its first quaternion is type 14's,
-  sign flipped). Likely the drone's own attitude, which would level the
-  horizon in flight; not used yet. ❓ Field 69 ((w, x, y, z) = (0.5, 0.5,
-  −0.5, 0.5), a pure axis permutation) and 91 (a unit quaternion), field
-  98 (absent: GPS not yet lined up with the video).
+- ✅ **Attitude, record type 37** (the walker's id 0x2500): the flight
+  controller's orientation, 50 Hz, 36 bytes each: `u64` µs on the IMU's
+  clock (4-8 ms behind the gyro), a unit quaternion as x, y, z, w (4 ×
+  f32), body to world -- body x the nose, y right, z down; world north,
+  east, down -- then the velocity north, east, down in m/s (3 × f32; its
+  horizontal speed is the GPS speed). In fast flight the body pitches
+  −25° to −28°. Measured 2026-10-29 on all three clips by matching the
+  attitude's rotation per 20 ms step against the gyro integrated over the
+  same step: body ← IMU is **field 69**'s rotation, transposed -- (w, x,
+  y, z) = (0.5, 0.5, −0.5, 0.5), an exact axis permutation -- then a
+  **9.5-9.9° pitch up** about the body's right axis, the camera tilted in
+  the airframe (26° body pitch − 9.7° = the 17° the camera's horizon
+  tilts). 0.09-0.14° per step is left. The tilt isn't in the file; the
+  app takes 9.7° (`InsvModel::attitudeTiltDeg`, one drone measured).
+- ✅ **The accelerometer reads the drone's acceleration with gravity.** In
+  steady flight it points up however the drone is tilted (thrust and drag
+  balance gravity: `_010` 62-64 s at 15.6 m/s, 0.2-1.3° from the
+  attitude's up), but the drone speeds up, brakes and turns most of the
+  time, which moves it 4-35° off up (2 s means, `_010`). The attitude's
+  up plus record 37's velocity, differentiated, predicts it to ~1° (0.3-4°
+  per 2 s), which checks the attitude and the tilt above. Leveled by the
+  accelerometer, Horizon lock's up was up to 15° (pitch) and 9° (roll)
+  off per 10 s on `_010`, 5-8° on `_011`, under 1° on `_012`; leveled by
+  the attitude, 0.2° or less on all three (`residual_stab --diagnose`,
+  block [6]). The app levels by the attitude (Horizon lock, Direction
+  lock, Lean follow's auto-level).
+- ⚠️ **Other orientation records** (layouts from the bytes, meaning
+  inferred, not used): type 14 has one 36-byte entry per video frame with a
+  unit quaternion in it; type 56 holds the same orientation in another
+  layout (its first quaternion is type 14's, sign flipped). ❓ Field 91 (a
+  unit quaternion, none of the attitude, the IMU mount or their products);
+  field 98 is absent, so the GPS isn't lined up with the video yet.
 
 ## Modes and sample clips
 

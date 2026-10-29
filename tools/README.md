@@ -209,7 +209,7 @@ What each `--diagnose` block tells you:
 | [3] | image pan vs. the gyro, sweeping axis map, scale and time offset | which gyro setup matches the picture, and whether the IMU carries the shake at all |
 | [4] | forward residual, narrow vs. wide view | ≈ 1: rotation (correctable); ≫ 1: parallax from the camera moving |
 | [5] | video↔IMU time sync | the offset that lines the gyro up with the picture |
-| [6] | Horizon lock's "up" vs. gravity, roll / pitch per 10 s | ≈ 0: level; a steady offset: gyro bias or a bad gravity start |
+| [6] | Horizon lock's "up" vs. gravity, roll / pitch per 10 s; on a clip that records its own up (a drone's attitude), vs. that too | ≈ 0: level; a steady offset: gyro bias or a bad gravity start |
 
 If the shake is rotation, the IMU has it, and it still shows after
 stabilization, suspect the pipeline before the physics: a sync error of a
@@ -225,6 +225,9 @@ build/residual_stab clip.insv out.mp4 --render derotate --stab-mode directionLoc
 
 `--stab-mode directionLock` holds the heading the camera faced at
 `--direction-ms` (video time), as the app's Direction lock does.
+`--no-up-ref` levels by the accelerometer even on a clip that records its
+own up, as the app did before it read the drone's attitude; block [6]
+still compares against that up, so it shows what the attitude changes.
 
 ## track_subject
 

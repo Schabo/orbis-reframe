@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Imu.h"
+#include "InsvModels.h"
 #include "InsvTrailer.h"
 
 #include <string>
@@ -26,7 +27,10 @@ namespace insv {
 // median(exposure[n] - imu[0] - n/fps), which assumes exposure[0] is frame 0
 // and is off by the pre-roll.
 //
-// `axisMap` is the model's IMU -> sphere map (InsvModel::imuAxes).
-ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const std::string& axisMap);
+// The axis map is the model's (InsvModel::imuAxes). A drone's attitude
+// record (InsvTelemetry::attitude) becomes ImuTrack::up through field 69 and
+// the model's tilt (InsvModel::imuMount, attitudeTiltDeg); field 69 missing,
+// the model's value stands in and that is logged.
+ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& model);
 
 } // namespace insv

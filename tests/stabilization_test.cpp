@@ -80,7 +80,8 @@ void testStabConfig()
         tele.rolling_shutter_ms = 20.0;
 
         const insv::ImuTrack track =
-            insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), fps, x5Axes());
+            insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), fps,
+                                   insv::FindInsvModel("Insta360 X5"));
         CHECK(track.axisMap == x5Axes());
         insv::GyroStabilizer g;
         g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow));
@@ -251,6 +252,96 @@ void testStabConfig()
         g.build(imu, x5(lc));
         g.correctionMatrix(1.5, m);
         CHECK(std::fabs(m[0][1]) < 1e-5f && std::fabs(m[1][1] - 1.0f) < 1e-5f);
+    }
+
+    // A drone's flight controller knows up better than its accelerometer,
+    // which reads the drone's own acceleration too (ImuTrack::up). Still
+    // camera, true up 20 deg off body +Y, the accel a further 15 deg off
+    // that at 1.05 g (the drone speeding up), residual gyro bias: Horizon
+    // lock and Lean follow's auto-level take the reference's up; without it
+    // they take the accel's, as before.
+    {
+        const double d2r = std::numbers::pi / 180.0;
+        const double a = 20.0 * d2r, p = 15.0 * d2r;
+        const double bt[3] = {std::sin(a), std::cos(a), 0.0};                       // true up
+        const double ba[3] = {bt[0], bt[1] * std::cos(p), bt[1] * std::sin(p)};    // the accel's
+        auto toX5 = [](const double b[3], double out[3]) { // the X5's map "z,-x,-y"
+            out[2] = b[0];
+            out[0] = -b[1];
+            out[1] = -b[2];
+        };
+        insv::ImuTrack track;
+        track.axisMap = x5Axes();
+        for (int i = 0; i < 20000; ++i) {
+            insv::ImuSample s;
+            s.timestamp = static_cast<uint64_t>(i) * 1000;
+            toX5(ba, s.accel);
+            for (double &c : s.accel)
+                c *= 1.05;
+            s.gyro[1] = -0.006;
+            s.gyro[2] = 0.004;
+            track.samples.push_back(s);
+            if (i % 20 == 0) { // 50 Hz
+                insv::UpSample u;
+                u.timestamp = s.timestamp;
+                toX5(bt, u.up);
+                track.up.push_back(u);
+            }
+        }
+        insv::ImuTrack accelOnly = track;
+        accelOnly.up.clear();
+        // Worst angle between the view's up and `b` over the clip.
+        auto worstDeg = [](const insv::GyroStabilizer &g, const double b[3]) {
+            double worst = 0.0;
+            for (double t : {0.5, 5.0, 10.0, 19.5}) {
+                float m[3][3];
+                g.correctionMatrix(t, m);
+                const double dot = m[0][1] * b[0] + m[1][1] * b[1] + m[2][1] * b[2];
+                worst = std::max(worst, std::acos(std::min(1.0, dot)) * 180.0 / std::numbers::pi);
+            }
+            return worst;
+        };
+        for (const insv::StabMode mode : {insv::StabMode::HorizonLock, insv::StabMode::LeanFollow}) {
+            const insv::StabConfig c = insv::StabConfig::preset(mode);
+            insv::GyroStabilizer g;
+            g.build(track, c);
+            CHECK(g.ready() && worstDeg(g, bt) < 0.2);
+            // The same stabilizer again, without the reference: its cached
+            // track mustn't be reused.
+            g.build(accelOnly, c);
+            CHECK(worstDeg(g, ba) < 0.2 && worstDeg(g, bt) > 10.0);
+            g.build(track, c);
+            CHECK(worstDeg(g, bt) < 0.2);
+        }
+    }
+
+    // Field 69 missing: the model row's mount stands in for it.
+    {
+        insv::InsvTelemetry tele;
+        for (int i = 0; i < 4; ++i) {
+            insv::ImuSample s;
+            s.timestamp = 1000000 + static_cast<uint64_t>(i) * 1000;
+            tele.imu.push_back(s);
+            insv::AttitudeSample at;
+            at.timestamp = s.timestamp;
+            at.q[0] = std::cos(0.1 * i), at.q[2] = std::sin(0.1 * i);
+            tele.attitude.push_back(at);
+        }
+        const insv::InsvModel &a1 = insv::FindInsvModel("Antigravity A1");
+        insv::InsvTelemetry withMount = tele;
+        withMount.has_imu_mount = true;
+        for (int k = 0; k < 4; ++k)
+            withMount.imu_mount[k] = a1.imuMount[k];
+        const insv::ImuTrack from69 = insv::MakeInsvImuTrack(std::move(withMount), 30.0, a1);
+        const insv::ImuTrack fallback = insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), 30.0, a1);
+        CHECK(from69.up.size() == 4 && fallback.up.size() == 4);
+        for (size_t i = 0; i < std::min(from69.up.size(), fallback.up.size()); ++i)
+            for (int k = 0; k < 3; ++k)
+                CHECK(from69.up[i].up[k] == fallback.up[i].up[k]);
+        // The cameras record no attitude.
+        tele.attitude.clear();
+        CHECK(insv::MakeInsvImuTrack(std::move(tele), 30.0, insv::FindInsvModel("Insta360 X5"))
+                  .up.empty());
     }
 
     // Direction lock: a level camera still for 2 s, turning 90 deg left over

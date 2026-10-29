@@ -84,12 +84,12 @@ each is in its document in [`formats/`](formats/README.md).
   table (names, proxy, focal reference, how the camera holds its lenses --
   down and up -- so the picture is level and faces the drone's nose), and
   the seam measured (the lens extrinsics' order, the 71 mm baseline, ~200°
-  lenses, no drone parts in the stitched picture), the IMU axis map. Left:
-  Horizon lock in flight (the accelerometer reads thrust, so it levels to
-  the drone's tilt; the file records an attitude track that could level
-  it -- an orientation track, step 3 of the common camera model), the
-  trailer's flat preview picture, a clip with no audio track checked end
-  to end, then *experimental*
+  lenses, no drone parts in the stitched picture), the IMU axis map, and
+  Horizon lock in flight leveled by the drone's own attitude track (the
+  accelerometer also reads the drone's acceleration; a first part of step
+  3's orientation track, see *Common camera model*). Left: the trailer's
+  flat preview picture, a clip with no audio track checked end to end,
+  then *experimental*
   ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.
@@ -134,6 +134,12 @@ each is in its document in [`formats/`](formats/README.md).
   - Step 3, once real clips are available: DJI and GoPro readers -- an
     in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
     orientation track for cameras that record one, readout time per mode.
+    A first part of the orientation track is built, from the Antigravity
+    A1: `insv::ImuTrack::up`, world up over time in the IMU's axes, which
+    the stabilizer levels against instead of the accelerometer wherever
+    the track has it (Horizon lock's anchor, the auto-level). The 1 kHz gyro
+    still carries all rotation; a 50 Hz orientation isn't smooth enough to
+    stabilize with on its own.
 
   New camera support keeps its differences in data -- the reader's
   per-model table, fields read from the file -- not in model checks spread

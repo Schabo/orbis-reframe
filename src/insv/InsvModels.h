@@ -77,6 +77,16 @@ struct InsvModel {
     const char* proxyPrefix;
     const char* proxyToken;
     const char* proxyExt;
+
+    // How a flight controller's attitude track (InsvTelemetry::attitude)
+    // turns into "up" for the IMU: body <- IMU = Ry(attitudeTiltDeg) *
+    // R(imuMount)^T, about the body's right axis. `imuMount` is field 69's
+    // value {w, x, y, z}, used only when a file with an attitude track
+    // doesn't carry the field. The tilt is the camera's pitch in the airframe,
+    // which the file doesn't say. Unused without an attitude track ({1, 0, 0,
+    // 0}, 0 on the cameras).
+    double imuMount[4];
+    double attitudeTiltDeg;
 };
 
 // Every row.
