@@ -1502,6 +1502,21 @@ void testGaugePresets(const Ctx &c)
         CHECK(route && route->kind == gauge::Kind::Route && maxBox->isHidden() &&
               reads->isHidden());
         CHECK(note && note->text().contains(QStringLiteral("no GPS")));
+        // Seen ahead by default, how far a setting; the whole trip has none.
+        auto *view = c.w->findChild<QComboBox *>(QStringLiteral("gaugeRouteView"));
+        auto *ahead = c.w->findChild<QDoubleSpinBox *>(QStringLiteral("gaugeAhead"));
+        CHECK(view && ahead && !view->isHidden() && !ahead->isHidden());
+        CHECK(route->routeView == gauge::RouteView::Ahead && route->aheadS == 90.0);
+        if (view && ahead) {
+            ahead->setValue(120.0);
+            CHECK(c.timeline->trackClipById(clip->id)->gauge->aheadS == 120.0);
+            view->setCurrentIndex(int(gauge::RouteView::Trip));
+            emit view->activated(int(gauge::RouteView::Trip));
+            settle();
+            CHECK(c.timeline->trackClipById(clip->id)->gauge->routeView ==
+                  gauge::RouteView::Trip);
+            CHECK(ahead->isHidden());
+        }
     }
     // Edited from the section: the gauge on the timeline.
     if (kind && clip) {

@@ -6,8 +6,8 @@ date. Titles sit on overlay tracks, like picture-in-picture videos
 They can also slide in and out, pop up, or type themselves on letter by
 letter, and show the time of day the video was recorded, running as it
 plays, the speed, altitude and heading from the camera's GPS, or how far
-you lean and the G-forces -- as text, or drawn as a gauge, and the route
-of the whole trip as a map.
+you lean and the G-forces -- as text, or drawn as a gauge, and the road
+around you, or the whole trip, as a map.
 
 ![A title with a drop shadow in the viewport, the Overlays tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
@@ -55,7 +55,7 @@ as an instrument (see [Gauges](#gauges)):
 | **Heading tape** | The direction of travel at the top in the middle: a compass strip sliding under a marker, the degrees above it. |
 | **Lean angle** | How far the vehicle leans, at the bottom in the middle: a half dial, upright at the top, the degrees and the side in the middle. |
 | **G-force** | The acceleration in the lower left: a dot in a circle, to the side in a bend, up speeding up and down braking, the total in g under it. |
-| **Route** | The whole trip seen from above in the upper right, north up: the route of every clip on the timeline, the part ridden so far coloured, a dot where the camera is. |
+| **Route** | The road around the camera in the upper right, turning with it so the way it travels is up: the last 20 seconds ridden coloured, the next minute and a half ahead faint. |
 
 To add one:
 
@@ -244,14 +244,30 @@ It is a clip on an overlay track like a title, and follows the video the
 same way: the value is the one a title's field shows at that moment, the
 number rounded the same, and the needle, bar, tape or dot moves smoothly.
 
-A **Route** shows the whole trip, not just the clip under it: every clip
-on the timeline that has a GPS track, the part of it each clip uses, seen
-from above with north up and its shape kept. The route is drawn faint,
-the part ridden up to this moment in the accent colour, and a dot marks
-where the camera is. Clips are drawn separately, so a cut doesn't draw a
-line across the map; a clip with no GPS is left out, and over it the dot
-is hidden. A route shows where you rode, and so where you started or
-live: think about that before you share the video.
+A **Route** is a map drawn from the GPS track, seen in one of two ways
+(its **View**):
+
+- **Ahead**, as added: the road around the camera on a round face, turning
+  as you ride so the way you travel is always up. An arrow below the
+  middle is the camera; behind it the last 20 seconds ridden, in the
+  accent colour; ahead of it, faint, the road you'll ride in the time
+  **Ahead** sets (a minute and a half when added). The map zooms out at
+  speed and in when slow, gently, so it doesn't pump with every bend. An
+  **N** on the rim points north. The direction comes from the road over
+  a few seconds, not the GPS's course of the moment, so the map turns
+  smoothly; standing still it keeps the way you came. The road ahead
+  ends where the clip does: after a cut you're somewhere else. Where the
+  clip under it has no GPS the face shows `--`.
+- **Whole trip**: every clip on the timeline that has a GPS track, the
+  part of it each clip uses, in a square seen from above with north up
+  and its shape kept. The route is drawn faint, the part ridden up to
+  this moment in the accent colour, and a dot marks where the camera is.
+  Clips are drawn separately, so a cut doesn't draw a line across the
+  map; a clip with no GPS is left out, and over it the dot is hidden.
+  Clips recorded far apart share the square, so each becomes small.
+
+A route shows where you rode, and so where you started or live: think
+about that before you share the video.
 
 Selecting a gauge shows its **Gauge** section in the **Title** tab, in
 the place of **Text** and **Look**:
@@ -263,8 +279,10 @@ the place of **Text** and **Look**:
 | **Unit** | **km/h** or **mph** for a speed, **metres** or **feet** for an altitude. The scale's ends are converted to it. A new gauge starts with the units your computer's region uses. |
 | **Scale from** / **Scale to** | For a dial or a bar: the scale's low and high end, in the unit. A new speed gauge goes to 200 km/h (120 mph), an altitude gauge to 1000 m (3000 ft). A value past an end puts the needle or bar at that end; the number still shows the value. |
 | **Scale (±°)** | For a lean dial: how far it reaches either side of upright, 60° when added (5° to 90°). A lean past it shows at the end; the number still shows the lean. |
+| **View** | For a route: **Ahead** or **Whole trip** (see above). |
+| **Ahead** | For a route seen ahead: how much of the road ahead it shows, in seconds of the video, 30 s to 5 minutes. The map's scale follows the distance you cover in that time. |
 | **Scale (g)** | For a G circle: the G-force at the circle's edge, 1 g when added (0.1 g to 5 g). A force past it puts the dot on the edge, the way it points; the number still shows it. |
-| **Accent** | The colour of the needle, the bar, the tape's marker, the G circle's dot and the part of the route ridden so far. |
+| **Accent** | The colour of the needle, the bar, the tape's marker, the G circle's dot, and the route's arrow or dot and the part of it ridden. |
 | **Face** and **Face opacity** | The colour behind the gauge, and how solid it is. At 0 % only the scale and the numbers sit over the picture. |
 | **Text** | The colour of the scale and the numbers. |
 

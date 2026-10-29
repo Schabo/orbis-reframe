@@ -316,10 +316,11 @@ QList<GaugePreset> makeGauges()
     list.push_back(g);
 
     GaugePreset route{QStringLiteral("gauge-route"), tr("Route"),
-                      tr("The whole trip seen from above in the upper right, north up: the "
-                         "route of every clip on the timeline, the part ridden so far "
-                         "coloured, a dot where the camera is; clips with no GPS track are "
-                         "left out. It shows where you rode: think before sharing it.") +
+                      tr("The road around the camera in the upper right, turning with it so "
+                         "the way it travels is up: the last 20 seconds ridden coloured, the "
+                         "next minute and a half ahead. Its settings also show the whole trip "
+                         "instead. Clips with no GPS track show none. It shows where you rode: "
+                         "think before sharing it.") +
                           QLatin1Char(' ') + hint};
     route.style.kind = gauge::Kind::Route;
     route.look = at(0.87f, 0.22f, 0.3f);

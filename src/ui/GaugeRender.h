@@ -27,15 +27,23 @@ struct Reading {
     int number = 0;
     // In the gauge's unit: degrees for a tape or a lean dial, g across the
     // travel for a G circle; for a route how far along it the ride is, in
-    // the route's square (Route::Point::along).
+    // metres (Route::Point::along).
     double position = 0.0;
-    double position2 = 0.0; // a G circle's g along the travel
+    // A G circle's g along the travel; a route ahead's direction of travel,
+    // degrees clockwise from north.
+    double position2 = 0.0;
+    // A route ahead: the metres from the dot to the face's edge, and the
+    // part of the route it shows, from behind the dot to ahead of it (along).
+    double zoom = 0.0;
+    double alongFrom = 0.0;
+    double alongTo = 0.0;
+    int stretch = -1; // which of the route's stretches the ride is on
     bool operator==(const Reading &) const = default;
 };
 
 // The trip a route gauge draws: every timeline clip's GPS track
-// (title::Clock::route), projected flat onto a square seen from above,
-// north up, fitted into it with its shape kept; 0..1 each way, y down.
+// (title::Clock::route), projected flat about the trip's middle, in metres
+// east (x) and north (y).
 struct Route {
     struct Point {
         int64_t timelineMs = 0;
@@ -45,11 +53,17 @@ struct Route {
     std::vector<std::vector<Point>> stretches; // with a gap or a cut between
     // Tells routes apart in the picture cache: the same for the same route.
     uint64_t key = 0;
+    // Its extent, for the whole trip's square.
+    double xLo = 0.0, xHi = 0.0, yLo = 0.0, yHi = 0.0;
 
     bool empty() const { return stretches.empty(); }
     // How far along the route the ride is at `timelineMs`: in a gap or a
     // cut where the last stretch ended, before the start 0.
     double alongAt(int64_t timelineMs) const;
+    // The stretch the ride is on at `timelineMs`, -1 in a gap or a cut.
+    int stretchAt(int64_t timelineMs) const;
+    // Sets xLo..yHi from the points.
+    void fitExtent();
 };
 // The route `clock`'s main-track clips ride, null when none has GPS.
 std::shared_ptr<const Route> routeOf(const title::Clock &clock);
@@ -66,7 +80,8 @@ struct Moment {
 // or a bar its speed or altitude in its unit, a tape the heading, a lean
 // dial the lean, a G circle the G-forces (none where the direction of
 // travel isn't known), a route how far along `route` the ride is (the dot
-// shown where there's GPS).
+// shown where there's GPS) and, seen ahead, which way it heads, how far the
+// face reaches and the part of the stretch it shows.
 Reading readingOf(const gauge::Style &style, const Moment &moment, int heightPx,
                   const Route *route = nullptr);
 // ... from GPS values alone.

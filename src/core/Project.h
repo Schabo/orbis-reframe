@@ -152,7 +152,8 @@ public:
     // written only when not km/h and metres, and the gauges: an overlay
     // clip with a `gauge` object instead of a source, which an older build
     // would take for a missing file. Version 20 added the lean dial, the G
-    // circle and the route (a gauge's kind "lean", "g", "route") and the
+    // circle and the route (a gauge's kind "lean", "g", "route", with its
+    // "view" and "aheadS") and the
     // `{lean}` and `{g}` fields, written only when a project has one: an
     // older build would draw such a gauge as a speed dial, and show the
     // field's braces.

@@ -46,7 +46,8 @@ title clock next to the GPS, read off the GUI thread -- built:
 half-dial, a G circle and the whole trip's route as gauges, with `{lean}`
 and `{g}` fields, saved as project version 20 -- built:
 `gauge::Kind::Lean` / `GForce` / `Route`, `title::Clock::route`,
-`gaugerender::Route`; then the remaining checks (synthetic IMU and GPS lag
+`gaugerender::Route`; the route seen ahead (heading up, the next minute
+or two of road around the camera) or as the whole trip; then the remaining checks (synthetic IMU and GPS lag
 tests, viewport against export, NVENC unchanged without the new gauges).
 Where a clip has no GPS, a field or gauge shows `--`; the G-force also
 where a clip hardly turns and its direction of travel isn't known. Place

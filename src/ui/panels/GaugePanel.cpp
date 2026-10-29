@@ -45,10 +45,23 @@ GaugePanel::GaugePanel(QWidget *parent) : SettingsPanel(tr("Gauge"), parent)
     m_max->setToolTip(tr("The scale's high end. A value above it shows there; the number "
                          "still shows the value."));
     form()->addRow(tr("Scale to"), m_max);
+    m_view = new QComboBox(this);
+    m_view->setObjectName(QStringLiteral("gaugeRouteView"));
+    m_view->addItems({tr("Ahead"), tr("Whole trip")});
+    m_view->setToolTip(tr("Ahead: the road around the camera, turning with it so the way it "
+                          "travels is up, from a little behind to some time ahead. Whole trip: "
+                          "every clip's route, north up, the part ridden so far coloured."));
+    form()->addRow(tr("View"), m_view);
+    m_ahead = numberBox(this, gauge::Style::kMinAheadS, gauge::Style::kMaxAheadS, 0, 15.0,
+                        tr(" s"));
+    m_ahead->setObjectName(QStringLiteral("gaugeAhead"));
+    m_ahead->setToolTip(tr("How far ahead the road shows, in seconds of the video: the "
+                           "distance you cover in that time. The map zooms with it."));
+    form()->addRow(tr("Ahead"), m_ahead);
     m_accent = new QPushButton(this);
     m_accent->setObjectName(QStringLiteral("gaugeAccent"));
     m_accent->setToolTip(tr("The needle, the bar, the tape's marker, the G circle's dot, the "
-                            "part of the route ridden so far."));
+                            "route's arrow or dot and the part of it ridden."));
     form()->addRow(tr("Accent"), m_accent);
     m_face = new QPushButton(this);
     m_face->setObjectName(QStringLiteral("gaugeFace"));
@@ -121,6 +134,11 @@ GaugePanel::GaugePanel(QWidget *parent) : SettingsPanel(tr("Gauge"), parent)
         m_updating = false;
         edited();
     });
+    connect(m_view, &QComboBox::activated, this, [this, edited] {
+        showRows();
+        edited();
+    });
+    connect(m_ahead, &QDoubleSpinBox::valueChanged, this, edited);
     connect(m_min, &QDoubleSpinBox::valueChanged, this, edited);
     connect(m_max, &QDoubleSpinBox::valueChanged, this, edited);
     connect(m_faceOpacity, &QSlider::valueChanged, this, [this, edited](int v) {
@@ -151,6 +169,8 @@ gauge::Style GaugePanel::current() const
     s.reads = static_cast<gauge::Reads>(std::max(0, m_reads->currentIndex()));
     s.max = m_max->value();
     s.min = s.symmetric() ? -s.max : m_min->value();
+    s.routeView = static_cast<gauge::RouteView>(std::max(0, m_view->currentIndex()));
+    s.aheadS = m_ahead->value();
     s.faceOpacity = float(m_faceOpacity->value() / 100.0);
     return s;
 }
@@ -172,6 +192,10 @@ void GaugePanel::showRows()
                        static_cast<QWidget *>(m_min)})
         form()->setRowVisible(w, reads);
     form()->setRowVisible(m_max, reads || symmetric);
+    form()->setRowVisible(m_view, kind == gauge::Kind::Route);
+    form()->setRowVisible(m_ahead, kind == gauge::Kind::Route &&
+                                       m_view->currentIndex() ==
+                                           static_cast<int>(gauge::RouteView::Ahead));
     if (auto *label = qobject_cast<QLabel *>(form()->labelForField(m_max)))
         label->setText(kind == gauge::Kind::Lean     ? tr("Scale (\u00b1\u00b0)")
                        : kind == gauge::Kind::GForce ? tr("Scale (g)")
@@ -212,6 +236,8 @@ void GaugePanel::setGauge(const gauge::Style &s, const QString &note)
     m_style = s;
     m_kind->setCurrentIndex(static_cast<int>(s.kind));
     m_reads->setCurrentIndex(static_cast<int>(s.reads));
+    m_view->setCurrentIndex(static_cast<int>(s.routeView));
+    m_ahead->setValue(s.aheadS);
     showRows();
     m_min->setValue(s.min);
     m_max->setValue(s.max);

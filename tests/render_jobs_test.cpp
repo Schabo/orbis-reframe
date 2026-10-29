@@ -1127,13 +1127,15 @@ void testMotionGaugeReadings()
 
     gauge::Style route;
     route.kind = gauge::Kind::Route;
-    gaugerender::Route r;
-    r.stretches.push_back({{0, 0.1, 0.9, 0.0}, {1000, 0.9, 0.1, std::hypot(0.8, 0.8)}});
+    route.routeView = gauge::RouteView::Trip;
+    gaugerender::Route r; // 800 m east and 800 m north, in a second
+    r.stretches.push_back({{0, 0.0, 0.0, 0.0}, {1000, 800.0, 800.0, std::hypot(800.0, 800.0)}});
     r.key = 77;
+    r.fitExtent();
     Telemetry::Values here;
     const gaugerender::Reading half =
         gaugerender::readingOf(route, gaugerender::Moment{here, std::nullopt, 500}, 200, &r);
-    CHECK(half.hasValue && near(half.position, std::hypot(0.8, 0.8) / 2.0, 0.005));
+    CHECK(half.hasValue && near(half.position, std::hypot(800.0, 800.0) / 2.0, 3.0));
     CHECK(!gaugerender::readingOf(route, gaugerender::Moment{}, 200, &r).hasValue); // no dot
     CHECK(!gaugerender::readingOf(route, gaugerender::Moment{here, std::nullopt, 500}, 200)
                .hasValue); // no route
@@ -1147,8 +1149,9 @@ void testMotionGaugeReadings()
     }
     // Another route is another picture.
     gaugerender::Route other = r;
-    other.stretches.front().back().y = 0.5;
+    other.stretches.front().back().y = 400.0;
     other.key = 78;
+    other.fitExtent();
     CHECK(gaugerender::cached(route, 120, half, &other).empty());
     CHECK(*gaugerender::render(route, 120, half, &other).rgba !=
           *gaugerender::render(route, 120, half, &r).rgba);
@@ -1196,13 +1199,16 @@ void testRoute()
     if (!route || route->stretches.size() != 2)
         return;
     const auto &sa = route->stretches[0], &sb = route->stretches[1];
-    // b covers the whole track a's trim only part of: b fills the square's
-    // width, east to the right, north up; its height keeps the shape.
-    const double cosLat = std::cos(59.001 * std::numbers::pi / 180.0);
-    CHECK(near(sb.front().x, 0.0, 1e-6) && near(sb.back().x, 1.0, 1e-3));
-    CHECK(sb.back().y < sb.front().y);
-    CHECK(near((sb.front().y - sb.back().y) / (sb.back().x - sb.front().x), 0.5 / cosLat, 1e-3));
+    // In metres, east and north: b covers the whole track, a's trim only
+    // part of it; 0.0002 degrees east a second at 59 degrees north is
+    // 11.5 m, 0.0001 north 11.1 m.
+    const double east = 6371000.0 * std::numbers::pi / 180.0 *
+                        std::cos(59.001 * std::numbers::pi / 180.0);
+    CHECK(near(sb.back().x - sb.front().x, 19.998 * 2e-4 * east, 0.5));
+    CHECK(near((sb.back().y - sb.front().y) / (sb.back().x - sb.front().x),
+               0.5 * 6371000.0 * std::numbers::pi / 180.0 / east, 1e-3));
     CHECK(sa.front().x > sb.front().x && sa.back().x < sb.back().x);
+    CHECK(near(route->xLo, sb.front().x, 1e-9) && near(route->yHi, sb.back().y, 1e-9));
     // How far along: a's length, then held through the cut, then b's.
     CHECK(near(route->alongAt(-5), 0.0, 1e-12) && near(route->alongAt(0), 0.0, 1e-12));
     CHECK(near(route->alongAt(7999), sa.back().along, 1e-12));
@@ -1223,9 +1229,10 @@ void testRoute()
 
     gauge::Style style;
     style.kind = gauge::Kind::Route;
+    style.routeView = gauge::RouteView::Trip;
     GaugeSource src(style, 30000, 200, 1920, 1080, clock, 0);
     CHECK(src.readingAt(4000).hasValue && !src.readingAt(20000).hasValue); // c: no dot
-    CHECK(near(src.readingAt(20000).position, sb.back().along, 0.005));
+    CHECK(near(src.readingAt(20000).position, sb.back().along, 1.0));
     // Nothing with GPS: no route, an empty gauge.
     const title::Clock none = renderjobs::titleClock(t, {});
     CHECK(!gaugerender::routeOf(none));
@@ -1234,15 +1241,100 @@ void testRoute()
     // A route that stays in one place still shows it: a mark, not just the
     // face.
     gaugerender::Route still;
-    still.stretches.push_back({{0, 0.5, 0.5, 0.0}, {2000, 0.5, 0.5, 0.0}});
+    still.stretches.push_back({{0, 0.0, 0.0, 0.0}, {2000, 0.0, 0.0, 0.0}});
     still.key = 79;
+    still.fitExtent();
     gaugerender::Route outside = still;
     for (gaugerender::Route::Point &q : outside.stretches.front())
-        q.x = 5.0; // drawn off the picture
-    outside.key = 80;
+        q.x = 5000.0; // drawn off the picture
+    outside.key = 80; // its extent left at the first one's
     gaugerender::Reading away; // no dot
     CHECK(*gaugerender::render(style, 200, away, &still).rgba !=
           *gaugerender::render(style, 200, away, &outside).rgba);
+}
+
+// A route ahead: turned so the way the ride heads is up, from a chord of
+// a few seconds; held through a stop; its face reaching the road from 20 s
+// behind to its time ahead, eased; only the stretch the ride is on, so it
+// ends at a cut; nothing in a gap or without GPS now.
+void testRouteAhead()
+{
+    // 60 s east at 20 m/s, then 60 s north; a cut; 60 s somewhere else.
+    gaugerender::Route r;
+    std::vector<gaugerender::Route::Point> a, b;
+    double along = 0.0;
+    for (int i = 0; i <= 240; ++i) {
+        const int64_t ms = i * 500;
+        const double x = std::min(ms, int64_t(60000)) * 0.02;
+        const double y = std::max(int64_t(0), ms - 60000) * 0.02;
+        if (!a.empty())
+            along += std::hypot(x - a.back().x, y - a.back().y);
+        a.push_back({ms, x, y, along});
+    }
+    for (int i = 0; i <= 120; ++i) {
+        const int64_t ms = 120500 + i * 500;
+        b.push_back({ms, 50000.0, 50000.0 - i * 10.0, along + i * 10.0});
+    }
+    r.stretches = {a, b};
+    r.key = 81;
+    r.fitExtent();
+    gauge::Style style;
+    style.kind = gauge::Kind::Route;
+    style.aheadS = 30.0;
+    const Telemetry::Values gps;
+    const auto at = [&](int64_t ms, int h = 400) {
+        return gaugerender::readingOf(style, gaugerender::Moment{gps, std::nullopt, ms}, h, &r);
+    };
+    const gaugerender::Reading east = at(20000);
+    CHECK(east.hasValue && east.stretch == 0 && near(east.position2, 90.0, 0.2));
+    // To half a pixel: ~1.5 m on a face reaching ~500 m.
+    CHECK(near(east.position, 400.0, 2.0));
+    CHECK(near(east.alongFrom, 0.0, 2.0) && near(east.alongTo, 1000.0, 2.0)); // 0..50 s
+    // 30 s ahead in a straight line: the face's reach fits 600 m ahead of
+    // the dot, eased by the moments around it (all straight here).
+    CHECK(east.zoom > 600.0 * 0.9 / 1.3 && east.zoom < 600.0);
+    const gaugerender::Reading north = at(100000);
+    CHECK(north.hasValue && near(north.position2, 0.0, 0.2));
+    CHECK(near(north.alongTo, along, 2.0)); // the stretch's end, not past the cut
+    const gaugerender::Reading other = at(150000);
+    CHECK(other.hasValue && other.stretch == 1 && near(other.position2, 180.0, 0.2));
+    CHECK(near(other.alongFrom, along + (150000 - 120500 - 20000) / 50.0, 2.0));
+    CHECK(!at(120200).hasValue); // in the cut
+    CHECK(!gaugerender::readingOf(style, gaugerender::Moment{std::nullopt, std::nullopt, 20000},
+                                  400, &r)
+               .hasValue); // no GPS now
+    // The zoom eases into the bend: no jump from one moment to the next.
+    double last = at(50000).zoom;
+    for (int64_t ms = 50040; ms <= 70000; ms += 40) {
+        const double z = at(ms).zoom;
+        CHECK(std::abs(std::log(z / last)) < 0.011);
+        last = z;
+    }
+    // A stop: standing still the heading holds the way it came.
+    gaugerender::Route stop;
+    std::vector<gaugerender::Route::Point> st;
+    for (int i = 0; i <= 120; ++i) {
+        const int64_t ms = i * 500;
+        const double x = std::min(ms, int64_t(20000)) * 0.01; // stops after 20 s
+        st.push_back({ms, x, -x, x * std::sqrt(2.0)});
+    }
+    stop.stretches = {st};
+    stop.key = 82;
+    stop.fitExtent();
+    const gaugerender::Reading standing =
+        gaugerender::readingOf(style, gaugerender::Moment{gps, std::nullopt, 50000}, 400, &stop);
+    CHECK(standing.hasValue && near(standing.position2, 135.0, 0.3)); // south-east
+    // Its pictures: round, the arrow, each moment its own; the trip view
+    // another.
+    const gaugerender::Picture p1 = gaugerender::render(style, 200, at(20000, 200), &r);
+    const gaugerender::Picture p2 = gaugerender::render(style, 200, at(100000, 200), &r);
+    CHECK(!p1.empty() && p1.width == 200 && *p1.rgba != *p2.rgba);
+    gauge::Style trip = style;
+    trip.routeView = gauge::RouteView::Trip;
+    CHECK(*gaugerender::render(trip, 200, at(20000, 200), &r).rgba != *p1.rgba);
+    CHECK(trip.clamped().aheadS == 30.0);
+    trip.aheadS = 1.0;
+    CHECK(trip.clamped().aheadS == gauge::Style::kMinAheadS);
 }
 
 // A gauge's next change against every ms, as far ahead as it looks.
@@ -1642,6 +1734,7 @@ int main(int argc, char **argv)
     testMotionFields();
     testMotionGaugeReadings();
     testRoute();
+    testRouteAhead();
     testGaugeSource();
     testMotionGaugesFeedVsExport();
     testGaugeFeedVsExport();

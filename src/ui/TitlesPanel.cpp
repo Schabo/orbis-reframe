@@ -77,18 +77,19 @@ MotionTelemetry::Values sampleMotion()
     return m;
 }
 
-// ... on a winding road, two thirds of the way along.
+// ... on a winding road, some way along: three minutes heading roughly
+// east at about 70 km/h, in metres.
 gaugerender::Route sampleRoute()
 {
     gaugerender::Route route;
     std::vector<gaugerender::Route::Point> st;
     double along = 0.0;
-    for (int i = 0; i <= 60; ++i) {
-        const double t = i / 60.0;
+    for (int i = 0; i <= 180; ++i) {
+        const double t = i / 180.0;
         gaugerender::Route::Point q;
         q.timelineMs = i * 1000;
-        q.x = 0.1 + 0.8 * t;
-        q.y = 0.5 - 0.3 * std::sin(2.2 * std::numbers::pi * t) * (1.0 - 0.4 * t);
+        q.x = 3600.0 * t;
+        q.y = 700.0 * std::sin(2.6 * std::numbers::pi * t) * (1.0 - 0.4 * t);
         if (!st.empty())
             along += std::hypot(q.x - st.back().x, q.y - st.back().y);
         q.along = along;
@@ -96,6 +97,7 @@ gaugerender::Route sampleRoute()
     }
     route.stretches.push_back(std::move(st));
     route.key = 1; // the tiles' own
+    route.fitExtent();
     return route;
 }
 

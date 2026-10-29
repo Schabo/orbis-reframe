@@ -15,8 +15,8 @@
 // like a title: the look's `width` is the gauge's height as a fraction of
 // the output height, so its shape stays its own at any output size. Its
 // value at each moment comes from the same clock as a title's GPS and
-// motion fields (title::Clock::gpsAt, motionAt); a route draws the whole
-// timeline's GPS track (title::Clock::route).
+// motion fields (title::Clock::gpsAt, motionAt); a route draws the
+// timeline's GPS track (title::Clock::route), around the camera or whole.
 namespace gauge {
 
 enum class Kind {
@@ -29,6 +29,10 @@ enum class Kind {
 };
 // What a dial or a bar shows; the other kinds show one thing each.
 enum class Reads { Speed, Altitude };
+// How a route is seen: the road around the camera turning with it, the way
+// it travels up, a little behind and some time ahead; or the whole trip,
+// north up.
+enum class RouteView { Ahead, Trip };
 
 struct Style {
     Kind kind = Kind::Dial;
@@ -40,6 +44,9 @@ struct Style {
     // used by a tape or a route.
     double min = 0.0;
     double max = 200.0;
+    RouteView routeView = RouteView::Ahead;
+    // How far ahead a route ahead looks, in seconds of the timeline.
+    double aheadS = 90.0;
     uint32_t accent = 0xff9f1c; // the needle, the bar, the tape's marker
     uint32_t face = 0x000000;   // behind it
     float faceOpacity = 0.5f;
@@ -51,6 +58,9 @@ struct Style {
     // A lean dial's scale either side, degrees; a G circle's, g.
     static constexpr double kMinLeanDeg = 5.0, kMaxLeanDeg = 90.0;
     static constexpr double kMinG = 0.1, kMaxG = 5.0;
+    static constexpr double kMinAheadS = 30.0, kMaxAheadS = 300.0;
+    // How far back a route ahead shows the road ridden.
+    static constexpr double kBehindS = 20.0;
 
     // Is its scale the same either side of 0?
     bool symmetric() const { return kind == Kind::Lean || kind == Kind::GForce; }
@@ -62,6 +72,7 @@ struct Style {
         s.face &= 0xffffff;
         s.text &= 0xffffff;
         s.faceOpacity = std::clamp(std::isfinite(s.faceOpacity) ? s.faceOpacity : 0.5f, 0.0f, 1.0f);
+        s.aheadS = std::clamp(std::isfinite(s.aheadS) ? s.aheadS : 90.0, kMinAheadS, kMaxAheadS);
         if (s.symmetric()) {
             const bool lean = s.kind == Kind::Lean;
             const double lo = lean ? kMinLeanDeg : kMinG, hi = lean ? kMaxLeanDeg : kMaxG;

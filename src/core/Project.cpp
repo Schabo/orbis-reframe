@@ -578,6 +578,10 @@ json gaugeToJson(const gauge::Style &g)
         j["speedUnit"] = "mph";
     if (g.units.altitude == title::AltitudeUnit::Feet)
         j["altitudeUnit"] = "ft";
+    if (g.kind == gauge::Kind::Route) {
+        j["view"] = g.routeView == gauge::RouteView::Trip ? "trip" : "ahead";
+        j["aheadS"] = g.aheadS;
+    }
     return j;
 }
 
@@ -598,6 +602,9 @@ gauge::Style gaugeFromJson(const json &j)
     g.units.altitude = j.value("altitudeUnit", std::string()) == "ft"
                            ? title::AltitudeUnit::Feet
                            : title::AltitudeUnit::Metres;
+    g.routeView = j.value("view", std::string()) == "trip" ? gauge::RouteView::Trip
+                                                           : gauge::RouteView::Ahead;
+    g.aheadS = j.value("aheadS", g.aheadS);
     g.min = j.value("min", g.min);
     g.max = j.value("max", g.max);
     g.accent = colorFromJson(j, "accent", g.accent);

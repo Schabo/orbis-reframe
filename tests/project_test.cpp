@@ -1900,6 +1900,10 @@ void testGaugeJson()
     for (const gauge::Kind kind : {gauge::Kind::Lean, gauge::Kind::GForce, gauge::Kind::Route}) {
         gauge::Style m;
         m.kind = kind;
+        if (kind == gauge::Kind::Route) { // written only for a route
+            m.routeView = gauge::RouteView::Trip;
+            m.aheadS = 120.0;
+        }
         const gauge::Range r = gauge::defaultRange(kind, m.reads, m.units);
         m.min = r.min;
         m.max = r.max;

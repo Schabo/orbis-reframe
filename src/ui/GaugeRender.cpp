@@ -8,6 +8,7 @@
 #include <QPainterPath>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <deque>
@@ -54,8 +55,16 @@ constexpr double kLeanRadius = 0.86;
 // end is, in face radii.
 constexpr double kGFaceRadius = 0.48;
 constexpr double kGPlot = 0.82;
-// A route's margin round its square, in picture heights.
+// A whole trip's margin round its square, in picture heights.
 constexpr double kRouteMargin = 0.1;
+// A route ahead: its round face's radius in picture heights; the dot this
+// far below the centre and the road shown this far out, in face radii.
+constexpr double kAheadFace = 0.48;
+constexpr double kAheadDot = 0.4;
+constexpr double kAheadReach = 0.9;
+// ... reaching at least this far from the dot, in metres, so a stop doesn't
+// zoom in to the street.
+constexpr double kAheadMinM = 150.0;
 
 // How far the needle's tip, the bar's end or the tape moves per unit, in
 // pixels of a picture `h` high: what the reading's position is rounded to.
@@ -69,7 +78,7 @@ double pixelsPerUnit(const gauge::Style &s, double h)
     case gauge::Kind::Lean: // the pointer's tip, at the rim, over 180 degrees
         return std::numbers::pi * kLeanRadius * h / (2.0 * s.max);
     case gauge::Kind::GForce: return kGPlot * kGFaceRadius * h / s.max;
-    case gauge::Kind::Route: return (1.0 - 2.0 * kRouteMargin) * h;
+    case gauge::Kind::Route: return 1.0; // by the route's scale: readingOf
     }
     return 1.0;
 }
@@ -403,23 +412,24 @@ void drawGForce(QPainter &p, const gauge::Style &s, const Reading &r, double h)
     p.drawEllipse(dot, 0.055 * h, 0.055 * h);
 }
 
-// Calls `segment(a, b)` for each piece of `route`'s line up to `upTo` along
-// it, the last piece cut there.
+// Calls `segment(a, b)` for each piece of `route`'s line from `from` to `to`
+// along it, the pieces at either end cut there; in metres.
 template <typename F>
-void walkRoute(const Route &route, double upTo, F segment)
+void walkRoute(const Route &route, double from, double to, F segment)
 {
     for (const std::vector<Route::Point> &st : route.stretches)
         for (size_t i = 1; i < st.size(); ++i) {
             const Route::Point &a = st[i - 1], &b = st[i];
-            if (a.along >= upTo)
+            if (a.along >= to)
                 return;
-            if (b.along <= upTo) {
-                segment(QPointF(a.x, a.y), QPointF(b.x, b.y));
+            if (b.along <= from)
                 continue;
-            }
-            const double f = (upTo - a.along) / (b.along - a.along);
-            segment(QPointF(a.x, a.y), QPointF(a.x + f * (b.x - a.x), a.y + f * (b.y - a.y)));
-            return;
+            const auto at = [&](double along) {
+                const double f = b.along > a.along ? (along - a.along) / (b.along - a.along) : 0.0;
+                return QPointF(a.x + f * (b.x - a.x), a.y + f * (b.y - a.y));
+            };
+            segment(a.along >= from ? QPointF(a.x, a.y) : at(from),
+                    b.along <= to ? QPointF(b.x, b.y) : at(to));
         }
 }
 
@@ -427,59 +437,152 @@ void walkRoute(const Route &route, double upTo, F segment)
 QPointF routePoint(const Route &route, double along)
 {
     QPointF at(route.stretches.front().front().x, route.stretches.front().front().y);
-    walkRoute(route, along, [&](QPointF, QPointF b) { at = b; });
+    walkRoute(route, 0.0, along, [&](QPointF, QPointF b) { at = b; });
     return at;
 }
 
-void drawRoute(QPainter &p, const gauge::Style &s, const Reading &r, const Route *route, double h)
+// The route's line from `from` to `to` along it, each point placed by `px`.
+template <typename Px>
+void drawRouteLine(QPainter &p, const Route &route, double from, double to, Px px,
+                   const QPen &pen)
+{
+    QPainterPath path;
+    QPointF last(std::nan(""), 0.0);
+    walkRoute(route, from, to, [&](QPointF a, QPointF b) {
+        if (a != last)
+            path.moveTo(px(a));
+        path.lineTo(px(b));
+        last = b;
+    });
+    p.setBrush(Qt::NoBrush);
+    p.setPen(pen);
+    p.drawPath(path);
+}
+
+// The whole trip in a square, north up, its shape kept.
+void drawTrip(QPainter &p, const gauge::Style &s, const Reading &r, const Route &route, double h)
 {
     QPainterPath face;
     face.addRoundedRect(QRectF(0, 0, h, h), 0.12 * h, 0.12 * h);
     p.setPen(Qt::NoPen);
     p.setBrush(rgbColor(s.face, s.faceOpacity));
     p.drawPath(face);
-    if (!route || route->empty()) {
-        p.setPen(rgbColor(s.text));
-        p.setFont(fontAt(s, 0.16 * h, true));
-        textAt(p, QStringLiteral("--"), h / 2.0, h / 2.0 + 0.05 * h);
-        return;
-    }
     const double m = kRouteMargin * h, side = h - 2.0 * m;
-    const auto px = [&](QPointF q) { return QPointF(m + q.x() * side, m + q.y() * side); };
+    // A trip that hardly moves stays a small mark in the middle: at least
+    // 100 m across.
+    const double extent = std::max({route.xHi - route.xLo, route.yHi - route.yLo, 100.0});
+    const double cx = (route.xLo + route.xHi) / 2.0, cy = (route.yLo + route.yHi) / 2.0;
+    const auto px = [&](QPointF q) {
+        return QPointF(h / 2.0 + (q.x() - cx) / extent * side,
+                       h / 2.0 - (q.y() - cy) / extent * side);
+    };
     // North, in the corner.
     p.setPen(rgbColor(s.text, 0.8));
     p.setFont(fontAt(s, 0.075 * h, true));
     textAt(p, QStringLiteral("N"), h - 0.09 * h, 0.12 * h);
     // The whole route faint, the part ridden in the accent over it.
-    const auto line = [&](double upTo, const QPen &pen) {
-        QPainterPath path;
-        QPointF last(-1, -1);
-        walkRoute(*route, upTo, [&](QPointF a, QPointF b) {
-            if (a != last)
-                path.moveTo(px(a));
-            path.lineTo(px(b));
-            last = b;
-        });
-        p.setBrush(Qt::NoBrush);
-        p.setPen(pen);
-        p.drawPath(path);
-    };
-    line(std::numeric_limits<double>::infinity(),
-         QPen(rgbColor(s.text, 0.4), 0.02 * h, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    line(r.position,
-         QPen(rgbColor(s.accent), 0.03 * h, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    drawRouteLine(p, route, 0.0, std::numeric_limits<double>::infinity(), px,
+                  QPen(rgbColor(s.text, 0.4), 0.02 * h, Qt::SolidLine, Qt::RoundCap,
+                       Qt::RoundJoin));
+    drawRouteLine(p, route, 0.0, r.position, px,
+                  QPen(rgbColor(s.accent), 0.03 * h, Qt::SolidLine, Qt::RoundCap,
+                       Qt::RoundJoin));
     // A stretch that stays in one place (the GPS repeating a fix it lost)
     // has no line to draw: a mark where it is.
     p.setPen(Qt::NoPen);
     p.setBrush(rgbColor(s.text, 0.4));
-    for (const std::vector<Route::Point> &st : route->stretches)
+    for (const std::vector<Route::Point> &st : route.stretches)
         if (st.back().along - st.front().along < 1e-9)
             p.drawEllipse(px(QPointF(st.front().x, st.front().y)), 0.02 * h, 0.02 * h);
     if (!r.hasValue)
         return;
     p.setPen(QPen(rgbColor(s.text), 0.012 * h));
     p.setBrush(rgbColor(s.accent));
-    p.drawEllipse(px(routePoint(*route, r.position)), 0.045 * h, 0.045 * h);
+    p.drawEllipse(px(routePoint(route, r.position)), 0.045 * h, 0.045 * h);
+}
+
+// The road around the camera on a round face, turning with it: the way it
+// travels up, the camera an arrow below the middle, the road ridden behind
+// it in the accent, the road ahead faint; north marked on the rim.
+void drawAhead(QPainter &p, const gauge::Style &s, const Reading &r, const Route &route, double h)
+{
+    const QPointF c(h / 2.0, h / 2.0);
+    const double R = kAheadFace * h;
+    QPainterPath face;
+    face.addEllipse(c, R, R);
+    p.setPen(Qt::NoPen);
+    p.setBrush(rgbColor(s.face, s.faceOpacity));
+    p.drawPath(face);
+    if (!r.hasValue) {
+        p.setPen(rgbColor(s.text));
+        p.setFont(fontAt(s, 0.16 * h, true));
+        textAt(p, QStringLiteral("--"), c.x(), c.y() + 0.05 * h);
+        return;
+    }
+    const double heading = r.position2 * std::numbers::pi / 180.0;
+    const double sinH = std::sin(heading), cosH = std::cos(heading);
+    const QPointF dot(c.x(), c.y() + kAheadDot * R);
+    const double perM = kAheadReach * R / r.zoom; // pixels per metre
+    if (r.stretch < 0 || r.stretch >= int(route.stretches.size()))
+        return;
+    // Only the stretch the ride is on: the next one starts where this one
+    // ends along the route, but after a cut it's somewhere else.
+    Route own;
+    own.stretches.push_back(route.stretches[size_t(r.stretch)]);
+    const QPointF here = routePoint(own, r.position);
+    // East / north from the camera to forward / right of it.
+    const auto px = [&](QPointF q) {
+        const double dx = q.x() - here.x(), dy = q.y() - here.y();
+        const double fwd = dx * sinH + dy * cosH, right = dx * cosH - dy * sinH;
+        return QPointF(dot.x() + right * perM, dot.y() - fwd * perM);
+    };
+    p.save();
+    p.setClipPath(face);
+    drawRouteLine(p, own, r.position, r.alongTo, px,
+                  QPen(rgbColor(s.text, 0.5), 0.03 * h, Qt::SolidLine, Qt::RoundCap,
+                       Qt::RoundJoin));
+    drawRouteLine(p, own, r.alongFrom, r.position, px,
+                  QPen(rgbColor(s.accent), 0.035 * h, Qt::SolidLine, Qt::RoundCap,
+                       Qt::RoundJoin));
+    p.restore();
+    // North: where it is from the camera, on the rim.
+    const QPointF north(c.x() - 0.86 * R * sinH, c.y() - 0.86 * R * cosH);
+    p.setPen(rgbColor(s.text, 0.9));
+    p.setFont(fontAt(s, 0.075 * h, true));
+    textAt(p, QStringLiteral("N"), north.x(),
+           north.y() + 0.5 * QFontMetricsF(p.font()).capHeight());
+    // The camera: an arrow pointing the way it travels.
+    QPainterPath arrow;
+    const double a = 0.05 * h;
+    arrow.moveTo(dot.x(), dot.y() - 1.2 * a);
+    arrow.lineTo(dot.x() + 0.85 * a, dot.y() + 0.8 * a);
+    arrow.lineTo(dot.x(), dot.y() + 0.35 * a);
+    arrow.lineTo(dot.x() - 0.85 * a, dot.y() + 0.8 * a);
+    arrow.closeSubpath();
+    p.setPen(QPen(rgbColor(s.text), 0.01 * h, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
+    p.setBrush(rgbColor(s.accent));
+    p.drawPath(arrow);
+}
+
+void drawRoute(QPainter &p, const gauge::Style &s, const Reading &r, const Route *route, double h)
+{
+    if (!route || route->empty()) {
+        const bool ahead = s.routeView == gauge::RouteView::Ahead;
+        p.setPen(Qt::NoPen);
+        p.setBrush(rgbColor(s.face, s.faceOpacity));
+        if (ahead)
+            p.drawEllipse(QPointF(h / 2.0, h / 2.0), kAheadFace * h, kAheadFace * h);
+        else
+            p.drawRoundedRect(QRectF(0, 0, h, h), 0.12 * h, 0.12 * h);
+        p.setPen(rgbColor(s.text));
+        p.setFont(fontAt(s, 0.16 * h, true));
+        textAt(p, QStringLiteral("--"), h / 2.0, h / 2.0 + 0.05 * h);
+        return;
+    }
+    if (s.routeView == gauge::RouteView::Ahead)
+        drawAhead(p, s, r, *route, h);
+    else
+        drawTrip(p, s, r, *route, h);
 }
 
 Picture draw(const gauge::Style &s, int heightPx, const Reading &r, const Route *route)
@@ -532,39 +635,51 @@ double Route::alongAt(int64_t timelineMs) const
     return along;
 }
 
+int Route::stretchAt(int64_t timelineMs) const
+{
+    for (size_t i = 0; i < stretches.size(); ++i)
+        if (timelineMs >= stretches[i].front().timelineMs &&
+            timelineMs <= stretches[i].back().timelineMs)
+            return int(i);
+    return -1;
+}
+
+void Route::fitExtent()
+{
+    xLo = yLo = std::numeric_limits<double>::infinity();
+    xHi = yHi = -std::numeric_limits<double>::infinity();
+    for (const std::vector<Point> &st : stretches)
+        for (const Point &q : st) {
+            xLo = std::min(xLo, q.x), xHi = std::max(xHi, q.x);
+            yLo = std::min(yLo, q.y), yHi = std::max(yHi, q.y);
+        }
+    if (stretches.empty())
+        xLo = xHi = yLo = yHi = 0.0;
+}
+
 std::shared_ptr<const Route> routeOf(const title::Clock &clock)
 {
     const std::vector<std::vector<title::Clock::Fix>> fixes = clock.route();
     if (fixes.empty())
         return nullptr;
-    // Flat about the trip's middle: east scaled by the cosine of the
-    // latitude, so a few hundred kilometres keep their shape. Longitudes
+    // Flat about the trip's middle latitude, in metres: east scaled by its
+    // cosine, so a few hundred kilometres keep their shape. Longitudes
     // unwrapped from the first, so a trip over the date line holds together.
     const double lon0 = fixes.front().front().longitude;
-    const auto unwrapped = [&](double lon) { return lon0 + std::remainder(lon - lon0, 360.0); };
     double latLo = 90.0, latHi = -90.0;
     for (const auto &st : fixes)
         for (const title::Clock::Fix &f : st) {
             latLo = std::min(latLo, f.latitude);
             latHi = std::max(latHi, f.latitude);
         }
-    const double east = std::cos((latLo + latHi) / 2.0 * std::numbers::pi / 180.0);
-    double xLo = 1e300, xHi = -1e300, yLo = 1e300, yHi = -1e300;
-    for (const auto &st : fixes)
-        for (const title::Clock::Fix &f : st) {
-            const double x = unwrapped(f.longitude) * east, y = -f.latitude;
-            xLo = std::min(xLo, x), xHi = std::max(xHi, x);
-            yLo = std::min(yLo, y), yHi = std::max(yHi, y);
-        }
-    // A trip that hardly moves stays a small mark in the middle: at least
-    // about 100 m across.
-    const double extent = std::max({xHi - xLo, yHi - yLo, 100.0 / 111320.0});
-    const double cx = (xLo + xHi) / 2.0, cy = (yLo + yHi) / 2.0;
+    const double lat0 = (latLo + latHi) / 2.0;
+    constexpr double kMetresPerDeg = 6371000.0 * std::numbers::pi / 180.0;
+    const double east = kMetresPerDeg * std::cos(lat0 * std::numbers::pi / 180.0);
 
     auto route = std::make_shared<Route>();
     // Points closer than this to the last one kept add nothing a picture
     // shows; each stretch's last is kept, so the ride reaches it.
-    constexpr double kMinStep = 1.0 / 2000.0;
+    constexpr double kMinStepM = 0.5;
     double along = 0.0;
     uint64_t key = 1469598103934665603ull; // FNV-1a
     const auto mix = [&key](const void *data, size_t n) {
@@ -577,11 +692,11 @@ std::shared_ptr<const Route> routeOf(const title::Clock &clock)
             const title::Clock::Fix &f = st[i];
             Route::Point q;
             q.timelineMs = f.timelineMs;
-            q.x = 0.5 + (unwrapped(f.longitude) * east - cx) / extent;
-            q.y = 0.5 + (-f.latitude - cy) / extent;
+            q.x = std::remainder(f.longitude - lon0, 360.0) * east;
+            q.y = (f.latitude - lat0) * kMetresPerDeg;
             if (!out.empty()) {
                 const double d = std::hypot(q.x - out.back().x, q.y - out.back().y);
-                if (d < kMinStep && i + 1 < st.size())
+                if (d < kMinStepM && i + 1 < st.size())
                     continue;
                 along += d;
             }
@@ -592,8 +707,74 @@ std::shared_ptr<const Route> routeOf(const title::Clock &clock)
         route->stretches.push_back(std::move(out));
     }
     route->key = key;
+    route->fitExtent();
     return route;
 }
+
+namespace {
+
+// Stretch `st`'s position at `timelineMs`, held at its ends.
+QPointF positionAt(const std::vector<Route::Point> &st, int64_t timelineMs)
+{
+    if (timelineMs <= st.front().timelineMs)
+        return QPointF(st.front().x, st.front().y);
+    if (timelineMs >= st.back().timelineMs)
+        return QPointF(st.back().x, st.back().y);
+    const auto b =
+        std::upper_bound(st.begin(), st.end(), timelineMs,
+                         [](int64_t t, const Route::Point &q) { return t < q.timelineMs; });
+    const auto a = b - 1;
+    const double f = double(timelineMs - a->timelineMs) / double(b->timelineMs - a->timelineMs);
+    return QPointF(a->x + f * (b->x - a->x), a->y + f * (b->y - a->y));
+}
+
+// Which way the ride heads at `timelineMs`, radians clockwise from north:
+// the chord over a few seconds either side, not the GPS's course of the
+// moment, so the map turns smoothly. Standing still, the chord widens until
+// it spans some movement -- the way it came and went on; a stretch that
+// never moves points north.
+double headingAt(const std::vector<Route::Point> &st, int64_t timelineMs)
+{
+    constexpr double kMinChordM = 5.0;
+    for (int64_t w = 3000; w <= 120000; w *= 2) {
+        const QPointF a = positionAt(st, timelineMs - w), b = positionAt(st, timelineMs + w);
+        if (std::hypot(b.x() - a.x(), b.y() - a.y()) >= kMinChordM)
+            return std::atan2(b.x() - a.x(), b.y() - a.y());
+        if (timelineMs - w <= st.front().timelineMs && timelineMs + w >= st.back().timelineMs)
+            break;
+    }
+    return 0.0;
+}
+
+// How far from the dot the face must reach for the road from `fromMs` to
+// `toMs` to fit, seen from `timelineMs` heading `heading`: the dot sits
+// below the centre, so the road ahead has more room than behind.
+double reachFor(const std::vector<Route::Point> &st, int64_t timelineMs, double heading,
+                int64_t fromMs, int64_t toMs)
+{
+    const QPointF here = positionAt(st, timelineMs);
+    const double sinH = std::sin(heading), cosH = std::cos(heading);
+    double need = kAheadMinM;
+    const auto fit = [&](QPointF q) {
+        const double dx = q.x() - here.x(), dy = q.y() - here.y();
+        const double fwd = dx * sinH + dy * cosH, right = dx * cosH - dy * sinH;
+        // The face's edge, kAheadReach of the way out from its centre
+        // kAheadDot above the dot: the reach r where |(right, fwd - d r)|
+        // = e r, d = kAheadDot / kAheadReach, e = 1 / kAheadReach.
+        const double d = kAheadDot / kAheadReach, e = 1.0 / kAheadReach;
+        const double qa = e * e - d * d, qb = 2.0 * d * fwd, qc = -(right * right + fwd * fwd);
+        need = std::max(need, (-qb + std::sqrt(qb * qb - 4.0 * qa * qc)) / (2.0 * qa));
+    };
+    fit(positionAt(st, fromMs));
+    fit(positionAt(st, toMs));
+    auto q = std::upper_bound(st.begin(), st.end(), fromMs,
+                              [](int64_t t, const Route::Point &p) { return t < p.timelineMs; });
+    for (; q != st.end() && q->timelineMs < toMs; ++q)
+        fit(QPointF(q->x, q->y));
+    return need;
+}
+
+} // namespace
 
 Reading readingOf(const gauge::Style &s, const Moment &moment, int heightPx, const Route *route)
 {
@@ -603,12 +784,69 @@ Reading readingOf(const gauge::Style &s, const Moment &moment, int heightPx, con
     const double quantum = 0.5 / std::max(1e-9, pixelsPerUnit(s, std::max(8, heightPx)));
     const auto quantized = [quantum](double v) { return std::round(v / quantum) * quantum; };
     switch (s.kind) {
-    case gauge::Kind::Route:
+    case gauge::Kind::Route: {
         if (!route || route->empty())
             return r;
-        r.hasValue = gps.has_value(); // the dot
-        r.position = quantized(route->alongAt(moment.timelineMs));
+        const int64_t t = moment.timelineMs;
+        const double h = std::max(8, heightPx);
+        if (s.routeView == gauge::RouteView::Trip) {
+            const double extent =
+                std::max({route->xHi - route->xLo, route->yHi - route->yLo, 100.0});
+            const double perM = (1.0 - 2.0 * kRouteMargin) * h / extent;
+            r.hasValue = gps.has_value(); // the dot
+            r.position = std::round(route->alongAt(t) * 2.0 * perM) / (2.0 * perM);
+            return r;
+        }
+        // Ahead: only where the ride is on a stretch -- after a cut the road
+        // ahead of the clip before isn't this clip's.
+        const int k = route->stretchAt(t);
+        if (k < 0 || !gps)
+            return r;
+        const std::vector<Route::Point> &st = route->stretches[size_t(k)];
+        const auto aheadMs = int64_t(std::lround(s.aheadS * 1000.0));
+        const auto behindMs = int64_t(std::lround(gauge::Style::kBehindS * 1000.0));
+        const int64_t end = st.back().timelineMs, start = st.front().timelineMs;
+        // The reach eased over a few seconds either side, so the face
+        // doesn't zoom in and out with each bend: the most any moment
+        // within 3 s needs, so the road ahead stays on the face, then its
+        // log weighted by a Gaussian of 3 s. From the moments around it
+        // alone, so every moment's picture is its own.
+        constexpr int kStepMs = 500, kMaxOver = 6, kSmooth = 18; // in steps
+        std::array<double, 2 * (kMaxOver + kSmooth) + 1> need{};
+        for (int i = 0; i < int(need.size()); ++i) {
+            const int64_t u =
+                std::clamp(t + int64_t(i - kMaxOver - kSmooth) * kStepMs, start, end);
+            need[size_t(i)] = std::log(reachFor(st, u, headingAt(st, u),
+                                                std::max(start, u - behindMs),
+                                                std::min(end, u + aheadMs)));
+        }
+        double sum = 0.0, weights = 0.0;
+        for (int i = -kSmooth; i <= kSmooth; ++i) {
+            const double dt = i * kStepMs;
+            const double w = std::exp(-0.5 * dt * dt / (3000.0 * 3000.0));
+            const auto from = need.begin() + (i + kSmooth);
+            sum += w * *std::max_element(from, from + 2 * kMaxOver + 1);
+            weights += w;
+        }
+        const double R = kAheadFace * h;
+        // To half a percent, a step a picture barely shows.
+        const double zoomStep = std::log(1.005);
+        r.zoom = std::exp(std::round(sum / weights / zoomStep) * zoomStep);
+        const double perM = kAheadReach * R / r.zoom;
+        const auto toPx = [&](double along) {
+            return std::round(along * 2.0 * perM) / (2.0 * perM);
+        };
+        r.hasValue = true;
+        r.stretch = k;
+        r.position = toPx(route->alongAt(t));
+        r.alongFrom = toPx(route->alongAt(std::max(start, t - behindMs)));
+        r.alongTo = toPx(route->alongAt(std::min(end, t + aheadMs)));
+        // Half a pixel at the face's edge.
+        const double degStep = 0.5 / R * 180.0 / std::numbers::pi;
+        const double deg = headingAt(st, t) * 180.0 / std::numbers::pi;
+        r.position2 = std::fmod(std::round(deg / degStep) * degStep + 360.0, 360.0);
         return r;
+    }
     case gauge::Kind::Lean:
         if (!moment.motion)
             return r;

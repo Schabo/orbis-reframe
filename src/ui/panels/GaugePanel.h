@@ -42,6 +42,8 @@ private:
     QComboBox *m_unit = nullptr;  // title::SpeedUnit or AltitudeUnit order
     QDoubleSpinBox *m_min = nullptr;
     QDoubleSpinBox *m_max = nullptr;
+    QComboBox *m_view = nullptr;       // gauge::RouteView order
+    QDoubleSpinBox *m_ahead = nullptr; // seconds
     QPushButton *m_accent = nullptr;
     QPushButton *m_face = nullptr;
     QSlider *m_faceOpacity = nullptr;
