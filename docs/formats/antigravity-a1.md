@@ -48,10 +48,15 @@ Markers as in [`README.md`](README.md).
   fisheyes side by side at 2560×1280 (the X5's `.lrv`, X5 §3.2), with a
   trailer of its own (records 1 and 2). ✅ The MP4's `creation_time` is
   the recording start in UTC to the second: on our first three clips it is
-  the name's time, which is local, four hours ahead. So a renamed clip's
-  name can be rebuilt from it and field 7 (below), all but the take number
-  `_<n>`; the second set came renamed (`Video5.2K60.insv`,
-  `Video5.2K60.prx`, ...) and was checked so.
+  the name's time, which is local, four hours ahead.
+- ✅ **The file holds its own name**: in the MP4 header, `moov` /
+  `udta`, in the `free` box after the `AMBA` box, as the path on the card,
+  `C:\DCIM\CAM_001\VID_20261029_170123_013.insv` (the proxy:
+  `PRX_….prx`; the `.insv` also holds its proxy's name). So a renamed clip
+  can be given its name back, take number and all; the second set came
+  renamed (`Video5.2K60.insv`, ...) and got its names back so, matching
+  the time rebuilt from `creation_time` and field 7 on every file. The
+  photos hold no name.
 - ✅ **Untouched files can be told apart.** Field 9 of record 1 is the
   byte size of the file before the trailer, exactly, on every `.insv` and
   `.prx` we have (12 clips, 9 proxies): a re-muxed or trimmed file no
@@ -260,9 +265,13 @@ All the A1's modes 📖 (Antigravity's spec table as retailers and reviews
 reprint it, and the spring 2026 update for timelapse; Sources). Our clips,
 from one contributor and one drone (firmware `10.0.397.3_5.5`): three 8K
 H.265 flights (2026-10-28), and a set of nine H.264 clips, one per mode,
-plus two photos (2026-10-29), flown low over a field. The second set was
-renamed by mode (`Video8K24.insv`, `Photo55MP-1.insp`, ...) but is
-otherwise straight from the drone (field 9, *Streams*).
+plus two photos (2026-10-29), flown low over a field. The second set came
+renamed by mode but is otherwise straight from the drone (field 9,
+*Streams*); the videos have their names back (*Streams*): `_013` 8K 25,
+`_014` 8K 24, `_015` 5.2K 60, `_016` 5.2K 50, `_017` 5.2K 30, `_018` 5.2K
+25, `_019` 5.2K 24, `_020` 4K 100, `_021` 8K 30
+(`VID_20261029_170123_013.insv` ... `_170732_021`). The photos keep the
+contributor's names (`Photo55MP-1.insp`, `-2`).
 The status words are the X5's (X5 §3.4).
 
 | Mode | Spec | Files | Our clips | Status |
