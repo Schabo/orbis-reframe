@@ -56,11 +56,21 @@ public:
     VkDescriptorSet setFor(const std::shared_ptr<const color::Lut3D>& lut,
                            std::string* err = nullptr);
 
+    // For a caller that binds several LUTs in one command buffer (the
+    // viewport: the picture and every overlay's grade): the sets setFor
+    // hands out from here until the next beginFrame() stay valid, even past
+    // kMaxLuts -- the store grows for that frame, and the next beginFrame()
+    // frees what's over the limit and wasn't used in it. Without it, setFor
+    // may evict any LUT but the one it returns.
+    void beginFrame();
+    size_t uploaded() const { return m_luts.size(); }
+
     // The shaders' `lut` push constant for `lut` at `mix` (0..1):
     // {mix, domainMin, domainMax, 0}; mix 0 when there's no LUT.
     static void pushValues(const color::Lut3D* lut, float mix, float out[4]);
 
-    // How many LUTs stay uploaded; past it the least recently used goes.
+    // How many LUTs stay uploaded; past it the least recently used goes
+    // (unless a frame still uses it, see beginFrame).
     static constexpr size_t kMaxLuts = 8;
 
 private:
@@ -70,22 +80,30 @@ private:
         VkDeviceMemory mem = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
         VkDescriptorSet set = VK_NULL_HANDLE;
+        VkDescriptorPool pool = VK_NULL_HANDLE; // the set's
         uint64_t used = 0;
+        uint64_t frame = 0; // the beginFrame() it was last handed out in
     };
 
     bool upload(const color::Lut3D& lut, Entry& e, std::string& err);
     void free(Entry& e);
+    bool allocSet(Entry& e);
+    // Frees the least recently used LUT that wasn't handed out in frame
+    // `keep` (0: any), if there is one.
+    bool evictOne(uint64_t keep);
     bool findMemoryType(uint32_t typeBits, VkMemoryPropertyFlags want, uint32_t& out) const;
 
     Device m_dev;
     VkPhysicalDeviceMemoryProperties m_memProps{};
     VkDescriptorSetLayout m_layout = VK_NULL_HANDLE;
     VkSampler m_sampler = VK_NULL_HANDLE;
-    VkDescriptorPool m_pool = VK_NULL_HANDLE;
+    // Sets for kMaxLuts + 1 each; another one when a frame grows the store.
+    std::vector<VkDescriptorPool> m_pools;
     VkCommandPool m_cmdPool = VK_NULL_HANDLE;
     Entry m_identity;
     std::vector<Entry> m_luts;
     uint64_t m_clock = 0;
+    uint64_t m_frame = 0; // 0: beginFrame() never called
 };
 
 } // namespace render

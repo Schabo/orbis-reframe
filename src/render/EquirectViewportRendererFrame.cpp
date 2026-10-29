@@ -463,7 +463,9 @@ void EquirectViewportRenderer::startNextFrame()
     }
 
     // The grades' LUTs: uploaded on first use (their own submissions), so
-    // before the render pass is recorded.
+    // before the render pass is recorded. Every set picked here stays valid
+    // for this command buffer, however many grades it binds.
+    m_luts.beginFrame();
     const color::Grade grade = m_window->CurrentColorGrade();
     const VkDescriptorSet lutSet = m_luts.setFor(grade.hasLut() ? grade.lut : nullptr);
     VkDescriptorSet insetLutSets[EquirectViewportWindow::kMaxInsets] = {};

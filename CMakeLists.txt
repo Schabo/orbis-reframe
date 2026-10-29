@@ -1014,6 +1014,13 @@ add_executable(insv_test tests/insv_test.cpp)
 target_link_libraries(insv_test PRIVATE insv insv_trailer)
 add_test(NAME insv_test COMMAND insv_test)
 
+# --- tests/vulkan_lut_test: the GPU colour LUT store on a real device (its
+# own instance, no window). Skipped (77) where there's no Vulkan device.
+add_executable(vulkan_lut_test tests/vulkan_lut_test.cpp)
+target_link_libraries(vulkan_lut_test PRIVATE render_gpu_stitch)
+add_test(NAME vulkan_lut_test COMMAND vulkan_lut_test)
+set_tests_properties(vulkan_lut_test PROPERTIES SKIP_RETURN_CODE 77)
+
 # The privacy blur's plate-scan data (lookup, spans, merge, cache file).
 add_executable(privacy_test tests/privacy_test.cpp)
 target_link_libraries(privacy_test PRIVATE privacy_data)

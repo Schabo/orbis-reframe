@@ -81,17 +81,6 @@ bool VulkanLutStore::init(const Device& dev, VkShaderStageFlags stages, std::str
         destroy();
         return false;
     }
-    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, uint32_t(kMaxLuts + 1)};
-    VkDescriptorPoolCreateInfo pi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    pi.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pi.maxSets = uint32_t(kMaxLuts + 1);
-    pi.poolSizeCount = 1;
-    pi.pPoolSizes = &ps;
-    if (vkCreateDescriptorPool(dev.device, &pi, nullptr, &m_pool) != VK_SUCCESS) {
-        err = "vkCreateDescriptorPool (LUT) failed";
-        destroy();
-        return false;
-    }
     VkCommandPoolCreateInfo ci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
     ci.queueFamilyIndex = dev.queueFamily;
@@ -114,11 +103,43 @@ bool VulkanLutStore::init(const Device& dev, VkShaderStageFlags stages, std::str
     return true;
 }
 
+bool VulkanLutStore::allocSet(Entry& e)
+{
+    VkDescriptorSetAllocateInfo dai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    dai.descriptorSetCount = 1;
+    dai.pSetLayouts = &m_layout;
+    for (VkDescriptorPool pool : m_pools) {
+        dai.descriptorPool = pool;
+        if (vkAllocateDescriptorSets(m_dev.device, &dai, &e.set) == VK_SUCCESS) {
+            e.pool = pool;
+            return true;
+        }
+    }
+    // All full: only when a frame holds more than kMaxLuts.
+    VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, uint32_t(kMaxLuts + 1)};
+    VkDescriptorPoolCreateInfo pi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    pi.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pi.maxSets = uint32_t(kMaxLuts + 1);
+    pi.poolSizeCount = 1;
+    pi.pPoolSizes = &ps;
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    if (vkCreateDescriptorPool(m_dev.device, &pi, nullptr, &pool) != VK_SUCCESS)
+        return false;
+    m_pools.push_back(pool);
+    dai.descriptorPool = pool;
+    if (vkAllocateDescriptorSets(m_dev.device, &dai, &e.set) != VK_SUCCESS) {
+        e.set = VK_NULL_HANDLE;
+        return false;
+    }
+    e.pool = pool;
+    return true;
+}
+
 void VulkanLutStore::free(Entry& e)
 {
     VkDevice dev = m_dev.device;
-    if (e.set && m_pool)
-        vkFreeDescriptorSets(dev, m_pool, 1, &e.set);
+    if (e.set && e.pool)
+        vkFreeDescriptorSets(dev, e.pool, 1, &e.set);
     if (e.view)
         vkDestroyImageView(dev, e.view, nullptr);
     if (e.image)
@@ -139,17 +160,18 @@ void VulkanLutStore::destroy()
     VkDevice dev = m_dev.device;
     if (m_cmdPool)
         vkDestroyCommandPool(dev, m_cmdPool, nullptr);
-    if (m_pool)
-        vkDestroyDescriptorPool(dev, m_pool, nullptr);
+    for (VkDescriptorPool pool : m_pools)
+        vkDestroyDescriptorPool(dev, pool, nullptr);
+    m_pools.clear();
     if (m_layout)
         vkDestroyDescriptorSetLayout(dev, m_layout, nullptr);
     if (m_sampler)
         vkDestroySampler(dev, m_sampler, nullptr);
     m_cmdPool = VK_NULL_HANDLE;
-    m_pool = VK_NULL_HANDLE;
     m_layout = VK_NULL_HANDLE;
     m_sampler = VK_NULL_HANDLE;
     m_dev = Device{};
+    m_frame = 0;
 }
 
 bool VulkanLutStore::upload(const color::Lut3D& lut, Entry& e, std::string& err)
@@ -291,12 +313,7 @@ bool VulkanLutStore::upload(const color::Lut3D& lut, Entry& e, std::string& err)
     vi.viewType = VK_IMAGE_VIEW_TYPE_3D;
     vi.format = kLutFormat;
     vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    VkDescriptorSetAllocateInfo dai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    dai.descriptorPool = m_pool;
-    dai.descriptorSetCount = 1;
-    dai.pSetLayouts = &m_layout;
-    if (vkCreateImageView(dev, &vi, nullptr, &e.view) != VK_SUCCESS ||
-        vkAllocateDescriptorSets(dev, &dai, &e.set) != VK_SUCCESS) {
+    if (vkCreateImageView(dev, &vi, nullptr, &e.view) != VK_SUCCESS || !allocSet(e)) {
         err = "can't make the LUT's descriptor";
         free(e);
         return false;
@@ -321,17 +338,12 @@ VkDescriptorSet VulkanLutStore::setFor(const std::shared_ptr<const color::Lut3D>
     for (Entry& e : m_luts) {
         if (e.lut == lut) {
             e.used = m_clock;
+            e.frame = m_frame;
             return e.set;
         }
     }
-    if (m_luts.size() >= kMaxLuts) {
-        auto lru = std::min_element(m_luts.begin(), m_luts.end(),
-                                    [](const Entry& a, const Entry& b) { return a.used < b.used; });
-        if (m_dev.waitIdle)
-            m_dev.waitIdle();
-        free(*lru);
-        m_luts.erase(lru);
-    }
+    if (m_luts.size() >= kMaxLuts)
+        evictOne(m_frame); // none free: grow for this frame
     Entry e;
     std::string why;
     if (!upload(*lut, e, why)) {
@@ -341,8 +353,37 @@ VkDescriptorSet VulkanLutStore::setFor(const std::shared_ptr<const color::Lut3D>
     }
     e.lut = lut;
     e.used = m_clock;
+    e.frame = m_frame;
     m_luts.push_back(std::move(e));
     return m_luts.back().set;
+}
+
+bool VulkanLutStore::evictOne(uint64_t keep)
+{
+    auto lru = m_luts.end();
+    for (auto it = m_luts.begin(); it != m_luts.end(); ++it) {
+        if (keep != 0 && it->frame == keep)
+            continue;
+        if (lru == m_luts.end() || it->used < lru->used)
+            lru = it;
+    }
+    if (lru == m_luts.end())
+        return false;
+    if (m_dev.waitIdle)
+        m_dev.waitIdle();
+    free(*lru);
+    m_luts.erase(lru);
+    return true;
+}
+
+void VulkanLutStore::beginFrame()
+{
+    // Over the limit: shed what the last frame didn't use. What it did use
+    // stays, so a view that needs more than kMaxLuts every frame keeps them
+    // all instead of uploading some again each frame.
+    while (m_luts.size() > kMaxLuts && evictOne(m_frame)) {
+    }
+    ++m_frame;
 }
 
 void VulkanLutStore::pushValues(const color::Lut3D* lut, float mix, float out[4])
