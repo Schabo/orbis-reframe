@@ -79,8 +79,15 @@ each is in its document in [`formats/`](formats/README.md).
   frame, and the IMU axis map confirmed on a clip with deliberate turns.
 - **Insta360 X3**: two files per take like the ONE X2, so its own row in the
   Insta360 reader's table; see what calibration it carries.
-- **Antigravity A1**: a different trailer layout, 180° lenses (thin seam
-  overlap), the drone body in the picture.
+- **Antigravity A1**: in progress, from a contributor's 8K clips: the
+  trailer's slotted layout read, its own row in the Insta360 reader's
+  table (names, proxy, focal reference, how the camera holds its lenses --
+  down and up -- so the picture is level and faces the drone's nose), and
+  the seam measured (the lens extrinsics' order, the 71 mm baseline, ~200°
+  lenses, no drone parts in the stitched picture). Left: the IMU axis map
+  (stabilization), the trailer's flat preview picture, a clip with no
+  audio track checked end to end, then *experimental*
+  ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two

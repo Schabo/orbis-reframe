@@ -10,8 +10,14 @@ Markers as in [`README.md`](README.md).
 
 ## Streams
 
-- 📖 Two 1/1.28" sensors, **180°** lenses (the X5's are ~200°, so the two
-  pictures overlap much less at the seam).
+- 📖 Two 1/1.28" sensors. Reviews say **180°** lenses, but ✅ each lens
+  images **~200°**, like the X5's: by the clip's own calibration the image
+  circle's edge lies at ~100° off-axis all round (99-101° on lens 1;
+  101-105° on lens 0, where the frame clips the circle), measured on a
+  frame of `_011` and `_012` by where the picture goes dark. The stitch's
+  200° default (X5 §5.4, used when the file has no lens profiles) fits.
+  The A1's frame is cropped closer to the circle than the X5's: the circle
+  nearly fills the 3840² stream.
 - 📖 360 modes, H.264 or H.265, up to 170 Mb/s:
 
   | mode | frame | fps | per lens (⚠️) |
@@ -29,8 +35,14 @@ Markers as in [`README.md`](README.md).
   **`PRX_<date>_<time>_<n>.prx`**: the same name with `PRX` and `.prx`, both
   fisheyes side by side at 2560×1280 (the X5's `.lrv`, X5 §3.2), with a
   trailer of its own (records 1 and 2).
-- ❓ How much of the drone itself (props, arms) is in the picture -- it would
-  need a mask.
+- ✅ **The drone in the picture**: on our clips, only a light bar with a
+  dark edge at the very rim of lens 0 (the downward one), 94-97° off its
+  axis, in the same place on every clip -- the drone's body or an arm
+  seen past the horizon. It lies at the outer end of the seam's blend
+  band, where lens 0 hardly counts (the edge fade), so it doesn't show in
+  the stitched picture (checked at the spot, depth-aware seam off and on).
+  Nothing of the drone near the seam elsewhere, nor in lens 1. ❓ Landing
+  gear or a take-off on the ground.
 
 ## Trailer
 
@@ -63,7 +75,14 @@ Markers as in [`README.md`](README.md).
   0.2°, and the per-clip seam fit converges to 0.02° on all three clips
   with small corrections (lens 1 pitch +0.14 to +0.24°, roll +0.40 to
   +0.42°, centre −0.06 to −0.08 %, radius −0.17 to −0.20 %). Before the
-  fit the lenses are 0.24-0.53° apart at the seam (X5: ~0.17°).
+  fit the lenses are 0.24-0.53° apart at the seam (X5: ~0.17°). The app's
+  per-clip measurement gives the same on all three clips, over each whole
+  clip (0.47-0.52° -> 0.02°).
+- ✅ The lenses are **71 mm apart** (lens 1 `tz` −0.0711; X5: 32 mm), lens 0
+  in front along its own axis as on the X5: the depth-aware seam lines up
+  houses, poles and wires along the horizon when the drone flies low
+  (`_011` at 1 s, confidence 0.89), and with the sign flipped
+  (`insv_stitch --baseline -0.0711`) they double again.
 - ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.
@@ -99,7 +118,7 @@ The status words are the X5's (X5 §3.4).
 | 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | `.insp`; `.dng` | none | wanted, low |
 | Internal storage (20 GB) vs microSD | | ❓ the same files | none | low: say which a clip came from |
 | Audio | not in the spec table | ✅ no audio track in our clips | 3 | done |
-| Drone in the picture (props, arms, landing gear) | | | none | **wanted**: a clip with sky above and ground below, to see what a mask must cover |
+| Drone in the picture (props, arms, landing gear) | | | 3, in flight | done in flight: a part at lens 0's rim only, outside the stitched picture; wanted: a take-off or landing |
 | Replaceable lenses | | | none | wanted, low: whether the calibration in the file follows a lens swap |
 | IMU axes | | | none | **a flight with deliberate yaw, pitch and roll**, e.g. in Sport mode |
 
