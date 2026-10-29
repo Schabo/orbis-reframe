@@ -78,8 +78,9 @@ void MainWindow::connectStitchAndStabilization()
                 if (!c)
                     return;
                 insv::StabConfig cfg = nativeCfg;
-                // Switching into Direction lock holds the way the camera
-                // faces under the playhead.
+                // Switching into Direction lock, or ticking Custom's Lock
+                // direction, holds the way the camera faces under the
+                // playhead.
                 if (cfg.lockDirection && !c->stabilization.lockDirection)
                     cfg.directionSec = directionSecAtPlayhead(*c);
                 m_timeline->setClipStabilization(c->id, cfg);

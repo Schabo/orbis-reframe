@@ -805,6 +805,33 @@ void testDirectionLock(const Ctx &c)
         undo->trigger();
     CHECK(c.timeline->clipAt(0).stabilization == beforeA);
     CHECK(c.timeline->clipAt(1).stabilization == beforeB);
+
+    // Custom's Lock direction: off at first, the direction row with it;
+    // ticking it holds the direction under the playhead, unticking lets go.
+    auto *custom = find<QCheckBox>(c.w, "stabilizationCustomLockDirection");
+    if (!custom)
+        return;
+    QWidget *body = mode->parentWidget();
+    // Undo rebuilt the timeline, ids included: the first clip by position.
+    settle();
+    CHECK(seekTo(c, 2000));
+    settle();
+    mode->setCurrentIndex(mode->findData(int(StabilizationPanel::Mode::Custom)));
+    s = &c.timeline->clipAt(0).stabilization;
+    CHECK(s->mode == insv::StabMode::Custom && !s->lockDirection);
+    CHECK(custom->isVisibleTo(body) && !custom->isChecked() && !lock->isVisibleTo(body));
+    custom->setChecked(true);
+    s = &c.timeline->clipAt(0).stabilization;
+    CHECK(s->mode == insv::StabMode::Custom && s->lockDirection);
+    CHECK(std::fabs(s->directionSec - 2.0f) < 0.01f);
+    CHECK(lock->isVisibleTo(body));
+    CHECK(waitFor([&] { return where->text().contains(QLatin1String("00:00:02")); }));
+    custom->setChecked(false);
+    s = &c.timeline->clipAt(0).stabilization;
+    CHECK(s->mode == insv::StabMode::Custom && !s->lockDirection && !lock->isVisibleTo(body));
+    for (int i = 0; i < 3; ++i)
+        undo->trigger();
+    CHECK(c.timeline->clipAt(0).stabilization == beforeA);
 }
 
 // Split screen from its section: a grid gives the new panes Fill panes'

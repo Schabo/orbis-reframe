@@ -126,27 +126,6 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     hsr->addWidget(m_horizonSmoothValue);
     form()->addRow(tr("Smoothing"), m_horizonSmoothRow);
 
-    // Direction lock: which way the view is held, and a button to take the
-    // direction under the playhead instead.
-    m_directionRow = new QWidget(this);
-    auto *dr = new QVBoxLayout(m_directionRow);
-    dr->setContentsMargins(0, 0, 0, 0);
-    m_directionStatus = new QLabel(m_directionRow);
-    m_directionStatus->setObjectName(QStringLiteral("stabilizationDirectionStatus"));
-    m_directionStatus->setWordWrap(true);
-    auto *lockDirection = new QPushButton(tr("Lock to this direction"), m_directionRow);
-    lockDirection->setObjectName(QStringLiteral("stabilizationLockDirection"));
-    lockDirection->setToolTip(tr("Keep the view pointing the way the camera faced at the "
-                                 "playhead, however the camera turns."));
-    auto *buttonLine = new QHBoxLayout;
-    buttonLine->addWidget(lockDirection);
-    buttonLine->addStretch(1);
-    dr->addWidget(m_directionStatus);
-    dr->addLayout(buttonLine);
-    form()->addRow(m_directionRow);
-    connect(lockDirection, &QPushButton::clicked, this,
-            &StabilizationPanel::lockDirectionRequested);
-
     m_customRows = new QWidget(this);
     auto *cf = new QFormLayout(m_customRows);
     cf->setContentsMargins(0, 0, 0, 0);
@@ -180,7 +159,35 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     cf->addRow(tr("Pitch offset"), m_pitchOffset);
     cf->addRow(tr("Roll offset"), m_rollOffset);
     cf->addRow(tr("Auto-level"), m_autoLevel);
+    m_customLockDirection = new QCheckBox(tr("Hold one direction"));
+    m_customLockDirection->setObjectName(QStringLiteral("stabilizationCustomLockDirection"));
+    m_customLockDirection->setToolTip(
+        tr("Keep the view pointing one way, however the camera turns, as Direction lock does: "
+           "the way the camera faced at the playhead when you tick it."));
+    cf->addRow(tr("Lock direction"), m_customLockDirection);
     form()->addRow(m_customRows);
+
+    // Direction lock, or Custom with Lock direction: which way the view is
+    // held, and a button to take the direction under the playhead instead.
+    m_directionRow = new QWidget(this);
+    auto *dr = new QVBoxLayout(m_directionRow);
+    dr->setContentsMargins(0, 0, 0, 0);
+    m_directionStatus = new QLabel(m_directionRow);
+    m_directionStatus->setObjectName(QStringLiteral("stabilizationDirectionStatus"));
+    m_directionStatus->setWordWrap(true);
+    auto *lockDirection = new QPushButton(tr("Lock to this direction"), m_directionRow);
+    lockDirection->setObjectName(QStringLiteral("stabilizationLockDirection"));
+    lockDirection->setToolTip(tr("Keep the view pointing the way the camera faced at the "
+                                 "playhead, however the camera turns."));
+    auto *buttonLine = new QHBoxLayout;
+    buttonLine->addWidget(lockDirection);
+    buttonLine->addStretch(1);
+    dr->addWidget(m_directionStatus);
+    dr->addLayout(buttonLine);
+    form()->addRow(m_directionRow);
+    connect(lockDirection, &QPushButton::clicked, this,
+            &StabilizationPanel::lockDirectionRequested);
+
 
     // Accel-fusion low-pass: cutoff (Hz) for the accelerometer before it feeds
     // the horizon-leveling Mahony term. The stick mount leaks ~11 Hz resonance
@@ -255,6 +262,10 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
                               m_rollOffset, m_accelLowPass})
         connect(b, &QDoubleSpinBox::valueChanged, this, &StabilizationPanel::emitIfEdited);
     connect(m_autoLevel, &QCheckBox::toggled, this, &StabilizationPanel::emitIfEdited);
+    connect(m_customLockDirection, &QCheckBox::toggled, this, [this] {
+        updateModeVisibility();
+        emitIfEdited();
+    });
 }
 
 void StabilizationPanel::updateModeVisibility()
@@ -266,7 +277,9 @@ void StabilizationPanel::updateModeVisibility()
     const bool level = m == int(Mode::HorizonLock) || m == int(Mode::DirectionLock);
     form()->setRowVisible(m_horizonRow, level);
     form()->setRowVisible(m_horizonSmoothRow, m == int(Mode::HorizonLock));
-    form()->setRowVisible(m_directionRow, m == int(Mode::DirectionLock));
+    form()->setRowVisible(m_directionRow,
+                          m == int(Mode::DirectionLock) ||
+                              (m == int(Mode::Custom) && m_customLockDirection->isChecked()));
     form()->setRowVisible(m_customRows, m == int(Mode::Custom));
     form()->setRowVisible(m_accelLpRow, level || m == int(Mode::Custom));
 }
@@ -304,6 +317,8 @@ insv::StabConfig StabilizationPanel::nativeConfigForMode() const
         c.pitchOffsetRad = float(m_pitchOffset->value() * kDegToRad);
         c.rollOffsetRad = float(m_rollOffset->value() * kDegToRad);
         c.autoLevel = m_autoLevel->isChecked();
+        c.lockDirection = m_customLockDirection->isChecked();
+        c.directionSec = m_directionSec;
         c.accelLowPassHz = accelLp;
         return c;
     }
@@ -348,6 +363,7 @@ void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
     m_pitchOffset->setValue(cfg.pitchOffsetRad * kRadToDeg);
     m_rollOffset->setValue(cfg.rollOffsetRad * kRadToDeg);
     m_autoLevel->setChecked(mode != Mode::Custom || cfg.autoLevel);
+    m_customLockDirection->setChecked(mode == Mode::Custom && cfg.lockDirection);
     m_directionSec = cfg.directionSec;
     // Like the horizon amount: reflect the config's value only for the modes
     // that carry it; otherwise sit on the preset default so switching into

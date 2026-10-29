@@ -24,7 +24,8 @@ class QWidget;
 //   Direction lock -- Horizon lock holding one heading in the world: Amount,
 //                   and Lock to this direction (MainWindow takes the
 //                   playhead's time in the clip);
-//   Custom       -- the raw per-axis windows + level-horizon + mount offsets.
+//   Custom       -- the raw per-axis windows + level-horizon + mount offsets,
+//                   and Lock direction (then Direction lock's row too).
 // MainWindow writes the emitted insv::StabConfig onto the clip
 // (Timeline::setClipStabilization). Copy / Paste ask MainWindow, which holds
 // the copied setting (shared with the timeline's right-click menu).
@@ -85,7 +86,8 @@ private:
     QDoubleSpinBox *m_pitchOffset = nullptr;
     QDoubleSpinBox *m_rollOffset = nullptr;
     QCheckBox *m_autoLevel = nullptr; // Custom: StabConfig::autoLevel
-    QWidget *m_directionRow = nullptr; // shown only for Direction lock
+    QCheckBox *m_customLockDirection = nullptr; // Custom: StabConfig::lockDirection
+    QWidget *m_directionRow = nullptr; // Direction lock, or Custom holding a direction
     QLabel *m_directionStatus = nullptr;
     float m_directionSec = 0.0f; // the shown clip's StabConfig::directionSec, passed back
     QWidget *m_customRows = nullptr; // shown only for Custom

@@ -116,6 +116,7 @@ Custom shows the stabilizer's own settings:
 | **Level horizon** | 0 keeps whatever sideways tilt is left after smoothing; 1 makes the horizon fully level. |
 | **Pitch offset / Roll offset** | Tilts the result by a fixed angle, for example to correct a camera that was mounted crooked. |
 | **Auto-level** | **Level to mount's average**: treats the camera's average position over the clip as level, so a crooked mount still gives a level horizon. Off: the camera body's own "up" is level. |
+| **Lock direction** | **Hold one direction**: keeps the view pointing one way, however the camera turns, as [Direction lock](#direction-lock) does. Ticking it holds the way the camera faced at the playhead; the line and the **Lock to this direction** button under it work as in Direction lock. Off: the view follows the camera's turns, smoothed by **Smooth yaw**. |
 | **Vibration filter** | As in Horizon lock. |
 
 Long smoothing times on all three axes (3 to 4 seconds) with **Level
