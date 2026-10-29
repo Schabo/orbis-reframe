@@ -576,7 +576,7 @@ void MainWindow::connectOverlaysAndAudio()
                 l.centerY = cy;
                 applyInsetLook(clipId, l);
             });
-    // Picture in picture tab (overlay videos) and the Title tab's Position and timing
+    // Picture in picture tab (overlay videos) and the Overlay tab's Position and timing
     // (titles) -> the selected overlay clip. Each only ever shows its kind.
     for (OverlayPanel *panel : {m_overlayPanel, m_titlePlacementPanel}) {
         connect(panel, &OverlayPanel::lookEdited, this, [this](const inset::Look &l) {
@@ -616,7 +616,7 @@ void MainWindow::connectOverlaysAndAudio()
                     c->id, c->sourceAtLocalMs(m_lastTimelineMs - c->startMs), e);
         });
     }
-    // Title tab's Text and Look -> the selected title. A new alignment pins
+    // Overlay tab's Text and Look -> the selected title. A new alignment pins
     // another point of the text: the title moves so its text stays put.
     const auto titleEdited = [this](const title::Style &t) {
         const TrackClip *c = selectedOverlayClip();
@@ -1189,7 +1189,7 @@ bool isTextEntry(const QWidget *w)
            qobject_cast<const QPlainTextEdit *>(w); // a title's text
 }
 
-// A title as the timeline and the Title tab name it: its first line.
+// A title as the timeline and the Overlay tab name it: its first line.
 QString titleLabel(const title::Style &t)
 {
     const QString first = t.text.trimmed().section(QLatin1Char('\n'), 0, 0).trimmed();
@@ -1585,7 +1585,7 @@ void MainWindow::selectTrackClip(int clipId)
     const bool changed = clipId != m_selectedTrackClipId;
     m_selectedTrackClipId = clipId;
     m_timelineWidget->setSelectedTrackClip(clipId);
-    // Between the Overlay and Title tabs, the one for what's selected.
+    // Between the Picture in picture and Overlay tabs, the one for what's selected.
     if (const TrackClip *tc = changed && clipId > 0 ? m_timeline->trackClipById(clipId) : nullptr) {
         const int tab = m_sidebar->currentIndex();
         if (tc->isDrawn() && tab == SettingsSidebar::OverlayTab)
@@ -1895,7 +1895,7 @@ void MainWindow::refreshOverlayPanel()
         m_titlePlacementPanel->setNoClip();
         return;
     }
-    // A title shows on the Title tab, an overlay video on the Picture in picture tab;
+    // A title shows on the Overlay tab, an overlay video on the Picture in picture tab;
     // the other says where to look.
     OverlayPanel *panel = c->isDrawn() ? m_titlePlacementPanel : m_overlayPanel;
     m_sidebar->showGaugeSections(c->isGauge());
@@ -1908,11 +1908,11 @@ void MainWindow::refreshOverlayPanel()
         m_titleTextPanel->setTitle(*c->title, titleClockNote(*c));
         m_titleLookPanel->setTitle(*c->title);
         m_titleAnimationPanel->setMotion(c->motion);
-        m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Title tab."));
+        m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Overlay tab."));
     } else if (c->isGauge()) {
         m_sidebar->gauge()->setGauge(*c->gauge, titleClockNote(*c));
         m_titleAnimationPanel->setMotion(c->motion, false);
-        m_overlayPanel->setNoClip(tr("A gauge is selected: its settings are in the Title tab."));
+        m_overlayPanel->setNoClip(tr("A gauge is selected: its settings are in the Overlay tab."));
     } else {
         const QString hint = tr("A picture in picture is selected: its settings are in the "
                                 "Picture in picture tab.");

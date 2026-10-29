@@ -11,7 +11,7 @@ class QPushButton;
 class QSlider;
 class QWidget;
 
-// The Title tab's Look section: how the selected title's text is drawn
+// The Overlay tab's Look section: how the selected title's text is drawn
 // beyond its font -- line and letter spacing, an outline, a drop shadow and a
 // box behind it (title::Style). Lengths are shown as a share of the text
 // size, as the style keeps them.

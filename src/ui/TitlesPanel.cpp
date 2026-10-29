@@ -266,7 +266,7 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
 
     auto *hint = new QLabel(tr("Drag a title or a gauge onto the timeline, or double-click it to "
                                "add it at the playhead. Its settings, size and timing are in the "
-                               "Title tab on the right."),
+                               "Overlay tab on the right."),
                             this);
     hint->setObjectName(QStringLiteral("titlesHint"));
     hint->setWordWrap(true);

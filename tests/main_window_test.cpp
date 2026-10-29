@@ -1197,7 +1197,7 @@ void testTransition(const Ctx &c)
 }
 
 // The Overlays tab's "Add to timeline": a title at the playhead, selected, the
-// Title tab showing its text; typing there edits it (the K shortcut
+// Overlay tab showing its text; typing there edits it (the K shortcut
 // doesn't set a key), the picture reaches the viewport, and Duration sets
 // its length.
 void testTitle(const Ctx &c)
@@ -1214,7 +1214,7 @@ void testTitle(const Ctx &c)
     CHECK(clip && clip->startMs == 500 && clip->title->text == QStringLiteral("Title"));
     if (!clip)
         return;
-    // The settings sidebar is on the Title tab.
+    // The settings sidebar is on the Overlay tab.
     auto *sidebar = c.w->findChild<SettingsSidebar *>();
     CHECK(sidebar && sidebar->currentIndex() == SettingsSidebar::TitleTab);
     auto *text = find<QPlainTextEdit>(c.w, "titleText");
@@ -1429,7 +1429,7 @@ void testTitlePresets(const Ctx &c)
 
 // The Overlays tab's gauges: a tile per preset, dragged out as its id;
 // adding one gives a gauge with the preset's kind and place, in the
-// system's units, and the Title tab shows its Gauge section in the place of
+// system's units, and the Overlay tab shows its Gauge section in the place of
 // Text and Look -- and the title's again for a title.
 void testGaugePresets(const Ctx &c)
 {

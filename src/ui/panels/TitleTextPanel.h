@@ -10,7 +10,7 @@ class QPlainTextEdit;
 class QPushButton;
 class QWidget;
 
-// The Title tab's Text section: the selected title's text (several lines),
+// The Overlay tab's Text section: the selected title's text (several lines),
 // with an Insert menu for the clock's and the GPS's fields
 // (title::withFields) and, when it shows a time, how the clock writes the
 // hours, and when it shows a speed or an altitude, their units; its

@@ -24,7 +24,7 @@ protected:
 // The left sidebar's Overlays tab: text to put over the output, as tiles of
 // ready-made titles (titlepresets), and gauges (titlepresets::gauges) under
 // them; drag one onto the timeline, or double-click (Enter) to add it at the
-// playhead. It is edited in the right sidebar's Title tab. An animated tile
+// playhead. It is edited in the right sidebar's Overlay tab. An animated tile
 // plays its animation while the mouse is over it.
 class TitlesPanel : public QWidget {
     Q_OBJECT

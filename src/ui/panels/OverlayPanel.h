@@ -20,7 +20,7 @@ class QSlider;
 // edit of position / size / opacity sets a key at the playhead, and the fields
 // follow the playhead.
 // Two of them: kind Video on the Picture in picture tab, for PiP videos,
-// and kind Title on the Title tab ("Position and timing", beside TitleTextPanel),
+// and kind Title on the Overlay tab ("Position and timing", beside TitleTextPanel),
 // for titles -- the same fields, but the size is the text's height and
 // there are no corners or border. Their widgets' object names start with
 // "overlay" / "title".

@@ -527,7 +527,7 @@ private:
     QHash<QString, int> m_audioTrackCounts; // source path -> audio stream count
     ColourPanel *m_colourPanel = nullptr;
     OverlayPanel *m_overlayPanel = nullptr;        // overlay videos
-    TitleTextPanel *m_titleTextPanel = nullptr;     // the Title tab: a title's text
+    TitleTextPanel *m_titleTextPanel = nullptr;     // the Overlay tab: a title's text
     TitleLookPanel *m_titleLookPanel = nullptr;     // ... and how it's drawn
     TitleAnimationPanel *m_titleAnimationPanel = nullptr; // ... how it comes and goes
     OverlayPanel *m_titlePlacementPanel = nullptr;  // ... and its position and timing

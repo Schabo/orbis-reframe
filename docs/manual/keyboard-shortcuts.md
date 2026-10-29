@@ -61,7 +61,7 @@ shortcuts.
 |---|---|
 | `Ctrl+B` | Close or open the left sidebar (**Media**). |
 | `Ctrl+Shift+B` | Close or open the right sidebar (the settings). |
-| `Alt+1` … `Alt+6` | Show a tab of the settings sidebar, from left to right: Video, Audio, Picture in picture, Title, Transition, Privacy (opening the sidebar if it's closed). The key of the tab already showing closes the sidebar. |
+| `Alt+1` … `Alt+6` | Show a tab of the settings sidebar, from left to right: Video, Audio, Picture in picture, Overlay, Transition, Privacy (opening the sidebar if it's closed). The key of the tab already showing closes the sidebar. |
 
 In the **Media** tab: `Enter` (or a double-click) puts the selected files on
 the timeline, `Delete` removes them from the project's media (the files

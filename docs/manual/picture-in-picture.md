@@ -45,7 +45,7 @@ get it back.
 Click the PiP clip on the timeline, or click the PiP itself in the
 viewport. The **Picture in picture** tab then shows its settings. With no PiP
 selected, the tab is greyed out. A title's settings are on a tab of their
-own, the **Title** tab ([Titles](titles.md)).
+own, the **Overlay** tab ([Titles](titles.md)).
 
 ## Position, size and opacity
 
@@ -135,7 +135,7 @@ Hover over the number to see where the track sits.
 
 To change the order, select a PiP and click **Bring forward** or
 **Send backward** next to **Layer** in the Picture in picture tab (or a
-title's **Title** tab). The tab also shows
+title's **Overlay** tab). The tab also shows
 the layer, for example *1 of 2 (front)*; hover over it to see which tracks
 are in front and behind. You can also right-click an overlay track and
 choose **Bring forward** / **Send backward**, or drag its track header up

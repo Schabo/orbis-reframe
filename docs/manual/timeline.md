@@ -277,7 +277,7 @@ them.
 | Split it | Select it and press `S`, or right-click it and choose **Split here**. |
 | Remove it | Select it and press `Delete`, or right-click it and choose **Remove audio clip** / **Remove overlay clip**. |
 | Change its volume or fade it in and out | Select it and use the settings sidebar's **Audio** tab. |
-| Change an overlay's size, position or look | Select it and use the settings sidebar's **Picture in picture** tab (a title: the **Title** tab). |
+| Change an overlay's size, position or look | Select it and use the settings sidebar's **Picture in picture** tab (a title: the **Overlay** tab). |
 
 `S`, `[`, `]` and `Delete` act on the selected audio or overlay clip if
 there is one, and on the video track otherwise.

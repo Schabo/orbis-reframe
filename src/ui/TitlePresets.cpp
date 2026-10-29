@@ -53,7 +53,7 @@ QList<Preset> make()
 {
     QList<Preset> list;
     const QString hint = tr("Drag it onto the timeline, or double-click to add it at the "
-                            "playhead; edit it in the Title tab on the right.");
+                            "playhead; edit it in the Overlay tab on the right.");
 
     // As the plain title has always been: white, bold, in the middle.
     Preset text{QStringLiteral("plain"), tr("Text"), tr("Plain text.") + QLatin1Char(' ') + hint};
@@ -249,7 +249,7 @@ QList<GaugePreset> makeGauges()
 {
     QList<GaugePreset> list;
     const QString hint = tr("Drag it onto the timeline, or double-click to add it at the "
-                            "playhead; edit it in the Title tab on the right.");
+                            "playhead; edit it in the Overlay tab on the right.");
     const QString gpsHint = tr("It shows the GPS track of the clip under it, where the camera "
                                "recorded one; without one it stays empty.");
     const auto at = [](float x, float y, float size) {

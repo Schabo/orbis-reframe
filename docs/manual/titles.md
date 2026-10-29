@@ -9,11 +9,11 @@ plays, the speed, altitude and heading from the camera's GPS, or how far
 you lean and the G-forces -- as text, or drawn as a gauge, and the road
 around you, or the whole trip, as a map.
 
-![A title with a drop shadow in the viewport, the Overlays tab, the Title tab with the title's text and look, and the title on the timeline](images/titles.jpg)
+![A title with a drop shadow in the viewport, the Overlays tab, the Overlay tab with the title's text and look, and the title on the timeline](images/titles.jpg)
 
 1. The title in the viewport. Drag it to move it.
 2. The media sidebar's **Overlays** tab, with its **Titles** tiles.
-3. The settings sidebar's **Title** tab, with the selected title's
+3. The settings sidebar's **Overlay** tab, with the selected title's
    text, font, colour and alignment, then how its text is drawn (outline,
    shadow, box, spacing), and below them how it comes and goes, and its
    position, size and timing.
@@ -67,7 +67,7 @@ To add one:
 The new title lasts 5 seconds. It goes onto the overlay track you dropped
 it on if that track is free there; otherwise onto the first overlay track
 that is, or a new one. The title is selected and the settings sidebar shows
-its **Title** tab (<img src="images/icons/tab-title.png" width="24" alt="">),
+its **Overlay** tab (<img src="images/icons/tab-title.png" width="24" alt="">),
 ready to type the text. There must be a clip on the video track first.
 
 The **Date** tiles show the day the clip under the title was recorded, as
@@ -91,8 +91,8 @@ everything below can be changed, and nothing ties it to its tile.
 ## Text, font, colour and alignment
 
 Select the title on the timeline, or click it in the viewport. The settings
-sidebar's **Title** tab then shows its settings, in four sections. If the
-**Picture in picture** tab is showing, it switches to the **Title** tab by
+sidebar's **Overlay** tab then shows its settings, in four sections. If the
+**Picture in picture** tab is showing, it switches to the **Overlay** tab by
 itself (and back again when you select a PiP). The **Text** section:
 
 | Setting | What it does |
@@ -269,7 +269,7 @@ A **Route** is a map drawn from the GPS track, seen in one of two ways
 A route shows where you rode, and so where you started or live: think
 about that before you share the video.
 
-Selecting a gauge shows its **Gauge** section in the **Title** tab, in
+Selecting a gauge shows its **Gauge** section in the **Overlay** tab, in
 the place of **Text** and **Look**:
 
 | Setting | What it does |
@@ -343,7 +343,7 @@ second.
 
 ## Position, size, keyframes and fades
 
-The Title tab's **Position and timing** section. These work as for a
+The Overlay tab's **Position and timing** section. These work as for a
 picture in picture ([Picture in picture](picture-in-picture.md)):
 
 - **Position X** and **Position Y**: where the title is, as a percentage

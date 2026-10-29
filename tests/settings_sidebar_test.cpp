@@ -83,7 +83,7 @@ QStringList sectionNames(QScrollArea *page)
     std::sort(sections.begin(), sections.end(),
               [](SettingsPanel *a, SettingsPanel *b) { return a->y() < b->y(); });
     for (SettingsPanel *s : sections)
-        if (s->isVisibleTo(page->widget())) // the Title tab swaps some
+        if (s->isVisibleTo(page->widget())) // the Overlay tab swaps some
             out << s->objectName();
     return out;
 }
@@ -462,7 +462,7 @@ void testEasing(SettingsSidebar &bar)
     CHECK(find<QDoubleSpinBox>(reframe, "reframeFov")->isEnabled() && stop->isEnabled());
 }
 
-// The Title tab's Look section: reflects a title without emitting, greys out
+// The Overlay tab's Look section: reflects a title without emitting, greys out
 // what is off, reports edits as the whole style.
 void testTitleLook(SettingsSidebar &bar)
 {
@@ -504,7 +504,7 @@ void testTitleLook(SettingsSidebar &bar)
     CHECK(!outline->isEnabled() && !corners->isEnabled());
 }
 
-// The Title tab's Animation section: reflects a title's motion without
+// The Overlay tab's Animation section: reflects a title's motion without
 // emitting, greys out a length with nothing to time, reports edits.
 // The Gauge section: its fields from the style, each edit the whole style;
 // another value sets a scale to suit it, another unit converts the scale;
@@ -601,7 +601,7 @@ void testTitleAnimation(SettingsSidebar &bar)
     CHECK(!in->isEnabled() && !inLength->isEnabled());
 }
 
-// The Title tab: the Text section reflects a title without emitting and
+// The Overlay tab: the Text section reflects a title without emitting and
 // reports edits; Position and timing is the overlay panel without a frame,
 // its size the text's.
 void testTitleTab(SettingsSidebar &bar)

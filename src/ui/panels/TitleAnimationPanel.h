@@ -7,7 +7,7 @@
 class QComboBox;
 class QDoubleSpinBox;
 
-// The Title tab's Animation section: how the selected title comes on at
+// The Overlay tab's Animation section: how the selected title comes on at
 // its start and goes off at its end (inset::Motion) -- a slide from or to
 // an edge of the frame, a pop, or typing on / off -- each with its length.
 //

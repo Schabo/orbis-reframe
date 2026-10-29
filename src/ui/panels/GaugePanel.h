@@ -10,7 +10,7 @@ class QLabel;
 class QPushButton;
 class QSlider;
 
-// The Title tab's Gauge section, in the place of Text and Look while a gauge
+// The Overlay tab's Gauge section, in the place of Text and Look while a gauge
 // is selected: what kind of gauge it is, what it shows and in which unit,
 // its scale, and its colours (gauge::Style). Where it sits, its size and
 // timing are the tab's last section; how it comes and goes, the Animation

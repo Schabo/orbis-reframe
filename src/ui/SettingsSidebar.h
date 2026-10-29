@@ -66,7 +66,7 @@ public:
     TransitionPanel *transition() const { return m_transition; }
     PrivacyPanel *privacy() const { return m_privacy; }
 
-    // The Title tab for a gauge (its Gauge section in the place of Text and
+    // The Overlay tab for a gauge (its Gauge section in the place of Text and
     // Look) or for a title.
     void showGaugeSections(bool gauge);
 
