@@ -79,6 +79,10 @@ public:
     // decoder or its device failed to start (most often out of graphics
     // memory).
     bool unsupported() const { return m_unsupported; }
+    // After a failed open() that was unsupported(): the codec's name
+    // ("H.264") when the GPU decodes video, just not this codec; empty when
+    // it has no video decode at all.
+    const std::string& unsupportedCodec() const { return m_unsupportedCodec; }
 
     int lensCount() const { return m_demux.lensCount(); }
     const VulkanVideoStreamInfo& lens(int i) const { return m_demux.lens(i); }
@@ -143,6 +147,7 @@ private:
     LensDemuxer m_demux;
     AVBufferRef* m_hwDevice = nullptr;
     bool m_unsupported = false;
+    std::string m_unsupportedCodec;
 };
 
 } // namespace insv

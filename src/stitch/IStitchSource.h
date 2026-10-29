@@ -153,6 +153,9 @@ inline int ExportStitchWidth(int lensWidth, int outWidth) {
 struct GpuFallback {
     bool decode = false; // the lenses decode on the CPU
     bool stitch = false; // the equirect is stitched on the CPU
+    // With `decode`: the codec ("H.264") when the GPU decodes video but not
+    // this codec -- a lasting limit of the card, not memory running out.
+    std::string codec;
     bool any() const { return decode || stitch; }
 };
 

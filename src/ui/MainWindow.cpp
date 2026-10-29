@@ -1007,22 +1007,15 @@ void MainWindow::connectController()
     // once per file, or a stutter looks like a bug. Short, to fit the
     // toolbar; what to do is in the manual, the details in the log.
     connect(m_controller, &PlaybackController::gpuFallback, this,
-            [this](const QString &path, int clipId, bool decode, bool stitch) {
+            [this](const QString &path, int clipId, bool decode, bool stitch,
+                   const QString &codec) {
                 if (m_gpuFallbackNoticed.contains(path))
                     return;
                 m_gpuFallbackNoticed.insert(path);
                 const int i = m_timeline->indexOfId(clipId);
                 const QString what =
                     i >= 0 ? tr("Clip %1").arg(i + 1) : QFileInfo(path).fileName();
-                const QString text =
-                    decode && stitch
-                        ? tr("%1 plays slowly: the graphics card couldn't decode and stitch "
-                             "it (its memory may be full)")
-                    : decode ? tr("%1 plays slowly: the graphics card couldn't decode it (its "
-                                  "memory may be full)")
-                             : tr("%1 plays slowly: the graphics card couldn't stitch it (its "
-                                  "memory may be full)");
-                m_editToolbar->showNotice(text.arg(what));
+                m_editToolbar->showNotice(syscheck::gpuFallbackNotice(what, decode, stitch, codec));
             });
     // The audio follows the seeks the controller has applied, not the
     // requests: the controller runs on its own thread, and ticks it queued

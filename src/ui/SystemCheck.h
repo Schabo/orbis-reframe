@@ -24,6 +24,11 @@ QString hwEncoderReport();
 // False too if the viewport hasn't started Vulkan yet.
 bool gpuVideoDecode(EquirectViewportWindow *viewport);
 QString gpuDecodeMissingText();
+// The edit toolbar's notice for a clip (`what`: "Clip 2") that plays on the
+// CPU because its GPU decode or stitch didn't start
+// (stitch::GpuFallback). `codec` set: the card decodes video, but not this
+// codec -- not a memory problem, so it doesn't say "memory".
+QString gpuFallbackNotice(const QString &what, bool decode, bool stitch, const QString &codec);
 
 // Empty when Track subject / the plate scan can run; else why not (not in
 // this build, or the model file is missing).

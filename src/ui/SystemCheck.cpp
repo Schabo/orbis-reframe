@@ -80,6 +80,24 @@ QString gpuDecodeMissingText()
               "Intel, GPU decoding needs a recent Mesa driver.");
 }
 
+QString gpuFallbackNotice(const QString &what, bool decode, bool stitch, const QString &codec)
+{
+    if (decode && !codec.isEmpty())
+        return (stitch ? tr("%1 plays slowly: the graphics card can't decode %2 video, and "
+                            "couldn't stitch it (its memory may be full)")
+                       : tr("%1 plays slowly: the graphics card can't decode %2 video"))
+            .arg(what, codec);
+    const QString text =
+        decode && stitch
+            ? tr("%1 plays slowly: the graphics card couldn't decode and stitch it (its "
+                 "memory may be full)")
+        : decode ? tr("%1 plays slowly: the graphics card couldn't decode it (its memory "
+                      "may be full)")
+                 : tr("%1 plays slowly: the graphics card couldn't stitch it (its memory may "
+                      "be full)");
+    return text.arg(what);
+}
+
 QString trackUnavailableReason()
 {
 #ifdef ORBIS_REFRAME_HAVE_TRACKING

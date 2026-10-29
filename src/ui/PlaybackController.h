@@ -235,8 +235,10 @@ signals:
     void openFailed(const QString &path, int clipId, const QString &error);
     // Part of the playing source's stitch runs on the CPU because the GPU
     // part didn't start (IStitchSource::GetGpuFallback): it plays, slowly.
+    // `codec` is set when the GPU can't decode the clip's codec at all.
     // May come again for the same file when it's opened again.
-    void gpuFallback(const QString &path, int clipId, bool decode, bool stitch);
+    void gpuFallback(const QString &path, int clipId, bool decode, bool stitch,
+                     const QString &codec);
     void durationChanged(qint64 totalMs);
     // The playhead is at timelineMs, read at atNs (steadyNs()). While playing
     // the clock runs on from there: a listener on another thread gets this

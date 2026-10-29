@@ -303,11 +303,13 @@ void PlaybackController::noteGpuFallback(int clipId)
         m_fallbackSeen = {};
     }
     const stitch::GpuFallback fb = m_activeSource->GetGpuFallback();
-    if (fb.decode == m_fallbackSeen.decode && fb.stitch == m_fallbackSeen.stitch)
+    if (fb.decode == m_fallbackSeen.decode && fb.stitch == m_fallbackSeen.stitch &&
+        fb.codec == m_fallbackSeen.codec)
         return;
     m_fallbackSeen = fb;
     if (fb.any())
-        emit gpuFallback(m_activePath, clipId, fb.decode, fb.stitch);
+        emit gpuFallback(m_activePath, clipId, fb.decode, fb.stitch,
+                         QString::fromStdString(fb.codec));
 }
 
 void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)

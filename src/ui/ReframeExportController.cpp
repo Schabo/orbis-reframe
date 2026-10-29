@@ -304,6 +304,7 @@ void ReframeExportController::run(const Request &req)
     // ...and clips that went through the CPU because the GPU part didn't
     // start: the picture is the same, but the export took much longer.
     QStringList cpuClips;
+    QStringList codecClips; // decoded on the CPU: the card can't decode their codec
 
     bool cancelled = false;
     int64_t framesBefore = 0;
@@ -513,7 +514,11 @@ void ReframeExportController::run(const Request &req)
                 emitPct(base + span * static_cast<double>(written) / frames[i], label);
         }
         // After the frames: the GPU stitch can also give up part-way.
-        if (src->GetGpuFallback().any())
+        const stitch::GpuFallback fb = src->GetGpuFallback();
+        if (!fb.codec.empty())
+            codecClips << tr("%1 (%2)").arg(QFileInfo(c.clipPath).fileName(),
+                                            QString::fromStdString(fb.codec));
+        if (fb.stitch || (fb.decode && fb.codec.empty()))
             cpuClips << QFileInfo(c.clipPath).fileName();
         framesBefore += frames[i];
     }
@@ -544,6 +549,14 @@ void ReframeExportController::run(const Request &req)
         note += tr("The graphics card couldn't decode or stitch these clips, most often because "
                    "its memory was full, so they were done on the processor, more slowly: %1")
                     .arg(cpuClips.join(QStringLiteral(", ")));
+    }
+    codecClips.removeDuplicates();
+    if (!codecClips.isEmpty()) {
+        if (!note.isEmpty())
+            note += QStringLiteral("\n\n");
+        note += tr("The graphics card can't decode these clips' video format, so they were "
+                   "decoded on the processor, more slowly: %1")
+                    .arg(codecClips.join(QStringLiteral(", ")));
     }
     emit finished(true, note, req.outPath);
 }

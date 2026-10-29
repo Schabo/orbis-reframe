@@ -155,8 +155,11 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     params_ = params;
 
     // --- Stage 2: all-GPU (Vulkan video decode -> GPU stitch on one device) ---
-    // Set when the GPU should have decoded and didn't (GetGpuFallback).
+    // Set when the GPU should have decoded and didn't (GetGpuFallback), or
+    // decodes video but not this codec: a GPU without any video decode is
+    // said once at startup instead, not per clip.
     bool decodeFailed = false;
+    std::string decodeCodec;
     if (!std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<insv::VulkanVideoDecoder>();
         std::string derr;
@@ -194,7 +197,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
             std::fprintf(stderr, "[NativeStitchSource] Vulkan video decode unavailable (%s); "
                                  "CPU decode\n",
                          derr.c_str());
-            decodeFailed = !vdec->unsupported();
+            decodeCodec = vdec->unsupportedCodec();
+            decodeFailed = !vdec->unsupported() || !decodeCodec.empty();
         }
     }
 
@@ -214,6 +218,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
                          gerr.c_str());
     }
     gpu_fallback_.decode = decodeFailed;
+    gpu_fallback_.codec = decodeCodec;
     gpu_fallback_.stitch = !gpu_ && !std::getenv("INSV_NO_GPU_STITCH");
     demux_ = std::move(demux);
     stitcher_ = std::move(stitcher);

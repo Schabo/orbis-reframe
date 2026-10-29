@@ -54,10 +54,14 @@ namespace {
 // does not support the VK_KHR_video_decode_queue extension", a grey viewport:
 // llvmpipe, other vendors' or older GPUs / drivers), so check up front and let
 // the caller fall back to CPU decode.
+// AV_CODEC_ID_NONE asks whether the device decodes any video at all.
 bool CanDecode(const AVBufferRef* hwDevice, AVCodecID codec)
 {
     VkVideoCodecOperationFlagsKHR op = 0;
     switch (codec) {
+    case AV_CODEC_ID_NONE:
+        op = ~VkVideoCodecOperationFlagsKHR(0);
+        break;
     case AV_CODEC_ID_HEVC:
         op = VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR;
         break;
@@ -76,6 +80,21 @@ bool CanDecode(const AVBufferRef* hwDevice, AVCodecID codec)
         if ((vk->qf[i].flags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) && (vk->qf[i].video_caps & op))
             return true;
     return false;
+}
+
+// The name people know a codec by, for messages.
+std::string CodecName(AVCodecID codec, const AVCodec* dec)
+{
+    switch (codec) {
+    case AV_CODEC_ID_HEVC:
+        return "H.265";
+    case AV_CODEC_ID_H264:
+        return "H.264";
+    case AV_CODEC_ID_AV1:
+        return "AV1";
+    default:
+        return dec ? dec->name : "this";
+    }
 }
 
 } // namespace
@@ -100,6 +119,7 @@ bool VulkanVideoDecoder::open(
 {
     close();
     m_unsupported = false;
+    m_unsupportedCodec.clear();
     m_hwDevice = core::sharedVulkanDevice();
     if (!m_hwDevice) {
         // Not "unsupported": the device also fails to create when the
@@ -110,11 +130,14 @@ bool VulkanVideoDecoder::open(
     }
     AVBufferRef* hw = m_hwDevice;
     bool unsupported = false;
+    std::string unsupportedCodec;
     const bool ok = openDemux(
-        [hw, &unsupported](const AVStream* st, const AVCodec* dec, AVCodecContext* ctx,
-                           std::string& e) {
+        [hw, &unsupported, &unsupportedCodec](const AVStream* st, const AVCodec* dec,
+                                              AVCodecContext* ctx, std::string& e) {
             if (!CanDecode(hw, st->codecpar->codec_id)) {
                 unsupported = true;
+                if (CanDecode(hw, AV_CODEC_ID_NONE))
+                    unsupportedCodec = CodecName(st->codecpar->codec_id, dec);
                 e = std::string("the GPU has no Vulkan video decode for ") + dec->name;
                 return false;
             }
@@ -127,6 +150,7 @@ bool VulkanVideoDecoder::open(
         err = "expected 2 video streams, found " + std::to_string(m_demux.lensCount());
     if (!ok || m_demux.lensCount() < 2) {
         m_unsupported = unsupported;
+        m_unsupportedCodec = unsupportedCodec;
         close();
         return false;
     }
