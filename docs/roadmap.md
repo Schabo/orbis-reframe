@@ -84,9 +84,12 @@ each is in its document in [`formats/`](formats/README.md).
   table (names, proxy, focal reference, how the camera holds its lenses --
   down and up -- so the picture is level and faces the drone's nose), and
   the seam measured (the lens extrinsics' order, the 71 mm baseline, ~200°
-  lenses, no drone parts in the stitched picture). Left: the IMU axis map
-  (stabilization), the trailer's flat preview picture, a clip with no
-  audio track checked end to end, then *experimental*
+  lenses, no drone parts in the stitched picture), the IMU axis map. Left:
+  Horizon lock in flight (the accelerometer reads thrust, so it levels to
+  the drone's tilt; the file records an attitude track that could level
+  it -- an orientation track, step 3 of the common camera model), the
+  trailer's flat preview picture, a clip with no audio track checked end
+  to end, then *experimental*
   ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.

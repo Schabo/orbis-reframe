@@ -96,9 +96,34 @@ Markers as in [`README.md`](README.md).
   as −90°, the body square to the lens frame. It puts the trailer's
   thumbnail (type 2) of `_011` at the picture's centre too; `_012`'s
   thumbnail looks elsewhere, so the thumbnail is a view, not the nose.
-- ❓ The IMU axes, fields 69 and 91 (unit quaternions; 69 is (w, x, y, z) =
-  (0.5, 0.5, −0.5, 0.5), a pure axis permutation), field 98 (absent: GPS
-  not yet lined up with the video).
+- ✅ **IMU axes `-x,y,-z`** (`InsvModel::imuAxes`): sphere X ← −raw x,
+  Y ← raw y, Z ← −raw z, in the sphere the A1's mount gives. Measured
+  2026-10-29 as on the X5 (X5 §6.3) and the ONE X2: four unstabilized
+  horizon views (yaw 0 / 90 / 180 / 270°, 90° diagonal field of view) of
+  `_010`, the camera rotation per frame interval from tracked features
+  (rotation-only Kabsch fit), against the gyro integrated over the same
+  interval. On 40-60 s (turns at 100-150 m): 1.3° from the free fit, gain
+  1.01 / 0.97 / 0.99, every view picks it (1.7-2.7°), and the rotation left
+  per frame drops from 1.20° to 0.074°; on 10-40 s the same map, 2.7°. The
+  runner-up is 90° away. Raw +y is also where the accelerometer puts "up"
+  in a hover (0.92 g of it).
+- ✅ **Sync**: the X5's formula (field 24 + field 28, X5 §7.1) holds; the
+  app's per-clip fine-tune finds +0.9 to +1.2 ms on all three clips, and
+  the image fit above agrees within ~1 ms.
+- ⚠️ **The accelerometer reads thrust, not gravity, in flight**: in steady
+  fast flight the drone tilts (16-19° at 15.7 m/s on `_010`) and the
+  accelerometer points along its tilted body, so leveling by it (Horizon
+  lock) levels the drone's body: on `_010` 61-72 s the forward view looks
+  ~17° down. Level in a hover.
+- ⚠️ **Orientation records** (layouts from the bytes, meaning inferred):
+  type 37 is 50 Hz, 36 bytes each: `u64` µs on the IMU's clock, a unit
+  quaternion (4 × f32), 3 more f32 (velocity?); type 14 has one 36-byte
+  entry per video frame with a unit quaternion in it; type 56 holds the
+  same orientation in another layout (its first quaternion is type 14's,
+  sign flipped). Likely the drone's own attitude, which would level the
+  horizon in flight; not used yet. ❓ Field 69 ((w, x, y, z) = (0.5, 0.5,
+  −0.5, 0.5), a pure axis permutation) and 91 (a unit quaternion), field
+  98 (absent: GPS not yet lined up with the video).
 
 ## Modes and sample clips
 
@@ -120,7 +145,7 @@ The status words are the X5's (X5 §3.4).
 | Audio | not in the spec table | ✅ no audio track in our clips | 3 | done |
 | Drone in the picture (props, arms, landing gear) | | | 3, in flight | done in flight: a part at lens 0's rim only, outside the stitched picture; wanted: a take-off or landing |
 | Replaceable lenses | | | none | wanted, low: whether the calibration in the file follows a lens swap |
-| IMU axes | | | none | **a flight with deliberate yaw, pitch and roll**, e.g. in Sport mode |
+| IMU axes | | | `_010` (flight turns) | done (`-x,y,-z`) |
 
 Cinematic, Normal and Sport are flight modes, not recording modes; they
 change how the drone moves, which matters only for the stabilization check.

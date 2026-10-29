@@ -1350,6 +1350,7 @@ void testA1Trailer()
     CHECK(std::string(model.captureMode(3840)) == "8K");
     CHECK(std::string(model.captureMode(2624)) == "5.2K");
     CHECK(model.mountDeg[0] == -90.0 && model.mountDeg[1] == 90.0 && model.mountDeg[2] == 0.0);
+    CHECK(std::string(model.imuAxes) == "-x,y,-z");
     // Insta360's cameras keep the stitch's default: lens 0's opposite forward.
     const insv::StitchParams defaults;
     for (const insv::InsvModel& m : insv::InsvModels())

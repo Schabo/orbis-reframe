@@ -25,10 +25,12 @@ const InsvModel kModels[] = {
     // A 360 drone writing Insta360's .insv (docs/formats/antigravity-a1.md):
     // both lenses in one file, the proxy PRX_….prx with the clip's own name,
     // no lens-guard profiles, field 27 in the file. The 5.2K and 4K lens
-    // sizes are from the spec sheet (no clips yet). IMU axes: the X5's,
-    // unconfirmed -- the A1's lenses look up and down, so they need measuring
-    // on a flight with deliberate turns.
-    {"Antigravity A1", "Antigravity", "z,-x,-y", nullptr, nullptr, 5248.0,
+    // sizes are from the spec sheet (no clips yet). IMU axes: "-x,y,-z" in
+    // the sphere its mount gives, measured on two flight stretches of turns
+    // by fitting the image rotation of four unstabilized views against the
+    // gyro (1.3 deg from the free fit, gain ~1; raw +y is also where the
+    // accelerometer puts "up" in a hover).
+    {"Antigravity A1", "Antigravity", "-x,y,-z", nullptr, nullptr, 5248.0,
      {{3840, "8K"}, {2624, "5.2K"}, {1920, "4K"}, {0, nullptr}},
      {-90.0, 90.0, 0.0}, 1.0, nullptr, nullptr, "PRX", nullptr, ".prx"},
 };
