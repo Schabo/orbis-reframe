@@ -27,14 +27,14 @@ void QuatToMatrix(const double q[4], double m[3][3]) {
     m[2][2] = 1 - 2 * (x * x + y * y);
 }
 
-// World up in the IMU's axes at each attitude sample. The attitude is body
-// -> world in north-east-down, so up is -z of the world; body <- IMU is
-// Ry(tilt) * R(mount)^T (InsvModel::imuMount). Fitted on the A1's three
-// sample clips by matching the attitude's frame-to-frame rotation against
-// the gyro: R(field 69)^T is the axis permutation, the tilt 9.5-9.9 deg,
-// 0.09-0.14 deg left per 20 ms step.
-std::vector<UpSample> UpFromAttitude(const std::vector<AttitudeSample>& attitude,
-                                     const double mount[4], double tiltDeg) {
+// World up and north in the IMU's axes at each attitude sample. The attitude
+// is body -> world in north-east-down, so up is -z of the world and north
+// +x; body <- IMU is Ry(tilt) * R(mount)^T (InsvModel::imuMount). Fitted on
+// the A1's three sample clips by matching the attitude's frame-to-frame
+// rotation against the gyro: R(field 69)^T is the axis permutation, the tilt
+// 9.5-9.9 deg, 0.09-0.14 deg left per 20 ms step.
+std::vector<OrientationSample> OrientationFromAttitude(const std::vector<AttitudeSample>& attitude,
+                                                       const double mount[4], double tiltDeg) {
     double m[3][3];
     QuatToMatrix(mount, m);
     const double a = tiltDeg * std::numbers::pi / 180.0;
@@ -44,23 +44,30 @@ std::vector<UpSample> UpFromAttitude(const std::vector<AttitudeSample>& attitude
     for (int r = 0; r < 3; ++r)
         for (int k = 0; k < 3; ++k)
             bodyFromImu[r][k] = ry[r][0] * m[k][0] + ry[r][1] * m[k][1] + ry[r][2] * m[k][2];
-    std::vector<UpSample> up;
-    up.reserve(attitude.size());
+    // IMU <- body is the transpose.
+    const auto toImu = [&](const double b[3], double out[3]) {
+        for (int k = 0; k < 3; ++k)
+            out[k] = bodyFromImu[0][k] * b[0] + bodyFromImu[1][k] * b[1] + bodyFromImu[2][k] * b[2];
+    };
+    std::vector<OrientationSample> out;
+    out.reserve(attitude.size());
     for (const AttitudeSample& at : attitude) {
         double wb[3][3];
         QuatToMatrix(at.q, wb);
-        // Up in body axes: R^T (0, 0, -1), the third row of R negated.
+        // A world direction in body axes is R^T applied to it: up (0, 0, -1)
+        // is the third row of R negated, north (1, 0, 0) the first.
         const double ub[3] = {-wb[2][0], -wb[2][1], -wb[2][2]};
-        UpSample u;
-        u.timestamp = at.timestamp;
-        for (int k = 0; k < 3; ++k) // IMU <- body is the transpose
-            u.up[k] = bodyFromImu[0][k] * ub[0] + bodyFromImu[1][k] * ub[1] +
-                      bodyFromImu[2][k] * ub[2];
-        up.push_back(u);
+        const double nb[3] = {wb[0][0], wb[0][1], wb[0][2]};
+        OrientationSample o;
+        o.timestamp = at.timestamp;
+        toImu(ub, o.up);
+        toImu(nb, o.north);
+        out.push_back(o);
     }
-    std::sort(up.begin(), up.end(),
-              [](const UpSample& x, const UpSample& y) { return x.timestamp < y.timestamp; });
-    return up;
+    std::sort(out.begin(), out.end(), [](const OrientationSample& x, const OrientationSample& y) {
+        return x.timestamp < y.timestamp;
+    });
+    return out;
 }
 
 } // namespace
@@ -75,8 +82,9 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
                          "{%g, %g, %g, %g}\n",
                          model.name, model.imuMount[0], model.imuMount[1], model.imuMount[2],
                          model.imuMount[3]);
-        track.up = UpFromAttitude(tele.attitude, tele.has_imu_mount ? tele.imu_mount : model.imuMount,
-                                  model.attitudeTiltDeg);
+        track.orientation = OrientationFromAttitude(
+            tele.attitude, tele.has_imu_mount ? tele.imu_mount : model.imuMount,
+            model.attitudeTiltDeg);
     }
     const std::vector<ExposureSample>& exposure = tele.exposure;
     // The stabilizer sorts the track and puts t = 0 at its earliest sample.

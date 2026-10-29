@@ -97,7 +97,8 @@ direction.
 **Amount** and **Vibration filter** work as in Horizon lock.
 
 The camera has no compass, so the held direction comes from its gyroscope
-alone, which drifts slowly. On an X5 the view turns by about 8 to 16° a
+alone, which drifts slowly (except on the Antigravity A1, see
+[below](#on-the-antigravity-a1)). On an X5 the view turns by about 8 to 16° a
 minute, so on a long clip it slowly wanders off the direction you locked.
 Lock to a point near the part that matters, or split a long clip and lock
 each part on its own.
@@ -133,8 +134,9 @@ flight, and **Lean follow**'s level and Custom's **Level to mount's
 average** come from it too. The **Vibration filter** works on
 the accelerometer, so it does nothing on A1 clips.
 
-**Direction lock** still holds its direction by the gyroscope alone, so it
-drifts slowly on the A1 as on any camera.
+The flight controller also knows which way the drone points, without the
+slow drift of a gyroscope, so on A1 clips **Direction lock** holds its
+direction by that and doesn't wander off it, however long the flight.
 
 ## Which clip it changes
 

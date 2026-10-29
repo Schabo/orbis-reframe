@@ -227,9 +227,10 @@ build/residual_stab clip.insv out.mp4 --render derotate --stab-mode directionLoc
 
 `--stab-mode directionLock` holds the heading the camera faced at
 `--direction-ms` (video time), as the app's Direction lock does.
-`--no-up-ref` levels by the accelerometer even on a clip that records its
-own up, as the app did before it read the drone's attitude; block [6]
-still compares against that up, so it shows what the attitude changes.
+`--no-up-ref` ignores the orientation a clip records (the drone's
+attitude): it levels by the accelerometer and holds the heading by the
+gyro alone, as the app did before it read the attitude; block [6] still
+compares against the attitude's up, so it shows what the attitude changes.
 
 ## track_subject
 

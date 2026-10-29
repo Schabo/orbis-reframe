@@ -15,7 +15,7 @@ namespace insv {
 
 // One inertial-measurement sample: the camera's accelerometer + gyroscope at a
 // point in time. GyroStabilizer integrates these into a per-frame orientation;
-// the accel gives it "down" (unless the track has ImuTrack::up).
+// the accel gives it "down" (unless the track has ImuTrack::orientation).
 struct ImuSample {
     // Device clock, microseconds (the X5's raw unit, docs/formats/insta360-x5.md
     // §6.2). Only differences matter: ImuTrack's timing is relative to the
@@ -25,21 +25,28 @@ struct ImuSample {
     double gyro[3] = {0, 0, 0};   // angular velocity, rad/s (x, y, z)
 };
 
-// Where world up was at a point in time, from a source that knows it better
-// than the accelerometer -- a drone's flight controller, whose accelerometer
-// reads the thrust along its tilted body in sustained flight.
-struct UpSample {
+// How the camera sat in the world at a point in time, from a source that
+// knows it better than the IMU alone -- a drone's flight controller, whose
+// accelerometer reads the thrust along its tilted body in sustained flight
+// and whose heading doesn't drift as the gyro's does. Two world directions
+// in the IMU's sensor axes (as ImuSample::accel), unit vectors.
+struct OrientationSample {
     uint64_t timestamp = 0; // the ImuSample clock, microseconds
-    double up[3] = {0, 0, 0}; // unit vector in the IMU's sensor axes (as ImuSample::accel)
+    double up[3] = {0, 0, 0};
+    // A horizontal direction fixed in the world (the flight controller's
+    // north, which needn't be true north); all zero where the source knows
+    // only up.
+    double north[3] = {0, 0, 0};
 };
 
 struct ImuTrack {
     std::vector<ImuSample> samples; // sensor axes, any order
 
-    // World up over the clip, in time order; empty when the camera doesn't
-    // record it. Where present the stabilizer levels against this instead of
-    // the accelerometer.
-    std::vector<UpSample> up;
+    // The camera's orientation over the clip, in time order; empty when the
+    // camera doesn't record it. Where present the stabilizer levels against
+    // its up instead of the accelerometer, and holds its heading to its
+    // north instead of the gyro alone.
+    std::vector<OrientationSample> orientation;
 
     // Sensor axis -> sphere (+X right, +Y up, -Z forward) as a signed
     // permutation (StabConfig::gyroAxes has the syntax). Empty = identity.

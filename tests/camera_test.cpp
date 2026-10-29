@@ -363,18 +363,21 @@ void testAntigravityA1(const std::filesystem::path& dir)
     CHECK(camera::ClipFileOf(vid) == vid);
     CHECK(camera::ClipFileOf(prx, &err) == vid);
 
-    // Up from the attitude in the IMU's axes: body <- IMU is field 69's
-    // permutation and the camera's 9.7 deg pitch up in the airframe, so a
-    // body pitched by p puts up at (0, cos(p + 9.7), sin(p + 9.7)).
+    // Up and north from the attitude in the IMU's axes: body <- IMU is field
+    // 69's permutation and the camera's 9.7 deg pitch up in the airframe, so
+    // a body facing north pitched by p puts up at (0, cos(p + 9.7),
+    // sin(p + 9.7)) and north at (0, -sin(p + 9.7), cos(p + 9.7)).
     const auto track = camera::ReadClipImu(vid);
-    CHECK(track && track->up.size() == 2);
-    if (track && track->up.size() == 2) {
+    CHECK(track && track->orientation.size() == 2);
+    if (track && track->orientation.size() == 2) {
         for (int k = 0; k < 2; ++k) {
             const double p = (k == 0 ? 0.0 : nose) + 9.7 * std::numbers::pi / 180.0;
-            const insv::UpSample& u = track->up[k];
+            const insv::OrientationSample& u = track->orientation[k];
             CHECK(u.timestamp == (k == 0 ? 1000000u : 1020000u));
             CHECK(std::fabs(u.up[0]) < 1e-6 && std::fabs(u.up[1] - std::cos(p)) < 1e-6 &&
                   std::fabs(u.up[2] - std::sin(p)) < 1e-6);
+            CHECK(std::fabs(u.north[0]) < 1e-6 && std::fabs(u.north[1] + std::sin(p)) < 1e-6 &&
+                  std::fabs(u.north[2] - std::cos(p)) < 1e-6);
         }
     }
 }

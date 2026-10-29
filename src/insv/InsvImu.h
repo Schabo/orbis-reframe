@@ -28,7 +28,7 @@ namespace insv {
 // and is off by the pre-roll.
 //
 // The axis map is the model's (InsvModel::imuAxes). A drone's attitude
-// record (InsvTelemetry::attitude) becomes ImuTrack::up through field 69 and
+// record (InsvTelemetry::attitude) becomes ImuTrack::orientation through field 69 and
 // the model's tilt (InsvModel::imuMount, attitudeTiltDeg); field 69 missing,
 // the model's value stands in and that is logged.
 ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& model);

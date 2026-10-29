@@ -255,7 +255,7 @@ void testStabConfig()
     }
 
     // A drone's flight controller knows up better than its accelerometer,
-    // which reads the drone's own acceleration too (ImuTrack::up). Still
+    // which reads the drone's own acceleration too (ImuTrack::orientation). Still
     // camera, true up 20 deg off body +Y, the accel a further 15 deg off
     // that at 1.05 g (the drone speeding up), residual gyro bias: Horizon
     // lock and Lean follow's auto-level take the reference's up; without it
@@ -282,14 +282,14 @@ void testStabConfig()
             s.gyro[2] = 0.004;
             track.samples.push_back(s);
             if (i % 20 == 0) { // 50 Hz
-                insv::UpSample u;
+                insv::OrientationSample u;
                 u.timestamp = s.timestamp;
                 toX5(bt, u.up);
-                track.up.push_back(u);
+                track.orientation.push_back(u);
             }
         }
         insv::ImuTrack accelOnly = track;
-        accelOnly.up.clear();
+        accelOnly.orientation.clear();
         // Worst angle between the view's up and `b` over the clip.
         auto worstDeg = [](const insv::GyroStabilizer &g, const double b[3]) {
             double worst = 0.0;
@@ -334,14 +334,15 @@ void testStabConfig()
             withMount.imu_mount[k] = a1.imuMount[k];
         const insv::ImuTrack from69 = insv::MakeInsvImuTrack(std::move(withMount), 30.0, a1);
         const insv::ImuTrack fallback = insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), 30.0, a1);
-        CHECK(from69.up.size() == 4 && fallback.up.size() == 4);
-        for (size_t i = 0; i < std::min(from69.up.size(), fallback.up.size()); ++i)
+        CHECK(from69.orientation.size() == 4 && fallback.orientation.size() == 4);
+        for (size_t i = 0; i < std::min(from69.orientation.size(), fallback.orientation.size()); ++i)
             for (int k = 0; k < 3; ++k)
-                CHECK(from69.up[i].up[k] == fallback.up[i].up[k]);
+                CHECK(from69.orientation[i].up[k] == fallback.orientation[i].up[k] &&
+                      from69.orientation[i].north[k] == fallback.orientation[i].north[k]);
         // The cameras record no attitude.
         tele.attitude.clear();
         CHECK(insv::MakeInsvImuTrack(std::move(tele), 30.0, insv::FindInsvModel("Insta360 X5"))
-                  .up.empty());
+                  .orientation.empty());
     }
 
     // Direction lock: a level camera still for 2 s, turning 90 deg left over
@@ -401,6 +402,67 @@ void testStabConfig()
         dc.directionSec = 7.0f;
         dl.build(imu, x5(dc));
         CHECK(std::fabs(view(dl, 1.0) - view(hl, 7.0)) < 0.5);
+    }
+
+    // The gyro's bias about up, which the bias fit can't see, turns Direction
+    // lock's view slowly; a drone's flight controller knows its heading
+    // without drift (ImuTrack::orientation's north), and holds it. The same
+    // turn over 30 s with a 0.3 deg/s bias about up; the true north in the
+    // IMU's axes turns with the camera.
+    {
+        constexpr double kPi = std::numbers::pi;
+        constexpr double kBias = 0.3 * kPi / 180.0;
+        insv::ImuTrack track;
+        track.axisMap = x5Axes();
+        for (int i = 0; i < 30000; ++i) {
+            insv::ImuSample s;
+            s.timestamp = static_cast<uint64_t>(i) * 1000;
+            s.accel[0] = -1.0;
+            const double t = i / 1000.0;
+            s.gyro[0] = -kBias - (t >= 2.0 && t < 5.0 ? (kPi / 2.0) / 3.0 : 0.0);
+            track.samples.push_back(s);
+            if (i % 20 == 0) { // 50 Hz
+                // The camera has turned by th: north, its forward at the
+                // start, is (sin th, 0, -cos th) in the body, raw (0, cos th,
+                // sin th) through "z,-x,-y".
+                const double th = std::clamp((t - 2.0) * kPi / 6.0, 0.0, kPi / 2.0);
+                insv::OrientationSample o;
+                o.timestamp = s.timestamp;
+                o.up[0] = -1.0;
+                o.north[1] = std::cos(th);
+                o.north[2] = std::sin(th);
+                track.orientation.push_back(o);
+            }
+        }
+        // The view's heading in the true world: the camera body has turned
+        // by th about +Y, so the view's forward is Ry(th) * C * (0, 0, -1).
+        auto heading = [&](const insv::GyroStabilizer &g, double t) {
+            const double th = std::clamp((t - 2.0) * kPi / 6.0, 0.0, kPi / 2.0);
+            float m[3][3];
+            g.correctionMatrix(t, m);
+            const double bx = -m[0][2], bz = -m[2][2];
+            const double fx = std::cos(th) * bx + std::sin(th) * bz;
+            const double fz = -std::sin(th) * bx + std::cos(th) * bz;
+            return std::atan2(-fx, -fz) * 180.0 / kPi;
+        };
+        auto worstTurn = [&](const insv::ImuTrack &tr) {
+            insv::StabConfig dc = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+            dc.directionSec = 1.0f;
+            insv::GyroStabilizer dl;
+            dl.build(tr, x5(dc));
+            double worst = 0.0;
+            for (double t = 0.5; t < 29.5; t += 0.5) {
+                double d = heading(dl, t) - heading(dl, 1.0);
+                d -= 360.0 * std::round(d / 360.0);
+                worst = std::max(worst, std::fabs(d));
+            }
+            return worst;
+        };
+        CHECK(worstTurn(track) < 0.1);
+        insv::ImuTrack upOnly = track; // a source that knows only up: the gyro's drift
+        for (insv::OrientationSample &o : upOnly.orientation)
+            o.north[1] = o.north[2] = 0.0;
+        CHECK(worstTurn(upOnly) > 5.0);
     }
 
     // A LeanFollow config with a retuned (non-default) window round-trips

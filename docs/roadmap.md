@@ -86,12 +86,13 @@ each is in its document in [`formats/`](formats/README.md).
   the seam measured (the lens extrinsics' order, the 71 mm baseline, ~200°
   lenses, no drone parts in the stitched picture), the IMU axis map, and
   Horizon lock in flight leveled by the drone's own attitude track (the
-  accelerometer also reads the drone's acceleration; a first part of step
-  3's orientation track, see *Common camera model*), its own flat preview
+  accelerometer also reads the drone's acceleration; step 3's orientation
+  track, see *Common camera model*), its own flat preview
   picture on the cards, clips with no audio track, and its GPS lined up
   with the video by matching the GPS speed against the attitude record's
-  (the file has no first-frame Unix time). Left: Direction lock's heading
-  from the attitude's yaw, and clips in the 5.2K, 4K and H.264 modes ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
+  (the file has no first-frame Unix time), and Direction lock's heading
+  held by the attitude's, without drift. Left: clips in the 5.2K, 4K and
+  H.264 modes ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two
@@ -135,12 +136,14 @@ each is in its document in [`formats/`](formats/README.md).
   - Step 3, once real clips are available: DJI and GoPro readers -- an
     in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
     orientation track for cameras that record one, readout time per mode.
-    A first part of the orientation track is built, from the Antigravity
-    A1: `insv::ImuTrack::up`, world up over time in the IMU's axes, which
-    the stabilizer levels against instead of the accelerometer wherever
-    the track has it (Horizon lock's anchor, the auto-level). The 1 kHz gyro
-    still carries all rotation; a 50 Hz orientation isn't smooth enough to
-    stabilize with on its own.
+    The orientation track is built, from the Antigravity A1:
+    `insv::ImuTrack::orientation`, world up and a fixed horizontal
+    direction (the flight controller's north) over time in the IMU's axes.
+    The stabilizer levels against its up instead of the accelerometer
+    wherever the track has it (Horizon lock's anchor, the auto-level), and
+    holds the heading to its north, so Direction lock doesn't drift. The
+    1 kHz gyro still carries all rotation; a 50 Hz orientation isn't smooth
+    enough to stabilize with on its own.
 
   New camera support keeps its differences in data -- the reader's
   per-model table, fields read from the file -- not in model checks spread

@@ -444,6 +444,90 @@ void levelTrack(const std::vector<double>& tSec, std::vector<std::array<double, 
     }
 }
 
+
+// Hold an integrated, levelled track's heading to a reference that doesn't
+// drift, non-causally, as levelTrack holds its up: the reference's north,
+// w = R(t) n(t), would keep one direction about +Y if the track were exact;
+// the gyro's bias about up (which the bias fit can't see) turns it at a
+// near-steady rate. Per 0.1 s bin, the angle of w from the clip's mean
+// direction; a straight line fitted through those (the steady part of the
+// drift), what's left smoothed over +-sigmaSec -- a window cut off at the
+// clip's ends would bend a ramp there -- and the track turned at each time
+// about +Y by the sum. The clip's mean heading stays where the gyro put it.
+void headTrack(const std::vector<double>& tSec, std::vector<std::array<double, 4>>& qTrack,
+               const std::vector<std::array<double, 3>>& north, const std::vector<char>& ok,
+               double sigmaSec)
+{
+    constexpr double kBinSec = 0.1;
+    const size_t n = qTrack.size();
+    if (n < 2 || north.size() != n || ok.size() != n)
+        return;
+    const size_t nb = static_cast<size_t>(tSec.back() / kBinSec) + 1;
+    // Each bin's {sin, cos} of w's direction about +Y (Ry(a) * +Z), summed.
+    std::vector<std::array<double, 3>> dir(nb, {0.0, 0.0, 0.0});
+    double tot[2] = {0, 0};
+    for (size_t i = 0; i < n; ++i) {
+        if (!ok[i])
+            continue;
+        double R[3][3];
+        qToMat(toQ(qTrack[i]), R);
+        const double* v = north[i].data();
+        const double wx = R[0][0] * v[0] + R[0][1] * v[1] + R[0][2] * v[2];
+        const double wz = R[2][0] * v[0] + R[2][1] * v[1] + R[2][2] * v[2];
+        const double h = std::sqrt(wx * wx + wz * wz);
+        if (h < 0.5) // not horizontal: the track isn't level here
+            continue;
+        const size_t b = std::min(nb - 1, static_cast<size_t>(tSec[i] / kBinSec));
+        dir[b][0] += wx / h;
+        dir[b][1] += wz / h;
+        dir[b][2] += 1.0;
+        tot[0] += wx / h;
+        tot[1] += wz / h;
+    }
+    if (std::hypot(tot[0], tot[1]) < 1e-9)
+        return;
+    const double mean = std::atan2(tot[0], tot[1]);
+    // Each bin's angle from the mean, unwrapped along the clip (the drift
+    // is slow), weighted by its sample count.
+    std::vector<double> ang(nb, 0.0);
+    double prev = 0.0;
+    double sw = 0, st = 0, sa = 0, stt = 0, sta = 0;
+    for (size_t b = 0; b < nb; ++b) {
+        if (dir[b][2] == 0.0)
+            continue;
+        double d = std::atan2(dir[b][0], dir[b][1]) - mean;
+        d -= 2.0 * std::numbers::pi * std::round((d - prev) / (2.0 * std::numbers::pi));
+        ang[b] = prev = d;
+        const double w = dir[b][2], t = (static_cast<double>(b) + 0.5) * kBinSec;
+        sw += w, st += w * t, sa += w * d, stt += w * t * t, sta += w * t * d;
+    }
+    const double den = sw * stt - st * st;
+    const double slope = den > 1e-12 ? (sw * sta - st * sa) / den : 0.0;
+    const double icpt = (sa - slope * st) / sw;
+    // What's left about the line, smoothed; bins with no reference take
+    // their neighbours' (none near: the line alone).
+    std::vector<std::array<double, 4>> acc(nb, {0.0, 0.0, 0.0, 0.0});
+    for (size_t b = 0; b < nb; ++b)
+        if (dir[b][2] > 0.0) {
+            const double t = (static_cast<double>(b) + 0.5) * kBinSec;
+            acc[b][0] = dir[b][2] * (ang[b] - icpt - slope * t);
+            acc[b][3] = dir[b][2];
+        }
+    // Three boxes of width 2 sigma make a Gaussian of ~sigma.
+    boxBlur3(acc, static_cast<size_t>(2.0 * sigmaSec / kBinSec));
+    std::vector<double> rest(nb, 0.0);
+    for (size_t b = 0; b < nb; ++b)
+        rest[b] = acc[b][3] > 1e-9 ? acc[b][0] / acc[b][3] : 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        // Linear between bin centres.
+        const double x = std::clamp(tSec[i] / kBinSec - 0.5, 0.0, static_cast<double>(nb - 1));
+        const size_t b0 = static_cast<size_t>(x), b1 = std::min(nb - 1, b0 + 1);
+        const double f = x - static_cast<double>(b0);
+        const double d = icpt + slope * tSec[i] + rest[b0] * (1.0 - f) + rest[b1] * f;
+        qTrack[i] = fromQ(qnorm(qmul(qexp(0.0, -d, 0.0), toQ(qTrack[i]))));
+    }
+}
+
 } // namespace
 
 namespace {
@@ -517,7 +601,7 @@ void GyroStabilizer::build(const ImuTrack& track, const StabConfig& cfg, double 
     // An explicit non-zero offset is an override; otherwise the track's own.
     if (cfg.timeOffsetSec == 0.0f && track.hasOffset && !track.samples.empty())
         c.timeOffsetSec = static_cast<float>(track.offsetSec + syncAdjustSec);
-    buildTrack(track.samples, track.up, c);
+    buildTrack(track.samples, track.orientation, c);
     m_clockRate = track.clockRate;
     m_readoutSec = track.readoutSec;
     lockHeading(); // again: the clock rate moves directionSec on the track
@@ -529,7 +613,7 @@ void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabCo
 }
 
 void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
-                                const std::vector<UpSample>& upRef, const StabConfig& cfg)
+                                const std::vector<OrientationSample>& ref, const StabConfig& cfg)
 {
     m_clockRate = 0.0; // build(ImuTrack, ...) sets it after this returns
     m_readoutSec = 0.0;
@@ -545,9 +629,9 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     const auto [lo, hi] = std::minmax_element(
         imu.begin(), imu.end(),
         [](const insv::ImuSample& a, const insv::ImuSample& b) { return a.timestamp < b.timestamp; });
-    const size_t upN = upRef.size() >= 2 ? upRef.size() : 0;
-    const uint64_t upFirst = upN ? upRef.front().timestamp : 0;
-    const uint64_t upLast = upN ? upRef.back().timestamp : 0;
+    const size_t upN = ref.size() >= 2 ? ref.size() : 0;
+    const uint64_t upFirst = upN ? ref.front().timestamp : 0;
+    const uint64_t upLast = upN ? ref.back().timestamp : 0;
     TrackCache& tc = m_cache;
     if (tc.valid && tc.fuse == fuse && tc.n == imu.size() && tc.tFirst == lo->timestamp &&
         tc.tLast == hi->timestamp && tc.axes == cfg.gyroAxes && tc.scale == cfg.gyroScale &&
@@ -569,26 +653,30 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     const double t0 = static_cast<double>(s.front().timestamp);
     const double tScale = 1e-6; // ImuSample timestamps are microseconds
 
-    // The track's own up (ImuTrack::up), where it has one: axis-mapped like
-    // the accel, interpolated to each IMU sample. It takes the accel's place
-    // as gravity everywhere below; refOk is false outside its span and across
-    // gaps longer than kRefGapSec.
+    // The track's own orientation (ImuTrack::orientation), where it has one:
+    // its up and north axis-mapped like the accel, interpolated to each IMU
+    // sample. The up takes the accel's place as gravity everywhere below, the
+    // north holds the heading (headTrack); refOk / northOk are false outside
+    // its span, across gaps longer than kRefGapSec, and (north) where the
+    // source gives only up.
     constexpr double kRefGapSec = 0.5;
     const bool haveRef = upN > 0;
-    std::vector<std::array<double, 3>> refUp;
-    std::vector<char> refOk;
+    std::vector<std::array<double, 3>> refUp, refNorth;
+    std::vector<char> refOk, northOk;
     if (haveRef) {
         refUp.assign(s.size(), {0.0, 1.0, 0.0});
+        refNorth.assign(s.size(), {0.0, 0.0, 1.0});
         refOk.assign(s.size(), 0);
+        northOk.assign(s.size(), 0);
         size_t j = 0;
         for (size_t i = 0; i < s.size(); ++i) {
             const uint64_t ts = s[i].timestamp;
             if (ts < upFirst || ts > upLast)
                 continue;
-            while (j + 2 < upRef.size() && upRef[j + 1].timestamp <= ts)
+            while (j + 2 < ref.size() && ref[j + 1].timestamp <= ts)
                 ++j;
-            const UpSample& a = upRef[j];
-            const UpSample& b = upRef[j + 1];
+            const OrientationSample& a = ref[j];
+            const OrientationSample& b = ref[j + 1];
             const double span = (static_cast<double>(b.timestamp) -
                                  static_cast<double>(a.timestamp)) * tScale;
             if (span > kRefGapSec)
@@ -596,16 +684,20 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
             const double f = span > 0.0 ? (static_cast<double>(ts) -
                                            static_cast<double>(a.timestamp)) * tScale / span
                                         : 0.0;
-            double v[3];
-            for (int k = 0; k < 3; ++k) {
-                const int src = am.idx[k];
-                v[k] = am.sign[k] * (a.up[src] + f * (b.up[src] - a.up[src]));
-            }
-            const double m = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-            if (m < 0.5)
-                continue;
-            refUp[i] = {v[0] / m, v[1] / m, v[2] / m};
-            refOk[i] = 1;
+            const auto lerp = [&](const double* va, const double* vb, std::array<double, 3>& out) {
+                double v[3];
+                for (int k = 0; k < 3; ++k) {
+                    const int src = am.idx[k];
+                    v[k] = am.sign[k] * (va[src] + f * (vb[src] - va[src]));
+                }
+                const double m = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                if (m < 0.5)
+                    return false;
+                out = {v[0] / m, v[1] / m, v[2] / m};
+                return true;
+            };
+            refOk[i] = lerp(a.up, b.up, refUp[i]);
+            northOk[i] = refOk[i] && lerp(a.north, b.north, refNorth[i]);
         }
     }
 
@@ -906,6 +998,9 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     // an outlier to drop.
     if (fitted)
         levelTrack(tSec, qTrack, up, quiet, haveRef ? 2.0 : 10.0, haveRef ? 180.0 : 5.0);
+    // The heading likewise, once level, where the reference has a north.
+    if (fuse && haveRef)
+        headTrack(tSec, qTrack, refNorth, northOk, 2.0);
 
     // Level-camera heading reference: body forward (-Z) with the mount's mean
     // up removed, i.e. "forward" of the mount made horizontal. m_mountLevel

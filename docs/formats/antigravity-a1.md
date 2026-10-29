@@ -179,6 +179,21 @@ Markers as in [`README.md`](README.md).
   the attitude, 0.2° or less on all three (`residual_stab --diagnose`,
   block [6]). The app levels by the attitude (Horizon lock, Direction
   lock, Lean follow's auto-level).
+- ✅ **The attitude's heading doesn't drift, and its north is its own.**
+  Its yaw matches its own velocity's course in flight (median 0.0°, 10-90%
+  −1.8° to +2.5° over 5 m/s, `_010`): the nose points where the drone
+  flies. Against the GPS course (which matches the course from the GPS
+  positions, median 0.1°) it is a steady **22.5-23.9° off** on all three
+  clips, minutes apart -- so record 37's north (and its velocity's) is the
+  flight controller's own, not true north, and not magnetic north either
+  (the declination there is ~13° the other way). For holding a direction
+  only its steadiness matters. Against it the gyro alone, integrated,
+  turns 2-5°/min (`_011` 2.2, `_012` 3.6, `_010` 4.8), and the
+  stabilizer's levelled track on `_010` 17.7° over the 87 s (its bias fit
+  can't see the part about up). The app holds the levelled track's
+  heading to the attitude's north (`ImuTrack::orientation`): `_010` within
+  ±0.5° at 11 s steps, 1.6° peak to peak with fast turns' transients (the
+  attitude at 50 Hz, 4-8 ms late), so Direction lock doesn't wander.
 - ⚠️ **Other orientation records** (layouts from the bytes, meaning
   inferred, not used): type 14 has one 36-byte entry per video frame with a
   unit quaternion in it; type 56 holds the same orientation in another

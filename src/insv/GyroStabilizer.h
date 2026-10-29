@@ -48,8 +48,8 @@ struct StabConfig {
     // (zero pitch/roll against gravity, heading smoothed over windowYawSec).
     // Blends in between. > 0 also turns on build()'s weak, gravity-seeded
     // accel anchor that keeps the track's world +Y on "up" (2026-09-25
-    // redesign); a track with ImuTrack::up anchors on that instead, more
-    // firmly. Used by the HorizonLock preset and available in Custom.
+    // redesign); a track with ImuTrack::orientation anchors on its up
+    // instead, more firmly, and holds its heading to its north. Used by the HorizonLock preset and available in Custom.
     float horizonLockAmount = 0.0f;
 
     // Scales the accel-anchor gain in build() (1 = ~20 s time constant). Only
@@ -71,7 +71,7 @@ struct StabConfig {
     // departures from its average posture -- a cornering lean -- tilt the
     // view. Without it Lean follow's "up" is the camera body's, so a tilted
     // stick tilts the horizon. Needs an accel track; a track with
-    // ImuTrack::up takes the mean of that instead (a drone's mean posture
+    // ImuTrack::orientation takes the mean of its up instead (a drone's mean posture
     // against true gravity, not against its thrust). No effect at
     // horizonLockAmount 1 (already level).
     bool autoLevel = true;
@@ -179,7 +179,7 @@ public:
 
     // As above, on a camera's track lined up with the video by its reader:
     // its axis map, video->IMU offset, frame-clock rate and readout time, and
-    // its up reference (ImuTrack::up) where it has one.
+    // its orientation (ImuTrack::orientation) where it has one.
     // Video time t maps to gyro time  t * (1 + clockRate) + timeOffsetSec.
     // If cfg.timeOffsetSec is non-zero it is an explicit override and used
     // as-is (the clock rate still applies); a non-empty cfg.gyroAxes replaces
@@ -236,10 +236,10 @@ public:
     std::array<double, 4> rawOrientation(double tSec) const;
 
 private:
-    // Both build()s: `upRef` is the track's ImuTrack::up (empty: level
-    // against the accelerometer).
-    void buildTrack(const std::vector<insv::ImuSample>& imu, const std::vector<UpSample>& upRef,
-                    const StabConfig& cfg);
+    // Both build()s: `ref` is the track's ImuTrack::orientation (empty:
+    // level against the accelerometer, the heading the gyro's alone).
+    void buildTrack(const std::vector<insv::ImuSample>& imu,
+                    const std::vector<OrientationSample>& ref, const StabConfig& cfg);
 
     bool m_ready = false;
     StabConfig m_cfg;

@@ -83,7 +83,7 @@ struct Args {
     int64_t bitrateKbps = 40000;
     bool diagnose = false;           // measure-only stabilization diagnostic
     bool noAutoSync = false;         // don't derive timeOffsetSec from the 0x400 record
-    bool noUpRef = false;            // level against the accel even with ImuTrack::up
+    bool noUpRef = false;            // ignore ImuTrack::orientation
     double stickLoHz = 1.0;          // shake / stick-resonance band of interest
     double stickHiHz = 12.0;
     std::string diagCsv;             // optional: write per-frame diagnostic tracks here
@@ -125,8 +125,9 @@ const char kUsage[] =
     "  --rs-cols           ... scanning fisheye columns instead of rows\n"
     "  --auto-sync         measure the clip's sync fine-tune (stitch::MeasureClipSync) and use it\n"
     "  --sync-adjust MS    add MS to the derived video->IMU offset (the fine-tune, by hand)\n"
-    "  --no-up-ref         level against the accelerometer even when the clip records\n"
-    "                      its own up (a drone's attitude); [6] still compares against it\n"
+    "  --no-up-ref         ignore the orientation the clip records (a drone's attitude):\n"
+    "                      level by the accelerometer, the heading by the gyro alone;\n"
+    "                      [6] still compares against its up\n"
     "  --no-capture-timing no per-row capture-time (rolling-shutter) correction in the stitch\n"
     "  --lens-offset MS[,MS1] per-lens capture time vs the stab time, ms (overrides the model)\n"
     "  --render MODE       off|none|derotate|derotate2d (default off; needs out.mp4)\n"
@@ -568,9 +569,9 @@ void diagImuSpectra(const SlicedImu& s, const Args& a)
 // the track's world up with the measured gravity, both in a level heading
 // frame. A tilt here is the track's own error (seed / anchor); ~0 means the
 // track is level and any visible tilt comes from the IMU->sphere mapping.
-// A clip that records its own up (ImuTrack::up, a drone's attitude; `ref`,
+// A clip that records its own up (ImuTrack::orientation's up, a drone's attitude; `ref`,
 // kept with --no-up-ref) is compared against that too, on every sample.
-void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::UpSample>& ref,
+void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::OrientationSample>& ref,
                           double t0Sec, double t1Sec, const Args& a)
 {
     insv::StabConfig hc = insv::StabConfig::preset(insv::StabMode::HorizonLock);
@@ -601,7 +602,7 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::UpS
     struct Acc {
         double r = 0, p = 0;
         long n = 0, all = 0;
-        double rr = 0, rp = 0; // against ImuTrack::up
+        double rr = 0, rp = 0; // against ImuTrack::orientation's up
         long rn = 0;
     };
     const bool haveRef = ref.size() >= 2;
@@ -660,8 +661,8 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::UpS
             s[i].timestamp <= ref.back().timestamp) {
             while (j + 2 < ref.size() && ref[j + 1].timestamp <= s[i].timestamp)
                 ++j;
-            const insv::UpSample& u0 = ref[j];
-            const insv::UpSample& u1 = ref[j + 1];
+            const insv::OrientationSample& u0 = ref[j];
+            const insv::OrientationSample& u1 = ref[j + 1];
             const double span = static_cast<double>(u1.timestamp) - static_cast<double>(u0.timestamp);
             const double f =
                 span > 0.0 ? (static_cast<double>(s[i].timestamp) - static_cast<double>(u0.timestamp)) / span
@@ -1215,7 +1216,7 @@ int main(int argc, char** argv)
     // The camera's track, lined up with the video as the app does; the
     // exposure record only for the diagnostics that read it (Insta360 files).
     std::optional<insv::ImuTrack> imu;
-    std::vector<insv::UpSample> upRef; // the clip's own up, kept for [6] under --no-up-ref
+    std::vector<insv::OrientationSample> upRef; // the clip's own orientation, kept for [6] under --no-up-ref
     std::vector<insv::ExposureSample> exposure;
     // The configs the diagnostics print and re-map with: the track's own axis
     // map unless --gyro-axes overrides it.
@@ -1228,9 +1229,9 @@ int main(int argc, char** argv)
         a.rsStitchMs[1] != 0.0f) {
         imu = camera::ReadClipImu(a.input);
         if (imu) {
-            upRef = imu->up;
+            upRef = imu->orientation;
             if (a.noUpRef)
-                imu->up.clear();
+                imu->orientation.clear();
         }
         if (imu && a.diagnose)
             if (auto tele = insv::ReadInsvTelemetry(a.input))
