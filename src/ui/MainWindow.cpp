@@ -81,7 +81,7 @@
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
 #include "panels/GaugePanel.h"
-#include "panels/TitleAnimationPanel.h"
+#include "panels/AnimationPanel.h"
 #include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/PrivacyPanel.h"
@@ -323,6 +323,7 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_colourPanel->setNoClip();
     m_privacyPanel = m_sidebar->privacy();         // starts in its no-clip state
     m_overlayPanel = m_sidebar->overlay();         // starts with no overlay clip
+    m_overlayAnimationPanel = m_sidebar->overlayAnimation();
     m_titleTextPanel = m_sidebar->titleText();     // ... and no title
     m_titleLookPanel = m_sidebar->titleLook();
     m_titleAnimationPanel = m_sidebar->titleAnimation();
@@ -636,12 +637,16 @@ void MainWindow::connectOverlaysAndAudio()
     };
     connect(m_titleTextPanel, &TitleTextPanel::titleEdited, this, titleEdited);
     connect(m_titleLookPanel, &TitleLookPanel::titleEdited, this, titleEdited);
-    connect(m_titleAnimationPanel, &TitleAnimationPanel::motionEdited, this,
-            [this](const inset::Motion &m) {
-                const TrackClip *c = selectedOverlayClip();
-                if (c && c->isDrawn())
-                    m_timeline->setTrackClipMotion(c->id, m);
-            });
+    // Either tab's Animation -> the selected overlay of its kind.
+    for (AnimationPanel *panel : {m_overlayAnimationPanel, m_titleAnimationPanel}) {
+        const bool drawn = panel == m_titleAnimationPanel;
+        connect(panel, &AnimationPanel::motionEdited, this,
+                [this, drawn](const inset::Motion &m) {
+                    const TrackClip *c = selectedOverlayClip();
+                    if (c && c->isDrawn() == drawn)
+                        m_timeline->setTrackClipMotion(c->id, m);
+                });
+    }
     connect(m_sidebar->gauge(), &GaugePanel::gaugeEdited, this, [this](const gauge::Style &g) {
         const TrackClip *c = selectedOverlayClip();
         if (c && c->isGauge())
@@ -1882,9 +1887,10 @@ void MainWindow::refreshOverlayPanel()
     const TrackClip *c = selectedOverlayClip(&trackId);
     if (!c) {
         m_overlayPanel->setNoClip();
+        m_overlayAnimationPanel->setNoClip();
         m_titleTextPanel->setNoTitle(QString());
         m_titleLookPanel->setNoTitle(QString());
-        m_titleAnimationPanel->setNoTitle(QString());
+        m_titleAnimationPanel->setNoClip();
         m_titlePlacementPanel->setNoClip();
         return;
     }
@@ -1901,17 +1907,22 @@ void MainWindow::refreshOverlayPanel()
         m_titleTextPanel->setTitle(*c->title, titleClockNote(*c));
         m_titleLookPanel->setTitle(*c->title);
         m_titleAnimationPanel->setMotion(c->motion);
-        m_overlayPanel->setNoClip(tr("A title is selected: its settings are in the Overlay tab."));
+        const QString hint = tr("A title is selected: its settings are in the Overlay tab.");
+        m_overlayPanel->setNoClip(hint);
+        m_overlayAnimationPanel->setNoClip(hint);
     } else if (c->isGauge()) {
         m_sidebar->gauge()->setGauge(*c->gauge, titleClockNote(*c));
         m_titleAnimationPanel->setMotion(c->motion, false);
-        m_overlayPanel->setNoClip(tr("A gauge is selected: its settings are in the Overlay tab."));
+        const QString hint = tr("A gauge is selected: its settings are in the Overlay tab.");
+        m_overlayPanel->setNoClip(hint);
+        m_overlayAnimationPanel->setNoClip(hint);
     } else {
+        m_overlayAnimationPanel->setMotion(c->motion);
         const QString hint = tr("A picture in picture is selected: its settings are in the "
                                 "Picture in picture tab.");
         m_titleTextPanel->setNoTitle(hint);
         m_titleLookPanel->setNoTitle(hint);
-        m_titleAnimationPanel->setNoTitle(hint);
+        m_titleAnimationPanel->setNoClip(hint);
         m_titlePlacementPanel->setNoClip(hint);
     }
     OverlayPanel::State st;

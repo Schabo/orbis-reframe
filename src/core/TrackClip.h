@@ -117,8 +117,7 @@ struct TrackClip {
     std::optional<title::Style> title;
     // A gauge: no file either, its look's width is its height (gauge::Style).
     std::optional<gauge::Style> gauge;
-    // How it comes on and goes off (inset::Motion); only titles and gauges
-    // offer one so far.
+    // How it comes on and goes off (inset::Motion).
     inset::Motion motion;
 
     bool isTitle() const { return title.has_value(); }

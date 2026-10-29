@@ -66,7 +66,7 @@ class ReframePanel;
 class SplitScreenPanel;
 class MediaPoolPanel;
 class TitlesPanel;
-class TitleAnimationPanel;
+class AnimationPanel;
 class TitleLookPanel;
 class TitleTextPanel;
 class TransitionsPanel;
@@ -527,9 +527,10 @@ private:
     QHash<QString, int> m_audioTrackCounts; // source path -> audio stream count
     ColourPanel *m_colourPanel = nullptr;
     OverlayPanel *m_overlayPanel = nullptr;        // overlay videos
+    AnimationPanel *m_overlayAnimationPanel = nullptr; // ... how they come and go
     TitleTextPanel *m_titleTextPanel = nullptr;     // the Overlay tab: a title's text
     TitleLookPanel *m_titleLookPanel = nullptr;     // ... and how it's drawn
-    TitleAnimationPanel *m_titleAnimationPanel = nullptr; // ... how it comes and goes
+    AnimationPanel *m_titleAnimationPanel = nullptr; // ... how it comes and goes
     OverlayPanel *m_titlePlacementPanel = nullptr;  // ... and its position and timing
     TransitionPanel *m_transitionPanel = nullptr;   // the selected transition
     MediaInfoPanel *m_mediaInfoPanel = nullptr;

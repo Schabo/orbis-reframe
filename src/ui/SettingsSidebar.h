@@ -4,6 +4,7 @@
 
 #include "TabSidebar.h"
 
+class AnimationPanel;
 class AudioPanel;
 class ColourPanel;
 class GaugePanel;
@@ -15,7 +16,6 @@ class SettingsPanel;
 class SplitScreenPanel;
 class StabilizationPanel;
 class StitchingPanel;
-class TitleAnimationPanel;
 class TitleLookPanel;
 class TitleTextPanel;
 class TransitionPanel;
@@ -28,7 +28,8 @@ class TransitionPanel;
 //              closed);
 //   Audio   -- the selected audio clip, else every audio clip of the
 //              video clip (AudioPanel: a section per clip);
-//   Picture in picture -- the selected PiP video;
+//   Picture in picture -- the selected PiP video: where it sits and when,
+//              how it comes and goes;
 //   Title   -- the selected title: its text, then where it sits and when;
 //   Transition -- the selected transition: its length;
 //   Privacy -- the clip's number-plate blur.
@@ -38,8 +39,9 @@ class TransitionPanel;
 // pages videoSettings / audioSettings / overlaySettings / titleSettings /
 // transitionSettings / privacySettings (their tab buttons <page>Tab), and
 // the sections stitchingPanel, stabilizationPanel, reframePanel,
-// splitScreenPanel, colourPanel, mediaInfoPanel, overlayPanel, titleTextPanel,
-// titleLookPanel, gaugePanel, titleAnimationPanel, titlePlacementPanel, transitionPanel, privacyPanel (headers
+// splitScreenPanel, colourPanel, mediaInfoPanel, overlayPanel,
+// overlayAnimationPanel, titleTextPanel, titleLookPanel, gaugePanel,
+// titleAnimationPanel, titlePlacementPanel, transitionPanel, privacyPanel (headers
 // <section>Header); the Audio tab's are AudioPanel's.
 class SettingsSidebar : public TabSidebar {
     Q_OBJECT
@@ -61,7 +63,8 @@ public:
     TitleTextPanel *titleText() const { return m_titleText; }
     TitleLookPanel *titleLook() const { return m_titleLook; }
     GaugePanel *gauge() const { return m_gauge; }
-    TitleAnimationPanel *titleAnimation() const { return m_titleAnimation; }
+    AnimationPanel *overlayAnimation() const { return m_overlayAnimation; } // kind Video
+    AnimationPanel *titleAnimation() const { return m_titleAnimation; }
     OverlayPanel *titlePlacement() const { return m_titlePlacement; } // kind Title
     TransitionPanel *transition() const { return m_transition; }
     PrivacyPanel *privacy() const { return m_privacy; }
@@ -83,10 +86,11 @@ private:
     MediaInfoPanel *m_mediaInfo = nullptr;
     AudioPanel *m_audio = nullptr;
     OverlayPanel *m_overlay = nullptr;
+    AnimationPanel *m_overlayAnimation = nullptr;
     TitleTextPanel *m_titleText = nullptr;
     GaugePanel *m_gauge = nullptr;
     TitleLookPanel *m_titleLook = nullptr;
-    TitleAnimationPanel *m_titleAnimation = nullptr;
+    AnimationPanel *m_titleAnimation = nullptr;
     OverlayPanel *m_titlePlacement = nullptr;
     TransitionPanel *m_transition = nullptr;
     PrivacyPanel *m_privacy = nullptr;

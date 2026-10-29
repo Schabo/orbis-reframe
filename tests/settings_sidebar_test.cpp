@@ -20,7 +20,7 @@
 #include <MediaInfo.h>
 #include "panels/OverlayPanel.h"
 #include "panels/GaugePanel.h"
-#include "panels/TitleAnimationPanel.h"
+#include "panels/AnimationPanel.h"
 #include "panels/TitleLookPanel.h"
 #include "panels/TitleTextPanel.h"
 #include "panels/TransitionPanel.h"
@@ -107,6 +107,8 @@ void testLayout(SettingsSidebar &bar)
         CHECK(sectionNames(video) == QStringList({"stitchingPanel", "stabilizationPanel",
                                                   "reframePanel", "splitScreenPanel",
                                                   "colourPanel", "mediaInfoPanel"}));
+    if (auto *overlay = find<QScrollArea>(&bar, "overlaySettings"))
+        CHECK(sectionNames(overlay) == QStringList({"overlayPanel", "overlayAnimationPanel"}));
     if (auto *title = find<QScrollArea>(&bar, "titleSettings"))
         CHECK(sectionNames(title) ==
               QStringList({"titleTextPanel", "titleLookPanel", "titleAnimationPanel",
@@ -130,10 +132,10 @@ void testLayout(SettingsSidebar &bar)
     CHECK(!bar.mediaInfo()->isExpanded());
     CHECK(bar.stabilization()->isExpanded() && bar.stabilization()->isCollapsible());
     CHECK(bar.colour()->isExpanded());
-    CHECK(!bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
+    CHECK(bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
     CHECK(!bar.transition()->isCollapsible());
-    CHECK(bar.sections().size() == 14); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 15); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)
@@ -167,9 +169,9 @@ void testSections(SettingsSidebar &bar)
     QTest::mouseClick(header, Qt::LeftButton);
 
     // A section that can't collapse ignores its header.
-    if (auto *overlayHeader = find<QToolButton>(&bar, "overlayPanelHeader")) {
-        QTest::mouseClick(overlayHeader, Qt::LeftButton);
-        CHECK(bar.overlay()->isExpanded());
+    if (auto *privacyHeader = find<QToolButton>(&bar, "privacyPanelHeader")) {
+        QTest::mouseClick(privacyHeader, Qt::LeftButton);
+        CHECK(bar.privacy()->isExpanded());
     }
 }
 
@@ -181,6 +183,7 @@ void testScopes(SettingsSidebar &bar)
     CHECK(bar.reframe()->scope() == QLatin1String("Keys at the playhead"));
     CHECK(bar.splitScreen()->scope() == QLatin1String("This clip"));
     CHECK(bar.overlay()->scope() == QLatin1String("Selected PiP clip"));
+    CHECK(bar.overlayAnimation()->scope() == QLatin1String("Selected PiP clip"));
     CHECK(bar.privacy()->scope() == QLatin1String("This clip"));
     if (auto *label = bar.colour()->findChild<QLabel *>(QStringLiteral("settingsPanelScope")))
         CHECK(label->text() == QLatin1String("This clip") && !label->isHidden());
@@ -556,7 +559,7 @@ void testGaugePanel(SettingsSidebar &bar)
     CHECK(note->isHidden() && form->isRowVisible(min));
 
     // Its animation can't type: that's for text.
-    TitleAnimationPanel *anim = bar.titleAnimation();
+    AnimationPanel *anim = bar.titleAnimation();
     auto *in = find<QComboBox>(anim, "titleMotionIn");
     if (in) {
         anim->setMotion({}, false);
@@ -568,7 +571,7 @@ void testGaugePanel(SettingsSidebar &bar)
 
 void testTitleAnimation(SettingsSidebar &bar)
 {
-    TitleAnimationPanel *anim = bar.titleAnimation();
+    AnimationPanel *anim = bar.titleAnimation();
     CHECK(anim->title() == "Animation");
     auto *in = find<QComboBox>(anim, "titleMotionIn");
     auto *inLength = find<QDoubleSpinBox>(anim, "titleMotionInLength");
@@ -577,7 +580,7 @@ void testTitleAnimation(SettingsSidebar &bar)
     if (!in || !inLength || !out || !outLength)
         return;
     CHECK(!in->isEnabled() && !outLength->isEnabled()); // no title
-    QSignalSpy spy(anim, &TitleAnimationPanel::motionEdited);
+    QSignalSpy spy(anim, &AnimationPanel::motionEdited);
     inset::Motion m;
     m.in = {inset::Motion::Kind::Slide, inset::Motion::Side::Bottom, 1500};
     anim->setMotion(m);
@@ -597,8 +600,42 @@ void testTitleAnimation(SettingsSidebar &bar)
     m.in.kind = inset::Motion::Kind::Type;
     anim->setMotion(m);
     CHECK(in->currentText() == "Type on" && in->currentIndex() == in->count() - 1);
-    anim->setNoTitle(QString());
+    anim->setNoClip();
     CHECK(!in->isEnabled() && !inLength->isEnabled());
+}
+
+// The Picture in picture tab's Animation: a PiP's slides and pop, no typing.
+void testOverlayAnimation(SettingsSidebar &bar)
+{
+    AnimationPanel *anim = bar.overlayAnimation();
+    CHECK(anim->title() == "Animation" && anim->kind() == AnimationPanel::Kind::Video);
+    auto *in = find<QComboBox>(anim, "overlayMotionIn");
+    auto *out = find<QComboBox>(anim, "overlayMotionOut");
+    auto *outLength = find<QDoubleSpinBox>(anim, "overlayMotionOutLength");
+    if (!in || !out || !outLength)
+        return;
+    CHECK(!in->isEnabled()); // no PiP
+    CHECK(in->itemText(in->count() - 1) == "Pop up" &&
+          out->itemText(out->count() - 1) == "Shrink away");
+    QSignalSpy spy(anim, &AnimationPanel::motionEdited);
+    inset::Motion m;
+    m.out = {inset::Motion::Kind::Pop, inset::Motion::Side::Left, 800};
+    anim->setMotion(m);
+    CHECK(spy.isEmpty() && out->currentText() == "Shrink away" &&
+          std::abs(outLength->value() - 0.8) < 1e-9);
+    in->setCurrentIndex(2); // from the right
+    CHECK(spy.count() == 1);
+    if (!spy.isEmpty()) {
+        const inset::Motion got = spy.last().at(0).value<inset::Motion>();
+        CHECK(got.in.kind == inset::Motion::Kind::Slide &&
+              got.in.side == inset::Motion::Side::Right && got.out == m.out);
+    }
+    // A title's typing has no place here: it shows as none.
+    m.in.kind = inset::Motion::Kind::Type;
+    anim->setMotion(m);
+    CHECK(in->currentIndex() == 0);
+    anim->setNoClip(QStringLiteral("elsewhere"));
+    CHECK(!in->isEnabled() && !outLength->isEnabled());
 }
 
 // The Overlay tab: the Text section reflects a title without emitting and
@@ -735,6 +772,7 @@ void testTitleTab(SettingsSidebar &bar)
 
     testTitleLook(bar);
     testTitleAnimation(bar);
+    testOverlayAnimation(bar);
     testGaugePanel(bar);
 
     OverlayPanel::State st;

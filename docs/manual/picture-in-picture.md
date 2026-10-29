@@ -124,6 +124,27 @@ These settings are the same for the whole clip:
 | **Start** | Where the clip starts on the timeline, in seconds. |
 | **Duration** | How long the clip shows, in seconds. Its start stays put and its end moves, like dragging its end on the timeline; a PiP video can't run past the end of its file. |
 
+## Sliding and popping in and out
+
+The **Animation** section, under the PiP's other settings, sets how the
+PiP comes on at its start and goes off at its end:
+
+| Setting | What it does |
+|---|---|
+| **In** | **Slide in from the left**, **right**, **top** or **bottom**: the PiP starts just outside that edge of the picture and slides to its place, slowing down as it arrives. **Pop up**: it grows from nothing, a little past its full size, and settles. **None**: it is simply there. |
+| **Length** | How long coming on takes, in seconds. |
+| **Out** | The same backwards: **Slide out to the left**, **right**, **top** or **bottom**, speeding up as it leaves, or **Shrink away**. |
+| **Length** | How long going off takes. |
+
+The animation is tied to the clip's start and end, so it stays right when
+you trim the clip or move it. It adds to everything else: a PiP with
+keyframes slides in to where its keys put it, and a fade in fades it in as
+it slides. If the clip is shorter than both lengths together, each takes
+its share of the clip's time. Splitting a PiP keeps its **In** on the first
+part and its **Out** on the second. Titles and gauges have the same
+section, which for a title can also type the text on and off
+([Titles](titles.md#sliding-popping-and-typing-in-and-out)).
+
 ## Several overlays
 
 You can show several overlays (PiPs, titles and gauges) at once, on separate overlay tracks,

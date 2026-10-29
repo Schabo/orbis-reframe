@@ -1078,6 +1078,32 @@ void testOverlay(const Ctx &c)
     clip = c.timeline->trackClipById(clipId);
     CHECK(clip && clip->insetKeys.count() == 2);
     CHECK(keyCount && keyCount->text() == QStringLiteral("2 keys"));
+    // Its tab's Animation: sliding in from the left, on top of its keys; the
+    // Overlay tab's (titles') stays out of it.
+    auto *motionIn = find<QComboBox>(c.w, "overlayMotionIn");
+    auto *motionInLength = find<QDoubleSpinBox>(c.w, "overlayMotionInLength");
+    auto *titleIn = find<QComboBox>(c.w, "titleMotionIn");
+    CHECK(motionIn && motionIn->isEnabled() && titleIn && !titleIn->isEnabled());
+    const auto insetX = [&]() -> std::optional<float> {
+        for (const auto &d : c.w->viewport()->Insets())
+            if (d.clipId == clipId && d.rgba)
+                return d.look.centerX;
+        return std::nullopt;
+    };
+    CHECK(seekTo(c, 500));
+    std::optional<float> restX;
+    CHECK(waitFor([&] { return (restX = insetX()).has_value(); }));
+    if (motionIn && motionInLength && restX) {
+        motionInLength->setValue(1.0);
+        motionIn->setCurrentIndex(1); // slide in from the left
+        clip = c.timeline->trackClipById(clipId);
+        CHECK(clip && clip->motion.in.kind == inset::Motion::Kind::Slide &&
+              clip->motion.in.side == inset::Motion::Side::Left && clip->motion.in.ms == 1000);
+        CHECK(waitFor([&] {
+            const std::optional<float> x = insetX();
+            return x && *x < *restX - 0.01f;
+        }));
+    }
     key(c, Qt::Key_Escape);
 }
 
