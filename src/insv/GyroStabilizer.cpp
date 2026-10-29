@@ -297,8 +297,20 @@ BiasFit fitGyroBias(const std::vector<std::array<double, 3>>& rate, const std::v
             break;
     }
     // A real residual bias is well under 1 deg/s; anything larger is the fit
-    // chasing non-gravity accel, so don't trust it.
-    if (std::sqrt(b[0] * b[0] + b[1] * b[1] + b[2] * b[2]) > 0.02)
+    // chasing non-gravity accel, so don't trust it. Only what tilts counts:
+    // the bias about the camera's mean up turns the heading, gravity hardly
+    // sees it, and a ride that speeds up and slows down all the time gets
+    // chased there without the tilt being off (1.6 deg/s about up from a
+    // gyro without bias, on a synthetic ride).
+    double u[3] = {0, 0, 0};
+    for (const size_t i : sel)
+        for (int a = 0; a < 3; ++a)
+            u[a] += up[i][a];
+    const double un2 = u[0] * u[0] + u[1] * u[1] + u[2] * u[2];
+    const double along = un2 > 0.0 ? (b[0] * u[0] + b[1] * u[1] + b[2] * u[2]) / un2 : 0.0;
+    const double tilting[3] = {b[0] - along * u[0], b[1] - along * u[1], b[2] - along * u[2]};
+    if (std::sqrt(tilting[0] * tilting[0] + tilting[1] * tilting[1] + tilting[2] * tilting[2]) >
+        0.02)
         return fit;
     const double gn = std::sqrt(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
     if (gn < 0.5)
@@ -766,7 +778,14 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     //     from the first half second of accel instead of converging from
     //     identity. Studio behaves the same way (the since-removed tools/horizon_spike).
     constexpr double kAccelGain = 0.05;     // rad/s per rad of tilt error at horizonGain 1
-    constexpr double kTurnYawRate = 0.08;   // rad/s (~4.6 deg/s) of low-passed world yaw
+    // Turning: the vehicle's lateral acceleration is speed x yaw rate, so a
+    // threshold on the yaw rate alone lets fast bends through -- at 0.08 rad/s
+    // a 20 m/s sweeper (0.16 g) counted as level and leaned the horizon a
+    // degree or more into it (insv::BuildMotion's lateral g, levelled by this,
+    // read 0.87 of speed x yaw rate on a 21 min ride; 0.94 at 0.04 rad/s,
+    // with 22 % of its samples left quiet; 0.01 left too few on a shorter
+    // one).
+    constexpr double kTurnYawRate = 0.04;   // rad/s (~2.3 deg/s) of low-passed world yaw
     constexpr double kTurnLpHz = 0.5;       // yaw-rate low-pass for the turn detector
     constexpr double kOneGTolerance = 0.12; // |a| within 1 +- this to count as gravity
     constexpr double kTurnMarginSec = 1.5;  // quiet samples keep this far from a turn
@@ -988,11 +1007,16 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
         qTrack.push_back(fromQ(q));
     }
 
-    // Against a true up the anchor can be much firmer: 2 s instead of 10 s
-    // takes the gyro's drift out within seconds, and nothing it is fed is
-    // an outlier to drop.
+    // From the accel, the level is the quiet samples' up over ~20 s: what
+    // still passes as quiet -- speeding up, slowing down, the gentlest bends
+    // -- comes and goes over that and averages out, the gyro's drift doesn't
+    // build up in it (its bias is fitted). insv::BuildMotion's forward g,
+    // levelled by this, read 0.64-0.69 of the GPS's change of speed at a 4 s
+    // scale with 10 s here, 0.85-0.92 with 20 s (two rides of 4-5 min).
+    // Against a true up the anchor can be much firmer: 2 s takes the gyro's
+    // drift out within seconds, and nothing it is fed is an outlier to drop.
     if (fitted)
-        levelTrack(tSec, qTrack, up, quiet, haveRef ? 2.0 : 10.0, haveRef ? 180.0 : 5.0);
+        levelTrack(tSec, qTrack, up, quiet, haveRef ? 2.0 : 20.0, haveRef ? 180.0 : 5.0);
     // The heading likewise, once level, where the reference has a north.
     if (fuse && haveRef)
         headTrack(tSec, qTrack, refNorth, northOk, 2.0);

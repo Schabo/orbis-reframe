@@ -39,7 +39,6 @@ M3 matrixOf(const std::array<double, 4>& q)
             V3{2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)},
             V3{2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)}};
 }
-V3 times(const M3& m, const V3& v) { return {dot(m[0], v), dot(m[1], v), dot(m[2], v)}; }
 V3 transposedTimes(const M3& m, const V3& v)
 {
     return {m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2],
@@ -47,14 +46,6 @@ V3 transposedTimes(const M3& m, const V3& v)
             m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2]};
 }
 
-// Gravity: the measured force in the levelled frame, averaged over this
-// (zero phase). The fusion levels as it goes, so it starts from the force
-// at the first sample (off by however hard the vehicle accelerated then)
-// and is pulled toward the leaning vehicle's up through a long corner; over
-// half a minute, corners either way and speeding up and slowing down
-// average out, and what's left is gravity.
-constexpr double kGravitySmoothSec = 20.0;
-constexpr double kGravityBinSec = 0.5;
 constexpr double kLeanSmoothSec = 0.25;
 constexpr double kAccelSmoothSec = 0.5;
 // The turn rate the travel-axis fit follows: smoothed like the lean.
@@ -130,49 +121,15 @@ MotionTrack BuildMotion(const ImuTrack& track)
         toWorld[i] = matrixOf(level.rawOrientation(t));
         ok[i] = 1;
     }
-    // Gravity in the levelled frame, and world up in the body from it. It
-    // changes slowly: averaged over bins of kGravityBinSec, smoothed there
-    // and read back between their centres.
-    {
-        const size_t per = static_cast<size_t>(std::lround(kGravityBinSec / step));
-        const size_t bins = (n + per - 1) / per;
-        std::vector<double> fw[3];
-        for (auto& c : fw)
-            c.assign(bins, 0.0);
-        std::vector<int> count(bins, 0);
-        for (size_t i = 0; i < n; ++i)
-            if (ok[i]) {
-                const V3 f = times(toWorld[i], accel[i]);
-                for (int c = 0; c < 3; ++c)
-                    fw[c][i / per] += f[c];
-                ++count[i / per];
-            }
-        for (auto& c : fw) {
-            for (size_t b = 0; b < bins; ++b)
-                c[b] = count[b] ? c[b] / count[b] : kNaN;
-            c = GaussianSmooth(c, kGravityBinSec, kGravitySmoothSec);
-        }
-        // A bin without samples between two with them: straight across.
-        const auto at = [&](int c, double x) {
-            const double lo = std::floor(x);
-            const size_t a = static_cast<size_t>(std::clamp(lo, 0.0, double(bins - 1)));
-            const size_t b = std::min(a + 1, bins - 1);
-            const double u = std::clamp(x - lo, 0.0, 1.0);
-            if (std::isnan(fw[c][a]))
-                return fw[c][b];
-            if (std::isnan(fw[c][b]))
-                return fw[c][a];
-            return fw[c][a] + u * (fw[c][b] - fw[c][a]);
-        };
-        for (size_t i = 0; i < n; ++i) {
-            if (!ok[i])
-                continue;
-            const double x = (static_cast<double>(i) + 0.5) / static_cast<double>(per) - 0.5;
-            const V3 gravity = normalized({at(0, x), at(1, x), at(2, x)});
-            up[i] = normalized(transposedTimes(toWorld[i], gravity));
-            // A turn to the right is clockwise seen from above: negative about up.
-            turnRight[i] = -dot(gyro[i], up[i]);
-        }
+    // World up in the body: the fusion's level, which it takes only from
+    // where the vehicle isn't turning (GyroStabilizer), so a corner doesn't
+    // lean it.
+    for (size_t i = 0; i < n; ++i) {
+        if (!ok[i])
+            continue;
+        up[i] = normalized(transposedTimes(toWorld[i], {0.0, 1.0, 0.0}));
+        // A turn to the right is clockwise seen from above: negative about up.
+        turnRight[i] = -dot(gyro[i], up[i]);
     }
 
     // The mean posture, and the level axes the camera's own forward gives.

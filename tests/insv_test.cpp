@@ -1629,7 +1629,9 @@ void testMotion()
         sFwd = std::max(sFwd, std::fabs(s.forwardG[i] - std::cos(40 * kDeg) * straight.accel(t) / ride::kG));
         sRatio = std::max(sRatio, double(std::fabs(s.forwardG[i])));
     }
-    CHECK(sLean < 0.5 && sFwd < 0.01 && sRatio > 0.02);
+    // The level is gravity averaged over ~20 s, where 60 s of speeding up and
+    // slowing down every 23 s leave part of a cycle: ~0.7 deg, 0.012 g.
+    CHECK(sLean < 0.5 && sFwd < 0.015 && sRatio > 0.02);
 
     insv::ImuTrack noAccel = ride::record(weave, 5.0);
     for (insv::ImuSample& x : noAccel.samples)
