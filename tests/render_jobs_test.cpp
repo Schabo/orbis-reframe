@@ -828,6 +828,72 @@ void testMotionClock()
     CHECK(!clock.gpsAt(0));          // and no GPS
 }
 
+std::shared_ptr<const Telemetry> movingTelemetry();
+
+// The lean dial, the G circle and the route in playback and the export
+// alike: the same pictures, placed the same, in their kind's shape; empty
+// over a clip without motion (or GPS), the route held there.
+void testMotionGaugesFeedVsExport()
+{
+    for (const gauge::Kind kind : {gauge::Kind::Lean, gauge::Kind::GForce, gauge::Kind::Route}) {
+        Timeline t;
+        const int a = t.appendClip("/c/a.insv", 20000, 30.0);
+        t.appendClip("/c/b.insv", 20000, 30.0);
+        t.setClipTrimOut(a, 3000);
+        const int v = t.addTrack(Track::Kind::Video, "Gauge");
+        gauge::Style style;
+        style.kind = kind;
+        const gauge::Range r = gauge::defaultRange(kind, style.reads, style.units);
+        style.min = r.min;
+        style.max = r.max;
+        const int id = t.addGaugeClip(v, 1000, style, 4000);
+        renderjobs::FieldSources sources;
+        sources.gps.insert("/c/a.insv", movingTelemetry());
+        insv::MotionTrack motion = rampMotion(20);
+        for (float &g : motion.lateralG)
+            g *= 20.0f; // up to 0.6 g over a's 3 s
+        motion.travelFit = 0.9;
+        sources.motion.insert("/c/a.insv", std::make_shared<const MotionTelemetry>(motion));
+        const PrivacyBlur privacy;
+        const std::vector<InsetFeed::Clip> feed =
+            renderjobs::insetFeed(t, 1920, 1080, privacy, sources);
+        const std::vector<exportpipe::InsetClipJob> jobs =
+            renderjobs::insetJobs(t, 1920, 1080, privacy, sources);
+        CHECK(feed.size() == 1 && jobs.size() == 1);
+        if (feed.size() != 1 || jobs.size() != 1)
+            continue;
+        const double aspect = gauge::aspect(kind);
+        CHECK(near(feed[0].aspect, aspect, 1e-12) && near(jobs[0].aspect, aspect, 1e-12));
+        InsetFeed player;
+        player.setClips(feed);
+        const TrackClip &c = *t.trackClipById(id);
+        std::set<std::vector<uint8_t>> pictures;
+        for (qint64 ms : {1000, 1500, 2999, 3000, 4999}) {
+            exportpipe::Still jp;
+            const inset::Rect er = titleRect(jobs[0], ms - c.startMs, 1920, 1080, &jp);
+            CHECK(!jp.empty());
+            if (jp.empty())
+                continue;
+            CHECK(near(double(jp.width) / jp.height, aspect, 0.01));
+            pictures.insert(*jp.rgba);
+            std::vector<EquirectViewportWindow::InsetDraw> drawn;
+            for (int i = 0; i < 400; ++i) {
+                drawn = player.frameFor(ms, false);
+                if (drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba)
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            CHECK(drawn.size() == 1 && drawn[0].rgba && *drawn[0].rgba == *jp.rgba);
+            if (drawn.size() != 1)
+                continue;
+            const inset::Rect pr = inset::place(drawn[0].look, {}, drawn[0].aspect, 1920, 1080);
+            CHECK(near(pr.x, er.x, 1.0) && near(pr.y, er.y, 1.0) && near(pr.w, er.w, 1.0));
+            CHECK(near(er.h, gauge::defaultLook().width * 1080.0, 1.5));
+        }
+        CHECK(pictures.size() == 4); // 3000 and 4999 alike: b has no data
+    }
+}
+
 // Each file's GPS and motion read once in the background; nothing until
 // it's in, then ready(); await() waits for it; a forgotten file is read
 // again, and the read it replaced isn't announced.
@@ -1165,6 +1231,18 @@ void testRoute()
     CHECK(!gaugerender::routeOf(none));
     GaugeSource empty(style, 30000, 200, 1920, 1080, none, 0);
     CHECK(!empty.readingAt(4000).hasValue && !empty.at(4000).empty());
+    // A route that stays in one place still shows it: a mark, not just the
+    // face.
+    gaugerender::Route still;
+    still.stretches.push_back({{0, 0.5, 0.5, 0.0}, {2000, 0.5, 0.5, 0.0}});
+    still.key = 79;
+    gaugerender::Route outside = still;
+    for (gaugerender::Route::Point &q : outside.stretches.front())
+        q.x = 5.0; // drawn off the picture
+    outside.key = 80;
+    gaugerender::Reading away; // no dot
+    CHECK(*gaugerender::render(style, 200, away, &still).rgba !=
+          *gaugerender::render(style, 200, away, &outside).rgba);
 }
 
 // A gauge's next change against every ms, as far ahead as it looks.
@@ -1565,6 +1643,7 @@ int main(int argc, char **argv)
     testMotionGaugeReadings();
     testRoute();
     testGaugeSource();
+    testMotionGaugesFeedVsExport();
     testGaugeFeedVsExport();
     testTransitions();
     testLayerOverMainClip();

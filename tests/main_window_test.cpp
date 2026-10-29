@@ -1474,11 +1474,41 @@ void testGaugePresets(const Ctx &c)
     // The clip under it has no GPS: the section says so.
     auto *note = c.w->findChild<QLabel *>(QStringLiteral("gaugeNote"));
     CHECK(note && !note->isHidden() && note->text().startsWith(QStringLiteral("Clip")));
+    // Another kind: its own scale and rows, and a note about what it reads
+    // -- the stand-in clips have neither GPS nor motion.
+    auto *kind = c.w->findChild<QComboBox *>(QStringLiteral("gaugeKind"));
+    auto *maxBox = c.w->findChild<QDoubleSpinBox *>(QStringLiteral("gaugeMax"));
+    auto *reads = c.w->findChild<QWidget *>(QStringLiteral("gaugeReads"));
+    CHECK(kind && kind->count() == 6 && maxBox && reads);
+    const auto pick = [&](gauge::Kind k) {
+        kind->setCurrentIndex(int(k));
+        emit kind->activated(int(k));
+        settle();
+        return c.timeline->trackClipById(clip->id)->gauge;
+    };
+    if (kind && maxBox && reads && clip) {
+        const std::optional<gauge::Style> lean = pick(gauge::Kind::Lean);
+        CHECK(lean && lean->kind == gauge::Kind::Lean && lean->max == 60.0 && lean->min == -60.0);
+        CHECK(!maxBox->isHidden() && reads->isHidden());
+        CHECK(note && note->text().contains(QStringLiteral("no motion data")) &&
+              !note->text().contains(QStringLiteral("GPS")));
+        maxBox->setValue(45.0);
+        CHECK(c.timeline->trackClipById(clip->id)->gauge->min == -45.0);
+        const std::optional<gauge::Style> g = pick(gauge::Kind::GForce);
+        CHECK(g && g->max == 1.0 && g->min == -1.0 && maxBox->decimals() == 2);
+        maxBox->setValue(0.5);
+        CHECK(c.timeline->trackClipById(clip->id)->gauge->max == 0.5);
+        const std::optional<gauge::Style> route = pick(gauge::Kind::Route);
+        CHECK(route && route->kind == gauge::Kind::Route && maxBox->isHidden() &&
+              reads->isHidden());
+        CHECK(note && note->text().contains(QStringLiteral("no GPS")));
+    }
     // Edited from the section: the gauge on the timeline.
-    if (auto *kind = c.w->findChild<QComboBox *>(QStringLiteral("gaugeKind")); kind && clip) {
+    if (kind && clip) {
         kind->setCurrentIndex(0);
         emit kind->activated(0);
         CHECK(c.timeline->trackClipById(clip->id)->gauge->kind == gauge::Kind::Dial);
+        CHECK(c.timeline->trackClipById(clip->id)->gauge->min == 0.0); // a scale from 0 again
     }
     // A title: Text and Look back.
     emit c.timelineWidget->titleDropped(0, 900 + title::kDefaultSpanMs, QStringLiteral("plain"));
