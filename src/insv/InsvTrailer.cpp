@@ -594,22 +594,50 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path) {
     file.seekg(0, std::ios::end);
     const int64_t file_size = static_cast<int64_t>(file.tellg());
 
-    // 40-byte header, then the picture: u32 1, u32 record size, u32 1, u32 0,
-    // u32 width, u32 height, zeros (docs/formats/insta360-x5.md §4.3).
-    constexpr size_t kHeader = 40;
+    const auto sizeOk = [](uint32_t w, uint32_t h) {
+        return w != 0 && h != 0 && w % 2 == 0 && h % 2 == 0 && w <= 8192 && h <= 8192;
+    };
     std::optional<InsvThumbnail> out;
     WalkTrailerRecords(
         file, file_size,
         [&](uint16_t, const std::vector<uint8_t>& p, int64_t) {
-            if (p.size() < kHeader) return false;
-            const uint32_t w = ReadU32LE(&p[16]);
-            const uint32_t h = ReadU32LE(&p[20]);
-            if (w == 0 || h == 0 || w % 2 || h % 2 || w > 8192 || h > 8192 ||
-                p.size() != kHeader + size_t(w) * h * 3 / 2)
-                return false; // another layout (other models: JPEG / H.264)
-            out = InsvThumbnail{static_cast<int>(w), static_cast<int>(h),
-                                std::vector<uint8_t>(p.begin() + kHeader, p.end())};
-            return false;
+            // The X5's: a 40-byte header, then the equirect: u32 1, u32 record
+            // size, u32 1, u32 0, u32 width, u32 height, zeros
+            // (docs/formats/insta360-x5.md §4.3).
+            constexpr size_t kX5Header = 40;
+            if (p.size() >= kX5Header && ReadU32LE(&p[0]) == 1) {
+                const uint32_t w = ReadU32LE(&p[16]);
+                const uint32_t h = ReadU32LE(&p[20]);
+                if (sizeOk(w, h) && p.size() == kX5Header + size_t(w) * h * 3 / 2)
+                    out = InsvThumbnail{static_cast<int>(w), static_cast<int>(h), false,
+                                        {YcbcrMatrix::Bt601, false},
+                                        std::vector<uint8_t>(p.begin() + kX5Header, p.end())};
+                return false;
+            }
+            // The A1's: u32 0, u32 header size (64), u32 picture size, zeros,
+            // u32 width at 24, height at 28, row stride at 32, zeros; then the
+            // flat view, its rows `stride` apart (docs/formats/antigravity-a1.md).
+            // Full range, as the A1's video; the matrix is taken to be the
+            // video's BT.709 too.
+            if (p.size() >= 36 && ReadU32LE(&p[0]) == 0) {
+                const size_t header = ReadU32LE(&p[4]);
+                const uint32_t bytes = ReadU32LE(&p[8]);
+                const uint32_t w = ReadU32LE(&p[24]);
+                const uint32_t h = ReadU32LE(&p[28]);
+                const uint32_t stride = ReadU32LE(&p[32]);
+                if (header < 36 || !sizeOk(w, h) || stride < w || stride > 8192 ||
+                    bytes != size_t(stride) * h * 3 / 2 || p.size() != header + bytes)
+                    return false;
+                InsvThumbnail t{static_cast<int>(w), static_cast<int>(h), true,
+                                {YcbcrMatrix::Bt709, true}, {}};
+                t.nv12.reserve(size_t(w) * h * 3 / 2);
+                for (uint32_t row = 0; row < h * 3 / 2; ++row) {
+                    const auto at = p.begin() + static_cast<std::ptrdiff_t>(header + size_t(row) * stride);
+                    t.nv12.insert(t.nv12.end(), at, at + w);
+                }
+                out = std::move(t);
+            }
+            return false; // another layout (other models: JPEG / H.264)
         },
         [](uint16_t id) { return id == 0x200; });
     return out;

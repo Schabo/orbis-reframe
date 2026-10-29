@@ -26,8 +26,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error = nullpt
                                     const ClipProbeFn &probeClip = {},
                                     stitch::LensGuardProfiles *lensGuards = nullptr);
 
-// A picture for the Media tab, `size` (cropped to its shape): an .insv's
-// stitched thumbnail from its trailer (clipThumbnail), a flat video's frame
+// A picture for the Media tab, `size` (cropped to its shape): a 360 clip's
+// own preview from its trailer (clipThumbnail), a flat video's frame
 // at one second (or its middle when shorter). Null for audio and on failure.
 QImage mediaThumbnail(const MediaItem &item, const QSize &size);
 

@@ -101,10 +101,9 @@ bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
     return true;
 }
 
-// RGB24 -> NV12, BT.601 limited range: the form Thumbnail promises (the X5's
-// own preview's).
+// RGB24 -> NV12, BT.601 limited range (the X5's own preview's coding).
 Thumbnail toNv12(const insv::Image& rgb) {
-    Thumbnail t{rgb.w & ~1, rgb.h & ~1, {}};
+    Thumbnail t{rgb.w & ~1, rgb.h & ~1, false, {insv::YcbcrMatrix::Bt601, false}, {}};
     t.nv12.resize(static_cast<size_t>(t.width) * t.height * 3 / 2);
     uint8_t* y = t.nv12.data();
     uint8_t* uv = y + static_cast<size_t>(t.width) * t.height;
@@ -380,7 +379,8 @@ std::optional<Thumbnail> Insta360Reader::readThumbnail(const std::string& path) 
     auto thumb = insv::ReadInsvThumbnail(path);
     if (!thumb)
         return stitchedThumbnail(path);
-    return Thumbnail{thumb->width, thumb->height, std::move(thumb->nv12)};
+    return Thumbnail{thumb->width, thumb->height, thumb->flat, thumb->coding,
+                     std::move(thumb->nv12)};
 }
 
 } // namespace camera

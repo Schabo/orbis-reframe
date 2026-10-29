@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "Imu.h" // insv::ImuSample
+#include "Imu.h"   // insv::ImuSample
+#include "Ycbcr.h" // insv::YcbcrCoding
 
 namespace insv {
 
@@ -157,15 +158,20 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path);
 // Hand the result to insv::ParseExtendedCalibrationString.
 std::optional<std::string> ReadInsvExtendedCalibrationString(const std::string& file_path);
 
-// The camera's own preview picture from the trailer's 0x200 record
-// (docs/formats/insta360-x5.md §4.3): on the X5 an already stitched equirectangular
-// frame, 1280x640, NV12 (a full-size Y plane, then interleaved U/V at half
-// size). Cheap to read -- only that record is loaded, not the video or the
-// IMU. Returns std::nullopt when the file has no trailer, no such record, or
-// one in another layout (other models store a JPEG or H.264 frame there).
+// The camera's own preview picture from the trailer's 0x200 record, in
+// either of two layouts: the X5's (docs/formats/insta360-x5.md §4.3), an
+// already stitched equirectangular frame, 1280x640, BT.601 limited range;
+// the Antigravity A1's (docs/formats/antigravity-a1.md, *Trailer*), a flat
+// view ahead of the drone, 256x192 in a clip and 768x768 in its proxy, full
+// range. Both NV12 (a full-size Y plane, then interleaved U/V at half size).
+// Cheap to read -- only that record is loaded, not the video or the IMU.
+// Returns std::nullopt when the file has no trailer, no such record, or one
+// in another layout (other models store a JPEG or H.264 frame there).
 struct InsvThumbnail {
     int width = 0;
     int height = 0;
+    bool flat = false; // a view, not the whole sphere as an equirect
+    YcbcrCoding coding{YcbcrMatrix::Bt601, false};
     std::vector<uint8_t> nv12; // width * height * 3 / 2 bytes
 };
 std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);

@@ -107,6 +107,21 @@ Markers as in [`README.md`](README.md).
   per frame drops from 1.20° to 0.074°; on 10-40 s the same map, 2.7°. The
   runner-up is 90° away. Raw +y is also where the accelerometer puts "up"
   in a hover (0.92 g of it).
+- ✅ **Thumbnail, record type 2**, in a layout of its own: a 64-byte
+  header -- `u32 0`, `u32 64` (the header's size), `u32` the picture's
+  size in bytes, then zeros but for width (`u32` at byte 24), height (28)
+  and row stride (32) -- then a **flat view, not an equirect**, NV12:
+  **256×192** in the clips, **768×768** in the `.prx` proxy, the stride
+  equal to the width in both (the X5's: a 40-byte header and a 1280×640
+  equirect, X5 §4.3). The view looks ahead and down at the ground, a wide
+  lens look; on `_011` the proxy's picture shows the same view as the
+  clip's, cut square. Checked 2026-10-29 on all three clips and their
+  proxies. **Full range** like the video: 2-14% of the clips' pixels are
+  above 235, a sky in the video's lens 1 likewise (10%), and the pictures
+  look right decoded so. The matrix is ⚠️ BT.709, the video's, not
+  measured: a view fitted from the stitched first frame matched no better
+  under BT.601 or BT.709. The app shows the picture on the A1's cards
+  (Media tab, project library), cut to the card's shape.
 - ✅ **Sync**: the X5's formula (field 24 + field 28, X5 §7.1) holds; the
   app's per-clip fine-tune finds +0.9 to +1.2 ms on all three clips, and
   the image fit above agrees within ~1 ms.

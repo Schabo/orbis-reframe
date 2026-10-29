@@ -5,6 +5,7 @@
 #include <Imu.h>         // insv::ImuTrack
 #include <InsvTrailer.h> // insv::LensProfile
 #include <LensSource.h>  // insv::LensSource
+#include <Ycbcr.h>       // insv::YcbcrCoding
 
 #include <cstdint>
 #include <memory>
@@ -37,11 +38,15 @@ struct Lens {
     insv::LensCalibExt calibration;
 };
 
-// The camera's own preview picture: an equirectangular frame, NV12 (a
-// full-size Y plane, then interleaved U/V at half size), BT.601 limited range.
+// The camera's own preview picture: the whole sphere as an equirectangular
+// frame, or (`flat`) a view the camera chose, as on the Antigravity A1. NV12
+// (a full-size Y plane, then interleaved U/V at half size), coded as
+// `coding` says.
 struct Thumbnail {
     int width = 0;
     int height = 0;
+    bool flat = false;
+    insv::YcbcrCoding coding{insv::YcbcrMatrix::Bt601, false};
     std::vector<uint8_t> nv12; // width * height * 3 / 2 bytes
 };
 

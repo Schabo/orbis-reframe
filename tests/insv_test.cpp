@@ -966,8 +966,49 @@ void testTrailerThumbnail()
         CHECK(thumb->width == w && thumb->height == h);
         CHECK(thumb->nv12.size() == size_t(w * h * 3 / 2));
         CHECK(!thumb->nv12.empty() && thumb->nv12.front() == 40 && thumb->nv12.back() == uint8_t(rec.size() - 1));
+        CHECK(!thumb->flat);
+        CHECK(thumb->coding.matrix == insv::YcbcrMatrix::Bt601 && !thumb->coding.fullRange);
     }
     std::filesystem::remove(ok);
+
+    // The Antigravity A1's layout, shrunk: a 64-byte header, then a flat
+    // 6x4 view in rows 8 bytes apart; the padding is left out.
+    {
+        const int aw = 6, ah = 4, stride = 8;
+        std::vector<uint8_t> a1(64 + stride * ah * 3 / 2, 0xee);
+        auto put = [&](size_t at, uint32_t v) {
+            for (int i = 0; i < 4; ++i) a1[at + i] = uint8_t(v >> (8 * i));
+        };
+        std::fill(a1.begin(), a1.begin() + 64, 0);
+        put(4, 64);
+        put(8, uint32_t(stride * ah * 3 / 2));
+        put(24, aw);
+        put(28, ah);
+        put(32, stride);
+        for (int row = 0; row < ah * 3 / 2; ++row)
+            for (int x = 0; x < aw; ++x)
+                a1[size_t(64 + row * stride + x)] = uint8_t(row * 10 + x);
+        const std::string path = writeTrailerFile("insv_test_thumb_a1.insv", 0x200, a1);
+        const auto t = insv::ReadInsvThumbnail(path);
+        CHECK(t.has_value());
+        if (t) {
+            CHECK(t->width == aw && t->height == ah && t->flat);
+            CHECK(t->coding.matrix == insv::YcbcrMatrix::Bt709 && t->coding.fullRange);
+            CHECK(t->nv12.size() == size_t(aw * ah * 3 / 2));
+            bool rows = t->nv12.size() == size_t(aw * ah * 3 / 2);
+            for (int row = 0; rows && row < ah * 3 / 2; ++row)
+                for (int x = 0; x < aw; ++x)
+                    rows = rows && t->nv12[size_t(row * aw + x)] == uint8_t(row * 10 + x);
+            CHECK(rows);
+        }
+        std::filesystem::remove(path);
+
+        // A picture size that doesn't match the rows: nothing.
+        put(8, uint32_t(stride * ah * 3 / 2 - 1));
+        const std::string bad = writeTrailerFile("insv_test_thumb_a1_bad.insv", 0x200, a1);
+        CHECK(!insv::ReadInsvThumbnail(bad).has_value());
+        std::filesystem::remove(bad);
+    }
 
     // A size that doesn't match the header (another model's JPEG), no 0x200
     // record, no trailer at all: nothing.

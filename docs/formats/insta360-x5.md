@@ -363,7 +363,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 |---|---|---|---|---|---|
 | `0x0000` | 0 | Offsets | 310 | locator table (§4.2) | ✅ |
 | `0x0101` | 1 | **Metadata** (protobuf) | ~4 KB | serial, model, firmware, calibration, timing, IMU config… (§5) | ✅ |
-| `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header (`u32 1, u32 record size, u32 1, u32 0, u32 width, u32 height`, zeros) + **1280×640 NV12**, an already **stitched equirectangular** frame from the start of the recording (ExifTool: `PreviewTIFF`; other models store JPEG or H.264 here). Read by `ReadInsvThumbnail` for the project library's cards | ✅ |
+| `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header (`u32 1, u32 record size, u32 1, u32 0, u32 width, u32 height`, zeros) + **1280×640 NV12**, an already **stitched equirectangular** frame from the start of the recording (ExifTool: `PreviewTIFF`; other models store JPEG, H.264 or, the Antigravity A1, a flat view here). Read by `ReadInsvThumbnail` for the Media tab's and project library's cards | ✅ |
 | `0x0300` | 3 | **Gyro** (IMU) | 877 440 | accel + gyro, ~1 kHz (§6) | ✅ |
 | `0x0400` | 4 | **Exposure** | 20 928 | one per sensor frame (§7) | ✅ |
 | `0x0500` | 5 | ThumbnailExt | 76 800 (`.insp`) | 320×160 NV12; photos only (§3.6) | ⚠️ |
