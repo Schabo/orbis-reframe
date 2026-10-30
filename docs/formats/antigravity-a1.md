@@ -130,6 +130,16 @@ Markers as in [`README.md`](README.md).
   houses, poles and wires along the horizon when the drone flies low
   (`_011` at 1 s, confidence 0.89), and with the sign flipped
   (`insv_stitch --baseline -0.0711`) they double again.
+- ✅ **A low sun on the seam** (2026-10-30, `_021` at 60-70.4 s, flying
+  high toward a setting sun): the up lens sees the sun at its rim with its
+  own glare and rays, the down lens a weaker, different flare. Matched as
+  plain grey values, the two lenses agree badly at the true (far) distance
+  there (NCC 0.25-0.45, ~0.95 elsewhere on the seam), and the glare's
+  smooth gradient lines up with itself at any shift, so the depth-aware
+  seam took 0.3-0.4 m and bent the town round the sun; at the 71 mm
+  baseline 0.3 m is a 13° shift (X5: 6°). The seam's match now takes each
+  lens's brightness plane out first (`insv::SeamPatchScore`), and those
+  bins stay far on all the frames checked.
 - ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.

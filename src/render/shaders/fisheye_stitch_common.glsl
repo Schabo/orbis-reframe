@@ -403,9 +403,12 @@ void photoGains(out float g0, out float g1)
 // Pass 2: the depth-aware seam's cost volume. Workgroup (bin, k) of 64
 // invocations samples the bin's SEAM_PATCH x SEAM_PATCH patch (4 samples
 // each) from both lenses, each from its own centre at candidate distance k,
-// and writes the grey NCC + texture -- insv::MeasureSeamCosts on the GPU
-// (same sample pattern, insv::SeamPatchSample).
-shared float seamRed[7][64]; // pass 2 uses 6 rows, pass 3 all 7
+// and writes the grey NCC + texture with each lens's brightness plane taken
+// out -- insv::MeasureSeamCosts on the GPU (same sample pattern,
+// insv::SeamPatchSample; same sums and score, insv::SeamPatchAccumulate /
+// insv::SeamPatchScore).
+#define SEAM_SUMS 15 // == insv::kSeamPatchSums
+shared float seamRed[SEAM_SUMS][64]; // pass 2 uses all rows, pass 3 the first 7
 
 void seamCostPass(uvec3 wg, uint lid)
 {
@@ -414,7 +417,9 @@ void seamCostPass(uvec3 wg, uint lid)
         return;
     float q = mix(P.seamC.x, P.seamC.y, float(k) / float(SEAM_CANDS - 1));
     float fw = float(P.dims.x), fh = float(P.dims.y);
-    float sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, n = 0.0;
+    float acc[SEAM_SUMS];
+    for (int c = 0; c < SEAM_SUMS; ++c)
+        acc[c] = 0.0;
     for (int j = 0; j < SEAM_PATCH * SEAM_PATCH / 64; ++j) {
         int s = int(lid) + 64 * j;
         int az = s % SEAM_PATCH, el = s / SEAM_PATCH;
@@ -428,35 +433,51 @@ void seamCostPass(uvec3 wg, uint lid)
         if (p0.x < 0.0 || p0.y < 0.0 || p0.x > fw - 1.0 || p0.y > fh - 1.0 ||
             p1.x < 0.0 || p1.y < 0.0 || p1.x > fw - 1.0 || p1.y > fh - 1.0)
             continue;
-        float x = luma(sampleLens(0, (p0.xy + 0.5) / vec2(fw, fh)));
-        float y = luma(sampleLens(1, (p1.xy + 0.5) / vec2(fw, fh)));
-        sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; n += 1.0;
+        // Grey less mid-grey: the plane absorbs the offset, and float sums of
+        // squares lose less to it (the CPU sums in double).
+        float x = luma(sampleLens(0, (p0.xy + 0.5) / vec2(fw, fh))) - 128.0;
+        float y = luma(sampleLens(1, (p1.xy + 0.5) / vec2(fw, fh))) - 128.0;
+        float a = float(az) - 0.5 * float(SEAM_PATCH - 1);
+        float b = float(el) - 0.5 * float(SEAM_PATCH - 1);
+        acc[0] += 1.0; acc[1] += a; acc[2] += b; acc[3] += a * a; acc[4] += b * b; acc[5] += a * b;
+        acc[6] += x; acc[7] += x * a; acc[8] += x * b; acc[9] += x * x;
+        acc[10] += y; acc[11] += y * a; acc[12] += y * b; acc[13] += y * y;
+        acc[14] += x * y;
     }
-    seamRed[0][lid] = sx;
-    seamRed[1][lid] = sy;
-    seamRed[2][lid] = sxx;
-    seamRed[3][lid] = syy;
-    seamRed[4][lid] = sxy;
-    seamRed[5][lid] = n;
+    for (int c = 0; c < SEAM_SUMS; ++c)
+        seamRed[c][lid] = acc[c];
     barrier();
     for (uint stride = 32u; stride > 0u; stride >>= 1) {
         if (lid < stride)
-            for (int c = 0; c < 6; ++c)
+            for (int c = 0; c < SEAM_SUMS; ++c)
                 seamRed[c][lid] += seamRed[c][lid + stride];
         barrier();
     }
     if (lid != 0u)
         return;
-    n = seamRed[5][0];
+    float n = seamRed[0][0];
     vec2 res = vec2(-2.0, 0.0);
     if (n >= float(SEAM_PATCH * SEAM_PATCH / 4)) {
-        float mx = seamRed[0][0] / n, my = seamRed[1][0] / n;
-        float vx = max(seamRed[2][0] / n - mx * mx, 0.0);
-        float vy = max(seamRed[3][0] / n - my * my, 0.0);
-        float cxy = seamRed[4][0] / n - mx * my;
-        res.y = sqrt(min(vx, vy));
-        // == insv::kSeamMinVariance: a flat patch's variance is float noise.
-        res.x = (vx > 0.25 && vy > 0.25) ? clamp(cxy / sqrt(vx * vy), -1.0, 1.0) : 0.0;
+        // M = R^T R for the regressors (1, az, el), inverted by cofactors.
+        float m01 = seamRed[1][0], m02 = seamRed[2][0];
+        float m11 = seamRed[3][0], m22 = seamRed[4][0], m12 = seamRed[5][0];
+        float c00 = m11 * m22 - m12 * m12, c01 = m02 * m12 - m01 * m22;
+        float c02 = m01 * m12 - m02 * m11, c11 = n * m22 - m02 * m02;
+        float c12 = m01 * m02 - n * m12, c22 = n * m11 - m01 * m01;
+        float det = n * c00 + m01 * c01 + m02 * c02;
+        if (abs(det) >= 1e-9 * n * n * n) {
+            mat3 inv = mat3(c00, c01, c02, c01, c11, c12, c02, c12, c22) / det;
+            vec3 bx = vec3(seamRed[6][0], seamRed[7][0], seamRed[8][0]);
+            vec3 by = vec3(seamRed[10][0], seamRed[11][0], seamRed[12][0]);
+            float vx = max(seamRed[9][0] - dot(bx, inv * bx), 0.0) / n;
+            float vy = max(seamRed[13][0] - dot(by, inv * by), 0.0) / n;
+            float cxy = (seamRed[14][0] - dot(bx, inv * by)) / n;
+            res.y = sqrt(min(vx, vy));
+            // == insv::kSeamMinVariance: a flat patch's variance is float noise.
+            res.x = (vx > 0.25 && vy > 0.25) ? clamp(cxy / sqrt(vx * vy), -1.0, 1.0) : 0.0;
+        } else {
+            res.x = -2.0;
+        }
     }
     seamCost[bin * SEAM_CANDS + k] = res;
 }

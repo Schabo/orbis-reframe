@@ -12,14 +12,16 @@
 // at which the two lenses agree, so near content (the bike, the rider, the
 // stick, the road close by) isn't doubled.
 //
-// The lenses sit ~32 mm apart along their common axis, so a point at distance
-// D on the seam is seen by the two lenses ~0.032/D rad apart, along the
-// elevation (off-seam) direction. For each of kSeamDepthBins azimuth bins
-// around the seam circle and each candidate inverse distance q, a patch of
-// the blend band is sampled from both lenses, each from its own centre
-// (FisheyeStitcher::lensRay), and scored by NCC of the grey values. That
-// cost volume is measured on the GPU (fisheye_stitch_common.glsl, pass 2) or
-// by MeasureSeamCosts on the CPU -- the same sample pattern, see below.
+// The lenses sit a baseline B apart along their common axis (X5 32 mm, A1
+// 71 mm), so a point at distance D on the seam is seen by the two lenses
+// ~B/D rad apart, along the elevation (off-seam) direction. For each of
+// kSeamDepthBins azimuth bins around the seam circle and each candidate
+// inverse distance q, a patch of the blend band is sampled from both lenses,
+// each from its own centre (FisheyeStitcher::lensRay), and scored by NCC of
+// the grey values once each lens's brightness plane is taken out
+// (SeamPatchScore). That cost volume is measured on the GPU
+// (fisheye_stitch_common.glsl, pass 2) or by MeasureSeamCosts on the CPU --
+// the same sample pattern, see below.
 //
 // SeamDepthTracker turns a frame's costs into the per-bin q table the stitch
 // uses (StitchGpuParams::seamQ): confidence-weighted costs averaged over the
@@ -61,13 +63,42 @@ constexpr double kSeamPatchElDeg = 3.0;
 // GPU pass.
 constexpr double kSeamMinVariance = 0.25;
 
+// A patch's grey values are scored without their plane (a + b az + c el,
+// fitted per lens): what's matched is texture, not shading. Glare from a low
+// sun on the seam is a smooth gradient that each lens draws differently; a
+// gradient lines up with itself at any shift along it, so plain NCC rises
+// steadily towards the nearest candidate and outscores the scene's own weaker
+// match at its true distance, and the seam bends the far scene round the sun.
+//
+// The plane comes out exactly from running sums, so the GPU pass stays one
+// reduction. The sums, in this order: n, az, el, az^2, el^2, az el; x, x az,
+// x el, x^2 (lens 0); y, y az, y el, y^2 (lens 1); x y -- az and el the
+// sample's indices less 7.5 (centred), x and y its grey (0..255) in each lens.
+constexpr int kSeamPatchSums = 15;
+
+inline void SeamPatchAccumulate(double* sums, int s, double x, double y)
+{
+    const double a = s % kSeamPatchAz - 0.5 * (kSeamPatchAz - 1);
+    const double e = s / kSeamPatchAz - 0.5 * (kSeamPatchEl - 1);
+    const double v[kSeamPatchSums] = {1,     a,     e,     a * a, e * e, a * e, x,    x * a,
+                                      x * e, x * x, y,     y * a, y * e, y * y, x * y};
+    for (int i = 0; i < kSeamPatchSums; ++i)
+        sums[i] += v[i];
+}
+
+// The sums -> NCC of the two lenses' plane residuals (0 when either is
+// flatter than kSeamMinVariance; -2 with fewer than a quarter of the samples)
+// and the texture, the smaller residual standard deviation. Mirrored by the
+// GPU pass.
+void SeamPatchScore(const double sums[kSeamPatchSums], float& ncc, float& texture);
+
 // One frame's cost volume.
 struct SeamCosts {
-    // NCC of the two lenses' grey patches, bin b, candidate k; < -1.5 = no
-    // usable samples (outside the lenses).
+    // NCC of the two lenses' grey patches (planes out, SeamPatchScore), bin
+    // b, candidate k; < -1.5 = no usable samples (outside the lenses).
     float ncc[kSeamDepthBins][kSeamDepthCands];
-    // min of the two lenses' grey standard deviation over the patch (0..255
-    // levels) -- how much texture there is to match.
+    // min of the two lenses' grey standard deviation about their planes
+    // (0..255 levels) -- how much texture there is to match.
     float texture[kSeamDepthBins][kSeamDepthCands];
 };
 

@@ -66,7 +66,10 @@ far away the things along the seam are, and lines the two pictures up at
 that distance. It goes by the last few frames rather than one, so the seam
 doesn't jump between a close object and the road behind it when both match
 about equally well; something close that really moves onto the seam is
-followed within a fraction of a second.
+followed within a fraction of a second. It matches the lenses by the
+detail they see, not by how bright they are, so glare from a low sun on
+the seam, which each lens draws differently, isn't taken for something
+close.
 
 Things at different distances side by side (a rack in front of the bike's
 tail, a mirror stem in front of the road) can't all line up at one

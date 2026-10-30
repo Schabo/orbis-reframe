@@ -21,6 +21,40 @@ double ramp01(double x, double lo, double hi)
 }
 } // namespace
 
+void SeamPatchScore(const double sums[kSeamPatchSums], float& ncc, float& texture)
+{
+    const double* s = sums;
+    const double n = s[0];
+    ncc = -2.0f;
+    texture = 0.0f;
+    if (n < kSeamPatchAz * kSeamPatchEl / 4)
+        return;
+    // M = R^T R for the regressors R = (1, az, el); its inverse by cofactors.
+    const double m00 = n, m01 = s[1], m02 = s[2], m11 = s[3], m12 = s[5], m22 = s[4];
+    const double c00 = m11 * m22 - m12 * m12, c01 = m02 * m12 - m01 * m22,
+                 c02 = m01 * m12 - m02 * m11, c11 = m00 * m22 - m02 * m02,
+                 c12 = m01 * m02 - m00 * m12, c22 = m00 * m11 - m01 * m01;
+    const double det = m00 * c00 + m01 * c01 + m02 * c02;
+    if (std::fabs(det) < 1e-9 * n * n * n)
+        return;
+    // b^T M^-1 b': the part of the cross product the planes explain.
+    auto proj = [&](const double* b, const double* b2) {
+        const double i0 = c00 * b2[0] + c01 * b2[1] + c02 * b2[2];
+        const double i1 = c01 * b2[0] + c11 * b2[1] + c12 * b2[2];
+        const double i2 = c02 * b2[0] + c12 * b2[1] + c22 * b2[2];
+        return (b[0] * i0 + b[1] * i1 + b[2] * i2) / det;
+    };
+    const double* bx = s + 6;  // sum x, x az, x el
+    const double* by = s + 10; // sum y, y az, y el
+    const double vx = std::max(s[9] - proj(bx, bx), 0.0) / n;
+    const double vy = std::max(s[13] - proj(by, by), 0.0) / n;
+    const double cxy = (s[14] - proj(bx, by)) / n;
+    texture = static_cast<float>(std::sqrt(std::min(vx, vy)));
+    ncc = vx > kSeamMinVariance && vy > kSeamMinVariance
+              ? static_cast<float>(std::clamp(cxy / std::sqrt(vx * vy), -1.0, 1.0))
+              : 0.0f;
+}
+
 void SeamPatchSample(int bin, int s, double& phi, double& e)
 {
     const int az = s % kSeamPatchAz, el = s / kSeamPatchAz;
@@ -55,28 +89,15 @@ void MeasureSeamCosts(const FisheyeStitcher& st, const Image& lens0, const Image
             }
             for (int k = 0; k < kSeamDepthCands; ++k) {
                 const double q = SeamCandQ(k);
-                double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-                int n = 0;
+                double sums[kSeamPatchSums] = {};
                 for (int s = 0; s < kSamples; ++s) {
                     double x, y;
                     if (!grey(0, st.lensRay(0, dirs[s], q), x) ||
                         !grey(1, st.lensRay(1, dirs[s], q), y))
                         continue;
-                    sx += x, sy += y, sxx += x * x, syy += y * y, sxy += x * y;
-                    ++n;
+                    SeamPatchAccumulate(sums, s, x, y);
                 }
-                float ncc = -2.0f, tex = 0.0f;
-                if (n >= kSamples / 4) {
-                    const double vx = std::max(sxx / n - (sx / n) * (sx / n), 0.0);
-                    const double vy = std::max(syy / n - (sy / n) * (sy / n), 0.0);
-                    const double cxy = sxy / n - (sx / n) * (sy / n);
-                    tex = static_cast<float>(std::sqrt(std::min(vx, vy)));
-                    ncc = vx > kSeamMinVariance && vy > kSeamMinVariance
-                              ? static_cast<float>(std::clamp(cxy / std::sqrt(vx * vy), -1.0, 1.0))
-                              : 0.0f;
-                }
-                out.ncc[b][k] = ncc;
-                out.texture[b][k] = tex;
+                SeamPatchScore(sums, out.ncc[b][k], out.texture[b][k]);
             }
         }
     };

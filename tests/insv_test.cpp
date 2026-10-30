@@ -451,6 +451,53 @@ void testSeamDepthGeometry()
     CHECK(near(dot(flipped.lensCentre(0), flipped.seamAxis()), -0.025, 1e-9));
 }
 
+// SeamPatchScore matches texture, not shading: the same texture under two
+// different brightness planes is a match, a shared gradient over two
+// different textures (glare from a low sun on the seam) is not.
+void testSeamPatchScore()
+{
+    constexpr int N = insv::kSeamPatchAz * insv::kSeamPatchEl;
+    uint32_t seed = 12345;
+    auto noise = [&] { // -1..1
+        seed = seed * 1664525u + 1013904223u;
+        return static_cast<double>(seed >> 8) / (1u << 23) - 1.0;
+    };
+    double t0[N], t1[N];
+    for (int s = 0; s < N; ++s)
+        t0[s] = noise(), t1[s] = noise();
+    auto score = [&](auto&& x, auto&& y, bool (*keep)(int), float& ncc, float& tex) {
+        double sums[insv::kSeamPatchSums] = {};
+        for (int s = 0; s < N; ++s)
+            if (keep(s)) {
+                const double a = s % insv::kSeamPatchAz - 7.5, e = s / insv::kSeamPatchAz - 7.5;
+                insv::SeamPatchAccumulate(sums, s, x(s, a, e), y(s, a, e));
+            }
+        insv::SeamPatchScore(sums, ncc, tex);
+    };
+    auto all = [](int) { return true; };
+    // A corner of the patch outside the lens: the plane still comes out exactly.
+    auto corner = [](int s) { return !(s % insv::kSeamPatchAz < 6 && s / insv::kSeamPatchAz < 6); };
+    float ncc, tex;
+    for (auto keep : {+all, +corner}) {
+        score([&](int s, double a, double e) { return 100 + 10 * t0[s] + 3 * a + 1 * e; },
+              [&](int s, double a, double e) { return 140 + 10 * t0[s] - 2 * a - 6 * e; }, keep, ncc,
+              tex);
+        CHECK(ncc > 0.999f);
+        CHECK(near(tex, 10 * std::sqrt(1.0 / 3), 0.6)); // the texture's std, not the gradient's
+        score([&](int s, double, double e) { return 128 + 10 * e + 4 * t0[s]; },
+              [&](int s, double, double e) { return 128 + 10 * e + 4 * t1[s]; }, keep, ncc, tex);
+        CHECK(std::fabs(ncc) < 0.2f);
+    }
+    // Flat but for the plane: no NCC; under a quarter of the samples: none at all.
+    score([](int, double a, double) { return 50 + 4 * a; }, [](int, double, double e) { return 60 + 2 * e; },
+          +all, ncc, tex);
+    CHECK(ncc == 0.0f && tex < 0.01f);
+    score([&](int s, double, double) { return 100 + 10 * t0[s]; },
+          [&](int s, double, double) { return 100 + 10 * t0[s]; }, +[](int s) { return s < N / 5; }, ncc,
+          tex);
+    CHECK(ncc < -1.5f);
+}
+
 // SeamDepthTracker on a synthetic cost volume: a near object over one arc of
 // bins, far elsewhere, and textureless bins that must follow their neighbours.
 void testSeamDepthTracker()
@@ -1746,6 +1793,7 @@ int main()
     testLinearAlgebra();
     testSyntheticRender();
     testSeamDepthGeometry();
+    testSeamPatchScore();
     testSeamDepthTracker();
     testSeamAlignment();
     testSeamBlend();
