@@ -68,9 +68,9 @@ each is in its document in [`formats/`](formats/README.md).
   with the video by matching the GPS speed against the attitude record's
   (the file has no first-frame Unix time), and Direction lock's heading
   held by the attitude's, without drift. A clip in each 5.2K and 4K 100
-  mode, in H.264, opens and stitches with the same calibration and seam
-  correction as 8K; left: checking their playback, stabilization and
-  export ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
+  mode, in H.264, works as 8K does, with the same calibration and seam
+  correction, and 4K 100 plays at its rate
+  ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two

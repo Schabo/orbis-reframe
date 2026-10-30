@@ -56,13 +56,12 @@ Insta360 Studio's yet, the motion axes are measured on a few walking and
 riding clips only, and Horizon lock can leave the horizon tilted on some
 clips.
 
-**Antigravity A1:** experimental -- 8K clips open, stitch, stabilize and
-export, from one contributor's flights; the horizon is leveled by the
-drone's own flight controller. Its GPS shows in titles and gauges once the
-drone has moved (a hover or a clip shorter than about 8 seconds gives
-nothing to line it up with the video by). Clips in the 5.2K and 4K 100
-modes and in H.264 open and stitch; playing, stabilizing and exporting them
-is unchecked.
+**Antigravity A1:** experimental -- 8K, 5.2K and 4K 100 clips (H.265 or
+H.264) open, stitch, play in real time, stabilize and export, from one
+contributor's flights; the horizon is leveled by the drone's own flight
+controller. Its GPS shows in titles and gauges once the drone has moved (a
+hover or a clip shorter than about 8 seconds gives nothing to line it up
+with the video by). Its photos don't open yet.
 
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:

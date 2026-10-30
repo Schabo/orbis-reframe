@@ -277,10 +277,10 @@ The status words are the X5's (X5 §3.4).
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
 | 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² streams), and a `PRX_….prx` proxy | 3 at 29.97 fps, H.265; 3 at 29.97 / 25 / 24, H.264; standard colour | experimental: opens, stitches, stabilizes and exports; GPS lined up by its speed |
-| 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | ✅ as above, two 2624² streams | 5, one at each rate, H.264 | opens and stitches (GPU and CPU), seam fit and GPS as at 8K; playback speed, stabilization and export not checked yet |
-| 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | ✅ as above, two 1920² streams; 100 fps stored at 100 | 1 at 100 fps, H.264 | as 5.2K; wanted: 30 / 25 / 24 |
+| 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | ✅ as above, two 2624² streams | 5, one at each rate, H.264 | experimental, as 8K: plays in real time (60 fps: 4.0 ms a frame on an RTX 5070), Horizon lock level within 0.2°, sync within 5 ms, exports (5.2K 60, `_015`) |
+| 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | ✅ as above, two 1920² streams; 100 fps stored at 100 | 1 at 100 fps, H.264 | as 5.2K: plays at 100 fps (3.3 ms a frame), level within 0.5°, exports (`_020`); wanted: 30 / 25 / 24 |
 | 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ❓ | none | **wanted**: whether the file is tagged at the playback rate or the capture rate (100 ⚠️) |
-| H.264 encoding | up to 170 Mb/s, as H.265 | ✅ as above, H.264 High; field 132 = 1 | 9 | opens and stitches; wanted: 5.2K and 4K in H.265 |
+| H.264 encoding | up to 170 Mb/s, as H.265 | ✅ as above, H.264 High; field 132 = 1 | 9 | as its mode in H.265; wanted: 5.2K and 4K in H.265 |
 | Timelapse | added by the spring 2026 update; ❓ sizes and intervals | ❓ | none | wanted |
 | 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | ✅ `.insp` (*Photos*); `.dng` ❓ | 2 Standard at 55 MP | not supported (no photos in the app yet); wanted, low: HDR, 14 MP, DNG |
 | Internal storage (20 GB) vs microSD | | ❓ the same files | none | low: say which a clip came from |
