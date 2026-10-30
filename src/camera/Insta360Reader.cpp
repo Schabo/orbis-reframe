@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace camera {
 namespace {
@@ -50,13 +51,44 @@ std::filesystem::path sibling(const std::filesystem::path& insv, const insv::Ins
     return p;
 }
 
+// Whether the file at `p` is from the same take as the clip `clip` came
+// from: the same camera and first-frame time (field 24), which a clip and
+// its proxy share whatever their names.
+bool sameTake(const std::filesystem::path& p, const insv::InsvMakerNotes& clip) {
+    if (clip.first_frame_timestamp == 0)
+        return false;
+    const auto other = insv::ReadInsvMakerNotes(p.string());
+    return other && other->serial_number == clip.serial_number &&
+           other->first_frame_timestamp == clip.first_frame_timestamp;
+}
+
 // The camera's proxy beside the clip (the X5's LRV_…_01_….lrv, the ONE X2's
-// LRV_…_11_….insv, the A1's PRX_….prx), "" if it isn't there.
-std::string findProxy(const std::filesystem::path& insv, const insv::InsvModel& model) {
+// LRV_…_11_….insv, the A1's PRX_….prx), "" if it isn't there. Named from
+// the clip's name; for a renamed clip from the name it holds (`heldName`,
+// insv::ReadInsvHeldName), or the clip's own stem with the proxy's
+// extension (both renamed alike). Those two are taken only when the file is
+// the same take's (sameTake).
+std::string findProxy(const std::filesystem::path& insv, const insv::InsvModel& model,
+                      const insv::InsvMakerNotes& notes,
+                      const std::optional<std::string>& heldName) {
+    std::error_code ec;
+    const auto there = [&](const std::filesystem::path& p) {
+        return !p.empty() && std::filesystem::exists(p, ec) &&
+               !std::filesystem::equivalent(p, insv, ec);
+    };
     const std::filesystem::path lrv =
         sibling(insv, model, model.proxyToken, model.proxyPrefix, model.proxyExt);
-    std::error_code ec;
-    return !lrv.empty() && std::filesystem::exists(lrv, ec) ? lrv.string() : "";
+    if (there(lrv))
+        return lrv.string();
+    std::vector<std::filesystem::path> renamed;
+    if (heldName)
+        renamed.push_back(sibling(insv.parent_path() / *heldName, model, model.proxyToken,
+                                  model.proxyPrefix, model.proxyExt));
+    renamed.push_back(std::filesystem::path(insv).replace_extension(model.proxyExt));
+    for (const std::filesystem::path& p : renamed)
+        if (there(p) && sameTake(p, notes))
+            return p.string();
+    return {};
 }
 
 // The second lens's file of a clip whose own file holds lens 0 only (the
@@ -279,14 +311,19 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     out.bareLens = profile(*notes, "bare");
     out.standardGuard = profile(*notes, model.standardGuard);
     out.premiumGuard = profile(*notes, model.premiumGuard);
-    out.proxyPath = findProxy(out.path, model);
-    // By the camera's clock: field 7 where the model writes it, else the
-    // file's name, which the camera gives the same time.
+    const std::optional<std::string> heldName = insv::ReadInsvHeldName(out.path);
+    out.proxyPath = findProxy(out.path, model, *notes, heldName);
+    // By the camera's clock: field 7 where the model writes it to the second
+    // (the ONE X2 doesn't write it, the A1 only to the minute), else the
+    // name the camera gave the file, which carries the same time: the one
+    // the file holds, which survives a rename, then the one it has.
     out.recordedLocal = localTime(std::to_string(notes->creation_time));
+    if (out.recordedLocal.empty() && heldName)
+        out.recordedLocal = nameTime(*heldName);
     if (out.recordedLocal.empty()) {
         out.recordedLocal = nameTime(out.path);
-        std::fprintf(stderr, "[camera] no creation_time (field 7) in %s; recording time from "
-                             "the file name: %s\n",
+        std::fprintf(stderr, "[camera] no recording time to the second in %s's metadata or the "
+                             "name it holds; from its file name: %s\n",
                      out.path.c_str(),
                      out.recordedLocal.empty() ? "none" : out.recordedLocal.c_str());
     }
@@ -361,25 +398,49 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
     // name carries no lens token (the A1's PRX_….prx) -> VID_….insv. The
     // lens token is the last `_xx_` (the date and time are longer runs).
     const std::filesystem::path p(path);
-    const std::string name = p.filename().string();
-    const auto clipName = [&](const insv::InsvModel& m, const char* token) {
-        std::string n = name;
-        if (token)
-            n.replace(n.rfind(token), std::strlen(token), m.clipToken);
-        n.replace(0, 3, "VID");
-        std::filesystem::path c = p.parent_path() / n;
-        c.replace_extension(".insv");
-        return c.string();
+    const auto byName = [&](const std::string& name) -> std::optional<std::string> {
+        const auto clipName = [&](const insv::InsvModel& m, const char* token) {
+            std::string n = name;
+            if (token)
+                n.replace(n.rfind(token), std::strlen(token), m.clipToken);
+            n.replace(0, 3, "VID");
+            std::filesystem::path c = p.parent_path() / n;
+            c.replace_extension(".insv");
+            return c.string();
+        };
+        const std::filesystem::path np(name);
+        for (const insv::InsvModel& m : insv::InsvModels()) {
+            if (m.secondLensToken && m.clipToken && name.rfind("VID_", 0) == 0 &&
+                name.ends_with(".insv") && name.rfind(m.secondLensToken) != std::string::npos)
+                return clipName(m, m.secondLensToken);
+            if (name.rfind(std::string(m.proxyPrefix) + "_", 0) == 0 &&
+                np.extension() == m.proxyExt &&
+                (m.proxyToken ? m.clipToken && name.rfind(m.proxyToken) != std::string::npos
+                              : !m.clipToken))
+                return clipName(m, m.proxyToken);
+        }
+        return std::nullopt;
     };
-    for (const insv::InsvModel& m : insv::InsvModels()) {
-        if (m.secondLensToken && m.clipToken && name.rfind("VID_", 0) == 0 &&
-            name.ends_with(".insv") && name.rfind(m.secondLensToken) != std::string::npos)
-            return clipName(m, m.secondLensToken);
-        if (name.rfind(std::string(m.proxyPrefix) + "_", 0) == 0 && p.extension() == m.proxyExt &&
-            (m.proxyToken ? m.clipToken && name.rfind(m.proxyToken) != std::string::npos
-                          : !m.clipToken))
-            return clipName(m, m.proxyToken);
-    }
+    if (auto clip = byName(p.filename().string()))
+        return clip;
+    // A renamed proxy: by the name it holds (the clip may have kept its
+    // own), else the clip renamed alike, the same stem with `.insv`.
+    // ClipFileOf checks that the clip finds this file as its proxy.
+    std::vector<std::string> candidates;
+    if (const auto held = insv::ReadInsvHeldName(path))
+        if (auto clip = byName(*held))
+            candidates.push_back(*clip);
+    for (const insv::InsvModel& m : insv::InsvModels())
+        if (p.extension() == m.proxyExt && p.extension() != ".insv") {
+            candidates.push_back(std::filesystem::path(p).replace_extension(".insv").string());
+            break;
+        }
+    std::error_code ec;
+    for (const std::string& c : candidates)
+        if (std::filesystem::exists(c, ec))
+            return c;
+    if (!candidates.empty())
+        return candidates.front();
     return std::nullopt;
 }
 

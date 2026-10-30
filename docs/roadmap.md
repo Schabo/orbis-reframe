@@ -69,7 +69,8 @@ each is in its document in [`formats/`](formats/README.md).
   (the file has no first-frame Unix time), and Direction lock's heading
   held by the attitude's, without drift. A clip in each 5.2K and 4K 100
   mode, in H.264, works as 8K does, with the same calibration and seam
-  correction, and 4K 100 plays at its rate
+  correction, and 4K 100 plays at its rate; a renamed clip finds its
+  recording time and preview file by the name it holds
   ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
 - **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
   current one, D-Log M through a LUT, IMU timing fitted over packets.

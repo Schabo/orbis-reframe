@@ -3,10 +3,11 @@
 // carrying a synthetic trailer. The second lens's file is found beside it and
 // checked; the clip's metadata follows a change to either file; every file of
 // the take names the clip. And an Antigravity A1 clip: both lenses in one
-// file, a slotted trailer, the proxy named without a lens token. Exit code is
-// the failure count.
+// file, a slotted trailer, the proxy named without a lens token; renamed,
+// found again by the names its files hold. Exit code is the failure count.
 
 #include "ClipMetadata.h"
+#include "InsvTrailer.h"
 #include "support/TestMedia.h"
 #include "support/TestTrailer.h"
 
@@ -297,6 +298,47 @@ void testGps(const std::filesystem::path& dir)
     CHECK(!missing.gps && missing.motion.empty());
 }
 
+// The A1's trailer, cut down: the model, field 24 (`firstFrame`), the
+// calibration, field 69, a little IMU and the flight controller's attitude:
+// level, then the nose 26 deg down (fast forward flight).
+constexpr double kA1NoseDeg = -26.0;
+
+std::vector<uint8_t> a1Trailer(uint64_t firstFrame = 1000300)
+{
+    Bytes meta;
+    meta.pbString(1, "A1000000000000000001").pbString(2, "Antigravity A1");
+    meta.pbString(3, "10.0.397.3_5.5").pbVarint(24, firstFrame).pbDouble(25, 21.247);
+    Bytes crop; // window_crop_info: src 5248², dst 5248²
+    crop.pbVarint(1, 5248).pbVarint(2, 5248).pbVarint(3, 5248).pbVarint(4, 5248);
+    meta.pbBytes(27, crop.b);
+    meta.pbString(54, "2_1.5_3742.5_3741.8_2620.9_2617.6_-177.5_-89.95_90.4_0_0_0_"
+                      "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
+                      "1.5_3754.8_3755.1_7875.9_2606.2_-179.4_-89.9_89.4_-0.0001_0.00002_"
+                      "-0.071_-0.050_0.170_-0.499_0.0001_0.00003_10496_5248_155_197632");
+    for (float v : {0.5f, 0.5f, -0.5f, 0.5f}) // field 69
+        meta.pbFloat(69, v);
+    Bytes imu; // 56-byte doubles, 1 ms apart
+    for (int i = 0; i < 100; ++i) {
+        imu.u64(1000000 + uint64_t(i) * 1000);
+        for (double v : {0.0, 1.0, 0.0, 0.0, 0.0, 0.0})
+            imu.f64(v);
+    }
+    // The attitude, x, y, z, w (the nose turns about body y).
+    const double nose = kA1NoseDeg * std::numbers::pi / 180.0;
+    Bytes attitude;
+    attitude.u64(1000000).f32(0).f32(0).f32(0).f32(1).f32(0).f32(0).f32(0);
+    attitude.u64(1020000)
+        .f32(0)
+        .f32(float(std::sin(nose / 2)))
+        .f32(0)
+        .f32(float(std::cos(nose / 2)))
+        .f32(15)
+        .f32(0)
+        .f32(0);
+    return testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x2500, attitude.b}}, true,
+                                    256);
+}
+
 // An Antigravity A1 clip (docs/formats/antigravity-a1.md): both lenses as
 // streams of one VID_<date>_<time>_<n>.insv, the trailer in 256 KiB slots
 // with no record headers (cut down here), the proxy PRX_….prx with the
@@ -313,39 +355,8 @@ void testAntigravityA1(const std::filesystem::path& dir)
     spec.streams = 2;
     CHECK(testmedia::writeVideo(vid + ".mp4", spec));
     std::filesystem::rename(vid + ".mp4", vid);
-    Bytes meta;
-    meta.pbString(1, "A1000000000000000001").pbString(2, "Antigravity A1");
-    meta.pbString(3, "10.0.397.3_5.5").pbVarint(24, 1000300).pbDouble(25, 21.247);
-    Bytes crop; // window_crop_info: src 5248², dst 5248²
-    crop.pbVarint(1, 5248).pbVarint(2, 5248).pbVarint(3, 5248).pbVarint(4, 5248);
-    meta.pbBytes(27, crop.b);
-    meta.pbString(54, "2_1.5_3742.5_3741.8_2620.9_2617.6_-177.5_-89.95_90.4_0_0_0_"
-                      "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
-                      "1.5_3754.8_3755.1_7875.9_2606.2_-179.4_-89.9_89.4_-0.0001_0.00002_"
-                      "-0.071_-0.050_0.170_-0.499_0.0001_0.00003_10496_5248_155_197632");
-    for (float v : {0.5f, 0.5f, -0.5f, 0.5f}) // field 69
-        meta.pbFloat(69, v);
-    Bytes imu; // 56-byte doubles, 1 ms apart
-    for (int i = 0; i < 100; ++i) {
-        imu.u64(1000000 + uint64_t(i) * 1000);
-        for (double v : {0.0, 1.0, 0.0, 0.0, 0.0, 0.0})
-            imu.f64(v);
-    }
-    // The flight controller's attitude: level, then the nose 26 deg down
-    // (fast forward flight), x, y, z, w about body y.
-    const double nose = -26.0 * std::numbers::pi / 180.0;
-    Bytes attitude;
-    attitude.u64(1000000).f32(0).f32(0).f32(0).f32(1).f32(0).f32(0).f32(0);
-    attitude.u64(1020000)
-        .f32(0)
-        .f32(float(std::sin(nose / 2)))
-        .f32(0)
-        .f32(float(std::cos(nose / 2)))
-        .f32(15)
-        .f32(0)
-        .f32(0);
-    appendTo(vid, testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x2500, attitude.b}},
-                                           true, 256));
+    appendTo(vid, a1Trailer());
+    const double nose = kA1NoseDeg * std::numbers::pi / 180.0;
     CHECK(writeLens(prx, 32, 50));
 
     std::string err;
@@ -388,6 +399,66 @@ void testAntigravityA1(const std::filesystem::path& dir)
     }
 }
 
+// A renamed A1 take (docs/formats/antigravity-a1.md): the name each file
+// holds gives the clip its recording time to the second (field 7 has
+// minutes only) and leads it to its proxy; a proxy renamed alike is found by
+// the stem, and both ways only when its trailer is the same take's.
+void testA1Renamed(const std::filesystem::path& dir)
+{
+    std::printf("  Antigravity A1, renamed: the names the files hold, the proxy by its take\n");
+    const auto sub = dir / "a1_renamed";
+    std::filesystem::create_directories(sub);
+    // A clip and a proxy named `vid` / `prx` on disk, `stamp` in the names
+    // they hold; `proxyFirstFrame` is the proxy's field 24.
+    const auto write = [&](const std::string& vid, const std::string& prx, const std::string& stamp,
+                           uint64_t firstFrame, uint64_t proxyFirstFrame) {
+        testmedia::VideoSpec spec;
+        spec.width = spec.height = 64;
+        spec.fps = kFps;
+        spec.frames = 50;
+        spec.streams = 2;
+        CHECK(testmedia::writeVideo(vid + ".mp4", spec));
+        std::filesystem::rename(vid + ".mp4", vid);
+        CHECK(testtrailer::holdName(vid, "VID_" + stamp + ".insv"));
+        appendTo(vid, a1Trailer(firstFrame));
+        CHECK(writeLens(prx, 32, 50));
+        CHECK(testtrailer::holdName(prx, "PRX_" + stamp + ".prx"));
+        appendTo(prx, a1Trailer(proxyFirstFrame));
+    };
+    std::string err;
+
+    // Both renamed alike, as the contributor's second set came.
+    const std::string vid = (sub / "Video8K30.insv").string();
+    const std::string prx = (sub / "Video8K30.prx").string();
+    write(vid, prx, "20261029_170732_021", 659569622, 659569622);
+    CHECK(insv::ReadInsvHeldName(vid) == "VID_20261029_170732_021.insv");
+    CHECK(insv::ReadInsvHeldName(prx) == "PRX_20261029_170732_021.prx");
+    const auto clip = camera::ReadClipMetadata(vid, &err);
+    CHECK(clip && clip->recordedLocal == "2026-10-29T17:07:32");
+    CHECK(clip && clip->proxyPath == prx);
+    CHECK(camera::ClipFileOf(prx, &err) == vid);
+
+    // Only the clip renamed: its proxy by the name the clip holds.
+    const std::string flight = (sub / "flight.insv").string();
+    const std::string kept = (sub / "PRX_20261029_170608_020.prx").string();
+    write(flight, kept, "20261029_170608_020", 575986304, 575986304);
+    const auto renamed = camera::ReadClipMetadata(flight, &err);
+    CHECK(renamed && renamed->recordedLocal == "2026-10-29T17:06:08");
+    CHECK(renamed && renamed->proxyPath == kept);
+
+    // Another take's proxy under the clip's stem: not its proxy, and it
+    // doesn't lead to the clip.
+    const std::string other = (sub / "other.insv").string();
+    const std::string stray = (sub / "other.prx").string();
+    write(other, stray, "20261029_170123_013", 291816338, 320568766);
+    const auto lone = camera::ReadClipMetadata(other, &err);
+    CHECK(lone && lone->proxyPath.empty());
+    CHECK(camera::ClipFileOf(stray, &err).empty());
+
+    // A file that holds no name (FFmpeg's own MP4).
+    CHECK(!insv::ReadInsvHeldName((dir / "VID_20261028_165044_011.insv").string()));
+}
+
 } // namespace
 
 int main()
@@ -403,6 +474,7 @@ int main()
     testStitchedThumbnail(t);
     testGps(dir);
     testAntigravityA1(dir);
+    testA1Renamed(dir);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

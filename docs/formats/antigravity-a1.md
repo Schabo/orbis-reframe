@@ -56,7 +56,12 @@ Markers as in [`README.md`](README.md).
   can be given its name back, take number and all; the second set came
   renamed (`Video5.2K60.insv`, ...) and got its names back so, matching
   the time rebuilt from `creation_time` and field 7 on every file. The
-  photos hold no name.
+  app takes a renamed clip's recording time from it and finds the proxy
+  by it. The photos hold no name.
+- ✅ **A proxy carries its clip's field 24** (the first frame's time on the
+  drone's clock) and serial, on all nine pairs of the second set: what ties
+  a renamed proxy to its clip; the app takes one found by the held name or
+  the clip's stem only when both match.
 - ✅ **Untouched files can be told apart.** Field 9 of record 1 is the
   byte size of the file before the trailer, exactly, on every `.insv` and
   `.prx` we have (12 clips, 9 proxies): a re-muxed or trimmed file no
@@ -95,9 +100,10 @@ Markers as in [`README.md`](README.md).
   ~21.25 ms), 28 (3.7 ms), 62 (raw IMU) and 65 (±32 g, ±2000 °/s) as on the
   X5, and the IMU (~1 kHz) and exposure records decode with the X5's
   layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, local time, without the
-  X5's seconds, so the recording time comes from the file name, which has
-  them. Fields 195 / 196 are the video's frame rate as a fraction (30000 /
-  1001, 100000 / 1000, ...), field 20 the rounded rate (30, 100); field 10
+  X5's seconds, so the recording time comes from the name the file holds
+  (*Streams*), then the one it has, which carry them. Fields 195 / 196 are
+  the video's frame rate as a fraction (30000 / 1001, 100000 / 1000, ...),
+  field 20 the rounded rate (30, 100); field 10
   the length in whole seconds, field 93 in ms (30730 on the 4K 100 clip,
   whose streams last 30710: the proxy's length); field 9 the file's size
   before the trailer (above); field 25 the sensor readout, ~21.2 ms at 8K,

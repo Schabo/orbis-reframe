@@ -36,6 +36,53 @@ uint64_t ReadU64LE(const uint8_t* p) {
     return v;
 }
 
+// The ISO-BMFF box at `pos`, which must end by `end`: its type, its whole
+// size (a 64-bit size and "to the end" resolved) and its header's length.
+// False past `end`, on a read error or a malformed size.
+bool ReadBoxHeader(std::ifstream& file, int64_t pos, int64_t end, char type[4], int64_t& size,
+                   int64_t& header) {
+    if (pos + 8 > end) return false;
+    file.seekg(pos, std::ios::beg);
+    uint8_t h[8];
+    file.read(reinterpret_cast<char*>(h), 8);
+    if (!file) return false;
+    const uint32_t size32 = (static_cast<uint32_t>(h[0]) << 24) |
+                             (static_cast<uint32_t>(h[1]) << 16) |
+                             (static_cast<uint32_t>(h[2]) << 8) | h[3];
+    std::memcpy(type, h + 4, 4);
+    header = 8;
+    if (size32 == 1) { // 64-bit extended size follows the 8-byte header
+        uint8_t ext[8];
+        file.read(reinterpret_cast<char*>(ext), 8);
+        if (!file) return false;
+        size = 0;
+        for (uint8_t b : ext) size = (size << 8) | b;
+        header = 16;
+    } else if (size32 == 0) {
+        size = end - pos; // box extends to the end
+    } else {
+        size = size32;
+    }
+    return size >= header && pos + size <= end;
+}
+
+// The first box of `type` among those in [pos, end): its payload's start and
+// end. False when there is none.
+bool FindBox(std::ifstream& file, int64_t pos, int64_t end, const char* type,
+             int64_t& payload, int64_t& payloadEnd) {
+    char t[4];
+    int64_t size = 0, header = 0;
+    while (ReadBoxHeader(file, pos, end, t, size, header)) {
+        if (std::memcmp(t, type, 4) == 0) {
+            payload = pos + header;
+            payloadEnd = pos + size;
+            return true;
+        }
+        pos += size;
+    }
+    return false;
+}
+
 double ReadDoubleLE(const uint8_t* p) {
     const uint64_t bits = ReadU64LE(p);
     double d;
@@ -549,6 +596,7 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
                 WalkProtobuf(payload, [&](uint32_t f, int wt, uint64_t v,
                                           const std::vector<uint8_t>& b) {
                     if (f == 7 && wt == 0) result.creation_time = v;
+                    if (f == 24 && wt == 0) result.first_frame_timestamp = v;
                     if (f == 54 && wt == 2) result.offset_v3.assign(b.begin(), b.end());
                     if (f != 27 || wt != 2) return;
                     WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv,
@@ -745,44 +793,44 @@ std::vector<uint8_t> ExtractRawTrailer(const std::string& file_path) {
     file.seekg(0, std::ios::end);
     const int64_t file_size = static_cast<int64_t>(file.tellg());
 
-    int64_t pos = 0;
-    while (pos + 8 <= file_size) {
-        file.seekg(pos, std::ios::beg);
-        uint8_t header[8];
-        file.read(reinterpret_cast<char*>(header), 8);
-        if (!file) break;
+    int64_t moov = 0, moov_end = 0;
+    if (!FindBox(file, 0, file_size, "moov", moov, moov_end)) return {};
+    if (moov_end >= file_size) return {}; // nothing follows moov
+    std::vector<uint8_t> trailer(static_cast<size_t>(file_size - moov_end));
+    file.seekg(moov_end, std::ios::beg);
+    file.read(reinterpret_cast<char*>(trailer.data()), trailer.size());
+    if (!file) return {};
+    return trailer;
+}
 
-        const uint32_t size32 = (static_cast<uint32_t>(header[0]) << 24) |
-                                 (static_cast<uint32_t>(header[1]) << 16) |
-                                 (static_cast<uint32_t>(header[2]) << 8) | header[3];
-        const bool is_moov = std::memcmp(header + 4, "moov", 4) == 0;
+std::optional<std::string> ReadInsvHeldName(const std::string& file_path) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) return std::nullopt;
+    file.seekg(0, std::ios::end);
+    const int64_t file_size = static_cast<int64_t>(file.tellg());
 
-        int64_t box_size;
-        if (size32 == 1) { // 64-bit extended size follows the 8-byte header
-            uint8_t ext[8];
-            file.read(reinterpret_cast<char*>(ext), 8);
-            if (!file) break;
-            box_size = 0;
-            for (uint8_t b : ext) box_size = (box_size << 8) | b;
-        } else if (size32 == 0) {
-            box_size = file_size - pos; // box extends to EOF
-        } else {
-            box_size = size32;
-        }
-        if (box_size < 8) break; // malformed box, bail out
-
-        if (is_moov) {
-            const int64_t moov_end = pos + box_size;
-            if (moov_end >= file_size) return {}; // nothing follows moov
-            std::vector<uint8_t> trailer(static_cast<size_t>(file_size - moov_end));
-            file.seekg(moov_end, std::ios::beg);
-            file.read(reinterpret_cast<char*>(trailer.data()), trailer.size());
-            if (!file) return {};
-            return trailer;
-        }
-        pos += box_size;
-    }
-    return {}; // no moov box found
+    int64_t moov = 0, moov_end = 0, udta = 0, udta_end = 0, free = 0, free_end = 0;
+    if (!FindBox(file, 0, file_size, "moov", moov, moov_end) ||
+        !FindBox(file, moov, moov_end, "udta", udta, udta_end) ||
+        !FindBox(file, udta, udta_end, "free", free, free_end))
+        return std::nullopt;
+    // The name sits near the box's start (byte ~600 on the A1, ~1250 on the
+    // X5); the rest, up to MBs, is padding and other data.
+    constexpr int64_t kSearch = 64 * 1024;
+    std::string bytes(static_cast<size_t>(std::min(free_end - free, kSearch)), '\0');
+    file.seekg(free, std::ios::beg);
+    file.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!file) return std::nullopt;
+    const size_t dcim = bytes.find("\\DCIM\\");
+    if (dcim == std::string::npos) return std::nullopt;
+    const size_t stop = bytes.find('\0', dcim);
+    if (stop == std::string::npos) return std::nullopt;
+    const std::string path = bytes.substr(dcim, stop - dcim);
+    if (!std::all_of(path.begin(), path.end(), [](char c) { return c > ' ' && c < 0x7f; }))
+        return std::nullopt;
+    const std::string name = path.substr(path.find_last_of('\\') + 1);
+    if (name.empty()) return std::nullopt;
+    return name;
 }
 
 } // namespace insv

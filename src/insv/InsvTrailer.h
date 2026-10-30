@@ -48,6 +48,11 @@ struct InsvMakerNotes {
     // (20250904193105; docs/formats/insta360-x5.md §5.1). 0 when absent (the
     // ONE X2 doesn't write it).
     uint64_t creation_time = 0;
+    // Field 24: the device-clock time of the first recorded frame, raw
+    // ticks (InsvTelemetry::first_frame_timestamp has it in µs). A clip's
+    // proxy carries the same value, which ties the two together however
+    // they're named. 0 when absent.
+    uint64_t first_frame_timestamp = 0;
 };
 
 // The profile named `name` in `notes`, or nullptr.
@@ -248,5 +253,14 @@ std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us 
 // original. ReadInsvExtendedCalibrationString scans it for the extended
 // calibration string.
 std::vector<uint8_t> ExtractRawTrailer(const std::string& file_path);
+
+// The file's own name as the camera gave it, from the card path it writes
+// into the MP4 header (`moov` / `udta` / `free`, `C:\DCIM\…\VID_….insv`;
+// the X5, its `.lrv` and the Antigravity A1 write it, the ONE X2 doesn't;
+// docs/formats/insta360-x5.md §1, docs/formats/antigravity-a1.md). Just the
+// name, without the folders. It survives the file being renamed, so it gives
+// a renamed clip its recording time and its proxy back. std::nullopt when
+// the file holds none.
+std::optional<std::string> ReadInsvHeldName(const std::string& file_path);
 
 } // namespace insv

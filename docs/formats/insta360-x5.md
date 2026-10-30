@@ -69,7 +69,13 @@ MISC/Camera01/VID_20250904_193105_00_002.insv.pb   protobuf sidecar (§9)
   GB single files exist. The continuation's metadata names the take's first
   file (§5.1 field 26).
 - The metadata also records the file's own card path
-  (`/DCIM/Camera01/VID_….insv`).
+  (`/DCIM/Camera01/VID_….insv`). So does the MP4 header, which a rename
+  doesn't touch either: `moov` / `udta`, in the `free` box after `AMBA`,
+  `C:\DCIM\Camera01\VID_….insv` (byte ~1250 of the box; the `.lrv` holds
+  its own `LRV_…` name), the same place as the Antigravity A1's. The app
+  finds a renamed clip's `.lrv` by it, or by the clip's stem
+  (`ride.insv`, `ride.lrv`) when the proxy's serial and field 24 are the
+  clip's.
 
 ## 2. MP4 container
 

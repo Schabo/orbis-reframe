@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -106,6 +108,65 @@ inline std::vector<uint8_t> insvTrailer(const std::vector<TrailerRecord>& record
     footer.u32(trailerLen).u32(3).str("8db42d694ccc418790edff439fe026bf");
     trailer.raw(footer.b);
     return trailer.b;
+}
+
+// Gives the MP4 at `path` the card path the X5 and the Antigravity A1
+// write into its header (`moov` / `udta`, a `free` box after an `AMBA` one;
+// insv::ReadInsvHeldName), naming the file `name`. The `moov` must be the
+// file's last box, as FFmpeg writes it and before a trailer is appended:
+// nothing after it moves, so no chunk offset changes. False otherwise.
+inline bool holdName(const std::string& path, const std::string& name)
+{
+    std::vector<uint8_t> file;
+    {
+        std::ifstream in(path, std::ios::binary);
+        file.assign(std::istreambuf_iterator<char>(in), {});
+    }
+    const auto size = [&](size_t at) {
+        return size_t(file[at]) << 24 | size_t(file[at + 1]) << 16 | size_t(file[at + 2]) << 8 |
+               size_t(file[at + 3]);
+    };
+    const auto grow = [&](size_t at, size_t by) {
+        const uint32_t v = uint32_t(size(at) + by);
+        for (int i = 0; i < 4; ++i)
+            file[at + i] = uint8_t(v >> (24 - 8 * i));
+    };
+    const auto box = [](const char* type, const std::vector<uint8_t>& payload) {
+        Bytes b;
+        const uint32_t n = uint32_t(8 + payload.size());
+        b.u8(uint8_t(n >> 24)).u8(uint8_t(n >> 16)).u8(uint8_t(n >> 8)).u8(uint8_t(n));
+        return b.str(type).raw(payload).b;
+    };
+    size_t moov = 0;
+    while (moov + 8 <= file.size() && std::memcmp(&file[moov + 4], "moov", 4) != 0 &&
+           size(moov) >= 8)
+        moov += size(moov);
+    if (moov + 8 > file.size() || moov + size(moov) != file.size())
+        return false;
+    // The name some way into the box, padded with zeros as the cameras do.
+    Bytes free;
+    free.raw(std::vector<uint8_t>(590, 0)).str("C:\\DCIM\\CAM_001\\" + name);
+    free.raw(std::vector<uint8_t>(64, 0));
+    Bytes held;
+    held.raw(box("AMBA", std::vector<uint8_t>(16, 0))).raw(box("free", free.b));
+    // Into the first `udta` (ahead of what FFmpeg put there), else a new one.
+    size_t at = moov + 8;
+    while (at + 8 <= file.size() && std::memcmp(&file[at + 4], "udta", 4) != 0) {
+        if (size(at) < 8)
+            return false;
+        at += size(at);
+    }
+    if (at + 8 <= file.size()) {
+        file.insert(file.begin() + std::ptrdiff_t(at + 8), held.b.begin(), held.b.end());
+        grow(at, held.b.size());
+    } else {
+        held.b = box("udta", held.b);
+        file.insert(file.end(), held.b.begin(), held.b.end());
+    }
+    grow(moov, held.b.size());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(file.data()), std::streamsize(file.size()));
+    return bool(out);
 }
 
 } // namespace testtrailer

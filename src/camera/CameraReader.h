@@ -34,9 +34,10 @@ public:
     // The GPS track lined up with the video; nullopt when the clip has none
     // or the file doesn't say how it lines up.
     virtual std::optional<insv::GpsTrack> readGps(const ClipMetadata& clip) const = 0;
-    // By its name alone: the clip file `path` would belong to if it is
-    // another file of a take (a lens's own file, the camera's proxy);
-    // nullopt for any other name. ClipFileOf checks the answer.
+    // By its name (or, renamed, the name the file holds): the clip file
+    // `path` would belong to if it is another file of a take (a lens's own
+    // file, the camera's proxy); nullopt for any other file. ClipFileOf
+    // checks the answer.
     virtual std::optional<std::string> clipFileFor(const std::string& path) const = 0;
     // The camera's own preview from the file, without decoding the video
     // (the media pool asks for many at once): stored ready (the X5), or made
