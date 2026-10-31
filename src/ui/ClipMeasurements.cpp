@@ -228,40 +228,105 @@ QString ClipMeasurements::failureText(stitch::MeasureFailure why, bool seam)
     return tr("the file can't be read");
 }
 
-QString ClipMeasurements::seamStatus(const ClipItem *c) const
+QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) const
 {
-    insv::SeamCorrection seam;
-    if (c && m_project->timeline()->sourceSeamCorrection(c->sourcePath, seam))
-        return tr("Seam: aligned for this clip (back lens yaw %1°, pitch %2°, roll %3°, "
-                  "centre %4 %, %5 %; lens scale %6 %).")
-            .arg(seam.lens1RotDeg[0], 0, 'f', 2)
-            .arg(seam.lens1RotDeg[1], 0, 'f', 2)
-            .arg(seam.lens1RotDeg[2], 0, 'f', 2)
-            .arg(seam.lens1Centre[0] * 100.0, 0, 'f', 2)
-            .arg(seam.lens1Centre[1] * 100.0, 0, 'f', 2)
-            .arg((seam.radialScale - 1.0) * 100.0, 0, 'f', 2);
-    if (c && m_seamMeasuringPath == c->sourcePath)
-        return tr("Seam: measuring this clip…");
-    if (const auto it = c ? m_seamFailed.constFind(c->sourcePath) : m_seamFailed.cend();
-        it != m_seamFailed.cend())
-        return tr("Seam: couldn't align this clip (%1).").arg(failureText(*it, true));
-    return QString();
-}
+    if (details)
+        details->clear();
+    if (!c)
+        return QString();
+    enum class State { None, Measuring, Done, Failed };
+    const QString &path = c->sourcePath;
+    const Timeline *t = m_project->timeline();
 
-QString ClipMeasurements::colourStatus(const ClipItem *c) const
-{
+    insv::SeamCorrection seam;
+    QString seamWhy, colourWhy;
+    State s = State::None, k = State::None;
+    if (t->sourceSeamCorrection(path, seam)) {
+        s = State::Done;
+    } else if (m_seamMeasuringPath == path) {
+        s = State::Measuring;
+    } else if (const auto it = m_seamFailed.constFind(path); it != m_seamFailed.cend()) {
+        s = State::Failed;
+        seamWhy = failureText(*it, true);
+    }
     insv::LensColour colour;
-    if (c && m_project->timeline()->sourceLensColour(c->sourcePath, colour))
-        return tr("Colour: lenses matched for this clip (they differed by red %1 %, "
-                  "green %2 %, blue %3 %).")
-            .arg(std::expm1(colour.logRatio[0]) * 100.0, 0, 'f', 1)
-            .arg(std::expm1(colour.logRatio[1]) * 100.0, 0, 'f', 1)
-            .arg(std::expm1(colour.logRatio[2]) * 100.0, 0, 'f', 1);
-    if (c && m_colourMeasuringPath == c->sourcePath)
-        return tr("Colour: measuring this clip's lenses…");
-    if (const auto it = c ? m_colourFailed.constFind(c->sourcePath) : m_colourFailed.cend();
-        it != m_colourFailed.cend())
-        return tr("Colour: couldn't match this clip's lenses (%1).").arg(failureText(*it, true));
+    if (t->sourceLensColour(path, colour)) {
+        k = State::Done;
+    } else if (m_colourMeasuringPath == path) {
+        k = State::Measuring;
+    } else if (const auto it = m_colourFailed.constFind(path); it != m_colourFailed.cend()) {
+        k = State::Failed;
+        colourWhy = failureText(*it, true);
+    }
+
+    // The figures, for the tooltip: they matter when checking a clip, not
+    // while editing.
+    if (details) {
+        QStringList lines;
+        if (s == State::Done)
+            lines << tr("Seam: the back lens turned by yaw %1°, pitch %2°, roll %3°; its centre "
+                        "moved by %4 %, %5 %; lens scale %6 %.")
+                         .arg(seam.lens1RotDeg[0], 0, 'f', 2)
+                         .arg(seam.lens1RotDeg[1], 0, 'f', 2)
+                         .arg(seam.lens1RotDeg[2], 0, 'f', 2)
+                         .arg(seam.lens1Centre[0] * 100.0, 0, 'f', 2)
+                         .arg(seam.lens1Centre[1] * 100.0, 0, 'f', 2)
+                         .arg((seam.radialScale - 1.0) * 100.0, 0, 'f', 2);
+        if (k == State::Done)
+            lines << tr("Lens colours: the lenses differed by red %1 %, green %2 %, blue %3 %.")
+                         .arg(std::expm1(colour.logRatio[0]) * 100.0, 0, 'f', 1)
+                         .arg(std::expm1(colour.logRatio[1]) * 100.0, 0, 'f', 1)
+                         .arg(std::expm1(colour.logRatio[2]) * 100.0, 0, 'f', 1);
+        *details = lines.join(QLatin1Char('\n'));
+    }
+
+    // One short line. The colour is measured after the seam, so the seam
+    // leads; a failure keeps its reason in view.
+    switch (s) {
+    case State::Measuring:
+        return tr("Measuring this clip's seam…");
+    case State::Done:
+        switch (k) {
+        case State::Done:
+            return tr("Seam aligned and lens colours matched for this clip.");
+        case State::Measuring:
+            return tr("Seam aligned; measuring this clip's lens colours…");
+        case State::Failed:
+            return tr("Seam aligned; couldn't match the lens colours (%1).").arg(colourWhy);
+        case State::None:
+            break;
+        }
+        return tr("Seam aligned for this clip.");
+    case State::Failed:
+        switch (k) {
+        case State::Done:
+            return tr("Couldn't align this clip's seam (%1); lens colours matched.").arg(seamWhy);
+        case State::Measuring:
+            return tr("Couldn't align this clip's seam (%1); measuring the lens colours…")
+                .arg(seamWhy);
+        case State::Failed:
+            return colourWhy == seamWhy
+                       ? tr("Couldn't align this clip's seam or match its lens colours (%1).")
+                             .arg(seamWhy)
+                       : tr("Couldn't align this clip's seam (%1) or match its lens colours (%2).")
+                             .arg(seamWhy, colourWhy);
+        case State::None:
+            break;
+        }
+        return tr("Couldn't align this clip's seam (%1).").arg(seamWhy);
+    case State::None:
+        break;
+    }
+    switch (k) {
+    case State::Done:
+        return tr("Lens colours matched for this clip.");
+    case State::Measuring:
+        return tr("Measuring this clip's lens colours…");
+    case State::Failed:
+        return tr("Couldn't match this clip's lens colours (%1).").arg(colourWhy);
+    case State::None:
+        break;
+    }
     return QString();
 }
 

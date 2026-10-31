@@ -32,8 +32,9 @@ public:
                   stitch::LensGuardProfiles profiles = stitch::LensGuardProfiles::all());
     // No clip to show: a new clip's settings, greyed out. Does not emit.
     void setNoClip();
-    // One line about the current clip's seam alignment (empty hides it).
-    void setSeamStatus(const QString &text);
+    // One line about the current clip's seam alignment and lens colour
+    // (empty hides it); `details`, the measured figures, go in its tooltip.
+    void setSeamStatus(const QString &text, const QString &details = QString());
 
 signals:
     void stitchEdited(LensGuard lensGuard, bool depthSeam);

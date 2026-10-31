@@ -1808,15 +1808,17 @@ void testMeasurementFailureReasons(const Ctx &c)
     const int garbage = t->appendClip(c.clipA, kClipMs, kFps); // not a video at all
     const int flat = t->appendClip(c.mp4, kClipMs, kFps);      // a video, not a 360 one
     ClipMeasurements measurements(&project, true);
-    const auto status = [&](int id) { return measurements.seamStatus(t->clipById(id)); };
+    const auto status = [&](int id) { return measurements.stitchStatus(t->clipById(id)); };
     measurements.schedule();
+    // The lens colour is tried after the seam, and fails for the same reason.
     CHECK(waitFor([&] {
-        return status(garbage).contains(QStringLiteral("couldn't align")) &&
-               status(flat).contains(QStringLiteral("couldn't align"));
+        return status(garbage).contains(QStringLiteral("or match")) &&
+               status(flat).contains(QStringLiteral("or match"));
     }, 20000));
-    CHECK(status(flat) == QStringLiteral("Seam: couldn't align this clip (not a 360 camera file)."));
-    CHECK(status(garbage) ==
-          QStringLiteral("Seam: couldn't align this clip (the file can't be read)."));
+    CHECK(status(flat) == QStringLiteral("Couldn't align this clip's seam or match its lens "
+                                         "colours (not a 360 camera file)."));
+    CHECK(status(garbage) == QStringLiteral("Couldn't align this clip's seam or match its lens "
+                                            "colours (the file can't be read)."));
 }
 
 // A grade pasted from elsewhere (another project's LUT) brings its LUT into

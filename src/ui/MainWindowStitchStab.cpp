@@ -262,12 +262,9 @@ void MainWindow::pushSeamCorrection()
 
 void MainWindow::updateSeamStatus()
 {
-    const ClipItem *c = m_timeline->clipById(m_clipId);
-    QStringList lines;
-    for (const QString &s : {m_measurements->seamStatus(c), m_measurements->colourStatus(c)})
-        if (!s.isEmpty())
-            lines << s;
-    m_stitchingPanel->setSeamStatus(lines.join(QLatin1Char('\n')));
+    QString details;
+    const QString text = m_measurements->stitchStatus(m_timeline->clipById(m_clipId), &details);
+    m_stitchingPanel->setSeamStatus(text, details);
 }
 
 void MainWindow::updateSyncStatus()

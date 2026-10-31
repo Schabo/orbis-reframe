@@ -62,8 +62,10 @@ public:
     // The Stabilization / Stitching panels' status lines for clip `c` (null =
     // none): measured, measuring, failed, or empty.
     QString syncStatus(const ClipItem *c) const;
-    QString seamStatus(const ClipItem *c) const;
-    QString colourStatus(const ClipItem *c) const;
+    // The Stitching panel's one line for the seam alignment and the lens
+    // colour together; `details` (optional) gets the measured figures, for
+    // its tooltip.
+    QString stitchStatus(const ClipItem *c, QString *details = nullptr) const;
 
 signals:
     // A measurement started or finished: the status lines changed.

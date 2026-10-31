@@ -108,13 +108,26 @@ near the seam. Things close to the camera don't line up by this alone; see
 [Stabilization](stabilization.md)), this runs in the background while
 playback is paused, and the result is saved in the project.
 
-The **Stitching** section shows the state for the clip under the playhead:
+The **Stitching** section shows, in one line, how far this and the lens
+colour measurement (see *Lens colour* below) have got for the clip under the
+playhead:
 
 | Message | Meaning |
 |---|---|
-| *Seam: measuring this clip…* | The measurement is running. |
-| *Seam: aligned for this clip (back lens yaw …, pitch …, roll …, centre …, …; lens scale …).* | Done. Yaw, pitch and roll are how far the back lens is turned to line up with the front one, in degrees; the centre is how far its picture's centre moves, in percent of the picture's width; the lens scale is how much larger (or, negative, smaller) both lenses draw the picture near the seam, in percent. A fraction of a degree, and a few hundredths of a percent, are normal. |
-| *Seam: couldn't align this clip (…).* | The measurement didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only. |
+| *Measuring this clip's seam…* | The seam alignment is running. The lens colour is measured after it. |
+| *Seam aligned; measuring this clip's lens colours…* | The seam is done, the lens colour is running. |
+| *Seam aligned and lens colours matched for this clip.* | Both done. |
+| *Couldn't align this clip's seam (…)* | The seam alignment didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only, and its lens colour is still measured. |
+| *… couldn't match the lens colours (…)* | The lens colour measurement didn't succeed, for one of the same reasons. The lenses are stitched as recorded. |
+
+Hold the pointer over the line to see what was measured. For the seam: how
+far the back lens is turned to line up with the front one (yaw, pitch and
+roll, in degrees), how far its picture's centre moves (in percent of the
+picture's width), and how much larger (or, negative, smaller) both lenses
+draw the picture near the seam (the lens scale, in percent). A fraction of a
+degree, and a few hundredths of a percent, are normal. For the lens colour:
+how far apart the two lenses were on the seam, per colour, in percent; a few
+percent is normal.
 
 The reasons a measurement gives:
 
@@ -154,13 +167,8 @@ lenses stays the same white on both sides of the seam rather than turning
 slightly grey on one. Flare itself (veiling light from the sun on one lens)
 isn't removed: one lens really sees more light there.
 
-The **Stitching** section shows the state below the seam alignment's line:
-
-| Message | Meaning |
-|---|---|
-| *Colour: measuring this clip's lenses…* | The measurement is running. |
-| *Colour: lenses matched for this clip (they differed by red …, green …, blue … %).* | Done. How far apart the two lenses were on the seam, per colour, in percent; a few percent is normal. |
-| *Colour: couldn't match this clip's lenses (…).* | The measurement didn't succeed (the reasons are those of the seam alignment above). The lenses are stitched as recorded. |
+The **Stitching** section's line shows when it's done (see *Seam alignment*
+above).
 
 Like the seam alignment, changing **Lens guards** measures the clip's file
 again. Projects from older versions of orbis-reframe matched the lenses
