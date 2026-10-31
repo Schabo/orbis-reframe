@@ -122,6 +122,11 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
         sp.lensColS[c] = p.lensColourSlope[c];
     }
     sp.lensCol[3] = sp.lensColS[3] = 0.0f;
+    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+        for (int c = 0; c < 3; ++c)
+            sp.lensLocal[b][c] = p.seamBlend.local[b][c];
+        sp.lensLocal[b][3] = 0.0f;
+    }
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
     const int nBlur = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);

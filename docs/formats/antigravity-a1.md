@@ -155,7 +155,13 @@ Markers as in [`README.md`](README.md).
   that lens's veiling flare adds light (lens 1 ≈ 0.56-0.87 × lens 0 + 26-90
   levels on the sun's side): such frames show as a wide spread of the
   ratio along the seam, and the app's per-clip measurement
-  (`insv::FitLensColour`) leaves them out.
+  (`insv::FitLensColour`) leaves them out. ⚠️ **Not the same all round the
+  seam** within a frame: on `_020` at 3-5 s (flying low, the sun near the
+  horizon) the lenses agree within 1-5 % on half the seam circle, while on
+  the ~135° facing the sun the down lens is 15-45 % darker (most in blue);
+  and away from the sun the per-clip value (G −2.4 %) is ~2 % off on
+  stretches where the lenses agree. The stitch therefore also matches them
+  per stretch of the seam, per frame (`insv::SeamBlend::local`).
 - ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.

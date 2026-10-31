@@ -33,6 +33,7 @@
 #define SEAM_CUT_EL_RAD 0.010471976 // == insv::kSeamCutPatchElDeg (0.6 deg)
 #define SEAM_CUT_CLIP 250.0 // == insv::kSeamCutClip
 #define LENS_COLOUR_MAX_LOG 0.3 // == insv::kLensColourMaxLog
+#define LENS_COLOUR_LOCAL_RAMP_RAD 0.17453293 // == insv::kLensColourLocalRampDeg (10 deg)
 #define LENS_COLOUR_KNEE_LO 192.0 // == insv::kLensColourKneeLo
 #define LENS_COLOUR_KNEE_HI 250.0 // == insv::kLensColourKneeHi
 #define MAX_BLUR 64 // == insv::kMaxBlurQuads
@@ -72,6 +73,7 @@ layout(std140, binding = 0) uniform Params {
     // the seam circle, the frame's residual added; its slope per radian.
     vec4 lensCol;   // R, G, B, -
     vec4 lensColS;  // R, G, B, -
+    vec4 lensLocal[SEAM_BINS]; // per azimuth bin: the local correction R, G, B, - (insv::SeamBlend::local)
     // Privacy blur (insv::BlurQuadFrame, carried into the stitch world frame):
     // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
@@ -305,9 +307,12 @@ vec2 seamCFBin(int b) { vec4 v = P.seamCF[b >> 1]; return (b & 1) == 0 ? v.xy : 
 // The seam's per-bin tables at `dir`, its position found once: returns the
 // inverse stitch distance (insv::FisheyeStitcher::seamQAt); `w` the two
 // lenses' feather -- with a measured blend the cosine ramp around the bin's
-// cut with its own half-width (seamBlendWeights), else the plain cross-fade.
-float seamTables(vec3 dir, out vec2 w)
+// cut with its own half-width (seamBlendWeights), else the plain cross-fade;
+// `local` the lens colour's local correction there, in the band and faded
+// out past it (insv::FisheyeStitcher::lensLogGains), 0 without the seam.
+float seamTables(vec3 dir, out vec2 w, out vec3 local)
 {
+    local = vec3(0.0);
     if (P.seamA.w == 0.0) {
         w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
         return 0.0;
@@ -323,17 +328,24 @@ float seamTables(vec3 dir, out vec2 w)
     } else {
         w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
     }
+    float e = abs(pos.x), band = P.seam.y;
+    if (e < band + LENS_COLOUR_LOCAL_RAMP_RAD) {
+        float a = e > band ? 0.5 * (1.0 + cos(PI * (e - band) / LENS_COLOUR_LOCAL_RAMP_RAD)) : 1.0;
+        local = a * mix(P.lensLocal[i0].xyz, P.lensLocal[i1].xyz, pos.y);
+    }
     return seamQFrom(pos, i0, i1);
 }
 
-// Each lens's log gain per channel for `dir` (insv::FisheyeStitcher::
-// lensLogGains): the lens colour's log ratio L at dir's elevation off the
-// seam circle, held at the band's edge beyond it; lens 0 -L / 2, lens 1 L / 2.
-vec3 lensColourLog(vec3 dir)
+// The lens colour's log ratio L (lens 0 / lens 1) for `dir`
+// (insv::FisheyeStitcher::lensLogGains): at dir's elevation off the seam
+// circle, held at the band's edge beyond it, plus the `local` correction
+// (seamTables); lens 0 takes -L / 2, lens 1 L / 2.
+vec3 lensColourLog(vec3 dir, vec3 local)
 {
     float e = clamp(asin(clamp(dot(dir, P.seamA.xyz), -1.0, 1.0)), -P.seam.y, P.seam.y);
-    return clamp(P.lensCol.xyz + P.lensColS.xyz * e, vec3(-LENS_COLOUR_MAX_LOG),
-                 vec3(LENS_COLOUR_MAX_LOG));
+    vec3 l = clamp(P.lensCol.xyz + P.lensColS.xyz * e, vec3(-LENS_COLOUR_MAX_LOG),
+                   vec3(LENS_COLOUR_MAX_LOG));
+    return clamp(l + local, vec3(-LENS_COLOUR_MAX_LOG), vec3(LENS_COLOUR_MAX_LOG));
 }
 
 // A lens sample `s` (0..255) with log gain `lg` per channel, eased to 1 over
@@ -345,8 +357,9 @@ vec3 lensColourApply(vec3 s, vec3 lg)
 
 // Per-lens sample uv + blend weight for stitch-world direction `dir` (a
 // weight of 0 means that lens doesn't contribute), with the seam's per-bin
-// blend (seamTables).
-void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w1)
+// blend (seamTables), and the lens colour's local correction there.
+void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w1,
+                 out vec3 local)
 {
     float fw = float(P.dims.x), fh = float(P.dims.y);
     uv0 = vec2(0.0);
@@ -354,7 +367,7 @@ void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w
     w0 = 0.0;
     w1 = 0.0;
     vec2 wsl;
-    float q = seamTables(dir, wsl);
+    float q = seamTables(dir, wsl, local);
     for (int i = 0; i < 2; ++i) {
         float ws = wsl[i];
         if (ws <= 0.0)
@@ -545,8 +558,9 @@ vec3 blendLenses(vec3 dir)
 {
     vec2 uv0, uv1;
     float w0, w1;
-    lensWeights(dir, uv0, uv1, w0, w1);
-    vec3 lg = 0.5 * lensColourLog(dir);
+    vec3 local;
+    lensWeights(dir, uv0, uv1, w0, w1, local);
+    vec3 lg = 0.5 * lensColourLog(dir, local);
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
     if (w0 > 0.0) { acc += w0 * lensColourApply(sampleLens(0, uv0), -lg); wsum += w0; }

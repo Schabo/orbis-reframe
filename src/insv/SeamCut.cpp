@@ -126,6 +126,7 @@ void SeamCutTracker::reset()
     m_blend = SeamBlend{};
     m_has = false;
     m_colourHas = false;
+    m_localHas = false;
     m_avgDis.clear();
     m_row.assign(kSeamDepthBins, -1);
     m_dis.assign(kSeamDepthBins, 0.0f);
@@ -226,24 +227,62 @@ void SeamCutTracker::setLensColour(const LensColour& c)
         return;
     m_lensColour = c;
     m_colourHas = false;
+    m_localHas = false;
     for (float& x : m_blend.colour)
         x = 0.0f;
+    for (auto& b : m_blend.local)
+        for (float& x : b)
+            x = 0.0f;
 }
 
 void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad)
 {
     // A frame that says nothing (too few usable cells, or flare) holds the
     // residual where it is.
+    const double dt = static_cast<double>(ptsMs - m_lastPts);
     double r[3];
-    if (!LensColourResidual(stats, bandRad, m_lensColour, r))
-        return;
-    const double keep = m_colourHas && tuning.colourMemoryMs > 0
-                            ? std::exp(-static_cast<double>(ptsMs - m_lastPts) /
-                                       tuning.colourMemoryMs)
-                            : 0.0;
-    for (int k = 0; k < 3; ++k)
-        m_blend.colour[k] = static_cast<float>(keep * m_blend.colour[k] + (1.0 - keep) * r[k]);
-    m_colourHas = true;
+    if (LensColourResidual(stats, bandRad, m_lensColour, r)) {
+        const double keep = m_colourHas && tuning.colourMemoryMs > 0
+                                ? std::exp(-dt / tuning.colourMemoryMs)
+                                : 0.0;
+        for (int k = 0; k < 3; ++k)
+            m_blend.colour[k] =
+                static_cast<float>(keep * m_blend.colour[k] + (1.0 - keep) * r[k]);
+        m_colourHas = true;
+    }
+
+    // The local correction: what is left per bin after the clip's colour and
+    // the residual, smoothed along the seam from the bins that have data,
+    // and faded to none where little is in reach -- a stretch without its
+    // own data isn't given its neighbours' (flare) correction. It follows
+    // flare frames: that's what it is for.
+    constexpr int B = kSeamDepthBins;
+    const double res[3] = {m_blend.colour[0], m_blend.colour[1], m_blend.colour[2]};
+    std::vector<float> v(B * 3), w(B);
+    LensColourPerBin(stats, bandRad, m_lensColour, res, v.data(), w.data());
+    const double sigma = std::max(tuning.localSigma, 0.5);
+    const int reach = static_cast<int>(std::ceil(2.5 * sigma));
+    const double keep =
+        m_localHas && tuning.localMemoryMs > 0 ? std::exp(-dt / tuning.localMemoryMs) : 0.0;
+    for (int b = 0; b < B; ++b) {
+        double sw = 0, s[3] = {0, 0, 0};
+        for (int d = -reach; d <= reach; ++d) {
+            const int j = (b + d + B) % B;
+            const double g = std::exp(-0.5 * d * d / (sigma * sigma)) * w[j];
+            sw += g;
+            for (int k = 0; k < 3; ++k)
+                s[k] += g * v[j * 3 + k];
+        }
+        const double conf = std::min(1.0, sw / tuning.localMinSamples);
+        for (int k = 0; k < 3; ++k) {
+            const double target =
+                sw > 0 ? std::clamp(conf * s[k] / sw, -kLensColourLocalMaxLog,
+                                    kLensColourLocalMaxLog)
+                       : 0.0;
+            m_blend.local[b][k] = static_cast<float>(keep * m_blend.local[b][k] + (1.0 - keep) * target);
+        }
+    }
+    m_localHas = true;
 }
 
 } // namespace insv

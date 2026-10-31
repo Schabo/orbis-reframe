@@ -84,6 +84,20 @@ struct LensColourFit {
 // rest is taken before the line is fitted.
 LensColourFit FitLensColour(const std::vector<const SeamCutStats*>& frames, double bandRad);
 
+// Where the difference changes round the seam within a frame -- a low sun's
+// veiling light in one lens on one side of the seam -- a local correction
+// follows it (SeamBlend::local): per azimuth bin, bounded by this, applied
+// in the blend band and faded out over kLensColourLocalRampDeg past it.
+constexpr double kLensColourLocalMaxLog = 0.25;
+constexpr double kLensColourLocalRampDeg = 10.0;
+
+// One frame's departure from the clip's lens colour `c` plus `residual`
+// (log, per channel) per azimuth bin of the seam: the median over the bin's
+// usable cells into value[bin * 3 + channel], their unclipped samples into
+// weight[bin] (0 = no usable cell).
+void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
+                      const double residual[3], float* value, float* weight);
+
 // One frame's departure from the clip's lens colour `c`: the median over its
 // usable cells of the measured log ratio less L_c(e), per channel. False
 // (and `out` untouched) when the frame has too few usable cells or looks

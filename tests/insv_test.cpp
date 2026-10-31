@@ -742,6 +742,21 @@ void testSeamBlend()
     CHECK(near(lg[1][2] - lg[0][2], std::log(0.9) - 0.05, 1e-6));
     // The GPU gets the same, per radian.
     CHECK(near(sc.gpuParams().lensColourSlope[1], 0.01 / kDeg, 1e-6));
+    // The local correction: whole in the band, half way along the ramp past
+    // it, gone beyond; the sum bounded.
+    insv::SeamBlend local;
+    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+        local.local[b][1] = 0.1f;
+    sc.lensLogGains(sc.seamDir(phi, 1.0 * kDeg), &local, lg);
+    CHECK(near(lg[1][1] - lg[0][1], 0.01 + 0.1, 1e-6));
+    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * insv::kLensColourLocalRampDeg * kDeg), &local, lg);
+    CHECK(near(lg[1][1] - lg[0][1], edgeG + 0.05, 1e-6));
+    sc.lensLogGains(sc.seamDir(phi, band + insv::kLensColourLocalRampDeg * kDeg + 0.01), &local, lg);
+    CHECK(near(lg[1][1] - lg[0][1], edgeG, 1e-6));
+    local.local[3][0] = local.local[4][0] = 0.25f;
+    sc.lensLogGains(sc.seamDir((3.5 + 0.5) * 2.0 * std::numbers::pi / insv::kSeamDepthBins, 0.0),
+                    &local, lg);
+    CHECK(near(lg[1][0] - lg[0][0], insv::kLensColourMaxLog, 1e-6));
 
     // Highlights: the gain eases to 1 over the knee, a channel still rising.
     CHECK(near(insv::LensColourGain(0.1, 100.0), std::exp(0.1), 1e-12));
@@ -871,6 +886,56 @@ void testSeamCutTracker()
     CHECK(near(g[0], insv::kLensColourResidualMaxLog, 1e-6));
 }
 
+// The local correction round the seam: a stretch where the lenses differ
+// (a low sun's veil in one lens) gets it, the rest of the seam doesn't, nor
+// does a stretch with no data of its own; it follows flare frames.
+void testLensColourLocal()
+{
+    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    const double band = 5.0 * kDeg;
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto fill = [&](double veil) {
+        for (int b = 0; b < B; ++b)
+            for (int r = 0; r < R; ++r) {
+                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                c.n = 64;
+                c.texture = 20;
+                c.zsad = 2;
+                c.nColour = b < 20 ? 0.0f : 64.0f; // nothing usable there (clipped)
+                for (int k = 0; k < 3; ++k) {
+                    c.mean[1][k] = 120;
+                    c.mean[0][k] = 120;
+                }
+                if (b >= 30 && b < 50) // lens 1 veiled: lens 0 darker
+                    for (int k = 0; k < 3; ++k)
+                        c.mean[0][k] = static_cast<float>(120 * std::exp(-veil));
+            }
+    };
+    fill(0.2);
+    insv::SeamCutTracker tr;
+    tr.update(*stats, 1000, band);
+    const insv::SeamBlend& bl = tr.blend();
+    CHECK(near(bl.local[40][1], -0.2, 0.01));
+    CHECK(near(bl.local[90][1], 0.0, 1e-4));
+    CHECK(bl.local[5][1] == 0.0f);         // no data of its own, out of reach: none
+    CHECK(near(bl.colour[1], 0.0, 1e-4));  // the whole seam: the rest agrees
+    // Over 200 ms, not at once.
+    fill(0.0);
+    tr.update(*stats, 1033, band);
+    CHECK(bl.local[40][1] < -0.1 && bl.local[40][1] > -0.2);
+    // A veil over most of the seam, unevenly (flare): the whole-seam residual
+    // holds, the local correction follows.
+    for (int b = 20; b < B; ++b)
+        for (int r = 0; r < R; ++r)
+            for (int k = 0; k < 3; ++k)
+                stats->cell[b][r].mean[0][k] = static_cast<float>(120 * std::exp(-0.05 - 0.05 * (b % 10)));
+    const float held = bl.colour[1];
+    for (int t = 1066; t < 2000; t += 33)
+        tr.update(*stats, t, band);
+    CHECK(bl.colour[1] == held);
+    CHECK(bl.local[85][1] < -0.15 && bl.local[85][1] >= -insv::kLensColourLocalMaxLog - 1e-6);
+}
+
 // FitLensColour on synthetic statistics: a known constant and slope across
 // the band, with frames of flare mixed in, clipped and disagreeing cells.
 void testFitLensColour()
@@ -923,6 +988,22 @@ void testFitLensColour()
     for (int k = 0; k < 3; ++k)
         CHECK(near(res[k], 0.0, 0.006));
     CHECK(!insv::LensColourResidual(*frames[2], band, r.colour, res));
+
+    // A difference on one side of the seam in every frame (3 of the 8
+    // stretches) doesn't move the clip's value.
+    for (const auto& s : frames)
+        for (int b = 0; b < 48; ++b)
+            for (int r = 0; r < R; ++r)
+                for (int k = 0; k < 3; ++k)
+                    s->cell[b][r].mean[0][k] *= 0.85f;
+    ptrs.clear();
+    for (const auto& s : frames)
+        ptrs.push_back(s.get());
+    const insv::LensColourFit sided = insv::FitLensColour(ptrs, band);
+    std::printf("lens colour, one side darker: %s\n", sided.message.c_str());
+    CHECK(sided.ok);
+    for (int k = 0; k < 3; ++k)
+        CHECK(near(sided.colour.logRatio[k], a[k], 0.004));
 
     // Too few frames: no fit.
     ptrs.resize(2);
@@ -1890,6 +1971,7 @@ int main()
     testSeamCutTracker();
     testSeamCutStats();
     testFitLensColour();
+    testLensColourLocal();
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();

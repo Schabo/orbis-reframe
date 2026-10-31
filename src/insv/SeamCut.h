@@ -32,7 +32,9 @@
 // neither is clipped. Over a clip they give its lens colour
 // (insv::FitLensColour); per frame, what is left of the difference after it,
 // a small slow residual (SeamBlend::colour) for lenses that drift apart
-// within a clip. Dependency-free (insv lib).
+// within a clip, and per azimuth bin a faster local correction
+// (SeamBlend::local) where the difference changes round the seam (a low
+// sun's veiling light in one lens). Dependency-free (insv lib).
 
 namespace insv {
 
@@ -87,6 +89,9 @@ struct SeamCutTuning {
     double stay = 0.15;       // cost for leaving last frame's row in a bin
     double widthSigma = 1.0;  // smoothing of the fade width along the azimuth, bins
     double colourMemoryMs = 1000.0; // time constant of the colour residual
+    double localMemoryMs = 200.0;   // ... and of the local correction round the seam
+    double localSigma = 3.0;        // its smoothing along the azimuth, bins
+    double localMinSamples = 128.0; // unclipped samples in reach for the full correction
     int64_t resetGapMs = 250; // a jump this big (or backwards) starts over
 };
 
@@ -117,13 +122,14 @@ public:
     SeamCutTuning tuning;
 
 private:
-    // The colour residual (m_blend.colour) from this frame's statistics;
-    // before m_lastPts moves on.
+    // The colour residual and the local correction (m_blend.colour /
+    // local) from this frame's statistics; before m_lastPts moves on.
     void updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad);
 
     SeamBlend m_blend;
     LensColour m_lensColour;
     bool m_colourHas = false; // m_blend.colour holds a running average
+    bool m_localHas = false;  // m_blend.local likewise
     // The running average of each cell's disagreement (bin-major,
     // kSeamCutRows per bin), valid while m_has.
     std::vector<float> m_avgDis;

@@ -46,7 +46,7 @@ struct LensFrame {
     // per-frame capture-time taps, the depth-aware seam's table, the privacy
     // blur quads, the lenses' Y'CbCr -> R'G'B' conversion), packed by the
     // exporter.
-    static constexpr int kParamsBytes = 8448;
+    static constexpr int kParamsBytes = 10496;
     std::array<uint8_t, kParamsBytes> params{};
     int64_t timestamp_ms = 0;
 };

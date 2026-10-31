@@ -440,6 +440,23 @@ void FisheyeStitcher::lensLogGains(const Vec3& dir, const SeamBlend* blend, doub
             residual[c] = blend->colour[c];
     LensColourLog(m_params.lensColour, std::asin(std::clamp(sa, -1.0, 1.0)), m_bandRad, residual,
                   L);
+    if (blend) {
+        // The local correction round the seam, in the band and faded out
+        // past it; the sum bounded as the rest.
+        double e, t;
+        int i0, i1;
+        seamPosition(dir, e, i0, i1, t);
+        e = std::fabs(e);
+        const double rampRad = kLensColourLocalRampDeg * kDeg;
+        if (e < m_bandRad + rampRad) {
+            const double a =
+                e > m_bandRad ? 0.5 * (1.0 + std::cos(kPi * (e - m_bandRad) / rampRad)) : 1.0;
+            for (int c = 0; c < 3; ++c)
+                L[c] = std::clamp(L[c] + a * (blend->local[i0][c] * (1.0 - t) +
+                                              blend->local[i1][c] * t),
+                                  -kLensColourMaxLog, kLensColourMaxLog);
+        }
+    }
     for (int c = 0; c < 3; ++c) {
         lg[0][c] = -0.5 * L[c];
         lg[1][c] = 0.5 * L[c];

@@ -160,12 +160,19 @@ project.
 
 On most cameras the difference stays the same through a clip. Where it
 drifts (the ONE X2's lenses do), a small, slow correction from the frames
-being played follows it, as long as **Depth-aware seam** is on.
+being played follows it. And it isn't always the same all the way round the
+seam: with a low sun, one lens catches veiling light on the sun's side, and
+on some clips the lenses agree on one stretch of the seam and differ on the
+rest. So along the seam the two lenses are also matched stretch by stretch,
+frame by frame, from what both see there; a stretch where they see nothing
+alike to compare (clipped sky, very close things) is left alone. This
+correction only touches the overlap and fades out just past it. Both need
+**Depth-aware seam** on.
 
 Bright highlights are left as recorded: a sky that is blown out in both
 lenses stays the same white on both sides of the seam rather than turning
 slightly grey on one. Flare itself (veiling light from the sun on one lens)
-isn't removed: one lens really sees more light there.
+isn't removed away from the seam: one lens really sees more light there.
 
 The **Stitching** section's line shows when it's done (see *Seam alignment*
 above).

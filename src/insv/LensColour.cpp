@@ -30,9 +30,13 @@ constexpr int kMinCells = 40;
 constexpr double kFarLog = 0.1;
 constexpr double kFlareFloor = 0.33;
 constexpr double kFlareMargin = 0.15;
-// The fit: per row across the band the median over this many cells at least,
-// at least this many rows and frames.
-constexpr int kMinRowCells = 20;
+// The fit: the seam circle in kSectors stretches; per row across the band and
+// stretch the median over the clip's cells there (kMinSectorCells at least),
+// per row the median over at least kMinRowSectors stretches; at least
+// kMinRows rows and kMinFrames frames.
+constexpr int kSectors = 8;
+constexpr int kMinSectorCells = 10;
+constexpr int kMinRowSectors = 3;
 constexpr int kMinRows = 3;
 constexpr int kMinFrames = 3;
 
@@ -41,6 +45,7 @@ struct Cell {
     double eDeg; // the row's elevation, towards lens 0
     double w;    // unclipped samples
     int row;
+    int bin;
 };
 
 std::vector<Cell> usableCells(const SeamCutStats& s, double bandRad)
@@ -64,6 +69,7 @@ std::vector<Cell> usableCells(const SeamCutStats& s, double bandRad)
             x.eDeg = SeamCutRowE(r, bandRad) / kDeg;
             x.w = c.nColour;
             x.row = r;
+            x.bin = b;
             out.push_back(x);
         }
     return out;
@@ -149,7 +155,7 @@ LensColourFit FitLensColour(const std::vector<const SeamCutStats*>& frames, doub
     const double spread = sorted.empty() ? 0.0 : sorted[sorted.size() / 2];
     const double flareAt = std::max(kFlareFloor, spread + kFlareMargin);
 
-    std::vector<std::pair<double, double>> rows[kSeamCutRows][3];
+    std::vector<std::pair<double, double>> rows[kSeamCutRows][kSectors][3];
     for (size_t f = 0; f < cells.size(); ++f) {
         if (far[f] > flareAt) {
             ++out.flareFrames;
@@ -158,24 +164,35 @@ LensColourFit FitLensColour(const std::vector<const SeamCutStats*>& frames, doub
         ++out.frames;
         for (const Cell& c : cells[f]) {
             for (int k = 0; k < 3; ++k)
-                rows[c.row][k].emplace_back(c.L[k], c.w);
+                rows[c.row][c.bin * kSectors / kSeamDepthBins][k].emplace_back(c.L[k], c.w);
             ++out.cells;
         }
     }
 
-    // Per row the median, then per channel the line through the rows, each
-    // row weighted by its cells.
+    // Per row and stretch of the seam the median, per row the median over
+    // the stretches -- a difference on one side of the seam only (a low
+    // sun's veiling light in one lens, in frames the flare test lets
+    // through) doesn't move it -- then per channel the line through the
+    // rows, each row weighted by its cells.
     double sw = 0, se = 0, see = 0, sl[3] = {}, sel[3] = {};
     int usedRows = 0;
     for (int r = 0; r < kSeamCutRows; ++r) {
-        const double n = static_cast<double>(rows[r][0].size());
-        if (n < kMinRowCells)
+        std::vector<std::pair<double, double>> sectors[3];
+        double n = 0;
+        for (int q = 0; q < kSectors; ++q) {
+            if (static_cast<int>(rows[r][q][0].size()) < kMinSectorCells)
+                continue;
+            n += static_cast<double>(rows[r][q][0].size());
+            for (int k = 0; k < 3; ++k)
+                sectors[k].emplace_back(weightedMedian(rows[r][q][k]), 1.0);
+        }
+        if (static_cast<int>(sectors[0].size()) < kMinRowSectors)
             continue;
         ++usedRows;
         const double e = SeamCutRowE(r, bandRad) / kDeg;
         sw += n, se += n * e, see += n * e * e;
         for (int k = 0; k < 3; ++k) {
-            const double m = weightedMedian(rows[r][k]);
+            const double m = weightedMedian(sectors[k]);
             sl[k] += n * m, sel[k] += n * e * m;
         }
     }
@@ -206,6 +223,27 @@ LensColourFit FitLensColour(const std::vector<const SeamCutStats*>& frames, doub
                   100.0 * c.slope[2], out.frames, out.flareFrames, out.cells, 100.0 * spread);
     out.message = buf;
     return out;
+}
+
+void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
+                      const double residual[3], float* value, float* weight)
+{
+    const std::vector<Cell> cells = usableCells(stats, bandRad);
+    std::vector<std::pair<double, double>> v[kSeamDepthBins][3];
+    for (const Cell& x : cells) {
+        double m[3];
+        LensColourLog(c, x.eDeg * kDeg, bandRad, residual, m);
+        for (int k = 0; k < 3; ++k)
+            v[x.bin][k].emplace_back(x.L[k] - m[k], x.w);
+    }
+    for (int b = 0; b < kSeamDepthBins; ++b) {
+        double w = 0;
+        for (const auto& [d, wt] : v[b][0])
+            w += wt;
+        weight[b] = static_cast<float>(w);
+        for (int k = 0; k < 3; ++k)
+            value[b * 3 + k] = static_cast<float>(weightedMedian(v[b][k]));
+    }
 }
 
 bool LensColourResidual(const SeamCutStats& stats, double bandRad, const LensColour& c,

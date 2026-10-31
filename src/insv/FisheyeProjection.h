@@ -179,6 +179,9 @@ struct SeamBlend {
     float fade[kSeamDepthBins] = {};
     // log(lens 0 / lens 1), R G B.
     float colour[3] = {};
+    // And per azimuth bin what is left of it after that, near the seam
+    // (insv::kLensColourLocalMaxLog), R G B.
+    float local[kSeamDepthBins][3] = {};
 };
 
 // Everything a GPU port of renderEquirect() needs, as plain floats -- one
@@ -319,8 +322,10 @@ public:
     // null or not measured yet.
     void seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const;
     // Each lens's log gain per channel for `dir` from the clip's lens colour
-    // and the frame's residual (`blend`, null = none): lens 0 -L / 2, lens 1
-    // L / 2 (insv::LensColourLog). Applied with LensColourGain.
+    // and the frame's residual and local correction (`blend`, null = none;
+    // the local one in the band, faded out over kLensColourLocalRampDeg past
+    // it): lens 0 -L / 2, lens 1 L / 2 (insv::LensColourLog). Applied with
+    // LensColourGain.
     void lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3]) const;
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
