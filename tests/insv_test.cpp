@@ -724,20 +724,20 @@ void testSeamBlend()
     pc.lensColour.slope[1] = 0.01;
     insv::FisheyeStitcher sc;
     CHECK(sc.configure(c, 3840, 3840, pc));
-    double lg[2][3];
-    sc.lensLogGains(sc.seamDir(phi, 2.0 * kDeg), nullptr, lg);
+    double lg[2][3], vl[2][3];
+    sc.lensLogGains(sc.seamDir(phi, 2.0 * kDeg), nullptr, lg, vl);
     CHECK(near(lg[1][0] - lg[0][0], std::log(1.2), 1e-6) && near(lg[0][0] + lg[1][0], 0.0, 1e-12));
     CHECK(near(lg[1][1] - lg[0][1], 0.02, 1e-6));
     CHECK(near(lg[1][2] - lg[0][2], std::log(0.9), 1e-6));
     const double edgeG = 0.01 * band / kDeg;
-    sc.lensLogGains(sc.seamDir(phi, band + 20.0 * kDeg), nullptr, lg);
+    sc.lensLogGains(sc.seamDir(phi, band + 20.0 * kDeg), nullptr, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], edgeG, 1e-6) && near(lg[1][0] - lg[0][0], std::log(1.2), 1e-6));
-    sc.lensLogGains(sc.seamDir(phi, -60.0 * kDeg), nullptr, lg);
+    sc.lensLogGains(sc.seamDir(phi, -60.0 * kDeg), nullptr, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], -edgeG, 1e-6));
     insv::SeamBlend residual;
     residual.colour[0] = 0.15f;
     residual.colour[2] = -0.05f;
-    sc.lensLogGains(sc.seamDir(phi, 0.0), &residual, lg);
+    sc.lensLogGains(sc.seamDir(phi, 0.0), &residual, lg, vl);
     CHECK(near(lg[1][0] - lg[0][0], insv::kLensColourMaxLog, 1e-6)); // bounded
     CHECK(near(lg[1][2] - lg[0][2], std::log(0.9) - 0.05, 1e-6));
     // The GPU gets the same, per radian.
@@ -747,16 +747,41 @@ void testSeamBlend()
     insv::SeamBlend local;
     for (int b = 0; b < insv::kSeamDepthBins; ++b)
         local.local[b][1] = 0.1f;
-    sc.lensLogGains(sc.seamDir(phi, 1.0 * kDeg), &local, lg);
+    sc.lensLogGains(sc.seamDir(phi, 1.0 * kDeg), &local, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], 0.01 + 0.1, 1e-6));
-    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * insv::kLensColourLocalRampDeg * kDeg), &local, lg);
+    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * insv::kLensColourLocalRampDeg * kDeg), &local, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], edgeG + 0.05, 1e-6));
-    sc.lensLogGains(sc.seamDir(phi, band + insv::kLensColourLocalRampDeg * kDeg + 0.01), &local, lg);
+    sc.lensLogGains(sc.seamDir(phi, band + insv::kLensColourLocalRampDeg * kDeg + 0.01), &local, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], edgeG, 1e-6));
     local.local[3][0] = local.local[4][0] = 0.25f;
     sc.lensLogGains(sc.seamDir((3.5 + 0.5) * 2.0 * std::numbers::pi / insv::kSeamDepthBins, 0.0),
-                    &local, lg);
+                    &local, lg, vl);
     CHECK(near(lg[1][0] - lg[0][0], insv::kLensColourMaxLog, 1e-6));
+    CHECK(vl[0][1] == 0.0 && vl[1][1] == 0.0);
+    // The veiling light likewise, to the lens that has it.
+    insv::SeamBlend veiled;
+    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+        veiled.veil[b][1] = -0.1f; // lens 1
+    sc.lensLogGains(sc.seamDir(phi, 1.0 * kDeg), &veiled, lg, vl);
+    CHECK(vl[0][1] == 0.0 && near(vl[1][1], 0.1, 1e-6) && vl[1][0] == 0.0);
+    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * insv::kLensColourLocalRampDeg * kDeg), &veiled, lg, vl);
+    CHECK(near(vl[1][1], 0.05, 1e-6));
+    sc.lensLogGains(sc.seamDir(phi, -band - insv::kLensColourLocalRampDeg * kDeg - 0.01), &veiled, lg, vl);
+    CHECK(vl[1][1] == 0.0);
+    // Taken out in linear light: a dark level loses relatively more than a
+    // bright one, never below kLensVeilKeep of its light; nothing over the
+    // knee; still rising with the level.
+    const auto lin = [](double v) { return std::pow(v / 255.0, insv::kLensVeilGamma); };
+    CHECK(insv::LensVeilRemove(100.0, 0.0) == 100.0);
+    CHECK(near(lin(insv::LensVeilRemove(150.0, 0.1)), lin(150.0) - 0.1, 1e-9));
+    CHECK(near(lin(insv::LensVeilRemove(40.0, 0.1)), insv::kLensVeilKeep * lin(40.0), 1e-9));
+    CHECK(insv::LensVeilRemove(insv::kLensColourKneeHi, 0.2) == insv::kLensColourKneeHi);
+    double lastV = -1.0;
+    for (double v = 0.5; v <= 255.0; v += 0.5) {
+        const double out = insv::LensVeilRemove(v, 0.15);
+        CHECK(out > lastV);
+        lastV = out;
+    }
 
     // Highlights: the gain eases to 1 over the knee, a channel still rising.
     CHECK(near(insv::LensColourGain(0.1, 100.0), std::exp(0.1), 1e-12));
@@ -840,7 +865,8 @@ void testSeamCutTracker()
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
                 insv::SeamCutStats::Cell& cell = stats->cell[b][r];
-                cell.nColour = b >= 20 && b < 40 ? 0.0f : 64.0f;
+                for (int k = 0; k < 3; ++k)
+                    cell.nColour[k] = b >= 20 && b < 40 ? 0.0f : 64.0f;
                 const float m0[3] = {red0, 100, 80};
                 for (int k = 0; k < 3; ++k)
                     cell.mean[0][k] = m0[k], cell.mean[1][k] = 100;
@@ -872,7 +898,8 @@ void testSeamCutTracker()
     CHECK(g[0] == held);
     for (int b = 0; b < B; ++b)
         for (int r = 0; r < R; ++r)
-            stats->cell[b][r].nColour = 0;
+            for (float& n : stats->cell[b][r].nColour)
+                n = 0;
     tr.update(*stats, t += 33, band);
     CHECK(g[0] == held);
     // A new lens colour starts it over; so does a seek.
@@ -901,7 +928,8 @@ void testLensColourLocal()
                 c.n = 64;
                 c.texture = 20;
                 c.zsad = 2;
-                c.nColour = b < 20 ? 0.0f : 64.0f; // nothing usable there (clipped)
+                for (int k = 0; k < 3; ++k) // nothing usable there (clipped)
+                    c.nColour[k] = b < 20 ? 0.0f : 64.0f;
                 for (int k = 0; k < 3; ++k) {
                     c.mean[1][k] = 120;
                     c.mean[0][k] = 120;
@@ -923,17 +951,96 @@ void testLensColourLocal()
     fill(0.0);
     tr.update(*stats, 1033, band);
     CHECK(bl.local[40][1] < -0.1 && bl.local[40][1] > -0.2);
-    // A veil over most of the seam, unevenly (flare): the whole-seam residual
-    // holds, the local correction follows.
+    // A veil over most of the seam, growing along it (flare towards the
+    // sun): the whole-seam residual holds, the local correction follows;
+    // where the lenses are further apart than any gain (past bin ~70) it is
+    // taken for light lens 1 adds instead.
     for (int b = 20; b < B; ++b)
         for (int r = 0; r < R; ++r)
             for (int k = 0; k < 3; ++k)
-                stats->cell[b][r].mean[0][k] = static_cast<float>(120 * std::exp(-0.05 - 0.05 * (b % 10)));
+                stats->cell[b][r].mean[0][k] = static_cast<float>(120 * std::exp(-0.05 - 0.004 * (b - 20)));
     const float held = bl.colour[1];
     for (int t = 1066; t < 2000; t += 33)
         tr.update(*stats, t, band);
     CHECK(bl.colour[1] == held);
-    CHECK(bl.local[85][1] < -0.15 && bl.local[85][1] >= -insv::kLensColourLocalMaxLog - 1e-6);
+    CHECK(near(bl.local[50][1], -0.05 - 0.004 * 30, 0.02) && bl.veil[50][1] == 0.0f);
+    CHECK(bl.veil[110][1] < -0.05f && bl.veil[110][0] < -0.05f && std::fabs(bl.local[110][1]) < 0.05);
+}
+
+// Veiling light in lens 1 over bins 30..49 (light added, the same at every
+// level, in linear light), the lenses 5 % apart in gain everywhere: the
+// veil is found where it is and nowhere else, taken out of lens 1, and the
+// colour match then sees only the gain. Cells all about as bright can't
+// tell a veil from a gain: none.
+void testLensVeil()
+{
+    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    const double band = 5.0 * kDeg;
+    const double veil[3] = {0.08, 0.06, 0.04};
+    auto enc = [](double lin) { return 255.0 * std::pow(lin, 1.0 / insv::kLensVeilGamma); };
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto fill = [&](bool levels) {
+        for (int b = 0; b < B; ++b)
+            for (int r = 0; r < R; ++r) {
+                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                c.n = 64;
+                c.texture = 20;
+                c.zsad = 2;
+                const double clean = levels ? 0.03 + 0.07 * ((r + b) % R) : 0.2;
+                for (int k = 0; k < 3; ++k) {
+                    c.nColour[k] = 64;
+                    c.mean[0][k] = static_cast<float>(1.05 * enc(clean));
+                    c.mean[1][k] = static_cast<float>(enc(clean + (b >= 30 && b < 50 ? veil[k] : 0.0)));
+                }
+            }
+    };
+    fill(true);
+    std::vector<float> v(B * 3);
+    insv::LensVeilPerBin(*stats, v.data());
+    for (int k = 0; k < 3; ++k) {
+        CHECK(near(v[40 * 3 + k], -veil[k], 0.01) && near(v[35 * 3 + k], -veil[k], 0.01));
+        CHECK(v[90 * 3 + k] == 0.0f && v[10 * 3 + k] == 0.0f);
+    }
+    insv::SeamCutTracker tr;
+    tr.update(*stats, 1000, band);
+    const insv::SeamBlend& bl = tr.blend();
+    CHECK(near(bl.veil[40][1], -veil[1], 0.01) && bl.veil[90][1] == 0.0f);
+    CHECK(near(bl.colour[1], std::log(1.05), 0.01));
+    CHECK(std::fabs(bl.local[40][1]) < 0.02 && std::fabs(bl.local[90][1]) < 0.01);
+
+    // One level everywhere, lens 1 brighter there: a gain, not a veil.
+    fill(false);
+    insv::LensVeilPerBin(*stats, v.data());
+    CHECK(v[40 * 3 + 1] == 0.0f);
+}
+
+// A channel clipped in a stretch (a bright sky's blue) leaves the others
+// usable there: red is matched where only blue is clipped; blue isn't
+// given the neighbouring stretches' correction.
+void testLensColourClippedChannel()
+{
+    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    const double band = 5.0 * kDeg;
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r) {
+            insv::SeamCutStats::Cell& c = stats->cell[b][r];
+            c.n = 64;
+            c.texture = 20;
+            c.zsad = 2;
+            const bool sky = b >= 100;
+            for (int k = 0; k < 3; ++k) {
+                c.nColour[k] = sky && k == 2 ? 0.0f : 64.0f;
+                c.mean[1][k] = 120;
+                c.mean[0][k] = sky && k != 2 ? 132.0f : (b >= 90 && b < 100 && k == 2 ? 150.0f : 120.0f);
+            }
+        }
+    insv::SeamCutTracker tr;
+    tr.update(*stats, 1000, band);
+    const insv::SeamBlend& bl = tr.blend();
+    CHECK(near(bl.local[110][0], std::log(1.1), 0.01));
+    CHECK(near(bl.local[95][2], std::log(1.25), 0.01));
+    CHECK(bl.local[110][2] == 0.0f);
 }
 
 // FitLensColour on synthetic statistics: a known constant and slope across
@@ -950,7 +1057,9 @@ void testFitLensColour()
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
                 insv::SeamCutStats::Cell& c = s->cell[b][r];
-                c.n = c.nColour = 64;
+                c.n = 64;
+                for (float& n : c.nColour)
+                    n = 64;
                 c.texture = 20;
                 c.zsad = (b * 7 + r + f) % 23 == 0 ? 30.0f : 4.0f; // some disagree
                 const double e = insv::SeamCutRowE(r, band) / kDeg;
@@ -1004,6 +1113,18 @@ void testFitLensColour()
     CHECK(sided.ok);
     for (int k = 0; k < 3; ++k)
         CHECK(near(sided.colour.logRatio[k], a[k], 0.004));
+
+    // Blue clipped over half the seam: red and green still from all of it,
+    // blue from the rest.
+    for (const auto& st : frames)
+        for (int b = 0; b < 64; ++b)
+            for (int r = 0; r < R; ++r)
+                st->cell[b][r].nColour[2] = 0;
+    const insv::LensColourFit clipped = insv::FitLensColour(ptrs, band);
+    std::printf("lens colour, blue clipped on half the seam: %s\n", clipped.message.c_str());
+    CHECK(clipped.ok && clipped.cells == sided.cells);
+    for (int k = 0; k < 3; ++k)
+        CHECK(near(clipped.colour.logRatio[k], a[k], 0.006) && near(clipped.colour.slope[k], slope[k], 0.001));
 
     // Too few frames: no fit.
     ptrs.resize(2);
@@ -1971,6 +2092,8 @@ int main()
     testSeamCutTracker();
     testSeamCutStats();
     testFitLensColour();
+    testLensVeil();
+    testLensColourClippedChannel();
     testLensColourLocal();
     testBlurQuads();
     testTrailerThumbnail();

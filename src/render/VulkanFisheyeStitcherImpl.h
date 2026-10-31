@@ -58,11 +58,12 @@ struct ShaderParams {
     float lensCol[4];  // lens colour: log(lens 0 / lens 1) RGB (with the frame's residual), -
     float lensColS[4]; // its slope per radian of elevation, RGB, -
     float lensLocal[insv::kSeamDepthBins][4]; // per-bin local correction RGB, -
+    float lensVeil[insv::kSeamDepthBins][4];  // per-bin veiling light RGB, -
     float blur0[4]; // privacy blur: count, -, -, -
     float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
     float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
 };
-static_assert(sizeof(ShaderParams) == 10496, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 12544, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then a mat3
@@ -234,11 +235,11 @@ struct VulkanFisheyeStitcher::Impl {
     void* uboMap = nullptr;
     void* outMap = nullptr;
     // Depth-aware seam measures (binding 5): the cost volume, (NCC, texture)
-    // per bin x candidate, then the cut statistics, three vec4 per bin x row.
+    // per bin x candidate, then the cut statistics, four vec4 per bin x row.
     static constexpr VkDeviceSize kSeamCostBytes =
         sizeof(float) * 2 * insv::kSeamDepthBins * insv::kSeamDepthCands;
     static constexpr VkDeviceSize kSeamBufBytes =
-        kSeamCostBytes + sizeof(float) * 12 * insv::kSeamDepthBins * insv::kSeamCutRows;
+        kSeamCostBytes + sizeof(float) * 16 * insv::kSeamDepthBins * insv::kSeamCutRows;
     VkBuffer seamBuf = VK_NULL_HANDLE;
     VkDeviceMemory seamMem = VK_NULL_HANDLE;
     void* seamMap = nullptr;

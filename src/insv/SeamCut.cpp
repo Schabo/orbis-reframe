@@ -70,7 +70,7 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
         double g0[kCutSamples], g1[kCutSamples];
         for (int c = next.fetch_add(1); c < kCells; c = next.fetch_add(1)) {
             const int b = c / kSeamCutRows, r = c % kSeamCutRows;
-            int n = 0, nc = 0;
+            int n = 0, nc[3] = {0, 0, 0};
             double s0 = 0, s1 = 0, m[2][3] = {};
             for (int s = 0; s < kCutSamples; ++s) {
                 double phi, e, c0[3], c1[3];
@@ -82,19 +82,20 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
                     continue;
                 s0 += g0[n], s1 += g1[n];
                 ++n;
-                if (std::max({c0[0], c0[1], c0[2], c1[0], c1[1], c1[2]}) > kSeamCutClip)
-                    continue;
                 for (int k = 0; k < 3; ++k)
-                    m[0][k] += c0[k], m[1][k] += c1[k];
-                ++nc;
+                    if (std::max(c0[k], c1[k]) <= kSeamCutClip) {
+                        m[0][k] += c0[k], m[1][k] += c1[k];
+                        ++nc[k];
+                    }
             }
             SeamCutStats::Cell& cell = out.cell[b][r];
             cell = SeamCutStats::Cell{};
             cell.n = static_cast<float>(n);
-            cell.nColour = static_cast<float>(nc);
-            for (int i = 0; i < 2 && nc > 0; ++i)
-                for (int k = 0; k < 3; ++k)
-                    cell.mean[i][k] = static_cast<float>(m[i][k] / nc);
+            for (int k = 0; k < 3; ++k) {
+                cell.nColour[k] = static_cast<float>(nc[k]);
+                for (int i = 0; i < 2 && nc[k] > 0; ++i)
+                    cell.mean[i][k] = static_cast<float>(m[i][k] / nc[k]);
+            }
             if (n == 0)
                 continue;
             const double m0 = s0 / n, m1 = s1 / n;
@@ -194,9 +195,16 @@ void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double ban
             label[i - 1] = bp[static_cast<size_t>(i) * R + label[i]];
     }
 
+    // The colour first: the veiling light widens the fade.
+    updateColour(stats, ptsMs, bandRad);
+
     // The fade's width from the disagreement at the chosen row, smoothed
     // along the azimuth so a wide stretch doesn't start abruptly; its centre
     // moves to the seam circle as it widens, so it stays inside the band.
+    // Where one lens has veiling light the full band: what is left of it
+    // past the seam (it grows towards the sun, the other lens can't say by
+    // how much) fades across the band instead of meeting the other lens on
+    // a line.
     for (int b = 0; b < B; ++b) {
         m_row[b] = label[B + b];
         m_dis[b] = m_avgDis[static_cast<size_t>(b) * R + m_row[b]];
@@ -211,12 +219,12 @@ void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double ban
             a += ww * smoothstep(T.agreeLo, T.agreeHi, m_dis[(b + d + B) % B]);
             w += ww;
         }
-        const double s = a / w;
+        const double s =
+            std::max(a / w, std::min(1.0, std::fabs(m_blend.veil[b][1]) / kLensVeilWide));
         m_width[b] = static_cast<float>(s);
         m_blend.cut[b] = static_cast<float>(SeamCutRowE(m_row[b], bandRad) * (1.0 - s));
         m_blend.fade[b] = static_cast<float>(narrow + (bandRad - narrow) * s);
     }
-    updateColour(stats, ptsMs, bandRad);
     m_has = true;
     m_lastPts = ptsMs;
 }
@@ -233,15 +241,36 @@ void SeamCutTracker::setLensColour(const LensColour& c)
     for (auto& b : m_blend.local)
         for (float& x : b)
             x = 0.0f;
+    for (auto& b : m_blend.veil)
+        for (float& x : b)
+            x = 0.0f;
 }
 
 void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad)
 {
-    // A frame that says nothing (too few usable cells, or flare) holds the
-    // residual where it is.
+    constexpr int B = kSeamDepthBins;
     const double dt = static_cast<double>(ptsMs - m_lastPts);
+    const double localKeep =
+        m_localHas && tuning.localMemoryMs > 0 ? std::exp(-dt / tuning.localMemoryMs) : 0.0;
+
+    // The veiling light one lens adds round the seam, taken out of that
+    // lens's means before the colour is matched on what is left.
+    std::vector<float> veil(B * 3);
+    LensVeilPerBin(stats, veil.data());
+    for (int b = 0; b < B; ++b)
+        for (int k = 0; k < 3; ++k)
+            m_blend.veil[b][k] = static_cast<float>(localKeep * m_blend.veil[b][k] +
+                                                    (1.0 - localKeep) * veil[b * 3 + k]);
+    if (!m_clean)
+        m_clean = std::make_unique<SeamCutStats>();
+    *m_clean = stats;
+    RemoveLensVeil(*m_clean, &m_blend.veil[0][0]);
+
+    // A frame that says nothing (too few usable cells, or flare -- judged
+    // before the veiling light is taken out) holds the residual where it is.
     double r[3];
-    if (LensColourResidual(stats, bandRad, m_lensColour, r)) {
+    if (LensColourResidual(stats, bandRad, m_lensColour, r) &&
+        LensColourResidual(*m_clean, bandRad, m_lensColour, r)) {
         const double keep = m_colourHas && tuning.colourMemoryMs > 0
                                 ? std::exp(-dt / tuning.colourMemoryMs)
                                 : 0.0;
@@ -253,35 +282,34 @@ void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, doub
 
     // The local correction: what is left per bin after the clip's colour and
     // the residual, smoothed along the seam from the bins that have data,
-    // and faded to none where little is in reach -- a stretch without its
-    // own data isn't given its neighbours' (flare) correction. It follows
-    // flare frames: that's what it is for.
-    constexpr int B = kSeamDepthBins;
+    // and faded to none where the bin and its neighbours have little of
+    // their own -- a stretch without its own data isn't given the next
+    // one's correction. Per channel: a sky clipped in blue still has red and
+    // green. It follows flare frames: that's what it is for.
     const double res[3] = {m_blend.colour[0], m_blend.colour[1], m_blend.colour[2]};
-    std::vector<float> v(B * 3), w(B);
-    LensColourPerBin(stats, bandRad, m_lensColour, res, v.data(), w.data());
+    std::vector<float> v(B * 3), w(B * 3);
+    LensColourPerBin(*m_clean, bandRad, m_lensColour, res, v.data(), w.data());
     const double sigma = std::max(tuning.localSigma, 0.5);
     const int reach = static_cast<int>(std::ceil(2.5 * sigma));
-    const double keep =
-        m_localHas && tuning.localMemoryMs > 0 ? std::exp(-dt / tuning.localMemoryMs) : 0.0;
-    for (int b = 0; b < B; ++b) {
-        double sw = 0, s[3] = {0, 0, 0};
-        for (int d = -reach; d <= reach; ++d) {
-            const int j = (b + d + B) % B;
-            const double g = std::exp(-0.5 * d * d / (sigma * sigma)) * w[j];
-            sw += g;
-            for (int k = 0; k < 3; ++k)
-                s[k] += g * v[j * 3 + k];
-        }
-        const double conf = std::min(1.0, sw / tuning.localMinSamples);
+    for (int b = 0; b < B; ++b)
         for (int k = 0; k < 3; ++k) {
+            double sw = 0, s = 0;
+            for (int d = -reach; d <= reach; ++d) {
+                const int j = (b + d + B) % B;
+                const double g = std::exp(-0.5 * d * d / (sigma * sigma)) * w[j * 3 + k];
+                sw += g;
+                s += g * v[j * 3 + k];
+            }
+            double own = 0;
+            for (int d = -1; d <= 1; ++d)
+                own += w[((b + d + B) % B) * 3 + k];
+            const double conf = std::min(1.0, own / tuning.localMinSamples);
             const double target =
-                sw > 0 ? std::clamp(conf * s[k] / sw, -kLensColourLocalMaxLog,
-                                    kLensColourLocalMaxLog)
+                sw > 0 ? std::clamp(conf * s / sw, -kLensColourLocalMaxLog, kLensColourLocalMaxLog)
                        : 0.0;
-            m_blend.local[b][k] = static_cast<float>(keep * m_blend.local[b][k] + (1.0 - keep) * target);
+            m_blend.local[b][k] =
+                static_cast<float>(localKeep * m_blend.local[b][k] + (1.0 - localKeep) * target);
         }
-    }
     m_localHas = true;
 }
 

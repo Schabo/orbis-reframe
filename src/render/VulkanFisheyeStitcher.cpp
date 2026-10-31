@@ -123,9 +123,11 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     }
     sp.lensCol[3] = sp.lensColS[3] = 0.0f;
     for (int b = 0; b < insv::kSeamDepthBins; ++b) {
-        for (int c = 0; c < 3; ++c)
+        for (int c = 0; c < 3; ++c) {
             sp.lensLocal[b][c] = p.seamBlend.local[b][c];
-        sp.lensLocal[b][3] = 0.0f;
+            sp.lensVeil[b][c] = p.seamBlend.veil[b][c];
+        }
+        sp.lensLocal[b][3] = sp.lensVeil[b][3] = 0.0f;
     }
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
@@ -1092,15 +1094,15 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
         const float* s = c + d->kSeamCostBytes / sizeof(float);
         for (int b = 0; b < insv::kSeamDepthBins; ++b)
             for (int r = 0; r < insv::kSeamCutRows; ++r) {
-                const float* v = s + 12 * (b * insv::kSeamCutRows + r);
+                const float* v = s + 16 * (b * insv::kSeamCutRows + r);
                 insv::SeamCutStats::Cell& cell = cutOut->cell[b][r];
                 cell.n = v[0];
                 cell.zsad = v[1];
                 cell.texture = v[2];
-                cell.nColour = v[3];
                 for (int k = 0; k < 3; ++k) {
-                    cell.mean[0][k] = v[4 + k];
-                    cell.mean[1][k] = v[8 + k];
+                    cell.nColour[k] = v[4 + k];
+                    cell.mean[0][k] = v[8 + k];
+                    cell.mean[1][k] = v[12 + k];
                 }
             }
     }

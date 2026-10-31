@@ -43,8 +43,9 @@ struct LensColour {
 };
 
 // The estimator that measured a stored lens colour. One from an older one is
-// measured again rather than used.
-constexpr int kLensColourMethod = 1;
+// measured again rather than used. 2: each channel from the cells where it
+// isn't clipped (1: only cells with no channel clipped).
+constexpr int kLensColourMethod = 2;
 
 // Most the lenses' log ratio is matched by (per channel, either way; each
 // lens gets half), and the most the per-frame residual may add to the
@@ -94,9 +95,40 @@ constexpr double kLensColourLocalRampDeg = 10.0;
 // One frame's departure from the clip's lens colour `c` plus `residual`
 // (log, per channel) per azimuth bin of the seam: the median over the bin's
 // usable cells into value[bin * 3 + channel], their unclipped samples into
-// weight[bin] (0 = no usable cell).
+// weight[bin * 3 + channel] (0 = no usable cell for that channel). A bin
+// with cells all three channels are usable in takes only those.
 void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
                       const double residual[3], float* value, float* weight);
+
+// Veiling light: the sun in or near one lens scatters inside it and lays a
+// haze over its picture -- light added, about the same amount on dark and
+// bright, which no gain matches (a gain that matches the dark grass is far
+// too strong on the sky). Where one lens has it at the seam, it is taken
+// out of that lens (SeamBlend::veil) before the colour is matched: in
+// linear light (the picture's levels to the power kLensVeilGamma, near
+// enough for this), in the blend band and faded out over
+// kLensColourLocalRampDeg past it, never below kLensVeilKeep of the light
+// there, and eased off over the highlight knee as the gain is (a clipped
+// sky stays clipped).
+constexpr double kLensVeilGamma = 2.2;
+constexpr double kLensVeilKeep = 0.3;
+constexpr double kLensVeilMax = 0.5;
+// Veiling light (green) at which the seam's fade takes the whole blend band
+// (SeamCutTracker): what is left of it then fades across the band.
+constexpr double kLensVeilWide = 0.04;
+
+// A lens sample v (0..255) with `veil` (linear, >= 0) taken out.
+double LensVeilRemove(double v, double veil);
+
+// One frame's veiling light per azimuth bin of the seam into
+// veil[bin * 3 + channel]: linear, lens 0 less lens 1 -- > 0 lens 0 has it,
+// < 0 lens 1 -- bounded by kLensVeilMax; 0 where there is none or the bin
+// can't tell it from a difference in gain (cells all about as bright).
+void LensVeilPerBin(const SeamCutStats& stats, float* veil);
+
+// `stats` with `veil` (LensVeilPerBin's layout) taken out of the cell means
+// of the lens that has it.
+void RemoveLensVeil(SeamCutStats& stats, const float* veil);
 
 // One frame's departure from the clip's lens colour `c`: the median over its
 // usable cells of the measured log ratio less L_c(e), per channel. False

@@ -197,7 +197,8 @@ no closed-source dependencies.
 - Depth-aware seam: the stitch distance is measured along the seam every
   frame, so near objects (the bike, handlebars, hands) aren't doubled; the
   seam is cut where the lenses agree. The two lenses' colours are measured
-  and matched per clip, so the seam shows no step.
+  and matched per clip, so the seam shows no step, and the haze a low sun
+  lays over one lens is taken out along the seam.
 
 **Look and sound**
 - Per-clip colour grading: exposure, contrast, saturation, temperature. The

@@ -6,6 +6,7 @@
 #include "LensColour.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 // Depth-aware seam, the blend across the band: where the two lenses meet and
@@ -28,13 +29,14 @@
 // MeasureSeamCutStats on the CPU, with the previous frame's depth table, and
 // averaged over ~150 ms, so the cut and its width don't flicker.
 //
-// The same rows measure the lenses' colour: each lens's mean R, G, B where
-// neither is clipped. Over a clip they give its lens colour
-// (insv::FitLensColour); per frame, what is left of the difference after it,
+// The same rows measure the lenses' colour: each lens's mean R, G, B, each
+// channel where neither lens has it clipped. Over a clip they give its lens
+// colour (insv::FitLensColour); per frame, what is left of the difference after it,
 // a small slow residual (SeamBlend::colour) for lenses that drift apart
-// within a clip, and per azimuth bin a faster local correction
-// (SeamBlend::local) where the difference changes round the seam (a low
-// sun's veiling light in one lens). Dependency-free (insv lib).
+// within a clip, per azimuth bin a faster local correction
+// (SeamBlend::local) where the difference changes round the seam, and the
+// veiling light a low sun adds to one lens there (SeamBlend::veil), taken out
+// before the colour is matched. Dependency-free (insv lib).
 
 namespace insv {
 
@@ -67,8 +69,11 @@ struct SeamCutStats {
         float n = 0;       // samples both lenses see (of kSeamCutPatchAz * kSeamCutPatchEl)
         float zsad = 0;    // mean |(g0 - mean g0) - (g1 - mean g1)| of the grey, levels
         float texture = 0; // min of the two lenses' grey standard deviation, levels
-        float nColour = 0; // of those, the samples neither lens has a channel above kSeamCutClip in
-        float mean[2][3] = {}; // each lens's mean R, G, B over those, levels
+        // Per channel R, G, B: of those, the samples where neither lens has
+        // that channel above kSeamCutClip, and each lens's mean of it over
+        // them, levels -- a sky clipped in blue still tells red and green.
+        float nColour[3] = {};
+        float mean[2][3] = {};
     };
     Cell cell[kSeamDepthBins][kSeamCutRows];
 };
@@ -91,7 +96,7 @@ struct SeamCutTuning {
     double colourMemoryMs = 1000.0; // time constant of the colour residual
     double localMemoryMs = 200.0;   // ... and of the local correction round the seam
     double localSigma = 3.0;        // its smoothing along the azimuth, bins
-    double localMinSamples = 128.0; // unclipped samples in reach for the full correction
+    double localMinSamples = 128.0; // unclipped samples in the bin and its neighbours for all of it
     int64_t resetGapMs = 250; // a jump this big (or backwards) starts over
 };
 
@@ -128,8 +133,9 @@ private:
 
     SeamBlend m_blend;
     LensColour m_lensColour;
+    std::unique_ptr<SeamCutStats> m_clean; // this frame's statistics, veiling light taken out
     bool m_colourHas = false; // m_blend.colour holds a running average
-    bool m_localHas = false;  // m_blend.local likewise
+    bool m_localHas = false;  // m_blend.local and veil likewise
     // The running average of each cell's disagreement (bin-major,
     // kSeamCutRows per bin), valid while m_has.
     std::vector<float> m_avgDis;

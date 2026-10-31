@@ -431,8 +431,12 @@ void FisheyeStitcher::seamBlendWeights(const Vec3& dir, const SeamBlend* blend, 
     w[1] = 1.0 - w[0];
 }
 
-void FisheyeStitcher::lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3]) const
+void FisheyeStitcher::lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3],
+                                   double veil[2][3]) const
 {
+    for (int i = 0; i < 2; ++i)
+        for (int c = 0; c < 3; ++c)
+            veil[i][c] = 0.0;
     const double sa = dir.x * m_seamAxis.x + dir.y * m_seamAxis.y + dir.z * m_seamAxis.z;
     double residual[3] = {0, 0, 0}, L[3];
     if (blend)
@@ -441,8 +445,8 @@ void FisheyeStitcher::lensLogGains(const Vec3& dir, const SeamBlend* blend, doub
     LensColourLog(m_params.lensColour, std::asin(std::clamp(sa, -1.0, 1.0)), m_bandRad, residual,
                   L);
     if (blend) {
-        // The local correction round the seam, in the band and faded out
-        // past it; the sum bounded as the rest.
+        // The local correction and the veiling light round the seam, in the
+        // band and faded out past it; the sum bounded as the rest.
         double e, t;
         int i0, i1;
         seamPosition(dir, e, i0, i1, t);
@@ -451,10 +455,14 @@ void FisheyeStitcher::lensLogGains(const Vec3& dir, const SeamBlend* blend, doub
         if (e < m_bandRad + rampRad) {
             const double a =
                 e > m_bandRad ? 0.5 * (1.0 + std::cos(kPi * (e - m_bandRad) / rampRad)) : 1.0;
-            for (int c = 0; c < 3; ++c)
+            for (int c = 0; c < 3; ++c) {
                 L[c] = std::clamp(L[c] + a * (blend->local[i0][c] * (1.0 - t) +
                                               blend->local[i1][c] * t),
                                   -kLensColourMaxLog, kLensColourMaxLog);
+                const double v = a * (blend->veil[i0][c] * (1.0 - t) + blend->veil[i1][c] * t);
+                veil[0][c] = std::max(v, 0.0);
+                veil[1][c] = std::max(-v, 0.0);
+            }
         }
     }
     for (int c = 0; c < 3; ++c) {
@@ -502,9 +510,9 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
     // The blended lenses at stitch-world direction `dir`, [0, 255].
     auto shade = [&](const Vec3& dir, double rgb[3]) {
         const double q = seamQAt(dir, seamQ);
-        double ws[2], lg[2][3];
+        double ws[2], lg[2][3], veil[2][3];
         seamBlendWeights(dir, blend, ws);
-        lensLogGains(dir, m_params.depthSeam ? blend : nullptr, lg);
+        lensLogGains(dir, m_params.depthSeam ? blend : nullptr, lg, veil);
         double acc[3] = {0, 0, 0};
         double wsum = 0;
         for (int i = 0; i < 2; ++i) {
@@ -512,8 +520,10 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
             if (!lensSample(i, dir, q, ws[i], u, v, w))
                 continue;
             const auto s = lim[i]->sample(u, v);
-            for (int c = 0; c < 3; ++c)
-                acc[c] += w * LensColourGain(lg[i][c], s[c]) * s[c];
+            for (int c = 0; c < 3; ++c) {
+                const double v = LensVeilRemove(s[c], veil[i][c]);
+                acc[c] += w * LensColourGain(lg[i][c], v) * v;
+            }
             wsum += w;
         }
         for (int c = 0; c < 3; ++c)

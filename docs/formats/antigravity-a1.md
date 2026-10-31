@@ -162,6 +162,18 @@ Markers as in [`README.md`](README.md).
   and away from the sun the per-clip value (G −2.4 %) is ~2 % off on
   stretches where the lenses agree. The stitch therefore also matches them
   per stretch of the seam, per frame (`insv::SeamBlend::local`).
+  ⚠️ **Veiling light is added light, not a gain** (measured 2026-10-31 on
+  `_015` at 23.9 s, the sun just above the horizon at the up lens's side):
+  on the seam stretch under the sun the up lens sees shadowed grass at G
+  107 against the down lens's 58, and the sky next to it a little brighter
+  -- in linear light (levels^2.2) both about +0.10, a ratio of 2.6 on the
+  grass and 1.7 on the sky. No gain matches both; taking the added light
+  out does (`insv::LensVeilPerBin`, `SeamBlend::veil`: up to 0.25 linear
+  there). On the same frame the sky's blue is near clipping (245-250) in
+  both lenses while red and green agree within 1-2 levels: with whole cells
+  left out for one clipped colour, that stretch had no data and was given
+  its neighbour's correction (a 14 % step). The lens colour is measured per
+  colour since (`insv::kLensColourMethod` 2).
 - ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.

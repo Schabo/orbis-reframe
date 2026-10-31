@@ -152,8 +152,10 @@ little warmer or brighter than the other, and towards their rims they fall
 off differently, in colour too. Left alone, that would show as a step along
 the seam. orbis-reframe measures how the two lenses of a clip differ, colour
 by colour, from frames spread across the clip, once for each clip, right
-after the seam alignment; frames with flare from a low sun, and clipped or
-very dark parts of the picture, are left out. Each lens is then brought half
+after the seam alignment; frames with flare from a low sun, and very dark
+parts of the picture, are left out, and so is a colour where it is clipped
+(a bright sky's blue), while the other colours there still count. Each lens
+is then brought half
 way towards the other over its whole picture, so the seam has no step and
 neither lens is changed more than needed. The result is saved in the
 project.
@@ -165,22 +167,33 @@ seam: with a low sun, one lens catches veiling light on the sun's side, and
 on some clips the lenses agree on one stretch of the seam and differ on the
 rest. So along the seam the two lenses are also matched stretch by stretch,
 frame by frame, from what both see there; a stretch where they see nothing
-alike to compare (clipped sky, very close things) is left alone. This
-correction only touches the overlap and fades out just past it. Both need
-**Depth-aware seam** on.
+alike to compare (a sky blown out in every colour, very close things) is
+left alone, and doesn't take its neighbours' correction either. This
+correction only touches the overlap and fades out just past it.
+
+When the sun shines into one lens, light scattered inside that lens lays a
+haze over its picture (veiling light): the dark parts lift a lot, bright
+ones hardly. A colour correction can't match that, so where one lens has
+such a haze along the seam, the haze is taken out of that lens there, and
+the two lenses are blended over the whole overlap rather than meeting on a
+line. Further into that lens the haze stays (the other lens can't see
+there, so nothing says how much there is): it fades out towards the seam
+instead of stopping at it. The rays and coloured blobs of flare (reflections
+inside the lens) are left as they are. The stretch-by-stretch match and the
+haze both need **Depth-aware seam** on.
 
 Bright highlights are left as recorded: a sky that is blown out in both
 lenses stays the same white on both sides of the seam rather than turning
-slightly grey on one. Flare itself (veiling light from the sun on one lens)
-isn't removed away from the seam: one lens really sees more light there.
+slightly grey on one.
 
 The **Stitching** section's line shows when it's done (see *Seam alignment*
 above).
 
 Like the seam alignment, changing **Lens guards** measures the clip's file
 again. Projects from older versions of orbis-reframe matched the lenses
-frame by frame; their clips are measured when the project opens, so their
-colour along the seam changes slightly.
+frame by frame, or measured the lens colour without the colours a clipped
+part still has; their clips are measured again when the project opens, so
+their colour along the seam changes slightly.
 
 ## Preview size and quality
 

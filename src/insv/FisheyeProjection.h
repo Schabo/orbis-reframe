@@ -170,7 +170,8 @@ constexpr int kSeamDepthBins = 128;
 //
 // And this frame's colour residual: what is left of the lenses' colour
 // difference after the clip's lens colour (StitchParams::lensColour), added
-// to its log ratio (insv::LensColourLog).
+// to its log ratio (insv::LensColourLog); per azimuth bin a local correction
+// on top, and the veiling light one lens adds there (insv::LensVeilPerBin).
 struct SeamBlend {
     // Elevation of the fade's centre off the seam circle, radians, towards
     // lens 0 (the seam frame, FisheyeStitcher::seamDir).
@@ -182,6 +183,9 @@ struct SeamBlend {
     // And per azimuth bin what is left of it after that, near the seam
     // (insv::kLensColourLocalMaxLog), R G B.
     float local[kSeamDepthBins][3] = {};
+    // Veiling light per azimuth bin, linear, R G B: lens 0 less lens 1 (> 0
+    // lens 0 has it, < 0 lens 1), taken out of that lens.
+    float veil[kSeamDepthBins][3] = {};
 };
 
 // Everything a GPU port of renderEquirect() needs, as plain floats -- one
@@ -325,8 +329,11 @@ public:
     // and the frame's residual and local correction (`blend`, null = none;
     // the local one in the band, faded out over kLensColourLocalRampDeg past
     // it): lens 0 -L / 2, lens 1 L / 2 (insv::LensColourLog). Applied with
-    // LensColourGain.
-    void lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3]) const;
+    // LensColourGain, after `veil`: each lens's veiling light there
+    // (linear, >= 0, faded out as the local correction), taken out with
+    // LensVeilRemove.
+    void lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3],
+                      double veil[2][3]) const;
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
 
