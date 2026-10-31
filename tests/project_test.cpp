@@ -1230,6 +1230,20 @@ void testMeasurementsWritten()
     CHECK(std::isnan(savedClip(1).syncAdjustMs));
     CHECK(savedClip(1).seamAdjustGuard == 2 && savedClip(1).seamCorrection.lens1RotDeg[1] == 0.25);
 
+    // The lens colour likewise: per source and lens guard, straight into the file.
+    insv::LensColour colour;
+    colour.logRatio[2] = -0.06;
+    colour.slope[0] = 0.004;
+    colour.spread = 0.2;
+    p.timeline()->setSourceLensColour(b, colour, 2);
+    CHECK(!p.modified());
+    insv::LensColour got;
+    CHECK(p.timeline()->sourceLensColour(b, 2, got) && got == colour);
+    CHECK(!p.timeline()->sourceLensColour(b, 1, got) && got == insv::LensColour{});
+    CHECK(!p.timeline()->sourceLensColour(a, 2, got));
+    CHECK(savedClip(1).lensColourGuard == 2 && savedClip(1).lensColour == colour);
+    CHECK(savedClip(0).lensColourGuard == -1);
+
     // With unsaved edits: only the measurement reaches the file.
     p.timeline()->appendClip(b, 10000, 30.0);
     CHECK(p.modified());
@@ -1292,6 +1306,51 @@ void testOldSeamMeasurement()
     insv::SeamCorrection seam;
     CHECK(!q.timeline()->sourceSeamCorrection(a, 2, seam) && seam == insv::SeamCorrection{});
     CHECK(q.timeline()->clipAt(0).seamAdjustGuard == -1);
+}
+
+// A lens colour from another estimator (a "method" this build doesn't know)
+// isn't read back: the clip is measured again. One from this one is.
+void testLensColourMethod()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString file = projectfolder::create(tmp.path(), "Ride");
+    const QString a = tmp.path() + "/a.insv";
+    insv::LensColour colour;
+    colour.logRatio[0] = 0.03;
+    colour.slope[1] = -0.002;
+    {
+        Project p;
+        p.timeline()->appendClip(a, 10000, 30.0);
+        p.timeline()->setSourceLensColour(a, colour, 2);
+        CHECK(p.save(file));
+    }
+    {
+        Project q;
+        CHECK(q.load(file) && q.timeline()->count() == 1);
+        insv::LensColour got;
+        CHECK(q.timeline()->sourceLensColour(a, 2, got) && got == colour);
+    }
+    QFile f(file);
+    CHECK(f.open(QIODevice::ReadOnly));
+    QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+    QJsonObject timeline = doc["timeline"].toObject();
+    QJsonArray clips = timeline["clips"].toArray();
+    QJsonObject clip = clips[0].toObject();
+    QJsonObject lc = clip["lensColour"].toObject();
+    CHECK(lc["method"].toInt() == insv::kLensColourMethod);
+    lc["method"] = insv::kLensColourMethod + 1;
+    clip["lensColour"] = lc;
+    clips[0] = clip;
+    timeline["clips"] = clips;
+    doc["timeline"] = timeline;
+    CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(QJsonDocument(doc).toJson());
+    f.close();
+    Project q;
+    CHECK(q.load(file) && q.timeline()->count() == 1);
+    CHECK(q.timeline()->clipAt(0).lensColourGuard == -1);
 }
 
 void testProjectLibrary()
@@ -2264,6 +2323,7 @@ int main(int argc, char **argv)
     testAutosave();
     testMeasurementsWritten();
     testOldSeamMeasurement();
+    testLensColourMethod();
     testProjectLibrary();
     testProjectSummary();
     testFlatClipJson();

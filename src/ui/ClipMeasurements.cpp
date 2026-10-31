@@ -5,7 +5,8 @@
 #include <array>
 #include <cmath>
 
-#include <ClipSeam.h> // stitch::MeasureClipSeam
+#include <ClipLensColour.h> // stitch::MeasureClipLensColour
+#include <ClipSeam.h>       // stitch::MeasureClipSeam
 #ifdef ORBIS_REFRAME_HAVE_CLIP_SYNC
 #include <ClipSync.h> // stitch::MeasureClipSync
 #endif
@@ -29,6 +30,10 @@ ClipMeasurements::~ClipMeasurements()
     if (m_seamThread) {
         m_seamCancel = true;
         m_seamThread->wait();
+    }
+    if (m_colourThread) {
+        m_colourCancel = true;
+        m_colourThread->wait();
     }
 }
 
@@ -57,6 +62,7 @@ void ClipMeasurements::schedule()
             const QString path = t->clipAt(i).sourcePath;
             maybeMeasureSync(path);
             maybeMeasureSeam(path);
+            maybeMeasureColour(path);
         }
         emit statusChanged();
     }, Qt::QueuedConnection);
@@ -70,6 +76,7 @@ void ClipMeasurements::setPlaying(bool playing)
         // stop it; the pause starts it again.
         m_syncCancel = true;
         m_seamCancel = true;
+        m_colourCancel = true;
         return;
     }
     schedule(); // measurements held back while playing
@@ -154,6 +161,53 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
     core::log::Info("[seam] %s: measuring\n", qPrintable(clipPath));
 }
 
+void ClipMeasurements::maybeMeasureColour(const QString &clipPath)
+{
+    // After the seam: the lenses' colours are compared where they line up.
+    // A source whose seam couldn't be aligned is measured with none.
+    insv::LensColour colour;
+    insv::SeamCorrection seam;
+    if (!m_enabled || clipPath.isEmpty() || m_colourThread || m_seamThread ||
+        m_project->timeline()->sourceLensColour(clipPath, colour) ||
+        m_colourFailed.contains(clipPath) ||
+        (!m_project->timeline()->sourceSeamCorrection(clipPath, seam) &&
+         !m_seamFailed.contains(clipPath)))
+        return;
+    const ClipItem *clip = measurableClip(clipPath);
+    if (!clip)
+        return;
+    const std::string path = clipPath.toStdString();
+    const qint64 in = clip->trimInMs, out = clip->trimOutMs;
+    const auto guard = clip->lensGuard;
+    m_colourMeasuringPath = clipPath;
+    m_colourCancel = false;
+    m_colourThread = QThread::create([this, path, in, out, clipPath, guard, seam] {
+        const stitch::ClipLensColourResult r =
+            stitch::MeasureClipLensColour(path, in, out, guard, seam, &m_colourCancel);
+        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, seam] {
+            m_colourThread->wait(); // its function has just returned
+            m_colourThread->deleteLater();
+            m_colourThread = nullptr;
+            m_colourMeasuringPath.clear();
+            core::log::Info("[colour] %s: %s\n", qPrintable(clipPath), r.message.c_str());
+            // Stale if the guard or the seam changed meanwhile: dropped, and
+            // measured again below.
+            const ClipItem *now = measurableClip(clipPath);
+            insv::SeamCorrection seamNow;
+            m_project->timeline()->sourceSeamCorrection(clipPath, seamNow);
+            if (r.ok && now && guard == now->lensGuard && seam == seamNow)
+                m_project->timeline()->setSourceLensColour(
+                    clipPath, r.colour, static_cast<int>(guard)); // -> clipSeamChanged
+            else if (!r.ok && !m_colourCancel)
+                m_colourFailed.insert(clipPath, r.failure);
+            emit statusChanged();
+            schedule(); // another source may be waiting for its turn
+        }, Qt::QueuedConnection);
+    });
+    m_colourThread->start(QThread::LowPriority);
+    core::log::Info("[colour] %s: measuring\n", qPrintable(clipPath));
+}
+
 QString ClipMeasurements::failureText(stitch::MeasureFailure why, bool seam)
 {
     switch (why) {
@@ -191,6 +245,23 @@ QString ClipMeasurements::seamStatus(const ClipItem *c) const
     if (const auto it = c ? m_seamFailed.constFind(c->sourcePath) : m_seamFailed.cend();
         it != m_seamFailed.cend())
         return tr("Seam: couldn't align this clip (%1).").arg(failureText(*it, true));
+    return QString();
+}
+
+QString ClipMeasurements::colourStatus(const ClipItem *c) const
+{
+    insv::LensColour colour;
+    if (c && m_project->timeline()->sourceLensColour(c->sourcePath, colour))
+        return tr("Colour: lenses matched for this clip (they differed by red %1 %, "
+                  "green %2 %, blue %3 %).")
+            .arg(std::expm1(colour.logRatio[0]) * 100.0, 0, 'f', 1)
+            .arg(std::expm1(colour.logRatio[1]) * 100.0, 0, 'f', 1)
+            .arg(std::expm1(colour.logRatio[2]) * 100.0, 0, 'f', 1);
+    if (c && m_colourMeasuringPath == c->sourcePath)
+        return tr("Colour: measuring this clip's lenses…");
+    if (const auto it = c ? m_colourFailed.constFind(c->sourcePath) : m_colourFailed.cend();
+        it != m_colourFailed.cend())
+        return tr("Colour: couldn't match this clip's lenses (%1).").arg(failureText(*it, true));
     return QString();
 }
 

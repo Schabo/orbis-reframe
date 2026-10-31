@@ -246,9 +246,8 @@ void testStitchedThumbnail(const Take& t)
         return;
     CHECK(thumb->width == 1024 && thumb->height == 512);
     CHECK(thumb->nv12.size() == size_t(1024 * 512 * 3 / 2));
-    // A bright half and a dark one. (Not the greys themselves: the stitch's
-    // photometric seam compensation pulls the two lenses' brightness
-    // together, as in playback.)
+    // A bright half and a dark one (not just the greys themselves: the
+    // stitch fades one into the other across the seam).
     int bright = 0, dark = 0;
     for (int i = 0; i < 1024 * 512; ++i) {
         const int y = thumb->nv12[size_t(i)];

@@ -41,8 +41,9 @@ StitchingPanel::StitchingPanel(QWidget *parent)
 
     m_seamStatus = new QLabel(this);
     m_seamStatus->setWordWrap(true);
-    m_seamStatus->setToolTip(tr("orbis-reframe lines the two pictures up at the seam from the "
-                                "video itself, once for each clip, in the background."));
+    m_seamStatus->setToolTip(tr("orbis-reframe lines the two pictures up at the seam, and "
+                                "matches their colours, from the video itself, once for each "
+                                "clip, in the background."));
     m_seamStatus->hide();
     form()->addRow(m_seamStatus);
 

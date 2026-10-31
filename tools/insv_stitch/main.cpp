@@ -58,6 +58,10 @@ const char kUsage[] =
     "          spread over the range)\n"
     "       [--seam-offset IN_MS OUT_MS]  (the lenses' offset at --seam, deg)\n"
     "       [--seam-frames N]  (frames for both; default 8)\n"
+    "       [--lens-colour IN_MS OUT_MS]  (measure the lens colour on 24 frames\n"
+    "          spread over the range, at --seam, and stitch with it)\n"
+    "       [--colour R,G,B[,SR,SG,SB]]  (stitch with this lens colour: lens 0\n"
+    "          against lens 1, %; its slope across the band, %/deg)\n"
     "       [--depth-seam] [--baseline M] [--depth-dump]\n"
     "         (depth-aware seam: measure the per-azimuth stitch distance\n"
     "          on this frame and stitch with it; --baseline < 0 flips which\n"
@@ -85,6 +89,8 @@ int main(int argc, char** argv)
     double seamArg[6] = {0, 0, 0, 0, 0, 0}; // --seam: deg, deg, deg, %, %, %
     int64_t seamIn = -1, seamOut = -1, offsetIn = -1, offsetOut = -1;
     int seamFrames = 8;
+    int64_t colourIn = -1, colourOut = -1;
+    double colourArg[6] = {0, 0, 0, 0, 0, 0}; // --colour: %, %, %, %/deg, %/deg, %/deg
     bool depthSeam = false, depthDump = false;
     double baselineM = 0.0;
     for (int i = 2; i < argc; ++i) {
@@ -110,6 +116,16 @@ int main(int argc, char** argv)
         } else if (k == "--seam-offset") { // IN_MS OUT_MS: offset at --seam, then exit
             offsetIn = std::atoll(next().c_str());
             offsetOut = std::atoll(next().c_str());
+        } else if (k == "--lens-colour") { // IN_MS OUT_MS: measure, then stitch with it
+            colourIn = std::atoll(next().c_str());
+            colourOut = std::atoll(next().c_str());
+        } else if (k == "--colour") {
+            const std::string v = next();
+            const int n =
+                std::sscanf(v.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf", &colourArg[0], &colourArg[1],
+                            &colourArg[2], &colourArg[3], &colourArg[4], &colourArg[5]);
+            if (n != 3 && n != 6)
+                die("--colour wants r,g,b[,slope r,g,b]");
         } else if (k == "--seam-frames")
             seamFrames = std::max(1, std::atoi(next().c_str()));
         else if (k == "--depth-seam")
@@ -234,6 +250,34 @@ int main(int argc, char** argv)
                 params.fovDeg);
     if (!stitcher.configure(calib, lens0.w, lens0.h, params))
         die("stitcher configure failed");
+    // --colour in the stitch's units: log ratios, per degree.
+    for (int k = 0; k < 3; ++k) {
+        params.lensColour.logRatio[k] = std::log1p(colourArg[k] * 0.01);
+        params.lensColour.slope[k] = colourArg[3 + k] * 0.01;
+    }
+    if (colourIn >= 0) {
+        // As stitch::MeasureClipLensColour: the lenses raw at the seam, no
+        // depth, frames evenly over the range.
+        constexpr int kColourFrames = 24;
+        std::vector<std::unique_ptr<insv::SeamCutStats>> stats;
+        std::vector<const insv::SeamCutStats*> frames;
+        for (int k = 0; k < kColourFrames; ++k) {
+            const int64_t t = insv::SnapToKeyframeMs(
+                colourIn + (colourOut - colourIn) * (2 * k + 1) / (2 * kColourFrames),
+                demux.lens(0).fps);
+            insv::Image a, b;
+            if (!demux.seekTo(t, err) || !demux.readNextPair(a, b, nullptr, err))
+                continue;
+            stats.push_back(std::make_unique<insv::SeamCutStats>());
+            insv::MeasureSeamCutStats(stitcher, a, b, nullptr, *stats.back());
+            frames.push_back(stats.back().get());
+        }
+        const insv::LensColourFit r = insv::FitLensColour(frames, stitcher.gpuParams().bandRad);
+        std::printf("lens colour: %s (%s)\n", r.ok ? "ok" : "FAILED", r.message.c_str());
+        if (!r.ok)
+            return 1;
+        params.lensColour = r.colour;
+    }
 
     params.depthSeam = depthSeam;
     params.baselineM = baselineM;
@@ -241,6 +285,7 @@ int main(int argc, char** argv)
         die("stitcher configure failed");
     insv::SeamDepthTracker depth;
     insv::SeamCutTracker cut;
+    cut.setLensColour(params.lensColour); // the frame's residual against it
     if (depthSeam) {
         auto costs = std::make_unique<insv::SeamCosts>();
         insv::MeasureSeamCosts(stitcher, lens0, lens1, *costs);

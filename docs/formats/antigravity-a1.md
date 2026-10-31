@@ -140,6 +140,22 @@ Markers as in [`README.md`](README.md).
   baseline 0.3 m is a 13° shift (X5: 6°). The seam's match now takes each
   lens's brightness plane out first (`insv::SeamPatchScore`), and those
   bins stay far on all the frames checked.
+- ✅ **The lenses' colour** (measured 2026-10-31 from the picture, seam
+  cells both lenses see alike, unclipped, over each clip): the exposure
+  record (type 4) holds **one shutter time per frame**, not one per lens,
+  and there is no type 12: the lenses expose together, and the file
+  doesn't say how they differ. Measured, the difference is **fixed within a
+  clip** (±1.5-3 % from frame to frame outside flare; on `_010` it doesn't
+  follow the shutter, 0.84-1.30 ms, within ±2 %) but **differs between
+  clips**: the down lens (lens 0) against the up one, blue −1.2 % on
+  `_010`, −6 to −8 % on the second set (`_021` R −0.9 %, G −2.4 %, B
+  −6.2 %). Across the overlap it changes by +0.3 to +0.5 % per degree
+  towards lens 0: lens 0 falls off towards its rim more than lens 1, most
+  in blue. With the sun at the up lens's rim (`_021` 23-33 s, 57-70 s)
+  that lens's veiling flare adds light (lens 1 ≈ 0.56-0.87 × lens 0 + 26-90
+  levels on the sun's side): such frames show as a wide spread of the
+  ratio along the seam, and the app's per-clip measurement
+  (`insv::FitLensColour`) leaves them out.
 - ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.

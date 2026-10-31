@@ -119,6 +119,37 @@ bool seamAdjustFromJson(const json &j, insv::SeamCorrection &c, int &lensGuard)
     return true;
 }
 
+// A source's measured lens colour, likewise with the estimator's "method".
+json lensColourToJson(const insv::LensColour &c, int lensGuard)
+{
+    return json{
+        {"logRatio", {c.logRatio[0], c.logRatio[1], c.logRatio[2]}},
+        {"slope", {c.slope[0], c.slope[1], c.slope[2]}},
+        {"spread", c.spread},
+        {"lensGuard", lensGuard},
+        {"method", insv::kLensColourMethod},
+    };
+}
+
+bool lensColourFromJson(const json &j, insv::LensColour &c, int &lensGuard)
+{
+    auto triple = [&j](const char *key) {
+        return j.contains(key) && j.at(key).is_array() && j.at(key).size() == 3 &&
+               j.at(key)[0].is_number() && j.at(key)[1].is_number() && j.at(key)[2].is_number();
+    };
+    if (!j.is_object() || j.value("method", 0) != insv::kLensColourMethod || !triple("logRatio") ||
+        !triple("slope") || !j.contains("spread") || !j.at("spread").is_number() ||
+        !j.contains("lensGuard") || !j.at("lensGuard").is_number_integer())
+        return false;
+    for (int k = 0; k < 3; ++k) {
+        c.logRatio[k] = j.at("logRatio")[k].get<double>();
+        c.slope[k] = j.at("slope")[k].get<double>();
+    }
+    c.spread = j.at("spread").get<double>();
+    lensGuard = j.at("lensGuard").get<int>();
+    return true;
+}
+
 json stabilizationToJson(const insv::StabConfig &c)
 {
     json j{
@@ -437,6 +468,8 @@ struct ParsedClip {
     double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
     insv::SeamCorrection seamCorrection;
     int seamAdjustGuard = -1;
+    insv::LensColour lensColour;
+    int lensColourGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     bool depthSeam = true;
     bool flat = false;
@@ -1071,6 +1104,8 @@ void Project::writeMeasured(const ClipItem &clip)
             updated["syncAdjustMs"] = clip.syncAdjustMs;
         if (clip.seamAdjustGuard >= 0)
             updated["seamAdjust"] = seamAdjustToJson(clip.seamCorrection, clip.seamAdjustGuard);
+        if (clip.lensColourGuard >= 0)
+            updated["lensColour"] = lensColourToJson(clip.lensColour, clip.lensColourGuard);
         if (updated != jc) {
             jc = std::move(updated);
             changed = true;
@@ -1253,6 +1288,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             clips.back()["syncAdjustMs"] = c.syncAdjustMs; // absent until measured
         if (c.seamAdjustGuard >= 0) // absent until measured
             clips.back()["seamAdjust"] = seamAdjustToJson(c.seamCorrection, c.seamAdjustGuard);
+        if (c.lensColourGuard >= 0) // absent until measured
+            clips.back()["lensColour"] = lensColourToJson(c.lensColour, c.lensColourGuard);
     }
 
     // Each at its cut: the index of the clip before it.
@@ -1471,6 +1508,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
             if (jc.contains("seamAdjust"))
                 seamAdjustFromJson(jc.at("seamAdjust"), pc.seamCorrection, pc.seamAdjustGuard);
+            if (jc.contains("lensColour"))
+                lensColourFromJson(jc.at("lensColour"), pc.lensColour, pc.lensColourGuard);
             pc.mediaMissing = !QFileInfo::exists(pc.sourcePath);
             const double outAspect =
                 double(parsedOutput.width) / double(std::max(1, parsedOutput.height));
@@ -1611,6 +1650,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
         if (pc.seamAdjustGuard >= 0)
             m_timeline->setSourceSeamCorrection(pc.sourcePath, pc.seamCorrection, pc.seamAdjustGuard);
+        if (pc.lensColourGuard >= 0)
+            m_timeline->setSourceLensColour(pc.sourcePath, pc.lensColour, pc.lensColourGuard);
         for (int pane = 0; pane < pane::kMaxPanes; ++pane) {
             const std::vector<ReframeKey> &keys = pane ? pc.paneKeys[pane - 1] : pc.reframeKeys;
             for (const ReframeKey &k : keys)

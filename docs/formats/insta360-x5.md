@@ -733,6 +733,15 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
   after.
 - telemetry-parser treats type 12 (`ExposureSecondary`) the same way; it
   isn't present on the X5.
+- ✅ One record for **both lenses**: they expose together. Their colour
+  still differs, measured from the picture (2026-10-31, seam cells both
+  lenses see alike, unclipped, over each clip): **fixed within a clip**
+  (±1.5-3 % outside flare) but **different between clips** (lens 0
+  against lens 1, blue −4.5 % on `192900`, −2.7 % on `201257`, +1.3 % on
+  `193105`), and changing across the overlap per channel, red rising and
+  green / blue falling towards lens 0 by ~0.5 % per degree: the two lenses'
+  rims fall off differently, in colour too. The app measures it per clip
+  (`insv::FitLensColour`).
 
 ### 7.1 Video ↔ IMU time sync ✅ 📖
 

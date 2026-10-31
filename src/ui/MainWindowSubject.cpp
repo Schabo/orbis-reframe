@@ -94,6 +94,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     req.fps = c->fps;
     req.stab = job.stab;
     req.seamCorrection = job.seamCorrection;
+    req.lensColour = job.lensColour;
     req.blur = job.blur;
     req.lensGuard = job.lensGuard;
     run.clipId = c->id;

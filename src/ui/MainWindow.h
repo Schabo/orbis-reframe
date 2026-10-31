@@ -206,11 +206,12 @@ private:
     // The current clip's sync / seam status lines from m_measurements.
     void updateSyncStatus();
     void updateSeamStatus();
-    // The seam alignment fine-tune for a source (ClipItem::seamCorrection), if
-    // it was measured under the current lens-guard setting (else none).
-    // pushSeamCorrection() hands every timeline source's value to the playback
-    // controller.
-    bool seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam) const;
+    // The seam alignment fine-tune and lens colour for a source
+    // (ClipItem::seamCorrection / lensColour), each if it was measured under
+    // the current lens-guard setting (else none). pushSeamCorrection() hands
+    // every timeline source's values to the playback controller.
+    void seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam,
+                           insv::LensColour &colour) const;
     void pushSeamCorrection();
     // Push the current clip's (m_clipId) correction for `sourceMs` (its
     // source time) into the viewport. Identity when its stabilization is Off

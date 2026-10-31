@@ -27,8 +27,8 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
     if (const auto imu = camera::ReadClipImu(req.clipPath))
         level->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock),
                      req.syncAdjustMs / 1000.0);
-    // The views come straight from the lenses; 7680 is the photometric
-    // measure grid, and the equirect the CPU fallback cuts them from.
+    // The views come straight from the lenses; 7680 is the equirect the CPU
+    // fallback cuts them from.
     stitch::PreviewStitchConfig sc;
     sc.width = 7680;
     sc.height = 3840;
@@ -39,6 +39,7 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
         return false;
     }
     src.SetSeamCorrection(req.seamCorrection);
+    src.SetLensColour(req.lensColour);
     *timing = !level->ready()       ? privacy::StitchTiming::NoGyro
               : req.captureTiming ? privacy::StitchTiming::Corrected
                                   : privacy::StitchTiming::Uncorrected;

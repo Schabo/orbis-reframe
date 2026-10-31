@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <IStitchSource.h> // stitch::Frame
+#include <LensColour.h>     // insv::LensColour
 #include <SeamCorrection.h> // insv::SeamCorrection
 #include <LensFrame.h>     // render::LensFrame
 
@@ -167,10 +168,11 @@ public:
     // the GUI thread; the decoder applies a clip's timing to its source
     // before the clip's next frame.
     void setCaptureTimings(std::map<int, stitch::CaptureTiming> timings);
-    // Seam alignment fine-tune for one source (insv::SeamCorrection;
-    // IStitchSource::SetSeamCorrection). Thread-safe; applies from the next
-    // decoded frame -- seek to refresh a paused picture.
-    void setSeamCorrection(const QString &path, const insv::SeamCorrection &seam);
+    // Seam alignment fine-tune and lens colour for one source
+    // (IStitchSource::SetSeamCorrection / SetLensColour). Thread-safe; applies
+    // from the next decoded frame -- seek to refresh a paused picture.
+    void setSeamCorrection(const QString &path, const insv::SeamCorrection &seam,
+                           const insv::LensColour &colour);
     // Privacy blur per clip id (IStitchSource::SetBlurQuads): the whole set,
     // a clip not in it = none. Per clip, not per source, as two clips of one
     // file may differ. Thread-safe; applies from the next decoded frame --
@@ -425,7 +427,8 @@ private:
     ViewProvider m_viewProvider;       // guarded by m_stabMx
     std::mutex m_rsMx;
     std::map<int, RsSetting> m_rsSettings; // guarded by m_rsMx
-    std::map<QString, insv::SeamCorrection> m_seamCorrection; // guarded by m_rsMx, same generation
+    // guarded by m_rsMx, same generation
+    std::map<QString, std::pair<insv::SeamCorrection, insv::LensColour>> m_seamCorrection;
     std::map<int, stitch::BlurQuadsFn> m_blurQuads;        // guarded by m_rsMx, same generation
     std::atomic<uint64_t> m_rsGen{0};          // bumped on every change
     uint64_t m_decRsGen = ~uint64_t(0);        // decoder: generation last applied

@@ -110,6 +110,7 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     job.lensGuard = c.lensGuard;
     job.depthSeam = c.depthSeam;
     timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
+    timeline.sourceLensColour(c.sourcePath, job.lensColour);
     setViews(job, c);
     spec.buildStab = c.stabilization;
     spec.fps = c.fps;
@@ -123,6 +124,8 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
 {
     insv::SeamCorrection seam;
     timeline.sourceSeamCorrection(c.sourcePath, seam);
+    insv::LensColour colour;
+    timeline.sourceLensColour(c.sourcePath, colour);
     const insv::StabConfig &s = c.stabilization;
     QString key = QStringLiteral("%1|%2|%3,%4,%5,%6|%7,%8|%9,%10,%11")
                       .arg(c.id)
@@ -150,6 +153,13 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
                .arg(std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
     if (s.lockDirection)
         key += QStringLiteral(",dir%1").arg(s.directionSec);
+    key += QStringLiteral("|%1,%2,%3,%4,%5,%6")
+               .arg(colour.logRatio[0])
+               .arg(colour.logRatio[1])
+               .arg(colour.logRatio[2])
+               .arg(colour.slope[0])
+               .arg(colour.slope[1])
+               .arg(colour.slope[2]);
     key += QStringLiteral("|%1,%2,%3,%4").arg(c.blurPlates).arg(c.plateScan)
                .arg(c.blurRemovals.size()).arg(c.blurAdditions.size());
     for (int pane = 0; pane < c.paneCount(); ++pane) {
@@ -606,6 +616,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     job.lensGuard = c.lensGuard;
     job.depthSeam = c.depthSeam;
     timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
+    timeline.sourceLensColour(c.sourcePath, job.lensColour);
     if (nativeStab)
         job.stab = ReframeExportController::buildStabilizer(
             c.sourcePath, c.stabilization, std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);

@@ -404,6 +404,10 @@ public slots:
     // every clip cut from `sourcePath`.
     void setSourceSeamCorrection(const QString &sourcePath, const insv::SeamCorrection &seam,
                              int lensGuard);
+    // Measured lens colour (ClipItem::lensColour / lensColourGuard) for every
+    // clip cut from `sourcePath`. Emits clipSeamChanged per clip that changed.
+    void setSourceLensColour(const QString &sourcePath, const insv::LensColour &colour,
+                             int lensGuard);
     // A source's sync fine-tune: the first main-track clip cut from it; NaN
     // when it has none (not measured, or no clip of it).
     double sourceSyncAdjust(const QString &sourcePath) const;
@@ -414,6 +418,11 @@ public slots:
     // The same, measured under the lens guards the source is set to now
     // (ClipItem::lensGuard): what its stitch uses.
     bool sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrection &seam) const;
+    // A source's lens colour, as sourceSeamCorrection: measured under
+    // `lensGuard`, or under the guards the source is set to now.
+    bool sourceLensColour(const QString &sourcePath, int lensGuard,
+                          insv::LensColour &colour) const;
+    bool sourceLensColour(const QString &sourcePath, insv::LensColour &colour) const;
 
 signals:
     void clipInserted(int index);

@@ -354,7 +354,7 @@ void EquirectViewportRenderer::createLensResources()
         vkMapMemory(device, m_lensUboMem[i], 0, bi.size, 0, &m_lensUboMap[i]);
     }
 
-    VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(LensPushConstants)};
+    VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants)};
     VkPipelineLayoutCreateInfo pli{};
     pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     const VkDescriptorSetLayout sets[2] = {m_lensSetLayout, m_luts.layout()};

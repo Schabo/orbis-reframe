@@ -9,21 +9,19 @@
 // reference insv::FisheyeStitcher::renderEquirect -- constants come from
 // insv::FisheyeStitcher::gpuParams().
 //
-// Dispatched twice per frame: pass 0 (pc.pass==0) measures the two lenses' mean
-// luma in the overlap band into GainBuf; pass 1 renders, applying a per-lens
-// photometric gain so the seam has no brightness step. Passes 2 and 3 (their
-// own submission, before the others) measure for the depth-aware seam: the
+// Pass 1 (pc.pass==1) renders, each lens's colour matched by the clip's lens
+// colour (insv::LensColour). Passes 2 and 3 (their own submission, before
+// it) measure for the depth-aware seam: the
 // cost volume (seamCostPass, one workgroup per azimuth bin and candidate
 // distance, NCC of the two lenses over the bin's patch) and the cut
 // statistics (seamCutPass, one workgroup per bin and row across the band).
 //
 // An includer that defines FISHEYE_STITCH_NO_MAIN (fisheye_view_nv12.comp,
 // the fused fisheye -> view render) gets only the projection core and the
-// per-direction helpers (eqTexelDir / lensWeights / measureAt / photoGains /
-// blendLenses) and declares its own push constants and main(). One that also
-// defines FISHEYE_STITCH_NO_BUFFERS (fisheye_view.frag, the viewport) gets no
-// OutBuf / GainBuf and so no measureAt / photoGains -- its gains arrive
-// precomputed.
+// per-direction helpers (eqTexelDir / lensWeights / blendLenses) and
+// declares its own push constants and main(). One that also defines
+// FISHEYE_STITCH_NO_BUFFERS (fisheye_view.frag, the viewport) gets no OutBuf
+// / SeamBuf.
 
 #define RS_TAPS 7 // == insv::StitchGpuParams::kRsTaps
 #define SEAM_BINS 128 // == insv::kSeamDepthBins
@@ -34,7 +32,9 @@
 #define SEAM_CUT_EL 4 // == insv::kSeamCutPatchEl
 #define SEAM_CUT_EL_RAD 0.010471976 // == insv::kSeamCutPatchElDeg (0.6 deg)
 #define SEAM_CUT_CLIP 250.0 // == insv::kSeamCutClip
-#define SEAM_GAIN_RAMP_RAD 0.17453293 // == insv::kSeamGainRampDeg (10 deg)
+#define LENS_COLOUR_MAX_LOG 0.3 // == insv::kLensColourMaxLog
+#define LENS_COLOUR_KNEE_LO 192.0 // == insv::kLensColourKneeLo
+#define LENS_COLOUR_KNEE_HI 250.0 // == insv::kLensColourKneeHi
 #define MAX_BLUR 64 // == insv::kMaxBlurQuads
 #define BLUR_TAPS 3 // == insv::kBlurTaps
 #define BLUR_FEATHER 0.08 // == insv::kBlurFeather
@@ -45,7 +45,7 @@ layout(std140, binding = 0) uniform Params {
     vec4 outRot[3]; // global equirect orientation rows
     vec4 cxcy;      // cx0, cy0, cx1, cy1   (fisheye-pixel space)
     vec4 seam;      // seamRad, bandRad, thetaMaxRad, thetaRef (circle edge, rad)
-    vec4 edge;      // edgeStartFrac, edgeEndFrac, photometric(0/1), -
+    vec4 edge;      // edgeStartFrac, edgeEndFrac, -, -
     ivec4 dims;     // fisheyeW, fisheyeH, eqW, eqH
     // Extended MEI (Mei/unified) model. See insv::LensProjection / gpuParams().
     vec4 meiA;      // xi0, xi1, fx0, fx1
@@ -68,7 +68,10 @@ layout(std140, binding = 0) uniform Params {
                     // cut pass: outermost row's elevation (rad, insv::SeamCutRowMax)
     vec4 seamQ[SEAM_BINS / 4]; // per azimuth bin: inverse stitch distance (1/m)
     vec4 seamCF[SEAM_BINS / 2]; // per azimuth bin: the fade's centre, half-width (rad; insv::SeamBlend), 2 bins per vec4
-    vec4 seamG[SEAM_BINS];      // per azimuth bin: log(lens 0 / lens 1) R, G, B, how much applies (insv::SeamBlend::gain)
+    // The lens colour (insv::LensColourLog): log(lens 0 / lens 1) R, G, B on
+    // the seam circle, the frame's residual added; its slope per radian.
+    vec4 lensCol;   // R, G, B, -
+    vec4 lensColS;  // R, G, B, -
     // Privacy blur (insv::BlurQuadFrame, carried into the stitch world frame):
     // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
@@ -83,7 +86,6 @@ layout(std140, binding = 0) uniform Params {
 
 #ifndef FISHEYE_STITCH_NO_BUFFERS
 layout(std430, binding = 3) writeonly buffer OutBuf { uint px[]; };
-layout(std430, binding = 4) buffer GainBuf { uint gsum[3]; }; // luma0*4, luma1*4, count
 // Pass 2 output: per (bin, candidate) = bin * SEAM_CANDS + k: (NCC, texture),
 // as insv::SeamCosts. Pass 3's after it: per (bin, row) = bin * SEAM_ROWS + r,
 // three vec4 -- (samples, zero-mean difference, texture, unclipped samples),
@@ -99,7 +101,6 @@ layout(push_constant) uniform PC { int pass; } pc;
 #endif
 
 const float PI = 3.14159265358979323846;
-const float GAIN_FP = 4.0;
 
 vec3 mul3(vec4 r0, vec4 r1, vec4 r2, vec3 v)
 {
@@ -303,13 +304,10 @@ vec2 seamCFBin(int b) { vec4 v = P.seamCF[b >> 1]; return (b & 1) == 0 ? v.xy : 
 
 // The seam's per-bin tables at `dir`, its position found once: returns the
 // inverse stitch distance (insv::FisheyeStitcher::seamQAt); `w` the two
-// lenses' feather -- with `cut` and a measured blend the cosine ramp around
-// the bin's cut with its own half-width (seamBlendWeights), else the plain
-// cross-fade; `lg` with `cut` the colour match (log lens 0 / lens 1 R, G, B,
-// and how much of it applies here, seamGains), 0 elsewhere.
-float seamTables(vec3 dir, bool cut, out vec2 w, out vec4 lg)
+// lenses' feather -- with a measured blend the cosine ramp around the bin's
+// cut with its own half-width (seamBlendWeights), else the plain cross-fade.
+float seamTables(vec3 dir, out vec2 w)
 {
-    lg = vec4(0.0);
     if (P.seamA.w == 0.0) {
         w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
         return 0.0;
@@ -317,7 +315,7 @@ float seamTables(vec3 dir, bool cut, out vec2 w, out vec4 lg)
     int i0, i1;
     vec2 pos = seamPosition(dir, i0, i1);
     vec2 c0 = seamCFBin(i0), c1 = seamCFBin(i1);
-    if (cut && c0.y > 0.0 && c1.y > 0.0) {
+    if (c0.y > 0.0 && c1.y > 0.0) {
         vec2 cf = mix(c0, c1, pos.y);
         float x = (pos.x - cf.x) / cf.y;
         float w0 = x >= 1.0 ? 1.0 : (x <= -1.0 ? 0.0 : 0.5 * (1.0 + sin(0.5 * PI * x)));
@@ -325,22 +323,30 @@ float seamTables(vec3 dir, bool cut, out vec2 w, out vec4 lg)
     } else {
         w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
     }
-    float e = abs(pos.x), band = P.seam.y;
-    if (cut && int(P.edge.z) != 0 && e < band + SEAM_GAIN_RAMP_RAD) {
-        vec4 g = mix(P.seamG[i0], P.seamG[i1], pos.y);
-        if (e > band)
-            g.w *= 0.5 * (1.0 + cos(PI * (e - band) / SEAM_GAIN_RAMP_RAD));
-        lg = g;
-    }
     return seamQFrom(pos, i0, i1);
 }
 
+// Each lens's log gain per channel for `dir` (insv::FisheyeStitcher::
+// lensLogGains): the lens colour's log ratio L at dir's elevation off the
+// seam circle, held at the band's edge beyond it; lens 0 -L / 2, lens 1 L / 2.
+vec3 lensColourLog(vec3 dir)
+{
+    float e = clamp(asin(clamp(dot(dir, P.seamA.xyz), -1.0, 1.0)), -P.seam.y, P.seam.y);
+    return clamp(P.lensCol.xyz + P.lensColS.xyz * e, vec3(-LENS_COLOUR_MAX_LOG),
+                 vec3(LENS_COLOUR_MAX_LOG));
+}
+
+// A lens sample `s` (0..255) with log gain `lg` per channel, eased to 1 over
+// the highlight knee (insv::LensColourGain).
+vec3 lensColourApply(vec3 s, vec3 lg)
+{
+    return s * exp(lg * (1.0 - smoothstep(vec3(LENS_COLOUR_KNEE_LO), vec3(LENS_COLOUR_KNEE_HI), s)));
+}
+
 // Per-lens sample uv + blend weight for stitch-world direction `dir` (a
-// weight of 0 means that lens doesn't contribute), and the seam's colour
-// match there (seamTables); `cut`: with the seam's per-bin blend (the
-// picture), else the plain cross-fade (the exposure measure).
-void lensWeights(vec3 dir, bool cut, out vec2 uv0, out vec2 uv1, out float w0, out float w1,
-                 out vec4 lg)
+// weight of 0 means that lens doesn't contribute), with the seam's per-bin
+// blend (seamTables).
+void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w1)
 {
     float fw = float(P.dims.x), fh = float(P.dims.y);
     uv0 = vec2(0.0);
@@ -348,7 +354,7 @@ void lensWeights(vec3 dir, bool cut, out vec2 uv0, out vec2 uv1, out float w0, o
     w0 = 0.0;
     w1 = 0.0;
     vec2 wsl;
-    float q = seamTables(dir, cut, wsl, lg);
+    float q = seamTables(dir, wsl);
     for (int i = 0; i < 2; ++i) {
         float ws = wsl[i];
         if (ws <= 0.0)
@@ -369,37 +375,6 @@ void lensWeights(vec3 dir, bool cut, out vec2 uv0, out vec2 uv1, out float w0, o
 }
 
 #ifndef FISHEYE_STITCH_NO_BUFFERS
-// Measure pass body for one direction: where both lenses are solidly present,
-// add their luma to the exposure match.
-void measureAt(vec3 dir)
-{
-    vec2 uv0, uv1;
-    float w0, w1;
-    vec4 lg;
-    lensWeights(dir, false, uv0, uv1, w0, w1, lg);
-    if (w0 > 0.25 && w1 > 0.25) {
-        atomicAdd(gsum[0], uint(luma(sampleLens(0, uv0)) * GAIN_FP));
-        atomicAdd(gsum[1], uint(luma(sampleLens(1, uv1)) * GAIN_FP));
-        atomicAdd(gsum[2], 1u);
-    }
-}
-
-// Photometric gain: pull each lens toward the geometric-mean brightness.
-void photoGains(out float g0, out float g1)
-{
-    g0 = 1.0;
-    g1 = 1.0;
-    if (int(P.edge.z) != 0 && gsum[2] > 64u) {
-        float m0 = float(gsum[0]) / (GAIN_FP * float(gsum[2]));
-        float m1 = float(gsum[1]) / (GAIN_FP * float(gsum[2]));
-        if (m0 > 1.0 && m1 > 1.0) {
-            float r = sqrt(m1 / m0);
-            g0 = clamp(r, 0.8, 1.25);
-            g1 = clamp(1.0 / r, 0.8, 1.25);
-        }
-    }
-}
-
 // Pass 2: the depth-aware seam's cost volume. Workgroup (bin, k) of 64
 // invocations samples the bin's SEAM_PATCH x SEAM_PATCH patch (4 samples
 // each) from both lenses, each from its own centre at candidate distance k,
@@ -564,24 +539,18 @@ void seamCutPass(uvec3 wg, uint lid)
 #endif
 
 // The stitched colour for `dir`, RGB in [0, 255] (unquantised); black outside
-// both imaged circles. g0 / g1: the photometric gains (g0 * g1 = 1); near the
-// seam each lens goes from its own to the bin's colour match, both lenses to
-// the geometric mean of their colours per channel (insv::FisheyeStitcher::seamGains).
-vec3 blendLenses(vec3 dir, float g0, float g1)
+// both imaged circles. Each lens's colour matched by the lens colour
+// (lensColourLog), both lenses to the geometric mean of their colours.
+vec3 blendLenses(vec3 dir)
 {
     vec2 uv0, uv1;
     float w0, w1;
-    vec4 lg;
-    lensWeights(dir, true, uv0, uv1, w0, w1, lg);
-    vec3 gain0 = vec3(g0), gain1 = vec3(g1);
-    if (lg.w > 0.0) {
-        gain0 = exp(mix(vec3(log(g0)), -0.5 * lg.xyz, lg.w));
-        gain1 = exp(mix(vec3(log(g1)), 0.5 * lg.xyz, lg.w));
-    }
+    lensWeights(dir, uv0, uv1, w0, w1);
+    vec3 lg = 0.5 * lensColourLog(dir);
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
-    if (w0 > 0.0) { acc += w0 * gain0 * sampleLens(0, uv0); wsum += w0; }
-    if (w1 > 0.0) { acc += w1 * gain1 * sampleLens(1, uv1); wsum += w1; }
+    if (w0 > 0.0) { acc += w0 * lensColourApply(sampleLens(0, uv0), -lg); wsum += w0; }
+    if (w1 > 0.0) { acc += w1 * lensColourApply(sampleLens(1, uv1), lg); wsum += w1; }
     return wsum > 1e-6 ? acc / wsum : vec3(0.0);
 }
 
@@ -644,9 +613,9 @@ vec3 blurDir(int k, vec2 st)
 }
 
 // blendLenses() with the privacy blur applied: what every render path calls.
-vec3 blurredLenses(vec3 dir, float g0, float g1)
+vec3 blurredLenses(vec3 dir)
 {
-    vec3 rgb = blendLenses(dir, g0, g1);
+    vec3 rgb = blendLenses(dir);
     int n = int(P.blur0.x);
     for (int k = 0; k < n; ++k) {
         vec2 st;
@@ -657,7 +626,7 @@ vec3 blurredLenses(vec3 dir, float g0, float g1)
         vec3 mos = vec3(0.0);
         for (int i = 0; i < BLUR_TAPS; ++i)
             for (int j = 0; j < BLUR_TAPS; ++j)
-                mos += blendLenses(blurDir(k, (cell + (vec2(i, j) + 0.5) / float(BLUR_TAPS)) / cells), g0, g1);
+                mos += blendLenses(blurDir(k, (cell + (vec2(i, j) + 0.5) / float(BLUR_TAPS)) / cells));
         mos /= float(BLUR_TAPS * BLUR_TAPS);
         float edge = min(min(st.x, 1.0 - st.x), min(st.y, 1.0 - st.y));
         return mix(rgb, mos, smoothstep(0.0, BLUR_FEATHER, edge));
@@ -680,19 +649,8 @@ void main()
     int W = P.dims.z, H = P.dims.w;
     if (gid.x >= W || gid.y >= H)
         return;
-    // Measure pass touches every 8th texel only.
-    if (pc.pass == 0 && ((gid.x & 7) != 0 || (gid.y & 7) != 0))
-        return;
-
     vec3 dir = eqTexelDir(gid, W, H);
-    if (pc.pass == 0) {
-        measureAt(dir);
-        return;
-    }
-
-    float g0, g1;
-    photoGains(g0, g1);
-    uvec3 q = uvec3(clamp(blurredLenses(dir, g0, g1) + 0.5, vec3(0.0), vec3(255.0)));
+    uvec3 q = uvec3(clamp(blurredLenses(dir) + 0.5, vec3(0.0), vec3(255.0)));
     px[gid.y * W + gid.x] = q.r | (q.g << 8) | (q.b << 16) | (255u << 24);
 }
 #endif

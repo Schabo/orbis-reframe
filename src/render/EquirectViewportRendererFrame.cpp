@@ -662,17 +662,8 @@ void EquirectViewportRenderer::startNextFrame()
             pc.aspect = d.aspect;
             pc.distortion = d.lens.distortion;
         }
-        if (imp) {
-            LensPushConstants lpc{};
-            lpc.view = pc;
-            lpc.gains[0] = m_currentLens->gain[0];
-            lpc.gains[1] = m_currentLens->gain[1];
-            vkCmdPushConstants(commandBuffer, m_lensPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               0, sizeof(lpc), &lpc);
-        } else {
-            vkCmdPushConstants(commandBuffer, m_pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                               sizeof(PushConstants), &pc);
-        }
+        vkCmdPushConstants(commandBuffer, imp ? m_lensPipelineLayout : m_pipelineLayout,
+                           VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
     }
     if (panes.size() > 1) { // back to the whole output rect for what's drawn over

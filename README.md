@@ -196,7 +196,8 @@ no closed-source dependencies.
   video: how the back lens is turned, where its centre is, and its scale.
 - Depth-aware seam: the stitch distance is measured along the seam every
   frame, so near objects (the bike, handlebars, hands) aren't doubled; the
-  seam is cut where the lenses agree, and their colour matched along it.
+  seam is cut where the lenses agree. The two lenses' colours are measured
+  and matched per clip, so the seam shows no step.
 
 **Look and sound**
 - Per-clip colour grading: exposure, contrast, saturation, temperature. The

@@ -8,6 +8,7 @@
 #include <ColorLut.h>       // color::Grade (no Qt)
 #include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
+#include <LensColour.h>     // insv::LensColour (POD)
 #include <SeamCorrection.h> // insv::SeamCorrection (POD)
 
 #include <QString>
@@ -189,6 +190,12 @@ struct ClipItem {
     // by clips of the same source, like syncAdjustMs.
     insv::SeamCorrection seamCorrection;
     int seamAdjustGuard = -1;
+    // Measured lens colour for this source (stitch::MeasureClipLensColour):
+    // how its two lenses differ in colour, matched in the stitch. Measured
+    // with the seam correction under a lens-guard profile, recorded in
+    // lensColourGuard (-1 = not measured); shared like seamCorrection.
+    insv::LensColour lensColour;
+    int lensColourGuard = -1;
 
     qint64 trimmedDurationMs() const { return trimOutMs - trimInMs; }
     // The clip's span on the timeline: the trimmed source span at `speed`.

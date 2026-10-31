@@ -60,7 +60,7 @@ struct ReadTiming {
 // insv::FisheyeStitcher, all in-process, with true frame-at-time-T random
 // access. This is the only IStitchSource backend.
 //
-// Quality: geometry + feather blend + photometric seam compensation + pole
+// Quality: geometry + feather blend + the clip's lens colour match + pole
 // handling (see FisheyeProjection.h), plus the depth-aware seam
 // (PreviewStitchConfig::depthSeam): every frame the seam's cost volume is
 // measured first (render::VulkanFisheyeStitcher::measureSeamVk, or
@@ -201,6 +201,8 @@ public:
     // Re-configures the stitch geometry with the seam correction (see
     // IStitchSource::SetSeamCorrection). Cheap; a no-op when unchanged.
     void SetSeamCorrection(const insv::SeamCorrection& c) override;
+    // Likewise the lens colour (IStitchSource::SetLensColour).
+    void SetLensColour(const insv::LensColour& c) override;
 
     // Privacy blur (IStitchSource::SetBlurQuads): applied in paramsAt, so
     // every path -- equirect, fused view / flat, lens frames for the

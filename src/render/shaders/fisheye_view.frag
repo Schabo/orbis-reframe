@@ -12,8 +12,7 @@
 // lens -- R16 / R16G16 for 10-bit pictures -- converted here with the
 // stream's matrix and range (P.ycc) and the midpoint chroma siting the
 // stitch's ycbcr sampler uses. Params (binding 0) is the
-// stitch's own UBO for this frame, packed on the decoder side, and the
-// photometric gains were measured there too.
+// stitch's own UBO for this frame, packed on the decoder side.
 
 layout(location = 0) in vec2 inNdc;
 layout(location = 0) out vec4 outColor;
@@ -34,7 +33,6 @@ layout(push_constant) uniform PushConstants {
     mat3 stab;       // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
     vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
-    vec4 gains;      // x, y: photometric gain of lens 0 / 1; z, w: -
 } pc;
 
 // Defined below the include: its conversion is in the include's Params (P.ycc).
@@ -77,6 +75,6 @@ void main() {
     vec3 sphereDir = normalize(pc.stab * vec3(rp.x * cy + rp.z * sy, rp.y, -rp.x * sy + rp.z * cy));
 
     vec3 dir = mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
-    vec3 rgb = blurredLenses(dir, pc.gains.x, pc.gains.y) / 255.0;
+    vec3 rgb = blurredLenses(dir) / 255.0;
     outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
 }

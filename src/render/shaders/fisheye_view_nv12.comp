@@ -7,15 +7,10 @@
 // (fisheye_stitch_nv12.comp, then reframe_reproject.comp), and the cost
 // follows the output's pixel count, not the sphere's.
 //
-// Dispatched twice per frame, like the stitch (plus pass 2, the seam cost
-// volume, in its own submission when the depth-aware seam is on):
-//   pass 0 -- photometric measure over the SAME sphere grid the equirect
-//             stitch measures (every 8th texel of a P.dims.z x P.dims.w
-//             equirect; one invocation per grid point), so the seam gains
-//             match the equirect path exactly;
-//   pass 1 -- the view: pixel -> view ray (pose, then stab; identical to
-//             reframe_reproject.comp / equirect.frag) -> stitch direction ->
-//             blended lenses -> colour grade -> out.
+// Pass 1 is the view: pixel -> view ray (pose, then stab; identical to
+// reframe_reproject.comp / equirect.frag) -> stitch direction -> blended
+// lenses -> colour grade -> out. Passes 2 and 3, the depth-aware seam's
+// measures, run in their own submission before it.
 //
 // Output (binding 3, uint px[]), 4 horizontal pixels per invocation, so outW
 // must be a multiple of 4 (and outH of 2 for NV12):
@@ -100,11 +95,9 @@ vec3 stitchDir(vec3 sphereDir)
     return mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
 }
 
-float g0, g1; // photometric gains, per invocation
-
 vec3 shade(int px, int py)
 {
-    return gradeColor(blurredLenses(stitchDir(viewDir(px, py)), g0, g1), pc.colorGrade, pc.colorLut, 255.0);
+    return gradeColor(blurredLenses(stitchDir(viewDir(px, py))), pc.colorGrade, pc.colorLut, 255.0);
 }
 
 // BT.709 limited range, as reframe_reproject.comp.
@@ -130,21 +123,9 @@ void main()
     }
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
 
-    if (pc.pass == 0) {
-        // One invocation per measure-grid point: texel (8x, 8y) of the
-        // P.dims.z x P.dims.w equirect, as the stitch's pass 0 samples.
-        int W = P.dims.z, H = P.dims.w;
-        ivec2 t = gid * 8;
-        if (t.x >= W || t.y >= H)
-            return;
-        measureAt(eqTexelDir(t, W, H));
-        return;
-    }
-
     int quads = pc.outW / 4;
     if (gid.x >= quads || gid.y >= pc.outH)
         return;
-    photoGains(g0, g1);
     int basePx = gid.x * 4;
 
     // The canvas, in 4-pixel words per row, and its height.

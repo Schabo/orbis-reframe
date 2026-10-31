@@ -229,6 +229,8 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
                 c.syncAdjustMs = o.syncAdjustMs;
             c.seamCorrection = o.seamCorrection;
             c.seamAdjustGuard = o.seamAdjustGuard;
+            c.lensColour = o.lensColour;
+            c.lensColourGuard = o.lensColourGuard;
             break;
         }
     m_clips.insert(index, c);
@@ -688,6 +690,19 @@ void Timeline::setSourceSeamCorrection(const QString &sourcePath,
     }
 }
 
+void Timeline::setSourceLensColour(const QString &sourcePath, const insv::LensColour &colour,
+                                   int lensGuard)
+{
+    for (ClipItem &c : m_clips) {
+        if (c.sourcePath != sourcePath ||
+            (c.lensColour == colour && c.lensColourGuard == lensGuard))
+            continue;
+        c.lensColour = colour;
+        c.lensColourGuard = lensGuard;
+        emit clipSeamChanged(c.id);
+    }
+}
+
 double Timeline::sourceSyncAdjust(const QString &sourcePath) const
 {
     for (const ClipItem &c : m_clips)
@@ -715,6 +730,28 @@ bool Timeline::sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrect
         if (c.sourcePath == sourcePath)
             return sourceSeamCorrection(sourcePath, static_cast<int>(c.lensGuard), seam);
     seam = {};
+    return false;
+}
+
+bool Timeline::sourceLensColour(const QString &sourcePath, int lensGuard,
+                                insv::LensColour &colour) const
+{
+    for (const ClipItem &c : m_clips) {
+        if (c.sourcePath == sourcePath && c.lensColourGuard == lensGuard) {
+            colour = c.lensColour;
+            return true;
+        }
+    }
+    colour = {};
+    return false;
+}
+
+bool Timeline::sourceLensColour(const QString &sourcePath, insv::LensColour &colour) const
+{
+    for (const ClipItem &c : m_clips)
+        if (c.sourcePath == sourcePath)
+            return sourceLensColour(sourcePath, static_cast<int>(c.lensGuard), colour);
+    colour = {};
     return false;
 }
 

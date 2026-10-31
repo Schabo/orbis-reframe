@@ -55,7 +55,7 @@ struct VulkanLensOutcome {
 // (tools/playback_bench). GPU times come from timestamp queries and are < 0
 // when the queue can't write timestamps.
 struct StitchTiming {
-    double stitchGpuMs = -1.0;  // measure + stitch passes
+    double stitchGpuMs = -1.0;  // the stitch pass
     double reframeGpuMs = -1.0; // reproject pass (stitchAndReframeVk only)
     double fenceWaitMs = 0.0;   // submit -> fence signalled (decode wait + GPU work)
     double copyMs = 0.0;        // memcpy out of the host-visible output buffer
@@ -167,15 +167,13 @@ public:
     // NV12 fisheye pair -- no equirect. Each output pixel's view ray (`pose`,
     // then `stab`, as stitchAndReframeVk) samples the lenses directly, so it
     // is one resample instead of two and costs output pixels, not sphere
-    // pixels. The seam's photometric gains are measured over the same grid as
-    // a measureW x measureH equirect stitch would use, so they match that
-    // path. `fmt` Nv12 = tightly-packed BT.709 limited NV12 (outW*outH*3/2
+    // pixels. `fmt` Nv12 = tightly-packed BT.709 limited NV12 (outW*outH*3/2
     // bytes); P010 = the same with 16-bit little-endian samples, the 10-bit
     // code in the high bits (outW*outH*3 bytes); Rgba = RGBA8 (outW*outH*4).
     // outW must be a multiple of 4, outH of 2. Same semaphore handshake as
     // stitchVk(). Requires viewReady().
     bool renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                      const insv::StitchGpuParams& params, int measureW, int measureH, int outW,
+                      const insv::StitchGpuParams& params, int outW,
                       int outH, const view::Pose* pose, const float stab[9],
                       const color::Grade* colorGrade, ViewFormat fmt, std::vector<uint8_t>& out,
                       VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
@@ -187,7 +185,7 @@ public:
     // the rectangle's. Same stab for all, no colour grade. For the privacy
     // blur's plate scan: the detector's tiles and the quad tracker's views.
     bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                       const insv::StitchGpuParams& params, int measureW, int measureH,
+                       const insv::StitchGpuParams& params,
                        int canvasW, int canvasH, const std::vector<ViewRect>& views,
                        const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& out,
                        VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
@@ -196,14 +194,14 @@ public:
     // export, RGBA for a transition's layer). For NV12 / P010 each view's y
     // is even too.
     bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                       const insv::StitchGpuParams& params, int measureW, int measureH,
+                       const insv::StitchGpuParams& params,
                        int canvasW, int canvasH, const std::vector<ViewRect>& views,
                        const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
                        uint32_t fillRgba, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
                        VulkanLensOutcome* r1, std::string& err);
 
-    // Whether fillLensFrameVk() is usable -- the fused view pipeline (its
-    // measure pass) plus exportable memory on this device.
+    // Whether fillLensFrameVk() is usable -- exportable memory on this
+    // device.
     bool lensExportReady() const;
 
     // The adopted device's lock on the compute queue this stitcher submits to
@@ -219,17 +217,15 @@ public:
 
     // Hand the decoded NV12 pair to another Vulkan device. Copies both lenses'
     // Y / CbCr planes into a free slot of this stitcher's exportable ring
-    // (render::LensFrame), measures the seam's photometric gains over a
-    // measureW x measureH equirect grid (as the stitch does), and fills `out`
-    // with the slot, this frame's packed stitch params and the gains. Blocks
+    // (render::LensFrame), and fills `out` with the slot and this frame's
+    // packed stitch params. Blocks
     // until the GPU is done (and, if every slot is held, until one frees up --
     // the ring grows a little rather than deadlock). Same semaphore handshake
     // as stitchVk(). Requires lensExportReady() and a decoder image with
     // TRANSFER_SRC usage.
     bool fillLensFrameVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                         const insv::StitchGpuParams& params, int measureW, int measureH,
-                         LensFrame& out, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
-                         std::string& err);
+                         const insv::StitchGpuParams& params, LensFrame& out,
+                         VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
     // Free the ring slots nobody holds (a source going idle).
     void trimLensRing();
@@ -252,7 +248,7 @@ private:
     // renderViewVk / renderViewsVk: `views` into one buffer (canvas 0 x 0 =
     // the single view, NV12 or RGBA as `fmt`); `clear` fills it first.
     bool renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                         const insv::StitchGpuParams& params, int measureW, int measureH,
+                         const insv::StitchGpuParams& params,
                          int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
                          const uint32_t* clear, std::vector<uint8_t>& out, VulkanLensOutcome* r0,

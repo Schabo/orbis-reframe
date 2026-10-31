@@ -72,6 +72,12 @@ two lenses:
   and the app's status line print it); pick other frames than the fit's to
   check that it holds. `--seam-frames N` sets the frames for both (8).
 - `--seam` also stitches the frame with that correction.
+- `--lens-colour IN OUT` measures the clip's lens colour (how the two
+  lenses differ per colour channel, and across the overlap) on 24 frames
+  spread over a range, at the `--seam` correction, as the app does, and
+  stitches the frame with it; `--colour R,G,B[,SR,SG,SB]` stitches with a
+  given one (lens 0 against lens 1 in %, the slopes in %/deg, as the fit
+  prints them).
 - `--depth-seam` / `--depth-dump` show the depth-aware seam.
 - `--baseline` changes the lens spacing, and its sign tests which lens is
   in front.
@@ -95,6 +101,8 @@ build/insv_stitch clip.insv --time-ms 5000 --lens-profile ProtectorA --depth-dum
 build/insv_stitch clip.insv --measure-seam 0 10000
 build/insv_stitch clip.insv --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 \
     --seam-frames 16 --seam-offset 500 9500
+build/insv_stitch clip.insv --lens-profile ProtectorA \
+    --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 --lens-colour 0 60000
 ```
 
 ## stitch_source_smoke
@@ -105,6 +113,8 @@ times as PPM images. Times far apart exercise seeking. `--range START END
 STEP` reads a run of frames instead and writes one every STEP ms.
 `--measure-seam IN OUT` measures the seam correction as the app does and
 stitches with it; `--seam Y,P,R[,CU,CV,S]` stitches with a given one.
+`--lens-colour IN OUT` and `--colour R,G,B[,SR,SG,SB]` do the same for the
+lens colour (as `insv_stitch`'s; measured after the seam, with it).
 
 **When:** a quick check that decode, seek and stitch still work after a
 change, before starting the app. The release test runs it on a build from
@@ -139,8 +149,9 @@ use) and through an equirect of several sizes. It compares each with an 8K
 equirect reference: PSNR, and a sharpness figure. It also renders the
 fused view as P010 (the 10-bit export) and checks it against the NV12 one:
 within one 8-bit code, and with samples finer than 8 bits (a widened 8-bit
-picture has none); it exits 1 if not. `--seam Y,P,R,CU,CV,S` stitches
-with a seam correction, to check one on every path. `--out DIR` saves the
+picture has none); it exits 1 if not. `--seam Y,P,R,CU,CV,S` and
+`--colour R,G,B,SR,SG,SB` stitch with a seam correction and a lens colour
+(as `stitch_source_smoke`'s), to check them on every path. `--out DIR` saves the
 renders as raw NV12 / P010 images to look at with `ffmpeg`.
 
 **When:** changing the view or stitch shaders, to check that the picture

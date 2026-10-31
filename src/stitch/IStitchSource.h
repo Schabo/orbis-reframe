@@ -12,6 +12,7 @@ struct LensFrame; // src/render/LensFrame.h
 namespace insv {
 struct BlurQuad;       // src/insv/BlurQuads.h
 struct SeamCorrection; // src/insv/SeamCorrection.h
+struct LensColour;     // src/insv/LensColour.h
 }
 
 namespace stitch {
@@ -261,6 +262,11 @@ public:
     // stitch::MeasureClipSeam) for subsequently stitched frames. Call from
     // the reading thread. Default: unsupported, ignored.
     virtual void SetSeamCorrection(const insv::SeamCorrection& /*c*/) {}
+
+    // The clip's lens colour (insv::StitchParams::lensColour, measured by
+    // stitch::MeasureClipLensColour) for subsequently stitched frames. Call
+    // from the reading thread. Default: unsupported, ignored.
+    virtual void SetLensColour(const insv::LensColour& /*c*/) {}
 
     // Privacy blur for subsequent frames: every frame stitched is mosaicked
     // inside the quads `fn` returns for its time (empty fn = off). Safe to

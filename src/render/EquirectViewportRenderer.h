@@ -37,12 +37,6 @@ struct PushConstants {
     float colorLut[4];   // render::VulkanLutStore::pushValues
 };
 
-// fisheye_view.frag's push constants: the same view block plus the lens gains.
-struct LensPushConstants {
-    PushConstants view;
-    float gains[4]; // x, y: photometric gain of lens 0 / 1; z, w: -
-};
-static_assert(sizeof(LensPushConstants) == 128, "LensPushConstants must match fisheye_view.frag");
 
 // inset.frag's push constants.
 struct InsetPushConstants {

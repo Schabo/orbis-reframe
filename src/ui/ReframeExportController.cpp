@@ -124,6 +124,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     }
     src.SetCaptureTiming(captureTimingFor(c.stab));
     src.SetSeamCorrection(c.seamCorrection);
+    src.SetLensColour(c.lensColour);
     if (c.blur && !src.SetBlurQuads(c.blur)) {
         error = tr("This stitch can't apply the privacy blur.");
         return {};
@@ -394,6 +395,7 @@ void ReframeExportController::run(const Request &req)
         }
         src->SetCaptureTiming(captureTimingFor(c.stab));
         src->SetSeamCorrection(c.seamCorrection);
+        src->SetLensColour(c.lensColour);
         src->SetFlatTenBit(writer->tenBit());
         applyPanes(*src, c, req.outWidth, req.outHeight);
         if (c.blur && !src->SetBlurQuads(c.blur)) {

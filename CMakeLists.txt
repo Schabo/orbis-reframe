@@ -167,6 +167,8 @@ add_library(insv STATIC
     src/insv/SeamDepth.cpp
     src/insv/SeamCut.h
     src/insv/SeamCut.cpp
+    src/insv/LensColour.h
+    src/insv/LensColour.cpp
     src/insv/Ycbcr.h
     src/insv/Ycbcr.cpp
 )
@@ -461,6 +463,8 @@ if(FFMPEG_FOUND)
         src/stitch/ClipMeasure.cpp
         src/stitch/ClipSeam.h
         src/stitch/ClipSeam.cpp
+        src/stitch/ClipLensColour.h
+        src/stitch/ClipLensColour.cpp
     )
     target_include_directories(stitch PUBLIC src/stitch)
     target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch)

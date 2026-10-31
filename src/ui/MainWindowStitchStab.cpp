@@ -206,8 +206,8 @@ void MainWindow::connectMeasurements()
         QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
                                   Q_ARG(qint64, m_lastTimelineMs));
     });
-    // A measured seam fine-tune: hand it to the stitch and re-stitch the frame
-    // on screen if it's this clip's source.
+    // A measured seam fine-tune or lens colour: hand it to the stitch and
+    // re-stitch the frame on screen if it's this clip's source.
     connect(m_timeline, &Timeline::clipSeamChanged, this, [this](int id) {
         updateSeamStatus();
         if (m_playing) {
@@ -242,9 +242,11 @@ void MainWindow::ensureStabilizers()
     }
 }
 
-bool MainWindow::seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam) const
+void MainWindow::seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam,
+                                   insv::LensColour &colour) const
 {
-    return m_timeline->sourceSeamCorrection(clipPath, seam);
+    m_timeline->sourceSeamCorrection(clipPath, seam);
+    m_timeline->sourceLensColour(clipPath, colour);
 }
 
 void MainWindow::pushSeamCorrection()
@@ -252,14 +254,20 @@ void MainWindow::pushSeamCorrection()
     for (int i = 0; i < m_timeline->count(); ++i) {
         const QString &path = m_timeline->clipAt(i).sourcePath;
         insv::SeamCorrection seam;
-        seamCorrectionFor(path, seam);
-        m_controller->setSeamCorrection(path, seam);
+        insv::LensColour colour;
+        seamCorrectionFor(path, seam, colour);
+        m_controller->setSeamCorrection(path, seam, colour);
     }
 }
 
 void MainWindow::updateSeamStatus()
 {
-    m_stitchingPanel->setSeamStatus(m_measurements->seamStatus(m_timeline->clipById(m_clipId)));
+    const ClipItem *c = m_timeline->clipById(m_clipId);
+    QStringList lines;
+    for (const QString &s : {m_measurements->seamStatus(c), m_measurements->colourStatus(c)})
+        if (!s.isEmpty())
+            lines << s;
+    m_stitchingPanel->setSeamStatus(lines.join(QLatin1Char('\n')));
 }
 
 void MainWindow::updateSyncStatus()

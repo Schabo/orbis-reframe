@@ -261,7 +261,7 @@ int main(int argc, char** argv)
 
         stitch::NativeStitchSource src;
         stitch::PreviewStitchConfig sc;
-        sc.width = 7680; // the photometric measure grid; the CPU fallback's equirect
+        sc.width = 7680; // the CPU fallback's equirect
         sc.height = 3840;
         if (!src.Open(input, sc) || !src.SeekTo(t0Ms))
             die(src.GetLastError());

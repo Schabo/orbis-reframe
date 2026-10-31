@@ -17,7 +17,7 @@
 #include <vector>
 
 // The per-frame work: lens frames in (uploaded RGB, or the decoder's own
-// images), the stitch, measure and seam passes, and the reprojection to a
+// images), the stitch and seam passes, and the reprojection to a
 // flat view or the lens frames playback shows. The device, pipelines and
 // buffers they run on are VulkanFisheyeStitcherSetup.cpp's.
 
@@ -52,7 +52,7 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.seam[3] = p.thetaRef;
     sp.edge[0] = p.edgeStartFrac;
     sp.edge[1] = p.edgeEndFrac;
-    sp.edge[2] = static_cast<float>(p.photometric);
+    sp.edge[2] = 0.0f;
     sp.edge[3] = 0.0f;
     sp.dims[0] = p.fisheyeW;
     sp.dims[1] = p.fisheyeH;
@@ -117,7 +117,11 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
         sp.seamCF[b][0] = p.seamBlend.cut[b];
         sp.seamCF[b][1] = p.seamBlend.fade[b];
     }
-    std::memcpy(sp.seamG, p.seamBlend.gain, sizeof sp.seamG);
+    for (int c = 0; c < 3; ++c) {
+        sp.lensCol[c] = p.lensColour[c] + p.seamBlend.colour[c];
+        sp.lensColS[c] = p.lensColourSlope[c];
+    }
+    sp.lensCol[3] = sp.lensColS[3] = 0.0f;
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
     const int nBlur = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
@@ -225,33 +229,12 @@ bool viewsFit(int canvasW, int canvasH, const std::vector<VulkanFisheyeStitcher:
 
 void VulkanFisheyeStitcher::Impl::recordStitchPasses(int eqW, int eqH)
 {
-    vkCmdFillBuffer(cmd, gainBuf, 0, 12, 0);
-    VkBufferMemoryBarrier zb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    zb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    zb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    zb.srcQueueFamilyIndex = zb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    zb.buffer = gainBuf;
-    zb.size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &zb, 0, nullptr);
-
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeLayout, 0, 1, &descSet, 0,
                             nullptr);
     const uint32_t gx = (static_cast<uint32_t>(eqW) + kLocalSize - 1) / kLocalSize;
     const uint32_t gy = (static_cast<uint32_t>(eqH) + kLocalSize - 1) / kLocalSize;
-
-    int32_t pass = 0;
-    vkCmdPushConstants(cmd, pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
-    vkCmdDispatch(cmd, gx, gy, 1);
-
-    VkBufferMemoryBarrier mb = zb;
-    mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &mb, 0, nullptr);
-
-    pass = 1;
+    const int32_t pass = 1;
     vkCmdPushConstants(cmd, pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
     vkCmdDispatch(cmd, gx, gy, 1);
 }
@@ -716,8 +699,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
 }
 
 bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                         const insv::StitchGpuParams& params, int measureW,
-                                         int measureH, int outW, int outH,
+                                         const insv::StitchGpuParams& params, int outW, int outH,
                                          const view::Pose* pose,
                                          const float stab[9], const color::Grade* colorGrade,
                                          ViewFormat fmt, std::vector<uint8_t>& out,
@@ -729,25 +711,23 @@ bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const Vulkan
         v.pose = *pose;
     v.w = outW;
     v.h = outH;
-    return renderViewsImpl(f0, f1, params, measureW, measureH, 0, 0, {v}, stab, colorGrade, fmt,
+    return renderViewsImpl(f0, f1, params, 0, 0, {v}, stab, colorGrade, fmt,
                            nullptr, out, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                          const insv::StitchGpuParams& params, int measureW,
-                                          int measureH, int canvasW, int canvasH,
+                                          const insv::StitchGpuParams& params, int canvasW, int canvasH,
                                           const std::vector<ViewRect>& views, const float stab[9],
                                           uint32_t clearRgba, std::vector<uint8_t>& out,
                                           VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                                           std::string& err)
 {
-    return renderViewsVk(f0, f1, params, measureW, measureH, canvasW, canvasH, views, stab, nullptr,
+    return renderViewsVk(f0, f1, params, canvasW, canvasH, views, stab, nullptr,
                          ViewFormat::Rgba, clearRgba, out, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                          const insv::StitchGpuParams& params, int measureW,
-                                          int measureH, int canvasW, int canvasH,
+                                          const insv::StitchGpuParams& params, int canvasW, int canvasH,
                                           const std::vector<ViewRect>& views, const float stab[9],
                                           const color::Grade* colorGrade, ViewFormat fmt,
                                           uint32_t fillRgba, std::vector<uint8_t>& out,
@@ -756,13 +736,12 @@ bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const Vulka
 {
     if (!viewsFit(canvasW, canvasH, views, fmt, err))
         return false;
-    return renderViewsImpl(f0, f1, params, measureW, measureH, canvasW, canvasH, views, stab,
+    return renderViewsImpl(f0, f1, params, canvasW, canvasH, views, stab,
                            colorGrade, fmt, &fillRgba, out, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                            const insv::StitchGpuParams& params, int measureW,
-                                            int measureH, int canvasW, int canvasH,
+                                            const insv::StitchGpuParams& params, int canvasW, int canvasH,
                                             const std::vector<ViewRect>& views,
                                             const float stab[9], const color::Grade* colorGrade,
                                             ViewFormat fmt, const uint32_t* clear,
@@ -782,7 +761,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
             err = "bad dimensions (outW must be a multiple of 4, outH a multiple of 2)";
             return false;
         }
-    if (measureW <= 0 || measureH <= 0 || outW <= 0 || outH <= 0) {
+    if (outW <= 0 || outH <= 0) {
         err = "bad dimensions (outW must be a multiple of 4, outH a multiple of 2)";
         return false;
     }
@@ -804,10 +783,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     const color::Lut3D* lut = colorGrade && colorGrade->hasLut() ? colorGrade->lut.get() : nullptr;
     const VkDescriptorSet lutSet = d->luts.setFor(lut ? colorGrade->lut : nullptr);
 
-    // dims.zw = the measure grid: the equirect the stitch would have made, so
-    // the photometric gains come out the same as on the equirect path.
     ShaderParams sp{};
-    packParams(params, measureW, measureH, sp);
+    packParams(params, 0, 0, sp); // no equirect: dims.zw unused
     std::memcpy(d->uboMap, &sp, sizeof(sp));
 
     {
@@ -857,21 +834,18 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
 
-    vkCmdFillBuffer(d->cmd, d->gainBuf, 0, 12, 0);
-    if (clear) // the canvas background, where no view goes
+    if (clear) { // the canvas background, where no view goes
         recordCanvasFill(d->cmd, d->flatBuf, fmt, outW, outH, *clear);
-    VkBufferMemoryBarrier zb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    zb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    zb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    zb.srcQueueFamilyIndex = zb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    zb.buffer = d->gainBuf;
-    zb.size = VK_WHOLE_SIZE;
-    VkBufferMemoryBarrier fb = zb;
-    fb.buffer = d->flatBuf;
-    vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, clear ? 2 : 1,
-                         clear ? std::array<VkBufferMemoryBarrier, 2>{zb, fb}.data() : &zb, 0,
-                         nullptr);
+        VkBufferMemoryBarrier fb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        fb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        fb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        fb.srcQueueFamilyIndex = fb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        fb.buffer = d->flatBuf;
+        fb.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &fb, 0,
+                             nullptr);
+    }
 
     vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeline);
     const VkDescriptorSet vwSets[2] = {d->vwSet, lutSet};
@@ -888,19 +862,6 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     for (int i = 0; i < 4; ++i)
         vp.colorGrade[i] = colorGrade ? colorGrade->adjust[i] : 0.0f;
     VulkanLutStore::pushValues(lut, colorGrade ? colorGrade->lutMix : 0.0f, vp.colorLut);
-
-    // Pass 0: one invocation per measure-grid point (every 8th texel).
-    vp.pass = 0;
-    vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
-    const uint32_t mgx = (static_cast<uint32_t>(measureW) + 7) / 8;
-    const uint32_t mgy = (static_cast<uint32_t>(measureH) + 7) / 8;
-    vkCmdDispatch(d->cmd, (mgx + 15) / 16, (mgy + 3) / 4, 1);
-
-    VkBufferMemoryBarrier mb = zb;
-    mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &mb, 0, nullptr);
 
     // Pass 1: each view, 4 pixels per invocation.
     vp.pass = 1;
@@ -1142,9 +1103,9 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
 }
 
 bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                            const insv::StitchGpuParams& params, int measureW,
-                                            int measureH, LensFrame& out, VulkanLensOutcome* r0,
-                                            VulkanLensOutcome* r1, std::string& err)
+                                            const insv::StitchGpuParams& params, LensFrame& out,
+                                            VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                            std::string& err)
 {
     if (!lensExportReady()) {
         err = "fillLensFrameVk requires initAdopt(), the view pipeline and external memory";
@@ -1156,20 +1117,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         return false;
     }
     const int lw = f0.width, lh = f0.height;
-    if (lw <= 0 || lh <= 0 || f1.width != lw || f1.height != lh || (lw & 1) || (lh & 1) ||
-        measureW <= 0 || measureH <= 0) {
-        err = "bad lens / measure dimensions";
-        return false;
-    }
-    // Binding 3 of the view set must point somewhere even though pass 0
-    // doesn't write it.
-    if (!d->ensureUbo(err) || !d->ensureFlat(16, err))
-        return false;
-
-    const VkImageView v0 = d->nv12ViewFor(f0.image, f0.format);
-    const VkImageView v1 = d->nv12ViewFor(f1.image, f1.format);
-    if (!v0 || !v1) {
-        err = "vkCreateImageView (ycbcr) failed";
+    if (lw <= 0 || lh <= 0 || f1.width != lw || f1.height != lh || (lw & 1) || (lh & 1)) {
+        err = "bad lens dimensions";
         return false;
     }
 
@@ -1192,32 +1141,9 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     } release{d->ring.get(), slot};
 
     ShaderParams sp{};
-    packParams(params, measureW, measureH, sp);
+    packParams(params, 0, 0, sp); // no equirect: dims.zw unused
     // The viewport converts the planes itself (fisheye_view.frag).
     insv::YcbcrToRgbRows(d->ycbcr, d->deepLens() ? 10 : 8, sp.ycc);
-    std::memcpy(d->uboMap, &sp, sizeof(sp));
-    {
-        VkDescriptorImageInfo img0{VK_NULL_HANDLE, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkDescriptorImageInfo img1{VK_NULL_HANDLE, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkDescriptorBufferInfo flatInfo{d->flatBuf, 0, VK_WHOLE_SIZE};
-        VkWriteDescriptorSet w[3]{};
-        w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        w[0].dstSet = d->vwSet;
-        w[0].dstBinding = 1;
-        w[0].descriptorCount = 1;
-        w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        w[0].pImageInfo = &img0;
-        w[1] = w[0];
-        w[1].dstBinding = 2;
-        w[1].pImageInfo = &img1;
-        w[2] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        w[2].dstSet = d->vwSet;
-        w[2].dstBinding = 3;
-        w[2].descriptorCount = 1;
-        w[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[2].pBufferInfo = &flatInfo;
-        vkUpdateDescriptorSets(d->device, 3, w, 0, nullptr);
-    }
 
     VkCommandBuffer cmd = d->cmd;
     vkResetCommandBuffer(cmd, 0);
@@ -1239,57 +1165,22 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         return b;
     };
 
-    // Decoded pair -> sampled, for the measure pass.
-    const VulkanLensInput* in[2] = {&f0, &f1};
-    VkImageMemoryBarrier toRead[2];
-    for (int i = 0; i < 2; ++i)
-        toRead[i] = imgBarrier(in[i]->image, in[i]->layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                               0, VK_ACCESS_SHADER_READ_BIT); // src covered by the semaphore wait
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         0, 0, nullptr, 0, nullptr, 2, toRead);
-
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
 
-    // Photometric measure: the view pipeline's pass 0 over the equirect grid.
-    vkCmdFillBuffer(cmd, d->gainBuf, 0, 12, 0);
-    VkBufferMemoryBarrier zb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    zb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    zb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    zb.srcQueueFamilyIndex = zb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    zb.buffer = d->gainBuf;
-    zb.size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-                         0, nullptr, 1, &zb, 0, nullptr);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeline);
-    const VkDescriptorSet sets[2] = {d->vwSet, d->luts.setFor(nullptr)}; // no grade here
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeLayout, 0, 2, sets, 0,
-                            nullptr);
-    ViewPush vp{};
-    vp.pass = 0;
-    vkCmdPushConstants(cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
-    const uint32_t mgx = (static_cast<uint32_t>(measureW) + 7) / 8;
-    const uint32_t mgy = (static_cast<uint32_t>(measureH) + 7) / 8;
-    vkCmdDispatch(cmd, (mgx + 15) / 16, (mgy + 3) / 4, 1);
-    VkBufferMemoryBarrier toHostGain = zb;
-    toHostGain.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    toHostGain.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
-                         nullptr, 1, &toHostGain, 0, nullptr);
-
-    // Decoded pair -> transfer source; the slot's images -> transfer target
-    // (old contents discarded, so no ownership acquire is needed).
+    // Decoded pair -> transfer source (its writes are covered by the
+    // semaphore wait); the slot's images -> transfer target (old contents
+    // discarded, so no ownership acquire is needed).
+    const VulkanLensInput* in[2] = {&f0, &f1};
     VkImageMemoryBarrier pre[2 + LensSlot::kImages];
     for (int i = 0; i < 2; ++i)
-        pre[i] = imgBarrier(in[i]->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_SHADER_READ_BIT,
+        pre[i] = imgBarrier(in[i]->image, in[i]->layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
                             VK_ACCESS_TRANSFER_READ_BIT);
     for (int i = 0; i < LensSlot::kImages; ++i)
         pre[2 + i] = imgBarrier(slot->img[i], VK_IMAGE_LAYOUT_UNDEFINED,
                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
                                 VK_ACCESS_TRANSFER_WRITE_BIT);
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr,
-                         2 + LensSlot::kImages, pre);
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                         0, nullptr, 0, nullptr, 2 + LensSlot::kImages, pre);
 
     for (int lens = 0; lens < 2; ++lens) {
         for (int plane = 0; plane < 2; ++plane) {
@@ -1348,24 +1239,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
 
-    // The shader's photoGains(), on the CPU.
-    const uint32_t* g = static_cast<const uint32_t*>(d->gainMap);
-    constexpr float kGainFp = 4.0f;
-    float g0 = 1.0f, g1 = 1.0f;
-    if (params.photometric && g[2] > 64u) {
-        const float m0 = float(g[0]) / (kGainFp * float(g[2]));
-        const float m1 = float(g[1]) / (kGainFp * float(g[2]));
-        if (m0 > 1.0f && m1 > 1.0f) {
-            const float r = std::sqrt(m1 / m0);
-            g0 = std::clamp(r, 0.8f, 1.25f);
-            g1 = std::clamp(1.0f / r, 0.8f, 1.25f);
-        }
-    }
-
     out.fill = ++slot->fill;
     std::memcpy(out.params.data(), &sp, sizeof(sp));
-    out.gain[0] = g0;
-    out.gain[1] = g1;
     // The handle: hands the slot back to the ring when its last copy goes.
     std::shared_ptr<LensRingCore> ring = d->ring;
     out.slot = std::shared_ptr<const LensSlot>(&slot->pub, [ring, slot](const LensSlot*) {

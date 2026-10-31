@@ -3,10 +3,12 @@
 // each as a PPM so the output can be eyeballed. Passing several timestamps that
 // land far apart exercises seek + forward decode, not just one GOP.
 
+#include <ClipLensColour.h>
 #include <ClipSeam.h>
 #include <NativeStitchSource.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +31,7 @@ const char kUsage[] =
     "usage: stitch_source_smoke [--width N] [--lens-guard none|standard|premium]\n"
     "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam] [--dump-depth]\n"
     "       [--measure-seam IN_MS OUT_MS]\n"
+    "       [--colour R,G,B[,SR,SG,SB]] [--lens-colour IN_MS OUT_MS]\n"
     "       <input.insv> <timestamp_ms>...\n"
     "   or: stitch_source_smoke [options] --range START END STEP <input.insv>\n";
 
@@ -50,6 +53,8 @@ int main(int argc, char** argv) {
     int64_t seam_in = -1, seam_out = -1;
     bool seam_ok = false;
     insv::SeamCorrection seam;
+    int64_t colour_in = -1, colour_out = -1;
+    insv::LensColour colour;
     bool dump_depth = false;
     int arg = 1;
     for (; arg < argc; ++arg) {
@@ -74,6 +79,22 @@ int main(int argc, char** argv) {
             seam.lens1Centre[0] = cu * 0.01;
             seam.lens1Centre[1] = cv * 0.01;
             seam.radialScale = 1.0 + scalePct * 0.01;
+        } else if (a == "--colour" && arg + 1 < argc) {
+            // --colour R,G,B[,SR,SG,SB] : a known lens colour -- lens 0 against
+            // lens 1 (%), its slope across the band (%/deg)
+            double v[6] = {0, 0, 0, 0, 0, 0};
+            std::sscanf(argv[++arg], "%lf,%lf,%lf,%lf,%lf,%lf", &v[0], &v[1], &v[2], &v[3], &v[4],
+                        &v[5]);
+            for (int k = 0; k < 3; ++k) {
+                colour.logRatio[k] = std::log1p(v[k] * 0.01);
+                colour.slope[k] = v[3 + k] * 0.01;
+            }
+        } else if (a == "--lens-colour" && arg + 2 < argc) {
+            // --lens-colour IN OUT : stitch::MeasureClipLensColour over [IN,
+            // OUT] ms (after --measure-seam, with its result), then stitch
+            // with it.
+            colour_in = std::atoll(argv[++arg]);
+            colour_out = std::atoll(argv[++arg]);
         } else if (a == "--no-depth-seam") {
             config.depthSeam = false;
         } else if (a == "--dump-depth") {
@@ -112,12 +133,21 @@ int main(int argc, char** argv) {
         seam_ok = r.ok;
         seam = r.correction;
     }
+    if (colour_in >= 0) {
+        const auto r = stitch::MeasureClipLensColour(input_path, colour_in, colour_out,
+                                                     config.lensGuard, seam_ok ? seam : insv::SeamCorrection{});
+        std::cout << "Lens colour: " << (r.ok ? "ok" : "FAILED") << " (" << r.message << ")"
+                  << std::endl;
+        if (r.ok)
+            colour = r.colour;
+    }
     if (!source->Open(input_path, config)) {
         std::cerr << "Open failed: " << source->GetLastError() << std::endl;
         return 1;
     }
     if (seam_ok)
         source->SetSeamCorrection(seam);
+    source->SetLensColour(colour);
 
     const stitch::ClipInfo& info = source->GetInfo();
     std::cout << "Source: " << info.width << "x" << info.height << " @ " << info.fps << " fps, "

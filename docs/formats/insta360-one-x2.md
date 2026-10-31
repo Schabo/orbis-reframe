@@ -386,6 +386,17 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   telemetry-parser, files without `is_raw_gyro` are already in seconds after
   the field-24 shift. Checked against the picture: see above.
 
+- ⚠️ **The lenses' colour** (measured 2026-10-31 from the picture, seam
+  cells both lenses see alike, unclipped): unlike the X5's and the A1's,
+  the difference **wanders within a clip** (`_001`: lens 0 against lens 1,
+  red +0 to +23 %), and even without flare the ratio along the seam is
+  widely spread (on `_009` 50-80 % of the cells more than 10 % off the
+  frame's median, X5 / A1 10-30 %). Over a clip lens 0 is the brighter,
+  red +11-12 %, blue +1-12 % (`_001`, `_009`). Not known why: separate
+  auto exposure or white balance per lens (one exposure record serves
+  both), or lens shading. The app matches the clip's average and follows
+  the drift with a small, slow per-frame correction.
+
 ## 10. Type 9 ❓
 
 - 48-byte records, a `u32` ms timestamp first, about every **160 ms**

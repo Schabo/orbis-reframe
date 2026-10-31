@@ -96,7 +96,6 @@ void VulkanFisheyeStitcher::Impl::destroyResources()
     killBuf(staging, stagingMem, stagingMap);
     killBuf(ubo, uboMem, uboMap);
     killBuf(outBuf, outMem, outMap);
-    killBuf(gainBuf, gainMem, gainMap);
     killBuf(seamBuf, seamMem, seamMap);
     killBuf(flatBuf, flatMem, flatMap);
     fw = fh = ew = eh = 0;
@@ -139,17 +138,14 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     if (!makeBuffer(sizeof(ShaderParams), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, hostVis, ubo,
                     uboMem, &uboMap) ||
-        !makeBuffer(16, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                    hostVis, gainBuf, gainMem, &gainMap) ||
         !makeReadbackBuffer(kSeamBufBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, seamBuf, seamMem,
                             &seamMap)) {
-        err = "uniform / gain / seam buffer allocation failed";
+        err = "uniform / seam buffer allocation failed";
         return false;
     }
     VkDescriptorBufferInfo uboInfo{ubo, 0, sizeof(ShaderParams)};
-    VkDescriptorBufferInfo gainInfo{gainBuf, 0, VK_WHOLE_SIZE};
     VkDescriptorBufferInfo seamInfo{seamBuf, 0, VK_WHOLE_SIZE};
-    VkWriteDescriptorSet w[6]{};
+    VkWriteDescriptorSet w[4]{};
     int n = 0;
     for (VkDescriptorSet set : {descSet, vwSet}) {
         if (!set)
@@ -162,12 +158,8 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
         w[n].pBufferInfo = &uboInfo;
         ++n;
         w[n] = w[n - 1];
-        w[n].dstBinding = 4;
-        w[n].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        w[n].pBufferInfo = &gainInfo;
-        ++n;
-        w[n] = w[n - 1];
         w[n].dstBinding = 5;
+        w[n].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[n].pBufferInfo = &seamInfo;
         ++n;
     }
@@ -675,17 +667,16 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     // Bindings 1 & 2 use an immutable sampler in nv12 mode (ycbcr conversion
     // must be baked into the layout).
     const VkSampler immutable[2] = {d->sampler, d->sampler};
-    VkDescriptorSetLayoutBinding b[6]{};
+    VkDescriptorSetLayoutBinding b[5]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT,
             nv12Mode ? &immutable[0] : nullptr};
     b[2] = {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT,
             nv12Mode ? &immutable[1] : nullptr};
     b[3] = {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-    b[4] = {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
-    b[5] = {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    b[4] = {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    sli.bindingCount = 6;
+    sli.bindingCount = 5;
     sli.pBindings = b;
     if (vkCreateDescriptorSetLayout(d->device, &sli, nullptr, &d->setLayout) != VK_SUCCESS) {
         err = "vkCreateDescriptorSetLayout failed";
@@ -714,7 +705,7 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     VkDescriptorPoolSize ps[3]{
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * samplerDescriptors},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6}};
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 2;
     dpi.poolSizeCount = 3;
@@ -929,7 +920,7 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
 
 bool VulkanFisheyeStitcher::lensExportReady() const
 {
-    return m_ready && d->nv12 && m_viewReady && d->getMemoryFd;
+    return m_ready && d->nv12 && d->getMemoryFd;
 }
 
 void VulkanFisheyeStitcher::setQueueLock(std::function<void()> lock, std::function<void()> unlock)

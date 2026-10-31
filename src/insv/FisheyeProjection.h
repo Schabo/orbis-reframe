@@ -5,6 +5,7 @@
 #include "Calibration.h"
 #include "Image.h"
 #include "InsvTrailer.h" // insv::LensProfile
+#include "LensColour.h"
 #include "SeamCorrection.h"
 
 #include <array>
@@ -14,8 +15,8 @@
 // Productised from the since-removed tools/native_stitch_spike. For each
 // equirect texel: reconstruct the world ray, rotate each lens's ray into its
 // own frame, project it through the lens's MEI calibration, sample, and
-// feather-blend the two lenses across the overlap band, with photometric seam
-// compensation. With StitchParams::depthSeam each lens is sampled from its own
+// feather-blend the two lenses across the overlap band, their colours matched
+// by the clip's lens colour (insv::LensColour). With StitchParams::depthSeam each lens is sampled from its own
 // centre at a per-azimuth stitch distance (insv::SeamDepth), so near content on
 // the seam lines up; no dense optical-flow warp beyond that.
 //
@@ -102,10 +103,10 @@ struct StitchParams {
     double edgeStartFrac = 0.90;
     double edgeEndFrac = 1.00;
 
-    // Photometric seam compensation: match the two lenses' mean brightness in
-    // the overlap band (sqrt-split gain, clamped) so the seam has no exposure
-    // step. Per-frame; off = raw cross-fade.
-    bool photometric = true;
+    // The clip's lens colour (insv::FitLensColour): each lens's gain per
+    // channel, so the seam has no step in brightness or colour. All 0 = as
+    // recorded.
+    LensColour lensColour;
 
     // The X5 stores roll ~ 90 for both lenses -- a fixed sensor-frame clock,
     // not a per-unit correction. Subtracted from each lens's stored roll so
@@ -167,21 +168,17 @@ constexpr int kSeamDepthBins = 128;
 // where they don't. A fade of 0 (no frame measured yet) is the plain
 // cross-fade of StitchParams::featherDeg.
 //
-// And the lenses' colour there: with a narrow fade, a difference in exposure
-// or white balance between the lenses would show as a step. Each lens's gain
-// goes from the photometric one (one per lens, the whole band) to the bin's
-// colour match -- both lenses to the geometric mean of their colours, per
-// channel -- inside the band, and back over kSeamGainRampDeg past it.
-constexpr double kSeamGainRampDeg = 10.0;
+// And this frame's colour residual: what is left of the lenses' colour
+// difference after the clip's lens colour (StitchParams::lensColour), added
+// to its log ratio (insv::LensColourLog).
 struct SeamBlend {
     // Elevation of the fade's centre off the seam circle, radians, towards
     // lens 0 (the seam frame, FisheyeStitcher::seamDir).
     float cut[kSeamDepthBins] = {};
     // Half-width of the fade, radians.
     float fade[kSeamDepthBins] = {};
-    // log(lens 0 / lens 1) of the R, G, B means, and how much of it applies
-    // (0 = the photometric gain alone, 1 = the full match).
-    float gain[kSeamDepthBins][4] = {};
+    // log(lens 0 / lens 1), R G B.
+    float colour[3] = {};
 };
 
 // Everything a GPU port of renderEquirect() needs, as plain floats -- one
@@ -211,7 +208,12 @@ struct StitchGpuParams {
     float thetaMaxRad = 0;
     float edgeStartFrac = 0.90f;
     float edgeEndFrac = 1.00f;
-    int photometric = 1;
+    // The clip's lens colour (StitchParams::lensColour): the log ratio lens 0
+    // / lens 1 on the seam circle, R G B, and its slope per radian of
+    // elevation; the per-frame residual (seamBlend.colour) is added to the
+    // first by the packer.
+    float lensColour[3] = {0, 0, 0};
+    float lensColourSlope[3] = {0, 0, 0};
     int fisheyeW = 0;
     int fisheyeH = 0;
     // Per-frame capture-time correction (GPU stitch only; rsActive 0 = off).
@@ -316,11 +318,10 @@ public:
     // plain cross-fade (seamBlendWeight) when depthSeam is off, `blend` is
     // null or not measured yet.
     void seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const;
-    // Lens i's gain per channel for `dir`, from its photometric gain
-    // `photo[i]` (the pair's product is 1) and the per-bin colour match
-    // (SeamBlend::gain); just `photo` off the seam or without a blend.
-    void seamGains(const Vec3& dir, const SeamBlend* blend, const double photo[2],
-                   double gain[2][3]) const;
+    // Each lens's log gain per channel for `dir` from the clip's lens colour
+    // and the frame's residual (`blend`, null = none): lens 0 -L / 2, lens 1
+    // L / 2 (insv::LensColourLog). Applied with LensColourGain.
+    void lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3]) const;
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
 

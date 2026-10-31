@@ -7,17 +7,17 @@
 //              today's export path, and what playback shows at N,
 // and compares each against `eq 7680` (the full 8K sphere, the closest the
 // two-resample path gets to the source) on the Y plane: PSNR, plus mean
-// gradient magnitude as a sharpness figure (higher = more detail). All paths
-// use the same photometric measure grid (7680), so gains are identical.
+// gradient magnitude as a sharpness figure (higher = more detail).
 //
 // It also renders the fused view as P010 (the 10-bit export) and checks it
 // against the fused NV12: every sample within one 8-bit code, and samples
 // with more than 8 bits of detail -- a 10-bit render, not a widened 8-bit
 // one. Exits 1 if not.
 //
-// usage: view_compare [--at MS] [--seam Y,P,R,CU,CV,S] [--out DIR] <clip.insv>
-//   --seam stitches with a seam correction (as stitch_source_smoke --seam),
-//   so a measured one can be checked on every path.
+// usage: view_compare [--at MS] [--seam Y,P,R,CU,CV,S] [--colour R,G,B,SR,SG,SB]
+//                     [--out DIR] <clip.insv>
+//   --seam / --colour stitch with a seam correction / lens colour (as
+//   stitch_source_smoke's), so a measured one can be checked on every path.
 //   --out DIR writes each render as DIR/<pose>_<path>.nv12 (1920x1080 NV12,
 //   BT.709 limited) for a look with ffmpeg, and the P010 one as
 //   DIR/<pose>_fused.p010.
@@ -42,9 +42,10 @@ constexpr int kH = 1080;
 constexpr int kRefEq = 7680;
 
 insv::SeamCorrection g_seam; // --seam
+insv::LensColour g_colour;   // --colour
 
-// One NV12 render of the frame at `atMs`: fused (eqW is then only the
-// measure grid) or via an eqW equirect. `p010`: the fused render as P010.
+// One NV12 render of the frame at `atMs`: fused (eqW unused) or via an eqW
+// equirect. `p010`: the fused render as P010.
 std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fused, int eqW,
                                 const view::Pose& pose, bool p010 = false)
 {
@@ -57,6 +58,7 @@ std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fuse
         return {};
     }
     src.SetSeamCorrection(g_seam);
+    src.SetLensColour(g_colour);
     if (!src.SeekTo(atMs)) {
         std::fprintf(stderr, "seek failed: %s\n", src.GetLastError().c_str());
         return {};
@@ -129,10 +131,13 @@ double sharpness(const std::vector<uint8_t>& y)
 }
 
 const char kUsage[] =
-    "usage: view_compare [--at MS] [--seam Y,P,R,CU,CV,S] [--out DIR] <clip.insv>\n"
+    "usage: view_compare [--at MS] [--seam Y,P,R,CU,CV,S] [--colour R,G,B,SR,SG,SB]\n"
+    "                    [--out DIR] <clip.insv>\n"
     "  --at MS    the frame to compare (default 5000)\n"
     "  --seam     a seam correction: lens 1 yaw / pitch / roll (deg), its centre\n"
     "             (% of the lens width) and the radial scale (%)\n"
+    "  --colour   a lens colour: lens 0 against lens 1 (%), its slope across the\n"
+    "             band (%/deg)\n"
     "  --out DIR  also write each render as DIR/<pose>_<path>.nv12 (1920x1080),\n"
     "             and the P010 one as DIR/<pose>_fused.p010\n";
 
@@ -162,6 +167,17 @@ int main(int argc, char** argv)
                 return 2;
             }
             g_seam = {{v[0], v[1], v[2]}, {v[3] * 0.01, v[4] * 0.01}, 1.0 + v[5] * 0.01};
+        } else if (a == "--colour" && i + 1 < argc) {
+            double v[6] = {0, 0, 0, 0, 0, 0};
+            if (std::sscanf(argv[++i], "%lf,%lf,%lf,%lf,%lf,%lf", &v[0], &v[1], &v[2], &v[3], &v[4],
+                            &v[5]) != 6) {
+                std::fputs(kUsage, stderr);
+                return 2;
+            }
+            for (int k = 0; k < 3; ++k) {
+                g_colour.logRatio[k] = std::log1p(v[k] * 0.01);
+                g_colour.slope[k] = v[3 + k] * 0.01;
+            }
         }
         else
             clip = a;

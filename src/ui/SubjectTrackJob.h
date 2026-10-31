@@ -11,6 +11,7 @@
 #include <SubjectTracker.h> // track::Seed, TrackSample
 
 #include <NativeStitchSource.h> // stitch::PreviewStitchConfig, stitch::Frame
+#include <LensColour.h>         // insv::LensColour
 #include <SeamCorrection.h>     // insv::SeamCorrection
 
 #include <atomic>
@@ -36,6 +37,7 @@ struct Request {
     std::shared_ptr<const insv::GyroStabilizer> stab;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     insv::SeamCorrection seamCorrection;
+    insv::LensColour lensColour;
     int workWidth = 3840;     // analysis equirect width (2:1)
     bool realTime = true;     // no faster than the footage plays, so it can be watched
     double maxLostSec = 0.0;  // stop after this long without a verified frame; 0 = never

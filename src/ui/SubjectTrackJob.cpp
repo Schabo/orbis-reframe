@@ -22,6 +22,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onF
         return res;
     }
     src.SetSeamCorrection(req.seamCorrection);
+    src.SetLensColour(req.lensColour);
     if (req.blur)
         src.SetBlurQuads(req.blur);
 

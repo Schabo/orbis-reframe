@@ -78,10 +78,8 @@ two lenses agree best, and joins them there with a short blend, instead of
 fading one into the other over the whole overlap.
 
 A short blend would show any difference in brightness or colour between
-the two lenses as a step, so around the seam the two lenses are also
-matched to each other, colour by colour. The match follows slow changes
-round the seam (the sunny side against the shady one) but not a shiny
-surface close to the camera that shows each lens a different reflection.
+the two lenses as a step; how they are matched is under *Lens colour*
+below.
 
 Very close things that the two lenses see against different backgrounds
 (a crash bar and a cable right under the camera) can still look doubled in
@@ -133,6 +131,41 @@ Changing **Lens guards** measures the clip's file again, because the
 alignment depends on the lens model. Projects from orbis-reframe 0.5 and
 older measured only how the back lens is turned; their clips are measured
 again when the project opens.
+
+## Lens colour
+
+The two lenses of a camera never record quite the same colour: one is a
+little warmer or brighter than the other, and towards their rims they fall
+off differently, in colour too. Left alone, that would show as a step along
+the seam. orbis-reframe measures how the two lenses of a clip differ, colour
+by colour, from frames spread across the clip, once for each clip, right
+after the seam alignment; frames with flare from a low sun, and clipped or
+very dark parts of the picture, are left out. Each lens is then brought half
+way towards the other over its whole picture, so the seam has no step and
+neither lens is changed more than needed. The result is saved in the
+project.
+
+On most cameras the difference stays the same through a clip. Where it
+drifts (the ONE X2's lenses do), a small, slow correction from the frames
+being played follows it, as long as **Depth-aware seam** is on.
+
+Bright highlights are left as recorded: a sky that is blown out in both
+lenses stays the same white on both sides of the seam rather than turning
+slightly grey on one. Flare itself (veiling light from the sun on one lens)
+isn't removed: one lens really sees more light there.
+
+The **Stitching** section shows the state below the seam alignment's line:
+
+| Message | Meaning |
+|---|---|
+| *Colour: measuring this clip's lenses…* | The measurement is running. |
+| *Colour: lenses matched for this clip (they differed by red …, green …, blue … %).* | Done. How far apart the two lenses were on the seam, per colour, in percent; a few percent is normal. |
+| *Colour: couldn't match this clip's lenses (…).* | The measurement didn't succeed (the reasons are those of the seam alignment above). The lenses are stitched as recorded. |
+
+Like the seam alignment, changing **Lens guards** measures the clip's file
+again. Projects from older versions of orbis-reframe matched the lenses
+frame by frame; their clips are measured when the project opens, so their
+colour along the seam changes slightly.
 
 ## Preview size and quality
 

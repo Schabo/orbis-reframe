@@ -333,6 +333,15 @@ void NativeStitchSource::SetSeamCorrection(const insv::SeamCorrection& c) {
         gpu_params_ = stitcher_->gpuParams(); // keeps the per-frame RS fields: set in paramsAt
 }
 
+void NativeStitchSource::SetLensColour(const insv::LensColour& c) {
+    if (!stitcher_ || c == params_.lensColour)
+        return;
+    params_.lensColour = c;
+    cut_.setLensColour(c); // the frame's residual is measured against it
+    if (stitcher_->configure(calib_, info_.width, info_.height, params_))
+        gpu_params_ = stitcher_->gpuParams();
+}
+
 void NativeStitchSource::SetCaptureTiming(CaptureTiming timing, int64_t untilMs,
                                           CaptureTiming after) {
     std::lock_guard<std::mutex> lk(rs_mx_);
@@ -565,12 +574,12 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
                    ? gpu_->stitchAndReframeViewsVk(in0, in1, params, eq_w_, eq_h_, outW, outH,
                                                    views, stab, colorGrade, pane_fill_, out, &oc0,
                                                    &oc1, gerr)
-                   : gpu_->renderViewsVk(in0, in1, params, eq_w_, eq_h_, outW, outH, views, stab,
+                   : gpu_->renderViewsVk(in0, in1, params, outW, outH, views, stab,
                                          colorGrade, fmt, pane_fill_, out, &oc0, &oc1, gerr))
         : path == FlatPath::ViaEquirect
             ? gpu_->stitchAndReframeVk(in0, in1, params, eq_w_, eq_h_, outW, outH, &pose, stab,
                                        colorGrade, out, &oc0, &oc1, gerr)
-            : gpu_->renderViewVk(in0, in1, params, eq_w_, eq_h_, outW, outH, &pose, stab, colorGrade,
+            : gpu_->renderViewVk(in0, in1, params, outW, outH, &pose, stab, colorGrade,
                                  fmt, out, &oc0, &oc1, gerr);
 
     insv::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
@@ -654,7 +663,7 @@ bool NativeStitchSource::RenderKeptViews(int handle, int canvasW, int canvasH,
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
-    const bool ok = gpu_->renderViewsVk(in0, in1, h.params, eq_w_, eq_h_, canvasW, canvasH, vr, stab,
+    const bool ok = gpu_->renderViewsVk(in0, in1, h.params, canvasW, canvasH, vr, stab,
                                         clearRgba, rgba, &oc0, &oc1, gerr);
     if (ok) {
         vdec_->unlockFrame(h.f0, {oc0.semSignalValue, oc0.newLayout});
@@ -747,9 +756,7 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     const insv::StitchGpuParams params = paramsWithSeam(pts_ms, in0, in1);
-    // The photometric measure runs on the equirect grid the stitch would use
-    // at this source's configured size, so the seam matches the other paths.
-    const bool ok = gpu_->fillLensFrameVk(in0, in1, params, eq_w_, eq_h_, out, &oc0, &oc1, gerr);
+    const bool ok = gpu_->fillLensFrameVk(in0, in1, params, out, &oc0, &oc1, gerr);
     if (ok) {
         vdec_->unlockFrame(f0, {oc0.semSignalValue, oc0.newLayout});
         vdec_->unlockFrame(f1, {oc1.semSignalValue, oc1.newLayout});
