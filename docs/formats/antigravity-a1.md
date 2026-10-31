@@ -139,7 +139,11 @@ Markers as in [`README.md`](README.md).
   seam took 0.3-0.4 m and bent the town round the sun; at the 71 mm
   baseline 0.3 m is a 13° shift (X5: 6°). The seam's match now takes each
   lens's brightness plane out first (`insv::SeamPatchScore`), and those
-  bins stay far on all the frames checked.
+  bins stay far on all the frames checked. The table also stays within the X5's shift
+  range (−0.9 to +5.9°), which at 71 mm ends at ~0.7 m, and a match has to
+  be clearly better than any other shift to count (`insv::SeamDepthTracker`):
+  a frame solved from itself after a seek (`_018` at 22.36 s) took scattered
+  matches at 0.3-0.5 m and pulled the far town into a loop.
 - ✅ **The lenses' colour** (measured 2026-10-31 from the picture, seam
   cells both lenses see alike, unclipped, over each clip): the exposure
   record (type 4) holds **one shutter time per frame**, not one per lens,

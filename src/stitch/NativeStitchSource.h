@@ -229,6 +229,8 @@ public:
     // ... and its blend across the band and colour correction there, as the
     // last frame was stitched with.
     const insv::SeamBlend& SeamBlendState() const { return cut_.blend(); }
+    // ... and the depth measurement's mean confidence on that frame (0..1).
+    double SeamDepthConfidence() const { return depth_.lastConfidence(); }
 
     // Timing of the last all-GPU ReadFrame() / ReadFlatFrame(). Zeroes on the
     // CPU-decode path.

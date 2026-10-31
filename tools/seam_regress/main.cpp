@@ -837,6 +837,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     const int64_t pts = played.timestamp_ms;
     std::vector<float> qPlayed(gpu.SeamDepthTable(), gpu.SeamDepthTable() + insv::kSeamDepthBins);
     const insv::SeamBlend blendPlayed = gpu.SeamBlendState();
+    const double confPlayed = gpu.SeamDepthConfidence();
     std::printf("  frame %lld ms, played in over %d frames\n", static_cast<long long>(pts), runFrames);
 
     // Seeked to cold, on the same source.
@@ -849,6 +850,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         std::printf("  note: the cold frame is at %lld ms\n", static_cast<long long>(cold.timestamp_ms));
     std::vector<float> qCold(gpu.SeamDepthTable(), gpu.SeamDepthTable() + insv::kSeamDepthBins);
     const insv::SeamBlend blendCold = gpu.SeamBlendState();
+    const double confCold = gpu.SeamDepthConfidence();
 
     // The CPU fallback, cold (the app's path without a GPU stitch).
     stitch::Frame cpuFrame;
@@ -921,6 +923,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
             near += q > 0.2f;
             qMax = std::max(qMax, double(q));
         }
+        sum.emplace_back("depth_confidence", confPlayed);
+        sum.emplace_back("cold_depth_confidence", confCold);
         sum.emplace_back("near_bins", near);
         sum.emplace_back("q_max", qMax);
         double fade = 0;

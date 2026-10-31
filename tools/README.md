@@ -79,7 +79,9 @@ two lenses:
   stitches the frame with it; `--colour R,G,B[,SR,SG,SB]` stitches with a
   given one (lens 0 against lens 1 in %, the slopes in %/deg, as the fit
   prints them).
-- `--depth-seam` / `--depth-dump` show the depth-aware seam.
+- `--depth-seam` / `--depth-dump` show the depth-aware seam; the dump
+  gives per bin the best match, how much better it is than any other shift
+  (`uniq`) and the confidence the table gives it (`conf`).
 - `--baseline` changes the lens spacing, and its sign tests which lens is
   in front.
 - `--lens1 FILE` takes lens 1 from its own file, for a camera that writes a
@@ -202,7 +204,8 @@ What the summary measures:
   over the textured blocks; `far_*` only the blocks the table puts at
   infinity, which is the calibration and the seam correction's error.
 - `near_bins` (closer than 5 m), `q_max` (1/m), `fade_mean_deg`: the depth
-  table and the blend.
+  table and the blend; `depth_confidence` / `cold_depth_confidence`: the
+  depth measurement's mean confidence on the played and the cold frame.
 - `colour_*`: the lenses' colour difference where they meet (the fade's
   centre, per bin, unclipped samples), lens 0 against lens 1 in %, after
   the colour correction; `raw_colour_*` before it.

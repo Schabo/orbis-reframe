@@ -151,6 +151,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
         return false;
     }
     gpu_params_ = stitcher->gpuParams();
+    depth_.setBaselineM(stitcher->baselineM()); // the depth table's shift range
     calib_ = calib;
     params_ = params;
 

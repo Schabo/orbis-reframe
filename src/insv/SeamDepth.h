@@ -24,7 +24,8 @@
 // the same sample pattern, see below.
 //
 // SeamDepthTracker turns a frame's costs into the per-bin q table the stitch
-// uses (StitchGpuParams::seamQ): confidence-weighted costs averaged over the
+// uses (StitchGpuParams::seamQ): confidence-weighted costs (texture, the best
+// match, and how much better it is than any match away from it) averaged over the
 // last ~150 ms, a 1-D dynamic programme along the azimuth (smooth, but depth
 // edges allowed), a pull towards the previous frame's table, sub-candidate
 // refinement, and a light temporal blend.
@@ -49,6 +50,14 @@ inline double SeamCandQ(int k)
 {
     return kSeamQMin + (kSeamQMax - kSeamQMin) * k / (kSeamDepthCands - 1);
 }
+
+// The shift between the two lenses the table may take, radians (baseline x
+// q): the X5's candidate range (32 mm, -0.5 .. 3.2 1/m; -0.9 .. 5.9 deg). A
+// camera with a wider baseline reaches less near -- the A1's 71 mm stops at
+// ~0.7 m -- because a bigger shift than this against the +-kSeamPatchElDeg
+// patch is a match with a different stretch of the scene, not a nearer one.
+constexpr double kSeamShiftMinRad = kSeamQMin * 0.032;
+constexpr double kSeamShiftMaxRad = kSeamQMax * 0.032;
 
 // Sample pattern of one bin's patch: kSeamPatchAz x kSeamPatchEl directions,
 // azimuth evenly across the bin, elevation evenly across
@@ -114,6 +123,12 @@ void MeasureSeamCosts(const FisheyeStitcher& st, const Image& lens0, const Image
 struct SeamDepthTuning {
     double texLo = 3.0, texHi = 10.0;  // grey std: no confidence .. full confidence
     double nccLo = 0.3, nccHi = 0.6;   // best NCC: no confidence .. full
+    // Uniqueness: the best NCC less the best one more than uniqueAwayDeg of
+    // shift away from it -- no confidence .. full; none when the best is at
+    // the end of the shift range. A match as good elsewhere (a smooth ramp,
+    // a repeated texture, scattered peaks) says nothing about the distance.
+    double uniqueLo = 0.05, uniqueHi = 0.2;
+    double uniqueAwayDeg = 1.0;
     double smooth = 0.25;              // cost per 1/m of q change between neighbour bins
     double smoothCap = 1.0;            // ... truncated at this q change (depth edges)
     double temporal = 0.08;            // cost per 1/m away from the previous frame's q
@@ -130,6 +145,12 @@ public:
     // Forget the history (a seek, a new clip); the table goes back to 0.
     void reset();
 
+    // The lenses' baseline, metres (FisheyeStitcher::baselineM): turns a
+    // candidate's q into the shift between the lenses, for the shift range
+    // (kSeamShiftMinRad .. kSeamShiftMaxRad) and the uniqueness. The X5's
+    // 32 mm until set.
+    void setBaselineM(double m) { m_baselineM = m > 0 ? m : 0.032; }
+
     // Folds one frame's costs in (a gap or a jump back in ptsMs resets first).
     void update(const SeamCosts& costs, int64_t ptsMs);
 
@@ -139,11 +160,18 @@ public:
 
     // Mean confidence of the last update (0..1), for diagnostics.
     double lastConfidence() const { return m_lastConf; }
+    // ... per bin, and each bin's uniqueness (its best NCC less the best away
+    // from it; 0 with the best at the end of the range, 2 with nothing away).
+    const float* lastBinConfidence() const { return m_conf; }
+    const float* lastUniqueness() const { return m_unique; }
 
     SeamDepthTuning tuning;
 
 private:
     float m_q[kSeamDepthBins];
+    float m_conf[kSeamDepthBins] = {};
+    float m_unique[kSeamDepthBins] = {};
+    double m_baselineM = 0.032;
     // The running average of the confidence-weighted data term (bin-major,
     // kSeamDepthCands per bin), valid while m_has.
     std::vector<float> m_avgData;

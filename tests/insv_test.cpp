@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -567,6 +568,58 @@ void testSeamDepthTracker()
     CHECK(near(q[60], 1.2, 0.1));
     tr.reset();
     CHECK(!tr.hasHistory() && tr.table()[60] == 0.0f);
+}
+
+// SeamDepthTracker's confidence on matches that can't tell the distance: one
+// clean peak counts fully; a smooth ramp, a repeated texture and scattered
+// peaks of the same height don't. And the table stays within the shift range
+// the camera's baseline gives (the X5's shift: the A1 stops at ~0.7 m).
+void testSeamDepthUniqueness()
+{
+    constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands;
+    auto costs = std::make_unique<insv::SeamCosts>();
+    auto confidence = [&](const std::function<double(int)>& ncc) {
+        for (int b = 0; b < B; ++b)
+            for (int k = 0; k < K; ++k) {
+                costs->ncc[b][k] = static_cast<float>(ncc(k));
+                costs->texture[b][k] = 30.0f;
+            }
+        insv::SeamDepthTracker tr; // the X5's 32 mm
+        tr.update(*costs, 0);
+        return tr.lastConfidence();
+    };
+    const double clean = confidence([](int k) {
+        const double dq = insv::SeamCandQ(k) - 1.0;
+        return 0.9 * std::exp(-dq * dq / (2 * 0.15 * 0.15));
+    });
+    const double ramp = confidence([](int k) { return 0.2 + 0.7 * k / (K - 1.0); });
+    const double periodic = confidence([](int k) { return 0.45 + 0.45 * std::cos(2 * std::numbers::pi * k / 8.0); });
+    const double scattered = confidence([](int k) {
+        static const double v[] = {0.3, 0.5, 0.82, 0.4, 0.35, 0.6, 0.85, 0.3, 0.45, 0.7};
+        return v[k % 10];
+    });
+    CHECK(clean > 0.95);
+    CHECK(ramp < 0.05);
+    CHECK(periodic < 0.05);
+    CHECK(scattered < 0.2);
+
+    // A1 (71 mm): the best match at 2.5 1/m (a 10 deg shift) is out of
+    // range; the table takes the weaker one at 1.0 1/m.
+    for (int b = 0; b < B; ++b)
+        for (int k = 0; k < K; ++k) {
+            const double q = insv::SeamCandQ(k);
+            costs->ncc[b][k] = static_cast<float>(std::max(0.95 - 2.0 * std::fabs(q - 2.5),
+                                                           0.8 - 2.0 * std::fabs(q - 1.0)));
+            costs->texture[b][k] = 30.0f;
+        }
+    insv::SeamDepthTracker x5, a1;
+    a1.setBaselineM(0.071);
+    x5.update(*costs, 0);
+    a1.update(*costs, 0);
+    CHECK(near(x5.table()[20], 2.5, 0.15));
+    CHECK(near(a1.table()[20], 1.0, 0.15));
+    for (int b = 0; b < B; ++b)
+        CHECK(0.071 * a1.table()[b] <= insv::kSeamShiftMaxRad + 1e-6);
 }
 
 // Privacy blur quads: (s, t) <-> direction round trip, corners, rejects, cells.
@@ -2120,6 +2173,7 @@ int main()
     testSeamDepthGeometry();
     testSeamPatchScore();
     testSeamDepthTracker();
+    testSeamDepthUniqueness();
     testSeamAlignment();
     testSeamBlend();
     testSeamCutTracker();

@@ -69,7 +69,11 @@ about equally well; something close that really moves onto the seam is
 followed within a fraction of a second. It matches the lenses by the
 detail they see, not by how bright they are, so glare from a low sun on
 the seam, which each lens draws differently, isn't taken for something
-close.
+close. Where the match can't tell the distance -- a smooth stretch of sky,
+or a fence or grille whose pattern repeats -- the seam doesn't guess: it
+takes the distance from the stretches beside it, or keeps it far away. On a
+camera whose lenses sit further apart (the Antigravity A1) it lines up
+nothing closer than about 70 cm.
 
 Things at different distances side by side (a rack in front of the bike's
 tail, a mirror stem in front of the road) can't all line up at one

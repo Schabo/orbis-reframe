@@ -284,6 +284,7 @@ int main(int argc, char** argv)
     if (!stitcher.configure(calib, lens0.w, lens0.h, params))
         die("stitcher configure failed");
     insv::SeamDepthTracker depth;
+    depth.setBaselineM(stitcher.baselineM());
     insv::SeamCutTracker cut;
     cut.setLensColour(params.lensColour); // the frame's residual against it
     if (depthSeam) {
@@ -306,7 +307,7 @@ int main(int argc, char** argv)
             for (int k = 1; k < insv::kSeamDepthCands; ++k)
                 if (std::fabs(insv::SeamCandQ(k)) < std::fabs(insv::SeamCandQ(k0)))
                     k0 = k;
-            std::printf(" bin  phi   tex   ncc@0  best(q)        table q  dist\n");
+            std::printf(" bin  phi   tex   ncc@0  best(q)        uniq  conf  table q  dist\n");
             double sum0 = 0, sumBest = 0, sumTable = 0;
             int nTex = 0;
             for (int b = 0; b < insv::kSeamDepthBins; ++b) {
@@ -324,9 +325,10 @@ int main(int argc, char** argv)
                     sumTable += costs->ncc[b][kt];
                     ++nTex;
                 }
-                std::printf("%4d %5.1f %5.1f %6.3f %6.3f(%+5.2f)  %+6.2f  %s\n", b,
+                std::printf("%4d %5.1f %5.1f %6.3f %6.3f(%+5.2f)  %5.2f %5.2f  %+6.2f  %s\n", b,
                             (b + 0.5) * 360.0 / insv::kSeamDepthBins, costs->texture[b][k0],
-                            costs->ncc[b][k0], costs->ncc[b][kb], insv::SeamCandQ(kb), q[b],
+                            costs->ncc[b][k0], costs->ncc[b][kb], insv::SeamCandQ(kb),
+                            depth.lastUniqueness()[b], depth.lastBinConfidence()[b], q[b],
                             q[b] > 0.05 ? (std::to_string(1.0 / q[b]).substr(0, 4) + " m").c_str()
                                         : "far");
             }

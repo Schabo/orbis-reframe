@@ -132,6 +132,16 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
     for (int k = 1; k < K; ++k)
         if (std::fabs(SeamCandQ(k)) < std::fabs(SeamCandQ(k0)))
             k0 = k;
+    // The candidates within the shift range, kLo..kHi (q rises with k).
+    int kLo = K, kHi = -1;
+    for (int k = 0; k < K; ++k) {
+        const double shift = m_baselineM * SeamCandQ(k);
+        if (shift >= kSeamShiftMinRad - 1e-9 && shift <= kSeamShiftMaxRad + 1e-9) {
+            kLo = std::min(kLo, k);
+            kHi = std::max(kHi, k);
+        }
+    }
+    const double awayQ = T.uniqueAwayDeg * kDeg / m_baselineM;
 
     // This frame's data term, confidence-weighted (1 - NCC), folded into its
     // running average. Weighting before averaging matters: a frame with no
@@ -144,12 +154,26 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
     double confSum = 0;
     for (int b = 0; b < B; ++b) {
         double best = -2.0;
-        for (int k = 0; k < K; ++k)
-            best = std::max(best, static_cast<double>(std::min(frame.ncc[b][k], 1.0f)));
+        int kb = kLo;
+        for (int k = kLo; k <= kHi; ++k)
+            if (std::min(frame.ncc[b][k], 1.0f) > best)
+                best = std::min(frame.ncc[b][k], 1.0f), kb = k;
+        // How much better it is than the best match away from it, as stereo
+        // matching's uniqueness test. A best at the end of the range isn't a
+        // peak -- the match goes on rising past what the table may take (a
+        // ramp) -- so it counts as none.
+        double away = -2.0;
+        for (int k = kLo; k <= kHi; ++k)
+            if (std::fabs(SeamCandQ(k) - SeamCandQ(kb)) > awayQ)
+                away = std::max(away, static_cast<double>(std::min(frame.ncc[b][k], 1.0f)));
+        const double unique = kb == kLo || kb == kHi ? 0.0 : best - away;
         const double conf = best < -1.5 ? 0.0
                                         : ramp01(frame.texture[b][k0], T.texLo, T.texHi) *
-                                              ramp01(best, T.nccLo, T.nccHi);
+                                              ramp01(best, T.nccLo, T.nccHi) *
+                                              ramp01(unique, T.uniqueLo, T.uniqueHi);
         confSum += conf;
+        m_conf[b] = static_cast<float>(conf);
+        m_unique[b] = static_cast<float>(unique);
         for (int k = 0; k < K; ++k) {
             const double n = frame.ncc[b][k] < -1.5 ? -1.0 : std::clamp(frame.ncc[b][k], -1.0f, 1.0f);
             float& a = m_avgData[static_cast<size_t>(b) * K + k];
@@ -164,6 +188,8 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
         for (int k = 0; k < K; ++k) {
             const double q = SeamCandQ(k);
             double d = m_avgData[static_cast<size_t>(b) * K + k] + T.farPrior * std::fabs(q);
+            if (k < kLo || k > kHi)
+                d += 100.0; // outside the shift range: never taken
             if (m_has)
                 d += T.temporal * std::fabs(q - m_q[b]);
             D[static_cast<size_t>(b) * K + k] = d;
@@ -215,7 +241,7 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
         const int k = label[B + b];
         const double* d = &D[static_cast<size_t>(b) * K];
         double off = 0;
-        if (k > 0 && k < K - 1) {
+        if (k > kLo && k < kHi) {
             const double den = d[k - 1] - 2 * d[k] + d[k + 1];
             if (den > 1e-9)
                 off = std::clamp(0.5 * (d[k - 1] - d[k + 1]) / den, -0.5, 0.5);

@@ -9,6 +9,7 @@
 #include "SeamCorrection.h"
 
 #include <array>
+#include <cmath>
 
 // CPU fisheye -> equirectangular stitch (src/insv/).
 //
@@ -305,6 +306,8 @@ public:
     const Vec3& seamU() const { return m_seamU; }
     const Vec3& seamV() const { return m_seamV; }
     Vec3 lensCentre(int lens) const;
+    // The distance between the lenses' centres, metres.
+    double baselineM() const { return 2.0 * std::fabs(m_halfBaseline); }
     // Direction on the seam frame at azimuth phi, elevation e (towards lens 0).
     Vec3 seamDir(double phi, double e) const;
     // The inverse stitch distance for world dir `dir` from the per-bin table:
