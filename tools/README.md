@@ -16,6 +16,7 @@ each tool is for and when you'd reach for it. The examples use clips from
 | [`stitch_source_smoke`](#stitch_source_smoke) | check that the app's stitch, seek and decode work | GPU |
 | [`playback_bench`](#playback_bench) | time each step of playback and export | GPU |
 | [`view_compare`](#view_compare) | compare the direct view render with the equirect path | GPU |
+| [`seam_regress`](#seam_regress) | measure the seam on a list of frames, against the last run | GPU |
 | [`reframe_export`](#reframe_export) | export a reframed flat video without the app | GPU, hw encoder |
 | [`residual_stab`](#residual_stab) | measure the shake left after gyro stabilization | GPU, OpenCV |
 | [`track_subject`](#track_subject) | try subject tracking and make a follow-cam | GPU, OpenCV contrib |
@@ -160,6 +161,78 @@ carries 10 bits.
 
 ```sh
 build/view_compare --at 5000 clip.insv
+```
+
+## seam_regress
+
+Measures the seam between the two lenses on a fixed list of frames, the same
+way every time, so a change to the seam can be checked against the run
+before it. Each frame is stitched through `stitch::NativeStitchSource` three
+times: on the GPU played into from `--warmup S` seconds before (2, as
+playback reaches it), on the GPU seeked to cold (as a step back, a
+screenshot or an export's first frame do), and on the CPU fallback, cold
+(`--no-cpu` leaves that out). The seam correction and lens colour are
+measured over the whole clip as the app does on open, unless the list gives
+them; the run prints them in the list's format, to paste in and save the
+time.
+
+The list has one frame per line, tab-separated: a name, the clip (relative
+to where the tool runs), the time in seconds, then any of
+`guard=none|standard|premium` (default premium, as the app),
+`seam=Y,P,R,CU,CV,S`, `colour=R,G,B,SR,SG,SB,SPREAD`, `ref=FILE.ppm` and
+`refrot=Z,Y,X`; anything after `#` is a note. A list names local clips, so
+keep it outside the repository (`tmp/seamreg/`).
+
+For each frame `--out DIR` gets:
+- `NAME.json`: the measurements. `summary` holds the numbers `--baseline`
+  compares; the rest are the detail: the depth tables (played, cold, CPU),
+  the cut and fade per bin, the offsets per block, the colour per bin, the
+  frame-to-frame changes.
+- `NAME_strip.ppm`: the seam unwrapped, ±12° across it at 20 px/°, in five
+  rows: lens 0 and lens 1 as decoded (each lined up by the depth table),
+  the played frame, |lens 0 − lens 1| × 4 after the colour correction, the
+  cold frame.
+  Lens 0's side is at the top, so a strip can be upside down.
+- `NAME_eq.ppm`: the played frame, `--eq-width` wide (3840; 0 for none).
+  `--no-images` writes only the JSON.
+
+What the summary measures:
+- `offset_*`: how far the lenses still disagree after the depth table, per
+  5° block of the band (the best NCC of lens 1 shifted ±1° against lens 0),
+  over the textured blocks; `far_*` only the blocks the table puts at
+  infinity, which is the calibration and the seam correction's error.
+- `near_bins` (closer than 5 m), `q_max` (1/m), `fade_mean_deg`: the depth
+  table and the blend.
+- `colour_*`: the lenses' colour difference where they meet (the fade's
+  centre, per bin, unclipped samples), lens 0 against lens 1 in %, after
+  the colour correction; `raw_colour_*` before it.
+- `cold_*`: the cold frame against the played one: depth table, PSNR over
+  the whole frame and in the band. `cpu_*`: the CPU's cold frame against
+  the GPU's.
+- `flicker_*`: over the played run's last second, the mean change from one
+  frame to the next in the band and beside it (levels; motion changes
+  both, flicker only the band), and of the depth table, cut, fade and local
+  colour correction.
+- `ref_psnr`, `ref_band_psnr`: with `ref=`, PSNR against a reference
+  equirect of the same frame (an 8-bit PPM, any size, e.g. Insta360 Studio's
+  export of it through `ffmpeg -i frame.png ref.ppm`). `refrot=Z,Y,X` is the
+  rotation from our sphere to the reference's: R = Rz Ry Rx, about the
+  axes x at the image centre, y half way to the right edge, z up (Studio's
+  X5 equirect is ~1.85° off ours: `refrot=1.055,-0.505,1.422` on
+  `192900`).
+
+`--baseline DIR` reads the summaries of an earlier run and marks each
+number that changed with `*` and the old value. `--only TEXT` runs the
+frames whose name contains TEXT.
+
+**When:** before and after any change to the seam (the depth table, the
+cut, the colour match, the seam correction), and to check that a change
+elsewhere left it alone.
+
+```sh
+build/seam_regress tmp/seamreg/list.tsv --out tmp/seamreg/before
+# ... change, build ...
+build/seam_regress tmp/seamreg/list.tsv --out tmp/seamreg/after --baseline tmp/seamreg/before
 ```
 
 ## reframe_export

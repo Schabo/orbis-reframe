@@ -226,6 +226,9 @@ public:
     // The depth-aware seam's current per-azimuth inverse stitch distance
     // (insv::kSeamDepthBins values, 1/m; all 0 when off or before a frame).
     const float* SeamDepthTable() const { return depth_.table(); }
+    // ... and its blend across the band and colour correction there, as the
+    // last frame was stitched with.
+    const insv::SeamBlend& SeamBlendState() const { return cut_.blend(); }
 
     // Timing of the last all-GPU ReadFrame() / ReadFlatFrame(). Zeroes on the
     // CPU-decode path.

@@ -698,6 +698,12 @@ if(FFMPEG_FOUND)
     add_executable(view_compare tools/view_compare/main.cpp)
     target_link_libraries(view_compare PRIVATE stitch)
 
+    # --- tools/seam_regress: the seam on a list of frames -- played in,
+    # seeked cold and on the CPU -- measured and compared with a baseline
+    # run. Measure-only.
+    add_executable(seam_regress tools/seam_regress/main.cpp)
+    target_link_libraries(seam_regress PRIVATE stitch)
+
     # --- tools/reframe_export: parse args, load the --keys file into
     # a real ReframeTrack, bake one pose per output frame, then drive
     # stitch::NativeStitchSource -> exportpipe::FlattenWriter (reproject + NVENC).
