@@ -77,12 +77,21 @@ two lenses:
   in front.
 - `--lens1 FILE` takes lens 1 from its own file, for a camera that writes a
   file per lens (the ONE X2's `VID_…_10_…`); the clip is the `_00_` file.
+- `--lens-profile NAME` stitches with a lens-guard profile from the file's
+  table (field 145 in the camera's format document). Without it the tool
+  stitches bare lenses, but the app starts every project with **Premium
+  lens guards** (`ProtectorA` on the X5). To compare with the app,
+  `stitch_source_smoke` or an export, give the tool the same profile. A
+  guarded clip stitched bare is ~4° off at the seam, which ghosts the
+  far scene, and `--depth-seam` reads that as everything being ~0.4 m
+  away.
 
 **When:** working on the stitch geometry, the calibration or the seam;
 checking that the `.insv` library works on its own.
 
 ```sh
 build/insv_stitch clip.insv --time-ms 5000 --eq-width 3840 --out eq.ppm
+build/insv_stitch clip.insv --time-ms 5000 --lens-profile ProtectorA --depth-dump
 build/insv_stitch clip.insv --measure-seam 0 10000
 build/insv_stitch clip.insv --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 \
     --seam-frames 16 --seam-offset 500 9500
