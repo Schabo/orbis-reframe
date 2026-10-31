@@ -195,16 +195,9 @@ void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double ban
             label[i - 1] = bp[static_cast<size_t>(i) * R + label[i]];
     }
 
-    // The colour first: the veiling light widens the fade.
-    updateColour(stats, ptsMs, bandRad);
-
     // The fade's width from the disagreement at the chosen row, smoothed
     // along the azimuth so a wide stretch doesn't start abruptly; its centre
     // moves to the seam circle as it widens, so it stays inside the band.
-    // Where one lens has veiling light the full band: what is left of it
-    // past the seam (it grows towards the sun, the other lens can't say by
-    // how much) fades across the band instead of meeting the other lens on
-    // a line.
     for (int b = 0; b < B; ++b) {
         m_row[b] = label[B + b];
         m_dis[b] = m_avgDis[static_cast<size_t>(b) * R + m_row[b]];
@@ -219,8 +212,26 @@ void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double ban
             a += ww * smoothstep(T.agreeLo, T.agreeHi, m_dis[(b + d + B) % B]);
             w += ww;
         }
-        const double s =
-            std::max(a / w, std::min(1.0, std::fabs(m_blend.veil[b][1]) / kLensVeilWide));
+        m_width[b] = static_cast<float>(a / w);
+    }
+
+    // The colour is matched where the lenses meet (the fade's centre, as
+    // wide as the fade and at least a row); then where one lens has
+    // veiling light the fade takes the full band: what is left of it past
+    // the seam (it grows towards the sun, the other lens can't say by how
+    // much) fades across the band instead of meeting the other lens on a
+    // line.
+    const double rowStep = 2.0 * SeamCutRowMax(bandRad) / (R - 1);
+    std::vector<float> meet(B), meetReach(B);
+    for (int b = 0; b < B; ++b) {
+        const double s = m_width[b];
+        meet[b] = static_cast<float>(SeamCutRowE(m_row[b], bandRad) * (1.0 - s));
+        meetReach[b] = static_cast<float>(std::max(narrow + (bandRad - narrow) * s, rowStep));
+    }
+    updateColour(stats, ptsMs, bandRad, meet.data(), meetReach.data());
+    for (int b = 0; b < B; ++b) {
+        const double s = std::max(static_cast<double>(m_width[b]),
+                                  std::min(1.0, std::fabs(m_blend.veil[b][1]) / kLensVeilWide));
         m_width[b] = static_cast<float>(s);
         m_blend.cut[b] = static_cast<float>(SeamCutRowE(m_row[b], bandRad) * (1.0 - s));
         m_blend.fade[b] = static_cast<float>(narrow + (bandRad - narrow) * s);
@@ -246,7 +257,8 @@ void SeamCutTracker::setLensColour(const LensColour& c)
             x = 0.0f;
 }
 
-void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad)
+void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad,
+                                  const float* meetRad, const float* meetReachRad)
 {
     constexpr int B = kSeamDepthBins;
     const double dt = static_cast<double>(ptsMs - m_lastPts);
@@ -288,7 +300,8 @@ void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, doub
     // green. It follows flare frames: that's what it is for.
     const double res[3] = {m_blend.colour[0], m_blend.colour[1], m_blend.colour[2]};
     std::vector<float> v(B * 3), w(B * 3);
-    LensColourPerBin(*m_clean, bandRad, m_lensColour, res, v.data(), w.data());
+    LensColourPerBin(*m_clean, bandRad, m_lensColour, res, meetRad, meetReachRad, v.data(),
+                     w.data());
     const double sigma = std::max(tuning.localSigma, 0.5);
     const int reach = static_cast<int>(std::ceil(2.5 * sigma));
     for (int b = 0; b < B; ++b)

@@ -93,12 +93,17 @@ constexpr double kLensColourLocalMaxLog = 0.25;
 constexpr double kLensColourLocalRampDeg = 10.0;
 
 // One frame's departure from the clip's lens colour `c` plus `residual`
-// (log, per channel) per azimuth bin of the seam: the median over the bin's
-// usable cells into value[bin * 3 + channel], their unclipped samples into
-// weight[bin * 3 + channel] (0 = no usable cell for that channel). A bin
-// with cells all three channels are usable in takes only those.
+// (log, per channel) per azimuth bin of the seam: the weighted median over
+// the bin's usable cells into value[bin * 3 + channel], their weighted
+// unclipped samples into weight[bin * 3 + channel] (0 = no usable cell for
+// that channel). Each cell is weighted by how near it lies to where the
+// lenses meet in its bin -- elevation meetRad[bin], a Gaussian of
+// reachRad[bin] across the band -- since that is where a difference shows;
+// null = all rows alike. A bin takes the cells all three channels are
+// usable in, unless most of its weight is in cells with one clipped.
 void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
-                      const double residual[3], float* value, float* weight);
+                      const double residual[3], const float* meetRad, const float* reachRad,
+                      float* value, float* weight);
 
 // Veiling light: the sun in or near one lens scatters inside it and lays a
 // haze over its picture -- light added, about the same amount on dark and

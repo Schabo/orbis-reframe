@@ -166,10 +166,13 @@ being played follows it. And it isn't always the same all the way round the
 seam: with a low sun, one lens catches veiling light on the sun's side, and
 on some clips the lenses agree on one stretch of the seam and differ on the
 rest. So along the seam the two lenses are also matched stretch by stretch,
-frame by frame, from what both see there; a stretch where they see nothing
-alike to compare (a sky blown out in every colour, very close things) is
-left alone, and doesn't take its neighbours' correction either. This
-correction only touches the overlap and fades out just past it.
+frame by frame, from what both see right where they meet (the difference
+can depend on what is there: the lenses may agree on the sky and not on the
+shadowed trees below it); a stretch where they see nothing alike to compare
+(a sky blown out in every colour, very close things) is left alone, and
+doesn't take its neighbours' correction either. This correction only
+touches the overlap and fades out just past it, and follows the picture
+within a frame or two as the camera turns.
 
 When the sun shines into one lens, light scattered inside that lens lays a
 haze over its picture (veiling light): the dark parts lift a lot, bright

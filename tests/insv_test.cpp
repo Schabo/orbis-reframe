@@ -947,10 +947,10 @@ void testLensColourLocal()
     CHECK(near(bl.local[90][1], 0.0, 1e-4));
     CHECK(bl.local[5][1] == 0.0f);         // no data of its own, out of reach: none
     CHECK(near(bl.colour[1], 0.0, 1e-4));  // the whole seam: the rest agrees
-    // Over 200 ms, not at once.
+    // Over ~40 ms, not at once: a frame 10 ms later moves it about a fifth.
     fill(0.0);
-    tr.update(*stats, 1033, band);
-    CHECK(bl.local[40][1] < -0.1 && bl.local[40][1] > -0.2);
+    tr.update(*stats, 1010, band);
+    CHECK(bl.local[40][1] < -0.12 && bl.local[40][1] > -0.18);
     // A veil over most of the seam, growing along it (flare towards the
     // sun): the whole-seam residual holds, the local correction follows;
     // where the lenses are further apart than any gain (past bin ~70) it is
@@ -960,7 +960,7 @@ void testLensColourLocal()
             for (int k = 0; k < 3; ++k)
                 stats->cell[b][r].mean[0][k] = static_cast<float>(120 * std::exp(-0.05 - 0.004 * (b - 20)));
     const float held = bl.colour[1];
-    for (int t = 1066; t < 2000; t += 33)
+    for (int t = 1043; t < 2000; t += 33)
         tr.update(*stats, t, band);
     CHECK(bl.colour[1] == held);
     CHECK(near(bl.local[50][1], -0.05 - 0.004 * 30, 0.02) && bl.veil[50][1] == 0.0f);
@@ -1041,6 +1041,39 @@ void testLensColourClippedChannel()
     CHECK(near(bl.local[110][0], std::log(1.1), 0.01));
     CHECK(near(bl.local[95][2], std::log(1.25), 0.01));
     CHECK(bl.local[110][2] == 0.0f);
+}
+
+// The local correction is measured where the lenses meet: a sky the seam
+// cuts through agrees, the trees further across the band differ (a small
+// offset in their shadows); matched on the trees, the sky would split.
+void testLensColourWhereTheyMeet()
+{
+    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    const double band = 6.0 * kDeg;
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r) {
+            insv::SeamCutStats::Cell& c = stats->cell[b][r];
+            c.n = 64;
+            c.texture = 20;
+            c.zsad = 2;
+            for (int k = 0; k < 3; ++k) {
+                c.nColour[k] = 64;
+                c.mean[1][k] = 150;
+                c.mean[0][k] = r <= 2 ? 150.0f : static_cast<float>(150 * 1.1);
+            }
+        }
+    const double rowStep = 2.0 * insv::SeamCutRowMax(band) / (R - 1);
+    std::vector<float> meet(B, static_cast<float>(insv::SeamCutRowE(0, band)));
+    std::vector<float> reach(B, static_cast<float>(rowStep));
+    std::vector<float> v(B * 3), w(B * 3);
+    const double none[3] = {0, 0, 0};
+    insv::LensColourPerBin(*stats, band, insv::LensColour{}, none, meet.data(), reach.data(),
+                           v.data(), w.data());
+    CHECK(std::fabs(v[10 * 3 + 1]) < 0.005 && w[10 * 3 + 1] > 64);
+    insv::LensColourPerBin(*stats, band, insv::LensColour{}, none, nullptr, nullptr, v.data(),
+                           w.data());
+    CHECK(near(v[10 * 3 + 1], std::log(1.1), 0.005));
 }
 
 // FitLensColour on synthetic statistics: a known constant and slope across
@@ -2094,6 +2127,7 @@ int main()
     testFitLensColour();
     testLensVeil();
     testLensColourClippedChannel();
+    testLensColourWhereTheyMeet();
     testLensColourLocal();
     testBlurQuads();
     testTrailerThumbnail();

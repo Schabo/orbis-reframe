@@ -94,9 +94,13 @@ struct SeamCutTuning {
     double stay = 0.15;       // cost for leaving last frame's row in a bin
     double widthSigma = 1.0;  // smoothing of the fade width along the azimuth, bins
     double colourMemoryMs = 1000.0; // time constant of the colour residual
-    double localMemoryMs = 200.0;   // ... and of the local correction round the seam
+    // ... and of the local correction and the veiling light round the seam:
+    // short, as the camera turns the scene slides along the seam, and a
+    // stretch's difference belongs to what is in it now (a remembered one
+    // from the trees a few frames ago is wrong for the sky there now).
+    double localMemoryMs = 40.0;
     double localSigma = 3.0;        // its smoothing along the azimuth, bins
-    double localMinSamples = 128.0; // unclipped samples in the bin and its neighbours for all of it
+    double localMinSamples = 128.0; // unclipped samples near where the lenses meet, bin +-1, for all of it
     int64_t resetGapMs = 250; // a jump this big (or backwards) starts over
 };
 
@@ -127,9 +131,13 @@ public:
     SeamCutTuning tuning;
 
 private:
-    // The colour residual and the local correction (m_blend.colour /
-    // local) from this frame's statistics; before m_lastPts moves on.
-    void updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad);
+    // The colour residual, the local correction and the veiling light
+    // (m_blend.colour / local / veil) from this frame's statistics, the
+    // local correction measured near where the lenses meet in each bin
+    // (elevation meetRad[bin], reach meetReachRad[bin]; LensColourPerBin);
+    // before m_lastPts moves on.
+    void updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad,
+                      const float* meetRad, const float* meetReachRad);
 
     SeamBlend m_blend;
     LensColour m_lensColour;

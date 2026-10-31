@@ -266,32 +266,44 @@ LensColourFit FitLensColour(const std::vector<const SeamCutStats*>& frames, doub
 }
 
 void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
-                      const double residual[3], float* value, float* weight)
+                      const double residual[3], const float* meetRad, const float* reachRad,
+                      float* value, float* weight)
 {
-    // Per bin from the cells all three channels are usable in, so every
+    // Per bin, each cell weighted by how near it lies to where the lenses
+    // meet (meetRad, reachRad: a Gaussian across the band; null = all rows
+    // alike). From the cells all three channels are usable in, so every
     // channel is measured on the same content (a channel left out of some
-    // cells, near clipping, would be matched on others and shift the hue);
-    // only a bin without such a cell takes each channel from the cells it
-    // has (a sky clipped in blue).
+    // cells, near clipping, would be matched on others and shift the hue),
+    // unless most of the weight is in cells with a channel clipped (a sky
+    // clipped in blue): then each channel from the cells it has.
     const std::vector<Cell> cells = usableCells(stats, bandRad);
     std::vector<std::pair<double, double>> all[kSeamDepthBins][3], some[kSeamDepthBins][3];
+    double wAll[kSeamDepthBins] = {}, wSome[kSeamDepthBins] = {};
     for (const Cell& x : cells) {
         double m[3];
         LensColourLog(c, x.eDeg * kDeg, bandRad, residual, m);
+        double near = 1.0;
+        if (meetRad) {
+            const double d = (x.eDeg * kDeg - meetRad[x.bin]) / reachRad[x.bin];
+            near = std::exp(-0.5 * d * d);
+        }
         const bool full = x.w[0] > 0 && x.w[1] > 0 && x.w[2] > 0;
+        (full ? wAll : wSome)[x.bin] += near * std::max({x.w[0], x.w[1], x.w[2]});
         for (int k = 0; k < 3; ++k)
             if (x.w[k] > 0)
-                (full ? all : some)[x.bin][k].emplace_back(x.L[k] - m[k], x.w[k]);
+                (full ? all : some)[x.bin][k].emplace_back(x.L[k] - m[k], near * x.w[k]);
     }
-    for (int b = 0; b < kSeamDepthBins; ++b)
+    for (int b = 0; b < kSeamDepthBins; ++b) {
+        const bool useAll = wAll[b] > 0 && wAll[b] >= wSome[b];
         for (int k = 0; k < 3; ++k) {
-            auto& v = all[b][0].empty() ? some[b][k] : all[b][k];
+            auto& v = useAll ? all[b][k] : some[b][k];
             double w = 0;
             for (const auto& [d, wt] : v)
                 w += wt;
             weight[b * 3 + k] = static_cast<float>(w);
             value[b * 3 + k] = static_cast<float>(weightedMedian(v));
         }
+    }
 }
 
 bool LensColourResidual(const SeamCutStats& stats, double bandRad, const LensColour& c,

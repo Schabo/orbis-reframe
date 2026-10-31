@@ -173,7 +173,15 @@ Markers as in [`README.md`](README.md).
   both lenses while red and green agree within 1-2 levels: with whole cells
   left out for one clipped colour, that stretch had no data and was given
   its neighbour's correction (a 14 % step). The lens colour is measured per
-  colour since (`insv::kLensColourMethod` 2).
+  colour since (`insv::kLensColourMethod` 2). ⚠️ **The difference depends
+  on the content** (measured 2026-10-31 on `_020` at 2.17 s, turning): in
+  the sky just above the trees the lenses agree within 1-2 levels, in the
+  trees' shadows below lens 1 is 8-12 levels higher in blue -- a small
+  added offset, under what counts as veiling light. Matched on all the
+  overlap's rows, the sky split by 4-8 % in green on a line; the stitch
+  matches each stretch on the rows where the lenses meet, and follows the
+  picture within ~40 ms, as the scene slides along the seam when the drone
+  turns.
 - ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.
