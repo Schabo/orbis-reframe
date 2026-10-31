@@ -167,6 +167,8 @@ add_library(insv STATIC
     src/insv/SeamDepth.cpp
     src/insv/SeamCut.h
     src/insv/SeamCut.cpp
+    src/insv/SeamWindow.h
+    src/insv/SeamWindow.cpp
     src/insv/LensColour.h
     src/insv/LensColour.cpp
     src/insv/Ycbcr.h
@@ -465,6 +467,8 @@ if(FFMPEG_FOUND)
         src/stitch/ClipSeam.cpp
         src/stitch/ClipLensColour.h
         src/stitch/ClipLensColour.cpp
+        src/stitch/ClipSeamAnalysis.h
+        src/stitch/ClipSeamAnalysis.cpp
     )
     target_include_directories(stitch PUBLIC src/stitch)
     target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch)
@@ -955,6 +959,13 @@ if(TARGET insv_demux)
     add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
     target_link_libraries(lens_demuxer_test PRIVATE insv_demux test_media)
     add_test(NAME lens_demuxer_test COMMAND lens_demuxer_test)
+endif()
+
+# stitch::SeamAnalysis, the depth-aware seam's per-clip store -- no GPU.
+if(TARGET stitch)
+    add_executable(seam_analysis_test tests/seam_analysis_test.cpp)
+    target_link_libraries(seam_analysis_test PRIVATE stitch)
+    add_test(NAME seam_analysis_test COMMAND seam_analysis_test)
 endif()
 
 # camera::ReadClipMetadata on generated videos with synthetic trailers.

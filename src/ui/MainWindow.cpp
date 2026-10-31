@@ -222,6 +222,14 @@ void MainWindow::setupModel()
         updateSyncStatus();
         updateSeamStatus();
     });
+    // More of a source's seam analysed: the frame on screen, if it is that
+    // source's, is stitched again with it (playing, the next frames are).
+    connect(m_measurements, &ClipMeasurements::seamAnalysed, this, [this](const QString &path) {
+        const ClipItem *cur = m_timeline->clipById(m_clipId);
+        if (!m_playing && cur && cur->sourcePath == path)
+            QMetaObject::invokeMethod(m_controller, "seek", Qt::QueuedConnection,
+                                      Q_ARG(qint64, m_lastTimelineMs));
+    });
     // An older project's clips have their sound put on the stream tracks.
     m_project->setAudioStreamCounter([this](const QString &path) { return audioStreamCount(path); });
     connect(m_project, &Project::modifiedChanged, this, [this](bool) { updateWindowTitle(); });
@@ -1054,6 +1062,8 @@ void MainWindow::connectController()
         }
     });
     connect(m_timeline, &Timeline::clipInserted, m_measurements, &ClipMeasurements::schedule);
+    // A trim moves the stretch of the source whose seam is analysed.
+    connect(m_timeline, &Timeline::clipTrimChanged, m_measurements, &ClipMeasurements::schedule);
     connect(m_controller, &PlaybackController::bufferingChanged,
             m_playerBar, &PlayerBar::setBuffering);
     // Every play/pause entry point (transport button, Space, export pausing
@@ -1395,6 +1405,7 @@ void MainWindow::bindActiveClipAt(qint64 timelineMs)
     m_clipId = c.id;
     if (clipChanged) {
         pushSeamCorrection();
+        m_measurements->setPriorityPath(c.sourcePath); // its seam analysed first
         updateSeamStatus();
     }
     m_timelineWidget->setActiveClip(editClipId());

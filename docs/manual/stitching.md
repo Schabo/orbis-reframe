@@ -63,10 +63,24 @@ stick) don't, and show up twice or broken where the lenses meet.
 
 With **Depth-aware seam** on, orbis-reframe works out for every frame how
 far away the things along the seam are, and lines the two pictures up at
-that distance. It goes by the last few frames rather than one, so the seam
-doesn't jump between a close object and the road behind it when both match
-about equally well; something close that really moves onto the seam is
-followed within a fraction of a second. It matches the lenses by the
+that distance. It goes by the frames just before and after rather than one,
+so the seam doesn't jump between a close object and the road behind it when
+both match about equally well; something close that really moves onto the
+seam is followed within a fraction of a second.
+
+For that it analyses the parts of each clip you use, once, in the
+background after the seam alignment and lens colour (below), the clip under
+the playhead first, while playback is paused. From then on a frame is
+stitched the same way however you get to it: played, stepped back to,
+saved as a screenshot or exported. The analysis is kept in the project's
+cache folder, so it isn't done again next time, and isn't saved in the
+project file. Until a clip is analysed, its seam is worked out as it plays,
+from the frames played so far; a frame you jump to can then look a little
+different from the same frame played into. An export analyses what it
+still needs first, which shows as *Analysing the seam* in its progress. On a
+computer that decodes the video without the graphics card, clips aren't
+analysed in the background (it would take too long) -- only an export's or
+a screenshot's own frames are. It matches the lenses by the
 detail they see, not by how bright they are, so glare from a low sun on
 the seam, which each lens draws differently, isn't taken for something
 close. Where the match can't tell the distance -- a smooth stretch of sky,
@@ -112,15 +126,16 @@ near the seam. Things close to the camera don't line up by this alone; see
 [Stabilization](stabilization.md)), this runs in the background while
 playback is paused, and the result is saved in the project.
 
-The **Stitching** section shows, in one line, how far this and the lens
-colour measurement (see *Lens colour* below) have got for the clip under the
-playhead:
+The **Stitching** section shows, in one line, how far this, the lens colour
+measurement (see *Lens colour* below) and the depth-aware seam's analysis
+have got for the clip under the playhead:
 
 | Message | Meaning |
 |---|---|
 | *Measuring this clip's seam…* | The seam alignment is running. The lens colour is measured after it. |
 | *Seam aligned; measuring this clip's lens colours…* | The seam is done, the lens colour is running. |
 | *Seam aligned and lens colours matched for this clip.* | Both done. |
+| *Analysing this clip's seam… N %* | After both: the depth-aware seam's analysis (see *Depth-aware seam* above) is running. It stops while playing and goes on from where it was. |
 | *Couldn't align this clip's seam (…)* | The seam alignment didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only, and its lens colour is still measured. |
 | *… couldn't match the lens colours (…)* | The lens colour measurement didn't succeed, for one of the same reasons. The lenses are stitched as recorded. |
 

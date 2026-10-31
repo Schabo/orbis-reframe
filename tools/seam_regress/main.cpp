@@ -2,7 +2,7 @@
 // same way every time, so a seam change can be checked against the last run.
 //
 //   seam_regress LIST --out DIR [--baseline DIR] [--only TEXT] [--width N]
-//                [--warmup S] [--eq-width N] [--no-cpu] [--no-images]
+//                [--warmup S] [--eq-width N] [--no-cpu] [--no-images] [--live]
 //
 // LIST has one frame per line, tab-separated: a name (the output files'),
 // the clip, the time in seconds, then any of
@@ -16,10 +16,13 @@
 //                                      rotation from ours to it)
 // and anything after a '#' is a note. Lines starting with '#' are comments.
 //
-// Per frame the clip is stitched through stitch::NativeStitchSource three
-// times: on the GPU played into from --warmup seconds before (as playback
-// reaches it), on the GPU seeked to cold (as a step back, a screenshot or an
-// export's first frame), and on the CPU fallback, cold. Written to DIR:
+// Per frame the seam of the stretch from --warmup seconds before it is
+// analysed (stitch::AnalyseClipSeam, as the app does after opening a clip;
+// --live leaves it out), then the clip is stitched through
+// stitch::NativeStitchSource three times: on the GPU played into from the
+// start of the stretch (as playback reaches it), on the GPU seeked to cold
+// (as a step back, a screenshot or an export's first frame), and on the CPU
+// fallback, cold. Written to DIR:
 //   NAME.json         the measurements (below); "summary" holds the scalars
 //                     --baseline compares
 //   NAME_strip.ppm    the seam unwrapped, +-12 deg across it, 20 px/deg, five
@@ -38,6 +41,7 @@
 #include <ClipLensColour.h>
 #include <ClipMeasure.h>
 #include <ClipSeam.h>
+#include <ClipSeamAnalysis.h>
 #include <NativeStitchSource.h>
 
 #include <FisheyeProjection.h>
@@ -50,6 +54,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -74,7 +79,7 @@ constexpr double kDeg = kPi / 180.0;
 
 const char kUsage[] =
     "usage: seam_regress LIST --out DIR [--baseline DIR] [--only TEXT] [--width N]\n"
-    "       [--warmup S] [--eq-width N] [--no-cpu] [--no-images]\n"
+    "       [--warmup S] [--eq-width N] [--no-cpu] [--no-images] [--live]\n"
     "  LIST: name<TAB>clip<TAB>seconds[<TAB>guard=..|seam=..|colour=..|ref=..|refrot=..]... [# note]\n";
 
 // Runs fn(i) for i in [0, n) on all cores.
@@ -686,6 +691,7 @@ struct Options {
     int eqWidth = 3840;
     int64_t warmupMs = 2000;
     bool cpu = true, images = true;
+    bool live = false; // no seam analysis: each path measures as it goes
 };
 
 struct FlickerStep {
@@ -762,6 +768,22 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         src.SetLensColour(colour);
         return true;
     };
+
+    // The seam analysis of the stretch, as the app runs it after opening a
+    // clip (held in memory here); every path below then reads it. Without
+    // it (--live) each measures the seam as it goes.
+    double analysisSec = 0;
+    if (!opt.live) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const stitch::SeamAnalysisResult r = stitch::AnalyseClipSeam(
+            {e.clip, e.guard, seam, colour}, std::max<int64_t>(0, e.timeMs - opt.warmupMs), e.timeMs);
+        analysisSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        std::printf("  seam analysis: %s\n", r.message.c_str());
+        if (!r.ok) {
+            err = "seam analysis: " + r.message;
+            return false;
+        }
+    }
 
     // Played into, as playback reaches the frame.
     stitch::NativeStitchSource gpu;
@@ -1103,6 +1125,10 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     j.s << config.width;
     j.key("warmup_ms");
     j.s << opt.warmupMs;
+    j.key("seam_analysis");
+    j.s << (opt.live ? "false" : "true");
+    j.key("seam_analysis_s");
+    j.s << Json::num(analysisSec);
     j.key("seam");
     j.s << Json::str(std::string(seamArg) + " (" + seamFrom + ")");
     j.key("colour");
@@ -1126,6 +1152,16 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendPlayed.cut[i] / kDeg); });
     j.key("fade_deg");
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendPlayed.fade[i] / kDeg); });
+    j.key("residual_pct");
+    j.s << Json::arr(3, [&](int k) { return Json::num(std::expm1(blendPlayed.colour[k]) * 100); });
+    j.key("local_pct");
+    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+        return Json::arr(3, [&](int k) { return Json::num(std::expm1(blendPlayed.local[i][k]) * 100); });
+    });
+    j.key("veil");
+    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+        return Json::arr(3, [&](int k) { return Json::num(blendPlayed.veil[i][k]); });
+    });
     j.key("cold_cut_deg");
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendCold.cut[i] / kDeg); });
     j.key("blocks");
@@ -1214,6 +1250,8 @@ int main(int argc, char** argv)
             opt.warmupMs = std::llround(std::atof(next().c_str()) * 1000.0);
         else if (a == "--no-cpu")
             opt.cpu = false;
+        else if (a == "--live")
+            opt.live = true;
         else if (a == "--no-images")
             opt.images = false;
         else if (!a.empty() && a[0] == '-') {

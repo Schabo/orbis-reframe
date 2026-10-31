@@ -17,6 +17,7 @@
 #include "SeamAlignment.h"
 #include "SeamCut.h"
 #include "SeamDepth.h"
+#include "SeamWindow.h"
 #include "Smooth.h"
 #include "Ycbcr.h"
 #include "support/CommaLocale.h"
@@ -499,12 +500,15 @@ void testSeamPatchScore()
     CHECK(ncc < -1.5f);
 }
 
-// SeamDepthTracker on a synthetic cost volume: a near object over one arc of
-// bins, far elsewhere, and textureless bins that must follow their neighbours.
-void testSeamDepthTracker()
+// The seam window's depth table on a synthetic cost volume: a near object
+// over one arc of bins, far elsewhere, and textureless bins that must follow
+// their neighbours.
+void testSeamDepthWindow()
 {
     constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands;
+    const double band = 5.0 * kDeg;
     auto costs = std::make_unique<insv::SeamCosts>();
+    auto stats = std::make_unique<insv::SeamCutStats>(); // no cells: the cut keeps out of it
     auto fill = [&](double nearQ) {
         for (int b = 0; b < B; ++b) {
             const double truth = (b >= 40 && b < 70) ? nearQ : 0.0;
@@ -516,77 +520,87 @@ void testSeamDepthTracker()
             }
         }
     };
-    insv::SeamDepthTracker tr;
+    insv::SeamWindow w;
+    w.configure(0.032, band);
+    insv::SeamState s;
+    CHECK(!w.solve(1000, s));
     fill(1.8);
-    tr.update(*costs, 1000);
-    const float* q = tr.table();
-    CHECK(tr.hasHistory());
+    w.add(1000, *costs, *stats);
+    CHECK(w.solve(1000, s));
+    const float* q = s.q;
     CHECK(near(q[50], 1.8, 0.1) && near(q[60], 1.8, 0.1));
     CHECK(near(q[55], 1.8, 0.15));                    // textureless: from its neighbours
     CHECK(near(q[10], 0.0, 0.1) && near(q[100], 0.0, 0.1) && near(q[120], 0.0, 0.1));
     CHECK(q[40 - 3] < 0.3 && q[70 + 2] < 0.3);         // the edge stays an edge
 
-    // A rival depth that matches clearly better for 200 ms (the road behind
-    // a crash bar) doesn't take the bins over; with no cost memory it does.
+    // A rival depth that matches clearly better for one frame (the road
+    // behind a crash bar) doesn't take the bins over, even at that frame:
+    // the frames either side outvote it. With a one-frame window it does.
     auto rival = [&](double nearQ, double farQ, int from, int to) {
         fill(nearQ);
         for (int b = from; b < to; ++b)
             for (int k = 0; k < K; ++k) {
-                const double q = insv::SeamCandQ(k);
-                const double dn = std::fabs(q - nearQ), df = std::fabs(q - farQ);
+                const double qq = insv::SeamCandQ(k);
+                const double dn = std::fabs(qq - nearQ), df = std::fabs(qq - farQ);
                 costs->ncc[b][k] = static_cast<float>(
                     std::max(0.70 - 0.8 * std::min(dn, 1.0), 0.95 - 0.8 * std::min(df, 1.0)));
             }
     };
-    insv::SeamDepthTracker forgetful;
-    forgetful.tuning.costMemoryMs = 0;
-    int64_t t = 1000;
-    for (int f = 0; f < 15; ++f, t += 33) {
-        fill(1.8);
-        tr.update(*costs, t);
-        forgetful.update(*costs, t);
+    insv::SeamWindow single;
+    single.tuning.depthHalfMs = 0;
+    single.configure(0.032, band);
+    w.reset();
+    for (int f = 0; f < 15; ++f) {
+        if (f == 7)
+            rival(1.8, 0.3, 55, 62);
+        else
+            fill(1.8);
+        w.add(1000 + 33 * f, *costs, *stats);
+        single.add(1000 + 33 * f, *costs, *stats);
     }
-    float lowest = 9, lowestForgetful = 9;
-    for (int f = 0; f < 6; ++f, t += 33) {
-        rival(1.8, 0.3, 55, 62);
-        tr.update(*costs, t);
-        forgetful.update(*costs, t);
-        lowest = std::min(lowest, q[58]);
-        lowestForgetful = std::min(lowestForgetful, forgetful.table()[58]);
-    }
-    CHECK(lowest > 1.6);
-    CHECK(lowestForgetful < 1.0);
+    insv::SeamState s1;
+    w.solve(1000 + 33 * 7, s);
+    single.solve(1000 + 33 * 7, s1);
+    CHECK(s.q[58] > 1.6);
+    CHECK(s1.q[58] < 1.0);
 
-    // The object moves closer and stays there: followed within half a second.
-    fill(2.4);
-    for (int f = 0; f < 15; ++f, t += 33)
-        tr.update(*costs, t);
-    CHECK(near(q[60], 2.4, 0.1));
-    // A jump in time starts over: no memory of the old costs or table.
+    // The object moves closer and stays there: the table follows within the
+    // window, and doesn't move before the window reaches the change.
+    for (int f = 15; f < 30; ++f) {
+        fill(2.4);
+        w.add(1000 + 33 * f, *costs, *stats);
+    }
+    w.solve(1000 + 33 * 20, s);
+    CHECK(near(s.q[60], 2.4, 0.1));
+    w.solve(1000 + 33 * 10, s);
+    CHECK(near(s.q[60], 1.8, 0.1));
+    // A frame not after the latest starts over.
     fill(1.2);
-    tr.update(*costs, t + 5000);
-    CHECK(near(q[60], 1.2, 0.1));
-    tr.reset();
-    CHECK(!tr.hasHistory() && tr.table()[60] == 0.0f);
+    w.add(500, *costs, *stats);
+    w.solve(500, s);
+    CHECK(near(s.q[60], 1.2, 0.1));
+    w.reset();
+    CHECK(w.empty() && !w.solve(500, s));
 }
 
-// SeamDepthTracker's confidence on matches that can't tell the distance: one
-// clean peak counts fully; a smooth ramp, a repeated texture and scattered
-// peaks of the same height don't. And the table stays within the shift range
-// the camera's baseline gives (the X5's shift: the A1 stops at ~0.7 m).
+// The depth confidence on matches that can't tell the distance: one clean
+// peak counts fully; a smooth ramp, a repeated texture and scattered peaks
+// of the same height don't. And the table stays within the shift range the
+// camera's baseline gives (the X5's shift: the A1 stops at ~0.7 m).
 void testSeamDepthUniqueness()
 {
     constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands;
     auto costs = std::make_unique<insv::SeamCosts>();
+    auto data = std::make_unique<insv::SeamDepthFrame>();
+    const insv::SeamDepthTuning tuning;
     auto confidence = [&](const std::function<double(int)>& ncc) {
         for (int b = 0; b < B; ++b)
             for (int k = 0; k < K; ++k) {
                 costs->ncc[b][k] = static_cast<float>(ncc(k));
                 costs->texture[b][k] = 30.0f;
             }
-        insv::SeamDepthTracker tr; // the X5's 32 mm
-        tr.update(*costs, 0);
-        return tr.lastConfidence();
+        insv::SeamDepthData(*costs, 0.032, tuning, *data); // the X5's 32 mm
+        return data->meanConf;
     };
     const double clean = confidence([](int k) {
         const double dq = insv::SeamCandQ(k) - 1.0;
@@ -612,14 +626,89 @@ void testSeamDepthUniqueness()
                                                            0.8 - 2.0 * std::fabs(q - 1.0)));
             costs->texture[b][k] = 30.0f;
         }
-    insv::SeamDepthTracker x5, a1;
-    a1.setBaselineM(0.071);
-    x5.update(*costs, 0);
-    a1.update(*costs, 0);
-    CHECK(near(x5.table()[20], 2.5, 0.15));
-    CHECK(near(a1.table()[20], 1.0, 0.15));
+    float x5[B], a1[B];
+    insv::SeamDepthData(*costs, 0.032, tuning, *data);
+    insv::SolveSeamDepth(&data->data[0][0], 0.032, tuning, x5);
+    insv::SeamDepthData(*costs, 0.071, tuning, *data);
+    insv::SolveSeamDepth(&data->data[0][0], 0.071, tuning, a1);
+    CHECK(near(x5[20], 2.5, 0.15));
+    CHECK(near(a1[20], 1.0, 0.15));
     for (int b = 0; b < B; ++b)
-        CHECK(0.071 * a1.table()[b] <= insv::kSeamShiftMaxRad + 1e-6);
+        CHECK(0.071 * a1[b] <= insv::kSeamShiftMaxRad + 1e-6);
+}
+
+// The state at a frame is the same whichever way it is reached: played into
+// from the start of the clip, or from lookBackMs() before it (a seek, an
+// export's own pass), each frame's cut statistics measured on the window's
+// measureTable(). The scene changes from frame to frame and the statistics
+// depend on the table they were measured on, so a shorter run-up would
+// differ.
+void testSeamWindowPathIndependence()
+{
+    constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands, R = insv::kSeamCutRows;
+    const double band = 5.0 * kDeg;
+    auto costs = std::make_unique<insv::SeamCosts>();
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    insv::LensColour clip;
+    clip.logRatio[0] = 0.05;
+    auto frame = [&](int f, const float* qMeas) {
+        const double nearQ = 1.0 + 0.03 * f;
+        const int from = 30 + f % 7;
+        for (int b = 0; b < B; ++b) {
+            const double truth = b >= from && b < from + 25 ? nearQ : 0.0;
+            for (int k = 0; k < K; ++k) {
+                const double dq = insv::SeamCandQ(k) - truth;
+                costs->ncc[b][k] = static_cast<float>(0.95 - 0.8 * std::min(std::fabs(dq), 1.0) -
+                                                      0.02 * ((b * 7 + f * 3) % 5));
+                costs->texture[b][k] = 30.0f;
+            }
+            for (int r = 0; r < R; ++r) {
+                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                c.n = 64;
+                c.texture = 20;
+                // Agreement where the table measured on is right.
+                c.zsad = static_cast<float>(r == 4 ? 2.0 + 10.0 * std::fabs(qMeas[b] - truth) : 12.0);
+                for (int k = 0; k < 3; ++k) {
+                    c.nColour[k] = 64;
+                    c.mean[1][k] = 100;
+                    c.mean[0][k] = static_cast<float>(100 + (k == 0 ? 6 + f % 5 : 0) + (b > 90 ? 8 : 0));
+                }
+            }
+        }
+    };
+    auto feed = [&](insv::SeamWindow& w, int from, int to) {
+        for (int f = from; f <= to; ++f) {
+            float q[B];
+            w.measureTable(1000 + 33 * f, q);
+            frame(f, q);
+            w.add(1000 + 33 * f, *costs, *stats);
+        }
+    };
+    insv::SeamWindow played, seeked, short_;
+    for (insv::SeamWindow* w : {&played, &seeked, &short_}) {
+        w->configure(0.032, band);
+        w->setLensColour(clip);
+    }
+    const int n = 60, at = 40;
+    feed(played, 0, n);
+    const int64_t t = 1000 + 33 * at;
+    int first = 0;
+    while (1000 + 33 * first < t - played.lookBackMs())
+        ++first;
+    int last = at;
+    while (1000 + 33 * (last + 1) <= t + played.lookAheadMs())
+        ++last;
+    feed(seeked, first, last);
+    feed(short_, first + 6, last);
+    insv::SeamState a, b, c;
+    CHECK(played.solve(t, a) && seeked.solve(t, b) && short_.solve(t, c));
+    CHECK(std::memcmp(a.q, b.q, sizeof a.q) == 0);
+    CHECK(std::memcmp(&a.blend, &b.blend, sizeof a.blend) == 0);
+    CHECK(std::memcmp(&a.blend, &c.blend, sizeof a.blend) != 0); // the run-up matters
+
+    // Half precision round trip.
+    for (float v : {0.0f, 1.0f, -2.5f, 0.0123f, 3.2f, 1e-6f, 65504.0f})
+        CHECK(near(insv::HalfToFloat(insv::FloatToHalf(v)), v, std::fabs(v) / 1024.0 + 1e-7));
 }
 
 // Privacy blur quads: (s, t) <-> direction round trip, corners, rejects, cells.
@@ -857,13 +946,45 @@ void testSeamBlend()
     CHECK(w[0] == off.seamBlendWeight(0, d) && w[1] == off.seamBlendWeight(1, d));
 }
 
-// SeamCutTracker on synthetic statistics: the lenses agree best on one row
-// everywhere but an arc where no row agrees (an occlusion).
-void testSeamCutTracker()
+namespace {
+
+// Costs that match at infinity everywhere: the depth side quiet, for the
+// cut and colour tests.
+std::unique_ptr<insv::SeamCosts> farCosts()
+{
+    auto c = std::make_unique<insv::SeamCosts>();
+    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+        for (int k = 0; k < insv::kSeamDepthCands; ++k) {
+            c->ncc[b][k] = static_cast<float>(0.95 - 0.8 * std::min(std::fabs(insv::SeamCandQ(k)), 1.0));
+            c->texture[b][k] = 30.0f;
+        }
+    return c;
+}
+
+// The state of a window holding `stats` alone, at band half-width `band`.
+insv::SeamState solveOne(const insv::SeamCutStats& stats, double band,
+                         const insv::LensColour& clip = {})
+{
+    insv::SeamWindow w;
+    w.configure(0.032, band);
+    w.setLensColour(clip);
+    w.add(1000, *farCosts(), stats);
+    insv::SeamState s;
+    w.solve(1000, s);
+    return s;
+}
+
+} // namespace
+
+// The seam window's cut on synthetic statistics: the lenses agree best on
+// one row everywhere but an arc where no row agrees (an occlusion).
+void testSeamCutWindow()
 {
     constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
     const double band = 5.0 * kDeg, narrow = insv::kSeamCutFadeDeg * kDeg;
+    const double half = 1e-4; // the state's half precision
     auto stats = std::make_unique<insv::SeamCutStats>();
+    auto costs = farCosts();
     auto fill = [&](int bestRow, float bestZsad) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
@@ -873,41 +994,44 @@ void testSeamCutTracker()
                 cell.zsad = (b >= 80 && b < 90) ? 40.0f : (r == bestRow ? bestZsad : 12.0f);
             }
     };
-    insv::SeamCutTracker tr;
-    CHECK(!tr.hasHistory() && tr.blend().fade[0] == 0.0f);
     fill(6, 2.0f);
-    int64_t t = 1000;
-    tr.update(*stats, t, band);
-    const insv::SeamBlend& bl = tr.blend();
-    CHECK(tr.hasHistory());
-    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), 1e-6) && near(bl.fade[20], narrow, 1e-6));
-    CHECK(near(bl.cut[84], 0.0, 1e-6) && near(bl.fade[84], band, 1e-6)); // occluded: the full fade
-    CHECK(bl.fade[79] > narrow && bl.fade[79] < band);                    // widening gradually
-    CHECK(near(bl.fade[76], narrow, 1e-4));
+    insv::SeamState s = solveOne(*stats, band);
+    const insv::SeamBlend& bl = s.blend;
+    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), half) && near(bl.fade[20], narrow, half));
+    CHECK(near(bl.cut[84], 0.0, half) && near(bl.fade[84], band, half)); // occluded: the full fade
+    CHECK(bl.fade[79] > narrow && bl.fade[79] < band);                  // widening gradually
+    CHECK(near(bl.fade[76], narrow, half));
     for (int b = 0; b < B; ++b) // inside the band
-        CHECK(std::fabs(bl.cut[b]) + bl.fade[b] <= band + 1e-6);
+        CHECK(std::fabs(bl.cut[b]) + bl.fade[b] <= band + half);
 
-    // One frame of a slightly better row elsewhere doesn't move the cut ...
-    fill(2, 1.5f);
-    tr.update(*stats, t += 33, band);
-    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), 1e-6));
+    // One frame of a slightly better row among its neighbours doesn't move
+    // the cut there ...
+    insv::SeamWindow w;
+    w.configure(0.032, band);
+    for (int f = 0; f < 9; ++f) {
+        if (f == 4)
+            fill(2, 1.5f);
+        else
+            fill(6, 2.0f);
+        w.add(1000 + 33 * f, *costs, *stats);
+    }
+    w.solve(1000 + 33 * 4, s);
+    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), half));
     // ... a clearly better one, kept up, does.
+    w.reset();
     fill(2, 0.5f);
-    for (int f = 0; f < 15; ++f)
-        tr.update(*stats, t += 33, band);
-    CHECK(near(bl.cut[20], insv::SeamCutRowE(2, band), 1e-6));
+    for (int f = 0; f < 9; ++f)
+        w.add(1000 + 33 * f, *costs, *stats);
+    w.solve(1000 + 33 * 4, s);
+    CHECK(near(bl.cut[20], insv::SeamCutRowE(2, band), half));
 
     // Rows the lenses don't both see are never cut through.
     fill(6, 2.0f);
     for (int b = 0; b < B; ++b)
         stats->cell[b][6].n = 10;
-    insv::SeamCutTracker fresh;
-    fresh.update(*stats, 0, band);
+    s = solveOne(*stats, band);
     for (int b = 0; b < 80; ++b)
-        CHECK(fresh.blend().cut[b] != static_cast<float>(insv::SeamCutRowE(6, band)));
-
-    tr.reset();
-    CHECK(!tr.hasHistory() && tr.blend().fade[20] == 0.0f);
+        CHECK(!near(bl.cut[b], insv::SeamCutRowE(6, band), half));
 
     // The colour residual against the clip's lens colour: lens 0 (120, 100,
     // 80) against lens 1 (100, 100, 100) where the lenses agree; nothing
@@ -931,39 +1055,51 @@ void testSeamCutTracker()
     insv::LensColour clip;
     clip.logRatio[0] = std::log(1.15);
     clip.logRatio[2] = std::log(0.8);
-    tr.setLensColour(clip);
-    t = 5000;
-    tr.update(*stats, t, band);
-    const float* g = tr.blend().colour;
-    CHECK(near(g[0], std::log(1.2 / 1.15), 1e-4) && near(g[1], 0.0, 1e-4) && near(g[2], 0.0, 1e-4));
-    // Over time, not at once: a frame of equal reds moves it ~3 %.
-    colours(100);
-    tr.update(*stats, t += 33, band);
-    const double target = -std::log(1.15);
-    CHECK(g[0] < std::log(1.2 / 1.15) && g[0] > std::log(1.2 / 1.15) + 0.05 * (target - std::log(1.2 / 1.15)));
+    s = solveOne(*stats, band, clip);
+    const float* g = bl.colour;
+    const double r120 = std::log(1.2 / 1.15), r100 = -std::log(1.15);
+    CHECK(near(g[0], r120, half) && near(g[1], 0.0, half) && near(g[2], 0.0, half));
+    // Over the frames within half a second either side: one frame of equal
+    // reds among 31 moves it a 31st of the way.
+    w.reset();
+    w.setLensColour(clip);
+    auto run = [&](const std::function<void(int)>& frame) {
+        w.reset();
+        for (int f = 0; f <= 30; ++f) {
+            frame(f);
+            w.add(1000 + 33 * f, *costs, *stats);
+        }
+        w.solve(1000 + 33 * 15, s);
+    };
+    run([&](int f) { colours(f == 15 ? 100.0f : 120.0f); });
+    CHECK(near(g[0], (30 * r120 + r100) / 31, 2 * half));
     // A frame with flare (veiling light on most of the seam, unevenly: a
-    // wide spread) and one with nothing usable hold it.
-    const float held = g[0];
-    for (int b = 0; b < 100; ++b)
-        for (int r = 0; r < R; ++r)
-            stats->cell[b][r].mean[1][1] = 100.0f * (1.1f + 0.05f * (b % 10));
-    tr.update(*stats, t += 33, band);
-    CHECK(g[0] == held);
-    for (int b = 0; b < B; ++b)
-        for (int r = 0; r < R; ++r)
-            for (float& n : stats->cell[b][r].nColour)
-                n = 0;
-    tr.update(*stats, t += 33, band);
-    CHECK(g[0] == held);
-    // A new lens colour starts it over; so does a seek.
+    // wide spread) or with nothing usable is left out.
+    run([&](int f) {
+        colours(120);
+        if (f == 15)
+            for (int b = 0; b < 100; ++b)
+                for (int r = 0; r < R; ++r)
+                    stats->cell[b][r].mean[1][1] = 100.0f * (1.1f + 0.05f * (b % 10));
+    });
+    CHECK(near(g[0], r120, half));
+    run([&](int f) {
+        colours(120);
+        if (f == 15)
+            for (int b = 0; b < B; ++b)
+                for (int r = 0; r < R; ++r)
+                    for (float& n : stats->cell[b][r].nColour)
+                        n = 0;
+    });
+    CHECK(near(g[0], r120, half));
+    // Measured against a new lens colour at once; bounded.
     clip.logRatio[0] = std::log(1.2);
-    tr.setLensColour(clip);
-    CHECK(g[0] == 0.0f);
+    w.setLensColour(clip);
+    w.solve(1000 + 33 * 15, s);
+    CHECK(near(g[0], 0.0, half));
     colours(150); // log(1.5 / 1.2) = 0.22: bounded
-    tr.update(*stats, t += 33, band);
-    CHECK(near(g[0], insv::kLensColourResidualMaxLog, 1e-6));
-    tr.update(*stats, t += 2000, band);
-    CHECK(near(g[0], insv::kLensColourResidualMaxLog, 1e-6));
+    s = solveOne(*stats, band, clip);
+    CHECK(near(g[0], insv::kLensColourResidualMaxLog, half));
 }
 
 // The local correction round the seam: a stretch where the lenses differ
@@ -974,6 +1110,7 @@ void testLensColourLocal()
     constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
     const double band = 5.0 * kDeg;
     auto stats = std::make_unique<insv::SeamCutStats>();
+    auto costs = farCosts();
     auto fill = [&](double veil) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
@@ -993,29 +1130,34 @@ void testLensColourLocal()
             }
     };
     fill(0.2);
-    insv::SeamCutTracker tr;
-    tr.update(*stats, 1000, band);
-    const insv::SeamBlend& bl = tr.blend();
+    insv::SeamWindow w;
+    w.configure(0.032, band);
+    w.add(1000, *costs, *stats);
+    insv::SeamState s;
+    w.solve(1000, s);
+    const insv::SeamBlend& bl = s.blend;
     CHECK(near(bl.local[40][1], -0.2, 0.01));
     CHECK(near(bl.local[90][1], 0.0, 1e-4));
     CHECK(bl.local[5][1] == 0.0f);         // no data of its own, out of reach: none
     CHECK(near(bl.colour[1], 0.0, 1e-4));  // the whole seam: the rest agrees
-    // Over ~40 ms, not at once: a frame 10 ms later moves it about a fifth.
+    // Over the frames within ~40 ms: with one 10 ms later that has none,
+    // about half.
     fill(0.0);
-    tr.update(*stats, 1010, band);
-    CHECK(bl.local[40][1] < -0.12 && bl.local[40][1] > -0.18);
+    w.add(1010, *costs, *stats);
+    w.solve(1010, s);
+    CHECK(bl.local[40][1] < -0.08 && bl.local[40][1] > -0.12);
     // A veil over most of the seam, growing along it (flare towards the
-    // sun): the whole-seam residual holds, the local correction follows;
-    // where the lenses are further apart than any gain (past bin ~70) it is
-    // taken for light lens 1 adds instead.
+    // sun): the whole-seam residual leaves those frames out, the local
+    // correction follows them; where the lenses are further apart than any
+    // gain (past bin ~70) it is taken for light lens 1 adds instead.
     for (int b = 20; b < B; ++b)
         for (int r = 0; r < R; ++r)
             for (int k = 0; k < 3; ++k)
                 stats->cell[b][r].mean[0][k] = static_cast<float>(120 * std::exp(-0.05 - 0.004 * (b - 20)));
-    const float held = bl.colour[1];
     for (int t = 1043; t < 2000; t += 33)
-        tr.update(*stats, t, band);
-    CHECK(bl.colour[1] == held);
+        w.add(t, *costs, *stats);
+    w.solve(1043 + 33 * 28, s);
+    CHECK(near(bl.colour[1], 0.0, 1e-4));
     CHECK(near(bl.local[50][1], -0.05 - 0.004 * 30, 0.02) && bl.veil[50][1] == 0.0f);
     CHECK(bl.veil[110][1] < -0.05f && bl.veil[110][0] < -0.05f && std::fabs(bl.local[110][1]) < 0.05);
 }
@@ -1054,9 +1196,8 @@ void testLensVeil()
         CHECK(near(v[40 * 3 + k], -veil[k], 0.01) && near(v[35 * 3 + k], -veil[k], 0.01));
         CHECK(v[90 * 3 + k] == 0.0f && v[10 * 3 + k] == 0.0f);
     }
-    insv::SeamCutTracker tr;
-    tr.update(*stats, 1000, band);
-    const insv::SeamBlend& bl = tr.blend();
+    const insv::SeamState s = solveOne(*stats, band);
+    const insv::SeamBlend& bl = s.blend;
     CHECK(near(bl.veil[40][1], -veil[1], 0.01) && bl.veil[90][1] == 0.0f);
     CHECK(near(bl.colour[1], std::log(1.05), 0.01));
     CHECK(std::fabs(bl.local[40][1]) < 0.02 && std::fabs(bl.local[90][1]) < 0.01);
@@ -1088,9 +1229,8 @@ void testLensColourClippedChannel()
                 c.mean[0][k] = sky && k != 2 ? 132.0f : (b >= 90 && b < 100 && k == 2 ? 150.0f : 120.0f);
             }
         }
-    insv::SeamCutTracker tr;
-    tr.update(*stats, 1000, band);
-    const insv::SeamBlend& bl = tr.blend();
+    const insv::SeamState s = solveOne(*stats, band);
+    const insv::SeamBlend& bl = s.blend;
     CHECK(near(bl.local[110][0], std::log(1.1), 0.01));
     CHECK(near(bl.local[95][2], std::log(1.25), 0.01));
     CHECK(bl.local[110][2] == 0.0f);
@@ -2172,11 +2312,12 @@ int main()
     testSyntheticRender();
     testSeamDepthGeometry();
     testSeamPatchScore();
-    testSeamDepthTracker();
+    testSeamDepthWindow();
     testSeamDepthUniqueness();
+    testSeamWindowPathIndependence();
     testSeamAlignment();
     testSeamBlend();
-    testSeamCutTracker();
+    testSeamCutWindow();
     testSeamCutStats();
     testFitLensColour();
     testLensVeil();

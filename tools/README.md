@@ -173,7 +173,12 @@ before it. Each frame is stitched through `stitch::NativeStitchSource` three
 times: on the GPU played into from `--warmup S` seconds before (2, as
 playback reaches it), on the GPU seeked to cold (as a step back, a
 screenshot or an export's first frame do), and on the CPU fallback, cold
-(`--no-cpu` leaves that out). The seam correction and lens colour are
+(`--no-cpu` leaves that out). First it analyses the seam of the stretch
+(`stitch::AnalyseClipSeam`, from `--warmup` before the frame to the frame,
+held in memory) as the app does after opening a clip, so all three read the
+analysis and the cold frame is the played one; `--live` leaves the analysis
+out, so each measures the seam as it goes, as playback does before a clip
+is analysed. The seam correction and lens colour are
 measured over the whole clip as the app does on open, unless the list gives
 them; the run prints them in the list's format, to paste in and save the
 time.
@@ -206,12 +211,14 @@ What the summary measures:
 - `near_bins` (closer than 5 m), `q_max` (1/m), `fade_mean_deg`: the depth
   table and the blend; `depth_confidence` / `cold_depth_confidence`: the
   depth measurement's mean confidence on the played and the cold frame.
+  The JSON's detail also has the state's colour residual (`residual_pct`),
+  local correction (`local_pct`) and veiling light (`veil`) per bin.
 - `colour_*`: the lenses' colour difference where they meet (the fade's
   centre, per bin, unclipped samples), lens 0 against lens 1 in %, after
   the colour correction; `raw_colour_*` before it.
 - `cold_*`: the cold frame against the played one: depth table, PSNR over
-  the whole frame and in the band. `cpu_*`: the CPU's cold frame against
-  the GPU's.
+  the whole frame and in the band (99: the same picture). `cpu_*`: the
+  CPU's cold frame against the GPU's.
 - `flicker_*`: over the played run's last second, the mean change from one
   frame to the next in the band and beside it (levels; motion changes
   both, flicker only the band), and of the depth table, cut, fade and local

@@ -5,8 +5,10 @@
 
 #include "ReframeFlatten.h"  // exportpipe::FlattenWriter (system FFmpeg)
 #include "ReframeRenderer.h" // exportpipe::RenderRectilinear
+#include "../core/Log.h"
 
 #include <ClipMetadata.h>       // camera::ReadClipImu
+#include <ClipSeamAnalysis.h>   // stitch::AnalyseClipSeam
 #include <NativeStitchSource.h> // stitch::NativeStitchSource, stitch::Frame, stitch::PreviewStitchConfig
 #include <ProbeClip.h>          // stitch::ProbeClip
 
@@ -94,6 +96,20 @@ std::vector<exportpipe::PaneView> ReframeExportController::paneViews(const ClipJ
     return views;
 }
 
+bool ReframeExportController::analyseSeam(const ClipJob &c, qint64 inMs, qint64 outMs,
+                                          const std::atomic<bool> *cancel,
+                                          const std::function<void(double)> &progress)
+{
+    if (!c.depthSeam || c.flat)
+        return true;
+    const stitch::SeamAnalysisResult r = stitch::AnalyseClipSeam(
+        {c.clipPath.toStdString(), c.lensGuard, c.seamCorrection, c.lensColour}, inMs, outMs, cancel,
+        progress);
+    if (!r.ok && !r.cancelled) // the stitch measures the seam as it goes instead
+        core::log::Info("[seam analysis] %s: %s\n", qPrintable(c.clipPath), r.message.c_str());
+    return !r.cancelled;
+}
+
 QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
                                             const view::Pose &pose, int outW, int outH,
                                             QString &error)
@@ -116,6 +132,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     sc.height = (sc.width / 2) & ~1;
     sc.lensGuard = c.lensGuard;
     sc.depthSeam = c.depthSeam;
+    analyseSeam(c, sourceMs, sourceMs, nullptr, {});
 
     stitch::NativeStitchSource src;
     if (!src.Open(c.clipPath.toStdString(), sc) || !src.SeekTo(sourceMs)) {
@@ -387,6 +404,15 @@ void ReframeExportController::run(const Request &req)
         sc.height = (req.stitchHeight > 0 ? req.stitchHeight : eqW / 2) & ~1;
         sc.lensGuard = c.lensGuard;
         sc.depthSeam = c.depthSeam;
+
+        // The clip's seam as playback has it: its analysis, made here for the
+        // frames that haven't been analysed yet.
+        const QString seamLabel = tr("Analysing the seam, clip %1 of %2…").arg(i + 1).arg(n);
+        if (!analyseSeam(c, c.trimInMs, c.trimOutMs, &m_cancel,
+                         [&](double) { emitPct(base, seamLabel); })) {
+            cancelled = true;
+            break;
+        }
 
         auto src = std::make_unique<stitch::NativeStitchSource>();
         if (!src->Open(c.clipPath.toStdString(), sc) || !src->SeekTo(c.trimInMs)) {

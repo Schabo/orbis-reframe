@@ -2,10 +2,12 @@
 
 #include <QThread>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
 #include <ClipLensColour.h> // stitch::MeasureClipLensColour
+#include <ClipSeamAnalysis.h> // stitch::AnalyseClipSeam
 #include <ClipSeam.h>       // stitch::MeasureClipSeam
 #ifdef ORBIS_REFRAME_HAVE_CLIP_SYNC
 #include <ClipSync.h> // stitch::MeasureClipSync
@@ -35,6 +37,10 @@ ClipMeasurements::~ClipMeasurements()
         m_colourCancel = true;
         m_colourThread->wait();
     }
+    if (m_analysisThread) {
+        m_analysisCancel = true;
+        m_analysisThread->wait();
+    }
 }
 
 const ClipItem *ClipMeasurements::measurableClip(const QString &clipPath) const
@@ -56,14 +62,19 @@ void ClipMeasurements::schedule()
         if (m_playing)
             return; // picked up again on pause
         const Timeline *t = m_project->timeline();
-        for (int i = 0; i < t->count(); ++i) {
-            if (t->clipAt(i).flat)
-                continue;
-            const QString path = t->clipAt(i).sourcePath;
+        QStringList paths; // the playhead's source first
+        for (int i = 0; i < t->count(); ++i)
+            if (!t->clipAt(i).flat && !paths.contains(t->clipAt(i).sourcePath))
+                paths << t->clipAt(i).sourcePath;
+        if (paths.removeOne(m_priorityPath))
+            paths.prepend(m_priorityPath);
+        for (const QString &path : std::as_const(paths)) {
             maybeMeasureSync(path);
             maybeMeasureSeam(path);
             maybeMeasureColour(path);
         }
+        for (const QString &path : std::as_const(paths))
+            maybeAnalyseSeam(path); // after any measurement it depends on
         emit statusChanged();
     }, Qt::QueuedConnection);
 }
@@ -77,9 +88,91 @@ void ClipMeasurements::setPlaying(bool playing)
         m_syncCancel = true;
         m_seamCancel = true;
         m_colourCancel = true;
+        m_analysisCancel = true; // keeps what it has done
         return;
     }
     schedule(); // measurements held back while playing
+}
+
+void ClipMeasurements::setPriorityPath(const QString &clipPath)
+{
+    if (clipPath == m_priorityPath)
+        return;
+    m_priorityPath = clipPath;
+    schedule();
+}
+
+void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
+{
+    if (!m_enabled || clipPath.isEmpty() || m_analysisThread || m_seamThread || m_colourThread ||
+        m_analysisFailed.contains(clipPath))
+        return;
+    // After the seam and lens colour measurements: the seam's state depends
+    // on both, as the stitch has them (none, if one failed).
+    const Timeline *t = m_project->timeline();
+    insv::SeamCorrection seam;
+    insv::LensColour colour;
+    if (!(t->sourceSeamCorrection(clipPath, seam) || m_seamFailed.contains(clipPath)) ||
+        !(t->sourceLensColour(clipPath, colour) || m_colourFailed.contains(clipPath)))
+        return;
+    const ClipItem *clip = measurableClip(clipPath);
+    if (!clip)
+        return;
+    // The stretches of the source on the timeline with the depth-aware seam
+    // on, under the same lens guard (another guard is another stitch).
+    std::vector<std::pair<qint64, qint64>> ranges;
+    for (int i = 0; i < t->count(); ++i) {
+        const ClipItem &c = t->clipAt(i);
+        if (c.sourcePath == clipPath && c.depthSeam && !c.flat && !c.mediaMissing &&
+            c.lensGuard == clip->lensGuard)
+            ranges.emplace_back(c.trimInMs, c.trimOutMs);
+    }
+    if (ranges.empty())
+        return;
+    const stitch::SeamAnalysisKey key{clipPath.toStdString(), clip->lensGuard, seam, colour};
+    const std::shared_ptr<stitch::SeamAnalysis> analysis = stitch::SeamAnalysisFor(key);
+    qint64 total = 0, done = 0;
+    for (const auto &[in, out] : ranges) {
+        total += out - in;
+        done += std::llround(analysis->coverage(in, out) * (out - in));
+    }
+    if (std::all_of(ranges.begin(), ranges.end(),
+                    [&](const auto &r) { return analysis->covers(r.first, r.second); }))
+        return;
+    m_analysisPath = clipPath;
+    m_analysisCancel = false;
+    m_analysisPermille = static_cast<int>(total > 0 ? 1000 * done / total : 0);
+    m_analysisThread = QThread::create([this, key, ranges, total, clipPath] {
+        stitch::SeamAnalysisResult r;
+        r.ok = true;
+        qint64 before = 0; // the length of the ranges already gone through
+        for (const auto &[in, out] : ranges) {
+            const qint64 len = out - in;
+            auto progress = [this, before, len, total](double share) {
+                m_analysisPermille =
+                    static_cast<int>(total > 0 ? 1000.0 * (before + share * len) / total : 0.0);
+                QMetaObject::invokeMethod(this, [this] { emit statusChanged(); }, Qt::QueuedConnection);
+            };
+            r = stitch::AnalyseClipSeam(key, in, out, &m_analysisCancel, progress, true);
+            before += len;
+            if (!r.ok)
+                break;
+        }
+        QMetaObject::invokeMethod(this, [this, clipPath, r] {
+            m_analysisThread->wait(); // its function has just returned
+            m_analysisThread->deleteLater();
+            m_analysisThread = nullptr;
+            m_analysisPath.clear();
+            core::log::Info("[seam analysis] %s: %s\n", qPrintable(clipPath), r.message.c_str());
+            if (!r.ok && !r.cancelled)
+                m_analysisFailed.insert(clipPath, QString::fromStdString(r.message));
+            emit seamAnalysed(clipPath);
+            emit statusChanged();
+            schedule(); // another source may be waiting for its turn
+        }, Qt::QueuedConnection);
+    });
+    m_analysisThread->start(QThread::LowPriority);
+    core::log::Info("[seam analysis] %s: analysing\n", qPrintable(clipPath));
 }
 
 void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
@@ -281,7 +374,10 @@ QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) cons
     }
 
     // One short line. The colour is measured after the seam, so the seam
-    // leads; a failure keeps its reason in view.
+    // leads; a failure keeps its reason in view. The seam analysis comes
+    // after both.
+    if (m_analysisPath == path)
+        return tr("Analysing this clip's seam… %1 %").arg(m_analysisPermille.load() / 10);
     switch (s) {
     case State::Measuring:
         return tr("Measuring this clip's seam…");

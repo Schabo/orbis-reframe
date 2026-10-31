@@ -7,8 +7,7 @@
 #include <ColorLut.h>          // color::Grade
 #include <ViewProjection.h>    // view::Pose
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
-#include <SeamCut.h>           // insv::SeamCutTracker (value member below)
-#include <SeamDepth.h>         // insv::SeamDepthTracker (value member below)
+#include <SeamWindow.h>        // insv::SeamWindow (value member below)
 
 #include <functional>
 #include <map>
@@ -30,6 +29,8 @@ struct VulkanLensInput;
 } // namespace render
 
 namespace stitch {
+
+class SeamAnalysis; // ClipSeamAnalysis.h
 
 // One reprojected rectilinear ("flat") frame, tightly packed: NV12 (Y plane
 // width*height bytes, then interleaved UV width*height/2), or with `p010`
@@ -62,13 +63,13 @@ struct ReadTiming {
 //
 // Quality: geometry + feather blend + the clip's lens colour match + pole
 // handling (see FisheyeProjection.h), plus the depth-aware seam
-// (PreviewStitchConfig::depthSeam): every frame the seam's cost volume is
-// measured first (render::VulkanFisheyeStitcher::measureSeamVk, or
-// insv::MeasureSeamCosts on the CPU path), insv::SeamDepthTracker solves the
-// per-azimuth stitch distance, and that frame is stitched with it; the same
-// submission measures the cut across the band (with the table the frame
-// before), and insv::SeamCutTracker sets where the lenses meet and how wide
-// the fade there is. Of
+// (PreviewStitchConfig::depthSeam): every frame the seam's cost volume and
+// the cut statistics across the band are measured first
+// (render::VulkanFisheyeStitcher::measureSeamVk, or insv::MeasureSeamCosts /
+// MeasureSeamCutStats on the CPU path), and insv::SeamWindow solves the
+// per-azimuth stitch distance, where the lenses meet and how wide the fade
+// there is from the frames measured so far; that frame is stitched with
+// it. Of
 // PreviewStitchConfig, width/height (the equirect output size), lensGuard (the
 // trailer lens profile) and depthSeam are honoured; quality is inert (no
 // optical-flow seam yet). Stabilization is applied at reprojection time
@@ -225,12 +226,30 @@ public:
 
     // The depth-aware seam's current per-azimuth inverse stitch distance
     // (insv::kSeamDepthBins values, 1/m; all 0 when off or before a frame).
-    const float* SeamDepthTable() const { return depth_.table(); }
+    const float* SeamDepthTable() const { return seam_state_.q; }
     // ... and its blend across the band and colour correction there, as the
     // last frame was stitched with.
-    const insv::SeamBlend& SeamBlendState() const { return cut_.blend(); }
+    const insv::SeamBlend& SeamBlendState() const { return seam_state_.blend; }
     // ... and the depth measurement's mean confidence on that frame (0..1).
-    double SeamDepthConfidence() const { return depth_.lastConfidence(); }
+    double SeamDepthConfidence() const { return seam_state_.depthConf; }
+
+    // Decoding and stitching on the GPU (Vulkan video decode + compute
+    // stitch), not a CPU fallback.
+    bool AllGpu() const { return vdec_ && gpu_; }
+
+    // The clip's seam analysis (stitch::SeamAnalysisFor: its clip, lens
+    // guard, seam correction and lens colour): a frame it has is stitched
+    // with its state, without measuring the seam. On by default; the
+    // analysis pass itself turns it off.
+    void SetSeamAnalysisEnabled(bool on);
+
+    // For stitch::AnalyseClipSeam: `w` set up as this source's own seam
+    // window (baseline, band, lens colour) ...
+    void ConfigureSeamWindow(insv::SeamWindow& w) const;
+    // ... and the next lens pair decoded and its seam measured into `w`
+    // (on w.measureTable(pts)), nothing stitched. False at the end of the
+    // clip (GetLastError() empty) or on an error.
+    bool MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_ms);
 
     // Timing of the last all-GPU ReadFrame() / ReadFlatFrame(). Zeroes on the
     // CPU-decode path.
@@ -244,10 +263,9 @@ private:
     std::map<int, std::unique_ptr<HeldPair>> kept_; // KeepNextPair; the held pair too
     int held_ = 0;                                  // HoldNextPair's handle in kept_, 0 = none
     int next_kept_ = 1;
-    // paramsAt() plus the depth-aware seam's table and blend for this frame:
-    // measures the pair's seam costs and cut statistics on the GPU first
-    // (advancing in0 / in1 past that submission) and folds them into depth_
-    // and cut_. Just paramsAt() when it's off.
+    // paramsAt() plus the depth-aware seam's table and blend for this frame
+    // (seamStateFor; measured on the GPU, advancing in0 / in1 past that
+    // submission). Just paramsAt() when it's off.
     insv::StitchGpuParams paramsWithSeam(int64_t pts_ms, render::VulkanLensInput& in0,
                                          render::VulkanLensInput& in1);
     Frame readGpuAllVulkan();  // vdec_ + gpu_->stitchVk (stage 2, all-GPU)
@@ -276,10 +294,21 @@ private:
     CaptureTiming capture_after_;  // guarded by rs_mx_; frames from capture_until_ms_ on
     BlurQuadsFn blur_quads_;       // guarded by rs_mx_
     mutable bool blur_warned_ = false;
-    insv::SeamDepthTracker depth_;                    // depth-aware seam, per frame
-    std::unique_ptr<insv::SeamCosts> seam_costs_;     // its cost volume (scratch)
-    insv::SeamCutTracker cut_;                        // the blend across the band, per frame
-    std::unique_ptr<insv::SeamCutStats> cut_stats_;   // its statistics (scratch)
+    // The depth-aware seam's state for the frame at pts_ms into seam_state_:
+    // the frames measured so far (seam_window_), this one measured first by
+    // `measure`, which fills seam_costs_ / cut_stats_ with the cut
+    // statistics measured on the table it is given. False (seam_state_ as
+    // it was) when the measurement fails.
+    bool seamStateFor(int64_t pts_ms, const std::function<bool(const float* q)>& measure);
+    std::string clip_path_;
+    PreviewStitchConfig::LensGuard lens_guard_ = PreviewStitchConfig::LensGuard::Premium;
+    bool analysis_enabled_ = true;
+    bool analysis_dirty_ = true;                      // look the analysis up again before the next frame
+    std::shared_ptr<SeamAnalysis> analysis_;    // stitch::SeamAnalysisFor, or none
+    insv::SeamWindow seam_window_;                    // depth-aware seam: the frames so far
+    insv::SeamState seam_state_;                      // ... the last frame's state
+    std::unique_ptr<insv::SeamCosts> seam_costs_;     // a frame's cost volume (scratch)
+    std::unique_ptr<insv::SeamCutStats> cut_stats_;   // ... and cut statistics (scratch)
     bool seam_warned_ = false;
     double seam_ms_ = 0.0; // the last paramsWithSeam(), for ReadTiming::seamMs
     ClipInfo info_;

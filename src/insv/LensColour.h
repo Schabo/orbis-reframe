@@ -119,7 +119,7 @@ constexpr double kLensVeilGamma = 2.2;
 constexpr double kLensVeilKeep = 0.3;
 constexpr double kLensVeilMax = 0.5;
 // Veiling light (green) at which the seam's fade takes the whole blend band
-// (SeamCutTracker): what is left of it then fades across the band.
+// (SeamCutBlend): what is left of it then fades across the band.
 constexpr double kLensVeilWide = 0.04;
 
 // A lens sample v (0..255) with `veil` (linear, >= 0) taken out.

@@ -26,6 +26,7 @@
 #include <SeamAlignment.h>
 #include <SeamCut.h>
 #include <SeamDepth.h>
+#include <SeamWindow.h>
 
 #include <cmath>
 
@@ -283,25 +284,29 @@ int main(int argc, char** argv)
     params.baselineM = baselineM;
     if (!stitcher.configure(calib, lens0.w, lens0.h, params))
         die("stitcher configure failed");
-    insv::SeamDepthTracker depth;
-    depth.setBaselineM(stitcher.baselineM());
-    insv::SeamCutTracker cut;
-    cut.setLensColour(params.lensColour); // the frame's residual against it
+    // One frame, cold, as the app's first frame after a seek: its cut
+    // statistics on the table of no frames before it (all far).
+    insv::SeamWindow window;
+    window.configure(stitcher.baselineM(), stitcher.gpuParams().bandRad);
+    window.setLensColour(params.lensColour); // the frame's residual against it
+    insv::SeamState state;
+    insv::SeamDepthFrame depthData{};
     if (depthSeam) {
         auto costs = std::make_unique<insv::SeamCosts>();
         insv::MeasureSeamCosts(stitcher, lens0, lens1, *costs);
-        depth.update(*costs, timeMs);
-        // One frame, so the cut is measured with this frame's table (the
-        // app uses the one before).
+        float q0[insv::kSeamDepthBins];
+        window.measureTable(timeMs, q0);
         auto cutStats = std::make_unique<insv::SeamCutStats>();
-        insv::MeasureSeamCutStats(stitcher, lens0, lens1, depth.table(), *cutStats);
-        cut.update(*cutStats, timeMs, stitcher.gpuParams().bandRad);
-        const float* q = depth.table();
+        insv::MeasureSeamCutStats(stitcher, lens0, lens1, q0, *cutStats);
+        window.add(timeMs, *costs, *cutStats);
+        window.solve(timeMs, state);
+        insv::SeamDepthData(*costs, stitcher.baselineM(), window.tuning.depth, depthData);
+        const float* q = state.q;
         std::printf("depth seam: baseline %+.4f m, mean confidence %.2f\n",
                     2 * stitcher.lensCentre(0).x * stitcher.seamAxis().x +
                         2 * stitcher.lensCentre(0).y * stitcher.seamAxis().y +
                         2 * stitcher.lensCentre(0).z * stitcher.seamAxis().z,
-                    depth.lastConfidence());
+                    state.depthConf);
         if (depthDump) {
             int k0 = 0;
             for (int k = 1; k < insv::kSeamDepthCands; ++k)
@@ -328,7 +333,7 @@ int main(int argc, char** argv)
                 std::printf("%4d %5.1f %5.1f %6.3f %6.3f(%+5.2f)  %5.2f %5.2f  %+6.2f  %s\n", b,
                             (b + 0.5) * 360.0 / insv::kSeamDepthBins, costs->texture[b][k0],
                             costs->ncc[b][k0], costs->ncc[b][kb], insv::SeamCandQ(kb),
-                            depth.lastUniqueness()[b], depth.lastBinConfidence()[b], q[b],
+                            depthData.unique[b], depthData.conf[b], q[b],
                             q[b] > 0.05 ? (std::to_string(1.0 / q[b]).substr(0, 4) + " m").c_str()
                                         : "far");
             }
@@ -339,8 +344,8 @@ int main(int argc, char** argv)
         }
     }
 
-    insv::Image eq = stitcher.renderEquirect(lens0, lens1, eqWidth, depthSeam ? depth.table() : nullptr,
-                                             depthSeam ? &cut.blend() : nullptr);
+    insv::Image eq = stitcher.renderEquirect(lens0, lens1, eqWidth, depthSeam ? state.q : nullptr,
+                                             depthSeam ? &state.blend : nullptr);
     std::printf("rendered equirect %dx%d\n", eq.w, eq.h);
 
     if (!writePpm(outPath, eq))

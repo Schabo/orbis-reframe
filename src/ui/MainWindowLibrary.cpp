@@ -5,6 +5,7 @@
 #include "MainWindow.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
@@ -12,7 +13,10 @@
 #include <QShortcut>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QTimer>
+
+#include <ClipSeamAnalysis.h> // stitch::SetSeamAnalysisDir
 
 #include "EditToolbar.h"
 #include "LensGuardCache.h"
@@ -231,6 +235,12 @@ void MainWindow::updateCacheDirs(const QString &projectFile)
     m_waveforms->setDirectory(dir);
     if (m_thumbnailCache)
         m_thumbnailCache->setDirectory(dir);
+    // The seam analyses: in the project's cache/seam/, else the user cache's.
+    const QString base = dir.isEmpty()
+                             ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                             : dir;
+    stitch::SetSeamAnalysisDir(base.isEmpty() ? std::string()
+                                              : QDir(base).filePath(QStringLiteral("seam")).toStdString());
 }
 
 QString MainWindow::askSaveFileName(const QString &caption, const QString &path,

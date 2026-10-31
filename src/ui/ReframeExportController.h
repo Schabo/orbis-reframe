@@ -149,6 +149,14 @@ public:
     static QImage renderStill(const ClipJob &clip, qint64 sourceMs, const view::Pose &pose,
                               int outW, int outH, QString &error);
 
+    // The depth-aware seam's analysis of [inMs, outMs] of `clip`
+    // (stitch::AnalyseClipSeam), for the frames not analysed yet, so the
+    // export and a still stitch them as playback does. False when `cancel`
+    // stopped it; a failure is logged and the stitch measures as it goes.
+    static bool analyseSeam(const ClipJob &clip, qint64 inMs, qint64 outMs,
+                            const std::atomic<bool> *cancel,
+                            const std::function<void(double)> &progress);
+
     // A split clip's panes on its stitch source for outW x outH reads
     // (NativeStitchSource::SetViewPanes); a no-op for one picture.
     static void applyPanes(stitch::NativeStitchSource &src, const ClipJob &clip, int outW,

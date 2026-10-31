@@ -23,20 +23,16 @@
 // (fisheye_stitch_common.glsl, pass 2) or by MeasureSeamCosts on the CPU --
 // the same sample pattern, see below.
 //
-// SeamDepthTracker turns a frame's costs into the per-bin q table the stitch
-// uses (StitchGpuParams::seamQ): confidence-weighted costs (texture, the best
-// match, and how much better it is than any match away from it) averaged over the
-// last ~150 ms, a 1-D dynamic programme along the azimuth (smooth, but depth
-// edges allowed), a pull towards the previous frame's table, sub-candidate
-// refinement, and a light temporal blend.
+// SeamDepthData turns a frame's costs into a confidence-weighted data term
+// (texture, the best match, and how much better it is than any match away
+// from it); SolveSeamDepth turns the data term averaged over the frames
+// around one (insv::SeamWindow) into the per-bin q table the stitch uses
+// (StitchGpuParams::seamQ).
 //
 // The average keeps a bin from flipping for a few frames to the road 3 m
 // behind a crash bar 0.6 m away when the road's texture matches a little
 // better; its neighbours, steadier now too, carry the bar's depth across.
-// Longer averages hold more, but follow something near really moving onto
-// the seam later (~0.4 s at 500 ms, where 150 ms costs ~0.1 s). The costs
-// are weighted by confidence before averaging, so a frame that can't tell
-// (blown-out sky) adds nothing. Dependency-free (insv lib).
+// Dependency-free (insv lib).
 
 namespace insv {
 
@@ -131,53 +127,33 @@ struct SeamDepthTuning {
     double uniqueAwayDeg = 1.0;
     double smooth = 0.25;              // cost per 1/m of q change between neighbour bins
     double smoothCap = 1.0;            // ... truncated at this q change (depth edges)
-    double temporal = 0.08;            // cost per 1/m away from the previous frame's q
     double farPrior = 0.01;            // cost per 1/m of |q| (textureless -> far)
-    double blend = 0.5;                // temporal blend of the new table (1 = no memory)
-    double costMemoryMs = 150.0;       // time constant of the data term's running average (0 = none)
-    int64_t resetGapMs = 250;          // a jump this big (or backwards) starts over
 };
 
-class SeamDepthTracker {
-public:
-    SeamDepthTracker();
-
-    // Forget the history (a seek, a new clip); the table goes back to 0.
-    void reset();
-
-    // The lenses' baseline, metres (FisheyeStitcher::baselineM): turns a
-    // candidate's q into the shift between the lenses, for the shift range
-    // (kSeamShiftMinRad .. kSeamShiftMaxRad) and the uniqueness. The X5's
-    // 32 mm until set.
-    void setBaselineM(double m) { m_baselineM = m > 0 ? m : 0.032; }
-
-    // Folds one frame's costs in (a gap or a jump back in ptsMs resets first).
-    void update(const SeamCosts& costs, int64_t ptsMs);
-
-    // The current per-bin inverse stitch distance (1/m), kSeamDepthBins long.
-    const float* table() const { return m_q; }
-    bool hasHistory() const { return m_has; }
-
-    // Mean confidence of the last update (0..1), for diagnostics.
-    double lastConfidence() const { return m_lastConf; }
-    // ... per bin, and each bin's uniqueness (its best NCC less the best away
-    // from it; 0 with the best at the end of the range, 2 with nothing away).
-    const float* lastBinConfidence() const { return m_conf; }
-    const float* lastUniqueness() const { return m_unique; }
-
-    SeamDepthTuning tuning;
-
-private:
-    float m_q[kSeamDepthBins];
-    float m_conf[kSeamDepthBins] = {};
-    float m_unique[kSeamDepthBins] = {};
-    double m_baselineM = 0.032;
-    // The running average of the confidence-weighted data term (bin-major,
-    // kSeamDepthCands per bin), valid while m_has.
-    std::vector<float> m_avgData;
-    bool m_has = false;
-    int64_t m_lastPts = 0;
-    double m_lastConf = 0;
+// One frame's depth data term: per bin and candidate, the bin's confidence
+// x (1 - NCC), weighted before frames are averaged, so a frame that can't
+// tell (blown-out sky, a plain wall) adds nothing there whatever its NCC
+// values say.
+struct SeamDepthFrame {
+    float data[kSeamDepthBins][kSeamDepthCands];
+    float conf[kSeamDepthBins];   // the bin's confidence, 0..1
+    float unique[kSeamDepthBins]; // its best NCC less the best away from it
+                                  // (0 with the best at the end of the
+                                  // range, 2 with nothing away)
+    float meanConf = 0;
 };
+
+// `baselineM`: the lenses' (FisheyeStitcher::baselineM), which turns a
+// candidate's q into the shift between the lenses for the shift range
+// (kSeamShiftMinRad .. kSeamShiftMaxRad) and the uniqueness.
+void SeamDepthData(const SeamCosts& costs, double baselineM, const SeamDepthTuning& tuning,
+                   SeamDepthFrame& out);
+
+// The per-bin inverse stitch distance (1/m, kSeamDepthBins values) from a
+// data term (SeamDepthFrame::data's layout, averaged over frames): a 1-D
+// dynamic programme along the azimuth (smooth, depth edges allowed, a pull
+// towards far where nothing is known), sub-candidate refinement and a light
+// smoothing. A function of `data` alone.
+void SolveSeamDepth(const float* data, double baselineM, const SeamDepthTuning& tuning, float* q);
 
 } // namespace insv

@@ -18,15 +18,20 @@ enum class MeasureFailure;
 // fine-tune (stitch::MeasureClipSync, only with ORBIS_REFRAME_HAVE_CLIP_SYNC),
 // the seam alignment (stitch::MeasureClipSeam) and, once that is done, the
 // lens colour (stitch::MeasureClipLensColour, which needs the lenses lined
-// up), one of each kind at a time, for the timeline's sources in order. A
-// result lands on the Timeline (setSourceSyncAdjust / setSourceSeamCorrection
-// / setSourceLensColour), whose clipSyncChanged / clipSeamChanged say what to
-// rebuild.
+// up), then the seam analysis of the clips' stretches of the source
+// (stitch::AnalyseClipSeam, for the depth-aware seam: it depends on both),
+// one of each kind at a time, for the timeline's sources in order, the
+// playhead's source first. A sync / seam / colour result lands on the
+// Timeline (setSourceSyncAdjust / setSourceSeamCorrection /
+// setSourceLensColour), whose clipSyncChanged / clipSeamChanged say what to
+// rebuild; the seam analysis lands in its cache (stitch::SeamAnalysisFor),
+// where every stitch of the source finds it, and seamAnalysed() says so.
 //
 // They run when a clip is added or a project opened, never while playing:
 // a measurement competes with playback for the GPU and shows as a hitch.
 // One running when play starts is cancelled (it would stall playback its
-// whole run) and starts over on the pause.
+// whole run) and starts over on the pause; the seam analysis goes on from
+// where it stopped.
 class ClipMeasurements : public QObject {
     Q_OBJECT
 
@@ -41,12 +46,15 @@ public:
     void schedule();
     // Playing: cancel the running ones. Paused: schedule() again.
     void setPlaying(bool playing);
+    // The source under the playhead: measured first.
+    void setPriorityPath(const QString &clipPath);
     // A source's lens-guard setting changed: its seam and colour
     // measurements, if they failed, may work under the new one.
     void forgetSeamFailure(const QString &clipPath)
     {
         m_seamFailed.remove(clipPath);
         m_colourFailed.remove(clipPath);
+        m_analysisFailed.remove(clipPath);
     }
     // These files were replaced in place or are back after they were gone:
     // a measurement that failed on what was there may work now.
@@ -56,6 +64,7 @@ public:
             m_syncFailed.remove(p);
             m_seamFailed.remove(p);
             m_colourFailed.remove(p);
+            m_analysisFailed.remove(p);
         }
     }
 
@@ -70,11 +79,14 @@ public:
 signals:
     // A measurement started or finished: the status lines changed.
     void statusChanged();
+    // More of `clipPath`'s seam analysis is done (a pass finished or stopped).
+    void seamAnalysed(const QString &clipPath);
 
 private:
     void maybeMeasureSync(const QString &clipPath);
     void maybeMeasureSeam(const QString &clipPath);
     void maybeMeasureColour(const QString &clipPath);
+    void maybeAnalyseSeam(const QString &clipPath);
     // The first main-track clip cut from `clipPath`, if its file is there.
     const ClipItem *measurableClip(const QString &clipPath) const;
     // Why a measurement failed, in plain words for the status lines; the
@@ -102,4 +114,11 @@ private:
     QString m_colourMeasuringPath;
     std::atomic<bool> m_colourCancel{false};
     QHash<QString, stitch::MeasureFailure> m_colourFailed; // as m_syncFailed
+
+    QThread *m_analysisThread = nullptr;
+    QString m_analysisPath;
+    std::atomic<bool> m_analysisCancel{false};
+    std::atomic<int> m_analysisPermille{0}; // its progress
+    QHash<QString, QString> m_analysisFailed; // the technical reason, for the log
+    QString m_priorityPath;
 };

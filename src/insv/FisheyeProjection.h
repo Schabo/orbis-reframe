@@ -87,7 +87,7 @@ struct StitchParams {
     // distance D on the seam is seen ~baselineM/D rad apart by the two lenses.
     // With `depthSeam` each lens is projected from its own centre at a
     // per-azimuth stitch distance (the table passed to renderEquirect /
-    // StitchGpuParams::seamQ, measured per frame by insv::SeamDepthTracker),
+    // StitchGpuParams::seamQ, solved per frame by insv::SeamWindow),
     // fading back to infinity over `depthRampDeg` beyond the blend band. Off =
     // both lenses at one point.
     bool depthSeam = false;
@@ -163,7 +163,7 @@ struct LensProjection {
 // infinity). Must match SEAM_BINS in fisheye_stitch_common.glsl.
 constexpr int kSeamDepthBins = 128;
 
-// The depth-aware seam's blend per azimuth bin (insv::SeamCutTracker): where
+// The depth-aware seam's blend per azimuth bin (insv::SeamWindow): where
 // across the band the two lenses meet and how wide the fade there is. Narrow
 // where the lenses agree at the meeting line, today's full-band cross-fade
 // where they don't. A fade of 0 (no frame measured yet) is the plain

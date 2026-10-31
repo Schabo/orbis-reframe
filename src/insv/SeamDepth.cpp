@@ -109,48 +109,35 @@ void MeasureSeamCosts(const FisheyeStitcher& st, const Image& lens0, const Image
         t.join();
 }
 
-SeamDepthTracker::SeamDepthTracker()
+namespace {
+// The candidate nearest infinity (where texture is read) and the candidates
+// within the shift range, kLo..kHi (q rises with k).
+void CandidateRange(double baselineM, int& k0, int& kLo, int& kHi)
 {
-    reset();
-}
-
-void SeamDepthTracker::reset()
-{
-    std::fill(m_q, m_q + kSeamDepthBins, 0.0f);
-    m_has = false;
-    m_lastConf = 0;
-}
-
-void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
-{
-    constexpr int B = kSeamDepthBins, K = kSeamDepthCands;
-    const SeamDepthTuning& T = tuning;
-    if (m_has && (ptsMs < m_lastPts || ptsMs - m_lastPts > T.resetGapMs))
-        reset();
-
-    int k0 = 0; // the candidate nearest infinity: where texture is read
+    constexpr int K = kSeamDepthCands;
+    k0 = 0;
     for (int k = 1; k < K; ++k)
         if (std::fabs(SeamCandQ(k)) < std::fabs(SeamCandQ(k0)))
             k0 = k;
-    // The candidates within the shift range, kLo..kHi (q rises with k).
-    int kLo = K, kHi = -1;
+    kLo = K;
+    kHi = -1;
     for (int k = 0; k < K; ++k) {
-        const double shift = m_baselineM * SeamCandQ(k);
+        const double shift = baselineM * SeamCandQ(k);
         if (shift >= kSeamShiftMinRad - 1e-9 && shift <= kSeamShiftMaxRad + 1e-9) {
             kLo = std::min(kLo, k);
             kHi = std::max(kHi, k);
         }
     }
-    const double awayQ = T.uniqueAwayDeg * kDeg / m_baselineM;
+}
+} // namespace
 
-    // This frame's data term, confidence-weighted (1 - NCC), folded into its
-    // running average. Weighting before averaging matters: a frame with no
-    // confidence in a bin (blown-out sky, a plain wall) adds nothing there,
-    // whatever its NCC values say.
-    const double keep = m_has && T.costMemoryMs > 0
-                            ? std::exp(-static_cast<double>(ptsMs - m_lastPts) / T.costMemoryMs)
-                            : 0.0;
-    m_avgData.resize(static_cast<size_t>(B) * K);
+void SeamDepthData(const SeamCosts& frame, double baselineM, const SeamDepthTuning& T,
+                   SeamDepthFrame& out)
+{
+    constexpr int B = kSeamDepthBins, K = kSeamDepthCands;
+    int k0, kLo, kHi;
+    CandidateRange(baselineM, k0, kLo, kHi);
+    const double awayQ = T.uniqueAwayDeg * kDeg / baselineM;
     double confSum = 0;
     for (int b = 0; b < B; ++b) {
         double best = -2.0;
@@ -172,29 +159,31 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
                                               ramp01(best, T.nccLo, T.nccHi) *
                                               ramp01(unique, T.uniqueLo, T.uniqueHi);
         confSum += conf;
-        m_conf[b] = static_cast<float>(conf);
-        m_unique[b] = static_cast<float>(unique);
+        out.conf[b] = static_cast<float>(conf);
+        out.unique[b] = static_cast<float>(unique);
         for (int k = 0; k < K; ++k) {
             const double n = frame.ncc[b][k] < -1.5 ? -1.0 : std::clamp(frame.ncc[b][k], -1.0f, 1.0f);
-            float& a = m_avgData[static_cast<size_t>(b) * K + k];
-            a = static_cast<float>(keep * a + (1 - keep) * conf * (1.0 - n));
+            out.data[b][k] = static_cast<float>(conf * (1.0 - n));
         }
     }
+    out.meanConf = static_cast<float>(confSum / B);
+}
 
-    // Data term plus the far and temporal priors.
-    static thread_local std::vector<double> D;
-    D.assign(static_cast<size_t>(B) * K, 0.0);
+void SolveSeamDepth(const float* data, double baselineM, const SeamDepthTuning& T, float* q)
+{
+    constexpr int B = kSeamDepthBins, K = kSeamDepthCands;
+    int k0, kLo, kHi;
+    CandidateRange(baselineM, k0, kLo, kHi);
+
+    // Data term plus the far prior; outside the shift range never taken.
+    std::vector<double> D(static_cast<size_t>(B) * K);
     for (int b = 0; b < B; ++b)
         for (int k = 0; k < K; ++k) {
-            const double q = SeamCandQ(k);
-            double d = m_avgData[static_cast<size_t>(b) * K + k] + T.farPrior * std::fabs(q);
+            double d = data[static_cast<size_t>(b) * K + k] + T.farPrior * std::fabs(SeamCandQ(k));
             if (k < kLo || k > kHi)
-                d += 100.0; // outside the shift range: never taken
-            if (m_has)
-                d += T.temporal * std::fabs(q - m_q[b]);
+                d += 100.0;
             D[static_cast<size_t>(b) * K + k] = d;
         }
-    m_lastConf = confSum / B;
 
     // Smoothness between neighbouring bins, truncated so depth edges stay.
     double S[K][K];
@@ -205,10 +194,8 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
     // Circular DP: run three laps round the seam and keep the middle one, so
     // every bin has converged context on both sides.
     const int N = 3 * B;
-    static thread_local std::vector<double> E;
-    static thread_local std::vector<uint8_t> bp;
-    E.assign(static_cast<size_t>(N) * K, 0.0);
-    bp.assign(static_cast<size_t>(N) * K, 0);
+    std::vector<double> E(static_cast<size_t>(N) * K, 0.0);
+    std::vector<uint8_t> bp(static_cast<size_t>(N) * K, 0);
     for (int k = 0; k < K; ++k)
         E[k] = D[k];
     for (int i = 1; i < N; ++i) {
@@ -250,15 +237,8 @@ void SeamDepthTracker::update(const SeamCosts& frame, int64_t ptsMs)
         qNew[b] = static_cast<float>(SeamCandQ(k) + off * step);
     }
     // A light [1 2 1] smoothing so the table has no bin-sized steps.
-    float qs[B];
     for (int b = 0; b < B; ++b)
-        qs[b] = 0.25f * (qNew[(b + B - 1) % B] + 2.0f * qNew[b] + qNew[(b + 1) % B]);
-
-    const float a = m_has ? static_cast<float>(T.blend) : 1.0f;
-    for (int b = 0; b < B; ++b)
-        m_q[b] += a * (qs[b] - m_q[b]);
-    m_has = true;
-    m_lastPts = ptsMs;
+        q[b] = 0.25f * (qNew[(b + B - 1) % B] + 2.0f * qNew[b] + qNew[(b + 1) % B]);
 }
 
 } // namespace insv

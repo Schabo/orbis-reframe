@@ -1,6 +1,7 @@
 #include "NativeStitchSource.h"
 
 #include "../core/Log.h"
+#include "ClipSeamAnalysis.h"
 
 #include <Calibration.h>           // insv::InsvCalibration
 #include <FisheyeProjection.h>     // insv::FisheyeStitcher, insv::StitchParams
@@ -139,8 +140,10 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     eq_h_ = config.width > 0 && config.height > 0 ? config.height : eq_w_ / 2;
 
     params.depthSeam = config.depthSeam;
-    depth_.reset();
-    cut_.reset();
+    clip_path_ = clip_path;
+    lens_guard_ = config.lensGuard;
+    analysis_dirty_ = true;
+    seam_state_ = insv::SeamState{};
     if (!seam_costs_)
         seam_costs_ = std::make_unique<insv::SeamCosts>();
     if (!cut_stats_)
@@ -151,7 +154,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
         return false;
     }
     gpu_params_ = stitcher->gpuParams();
-    depth_.setBaselineM(stitcher->baselineM()); // the depth table's shift range
+    seam_window_.configure(stitcher->baselineM(), gpu_params_.bandRad);
+    seam_window_.setLensColour(params.lensColour);
     calib_ = calib;
     params_ = params;
 
@@ -229,8 +233,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
 bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     const int64_t t = timestamp_ms < 0 ? 0 : timestamp_ms;
-    depth_.reset(); // the seam's temporal history is about the frames before
-    cut_.reset();
+    seam_window_.reset(); // the frames measured so far are about another stretch
+    seam_state_ = insv::SeamState{};
     std::string err;
     if (vdec_) {
         if (!vdec_->seekTo(t, err)) {
@@ -330,15 +334,19 @@ void NativeStitchSource::SetSeamCorrection(const insv::SeamCorrection& c) {
     if (!stitcher_ || c == params_.seam)
         return;
     params_.seam = c;
-    if (stitcher_->configure(calib_, info_.width, info_.height, params_))
+    if (stitcher_->configure(calib_, info_.width, info_.height, params_)) {
         gpu_params_ = stitcher_->gpuParams(); // keeps the per-frame RS fields: set in paramsAt
+        seam_window_.configure(stitcher_->baselineM(), gpu_params_.bandRad); // frames measured on the old one go
+    }
+    analysis_dirty_ = true;
 }
 
 void NativeStitchSource::SetLensColour(const insv::LensColour& c) {
     if (!stitcher_ || c == params_.lensColour)
         return;
     params_.lensColour = c;
-    cut_.setLensColour(c); // the frame's residual is measured against it
+    seam_window_.setLensColour(c); // the frames' residuals are measured against it
+    analysis_dirty_ = true;
     if (stitcher_->configure(calib_, info_.width, info_.height, params_))
         gpu_params_ = stitcher_->gpuParams();
 }
@@ -354,6 +362,70 @@ void NativeStitchSource::SetCaptureTiming(CaptureTiming timing, int64_t untilMs,
 bool NativeStitchSource::SetBlurQuads(BlurQuadsFn fn) {
     std::lock_guard<std::mutex> lk(rs_mx_);
     blur_quads_ = std::move(fn);
+    return true;
+}
+
+void NativeStitchSource::SetSeamAnalysisEnabled(bool on) {
+    analysis_enabled_ = on;
+    analysis_dirty_ = true;
+}
+
+void NativeStitchSource::ConfigureSeamWindow(insv::SeamWindow& w) const {
+    if (!stitcher_)
+        return;
+    w.configure(stitcher_->baselineM(), gpu_params_.bandRad);
+    w.setLensColour(params_.lensColour);
+}
+
+bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_ms) {
+    last_error_.clear();
+    float q[insv::kSeamDepthBins];
+    if (vdec_) {
+        ReleaseHeldPair();
+        AVFrame* f0 = nullptr;
+        AVFrame* f1 = nullptr;
+        std::string err;
+        if (!vdec_->readNextPair(f0, f1, &pts_ms, err)) {
+            last_error_ = err; // empty at EOS
+            return false;
+        }
+        insv::VulkanLensFrame lf0, lf1;
+        vdec_->lockFrame(f0, lf0);
+        vdec_->lockFrame(f1, lf1);
+        render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
+        insv::StitchGpuParams p = gpu_params_;
+        w.measureTable(pts_ms, q);
+        std::copy(q, q + insv::kSeamDepthBins, p.seamQ);
+        render::VulkanLensOutcome o0, o1;
+        const bool ok = gpu_->measureSeamVk(in0, in1, p, *seam_costs_, cut_stats_.get(), &o0, &o1, err);
+        if (ok) {
+            vdec_->unlockFrame(f0, {o0.semSignalValue, o0.newLayout});
+            vdec_->unlockFrame(f1, {o1.semSignalValue, o1.newLayout});
+        } else {
+            vdec_->unlockFrame(f0, {in0.semWaitValue, in0.layout});
+            vdec_->unlockFrame(f1, {in1.semWaitValue, in1.layout});
+        }
+        vdec_->freeFrame(f0);
+        vdec_->freeFrame(f1);
+        if (!ok) {
+            last_error_ = "seam measure failed: " + err;
+            return false;
+        }
+    } else if (demux_ && stitcher_) {
+        insv::Image a, b;
+        std::string err;
+        if (!demux_->readNextPair(a, b, &pts_ms, err)) {
+            last_error_ = err;
+            return false;
+        }
+        w.measureTable(pts_ms, q);
+        insv::MeasureSeamCutStats(*stitcher_, a, b, q, *cut_stats_);
+        insv::MeasureSeamCosts(*stitcher_, a, b, *seam_costs_);
+    } else {
+        last_error_ = "MeasureNextSeamFrame before a successful Open";
+        return false;
+    }
+    w.add(pts_ms, *seam_costs_, *cut_stats_);
     return true;
 }
 
@@ -400,6 +472,26 @@ insv::StitchGpuParams NativeStitchSource::paramsAt(int64_t pts_ms) const {
     return p;
 }
 
+bool NativeStitchSource::seamStateFor(int64_t pts_ms,
+                                      const std::function<bool(const float* q)>& measure) {
+    if (analysis_dirty_) {
+        analysis_dirty_ = false;
+        analysis_.reset();
+        if (analysis_enabled_ && params_.depthSeam && !clip_path_.empty())
+            analysis_ = SeamAnalysisFor({clip_path_, lens_guard_, params_.seam, params_.lensColour});
+    }
+    if (analysis_ && analysis_->stateAt(pts_ms, seam_state_))
+        return true; // as every path stitches this frame
+    float q[insv::kSeamDepthBins];
+    seam_window_.measureTable(pts_ms, q);
+    if (!measure(q))
+        return false;
+    seam_window_.add(pts_ms, *seam_costs_, *cut_stats_);
+    seam_window_.solve(pts_ms, seam_state_);
+    seam_window_.dropBefore(pts_ms - seam_window_.lookBackMs());
+    return true;
+}
+
 insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
                                                          render::VulkanLensInput& in0,
                                                          render::VulkanLensInput& in1) {
@@ -408,27 +500,30 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
     if (!p.depthActive)
         return p;
     const auto t0 = std::chrono::steady_clock::now();
-    render::VulkanLensOutcome o0, o1;
-    std::string err;
-    // The cut is measured with the table so far: one frame old, in the same
-    // submission as the cost volume (its statistics are averaged over
-    // several frames anyway).
-    std::copy(depth_.table(), depth_.table() + insv::kSeamDepthBins, p.seamQ);
-    if (gpu_->measureSeamVk(in0, in1, p, *seam_costs_, cut_stats_.get(), &o0, &o1, err)) {
+    seamStateFor(pts_ms, [&](const float* q) {
+        // The cut is measured on the table of the frames before, in the same
+        // submission as the cost volume.
+        insv::StitchGpuParams m = p;
+        std::copy(q, q + insv::kSeamDepthBins, m.seamQ);
+        render::VulkanLensOutcome o0, o1;
+        std::string err;
+        if (!gpu_->measureSeamVk(in0, in1, m, *seam_costs_, cut_stats_.get(), &o0, &o1, err)) {
+            if (!seam_warned_) {
+                seam_warned_ = true;
+                std::fprintf(stderr, "[NativeStitchSource] seam depth measure failed (%s); "
+                                     "keeping the last table\n",
+                             err.c_str());
+            }
+            return false;
+        }
         in0.semWaitValue = o0.semSignalValue;
         in0.layout = o0.newLayout;
         in1.semWaitValue = o1.semSignalValue;
         in1.layout = o1.newLayout;
-        depth_.update(*seam_costs_, pts_ms);
-        cut_.update(*cut_stats_, pts_ms, p.bandRad);
-    } else if (!seam_warned_) {
-        seam_warned_ = true;
-        std::fprintf(stderr, "[NativeStitchSource] seam depth measure failed (%s); keeping the "
-                             "last table\n",
-                     err.c_str());
-    }
-    std::copy(depth_.table(), depth_.table() + insv::kSeamDepthBins, p.seamQ);
-    p.seamBlend = cut_.blend();
+        return true;
+    });
+    std::copy(seam_state_.q, seam_state_.q + insv::kSeamDepthBins, p.seamQ);
+    p.seamBlend = seam_state_.blend;
     seam_ms_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
                    .count();
     return p;
@@ -789,16 +884,17 @@ Frame NativeStitchSource::readCpuDecode() {
     // lenses to run the GPU pass on).
     if (params_.depthSeam) {
         const auto t0 = std::chrono::steady_clock::now();
-        insv::MeasureSeamCutStats(*stitcher_, a, b, depth_.table(), *cut_stats_); // as the GPU path
-        insv::MeasureSeamCosts(*stitcher_, a, b, *seam_costs_);
-        depth_.update(*seam_costs_, pts_ms);
-        cut_.update(*cut_stats_, pts_ms, gpu_params_.bandRad);
+        seamStateFor(pts_ms, [&](const float* q) { // as the GPU path
+            insv::MeasureSeamCutStats(*stitcher_, a, b, q, *cut_stats_);
+            insv::MeasureSeamCosts(*stitcher_, a, b, *seam_costs_);
+            return true;
+        });
         last_timing_.seamMs = std::chrono::duration<double, std::milli>(
                                   std::chrono::steady_clock::now() - t0)
                                   .count();
     }
-    const float* seamQ = params_.depthSeam ? depth_.table() : nullptr;
-    const insv::SeamBlend* blend = params_.depthSeam ? &cut_.blend() : nullptr;
+    const float* seamQ = params_.depthSeam ? seam_state_.q : nullptr;
+    const insv::SeamBlend* blend = params_.depthSeam ? &seam_state_.blend : nullptr;
 
     if (gpu_) {
         Frame f;

@@ -85,7 +85,15 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 2. **Stitch** (`render/VulkanFisheyeStitcher`, `fisheye_stitch*.comp`): the
    lens calibration from the file, the lens-guard profile and the
    depth-aware seam turn the two fisheyes into the sphere. Privacy blur
-   regions are applied here, on the sphere.
+   regions are applied here, on the sphere. The depth-aware seam's state
+   (the distance per stretch of the seam, the cut across the overlap, the
+   colour correction there) is a function of the measurements of the frames
+   either side of a frame (`insv/SeamWindow`), worked out once per clip in a
+   background pass and kept in the project's cache
+   (`stitch/ClipSeamAnalysis`): every path that stitches a frame --
+   playback, stepping, screenshots, export -- stitches it the same way.
+   Until a clip is analysed, playback measures the seam as it plays, from
+   the frames so far; an export analyses what it needs first.
 3. **View**: a virtual camera (yaw, pitch, roll, field of view and
    distortion from the clip's reframe keyframes, plus the stabilizer's
    per-frame rotation) looks into the sphere and produces the flat picture.

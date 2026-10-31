@@ -26,8 +26,9 @@
 // fade would tear it, so the fade widens back to the plain cross-fade over
 // the whole band. The statistics are measured on the GPU (pass 3 of
 // fisheye_stitch_common.glsl, beside the depth cost volume) or by
-// MeasureSeamCutStats on the CPU, with the previous frame's depth table, and
-// averaged over ~150 ms, so the cut and its width don't flicker.
+// MeasureSeamCutStats on the CPU, with the depth table of the frames just
+// before, and averaged over the frames around one (insv::SeamWindow), so the
+// cut and its width don't flicker.
 //
 // The same rows measure the lenses' colour: each lens's mean R, G, B, each
 // channel where neither lens has it clipped. Over a clip they give its lens
@@ -85,72 +86,58 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
                          const float* seamQ, SeamCutStats& out);
 
 struct SeamCutTuning {
-    double memoryMs = 150.0;  // time constant of the statistics' running average
     double texFloor = 4.0;    // disagreement = zsad / (texture + texFloor)
     double agreeLo = 0.35;    // disagreement: narrow fade up to here ...
     double agreeHi = 0.7;     // ... the full cross-fade from here
     double rowChange = 0.08;  // DP cost per degree of row change between neighbour bins
     double offCentre = 0.01;  // cost per degree away from the seam circle
-    double stay = 0.15;       // cost for leaving last frame's row in a bin
     double widthSigma = 1.0;  // smoothing of the fade width along the azimuth, bins
-    double colourMemoryMs = 1000.0; // time constant of the colour residual
-    // ... and of the local correction and the veiling light round the seam:
-    // short, as the camera turns the scene slides along the seam, and a
-    // stretch's difference belongs to what is in it now (a remembered one
-    // from the trees a few frames ago is wrong for the sky there now).
-    double localMemoryMs = 40.0;
-    double localSigma = 3.0;        // its smoothing along the azimuth, bins
+    double localSigma = 3.0;        // the local correction's smoothing along the azimuth, bins
     double localMinSamples = 128.0; // unclipped samples near where the lenses meet, bin +-1, for all of it
-    int64_t resetGapMs = 250; // a jump this big (or backwards) starts over
 };
 
-class SeamCutTracker {
-public:
-    SeamCutTracker();
+// One frame's disagreement per cell (bin-major, kSeamCutRows per bin): the
+// zero-mean grey difference against the texture, so a busy patch that
+// matches isn't taken for an occlusion; a cell the lenses don't both see
+// can't be chosen.
+void SeamCutDisagreement(const SeamCutStats& stats, const SeamCutTuning& tuning, float* dis);
 
-    // Forget the history (a seek, a new clip); the blend goes back to the
-    // plain cross-fade.
-    void reset();
+// The cut from a disagreement (SeamCutDisagreement's layout, averaged over
+// frames): one row per bin by a circular DP along the azimuth, and the
+// fade's width share per bin (0 narrow .. 1 the full band) from the
+// disagreement at that row, smoothed along the azimuth. A function of `dis`
+// alone.
+void SolveSeamCut(const float* dis, double bandRad, const SeamCutTuning& tuning, int* row,
+                  float* width);
 
-    // Folds one frame's statistics in (a gap or a jump back in ptsMs resets
-    // first). bandRad: the stitch's blend half-width (StitchGpuParams).
-    void update(const SeamCutStats& stats, int64_t ptsMs, double bandRad);
+// Where the lenses meet in each bin for a cut (`row`, `width`): the fade's
+// centre (elevation, radians) and its reach (as wide as the fade, at least
+// a row) -- where the colour is matched.
+void SeamCutMeet(const int* row, const float* width, double bandRad, float* meetRad,
+                 float* reachRad);
 
-    // The clip's lens colour (SeamBlend::colour is measured against it). A
-    // change starts the residual over.
-    void setLensColour(const LensColour& c);
+// One frame's departure from the clip's lens colour `c` with its own
+// veiling light taken out (LensVeilPerBin / RemoveLensVeil, then
+// LensColourResidual on both): false when it says nothing (too few usable
+// cells, or flare -- judged before the veil is taken out).
+bool SeamFrameResidual(const SeamCutStats& stats, double bandRad, const LensColour& c,
+                       double out[3]);
 
-    const SeamBlend& blend() const { return m_blend; }
-    bool hasHistory() const { return m_has; }
+// One frame's local correction round the seam (SeamBlend::local's layout,
+// log): what is left per bin of `clean` (the frame's statistics, veiling
+// light taken out) after the clip's colour and `residual`, measured where
+// the lenses meet, smoothed along the seam from the bins that have data and
+// faded to none where the bin and its neighbours have little of their own
+// -- a stretch without its own data isn't given the next one's correction.
+// Per channel: a sky clipped in blue still has red and green.
+void SeamLocalCorrection(const SeamCutStats& clean, double bandRad, const LensColour& c,
+                         const double residual[3], const float* meetRad, const float* reachRad,
+                         const SeamCutTuning& tuning, float* local);
 
-    // The last update's per-bin disagreement at the chosen row and the fade
-    // width share (0 narrow .. 1 the full band), for diagnostics.
-    const std::vector<float>& lastDisagreement() const { return m_dis; }
-    const std::vector<float>& lastWidth() const { return m_width; }
-
-    SeamCutTuning tuning;
-
-private:
-    // The colour residual, the local correction and the veiling light
-    // (m_blend.colour / local / veil) from this frame's statistics, the
-    // local correction measured near where the lenses meet in each bin
-    // (elevation meetRad[bin], reach meetReachRad[bin]; LensColourPerBin);
-    // before m_lastPts moves on.
-    void updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad,
-                      const float* meetRad, const float* meetReachRad);
-
-    SeamBlend m_blend;
-    LensColour m_lensColour;
-    std::unique_ptr<SeamCutStats> m_clean; // this frame's statistics, veiling light taken out
-    bool m_colourHas = false; // m_blend.colour holds a running average
-    bool m_localHas = false;  // m_blend.local and veil likewise
-    // The running average of each cell's disagreement (bin-major,
-    // kSeamCutRows per bin), valid while m_has.
-    std::vector<float> m_avgDis;
-    std::vector<int> m_row; // last frame's row per bin
-    std::vector<float> m_dis, m_width;
-    bool m_has = false;
-    int64_t m_lastPts = 0;
-};
+// The blend's cut and fade from the cut and the veiling light: where one
+// lens has veiling light the fade takes the full band -- what is left of it
+// past the seam (it grows towards the sun, the other lens can't say by how
+// much) fades across the band instead of meeting the other lens on a line.
+void SeamCutBlend(const int* row, const float* width, double bandRad, SeamBlend& blend);
 
 } // namespace insv

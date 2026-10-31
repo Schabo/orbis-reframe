@@ -117,57 +117,27 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
         t.join();
 }
 
-SeamCutTracker::SeamCutTracker()
-{
-    reset();
-}
-
-void SeamCutTracker::reset()
-{
-    m_blend = SeamBlend{};
-    m_has = false;
-    m_colourHas = false;
-    m_localHas = false;
-    m_avgDis.clear();
-    m_row.assign(kSeamDepthBins, -1);
-    m_dis.assign(kSeamDepthBins, 0.0f);
-    m_width.assign(kSeamDepthBins, 1.0f);
-}
-
-void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double bandRad)
+void SeamCutDisagreement(const SeamCutStats& stats, const SeamCutTuning& T, float* dis)
 {
     constexpr int B = kSeamDepthBins, R = kSeamCutRows;
-    const SeamCutTuning& T = tuning;
-    if (m_has && (ptsMs < m_lastPts || ptsMs - m_lastPts > T.resetGapMs))
-        reset();
-
-    // This frame's disagreement per cell -- the zero-mean difference against
-    // the texture, so a busy patch that matches isn't taken for an occlusion
-    // -- folded into its running average.
-    const double keep =
-        m_has && T.memoryMs > 0 ? std::exp(-static_cast<double>(ptsMs - m_lastPts) / T.memoryMs)
-                                : 0.0;
-    m_avgDis.resize(static_cast<size_t>(B) * R);
     for (int b = 0; b < B; ++b)
         for (int r = 0; r < R; ++r) {
             const SeamCutStats::Cell& c = stats.cell[b][r];
-            const double d = c.n >= kCutSamples / 2
-                                 ? std::min(c.zsad / (c.texture + T.texFloor), kNoCell)
-                                 : kNoCell;
-            float& a = m_avgDis[static_cast<size_t>(b) * R + r];
-            a = static_cast<float>(keep * a + (1.0 - keep) * d);
+            dis[static_cast<size_t>(b) * R + r] = static_cast<float>(
+                c.n >= kCutSamples / 2 ? std::min(c.zsad / (c.texture + T.texFloor), kNoCell) : kNoCell);
         }
+}
 
+void SolveSeamCut(const float* dis, double bandRad, const SeamCutTuning& T, int* row, float* width)
+{
+    constexpr int B = kSeamDepthBins, R = kSeamCutRows;
     // The cut: one row per bin, by a circular DP along the azimuth (three
-    // laps, the middle one kept, as SeamDepthTracker).
+    // laps, the middle one kept, as SolveSeamDepth).
     double rowDeg[R];
     for (int r = 0; r < R; ++r)
         rowDeg[r] = SeamCutRowE(r, bandRad) / kDeg;
     auto unary = [&](int b, int r) {
-        double u = m_avgDis[static_cast<size_t>(b) * R + r] + T.offCentre * std::fabs(rowDeg[r]);
-        if (m_has && m_row[b] >= 0 && m_row[b] != r)
-            u += T.stay;
-        return u;
+        return dis[static_cast<size_t>(b) * R + r] + T.offCentre * std::fabs(rowDeg[r]);
     };
     const int N = 3 * B;
     std::vector<double> E(static_cast<size_t>(N) * R);
@@ -196,113 +166,65 @@ void SeamCutTracker::update(const SeamCutStats& stats, int64_t ptsMs, double ban
     }
 
     // The fade's width from the disagreement at the chosen row, smoothed
-    // along the azimuth so a wide stretch doesn't start abruptly; its centre
-    // moves to the seam circle as it widens, so it stays inside the band.
+    // along the azimuth so a wide stretch doesn't start abruptly.
+    std::vector<float> at(B);
     for (int b = 0; b < B; ++b) {
-        m_row[b] = label[B + b];
-        m_dis[b] = m_avgDis[static_cast<size_t>(b) * R + m_row[b]];
+        row[b] = label[B + b];
+        at[b] = dis[static_cast<size_t>(b) * R + row[b]];
     }
-    const double narrow = std::min(kSeamCutFadeDeg * kDeg, bandRad);
     const int reach = static_cast<int>(std::ceil(2.0 * T.widthSigma));
     for (int b = 0; b < B; ++b) {
         double a = 0, w = 0;
         for (int d = -reach; d <= reach; ++d) {
             const double ww = T.widthSigma > 0 ? std::exp(-0.5 * d * d / (T.widthSigma * T.widthSigma))
                                                : (d == 0 ? 1.0 : 0.0);
-            a += ww * smoothstep(T.agreeLo, T.agreeHi, m_dis[(b + d + B) % B]);
+            a += ww * smoothstep(T.agreeLo, T.agreeHi, at[(b + d + B) % B]);
             w += ww;
         }
-        m_width[b] = static_cast<float>(a / w);
+        width[b] = static_cast<float>(a / w);
     }
-
-    // The colour is matched where the lenses meet (the fade's centre, as
-    // wide as the fade and at least a row); then where one lens has
-    // veiling light the fade takes the full band: what is left of it past
-    // the seam (it grows towards the sun, the other lens can't say by how
-    // much) fades across the band instead of meeting the other lens on a
-    // line.
-    const double rowStep = 2.0 * SeamCutRowMax(bandRad) / (R - 1);
-    std::vector<float> meet(B), meetReach(B);
-    for (int b = 0; b < B; ++b) {
-        const double s = m_width[b];
-        meet[b] = static_cast<float>(SeamCutRowE(m_row[b], bandRad) * (1.0 - s));
-        meetReach[b] = static_cast<float>(std::max(narrow + (bandRad - narrow) * s, rowStep));
-    }
-    updateColour(stats, ptsMs, bandRad, meet.data(), meetReach.data());
-    for (int b = 0; b < B; ++b) {
-        const double s = std::max(static_cast<double>(m_width[b]),
-                                  std::min(1.0, std::fabs(m_blend.veil[b][1]) / kLensVeilWide));
-        m_width[b] = static_cast<float>(s);
-        m_blend.cut[b] = static_cast<float>(SeamCutRowE(m_row[b], bandRad) * (1.0 - s));
-        m_blend.fade[b] = static_cast<float>(narrow + (bandRad - narrow) * s);
-    }
-    m_has = true;
-    m_lastPts = ptsMs;
 }
 
-void SeamCutTracker::setLensColour(const LensColour& c)
+void SeamCutMeet(const int* row, const float* width, double bandRad, float* meetRad,
+                 float* reachRad)
 {
-    if (c == m_lensColour)
-        return;
-    m_lensColour = c;
-    m_colourHas = false;
-    m_localHas = false;
-    for (float& x : m_blend.colour)
-        x = 0.0f;
-    for (auto& b : m_blend.local)
-        for (float& x : b)
-            x = 0.0f;
-    for (auto& b : m_blend.veil)
-        for (float& x : b)
-            x = 0.0f;
+    constexpr int B = kSeamDepthBins, R = kSeamCutRows;
+    // The fade's centre moves to the seam circle as it widens, so it stays
+    // inside the band.
+    const double narrow = std::min(kSeamCutFadeDeg * kDeg, bandRad);
+    const double rowStep = 2.0 * SeamCutRowMax(bandRad) / (R - 1);
+    for (int b = 0; b < B; ++b) {
+        const double s = width[b];
+        meetRad[b] = static_cast<float>(SeamCutRowE(row[b], bandRad) * (1.0 - s));
+        reachRad[b] = static_cast<float>(std::max(narrow + (bandRad - narrow) * s, rowStep));
+    }
 }
 
-void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, double bandRad,
-                                  const float* meetRad, const float* meetReachRad)
+bool SeamFrameResidual(const SeamCutStats& stats, double bandRad, const LensColour& c,
+                       double out[3])
+{
+    double r[3];
+    if (!LensColourResidual(stats, bandRad, c, r))
+        return false;
+    std::vector<float> veil(kSeamDepthBins * 3);
+    LensVeilPerBin(stats, veil.data());
+    auto clean = std::make_unique<SeamCutStats>(stats);
+    RemoveLensVeil(*clean, veil.data());
+    if (!LensColourResidual(*clean, bandRad, c, r))
+        return false;
+    for (int k = 0; k < 3; ++k)
+        out[k] = r[k];
+    return true;
+}
+
+void SeamLocalCorrection(const SeamCutStats& clean, double bandRad, const LensColour& c,
+                         const double residual[3], const float* meetRad, const float* reachRad,
+                         const SeamCutTuning& T, float* local)
 {
     constexpr int B = kSeamDepthBins;
-    const double dt = static_cast<double>(ptsMs - m_lastPts);
-    const double localKeep =
-        m_localHas && tuning.localMemoryMs > 0 ? std::exp(-dt / tuning.localMemoryMs) : 0.0;
-
-    // The veiling light one lens adds round the seam, taken out of that
-    // lens's means before the colour is matched on what is left.
-    std::vector<float> veil(B * 3);
-    LensVeilPerBin(stats, veil.data());
-    for (int b = 0; b < B; ++b)
-        for (int k = 0; k < 3; ++k)
-            m_blend.veil[b][k] = static_cast<float>(localKeep * m_blend.veil[b][k] +
-                                                    (1.0 - localKeep) * veil[b * 3 + k]);
-    if (!m_clean)
-        m_clean = std::make_unique<SeamCutStats>();
-    *m_clean = stats;
-    RemoveLensVeil(*m_clean, &m_blend.veil[0][0]);
-
-    // A frame that says nothing (too few usable cells, or flare -- judged
-    // before the veiling light is taken out) holds the residual where it is.
-    double r[3];
-    if (LensColourResidual(stats, bandRad, m_lensColour, r) &&
-        LensColourResidual(*m_clean, bandRad, m_lensColour, r)) {
-        const double keep = m_colourHas && tuning.colourMemoryMs > 0
-                                ? std::exp(-dt / tuning.colourMemoryMs)
-                                : 0.0;
-        for (int k = 0; k < 3; ++k)
-            m_blend.colour[k] =
-                static_cast<float>(keep * m_blend.colour[k] + (1.0 - keep) * r[k]);
-        m_colourHas = true;
-    }
-
-    // The local correction: what is left per bin after the clip's colour and
-    // the residual, smoothed along the seam from the bins that have data,
-    // and faded to none where the bin and its neighbours have little of
-    // their own -- a stretch without its own data isn't given the next
-    // one's correction. Per channel: a sky clipped in blue still has red and
-    // green. It follows flare frames: that's what it is for.
-    const double res[3] = {m_blend.colour[0], m_blend.colour[1], m_blend.colour[2]};
     std::vector<float> v(B * 3), w(B * 3);
-    LensColourPerBin(*m_clean, bandRad, m_lensColour, res, meetRad, meetReachRad, v.data(),
-                     w.data());
-    const double sigma = std::max(tuning.localSigma, 0.5);
+    LensColourPerBin(clean, bandRad, c, residual, meetRad, reachRad, v.data(), w.data());
+    const double sigma = std::max(T.localSigma, 0.5);
     const int reach = static_cast<int>(std::ceil(2.5 * sigma));
     for (int b = 0; b < B; ++b)
         for (int k = 0; k < 3; ++k) {
@@ -316,14 +238,22 @@ void SeamCutTracker::updateColour(const SeamCutStats& stats, int64_t ptsMs, doub
             double own = 0;
             for (int d = -1; d <= 1; ++d)
                 own += w[((b + d + B) % B) * 3 + k];
-            const double conf = std::min(1.0, own / tuning.localMinSamples);
-            const double target =
+            const double conf = std::min(1.0, own / T.localMinSamples);
+            local[b * 3 + k] = static_cast<float>(
                 sw > 0 ? std::clamp(conf * s / sw, -kLensColourLocalMaxLog, kLensColourLocalMaxLog)
-                       : 0.0;
-            m_blend.local[b][k] =
-                static_cast<float>(localKeep * m_blend.local[b][k] + (1.0 - localKeep) * target);
+                       : 0.0);
         }
-    m_localHas = true;
+}
+
+void SeamCutBlend(const int* row, const float* width, double bandRad, SeamBlend& blend)
+{
+    const double narrow = std::min(kSeamCutFadeDeg * kDeg, bandRad);
+    for (int b = 0; b < kSeamDepthBins; ++b) {
+        const double s = std::max(static_cast<double>(width[b]),
+                                  std::min(1.0, std::fabs(blend.veil[b][1]) / kLensVeilWide));
+        blend.cut[b] = static_cast<float>(SeamCutRowE(row[b], bandRad) * (1.0 - s));
+        blend.fade[b] = static_cast<float>(narrow + (bandRad - narrow) * s);
+    }
 }
 
 } // namespace insv
