@@ -417,6 +417,21 @@ if(OpenCV_FOUND)
         PRIVATE opencv_core opencv_imgproc opencv_video ${ORBIS_OPENCV_FEATURES})
 endif()
 
+# --- stitch_bench_metrics: tools/stitch_bench's measurements on stitched
+# pictures (no GPU, no clip), so stitch_bench_test can check them.
+if(OpenCV_FOUND)
+    add_library(stitch_bench_metrics STATIC
+        tools/stitch_bench/Metrics.h
+        tools/stitch_bench/Metrics.cpp
+    )
+    target_include_directories(stitch_bench_metrics PUBLIC tools/stitch_bench ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(stitch_bench_metrics PUBLIC opencv_core opencv_imgproc opencv_video)
+
+    add_executable(stitch_bench_test tests/stitch_bench_test.cpp)
+    target_link_libraries(stitch_bench_test PRIVATE stitch_bench_metrics)
+    add_test(NAME stitch_bench_test COMMAND stitch_bench_test)
+endif()
+
 if(FFMPEG_FOUND)
     # --- tools/insv_stitch: smoke CLI. Turns an .insv into an
     # equirect through src/insv/ alone -- the standalone proof of the cleanroom
@@ -778,6 +793,16 @@ if(FFMPEG_FOUND)
         add_library(clip_sync STATIC src/stitch/ClipSync.h src/stitch/ClipSync.cpp)
         target_include_directories(clip_sync PUBLIC src/stitch)
         target_link_libraries(clip_sync PUBLIC stitch insv_optical)
+
+        # --- tools/stitch_bench: any stitcher's sphere over a stretch of a
+        # clip -- the app's or a stitched video such as Insta360 Studio's
+        # export -- against a reference video: PSNR, geometry, the band's
+        # movement and doubling, the seam strips as a video. Measure-only;
+        # the measurements are stitch_bench_metrics (tested by
+        # stitch_bench_test).
+        add_executable(stitch_bench tools/stitch_bench/main.cpp)
+        target_include_directories(stitch_bench PRIVATE src/insv src/stitch src/export)
+        target_link_libraries(stitch_bench PRIVATE stitch stitch_bench_metrics reframe_flatten)
 
         add_executable(residual_stab tools/residual_stab/main.cpp)
         target_include_directories(residual_stab PRIVATE src/insv src/stitch src/export)

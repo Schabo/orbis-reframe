@@ -17,6 +17,7 @@ each tool is for and when you'd reach for it. The examples use clips from
 | [`playback_bench`](#playback_bench) | time each step of playback and export | GPU |
 | [`view_compare`](#view_compare) | compare the direct view render with the equirect path | GPU |
 | [`seam_regress`](#seam_regress) | measure the seam on a list of frames, against the last run | GPU |
+| [`stitch_bench`](#stitch_bench) | score a stitcher's picture over a stretch, against Insta360 Studio's | GPU, OpenCV |
 | [`reframe_export`](#reframe_export) | export a reframed flat video without the app | GPU, hw encoder |
 | [`residual_stab`](#residual_stab) | measure the shake left after gyro stabilization | GPU, OpenCV |
 | [`track_subject`](#track_subject) | try subject tracking and make a follow-cam | GPU, OpenCV contrib |
@@ -243,6 +244,99 @@ elsewhere left it alone.
 build/seam_regress tmp/seamreg/list.tsv --out tmp/seamreg/before
 # ... change, build ...
 build/seam_regress tmp/seamreg/list.tsv --out tmp/seamreg/after --baseline tmp/seamreg/before
+```
+
+## stitch_bench
+
+Scores a stitcher on the picture it makes, over a stretch of a clip, and
+against a reference video of the same stretch: an equirect export from
+Insta360 Studio. It never looks inside the stitcher, so the app's stitch, a
+new one and Studio's own modes are all measured the same way. Measuring the
+reference against itself gives Studio's numbers, which are the bar.
+`seam_regress` measures the inside of the app's seam (depth table, cut,
+colour per bin); this tool measures only what comes out.
+
+The list has one stretch per line, tab-separated: a name, the clip, the
+start and end in seconds, then any of:
+- `stitcher=current` (the default: the app's `NativeStitchSource`, set up as
+  playback has it) or `stitcher=video:FILE` (a stitched equirect video, for
+  Studio's other modes, on the reference's timing and rotation);
+- for `current`: `guard=none|standard|premium` (default premium),
+  `depth=on|off` (the depth-aware seam, default on), `rs=on|off` (the
+  capture-time correction from the gyro, default on), and `seam=` /
+  `colour=` as in `seam_regress` (measured over the whole clip when not
+  given; `seam=0,0,0,0,0,0` for none);
+- `ref=FILE` (the reference video), `refstart=S` (the clip time of its first
+  frame) and `refrot=Z,Y,X` (the rotation from our sphere to the reference's,
+  as in `seam_regress`); or `ref=template`: our own stitch of the same
+  frames from the file's data alone (no depth seam, seam correction, lens
+  colour or capture-time correction), whose geometry holds still -- the
+  reference for a clip without a Studio export.
+
+Anything after `#` is a note. Unless `--live` is given, the app's seam
+analysis of the stretch runs first, as the app does after opening a clip.
+
+Every frame is measured on its seam strip: the seam circle unwrapped,
+±30° across it. The band, and the lenses' axes, come from the file's
+calibration with the guard's profile, never from the stitcher, so each
+stitcher of a clip is measured on the same grid. Every `--every`'th frame
+(10) also gets measured on the whole sphere at `--width` (3840). What the
+summary reports:
+- `psnr`, `band_psnr`: PSNR against the reference over the sphere and over
+  the band. `*_gain` is the same after a per-channel gain on ours, and
+  `gain_*_pct` is that gain. It takes out a colour difference, so what's left
+  is geometry and sharpness.
+- `geom_*`: where ours puts the reference's content (optical flow between the
+  two, contrast-normalised), median and p95 in degrees, in the band, up to
+  20° from the seam (`near`) and past it (`body`).
+  `lens*_radial_50_80` / `lens*_tangential_50_80` are the same split per
+  lens, at 50-80° from its axis: + radial means ours is further out. The
+  JSON has them in 10° bins. `refrot_fit_*` is the `refrot` that would line
+  the two up best, so it shows whether the list's value is right.
+- `sharp_band`, `sharp_beside`: ours' gradient energy over the reference's,
+  in the band and beside it. `own_sharp_band_beside` is ours, band over
+  beside, and needs no reference.
+- `alive_band`: how much the offset between ours and the reference along
+  the seam changes from one frame to the next, in degrees per frame: per 5°
+  block and each half of the band, the median offset (optical flow from the
+  reference to ours), then the change against the frame before; the mean
+  over frames of the median over the band's blocks (`_p90`: of their 90th
+  percentile). A stitch whose geometry holds still keeps its offset whatever
+  passes through the band; one that re-solves its warp each frame doesn't --
+  the picture moving and bending round the seam in playback.
+  `alive_control` is the same 25-29.5° from the seam, past where any
+  stitcher reaches, so every stitcher is the plain lens there: flow noise
+  and changes to the whole picture (a capture-time correction moves it with
+  the camera's turn), the floor. `alive_peak` is the 99th percentile over
+  frames of the band's 90th percentile: the few frames where a seam jumps,
+  which the means hide. Against Studio's All-off, Studio's
+  Optical flow export (`stitcher=video:`) sets the bar.
+
+Near things crossing the seam (handlebars, mirrors) show up as
+`geom_band_p95` against Studio's Optical-flow export, which follows them.
+
+`--fit-time` first picks the reference frame that matches the first frame
+best, within ±6 frames of `refstart`, and reports it (`refstart_fit_s`).
+Use it when you don't know how the reference lines up.
+
+For each stretch, `--out DIR` gets `NAME.json` (summary, per-frame series,
+profiles) and `NAME_strip.y4m`: the seam strips, ±12° at `--video-px-deg`
+(6), as a video in three rows: ours, the reference, and |ours
+colour-matched − reference| × 4. `mpv` and `ffplay` play it. `--no-video`
+leaves it out. `--baseline DIR` and `--only TEXT` work as in
+`seam_regress`. Debug builds are slow; a Release build runs at about 0.5-1 s
+a frame.
+
+**When:** comparing a stitcher, or a change to one, with Studio and with the
+last run. On X5 clips, Studio's 8K ProRes exports of `192900` (125-135 s,
+`refstart=125`) and `_086` (0-30 s, `refstart=0`) line up at
+`refrot=1.055,-0.505,1.422`.
+
+```sh
+build/stitch_bench tmp/bench/list.tsv --out tmp/bench/before
+# ... change, build ...
+build/stitch_bench tmp/bench/list.tsv --out tmp/bench/after --baseline tmp/bench/before
+mpv tmp/bench/after/x5a_app_strip.y4m
 ```
 
 ## reframe_export
