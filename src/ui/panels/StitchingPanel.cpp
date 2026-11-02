@@ -95,6 +95,8 @@ void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam,
         model->item(static_cast<int>(g))->setEnabled(profiles.has(g));
     m_lensGuard->setEnabled(profiles.any());
     m_noGuards->setVisible(!profiles.any());
+    m_depthSeam->setEnabled(true);
+    m_applyToAll->setEnabled(true);
     m_lensGuard->setCurrentIndex(static_cast<int>(profiles.usable(lensGuard)));
     m_depthSeam->setChecked(depthSeam);
     m_updating = false;
@@ -103,7 +105,12 @@ void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam,
 void StitchingPanel::setNoClip()
 {
     setState(LensGuard::Premium, true); // ClipItem's defaults
-    setBodyEnabled(false);
+    // The clip's settings greyed out; Calibrate lenses is about the camera,
+    // not a clip, so it stays.
+    m_lensGuard->setEnabled(false);
+    m_depthSeam->setEnabled(false);
+    m_calibration->setEnabled(false);
+    m_applyToAll->setEnabled(false);
 }
 
 void StitchingPanel::setCalibrations(const QStringList &labels, const QStringList &tooltips,

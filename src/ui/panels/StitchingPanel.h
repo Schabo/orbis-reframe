@@ -32,7 +32,8 @@ public:
     // carrying `profiles`. Does not emit.
     void setState(LensGuard lensGuard, bool depthSeam,
                   stitch::LensGuardProfiles profiles = stitch::LensGuardProfiles::all());
-    // No clip to show: a new clip's settings, greyed out. Does not emit.
+    // No clip to show: a new clip's settings, greyed out (Calibrate lenses
+    // stays: it needs no clip). Does not emit.
     void setNoClip();
     // One line about the current clip's seam alignment and lens colour
     // (empty hides it); `details`, the measured figures, go in its tooltip.

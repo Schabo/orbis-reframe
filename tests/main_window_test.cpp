@@ -396,6 +396,11 @@ void testStartScreen(const Ctx &c)
         CHECK(!a->isEnabled());
     if (QAction *a = action(c, "addAudioTrackAction"))
         CHECK(!a->isEnabled());
+#ifdef ORBIS_REFRAME_HAVE_LENS_CALIBRATION
+    // Calibrating a camera needs no project.
+    QAction *calibrate = action(c, "calibrateLensesAction");
+    CHECK(calibrate && calibrate->isEnabled());
+#endif
 }
 
 void testOpenClip(const Ctx &c)

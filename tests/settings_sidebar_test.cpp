@@ -355,6 +355,13 @@ void testStitchingPanel(SettingsSidebar &bar)
     CHECK(calibrate.size() == 1);
     stitching->setCalibrateAvailable(false, "no OpenCV");
     CHECK(!calButton->isEnabled() && calButton->toolTip() == "no OpenCV");
+    // No clip: its settings greyed out, but a camera can be calibrated.
+    stitching->setCalibrateAvailable(true);
+    stitching->setNoClip();
+    CHECK(!guard->isEnabled() && !depth->isEnabled() && !apply->isEnabled());
+    CHECK(calButton->isEnabled());
+    stitching->setState(G::Premium, true);
+    CHECK(guard->isEnabled() && depth->isEnabled() && apply->isEnabled());
 }
 
 void testProjectSettingsDialog()

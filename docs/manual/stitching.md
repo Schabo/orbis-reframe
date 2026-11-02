@@ -90,8 +90,10 @@ opened by orbis-reframe versions before 0.8.
 ### Calibrating your camera
 
 You need the camera, a monitor and about 20 minutes. Do it once for every
-set of lens guards you film with (none, standard, premium). **Calibrate
-lenses…** walks you through it:
+set of lens guards you film with (none, standard, premium). It needs no
+project or clip: start it with **Calibrate lenses…** in the **Stitching**
+section, or **Media ▸ Calibrate camera lenses…**, also from the project
+library. It walks you through it:
 
 1. **Show the chart.** Pick the monitor and click **Show the chart**: a
    chessboard with small patterns in its white squares fills the screen. A

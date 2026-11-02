@@ -979,6 +979,14 @@ void MainWindow::setupMenus()
     addOverlayTrackAction->setObjectName(QStringLiteral("addOverlayTrackAction"));
     m_editorActions += {importFilesAction, importFolderAction, addClipAction, addAudioAction,
                         addVideoAction, addAudioTrackAction, addOverlayTrackAction};
+    // About the camera, not a project: there in the project library too.
+    mediaMenu->addSeparator();
+    QAction *calibrateAction = mediaMenu->addAction(tr("&Calibrate camera lenses…"), this,
+                                                    &MainWindow::openLensCalibration);
+    calibrateAction->setObjectName(QStringLiteral("calibrateLensesAction"));
+#ifndef ORBIS_REFRAME_HAVE_LENS_CALIBRATION
+    calibrateAction->setEnabled(false);
+#endif
 }
 
 void MainWindow::connectController()
