@@ -103,7 +103,8 @@ bool ReframeExportController::analyseSeam(const ClipJob &c, qint64 inMs, qint64 
     if (!c.depthSeam || c.flat)
         return true;
     const stitch::SeamAnalysisResult r = stitch::AnalyseClipSeam(
-        {c.clipPath.toStdString(), c.lensGuard, c.seamCorrection, c.lensColour}, inMs, outMs, cancel,
+        {c.clipPath.toStdString(), c.lensGuard, c.seamCorrection, c.lensColour, c.lensCalibration},
+        inMs, outMs, cancel,
         progress);
     if (!r.ok && !r.cancelled) // the stitch measures the seam as it goes instead
         core::log::Info("[seam analysis] %s: %s\n", qPrintable(c.clipPath), r.message.c_str());
@@ -131,6 +132,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     sc.width = stitch::ExportStitchWidth(probe.width, outW) & ~1;
     sc.height = (sc.width / 2) & ~1;
     sc.lensGuard = c.lensGuard;
+    sc.lensCalibration = c.lensCalibration;
     sc.depthSeam = c.depthSeam;
     analyseSeam(c, sourceMs, sourceMs, nullptr, {});
 
@@ -403,6 +405,7 @@ void ReframeExportController::run(const Request &req)
         sc.width = eqW;
         sc.height = (req.stitchHeight > 0 ? req.stitchHeight : eqW / 2) & ~1;
         sc.lensGuard = c.lensGuard;
+        sc.lensCalibration = c.lensCalibration;
         sc.depthSeam = c.depthSeam;
 
         // The clip's seam as playback has it: its analysis, made here for the

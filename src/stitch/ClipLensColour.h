@@ -18,13 +18,15 @@ struct ClipLensColourResult : insv::LensColourFit {
 
 // Measures the clip's lens colour (insv::FitLensColour) for `clipPath` from
 // kLensColourFrames lens pairs spread over [trimInMs, trimOutMs], with the
-// stitch set up as NativeStitchSource would for `lensGuard` and with the
+// stitch set up as NativeStitchSource would for `lensGuard` and
+// `calibration` (null: the file's) and with the
 // clip's seam correction `seam` (the lenses must line up for their colours
 // to be compared). CPU decode; several seconds -- run it off the GUI thread.
 // `cancel` (optional) is polled between frames.
 ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t trimInMs,
                                            int64_t trimOutMs,
                                            PreviewStitchConfig::LensGuard lensGuard,
+                                           const LensCalibration* calibration,
                                            const insv::SeamCorrection& seam,
                                            const std::atomic<bool>* cancel = nullptr);
 

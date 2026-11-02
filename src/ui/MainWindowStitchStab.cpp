@@ -5,14 +5,22 @@
 #include "MainWindow.h"
 
 #include <QAction>
+#include <QDir>
+#include <QFileInfo>
+#include <QLocale>
+#include <QSet>
 #include <QActionGroup>
 #include <QMetaObject>
 
 #include <cmath>
 
+#include <ClipMetadata.h>  // camera::ReadClipMetadata (the clip's camera)
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 
 #include "ClipMeasurements.h"
+#ifdef ORBIS_REFRAME_HAVE_LENS_CALIBRATION
+#include "LensCalibrationDialog.h"
+#endif
 #include "EditToolbar.h"
 #include "LensGuardCache.h"
 #include "PlaybackController.h"
@@ -21,6 +29,7 @@
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
 #include "../core/ClipItem.h"
+#include "../core/LensCalibrationStore.h"
 #include "../core/Project.h"
 #include "../core/Timeline.h"
 #include "../render/EquirectViewportWindow.h"
@@ -34,8 +43,37 @@ void MainWindow::connectStitchAndStabilization()
             [this](StitchingPanel::LensGuard guard, bool depthSeam) {
                 const ClipItem *c = m_timeline->clipById(editClipId());
                 if (c && !c->flat)
-                    m_timeline->setSourceStitch(c->sourcePath, guard, depthSeam);
+                    m_timeline->setSourceStitch(
+                        c->sourcePath, guard, depthSeam,
+                        lensCalibrationForGuard(c->sourcePath, c->lensCalibration, guard));
             });
+    connect(m_stitchingPanel, &StitchingPanel::calibrationChosen, this, [this](int index) {
+        const ClipItem *c = m_timeline->clipById(editClipId());
+        if (c && !c->flat && index >= 0 && index < int(m_calibrationChoices.size()))
+            m_timeline->setSourceStitch(c->sourcePath, c->lensGuard, c->depthSeam,
+                                        m_calibrationChoices[index]);
+    });
+    connect(m_stitchingPanel, &StitchingPanel::calibrateRequested, this,
+            &MainWindow::openLensCalibration);
+#ifdef ORBIS_REFRAME_HAVE_LENS_CALIBRATION
+    m_stitchingPanel->setCalibrateAvailable(true);
+#else
+    m_stitchingPanel->setCalibrateAvailable(
+        false, tr("This build of orbis-reframe can't calibrate lenses (it was built without "
+                  "OpenCV's objdetect module)."));
+#endif
+    // A file new to the timeline: its camera's calibration, if one is kept.
+    // Not on a load or undo, which bring the clip's own.
+    connect(m_timeline, &Timeline::clipInserted, this, [this](int index) {
+        if (m_rebindingModel || index < 0 || index >= m_timeline->count())
+            return;
+        const ClipItem &c = m_timeline->clipAt(index);
+        int ofFile = 0;
+        for (int i = 0; i < m_timeline->count(); ++i)
+            ofFile += m_timeline->clipAt(i).sourcePath == c.sourcePath;
+        if (ofFile == 1)
+            applyStoredLensCalibration(c.sourcePath);
+    });
     connect(m_stitchingPanel, &StitchingPanel::applyToAllRequested, this, [this] {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (!c || c->flat)
@@ -53,8 +91,9 @@ void MainWindow::connectStitchAndStabilization()
                 continue;
             const stitch::LensGuardProfiles to = m_lensGuards->profiles(o.sourcePath);
             const bool takesGuard = from.any() && to.any() && to.has(guard);
-            m_timeline->setSourceStitch(o.sourcePath, takesGuard ? guard : o.lensGuard,
-                                        depthSeam);
+            const auto g = takesGuard ? guard : o.lensGuard;
+            m_timeline->setSourceStitch(o.sourcePath, g, depthSeam,
+                                        lensCalibrationForGuard(o.sourcePath, o.lensCalibration, g));
         }
     });
     // Project settings (File ▸ Project settings…): output aspect / size /
@@ -351,9 +390,114 @@ void MainWindow::syncStitchingPanel()
         c && c->flat ? tr("A flat video isn't stitched: it has one picture, not two.") : QString());
     if (!c || c->flat) {
         m_stitchingPanel->setNoClip();
+        m_calibrationChoices = {std::nullopt};
+        m_stitchingPanel->setCalibrations({tr("From the camera file")}, {}, 0);
         return;
     }
     m_stitchingPanel->setState(c->lensGuard, c->depthSeam, m_lensGuards->profiles(c->sourcePath));
+
+    // The calibrations: the camera file's, the clip's own, and the one kept
+    // for its camera and guard if that's another (a newer one).
+    const QLocale loc;
+    auto label = [&loc](const stitch::LensCalibration &cal) {
+        const QDateTime made = QDateTime::fromString(QString::fromStdString(cal.created), Qt::ISODate);
+        return loc.toString(made.toLocalTime().date(), QLocale::ShortFormat);
+    };
+    auto tip = [&loc](const stitch::LensCalibration &cal) {
+        return tr("Made with Calibrate lenses for camera %1: the chart's corners fit to %2 and "
+                  "%3 pixels, out to %4° and %5° from the lenses' centres.")
+            .arg(QString::fromStdString(cal.serial), loc.toString(cal.rmsPx[0], 'f', 2),
+                 loc.toString(cal.rmsPx[1], 'f', 2), loc.toString(cal.coverageDeg[0], 'f', 0),
+                 loc.toString(cal.coverageDeg[1], 'f', 0));
+    };
+    m_calibrationChoices = {std::nullopt};
+    QStringList labels{tr("From the camera file")}, tips{QString()};
+    int current = 0;
+    if (c->lensCalibration) {
+        m_calibrationChoices.push_back(c->lensCalibration);
+        labels << tr("Calibrated %1").arg(label(*c->lensCalibration));
+        tips << tip(*c->lensCalibration);
+        current = 1;
+    }
+    const auto kept = storedLensCalibration(c->sourcePath, c->lensGuard);
+    if (kept && kept != c->lensCalibration) {
+        m_calibrationChoices.push_back(kept);
+        labels << (c->lensCalibration ? tr("Calibrated %1 (the camera's latest)")
+                                      : tr("Calibrated %1"))
+                      .arg(label(*kept));
+        tips << tip(*kept);
+    }
+    m_stitchingPanel->setCalibrations(labels, tips, current);
+}
+
+std::optional<stitch::LensCalibration> MainWindow::storedLensCalibration(
+    const QString &sourcePath, stitch::PreviewStitchConfig::LensGuard guard) const
+{
+    const auto meta = camera::ReadClipMetadata(sourcePath.toStdString());
+    if (!meta || !meta->calibrated || meta->lenses.size() != 2 || meta->serial.empty())
+        return std::nullopt;
+    return lenscal::ForClip(meta->serial, static_cast<int>(guard), meta->lenses[0].calibration,
+                            meta->lenses[1].calibration);
+}
+
+std::optional<stitch::LensCalibration> MainWindow::lensCalibrationForGuard(
+    const QString &sourcePath, const std::optional<stitch::LensCalibration> &current,
+    stitch::PreviewStitchConfig::LensGuard guard) const
+{
+    if (!current || current->lensGuard == static_cast<int>(guard))
+        return current;
+    // Made under other guards: the camera's for these, else the file's.
+    return storedLensCalibration(sourcePath, guard);
+}
+
+void MainWindow::applyStoredLensCalibration(const QString &sourcePath)
+{
+    for (int i = 0; i < m_timeline->count(); ++i) {
+        const ClipItem &c = m_timeline->clipAt(i);
+        if (c.sourcePath != sourcePath)
+            continue;
+        if (c.flat || c.lensCalibration)
+            return;
+        if (const auto cal = storedLensCalibration(sourcePath, c.lensGuard))
+            m_timeline->setSourceStitch(sourcePath, c.lensGuard, c.depthSeam, cal);
+        return;
+    }
+}
+
+void MainWindow::openLensCalibration()
+{
+#ifdef ORBIS_REFRAME_HAVE_LENS_CALIBRATION
+    const ClipItem *c = m_timeline->clipById(editClipId());
+    const QString dir = c ? QFileInfo(c->sourcePath).absolutePath()
+                          : (m_clipPath.isEmpty() ? QDir::homePath()
+                                                  : QFileInfo(m_clipPath).absolutePath());
+    auto *dlg = new LensCalibrationDialog(
+        dir, c && !c->flat ? c->lensGuard : stitch::PreviewStitchConfig::LensGuard::Premium, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dlg, &LensCalibrationDialog::calibrationSaved, this,
+            [this](const stitch::LensCalibration &cal, bool useInProject) {
+                if (useInProject) {
+                    // Every file of that camera with those guards, whose
+                    // calibration it was made against.
+                    QSet<QString> done;
+                    for (int i = 0; i < m_timeline->count(); ++i) {
+                        const ClipItem &o = m_timeline->clipAt(i);
+                        if (o.flat || done.contains(o.sourcePath) ||
+                            static_cast<int>(o.lensGuard) != cal.lensGuard)
+                            continue;
+                        done << o.sourcePath;
+                        const auto meta = camera::ReadClipMetadata(o.sourcePath.toStdString());
+                        if (meta && meta->serial == cal.serial && meta->lenses.size() == 2 &&
+                            cal.matchesFile(meta->lenses[0].calibration,
+                                            meta->lenses[1].calibration))
+                            m_timeline->setSourceStitch(o.sourcePath, o.lensGuard, o.depthSeam,
+                                                        cal);
+                    }
+                }
+                syncStitchingPanel();
+            });
+    dlg->show();
+#endif
 }
 
 void MainWindow::updatePreviewMenu(const stitch::PreviewStitchConfig &cfg)

@@ -54,6 +54,85 @@ to all clips** leaves its lens guards alone; applied from one of its clips,
 it copies only **Depth-aware seam** to the others. (A file that has only one
 of the two guard models greys out the other choice.)
 
+## Lens calibration
+
+The camera records a model of its two lenses in every file, and orbis-reframe
+stitches with it. That model is made at the factory, and on a real camera it
+can be off by a few tenths of a degree: far-away things along the seam then
+don't quite line up, and the picture as a whole sits slightly differently
+from where Insta360 Studio puts it. **Calibrate lenses…** measures your own
+camera's lenses with a chart on your monitor, so the two pictures line up
+better than with the model in the file.
+
+**Lens calibration** says which model a clip is stitched with:
+
+- **From the camera file**: the model the camera recorded. Every clip starts
+  with it unless you've calibrated its camera.
+- **Calibrated** and a date: one you made with **Calibrate lenses…** for this
+  camera and these lens guards. Hold the pointer over it to see how well it
+  fitted.
+
+A calibration belongs to one camera (it goes by the serial number in the
+file) and one choice of **Lens guards**, since guards change how the lenses
+draw the picture. Once you've calibrated a camera, clips from it that you add
+to a project get the calibration for their lens guards by themselves.
+Changing a clip's **Lens guards** switches to its camera's calibration for
+the new guards, or to the camera file's if there is none. A clip set to
+**From the camera file** stays with it until you pick a calibration. If you
+calibrate again later, the newer one shows as *the camera's latest*:
+projects keep the calibration their clips had until you pick the new one,
+so finished projects don't change.
+
+The project keeps a copy of the calibration each clip uses, so a project
+opens the same on another computer. Projects with a calibrated clip can't be
+opened by orbis-reframe versions before 0.8.
+
+### Calibrating your camera
+
+You need the camera, a monitor and about 20 minutes. Do it once for every
+set of lens guards you film with (none, standard, premium). **Calibrate
+lenses…** walks you through it:
+
+1. **Show the chart.** Pick the monitor and click **Show the chart**: a
+   chessboard with small patterns in its white squares fills the screen. A
+   click or Esc closes it again. **Square size** is filled in from the size
+   the monitor reports; measure one square with a ruler, and if it's
+   different, put in what you measure (a tenth of a millimetre is plenty).
+2. **Film it.** Fit the lens guards you want to calibrate for (or none), film
+   in 8K, and hold the camera 50 cm to 1 m from the screen. Turn it slowly
+   through five full circles, so the chart passes through every part of both
+   lenses' pictures, right out to their edges: turning left to right; tilting
+   forwards over the top; left to right again with the camera leaning 45°
+   one way, then 45° the other way; and once round with the camera's sides
+   (where the lenses meet) passing over the chart. Stop for a moment every
+   few seconds: only the frames where the chart holds still are used. About
+   three minutes is plenty.
+3. **Measure it.** Choose the recording and the **Lens guards** it was
+   filmed with, and click **Measure**. Finding the chart in every frame takes
+   a few minutes, about twice as long as the recording.
+4. **The result** says whether the calibration fits, how far out towards
+   their edges both lenses saw the chart, how closely the chart's corners
+   fit, and how much it moves the picture where the lenses meet compared
+   with the camera file's model. **Save** keeps it for the camera and lens
+   guards; with *Use it for this project's clips from this camera* ticked,
+   the project's clips from that camera with those guards switch to it.
+
+A recording that isn't good enough says why, and can't be saved:
+
+- *The chart was still in too few frames*: turn more slowly and stop more
+  often.
+- *The front (or back) lens never saw the chart near the edge of its
+  picture*: turn the camera further, so the chart passes the edge of each
+  lens.
+- *The chart's corners don't fit the lens model closely enough*: the square
+  size is wrong, or the chart was blurred or had reflections on it.
+- *The two lenses don't agree on where the chart is*: the camera was moving
+  too fast.
+
+Calibrating clears the clip's seam alignment and lens colour (below), which
+are then measured again with the new model. **Calibrate lenses…** is
+greyed out in builds made without OpenCV's chart detection.
+
 ## Depth-aware seam
 
 The two lenses sit a few centimetres apart, so they see things close to the
@@ -159,8 +238,8 @@ The reasons a measurement gives:
 - *too little detail along the seam*: the picture where the two lenses meet
   is too plain (sky, a wall, darkness) to line them up by.
 
-Changing **Lens guards** measures the clip's file again, because the
-alignment depends on the lens model. Projects from orbis-reframe 0.5 and
+Changing **Lens guards** or **Lens calibration** measures the clip's file
+again, because the alignment depends on the lens model. Projects from orbis-reframe 0.5 and
 older measured only how the back lens is turned; their clips are measured
 again when the project opens.
 
@@ -211,8 +290,8 @@ slightly grey on one.
 The **Stitching** section's line shows when it's done (see *Seam alignment*
 above).
 
-Like the seam alignment, changing **Lens guards** measures the clip's file
-again. Projects from older versions of orbis-reframe matched the lenses
+Like the seam alignment, changing **Lens guards** or **Lens calibration**
+measures the clip's file again. Projects from older versions of orbis-reframe matched the lenses
 frame by frame, or measured the lens colour without the colours a clipped
 part still has; their clips are measured again when the project opens, so
 their colour along the seam changes slightly.

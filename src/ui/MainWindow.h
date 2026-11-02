@@ -302,6 +302,18 @@ private:
                                          const ClipItem &target) const;
     // The Stitching panel shows the clip it edits (editClipId), or nothing.
     void syncStitchingPanel();
+    // Lens calibrations (Calibrate lenses): the one kept for `sourcePath`'s
+    // camera and `guard`, if it was made against the calibration its file
+    // carries; what a clip whose guard changes to `guard` gets in place of
+    // `current` (a clip on the file's stays on it).
+    std::optional<stitch::LensCalibration> storedLensCalibration(
+        const QString &sourcePath, stitch::PreviewStitchConfig::LensGuard guard) const;
+    std::optional<stitch::LensCalibration> lensCalibrationForGuard(
+        const QString &sourcePath, const std::optional<stitch::LensCalibration> &current,
+        stitch::PreviewStitchConfig::LensGuard guard) const;
+    // A file new to the timeline takes its camera's calibration, if one is kept.
+    void applyStoredLensCalibration(const QString &sourcePath);
+    void openLensCalibration();
     // Privacy blur (Privacy panel): the panel for the clip being edited;
     // every source's blur (and "Show regions" outlines) to playback.
     void syncPrivacyPanel();
@@ -554,6 +566,9 @@ private:
     std::unique_ptr<TrackFiles> m_trackFiles; // audio files and overlay videos onto tracks
     WaveformCache *m_waveforms = nullptr;
     LensGuardCache *m_lensGuards = nullptr; // which guard profiles each 360 file has
+    // The Stitching panel's lens calibration choices for the clip it shows
+    // (none = the camera file's), in its list's order.
+    std::vector<std::optional<stitch::LensCalibration>> m_calibrationChoices;
     TelemetryCache *m_telemetry = nullptr; // each 360 file's GPS and motion (fieldSources)
     // The Media tab's thumbnails on disk; shared with the panel's worker
     // threads, which may outlive this window's members.

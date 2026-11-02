@@ -128,14 +128,14 @@ int main(int argc, char** argv) {
               << config.width << "x" << config.height
               << ", metadata + trailer only, no stitching yet)..." << std::endl;
     if (seam_in >= 0) {
-        const auto r = stitch::MeasureClipSeam(input_path, seam_in, seam_out, config.lensGuard);
+        const auto r = stitch::MeasureClipSeam(input_path, seam_in, seam_out, config.lensGuard, nullptr);
         std::cout << "Seam: " << (r.ok ? "ok" : "FAILED") << " (" << r.message << ")" << std::endl;
         seam_ok = r.ok;
         seam = r.correction;
     }
     if (colour_in >= 0) {
         const auto r = stitch::MeasureClipLensColour(input_path, colour_in, colour_out,
-                                                     config.lensGuard, seam_ok ? seam : insv::SeamCorrection{});
+                                                     config.lensGuard, nullptr, seam_ok ? seam : insv::SeamCorrection{});
         std::cout << "Lens colour: " << (r.ok ? "ok" : "FAILED") << " (" << r.message << ")"
                   << std::endl;
         if (r.ok)

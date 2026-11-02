@@ -192,6 +192,7 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     req.syncAdjustMs = std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs;
     seamCorrectionFor(c.sourcePath, req.seamCorrection, req.lensColour);
     req.lensGuard = c.lensGuard;
+    req.lensCalibration = c.lensCalibration;
     req.depthSeam = c.depthSeam;
     req.captureTiming = StabilizerCache::captureTimingOn(c);
     return req;

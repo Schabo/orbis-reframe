@@ -495,7 +495,7 @@ void testInsertLensGuard()
     CHECK(tl.clipById(first)->lensGuard == G::None); // not the Premium default
     const int x5 = tl.appendClip("x5.insv", 10000, 30.0, 3840, 3840);
     CHECK(tl.clipById(x5)->lensGuard == G::None); // inherited from the clip before
-    tl.setSourceStitch("x5.insv", G::Premium, true);
+    tl.setSourceStitch("x5.insv", G::Premium, true, std::nullopt);
     const int x2 = tl.appendClip("x2b.insv", 10000, 30.0, 2880, 2880, 0, false, none);
     CHECK(tl.clipById(x2)->lensGuard == G::None);
     const int one = tl.appendClip("one.insv", 10000, 30.0, 3840, 3840, 0, false, standardOnly);
@@ -505,7 +505,7 @@ void testInsertLensGuard()
     CHECK(tl.clipById(x5b)->lensGuard == G::None); // x5's Premium, which it lacks
 
     // A stored guard the file lacks stays with the file's other clips.
-    tl.setSourceStitch("x2.insv", G::Premium, true);
+    tl.setSourceStitch("x2.insv", G::Premium, true, std::nullopt);
     const int again = tl.appendClip("x2.insv", 10000, 30.0, 2880, 2880, 0, false, none);
     CHECK(tl.clipById(again)->lensGuard == G::Premium);
 }

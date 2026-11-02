@@ -33,6 +33,7 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
     sc.width = 7680;
     sc.height = 3840;
     sc.lensGuard = req.lensGuard;
+    sc.lensCalibration = req.lensCalibration;
     sc.depthSeam = req.depthSeam;
     if (!src.Open(req.clipPath, sc) || !src.SeekTo(req.fromMs)) {
         err = src.GetLastError();

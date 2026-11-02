@@ -69,7 +69,8 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 }
 
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
-                            PreviewStitchConfig::LensGuard guard, insv::InsvCalibration& calib,
+                            PreviewStitchConfig::LensGuard guard,
+                            const LensCalibration* calibration, insv::InsvCalibration& calib,
                             insv::StitchParams& params, std::string& err, bool* guardFound) {
     if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2) {
         err = "not a dual-fisheye clip";
@@ -84,6 +85,21 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
     params.outPitchDeg = clip.mountPitchDeg;
     params.outRollDeg = clip.mountRollDeg;
     const insv::LensProfile* bare = clip.bareLens ? &*clip.bareLens : nullptr;
+    if (calibration && !calibration->matchesFile(calib.lensesExt[0], calib.lensesExt[1])) {
+        std::fprintf(stderr, "[stitch] the lens calibration of %s isn't for this file's "
+                             "camera calibration; stitching with the file's\n",
+                     calibration->created.c_str());
+        calibration = nullptr;
+    }
+    if (calibration) {
+        // The guard was over the lenses when the chart was filmed: it is in
+        // the calibration, so the lens is taken as it is.
+        ApplyLensCalibration(*calibration, calib.lensesExt[0], calib.lensesExt[1]);
+        insv::ApplyLensProfile(params, bare, nullptr);
+        if (guardFound)
+            *guardFound = true;
+        return true;
+    }
     const insv::LensProfile* acc = LensGuardProfile(clip, guard);
     bool found = insv::ApplyLensProfile(params, bare, acc);
     if (guard != PreviewStitchConfig::LensGuard::None && !acc)
@@ -124,7 +140,9 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     insv::InsvCalibration calib;
     insv::StitchParams params;
     bool guardFound = true;
-    if (!DualFisheyeStitchSetup(*clip, config.lensGuard, calib, params, err, &guardFound)) {
+    const LensCalibration* lensCal = config.lensCalibration ? &*config.lensCalibration : nullptr;
+    if (!DualFisheyeStitchSetup(*clip, config.lensGuard, lensCal, calib, params, err,
+                                &guardFound)) {
         last_error_ = err + ": " + clip_path;
         return false;
     }
@@ -142,6 +160,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     params.depthSeam = config.depthSeam;
     clip_path_ = clip_path;
     lens_guard_ = config.lensGuard;
+    lens_calibration_ = config.lensCalibration;
     analysis_dirty_ = true;
     seam_state_ = insv::SeamState{};
     if (!seam_costs_)
@@ -478,7 +497,8 @@ bool NativeStitchSource::seamStateFor(int64_t pts_ms,
         analysis_dirty_ = false;
         analysis_.reset();
         if (analysis_enabled_ && params_.depthSeam && !clip_path_.empty())
-            analysis_ = SeamAnalysisFor({clip_path_, lens_guard_, params_.seam, params_.lensColour});
+            analysis_ = SeamAnalysisFor(
+                {clip_path_, lens_guard_, params_.seam, params_.lensColour, lens_calibration_});
     }
     if (analysis_ && analysis_->stateAt(pts_ms, seam_state_))
         return true; // as every path stitches this frame

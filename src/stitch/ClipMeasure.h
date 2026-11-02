@@ -30,10 +30,12 @@ enum class MeasureFailure {
 };
 
 // Reads `clipPath`'s metadata and sets its stitch up as NativeStitchSource
-// would for `lensGuard`. None on success, with `clip` (optional) set;
-// otherwise the kind, with `err`.
+// would for `lensGuard` and `calibration` (the camera's own, or null for the
+// file's). None on success, with `clip` (optional) set; otherwise the kind,
+// with `err`.
 MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       PreviewStitchConfig::LensGuard lensGuard,
+                                      const LensCalibration* calibration,
                                       insv::InsvCalibration& calib, insv::StitchParams& params,
                                       std::string& err,
                                       std::shared_ptr<const camera::ClipMetadata>* clip = nullptr);

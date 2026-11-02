@@ -7,7 +7,8 @@
 # prints a STATUS line and skips them if the FFmpeg dev packages are absent.
 # libavfilter-dev is among them (atempo time-stretch for clip speed, 2026-09-27).
 # OpenCV (libopencv-dev) -> insv_optical + tools/residual_stab, also
-# optional. Subject tracking (src/track/ -> "Track subject" in the Reframe
+# optional; its objdetect module -> lens calibration (src/calib/,
+# "Calibrate lenses" in the Stitching panel, tools/lens_calib). Subject tracking (src/track/ -> "Track subject" in the Reframe
 # panel, tools/track_subject) additionally needs the contrib tracking + dnn
 # modules (libopencv-contrib-dev); without them the button is hidden.
 # ncnn -> the privacy blur's plate scan ("Scan clip" in the Privacy panel,

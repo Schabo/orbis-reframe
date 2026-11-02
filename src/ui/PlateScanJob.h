@@ -35,6 +35,7 @@ struct Request {
     insv::SeamCorrection seamCorrection;
     insv::LensColour lensColour;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    std::optional<stitch::LensCalibration> lensCalibration;
     bool depthSeam = true;
     // The capture-time correction, as playback has it: on with the
     // stabilization on (when the clip has a gyro track).

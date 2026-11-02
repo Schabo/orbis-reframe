@@ -21,6 +21,7 @@ bool ClipViewSource::open(std::string &err)
     sc.width = m_spec.stitchWidth & ~1;
     sc.height = sc.width / 2 & ~1;
     sc.lensGuard = job.lensGuard;
+    sc.lensCalibration = job.lensCalibration;
     sc.depthSeam = job.depthSeam;
     m_src = std::make_unique<stitch::NativeStitchSource>();
     if (!m_src->Open(job.clipPath.toStdString(), sc)) {

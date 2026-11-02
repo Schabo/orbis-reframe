@@ -16,6 +16,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onF
     sc.width = req.workWidth & ~1;
     sc.height = (sc.width / 2) & ~1;
     sc.lensGuard = req.lensGuard;
+    sc.lensCalibration = req.lensCalibration;
     stitch::NativeStitchSource src;
     if (!src.Open(req.clipPath, sc) || !src.SeekTo(req.fromMs)) {
         res.error = src.GetLastError();

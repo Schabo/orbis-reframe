@@ -1,4 +1,6 @@
 #include "Project.h"
+
+#include "LensCalibrationJson.h"
 #include "TitleClock.h"
 
 #include "MediaPool.h"
@@ -472,6 +474,7 @@ struct ParsedClip {
     int lensColourGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     bool depthSeam = true;
+    std::optional<stitch::LensCalibration> lensCalibration;
     bool flat = false;
     ClipItem::Fit fit = ClipItem::Fit::Bars;
 };
@@ -1213,6 +1216,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
     bool mixedStitch = false;
+    bool anyLensCalibration = false; // a clip stitched with its camera's own calibration
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         const std::string source =
@@ -1250,6 +1254,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"stabilization", stabilizationToJson(c.stabilization)},
             {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)}, {"depthSeam", c.depthSeam}}},
         });
+        if (c.lensCalibration && !c.flat) {
+            clips.back()["stitch"]["calibration"] = lenscal::ToJson(*c.lensCalibration);
+            anyLensCalibration = true;
+        }
         // The split, with every pane camera (kept ones of a smaller layout
         // too); absent when there's neither.
         const bool paneKeys = std::any_of(c.panes.begin(), c.panes.end(),
@@ -1387,7 +1395,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyMotionOverlay        ? kMotionOverlayFormatVersion
+        {"version", anyLensCalibration      ? kLensCalibrationFormatVersion
+                    : anyMotionOverlay        ? kMotionOverlayFormatVersion
                     : anyGauge                ? kGaugeFormatVersion
                     : anyBrace                ? kClockFormatVersion
                     : anyMotion               ? kMotionFormatVersion
@@ -1503,6 +1512,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             if (jc.contains("stitch") && jc.at("stitch").is_object()) {
                 lensGuardFromJson(jc.at("stitch"), pc.lensGuard);
                 pc.depthSeam = jc.at("stitch").value("depthSeam", pc.depthSeam);
+                if (jc.at("stitch").contains("calibration"))
+                    pc.lensCalibration = lenscal::FromJson(jc.at("stitch").at("calibration"));
             }
             if (jc.contains("syncAdjustMs") && jc.at("syncAdjustMs").is_number())
                 pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
@@ -1645,7 +1656,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
         m_timeline->setClipSpeed(id, pc.speed);
         if (!pc.flat)
-            m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.depthSeam);
+            m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.depthSeam,
+                                        pc.lensCalibration);
         if (!std::isnan(pc.syncAdjustMs))
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
         if (pc.seamAdjustGuard >= 0)

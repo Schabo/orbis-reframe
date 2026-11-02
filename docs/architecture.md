@@ -71,6 +71,7 @@ discussion in an issue first, not a pull request.
 | `src/export/` | Export: the CPU reproject (`ReframeRenderer`), flattening the timeline into the encoder, flat-video reading, inset compositing | FFmpeg |
 | `src/privacy/` | Number-plate scan, tracking and blur regions | `insv`, ncnn |
 | `src/track/` | Track subject | OpenCV |
+| `src/calib/` | Lens calibration from a clip of the chart: ChArUco corners in both lenses, the stitch's lens model fitted to them | `camera`, `insv`, OpenCV (objdetect) |
 | `src/ui/` | The Qt Widgets app: main window, panels, timeline widget, playback, background jobs | everything above |
 
 `tools/` holds command-line tools that link the same libraries, for checking
@@ -83,7 +84,8 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    hwaccel into NV12 (8-bit) or P010 (10-bit) images, with a CPU decode
    fallback when the GPU path can't be used.
 2. **Stitch** (`render/VulkanFisheyeStitcher`, `fisheye_stitch*.comp`): the
-   lens calibration from the file, the lens-guard profile and the
+   lens calibration from the file (or the clip's own, made with Calibrate
+   lenses, which has the guard in it), the lens-guard profile and the
    depth-aware seam turn the two fisheyes into the sphere. Privacy blur
    regions are applied here, on the sphere. The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the
@@ -169,6 +171,10 @@ A project is one `.orp` file (JSON), written by `core/Project`.
   A change that breaks old files needs `BREAKING CHANGE:` in the commit.
 - **Paths**: media and LUTs inside the project folder are stored relative to
   it, so a project folder can be moved.
+- **Copies, not references, of what lives outside it**: a clip's own lens
+  calibration (made with Calibrate lenses and kept app-wide per camera) is
+  copied into the clip, so the project stitches the same on another
+  computer and doesn't change when the camera is calibrated again.
 
 App-wide settings (theme, last folders, window layout) live in the app's
 settings, not the project. The test is: would a second person opening the

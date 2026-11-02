@@ -392,11 +392,14 @@ public slots:
     // mediaMissingChanged() -- not an edit, nothing else. Returns the paths
     // whose clips changed.
     QStringList setSourcesMissing(const QHash<QString, bool> &missing);
-    // The stitch settings (ClipItem::lensGuard / depthSeam) for every clip
-    // cut from `sourcePath`; the Stitching panel edits them. Emits
+    // The stitch settings (ClipItem::lensGuard / depthSeam /
+    // lensCalibration) for every clip cut from `sourcePath`; the Stitching
+    // panel edits them. A different calibration drops the source's seam
+    // fine-tune and lens colour (measured through the old one). Emits
     // clipStitchChanged per clip that changed.
     void setSourceStitch(const QString &sourcePath, stitch::PreviewStitchConfig::LensGuard lensGuard,
-                         bool depthSeam);
+                         bool depthSeam,
+                         const std::optional<stitch::LensCalibration> &calibration);
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);

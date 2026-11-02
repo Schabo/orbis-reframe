@@ -1,6 +1,9 @@
 #pragma once
 
+#include "LensCalibration.h"
+
 #include <cstdint>
+#include <optional>
 #include <functional>
 #include <string>
 #include <utility>
@@ -53,7 +56,7 @@ struct CaptureTiming {
 // depthSeam).
 //
 // NativeStitchSource honours width/height (the equirect output size),
-// lensGuard and depthSeam. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
+// lensGuard, depthSeam and lensCalibration. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
 struct PreviewStitchConfig {
     enum class Quality { Template, OpticalFlow };
 
@@ -78,17 +81,24 @@ struct PreviewStitchConfig {
     // both lenses treated as one point (infinite stitch distance).
     bool depthSeam = true;
 
+    // The camera's own lens calibration (Calibrate lenses) in place of the
+    // file's; none = the file's. The guard is in it: no guard profile goes
+    // on top. The clip's own, like lensGuard (ClipItem::lensCalibration).
+    std::optional<LensCalibration> lensCalibration;
+
     // A stable per-config string (logs, tests); nothing caches by it today.
     std::string cacheTag() const {
         const std::string size =
             width > 0 ? std::to_string(width) + "x" + std::to_string(height) : "auto";
         return "v7-" + size + "-" + (quality == Quality::OpticalFlow ? "of" : "tmpl") + "-g" +
-               std::to_string(static_cast<int>(lensGuard)) + (depthSeam ? "-d" : "");
+               std::to_string(static_cast<int>(lensGuard)) + (depthSeam ? "-d" : "") +
+               (lensCalibration ? "-c" + lensCalibration->created : "");
     }
 
     bool operator==(const PreviewStitchConfig& o) const {
         return quality == o.quality && width == o.width && height == o.height &&
-               lensGuard == o.lensGuard && depthSeam == o.depthSeam;
+               lensGuard == o.lensGuard && depthSeam == o.depthSeam &&
+               lensCalibration == o.lensCalibration;
     }
     bool operator!=(const PreviewStitchConfig& o) const { return !(*this == o); }
 };

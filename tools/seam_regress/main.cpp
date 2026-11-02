@@ -709,7 +709,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     insv::InsvCalibration calib;
     insv::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> meta;
-    if (stitch::PrepareClipMeasurement(e.clip, e.guard, calib, params, err, &meta) !=
+    if (stitch::PrepareClipMeasurement(e.clip, e.guard, nullptr, calib, params, err, &meta) !=
         stitch::MeasureFailure::None)
         return false;
 
@@ -718,7 +718,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     if (e.seam) {
         seam = *e.seam;
     } else {
-        const auto r = stitch::MeasureClipSeam(e.clip, 0, meta->durationMs, e.guard);
+        const auto r = stitch::MeasureClipSeam(e.clip, 0, meta->durationMs, e.guard, nullptr);
         seamFrom = r.ok ? "measured" : "none (" + r.message + ")";
         if (r.ok)
             seam = r.correction;
@@ -728,7 +728,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     if (e.colour) {
         colour = *e.colour;
     } else {
-        const auto r = stitch::MeasureClipLensColour(e.clip, 0, meta->durationMs, e.guard, seam);
+        const auto r = stitch::MeasureClipLensColour(e.clip, 0, meta->durationMs, e.guard, nullptr, seam);
         colourFrom = r.ok ? "measured" : "none (" + r.message + ")";
         if (r.ok)
             colour = r.colour;

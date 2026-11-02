@@ -15,6 +15,7 @@ constexpr int kSeamFrames = 8;
 
 ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, int64_t trimOutMs,
                                PreviewStitchConfig::LensGuard lensGuard,
+                               const LensCalibration* calibration,
                                const std::atomic<bool>* cancel)
 {
     ClipSeamResult out;
@@ -28,7 +29,7 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
     insv::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> clip;
     if (const MeasureFailure why =
-            PrepareClipMeasurement(clipPath, lensGuard, calib, params, err, &clip);
+            PrepareClipMeasurement(clipPath, lensGuard, calibration, calib, params, err, &clip);
         why != MeasureFailure::None)
         return fail(why, err);
 

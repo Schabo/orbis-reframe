@@ -76,7 +76,9 @@ public:
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
     //   pitchOffsetRad, rollOffsetRad, autoLevel (absent => true); optional:
     //   lockDirection, directionSec},
-    //   stitch {lensGuard, depthSeam} (absent => previewStitch's);
+    //   stitch {lensGuard, depthSeam, optional: calibration -- the
+    //   camera's own lens calibration (LensCalibrationJson), absent => the
+    //   file's} (absent => previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
@@ -156,8 +158,11 @@ public:
     // "view" and "aheadS") and the
     // `{lean}` and `{g}` fields, written only when a project has one: an
     // older build would draw such a gauge as a speed dial, and show the
-    // field's braces.
-    static constexpr int kFormatVersion = 20;
+    // field's braces. Version 21 added a clip's own lens calibration (its
+    // "stitch" object's "calibration", LensCalibrationJson), written only
+    // when a clip has one: an older build would stitch it with the file's.
+    static constexpr int kFormatVersion = 21;
+    static constexpr int kLensCalibrationFormatVersion = 21;
     static constexpr int kMotionOverlayFormatVersion = 20;
     static constexpr int kClockFormatVersion = 19;
     static constexpr int kGaugeFormatVersion = 19;

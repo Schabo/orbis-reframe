@@ -18,6 +18,7 @@ each tool is for and when you'd reach for it. The examples use clips from
 | [`view_compare`](#view_compare) | compare the direct view render with the equirect path | GPU |
 | [`seam_regress`](#seam_regress) | measure the seam on a list of frames, against the last run | GPU |
 | [`stitch_bench`](#stitch_bench) | score a stitcher's picture over a stretch, against Insta360 Studio's | GPU, OpenCV |
+| [`lens_calib`](#lens_calib) | calibrate a camera's lenses from a clip of the chart, without the app | OpenCV |
 | [`reframe_export`](#reframe_export) | export a reframed flat video without the app | GPU, hw encoder |
 | [`residual_stab`](#residual_stab) | measure the shake left after gyro stabilization | GPU, OpenCV |
 | [`track_subject`](#track_subject) | try subject tracking and make a follow-cam | GPU, OpenCV contrib |
@@ -265,7 +266,9 @@ start and end in seconds, then any of:
   `depth=on|off` (the depth-aware seam, default on), `rs=on|off` (the
   capture-time correction from the gyro, default on), and `seam=` /
   `colour=` as in `seam_regress` (measured over the whole clip when not
-  given; `seam=0,0,0,0,0,0` for none);
+  given; `seam=0,0,0,0,0,0` for none), and `calibration=FILE.json` (a
+  camera's own lens calibration, as `lens_calib --out` writes it and the
+  app keeps it, in place of the file's);
 - `ref=FILE` (the reference video), `refstart=S` (the clip time of its first
   frame) and `refrot=Z,Y,X` (the rotation from our sphere to the reference's,
   as in `seam_regress`); or `ref=template`: our own stitch of the same
@@ -338,6 +341,40 @@ build/stitch_bench tmp/bench/list.tsv --out tmp/bench/before
 build/stitch_bench tmp/bench/list.tsv --out tmp/bench/after --baseline tmp/bench/before
 mpv tmp/bench/after/x5a_app_strip.y4m
 ```
+
+## lens_calib
+
+The app's **Calibrate lenses** without the app (`src/calib/`, the user's
+side in the manual's *Stitching* chapter): finds the chart's corners in a
+clip filmed of it, fits the stitch's lens model to them, prints the figures
+the app's result page shows and whether they pass, and writes the
+calibration as the app keeps it.
+
+```sh
+build/lens_calib CLIP.insv --square 41.96 [--guard none|standard|premium] \
+    [--corners corners.txt] [--out calibration.json]
+build/lens_calib --chart 2560 1440 chart.pgm   # the chart for a screen
+```
+
+- `--square MM`: the chart's square as it was shown.
+- `--guard`: what was over the lenses: recorded in the calibration, and the
+  file's model is compared with the guard's profile on top, as the app
+  stitches without a calibration.
+- `--corners FILE`: the detections. Read if the file exists, else found and
+  written there, so the fit can be run again without the long part (finding
+  the chart takes about twice the clip's length).
+- `--out FILE`: the calibration, JSON. `stitch_bench`'s `calibration=` and
+  a copy in the app's `calibrations/` folder take it.
+
+It prints the frames used per lens, the fit's error (rms, pixels) against
+the file's model's on the same corners, the lens 0 -> 1 transfer (the board's
+pose from lens 0 alone, lens 1's corners predicted, median angle), how far
+out each lens saw the chart, and how far the new model moves the picture
+where the lenses meet. The exit code is 0 when it passes the app's checks,
+3 when it doesn't.
+
+**When:** working on the calibration, or checking a chart recording before
+going through the app.
 
 ## reframe_export
 

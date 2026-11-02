@@ -16,7 +16,8 @@ namespace stitch {
 
 ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, int64_t trimOutMs,
                                const std::atomic<bool>* cancel,
-                               PreviewStitchConfig::LensGuard lensGuard)
+                               PreviewStitchConfig::LensGuard lensGuard,
+                               const LensCalibration* calibration)
 {
     ClipSyncResult out;
     const auto fail = [&out](MeasureFailure why, std::string message) {
@@ -29,7 +30,7 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
     std::string err;
     insv::InsvCalibration calib;
     insv::StitchParams params;
-    if (const MeasureFailure why = PrepareClipMeasurement(clipPath, lensGuard, calib, params, err);
+    if (const MeasureFailure why = PrepareClipMeasurement(clipPath, lensGuard, calibration, calib, params, err);
         why != MeasureFailure::None)
         return fail(why, err);
     const auto imu = camera::ReadClipImu(clipPath);
@@ -49,6 +50,8 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
     cfg.width = 1024;
     cfg.height = 512;
     cfg.lensGuard = lensGuard;
+    if (calibration)
+        cfg.lensCalibration = *calibration;
     if (!src.Open(clipPath, cfg))
         return fail(MeasureFailure::Unreadable, src.GetLastError());
 

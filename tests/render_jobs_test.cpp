@@ -1705,11 +1705,11 @@ void testClipJob(const QString &dir)
     CHECK(!job.stab);    // stabilization off
     CHECK(!job.poseAt);  // no keys: looking straight ahead
     CHECK(!job.blur);    // no blur
-    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Standard, false);
+    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Standard, false, std::nullopt);
     job = renderjobs::clipJob(t.clipAt(0), t, privacy);
     CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard && !job.depthSeam);
     CHECK(job.seamCorrection.lens1RotDeg[1] == 0.0); // measured under another guard
-    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Premium, true);
+    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Premium, true, std::nullopt);
 
     t.upsertClipReframeKey(id, 3000, {0.5f, 0.0f, 0.0f, 1.2f});
     job = renderjobs::clipJob(t.clipAt(0), t, privacy);

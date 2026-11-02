@@ -8,12 +8,14 @@
 #include <ColorLut.h>       // color::Grade (no Qt)
 #include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
+#include <LensCalibration.h> // stitch::LensCalibration (plain data)
 #include <LensColour.h>     // insv::LensColour (POD)
 #include <SeamCorrection.h> // insv::SeamCorrection (POD)
 
 #include <QString>
 
 #include <cmath>
+#include <optional>
 
 #include <array>
 #include <cstdint>
@@ -176,6 +178,11 @@ struct ClipItem {
     // Unused on a flat clip.
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     bool depthSeam = true;
+    // The camera's own lens calibration (Calibrate lenses) in place of the
+    // one its file carries; none = the file's. A copy, not a reference to
+    // the app's: the project stitches the same wherever it is opened,
+    // whatever is calibrated later. Shared like lensGuard.
+    std::optional<stitch::LensCalibration> lensCalibration;
 
     // Measured video<->IMU sync fine-tune for this source, ms, added to the
     // trailer-derived offset (stitch::MeasureClipSync). NaN = not measured yet.

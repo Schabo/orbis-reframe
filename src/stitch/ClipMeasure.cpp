@@ -8,6 +8,7 @@ namespace stitch {
 
 MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       PreviewStitchConfig::LensGuard lensGuard,
+                                      const LensCalibration* calibration,
                                       insv::InsvCalibration& calib, insv::StitchParams& params,
                                       std::string& err,
                                       std::shared_ptr<const camera::ClipMetadata>* clip)
@@ -17,7 +18,7 @@ MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
     if (!meta)
         return why == camera::ReadFailure::NotCamera ? MeasureFailure::NotCamera
                                                      : MeasureFailure::Unreadable;
-    if (!DualFisheyeStitchSetup(*meta, lensGuard, calib, params, err))
+    if (!DualFisheyeStitchSetup(*meta, lensGuard, calibration, calib, params, err))
         return MeasureFailure::Unsupported;
     if (clip)
         *clip = meta;

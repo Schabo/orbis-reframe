@@ -97,10 +97,11 @@ public:
         // The Colour panel grade (its LUT and four adjustments), static for
         // the whole clip (no colour keyframing). Default => neutral.
         color::Grade colorGrade;
-        // The clip's stitch settings (ClipItem::lensGuard / depthSeam) --
-        // same geometry as the preview.
+        // The clip's stitch settings (ClipItem::lensGuard / depthSeam /
+        // lensCalibration) -- same geometry as the preview.
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
         bool depthSeam = true;
+        std::optional<stitch::LensCalibration> lensCalibration;
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg) and lens colour.
         insv::SeamCorrection seamCorrection;
         insv::LensColour lensColour;

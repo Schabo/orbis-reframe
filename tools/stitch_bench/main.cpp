@@ -19,6 +19,9 @@
 //   seam=Y,P,R,CU,CV,S             the clip's seam correction (current;
 //                                  measured over the clip when not given)
 //   colour=R,G,B,SR,SG,SB,SPREAD   its lens colour (likewise)
+//   calibration=FILE.json          the camera's own lens calibration (as
+//                                  the app keeps it, tools/lens_calib's
+//                                  --out) in place of the file's (current)
 //   ref=FILE|template              the reference: a stitched equirect video
 //                                  (Studio's export), or our own stitch from
 //                                  the file's data alone, whose geometry
@@ -44,6 +47,8 @@
 // (rows: ours, the reference, |ours colour-matched - reference| x 4).
 
 #include "Metrics.h"
+
+#include <LensCalibrationJson.h>
 
 #include <ClipLensColour.h>
 #include <ClipMeasure.h>
@@ -95,6 +100,7 @@ struct Entry {
     bool captureTiming = true;
     std::optional<insv::SeamCorrection> seam;
     std::optional<insv::LensColour> colour;
+    std::optional<stitch::LensCalibration> calibration;
     std::string ref;
     double refStartMs = 0;
     double refRotDeg[3] = {0, 0, 0}; // z, y, x
@@ -197,6 +203,14 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                 }
                 c.spread = a[6];
                 e.colour = c;
+            } else if (key == "calibration") {
+                std::ifstream cf(v);
+                const nlohmann::json j = nlohmann::json::parse(cf, nullptr, false);
+                e.calibration = lenscal::FromJson(j);
+                if (!e.calibration) {
+                    err = where + "calibration= can't read " + v;
+                    return false;
+                }
             } else if (key == "ref") {
                 e.ref = v;
             } else if (key == "refstart") {
@@ -238,7 +252,7 @@ bool SeamFrameOf(const Entry& e, bench::SeamFrame& out, std::shared_ptr<const ca
 {
     insv::InsvCalibration calib;
     insv::StitchParams params;
-    if (stitch::PrepareClipMeasurement(e.clip, e.guard, calib, params, err, &meta) !=
+    if (stitch::PrepareClipMeasurement(e.clip, e.guard, nullptr, calib, params, err, &meta) !=
         stitch::MeasureFailure::None)
         return false;
     params.depthSeam = true; // for the seam frame
@@ -287,12 +301,13 @@ public:
     bool open(const Entry& e, const Options& opt, const camera::ClipMetadata& meta, std::string& info)
     {
         endMs_ = e.endMs;
+        const stitch::LensCalibration* cal = e.calibration ? &*e.calibration : nullptr;
         insv::SeamCorrection seam;
         std::string seamFrom = "list", colourFrom = "list";
         if (e.seam) {
             seam = *e.seam;
         } else {
-            const auto r = stitch::MeasureClipSeam(e.clip, 0, meta.durationMs, e.guard);
+            const auto r = stitch::MeasureClipSeam(e.clip, 0, meta.durationMs, e.guard, cal);
             seamFrom = r.ok ? "measured" : "none (" + r.message + ")";
             if (r.ok)
                 seam = r.correction;
@@ -301,7 +316,8 @@ public:
         if (e.colour) {
             colour = *e.colour;
         } else {
-            const auto r = stitch::MeasureClipLensColour(e.clip, 0, meta.durationMs, e.guard, seam);
+            const auto r =
+                stitch::MeasureClipLensColour(e.clip, 0, meta.durationMs, e.guard, cal, seam);
             colourFrom = r.ok ? "measured" : "none (" + r.message + ")";
             if (r.ok)
                 colour = r.colour;
@@ -317,10 +333,13 @@ public:
                       colour.slope[0] * 100, colour.slope[1] * 100, colour.slope[2] * 100, colour.spread,
                       colourFrom.c_str());
         info = buf;
+        if (cal)
+            info += "\n  lens calibration " + cal->serial + " " + cal->created;
 
         if (e.depth && !opt.live) {
             const stitch::SeamAnalysisResult r =
-                stitch::AnalyseClipSeam({e.clip, e.guard, seam, colour}, e.startMs, e.endMs);
+                stitch::AnalyseClipSeam({e.clip, e.guard, seam, colour, e.calibration}, e.startMs,
+                                        e.endMs);
             info += "\n  seam analysis: " + r.message;
             if (!r.ok) {
                 error = "seam analysis: " + r.message;
@@ -333,6 +352,7 @@ public:
         config.height = config.width / 2;
         config.lensGuard = e.guard;
         config.depthSeam = e.depth;
+        config.lensCalibration = e.calibration;
         if (!src_.Open(e.clip, config)) {
             error = "open: " + src_.GetLastError();
             return false;

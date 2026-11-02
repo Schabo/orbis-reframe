@@ -2573,7 +2573,8 @@ void MainWindow::pushTimelineToController()
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
-                            c.sourceDurationMs, c.lensGuard, c.depthSeam, c.mediaMissing});
+                            c.sourceDurationMs, c.lensGuard, c.depthSeam, c.mediaMissing,
+                            c.lensCalibration});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }

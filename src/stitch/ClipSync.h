@@ -25,10 +25,12 @@ struct ClipSyncResult {
 
 // Measures over [trimInMs, trimOutMs] of `clipPath` (up to three ~4 s windows
 // spread across it). `cancel` (optional) is polled between frames.
-// `lensGuard` selects the stitch's lens profile, as in the preview.
+// `lensGuard` selects the stitch's lens profile, as in the preview;
+// `calibration` the camera's own lens calibration (null: the file's).
 ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, int64_t trimOutMs,
                                const std::atomic<bool>* cancel = nullptr,
                                PreviewStitchConfig::LensGuard lensGuard =
-                                   PreviewStitchConfig::LensGuard::Premium);
+                                   PreviewStitchConfig::LensGuard::Premium,
+                               const LensCalibration* calibration = nullptr);
 
 } // namespace stitch

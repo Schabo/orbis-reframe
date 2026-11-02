@@ -8,8 +8,10 @@
 #include "support/ModelTest.h"
 
 #include "TitleClock.h"
+#include "LensCalibrationStore.h"
 
 #include <QCoreApplication>
+#include <QStandardPaths>
 
 namespace {
 
@@ -1494,6 +1496,111 @@ void testProjectSummary()
 // A flat video on the main track (ClipItem::flat): its fit and edits round
 // trip, the 360 fields aren't written, and the file is version 11 only while
 // it has one -- a project without stays readable by the builds before.
+// The app's kept calibrations: one per camera and guard, found again for a
+// clip whose file carries the calibration it was made against, and only then.
+void testLensCalibrationStore()
+{
+    QStandardPaths::setTestModeEnabled(true); // not the user's data folder
+    stitch::LensCalibration cal;
+    cal.serial = "IAHEA25088AYDQ";
+    cal.lensGuard = 0;
+    cal.created = "2026-11-02T10:00:00Z";
+    cal.squareMm = 41.96;
+    for (int i = 0; i < 2; ++i) {
+        insv::LensCalibExt e;
+        e.xi = 2, e.fx = 4294.03 - 16 * i, e.fy = 4293.86, e.cx = 2703.31 + 5370 * i;
+        e.cy = 2684.03, e.w = 10752, e.h = 5376, e.focalRefW = 5312;
+        cal.fileLenses[i] = e;
+        e.fx -= 23.7;
+        cal.lenses[i] = e;
+    }
+    QString err;
+    CHECK(lenscal::Save(cal, &err));
+    CHECK(QFile::exists(lenscal::StoreDir() + "/IAHEA25088AYDQ-none.json"));
+    CHECK(lenscal::Load("IAHEA25088AYDQ", 0) == cal);
+    CHECK(!lenscal::Load("IAHEA25088AYDQ", 2)); // another guard
+    CHECK(!lenscal::Load("OTHER", 0));
+    CHECK(lenscal::ForClip("IAHEA25088AYDQ", 0, cal.fileLenses[0], cal.fileLenses[1]) == cal);
+    insv::LensCalibExt other = cal.fileLenses[1];
+    other.fx += 1; // a file with another calibration: not for it
+    CHECK(!lenscal::ForClip("IAHEA25088AYDQ", 0, cal.fileLenses[0], other));
+    QDir(lenscal::StoreDir()).removeRecursively();
+    QStandardPaths::setTestModeEnabled(false);
+}
+
+// A clip's own lens calibration: kept on every clip of its file, saved per
+// clip in full (the project stitches the same without the app's copy),
+// undoable; setting it drops the seam measured through the old one; the
+// version goes up only while a clip has one.
+void testLensCalibrationJson()
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    QTemporaryDir tmp;
+    const QString a = tmp.path() + "/a.insv";
+    writeFile(a);
+    const QString file = tmp.path() + "/cal.orp";
+    auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+    stitch::LensCalibration cal;
+    cal.serial = "IAHEA25088AYDQ";
+    cal.lensGuard = 2;
+    cal.created = "2026-11-02T10:00:00Z";
+    cal.squareMm = 41.96;
+    cal.rmsPx[0] = 0.22, cal.rmsPx[1] = 0.21;
+    cal.transferDeg = 0.019;
+    cal.coverageDeg[0] = 100, cal.coverageDeg[1] = 95;
+    for (int i = 0; i < 2; ++i) {
+        insv::LensCalibExt e;
+        e.xi = 2, e.fx = 4294.03 + i, e.fy = 4293.86, e.cx = 2703.31 + 5370 * i, e.cy = 2684.03;
+        e.yaw = 0.241 / 3, e.pitch = 0.068, e.roll = 89.993, e.tz = -0.031796 * i;
+        e.k[0] = 0.22969893, e.k[3] = -3.16975212, e.p[1] = 0.00040147, e.s[2] = 0.00195414;
+        e.w = 10752, e.h = 5376, e.focalRefW = 5312, e.type = 113;
+        cal.fileLenses[i] = e;
+        e.fx *= 0.9947, e.yaw += 0.1234567890123;
+        cal.lenses[i] = e;
+    }
+
+    QString err;
+    {
+        Project p;
+        Timeline *tl = p.timeline();
+        const int a1 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
+        tl->setSourceSeamCorrection(a, {{-0.5, 0.25, 0.1}}, 2);
+        CHECK(!tl->clipById(a1)->lensCalibration);
+        tl->setSourceStitch(a, G::Premium, true, cal);
+        const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
+        CHECK(tl->clipById(a1)->lensCalibration == cal && tl->clipById(a2)->lensCalibration == cal);
+        // Measured through the file's calibration: gone.
+        insv::SeamCorrection seam;
+        CHECK(!tl->sourceSeamCorrection(a, seam) && tl->clipById(a1)->seamAdjustGuard == -1);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kLensCalibrationFormatVersion);
+        const QJsonObject st = document()
+                                   .value("timeline").toObject()
+                                   .value("clips").toArray().at(0).toObject()
+                                   .value("stitch").toObject();
+        CHECK(st.value("calibration").toObject().value("serial").toString() == "IAHEA25088AYDQ");
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        CHECK(tl->count() == 2);
+        // Read back to the last bit: it stitches the same.
+        CHECK(tl->clipAt(0).lensCalibration == cal && tl->clipAt(1).lensCalibration == cal);
+        tl->setSourceStitch(a, G::Premium, true, std::nullopt);
+        CHECK(!tl->clipAt(0).lensCalibration && !tl->clipAt(1).lensCalibration);
+        p.undo();
+        CHECK(tl->clipAt(0).lensCalibration == cal);
+        tl->setSourceStitch(a, G::Premium, true, std::nullopt);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() < Project::kLensCalibrationFormatVersion);
+    }
+}
+
 // Stitch settings are per source file: kept on every clip of it, saved per
 // clip, and an older project's one setting becomes every clip's.
 void testClipStitchJson()
@@ -1518,12 +1625,12 @@ void testClipStitchJson()
         Timeline *tl = p.timeline();
         const int a1 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
         CHECK(tl->clipById(a1)->lensGuard == G::Premium && tl->clipById(a1)->depthSeam);
-        tl->setSourceStitch(a, G::None, false);
+        tl->setSourceStitch(a, G::None, false, std::nullopt);
         const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
         CHECK(tl->clipById(a2)->lensGuard == G::None && !tl->clipById(a2)->depthSeam);
         const int b1 = tl->appendClip(b, 8000, 30.0, 7680, 3840, 2); // the neighbour's
         CHECK(tl->clipById(b1)->lensGuard == G::None);
-        tl->setSourceStitch(b, G::Standard, true);
+        tl->setSourceStitch(b, G::Standard, true, std::nullopt);
         CHECK(tl->clipById(a1)->lensGuard == G::None && tl->clipById(b1)->lensGuard == G::Standard);
         CHECK(p.save(file, &err));
         // Mixed: the builds before, which read one setting for all, refuse it.
@@ -1545,13 +1652,13 @@ void testClipStitchJson()
         CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).depthSeam);
 
         // An edit, and undo puts it back.
-        p.timeline()->setSourceStitch(b, G::Premium, false);
+        p.timeline()->setSourceStitch(b, G::Premium, false, std::nullopt);
         CHECK(p.canUndo() && p.modified());
         p.undo();
         CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).depthSeam);
 
         // All the same: still the plain version, the project-wide value theirs.
-        p.timeline()->setSourceStitch(b, G::None, false);
+        p.timeline()->setSourceStitch(b, G::None, false, std::nullopt);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
         const QJsonObject ps = document().value("previewStitch").toObject();
@@ -2328,6 +2435,8 @@ int main(int argc, char **argv)
     testProjectSummary();
     testFlatClipJson();
     testClipStitchJson();
+    testLensCalibrationJson();
+    testLensCalibrationStore();
     testPlateScansInUse();
     testTitleJson();
     testGaugeJson();

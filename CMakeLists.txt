@@ -248,6 +248,10 @@ add_library(orbis_core STATIC
     src/core/Gauge.h
     src/core/InsetGeometry.h
     src/core/KeyTrack.h
+    src/core/LensCalibrationJson.cpp
+    src/core/LensCalibrationJson.h
+    src/core/LensCalibrationStore.cpp
+    src/core/LensCalibrationStore.h
     src/core/Log.h
     src/core/MediaPool.cpp
     src/core/MediaPool.h
@@ -472,6 +476,7 @@ if(FFMPEG_FOUND)
     # compute stitch). Links no Qt.
     add_library(stitch STATIC
         src/stitch/IStitchSource.h
+        src/stitch/LensCalibration.h
         src/stitch/NativeStitchSource.h
         src/stitch/NativeStitchSource.cpp
         src/stitch/ProbeClip.h
@@ -794,6 +799,42 @@ if(FFMPEG_FOUND)
         target_include_directories(clip_sync PUBLIC src/stitch)
         target_link_libraries(clip_sync PUBLIC stitch insv_optical)
 
+        # --- lens_calibration: a camera's own lens calibration from a clip
+        # of the chart (src/calib/): ChArUco corners in both lenses, the
+        # stitch's lens model fitted to them. Needs OpenCV's objdetect (in
+        # libopencv-dev); without it the app has no "Calibrate lenses".
+        if(TARGET opencv_objdetect)
+            add_library(lens_calibration STATIC
+                src/calib/ChartBoard.h
+                src/calib/ChartBoard.cpp
+                src/calib/ChartDetector.h
+                src/calib/ChartDetect.h
+                src/calib/ChartDetect.cpp
+                src/calib/LensFit.h
+                src/calib/LensFit.cpp
+            )
+            target_include_directories(lens_calibration PUBLIC src/calib
+                PRIVATE ${OpenCV_INCLUDE_DIRS})
+            target_link_libraries(lens_calibration PUBLIC camera insv insv_demux
+                PRIVATE opencv_core opencv_imgproc opencv_objdetect)
+            target_include_directories(lens_calibration PUBLIC src/stitch)
+
+            # tools/lens_calib: the calibration without the app.
+            add_executable(lens_calib tools/lens_calib/main.cpp)
+            target_link_libraries(lens_calib PRIVATE lens_calibration orbis_core)
+
+            add_executable(lens_calib_test tests/lens_calib_test.cpp)
+            target_link_libraries(lens_calib_test PRIVATE lens_calibration orbis_core)
+            add_test(NAME lens_calib_test COMMAND lens_calib_test)
+
+            target_sources(orbis_app PRIVATE src/ui/LensCalibrationDialog.cpp
+                src/ui/LensCalibrationDialog.h)
+            target_link_libraries(orbis_app PUBLIC lens_calibration)
+            target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_LENS_CALIBRATION)
+        else()
+            message(STATUS "OpenCV objdetect module not found -- no lens calibration")
+        endif()
+
         # --- tools/stitch_bench: any stitcher's sphere over a stretch of a
         # clip -- the app's or a stitched video such as Insta360 Studio's
         # export -- against a reference video: PSNR, geometry, the band's
@@ -802,7 +843,8 @@ if(FFMPEG_FOUND)
         # stitch_bench_test).
         add_executable(stitch_bench tools/stitch_bench/main.cpp)
         target_include_directories(stitch_bench PRIVATE src/insv src/stitch src/export)
-        target_link_libraries(stitch_bench PRIVATE stitch stitch_bench_metrics reframe_flatten)
+        target_link_libraries(stitch_bench PRIVATE stitch stitch_bench_metrics reframe_flatten
+            orbis_core)
 
         add_executable(residual_stab tools/residual_stab/main.cpp)
         target_include_directories(residual_stab PRIVATE src/insv src/stitch src/export)
@@ -1085,6 +1127,9 @@ if(ORBIS_REQUIRE_ALL_FEATURES)
     endif()
     if(NOT TARGET clip_sync)
         list(APPEND missing "gyro sync fine-tune (libopencv-dev)")
+    endif()
+    if(NOT TARGET lens_calibration)
+        list(APPEND missing "lens calibration (libopencv-dev)")
     endif()
     if(NOT TARGET subject_track)
         list(APPEND missing "subject tracking (libopencv-contrib-dev)")

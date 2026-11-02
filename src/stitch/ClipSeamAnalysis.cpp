@@ -114,7 +114,16 @@ std::string SeamAnalysisKey::id() const
                   seam.lens1RotDeg[2], seam.lens1Centre[0], seam.lens1Centre[1], seam.radialScale,
                   colour.logRatio[0], colour.logRatio[1], colour.logRatio[2], colour.slope[0],
                   colour.slope[1], colour.slope[2], colour.spread);
-    return buf;
+    std::string out = buf;
+    if (calibration) {
+        // Which calibration: when it was made, and its lenses' focal lengths
+        // (a recalibration changes both).
+        std::snprintf(buf, sizeof(buf), "|cal %s %s %.17g %.17g", calibration->serial.c_str(),
+                      calibration->created.c_str(), calibration->lenses[0].fx,
+                      calibration->lenses[1].fx);
+        out += buf;
+    }
+    return out;
 }
 
 SeamAnalysis::SeamAnalysis(std::string id, std::string file)
@@ -424,6 +433,7 @@ SeamAnalysisResult AnalyseClipSeam(const SeamAnalysisKey& key, int64_t inMs, int
     config.width = 64; // nothing is stitched
     config.height = 32;
     config.lensGuard = key.guard;
+    config.lensCalibration = key.calibration;
     config.depthSeam = true;
     NativeStitchSource src;
     if (!src.Open(key.path, config)) {

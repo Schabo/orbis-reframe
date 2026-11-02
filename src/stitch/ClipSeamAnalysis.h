@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,7 @@ struct SeamAnalysisKey {
     PreviewStitchConfig::LensGuard guard = PreviewStitchConfig::LensGuard::Premium;
     insv::SeamCorrection seam;
     insv::LensColour colour;
+    std::optional<LensCalibration> calibration; // the camera's own; none = the file's
 
     // Canonical text of it with the file's size and time and
     // kSeamAnalysisVersion: two keys are the same analysis when it is.

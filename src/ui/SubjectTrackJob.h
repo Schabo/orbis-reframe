@@ -36,6 +36,7 @@ struct Request {
     // The clip's gyro de-rotation, as the viewport applies it; null => off.
     std::shared_ptr<const insv::GyroStabilizer> stab;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    std::optional<stitch::LensCalibration> lensCalibration;
     insv::SeamCorrection seamCorrection;
     insv::LensColour lensColour;
     int workWidth = 3840;     // analysis equirect width (2:1)

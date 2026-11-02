@@ -225,6 +225,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
         if (o.sourcePath == sourcePath) {
             c.lensGuard = o.lensGuard;
             c.depthSeam = o.depthSeam;
+            c.lensCalibration = o.lensCalibration;
             if (!std::isnan(o.syncAdjustMs))
                 c.syncAdjustMs = o.syncAdjustMs;
             c.seamCorrection = o.seamCorrection;
@@ -656,13 +657,24 @@ void Timeline::setClipBlurRemovals(int clipId, const std::vector<privacy::BlurRe
 }
 
 void Timeline::setSourceStitch(const QString &sourcePath,
-                               stitch::PreviewStitchConfig::LensGuard lensGuard, bool depthSeam)
+                               stitch::PreviewStitchConfig::LensGuard lensGuard, bool depthSeam,
+                               const std::optional<stitch::LensCalibration> &calibration)
 {
     for (ClipItem &c : m_clips) {
-        if (c.sourcePath != sourcePath || (c.lensGuard == lensGuard && c.depthSeam == depthSeam))
+        if (c.sourcePath != sourcePath || (c.lensGuard == lensGuard && c.depthSeam == depthSeam &&
+                                           c.lensCalibration == calibration))
             continue;
+        if (c.lensCalibration != calibration) {
+            // The seam fine-tune and lens colour were measured through the
+            // old calibration: measure again.
+            c.seamCorrection = {};
+            c.seamAdjustGuard = -1;
+            c.lensColour = {};
+            c.lensColourGuard = -1;
+        }
         c.lensGuard = lensGuard;
         c.depthSeam = depthSeam;
+        c.lensCalibration = calibration;
         emit clipStitchChanged(c.id);
     }
 }

@@ -302,6 +302,7 @@ private:
     bool seamStateFor(int64_t pts_ms, const std::function<bool(const float* q)>& measure);
     std::string clip_path_;
     PreviewStitchConfig::LensGuard lens_guard_ = PreviewStitchConfig::LensGuard::Premium;
+    std::optional<LensCalibration> lens_calibration_;
     bool analysis_enabled_ = true;
     bool analysis_dirty_ = true;                      // look the analysis up again before the next frame
     std::shared_ptr<SeamAnalysis> analysis_;    // stitch::SeamAnalysisFor, or none
@@ -333,8 +334,12 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 // for the lens guard. False with `err` set for any other clip. `*guardFound`
 // (if given) is false when the file has no usable profile for the guard and
 // the stitch takes the lens as bare.
+// `calibration` (may be null): the camera's own lens calibration, used in
+// place of the file's when it was measured against this file's (else the
+// file's, with a log line); the guard is in it, so no profile goes on top.
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
-                            PreviewStitchConfig::LensGuard guard, insv::InsvCalibration& calib,
+                            PreviewStitchConfig::LensGuard guard,
+                            const LensCalibration* calibration, insv::InsvCalibration& calib,
                             insv::StitchParams& params, std::string& err,
                             bool* guardFound = nullptr);
 

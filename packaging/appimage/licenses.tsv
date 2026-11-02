@@ -65,7 +65,7 @@ md4c	0.5.2-2	libmd4c0	MIT	no	Permissive.
 onetbb	2022.1.0-1+deb13u1	libtbb12	Apache-2.0	no	Permissive.
 onnx	1.17.0-3	libonnx1t64	MIT AND Apache-2.0	no	Permissive.
 onnxruntime	1.21.0+dfsg-1	libonnxruntime1.21	MIT AND Apache-2.0 AND MPL-2.0	no	Permissive; the MPL-2.0 files (Eigen's thread pool) aren't marked incompatible with secondary licences, so MPL-2.0 is GPL-compatible. Shipped as built (no changes), so MPL owes no source of ours.
-opencv	4.10.0+dfsg-5	libopencv-calib3d410, libopencv-contrib410, libopencv-core410, libopencv-dnn410, libopencv-features2d410, libopencv-flann410, libopencv-imgproc410, libopencv-video410	Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause	no	Permissive.
+opencv	4.10.0+dfsg-5	libopencv-calib3d410, libopencv-contrib410, libopencv-core410, libopencv-dnn410, libopencv-features2d410, libopencv-flann410, libopencv-imgproc410, libopencv-objdetect410, libopencv-video410	Apache-2.0 AND BSD-3-Clause AND BSD-2-Clause	no	Permissive.
 pcre2	10.46-1~deb13u3	libpcre2-8-0, libpcre2-16-0	BSD-3-Clause WITH PCRE2-exception	no	Permissive (sljit BSD-2-Clause).
 protobuf	3.21.12-11+deb13u1	libprotobuf32t64	BSD-3-Clause	no	Permissive.
 pthreadpool	0.0~git20240616.560c60d-1	libpthreadpool0	BSD-2-Clause	no	Permissive.

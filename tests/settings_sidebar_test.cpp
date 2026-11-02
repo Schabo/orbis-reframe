@@ -333,6 +333,28 @@ void testStitchingPanel(SettingsSidebar &bar)
     CHECK(edited.size() == 2 && edited.last().at(1).toBool());
     apply->click();
     CHECK(all.size() == 1);
+
+    // Lens calibration: the camera file's only (greyed out), or a choice.
+    QSignalSpy chosen(stitching, &StitchingPanel::calibrationChosen);
+    QSignalSpy calibrate(stitching, &StitchingPanel::calibrateRequested);
+    auto *cal = stitching->findChild<QComboBox *>(QStringLiteral("stitchCalibration"));
+    auto *calButton = stitching->findChild<QPushButton *>(QStringLiteral("stitchCalibrate"));
+    if (!cal || !calButton) {
+        CHECK(cal && calButton);
+        return;
+    }
+    CHECK(cal->count() == 1 && !cal->isEnabled());
+    stitching->setCalibrations({"From the camera file", "Calibrated 2026-11-02"}, {}, 1);
+    CHECK(cal->count() == 2 && cal->isEnabled() && cal->currentIndex() == 1);
+    CHECK(chosen.isEmpty()); // shown, not picked
+    cal->setCurrentIndex(0);
+    emit cal->activated(0); // as a pick by the user does
+    CHECK(chosen.size() == 1 && chosen.first().at(0).toInt() == 0);
+    stitching->setCalibrateAvailable(true);
+    calButton->click();
+    CHECK(calibrate.size() == 1);
+    stitching->setCalibrateAvailable(false, "no OpenCV");
+    CHECK(!calButton->isEnabled() && calButton->toolTip() == "no OpenCV");
 }
 
 void testProjectSettingsDialog()

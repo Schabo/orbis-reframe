@@ -39,6 +39,17 @@ StitchingPanel::StitchingPanel(QWidget *parent)
            "are, and lines the pictures up at that distance."));
     form()->addRow(QString(), m_depthSeam);
 
+    m_calibration = new QComboBox(this);
+    m_calibration->setObjectName(QStringLiteral("stitchCalibration"));
+    m_calibration->setToolTip(
+        tr("The lens model the two pictures are joined with: the one the camera recorded in "
+           "the file, or one made for this camera with Calibrate lenses."));
+    form()->addRow(tr("Lens calibration"), m_calibration);
+    connect(m_calibration, &QComboBox::activated, this, [this](int index) {
+        if (!m_updating)
+            emit calibrationChosen(index);
+    });
+
     m_seamStatus = new QLabel(this);
     m_seamStatus->setWordWrap(true);
     m_seamStatus->hide();
@@ -52,7 +63,14 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_applyToAll->setToolTip(tr("Give every 360° clip these stitching settings: for footage "
                                 "all filmed with the same lens guards."));
     buttons->addWidget(m_applyToAll);
+    m_calibrate = new QPushButton(tr("Calibrate lenses…"), buttonRow);
+    m_calibrate->setObjectName(QStringLiteral("stitchCalibrate"));
+    m_calibrate->setToolTip(tr("Measure your camera's lenses with a chart on your monitor, so "
+                               "the two pictures line up better than with the lens model the "
+                               "camera records."));
+    buttons->addWidget(m_calibrate);
     buttons->addStretch(1);
+    connect(m_calibrate, &QPushButton::clicked, this, &StitchingPanel::calibrateRequested);
     form()->addRow(buttonRow);
     connect(m_applyToAll, &QPushButton::clicked, this, &StitchingPanel::applyToAllRequested);
 
@@ -61,6 +79,7 @@ StitchingPanel::StitchingPanel(QWidget *parent)
                "preview's own quality and size are in the View menu."));
 
     setState(LensGuard::Premium, true); // sane starting state
+    setCalibrations({tr("From the camera file")}, {}, 0);
 
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_depthSeam, &QCheckBox::toggled, this, &StitchingPanel::emitIfEdited);
@@ -85,6 +104,28 @@ void StitchingPanel::setNoClip()
 {
     setState(LensGuard::Premium, true); // ClipItem's defaults
     setBodyEnabled(false);
+}
+
+void StitchingPanel::setCalibrations(const QStringList &labels, const QStringList &tooltips,
+                                     int current)
+{
+    m_updating = true;
+    m_calibration->clear();
+    for (int i = 0; i < labels.size(); ++i) {
+        m_calibration->addItem(labels.at(i));
+        if (i < tooltips.size() && !tooltips.at(i).isEmpty())
+            m_calibration->setItemData(i, tooltips.at(i), Qt::ToolTipRole);
+    }
+    m_calibration->setCurrentIndex(current);
+    m_calibration->setEnabled(labels.size() > 1);
+    m_updating = false;
+}
+
+void StitchingPanel::setCalibrateAvailable(bool available, const QString &whyNot)
+{
+    m_calibrate->setEnabled(available);
+    if (!available && !whyNot.isEmpty())
+        m_calibrate->setToolTip(whyNot);
 }
 
 void StitchingPanel::setSeamStatus(const QString &text, const QString &details)

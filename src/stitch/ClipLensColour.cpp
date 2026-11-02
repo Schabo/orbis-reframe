@@ -22,6 +22,7 @@ constexpr int kLensColourFrames = 24;
 ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t trimInMs,
                                            int64_t trimOutMs,
                                            PreviewStitchConfig::LensGuard lensGuard,
+                                           const LensCalibration* calibration,
                                            const insv::SeamCorrection& seam,
                                            const std::atomic<bool>* cancel)
 {
@@ -36,7 +37,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
     insv::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> clip;
     if (const MeasureFailure why =
-            PrepareClipMeasurement(clipPath, lensGuard, calib, params, err, &clip);
+            PrepareClipMeasurement(clipPath, lensGuard, calibration, calib, params, err, &clip);
         why != MeasureFailure::None)
         return fail(why, err);
     params.seam = seam;

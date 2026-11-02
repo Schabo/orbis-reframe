@@ -124,12 +124,13 @@ void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
     for (int i = 0; i < t->count(); ++i) {
         const ClipItem &c = t->clipAt(i);
         if (c.sourcePath == clipPath && c.depthSeam && !c.flat && !c.mediaMissing &&
-            c.lensGuard == clip->lensGuard)
+            c.lensGuard == clip->lensGuard && c.lensCalibration == clip->lensCalibration)
             ranges.emplace_back(c.trimInMs, c.trimOutMs);
     }
     if (ranges.empty())
         return;
-    const stitch::SeamAnalysisKey key{clipPath.toStdString(), clip->lensGuard, seam, colour};
+    const stitch::SeamAnalysisKey key{clipPath.toStdString(), clip->lensGuard, seam, colour,
+                                      clip->lensCalibration};
     const std::shared_ptr<stitch::SeamAnalysis> analysis = stitch::SeamAnalysisFor(key);
     qint64 total = 0, done = 0;
     for (const auto &[in, out] : ranges) {
@@ -190,9 +191,10 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
     m_syncMeasuringPath = clipPath;
     m_syncCancel = false;
     const auto guard = clip->lensGuard;
-    m_syncThread = QThread::create([this, path, in, out, clipPath, guard] {
+    const auto cal = clip->lensCalibration;
+    m_syncThread = QThread::create([this, path, in, out, clipPath, guard, cal] {
         const stitch::ClipSyncResult r =
-            stitch::MeasureClipSync(path, in, out, &m_syncCancel, guard);
+            stitch::MeasureClipSync(path, in, out, &m_syncCancel, guard, cal ? &*cal : nullptr);
         QMetaObject::invokeMethod(this, [this, clipPath, r] {
             m_syncThread->wait(); // its function has just returned
             m_syncThread->deleteLater();
@@ -228,20 +230,22 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
     const auto guard = clip->lensGuard;
+    const auto cal = clip->lensCalibration;
     m_seamMeasuringPath = clipPath;
     m_seamCancel = false;
-    m_seamThread = QThread::create([this, path, in, out, clipPath, guard] {
-        const stitch::ClipSeamResult r = stitch::MeasureClipSeam(path, in, out, guard, &m_seamCancel);
-        QMetaObject::invokeMethod(this, [this, clipPath, r, guard] {
+    m_seamThread = QThread::create([this, path, in, out, clipPath, guard, cal] {
+        const stitch::ClipSeamResult r =
+            stitch::MeasureClipSeam(path, in, out, guard, cal ? &*cal : nullptr, &m_seamCancel);
+        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, cal] {
             m_seamThread->wait(); // its function has just returned
             m_seamThread->deleteLater();
             m_seamThread = nullptr;
             m_seamMeasuringPath.clear();
             core::log::Info("[seam] %s: %s\n", qPrintable(clipPath), r.message.c_str());
-            // Stale if the guard setting changed meanwhile: drop it and let the
-            // re-measure below run under the new one.
+            // Stale if the guard or the calibration changed meanwhile: drop
+            // it and let the re-measure below run under the new one.
             const ClipItem *now = measurableClip(clipPath);
-            if (r.ok && now && guard == now->lensGuard)
+            if (r.ok && now && guard == now->lensGuard && cal == now->lensCalibration)
                 m_project->timeline()->setSourceSeamCorrection(
                     clipPath, r.correction, static_cast<int>(guard)); // -> clipSeamChanged
             else if (!r.ok && !m_seamCancel)
@@ -272,23 +276,25 @@ void ClipMeasurements::maybeMeasureColour(const QString &clipPath)
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
     const auto guard = clip->lensGuard;
+    const auto cal = clip->lensCalibration;
     m_colourMeasuringPath = clipPath;
     m_colourCancel = false;
-    m_colourThread = QThread::create([this, path, in, out, clipPath, guard, seam] {
-        const stitch::ClipLensColourResult r =
-            stitch::MeasureClipLensColour(path, in, out, guard, seam, &m_colourCancel);
-        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, seam] {
+    m_colourThread = QThread::create([this, path, in, out, clipPath, guard, cal, seam] {
+        const stitch::ClipLensColourResult r = stitch::MeasureClipLensColour(
+            path, in, out, guard, cal ? &*cal : nullptr, seam, &m_colourCancel);
+        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, cal, seam] {
             m_colourThread->wait(); // its function has just returned
             m_colourThread->deleteLater();
             m_colourThread = nullptr;
             m_colourMeasuringPath.clear();
             core::log::Info("[colour] %s: %s\n", qPrintable(clipPath), r.message.c_str());
-            // Stale if the guard or the seam changed meanwhile: dropped, and
-            // measured again below.
+            // Stale if the guard, the calibration or the seam changed
+            // meanwhile: dropped, and measured again below.
             const ClipItem *now = measurableClip(clipPath);
             insv::SeamCorrection seamNow;
             m_project->timeline()->sourceSeamCorrection(clipPath, seamNow);
-            if (r.ok && now && guard == now->lensGuard && seam == seamNow)
+            if (r.ok && now && guard == now->lensGuard && cal == now->lensCalibration &&
+                seam == seamNow)
                 m_project->timeline()->setSourceLensColour(
                     clipPath, r.colour, static_cast<int>(guard)); // -> clipSeamChanged
             else if (!r.ok && !m_colourCancel)

@@ -108,6 +108,7 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     job.colorGrade = c.color.render();
     job.blur = privacy.blurFor(c);
     job.lensGuard = c.lensGuard;
+    job.lensCalibration = c.lensCalibration;
     job.depthSeam = c.depthSeam;
     timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
     timeline.sourceLensColour(c.sourcePath, job.lensColour);
@@ -153,6 +154,8 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
                .arg(std::isnan(c.syncAdjustMs) ? 0.0 : c.syncAdjustMs);
     if (s.lockDirection)
         key += QStringLiteral(",dir%1").arg(s.directionSec);
+    if (c.lensCalibration) // which one: when it was made
+        key += QStringLiteral("|cal%1").arg(QString::fromStdString(c.lensCalibration->created));
     key += QStringLiteral("|%1,%2,%3,%4,%5,%6")
                .arg(colour.logRatio[0])
                .arg(colour.logRatio[1])
@@ -614,6 +617,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     job.colorGrade = c.color.render();
     job.blur = privacy.blurFor(c);
     job.lensGuard = c.lensGuard;
+    job.lensCalibration = c.lensCalibration;
     job.depthSeam = c.depthSeam;
     timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
     timeline.sourceLensColour(c.sourcePath, job.lensColour);
