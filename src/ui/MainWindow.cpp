@@ -1054,6 +1054,8 @@ void MainWindow::connectController()
             });
     connect(m_controller, &PlaybackController::playingChanged,
             m_playerBar, &PlayerBar::setPlaying);
+    connect(m_controller, &PlaybackController::scrubbingChanged, m_measurements,
+            &ClipMeasurements::setScrubbing);
     connect(m_controller, &PlaybackController::playingChanged, this, [this](bool playing) {
         m_playing = playing;
         m_measurements->setPlaying(playing);
@@ -2582,7 +2584,7 @@ void MainWindow::pushTimelineToController()
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
                             c.sourceDurationMs, c.lensGuard, c.stitchMethod, c.mediaMissing,
-                            c.lensCalibration});
+                            c.lensCalibration, c.seamColourBlend});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }

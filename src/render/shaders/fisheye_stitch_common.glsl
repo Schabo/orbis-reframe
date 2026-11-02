@@ -36,6 +36,8 @@
 #define LENS_COLOUR_LOCAL_RAMP_RAD 0.17453293 // == insv::kLensColourLocalRampDeg (10 deg)
 #define LENS_COLOUR_KNEE_LO 192.0 // == insv::kLensColourKneeLo
 #define LENS_COLOUR_KNEE_HI 250.0 // == insv::kLensColourKneeHi
+#define SEAM_COLOUR_FULL_RAD 0.20943951 // == insv::kSeamColourFullDeg (12 deg)
+#define SEAM_COLOUR_END_RAD 0.52359878 // == insv::kSeamColourEndDeg (30 deg)
 #define LENS_VEIL_GAMMA 2.2 // == insv::kLensVeilGamma
 #define LENS_VEIL_KEEP 0.3 // == insv::kLensVeilKeep
 #define MAX_BLUR 64 // == insv::kMaxBlurQuads
@@ -48,7 +50,7 @@ layout(std140, binding = 0) uniform Params {
     vec4 outRot[3]; // global equirect orientation rows
     vec4 cxcy;      // cx0, cy0, cx1, cy1   (fisheye-pixel space)
     vec4 seam;      // seamRad, bandRad, thetaMaxRad, thetaRef (circle edge, rad)
-    vec4 edge;      // edgeStartFrac, edgeEndFrac, -, -
+    vec4 edge;      // edgeStartFrac, edgeEndFrac, seam colour blend on (0/1), -
     ivec4 dims;     // fisheyeW, fisheyeH, eqW, eqH
     // Extended MEI (Mei/unified) model. See insv::LensProjection / gpuParams().
     vec4 meiA;      // xi0, xi1, fx0, fx1
@@ -77,6 +79,9 @@ layout(std140, binding = 0) uniform Params {
     vec4 lensColS;  // R, G, B, -
     vec4 lensLocal[SEAM_BINS]; // per azimuth bin: the local correction R, G, B, - (insv::SeamBlend::local)
     vec4 lensVeil[SEAM_BINS];  // per azimuth bin: the veiling light R, G, B, - (insv::SeamBlend::veil)
+    // The new stitcher's seam colour blend (insv::StitchGpuParams::seamColour):
+    // per azimuth bin log(lens 0 / lens 1) R, G, B, -; on when edge.z != 0.
+    vec4 seamCol[SEAM_BINS];
     // Privacy blur (insv::BlurQuadFrame, carried into the stitch world frame):
     // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
@@ -355,6 +360,26 @@ vec3 lensColourLog(vec3 dir, vec3 local)
     return clamp(l + local, vec3(-LENS_COLOUR_MAX_LOG), vec3(LENS_COLOUR_MAX_LOG));
 }
 
+// The seam colour blend's log ratio (lens 0 / lens 1) for `dir`
+// (insv::FisheyeStitcher::seamColourLog): the per-bin table interpolated
+// along the seam, whole to SEAM_COLOUR_FULL_RAD off it, a cosine to none at
+// SEAM_COLOUR_END_RAD (insv::SeamColourFade). 0 when off.
+vec3 seamColourLog(vec3 dir)
+{
+    if (P.edge.z == 0.0)
+        return vec3(0.0);
+    int i0, i1;
+    vec2 pos = seamPosition(dir, i0, i1);
+    float e = abs(pos.x);
+    if (e >= SEAM_COLOUR_END_RAD)
+        return vec3(0.0);
+    float a = e > SEAM_COLOUR_FULL_RAD
+                  ? 0.5 * (1.0 + cos(PI * (e - SEAM_COLOUR_FULL_RAD) /
+                                     (SEAM_COLOUR_END_RAD - SEAM_COLOUR_FULL_RAD)))
+                  : 1.0;
+    return a * mix(P.seamCol[i0].xyz, P.seamCol[i1].xyz, pos.y);
+}
+
 // A lens sample `s` (0..255) with the veiling light `veil` (linear, >= 0)
 // taken out (insv::LensVeilRemove), then log gain `lg` per channel, both
 // eased off over the highlight knee (insv::LensColourGain).
@@ -570,7 +595,8 @@ void seamCutPass(uvec3 wg, uint lid)
 
 // The stitched colour for `dir`, RGB in [0, 255] (unquantised); black outside
 // both imaged circles. Each lens's colour matched by the lens colour
-// (lensColourLog), both lenses to the geometric mean of their colours.
+// (lensColourLog) and the seam colour blend (seamColourLog), both lenses to
+// the geometric mean of their colours.
 vec3 blendLenses(vec3 dir)
 {
     vec2 uv0, uv1;
@@ -578,6 +604,8 @@ vec3 blendLenses(vec3 dir)
     vec3 local, veil;
     lensWeights(dir, uv0, uv1, w0, w1, local, veil);
     vec3 lg = 0.5 * lensColourLog(dir, local);
+    if (P.edge.z != 0.0)
+        lg += 0.5 * seamColourLog(dir);
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
     if (w0 > 0.0) { acc += w0 * lensColourApply(sampleLens(0, uv0), -lg, max(veil, 0.0)); wsum += w0; }

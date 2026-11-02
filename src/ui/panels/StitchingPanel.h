@@ -4,6 +4,7 @@
 
 #include <IStitchSource.h> // stitch::PreviewStitchConfig::LensGuard, Method
 
+class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -35,6 +36,9 @@ public:
     // No clip to show: a new clip's settings, greyed out (Calibrate lenses
     // stays: it needs no clip). Does not emit.
     void setNoClip();
+    // The clip's seam colour blend (ClipItem::seamColourBlend), offered
+    // only with the new stitcher. Does not emit.
+    void setSeamColourBlend(bool on);
     // One line about the current clip's seam alignment and lens colour
     // (empty hides it); `details`, the measured figures, go in its tooltip.
     void setSeamStatus(const QString &text, const QString &details = QString());
@@ -47,6 +51,7 @@ public:
 
 signals:
     void stitchEdited(LensGuard lensGuard, Method method);
+    void seamColourBlendEdited(bool on);
     // "Apply to all clips": give every 360 clip the settings shown.
     void applyToAllRequested();
     // A lens calibration picked (an index into setCalibrations' labels).
@@ -56,10 +61,12 @@ signals:
 
 private:
     void emitIfEdited();
+    void updateSeamColourBlendEnabled();
 
     QComboBox *m_lensGuard = nullptr;
     QLabel *m_noGuards = nullptr;
     QComboBox *m_method = nullptr;
+    QCheckBox *m_seamColourBlend = nullptr;
     QComboBox *m_calibration = nullptr;
     QPushButton *m_calibrate = nullptr;
     QLabel *m_seamStatus = nullptr;

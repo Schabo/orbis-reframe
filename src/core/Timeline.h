@@ -400,6 +400,10 @@ public slots:
     void setSourceStitch(const QString &sourcePath, stitch::PreviewStitchConfig::LensGuard lensGuard,
                          stitch::PreviewStitchConfig::Method method,
                          const std::optional<stitch::LensCalibration> &calibration);
+    // The new stitcher's seam colour blend (ClipItem::seamColourBlend) for
+    // every clip cut from `sourcePath`. Emits clipStitchChanged per clip
+    // that changed.
+    void setSourceSeamColourBlend(const QString &sourcePath, bool on);
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);

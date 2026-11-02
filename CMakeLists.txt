@@ -171,6 +171,8 @@ add_library(insv STATIC
     src/insv/SeamWindow.cpp
     src/insv/LensColour.h
     src/insv/LensColour.cpp
+    src/insv/SeamColourBlend.h
+    src/insv/SeamColourBlend.cpp
     src/insv/Ycbcr.h
     src/insv/Ycbcr.cpp
 )

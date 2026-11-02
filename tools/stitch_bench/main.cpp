@@ -17,6 +17,8 @@
 //                                  a fixed one, or the new one (which takes
 //                                  no seam correction or lens colour)
 //   depth=on|off                   the same as method=depth / fixed
+//   colourblend=on|off             the new stitcher's seam colour blend
+//                                  (method=new; default on, as the app)
 //   rs=on|off                      the capture-time (rolling shutter)
 //                                  correction from the gyro (current;
 //                                  default on, as playback)
@@ -103,6 +105,7 @@ struct Entry {
     LensGuard guard = LensGuard::Premium;
     Method method = Method::DepthSeam;
     bool captureTiming = true;
+    bool seamColourBlend = true;
     std::optional<insv::SeamCorrection> seam;
     std::optional<insv::LensColour> colour;
     std::optional<stitch::LensCalibration> calibration;
@@ -191,6 +194,8 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                 }
             } else if (key == "rs") {
                 e.captureTiming = v != "off";
+            } else if (key == "colourblend") {
+                e.seamColourBlend = v != "off";
             } else if (key == "seam") {
                 double a[6];
                 if (std::sscanf(v.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf", &a[0], &a[1], &a[2], &a[3], &a[4],
@@ -376,6 +381,7 @@ public:
         config.height = config.width / 2;
         config.lensGuard = e.guard;
         config.method = e.method;
+        config.seamColourBlend = e.seamColourBlend;
         config.lensCalibration = e.calibration;
         if (!src_.Open(e.clip, config)) {
             error = "open: " + src_.GetLastError();
@@ -509,9 +515,9 @@ private:
 };
 
 // ref=template: our own stitch of the same frames from the file's data
-// alone -- the new stitcher's base, without the capture-time correction --
-// whose geometry holds still by construction: the reference for clips
-// without a Studio export.
+// alone -- the new stitcher's base, without the capture-time correction or
+// the seam colour blend -- whose geometry and colour hold still by
+// construction: the reference for clips without a Studio export.
 class TemplateReference : public Reference {
 public:
     bool open(const Entry& e, const Options& opt, const camera::ClipMetadata& meta, std::string& err)
@@ -519,6 +525,7 @@ public:
         Entry t = e;
         t.method = Method::New;
         t.captureTiming = false;
+        t.seamColourBlend = false;
         t.seam = insv::SeamCorrection{};
         t.colour = insv::LensColour{};
         std::string info;
@@ -663,6 +670,7 @@ struct Series {
     std::vector<double> radial[2][bench::GeometryResult::kBins], tangential[2][bench::GeometryResult::kBins];
     std::vector<double> sharpBand, sharpBeside, ownSharp;
     std::vector<double> alive, aliveP90, aliveCtl;
+    std::vector<double> colourSeam, colourSeamP90, colourControl, colourStep10, colourStep10P90;
 };
 
 // Median over frames of the per-bin means of bins [b0, b1].
@@ -736,7 +744,9 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
 
     const bench::StripGrid grid{20, 30};
     const bench::StripGrid half = grid.scaled(0.5);
-    bench::Maps oursStrip, refStrip, refEq, oursEq;
+    const bench::StripGrid colourGrid{4, 38}; // the colour round the seam, out to its control
+    bench::Maps oursStrip, refStrip, refEq, oursEq, oursColour, refColour;
+    std::vector<std::optional<bench::SeamColourBlocks>> colourRing(10); // the last 10 frames'
     cv::Mat elev;
     const int mW = opt.width, mH = opt.width / 2;
     if (opt.every > 0)
@@ -813,6 +823,31 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         }
 
         s.t.push_back(double(pic.clipMs));
+        // The colour round the seam against the reference's, and its change
+        // over 10 frames (a missing reference frame breaks the chain).
+        std::optional<bench::SeamColourBlocks>& colour10 = colourRing[n % colourRing.size()];
+        if (rf) {
+            if (oursColour.x.empty()) {
+                oursColour = bench::StripMaps(frame, colourGrid, pic.rgba.cols, pic.rgba.rows,
+                                              pic.refFrame ? &toRef : nullptr);
+                refColour = bench::StripMaps(frame, colourGrid, rImg.cols, rImg.rows, refRot);
+            }
+            bench::SeamColourBlocks cb = bench::MeasureSeamColourBlocks(
+                bench::Remap(rImg, refColour), bench::Remap(pic.rgba, oursColour), colourGrid);
+            const bench::SeamColourResult d = bench::SeamColourDifference(cb);
+            s.colourSeam.push_back(d.med);
+            s.colourSeamP90.push_back(d.p90);
+            s.colourControl.push_back(d.controlMed);
+            if (colour10) {
+                const bench::SeamColourResult c = bench::SeamColourChange(*colour10, cb);
+                s.colourStep10.push_back(c.med);
+                s.colourStep10P90.push_back(c.p90);
+            }
+            colour10 = std::move(cb);
+        } else {
+            for (auto& c : colourRing)
+                c.reset();
+        }
         // Alive: the offset from the reference along the seam against the
         // frame before's (a missing reference frame breaks the chain).
         if (rf) {
@@ -946,6 +981,11 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         sum.emplace_back("lens1_tangential_50_80", BinsMedian(s.tangential[1], 5, 7));
         sum.emplace_back("sharp_band", Median(s.sharpBand));
         sum.emplace_back("sharp_beside", Median(s.sharpBeside));
+        sum.emplace_back("colour_seam", Median(s.colourSeam));
+        sum.emplace_back("colour_seam_p90", Median(s.colourSeamP90));
+        sum.emplace_back("colour_control", Median(s.colourControl));
+        sum.emplace_back("colour_step10", Median(s.colourStep10));
+        sum.emplace_back("colour_step10_p90", Median(s.colourStep10P90));
     }
     sum.emplace_back("own_sharp_band_beside", Median(s.ownSharp));
     if (hasRef) {
@@ -988,6 +1028,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     series("band_psnr", s.bandPsnr);
     series("alive_band", s.alive);
     series("alive_band_p90", s.aliveP90);
+    series("colour_seam", s.colourSeam);
+    series("colour_step10", s.colourStep10);
     for (int l = 0; l < 2; ++l) {
         std::vector<double> rad, tan;
         for (int b = 0; b < bench::GeometryResult::kBins; ++b) {

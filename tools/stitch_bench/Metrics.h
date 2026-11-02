@@ -147,6 +147,34 @@ struct AliveResult {
 };
 AliveResult CompareSeamOffsets(const SeamOffsets& prev, const SeamOffsets& cur);
 
+// The colour of ours against the reference round the seam, from seam strips
+// of both (RGBA, StripGrid, halfDeg 38 at least): per 5 degree block of
+// azimuth, the log of ours' mean over the reference's per channel, over the
+// pixels both have within 16..235 in every channel, in four parts: each side
+// within nearDeg of the seam (where a seam colour correction is in full) and
+// each side's control 32..38 degrees out, past where any reaches (Studio's
+// is gone by ~30). NaN where too few pixels.
+struct SeamColourBlocks {
+    enum Part { Near0, Near1, Control0, Control1, kParts };
+    std::vector<std::array<cv::Vec3d, kParts>> blocks;
+};
+SeamColourBlocks MeasureSeamColourBlocks(const cv::Mat& refRgba, const cv::Mat& oursRgba,
+                                         const StripGrid& g, double nearDeg = 12);
+
+// Per block, side and channel the seam's colour against the reference's,
+// each side's own overall difference (its control) taken out: near less
+// control. SeamColourDifference: the median and 90th percentile of |that|,
+// log -- how far ours is from the reference's colour at the seam.
+// SeamColourChange: of its change between two frames -- how much a seam
+// colour correction moves (against an uncorrected reference: the
+// correction's own change).
+struct SeamColourResult {
+    double med = NAN, p90 = NAN;
+    double controlMed = NAN; // SeamColourDifference: the median |control|, ours against the reference far from the seam
+};
+SeamColourResult SeamColourDifference(const SeamColourBlocks& b);
+SeamColourResult SeamColourChange(const SeamColourBlocks& prev, const SeamColourBlocks& cur);
+
 // Mean squared luma gradient of a seam strip (StripGrid) in the band and
 // beside it (bandDeg + 1.5..10): a stitcher's sharpness, as a ratio to the
 // reference's on the same frame.

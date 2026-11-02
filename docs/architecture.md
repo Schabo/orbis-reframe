@@ -90,8 +90,11 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    regions are applied here, on the sphere. The stitcher is chosen per
    clip (`stitch::PreviewStitchConfig::Method`): the depth-aware seam or a
    fixed one, both with the clip's measured seam alignment and lens
-   colour, or the new stitcher, which measures nothing from the video (see
-   [the roadmap](roadmap.md)). The depth-aware seam's state
+   colour, or the new stitcher, which takes neither (see
+   [the roadmap](roadmap.md)); its seam colour blend (`insv/SeamColourBlend`)
+   matches the lenses' colour per stretch of the seam from what they see in
+   the overlap over each frame and the second before it, which a seek
+   measures before the frame it goes to, so it needs no analysis. The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the
    colour correction there) is a function of the measurements of the frames
    either side of a frame (`insv/SeamWindow`), worked out once per clip in a

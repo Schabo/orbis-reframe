@@ -37,6 +37,7 @@ struct Request {
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     std::optional<stitch::LensCalibration> lensCalibration;
     stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+    bool seamColourBlend = true;
     // The capture-time correction, as playback has it: on with the
     // stabilization on (when the clip has a gyro track).
     bool captureTiming = true;

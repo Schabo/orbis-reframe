@@ -111,6 +111,7 @@ public:
         // ahead of time, reports it through openFailed and plays black.
         bool missing = false;
         std::optional<stitch::LensCalibration> lensCalibration;
+        bool seamColourBlend = true; // ClipItem::seamColourBlend, as lensGuard
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
         qint64 localAtSourceMs(qint64 sourceMs) const
@@ -255,6 +256,10 @@ signals:
     // tick still queued from before the seek can't read as a jump.
     void seeked(qint64 timelineMs);
     void playingChanged(bool playing);
+    // A scrub started (the first scrub() of a drag) or ended (no scrub() for
+    // kScrubSettleMs, or playback started): background work that competes
+    // for the GPU holds off meanwhile.
+    void scrubbingChanged(bool scrubbing);
     // True while the presenter wants a frame it doesn't have (decoder behind,
     // or a new clip still opening). The UI debounces this.
     void bufferingChanged(bool buffering);
@@ -332,6 +337,9 @@ private:
     qint64 m_shownMs = 0;    // and its timeline time
     int m_shownClipId = 0;   // and clip (Segment::clipId): what a transition's layer goes over
     QTimer *m_settleTimer = nullptr; // scrub(): the pointer rested -> settle()
+    QTimer *m_scrubEndTimer = nullptr; // scrub(): none for a while -> scrubbingChanged(false)
+    bool m_scrubbing = false;
+    void setScrubbing(bool on);
     bool m_buffering = false;
     bool m_reachedEnd = false;
     bool m_prerolling = false; // frozen after a stall until kResumeFrames are queued

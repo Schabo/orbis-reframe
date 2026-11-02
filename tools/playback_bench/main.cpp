@@ -15,10 +15,13 @@
 //               playback (the viewport then renders the view itself).
 //   seek        SeekTo + first ReadFrame at spread-out positions (1920 eq).
 //
-//   The depth-aware seam is on unless --no-depth-seam; "seam" is its
-//   cost pass + solve, inside each row's total.
+//   The depth-aware seam is on unless --no-depth-seam or --new-stitcher;
+//   "seam" is its cost pass + solve, or the new stitcher's seam colour
+//   blend (its measuring pass + fit; off with --no-seam-colour-blend),
+//   inside each row's total.
 //
-// usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat] [--no-depth-seam] <clip.insv>...
+// usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]
+//                       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]] <clip.insv>...
 
 #include <LensFrame.h>
 #include <NativeStitchSource.h>
@@ -64,6 +67,7 @@ struct Stats {
 
 constexpr int kWarmup = 5;
 stitch::PreviewStitchConfig::Method gMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+bool gSeamColourBlend = true;
 
 void benchDecode(const std::string& path, int frames, double fps) {
     insv::VulkanVideoDecoder dec;
@@ -120,6 +124,7 @@ std::unique_ptr<stitch::NativeStitchSource> openSource(const std::string& path, 
     cfg.width = eqW;
     cfg.height = eqW / 2;
     cfg.method = gMethod;
+    cfg.seamColourBlend = gSeamColourBlend;
     if (!src->Open(path, cfg)) {
         std::printf("  open FAILED: %s\n", src->GetLastError().c_str());
         return nullptr;
@@ -267,6 +272,7 @@ void benchSeek(const std::string& path, int64_t durationMs, int eqW) {
             exact.add(msSince(t0));
         t0 = Clock::now();
         const int64_t kf = src->NearestKeyframeMs(t);
+        src->SetQuickSeek(true); // as a scrub's passing frames
         if (!src->SeekTo(kf))
             continue;
         const stitch::Frame f = src->ReadFrame();
@@ -283,7 +289,8 @@ void benchSeek(const std::string& path, int64_t durationMs, int eqW) {
 }
 
 const char kUsage[] =
-    "usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat] [--no-depth-seam] <clip.insv>...\n";
+    "usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]\n"
+    "       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]] <clip.insv>...\n";
 
 } // namespace
 
@@ -303,6 +310,10 @@ int main(int argc, char** argv) {
             frames = std::atoi(argv[++i]);
         } else if (a == "--no-depth-seam") {
             gMethod = stitch::PreviewStitchConfig::Method::FixedSeam;
+        } else if (a == "--new-stitcher") {
+            gMethod = stitch::PreviewStitchConfig::Method::New;
+        } else if (a == "--no-seam-colour-blend") {
+            gSeamColourBlend = false;
         } else if (a == "--only-flat") {
             onlyFlat = true;
         } else if (a == "--eq" && i + 1 < argc) {

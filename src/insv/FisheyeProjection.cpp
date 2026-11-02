@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "FisheyeProjection.h"
+#include "SeamColourBlend.h"
 
 #include <algorithm>
 #include <atomic>
@@ -471,6 +472,16 @@ void FisheyeStitcher::lensLogGains(const Vec3& dir, const SeamBlend* blend, doub
     }
 }
 
+void FisheyeStitcher::seamColourLog(const Vec3& dir, const float* table, double L[3]) const
+{
+    double e, t;
+    int i0, i1;
+    seamPosition(dir, e, i0, i1, t);
+    const double a = SeamColourFade(e);
+    for (int c = 0; c < 3; ++c)
+        L[c] = a * (table[i0 * 3 + c] * (1.0 - t) + table[i1 * 3 + c] * t);
+}
+
 double FisheyeStitcher::edgeWeight(double thetaRad) const
 {
     return circleEdgeWeight(radiusForTheta(thetaRad), m_params.edgeStartFrac, m_params.edgeEndFrac);
@@ -478,7 +489,8 @@ double FisheyeStitcher::edgeWeight(double thetaRad) const
 
 void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Image& out,
                                      const float* seamQ, const SeamBlend* blend,
-                                     const BlurQuadFrame* blur, int blurCount) const
+                                     const BlurQuadFrame* blur, int blurCount,
+                                     const float* seamColour) const
 {
     if (!m_ready || out.w <= 0 || out.h <= 0)
         return;
@@ -513,6 +525,14 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
         double ws[2], lg[2][3], veil[2][3];
         seamBlendWeights(dir, blend, ws);
         lensLogGains(dir, m_params.depthSeam ? blend : nullptr, lg, veil);
+        if (seamColour) {
+            double L[3];
+            seamColourLog(dir, seamColour, L);
+            for (int c = 0; c < 3; ++c) {
+                lg[0][c] -= 0.5 * L[c];
+                lg[1][c] += 0.5 * L[c];
+            }
+        }
         double acc[3] = {0, 0, 0};
         double wsum = 0;
         for (int i = 0; i < 2; ++i) {

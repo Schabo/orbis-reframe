@@ -35,6 +35,7 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
     sc.lensGuard = req.lensGuard;
     sc.lensCalibration = req.lensCalibration;
     sc.method = req.stitchMethod;
+    sc.seamColourBlend = req.seamColourBlend;
     if (!src.Open(req.clipPath, sc) || !src.SeekTo(req.fromMs)) {
         err = src.GetLastError();
         return false;

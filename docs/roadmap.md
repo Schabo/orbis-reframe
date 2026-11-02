@@ -22,17 +22,18 @@ The depth-aware seam moves and bends the picture round the seam in
 playback: one stitch distance per stretch of the seam is too coarse, so it
 is ambiguous between frames, which needed the per-clip analysis to settle.
 Its replacement is built as layers on a template, each one worked out from
-the frame itself (at most a warm start from the frame before), with no
-background analysis, and selectable in the Stitching section's *Stitcher*
-until it replaces the old stitcher:
+the frame and the frames just before it (a seek measures those first), with
+no background analysis, and selectable in the Stitching section's
+*Stitcher* until it replaces the old stitcher:
 
 - **Template** (built): the lens model from the file or the clip's chart
   calibration, the guard profile, a fixed cross-fade; nothing measured from
   the video.
-- **Seam colour blend**: per frame, the two lenses' colour ratio per
-  stretch of the seam, from what both see in the overlap; each lens moved
-  half of it, fully near the seam and fading out by about 30° from it,
-  so neither lens's picture changes further away. A setting of its own.
+- **Seam colour blend** (built): the two lenses' colour ratio per stretch
+  of the seam, from what both see in the overlap over each frame and the
+  second before it; each lens moved half of it, fully near the
+  seam and fading out by 30° from it, so neither lens's picture changes
+  further away. A setting of its own.
 - **Optical flow**: per frame on the GPU, flow both ways in the overlap;
   each lens warped by a share of it growing to half at the seam, so near
   things crossing the seam join up while the rest keeps the template's

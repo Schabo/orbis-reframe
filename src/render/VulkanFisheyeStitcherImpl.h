@@ -59,11 +59,12 @@ struct ShaderParams {
     float lensColS[4]; // its slope per radian of elevation, RGB, -
     float lensLocal[insv::kSeamDepthBins][4]; // per-bin local correction RGB, -
     float lensVeil[insv::kSeamDepthBins][4];  // per-bin veiling light RGB, -
+    float seamCol[insv::kSeamDepthBins][4];   // per-bin seam colour blend RGB, - (active: edge.z)
     float blur0[4]; // privacy blur: count, -, -, -
     float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
     float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
 };
-static_assert(sizeof(ShaderParams) == 12544, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 14592, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then a mat3

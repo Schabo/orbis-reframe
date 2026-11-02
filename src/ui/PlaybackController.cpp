@@ -134,6 +134,9 @@ void PlaybackController::play()
 {
     if (!m_haveTimeline || m_playing)
         return;
+    if (m_scrubEndTimer)
+        m_scrubEndTimer->stop();
+    setScrubbing(false);
     if (m_positionMs >= m_totalMs - kEndEpsilonMs) {
         m_positionMs = 0;
         std::lock_guard<std::mutex> lk(m_mx);
@@ -202,10 +205,26 @@ void PlaybackController::seek(qint64 timelineMs)
     }
 }
 
+void PlaybackController::setScrubbing(bool on)
+{
+    if (on == m_scrubbing)
+        return;
+    m_scrubbing = on;
+    emit scrubbingChanged(on);
+}
+
 void PlaybackController::scrub(qint64 timelineMs)
 {
     if (!m_haveTimeline)
         return;
+    setScrubbing(true);
+    if (!m_scrubEndTimer) {
+        m_scrubEndTimer = new QTimer(this);
+        m_scrubEndTimer->setSingleShot(true);
+        m_scrubEndTimer->setInterval(kScrubSettleMs);
+        connect(m_scrubEndTimer, &QTimer::timeout, this, [this] { setScrubbing(false); });
+    }
+    m_scrubEndTimer->start();
     // Dragging during playback scrubs exactly like paused: pause for the drag,
     // and the drag's final seek() resumes.
     if (m_playing) {

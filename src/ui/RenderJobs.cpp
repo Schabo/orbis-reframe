@@ -110,6 +110,7 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     job.lensGuard = c.lensGuard;
     job.lensCalibration = c.lensCalibration;
     job.stitchMethod = c.stitchMethod;
+    job.seamColourBlend = c.seamColourBlend;
     timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
     timeline.sourceLensColour(c.sourcePath, job.lensColour);
     setViews(job, c);
@@ -136,7 +137,7 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
                       .arg(c.color.saturation)
                       .arg(c.color.temperature)
                       .arg(int(c.lensGuard))
-                      .arg(int(c.stitchMethod))
+                      .arg(int(c.stitchMethod) * 2 + (c.seamColourBlend ? 1 : 0))
                       .arg(seam.lens1RotDeg[0])
                       .arg(seam.lens1RotDeg[1])
                       .arg(seam.lens1RotDeg[2]);
@@ -619,6 +620,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     job.lensGuard = c.lensGuard;
     job.lensCalibration = c.lensCalibration;
     job.stitchMethod = c.stitchMethod;
+    job.seamColourBlend = c.seamColourBlend;
     timeline.sourceSeamCorrection(c.sourcePath, job.seamCorrection);
     timeline.sourceLensColour(c.sourcePath, job.lensColour);
     if (nativeStab)

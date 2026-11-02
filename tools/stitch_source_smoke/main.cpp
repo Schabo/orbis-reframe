@@ -32,7 +32,7 @@ void WritePpm(const stitch::Frame& frame, const std::string& path) {
 
 const char kUsage[] =
     "usage: stitch_source_smoke [--width N] [--lens-guard none|standard|premium]\n"
-    "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam | --new-stitcher] [--dump-depth]\n"
+    "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]] [--dump-depth]\n"
     "       [--calibration FILE.json]\n"
     "       [--measure-seam IN_MS OUT_MS]\n"
     "       [--colour R,G,B[,SR,SG,SB]] [--lens-colour IN_MS OUT_MS]\n"
@@ -103,6 +103,8 @@ int main(int argc, char** argv) {
             config.method = stitch::PreviewStitchConfig::Method::FixedSeam;
         } else if (a == "--new-stitcher") {
             config.method = stitch::PreviewStitchConfig::Method::New;
+        } else if (a == "--no-seam-colour-blend") {
+            config.seamColourBlend = false;
         } else if (a == "--calibration" && arg + 1 < argc) {
             // --calibration FILE.json : a camera's own lens calibration (as
             // lens_calib --out writes it and the app keeps it) in place of

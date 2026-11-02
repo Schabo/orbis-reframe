@@ -477,6 +477,87 @@ AliveResult CompareSeamOffsets(const SeamOffsets& prev, const SeamOffsets& cur)
     return r;
 }
 
+SeamColourBlocks MeasureSeamColourBlocks(const cv::Mat& refRgba, const cv::Mat& oursRgba,
+                                         const StripGrid& g, double nearDeg)
+{
+    const int W = oursRgba.cols, H = oursRgba.rows;
+    const int bw = std::max(1, int(std::lround(5.0 * g.pxDeg)));
+    auto partOf = [&](double e) {
+        const double ae = std::fabs(e);
+        if (ae > 0 && ae <= nearDeg)
+            return e > 0 ? SeamColourBlocks::Near0 : SeamColourBlocks::Near1;
+        if (ae >= 32.0 && ae <= 38.0)
+            return e > 0 ? SeamColourBlocks::Control0 : SeamColourBlocks::Control1;
+        return SeamColourBlocks::kParts;
+    };
+    SeamColourBlocks out;
+    for (int x0 = 0; x0 + bw <= W; x0 += bw) {
+        double so[SeamColourBlocks::kParts][3] = {}, sr[SeamColourBlocks::kParts][3] = {};
+        int n[SeamColourBlocks::kParts] = {};
+        for (int y = 0; y < H; ++y) {
+            const int part = partOf(g.rowDeg(y));
+            if (part == SeamColourBlocks::kParts)
+                continue;
+            const cv::Vec4b* o = oursRgba.ptr<cv::Vec4b>(y);
+            const cv::Vec4b* r = refRgba.ptr<cv::Vec4b>(y);
+            for (int x = x0; x < x0 + bw; ++x) {
+                bool ok = true;
+                for (int c = 0; c < 3 && ok; ++c)
+                    ok = o[x][c] >= 16 && o[x][c] <= 235 && r[x][c] >= 16 && r[x][c] <= 235;
+                if (!ok)
+                    continue;
+                for (int c = 0; c < 3; ++c) {
+                    so[part][c] += o[x][c];
+                    sr[part][c] += r[x][c];
+                }
+                ++n[part];
+            }
+        }
+        std::array<cv::Vec3d, SeamColourBlocks::kParts> b;
+        const int minPx = std::max(30, int(bw * g.pxDeg)); // a fifth of a block at least
+        for (int p = 0; p < SeamColourBlocks::kParts; ++p)
+            for (int c = 0; c < 3; ++c)
+                b[p][c] = n[p] >= minPx ? std::log(so[p][c] / sr[p][c]) : NAN;
+        out.blocks.push_back(b);
+    }
+    return out;
+}
+
+namespace {
+// Near less control per block, side and channel (NaN where either is).
+std::vector<double> SeamColourOffsets(const SeamColourBlocks& b)
+{
+    std::vector<double> v;
+    for (const auto& blk : b.blocks)
+        for (int side = 0; side < 2; ++side)
+            for (int c = 0; c < 3; ++c)
+                v.push_back(blk[SeamColourBlocks::Near0 + side][c] -
+                            blk[SeamColourBlocks::Control0 + side][c]);
+    return v;
+}
+} // namespace
+
+SeamColourResult SeamColourDifference(const SeamColourBlocks& b)
+{
+    std::vector<double> v = SeamColourOffsets(b), ctl;
+    for (double& x : v)
+        x = std::fabs(x);
+    for (const auto& blk : b.blocks)
+        for (int side = 0; side < 2; ++side)
+            for (int c = 0; c < 3; ++c)
+                ctl.push_back(std::fabs(blk[SeamColourBlocks::Control0 + side][c]));
+    return {Median(v), Percentile(v, 0.9), Median(ctl)};
+}
+
+SeamColourResult SeamColourChange(const SeamColourBlocks& prev, const SeamColourBlocks& cur)
+{
+    const std::vector<double> a = SeamColourOffsets(prev), b = SeamColourOffsets(cur);
+    std::vector<double> d;
+    for (size_t i = 0; i < std::min(a.size(), b.size()); ++i)
+        d.push_back(std::fabs(b[i] - a[i]));
+    return {Median(d), Percentile(d, 0.9)};
+}
+
 GradientEnergy MeasureGradientEnergy(const cv::Mat& grey, const StripGrid& g, double bandDeg)
 {
     cv::Mat x, gx, gy;

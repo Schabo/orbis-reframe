@@ -43,10 +43,11 @@ struct LensFrame {
     // before sampling.
     uint64_t fill = 0;
     // The stitch's std140 Params UBO for this frame (geometry, lens model,
-    // per-frame capture-time taps, the depth-aware seam's table, the privacy
-    // blur quads, the lenses' Y'CbCr -> R'G'B' conversion), packed by the
-    // exporter.
-    static constexpr int kParamsBytes = 12544;
+    // per-frame capture-time taps, the depth-aware seam's table, the seam
+    // colour blend, the privacy blur quads, the lenses' Y'CbCr -> R'G'B'
+    // conversion), packed by the exporter. Within the 16 KiB every Vulkan
+    // device takes in a uniform buffer.
+    static constexpr int kParamsBytes = 14592;
     std::array<uint8_t, kParamsBytes> params{};
     int64_t timestamp_ms = 0;
 };

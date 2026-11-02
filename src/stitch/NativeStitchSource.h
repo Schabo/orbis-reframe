@@ -8,6 +8,7 @@
 #include <ViewProjection.h>    // view::Pose
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
 #include <SeamWindow.h>        // insv::SeamWindow (value member below)
+#include <SeamColourBlend.h>   // insv::SeamColourBlend (value member below)
 
 #include <functional>
 #include <map>
@@ -90,6 +91,7 @@ public:
     const ClipInfo& GetInfo() const override { return info_; }
     Frame GetFrame(int64_t timestamp_ms) override;
     bool SeekTo(int64_t timestamp_ms) override;
+    void SetQuickSeek(bool on) override { quick_seek_ = on; }
     int64_t NearestKeyframeMs(int64_t timestamp_ms) const override;
     void KeyframesAround(int64_t timestamp_ms, int64_t& before, int64_t& after) const override;
     Frame ReadFrame() override;
@@ -234,15 +236,20 @@ public:
     const insv::SeamBlend& SeamBlendState() const { return seam_state_.blend; }
     // ... and the depth measurement's mean confidence on that frame (0..1).
     double SeamDepthConfidence() const { return seam_state_.depthConf; }
+    // The new stitcher's seam colour blend as the last frame was stitched
+    // with (insv::StitchGpuParams::seamColour's layout; all 0 when off or
+    // before a frame).
+    const float* SeamColourTable() const { return &seam_colour_table_[0][0]; }
 
     // Decoding and stitching on the GPU (Vulkan video decode + compute
     // stitch), not a CPU fallback.
     bool AllGpu() const { return vdec_ && gpu_; }
 
     // The clip's seam analysis (stitch::SeamAnalysisFor: its clip, lens
-    // guard, seam correction and lens colour): a frame it has is stitched
-    // with its state, without measuring the seam. On by default; the
-    // analysis pass itself turns it off.
+    // guard, seam correction and lens colour, or for the new stitcher's seam
+    // colour blend its clip, guard and calibration): a frame it has is
+    // stitched with its state, without measuring the seam. On by default;
+    // the analysis pass itself turns it off.
     void SetSeamAnalysisEnabled(bool on);
 
     // For stitch::AnalyseClipSeam: `w` set up as this source's own seam
@@ -313,6 +320,26 @@ private:
     insv::SeamState seam_state_;                      // ... the last frame's state
     std::unique_ptr<insv::SeamCosts> seam_costs_;     // a frame's cost volume (scratch)
     std::unique_ptr<insv::SeamCutStats> cut_stats_;   // ... and cut statistics (scratch)
+    bool seam_colour_on_ = false;                     // Open()'s seamColourBlendOn()
+    bool quick_seek_ = false;                         // SetQuickSeek: the next SeekTo without pre-roll
+    bool scrub_frame_ = false;                        // ... and the frame read after it unmeasured
+    insv::SeamColourWindow seam_colour_window_;       // its frames played so far
+    float seam_colour_table_[insv::kSeamDepthBins][3] = {}; // ... the last frame's table
+    // SeekTo's parts: the decoder positioned at t, and the seam colour
+    // blend's second before t measured into seam_colour_window_ (the decoder
+    // left before t).
+    bool seekDecoder(int64_t t);
+    bool preRollSeamColour(int64_t t);
+    // The next lens pair decoded and its colour in the overlap measured at
+    // the template's geometry into cut_stats_, nothing stitched (the
+    // pre-roll). False at the end (last_error_ empty) or on an error.
+    bool measureNextSeamColour(int64_t& pts_ms);
+    // The seam colour blend for the frame at pts_ms into `p`: `measure`
+    // fills cut_stats_ at the template's geometry and the frame is pooled
+    // with the second before it (seam_colour_window_). False when it can't
+    // (measure failed): `p` without it.
+    bool applySeamColour(int64_t pts_ms, insv::StitchGpuParams& p,
+                         const std::function<bool()>& measure);
     bool seam_warned_ = false;
     double seam_ms_ = 0.0; // the last paramsWithSeam(), for ReadTiming::seamMs
     ClipInfo info_;

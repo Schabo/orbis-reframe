@@ -100,10 +100,12 @@ constexpr double kLensColourLocalRampDeg = 10.0;
 // lenses meet in its bin -- elevation meetRad[bin], a Gaussian of
 // reachRad[bin] across the band -- since that is where a difference shows;
 // null = all rows alike. A bin takes the cells all three channels are
-// usable in, unless most of its weight is in cells with one clipped.
+// usable in, unless most of its weight is in cells with one clipped. With
+// `spread`, how far the bin's cells are off its median there (their
+// weighted median distance from it, log; 0 with fewer than two cells).
 void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
                       const double residual[3], const float* meetRad, const float* reachRad,
-                      float* value, float* weight);
+                      float* value, float* weight, float* spread = nullptr);
 
 // Veiling light: the sun in or near one lens scatters inside it and lays a
 // haze over its picture -- light added, about the same amount on dark and

@@ -66,8 +66,8 @@ void ClipMeasurements::schedule()
     m_queued = true;
     QMetaObject::invokeMethod(this, [this] {
         m_queued = false;
-        if (m_playing)
-            return; // picked up again on pause
+        if (m_playing || m_scrubbing)
+            return; // picked up again on pause, or when the scrub rests
         const Timeline *t = m_project->timeline();
         QStringList paths; // the playhead's source first
         for (int i = 0; i < t->count(); ++i)
@@ -86,6 +86,20 @@ void ClipMeasurements::schedule()
     }, Qt::QueuedConnection);
 }
 
+void ClipMeasurements::setScrubbing(bool scrubbing)
+{
+    m_scrubbing = scrubbing;
+    if (scrubbing) {
+        m_syncCancel = true;
+        m_seamCancel = true;
+        m_colourCancel = true;
+        m_analysisCancel = true; // keeps what it has done
+        return;
+    }
+    if (!m_playing)
+        schedule();
+}
+
 void ClipMeasurements::setPlaying(bool playing)
 {
     m_playing = playing;
@@ -98,7 +112,8 @@ void ClipMeasurements::setPlaying(bool playing)
         m_analysisCancel = true; // keeps what it has done
         return;
     }
-    schedule(); // measurements held back while playing
+    if (!m_scrubbing)
+        schedule(); // measurements held back while playing
 }
 
 void ClipMeasurements::setPriorityPath(const QString &clipPath)

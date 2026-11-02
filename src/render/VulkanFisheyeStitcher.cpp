@@ -52,7 +52,7 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.seam[3] = p.thetaRef;
     sp.edge[0] = p.edgeStartFrac;
     sp.edge[1] = p.edgeEndFrac;
-    sp.edge[2] = 0.0f;
+    sp.edge[2] = static_cast<float>(p.seamColourActive);
     sp.edge[3] = 0.0f;
     sp.dims[0] = p.fisheyeW;
     sp.dims[1] = p.fisheyeH;
@@ -128,6 +128,11 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
             sp.lensVeil[b][c] = p.seamBlend.veil[b][c];
         }
         sp.lensLocal[b][3] = sp.lensVeil[b][3] = 0.0f;
+    }
+    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+        for (int c = 0; c < 3; ++c)
+            sp.seamCol[b][c] = p.seamColourActive ? p.seamColour[b][c] : 0.0f;
+        sp.seamCol[b][3] = 0.0f;
     }
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
@@ -947,6 +952,23 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
                                           VulkanLensOutcome* r0,
                                           VulkanLensOutcome* r1, std::string& err)
 {
+    return measureSeamImpl(f0, f1, params, &out, cutOut, r0, r1, err);
+}
+
+bool VulkanFisheyeStitcher::measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                                             const insv::StitchGpuParams& params,
+                                             insv::SeamCutStats& out, VulkanLensOutcome* r0,
+                                             VulkanLensOutcome* r1, std::string& err)
+{
+    return measureSeamImpl(f0, f1, params, nullptr, &out, r0, r1, err);
+}
+
+bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                                            const insv::StitchGpuParams& params,
+                                            insv::SeamCosts* out, insv::SeamCutStats* cutOut,
+                                            VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                            std::string& err)
+{
     if (!m_ready || !d->nv12) {
         err = "measureSeamVk requires initAdopt()";
         return false;
@@ -1019,18 +1041,23 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
         const VkDescriptorSet sets[2] = {set, d->luts.setFor(nullptr)}; // no grade here
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeLayout, 0, 2, sets, 0,
                                 nullptr);
-        ViewPush vp{};
-        vp.pass = 2;
-        vkCmdPushConstants(cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
     } else {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeLayout, 0, 1, &set, 0,
                                 nullptr);
-        const int32_t pass = 2;
-        vkCmdPushConstants(cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
     }
-    // One 64-invocation workgroup per (bin, candidate).
-    vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamDepthCands, 1);
+    if (out) {
+        if (viaView) {
+            ViewPush vp{};
+            vp.pass = 2;
+            vkCmdPushConstants(cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
+        } else {
+            const int32_t pass = 2;
+            vkCmdPushConstants(cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
+        }
+        // One 64-invocation workgroup per (bin, candidate).
+        vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamDepthCands, 1);
+    }
     // Pass 3, the cut statistics: one per (bin, row); writes its own part of
     // the buffer, so no barrier between the two.
     if (cutOut) {
@@ -1084,12 +1111,13 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
     vkResetFences(d->device, 1, &d->fence);
 
     const float* c = static_cast<const float*>(d->seamMap);
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
-        for (int k = 0; k < insv::kSeamDepthCands; ++k) {
-            const float* v = c + 2 * (b * insv::kSeamDepthCands + k);
-            out.ncc[b][k] = v[0];
-            out.texture[b][k] = v[1];
-        }
+    if (out)
+        for (int b = 0; b < insv::kSeamDepthBins; ++b)
+            for (int k = 0; k < insv::kSeamDepthCands; ++k) {
+                const float* v = c + 2 * (b * insv::kSeamDepthCands + k);
+                out->ncc[b][k] = v[0];
+                out->texture[b][k] = v[1];
+            }
     if (cutOut) {
         const float* s = c + d->kSeamCostBytes / sizeof(float);
         for (int b = 0; b < insv::kSeamDepthBins; ++b)

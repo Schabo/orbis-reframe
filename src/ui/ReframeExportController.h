@@ -101,6 +101,7 @@ public:
         // lensCalibration) -- same geometry as the preview.
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
         stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+        bool seamColourBlend = true;
         std::optional<stitch::LensCalibration> lensCalibration;
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg) and lens colour.
         insv::SeamCorrection seamCorrection;

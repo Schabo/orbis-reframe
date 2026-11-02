@@ -331,10 +331,24 @@ void testStitchingPanel(SettingsSidebar &bar)
         CHECK(edited.first().at(0).value<G>() == G::None);
         CHECK(edited.first().at(1).value<M>() == M::FixedSeam);
     }
+    // The seam colour blend: the new stitcher's only.
+    QSignalSpy blendEdited(stitching, &StitchingPanel::seamColourBlendEdited);
+    auto *blend = stitching->findChild<QCheckBox *>(QStringLiteral("stitchSeamColourBlend"));
+    if (!blend) {
+        CHECK(blend);
+        return;
+    }
+    CHECK(!blend->isEnabled());
     method->setCurrentIndex(int(M::New));
     CHECK(edited.size() == 2 && edited.last().at(1).value<M>() == M::New);
+    CHECK(blend->isEnabled());
+    stitching->setSeamColourBlend(true); // shows the clip's: no signal
+    CHECK(blend->isChecked() && blendEdited.isEmpty());
+    blend->setChecked(false);
+    CHECK(blendEdited.size() == 1 && !blendEdited.first().at(0).toBool());
     method->setCurrentIndex(int(M::DepthSeam));
     CHECK(edited.size() == 3 && edited.last().at(1).value<M>() == M::DepthSeam);
+    CHECK(!blend->isEnabled());
     apply->click();
     CHECK(all.size() == 1);
 
@@ -363,6 +377,7 @@ void testStitchingPanel(SettingsSidebar &bar)
     stitching->setCalibrateAvailable(true);
     stitching->setNoClip();
     CHECK(!guard->isEnabled() && !method->isEnabled() && !apply->isEnabled());
+    CHECK(!blend->isEnabled());
     CHECK(calButton->isEnabled());
     stitching->setState(G::Premium, M::DepthSeam);
     CHECK(guard->isEnabled() && method->isEnabled() && apply->isEnabled());

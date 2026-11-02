@@ -47,6 +47,11 @@ void MainWindow::connectStitchAndStabilization()
                         c->sourcePath, guard, method,
                         lensCalibrationForGuard(c->sourcePath, c->lensCalibration, guard));
             });
+    connect(m_stitchingPanel, &StitchingPanel::seamColourBlendEdited, this, [this](bool on) {
+        const ClipItem *c = m_timeline->clipById(editClipId());
+        if (c && !c->flat)
+            m_timeline->setSourceSeamColourBlend(c->sourcePath, on);
+    });
     connect(m_stitchingPanel, &StitchingPanel::calibrationChosen, this, [this](int index) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && !c->flat && index >= 0 && index < int(m_calibrationChoices.size()))
@@ -83,6 +88,7 @@ void MainWindow::connectStitchAndStabilization()
         // None doesn't strip an X5 clip's guards, and an X5 clip's Premium
         // doesn't land on a file that would stitch bare anyway.
         const StitchingPanel::Method method = c->stitchMethod;
+        const bool seamColourBlend = c->seamColourBlend;
         const stitch::LensGuardProfiles from = m_lensGuards->profiles(c->sourcePath);
         const StitchingPanel::LensGuard guard = from.usable(c->lensGuard);
         for (int i = 0; i < m_timeline->count(); ++i) {
@@ -94,6 +100,7 @@ void MainWindow::connectStitchAndStabilization()
             const auto g = takesGuard ? guard : o.lensGuard;
             m_timeline->setSourceStitch(o.sourcePath, g, method,
                                         lensCalibrationForGuard(o.sourcePath, o.lensCalibration, g));
+            m_timeline->setSourceSeamColourBlend(o.sourcePath, seamColourBlend);
         }
     });
     // Project settings (File ▸ Project settings…): output aspect / size /
@@ -395,6 +402,7 @@ void MainWindow::syncStitchingPanel()
         return;
     }
     m_stitchingPanel->setState(c->lensGuard, c->stitchMethod, m_lensGuards->profiles(c->sourcePath));
+    m_stitchingPanel->setSeamColourBlend(c->seamColourBlend);
 
     // The calibrations: the camera file's, the clip's own, and the one kept
     // for its camera and guard if that's another (a newer one).

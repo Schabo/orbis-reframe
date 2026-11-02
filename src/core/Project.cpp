@@ -475,6 +475,7 @@ struct ParsedClip {
     int lensColourGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+    bool seamColourBlend = true;
     std::optional<stitch::LensCalibration> lensCalibration;
     bool flat = false;
     ClipItem::Fit fit = ClipItem::Fit::Bars;
@@ -1259,6 +1260,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         });
         if (c.stitchMethod == stitch::PreviewStitchConfig::Method::New && !c.flat) {
             clips.back()["stitch"]["method"] = "new";
+            clips.back()["stitch"]["seamColourBlend"] = c.seamColourBlend;
             anyNewStitcher = true;
         }
         if (c.lensCalibration && !c.flat) {
@@ -1403,8 +1405,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyNewStitcher          ? kNewStitcherFormatVersion
-                    : anyLensCalibration      ? kLensCalibrationFormatVersion
+        {"version", anyNewStitcher || anyLensCalibration ? kStitchFormatVersion
                     : anyMotionOverlay        ? kMotionOverlayFormatVersion
                     : anyGauge                ? kGaugeFormatVersion
                     : anyBrace                ? kClockFormatVersion
@@ -1525,8 +1526,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                                                            stitch::PreviewStitchConfig::Method::DepthSeam)
                                       ? stitch::PreviewStitchConfig::Method::DepthSeam
                                       : stitch::PreviewStitchConfig::Method::FixedSeam;
-                if (js.value("method", std::string()) == "new")
+                if (js.value("method", std::string()) == "new") {
                     pc.stitchMethod = stitch::PreviewStitchConfig::Method::New;
+                    pc.seamColourBlend = js.value("seamColourBlend", true);
+                }
                 if (js.contains("calibration"))
                     pc.lensCalibration = lenscal::FromJson(js.at("calibration"));
             }
@@ -1670,9 +1673,11 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipBlurRemovals(id, pc.blurRemovals);
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
         m_timeline->setClipSpeed(id, pc.speed);
-        if (!pc.flat)
+        if (!pc.flat) {
             m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.stitchMethod,
                                         pc.lensCalibration);
+            m_timeline->setSourceSeamColourBlend(pc.sourcePath, pc.seamColourBlend);
+        }
         if (!std::isnan(pc.syncAdjustMs))
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);
         if (pc.seamAdjustGuard >= 0)

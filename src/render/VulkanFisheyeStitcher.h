@@ -157,6 +157,14 @@ public:
                        insv::SeamCutStats* cutOut, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                        std::string& err);
 
+    // measureSeamVk's pass 3 alone: the seam cut's statistics (with
+    // params.seamQ; all 0 or depth off = the template's geometry) into
+    // `out`, no cost volume. The new stitcher's seam colour blend measures
+    // the lenses' colour from them. Same handshake, blocking.
+    bool measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                          const insv::StitchGpuParams& params, insv::SeamCutStats& out,
+                          VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+
     // Whether renderViewVk() is usable (the fused view pipeline built -- needs
     // initAdopt(); fisheye_view_nv12.comp).
     bool viewReady() const { return m_viewReady; }
@@ -253,6 +261,13 @@ private:
                          const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
                          const uint32_t* clear, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
                          VulkanLensOutcome* r1, std::string& err);
+
+    // measureSeamVk / measureSeamCutVk: pass 2 into `out` (null = not run),
+    // pass 3 into `cutOut` (null = not run).
+    bool measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                         const insv::StitchGpuParams& params, insv::SeamCosts* out,
+                         insv::SeamCutStats* cutOut, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                         std::string& err);
 
     struct Impl;
     Impl* d = nullptr;

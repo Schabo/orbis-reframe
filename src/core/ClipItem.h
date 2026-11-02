@@ -178,6 +178,9 @@ struct ClipItem {
     // Unused on a flat clip.
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+    // The new stitcher's seam colour blend (stitch::PreviewStitchConfig::
+    // seamColourBlend); used only with Method::New. Shared like lensGuard.
+    bool seamColourBlend = true;
     // The camera's own lens calibration (Calibrate lenses) in place of the
     // one its file carries; none = the file's. A copy, not a reference to
     // the app's: the project stitches the same wherever it is opened,

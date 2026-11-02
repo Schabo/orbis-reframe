@@ -267,7 +267,7 @@ LensColourFit FitLensColour(const std::vector<const SeamCutStats*>& frames, doub
 
 void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColour& c,
                       const double residual[3], const float* meetRad, const float* reachRad,
-                      float* value, float* weight)
+                      float* value, float* weight, float* spread)
 {
     // Per bin, each cell weighted by how near it lies to where the lenses
     // meet (meetRad, reachRad: a Gaussian across the band; null = all rows
@@ -301,7 +301,13 @@ void LensColourPerBin(const SeamCutStats& stats, double bandRad, const LensColou
             for (const auto& [d, wt] : v)
                 w += wt;
             weight[b * 3 + k] = static_cast<float>(w);
-            value[b * 3 + k] = static_cast<float>(weightedMedian(v));
+            const double med = weightedMedian(v);
+            value[b * 3 + k] = static_cast<float>(med);
+            if (spread) {
+                for (auto& [d, wt] : v)
+                    d = std::fabs(d - med);
+                spread[b * 3 + k] = v.size() >= 2 ? static_cast<float>(weightedMedian(v)) : 0.0f;
+            }
         }
     }
 }

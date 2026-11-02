@@ -1,5 +1,6 @@
 #include "StitchingPanel.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -49,12 +50,25 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_method->addItem(tr("New stitcher (experimental)"));
     m_method->setItemData(
         2,
-        tr("The stitcher that will replace the other two, still being built. So far it joins "
-           "the pictures from the lens calibration alone, the same in every frame, and "
-           "measures nothing from the video."),
+        tr("The stitcher that will replace the other two, still being built. It joins the "
+           "pictures from the lens calibration, and works out anything more from each frame "
+           "and the ones just before it, not from the clip as a whole."),
         Qt::ToolTipRole);
     m_method->setToolTip(tr("How the two pictures are joined where they meet."));
     form()->addRow(tr("Stitcher"), m_method);
+
+    m_seamColourBlend = new QCheckBox(tr("Seam colour blend"), this);
+    m_seamColourBlend->setObjectName(QStringLiteral("stitchSeamColourBlend"));
+    m_seamColourBlend->setToolTip(
+        tr("The two lenses never see quite the same colour. With this on, the new stitcher "
+           "measures how they differ along the seam over the last second and evens it out "
+           "there, fading to nothing about 30° away, so the rest of each picture "
+           "keeps its colour."));
+    form()->addRow(QString(), m_seamColourBlend);
+    connect(m_seamColourBlend, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_updating)
+            emit seamColourBlendEdited(on);
+    });
 
     m_calibration = new QComboBox(this);
     m_calibration->setObjectName(QStringLiteral("stitchCalibration"));
@@ -100,6 +114,22 @@ StitchingPanel::StitchingPanel(QWidget *parent)
 
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_method, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
+    connect(m_method, &QComboBox::currentIndexChanged, this,
+            &StitchingPanel::updateSeamColourBlendEnabled);
+}
+
+void StitchingPanel::setSeamColourBlend(bool on)
+{
+    m_updating = true;
+    m_seamColourBlend->setChecked(on);
+    m_updating = false;
+}
+
+void StitchingPanel::updateSeamColourBlendEnabled()
+{
+    // Only the new stitcher has it; the old one matches the lenses its own way.
+    m_seamColourBlend->setEnabled(m_method->isEnabled() &&
+                                  m_method->currentIndex() == static_cast<int>(Method::New));
 }
 
 void StitchingPanel::setState(LensGuard lensGuard, Method method,
@@ -116,6 +146,7 @@ void StitchingPanel::setState(LensGuard lensGuard, Method method,
     m_applyToAll->setEnabled(true);
     m_lensGuard->setCurrentIndex(static_cast<int>(profiles.usable(lensGuard)));
     m_method->setCurrentIndex(static_cast<int>(method));
+    updateSeamColourBlendEnabled();
     m_updating = false;
 }
 
@@ -126,6 +157,7 @@ void StitchingPanel::setNoClip()
     // not a clip, so it stays.
     m_lensGuard->setEnabled(false);
     m_method->setEnabled(false);
+    updateSeamColourBlendEnabled();
     m_calibration->setEnabled(false);
     m_applyToAll->setEnabled(false);
 }

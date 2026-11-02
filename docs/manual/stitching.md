@@ -146,13 +146,34 @@ greyed out in builds made without OpenCV's chart detection.
   every frame. The seam holds still, but things close to the camera show up
   twice where the pictures meet.
 - **New stitcher (experimental)**: the stitcher that will replace the other
-  two, still being built. For now it joins the pictures from the lens model
-  alone (the camera file's, or your calibration), with a fixed blend, the
-  same in every frame. It measures nothing from the video: the seam
-  alignment and lens colour below aren't used with it, so the two lenses'
-  colours aren't matched yet, and close things show up twice as with
-  **Fixed seam**. Projects with a clip set to it can't be opened by
-  orbis-reframe versions before 0.8.
+  two, still being built. It joins the pictures from the lens model (the
+  camera file's, or your calibration) with a fixed blend, and works out
+  anything more from each frame and the ones just before it, not from the
+  clip as a whole: the seam alignment and lens colour below aren't used with it. So
+  far that is the colour where the lenses meet (*Seam colour blend* below); close
+  things still show up twice, as with **Fixed seam**. Projects with a clip
+  set to it can't be opened by orbis-reframe versions before 0.8.
+
+### Seam colour blend
+
+With the new stitcher, **Seam colour blend** (under **Stitcher**, on for
+new clips) evens out the two lenses' colours where they meet. It compares
+what both lenses see in the overlap, stretch by stretch round the seam,
+over each frame and the second before it, and moves each lens half of the
+difference there: in full up to
+about 12° from the seam, fading to nothing by 30°, so the rest of each
+picture keeps the colour the lens recorded. A stretch where the lenses
+can't be compared (a sky blown out in a colour, flare in one lens,
+something close crossing the seam) takes the correction of the stretches
+beside it; clipped highlights are left as they are. Going by a whole
+second keeps the correction steady while the picture moves; when the light
+changes, it follows within about half a second.
+
+When you jump to a frame, orbis-reframe looks at the second before it as
+it gets there, so a frame looks the same however you get to it: played,
+jumped to, saved as a screenshot or exported. Turn it off to see the lenses as they recorded. With **Depth-aware seam**
+and **Fixed seam** it is greyed out: they match the lenses their own way
+(*Lens colour* below).
 
 ## Depth-aware seam
 
@@ -240,7 +261,7 @@ have got for the clip under the playhead:
 | *Seam aligned; measuring this clip's lens colours…* | The seam is done, the lens colour is running. |
 | *Seam aligned and lens colours matched for this clip.* | Both done. |
 | *Analysing this clip's seam… N %* | After both: the depth-aware seam's analysis (see *Depth-aware seam* above) is running. It stops while playing and goes on from where it was. |
-| *The new stitcher measures nothing from this clip.* | **Stitcher** is set to **New stitcher (experimental)**, which joins the lenses from their lens model alone. |
+| *The new stitcher measures nothing from this clip.* | **Stitcher** is set to **New stitcher (experimental)**, which needs none of these: it joins the lenses from their lens model, and its **Seam colour blend** goes by the frames as they're shown. |
 | *Couldn't align this clip's seam (…)* | The seam alignment didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only, and its lens colour is still measured. |
 | *… couldn't match the lens colours (…)* | The lens colour measurement didn't succeed, for one of the same reasons. The lenses are stitched as recorded. |
 

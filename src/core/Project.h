@@ -79,8 +79,8 @@ public:
     //   stitch {lensGuard, depthSeam, optional: calibration -- the
     //   camera's own lens calibration (LensCalibrationJson), absent => the
     //   file's; method: "new" -- the new stitcher, absent => the old one,
-    //   with or without the depth seam by depthSeam} (absent =>
-    //   previewStitch's);
+    //   with or without the depth seam by depthSeam; with "new",
+    //   seamColourBlend (absent => true)} (absent => previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
@@ -160,15 +160,13 @@ public:
     // "view" and "aheadS") and the
     // `{lean}` and `{g}` fields, written only when a project has one: an
     // older build would draw such a gauge as a speed dial, and show the
-    // field's braces. Version 21 added a clip's own lens calibration (its
-    // "stitch" object's "calibration", LensCalibrationJson), written only
-    // when a clip has one: an older build would stitch it with the file's.
-    // Version 22 added the new stitcher (a clip's "stitch" object's
-    // "method": "new"), written only when a clip uses it: an older build
-    // would stitch it with the old one.
-    static constexpr int kFormatVersion = 22;
-    static constexpr int kNewStitcherFormatVersion = 22;
-    static constexpr int kLensCalibrationFormatVersion = 21;
+    // field's braces. It also added a clip's own lens calibration (its
+    // "stitch" object's "calibration", LensCalibrationJson) and the new
+    // stitcher (that object's "method": "new", with its "seamColourBlend"),
+    // written only when a clip has one: an older build would stitch it with
+    // the file's calibration, or with the old stitcher.
+    static constexpr int kFormatVersion = 20;
+    static constexpr int kStitchFormatVersion = 20;
     static constexpr int kMotionOverlayFormatVersion = 20;
     static constexpr int kClockFormatVersion = 19;
     static constexpr int kGaugeFormatVersion = 19;

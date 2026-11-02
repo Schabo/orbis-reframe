@@ -46,6 +46,9 @@ public:
     void schedule();
     // Playing: cancel the running ones. Paused: schedule() again.
     void setPlaying(bool playing);
+    // Scrubbing (PlaybackController::scrubbingChanged) likewise: the GPU is
+    // the scrub's.
+    void setScrubbing(bool scrubbing);
     // The source under the playhead: measured first.
     void setPriorityPath(const QString &clipPath);
     // A source's lens-guard setting changed: its seam and colour
@@ -97,6 +100,7 @@ private:
     Project *m_project;
     bool m_enabled;
     bool m_playing = false;
+    bool m_scrubbing = false;
     bool m_queued = false; // schedule() already pending
 
     QThread *m_syncThread = nullptr;

@@ -94,6 +94,7 @@ stitch::PreviewStitchConfig PlaybackController::openConfig(stitch::PreviewStitch
     preview.lensGuard = seg.lensGuard;
     preview.lensCalibration = seg.lensCalibration;
     preview.method = seg.stitchMethod;
+    preview.seamColourBlend = seg.seamColourBlend;
     return preview;
 }
 
@@ -433,6 +434,7 @@ void PlaybackController::decoderLoop()
                         if (was.seg.sourcePath == now.seg.sourcePath &&
                             (was.seg.lensGuard != now.seg.lensGuard ||
                              was.seg.stitchMethod != now.seg.stitchMethod ||
+                             was.seg.seamColourBlend != now.seg.seamColourBlend ||
                              was.seg.lensCalibration != now.seg.lensCalibration) &&
                             !reopen.contains(now.seg.sourcePath)) {
                             reopen << now.seg.sourcePath;
@@ -534,6 +536,8 @@ void PlaybackController::decoderLoop()
                 if (kf >= ps.seg.inMs && kf < ps.seg.outMs)
                     target = kf;
             }
+            // A scrub's passing frames quickly; its final seek is exact.
+            m_activeSource->SetQuickSeek(seekToKeyframe);
             m_activeSource->SeekTo(target); // m_hardStall stays until the first read
             m_decLastSourceMs = -1;
             m_decSegIndex = idx;

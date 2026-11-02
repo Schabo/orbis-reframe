@@ -15,6 +15,7 @@
 #include "InsvTrailer.h"
 #include "Motion.h"
 #include "SeamAlignment.h"
+#include "SeamColourBlend.h"
 #include "SeamCut.h"
 #include "SeamDepth.h"
 #include "SeamWindow.h"
@@ -1100,6 +1101,152 @@ void testSeamCutWindow()
     colours(150); // log(1.5 / 1.2) = 0.22: bounded
     s = solveOne(*stats, band, clip);
     CHECK(near(g[0], insv::kLensColourResidualMaxLog, half));
+}
+
+// The new stitcher's seam colour blend: the fade across the seam; a known
+// per-bin colour ratio recovered from one frame's cells, with a sky clipped
+// in blue and a flare patch on one lens; the window pooling a frame with
+// the second before it, starting afresh after a seek; the CPU stitch moving each lens half of it near the
+// seam and nothing far from it.
+void testSeamColourBlend()
+{
+    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    CHECK(insv::SeamColourFade(0.0) == 1.0 && insv::SeamColourFade(12.0 * kDeg) == 1.0);
+    CHECK(near(insv::SeamColourFade(21.0 * kDeg), 0.5, 1e-9));
+    CHECK(near(insv::SeamColourFade(-21.0 * kDeg), 0.5, 1e-9));
+    CHECK(insv::SeamColourFade(30.0 * kDeg) == 0.0 && insv::SeamColourFade(-50.0 * kDeg) == 0.0);
+
+    const double band = 5.0 * kDeg;
+    auto truth = [](int b, int k) { return 0.08 * std::sin(2.0 * std::numbers::pi * b / B + k); };
+    auto stats = std::make_unique<insv::SeamCutStats>();
+    // Lens 0 at exp(L / 2) of the scene, lens 1 at exp(-L / 2); the scene's
+    // level changes across the band and with the channel.
+    auto fill = [&](const std::function<double(int, int)>& L) {
+        for (int b = 0; b < B; ++b)
+            for (int r = 0; r < R; ++r) {
+                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                c.n = 64;
+                c.texture = 20;
+                c.zsad = 2;
+                for (int k = 0; k < 3; ++k) {
+                    const double scene = 60.0 + 10.0 * r + 15.0 * k;
+                    c.nColour[k] = 64;
+                    c.mean[0][k] = static_cast<float>(scene * std::exp(0.5 * L(b, k)));
+                    c.mean[1][k] = static_cast<float>(scene * std::exp(-0.5 * L(b, k)));
+                }
+            }
+    };
+    fill(truth);
+    for (int b = 0; b < 10; ++b) // a sky clipped in blue
+        for (int r = 0; r < R; ++r)
+            stats->cell[b][r].nColour[2] = 0;
+    const double scatter[R] = {0.3, -0.25, 0.1, -0.15, 0.35, -0.3, 0.2, -0.05, 0.25};
+    for (int b = 60; b < 64; ++b) // flare on lens 0: its cells scattered
+        for (int r = 0; r < R; ++r)
+            for (int k = 0; k < 3; ++k)
+                stats->cell[b][r].mean[0][k] *= static_cast<float>(std::exp(scatter[r]));
+    float table[B * 3];
+    CHECK(insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    double worst = 0, worstSky = 0, worstFlare = 0;
+    for (int b = 0; b < B; ++b)
+        for (int k = 0; k < 3; ++k) {
+            const double d = std::fabs(table[b * 3 + k] - truth(b, k));
+            (b < 10 && k == 2 ? worstSky : b >= 60 && b < 64 ? worstFlare : worst) =
+                std::max(b < 10 && k == 2 ? worstSky : b >= 60 && b < 64 ? worstFlare : worst, d);
+        }
+    // The smoothing's own loss on a 128-bin sine, more next to the stretches
+    // filled from one side; blue across the 28-degree clipped sky from its
+    // two sides; the flare left out and filled from either side.
+    CHECK(worst < 0.006);
+    CHECK(worstSky < 0.015);
+    CHECK(worstFlare < 0.008);
+
+    // Bounded; a frame with nothing usable is no correction.
+    fill([](int, int) { return 0.4; });
+    CHECK(insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    CHECK(near(table[50 * 3 + 1], insv::kSeamColourMaxLog, 1e-6));
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r)
+            stats->cell[b][r].n = 0;
+    CHECK(!insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    CHECK(table[50 * 3 + 1] == 0.0f);
+
+    // The window: a frame's table pools it and the frames in the
+    // kSeamColourWindowMs before it, the nearer weighing more -- never the
+    // frames after it. Frames 33 ms apart, the lenses 10 % apart in green up
+    // to 1000 ms, then 0.
+    insv::SeamColourWindow win;
+    float t[insv::kSeamDepthBins * 3];
+    auto step = [&](int64_t pts) {
+        fill([pts](int, int k) { return k == 1 && pts <= 1000 ? 0.1 : 0.0; });
+        win.add(pts, *stats, band);
+    };
+    step(0);
+    CHECK(win.solve(0, t) && near(t[20 * 3 + 1], 0.1, 1e-6)); // one frame: its own
+    for (int64_t pts = 33; pts <= 2000; pts += 33)
+        step(pts);
+    CHECK(win.solve(990, t) && near(t[20 * 3 + 1], 0.1, 1e-6));  // later frames don't count
+    CHECK(win.solve(2000, t) && near(t[20 * 3 + 1], 0.0, 1e-6)); // all of its second at 0
+    CHECK(win.solve(1500, t)); // half a second on: the older half, weighing less
+    CHECK(t[20 * 3 + 1] > 0.015 && t[20 * 3 + 1] < 0.04);
+    CHECK(near(t[20 * 3], 0.0, 1e-6));
+    win.dropBefore(1500);
+    CHECK(!win.solve(1400, t)); // none left up to it
+    CHECK(win.solve(2000, t) && near(t[20 * 3 + 1], 0.0, 1e-6));
+    // A frame earlier than the last (a seek back) starts afresh.
+    fill([](int, int) { return 0.05; });
+    win.add(100, *stats, band);
+    CHECK(win.solve(100, t) && near(t[20 * 3 + 1], 0.05, 1e-6));
+    win.reset();
+    CHECK(win.empty() && !win.solve(100, t) && t[20 * 3 + 1] == 0.0f);
+
+    // The CPU stitch: uniform grey lenses, green 10 % apart in the table
+    // everywhere. Lens 0 alone (past the band) gets darker in green by
+    // exp(-0.05) times the fade, lens 1 brighter; past 30 deg nothing moves.
+    insv::Image l0, l1;
+    l0.alloc(800, 800);
+    l1.alloc(800, 800);
+    std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t(100));
+    std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t(100));
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 800, 800, insv::StitchParams{}));
+    std::vector<float> green(B * 3, 0.0f);
+    for (int b = 0; b < B; ++b)
+        green[b * 3 + 1] = 0.1f;
+    double L[3];
+    st.seamColourLog(st.seamDir(1.0, 3.0 * kDeg), green.data(), L);
+    CHECK(near(L[1], 0.1, 1e-6) && L[0] == 0.0);
+    st.seamColourLog(st.seamDir(1.0, -21.0 * kDeg), green.data(), L);
+    CHECK(near(L[1], 0.05, 1e-6));
+    insv::Image plain, matched;
+    plain.alloc(256, 128);
+    matched.alloc(256, 128);
+    st.renderEquirect(l0, l1, plain);
+    st.renderEquirect(l0, l1, matched, nullptr, nullptr, nullptr, 0, green.data());
+    int checked = 0, wrong = 0;
+    const double bandRad = st.gpuParams().bandRad;
+    for (int y = 0; y < 128; y += 3)
+        for (int x = 0; x < 256; x += 3) {
+            const double lat = (0.5 - (y + 0.5) / 128) * std::numbers::pi;
+            const double lon = ((x + 0.5) / 256 - 0.5) * 2.0 * std::numbers::pi;
+            const insv::Vec3 dir = insv::apply(
+                st.outRotation(),
+                insv::Vec3{std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
+            double e, t;
+            int i0, i1;
+            st.seamPosition(dir, e, i0, i1, t);
+            const size_t o = (static_cast<size_t>(y) * 256 + x) * 3;
+            if (plain.rgb[o + 1] == 0)
+                continue; // outside both circles
+            const int g = matched.rgb[o + 1], g0 = plain.rgb[o + 1];
+            if (std::fabs(e) < bandRad + 0.5 * kDeg)
+                continue; // blended from both
+            const double want = g0 * std::exp((e > 0 ? -0.05 : 0.05) * insv::SeamColourFade(e));
+            ++checked;
+            if (std::abs(g - want) > 0.75 || matched.rgb[o] != plain.rgb[o])
+                ++wrong;
+        }
+    CHECK(checked > 1000 && wrong == 0);
 }
 
 // The local correction round the seam: a stretch where the lenses differ
@@ -2324,6 +2471,7 @@ int main()
     testLensColourClippedChannel();
     testLensColourWhereTheyMeet();
     testLensColourLocal();
+    testSeamColourBlend();
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();

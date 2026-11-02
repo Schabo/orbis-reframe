@@ -251,6 +251,11 @@ struct StitchGpuParams {
     float seamQ[kSeamDepthBins] = {};
     // Per frame: the blend across the band (all 0 = the plain cross-fade).
     SeamBlend seamBlend;
+    // Per frame: the new stitcher's seam colour blend (insv::SeamColourBlend)
+    // -- per azimuth bin log(lens 0 / lens 1) R G B, half to each lens,
+    // faded across the seam by insv::SeamColourFade. 0 = off.
+    int seamColourActive = 0;
+    float seamColour[kSeamDepthBins][3] = {};
     // Privacy blur (BlurQuads.h): regions mosaicked in this frame, equirect
     // (sphere) frame, prepared. Per frame, like the RS taps.
     int blurCount = 0;
@@ -273,9 +278,12 @@ public:
     // stitch distance and `blend` its blend across the band (nullptr = the
     // plain cross-fade); both used only with StitchParams::depthSeam.
     // `blur` (`blurCount` prepared quads, BlurQuads.h) are mosaicked.
+    // `seamColour` (StitchGpuParams::seamColour's layout, null = none) is the
+    // new stitcher's seam colour blend (seamColourLog).
     void renderEquirect(const Image& lens0, const Image& lens1, Image& out,
                         const float* seamQ = nullptr, const SeamBlend* blend = nullptr,
-                        const BlurQuadFrame* blur = nullptr, int blurCount = 0) const;
+                        const BlurQuadFrame* blur = nullptr, int blurCount = 0,
+                        const float* seamColour = nullptr) const;
 
     // Convenience: allocate a `width x width/2` equirect and render into it.
     Image renderEquirect(const Image& lens0, const Image& lens1, int width,
@@ -337,6 +345,11 @@ public:
     // LensVeilRemove.
     void lensLogGains(const Vec3& dir, const SeamBlend* blend, double lg[2][3],
                       double veil[2][3]) const;
+    // The seam colour blend's log ratio lens 0 / lens 1 for `dir` from the
+    // per-bin `table` (StitchGpuParams::seamColour's layout): interpolated
+    // between bins, faded across the seam (insv::SeamColourFade). Lens 0
+    // takes -L / 2, lens 1 L / 2, as lensLogGains.
+    void seamColourLog(const Vec3& dir, const float* table, double L[3]) const;
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
 

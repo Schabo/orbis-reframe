@@ -52,11 +52,11 @@ struct CaptureTiming {
 
 // The stitch knobs, handed to IStitchSource::Open. quality / width / height
 // are the preview's (View menu; Project::previewStitch); lensGuard /
-// method are the clip's own (Stitching panel; ClipItem::lensGuard /
-// stitchMethod).
+// method / seamColourBlend are the clip's own (Stitching panel;
+// ClipItem::lensGuard / stitchMethod / seamColourBlend).
 //
 // NativeStitchSource honours width/height (the equirect output size),
-// lensGuard, method and lensCalibration. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
+// lensGuard, method, seamColourBlend and lensCalibration. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
 struct PreviewStitchConfig {
     enum class Quality { Template, OpticalFlow };
 
@@ -84,13 +84,22 @@ struct PreviewStitchConfig {
     //   FixedSeam: the old stitcher without it: both lenses treated as one
     //     point (infinite stitch distance), with the clip's seam correction
     //     and lens colour.
-    //   New: the new stitcher. So far its base, the template: the lens model
-    //     and calibration as they are, a fixed cross-fade, nothing measured
-    //     from the picture -- the clip's seam correction and lens colour are
-    //     not applied. Its layers (seam colour, flow) come on top of it.
+    //   New: the new stitcher. Its base is the template: the lens model and
+    //     calibration as they are, a fixed cross-fade, nothing measured from
+    //     the clip -- the clip's seam correction and lens colour are not
+    //     applied. Its layers, worked out from each frame and the frames just
+    //     before it, come on top: the seam colour blend (seamColourBlend), flow to come.
     enum class Method { DepthSeam, FixedSeam, New };
     Method method = Method::DepthSeam;
     bool depthSeam() const { return method == Method::DepthSeam; }
+
+    // The new stitcher's seam colour blend (insv::SeamColourBlend): the
+    // lenses' colour matched per stretch of the seam from what both see in
+    // the overlap over each frame and the second before it (which SeekTo
+    // measures first). Only with Method::New; the old stitcher has
+    // its own lens colour.
+    bool seamColourBlend = true;
+    bool seamColourBlendOn() const { return method == Method::New && seamColourBlend; }
 
     // The camera's own lens calibration (Calibrate lenses) in place of the
     // file's; none = the file's. The guard is in it: no guard profile goes
@@ -103,13 +112,14 @@ struct PreviewStitchConfig {
             width > 0 ? std::to_string(width) + "x" + std::to_string(height) : "auto";
         return "v7-" + size + "-" + (quality == Quality::OpticalFlow ? "of" : "tmpl") + "-g" +
                std::to_string(static_cast<int>(lensGuard)) + (method == Method::DepthSeam ? "-d" : method == Method::New ? "-n" : "") +
+               (seamColourBlendOn() ? "-sc" : "") +
                (lensCalibration ? "-c" + lensCalibration->created : "");
     }
 
     bool operator==(const PreviewStitchConfig& o) const {
         return quality == o.quality && width == o.width && height == o.height &&
                lensGuard == o.lensGuard && method == o.method &&
-               lensCalibration == o.lensCalibration;
+               seamColourBlend == o.seamColourBlend && lensCalibration == o.lensCalibration;
     }
     bool operator!=(const PreviewStitchConfig& o) const { return !(*this == o); }
 };
@@ -234,6 +244,15 @@ public:
     // stitched. Returns false with GetLastError() set on failure. Valid only
     // after a successful Open().
     virtual bool SeekTo(int64_t timestamp_ms) = 0;
+
+    // A quick seek: the next SeekTo (that one only) and the frame read after
+    // it skip what only makes that frame look exactly as playback into it
+    // would -- the seam measurements (the new stitcher's seam colour blend
+    // over the second before it, the depth-aware seam where the clip isn't
+    // analysed); the frame keeps the last frame's. For the frames a scrub
+    // passes through; the scrub's final seek is exact. Default: nothing to
+    // skip.
+    virtual void SetQuickSeek(bool /*on*/) {}
 
     // The source time (ms) of the keyframe nearest `timestamp_ms`: SeekTo() of
     // it decodes a single frame, so it's the cheap target while scrubbing. The
