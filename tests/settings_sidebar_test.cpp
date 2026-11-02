@@ -308,29 +308,33 @@ void testTabKeys(SettingsSidebar &bar)
 void testStitchingPanel(SettingsSidebar &bar)
 {
     using G = StitchingPanel::LensGuard;
+    using M = StitchingPanel::Method;
     StitchingPanel *stitching = bar.stitching();
     CHECK(stitching->scope() == QLatin1String("This clip"));
     QSignalSpy edited(stitching, &StitchingPanel::stitchEdited);
     QSignalSpy all(stitching, &StitchingPanel::applyToAllRequested);
-    stitching->setState(G::Standard, false); // shows a clip: no signal
+    stitching->setState(G::Standard, M::FixedSeam); // shows a clip: no signal
     CHECK(edited.isEmpty());
     stitching->setExpanded(true);
     auto *guard = stitching->findChild<QComboBox *>(QStringLiteral("stitchLensGuard"));
-    auto *depth = stitching->findChild<QCheckBox *>(QStringLiteral("stitchDepthSeam"));
+    auto *method = stitching->findChild<QComboBox *>(QStringLiteral("stitchMethod"));
     auto *apply = stitching->findChild<QPushButton *>(QStringLiteral("stitchApplyToAll"));
-    if (!guard || !depth || !apply) {
-        CHECK(guard && depth && apply);
+    if (!guard || !method || !apply) {
+        CHECK(guard && method && apply);
         return;
     }
-    CHECK(guard->currentIndex() == int(G::Standard) && !depth->isChecked());
+    CHECK(guard->currentIndex() == int(G::Standard) && method->currentIndex() == int(M::FixedSeam));
+    CHECK(method->count() == 3);
     guard->setCurrentIndex(0); // None
     CHECK(edited.size() == 1);
     if (!edited.isEmpty()) {
         CHECK(edited.first().at(0).value<G>() == G::None);
-        CHECK(!edited.first().at(1).toBool());
+        CHECK(edited.first().at(1).value<M>() == M::FixedSeam);
     }
-    depth->setChecked(true);
-    CHECK(edited.size() == 2 && edited.last().at(1).toBool());
+    method->setCurrentIndex(int(M::New));
+    CHECK(edited.size() == 2 && edited.last().at(1).value<M>() == M::New);
+    method->setCurrentIndex(int(M::DepthSeam));
+    CHECK(edited.size() == 3 && edited.last().at(1).value<M>() == M::DepthSeam);
     apply->click();
     CHECK(all.size() == 1);
 
@@ -358,10 +362,10 @@ void testStitchingPanel(SettingsSidebar &bar)
     // No clip: its settings greyed out, but a camera can be calibrated.
     stitching->setCalibrateAvailable(true);
     stitching->setNoClip();
-    CHECK(!guard->isEnabled() && !depth->isEnabled() && !apply->isEnabled());
+    CHECK(!guard->isEnabled() && !method->isEnabled() && !apply->isEnabled());
     CHECK(calButton->isEnabled());
-    stitching->setState(G::Premium, true);
-    CHECK(guard->isEnabled() && depth->isEnabled() && apply->isEnabled());
+    stitching->setState(G::Premium, M::DepthSeam);
+    CHECK(guard->isEnabled() && method->isEnabled() && apply->isEnabled());
 }
 
 void testProjectSettingsDialog()

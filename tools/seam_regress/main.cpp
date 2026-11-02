@@ -758,7 +758,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     config.width = opt.width > 0 ? opt.width : stitch::FullSphereWidth(meta->lensWidth);
     config.height = config.width / 2;
     config.lensGuard = e.guard;
-    config.depthSeam = true;
+    config.method = stitch::PreviewStitchConfig::Method::DepthSeam;
     auto open = [&](stitch::NativeStitchSource& src) {
         if (!src.Open(e.clip, config)) {
             err = "open: " + src.GetLastError();

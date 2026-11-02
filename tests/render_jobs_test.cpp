@@ -1701,15 +1701,19 @@ void testClipJob(const QString &dir)
     CHECK(job.clipPath == "/c/ride.insv" && job.trimInMs == 2000 && job.trimOutMs == 9000);
     CHECK(job.speed == 2.0 && job.colorGrade.adjust[0] == 1.0f);
     CHECK(job.seamCorrection.lens1RotDeg[1] == 0.25); // measured under Premium (2), the clip's
-    CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Premium && job.depthSeam);
+    CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Premium &&
+          job.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam);
     CHECK(!job.stab);    // stabilization off
     CHECK(!job.poseAt);  // no keys: looking straight ahead
     CHECK(!job.blur);    // no blur
-    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Standard, false, std::nullopt);
+    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Standard,
+                    stitch::PreviewStitchConfig::Method::FixedSeam, std::nullopt);
     job = renderjobs::clipJob(t.clipAt(0), t, privacy);
-    CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard && !job.depthSeam);
+    CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Standard &&
+          job.stitchMethod == stitch::PreviewStitchConfig::Method::FixedSeam);
     CHECK(job.seamCorrection.lens1RotDeg[1] == 0.0); // measured under another guard
-    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Premium, true, std::nullopt);
+    t.setSourceStitch("/c/ride.insv", stitch::PreviewStitchConfig::LensGuard::Premium,
+                    stitch::PreviewStitchConfig::Method::DepthSeam, std::nullopt);
 
     t.upsertClipReframeKey(id, 3000, {0.5f, 0.0f, 0.0f, 1.2f});
     job = renderjobs::clipJob(t.clipAt(0), t, privacy);

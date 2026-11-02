@@ -16,14 +16,35 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. Optional
+### 1. The new stitcher (*maintainer*)
+
+The depth-aware seam moves and bends the picture round the seam in
+playback: one stitch distance per stretch of the seam is too coarse, so it
+is ambiguous between frames, which needed the per-clip analysis to settle.
+Its replacement is built as layers on a template, each one worked out from
+the frame itself (at most a warm start from the frame before), with no
+background analysis, and selectable in the Stitching section's *Stitcher*
+until it replaces the old stitcher:
+
+- **Template** (built): the lens model from the file or the clip's chart
+  calibration, the guard profile, a fixed cross-fade; nothing measured from
+  the video.
+- **Seam colour blend**: per frame, the two lenses' colour ratio per
+  stretch of the seam, from what both see in the overlap; each lens moved
+  half of it, fully near the seam and fading out by about 30° from it,
+  so neither lens's picture changes further away. A setting of its own.
+- **Optical flow**: per frame on the GPU, flow both ways in the overlap;
+  each lens warped by a share of it growing to half at the seam, so near
+  things crossing the seam join up while the rest keeps the template's
+  geometry.
+
+Then a decision on replacing the old stitcher, measured with
+`tools/stitch_bench` against Insta360 Studio's exports.
+
+### 2. Optional
 
 - **360 clip as an inset**: a second 360 clip's own view as picture in
   picture.
-- **Seam quality**: a flow-guided blend inside the seam band, possibly
-  export-only, where the depth-aware seam's cut still leaves something
-  doubled (very close things the lenses see against different
-  backgrounds).
 - **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing

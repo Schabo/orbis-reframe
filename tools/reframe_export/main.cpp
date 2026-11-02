@@ -61,7 +61,7 @@ struct Args {
     int stitchW = 0; // equirect intermediate width (0 => auto)
     int stitchH = 0;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    bool depthSeam = true;
+    stitch::PreviewStitchConfig::Method method = stitch::PreviewStitchConfig::Method::DepthSeam;
     double staticYawDeg = 0.0;
     double staticPitchDeg = 0.0;
     double staticRollDeg = 0.0;
@@ -114,6 +114,7 @@ const char kUsage[] =
     "                        source sphere, at least 2*outW)\n"
     "  --lens-guard G        none | standard | premium (default premium)\n"
     "  --no-depth-seam       stitch at infinity (no depth-aware seam)\n"
+    "  --new-stitcher        the new stitcher (experimental)\n"
     "  --yaw DEG --pitch DEG --roll DEG --fov DEG   static pose when --keys is absent\n"
     "                        (fov: the diagonal, corner to corner; default 114.85)\n"
     "  --distortion D|auto   the static pose's projection, 0 rectilinear .. 1\n"
@@ -183,7 +184,9 @@ Args parseArgs(int argc, char** argv)
         } else if (k == "--bitrate")
             a.bitrateKbps = std::atoll(next("--bitrate").c_str());
         else if (k == "--no-depth-seam")
-            a.depthSeam = false;
+            a.method = stitch::PreviewStitchConfig::Method::FixedSeam;
+        else if (k == "--new-stitcher")
+            a.method = stitch::PreviewStitchConfig::Method::New;
         else if (k == "--lens-guard") {
             const std::string g = next("--lens-guard");
             if (g == "none")
@@ -417,7 +420,7 @@ int main(int argc, char** argv)
     sc.width = eqW;
     sc.height = eqH;
     sc.lensGuard = a.lensGuard;
-    sc.depthSeam = a.depthSeam;
+    sc.method = a.method;
     auto src = std::make_unique<stitch::NativeStitchSource>();
     if (!src->Open(a.input, sc))
         die(src->GetLastError());

@@ -263,7 +263,10 @@ start and end in seconds, then any of:
   playback has it) or `stitcher=video:FILE` (a stitched equirect video, for
   Studio's other modes, on the reference's timing and rotation);
 - for `current`: `guard=none|standard|premium` (default premium),
-  `depth=on|off` (the depth-aware seam, default on), `rs=on|off` (the
+  `method=depth|fixed|new` (the stitcher, as the Stitching section's
+  *Stitcher*: the old one with the depth-aware seam -- the default -- or a
+  fixed seam, or the new one, which takes no seam correction or lens
+  colour; `depth=on|off` is the same as `depth` / `fixed`), `rs=on|off` (the
   capture-time correction from the gyro, default on), and `seam=` /
   `colour=` as in `seam_regress` (measured over the whole clip when not
   given; `seam=0,0,0,0,0,0` for none), and `calibration=FILE.json` (a
@@ -272,9 +275,9 @@ start and end in seconds, then any of:
 - `ref=FILE` (the reference video), `refstart=S` (the clip time of its first
   frame) and `refrot=Z,Y,X` (the rotation from our sphere to the reference's,
   as in `seam_regress`); or `ref=template`: our own stitch of the same
-  frames from the file's data alone (no depth seam, seam correction, lens
-  colour or capture-time correction), whose geometry holds still -- the
-  reference for a clip without a Studio export.
+  frames from the file's data alone (the new stitcher without the
+  capture-time correction), whose geometry holds still -- the reference
+  for a clip without a Studio export.
 
 Anything after `#` is a note. Unless `--live` is given, the app's seam
 analysis of the stretch runs first, as the app does after opening a clip.
@@ -392,7 +395,9 @@ field of view corner to corner as the app's keys; distortion 0..1, left out
 = automatic), or a fixed `--yaw/--pitch/--fov` (degrees, corner to corner)
 and `--distortion D|auto` (default auto): 0 is rectilinear, 1
 stereographic (with `--pitch -90` and a wide `--fov`, a tiny planet).
-It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
+`--no-depth-seam` stitches with a fixed seam, `--new-stitcher` with the
+new stitcher (as the Stitching section's *Stitcher*; default the
+depth-aware seam). It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
 `--lut-strength PCT`) and a picture-in-picture inset. `--bit-depth 10`
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
 prints when the encoder falls back to 8-bit, or when the frames are 8-bit

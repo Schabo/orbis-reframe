@@ -217,14 +217,14 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
         if (from >= 0) {
             c.stabilization = m_clips.at(from).stabilization;
             c.lensGuard = m_clips.at(from).lensGuard;
-            c.depthSeam = m_clips.at(from).depthSeam;
+            c.stitchMethod = m_clips.at(from).stitchMethod;
         }
         c.lensGuard = lensGuards.usable(c.lensGuard);
     }
     for (const ClipItem &o : m_clips) // the stitch and fine-tunes belong to the source file
         if (o.sourcePath == sourcePath) {
             c.lensGuard = o.lensGuard;
-            c.depthSeam = o.depthSeam;
+            c.stitchMethod = o.stitchMethod;
             c.lensCalibration = o.lensCalibration;
             if (!std::isnan(o.syncAdjustMs))
                 c.syncAdjustMs = o.syncAdjustMs;
@@ -657,11 +657,12 @@ void Timeline::setClipBlurRemovals(int clipId, const std::vector<privacy::BlurRe
 }
 
 void Timeline::setSourceStitch(const QString &sourcePath,
-                               stitch::PreviewStitchConfig::LensGuard lensGuard, bool depthSeam,
+                               stitch::PreviewStitchConfig::LensGuard lensGuard,
+                               stitch::PreviewStitchConfig::Method method,
                                const std::optional<stitch::LensCalibration> &calibration)
 {
     for (ClipItem &c : m_clips) {
-        if (c.sourcePath != sourcePath || (c.lensGuard == lensGuard && c.depthSeam == depthSeam &&
+        if (c.sourcePath != sourcePath || (c.lensGuard == lensGuard && c.stitchMethod == method &&
                                            c.lensCalibration == calibration))
             continue;
         if (c.lensCalibration != calibration) {
@@ -673,7 +674,7 @@ void Timeline::setSourceStitch(const QString &sourcePath,
             c.lensColourGuard = -1;
         }
         c.lensGuard = lensGuard;
-        c.depthSeam = depthSeam;
+        c.stitchMethod = method;
         c.lensCalibration = calibration;
         emit clipStitchChanged(c.id);
     }

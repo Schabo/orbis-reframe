@@ -12,7 +12,11 @@
 //                                  app's NativeStitchSource; video: a stitched
 //                                  equirect video lined up as the reference)
 //   guard=none|standard|premium   (default premium, as the app)
-//   depth=on|off                   the depth-aware seam (current; default on)
+//   method=depth|fixed|new         the stitcher (current; default depth):
+//                                  the old one with the depth-aware seam or
+//                                  a fixed one, or the new one (which takes
+//                                  no seam correction or lens colour)
+//   depth=on|off                   the same as method=depth / fixed
 //   rs=on|off                      the capture-time (rolling shutter)
 //                                  correction from the gyro (current;
 //                                  default on, as playback)
@@ -84,11 +88,12 @@ namespace {
 
 constexpr double kDeg = std::numbers::pi / 180.0;
 using LensGuard = stitch::PreviewStitchConfig::LensGuard;
+using Method = stitch::PreviewStitchConfig::Method;
 
 const char kUsage[] =
     "usage: stitch_bench LIST --out DIR [--baseline DIR] [--only TEXT] [--width N]\n"
     "       [--every N] [--video-px-deg N] [--no-video] [--live] [--fit-time]\n"
-    "  LIST: name<TAB>clip<TAB>start<TAB>end[<TAB>stitcher=..|guard=..|depth=..|rs=..|seam=..|\n"
+    "  LIST: name<TAB>clip<TAB>start<TAB>end[<TAB>stitcher=..|guard=..|method=..|rs=..|seam=..|\n"
     "        colour=..|ref=..|refstart=..|refrot=..]... [# note]\n";
 
 struct Entry {
@@ -96,7 +101,7 @@ struct Entry {
     int64_t startMs = 0, endMs = 0;
     std::string stitcher = "current"; // or video:FILE
     LensGuard guard = LensGuard::Premium;
-    bool depth = true;
+    Method method = Method::DepthSeam;
     bool captureTiming = true;
     std::optional<insv::SeamCorrection> seam;
     std::optional<insv::LensColour> colour;
@@ -172,7 +177,18 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                           : v == "standard" ? LensGuard::Standard
                                             : LensGuard::Premium;
             } else if (key == "depth") {
-                e.depth = v != "off";
+                e.method = v != "off" ? Method::DepthSeam : Method::FixedSeam;
+            } else if (key == "method") {
+                if (v == "depth")
+                    e.method = Method::DepthSeam;
+                else if (v == "fixed")
+                    e.method = Method::FixedSeam;
+                else if (v == "new")
+                    e.method = Method::New;
+                else {
+                    err = where + "method= wants depth, fixed or new";
+                    return false;
+                }
             } else if (key == "rs") {
                 e.captureTiming = v != "off";
             } else if (key == "seam") {
@@ -240,6 +256,11 @@ const char* GuardName(LensGuard g)
     return g == LensGuard::None ? "none" : g == LensGuard::Standard ? "standard" : "premium";
 }
 
+const char* MethodName(Method m)
+{
+    return m == Method::DepthSeam ? "depth" : m == Method::FixedSeam ? "fixed" : "new";
+}
+
 // --- the seam frame from the file ------------------------------------------
 
 bench::V3 ToBench(const insv::Vec3& v) { return {v.x, v.y, v.z}; }
@@ -304,7 +325,9 @@ public:
         const stitch::LensCalibration* cal = e.calibration ? &*e.calibration : nullptr;
         insv::SeamCorrection seam;
         std::string seamFrom = "list", colourFrom = "list";
-        if (e.seam) {
+        if (e.method == Method::New) {
+            seamFrom = colourFrom = "not used by the new stitcher";
+        } else if (e.seam) {
             seam = *e.seam;
         } else {
             const auto r = stitch::MeasureClipSeam(e.clip, 0, meta.durationMs, e.guard, cal);
@@ -313,7 +336,8 @@ public:
                 seam = r.correction;
         }
         insv::LensColour colour;
-        if (e.colour) {
+        if (e.method == Method::New) {
+        } else if (e.colour) {
             colour = *e.colour;
         } else {
             const auto r =
@@ -336,7 +360,7 @@ public:
         if (cal)
             info += "\n  lens calibration " + cal->serial + " " + cal->created;
 
-        if (e.depth && !opt.live) {
+        if (e.method == Method::DepthSeam && !opt.live) {
             const stitch::SeamAnalysisResult r =
                 stitch::AnalyseClipSeam({e.clip, e.guard, seam, colour, e.calibration}, e.startMs,
                                         e.endMs);
@@ -351,7 +375,7 @@ public:
         config.width = stitch::FullSphereWidth(meta.lensWidth);
         config.height = config.width / 2;
         config.lensGuard = e.guard;
-        config.depthSeam = e.depth;
+        config.method = e.method;
         config.lensCalibration = e.calibration;
         if (!src_.Open(e.clip, config)) {
             error = "open: " + src_.GetLastError();
@@ -485,15 +509,15 @@ private:
 };
 
 // ref=template: our own stitch of the same frames from the file's data
-// alone -- no depth seam, no seam correction, no lens colour, no
-// capture-time correction -- whose geometry holds still by construction:
-// the reference for clips without a Studio export.
+// alone -- the new stitcher's base, without the capture-time correction --
+// whose geometry holds still by construction: the reference for clips
+// without a Studio export.
 class TemplateReference : public Reference {
 public:
     bool open(const Entry& e, const Options& opt, const camera::ClipMetadata& meta, std::string& err)
     {
         Entry t = e;
-        t.depth = false;
+        t.method = Method::New;
         t.captureTiming = false;
         t.seam = insv::SeamCorrection{};
         t.colour = insv::LensColour{};
@@ -949,7 +973,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     j << "{\n  \"name\": " << Str(e.name) << ",\n  \"clip\": " << Str(e.clip)
       << ",\n  \"start_ms\": " << e.startMs << ",\n  \"end_ms\": " << e.endMs
       << ",\n  \"stitcher\": " << Str(e.stitcher) << ",\n  \"guard\": " << Str(GuardName(e.guard))
-      << ",\n  \"depth\": " << (e.depth ? "true" : "false") << ",\n  \"note\": " << Str(e.note)
+      << ",\n  \"method\": " << Str(MethodName(e.method)) << ",\n  \"note\": " << Str(e.note)
       << ",\n  \"info\": " << Str(info) << ",\n  \"ref\": " << Str(e.ref)
       << ",\n  \"band_deg\": " << Num(frame.bandDeg) << ",\n  \"wall_s\": " << Num(wallSec)
       << ",\n  \"summary\": {\n";

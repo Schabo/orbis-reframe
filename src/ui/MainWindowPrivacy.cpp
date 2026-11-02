@@ -193,7 +193,7 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     seamCorrectionFor(c.sourcePath, req.seamCorrection, req.lensColour);
     req.lensGuard = c.lensGuard;
     req.lensCalibration = c.lensCalibration;
-    req.depthSeam = c.depthSeam;
+    req.stitchMethod = c.stitchMethod;
     req.captureTiming = StabilizerCache::captureTimingOn(c);
     return req;
 }

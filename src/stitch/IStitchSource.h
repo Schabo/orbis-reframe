@@ -52,11 +52,11 @@ struct CaptureTiming {
 
 // The stitch knobs, handed to IStitchSource::Open. quality / width / height
 // are the preview's (View menu; Project::previewStitch); lensGuard /
-// depthSeam are the clip's own (Stitching panel; ClipItem::lensGuard /
-// depthSeam).
+// method are the clip's own (Stitching panel; ClipItem::lensGuard /
+// stitchMethod).
 //
 // NativeStitchSource honours width/height (the equirect output size),
-// lensGuard, depthSeam and lensCalibration. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
+// lensGuard, method and lensCalibration. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
 struct PreviewStitchConfig {
     enum class Quality { Template, OpticalFlow };
 
@@ -75,11 +75,22 @@ struct PreviewStitchConfig {
     enum class LensGuard { None, Standard, Premium };
     LensGuard lensGuard = LensGuard::Premium;
 
-    // Depth-aware seam: measure, per frame, the distance along the seam at
-    // which the two lenses agree and stitch each lens from its own centre at
-    // that distance, so near content (bike, rider, stick) isn't doubled. Off =
-    // both lenses treated as one point (infinite stitch distance).
-    bool depthSeam = true;
+    // How the two lenses are joined.
+    //   DepthSeam: the old stitcher with its depth-aware seam -- per frame,
+    //     the distance along the seam at which the two lenses agree, each lens
+    //     stitched from its own centre at that distance, so near content
+    //     (bike, rider, stick) isn't doubled; with the clip's measured seam
+    //     correction and lens colour (SetSeamCorrection / SetLensColour).
+    //   FixedSeam: the old stitcher without it: both lenses treated as one
+    //     point (infinite stitch distance), with the clip's seam correction
+    //     and lens colour.
+    //   New: the new stitcher. So far its base, the template: the lens model
+    //     and calibration as they are, a fixed cross-fade, nothing measured
+    //     from the picture -- the clip's seam correction and lens colour are
+    //     not applied. Its layers (seam colour, flow) come on top of it.
+    enum class Method { DepthSeam, FixedSeam, New };
+    Method method = Method::DepthSeam;
+    bool depthSeam() const { return method == Method::DepthSeam; }
 
     // The camera's own lens calibration (Calibrate lenses) in place of the
     // file's; none = the file's. The guard is in it: no guard profile goes
@@ -91,13 +102,13 @@ struct PreviewStitchConfig {
         const std::string size =
             width > 0 ? std::to_string(width) + "x" + std::to_string(height) : "auto";
         return "v7-" + size + "-" + (quality == Quality::OpticalFlow ? "of" : "tmpl") + "-g" +
-               std::to_string(static_cast<int>(lensGuard)) + (depthSeam ? "-d" : "") +
+               std::to_string(static_cast<int>(lensGuard)) + (method == Method::DepthSeam ? "-d" : method == Method::New ? "-n" : "") +
                (lensCalibration ? "-c" + lensCalibration->created : "");
     }
 
     bool operator==(const PreviewStitchConfig& o) const {
         return quality == o.quality && width == o.width && height == o.height &&
-               lensGuard == o.lensGuard && depthSeam == o.depthSeam &&
+               lensGuard == o.lensGuard && method == o.method &&
                lensCalibration == o.lensCalibration;
     }
     bool operator!=(const PreviewStitchConfig& o) const { return !(*this == o); }
@@ -270,12 +281,14 @@ public:
 
     // Seam alignment fine-tune (insv::StitchParams::seam, measured by
     // stitch::MeasureClipSeam) for subsequently stitched frames. Call from
-    // the reading thread. Default: unsupported, ignored.
+    // the reading thread. Default: unsupported, ignored. The new stitcher
+    // (PreviewStitchConfig::Method::New) ignores it.
     virtual void SetSeamCorrection(const insv::SeamCorrection& /*c*/) {}
 
     // The clip's lens colour (insv::StitchParams::lensColour, measured by
     // stitch::MeasureClipLensColour) for subsequently stitched frames. Call
-    // from the reading thread. Default: unsupported, ignored.
+    // from the reading thread. Default: unsupported, ignored. The new
+    // stitcher ignores it.
     virtual void SetLensColour(const insv::LensColour& /*c*/) {}
 
     // Privacy blur for subsequent frames: every frame stitched is mosaicked

@@ -63,7 +63,7 @@ struct ReadTiming {
 //
 // Quality: geometry + feather blend + the clip's lens colour match + pole
 // handling (see FisheyeProjection.h), plus the depth-aware seam
-// (PreviewStitchConfig::depthSeam): every frame the seam's cost volume and
+// (PreviewStitchConfig::Method::DepthSeam): every frame the seam's cost volume and
 // the cut statistics across the band are measured first
 // (render::VulkanFisheyeStitcher::measureSeamVk, or insv::MeasureSeamCosts /
 // MeasureSeamCutStats on the CPU path), and insv::SeamWindow solves the
@@ -71,7 +71,7 @@ struct ReadTiming {
 // there is from the frames measured so far; that frame is stitched with
 // it. Of
 // PreviewStitchConfig, width/height (the equirect output size), lensGuard (the
-// trailer lens profile) and depthSeam are honoured; quality is inert (no
+// trailer lens profile) and method are honoured; quality is inert (no
 // optical-flow seam yet). Stabilization is applied at reprojection time
 // (insv::StabConfig), never here.
 //
@@ -200,7 +200,9 @@ public:
     void SetCaptureTiming(CaptureTiming timing, int64_t untilMs, CaptureTiming after) override;
 
     // Re-configures the stitch geometry with the seam correction (see
-    // IStitchSource::SetSeamCorrection). Cheap; a no-op when unchanged.
+    // IStitchSource::SetSeamCorrection). Cheap; a no-op when unchanged, and
+    // for the new stitcher (PreviewStitchConfig::Method::New), which joins the
+    // lenses from their calibration alone.
     void SetSeamCorrection(const insv::SeamCorrection& c) override;
     // Likewise the lens colour (IStitchSource::SetLensColour).
     void SetLensColour(const insv::LensColour& c) override;
@@ -302,6 +304,7 @@ private:
     bool seamStateFor(int64_t pts_ms, const std::function<bool(const float* q)>& measure);
     std::string clip_path_;
     PreviewStitchConfig::LensGuard lens_guard_ = PreviewStitchConfig::LensGuard::Premium;
+    PreviewStitchConfig::Method method_ = PreviewStitchConfig::Method::DepthSeam; // Open()'s
     std::optional<LensCalibration> lens_calibration_;
     bool analysis_enabled_ = true;
     bool analysis_dirty_ = true;                      // look the analysis up again before the next frame

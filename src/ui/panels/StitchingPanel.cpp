@@ -1,6 +1,5 @@
 #include "StitchingPanel.h"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -30,14 +29,32 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_noGuards->hide();
     form()->addRow(m_noGuards);
 
-    m_depthSeam = new QCheckBox(tr("Depth-aware seam"), this);
-    m_depthSeam->setObjectName(QStringLiteral("stitchDepthSeam"));
-    m_depthSeam->setToolTip(
+    // Order matches stitch::PreviewStitchConfig::Method.
+    m_method = new QComboBox(this);
+    m_method->setObjectName(QStringLiteral("stitchMethod"));
+    m_method->addItem(tr("Depth-aware seam"));
+    m_method->setItemData(
+        0,
         tr("The two lenses sit a few centimetres apart, so things close to the camera (the "
-           "bike, the rider, the stick) show up twice where the pictures meet. With this on, "
-           "orbis-reframe works out for every frame how far away the things along the seam "
-           "are, and lines the pictures up at that distance."));
-    form()->addRow(QString(), m_depthSeam);
+           "bike, the rider, the stick) show up twice where the pictures meet. This works out "
+           "for every frame how far away the things along the seam are, and lines the "
+           "pictures up at that distance."),
+        Qt::ToolTipRole);
+    m_method->addItem(tr("Fixed seam"));
+    m_method->setItemData(1,
+                          tr("The pictures lined up for things far away, the same in every "
+                             "frame: steady, but things close to the camera show up twice "
+                             "where the pictures meet."),
+                          Qt::ToolTipRole);
+    m_method->addItem(tr("New stitcher (experimental)"));
+    m_method->setItemData(
+        2,
+        tr("The stitcher that will replace the other two, still being built. So far it joins "
+           "the pictures from the lens calibration alone, the same in every frame, and "
+           "measures nothing from the video."),
+        Qt::ToolTipRole);
+    m_method->setToolTip(tr("How the two pictures are joined where they meet."));
+    form()->addRow(tr("Stitcher"), m_method);
 
     m_calibration = new QComboBox(this);
     m_calibration->setObjectName(QStringLiteral("stitchCalibration"));
@@ -78,14 +95,14 @@ StitchingPanel::StitchingPanel(QWidget *parent)
                "screenshots and export. Every clip cut from the same file shares them. The "
                "preview's own quality and size are in the View menu."));
 
-    setState(LensGuard::Premium, true); // sane starting state
+    setState(LensGuard::Premium, Method::DepthSeam); // sane starting state
     setCalibrations({tr("From the camera file")}, {}, 0);
 
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
-    connect(m_depthSeam, &QCheckBox::toggled, this, &StitchingPanel::emitIfEdited);
+    connect(m_method, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
 }
 
-void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam,
+void StitchingPanel::setState(LensGuard lensGuard, Method method,
                               stitch::LensGuardProfiles profiles)
 {
     setBodyEnabled(true);
@@ -95,20 +112,20 @@ void StitchingPanel::setState(LensGuard lensGuard, bool depthSeam,
         model->item(static_cast<int>(g))->setEnabled(profiles.has(g));
     m_lensGuard->setEnabled(profiles.any());
     m_noGuards->setVisible(!profiles.any());
-    m_depthSeam->setEnabled(true);
+    m_method->setEnabled(true);
     m_applyToAll->setEnabled(true);
     m_lensGuard->setCurrentIndex(static_cast<int>(profiles.usable(lensGuard)));
-    m_depthSeam->setChecked(depthSeam);
+    m_method->setCurrentIndex(static_cast<int>(method));
     m_updating = false;
 }
 
 void StitchingPanel::setNoClip()
 {
-    setState(LensGuard::Premium, true); // ClipItem's defaults
+    setState(LensGuard::Premium, Method::DepthSeam); // ClipItem's defaults
     // The clip's settings greyed out; Calibrate lenses is about the camera,
     // not a clip, so it stays.
     m_lensGuard->setEnabled(false);
-    m_depthSeam->setEnabled(false);
+    m_method->setEnabled(false);
     m_calibration->setEnabled(false);
     m_applyToAll->setEnabled(false);
 }
@@ -149,5 +166,5 @@ void StitchingPanel::emitIfEdited()
 {
     if (!m_updating)
         emit stitchEdited(static_cast<LensGuard>(m_lensGuard->currentIndex()),
-                          m_depthSeam->isChecked());
+                          static_cast<Method>(m_method->currentIndex()));
 }

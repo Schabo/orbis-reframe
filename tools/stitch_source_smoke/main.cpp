@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
             colour_in = std::atoll(argv[++arg]);
             colour_out = std::atoll(argv[++arg]);
         } else if (a == "--no-depth-seam") {
-            config.depthSeam = false;
+            config.method = stitch::PreviewStitchConfig::Method::FixedSeam;
         } else if (a == "--dump-depth") {
             // after each frame: the depth-aware seam's table
             dump_depth = true;

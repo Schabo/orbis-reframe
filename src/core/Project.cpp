@@ -71,7 +71,7 @@ json previewStitchToJson(const stitch::PreviewStitchConfig &c)
         {"width", c.width},
         {"height", c.height},
         {"lensGuard", lensGuardName(c.lensGuard)},
-        {"depthSeam", c.depthSeam},
+        {"depthSeam", c.depthSeam()},
     };
 }
 
@@ -86,7 +86,8 @@ stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
     c.width = j.value("width", c.width);
     c.height = j.value("height", c.height);
     lensGuardFromJson(j, c.lensGuard);
-    c.depthSeam = j.value("depthSeam", c.depthSeam);
+    c.method = j.value("depthSeam", c.depthSeam()) ? stitch::PreviewStitchConfig::Method::DepthSeam
+                                                   : stitch::PreviewStitchConfig::Method::FixedSeam;
     return c;
 }
 
@@ -473,7 +474,7 @@ struct ParsedClip {
     insv::LensColour lensColour;
     int lensColourGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    bool depthSeam = true;
+    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
     std::optional<stitch::LensCalibration> lensCalibration;
     bool flat = false;
     ClipItem::Fit fit = ClipItem::Fit::Bars;
@@ -1217,6 +1218,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     const ClipItem *firstStitched = nullptr;
     bool mixedStitch = false;
     bool anyLensCalibration = false; // a clip stitched with its camera's own calibration
+    bool anyNewStitcher = false;     // a clip stitched with the new stitcher
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         const std::string source =
@@ -1252,8 +1254,13 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"color", colorGradeToJson(c.color, projectDir)},
             {"speed", c.speed},
             {"stabilization", stabilizationToJson(c.stabilization)},
-            {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)}, {"depthSeam", c.depthSeam}}},
+            {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)},
+                            {"depthSeam", c.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam}}},
         });
+        if (c.stitchMethod == stitch::PreviewStitchConfig::Method::New && !c.flat) {
+            clips.back()["stitch"]["method"] = "new";
+            anyNewStitcher = true;
+        }
         if (c.lensCalibration && !c.flat) {
             clips.back()["stitch"]["calibration"] = lenscal::ToJson(*c.lensCalibration);
             anyLensCalibration = true;
@@ -1278,7 +1285,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                            c.stabilization.mode == insv::StabMode::DirectionLock;
         if (!firstStitched)
             firstStitched = &c;
-        else if (c.lensGuard != firstStitched->lensGuard || c.depthSeam != firstStitched->depthSeam)
+        else if (c.lensGuard != firstStitched->lensGuard ||
+                 c.stitchMethod != firstStitched->stitchMethod)
             mixedStitch = true;
         if (c.blurPlates || !c.plateScan.isEmpty() || !c.blurRemovals.empty() ||
             !c.blurAdditions.empty()) {
@@ -1391,11 +1399,12 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     stitch::PreviewStitchConfig stitchForOlder = m_previewStitch;
     if (firstStitched) {
         stitchForOlder.lensGuard = firstStitched->lensGuard;
-        stitchForOlder.depthSeam = firstStitched->depthSeam;
+        stitchForOlder.method = firstStitched->stitchMethod;
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyLensCalibration      ? kLensCalibrationFormatVersion
+        {"version", anyNewStitcher          ? kNewStitcherFormatVersion
+                    : anyLensCalibration      ? kLensCalibrationFormatVersion
                     : anyMotionOverlay        ? kMotionOverlayFormatVersion
                     : anyGauge                ? kGaugeFormatVersion
                     : anyBrace                ? kClockFormatVersion
@@ -1508,12 +1517,18 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             }
             // Before per-clip stitch settings: the project's, for every clip.
             pc.lensGuard = parsedStitch.lensGuard;
-            pc.depthSeam = parsedStitch.depthSeam;
+            pc.stitchMethod = parsedStitch.method;
             if (jc.contains("stitch") && jc.at("stitch").is_object()) {
-                lensGuardFromJson(jc.at("stitch"), pc.lensGuard);
-                pc.depthSeam = jc.at("stitch").value("depthSeam", pc.depthSeam);
-                if (jc.at("stitch").contains("calibration"))
-                    pc.lensCalibration = lenscal::FromJson(jc.at("stitch").at("calibration"));
+                const json &js = jc.at("stitch");
+                lensGuardFromJson(js, pc.lensGuard);
+                pc.stitchMethod = js.value("depthSeam", pc.stitchMethod ==
+                                                           stitch::PreviewStitchConfig::Method::DepthSeam)
+                                      ? stitch::PreviewStitchConfig::Method::DepthSeam
+                                      : stitch::PreviewStitchConfig::Method::FixedSeam;
+                if (js.value("method", std::string()) == "new")
+                    pc.stitchMethod = stitch::PreviewStitchConfig::Method::New;
+                if (js.contains("calibration"))
+                    pc.lensCalibration = lenscal::FromJson(js.at("calibration"));
             }
             if (jc.contains("syncAdjustMs") && jc.at("syncAdjustMs").is_number())
                 pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
@@ -1656,7 +1671,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
         m_timeline->setClipSpeed(id, pc.speed);
         if (!pc.flat)
-            m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.depthSeam,
+            m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.stitchMethod,
                                         pc.lensCalibration);
         if (!std::isnan(pc.syncAdjustMs))
             m_timeline->setSourceSyncAdjust(pc.sourcePath, pc.syncAdjustMs);

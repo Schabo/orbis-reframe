@@ -101,11 +101,11 @@ public:
         bool flat = false;
         double fps = 0.0;
         qint64 sourceDurationMs = 0;
-        // The clip's stitch settings (ClipItem::lensGuard / depthSeam /
+        // The clip's stitch settings (ClipItem::lensGuard / stitchMethod /
         // lensCalibration), the same for every segment of a file; the source
         // is opened with them over the preview config's (setPreviewConfig).
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-        bool depthSeam = true;
+        stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
         // The file was gone when the timeline was pushed (ClipItem::
         // mediaMissing): the decoder doesn't try to open it, or open it
         // ahead of time, reports it through openFailed and plays black.

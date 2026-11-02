@@ -52,6 +52,13 @@ const ClipItem *ClipMeasurements::measurableClip(const QString &clipPath) const
     return nullptr;
 }
 
+// The seam fit and the lens colour are the old stitcher's; the new one joins
+// the lenses from their calibration alone.
+bool ClipMeasurements::usesOldStitcher(const ClipItem &c)
+{
+    return c.stitchMethod != stitch::PreviewStitchConfig::Method::New;
+}
+
 void ClipMeasurements::schedule()
 {
     if (m_queued)
@@ -123,8 +130,10 @@ void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
     std::vector<std::pair<qint64, qint64>> ranges;
     for (int i = 0; i < t->count(); ++i) {
         const ClipItem &c = t->clipAt(i);
-        if (c.sourcePath == clipPath && c.depthSeam && !c.flat && !c.mediaMissing &&
-            c.lensGuard == clip->lensGuard && c.lensCalibration == clip->lensCalibration)
+        if (c.sourcePath == clipPath &&
+            c.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam && !c.flat &&
+            !c.mediaMissing && c.lensGuard == clip->lensGuard &&
+            c.lensCalibration == clip->lensCalibration)
             ranges.emplace_back(c.trimInMs, c.trimOutMs);
     }
     if (ranges.empty())
@@ -225,7 +234,7 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
         m_seamFailed.contains(clipPath))
         return;
     const ClipItem *clip = measurableClip(clipPath);
-    if (!clip)
+    if (!clip || !usesOldStitcher(*clip))
         return;
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
@@ -271,7 +280,7 @@ void ClipMeasurements::maybeMeasureColour(const QString &clipPath)
          !m_seamFailed.contains(clipPath)))
         return;
     const ClipItem *clip = measurableClip(clipPath);
-    if (!clip)
+    if (!clip || !usesOldStitcher(*clip))
         return;
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
@@ -333,6 +342,8 @@ QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) cons
         details->clear();
     if (!c)
         return QString();
+    if (!usesOldStitcher(*c))
+        return tr("The new stitcher measures nothing from this clip.");
     enum class State { None, Measuring, Done, Failed };
     const QString &path = c->sourcePath;
     const Timeline *t = m_project->timeline();

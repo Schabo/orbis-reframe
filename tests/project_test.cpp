@@ -1570,7 +1570,7 @@ void testLensCalibrationJson()
         const int a1 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
         tl->setSourceSeamCorrection(a, {{-0.5, 0.25, 0.1}}, 2);
         CHECK(!tl->clipById(a1)->lensCalibration);
-        tl->setSourceStitch(a, G::Premium, true, cal);
+        tl->setSourceStitch(a, G::Premium, stitch::PreviewStitchConfig::Method::DepthSeam, cal);
         const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
         CHECK(tl->clipById(a1)->lensCalibration == cal && tl->clipById(a2)->lensCalibration == cal);
         // Measured through the file's calibration: gone.
@@ -1591,11 +1591,11 @@ void testLensCalibrationJson()
         CHECK(tl->count() == 2);
         // Read back to the last bit: it stitches the same.
         CHECK(tl->clipAt(0).lensCalibration == cal && tl->clipAt(1).lensCalibration == cal);
-        tl->setSourceStitch(a, G::Premium, true, std::nullopt);
+        tl->setSourceStitch(a, G::Premium, stitch::PreviewStitchConfig::Method::DepthSeam, std::nullopt);
         CHECK(!tl->clipAt(0).lensCalibration && !tl->clipAt(1).lensCalibration);
         p.undo();
         CHECK(tl->clipAt(0).lensCalibration == cal);
-        tl->setSourceStitch(a, G::Premium, true, std::nullopt);
+        tl->setSourceStitch(a, G::Premium, stitch::PreviewStitchConfig::Method::DepthSeam, std::nullopt);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() < Project::kLensCalibrationFormatVersion);
     }
@@ -1606,6 +1606,7 @@ void testLensCalibrationJson()
 void testClipStitchJson()
 {
     using G = stitch::PreviewStitchConfig::LensGuard;
+    using M = stitch::PreviewStitchConfig::Method;
     QTemporaryDir tmp;
     CHECK(tmp.isValid());
     const QString a = tmp.path() + "/a.insv";
@@ -1624,13 +1625,13 @@ void testClipStitchJson()
         Project p;
         Timeline *tl = p.timeline();
         const int a1 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
-        CHECK(tl->clipById(a1)->lensGuard == G::Premium && tl->clipById(a1)->depthSeam);
-        tl->setSourceStitch(a, G::None, false, std::nullopt);
+        CHECK(tl->clipById(a1)->lensGuard == G::Premium && tl->clipById(a1)->stitchMethod == M::DepthSeam);
+        tl->setSourceStitch(a, G::None, M::FixedSeam, std::nullopt);
         const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
-        CHECK(tl->clipById(a2)->lensGuard == G::None && !tl->clipById(a2)->depthSeam);
+        CHECK(tl->clipById(a2)->lensGuard == G::None && tl->clipById(a2)->stitchMethod == M::FixedSeam);
         const int b1 = tl->appendClip(b, 8000, 30.0, 7680, 3840, 2); // the neighbour's
         CHECK(tl->clipById(b1)->lensGuard == G::None);
-        tl->setSourceStitch(b, G::Standard, true, std::nullopt);
+        tl->setSourceStitch(b, G::Standard, M::DepthSeam, std::nullopt);
         CHECK(tl->clipById(a1)->lensGuard == G::None && tl->clipById(b1)->lensGuard == G::Standard);
         CHECK(p.save(file, &err));
         // Mixed: the builds before, which read one setting for all, refuse it.
@@ -1647,22 +1648,41 @@ void testClipStitchJson()
         CHECK(p.load(file, &err));
         const Timeline *tl = p.timeline();
         CHECK(tl->count() == 3);
-        CHECK(tl->clipAt(0).lensGuard == G::None && !tl->clipAt(0).depthSeam);
+        CHECK(tl->clipAt(0).lensGuard == G::None && tl->clipAt(0).stitchMethod == M::FixedSeam);
         CHECK(tl->clipAt(1).lensGuard == G::None);
-        CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).depthSeam);
+        CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).stitchMethod == M::DepthSeam);
 
         // An edit, and undo puts it back.
-        p.timeline()->setSourceStitch(b, G::Premium, false, std::nullopt);
+        p.timeline()->setSourceStitch(b, G::Premium, M::FixedSeam, std::nullopt);
         CHECK(p.canUndo() && p.modified());
         p.undo();
-        CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).depthSeam);
+        CHECK(tl->clipAt(2).lensGuard == G::Standard && tl->clipAt(2).stitchMethod == M::DepthSeam);
 
         // All the same: still the plain version, the project-wide value theirs.
-        p.timeline()->setSourceStitch(b, G::None, false, std::nullopt);
+        p.timeline()->setSourceStitch(b, G::None, M::FixedSeam, std::nullopt);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
         const QJsonObject ps = document().value("previewStitch").toObject();
         CHECK(ps.value("lensGuard").toString() == "none" && !ps.value("depthSeam").toBool(true));
+    }
+    {
+        // The new stitcher: written as "method": "new", only then version 22.
+        Project p;
+        CHECK(p.load(file, &err));
+        p.timeline()->setSourceStitch(b, G::None, M::New, std::nullopt);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kNewStitcherFormatVersion);
+        const QJsonArray clips = document().value("timeline").toObject().value("clips").toArray();
+        const QJsonObject st = clips.at(2).toObject().value("stitch").toObject();
+        CHECK(st.value("method").toString() == "new" && !st.value("depthSeam").toBool(true));
+        CHECK(!clips.at(0).toObject().value("stitch").toObject().contains("method"));
+        Project q;
+        CHECK(q.load(file, &err));
+        CHECK(q.timeline()->clipAt(2).stitchMethod == M::New);
+        CHECK(q.timeline()->clipAt(0).stitchMethod == M::FixedSeam);
+        q.timeline()->setSourceStitch(b, G::None, M::FixedSeam, std::nullopt);
+        CHECK(q.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
     }
     {
         // An older project: one setting, no "stitch" on the clips.
@@ -1688,7 +1708,7 @@ void testClipStitchJson()
         CHECK(p.load(file, &err));
         for (int i = 0; i < p.timeline()->count(); ++i)
             CHECK(p.timeline()->clipAt(i).lensGuard == G::Standard &&
-                  p.timeline()->clipAt(i).depthSeam);
+                  p.timeline()->clipAt(i).stitchMethod == M::DepthSeam);
     }
 }
 

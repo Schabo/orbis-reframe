@@ -434,7 +434,7 @@ SeamAnalysisResult AnalyseClipSeam(const SeamAnalysisKey& key, int64_t inMs, int
     config.height = 32;
     config.lensGuard = key.guard;
     config.lensCalibration = key.calibration;
-    config.depthSeam = true;
+    config.method = PreviewStitchConfig::Method::DepthSeam;
     NativeStitchSource src;
     if (!src.Open(key.path, config)) {
         res.message = "open failed: " + src.GetLastError();

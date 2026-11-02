@@ -111,12 +111,12 @@ bool wasOpened(const QString &path)
 }
 
 bool lastOpenedWith(const QString &path, stitch::PreviewStitchConfig::LensGuard guard,
-                    bool depthSeam)
+                    stitch::PreviewStitchConfig::Method method)
 {
     std::lock_guard<std::mutex> lock(g_openedMutex);
     const auto it = g_openedWith.find(path.toStdString());
     return it != g_openedWith.end() && it->second.lensGuard == guard &&
-           it->second.depthSeam == depthSeam;
+           it->second.method == method;
 }
 
 // Flat grey equirect frames, small, one per 1/30 s.
@@ -677,51 +677,63 @@ void testHlgClip(const Ctx &c)
 void testStitching(const Ctx &c)
 {
     using G = stitch::PreviewStitchConfig::LensGuard;
+    using M = stitch::PreviewStitchConfig::Method;
     auto *guard = find<QComboBox>(c.w, "stitchLensGuard");
-    auto *depth = find<QCheckBox>(c.w, "stitchDepthSeam");
+    auto *method = find<QComboBox>(c.w, "stitchMethod");
     auto *all = find<QPushButton>(c.w, "stitchApplyToAll");
     QAction *undo = action(c, "undoAction");
-    if (!guard || !depth || !all || !undo)
+    if (!guard || !method || !all || !undo)
         return;
     settle();
     CHECK(seekTo(c, 500));
-    CHECK(guard->currentIndex() == int(G::Premium) && depth->isChecked());
+    CHECK(guard->currentIndex() == int(G::Premium) && method->currentIndex() == int(M::DepthSeam));
     guard->setCurrentIndex(int(G::None));
     CHECK(c.timeline->clipAt(0).lensGuard == G::None);
     CHECK(c.timeline->clipAt(1).lensGuard == G::Premium); // another file
-    CHECK(waitFor([&] { return lastOpenedWith(c.clipA, G::None, true); }));
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipA, G::None, M::DepthSeam); }));
     settle();
     CHECK(seekTo(c, kClipMs + 500));
     CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium); })); // the second clip's
-    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, true); }));
-    depth->setChecked(false);
-    CHECK(!c.timeline->clipAt(1).depthSeam && c.timeline->clipAt(0).lensGuard == G::None);
-    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, false); }));
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::DepthSeam); }));
+    method->setCurrentIndex(int(M::FixedSeam));
+    CHECK(c.timeline->clipAt(1).stitchMethod == M::FixedSeam &&
+          c.timeline->clipAt(0).lensGuard == G::None);
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::FixedSeam); }));
+    settle();
+    method->setCurrentIndex(int(M::New));
+    CHECK(c.timeline->clipAt(1).stitchMethod == M::New);
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::New); }));
     settle();
     all->click();
-    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && !c.timeline->clipAt(0).depthSeam);
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && c.timeline->clipAt(0).stitchMethod == M::New);
     undo->trigger();
-    CHECK(c.timeline->clipAt(0).lensGuard == G::None && c.timeline->clipAt(0).depthSeam);
+    CHECK(c.timeline->clipAt(0).lensGuard == G::None &&
+          c.timeline->clipAt(0).stitchMethod == M::DepthSeam);
     undo->trigger();
-    CHECK(c.timeline->clipAt(1).depthSeam);
+    CHECK(c.timeline->clipAt(1).stitchMethod == M::FixedSeam);
+    undo->trigger();
+    CHECK(c.timeline->clipAt(1).stitchMethod == M::DepthSeam);
     undo->trigger();
     CHECK(c.timeline->clipAt(0).lensGuard == G::Premium);
-    CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium) && depth->isChecked(); }));
+    CHECK(waitFor([&] {
+        return guard->currentIndex() == int(G::Premium) && method->currentIndex() == int(M::DepthSeam);
+    }));
 }
 
 // A clip whose file records no lens-guard profiles (a ONE X2 take) comes in
 // with None, and the panel shows it greyed out with a line saying why.
-// Apply to all clips copies only the depth-aware seam from it, and leaves
+// Apply to all clips copies only the stitcher from it, and leaves
 // its guard alone when applied from a clip that has profiles.
 void testStitchingWithoutGuards(const Ctx &c)
 {
     using G = stitch::PreviewStitchConfig::LensGuard;
+    using M = stitch::PreviewStitchConfig::Method;
     auto *guard = find<QComboBox>(c.w, "stitchLensGuard");
-    auto *depth = find<QCheckBox>(c.w, "stitchDepthSeam");
+    auto *method = find<QComboBox>(c.w, "stitchMethod");
     auto *note = find<QLabel>(c.w, "stitchNoGuards");
     auto *all = find<QPushButton>(c.w, "stitchApplyToAll");
     QAction *undo = action(c, "undoAction");
-    if (!guard || !depth || !note || !all || !undo)
+    if (!guard || !method || !note || !all || !undo)
         return;
     settle();
     const QString dir = QDir(c.dir).filePath(QStringLiteral("x2guards"));
@@ -752,19 +764,21 @@ void testStitchingWithoutGuards(const Ctx &c)
     // Apply to all from the X5 clip: the take keeps None.
     all->click();
     CHECK(c.timeline->clipAt(n).lensGuard == G::None);
-    // ... and from the take: only its depth-aware seam goes onto the X5 clips.
+    // ... and from the take: only its stitcher goes onto the X5 clips.
     settle();
     CHECK(seekTo(c, start + 500));
     CHECK(waitFor([&] { return !guard->isEnabled(); }));
-    depth->setChecked(false);
+    method->setCurrentIndex(int(M::FixedSeam));
     settle();
     all->click();
-    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && !c.timeline->clipAt(0).depthSeam);
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium &&
+          c.timeline->clipAt(0).stitchMethod == M::FixedSeam);
     undo->trigger();
     undo->trigger();
     undo->trigger();
     CHECK(c.timeline->count() == n);
-    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && c.timeline->clipAt(0).depthSeam);
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium &&
+          c.timeline->clipAt(0).stitchMethod == M::DepthSeam);
 }
 
 // Direction lock: picking it holds the direction under the playhead, the

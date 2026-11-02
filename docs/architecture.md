@@ -86,8 +86,12 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 2. **Stitch** (`render/VulkanFisheyeStitcher`, `fisheye_stitch*.comp`): the
    lens calibration from the file (or the clip's own, made with Calibrate
    lenses, which has the guard in it), the lens-guard profile and the
-   depth-aware seam turn the two fisheyes into the sphere. Privacy blur
-   regions are applied here, on the sphere. The depth-aware seam's state
+   clip's stitcher turn the two fisheyes into the sphere. Privacy blur
+   regions are applied here, on the sphere. The stitcher is chosen per
+   clip (`stitch::PreviewStitchConfig::Method`): the depth-aware seam or a
+   fixed one, both with the clip's measured seam alignment and lens
+   colour, or the new stitcher, which measures nothing from the video (see
+   [the roadmap](roadmap.md)). The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the
    colour correction there) is a function of the measurements of the frames
    either side of a frame (`insv/SeamWindow`), worked out once per clip in a

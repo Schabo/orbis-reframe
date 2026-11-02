@@ -100,7 +100,7 @@ bool ReframeExportController::analyseSeam(const ClipJob &c, qint64 inMs, qint64 
                                           const std::atomic<bool> *cancel,
                                           const std::function<void(double)> &progress)
 {
-    if (!c.depthSeam || c.flat)
+    if (c.stitchMethod != stitch::PreviewStitchConfig::Method::DepthSeam || c.flat)
         return true;
     const stitch::SeamAnalysisResult r = stitch::AnalyseClipSeam(
         {c.clipPath.toStdString(), c.lensGuard, c.seamCorrection, c.lensColour, c.lensCalibration},
@@ -133,7 +133,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     sc.height = (sc.width / 2) & ~1;
     sc.lensGuard = c.lensGuard;
     sc.lensCalibration = c.lensCalibration;
-    sc.depthSeam = c.depthSeam;
+    sc.method = c.stitchMethod;
     analyseSeam(c, sourceMs, sourceMs, nullptr, {});
 
     stitch::NativeStitchSource src;
@@ -406,7 +406,7 @@ void ReframeExportController::run(const Request &req)
         sc.height = (req.stitchHeight > 0 ? req.stitchHeight : eqW / 2) & ~1;
         sc.lensGuard = c.lensGuard;
         sc.lensCalibration = c.lensCalibration;
-        sc.depthSeam = c.depthSeam;
+        sc.method = c.stitchMethod;
 
         // The clip's seam as playback has it: its analysis, made here for the
         // frames that haven't been analysed yet.

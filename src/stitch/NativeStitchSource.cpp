@@ -157,7 +157,8 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     eq_w_ = config.width > 0 ? config.width : AutoPreviewWidth(info_.width, info_.fps);
     eq_h_ = config.width > 0 && config.height > 0 ? config.height : eq_w_ / 2;
 
-    params.depthSeam = config.depthSeam;
+    params.depthSeam = config.depthSeam();
+    method_ = config.method;
     clip_path_ = clip_path;
     lens_guard_ = config.lensGuard;
     lens_calibration_ = config.lensCalibration;
@@ -350,7 +351,7 @@ Frame NativeStitchSource::readGpuAllVulkan() {
 }
 
 void NativeStitchSource::SetSeamCorrection(const insv::SeamCorrection& c) {
-    if (!stitcher_ || c == params_.seam)
+    if (!stitcher_ || c == params_.seam || method_ == PreviewStitchConfig::Method::New)
         return;
     params_.seam = c;
     if (stitcher_->configure(calib_, info_.width, info_.height, params_)) {
@@ -361,7 +362,7 @@ void NativeStitchSource::SetSeamCorrection(const insv::SeamCorrection& c) {
 }
 
 void NativeStitchSource::SetLensColour(const insv::LensColour& c) {
-    if (!stitcher_ || c == params_.lensColour)
+    if (!stitcher_ || c == params_.lensColour || method_ == PreviewStitchConfig::Method::New)
         return;
     params_.lensColour = c;
     seam_window_.setLensColour(c); // the frames' residuals are measured against it

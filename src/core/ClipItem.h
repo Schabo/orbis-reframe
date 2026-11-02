@@ -171,13 +171,13 @@ struct ClipItem {
     double speed = 1.0;
 
     // How the source's two lens pictures are joined (Stitching panel): what
-    // was fitted over the lenses when it was filmed, and the depth-aware seam
-    // (see stitch::PreviewStitchConfig). A property of the source file, so
+    // was fitted over the lenses when it was filmed, and the stitching method
+    // (see stitch::PreviewStitchConfig::Method). A property of the source file, so
     // clips cut from the same file share it (Timeline::setSourceStitch); a
     // clip of a new file takes the nearest 360 clip's (Timeline::insertClip).
     // Unused on a flat clip.
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    bool depthSeam = true;
+    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
     // The camera's own lens calibration (Calibrate lenses) in place of the
     // one its file carries; none = the file's. A copy, not a reference to
     // the app's: the project stitches the same wherever it is opened,

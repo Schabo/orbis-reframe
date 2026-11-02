@@ -2,17 +2,16 @@
 
 #include "../SettingsPanel.h"
 
-#include <IStitchSource.h> // stitch::PreviewStitchConfig::LensGuard
+#include <IStitchSource.h> // stitch::PreviewStitchConfig::LensGuard, Method
 
-class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
 
 // The stitch settings of the clip it shows (the selected one, else the one
 // under the playhead), which change the output: lens guards (selects the
-// trailer's lens profile) and the depth-aware seam, plus a line about the
-// clip's seam alignment. They belong to the clip's file, so every clip cut
+// trailer's lens profile) and the stitcher (stitch::PreviewStitchConfig::
+// Method), plus a line about the clip's seam alignment. They belong to the clip's file, so every clip cut
 // from it shares them (Timeline::setSourceStitch). The preview-only
 // settings (quality, preview size) are project-wide, in the View menu.
 // Edits emit stitchEdited; MainWindow writes them onto the clip's file. Lens
@@ -25,12 +24,13 @@ class StitchingPanel : public SettingsPanel {
 
 public:
     using LensGuard = stitch::PreviewStitchConfig::LensGuard;
+    using Method = stitch::PreviewStitchConfig::Method;
 
     explicit StitchingPanel(QWidget *parent = nullptr);
 
     // Show a clip's settings, `lensGuard` as the stitch applies it to a file
     // carrying `profiles`. Does not emit.
-    void setState(LensGuard lensGuard, bool depthSeam,
+    void setState(LensGuard lensGuard, Method method,
                   stitch::LensGuardProfiles profiles = stitch::LensGuardProfiles::all());
     // No clip to show: a new clip's settings, greyed out (Calibrate lenses
     // stays: it needs no clip). Does not emit.
@@ -46,7 +46,7 @@ public:
     void setCalibrateAvailable(bool available, const QString &whyNot = QString());
 
 signals:
-    void stitchEdited(LensGuard lensGuard, bool depthSeam);
+    void stitchEdited(LensGuard lensGuard, Method method);
     // "Apply to all clips": give every 360 clip the settings shown.
     void applyToAllRequested();
     // A lens calibration picked (an index into setCalibrations' labels).
@@ -59,7 +59,7 @@ private:
 
     QComboBox *m_lensGuard = nullptr;
     QLabel *m_noGuards = nullptr;
-    QCheckBox *m_depthSeam = nullptr;
+    QComboBox *m_method = nullptr;
     QComboBox *m_calibration = nullptr;
     QPushButton *m_calibrate = nullptr;
     QLabel *m_seamStatus = nullptr;

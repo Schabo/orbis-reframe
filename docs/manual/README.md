@@ -10,7 +10,7 @@ For how the code works, see the other documents in [`docs/`](..).
 | [The timeline](timeline.md) | Moving around, arranging, trimming, splitting and speeding up clips, audio and overlay tracks, linked audio |
 | [Reframing](reframing.md) | Choosing where the camera looks: the view, keyframes, and Track subject |
 | [Stabilization](stabilization.md) | Steadying the picture with the camera's gyro: the modes, their settings, gyro sync, and what can't be fixed |
-| [Stitching](stitching.md) | Joining the two lenses: lens guards, depth-aware seam, seam alignment, filming tips |
+| [Stitching](stitching.md) | Joining the two lenses: lens guards, lens calibration, the stitcher, depth-aware seam, seam alignment, filming tips |
 | [Audio and noise reduction](audio.md) | The camera's sound, two microphones, music and other audio files, levels and fades, noise and wind reduction, lining up a separate recorder |
 | [Colour](colour.md) | Exposure, contrast, saturation and temperature for each clip, and LUTs (e.g. for I-Log footage) |
 | [Picture in picture](picture-in-picture.md) | Flat videos in a small frame over the picture: adding, placing, keyframing, frame and border |

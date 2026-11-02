@@ -40,17 +40,17 @@ void MainWindow::connectStitchAndStabilization()
     // shows (every clip cut from it), "Apply to all clips" onto every 360
     // clip's; clipStitchChanged below re-opens the stitch with them.
     connect(m_stitchingPanel, &StitchingPanel::stitchEdited, this,
-            [this](StitchingPanel::LensGuard guard, bool depthSeam) {
+            [this](StitchingPanel::LensGuard guard, StitchingPanel::Method method) {
                 const ClipItem *c = m_timeline->clipById(editClipId());
                 if (c && !c->flat)
                     m_timeline->setSourceStitch(
-                        c->sourcePath, guard, depthSeam,
+                        c->sourcePath, guard, method,
                         lensCalibrationForGuard(c->sourcePath, c->lensCalibration, guard));
             });
     connect(m_stitchingPanel, &StitchingPanel::calibrationChosen, this, [this](int index) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && !c->flat && index >= 0 && index < int(m_calibrationChoices.size()))
-            m_timeline->setSourceStitch(c->sourcePath, c->lensGuard, c->depthSeam,
+            m_timeline->setSourceStitch(c->sourcePath, c->lensGuard, c->stitchMethod,
                                         m_calibrationChoices[index]);
     });
     connect(m_stitchingPanel, &StitchingPanel::calibrateRequested, this,
@@ -82,7 +82,7 @@ void MainWindow::connectStitchAndStabilization()
         // guard profiles onto a file that has this one. A ONE X2 clip's
         // None doesn't strip an X5 clip's guards, and an X5 clip's Premium
         // doesn't land on a file that would stitch bare anyway.
-        const bool depthSeam = c->depthSeam;
+        const StitchingPanel::Method method = c->stitchMethod;
         const stitch::LensGuardProfiles from = m_lensGuards->profiles(c->sourcePath);
         const StitchingPanel::LensGuard guard = from.usable(c->lensGuard);
         for (int i = 0; i < m_timeline->count(); ++i) {
@@ -92,7 +92,7 @@ void MainWindow::connectStitchAndStabilization()
             const stitch::LensGuardProfiles to = m_lensGuards->profiles(o.sourcePath);
             const bool takesGuard = from.any() && to.any() && to.has(guard);
             const auto g = takesGuard ? guard : o.lensGuard;
-            m_timeline->setSourceStitch(o.sourcePath, g, depthSeam,
+            m_timeline->setSourceStitch(o.sourcePath, g, method,
                                         lensCalibrationForGuard(o.sourcePath, o.lensCalibration, g));
         }
     });
@@ -394,7 +394,7 @@ void MainWindow::syncStitchingPanel()
         m_stitchingPanel->setCalibrations({tr("From the camera file")}, {}, 0);
         return;
     }
-    m_stitchingPanel->setState(c->lensGuard, c->depthSeam, m_lensGuards->profiles(c->sourcePath));
+    m_stitchingPanel->setState(c->lensGuard, c->stitchMethod, m_lensGuards->profiles(c->sourcePath));
 
     // The calibrations: the camera file's, the clip's own, and the one kept
     // for its camera and guard if that's another (a newer one).
@@ -459,7 +459,7 @@ void MainWindow::applyStoredLensCalibration(const QString &sourcePath)
         if (c.flat || c.lensCalibration)
             return;
         if (const auto cal = storedLensCalibration(sourcePath, c.lensGuard))
-            m_timeline->setSourceStitch(sourcePath, c.lensGuard, c.depthSeam, cal);
+            m_timeline->setSourceStitch(sourcePath, c.lensGuard, c.stitchMethod, cal);
         return;
     }
 }
@@ -490,7 +490,7 @@ void MainWindow::openLensCalibration()
                         if (meta && meta->serial == cal.serial && meta->lenses.size() == 2 &&
                             cal.matchesFile(meta->lenses[0].calibration,
                                             meta->lenses[1].calibration))
-                            m_timeline->setSourceStitch(o.sourcePath, o.lensGuard, o.depthSeam,
+                            m_timeline->setSourceStitch(o.sourcePath, o.lensGuard, o.stitchMethod,
                                                         cal);
                     }
                 }

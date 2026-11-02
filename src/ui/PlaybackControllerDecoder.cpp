@@ -93,7 +93,7 @@ stitch::PreviewStitchConfig PlaybackController::openConfig(stitch::PreviewStitch
 {
     preview.lensGuard = seg.lensGuard;
     preview.lensCalibration = seg.lensCalibration;
-    preview.depthSeam = seg.depthSeam;
+    preview.method = seg.stitchMethod;
     return preview;
 }
 
@@ -432,7 +432,7 @@ void PlaybackController::decoderLoop()
                     for (const Placed &was : m_decPlaced)
                         if (was.seg.sourcePath == now.seg.sourcePath &&
                             (was.seg.lensGuard != now.seg.lensGuard ||
-                             was.seg.depthSeam != now.seg.depthSeam ||
+                             was.seg.stitchMethod != now.seg.stitchMethod ||
                              was.seg.lensCalibration != now.seg.lensCalibration) &&
                             !reopen.contains(now.seg.sourcePath)) {
                             reopen << now.seg.sourcePath;

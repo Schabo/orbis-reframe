@@ -51,7 +51,7 @@ models. Their clips are always stitched with bare lenses: **Lens guards**
 shows **None**, greyed out, with a line saying why. A clip from such a
 camera comes in with **None** whatever the clip beside it has, and **Apply
 to all clips** leaves its lens guards alone; applied from one of its clips,
-it copies only **Depth-aware seam** to the others. (A file that has only one
+it copies only **Stitcher** to the others. (A file that has only one
 of the two guard models greys out the other choice.)
 
 ## Lens calibration
@@ -135,6 +135,25 @@ Calibrating clears the clip's seam alignment and lens colour (below), which
 are then measured again with the new model. **Calibrate lenses…** is
 greyed out in builds made without OpenCV's chart detection.
 
+## Stitcher
+
+**Stitcher** picks how the two pictures are joined where they meet:
+
+- **Depth-aware seam**: lines the two pictures up, frame by frame, at the
+  distance of what is on the seam (see *Depth-aware seam* below). New clips
+  start with it.
+- **Fixed seam**: lines the pictures up for things far away, the same in
+  every frame. The seam holds still, but things close to the camera show up
+  twice where the pictures meet.
+- **New stitcher (experimental)**: the stitcher that will replace the other
+  two, still being built. For now it joins the pictures from the lens model
+  alone (the camera file's, or your calibration), with a fixed blend, the
+  same in every frame. It measures nothing from the video: the seam
+  alignment and lens colour below aren't used with it, so the two lenses'
+  colours aren't matched yet, and close things show up twice as with
+  **Fixed seam**. Projects with a clip set to it can't be opened by
+  orbis-reframe versions before 0.8.
+
 ## Depth-aware seam
 
 The two lenses sit a few centimetres apart, so they see things close to the
@@ -142,7 +161,7 @@ camera from slightly different places, just like your two eyes do. Far away
 things line up at the seam, but close ones (the handlebars, the rider, the
 stick) don't, and show up twice or broken where the lenses meet.
 
-With **Depth-aware seam** on, orbis-reframe works out for every frame how
+With **Stitcher** set to **Depth-aware seam**, orbis-reframe works out for every frame how
 far away the things along the seam are, and lines the two pictures up at
 that distance. It goes by the frames just before and after rather than one,
 so the seam doesn't jump between a close object and the road behind it when
@@ -191,7 +210,10 @@ shows them softly doubled rather than broken.
 *The handlebar crosses the seam. Off, the bar is broken and the brake cable
 shows twice; on, they join up.*
 
-It's on in new projects, and there's rarely a reason to turn it off.
+New clips start with it. Where nothing is close to the camera, as on
+drone footage, it has nothing to line up, and the picture just round the
+seam can seem to move or bend slightly while playing: pick **Fixed seam**
+there.
 
 ## Seam alignment
 
@@ -199,8 +221,9 @@ A camera's two lenses are never mounted quite perfectly, and the lens model
 in the file doesn't capture every small difference: on far-away things the
 two pictures can disagree by a few tenths of a degree, which shows as fine
 detail (branches, wires, window frames) slightly doubled along the seam.
-orbis-reframe measures how the two lenses line up from the video itself,
-once for each clip, and corrects the lens model by that: how the back lens
+With **Depth-aware seam** or **Fixed seam**, orbis-reframe measures how
+the two lenses line up from the video itself, once for each clip, and
+corrects the lens model by that: how the back lens
 is turned, where its centre is, and how large both lenses draw the picture
 near the seam. Things close to the camera don't line up by this alone; see
 *Depth-aware seam* above. Like the gyro sync (see
@@ -217,6 +240,7 @@ have got for the clip under the playhead:
 | *Seam aligned; measuring this clip's lens colours…* | The seam is done, the lens colour is running. |
 | *Seam aligned and lens colours matched for this clip.* | Both done. |
 | *Analysing this clip's seam… N %* | After both: the depth-aware seam's analysis (see *Depth-aware seam* above) is running. It stops while playing and goes on from where it was. |
+| *The new stitcher measures nothing from this clip.* | **Stitcher** is set to **New stitcher (experimental)**, which joins the lenses from their lens model alone. |
 | *Couldn't align this clip's seam (…)* | The seam alignment didn't succeed; the brackets say why (below). The clip is stitched with the camera's lens model only, and its lens colour is still measured. |
 | *… couldn't match the lens colours (…)* | The lens colour measurement didn't succeed, for one of the same reasons. The lenses are stitched as recorded. |
 
@@ -250,8 +274,8 @@ again when the project opens.
 The two lenses of a camera never record quite the same colour: one is a
 little warmer or brighter than the other, and towards their rims they fall
 off differently, in colour too. Left alone, that would show as a step along
-the seam. orbis-reframe measures how the two lenses of a clip differ, colour
-by colour, from frames spread across the clip, once for each clip, right
+the seam. With **Depth-aware seam** or **Fixed seam**, orbis-reframe measures
+how the two lenses of a clip differ, colour by colour, from frames spread across the clip, once for each clip, right
 after the seam alignment; frames with flare from a low sun, and very dark
 parts of the picture, are left out, and so is a colour where it is clipped
 (a bright sky's blue), while the other colours there still count. Each lens
@@ -283,7 +307,7 @@ line. Further into that lens the haze stays (the other lens can't see
 there, so nothing says how much there is): it fades out towards the seam
 instead of stopping at it. The rays and coloured blobs of flare (reflections
 inside the lens) are left as they are. The stretch-by-stretch match and the
-haze both need **Depth-aware seam** on.
+haze both need **Stitcher** set to **Depth-aware seam**.
 
 Bright highlights are left as recorded: a sky that is blown out in both
 lenses stays the same white on both sides of the seam rather than turning

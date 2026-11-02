@@ -63,7 +63,7 @@ struct Stats {
 };
 
 constexpr int kWarmup = 5;
-bool gDepthSeam = true;
+stitch::PreviewStitchConfig::Method gMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
 
 void benchDecode(const std::string& path, int frames, double fps) {
     insv::VulkanVideoDecoder dec;
@@ -119,7 +119,7 @@ std::unique_ptr<stitch::NativeStitchSource> openSource(const std::string& path, 
     stitch::PreviewStitchConfig cfg;
     cfg.width = eqW;
     cfg.height = eqW / 2;
-    cfg.depthSeam = gDepthSeam;
+    cfg.method = gMethod;
     if (!src->Open(path, cfg)) {
         std::printf("  open FAILED: %s\n", src->GetLastError().c_str());
         return nullptr;
@@ -302,7 +302,7 @@ int main(int argc, char** argv) {
         if (a == "--frames" && i + 1 < argc) {
             frames = std::atoi(argv[++i]);
         } else if (a == "--no-depth-seam") {
-            gDepthSeam = false;
+            gMethod = stitch::PreviewStitchConfig::Method::FixedSeam;
         } else if (a == "--only-flat") {
             onlyFlat = true;
         } else if (a == "--eq" && i + 1 < argc) {

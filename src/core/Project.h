@@ -78,7 +78,9 @@ public:
     //   lockDirection, directionSec},
     //   stitch {lensGuard, depthSeam, optional: calibration -- the
     //   camera's own lens calibration (LensCalibrationJson), absent => the
-    //   file's} (absent => previewStitch's);
+    //   file's; method: "new" -- the new stitcher, absent => the old one,
+    //   with or without the depth seam by depthSeam} (absent =>
+    //   previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
@@ -161,7 +163,11 @@ public:
     // field's braces. Version 21 added a clip's own lens calibration (its
     // "stitch" object's "calibration", LensCalibrationJson), written only
     // when a clip has one: an older build would stitch it with the file's.
-    static constexpr int kFormatVersion = 21;
+    // Version 22 added the new stitcher (a clip's "stitch" object's
+    // "method": "new"), written only when a clip uses it: an older build
+    // would stitch it with the old one.
+    static constexpr int kFormatVersion = 22;
+    static constexpr int kNewStitcherFormatVersion = 22;
     static constexpr int kLensCalibrationFormatVersion = 21;
     static constexpr int kMotionOverlayFormatVersion = 20;
     static constexpr int kClockFormatVersion = 19;
@@ -190,8 +196,8 @@ public:
 
     // The preview's stitch quality and size (View menu), handed to the live
     // playback path via PlaybackController::setPreviewConfig. Its lensGuard /
-    // depthSeam are not used: each 360 clip has its own (ClipItem::lensGuard
-    // / depthSeam); they're only what a project from before that gives its
+    // method are not used: each 360 clip has its own (ClipItem::lensGuard
+    // / stitchMethod); they're only what a project from before that gives its
     // clips on load.
     const stitch::PreviewStitchConfig &previewStitch() const { return m_previewStitch; }
 

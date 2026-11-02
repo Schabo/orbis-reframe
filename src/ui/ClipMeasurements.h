@@ -89,6 +89,7 @@ private:
     void maybeAnalyseSeam(const QString &clipPath);
     // The first main-track clip cut from `clipPath`, if its file is there.
     const ClipItem *measurableClip(const QString &clipPath) const;
+    static bool usesOldStitcher(const ClipItem &c);
     // Why a measurement failed, in plain words for the status lines; the
     // technical text goes to the log. `seam`: the seam's, else the sync's.
     static QString failureText(stitch::MeasureFailure why, bool seam);
