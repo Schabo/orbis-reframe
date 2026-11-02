@@ -710,7 +710,7 @@ if(FFMPEG_FOUND)
     install(DIRECTORY docs/manual/ DESTINATION share/doc/orbis-reframe/manual)
 
     add_executable(stitch_source_smoke tools/stitch_source_smoke/main.cpp)
-    target_link_libraries(stitch_source_smoke PRIVATE stitch)
+    target_link_libraries(stitch_source_smoke PRIVATE stitch orbis_core)
 
     # --- tools/playback_bench: per-mode decode / stitch / copy-back /
     # seek timings on the all-GPU path. Measure-only.

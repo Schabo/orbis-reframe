@@ -120,6 +120,11 @@ STEP` reads a run of frames instead and writes one every STEP ms.
 stitches with it; `--seam Y,P,R[,CU,CV,S]` stitches with a given one.
 `--lens-colour IN OUT` and `--colour R,G,B[,SR,SG,SB]` do the same for the
 lens colour (as `insv_stitch`'s; measured after the seam, with it).
+`--no-depth-seam` and `--new-stitcher` pick the stitcher (as the Stitching
+section's *Stitcher*; default the depth-aware seam), `--dump-depth` prints
+the depth-aware seam's table per frame, and `--calibration FILE.json` takes
+a camera's own lens calibration (as `lens_calib --out` writes it and the
+app keeps it) in place of the file's, for the stitch and the measurements.
 
 **When:** a quick check that decode, seek and stitch still work after a
 change, before starting the app. The release test runs it on a build from
