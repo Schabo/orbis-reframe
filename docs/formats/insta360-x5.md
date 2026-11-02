@@ -377,11 +377,11 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x0700` | 7 | **GPS** | 22 790 | 53 B × 10 Hz, fix updated at 1 Hz (§8); only with a GPS source | ✅ |
 | `0x0900` | 9 | **AAAData** (auto-exposure / white-balance / focus) | 61 536 | **48 B per recorded frame** (§4.4) | 📖 |
 | `0x0a00` | 10 | Anchors / highlights | 35 | `{type u8, count u32}` lists (+ u64 timestamps). Here 7 types (1,2,3,4,16,17,18), all with count 0 | 📖 ✅ |
-| `0x0b00` | 11 | AAASimulation | 342 294 | format unknown | 📖❓ |
+| `0x0b00` | 11 | AAASimulation | 342 294 | **267 B per recorded frame** (the same on `192900` and `201257`). Each block starts with the same `u32` ms timestamp as type 9's; the rest is bit-packed and not decoded, with small 8-bit curves visible | 📖❓ |
 | — | 12–18 | ExposureSecondary, Magnetic, Euler, SecGyro, Speed, TBox, Quaternions | — | not on the X5 samples (other models) | |
 | `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, 11 per frame across the readout; timelapse only (§3.5) | ⚠️ |
-| `0x1600` | 22 | ? | 8 306 836 | 148-byte header (mentions 1664/832) + 3 × 1664×832×2 bytes | ❓ |
-| `0x1c00` | 28 | ? | 12 793 | contains 0..255 byte ramps (tone curve / LUT?) | ❓ |
+| `0x1600` | 22 | Snapshots | 8 306 836 | **four 1664×832 NV12 frames of the dual-fisheye picture** from across the clip (§4.5) | ✅ |
+| `0x1c00` | 28 | ? | 12 793 | eight 256-entry `u8` tables, identity on every sample, then one **256-entry `u16` tone curve** (values 0-255, concave: 40 -> ~89, 120 -> ~178, 200 -> ~229) that differs slightly between clips; the rest mostly zero. One curve for the whole picture, not per lens | ⚠️ |
 | `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz | ❓ |
 | `0x3900` | 57 | ? | — | only in the software-rewritten `-trim` clip | ❓ |
 | `0x8000` | 128 | **TimeMap** | 862 136 (`144221_019-trim`) | written by Insta360 software on trimmed/re-timed exports. Decoded ✅: header `{u32 32 (header size), u32 trimCount, u32 pairBytes, u32 frameCount, 16 B zero}`, then `trimCount × {f64 duration, source start, source end}` (ms), then `(video ms, original ms)` f64 pairs, one per frame. On the sample: 1 trim, source 2002.0 → 1 799 764.6 ms, pairs `(0, 2002.0), (33.37, 2035.37)…`. **Field 24 keeps naming the original first frame**, so sync must add the source offset (§7.1) | ✅ |
@@ -404,6 +404,42 @@ On `193105`: ev/exp read 0, and `luma_struct = 0x02000000` gives **ISO 100**.
 The first u32 of the trailing data counts down slowly (2297, 2296, …). Its
 ms clock sits ~208 ms after the video device clock ❓, so don't use it for
 sync.
+
+On `192900`, `201257` and `193105` (2026-11-03) only three of the 12 words
+are ever non-zero: the timestamp, `luma_struct` and that slow counter (2083-3361
+across the three clips; a temperature?). `ev_target`, `exp_time`,
+`data_stat` and the other six spare words are 0 on every frame. **No
+white-balance or per-lens colour values**: nothing here says how the two
+lenses' colour differs (§7).
+
+### 4.5 Type 22 — Snapshots ✅
+
+Four small frames of the camera's picture, stored as decoded images:
+
+```
+36-byte header   {u32 1, u32 record size, u32 1, u32 0, u32 3, 4 × u32 0}
+4 × {
+  28-byte header {u32 width 1664, u32 height 832, u32 stride 1664,
+                  u16 0, u16 8112, 12 × u8 0}
+  NV12           1664×832 Y, then interleaved U V at half size
+}
+```
+
+The `3` and `8112` mean nothing we know of; they are the same on every sample.
+Each frame has the `.lrv`'s layout (§3.2): both fisheyes side by side,
+lens 0 on the right. Measured on `192900`, `201257` and `193105` (2026-11-03,
+each frame matched against every `.lrv` frame, rms 1.3-4 levels against 7-23
+for the next best match): each one is a frame of its own clip, spread
+across the clip and not stored in time order (`192900`: 124, 383, 253,
+512 s; `193105`: 25.9, 34.1, 9.6, 42.2 s). How the camera picks them is
+unknown.
+
+They show the picture as the camera's processing made it, before the video
+encoder. **They have the same colour as our decode of the `.insv`**: per lens
+and per channel within 0.7 % on all 12 frames (mean of unclipped pixels,
+over the whole circle and over the rim where the seam is; same range and
+matrix as the video). So the colour difference between the lenses (§7) is
+in the recording, not added by the decode.
 
 ## 5. Type 1 — Metadata (protobuf `ExtraMetadata`)
 
@@ -741,7 +777,9 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
   `193105`), and changing across the overlap per channel, red rising and
   green / blue falling towards lens 0 by ~0.5 % per degree: the two lenses'
   rims fall off differently, in colour too. The app measures it per clip
-  (`insv::FitLensColour`).
+  (`insv::FitLensColour`). The camera's own snapshots (§4.5) show the same
+  difference, and no record read so far (types 1, 4, 9, 22, 28) holds a
+  colour value per lens.
 
 ### 7.1 Video ↔ IMU time sync ✅ 📖
 
