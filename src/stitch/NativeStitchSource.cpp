@@ -70,7 +70,7 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
-                            const LensCalibration* calibration, bool modelLensTurn,
+                            const LensCalibration* calibration, bool modelCorrection,
                             insv::InsvCalibration& calib, insv::StitchParams& params,
                             std::string& err, bool* guardFound) {
     if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2) {
@@ -101,9 +101,8 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
             *guardFound = true;
         return true;
     }
-    if (modelLensTurn)
-        for (int i = 0; i < 3; ++i)
-            params.lens1TurnDeg[i] = clip.lens1TurnDeg[i];
+    if (modelCorrection)
+        params.modelCorrection = clip.lensCorrection;
     const insv::LensProfile* acc = LensGuardProfile(clip, guard);
     bool found = insv::ApplyLensProfile(params, bare, acc);
     if (guard != PreviewStitchConfig::LensGuard::None && !acc)

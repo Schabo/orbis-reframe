@@ -8,14 +8,14 @@ const InsvModel kModels[] = {
     {"Insta360 X5", "Insta360", "z,-x,-y", "ProtectorS", "ProtectorA", 5312.0,
      {{3840, "8K"}, {2880, "5.7K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv",
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {0.0, 0.0, 0.0}},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}},
     // IMU axes: the X5's, unconfirmed -- it needs a clip with deliberate
     // rotations (docs/formats/insta360-x6.md). File names: taken to be the
     // X5's (one .insv + .lrv per take; the proxy's exact name not checked).
     {"Insta360 X6", "Insta360", "z,-x,-y", nullptr, nullptr, 7680.0,
      {{3840, "8K"}, {3008, "6K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv",
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {0.0, 0.0, 0.0}},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}},
     // A lens per file at 5.7K, proxy LRV_…_11_….insv, telemetry in ms, no
     // lens-guard profiles (docs/formats/insta360-one-x2.md §1, §6, §8). IMU
     // axes: "z,x,y", the X5's turned 180° about sphere X -- measured on both
@@ -24,7 +24,7 @@ const InsvModel kModels[] = {
     {"Insta360 ONE X2", "Insta360", "z,x,y", nullptr, nullptr, 2880.0,
      {{2880, "5.7K"}, {0, nullptr}, {0, nullptr}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1000.0, "_00_", "_10_", "LRV", "_11_", ".insv",
-     {1.0, 0.0, 0.0, 0.0}, 0.0, {0.0, 0.0, 0.0}},
+     {1.0, 0.0, 0.0, 0.0}, 0.0, {}},
     // A 360 drone writing Insta360's .insv (docs/formats/antigravity-a1.md):
     // both lenses in one file, the proxy PRX_….prx with the clip's own name,
     // no lens-guard profiles, field 27 in the file. The 5.2K and 4K lens
@@ -35,15 +35,16 @@ const InsvModel kModels[] = {
     // accelerometer puts "up" in a hover). Attitude: field 69 as on all
     // three sample clips; the camera sits pitched up 9.7 deg in the
     // airframe, fitted from the attitude's rotation against the gyro on all
-    // three (9.5-9.9 deg; one unit measured). Lens 1 turn: the median of the
-    // per-clip seam fit's lens 1 rotation over 17 clips (every mode), which
-    // puts lens 1 where Antigravity Studio's own export of a clip has it
-    // (docs/formats/antigravity-a1.md); one unit measured, its calibration
-    // the same in every clip.
+    // three (9.5-9.9 deg; one unit measured). Lens correction: the median of
+    // the per-clip seam fit (insv::EstimateSeamAlignment) over 17 sample
+    // clips in every mode, term by term: the lenses 0.14 deg apart at the
+    // seam on average, against 0.42 with the file's calibration alone, and
+    // the sharpest seam of the corrections tried. One unit measured, its
+    // calibration the same in every clip (docs/formats/antigravity-a1.md).
     {"Antigravity A1", "Antigravity", "-x,y,-z", nullptr, nullptr, 5248.0,
      {{3840, "8K"}, {2624, "5.2K"}, {1920, "4K"}, {0, nullptr}},
      {-90.0, 90.0, 0.0}, 1.0, nullptr, nullptr, "PRX", nullptr, ".prx",
-     {0.5, 0.5, -0.5, 0.5}, 9.7, {0.006, 0.238, 0.468}},
+     {0.5, 0.5, -0.5, 0.5}, 9.7, {{0.006, 0.238, 0.468}, {-0.000749, 0.000016}, 0.998714}},
 };
 
 } // namespace

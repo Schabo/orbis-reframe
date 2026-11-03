@@ -289,7 +289,7 @@ start and end in seconds, then any of:
   as in `seam_regress`); or `ref=template`: our own stitch of the same
   frames from the file's data alone (the new stitcher without the
   capture-time correction or the seam colour blend; with the camera
-  model's lens 1 turn, as the new stitcher has it), whose geometry and
+  model's lens correction, as the new stitcher has it), whose geometry and
   colour hold still -- the reference for a clip without a Studio export.
 
 Anything after `#` is a note. Unless `--live` is given, the app's seam

@@ -31,7 +31,7 @@ enum class MeasureFailure {
 
 // Reads `clipPath`'s metadata and sets its stitch up as NativeStitchSource
 // would for the old stitcher, `lensGuard` and `calibration` (the camera's
-// own, or null for the file's; without the camera model's lens turn). None on success, with `clip` (optional) set; otherwise the kind,
+// own, or null for the file's; without the camera model's lens correction). None on success, with `clip` (optional) set; otherwise the kind,
 // with `err`.
 MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       PreviewStitchConfig::LensGuard lensGuard,

@@ -6,6 +6,7 @@
 #include <InsvTrailer.h> // insv::LensProfile
 #include <LensSource.h>  // insv::LensSource
 #include <Motion.h>      // insv::MotionTrack
+#include <SeamCorrection.h> // insv::SeamCorrection
 #include <Ycbcr.h>       // insv::YcbcrCoding
 
 #include <cstdint>
@@ -78,9 +79,9 @@ struct ClipMetadata {
     double mountYawDeg = 180.0;
     double mountPitchDeg = 0.0;
     double mountRollDeg = 0.0;
-    // The camera model's turn of lens 1 on top of the file's calibration
-    // (insv::InsvModel::lens1TurnDeg, insv::StitchParams::lens1TurnDeg).
-    double lens1TurnDeg[3] = {0.0, 0.0, 0.0};
+    // The camera model's correction on top of the file's lens calibration
+    // (insv::InsvModel::lensCorrection, insv::StitchParams::modelCorrection).
+    insv::SeamCorrection lensCorrection;
 
     // Every lens stream's picture: decoded size, rate, length.
     int lensWidth = 0;

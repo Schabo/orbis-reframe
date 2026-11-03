@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "SeamCorrection.h"
+
 #include <span>
 #include <string>
 
@@ -88,15 +90,15 @@ struct InsvModel {
     double imuMount[4];
     double attitudeTiltDeg;
 
-    // A turn of lens 1 that the model's files need on top of their own lens
-    // calibration, yaw / pitch / roll in degrees in SeamCorrection::lens1RotDeg's
-    // terms (StitchParams::lens1TurnDeg): measured where the model's stitch,
-    // with nothing else applied, keeps the lenses apart at the seam and the
-    // maker's own stitch doesn't. Not applied over a chart calibration, which
-    // replaces the file's. {0, 0, 0} on the cameras whose calibration lines
-    // the lenses up as it is (the X5: the file's stitch matches Insta360
-    // Studio's with its seam corrections off).
-    double lens1TurnDeg[3];
+    // The correction the model's files need on top of their own lens
+    // calibration, in the per-clip seam fit's terms (insv::SeamCorrection:
+    // lens 1's turn and centre, both lenses' radius), as offsets from the
+    // file's values, so each camera keeps its own calibration under it
+    // (StitchParams::modelCorrection): measured where the file's calibration
+    // alone keeps the lenses apart at the seam on every clip of the model.
+    // Not applied over a chart calibration, which replaces the file's. None
+    // ({}) on the cameras whose calibration lines the lenses up as it is.
+    SeamCorrection lensCorrection;
 };
 
 // Every row.

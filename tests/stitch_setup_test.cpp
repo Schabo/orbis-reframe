@@ -1,9 +1,9 @@
-// stitch::DualFisheyeStitchSetup and the camera model's turn of lens 1
-// (insv::InsvModel::lens1TurnDeg): which cameras carry one, that the set-up
-// applies it only when asked (the new stitcher) and only over the file's
-// calibration, not a chart calibration, and that the stitch turns lens 1 by
-// it as by the seam correction's turn. No GPU, no clip. Exit code is the
-// failure count.
+// stitch::DualFisheyeStitchSetup and the camera model's correction to its
+// files' lens calibration (insv::InsvModel::lensCorrection): which cameras
+// carry one, that the set-up applies it only when asked (the new stitcher)
+// and only over the file's calibration, not a chart calibration, and that
+// the stitch applies it as it does the seam correction, the two composing.
+// No GPU, no clip. Exit code is the failure count.
 
 #include "LensCalibration.h"
 #include "NativeStitchSource.h"
@@ -12,6 +12,7 @@
 #include <FisheyeProjection.h>
 #include <InsvModels.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -60,42 +61,38 @@ camera::ClipMetadata a1Clip()
         c.lenses[i].calibration = a1Lens(i);
     c.calibrated = true;
     const insv::InsvModel& m = insv::FindInsvModel(c.model);
-    for (int i = 0; i < 3; ++i)
-        c.lens1TurnDeg[i] = m.lens1TurnDeg[i];
+    c.lensCorrection = m.lensCorrection;
     c.mountYawDeg = m.mountDeg[0];
     c.mountPitchDeg = m.mountDeg[1];
     c.mountRollDeg = m.mountDeg[2];
     return c;
 }
 
-bool sameTurn(const insv::StitchParams& p, const double t[3])
-{
-    return p.lens1TurnDeg[0] == t[0] && p.lens1TurnDeg[1] == t[1] && p.lens1TurnDeg[2] == t[2];
-}
 
 void testModels()
 {
-    // Insta360's files line the lenses up as they are; the A1's need a turn.
+    // Insta360's files line the lenses up as they are; the A1's need a
+    // correction.
     for (const insv::InsvModel& m : insv::InsvModels()) {
-        const bool zero = m.lens1TurnDeg[0] == 0 && m.lens1TurnDeg[1] == 0 && m.lens1TurnDeg[2] == 0;
+        const bool none = m.lensCorrection == insv::SeamCorrection{};
         if (std::string(m.maker) == "Insta360")
-            CHECK(zero);
+            CHECK(none);
         else
-            CHECK(!zero);
+            CHECK(!none);
     }
 }
 
 void testSetup()
 {
     const camera::ClipMetadata clip = a1Clip();
-    const double none[3] = {0, 0, 0};
+    const insv::SeamCorrection none;
     std::string err;
     {
         insv::InsvCalibration cal;
         insv::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              nullptr, true, cal, p, err));
-        CHECK(sameTurn(p, clip.lens1TurnDeg));
+        CHECK(p.modelCorrection == clip.lensCorrection);
     }
     {
         // The old stitcher and its per-clip fit: the file's as it is.
@@ -103,7 +100,7 @@ void testSetup()
         insv::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              nullptr, false, cal, p, err));
-        CHECK(sameTurn(p, none));
+        CHECK(p.modelCorrection == none);
     }
     {
         // A chart calibration replaces the file's, and the turn with it.
@@ -117,7 +114,7 @@ void testSetup()
         insv::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              &chart, true, cal, p, err));
-        CHECK(sameTurn(p, none));
+        CHECK(p.modelCorrection == none);
         CHECK(cal.lensesExt[1].pitch == chart.lenses[1].pitch);
     }
     {
@@ -132,42 +129,62 @@ void testSetup()
         insv::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              &other, true, cal, p, err));
-        CHECK(sameTurn(p, clip.lens1TurnDeg));
+        CHECK(p.modelCorrection == clip.lensCorrection);
     }
 }
 
-void testStitchTurn()
+// The largest difference between two stitchers' lens models.
+double lensDiff(const insv::FisheyeStitcher& a, const insv::FisheyeStitcher& b, int lens)
 {
-    // The model's turn moves lens 1 exactly as the same seam-correction turn,
-    // and leaves lens 0 where it was.
+    const insv::LensProjection& x = a.lensProjection(lens);
+    const insv::LensProjection& y = b.lensProjection(lens);
+    double d = std::max({std::fabs(x.fx - y.fx), std::fabs(x.fy - y.fy), std::fabs(x.cx - y.cx),
+                         std::fabs(x.cy - y.cy)});
+    for (int r = 0; r < 3; ++r)
+        for (int k = 0; k < 3; ++k)
+            d = std::max(d, std::fabs(x.worldToLens.m[r][k] - y.worldToLens.m[r][k]));
+    return d;
+}
+
+void testStitchCorrection()
+{
+    // The model's correction moves the lenses exactly as the same seam
+    // correction would, and the two compose: turns and centres add, scales
+    // multiply.
     const camera::ClipMetadata clip = a1Clip();
     insv::InsvCalibration cal;
     insv::StitchParams base;
     std::string err;
     CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                          nullptr, false, cal, base, err));
-    insv::StitchParams turned = base, viaSeam = base;
-    for (int i = 0; i < 3; ++i) {
-        turned.lens1TurnDeg[i] = clip.lens1TurnDeg[i];
-        viaSeam.seam.lens1RotDeg[i] = clip.lens1TurnDeg[i];
-    }
+    const insv::SeamCorrection& m = clip.lensCorrection;
+    insv::StitchParams model = base, viaSeam = base;
+    model.modelCorrection = m;
+    viaSeam.seam = m;
     insv::FisheyeStitcher a, b, c;
     CHECK(a.configure(cal, 3840, 3840, base));
-    CHECK(b.configure(cal, 3840, 3840, turned));
+    CHECK(b.configure(cal, 3840, 3840, model));
     CHECK(c.configure(cal, 3840, 3840, viaSeam));
-    double lens0 = 0, lens1 = 0, seamDiff = 0;
-    for (int r = 0; r < 3; ++r)
-        for (int k = 0; k < 3; ++k) {
-            lens0 = std::max(lens0, std::fabs(a.lensProjection(0).worldToLens.m[r][k] -
-                                              b.lensProjection(0).worldToLens.m[r][k]));
-            lens1 = std::max(lens1, std::fabs(a.lensProjection(1).worldToLens.m[r][k] -
-                                              b.lensProjection(1).worldToLens.m[r][k]));
-            seamDiff = std::max(seamDiff, std::fabs(b.lensProjection(1).worldToLens.m[r][k] -
-                                                    c.lensProjection(1).worldToLens.m[r][k]));
-        }
-    CHECK(lens0 == 0.0);
-    CHECK(lens1 > 1e-3); // ~0.5 deg
-    CHECK(seamDiff == 0.0);
+    CHECK(lensDiff(a, b, 1) > 1e-3); // lens 1 moves (~0.5 deg)
+    CHECK(lensDiff(b, c, 0) == 0.0 && lensDiff(b, c, 1) == 0.0);
+
+    insv::SeamCorrection s;
+    s.lens1RotDeg[0] = 0.1;
+    s.lens1RotDeg[2] = -0.2;
+    s.lens1Centre[1] = 0.0003;
+    s.radialScale = 1.002;
+    insv::StitchParams both = base, summed = base;
+    both.modelCorrection = m;
+    both.seam = s;
+    for (int i = 0; i < 3; ++i)
+        summed.seam.lens1RotDeg[i] = m.lens1RotDeg[i] + s.lens1RotDeg[i];
+    for (int i = 0; i < 2; ++i)
+        summed.seam.lens1Centre[i] = m.lens1Centre[i] + s.lens1Centre[i];
+    summed.seam.radialScale = m.radialScale * s.radialScale;
+    insv::FisheyeStitcher d, e;
+    CHECK(d.configure(cal, 3840, 3840, both));
+    CHECK(e.configure(cal, 3840, 3840, summed));
+    CHECK(lensDiff(d, e, 0) < 1e-9 && lensDiff(d, e, 1) < 1e-9);
 }
 
 } // namespace
@@ -176,7 +193,7 @@ int main()
 {
     testModels();
     testSetup();
-    testStitchTurn();
+    testStitchCorrection();
     if (g_failures == 0)
         std::printf("stitch_setup_test: all checks passed\n");
     return g_failures;

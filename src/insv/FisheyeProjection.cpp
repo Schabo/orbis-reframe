@@ -128,9 +128,10 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         double ay = -e.pitch * kDeg;
         double az = (e.roll - params.tzNominalDeg) * kDeg;
         if (i == 1) {
-            ax += (params.lens1TurnDeg[0] + params.seam.lens1RotDeg[0]) * kDeg;
-            ay += (params.lens1TurnDeg[1] + params.seam.lens1RotDeg[1]) * kDeg;
-            az += (params.lens1TurnDeg[2] + params.seam.lens1RotDeg[2]) * kDeg;
+            const SeamCorrection& m = params.modelCorrection;
+            ax += (m.lens1RotDeg[0] + params.seam.lens1RotDeg[0]) * kDeg;
+            ay += (m.lens1RotDeg[1] + params.seam.lens1RotDeg[1]) * kDeg;
+            az += (m.lens1RotDeg[2] + params.seam.lens1RotDeg[2]) * kDeg;
         }
         // Composed Rz Rx Ry: pitch first, then yaw, then roll. On the X5 the
         // angles are all near zero and any order gives the same lens, but
@@ -149,13 +150,16 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         const double sVideoPerSensor = static_cast<double>(streamW) / halfW;
         const double sVideoPerCrop = static_cast<double>(streamW) / e.focalRefW;
         m_lens[i].xi = e.xi;
-        m_lens[i].fx = e.fx * sVideoPerCrop * params.seam.radialScale;
-        m_lens[i].fy = e.fy * sVideoPerCrop * params.seam.radialScale;
+        const double radialScale = params.modelCorrection.radialScale * params.seam.radialScale;
+        m_lens[i].fx = e.fx * sVideoPerCrop * radialScale;
+        m_lens[i].fy = e.fy * sVideoPerCrop * radialScale;
         m_lens[i].cx = cxLocal * sVideoPerSensor;
         m_lens[i].cy = e.cy * sVideoPerSensor;
         if (i == 1) {
-            m_lens[i].cx += params.seam.lens1Centre[0] * streamW;
-            m_lens[i].cy += params.seam.lens1Centre[1] * streamW;
+            m_lens[i].cx += (params.modelCorrection.lens1Centre[0] + params.seam.lens1Centre[0]) *
+                            streamW;
+            m_lens[i].cy += (params.modelCorrection.lens1Centre[1] + params.seam.lens1Centre[1]) *
+                            streamW;
         }
         for (int k = 0; k < 4; ++k) {
             m_lens[i].k[k] = e.k[k];
