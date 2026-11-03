@@ -103,9 +103,16 @@ Markers as in [`README.md`](README.md).
   timestamped floats, meaning ❓ (a flight log?).
 - ✅ Record 1 is the X5's protobuf (X5 §5.1); on our clips: model (field 2)
   `Antigravity A1`, firmware `10.0.397.3_5.5`; field 27 `{5248, 5248, 5248,
-  5248}`, so the focal reference is 5248; only the **40-token `offset_v3`**
+  5248}`, so the focal reference is 5248; the **40-token `offset_v3`**
   MEI calibration (field 54, X5 §5.3; no 56-token string), in a 10496×5248
-  side-by-side frame, `xi` 1.504, lens type 155; fields 24, 25 (readout
+  side-by-side frame, `xi` 1.504, lens type 155, which the app reads; and a
+  34-token `offset_v2` (X5 §5.3: radius, centre, yaw / pitch / roll,
+  baseline, four polynomial coefficients; lens type 112) with the angles
+  in another form, pitch near 0 (lens 0 yaw / pitch / roll 179.66 / −0.29
+  / 88.88, lens 1 179.90 / −0.43 / 89.69), not used. ✅ **Both strings
+  are identical on every clip of all three sets** (17 clips, one drone),
+  so the clips can't tell a misread calibration from a constant the
+  vendor's software adds; fields 24, 25 (readout
   ~21.25 ms), 28 (3.7 ms), 62 (raw IMU) and 65 (±32 g, ±2000 °/s) as on the
   X5, and the IMU (~1 kHz) and exposure records decode with the X5's
   layout, in µs. Field 7 is **`YYYYMMDDhhmm`**, local time, without the
@@ -142,6 +149,27 @@ Markers as in [`README.md`](README.md).
   100 (lens 1 pitch +0.23 to +0.27°, roll +0.43 to +0.54°, centre −0.07 to
   −0.09 %, radius −0.10 to −0.15 %), ending at 0.14-0.15°: these clips fly
   low, a few metres over a field and trees, so parallax is left.
+- ✅ **Studio's stitch puts lens 1 where the per-clip fit does, not where
+  the file alone does** (measured 2026-11-03, `stitch_bench` on `_021`
+  4-8 s against Studio's unstabilized equirect, *Modes and sample clips*).
+  The export lines up with our sphere at `refrot=0.361,-2.764,89.940`
+  (Studio puts the lens axes on the equator; from 1298 matched features at
+  6 s, median 0.036°, and the bench's own fit within 0.1°) and
+  `refstart=0`. Against it, our stitch from the file's calibration alone
+  is 0.16° (median) / 0.57° (p95) off in the seam band, band PSNR 24.0
+  dB; with the per-clip seam correction (lens 1 rotation −0.002 / +0.221
+  / +0.430°, centre −0.07 %, radius −0.15 %) 0.14 / 0.23°, 25.5 dB. The
+  difference is a **tilt of lens 1 by ~0.48°** against our reading of
+  `offset_v3`, seen also 10-30° from lens 1's axis, out of reach of
+  Studio's AI Stitching at the seam; lens 0 sits where the file puts it
+  (radial within 0.01°), so Studio doesn't apply the fit's radius scale
+  to it. **The fit's lens 1 rotation alone matches Studio best**, the same
+  on 4-8, 30-34 and 60-64 s (band 0.10 / 0.34 / 0.30° median, p95 0.27 /
+  0.66 / 0.58°, against 0.16 / 0.37 / 0.34° and 0.57 / 0.77 / 0.77° from
+  the file alone); adding its centre or radius terms makes it worse. So
+  Studio's lens 1 holds one pose through the clip: the file's, turned by
+  that rotation. No other order of the angles gives it (the closest,
+  `Rx Rz Ry`, still leaves 0.27°). ❓ Where Studio's tilt comes from.
 - ✅ The lenses are **71 mm apart** (lens 1 `tz` −0.0711; X5: 32 mm), lens 0
   in front along its own axis as on the X5: the depth-aware seam lines up
   houses, poles and wires along the horizon when the drone flies low
@@ -398,7 +426,9 @@ fps** (2113 frames; the clip has 2111 at 29.97), so frames are matched by
 time, not by number. Unstabilized: AI Stitching, FlowState off,
 Chromatic Calibration off, no adjustments -- the reference for the
 stitch's geometry, seam and colour. Stabilized: the same with FlowState
-on, level. Each has a silent AAC track. Studio's earlier flat
+on, level. Each has a silent AAC track. The unstabilized one is still in
+the drone's body frame and lines up with the clip from its first frame
+(*Trailer* above has the rotation). Studio's earlier flat
 3840×2160 exports of the same take (AI Stitching and Chromatic
 Calibration on) show the raw body frame without FlowState (horizon on
 end).
