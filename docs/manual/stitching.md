@@ -151,7 +151,10 @@ greyed out in builds made without OpenCV's chart detection.
   anything more from each frame and the ones just before it, not from the
   clip as a whole: the seam alignment and lens colour below aren't used with it. So
   far that is the colour where the lenses meet (*Seam colour blend* below); close
-  things still show up twice, as with **Fixed seam**. Projects with a clip
+  things still show up twice, as with **Fixed seam**. For a camera whose
+  files place one lens slightly off (the Antigravity A1, by about half a
+  degree), it turns that lens back by a fixed amount measured for the
+  camera model; with your calibration it doesn't. Projects with a clip
   set to it can't be opened by orbis-reframe versions before 0.8.
 
 ### Seam colour blend

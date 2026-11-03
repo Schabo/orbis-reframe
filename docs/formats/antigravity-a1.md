@@ -170,6 +170,26 @@ Markers as in [`README.md`](README.md).
   Studio's lens 1 holds one pose through the clip: the file's, turned by
   that rotation. No other order of the angles gives it (the closest,
   `Rx Rz Ry`, still leaves 0.27°). ❓ Where Studio's tilt comes from.
+  ✅ **The app's new stitcher turns lens 1 by (+0.006, +0.238, +0.468)°**
+  (yaw / pitch / roll on top of the file's angles, as the per-clip seam
+  correction's lens 1 rotation; `insv::InsvModel::lens1TurnDeg`): the
+  median of the per-clip fit's rotation over all 17 clips (each fitted
+  with its centre and radius terms; yaw −0.002 to +0.011, pitch 0.10 to
+  0.30 but 0.59 on the landing `_025`, roll 0.41 to 0.54 but 0.76 / 0.88
+  on `_027` / `_024` and −0.97 on `_025`). Against Studio's `_021` export
+  it matches best of every turn tried: band 0.09 / 0.33 / 0.29° median,
+  p95 0.25 / 0.67 / 0.60° on the three stretches (the fixed seam with
+  that turn; the new stitcher with it gives the same median, and with its
+  seam colour blend off exactly the fixed seam's numbers without lens
+  colour; the blend reads as more at p95, 0.77° at 30-34 s, against
+  Studio's uncorrected colour). A rotation-only fit of all clips together
+  (−0.006, +0.137, +0.480) lines the lenses up slightly better with each
+  other (mean 0.29° vs 0.42° with none) but Studio worse (p95 0.78° at
+  30-34 s): without the centre and radius terms the rotation takes up
+  part of what they would. ⚠️ **One unit measured**: if the tilt is a
+  misread calibration rather than one of the maker's for the model,
+  another A1 needs another turn; a clip from a second A1 against its
+  Studio export would tell.
 - ✅ The lenses are **71 mm apart** (lens 1 `tz` −0.0711; X5: 32 mm), lens 0
   in front along its own axis as on the X5: the depth-aware seam lines up
   houses, poles and wires along the horizon when the drone flies low

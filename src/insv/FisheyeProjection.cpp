@@ -128,9 +128,9 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         double ay = -e.pitch * kDeg;
         double az = (e.roll - params.tzNominalDeg) * kDeg;
         if (i == 1) {
-            ax += params.seam.lens1RotDeg[0] * kDeg;
-            ay += params.seam.lens1RotDeg[1] * kDeg;
-            az += params.seam.lens1RotDeg[2] * kDeg;
+            ax += (params.lens1TurnDeg[0] + params.seam.lens1RotDeg[0]) * kDeg;
+            ay += (params.lens1TurnDeg[1] + params.seam.lens1RotDeg[1]) * kDeg;
+            az += (params.lens1TurnDeg[2] + params.seam.lens1RotDeg[2]) * kDeg;
         }
         // Composed Rz Rx Ry: pitch first, then yaw, then roll. On the X5 the
         // angles are all near zero and any order gives the same lens, but

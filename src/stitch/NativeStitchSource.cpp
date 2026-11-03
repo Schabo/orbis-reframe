@@ -70,8 +70,9 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
-                            const LensCalibration* calibration, insv::InsvCalibration& calib,
-                            insv::StitchParams& params, std::string& err, bool* guardFound) {
+                            const LensCalibration* calibration, bool modelLensTurn,
+                            insv::InsvCalibration& calib, insv::StitchParams& params,
+                            std::string& err, bool* guardFound) {
     if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2) {
         err = "not a dual-fisheye clip";
         return false;
@@ -100,6 +101,9 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
             *guardFound = true;
         return true;
     }
+    if (modelLensTurn)
+        for (int i = 0; i < 3; ++i)
+            params.lens1TurnDeg[i] = clip.lens1TurnDeg[i];
     const insv::LensProfile* acc = LensGuardProfile(clip, guard);
     bool found = insv::ApplyLensProfile(params, bare, acc);
     if (guard != PreviewStitchConfig::LensGuard::None && !acc)
@@ -141,8 +145,9 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     insv::StitchParams params;
     bool guardFound = true;
     const LensCalibration* lensCal = config.lensCalibration ? &*config.lensCalibration : nullptr;
-    if (!DualFisheyeStitchSetup(*clip, config.lensGuard, lensCal, calib, params, err,
-                                &guardFound)) {
+    if (!DualFisheyeStitchSetup(*clip, config.lensGuard, lensCal,
+                                config.method == PreviewStitchConfig::Method::New, calib, params,
+                                err, &guardFound)) {
         last_error_ = err + ": " + clip_path;
         return false;
     }

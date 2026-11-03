@@ -288,7 +288,8 @@ start and end in seconds, then any of:
   frame) and `refrot=Z,Y,X` (the rotation from our sphere to the reference's,
   as in `seam_regress`); or `ref=template`: our own stitch of the same
   frames from the file's data alone (the new stitcher without the
-  capture-time correction or the seam colour blend), whose geometry and
+  capture-time correction or the seam colour blend; with the camera
+  model's lens 1 turn, as the new stitcher has it), whose geometry and
   colour hold still -- the reference for a clip without a Studio export.
 
 Anything after `#` is a note. Unless `--live` is given, the app's seam

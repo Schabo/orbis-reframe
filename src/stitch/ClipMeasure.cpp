@@ -18,7 +18,7 @@ MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
     if (!meta)
         return why == camera::ReadFailure::NotCamera ? MeasureFailure::NotCamera
                                                      : MeasureFailure::Unreadable;
-    if (!DualFisheyeStitchSetup(*meta, lensGuard, calibration, calib, params, err))
+    if (!DualFisheyeStitchSetup(*meta, lensGuard, calibration, false, calib, params, err))
         return MeasureFailure::Unsupported;
     if (clip)
         *clip = meta;

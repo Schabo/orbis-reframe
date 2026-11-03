@@ -1035,6 +1035,12 @@ if(TARGET stitch)
     add_executable(seam_analysis_test tests/seam_analysis_test.cpp)
     target_link_libraries(seam_analysis_test PRIVATE stitch)
     add_test(NAME seam_analysis_test COMMAND seam_analysis_test)
+
+    # stitch::DualFisheyeStitchSetup and the camera model's lens 1 turn -- no
+    # GPU, no clip.
+    add_executable(stitch_setup_test tests/stitch_setup_test.cpp)
+    target_link_libraries(stitch_setup_test PRIVATE stitch)
+    add_test(NAME stitch_setup_test COMMAND stitch_setup_test)
 endif()
 
 # camera::ReadClipMetadata on generated videos with synthetic trailers.

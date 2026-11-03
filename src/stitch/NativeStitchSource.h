@@ -367,11 +367,15 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 // `calibration` (may be null): the camera's own lens calibration, used in
 // place of the file's when it was measured against this file's (else the
 // file's, with a log line); the guard is in it, so no profile goes on top.
+// `modelLensTurn`: with the file's calibration, turn lens 1 by the camera
+// model's correction to it (ClipMetadata::lens1TurnDeg) -- the new stitcher.
+// The old one, and its per-clip seam fit, start from the file's as it is:
+// that fit takes the same turn up, and projects keep what it measured.
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
-                            const LensCalibration* calibration, insv::InsvCalibration& calib,
-                            insv::StitchParams& params, std::string& err,
-                            bool* guardFound = nullptr);
+                            const LensCalibration* calibration, bool modelLensTurn,
+                            insv::InsvCalibration& calib, insv::StitchParams& params,
+                            std::string& err, bool* guardFound = nullptr);
 
 // Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource).
 // Kept as a factory so a second backend could slot back in without touching

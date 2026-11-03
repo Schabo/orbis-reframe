@@ -78,6 +78,9 @@ struct ClipMetadata {
     double mountYawDeg = 180.0;
     double mountPitchDeg = 0.0;
     double mountRollDeg = 0.0;
+    // The camera model's turn of lens 1 on top of the file's calibration
+    // (insv::InsvModel::lens1TurnDeg, insv::StitchParams::lens1TurnDeg).
+    double lens1TurnDeg[3] = {0.0, 0.0, 0.0};
 
     // Every lens stream's picture: decoded size, rate, length.
     int lensWidth = 0;

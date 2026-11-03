@@ -87,6 +87,16 @@ struct InsvModel {
     // 0}, 0 on the cameras).
     double imuMount[4];
     double attitudeTiltDeg;
+
+    // A turn of lens 1 that the model's files need on top of their own lens
+    // calibration, yaw / pitch / roll in degrees in SeamCorrection::lens1RotDeg's
+    // terms (StitchParams::lens1TurnDeg): measured where the model's stitch,
+    // with nothing else applied, keeps the lenses apart at the seam and the
+    // maker's own stitch doesn't. Not applied over a chart calibration, which
+    // replaces the file's. {0, 0, 0} on the cameras whose calibration lines
+    // the lenses up as it is (the X5: the file's stitch matches Insta360
+    // Studio's with its seam corrections off).
+    double lens1TurnDeg[3];
 };
 
 // Every row.

@@ -305,6 +305,8 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     out.mountYawDeg = model.mountDeg[0];
     out.mountPitchDeg = model.mountDeg[1];
     out.mountRollDeg = model.mountDeg[2];
+    for (int i = 0; i < 3; ++i)
+        out.lens1TurnDeg[i] = model.lens1TurnDeg[i];
     if (streams[0].width == streams[0].height)
         out.captureMode = model.captureMode(streams[0].width);
 

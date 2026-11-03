@@ -81,6 +81,10 @@ struct StitchParams {
     // Measured correction to the lens calibration: the seam alignment
     // fine-tune (insv::EstimateSeamAlignment).
     SeamCorrection seam;
+    // A turn of lens 1 that the camera model's files need on top of their
+    // calibration (camera::ClipMetadata::lens1TurnDeg), in seam.lens1RotDeg's
+    // terms and applied with it. 0 = the calibration as it is.
+    double lens1TurnDeg[3] = {0, 0, 0};
 
     // Depth-aware seam. The two lenses sit `baselineM` apart along their common
     // axis (the calibration's lens-1 tz, ~32 mm on the X5), so an object at
