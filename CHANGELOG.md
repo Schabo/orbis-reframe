@@ -1,3 +1,66 @@
+## v0.8.0 (2026-11-04)
+
+### Feat
+
+- **stab**: slow motion and timelapses follow the time they were filmed in
+- **stitch**: the new stitcher takes a low sun's haze out at the seam
+- **stitch**: seam_regress measures the new stitcher
+- **stitch**: the seam flow on the GPU
+- **stitch**: the new stitcher's seam flow
+- **stitch**: the camera model's full lens correction, not only a turn
+- **stitch**: the camera model's lens 1 turn in the new stitcher
+- **stitch**: the new stitcher's seam colour blend
+- **stitch**: choose the stitcher per clip, the new one experimental
+- **stitch**: calibrate lenses without a project or clip
+- **stitch**: calibrate a camera's lenses with a chart on the monitor
+- **stitch**: the seam's state from the frames either side, analysed per clip
+- **stitch**: match the lenses' colour per clip
+- **stab**: hold one direction in Custom stabilization
+- **ui**: animate a picture in picture coming on and going off
+- **ui**: give the Overlay tab the Overlays library's icon
+- **ui**: call the settings sidebar's Title tab Overlay
+- **ui**: route gauge seen ahead, heading up
+- **ui**: lean dial, G circle and route gauges, {lean} and {g} fields
+- **ui**: read clips' GPS and motion off the GUI thread
+- **insv**: line the X5's GPS up with the video by the IMU
+- **stab**: hold Direction lock's heading by the Antigravity A1's attitude
+- **insv**: line the Antigravity A1's GPS up with the video by its speed
+- **insv**: show the Antigravity A1's own preview on its cards
+- **stab**: level the Antigravity A1 by its flight controller's attitude
+- **stab**: measure the Antigravity A1's IMU axis map
+- **stitch**: turn each camera's lenses into the picture by its mount
+- **insv**: give the Antigravity A1 its own model row
+
+### Fix
+
+- **stitch**: the GPU seam flow tears the picture where its strip wraps round
+- **stitch**: a seek measures every frame before it for the seam colour blend
+- **stitch**: the depth seam counts only unique matches within its range
+- **stitch**: match the lenses' colour where they meet, and follow it
+- **stitch**: take a low sun's haze out of one lens at the seam
+- **stitch**: match the lenses' colour along the seam, stretch by stretch
+- **ui**: one status line for the seam and the lens colour
+- **stitch**: match the depth-aware seam on texture, not on glare
+- **insv**: find a renamed clip's recording time and proxy
+- **playback**: say when the graphics card can't decode a clip's format
+- **render**: draw every overlay in the viewport, not five
+- **render**: keep a frame's LUTs while it draws
+- **ui**: show a route that stays in one place
+- **stab**: keep Horizon lock's level out of fast bends and accelerations
+- **ui**: keep PlateJobController complete where MainWindow deletes it
+- **ui**: say when the selected clip has no sound
+- **stitch**: compose the lens extrinsics pitch first, then yaw, then roll
+- **insv**: take trailer record ids and sizes from the offsets table
+- **test**: make zip LUT fixtures and title checks locale-safe
+
+### Refactor
+
+- **export**: move MainWindow export/screenshot wiring into its own TU
+- **ui**: move MainWindow library/open-project wiring into its own TU
+- **track**: move MainWindow subject-tracking wiring into its own TU
+- **stitch**: move MainWindow stitch/stab wiring into its own TU
+- **privacy**: move MainWindow privacy wiring into its own TU
+
 ## v0.7.0 (2026-10-28)
 
 ### Feat
