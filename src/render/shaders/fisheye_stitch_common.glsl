@@ -84,7 +84,8 @@ layout(std140, binding = 0) uniform Params {
     vec4 lensCol;   // R, G, B, -
     vec4 lensColS;  // R, G, B, -
     vec4 lensLocal[SEAM_BINS]; // per azimuth bin: the local correction R, G, B, - (insv::SeamBlend::local)
-    vec4 lensVeil[SEAM_BINS];  // per azimuth bin: the veiling light R, G, B, - (insv::SeamBlend::veil)
+    vec4 lensVeil[SEAM_BINS];  // per azimuth bin: the veiling light R, G, B, - (insv::SeamBlend::veil;
+                               // the new stitcher's, StitchGpuParams::seamVeil, when edge.z != 0)
     // The new stitcher's seam colour blend (insv::StitchGpuParams::seamColour):
     // per azimuth bin log(lens 0 / lens 1) R, G, B, -; on when edge.z != 0.
     vec4 seamCol[SEAM_BINS];
@@ -367,19 +368,36 @@ float seamBlendWeight(int i, vec3 dir)
 
 vec2 seamCFBin(int b) { vec4 v = P.seamCF[b >> 1]; return (b & 1) == 0 ? v.xy : v.zw; }
 
+// The new stitcher's veiling light for `dir` (lens 0 less lens 1;
+// insv::FisheyeStitcher::seamVeil): the per-bin table interpolated along the
+// seam, in the band and faded out over LENS_COLOUR_LOCAL_RAMP_RAD past it.
+vec3 seamVeil(vec3 dir)
+{
+    int i0, i1;
+    vec2 pos = seamPosition(dir, i0, i1);
+    float e = abs(pos.x), band = P.seam.y;
+    if (e >= band + LENS_COLOUR_LOCAL_RAMP_RAD)
+        return vec3(0.0);
+    float a = e > band ? 0.5 * (1.0 + cos(PI * (e - band) / LENS_COLOUR_LOCAL_RAMP_RAD)) : 1.0;
+    return a * mix(P.lensVeil[i0].xyz, P.lensVeil[i1].xyz, pos.y);
+}
+
 // The seam's per-bin tables at `dir`, its position found once: returns the
 // inverse stitch distance (insv::FisheyeStitcher::seamQAt); `w` the two
 // lenses' feather -- with a measured blend the cosine ramp around the bin's
 // cut with its own half-width (seamBlendWeights), else the plain cross-fade;
 // `local` the lens colour's local correction there and `veil` the veiling
 // light (lens 0 less lens 1), in the band and faded out past it
-// (insv::FisheyeStitcher::lensLogGains), 0 without the seam.
+// (insv::FisheyeStitcher::lensLogGains), 0 without the seam -- or the new
+// stitcher's with its seam colour blend (seamVeil).
 float seamTables(vec3 dir, out vec2 w, out vec3 local, out vec3 veil)
 {
     local = vec3(0.0);
     veil = vec3(0.0);
     if (P.seamA.w == 0.0) {
         w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
+        if (P.edge.z != 0.0)
+            veil = seamVeil(dir);
         return 0.0;
     }
     int i0, i1;

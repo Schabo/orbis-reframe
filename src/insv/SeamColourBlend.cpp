@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <memory>
 #include <numbers>
 #include <vector>
 
@@ -125,12 +127,35 @@ void SeamColourWindow::add(int64_t ptsMs, const SeamCutStats& stats, double band
 {
     if (!m_frames.empty() && ptsMs <= m_frames.back().pts)
         m_frames.clear();
-    m_frames.push_back({ptsMs, {}});
-    MeasureSeamColourBins(stats, bandRad, m_tuning, m_frames.back().bins);
+    m_frames.push_back({ptsMs, {}, {}});
+    Frame& f = m_frames.back();
+    LensVeilPerBin(stats, f.veil);
+    if (std::all_of(std::begin(f.veil), std::end(f.veil), [](float v) { return v == 0.0f; })) {
+        MeasureSeamColourBins(stats, bandRad, m_tuning, f.bins);
+        return;
+    }
+    auto clean = std::make_unique<SeamCutStats>(stats);
+    RemoveLensVeil(*clean, f.veil);
+    MeasureSeamColourBins(*clean, bandRad, m_tuning, f.bins);
 }
 
-bool SeamColourWindow::solve(int64_t ptsMs, float* table) const
+bool SeamColourWindow::solve(int64_t ptsMs, float* table, float* veil) const
 {
+    if (veil) {
+        std::fill(veil, veil + B * 3, 0.0f);
+        int n = 0;
+        for (const Frame& f : m_frames) {
+            const int64_t dt = ptsMs - f.pts;
+            if (dt < 0 || dt > kSeamVeilWindowMs)
+                continue;
+            for (int i = 0; i < B * 3; ++i)
+                veil[i] += f.veil[i];
+            ++n;
+        }
+        if (n > 1)
+            for (int i = 0; i < B * 3; ++i)
+                veil[i] /= static_cast<float>(n);
+    }
     std::vector<double> wv(B * 3, 0.0), w(B * 3, 0.0);
     for (const Frame& f : m_frames) {
         const double dt = static_cast<double>(ptsMs - f.pts);

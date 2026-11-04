@@ -506,6 +506,26 @@ void FisheyeStitcher::seamColourLog(const Vec3& dir, const float* table, double 
         L[c] = a * (table[i0 * 3 + c] * (1.0 - t) + table[i1 * 3 + c] * t);
 }
 
+void FisheyeStitcher::seamVeil(const Vec3& dir, const float* table, double veil[2][3]) const
+{
+    for (int i = 0; i < 2; ++i)
+        for (int c = 0; c < 3; ++c)
+            veil[i][c] = 0.0;
+    double e, t;
+    int i0, i1;
+    seamPosition(dir, e, i0, i1, t);
+    e = std::fabs(e);
+    const double rampRad = kLensColourLocalRampDeg * kDeg;
+    if (e >= m_bandRad + rampRad)
+        return;
+    const double a = e > m_bandRad ? 0.5 * (1.0 + std::cos(kPi * (e - m_bandRad) / rampRad)) : 1.0;
+    for (int c = 0; c < 3; ++c) {
+        const double v = a * (table[i0 * 3 + c] * (1.0 - t) + table[i1 * 3 + c] * t);
+        veil[0][c] = std::max(v, 0.0);
+        veil[1][c] = std::max(-v, 0.0);
+    }
+}
+
 double FisheyeStitcher::edgeWeight(double thetaRad) const
 {
     return circleEdgeWeight(radiusForTheta(thetaRad), m_params.edgeStartFrac, m_params.edgeEndFrac);
@@ -514,7 +534,8 @@ double FisheyeStitcher::edgeWeight(double thetaRad) const
 void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Image& out,
                                      const float* seamQ, const SeamBlend* blend,
                                      const BlurQuadFrame* blur, int blurCount,
-                                     const float* seamColour, const SeamFlowField* flow) const
+                                     const float* seamColour, const SeamFlowField* flow,
+                                     const float* seamVeil) const
 {
     if (flow && flow->empty())
         flow = nullptr;
@@ -551,6 +572,8 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
         double ws[2], lg[2][3], veil[2][3];
         seamBlendWeights(dir, blend, ws);
         lensLogGains(dir, m_params.depthSeam ? blend : nullptr, lg, veil);
+        if (seamVeil)
+            this->seamVeil(dir, seamVeil, veil);
         if (seamColour) {
             double L[3];
             seamColourLog(dir, seamColour, L);

@@ -33,7 +33,9 @@ no background analysis, and selectable in the Stitching section's
   of the seam, from what both see in the overlap over each frame and the
   second before it; each lens moved half of it, fully near the
   seam and fading out by 30° from it, so neither lens's picture changes
-  further away. A setting of its own.
+  further away. With it, a low sun's haze in one lens (veiling light),
+  measured per stretch as the old stitcher does, taken out of that lens
+  round the seam before the colour is matched. A setting of its own.
 - **Seam flow** (built): per frame, optical flow both ways in the overlap,
   averaged over the frame and the four before it; each lens warped by a
   share of it growing to half at the seam, so near things crossing the

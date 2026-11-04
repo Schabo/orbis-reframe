@@ -401,17 +401,20 @@ constexpr double kStripElDeg = 12.0;
 // FisheyeStitcher::renderEquirect does: its log gains and veiling light
 // (lensLogGains' layout), where the lenses meet per bin, and the depth
 // table the lenses are lined up by. The depth-aware seam: its blend at its
-// cut. The new stitcher: its seam colour blend's table on the seam circle,
-// at the template's geometry.
+// cut. The new stitcher: its seam colour blend's table and veiling light on
+// the seam circle, at the template's geometry.
 struct Treatment {
     const insv::FisheyeStitcher* st = nullptr;
     const insv::SeamBlend* blend = nullptr; // the depth-aware seam's
     const float* seamColour = nullptr;      // the new stitcher's (StitchGpuParams::seamColour)
+    const float* seamVeil = nullptr;        // ... and its veiling light (StitchGpuParams::seamVeil)
     const float* q = nullptr;
 
     void gains(const insv::Vec3& d, double lg[2][3], double veil[2][3]) const
     {
         st->lensLogGains(d, blend, lg, veil);
+        if (seamVeil)
+            st->seamVeil(d, seamVeil, veil);
         if (seamColour) {
             double L[3];
             st->seamColourLog(d, seamColour, L);
@@ -916,6 +919,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     const insv::SeamBlend blendPlayed = gpu.SeamBlendState();
     const std::vector<float> colourPlayed(gpu.SeamColourTable(),
                                           gpu.SeamColourTable() + insv::kSeamDepthBins * 3);
+    const std::vector<float> veilPlayed(gpu.SeamVeilTable(),
+                                        gpu.SeamVeilTable() + insv::kSeamDepthBins * 3);
     const double confPlayed = gpu.SeamDepthConfidence();
     std::printf("  frame %lld ms, played in over %d frames\n", static_cast<long long>(pts), runFrames);
 
@@ -970,9 +975,10 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     Treatment tr;
     tr.st = &g.st;
     tr.q = qPlayed.data();
-    if (e.newStitcher)
+    if (e.newStitcher) {
         tr.seamColour = colourPlayed.data();
-    else
+        tr.seamVeil = veilPlayed.data();
+    } else
         tr.blend = &blendPlayed;
     const LensStrips ls = MakeLensStrips(g, lens, tr);
     const std::vector<Block> blocks = MeasureOffsets(ls, bandDeg, qPlayed.data());
@@ -1230,7 +1236,9 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     });
     j.key("veil");
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
-        return Json::arr(3, [&](int k) { return Json::num(blendPlayed.veil[i][k]); });
+        return Json::arr(3, [&](int k) {
+            return Json::num(e.newStitcher ? veilPlayed[i * 3 + k] : blendPlayed.veil[i][k]);
+        });
     });
     j.key("cold_cut_deg");
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendCold.cut[i] / kDeg); });

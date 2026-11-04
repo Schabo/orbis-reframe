@@ -27,6 +27,18 @@
 // degrees to ~12, gone by 25-30, changing smoothly and slowly with the
 // content.
 //
+// When the sun shines into one lens, light scattered inside it lays a haze
+// over its picture (veiling light): it lifts the dark parts a lot and the
+// bright ones hardly, which no gain matches. Per frame it is measured per
+// stretch of the seam as the old stitcher does (LensVeilPerBin) and taken
+// out of the frame's measurement before the colour is, so the colour blend
+// matches what is left; the stitch takes it out of that lens too, in the
+// band and kLensColourLocalRampDeg past it (FisheyeStitcher::seamVeil). The
+// old stitcher also widens its cross-fade there; the new one's already spans
+// the whole band. Averaged over
+// kSeamVeilWindowMs only: it follows the sun's direction in the lens, which
+// moves as fast as the camera turns.
+//
 // Only the frames before it, so playback has them as it plays, and a seek
 // measures that second before the frame it goes to (stitch::
 // NativeStitchSource::SeekTo): every path stitches a frame the same way.
@@ -51,6 +63,9 @@ double SeamColourFade(double eRad);
 // The frames pooled for a frame's table: those this far before it and the
 // frame itself (ms), each weighted by how near it is.
 constexpr int kSeamColourWindowMs = 1000;
+// ... and for the veiling light: the frame and the one before it (the old
+// stitcher's local memory, SeamWindowTuning::localHalfMs).
+constexpr int kSeamVeilWindowMs = 40;
 
 struct SeamColourTuning {
     double smoothDeg = 6.0;     // Gaussian sigma round the seam, degrees
@@ -97,17 +112,22 @@ public:
     static constexpr int64_t lookBackMs() { return kSeamColourWindowMs; }
 
     // A frame's measurement (frames in time order; an earlier one than the
-    // last starts afresh).
+    // last starts afresh): its veiling light, and its colour with that taken
+    // out.
     void add(int64_t ptsMs, const SeamCutStats& stats, double bandRad);
     // The table for the frame at ptsMs from it and the frames before it
-    // within the window. False (table all 0) when none had data.
-    bool solve(int64_t ptsMs, float* table) const;
+    // within the window. False (table all 0) when none had data. With
+    // `veil`, also the veiling light there (LensVeilPerBin's layout: per bin
+    // R G B, linear, lens 0 less lens 1): the mean of the frames within
+    // kSeamVeilWindowMs, 0 where there is none.
+    bool solve(int64_t ptsMs, float* table, float* veil = nullptr) const;
     void dropBefore(int64_t ptsMs);
 
 private:
     struct Frame {
         int64_t pts;
         SeamColourBins bins;
+        float veil[kSeamDepthBins * 3];
     };
     SeamColourTuning m_tuning;
     std::vector<Frame> m_frames;

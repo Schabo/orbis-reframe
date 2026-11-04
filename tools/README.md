@@ -235,13 +235,14 @@ What the summary measures:
   table and the blend; `depth_confidence` / `cold_depth_confidence`: the
   depth measurement's mean confidence on the played and the cold frame.
   The JSON's detail also has the state's colour residual (`residual_pct`),
-  local correction (`local_pct`) and veiling light (`veil`) per bin, and
-  the new stitcher's seam colour blend (`seam_colour_pct`).
+  local correction (`local_pct`) and veiling light (`veil`; the new
+  stitcher's own) per bin, and the new stitcher's seam colour blend
+  (`seam_colour_pct`).
 - `colour_*`: the lenses' colour difference where they meet (the fade's
   centre, per bin, unclipped samples), lens 0 against lens 1 in %, after
   the colour correction; `raw_colour_*` before it. For the new stitcher:
   on the seam circle, at the template's geometry, after its seam colour
-  blend (the seam flow moves no colour).
+  blend and veiling light (the seam flow moves no colour).
 - `cold_*`: the cold frame against the played one: depth table, PSNR over
   the whole frame and in the band (99: the same picture). `cpu_*`: the
   CPU's cold frame against the GPU's.

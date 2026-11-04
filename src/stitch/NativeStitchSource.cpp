@@ -638,11 +638,8 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
     if (scrub) {
         // A scrub's passing frame: no seam measurement, the last frame's
         // seam (the depth seam's from its analysis where it has the frame).
-        if (seam_colour_on_) {
-            p.seamColourActive = 1;
-            std::copy(&seam_colour_table_[0][0], &seam_colour_table_[0][0] + insv::kSeamDepthBins * 3,
-                      &p.seamColour[0][0]);
-        }
+        if (seam_colour_on_)
+            heldSeamColour(p);
         if (seam_flow_on_)
             p.seamFlowGpu = seam_flow_gpu_;
         if (p.depthActive) {
@@ -724,16 +721,21 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
     return p;
 }
 
+void NativeStitchSource::heldSeamColour(insv::StitchGpuParams& p) const {
+    p.seamColourActive = 1;
+    std::copy(&seam_colour_table_[0][0], &seam_colour_table_[0][0] + insv::kSeamDepthBins * 3,
+              &p.seamColour[0][0]);
+    std::copy(&seam_veil_[0][0], &seam_veil_[0][0] + insv::kSeamDepthBins * 3, &p.seamVeil[0][0]);
+}
+
 bool NativeStitchSource::applySeamColour(int64_t pts_ms, insv::StitchGpuParams& p,
                                          const std::function<bool()>& measure) {
-    float* table = &seam_colour_table_[0][0];
     if (!measure())
         return false;
     seam_colour_window_.add(pts_ms, *cut_stats_, gpu_params_.bandRad);
-    seam_colour_window_.solve(pts_ms, table);
+    seam_colour_window_.solve(pts_ms, &seam_colour_table_[0][0], &seam_veil_[0][0]);
     seam_colour_window_.dropBefore(pts_ms - seam_colour_window_.lookBackMs());
-    p.seamColourActive = 1;
-    std::copy(table, table + insv::kSeamDepthBins * 3, &p.seamColour[0][0]);
+    heldSeamColour(p);
     return true;
 }
 
@@ -1192,9 +1194,7 @@ Frame NativeStitchSource::readCpuDecode() {
     // template's geometry, as the GPU path.
     insv::StitchGpuParams p = paramsAt(pts_ms); // and the privacy blur quads
     if (seam_colour_on_ && scrub) {
-        p.seamColourActive = 1;
-        std::copy(&seam_colour_table_[0][0], &seam_colour_table_[0][0] + insv::kSeamDepthBins * 3,
-                  &p.seamColour[0][0]);
+        heldSeamColour(p);
     } else if (seam_colour_on_) {
         const auto t0 = std::chrono::steady_clock::now();
         applySeamColour(pts_ms, p, [&] {
@@ -1253,7 +1253,8 @@ Frame NativeStitchSource::readCpuDecode() {
     insv::Image eq;
     eq.alloc(eq_w_, eq_h_);
     stitcher_->renderEquirect(a, b, eq, seamQ, blend, p.blur, p.blurCount,
-                              p.seamColourActive ? &p.seamColour[0][0] : nullptr, p.seamFlow.get());
+                              p.seamColourActive ? &p.seamColour[0][0] : nullptr, p.seamFlow.get(),
+                              p.seamColourActive ? &p.seamVeil[0][0] : nullptr);
     return ToRgbaFrame(eq, pts_ms);
 }
 

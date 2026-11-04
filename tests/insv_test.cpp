@@ -1367,6 +1367,48 @@ void testSeamColourBlend()
                 ++wrong;
         }
     CHECK(checked > 1000 && wrong == 0);
+
+    // The veiling light it takes out: lens 0's (> 0) in the band, half of it
+    // half way through the ramp past it, none beyond; none at all leaves the
+    // stitch as it was, bit for bit.
+    std::vector<float> veil(B * 3, 0.0f);
+    insv::Image unveiled;
+    unveiled.alloc(256, 128);
+    st.renderEquirect(l0, l1, unveiled, nullptr, nullptr, nullptr, 0, nullptr, nullptr, veil.data());
+    CHECK(unveiled.rgb == plain.rgb);
+    for (int b = 0; b < B; ++b)
+        veil[b * 3 + 1] = 0.04f;
+    double vl[2][3];
+    st.seamVeil(st.seamDir(1.0, 3.0 * kDeg), veil.data(), vl);
+    CHECK(near(vl[0][1], 0.04, 1e-6) && vl[1][1] == 0.0 && vl[0][0] == 0.0);
+    const double rampRad = insv::kLensColourLocalRampDeg * kDeg;
+    st.seamVeil(st.seamDir(1.0, -(bandRad + 0.5 * rampRad)), veil.data(), vl);
+    CHECK(near(vl[0][1], 0.02, 1e-6));
+    st.seamVeil(st.seamDir(1.0, bandRad + rampRad + 0.1 * kDeg), veil.data(), vl);
+    CHECK(vl[0][1] == 0.0);
+    insv::Image veiled;
+    veiled.alloc(256, 128);
+    st.renderEquirect(l0, l1, veiled, nullptr, nullptr, nullptr, 0, nullptr, nullptr, veil.data());
+    int darker = 0, moved = 0;
+    for (int y = 0; y < 128; ++y)
+        for (int x = 0; x < 256; ++x) {
+            const double lat = (0.5 - (y + 0.5) / 128) * std::numbers::pi;
+            const double lon = ((x + 0.5) / 256 - 0.5) * 2.0 * std::numbers::pi;
+            const insv::Vec3 dir = insv::apply(
+                st.outRotation(),
+                insv::Vec3{std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
+            double e, t;
+            int i0, i1;
+            st.seamPosition(dir, e, i0, i1, t);
+            const size_t o = (static_cast<size_t>(y) * 256 + x) * 3;
+            if (plain.rgb[o + 1] == 0)
+                continue;
+            if (e > 0 && e < bandRad)
+                darker += veiled.rgb[o + 1] < plain.rgb[o + 1] - 3;
+            if (std::fabs(e) > bandRad + rampRad || veiled.rgb[o] != plain.rgb[o])
+                moved += veiled.rgb[o + 1] != plain.rgb[o + 1] || veiled.rgb[o] != plain.rgb[o];
+        }
+    CHECK(darker > 50 && moved == 0);
 }
 
 // The local correction round the seam: a stretch where the lenses differ
@@ -1468,6 +1510,24 @@ void testLensVeil()
     CHECK(near(bl.veil[40][1], -veil[1], 0.01) && bl.veil[90][1] == 0.0f);
     CHECK(near(bl.colour[1], std::log(1.05), 0.01));
     CHECK(std::fabs(bl.local[40][1]) < 0.02 && std::fabs(bl.local[90][1]) < 0.01);
+
+    // The new stitcher's seam colour blend finds it the same way and matches
+    // the colour with it taken out: the 5 % gain alone, there as elsewhere.
+    // The veil is held kSeamVeilWindowMs: a frame 100 ms on without one has
+    // none.
+    insv::SeamColourWindow win;
+    win.add(0, *stats, band);
+    std::vector<float> table(B * 3), wv(B * 3);
+    CHECK(win.solve(0, table.data(), wv.data()));
+    for (int k = 0; k < 3; ++k)
+        CHECK(near(wv[40 * 3 + k], v[40 * 3 + k], 1e-6) && wv[90 * 3 + k] == 0.0f);
+    CHECK(near(table[40 * 3 + 1], std::log(1.05), 0.01) && near(table[90 * 3 + 1], std::log(1.05), 0.01));
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r)
+            for (int k = 0; k < 3; ++k)
+                stats->cell[b][r].mean[1][k] = stats->cell[b][r].mean[0][k] / 1.05f;
+    win.add(100, *stats, band);
+    CHECK(win.solve(100, table.data(), wv.data()) && wv[40 * 3 + 1] == 0.0f);
 
     // One level everywhere, lens 1 brighter there: a gain, not a veil.
     fill(false);

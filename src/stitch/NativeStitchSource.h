@@ -242,6 +242,9 @@ public:
     // with (insv::StitchGpuParams::seamColour's layout; all 0 when off or
     // before a frame).
     const float* SeamColourTable() const { return &seam_colour_table_[0][0]; }
+    // ... and the veiling light it took out (StitchGpuParams::seamVeil's
+    // layout; likewise).
+    const float* SeamVeilTable() const { return &seam_veil_[0][0]; }
     // Decoding and stitching on the GPU (Vulkan video decode + compute
     // stitch), not a CPU fallback.
     bool AllGpu() const { return vdec_ && gpu_; }
@@ -326,6 +329,7 @@ private:
     bool scrub_frame_ = false;                        // ... and the frame read after it unmeasured
     insv::SeamColourWindow seam_colour_window_;       // its frames played so far
     float seam_colour_table_[insv::kSeamDepthBins][3] = {}; // ... the last frame's table
+    float seam_veil_[insv::kSeamDepthBins][3] = {};         // ... and veiling light
     // The new stitcher's seam flow: Open()'s seamFlowOn() where the flow can
     // be estimated (a GPU stitch, or OpenCV for the CPU's) and the lenses share
     // an overlap, and its grid. With a GPU stitch it is measured, windowed
@@ -368,6 +372,9 @@ private:
     // fills cut_stats_ at the template's geometry and the frame is pooled
     // with the second before it (seam_colour_window_). False when it can't
     // (measure failed): `p` without it.
+    // The last frame's seam colour blend into `p`, for a scrub's passing
+    // frame (none measured).
+    void heldSeamColour(insv::StitchGpuParams& p) const;
     bool applySeamColour(int64_t pts_ms, insv::StitchGpuParams& p,
                          const std::function<bool()>& measure);
     bool seam_warned_ = false;

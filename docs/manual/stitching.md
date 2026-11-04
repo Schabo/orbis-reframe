@@ -172,6 +172,16 @@ beside it; clipped highlights are left as they are. Going by a whole
 second keeps the correction steady while the picture moves; when the light
 changes, it follows within about half a second.
 
+When the sun shines into one lens, light scattered inside it lays a haze
+over that lens's picture (veiling light): the dark parts lift a lot, bright
+ones hardly. No colour correction matches that, so where one lens has such
+a haze along the seam, **Seam colour blend** takes it out of that lens
+there, in the overlap and fading out by 10° past it, and matches the colour
+of what is left. It goes by the frame and the one before it, since the haze
+moves with the sun in the lens as the camera turns. Further into that lens
+the haze stays (the other lens can't see there, so nothing says how much
+there is). The rays and coloured blobs of flare are left as they are.
+
 When you jump to a frame, orbis-reframe looks at the second before it as
 it gets there, so a frame looks the same however you get to it: played,
 jumped to, saved as a screenshot or exported. Turn it off to see the lenses as they recorded. With **Depth-aware seam**
@@ -354,7 +364,8 @@ line. Further into that lens the haze stays (the other lens can't see
 there, so nothing says how much there is): it fades out towards the seam
 instead of stopping at it. The rays and coloured blobs of flare (reflections
 inside the lens) are left as they are. The stretch-by-stretch match and the
-haze both need **Stitcher** set to **Depth-aware seam**.
+haze need **Stitcher** set to **Depth-aware seam**; the new stitcher's
+**Seam colour blend** does both its own way (above).
 
 Bright highlights are left as recorded: a sky that is blown out in both
 lenses stays the same white on both sides of the seam rather than turning

@@ -122,10 +122,13 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
         sp.lensColS[c] = p.lensColourSlope[c];
     }
     sp.lensCol[3] = sp.lensColS[3] = 0.0f;
+    // The veiling light: the depth-aware seam's, or with the new stitcher's
+    // seam colour blend its own (the shader reads it on edge.z then).
+    const bool seamVeil = !p.depthActive && p.seamColourActive;
     for (int b = 0; b < insv::kSeamDepthBins; ++b) {
         for (int c = 0; c < 3; ++c) {
             sp.lensLocal[b][c] = p.seamBlend.local[b][c];
-            sp.lensVeil[b][c] = p.seamBlend.veil[b][c];
+            sp.lensVeil[b][c] = seamVeil ? p.seamVeil[b][c] : p.seamBlend.veil[b][c];
         }
         sp.lensLocal[b][3] = sp.lensVeil[b][3] = 0.0f;
     }
