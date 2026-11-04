@@ -70,7 +70,9 @@ layout(push_constant) uniform PC {
 #define STRIDE 4
 #define PATCH_N 64
 
-int wrapX(int x, int n) { return ((x % n) + n) % n; }
+// x round a ring of n. GLSL leaves % undefined for a negative operand (on
+// NVIDIA x = -1 doesn't come out as n - 1), so it never takes one.
+int wrapX(int x, int n) { return x >= 0 ? x % n : n - 1 - (-x - 1) % n; }
 
 float stripAt(int lens, int x, int y)
 {

@@ -194,6 +194,54 @@ void testLocalShift(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     CHECK(out < 0.05);
 }
 
+// The step in F01 along the strip from column a to column b, median over the
+// rows away from the strip's edges (strip pixels).
+double ColumnStep(const insv::SeamFlowField& f, int a, int b)
+{
+    std::vector<double> e;
+    for (int y = 8; y < f.grid.rows - 8; ++y) {
+        double fa[2], fb[2], r[2];
+        FlowPx(f, a, y, fa, r);
+        FlowPx(f, b, y, fb, r);
+        e.push_back(std::hypot(fa[0] - fb[0], fa[1] - fb[1]));
+    }
+    std::nth_element(e.begin(), e.begin() + e.size() / 2, e.end());
+    return e[e.size() / 2];
+}
+
+void testShiftAtWrap(render::VulkanFisheyeStitcher& gpu, const Texture& t)
+{
+    // A near thing across the azimuth wrap: 3 px along at column 0, easing
+    // to none 150 columns either side. The field goes on smoothly across
+    // the wrap, as it does across the same thing in the middle of the strip
+    // -- a step there would tear the picture along that line. The middle's
+    // at column 1280, where a propagation stretch starts as one does at 0
+    // (seam_flow.comp: every 20 patches of 4 pixels at the finest scale, a
+    // quarter of the strip's columns).
+    const int C = Grid().cols, M = 1280;
+    auto bump = [C](int centre) {
+        return [C, centre](int x, int, double& dx, double& dy) {
+            const int d = std::abs(((x - centre) % C + C + C / 2) % C - C / 2);
+            dx = d < 150 ? 1.5 * (1.0 + std::cos(std::numbers::pi * d / 150.0)) : 0.0;
+            dy = 0;
+        };
+    };
+    insv::SeamFlowField wrap, mid;
+    gpu.resetSeamFlow();
+    if (!Estimate(gpu, Strips(t, bump(0)), wrap))
+        return;
+    gpu.resetSeamFlow();
+    if (!Estimate(gpu, Strips(t, bump(M)), mid))
+        return;
+    const double atWrap = ColumnStep(wrap, C - 1, 0), atMid = ColumnStep(mid, M - 1, M);
+    const double nearWrap = MedianError(wrap, 3.0, 0, 8, wrap.grid.rows - 8, [C](int x) { return x < 4 || x >= C - 4; });
+    const double nearMid = MedianError(mid, 3.0, 0, 8, mid.grid.rows - 8, [M](int x) { return std::abs(x - M) < 4; });
+    std::printf("  shift at the wrap: step %.3f px (mid-strip %.3f), error %.3f px (mid-strip %.3f)\n",
+                atWrap, atMid, nearWrap, nearMid);
+    CHECK(atWrap < atMid + 0.02);
+    CHECK(nearWrap < nearMid + 0.05);
+}
+
 void testWindow(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 {
     // Two frames, 1 px and 2 px: the window holds their mean; a reset
@@ -291,6 +339,7 @@ int main()
     const Texture t(Grid().cols, 7);
     testWholeShift(gpu, t);
     testLocalShift(gpu, t);
+    testShiftAtWrap(gpu, t);
     testWindow(gpu, t);
     testWindowOrder(gpu, t);
 #ifdef ORBIS_SEAM_FLOW
