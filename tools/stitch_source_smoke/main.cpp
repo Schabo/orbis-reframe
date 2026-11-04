@@ -8,6 +8,9 @@
 #include <LensCalibrationJson.h>
 #include <NativeStitchSource.h>
 
+#include <ClipMetadata.h>  // camera::ReadClipImu
+#include <GyroStabilizer.h>
+
 #include <nlohmann/json.hpp>
 
 #include <chrono>
@@ -32,8 +35,9 @@ void WritePpm(const stitch::Frame& frame, const std::string& path) {
 
 const char kUsage[] =
     "usage: stitch_source_smoke [--width N] [--lens-guard none|standard|premium]\n"
-    "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]] [--dump-depth]\n"
-    "       [--calibration FILE.json]\n"
+    "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]\n"
+    "       [--no-seam-flow]] [--dump-depth]\n"
+    "       [--calibration FILE.json] [--capture-timing]\n"
     "       [--measure-seam IN_MS OUT_MS]\n"
     "       [--colour R,G,B[,SR,SG,SB]] [--lens-colour IN_MS OUT_MS]\n"
     "       <input.insv> <timestamp_ms>...\n"
@@ -60,6 +64,7 @@ int main(int argc, char** argv) {
     int64_t colour_in = -1, colour_out = -1;
     insv::LensColour colour;
     bool dump_depth = false;
+    bool capture_timing = false;
     int arg = 1;
     for (; arg < argc; ++arg) {
         const std::string a = argv[arg];
@@ -105,6 +110,8 @@ int main(int argc, char** argv) {
             config.method = stitch::PreviewStitchConfig::Method::New;
         } else if (a == "--no-seam-colour-blend") {
             config.seamColourBlend = false;
+        } else if (a == "--no-seam-flow") {
+            config.seamFlow = false;
         } else if (a == "--calibration" && arg + 1 < argc) {
             // --calibration FILE.json : a camera's own lens calibration (as
             // lens_calib --out writes it and the app keeps it) in place of
@@ -116,6 +123,10 @@ int main(int argc, char** argv) {
                 std::cerr << "can't read the calibration " << argv[arg] << std::endl;
                 return 2;
             }
+        } else if (a == "--capture-timing") {
+            // the capture-time correction from the clip's gyro, as playback
+            // has it with the stabilization on
+            capture_timing = true;
         } else if (a == "--dump-depth") {
             // after each frame: the depth-aware seam's table
             dump_depth = true;
@@ -168,6 +179,19 @@ int main(int argc, char** argv) {
     if (seam_ok)
         source->SetSeamCorrection(seam);
     source->SetLensColour(colour);
+    auto stab = std::make_shared<insv::GyroStabilizer>();
+    if (capture_timing) {
+        if (const auto imu = camera::ReadClipImu(input_path))
+            stab->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock), 0.0);
+        if (!stab->ready()) {
+            std::cerr << "--capture-timing: the clip has no gyro track" << std::endl;
+            return 1;
+        }
+        stitch::CaptureTiming t;
+        t.readoutSec[0] = t.readoutSec[1] = stab->readoutSec();
+        t.rotationAt = [stab](double tSec, double dtSec, float r[3]) { stab->bodyRotation(tSec, dtSec, r); };
+        source->SetCaptureTiming(std::move(t));
+    }
 
     const stitch::ClipInfo& info = source->GetInfo();
     std::cout << "Source: " << info.width << "x" << info.height << " @ " << info.fps << " fps, "

@@ -121,6 +121,10 @@ void main()
         seamCutPass(gl_WorkGroupID, gl_LocalInvocationIndex);
         return;
     }
+    if (pc.pass == 4) { // the seam flow's strips (fisheye_stitch_common.glsl)
+        seamStripPass(ivec2(gl_GlobalInvocationID.xy));
+        return;
+    }
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
 
     int quads = pc.outW / 4;

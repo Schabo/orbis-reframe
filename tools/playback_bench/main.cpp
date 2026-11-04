@@ -17,11 +17,13 @@
 //
 //   The depth-aware seam is on unless --no-depth-seam or --new-stitcher;
 //   "seam" is its cost pass + solve, or the new stitcher's seam colour
-//   blend (its measuring pass + fit; off with --no-seam-colour-blend),
-//   inside each row's total.
+//   blend and seam flow (their measuring pass, the colour fit and the flow;
+//   off with --no-seam-colour-blend / --no-seam-flow), inside each row's
+//   total.
 //
 // usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]
-//                       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]] <clip.insv>...
+//                       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]
+//                       [--no-seam-flow]] <clip.insv>...
 
 #include <LensFrame.h>
 #include <NativeStitchSource.h>
@@ -68,6 +70,7 @@ struct Stats {
 constexpr int kWarmup = 5;
 stitch::PreviewStitchConfig::Method gMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
 bool gSeamColourBlend = true;
+bool gSeamFlow = true;
 
 void benchDecode(const std::string& path, int frames, double fps) {
     insv::VulkanVideoDecoder dec;
@@ -125,6 +128,7 @@ std::unique_ptr<stitch::NativeStitchSource> openSource(const std::string& path, 
     cfg.height = eqW / 2;
     cfg.method = gMethod;
     cfg.seamColourBlend = gSeamColourBlend;
+    cfg.seamFlow = gSeamFlow;
     if (!src->Open(path, cfg)) {
         std::printf("  open FAILED: %s\n", src->GetLastError().c_str());
         return nullptr;
@@ -290,7 +294,8 @@ void benchSeek(const std::string& path, int64_t durationMs, int eqW) {
 
 const char kUsage[] =
     "usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]\n"
-    "       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]] <clip.insv>...\n";
+    "       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend] [--no-seam-flow]]\n"
+    "       <clip.insv>...\n";
 
 } // namespace
 
@@ -314,6 +319,8 @@ int main(int argc, char** argv) {
             gMethod = stitch::PreviewStitchConfig::Method::New;
         } else if (a == "--no-seam-colour-blend") {
             gSeamColourBlend = false;
+        } else if (a == "--no-seam-flow") {
+            gSeamFlow = false;
         } else if (a == "--only-flat") {
             onlyFlat = true;
         } else if (a == "--eq" && i + 1 < argc) {

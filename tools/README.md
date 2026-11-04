@@ -122,10 +122,15 @@ stitches with it; `--seam Y,P,R[,CU,CV,S]` stitches with a given one.
 lens colour (as `insv_stitch`'s; measured after the seam, with it).
 `--no-depth-seam` and `--new-stitcher` pick the stitcher (as the Stitching
 section's *Stitcher*; default the depth-aware seam; `--no-seam-colour-blend`
-turns the new one's seam colour blend off), `--dump-depth` prints
-the depth-aware seam's table per frame, and `--calibration FILE.json` takes
+and `--no-seam-flow` turn the new one's seam colour blend and seam flow
+off), `--dump-depth` prints
+the depth-aware seam's table per frame, `--calibration FILE.json` takes
 a camera's own lens calibration (as `lens_calib --out` writes it and the
-app keeps it) in place of the file's, for the stitch and the measurements.
+app keeps it) in place of the file's, for the stitch and the measurements,
+and `--capture-timing` stitches with the capture-time correction from the
+clip's gyro, as playback has it with the stabilization on. A frame from a
+`--range` and the same frame seeked to must be byte-identical: that is how
+the new stitcher's seek pre-roll is checked.
 
 **When:** a quick check that decode, seek and stitch still work after a
 change, before starting the app. The release test runs it on a build from
@@ -142,9 +147,10 @@ Measure-only benchmark of where a frame's time goes, per clip (capture mode)
 and per equirect size: decode alone, decode + stitch at each size, the
 export paths, the viewport's lens-frame path, and seeks. Writes no files.
 The stitcher is the depth-aware seam unless `--no-depth-seam` (a fixed
-seam) or `--new-stitcher` (with its seam colour blend unless
-`--no-seam-colour-blend`); the `seam` column is the depth-aware seam's
-measuring and solving, or the seam colour blend's.
+seam) or `--new-stitcher` (with its seam colour blend and seam flow unless
+`--no-seam-colour-blend` / `--no-seam-flow`); the `seam` column is the
+depth-aware seam's measuring and solving, or the new stitcher's (the
+colour blend's fit and the flow).
 
 **When:** after a change to decoding, stitching or the frame path, to see
 whether a mode still plays in real time. The preview-size presets and the
@@ -166,7 +172,9 @@ fused view as P010 (the 10-bit export) and checks it against the NV12 one:
 within one 8-bit code, and with samples finer than 8 bits (a widened 8-bit
 picture has none); it exits 1 if not. `--seam Y,P,R,CU,CV,S` and
 `--colour R,G,B,SR,SG,SB` stitch with a seam correction and a lens colour
-(as `stitch_source_smoke`'s), to check them on every path. `--out DIR` saves the
+(as `stitch_source_smoke`'s), and `--new-stitcher` the new stitcher with
+its seam colour blend and seam flow (`--no-seam-flow` without the flow),
+to check them on every path. `--out DIR` saves the
 renders as raw NV12 / P010 images to look at with `ffmpeg`.
 
 **When:** changing the view or stitch shaders, to check that the picture
@@ -277,7 +285,8 @@ start and end in seconds, then any of:
   *Stitcher*: the old one with the depth-aware seam -- the default -- or a
   fixed seam, or the new one, which takes no seam correction or lens
   colour; `depth=on|off` is the same as `depth` / `fixed`),
-  `colourblend=on|off` (the new stitcher's seam colour blend, default on),
+  `colourblend=on|off` and `seamflow=on|off` (the new stitcher's seam
+  colour blend and seam flow, default on),
   `rs=on|off` (the
   capture-time correction from the gyro, default on), and `seam=` /
   `colour=` as in `seam_regress` (measured over the whole clip when not
@@ -288,7 +297,7 @@ start and end in seconds, then any of:
   frame) and `refrot=Z,Y,X` (the rotation from our sphere to the reference's,
   as in `seam_regress`); or `ref=template`: our own stitch of the same
   frames from the file's data alone (the new stitcher without the
-  capture-time correction or the seam colour blend; with the camera
+  capture-time correction, the seam colour blend or the seam flow; with the camera
   model's lens correction, as the new stitcher has it), whose geometry and
   colour hold still -- the reference for a clip without a Studio export.
 
@@ -421,7 +430,8 @@ and `--distortion D|auto` (default auto): 0 is rectilinear, 1
 stereographic (with `--pitch -90` and a wide `--fov`, a tiny planet).
 `--no-depth-seam` stitches with a fixed seam, `--new-stitcher` with the
 new stitcher (as the Stitching section's *Stitcher*; default the
-depth-aware seam), `--no-seam-colour-blend` without its seam colour blend. It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
+depth-aware seam), `--no-seam-colour-blend` / `--no-seam-flow` without
+its seam colour blend / seam flow. It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
 `--lut-strength PCT`) and a picture-in-picture inset. `--bit-depth 10`
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
 prints when the encoder falls back to 8-bit, or when the frames are 8-bit

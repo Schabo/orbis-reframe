@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cmath>
+#include <memory>
 
 // CPU fisheye -> equirectangular stitch (src/insv/).
 //
@@ -30,6 +31,8 @@
 // `insv_demux` lib (it needs FFmpeg); see InsvDemux.h.
 
 namespace insv {
+
+struct SeamFlowField; // SeamFlow.h
 
 // --- small linear algebra (double; public so tests can exercise it) --------
 
@@ -261,6 +264,16 @@ struct StitchGpuParams {
     // faded across the seam by insv::SeamColourFade. 0 = off.
     int seamColourActive = 0;
     float seamColour[kSeamDepthBins][3] = {};
+    // The new stitcher's seam flow (SeamFlow.h). Its grid (SeamFlowGrid;
+    // cols 0 = no seam flow), which the GPU's strip pass measures on, and
+    // per frame the field; null or empty = none. The GPU stitch uploads the
+    // field as a texture when it changes (and hands it on with the lens
+    // frames), the CPU stitch reads it.
+    int seamFlowCols = 0;
+    int seamFlowRows = 0;
+    float seamFlowStripRad = 0;
+    float seamFlowReachRad = 0;
+    std::shared_ptr<const SeamFlowField> seamFlow;
     // Privacy blur (BlurQuads.h): regions mosaicked in this frame, equirect
     // (sphere) frame, prepared. Per frame, like the RS taps.
     int blurCount = 0;
@@ -284,11 +297,13 @@ public:
     // plain cross-fade); both used only with StitchParams::depthSeam.
     // `blur` (`blurCount` prepared quads, BlurQuads.h) are mosaicked.
     // `seamColour` (StitchGpuParams::seamColour's layout, null = none) is the
-    // new stitcher's seam colour blend (seamColourLog).
+    // new stitcher's seam colour blend (seamColourLog); `flow` (null or
+    // empty = none) its seam flow (seamFlowRay).
     void renderEquirect(const Image& lens0, const Image& lens1, Image& out,
                         const float* seamQ = nullptr, const SeamBlend* blend = nullptr,
                         const BlurQuadFrame* blur = nullptr, int blurCount = 0,
-                        const float* seamColour = nullptr) const;
+                        const float* seamColour = nullptr,
+                        const SeamFlowField* flow = nullptr) const;
 
     // Convenience: allocate a `width x width/2` equirect and render into it.
     Image renderEquirect(const Image& lens0, const Image& lens1, int width,
@@ -333,6 +348,10 @@ public:
     void seamPosition(const Vec3& dir, double& e, int& i0, int& i1, double& t) const;
     // The direction lens i sees the point at distance 1/q along `dir` in.
     Vec3 lensRay(int lens, const Vec3& dir, double q) const;
+    // The direction lens i is sampled in for `dir` with the seam flow `f`
+    // (SeamFlow.h): `dir` moved along the seam frame by lens i's share of
+    // the flow there; `dir` itself past the flow's reach.
+    Vec3 seamFlowRay(int lens, const Vec3& dir, const SeamFlowField& f) const;
     // Blend weight of lens i for world dir `dir` (seam feather only, no
     // circle edge): from dir's own off-axis angle, whatever the depth.
     double seamBlendWeight(int lens, const Vec3& dir) const;

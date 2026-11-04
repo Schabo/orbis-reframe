@@ -88,7 +88,6 @@ void testProjectJson()
         CHECK(p.modified());
 
         stitch::PreviewStitchConfig sc;
-        sc.quality = stitch::PreviewStitchConfig::Quality::OpticalFlow;
         sc.width = 2560;
         sc.height = 1280;
         p.setPreviewStitch(sc); // the preview's part; lens guards are per clip
@@ -219,7 +218,6 @@ void testProjectJson()
         CHECK(tl->clipById(a2)->seamCorrection.radialScale == 0.9992);
 
         const stitch::PreviewStitchConfig &sc = p.previewStitch();
-        CHECK(sc.quality == stitch::PreviewStitchConfig::Quality::OpticalFlow);
         CHECK(sc.width == 2560 && sc.height == 1280);
 
         CHECK(tl->clipAt(1).stabilization == insv::StabConfig{}); // never touched
@@ -1667,28 +1665,35 @@ void testClipStitchJson()
     }
     {
         // The new stitcher: written as "method": "new" with its seam colour
-        // blend (on by default), version 21.
+        // blend and seam flow (on by default).
         Project p;
         CHECK(p.load(file, &err));
-        CHECK(p.timeline()->clipAt(2).seamColourBlend);
+        CHECK(p.timeline()->clipAt(2).seamColourBlend && p.timeline()->clipAt(2).seamFlow);
         p.timeline()->setSourceStitch(b, G::None, M::New, std::nullopt);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kStitchFormatVersion);
         QJsonArray clips = document().value("timeline").toObject().value("clips").toArray();
         QJsonObject st = clips.at(2).toObject().value("stitch").toObject();
         CHECK(st.value("method").toString() == "new" && !st.value("depthSeam").toBool(true));
-        CHECK(st.value("seamColourBlend").toBool(false));
+        CHECK(st.value("seamColourBlend").toBool(false) && st.value("seamFlow").toBool(false));
         CHECK(!clips.at(0).toObject().value("stitch").toObject().contains("method"));
         CHECK(!clips.at(0).toObject().value("stitch").toObject().contains("seamColourBlend"));
+        CHECK(!clips.at(0).toObject().value("stitch").toObject().contains("seamFlow"));
         p.timeline()->setSourceSeamColourBlend(b, false);
+        p.timeline()->setSourceSeamFlow(b, false);
         CHECK(p.save(file, &err));
         clips = document().value("timeline").toObject().value("clips").toArray();
         st = clips.at(2).toObject().value("stitch").toObject();
         CHECK(st.contains("seamColourBlend") && !st.value("seamColourBlend").toBool(true));
+        CHECK(st.contains("seamFlow") && !st.value("seamFlow").toBool(true));
         Project q;
         CHECK(q.load(file, &err));
         CHECK(q.timeline()->clipAt(2).stitchMethod == M::New);
-        CHECK(!q.timeline()->clipAt(2).seamColourBlend);
+        CHECK(!q.timeline()->clipAt(2).seamColourBlend && !q.timeline()->clipAt(2).seamFlow);
+        q.timeline()->setSourceSeamFlow(b, true);
+        CHECK(q.canUndo() && q.modified() && q.timeline()->clipAt(2).seamFlow);
+        q.undo();
+        CHECK(!q.timeline()->clipAt(2).seamFlow);
         CHECK(q.timeline()->clipAt(0).stitchMethod == M::FixedSeam);
         q.timeline()->setSourceSeamColourBlend(b, true);
         CHECK(q.canUndo() && q.modified() && q.timeline()->clipAt(2).seamColourBlend);

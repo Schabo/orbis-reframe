@@ -3,6 +3,7 @@
 #include <FisheyeProjection.h> // insv::StitchGpuParams
 #include <SeamCut.h>           // insv::SeamCutStats
 #include <SeamDepth.h>         // insv::SeamCosts
+#include <SeamFlow.h>          // insv::SeamFlowStrips
 #include <Ycbcr.h>             // insv::YcbcrCoding
 
 #include "ColorLut.h" // color::Grade
@@ -164,6 +165,15 @@ public:
     bool measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                           const insv::StitchGpuParams& params, insv::SeamCutStats& out,
                           VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+    // The new stitcher's seam flow: both lenses unwrapped over the overlap
+    // (pass 4, on params' seam flow grid; insv::MeasureSeamFlowStrips with
+    // the capture-time correction) into `out`, and with `cutOut` the cut
+    // statistics (pass 3, as measureSeamCutVk) in the same submission. Same
+    // handshake, blocking.
+    bool measureSeamFlowVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                           const insv::StitchGpuParams& params, insv::SeamFlowStrips& out,
+                           insv::SeamCutStats* cutOut, VulkanLensOutcome* r0,
+                           VulkanLensOutcome* r1, std::string& err);
 
     // Whether renderViewVk() is usable (the fused view pipeline built -- needs
     // initAdopt(); fisheye_view_nv12.comp).
@@ -262,12 +272,13 @@ private:
                          const uint32_t* clear, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
                          VulkanLensOutcome* r1, std::string& err);
 
-    // measureSeamVk / measureSeamCutVk: pass 2 into `out` (null = not run),
-    // pass 3 into `cutOut` (null = not run).
+    // measureSeamVk / measureSeamCutVk / measureSeamFlowVk: pass 2 into
+    // `out`, pass 3 into `cutOut`, pass 4 into `stripsOut` (each: null = not
+    // run).
     bool measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
                          const insv::StitchGpuParams& params, insv::SeamCosts* out,
-                         insv::SeamCutStats* cutOut, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
-                         std::string& err);
+                         insv::SeamCutStats* cutOut, insv::SeamFlowStrips* stripsOut,
+                         VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
     struct Impl;
     Impl* d = nullptr;

@@ -43,6 +43,8 @@ constexpr int kRefEq = 7680;
 
 insv::SeamCorrection g_seam; // --seam
 insv::LensColour g_colour;   // --colour
+bool g_newStitcher = false;  // --new-stitcher
+bool g_seamFlow = true;      // --no-seam-flow turns it off
 
 // One NV12 render of the frame at `atMs`: fused (eqW unused) or via an eqW
 // equirect. `p010`: the fused render as P010.
@@ -53,6 +55,9 @@ std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fuse
     stitch::PreviewStitchConfig cfg;
     cfg.width = eqW;
     cfg.height = eqW / 2;
+    if (g_newStitcher)
+        cfg.method = stitch::PreviewStitchConfig::Method::New;
+    cfg.seamFlow = g_seamFlow;
     if (!src.Open(path, cfg)) {
         std::fprintf(stderr, "open failed: %s\n", src.GetLastError().c_str());
         return {};
@@ -132,12 +137,14 @@ double sharpness(const std::vector<uint8_t>& y)
 
 const char kUsage[] =
     "usage: view_compare [--at MS] [--seam Y,P,R,CU,CV,S] [--colour R,G,B,SR,SG,SB]\n"
-    "                    [--out DIR] <clip.insv>\n"
+    "                    [--new-stitcher [--no-seam-flow]] [--out DIR] <clip.insv>\n"
     "  --at MS    the frame to compare (default 5000)\n"
     "  --seam     a seam correction: lens 1 yaw / pitch / roll (deg), its centre\n"
     "             (% of the lens width) and the radial scale (%)\n"
     "  --colour   a lens colour: lens 0 against lens 1 (%), its slope across the\n"
     "             band (%/deg)\n"
+    "  --new-stitcher  the new stitcher (seam colour blend and seam flow on);\n"
+    "             --no-seam-flow leaves its seam flow out\n"
     "  --out DIR  also write each render as DIR/<pose>_<path>.nv12 (1920x1080),\n"
     "             and the P010 one as DIR/<pose>_fused.p010\n";
 
@@ -167,6 +174,10 @@ int main(int argc, char** argv)
                 return 2;
             }
             g_seam = {{v[0], v[1], v[2]}, {v[3] * 0.01, v[4] * 0.01}, 1.0 + v[5] * 0.01};
+        } else if (a == "--new-stitcher") {
+            g_newStitcher = true;
+        } else if (a == "--no-seam-flow") {
+            g_seamFlow = false;
         } else if (a == "--colour" && i + 1 < argc) {
             double v[6] = {0, 0, 0, 0, 0, 0};
             if (std::sscanf(argv[++i], "%lf,%lf,%lf,%lf,%lf,%lf", &v[0], &v[1], &v[2], &v[3], &v[4],

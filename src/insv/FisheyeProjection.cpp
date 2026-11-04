@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "FisheyeProjection.h"
 #include "SeamColourBlend.h"
+#include "SeamFlow.h"
 
 #include <algorithm>
 #include <atomic>
@@ -261,6 +262,25 @@ Vec3 FisheyeStitcher::lensRay(int lens, const Vec3& dir, double q) const
     return normalize(Vec3{dir.x - q * c.x, dir.y - q * c.y, dir.z - q * c.z});
 }
 
+Vec3 FisheyeStitcher::seamFlowRay(int lens, const Vec3& dir, const SeamFlowField& f) const
+{
+    const SeamFlowGrid& g = f.grid;
+    const double sa = dir.x * m_seamAxis.x + dir.y * m_seamAxis.y + dir.z * m_seamAxis.z;
+    if (f.empty() || std::fabs(sa) >= std::sin(static_cast<double>(g.reachRad)))
+        return dir;
+    const double e = std::asin(sa);
+    double phi = std::atan2(dir.x * m_seamV.x + dir.y * m_seamV.y + dir.z * m_seamV.z,
+                            dir.x * m_seamU.x + dir.y * m_seamU.y + dir.z * m_seamU.z);
+    if (phi < 0)
+        phi += 2.0 * kPi;
+    const double b = SeamFlowShare(e, g.reachRad);
+    const double share = lens == 0 ? b : 1.0 - b;
+    float v[4];
+    f.at(g.xOf(phi), g.yOf(e), v);
+    const float* d = lens == 0 ? v : v + 2; // lens 0 by F10, lens 1 by F01
+    return seamDir(phi + share * d[0], e + share * d[1]);
+}
+
 StitchGpuParams FisheyeStitcher::gpuParams() const
 {
     StitchGpuParams p{};
@@ -494,8 +514,10 @@ double FisheyeStitcher::edgeWeight(double thetaRad) const
 void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Image& out,
                                      const float* seamQ, const SeamBlend* blend,
                                      const BlurQuadFrame* blur, int blurCount,
-                                     const float* seamColour) const
+                                     const float* seamColour, const SeamFlowField* flow) const
 {
+    if (flow && flow->empty())
+        flow = nullptr;
     if (!m_ready || out.w <= 0 || out.h <= 0)
         return;
 
@@ -512,7 +534,7 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
         if (w <= 0.0)
             return false;
         double theta;
-        if (!project(i, lensRay(i, dir, q), u, v, theta))
+        if (!project(i, flow ? seamFlowRay(i, dir, *flow) : lensRay(i, dir, q), u, v, theta))
             return false;
         if (u < 0 || v < 0 || u > lim[i]->w - 1.0 || v > lim[i]->h - 1.0)
             return false;

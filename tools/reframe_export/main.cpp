@@ -63,6 +63,7 @@ struct Args {
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     stitch::PreviewStitchConfig::Method method = stitch::PreviewStitchConfig::Method::DepthSeam;
     bool seamColourBlend = true; // with the new stitcher
+    bool seamFlow = true;        // likewise
     double staticYawDeg = 0.0;
     double staticPitchDeg = 0.0;
     double staticRollDeg = 0.0;
@@ -117,6 +118,7 @@ const char kUsage[] =
     "  --no-depth-seam       stitch at infinity (no depth-aware seam)\n"
     "  --new-stitcher        the new stitcher (experimental)\n"
     "  --no-seam-colour-blend  the new stitcher without its seam colour blend\n"
+    "  --no-seam-flow        the new stitcher without its seam flow\n"
     "  --yaw DEG --pitch DEG --roll DEG --fov DEG   static pose when --keys is absent\n"
     "                        (fov: the diagonal, corner to corner; default 114.85)\n"
     "  --distortion D|auto   the static pose's projection, 0 rectilinear .. 1\n"
@@ -191,6 +193,8 @@ Args parseArgs(int argc, char** argv)
             a.method = stitch::PreviewStitchConfig::Method::New;
         else if (k == "--no-seam-colour-blend")
             a.seamColourBlend = false;
+        else if (k == "--no-seam-flow")
+            a.seamFlow = false;
         else if (k == "--lens-guard") {
             const std::string g = next("--lens-guard");
             if (g == "none")
@@ -426,6 +430,7 @@ int main(int argc, char** argv)
     sc.lensGuard = a.lensGuard;
     sc.method = a.method;
     sc.seamColourBlend = a.seamColourBlend;
+    sc.seamFlow = a.seamFlow;
     auto src = std::make_unique<stitch::NativeStitchSource>();
     if (!src->Open(a.input, sc))
         die(src->GetLastError());

@@ -54,7 +54,7 @@ public:
     // behaviour; anything an older build would misread bumps the version.
     // Optional fields are written only when set.
     //   "format": kFormatTag, "version": kFormatVersion,
-    //   "previewStitch": {quality: "template" | "optflow", width, height
+    //   "previewStitch": {width, height
     //     (0 = auto), lensGuard: "none" | "standard" | "premium", depthSeam}
     //     -- lensGuard / depthSeam: the first 360 clip's, for older builds;
     //     a clip without its own "stitch" takes them on load,
@@ -80,7 +80,8 @@ public:
     //   camera's own lens calibration (LensCalibrationJson), absent => the
     //   file's; method: "new" -- the new stitcher, absent => the old one,
     //   with or without the depth seam by depthSeam; with "new",
-    //   seamColourBlend (absent => true)} (absent => previewStitch's);
+    //   seamColourBlend and seamFlow (absent => true)} (absent =>
+    //   previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
     //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
@@ -162,7 +163,8 @@ public:
     // older build would draw such a gauge as a speed dial, and show the
     // field's braces. It also added a clip's own lens calibration (its
     // "stitch" object's "calibration", LensCalibrationJson) and the new
-    // stitcher (that object's "method": "new", with its "seamColourBlend"),
+    // stitcher (that object's "method": "new", with its "seamColourBlend"
+    // and "seamFlow"),
     // written only when a clip has one: an older build would stitch it with
     // the file's calibration, or with the old stitcher.
     static constexpr int kFormatVersion = 20;
@@ -192,7 +194,7 @@ public:
     QString filePath() const { return m_filePath; }
     bool modified() const { return m_modified; }
 
-    // The preview's stitch quality and size (View menu), handed to the live
+    // The preview's stitch size (View menu), handed to the live
     // playback path via PlaybackController::setPreviewConfig. Its lensGuard /
     // method are not used: each 360 clip has its own (ClipItem::lensGuard
     // / stitchMethod); they're only what a project from before that gives its

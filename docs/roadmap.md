@@ -34,10 +34,13 @@ no background analysis, and selectable in the Stitching section's
   second before it; each lens moved half of it, fully near the
   seam and fading out by 30° from it, so neither lens's picture changes
   further away. A setting of its own.
-- **Optical flow**: per frame on the GPU, flow both ways in the overlap;
-  each lens warped by a share of it growing to half at the seam, so near
-  things crossing the seam join up while the rest keeps the template's
-  geometry.
+- **Seam flow** (built): per frame, optical flow both ways in the overlap,
+  averaged over the frame and the four before it; each lens warped by a
+  share of it growing to half at the seam, so near things crossing the
+  seam join up while the rest keeps the template's geometry. A setting of
+  its own. The flow is estimated on the CPU (OpenCV's DIS) for now; on the
+  GPU next -- a compute-shader flow, NVIDIA's flow hardware
+  (`VK_NV_optical_flow`) where there is one.
 
 Then a decision on replacing the old stitcher, measured with
 `tools/stitch_bench` against Insta360 Studio's exports.

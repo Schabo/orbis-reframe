@@ -135,6 +135,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     sc.lensCalibration = c.lensCalibration;
     sc.method = c.stitchMethod;
     sc.seamColourBlend = c.seamColourBlend;
+    sc.seamFlow = c.seamFlow;
     analyseSeam(c, sourceMs, sourceMs, nullptr, {});
 
     stitch::NativeStitchSource src;
@@ -409,6 +410,7 @@ void ReframeExportController::run(const Request &req)
         sc.lensCalibration = c.lensCalibration;
         sc.method = c.stitchMethod;
         sc.seamColourBlend = c.seamColourBlend;
+        sc.seamFlow = c.seamFlow;
 
         // The clip's seam as playback has it: its analysis, made here for the
         // frames that haven't been analysed yet.

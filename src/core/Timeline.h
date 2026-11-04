@@ -404,6 +404,8 @@ public slots:
     // every clip cut from `sourcePath`. Emits clipStitchChanged per clip
     // that changed.
     void setSourceSeamColourBlend(const QString &sourcePath, bool on);
+    // Its seam flow (ClipItem::seamFlow), likewise.
+    void setSourceSeamFlow(const QString &sourcePath, bool on);
     // Measured sync fine-tune (ClipItem::syncAdjustMs) for every clip cut from
     // `sourcePath`.
     void setSourceSyncAdjust(const QString &sourcePath, double ms);

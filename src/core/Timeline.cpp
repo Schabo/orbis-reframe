@@ -219,6 +219,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
             c.lensGuard = m_clips.at(from).lensGuard;
             c.stitchMethod = m_clips.at(from).stitchMethod;
             c.seamColourBlend = m_clips.at(from).seamColourBlend;
+            c.seamFlow = m_clips.at(from).seamFlow;
         }
         c.lensGuard = lensGuards.usable(c.lensGuard);
     }
@@ -227,6 +228,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
             c.lensGuard = o.lensGuard;
             c.stitchMethod = o.stitchMethod;
             c.seamColourBlend = o.seamColourBlend;
+            c.seamFlow = o.seamFlow;
             c.lensCalibration = o.lensCalibration;
             if (!std::isnan(o.syncAdjustMs))
                 c.syncAdjustMs = o.syncAdjustMs;
@@ -688,6 +690,16 @@ void Timeline::setSourceSeamColourBlend(const QString &sourcePath, bool on)
         if (c.sourcePath != sourcePath || c.seamColourBlend == on)
             continue;
         c.seamColourBlend = on;
+        emit clipStitchChanged(c.id);
+    }
+}
+
+void Timeline::setSourceSeamFlow(const QString &sourcePath, bool on)
+{
+    for (ClipItem &c : m_clips) {
+        if (c.sourcePath != sourcePath || c.seamFlow == on)
+            continue;
+        c.seamFlow = on;
         emit clipStitchChanged(c.id);
     }
 }

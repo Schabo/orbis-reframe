@@ -12,7 +12,8 @@
 // lens -- R16 / R16G16 for 10-bit pictures -- converted here with the
 // stream's matrix and range (P.ycc) and the midpoint chroma siting the
 // stitch's ycbcr sampler uses. Params (binding 0) is the
-// stitch's own UBO for this frame, packed on the decoder side.
+// stitch's own UBO for this frame, packed on the decoder side; binding 5 the
+// seam flow's field.
 
 layout(location = 0) in vec2 inNdc;
 layout(location = 0) out vec4 outColor;
@@ -40,6 +41,9 @@ vec3 sampleLens(int i, vec2 uv);
 
 #define FISHEYE_STITCH_NO_MAIN
 #define FISHEYE_STITCH_NO_BUFFERS
+// The seam flow's field (RGBA16F), shared from the decoder's device with
+// the lens planes (render::LensSlot's fifth image).
+#define SEAM_FLOW_BINDING 5
 #include "fisheye_stitch_common.glsl"
 
 // The stream's matrix and range, folded with the planes' bit depth into P.ycc

@@ -8,10 +8,12 @@
 // decoder device) to the viewport's (QVulkanWindow's), so the viewport can draw
 // the view straight from the lenses at present time.
 //
-// The pair lives in a ring slot of four plain images on the decoder device --
+// The pair lives in a ring slot of five plain images on the decoder device --
 // lens 0 Y (R8_UNORM, lensW x lensH), lens 0 CbCr (R8G8_UNORM, half size),
 // lens 1 Y, lens 1 CbCr; R16_UNORM / R16G16_UNORM for 10-bit pictures (P010:
-// the 10 bits at the top of each 16) -- each in its own dedicated, exportable allocation
+// the 10 bits at the top of each 16); then the new stitcher's seam flow field
+// (R16G16B16A16_SFLOAT, flowW x flowH: insv::SeamFlowField, 1 x 1 without
+// one) -- each in its own dedicated, exportable allocation
 // (VK_KHR_external_memory_fd, opaque FD). The viewport imports each slot once
 // by FD and creates identical images over the memory. Plain Vulkan / POSIX,
 // no Qt, no FFmpeg: shared by render_gpu_stitch (exporter) and the viewport
@@ -21,13 +23,16 @@ namespace render {
 
 // One ring slot. Created and owned by the exporter; read-only to importers.
 struct LensSlot {
-    // Image order: lens0 Y, lens0 CbCr, lens1 Y, lens1 CbCr.
-    static constexpr int kImages = 4;
-    int fd[kImages] = {-1, -1, -1, -1}; // exporter keeps these; importers dup()
+    // Image order: lens0 Y, lens0 CbCr, lens1 Y, lens1 CbCr, seam flow.
+    static constexpr int kImages = 5;
+    static constexpr int kFlowImage = 4;
+    int fd[kImages] = {-1, -1, -1, -1, -1}; // exporter keeps these; importers dup()
     uint64_t memSize[kImages] = {};     // allocation size of each image
     int lensW = 0;                      // Y extent; CbCr is (lensW/2, lensH/2)
     int lensH = 0;
     int bitDepth = 8;                   // 8 (R8 / R8G8 planes) or 10 (R16 / R16G16)
+    int flowW = 1;                      // the seam flow image's extent
+    int flowH = 1;
     uint64_t id = 0;                    // process-unique, the importer's cache key
     uint8_t deviceUuid[16] = {};        // exporter's VkPhysicalDeviceIDProperties::deviceUUID;
                                         // an importer on another GPU can't use the FDs
@@ -44,10 +49,10 @@ struct LensFrame {
     uint64_t fill = 0;
     // The stitch's std140 Params UBO for this frame (geometry, lens model,
     // per-frame capture-time taps, the depth-aware seam's table, the seam
-    // colour blend, the privacy blur quads, the lenses' Y'CbCr -> R'G'B'
+    // colour blend, the seam flow's grid, the privacy blur quads, the lenses' Y'CbCr -> R'G'B'
     // conversion), packed by the exporter. Within the 16 KiB every Vulkan
     // device takes in a uniform buffer.
-    static constexpr int kParamsBytes = 14592;
+    static constexpr int kParamsBytes = 14624;
     std::array<uint8_t, kParamsBytes> params{};
     int64_t timestamp_ms = 0;
 };

@@ -2109,9 +2109,9 @@ void MainWindow::addKey(const QString &group, const QString &what,
 
 void MainWindow::setupViewMenu()
 {
-    // View: what's seen while editing. The preview's stitch quality and size
-    // are part of the project's stitch settings (Project::previewStitch) but
-    // change only the preview, never the export.
+    // View: what's seen while editing. The preview's stitch size
+    // is part of the project's stitch settings (Project::previewStitch) but
+    // changes only the preview, never the export.
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
     viewMenu->setToolTipsVisible(true);
     const auto setPreview = [this](const std::function<void(stitch::PreviewStitchConfig &)> &edit) {
@@ -2119,29 +2119,6 @@ void MainWindow::setupViewMenu()
         edit(cfg);
         m_project->setPreviewStitch(cfg);
     };
-
-    QMenu *qualityMenu = viewMenu->addMenu(tr("Preview &quality"));
-    qualityMenu->setObjectName(QStringLiteral("previewQualityMenu"));
-    qualityMenu->setToolTipsVisible(true);
-    m_previewQuality = new QActionGroup(this);
-    QAction *standard = qualityMenu->addAction(tr("&Standard"));
-    standard->setObjectName(QStringLiteral("previewQualityStandardAction"));
-    standard->setData(int(stitch::PreviewStitchConfig::Quality::Template));
-    QAction *flow = qualityMenu->addAction(tr("&Optical flow (not yet available)"));
-    flow->setObjectName(QStringLiteral("previewQualityFlowAction"));
-    flow->setData(int(stitch::PreviewStitchConfig::Quality::OpticalFlow));
-    flow->setToolTip(tr("Only Standard for now. Optical flow, a smoother seam for close "
-                        "objects, isn't available yet."));
-    flow->setEnabled(false); // no native optical-flow seam yet: shown, not pickable
-    for (QAction *a : {standard, flow}) {
-        a->setCheckable(true);
-        m_previewQuality->addAction(a);
-    }
-    connect(m_previewQuality, &QActionGroup::triggered, this, [setPreview](QAction *a) {
-        setPreview([a](stitch::PreviewStitchConfig &c) {
-            c.quality = static_cast<stitch::PreviewStitchConfig::Quality>(a->data().toInt());
-        });
-    });
 
     // 2:1 presets only -- equirect is 360x180 and the reprojection shader
     // assumes it. Width is the source of truth; height is always width / 2.
@@ -2172,7 +2149,7 @@ void MainWindow::setupViewMenu()
             c.height = c.width / 2;
         });
     });
-    m_editorActions += {qualityMenu->menuAction(), sizeMenu->menuAction()};
+    m_editorActions += sizeMenu->menuAction();
     updatePreviewMenu(m_project->previewStitch());
 
     // The app's colours, per user (QSettings ui/theme, read in main()).
@@ -2584,7 +2561,7 @@ void MainWindow::pushTimelineToController()
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
                             c.sourceDurationMs, c.lensGuard, c.stitchMethod, c.mediaMissing,
-                            c.lensCalibration, c.seamColourBlend});
+                            c.lensCalibration, c.seamColourBlend, c.seamFlow});
         total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }

@@ -181,6 +181,8 @@ struct ClipItem {
     // The new stitcher's seam colour blend (stitch::PreviewStitchConfig::
     // seamColourBlend); used only with Method::New. Shared like lensGuard.
     bool seamColourBlend = true;
+    // Its seam flow (stitch::PreviewStitchConfig::seamFlow); likewise.
+    bool seamFlow = true;
     // The camera's own lens calibration (Calibrate lenses) in place of the
     // one its file carries; none = the file's. A copy, not a reference to
     // the app's: the project stitches the same wherever it is opened,

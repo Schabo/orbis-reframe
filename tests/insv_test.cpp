@@ -18,6 +18,7 @@
 #include "SeamColourBlend.h"
 #include "SeamCut.h"
 #include "SeamDepth.h"
+#include "SeamFlow.h"
 #include "SeamWindow.h"
 #include "Smooth.h"
 #include "Ycbcr.h"
@@ -1108,6 +1109,125 @@ void testSeamCutWindow()
 // in blue and a flare patch on one lens; the window pooling a frame with
 // the second before it, starting afresh after a seek; the CPU stitch moving each lens half of it near the
 // seam and nothing far from it.
+// The seam flow (SeamFlow.h): the share across the seam, the grid, the
+// field's lookup, the window over frames, and the warp through the stitch.
+void testSeamFlow()
+{
+    std::printf("  seam flow\n");
+    const double reach = 8.0 * kDeg;
+    CHECK(insv::SeamFlowShare(reach, reach) == 0.0 && insv::SeamFlowShare(-reach, reach) == 1.0);
+    CHECK(insv::SeamFlowShare(20 * kDeg, reach) == 0.0);
+    CHECK(near(insv::SeamFlowShare(0.0, reach), 0.5, 1e-12));
+    CHECK(near(insv::SeamFlowShare(0.3 * reach, reach) + insv::SeamFlowShare(-0.3 * reach, reach),
+               1.0, 1e-12));
+    CHECK(insv::SeamFlowShare(0.2 * reach, reach) > insv::SeamFlowShare(0.6 * reach, reach));
+
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    if (!st.ready())
+        return;
+    const insv::SeamFlowGrid g = insv::SeamFlowGridFor(st);
+    CHECK(g.valid() && g.cols == static_cast<int>(std::lround(360.0 * insv::kSeamFlowPxDeg)));
+    CHECK(g.cols % 4 == 0); // the GPU's strip pass packs four columns
+    CHECK(g.stripRad > 1.0 * kDeg && g.stripRad <= 11.0 * kDeg + 1e-6);
+    CHECK(g.rows ==
+          static_cast<int>(std::lround(2.0 * g.stripRad / kDeg * insv::kSeamFlowPxDeg)) + 1);
+    CHECK(near(g.xOf(g.phiOf(17.0)), 17.0, 1e-9) && near(g.yOf(g.eOf(5.0)), 5.0, 1e-9));
+    if (!g.valid())
+        return;
+
+    // F10 = (a, b) everywhere, F01 = (-a, -b).
+    const float a = 0.004f, b = -0.002f;
+    insv::SeamFlowField f;
+    f.grid = g;
+    f.v.resize(static_cast<size_t>(g.rows) * g.cols * 4);
+    for (size_t k = 0; k < f.v.size(); k += 4) {
+        f.v[k] = a;
+        f.v[k + 1] = b;
+        f.v[k + 2] = -a;
+        f.v[k + 3] = -b;
+    }
+    float out[4];
+    f.at(-0.5, -3.0, out); // wraps round in x, clamps in y
+    CHECK(near(out[0], a, 1e-7) && near(out[3], -b, 1e-7));
+
+    auto dist = [](const insv::Vec3& p, const insv::Vec3& q) {
+        return std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) +
+                         (p.z - q.z) * (p.z - q.z));
+    };
+    // On the seam both lenses move half way, to the same place; past the
+    // reach neither does.
+    const insv::Vec3 onSeam = st.seamDir(1.0, 0.0);
+    CHECK(dist(st.seamFlowRay(0, onSeam, f), st.seamDir(1.0 + 0.5 * a, 0.5 * b)) < 1e-6);
+    CHECK(dist(st.seamFlowRay(1, onSeam, f), st.seamDir(1.0 - 0.5 * a, -0.5 * b)) < 1e-6);
+    const insv::Vec3 far = st.seamDir(1.0, 9.0 * kDeg);
+    const insv::Vec3 farW = st.seamFlowRay(0, far, f);
+    CHECK(farW.x == far.x && farW.y == far.y && farW.z == far.z);
+    // Half way to the reach on lens 0's side lens 0 moves less than half.
+    const double e = 0.5 * reach, share = insv::SeamFlowShare(e, reach);
+    CHECK(share > 0.0 && share < 0.5);
+    CHECK(dist(st.seamFlowRay(0, st.seamDir(1.0, e), f), st.seamDir(1.0 + share * a, e + share * b)) <
+          1e-6);
+
+    // A zero field is the template, to the byte; a field moves the seam only.
+    insv::Image l0, l1;
+    l0.alloc(3840, 3840);
+    l1.alloc(3840, 3840);
+    for (int y = 0; y < 3840; ++y)
+        for (int x = 0; x < 3840; ++x)
+            for (int c = 0; c < 3; ++c) {
+                const size_t i = (static_cast<size_t>(y) * 3840 + x) * 3 + c;
+                l0.rgb[i] = static_cast<uint8_t>((x * 7 + y * 3 + c * 40) & 255);
+                l1.rgb[i] = static_cast<uint8_t>((x * 5 + y * 11 + c * 70) & 255);
+            }
+    const insv::Image plain = st.renderEquirect(l0, l1, 1024);
+    insv::SeamFlowField zero = f;
+    std::fill(zero.v.begin(), zero.v.end(), 0.0f);
+    insv::Image zeroEq, flowEq;
+    zeroEq.alloc(1024, 512);
+    flowEq.alloc(1024, 512);
+    st.renderEquirect(l0, l1, zeroEq, nullptr, nullptr, nullptr, 0, nullptr, &zero);
+    st.renderEquirect(l0, l1, flowEq, nullptr, nullptr, nullptr, 0, nullptr, &f);
+    CHECK(zeroEq.rgb == plain.rgb);
+    size_t changed = 0, changedFar = 0;
+    for (int y = 0; y < 512; ++y)
+        for (int x = 0; x < 1024; ++x) {
+            const size_t i = (static_cast<size_t>(y) * 1024 + x) * 3;
+            if (flowEq.rgb[i] == plain.rgb[i])
+                continue;
+            ++changed;
+            const double lat = (0.5 - (y + 0.5) / 512) * std::numbers::pi;
+            const double lon = ((x + 0.5) / 1024 - 0.5) * 2.0 * std::numbers::pi;
+            const insv::Vec3 dir = insv::apply(
+                st.outRotation(), {std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
+            const insv::Vec3& ax = st.seamAxis();
+            changedFar += std::fabs(dir.x * ax.x + dir.y * ax.y + dir.z * ax.z) >= std::sin(reach);
+        }
+    CHECK(changed > 1000 && changedFar == 0);
+
+    // The window: the mean of the last kSeamFlowFrames frames; another grid
+    // starts it again.
+    insv::SeamFlowWindow w;
+    for (int k = 0; k <= insv::kSeamFlowFrames + 1; ++k) {
+        insv::SeamFlowField fk = zero;
+        std::fill(fk.v.begin(), fk.v.end(), static_cast<float>(k));
+        w.add(std::move(fk));
+    }
+    CHECK(w.size() == insv::kSeamFlowFrames);
+    insv::SeamFlowField mean;
+    w.solve(mean);
+    const double want = (2.0 + insv::kSeamFlowFrames + 1) / 2.0; // frames 2 .. N + 1
+    CHECK(!mean.empty() && near(mean.v.front(), want, 1e-5) && near(mean.v.back(), want, 1e-5));
+    insv::SeamFlowField other = zero;
+    other.grid.rows -= 2;
+    other.v.resize(static_cast<size_t>(other.grid.rows) * other.grid.cols * 4);
+    w.add(std::move(other));
+    CHECK(w.size() == 1);
+    w.reset();
+    w.solve(mean);
+    CHECK(mean.empty());
+}
+
 void testSeamColourBlend()
 {
     constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
@@ -2472,6 +2592,7 @@ int main()
     testLensColourWhereTheyMeet();
     testLensColourLocal();
     testSeamColourBlend();
+    testSeamFlow();
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();

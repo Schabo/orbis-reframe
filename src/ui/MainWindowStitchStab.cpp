@@ -15,6 +15,7 @@
 #include <cmath>
 
 #include <ClipMetadata.h>  // camera::ReadClipMetadata (the clip's camera)
+#include <NativeStitchSource.h> // stitch::SeamFlowAvailable
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 
 #include "ClipMeasurements.h"
@@ -52,6 +53,15 @@ void MainWindow::connectStitchAndStabilization()
         if (c && !c->flat)
             m_timeline->setSourceSeamColourBlend(c->sourcePath, on);
     });
+    connect(m_stitchingPanel, &StitchingPanel::seamFlowEdited, this, [this](bool on) {
+        const ClipItem *c = m_timeline->clipById(editClipId());
+        if (c && !c->flat)
+            m_timeline->setSourceSeamFlow(c->sourcePath, on);
+    });
+    if (!stitch::SeamFlowAvailable())
+        m_stitchingPanel->setSeamFlowAvailable(
+            false, tr("This build of orbis-reframe has no seam flow (it was built without "
+                      "OpenCV)."));
     connect(m_stitchingPanel, &StitchingPanel::calibrationChosen, this, [this](int index) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && !c->flat && index >= 0 && index < int(m_calibrationChoices.size()))
@@ -89,6 +99,7 @@ void MainWindow::connectStitchAndStabilization()
         // doesn't land on a file that would stitch bare anyway.
         const StitchingPanel::Method method = c->stitchMethod;
         const bool seamColourBlend = c->seamColourBlend;
+        const bool seamFlow = c->seamFlow;
         const stitch::LensGuardProfiles from = m_lensGuards->profiles(c->sourcePath);
         const StitchingPanel::LensGuard guard = from.usable(c->lensGuard);
         for (int i = 0; i < m_timeline->count(); ++i) {
@@ -101,6 +112,7 @@ void MainWindow::connectStitchAndStabilization()
             m_timeline->setSourceStitch(o.sourcePath, g, method,
                                         lensCalibrationForGuard(o.sourcePath, o.lensCalibration, g));
             m_timeline->setSourceSeamColourBlend(o.sourcePath, seamColourBlend);
+            m_timeline->setSourceSeamFlow(o.sourcePath, seamFlow);
         }
     });
     // Project settings (File ▸ Project settings…): output aspect / size /
@@ -170,7 +182,7 @@ void MainWindow::connectStitchAndStabilization()
                 c.id, pastedStabilization(*m_copiedStab, m_copiedStabSource, c));
         }
     });
-    // The preview's quality and size (View menu): the controller re-opens
+    // The preview's size (View menu): the controller re-opens
     // its sources with them.
     connect(m_project, &Project::previewStitchChanged, this,
             [this](const stitch::PreviewStitchConfig &cfg) {
@@ -403,6 +415,7 @@ void MainWindow::syncStitchingPanel()
     }
     m_stitchingPanel->setState(c->lensGuard, c->stitchMethod, m_lensGuards->profiles(c->sourcePath));
     m_stitchingPanel->setSeamColourBlend(c->seamColourBlend);
+    m_stitchingPanel->setSeamFlow(c->seamFlow);
 
     // The calibrations: the camera file's, the clip's own, and the one kept
     // for its camera and guard if that's another (a newer one).
@@ -510,11 +523,8 @@ void MainWindow::openLensCalibration()
 
 void MainWindow::updatePreviewMenu(const stitch::PreviewStitchConfig &cfg)
 {
-    if (!m_previewQuality)
+    if (!m_previewSize)
         return; // a project change before the menu is built
-    for (QAction *a : m_previewQuality->actions())
-        if (a->data().toInt() == int(cfg.quality))
-            a->setChecked(true);
     // A width that isn't a preset (a hand-edited .orp): the nearest one.
     QAction *best = nullptr;
     for (QAction *a : m_previewSize->actions())

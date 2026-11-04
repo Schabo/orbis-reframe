@@ -299,21 +299,25 @@ void EquirectViewportRenderer::createLensResources()
     si.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     if (vkCreateSampler(device, &si, nullptr, &m_lensSampler) != VK_SUCCESS)
         return;
+    si.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT; // round the seam
+    if (vkCreateSampler(device, &si, nullptr, &m_flowSampler) != VK_SUCCESS)
+        return;
 
-    VkDescriptorSetLayoutBinding b[5]{};
+    // Binding 0 the stitch's params, 1-4 the lens planes, 5 the seam flow.
+    VkDescriptorSetLayoutBinding b[6]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-    for (uint32_t i = 1; i <= 4; ++i)
+    for (uint32_t i = 1; i <= 5; ++i)
         b[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{};
     sli.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    sli.bindingCount = 5;
+    sli.bindingCount = 6;
     sli.pBindings = b;
     if (vkCreateDescriptorSetLayout(device, &sli, nullptr, &m_lensSetLayout) != VK_SUCCESS)
         return;
 
     const uint32_t frames = static_cast<uint32_t>(std::max(1, m_window->concurrentFrameCount()));
     VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frames},
-                                  {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * frames}};
+                                  {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5 * frames}};
     VkDescriptorPoolCreateInfo dpi{};
     dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     dpi.maxSets = frames;
@@ -418,6 +422,9 @@ void EquirectViewportRenderer::destroyLensResources()
         vkDestroyDescriptorSetLayout(device, m_lensSetLayout, nullptr);
     if (m_lensSampler)
         vkDestroySampler(device, m_lensSampler, nullptr);
+    if (m_flowSampler)
+        vkDestroySampler(device, m_flowSampler, nullptr);
+    m_flowSampler = VK_NULL_HANDLE;
     m_lensPipeline = VK_NULL_HANDLE;
     m_lensPipelineLayout = VK_NULL_HANDLE;
     m_lensPool = VK_NULL_HANDLE;

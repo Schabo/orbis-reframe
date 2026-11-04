@@ -70,6 +70,20 @@ StitchingPanel::StitchingPanel(QWidget *parent)
             emit seamColourBlendEdited(on);
     });
 
+    m_seamFlow = new QCheckBox(tr("Seam flow"), this);
+    m_seamFlow->setObjectName(QStringLiteral("stitchSeamFlow"));
+    m_seamFlow->setToolTip(
+        tr("Something close to the camera that crosses the seam, like handlebars or an arm, "
+           "sits in a slightly different place in each lens. With this on, the new stitcher "
+           "finds where each lens shows it, from each frame and the few before it, and draws "
+           "both pictures towards each other near the seam so it joins up. Further than 8° "
+           "from the seam each picture is left as it is."));
+    form()->addRow(QString(), m_seamFlow);
+    connect(m_seamFlow, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_updating)
+            emit seamFlowEdited(on);
+    });
+
     m_calibration = new QComboBox(this);
     m_calibration->setObjectName(QStringLiteral("stitchCalibration"));
     m_calibration->setToolTip(
@@ -107,7 +121,7 @@ StitchingPanel::StitchingPanel(QWidget *parent)
 
     setHint(tr("How this clip's two lens pictures are joined into the 360° view, in playback, "
                "screenshots and export. Every clip cut from the same file shares them. The "
-               "preview's own quality and size are in the View menu."));
+               "preview's own size is in the View menu."));
 
     setState(LensGuard::Premium, Method::DepthSeam); // sane starting state
     setCalibrations({tr("From the camera file")}, {}, 0);
@@ -115,7 +129,7 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_method, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
     connect(m_method, &QComboBox::currentIndexChanged, this,
-            &StitchingPanel::updateSeamColourBlendEnabled);
+            &StitchingPanel::updateNewStitcherOptions);
 }
 
 void StitchingPanel::setSeamColourBlend(bool on)
@@ -125,11 +139,28 @@ void StitchingPanel::setSeamColourBlend(bool on)
     m_updating = false;
 }
 
-void StitchingPanel::updateSeamColourBlendEnabled()
+void StitchingPanel::setSeamFlow(bool on)
 {
-    // Only the new stitcher has it; the old one matches the lenses its own way.
-    m_seamColourBlend->setEnabled(m_method->isEnabled() &&
-                                  m_method->currentIndex() == static_cast<int>(Method::New));
+    m_updating = true;
+    m_seamFlow->setChecked(on);
+    m_updating = false;
+}
+
+void StitchingPanel::setSeamFlowAvailable(bool available, const QString &whyNot)
+{
+    m_seamFlowAvailable = available;
+    if (!available)
+        m_seamFlow->setToolTip(whyNot);
+    updateNewStitcherOptions();
+}
+
+void StitchingPanel::updateNewStitcherOptions()
+{
+    // Only the new stitcher has them; the old one matches the lenses its own way.
+    const bool isNew =
+        m_method->isEnabled() && m_method->currentIndex() == static_cast<int>(Method::New);
+    m_seamColourBlend->setEnabled(isNew);
+    m_seamFlow->setEnabled(isNew && m_seamFlowAvailable);
 }
 
 void StitchingPanel::setState(LensGuard lensGuard, Method method,
@@ -146,7 +177,7 @@ void StitchingPanel::setState(LensGuard lensGuard, Method method,
     m_applyToAll->setEnabled(true);
     m_lensGuard->setCurrentIndex(static_cast<int>(profiles.usable(lensGuard)));
     m_method->setCurrentIndex(static_cast<int>(method));
-    updateSeamColourBlendEnabled();
+    updateNewStitcherOptions();
     m_updating = false;
 }
 
@@ -157,7 +188,7 @@ void StitchingPanel::setNoClip()
     // not a clip, so it stays.
     m_lensGuard->setEnabled(false);
     m_method->setEnabled(false);
-    updateSeamColourBlendEnabled();
+    updateNewStitcherOptions();
     m_calibration->setEnabled(false);
     m_applyToAll->setEnabled(false);
 }

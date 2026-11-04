@@ -95,6 +95,7 @@ stitch::PreviewStitchConfig PlaybackController::openConfig(stitch::PreviewStitch
     preview.lensCalibration = seg.lensCalibration;
     preview.method = seg.stitchMethod;
     preview.seamColourBlend = seg.seamColourBlend;
+    preview.seamFlow = seg.seamFlow;
     return preview;
 }
 
@@ -435,6 +436,7 @@ void PlaybackController::decoderLoop()
                             (was.seg.lensGuard != now.seg.lensGuard ||
                              was.seg.stitchMethod != now.seg.stitchMethod ||
                              was.seg.seamColourBlend != now.seg.seamColourBlend ||
+                             was.seg.seamFlow != now.seg.seamFlow ||
                              was.seg.lensCalibration != now.seg.lensCalibration) &&
                             !reopen.contains(now.seg.sourcePath)) {
                             reopen << now.seg.sourcePath;

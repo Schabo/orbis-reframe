@@ -19,6 +19,8 @@
 //   depth=on|off                   the same as method=depth / fixed
 //   colourblend=on|off             the new stitcher's seam colour blend
 //                                  (method=new; default on, as the app)
+//   seamflow=on|off                its seam flow (method=new; default on,
+//                                  as the app)
 //   rs=on|off                      the capture-time (rolling shutter)
 //                                  correction from the gyro (current;
 //                                  default on, as playback)
@@ -106,6 +108,7 @@ struct Entry {
     Method method = Method::DepthSeam;
     bool captureTiming = true;
     bool seamColourBlend = true;
+    bool seamFlow = true;
     std::optional<insv::SeamCorrection> seam;
     std::optional<insv::LensColour> colour;
     std::optional<stitch::LensCalibration> calibration;
@@ -196,6 +199,8 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                 e.captureTiming = v != "off";
             } else if (key == "colourblend") {
                 e.seamColourBlend = v != "off";
+            } else if (key == "seamflow") {
+                e.seamFlow = v != "off";
             } else if (key == "seam") {
                 double a[6];
                 if (std::sscanf(v.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf", &a[0], &a[1], &a[2], &a[3], &a[4],
@@ -382,6 +387,7 @@ public:
         config.lensGuard = e.guard;
         config.method = e.method;
         config.seamColourBlend = e.seamColourBlend;
+        config.seamFlow = e.seamFlow;
         config.lensCalibration = e.calibration;
         if (!src_.Open(e.clip, config)) {
             error = "open: " + src_.GetLastError();
@@ -515,8 +521,8 @@ private:
 };
 
 // ref=template: our own stitch of the same frames from the file's data
-// alone -- the new stitcher's base, without the capture-time correction or
-// the seam colour blend -- whose geometry and colour hold still by
+// alone -- the new stitcher's base, without the capture-time correction,
+// the seam colour blend or the seam flow -- whose geometry and colour hold still by
 // construction: the reference for clips without a Studio export.
 class TemplateReference : public Reference {
 public:
@@ -526,6 +532,7 @@ public:
         t.method = Method::New;
         t.captureTiming = false;
         t.seamColourBlend = false;
+        t.seamFlow = false;
         t.seam = insv::SeamCorrection{};
         t.colour = insv::LensColour{};
         std::string info;

@@ -150,8 +150,8 @@ greyed out in builds made without OpenCV's chart detection.
   camera file's, or your calibration) with a fixed blend, and works out
   anything more from each frame and the ones just before it, not from the
   clip as a whole: the seam alignment and lens colour below aren't used with it. So
-  far that is the colour where the lenses meet (*Seam colour blend* below); close
-  things still show up twice, as with **Fixed seam**. For a camera whose
+  far that is the colour where the lenses meet (*Seam colour blend* below)
+  and close things crossing the seam (*Seam flow* below). For a camera whose
   files place one lens slightly off (the Antigravity A1, by about half a
   degree), it corrects the lenses by a fixed amount measured for the
   camera model; with your calibration it doesn't. Projects with a clip
@@ -177,6 +177,29 @@ it gets there, so a frame looks the same however you get to it: played,
 jumped to, saved as a screenshot or exported. Turn it off to see the lenses as they recorded. With **Depth-aware seam**
 and **Fixed seam** it is greyed out: they match the lenses their own way
 (*Lens colour* below).
+
+### Seam flow
+
+Something close to the camera that crosses the seam -- the handlebars, a
+mirror, your arm -- sits in a slightly different place in each lens, since
+the two lenses are a few centimetres apart. With the new stitcher, **Seam
+flow** (under **Seam colour blend**, on for new clips) joins it up. In
+every frame it finds where each lens shows each part of the overlap round
+the seam (optical flow, both ways), and draws the two pictures towards each
+other: each lens moves by a share that grows from nothing 8° from the seam
+to half the difference on the seam, so both show a close thing in the same
+place there. Further than 8° from the seam each picture keeps its own
+geometry, and far things, which the lenses already show in the same place,
+don't move.
+
+The flow is averaged over each frame and the four before it, so the seam
+holds still while things pass through it; when you jump to a frame,
+orbis-reframe measures those frames first, so the frame looks the same
+however you get to it. A close thing that moves fast across the seam can
+still smear for a frame or two. Turn it off to see the lenses joined at a
+fixed distance, as with **Fixed seam**. It needs a build of orbis-reframe
+with OpenCV (the packages and AppImage have it); without it the box is
+greyed out.
 
 ## Depth-aware seam
 
@@ -346,18 +369,15 @@ frame by frame, or measured the lens colour without the colours a clipped
 part still has; their clips are measured again when the project opens, so
 their colour along the seam changes slightly.
 
-## Preview size and quality
+## Preview size
 
-These two are in the **View** menu, not in the sidebar: they change only the
-preview you see while editing, never the export.
-
-- **View ▸ Preview size** almost never matters. The viewport normally draws
-  straight from the two lens pictures at full detail. Only when the graphics
-  card or driver can't do that does orbis-reframe stitch a flat 360° preview
-  first, and this sets its size. **Auto** uses the clip's full detail, as
-  much as can play smoothly at its frame rate.
-- **View ▸ Preview quality** has only one choice for now, **Standard**. **Optical flow**,
-  a smoother seam for close objects, isn't available yet.
+**View ▸ Preview size** is in the **View** menu, not in the sidebar: it
+changes only the preview you see while editing, never the export, and it
+almost never matters. The viewport normally draws straight from the two
+lens pictures at full detail. Only when the graphics card or driver can't
+do that does orbis-reframe stitch a flat 360° preview first, and this sets
+its size. **Auto** uses the clip's full detail, as much as can play
+smoothly at its frame rate.
 
 ## Filming tips
 

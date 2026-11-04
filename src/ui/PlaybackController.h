@@ -112,6 +112,7 @@ public:
         bool missing = false;
         std::optional<stitch::LensCalibration> lensCalibration;
         bool seamColourBlend = true; // ClipItem::seamColourBlend, as lensGuard
+        bool seamFlow = true; // ClipItem::seamFlow, likewise
         qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
         qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
         qint64 localAtSourceMs(qint64 sourceMs) const

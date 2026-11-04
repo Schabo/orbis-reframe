@@ -411,7 +411,7 @@ private:
     // through addKey(), which also lists it in Help -> Keyboard shortcuts
     // (menu actions are listed from the menus themselves).
     void setupKeyboardShortcuts();
-    // View menu: the preview's stitch quality and size.
+    // View menu: the preview's stitch size.
     void setupViewMenu();
     void updatePreviewMenu(const stitch::PreviewStitchConfig &cfg);
     // File ▸ Project settings…
@@ -520,7 +520,6 @@ private:
     TransitionsPanel *m_transitionsPanel = nullptr;
     MediaImporter *m_mediaImport = nullptr; // Import files… / folder…, drops, Locate file…
     QList<QShortcut *> m_editorShortcuts;
-    QActionGroup *m_previewQuality = nullptr; // View menu
     QActionGroup *m_previewSize = nullptr;
 
     ClipBackend m_clipBackend;

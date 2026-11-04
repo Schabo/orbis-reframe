@@ -346,9 +346,23 @@ void testStitchingPanel(SettingsSidebar &bar)
     CHECK(blend->isChecked() && blendEdited.isEmpty());
     blend->setChecked(false);
     CHECK(blendEdited.size() == 1 && !blendEdited.first().at(0).toBool());
+    // The seam flow likewise, and greyed out in a build without it.
+    QSignalSpy flowEdited(stitching, &StitchingPanel::seamFlowEdited);
+    auto *flow = stitching->findChild<QCheckBox *>(QStringLiteral("stitchSeamFlow"));
+    CHECK(flow && flow->isEnabled());
+    if (flow) {
+        stitching->setSeamFlow(true);
+        CHECK(flow->isChecked() && flowEdited.isEmpty());
+        flow->setChecked(false);
+        CHECK(flowEdited.size() == 1 && !flowEdited.first().at(0).toBool());
+        stitching->setSeamFlowAvailable(false, QStringLiteral("no OpenCV"));
+        CHECK(!flow->isEnabled() && blend->isEnabled());
+        stitching->setSeamFlowAvailable(true);
+        CHECK(flow->isEnabled());
+    }
     method->setCurrentIndex(int(M::DepthSeam));
     CHECK(edited.size() == 3 && edited.last().at(1).value<M>() == M::DepthSeam);
-    CHECK(!blend->isEnabled());
+    CHECK(!blend->isEnabled() && (!flow || !flow->isEnabled()));
     apply->click();
     CHECK(all.size() == 1);
 

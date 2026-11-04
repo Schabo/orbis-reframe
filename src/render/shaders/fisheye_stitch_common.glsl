@@ -15,6 +15,12 @@
 // cost volume (seamCostPass, one workgroup per azimuth bin and candidate
 // distance, NCC of the two lenses over the bin's patch) and the cut
 // statistics (seamCutPass, one workgroup per bin and row across the band).
+// Pass 4 (likewise) unwraps both lenses over the overlap for the new
+// stitcher's seam flow (seamStripPass, insv::MeasureSeamFlowStrips).
+//
+// The seam flow's field (insv::SeamFlowField, F10 in .xy, F01 in .zw) is the
+// texture at SEAM_FLOW_BINDING (6 unless the includer says otherwise: the
+// viewport has its lens planes at 1-4); used when P.seamFlow.x != 0.
 //
 // An includer that defines FISHEYE_STITCH_NO_MAIN (fisheye_view_nv12.comp,
 // the fused fisheye -> view render) gets only the projection core and the
@@ -82,6 +88,11 @@ layout(std140, binding = 0) uniform Params {
     // The new stitcher's seam colour blend (insv::StitchGpuParams::seamColour):
     // per azimuth bin log(lens 0 / lens 1) R, G, B, -; on when edge.z != 0.
     vec4 seamCol[SEAM_BINS];
+    // The new stitcher's seam flow (insv::StitchGpuParams::seamFlow): on,
+    // the strips' half-height and the warp's reach (rad), -; its grid's
+    // columns and rows.
+    vec4 seamFlow;
+    ivec4 seamFlowN;
     // Privacy blur (insv::BlurQuadFrame, carried into the stitch world frame):
     // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
@@ -94,6 +105,11 @@ layout(std140, binding = 0) uniform Params {
     vec4 ycc[3];
 } P;
 
+#ifndef SEAM_FLOW_BINDING
+#define SEAM_FLOW_BINDING 6
+#endif
+layout(binding = SEAM_FLOW_BINDING) uniform sampler2D seamFlowTex;
+
 #ifndef FISHEYE_STITCH_NO_BUFFERS
 layout(std430, binding = 3) writeonly buffer OutBuf { uint px[]; };
 // Pass 2 output: per (bin, candidate) = bin * SEAM_CANDS + k: (NCC, texture),
@@ -105,6 +121,9 @@ layout(std430, binding = 5) writeonly buffer SeamBuf {
     vec2 seamCost[SEAM_BINS * SEAM_CANDS];
     vec4 seamCutStat[];
 };
+// Pass 4 output: both lenses' strips, grey 0..255, four columns per uint
+// (lowest byte first), lens 0's rows then lens 1's (insv::SeamFlowStrips).
+layout(std430, binding = 7) writeonly buffer StripBuf { uint seamStrip[]; };
 #endif
 
 #ifndef FISHEYE_STITCH_NO_MAIN
@@ -303,6 +322,41 @@ vec3 lensRay(int i, vec3 dir, float q)
     return normalize(dir - (q * h) * P.seamA.xyz);
 }
 
+// --- the new stitcher's seam flow (insv::FisheyeStitcher::seamFlowRay) ----
+
+// The seam frame's direction at azimuth phi, elevation e (towards lens 0)
+// (insv::FisheyeStitcher::seamDir).
+vec3 seamDirAt(float phi, float e)
+{
+    return cos(e) * (cos(phi) * P.seamU.xyz + sin(phi) * P.seamV.xyz) + sin(e) * P.seamA.xyz;
+}
+
+// The direction lens i is sampled in for `dir`: moved along the seam frame by
+// its share of the flow there -- lens 0 b(e) of F10, lens 1 1 - b(e) of F01
+// (insv::SeamFlowShare: 0 at +reach, 1/2 on the seam, 1 at -reach); `dir`
+// past the reach or with the flow off.
+vec3 seamFlowRay(int i, vec3 dir)
+{
+    float reach = P.seamFlow.z;
+    float sa = dot(dir, P.seamA.xyz);
+    if (P.seamFlow.x == 0.0 || abs(sa) >= sin(reach))
+        return dir;
+    float e = asin(sa);
+    float phi = atan(dot(dir, P.seamV.xyz), dot(dir, P.seamU.xyz));
+    if (phi < 0.0)
+        phi += 2.0 * PI;
+    float b = 0.5 * (1.0 - sin(0.5 * PI * e / reach));
+    float share = i == 0 ? b : 1.0 - b;
+    // Texel centres at phi = (x + 0.5) 2 pi / cols (the sampler wraps round)
+    // and e = strip - y 2 strip / (rows - 1) (clamped at the strip's edges).
+    float strip = P.seamFlow.y;
+    float rows = float(P.seamFlowN.y);
+    float y = (strip - e) * (rows - 1.0) / (2.0 * strip);
+    vec4 f = textureLod(seamFlowTex, vec2(phi / (2.0 * PI), (y + 0.5) / rows), 0.0);
+    vec2 d = i == 0 ? f.xy : f.zw;
+    return seamDirAt(phi + share * d.x, e + share * d.y);
+}
+
 // Seam feather of lens i for `dir`, from dir's own off-axis angle whatever
 // the depth (so the blend stays put when the rays shift).
 float seamBlendWeight(int i, vec3 dir)
@@ -413,7 +467,7 @@ void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w
         float ws = wsl[i];
         if (ws <= 0.0)
             continue;
-        vec3 pr = projectRS(i, lensRay(i, dir, q));
+        vec3 pr = projectRS(i, P.seamFlow.x != 0.0 ? seamFlowRay(i, dir) : lensRay(i, dir, q));
         if (pr.z < 0.0)
             continue;
         float u = pr.x, v = pr.y;
@@ -593,6 +647,33 @@ void seamCutPass(uvec3 wg, uint lid)
 }
 #endif
 
+#ifndef FISHEYE_STITCH_NO_BUFFERS
+// Pass 4: the seam flow's strips (insv::MeasureSeamFlowStrips, here with the
+// capture-time correction, as the stitch samples). Invocation (gx, y) does
+// columns 4 gx .. 4 gx + 3 of row y of both lenses; grey is BT.601 luma.
+void seamStripPass(ivec2 gid)
+{
+    int cols = P.seamFlowN.x, rows = P.seamFlowN.y;
+    if (gid.x * 4 >= cols || gid.y >= rows)
+        return;
+    float strip = P.seamFlow.y;
+    float e = strip - float(gid.y) * 2.0 * strip / float(rows - 1);
+    float fw = float(P.dims.x), fh = float(P.dims.y);
+    for (int i = 0; i < 2; ++i) {
+        uint packed = 0u;
+        for (int k = 0; k < 4; ++k) {
+            float phi = (float(gid.x * 4 + k) + 0.5) * 2.0 * PI / float(cols);
+            vec3 pr = projectRS(i, seamDirAt(phi, e));
+            float g = 0.0;
+            if (pr.z >= 0.0 && pr.x >= 0.0 && pr.y >= 0.0 && pr.x <= fw - 1.0 && pr.y <= fh - 1.0)
+                g = clamp(luma(sampleLens(i, (pr.xy + 0.5) / vec2(fw, fh))) + 0.5, 0.0, 255.0);
+            packed |= uint(g) << (8 * k);
+        }
+        seamStrip[i * (rows * cols / 4) + (gid.y * cols + gid.x * 4) / 4] = packed;
+    }
+}
+#endif
+
 // The stitched colour for `dir`, RGB in [0, 255] (unquantised); black outside
 // both imaged circles. Each lens's colour matched by the lens colour
 // (lensColourLog) and the seam colour blend (seamColourLog), both lenses to
@@ -702,6 +783,10 @@ void main()
     }
     if (pc.pass == 3) {
         seamCutPass(gl_WorkGroupID, gl_LocalInvocationIndex);
+        return;
+    }
+    if (pc.pass == 4) {
+        seamStripPass(ivec2(gl_GlobalInvocationID.xy));
         return;
     }
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);

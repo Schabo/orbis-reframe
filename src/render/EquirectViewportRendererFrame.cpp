@@ -96,10 +96,12 @@ EquirectViewportRenderer::importFor(const render::LensFrame &f)
     VkDevice device = m_window->device();
     LensImport imp;
     for (int i = 0; i < render::LensSlot::kImages; ++i) {
+        const bool flow = i == render::LensSlot::kFlowImage;
         const bool uv = (i & 1) != 0;
         const bool deep = slot.bitDepth > 8; // 10-bit: 16-bit planes
-        const VkFormat fmt = deep ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
-                                  : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
+        const VkFormat fmt = flow ? VK_FORMAT_R16G16B16A16_SFLOAT
+                             : deep ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
+                                    : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
         // Must match the exporter's image exactly (VulkanFisheyeStitcher).
         VkExternalMemoryImageCreateInfo emi{};
         emi.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
@@ -109,8 +111,10 @@ EquirectViewportRenderer::importFor(const render::LensFrame &f)
         ii.pNext = &emi;
         ii.imageType = VK_IMAGE_TYPE_2D;
         ii.format = fmt;
-        ii.extent = {static_cast<uint32_t>(uv ? slot.lensW / 2 : slot.lensW),
-                     static_cast<uint32_t>(uv ? slot.lensH / 2 : slot.lensH), 1};
+        ii.extent = flow ? VkExtent3D{static_cast<uint32_t>(slot.flowW),
+                                      static_cast<uint32_t>(slot.flowH), 1}
+                         : VkExtent3D{static_cast<uint32_t>(uv ? slot.lensW / 2 : slot.lensW),
+                                      static_cast<uint32_t>(uv ? slot.lensH / 2 : slot.lensH), 1};
         ii.mipLevels = 1;
         ii.arrayLayers = 1;
         ii.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -412,23 +416,24 @@ void EquirectViewportRenderer::startNextFrame()
         std::memcpy(m_lensUboMap[frameSlot], m_currentLens->params.data(),
                     render::LensFrame::kParamsBytes);
         VkDescriptorBufferInfo uboInfo{m_lensUbo[frameSlot], 0, render::LensFrame::kParamsBytes};
-        VkDescriptorImageInfo imgInfo[4];
-        VkWriteDescriptorSet w[5]{};
+        VkDescriptorImageInfo imgInfo[render::LensSlot::kImages];
+        VkWriteDescriptorSet w[1 + render::LensSlot::kImages]{};
         w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         w[0].dstSet = m_lensSets[frameSlot];
         w[0].dstBinding = 0;
         w[0].descriptorCount = 1;
         w[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         w[0].pBufferInfo = &uboInfo;
-        for (int i = 0; i < 4; ++i) {
-            imgInfo[i] = {m_lensSampler, imp->view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        for (int i = 0; i < render::LensSlot::kImages; ++i) {
+            imgInfo[i] = {i == render::LensSlot::kFlowImage ? m_flowSampler : m_lensSampler,
+                          imp->view[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             w[1 + i] = w[0];
             w[1 + i].dstBinding = static_cast<uint32_t>(1 + i);
             w[1 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             w[1 + i].pBufferInfo = nullptr;
             w[1 + i].pImageInfo = &imgInfo[i];
         }
-        vkUpdateDescriptorSets(m_window->device(), 5, w, 0, nullptr);
+        vkUpdateDescriptorSets(m_window->device(), 1 + render::LensSlot::kImages, w, 0, nullptr);
     }
 
     // Drop imports of slots not drawn for a while (a trimmed ring, a closed

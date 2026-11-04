@@ -39,6 +39,10 @@ public:
     // The clip's seam colour blend (ClipItem::seamColourBlend), offered
     // only with the new stitcher. Does not emit.
     void setSeamColourBlend(bool on);
+    // ... and its seam flow (ClipItem::seamFlow), likewise. Does not emit.
+    void setSeamFlow(bool on);
+    // Whether this build has the seam flow; `whyNot` its tooltip when not.
+    void setSeamFlowAvailable(bool available, const QString &whyNot = QString());
     // One line about the current clip's seam alignment and lens colour
     // (empty hides it); `details`, the measured figures, go in its tooltip.
     void setSeamStatus(const QString &text, const QString &details = QString());
@@ -52,6 +56,7 @@ public:
 signals:
     void stitchEdited(LensGuard lensGuard, Method method);
     void seamColourBlendEdited(bool on);
+    void seamFlowEdited(bool on);
     // "Apply to all clips": give every 360 clip the settings shown.
     void applyToAllRequested();
     // A lens calibration picked (an index into setCalibrations' labels).
@@ -61,12 +66,15 @@ signals:
 
 private:
     void emitIfEdited();
-    void updateSeamColourBlendEnabled();
+    // The new stitcher's own options, enabled with it.
+    void updateNewStitcherOptions();
 
     QComboBox *m_lensGuard = nullptr;
     QLabel *m_noGuards = nullptr;
     QComboBox *m_method = nullptr;
     QCheckBox *m_seamColourBlend = nullptr;
+    QCheckBox *m_seamFlow = nullptr;
+    bool m_seamFlowAvailable = true;
     QComboBox *m_calibration = nullptr;
     QPushButton *m_calibrate = nullptr;
     QLabel *m_seamStatus = nullptr;

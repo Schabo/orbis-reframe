@@ -98,8 +98,218 @@ void VulkanFisheyeStitcher::Impl::destroyResources()
     killBuf(outBuf, outMem, outMap);
     killBuf(seamBuf, seamMem, seamMap);
     killBuf(flatBuf, flatMem, flatMap);
+    killBuf(flowStage, flowStageMem, flowStageMap);
+    killBuf(stripBuf, stripMem, stripMap);
+    if (flowView) vkDestroyImageView(device, flowView, nullptr);
+    if (flowImg) vkDestroyImage(device, flowImg, nullptr);
+    if (flowMem) vkFreeMemory(device, flowMem, nullptr);
+    flowView = VK_NULL_HANDLE;
+    flowImg = VK_NULL_HANDLE;
+    flowMem = VK_NULL_HANDLE;
+    flowW = flowH = 0;
+    flowStageBytes = stripBytes = 0;
+    flowHeld.reset();
+    flowCopy = flowFresh = false;
     fw = fh = ew = eh = 0;
     flatBytes = 0;
+}
+
+namespace {
+// IEEE half from float, round to nearest even; the seam flow's values are
+// small angles (|x| < 1), so no overflow handling beyond a clamp to inf.
+uint16_t ToHalf(float f)
+{
+    uint32_t x;
+    std::memcpy(&x, &f, 4);
+    const uint32_t sign = (x >> 16) & 0x8000u;
+    const int32_t exp = static_cast<int32_t>((x >> 23) & 0xff) - 127 + 15;
+    uint32_t mant = x & 0x7fffffu;
+    if (exp <= 0) {
+        if (exp < -10)
+            return static_cast<uint16_t>(sign);
+        mant |= 0x800000u;
+        const int shift = 14 - exp;
+        uint32_t h = mant >> shift;
+        const uint32_t rest = mant & ((1u << shift) - 1), half = 1u << (shift - 1);
+        if (rest > half || (rest == half && (h & 1)))
+            ++h;
+        return static_cast<uint16_t>(sign | h);
+    }
+    if (exp >= 31)
+        return static_cast<uint16_t>(sign | 0x7c00u);
+    uint32_t h = (static_cast<uint32_t>(exp) << 10) | (mant >> 13);
+    const uint32_t rest = mant & 0x1fffu;
+    if (rest > 0x1000u || (rest == 0x1000u && (h & 1)))
+        ++h; // may carry into the exponent: still right
+    return static_cast<uint16_t>(sign | h);
+}
+} // namespace
+
+bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std::string& err)
+{
+    const insv::SeamFlowField* want = p.seamFlow && !p.seamFlow->empty() ? p.seamFlow.get() : nullptr;
+    const int W = want ? want->grid.cols : (flowImg ? flowW : 1);
+    const int H = want ? want->grid.rows : (flowImg ? flowH : 1);
+    if (!flowImg || W != flowW || H != flowH) {
+        idleBeforeFree();
+        if (flowView) vkDestroyImageView(device, flowView, nullptr);
+        if (flowImg) vkDestroyImage(device, flowImg, nullptr);
+        if (flowMem) vkFreeMemory(device, flowMem, nullptr);
+        flowView = VK_NULL_HANDLE;
+        flowImg = VK_NULL_HANDLE;
+        flowMem = VK_NULL_HANDLE;
+        VkImageCreateInfo ii{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        ii.imageType = VK_IMAGE_TYPE_2D;
+        ii.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+        ii.extent = {static_cast<uint32_t>(W), static_cast<uint32_t>(H), 1};
+        ii.mipLevels = 1;
+        ii.arrayLayers = 1;
+        ii.samples = VK_SAMPLE_COUNT_1_BIT;
+        ii.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkMemoryRequirements mr{};
+        uint32_t type = 0;
+        if (vkCreateImage(device, &ii, nullptr, &flowImg) != VK_SUCCESS) {
+            err = "seam flow image creation failed";
+            return false;
+        }
+        vkGetImageMemoryRequirements(device, flowImg, &mr);
+        if (!findMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, type)) {
+            err = "no device-local memory for the seam flow image";
+            return false;
+        }
+        VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        ai.allocationSize = mr.size;
+        ai.memoryTypeIndex = type;
+        if (vkAllocateMemory(device, &ai, nullptr, &flowMem) != VK_SUCCESS ||
+            vkBindImageMemory(device, flowImg, flowMem, 0) != VK_SUCCESS) {
+            err = "seam flow image memory failed";
+            return false;
+        }
+        VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        vi.image = flowImg;
+        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        vi.format = ii.format;
+        vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        if (vkCreateImageView(device, &vi, nullptr, &flowView) != VK_SUCCESS) {
+            err = "seam flow image view failed";
+            return false;
+        }
+        flowW = W;
+        flowH = H;
+        flowFresh = true;
+        flowHeld.reset();
+        VkDescriptorImageInfo info{flowSampler, flowView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet w[2]{};
+        int n = 0;
+        for (VkDescriptorSet set : {descSet, vwSet}) {
+            if (!set)
+                continue;
+            w[n] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            w[n].dstSet = set;
+            w[n].dstBinding = 6;
+            w[n].descriptorCount = 1;
+            w[n].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            w[n].pImageInfo = &info;
+            ++n;
+        }
+        vkUpdateDescriptorSets(device, n, w, 0, nullptr);
+    }
+    if (!(want && want != flowHeld.get()) && !flowFresh)
+        return true; // the texture holds what this frame wants (or a field it ignores)
+    const VkDeviceSize bytes = static_cast<VkDeviceSize>(W) * H * 8;
+    if (bytes > flowStageBytes) {
+        if (flowStageMap) { vkUnmapMemory(device, flowStageMem); flowStageMap = nullptr; }
+        if (flowStage) vkDestroyBuffer(device, flowStage, nullptr);
+        if (flowStageMem) vkFreeMemory(device, flowStageMem, nullptr);
+        flowStage = VK_NULL_HANDLE;
+        flowStageMem = VK_NULL_HANDLE;
+        flowStageBytes = 0;
+        if (!makeBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                        flowStage, flowStageMem, &flowStageMap)) {
+            err = "seam flow staging buffer allocation failed";
+            return false;
+        }
+        flowStageBytes = bytes;
+    }
+    uint16_t* dst = static_cast<uint16_t*>(flowStageMap);
+    if (want) {
+        const float* src = want->v.data();
+        for (size_t k = 0, n = static_cast<size_t>(W) * H * 4; k < n; ++k)
+            dst[k] = ToHalf(src[k]);
+        flowHeld = p.seamFlow;
+    } else {
+        std::memset(dst, 0, bytes);
+    }
+    flowCopy = true;
+    return true;
+}
+
+void VulkanFisheyeStitcher::Impl::recordFlowUpload(VkCommandBuffer cmd)
+{
+    if (!flowCopy)
+        return;
+    VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    b.oldLayout = flowFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b.srcAccessMask = 0; // the submissions before this one waited on their fences
+    b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = flowImg;
+    b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &b);
+    VkBufferImageCopy c{};
+    c.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    c.imageExtent = {static_cast<uint32_t>(flowW), static_cast<uint32_t>(flowH), 1};
+    vkCmdCopyBufferToImage(cmd, flowStage, flowImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+    b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &b);
+    flowCopy = false;
+    flowFresh = false;
+}
+
+bool VulkanFisheyeStitcher::Impl::ensureStrips(VkDeviceSize bytes, std::string& err)
+{
+    if (stripBuf && bytes <= stripBytes)
+        return true;
+    idleBeforeFree();
+    if (stripMap) { vkUnmapMemory(device, stripMem); stripMap = nullptr; }
+    if (stripBuf) vkDestroyBuffer(device, stripBuf, nullptr);
+    if (stripMem) vkFreeMemory(device, stripMem, nullptr);
+    stripBuf = VK_NULL_HANDLE;
+    stripMem = VK_NULL_HANDLE;
+    stripBytes = 0;
+    if (!makeReadbackBuffer(std::max<VkDeviceSize>(bytes, 16), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                            stripBuf, stripMem, &stripMap)) {
+        err = "seam flow strip buffer allocation failed";
+        return false;
+    }
+    stripBytes = std::max<VkDeviceSize>(bytes, 16);
+    VkDescriptorBufferInfo info{stripBuf, 0, VK_WHOLE_SIZE};
+    VkWriteDescriptorSet w[2]{};
+    int n = 0;
+    for (VkDescriptorSet set : {descSet, vwSet}) {
+        if (!set)
+            continue;
+        w[n] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[n].dstSet = set;
+        w[n].dstBinding = 7;
+        w[n].descriptorCount = 1;
+        w[n].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[n].pBufferInfo = &info;
+        ++n;
+    }
+    vkUpdateDescriptorSets(device, n, w, 0, nullptr);
+    return true;
 }
 
 VkImageView VulkanFisheyeStitcher::Impl::nv12ViewFor(VkImage img, VkFormat fmt)
@@ -164,7 +374,10 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
         ++n;
     }
     vkUpdateDescriptorSets(device, n, w, 0, nullptr);
-    return true;
+    // Bindings 6 and 7 valid from the start: a 1 x 1 flow texture of zeros
+    // and a token strip buffer, until the seam flow brings its own.
+    insv::StitchGpuParams none;
+    return ensureFlow(none, err) && ensureStrips(16, err);
 }
 
 bool VulkanFisheyeStitcher::Impl::ensureOutput(int new_, int neh, std::string& err)
@@ -251,7 +464,8 @@ bool VulkanFisheyeStitcher::Impl::makeExportImage(VkFormat fmt, int w, int h, Vk
     return true;
 }
 
-LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int lensH, std::string& err)
+LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int lensH, int flowW,
+                                                                 int flowH, std::string& err)
 {
     if (!ring) {
         ring = std::make_shared<LensRingCore>();
@@ -263,7 +477,8 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     for (;;) {
         for (auto& sl : ring->slots)
             if (!sl->busy && sl->pub.lensW == lensW && sl->pub.lensH == lensH &&
-                sl->pub.bitDepth == (deepLens() ? 10 : 8)) {
+                sl->pub.bitDepth == (deepLens() ? 10 : 8) && sl->pub.flowW == flowW &&
+                sl->pub.flowH == flowH) {
                 sl->busy = true;
                 return sl.get();
             }
@@ -282,7 +497,8 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     // change, but be tidy).
     for (auto it = ring->slots.begin(); it != ring->slots.end();) {
         if (!(*it)->busy && ((*it)->pub.lensW != lensW || (*it)->pub.lensH != lensH ||
-                             (*it)->pub.bitDepth != (deepLens() ? 10 : 8))) {
+                             (*it)->pub.bitDepth != (deepLens() ? 10 : 8) ||
+                             (*it)->pub.flowW != flowW || (*it)->pub.flowH != flowH)) {
             ring->destroySlot(**it);
             it = ring->slots.erase(it);
         } else {
@@ -293,9 +509,19 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     sl->pub.lensW = lensW;
     sl->pub.lensH = lensH;
     sl->pub.bitDepth = deepLens() ? 10 : 8;
+    sl->pub.flowW = flowW;
+    sl->pub.flowH = flowH;
     sl->pub.id = LensRingCore::nextId.fetch_add(1);
     std::memcpy(sl->pub.deviceUuid, deviceUuid, sizeof deviceUuid);
     for (int i = 0; i < LensSlot::kImages; ++i) {
+        if (i == LensSlot::kFlowImage) {
+            if (!makeExportImage(VK_FORMAT_R16G16B16A16_SFLOAT, flowW, flowH, sl->img[i], sl->mem[i],
+                                 sl->pub.memSize[i], sl->pub.fd[i], err)) {
+                ring->destroySlot(*sl);
+                return nullptr;
+            }
+            continue;
+        }
         const bool uv = (i & 1) != 0;
         // A plane copy needs the plane's size: 16-bit samples for P010.
         const VkFormat fmt = deepLens() ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
@@ -439,6 +665,7 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         if (d->rfDescPool) vkDestroyDescriptorPool(d->device, d->rfDescPool, nullptr);
         if (d->rfSetLayout) vkDestroyDescriptorSetLayout(d->device, d->rfSetLayout, nullptr);
         if (d->sampler) vkDestroySampler(d->device, d->sampler, nullptr);
+        if (d->flowSampler) vkDestroySampler(d->device, d->flowSampler, nullptr);
         if (d->ycbcrConv) vkDestroySamplerYcbcrConversion(d->device, d->ycbcrConv, nullptr);
         if (d->tsPool) vkDestroyQueryPool(d->device, d->tsPool, nullptr);
         if (d->fence) vkDestroyFence(d->device, d->fence, nullptr);
@@ -667,7 +894,24 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     // Bindings 1 & 2 use an immutable sampler in nv12 mode (ycbcr conversion
     // must be baked into the layout).
     const VkSampler immutable[2] = {d->sampler, d->sampler};
-    VkDescriptorSetLayoutBinding b[5]{};
+    // The seam flow's texture (binding 6): wraps round in azimuth (u),
+    // clamps across the seam (v).
+    {
+        VkSamplerCreateInfo fi{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        fi.magFilter = VK_FILTER_LINEAR;
+        fi.minFilter = VK_FILTER_LINEAR;
+        fi.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        fi.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        fi.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        fi.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        fi.maxAnisotropy = 1.0f;
+        if (vkCreateSampler(d->device, &fi, nullptr, &d->flowSampler) != VK_SUCCESS) {
+            err = "vkCreateSampler (seam flow) failed";
+            return false;
+        }
+    }
+
+    VkDescriptorSetLayoutBinding b[7]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT,
             nv12Mode ? &immutable[0] : nullptr};
@@ -675,8 +919,10 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
             nv12Mode ? &immutable[1] : nullptr};
     b[3] = {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[4] = {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    b[5] = {6, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    b[6] = {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    sli.bindingCount = 5;
+    sli.bindingCount = 7;
     sli.pBindings = b;
     if (vkCreateDescriptorSetLayout(d->device, &sli, nullptr, &d->setLayout) != VK_SUCCESS) {
         err = "vkCreateDescriptorSetLayout failed";
@@ -704,8 +950,8 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     // Two sets of this layout: the stitch's, and the fused view pass's.
     VkDescriptorPoolSize ps[3]{
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * samplerDescriptors},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4}};
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * samplerDescriptors + 2},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 2;
     dpi.poolSizeCount = 3;

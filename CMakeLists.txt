@@ -173,6 +173,8 @@ add_library(insv STATIC
     src/insv/LensColour.cpp
     src/insv/SeamColourBlend.h
     src/insv/SeamColourBlend.cpp
+    src/insv/SeamFlow.h
+    src/insv/SeamFlow.cpp
     src/insv/Ycbcr.h
     src/insv/Ycbcr.cpp
 )
@@ -417,6 +419,8 @@ if(OpenCV_FOUND)
         src/insv/ResidualPanEstimator.cpp
         src/insv/SyncEstimator.h
         src/insv/SyncEstimator.cpp
+        src/insv/SeamFlowEstimator.h
+        src/insv/SeamFlowEstimator.cpp
     )
     target_include_directories(insv_optical PUBLIC src/insv PRIVATE ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(insv_optical PUBLIC insv
@@ -494,6 +498,12 @@ if(FFMPEG_FOUND)
     )
     target_include_directories(stitch PUBLIC src/stitch)
     target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch)
+    # The new stitcher's seam flow estimates its flow with OpenCV
+    # (insv::SeamFlowEstimator); without it the stitcher has no seam flow.
+    if(TARGET insv_optical)
+        target_link_libraries(stitch PUBLIC insv_optical)
+        target_compile_definitions(stitch PRIVATE ORBIS_SEAM_FLOW=1)
+    endif()
 
     # --- src/export/reframe_flatten: the reproject + encode half of the flat
     # export -- take equirect frames (from stitch::NativeStitchSource in memory, or

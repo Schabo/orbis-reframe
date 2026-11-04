@@ -10,6 +10,7 @@
 
 #include <SeamCut.h>   // insv::SeamCutStats, the cut pass's rows / patch
 #include <SeamDepth.h> // insv::SeamCosts, the cost pass's candidates / patch
+#include <SeamFlow.h>  // insv::SeamFlowField, the seam flow texture
 
 #include <vulkan/vulkan.h>
 
@@ -60,11 +61,13 @@ struct ShaderParams {
     float lensLocal[insv::kSeamDepthBins][4]; // per-bin local correction RGB, -
     float lensVeil[insv::kSeamDepthBins][4];  // per-bin veiling light RGB, -
     float seamCol[insv::kSeamDepthBins][4];   // per-bin seam colour blend RGB, - (active: edge.z)
+    float seamFlow[4];    // seam flow: active, strip half-height (rad), reach (rad), -
+    int32_t seamFlowN[4]; // its grid: columns, rows, -, -
     float blur0[4]; // privacy blur: count, -, -, -
     float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
     float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
 };
-static_assert(sizeof(ShaderParams) == 14592, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 14624, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then a mat3
@@ -244,6 +247,36 @@ struct VulkanFisheyeStitcher::Impl {
     VkBuffer seamBuf = VK_NULL_HANDLE;
     VkDeviceMemory seamMem = VK_NULL_HANDLE;
     void* seamMap = nullptr;
+    // The new stitcher's seam flow (binding 6): the frame's field as an
+    // RGBA16F texture of its grid (1 x 1 of zeros until a field comes),
+    // wrapping round in azimuth, clamped across. A frame whose field isn't
+    // the one up (flowHeld) has it staged (ensureFlow) and copied in at the
+    // start of its submission (recordFlowUpload).
+    VkSampler flowSampler = VK_NULL_HANDLE;
+    VkImage flowImg = VK_NULL_HANDLE;
+    VkDeviceMemory flowMem = VK_NULL_HANDLE;
+    VkImageView flowView = VK_NULL_HANDLE;
+    int flowW = 0, flowH = 0;
+    VkBuffer flowStage = VK_NULL_HANDLE;
+    VkDeviceMemory flowStageMem = VK_NULL_HANDLE;
+    void* flowStageMap = nullptr;
+    VkDeviceSize flowStageBytes = 0;
+    std::shared_ptr<const insv::SeamFlowField> flowHeld;
+    bool flowCopy = false;  // flowStage waits to be copied into flowImg
+    bool flowFresh = false; // flowImg is new: its layout is still UNDEFINED
+    // The seam flow's strips (binding 7, pass 4), read back.
+    VkBuffer stripBuf = VK_NULL_HANDLE;
+    VkDeviceMemory stripMem = VK_NULL_HANDLE;
+    void* stripMap = nullptr;
+    VkDeviceSize stripBytes = 0;
+    // The flow texture for a frame's params: (re)made at the field's size,
+    // the field staged when it isn't the one up. Before recording.
+    bool ensureFlow(const insv::StitchGpuParams& p, std::string& err);
+    // The staged field copied into the texture, into the begun `cmd`; left
+    // readable by every later stage. Nothing when nothing is staged.
+    void recordFlowUpload(VkCommandBuffer cmd);
+    // The strip buffer holding `bytes` (grows only), bound at 7 in both sets.
+    bool ensureStrips(VkDeviceSize bytes, std::string& err);
 
     // Reproject pass (stitchAndReframeVk): equirect OutBuf -> rectilinear NV12.
     VkDescriptorSetLayout rfSetLayout = VK_NULL_HANDLE;
@@ -335,9 +368,11 @@ struct VulkanFisheyeStitcher::Impl {
     bool makeExportImage(VkFormat fmt, int w, int h, VkImage& img, VkDeviceMemory& mem,
                          uint64_t& size, int& fd, std::string& err);
 
-    // A free ring slot for lensW x lensH lenses, marked busy -- reusing one,
-    // allocating a new one, or waiting for one to come back.
-    LensRingCore::Slot* acquireLensSlot(int lensW, int lensH, std::string& err);
+    // A free ring slot for lensW x lensH lenses and a flowW x flowH seam flow
+    // field, marked busy -- reusing one, allocating a new one, or waiting for
+    // one to come back.
+    LensRingCore::Slot* acquireLensSlot(int lensW, int lensH, int flowW, int flowH,
+                                        std::string& err);
 
     bool ensureResources(int nfw, int nfh, int new_, int neh, std::string& err);
 };

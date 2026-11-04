@@ -50,17 +50,14 @@ struct CaptureTiming {
     }
 };
 
-// The stitch knobs, handed to IStitchSource::Open. quality / width / height
-// are the preview's (View menu; Project::previewStitch); lensGuard /
-// method / seamColourBlend are the clip's own (Stitching panel;
-// ClipItem::lensGuard / stitchMethod / seamColourBlend).
+// The stitch knobs, handed to IStitchSource::Open. width / height are the
+// preview's (View menu; Project::previewStitch); lensGuard / method /
+// seamColourBlend / seamFlow are the clip's own (Stitching panel;
+// ClipItem::lensGuard / stitchMethod / seamColourBlend / seamFlow).
 //
-// NativeStitchSource honours width/height (the equirect output size),
-// lensGuard, method, seamColourBlend and lensCalibration. `quality` is inert (no optical-flow seam yet). Stabilization is not a stitch setting: insv::StabConfig.
+// NativeStitchSource honours all of them. Stabilization is not a stitch
+// setting: insv::StabConfig.
 struct PreviewStitchConfig {
-    enum class Quality { Template, OpticalFlow };
-
-    Quality quality = Quality::Template;
     // Equirect preview resolution. Must stay 2:1 (equirect is 360x180 and the
     // reprojection shader assumes it) -- the panel only offers 2:1 presets.
     // 0 = Auto: per clip, AutoPreviewWidth() of its lens size and frame rate.
@@ -88,7 +85,7 @@ struct PreviewStitchConfig {
     //     calibration as they are, a fixed cross-fade, nothing measured from
     //     the clip -- the clip's seam correction and lens colour are not
     //     applied. Its layers, worked out from each frame and the frames just
-    //     before it, come on top: the seam colour blend (seamColourBlend), flow to come.
+    //     before it, come on top: the seam colour blend (seamColourBlend) and the seam flow (seamFlow).
     enum class Method { DepthSeam, FixedSeam, New };
     Method method = Method::DepthSeam;
     bool depthSeam() const { return method == Method::DepthSeam; }
@@ -101,6 +98,15 @@ struct PreviewStitchConfig {
     bool seamColourBlend = true;
     bool seamColourBlendOn() const { return method == Method::New && seamColourBlend; }
 
+    // The new stitcher's seam flow (insv/SeamFlow.h): near things crossing
+    // the seam joined up by optical flow between the lenses in the overlap,
+    // the rest kept at the template's geometry; each frame's flow averaged
+    // with the few frames before it (which SeekTo measures first). Only
+    // with Method::New, and only where the app was built with OpenCV
+    // (SeamFlowAvailable).
+    bool seamFlow = true;
+    bool seamFlowOn() const { return method == Method::New && seamFlow; }
+
     // The camera's own lens calibration (Calibrate lenses) in place of the
     // file's; none = the file's. The guard is in it: no guard profile goes
     // on top. The clip's own, like lensGuard (ClipItem::lensCalibration).
@@ -110,16 +116,17 @@ struct PreviewStitchConfig {
     std::string cacheTag() const {
         const std::string size =
             width > 0 ? std::to_string(width) + "x" + std::to_string(height) : "auto";
-        return "v7-" + size + "-" + (quality == Quality::OpticalFlow ? "of" : "tmpl") + "-g" +
+        return "v8-" + size + "-g" +
                std::to_string(static_cast<int>(lensGuard)) + (method == Method::DepthSeam ? "-d" : method == Method::New ? "-n" : "") +
-               (seamColourBlendOn() ? "-sc" : "") +
+               (seamColourBlendOn() ? "-sc" : "") + (seamFlowOn() ? "-sf" : "") +
                (lensCalibration ? "-c" + lensCalibration->created : "");
     }
 
     bool operator==(const PreviewStitchConfig& o) const {
-        return quality == o.quality && width == o.width && height == o.height &&
+        return width == o.width && height == o.height &&
                lensGuard == o.lensGuard && method == o.method &&
-               seamColourBlend == o.seamColourBlend && lensCalibration == o.lensCalibration;
+               seamColourBlend == o.seamColourBlend && seamFlow == o.seamFlow &&
+               lensCalibration == o.lensCalibration;
     }
     bool operator!=(const PreviewStitchConfig& o) const { return !(*this == o); }
 };

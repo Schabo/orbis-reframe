@@ -195,6 +195,7 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
     req.lensCalibration = c.lensCalibration;
     req.stitchMethod = c.stitchMethod;
     req.seamColourBlend = c.seamColourBlend;
+    req.seamFlow = c.seamFlow;
     req.captureTiming = StabilizerCache::captureTimingOn(c);
     return req;
 }

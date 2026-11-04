@@ -134,6 +134,16 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
             sp.seamCol[b][c] = p.seamColourActive ? p.seamColour[b][c] : 0.0f;
         sp.seamCol[b][3] = 0.0f;
     }
+    // The field's own grid when there is one (the texture is its size),
+    // else the strip pass's.
+    const bool flow = p.seamFlow && !p.seamFlow->empty();
+    sp.seamFlow[0] = flow ? 1.0f : 0.0f;
+    sp.seamFlow[1] = flow ? p.seamFlow->grid.stripRad : p.seamFlowStripRad;
+    sp.seamFlow[2] = flow ? p.seamFlow->grid.reachRad : p.seamFlowReachRad;
+    sp.seamFlow[3] = 0.0f;
+    sp.seamFlowN[0] = flow ? p.seamFlow->grid.cols : p.seamFlowCols;
+    sp.seamFlowN[1] = flow ? p.seamFlow->grid.rows : p.seamFlowRows;
+    sp.seamFlowN[2] = sp.seamFlowN[3] = 0;
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
     const int nBlur = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
@@ -276,10 +286,13 @@ bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
     packParams(params, eqW, eqH, sp);
     std::memcpy(d->uboMap, &sp, sizeof(sp));
 
+    if (!d->ensureFlow(params, err))
+        return false;
     vkResetCommandBuffer(d->cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
+    d->recordFlowUpload(d->cmd);
     d->tsReset();
 
     VkImageMemoryBarrier toDst[2]{};
@@ -389,10 +402,13 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
     w[1].pImageInfo = &img1;
     vkUpdateDescriptorSets(d->device, 2, w, 0, nullptr);
 
+    if (!d->ensureFlow(params, err))
+        return false;
     vkResetCommandBuffer(d->cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
+    d->recordFlowUpload(d->cmd);
     d->tsReset();
 
     const VulkanLensInput* in[2] = {&f0, &f1};
@@ -576,10 +592,13 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         vkUpdateDescriptorSets(d->device, 2, w, 0, nullptr);
     }
 
+    if (!d->ensureFlow(params, err))
+        return false;
     vkResetCommandBuffer(d->cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
+    d->recordFlowUpload(d->cmd);
     d->tsReset();
 
     const VulkanLensInput* in[2] = {&f0, &f1};
@@ -822,10 +841,13 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         vkUpdateDescriptorSets(d->device, 3, w, 0, nullptr);
     }
 
+    if (!d->ensureFlow(params, err))
+        return false;
     vkResetCommandBuffer(d->cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
+    d->recordFlowUpload(d->cmd);
     d->tsReset();
 
     const VulkanLensInput* in[2] = {&f0, &f1};
@@ -952,7 +974,7 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
                                           VulkanLensOutcome* r0,
                                           VulkanLensOutcome* r1, std::string& err)
 {
-    return measureSeamImpl(f0, f1, params, &out, cutOut, r0, r1, err);
+    return measureSeamImpl(f0, f1, params, &out, cutOut, nullptr, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
@@ -960,15 +982,30 @@ bool VulkanFisheyeStitcher::measureSeamCutVk(const VulkanLensInput& f0, const Vu
                                              insv::SeamCutStats& out, VulkanLensOutcome* r0,
                                              VulkanLensOutcome* r1, std::string& err)
 {
-    return measureSeamImpl(f0, f1, params, nullptr, &out, r0, r1, err);
+    return measureSeamImpl(f0, f1, params, nullptr, &out, nullptr, r0, r1, err);
+}
+
+bool VulkanFisheyeStitcher::measureSeamFlowVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
+                                              const insv::StitchGpuParams& params,
+                                              insv::SeamFlowStrips& out, insv::SeamCutStats* cutOut,
+                                              VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                              std::string& err)
+{
+    return measureSeamImpl(f0, f1, params, nullptr, cutOut, &out, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                             const insv::StitchGpuParams& params,
                                             insv::SeamCosts* out, insv::SeamCutStats* cutOut,
+                                            insv::SeamFlowStrips* stripsOut,
                                             VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                                             std::string& err)
 {
+    const int stripCols = params.seamFlowCols, stripRows = params.seamFlowRows;
+    if (stripsOut && (stripCols <= 0 || stripRows <= 1 || (stripCols & 3))) {
+        err = "measureSeamFlowVk: no seam flow grid in the params";
+        return false;
+    }
     if (!m_ready || !d->nv12) {
         err = "measureSeamVk requires initAdopt()";
         return false;
@@ -977,6 +1014,8 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
     // view pipeline: its binding 3 only needs a token buffer, where the
     // stitch's wants the whole equirect.
     const bool viaView = m_viewReady;
+    if (stripsOut && !d->ensureStrips(static_cast<VkDeviceSize>(stripCols) * stripRows * 2, err))
+        return false;
     if (!d->ensureUbo(err) ||
         !(viaView ? d->ensureFlat(16, err) : d->ensureOutput(std::max(d->ew, 16), std::max(d->eh, 8), err)))
         return false;
@@ -1015,10 +1054,13 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
     }
 
     VkCommandBuffer cmd = d->cmd;
+    if (!d->ensureFlow(params, err))
+        return false;
     vkResetCommandBuffer(cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &bi);
+    d->recordFlowUpload(cmd);
 
     const VulkanLensInput* in[2] = {&f0, &f1};
     VkImageMemoryBarrier toRead[2]{};
@@ -1071,15 +1113,34 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
         }
         vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamCutRows, 1);
     }
+    // Pass 4, the seam flow's strips: four columns of a row per invocation,
+    // into its own buffer.
+    if (stripsOut) {
+        const uint32_t quads = static_cast<uint32_t>(stripCols / 4);
+        if (viaView) {
+            ViewPush vp{};
+            vp.pass = 4;
+            vkCmdPushConstants(cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
+            vkCmdDispatch(cmd, (quads + 15) / 16, (static_cast<uint32_t>(stripRows) + 3) / 4, 1);
+        } else {
+            const int32_t pass = 4;
+            vkCmdPushConstants(cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
+            vkCmdDispatch(cmd, (quads + kLocalSize - 1) / kLocalSize,
+                          (static_cast<uint32_t>(stripRows) + kLocalSize - 1) / kLocalSize, 1);
+        }
+    }
 
-    VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    toHost.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    toHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    toHost.srcQueueFamilyIndex = toHost.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    toHost.buffer = d->seamBuf;
-    toHost.size = VK_WHOLE_SIZE;
+    VkBufferMemoryBarrier toHost[2]{};
+    for (int k = 0; k < 2; ++k) {
+        toHost[k] = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        toHost[k].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        toHost[k].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        toHost[k].srcQueueFamilyIndex = toHost[k].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toHost[k].buffer = k == 0 ? d->seamBuf : d->stripBuf;
+        toHost[k].size = VK_WHOLE_SIZE;
+    }
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
-                         nullptr, 1, &toHost, 0, nullptr);
+                         nullptr, stripsOut ? 2 : 1, toHost, 0, nullptr);
     vkEndCommandBuffer(cmd);
 
     const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
@@ -1118,6 +1179,16 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
                 out->ncc[b][k] = v[0];
                 out->texture[b][k] = v[1];
             }
+    if (stripsOut) {
+        stripsOut->grid.cols = stripCols;
+        stripsOut->grid.rows = stripRows;
+        stripsOut->grid.stripRad = params.seamFlowStripRad;
+        stripsOut->grid.reachRad = params.seamFlowReachRad;
+        const size_t n = static_cast<size_t>(stripCols) * stripRows;
+        const uint8_t* src = static_cast<const uint8_t*>(d->stripMap);
+        for (int i = 0; i < 2; ++i)
+            stripsOut->grey[i].assign(src + i * n, src + (i + 1) * n);
+    }
     if (cutOut) {
         const float* s = c + d->kSeamCostBytes / sizeof(float);
         for (int b = 0; b < insv::kSeamDepthBins; ++b)
@@ -1157,7 +1228,9 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         return false;
     }
 
-    LensRingCore::Slot* slot = d->acquireLensSlot(lw, lh, err);
+    if (!d->ensureFlow(params, err)) // the flow image's size first: the slot's
+        return false;
+    LensRingCore::Slot* slot = d->acquireLensSlot(lw, lh, d->flowW, d->flowH, err);
     if (!slot)
         return false;
     // Hand the slot back if anything below fails.
@@ -1181,10 +1254,13 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     insv::YcbcrToRgbRows(d->ycbcr, d->deepLens() ? 10 : 8, sp.ycc);
 
     VkCommandBuffer cmd = d->cmd;
+    if (!d->ensureFlow(params, err))
+        return false;
     vkResetCommandBuffer(cmd, 0);
     VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &bi);
+    d->recordFlowUpload(cmd);
     d->tsReset();
 
     auto imgBarrier = [](VkImage img, VkImageLayout from, VkImageLayout to, VkAccessFlags src,
@@ -1228,6 +1304,26 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
             vkCmdCopyImage(cmd, in[lens]->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            slot->img[lens * 2 + plane], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
         }
+    }
+
+    // The seam flow field, as this frame's params have it (recordFlowUpload
+    // above left it readable by transfers).
+    {
+        VkImageMemoryBarrier fb = imgBarrier(d->flowImg, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
+                                             VK_ACCESS_TRANSFER_READ_BIT);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                             0, nullptr, 0, nullptr, 1, &fb);
+        VkImageCopy c{};
+        c.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        c.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        c.extent = {static_cast<uint32_t>(d->flowW), static_cast<uint32_t>(d->flowH), 1};
+        vkCmdCopyImage(cmd, d->flowImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       slot->img[LensSlot::kFlowImage], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+        fb = imgBarrier(d->flowImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT, 0);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+                             0, nullptr, 0, nullptr, 1, &fb);
     }
 
     // Release the slot's images to the importing device.

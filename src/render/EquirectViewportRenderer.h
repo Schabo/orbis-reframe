@@ -216,6 +216,7 @@ private:
     VkPipelineLayout m_lensPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_lensPipeline = VK_NULL_HANDLE;
     VkSampler m_lensSampler = VK_NULL_HANDLE;
+    VkSampler m_flowSampler = VK_NULL_HANDLE; // the seam flow field: wraps in u, clamps in v
     std::map<uint64_t, LensImport> m_imports; // by LensSlot::id
     // What's on screen in lens mode. Survives releaseResources (like
     // m_lastRgba) so a rebuilt device re-imports it.
