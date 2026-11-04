@@ -201,11 +201,14 @@ out, so each measures the seam as it goes, as playback does before a clip
 is analysed. The seam correction and lens colour are
 measured over the whole clip as the app does on open, unless the list gives
 them; the run prints them in the list's format, to paste in and save the
-time.
+time. With `method=new` the frame goes through the new stitcher instead
+(its seam colour blend and seam flow on, as new clips have them): it takes
+no seam correction, lens colour or seam analysis, so none is measured.
 
 The list has one frame per line, tab-separated: a name, the clip (relative
 to where the tool runs), the time in seconds, then any of
 `guard=none|standard|premium` (default premium, as the app),
+`method=depth|new` (the depth-aware seam, the default, or the new stitcher),
 `seam=Y,P,R,CU,CV,S`, `colour=R,G,B,SR,SG,SB,SPREAD`, `ref=FILE.ppm` and
 `refrot=Z,Y,X`; anything after `#` is a note. A list names local clips, so
 keep it outside the repository (`tmp/seamreg/`).
@@ -232,17 +235,20 @@ What the summary measures:
   table and the blend; `depth_confidence` / `cold_depth_confidence`: the
   depth measurement's mean confidence on the played and the cold frame.
   The JSON's detail also has the state's colour residual (`residual_pct`),
-  local correction (`local_pct`) and veiling light (`veil`) per bin.
+  local correction (`local_pct`) and veiling light (`veil`) per bin, and
+  the new stitcher's seam colour blend (`seam_colour_pct`).
 - `colour_*`: the lenses' colour difference where they meet (the fade's
   centre, per bin, unclipped samples), lens 0 against lens 1 in %, after
-  the colour correction; `raw_colour_*` before it.
+  the colour correction; `raw_colour_*` before it. For the new stitcher:
+  on the seam circle, at the template's geometry, after its seam colour
+  blend (the seam flow moves no colour).
 - `cold_*`: the cold frame against the played one: depth table, PSNR over
   the whole frame and in the band (99: the same picture). `cpu_*`: the
   CPU's cold frame against the GPU's.
 - `flicker_*`: over the played run's last second, the mean change from one
   frame to the next in the band and beside it (levels; motion changes
   both, flicker only the band), and of the depth table, cut, fade and local
-  colour correction.
+  colour correction (for the new stitcher, its seam colour blend's).
 - `ref_psnr`, `ref_band_psnr`: with `ref=`, PSNR against a reference
   equirect of the same frame (an 8-bit PPM, any size, e.g. Insta360 Studio's
   export of it through `ffmpeg -i frame.png ref.ppm`). `refrot=Z,Y,X` is the

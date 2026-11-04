@@ -7,6 +7,11 @@
 // LIST has one frame per line, tab-separated: a name (the output files'),
 // the clip, the time in seconds, then any of
 //   guard=none|standard|premium       (default premium, as the app)
+//   method=depth|new                  (the stitcher: the depth-aware seam,
+//                                      the default, or the new stitcher with
+//                                      its seam colour blend and seam flow,
+//                                      which takes no seam correction, lens
+//                                      colour or seam analysis)
 //   seam=Y,P,R,CU,CV,S                (the clip's seam correction; measured
 //                                      over the whole clip as the app does
 //                                      when not given)
@@ -18,7 +23,7 @@
 //
 // Per frame the seam of the stretch from --warmup seconds before it is
 // analysed (stitch::AnalyseClipSeam, as the app does after opening a clip;
-// --live leaves it out), then the clip is stitched through
+// --live and the new stitcher leave it out), then the clip is stitched through
 // stitch::NativeStitchSource three times: on the GPU played into from the
 // start of the stretch (as playback reaches it), on the GPU seeked to cold
 // (as a step back, a screenshot or an export's first frame), and on the CPU
@@ -33,7 +38,9 @@
 // Measured: the lenses' offset left after the depth table per 5 deg block
 // (an NCC search, deg; far blocks are those the table puts at infinity), the
 // depth table and its near bins, the colour difference where the lenses meet
-// per channel (before and after the correction), cold against played (table,
+// per channel (before and after the correction; for the new stitcher on the
+// seam circle at the template's geometry, with its seam colour blend --
+// the seam flow moves no colour), cold against played (table,
 // PSNR in the band and whole), CPU against GPU (cold), the frame-to-frame
 // change over the played run's last second in the band and beside it, and
 // with a reference, PSNR against it.
@@ -80,7 +87,8 @@ constexpr double kDeg = kPi / 180.0;
 const char kUsage[] =
     "usage: seam_regress LIST --out DIR [--baseline DIR] [--only TEXT] [--width N]\n"
     "       [--warmup S] [--eq-width N] [--no-cpu] [--no-images] [--live]\n"
-    "  LIST: name<TAB>clip<TAB>seconds[<TAB>guard=..|seam=..|colour=..|ref=..|refrot=..]... [# note]\n";
+    "  LIST: name<TAB>clip<TAB>seconds[<TAB>guard=..|method=..|seam=..|colour=..|ref=..|refrot=..]...\n"
+    "        [# note]\n";
 
 // Runs fn(i) for i in [0, n) on all cores.
 void ParallelFor(int n, const std::function<void(int)>& fn)
@@ -101,6 +109,7 @@ struct Entry {
     std::string name, clip, note;
     int64_t timeMs = 0;
     stitch::PreviewStitchConfig::LensGuard guard = stitch::PreviewStitchConfig::LensGuard::Premium;
+    bool newStitcher = false;
     std::optional<insv::SeamCorrection> seam;
     std::optional<insv::LensColour> colour;
     std::string ref;
@@ -149,6 +158,12 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
             if (key == "guard") {
                 using G = stitch::PreviewStitchConfig::LensGuard;
                 e.guard = v == "none" ? G::None : v == "standard" ? G::Standard : G::Premium;
+            } else if (key == "method") {
+                if (v != "depth" && v != "new") {
+                    err = where + "method= wants depth or new";
+                    return false;
+                }
+                e.newStitcher = v == "new";
             } else if (key == "seam") {
                 double a[6] = {0, 0, 0, 0, 0, 0};
                 if (std::sscanf(v.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf", &a[0], &a[1], &a[2], &a[3],
@@ -382,14 +397,40 @@ void ComparePsnr(const Geometry& g, const Rgb& a, const Rgb& b, double& whole, d
 constexpr double kStripPxDeg = 20.0;
 constexpr double kStripElDeg = 12.0;
 
+// How a stitcher treats each lens at a direction, as
+// FisheyeStitcher::renderEquirect does: its log gains and veiling light
+// (lensLogGains' layout), where the lenses meet per bin, and the depth
+// table the lenses are lined up by. The depth-aware seam: its blend at its
+// cut. The new stitcher: its seam colour blend's table on the seam circle,
+// at the template's geometry.
+struct Treatment {
+    const insv::FisheyeStitcher* st = nullptr;
+    const insv::SeamBlend* blend = nullptr; // the depth-aware seam's
+    const float* seamColour = nullptr;      // the new stitcher's (StitchGpuParams::seamColour)
+    const float* q = nullptr;
+
+    void gains(const insv::Vec3& d, double lg[2][3], double veil[2][3]) const
+    {
+        st->lensLogGains(d, blend, lg, veil);
+        if (seamColour) {
+            double L[3];
+            st->seamColourLog(d, seamColour, L);
+            for (int k = 0; k < 3; ++k) {
+                lg[0][k] -= 0.5 * L[k];
+                lg[1][k] += 0.5 * L[k];
+            }
+        }
+    }
+    double cutRad(int bin) const { return blend ? blend->cut[bin] : 0.0; }
+};
+
 struct LensStrips {
     int W = 0, H = 0;
     std::vector<float> raw[2];     // RGB as decoded, -1 = the lens doesn't see it
     std::vector<float> treated[2]; // after the veiling light and colour correction
 };
 
-LensStrips MakeLensStrips(const Geometry& g, const insv::Image (&lens)[2], const float* q,
-                          const insv::SeamBlend& blend)
+LensStrips MakeLensStrips(const Geometry& g, const insv::Image (&lens)[2], const Treatment& tr)
 {
     LensStrips s;
     s.W = int(360 * kStripPxDeg);
@@ -403,9 +444,9 @@ LensStrips MakeLensStrips(const Geometry& g, const insv::Image (&lens)[2], const
         for (int x = 0; x < s.W; ++x) {
             const double phi = (x + 0.5) / kStripPxDeg * kDeg;
             const insv::Vec3 d = g.st.seamDir(phi, e);
-            const double qq = g.st.seamQAt(d, q);
+            const double qq = g.st.seamQAt(d, tr.q);
             double lg[2][3], veil[2][3];
-            g.st.lensLogGains(d, &blend, lg, veil);
+            tr.gains(d, lg, veil);
             for (int i = 0; i < 2; ++i) {
                 double u, v, th;
                 if (!g.st.project(i, g.st.lensRay(i, d, qq), u, v, th) || u < 0 || v < 0 ||
@@ -548,7 +589,7 @@ struct ColourBin {
 };
 
 std::vector<ColourBin> MeasureColour(const Geometry& g, const insv::Image (&lens)[2],
-                                     const float* q, const insv::SeamBlend& blend)
+                                     const Treatment& tr)
 {
     std::vector<ColourBin> bins(insv::kSeamDepthBins);
     const double binRad = 2 * kPi / insv::kSeamDepthBins;
@@ -557,13 +598,13 @@ std::vector<ColourBin> MeasureColour(const Geometry& g, const insv::Image (&lens
         for (int ei = 0; ei < insv::kSeamCutPatchEl; ++ei)
             for (int ai = 0; ai < insv::kSeamCutPatchAz; ++ai) {
                 const double phi = (b + (ai + 0.5) / insv::kSeamCutPatchAz) * binRad;
-                const double e = blend.cut[b] +
+                const double e = tr.cutRad(b) +
                                  ((ei + 0.5) / insv::kSeamCutPatchEl - 0.5) * 2 *
                                      insv::kSeamCutPatchElDeg * kDeg;
                 const insv::Vec3 d = g.st.seamDir(phi, e);
-                const double qq = g.st.seamQAt(d, q);
+                const double qq = g.st.seamQAt(d, tr.q);
                 double lg[2][3], veil[2][3];
-                g.st.lensLogGains(d, &blend, lg, veil);
+                tr.gains(d, lg, veil);
                 std::array<float, 3> c[2];
                 bool seen = true;
                 for (int i = 0; i < 2 && seen; ++i) {
@@ -713,9 +754,14 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         stitch::MeasureFailure::None)
         return false;
 
+    // The new stitcher takes neither the seam correction nor the lens
+    // colour: it joins the lenses from the lens model, with the camera
+    // model's lens correction.
     insv::SeamCorrection seam;
     std::string seamFrom = "list";
-    if (e.seam) {
+    if (e.newStitcher) {
+        seamFrom = "not used: the new stitcher";
+    } else if (e.seam) {
         seam = *e.seam;
     } else {
         const auto r = stitch::MeasureClipSeam(e.clip, 0, meta->durationMs, e.guard, nullptr);
@@ -725,7 +771,9 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     }
     insv::LensColour colour;
     std::string colourFrom = "list";
-    if (e.colour) {
+    if (e.newStitcher) {
+        colourFrom = "not used: the new stitcher";
+    } else if (e.colour) {
         colour = *e.colour;
     } else {
         const auto r = stitch::MeasureClipLensColour(e.clip, 0, meta->durationMs, e.guard, nullptr, seam);
@@ -746,7 +794,9 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
 
     params.seam = seam;
     params.lensColour = colour;
-    params.depthSeam = true;
+    params.depthSeam = !e.newStitcher;
+    if (e.newStitcher)
+        params.modelCorrection = meta->lensCorrection;
     if (!g.st.configure(calib, meta->lensWidth, meta->lensHeight, params)) {
         err = "FisheyeStitcher::configure failed";
         return false;
@@ -758,7 +808,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     config.width = opt.width > 0 ? opt.width : stitch::FullSphereWidth(meta->lensWidth);
     config.height = config.width / 2;
     config.lensGuard = e.guard;
-    config.method = stitch::PreviewStitchConfig::Method::DepthSeam;
+    config.method = e.newStitcher ? stitch::PreviewStitchConfig::Method::New
+                                  : stitch::PreviewStitchConfig::Method::DepthSeam;
     auto open = [&](stitch::NativeStitchSource& src) {
         if (!src.Open(e.clip, config)) {
             err = "open: " + src.GetLastError();
@@ -773,7 +824,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     // clip (held in memory here); every path below then reads it. Without
     // it (--live) each measures the seam as it goes.
     double analysisSec = 0;
-    if (!opt.live) {
+    if (!opt.live && !e.newStitcher) {
         const auto t0 = std::chrono::steady_clock::now();
         const stitch::SeamAnalysisResult r = stitch::AnalyseClipSeam(
             {e.clip, e.guard, seam, colour}, std::max<int64_t>(0, e.timeMs - opt.warmupMs), e.timeMs);
@@ -801,6 +852,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     std::vector<float> prevStrip;
     std::vector<float> prevQ;
     insv::SeamBlend prevBlend;
+    std::vector<float> prevColour;
     std::vector<FlickerStep> flicker;
     stitch::Frame played;
     int runFrames = 0;
@@ -817,6 +869,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
             std::vector<float> strip = EquirectStrip(g, eq, sW, sH, 5.0, bandDeg + 11);
             const float* q = gpu.SeamDepthTable();
             const insv::SeamBlend& bl = gpu.SeamBlendState();
+            const float* sc = gpu.SeamColourTable();
             if (!prevStrip.empty()) {
                 FlickerStep st;
                 double nb = 0, no = 0;
@@ -838,8 +891,9 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
                     st.q += std::fabs(q[b] - prevQ[b]);
                     st.cut += std::fabs(bl.cut[b] - prevBlend.cut[b]) / kDeg;
                     st.fade += std::fabs(bl.fade[b] - prevBlend.fade[b]) / kDeg;
-                    for (int k = 0; k < 3; ++k)
-                        st.local += std::fabs(bl.local[b][k] - prevBlend.local[b][k]) * 100 / 3;
+                    for (int k = 0; k < 3; ++k) // one of the two is 0: the stitcher's own
+                        st.local += std::fabs(bl.local[b][k] - prevBlend.local[b][k]) * 100 / 3 +
+                                    std::fabs(sc[b * 3 + k] - prevColour[b * 3 + k]) * 100 / 3;
                 }
                 st.q /= insv::kSeamDepthBins;
                 st.cut /= insv::kSeamDepthBins;
@@ -850,6 +904,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
             prevStrip = std::move(strip);
             prevQ.assign(q, q + insv::kSeamDepthBins);
             prevBlend = bl;
+            prevColour.assign(sc, sc + insv::kSeamDepthBins * 3);
         }
         if (last) {
             played = std::move(f);
@@ -859,6 +914,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     const int64_t pts = played.timestamp_ms;
     std::vector<float> qPlayed(gpu.SeamDepthTable(), gpu.SeamDepthTable() + insv::kSeamDepthBins);
     const insv::SeamBlend blendPlayed = gpu.SeamBlendState();
+    const std::vector<float> colourPlayed(gpu.SeamColourTable(),
+                                          gpu.SeamColourTable() + insv::kSeamDepthBins * 3);
     const double confPlayed = gpu.SeamDepthConfidence();
     std::printf("  frame %lld ms, played in over %d frames\n", static_cast<long long>(pts), runFrames);
 
@@ -910,9 +967,16 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     }
 
     const Rgb eqPlayed = FromFrame(played), eqCold = FromFrame(cold);
-    const LensStrips ls = MakeLensStrips(g, lens, qPlayed.data(), blendPlayed);
+    Treatment tr;
+    tr.st = &g.st;
+    tr.q = qPlayed.data();
+    if (e.newStitcher)
+        tr.seamColour = colourPlayed.data();
+    else
+        tr.blend = &blendPlayed;
+    const LensStrips ls = MakeLensStrips(g, lens, tr);
     const std::vector<Block> blocks = MeasureOffsets(ls, bandDeg, qPlayed.data());
-    const std::vector<ColourBin> colourBins = MeasureColour(g, lens, qPlayed.data(), blendPlayed);
+    const std::vector<ColourBin> colourBins = MeasureColour(g, lens, tr);
 
     Summary sum;
     sum.emplace_back("frame_ms", double(pts));
@@ -1119,6 +1183,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     j.s << Json::str(e.note);
     j.key("guard");
     j.s << Json::str(GuardName(e.guard));
+    j.key("method");
+    j.s << Json::str(e.newStitcher ? "new" : "depth");
     j.key("gpu");
     j.s << (onGpu ? "true" : "false");
     j.key("width");
@@ -1157,6 +1223,10 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     j.key("local_pct");
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
         return Json::arr(3, [&](int k) { return Json::num(std::expm1(blendPlayed.local[i][k]) * 100); });
+    });
+    j.key("seam_colour_pct");
+    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+        return Json::arr(3, [&](int k) { return Json::num(std::expm1(colourPlayed[i * 3 + k]) * 100); });
     });
     j.key("veil");
     j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
