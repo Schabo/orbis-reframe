@@ -341,6 +341,11 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         }
         out.exposureRecords = static_cast<int64_t>(tele->exposure.size());
         out.rollingShutterMs = tele->rolling_shutter_ms;
+        out.captureScale = insv::CaptureScale(*tele, out.fps);
+        if (out.captureScale > 1.0)
+            out.timelapseIntervalSec = out.fps > 0.0 ? out.captureScale / out.fps : 0.0;
+        else if (out.captureScale < 1.0)
+            out.captureFps = tele->capture_fps;
         // Field 22 (§3.3): the stream itself is tagged the same either way.
         out.colorProfile = tele->gamma_mode;
         out.logProfile = tele->gamma_mode == "I_Log" ? "I-Log" : "";
@@ -363,7 +368,8 @@ std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) 
 std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {
     if (clip.gpsFixes == 0)
         return std::nullopt;
-    const auto gps = insv::ReadInsvGps(clip.path, insv::FindInsvModel(clip.model).telemetryTickUs);
+    const auto gps = insv::ReadInsvGps(clip.path, insv::FindInsvModel(clip.model).telemetryTickUs,
+                                       clip.captureScale);
     if (!gps || gps->fixes.empty())
         return std::nullopt;
     // The fixes carry Unix time; field 98.3 says when the first frame was
@@ -385,9 +391,14 @@ std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) 
     track.clockStamped = !gps->aligned_by_speed;
     track.fixes.reserve(gps->fixes.size());
     // A heading of -1 is the camera's "don't know", written while standing
-    // still (§8).
+    // still (§8). Unix time runs with the camera's clock, not the video's.
+    const auto videoMs = [&clip](int64_t sinceFirstMs) {
+        return clip.captureScale == 1.0
+                   ? sinceFirstMs
+                   : std::llround(static_cast<double>(sinceFirstMs) / clip.captureScale);
+    };
     for (const insv::InsvGpsFix& f : gps->fixes)
-        track.fixes.push_back({f.unix_ms - gps->first_frame_unix_ms, f.latitude, f.longitude,
+        track.fixes.push_back({videoMs(f.unix_ms - gps->first_frame_unix_ms), f.latitude, f.longitude,
                                f.speed_mps, f.heading_deg < 0.0 ? std::nan("") : f.heading_deg,
                                f.altitude_m});
     return track;

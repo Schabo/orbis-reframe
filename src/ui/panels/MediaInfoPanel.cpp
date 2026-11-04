@@ -148,6 +148,21 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
             addValue(tr("Resolution"), QStringLiteral("%1×%2").arg(v.width).arg(v.height));
         }
         addValue(tr("Frame rate"), tr("%1 fps").arg(fps(v.fps)));
+        if (m.captureFps > 0 && v.fps > 0)
+            addValue(tr("Slow motion"), tr("Filmed at %1 fps").arg(fps(m.captureFps)),
+                     tr("The camera filmed %1 frames a second and stored them at %2, so the "
+                        "clip plays %3× slower than it happened. Stabilization and the GPS "
+                        "follow the time it was filmed in.")
+                         .arg(fps(m.captureFps), fps(v.fps))
+                         .arg(m.captureFps / v.fps, 0, 'f', 2));
+        if (m.timelapseIntervalSec > 0 && v.fps > 0)
+            addValue(tr("Timelapse"),
+                     tr("A frame every %1 s").arg(m.timelapseIntervalSec, 0, 'f', 1),
+                     tr("%1 of recording in %2 of video. Stabilization and the GPS follow the "
+                        "time it was filmed in.")
+                         .arg(duration(std::llround(double(m.durationMs) *
+                                                    m.timelapseIntervalSec * v.fps)),
+                              duration(m.durationMs)));
         if (v.frameCount > 0)
             addValue(tr("Frames"), locale.toString(qlonglong(v.frameCount)));
         addValue(tr("Codec"), upperCodec(v.codec, v.profile));

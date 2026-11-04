@@ -67,7 +67,8 @@ public:
     void addFrame(const uint8_t* gray, int w, int h, double tSec);
 
     // `gyro` must be built from the clip with the sync to be refined (its
-    // rawOrientation() is sampled at video time + adjustment + row time);
+    // rawOrientation() is sampled at video time + (adjustment + row time)
+    // / captureScale: both are on the camera's clock);
     // `readoutSec` is the sensor readout (GyroStabilizer::readoutSec()).
     Result estimate(const GyroStabilizer& gyro, double readoutSec, const RowFn& rowOf) const;
 

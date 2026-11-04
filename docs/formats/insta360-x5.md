@@ -284,9 +284,15 @@ From the six Demo timelapses (8K, 2 s interval, firmware v1.11.10):
 - **Exposure (type 4) and GPS (type 7) run in real time**, not per frame:
   10 Hz over the whole recording (24 894 exposure records on `_078`), so
   the per-frame exposure sync of §7.1 doesn't apply.
+- **The type 6 times are 2.026 s apart** on `_078` (2026-11-04), not the
+  2000 ms of field 30: 1228 frames over 41.5 min say the same.
 - **The app** opens, stitches and exports them as 8K 30 clips (`_078`
-  through `reframe_export`, 2026-10-20, clean stitch). Stabilization has
-  no motion data (no type 3); type 24 could give it some.
+  through `reframe_export`, 2026-10-20, clean stitch). Since 2026-11-04 it
+  knows them as timelapses: video time is turned into the camera's clock
+  by the frames' own times (type 6; 60.7 s per second of video on
+  `_078`), for the GPS, and Media information shows *Timelapse*.
+  Stabilization has no motion data (no type 3); type 24 could give it
+  some.
 
 Field 26.1 isn't a reliable mode field beyond timelapse: it is 0 on the
 8K, 4K 120 and 5.7K+ HDR clips, 6 (`VideoHdr`) on the 5.7K 60 HDR and the

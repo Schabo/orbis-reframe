@@ -94,11 +94,26 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
                                  [](const ImuSample& a, const ImuSample& b) {
                                      return a.timestamp < b.timestamp;
                                  })->timestamp;
+    // Video time to the camera's clock, by the mode (a timelapse, slow
+    // motion; 1 otherwise).
+    const double scale = CaptureScale(tele, fps);
+    track.captureScale = scale;
+    if (scale != 1.0)
+        std::fprintf(stderr, "insv: %g s of the camera's clock per second of video (%s)\n", scale,
+                     scale > 1.0 ? "timelapse" : "slow motion");
+    // In a timelapse the exposure record runs at the sensor's rate over the
+    // whole time, not one entry per stored frame (its frames' own times,
+    // record 0x600, time it instead).
+    const bool exposurePerFrame =
+        tele.frame_timestamps.empty() && !(tele.timelapse_interval_ms > 0.0);
+
     // Frame-clock rate: the exposure record has one device timestamp
     // per frame from field 24's frame on; least-squares slope of those vs the
-    // nominal n / fps. Linear on every sample clip (~+40 / -15 ppm).
+    // nominal n / fps on the camera's clock. Linear on every sample clip
+    // (~+40 / -15 ppm).
     double clockRate = 0.0;
-    if (tele.first_frame_timestamp != 0 && fps > 1.0 && exposure.size() >= 300) {
+    if (exposurePerFrame && tele.first_frame_timestamp != 0 && fps > 1.0 &&
+        exposure.size() >= 300) {
         size_t k = 0;
         uint64_t best = UINT64_MAX;
         for (size_t i = 0; i < exposure.size(); ++i) {
@@ -125,7 +140,7 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
                 sxy += x * y;
                 sxx += x * x;
             }
-            const double r = sxx > 0.0 ? sxy / sxx - 1.0 : 0.0;
+            const double r = sxx > 0.0 ? sxy / sxx / scale - 1.0 : 0.0;
             if (std::fabs(r) < 500e-6) // sanity: a real crystal is tens of ppm off
                 clockRate = r;
         }
@@ -153,11 +168,11 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
             track.offsetSec = (static_cast<double>(tele.first_frame_timestamp) -
                                static_cast<double>(imuT0)) * 1e-6 +
                               tele.gyro_timestamp_ms * 1e-3 +
-                              tele.time_map_offset_ms * 1e-3 * (1.0 + clockRate) +
+                              tele.time_map_offset_ms * 1e-3 * scale * (1.0 + clockRate) +
                               kCenterRowMs * 1e-3;
-        } else if (exposure.size() >= 32 && fps > 1.0) {
+        } else if (exposurePerFrame && exposure.size() >= 32 && fps > 1.0) {
             const double imu0 = static_cast<double>(imuT0) * 1e-6;
-            const double frameDt = 1.0 / fps;
+            const double frameDt = scale / fps;
             std::vector<double> off;
             off.reserve(exposure.size());
             for (size_t n = 0; n < exposure.size(); ++n)

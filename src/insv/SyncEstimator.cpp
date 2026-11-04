@@ -228,7 +228,11 @@ SyncEstimator::Result SyncEstimator::estimate(const GyroStabilizer& gyro, double
             continue;
         rawFlow[c] = std::sqrt(raw / valid);
         for (int s = 0; s < nstep; ++s) {
-            const double adj = (-p.searchMs + s * p.stepMs) * 1e-3 + cl.rowSec;
+            // The shift (the sync's, added to the track's offset) and the row's
+            // readout are on the camera's clock; rawOrientation takes video
+            // time.
+            const double adj =
+                ((-p.searchMs + s * p.stepMs) * 1e-3 + cl.rowSec) / gyro.captureScale();
             // Predicted rotational flow per interval, then high-passed per window.
             std::vector<double> px, py;
             px.reserve(nIntervals);

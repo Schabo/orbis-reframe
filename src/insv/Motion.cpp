@@ -81,10 +81,8 @@ MotionTrack BuildMotion(const ImuTrack& track)
               [](const ImuSample& a, const ImuSample& b) { return a.timestamp < b.timestamp; });
     const AxisMap axes = ParseAxisMap(track.axisMap);
     const double t0 = static_cast<double>(s.front().timestamp);
-    const double offset = level.effectiveTimeOffsetSec();
-    const double rate = level.clockRatePpm() * 1e-6;
     const auto videoTime = [&](const ImuSample& x) {
-        return ((static_cast<double>(x.timestamp) - t0) * 1e-6 - offset) / (1.0 + rate);
+        return level.videoTime((static_cast<double>(x.timestamp) - t0) * 1e-6);
     };
     const double step = out.stepSec;
     const double end = videoTime(s.back());

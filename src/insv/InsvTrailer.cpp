@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -233,6 +234,10 @@ struct ImuMetadata {
     double gyro_range_dps = 2000;       // field 65.2
     std::string gamma_mode;             // field 22
     std::vector<double> imu_mount;      // field 69, {w, x, y, z} when complete
+    double capture_fps = 0;             // field 195, {1: num, 2: den}
+    double stored_fps = 0;              // field 196, as 195
+    uint64_t timelapse_interval = 0;    // field 30
+    bool timelapse_interval_ms = false; // field 59: field 30 is in ms
 };
 
 bool ReadVarint(const std::vector<uint8_t>& b, size_t& i, uint64_t& v) {
@@ -295,6 +300,19 @@ ImuMetadata ParseImuMetadata(const std::vector<uint8_t>& payload) {
                 else if (g == 2) m.gyro_range_dps = static_cast<double>(gv);
             });
         }
+        else if ((f == 195 || f == 196) && wt == 2) {
+            uint64_t num = 0, den = 0;
+            WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv, const std::vector<uint8_t>&) {
+                if (gwt != 0) return;
+                if (g == 1) num = gv;
+                else if (g == 2) den = gv;
+            });
+            if (num != 0 && den != 0)
+                (f == 195 ? m.capture_fps : m.stored_fps) =
+                    static_cast<double>(num) / static_cast<double>(den);
+        }
+        else if (f == 30 && wt == 0) m.timelapse_interval = v;
+        else if (f == 59 && wt == 0) m.timelapse_interval_ms = v != 0;
     });
     return m;
 }
@@ -518,7 +536,8 @@ std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& p) {
     return out;
 }
 
-std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us) {
+std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us,
+                                   double capture_scale) {
     std::ifstream file(file_path, std::ios::binary);
     if (!file) return std::nullopt;
     file.seekg(0, std::ios::end);
@@ -548,16 +567,18 @@ std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us)
     // No field 98 (the A1): the flight controller's velocity is timed on the
     // IMU's clock, which field 24 ties to the video (a trimmed file's video
     // starting the time map's offset later), and its horizontal speed is the
-    // GPS speed (docs/formats/antigravity-a1.md).
+    // GPS speed (docs/formats/antigravity-a1.md). The match is made in real
+    // time, on the camera's clock from the first frame on, which runs
+    // `capture_scale` times the video's (the time map's offset is video time).
     if (out.first_frame_unix_ms == 0 && !out.fixes.empty() && !attitude.empty() &&
-        firstFrameTicks != 0) {
+        firstFrameTicks != 0 && capture_scale > 0.0) {
         std::vector<SpeedSample> reference;
         reference.reserve(attitude.size());
         for (const AttitudeSample& a : attitude)
             reference.push_back(
                 {(static_cast<double>(a.timestamp) - static_cast<double>(firstFrameTicks)) *
                          tick_us * 1e-6 -
-                     timeMapOffsetMs * 1e-3,
+                     timeMapOffsetMs * 1e-3 * capture_scale,
                  std::hypot(a.velocity_ned[0], a.velocity_ned[1])});
         std::sort(reference.begin(), reference.end(),
                   [](const SpeedSample& a, const SpeedSample& b) { return a.timeSec < b.timeSec; });
@@ -642,6 +663,9 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                 CountGps(payload, out);
             } else if (id == 0x8000) {
                 out.time_map_offset_ms = ParseTimeMapOffsetMs(payload);
+            } else if (id == 0x600) {
+                for (size_t off = 0; off + 8 <= payload.size(); off += 8)
+                    out.frame_timestamps.push_back(ReadU64LE(&payload[off]));
             }
             return true; // want every telemetry record in the trailer
         });
@@ -659,6 +683,8 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
             e.timestamp = us(e.timestamp);
         for (AttitudeSample& a : out.attitude)
             a.timestamp = us(a.timestamp);
+        for (uint64_t& t : out.frame_timestamps)
+            t = us(t);
         out.first_frame_timestamp = us(out.first_frame_timestamp);
     }
     if (meta.imu_mount.size() == 4) {
@@ -673,7 +699,39 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
     out.gyro_timestamp_ms = meta.gyro_timestamp_ms;
     out.rolling_shutter_ms = meta.rolling_shutter_ms;
     out.gamma_mode = meta.gamma_mode;
+    out.capture_fps = meta.capture_fps;
+    out.stored_fps = meta.stored_fps;
+    if (meta.timelapse_interval != 0) {
+        // Only the ms form has been seen (both cameras set field 59);
+        // without it the unit is unknown, so the frames' own times, or
+        // nothing, time the clip.
+        if (meta.timelapse_interval_ms)
+            out.timelapse_interval_ms = static_cast<double>(meta.timelapse_interval);
+        else
+            std::fprintf(stderr, "insv: %s: timelapse interval %llu without field 59 (its "
+                                 "unit); not used\n",
+                         file_path.c_str(),
+                         static_cast<unsigned long long>(meta.timelapse_interval));
+    }
     return out;
+}
+
+double CaptureScale(const InsvTelemetry& tele, double fps) {
+    const double stored = tele.stored_fps > 0.0 ? tele.stored_fps : fps;
+    if (!(stored > 0.0))
+        return 1.0;
+    // A timelapse: by its frames' own times where it has them (the A1's
+    // 2 s interval measures 2.002 s), else by the interval it names.
+    const std::vector<uint64_t>& ft = tele.frame_timestamps;
+    if (ft.size() >= 2 && ft.back() > ft.front())
+        return static_cast<double>(ft.back() - ft.front()) * 1e-6 /
+               static_cast<double>(ft.size() - 1) * stored;
+    if (tele.timelapse_interval_ms > 0.0)
+        return tele.timelapse_interval_ms * 1e-3 * stored;
+    // Slow motion: the file names both rates. Equal on every other clip.
+    if (tele.capture_fps > 0.0 && std::fabs(tele.capture_fps / stored - 1.0) > 1e-3)
+        return stored / tele.capture_fps;
+    return 1.0;
 }
 
 std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path) {

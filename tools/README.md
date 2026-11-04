@@ -501,6 +501,13 @@ millisecond or two, a wrong gyro axis map, or the lens model. Only rule
 those out before calling a clip's shake parallax, motion blur or vibration
 faster than the frame rate can capture.
 
+The first line gives the video↔IMU timing the run uses: the offset, the
+**capture scale** (seconds of the camera's clock per second of video: 1,
+but 0.2997 in 100 fps slow motion stored at 29.97 and 60 in a timelapse of
+a frame every 2 s) and the frame clock's rate. Blocks [1] and [2] read the
+IMU on its own clock, over the trim range turned onto it; the image blocks
+work in video time.
+
 ```sh
 build/residual_stab clip.insv --diagnose --trim-in 0 --trim-out 30000
 build/residual_stab clip.insv out.mp4 --render derotate2d --stab-mode horizonLock

@@ -372,9 +372,13 @@ Markers as in [`README.md`](README.md).
 
 ✅ One clip of each (2026-11-01, measured 2026-11-02). In both, **the video's
 time is not the drone's clock**: the motion and exposure records run in
-real time while the video plays slower or faster, so sync, stabilization
-and the GPS alignment, which take video time as clock time, don't fit
-them as they stand.
+real time while the video plays slower or faster. The app turns video
+time into the drone's clock by a **capture scale**, seconds of the clock
+per second of video (`insv::CaptureScale`): field 196 over field 195 in
+slow motion (0.2997), a timelapse's frame interval times the stored rate
+(60), from its frames' own times (type 6) where it has them, else from
+field 30. Sync, stabilization (its smoothing windows stay in video time),
+the GPS and the motion overlays all go through it (2026-11-04).
 
 - **4K Slow Motion** (`_028`): two 1920² HEVC streams **stored at 29.97
   fps** (2997/100), 2773 frames, 92.5 s of video. Captured at 100: field
@@ -383,15 +387,27 @@ them as they stand.
   ms, and the readout (field 25, 6.33 ms) is 4K 100's. So the file is
   tagged at the **playback rate** and plays 3.34× slowed as it stands.
   Records as in a normal clip (types 1-4, 7, 9, 11, 14, 23, 32, 33, 37,
-  38, 56); a proxy as usual, also at 29.97.
+  38, 56); a proxy as usual, also at 29.97. With the scale, the file's
+  sync holds (the image's yaw left after Horizon lock is smallest at the
+  file's offset, 0.053°/frame, against 0.114 unstabilized; ±20 ms both
+  worse) and the frame clock fits to +0.1 ppm; the GPS, lined up by its
+  speed, spans 3.0-88.4 s of the video (before: 0.9-26.5 s). ❓ How a
+  trimmed slow-motion file's time map (record 0x8000) counts: taken as
+  video time, untested.
 - **Timelapse** (`_029`, 8K H.265): two 3840² streams at 29.97 fps, 150
   frames (5.0 s) over ~299 s of flight: **one frame every 2 s**. As on
   the X5 (X5 §3.5), field 26.1 is 2, field 30 is 2000 and field 59 is
   true (the interval in ms); field 133 is 2000 too. Record **type 6** holds
-  one `u64` timestamp per frame (150; the X5 writes one more). Unlike the
+  one `u64` timestamp per frame (150; the X5 writes one more), the first
+  one field 24's, **2.002 s apart** (2001.92-2002.08 ms: 60 frames of the
+  sensor's 29.97), so the scale is 60.0, not the 59.94 field 30 gives.
+  Unlike the
   X5's, the A1's timelapse **keeps the IMU** (type 3, ~1 kHz over the
   whole 299 s) and the attitude (37); the exposure record runs at 29.97
   Hz over the whole time (8956 entries), GPS every 1.6 s. **No proxy.**
+  With the scale, Horizon lock keeps it level (pitch left in the image
+  0.19°/frame against 0.70 unstabilized). Its GPS doesn't line up: the
+  drone hovered (0-0.17 m/s), so there's no speed to match.
 
 ## Photos
 
@@ -465,9 +481,9 @@ The status words are the X5's (X5 §3.4).
 | 360 Video 8K | 7680×3840, 30 / 25 / 24 | ✅ one `.insv` with both lenses (two 3840² streams), and a `PRX_….prx` proxy | 3 at 29.97 fps, H.265; 5 at 29.97 / 25 / 24, H.264 (with a take-off and a landing); standard colour | experimental: opens, stitches, stabilizes and exports; GPS lined up by its speed |
 | 360 Video 5.2K | 5248×2624, 60 / 50 / 30 / 25 / 24 | ✅ as above, two 2624² streams | 5, one at each rate, H.264; 1 at 60, H.265 | experimental, as 8K: plays in real time (60 fps: 4.0 ms a frame on an RTX 5070), Horizon lock level within 0.2°, sync within 5 ms, exports (5.2K 60, `_015`) |
 | 360 Video 4K | 3840×1920, 100 / 30 / 25 / 24 | ✅ as above, two 1920² streams; 100 fps stored at 100 | 1 at 100 fps, H.264 | as 5.2K: plays at 100 fps (3.3 ms a frame), level within 0.5°, exports (`_020`); wanted: 30 / 25 / 24 |
-| 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ✅ as 4K, stored at 29.97, captured at 100 (field 195; *Slow motion and timelapse*) | 1 at 29.97, H.265 | not checked in the app; ⚠️ it plays as stored (3.34× slowed), and its motion data runs on capture time, which the app doesn't read (field 195) |
+| 4K Slow Motion | 3840×1920, 30 / 25 / 24 | ✅ as 4K, stored at 29.97, captured at 100 (field 195; *Slow motion and timelapse*) | 1 at 29.97, H.265 | experimental: plays as stored (3.34× slowed, as the drone means it); sync, stabilization and GPS on the capture time (by the tools); Media information shows *Slow motion* |
 | H.264 encoding | up to 170 Mb/s, as H.265 | ✅ as above, H.264 High; field 132 = 1 | 11 | as its mode in H.265 |
-| Timelapse | added by the spring 2026 update; ❓ other sizes and intervals | ✅ as 8K, one frame every 2 s, IMU kept, no proxy (*Slow motion and timelapse*) | 1 at 8K, 2 s, H.265 | not checked in the app; ⚠️ its motion data runs on flight time, not video time; wanted, low: another interval |
+| Timelapse | added by the spring 2026 update; ❓ other sizes and intervals | ✅ as 8K, one frame every 2 s, IMU kept, no proxy (*Slow motion and timelapse*) | 1 at 8K, 2 s, H.265 (a hover) | experimental: stabilization on the flight time (by the tools); Media information shows *Timelapse*; wanted, low: another interval, one in flight (for the GPS) |
 | 360 Photo: Standard, HDR, Burst, AEB | 55 MP 10496×5248, 14 MP 5248×2624 | ✅ `.insp`, ✅ `.dng` per AEB bracket (*Photos*) | 4 at 55 MP, 1 at 14 MP, 1 AEB set (3 DNGs) | not supported (no photos in the app yet); wanted, low: HDR |
 | Internal storage (20 GB) vs microSD | | ✅ microSD; internal ❓ | all from microSD | wanted, low: a clip from the internal storage |
 | Audio | not in the spec table | ✅ no audio track in our clips | 17 | done: opens and exports as picture only |

@@ -2248,6 +2248,58 @@ void testOneX2Trailer()
 // An Antigravity A1-shaped trailer: the offsets table is the only index, each
 // record starts a slot and no header follows it, so the walker takes every
 // record's id and size from its table entry (docs/formats/antigravity-a1.md).
+// Slow motion and timelapse (docs/formats/antigravity-a1.md, *Slow motion
+// and timelapse*): the rates of fields 195 / 196, the interval of fields 30 /
+// 59 and the frame times of record 0x600, and the capture scale they give.
+void testCaptureTiming()
+{
+    auto rate = [](uint64_t num, uint64_t den) {
+        Bytes r;
+        r.pbVarint(1, num).pbVarint(2, den);
+        return r.b;
+    };
+    // 4K Slow Motion: captured at 100, stored at 29.97.
+    {
+        Bytes m;
+        m.pbBytes(195, rate(100000, 1000)).pbBytes(196, rate(29970, 1000));
+        const std::string path = writeX5Trailer("insv_test_slowmo.insv", {{0x101, m.b}});
+        const auto t = insv::ReadInsvTelemetry(path);
+        CHECK(t && t->capture_fps == 100.0 && t->stored_fps == 29.97);
+        CHECK(t && t->timelapse_interval_ms == 0.0 && t->frame_timestamps.empty());
+        CHECK(t && std::fabs(insv::CaptureScale(*t, 29.97) - 0.2997) < 1e-12);
+        std::filesystem::remove(path);
+    }
+    // Timelapse, one frame every 2 s at 29.97: the frames' own times (2.002 s
+    // apart, as the A1 writes them) win over the interval field.
+    {
+        Bytes m;
+        m.pbBytes(195, rate(30000, 1001)).pbBytes(196, rate(30000, 1001));
+        m.pbVarint(30, 2000).pbVarint(59, 1);
+        Bytes stamps;
+        for (int i = 0; i < 150; ++i)
+            stamps.u64(477724154ull + uint64_t(i) * 2002000ull);
+        const std::string path =
+            writeX5Trailer("insv_test_timelapse.insv", {{0x101, m.b}, {0x600, stamps.b}});
+        const auto t = insv::ReadInsvTelemetry(path);
+        CHECK(t && t->timelapse_interval_ms == 2000.0 && t->frame_timestamps.size() == 150);
+        CHECK(t && t->frame_timestamps.front() == 477724154ull);
+        CHECK(t && std::fabs(insv::CaptureScale(*t, 29.97) - 60.0) < 1e-9);
+        std::filesystem::remove(path);
+    }
+    // Without frame times the interval gives it; without field 196 the
+    // video's rate stands in; a normal clip (equal rates, or none) is 1.
+    {
+        insv::InsvTelemetry t;
+        t.timelapse_interval_ms = 2000.0;
+        CHECK(std::fabs(insv::CaptureScale(t, 30000.0 / 1001.0) - 2.0 * 30000.0 / 1001.0) < 1e-12);
+        t.timelapse_interval_ms = 0.0;
+        t.capture_fps = t.stored_fps = 60000.0 / 1001.0;
+        CHECK(insv::CaptureScale(t, 59.94) == 1.0);
+        CHECK(insv::CaptureScale(insv::InsvTelemetry{}, 29.97) == 1.0);
+        CHECK(insv::CaptureScale(insv::InsvTelemetry{}, 0.0) == 1.0);
+    }
+}
+
 void testA1Trailer()
 {
     std::printf("  Antigravity A1 trailer\n");
@@ -2659,6 +2711,7 @@ int main()
     testGps();
     testOneX2Trailer();
     testA1Trailer();
+    testCaptureTiming();
     testGpsAlignedBySpeed();
     testMotion();
     testGpsAlignedByAcceleration();

@@ -52,12 +52,17 @@ struct ImuTrack {
     // permutation (StabConfig::gyroAxes has the syntax). Empty = identity.
     std::string axisMap;
 
-    // Video time t (seconds) is IMU time  t * (1 + clockRate) + offsetSec,
+    // Video time t (seconds) is IMU time
+    //   t * captureScale * (1 + clockRate) + offsetSec,
     // seconds after the earliest sample. `hasOffset` false: the file doesn't
     // say, and the stabilizer takes StabConfig::timeOffsetSec as it is.
     bool hasOffset = false;
     double offsetSec = 0.0;
-    double clockRate = 0.0; // the camera's frame clock vs nominal video time
+    // Seconds of the camera's clock per second of video, by what the mode
+    // says: 1, but 60 in a timelapse of one frame every 2 s at 29.97 and
+    // 0.2997 in 100 fps slow motion stored at 29.97 (insv::CaptureScale).
+    double captureScale = 1.0;
+    double clockRate = 0.0; // the camera's frame clock vs that, a few ppm
 
     // Sensor row readout time, seconds: row v of a lens was captured
     // (v/height - 0.5) * readoutSec after the time the offset points at. 0 =

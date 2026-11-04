@@ -106,6 +106,76 @@ void testStabConfig()
         CHECK(g.clockRatePpm() == 0.0);
     }
 
+    // Slow motion and timelapse: the camera's clock runs captureScale times the
+    // video's. A steady turn of w rad/s about raw gyro z, 40 s of IMU; the
+    // video turns w * captureScale rad per second of it.
+    {
+        auto turned = [](const insv::GyroStabilizer& g, double t0, double t1) {
+            const auto a = g.rawOrientation(t0), b = g.rawOrientation(t1);
+            const double dot = std::fabs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
+            return 2.0 * std::acos(std::min(1.0, dot));
+        };
+        auto telemetry = [](double w) {
+            insv::InsvTelemetry tele;
+            for (int i = 0; i < 40000; ++i) {
+                insv::ImuSample s;
+                s.timestamp = 1000000 + static_cast<uint64_t>(i) * 1000; // us, 1 kHz
+                s.gyro[2] = w;
+                tele.imu.push_back(s);
+            }
+            tele.first_frame_timestamp = 1500000;
+            return tele;
+        };
+        const insv::InsvModel& a1 = insv::FindInsvModel("Antigravity A1");
+
+        // 4K Slow Motion: 100 fps stored at 29.97, one exposure entry per
+        // stored frame, 10 ms apart, on a +40 ppm clock.
+        insv::InsvTelemetry slow = telemetry(0.5);
+        slow.capture_fps = 100.0;
+        slow.stored_fps = 29.97;
+        for (int n = 0; n < 3000; ++n) {
+            insv::ExposureSample e;
+            e.timestamp = 1500000 + static_cast<uint64_t>(std::llround(n * 10000.0 * (1.0 + 40e-6)));
+            slow.exposure.push_back(e);
+        }
+        const insv::ImuTrack st = insv::MakeInsvImuTrack(std::move(slow), 29.97, a1);
+        CHECK(std::fabs(st.captureScale - 0.2997) < 1e-12);
+        CHECK(std::fabs(st.clockRate - 40e-6) < 1e-6); // fitted against the scale, kept
+        insv::GyroStabilizer g;
+        g.build(st, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        CHECK(g.ready() && std::fabs(g.captureScale() - 0.2997) < 1e-12);
+        CHECK(std::fabs(turned(g, 2.0, 12.0) - 0.5 * 10.0 * 0.2997 * (1.0 + 40e-6)) < 1e-3);
+        for (double t : {0.0, 3.0, 50.0})
+            CHECK(std::fabs(g.videoTime(g.effectiveTimeOffsetSec() +
+                                        t * 0.2997 * (1.0 + g.clockRatePpm() * 1e-6)) -
+                            t) < 1e-6);
+        // bodyRotation's span is the camera's clock (a sensor readout).
+        float r[3];
+        g.bodyRotation(3.0, 0.01, r);
+        CHECK(std::fabs(std::hypot(r[0], r[1], r[2]) - 0.005f) < 1e-5f);
+
+        // Timelapse, a frame every 2 s at 29.97 by record 0x600; the exposure
+        // record runs at the sensor rate and isn't fitted.
+        insv::InsvTelemetry lapse = telemetry(0.01);
+        lapse.timelapse_interval_ms = 2000.0;
+        for (int n = 0; n < 19; ++n)
+            lapse.frame_timestamps.push_back(1500000 + static_cast<uint64_t>(n) * 2002000);
+        for (int n = 0; n < 1000; ++n) {
+            insv::ExposureSample e;
+            e.timestamp = 1500000 + static_cast<uint64_t>(std::llround(n * 33366.7));
+            lapse.exposure.push_back(e);
+        }
+        const insv::ImuTrack lt = insv::MakeInsvImuTrack(std::move(lapse), 30000.0 / 1001.0, a1);
+        CHECK(std::fabs(lt.captureScale - 2.002 * 30000.0 / 1001.0) < 1e-9);
+        CHECK(lt.clockRate == 0.0);
+        // A stabilizer of its own: its track cache knows a track by its
+        // samples' count and ends, which this one shares with the one above.
+        insv::GyroStabilizer gl;
+        gl.build(lt, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        CHECK(gl.ready());
+        CHECK(std::fabs(turned(gl, 0.1, 0.5) - 0.01 * 0.4 * lt.captureScale) < 1e-3);
+    }
+
     // bodyRotation(): the camera turn in the axis-mapped body frame, for the
     // stitch RS correction. A constant 1 rad/s about raw gyro z lands on body X
     // under the X5's "z,-x,-y" map (no accel -> pure gyro integration).

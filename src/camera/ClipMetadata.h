@@ -119,6 +119,14 @@ struct ClipMetadata {
     double imuRateHz = 0.0;
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
+    // When the video doesn't play in real time: seconds of the camera's
+    // clock per second of video (insv::CaptureScale; 1 for a normal clip),
+    // what the motion data and the GPS are timed by. In slow motion the rate
+    // the sensor captured at (`captureFps`, 0 = as stored), in a timelapse
+    // the time between frames (`timelapseIntervalSec`, 0 = not one).
+    double captureScale = 1.0;
+    double captureFps = 0.0;
+    double timelapseIntervalSec = 0.0;
     // GPS track: presence only, never positions -- the panel is what people
     // screenshot for bug reports. The track itself comes from ReadClipTelemetry.
     int64_t gpsRecords = 0;

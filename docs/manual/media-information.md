@@ -35,6 +35,8 @@ full path, or what a value means.
 | **Lenses** | The size of each of the two fisheye pictures, in pixels. |
 | **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. |
 | **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. |
+| **Slow motion** | On a clip filmed in slow motion (the Antigravity A1's 4K Slow Motion): the rate the camera filmed at, such as *Filmed at 100 fps*. The file stores the frames at the frame rate above, so the clip plays that much slower than it happened; hover over the row for how much. |
+| **Timelapse** | On a timelapse: how often the camera took a frame, such as *A frame every 2.0 s*; hover over the row for how long the recording took. |
 | **Frames** | How many frames the recording has. |
 | **Codec** | How the video is compressed: **HEVC** (H.265) or **H.264**, with its profile. |
 | **Format** | Bits per colour (8 or 10) and how the colour is stored (4:2:0). |

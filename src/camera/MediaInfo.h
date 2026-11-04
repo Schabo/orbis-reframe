@@ -56,6 +56,10 @@ struct MediaInfo {
     double imuRateHz = 0.0; // 0 if the file has no IMU track
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
+    // See ClipMetadata::captureFps / timelapseIntervalSec; 0 when the clip
+    // plays in real time.
+    double captureFps = 0.0;
+    double timelapseIntervalSec = 0.0;
     // See ClipMetadata::colorProfile / logProfile.
     std::string colorProfile;
     std::string logProfile;

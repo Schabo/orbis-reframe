@@ -121,6 +121,20 @@ struct InsvTelemetry {
     // "-trim" clip). 0 when absent. Only pure trims are modelled -- a
     // re-timed (speed-ramped) map is reduced to its median offset.
     double time_map_offset_ms = 0;
+    // When the camera's clock doesn't run with the video (CaptureScale).
+    // Fields 195 / 196: the rate the sensor captured at and the rate the
+    // file stores, frames per second; they differ in slow motion (the A1's
+    // 4K Slow Motion: 100 and 29.97). 0 when absent.
+    double capture_fps = 0;
+    double stored_fps = 0;
+    // Fields 30 / 59: a timelapse's interval between frames, ms (field 59
+    // says field 30 is in ms; docs/formats/insta360-x5.md §3.5). 0 when the
+    // clip isn't a timelapse.
+    double timelapse_interval_ms = 0;
+    // Record 0x600: a timelapse's device-clock time of each frame, µs, an
+    // interval apart (the X5 writes one more than it has frames). Empty on
+    // other clips.
+    std::vector<uint64_t> frame_timestamps;
     // Record 0x700 (GPS, docs/formats/insta360-x5.md §8), written only when a GPS
     // source was connected: counted here for the Media information panel,
     // decoded into positions by ReadInsvGps. All 0 when the file has no GPS
@@ -204,6 +218,16 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                                                std::size_t max_imu_samples = 0,
                                                double tick_us = 1.0);
 
+// Seconds of the camera's clock per second of the clip's video: 1 for a
+// normal clip; a timelapse's frame interval times the stored rate (60 for
+// one frame every 2 s at 29.97), from its frame times where it has them,
+// else from field 30; in slow motion the stored rate over the captured one
+// (0.2997 for 100 fps stored at 29.97). `fps` is the video's rate, taken
+// where the file has no field 196. The IMU, exposure, GPS and attitude
+// records run on the camera's clock, so this turns video time into theirs
+// (docs/formats/antigravity-a1.md, *Slow motion and timelapse*).
+double CaptureScale(const InsvTelemetry& tele, double fps);
+
 // One GPS fix from the trailer's 0x700 record (docs/formats/insta360-x5.md §8).
 struct InsvGpsFix {
     int64_t unix_ms = 0;      // when the fix was taken, Unix time (UTC)
@@ -226,6 +250,8 @@ struct InsvGps {
     // velocity (record 0x2500, the Antigravity A1), from matching the fixes'
     // speeds against it (AlignGpsBySpeed, Gps.h); `aligned_by_speed` says so.
     // 0 when neither gives it (Insta360's own trimmed exports, a hover).
+    // Unix time, so a fix's video time is (unix_ms - first_frame_unix_ms)
+    // divided by the clip's CaptureScale.
     int64_t first_frame_unix_ms = 0;
     bool aligned_by_speed = false;
 };
@@ -235,9 +261,13 @@ std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& payload);
 
 // The clip's GPS track; only records 0x101, 0x700 and, to line it up
 // without field 98, 0x2500 and 0x8000 are read. `tick_us` as for
-// ReadInsvTelemetry. nullopt when the file has no trailer; empty fixes when
-// it has no GPS record.
-std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us = 1.0);
+// ReadInsvTelemetry; `capture_scale` the clip's CaptureScale (the match by
+// speed is made on the camera's clock, a trimmed file's offset is video
+// time).
+// nullopt when the file has no trailer; empty fixes when it has no GPS
+// record.
+std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us = 1.0,
+                                   double capture_scale = 1.0);
 
 // Returns the raw bytes of the trailer itself -- everything from the end of
 // the file's `moov` box to EOF (confirmed empirically: in a real X5 file

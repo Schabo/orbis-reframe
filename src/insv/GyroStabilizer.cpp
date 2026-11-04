@@ -610,6 +610,7 @@ void GyroStabilizer::build(const ImuTrack& track, const StabConfig& cfg, double 
         c.timeOffsetSec = static_cast<float>(track.offsetSec + syncAdjustSec);
     buildTrack(track.samples, track.orientation, c);
     m_clockRate = track.clockRate;
+    m_captureScale = track.captureScale > 0.0 ? track.captureScale : 1.0;
     m_readoutSec = track.readoutSec;
     lockHeading(); // again: the clock rate moves directionSec on the track
 }
@@ -623,6 +624,7 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
                                 const std::vector<OrientationSample>& ref, const StabConfig& cfg)
 {
     m_clockRate = 0.0; // build(ImuTrack, ...) sets it after this returns
+    m_captureScale = 1.0; // as m_clockRate
     m_readoutSec = 0.0;
     if (cfg.mode == StabMode::Off || imu.size() < 2) {
         m_ready = false;
@@ -1095,10 +1097,11 @@ double GyroStabilizer::smoothedHeading(double t) const
     };
     constexpr double kPi = std::numbers::pi;
     const double psiRef = heading(sampleTrack(m_t, m_qRaw, t), 0.0);
-    const double win = std::max(m_cfg.windowYawSec, 1e-3f);
+    const double win = std::max(m_cfg.windowYawSec, 1e-3f) * m_captureScale;
     const double sig = std::max(win * 0.5, 1e-3);
     double acc = 0.0, wsum = 0.0;
-    for (size_t i = lowerBound(m_t, t - win); i < m_t.size(); ++i) {
+    const size_t stride = smoothStride();
+    for (size_t i = lowerBound(m_t, t - win); i < m_t.size(); i += stride) {
         const double dtt = m_t[i] - t;
         if (dtt > win)
             break;
@@ -1155,30 +1158,36 @@ void GyroStabilizer::correctionMatrix(double tSec, float m[3][3]) const
 
     // Per-axis smoothing: average each sample's delta-from-ref (small angles,
     // so Euler is safe there), each component with its own Gaussian window.
+    // The windows are video time; the track is the camera's clock.
+    const double ws = m_captureScale;
     const double wMax =
-        std::max({m_cfg.windowYawSec, m_cfg.windowPitchSec, m_cfg.windowRollSec, 1e-3f});
-    const double sigY = std::max(m_cfg.windowYawSec * 0.5f, 1e-3f);
-    const double sigP = std::max(m_cfg.windowPitchSec * 0.5f, 1e-3f);
-    const double sigR = std::max(m_cfg.windowRollSec * 0.5f, 1e-3f);
+        std::max({m_cfg.windowYawSec, m_cfg.windowPitchSec, m_cfg.windowRollSec, 1e-3f}) * ws;
+    const double sigY = std::max(m_cfg.windowYawSec * 0.5f, 1e-3f) * ws;
+    const double sigP = std::max(m_cfg.windowPitchSec * 0.5f, 1e-3f) * ws;
+    const double sigR = std::max(m_cfg.windowRollSec * 0.5f, 1e-3f) * ws;
+    const double winY = m_cfg.windowYawSec * ws;
+    const double winP = m_cfg.windowPitchSec * ws;
+    const double winR = m_cfg.windowRollSec * ws;
 
     double accY = 0, accP = 0, accR = 0, wY = 0, wP = 0, wR = 0;
-    for (size_t i = lowerBound(m_t, t - wMax); i < m_t.size(); ++i) {
+    const size_t stride = smoothStride();
+    for (size_t i = lowerBound(m_t, t - wMax); i < m_t.size(); i += stride) {
         const double dtt = m_t[i] - t;
         if (dtt > wMax)
             break;
         double dyaw, dpitch, droll;
         qDecomposeYPR(qmul(qconj(qRef), toQ(m_qRaw[i])), dyaw, dpitch, droll);
-        if (std::fabs(dtt) <= m_cfg.windowYawSec) {
+        if (std::fabs(dtt) <= winY) {
             const double w = std::exp(-0.5 * dtt * dtt / (sigY * sigY));
             accY += w * dyaw;
             wY += w;
         }
-        if (std::fabs(dtt) <= m_cfg.windowPitchSec) {
+        if (std::fabs(dtt) <= winP) {
             const double w = std::exp(-0.5 * dtt * dtt / (sigP * sigP));
             accP += w * dpitch;
             wP += w;
         }
-        if (std::fabs(dtt) <= m_cfg.windowRollSec) {
+        if (std::fabs(dtt) <= winR) {
             const double w = std::exp(-0.5 * dtt * dtt / (sigR * sigR));
             accR += w * droll;
             wR += w;

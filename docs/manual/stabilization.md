@@ -139,6 +139,19 @@ The flight controller also knows which way the drone points, without the
 slow drift of a gyroscope, so on A1 clips **Direction lock** holds its
 direction by that and doesn't wander off it, however long the flight.
 
+### Slow motion and timelapse
+
+A slow-motion clip plays slower than it happened, and a timelapse much
+faster (see **Slow motion** and **Timelapse** in
+[Media information](media-information.md#video)). The camera records its
+movement in the time it filmed in, and orbis-reframe lines that up with
+the picture, so stabilization works on these clips as on any other. The
+**Strength** and **Smoothing** sliders keep their meaning in the time
+you watch: in a timelapse of a frame every 2 s, a 1 s smoothing evens out
+a minute of flight. The overlays' speed, lean and G-force follow the
+picture the same way. Insta360 X5 timelapses keep no gyroscope record, so
+they still can't be stabilized.
+
 ## Which clip it changes
 
 The setting belongs to one clip on the video track: the clip you selected,

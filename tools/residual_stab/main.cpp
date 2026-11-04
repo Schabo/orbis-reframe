@@ -592,8 +592,6 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::Ori
     });
     const AxisMap am = parseAxisMap(hc.gyroAxes);
     const double ts0 = static_cast<double>(s.front().timestamp);
-    const double off = hl.effectiveTimeOffsetSec();
-    const double rate = hl.clockRatePpm() * 1e-6;
     constexpr double kTwoPi = 2.0 * std::numbers::pi;
     double aLP[3] = {0, 0, 0};
     bool init = false;
@@ -624,7 +622,7 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::Ori
             for (int k = 0; k < 3; ++k)
                 aLP[k] += al * (ac[k] - aLP[k]);
         }
-        const double tv = (tg - off) / (1.0 + rate);
+        const double tv = hl.videoTime(tg);
         const auto q = hl.rawOrientation(tv);
         const double w = q[0], x = q[1], y = q[2], z = q[3];
         const double R[3][3] = {{1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)},
@@ -747,14 +745,15 @@ void diagIntegratedVsApplied(const SlicedImu& s, const insv::GyroStabilizer& gyr
     for (int k = 0; k < 3; ++k)
         rawAngle[k] = cumTrapz(s.t, rawRate[k]);
 
-    // Applied: sample the stabilizer's de-rotation at the IMU grid, decompose.
+    // Applied: sample the stabilizer's de-rotation at the IMU grid (the video
+    // time of each sample), decompose.
     std::array<std::vector<double>, 3> appYpr; // yaw,pitch,roll (deg)
     std::vector<double> appAngle(s.t.size());
     for (int k = 0; k < 3; ++k)
         appYpr[k].resize(s.t.size());
     for (size_t i = 0; i < s.t.size(); ++i) {
         float m[3][3];
-        gyro.correctionMatrix(s.t[i], m);
+        gyro.correctionMatrix(gyro.ready() ? gyro.videoTime(s.t[i]) : s.t[i], m);
         float y, p, r;
         insv::MatrixToYawPitchRoll(m, y, p, r);
         appYpr[0][i] = y * kRadToDeg;
@@ -822,7 +821,7 @@ void diagIntegratedVsApplied(const SlicedImu& s, const insv::GyroStabilizer& gyr
 // Pitch, one entry per analysed frame interval) and the full IMU track (to
 // rebuild candidate gyro configs cheaply -- no re-stitch).
 void diagImageVsGyro(const insv::ResidualPanEstimator& est,
-                     const std::vector<insv::ImuSample>& imu, const insv::StabConfig& baseCfg,
+                     const insv::ImuTrack& imu, const insv::StabConfig& baseCfg,
                      double fps, const Args& a)
 {
     std::printf("\n=== [3] image-derived pan vs. gyro ===\n");
@@ -885,7 +884,9 @@ void diagImageVsGyro(const insv::ResidualPanEstimator& est,
             insv::StabConfig c = baseCfg;
             c.gyroAxes = mp;
             c.gyroScale = static_cast<float>(sc);
-            g.build(imu, c); // keeps baseCfg's (effective) video<->IMU offset
+            // The track's capture scale and clock rate; baseCfg's (effective)
+            // video<->IMU offset, which overrides the track's.
+            g.build(imu, c);
             if (!g.ready())
                 continue;
             // applied yaw/pitch (deg) at each interval time, then rate.
@@ -1246,8 +1247,9 @@ int main(int argc, char** argv)
                 gyro.build(imu->samples, bc);
             else
                 gyro.build(*imu, bc, a.syncAdjustMs / 1000.0);
-            std::printf("video<->IMU offset: %+.1f ms, frame clock %+.1f ppm %s\n",
-                        gyro.effectiveTimeOffsetSec() * 1e3, gyro.clockRatePpm(),
+            std::printf("video<->IMU offset: %+.1f ms, capture scale %g, frame clock %+.1f ppm %s\n",
+                        gyro.effectiveTimeOffsetSec() * 1e3, gyro.captureScale(),
+                        gyro.clockRatePpm(),
                         a.noAutoSync ? "(--no-auto-sync)" : "(the file's timing)");
         } else {
             std::printf("note: no usable IMU track -- residual runs against the raw image\n");
@@ -1268,7 +1270,13 @@ int main(int argc, char** argv)
 
     // --- diagnostic blocks [1] and [2] (IMU-only, no stitch needed) --------
     if (a.diagnose && imu) {
-        const SlicedImu sImu = sliceImu(imu->samples, trimIn / 1000.0, trimOut / 1000.0);
+        // The trim range on the IMU's own clock (blocks [1] / [2] read it there).
+        const auto onImu = [&gyro](double videoSec) {
+            return gyro.ready() ? videoSec * gyro.captureScale() * (1.0 + gyro.clockRatePpm() * 1e-6) +
+                                      gyro.effectiveTimeOffsetSec()
+                                : videoSec;
+        };
+        const SlicedImu sImu = sliceImu(imu->samples, onImu(trimIn / 1000.0), onImu(trimOut / 1000.0));
         diagExposureBlur(exposure, sImu, trimIn / 1000.0, trimOut / 1000.0, a.outH, a.fovDeg,
                          a);
         diagImuSpectra(sImu, a);
@@ -1408,7 +1416,7 @@ int main(int argc, char** argv)
                 : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
         diagCfg.timeOffsetSec = gyro.effectiveTimeOffsetSec();
         if (imu)
-            diagImageVsGyro(est, imu->samples, diagCfg, fps, a);
+            diagImageVsGyro(est, *imu, diagCfg, fps, a);
         else
             std::printf("\n=== [3] skipped -- no IMU track ===\n");
 

@@ -194,9 +194,12 @@ public:
     void build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg);
 
     // As above, on a camera's track lined up with the video by its reader:
-    // its axis map, video->IMU offset, frame-clock rate and readout time, and
-    // its orientation (ImuTrack::orientation) where it has one.
-    // Video time t maps to gyro time  t * (1 + clockRate) + timeOffsetSec.
+    // its axis map, video->IMU offset, capture scale, frame-clock rate and
+    // readout time, and its orientation (ImuTrack::orientation) where it has
+    // one. Video time t maps to gyro time
+    //   t * captureScale * (1 + clockRate) + timeOffsetSec.
+    // The smoothing windows stay in video time (what the viewer sees): in a
+    // timelapse they span captureScale times as much of the camera's clock.
     // If cfg.timeOffsetSec is non-zero it is an explicit override and used
     // as-is (the clock rate still applies); a non-empty cfg.gyroAxes replaces
     // the track's map. `syncAdjustSec` is added to the track's offset (not to
@@ -206,7 +209,8 @@ public:
 
     // How far the camera turned between video times tSec and tSec + dtSec, as
     // a rotation vector (axis * angle, rad) in the body (= stitched sphere)
-    // frame at tSec: R(t)^T R(t + dt) = exp(r). From the built orientation
+    // frame at tSec: R(t)^T R(t + dt) = exp(r). `dtSec` is on the camera's
+    // clock, as the sensor's readout is, whatever the capture scale. From the built orientation
     // track, so it uses the same sync and axis map as the correction. Feeds
     // the stitch's per-sensor-row rolling-shutter correction, which needs the
     // real rotation across the ~21 ms readout -- the stick's ~11 Hz swing
@@ -221,6 +225,15 @@ public:
     // The track's frame-clock rate (build(ImuTrack, ...) only; 0 otherwise),
     // parts per million. For diagnostics.
     double clockRatePpm() const { return m_clockRate * 1e6; }
+    // The track's capture scale (ImuTrack::captureScale; build(ImuTrack, ...)
+    // only, 1 otherwise): seconds of the camera's clock per video second.
+    double captureScale() const { return m_captureScale; }
+    // The video time of gyro time `gyroSec` (seconds from the track's first
+    // sample): the inverse of the map above.
+    double videoTime(double gyroSec) const
+    {
+        return (gyroSec - m_cfg.timeOffsetSec) / (1.0 + m_clockRate) / m_captureScale;
+    }
 
     // Sensor row readout time, seconds: row v of either lens was captured
     // (v/height - 0.5) * readoutSec() after the time the correction is
@@ -269,6 +282,7 @@ private:
     std::array<double, 4> m_mountLevel{1.0, 0.0, 0.0, 0.0};
     // Device frame clock vs nominal video time: 0 = nominal.
     double m_clockRate = 0.0;
+    double m_captureScale = 1.0; // see captureScale()
     double m_readoutSec = 0.0; // see readoutSec()
     // build()'s integrated, levelled track, kept across rebuilds: it depends
     // on the IMU track and its up reference, the axis map / scale / accel
@@ -298,7 +312,17 @@ private:
     double m_lockedHeading = 0.0; // StabConfig::lockDirection's heading, radians
 
     // Video source time -> the orientation track's (gyro-relative) time.
-    double gyroTime(double tSec) const { return tSec * (1.0 + m_clockRate) + m_cfg.timeOffsetSec; }
+    double gyroTime(double tSec) const
+    {
+        return tSec * m_captureScale * (1.0 + m_clockRate) + m_cfg.timeOffsetSec;
+    }
+    // Every how many samples the smoothing reads: in a timelapse a window
+    // holds captureScale times the samples, which say no more about the
+    // picture's motion than the video-time window of a normal clip.
+    size_t smoothStride() const
+    {
+        return m_captureScale >= 2.0 ? static_cast<size_t>(m_captureScale) : 1;
+    }
 };
 
 // --- generic rotation helpers (float; shared with the reframe compose) -------
