@@ -72,14 +72,6 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
     return p && *p ? &**p : nullptr;
 }
 
-bool SeamFlowAvailable() {
-#ifdef ORBIS_SEAM_FLOW
-    return true;
-#else
-    return false;
-#endif
-}
-
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
                             const LensCalibration* calibration, bool modelCorrection,
@@ -193,15 +185,14 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     }
     gpu_params_ = stitcher->gpuParams();
     // The seam flow: its grid over the overlap both lenses see, carried in
-    // every frame's params for the GPU's strip pass.
+    // every frame's params for the GPU's strip pass. On the GPU stitch when
+    // there is one (settleSeamFlow, once that's known), else with OpenCV.
     seam_flow_on_ = false;
     seam_flow_grid_ = {};
+    seam_flow_gpu_ = false;
     seam_flow_window_.reset();
     seam_flow_field_.reset();
-    if (config.seamFlowOn() && !SeamFlowAvailable()) {
-        core::log::Info("[NativeStitchSource] no seam flow in this build (it needs OpenCV); "
-                        "stitching without it\n");
-    } else if (config.seamFlowOn()) {
+    if (config.seamFlowOn()) {
         seam_flow_grid_ = insv::SeamFlowGridFor(*stitcher);
         if (!seam_flow_grid_.valid()) {
             core::log::Info("[NativeStitchSource] the lenses share too little round the seam for "
@@ -258,6 +249,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
                 stitcher_ = std::move(stitcher);
                 core::log::Info("[NativeStitchSource] all-GPU path: Vulkan video decode + "
                                 "compute stitch\n");
+                settleSeamFlow();
                 return true;
             }
             std::fprintf(stderr, "[NativeStitchSource] GPU stitch on the decoder's device "
@@ -293,7 +285,23 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     gpu_fallback_.stitch = !gpu_ && !std::getenv("INSV_NO_GPU_STITCH");
     demux_ = std::move(demux);
     stitcher_ = std::move(stitcher);
+    settleSeamFlow();
     return true;
+}
+
+void NativeStitchSource::settleSeamFlow() {
+    if (!seam_flow_on_)
+        return;
+    if (gpu_) {
+        gpu_->resetSeamFlow();
+        return;
+    }
+    if (!seam_flow_estimator_) {
+        core::log::Info("[NativeStitchSource] no seam flow without a GPU stitch in this build "
+                        "(the CPU's needs OpenCV); stitching without it\n");
+        seam_flow_on_ = false;
+        gpu_params_.seamFlowCols = gpu_params_.seamFlowRows = 0;
+    }
 }
 
 bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
@@ -307,8 +315,12 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
         seam_state_ = insv::SeamState{};
     seam_colour_window_.reset();
     seam_flow_window_.reset();
-    if (!quick)
+    if (gpu_)
+        gpu_->resetSeamFlow();
+    if (!quick) {
         seam_flow_field_.reset();
+        seam_flow_gpu_ = false;
+    }
     if ((seam_colour_on_ || seam_flow_on_) && !quick && t > 0 && !preRollSeam(t))
         return false;
     return seekDecoder(t);
@@ -332,7 +344,7 @@ bool NativeStitchSource::preRollSeam(int64_t t) {
     for (;;) {
         int64_t pts = 0;
         bool flowMeasured = false;
-        if (!measureNextSeamFrame(pts, flowFrom, &flowMeasured))
+        if (!measureNextSeamFrame(pts, flowFrom, t, &flowMeasured))
             break; // the end, or an error: the frames so far
         if (pts >= t)
             break; // the seek's own frame: measured when it's read
@@ -345,7 +357,7 @@ bool NativeStitchSource::preRollSeam(int64_t t) {
 }
 
 bool NativeStitchSource::addSeamFlow() {
-    if (!seam_flow_estimator_)
+    if (!seam_flow_estimator_ || !seam_flow_strips_)
         return false;
     insv::SeamFlowField f;
     if (!seam_flow_estimator_->estimate(*seam_flow_strips_, f))
@@ -632,7 +644,7 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
                       &p.seamColour[0][0]);
         }
         if (seam_flow_on_)
-            p.seamFlow = seam_flow_field_;
+            p.seamFlowGpu = seam_flow_gpu_;
         if (p.depthActive) {
             seamStateFor(pts_ms, [](const float*) { return false; });
             std::copy(seam_state_.q, seam_state_.q + insv::kSeamDepthBins, p.seamQ);
@@ -650,26 +662,32 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
         std::string err;
         const bool measured =
             seam_flow_on_
-                ? gpu_->measureSeamFlowVk(in0, in1, p, *seam_flow_strips_,
-                                          seam_colour_on_ ? cut_stats_.get() : nullptr, &o0, &o1, err)
+                ? gpu_->measureSeamFlowVk(in0, in1, p, seam_colour_on_ ? cut_stats_.get() : nullptr,
+                                          &o0, &o1, err)
                 : gpu_->measureSeamCutVk(in0, in1, p, *cut_stats_, &o0, &o1, err);
         if (measured) {
             in0.semWaitValue = o0.semSignalValue;
             in0.layout = o0.newLayout;
             in1.semWaitValue = o1.semSignalValue;
             in1.layout = o1.newLayout;
-        } else if (!seam_warned_) {
-            seam_warned_ = true;
-            std::fprintf(stderr, "[NativeStitchSource] seam %s measure failed (%s); "
-                                 "stitching without it\n",
-                         seam_flow_on_ ? "flow" : "colour", err.c_str());
+        } else {
+            if (!seam_warned_) {
+                seam_warned_ = true;
+                std::fprintf(stderr, "[NativeStitchSource] seam %s measure failed (%s); "
+                                     "stitching without it\n",
+                             seam_flow_on_ ? "flow" : "colour", err.c_str());
+            }
+            // Without the flow from the next frame on, so the colour blend
+            // still measures.
+            seam_flow_on_ = false;
+            seam_flow_gpu_ = false;
         }
         if (seam_colour_on_)
             applySeamColour(pts_ms, p, [&] { return measured; });
         if (seam_flow_on_) {
             if (measured)
-                addSeamFlow();
-            p.seamFlow = seam_flow_field_;
+                seam_flow_gpu_ = true;
+            p.seamFlowGpu = seam_flow_gpu_;
         }
         seam_ms_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
                        .count();
@@ -719,7 +737,7 @@ bool NativeStitchSource::applySeamColour(int64_t pts_ms, insv::StitchGpuParams& 
     return true;
 }
 
-bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
+bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, int64_t until,
                                               bool* flowMeasured) {
     last_error_.clear();
     *flowMeasured = false;
@@ -740,16 +758,18 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         // Measured as playback measures this frame: with its capture-time
         // correction, which moves what the strips see.
         const insv::StitchGpuParams p = paramsAt(pts_ms);
-        const bool flow = seam_flow_on_ && pts_ms >= flowFrom;
+        const bool measure = pts_ms < until;
+        const bool flow = measure && seam_flow_on_ && pts_ms >= flowFrom;
         bool ok = true;
         if (flow)
-            ok = gpu_->measureSeamFlowVk(in0, in1, p, *seam_flow_strips_,
-                                         seam_colour_on_ ? cut_stats_.get() : nullptr, &o0, &o1, err);
-        else if (seam_colour_on_)
+            ok = gpu_->measureSeamFlowVk(in0, in1, p, seam_colour_on_ ? cut_stats_.get() : nullptr,
+                                         &o0, &o1, err);
+        else if (measure && seam_colour_on_)
             ok = gpu_->measureSeamCutVk(in0, in1, p, *cut_stats_, &o0, &o1, err);
         else
             o0 = {in0.semWaitValue, in0.layout}, o1 = {in1.semWaitValue, in1.layout};
-        *flowMeasured = flow && ok;
+        if (flow && ok)
+            seam_flow_gpu_ = true;
         if (ok) {
             vdec_->unlockFrame(f0, {o0.semSignalValue, o0.newLayout});
             vdec_->unlockFrame(f1, {o1.semSignalValue, o1.newLayout});
@@ -770,12 +790,24 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
             last_error_ = err;
             return false;
         }
+        if (pts_ms >= until)
+            return true;
         const float none[insv::kSeamDepthBins] = {};
         if (seam_colour_on_)
             insv::MeasureSeamCutStats(*stitcher_, a, b, none, *cut_stats_);
         if (seam_flow_on_ && pts_ms >= flowFrom) {
-            insv::MeasureSeamFlowStrips(*stitcher_, seam_flow_grid_, a, b, *seam_flow_strips_);
-            *flowMeasured = true;
+            if (gpu_) {
+                // Measured as playback measures this frame (with its
+                // capture-time correction).
+                if (!gpu_->measureSeamFlow(a.rgb.data(), b.rgb.data(), paramsAt(pts_ms), err)) {
+                    last_error_ = "seam measure failed: " + err;
+                    return false;
+                }
+                seam_flow_gpu_ = true;
+            } else {
+                insv::MeasureSeamFlowStrips(*stitcher_, seam_flow_grid_, a, b, *seam_flow_strips_);
+                *flowMeasured = true;
+            }
         }
     } else {
         last_error_ = "seam pre-roll before a successful Open";
@@ -1174,8 +1206,12 @@ Frame NativeStitchSource::readCpuDecode() {
                                   std::chrono::steady_clock::now() - t0)
                                   .count();
     }
-    // The seam flow, its strips on the CPU too.
-    if (seam_flow_on_) {
+    // The seam flow: with the GPU stitch measured in its submission (below),
+    // else its strips and flow on the CPU too.
+    const bool flowOnGpu = seam_flow_on_ && gpu_;
+    if (flowOnGpu) {
+        p.seamFlowGpu = seam_flow_gpu_; // a scrub's frame: the last field
+    } else if (seam_flow_on_) {
         if (!scrub) {
             const auto t0 = std::chrono::steady_clock::now();
             insv::MeasureSeamFlowStrips(*stitcher_, seam_flow_grid_, a, b, *seam_flow_strips_);
@@ -1199,12 +1235,19 @@ Frame NativeStitchSource::readCpuDecode() {
             std::copy(seamQ, seamQ + insv::kSeamDepthBins, p.seamQ);
             p.seamBlend = *blend;
         }
-        if (gpu_->stitch(a.rgb.data(), b.rgb.data(), p, eq_w_, eq_h_, f.rgba, gerr))
+        const bool measureFlow = flowOnGpu && !scrub;
+        if (gpu_->stitch(a.rgb.data(), b.rgb.data(), p, eq_w_, eq_h_, f.rgba, gerr, measureFlow)) {
+            if (measureFlow)
+                seam_flow_gpu_ = true;
             return f;
+        }
         std::fprintf(stderr, "[NativeStitchSource] GPU stitch failed (%s); falling back to CPU\n",
                      gerr.c_str());
         gpu_.reset();
         gpu_fallback_.stitch = true;
+        // The CPU's seam flow from the next frame on, where there is one.
+        if (seam_flow_on_ && !seam_flow_estimator_)
+            seam_flow_on_ = false;
     }
 
     insv::Image eq;

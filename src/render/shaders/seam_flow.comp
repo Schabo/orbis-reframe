@@ -1,0 +1,381 @@
+#version 450
+
+// The new stitcher's seam flow on the GPU (insv::SeamFlowEstimator's DIS
+// on the CPU; SeamFlow.h for what the field means): optical flow both ways
+// between the two lenses' strips, then the last few frames' fields averaged
+// into the flow texture the stitch samples.
+//
+// The flow is Dense Inverse Search (Kroeger et al., "Fast Optical Flow
+// using Dense Inverse Search", ECCV 2016), with the CPU's settings (OpenCV's
+// fast preset): a box-filtered pyramid; per scale, coarse to fine, 8 x 8
+// patches every 4 pixels, each found in the other strip by inverse-
+// compositional gradient descent on the mean-normalised difference (a
+// brightness offset between the lenses costs nothing), started from the
+// coarser scale's flow or its neighbour's, whichever fits better (spatial
+// propagation, one sweep each way along the strip); and the patches' flows
+// blended per pixel by how well each fits there (densification). No
+// variational refinement (OpenCV's fast preset has five iterations of it):
+// on the bench clips it made no difference to near things and little to
+// the A1's stillness. The strips are a ring in azimuth: x wraps, y clamps.
+//
+// Directions: 0 = F01 (lens 0's strip the template, lens 1's searched),
+// 1 = F10. One pass per dispatch, `pc.pass`; the host orders them with
+// barriers (render::VulkanFisheyeStitcher, seam flow).
+
+layout(local_size_x = 64) in;
+
+// Both lenses' strips, grey 0..255, four columns per uint (lowest byte
+// first), lens 0's rows then lens 1's: fisheye_stitch_common.glsl's pass 4.
+layout(std430, binding = 0) readonly buffer Strips { uint strip[]; };
+// Scratch: per scale the two images, their gradients, the patches' flows
+// and the dense flow; offsets in the push constants.
+layout(std430, binding = 1) buffer Work { float w[]; };
+// The last frames' fields at the finest scale, one slot per frame: per
+// pixel F10 (dphi, de), F01 (dphi, de) in radians (insv::SeamFlowField).
+layout(std430, binding = 2) buffer Ring { vec4 ring[]; };
+// The averaged field at the strips' full size, as the stitch samples it.
+layout(binding = 3, rgba16f) uniform writeonly image2D field;
+
+layout(push_constant) uniform PC {
+    int pass;
+    int cols, rows;  // the strips
+    int W, H;        // this scale's image
+    int pw, ph;      // the coarser scale's (pass INIT; 0 x 0 at the coarsest)
+    int npx, npy;    // this scale's patch grid
+    int f;           // strip rows per row of this scale (2^scale)
+    int img;         // lens 0's image (W x H), lens 1's after it
+    int grad;        // lens 0's gradient (x then y, W x H each), lens 1's after
+    int patches;     // direction 0's patch flows (vec2 per patch), direction 1's after
+    int dense;       // direction 0's dense flow (vec2 per pixel), direction 1's after
+    int prevDense;   // the coarser scale's dense flow, likewise
+    int iters;       // descent iterations per patch and sweep
+    int slot;        // the ring slot written (pass STORE), the newest (AVERAGE)
+    int count;       // slots held (pass AVERAGE)
+    float radX;      // radians of phi per strip pixel
+    float radY;      // radians of e per strip pixel (negative: rows go down)
+    float sx;        // strip columns per column of this scale (cols / W, ~2^scale)
+} pc;
+
+#define PASS_PYRAMID 0  // (x, y) of this scale, z = lens
+#define PASS_GRADIENT 1 // likewise
+#define PASS_INIT 2     // patch, z = direction
+#define PASS_SWEEP_FWD 3 // workgroup = (stretch, patch row, direction)
+#define PASS_SWEEP_BWD 4
+#define PASS_DENSIFY 5  // (x, y) of this scale, z = direction
+#define PASS_STORE 6    // (x, y) of this scale (the finest)
+#define PASS_AVERAGE 7  // (x, y) of the strips
+
+#define RING 5 // == insv::kSeamFlowFrames
+#define PATCH 8
+#define STRIDE 4
+#define PATCH_N 64
+
+int wrapX(int x, int n) { return ((x % n) + n) % n; }
+
+float stripAt(int lens, int x, int y)
+{
+    int i = lens * pc.rows * pc.cols + y * pc.cols + x;
+    return float((strip[i >> 2] >> (8 * (i & 3))) & 0xffu);
+}
+
+int imgAt(int lens, int x, int y) // index into w
+{
+    return pc.img + lens * pc.W * pc.H + clamp(y, 0, pc.H - 1) * pc.W + wrapX(x, pc.W);
+}
+
+float pix(int lens, int x, int y) { return w[imgAt(lens, x, y)]; }
+
+// Bilinear, x wrapping round, y clamped to the image.
+float pixAt(int lens, vec2 p)
+{
+    p.y = clamp(p.y, 0.0, float(pc.H - 1));
+    vec2 fl = floor(p);
+    vec2 a = p - fl;
+    int x0 = int(fl.x), y0 = int(fl.y);
+    int y1 = min(y0 + 1, pc.H - 1);
+    float t = mix(pix(lens, x0, y0), pix(lens, x0 + 1, y0), a.x);
+    float b = mix(pix(lens, x0, y1), pix(lens, x0 + 1, y1), a.x);
+    return mix(t, b, a.y);
+}
+
+vec2 gradAt(int lens, int x, int y)
+{
+    int i = clamp(y, 0, pc.H - 1) * pc.W + wrapX(x, pc.W);
+    int o = pc.grad + lens * 2 * pc.W * pc.H;
+    return vec2(w[o + i], w[o + pc.W * pc.H + i]);
+}
+
+// Patch (px, py)'s top-left: every STRIDE along the ring; down the strip
+// every STRIDE too, the last one moved up to end on the last row.
+ivec2 patchOrigin(int px, int py)
+{
+    return ivec2(px * STRIDE, min(py * STRIDE, max(pc.H - PATCH, 0)));
+}
+
+int patchAt(int dir, int px, int py) { return pc.patches + 2 * (dir * pc.npx * pc.npy + py * pc.npx + px); }
+vec2 patchFlow(int dir, int px, int py)
+{
+    int o = patchAt(dir, px, py);
+    return vec2(w[o], w[o + 1]);
+}
+
+vec2 denseAt(int base, int dir, int W, int H, int x, int y)
+{
+    int o = base + 2 * (dir * W * H + clamp(y, 0, H - 1) * W + wrapX(x, W));
+    return vec2(w[o], w[o + 1]);
+}
+
+// A dense flow of W x H, bilinear at p (x wraps, y clamps).
+vec2 denseSample(int base, int dir, int W, int H, vec2 p)
+{
+    p.y = clamp(p.y, 0.0, float(H - 1));
+    vec2 fl = floor(p);
+    vec2 a = p - fl;
+    int x0 = int(fl.x), y0 = int(fl.y);
+    vec2 t = mix(denseAt(base, dir, W, H, x0, y0), denseAt(base, dir, W, H, x0 + 1, y0), a.x);
+    vec2 b = mix(denseAt(base, dir, W, H, x0, y0 + 1), denseAt(base, dir, W, H, x0 + 1, y0 + 1), a.x);
+    return mix(t, b, a.y);
+}
+
+// --- Sweeps: the patch search, as DIS does it: along a stretch of a patch
+// row, one patch after the other, each first takes its predecessor's flow
+// where that fits it better (spatial propagation), then refines it by
+// gradient descent -- so a good flow found in one patch carries on to the
+// next. One workgroup per stretch, patch row and direction; its 64
+// invocations are the patch's pixels, the sums over the patch reductions.
+// A row is cut into stretches of SEG_LEN patches (so rows run in parallel
+// pieces); a stretch's first patch has no predecessor (reading one from
+// the stretch before, being written meanwhile, would make the result
+// depend on timing). The backward sweep's stretches are offset by half a
+// stretch, so flows cross every cut one way or the other.
+//
+// The descent: inverse compositional (the template's gradients and Hessian
+// fixed, so per iteration only the difference is new) on the mean-
+// normalised difference, the Hessian from the raw gradients (OpenCV's DIS
+// does both; with the unscaled gradients the steps are damped). It runs
+// while the cost falls and keeps where its last step went -- not the
+// cheapest flow it visited: bilinear sampling makes the cost a little lower
+// at whole pixels, and taking the minimum would pull flows towards them.
+// Back to where it started if it wanders off by more than a patch.
+#define SEG_LEN 20
+shared float red[5][PATCH_N];
+
+// The sums of a[0..n) over the workgroup, returned to every invocation.
+void reduce(int n, inout float a[5])
+{
+    uint li = gl_LocalInvocationIndex;
+    for (int c = 0; c < n; ++c)
+        red[c][li] = a[c];
+    barrier();
+    for (uint s = PATCH_N / 2; s > 0; s >>= 1) {
+        if (li < s)
+            for (int c = 0; c < n; ++c)
+                red[c][li] += red[c][li + s];
+        barrier();
+    }
+    for (int c = 0; c < n; ++c)
+        a[c] = red[c][0];
+    barrier(); // every invocation has its sums before red is written again
+}
+
+int segments() { return (pc.npx + SEG_LEN - 1) / SEG_LEN; }
+
+void sweep(bool forward)
+{
+    int seg = int(gl_WorkGroupID.x), py = int(gl_WorkGroupID.y), dir = int(gl_WorkGroupID.z);
+    int t = dir; // the template lens
+    uint li = gl_LocalInvocationIndex;
+    int start = seg * SEG_LEN + (forward ? 0 : SEG_LEN / 2);
+    int len = min(SEG_LEN, pc.npx - seg * SEG_LEN);
+    vec2 prev = vec2(0.0);
+    for (int k = 0; k < len; ++k) {
+        int px = wrapX(start + (forward ? k : len - 1 - k), pc.npx);
+        ivec2 o = patchOrigin(px, py);
+        ivec2 q = o + ivec2(int(li) % PATCH, int(li) / PATCH);
+        float i0 = pix(t, q.x, q.y);
+        vec2 g = gradAt(t, q.x, q.y);
+        float a[5];
+        // The template's gradient sums and Hessian.
+        a[0] = g.x;
+        a[1] = g.y;
+        a[2] = g.x * g.x;
+        a[3] = g.x * g.y;
+        a[4] = g.y * g.y;
+        reduce(5, a);
+        vec2 gs = vec2(a[0], a[1]);
+        float hxx = a[2], hxy = a[3], hyy = a[4];
+        float det = hxx * hyy - hxy * hxy;
+        if (abs(det) < 1e-6)
+            det = 1e-6;
+        // Its own flow or its predecessor's, whichever fits better.
+        vec2 u = patchFlow(dir, px, py);
+        if (k > 0) {
+            float da = pixAt(1 - t, vec2(q) + u) - i0;
+            float db = pixAt(1 - t, vec2(q) + prev) - i0;
+            a[0] = da;
+            a[1] = da * da;
+            a[2] = db;
+            a[3] = db * db;
+            reduce(4, a);
+            float ca = a[1] - a[0] * a[0] / float(PATCH_N);
+            float cb = a[3] - a[2] * a[2] / float(PATCH_N);
+            if (cb < ca)
+                u = prev;
+        }
+        const vec2 u0 = u;
+        float prevCost = 1e30;
+        for (int it = 0; it < pc.iters; ++it) {
+            float d = pixAt(1 - t, vec2(q) + u) - i0;
+            a[0] = d;
+            a[1] = d * d;
+            a[2] = d * g.x;
+            a[3] = d * g.y;
+            reduce(4, a);
+            float cost = a[1] - a[0] * a[0] / float(PATCH_N);
+            // Mean-normalised: the difference's mean taken out.
+            float bx = a[2] - a[0] * gs.x / float(PATCH_N);
+            float by = a[3] - a[0] * gs.y / float(PATCH_N);
+            // H du = b; the template moved by du matches, so the flow moves back.
+            u -= vec2(hyy * bx - hxy * by, hxx * by - hxy * bx) / det;
+            if (cost >= prevCost)
+                break;
+            prevCost = cost;
+        }
+        if (distance(u, u0) > float(PATCH))
+            u = u0;
+        if (li == 0) {
+            int w0 = patchAt(dir, px, py);
+            w[w0] = u.x;
+            w[w0 + 1] = u.y;
+        }
+        prev = u;
+    }
+}
+
+void main()
+{
+    int n = int(gl_GlobalInvocationID.x), z = int(gl_GlobalInvocationID.z);
+    if (pc.pass == PASS_SWEEP_FWD || pc.pass == PASS_SWEEP_BWD) {
+        sweep(pc.pass == PASS_SWEEP_FWD);
+        return;
+    }
+    if (pc.pass == PASS_PYRAMID) {
+        // The mean of the strip under the pixel: f rows (those past the
+        // strip's end repeat its last) by sx columns, sampled f times
+        // across (whole columns when sx is a whole number).
+        if (n >= pc.W * pc.H)
+            return;
+        int x = n % pc.W, y = n / pc.W;
+        float s = 0.0;
+        for (int i = 0; i < pc.f; ++i) {
+            float sxp = (float(x) + (float(i) + 0.5) / float(pc.f)) * pc.sx - 0.5;
+            float fl = floor(sxp), a = sxp - fl;
+            int x0 = wrapX(int(fl), pc.cols), x1 = wrapX(int(fl) + 1, pc.cols);
+            for (int j = 0; j < pc.f; ++j) {
+                int y0 = min(y * pc.f + j, pc.rows - 1);
+                s += mix(stripAt(z, x0, y0), stripAt(z, x1, y0), a);
+            }
+        }
+        w[imgAt(z, x, y)] = s / float(pc.f * pc.f);
+        return;
+    }
+    if (pc.pass == PASS_GRADIENT) {
+        // Sobel, unscaled (8 x grey levels per pixel), as OpenCV's DIS: the
+        // descent's step is the Gauss-Newton step over that, a damped one.
+        if (n >= pc.W * pc.H)
+            return;
+        int x = n % pc.W, y = n / pc.W;
+        float a = pix(z, x - 1, y - 1), b = pix(z, x, y - 1), c = pix(z, x + 1, y - 1);
+        float l = pix(z, x - 1, y), r = pix(z, x + 1, y);
+        float e = pix(z, x - 1, y + 1), g = pix(z, x, y + 1), h = pix(z, x + 1, y + 1);
+        int o = pc.grad + z * 2 * pc.W * pc.H + y * pc.W + x;
+        w[o] = (c + 2.0 * r + h) - (a + 2.0 * l + e);
+        w[o + pc.W * pc.H] = (e + 2.0 * g + h) - (a + 2.0 * b + c);
+        return;
+    }
+    if (pc.pass == PASS_INIT) {
+        // The coarser scale's flow at the patch's centre, in this scale's
+        // pixels; zero at the coarsest. Down the strip a coarser pixel is
+        // two of these; along it W / pw.
+        if (n >= pc.npx * pc.npy)
+            return;
+        int px = n % pc.npx, py = n / pc.npx;
+        vec2 u = vec2(0.0);
+        if (pc.pw > 0) {
+            vec2 r = vec2(float(pc.W) / float(pc.pw), 2.0);
+            vec2 c = vec2(patchOrigin(px, py)) + 0.5 * float(PATCH - 1);
+            u = r * denseSample(pc.prevDense, z, pc.pw, pc.ph, (c + 0.5) / r - 0.5);
+        }
+        int o = patchAt(z, px, py);
+        w[o] = u.x;
+        w[o + 1] = u.y;
+        return;
+    }
+    if (pc.pass == PASS_DENSIFY) {
+        // Every patch over the pixel, weighted by how well its flow fits
+        // the pixel itself.
+        if (n >= pc.W * pc.H)
+            return;
+        int x = n % pc.W, y = n / pc.W;
+        int t = z;
+        float i0 = pix(t, x, y);
+        vec2 acc = vec2(0.0);
+        float ws = 0.0;
+        int k0 = x / STRIDE;
+        for (int dk = -(PATCH / STRIDE); dk <= 0; ++dk) {
+            int px = wrapX(k0 + dk, pc.npx);
+            if (wrapX(x - px * STRIDE, pc.W) >= PATCH)
+                continue;
+            for (int py = 0; py < pc.npy; ++py) {
+                int oy = patchOrigin(px, py).y;
+                if (y < oy || y >= oy + PATCH)
+                    continue;
+                vec2 u = patchFlow(z, px, py);
+                float wt = 1.0 / max(1.0, abs(pixAt(1 - t, vec2(x, y) + u) - i0));
+                acc += wt * u;
+                ws += wt;
+            }
+        }
+        vec2 u = ws > 0.0 ? acc / ws : vec2(0.0);
+        int o = pc.dense + 2 * (z * pc.W * pc.H + y * pc.W + x);
+        w[o] = u.x;
+        w[o + 1] = u.y;
+        return;
+    }
+    if (pc.pass == PASS_STORE) {
+        // This frame's field into its ring slot, in radians.
+        if (n >= pc.W * pc.H)
+            return;
+        int x = n % pc.W, y = n / pc.W;
+        vec2 s = vec2(pc.sx * pc.radX, float(pc.f) * pc.radY);
+        vec2 f01 = denseAt(pc.dense, 0, pc.W, pc.H, x, y);
+        vec2 f10 = denseAt(pc.dense, 1, pc.W, pc.H, x, y);
+        ring[pc.slot * pc.W * pc.H + n] = vec4(f10 * s, f01 * s);
+        return;
+    }
+    if (pc.pass == PASS_AVERAGE) {
+        // The held frames' mean, up to the strips' size (bilinear in the
+        // finest scale's pixels, as the CPU's field upsampled). Summed
+        // oldest first, as the CPU's window: the same frames give the same
+        // field to the bit wherever they sit in the ring (a seek's pre-roll
+        // and playback fill it from different slots).
+        if (n >= pc.cols * pc.rows)
+            return;
+        int x = n % pc.cols, y = n / pc.cols;
+        vec2 p = (vec2(x, y) + 0.5) / vec2(pc.sx, float(pc.f)) - 0.5;
+        p.y = clamp(p.y, 0.0, float(pc.H - 1));
+        vec2 fl = floor(p);
+        vec2 a = p - fl;
+        int x0 = wrapX(int(fl.x), pc.W), x1 = wrapX(int(fl.x) + 1, pc.W);
+        int y0 = int(fl.y), y1 = min(y0 + 1, pc.H - 1);
+        vec4 acc = vec4(0.0);
+        for (int s = 0; s < pc.count; ++s) {
+            int b = ((pc.slot - pc.count + 1 + s + RING) % RING) * pc.W * pc.H;
+            vec4 t = mix(ring[b + y0 * pc.W + x0], ring[b + y0 * pc.W + x1], a.x);
+            vec4 u = mix(ring[b + y1 * pc.W + x0], ring[b + y1 * pc.W + x1], a.x);
+            acc += mix(t, u, a.y);
+        }
+        imageStore(field, ivec2(x, y), acc / float(max(pc.count, 1)));
+        return;
+    }
+}

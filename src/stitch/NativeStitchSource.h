@@ -242,10 +242,6 @@ public:
     // with (insv::StitchGpuParams::seamColour's layout; all 0 when off or
     // before a frame).
     const float* SeamColourTable() const { return &seam_colour_table_[0][0]; }
-    // The new stitcher's seam flow as the last frame was stitched with
-    // (null when off or before a frame).
-    std::shared_ptr<const insv::SeamFlowField> SeamFlowState() const { return seam_flow_field_; }
-
     // Decoding and stitching on the GPU (Vulkan video decode + compute
     // stitch), not a CPU fallback.
     bool AllGpu() const { return vdec_ && gpu_; }
@@ -331,11 +327,15 @@ private:
     insv::SeamColourWindow seam_colour_window_;       // its frames played so far
     float seam_colour_table_[insv::kSeamDepthBins][3] = {}; // ... the last frame's table
     // The new stitcher's seam flow: Open()'s seamFlowOn() where the flow can
-    // be estimated (SeamFlowAvailable) and the lenses share an overlap, its
-    // grid, the frames so far and the last frame's field (the one stitched
-    // with, kept for a scrub's frames).
+    // be estimated (a GPU stitch, or OpenCV for the CPU's) and the lenses share
+    // an overlap, and its grid. With a GPU stitch it is measured, windowed
+    // and kept there (VulkanFisheyeStitcher::measureSeamFlowVk);
+    // seam_flow_gpu_ says its texture holds a field of this stretch (kept
+    // for a scrub's frames). Without one, on the CPU: the frames so far and
+    // the last frame's field (the one stitched with, kept likewise).
     bool seam_flow_on_ = false;
     insv::SeamFlowGrid seam_flow_grid_;
+    bool seam_flow_gpu_ = false;
     insv::SeamFlowWindow seam_flow_window_;
     std::shared_ptr<const insv::SeamFlowField> seam_flow_field_;
     std::unique_ptr<insv::SeamFlowStrips> seam_flow_strips_; // a frame's strips (scratch)
@@ -343,9 +343,12 @@ private:
     // so a build without OpenCV (no estimator) needn't link one.
     std::shared_ptr<insv::SeamFlowEstimator> seam_flow_estimator_;
     // The flow of the strips in seam_flow_strips_ added to the window and
-    // the window's field solved into seam_flow_field_. False (the field as
-    // it was) when it can't be estimated.
+    // the window's field solved into seam_flow_field_ (the CPU's seam flow).
+    // False (the field as it was) when it can't be estimated.
     bool addSeamFlow();
+    // Open()'s last step, once the stitch is known: the seam flow off where
+    // nothing can estimate it.
+    void settleSeamFlow();
     // SeekTo's parts: the decoder positioned at t, and the frames before t
     // the new stitcher's layers pool measured (the seam colour blend's second,
     // the seam flow's window; the decoder left before t).
@@ -354,9 +357,13 @@ private:
     // The next lens pair decoded and measured, nothing stitched (the
     // pre-roll): its colour in the overlap at the template's geometry into
     // cut_stats_ (with the seam colour blend), and from `flowFrom` on its
-    // seam flow strips into seam_flow_strips_ (*flowMeasured says whether).
+    // seam flow -- on the GPU into its window, else its strips into
+    // seam_flow_strips_ (*flowMeasured says whether, for addSeamFlow). A
+    // pair at or after `until` (the seek's own frame, measured when it's
+    // read) is read but not measured: on the GPU measuring the flow adds it.
     // False at the end (last_error_ empty) or on an error.
-    bool measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, bool* flowMeasured);
+    bool measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, int64_t until,
+                              bool* flowMeasured);
     // The seam colour blend for the frame at pts_ms into `p`: `measure`
     // fills cut_stats_ at the template's geometry and the frame is pooled
     // with the second before it (seam_colour_window_). False when it can't
@@ -399,9 +406,6 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             const LensCalibration* calibration, bool modelCorrection,
                             insv::InsvCalibration& calib, insv::StitchParams& params,
                             std::string& err, bool* guardFound = nullptr);
-
-// Whether this build can do the new stitcher's seam flow (it needs OpenCV).
-bool SeamFlowAvailable();
 
 // Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource).
 // Kept as a factory so a second backend could slot back in without touching

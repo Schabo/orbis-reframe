@@ -146,21 +146,13 @@ void StitchingPanel::setSeamFlow(bool on)
     m_updating = false;
 }
 
-void StitchingPanel::setSeamFlowAvailable(bool available, const QString &whyNot)
-{
-    m_seamFlowAvailable = available;
-    if (!available)
-        m_seamFlow->setToolTip(whyNot);
-    updateNewStitcherOptions();
-}
-
 void StitchingPanel::updateNewStitcherOptions()
 {
     // Only the new stitcher has them; the old one matches the lenses its own way.
     const bool isNew =
         m_method->isEnabled() && m_method->currentIndex() == static_cast<int>(Method::New);
     m_seamColourBlend->setEnabled(isNew);
-    m_seamFlow->setEnabled(isNew && m_seamFlowAvailable);
+    m_seamFlow->setEnabled(isNew);
 }
 
 void StitchingPanel::setState(LensGuard lensGuard, Method method,

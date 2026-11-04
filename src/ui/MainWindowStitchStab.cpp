@@ -15,7 +15,6 @@
 #include <cmath>
 
 #include <ClipMetadata.h>  // camera::ReadClipMetadata (the clip's camera)
-#include <NativeStitchSource.h> // stitch::SeamFlowAvailable
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
 
 #include "ClipMeasurements.h"
@@ -58,10 +57,6 @@ void MainWindow::connectStitchAndStabilization()
         if (c && !c->flat)
             m_timeline->setSourceSeamFlow(c->sourcePath, on);
     });
-    if (!stitch::SeamFlowAvailable())
-        m_stitchingPanel->setSeamFlowAvailable(
-            false, tr("This build of orbis-reframe has no seam flow (it was built without "
-                      "OpenCV)."));
     connect(m_stitchingPanel, &StitchingPanel::calibrationChosen, this, [this](int index) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && !c->flat && index >= 0 && index < int(m_calibrationChoices.size()))

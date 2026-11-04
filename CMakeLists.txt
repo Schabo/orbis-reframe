@@ -32,6 +32,7 @@ set(SHADER_SOURCES
     src/render/shaders/fisheye_stitch_nv12.comp
     src/render/shaders/reframe_reproject.comp
     src/render/shaders/fisheye_view_nv12.comp
+    src/render/shaders/seam_flow.comp
     src/render/shaders/inset.frag
     src/render/shaders/marker.frag
     src/render/shaders/region.frag
@@ -310,6 +311,7 @@ add_library(render_gpu_stitch STATIC
     src/render/VulkanFisheyeStitcher.cpp
     src/render/VulkanFisheyeStitcherImpl.h
     src/render/VulkanFisheyeStitcherSetup.cpp
+    src/render/VulkanSeamFlow.cpp
     src/render/VulkanLut.h
     src/render/VulkanLut.cpp
 )
@@ -1126,6 +1128,18 @@ add_executable(vulkan_lut_test tests/vulkan_lut_test.cpp)
 target_link_libraries(vulkan_lut_test PRIVATE render_gpu_stitch)
 add_test(NAME vulkan_lut_test COMMAND vulkan_lut_test)
 set_tests_properties(vulkan_lut_test PROPERTIES SKIP_RETURN_CODE 77)
+
+# --- tests/seam_flow_gpu_test: the new stitcher's seam flow on the GPU
+# (seam_flow.comp) on synthetic strips, and against the CPU's DIS where
+# OpenCV is there. Skipped (77) where there's no Vulkan device.
+add_executable(seam_flow_gpu_test tests/seam_flow_gpu_test.cpp)
+target_link_libraries(seam_flow_gpu_test PRIVATE render_gpu_stitch)
+if(TARGET insv_optical)
+    target_link_libraries(seam_flow_gpu_test PRIVATE insv_optical)
+    target_compile_definitions(seam_flow_gpu_test PRIVATE ORBIS_SEAM_FLOW=1)
+endif()
+add_test(NAME seam_flow_gpu_test COMMAND seam_flow_gpu_test)
+set_tests_properties(seam_flow_gpu_test PROPERTIES SKIP_RETURN_CODE 77)
 
 # The privacy blur's plate-scan data (lookup, spans, merge, cache file).
 add_executable(privacy_test tests/privacy_test.cpp)

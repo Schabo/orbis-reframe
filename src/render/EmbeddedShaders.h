@@ -23,5 +23,6 @@ Spirv fisheyeStitchComp();
 Spirv fisheyeStitchNv12Comp();
 Spirv reframeReprojectComp();
 Spirv fisheyeViewNv12Comp();
+Spirv seamFlowComp();
 
 } // namespace render::shaders

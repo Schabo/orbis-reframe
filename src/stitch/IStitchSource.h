@@ -102,8 +102,8 @@ struct PreviewStitchConfig {
     // the seam joined up by optical flow between the lenses in the overlap,
     // the rest kept at the template's geometry; each frame's flow averaged
     // with the few frames before it (which SeekTo measures first). Only
-    // with Method::New, and only where the app was built with OpenCV
-    // (SeamFlowAvailable).
+    // with Method::New; on the GPU stitch, or on the CPU's where the app
+    // was built with OpenCV.
     bool seamFlow = true;
     bool seamFlowOn() const { return method == Method::New && seamFlow; }
 

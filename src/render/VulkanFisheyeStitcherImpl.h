@@ -264,13 +264,52 @@ struct VulkanFisheyeStitcher::Impl {
     std::shared_ptr<const insv::SeamFlowField> flowHeld;
     bool flowCopy = false;  // flowStage waits to be copied into flowImg
     bool flowFresh = false; // flowImg is new: its layout is still UNDEFINED
-    // The seam flow's strips (binding 7, pass 4), read back.
+    // The seam flow's strips (binding 7, pass 4), device-local: the seam
+    // flow (below) reads them.
     VkBuffer stripBuf = VK_NULL_HANDLE;
     VkDeviceMemory stripMem = VK_NULL_HANDLE;
     void* stripMap = nullptr;
     VkDeviceSize stripBytes = 0;
-    // The flow texture for a frame's params: (re)made at the field's size,
-    // the field staged when it isn't the one up. Before recording.
+    // The seam flow on the GPU (VulkanSeamFlow.cpp, seam_flow.comp): its
+    // pipeline (built when first used), per pyramid scale the shader's
+    // scratch layout, the ring of the last frames' fields.
+    struct SeamFlowScale {
+        int W = 0, H = 0, f = 1, npx = 0, npy = 0;
+        float sx = 1;
+        int img = 0, grad = 0, patches = 0, dense = 0; // offsets into work, floats
+    };
+    struct {
+        VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+        VkDescriptorPool pool = VK_NULL_HANDLE;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        VkPipelineLayout layout = VK_NULL_HANDLE;
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        VkBuffer work = VK_NULL_HANDLE, ring = VK_NULL_HANDLE;
+        VkDeviceMemory workMem = VK_NULL_HANDLE, ringMem = VK_NULL_HANDLE;
+        int cols = 0, rows = 0;              // the grid the buffers are for
+        float radX = 0, radY = 0;            // radians per strip pixel
+        float reachRad = 0;                  // the grid's (readSeamFlow)
+        std::vector<SeamFlowScale> scales;   // finest first
+        int slot = 0;  // the ring slot the next frame goes into
+        int count = 0; // frames held
+    } sf;
+    // The pipeline, the buffers for params' grid, the set pointed at the
+    // strips and the texture (both made here if they aren't yet). Before
+    // recording.
+    bool ensureSeamFlow(const insv::StitchGpuParams& p, std::string& err);
+    // The flow of the strips in stripBuf added to the window and its mean
+    // written into the flow texture, into the begun `cmd`; the texture left
+    // readable by every later stage.
+    void recordSeamFlow(VkCommandBuffer cmd);
+    bool buildSeamFlowPipeline(std::string& err);
+    // A one-off submission of what `rec` records into `cmd`, waited on (the
+    // seam flow's tool and test calls).
+    bool submitOnce(const std::function<void(VkCommandBuffer)>& rec, std::string& err);
+    void destroySeamFlow();         // the buffers
+    void destroySeamFlowPipeline(); // and the pipeline
+    // The flow texture for a frame's params: (re)made at the field's size
+    // (with seamFlowGpu, the grid's), the field staged when it isn't the
+    // one up. Before recording.
     bool ensureFlow(const insv::StitchGpuParams& p, std::string& err);
     // The staged field copied into the texture, into the begun `cmd`; left
     // readable by every later stage. Nothing when nothing is staged.

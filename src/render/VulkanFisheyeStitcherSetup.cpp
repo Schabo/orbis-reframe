@@ -148,8 +148,9 @@ uint16_t ToHalf(float f)
 bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std::string& err)
 {
     const insv::SeamFlowField* want = p.seamFlow && !p.seamFlow->empty() ? p.seamFlow.get() : nullptr;
-    const int W = want ? want->grid.cols : (flowImg ? flowW : 1);
-    const int H = want ? want->grid.rows : (flowImg ? flowH : 1);
+    const bool gpu = !want && p.seamFlowGpu && p.seamFlowCols > 0 && p.seamFlowRows > 0;
+    const int W = want ? want->grid.cols : gpu ? p.seamFlowCols : (flowImg ? flowW : 1);
+    const int H = want ? want->grid.rows : gpu ? p.seamFlowRows : (flowImg ? flowH : 1);
     if (!flowImg || W != flowW || H != flowH) {
         idleBeforeFree();
         if (flowView) vkDestroyImageView(device, flowView, nullptr);
@@ -166,8 +167,9 @@ bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std
         ii.arrayLayers = 1;
         ii.samples = VK_SAMPLE_COUNT_1_BIT;
         ii.tiling = VK_IMAGE_TILING_OPTIMAL;
+        // Storage: the GPU's seam flow writes its field straight in.
         ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
         ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkMemoryRequirements mr{};
@@ -288,8 +290,9 @@ bool VulkanFisheyeStitcher::Impl::ensureStrips(VkDeviceSize bytes, std::string& 
     stripBuf = VK_NULL_HANDLE;
     stripMem = VK_NULL_HANDLE;
     stripBytes = 0;
-    if (!makeReadbackBuffer(std::max<VkDeviceSize>(bytes, 16), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                            stripBuf, stripMem, &stripMap)) {
+    if (!makeBuffer(std::max<VkDeviceSize>(bytes, 16),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, stripBuf, stripMem, nullptr)) {
         err = "seam flow strip buffer allocation failed";
         return false;
     }
@@ -649,6 +652,7 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         } else
             vkDeviceWaitIdle(d->device);
         d->destroyResources();
+        d->destroySeamFlowPipeline();
         d->ring.reset(); // freed now, or by the last LensFrame still holding a slot
         for (auto& [img, view] : d->nv12Views)
             vkDestroyImageView(d->device, view, nullptr);

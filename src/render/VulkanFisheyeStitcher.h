@@ -3,7 +3,7 @@
 #include <FisheyeProjection.h> // insv::StitchGpuParams
 #include <SeamCut.h>           // insv::SeamCutStats
 #include <SeamDepth.h>         // insv::SeamCosts
-#include <SeamFlow.h>          // insv::SeamFlowStrips
+#include <SeamFlow.h>          // insv::SeamFlowStrips, insv::SeamFlowField
 #include <Ycbcr.h>             // insv::YcbcrCoding
 
 #include "ColorLut.h" // color::Grade
@@ -99,8 +99,16 @@ public:
 
     // stage 1: reproject an RGB24 fisheye pair (params.fisheyeW x fisheyeH each)
     // into an eqW x eqH equirect (outRgba resized to eqW*eqH*4, opaque alpha).
+    // With `measureSeamFlow`, the pair's seam flow is measured into the
+    // window first (as measureSeamFlowVk), in the same submission, and the
+    // stitch uses it (params.seamFlowGpu needn't be set).
     bool stitch(const uint8_t* rgb0, const uint8_t* rgb1, const insv::StitchGpuParams& params,
-                int eqW, int eqH, std::vector<uint8_t>& outRgba, std::string& err);
+                int eqW, int eqH, std::vector<uint8_t>& outRgba, std::string& err,
+                bool measureSeamFlow = false);
+    // stage 1's seam flow alone: the pair's flow measured into the window,
+    // no stitch (a seek's pre-roll). Blocking.
+    bool measureSeamFlow(const uint8_t* rgb0, const uint8_t* rgb1,
+                         const insv::StitchGpuParams& params, std::string& err);
 
     // stage 2: reproject a decoder-owned NV12 fisheye pair straight from VRAM.
     // Waits on each frame's timeline semaphore at semWaitValue and signals it
@@ -165,15 +173,31 @@ public:
     bool measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                           const insv::StitchGpuParams& params, insv::SeamCutStats& out,
                           VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
-    // The new stitcher's seam flow: both lenses unwrapped over the overlap
-    // (pass 4, on params' seam flow grid; insv::MeasureSeamFlowStrips with
-    // the capture-time correction) into `out`, and with `cutOut` the cut
-    // statistics (pass 3, as measureSeamCutVk) in the same submission. Same
-    // handshake, blocking.
+    // The new stitcher's seam flow, all on the GPU: both lenses unwrapped
+    // over the overlap (pass 4, on params' seam flow grid;
+    // insv::MeasureSeamFlowStrips with the capture-time correction), the
+    // flow between them both ways (seam_flow.comp; insv::SeamFlowEstimator's
+    // DIS), added to the stitcher's window of the last
+    // insv::kSeamFlowFrames frames (insv::SeamFlowWindow) and the window's
+    // mean put into the flow texture -- what a frame with
+    // params.seamFlowGpu stitches with. With `cutOut` the cut statistics
+    // (pass 3, as measureSeamCutVk) in the same submission. Same handshake,
+    // blocking.
     bool measureSeamFlowVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                           const insv::StitchGpuParams& params, insv::SeamFlowStrips& out,
-                           insv::SeamCutStats* cutOut, VulkanLensOutcome* r0,
-                           VulkanLensOutcome* r1, std::string& err);
+                           const insv::StitchGpuParams& params, insv::SeamCutStats* cutOut,
+                           VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+    // The seam flow window emptied (a seek): the next measured frame starts
+    // it again. The texture keeps the last field until then.
+    void resetSeamFlow();
+    // Frames in the seam flow window (0 .. insv::kSeamFlowFrames).
+    int seamFlowFrames() const;
+    // The flow of strips measured elsewhere (`s`, on its own grid) added to
+    // the window, as measureSeamFlowVk does with its own; for tests and
+    // tools. Blocking.
+    bool estimateSeamFlow(const insv::SeamFlowStrips& s, std::string& err);
+    // The flow texture read back (the window's mean; the field the GPU
+    // stitch samples, at half precision). For tests and tools.
+    bool readSeamFlow(insv::SeamFlowField& out, std::string& err);
 
     // Whether renderViewVk() is usable (the fused view pipeline built -- needs
     // initAdopt(); fisheye_view_nv12.comp).
@@ -273,12 +297,17 @@ private:
                          VulkanLensOutcome* r1, std::string& err);
 
     // measureSeamVk / measureSeamCutVk / measureSeamFlowVk: pass 2 into
-    // `out`, pass 3 into `cutOut`, pass 4 into `stripsOut` (each: null = not
-    // run).
+    // `out`, pass 3 into `cutOut` (each: null = not run), with `flow` pass
+    // 4 and the seam flow.
     bool measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
                          const insv::StitchGpuParams& params, insv::SeamCosts* out,
-                         insv::SeamCutStats* cutOut, insv::SeamFlowStrips* stripsOut,
-                         VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+                         insv::SeamCutStats* cutOut, bool flow, VulkanLensOutcome* r0,
+                         VulkanLensOutcome* r1, std::string& err);
+    // stitch / measureSeamFlow: the RGB pair uploaded; with `measureFlow`
+    // the seam flow measured from it; with eqW > 0 stitched into outRgba.
+    bool stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rgb1, const insv::StitchGpuParams& params,
+                       int eqW, int eqH, std::vector<uint8_t>* outRgba, bool measureFlow,
+                       std::string& err);
 
     struct Impl;
     Impl* d = nullptr;

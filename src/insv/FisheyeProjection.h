@@ -274,6 +274,10 @@ struct StitchGpuParams {
     float seamFlowStripRad = 0;
     float seamFlowReachRad = 0;
     std::shared_ptr<const SeamFlowField> seamFlow;
+    // Instead of `seamFlow`: the GPU stitcher's own field, the one its seam
+    // flow window put into the flow texture (render::VulkanFisheyeStitcher::
+    // measureSeamFlowVk), on the grid above. GPU stitch only.
+    bool seamFlowGpu = false;
     // Privacy blur (BlurQuads.h): regions mosaicked in this frame, equirect
     // (sphere) frame, prepared. Per frame, like the RS taps.
     int blurCount = 0;

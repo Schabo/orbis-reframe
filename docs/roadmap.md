@@ -38,9 +38,12 @@ no background analysis, and selectable in the Stitching section's
   averaged over the frame and the four before it; each lens warped by a
   share of it growing to half at the seam, so near things crossing the
   seam join up while the rest keeps the template's geometry. A setting of
-  its own. The flow is estimated on the CPU (OpenCV's DIS) for now; on the
-  GPU next -- a compute-shader flow, NVIDIA's flow hardware
-  (`VK_NV_optical_flow`) where there is one.
+  its own. The flow is Dense Inverse Search (DIS) in a compute shader, the
+  same on every GPU (OpenCV's DIS on the CPU stitch fallback). NVIDIA's
+  flow hardware (`VK_NV_optical_flow`) is left out for now: on strips this
+  small the shader is fast enough, and the hardware would make an export
+  depend on the GPU's vendor; worth trying only if it measures clearly
+  better.
 
 Then a decision on replacing the old stitcher, measured with
 `tools/stitch_bench` against Insta360 Studio's exports.

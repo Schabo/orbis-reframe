@@ -135,9 +135,10 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
         sp.seamCol[b][3] = 0.0f;
     }
     // The field's own grid when there is one (the texture is its size),
-    // else the strip pass's.
+    // else the strip pass's (and the GPU's own field's).
     const bool flow = p.seamFlow && !p.seamFlow->empty();
-    sp.seamFlow[0] = flow ? 1.0f : 0.0f;
+    const bool gpuFlow = !flow && p.seamFlowGpu && p.seamFlowCols > 0;
+    sp.seamFlow[0] = flow || gpuFlow ? 1.0f : 0.0f;
     sp.seamFlow[1] = flow ? p.seamFlow->grid.stripRad : p.seamFlowStripRad;
     sp.seamFlow[2] = flow ? p.seamFlow->grid.reachRad : p.seamFlowReachRad;
     sp.seamFlow[3] = 0.0f;
@@ -263,19 +264,51 @@ void VulkanFisheyeStitcher::Impl::recordStitchPasses(int eqW, int eqH)
 
 bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
                                    const insv::StitchGpuParams& params, int eqW, int eqH,
-                                   std::vector<uint8_t>& outRgba, std::string& err)
+                                   std::vector<uint8_t>& outRgba, std::string& err,
+                                   bool measureSeamFlow)
+{
+    if (eqW <= 0 || eqH <= 0) {
+        err = "bad dimensions";
+        return false;
+    }
+    return stitchRgbImpl(rgb0, rgb1, params, eqW, eqH, &outRgba, measureSeamFlow, err);
+}
+
+bool VulkanFisheyeStitcher::measureSeamFlow(const uint8_t* rgb0, const uint8_t* rgb1,
+                                            const insv::StitchGpuParams& params, std::string& err)
+{
+    return stitchRgbImpl(rgb0, rgb1, params, 0, 0, nullptr, true, err);
+}
+
+bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rgb1,
+                                          const insv::StitchGpuParams& paramsIn, int eqW, int eqH,
+                                          std::vector<uint8_t>* outRgba, bool measureFlow,
+                                          std::string& err)
 {
     if (!m_ready) {
         err = "stitcher not initialised";
         return false;
     }
+    // Measured here, the frame stitches with the GPU's own field.
+    insv::StitchGpuParams flowParams;
+    if (measureFlow) {
+        flowParams = paramsIn;
+        flowParams.seamFlow.reset();
+        flowParams.seamFlowGpu = true;
+    }
+    const insv::StitchGpuParams& params = measureFlow ? flowParams : paramsIn;
+    const bool doStitch = eqW > 0 && outRgba;
     const int fwv = params.fisheyeW;
     const int fhv = params.fisheyeH;
-    if (fwv <= 0 || fhv <= 0 || eqW <= 0 || eqH <= 0) {
+    if (fwv <= 0 || fhv <= 0) {
         err = "bad dimensions";
         return false;
     }
-    if (!d->ensureResources(fwv, fhv, eqW, eqH, err))
+    // A measurement alone keeps whatever equirect buffer is there.
+    if (!d->ensureResources(fwv, fhv, doStitch ? eqW : std::max(d->ew, 16),
+                            doStitch ? eqH : std::max(d->eh, 8), err))
+        return false;
+    if (measureFlow && !d->ensureSeamFlow(params, err))
         return false;
 
     const size_t oneRgba = static_cast<size_t>(fwv) * fhv * 4;
@@ -283,7 +316,7 @@ bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
     expandRgbToRgba(rgb1, static_cast<uint8_t*>(d->stagingMap) + oneRgba, fwv, fhv);
 
     ShaderParams sp{};
-    packParams(params, eqW, eqH, sp);
+    packParams(params, doStitch ? eqW : 16, doStitch ? eqH : 8, sp);
     std::memcpy(d->uboMap, &sp, sizeof(sp));
 
     if (!d->ensureFlow(params, err))
@@ -329,8 +362,22 @@ bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
     vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
 
+    if (measureFlow) {
+        // Pass 4, the strips, then the flow from them (as measureSeamImpl).
+        vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeline);
+        vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->pipeLayout, 0, 1,
+                                &d->descSet, 0, nullptr);
+        const int32_t pass = 4;
+        vkCmdPushConstants(d->cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
+        const uint32_t quads = static_cast<uint32_t>(params.seamFlowCols / 4);
+        vkCmdDispatch(d->cmd, (quads + kLocalSize - 1) / kLocalSize,
+                      (static_cast<uint32_t>(params.seamFlowRows) + kLocalSize - 1) / kLocalSize, 1);
+        d->recordSeamFlow(d->cmd);
+    }
+
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
-    d->recordStitchPasses(eqW, eqH);
+    if (doStitch)
+        d->recordStitchPasses(eqW, eqH);
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
 
     VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -355,9 +402,11 @@ bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
     vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, UINT64_MAX);
     vkResetFences(d->device, 1, &d->fence);
 
-    const size_t outBytes = static_cast<size_t>(eqW) * eqH * 4;
-    outRgba.resize(outBytes);
-    std::memcpy(outRgba.data(), d->outMap, outBytes);
+    if (doStitch) {
+        const size_t outBytes = static_cast<size_t>(eqW) * eqH * 4;
+        outRgba->resize(outBytes);
+        std::memcpy(outRgba->data(), d->outMap, outBytes);
+    }
     return true;
 }
 
@@ -974,7 +1023,7 @@ bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const Vulka
                                           VulkanLensOutcome* r0,
                                           VulkanLensOutcome* r1, std::string& err)
 {
-    return measureSeamImpl(f0, f1, params, &out, cutOut, nullptr, r0, r1, err);
+    return measureSeamImpl(f0, f1, params, &out, cutOut, false, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
@@ -982,30 +1031,24 @@ bool VulkanFisheyeStitcher::measureSeamCutVk(const VulkanLensInput& f0, const Vu
                                              insv::SeamCutStats& out, VulkanLensOutcome* r0,
                                              VulkanLensOutcome* r1, std::string& err)
 {
-    return measureSeamImpl(f0, f1, params, nullptr, &out, nullptr, r0, r1, err);
+    return measureSeamImpl(f0, f1, params, nullptr, &out, false, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamFlowVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                               const insv::StitchGpuParams& params,
-                                              insv::SeamFlowStrips& out, insv::SeamCutStats* cutOut,
-                                              VulkanLensOutcome* r0, VulkanLensOutcome* r1,
-                                              std::string& err)
+                                              insv::SeamCutStats* cutOut, VulkanLensOutcome* r0,
+                                              VulkanLensOutcome* r1, std::string& err)
 {
-    return measureSeamImpl(f0, f1, params, nullptr, cutOut, &out, r0, r1, err);
+    return measureSeamImpl(f0, f1, params, nullptr, cutOut, true, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
                                             const insv::StitchGpuParams& params,
                                             insv::SeamCosts* out, insv::SeamCutStats* cutOut,
-                                            insv::SeamFlowStrips* stripsOut,
-                                            VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                            bool flow, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                                             std::string& err)
 {
     const int stripCols = params.seamFlowCols, stripRows = params.seamFlowRows;
-    if (stripsOut && (stripCols <= 0 || stripRows <= 1 || (stripCols & 3))) {
-        err = "measureSeamFlowVk: no seam flow grid in the params";
-        return false;
-    }
     if (!m_ready || !d->nv12) {
         err = "measureSeamVk requires initAdopt()";
         return false;
@@ -1014,8 +1057,10 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
     // view pipeline: its binding 3 only needs a token buffer, where the
     // stitch's wants the whole equirect.
     const bool viaView = m_viewReady;
-    if (stripsOut && !d->ensureStrips(static_cast<VkDeviceSize>(stripCols) * stripRows * 2, err))
+    if (flow && !d->ensureSeamFlow(params, err)) {
+        err = "measureSeamFlowVk: " + err;
         return false;
+    }
     if (!d->ensureUbo(err) ||
         !(viaView ? d->ensureFlat(16, err) : d->ensureOutput(std::max(d->ew, 16), std::max(d->eh, 8), err)))
         return false;
@@ -1114,8 +1159,8 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
         vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamCutRows, 1);
     }
     // Pass 4, the seam flow's strips: four columns of a row per invocation,
-    // into its own buffer.
-    if (stripsOut) {
+    // into its own buffer; then the flow from them.
+    if (flow) {
         const uint32_t quads = static_cast<uint32_t>(stripCols / 4);
         if (viaView) {
             ViewPush vp{};
@@ -1128,19 +1173,17 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
             vkCmdDispatch(cmd, (quads + kLocalSize - 1) / kLocalSize,
                           (static_cast<uint32_t>(stripRows) + kLocalSize - 1) / kLocalSize, 1);
         }
+        d->recordSeamFlow(cmd);
     }
 
-    VkBufferMemoryBarrier toHost[2]{};
-    for (int k = 0; k < 2; ++k) {
-        toHost[k] = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        toHost[k].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        toHost[k].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-        toHost[k].srcQueueFamilyIndex = toHost[k].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toHost[k].buffer = k == 0 ? d->seamBuf : d->stripBuf;
-        toHost[k].size = VK_WHOLE_SIZE;
-    }
+    VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    toHost.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    toHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    toHost.srcQueueFamilyIndex = toHost.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    toHost.buffer = d->seamBuf;
+    toHost.size = VK_WHOLE_SIZE;
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
-                         nullptr, stripsOut ? 2 : 1, toHost, 0, nullptr);
+                         nullptr, 1, &toHost, 0, nullptr);
     vkEndCommandBuffer(cmd);
 
     const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
@@ -1179,16 +1222,6 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
                 out->ncc[b][k] = v[0];
                 out->texture[b][k] = v[1];
             }
-    if (stripsOut) {
-        stripsOut->grid.cols = stripCols;
-        stripsOut->grid.rows = stripRows;
-        stripsOut->grid.stripRad = params.seamFlowStripRad;
-        stripsOut->grid.reachRad = params.seamFlowReachRad;
-        const size_t n = static_cast<size_t>(stripCols) * stripRows;
-        const uint8_t* src = static_cast<const uint8_t*>(d->stripMap);
-        for (int i = 0; i < 2; ++i)
-            stripsOut->grey[i].assign(src + i * n, src + (i + 1) * n);
-    }
     if (cutOut) {
         const float* s = c + d->kSeamCostBytes / sizeof(float);
         for (int b = 0; b < insv::kSeamDepthBins; ++b)

@@ -94,11 +94,13 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    [the roadmap](roadmap.md)); its seam colour blend (`insv/SeamColourBlend`)
    matches the lenses' colour per stretch of the seam from what they see in
    the overlap over each frame and the second before it, and its seam
-   flow (`insv/SeamFlow`, the flow estimated with OpenCV's DIS in
-   `insv/SeamFlowEstimator`) warps each lens near the seam by its share of
+   flow (`insv/SeamFlow`) warps each lens near the seam by its share of
    the optical flow between them in the overlap, averaged over the frame
    and the four before it -- a texture beside the stitch's parameters on
-   every GPU path, the viewport's lens frames included. A seek measures the
+   every GPU path, the viewport's lens frames included. On the GPU the
+   strips, the flow (DIS, `render/shaders/seam_flow.comp`) and the average
+   stay there, in the frame's measuring submission; the CPU stitch
+   fallback estimates it with OpenCV's DIS (`insv/SeamFlowEstimator`). A seek measures the
    frames both need before the frame it goes to, so they need no analysis.
    The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the

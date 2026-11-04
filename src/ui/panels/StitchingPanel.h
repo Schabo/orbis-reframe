@@ -41,8 +41,6 @@ public:
     void setSeamColourBlend(bool on);
     // ... and its seam flow (ClipItem::seamFlow), likewise. Does not emit.
     void setSeamFlow(bool on);
-    // Whether this build has the seam flow; `whyNot` its tooltip when not.
-    void setSeamFlowAvailable(bool available, const QString &whyNot = QString());
     // One line about the current clip's seam alignment and lens colour
     // (empty hides it); `details`, the measured figures, go in its tooltip.
     void setSeamStatus(const QString &text, const QString &details = QString());
@@ -74,7 +72,6 @@ private:
     QComboBox *m_method = nullptr;
     QCheckBox *m_seamColourBlend = nullptr;
     QCheckBox *m_seamFlow = nullptr;
-    bool m_seamFlowAvailable = true;
     QComboBox *m_calibration = nullptr;
     QPushButton *m_calibrate = nullptr;
     QLabel *m_seamStatus = nullptr;

@@ -197,9 +197,9 @@ holds still while things pass through it; when you jump to a frame,
 orbis-reframe measures those frames first, so the frame looks the same
 however you get to it. A close thing that moves fast across the seam can
 still smear for a frame or two. Turn it off to see the lenses joined at a
-fixed distance, as with **Fixed seam**. It needs a build of orbis-reframe
-with OpenCV (the packages and AppImage have it); without it the box is
-greyed out.
+fixed distance, as with **Fixed seam**. It runs on the graphics card;
+if orbis-reframe has to stitch on the processor instead, it needs a build
+with OpenCV (the packages and AppImage have it) and is left out otherwise.
 
 ## Depth-aware seam
 
