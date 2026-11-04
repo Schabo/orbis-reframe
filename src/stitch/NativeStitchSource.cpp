@@ -273,22 +273,19 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
 
 bool NativeStitchSource::preRollSeamColour(int64_t t) {
     // The seam colour blend pools the second before a frame: measure it
-    // now, so the frame at t is stitched as playback into it has it. Stop a
-    // frame short of t (the next read is t's); a read that lands on t after
-    // all (uneven frame times) is undone by the seek below, keeping what
-    // was measured before it.
+    // now, so the frame at t is stitched as playback into it has it. Every
+    // frame before the one the seek below lands on (the first at or after
+    // t) counts, so read on until a frame at or after t; that one is read
+    // again after the seek.
     if (!seekDecoder(std::max<int64_t>(0, t - seam_colour_window_.lookBackMs())))
         return false;
-    const double frameMs = info_.fps > 0 ? 1000.0 / info_.fps : 33.4;
-    int64_t last = INT64_MIN;
-    while (last == INT64_MIN || static_cast<double>(last) + 1.5 * frameMs <= static_cast<double>(t)) {
+    for (;;) {
         int64_t pts = 0;
         if (!measureNextSeamColour(pts))
             break; // the end, or an error: the frames so far
-        if (pts >= t - frameMs / 2)
-            break; // t itself: measured when it's read
+        if (pts >= t)
+            break; // the seek's own frame: measured when it's read
         seam_colour_window_.add(pts, *cut_stats_, gpu_params_.bandRad);
-        last = pts;
     }
     return true;
 }
