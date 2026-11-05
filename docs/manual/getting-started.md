@@ -20,10 +20,8 @@ clip is three files: one per lens (`VID_…_00_…` and `VID_…_10_…`) and th
 camera's preview file (`LRV_…_11_…`). Add any of them, or the whole folder,
 and the clip comes in once; it opens, stitches, [stabilizes](stabilization.md)
 and exports. Keep a clip's files together in one folder. The stitch hasn't
-been compared with Insta360 Studio's yet, and on some clips
-[Horizon lock](stabilization.md#horizon-lock) leaves the horizon tilted by
-a few degrees or more. The ONE X2's 4K and 3K modes (one file for both
-lenses) aren't supported yet.
+been compared with Insta360 Studio's yet. The ONE X2's 4K and 3K modes (one
+file for both lenses) aren't supported yet.
 
 The **Antigravity A1**, a 360° drone, is supported experimentally in its 8K
 mode, from one contributor's flights: its clips (`VID_….insv`, with the

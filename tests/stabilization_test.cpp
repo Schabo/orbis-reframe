@@ -320,6 +320,83 @@ void testStabConfig()
         CHECK(worst < 0.2);
     }
 
+    // Horizon lock levels on the samples where the accel shows gravity: ~1 g
+    // and not turning. A camera on a stick or in the hand swings about the
+    // vertical all the time; those swings aren't turns (2026-11-05: counted
+    // as turns, they left 0-3 % of ONE X2 walks to level on, and the level
+    // drifted with the gyro bias by up to 21 deg). The track's up, in body
+    // axes (the X5's map "z,-x,-y" as above), at time t.
+    auto trackUp = [](const insv::GyroStabilizer& g, double t) {
+        const auto q = g.rawOrientation(t);
+        const double w = q[0], x = q[1], y = q[2], z = q[3];
+        return std::array<double, 3>{2 * (x * y + w * z), 1 - 2 * (x * x + z * z),
+                                     2 * (y * z - w * x)};
+    };
+    auto offDeg = [](const std::array<double, 3>& u, const double b[3]) {
+        const double dot = u[0] * b[0] + u[1] * b[1] + u[2] * b[2];
+        return std::acos(std::clamp(dot, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+    };
+    // Swinging: the camera tilted 20 deg, swinging about the vertical at
+    // 0.3 Hz, +-8.6 deg/s, for 60 s, with the bias of the test above. A swing
+    // about the vertical leaves the body's up where it is.
+    {
+        const double a = 20.0 * std::numbers::pi / 180.0;
+        const double b[3] = {std::sin(a), std::cos(a), 0.0}; // body up
+        std::vector<insv::ImuSample> imu;
+        for (int i = 0; i < 60000; ++i) {
+            const double t = i * 1e-3;
+            const double yaw = 0.15 * std::sin(2.0 * std::numbers::pi * 0.3 * t); // rad/s
+            insv::ImuSample s;
+            s.timestamp = static_cast<uint64_t>(i) * 1000;
+            s.accel[2] = b[0];
+            s.accel[0] = -b[1];
+            s.accel[1] = -b[2];
+            s.gyro[2] = yaw * b[0] + 0.004;  // body X
+            s.gyro[0] = -yaw * b[1];         // body Y
+            s.gyro[1] = -(yaw * b[2] + 0.006); // body Z
+            imu.push_back(s);
+        }
+        insv::GyroStabilizer g;
+        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        CHECK(g.ready());
+        double worst = 0.0;
+        for (double t = 0.5; t < 59.5; t += 0.5)
+            worst = std::max(worst, offDeg(trackUp(g, t), b));
+        CHECK(worst < 0.5);
+    }
+    // Turning: an upright camera on a car at 15 m/s, a 10 s bend at
+    // 0.15 rad/s (0.23 g to the side, still within the 1 g gate) in a 60 s
+    // drive. The bend's specific force mustn't lean the level.
+    {
+        const double b[3] = {0.0, 1.0, 0.0};
+        std::vector<insv::ImuSample> imu;
+        for (int i = 0; i < 60000; ++i) {
+            const double t = i * 1e-3;
+            // In and out over 1 s each (raised cosine).
+            double f = 0.0;
+            if (t >= 25.0 && t < 26.0)
+                f = 0.5 - 0.5 * std::cos(std::numbers::pi * (t - 25.0));
+            else if (t >= 26.0 && t < 34.0)
+                f = 1.0;
+            else if (t >= 34.0 && t < 35.0)
+                f = 0.5 + 0.5 * std::cos(std::numbers::pi * (t - 34.0));
+            const double yaw = 0.15 * f;
+            insv::ImuSample s;
+            s.timestamp = static_cast<uint64_t>(i) * 1000;
+            s.accel[2] = 15.0 * yaw / 9.80665; // body X: towards the bend's centre
+            s.accel[0] = -1.0;
+            s.gyro[0] = -yaw;
+            imu.push_back(s);
+        }
+        insv::GyroStabilizer g;
+        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        CHECK(g.ready());
+        double worst = 0.0;
+        for (double t = 0.5; t < 59.5; t += 0.5)
+            worst = std::max(worst, offDeg(trackUp(g, t), b));
+        CHECK(worst < 0.5);
+    }
+
     // Lean follow auto-level: a still camera on a mount tilted 20 deg. On, the
     // view's up is the mount's gravity up; off, the camera body's own up.
     {

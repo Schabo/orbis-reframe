@@ -894,10 +894,22 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     // read 0.87 of speed x yaw rate on a 21 min ride; 0.94 at 0.04 rad/s,
     // with 22 % of its samples left quiet; 0.01 left too few on a shorter
     // one).
+    //
+    // A turn is a sustained change of heading: the quiet samples' detector
+    // low-passes the yaw rate at kTurnHeadingHz, forwards and backwards. A
+    // camera on a stick or in the hand swings +-8-10 deg/s about the vertical
+    // all the time; a faster, one-way filter with a margin round each turn
+    // (0.5 Hz, 1.5 s) counted every swing as a turn and kept 0-3 % of such
+    // takes, so the level drifted with the gyro (ONE X2 walks and rides: up
+    // to 21 deg rms off gravity; level within 0.9-2.4 deg with this). Run
+    // both ways the filter spreads a corner over a few seconds before and
+    // after it, which covers the lean at entry and exit that the margin was
+    // for: on two X5 rides lateral g and lean against speed x yaw rate stay
+    // as they were (0.85 / 0.78, 1.13 / 0.97).
     constexpr double kTurnYawRate = 0.04;   // rad/s (~2.3 deg/s) of low-passed world yaw
-    constexpr double kTurnLpHz = 0.5;       // yaw-rate low-pass for the turn detector
+    constexpr double kTurnHeadingHz = 0.1;  // yaw-rate low-pass for the quiet samples' turns
+    constexpr double kTurnLpHz = 0.5;       // yaw-rate low-pass for the fallback anchor's freeze
     constexpr double kOneGTolerance = 0.12; // |a| within 1 +- this to count as gravity
-    constexpr double kTurnMarginSec = 1.5;  // quiet samples keep this far from a turn
 
     std::vector<double> tSec;
     std::vector<std::array<double, 4>> qTrack;
@@ -911,9 +923,8 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     bool fitted = false;
     double fitUp[3] = {0, 1, 0};
     // The quiet samples: low-passed accel within 1 g +- kOneGTolerance and not
-    // turning (the low-passed rate about the measured up, which needs no
-    // orientation), with a kTurnMarginSec margin around every turn -- corner
-    // entry and exit lean the bike before and after the yaw rate shows it.
+    // turning (the rate about the measured up, which needs no orientation,
+    // low-passed both ways at kTurnHeadingHz).
     const size_t n = s.size();
     std::vector<std::array<double, 3>> rate, up;
     std::vector<double> dts;
@@ -923,10 +934,10 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
         rate.assign(n, {0.0, 0.0, 0.0});
         up.assign(n, {0.0, 1.0, 0.0});
         dts.assign(n, 0.0);
-        std::vector<char> ok(n, 0), turn(n, 0);
+        std::vector<char> ok(n, 0);
+        std::vector<double> yawRate(n, 0.0);
         const double fc = accelFc > 0.0 ? accelFc : 1.5;
         double lp[3] = {0, 0, 0};
-        double yawRateLp = 0.0;
         for (size_t i = 0; i < n; ++i) {
             double a[3];
             for (int k = 0; k < 3; ++k)
@@ -948,28 +959,25 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
             if (mg < 1e-6)
                 continue;
             up[i] = {lp[0] / mg, lp[1] / mg, lp[2] / mg};
-            const double yr = rate[i][0] * up[i][0] + rate[i][1] * up[i][1] + rate[i][2] * up[i][2];
-            yawRateLp += (1.0 - std::exp(-kTwoPi * kTurnLpHz * dt)) * (yr - yawRateLp);
+            yawRate[i] = rate[i][0] * up[i][0] + rate[i][1] * up[i][1] + rate[i][2] * up[i][2];
             ok[i] = std::fabs(mg - 1.0) < kOneGTolerance;
-            turn[i] = std::fabs(yawRateLp) >= kTurnYawRate;
         }
-        // Dilate the turns by kTurnMarginSec each way (two sweeps).
+        // Zero-phase: one pole forwards, then backwards over the result.
+        double y = 0.0;
+        for (size_t i = 1; i < n; ++i) {
+            if (dts[i] > 0.0 && dts[i] < 0.2)
+                y += (1.0 - std::exp(-kTwoPi * kTurnHeadingHz * dts[i])) * (yawRate[i] - y);
+            yawRate[i] = y;
+        }
+        y = 0.0;
+        for (size_t i = n; i-- > 1;) {
+            if (dts[i] > 0.0 && dts[i] < 0.2)
+                y += (1.0 - std::exp(-kTwoPi * kTurnHeadingHz * dts[i])) * (yawRate[i] - y);
+            yawRate[i] = y;
+        }
         quiet.assign(n, 0);
-        const double margin = kTurnMarginSec / tScale;
-        double lastTurn = -1e300;
         for (size_t i = 0; i < n; ++i) {
-            const double ts = static_cast<double>(s[i].timestamp);
-            if (turn[i])
-                lastTurn = ts;
-            quiet[i] = ok[i] && ts - lastTurn > margin;
-        }
-        double nextTurn = 1e300;
-        for (size_t i = n; i-- > 0;) {
-            const double ts = static_cast<double>(s[i].timestamp);
-            if (turn[i])
-                nextTurn = ts;
-            if (nextTurn - ts <= margin)
-                quiet[i] = 0;
+            quiet[i] = ok[i] && std::fabs(yawRate[i]) < kTurnYawRate;
             nQuiet += quiet[i] ? 1 : 0;
         }
         // A true up needs none of the accel's gating: thrust, braking and
