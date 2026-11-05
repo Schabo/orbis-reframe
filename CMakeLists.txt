@@ -151,6 +151,7 @@ add_test(NAME hlg_lut_test
 add_library(insv STATIC
     src/insv/BlurQuads.h
     src/insv/BlurQuads.cpp
+    src/insv/FramePts.h
     src/insv/GyroStabilizer.h
     src/insv/GyroStabilizer.cpp
     src/insv/Image.h

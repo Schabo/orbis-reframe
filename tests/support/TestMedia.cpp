@@ -49,8 +49,8 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     AVCodecContext *ctx = avcodec_alloc_context3(enc);
     ctx->width = spec.width;
     ctx->height = spec.height;
-    ctx->time_base = AVRational{1, spec.fps};
-    ctx->framerate = AVRational{spec.fps, 1};
+    ctx->time_base = AVRational{spec.fpsDen, spec.fps};
+    ctx->framerate = AVRational{spec.fps, spec.fpsDen};
     ctx->pix_fmt = AV_PIX_FMT_YUV420P;
     if (spec.hlg) {
         ctx->color_trc = AVCOL_TRC_ARIB_STD_B67;

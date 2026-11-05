@@ -7,6 +7,7 @@
 #include <ColorLut.h>          // color::Grade
 #include <ViewProjection.h>    // view::Pose
 #include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
+#include <FramePts.h>          // insv::FramePts
 #include <SeamWindow.h>        // insv::SeamWindow (value member below)
 #include <SeamColourBlend.h>   // insv::SeamColourBlend (value member below)
 #include <SeamFlow.h>          // insv::SeamFlowWindow (value member below)
@@ -126,15 +127,17 @@ public:
                             const float stab[9] = nullptr,
                             const color::Grade* colorGrade = nullptr);
 
-    // As above, but the pose and stab matrix come from `perFrame(ptsMs, pose,
-    // stab)`, called once the next frame is decoded and its source time is
+    // As above, but the pose and stab matrix come from `perFrame(pts, pose,
+    // stab)` (the pose at pts.ms, the stab matrix at the exact pts.sec()),
+    // called once the next frame is decoded and its source time is
     // known -- so they are evaluated at that frame's own time. A caller that
     // bakes them from an output index instead (trimIn + i/fps) is off by up to
     // a frame whenever trimIn isn't on a frame boundary: SeekTo lands on the
     // first frame at-or-after it. At the stick mount's ~11 Hz shake that is a
     // phase error large enough to undo most of the stabilization. `pose` is
     // prefilled with a forward view and `stab` with identity.
-    using FramePoseFn = std::function<void(int64_t ptsMs, view::Pose& pose, float stab[9])>;
+    using FramePoseFn =
+        std::function<void(const insv::FramePts& pts, view::Pose& pose, float stab[9])>;
     FlatFrame ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                             const color::Grade* colorGrade = nullptr);
 
@@ -176,7 +179,7 @@ public:
         view::Pose pose;
         int x = 0, y = 0, w = 0, h = 0;
     };
-    bool HoldNextPair(int64_t& pts_ms);
+    bool HoldNextPair(insv::FramePts& pts);
     bool RenderHeldViews(int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& rgba);
     void ReleaseHeldPair();
@@ -189,7 +192,7 @@ public:
     // RenderKeptViews is RenderHeldViews on one of them. Each pair stays in
     // GPU memory (~44 MB at 8K) until ReleaseKeptPair, Open or destruction.
     // Requires GpuViewAvailable().
-    int KeepNextPair(int64_t& pts_ms);
+    int KeepNextPair(insv::FramePts& pts);
     bool RenderKeptViews(int handle, int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& rgba);
     void ReleaseKeptPair(int handle);
@@ -269,7 +272,7 @@ public:
     const ReadTiming& LastReadTiming() const { return last_timing_; }
 
 private:
-    insv::StitchGpuParams paramsAt(int64_t pts_ms) const; // gpu_params_ + per-frame RS
+    insv::StitchGpuParams paramsAt(const insv::FramePts& pts) const; // gpu_params_ + per-frame RS
     // A decoded pair, unlocked between uses (the decoder may lock it as a
     // reference frame meanwhile): locked only around each GPU submission.
     struct HeldPair;
@@ -279,7 +282,7 @@ private:
     // paramsAt() plus the depth-aware seam's table and blend for this frame
     // (seamStateFor; measured on the GPU, advancing in0 / in1 past that
     // submission). Just paramsAt() when it's off.
-    insv::StitchGpuParams paramsWithSeam(int64_t pts_ms, render::VulkanLensInput& in0,
+    insv::StitchGpuParams paramsWithSeam(const insv::FramePts& pts, render::VulkanLensInput& in0,
                                          render::VulkanLensInput& in1);
     Frame readGpuAllVulkan();  // vdec_ + gpu_->stitchVk (stage 2, all-GPU)
     Frame readCpuDecode();     // demux_ + gpu_->stitch or stitcher_ (stage 1 / CPU)
@@ -289,7 +292,7 @@ private:
     // fused). False with last_error_ set on error; false with it empty at EOS.
     enum class FlatPath { ViaEquirect, FusedNv12, FusedP010, FusedRgba };
     bool readView(int outW, int outH, const FramePoseFn& perFrame, const color::Grade* colorGrade,
-                  FlatPath path, std::vector<uint8_t>& out, int64_t& pts_ms);
+                  FlatPath path, std::vector<uint8_t>& out, insv::FramePts& pts);
 
     // Stage 2: GPU-resident decode -> GPU stitch, nothing on the CPU. Used when
     // both halves init; else vdec_ is null and the stage-1 path runs.

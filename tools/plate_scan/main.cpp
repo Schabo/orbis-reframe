@@ -351,7 +351,7 @@ int main(int argc, char** argv)
                     std::printf("fused view unavailable\n");
                     continue;
                 }
-                const stitch::Frame f = src.ReadViewFrame(1280, 720, [&](int64_t, view::Pose& p, float[9]) {
+                const stitch::Frame f = src.ReadViewFrame(1280, 720, [&](const insv::FramePts&, view::Pose& p, float[9]) {
                     p = pose;
                 });
                 if (f.rgba.empty())

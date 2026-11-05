@@ -472,6 +472,7 @@ void PlaybackController::tick()
     std::shared_ptr<const render::LensFrame> chosenLens;
     QString chosenPath;
     qint64 chosenSourceMs = 0;
+    qint64 chosenSourceUs = 0;
     int chosenClipId = 0;
     bool haveChosen = false;
     bool chosenIsCurrent = false;
@@ -487,10 +488,12 @@ void PlaybackController::tick()
                 chosenLens = std::move(m_queue.front().lens);
                 chosenPath = m_queue.front().sourcePath;
                 chosenSourceMs = m_queue.front().sourceMs;
+                chosenSourceUs = m_queue.front().sourceUs;
                 chosenClipId = m_queue.front().clipId;
                 m_shownGen = m_queue.front().gen;
                 m_shownMs = m_queue.front().frame.timestamp_ms;
                 m_shownClipId = m_queue.front().clipId;
+                m_shownSourceUs = chosenSourceUs;
                 m_queue.pop_front();
                 haveChosen = true;
             }
@@ -510,11 +513,13 @@ void PlaybackController::tick()
                 chosenLens = std::move(it->lens);
                 chosenPath = it->sourcePath;
                 chosenSourceMs = it->sourceMs;
+                chosenSourceUs = it->sourceUs;
                 chosenClipId = it->clipId;
                 m_queue.erase(m_queue.begin(), std::next(it));
                 m_shownGen = gen;
                 m_shownMs = chosen.timestamp_ms;
                 m_shownClipId = chosenClipId;
+                m_shownSourceUs = chosenSourceUs;
                 haveChosen = true;
             }
         }
@@ -538,7 +543,7 @@ void PlaybackController::tick()
             }
             float stab[9];
             const auto stabT0 = render::framestats::Clock::now();
-            const bool haveStab = provider && provider(chosenClipId, chosenSourceMs, stab);
+            const bool haveStab = provider && provider(chosenClipId, chosenSourceUs, stab);
             if (render::framestats::Enabled() && playing) {
                 ++m_stats.shown;
                 m_stats.lateMs.add(double(clockMs - chosen.timestamp_ms));

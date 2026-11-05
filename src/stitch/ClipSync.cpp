@@ -88,7 +88,7 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
             const uint8_t* p = f.rgba.data();
             for (size_t i = 0; i < gray.size(); ++i, p += 4)
                 gray[i] = static_cast<uint8_t>((p[0] * 77 + p[1] * 150 + p[2] * 29) >> 8);
-            est.addFrame(gray.data(), f.width, f.height, f.timestamp_ms / 1000.0);
+            est.addFrame(gray.data(), f.width, f.height, f.timestamp_us * 1e-6);
         }
     }
 

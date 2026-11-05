@@ -142,7 +142,7 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
     if (!demux.seekTo(0, err))
         ok = false;
     insv::Image l0, l1;
-    int64_t pts = 0;
+    insv::FramePts pts;
     for (int n = 0; ok; ++n) {
         if (cancel && cancel->load()) {
             err = "cancelled";
@@ -158,13 +158,13 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
             break;
         }
         ++out.framesRead;
-        const int frame = int(std::lround(double(pts) * out.fps / 1000.0));
+        const int frame = int(std::lround(double(pts.ms) * out.fps / 1000.0));
         if (frame % step == 0) {
             queue.push({0, frame, Grey(l0)});
             queue.push({1, frame, Grey(l1)});
         }
         if (progress && n % 30 == 0)
-            progress(std::clamp(double(pts) / double(durationMs), 0.0, 1.0));
+            progress(std::clamp(double(pts.ms) / double(durationMs), 0.0, 1.0));
     }
     queue.close();
     for (std::thread& t : workers)

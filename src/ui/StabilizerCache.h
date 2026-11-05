@@ -52,9 +52,9 @@ public:
     // their capture-time corrections for PlaybackController::setCaptureTimings.
     // Call after the cache or the clips change.
     std::map<int, stitch::CaptureTiming> publish(const Timeline &timeline);
-    // Clip `c`'s correction at `sourceMs` (its source time) into `m`;
-    // identity when its stabilization is Off or its stabilizer isn't built.
-    void correctionFor(const ClipItem &c, double syncMs, qint64 sourceMs, float m[3][3]) const;
+    // Clip `c`'s correction at `sourceUs` (its exact source time, us) into
+    // `m`; identity when its stabilization is Off or its stabilizer isn't built.
+    void correctionFor(const ClipItem &c, double syncMs, qint64 sourceUs, float m[3][3]) const;
 
 private:
     struct Built {

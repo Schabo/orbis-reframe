@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "FramePts.h"
 #include "LensSource.h"
 #include "Ycbcr.h"
 
@@ -87,9 +88,9 @@ public:
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
 
     // The next lens-0 / lens-1 frame pair in play order; the caller owns both
-    // (av_frame_free). `*ptsMs` (may be null) gets lens 0's time. False with
+    // (av_frame_free). `*pts` (may be null) gets lens 0's time. False with
     // `err` empty at end of stream, `err` set on error. Needs 2 lenses.
-    bool readNextPair(AVFrame*& out0, AVFrame*& out1, int64_t* ptsMs, std::string& err);
+    bool readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, std::string& err);
     // The next frame of `lens` alone, for a single-stream file; the caller
     // owns it. False as readNextPair.
     bool readNextFrame(int lens, AVFrame*& out, std::string& err);

@@ -128,6 +128,41 @@ void testLensOrder(const std::string& a, const std::string& b)
     CHECK(nextPair(d, greyB, greyA) == std::make_pair(10, 10));
 }
 
+// At 29.97 fps a frame's time isn't a whole millisecond: `ms` is rounded as
+// ever, `us` is the stream's time (what the stabilizer's correction takes).
+void testExactTimes(const std::string& dir)
+{
+    std::printf("  29.97 fps: each pair's time exact to the microsecond\n");
+    const std::string a = dir + "/ntsc0.mp4", b = dir + "/ntsc1.mp4";
+    for (const std::string& path : {a, b}) {
+        testmedia::VideoSpec spec;
+        spec.width = 64;
+        spec.height = 64;
+        spec.fps = 30000;
+        spec.fpsDen = 1001;
+        spec.frames = 12;
+        CHECK(testmedia::writeVideo(path, spec));
+    }
+    insv::InsvDemux d;
+    std::string err;
+    CHECK(d.open({{a, 0}, {b, 0}}, err));
+    insv::Image l0, l1;
+    insv::FramePts pts;
+    int n = 0;
+    for (; d.readNextPair(l0, l1, &pts, err); ++n) {
+        const double ms = n * 1001.0 / 30.0;
+        CHECK(pts.ms == std::llround(ms));
+        CHECK(pts.us == std::llround(ms * 1000.0));
+    }
+    CHECK(err.empty());
+    CHECK(n == 12);
+    // And after a seek, between keyframes.
+    CHECK(d.seekTo(234, err)); // frame 7, at 233.567 ms
+    CHECK(d.readNextPair(l0, l1, &pts, err));
+    CHECK(pts.ms == 234);
+    CHECK(pts.us == 233567);
+}
+
 void testErrors(const std::string& a, const std::string& dir)
 {
     std::printf("  two files: errors name the other file\n");
@@ -157,6 +192,7 @@ int main()
     testSeek(a, b);
     testLensOrder(a, b);
     testErrors(a, dir.string());
+    testExactTimes(dir.string());
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

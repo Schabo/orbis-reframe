@@ -230,10 +230,10 @@ bool VulkanVideoDecoder::seekTo(int64_t timestampMs, std::string& err)
     return m_demux.seekTo(timestampMs, err);
 }
 
-bool VulkanVideoDecoder::readNextPair(AVFrame*& out0, AVFrame*& out1, int64_t* ptsMs,
+bool VulkanVideoDecoder::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts,
                                       std::string& err)
 {
-    return m_demux.readNextPair(out0, out1, ptsMs, err);
+    return m_demux.readNextPair(out0, out1, pts, err);
 }
 
 void VulkanVideoDecoder::lockFrame(AVFrame* f, VulkanLensFrame& lf)

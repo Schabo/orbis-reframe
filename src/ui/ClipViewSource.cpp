@@ -56,12 +56,12 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         return false;
     const ReframeExportController::ClipJob &job = m_spec.job;
     // The view and stabilization at the frame's own time, as the export.
-    auto poseAt = [&job](int64_t ptsMs, view::Pose &pose, float stab[9]) {
+    auto poseAt = [&job](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
         if (job.poseAt)
-            job.poseAt(ptsMs, pose);
+            job.poseAt(pts.ms, pose);
         if (job.stab) {
             float m[3][3];
-            job.stab->correctionMatrix(ptsMs / 1000.0, m);
+            job.stab->correctionMatrix(pts.sec(), m);
             std::copy(&m[0][0], &m[0][0] + 9, stab);
         }
     };
@@ -73,7 +73,7 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         const stitch::Frame eq = m_src->ReadFrame();
         if (!eq.rgba.empty()) {
             exportpipe::ReframeView view;
-            poseAt(eq.timestamp_ms, view.pose, view.stab);
+            poseAt({eq.timestamp_ms, eq.timestamp_us}, view.pose, view.stab);
             view.aspect = float(m_w) / m_h;
             view.colorGrade = job.colorGrade;
             f.rgba.resize(size_t(m_w) * m_h * 4);
@@ -90,6 +90,7 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
             f.width = m_w;
             f.height = m_h;
             f.timestamp_ms = eq.timestamp_ms;
+            f.timestamp_us = eq.timestamp_us;
         }
     }
     if (f.rgba.empty()) {

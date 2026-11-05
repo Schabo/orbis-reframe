@@ -214,7 +214,8 @@ struct Frame {
     std::vector<uint8_t> rgba;
     int width = 0;
     int height = 0;
-    int64_t timestamp_ms = 0;
+    int64_t timestamp_ms = 0; // rounded to the ms: seeks, trims, keyframes, the timeline
+    int64_t timestamp_us = 0; // exact: the stabilizer's correction (insv::FramePts)
 };
 
 // Serves stitched equirect frames from an Insta360 .insv file for interactive

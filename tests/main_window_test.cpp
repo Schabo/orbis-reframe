@@ -166,6 +166,7 @@ public:
         f.height = 32;
         f.rgba.assign(size_t(f.width) * f.height * 4, m_grey);
         f.timestamp_ms = ms;
+        f.timestamp_us = std::llround(m_frame * 1e6 / kFps);
         ++m_frame;
         ++g_framesServed;
         return f;

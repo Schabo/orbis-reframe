@@ -28,6 +28,7 @@ bool readSourceFrame(stitch::IStitchSource &src, bool useLens, stitch::Frame &fr
         lens = std::make_shared<render::LensFrame>();
         if (src.ReadLensFrame(*lens)) {
             frame.timestamp_ms = lens->timestamp_ms;
+            frame.timestamp_us = lens->timestamp_us;
             return true;
         }
         lens.reset();
@@ -159,6 +160,15 @@ void PlaybackController::setStabilizationProvider(StabProvider provider)
 {
     std::lock_guard<std::mutex> lk(m_stabMx);
     m_stabProvider = std::move(provider);
+}
+
+bool PlaybackController::shownSourceUs(int clipId, qint64 &sourceUs) const
+{
+    std::lock_guard<std::mutex> lk(m_mx);
+    if (m_shownSourceUs < 0 || m_shownClipId != clipId)
+        return false;
+    sourceUs = m_shownSourceUs;
+    return true;
 }
 
 void PlaybackController::setViewProvider(ViewProvider provider)
@@ -626,6 +636,7 @@ void PlaybackController::decoderLoop()
 
         // Rewrite the frame's timestamp from source time to timeline time.
         const qint64 sourceMs = frame.timestamp_ms;
+        const qint64 sourceUs = frame.timestamp_us;
         m_decLastSourceMs = sourceMs;
         frame.timestamp_ms = cur.startMs + cur.seg.localAtSourceMs(frame.timestamp_ms);
         if (playing)
@@ -645,7 +656,7 @@ void PlaybackController::decoderLoop()
             if (!lens)
                 m_frameBytes = frame.rgba.size();
             m_queue.push_back({std::move(frame), std::move(lens), gen, cur.seg.sourcePath, sourceMs,
-                               cur.seg.clipId});
+                               sourceUs, cur.seg.clipId});
         }
     }
 }

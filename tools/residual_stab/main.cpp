@@ -1330,18 +1330,18 @@ int main(int argc, char** argv)
 
         float g[3][3];
         if (gyro.ready())
-            gyro.correctionMatrix(f.timestamp_ms / 1000.0, g);
+            gyro.correctionMatrix(f.timestamp_us * 1e-6, g);
         else
             identity3(g);
 
         rgbaToGray(f.rgba.data(), gray.data(), aw * ah);
-        est.addFrame(gray.data(), aw, ah, f.timestamp_ms / 1000.0, g);
+        est.addFrame(gray.data(), aw, ah, f.timestamp_us * 1e-6, g);
         if (estWide)
-            estWide->addFrame(gray.data(), aw, ah, f.timestamp_ms / 1000.0, g);
+            estWide->addFrame(gray.data(), aw, ah, f.timestamp_us * 1e-6, g);
         if (estRaw) {
             float gi[3][3];
             identity3(gi);
-            estRaw->addFrame(gray.data(), aw, ah, f.timestamp_ms / 1000.0, gi);
+            estRaw->addFrame(gray.data(), aw, ah, f.timestamp_us * 1e-6, gi);
         }
         if ((++analysed % 60) == 0) {
             std::printf("\r  analyse %lld frames", static_cast<long long>(analysed));
@@ -1537,8 +1537,8 @@ int main(int argc, char** argv)
         if (stabInT.empty())
             die("--stab-in: no matrices");
     }
-    auto poseAt = [&](int64_t ptsMs, view::Pose &pose, float stab[9]) {
-        const double tSec = ptsMs / 1000.0;
+    auto poseAt = [&](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
+        const double tSec = pts.sec();
         float corr[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         if (!stabInT.empty()) {
             const size_t k = std::lower_bound(stabInT.begin(), stabInT.end(), tSec) - stabInT.begin();
@@ -1598,7 +1598,7 @@ int main(int argc, char** argv)
                 continue;
             view::Pose pose;
             float stab[9];
-            poseAt(eq.timestamp_ms, pose, stab);
+            poseAt({eq.timestamp_ms, eq.timestamp_us}, pose, stab);
             if (!writer.addEquirectFrame(eq.rgba.data(), eq.width, eq.height, &pose, stab, nullptr, err))
                 die(err);
         }

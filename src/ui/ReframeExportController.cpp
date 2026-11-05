@@ -152,11 +152,11 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     }
     applyPanes(src, c, outW, outH);
 
-    // Stab at the decoded frame's own time, as the export does.
-    auto stabAt = [&c](int64_t ptsMs, float stab[9]) {
+    // Stab at the decoded frame's own exact time, as the export does.
+    auto stabAt = [&c](int64_t ptsUs, float stab[9]) {
         if (c.stab) {
             float m[3][3];
-            c.stab->correctionMatrix(ptsMs / 1000.0, m);
+            c.stab->correctionMatrix(ptsUs * 1e-6, m);
             std::copy(&m[0][0], &m[0][0] + 9, stab);
         }
     };
@@ -166,9 +166,9 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     if (src.GpuViewAvailable() && outW % 4 == 0 && outH % 2 == 0) {
         const stitch::Frame f = src.ReadViewFrame(
             outW, outH,
-            [&](int64_t ptsMs, view::Pose &p, float stab[9]) {
+            [&](const insv::FramePts &pts, view::Pose &p, float stab[9]) {
                 p = pose;
-                stabAt(ptsMs, stab);
+                stabAt(pts.us, stab);
             },
             &c.colorGrade);
         if (f.rgba.empty()) {
@@ -191,7 +191,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     exportpipe::ReframeView view;
     view.pose = pose;
     view.aspect = static_cast<float>(outW) / outH;
-    stabAt(eq.timestamp_ms, view.stab);
+    stabAt(eq.timestamp_us, view.stab);
     view.colorGrade = c.colorGrade;
 
     QImage img(outW, outH, QImage::Format_RGBA8888);
@@ -454,13 +454,14 @@ void ReframeExportController::run(const Request &req)
         const bool gpuFlat = src->GpuReframeAvailable() && (req.outWidth % 4) == 0 &&
                              (req.outHeight % 2) == 0;
 
-        // Pose + stab for a decoded frame, at that frame's source time.
-        auto poseAt = [&c](int64_t ptsMs, view::Pose &pose, float stab[9]) {
+        // Pose + stab for a decoded frame, at that frame's source time (the
+        // stab at the exact time).
+        auto poseAt = [&c](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
             if (c.poseAt)
-                c.poseAt(ptsMs, pose);
+                c.poseAt(pts.ms, pose);
             if (c.stab) {
                 float m[3][3];
-                c.stab->correctionMatrix(ptsMs / 1000.0, m);
+                c.stab->correctionMatrix(pts.sec(), m);
                 std::copy(&m[0][0], &m[0][0] + 9, stab);
             }
         };
@@ -525,7 +526,7 @@ void ReframeExportController::run(const Request &req)
                 checkDepth(false);
                 view::Pose pose;
                 float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-                poseAt(eq.timestamp_ms, pose, stab);
+                poseAt({eq.timestamp_ms, eq.timestamp_us}, pose, stab);
                 const std::vector<exportpipe::PaneView> panes =
                     paneViews(c, req.outWidth, req.outHeight, eq.timestamp_ms, pose);
                 for (int64_t r = 0; r < reps; ++r) {

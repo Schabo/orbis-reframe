@@ -28,11 +28,12 @@ namespace stitch {
 namespace {
 
 // RGB24 (insv::Image) -> interleaved RGBA (stitch::Frame), opaque alpha.
-Frame ToRgbaFrame(const insv::Image& eq, int64_t timestamp_ms) {
+Frame ToRgbaFrame(const insv::Image& eq, const insv::FramePts& pts) {
     Frame f;
     f.width = eq.w;
     f.height = eq.h;
-    f.timestamp_ms = timestamp_ms;
+    f.timestamp_ms = pts.ms;
+    f.timestamp_us = pts.us;
     const size_t n = static_cast<size_t>(eq.w) * static_cast<size_t>(eq.h);
     f.rgba.resize(n * 4);
     const uint8_t* src = eq.rgb.data();
@@ -418,10 +419,10 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     AVFrame* f0 = nullptr;
     AVFrame* f1 = nullptr;
-    int64_t pts_ms = 0;
+    insv::FramePts pts;
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(f0, f1, &pts_ms, err);
+    const bool got = vdec_->readNextPair(f0, f1, &pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -437,11 +438,12 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     Frame frame;
     frame.width = eq_w_;
     frame.height = eq_h_;
-    frame.timestamp_ms = pts_ms;
+    frame.timestamp_ms = pts.ms;
+    frame.timestamp_us = pts.us;
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    const insv::StitchGpuParams params = paramsWithSeam(pts_ms, in0, in1);
+    const insv::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
     const bool ok = gpu_->stitchVk(in0, in1, params, eq_w_, eq_h_, frame.rgba, &oc0, &oc1, gerr);
 
     insv::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
@@ -515,12 +517,13 @@ void NativeStitchSource::ConfigureSeamWindow(insv::SeamWindow& w) const {
 bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_ms) {
     last_error_.clear();
     float q[insv::kSeamDepthBins];
+    insv::FramePts pts;
     if (vdec_) {
         ReleaseHeldPair();
         AVFrame* f0 = nullptr;
         AVFrame* f1 = nullptr;
         std::string err;
-        if (!vdec_->readNextPair(f0, f1, &pts_ms, err)) {
+        if (!vdec_->readNextPair(f0, f1, &pts, err)) {
             last_error_ = err; // empty at EOS
             return false;
         }
@@ -529,6 +532,7 @@ bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_
         vdec_->lockFrame(f1, lf1);
         render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
         insv::StitchGpuParams p = gpu_params_;
+        pts_ms = pts.ms;
         w.measureTable(pts_ms, q);
         std::copy(q, q + insv::kSeamDepthBins, p.seamQ);
         render::VulkanLensOutcome o0, o1;
@@ -549,10 +553,11 @@ bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_
     } else if (demux_ && stitcher_) {
         insv::Image a, b;
         std::string err;
-        if (!demux_->readNextPair(a, b, &pts_ms, err)) {
+        if (!demux_->readNextPair(a, b, &pts, err)) {
             last_error_ = err;
             return false;
         }
+        pts_ms = pts.ms;
         w.measureTable(pts_ms, q);
         insv::MeasureSeamCutStats(*stitcher_, a, b, q, *cut_stats_);
         insv::MeasureSeamCosts(*stitcher_, a, b, *seam_costs_);
@@ -564,27 +569,27 @@ bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_
     return true;
 }
 
-insv::StitchGpuParams NativeStitchSource::paramsAt(int64_t pts_ms) const {
+insv::StitchGpuParams NativeStitchSource::paramsAt(const insv::FramePts& pts) const {
     insv::StitchGpuParams p = gpu_params_;
     CaptureTiming ct;
     BlurQuadsFn blur;
     {
         std::lock_guard<std::mutex> lk(rs_mx_);
         // copy: call rotationAt outside the lock
-        ct = pts_ms < capture_until_ms_ ? capture_timing_ : capture_after_;
+        ct = pts.ms < capture_until_ms_ ? capture_timing_ : capture_after_;
         blur = blur_quads_;
     }
     p.blurCount = 0;
     if (blur) {
         std::vector<insv::BlurQuad> quads;
-        blur(pts_ms, quads);
+        blur(pts.ms, quads);
         for (const insv::BlurQuad& q : quads) {
             if (p.blurCount == insv::kMaxBlurQuads) {
                 if (!blur_warned_) {
                     blur_warned_ = true;
                     std::fprintf(stderr, "[NativeStitchSource] %zu blur regions at %lld ms; only %d "
                                          "fit\n",
-                                 quads.size(), static_cast<long long>(pts_ms), insv::kMaxBlurQuads);
+                                 quads.size(), static_cast<long long>(pts.ms), insv::kMaxBlurQuads);
                 }
                 break;
             }
@@ -594,7 +599,7 @@ insv::StitchGpuParams NativeStitchSource::paramsAt(int64_t pts_ms) const {
     }
     if (!ct.active())
         return p;
-    const double t = pts_ms / 1000.0;
+    const double t = pts.sec();
     constexpr int kTaps = insv::StitchGpuParams::kRsTaps;
     for (int i = 0; i < 2; ++i)
         for (int k = 0; k < kTaps; ++k)
@@ -628,10 +633,10 @@ bool NativeStitchSource::seamStateFor(int64_t pts_ms,
     return true;
 }
 
-insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
+insv::StitchGpuParams NativeStitchSource::paramsWithSeam(const insv::FramePts& pts,
                                                          render::VulkanLensInput& in0,
                                                          render::VulkanLensInput& in1) {
-    insv::StitchGpuParams p = paramsAt(pts_ms);
+    insv::StitchGpuParams p = paramsAt(pts);
     seam_ms_ = 0.0;
     const bool scrub = scrub_frame_;
     scrub_frame_ = false;
@@ -643,7 +648,7 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
         if (seam_flow_on_)
             p.seamFlowGpu = seam_flow_gpu_;
         if (p.depthActive) {
-            seamStateFor(pts_ms, [](const float*) { return false; });
+            seamStateFor(pts.ms, [](const float*) { return false; });
             std::copy(seam_state_.q, seam_state_.q + insv::kSeamDepthBins, p.seamQ);
             p.seamBlend = seam_state_.blend;
         }
@@ -680,7 +685,7 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
             seam_flow_gpu_ = false;
         }
         if (seam_colour_on_)
-            applySeamColour(pts_ms, p, [&] { return measured; });
+            applySeamColour(pts.ms, p, [&] { return measured; });
         if (seam_flow_on_) {
             if (measured)
                 seam_flow_gpu_ = true;
@@ -692,7 +697,7 @@ insv::StitchGpuParams NativeStitchSource::paramsWithSeam(int64_t pts_ms,
     if (!p.depthActive)
         return p;
     const auto t0 = std::chrono::steady_clock::now();
-    seamStateFor(pts_ms, [&](const float* q) {
+    seamStateFor(pts.ms, [&](const float* q) {
         // The cut is measured on the table of the frames before, in the same
         // submission as the cost volume.
         insv::StitchGpuParams m = p;
@@ -743,15 +748,17 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
                                               bool* flowMeasured) {
     last_error_.clear();
     *flowMeasured = false;
+    insv::FramePts pts;
     if (vdec_) {
         ReleaseHeldPair();
         AVFrame* f0 = nullptr;
         AVFrame* f1 = nullptr;
         std::string err;
-        if (!vdec_->readNextPair(f0, f1, &pts_ms, err)) {
+        if (!vdec_->readNextPair(f0, f1, &pts, err)) {
             last_error_ = err; // empty at EOS
             return false;
         }
+        pts_ms = pts.ms;
         insv::VulkanLensFrame lf0, lf1;
         vdec_->lockFrame(f0, lf0);
         vdec_->lockFrame(f1, lf1);
@@ -759,7 +766,7 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         render::VulkanLensOutcome o0, o1;
         // Measured as playback measures this frame: with its capture-time
         // correction, which moves what the strips see.
-        const insv::StitchGpuParams p = paramsAt(pts_ms);
+        const insv::StitchGpuParams p = paramsAt(pts);
         const bool measure = pts_ms < until;
         const bool flow = measure && seam_flow_on_ && pts_ms >= flowFrom;
         bool ok = true;
@@ -788,10 +795,11 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
     } else if (demux_ && stitcher_) {
         insv::Image a, b;
         std::string err;
-        if (!demux_->readNextPair(a, b, &pts_ms, err)) {
+        if (!demux_->readNextPair(a, b, &pts, err)) {
             last_error_ = err;
             return false;
         }
+        pts_ms = pts.ms;
         if (pts_ms >= until)
             return true;
         const float none[insv::kSeamDepthBins] = {};
@@ -801,7 +809,7 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
             if (gpu_) {
                 // Measured as playback measures this frame (with its
                 // capture-time correction).
-                if (!gpu_->measureSeamFlow(a.rgb.data(), b.rgb.data(), paramsAt(pts_ms), err)) {
+                if (!gpu_->measureSeamFlow(a.rgb.data(), b.rgb.data(), paramsAt(pts), err)) {
                     last_error_ = "seam measure failed: " + err;
                     return false;
                 }
@@ -852,7 +860,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const view::Pose
                                             const color::Grade* colorGrade) {
     return ReadFlatFrame(
         outW, outH,
-        [pose, stab](int64_t, view::Pose& p, float s[9]) {
+        [pose, stab](const insv::FramePts&, view::Pose& p, float s[9]) {
             if (pose)
                 p = *pose;
             if (stab)
@@ -872,13 +880,15 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
     const bool fused = GpuViewAvailable() &&
                        (!gpu_->reframeReady() || !std::getenv("INSV_FLAT_VIA_EQUIRECT"));
     FlatFrame frame;
+    insv::FramePts pts;
     frame.p010 = fused && flat_ten_bit_;
     if (!readView(outW, outH, perFrame, colorGrade,
                   !fused         ? FlatPath::ViaEquirect
                   : frame.p010   ? FlatPath::FusedP010
                                  : FlatPath::FusedNv12,
-                  frame.data, frame.timestamp_ms))
+                  frame.data, pts))
         return FlatFrame{};
+    frame.timestamp_ms = pts.ms;
     frame.width = outW;
     frame.height = outH;
     return frame;
@@ -891,9 +901,11 @@ Frame NativeStitchSource::ReadViewFrame(int outW, int outH, const FramePoseFn& p
         return Frame{};
     }
     Frame frame;
-    if (!readView(outW, outH, perFrame, colorGrade, FlatPath::FusedRgba, frame.rgba,
-                  frame.timestamp_ms))
+    insv::FramePts pts;
+    if (!readView(outW, outH, perFrame, colorGrade, FlatPath::FusedRgba, frame.rgba, pts))
         return Frame{};
+    frame.timestamp_ms = pts.ms;
+    frame.timestamp_us = pts.us;
     frame.width = outW;
     frame.height = outH;
     return frame;
@@ -908,14 +920,14 @@ void NativeStitchSource::SetViewPanes(std::vector<ViewPane> panes, PanePoseFn po
 
 bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFrame,
                                   const color::Grade* colorGrade, FlatPath path,
-                                  std::vector<uint8_t>& out, int64_t& pts_ms) {
+                                  std::vector<uint8_t>& out, insv::FramePts& pts) {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     AVFrame* f0 = nullptr;
     AVFrame* f1 = nullptr;
-    pts_ms = 0;
+    pts = {};
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(f0, f1, &pts_ms, err);
+    const bool got = vdec_->readNextPair(f0, f1, &pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -931,11 +943,11 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     view::Pose pose; // forward view, the reproject's default
     float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     if (perFrame)
-        perFrame(pts_ms, pose, stab);
+        perFrame(pts, pose, stab);
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    const insv::StitchGpuParams params = paramsWithSeam(pts_ms, in0, in1);
+    const insv::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
     const render::VulkanFisheyeStitcher::ViewFormat fmt =
         path == FlatPath::FusedRgba   ? render::VulkanFisheyeStitcher::ViewFormat::Rgba
         : path == FlatPath::FusedP010 ? render::VulkanFisheyeStitcher::ViewFormat::P010
@@ -947,7 +959,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
         if (i == 0)
             v.pose = pose;
         else if (pane_pose_)
-            pane_pose_(pts_ms, static_cast<int>(i), v.pose);
+            pane_pose_(pts.ms, static_cast<int>(i), v.pose);
         v.x = panes_[i].x;
         v.y = panes_[i].y;
         v.w = panes_[i].w;
@@ -993,10 +1005,10 @@ struct NativeStitchSource::HeldPair {
     AVFrame* f0 = nullptr;
     AVFrame* f1 = nullptr;
     insv::StitchGpuParams params;
-    int64_t pts_ms = 0;
+    insv::FramePts pts;
 };
 
-int NativeStitchSource::KeepNextPair(int64_t& pts_ms) {
+int NativeStitchSource::KeepNextPair(insv::FramePts& pts) {
     if (!GpuViewAvailable()) {
         last_error_ = "KeepNextPair without the fused view path";
         return 0;
@@ -1004,7 +1016,7 @@ int NativeStitchSource::KeepNextPair(int64_t& pts_ms) {
     auto h = std::make_unique<HeldPair>();
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(h->f0, h->f1, &h->pts_ms, err);
+    const bool got = vdec_->readNextPair(h->f0, h->f1, &h->pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -1016,10 +1028,10 @@ int NativeStitchSource::KeepNextPair(int64_t& pts_ms) {
     vdec_->lockFrame(h->f0, lf0);
     vdec_->lockFrame(h->f1, lf1);
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    h->params = paramsWithSeam(h->pts_ms, in0, in1);
+    h->params = paramsWithSeam(h->pts, in0, in1);
     vdec_->unlockFrame(h->f0, {in0.semWaitValue, in0.layout});
     vdec_->unlockFrame(h->f1, {in1.semWaitValue, in1.layout});
-    pts_ms = h->pts_ms;
+    pts = h->pts;
     const int id = next_kept_++;
     kept_.emplace(id, std::move(h));
     return id;
@@ -1082,9 +1094,9 @@ size_t NativeStitchSource::KeptPairBytes() const {
     return bytes;
 }
 
-bool NativeStitchSource::HoldNextPair(int64_t& pts_ms) {
+bool NativeStitchSource::HoldNextPair(insv::FramePts& pts) {
     ReleaseHeldPair();
-    held_ = KeepNextPair(pts_ms);
+    held_ = KeepNextPair(pts);
     if (!held_ && last_error_ == "KeepNextPair without the fused view path")
         last_error_ = "HoldNextPair without the fused view path";
     return held_ != 0;
@@ -1122,10 +1134,10 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     }
     AVFrame* f0 = nullptr;
     AVFrame* f1 = nullptr;
-    int64_t pts_ms = 0;
+    insv::FramePts pts;
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(f0, f1, &pts_ms, err);
+    const bool got = vdec_->readNextPair(f0, f1, &pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -1140,7 +1152,7 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    const insv::StitchGpuParams params = paramsWithSeam(pts_ms, in0, in1);
+    const insv::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
     const bool ok = gpu_->fillLensFrameVk(in0, in1, params, out, &oc0, &oc1, gerr);
     if (ok) {
         vdec_->unlockFrame(f0, {oc0.semSignalValue, oc0.newLayout});
@@ -1155,16 +1167,17 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
         last_error_ = "GPU fillLensFrameVk failed: " + gerr;
         return false;
     }
-    out.timestamp_ms = pts_ms;
+    out.timestamp_ms = pts.ms;
+    out.timestamp_us = pts.us;
     copyGpuTiming();
     return true;
 }
 
 Frame NativeStitchSource::readCpuDecode() {
     insv::Image a, b;
-    int64_t pts_ms = 0;
+    insv::FramePts pts;
     std::string err;
-    if (!demux_->readNextPair(a, b, &pts_ms, err)) {
+    if (!demux_->readNextPair(a, b, &pts, err)) {
         last_error_ = err; // empty on a clean end-of-stream
         return Frame{};
     }
@@ -1177,7 +1190,7 @@ Frame NativeStitchSource::readCpuDecode() {
     // lenses to run the GPU pass on).
     if (params_.depthSeam) {
         const auto t0 = std::chrono::steady_clock::now();
-        seamStateFor(pts_ms, [&](const float* q) { // as the GPU path
+        seamStateFor(pts.ms, [&](const float* q) { // as the GPU path
             if (scrub)
                 return false;
             insv::MeasureSeamCutStats(*stitcher_, a, b, q, *cut_stats_);
@@ -1192,12 +1205,12 @@ Frame NativeStitchSource::readCpuDecode() {
     const insv::SeamBlend* blend = params_.depthSeam ? &seam_state_.blend : nullptr;
     // The seam colour blend: the lenses' colour in the overlap at the
     // template's geometry, as the GPU path.
-    insv::StitchGpuParams p = paramsAt(pts_ms); // and the privacy blur quads
+    insv::StitchGpuParams p = paramsAt(pts); // and the privacy blur quads
     if (seam_colour_on_ && scrub) {
         heldSeamColour(p);
     } else if (seam_colour_on_) {
         const auto t0 = std::chrono::steady_clock::now();
-        applySeamColour(pts_ms, p, [&] {
+        applySeamColour(pts.ms, p, [&] {
             const float none[insv::kSeamDepthBins] = {};
             insv::MeasureSeamCutStats(*stitcher_, a, b, none, *cut_stats_);
             return true;
@@ -1229,7 +1242,8 @@ Frame NativeStitchSource::readCpuDecode() {
         Frame f;
         f.width = eq_w_;
         f.height = eq_h_;
-        f.timestamp_ms = pts_ms;
+        f.timestamp_ms = pts.ms;
+        f.timestamp_us = pts.us;
         std::string gerr;
         if (seamQ) {
             std::copy(seamQ, seamQ + insv::kSeamDepthBins, p.seamQ);
@@ -1255,7 +1269,7 @@ Frame NativeStitchSource::readCpuDecode() {
     stitcher_->renderEquirect(a, b, eq, seamQ, blend, p.blur, p.blurCount,
                               p.seamColourActive ? &p.seamColour[0][0] : nullptr, p.seamFlow.get(),
                               p.seamColourActive ? &p.seamVeil[0][0] : nullptr);
-    return ToRgbaFrame(eq, pts_ms);
+    return ToRgbaFrame(eq, pts);
 }
 
 Frame NativeStitchSource::ReadFrame() {

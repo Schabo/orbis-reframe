@@ -168,6 +168,14 @@ orientation instead (the X5's timelapse), that orientation alone; either
 way video time maps to the track's time by the reader's timing, frame by
 frame where the file gives each frame's own time.
 
+Every path takes the de-rotation (and the stitch's capture-time correction,
+and the sync fine-tune's measurement) at the frame's exact time from the
+stream -- `timestamp_us` on the decoded frame, `insv::FramePts::us` from the
+demuxer -- never at `timestamp_ms`, which is rounded to the millisecond for
+seeks, trims and the timeline. At 29.97 fps the rounding is up to 0.37 ms,
+and the correction moves with the camera's rotation in that time: on a
+drone clip, half again as much shake left on the horizon.
+
 ## The project file
 
 A project is one `.orp` file (JSON), written by `core/Project`.

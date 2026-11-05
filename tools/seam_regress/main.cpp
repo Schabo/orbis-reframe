@@ -963,8 +963,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         insv::InsvDemux demux;
         if (!demux.open(meta->lensSources(), err) || !demux.seekTo(pts, err))
             return false;
-        int64_t p = -1;
-        while (p < pts)
+        insv::FramePts p{-1, -1};
+        while (p.ms < pts)
             if (!demux.readNextPair(lens[0], lens[1], &p, err)) {
                 err = "lens frames: " + (err.empty() ? std::string("end of stream") : err);
                 return false;

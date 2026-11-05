@@ -58,6 +58,7 @@ stitch::Frame BlankClipSource::ReadFrame()
     for (size_t i = 3; i < f.rgba.size(); i += 4)
         f.rgba[i] = 255;
     f.timestamp_ms = ms;
+    f.timestamp_us = static_cast<int64_t>(std::llround(m_next * 1e6 / m_info.fps));
     ++m_next;
     return f;
 }

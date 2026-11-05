@@ -72,10 +72,10 @@ public:
 
     // Returns the next lens-0 / lens-1 fisheye frame pair (RGB24) in play order,
     // decoding strictly forward -- no per-call seek, no decoder flush.
-    // `*ptsMs` (may be null) gets the pair's presentation time in ms.
+    // `*pts` (may be null) gets the pair's presentation time.
     // Returns false with `err` empty at end-of-stream, or `err` set on error.
     // Requires exactly 2 lens streams.
-    bool readNextPair(Image& out0, Image& out1, int64_t* ptsMs, std::string& err);
+    bool readNextPair(Image& out0, Image& out1, FramePts* pts, std::string& err);
 
 private:
     void close();

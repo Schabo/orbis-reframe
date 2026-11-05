@@ -115,7 +115,7 @@ public:
     // Next lens-0 / lens-1 frame pair in play order (AVFrame* carrying
     // AVVkFrame). The caller owns them -- av_frame_free() both when done, after
     // unlockFrame(). Returns false with `err` empty at EOS, `err` set on error.
-    bool readNextPair(AVFrame*& out0, AVFrame*& out1, int64_t* ptsMs, std::string& err);
+    bool readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, std::string& err);
 
     // Take the frame lock and read its current Vulkan state into `lf`. Must be
     // paired with unlockFrame(). Call just before command submission.

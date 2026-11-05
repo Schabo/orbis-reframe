@@ -93,11 +93,11 @@ int64_t InsvDemux::nearestKeyframeMs(int64_t timestampMs) const
 
 bool InsvDemux::seekTo(int64_t timestampMs, std::string& err) { return m_demux.seekTo(timestampMs, err); }
 
-bool InsvDemux::readNextPair(Image& out0, Image& out1, int64_t* ptsMs, std::string& err)
+bool InsvDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::string& err)
 {
     AVFrame* f0 = nullptr;
     AVFrame* f1 = nullptr;
-    if (!m_demux.readNextPair(f0, f1, ptsMs, err))
+    if (!m_demux.readNextPair(f0, f1, pts, err))
         return false;
     convert(f0, lens(0), out0);
     convert(f1, lens(1), out1);

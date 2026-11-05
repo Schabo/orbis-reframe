@@ -54,7 +54,8 @@ struct LensFrame {
     // device takes in a uniform buffer.
     static constexpr int kParamsBytes = 14624;
     std::array<uint8_t, kParamsBytes> params{};
-    int64_t timestamp_ms = 0;
+    int64_t timestamp_ms = 0; // rounded to the ms, as stitch::Frame
+    int64_t timestamp_us = 0; // exact, for the stabilizer's correction
 };
 
 } // namespace render

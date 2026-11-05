@@ -93,7 +93,7 @@ void benchDecode(const std::string& path, int frames, double fps) {
             t0 = Clock::now();
         AVFrame* f0 = nullptr;
         AVFrame* f1 = nullptr;
-        int64_t pts = 0;
+        insv::FramePts pts;
         if (!dec.readNextPair(f0, f1, &pts, err))
             break;
         const bool last = i == frames + kWarmup - 1;
@@ -185,7 +185,7 @@ void benchFlat(const std::string& path, int eqW, int frames, double fps, FlatKin
         return;
     }
     const view::Pose pose;
-    const auto fixedPose = [&pose](int64_t, view::Pose &p, float[9]) { p = pose; };
+    const auto fixedPose = [&pose](const insv::FramePts &, view::Pose &p, float[9]) { p = pose; };
     Stats total, dec, wait, gpu, rf, copy, seam;
     for (int i = 0; i < frames + kWarmup; ++i) {
         const auto t0 = Clock::now();

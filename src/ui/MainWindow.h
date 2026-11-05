@@ -213,9 +213,10 @@ private:
     void seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam,
                            insv::LensColour &colour) const;
     void pushSeamCorrection();
-    // Push the current clip's (m_clipId) correction for `sourceMs` (its
-    // source time) into the viewport. Identity when its stabilization is Off
-    // or its stabilizer isn't built.
+    // Push the current clip's (m_clipId) correction for the frame on screen
+    // (the playhead's `sourceMs` until that clip has shown one) into the
+    // viewport. Identity when its stabilization is Off or its stabilizer isn't
+    // built.
     void applyStabilization(qint64 sourceMs);
     // Copy the viewport's current pose into the Reframe panel's numeric fields
     // (whatever's on screen -- sampled path, free-look, or a drag result).

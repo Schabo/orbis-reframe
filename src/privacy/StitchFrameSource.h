@@ -8,6 +8,8 @@
 
 #include "PlateScanner.h"
 
+#include <FramePts.h>
+
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -75,7 +77,7 @@ public:
 private:
     struct Kept {
         int handle = 0;
-        int64_t tMs = 0;
+        insv::FramePts pts;
     };
     bool loadChunk(std::string& err); // the stretch before m_boundary
     void releaseAll();

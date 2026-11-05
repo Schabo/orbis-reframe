@@ -334,8 +334,13 @@ void MainWindow::publishStabilizer()
 void MainWindow::applyStabilization(qint64 sourceMs)
 {
     float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    if (const ClipItem *c = m_timeline->clipById(m_clipId))
-        m_stabilizers.correctionFor(*c, m_timeline->sourceSyncAdjust(c->sourcePath), sourceMs, m);
+    if (const ClipItem *c = m_timeline->clipById(m_clipId)) {
+        // At the frame on screen's own time, as playback took it; the
+        // playhead's time only before that clip has shown a frame.
+        qint64 sourceUs = sourceMs * 1000;
+        m_controller->shownSourceUs(c->id, sourceUs);
+        m_stabilizers.correctionFor(*c, m_timeline->sourceSyncAdjust(c->sourcePath), sourceUs, m);
+    }
     m_viewport->SetStabilization(&m[0][0]);
 }
 

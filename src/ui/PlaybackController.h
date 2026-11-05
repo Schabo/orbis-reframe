@@ -185,13 +185,18 @@ public:
     stitch::BlurQuadsFn blurQuads(int clipId);
 
     // Gyro de-rotation for a presented frame: fills `m` (row-major 3x3) for
-    // source time `sourceMs` of clip `clipId` (Segment::clipId) and returns
-    // true, or returns false when it has nothing for that clip (the viewport
-    // then keeps its current matrix). Called on the controller thread for every presented frame, with
-    // the frame's own source time, and handed to the viewport with the frame.
-    // Thread-safe to set from the GUI thread.
-    using StabProvider = std::function<bool(int clipId, qint64 sourceMs, float m[9])>;
+    // source time `sourceUs` (exact, in microseconds) of clip `clipId`
+    // (Segment::clipId) and returns true, or returns false when it has nothing
+    // for that clip (the viewport then keeps its current matrix). Called on
+    // the controller thread for every presented frame, with the frame's own
+    // source time, and handed to the viewport with the frame. Thread-safe to
+    // set from the GUI thread.
+    using StabProvider = std::function<bool(int clipId, qint64 sourceUs, float m[9])>;
     void setStabilizationProvider(StabProvider provider);
+    // The frame on screen's exact source time (us) if it is clip `clipId`'s:
+    // where a paused refresh of its stabilization has to take the matrix.
+    // Thread-safe.
+    bool shownSourceUs(int clipId, qint64 &sourceUs) const;
 
     // Region outlines for a presented frame (the Privacy panel's "Show
     // regions"): appends those of source time `sourceMs` of clip `clipId`.
@@ -279,6 +284,7 @@ private:
         uint64_t gen = 0;
         QString sourcePath;  // clip the frame came from
         qint64 sourceMs = 0; // its source time (frame.timestamp_ms is timeline time)
+        qint64 sourceUs = 0; // the same, exact (the stabilizer's time)
         int clipId = 0;      // Segment::clipId
     };
 
@@ -337,6 +343,7 @@ private:
     uint64_t m_shownGen = 0; // seek generation of the frame on screen
     qint64 m_shownMs = 0;    // and its timeline time
     int m_shownClipId = 0;   // and clip (Segment::clipId): what a transition's layer goes over
+    qint64 m_shownSourceUs = -1; // and its exact source time; -1 = none
     QTimer *m_settleTimer = nullptr; // scrub(): the pointer rested -> settle()
     QTimer *m_scrubEndTimer = nullptr; // scrub(): none for a while -> scrubbingChanged(false)
     bool m_scrubbing = false;
@@ -359,7 +366,7 @@ private:
     void statsTick(bool playing, size_t queued);
 
     // --- shared with the decoder thread, guarded by m_mx ---
-    std::mutex m_mx;
+    mutable std::mutex m_mx;
     std::condition_variable m_cv;
     QList<Placed> m_placed;       // authoritative timeline
     bool m_timelineDirty = false; // decoder should re-copy m_placed

@@ -11,6 +11,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/pixdesc.h>
+#include <libavutil/mathematics.h>
 #include <libavutil/rational.h>
 }
 
@@ -26,6 +27,13 @@ double ptsSec(const AVFrame* f, AVRational tb)
 {
     const int64_t p = (f->best_effort_timestamp == AV_NOPTS_VALUE) ? f->pts : f->best_effort_timestamp;
     return (p == AV_NOPTS_VALUE) ? 0.0 : p * av_q2d(tb);
+}
+
+// ptsSec in microseconds, rounded from the time base exactly.
+int64_t ptsUs(const AVFrame* f, AVRational tb)
+{
+    const int64_t p = (f->best_effort_timestamp == AV_NOPTS_VALUE) ? f->pts : f->best_effort_timestamp;
+    return (p == AV_NOPTS_VALUE) ? 0 : av_rescale_q(p, tb, AVRational{1, 1000000});
 }
 
 // The stream's matrix and range, as its VUI says. Where it doesn't: limited
@@ -426,7 +434,7 @@ AVFrame* LensDemuxer::popFront(int lens)
     return f;
 }
 
-bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, int64_t* ptsMs, std::string& err)
+bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, std::string& err)
 {
     if (m_dec.size() < 2) {
         err = "readNextPair requires 2 lens streams, have " + std::to_string(m_dec.size());
@@ -452,8 +460,10 @@ bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, int64_t* ptsMs, s
     out1 = popFront(1);
     m_seekTargetSec = -1.0; // satisfied by this pair
     m_lastReadSec = ptsSec(out0, lensStream(0)->time_base);
-    if (ptsMs)
-        *ptsMs = static_cast<int64_t>(std::llround(m_lastReadSec * 1000.0));
+    if (pts) {
+        pts->ms = static_cast<int64_t>(std::llround(m_lastReadSec * 1000.0));
+        pts->us = ptsUs(out0, lensStream(0)->time_base);
+    }
     return true;
 }
 

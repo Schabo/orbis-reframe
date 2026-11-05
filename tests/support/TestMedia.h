@@ -20,6 +20,7 @@ struct VideoSpec {
     int width = 320;
     int height = 180;
     int fps = 25;
+    int fpsDen = 1; // the rate is fps / fpsDen: 30000 / 1001 for 29.97
     int frames = 50;
     int rotationCw = 0; // tags the stream with a display matrix
     bool hlg = false;   // tags the stream HDR: HLG transfer, BT.2020

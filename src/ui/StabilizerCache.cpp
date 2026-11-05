@@ -19,7 +19,7 @@ StabilizerCache::StabilizerCache() : m_shared(std::make_shared<Shared>()) {}
 
 PlaybackController::StabProvider StabilizerCache::provider() const
 {
-    return [shared = m_shared](int clipId, qint64 sourceMs, float m[9]) {
+    return [shared = m_shared](int clipId, qint64 sourceUs, float m[9]) {
         std::lock_guard<std::mutex> lk(shared->mx);
         const auto it = shared->clips.find(clipId);
         if (it == shared->clips.end())
@@ -30,7 +30,7 @@ PlaybackController::StabProvider StabilizerCache::provider() const
             return true;
         }
         float r[3][3];
-        it->second->correctionMatrix(sourceMs / 1000.0, r);
+        it->second->correctionMatrix(sourceUs * 1e-6, r);
         std::copy(&r[0][0], &r[0][0] + 9, m);
         return true;
     };
@@ -100,11 +100,11 @@ std::map<int, stitch::CaptureTiming> StabilizerCache::publish(const Timeline &ti
     return timings;
 }
 
-void StabilizerCache::correctionFor(const ClipItem &c, double syncMs, qint64 sourceMs,
+void StabilizerCache::correctionFor(const ClipItem &c, double syncMs, qint64 sourceUs,
                                     float m[3][3]) const
 {
     const float ident[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     std::copy(&ident[0][0], &ident[0][0] + 9, &m[0][0]);
     if (const Built *b = find(c, syncMs); b && b->stab)
-        b->stab->correctionMatrix(sourceMs / 1000.0, m);
+        b->stab->correctionMatrix(sourceUs * 1e-6, m);
 }

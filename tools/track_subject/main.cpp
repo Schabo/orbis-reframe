@@ -220,11 +220,12 @@ Args parseArgs(int argc, char** argv)
     return a;
 }
 
-void gyroMatrix(const insv::GyroStabilizer& g, bool on, int64_t tMs, float m[9])
+// At the frame's exact time `tSec` (stitch::Frame::timestamp_us).
+void gyroMatrix(const insv::GyroStabilizer& g, bool on, double tSec, float m[9])
 {
     float mm[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     if (on && g.ready())
-        g.correctionMatrix(tMs / 1000.0, mm);
+        g.correctionMatrix(tSec, mm);
     std::copy(&mm[0][0], &mm[0][0] + 9, m);
 }
 
@@ -316,7 +317,7 @@ int main(int argc, char** argv)
         if (f.rgba.empty())
             die("no frame at t0");
         float stab[9];
-        gyroMatrix(gyro, a.stab, f.timestamp_ms, stab);
+        gyroMatrix(gyro, a.stab, f.timestamp_us * 1e-6, stab);
         dumpStabilizedEquirect(f, stab, a.dumpEquirect);
         std::printf("wrote stabilized equirect @ %lld ms -> %s\n", (long long)f.timestamp_ms,
                     a.dumpEquirect.c_str());
@@ -374,7 +375,7 @@ int main(int argc, char** argv)
         if (f.timestamp_ms >= a.occludeFromMs && f.timestamp_ms <= a.occludeToMs)
             std::fill(f.rgba.begin(), f.rgba.end(), uint8_t(128));
         float stab[9];
-        gyroMatrix(gyro, a.stab, f.timestamp_ms, stab);
+        gyroMatrix(gyro, a.stab, f.timestamp_us * 1e-6, stab);
         track::TrackSample s;
         if (frames == 0) {
             if (!tracker.start(f.rgba.data(), f.width, f.height, stab, seed, f.timestamp_ms, err))
@@ -499,11 +500,11 @@ int main(int argc, char** argv)
     exportpipe::FlattenWriter writer;
     if (!writer.open(fc, err))
         die(err);
-    auto poseAt = [&](int64_t ptsMs, view::Pose &pose, float stab[9]) {
-        keyPose(ptsMs, pose.yaw, pose.pitch);
+    auto poseAt = [&](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
+        keyPose(pts.ms, pose.yaw, pose.pitch);
         pose.roll = 0.0f;
         pose.fov = outFov;
-        gyroMatrix(gyro, a.stab, ptsMs, stab);
+        gyroMatrix(gyro, a.stab, pts.sec(), stab);
     };
     int64_t written = 0;
     for (;;) {

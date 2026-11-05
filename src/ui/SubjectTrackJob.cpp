@@ -55,7 +55,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onF
             break;
         float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         if (req.stab)
-            req.stab->correctionMatrix(f.timestamp_ms / 1000.0, m);
+            req.stab->correctionMatrix(f.timestamp_us * 1e-6, m);
         track::TrackSample s;
         if (!started) {
             if (!tracker.start(f.rgba.data(), f.width, f.height, &m[0][0], req.seed, f.timestamp_ms,

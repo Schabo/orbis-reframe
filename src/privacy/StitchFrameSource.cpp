@@ -44,7 +44,7 @@ StitchFrameSource::StitchFrameSource(stitch::NativeStitchSource& src, int64_t fr
 bool StitchFrameSource::next(int64_t& tMs, float level[9], std::string& err)
 {
     for (;;) {
-        int64_t pts = 0;
+        insv::FramePts pts;
         if (m_gpu) {
             if (!m_src.HoldNextPair(pts)) {
                 err = m_src.GetLastError();
@@ -56,24 +56,24 @@ bool StitchFrameSource::next(int64_t& tMs, float level[9], std::string& err)
                 err = m_src.GetLastError();
                 return false;
             }
-            pts = f.timestamp_ms;
+            pts = {f.timestamp_ms, f.timestamp_us};
             m_eq = std::move(f.rgba);
             m_eqW = f.width;
             m_eqH = f.height;
         }
-        if (pts + m_halfFrameMs < m_fromMs)
+        if (pts.ms + m_halfFrameMs < m_fromMs)
             continue; // a straggler before the in-point
-        if (pts > m_toMs + m_halfFrameMs) {
+        if (pts.ms > m_toMs + m_halfFrameMs) {
             release();
             err.clear();
             return false;
         }
         float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         if (m_level && m_level->ready())
-            m_level->correctionMatrix(pts / 1000.0, m);
+            m_level->correctionMatrix(pts.sec(), m);
         std::copy(&m[0][0], &m[0][0] + 9, m_M);
         std::copy(m_M, m_M + 9, level);
-        tMs = pts;
+        tMs = pts.ms;
         return true;
     }
 }
@@ -175,17 +175,17 @@ bool ReverseStitchFrameSource::loadChunk(std::string& err)
         return false;
     }
     for (;;) {
-        int64_t pts = 0;
+        insv::FramePts pts;
         const int h = m_src.KeepNextPair(pts);
         if (!h) {
             err = m_src.GetLastError(); // empty at the clip's end
             break;
         }
-        if (pts >= m_boundary - 1.0) { // reached what was handed out already
+        if (pts.ms >= m_boundary - 1.0) { // reached what was handed out already
             m_src.ReleaseKeptPair(h);
             break;
         }
-        if (pts + 1 < m_fromMs) {
+        if (pts.ms + 1 < m_fromMs) {
             m_src.ReleaseKeptPair(h); // a straggler before the in-point
             continue;
         }
@@ -193,8 +193,8 @@ bool ReverseStitchFrameSource::loadChunk(std::string& err)
     }
     if (m_kept.empty())
         return false;
-    m_boundary = static_cast<double>(m_kept.front().tMs);
-    if (m_kept.front().tMs - m_frameMs + 1 < m_fromMs)
+    m_boundary = static_cast<double>(m_kept.front().pts.ms);
+    if (m_kept.front().pts.ms - m_frameMs + 1 < m_fromMs)
         m_done = true; // this stretch reaches the in-point
     return err.empty();
 }
@@ -214,10 +214,10 @@ bool ReverseStitchFrameSource::next(int64_t& tMs, float level[9], std::string& e
     m_current = k.handle;
     float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     if (m_level && m_level->ready())
-        m_level->correctionMatrix(k.tMs / 1000.0, m);
+        m_level->correctionMatrix(k.pts.sec(), m);
     std::copy(&m[0][0], &m[0][0] + 9, m_M);
     std::copy(m_M, m_M + 9, level);
-    tMs = k.tMs;
+    tMs = k.pts.ms;
     return true;
 }
 
