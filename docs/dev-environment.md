@@ -247,7 +247,10 @@ the packages `package.sh` installs, can also run directly:
   the copyleft packages (`snapshot` in the review) linked by exact version
   on snapshot.debian.org, each link checked, and the archives the release
   hosts. A Debian security update just out may not be on snapshot.debian.org
-  for a few hours, which stops the build;
+  for a few hours, which stops the build ("has no <package> <version>");
+  when snapshot.debian.org is overloaded (503 / 504, often for minutes),
+  each request is retried for about two minutes, then the build stops
+  saying it couldn't reach it -- run it again later;
 - `appimagetool` packs it behind our runtime with the update information
   `gh-releases-zsync|Schabo|orbis-reframe|latest|orbis-reframe-*-x86_64.AppImage.zsync`
   (AppImageUpdate, Gear Lever and AppImageLauncher read it; the app never
@@ -276,7 +279,9 @@ runs).
 Debian sources a release links: it reads that release's
 `orbis-reframe-<version>-appimage-sources.txt` and downloads each linked
 version from snapshot.debian.org into `DIR/<package>/<version>/`, checked
-against snapshot's SHA-1s; versions already there are kept. Needs `jq`.
+against snapshot's SHA-1s; versions already there are kept, so after an
+"unreachable" stop (snapshot.debian.org overloaded) running it again carries
+on. Needs `jq`. Both scripts download through `scripts/snapshot_debian.sh`.
 
 ### Our own FFmpeg
 

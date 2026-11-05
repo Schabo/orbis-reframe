@@ -38,6 +38,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=package_checks.sh
 . "$REPO_ROOT/scripts/package_checks.sh"
+# shellcheck source=snapshot_debian.sh
+. "$REPO_ROOT/scripts/snapshot_debian.sh"
 BUILD_DIR="$REPO_ROOT/build-package/appimage"
 DIST_DIR="$REPO_ROOT/dist/appimage"
 TOOLS_DIR="$REPO_ROOT/third_party/appimage-tools"
@@ -318,11 +320,19 @@ for src in $(printf '%s\n' "${!USED[@]}" | sort); do
     [[ "${REVIEW_OFFER[$src]}" == snapshot ]] || continue
     ver=${USED[$src]}
     # The machine-readable list of the version's source files, and the page
-    # the list links.
-    files=$(curl -fsS --retry 3 --max-time 120 "https://snapshot.debian.org/mr/package/$src/${ver//:/%3A}/srcfiles?fileinfo=1" || true)
-    grep -qF "\"name\":\"${src}_${ver#*:}.dsc\"" <<< "$files" \
-        && curl -fsS --retry 3 --max-time 120 -o /dev/null "$(snapshot_url "$src" "$ver")" \
-        || die "snapshot.debian.org has no $src $ver (a security update not imported yet? it imports every few hours)"
+    # the list links. Missing (404, or no .dsc in the list) and unreachable
+    # are different failures: only the first is about the release.
+    missing="snapshot.debian.org has no $src $ver (a security update not imported yet? it imports every few hours)"
+    rc=0
+    snapshot_fetch "https://snapshot.debian.org/mr/package/$src/${ver//:/%3A}/srcfiles?fileinfo=1" \
+        "$BUILD_DIR/snapshot-srcfiles.json" || rc=$?
+    (( rc == 2 )) && die "can't check $src $ver: snapshot.debian.org is unreachable or overloaded; try again later"
+    (( rc == 0 )) && grep -qF "\"name\":\"${src}_${ver#*:}.dsc\"" "$BUILD_DIR/snapshot-srcfiles.json" \
+        || die "$missing"
+    rc=0
+    snapshot_fetch "$(snapshot_url "$src" "$ver")" /dev/null || rc=$?
+    (( rc == 2 )) && die "can't check $src $ver: snapshot.debian.org is unreachable or overloaded; try again later"
+    (( rc == 0 )) || die "$missing"
 done
 
 appimage="$DIST_DIR/orbis-reframe-$version-x86_64.AppImage"
