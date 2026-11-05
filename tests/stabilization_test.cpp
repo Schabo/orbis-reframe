@@ -59,10 +59,13 @@ void testStabConfig()
     CHECK(insv::horizonWindowFromStrength(0.3f) < insv::horizonWindowFromStrength(0.7f));
 
     // MakeInsvImuTrack fits the frame clock's rate against the nominal fps
-    // from the exposure record. The offset targets the centre sensor
-    // row (-2.3 ms), and the readout (field 25) is reported for the stitch.
-    // Synthetic: 1 kHz IMU from device t = 1 s, frames on a +40 ppm clock with
-    // 5 pre-roll exposures before field 24's frame, 20 ms readout.
+    // from the exposure record. The offset targets the centre sensor row:
+    // on the X5 0.5 ms before field 24 + field 28 and half the frame's
+    // exposure before that, frame by frame; on the ONE X2 2.3 ms before,
+    // whatever the exposure. The readout (field 25) is reported for the
+    // stitch. Synthetic: 1 kHz IMU from device t = 1 s, frames on a +40 ppm
+    // clock with 5 pre-roll exposures before field 24's frame, 4 ms
+    // exposures, 10 ms from frame 9000 on, 20 ms readout.
     {
         const double fps = 30000.0 / 1001.0;
         insv::InsvTelemetry tele;
@@ -78,6 +81,7 @@ void testStabConfig()
             insv::ExposureSample e;
             e.timestamp = static_cast<uint64_t>(
                 static_cast<int64_t>(f24) + std::llround(n / fps * (1.0 + rate) * 1e6));
+            e.exposure_time = n < 9000 ? 0.004 : 0.010;
             tele.exposure.push_back(e);
         }
         tele.first_frame_timestamp = f24;
@@ -92,12 +96,27 @@ void testStabConfig()
         g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow));
         CHECK(g.ready());
         CHECK(std::fabs(g.clockRatePpm() - 40.0) < 0.5);
-        // 0.5 s pre-roll + 1.6 ms IMU latency - 2.3 ms to the centre sensor row
-        CHECK(std::fabs(g.effectiveTimeOffsetSec() - 0.4993f) < 1e-4f);
+        // 0.5 s pre-roll + 1.6 ms IMU latency - 0.5 ms - half of 4 ms
+        CHECK(std::fabs(g.effectiveTimeOffsetSec() - 0.4991f) < 1e-5f);
         CHECK(std::fabs(g.readoutSec() - 0.020) < 1e-12);
-        // A measured fine-tune adds to the derived offset.
-        g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.003);
-        CHECK(std::fabs(g.effectiveTimeOffsetSec() - 0.5023f) < 1e-4f);
+        // Each frame by its own exposure, on the fitted clock.
+        CHECK(track.frameTimes.size() == 20000);
+        for (int n : {0, 100, 8999, 9000, 19999}) {
+            const double t = n / fps;
+            const double want = 0.5 + 0.0016 - 0.0005 + t * (1.0 + g.clockRatePpm() * 1e-6) -
+                                (n < 9000 ? 0.002 : 0.005);
+            CHECK(std::fabs(g.trackTime(t) - want) < 2e-6);
+        }
+        // A measured fine-tune adds to the derived offset, and moves every frame.
+        insv::GyroStabilizer gs;
+        gs.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.003);
+        CHECK(std::fabs(gs.effectiveTimeOffsetSec() - 0.5021f) < 1e-5f);
+        CHECK(std::fabs(gs.trackTime(15000 / fps) - g.trackTime(15000 / fps) - 0.003) < 1e-6);
+
+        // The ONE X2: one lag, no frame times.
+        const insv::ImuTrack x2 = insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), fps,
+                                                         insv::FindInsvModel("Insta360 ONE X2"));
+        CHECK(x2.frameTimes.empty() && std::fabs(x2.offsetSec - 0.4993) < 1e-9);
 
         // Explicit override: offset kept as-is, clock rate still fitted.
         insv::StabConfig ov = insv::StabConfig::preset(insv::StabMode::LeanFollow);

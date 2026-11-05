@@ -205,7 +205,10 @@ To remove fast shake, the gyroscope's record has to line up with the
 picture to about a millisecond. The camera's own timing isn't always that
 exact, so orbis-reframe measures it for each clip from the video itself.
 This runs in the background while playback is paused, and the result is
-saved in the project, so it's only done once per clip.
+saved in the project, so it's only done once per clip. (A project saved
+by version 0.8 or earlier is measured once more: the camera's timing now
+allows for each frame's exposure time, which the older measurement
+didn't.)
 
 The **Stabilization** section shows the state for the clip under the
 playhead:

@@ -1101,8 +1101,10 @@ void Project::writeMeasured(const ClipItem &clip)
         if (source != clip.sourcePath)
             continue;
         json updated = jc;
-        if (!std::isnan(clip.syncAdjustMs))
-            updated["syncAdjustMs"] = clip.syncAdjustMs;
+        if (!std::isnan(clip.syncAdjustMs)) {
+            updated["syncFineTuneMs"] = clip.syncAdjustMs;
+            updated.erase("syncAdjustMs"); // measured against the old timing, see the reader
+        }
         if (clip.seamAdjustGuard >= 0)
             updated["seamAdjust"] = seamAdjustToJson(clip.seamCorrection, clip.seamAdjustGuard);
         if (clip.lensColourGuard >= 0)
@@ -1300,7 +1302,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 jp["added"] = blurAdditionsToJson(c.blurAdditions);
         }
         if (!std::isnan(c.syncAdjustMs))
-            clips.back()["syncAdjustMs"] = c.syncAdjustMs; // absent until measured
+            clips.back()["syncFineTuneMs"] = c.syncAdjustMs; // absent until measured
         if (c.seamAdjustGuard >= 0) // absent until measured
             clips.back()["seamAdjust"] = seamAdjustToJson(c.seamCorrection, c.seamAdjustGuard);
         if (c.lensColourGuard >= 0) // absent until measured
@@ -1531,8 +1533,13 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 if (js.contains("calibration"))
                     pc.lensCalibration = lenscal::FromJson(js.at("calibration"));
             }
-            if (jc.contains("syncAdjustMs") && jc.at("syncAdjustMs").is_number())
-                pc.syncAdjustMs = jc.at("syncAdjustMs").get<double>();
+            // The sync fine-tune is measured on top of the camera's own
+            // timing; "syncAdjustMs" was measured against an older timing
+            // (no frame's exposure in it), so it's left out and the clip
+            // measured again -- and a build that knows only that key
+            // measures again too, rather than read this one against its own.
+            if (jc.contains("syncFineTuneMs") && jc.at("syncFineTuneMs").is_number())
+                pc.syncAdjustMs = jc.at("syncFineTuneMs").get<double>();
             if (jc.contains("seamAdjust"))
                 seamAdjustFromJson(jc.at("seamAdjust"), pc.seamCorrection, pc.seamAdjustGuard);
             if (jc.contains("lensColour"))

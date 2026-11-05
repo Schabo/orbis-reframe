@@ -447,6 +447,11 @@ in rad/s (§8).
    (`_004`, §1), nor at 29 min / 11 GB
    (`152938_…_003`, §1).
 4. Type 9's layout; the `AMBA` box; field 60.
+5. Whether a frame is taken half its exposure before its time, as on the
+   X5 and the A1 (X5 §7.1). The per-clip sync measurement on 45 windows of
+   the 14 sample clips scatters by ±0.9 ms whatever the exposure (mostly
+   0.2-1.4 ms, its timestamps whole ms), so it doesn't tell; the app keeps
+   one lag, `field 24 + field 28 − 2.3 ms`, and the per-clip fine-tune.
 
 ## Sources
 

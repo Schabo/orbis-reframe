@@ -332,7 +332,14 @@ Markers as in [`README.md`](README.md).
   log says why.
 - ✅ **Sync**: the X5's formula (field 24 + field 28, X5 §7.1) holds; the
   app's per-clip fine-tune finds +0.9 to +1.2 ms on all three clips, and
-  the image fit above agrees within ~1 ms.
+  the image fit above agrees within ~1 ms. Field 24 is one of the exposure
+  record's timestamps, as on the X5 (all 13 clips checked).
+- ✅ **The centre row half the exposure before the frame's time**, as on
+  the X5 (X5 §7.1; measured 2026-11-05): the per-clip sync measurement on
+  three 4 s windows of 16 clips (46 windows, every mode, exposure 0.4-5 ms,
+  readout 6.3-21.3 ms) falls by 0.484 ms per ms of exposure, 0.10 ms RMS
+  left (0.78 ms with one constant), at the X5's −0.5 ms; the readout time
+  adds nothing.
 - ✅ **Attitude, record type 37** (the walker's id 0x2500): the flight
   controller's orientation, 50 Hz, 36 bytes each: `u64` µs on the IMU's
   clock (4-8 ms behind the gyro), a unit quaternion as x, y, z, w (4 ×

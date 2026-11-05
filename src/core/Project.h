@@ -84,7 +84,8 @@ public:
     //   previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
-    //   optional: syncAdjustMs and seamAdjust {deg: [yaw,
+    //   optional: syncFineTuneMs (an older "syncAdjustMs" is ignored) and
+    //   seamAdjust {deg: [yaw,
     //   pitch, roll], lensGuard} once measured, and privacy:
     //     "plates": true -- the blur is on;
     //     "scan" -- the clip's plate scan (ClipItem::plateScan); absent =

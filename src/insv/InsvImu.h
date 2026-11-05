@@ -23,7 +23,11 @@ namespace insv {
 // sensors are read out top to bottom over the readout time (field 25), in
 // step (a per-cell survey on four clip segments); the offset targets the
 // sensor's centre row, and readoutSec brings every row to that instant
-// (stitch::CaptureTiming). Without field 24 it falls back to
+// (stitch::CaptureTiming). The centre row is taken at the model's lag
+// (InsvModel::captureLagMs) after field 24 + field 28, and, on a model whose
+// rows are taken at the middle of their exposure (InsvModel::midExposure),
+// half the frame's exposure before that: each frame by its own exposure
+// time, as ImuTrack::frameTimes. Without field 24 it falls back to
 // median(exposure[n] - imu[0] - n/fps), which assumes exposure[0] is frame 0
 // and is off by the pre-roll.
 //

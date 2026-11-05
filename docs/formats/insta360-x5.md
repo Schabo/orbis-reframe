@@ -888,10 +888,30 @@ Stabilized Lean-follow renders (16 views): rotation removed vs raw 20 % →
 **supersedes the per-lens model below**). Per-cell lags (8×6
 flow cells per view, ~570 cells mapped to lens + sensor row) show both lenses
 read out top to bottom over field 25, in step: row gradient ≈ field 25 on
-all clips (18–22 ms at 21.2 ms, 10.6–11.8 ms at 11.8 ms). The centre row sits
-at `field24 + field28 − 2.3 ms` on `192900`, with a few ms of per-clip spread
-(fine-tuned per clip in the app). Row v of either lens is captured at
-`centre + (v/H − 0.5)·field25`.
+all clips (18–22 ms at 21.2 ms, 10.6–11.8 ms at 11.8 ms). Row v of either
+lens is captured at `centre + (v/H − 0.5)·field25`.
+
+**The centre row's time: half the exposure before the frame's** ✅
+(measured 2026-11-05; replaces `field24 + field28 − 2.3 ms`, which was
+`192900`'s alone). Each row is taken at the middle of its exposure, so the
+centre row of frame n sits at
+
+```
+exposure[k + n].ts + field28 − 0.5 ms − exposure[k + n].exposure_time / 2
+```
+
+The app's per-clip sync measurement (`stitch::MeasureClipSync`, image motion
+against the gyro) on three 4 s windows of each sample clip, fitted against
+the window's median exposure time and field 25: on 19 X5 clips (51 windows,
+exposure 0.3–10 ms, readout 11.8 and 21.2 ms) the best lag falls by
+0.501 ms per ms of exposure, 0.31 ms RMS left (1.99 ms with one constant);
+the readout time adds nothing. The Antigravity A1 gives the same
+(antigravity-a1.md). Exposures over 10 ms weren't measured with motion, but
+the camera's own timelapse orientation (§3.5) puts each frame's centre row
+half its exposure before the frame's time over 0.2–33 ms. Auto exposure
+changes the exposure from frame to frame, so `insv::MakeInsvImuTrack` times
+each frame by its own (`ImuTrack::frameTimes`); the per-clip fine-tune is
+left with ±0.3 ms.
 
 ~~Per-lens capture time** ✅ (measured 2026-09-26;
 supersedes the `+ field25/2` term above). The `readout/2`

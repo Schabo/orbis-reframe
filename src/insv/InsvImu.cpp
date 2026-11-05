@@ -177,14 +177,10 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
     const bool exposurePerFrame =
         tele.frame_timestamps.empty() && !(tele.timelapse_interval_ms > 0.0);
 
-    // Frame-clock rate: the exposure record has one device timestamp
-    // per frame from field 24's frame on; least-squares slope of those vs the
-    // nominal n / fps on the camera's clock. Linear on every sample clip
-    // (~+40 / -15 ppm).
-    double clockRate = 0.0;
-    if (exposurePerFrame && tele.first_frame_timestamp != 0 && fps > 1.0 &&
-        exposure.size() >= 300) {
-        size_t k = 0;
+    // The exposure entry of field 24's frame (the X5 and the A1 write field
+    // 24 as one of its timestamps); exposure.size() when there is none.
+    size_t firstFrame = exposure.size();
+    if (exposurePerFrame && tele.first_frame_timestamp != 0 && fps > 1.0) {
         uint64_t best = UINT64_MAX;
         for (size_t i = 0; i < exposure.size(); ++i) {
             const uint64_t ts = exposure[i].timestamp;
@@ -192,9 +188,18 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
                                                                : tele.first_frame_timestamp - ts;
             if (d < best) {
                 best = d;
-                k = i;
+                firstFrame = i;
             }
         }
+    }
+
+    // Frame-clock rate: the exposure record has one device timestamp
+    // per frame from field 24's frame on; least-squares slope of those vs the
+    // nominal n / fps on the camera's clock. Linear on every sample clip
+    // (~+40 / -15 ppm).
+    double clockRate = 0.0;
+    if (firstFrame < exposure.size() && exposure.size() >= 300) {
+        const size_t k = firstFrame;
         const size_t n = exposure.size() - k;
         if (n >= 300) {
             const double xm = 0.5 * static_cast<double>(n - 1) / fps;
@@ -219,14 +224,50 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
 
     // Capture timing. Per-cell image-motion lags on four clip segments (both
     // readout modes, ~570 cells mapped to lens + sensor row) show both lenses
-    // read out top to bottom over field 25, in step, with the centre row
-    // kCenterRowMs from field 24 + field 28. The earlier per-lens model (lens 1
-    // a third of the readout late) was this row gradient seen through views
-    // that happened to sit in different rows.
-    constexpr double kCenterRowMs = -2.3;
+    // read out top to bottom over field 25, in step; the offset targets the
+    // centre row, at field 24 + field 28 + the model's lag, less half the
+    // frame's exposure where the model's rows are taken at the middle of
+    // their exposure (InsvModel::midExposure).
+    const double lagSec = model.captureLagMs * 1e-3;
     track.readoutSec = tele.first_frame_timestamp != 0 && tele.rolling_shutter_ms > 0.0
                            ? tele.rolling_shutter_ms * 1e-3
                            : 0.0;
+    // An exposure time, s, as the record has it where it's usable (above 0,
+    // at most a frame of the camera's clock), else the clip's median.
+    const double frameSpan = fps > 1.0 ? scale / fps : 1.0;
+    double medianExposure = 0.0;
+    if (model.midExposure) {
+        std::vector<double> e;
+        e.reserve(exposure.size());
+        for (const ExposureSample& x : exposure)
+            if (x.exposure_time > 0.0 && x.exposure_time <= frameSpan)
+                e.push_back(x.exposure_time);
+        if (!e.empty()) {
+            std::nth_element(e.begin(), e.begin() + e.size() / 2, e.end());
+            medianExposure = e[e.size() / 2];
+        } else if (tele.first_frame_timestamp != 0 && !tele.imu.empty())
+            std::fprintf(stderr, "insv: no exposure times in the file; frames timed at the end of "
+                                 "their exposure\n");
+    }
+    const auto exposureSec = [&](double t) {
+        return t > 0.0 && t <= frameSpan ? t : medianExposure;
+    };
+    // The exposure of the entry nearest device time `ts` (a timelapse's frame).
+    const auto exposureAt = [&](uint64_t ts) {
+        const auto it = std::lower_bound(
+            exposure.begin(), exposure.end(), ts,
+            [](const ExposureSample& e, uint64_t t) { return e.timestamp < t; });
+        const ExposureSample* best = nullptr;
+        if (it != exposure.end())
+            best = &*it;
+        if (it != exposure.begin() &&
+            (!best || ts - (it - 1)->timestamp < best->timestamp - ts))
+            best = &*(it - 1);
+        constexpr uint64_t kNearUs = 100000;
+        if (!best || (best->timestamp > ts ? best->timestamp - ts : ts - best->timestamp) > kNearUs)
+            return medianExposure;
+        return exposureSec(best->exposure_time);
+    };
 
     // Anchor on the first recorded frame (field 24), else estimate from the
     // exposure record.
@@ -239,7 +280,24 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
                                static_cast<double>(imuT0)) * 1e-6 +
                               tele.gyro_timestamp_ms * 1e-3 +
                               tele.time_map_offset_ms * 1e-3 * scale * (1.0 + clockRate) +
-                              kCenterRowMs * 1e-3;
+                              lagSec;
+            // Each frame by its own exposure: the clock's straight line,
+            // less half of it. A trimmed file's frame 0 is the recording's
+            // time_map_offset_ms in.
+            const size_t first =
+                firstFrame + static_cast<size_t>(std::max<long long>(
+                                 0, std::llround(tele.time_map_offset_ms * 1e-3 * fps)));
+            if (model.midExposure && firstFrame < exposure.size() && first < exposure.size()) {
+                track.frameTimes.reserve(exposure.size() - first);
+                for (size_t n = 0; first + n < exposure.size(); ++n) {
+                    const double videoSec = static_cast<double>(n) / fps;
+                    track.frameTimes.push_back(
+                        {videoSec, track.offsetSec + videoSec * scale * (1.0 + clockRate) -
+                                       0.5 * exposureSec(exposure[first + n].exposure_time)});
+                }
+                track.offsetSec = track.frameTimes.front().trackSec;
+            } else if (model.midExposure)
+                track.offsetSec -= 0.5 * medianExposure;
         } else if (exposurePerFrame && exposure.size() >= 32 && fps > 1.0) {
             const double imu0 = static_cast<double>(imuT0) * 1e-6;
             const double frameDt = scale / fps;
@@ -260,7 +318,8 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
                     {static_cast<double>(n) / fps - tele.time_map_offset_ms * 1e-3,
                      (static_cast<double>(tele.frame_timestamps[n]) - static_cast<double>(imuT0)) *
                              1e-6 +
-                         tele.gyro_timestamp_ms * 1e-3 + kCenterRowMs * 1e-3});
+                         tele.gyro_timestamp_ms * 1e-3 + lagSec -
+                         (model.midExposure ? 0.5 * exposureAt(tele.frame_timestamps[n]) : 0.0)});
     } else if (!tele.timelapse_quats.empty()) {
         // No gyro, but the orientation a timelapse stores in its place.
         if (!model.timelapseQuatAxes)

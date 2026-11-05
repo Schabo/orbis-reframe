@@ -109,6 +109,21 @@ struct InsvModel {
     // its turns go the way the GPS course does (docs/formats/insta360-x5.md
     // §3.5).
     const char* timelapseQuatAxes;
+
+    // When a frame's picture was taken, from the frame's time in the
+    // trailer (field 24 and the exposure record) and the IMU's latency
+    // (field 28): `midExposure` true, each sensor row at the middle of its
+    // exposure, the centre row at the frame's time + field 28 +
+    // captureLagMs - that frame's exposure time (record 0x400) / 2; false,
+    // at the frame's time + field 28 + captureLagMs whatever the exposure.
+    // X5 and A1: true, -0.5 ms, by the per-clip sync measurement
+    // (stitch::MeasureClipSync) on three windows of every sample clip
+    // against the window's exposure and readout time: the best lag fell by
+    // half of each ms of exposure on both (X5 0.3-10 ms on 19 clips, 0.31 ms
+    // RMS left; A1 0.4-5 ms on 16, 0.10 ms), the readout time (6-21 ms)
+    // moved it by nothing (docs/formats/insta360-x5.md §7.1).
+    bool midExposure;
+    double captureLagMs;
 };
 
 // Every row.

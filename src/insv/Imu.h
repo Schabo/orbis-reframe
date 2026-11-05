@@ -77,13 +77,15 @@ struct ImuTrack {
     double captureScale = 1.0;
     double clockRate = 0.0; // the camera's frame clock vs that, a few ppm
 
-    // Each frame's own time, where the file records it (a timelapse's), in
-    // video order: video time maps to track time by straight lines between
-    // these instead of the formula above, and by the formula, shifted onto
-    // them, beyond their ends. A timelapse's frames needn't be evenly spaced
-    // (the X5 skips a 100 ms tick now and then), and the formula's straight
-    // line can then be most of an interval off. offsetSec is the track time
-    // of video 0 by these. Empty: the formula alone.
+    // Each frame's own time, where the file says it, in video order: video
+    // time maps to track time by straight lines between these instead of
+    // the formula above, and by the formula, shifted onto them, beyond
+    // their ends. A timelapse's frames needn't be evenly spaced (the X5
+    // skips a 100 ms tick now and then), and the formula's straight line can
+    // then be most of an interval off; and a frame is taken half its own
+    // exposure before its time, which auto exposure changes from frame to
+    // frame (InsvModel::midExposure). offsetSec is the track time of video
+    // 0 by these. Empty: the formula alone.
     std::vector<FrameTime> frameTimes;
 
     // Sensor row readout time, seconds: row v of a lens was captured

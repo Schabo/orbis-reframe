@@ -1230,6 +1230,26 @@ void testMeasurementsWritten()
     CHECK(std::isnan(savedClip(1).syncAdjustMs));
     CHECK(savedClip(1).seamAdjustGuard == 2 && savedClip(1).seamCorrection.lens1RotDeg[1] == 0.25);
 
+    // A fine-tune under the older key was measured against the older timing:
+    // left out on load (measured again), and taken out when the new one is
+    // written.
+    auto fileText = [&] {
+        QFile f(file);
+        CHECK(f.open(QIODevice::ReadOnly));
+        return f.readAll();
+    };
+    {
+        QByteArray text = fileText();
+        CHECK(text.contains("\"syncFineTuneMs\"") && !text.contains("\"syncAdjustMs\""));
+        text.replace("\"syncFineTuneMs\"", "\"syncAdjustMs\"");
+        QFile f(file);
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(text);
+    }
+    CHECK(std::isnan(savedClip(0).syncAdjustMs) && std::isnan(savedClip(2).syncAdjustMs));
+    p.timeline()->setSourceSyncAdjust(a, 0.4);
+    CHECK(savedClip(0).syncAdjustMs == 0.4 && !fileText().contains("\"syncAdjustMs\""));
+
     // The lens colour likewise: per source and lens guard, straight into the file.
     insv::LensColour colour;
     colour.logRatio[2] = -0.06;
