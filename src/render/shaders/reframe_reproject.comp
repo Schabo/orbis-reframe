@@ -60,6 +60,10 @@ vec3 unpackRgb(uint p)
 #include "color_grade.glsl"
 #include "view_projection.glsl"
 
+// A column wrapped into [0, n): GLSL leaves `%` of a negative operand
+// undefined (on NVIDIA -1 % n isn't -1), and x0 is -1 at the left edge.
+int wrapX(int x, int n) { return x >= 0 ? x % n : n - 1 - (-x - 1) % n; }
+
 // Bilinear equirect fetch: U wraps (the seam), V clamps (the poles) -- matches
 // the viewport sampler and exportpipe::ReframeRenderer::sampleEquirect.
 vec3 sampleEq(vec2 uv)
@@ -73,8 +77,8 @@ vec3 sampleEq(vec2 uv)
     int x0 = int(x0f);
     int y0 = int(y0f);
 
-    int xa = x0 % pc.eqW; if (xa < 0) xa += pc.eqW;
-    int xb = (x0 + 1) % pc.eqW; if (xb < 0) xb += pc.eqW;
+    int xa = wrapX(x0, pc.eqW);
+    int xb = wrapX(x0 + 1, pc.eqW);
     int ya = clamp(y0, 0, pc.eqH - 1);
     int yb = clamp(y0 + 1, 0, pc.eqH - 1);
 
