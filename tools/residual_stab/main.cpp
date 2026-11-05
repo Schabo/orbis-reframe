@@ -36,6 +36,7 @@
 
 #include <GyroStabilizer.h>       // insv::GyroStabilizer, StabConfig, MatrixToYawPitchRoll
 #include <ClipMetadata.h>         // camera::ReadClipImu
+#include <InsvModels.h>           // insv::FindInsvModel (the telemetry clock tick)
 #include <InsvTrailer.h>          // insv::ReadInsvTelemetry (the exposure record)
 #include <NativeStitchSource.h>   // stitch::NativeStitchSource, stitch::Frame
 #include <ProbeClip.h>            // stitch::ProbeClip
@@ -1234,9 +1235,14 @@ int main(int argc, char** argv)
             if (a.noUpRef)
                 imu->orientation.clear();
         }
-        if (imu && a.diagnose)
-            if (auto tele = insv::ReadInsvTelemetry(a.input))
+        // In µs like the IMU, whatever the camera's clock tick (the ONE X2's
+        // is a millisecond).
+        if (imu && a.diagnose) {
+            const auto notes = insv::ReadInsvMakerNotes(a.input);
+            if (auto tele = insv::ReadInsvTelemetry(
+                    a.input, 1, notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0))
                 exposure = std::move(tele->exposure);
+        }
         if (imu) {
             gcfg = withAxes(gcfg);
             const insv::StabConfig bc =
