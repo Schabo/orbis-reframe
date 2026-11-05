@@ -44,7 +44,9 @@ struct MotionTrack {
 };
 
 // The track's motion over its video, empty with fewer than two samples or
-// none with an accelerometer. Levels the camera as Horizon lock does
+// none with an accelerometer -- unless the track has an orientation and no
+// samples (a timelapse's), which gives the lean and the travel axis, its g
+// values all NaN. Levels the camera as Horizon lock does
 // (GyroStabilizer, its default settings -- not the clip's own, so the values
 // don't change with the Stabilization panel). ~0.5 s for a 4 min X5 clip.
 MotionTrack BuildMotion(const ImuTrack& track);

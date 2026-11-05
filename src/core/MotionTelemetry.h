@@ -7,7 +7,7 @@
 // A clip's lean and G-forces at any moment of its video, for the overlays:
 // insv::BuildMotion's track (100 values a second, already smoothed), read
 // between its values on a straight line. Where the IMU has no samples there
-// is no data; the track's ends hold for one step, so the last frame of a
+// is no data (where only the G-forces are missing, the lean is still given); the track's ends hold for one step, so the last frame of a
 // video the IMU stops a sample short of is still covered.
 class MotionTelemetry {
 public:
@@ -20,6 +20,10 @@ public:
         // and across the camera's forward, which may point any way: they
         // aren't shown then.
         bool travelKnown = true;
+        // Were the G-forces recorded? A timelapse that records the camera's
+        // orientation alone, without an accelerometer, has the lean but not
+        // these (0 then).
+        bool gKnown = true;
     };
 
     MotionTelemetry() = default;

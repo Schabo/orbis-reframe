@@ -73,8 +73,9 @@ int leanDegrees(double leanDeg);
 QString leanSide(int degrees); // "L", "R", or nothing upright
 QString leanText(const std::optional<MotionTelemetry::Values> &motion, const QLocale &locale);
 // The total G-force in hundredths of a g, as `{g}` and the G circle write
-// it ("0.42 g"); nullopt where there's no motion or no known direction of
-// travel (MotionTelemetry::Values::travelKnown).
+// it ("0.42 g"); nullopt where there's no motion, no known direction of
+// travel (MotionTelemetry::Values::travelKnown) or no G-forces recorded
+// (gKnown).
 std::optional<int> gHundredths(const std::optional<MotionTelemetry::Values> &motion);
 QString gNumber(int hundredths, const QLocale &locale); // "0.42"
 QString gText(const std::optional<MotionTelemetry::Values> &motion, const QLocale &locale);

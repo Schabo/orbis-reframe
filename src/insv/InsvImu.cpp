@@ -70,6 +70,76 @@ std::vector<OrientationSample> OrientationFromAttitude(const std::vector<Attitud
     return out;
 }
 
+// A timelapse's orientation record (InsvTelemetry::timelapse_quats, X5
+// §3.5) as an orientation-only track: each frame's entries -- a run of them
+// across its readout -- matched to the frame's own time (record 0x600) by
+// their centre entry, which sits half an exposure before it, and kept with
+// that frame's video time; runs that match no frame (the X5 writes one
+// stray run minutes before the first frame on some clips) are dropped. The
+// quaternion turns world vectors into the camera's axes, so world up (z) and
+// north (x) in those axes are its third and first columns.
+void TimelapseQuatTrack(const InsvTelemetry& tele, double fps, ImuTrack& track) {
+    constexpr uint64_t kRunGapUs = 50000;   // entries closer than this are one frame's
+    constexpr uint64_t kMatchUs = 100000;   // centre entry to the frame's time, at most
+    std::vector<TimelapseQuat> q = tele.timelapse_quats;
+    std::sort(q.begin(), q.end(), [](const TimelapseQuat& a, const TimelapseQuat& b) {
+        return a.timestamp < b.timestamp;
+    });
+    const std::vector<uint64_t>& frames = tele.frame_timestamps;
+    struct Run {
+        size_t first, last; // entries [first, last]
+        size_t frame;
+    };
+    std::vector<Run> runs;
+    for (size_t i = 0; i < q.size();) {
+        size_t j = i;
+        while (j + 1 < q.size() && q[j + 1].timestamp - q[j].timestamp < kRunGapUs)
+            ++j;
+        const uint64_t centre = q[(i + j) / 2].timestamp;
+        const auto it = std::lower_bound(frames.begin(), frames.end(), centre);
+        size_t best = frames.size();
+        uint64_t bestD = kMatchUs;
+        for (auto c = it == frames.begin() ? it : it - 1; c != frames.end() && c <= it; ++c) {
+            const uint64_t d = *c > centre ? *c - centre : centre - *c;
+            if (d < bestD) {
+                bestD = d;
+                best = static_cast<size_t>(c - frames.begin());
+            }
+        }
+        if (best < frames.size() && (runs.empty() || runs.back().frame < best))
+            runs.push_back({i, j, best});
+        i = j + 1;
+    }
+    const size_t dropped = [&] {
+        size_t kept = 0;
+        for (const Run& r : runs)
+            kept += r.last - r.first + 1;
+        return q.size() - kept;
+    }();
+    if (dropped > 0)
+        std::fprintf(stderr, "insv: %zu timelapse orientation entries match no frame; left out\n",
+                     dropped);
+    if (runs.size() < 2)
+        return;
+    const uint64_t t0 = q[runs.front().first].timestamp;
+    for (const Run& r : runs) {
+        for (size_t i = r.first; i <= r.last; ++i) {
+            double m[3][3];
+            QuatToMatrix(q[i].q, m);
+            OrientationSample o;
+            o.timestamp = q[i].timestamp;
+            for (int k = 0; k < 3; ++k) {
+                o.up[k] = m[k][2];
+                o.north[k] = m[k][0];
+            }
+            track.orientation.push_back(o);
+        }
+        track.frameTimes.push_back(
+            {static_cast<double>(r.frame) / fps - tele.time_map_offset_ms * 1e-3,
+             static_cast<double>(q[(r.first + r.last) / 2].timestamp - t0) * 1e-6});
+    }
+}
+
 } // namespace
 
 ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& model) {
@@ -181,6 +251,33 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
             std::nth_element(off.begin(), off.begin() + off.size() / 2, off.end());
             track.hasOffset = true;
             track.offsetSec = off[off.size() / 2];
+        }
+        // A timelapse's frames by their own times (record 0x600), which
+        // needn't be evenly spaced, through the same terms as the offset.
+        if (tele.first_frame_timestamp != 0 && fps > 1.0 && tele.frame_timestamps.size() >= 2)
+            for (size_t n = 0; n < tele.frame_timestamps.size(); ++n)
+                track.frameTimes.push_back(
+                    {static_cast<double>(n) / fps - tele.time_map_offset_ms * 1e-3,
+                     (static_cast<double>(tele.frame_timestamps[n]) - static_cast<double>(imuT0)) *
+                             1e-6 +
+                         tele.gyro_timestamp_ms * 1e-3 + kCenterRowMs * 1e-3});
+    } else if (!tele.timelapse_quats.empty()) {
+        // No gyro, but the orientation a timelapse stores in its place.
+        if (!model.timelapseQuatAxes)
+            std::fprintf(stderr, "insv: a timelapse orientation record, but its axes aren't known "
+                                 "for the %s; not stabilized\n",
+                         model.name);
+        else if (tele.frame_timestamps.empty() || !(fps > 1.0))
+            std::fprintf(stderr, "insv: a timelapse orientation record without the frames' own "
+                                 "times; not stabilized\n");
+        else {
+            track.axisMap = model.timelapseQuatAxes;
+            TimelapseQuatTrack(tele, fps, track);
+            if (!track.frameTimes.empty()) {
+                const FrameTime& f = track.frameTimes.front();
+                track.hasOffset = true;
+                track.offsetSec = f.trackSec - f.videoSec * scale;
+            }
         }
     }
     track.samples = std::move(tele.imu);

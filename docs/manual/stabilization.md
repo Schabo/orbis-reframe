@@ -149,8 +149,24 @@ the picture, so stabilization works on these clips as on any other. The
 **Strength** and **Smoothing** sliders keep their meaning in the time
 you watch: in a timelapse of a frame every 2 s, a 1 s smoothing evens out
 a minute of flight. The overlays' speed, lean and G-force follow the
-picture the same way. Insta360 X5 timelapses keep no gyroscope record, so
-they still can't be stabilized.
+picture the same way.
+
+An Insta360 X5 timelapse keeps no gyroscope record. Instead the camera
+stores which way it pointed while it took each frame, and orbis-reframe
+stabilizes from that: every mode works. Two differences from a normal
+clip:
+
+- The camera's heading wanders by several degrees a minute (up stays
+  true), and in a timelapse a minute passes in a second of video. **Lean
+  follow** and **Horizon lock** follow the heading anyway, so they don't
+  show it. **Direction lock** does: the view slowly turns away from the
+  direction you chose.
+- The clip records no acceleration, so a title's G-force shows `--` (see
+  [Lean and G-force](titles.md#lean-and-g-force)); the lean still shows.
+
+**Gyro sync** says it couldn't fine-tune these clips (see
+[Gyro sync](#gyro-sync)): there is nothing to fine-tune, since the camera
+times each frame's orientation itself.
 
 ## Which clip it changes
 
@@ -205,7 +221,8 @@ The reasons a measurement gives:
 - *the file can't be read*, *not a 360 camera file*, *this kind of 360 clip
   isn't supported*: as for the seam (see [Stitching](stitching.md)).
 - *the file has no usable gyroscope data*: the camera didn't record motion
-  data, or it can't be used.
+  data, or it can't be used, or (an X5 timelapse) it recorded which way
+  it pointed at each frame instead, which needs no fine-tuning.
 - *too little detail or movement in the picture*: the measurement lines the
   picture's movement up with the gyroscope's, and found too little of either
   (a plain or dark scene, or a very short or very still clip).

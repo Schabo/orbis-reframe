@@ -237,7 +237,7 @@ frame rate); **wanted** means no clip yet.
 | H.264 encoding | | as above | none | **wanted**: every clip we have is H.265 |
 | PureVideo | 8K / 5.7K / 4K, 30 / 25 / 24 | ❓ | none | **wanted** |
 | InstaFrame 2.0 | 360 5.7K+ + flat 4K / 1080p, 30 / 25 / 24 | `.insv` (360) + `.mp4` (flat) | none | **wanted** |
-| Timelapse | not in the spec table | as video, no audio, no IMU (§3.5) | six 8K clips at a 2 s interval, on the move | enough to recognise and play; **another interval and resolution wanted** |
+| Timelapse | not in the spec table | as video, no audio, no IMU but the orientation per frame (§3.5) | six 8K clips at a 2 s interval, on the move | enough to recognise, play and stabilize; **another interval and resolution wanted** (does the entries' spacing follow field 25?) |
 | TimeShift | not in the spec table | ❓ | none | **wanted** |
 | Bullet Time | not in the spec table | ❓ | none | **wanted** |
 | Loop Recording, Dashcam | | ❓ | none | wanted, low |
@@ -279,20 +279,53 @@ From the six Demo timelapses (8K, 2 s interval, firmware v1.11.10):
     unit quaternions, **11 per frame, 2.1244 ms apart**: 21.24 ms, the
     readout time of field 25 at 8K. So the camera stores its orientation
     across each frame's readout, already integrated, instead of the raw
-    gyro. ❓ The quaternion's frame and handedness (not checked against the
-    picture); why `_091`'s first entries sit 615 s before its first frame.
+    gyro. Measured on the six clips (2026-11-05, `tmp/tl/`):
+    - **Timing**: the sixth entry (the frame's centre row) sits at the
+      frame's type 6 time minus half its exposure (type 4): slope −0.49 to
+      −0.53 per ms of exposure over 0.2-33 ms, ≤ 0.2 ms rms left. The
+      entries are on the device clock in seconds, the same clock as type 6.
+    - **Stray groups**: `_079` and `_091` hold one group of 11 that
+      belongs to no frame, 322 s and 615 s before the first (a group per
+      frame follows); the others hold exactly one group per frame. Groups
+      are matched to frames by time, not by position.
+    - **Frame and axes**: the quaternion turns a world vector into the
+      camera's axes (world → body). World z is up: body +z holds it within
+      2-4° (median) on every clip, the other convention lets it wander 27°
+      on `_095`. Body → the stitched sphere (+X right, +Y up, −Z forward)
+      is **`y,z,x`** (the syntax of the IMU's axis map; not the IMU's own
+      axes, `z,-x,-y`): found by the bike's lean, whose sideways axis lies
+      where the camera's 27° yaw on the bike puts it under this map only,
+      with the direction of turning taken from the GPS course (its rate
+      against the quaternions' yaw about up: corr −0.48 to −0.89 on four
+      clips, so positive yaw turns left); the image's own rotation between
+      frames fits it best too, weakly (the rider fills half the views).
+    - **Heading drifts**: the forward direction's heading against the GPS
+      course at speed moves 5-12° per minute, not linearly (405° over
+      `_078`'s 40 min, 600° over `_095`'s 61); up doesn't. World x and y
+      are wherever the camera started.
 - **Exposure (type 4) and GPS (type 7) run in real time**, not per frame:
   10 Hz over the whole recording (24 894 exposure records on `_078`), so
   the per-frame exposure sync of §7.1 doesn't apply.
 - **The type 6 times are 2.026 s apart** on `_078` (2026-11-04), not the
-  2000 ms of field 30: 1228 frames over 41.5 min say the same.
+  2000 ms of field 30: 1228 frames over 41.5 min say the same. They aren't
+  evenly spaced: each interval is 2.000 or 2.100 s (a 100 ms tick of the
+  10 Hz exposure clock skipped, a quarter of the intervals on `_078`,
+  `_079`, `_088`, `_089`), so a frame's time is up to 0.8 s off a
+  straight line through them; `_091` and `_095` are exactly 2.000 s
+  apart.
 - **The app** opens, stitches and exports them as 8K 30 clips (`_078`
   through `reframe_export`, 2026-10-20, clean stitch). Since 2026-11-04 it
   knows them as timelapses: video time is turned into the camera's clock
   by the frames' own times (type 6; 60.7 s per second of video on
-  `_078`), for the GPS, and Media information shows *Timelapse*.
-  Stabilization has no motion data (no type 3); type 24 could give it
-  some.
+  `_078`), for the GPS, and Media information shows *Timelapse*. Since
+  2026-11-05 it stabilizes them from type 24 (`InsvModel::
+  timelapseQuatAxes` = `y,z,x`): each frame by its own entries, the GPS
+  and the motion by each frame's own type 6 time (the GPS lands up to
+  16 ms of video from a straight line on `_078`). Checked on all six: the
+  rotation between frames by the track against the image's (the forward
+  view's roll, essential matrix) peaks at the frame itself, corr 0.43-0.78
+  on the four long rides, gain 0.63-0.89; Horizon lock is level by eye on
+  `_078`.
 
 Field 26.1 isn't a reliable mode field beyond timelapse: it is 0 on the
 8K, 4K 120 and 5.7K+ HDR clips, 6 (`VideoHdr`) on the 5.7K 60 HDR and the
@@ -385,7 +418,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x0a00` | 10 | Anchors / highlights | 35 | `{type u8, count u32}` lists (+ u64 timestamps). Here 7 types (1,2,3,4,16,17,18), all with count 0 | 📖 ✅ |
 | `0x0b00` | 11 | AAASimulation | 342 294 | **267 B per recorded frame** (the same on `192900` and `201257`). Each block starts with the same `u32` ms timestamp as type 9's; the rest is bit-packed and not decoded, with small 8-bit curves visible | 📖❓ |
 | — | 12–18 | ExposureSecondary, Magnetic, Euler, SecGyro, Speed, TBox, Quaternions | — | not on the X5 samples (other models) | |
-| `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, 11 per frame across the readout; timelapse only (§3.5) | ⚠️ |
+| `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, world → body, 11 per frame across the readout; timelapse only (§3.5) | ✅ |
 | `0x1600` | 22 | Snapshots | 8 306 836 | **four 1664×832 NV12 frames of the dual-fisheye picture** from across the clip (§4.5) | ✅ |
 | `0x1c00` | 28 | ? | 12 793 | eight 256-entry `u8` tables, identity on every sample, then one **256-entry `u16` tone curve** (values 0-255, concave: 40 -> ~89, 120 -> ~178, 200 -> ~229) that differs slightly between clips; the rest mostly zero. One curve for the whole picture, not per lens | ⚠️ |
 | `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz | ❓ |

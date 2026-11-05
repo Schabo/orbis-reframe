@@ -197,9 +197,15 @@ public:
     // its axis map, video->IMU offset, capture scale, frame-clock rate and
     // readout time, and its orientation (ImuTrack::orientation) where it has
     // one. Video time t maps to gyro time
-    //   t * captureScale * (1 + clockRate) + timeOffsetSec.
-    // The smoothing windows stay in video time (what the viewer sees): in a
-    // timelapse they span captureScale times as much of the camera's clock.
+    //   t * captureScale * (1 + clockRate) + timeOffsetSec,
+    // or, where the track has its frames' own times (ImuTrack::frameTimes),
+    // by straight lines between those, shifted by what the offset adds to
+    // the track's own. The smoothing windows stay in video time (what the
+    // viewer sees): in a timelapse they span captureScale times as much of
+    // the camera's clock. A track with an orientation and no samples is
+    // taken as it is, the orientation the camera recorded: the leveling,
+    // bias fit and heading hold that make a gyro's integral usable aren't
+    // needed, and nothing lies between its frames.
     // If cfg.timeOffsetSec is non-zero it is an explicit override and used
     // as-is (the clock rate still applies); a non-empty cfg.gyroAxes replaces
     // the track's map. `syncAdjustSec` is added to the track's offset (not to
@@ -228,12 +234,10 @@ public:
     // The track's capture scale (ImuTrack::captureScale; build(ImuTrack, ...)
     // only, 1 otherwise): seconds of the camera's clock per video second.
     double captureScale() const { return m_captureScale; }
-    // The video time of gyro time `gyroSec` (seconds from the track's first
-    // sample): the inverse of the map above.
-    double videoTime(double gyroSec) const
-    {
-        return (gyroSec - m_cfg.timeOffsetSec) / (1.0 + m_clockRate) / m_captureScale;
-    }
+    // The track time (seconds from its first sample) of video time
+    // `videoSec`, by the map above, and its inverse.
+    double trackTime(double videoSec) const { return gyroTime(videoSec); }
+    double videoTime(double gyroSec) const;
 
     // Sensor row readout time, seconds: row v of either lens was captured
     // (v/height - 0.5) * readoutSec() after the time the correction is
@@ -269,6 +273,13 @@ private:
     // level against the accelerometer, the heading the gyro's alone).
     void buildTrack(const std::vector<insv::ImuSample>& imu,
                     const std::vector<OrientationSample>& ref, const StabConfig& cfg);
+    // build(ImuTrack, ...) on a track with an orientation and no samples:
+    // the orientation itself (its up and north) is the raw track.
+    void buildOrientationOnly(const std::vector<OrientationSample>& ref, const StabConfig& cfg);
+    // m_levelFwd / m_mountLevel from the mount's mean up in the body, the
+    // sum of `n` up vectors (unit, or the accelerometer's ~1 g); unchanged
+    // when that isn't ~1 per vector.
+    void setMountLevel(const double sumUp[3], long n);
 
     bool m_ready = false;
     StabConfig m_cfg;
@@ -284,6 +295,12 @@ private:
     double m_clockRate = 0.0;
     double m_captureScale = 1.0; // see captureScale()
     double m_readoutSec = 0.0; // see readoutSec()
+    // ImuTrack::frameTimes (increasing in both), and the track's own offset
+    // they were given with: gyroTime() shifts them by what the offset
+    // build() used adds to it (the sync fine-tune, an override).
+    std::vector<double> m_frameVideo, m_frameTrack;
+    double m_frameOffset = 0.0;
+    bool m_orientationOnly = false; // built by buildOrientationOnly()
     // build()'s integrated, levelled track, kept across rebuilds: it depends
     // on the IMU track and its up reference, the axis map / scale / accel
     // low-pass / gain and whether leveling is on -- not on the windows or lock amount the
@@ -312,16 +329,15 @@ private:
     double m_lockedHeading = 0.0; // StabConfig::lockDirection's heading, radians
 
     // Video source time -> the orientation track's (gyro-relative) time.
-    double gyroTime(double tSec) const
-    {
-        return tSec * m_captureScale * (1.0 + m_clockRate) + m_cfg.timeOffsetSec;
-    }
+    double gyroTime(double tSec) const;
     // Every how many samples the smoothing reads: in a timelapse a window
-    // holds captureScale times the samples, which say no more about the
-    // picture's motion than the video-time window of a normal clip.
+    // holds captureScale times the gyro's samples, which say no more about
+    // the picture's motion than the video-time window of a normal clip. An
+    // orientation-only track has its samples at the frames alone: all.
     size_t smoothStride() const
     {
-        return m_captureScale >= 2.0 ? static_cast<size_t>(m_captureScale) : 1;
+        return m_captureScale >= 2.0 && !m_orientationOnly ? static_cast<size_t>(m_captureScale)
+                                                           : 1;
     }
 };
 

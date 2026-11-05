@@ -83,15 +83,28 @@ struct AttitudeSample {
     double velocity_ned[3] = {0, 0, 0}; // m/s north, east, down
 };
 
+// One entry of a timelapse's orientation record 0x1800 (the X5,
+// docs/formats/insta360-x5.md §3.5): 40 bytes, the time as an f64 in seconds
+// on the device clock, then the unit quaternion {w, x, y, z} as f64s. It
+// turns a world vector (z up, x and y wherever the camera started) into the
+// camera's axes; 11 entries a frame, evenly across its readout, the sixth at
+// its centre row's mid-exposure.
+struct TimelapseQuat {
+    uint64_t timestamp = 0; // the record's seconds as µs, the clock of ImuSample
+    double q[4] = {1, 0, 0, 0};
+};
+
 // Timed telemetry recovered from the trailer. `imu` comes from record 0x300,
-// `exposure` from record 0x400, `attitude` from record 0x2500. Each list can
-// be empty if the file doesn't carry that record (older firmware, .insp
-// stills, a remuxed chunk that only had the calibration trailer spliced on,
-// every camera but a drone's).
+// `exposure` from record 0x400, `attitude` from record 0x2500,
+// `timelapse_quats` from record 0x1800. Each list can be empty if the file
+// doesn't carry that record (older firmware, .insp stills, a remuxed chunk
+// that only had the calibration trailer spliced on, every camera but a
+// drone's, every clip but a timelapse).
 struct InsvTelemetry {
     std::vector<ImuSample> imu;
     std::vector<ExposureSample> exposure;
     std::vector<AttitudeSample> attitude;
+    std::vector<TimelapseQuat> timelapse_quats; // in the file's order
     // Field 69 of record 0x101: four floats, a unit quaternion {w, x, y, z}
     // whose rotation turns the attitude's body axes into the IMU's (on the
     // A1 an exact axis permutation; the camera's tilt in the airframe isn't
@@ -201,10 +214,10 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id);
 
 // Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure,
-// 0x2500 attitude; 0x700 GPS is only counted here; ReadInsvGps decodes it).
-// Returns std::nullopt only if the file has no recognizable trailer at all; a
-// trailer that is present but carries neither record yields an InsvTelemetry
-// with two empty lists.
+// 0x2500 attitude, 0x600 frame times, 0x1800 timelapse orientation; 0x700
+// GPS is only counted here; ReadInsvGps decodes it). Returns std::nullopt
+// only if the file has no recognizable trailer at all; a trailer that is
+// present but carries none of them yields an InsvTelemetry with empty lists.
 //
 // `max_imu_samples` caps how many IMU samples are read (0 = all). A multi-hour
 // clip's 0x300 record is tens to a couple hundred MB of doubles; the cap is an
@@ -212,8 +225,9 @@ std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path,
 // records are always read in full (one per frame — small).
 //
 // `tick_us` is the model's telemetry clock tick in microseconds
-// (InsvModel::telemetryTickUs): the IMU, exposure, attitude and field-24
-// timestamps are handed out in microseconds, the unit ImuSample promises.
+// (InsvModel::telemetryTickUs): the IMU, exposure, attitude, frame and
+// field-24 timestamps are handed out in microseconds, the unit ImuSample
+// promises (record 0x1800 gives seconds, so it needs no tick).
 std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                                                std::size_t max_imu_samples = 0,
                                                double tick_us = 1.0);
@@ -254,13 +268,19 @@ struct InsvGps {
     // divided by the clip's CaptureScale.
     int64_t first_frame_unix_ms = 0;
     bool aligned_by_speed = false;
+    // A timelapse's frames by their own times (record 0x600): seconds of the
+    // camera's clock since the first, one per frame (the X5 writes one more).
+    // They needn't be evenly spaced, so where they're given a fix's video
+    // time is read off them rather than divided by the CaptureScale. Empty
+    // on other clips.
+    std::vector<double> frame_sec;
 };
 
 // Decodes the 0x700 payload `payload` into fixes (as InsvGps::fixes).
 std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& payload);
 
-// The clip's GPS track; only records 0x101, 0x700 and, to line it up
-// without field 98, 0x2500 and 0x8000 are read. `tick_us` as for
+// The clip's GPS track; only records 0x101, 0x700, 0x600 and, to line it
+// up without field 98, 0x2500 and 0x8000 are read. `tick_us` as for
 // ReadInsvTelemetry; `capture_scale` the clip's CaptureScale (the match by
 // speed is made on the camera's clock, a trimmed file's offset is video
 // time).

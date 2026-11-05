@@ -6,10 +6,12 @@ MotionTelemetry::MotionTelemetry(insv::MotionTrack track) : m_track(std::move(tr
 
 std::optional<MotionTelemetry::Values> MotionTelemetry::sample(size_t i) const
 {
-    const Values v{m_track.leanDeg[i], m_track.lateralG[i], m_track.forwardG[i],
-                   m_track.travelFit > 0.0};
-    if (!std::isfinite(v.leanDeg) || !std::isfinite(v.lateralG) || !std::isfinite(v.forwardG))
+    Values v{m_track.leanDeg[i], m_track.lateralG[i], m_track.forwardG[i],
+             m_track.travelFit > 0.0};
+    if (!std::isfinite(v.leanDeg))
         return std::nullopt;
+    if (!std::isfinite(v.lateralG) || !std::isfinite(v.forwardG))
+        v.lateralG = v.forwardG = 0.0, v.gKnown = false;
     return v;
 }
 
@@ -33,5 +35,6 @@ std::optional<MotionTelemetry::Values> MotionTelemetry::at(double sourceMs) cons
         return f < 0.5 ? a : b;
     return Values{a->leanDeg + f * (b->leanDeg - a->leanDeg),
                   a->lateralG + f * (b->lateralG - a->lateralG),
-                  a->forwardG + f * (b->forwardG - a->forwardG), a->travelKnown};
+                  a->forwardG + f * (b->forwardG - a->forwardG), a->travelKnown,
+                  a->gKnown && b->gKnown};
 }

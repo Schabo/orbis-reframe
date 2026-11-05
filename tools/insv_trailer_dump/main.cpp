@@ -5,6 +5,8 @@
 //   insv_trailer_dump <input.insv> --imu        every IMU sample, one per line
 //   insv_trailer_dump <input.insv> --exposure   every exposure sample
 //   insv_trailer_dump <input.insv> --gps        every GPS fix
+//   insv_trailer_dump <input.insv> --quats      a timelapse's orientation
+//                                               record and frame times
 //
 // The --imu / --exposure output is laid out to diff against `exiftool -ee`:
 //   exiftool "Time Code"        == column 2 here (timestamp / 1000, 3 decimals)
@@ -43,6 +45,11 @@ void PrintSummary(const insv::InsvTelemetry& t) {
                     t.exposure.back().timestamp / 1000.0);
     }
     std::cout << std::endl;
+    if (!t.frame_timestamps.empty())
+        std::printf("Frame times:      %zu  (%.3f .. %.3f)\n", t.frame_timestamps.size(),
+                    t.frame_timestamps.front() / 1000.0, t.frame_timestamps.back() / 1000.0);
+    if (!t.timelapse_quats.empty())
+        std::printf("Orientation:      %zu  (timelapse, record 0x1800)\n", t.timelapse_quats.size());
 }
 
 const char kUsage[] =
@@ -51,7 +58,10 @@ const char kUsage[] =
     "  --imu         every IMU sample, one per line\n"
     "  --exposure    every exposure sample, one per line\n"
     "  --gps         every GPS fix, one per line: index, video ms, Unix s, latitude,\n"
-    "                longitude, speed m/s, heading, altitude m\n";
+    "                longitude, speed m/s, heading, altitude m\n"
+    "  --quats       a timelapse's frames and orientation, one per line: `F index ms` for\n"
+    "                each frame time (record 0x600), `Q index ms w x y z` for each\n"
+    "                orientation entry (record 0x1800, world -> camera axes)\n";
 
 } // namespace
 
@@ -69,6 +79,7 @@ int main(int argc, char** argv) {
     const bool want_imu = argc > 2 && std::strcmp(argv[2], "--imu") == 0;
     const bool want_exposure = argc > 2 && std::strcmp(argv[2], "--exposure") == 0;
     const bool want_gps = argc > 2 && std::strcmp(argv[2], "--gps") == 0;
+    const bool want_quats = argc > 2 && std::strcmp(argv[2], "--quats") == 0;
 
     if (want_gps) {
         const auto notes = insv::ReadInsvMakerNotes(path);
@@ -89,6 +100,24 @@ int main(int argc, char** argv) {
             std::printf("%zu %lld %.3f %.15g %.15g %.15g %.15g %.15g\n", i, video,
                         f.unix_ms / 1000.0, f.latitude, f.longitude, f.speed_mps,
                         f.heading_deg, f.altitude_m);
+        }
+        return 0;
+    }
+
+    if (want_quats) {
+        const auto notes = insv::ReadInsvMakerNotes(path);
+        const auto tel = insv::ReadInsvTelemetry(
+            path, 1, notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0);
+        if (!tel) {
+            std::cerr << "No Insta360 trailer found in " << path << std::endl;
+            return 1;
+        }
+        for (size_t i = 0; i < tel->frame_timestamps.size(); ++i)
+            std::printf("F %zu %.3f\n", i, tel->frame_timestamps[i] / 1000.0);
+        for (size_t i = 0; i < tel->timelapse_quats.size(); ++i) {
+            const auto& e = tel->timelapse_quats[i];
+            std::printf("Q %zu %.3f %.9f %.9f %.9f %.9f\n", i, e.timestamp / 1000.0, e.q[0], e.q[1],
+                        e.q[2], e.q[3]);
         }
         return 0;
     }

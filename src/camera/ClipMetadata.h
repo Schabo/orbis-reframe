@@ -114,9 +114,14 @@ struct ClipMetadata {
     std::string proxyPath;
 
     // What the file records besides the picture. Facts for the Media
-    // information panel; the IMU track itself comes from ReadClipImu.
-    bool hasImu = false;
+    // information panel; the motion track itself comes from ReadClipImu.
+    // `hasMotion`: the file records how the camera moved -- an IMU
+    // (`imuRateHz`), or in a timelapse the camera's own orientation per
+    // frame in its place (`orientationPerFrame`; no IMU, so no
+    // accelerometer either).
+    bool hasMotion = false;
     double imuRateHz = 0.0;
+    bool orientationPerFrame = false;
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
     // When the video doesn't play in real time: seconds of the camera's

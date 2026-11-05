@@ -50,7 +50,11 @@ speed in km/h. On a clip without field 98 (the Antigravity A1) the time in
 the clip comes from matching the GPS speed against the drone's own, and a
 first line says so. The times are field 98's alone: the app then lines an
 X5 track up against the IMU (it runs 0.5-2.4 s late by field 98; the log
-line `GPS in … lined up with the IMU` says by how much).
+line `GPS in … lined up with the IMU` says by how much). `--quats` prints a
+timelapse's frame times (record 0x600, `F index ms`) and the orientation
+an X5 timelapse stores in place of the IMU (record 0x1800, `Q index ms w x
+y z`, the quaternion turning world vectors into the camera's axes); the
+summary counts both.
 
 **When:** a clip behaves oddly (stitch, sync, stabilization, GPS) and you want
 to see what the camera recorded; or when working on `src/insv/InsvTrailer`.
@@ -60,6 +64,7 @@ to see what the camera recorded; or when working on `src/insv/InsvTrailer`.
 build/insv_trailer_dump clip.insv
 build/insv_trailer_dump clip.insv --imu > imu.txt
 build/insv_trailer_dump clip.insv --gps > gps.txt
+build/insv_trailer_dump timelapse.insv --quats > quats.txt
 ```
 
 ## insv_stitch
@@ -504,9 +509,13 @@ faster than the frame rate can capture.
 The first line gives the video↔IMU timing the run uses: the offset, the
 **capture scale** (seconds of the camera's clock per second of video: 1,
 but 0.2997 in 100 fps slow motion stored at 29.97 and 60 in a timelapse of
-a frame every 2 s) and the frame clock's rate. Blocks [1] and [2] read the
-IMU on its own clock, over the trim range turned onto it; the image blocks
-work in video time.
+a frame every 2 s) and the frame clock's rate; a timelapse's frames are
+placed by their own times, which needn't be evenly spaced. Blocks [1] and
+[2] read the IMU on its own clock, over the trim range turned onto it; the
+image blocks work in video time. An X5 timelapse has no IMU, only the
+orientation it stores per frame: the stabilizer runs on that, the IMU
+blocks have nothing to read, and with 2 s between frames the image blocks'
+features barely match (rely on `--render` and look instead).
 
 ```sh
 build/residual_stab clip.insv --diagnose --trim-in 0 --trim-out 30000

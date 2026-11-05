@@ -163,7 +163,10 @@ and hands the view a de-rotation matrix. It is rotation only. Lining the gyro
 up with the video (timing, axis map, rolling-shutter readout) is
 camera-specific: the camera's reader does it and hands the stabilizer an
 `insv::ImuTrack` (`camera::ReadClipImu`); the camera's format document
-describes it.
+describes it. The track is gyro samples, or, where a camera stores its
+orientation instead (the X5's timelapse), that orientation alone; either
+way video time maps to the track's time by the reader's timing, frame by
+frame where the file gives each frame's own time.
 
 ## The project file
 

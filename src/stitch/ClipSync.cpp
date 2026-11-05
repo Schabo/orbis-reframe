@@ -36,6 +36,10 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
     const auto imu = camera::ReadClipImu(clipPath);
     if (!imu)
         return fail(MeasureFailure::NoGyro, "no IMU track");
+    // A timelapse's orientation per frame: the camera timed each frame's
+    // entries itself, and there is no motion between frames to line up.
+    if (imu->samples.empty())
+        return fail(MeasureFailure::NoGyro, "no gyro samples, the camera's orientation per frame");
     // The raw orientation track, synced exactly as stabilization would be
     // (before any fine-tune); the estimate is relative to it.
     insv::GyroStabilizer gyro;

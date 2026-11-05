@@ -99,6 +99,16 @@ struct InsvModel {
     // Not applied over a chart calibration, which replaces the file's. None
     // ({}) on the cameras whose calibration lines the lenses up as it is.
     SeamCorrection lensCorrection;
+
+    // The axes of the orientation a timelapse records in place of the gyro
+    // (record 0x1800, InsvTelemetry::timelapse_quats) -> the stitched sphere,
+    // a signed permutation as imuAxes. Null when unknown: the timelapse then
+    // isn't stabilized. X5: "y,z,x", measured on the six sample timelapses
+    // (2026-11-05) -- body +z is world up within 2-4 deg, the bike's lean
+    // lies across the travel the picture shows only under this map, and
+    // its turns go the way the GPS course does (docs/formats/insta360-x5.md
+    // §3.5).
+    const char* timelapseQuatAxes;
 };
 
 // Every row.

@@ -332,12 +332,16 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     if (const auto tele =
             insv::ReadInsvTelemetry(out.path, kImuProbeSamples, model.telemetryTickUs)) {
         if (tele->imu.size() >= 2) {
-            out.hasImu = true;
+            out.hasMotion = true;
             // Microseconds, whatever the model's tick (ReadInsvTelemetry).
             const double spanSec =
                 (tele->imu.back().timestamp - tele->imu.front().timestamp) / 1e6;
             if (spanSec > 0)
                 out.imuRateHz = (tele->imu.size() - 1) / spanSec;
+        } else if (!tele->timelapse_quats.empty() && model.timelapseQuatAxes &&
+                   !tele->frame_timestamps.empty()) {
+            // A timelapse's orientation per frame (MakeInsvImuTrack's conditions).
+            out.hasMotion = out.orientationPerFrame = true;
         }
         out.exposureRecords = static_cast<int64_t>(tele->exposure.size());
         out.rollingShutterMs = tele->rolling_shutter_ms;
@@ -360,7 +364,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
 std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) const {
     const insv::InsvModel& model = insv::FindInsvModel(clip.model);
     auto tele = insv::ReadInsvTelemetry(clip.path, 0, model.telemetryTickUs);
-    if (!tele || tele->imu.size() < 2)
+    if (!tele || !clip.hasMotion)
         return std::nullopt;
     return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model);
 }
@@ -391,11 +395,25 @@ std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) 
     track.clockStamped = !gps->aligned_by_speed;
     track.fixes.reserve(gps->fixes.size());
     // A heading of -1 is the camera's "don't know", written while standing
-    // still (§8). Unix time runs with the camera's clock, not the video's.
-    const auto videoMs = [&clip](int64_t sinceFirstMs) {
-        return clip.captureScale == 1.0
-                   ? sinceFirstMs
-                   : std::llround(static_cast<double>(sinceFirstMs) / clip.captureScale);
+    // still (§8). Unix time runs with the camera's clock, not the video's;
+    // in a timelapse the fix lies between two frames by their own times
+    // (they needn't be evenly spaced), past either end by the capture scale.
+    const std::vector<double>& frames = gps->frame_sec;
+    const auto videoMs = [&clip, &frames](int64_t sinceFirstMs) -> int64_t {
+        if (clip.captureScale == 1.0)
+            return sinceFirstMs;
+        const double cam = static_cast<double>(sinceFirstMs) * 1e-3;
+        if (frames.size() < 2 || !(clip.fps > 0.0) || cam <= frames.front())
+            return std::llround((cam - (frames.empty() ? 0.0 : frames.front())) * 1e3 /
+                                clip.captureScale);
+        const size_t last = frames.size() - 1;
+        if (cam >= frames.back())
+            return std::llround((static_cast<double>(last) / clip.fps +
+                                 (cam - frames.back()) / clip.captureScale) * 1e3);
+        const size_t hi = static_cast<size_t>(
+            std::upper_bound(frames.begin(), frames.end(), cam) - frames.begin());
+        const double f = (cam - frames[hi - 1]) / (frames[hi] - frames[hi - 1]);
+        return std::llround((static_cast<double>(hi - 1) + f) / clip.fps * 1e3);
     };
     for (const insv::InsvGpsFix& f : gps->fixes)
         track.fixes.push_back({videoMs(f.unix_ms - gps->first_frame_unix_ms), f.latitude, f.longitude,

@@ -11,6 +11,7 @@
 #include "FisheyeProjection.h"
 #include "Gps.h"
 #include "Image.h"
+#include "InsvImu.h"
 #include "InsvModels.h"
 #include "InsvTrailer.h"
 #include "Motion.h"
@@ -2300,6 +2301,65 @@ void testCaptureTiming()
     }
 }
 
+// A timelapse's orientation record (0x1800) and frame times (0x600) as the X5
+// writes them, read back and turned into an orientation-only track: the
+// stray run left out, the frames timed by their own centre entries.
+void testTimelapseOrientation()
+{
+    std::printf("  timelapse orientation record\n");
+    Bytes m;
+    m.pbVarint(24, 902745035).pbDouble(25, 21.244).pbVarint(30, 2000).pbVarint(59, 1);
+    Bytes frames, quats;
+    std::vector<uint64_t> f;
+    for (int i = 0; i <= 6; ++i) // one more than there are frames, 2.0 / 2.1 s apart
+        f.push_back(902745035ull + uint64_t(i) * 2000000ull + (i > 2 ? 100000ull : 0ull));
+    for (uint64_t t : f)
+        frames.u64(t);
+    // A turn about the record's z (world up) of 0.1 rad a frame.
+    auto run = [&](double centreSec, double yaw) {
+        for (int k = -5; k <= 5; ++k)
+            quats.f64(centreSec + k * 0.0021244).f64(std::cos(yaw / 2)).f64(0).f64(0).f64(std::sin(yaw / 2));
+    };
+    run(287.0, 0.0); // stray, ~615 s early as on _091
+    for (size_t n = 0; n + 1 < f.size(); ++n)
+        run(f[n] * 1e-6 - 0.0005, 0.1 * static_cast<double>(n));
+    const std::string path = writeX5Trailer(
+        "insv_test_tlquat.insv", {{0x101, m.b}, {0x600, frames.b}, {0x1800, quats.b}});
+    const auto t = insv::ReadInsvTelemetry(path);
+    std::filesystem::remove(path);
+    CHECK(t && t->imu.empty() && t->timelapse_quats.size() == 77 && t->frame_timestamps.size() == 7);
+    if (!t)
+        return;
+    // Seconds to the µs of the frame times' clock.
+    CHECK(t->timelapse_quats[11].timestamp ==
+          uint64_t(std::llround((902.745035 - 0.0005 - 5 * 0.0021244) * 1e6)));
+    CHECK(std::fabs(t->timelapse_quats[0].q[0] - 1.0) < 1e-12);
+
+    const double fps = 30000.0 / 1001.0;
+    const insv::ImuTrack track =
+        insv::MakeInsvImuTrack(insv::InsvTelemetry(*t), fps, insv::FindInsvModel("Insta360 X5"));
+    CHECK(track.samples.empty() && track.orientation.size() == 66 && track.frameTimes.size() == 6);
+    CHECK(track.axisMap == std::string("y,z,x"));
+    // Frame 3 is 6.1 s after frame 0, by its own entries.
+    CHECK(std::fabs(track.frameTimes[3].trackSec - track.frameTimes[0].trackSec - 6.1) < 1e-6);
+    CHECK(std::fabs(track.frameTimes[3].videoSec - 3.0 / fps) < 1e-12);
+    // Up is the record's world z in its axes, north its world x: frame 1
+    // turned 0.1 rad about up.
+    const insv::OrientationSample& o = track.orientation[11 + 5];
+    CHECK(std::fabs(o.up[2] - 1.0) < 1e-9);
+    CHECK(std::fabs(o.north[0] - std::cos(0.1)) < 1e-9 && std::fabs(o.north[1] - std::sin(0.1)) < 1e-9);
+
+    // The motion overlays: the lean from the orientation, no G-forces.
+    const insv::MotionTrack motion = insv::BuildMotion(track);
+    CHECK(!motion.empty());
+    bool lean = false, g = false;
+    for (size_t i = 0; i < motion.size(); ++i) {
+        lean = lean || std::isfinite(motion.leanDeg[i]);
+        g = g || std::isfinite(motion.lateralG[i]) || std::isfinite(motion.forwardG[i]);
+    }
+    CHECK(lean && !g);
+}
+
 void testA1Trailer()
 {
     std::printf("  Antigravity A1 trailer\n");
@@ -2712,6 +2772,7 @@ int main()
     testOneX2Trailer();
     testA1Trailer();
     testCaptureTiming();
+    testTimelapseOrientation();
     testGpsAlignedBySpeed();
     testMotion();
     testGpsAlignedByAcceleration();

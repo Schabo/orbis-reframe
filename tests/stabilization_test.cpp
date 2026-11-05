@@ -11,6 +11,11 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+
 namespace {
 
 // The synthetic IMU samples below are in the X5's sensor axes.
@@ -592,6 +597,236 @@ void testStabConfig()
     }
 }
 
+// A timelapse that records its orientation instead of the gyro (the X5's
+// record 0x1800): the truth, how it is recorded, and the same motion as a
+// gyro would have recorded it.
+namespace lapse {
+using M3 = std::array<std::array<double, 3>, 3>;
+M3 mul(const M3 &a, const M3 &b)
+{
+    M3 c{};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            for (int k = 0; k < 3; ++k)
+                c[i][j] += a[i][k] * b[k][j];
+    return c;
+}
+M3 transposed(const M3 &a)
+{
+    M3 t{};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            t[i][j] = a[j][i];
+    return t;
+}
+M3 rotX(double a) { return {{{1, 0, 0}, {0, std::cos(a), -std::sin(a)}, {0, std::sin(a), std::cos(a)}}}; }
+M3 rotY(double a) { return {{{std::cos(a), 0, std::sin(a)}, {0, 1, 0}, {-std::sin(a), 0, std::cos(a)}}}; }
+M3 rotZ(double a) { return {{{std::cos(a), -std::sin(a), 0}, {std::sin(a), std::cos(a), 0}, {0, 0, 1}}}; }
+M3 fromQuat(const std::array<double, 4> &q)
+{
+    const double w = q[0], x = q[1], y = q[2], z = q[3];
+    return {{{1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)},
+             {2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)},
+             {2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)}}};
+}
+std::array<double, 4> quatOf(const M3 &m) // {w, x, y, z}, Shepperd
+{
+    const double tr = m[0][0] + m[1][1] + m[2][2];
+    if (tr > 0.0) {
+        const double s = 2.0 * std::sqrt(1.0 + tr);
+        return {0.25 * s, (m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s};
+    }
+    if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+        const double s = 2.0 * std::sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]);
+        return {(m[2][1] - m[1][2]) / s, 0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s};
+    }
+    if (m[1][1] > m[2][2]) {
+        const double s = 2.0 * std::sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]);
+        return {(m[0][2] - m[2][0]) / s, (m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s};
+    }
+    const double s = 2.0 * std::sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]);
+    return {(m[1][0] - m[0][1]) / s, (m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s};
+}
+// The angle between two rotations, radians.
+double angle(const M3 &a, const M3 &b)
+{
+    double tr = 0.0;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            tr += a[i][j] * b[i][j];
+    return std::acos(std::clamp((tr - 1.0) / 2.0, -1.0, 1.0));
+}
+M3 fromFloat(const float m[3][3])
+{
+    M3 r{};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            r[i][j] = m[i][j];
+    return r;
+}
+
+// Camera body -> world in the sphere's axes (+Y up, north at -Z), `t`
+// seconds of real time in: a steady turn, a roll sway, a tilted mount.
+M3 truth(double t)
+{
+    return mul(mul(rotY(0.02 * t), rotZ(0.1 * std::sin(2.0 * 3.141592653589793 * t / 30.0))),
+               rotX(0.06));
+}
+constexpr uint64_t kStartUs = 1000000000; // the device clock at the first frame
+constexpr double kExposureSec = 0.001;
+constexpr double kStepSec = 0.0021244; // between a frame's 11 entries
+// Frame n's own time, seconds after the first: 2.0 or 2.1 s apart, as the X5's.
+double frameTime(int n)
+{
+    double t = 0.0;
+    for (int i = 0; i < n; ++i)
+        t += i % 4 == 1 ? 2.1 : 2.0;
+    return t;
+}
+// `frames` frames' worth of record 0x1800 and 0x600, one run more than
+// frames in 0x600 as the X5 writes, plus a stray run 300 s before the first.
+insv::InsvTelemetry recorded(int frames)
+{
+    // The record's axes: world x north, z up; body "y,z,x" to the sphere's.
+    const M3 toQWorld = {{{0, 0, -1}, {-1, 0, 0}, {0, 1, 0}}};
+    const M3 toQBody = {{{0, 0, 1}, {1, 0, 0}, {0, 1, 0}}};
+    insv::InsvTelemetry tele;
+    tele.first_frame_timestamp = kStartUs;
+    tele.rolling_shutter_ms = 21.244;
+    tele.timelapse_interval_ms = 2000.0;
+    for (int n = 0; n <= frames; ++n)
+        tele.frame_timestamps.push_back(kStartUs + uint64_t(std::llround(frameTime(n) * 1e6)));
+    auto run = [&](double centre) {
+        for (int i = -5; i <= 5; ++i) {
+            const double t = centre + i * kStepSec;
+            insv::TimelapseQuat e;
+            e.timestamp = kStartUs + uint64_t(std::llround(t * 1e6));
+            const auto q = quatOf(mul(mul(toQBody, transposed(truth(t))), transposed(toQWorld)));
+            std::copy(q.begin(), q.end(), e.q);
+            tele.timelapse_quats.push_back(e);
+        }
+    };
+    run(-300.0);
+    for (int n = 0; n < frames; ++n)
+        run(frameTime(n) - kExposureSec / 2);
+    return tele;
+}
+// The same motion as the X5's gyro and accelerometer record it, 1 kHz.
+insv::InsvTelemetry gyro(int frames)
+{
+    insv::InsvTelemetry tele = recorded(frames);
+    tele.timelapse_quats.clear();
+    const double h = 1e-4;
+    for (double t = -1.0; t < frameTime(frames) + 1.0; t += 0.001) {
+        const M3 b = truth(t);
+        const M3 d = mul(transposed(truth(t - h)), truth(t + h));
+        const double w[3] = {(d[2][1] - d[1][2]) / (4 * h), (d[0][2] - d[2][0]) / (4 * h),
+                             (d[1][0] - d[0][1]) / (4 * h)};
+        const double up[3] = {b[1][0], b[1][1], b[1][2]};
+        // Sphere -> the X5's sensor ("z,-x,-y"): raw x = -Y, y = -Z, z = X.
+        insv::ImuSample s;
+        s.timestamp = kStartUs + uint64_t(std::llround(t * 1e6));
+        s.gyro[0] = -w[1], s.gyro[1] = -w[2], s.gyro[2] = w[0];
+        s.accel[0] = -up[1], s.accel[1] = -up[2], s.accel[2] = up[0];
+        tele.imu.push_back(s);
+    }
+    return tele;
+}
+} // namespace lapse
+
+void testTimelapseOrientation()
+{
+    using namespace lapse;
+    const double fps = 30000.0 / 1001.0;
+    constexpr int kFrames = 120; // 4 min: frames more than a smoothing window from either end
+    const insv::InsvModel &x5 = insv::FindInsvModel("Insta360 X5");
+    const insv::ImuTrack track = insv::MakeInsvImuTrack(recorded(kFrames), fps, x5);
+    // The stray run is left out; each frame keeps its 11 entries, timed by
+    // its centre one.
+    CHECK(track.samples.empty() && track.axisMap == x5.timelapseQuatAxes);
+    CHECK(track.orientation.size() == size_t(kFrames) * 11);
+    CHECK(track.frameTimes.size() == size_t(kFrames));
+    CHECK(std::fabs(track.readoutSec - 0.021244) < 1e-12);
+    for (int n : {0, 1, 2, 17, kFrames - 1})
+        CHECK(std::fabs(track.frameTimes[size_t(n)].videoSec - n / fps) < 1e-12 &&
+              std::fabs(track.frameTimes[size_t(n)].trackSec - frameTime(n) - 5 * kStepSec) < 2e-6);
+
+    insv::GyroStabilizer g;
+    g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    CHECK(g.ready());
+    // Each frame's orientation is the camera's then, through the frames' own
+    // times: frame 2 sits 4.1 s in, not the 2 x 2.025 s an even spacing gives.
+    double worst = 0.0, worstTurn = 0.0;
+    for (int n = 0; n < kFrames; ++n) {
+        const double t = frameTime(n) - kExposureSec / 2;
+        worst = std::max(worst, angle(fromQuat(g.rawOrientation(n / fps)), truth(t)));
+        // The turn across the readout, on the camera's clock.
+        float r[3];
+        g.bodyRotation(n / fps, 0.004, r);
+        const M3 d = mul(transposed(truth(t)), truth(t + 0.004));
+        const double want[3] = {(d[2][1] - d[1][2]) / 2, (d[0][2] - d[2][0]) / 2, (d[1][0] - d[0][1]) / 2};
+        for (int k = 0; k < 3; ++k)
+            worstTurn = std::max(worstTurn, std::fabs(r[k] - want[k]));
+    }
+    CHECK(worst < 1e-6);
+    CHECK(worstTurn < 1e-6);
+    // The map and its inverse, inside the frames and past either end.
+    for (double t : {-1.0, 0.0, 0.05, 0.4, 1.0, 5.0})
+        CHECK(std::fabs(g.videoTime(g.trackTime(t)) - t) < 1e-9);
+    CHECK(std::fabs(g.trackTime(2 / fps) - g.trackTime(0.0) - 4.1) < 1e-6);
+    // A sync fine-tune shifts every frame.
+    insv::GyroStabilizer gs;
+    gs.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.002);
+    CHECK(std::fabs(gs.trackTime(3 / fps) - g.trackTime(3 / fps) - 0.002) < 1e-6);
+
+    // Lean follow gives what the gyro's integral of the same motion gives,
+    // away from the ends (the window, ~1 min of the camera's clock either
+    // side, is cut off there, and the gyro runs on past the frames). What's
+    // left, 0.26 deg, is the window read at the frames -- unevenly spaced --
+    // against the gyro's even samples.
+    const insv::ImuTrack gt = insv::MakeInsvImuTrack(gyro(kFrames), fps, x5);
+    CHECK(gt.frameTimes.size() == size_t(kFrames) + 1);
+    insv::GyroStabilizer gg;
+    gg.build(gt, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    double apart = 0.0;
+    for (int n = 35; n < kFrames - 35; ++n) {
+        float a[3][3], b[3][3];
+        g.correctionMatrix(n / fps, a);
+        gg.correctionMatrix(n / fps, b);
+        apart = std::max(apart, angle(fromFloat(a), fromFloat(b)));
+    }
+    std::printf("  timelapse orientation: lean follow %.3f deg from the gyro's\n", apart * 180.0 / 3.141592653589793);
+    CHECK(apart < 0.3 * 3.141592653589793 / 180.0);
+
+    // Horizon lock levels the view by the recorded up; Direction lock holds
+    // one heading.
+    for (insv::StabMode mode : {insv::StabMode::HorizonLock, insv::StabMode::DirectionLock}) {
+        insv::GyroStabilizer h;
+        h.build(track, insv::StabConfig::preset(mode));
+        double tilt = 0.0, minYaw = 1e9, maxYaw = -1e9;
+        for (int n = 0; n < kFrames; ++n) {
+            float c[3][3];
+            h.correctionMatrix(n / fps, c);
+            const M3 view = mul(truth(frameTime(n) - kExposureSec / 2), fromFloat(c));
+            tilt = std::max(tilt, std::hypot(view[0][1], view[2][1])); // the view's up off +Y
+            const double yaw = std::atan2(-view[0][2], -view[2][2]);
+            minYaw = std::min(minYaw, yaw);
+            maxYaw = std::max(maxYaw, yaw);
+        }
+        CHECK(tilt < 1e-4);
+        if (mode == insv::StabMode::DirectionLock)
+            CHECK(maxYaw - minYaw < 1e-4);
+        else
+            CHECK(maxYaw - minYaw > 1.0); // it follows the 4.9 rad turn
+    }
+
+    // No map for the record's axes (a model not measured): no track.
+    insv::InsvModel unknown = x5;
+    unknown.timelapseQuatAxes = nullptr;
+    const insv::ImuTrack none = insv::MakeInsvImuTrack(recorded(kFrames), fps, unknown);
+    CHECK(none.orientation.empty() && none.samples.empty());
+}
+
 void testPerClipStabilization()
 {
     const insv::StabConfig lean = insv::StabConfig::preset(insv::StabMode::LeanFollow);
@@ -694,6 +929,7 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
     testStabConfig();
+    testTimelapseOrientation();
     testPerClipStabilization();
     return modeltest::finish("stabilization_test");
 }

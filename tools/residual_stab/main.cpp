@@ -1272,9 +1272,7 @@ int main(int argc, char** argv)
     if (a.diagnose && imu) {
         // The trim range on the IMU's own clock (blocks [1] / [2] read it there).
         const auto onImu = [&gyro](double videoSec) {
-            return gyro.ready() ? videoSec * gyro.captureScale() * (1.0 + gyro.clockRatePpm() * 1e-6) +
-                                      gyro.effectiveTimeOffsetSec()
-                                : videoSec;
+            return gyro.ready() ? gyro.trackTime(videoSec) : videoSec;
         };
         const SlicedImu sImu = sliceImu(imu->samples, onImu(trimIn / 1000.0), onImu(trimOut / 1000.0));
         diagExposureBlur(exposure, sImu, trimIn / 1000.0, trimOut / 1000.0, a.outH, a.fovDeg,

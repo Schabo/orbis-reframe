@@ -225,9 +225,10 @@ show. Upright is the camera's average posture over the clip.
 
 A clip that hardly turns gives nothing to find the direction of travel
 by. There the G-force shows `-- g`, since forward could point any way;
-the lean still shows. A clip from a camera orbis-reframe reads no motion
-from shows `--` in both. The **Text** section then says which clips those
-are.
+the lean still shows. An Insta360 X5 timelapse records which way the
+camera pointed but no acceleration, so it shows the lean and `-- g`. A
+clip from a camera orbis-reframe reads no motion from shows `--` in both.
+The **Text** section then says which clips those are.
 
 ## Gauges
 

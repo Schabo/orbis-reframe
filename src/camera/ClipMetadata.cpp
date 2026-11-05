@@ -172,7 +172,7 @@ std::string ClipFileOf(const std::string& path, std::string* err) {
 
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
     const Cached c = lookup(path, nullptr, nullptr);
-    if (!c.clip || !c.clip->hasImu)
+    if (!c.clip || !c.clip->hasMotion)
         return std::nullopt;
     return c.reader->readImu(*c.clip);
 }
@@ -182,13 +182,14 @@ ClipTelemetry ReadClipTelemetry(const std::string& path) {
     const Cached c = lookup(path, nullptr, nullptr);
     if (!c.clip)
         return out;
-    if (c.clip->hasImu)
+    if (c.clip->hasMotion)
         if (const auto imu = c.reader->readImu(*c.clip))
             out.motion = insv::BuildMotion(*imu);
     if (c.clip->gpsFixes == 0)
         return out;
     out.gps = c.reader->readGps(*c.clip);
-    if (!out.gps || !out.gps->clockStamped || !c.clip->hasImu)
+    // The match is by the accelerometer, which a per-frame orientation doesn't have.
+    if (!out.gps || !out.gps->clockStamped || !c.clip->hasMotion || c.clip->orientationPerFrame)
         return out;
     const auto fit = insv::AlignGpsByAcceleration(*out.gps, out.motion.forwardG,
                                                   out.motion.stepSec);

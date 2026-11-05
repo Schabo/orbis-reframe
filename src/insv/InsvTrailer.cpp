@@ -459,6 +459,31 @@ void ParseAttitude(const std::vector<uint8_t>& p, std::vector<AttitudeSample>& o
     }
 }
 
+// Record 0x1800 (a timelapse's orientation, docs/formats/insta360-x5.md
+// §3.5): 40-byte entries, f64 seconds on the device clock, then the
+// quaternion {w, x, y, z} as f64s. Entries that aren't a unit quaternion or
+// whose time can't be on the clock are dropped.
+void ParseTimelapseQuats(const std::vector<uint8_t>& p, std::vector<TimelapseQuat>& out) {
+    constexpr size_t kRec = 40;
+    out.reserve(out.size() + p.size() / kRec);
+    for (size_t off = 0; off + kRec <= p.size(); off += kRec) {
+        const double sec = ReadDoubleLE(&p[off]);
+        if (!(sec >= 0.0 && sec < 1e12)) continue;
+        TimelapseQuat e;
+        e.timestamp = static_cast<uint64_t>(std::llround(sec * 1e6));
+        double n = 0.0;
+        for (int k = 0; k < 4; ++k) {
+            e.q[k] = ReadDoubleLE(&p[off + 8 + 8 * k]);
+            n += e.q[k] * e.q[k];
+        }
+        n = std::sqrt(n);
+        if (!(std::fabs(n - 1.0) < 0.01)) continue;
+        for (double& c : e.q)
+            c /= n;
+        out.push_back(e);
+    }
+}
+
 // Record 0x700 (GPS): fixed 53-byte records -- u64 Unix seconds, u16 ms, then
 // an 'A' (acquired) / 'V' (void) byte ahead of the position. Counts records
 // and fixes; the position fields are never read. The X5 writes records at
@@ -545,6 +570,7 @@ std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us,
     InsvGps out;
     uint64_t firstFrameTicks = 0;
     std::vector<AttitudeSample> attitude;
+    std::vector<uint64_t> frameTicks;
     double timeMapOffsetMs = 0.0;
     const bool ok = WalkTrailerRecords(
         file, file_size,
@@ -556,13 +582,22 @@ std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us,
                 out.fixes = ParseInsvGps(payload);
             } else if (id == 0x2500) {
                 ParseAttitude(payload, attitude);
+            } else if (id == 0x600) {
+                for (size_t off = 0; off + 8 <= payload.size(); off += 8)
+                    frameTicks.push_back(ReadU64LE(&payload[off]));
             } else {
                 timeMapOffsetMs = ParseTimeMapOffsetMs(payload);
             }
             return true;
         },
-        [](uint16_t id) { return id == 0x101 || id == 0x700 || id == 0x2500 || id == 0x8000; });
+        [](uint16_t id) {
+            return id == 0x101 || id == 0x700 || id == 0x2500 || id == 0x8000 || id == 0x600;
+        });
     if (!ok) return std::nullopt;
+    if (frameTicks.size() >= 2)
+        for (const uint64_t t : frameTicks)
+            out.frame_sec.push_back(
+                (static_cast<double>(t) - static_cast<double>(frameTicks.front())) * tick_us * 1e-6);
 
     // No field 98 (the A1): the flight controller's velocity is timed on the
     // IMU's clock, which field 24 ties to the video (a trimmed file's video
@@ -659,6 +694,8 @@ std::optional<InsvTelemetry> ReadInsvTelemetry(const std::string& file_path,
                 ParseExposure(payload, out.exposure);
             } else if (id == 0x2500) {
                 ParseAttitude(payload, out.attitude);
+            } else if (id == 0x1800) {
+                ParseTimelapseQuats(payload, out.timelapse_quats);
             } else if (id == 0x700) {
                 CountGps(payload, out);
             } else if (id == 0x8000) {

@@ -605,14 +605,117 @@ void GyroStabilizer::build(const ImuTrack& track, const StabConfig& cfg, double 
     StabConfig c = cfg;
     if (c.gyroAxes.empty())
         c.gyroAxes = track.axisMap;
+    const bool orientationOnly = track.samples.size() < 2 && track.orientation.size() >= 2;
     // An explicit non-zero offset is an override; otherwise the track's own.
-    if (cfg.timeOffsetSec == 0.0f && track.hasOffset && !track.samples.empty())
+    if (cfg.timeOffsetSec == 0.0f && track.hasOffset && (!track.samples.empty() || orientationOnly))
         c.timeOffsetSec = static_cast<float>(track.offsetSec + syncAdjustSec);
-    buildTrack(track.samples, track.orientation, c);
+    if (orientationOnly)
+        buildOrientationOnly(track.orientation, c);
+    else
+        buildTrack(track.samples, track.orientation, c);
     m_clockRate = track.clockRate;
     m_captureScale = track.captureScale > 0.0 ? track.captureScale : 1.0;
     m_readoutSec = track.readoutSec;
-    lockHeading(); // again: the clock rate moves directionSec on the track
+    // The frames' own times, where both run forward (a frame out of order
+    // is left out: the map has to be invertible).
+    m_frameVideo.clear();
+    m_frameTrack.clear();
+    for (const FrameTime& f : track.frameTimes)
+        if (m_frameVideo.empty() || (f.videoSec > m_frameVideo.back() && f.trackSec > m_frameTrack.back())) {
+            m_frameVideo.push_back(f.videoSec);
+            m_frameTrack.push_back(f.trackSec);
+        }
+    if (m_frameVideo.size() < 2) {
+        m_frameVideo.clear();
+        m_frameTrack.clear();
+    }
+    m_frameOffset = track.offsetSec;
+    lockHeading(); // again: the clock rate and frame times move directionSec on the track
+}
+
+double GyroStabilizer::gyroTime(double tSec) const
+{
+    if (m_frameVideo.empty())
+        return tSec * m_captureScale * (1.0 + m_clockRate) + m_cfg.timeOffsetSec;
+    const double rate = m_captureScale * (1.0 + m_clockRate);
+    const double shift = m_cfg.timeOffsetSec - m_frameOffset;
+    const std::vector<double>& v = m_frameVideo;
+    const std::vector<double>& g = m_frameTrack;
+    if (tSec <= v.front())
+        return g.front() + (tSec - v.front()) * rate + shift;
+    if (tSec >= v.back())
+        return g.back() + (tSec - v.back()) * rate + shift;
+    const size_t hi = static_cast<size_t>(std::upper_bound(v.begin(), v.end(), tSec) - v.begin());
+    const double f = (tSec - v[hi - 1]) / (v[hi] - v[hi - 1]);
+    return g[hi - 1] + f * (g[hi] - g[hi - 1]) + shift;
+}
+
+double GyroStabilizer::videoTime(double gyroSec) const
+{
+    if (m_frameVideo.empty())
+        return (gyroSec - m_cfg.timeOffsetSec) / (1.0 + m_clockRate) / m_captureScale;
+    const double rate = m_captureScale * (1.0 + m_clockRate);
+    const double t = gyroSec - (m_cfg.timeOffsetSec - m_frameOffset);
+    const std::vector<double>& v = m_frameVideo;
+    const std::vector<double>& g = m_frameTrack;
+    if (t <= g.front())
+        return v.front() + (t - g.front()) / rate;
+    if (t >= g.back())
+        return v.back() + (t - g.back()) / rate;
+    const size_t hi = static_cast<size_t>(std::upper_bound(g.begin(), g.end(), t) - g.begin());
+    const double f = (t - g[hi - 1]) / (g[hi] - g[hi - 1]);
+    return v[hi - 1] + f * (v[hi] - v[hi - 1]);
+}
+
+void GyroStabilizer::buildOrientationOnly(const std::vector<OrientationSample>& ref,
+                                          const StabConfig& cfg)
+{
+    std::vector<OrientationSample> s = ref;
+    std::sort(s.begin(), s.end(), [](const OrientationSample& a, const OrientationSample& b) {
+        return a.timestamp < b.timestamp;
+    });
+    const AxisMap am = ParseAxisMap(cfg.gyroAxes);
+    std::vector<double> tSec;
+    std::vector<std::array<double, 4>> qTrack;
+    tSec.reserve(s.size());
+    qTrack.reserve(s.size());
+    double sumUp[3] = {0, 0, 0};
+    long upN = 0;
+    for (const OrientationSample& o : s) {
+        // Up and north in the sphere's axes, north made level against up.
+        double u[3], n[3];
+        am.apply(o.up, u);
+        am.apply(o.north, n);
+        const double un = std::sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
+        if (un < 0.5)
+            continue;
+        for (double& c : u)
+            c /= un;
+        const double d = n[0] * u[0] + n[1] * u[1] + n[2] * u[2];
+        for (int k = 0; k < 3; ++k)
+            n[k] -= d * u[k];
+        const double nn = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        if (nn < 0.5) // no north (the source knows only up), or up along it
+            continue;
+        for (double& c : n)
+            c /= nn;
+        // Body -> world, world +Y up and north at -Z: the rows are each world
+        // axis in the body, +X = +Y x +Z.
+        const double z[3] = {-n[0], -n[1], -n[2]};
+        const double x[3] = {u[1] * z[2] - u[2] * z[1], u[2] * z[0] - u[0] * z[2],
+                             u[0] * z[1] - u[1] * z[0]};
+        const double m[3][3] = {{x[0], x[1], x[2]}, {u[0], u[1], u[2]}, {z[0], z[1], z[2]}};
+        tSec.push_back(static_cast<double>(o.timestamp - s.front().timestamp) * 1e-6);
+        qTrack.push_back(fromQ(matToQ(m)));
+        for (int k = 0; k < 3; ++k)
+            sumUp[k] += u[k];
+        ++upN;
+    }
+    buildFromOrientation(tSec, qTrack, cfg); // resets the level and clock state
+    m_orientationOnly = m_ready;
+    if (m_ready)
+        setMountLevel(sumUp, upN);
+    lockHeading();
 }
 
 void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg)
@@ -626,6 +729,10 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     m_clockRate = 0.0; // build(ImuTrack, ...) sets it after this returns
     m_captureScale = 1.0; // as m_clockRate
     m_readoutSec = 0.0;
+    m_frameVideo.clear(); // as m_clockRate
+    m_frameTrack.clear();
+    m_frameOffset = 0.0;
+    m_orientationOnly = false;
     if (cfg.mode == StabMode::Off || imu.size() < 2) {
         m_ready = false;
         m_cfg = cfg;
@@ -1023,15 +1130,27 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     if (fuse && haveRef)
         headTrack(tSec, qTrack, refNorth, northOk, 2.0);
 
+    m_levelFwd = {0.0, 0.0, -1.0};
+    m_mountLevel = {1.0, 0.0, 0.0, 0.0};
+    setMountLevel(sumAccel, accelN);
+
+    tc = {true, fuse, imu.size(), lo->timestamp, hi->timestamp, cfg.gyroAxes, cfg.gyroScale,
+          cfg.accelLowPassHz, cfg.horizonGain, upN, upFirst, upLast, std::move(tSec),
+          std::move(qTrack), m_levelFwd, m_mountLevel};
+    buildFromOrientation(tc.t, tc.q, cfg); // resets both
+    m_levelFwd = tc.levelFwd;
+    m_mountLevel = tc.mountLevel;
+    lockHeading();
+}
+
+void GyroStabilizer::setMountLevel(const double sumUp[3], long n)
+{
     // Level-camera heading reference: body forward (-Z) with the mount's mean
     // up removed, i.e. "forward" of the mount made horizontal. m_mountLevel
     // turns the view frame onto (that forward, the mean up).
-    m_levelFwd = {0.0, 0.0, -1.0};
-    m_mountLevel = {1.0, 0.0, 0.0, 0.0};
-    const double nb = std::sqrt(sumAccel[0] * sumAccel[0] + sumAccel[1] * sumAccel[1] +
-                                sumAccel[2] * sumAccel[2]);
-    if (accelN > 0 && nb > 0.5 * static_cast<double>(accelN)) { // mean |a| ~1 g: a real accel track
-        const double bu[3] = {sumAccel[0] / nb, sumAccel[1] / nb, sumAccel[2] / nb};
+    const double nb = std::sqrt(sumUp[0] * sumUp[0] + sumUp[1] * sumUp[1] + sumUp[2] * sumUp[2]);
+    if (n > 0 && nb > 0.5 * static_cast<double>(n)) { // mean |a| ~1 g: a real accel track
+        const double bu[3] = {sumUp[0] / nb, sumUp[1] / nb, sumUp[2] / nb};
         const double fd = -bu[2]; // f . bu with f = (0, 0, -1)
         const double h[3] = {-fd * bu[0], -fd * bu[1], -1.0 - fd * bu[2]}; // f - (f.bu) bu
         const double nh = std::sqrt(h[0] * h[0] + h[1] * h[1] + h[2] * h[2]);
@@ -1047,14 +1166,6 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
             m_mountLevel = fromQ(matToQ(M));
         }
     }
-
-    tc = {true, fuse, imu.size(), lo->timestamp, hi->timestamp, cfg.gyroAxes, cfg.gyroScale,
-          cfg.accelLowPassHz, cfg.horizonGain, upN, upFirst, upLast, std::move(tSec),
-          std::move(qTrack), m_levelFwd, m_mountLevel};
-    buildFromOrientation(tc.t, tc.q, cfg); // resets both
-    m_levelFwd = tc.levelFwd;
-    m_mountLevel = tc.mountLevel;
-    lockHeading();
 }
 
 void GyroStabilizer::buildFromOrientation(const std::vector<double>& tSec,
@@ -1063,7 +1174,13 @@ void GyroStabilizer::buildFromOrientation(const std::vector<double>& tSec,
 {
     m_ready = false;
     m_cfg = cfg;
-    m_clockRate = 0.0; // nominal video time; build(ImuTrack, ...) sets it after
+    // Nominal video time; build(ImuTrack, ...) sets these after.
+    m_clockRate = 0.0;
+    m_captureScale = 1.0;
+    m_frameVideo.clear();
+    m_frameTrack.clear();
+    m_frameOffset = 0.0;
+    m_orientationOnly = false;
     m_t.clear();
     m_qRaw.clear();
     // m_levelFwd / m_mountLevel are set by build() from the accel; a direct

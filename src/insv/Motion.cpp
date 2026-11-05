@@ -62,13 +62,16 @@ constexpr double kMinTurnRms = 0.02;
 MotionTrack BuildMotion(const ImuTrack& track)
 {
     MotionTrack out;
-    if (track.samples.size() < 2)
+    // A timelapse's orientation alone (no samples): the lean, but no
+    // accelerometer for the g values.
+    const bool orientationOnly = track.samples.size() < 2 && track.orientation.size() >= 2;
+    if (track.samples.size() < 2 && !orientationOnly)
         return out;
     const bool anyAccel =
         std::any_of(track.samples.begin(), track.samples.end(), [](const ImuSample& x) {
             return x.accel[0] != 0.0 || x.accel[1] != 0.0 || x.accel[2] != 0.0;
         });
-    if (!anyAccel)
+    if (!anyAccel && !orientationOnly)
         return out;
 
     GyroStabilizer level;
@@ -80,12 +83,24 @@ MotionTrack BuildMotion(const ImuTrack& track)
     std::sort(s.begin(), s.end(),
               [](const ImuSample& a, const ImuSample& b) { return a.timestamp < b.timestamp; });
     const AxisMap axes = ParseAxisMap(track.axisMap);
-    const double t0 = static_cast<double>(s.front().timestamp);
+    const double t0 = s.empty() ? 0.0 : static_cast<double>(s.front().timestamp);
     const auto videoTime = [&](const ImuSample& x) {
         return level.videoTime((static_cast<double>(x.timestamp) - t0) * 1e-6);
     };
+    // The orientation's span in video time (its times are relative to its
+    // earliest sample).
+    double oStart = 0.0, oEnd = 0.0;
+    if (orientationOnly) {
+        const auto [lo, hi] = std::minmax_element(
+            track.orientation.begin(), track.orientation.end(),
+            [](const OrientationSample& a, const OrientationSample& b) {
+                return a.timestamp < b.timestamp;
+            });
+        oStart = level.videoTime(0.0);
+        oEnd = level.videoTime(static_cast<double>(hi->timestamp - lo->timestamp) * 1e-6);
+    }
     const double step = out.stepSec;
-    const double end = videoTime(s.back());
+    const double end = orientationOnly ? oEnd : videoTime(s.back());
     if (!(end > step))
         return out;
     const size_t n = static_cast<size_t>(end / step) + 1;
@@ -98,7 +113,20 @@ MotionTrack BuildMotion(const ImuTrack& track)
     std::vector<double> turnRight(n, kNaN); // rad/s, positive turning right
     std::vector<char> ok(n, 0);
     size_t j = 0;
-    for (size_t i = 0; i < n; ++i) {
+    for (size_t i = 0; orientationOnly && i < n; ++i) {
+        // The turn over one step of video, from the orientation (the camera's
+        // clock runs captureScale times the video's).
+        const double t = static_cast<double>(i) * step;
+        if (t < oStart || t > oEnd)
+            continue;
+        const double dt = step * level.captureScale();
+        float r[3];
+        level.bodyRotation(t, dt, r);
+        gyro[i] = {r[0] / dt, r[1] / dt, r[2] / dt};
+        toWorld[i] = matrixOf(level.rawOrientation(t));
+        ok[i] = 1;
+    }
+    for (size_t i = 0; !orientationOnly && i < n; ++i) {
         const double t = static_cast<double>(i) * step;
         while (j < s.size() && videoTime(s[j]) < t - step / 2)
             ++j;
@@ -197,6 +225,8 @@ MotionTrack BuildMotion(const ImuTrack& track)
         const V3 rightLevel = cross(fwdLevel, up[i]);
         out.leanDeg[i] =
             static_cast<float>(std::asin(std::clamp(-dot(up[i], right), -1.0, 1.0)) * kDeg);
+        if (orientationOnly)
+            continue;
         out.lateralG[i] = static_cast<float>(dot(a, rightLevel));
         out.forwardG[i] = static_cast<float>(dot(a, fwdLevel));
     }

@@ -218,7 +218,7 @@ QString leanText(const std::optional<MotionTelemetry::Values> &motion, const QLo
 
 std::optional<int> gHundredths(const std::optional<MotionTelemetry::Values> &motion)
 {
-    if (!motion || !motion->travelKnown)
+    if (!motion || !motion->travelKnown || !motion->gKnown)
         return std::nullopt;
     return int(std::lround(100.0 * std::hypot(motion->lateralG, motion->forwardG)));
 }

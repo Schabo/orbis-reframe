@@ -143,7 +143,7 @@ void testPair(const Take& t)
     CHECK(clip->lensWidth == 64 && clip->fps == kFps);
     CHECK(clip->durationMs == 49 * 1000 / kFps); // the shorter lens
     CHECK(clip->proxyPath == t.proxy);
-    CHECK(clip->hasImu);
+    CHECK(clip->hasMotion);
     CHECK(clip->imuRateHz > 499.0 && clip->imuRateHz < 501.0); // ms ticks read as such
 }
 

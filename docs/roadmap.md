@@ -151,9 +151,17 @@ each is in its document in [`formats/`](formats/README.md).
     direction (the flight controller's north) over time in the IMU's axes.
     The stabilizer levels against its up instead of the accelerometer
     wherever the track has it (Horizon lock's anchor, the auto-level), and
-    holds the heading to its north, so Direction lock doesn't drift. The
-    1 kHz gyro still carries all rotation; a 50 Hz orientation isn't smooth
-    enough to stabilize with on its own.
+    holds the heading to its north, so Direction lock doesn't drift. In
+    video the 1 kHz gyro still carries all rotation; a 50 Hz orientation
+    isn't smooth enough to stabilize with on its own, as the camera moves
+    between its samples. A timelapse is different: each frame needs only
+    the orientation across its own readout, and that is what the X5 stores
+    there in place of the gyro. A track with an orientation and no gyro
+    samples is stabilized from the orientation alone (built for the X5's
+    timelapse; GoPro's `CORI` and DJI's per-frame attitude would plug in
+    the same way), each frame placed by its own time
+    (`insv::ImuTrack::frameTimes`), since a timelapse's frames needn't be
+    evenly spaced.
 
   New camera support keeps its differences in data -- the reader's
   per-model table, fields read from the file -- not in model checks spread

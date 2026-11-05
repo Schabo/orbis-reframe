@@ -1790,7 +1790,7 @@ QString MainWindow::titleClockNote(const TrackClip &c)
         return {};
     const renderjobs::FieldSources sources = fieldSources();
     const title::Clock readings = renderjobs::titleClock(*m_timeline, sources);
-    QStringList unknown, noGps, partGps, noMotion, noTravel;
+    QStringList unknown, noGps, partGps, noMotion, noG, noTravel;
     const qint64 endMs = c.startMs + c.timelineDurationMs();
     for (int i = 0; i < m_timeline->count(); ++i) {
         const qint64 from = m_timeline->clipToTimeline(i, 0);
@@ -1810,12 +1810,13 @@ QString MainWindow::titleClockNote(const TrackClip &c)
         // title is over it, every half second.
         const qint64 a = last ? to - 1 : std::max(from, c.startMs);
         const qint64 b = last ? to : std::min(to, endMs);
-        int have = 0, moving = 0, travelling = 0, looked = 0;
+        int have = 0, moving = 0, accelerating = 0, travelling = 0, looked = 0;
         for (qint64 t = a; t < b; t += 500, ++looked) {
             have += gps && readings.gpsAt(t).has_value();
             if (motion) {
                 const std::optional<MotionTelemetry::Values> m = readings.motionAt(t);
                 moving += m.has_value();
+                accelerating += m && m->gKnown;
                 travelling += m && m->travelKnown;
             }
         }
@@ -1825,6 +1826,8 @@ QString MainWindow::titleClockNote(const TrackClip &c)
             partGps << QString::number(i + 1);
         if (motion && moving == 0)
             noMotion << QString::number(i + 1);
+        else if (gForce && accelerating == 0)
+            noG << QString::number(i + 1);
         else if (gForce && travelling == 0)
             noTravel << QString::number(i + 1);
     }
@@ -1875,6 +1878,18 @@ QString MainWindow::titleClockNote(const TrackClip &c)
                                : tr("Clips %1 have no motion data where the title is over "
                                     "them: lean and G-force show -- there."))
                             .arg(QLocale().createSeparatedList(noMotion)));
+    if (!noG.isEmpty())
+        notes << (noG.size() == 1
+                      ? (gauge ? tr("Clip %1 records how the camera turned but no G-force "
+                                    "(a timelapse): the G circle stays empty there.")
+                               : tr("Clip %1 records how the camera turned but no G-force "
+                                    "(a timelapse): the G-force shows -- there."))
+                            .arg(noG.front())
+                      : (gauge ? tr("Clips %1 record how the camera turned but no G-force "
+                                    "(timelapses): the G circle stays empty there.")
+                               : tr("Clips %1 record how the camera turned but no G-force "
+                                    "(timelapses): the G-force shows -- there."))
+                            .arg(QLocale().createSeparatedList(noG)));
     if (!noTravel.isEmpty())
         notes << (noTravel.size() == 1
                       ? (gauge ? tr("Clip %1 hardly turns, so which way it travels isn't "

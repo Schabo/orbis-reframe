@@ -31,6 +31,14 @@ namespace insv {
 // record (InsvTelemetry::attitude) becomes ImuTrack::orientation through field 69 and
 // the model's tilt (InsvModel::imuMount, attitudeTiltDeg); field 69 missing,
 // the model's value stands in and that is logged.
+//
+// A timelapse is timed frame by frame by its frames' own times (record
+// 0x600, ImuTrack::frameTimes). One with no gyro but its orientation stored
+// in place of it (record 0x1800, the X5's) becomes an orientation-only
+// track: ImuTrack::orientation in the record's axes, mapped by
+// InsvModel::timelapseQuatAxes, each frame timed by its own entries
+// (docs/formats/insta360-x5.md §3.5); without that map, or the frames'
+// times, the track is empty and that is logged.
 ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& model);
 
 } // namespace insv

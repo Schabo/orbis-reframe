@@ -235,7 +235,9 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
         addValue(tr("Serial"), QString::fromStdString(m.serialNumber));
         addValue(tr("Firmware"), QString::fromStdString(m.firmware));
         addValue(tr("Motion data"),
-                 m.imuRateHz > 0 ? tr("~%1 Hz").arg(qRound(m.imuRateHz)) : tr("Not recorded"),
+                 m.imuRateHz > 0          ? tr("~%1 Hz").arg(qRound(m.imuRateHz))
+                 : m.orientationPerFrame ? tr("Orientation per frame")
+                                         : tr("Not recorded"),
                  tr("How often the camera recorded its movement, which stabilization works "
                     "from."));
         QString gps = tr("Not recorded");
