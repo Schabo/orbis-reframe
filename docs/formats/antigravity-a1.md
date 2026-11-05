@@ -257,7 +257,7 @@ Markers as in [`README.md`](README.md).
   matches each stretch on the rows where the lenses meet, and follows the
   picture within ~40 ms, as the scene slides along the seam when the drone
   turns.
-- ⚠️ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
+- ✅ **How the lenses sit in the picture** (`InsvModel::mountDeg`, the
   stitch's output turn): not in the file -- the calibration places the
   lenses relative to each other, as on the X5, where lens 0 faces forward.
   Stitched the X5's way, the A1's lens axes lie on the horizon. Turned so
@@ -270,6 +270,18 @@ Markers as in [`README.md`](README.md).
   as −90°, the body square to the lens frame. It puts the trailer's
   thumbnail (type 2) of `_011` at the picture's centre too; `_012`'s
   thumbnail looks elsewhere, so the thumbnail is a view, not the nose.
+  **Measured from the scene** (2026-11-05, `_021`): the direction of
+  travel in the stitched picture -- the essential matrix of feature
+  matches between two frames 10 apart, on the sphere's bearings -- against
+  record 37's velocity taken into the picture through field 69, the 9.7°
+  tilt and the IMU axes below. On the five pairs with little rotation
+  (30.5, 50, 65-67 s; 12-14 m/s) they agree to −0.16° in azimuth (−0.87
+  to +0.81°) and +0.19° in elevation (−0.16 to +0.73°): the nose sits at
+  the picture's yaw 0, and the elevation checks the tilt without the
+  attitude-against-gyro fit it came from. Insta360 Studio's 360 export of
+  the clip without FlowState isn't turned to the nose: it keeps its lens
+  frame, the lens axes on the horizon, about 2.65° about lens 0's axis from
+  ours (`360NoStab.mp4` of the contributor's `PanoExport`).
 - ✅ **IMU axes `-x,y,-z`** (`InsvModel::imuAxes`): sphere X ← −raw x,
   Y ← raw y, Z ← −raw z, in the sphere the A1's mount gives. Measured
   2026-10-29 as on the X5 (X5 §6.3) and the ONE X2: four unstabilized
@@ -335,6 +347,11 @@ Markers as in [`README.md`](README.md).
   the airframe (26° body pitch − 9.7° = the 17° the camera's horizon
   tilts). 0.09-0.14° per step is left. The tilt isn't in the file; the
   app takes 9.7° (`InsvModel::attitudeTiltDeg`, one drone measured).
+  Insta360 Studio's FlowState export of `_021` (2026-11-05, 13 frames,
+  each lined up with our stitch by feature matches) holds the attitude's
+  up within 0.3° in steady flight and moves up to 0.65° off it, in pitch,
+  in turns of 10-20°/s: no offset fixed in the airframe, so nothing that
+  would point to a different tilt.
 - ✅ **The accelerometer reads the drone's acceleration with gravity.** In
   steady flight it points up however the drone is tilted (thrust and drag
   balance gravity: `_010` 62-64 s at 15.6 m/s, 0.2-1.3° from the
