@@ -32,9 +32,11 @@ bool SeamFlowEstimator::estimate(const SeamFlowStrips& s, SeamFlowField& out)
         s.grey[1].size() != s.grey[0].size())
         return false;
     const int pad = static_cast<int>(std::lround(kWrapDeg * g.cols / 360.0));
+    SeamFlowStrips anchored;
+    AnchorSeamFlowStrips(s, anchored);
     cv::Mat strip[2];
     for (int i = 0; i < 2; ++i) {
-        const cv::Mat src(g.rows, g.cols, CV_8U, const_cast<uint8_t*>(s.grey[i].data()));
+        const cv::Mat src(g.rows, g.cols, CV_8U, anchored.grey[i].data());
         cv::copyMakeBorder(src, strip[i], 0, 0, pad, pad, cv::BORDER_WRAP);
     }
     cv::Mat flow[2]; // flow[0] = F01: strip0(p) ~ strip1(p + F01(p)); flow[1] = F10

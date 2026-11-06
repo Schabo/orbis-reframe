@@ -1111,7 +1111,8 @@ void testSeamCutWindow()
 // the second before it, starting afresh after a seek; the CPU stitch moving each lens half of it near the
 // seam and nothing far from it.
 // The seam flow (SeamFlow.h): the share across the seam, the grid, the
-// field's lookup, the window over frames, and the warp through the stitch.
+// field's lookup, the window over frames, the warp through the stitch, and
+// the anchor on bright featureless strips.
 void testSeamFlow()
 {
     std::printf("  seam flow\n");
@@ -1227,6 +1228,58 @@ void testSeamFlow()
     w.reset();
     w.solve(mean);
     CHECK(mean.empty());
+
+    // The anchor: bright flat sky gets the pattern, the same in both
+    // lenses; a dark flat area and a textured one are left as they are.
+    insv::SeamFlowStrips raw;
+    raw.grid.cols = 720;
+    raw.grid.rows = 40;
+    raw.grid.stripRad = static_cast<float>(5 * kDeg);
+    raw.grid.reachRad = static_cast<float>(8 * kDeg);
+    const int AC = raw.grid.cols, AR = raw.grid.rows;
+    for (int i = 0; i < 2; ++i) {
+        raw.grey[i].resize(static_cast<size_t>(AC) * AR);
+        for (int y = 0; y < AR; ++y)
+            for (int x = 0; x < AC; ++x) {
+                uint8_t v = 0;
+                if (x < 240)
+                    v = static_cast<uint8_t>(240 - i); // bright, flat; one level apart
+                else if (x < 480)
+                    v = 90; // dark, flat
+                else
+                    v = static_cast<uint8_t>(((x / 3 + y / 3) % 2) ? 60 : 200); // a checkerboard
+                raw.grey[i][static_cast<size_t>(y) * AC + x] = v;
+            }
+    }
+    insv::SeamFlowStrips anchored;
+    insv::AnchorSeamFlowStrips(raw, anchored);
+    CHECK(anchored.grid == raw.grid);
+    double skySq = 0;
+    int skyN = 0, samePattern = 0, darkKept = 0, texKept = 0, darkN = 0, texN = 0;
+    for (int y = 0; y < AR; ++y)
+        for (int x = 0; x < AC; ++x) {
+            const size_t k = static_cast<size_t>(y) * AC + x;
+            const int d0 = anchored.grey[0][k] - raw.grey[0][k], d1 = anchored.grey[1][k] - raw.grey[1][k];
+            if (x >= 20 && x < 220) {
+                skySq += d0 * d0;
+                ++skyN;
+                samePattern += std::abs(d0 - d1) <= 1;
+            } else if (x >= 260 && x < 460) {
+                darkKept += d0 == 0 && d1 == 0;
+                ++darkN;
+            } else if (x >= 500 && x < 700) {
+                texKept += d0 == 0 && d1 == 0;
+                ++texN;
+            }
+        }
+    const double skyRms = std::sqrt(skySq / skyN);
+    CHECK(skyRms > 0.6 * insv::kSeamFlowAnchorAmp && skyRms < 1.4 * insv::kSeamFlowAnchorAmp);
+    CHECK(samePattern > 0.95 * skyN);
+    CHECK(darkKept == darkN);
+    CHECK(texKept == texN);
+    // The pattern is the position's alone.
+    CHECK(insv::SeamFlowAnchorNoise(123, 45) == insv::SeamFlowAnchorNoise(123, 45));
+    CHECK(insv::SeamFlowAnchorNoise(123, 45) != insv::SeamFlowAnchorNoise(124, 45));
 }
 
 void testSeamColourBlend()

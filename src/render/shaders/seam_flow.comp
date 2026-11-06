@@ -7,7 +7,7 @@
 //
 // The flow is Dense Inverse Search (Kroeger et al., "Fast Optical Flow
 // using Dense Inverse Search", ECCV 2016), with the CPU's settings (OpenCV's
-// fast preset): a box-filtered pyramid; per scale, coarse to fine, 8 x 8
+// fast preset): a box-filtered pyramid of the strips anchored (below); per scale, coarse to fine, 8 x 8
 // patches every 4 pixels, each found in the other strip by inverse-
 // compositional gradient descent on the mean-normalised difference (a
 // brightness offset between the lenses costs nothing), started from the
@@ -54,6 +54,7 @@ layout(push_constant) uniform PC {
     float radX;      // radians of phi per strip pixel
     float radY;      // radians of e per strip pixel (negative: rows go down)
     float sx;        // strip columns per column of this scale (cols / W, ~2^scale)
+    int anchor;      // the anchored strips (cols x rows per lens), then their box means
 } pc;
 
 #define PASS_PYRAMID 0  // (x, y) of this scale, z = lens
@@ -64,6 +65,8 @@ layout(push_constant) uniform PC {
 #define PASS_DENSIFY 5  // (x, y) of this scale, z = direction
 #define PASS_STORE 6    // (x, y) of this scale (the finest)
 #define PASS_AVERAGE 7  // (x, y) of the strips
+#define PASS_ANCHOR_MEAN 8 // (x, y) of the strips, z = lens
+#define PASS_ANCHOR 9      // likewise
 
 #define RING 5 // == insv::kSeamFlowFrames
 #define PATCH 8
@@ -78,6 +81,47 @@ float stripAt(int lens, int x, int y)
 {
     int i = lens * pc.rows * pc.cols + y * pc.cols + x;
     return float((strip[i >> 2] >> (8 * (i & 3))) & 0xffu);
+}
+
+// The strips anchored (insv::AnchorSeamFlowStrips): where a strip is
+// bright and has little texture of its own (clipped sky, the sun's veil),
+// both get the same fixed pattern added, so the flow there matches only
+// unshifted instead of anywhere. Texture: the RMS of the strip less its
+// box mean; brightness: the box mean; both over +-ANCHOR_BOX (x wrapping
+// round, rows past the ends repeating them).
+#define ANCHOR_BOX 8           // insv::kSeamFlowAnchorBoxPx
+#define ANCHOR_TEX_LO 5.0      // insv::kSeamFlowAnchorTexLo
+#define ANCHOR_TEX_HI 20.0     // insv::kSeamFlowAnchorTexHi
+#define ANCHOR_BRIGHT_LO 140.0 // insv::kSeamFlowAnchorBrightLo
+#define ANCHOR_BRIGHT_HI 180.0 // insv::kSeamFlowAnchorBrightHi
+#define ANCHOR_AMP 32.0        // insv::kSeamFlowAnchorAmp
+float anchoredAt(int lens, int x, int y) { return w[pc.anchor + lens * pc.rows * pc.cols + y * pc.cols + x]; }
+float anchorMeanAt(int lens, int x, int y) { return w[pc.anchor + (2 + lens) * pc.rows * pc.cols + y * pc.cols + x]; }
+
+float anchorHash(uint ix, uint iy, uint octave)
+{
+    uint h = ix * 374761393u + iy * 668265263u + octave * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= h >> 16;
+    return float(h & 0xffffu) / 65535.0 * 2.0 - 1.0;
+}
+
+// insv::SeamFlowAnchorNoise.
+float anchorNoise(int x, int y)
+{
+    float sum = 0.0;
+    for (int o = 0; o < 3; ++o) {
+        float cell = float(4 << o);
+        vec2 gp = vec2(x, y) / cell;
+        vec2 f0 = floor(gp);
+        uint ix = uint(f0.x), iy = uint(f0.y);
+        vec2 f = gp - f0;
+        f = f * f * (3.0 - 2.0 * f);
+        float a = mix(anchorHash(ix, iy, uint(o)), anchorHash(ix + 1u, iy, uint(o)), f.x);
+        float b = mix(anchorHash(ix, iy + 1u, uint(o)), anchorHash(ix + 1u, iy + 1u, uint(o)), f.x);
+        sum += mix(a, b, f.y);
+    }
+    return sum / 0.75;
 }
 
 int imgAt(int lens, int x, int y) // index into w
@@ -261,8 +305,42 @@ void main()
         sweep(pc.pass == PASS_SWEEP_FWD);
         return;
     }
+    if (pc.pass == PASS_ANCHOR_MEAN) {
+        if (n >= pc.cols * pc.rows)
+            return;
+        int x = n % pc.cols, y = n / pc.cols;
+        float s = 0.0;
+        for (int j = -ANCHOR_BOX; j <= ANCHOR_BOX; ++j) {
+            int yy = clamp(y + j, 0, pc.rows - 1);
+            for (int i = -ANCHOR_BOX; i <= ANCHOR_BOX; ++i)
+                s += stripAt(z, wrapX(x + i, pc.cols), yy);
+        }
+        float d = 2.0 * float(ANCHOR_BOX) + 1.0;
+        w[pc.anchor + (2 + z) * pc.rows * pc.cols + n] = s / (d * d);
+        return;
+    }
+    if (pc.pass == PASS_ANCHOR) {
+        if (n >= pc.cols * pc.rows)
+            return;
+        int x = n % pc.cols, y = n / pc.cols;
+        float s = 0.0;
+        for (int j = -ANCHOR_BOX; j <= ANCHOR_BOX; ++j) {
+            int yy = clamp(y + j, 0, pc.rows - 1);
+            for (int i = -ANCHOR_BOX; i <= ANCHOR_BOX; ++i) {
+                int xx = wrapX(x + i, pc.cols);
+                float e = stripAt(z, xx, yy) - anchorMeanAt(z, xx, yy);
+                s += e * e;
+            }
+        }
+        float d = 2.0 * float(ANCHOR_BOX) + 1.0;
+        float k = 1.0 - smoothstep(ANCHOR_TEX_LO, ANCHOR_TEX_HI, sqrt(s / (d * d)));
+        k *= smoothstep(ANCHOR_BRIGHT_LO, ANCHOR_BRIGHT_HI, anchorMeanAt(z, x, y));
+        float o = stripAt(z, x, y) + ANCHOR_AMP * k * anchorNoise(x, y);
+        w[pc.anchor + z * pc.rows * pc.cols + n] = clamp(floor(o + 0.5), 0.0, 255.0);
+        return;
+    }
     if (pc.pass == PASS_PYRAMID) {
-        // The mean of the strip under the pixel: f rows (those past the
+        // The mean of the anchored strip under the pixel: f rows (those past the
         // strip's end repeat its last) by sx columns, sampled f times
         // across (whole columns when sx is a whole number).
         if (n >= pc.W * pc.H)
@@ -275,7 +353,7 @@ void main()
             int x0 = wrapX(int(fl), pc.cols), x1 = wrapX(int(fl) + 1, pc.cols);
             for (int j = 0; j < pc.f; ++j) {
                 int y0 = min(y * pc.f + j, pc.rows - 1);
-                s += mix(stripAt(z, x0, y0), stripAt(z, x1, y0), a);
+                s += mix(anchoredAt(z, x0, y0), anchoredAt(z, x1, y0), a);
             }
         }
         w[imgAt(z, x, y)] = s / float(pc.f * pc.f);

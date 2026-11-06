@@ -28,6 +28,8 @@ enum SeamFlowPass : int32_t {
     kDensify = 5,
     kStore = 6,
     kAverage = 7,
+    kAnchorMean = 8,
+    kAnchor = 9,
 };
 
 struct SeamFlowPush {
@@ -41,8 +43,9 @@ struct SeamFlowPush {
     int32_t iters;
     int32_t slot, count;
     float radX, radY, sx;
+    int32_t anchor;
 };
-static_assert(sizeof(SeamFlowPush) == 84, "SeamFlowPush must match seam_flow.comp's push constants");
+static_assert(sizeof(SeamFlowPush) == 88, "SeamFlowPush must match seam_flow.comp's push constants");
 static_assert(insv::kSeamFlowFrames == 5, "seam_flow.comp's RING is the window's length");
 
 // DIS at OpenCV's fast preset (what the CPU estimator runs): the finest
@@ -208,6 +211,9 @@ bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const insv::StitchGpuParams& p,
             sf.scales.push_back(sc);
         }
         const SeamFlowScale& fin = sf.scales.front();
+        // The anchored strips and their box means, both lenses.
+        sf.anchor = at;
+        at += 4 * cols * rows;
         if (!makeBuffer(static_cast<VkDeviceSize>(at) * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sf.work, sf.workMem, nullptr) ||
             !makeBuffer(static_cast<VkDeviceSize>(insv::kSeamFlowFrames) * fin.W * fin.H * 16,
@@ -275,6 +281,7 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
         p.radX = sf.radX;
         p.radY = sf.radY;
         p.sx = sc.sx;
+        p.anchor = sf.anchor;
         return p;
     };
     auto run = [&](SeamFlowPush p, int32_t pass, uint32_t gx, uint32_t gy, uint32_t gz) {
@@ -286,6 +293,10 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
     barrier(); // the strips, written by the strip pass or copied in
     vkCmdBindPipeline(c, VK_PIPELINE_BIND_POINT_COMPUTE, sf.pipeline);
     vkCmdBindDescriptorSets(c, VK_PIPELINE_BIND_POINT_COMPUTE, sf.layout, 0, 1, &sf.set, 0, nullptr);
+    run(push(sf.scales.front(), nullptr), kAnchorMean, Groups(sf.cols * sf.rows), 1, 2);
+    barrier();
+    run(push(sf.scales.front(), nullptr), kAnchor, Groups(sf.cols * sf.rows), 1, 2);
+    barrier();
     for (const SeamFlowScale& sc : sf.scales)
         run(push(sc, nullptr), kPyramid, Groups(sc.W * sc.H), 1, 2);
     barrier();

@@ -18,7 +18,8 @@ public:
     SeamFlowEstimator& operator=(const SeamFlowEstimator&) = delete;
 
     // The flow both ways between `s`'s strips into `out` (on s.grid): F10
-    // and F01 in radians of (phi, e). Each frame on its own, no warm start.
+    // and F01 in radians of (phi, e), on the strips anchored
+    // (AnchorSeamFlowStrips). Each frame on its own, no warm start.
     // False (out empty) for invalid strips.
     bool estimate(const SeamFlowStrips& s, SeamFlowField& out);
 

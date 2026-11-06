@@ -39,8 +39,11 @@ no background analysis, and selectable in the Stitching section's
 - **Seam flow** (built): per frame, optical flow both ways in the overlap,
   averaged over the frame and the four before it; each lens warped by a
   share of it growing to half at the seam, so near things crossing the
-  seam join up while the rest keeps the template's geometry. A setting of
-  its own. The flow is Dense Inverse Search (DIS) in a compute shader, the
+  seam join up while the rest keeps the template's geometry. Where the
+  strips are bright and featureless (clipped sky, the sun's veil) both get
+  the same fixed pattern first, so the flow there stays zero instead of
+  arbitrary and doesn't drag the scene beside it round. A setting of its
+  own. The flow is Dense Inverse Search (DIS) in a compute shader, the
   same on every GPU (OpenCV's DIS on the CPU stitch fallback). NVIDIA's
   flow hardware (`VK_NV_optical_flow`) is left out for now: on strips this
   small the shader is fast enough, and the hardware would make an export

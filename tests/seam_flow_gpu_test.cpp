@@ -290,6 +290,68 @@ void testWindowOrder(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     CHECK(played.v == fresh.v);
 }
 
+// The p90 of |F01| and |F10| (strip pixels) over the rows [y0, y1) and the
+// columns [x0, x1).
+double P90Flow(const insv::SeamFlowField& f, int x0, int x1, int y0, int y1)
+{
+    std::vector<double> m;
+    for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x) {
+            double a[2], b[2];
+            FlowPx(f, x, y, a, b);
+            m.push_back(std::hypot(a[0], a[1]));
+            m.push_back(std::hypot(b[0], b[1]));
+        }
+    std::sort(m.begin(), m.end());
+    return m[m.size() * 9 / 10];
+}
+
+void testBrightSky(render::VulkanFisheyeStitcher& gpu, const Texture& t)
+{
+    // A far scene (no shift), but over columns 1000-1500 the strip's upper
+    // half is bright sky with next to no texture, and lens 1 alone has the
+    // sun's veil over it, a soft bright ramp. Any shift matches there, so
+    // the flow would be arbitrary and spread into the scene below it; the
+    // sky is anchored, so the flow stays zero in both. A near thing
+    // shifted across the seam elsewhere is still joined up.
+    auto acrossThing = [](int x) { return x >= 400 && x < 700; };
+    insv::SeamFlowStrips s = Strips(t, [&](int x, int, double& dx, double& dy) {
+        dx = 0;
+        dy = acrossThing(x) ? 6.0 : 0.0;
+    });
+    const int C = Grid().cols, R = Grid().rows, sky = R / 2;
+    for (int y = 0; y < sky; ++y)
+        for (int x = 1000; x < 1500; ++x) {
+            const double base = 236.0 + 0.04 * (t.at(x, y) - 128.0);
+            const double a = std::sin(std::numbers::pi * (x - 1000) / 500.0);
+            const size_t k = static_cast<size_t>(y) * C + x;
+            s.grey[0][k] = Grey(base);
+            s.grey[1][k] = Grey(base + 14.0 * a * a * (1.0 - 0.5 * y / sky));
+        }
+    gpu.resetSeamFlow();
+    insv::SeamFlowField f;
+    if (!Estimate(gpu, s, f))
+        return;
+    auto report = [&](const char* who, const insv::SeamFlowField& g) {
+        const double inSky = P90Flow(g, 1040, 1460, 4, sky - 4);
+        const double below = P90Flow(g, 1040, 1460, sky, R - 8);
+        const double across = MedianError(g, 0, 6.0, 8, R - 8, [](int x) { return x >= 440 && x < 660; });
+        std::printf("  %sbright sky: p90 flow %.3f px in it, %.3f px in the scene below; across the seam "
+                    "elsewhere error %.3f px\n",
+                    who, inSky, below, across);
+        CHECK(inSky < 0.6);
+        CHECK(below < 0.3);
+        CHECK(across < 0.5);
+    };
+    report("", f);
+#ifdef ORBIS_SEAM_FLOW
+    insv::SeamFlowEstimator est;
+    insv::SeamFlowField c;
+    CHECK(est.estimate(s, c));
+    report("CPU, ", c);
+#endif
+}
+
 #ifdef ORBIS_SEAM_FLOW
 void testAgreesWithCpu(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 {
@@ -342,6 +404,7 @@ int main()
     testShiftAtWrap(gpu, t);
     testWindow(gpu, t);
     testWindowOrder(gpu, t);
+    testBrightSky(gpu, t);
 #ifdef ORBIS_SEAM_FLOW
     testAgreesWithCpu(gpu, t);
 #endif

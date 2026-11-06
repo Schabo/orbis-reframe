@@ -100,7 +100,10 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    every GPU path, the viewport's lens frames included. On the GPU the
    strips, the flow (DIS, `render/shaders/seam_flow.comp`) and the average
    stay there, in the frame's measuring submission; the CPU stitch
-   fallback estimates it with OpenCV's DIS (`insv/SeamFlowEstimator`). A seek measures the
+   fallback estimates it with OpenCV's DIS (`insv/SeamFlowEstimator`).
+   Both run on the strips anchored first: bright featureless parts get the
+   same fixed pattern in both lenses, so the flow stays zero there
+   (`insv::AnchorSeamFlowStrips`, the shader's anchor passes). A seek measures the
    frames both need before the frame it goes to, so they need no analysis.
    The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the

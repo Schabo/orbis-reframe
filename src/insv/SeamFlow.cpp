@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <thread>
 
@@ -93,6 +94,93 @@ void MeasureSeamFlowStrips(const FisheyeStitcher& st, const SeamFlowGrid& grid, 
         });
     for (auto& th : pool)
         th.join();
+}
+
+namespace {
+
+float AnchorHash(uint32_t ix, uint32_t iy, uint32_t octave)
+{
+    uint32_t h = ix * 374761393u + iy * 668265263u + octave * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    h ^= h >> 16;
+    return static_cast<float>(h & 0xffffu) / 65535.0f * 2.0f - 1.0f;
+}
+
+// Box means over +-r of a rows x cols plane: x wraps round, rows past the
+// ends repeat them.
+void BoxMean(const std::vector<float>& in, int C, int R, int r, std::vector<float>& out)
+{
+    std::vector<float> rows(in.size());
+    for (int y = 0; y < R; ++y) {
+        const float* p = in.data() + static_cast<size_t>(y) * C;
+        for (int x = 0; x < C; ++x) {
+            float sum = 0;
+            for (int i = -r; i <= r; ++i)
+                sum += p[((x + i) % C + C) % C];
+            rows[static_cast<size_t>(y) * C + x] = sum;
+        }
+    }
+    out.resize(in.size());
+    const float area = static_cast<float>((2 * r + 1) * (2 * r + 1));
+    for (int y = 0; y < R; ++y)
+        for (int x = 0; x < C; ++x) {
+            float sum = 0;
+            for (int j = -r; j <= r; ++j)
+                sum += rows[static_cast<size_t>(std::clamp(y + j, 0, R - 1)) * C + x];
+            out[static_cast<size_t>(y) * C + x] = sum / area;
+        }
+}
+
+} // namespace
+
+float SeamFlowAnchorNoise(int x, int y)
+{
+    float sum = 0;
+    for (int o = 0; o < 3; ++o) {
+        const float cell = static_cast<float>(4 << o);
+        const float gx = x / cell, gy = y / cell;
+        const float fx0 = std::floor(gx), fy0 = std::floor(gy);
+        const uint32_t ix = static_cast<uint32_t>(fx0), iy = static_cast<uint32_t>(fy0);
+        float fx = gx - fx0, fy = gy - fy0;
+        fx = fx * fx * (3 - 2 * fx);
+        fy = fy * fy * (3 - 2 * fy);
+        const uint32_t oc = static_cast<uint32_t>(o);
+        const float a = AnchorHash(ix, iy, oc) * (1 - fx) + AnchorHash(ix + 1, iy, oc) * fx;
+        const float b = AnchorHash(ix, iy + 1, oc) * (1 - fx) + AnchorHash(ix + 1, iy + 1, oc) * fx;
+        sum += a * (1 - fy) + b * fy;
+    }
+    return sum / 0.75f;
+}
+
+void AnchorSeamFlowStrips(const SeamFlowStrips& in, SeamFlowStrips& out)
+{
+    const SeamFlowGrid& g = in.grid;
+    const int C = g.cols, R = g.rows, r = kSeamFlowAnchorBoxPx;
+    out.grid = g;
+    auto smooth = [](double a, double b, double x) {
+        const double t = std::clamp((x - a) / (b - a), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    };
+    std::vector<float> v, mean, d, var;
+    for (int l = 0; l < 2; ++l) {
+        const std::vector<uint8_t>& src = in.grey[l];
+        v.assign(src.begin(), src.end());
+        BoxMean(v, C, R, r, mean);
+        d.resize(v.size());
+        for (size_t i = 0; i < v.size(); ++i)
+            d[i] = (v[i] - mean[i]) * (v[i] - mean[i]);
+        BoxMean(d, C, R, r, var);
+        std::vector<uint8_t>& dst = out.grey[l];
+        dst.resize(src.size());
+        for (int y = 0; y < R; ++y)
+            for (int x = 0; x < C; ++x) {
+                const size_t i = static_cast<size_t>(y) * C + x;
+                const double k = (1.0 - smooth(kSeamFlowAnchorTexLo, kSeamFlowAnchorTexHi, std::sqrt(var[i]))) *
+                                 smooth(kSeamFlowAnchorBrightLo, kSeamFlowAnchorBrightHi, mean[i]);
+                const double o = v[i] + kSeamFlowAnchorAmp * k * SeamFlowAnchorNoise(x, y);
+                dst[i] = static_cast<uint8_t>(std::clamp(std::floor(o + 0.5), 0.0, 255.0));
+            }
+    }
 }
 
 void SeamFlowField::at(double x, double y, float out[4]) const

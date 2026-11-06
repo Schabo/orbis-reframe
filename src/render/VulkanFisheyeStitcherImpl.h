@@ -292,6 +292,7 @@ struct VulkanFisheyeStitcher::Impl {
         std::vector<SeamFlowScale> scales;   // finest first
         int slot = 0;  // the ring slot the next frame goes into
         int count = 0; // frames held
+        int anchor = 0;    // offset into work of the anchored strips (floats)
     } sf;
     // The pipeline, the buffers for params' grid, the set pointed at the
     // strips and the texture (both made here if they aren't yet). Before

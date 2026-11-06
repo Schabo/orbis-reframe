@@ -84,6 +84,39 @@ struct SeamFlowStrips {
 void MeasureSeamFlowStrips(const FisheyeStitcher& st, const SeamFlowGrid& grid, const Image& lens0,
                            const Image& lens1, SeamFlowStrips& out);
 
+// Where a strip has no texture, any shift matches: clipped sky, the
+// near-white veil the sun lays over the scene. The flow there is
+// arbitrary, changes from frame to frame and, because a featureless patch
+// fits perfectly wherever it is put, wins over its neighbours as the flow
+// is spread across the strip -- the warp then drags the textured scene
+// beside it round. So before the flow, both strips get the same fixed
+// pattern (SeamFlowAnchorNoise, a function of the strip position alone)
+// added where they are bright and have little texture of their own: there
+// the two then match only unshifted, and the flow stays the template's,
+// the same every frame. Texture is the RMS of the strip less its box mean,
+// brightness the box mean, both over a box of +-kSeamFlowAnchorBoxPx (x
+// wrapping round, rows past the ends repeating them); the pattern is full
+// below kSeamFlowAnchorTexLo grey levels of texture and gone from
+// kSeamFlowAnchorTexHi, gone below kSeamFlowAnchorBrightLo and full from
+// kSeamFlowAnchorBrightHi. Only bright areas: darker flat ones (a road, a
+// shaded wall) lie next to near things whose shift the flow has to find,
+// and pinning them held those back. Mirrored in seam_flow.comp's anchor
+// passes.
+constexpr int kSeamFlowAnchorBoxPx = 8;
+constexpr double kSeamFlowAnchorTexLo = 5;
+constexpr double kSeamFlowAnchorTexHi = 20;
+constexpr double kSeamFlowAnchorBrightLo = 140;
+constexpr double kSeamFlowAnchorBrightHi = 180;
+constexpr double kSeamFlowAnchorAmp = 32; // the pattern's RMS, grey levels
+
+// The pattern at strip pixel (x, y): value noise over 4, 8 and 16 pixel
+// cells from an integer hash, RMS about 1.
+float SeamFlowAnchorNoise(int x, int y);
+
+// `in`'s strips with the pattern added where they are bright and have no
+// texture, rounded to 8 bits.
+void AnchorSeamFlowStrips(const SeamFlowStrips& in, SeamFlowStrips& out);
+
 // A flow field on the grid: per cell four floats -- F10 (dphi, de), then F01
 // (dphi, de), radians. Empty = no flow (the template).
 struct SeamFlowField {

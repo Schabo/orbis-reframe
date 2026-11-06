@@ -200,7 +200,10 @@ other: each lens moves by a share that grows from nothing 8° from the seam
 to half the difference on the seam, so both show a close thing in the same
 place there. Further than 8° from the seam each picture keeps its own
 geometry, and far things, which the lenses already show in the same place,
-don't move.
+don't move. Where the overlap is bright and has nothing to match -- sky
+clipped to white, or the haze the sun lays over the scene, which each lens
+draws in its own way -- the flow leaves the picture where it is, so the
+seam beside the sun doesn't swim.
 
 The flow is averaged over each frame and the four before it, so the seam
 holds still while things pass through it; when you jump to a frame,
