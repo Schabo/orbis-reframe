@@ -311,7 +311,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     importFiles->setObjectName(QStringLiteral("mediaImportFilesButton"));
     importFiles->setAutoRaise(true);
     importFiles->setIcon(theme::icon(QStringLiteral("file-plus-2")));
-    importFiles->setToolTip(tr("Import files…"));
+    importFiles->setToolTip(tr("Import files…: pick video and audio files"));
     importFiles->setFocusPolicy(Qt::NoFocus);
     connect(importFiles, &QToolButton::clicked, this, &MediaPoolPanel::importFilesRequested);
     auto *importFolder = new QToolButton(this);
@@ -321,6 +321,15 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     importFolder->setToolTip(tr("Import folder…: every video and audio file in it"));
     importFolder->setFocusPolicy(Qt::NoFocus);
     connect(importFolder, &QToolButton::clicked, this, &MediaPoolPanel::importFolderRequested);
+    auto *collect = new QToolButton(this);
+    collect->setObjectName(QStringLiteral("mediaCollectButton"));
+    collect->setAutoRaise(true);
+    collect->setIcon(theme::icon(QStringLiteral("download")));
+    collect->setToolTip(
+        tr("Copy media into the project…: the files it uses, from a connected device"));
+    collect->setFocusPolicy(Qt::NoFocus);
+    connect(collect, &QToolButton::clicked, this,
+            &MediaPoolPanel::collectIntoProjectRequested);
 
     auto *header = new QHBoxLayout;
     header->setContentsMargins(0, 0, 6, 0);
@@ -328,6 +337,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     header->addWidget(title, 1);
     header->addWidget(importFiles);
     header->addWidget(importFolder);
+    header->addWidget(collect);
 
     m_status = new QLabel(this);
     m_status->setObjectName(QStringLiteral("mediaPoolStatus"));
