@@ -324,7 +324,7 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
 
     // The window's mean into the texture the stitch samples.
     VkImageMemoryBarrier ib{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    ib.oldLayout = flowFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ib.oldLayout = flowFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
     ib.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     ib.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     ib.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -335,7 +335,6 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
                          nullptr, 0, nullptr, 1, &ib);
     run(push(fin, nullptr), kAverage, Groups(sf.cols * sf.rows), 1, 1);
     ib.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    ib.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     ib.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     ib.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
@@ -457,8 +456,8 @@ bool VulkanFisheyeStitcher::readSeamFlow(insv::SeamFlowField& out, std::string& 
     }
     const bool ok = d->submitOnce([&](VkCommandBuffer c) {
         VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        b.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        b.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         b.srcAccessMask = 0; // every submission before was waited on
         b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -469,13 +468,7 @@ bool VulkanFisheyeStitcher::readSeamFlow(insv::SeamFlowField& out, std::string& 
         VkBufferImageCopy r{};
         r.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         r.imageExtent = {static_cast<uint32_t>(W), static_cast<uint32_t>(H), 1};
-        vkCmdCopyImageToBuffer(c, d->flowImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buf, 1, &r);
-        b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        b.srcAccessMask = 0;
-        b.dstAccessMask = 0;
-        vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-                             0, nullptr, 0, nullptr, 1, &b);
+        vkCmdCopyImageToBuffer(c, d->flowImg, VK_IMAGE_LAYOUT_GENERAL, buf, 1, &r);
         VkBufferMemoryBarrier hb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         hb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         hb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;

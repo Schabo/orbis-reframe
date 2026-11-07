@@ -251,7 +251,11 @@ struct VulkanFisheyeStitcher::Impl {
     // RGBA16F texture of its grid (1 x 1 of zeros until a field comes),
     // wrapping round in azimuth, clamped across. A frame whose field isn't
     // the one up (flowHeld) has it staged (ensureFlow) and copied in at the
-    // start of its submission (recordFlowUpload).
+    // start of its submission (recordFlowUpload). The image stays in
+    // GENERAL from its first use on: seam_flow.comp binds it as a storage
+    // image in every pass, so validation checks that layout at each
+    // dispatch, though only the averaging pass writes it. The texture is
+    // small; sampling it in GENERAL costs nothing measurable.
     VkSampler flowSampler = VK_NULL_HANDLE;
     VkImage flowImg = VK_NULL_HANDLE;
     VkDeviceMemory flowMem = VK_NULL_HANDLE;
@@ -263,7 +267,7 @@ struct VulkanFisheyeStitcher::Impl {
     VkDeviceSize flowStageBytes = 0;
     std::shared_ptr<const insv::SeamFlowField> flowHeld;
     bool flowCopy = false;  // flowStage waits to be copied into flowImg
-    bool flowFresh = false; // flowImg is new: its layout is still UNDEFINED
+    bool flowFresh = false; // flowImg is new: its layout is still UNDEFINED, not GENERAL
     // The seam flow's strips (binding 7, pass 4), device-local: the seam
     // flow (below) reads them.
     VkBuffer stripBuf = VK_NULL_HANDLE;

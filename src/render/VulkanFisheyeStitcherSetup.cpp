@@ -204,7 +204,7 @@ bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std
         flowH = H;
         flowFresh = true;
         flowHeld.reset();
-        VkDescriptorImageInfo info{flowSampler, flowView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkDescriptorImageInfo info{flowSampler, flowView, VK_IMAGE_LAYOUT_GENERAL};
         VkWriteDescriptorSet w[2]{};
         int n = 0;
         for (VkDescriptorSet set : {descSet, vwSet}) {
@@ -256,8 +256,8 @@ void VulkanFisheyeStitcher::Impl::recordFlowUpload(VkCommandBuffer cmd)
     if (!flowCopy)
         return;
     VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    b.oldLayout = flowFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    b.oldLayout = flowFresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL;
+    b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
     b.srcAccessMask = 0; // the submissions before this one waited on their fences
     b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -268,9 +268,8 @@ void VulkanFisheyeStitcher::Impl::recordFlowUpload(VkCommandBuffer cmd)
     VkBufferImageCopy c{};
     c.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     c.imageExtent = {static_cast<uint32_t>(flowW), static_cast<uint32_t>(flowH), 1};
-    vkCmdCopyBufferToImage(cmd, flowStage, flowImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
-    b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdCopyBufferToImage(cmd, flowStage, flowImg, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+    b.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
     b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,

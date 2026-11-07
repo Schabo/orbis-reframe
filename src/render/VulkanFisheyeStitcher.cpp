@@ -1343,10 +1343,10 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     }
 
     // The seam flow field, as this frame's params have it (recordFlowUpload
-    // above left it readable by transfers).
+    // above left it readable by transfers; it stays in GENERAL, see
+    // VulkanFisheyeStitcherImpl.h).
     {
-        VkImageMemoryBarrier fb = imgBarrier(d->flowImg, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
+        VkImageMemoryBarrier fb = imgBarrier(d->flowImg, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, 0,
                                              VK_ACCESS_TRANSFER_READ_BIT);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
                              0, nullptr, 0, nullptr, 1, &fb);
@@ -1354,10 +1354,10 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         c.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         c.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         c.extent = {static_cast<uint32_t>(d->flowW), static_cast<uint32_t>(d->flowH), 1};
-        vkCmdCopyImage(cmd, d->flowImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       slot->img[LensSlot::kFlowImage], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
-        fb = imgBarrier(d->flowImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT, 0);
+        vkCmdCopyImage(cmd, d->flowImg, VK_IMAGE_LAYOUT_GENERAL, slot->img[LensSlot::kFlowImage],
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+        fb = imgBarrier(d->flowImg, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
+                        VK_ACCESS_TRANSFER_READ_BIT, 0);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
                              0, nullptr, 0, nullptr, 1, &fb);
     }
