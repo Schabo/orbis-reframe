@@ -88,10 +88,12 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    lenses, which has the guard in it), the lens-guard profile and the
    clip's stitcher turn the two fisheyes into the sphere. Privacy blur
    regions are applied here, on the sphere. The stitcher is chosen per
-   clip (`stitch::PreviewStitchConfig::Method`): the depth-aware seam or a
-   fixed one, both with the clip's measured seam alignment and lens
-   colour, or the new stitcher, which takes neither (see
-   [the roadmap](roadmap.md)); its seam colour blend (`insv/SeamColourBlend`)
+   clip (`stitch::PreviewStitchConfig::Method`): the new stitcher, a new
+   clip's default, which takes no per-clip measurement; or the old one,
+   with the depth-aware seam or a fixed one, both with the clip's measured
+   seam alignment and lens colour -- what a project file that names no
+   stitcher loads as, `Project::kOlderFileStitchMethod` (see
+   [the roadmap](roadmap.md)); the new stitcher's seam colour blend (`insv/SeamColourBlend`)
    matches the lenses' colour per stretch of the seam from what they see in
    the overlap over each frame and the quarter second before it, and its seam
    flow (`insv/SeamFlow`) warps each lens near the seam by its share of

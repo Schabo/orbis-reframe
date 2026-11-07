@@ -151,11 +151,12 @@ build/stitch_source_smoke --range 10000 12000 500 clip.insv
 Measure-only benchmark of where a frame's time goes, per clip (capture mode)
 and per equirect size: decode alone, decode + stitch at each size, the
 export paths, the viewport's lens-frame path, and seeks. Writes no files.
-The stitcher is the depth-aware seam unless `--no-depth-seam` (a fixed
-seam) or `--new-stitcher` (with its seam colour blend and seam flow unless
-`--no-seam-colour-blend` / `--no-seam-flow`); the `seam` column is the
-depth-aware seam's measuring and solving, or the new stitcher's (the
-colour blend's fit and the flow).
+The stitcher is the new one, as a new clip's in the app (with its seam
+colour blend and seam flow unless `--no-seam-colour-blend` /
+`--no-seam-flow`), unless `--depth-seam` (the old stitcher with its
+depth-aware seam) or `--no-depth-seam` (the old one with a fixed seam); the
+`seam` column is the new stitcher's measuring (the colour blend's fit and
+the flow), or the depth-aware seam's measuring and solving.
 
 **When:** after a change to decoding, stitching or the frame path, to see
 whether a mode still plays in real time. The preview-size presets and the
@@ -440,10 +441,11 @@ field of view corner to corner as the app's keys; distortion 0..1, left out
 = automatic), or a fixed `--yaw/--pitch/--fov` (degrees, corner to corner)
 and `--distortion D|auto` (default auto): 0 is rectilinear, 1
 stereographic (with `--pitch -90` and a wide `--fov`, a tiny planet).
-`--no-depth-seam` stitches with a fixed seam, `--new-stitcher` with the
-new stitcher (as the Stitching section's *Stitcher*; default the
-depth-aware seam), `--no-seam-colour-blend` / `--no-seam-flow` without
-its seam colour blend / seam flow. It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
+The stitcher is as the Stitching section's *Stitcher*: by default the new
+stitcher, as a new clip's (`--new-stitcher` says so explicitly),
+`--no-seam-colour-blend` / `--no-seam-flow` without its seam colour blend /
+seam flow; `--depth-seam` the old stitcher with its depth-aware seam,
+`--no-depth-seam` the old one with a fixed seam. It also takes the colour grade, a 3D LUT (`--lut FILE.cube`,
 `--lut-strength PCT`) and a picture-in-picture inset. `--bit-depth 10`
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
 prints when the encoder falls back to 8-bit, or when the frames are 8-bit

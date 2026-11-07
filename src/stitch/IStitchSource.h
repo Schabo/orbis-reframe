@@ -86,8 +86,11 @@ struct PreviewStitchConfig {
     //     the clip -- the clip's seam correction and lens colour are not
     //     applied. Its layers, worked out from each frame and the frames just
     //     before it, come on top: the seam colour blend (seamColourBlend) and the seam flow (seamFlow).
+    // New is the default for a clip that has no setting yet; a project
+    // file that doesn't say is from before that and loads as DepthSeam
+    // (Project::kOlderFileStitchMethod).
     enum class Method { DepthSeam, FixedSeam, New };
-    Method method = Method::DepthSeam;
+    Method method = Method::New;
     bool depthSeam() const { return method == Method::DepthSeam; }
 
     // The new stitcher's seam colour blend (insv::SeamColourBlend): the

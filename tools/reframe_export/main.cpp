@@ -61,7 +61,7 @@ struct Args {
     int stitchW = 0; // equirect intermediate width (0 => auto)
     int stitchH = 0;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    stitch::PreviewStitchConfig::Method method = stitch::PreviewStitchConfig::Method::DepthSeam;
+    stitch::PreviewStitchConfig::Method method = stitch::PreviewStitchConfig::Method::New; // as a new clip's
     bool seamColourBlend = true; // with the new stitcher
     bool seamFlow = true;        // likewise
     double staticYawDeg = 0.0;
@@ -115,8 +115,9 @@ const char kUsage[] =
     "  --stitch-size WxH     equirect intermediate resolution, 2:1 (default: the full\n"
     "                        source sphere, at least 2*outW)\n"
     "  --lens-guard G        none | standard | premium (default premium)\n"
-    "  --no-depth-seam       stitch at infinity (no depth-aware seam)\n"
-    "  --new-stitcher        the new stitcher (experimental)\n"
+    "  --depth-seam          the old stitcher with its depth-aware seam\n"
+    "  --no-depth-seam       the old stitcher at infinity (a fixed seam)\n"
+    "  --new-stitcher        the new stitcher (experimental; the default)\n"
     "  --no-seam-colour-blend  the new stitcher without its seam colour blend\n"
     "  --no-seam-flow        the new stitcher without its seam flow\n"
     "  --yaw DEG --pitch DEG --roll DEG --fov DEG   static pose when --keys is absent\n"
@@ -187,6 +188,8 @@ Args parseArgs(int argc, char** argv)
                 die("bad --bit-depth (want 8 or 10)");
         } else if (k == "--bitrate")
             a.bitrateKbps = std::atoll(next("--bitrate").c_str());
+        else if (k == "--depth-seam")
+            a.method = stitch::PreviewStitchConfig::Method::DepthSeam;
         else if (k == "--no-depth-seam")
             a.method = stitch::PreviewStitchConfig::Method::FixedSeam;
         else if (k == "--new-stitcher")

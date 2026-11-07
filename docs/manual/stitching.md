@@ -140,13 +140,12 @@ greyed out in builds made without OpenCV's chart detection.
 **Stitcher** picks how the two pictures are joined where they meet:
 
 - **Depth-aware seam**: lines the two pictures up, frame by frame, at the
-  distance of what is on the seam (see *Depth-aware seam* below). New clips
-  start with it.
+  distance of what is on the seam (see *Depth-aware seam* below).
 - **Fixed seam**: lines the pictures up for things far away, the same in
   every frame. The seam holds still, but things close to the camera show up
   twice where the pictures meet.
-- **New stitcher (experimental)**: the stitcher that will replace the other
-  two, still being built. It joins the pictures from the lens model (the
+- **New stitcher (experimental)**: the stitcher new clips start with, still
+  being built; it will replace the other two. It joins the pictures from the lens model (the
   camera file's, or your calibration), and works out
   anything more from each frame and the ones just before it, not from the
   clip as a whole: the seam alignment and lens colour below aren't used with it. So
@@ -156,6 +155,12 @@ greyed out in builds made without OpenCV's chart detection.
   degree), it corrects the lenses by a fixed amount measured for the
   camera model; with your calibration it doesn't. Projects with a clip
   set to it can't be opened by orbis-reframe versions before 0.8.
+
+A clip added to a project takes the stitcher of the 360 clip next to it, so
+a project made before the new stitcher became the default keeps the
+stitcher it was made with, for its new clips too; a project opened from
+before then looks as it did. To move a whole project over, pick **New
+stitcher (experimental)** on one clip and click **Apply to all clips**.
 
 ### Seam colour blend
 
@@ -282,10 +287,9 @@ shows them softly doubled rather than broken.
 *The handlebar crosses the seam. Off, the bar is broken and the brake cable
 shows twice; on, they join up.*
 
-New clips start with it. Where nothing is close to the camera, as on
-drone footage, it has nothing to line up, and the picture just round the
-seam can seem to move or bend slightly while playing: pick **Fixed seam**
-there.
+Where nothing is close to the camera, as on drone footage, it has nothing
+to line up, and the picture just round the seam can seem to move or bend
+slightly while playing: pick **Fixed seam** there, or the new stitcher.
 
 ## Seam alignment
 
@@ -411,8 +415,9 @@ smoothly at its frame rate.
   most (the road ahead, the person you're filming). The seam then runs
   through the camera's sides, where close objects are least likely to be.
 - **Keep close things away from the camera's sides.** A hand, a handlebar
-  or a wall near the side of the camera crosses the seam. Depth-aware seam
-  helps, but the further away, the cleaner the join.
+  or a wall near the side of the camera crosses the seam. The new
+  stitcher's seam flow and the depth-aware seam help, but the further away,
+  the cleaner the join.
 - **A selfie stick straight below the camera mostly disappears**: it falls
   in the narrow gap between what the two lenses see. Keep the stick in line
   with the camera body so it stays in that gap.

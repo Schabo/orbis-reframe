@@ -1702,7 +1702,7 @@ void testClipJob(const QString &dir)
     CHECK(job.speed == 2.0 && job.colorGrade.adjust[0] == 1.0f);
     CHECK(job.seamCorrection.lens1RotDeg[1] == 0.25); // measured under Premium (2), the clip's
     CHECK(job.lensGuard == stitch::PreviewStitchConfig::LensGuard::Premium &&
-          job.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam);
+          job.stitchMethod == stitch::PreviewStitchConfig::Method::New); // a new clip's
     CHECK(!job.stab);    // stabilization off
     CHECK(!job.poseAt);  // no keys: looking straight ahead
     CHECK(!job.blur);    // no blur

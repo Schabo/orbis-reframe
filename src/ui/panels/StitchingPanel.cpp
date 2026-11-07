@@ -50,8 +50,8 @@ StitchingPanel::StitchingPanel(QWidget *parent)
     m_method->addItem(tr("New stitcher (experimental)"));
     m_method->setItemData(
         2,
-        tr("The stitcher that will replace the other two, still being built. It joins the "
-           "pictures from the lens calibration, and works out anything more from each frame "
+        tr("The stitcher new clips get, still being built: it will replace the other two. It "
+           "joins the pictures from the lens calibration, and works out anything more from each frame "
            "and the ones just before it, not from the clip as a whole."),
         Qt::ToolTipRole);
     m_method->setToolTip(tr("How the two pictures are joined where they meet."));
@@ -123,7 +123,7 @@ StitchingPanel::StitchingPanel(QWidget *parent)
                "screenshots and export. Every clip cut from the same file shares them. The "
                "preview's own size is in the View menu."));
 
-    setState(LensGuard::Premium, Method::DepthSeam); // sane starting state
+    setState(LensGuard::Premium, Method::New); // sane starting state
     setCalibrations({tr("From the camera file")}, {}, 0);
 
     connect(m_lensGuard, &QComboBox::currentIndexChanged, this, &StitchingPanel::emitIfEdited);
@@ -175,7 +175,7 @@ void StitchingPanel::setState(LensGuard lensGuard, Method method,
 
 void StitchingPanel::setNoClip()
 {
-    setState(LensGuard::Premium, Method::DepthSeam); // ClipItem's defaults
+    setState(LensGuard::Premium, Method::New); // ClipItem's defaults
     // The clip's settings greyed out; Calibrate lenses is about the camera,
     // not a clip, so it stays.
     m_lensGuard->setEnabled(false);

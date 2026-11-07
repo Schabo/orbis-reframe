@@ -248,7 +248,9 @@ void testProjectJson()
         Project p;
         QString err;
         CHECK(p.load(bare, &err));
-        CHECK(p.previewStitch() == stitch::PreviewStitchConfig{});
+        stitch::PreviewStitchConfig older; // a file that doesn't say: the old stitcher
+        older.method = Project::kOlderFileStitchMethod;
+        CHECK(p.previewStitch() == older);
         CHECK(p.output() == OutputSettings{});
         CHECK(p.output().fps == 0.0 && p.output().effectiveFps(29.97) == 29.97);
         CHECK(!p.output().tenBit); // no bitDepth: 8-bit, as before it existed
@@ -534,6 +536,7 @@ void testProjectTracksJson()
         talk.noise = {insv::NoiseMode::VoiceAmbience, 0.5f};
         p.timeline()->insertTrackClip(t2, talk);
         p.timeline()->setTrackAudio(t2, 0.0, true);
+        useOldStitcher(*p.timeline());
         QString err;
         CHECK(p.save(projFile, &err));
     }
@@ -1643,12 +1646,13 @@ void testClipStitchJson()
         Project p;
         Timeline *tl = p.timeline();
         const int a1 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
-        CHECK(tl->clipById(a1)->lensGuard == G::Premium && tl->clipById(a1)->stitchMethod == M::DepthSeam);
+        // A clip of a project with no 360 clip yet: the new stitcher.
+        CHECK(tl->clipById(a1)->lensGuard == G::Premium && tl->clipById(a1)->stitchMethod == M::New);
         tl->setSourceStitch(a, G::None, M::FixedSeam, std::nullopt);
         const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
         CHECK(tl->clipById(a2)->lensGuard == G::None && tl->clipById(a2)->stitchMethod == M::FixedSeam);
         const int b1 = tl->appendClip(b, 8000, 30.0, 7680, 3840, 2); // the neighbour's
-        CHECK(tl->clipById(b1)->lensGuard == G::None);
+        CHECK(tl->clipById(b1)->lensGuard == G::None && tl->clipById(b1)->stitchMethod == M::FixedSeam);
         tl->setSourceStitch(b, G::Standard, M::DepthSeam, std::nullopt);
         CHECK(tl->clipById(a1)->lensGuard == G::None && tl->clipById(b1)->lensGuard == G::Standard);
         CHECK(p.save(file, &err));
@@ -1753,6 +1757,57 @@ void testClipStitchJson()
         for (int i = 0; i < p.timeline()->count(); ++i)
             CHECK(p.timeline()->clipAt(i).lensGuard == G::Standard &&
                   p.timeline()->clipAt(i).stitchMethod == M::DepthSeam);
+
+        // A file that doesn't name a stitcher at all is from before the new
+        // stitcher became the default: the old one, as it was saved with.
+        ps.remove("depthSeam");
+        doc["previewStitch"] = ps;
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(doc).toJson());
+        f.close();
+        Project q;
+        CHECK(q.load(file, &err));
+        for (int i = 0; i < q.timeline()->count(); ++i)
+            CHECK(q.timeline()->clipAt(i).stitchMethod == M::DepthSeam);
+        doc.remove("previewStitch");
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(doc).toJson());
+        f.close();
+        Project r;
+        CHECK(r.load(file, &err));
+        for (int i = 0; i < r.timeline()->count(); ++i)
+            CHECK(r.timeline()->clipAt(i).stitchMethod == M::DepthSeam);
+        for (int i = 0; i < clips.size(); ++i) { // a clip's own "stitch" without one
+            QJsonObject c = clips.at(i).toObject();
+            c["stitch"] = QJsonObject{{"lensGuard", "premium"}};
+            clips[i] = c;
+        }
+        timeline["clips"] = clips;
+        doc["timeline"] = timeline;
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(QJsonDocument(doc).toJson());
+        f.close();
+        Project s;
+        CHECK(s.load(file, &err));
+        for (int i = 0; i < s.timeline()->count(); ++i)
+            CHECK(s.timeline()->clipAt(i).lensGuard == G::Premium &&
+                  s.timeline()->clipAt(i).stitchMethod == M::DepthSeam);
+    }
+    {
+        // A new project's clip: the new stitcher, saved as such and read back.
+        Project p;
+        p.timeline()->appendClip(a, 10000, 30.0, 7680, 3840, 2);
+        CHECK(p.save(file, &err));
+        const QJsonObject st = document()
+                                   .value("timeline").toObject()
+                                   .value("clips").toArray()
+                                   .at(0).toObject()
+                                   .value("stitch").toObject();
+        CHECK(st.value("method").toString() == "new");
+        Project q;
+        CHECK(q.load(file, &err));
+        CHECK(q.timeline()->clipAt(0).stitchMethod == M::New && q.timeline()->clipAt(0).seamColourBlend &&
+              q.timeline()->clipAt(0).seamFlow);
     }
 }
 
@@ -1802,6 +1857,7 @@ void testFlatClipJson()
         // a 360 clip after a flat one takes the 360 clip's stabilization
         const int c = p.timeline()->appendClip(insv, 10000, 30.0, 7680, 3840, 0);
         CHECK(p.timeline()->clipById(c)->stabilization.mode == insv::StabMode::LeanFollow);
+        useOldStitcher(*p.timeline());
         CHECK(p.save(file, &err));
         CHECK(versionOf() == 11);
         const QJsonObject jb = clipJson(1);
@@ -1829,6 +1885,7 @@ void testFlatClipJson()
         CHECK(linked);
         // without the flat clip it's version 10 again
         p.timeline()->removeClip(b.id);
+        useOldStitcher(*p.timeline());
         CHECK(p.save(file, &err));
         CHECK(versionOf() == 10);
     }
@@ -1873,6 +1930,7 @@ void testTitleJson()
         Project p;
         Timeline *tl = p.timeline();
         tl->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        useOldStitcher(*tl);
         const int v = tl->addTrack(Track::Kind::Video, "Text");
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
@@ -2104,6 +2162,7 @@ void testGaugeJson()
     {
         Project p;
         p.timeline()->appendClip("a.insv", 60000, 30.0);
+        useOldStitcher(*p.timeline());
         const int v = p.timeline()->addTrack(Track::Kind::Video);
         inset::Look look = gauge::defaultLook();
         look.centerX = 0.3f;
@@ -2140,6 +2199,7 @@ void testGaugeJson()
         m = m.clamped();
         Project p;
         p.timeline()->appendClip("a.insv", 60000, 30.0);
+        useOldStitcher(*p.timeline());
         const int v = p.timeline()->addTrack(Track::Kind::Video);
         CHECK(p.timeline()->addGaugeClip(v, 0, m, 5000));
         CHECK(p.save(file, &err));
@@ -2155,6 +2215,7 @@ void testGaugeJson()
                                 QStringLiteral("{{lean} {speed}")}) {
         Project p;
         p.timeline()->appendClip("a.insv", 60000, 30.0);
+        useOldStitcher(*p.timeline());
         const int v = p.timeline()->addTrack(Track::Kind::Video);
         title::Style t;
         t.text = text;
@@ -2189,6 +2250,7 @@ void testTransitionJson()
         tl->appendClip(video, 10000, 30.0, 7680, 3840, 0);
         const int b = tl->appendClip(video, 10000, 30.0, 7680, 3840, 0);
         tl->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        useOldStitcher(*tl);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kPlainFormatVersion);
         CHECK(!document().value("timeline").toObject().contains("transitions"));
@@ -2280,6 +2342,7 @@ void testLutJson()
     {
         Project p;
         const int id = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        useOldStitcher(*p.timeline());
         CHECK(p.save(file, &err));
         CHECK(document(file).value("version").toInt() == Project::kPlainFormatVersion);
         CHECK(!firstColor(file).contains("lut"));
@@ -2329,6 +2392,7 @@ void testSplitJson()
     {
         Project p;
         const int id = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        useOldStitcher(*p.timeline());
         CHECK(p.save(file, &err));
         CHECK(document(file).value("version").toInt() == Project::kPlainFormatVersion);
         CHECK(!firstClip(file).contains("split"));

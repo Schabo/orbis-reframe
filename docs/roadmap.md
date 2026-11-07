@@ -24,7 +24,7 @@ is ambiguous between frames, which needed the per-clip analysis to settle.
 Its replacement is built as layers on a template, each one worked out from
 the frame and the frames just before it (a seek measures those first), with
 no background analysis, and selectable in the Stitching section's
-*Stitcher* until it replaces the old stitcher:
+*Stitcher*, the default for new clips:
 
 - **Template** (built): the lens model from the file or the clip's chart
   calibration, the guard profile, a fixed cross-fade; nothing measured from
@@ -56,8 +56,12 @@ no background analysis, and selectable in the Stitching section's
   depend on the GPU's vendor; worth trying only if it measures clearly
   better.
 
-Then a decision on replacing the old stitcher, measured with
-`tools/stitch_bench` against Insta360 Studio's exports.
+New clips get the new stitcher, still marked experimental, with its seam
+colour blend and seam flow on; a project that doesn't name a clip's
+stitcher is from before that and keeps the old one, and a clip added to a
+project takes its neighbour's. The old stitcher stays selectable until a
+decision to remove it, measured with `tools/stitch_bench` against Insta360
+Studio's exports.
 
 ### 2. Optional
 

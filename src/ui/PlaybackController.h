@@ -105,7 +105,7 @@ public:
         // lensCalibration), the same for every segment of a file; the source
         // is opened with them over the preview config's (setPreviewConfig).
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-        stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+        stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::New;
         // The file was gone when the timeline was pushed (ClipItem::
         // mediaMissing): the decoder doesn't try to open it, or open it
         // ahead of time, reports it through openFailed and plays black.

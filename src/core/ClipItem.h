@@ -177,7 +177,7 @@ struct ClipItem {
     // clip of a new file takes the nearest 360 clip's (Timeline::insertClip).
     // Unused on a flat clip.
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::New;
     // The new stitcher's seam colour blend (stitch::PreviewStitchConfig::
     // seamColourBlend); used only with Method::New. Shared like lensGuard.
     bool seamColourBlend = true;

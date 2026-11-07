@@ -36,7 +36,7 @@ struct Request {
     insv::LensColour lensColour;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     std::optional<stitch::LensCalibration> lensCalibration;
-    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::New;
     bool seamColourBlend = true;
     bool seamFlow = true;
     // The capture-time correction, as playback has it: on with the

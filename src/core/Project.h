@@ -170,6 +170,11 @@ public:
     // the file's calibration, or with the old stitcher.
     static constexpr int kFormatVersion = 20;
     static constexpr int kStitchFormatVersion = 20;
+    // The stitcher of a clip whose file doesn't name one: the old stitcher,
+    // which was the only one, then the default, until the new stitcher became
+    // the default for new clips. Fixed so a saved project keeps its picture.
+    static constexpr stitch::PreviewStitchConfig::Method kOlderFileStitchMethod =
+        stitch::PreviewStitchConfig::Method::DepthSeam;
     static constexpr int kMotionOverlayFormatVersion = 20;
     static constexpr int kClockFormatVersion = 19;
     static constexpr int kGaugeFormatVersion = 19;

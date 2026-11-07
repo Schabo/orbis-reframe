@@ -100,7 +100,7 @@ public:
         // The clip's stitch settings (ClipItem::lensGuard / stitchMethod /
         // lensCalibration) -- same geometry as the preview.
         stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-        stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+        stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::New;
         bool seamColourBlend = true;
         bool seamFlow = true;
         std::optional<stitch::LensCalibration> lensCalibration;

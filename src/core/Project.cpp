@@ -76,6 +76,7 @@ json previewStitchToJson(const stitch::PreviewStitchConfig &c)
 stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
 {
     stitch::PreviewStitchConfig c; // defaults for any missing field
+    c.method = Project::kOlderFileStitchMethod;
     if (!j.is_object())
         return c;
     c.width = j.value("width", c.width);
@@ -469,7 +470,7 @@ struct ParsedClip {
     insv::LensColour lensColour;
     int lensColourGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
-    stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+    stitch::PreviewStitchConfig::Method stitchMethod = Project::kOlderFileStitchMethod;
     bool seamColourBlend = true;
     bool seamFlow = true;
     std::optional<stitch::LensCalibration> lensCalibration;
@@ -1439,6 +1440,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
     // it's linked to, or {-1, -1}.
     std::vector<std::vector<std::pair<int, int>>> overlayLinks;
     stitch::PreviewStitchConfig parsedStitch;
+    parsedStitch.method = kOlderFileStitchMethod; // a file without "previewStitch"
     OutputSettings parsedOutput;
     bool parsedMainMuted = false;
     struct ParsedTransition {

@@ -687,37 +687,38 @@ void testStitching(const Ctx &c)
         return;
     settle();
     CHECK(seekTo(c, 500));
-    CHECK(guard->currentIndex() == int(G::Premium) && method->currentIndex() == int(M::DepthSeam));
+    // New clips: the new stitcher.
+    CHECK(guard->currentIndex() == int(G::Premium) && method->currentIndex() == int(M::New));
     guard->setCurrentIndex(int(G::None));
     CHECK(c.timeline->clipAt(0).lensGuard == G::None);
     CHECK(c.timeline->clipAt(1).lensGuard == G::Premium); // another file
-    CHECK(waitFor([&] { return lastOpenedWith(c.clipA, G::None, M::DepthSeam); }));
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipA, G::None, M::New); }));
     settle();
     CHECK(seekTo(c, kClipMs + 500));
     CHECK(waitFor([&] { return guard->currentIndex() == int(G::Premium); })); // the second clip's
-    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::DepthSeam); }));
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::New); }));
     method->setCurrentIndex(int(M::FixedSeam));
     CHECK(c.timeline->clipAt(1).stitchMethod == M::FixedSeam &&
           c.timeline->clipAt(0).lensGuard == G::None);
     CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::FixedSeam); }));
     settle();
-    method->setCurrentIndex(int(M::New));
-    CHECK(c.timeline->clipAt(1).stitchMethod == M::New);
-    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::New); }));
+    method->setCurrentIndex(int(M::DepthSeam));
+    CHECK(c.timeline->clipAt(1).stitchMethod == M::DepthSeam);
+    CHECK(waitFor([&] { return lastOpenedWith(c.clipB, G::Premium, M::DepthSeam); }));
     settle();
     all->click();
-    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium && c.timeline->clipAt(0).stitchMethod == M::New);
-    undo->trigger();
-    CHECK(c.timeline->clipAt(0).lensGuard == G::None &&
+    CHECK(c.timeline->clipAt(0).lensGuard == G::Premium &&
           c.timeline->clipAt(0).stitchMethod == M::DepthSeam);
+    undo->trigger();
+    CHECK(c.timeline->clipAt(0).lensGuard == G::None && c.timeline->clipAt(0).stitchMethod == M::New);
     undo->trigger();
     CHECK(c.timeline->clipAt(1).stitchMethod == M::FixedSeam);
     undo->trigger();
-    CHECK(c.timeline->clipAt(1).stitchMethod == M::DepthSeam);
+    CHECK(c.timeline->clipAt(1).stitchMethod == M::New);
     undo->trigger();
     CHECK(c.timeline->clipAt(0).lensGuard == G::Premium);
     CHECK(waitFor([&] {
-        return guard->currentIndex() == int(G::Premium) && method->currentIndex() == int(M::DepthSeam);
+        return guard->currentIndex() == int(G::Premium) && method->currentIndex() == int(M::New);
     }));
 }
 
@@ -779,7 +780,7 @@ void testStitchingWithoutGuards(const Ctx &c)
     undo->trigger();
     CHECK(c.timeline->count() == n);
     CHECK(c.timeline->clipAt(0).lensGuard == G::Premium &&
-          c.timeline->clipAt(0).stitchMethod == M::DepthSeam);
+          c.timeline->clipAt(0).stitchMethod == M::New);
 }
 
 // Direction lock: picking it holds the direction under the playhead, the
@@ -1827,6 +1828,11 @@ void testMeasurementFailureReasons(const Ctx &c)
     Timeline *t = project.timeline();
     const int garbage = t->appendClip(c.clipA, kClipMs, kFps); // not a video at all
     const int flat = t->appendClip(c.mp4, kClipMs, kFps);      // a video, not a 360 one
+    // The old stitcher's measurements: the new stitcher measures nothing per clip.
+    t->setSourceStitch(c.clipA, stitch::PreviewStitchConfig::LensGuard::Premium,
+                       stitch::PreviewStitchConfig::Method::DepthSeam, std::nullopt);
+    t->setSourceStitch(c.mp4, stitch::PreviewStitchConfig::LensGuard::Premium,
+                       stitch::PreviewStitchConfig::Method::DepthSeam, std::nullopt);
     ClipMeasurements measurements(&project, true);
     const auto status = [&](int id) { return measurements.stitchStatus(t->clipById(id)); };
     measurements.schedule();

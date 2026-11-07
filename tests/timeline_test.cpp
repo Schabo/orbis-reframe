@@ -493,6 +493,7 @@ void testInsertLensGuard()
     Timeline tl;
     const int first = tl.appendClip("x2.insv", 10000, 30.0, 2880, 2880, 0, false, none);
     CHECK(tl.clipById(first)->lensGuard == G::None); // not the Premium default
+    CHECK(tl.clipById(first)->stitchMethod == stitch::PreviewStitchConfig::Method::New);
     const int x5 = tl.appendClip("x5.insv", 10000, 30.0, 3840, 3840);
     CHECK(tl.clipById(x5)->lensGuard == G::None); // inherited from the clip before
     tl.setSourceStitch("x5.insv", G::Premium, stitch::PreviewStitchConfig::Method::DepthSeam, std::nullopt);

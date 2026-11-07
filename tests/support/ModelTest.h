@@ -91,3 +91,15 @@ inline int addOverlayAudio(Timeline &tl, int trackId, int overlayId)
     a.linkedClipId = overlayId;
     return tl.insertTrackClip(trackId, a);
 }
+
+// Every 360 clip on the old stitcher, for a test of another feature's
+// format version: a new clip's new stitcher saves as kStitchFormatVersion.
+inline void useOldStitcher(Timeline &tl)
+{
+    for (int i = 0; i < tl.count(); ++i) {
+        const ClipItem &c = tl.clipAt(i);
+        if (!c.flat && c.stitchMethod == stitch::PreviewStitchConfig::Method::New)
+            tl.setSourceStitch(c.sourcePath, c.lensGuard,
+                               stitch::PreviewStitchConfig::Method::DepthSeam, c.lensCalibration);
+    }
+}

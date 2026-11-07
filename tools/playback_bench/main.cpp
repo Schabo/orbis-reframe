@@ -15,15 +15,16 @@
 //               playback (the viewport then renders the view itself).
 //   seek        SeekTo + first ReadFrame at spread-out positions (1920 eq).
 //
-//   The depth-aware seam is on unless --no-depth-seam or --new-stitcher;
-//   "seam" is its cost pass + solve, or the new stitcher's seam colour
-//   blend and seam flow (their measuring pass, the colour fit and the flow;
-//   off with --no-seam-colour-blend / --no-seam-flow), inside each row's
-//   total.
+//   The stitcher is the new one, as a new clip's, unless --depth-seam or
+//   --no-depth-seam (the old one with / without its depth-aware seam);
+//   "seam" is the new stitcher's seam colour blend and seam flow (their
+//   measuring pass, the colour fit and the flow; off with
+//   --no-seam-colour-blend / --no-seam-flow), or the depth-aware seam's
+//   cost pass + solve, inside each row's total.
 //
 // usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]
-//                       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]
-//                       [--no-seam-flow]] <clip.insv>...
+//                       [--depth-seam | --no-depth-seam | --new-stitcher
+//                       [--no-seam-colour-blend] [--no-seam-flow]] <clip.insv>...
 
 #include <LensFrame.h>
 #include <NativeStitchSource.h>
@@ -68,7 +69,7 @@ struct Stats {
 };
 
 constexpr int kWarmup = 5;
-stitch::PreviewStitchConfig::Method gMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
+stitch::PreviewStitchConfig::Method gMethod = stitch::PreviewStitchConfig::Method::New; // as a new clip's
 bool gSeamColourBlend = true;
 bool gSeamFlow = true;
 
@@ -294,7 +295,8 @@ void benchSeek(const std::string& path, int64_t durationMs, int eqW) {
 
 const char kUsage[] =
     "usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]\n"
-    "       [--no-depth-seam | --new-stitcher [--no-seam-colour-blend] [--no-seam-flow]]\n"
+    "       [--depth-seam | --no-depth-seam | --new-stitcher [--no-seam-colour-blend]\n"
+    "       [--no-seam-flow]]\n"
     "       <clip.insv>...\n";
 
 } // namespace
@@ -313,6 +315,8 @@ int main(int argc, char** argv) {
         const std::string a = argv[i];
         if (a == "--frames" && i + 1 < argc) {
             frames = std::atoi(argv[++i]);
+        } else if (a == "--depth-seam") {
+            gMethod = stitch::PreviewStitchConfig::Method::DepthSeam;
         } else if (a == "--no-depth-seam") {
             gMethod = stitch::PreviewStitchConfig::Method::FixedSeam;
         } else if (a == "--new-stitcher") {

@@ -649,6 +649,7 @@ void testStabConfig()
         const int id = p.timeline()->appendClip("a.insv", 1000, 30.0);
         p.timeline()->setClipStabilization(id, lean);
         CHECK(p.timeline()->clipAt(0).stabilization == lean);
+        useOldStitcher(*p.timeline());
         QString err;
         CHECK(p.save(projFile, &err));
     }
@@ -681,6 +682,7 @@ void testStabConfig()
         Project p;
         const int id = p.timeline()->appendClip("a.insv", 20000, 30.0);
         p.timeline()->setClipStabilization(id, dir);
+        useOldStitcher(*p.timeline());
         QString err;
         CHECK(p.save(dirFile, &err));
     }
@@ -980,6 +982,7 @@ void testPerClipStabilization()
         const int a = p.timeline()->appendClip("a.insv", 10000, 30.0);
         p.timeline()->appendClip("b.insv", 10000, 30.0);
         p.timeline()->setClipStabilization(a, level);
+        useOldStitcher(*p.timeline());
         QString err;
         CHECK(p.save(file, &err));
         QFile f(file);
