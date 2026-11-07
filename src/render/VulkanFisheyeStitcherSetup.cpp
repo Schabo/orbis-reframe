@@ -150,7 +150,8 @@ bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std
     const insv::SeamFlowField* want = p.seamFlow && !p.seamFlow->empty() ? p.seamFlow.get() : nullptr;
     const bool gpu = !want && p.seamFlowGpu && p.seamFlowCols > 0 && p.seamFlowRows > 0;
     const int W = want ? want->grid.cols : gpu ? p.seamFlowCols : (flowImg ? flowW : 1);
-    const int H = want ? want->grid.rows : gpu ? p.seamFlowRows : (flowImg ? flowH : 1);
+    // A grid's rows and the fade's row under them (the texture's last).
+    const int H = want ? want->grid.rows + 1 : gpu ? p.seamFlowRows + 1 : (flowImg ? flowH : 1);
     if (!flowImg || W != flowW || H != flowH) {
         idleBeforeFree();
         if (flowView) vkDestroyImageView(device, flowView, nullptr);
@@ -241,8 +242,15 @@ bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std
     uint16_t* dst = static_cast<uint16_t*>(flowStageMap);
     if (want) {
         const float* src = want->v.data();
-        for (size_t k = 0, n = static_cast<size_t>(W) * H * 4; k < n; ++k)
+        const size_t n = static_cast<size_t>(W) * (H - 1) * 4;
+        for (size_t k = 0; k < n; ++k)
             dst[k] = ToHalf(src[k]);
+        // The fade's row: its share per column, the whole band without one.
+        const bool fade = static_cast<int>(want->fade.size()) == W;
+        for (int x = 0; x < W; ++x) {
+            dst[n + 4 * x] = ToHalf(fade ? want->fade[x] : 1.0f);
+            dst[n + 4 * x + 1] = dst[n + 4 * x + 2] = dst[n + 4 * x + 3] = 0;
+        }
         flowHeld = p.seamFlow;
     } else {
         std::memset(dst, 0, bytes);

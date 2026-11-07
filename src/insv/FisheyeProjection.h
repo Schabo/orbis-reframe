@@ -265,7 +265,8 @@ struct StitchGpuParams {
     int seamColourActive = 0;
     float seamColour[kSeamDepthBins][3] = {};
     // ... and the veiling light it takes out (SeamColourWindow::solve's
-    // `veil`: per bin R G B, linear, lens 0 less lens 1), with it.
+    // `veil`: per bin R G B, linear, lens 0 less lens 1), with it; it also
+    // sets the fade between the lenses (SeamVeilFade).
     float seamVeil[kSeamDepthBins][3] = {};
     // The new stitcher's seam flow (SeamFlow.h). Its grid (SeamFlowGrid;
     // cols 0 = no seam flow), which the GPU's strip pass measures on, and
@@ -307,7 +308,9 @@ public:
     // new stitcher's seam colour blend (seamColourLog) and `seamVeil`
     // (StitchGpuParams::seamVeil's, null = none) the veiling light it takes
     // out (seamVeil); `flow` (null or empty = none) its seam flow
-    // (seamFlowRay).
+    // (seamFlowRay). With both and the flow's fade (SeamFlowField::fade) the
+    // lenses meet in its narrow fade, widened where the field's fade or the
+    // veiling light (SeamVeilFade) says; else the plain cross-fade.
     void renderEquirect(const Image& lens0, const Image& lens1, Image& out,
                         const float* seamQ = nullptr, const SeamBlend* blend = nullptr,
                         const BlurQuadFrame* blur = nullptr, int blurCount = 0,
@@ -366,10 +369,16 @@ public:
     // circle edge): from dir's own off-axis angle, whatever the depth.
     double seamBlendWeight(int lens, const Vec3& dir) const;
     // Both lenses' blend weights for `dir` with the per-bin `blend` (seam
-    // feather only): the fade from dir's elevation off the seam circle. The
-    // plain cross-fade (seamBlendWeight) when depthSeam is off, `blend` is
-    // null or not measured yet.
-    void seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const;
+    // feather only; the depth-aware seam's cut, or the new stitcher's
+    // SeamVeilFade): the fade from dir's elevation off the seam circle. The
+    // plain cross-fade (seamBlendWeight) when `blend` is null or not
+    // measured yet. With `fadeField`'s fade (the new stitcher's, SeamFade.h)
+    // the half-width is the wider of the bin's and the field's there.
+    void seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2],
+                          const SeamFlowField* fadeField = nullptr) const;
+    // The field's fade share (SeamFlowField::fade) at dir's azimuth,
+    // linear between columns; 1 (the whole band) without one.
+    double seamFadeShare(const Vec3& dir, const SeamFlowField& f) const;
     // Each lens's log gain per channel for `dir` from the clip's lens colour
     // and the frame's residual and local correction (`blend`, null = none;
     // the local one in the band, faded out over kLensColourLocalRampDeg past

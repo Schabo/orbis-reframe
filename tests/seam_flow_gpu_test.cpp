@@ -3,13 +3,17 @@
 // synthetic strips: a whole-strip shift is found both ways, across the
 // strips' azimuth wrap too, and despite a brightness difference between the
 // lenses; a shift in one part of the strip stays there; the window averages
-// the frames it holds and starts again after a reset. Where the CPU's
+// the frames it holds and starts again after a reset; the fade between the
+// lenses widens where one lens is brighter near the seam, and only there, as
+// the CPU's (insv::SeamFadeWindow) on the same strips and field. Where the CPU's
 // estimator is built (OpenCV), the two agree on a near thing crossing the
 // seam.
 // Standalone; the exit code is the failure count, 77 (skipped) without a
 // Vulkan device.
 
 #include "VulkanFisheyeStitcher.h"
+
+#include <SeamFade.h>
 
 #ifdef ORBIS_SEAM_FLOW
 #include <SeamFlowEstimator.h>
@@ -352,6 +356,50 @@ void testBrightSky(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 #endif
 }
 
+void testFade(render::VulkanFisheyeStitcher& gpu, const Texture& t)
+{
+    // Lens 1 the same picture, 40 grey levels brighter round x = 1000 (the
+    // haze the sun lays over one lens): the fade takes the whole band there
+    // and stays narrow away from it; the CPU's from the same strips and the
+    // GPU's own field agrees.
+    auto none = [](int, int, double& dx, double& dy) { dx = dy = 0.0; };
+    insv::SeamFlowStrips s = Strips(t, none);
+    const int C = s.grid.cols;
+    for (int y = 0; y < s.grid.rows; ++y)
+        for (int x = 950; x < 1050; ++x) {
+            uint8_t& v = s.grey[1][static_cast<size_t>(y) * C + x];
+            v = Grey(v + 40.0);
+        }
+    gpu.resetSeamFlow();
+    insv::SeamFlowField g;
+    std::string err;
+    insv::StitchGpuParams p;
+    p.seamFlowCols = C;
+    p.seamFlowRows = s.grid.rows;
+    if (!Estimate(gpu, s, g) || !gpu.solveSeamFade(p, err) || !gpu.readSeamFlow(g, err)) {
+        std::printf("FAIL  seam fade: %s\n", err.c_str());
+        ++g_failures;
+        return;
+    }
+    CHECK(static_cast<int>(g.fade.size()) == C);
+    if (static_cast<int>(g.fade.size()) != C)
+        return;
+    CHECK(g.fade[1000] > 0.95f);
+    CHECK(g.fade[2000] < 0.02f && g.fade[300] < 0.02f);
+    insv::SeamFadeFrame f;
+    insv::MeasureSeamFadeFrame(s, g, f);
+    insv::SeamFadeWindow w;
+    w.add(std::move(f));
+    std::vector<float> cpu;
+    const float colour[insv::kSeamDepthBins * 3] = {};
+    w.solve(colour, cpu);
+    double worst = 0.0;
+    for (int x = 0; x < C; ++x)
+        worst = std::max(worst, std::fabs(static_cast<double>(cpu[x]) - g.fade[x]));
+    std::printf("  fade GPU vs CPU: largest difference %.4f\n", worst);
+    CHECK(worst < 0.01);
+}
+
 #ifdef ORBIS_SEAM_FLOW
 void testAgreesWithCpu(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 {
@@ -405,6 +453,7 @@ int main()
     testWindow(gpu, t);
     testWindowOrder(gpu, t);
     testBrightSky(gpu, t);
+    testFade(gpu, t);
 #ifdef ORBIS_SEAM_FLOW
     testAgreesWithCpu(gpu, t);
 #endif

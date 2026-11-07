@@ -196,8 +196,13 @@ public:
     // tools. Blocking.
     bool estimateSeamFlow(const insv::SeamFlowStrips& s, std::string& err);
     // The flow texture read back (the window's mean; the field the GPU
-    // stitch samples, at half precision). For tests and tools.
+    // stitch samples, at half precision; and the fade's row as the last
+    // stitch left it). For tests and tools.
     bool readSeamFlow(insv::SeamFlowField& out, std::string& err);
+    // The fade's row solved from the window with `params`' seam colour
+    // blend (its seamColour), as a stitch with the GPU's own field does
+    // before it samples the texture; for tests and tools. Blocking.
+    bool solveSeamFade(const insv::StitchGpuParams& params, std::string& err);
 
     // Whether renderViewVk() is usable (the fused view pipeline built -- needs
     // initAdopt(); fisheye_view_nv12.comp).

@@ -43,7 +43,13 @@ no background analysis, and selectable in the Stitching section's
   strips are bright and featureless (clipped sky, the sun's veil) both get
   the same fixed pattern first, so the flow there stays zero instead of
   arbitrary and doesn't drag the scene beside it round. A setting of its
-  own. The flow is Dense Inverse Search (DIS) in a compute shader, the
+  own. With it and the seam colour blend, the lenses meet in a narrow
+  fade (±0.75°) on the seam instead of the template's cross-fade over
+  the whole band, which mixes both lenses at their softest; per stretch
+  of the seam the fade widens to the whole band where the lenses still
+  differ near the seam after the flow and the colour match (the sun's
+  haze and rays in one lens, a near thing the flow can't line up), from
+  the frame and the four before it. The flow is Dense Inverse Search (DIS) in a compute shader, the
   same on every GPU (OpenCV's DIS on the CPU stitch fallback). NVIDIA's
   flow hardware (`VK_NV_optical_flow`) is left out for now: on strips this
   small the shader is fast enough, and the hardware would make an export

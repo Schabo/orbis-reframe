@@ -245,14 +245,23 @@ void SeamLocalCorrection(const SeamCutStats& clean, double bandRad, const LensCo
         }
 }
 
-void SeamCutBlend(const int* row, const float* width, double bandRad, SeamBlend& blend)
+double SeamFadeRad(double share, double bandRad)
 {
     const double narrow = std::min(kSeamCutFadeDeg * kDeg, bandRad);
+    return narrow + (bandRad - narrow) * share;
+}
+
+double SeamVeilShare(double veilGreen)
+{
+    return std::min(1.0, std::fabs(veilGreen) / kLensVeilWide);
+}
+
+void SeamCutBlend(const int* row, const float* width, double bandRad, SeamBlend& blend)
+{
     for (int b = 0; b < kSeamDepthBins; ++b) {
-        const double s = std::max(static_cast<double>(width[b]),
-                                  std::min(1.0, std::fabs(blend.veil[b][1]) / kLensVeilWide));
+        const double s = std::max(static_cast<double>(width[b]), SeamVeilShare(blend.veil[b][1]));
         blend.cut[b] = static_cast<float>(SeamCutRowE(row[b], bandRad) * (1.0 - s));
-        blend.fade[b] = static_cast<float>(narrow + (bandRad - narrow) * s);
+        blend.fade[b] = static_cast<float>(SeamFadeRad(s, bandRad));
     }
 }
 

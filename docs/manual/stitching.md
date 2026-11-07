@@ -147,7 +147,7 @@ greyed out in builds made without OpenCV's chart detection.
   twice where the pictures meet.
 - **New stitcher (experimental)**: the stitcher that will replace the other
   two, still being built. It joins the pictures from the lens model (the
-  camera file's, or your calibration) with a fixed blend, and works out
+  camera file's, or your calibration), and works out
   anything more from each frame and the ones just before it, not from the
   clip as a whole: the seam alignment and lens colour below aren't used with it. So
   far that is the colour where the lenses meet (*Seam colour blend* below)
@@ -182,6 +182,17 @@ of what is left. It goes by the frame and the one before it, since the haze
 moves with the sun in the lens as the camera turns. Further into that lens
 the haze stays (the other lens can't see there, so nothing says how much
 there is). The rays and coloured blobs of flare are left as they are.
+
+With **Seam colour blend** and **Seam flow** both on, the two pictures
+meet in a narrow blend, about a degree and a half wide, right on the
+seam. A wide blend would mix both lenses where each is at its softest,
+near the edge of its picture, and blur the seam. Where the lenses still
+show different pictures there -- the haze and the rays the sun puts into
+one lens only, something close that the seam flow can't line up -- a
+narrow blend would draw a line along the seam, so along that stretch the
+blend widens to the whole overlap. It widens as soon as such a difference
+appears and narrows again over a few frames, so it doesn't flicker. With
+either setting off, the pictures are blended over the whole overlap.
 
 When you jump to a frame, orbis-reframe looks at the quarter second before it as
 it gets there, so a frame looks the same however you get to it: played,

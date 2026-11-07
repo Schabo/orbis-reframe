@@ -30,6 +30,10 @@ enum SeamFlowPass : int32_t {
     kAverage = 7,
     kAnchorMean = 8,
     kAnchor = 9,
+    kFadeMeans = 10,
+    kFadeShare = 11,
+    kFadeSpread = 12,
+    kFadeSmooth = 13,
 };
 
 struct SeamFlowPush {
@@ -44,8 +48,17 @@ struct SeamFlowPush {
     int32_t slot, count;
     float radX, radY, sx;
     int32_t anchor;
+    float reach;
+    int32_t fadeMeans, fadeColour, fadeRaw, fadeMax, fadeN, fadeRow0;
 };
-static_assert(sizeof(SeamFlowPush) == 88, "SeamFlowPush must match seam_flow.comp's push constants");
+static_assert(sizeof(SeamFlowPush) == 116, "SeamFlowPush must match seam_flow.comp's push constants");
+// seam_flow.comp's fade passes' constants.
+static_assert(insv::kSeamFadeRowStep == 2 && insv::kSeamFadePatchW == 11 && insv::kSeamFadePatchH == 5,
+              "seam_flow.comp's FADE_ROW_STEP / FADE_PATCH_W / FADE_PATCH_H");
+static_assert(insv::kSeamFadeLo == 12.0 && insv::kSeamFadeHi == 30.0 &&
+                  insv::kSeamFadeSpreadDeg == 1.5 && insv::kSeamFadeSmoothDeg == 1.5,
+              "seam_flow.comp's FADE_LO / FADE_HI / FADE_SPREAD_DEG / FADE_SMOOTH_DEG");
+static_assert(insv::kSeamDepthBins == 128, "seam_flow.comp's FADE_BINS");
 static_assert(insv::kSeamFlowFrames == 5, "seam_flow.comp's RING is the window's length");
 
 // DIS at OpenCV's fast preset (what the CPU estimator runs): the finest
@@ -174,7 +187,7 @@ bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const insv::StitchGpuParams& p,
     if (!buildSeamFlowPipeline(err) ||
         !ensureStrips(static_cast<VkDeviceSize>(cols) * rows * 2, err) || !ensureFlow(grid, err))
         return false;
-    if (flowW != cols || flowH != rows) {
+    if (flowW != cols || flowH != rows + 1) {
         err = "seam flow texture isn't the grid's size";
         return false;
     }
@@ -214,6 +227,22 @@ bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const insv::StitchGpuParams& p,
         // The anchored strips and their box means, both lenses.
         sf.anchor = at;
         at += 4 * cols * rows;
+        // The fade's patch means per ring slot, its colour table and shares.
+        insv::SeamFlowGrid g;
+        g.cols = cols;
+        g.rows = rows;
+        g.stripRad = p.seamFlowStripRad;
+        g.reachRad = p.seamFlowReachRad;
+        sf.fadeN = insv::SeamFadeRows(g);
+        sf.fadeRow0 = insv::SeamFadeRowY(g, 0);
+        sf.fadeMeans = at;
+        at += insv::kSeamFlowFrames * 2 * sf.fadeN * cols;
+        sf.fadeColour = at;
+        at += insv::kSeamDepthBins * 3;
+        sf.fadeRaw = at;
+        at += cols;
+        sf.fadeMax = at;
+        at += cols;
         if (!makeBuffer(static_cast<VkDeviceSize>(at) * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sf.work, sf.workMem, nullptr) ||
             !makeBuffer(static_cast<VkDeviceSize>(insv::kSeamFlowFrames) * fin.W * fin.H * 16,
@@ -282,6 +311,13 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
         p.radY = sf.radY;
         p.sx = sc.sx;
         p.anchor = sf.anchor;
+        p.reach = sf.reachRad;
+        p.fadeMeans = sf.fadeMeans;
+        p.fadeColour = sf.fadeColour;
+        p.fadeRaw = sf.fadeRaw;
+        p.fadeMax = sf.fadeMax;
+        p.fadeN = sf.fadeN;
+        p.fadeRow0 = sf.fadeRow0;
         return p;
     };
     auto run = [&](SeamFlowPush p, int32_t pass, uint32_t gx, uint32_t gy, uint32_t gz) {
@@ -339,10 +375,72 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
     ib.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &ib);
+    // The fade's patch means of this frame, warped by the field just
+    // averaged, into its ring slot.
+    if (sf.fadeN > 0) {
+        barrier();
+        run(push(fin, nullptr), kFadeMeans, Groups(sf.cols * sf.fadeN), 1, 1);
+        barrier();
+    }
     flowFresh = false;
     flowHeld.reset(); // the texture is the GPU's field now, not a CPU one
     sf.slot = (sf.slot + 1) % insv::kSeamFlowFrames;
     sf.count = std::min(sf.count + 1, insv::kSeamFlowFrames);
+}
+
+void VulkanFisheyeStitcher::Impl::recordSeamFade(VkCommandBuffer c, const insv::StitchGpuParams& p)
+{
+    const bool gpuField = !(p.seamFlow && !p.seamFlow->empty()) && p.seamFlowGpu;
+    if (!p.seamColourActive || !gpuField || !sf.pipeline || sf.fadeN <= 0 || sf.count <= 0 ||
+        !flowImg || flowW != sf.cols || flowH != sf.rows + 1)
+        return;
+    float colour[insv::kSeamDepthBins * 3];
+    std::memcpy(colour, &p.seamColour[0][0], sizeof colour);
+    VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    mb.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &mb, 0,
+                         nullptr, 0, nullptr);
+    vkCmdUpdateBuffer(c, sf.work, static_cast<VkDeviceSize>(sf.fadeColour) * sizeof(float), sizeof colour,
+                      colour);
+    auto barrier = [&](VkAccessFlags src, VkPipelineStageFlags from) {
+        VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        b.srcAccessMask = src;
+        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(c, from, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &b, 0, nullptr, 0, nullptr);
+    };
+    // The texture's other users sample it in GENERAL; the fade row is
+    // written as a storage image.
+    barrier(VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    vkCmdBindPipeline(c, VK_PIPELINE_BIND_POINT_COMPUTE, sf.pipeline);
+    vkCmdBindDescriptorSets(c, VK_PIPELINE_BIND_POINT_COMPUTE, sf.layout, 0, 1, &sf.set, 0, nullptr);
+    SeamFlowPush q{};
+    q.cols = sf.cols;
+    q.rows = sf.rows;
+    q.slot = (sf.slot + insv::kSeamFlowFrames - 1) % insv::kSeamFlowFrames; // the newest
+    q.count = sf.count;
+    q.radX = sf.radX;
+    q.radY = sf.radY;
+    q.reach = sf.reachRad;
+    q.fadeMeans = sf.fadeMeans;
+    q.fadeColour = sf.fadeColour;
+    q.fadeRaw = sf.fadeRaw;
+    q.fadeMax = sf.fadeMax;
+    q.fadeN = sf.fadeN;
+    q.fadeRow0 = sf.fadeRow0;
+    for (int32_t pass : {kFadeShare, kFadeSpread, kFadeSmooth}) {
+        q.pass = pass;
+        vkCmdPushConstants(c, sf.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(q), &q);
+        vkCmdDispatch(c, Groups(sf.cols), 1, 1);
+        barrier(VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    }
+    // The fade row for every stage that samples the texture.
+    VkMemoryBarrier rb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    rb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    rb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &rb,
+                         0, nullptr, 0, nullptr);
 }
 
 void VulkanFisheyeStitcher::resetSeamFlow()
@@ -437,14 +535,27 @@ bool VulkanFisheyeStitcher::estimateSeamFlow(const insv::SeamFlowStrips& s, std:
     return ok;
 }
 
+bool VulkanFisheyeStitcher::solveSeamFade(const insv::StitchGpuParams& params, std::string& err)
+{
+    if (!m_ready || d->sf.count <= 0) {
+        err = "solveSeamFade: no GPU seam flow";
+        return false;
+    }
+    insv::StitchGpuParams p = params;
+    p.seamColourActive = 1;
+    p.seamFlow.reset();
+    p.seamFlowGpu = true;
+    return d->submitOnce([&](VkCommandBuffer c) { d->recordSeamFade(c, p); }, err);
+}
+
 bool VulkanFisheyeStitcher::readSeamFlow(insv::SeamFlowField& out, std::string& err)
 {
     out.v.clear();
-    if (!m_ready || !d->flowImg || d->sf.cols != d->flowW || d->sf.rows != d->flowH) {
+    if (!m_ready || !d->flowImg || d->sf.cols != d->flowW || d->sf.rows + 1 != d->flowH) {
         err = "readSeamFlow: no GPU seam flow";
         return false;
     }
-    const int W = d->flowW, H = d->flowH;
+    const int W = d->flowW, H = d->flowH; // the grid's rows and the fade's
     VkBuffer buf = VK_NULL_HANDLE;
     VkDeviceMemory mem = VK_NULL_HANDLE;
     void* map = nullptr;
@@ -480,13 +591,16 @@ bool VulkanFisheyeStitcher::readSeamFlow(insv::SeamFlowField& out, std::string& 
     }, err);
     if (ok) {
         out.grid.cols = W;
-        out.grid.rows = H;
-        out.grid.stripRad = static_cast<float>(-d->sf.radY * (H - 1) / 2.0);
+        out.grid.rows = H - 1;
+        out.grid.stripRad = static_cast<float>(-d->sf.radY * (H - 2) / 2.0);
         out.grid.reachRad = d->sf.reachRad;
-        out.v.resize(static_cast<size_t>(W) * H * 4);
+        out.v.resize(static_cast<size_t>(W) * (H - 1) * 4);
         const uint16_t* h = static_cast<const uint16_t*>(map);
         for (size_t k = 0; k < out.v.size(); ++k)
             out.v[k] = FromHalf(h[k]);
+        out.fade.resize(W);
+        for (int x = 0; x < W; ++x)
+            out.fade[x] = FromHalf(h[out.v.size() + 4 * x]);
     }
     vkUnmapMemory(d->device, mem);
     vkDestroyBuffer(d->device, buf, nullptr);

@@ -34,11 +34,14 @@
 // stretch of the seam as the old stitcher does (LensVeilPerBin) and taken
 // out of the frame's measurement before the colour is, so the colour blend
 // matches what is left; the stitch takes it out of that lens too, in the
-// band and kLensColourLocalRampDeg past it (FisheyeStitcher::seamVeil). The
-// old stitcher also widens its cross-fade there; the new one's already spans
-// the whole band. Averaged over
-// kSeamVeilWindowMs only: it follows the sun's direction in the lens, which
-// moves as fast as the camera turns.
+// band and kLensColourLocalRampDeg past it (FisheyeStitcher::seamVeil).
+// Averaged over kSeamVeilWindowMs only: it follows the sun's direction in
+// the lens, which moves as fast as the camera turns.
+//
+// With the seam flow too, the lenses meet in a narrow fade on the seam
+// circle (SeamFade.h), widened where they still differ there; where one
+// lens has veiling light also (SeamVeilFade), as the old stitcher's
+// (SeamCutBlend).
 //
 // Only the frames before it, so playback has them as it plays, and a seek
 // measures that window before the frame it goes to (stitch::
@@ -84,6 +87,11 @@ struct SeamColourTuning {
     double spreadFactor = 3.0;  // a bin whose cells disagree this many times the frame's typical
     double spreadFloor = 0.02;  // ... (and by more than this, log) is left out
 };
+
+// The fade between the lenses per bin from the veiling light (solve's
+// `veil` layout): into blend.fade (radians), SeamFadeRad of SeamVeilShare,
+// centred on the seam circle (blend.cut 0); the rest of `blend` untouched.
+void SeamVeilFade(const float* veil, double bandRad, SeamBlend& blend);
 
 // One frame's measurement per bin and channel: the log ratio lens 0 / lens 1
 // (`value`) and how much it stands on (`weight`, unclipped samples; 0 = left

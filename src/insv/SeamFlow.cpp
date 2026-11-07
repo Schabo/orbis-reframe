@@ -214,6 +214,7 @@ void SeamFlowWindow::add(SeamFlowField f)
 void SeamFlowWindow::solve(SeamFlowField& out) const
 {
     out.v.clear();
+    out.fade.clear();
     if (frames_.empty())
         return;
     out.grid = frames_.back().grid;

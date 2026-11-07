@@ -10,6 +10,7 @@
 #include <FramePts.h>          // insv::FramePts
 #include <SeamWindow.h>        // insv::SeamWindow (value member below)
 #include <SeamColourBlend.h>   // insv::SeamColourBlend (value member below)
+#include <SeamFade.h>          // insv::SeamFadeWindow (value member below)
 #include <SeamFlow.h>          // insv::SeamFlowWindow (value member below)
 
 #include <functional>
@@ -344,6 +345,9 @@ private:
     insv::SeamFlowGrid seam_flow_grid_;
     bool seam_flow_gpu_ = false;
     insv::SeamFlowWindow seam_flow_window_;
+    // With the seam colour blend, its frames' patch means for the fade
+    // between the lenses (SeamFade.h), alongside the flow's.
+    insv::SeamFadeWindow seam_fade_window_;
     std::shared_ptr<const insv::SeamFlowField> seam_flow_field_;
     std::unique_ptr<insv::SeamFlowStrips> seam_flow_strips_; // a frame's strips (scratch)
     // Shared, not unique: its deleter comes with it from where it's made,

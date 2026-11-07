@@ -175,6 +175,8 @@ add_library(insv STATIC
     src/insv/LensColour.cpp
     src/insv/SeamColourBlend.h
     src/insv/SeamColourBlend.cpp
+    src/insv/SeamFade.h
+    src/insv/SeamFade.cpp
     src/insv/SeamFlow.h
     src/insv/SeamFlow.cpp
     src/insv/Ycbcr.h

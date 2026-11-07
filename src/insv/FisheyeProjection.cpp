@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "FisheyeProjection.h"
 #include "SeamColourBlend.h"
+#include "SeamCut.h"
 #include "SeamFlow.h"
 
 #include <algorithm>
@@ -262,6 +263,23 @@ Vec3 FisheyeStitcher::lensRay(int lens, const Vec3& dir, double q) const
     return normalize(Vec3{dir.x - q * c.x, dir.y - q * c.y, dir.z - q * c.z});
 }
 
+double FisheyeStitcher::seamFadeShare(const Vec3& dir, const SeamFlowField& f) const
+{
+    const int C = f.grid.cols;
+    if (static_cast<int>(f.fade.size()) != C || C <= 0)
+        return 1.0;
+    double phi = std::atan2(dir.x * m_seamV.x + dir.y * m_seamV.y + dir.z * m_seamV.z,
+                            dir.x * m_seamU.x + dir.y * m_seamU.y + dir.z * m_seamU.z);
+    if (phi < 0)
+        phi += 2.0 * kPi;
+    const double x = f.grid.xOf(phi);
+    const double fx = std::floor(x);
+    const double a = x - fx;
+    const int x0 = ((static_cast<int>(fx) % C) + C) % C;
+    const int x1 = (x0 + 1) % C;
+    return f.fade[x0] * (1.0 - a) + f.fade[x1] * a;
+}
+
 Vec3 FisheyeStitcher::seamFlowRay(int lens, const Vec3& dir, const SeamFlowField& f) const
 {
     const SeamFlowGrid& g = f.grid;
@@ -436,13 +454,14 @@ double FisheyeStitcher::seamBlendWeight(int lens, const Vec3& dir) const
     return seamWeight(std::acos(std::clamp(c, -1.0, 1.0)), m_thetaSeamRad, m_bandRad);
 }
 
-void FisheyeStitcher::seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2]) const
+void FisheyeStitcher::seamBlendWeights(const Vec3& dir, const SeamBlend* blend, double w[2],
+                                       const SeamFlowField* fadeField) const
 {
     double e = 0, t = 0;
     int i0 = 0, i1 = 0;
-    if (m_params.depthSeam && blend)
+    if (blend)
         seamPosition(dir, e, i0, i1, t);
-    if (!m_params.depthSeam || !blend || blend->fade[i0] <= 0.0f || blend->fade[i1] <= 0.0f) {
+    if (!blend || blend->fade[i0] <= 0.0f || blend->fade[i1] <= 0.0f) {
         w[0] = seamBlendWeight(0, dir);
         w[1] = seamBlendWeight(1, dir);
         return;
@@ -450,7 +469,9 @@ void FisheyeStitcher::seamBlendWeights(const Vec3& dir, const SeamBlend* blend, 
     // The cross-fade's cosine ramp (seamWeight), centred on the bin's cut
     // with its own half-width; the two weights add up to 1.
     const double cut = blend->cut[i0] * (1.0 - t) + blend->cut[i1] * t;
-    const double fade = blend->fade[i0] * (1.0 - t) + blend->fade[i1] * t;
+    double fade = blend->fade[i0] * (1.0 - t) + blend->fade[i1] * t;
+    if (fadeField && !fadeField->fade.empty())
+        fade = std::max(fade, SeamFadeRad(seamFadeShare(dir, *fadeField), m_bandRad));
     const double x = (e - cut) / fade;
     w[0] = x >= 1.0 ? 1.0 : x <= -1.0 ? 0.0 : 0.5 * (1.0 + std::sin(0.5 * kPi * x));
     w[1] = 1.0 - w[0];
@@ -566,11 +587,20 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
     const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
     std::atomic<int> nextRow{0};
 
+    // The fade between the lenses: the depth-aware seam's cut, or with the
+    // new stitcher's seam colour blend the narrow fade its veiling light
+    // widens (SeamVeilFade), else the plain cross-fade.
+    const bool narrow = !m_params.depthSeam && seamVeil && flow && !flow->fade.empty();
+    SeamBlend veilFade;
+    if (narrow)
+        SeamVeilFade(seamVeil, m_bandRad, veilFade);
+    const SeamBlend* fade = m_params.depthSeam ? blend : narrow ? &veilFade : nullptr;
+
     // The blended lenses at stitch-world direction `dir`, [0, 255].
     auto shade = [&](const Vec3& dir, double rgb[3]) {
         const double q = seamQAt(dir, seamQ);
         double ws[2], lg[2][3], veil[2][3];
-        seamBlendWeights(dir, blend, ws);
+        seamBlendWeights(dir, fade, ws, narrow ? flow : nullptr);
         lensLogGains(dir, m_params.depthSeam ? blend : nullptr, lg, veil);
         if (seamVeil)
             this->seamVeil(dir, seamVeil, veil);

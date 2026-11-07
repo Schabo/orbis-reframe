@@ -140,4 +140,11 @@ void SeamLocalCorrection(const SeamCutStats& clean, double bandRad, const LensCo
 // much) fades across the band instead of meeting the other lens on a line.
 void SeamCutBlend(const int* row, const float* width, double bandRad, SeamBlend& blend);
 
+// The fade's half-width for a share of the band (0 the narrow fade,
+// kSeamCutFadeDeg, .. 1 the whole band), radians.
+double SeamFadeRad(double share, double bandRad);
+// The share a stretch's veiling light (its green, lens 0 less lens 1,
+// linear) widens the fade to: the whole band from kLensVeilWide.
+double SeamVeilShare(double veilGreen);
+
 } // namespace insv

@@ -18,6 +18,7 @@
 #include "SeamAlignment.h"
 #include "SeamColourBlend.h"
 #include "SeamCut.h"
+#include "SeamFade.h"
 #include "SeamDepth.h"
 #include "SeamFlow.h"
 #include "SeamWindow.h"
@@ -941,12 +942,51 @@ void testSeamBlend()
         }
     }
 
-    // Off: the blend is ignored.
+    // Off: the render ignores the blend -- the plain cross-fade, as without
+    // one; with the new stitcher's seam colour blend that too, unless its
+    // seam flow brings a fade: its narrow one then.
     insv::FisheyeStitcher off;
     CHECK(off.configure(c, 3840, 3840, insv::StitchParams{}));
-    const insv::Vec3 d = off.seamDir(phi, 0.2 * kDeg);
-    off.seamBlendWeights(d, &narrow, w);
-    CHECK(w[0] == off.seamBlendWeight(0, d) && w[1] == off.seamBlendWeight(1, d));
+    insv::Image l0, l1;
+    l0.alloc(3840, 3840);
+    l1.alloc(3840, 3840);
+    std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t{200});
+    std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t{50});
+    const insv::Image plain = off.renderEquirect(l0, l1, 512);
+    insv::Image withBlend;
+    withBlend.alloc(512, 256);
+    off.renderEquirect(l0, l1, withBlend, nullptr, &narrow);
+    CHECK(withBlend.rgb == plain.rgb);
+    const std::vector<float> noVeil(insv::kSeamDepthBins * 3, 0.0f), noColour = noVeil;
+    insv::Image colourOnly;
+    colourOnly.alloc(512, 256);
+    off.renderEquirect(l0, l1, colourOnly, nullptr, nullptr, nullptr, 0, noColour.data(), nullptr,
+                       noVeil.data());
+    CHECK(colourOnly.rgb == plain.rgb);
+    // A still flow field whose fade is narrow everywhere: fewer mixed
+    // pixels, only those within the narrow fade.
+    insv::SeamFlowField still;
+    still.grid = insv::SeamFlowGridFor(off);
+    still.v.assign(static_cast<size_t>(still.grid.rows) * still.grid.cols * 4, 0.0f);
+    still.fade.assign(still.grid.cols, 0.0f);
+    insv::Image narrowFade;
+    narrowFade.alloc(512, 256);
+    off.renderEquirect(l0, l1, narrowFade, nullptr, nullptr, nullptr, 0, noColour.data(), &still,
+                       noVeil.data());
+    auto mixed = [](const insv::Image& im) {
+        int n = 0;
+        for (size_t i = 0; i < im.rgb.size(); i += 3)
+            n += im.rgb[i] > 52 && im.rgb[i] < 198;
+        return n;
+    };
+    CHECK(mixed(narrowFade) > 0 && mixed(narrowFade) * 4 < mixed(plain));
+    // ... and where its fade takes the whole band, the plain cross-fade's
+    // share of mixed pixels again (up to the lens axes being a little off
+    // the seam frame's).
+    still.fade.assign(still.grid.cols, 1.0f);
+    off.renderEquirect(l0, l1, narrowFade, nullptr, nullptr, nullptr, 0, noColour.data(), &still,
+                       noVeil.data());
+    CHECK(std::abs(mixed(narrowFade) - mixed(plain)) * 10 < mixed(plain));
 }
 
 namespace {
@@ -1482,6 +1522,182 @@ void testSeamColourBlend()
                 moved += veiled.rgb[o + 1] != plain.rgb[o + 1] || veiled.rgb[o] != plain.rgb[o];
         }
     CHECK(darker > 50 && moved == 0);
+}
+
+// The fade from the lenses' difference near the seam after the seam flow
+// (SeamFade.h): a brightness step in one lens widens it there and only
+// there, a colour ratio the seam colour blend matches doesn't, nor does a
+// shift the flow lines up; older frames count less; along the seam it
+// spreads and changes smoothly.
+void testSeamFade()
+{
+    insv::SeamFlowGrid g;
+    g.cols = 2520;
+    g.rows = 78;
+    g.stripRad = static_cast<float>(5.5 * kDeg);
+    g.reachRad = static_cast<float>(8.0 * kDeg);
+    const int C = g.cols, R = g.rows;
+    CHECK(insv::SeamFadeRows(g) == 2 * (static_cast<int>(2.0 * (R - 1) / 11.0) / 2) + 1);
+    CHECK(insv::SeamFadeRowY(g, insv::SeamFadeRows(g) / 2) == (R - 1) / 2); // the middle one on the seam
+    // A textured picture; lens 1 the same, shifted `sx` pixels along the
+    // seam, times `gain`, `add` grey levels brighter in columns [a, b).
+    auto picture = [&](double x, int y) { // round the seam in whole periods
+        const double a = 2.0 * std::numbers::pi * x / C;
+        return 128.0 + 50.0 * std::sin(125 * a) * std::cos(y * 0.23) + 30.0 * std::sin(19 * a + y * 0.11);
+    };
+    auto strips = [&](double sx, double gain, double add, int a, int b) {
+        insv::SeamFlowStrips s;
+        s.grid = g;
+        for (int i = 0; i < 2; ++i)
+            s.grey[i].resize(static_cast<size_t>(C) * R);
+        for (int y = 0; y < R; ++y)
+            for (int x = 0; x < C; ++x) {
+                const size_t k = static_cast<size_t>(y) * C + x;
+                s.grey[0][k] = static_cast<uint8_t>(std::clamp(picture(x, y), 1.0, 255.0));
+                const double v = gain * picture(x - sx, y) + (x >= a && x < b ? add : 0.0);
+                s.grey[1][k] = static_cast<uint8_t>(std::clamp(v, 1.0, 255.0));
+            }
+        return s;
+    };
+    auto field = [&](double sx) { // F01 = +sx px, F10 = -sx px
+        insv::SeamFlowField f;
+        f.grid = g;
+        f.v.resize(static_cast<size_t>(C) * R * 4);
+        const float d = static_cast<float>(sx * 2.0 * std::numbers::pi / C);
+        for (size_t k = 0; k < f.v.size(); k += 4) {
+            f.v[k] = -d;
+            f.v[k + 1] = 0.0f;
+            f.v[k + 2] = d;
+            f.v[k + 3] = 0.0f;
+        }
+        return f;
+    };
+    const std::vector<float> noColour(insv::kSeamDepthBins * 3, 0.0f);
+    auto shares = [&](const insv::SeamFlowStrips& s, const insv::SeamFlowField& f, const float* colour) {
+        insv::SeamFadeFrame fr;
+        insv::MeasureSeamFadeFrame(s, f, fr);
+        std::vector<float> sh;
+        insv::SeamFadeShares(fr, colour, sh);
+        return sh;
+    };
+
+    // Alike: narrow everywhere. A step of 40 levels in one lens over
+    // [1000, 1100): the whole band there, narrow away from it.
+    std::vector<float> sh = shares(strips(0, 1, 0, 0, 0), field(0), noColour.data());
+    CHECK(*std::max_element(sh.begin(), sh.end()) == 0.0f);
+    sh = shares(strips(0, 1, 40, 1000, 1100), field(0), noColour.data());
+    CHECK(sh[1050] == 1.0f && sh[900] == 0.0f && sh[1200] == 0.0f);
+
+    // Lens 1 20 % brighter everywhere: a difference (~25 levels) unless the
+    // seam colour blend's ratio is given, which matches it.
+    sh = shares(strips(0, 1.2, 0, 0, 0), field(0), noColour.data());
+    CHECK(sh[1500] > 0.3f);
+    std::vector<float> ratio(insv::kSeamDepthBins * 3, static_cast<float>(-std::log(1.2)));
+    sh = shares(strips(0, 1.2, 0, 0, 0), field(0), ratio.data());
+    CHECK(*std::max_element(sh.begin(), sh.end()) < 0.05f);
+
+    // Lens 1 shifted 20 px (a near thing): apart without the flow, alike
+    // with it.
+    sh = shares(strips(20, 1, 0, 0, 0), field(0), noColour.data());
+    CHECK(sh[1500] > 0.5f);
+    sh = shares(strips(20, 1, 0, 0, 0), field(20), noColour.data());
+    CHECK(*std::max_element(sh.begin(), sh.end()) < 0.05f);
+
+    // The window: the step two frames back counts 0.6 of its own; after
+    // more frames without it, gone. Spread and smoothed along the seam: the
+    // stretch stays wide inside, falls off over a few degrees round its ends,
+    // and nowhere does a column step far from its neighbour.
+    insv::SeamFadeWindow w;
+    insv::SeamFadeFrame step, alike;
+    insv::MeasureSeamFadeFrame(strips(0, 1, 40, 1000, 1100), field(0), step);
+    insv::MeasureSeamFadeFrame(strips(0, 1, 0, 0, 0), field(0), alike);
+    w.add(step);
+    w.add(alike);
+    w.add(alike);
+    w.solve(noColour.data(), sh);
+    CHECK(static_cast<int>(sh.size()) == C);
+    CHECK(near(sh[1050], 0.6, 0.01) && sh[1300] == 0.0f);
+    for (int x = 0; x < C; ++x)
+        CHECK(std::fabs(sh[x] - sh[(x + 1) % C]) < 0.05f);
+    CHECK(sh[1000] > 0.4f && sh[970] < sh[985] && sh[985] < sh[1000] && sh[960] < 0.01f);
+    for (int k = 0; k < insv::kSeamFlowFrames; ++k)
+        w.add(alike);
+    w.solve(noColour.data(), sh);
+    CHECK(*std::max_element(sh.begin(), sh.end()) == 0.0f);
+    w.reset();
+    w.solve(noColour.data(), sh);
+    CHECK(sh.empty());
+
+    // A stitch with such a fade: narrow where the share is 0, the whole
+    // band where it is 1 (seamBlendWeights with the field).
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    insv::SeamFlowField sf = field(0);
+    sf.grid = insv::SeamFlowGridFor(st);
+    sf.v.assign(static_cast<size_t>(sf.grid.rows) * sf.grid.cols * 4, 0.0f);
+    sf.fade.assign(sf.grid.cols, 0.0f);
+    for (int x = sf.grid.cols / 2; x < sf.grid.cols; ++x)
+        sf.fade[x] = 1.0f;
+    insv::SeamBlend nf;
+    insv::SeamVeilFade(noColour.data(), st.gpuParams().bandRad, nf);
+    double wn[2], ww[2];
+    st.seamBlendWeights(st.seamDir(0.5 * std::numbers::pi, 1.0 * kDeg), &nf, wn, &sf);
+    st.seamBlendWeights(st.seamDir(1.5 * std::numbers::pi, 1.0 * kDeg), &nf, ww, &sf);
+    CHECK(wn[0] == 1.0 && ww[0] > 0.6 && ww[0] < 0.9);
+}
+
+// The new stitcher's fade: narrow on the seam circle, widened to the whole
+// band by a stretch's veiling light (as the old stitcher's cut), and the
+// weights it gives.
+void testSeamVeilFade()
+{
+    constexpr int B = insv::kSeamDepthBins;
+    const double band = 7.5 * kDeg, narrow = insv::kSeamCutFadeDeg * kDeg;
+    CHECK(near(insv::SeamFadeRad(0.0, band), narrow, 1e-12));
+    CHECK(near(insv::SeamFadeRad(1.0, band), band, 1e-12));
+    CHECK(near(insv::SeamFadeRad(0.0, 0.5 * kDeg), 0.5 * kDeg, 1e-12)); // never wider than the band
+    CHECK(insv::SeamVeilShare(0.0) == 0.0);
+    CHECK(near(insv::SeamVeilShare(-0.5 * insv::kLensVeilWide), 0.5, 1e-12)); // either lens
+    CHECK(insv::SeamVeilShare(3.0 * insv::kLensVeilWide) == 1.0);
+
+    // No veil but in bin 10 (lens 0's, green only counts) and bin 11 (lens
+    // 1's, half the full-band amount).
+    std::vector<float> veil(B * 3, 0.0f);
+    veil[10 * 3 + 0] = veil[10 * 3 + 2] = 0.5f;
+    veil[10 * 3 + 1] = static_cast<float>(insv::kLensVeilWide);
+    veil[11 * 3 + 1] = static_cast<float>(-0.5 * insv::kLensVeilWide);
+    insv::SeamBlend f;
+    f.cut[3] = 1.0f;
+    f.colour[0] = 0.25f;
+    insv::SeamVeilFade(veil.data(), band, f);
+    for (int b = 0; b < B; ++b)
+        CHECK(f.cut[b] == 0.0f);
+    CHECK(near(f.fade[0], narrow, 1e-6) && near(f.fade[10], band, 1e-6));
+    CHECK(near(f.fade[11], 0.5 * (narrow + band), 1e-6));
+    CHECK(f.colour[0] == 0.25f); // the rest untouched
+
+    // The weights on an X5 stitcher without the depth-aware seam: lens 0
+    // alone a degree off the seam where there's no veil, both mixed there
+    // where the fade takes the whole band, and half and half on the seam.
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    const double bandX5 = st.gpuParams().bandRad;
+    std::vector<float> wide(B * 3, 0.0f);
+    for (int b = 0; b < B; ++b)
+        wide[b * 3 + 1] = static_cast<float>(insv::kLensVeilWide);
+    insv::SeamBlend fn, fw;
+    insv::SeamVeilFade(std::vector<float>(B * 3, 0.0f).data(), bandX5, fn);
+    insv::SeamVeilFade(wide.data(), bandX5, fw);
+    const double phi = 1.234;
+    double w[2];
+    st.seamBlendWeights(st.seamDir(phi, 1.0 * kDeg), &fn, w);
+    CHECK(w[0] == 1.0 && w[1] == 0.0);
+    st.seamBlendWeights(st.seamDir(phi, -1.0 * kDeg), &fn, w);
+    CHECK(w[0] == 0.0 && w[1] == 1.0);
+    st.seamBlendWeights(st.seamDir(phi, 0.0), &fn, w);
+    CHECK(near(w[0], 0.5, 1e-9) && near(w[0] + w[1], 1.0, 1e-12));
+    st.seamBlendWeights(st.seamDir(phi, 1.0 * kDeg), &fw, w);
+    CHECK(w[0] > 0.6 && w[0] < 0.9 && near(w[0] + w[1], 1.0, 1e-12));
 }
 
 // The local correction round the seam: a stretch where the lenses differ
@@ -2836,6 +3052,8 @@ int main()
     testLensColourWhereTheyMeet();
     testLensColourLocal();
     testSeamColourBlend();
+    testSeamVeilFade();
+    testSeamFade();
     testSeamFlow();
     testBlurQuads();
     testTrailerThumbnail();

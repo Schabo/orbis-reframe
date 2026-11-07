@@ -8,9 +8,11 @@
 #include "VulkanFisheyeStitcher.h"
 #include "VulkanLut.h"
 
-#include <SeamCut.h>   // insv::SeamCutStats, the cut pass's rows / patch
-#include <SeamDepth.h> // insv::SeamCosts, the cost pass's candidates / patch
-#include <SeamFlow.h>  // insv::SeamFlowField, the seam flow texture
+#include <SeamColourBlend.h> // insv::SeamVeilFade, the new stitcher's fade
+#include <SeamCut.h>         // insv::SeamCutStats, the cut pass's rows / patch
+#include <SeamDepth.h>       // insv::SeamCosts, the cost pass's candidates / patch
+#include <SeamFade.h>        // insv::SeamFadeRows, the fade passes' patches
+#include <SeamFlow.h>        // insv::SeamFlowField, the seam flow texture
 
 #include <vulkan/vulkan.h>
 
@@ -249,7 +251,9 @@ struct VulkanFisheyeStitcher::Impl {
     void* seamMap = nullptr;
     // The new stitcher's seam flow (binding 6): the frame's field as an
     // RGBA16F texture of its grid (1 x 1 of zeros until a field comes),
-    // wrapping round in azimuth, clamped across. A frame whose field isn't
+    // wrapping round in azimuth, clamped across, and under the grid's rows
+    // one more: the fade's share per column in R (insv::SeamFlowField::fade;
+    // the GPU's own written by recordSeamFade). A frame whose field isn't
     // the one up (flowHeld) has it staged (ensureFlow) and copied in at the
     // start of its submission (recordFlowUpload). The image stays in
     // GENERAL from its first use on: seam_flow.comp binds it as a storage
@@ -297,11 +301,22 @@ struct VulkanFisheyeStitcher::Impl {
         int slot = 0;  // the ring slot the next frame goes into
         int count = 0; // frames held
         int anchor = 0;    // offset into work of the anchored strips (floats)
+        // The fade (insv::SeamFadeFrame on the GPU): per ring slot both
+        // lenses' patch means, fadeN patch centres from strip row fadeRow0;
+        // the colour table it's solved with; per column the share, before
+        // and after the spread (offsets into work, floats).
+        int fadeMeans = 0, fadeColour = 0, fadeRaw = 0, fadeMax = 0;
+        int fadeN = 0, fadeRow0 = 0;
     } sf;
     // The pipeline, the buffers for params' grid, the set pointed at the
     // strips and the texture (both made here if they aren't yet). Before
     // recording.
     bool ensureSeamFlow(const insv::StitchGpuParams& p, std::string& err);
+    // The fade's share per column from the ring's patch means and p's seam
+    // colour (insv::SeamFadeWindow::solve) into the texture's fade row,
+    // where p stitches with the GPU's own field and its seam colour blend;
+    // nothing otherwise. Before the passes that sample the texture.
+    void recordSeamFade(VkCommandBuffer cmd, const insv::StitchGpuParams& p);
     // The flow of the strips in stripBuf added to the window and its mean
     // written into the flow texture, into the begun `cmd`; the texture left
     // readable by every later stage.

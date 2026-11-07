@@ -192,6 +192,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     seam_flow_grid_ = {};
     seam_flow_gpu_ = false;
     seam_flow_window_.reset();
+    seam_fade_window_.reset();
     seam_flow_field_.reset();
     if (config.seamFlowOn()) {
         seam_flow_grid_ = insv::SeamFlowGridFor(*stitcher);
@@ -316,6 +317,7 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
         seam_state_ = insv::SeamState{};
     seam_colour_window_.reset();
     seam_flow_window_.reset();
+    seam_fade_window_.reset();
     if (gpu_)
         gpu_->resetSeamFlow();
     if (!quick) {
@@ -363,6 +365,11 @@ bool NativeStitchSource::addSeamFlow() {
     insv::SeamFlowField f;
     if (!seam_flow_estimator_->estimate(*seam_flow_strips_, f))
         return false;
+    if (seam_colour_on_) {
+        insv::SeamFadeFrame fade;
+        insv::MeasureSeamFadeFrame(*seam_flow_strips_, f, fade);
+        seam_fade_window_.add(std::move(fade));
+    }
     seam_flow_window_.add(std::move(f));
     auto solved = std::make_shared<insv::SeamFlowField>();
     seam_flow_window_.solve(*solved);
@@ -1236,6 +1243,14 @@ Frame NativeStitchSource::readCpuDecode() {
                                       .count();
         }
         p.seamFlow = seam_flow_field_;
+        // With the colour blend, the fade between the lenses from its frames
+        // and this frame's colour.
+        if (seam_colour_on_ && seam_flow_field_ && !seam_flow_field_->empty() &&
+            seam_fade_window_.size() > 0) {
+            auto f = std::make_shared<insv::SeamFlowField>(*seam_flow_field_);
+            seam_fade_window_.solve(&p.seamColour[0][0], f->fade);
+            p.seamFlow = std::move(f);
+        }
     }
 
     if (gpu_) {

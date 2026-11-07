@@ -33,8 +33,9 @@ layout(std430, binding = 1) buffer Work { float w[]; };
 // The last frames' fields at the finest scale, one slot per frame: per
 // pixel F10 (dphi, de), F01 (dphi, de) in radians (insv::SeamFlowField).
 layout(std430, binding = 2) buffer Ring { vec4 ring[]; };
-// The averaged field at the strips' full size, as the stitch samples it.
-layout(binding = 3, rgba16f) uniform writeonly image2D field;
+// The averaged field at the strips' full size, as the stitch samples it,
+// and under it the fade's row (insv::SeamFlowField::fade: the share in R).
+layout(binding = 3, rgba16f) uniform image2D field;
 
 layout(push_constant) uniform PC {
     int pass;
@@ -55,6 +56,13 @@ layout(push_constant) uniform PC {
     float radY;      // radians of e per strip pixel (negative: rows go down)
     float sx;        // strip columns per column of this scale (cols / W, ~2^scale)
     int anchor;      // the anchored strips (cols x rows per lens), then their box means
+    float reach;     // the warp's reach (rad)
+    int fadeMeans;   // the fade: per ring slot and lens fadeN x cols patch means (-1 none)
+    int fadeColour;  // the seam colour blend's table (insv::StitchGpuParams::seamColour)
+    int fadeRaw;     // per column the share, newest frames pooled
+    int fadeMax;     // ... spread along the seam
+    int fadeN;       // patch centres (insv::SeamFadeRows)
+    int fadeRow0;    // the first one's strip row (insv::SeamFadeRowY)
 } pc;
 
 #define PASS_PYRAMID 0  // (x, y) of this scale, z = lens
@@ -67,8 +75,23 @@ layout(push_constant) uniform PC {
 #define PASS_AVERAGE 7  // (x, y) of the strips
 #define PASS_ANCHOR_MEAN 8 // (x, y) of the strips, z = lens
 #define PASS_ANCHOR 9      // likewise
+#define PASS_FADE_MEANS 10  // (column, patch centre) of the strips
+#define PASS_FADE_SHARE 11  // column (the fade passes: insv::SeamFadeWindow)
+#define PASS_FADE_SPREAD 12 // column
+#define PASS_FADE_SMOOTH 13 // column
+
+// The fade (insv/SeamFade.h).
+#define FADE_ROW_STEP 2      // insv::kSeamFadeRowStep
+#define FADE_PATCH_W 11      // insv::kSeamFadePatchW
+#define FADE_PATCH_H 5       // insv::kSeamFadePatchH
+#define FADE_LO 12.0         // insv::kSeamFadeLo
+#define FADE_HI 30.0         // insv::kSeamFadeHi
+#define FADE_SPREAD_DEG 1.5  // insv::kSeamFadeSpreadDeg
+#define FADE_SMOOTH_DEG 1.5  // insv::kSeamFadeSmoothDeg
+#define FADE_BINS 128        // insv::kSeamDepthBins
 
 #define RING 5 // == insv::kSeamFlowFrames
+#define PI 3.14159265358979
 #define PATCH 8
 #define STRIDE 4
 #define PATCH_N 64
@@ -298,9 +321,138 @@ void sweep(bool forward)
     }
 }
 
+// The raw strip bilinear at (x, y) (insv::SeamFade's StripSample): x wraps,
+// y clamps; false where a tap has no sample.
+bool fadeStrip(int lens, float x, float y, out float v)
+{
+    y = clamp(y, 0.0, float(pc.rows - 1));
+    int y0 = min(int(y), pc.rows - 2);
+    float ay = y - float(y0);
+    float fx = floor(x);
+    float ax = x - fx;
+    int x0 = wrapX(int(fx), pc.cols), x1 = wrapX(int(fx) + 1, pc.cols);
+    float a = stripAt(lens, x0, y0), b = stripAt(lens, x1, y0);
+    float c = stripAt(lens, x0, y0 + 1), d = stripAt(lens, x1, y0 + 1);
+    v = mix(mix(a, b, ax), mix(c, d, ax), ay);
+    return a > 0.0 && b > 0.0 && c > 0.0 && d > 0.0;
+}
+
+// One ring slot's field at strip pixel (x, y), up to the strips' size as
+// PASS_AVERAGE does (the CPU estimator's field, upsampled).
+vec4 slotField(int slot, int x, int y)
+{
+    vec2 p = (vec2(x, y) + 0.5) / vec2(pc.sx, float(pc.f)) - 0.5;
+    p.y = clamp(p.y, 0.0, float(pc.H - 1));
+    vec2 fl = floor(p);
+    vec2 a = p - fl;
+    int x0 = wrapX(int(fl.x), pc.W), x1 = wrapX(int(fl.x) + 1, pc.W);
+    int y0 = int(fl.y), y1 = min(y0 + 1, pc.H - 1);
+    int b = slot * pc.W * pc.H;
+    vec4 t = mix(ring[b + y0 * pc.W + x0], ring[b + y0 * pc.W + x1], a.x);
+    vec4 u = mix(ring[b + y1 * pc.W + x0], ring[b + y1 * pc.W + x1], a.x);
+    return mix(t, u, a.y);
+}
+
+// insv::SeamFadeShares for one frame's slot at column x, `g` the lenses'
+// colour gains there.
+float fadeShareOf(int slot, int x, vec2 g)
+{
+    float d = 0.0;
+    for (int r = 0; r < pc.fadeN; ++r) {
+        float m0 = w[pc.fadeMeans + ((slot * 2) * pc.fadeN + r) * pc.cols + x];
+        float m1 = w[pc.fadeMeans + ((slot * 2 + 1) * pc.fadeN + r) * pc.cols + x];
+        if (m0 < 0.0 || m1 < 0.0)
+            continue;
+        d = max(d, abs(m0 * g.x - m1 * g.y));
+    }
+    return clamp((d - FADE_LO) / (FADE_HI - FADE_LO), 0.0, 1.0);
+}
+
+void fadePass(int n)
+{
+    if (pc.pass == PASS_FADE_MEANS) {
+        // Both lenses warped by their share of this frame's own field (not
+        // the window's: the same frames before a seek or not), as the
+        // stitch samples them (seamFlowRay on the strips' grid), a pixel
+        // counting where both have it; the patch means round centre r.
+        if (n >= pc.cols * pc.fadeN)
+            return;
+        int x = n % pc.cols, r = n / pc.cols;
+        int yc = pc.fadeRow0 + r * FADE_ROW_STEP;
+        float strip = -pc.radY * float(pc.rows - 1) / 2.0;
+        vec2 sum = vec2(0.0);
+        int cnt = 0;
+        for (int dy = -(FADE_PATCH_H / 2); dy <= FADE_PATCH_H / 2; ++dy) {
+            int y = yc + dy;
+            if (y < 0 || y > pc.rows - 1)
+                continue;
+            float e = strip + float(y) * pc.radY;
+            float b = e >= pc.reach ? 0.0 : e <= -pc.reach ? 1.0 : 0.5 * (1.0 - sin(0.5 * PI * e / pc.reach));
+            for (int dx = -(FADE_PATCH_W / 2); dx <= FADE_PATCH_W / 2; ++dx) {
+                int xx = wrapX(x + dx, pc.cols);
+                vec4 f = slotField(pc.slot, xx, y);
+                float s0, s1;
+                if (!fadeStrip(0, float(xx) + b * f.x / pc.radX, float(y) + b * f.y / pc.radY, s0) ||
+                    !fadeStrip(1, float(xx) + (1.0 - b) * f.z / pc.radX, float(y) + (1.0 - b) * f.w / pc.radY, s1))
+                    continue;
+                sum += vec2(s0, s1);
+                ++cnt;
+            }
+        }
+        vec2 m = 2 * cnt >= FADE_PATCH_W * FADE_PATCH_H ? sum / float(max(cnt, 1)) : vec2(-1.0);
+        w[pc.fadeMeans + ((pc.slot * 2) * pc.fadeN + r) * pc.cols + x] = m.x;
+        w[pc.fadeMeans + ((pc.slot * 2 + 1) * pc.fadeN + r) * pc.cols + x] = m.y;
+        return;
+    }
+    if (n >= pc.cols)
+        return;
+    int x = n;
+    float colsPerDeg = float(pc.cols) / 360.0;
+    if (pc.pass == PASS_FADE_SHARE) {
+        // The colour blend's ratio at the column as luma, half to each lens;
+        // frame k before the newest counting 1 - k / RING, the largest wins.
+        float t = (float(x) + 0.5) / float(pc.cols) * float(FADE_BINS) - 0.5;
+        float fl = floor(t);
+        int b0 = (int(fl) + FADE_BINS) % FADE_BINS, b1 = (b0 + 1) % FADE_BINS;
+        float a = t - fl;
+        vec3 l0 = vec3(w[pc.fadeColour + b0 * 3], w[pc.fadeColour + b0 * 3 + 1], w[pc.fadeColour + b0 * 3 + 2]);
+        vec3 l1 = vec3(w[pc.fadeColour + b1 * 3], w[pc.fadeColour + b1 * 3 + 1], w[pc.fadeColour + b1 * 3 + 2]);
+        float half_ = 0.5 * dot(vec3(0.299, 0.587, 0.114), mix(l0, l1, a));
+        vec2 g = vec2(exp(-half_), exp(half_));
+        float s = 0.0;
+        for (int k = 0; k < pc.count; ++k)
+            s = max(s, (1.0 - float(k) / float(RING)) * fadeShareOf((pc.slot - k + RING) % RING, x, g));
+        w[pc.fadeRaw + x] = s;
+        return;
+    }
+    if (pc.pass == PASS_FADE_SPREAD) {
+        int spread = int(floor(FADE_SPREAD_DEG * colsPerDeg + 0.5)); // lround, as the CPU's
+        float v = 0.0;
+        for (int d = -spread; d <= spread; ++d)
+            v = max(v, w[pc.fadeRaw + wrapX(x + d, pc.cols)]);
+        w[pc.fadeMax + x] = v;
+        return;
+    }
+    if (pc.pass == PASS_FADE_SMOOTH) {
+        float sigma = FADE_SMOOTH_DEG * colsPerDeg;
+        int rad = int(ceil(3.0 * sigma));
+        float s = 0.0, ws = 0.0;
+        for (int d = -rad; d <= rad; ++d) {
+            float wt = exp(-0.5 * float(d * d) / (sigma * sigma));
+            s += wt * w[pc.fadeMax + wrapX(x + d, pc.cols)];
+            ws += wt;
+        }
+        imageStore(field, ivec2(x, pc.rows), vec4(s / ws, 0.0, 0.0, 0.0));
+    }
+}
+
 void main()
 {
     int n = int(gl_GlobalInvocationID.x), z = int(gl_GlobalInvocationID.z);
+    if (pc.pass >= PASS_FADE_MEANS) {
+        fadePass(n);
+        return;
+    }
     if (pc.pass == PASS_SWEEP_FWD || pc.pass == PASS_SWEEP_BWD) {
         sweep(pc.pass == PASS_SWEEP_FWD);
         return;

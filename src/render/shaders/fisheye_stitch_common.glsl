@@ -38,6 +38,7 @@
 #define SEAM_CUT_EL 4 // == insv::kSeamCutPatchEl
 #define SEAM_CUT_EL_RAD 0.010471976 // == insv::kSeamCutPatchElDeg (0.6 deg)
 #define SEAM_CUT_CLIP 250.0 // == insv::kSeamCutClip
+#define SEAM_CUT_FADE_RAD 0.013089969 // == insv::kSeamCutFadeDeg (0.75 deg)
 #define LENS_COLOUR_MAX_LOG 0.3 // == insv::kLensColourMaxLog
 #define LENS_COLOUR_LOCAL_RAMP_RAD 0.17453293 // == insv::kLensColourLocalRampDeg (10 deg)
 #define LENS_COLOUR_KNEE_LO 192.0 // == insv::kLensColourKneeLo
@@ -349,11 +350,12 @@ vec3 seamFlowRay(int i, vec3 dir)
     float b = 0.5 * (1.0 - sin(0.5 * PI * e / reach));
     float share = i == 0 ? b : 1.0 - b;
     // Texel centres at phi = (x + 0.5) 2 pi / cols (the sampler wraps round)
-    // and e = strip - y 2 strip / (rows - 1) (clamped at the strip's edges).
+    // and e = strip - y 2 strip / (rows - 1), clamped at the strip's edges
+    // (the texture's last row, under them, is the fade's).
     float strip = P.seamFlow.y;
     float rows = float(P.seamFlowN.y);
-    float y = (strip - e) * (rows - 1.0) / (2.0 * strip);
-    vec4 f = textureLod(seamFlowTex, vec2(phi / (2.0 * PI), (y + 0.5) / rows), 0.0);
+    float y = clamp((strip - e) * (rows - 1.0) / (2.0 * strip), 0.0, rows - 1.0);
+    vec4 f = textureLod(seamFlowTex, vec2(phi / (2.0 * PI), (y + 0.5) / (rows + 1.0)), 0.0);
     vec2 d = i == 0 ? f.xy : f.zw;
     return seamDirAt(phi + share * d.x, e + share * d.y);
 }
@@ -382,12 +384,43 @@ vec3 seamVeil(vec3 dir)
     return a * mix(P.lensVeil[i0].xyz, P.lensVeil[i1].xyz, pos.y);
 }
 
+// The new stitcher's fade share at `dir`'s azimuth (insv::FisheyeStitcher::
+// seamFadeShare): the seam flow texture's last row, linear between columns.
+float seamFadeShare(vec3 dir)
+{
+    float phi = atan(dot(dir, P.seamV.xyz), dot(dir, P.seamU.xyz));
+    if (phi < 0.0)
+        phi += 2.0 * PI;
+    float rows = float(P.seamFlowN.y);
+    return textureLod(seamFlowTex, vec2(phi / (2.0 * PI), (rows + 0.5) / (rows + 1.0)), 0.0).x;
+}
+
+// The two lenses' feather at a seamPosition() (insv::FisheyeStitcher::
+// seamBlendWeights): the cosine ramp round the bin's cut with its own
+// half-width (seamCF), else -- not measured yet -- the plain cross-fade.
+vec2 seamFadeWeights(vec3 dir, vec2 pos, int i0, int i1, bool flowFade)
+{
+    vec2 c0 = seamCFBin(i0), c1 = seamCFBin(i1);
+    if (c0.y > 0.0 && c1.y > 0.0) {
+        vec2 cf = mix(c0, c1, pos.y);
+        if (flowFade) {
+            float narrow = min(SEAM_CUT_FADE_RAD, P.seam.y); // insv::SeamFadeRad
+            cf.y = max(cf.y, narrow + (P.seam.y - narrow) * seamFadeShare(dir));
+        }
+        float x = (pos.x - cf.x) / cf.y;
+        float w0 = x >= 1.0 ? 1.0 : (x <= -1.0 ? 0.0 : 0.5 * (1.0 + sin(0.5 * PI * x)));
+        return vec2(w0, 1.0 - w0);
+    }
+    return vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
+}
+
 // The seam's per-bin tables at `dir`, its position found once: returns the
 // inverse stitch distance (insv::FisheyeStitcher::seamQAt); `w` the two
-// lenses' feather -- with a measured blend the cosine ramp around the bin's
-// cut with its own half-width (seamBlendWeights), else the plain cross-fade;
-// `local` the lens colour's local correction there and `veil` the veiling
-// light (lens 0 less lens 1), in the band and faded out past it
+// lenses' feather -- with the depth-aware seam its cut, with the new
+// stitcher's seam colour blend the narrow fade its veiling light widens
+// (insv::SeamVeilFade; both in seamCF, seamFadeWeights), else the plain
+// cross-fade; `local` the lens colour's local correction there and `veil`
+// the veiling light (lens 0 less lens 1), in the band and faded out past it
 // (insv::FisheyeStitcher::lensLogGains), 0 without the seam -- or the new
 // stitcher's with its seam colour blend (seamVeil).
 float seamTables(vec3 dir, out vec2 w, out vec3 local, out vec3 veil)
@@ -395,22 +428,22 @@ float seamTables(vec3 dir, out vec2 w, out vec3 local, out vec3 veil)
     local = vec3(0.0);
     veil = vec3(0.0);
     if (P.seamA.w == 0.0) {
-        w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
-        if (P.edge.z != 0.0)
+        if (P.edge.z != 0.0) {
+            int i0, i1;
+            vec2 pos = seamPosition(dir, i0, i1);
+            // The narrow fade with the seam flow's (seamCF from the veiling
+            // light, insv::SeamVeilFade; seamFadeShare), else the plain one.
+            w = P.seamFlow.x != 0.0 ? seamFadeWeights(dir, pos, i0, i1, true)
+                                    : vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
             veil = seamVeil(dir);
+        } else {
+            w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
+        }
         return 0.0;
     }
     int i0, i1;
     vec2 pos = seamPosition(dir, i0, i1);
-    vec2 c0 = seamCFBin(i0), c1 = seamCFBin(i1);
-    if (c0.y > 0.0 && c1.y > 0.0) {
-        vec2 cf = mix(c0, c1, pos.y);
-        float x = (pos.x - cf.x) / cf.y;
-        float w0 = x >= 1.0 ? 1.0 : (x <= -1.0 ? 0.0 : 0.5 * (1.0 + sin(0.5 * PI * x)));
-        w = vec2(w0, 1.0 - w0);
-    } else {
-        w = vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
-    }
+    w = seamFadeWeights(dir, pos, i0, i1, false);
     float e = abs(pos.x), band = P.seam.y;
     if (e < band + LENS_COLOUR_LOCAL_RAMP_RAD) {
         float a = e > band ? 0.5 * (1.0 + cos(PI * (e - band) / LENS_COLOUR_LOCAL_RAMP_RAD)) : 1.0;

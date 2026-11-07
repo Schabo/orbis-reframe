@@ -66,6 +66,14 @@ void MeasureSeamColourBins(const SeamCutStats& stats, double bandRad, const Seam
     }
 }
 
+void SeamVeilFade(const float* veil, double bandRad, SeamBlend& blend)
+{
+    for (int b = 0; b < kSeamDepthBins; ++b) {
+        blend.cut[b] = 0.0f;
+        blend.fade[b] = static_cast<float>(SeamFadeRad(SeamVeilShare(veil[b * 3 + 1]), bandRad));
+    }
+}
+
 bool SolveSeamColour(const double* wv, const double* w, const SeamColourTuning& T, float* table)
 {
     bool any = false;

@@ -103,8 +103,15 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    fallback estimates it with OpenCV's DIS (`insv/SeamFlowEstimator`).
    Both run on the strips anchored first: bright featureless parts get the
    same fixed pattern in both lenses, so the flow stays zero there
-   (`insv::AnchorSeamFlowStrips`, the shader's anchor passes). A seek measures the
-   frames both need before the frame it goes to, so they need no analysis.
+   (`insv::AnchorSeamFlowStrips`, the shader's anchor passes). With both
+   on, the lenses meet in a narrow fade on the seam, widened per stretch
+   where they still differ near the seam after the flow (`insv/SeamFade`):
+   each frame's patch means of the warped raw strips are kept with its
+   flow, and the share of the band per strip column is solved with the
+   frame's colour table into the flow texture's last row -- on the GPU in
+   the stitch's own submission (`recordSeamFade`), since the colour comes
+   back to the CPU only after the measuring one. A seek measures the
+   frames all three need before the frame it goes to, so they need no analysis.
    The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the
    colour correction there) is a function of the measurements of the frames

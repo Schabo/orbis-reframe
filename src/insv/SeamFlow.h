@@ -122,6 +122,10 @@ void AnchorSeamFlowStrips(const SeamFlowStrips& in, SeamFlowStrips& out);
 struct SeamFlowField {
     SeamFlowGrid grid;
     std::vector<float> v; // rows * cols * 4
+    // With the seam colour blend, the fade between the lenses per column:
+    // its share of the band (SeamFade.h; cols values). Empty = the plain
+    // cross-fade over the whole band.
+    std::vector<float> fade;
     bool empty() const { return v.empty(); }
     // Bilinear at strip position (x, y): x wraps round, y clamps to the
     // strip. `out` F10 (dphi, de), F01 (dphi, de).

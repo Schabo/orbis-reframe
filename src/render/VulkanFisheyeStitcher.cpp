@@ -113,9 +113,19 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.seamC[2] = static_cast<float>(insv::kSeamPatchElDeg * std::numbers::pi / 180.0);
     sp.seamC[3] = static_cast<float>(insv::SeamCutRowMax(p.bandRad));
     std::memcpy(sp.seamQ, p.seamQ, sizeof sp.seamQ);
+    // The fade between the lenses: the depth-aware seam's cut, or with the
+    // new stitcher's seam colour blend and seam flow its narrow fade, which
+    // the veiling light widens here and the flow's fade row in the shader
+    // (it reads it on edge.z and seamFlow.x then).
+    const bool anyFlow = (p.seamFlow && !p.seamFlow->empty()) || (p.seamFlowGpu && p.seamFlowCols > 0);
+    const bool narrowFade = !p.depthActive && p.seamColourActive && anyFlow;
+    insv::SeamBlend veilFade;
+    if (narrowFade)
+        insv::SeamVeilFade(&p.seamVeil[0][0], p.bandRad, veilFade);
+    const insv::SeamBlend& fade = narrowFade ? veilFade : p.seamBlend;
     for (int b = 0; b < insv::kSeamDepthBins; ++b) {
-        sp.seamCF[b][0] = p.seamBlend.cut[b];
-        sp.seamCF[b][1] = p.seamBlend.fade[b];
+        sp.seamCF[b][0] = fade.cut[b];
+        sp.seamCF[b][1] = fade.fade[b];
     }
     for (int c = 0; c < 3; ++c) {
         sp.lensCol[c] = p.lensColour[c] + p.seamBlend.colour[c];
@@ -377,6 +387,7 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
                       (static_cast<uint32_t>(params.seamFlowRows) + kLocalSize - 1) / kLocalSize, 1);
         d->recordSeamFlow(d->cmd);
     }
+    d->recordSeamFade(d->cmd, params);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     if (doStitch)
@@ -461,6 +472,7 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
     d->recordFlowUpload(d->cmd);
+    d->recordSeamFade(d->cmd, params);
     d->tsReset();
 
     const VulkanLensInput* in[2] = {&f0, &f1};
@@ -651,6 +663,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
     d->recordFlowUpload(d->cmd);
+    d->recordSeamFade(d->cmd, params);
     d->tsReset();
 
     const VulkanLensInput* in[2] = {&f0, &f1};
@@ -900,6 +913,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(d->cmd, &bi);
     d->recordFlowUpload(d->cmd);
+    d->recordSeamFade(d->cmd, params);
     d->tsReset();
 
     const VulkanLensInput* in[2] = {&f0, &f1};
@@ -1297,6 +1311,7 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &bi);
     d->recordFlowUpload(cmd);
+    d->recordSeamFade(cmd, params);
     d->tsReset();
 
     auto imgBarrier = [](VkImage img, VkImageLayout from, VkImageLayout to, VkAccessFlags src,
