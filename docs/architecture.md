@@ -93,7 +93,7 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    colour, or the new stitcher, which takes neither (see
    [the roadmap](roadmap.md)); its seam colour blend (`insv/SeamColourBlend`)
    matches the lenses' colour per stretch of the seam from what they see in
-   the overlap over each frame and the second before it, and its seam
+   the overlap over each frame and the quarter second before it, and its seam
    flow (`insv/SeamFlow`) warps each lens near the seam by its share of
    the optical flow between them in the overlap, averaged over the frame
    and the four before it -- a texture beside the stitch's parameters on

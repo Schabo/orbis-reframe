@@ -357,7 +357,7 @@ private:
     // nothing can estimate it.
     void settleSeamFlow();
     // SeekTo's parts: the decoder positioned at t, and the frames before t
-    // the new stitcher's layers pool measured (the seam colour blend's second,
+    // the new stitcher's layers pool measured (the seam colour blend's window,
     // the seam flow's window; the decoder left before t).
     bool seekDecoder(int64_t t);
     bool preRollSeam(int64_t t);
@@ -373,7 +373,7 @@ private:
                               bool* flowMeasured);
     // The seam colour blend for the frame at pts_ms into `p`: `measure`
     // fills cut_stats_ at the template's geometry and the frame is pooled
-    // with the second before it (seam_colour_window_). False when it can't
+    // with the frames in its window before it (seam_colour_window_). False when it can't
     // (measure failed): `p` without it.
     // The last frame's seam colour blend into `p`, for a scrub's passing
     // frame (none measured).

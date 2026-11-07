@@ -30,9 +30,9 @@ no background analysis, and selectable in the Stitching section's
   calibration, the guard profile, a fixed cross-fade; nothing measured from
   the video.
 - **Seam colour blend** (built): the two lenses' colour ratio per stretch
-  of the seam, from what both see in the overlap over each frame and the
-  second before it; each lens moved half of it, fully near the
-  seam and fading out by 30° from it, so neither lens's picture changes
+  of the seam, from what both see in the overlap near the seam over each
+  frame and the quarter second before it; each lens moved half of it,
+  fully near the seam and fading out by 30° from it, so neither lens's picture changes
   further away. With it, a low sun's haze in one lens (veiling light),
   measured per stretch as the old stitcher does, taken out of that lens
   round the seam before the colour is matched. A setting of its own.

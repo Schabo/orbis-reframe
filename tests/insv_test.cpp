@@ -1360,8 +1360,9 @@ void testSeamColourBlend()
     for (int64_t pts = 33; pts <= 2000; pts += 33)
         step(pts);
     CHECK(win.solve(990, t) && near(t[20 * 3 + 1], 0.1, 1e-6));  // later frames don't count
-    CHECK(win.solve(2000, t) && near(t[20 * 3 + 1], 0.0, 1e-6)); // all of its second at 0
-    CHECK(win.solve(1500, t)); // half a second on: the older half, weighing less
+    CHECK(win.solve(2000, t) && near(t[20 * 3 + 1], 0.0, 1e-6)); // all of its window at 0
+    // Half a window on: the older half, weighing less.
+    CHECK(win.solve(1000 + insv::kSeamColourWindowMs / 2, t));
     CHECK(t[20 * 3 + 1] > 0.015 && t[20 * 3 + 1] < 0.04);
     CHECK(near(t[20 * 3], 0.0, 1e-6));
     win.dropBefore(1500);
@@ -1373,6 +1374,24 @@ void testSeamColourBlend()
     CHECK(win.solve(100, t) && near(t[20 * 3 + 1], 0.05, 1e-6));
     win.reset();
     CHECK(win.empty() && !win.solve(100, t) && t[20 * 3 + 1] == 0.0f);
+
+    // The rows near the seam circle count most: here the lenses differ by
+    // 0.05 there and more towards the band's edges (rim falloff), and the
+    // table follows the seam's value, not the band's typical one (0.075 with
+    // every row alike).
+    fill([](int, int) { return 0.0; });
+    for (int b = 0; b < B; ++b)
+        for (int r = 0; r < R; ++r) {
+            const double e = insv::SeamCutRowE(r, band) / band; // -1..1
+            const double L = 0.05 + 0.1 * e * e;
+            for (int k = 0; k < 3; ++k) {
+                const double scene = 60.0 + 10.0 * r + 15.0 * k;
+                stats->cell[b][r].mean[0][k] = static_cast<float>(scene * std::exp(0.5 * L));
+                stats->cell[b][r].mean[1][k] = static_cast<float>(scene * std::exp(-0.5 * L));
+            }
+        }
+    CHECK(insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    CHECK(std::fabs(table[40 * 3 + 1] - 0.05) < 0.01);
 
     // The CPU stitch: uniform grey lenses, green 10 % apart in the table
     // everywhere. Lens 0 alone (past the band) gets darker in green by

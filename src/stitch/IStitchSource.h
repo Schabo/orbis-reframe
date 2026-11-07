@@ -92,7 +92,7 @@ struct PreviewStitchConfig {
 
     // The new stitcher's seam colour blend (insv::SeamColourBlend): the
     // lenses' colour matched per stretch of the seam from what both see in
-    // the overlap over each frame and the second before it (which SeekTo
+    // the overlap over each frame and the quarter second before it (which SeekTo
     // measures first). Only with Method::New; the old stitcher has
     // its own lens colour.
     bool seamColourBlend = true;
@@ -256,7 +256,7 @@ public:
     // A quick seek: the next SeekTo (that one only) and the frame read after
     // it skip what only makes that frame look exactly as playback into it
     // would -- the seam measurements (the new stitcher's seam colour blend
-    // over the second before it, the depth-aware seam where the clip isn't
+    // over the quarter second before it, the depth-aware seam where the clip isn't
     // analysed); the frame keeps the last frame's. For the frames a scrub
     // passes through; the scrub's final seek is exact. Default: nothing to
     // skip.

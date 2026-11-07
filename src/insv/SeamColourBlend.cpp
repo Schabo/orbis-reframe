@@ -45,9 +45,12 @@ void MeasureSeamColourBins(const SeamCutStats& stats, double bandRad, const Seam
     float* v = &out.value[0][0];
     float* w = &out.weight[0][0];
     std::vector<float> spread(B * 3);
-    // No lens colour or residual to measure against: the whole ratio, every
-    // row across the band alike.
-    LensColourPerBin(stats, bandRad, LensColour{}, nullptr, nullptr, nullptr, v, w, spread.data());
+    // No lens colour or residual to measure against: the whole ratio, the
+    // rows weighted towards the seam circle (elevation 0, where the new
+    // stitcher's lenses meet in every bin).
+    std::vector<float> meet(B, 0.0f), reach(B, static_cast<float>(T.seamReachDeg * kDeg));
+    LensColourPerBin(stats, bandRad, LensColour{}, nullptr, meet.data(), reach.data(), v, w,
+                     spread.data());
     // A bin stands on its own when it has enough unclipped samples and its
     // cells agree about as well as the frame's typical bin's do; flare or
     // something close crossing the seam spreads them.

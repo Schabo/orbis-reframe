@@ -161,16 +161,17 @@ greyed out in builds made without OpenCV's chart detection.
 
 With the new stitcher, **Seam colour blend** (under **Stitcher**, on for
 new clips) evens out the two lenses' colours where they meet. It compares
-what both lenses see in the overlap, stretch by stretch round the seam,
-over each frame and the second before it, and moves each lens half of the
-difference there: in full up to
-about 12° from the seam, fading to nothing by 30°, so the rest of each
-picture keeps the colour the lens recorded. A stretch where the lenses
+what both lenses see in the overlap, closest to the seam, stretch by
+stretch round it, over each frame and the quarter second before it, and
+moves each lens half of the difference there: in full up to about 12°
+from the seam, fading to nothing by 30°, so the rest of each picture
+keeps the colour the lens recorded. A stretch where the lenses
 can't be compared (a sky blown out in a colour, flare in one lens,
 something close crossing the seam) takes the correction of the stretches
-beside it; clipped highlights are left as they are. Going by a whole
-second keeps the correction steady while the picture moves; when the light
-changes, it follows within about half a second.
+beside it; clipped highlights are left as they are. Going by a quarter
+second keeps the correction steady while the picture moves, and still
+follows a difference that changes with what the lenses see; when the light
+changes, it follows within about a tenth of a second.
 
 When the sun shines into one lens, light scattered inside it lays a haze
 over that lens's picture (veiling light): the dark parts lift a lot, bright
@@ -182,7 +183,7 @@ moves with the sun in the lens as the camera turns. Further into that lens
 the haze stays (the other lens can't see there, so nothing says how much
 there is). The rays and coloured blobs of flare are left as they are.
 
-When you jump to a frame, orbis-reframe looks at the second before it as
+When you jump to a frame, orbis-reframe looks at the quarter second before it as
 it gets there, so a frame looks the same however you get to it: played,
 jumped to, saved as a screenshot or exported. Turn it off to see the lenses as they recorded. With **Depth-aware seam**
 and **Fixed seam** it is greyed out: they match the lenses their own way

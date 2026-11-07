@@ -328,7 +328,7 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
 }
 
 bool NativeStitchSource::preRollSeam(int64_t t) {
-    // The seam colour blend pools the second before a frame, the seam flow
+    // The seam colour blend pools the quarter second before a frame, the seam flow
     // the few frames before it: measure them now, so the frame at t is
     // stitched as playback into it has it. Every frame before the one the
     // seek below lands on (the first at or after t) counts, so read on

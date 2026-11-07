@@ -17,7 +17,8 @@
 // seam cut's cells, SeamCutStats, measured with no depth table). The
 // frames in the kSeamColourWindowMs before a frame are pooled
 // (SeamColourWindow) and smoothed round the seam: one frame's cells are
-// too few to hold the correction still. Each lens is moved half of it,
+// too few to hold the correction still. The rows of the overlap count by
+// how near they lie to the seam circle (SeamColourTuning::seamReachDeg). Each lens is moved half of it,
 // fully near the seam, fading out by kSeamColourEndDeg from it, so neither
 // lens's picture changes further away -- no whole-lens shift.
 //
@@ -40,7 +41,7 @@
 // moves as fast as the camera turns.
 //
 // Only the frames before it, so playback has them as it plays, and a seek
-// measures that second before the frame it goes to (stitch::
+// measures that window before the frame it goes to (stitch::
 // NativeStitchSource::SeekTo): every path stitches a frame the same way.
 // Dependency-free (insv lib).
 
@@ -61,14 +62,24 @@ constexpr double kSeamColourEndDeg = 30.0;
 double SeamColourFade(double eRad);
 
 // The frames pooled for a frame's table: those this far before it and the
-// frame itself (ms), each weighted by how near it is.
-constexpr int kSeamColourWindowMs = 1000;
+// frame itself (ms), each weighted by how near it is. A quarter second
+// follows a lens difference that changes with the content (the A1's
+// lenses differ along the seam by what they see) about as closely as the
+// old stitcher's 40 ms memory does, and still moves the correction about
+// as little per frame as the old stitcher's: measured 2026-11-04 against a
+// whole second, 100 ms and 400 ms on A1 and X5 frames.
+constexpr int kSeamColourWindowMs = 250;
 // ... and for the veiling light: the frame and the one before it (the old
 // stitcher's local memory, SeamWindowTuning::localHalfMs).
 constexpr int kSeamVeilWindowMs = 40;
 
 struct SeamColourTuning {
-    double smoothDeg = 6.0;     // Gaussian sigma round the seam, degrees
+    double smoothDeg = 2.0;     // Gaussian sigma round the seam, degrees
+    // Each row of the overlap weighted by how near it lies to the seam
+    // circle: a Gaussian of this sigma across the band, degrees. That is
+    // where the lenses meet and a difference shows; rows further out see
+    // each lens's rim, whose colour falls off differently.
+    double seamReachDeg = 2.0;
     double minSamples = 128.0;  // a bin's unclipped samples for a measurement of its own
     double spreadFactor = 3.0;  // a bin whose cells disagree this many times the frame's typical
     double spreadFloor = 0.02;  // ... (and by more than this, log) is left out
