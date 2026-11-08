@@ -146,6 +146,12 @@ public:
     // export). Off by default.
     void SetFlatTenBit(bool on) { flat_ten_bit_ = on; }
 
+    // Decode on the CPU from the start, as without Vulkan video decode (the
+    // stitch stays on the GPU: a small part of a clip's graphics memory):
+    // for a picture that mustn't take the memory another one needs (a
+    // crossfade's layer beside playback on a short card). Before Open().
+    void SetCpuDecode(bool on) { cpu_decode_ = on; }
+
     // Split screen: the frame ReadFlatFrame / ReadViewFrame render divided
     // into views, its panes -- each its rectangle in the frame (x and w
     // multiples of 4, y and h of 2) and its own pose. The first pane's pose
@@ -412,6 +418,7 @@ private:
     int eq_w_ = 0;
     int eq_h_ = 0;
     bool flat_ten_bit_ = false; // SetFlatTenBit
+    bool cpu_decode_ = false;   // SetCpuDecode
     std::vector<ViewPane> panes_; // SetViewPanes
     PanePoseFn pane_pose_;
     uint32_t pane_fill_ = 0;

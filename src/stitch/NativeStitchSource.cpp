@@ -243,7 +243,7 @@ bool NativeStitchSource::openDecode() {
     // said once at startup instead, not per clip.
     bool decodeFailed = false;
     std::string decodeCodec;
-    if (!std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
+    if (!cpu_decode_ && !std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<insv::VulkanVideoDecoder>();
         std::string derr;
         if (vdec->open(lens_sources_, derr)) {
