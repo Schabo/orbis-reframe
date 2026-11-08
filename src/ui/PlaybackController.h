@@ -245,6 +245,10 @@ public slots:
     // measurement asks without `evenShown`: the clip on screen must be
     // there again the moment play is pressed.
     void makeGpuRoom(bool evenShown = true);
+    // The viewport couldn't import a lens frame (EquirectViewportWindow::
+    // lensFramesLost) and takes equirects for a while: paused, the frame on
+    // screen is read again, as one; playing, the next reads are anyway.
+    void viewportLostLensFrames();
     void seek(qint64 timelineMs);
     // A seek while dragging the playhead: shows the source's nearest keyframe
     // (inside the clip's trim) instead of the exact frame -- one decode instead

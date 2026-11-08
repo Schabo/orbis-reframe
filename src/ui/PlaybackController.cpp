@@ -136,6 +136,19 @@ void PlaybackController::setPreviewConfig(const stitch::PreviewStitchConfig &con
     m_cv.notify_all();
 }
 
+void PlaybackController::viewportLostLensFrames()
+{
+    if (!m_haveTimeline || m_playing)
+        return;
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        m_decoderEof = false;
+        requestSeekLocked(m_positionMs);
+    }
+    m_presentAfterSeek = true;
+    m_cv.notify_all();
+}
+
 void PlaybackController::play()
 {
     if (!m_haveTimeline || m_playing)

@@ -82,14 +82,16 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
 } // namespace
 
 EquirectViewportRenderer::LensImport *
-EquirectViewportRenderer::importFor(const render::LensFrame &f)
+EquirectViewportRenderer::importFor(const render::LensFrame &f, bool &lasting)
 {
+    lasting = false;
     const render::LensSlot &slot = *f.slot;
     auto it = m_imports.find(slot.id);
     if (it != m_imports.end())
         return &it->second;
     if (std::memcmp(slot.deviceUuid, m_deviceUuid, sizeof m_deviceUuid) != 0) {
         std::fprintf(stderr, "[viewport] lens frames come from another GPU; can't import\n");
+        lasting = true;
         return nullptr;
     }
 
@@ -166,13 +168,44 @@ EquirectViewportRenderer::importFor(const render::LensFrame &f)
             ok = vkCreateImageView(device, &vi, nullptr, &imp.view[i]) == VK_SUCCESS;
         }
         if (!ok) {
-            std::fprintf(stderr, "[viewport] importing a lens frame failed; back to the "
-                                 "equirect preview\n");
-            destroyImport(imp);
+            destroyImport(imp); // lensImportFailed says so
             return nullptr;
         }
     }
+    m_lensRetryWait = kLensRetryFirst; // there is room again
     return &m_imports.emplace(slot.id, imp).first->second;
+}
+
+void EquirectViewportRenderer::lensImportFailed()
+{
+    // Most often the graphics memory is short for a moment (another clip
+    // opening, an export starting). The lens path itself is fine, so it is
+    // tried again: playback sends equirects meanwhile, and the paused frame
+    // on screen is read again as one (lensFramesLost).
+    // Lens frames sent before the controller heard of it fail the same way:
+    // one failure per try, not per frame.
+    if (m_lensOff)
+        return;
+    const auto wait = m_lensRetryWait;
+    m_lensRetryWait = std::min<std::chrono::seconds>(2 * wait, kLensRetryMax);
+    m_lensRetryAt = std::chrono::steady_clock::now() + wait;
+    m_lensOff = true;
+    m_window->setLensFramesSupported(false);
+    QMetaObject::invokeMethod(m_window, &EquirectViewportWindow::lensFramesLost,
+                              Qt::QueuedConnection);
+    std::fprintf(stderr,
+                 "[viewport] importing a lens frame failed (is the graphics memory full?); the "
+                 "equirect preview, the lenses tried again in %lld s\n",
+                 static_cast<long long>(wait.count()));
+}
+
+void EquirectViewportRenderer::tryLensFramesAgain()
+{
+    if (!m_lensOff || !m_lensCapable || std::chrono::steady_clock::now() < m_lensRetryAt)
+        return;
+    m_lensOff = false;
+    m_window->setLensFramesSupported(true);
+    core::log::Info("[viewport] trying the lens frames again\n");
 }
 
 void EquirectViewportRenderer::retireLens(std::shared_ptr<const render::LensFrame> f)
@@ -353,9 +386,16 @@ void EquirectViewportRenderer::startNextFrame()
     const bool newPicture = m_window->TakePendingFrame(width, height, rgba, lens);
     if (render::framestats::Enabled())
         statsFrameStart(newPicture);
+    // The lens frame shown until now: handed back once the new one imports,
+    // else shown on instead of it (the equirect preview may hold an old
+    // picture, or none).
+    std::shared_ptr<const render::LensFrame> shownLens;
     if (newPicture) {
         if (lens) {
-            retireLens(std::move(m_currentLens));
+            if (m_lensMode)
+                shownLens = std::move(m_currentLens);
+            else
+                retireLens(std::move(m_currentLens));
             m_currentLens = std::move(lens);
             m_lensMode = true;
         } else {
@@ -379,13 +419,26 @@ void EquirectViewportRenderer::startNextFrame()
     // images and its stitch params.
     const uint32_t frameSlot = static_cast<uint32_t>(m_window->currentFrame());
     LensImport *imp = nullptr;
+    tryLensFramesAgain();
     if (m_lensMode && m_currentLens && m_lensCapable) {
-        imp = importFor(*m_currentLens);
-        if (!imp) {
+        bool lasting = false;
+        imp = importFor(*m_currentLens, lasting);
+        if (!imp && lasting) {
             m_lensCapable = false;
             m_window->setLensFramesSupported(false); // the controller falls back
+        } else if (!imp) {
+            lensImportFailed();
+            // The frame shown until now stays (its slot is imported); with
+            // none, the failed one is let go, not tried again every render.
+            bool unused = false;
+            retireLens(std::move(m_currentLens));
+            if (shownLens && (imp = importFor(*shownLens, unused)))
+                m_currentLens = std::move(shownLens);
+            else
+                m_lensMode = false;
         }
     }
+    retireLens(std::move(shownLens));
     if (imp) {
         static bool announced = false;
         if (!announced) {

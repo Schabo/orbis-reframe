@@ -452,6 +452,10 @@ void MainWindow::setupPlayback()
     m_playbackThread = new QThread(this);
     m_controller->moveToThread(m_playbackThread);
     connect(m_playbackThread, &QThread::finished, m_controller, &QObject::deleteLater);
+    // A lens frame the viewport had no room to import: the paused frame read
+    // again (queued onto the controller's thread).
+    connect(m_viewport, &EquirectViewportWindow::lensFramesLost, m_controller,
+            &PlaybackController::viewportLostLensFrames);
 
     // Audio: a slave of m_controller's clock, entirely on the GUI thread --
     // see AudioPlayer's own comment for why. A normal child, unlike

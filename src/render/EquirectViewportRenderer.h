@@ -17,6 +17,7 @@
 
 #include <QVulkanWindowRenderer>
 
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -161,8 +162,13 @@ private:
     void createLensResources();
     void destroyLensResources();
     // The (cached) import of `f`'s slot on this device; nullptr if it can't be
-    // imported.
-    LensImport *importFor(const render::LensFrame &f);
+    // imported, with `lasting` set when it never can be (another GPU's).
+    LensImport *importFor(const render::LensFrame &f, bool &lasting);
+    // A lens frame that didn't import for want of room: lens frames off for
+    // the controller (it sends equirects, a paused frame read again) until
+    // tryLensFramesAgain, after a wait that doubles with each failure.
+    void lensImportFailed();
+    void tryLensFramesAgain();
     void destroyImport(LensImport &imp);
     // Hand `f` back once every GPU frame that may use it has finished.
     void retireLens(std::shared_ptr<const render::LensFrame> f);
@@ -222,6 +228,13 @@ private:
     VkSampler m_lensSampler = VK_NULL_HANDLE;
     VkSampler m_flowSampler = VK_NULL_HANDLE; // the seam flow field: wraps in u, clamps in v
     std::map<uint64_t, LensImport> m_imports; // by LensSlot::id
+    // Lens frames off after a failed import (lensImportFailed) until this
+    // time; the next wait. A slot that imports again resets the wait.
+    static constexpr std::chrono::seconds kLensRetryFirst{1};
+    static constexpr std::chrono::seconds kLensRetryMax{30};
+    bool m_lensOff = false;
+    std::chrono::steady_clock::time_point m_lensRetryAt{};
+    std::chrono::seconds m_lensRetryWait = kLensRetryFirst;
     // What's on screen in lens mode. Survives releaseResources (like
     // m_lastRgba) so a rebuilt device re-imports it.
     std::shared_ptr<const render::LensFrame> m_currentLens;

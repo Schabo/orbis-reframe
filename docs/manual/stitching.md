@@ -406,7 +406,9 @@ changes only the preview you see while editing, never the export, and it
 almost never matters. The viewport normally draws straight from the two
 lens pictures at full detail. Only when the graphics card or driver can't
 do that does orbis-reframe stitch a flat 360° preview first, and this sets
-its size. **Auto** uses the clip's full detail, as much as can play
+its size. When the card's memory is only short for a moment, the viewport
+shows the flat preview for a few seconds and then draws from the lenses
+again by itself. **Auto** uses the clip's full detail, as much as can play
 smoothly at its frame rate.
 
 ## Filming tips

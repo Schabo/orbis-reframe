@@ -88,7 +88,8 @@ public:
 
     // Whether this viewport can import lens frames (its Vulkan device has
     // external-memory FD import on the same GPU). False until the renderer
-    // has initialised, and after a failed import. Thread-safe.
+    // has initialised, and for a while after a failed import
+    // (lensFramesLost). Thread-safe.
     bool LensFramesSupported() const { return m_lensSupported.load(); }
     void setLensFramesSupported(bool on) { m_lensSupported.store(on); } // renderer
 
@@ -269,6 +270,11 @@ signals:
     // The viewport couldn't start Vulkan, or couldn't rebuild its swapchain
     // (ReportVulkanFailure): it draws nothing from here on. Once; queued.
     void vulkanFailed();
+    // A lens frame couldn't be imported (most often the graphics memory is
+    // short for a moment): LensFramesSupported() is false until the renderer
+    // tries again, and the frame wasn't drawn -- a paused one has to be sent
+    // again, as an equirect. Queued.
+    void lensFramesLost();
     // The user is (true) / is no longer (false) dragging the view. MainWindow
     // suppresses reframe-path pose updates while a drag is in progress so the
     // authored path doesn't fight the user's hand.

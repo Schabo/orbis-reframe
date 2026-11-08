@@ -374,6 +374,8 @@ void EquirectViewportRenderer::createLensResources()
         return;
 
     m_lensCapable = true;
+    m_lensOff = false;
+    m_lensRetryWait = kLensRetryFirst;
     m_window->setLensFramesSupported(true);
 }
 
