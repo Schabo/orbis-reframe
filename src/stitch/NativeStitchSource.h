@@ -234,6 +234,14 @@ public:
     bool ReadLensFrame(render::LensFrame& out) override;
     void TrimLensFrames() override;
 
+    // IStitchSource: the decoders (VulkanVideoDecoder or InsvDemux) and the
+    // GPU stitch let go, the clip as Open() parsed it kept. While released,
+    // the GPU queries (AllGpu, LensFramesAvailable, Gpu*Available) say no
+    // and the keyframe lookups know none; every read and SeekTo resumes.
+    bool ReleaseGpu() override;
+    bool GpuReleased() const override { return gpu_released_; }
+    bool ResumeGpu() override;
+
     // The depth-aware seam's current per-azimuth inverse stitch distance
     // (insv::kSeamDepthBins values, 1/m; all 0 when off or before a frame).
     const float* SeamDepthTable() const { return seam_state_.q; }
@@ -273,6 +281,19 @@ public:
     const ReadTiming& LastReadTiming() const { return last_timing_; }
 
 private:
+    // Open()'s decode and stitch half, from the parsed clip: Vulkan video
+    // decode + GPU stitch on one device, else CPU decode with the GPU (or
+    // CPU) stitch; gpu_fallback_ says what fell back. Also ResumeGpu's.
+    // False with last_error_ set when the file can't be opened.
+    bool openDecode();
+    // A read's or seek's first step: a released source taken up again, and
+    // positioned where it was when the read carries on (resume_seek_).
+    bool resumeForRead();
+    std::vector<insv::LensSource> lens_sources_; // Open()'s clip, for openDecode
+    bool gpu_released_ = false;                  // ReleaseGpu, until resumed
+    bool resume_seek_ = false; // resumed with no SeekTo since: the next read seeks to resume_at_ms_
+    int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read
+
     insv::StitchGpuParams paramsAt(const insv::FramePts& pts) const; // gpu_params_ + per-frame RS
     // A decoded pair, unlocked between uses (the decoder may lock it as a
     // reference frame meanwhile): locked only around each GPU submission.
@@ -342,6 +363,7 @@ private:
     // for a scrub's frames). Without one, on the CPU: the frames so far and
     // the last frame's field (the one stitched with, kept likewise).
     bool seam_flow_on_ = false;
+    bool seam_flow_wanted_ = false; // seam_flow_on_ as Open() set it, before settleSeamFlow
     insv::SeamFlowGrid seam_flow_grid_;
     bool seam_flow_gpu_ = false;
     insv::SeamFlowWindow seam_flow_window_;

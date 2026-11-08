@@ -7,6 +7,7 @@
 #include <ClipSeam.h>
 #include <LensCalibrationJson.h>
 #include <NativeStitchSource.h>
+#include <VulkanHwDevice.h> // core::sharedDeviceMemory
 
 #include <ClipMetadata.h>  // camera::ReadClipImu
 #include <GyroStabilizer.h>
@@ -25,6 +26,23 @@
 
 namespace {
 
+// --release-gpu: let go of the source's graphics memory (IStitchSource::
+// ReleaseGpu) and say how much came back; the next read takes it up again.
+void ReleaseGpu(stitch::IStitchSource& source) {
+    const core::GpuMemory before = core::sharedDeviceMemory();
+    if (!source.ReleaseGpu()) {
+        std::cout << "ReleaseGpu: nothing released" << std::endl;
+        return;
+    }
+    const core::GpuMemory after = core::sharedDeviceMemory();
+    if (before.known && after.known)
+        std::printf("ReleaseGpu: %.0f MiB back (%.0f of %.0f MiB in use)\n",
+                    (double(before.usage) - double(after.usage)) / 1048576.0,
+                    after.usage / 1048576.0, after.budget / 1048576.0);
+    else
+        std::cout << "ReleaseGpu: released (no memory budget to say how much)" << std::endl;
+}
+
 void WritePpm(const stitch::Frame& frame, const std::string& path) {
     std::ofstream out(path, std::ios::binary);
     out << "P6\n" << frame.width << " " << frame.height << "\n255\n";
@@ -38,7 +56,7 @@ const char kUsage[] =
     "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]\n"
     "       [--no-seam-flow]] [--dump-depth]\n"
     "       [--calibration FILE.json] [--capture-timing]\n"
-    "       [--measure-seam IN_MS OUT_MS]\n"
+    "       [--measure-seam IN_MS OUT_MS] [--release-gpu]\n"
     "       [--colour R,G,B[,SR,SG,SB]] [--lens-colour IN_MS OUT_MS]\n"
     "       <input.insv> <timestamp_ms>...\n"
     "   or: stitch_source_smoke [options] --range START END STEP <input.insv>\n";
@@ -65,6 +83,7 @@ int main(int argc, char** argv) {
     insv::LensColour colour;
     bool dump_depth = false;
     bool capture_timing = false;
+    bool release_gpu = false;
     int arg = 1;
     for (; arg < argc; ++arg) {
         const std::string a = argv[arg];
@@ -127,6 +146,11 @@ int main(int argc, char** argv) {
             // the capture-time correction from the clip's gyro, as playback
             // has it with the stabilization on
             capture_timing = true;
+        } else if (a == "--release-gpu") {
+            // release the source's graphics memory before each frame asked
+            // for (after the first), or before each --range frame written
+            // after the first: what was read must not change
+            release_gpu = true;
         } else if (a == "--dump-depth") {
             // after each frame: the depth-aware seam's table
             dump_depth = true;
@@ -204,8 +228,17 @@ int main(int argc, char** argv) {
         }
         int n = 0;
         int64_t next_dump = range_start;
+        bool released = false;
         for (;;) {
+            const auto start = std::chrono::steady_clock::now();
             const stitch::Frame frame = source->ReadFrame();
+            if (released) {
+                std::printf("resumed and read the next frame in %.0f ms\n",
+                            std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - start)
+                                .count());
+                released = false;
+            }
             if (frame.rgba.empty())
                 break;
             if (frame.timestamp_ms > range_end)
@@ -223,6 +256,10 @@ int main(int argc, char** argv) {
                 std::snprintf(name, sizeof(name), "sss_range_%04d.ppm", n++);
                 WritePpm(frame, name);
                 next_dump += range_step;
+                if (release_gpu) {
+                    ReleaseGpu(*source);
+                    released = true;
+                }
             }
         }
         std::cout << "range [" << range_start << "," << range_end << "] -> " << n << " PPMs\n";
@@ -231,6 +268,8 @@ int main(int argc, char** argv) {
 
     for (int i = arg; i < argc; ++i) {
         const int64_t timestamp_ms = std::atoll(argv[i]);
+        if (release_gpu && i > arg)
+            ReleaseGpu(*source);
         const auto start = std::chrono::steady_clock::now();
         const stitch::Frame frame = source->GetFrame(timestamp_ms);
         const double elapsed_s =

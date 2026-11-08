@@ -138,6 +138,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     info_ = ClipInfo{};
     last_error_.clear();
     gpu_fallback_ = {};
+    gpu_released_ = false;
 
     std::string err;
     const auto clip = camera::ReadClipMetadata(clip_path, &err);
@@ -217,6 +218,24 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     seam_window_.setLensColour(params.lensColour);
     calib_ = calib;
     params_ = params;
+    stitcher_ = std::move(stitcher);
+    seam_flow_wanted_ = seam_flow_on_;
+    lens_sources_ = clip->lensSources();
+    gpu_released_ = false;
+    resume_seek_ = false;
+    resume_at_ms_ = 0;
+    return openDecode();
+}
+
+bool NativeStitchSource::openDecode() {
+    gpu_fallback_ = {};
+    // settleSeamFlow may have turned the seam flow off for want of a GPU
+    // stitch last time; this time there may be one.
+    if (seam_flow_wanted_ && !seam_flow_on_) {
+        seam_flow_on_ = true;
+        gpu_params_.seamFlowCols = seam_flow_grid_.cols;
+        gpu_params_.seamFlowRows = seam_flow_grid_.rows;
+    }
 
     // --- Stage 2: all-GPU (Vulkan video decode -> GPU stitch on one device) ---
     // Set when the GPU should have decoded and didn't (GetGpuFallback), or
@@ -227,7 +246,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     if (!std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<insv::VulkanVideoDecoder>();
         std::string derr;
-        if (vdec->open(clip->lensSources(), derr)) {
+        if (vdec->open(lens_sources_, derr)) {
             VkInstance inst = VK_NULL_HANDLE;
             VkPhysicalDevice phys = VK_NULL_HANDLE;
             VkDevice dev = VK_NULL_HANDLE;
@@ -248,7 +267,6 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
                 gpu->setDeviceKeepAlive(vdec->deviceKeepAlive());
                 vdec_ = std::move(vdec);
                 gpu_ = std::move(gpu);
-                stitcher_ = std::move(stitcher);
                 core::log::Info("[NativeStitchSource] all-GPU path: Vulkan video decode + "
                                 "compute stitch\n");
                 settleSeamFlow();
@@ -269,8 +287,9 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
 
     // --- Stage 1 / fallback: CPU decode + (GPU or CPU) stitch ---
     auto demux = std::make_unique<insv::InsvDemux>();
-    if (!demux->open(clip->lensSources(), err)) {
-        last_error_ = "demux open failed: " + err + ": " + clip_path;
+    std::string err;
+    if (!demux->open(lens_sources_, err)) {
+        last_error_ = "demux open failed: " + err + ": " + clip_path_;
         return false;
     }
     if (!std::getenv("INSV_NO_GPU_STITCH")) {
@@ -286,7 +305,6 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     gpu_fallback_.codec = decodeCodec;
     gpu_fallback_.stitch = !gpu_ && !std::getenv("INSV_NO_GPU_STITCH");
     demux_ = std::move(demux);
-    stitcher_ = std::move(stitcher);
     settleSeamFlow();
     return true;
 }
@@ -308,7 +326,11 @@ void NativeStitchSource::settleSeamFlow() {
 
 bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
+    if (!ResumeGpu())
+        return false;
     const int64_t t = timestamp_ms < 0 ? 0 : timestamp_ms;
+    resume_seek_ = false;
+    resume_at_ms_ = t;
     const bool quick = quick_seek_;
     quick_seek_ = false;
     scrub_frame_ = quick;
@@ -437,6 +459,7 @@ Frame NativeStitchSource::readGpuAllVulkan() {
         last_error_ = err; // empty at EOS
         return Frame{};
     }
+    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     insv::VulkanLensFrame lf0, lf1;
     vdec_->lockFrame(f0, lf0);
@@ -523,6 +546,8 @@ void NativeStitchSource::ConfigureSeamWindow(insv::SeamWindow& w) const {
 
 bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_ms) {
     last_error_.clear();
+    if (!resumeForRead())
+        return false;
     float q[insv::kSeamDepthBins];
     insv::FramePts pts;
     if (vdec_) {
@@ -534,6 +559,7 @@ bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_
             last_error_ = err; // empty at EOS
             return false;
         }
+        resume_at_ms_ = pts.ms + 1; // a resume carries on after it
         insv::VulkanLensFrame lf0, lf1;
         vdec_->lockFrame(f0, lf0);
         vdec_->lockFrame(f1, lf1);
@@ -564,6 +590,7 @@ bool NativeStitchSource::MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_
             last_error_ = err;
             return false;
         }
+        resume_at_ms_ = pts.ms + 1; // a resume carries on after it
         pts_ms = pts.ms;
         w.measureTable(pts_ms, q);
         insv::MeasureSeamCutStats(*stitcher_, a, b, q, *cut_stats_);
@@ -878,6 +905,8 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const view::Pose
 
 FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                                             const color::Grade* colorGrade) {
+    if (!resumeForRead())
+        return FlatFrame{};
     if (!GpuReframeAvailable()) {
         last_error_ = "ReadFlatFrame without the all-GPU reproject path";
         return FlatFrame{};
@@ -903,6 +932,8 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
 
 Frame NativeStitchSource::ReadViewFrame(int outW, int outH, const FramePoseFn& perFrame,
                                         const color::Grade* colorGrade) {
+    if (!resumeForRead())
+        return Frame{};
     if (!GpuViewAvailable()) {
         last_error_ = "ReadViewFrame without the fused GPU view path";
         return Frame{};
@@ -942,6 +973,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
         last_error_ = err; // empty at EOS
         return false;
     }
+    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     insv::VulkanLensFrame lf0, lf1;
     vdec_->lockFrame(f0, lf0);
@@ -1016,6 +1048,8 @@ struct NativeStitchSource::HeldPair {
 };
 
 int NativeStitchSource::KeepNextPair(insv::FramePts& pts) {
+    if (!resumeForRead())
+        return 0;
     if (!GpuViewAvailable()) {
         last_error_ = "KeepNextPair without the fused view path";
         return 0;
@@ -1031,6 +1065,7 @@ int NativeStitchSource::KeepNextPair(insv::FramePts& pts) {
         last_error_ = err; // empty at EOS
         return 0;
     }
+    resume_at_ms_ = h->pts.ms + 1; // a resume carries on after it
     insv::VulkanLensFrame lf0, lf1;
     vdec_->lockFrame(h->f0, lf0);
     vdec_->lockFrame(h->f1, lf1);
@@ -1133,8 +1168,51 @@ void NativeStitchSource::TrimLensFrames() {
         gpu_->trimLensRing();
 }
 
+bool NativeStitchSource::ReleaseGpu() {
+    // A clip that fell back to the CPU holds nothing there, but is let go
+    // too: ResumeGpu tries the GPU again.
+    if (gpu_released_ || !kept_.empty() || (!vdec_ && !gpu_ && !gpu_fallback_.any()))
+        return false; // nothing there, or frames kept on it
+    // The stitch first: on the all-GPU path it borrows the decoder's device.
+    // Its lens ring lives on while a viewport shows one of its frames.
+    gpu_.reset();
+    vdec_.reset();
+    demux_.reset(); // the CPU decode's: openDecode tries the GPU again
+    gpu_released_ = true;
+    resume_seek_ = true;
+    return true;
+}
+
+bool NativeStitchSource::ResumeGpu() {
+    if (!gpu_released_)
+        return true;
+    const auto t0 = std::chrono::steady_clock::now();
+    if (!openDecode())
+        return false; // still released: a later call tries again
+    gpu_released_ = false;
+    core::log::Info("[NativeStitchSource] back on the %s in %.0f ms: %s\n",
+                    AllGpu() ? "GPU" : "CPU",
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                        .count(),
+                    clip_path_.c_str());
+    return true;
+}
+
+bool NativeStitchSource::resumeForRead() {
+    if (!ResumeGpu())
+        return false;
+    if (!resume_seek_)
+        return true;
+    // Where the source was: the frame after the last one read. SeekTo clears
+    // the flag; its pre-roll measures the seam into that frame as playing on
+    // would have.
+    return SeekTo(resume_at_ms_);
+}
+
 bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
+    if (!resumeForRead())
+        return false;
     if (!LensFramesAvailable()) {
         last_error_ = "ReadLensFrame without the all-GPU lens export path";
         return false;
@@ -1152,6 +1230,7 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
         last_error_ = err; // empty at EOS
         return false;
     }
+    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     insv::VulkanLensFrame lf0, lf1;
     vdec_->lockFrame(f0, lf0);
@@ -1188,6 +1267,7 @@ Frame NativeStitchSource::readCpuDecode() {
         last_error_ = err; // empty on a clean end-of-stream
         return Frame{};
     }
+    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     // A scrub's passing frame is stitched with the last frame's seam, as the
     // GPU path.
@@ -1288,6 +1368,8 @@ Frame NativeStitchSource::readCpuDecode() {
 }
 
 Frame NativeStitchSource::ReadFrame() {
+    if (!resumeForRead())
+        return Frame{};
     if (vdec_)
         return readGpuAllVulkan();
     if (demux_ && stitcher_)

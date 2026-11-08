@@ -135,7 +135,12 @@ app keeps it) in place of the file's, for the stitch and the measurements,
 and `--capture-timing` stitches with the capture-time correction from the
 clip's gyro, as playback has it with the stabilization on. A frame from a
 `--range` and the same frame seeked to must be byte-identical: that is how
-the new stitcher's seek pre-roll is checked.
+the new stitcher's seek pre-roll is checked. `--release-gpu` gives the
+source's graphics memory back before each frame asked for (after the
+first), or before the read after each `--range` frame written, and says how
+much came back and how long the next read took to take it up again: the
+frames must be byte-identical to a run without it (playback gives idle
+clips' memory back the same way).
 
 **When:** a quick check that decode, seek and stitch still work after a
 change, before starting the app. The release test runs it on a build from
@@ -144,6 +149,7 @@ the source archive (`tests/release/dev_test.sh`).
 ```sh
 build/stitch_source_smoke clip.insv 0 5000 60000    # stitch_source_smoke_<ms>.ppm
 build/stitch_source_smoke --range 10000 12000 500 clip.insv
+build/stitch_source_smoke --release-gpu clip.insv 1000 2000 3000
 ```
 
 ## playback_bench

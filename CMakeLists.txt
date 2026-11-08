@@ -327,7 +327,7 @@ if(FFMPEG_FOUND)
     # encoder (src/core/VulkanHwDevice).
     add_library(vulkan_hw_device STATIC src/core/VulkanHwDevice.h src/core/VulkanHwDevice.cpp)
     target_include_directories(vulkan_hw_device PUBLIC src/core)
-    target_link_libraries(vulkan_hw_device PRIVATE PkgConfig::FFMPEG)
+    target_link_libraries(vulkan_hw_device PUBLIC Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG)
 endif()
 
 # --- insv_demux: the one FFmpeg-dependent piece of src/insv/ (decode a fisheye
@@ -727,7 +727,7 @@ if(FFMPEG_FOUND)
     install(DIRECTORY docs/manual/ DESTINATION share/doc/orbis-reframe/manual)
 
     add_executable(stitch_source_smoke tools/stitch_source_smoke/main.cpp)
-    target_link_libraries(stitch_source_smoke PRIVATE stitch orbis_core)
+    target_link_libraries(stitch_source_smoke PRIVATE stitch orbis_core vulkan_hw_device)
 
     # --- tools/playback_bench: per-mode decode / stitch / copy-back /
     # seek timings on the all-GPU path. Measure-only.

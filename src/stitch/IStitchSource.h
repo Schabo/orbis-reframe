@@ -337,6 +337,28 @@ public:
     // Let go of GPU memory held for lens frames that nobody is using (the
     // source went idle). Default: nothing to do.
     virtual void TrimLensFrames() {}
+
+    // Give back everything the source holds on the graphics card -- its
+    // decoders and their frame pools, the GPU stitch -- and keep the parsed
+    // clip (its description, calibration, settings, seam state), so taking
+    // it up again costs a decoder start, not an Open(). Lens frames already
+    // handed out stay valid. True when it released something; false when it
+    // holds nothing there, or can't let go (frames kept by KeepNextPair /
+    // HoldNextPair). A source that fell back to the CPU (GetGpuFallback)
+    // can be released too, so that ResumeGpu tries the GPU again. Call from
+    // the reading thread, like the reads.
+    virtual bool ReleaseGpu() { return false; }
+    // Released and not yet taken up again.
+    virtual bool GpuReleased() const { return false; }
+    // Take a released source up again: what Open() did on the GPU, the GPU
+    // tried afresh (a clip that fell back to the CPU while the memory was
+    // full gets the GPU when it's there again; GetGpuFallback says). The
+    // next read carries on where the source was, unless a SeekTo comes
+    // first. Every read and SeekTo does this itself; call it first where
+    // the answers of LensFramesAvailable() / keyframe lookups matter,
+    // since a released source has neither. False with GetLastError() set
+    // when the clip can't be opened again (the file is gone).
+    virtual bool ResumeGpu() { return true; }
 };
 
 } // namespace stitch
