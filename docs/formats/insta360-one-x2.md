@@ -31,8 +31,15 @@ one frame shorter than its `_00_` (§3.1).
 And one take from 2025-08-04 on older firmware (`v1.0.62_build2`, same
 calibration): `VID_20250804_152938_00_003` + `_10_` + LRV, **5.7K at 29.97
 fps** (30000/1001), 1740.9 s (29 min), 52176 frames, 10.96 GB and 10.91 GB
--- the longest and only 30 fps clip here. Here the **two files have the
-same frame count**.
+-- the longest clip here. Here the **two files have the same frame
+count**.
+
+Seven more takes from that day and firmware (added 2026-11-08, the same
+three files each), all 5.7K 29.97 fps: `152306_…_001` (6.9 s),
+`152716_…_002` (29.1 s), and five 1.7 s takes `_005`-`_009` and one 0.97 s
+take `_010` -- edge cases for very short clips. Their `_10_` files are one
+frame shorter, as on the 25 fps takes (871 / 872, 50 / 51, 28 / 29), except
+`_001` (206 / 206).
 
 Beside them are five flat videos exported from Insta360's software from
 the same day (`1.MP4`, `2.MP4`, `3.MP4`, `CKDH4299.MP4`, `EXAM7155.MP4`):
@@ -114,7 +121,9 @@ trailer         _00_ and LRV only: the inst records, raw, to EOF
   ~1481 px in the 3040² sensor frame, so ~1403 stream px in the 2880² frame,
   with a black margin around it (X5: the circle touches the frame edge).
 - The `_10_` file is **one frame shorter** than `_00_` on every 25 fps take
-  (7735 vs 7736, 4703 vs 4704, ...), the same length on the 30 fps one; its
+  (7735 vs 7736, 4703 vs 4704, ...) and on most 30 fps ones; the same length
+  on two 30 fps takes (`152938_003`, `152306_001`), so neither the frame rate
+  nor the firmware decides it ❓; its
   `creation_time` can be a second later. ✅ **Frame n of one
   file is frame n of the other**; `_10_` only lacks the last frame
   (measured 2026-10-21): the seam match (`EstimateSeamAlignment`'s strip
@@ -159,7 +168,7 @@ status words are the X5's (X5 §3.4): **enough**, **one clip**, **wanted**.
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 5.7K | 30 / 25 / 24 | `_00_` + `_10_` + `LRV_…_11_` | 14 takes at 25 (walking and riding), one 29 min take at 29.97, H.264, `gamma_mode` `linear` | enough at 25 and 30 H.264; **24 wanted** |
+| 360 Video 5.7K | 30 / 25 / 24 | `_00_` + `_10_` + `LRV_…_11_` | 14 takes at 25 (walking and riding), one 29 min take and seven short ones (0.97-29 s) at 29.97, H.264, `gamma_mode` `linear` | enough at 25 and 30 H.264; **24 wanted** |
 | 360 Video 4K | 50 / 30 | one `VID` file (+ LRV at 30 only) | none | **wanted**: the one-file layout |
 | 360 Video 3K | 100 | one `VID` file, no LRV | none | **wanted** |
 | HDR Video | 5.7K 25 / 24 | ❓ | none | **wanted** |

@@ -28,17 +28,21 @@ Insta360 SDK disassembly was used, and none should be.
 
 Reference clips (`sample_footage/`, gitignored), all from one camera:
 firmware `v1.5.6_build1` for the 2025 clips, `v1.11.10_build1` for the 2026
-ones. Which modes they cover is in §3.4.
+ones (one clip `v1.11.6_build1`). Which modes they cover is in §3.4.
 
 | clip | length | notes |
 |---|---|---|
 | `Old/VID_20250904_193105_00_002.insv` (+ `LRV_…_01_002.lrv`) | 42.8 s | stick mount, GPS, main test clip |
 | `Old/VID_20250828_192900_00_001.insv` | ~9.5 min | curves clip, **two AAC streams** (camera mic + Mic Air), no GPS |
 | `Old/VID_20250828_201257_00_006.insv` | ~10.7 min | 15 GB, GPS for the first ~48 s only (§8), different rolling-shutter value |
-| `Analysis/VID_20250927_144221_00_019-trim.insv` / `_020-trim` | 30 min + 7.4 min | one recording split into two files, re-written by Insta360 software, handlebar mount |
+| `Split card original/VID_20250927_144221_00_019.insv` / `_020` (+ `.lrv`) | 1799.8 s + 445.6 s | one 37-minute recording split into two files, straight from the card, handlebar mount |
+| `Analysis/VID_20250927_144221_00_019-trim.insv` / `_020-trim` | 30 min + 7.4 min | the same recording re-written (trimmed ~2 s at each end) by Insta360 software |
 | `Modes/VID_20260927_*_00_001…005.insv` (+ `.lrv`) | ~12 s each | one clip per mode, camera still (§3.3) |
 | `ilog/VID_20261018_185907_00_006.insv` | 11 s | 5.7K 30 I-Log, indoor |
 | `Demo/…/VID_20260815_*.insv` (+ `.lrv`), `IMG_20260815_*.insp` | 18 clips, 77 photos | a day's ride, 8K 30: 12 video clips and 6 timelapses (`_078`, `_079`, `_088`, `_089`, `_091`, `_095`, §3.5); two Interval series of 72 MP 360 photos with GPS (§3.6) |
+| `Demo/…/card/` | | that day's card files other than the media: `MISC/Camera01/*.pb` sidecars of every clip and proxy (§9), `MISC/RECRST_IDX*.SUCC`, `DCIM/fileinfo_list.list`, `DCIM/.editinfo_list.list` |
+| `Modes/VID_20250905_185106_00_018.insv` (+ `.lrv`) | 24 s (726 frames) | timelapse at firmware v1.5.6, 8K, 2 s interval, on the move (§3.5) |
+| `Modes/VID_20260801_172932_00_024.insv` (+ `.lrv`) | 44 s | 8K 30 riding, firmware v1.11.6 |
 
 ---
 
@@ -47,7 +51,8 @@ ones. Which modes they cover is in §3.4.
 ```
 DCIM/Camera01/VID_20250904_193105_00_002.insv   full-res dual-fisheye master
 DCIM/Camera01/LRV_20250904_193105_01_002.lrv    low-res proxy of the same take
-MISC/Camera01/VID_20250904_193105_00_002.insv.pb   protobuf sidecar (§9)
+MISC/Camera01/VID_20250904_193105_00_002.insv.pb   protobuf sidecar (§9), one per file
+MISC/Camera01/LRV_20250904_193105_01_002.lrv.pb
 ```
 
 - **Name pattern** 📖 ✅ (Insta360 X5 manual): *prefix + date/time +
@@ -65,7 +70,7 @@ MISC/Camera01/VID_20250904_193105_00_002.insv.pb   protobuf sidecar (§9)
 - **Long recordings are split** 📖 ✅: every **29 min 59 s**, per Insta360
   support (X5/X4/X3). The recording continues in a new file with the same
   date/time prefix and the next counter: our 37-minute take became `…_019`
-  (1797.8 s, 42 GB) and `…_020` (442.6 s). Files aren't limited to 4 GB; 13–42
+  (1799.8 s, 42.5 GB) and `…_020` (445.6 s, 10.5 GB) on the card ✅. Files aren't limited to 4 GB; 13–42
   GB single files exist. The continuation's metadata names the take's first
   file (§5.1 field 26).
 - The metadata also records the file's own card path
@@ -228,7 +233,7 @@ frame rate); **wanted** means no clip yet.
 
 | Mode | Spec | Files | Our clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K, HDR on / off | 30 / 25 / 24 | `VID_…_00_` `.insv` + `.lrv` | 19 at 30 fps, still and moving, one split recording | enough at 30; **25 / 24 wanted** |
+| 360 Video 8K, HDR on / off | 30 / 25 / 24 | `VID_…_00_` `.insv` + `.lrv` | 20 at 30 fps, still and moving, one split recording; firmware v1.5.6, v1.11.6, v1.11.10 | enough at 30; **25 / 24 wanted** |
 | 360 Video 5.7K+ | 30 / 25 / 24 | as above | one still clip at 30 | one clip |
 | 360 Video 5.7K | 60 / 50 / 48 / 30 / 25 / 24 | as above | one still clip at 60 | one clip; **50 / 48 / 24 wanted** |
 | 360 Video 4K | 120 / 100 / 60 / 50 / 48 / 30 / 25 / 24 | as above | one still clip at 120 | one clip; **100 / 60 / 30 wanted** |
@@ -237,11 +242,11 @@ frame rate); **wanted** means no clip yet.
 | H.264 encoding | | as above | none | **wanted**: every clip we have is H.265 |
 | PureVideo | 8K / 5.7K / 4K, 30 / 25 / 24 | ❓ | none | **wanted** |
 | InstaFrame 2.0 | 360 5.7K+ + flat 4K / 1080p, 30 / 25 / 24 | `.insv` (360) + `.mp4` (flat) | none | **wanted** |
-| Timelapse | not in the spec table | as video, no audio, no IMU but the orientation per frame (§3.5) | six 8K clips at a 2 s interval, on the move | enough to recognise, play and stabilize; **another interval and resolution wanted** (does the entries' spacing follow field 25?) |
+| Timelapse | not in the spec table | as video, no audio, no IMU but the orientation per frame (§3.5) | six 8K clips at a 2 s interval, on the move (v1.11.10), one more at v1.5.6 with the same fields | enough to recognise, play and stabilize; **another interval and resolution wanted** (does the entries' spacing follow field 25?) |
 | TimeShift | not in the spec table | ❓ | none | **wanted** |
 | Bullet Time | not in the spec table | ❓ | none | **wanted** |
 | Loop Recording, Dashcam | | ❓ | none | wanted, low |
-| Split recording (over 29 min 59 s, §1) | | two `.insv` | one, re-written by Insta360 software | one clip; a card original would confirm field 26 |
+| Split recording (over 29 min 59 s, §1) | | two `.insv` + two `.lrv` | one, as on the card and re-written by Insta360 software | enough: field 26 confirmed on the card original |
 | Single-lens Video | 4K / 2.7K 60…24, 1080p 120…24 | `VID_….mp4` | none | **wanted** |
 | Single-lens FreeFrame | 3840² 30…24, 2720² / 1920² 60…24 | `PRO_VID_….mp4` | none | **wanted** |
 | Single-lens Me Mode | 4K 30…24, 2.7K / 1080p 120…24 | `.insv` (4K, and 50 fps and up), `.mp4` (2.7K / 1080p at 30 and below) | none | **wanted** |
@@ -419,11 +424,11 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x0b00` | 11 | AAASimulation | 342 294 | **267 B per recorded frame** (the same on `192900` and `201257`). Each block starts with the same `u32` ms timestamp as type 9's; the rest is bit-packed and not decoded, with small 8-bit curves visible | 📖❓ |
 | — | 12–18 | ExposureSecondary, Magnetic, Euler, SecGyro, Speed, TBox, Quaternions | — | not on the X5 samples (other models) | |
 | `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, world → body, 11 per frame across the readout; timelapse only (§3.5) | ✅ |
-| `0x1600` | 22 | Snapshots | 8 306 836 | **four 1664×832 NV12 frames of the dual-fisheye picture** from across the clip (§4.5) | ✅ |
+| `0x1600` | 22 | Snapshots (`shell_recognition_data` in the `.pb` sidecar, §9: probably for recognising a lens guard) | 8 306 836 | **four 1664×832 NV12 frames of the dual-fisheye picture** from across the clip (§4.5) | ✅ |
 | `0x1c00` | 28 | ? | 12 793 | eight 256-entry `u8` tables, identity on every sample, then one **256-entry `u16` tone curve** (values 0-255, concave: 40 -> ~89, 120 -> ~178, 200 -> ~229) that differs slightly between clips; the rest mostly zero. One curve for the whole picture, not per lens | ⚠️ |
 | `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz | ❓ |
-| `0x3900` | 57 | ? | — | only in the software-rewritten `-trim` clip | ❓ |
-| `0x8000` | 128 | **TimeMap** | 862 136 (`144221_019-trim`) | written by Insta360 software on trimmed/re-timed exports. Decoded ✅: header `{u32 32 (header size), u32 trimCount, u32 pairBytes, u32 frameCount, 16 B zero}`, then `trimCount × {f64 duration, source start, source end}` (ms), then `(video ms, original ms)` f64 pairs, one per frame. On the sample: 1 trim, source 2002.0 → 1 799 764.6 ms, pairs `(0, 2002.0), (33.37, 2035.37)…`. **Field 24 keeps naming the original first frame**, so sync must add the source offset (§7.1) | ✅ |
+| `0x3900` | 57 | ? | — | only in the software-rewritten `_019-trim` clip, not in its card original: written by Insta360 software | ❓ |
+| `0x8000` | 128 | **TimeMap** | 862 136 (`144221_019-trim`) | written by Insta360 software on trimmed/re-timed exports (the card original of `144221` has none). Decoded ✅: header `{u32 32 (header size), u32 trimCount, u32 pairBytes, u32 frameCount, 16 B zero}`, then `trimCount × {f64 duration, source start, source end}` (ms), then `(video ms, original ms)` f64 pairs, one per frame. On the sample: 1 trim, source 2002.0 → 1 799 764.6 ms, pairs `(0, 2002.0), (33.37, 2035.37)…`. **Field 24 keeps naming the original first frame**, so sync must add the source offset (§7.1) | ✅ |
 
 ExifTool decodes types 1 (partly), 2, 3, 4, 6 and 7. Its source notes that
 0x900/0xa00/0xb00 also occur on X3 / ONE RS / Ace Pro. Our parser reads types
@@ -510,7 +515,7 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 22 | `gamma_mode` | `standard`; `I_Log` in I-Log | colour profile ✅ (both values seen) |
 | **24** | **`first_frame_timestamp`** | 2468081984 | **device µs of the first recorded video frame**; the sync anchor (§7.1) ✅ 📖 |
 | **25** | **`rolling_shutter_time`** | **21.244** (11.837 on `201257`) | **frame readout time, ms**. Gyroflow's `frame_readout_time` reads it directly ✅ 📖 |
-| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, 5 on Interval photos, otherwise not reliable (§3.5, §3.6); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`), and `identify` is the first file's path. |
+| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, 5 on Interval photos, otherwise not reliable (§3.5, §3.6); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`), `identify` is the first file's path and `total` stays 0 -- the same on the card original as on the re-written copy ✅. |
 | 27 | `window_crop_info` | {src 5376×5376, dst 5312×5312} | sensor crop window. `dst` is the focal reference: **`fx_video = fx · 3840/5312`**. Gyroflow computes `fx / (dst_w / dimension_w)` ✅ 📖 |
 | **28** | **`gyro_timestamp`** | **1.6** | **IMU timing offset, ms**. Gyroflow subtracts it from every gyro/accel time (§6.2) 📖 |
 | 29 | `is_has_gyro_timestamp` | true | enables field 28 |
@@ -1013,15 +1018,35 @@ only counts the record for the Media information panel -- records, `A`
 records, the fix rate (median step between distinct timestamps) and the
 track length (distinct timestamps × that step); positions stay out of it.
 
-## 9. `MISC/Camera01/<file>.insv.pb` sidecar 📖
+## 9. `MISC/Camera01/<file>.pb` sidecar ✅
 
-Per insv-stitch (`_find_pb_path`), the camera writes
-`MISC/Camera01/VID_…_00_NNN.insv.pb` next to `DCIM/Camera01/`. It's a protobuf
-containing a base64 blob, and the decoded text holds the same 56-token MEI
-string. (Earlier notes said `*.lrv.pb`; the insv-stitch code
-says `.insv.pb`.) We don't need it, because the trailer's field 111 holds the
-same string. It doesn't contain the IMU→camera rotation. It isn't in our
-sample set.
+The camera writes one sidecar per media file into `MISC/Camera01/`, named
+after it with `.pb` appended: `VID_…_00_NNN.insv.pb` **and**
+`LRV_…_01_NNN.lrv.pb` (insv-stitch's `_find_pb_path` names the first 📖).
+Read from the 36 sidecars of the Demo day (`Demo/…/card/`, firmware
+v1.11.10, 5.9-6.0 KB each), a protobuf with:
+
+- **Field 1, an index of the file's trailer**: one entry (field 1) per
+  record that has data, `{1 format, 2 name, 3 offset, 4 size, 5 type}`,
+  exactly the offsets table of §4.2 (offsets from the trailer start); then
+  2 = the 16-token calibration string (trailer field 5), 3 = the trailer's
+  start in the file (file size minus the trailer length of §4.1), 5 = 3
+  (probably the trailer version, §4.1), 4 = ❓ (9.6 MB on `_078`, a little less on its
+  `.lrv`).
+  - **The names are the camera's own** for the record types: `metadata` (1),
+    `thumbnail` (2), `gyro` (3), `exposure` (4), `timelapse_timestamp`
+    (6), `gps` (7), `aaa` (9), `anchors` (10), `aaa_simulation` (11),
+    `shell_recognition_data` (22), and `unknown_type` for 24, 28 and 29.
+- **Field 2, the file's stream parameters** (some numbered fields
+  unknown ❓): audio bitrate 192000 (1), codec `aac` (5), 48000 Hz (7);
+  video bitrate (8: 100 Mb/s on a timelapse, 180 Mb/s on an 8K 30 clip, 8
+  Mb/s on an `.lrv`), codec `hevc` / `h264` (25), width 3840 / 1664 (15,
+  31), 29.97 fps (27, 29; 28 = `{1001, 30000}`), a duration in s (6, 26; 0
+  on timelapses), and **19 = the trailer's metadata record (type 1),
+  base64-encoded, byte for byte** -- the "base64 blob" insv-stitch reads.
+
+We don't need it: everything in it is in the file's own trailer, which a
+copy without `MISC/` still has. It doesn't contain the IMU→camera rotation.
 
 ## 10. Geometry cheat-sheet (X5)
 
