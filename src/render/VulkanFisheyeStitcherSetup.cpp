@@ -482,70 +482,87 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
         ring->device = device;
         ring->keepAlive = keepAlive;
     }
-    std::unique_lock<std::mutex> lk(ring->mx);
-    const auto deadline = std::chrono::steady_clock::now() + kLensSlotWait;
-    for (;;) {
-        for (auto& sl : ring->slots)
-            if (!sl->busy && sl->pub.lensW == lensW && sl->pub.lensH == lensH &&
-                sl->pub.bitDepth == (deepLens() ? 10 : 8) && sl->pub.flowW == flowW &&
-                sl->pub.flowH == flowH) {
-                sl->busy = true;
-                return sl.get();
+    // A new slot's images, each in its own exportable allocation.
+    const auto makeImages = [&](LensRingCore::Slot& sl) {
+        for (int i = 0; i < LensSlot::kImages; ++i) {
+            if (i == LensSlot::kFlowImage) {
+                if (!makeExportImage(VK_FORMAT_R16G16B16A16_SFLOAT, flowW, flowH, sl.img[i],
+                                     sl.mem[i], sl.pub.memSize[i], sl.pub.fd[i], err))
+                    return false;
+                continue;
             }
-        const size_t cap = std::chrono::steady_clock::now() < deadline ? kLensSlotsSoft
-                                                                       : kLensSlotsHard;
-        if (ring->slots.size() < cap)
-            break;
-        if (ring->slots.size() >= kLensSlotsHard &&
-            std::chrono::steady_clock::now() >= deadline) {
-            err = "lens ring exhausted (every slot held)";
-            return nullptr;
+            const bool uv = (i & 1) != 0;
+            // A plane copy needs the plane's size: 16-bit samples for P010.
+            const VkFormat fmt = deepLens() ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
+                                            : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
+            if (!makeExportImage(fmt, uv ? lensW / 2 : lensW, uv ? lensH / 2 : lensH, sl.img[i],
+                                 sl.mem[i], sl.pub.memSize[i], sl.pub.fd[i], err))
+                return false;
         }
-        ring->cv.wait_until(lk, deadline);
-    }
-    // Drop free slots of another size first (a source's lens size doesn't
-    // change, but be tidy).
-    for (auto it = ring->slots.begin(); it != ring->slots.end();) {
-        if (!(*it)->busy && ((*it)->pub.lensW != lensW || (*it)->pub.lensH != lensH ||
-                             (*it)->pub.bitDepth != (deepLens() ? 10 : 8) ||
-                             (*it)->pub.flowW != flowW || (*it)->pub.flowH != flowH)) {
-            ring->destroySlot(**it);
-            it = ring->slots.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    auto sl = std::make_unique<LensRingCore::Slot>();
-    sl->pub.lensW = lensW;
-    sl->pub.lensH = lensH;
-    sl->pub.bitDepth = deepLens() ? 10 : 8;
-    sl->pub.flowW = flowW;
-    sl->pub.flowH = flowH;
-    sl->pub.id = LensRingCore::nextId.fetch_add(1);
-    std::memcpy(sl->pub.deviceUuid, deviceUuid, sizeof deviceUuid);
-    for (int i = 0; i < LensSlot::kImages; ++i) {
-        if (i == LensSlot::kFlowImage) {
-            if (!makeExportImage(VK_FORMAT_R16G16B16A16_SFLOAT, flowW, flowH, sl->img[i], sl->mem[i],
-                                 sl->pub.memSize[i], sl->pub.fd[i], err)) {
-                ring->destroySlot(*sl);
+        return true;
+    };
+    std::unique_lock<std::mutex> lk(ring->mx);
+    auto deadline = std::chrono::steady_clock::now() + kLensSlotWait;
+    for (;;) {
+        for (;;) {
+            for (auto& sl : ring->slots)
+                if (!sl->busy && sl->pub.lensW == lensW && sl->pub.lensH == lensH &&
+                    sl->pub.bitDepth == (deepLens() ? 10 : 8) && sl->pub.flowW == flowW &&
+                    sl->pub.flowH == flowH) {
+                    sl->busy = true;
+                    return sl.get();
+                }
+            const auto now = std::chrono::steady_clock::now();
+            const bool memoryCapped = ring->memoryCap > 0 && now < ring->memoryCapUntil;
+            size_t cap = now < deadline ? kLensSlotsSoft : kLensSlotsHard;
+            if (memoryCapped)
+                cap = std::min(cap, ring->memoryCap);
+            if (ring->slots.size() < cap)
+                break;
+            if (now >= deadline) {
+                err = memoryCapped ? "graphics memory full, every lens slot held"
+                                   : "lens ring exhausted (every slot held)";
                 return nullptr;
             }
-            continue;
+            ring->cv.wait_until(lk, deadline);
         }
-        const bool uv = (i & 1) != 0;
-        // A plane copy needs the plane's size: 16-bit samples for P010.
-        const VkFormat fmt = deepLens() ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
-                                        : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
-        if (!makeExportImage(fmt,
-                             uv ? lensW / 2 : lensW, uv ? lensH / 2 : lensH, sl->img[i],
-                             sl->mem[i], sl->pub.memSize[i], sl->pub.fd[i], err)) {
-            ring->destroySlot(*sl);
+        // Drop free slots of another size first (a source's lens size doesn't
+        // change, but be tidy).
+        for (auto it = ring->slots.begin(); it != ring->slots.end();) {
+            if (!(*it)->busy && ((*it)->pub.lensW != lensW || (*it)->pub.lensH != lensH ||
+                                 (*it)->pub.bitDepth != (deepLens() ? 10 : 8) ||
+                                 (*it)->pub.flowW != flowW || (*it)->pub.flowH != flowH)) {
+                ring->destroySlot(**it);
+                it = ring->slots.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        auto sl = std::make_unique<LensRingCore::Slot>();
+        sl->pub.lensW = lensW;
+        sl->pub.lensH = lensH;
+        sl->pub.bitDepth = deepLens() ? 10 : 8;
+        sl->pub.flowW = flowW;
+        sl->pub.flowH = flowH;
+        sl->pub.id = LensRingCore::nextId.fetch_add(1);
+        std::memcpy(sl->pub.deviceUuid, deviceUuid, sizeof deviceUuid);
+        if (makeImages(*sl)) {
+            ring->memoryCap = 0;
+            sl->busy = true;
+            ring->slots.push_back(std::move(sl));
+            return ring->slots.back().get();
+        }
+        ring->destroySlot(*sl);
+        // No room on the card for another slot: wait for one of the slots
+        // there are (the playback queue and the viewport give theirs back)
+        // rather than fail the frame. Only with none is the fill an error.
+        if (ring->slots.empty())
             return nullptr;
-        }
+        const auto now = std::chrono::steady_clock::now();
+        ring->memoryCap = ring->slots.size();
+        ring->memoryCapUntil = now + kLensMemoryRetry;
+        deadline = now + kLensSlotWait;
     }
-    sl->busy = true;
-    ring->slots.push_back(std::move(sl));
-    return ring->slots.back().get();
 }
 
 bool VulkanFisheyeStitcher::Impl::ensureResources(int nfw, int nfh, int new_, int neh, std::string& err)

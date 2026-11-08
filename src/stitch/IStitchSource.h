@@ -331,7 +331,9 @@ public:
     // another Vulkan device (render::LensFrame), instead of a stitched equirect
     // -- for a viewport that renders the view straight from the lenses. Same
     // play order / seeking as ReadFrame(). False at end-of-clip (GetLastError()
-    // empty) or on error. Default: unsupported; LensFramesAvailable() tells.
+    // empty) or on error; after an error the next read tries the same frame
+    // again (the graphics memory may have been full for a moment). Default:
+    // unsupported; LensFramesAvailable() tells.
     virtual bool LensFramesAvailable() const { return false; }
     virtual bool ReadLensFrame(render::LensFrame& /*out*/) { return false; }
     // Let go of GPU memory held for lens frames that nobody is using (the

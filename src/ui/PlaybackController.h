@@ -358,6 +358,11 @@ private:
     // The active source fell back to the CPU (its open found the graphics
     // memory full) and the card has room for it now: back onto the GPU.
     void retryGpuFallback();
+    // After a read of the active source that failed with `err` (not its
+    // end): true while the frame is to be tried again -- the decoder holds
+    // there, behind "Buffering…" when playing -- false once playing has
+    // given up on it (the clip is then taken as ended).
+    bool holdFailedRead(const std::string &err, bool playing);
     qint64 clampTimeline(qint64 ms) const {
         return ms < 0 ? 0 : (ms > m_totalMs ? m_totalMs : ms);
     }
@@ -426,6 +431,12 @@ private:
     // queue runs dry instead of letting the wall clock run on over a frozen
     // picture.
     bool m_hardStall = false;
+    // A read failed with an error, not at the clip's end (holdFailedRead):
+    // the decoder reads that frame again at m_readRetryAt -- or, a paused
+    // lookahead's (m_readParked), at the next play or seek.
+    bool m_readFailed = false;
+    bool m_readParked = false;
+    std::chrono::steady_clock::time_point m_readRetryAt;
     bool m_gpuRoomPending = false; // makeGpuRoom: the decoder makes room
     bool m_gpuRoomEvenShown = false; // ... the active source's too, if paused
 
@@ -438,6 +449,7 @@ private:
     SourceFactory m_makeSource;
     int m_decSegIndex = -1;
     qint64 m_decLastSourceMs = -1; // source time of the last frame read; -1 after a seek
+    int m_readRetries = 0; // holdFailedRead's tries while playing, since the last good read
     std::map<QString, std::shared_ptr<stitch::IStitchSource>> m_srcCache;
     QStringList m_srcLru; // paths, least-recently-used first
     // Graphics memory (balanceGpuMemory): what each file's source took on

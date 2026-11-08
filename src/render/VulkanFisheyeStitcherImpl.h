@@ -134,6 +134,10 @@ struct LensRingCore {
     std::mutex mx;
     std::condition_variable cv;
     std::vector<std::unique_ptr<Slot>> slots; // guarded by mx
+    // The graphics memory had no room for another slot at this many: the
+    // ring makes do with them until memoryCapUntil, then tries to grow again.
+    size_t memoryCap = 0;                              // guarded by mx
+    std::chrono::steady_clock::time_point memoryCapUntil; // guarded by mx
 
     static std::atomic<uint64_t> nextId;
 
@@ -161,10 +165,14 @@ struct LensRingCore {
 
 // Ring sizing: enough for the playback queue plus what a viewport holds (the
 // shown frame and its frames in flight). Past kLensSlotsSoft a fill waits for
-// a slot to come back; past kLensSlotsHard it fails instead of growing.
+// a slot to come back; past kLensSlotsHard it fails instead of growing. A
+// slot the graphics memory has no room for is waited for the same way, from
+// the slots there are (LensRingCore::memoryCap), for kLensMemoryRetry before
+// the ring tries to grow again.
 constexpr size_t kLensSlotsSoft = 10;
 constexpr size_t kLensSlotsHard = 16;
 constexpr auto kLensSlotWait = std::chrono::milliseconds(250);
+constexpr auto kLensMemoryRetry = std::chrono::seconds(1);
 
 struct VulkanFisheyeStitcher::Impl {
     VkInstance instance = VK_NULL_HANDLE;

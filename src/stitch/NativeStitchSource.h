@@ -291,7 +291,7 @@ private:
     bool resumeForRead();
     std::vector<insv::LensSource> lens_sources_; // Open()'s clip, for openDecode
     bool gpu_released_ = false;                  // ReleaseGpu, until resumed
-    bool resume_seek_ = false; // resumed with no SeekTo since: the next read seeks to resume_at_ms_
+    bool resume_seek_ = false; // resumed, or a lens frame failed, with no SeekTo since: the next read seeks to resume_at_ms_
     int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read
 
     insv::StitchGpuParams paramsAt(const insv::FramePts& pts) const; // gpu_params_ + per-frame RS

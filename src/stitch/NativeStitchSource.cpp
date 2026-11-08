@@ -1250,7 +1250,11 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
     if (!ok) {
+        // Most often the graphics memory is full for the moment: the next
+        // read decodes this pair again rather than going on without it.
         last_error_ = "GPU fillLensFrameVk failed: " + gerr;
+        resume_at_ms_ = pts.ms;
+        resume_seek_ = true;
         return false;
     }
     out.timestamp_ms = pts.ms;

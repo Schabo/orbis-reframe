@@ -149,6 +149,8 @@ void PlaybackController::play()
     {
         std::lock_guard<std::mutex> lk(m_mx);
         m_playing = true;
+        m_readRetryAt = {}; // a frame that failed while paused: try it now
+        m_readParked = false;
     }
     m_cv.notify_all();
     emit playingChanged(true);

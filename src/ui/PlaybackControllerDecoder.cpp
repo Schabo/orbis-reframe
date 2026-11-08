@@ -463,6 +463,43 @@ void PlaybackController::noteGpuFallback(int clipId)
                          QString::fromStdString(fb.codec));
 }
 
+bool PlaybackController::holdFailedRead(const std::string &err, bool playing)
+{
+    bool first = false;
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        first = !m_readFailed;
+    }
+    if (first)
+        std::fprintf(stderr, "[playback] a frame of %s didn't read (%s); trying it again\n",
+                     qPrintable(m_activePath), err.c_str());
+    if (playing && ++m_readRetries > kReadRetries) {
+        std::fprintf(stderr, "[playback] %s still doesn't read (%s); going on with the next clip\n",
+                     qPrintable(m_activePath), err.c_str());
+        m_readRetries = 0;
+        std::lock_guard<std::mutex> lk(m_mx);
+        m_readFailed = false;
+        return false;
+    }
+    // The card is fuller than its budget says (the read failed with room to
+    // spare by it): the coldest idle clip lets go, one per try.
+    for (const QString &path : std::as_const(m_srcLru)) {
+        if (path == m_activePath)
+            continue;
+        const auto it = m_srcCache.find(path);
+        if (it != m_srcCache.end() && releaseSourceGpu(path, *it->second))
+            break;
+    }
+    setHardStall(true); // cleared by the next read
+    std::lock_guard<std::mutex> lk(m_mx);
+    m_readFailed = true;
+    // Paused, a frame after the one shown isn't wanted until play.
+    m_readParked = !playing && m_decLastSourceMs >= 0;
+    m_readRetryAt = std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds(playing ? kReadRetryPlayingMs : kReadRetryPausedMs);
+    return true;
+}
+
 void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
 {
     if (m_prefetch) {
@@ -583,18 +620,27 @@ void PlaybackController::decoderLoop()
         bool playing = false;
         {
             std::unique_lock<std::mutex> lk(m_mx);
-            m_cv.wait(lk, [this] {
+            const auto ready = [this] {
                 const size_t cap = !m_playing   ? kScrubLookahead
                                    : m_lensQueue ? kLensQueueMax
                                                  : queueCapFor(m_frameBytes);
                 // A source that gave its memory back for a job while paused
                 // comes back for a play or a seek, not for the lookahead.
                 const bool parked = !m_playing && m_activeSource && m_activeSource->GpuReleased();
-                const bool canDecode =
-                    !m_decPlaced.isEmpty() && !m_decoderEof && m_queue.size() < cap && !parked;
+                const bool retryLater =
+                    m_readFailed &&
+                    (m_readParked || std::chrono::steady_clock::now() < m_readRetryAt);
+                const bool canDecode = !m_decPlaced.isEmpty() && !m_decoderEof &&
+                                       m_queue.size() < cap && !parked && !retryLater;
                 return m_stop || m_seekPending || m_timelineDirty || m_previewConfigDirty ||
                        m_gpuRoomPending || canDecode;
-            });
+            };
+            while (!ready()) {
+                if (m_readFailed && !m_readParked)
+                    m_cv.wait_until(lk, m_readRetryAt);
+                else
+                    m_cv.wait(lk);
+            }
             if (m_stop)
                 return;
             if (m_timelineDirty) {
@@ -633,9 +679,13 @@ void PlaybackController::decoderLoop()
             makeRoomEvenShown = std::exchange(m_gpuRoomEvenShown, false);
             gen = m_seekGen;
             playing = m_playing;
+            if (tlChanged || cfgChanged || doSeek)
+                m_readFailed = false; // another frame, or another source
         }
-        if (tlChanged || cfgChanged || doSeek)
+        if (tlChanged || cfgChanged || doSeek) {
             invalidatePrefetch();
+            m_readRetries = 0;
+        }
 
         if (tlChanged) {
             pruneSourcesToTimeline(); // drop sources no longer on the timeline
@@ -774,6 +824,23 @@ void PlaybackController::decoderLoop()
         // SeekTo() only positions the decoder; this first read after it does
         // the decoding up to the target, the slow part of a seek or boundary.
         setHardStall(false);
+
+        // A read that failed is not the clip's end: going on to the next
+        // clip would leave the decoder clips ahead of the playhead, each
+        // failing the same way while the graphics memory is full.
+        if (!got && !m_activeSource->GetLastError().empty() &&
+            holdFailedRead(m_activeSource->GetLastError(), playing))
+            continue;
+        if (got) {
+            bool failed = false;
+            {
+                std::lock_guard<std::mutex> lk(m_mx);
+                failed = std::exchange(m_readFailed, false);
+            }
+            if (failed)
+                core::log::Info("[playback] %s reads again\n", qPrintable(m_activePath));
+            m_readRetries = 0;
+        }
 
         const bool sourceEnded = !got;
         const bool pastTrimOut = !sourceEnded && frame.timestamp_ms >= cur.seg.outMs;

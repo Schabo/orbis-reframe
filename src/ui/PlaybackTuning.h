@@ -63,4 +63,12 @@ inline size_t queueCapFor(size_t frameBytes)
 // 8K clip, which the decoder can't do in time while the queue holds ~0.2 s.
 constexpr qint64 kBoundaryPrefetchMs = 1500;
 
+// A read that failed with an error rather than at the clip's end -- most
+// often the graphics memory full for a moment -- is tried again after this
+// long, playing / paused. Playing, after kReadRetries tries (~5 s) the clip
+// is taken as ended and the next one plays; paused, it waits on.
+constexpr int kReadRetryPlayingMs = 100;
+constexpr int kReadRetryPausedMs = 1000;
+constexpr int kReadRetries = 50;
+
 } // namespace playbacktuning
