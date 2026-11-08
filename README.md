@@ -247,8 +247,8 @@ no closed-source dependencies.
 - Three themes: Ember, Light and Neutral dark.
 
 Planned: more 360° cameras as sample clips come in (Insta360 X4 and X3, DJI
-Osmo 360, GoPro MAX), a second 360° clip as an inset, and an effects
-library. Further out: face and object blur, and HDR export. The
+Osmo 360, GoPro MAX), a second 360° clip as an inset, an effects library,
+HDR export and video noise removal. Further out: face and object blur. The
 [roadmap](docs/roadmap.md) has the details.
 
 ## Building

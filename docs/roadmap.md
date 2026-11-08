@@ -247,8 +247,13 @@ each is in its document in [`formats/`](formats/README.md).
 - **Shooting modes**: the camera's special modes recognised and processed
   as such -- timelapse, TimeShift / hyperlapse, bullet time. Sample clips
   wanted.
-- **Arch Linux package**: a pacman package on the release, built from a
-  PKGBUILD in the repository (no AUR).
+- **HDR export**: keep HLG / PQ through to a 10-bit HDR export, beside the
+  SDR route. The 10-bit SDR export (HEVC Main 10) is the base it builds
+  on; it still needs HDR levels kept through the pipeline, HDR tagging and
+  metadata, and an HDR-aware Colour panel; HDR on screen depends on the
+  compositor.
+- **Video noise removal**: denoising low-light and evening footage; not
+  researched yet -- talk first.
 - **GUI tests**: `objectName`s on the remaining actions and widgets, and the
   offscreen main-window test grown panel by panel.
 
@@ -261,13 +266,8 @@ Bigger, not researched far yet -- talk first.
 - **Object blur**: blur anything the user draws a box on, followed like
   "Blur a plate…"; things fixed to the vehicle (speedometer, phone) stay put
   on the sphere with no tracking.
-- **HDR export**: keep HLG / PQ through to a 10-bit HDR export, beside the
-  SDR route. The 10-bit SDR export (HEVC Main 10) is the base it builds
-  on; it still needs HDR levels kept through the pipeline, HDR tagging and
-  metadata, and an HDR-aware Colour panel; HDR on screen depends on the
-  compositor.
-- **Video noise removal**, **AI quick edit** (a first cut made
-  automatically, as an ordinary editable timeline).
+- **AI quick edit** (a first cut made automatically, as an ordinary
+  editable timeline).
 - **AMD and Intel**: best-effort today; testing on real cards is welcome.
 - **Windows build**: cross-compiled with MinGW-w64, with the same bundled
   FFmpeg as the AppImage.
