@@ -91,6 +91,14 @@ bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outCha
         return false;
     }
 
+    // Only this stream's packets are read from the file. Without it every
+    // video packet is read and dropped too: the whole file for a waveform
+    // (22 GB for a 16-minute 8K clip), the video's bit rate again beside the
+    // video decoder's in playback.
+    for (unsigned i = 0; i < m_fmt->nb_streams; ++i)
+        if (static_cast<int>(i) != m_streamIndex)
+            m_fmt->streams[i]->discard = AVDISCARD_ALL;
+
     AVStream* st = m_fmt->streams[m_streamIndex];
     if (st->duration != AV_NOPTS_VALUE)
         m_durationMs = static_cast<int64_t>(st->duration * av_q2d(st->time_base) * 1000.0);
