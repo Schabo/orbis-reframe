@@ -16,58 +16,7 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-### 1. The new stitcher (*maintainer*)
-
-The depth-aware seam moves and bends the picture round the seam in
-playback: one stitch distance per stretch of the seam is too coarse, so it
-is ambiguous between frames, which needed the per-clip analysis to settle.
-Its replacement is built as layers on a template, each one worked out from
-the frame and the frames just before it (a seek measures those first), with
-no background analysis, and selectable in the Stitching section's
-*Stitcher*, the default for new clips:
-
-- **Template** (built): the lens model from the file or the clip's chart
-  calibration, the guard profile, a fixed cross-fade; nothing measured from
-  the video.
-- **Seam colour blend** (built): the two lenses' colour ratio per stretch
-  of the seam, from what both see in the overlap near the seam over each
-  frame and the quarter second before it; each lens moved half of it,
-  fully near the seam and fading out by 30° from it, so neither lens's picture changes
-  further away. With it, a low sun's haze in one lens (veiling light),
-  measured per stretch as the old stitcher does, taken out of that lens
-  round the seam before the colour is matched. A setting of its own.
-- **Seam flow** (built): per frame, optical flow both ways in the overlap,
-  averaged over the frame and the four before it; each lens warped by a
-  share of it growing to half at the seam, so near things crossing the
-  seam join up while the rest keeps the template's geometry. Where the
-  strips are bright and featureless (clipped sky, the sun's veil) both get
-  the same fixed pattern first, so the flow there stays zero instead of
-  arbitrary and doesn't drag the scene beside it round. A setting of its
-  own. With it and the seam colour blend, the lenses meet in a narrow
-  fade (±0.75°) on the seam instead of the template's cross-fade over
-  the whole band, which mixes both lenses at their softest; per stretch
-  of the seam the fade widens to the whole band where the lenses still
-  differ near the seam after the flow and the colour match (the sun's
-  haze and rays in one lens, a near thing the flow can't line up), from
-  the frame and the four before it. The flow is Dense Inverse Search (DIS) in a compute shader, the
-  same on every GPU (OpenCV's DIS on the CPU stitch fallback). NVIDIA's
-  flow hardware (`VK_NV_optical_flow`) is left out for now: on strips this
-  small the shader is fast enough, and the hardware would make an export
-  depend on the GPU's vendor; worth trying only if it measures clearly
-  better.
-
-New clips get the new stitcher, still marked experimental, with its seam
-colour blend and seam flow on; a project that doesn't name a clip's
-stitcher is from before that and keeps the old one, and a clip added to a
-project takes its neighbour's. The old stitcher stays selectable until a
-decision to remove it, measured with `tools/stitch_bench` against Insta360
-Studio's exports.
-
-### 2. Optional
-
-- **360 clip as an inset**: a second 360 clip's own view as picture in
-  picture.
-- **`src/insv/` as its own repository**, once its API settles.
+- *Optional*: **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing
 
@@ -126,6 +75,56 @@ each is in its document in [`formats/`](formats/README.md).
 
 ## Planned, not scheduled
 
+- **The new stitcher** (*maintainer*) -- built, the default for new clips,
+  still marked experimental; follow-ups below. The old stitcher's
+  depth-aware seam moves and bends the picture round the seam in playback:
+  one stitch distance per stretch of the seam is too coarse, so it is
+  ambiguous between frames, which needed the per-clip analysis to settle.
+  The new one is built as layers on a template, each one worked out from the
+  frame and the frames just before it (a seek measures those first), with no
+  background analysis, chosen in the Stitching section's *Stitcher*:
+  - **Template** (built): the lens model from the file or the clip's chart
+    calibration, the guard profile, a fixed cross-fade; nothing measured from
+    the video.
+  - **Seam colour blend** (built): the two lenses' colour ratio per stretch
+    of the seam, from what both see in the overlap near the seam over each
+    frame and the quarter second before it; each lens moved half of it,
+    fully near the seam and fading out by 30° from it, so neither lens's
+    picture changes further away. With it, a low sun's haze in one lens
+    (veiling light), measured per stretch as the old stitcher does, taken
+    out of that lens round the seam before the colour is matched. A setting
+    of its own.
+  - **Seam flow** (built): per frame, optical flow both ways in the overlap,
+    averaged over the frame and the four before it; each lens warped by a
+    share of it growing to half at the seam, so near things crossing the
+    seam join up while the rest keeps the template's geometry. Where the
+    strips are bright and featureless (clipped sky, the sun's veil) both get
+    the same fixed pattern first, so the flow there stays zero instead of
+    arbitrary and doesn't drag the scene beside it round. A setting of its
+    own. With it and the seam colour blend, the lenses meet in a narrow
+    fade (±0.75°) on the seam instead of the template's cross-fade over
+    the whole band, which mixes both lenses at their softest; per stretch
+    of the seam the fade widens to the whole band where the lenses still
+    differ near the seam after the flow and the colour match (the sun's
+    haze and rays in one lens, a near thing the flow can't line up), from
+    the frame and the four before it. The flow is Dense Inverse Search (DIS)
+    in a compute shader, the same on every GPU (OpenCV's DIS on the CPU
+    stitch fallback). NVIDIA's flow hardware (`VK_NV_optical_flow`) is left
+    out for now: on strips this small the shader is fast enough, and the
+    hardware would make an export depend on the GPU's vendor; worth trying
+    only if it measures clearly better.
+  - **Projects**: new clips get the new stitcher with its seam colour blend
+    and seam flow on; a project that doesn't name a clip's stitcher is from
+    before that and keeps the old one, and a clip added to a project takes
+    its neighbour's. The old stitcher stays selectable until a decision to
+    remove it, measured with `tools/stitch_bench` against Insta360 Studio's
+    exports.
+  - **Follow-ups**, each measured before anything changes: whether the seam
+    flow should join near things (gloves, handlebars) more fully, against
+    the sharpness it costs; the CPU stitch fallback's flow, which matches the
+    GPU's less well on near things; why the file's lens model is a little
+    off between the lenses, and chart calibration of the A1 and ONE X2; and
+    Insta360 Studio references for the cameras other than the X5.
 - **Common camera model** -- waiting for clips: the camera-specific code
   sits behind one description of a clip, so each new camera is a reader, not
   a set of branches through the pipeline. Its next step needs real clips
@@ -224,6 +223,8 @@ each is in its document in [`formats/`](formats/README.md).
   royalty-free catalogue and downloads tracks as ordinary local files -- the
   one allowed network feature.
 - **Batch export** / render queue.
+- **360 clip as an inset**: a second 360 clip's own view as picture in
+  picture.
 - **360 photos**: `.insp` photos as stills on the timeline, reframed with
   keyframes like a clip, and exported as a flat photo; later DNG and HDR
   brackets.
