@@ -1751,7 +1751,8 @@ void MainWindow::pushInsetsToController()
 {
     const OutputSettings &out = m_project->output();
     m_controller->setInsets(renderjobs::insetFeed(*m_timeline, out.width, out.height, m_privacy,
-                                                  fieldSources())); // thread-safe
+                                                  fieldSources(),
+                                                  m_controller->layerLender())); // thread-safe
 }
 
 renderjobs::FieldSources MainWindow::fieldSources(bool wait)

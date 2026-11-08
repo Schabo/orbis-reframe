@@ -87,9 +87,13 @@ sidebar's **Transition** tab then shows:
 
 Transitions show in playback, screenshots and the export alike. While
 playing, a crossfade between two 360° clips decodes both at once, which
-asks more of the graphics card than a single clip: up to about 2 GB more
-for 8K clips. On a card without that much to spare, the crossfade's other clip is
-decoded on the processor, which takes the processor's time while it plays.
+needs both on the graphics card at once. Each clip's frames for the
+crossfade come from the same decode that plays it -- the next clip's
+started half the crossfade early, the previous clip's carried on half the
+crossfade past the cut -- so that takes little more than playing on into
+the next clip does. On a card without room for two clips, the crossfade's
+other clip is decoded on the processor, which takes the processor's time
+while it plays.
 
 ## Transitions and edits
 

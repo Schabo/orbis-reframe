@@ -38,6 +38,10 @@ public:
     virtual const VideoFrame *frameAt(int64_t ms) = 0;
     // The next frame. False at the end or on error.
     virtual bool readNext(VideoFrame &out) = 0;
+    // frameAt() gave nothing because the picture isn't ready to read yet
+    // (its stitch is being got ready elsewhere), not because it ended: the
+    // reader asks again once told (playback's InsetFeed::poke).
+    virtual bool waiting() const { return false; }
     virtual const std::string &lastError() const = 0;
 };
 

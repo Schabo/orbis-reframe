@@ -17,6 +17,7 @@
 
 
 #include "ClipViewSource.h"
+#include "LentClipView.h"
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
 #include "GaugeSource.h"
@@ -248,6 +249,7 @@ std::vector<TransitionLayer> transitionLayers(const Timeline &timeline)
         in.trimOutMs = b.trimInMs;
         in.rampFrom = 0.0f;
         in.rampTo = 0.5f;
+        in.leadIn = true;
         TransitionLayer out; // a, blending out after it
         out.id = -2 * a.id - 1;
         out.clipIndex = i;
@@ -385,7 +387,8 @@ bool anyTitleTelemetry(const Timeline &timeline)
 }
 
 std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
-                                       const PrivacyBlur &privacy, const FieldSources &sources)
+                                       const PrivacyBlur &privacy, const FieldSources &sources,
+                                       std::shared_ptr<LayerLender> lender)
 {
     const title::Clock clock = titleClock(timeline, sources);
     std::vector<InsetFeed::Clip> clips;
@@ -448,9 +451,16 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         } else if (outW > 0 && outH > 0) {
             f.aspect = double(outW) / outH;
             f.look = inset::fitted(f.aspect, outW, outH, false);
-            f.picture = [spec = viewSpec(c, timeline, privacy)] {
-                return std::make_unique<ClipViewSource>(spec);
-            };
+            if (lender)
+                f.picture = [spec = viewSpec(c, timeline, privacy), lender, clipId = c.id,
+                             startMs = l.trimInMs, endMs = l.trimOutMs, leadIn = l.leadIn] {
+                    return std::make_unique<LentClipView>(spec, lender, clipId, startMs, endMs,
+                                                          leadIn);
+                };
+            else
+                f.picture = [spec = viewSpec(c, timeline, privacy)] {
+                    return std::make_unique<ClipViewSource>(spec);
+                };
             f.pictureKey = viewKey(c, timeline);
         } else {
             continue;

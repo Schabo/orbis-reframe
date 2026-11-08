@@ -18,7 +18,13 @@ using namespace playbacktuning;
 
 
 PlaybackController::PlaybackController(QObject *parent)
-    : QObject(parent)
+    : QObject(parent),
+      m_lender(std::make_shared<LayerLender>(
+          [this] {
+              { std::lock_guard<std::mutex> lk(m_mx); } // not between its check and its wait
+              m_cv.notify_all();
+          },
+          [this] { m_insets.poke(); }))
 {
 }
 

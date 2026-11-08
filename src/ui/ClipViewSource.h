@@ -38,7 +38,20 @@ public:
     explicit ClipViewSource(Spec spec);
     ~ClipViewSource() override;
 
+    // prepare() + openOwn().
     bool open(std::string &err) override;
+    // What the view needs besides a source: the stabilizer (reads the
+    // clip's trailer, so not on the GUI thread) and the frame rate.
+    void prepare();
+    // Open its own stitch of the clip, with the clip's settings on it; with
+    // `cpuDecode` decoded on the CPU (NativeStitchSource::SetCpuDecode).
+    bool openOwn(std::string &err, bool cpuDecode = false);
+    // Render the next frame of `src` -- a stitch of this clip opened by
+    // someone else (playback's, lent to a transition layer), with the
+    // clip's stitch settings already on it -- into `out`. Needs prepare().
+    // False at the end or on an error (src.GetLastError()).
+    bool readFrom(stitch::NativeStitchSource &src, exportpipe::VideoFrame &out);
+
     double fps() const override { return m_fps; }
     void setOutputSize(int width, int height) override;
     const exportpipe::VideoFrame *frameAt(int64_t ms) override;

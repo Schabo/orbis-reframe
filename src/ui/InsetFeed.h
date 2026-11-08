@@ -106,6 +106,9 @@ public:
     // Open these files afresh: the readers open on them, or the open that
     // failed, were of a file since replaced (a broken copy repaired in place).
     void reopen(const QStringList &paths);
+    // A picture that was waiting (exportpipe::PictureSource::waiting) may be
+    // ready now: ask it again. Any thread.
+    void poke();
 
     // What to draw at timeline time `ms`, over main-track clip
     // `mainClipId` (the one showing; 0 = none), and where the decoder should

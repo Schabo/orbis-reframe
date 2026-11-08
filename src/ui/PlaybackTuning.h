@@ -62,6 +62,12 @@ inline size_t queueCapFor(size_t frameBytes)
 // worker: a seek decodes from the keyframe up to the trim-in, ~0.3 s for an
 // 8K clip, which the decoder can't do in time while the queue holds ~0.2 s.
 constexpr qint64 kBoundaryPrefetchMs = 1500;
+// A crossfade's layer asking for the next clip's source after the prefetch
+// above read it from the trim-in: sought back to the layer's start only with
+// at least this long (timeline, from the newest decoded frame) to the cut --
+// the seek, then the layer's frames up to the trim-in at ~2.7x real time.
+// Nearer the cut the layer reads its own.
+constexpr qint64 kLayerReseekMs = 1000;
 
 // A read that failed with an error rather than at the clip's end -- most
 // often the graphics memory full for a moment -- is tried again after this

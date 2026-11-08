@@ -11,6 +11,7 @@
 #include <LensFrame.h>     // render::LensFrame
 
 #include "InsetFeed.h" // video-track insets
+#include "LayerLease.h" // a crossfade's layer reading our sources
 #include "../render/FrameStats.h" // ORBIS_FRAME_STATS
 
 #include <QStringList>
@@ -224,6 +225,13 @@ public:
     // callable from the GUI thread; they're drawn over the view from the next
     // present tick, at the playhead.
     void setInsets(std::vector<InsetFeed::Clip> clips) { m_insets.setClips(std::move(clips)); }
+    // Where a crossfade's layer asks for the source of its clip
+    // (renderjobs::insetFeed's `lender`): the decoder lends it the next
+    // clip's, sought to the layer's start, and takes it back at the cut; or
+    // the clip it plays, once it has read up to its trim-out, and takes it
+    // back when the layer is done -- one source for the layer and the clip
+    // (LayerLease). Thread-safe.
+    std::shared_ptr<LayerLender> layerLender() const { return m_lender; }
 
 public slots:
     void play();
@@ -341,6 +349,8 @@ private:
     // never `keep`'s, nor the active source's unless `includeActive`.
     // Without a budget from the driver every cached source but the active
     // one goes: playback then holds only what it plays (and the prefetch).
+    // A source lent to a crossfade's layer is taken back and goes after the
+    // cached ones, before the active one.
     void balanceGpuMemory(uint64_t need, bool includeActive, const QString &keep = {});
     // `src` (cached under `path`) gives its GPU memory back; what that freed
     // is noted as the file's need.
@@ -480,6 +490,10 @@ private:
         std::shared_ptr<render::LensFrame> lens;
         bool got = false;
         bool stale = false; // a seek / edit since: dropped once done
+        // A crossfade's layer asked for the source: sought to its start
+        // and lent to it (`lent`) instead of the read above.
+        std::shared_ptr<LayerLease> lease;
+        bool lent = false;
         std::future<void> done; // last: destroyed (waited for) first
     };
     std::unique_ptr<Prefetch> m_prefetch;
@@ -530,6 +544,8 @@ private:
     void applySourceSettings(stitch::IStitchSource &src, const QString &path, int clipId,
                              ClipHandOver handOver);
 
+    // Before m_insets, whose clips hold it.
+    std::shared_ptr<LayerLender> m_lender;
     // The insets' own decoder, and what was last handed to the viewport
     // (frame key + look per inset) so an unchanged picture isn't re-sent.
     InsetFeed m_insets;
@@ -539,6 +555,42 @@ private:
     void pruneSourcesToTimeline();               // decoder thread
     void setHardStall(bool on);                   // decoder thread
     void startPrefetch(const Placed &cur, qint64 timelineMs); // decoder thread
+    // Room on the graphics card to open segment `next` ahead of the cut;
+    // else it's declined until the next seek or edit (m_prefetchDeclined).
+    bool roomForPrefetch(int next);                 // decoder thread
+    // Open segment `next` ahead of the cut on a worker: its first frame
+    // read, or with `lease` sought to the layer's start and lent to it.
+    void launchPrefetch(int next, std::shared_ptr<LayerLease> lease); // decoder thread
+    // Answer the layers' asks (LayerLender): a first half's when its clip
+    // comes next and nothing has read it ahead yet (or it can be sought
+    // back in time), a second half's at the playing clip's trim-out
+    // (lendAtTrimOut); else decline.
+    void serveLayerAsks(bool playing);              // decoder thread
+    enum class LayerAnswer { Lent, Declined, Later };
+    LayerAnswer lendForLayer(const std::shared_ptr<LayerLease> &lease); // decoder thread
+    // Asks answered Later: a prefetch job still running, or the clip a
+    // second half blends out still playing. Answered again on each pass
+    // (playing, the decoder wakes for every frame shown; paused, they're
+    // declined). Decoder thread.
+    std::vector<std::shared_ptr<LayerLease>> m_layerAsksLater;
+    // Does `lease` want `seg`'s frames from its trim-out on?
+    bool wantsPastTrimOut(const LayerLease &lease, const Segment &seg) const;
+    // The active clip's last frame is read and a crossfade's second half
+    // wants the frames past it: its source lent there (m_lentOut) instead
+    // of read on. The caller goes on to the next segment.
+    bool lendAtTrimOut(const Placed &cur);
+    // The source lent past its trim-out back into the cache, once its layer
+    // is done or (`force`) now: its file wanted again, a seek or an edit.
+    void takeBackLentOut(bool force);
+    // Make segment `next` the one decoded, from its trim-in: the prefetch's
+    // source if it has one, else opened and sought.
+    void goToSegment(int next);
+    struct LentOut {
+        QString path;
+        std::shared_ptr<stitch::IStitchSource> src;
+        std::shared_ptr<LayerLease> lease;
+    };
+    std::optional<LentOut> m_lentOut;
     bool takePrefetch(int next);                  // decoder thread
     void invalidatePrefetch();                    // decoder thread
 };

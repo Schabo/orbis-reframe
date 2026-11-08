@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <memory>
 #include <vector>
 
 #include <AudioMixer.h>      // insv::MixClip
@@ -15,6 +16,7 @@
 #include "../core/TitleClock.h"
 
 struct ClipItem;
+class LayerLender;
 class MediaPool;
 class PrivacyBlur;
 class QWidget;
@@ -51,10 +53,13 @@ struct FieldSources {
 // them, the flat main-track clips (ClipItem::flat) as full-frame layers,
 // fitted into an output of outW x outH, and over those each transition's
 // other clip (transitionLayers): a 360 clip's view through `privacy`'s
-// blur, or a flat clip. A title's fields read `sources`.
+// blur, or a flat clip. A title's fields read `sources`. With `lender`
+// (playback's), a crossfade's 360 layer reads playback's own source of its
+// clip when it can (LentClipView).
 std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int outH,
                                        const PrivacyBlur &privacy,
-                                       const FieldSources &sources = {});
+                                       const FieldSources &sources = {},
+                                       std::shared_ptr<LayerLender> lender = {});
 std::vector<exportpipe::InsetClipJob> insetJobs(const Timeline &timeline, int outW, int outH,
                                                 const PrivacyBlur &privacy,
                                                 const FieldSources &sources = {});
@@ -100,6 +105,8 @@ struct TransitionLayer {
     qint64 trimOutMs = 0;
     float rampFrom = 0.0f; // opacity at its start and end
     float rampTo = 0.0f;
+    // A crossfade's first half: the clip after the cut, up to its trim-in.
+    bool leadIn = false;
 };
 std::vector<TransitionLayer> transitionLayers(const Timeline &timeline);
 

@@ -13,10 +13,23 @@ ClipViewSource::~ClipViewSource() = default;
 
 bool ClipViewSource::open(std::string &err)
 {
+    prepare();
+    return openOwn(err);
+}
+
+void ClipViewSource::prepare()
+{
     const ReframeExportController::ClipJob &job = m_spec.job;
     if (!job.stab && m_spec.buildStab.mode != insv::StabMode::Off)
         m_spec.job.stab = ReframeExportController::buildStabilizer(job.clipPath, m_spec.buildStab,
                                                                    m_spec.syncMs);
+    if (m_spec.fps > 0.0)
+        m_fps = m_spec.fps;
+}
+
+bool ClipViewSource::openOwn(std::string &err, bool cpuDecode)
+{
+    const ReframeExportController::ClipJob &job = m_spec.job;
     stitch::PreviewStitchConfig sc;
     sc.width = m_spec.stitchWidth & ~1;
     sc.height = sc.width / 2 & ~1;
@@ -26,6 +39,7 @@ bool ClipViewSource::open(std::string &err)
     sc.seamColourBlend = job.seamColourBlend;
     sc.seamFlow = job.seamFlow;
     m_src = std::make_unique<stitch::NativeStitchSource>();
+    m_src->SetCpuDecode(cpuDecode);
     if (!m_src->Open(job.clipPath.toStdString(), sc)) {
         err = m_src->GetLastError();
         m_src.reset();
@@ -54,6 +68,14 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
 {
     if (!m_src)
         return false;
+    if (readFrom(*m_src, out))
+        return true;
+    m_error = m_src->GetLastError(); // empty at the end of the clip
+    return false;
+}
+
+bool ClipViewSource::readFrom(stitch::NativeStitchSource &src, exportpipe::VideoFrame &out)
+{
     const ReframeExportController::ClipJob &job = m_spec.job;
     // The view and stabilization at the frame's own time, as the export.
     auto poseAt = [&job](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
@@ -66,11 +88,11 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
         }
     };
     stitch::Frame f;
-    if (m_src->GpuViewAvailable()) {
-        ReframeExportController::applyPanes(*m_src, job, m_w, m_h); // at this size
-        f = m_src->ReadViewFrame(m_w, m_h, poseAt, &job.colorGrade);
+    if (src.GpuViewAvailable()) {
+        ReframeExportController::applyPanes(src, job, m_w, m_h); // at this size
+        f = src.ReadViewFrame(m_w, m_h, poseAt, &job.colorGrade);
     } else {
-        const stitch::Frame eq = m_src->ReadFrame();
+        const stitch::Frame eq = src.ReadFrame();
         if (!eq.rgba.empty()) {
             exportpipe::ReframeView view;
             poseAt({eq.timestamp_ms, eq.timestamp_us}, view.pose, view.stab);
@@ -93,10 +115,8 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
             f.timestamp_us = eq.timestamp_us;
         }
     }
-    if (f.rgba.empty()) {
-        m_error = m_src->GetLastError(); // empty at the end of the clip
+    if (f.rgba.empty())
         return false;
-    }
     out.ptsMs = f.timestamp_ms;
     out.width = f.width;
     out.height = f.height;

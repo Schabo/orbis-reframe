@@ -586,6 +586,10 @@ if(FFMPEG_FOUND)
         src/ui/TransitionsPanel.h
         src/ui/ClipViewSource.cpp
         src/ui/ClipViewSource.h
+        src/ui/LayerLease.cpp
+        src/ui/LayerLease.h
+        src/ui/LentClipView.cpp
+        src/ui/LentClipView.h
         src/ui/EditToolbar.cpp
         src/ui/EditToolbar.h
         src/ui/PlayerBar.cpp
@@ -994,6 +998,12 @@ if(Qt6Test_FOUND)
         add_executable(render_jobs_test tests/render_jobs_test.cpp)
         target_link_libraries(render_jobs_test PRIVATE orbis_app)
         add_test(NAME render_jobs_test COMMAND render_jobs_test)
+
+        # A crossfade's layer borrowing playback's source of its clip and
+        # handing it back (on a blank source: no GPU).
+        add_executable(layer_lease_test tests/layer_lease_test.cpp)
+        target_link_libraries(layer_lease_test PRIVATE orbis_app)
+        add_test(NAME layer_lease_test COMMAND layer_lease_test)
     endif()
 
     # The left sidebar and its Media tab (the media pool), found by

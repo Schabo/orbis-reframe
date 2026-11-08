@@ -42,6 +42,7 @@ struct InsetFeed::Stream {
     bool failed = false;
     bool removed = false;
     bool reopen = false; // close the reader / picture before the next step
+    bool waiting = false; // its picture isn't ready to read yet: until poke()
     Frame shown;
     bool haveShown = false;
     double frameMs = 0.0; // set when the reader opens
@@ -90,6 +91,7 @@ void InsetFeed::setClips(std::vector<Clip> clips)
                 s->queue.clear();
                 s->eof = false;
                 s->needAnchor = true;
+                s->waiting = false;
                 ++s->gen;
                 if (s->clip.path != c.path || s->clip.pictureKey != c.pictureKey)
                     s->failed = false;
@@ -117,8 +119,19 @@ void InsetFeed::reopen(const QStringList &paths)
             s->queue.clear();
             s->eof = false;
             s->needAnchor = true;
+            s->waiting = false;
             ++s->gen;
         }
+    }
+    m_cv.notify_all();
+}
+
+void InsetFeed::poke()
+{
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        for (const auto &s : m_streams)
+            s->waiting = false;
     }
     m_cv.notify_all();
 }
@@ -268,7 +281,7 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         clip = s.clip;
         gen = s.gen;
         anchor = s.needAnchor;
-        if (s.removed || s.failed || !active(clip, target))
+        if (s.removed || s.failed || s.waiting || !active(clip, target))
             return false;
         if (!clip.still && !anchor && (!playing || s.eof || s.queue.size() >= kAhead))
             return false;
@@ -336,6 +349,7 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
     Frame f;
     bool got = false;
     bool ended = false;
+    bool waiting = false;
     if (anchor) {
         const qint64 at = std::clamp(target, clip.startMs, std::max(clip.startMs, clip.endMs() - 1));
         const qint64 srcMs = clip.sourceAt(at);
@@ -346,6 +360,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
             f.height = v->height;
             f.rgba = std::make_shared<const std::vector<uint8_t>>(v->rgba);
             got = true;
+        } else if (s.picture && s.picture->waiting()) {
+            waiting = true;
         } else {
             ended = true;
         }
@@ -366,6 +382,10 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
     std::lock_guard<std::mutex> lk(m_mx);
     if (s.gen != gen || s.removed)
         return true; // re-anchored or removed meanwhile: drop it
+    if (waiting) {
+        s.waiting = true; // the anchor stays wanted
+        return true;
+    }
     if (anchor) {
         s.needAnchor = false;
         s.queue.clear();
@@ -395,6 +415,8 @@ void InsetFeed::decoderLoop()
                     const bool live = !s->removed && !s->failed && active(s->clip, m_targetMs);
                     if (!live && s->open())
                         return true; // a decoder to let go of
+                    if (s->waiting)
+                        continue;
                     if (live && s->clip.still) {
                         if (stillWants(s->clip, m_targetMs))
                             return true;
@@ -423,6 +445,7 @@ void InsetFeed::decoderLoop()
                 if (!live && s->open()) {
                     s->queue.clear();
                     s->needAnchor = true;
+                    s->waiting = false;
                     ++s->gen;
                 }
             }

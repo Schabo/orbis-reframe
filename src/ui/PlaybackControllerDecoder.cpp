@@ -120,6 +120,16 @@ void PlaybackController::balanceGpuMemory(uint64_t need, bool includeActive, con
         if (it != m_srcCache.end() && releaseSourceGpu(path, *it->second))
             mem = core::sharedDeviceMemory();
     }
+    if (!roomy() && m_lentOut && m_lentOut->path != keep) {
+        // Lent to a crossfade's layer past its trim-out: playback's picture
+        // comes first, the layer reads its own.
+        const QString path = m_lentOut->path;
+        takeBackLentOut(true);
+        const auto it = m_srcCache.find(path);
+        if (it != m_srcCache.end())
+            releaseSourceGpu(path, *it->second);
+        mem = core::sharedDeviceMemory(); // (or not cached again: closed)
+    }
     if (includeActive && !roomy() && m_activeSource && m_activePath != keep &&
         releaseSourceGpu(m_activePath, *m_activeSource))
         mem = core::sharedDeviceMemory();
@@ -176,8 +186,13 @@ void PlaybackController::stopDecoder()
     m_cv.notify_all();
     if (m_decoder.joinable())
         m_decoder.join();
-    m_prefetch.reset(); // waits for a job still running
-    m_heldRead.reset();
+    invalidatePrefetch(); // a lent source back from its layer
+    takeBackLentOut(true);
+    m_prefetch.reset();   // waits for a job still running
+    for (const std::shared_ptr<LayerLease> &lease : m_lender->takeAsks())
+        lease->decline();
+    for (const std::shared_ptr<LayerLease> &lease : std::exchange(m_layerAsksLater, {}))
+        lease->decline();
 }
 
 void PlaybackController::touchSourceLru(const QString &path)
@@ -220,6 +235,8 @@ std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const S
                                                                          QString *err)
 {
     const QString &path = seg.sourcePath;
+    if (m_lentOut && m_lentOut->path == path)
+        takeBackLentOut(true); // wanted again (a seek back into it)
     auto it = m_srcCache.find(path);
     if (it != m_srcCache.end()) {
         touchSourceLru(path);
@@ -516,8 +533,14 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
     // The same file on from here (a split): the decoder carries on reading.
     // A file known to be gone has nothing to open ahead of time.
     if ((np.seg.sourcePath == cur.seg.sourcePath && np.seg.inMs == cur.seg.outMs) ||
-        np.seg.missing || m_prefetchDeclined == next)
+        np.seg.missing || m_prefetchDeclined == next || !roomForPrefetch(next))
         return;
+    launchPrefetch(next, nullptr);
+}
+
+bool PlaybackController::roomForPrefetch(int next)
+{
+    const Placed &np = m_decPlaced[next];
     // A second clip on the graphics card while this one plays: only with
     // room for it. Else the cut opens it once this one has let go
     // (acquireSource), behind "Buffering…".
@@ -534,13 +557,21 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
                             qPrintable(np.seg.sourcePath), toMiB(mem.headroom()),
                             toMiB(gpuMargin(mem) + need));
             m_prefetchDeclined = next;
-            return;
+            return false;
         }
     }
+    return true;
+}
 
+void PlaybackController::launchPrefetch(int next, std::shared_ptr<LayerLease> lease)
+{
+    const Placed &np = m_decPlaced[next];
     auto p = std::make_unique<Prefetch>();
     p->segIndex = next;
     p->path = np.seg.sourcePath;
+    p->lease = std::move(lease);
+    if (m_lentOut && m_lentOut->path == p->path)
+        takeBackLentOut(true);
     // A cached source other than the active one is the job's until taken; a
     // jump within the active file needs a second one (opened by the job).
     if (p->path != m_activePath) {
@@ -562,10 +593,27 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
                           inMs = np.seg.inMs, config = openConfig(m_decPreviewConfig, np.seg)] {
                              if (!job->src) {
                                  auto src = makeSource(seg);
-                                 if (!src->Open(job->path.toStdString(), config))
+                                 if (!src->Open(job->path.toStdString(), config)) {
+                                     if (job->lease)
+                                         job->lease->decline();
                                      return; // the boundary opens it again and reports why
+                                 }
                                  applySourceSettings(*src, job->path, clipId, handOver);
                                  job->src = std::move(src);
+                             }
+                             if (job->lease) {
+                                 // The layer renders its view straight from
+                                 // the lenses (NativeStitchSource's fused pass).
+                                 const auto *native =
+                                     dynamic_cast<const stitch::NativeStitchSource *>(job->src.get());
+                                 job->lent = native && native->GpuViewAvailable() &&
+                                             job->src->SeekTo(job->lease->fromMs()) &&
+                                             job->lease->lend(job->src);
+                                 if (job->lent) {
+                                     job->opened = true;
+                                     return;
+                                 }
+                                 job->lease->decline(); // as before: the clip's first frame
                              }
                              job->src->SeekTo(inMs);
                              job->got = readSourceFrame(*job->src,
@@ -585,6 +633,26 @@ bool PlaybackController::takePrefetch(int next)
     std::unique_ptr<Prefetch> p = std::move(m_prefetch);
     if (!p->opened)
         return false;
+    bool atEnd = true;
+    if (p->lent) {
+        // Back from the layer, its frames still to come read first: the
+        // source's next frame is then the clip's first, read now as the job
+        // would have. Else (the layer stopped early) a seek to it.
+        p->lease->takeBack(true, atEnd);
+        if (auto *native = dynamic_cast<stitch::NativeStitchSource *>(p->src.get()))
+            native->SetViewPanes({}, {}, 0); // the layer's split screen, if any
+        if (atEnd) {
+            p->got = readSourceFrame(*p->src,
+                                     m_viewport && m_viewport->LensFramesSupported() &&
+                                         p->src->LensFramesAvailable(),
+                                     p->frame, p->lens);
+        } else {
+            core::log::Info("[playback] the crossfade's layer gave %s back before its trim-in: "
+                            "sought there\n",
+                            qPrintable(p->path));
+            p->src->SeekTo(m_decPlaced[next].seg.inMs);
+        }
+    }
     if (m_activeSource)
         m_activeSource->TrimLensFrames(); // as switchToSegment
     m_srcCache[p->path] = p->src; // a jump within the file replaces the active one
@@ -592,17 +660,184 @@ bool PlaybackController::takePrefetch(int next)
     m_activePath = p->path;
     touchSourceLru(m_activePath);
     m_decRsGen = ~uint64_t(0); // re-apply: settings may have changed since
-    m_heldRead = HeldRead{std::move(p->frame), std::move(p->lens), p->got};
+    if (atEnd)
+        m_heldRead = HeldRead{std::move(p->frame), std::move(p->lens), p->got};
     balanceGpuMemory(0, false);
     return true;
 }
 
 void PlaybackController::invalidatePrefetch()
 {
-    if (m_prefetch)
+    if (m_prefetch) {
         m_prefetch->stale = true;
+        if (m_prefetch->lease) {
+            // The layer asks again for the frames it wants now.
+            bool atEnd = false;
+            m_prefetch->lease->takeBack(false, atEnd);
+        }
+    }
     m_heldRead.reset();
     m_prefetchDeclined = -1;
+}
+
+void PlaybackController::serveLayerAsks(bool playing)
+{
+    std::vector<std::shared_ptr<LayerLease>> asks = m_lender->takeAsks();
+    asks.insert(asks.end(), m_layerAsksLater.begin(), m_layerAsksLater.end());
+    m_layerAsksLater.clear();
+    for (const std::shared_ptr<LayerLease> &lease : asks) {
+        const LayerAnswer a = playing ? lendForLayer(lease) : LayerAnswer::Declined;
+        if (a == LayerAnswer::Later)
+            m_layerAsksLater.push_back(lease);
+        else if (a == LayerAnswer::Declined)
+            lease->decline(); // paused: a scrub's frame; the layer reads its own
+    }
+}
+
+PlaybackController::LayerAnswer PlaybackController::lendForLayer(const std::shared_ptr<LayerLease> &lease)
+{
+    const int next = m_decSegIndex + 1;
+    if (!lease->asked() || m_decSegIndex < 0 || next >= m_decPlaced.size())
+        return LayerAnswer::Declined;
+    if (!lease->leadIn()) {
+        // The clip playing, past its trim-out: lent once its last frame is
+        // read (lendAtTrimOut). Not when the next clip reads the same file
+        // on: that's the source it reads from. Nor when the next clip found
+        // no room to open ahead of the cut: it takes this one's at the cut,
+        // and the layer had better open its own now than then.
+        const Segment &cs = m_decPlaced[m_decSegIndex].seg;
+        return wantsPastTrimOut(*lease, cs) && !cs.flat &&
+                       m_decPlaced[next].seg.sourcePath != cs.sourcePath && !m_lentOut &&
+                       m_prefetchDeclined != next
+                   ? LayerAnswer::Later
+                   : LayerAnswer::Declined;
+    }
+    // The clip after the cut, the layer's frames lead up to its trim-in.
+    const Segment &seg = m_decPlaced[next].seg;
+    if (seg.clipId != lease->clipId() || std::llabs(seg.inMs - lease->endMs()) > 1 ||
+        lease->fromMs() >= seg.inMs || seg.flat || seg.missing ||
+        seg.sourcePath == m_activePath || m_prefetchDeclined == next)
+        return LayerAnswer::Declined;
+    if (m_prefetch) {
+        if (m_prefetch->done.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+            return LayerAnswer::Later; // one job at a time
+        if (!m_prefetch->stale) {
+            // Read ahead already, from the trim-in (the layer asked late: a
+            // play started near the cut, or its thread was busy): the
+            // layer's frames are behind it. Sought back, if the cut is far
+            // enough off for the seek; its first frame read is dropped.
+            const Placed &cur = m_decPlaced[m_decSegIndex];
+            const qint64 decodedMs =
+                m_decLastSourceMs >= 0 ? cur.startMs + cur.seg.localAtSourceMs(m_decLastSourceMs)
+                                       : m_decPlaced[next].startMs;
+            if (m_prefetch->segIndex != next || m_prefetch->lease || !m_prefetch->src ||
+                m_decPlaced[next].startMs - decodedMs < kLayerReseekMs)
+                return LayerAnswer::Declined;
+            m_srcCache[m_prefetch->path] = std::move(m_prefetch->src); // launchPrefetch takes it
+            touchSourceLru(m_prefetch->path);
+        }
+        m_prefetch.reset();
+    }
+    if (!roomForPrefetch(next))
+        return LayerAnswer::Declined;
+    core::log::Info("[playback] %s opens ahead of the cut at the crossfade's start (%lld ms), "
+                    "for its layer\n",
+                    qPrintable(seg.sourcePath), static_cast<long long>(lease->fromMs()));
+    launchPrefetch(next, lease);
+    return LayerAnswer::Lent;
+}
+
+bool PlaybackController::wantsPastTrimOut(const LayerLease &lease, const Segment &seg) const
+{
+    // Asked from half a frame before the layer's start, the trim-out.
+    const double frameMs = seg.fps > 0.0 ? 1000.0 / seg.fps : 1000.0 / 30.0;
+    return lease.clipId() == seg.clipId && lease.fromMs() <= seg.outMs &&
+           seg.outMs - lease.fromMs() <= frameMs + 1.0 && lease.endMs() > seg.outMs;
+}
+
+bool PlaybackController::lendAtTrimOut(const Placed &cur)
+{
+    if (m_layerAsksLater.empty() || m_lentOut || m_decLastSourceMs < 0 || !m_activeSource)
+        return false;
+    // Is the next frame past the trim-out? By the frame rate, as the layer
+    // has it (LayerLease): in doubt it's the layer's.
+    const double fps = m_activeSource->GetInfo().fps;
+    const double frameMs = fps > 0.0 ? 1000.0 / fps : 1000.0 / 30.0;
+    if (m_decLastSourceMs + frameMs < cur.seg.outMs - 1.0)
+        return false;
+    const int next = m_decSegIndex + 1;
+    if (next >= m_decPlaced.size() || m_decPlaced[next].seg.sourcePath == m_activePath)
+        return false;
+    // The next clip comes first: only when it has its place on the card
+    // already (opened ahead of the cut, or cached there). Else the cut needs
+    // the room this source takes, and the layer reads its own.
+    const Segment &ns = m_decPlaced[next].seg;
+    const auto cached = m_srcCache.find(ns.sourcePath);
+    const bool nextReady =
+        ns.flat || (m_prefetch && !m_prefetch->stale && m_prefetch->segIndex == next) ||
+        (cached != m_srcCache.end() && !cached->second->GpuReleased());
+    auto it = std::find_if(m_layerAsksLater.begin(), m_layerAsksLater.end(),
+                           [&](const std::shared_ptr<LayerLease> &l) {
+                               return !l->leadIn() && wantsPastTrimOut(*l, cur.seg);
+                           });
+    if (it == m_layerAsksLater.end())
+        return false;
+    const std::shared_ptr<LayerLease> lease = *it;
+    m_layerAsksLater.erase(it);
+    const auto *native = dynamic_cast<const stitch::NativeStitchSource *>(m_activeSource.get());
+    if (!nextReady || !native || !native->GpuViewAvailable()) {
+        lease->decline();
+        return false;
+    }
+    m_activeSource->TrimLensFrames(); // as switchToSegment: only what's queued or shown
+    if (!lease->lend(m_activeSource))
+        return false; // the layer left meanwhile: read on as ever
+    core::log::Info("[playback] %s goes on past its trim-out for the crossfade's layer\n",
+                    qPrintable(m_activePath));
+    m_srcCache.erase(m_activePath);
+    m_srcLru.removeAll(m_activePath);
+    m_lentOut = LentOut{m_activePath, std::move(m_activeSource), lease};
+    m_activeSource.reset();
+    m_activePath.clear();
+    return true;
+}
+
+void PlaybackController::takeBackLentOut(bool force)
+{
+    if (!m_lentOut || (!force && !m_lentOut->lease->done()))
+        return;
+    bool atEnd = false;
+    m_lentOut->lease->takeBack(false, atEnd);
+    LentOut l = std::move(*m_lentOut);
+    m_lentOut.reset();
+    if (auto *native = dynamic_cast<stitch::NativeStitchSource *>(l.src.get()))
+        native->SetViewPanes({}, {}, 0); // the layer's split screen, if any
+    // Cached again, unless the file was opened afresh meanwhile or has left
+    // the timeline.
+    const bool onTimeline = std::any_of(m_decPlaced.begin(), m_decPlaced.end(), [&](const Placed &p) {
+        return p.seg.sourcePath == l.path;
+    });
+    if (onTimeline && !m_srcCache.count(l.path) && l.path != m_activePath) {
+        m_srcCache.emplace(l.path, std::move(l.src));
+        touchSourceLru(l.path);
+    }
+}
+
+void PlaybackController::goToSegment(int next)
+{
+    if (takePrefetch(next)) {
+        // Its first frame is read already: the next read returns it.
+        m_decLastSourceMs = -1;
+        m_decSegIndex = next;
+        return;
+    }
+    // Until the next clip's first frame is read: its seek and decode up to
+    // the trim-in.
+    switchToSegment(next);
+    setHardStall(true);
+    m_activeSource->SeekTo(m_decPlaced[next].seg.inMs);
+    m_decLastSourceMs = -1;
+    m_decSegIndex = next;
 }
 
 void PlaybackController::decoderLoop()
@@ -633,7 +868,7 @@ void PlaybackController::decoderLoop()
                 const bool canDecode = !m_decPlaced.isEmpty() && !m_decoderEof &&
                                        m_queue.size() < cap && !parked && !retryLater;
                 return m_stop || m_seekPending || m_timelineDirty || m_previewConfigDirty ||
-                       m_gpuRoomPending || canDecode;
+                       m_gpuRoomPending || canDecode || m_lender->anyAsks();
             };
             while (!ready()) {
                 if (m_readFailed && !m_readParked)
@@ -687,6 +922,8 @@ void PlaybackController::decoderLoop()
             m_readRetries = 0;
         }
 
+        if (tlChanged || cfgChanged)
+            takeBackLentOut(true); // the layers ask again for what they want now
         if (tlChanged) {
             pruneSourcesToTimeline(); // drop sources no longer on the timeline
             for (const QString &p : reopen) {
@@ -727,6 +964,11 @@ void PlaybackController::decoderLoop()
             balanceGpuMemory(0, false);
             retryGpuFallback();
         }
+
+        // After a seek, on the next pass: with the segment it landed in.
+        if (!doSeek)
+            serveLayerAsks(playing);
+        takeBackLentOut(false);
 
         if (!playing && !doSeek && m_activeSource && m_activeSource->GpuReleased())
             continue; // parked (see the wait above): no lookahead read
@@ -799,6 +1041,13 @@ void PlaybackController::decoderLoop()
         // Back on the GPU after making room for a job, before asking what it
         // can do: a released source has no lens frames.
         resumeSource(m_activePath, *m_activeSource);
+        // A crossfade's second half wants this clip's frames past its
+        // trim-out: lent there instead of read on.
+        if (playing && !m_heldRead && lendAtTrimOut(cur)) {
+            goToSegment(m_decSegIndex + 1);
+            continue;
+        }
+
         // Lens frames when the viewport can take them: the decoded pair, drawn
         // from the lenses at present time. Else the stitched equirect.
         const bool useLens = m_viewport && m_viewport->LensFramesSupported() &&
@@ -864,19 +1113,8 @@ void PlaybackController::decoderLoop()
             if (carriesOn) {
                 m_decSegIndex = next;
                 cur = np;
-            } else if (takePrefetch(next)) {
-                // Its first frame is read already: the next read returns it.
-                m_decLastSourceMs = -1;
-                m_decSegIndex = next;
-                continue;
             } else {
-                // Until the next clip's first frame is read: its seek and
-                // decode up to the trim-in.
-                switchToSegment(next);
-                setHardStall(true);
-                m_activeSource->SeekTo(m_decPlaced[next].seg.inMs);
-                m_decLastSourceMs = -1;
-                m_decSegIndex = next;
+                goToSegment(next);
                 continue;
             }
         }
