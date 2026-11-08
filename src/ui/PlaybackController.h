@@ -66,7 +66,11 @@ class IStitchSource;
 // kept in a small LRU cache (kMaxCachedSources) so scrubbing back and forth
 // across a clip boundary doesn't re-open (and re-parse the trailer of) the
 // same file each time; sources dropped from the timeline entirely are
-// released on the next setTimeline().
+// released on the next setTimeline(). What a cached source holds on the
+// graphics card (an 8K clip's decoders: ~0.9 GB) stays there while the
+// card has room and is given back, coldest first, when it hasn't
+// (balanceGpuMemory): a large card keeps every clip ready, a small one
+// only the clip playing.
 class PlaybackController : public QObject {
     Q_OBJECT
 
@@ -225,6 +229,14 @@ public slots:
     void play();
     void pause();
     void togglePlay();
+    // Before a job opens its own stitch on the GPU (an export, a subject
+    // track, a plate scan): give back graphics memory until there's room
+    // for one more clip -- the cached clips' first, and with `evenShown`,
+    // while paused, the one on screen too (it comes back on the next play
+    // or seek). Nothing on a card with room to spare. A background
+    // measurement asks without `evenShown`: the clip on screen must be
+    // there again the moment play is pressed.
+    void makeGpuRoom(bool evenShown = true);
     void seek(qint64 timelineMs);
     // A seek while dragging the playhead: shows the source's nearest keyframe
     // (inside the clip's trim) instead of the exact frame -- one decode instead
@@ -323,6 +335,29 @@ private:
     // path changed. A file that can't be opened, or a segment marked missing
     // (not tried), emits openFailed and plays black for its span.
     void switchToSegment(int index);
+    // Graphics memory (decoder thread). Gives back the GPU memory of cached
+    // sources, least recently used first, until the headroom the driver
+    // reports (core::sharedDeviceMemory) is the margin plus `need` --
+    // never `keep`'s, nor the active source's unless `includeActive`.
+    // Without a budget from the driver every cached source but the active
+    // one goes: playback then holds only what it plays (and the prefetch).
+    void balanceGpuMemory(uint64_t need, bool includeActive, const QString &keep = {});
+    // `src` (cached under `path`) gives its GPU memory back; what that freed
+    // is noted as the file's need.
+    bool releaseSourceGpu(const QString &path, stitch::IStitchSource &src);
+    // What `path`'s source takes on the GPU when taken up: measured when it
+    // last opened or let go, else the largest any clip took
+    // (core::clipGpuBytes), else 0.
+    uint64_t sourceGpuNeed(const QString &path) const;
+    // A measurement of what `path`'s source takes; also sets
+    // core::clipGpuBytes, the largest file's.
+    void noteSourceGpuBytes(const QString &path, uint64_t bytes);
+    // A released `src` taken up again, its open measured. False when it
+    // can't be (its file is gone).
+    bool resumeSource(const QString &path, stitch::IStitchSource &src);
+    // The active source fell back to the CPU (its open found the graphics
+    // memory full) and the card has room for it now: back onto the GPU.
+    void retryGpuFallback();
     qint64 clampTimeline(qint64 ms) const {
         return ms < 0 ? 0 : (ms > m_totalMs ? m_totalMs : ms);
     }
@@ -391,6 +426,8 @@ private:
     // queue runs dry instead of letting the wall clock run on over a frozen
     // picture.
     bool m_hardStall = false;
+    bool m_gpuRoomPending = false; // makeGpuRoom: the decoder makes room
+    bool m_gpuRoomEvenShown = false; // ... the active source's too, if paused
 
     // --- decoder-thread only ---
     static constexpr int kMaxCachedSources = 4;
@@ -403,6 +440,13 @@ private:
     qint64 m_decLastSourceMs = -1; // source time of the last frame read; -1 after a seek
     std::map<QString, std::shared_ptr<stitch::IStitchSource>> m_srcCache;
     QStringList m_srcLru; // paths, least-recently-used first
+    // Graphics memory (balanceGpuMemory): what each file's source took on
+    // the GPU (noteSourceGpuBytes), when it was last checked, and whether the last check found
+    // too little with nothing left to give back (said once until it eases).
+    std::map<QString, uint64_t> m_srcGpuBytes;
+    std::chrono::steady_clock::time_point m_lastGpuCheck;
+    bool m_gpuShortSaid = false;
+    std::chrono::steady_clock::time_point m_gpuRetryAt; // retryGpuFallback's next try
     std::shared_ptr<stitch::IStitchSource> m_activeSource;
     QString m_activePath;
     // What of the active source has been reported as fallen back to the CPU
@@ -427,6 +471,9 @@ private:
         std::future<void> done; // last: destroyed (waited for) first
     };
     std::unique_ptr<Prefetch> m_prefetch;
+    // The segment startPrefetch found no graphics memory for: not tried
+    // again until the next seek or edit (invalidatePrefetch).
+    int m_prefetchDeclined = -1;
     // A read already made for the active segment (a taken prefetch's first
     // frame); the decoder's next read returns it.
     struct HeldRead {

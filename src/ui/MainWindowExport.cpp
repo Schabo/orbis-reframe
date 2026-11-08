@@ -141,6 +141,8 @@ void MainWindow::exportFlatVideo()
     // device) -- pause playback so the two stitch pipelines don't contend
     // for the GPU.
     QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
+    // ... and give it room on the graphics card for its own clip.
+    makeGpuRoomForJob();
 
     m_exports->startExport(req);
 }
@@ -243,5 +245,7 @@ void MainWindow::takeScreenshot()
     // The overlays showing at the playhead, composited like the export does.
     still.insets = renderjobs::insetJobs(*m_timeline, still.width, still.height, m_privacy,
                                          fieldSources(true));
+    // Room on the graphics card for the still's own stitch.
+    makeGpuRoomForJob();
     m_exports->startStill(std::move(still));
 }

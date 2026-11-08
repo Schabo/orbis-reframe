@@ -264,6 +264,8 @@ void MainWindow::startPlateFollow(const QRectF &box)
     req.fromMs = from;
 
     QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
+    // Room on the graphics card for the follow's own stitch.
+    makeGpuRoomForJob();
     m_plateJobClipId = c->id;
     m_plateJobFromMs = from;
     m_plateJobs->startFollow(req, seed, back);
@@ -343,6 +345,8 @@ void MainWindow::startPlateScan()
     const platescan::Request req = plateRequestFor(*c);
     m_plateJobFromMs = req.fromMs;
     m_plateJobToMs = req.toMs;
+    // Room on the graphics card for the scan's own stitch (playback goes on).
+    makeGpuRoomForJob();
     m_plateJobs->startScan(req);
     m_privacyPanel->setScanRunning(true);
     m_privacyPanel->setScanStatus(tr("Starting…"));

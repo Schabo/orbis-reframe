@@ -10,6 +10,7 @@
 #include <ClipMetadata.h>       // camera::ReadClipImu
 #include <ClipSeamAnalysis.h>   // stitch::AnalyseClipSeam
 #include <NativeStitchSource.h> // stitch::NativeStitchSource, stitch::Frame, stitch::PreviewStitchConfig
+#include <VulkanHwDevice.h> // core::waitForGpuRoom
 #include <ProbeClip.h>          // stitch::ProbeClip
 
 #include <QFileInfo>
@@ -115,6 +116,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
                                             const view::Pose &pose, int outW, int outH,
                                             QString &error)
 {
+    const core::GpuJobScope gpuJob;
     if (outW <= 0 || outH <= 0) {
         error = tr("Invalid output size.");
         return {};
@@ -213,6 +215,7 @@ ReframeExportController::ReframeExportController(QObject *parent)
 
 void ReframeExportController::run(const Request &req)
 {
+    const core::GpuJobScope gpuJob;
     m_cancel.store(false, std::memory_order_relaxed);
 
     if (req.clips.isEmpty()) {
@@ -303,6 +306,10 @@ void ReframeExportController::run(const Request &req)
                              "orbis-reframe, games, a web browser) and export again."),
                       req.outPath, e);
     };
+    // Playback and the background measurements were asked to make room
+    // (MainWindow::makeGpuRoomForJob): give them a moment to let go before
+    // the encoder and the first clip take it.
+    core::waitForGpuRoom(3000, &m_cancel);
     if (!writer->open(cfg, err)) {
         failed(QString::fromStdString(err));
         return;
@@ -421,6 +428,9 @@ void ReframeExportController::run(const Request &req)
             break;
         }
 
+        // The last clip's memory going back takes a moment too. Short of
+        // room after that the clip decodes on the processor, and says so.
+        core::waitForGpuRoom(3000, &m_cancel);
         auto src = std::make_unique<stitch::NativeStitchSource>();
         if (!src->Open(c.clipPath.toStdString(), sc) || !src->SeekTo(c.trimInMs)) {
             failClip(QString::fromStdString(src->GetLastError()));

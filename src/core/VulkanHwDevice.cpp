@@ -8,7 +8,11 @@ extern "C" {
 
 #include <vulkan/vulkan.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <thread>
 #include <cstring>
 #include <mutex>
 #include <vector>
@@ -85,6 +89,57 @@ GpuMemory sharedDeviceMemory()
     }
     m.known = m.budget > 0;
     return m;
+}
+
+uint64_t gpuMargin(const GpuMemory& m)
+{
+    return std::max<uint64_t>(uint64_t(512) << 20, m.budget / 10);
+}
+
+namespace {
+std::atomic<uint64_t> g_clipBytes{0};
+}
+
+void setClipGpuBytes(uint64_t bytes)
+{
+    g_clipBytes.store(bytes);
+}
+
+uint64_t clipGpuBytes()
+{
+    return g_clipBytes.load();
+}
+
+namespace {
+std::atomic<int> g_jobs{0};
+}
+
+GpuJobScope::GpuJobScope()
+{
+    g_jobs.fetch_add(1);
+}
+
+GpuJobScope::~GpuJobScope()
+{
+    g_jobs.fetch_sub(1);
+}
+
+bool gpuJobRunning()
+{
+    return g_jobs.load() > 0;
+}
+
+bool waitForGpuRoom(int maxMs, const std::atomic<bool>* cancel)
+{
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(maxMs);
+    for (;;) {
+        const GpuMemory m = sharedDeviceMemory();
+        if (!m.known || m.headroom() >= gpuMargin(m) + clipGpuBytes())
+            return true;
+        if ((cancel && cancel->load()) || std::chrono::steady_clock::now() >= until)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
 }
 
 } // namespace core

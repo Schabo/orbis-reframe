@@ -1,6 +1,7 @@
 #include "SubjectTrackJob.h"
 
 #include <GyroStabilizer.h>
+#include <VulkanHwDevice.h> // core::waitForGpuRoom
 
 #include <algorithm>
 #include <chrono>
@@ -10,6 +11,7 @@ namespace subjecttrack {
 
 Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onFrame)
 {
+    const core::GpuJobScope gpuJob;
     using Clock = std::chrono::steady_clock;
     Result res;
     stitch::PreviewStitchConfig sc;
@@ -18,6 +20,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onF
     sc.lensGuard = req.lensGuard;
     sc.lensCalibration = req.lensCalibration;
     stitch::NativeStitchSource src;
+    core::waitForGpuRoom(3000, &stop); // playback and the measurements letting go
     if (!src.Open(req.clipPath, sc) || !src.SeekTo(req.fromMs)) {
         res.error = src.GetLastError();
         return res;

@@ -6,6 +6,7 @@
 #include <GyroStabilizer.h>
 #include <ClipMetadata.h>
 #include <NativeStitchSource.h>
+#include <VulkanHwDevice.h> // core::waitForGpuRoom
 
 #include <chrono>
 #include <cstring>
@@ -37,6 +38,7 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
     sc.method = req.stitchMethod;
     sc.seamColourBlend = req.seamColourBlend;
     sc.seamFlow = req.seamFlow;
+    core::waitForGpuRoom(3000); // playback and the measurements letting go
     if (!src.Open(req.clipPath, sc) || !src.SeekTo(req.fromMs)) {
         err = src.GetLastError();
         return false;
@@ -59,6 +61,7 @@ bool openStitch(const Request& req, stitch::NativeStitchSource& src,
 
 Result run(const Request& req, const std::atomic<bool>& stop, const ProgressFn& progress)
 {
+    const core::GpuJobScope gpuJob;
     using Clock = std::chrono::steady_clock;
     Result res;
     const double fps = req.fps;
@@ -104,6 +107,7 @@ namespace platescan {
 FollowResult follow(const Request& req, const insv::BlurQuad& seed, int64_t backToMs,
                     const std::atomic<bool>& stop, const FollowProgressFn& progress)
 {
+    const core::GpuJobScope gpuJob;
     FollowResult res;
     const double fps = req.fps;
     privacy::PlateScanner scanner;

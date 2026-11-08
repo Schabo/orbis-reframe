@@ -423,6 +423,12 @@ void MainWindow::setupPages()
     setCentralWidget(m_pages);
 }
 
+void MainWindow::makeGpuRoomForJob()
+{
+    QMetaObject::invokeMethod(m_controller, &PlaybackController::makeGpuRoom, true);
+    m_measurements->yieldGpu();
+}
+
 void MainWindow::setupPlayback()
 {
     // The controller runs on its own thread: opening a clip and its first
@@ -1056,6 +1062,8 @@ void MainWindow::connectController()
             m_playerBar, &PlayerBar::setPlaying);
     connect(m_controller, &PlaybackController::scrubbingChanged, m_measurements,
             &ClipMeasurements::setScrubbing);
+    connect(m_measurements, &ClipMeasurements::gpuRoomWanted, m_controller,
+            [this] { m_controller->makeGpuRoom(false); });
     connect(m_controller, &PlaybackController::playingChanged, this, [this](bool playing) {
         m_playing = playing;
         m_measurements->setPlaying(playing);

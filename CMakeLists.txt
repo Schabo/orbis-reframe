@@ -688,7 +688,7 @@ if(FFMPEG_FOUND)
     # decode/reproject/encode half.
     target_link_libraries(orbis_app PUBLIC
         Qt6::Widgets Qt6::Gui Vulkan::Vulkan orbis_core stitch reframe_flatten insv
-        privacy_data render_shaders orbis_paths orbis_version audio_output)
+        privacy_data render_shaders orbis_paths orbis_version audio_output vulkan_hw_device)
 
     # The resources go into each executable: a static library's resource
     # initializer would be dropped by the linker.

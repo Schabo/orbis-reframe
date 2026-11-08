@@ -139,6 +139,11 @@ private:
     void setupLayout(QWidget *viewportContainer);
     void setupPages();
     void setupPlayback();
+    // A job is about to open its own stitch on the GPU (an export, a still,
+    // a subject track, a plate scan or follow): playback gives back what it
+    // can spare and the background measurements on the GPU stop until
+    // there's room for them again.
+    void makeGpuRoomForJob();
     void connectStitchAndStabilization();
     void connectTimeline();
     void connectOverlaysAndAudio();

@@ -106,6 +106,8 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     // It plays what it tracks in the viewport instead: pause playback, which
     // would push frames too (and its own NativeStitchSource would contend).
     QMetaObject::invokeMethod(m_controller, &PlaybackController::pause);
+    // ... and give it room on the graphics card for that stitch.
+    makeGpuRoomForJob();
     m_tracker->start(run);
     m_reframePanel->setTrackRunning(true);
     m_splitScreenPanel->setEditable(false);

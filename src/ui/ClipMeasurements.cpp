@@ -1,6 +1,7 @@
 #include "ClipMeasurements.h"
 
 #include <QThread>
+#include <QTimer>
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,7 @@
 #include "../core/Log.h"
 #include "../core/Project.h"
 #include "../core/Timeline.h"
+#include "../core/VulkanHwDevice.h" // core::sharedDeviceMemory
 
 ClipMeasurements::ClipMeasurements(Project *project, bool enabled, QObject *parent)
     : QObject(parent), m_project(project), m_enabled(enabled)
@@ -59,6 +61,35 @@ bool ClipMeasurements::usesOldStitcher(const ClipItem &c)
     return c.stitchMethod != stitch::PreviewStitchConfig::Method::New;
 }
 
+bool ClipMeasurements::roomForAnother()
+{
+    // The sync and the seam analysis stitch their clip on the graphics card,
+    // as much as a clip playing takes (the seam alignment and the lens
+    // colour decode on the processor). Short of memory they'd fall back to
+    // the processor, and take what an export or the clip playing next
+    // needs: they wait instead -- they're in the background.
+    const bool job = core::gpuJobRunning();
+    if (!job) {
+        // Without a budget from the driver, or before playback has measured
+        // what a clip takes, one at a time.
+        const core::GpuMemory m = core::sharedDeviceMemory();
+        if (!m.known || core::clipGpuBytes() == 0)
+            return !m_syncThread && !m_analysisThread;
+        if (m.headroom() >= core::gpuMargin(m) + core::clipGpuBytes())
+            return true;
+    }
+    if (!m_roomRetry) {
+        m_roomRetry = true;
+        if (!job)
+            emit gpuRoomWanted();
+        QTimer::singleShot(2000, this, [this] {
+            m_roomRetry = false;
+            schedule();
+        });
+    }
+    return false;
+}
+
 void ClipMeasurements::schedule()
 {
     if (m_queued)
@@ -84,6 +115,12 @@ void ClipMeasurements::schedule()
             maybeAnalyseSeam(path); // after any measurement it depends on
         emit statusChanged();
     }, Qt::QueuedConnection);
+}
+
+void ClipMeasurements::yieldGpu()
+{
+    m_syncCancel = true;
+    m_analysisCancel = true;
 }
 
 void ClipMeasurements::setScrubbing(bool scrubbing)
@@ -164,6 +201,8 @@ void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
     if (std::all_of(ranges.begin(), ranges.end(),
                     [&](const auto &r) { return analysis->covers(r.first, r.second); }))
         return;
+    if (!roomForAnother())
+        return; // again shortly, or when one running ends
     m_analysisPath = clipPath;
     m_analysisCancel = false;
     m_analysisPermille = static_cast<int>(total > 0 ? 1000 * done / total : 0);
@@ -212,6 +251,8 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
         return;
     const std::string path = clipPath.toStdString();
     const qint64 in = clip->trimInMs, out = clip->trimOutMs;
+    if (!roomForAnother())
+        return; // again shortly, or when one running ends
     m_syncMeasuringPath = clipPath;
     m_syncCancel = false;
     const auto guard = clip->lensGuard;

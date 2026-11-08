@@ -5,6 +5,8 @@
 #include "../render/EquirectViewportWindow.h"
 
 #include <NativeStitchSource.h> // stitch::MakeStitchSource
+#include <VulkanHwDevice.h>     // core::sharedDeviceMemory
+#include <Log.h>
 
 #include <QTimer>
 
@@ -38,7 +40,121 @@ bool readSourceFrame(stitch::IStitchSource &src, bool useLens, stitch::Frame &fr
     return !frame.rgba.empty();
 }
 
+constexpr uint64_t kMiB = 1024 * 1024;
+
+using core::gpuMargin;
+
+double toMiB(uint64_t bytes)
+{
+    return double(bytes) / double(kMiB);
+}
+
 } // namespace
+
+// ---------------------------------------------------------------------------
+// Graphics memory
+// ---------------------------------------------------------------------------
+
+uint64_t PlaybackController::sourceGpuNeed(const QString &path) const
+{
+    const auto it = m_srcGpuBytes.find(path);
+    if (it != m_srcGpuBytes.end())
+        return it->second;
+    return core::clipGpuBytes();
+}
+
+void PlaybackController::noteSourceGpuBytes(const QString &path, uint64_t bytes)
+{
+    // Measured as the process's usage before and after, so what else came
+    // or went meanwhile (a measurement letting go, a job opening) is in it
+    // too: the smallest figure seen for the file is the nearest.
+    const auto [it, added] = m_srcGpuBytes.try_emplace(path, bytes);
+    if (!added)
+        it->second = std::min(it->second, bytes);
+    uint64_t most = 0;
+    for (const auto &[p, b] : m_srcGpuBytes)
+        most = std::max(most, b);
+    core::setClipGpuBytes(most);
+}
+
+bool PlaybackController::releaseSourceGpu(const QString &path, stitch::IStitchSource &src)
+{
+    const core::GpuMemory before = core::sharedDeviceMemory();
+    if (!src.ReleaseGpu())
+        return false;
+    const core::GpuMemory after = core::sharedDeviceMemory();
+    if (before.known && after.known && before.usage > after.usage)
+        noteSourceGpuBytes(path, before.usage - after.usage);
+    core::log::Info("[playback] gave back the graphics memory of %s (%.0f MiB; %.0f of %.0f MiB "
+                    "free)\n",
+                    qPrintable(path), toMiB(before.usage - std::min(before.usage, after.usage)),
+                    toMiB(after.headroom()), toMiB(after.budget));
+    return true;
+}
+
+bool PlaybackController::resumeSource(const QString &path, stitch::IStitchSource &src)
+{
+    if (!src.GpuReleased())
+        return true;
+    const core::GpuMemory before = core::sharedDeviceMemory();
+    if (!src.ResumeGpu())
+        return false;
+    const core::GpuMemory after = core::sharedDeviceMemory();
+    if (before.known && after.known && after.usage > before.usage)
+        noteSourceGpuBytes(path, after.usage - before.usage);
+    return true;
+}
+
+void PlaybackController::balanceGpuMemory(uint64_t need, bool includeActive, const QString &keep)
+{
+    m_lastGpuCheck = std::chrono::steady_clock::now();
+    core::GpuMemory mem = core::sharedDeviceMemory();
+    const auto roomy = [&] { return mem.known && mem.headroom() >= gpuMargin(mem) + need; };
+    // Coldest first; releasing changes neither the cache nor the LRU.
+    for (const QString &path : std::as_const(m_srcLru)) {
+        if (roomy())
+            break;
+        if (path == m_activePath || path == keep)
+            continue;
+        const auto it = m_srcCache.find(path);
+        if (it != m_srcCache.end() && releaseSourceGpu(path, *it->second))
+            mem = core::sharedDeviceMemory();
+    }
+    if (includeActive && !roomy() && m_activeSource && m_activePath != keep &&
+        releaseSourceGpu(m_activePath, *m_activeSource))
+        mem = core::sharedDeviceMemory();
+    if (!mem.known || roomy()) {
+        m_gpuShortSaid = false;
+        return;
+    }
+    if (!m_gpuShortSaid) {
+        m_gpuShortSaid = true;
+        std::fprintf(stderr,
+                     "[playback] the graphics memory is short: %.0f MiB free of %.0f MiB, "
+                     "%.0f MiB wanted; nothing more to give back\n",
+                     toMiB(mem.headroom()), toMiB(mem.budget), toMiB(gpuMargin(mem) + need));
+    }
+}
+
+void PlaybackController::retryGpuFallback()
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (!m_activeSource || !m_activeSource->GetGpuFallback().any() ||
+        m_activeSource->GpuReleased() || now < m_gpuRetryAt || core::gpuJobRunning())
+        return; // a job's room isn't for taking
+    const core::GpuMemory mem = core::sharedDeviceMemory();
+    if (!mem.known || mem.headroom() < gpuMargin(mem) + sourceGpuNeed(m_activePath))
+        return;
+    // Let go and take up again: the GPU tried afresh, the next read carries
+    // on where the source was (a short stall). The budget can say there's
+    // room when there isn't quite: tried again after a while, not at once.
+    if (!m_activeSource->ReleaseGpu() || !resumeSource(m_activePath, *m_activeSource))
+        return;
+    const bool back = !m_activeSource->GetGpuFallback().any();
+    m_gpuRetryAt = now + (back ? std::chrono::seconds(0) : std::chrono::seconds(30));
+    core::log::Info("[playback] room on the graphics card again: %s %s\n", qPrintable(m_activePath),
+                    back ? "is back on it" : "still doesn't fit; trying again in 30 s");
+}
 
 // ---------------------------------------------------------------------------
 // Decoder thread
@@ -107,15 +223,31 @@ std::shared_ptr<stitch::IStitchSource> PlaybackController::acquireSource(const S
     auto it = m_srcCache.find(path);
     if (it != m_srcCache.end()) {
         touchSourceLru(path);
+        if (it->second->GpuReleased()) {
+            // Room for it first; the source being left may give its memory
+            // back too (its frames still queued stay valid).
+            balanceGpuMemory(sourceGpuNeed(path), true, path);
+            if (!resumeSource(path, *it->second)) {
+                if (err)
+                    *err = QString::fromStdString(it->second->GetLastError());
+                return nullptr;
+            }
+        }
         return it->second;
     }
 
+    if (!seg.flat)
+        balanceGpuMemory(sourceGpuNeed(path), true, path);
     std::shared_ptr<stitch::IStitchSource> src = makeSource(seg);
+    const core::GpuMemory before = core::sharedDeviceMemory();
     if (!src->Open(path.toStdString(), openConfig(m_decPreviewConfig, seg))) {
         if (err)
             *err = QString::fromStdString(src->GetLastError());
         return nullptr;
     }
+    const core::GpuMemory after = core::sharedDeviceMemory();
+    if (!seg.flat && before.known && after.known && after.usage > before.usage)
+        noteSourceGpuBytes(path, after.usage - before.usage);
     m_srcCache.emplace(path, src);
     touchSourceLru(path);
     return src;
@@ -283,6 +415,8 @@ void PlaybackController::switchToSegment(int index)
     const QString path = seg.sourcePath;
     if (m_activeSource && m_activePath == path) {
         touchSourceLru(path);
+        // Gave its memory back for a job meanwhile (makeGpuRoom).
+        resumeSource(path, *m_activeSource);
         return;
     }
 
@@ -310,6 +444,7 @@ void PlaybackController::switchToSegment(int index)
         m_activeSource->TrimLensFrames();
     m_activeSource = std::move(src);
     m_activePath = path;
+    balanceGpuMemory(0, false);
 }
 
 void PlaybackController::noteGpuFallback(int clipId)
@@ -344,8 +479,27 @@ void PlaybackController::startPrefetch(const Placed &cur, qint64 timelineMs)
     // The same file on from here (a split): the decoder carries on reading.
     // A file known to be gone has nothing to open ahead of time.
     if ((np.seg.sourcePath == cur.seg.sourcePath && np.seg.inMs == cur.seg.outMs) ||
-        np.seg.missing)
+        np.seg.missing || m_prefetchDeclined == next)
         return;
+    // A second clip on the graphics card while this one plays: only with
+    // room for it. Else the cut opens it once this one has let go
+    // (acquireSource), behind "Buffering…".
+    const auto cached = m_srcCache.find(np.seg.sourcePath);
+    const bool onGpu = np.seg.sourcePath != m_activePath && cached != m_srcCache.end() &&
+                       !cached->second->GpuReleased();
+    if (!onGpu && !np.seg.flat) {
+        const uint64_t need = sourceGpuNeed(np.seg.sourcePath);
+        balanceGpuMemory(need, false, np.seg.sourcePath);
+        const core::GpuMemory mem = core::sharedDeviceMemory();
+        if (mem.known && mem.headroom() < gpuMargin(mem) + need) {
+            core::log::Info("[playback] no room on the graphics card to open %s ahead of the "
+                            "cut (%.0f MiB free, %.0f MiB wanted)\n",
+                            qPrintable(np.seg.sourcePath), toMiB(mem.headroom()),
+                            toMiB(gpuMargin(mem) + need));
+            m_prefetchDeclined = next;
+            return;
+        }
+    }
 
     auto p = std::make_unique<Prefetch>();
     p->segIndex = next;
@@ -402,6 +556,7 @@ bool PlaybackController::takePrefetch(int next)
     touchSourceLru(m_activePath);
     m_decRsGen = ~uint64_t(0); // re-apply: settings may have changed since
     m_heldRead = HeldRead{std::move(p->frame), std::move(p->lens), p->got};
+    balanceGpuMemory(0, false);
     return true;
 }
 
@@ -410,6 +565,7 @@ void PlaybackController::invalidatePrefetch()
     if (m_prefetch)
         m_prefetch->stale = true;
     m_heldRead.reset();
+    m_prefetchDeclined = -1;
 }
 
 void PlaybackController::decoderLoop()
@@ -418,6 +574,8 @@ void PlaybackController::decoderLoop()
         bool doSeek = false;
         bool tlChanged = false;
         bool cfgChanged = false;
+        bool makeRoom = false;
+        bool makeRoomEvenShown = false;
         QStringList reopen; // m_reopenPaths, taken with the timeline
         qint64 seekMs = 0;
         bool seekToKeyframe = false;
@@ -429,10 +587,13 @@ void PlaybackController::decoderLoop()
                 const size_t cap = !m_playing   ? kScrubLookahead
                                    : m_lensQueue ? kLensQueueMax
                                                  : queueCapFor(m_frameBytes);
+                // A source that gave its memory back for a job while paused
+                // comes back for a play or a seek, not for the lookahead.
+                const bool parked = !m_playing && m_activeSource && m_activeSource->GpuReleased();
                 const bool canDecode =
-                    !m_decPlaced.isEmpty() && !m_decoderEof && m_queue.size() < cap;
+                    !m_decPlaced.isEmpty() && !m_decoderEof && m_queue.size() < cap && !parked;
                 return m_stop || m_seekPending || m_timelineDirty || m_previewConfigDirty ||
-                       canDecode;
+                       m_gpuRoomPending || canDecode;
             });
             if (m_stop)
                 return;
@@ -468,6 +629,8 @@ void PlaybackController::decoderLoop()
                 seekToKeyframe = m_seekToKeyframe;
                 m_hardStall = true; // hold the presenter clock across the seek
             }
+            makeRoom = std::exchange(m_gpuRoomPending, false);
+            makeRoomEvenShown = std::exchange(m_gpuRoomEvenShown, false);
             gen = m_seekGen;
             playing = m_playing;
         }
@@ -503,6 +666,20 @@ void PlaybackController::decoderLoop()
             m_activePath.clear();
             m_decSegIndex = -1;
         }
+
+        if (makeRoom) {
+            // Room for a job's clip: the largest any of ours took.
+            balanceGpuMemory(sourceGpuNeed({}), makeRoomEvenShown && !playing);
+            if (!tlChanged && !cfgChanged && !doSeek)
+                continue; // not a read: that would take the memory up again
+        } else if (std::chrono::steady_clock::now() - m_lastGpuCheck >= std::chrono::seconds(1)) {
+            // Other programs take graphics memory too.
+            balanceGpuMemory(0, false);
+            retryGpuFallback();
+        }
+
+        if (!playing && !doSeek && m_activeSource && m_activeSource->GpuReleased())
+            continue; // parked (see the wait above): no lookahead read
 
         if (m_decPlaced.isEmpty())
             continue; // nothing to play; wait for the next timeline/seek/stop
@@ -569,6 +746,9 @@ void PlaybackController::decoderLoop()
         Placed cur = m_decPlaced[m_decSegIndex]; // small copy; released lock
 
         applyCaptureTimingIfChanged();
+        // Back on the GPU after making room for a job, before asking what it
+        // can do: a released source has no lens frames.
+        resumeSource(m_activePath, *m_activeSource);
         // Lens frames when the viewport can take them: the decoded pair, drawn
         // from the lenses at present time. Else the stitched equirect.
         const bool useLens = m_viewport && m_viewport->LensFramesSupported() &&

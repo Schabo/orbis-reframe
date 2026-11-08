@@ -167,6 +167,16 @@ void PlaybackController::pause()
     emit positionChanged(m_positionMs, steadyNs());
 }
 
+void PlaybackController::makeGpuRoom(bool evenShown)
+{
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        m_gpuRoomEvenShown = (m_gpuRoomPending && m_gpuRoomEvenShown) || evenShown;
+        m_gpuRoomPending = true;
+    }
+    m_cv.notify_all();
+}
+
 void PlaybackController::togglePlay()
 {
     if (m_playing)

@@ -31,7 +31,9 @@ enum class MeasureFailure;
 // a measurement competes with playback for the GPU and shows as a hitch.
 // One running when play starts is cancelled (it would stall playback its
 // whole run) and starts over on the pause; the seam analysis goes on from
-// where it stopped.
+// where it stopped. The sync and the seam analysis stitch on the graphics
+// card, so they start only while it has room for them (roomForAnother):
+// beside an export, or on a card with little memory, they wait.
 class ClipMeasurements : public QObject {
     Q_OBJECT
 
@@ -49,6 +51,10 @@ public:
     // Scrubbing (PlaybackController::scrubbingChanged) likewise: the GPU is
     // the scrub's.
     void setScrubbing(bool scrubbing);
+    // A job needs the graphics memory (an export, ...): the measurements on
+    // the GPU running now stop (the seam analysis keeps what it has done)
+    // and none starts while the job runs (core::GpuJobScope).
+    void yieldGpu();
     // The source under the playhead: measured first.
     void setPriorityPath(const QString &clipPath);
     // A source's lens-guard setting changed: its seam and colour
@@ -84,12 +90,22 @@ signals:
     void statusChanged();
     // More of `clipPath`'s seam analysis is done (a pass finished or stopped).
     void seamAnalysed(const QString &clipPath);
+    // A measurement on the GPU is waiting for graphics memory: playback may
+    // give back what its idle clips hold (PlaybackController::makeGpuRoom).
+    void gpuRoomWanted();
 
 private:
     void maybeMeasureSync(const QString &clipPath);
     void maybeMeasureSeam(const QString &clipPath);
     void maybeMeasureColour(const QString &clipPath);
     void maybeAnalyseSeam(const QString &clipPath);
+    // A measurement on the GPU (the sync, the seam analysis) may start: no
+    // job on the GPU runs (core::gpuJobRunning), and the graphics card has room for one more clip
+    // (core::clipGpuBytes) beside its margin -- without a budget from the
+    // driver, when neither runs. Else asks for room (gpuRoomWanted, not
+    // during a job) and schedules again shortly.
+    bool roomForAnother();
+    bool m_roomRetry = false; // roomForAnother's schedule() pending
     // The first main-track clip cut from `clipPath`, if its file is there.
     const ClipItem *measurableClip(const QString &clipPath) const;
     static bool usesOldStitcher(const ClipItem &c);
