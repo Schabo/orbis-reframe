@@ -13,7 +13,7 @@ Makefile
 compile_commands.json
 
 # Raw/proxy camera footage used for spikes/testing — large binaries, not for git.
-/sample_footage/
+/sample_footage
 
 *.ppm
 # Downloaded third-party SDKs and our own builds (scripts/fetch_ncnn.sh,
