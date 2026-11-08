@@ -434,10 +434,10 @@ void EquirectViewportRenderer::destroyLensResources()
     m_window->setLensFramesSupported(false);
 }
 
-void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t height)
+bool EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t height)
 {
     if (width == m_texWidth && height == m_texHeight && m_textureImage != VK_NULL_HANDLE)
-        return;
+        return true;
 
     VkDevice device = m_window->device();
 
@@ -463,7 +463,10 @@ void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t h
         imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        vkCreateImage(device, &imageInfo, nullptr, &m_textureImage);
+        if (vkCreateImage(device, &imageInfo, nullptr, &m_textureImage) != VK_SUCCESS) {
+            m_textureImage = VK_NULL_HANDLE;
+            return textureFailed(width, height);
+        }
 
         VkMemoryRequirements memReq{};
         vkGetImageMemoryRequirements(device, m_textureImage, &memReq);
@@ -472,7 +475,10 @@ void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t h
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = m_window->deviceLocalMemoryIndex();
-        vkAllocateMemory(device, &allocInfo, nullptr, &m_textureMemory);
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &m_textureMemory) != VK_SUCCESS) {
+            m_textureMemory = VK_NULL_HANDLE;
+            return textureFailed(width, height);
+        }
         vkBindImageMemory(device, m_textureImage, m_textureMemory, 0);
 
         VkImageViewCreateInfo viewInfo{};
@@ -481,7 +487,10 @@ void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t h
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
         viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        vkCreateImageView(device, &viewInfo, nullptr, &m_textureView);
+        if (vkCreateImageView(device, &viewInfo, nullptr, &m_textureView) != VK_SUCCESS) {
+            m_textureView = VK_NULL_HANDLE;
+            return textureFailed(width, height);
+        }
     }
 
     // --- Host-visible staging ring (one buffer per frame in flight) ---
@@ -496,7 +505,10 @@ void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t h
         bufferInfo.size = bufferSize;
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        vkCreateBuffer(device, &bufferInfo, nullptr, &m_stagingBuffers[i]);
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &m_stagingBuffers[i]) != VK_SUCCESS) {
+            m_stagingBuffers[i] = VK_NULL_HANDLE;
+            return textureFailed(width, height);
+        }
 
         VkMemoryRequirements memReq{};
         vkGetBufferMemoryRequirements(device, m_stagingBuffers[i], &memReq);
@@ -505,9 +517,16 @@ void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t h
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReq.size;
         allocInfo.memoryTypeIndex = m_window->hostVisibleMemoryIndex();
-        vkAllocateMemory(device, &allocInfo, nullptr, &m_stagingMemory[i]);
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &m_stagingMemory[i]) != VK_SUCCESS) {
+            m_stagingMemory[i] = VK_NULL_HANDLE;
+            return textureFailed(width, height);
+        }
         vkBindBufferMemory(device, m_stagingBuffers[i], m_stagingMemory[i], 0);
-        vkMapMemory(device, m_stagingMemory[i], 0, bufferSize, 0, &m_stagingMapped[i]);
+        if (vkMapMemory(device, m_stagingMemory[i], 0, bufferSize, 0, &m_stagingMapped[i]) !=
+            VK_SUCCESS) {
+            m_stagingMapped[i] = nullptr;
+            return textureFailed(width, height);
+        }
     }
 
     // Point the persistent descriptor set at the new view. Safe without a
@@ -532,6 +551,21 @@ void EquirectViewportRenderer::ensureTextureResources(uint32_t width, uint32_t h
     m_texWidth = width;
     m_texHeight = height;
     m_textureUndefined = true;
+    m_textureFailSaid = false;
+    return true;
+}
+
+bool EquirectViewportRenderer::textureFailed(uint32_t width, uint32_t height)
+{
+    destroyTextureResources();
+    if (!m_textureFailSaid) {
+        m_textureFailSaid = true;
+        std::fprintf(stderr,
+                     "[viewport] no graphics memory for the %ux%u picture; it isn't drawn until "
+                     "there is\n",
+                     width, height);
+    }
+    return false;
 }
 
 void EquirectViewportRenderer::destroyTextureResources()
@@ -567,7 +601,8 @@ void EquirectViewportRenderer::destroyTextureResources()
 void EquirectViewportRenderer::uploadTextureImmediate(int width, int height,
                                                       const std::vector<uint8_t> &rgba)
 {
-    ensureTextureResources(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+    if (!ensureTextureResources(static_cast<uint32_t>(width), static_cast<uint32_t>(height)))
+        return;
     std::memcpy(m_stagingMapped[0], rgba.data(), rgba.size());
 
     VkCommandBuffer cmd = beginOneTimeCommands();

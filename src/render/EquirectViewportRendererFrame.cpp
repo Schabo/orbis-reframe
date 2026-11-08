@@ -361,10 +361,11 @@ void EquirectViewportRenderer::startNextFrame()
         } else {
             // Upload recorded into this frame's own command buffer, before the
             // render pass begins -- no separate submit, no wait-idle.
-            ensureTextureResources(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
-            const uint32_t slot = static_cast<uint32_t>(m_window->currentFrame());
-            std::memcpy(m_stagingMapped[slot], rgba.data(), rgba.size());
-            recordTextureCopy(commandBuffer, slot);
+            if (ensureTextureResources(static_cast<uint32_t>(width), static_cast<uint32_t>(height))) {
+                const uint32_t slot = static_cast<uint32_t>(m_window->currentFrame());
+                std::memcpy(m_stagingMapped[slot], rgba.data(), rgba.size());
+                recordTextureCopy(commandBuffer, slot);
+            }
             m_lastWidth = width;
             m_lastHeight = height;
             m_lastRgba = std::move(rgba);
@@ -523,10 +524,12 @@ void EquirectViewportRenderer::startNextFrame()
 
     vkCmdBeginRenderPass(commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
     // Without the equirect texture's set (its creation failed, logged in
-    // initResources) the equirect preview isn't drawn, only the surround;
-    // the view straight from the fisheyes still is.
-    const bool drawPicture =
-        imp || (m_pipeline != VK_NULL_HANDLE && m_descriptorSet != VK_NULL_HANDLE);
+    // initResources) or the texture (no room for it, ensureTextureResources)
+    // the equirect preview isn't drawn, only the surround; the view straight
+    // from the fisheyes still is.
+    const bool drawPicture = imp || (m_pipeline != VK_NULL_HANDLE &&
+                                     m_descriptorSet != VK_NULL_HANDLE &&
+                                     m_textureView != VK_NULL_HANDLE);
     if (imp) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lensPipeline);
         const VkDescriptorSet sets[2] = {m_lensSets[frameSlot], lutSet};

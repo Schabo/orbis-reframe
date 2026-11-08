@@ -92,7 +92,10 @@ private:
     void createPipeline();
     // (Re)creates the sampled image + staging ring when the frame size changes
     // (or on the first call), and points the descriptor set at the new view.
-    void ensureTextureResources(uint32_t width, uint32_t height);
+    // False, with none of them, when the graphics memory has no room
+    // (textureFailed); the next picture tries again.
+    bool ensureTextureResources(uint32_t width, uint32_t height);
+    bool textureFailed(uint32_t width, uint32_t height); // ensureTextureResources' failure
     void destroyTextureResources();
     // Records the barrier + buffer->image copy for staging slot `stagingSlot`
     // (already filled by the caller) into `cmd`. No submit, no wait.
@@ -177,6 +180,7 @@ private:
     VkSampler m_sampler = VK_NULL_HANDLE;
 
     VkImage m_textureImage = VK_NULL_HANDLE;
+    bool m_textureFailSaid = false; // textureFailed's message, once until it works again
     VkDeviceMemory m_textureMemory = VK_NULL_HANDLE;
     VkImageView m_textureView = VK_NULL_HANDLE;
     uint32_t m_texWidth = 0;
