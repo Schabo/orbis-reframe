@@ -551,8 +551,8 @@ if(FFMPEG_FOUND)
         src/ui/ClipBackend.h
         src/ui/ClipMeasurements.cpp
         src/ui/ClipMeasurements.h
-        src/ui/LensGuardCache.cpp
-        src/ui/LensGuardCache.h
+        src/ui/ClipFactsCache.cpp
+        src/ui/ClipFactsCache.h
         src/ui/TelemetryCache.cpp
         src/ui/TelemetryCache.h
         src/ui/ShortcutHelp.cpp

@@ -49,6 +49,7 @@ Theme ember()
     c.clipMissing = QColor(0x6b3535);
     c.waveform = QColor(0xcfd6dd);
     c.shade = QColor(0, 0, 0, 77);
+    c.marker = QColor(0xffd84a);
     c.error = QColor(0xe05555);
     c.warning = QColor(0xe8c547);
     c.success = QColor(0x5cc96b);
@@ -96,6 +97,8 @@ Theme light()
     c.clipMissing = QColor(0xd99a9a);
     c.waveform = QColor(0x24343f);
     c.shade = QColor(0, 0, 0, 36);
+    // A yellow light enough to read as one is lost on the pale clips: a dark gold.
+    c.marker = QColor(0x5e4700);
     c.error = QColor(0xc62828);
     c.warning = QColor(0x9a6b00);
     c.success = QColor(0x2e8540);

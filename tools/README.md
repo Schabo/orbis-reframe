@@ -54,7 +54,11 @@ line `GPS in … lined up with the IMU` says by how much). `--quats` prints a
 timelapse's frame times (record 0x600, `F index ms`) and the orientation
 an X5 timelapse stores in place of the IMU (record 0x1800, `Q index ms w x
 y z`, the quaternion turning world vectors into the camera's axes); the
-summary counts both.
+summary counts both. `--marks` prints the anchors record's lists (`# list
+type: count` and their device times in ms) and then each highlight mark
+(list 1) as seconds of the camera's clock from the first frame; the app
+turns those into video time, by the capture scale in slow motion and a
+timelapse.
 
 **When:** a clip behaves oddly (stitch, sync, stabilization, GPS) and you want
 to see what the camera recorded; or when working on `src/insv/InsvTrailer`.

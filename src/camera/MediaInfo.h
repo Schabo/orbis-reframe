@@ -74,6 +74,8 @@ struct MediaInfo {
     int64_t gpsFixes = 0;   // records with an acquired position
     double gpsRateHz = 0.0; // position updates per second
     double gpsTrackSec = 0.0; // seconds of track, gaps left out
+    // The highlight marks set while recording (ClipMetadata::highlightMs).
+    int64_t highlightMarks = 0;
 
     // The camera's low-res proxy next to the clip.
     std::string proxyPath; // "" if not found

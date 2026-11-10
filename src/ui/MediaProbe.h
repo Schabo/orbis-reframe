@@ -20,11 +20,12 @@
 // kind. `probeClip` reads an .insv (ClipBackend::probe); empty =
 // stitch::ProbeClip. The item's path is the clip's file: for another file of
 // a take (a ONE X2's `_10_` lens file or its proxy) the take's `_00_` file.
-// `lensGuards` (optional): an .insv's lens-guard profiles (ClipProbe's).
+// `clipProbe` (optional): a 360 clip's probe, for what else it read (the
+// lens-guard profiles, the highlight marks).
 using ClipProbeFn = std::function<bool(const std::string &, stitch::ClipProbe &, std::string &)>;
 std::optional<MediaItem> probeMedia(const QString &path, QString *error = nullptr,
                                     const ClipProbeFn &probeClip = {},
-                                    stitch::LensGuardProfiles *lensGuards = nullptr);
+                                    stitch::ClipProbe *clipProbe = nullptr);
 
 // A picture for the Media tab, `size` (cropped to its shape): a 360 clip's
 // own preview from its trailer (clipThumbnail), a flat video's frame

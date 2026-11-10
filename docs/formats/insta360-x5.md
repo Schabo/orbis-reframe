@@ -442,11 +442,12 @@ so a mark's video time is `(mark − field 24) / 1e6` s: **5.867 s** and
 **16.067 s**, which match when the marks were set. The `.lrv` carries the same
 record; the `.pb` sidecar doesn't hold the times. What lists 2, 3, 4 and
 16-18 hold (marks made in the phone app? other kinds of highlight?) is
-unknown ❓.
+unknown ❓. Read by `insv::ReadInsvHighlights`; `insv_trailer_dump --marks`
+prints the lists.
 
 ExifTool decodes types 1 (partly), 2, 3, 4, 6 and 7. Its source notes that
 0x900/0xa00/0xb00 also occur on X3 / ONE RS / Ace Pro. Our parser reads types
-1, 2, 3, 4 and 7.
+1, 2, 3, 4, 7 and 10.
 
 ### 4.4 Type 9 — AAAData (48 B per frame) 📖
 

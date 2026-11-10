@@ -630,6 +630,69 @@ std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us,
     return out;
 }
 
+std::vector<InsvAnchorList> ParseInsvAnchors(const std::vector<uint8_t>& payload) {
+    std::vector<InsvAnchorList> out;
+    size_t off = 0;
+    while (off + 5 <= payload.size()) {
+        InsvAnchorList list;
+        list.type = payload[off];
+        const uint32_t count = ReadU32LE(&payload[off + 1]);
+        off += 5;
+        if (count > (payload.size() - off) / 8) break;
+        list.timestamps.reserve(count);
+        for (uint32_t i = 0; i < count; ++i, off += 8)
+            list.timestamps.push_back(ReadU64LE(&payload[off]));
+        out.push_back(std::move(list));
+    }
+    return out;
+}
+
+std::optional<InsvHighlights> ReadInsvHighlights(const std::string& file_path, double tick_us) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) return std::nullopt;
+    file.seekg(0, std::ios::end);
+    const int64_t file_size = static_cast<int64_t>(file.tellg());
+    InsvHighlights out;
+    uint64_t firstFrameTicks = 0;
+    std::vector<uint64_t> marks;
+    std::vector<uint64_t> frameTicks;
+    const bool ok = WalkTrailerRecords(
+        file, file_size,
+        [&](uint16_t id, const std::vector<uint8_t>& payload, int64_t) {
+            if (id == 0x101) {
+                firstFrameTicks = ParseImuMetadata(payload).first_frame_timestamp;
+            } else if (id == 0xa00) {
+                for (InsvAnchorList& l : ParseInsvAnchors(payload))
+                    if (l.type == kAnchorHighlights)
+                        marks.insert(marks.end(), l.timestamps.begin(), l.timestamps.end());
+            } else if (id == 0x600) {
+                for (size_t off = 0; off + 8 <= payload.size(); off += 8)
+                    frameTicks.push_back(ReadU64LE(&payload[off]));
+            } else {
+                out.time_map_offset_ms = ParseTimeMapOffsetMs(payload);
+            }
+            return true;
+        },
+        [](uint16_t id) { return id == 0x101 || id == 0xa00 || id == 0x600 || id == 0x8000; });
+    if (!ok) return std::nullopt;
+    if (firstFrameTicks == 0) {
+        if (!marks.empty())
+            std::fprintf(stderr, "insv: %zu highlight marks in %s but no first-frame time "
+                                 "(field 24) to place them by; not used\n",
+                         marks.size(), file_path.c_str());
+        return out;
+    }
+    std::sort(marks.begin(), marks.end());
+    for (const uint64_t m : marks)
+        out.since_first_frame_sec.push_back(
+            (static_cast<double>(m) - static_cast<double>(firstFrameTicks)) * tick_us * 1e-6);
+    if (frameTicks.size() >= 2)
+        for (const uint64_t t : frameTicks)
+            out.frame_sec.push_back(
+                (static_cast<double>(t) - static_cast<double>(frameTicks.front())) * tick_us * 1e-6);
+    return out;
+}
+
 const LensProfile* FindLensProfile(const InsvMakerNotes& notes, const std::string& name) {
     for (const auto& p : notes.lens_profiles)
         if (p.name == name) return &p;

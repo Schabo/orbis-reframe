@@ -188,6 +188,52 @@ void testKeyNavigation()
     CHECK(tl.adjacentKey(0, 1) == 12000); // the reframe keys, as before
 }
 
+// Ctrl+Up / Down: the marks of each main-track 360 clip's file, in
+// timeline time, through trims, speed, a split and a second clip of the
+// same file; a flat clip's file isn't asked.
+void testMarkNavigation()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 10000, 30.0);
+    tl.appendClip("b.insv", 6000, 25.0);
+    QHash<QString, QList<qint64>> marks{{"a.insv", {1000, 8000}}, {"b.insv", {2000}}};
+    QStringList asked;
+    const Timeline::MarksOf of = [&](const QString &path) {
+        asked << path;
+        return marks.value(path);
+    };
+    CHECK(tl.adjacentMark(0, 1, {}) == 0); // nothing to ask
+    CHECK(tl.adjacentMark(0, 1, of) == 1000);
+    CHECK(tl.adjacentMark(1000, 1, of) == 8000);
+    CHECK(tl.adjacentMark(8000, 1, of) == 12000);
+    CHECK(tl.adjacentMark(12000, 1, of) == 12000); // nothing further
+    CHECK(tl.adjacentMark(12000, -1, of) == 8000);
+    CHECK(tl.adjacentMark(7998, 1, of) == 12000); // a rounded ms off: on it
+    // Trimmed out of view: skipped; the later marks move with the trim.
+    tl.setClipTrimIn(a, 2000);
+    CHECK(tl.adjacentMark(0, 1, of) == 6000);
+    CHECK(tl.adjacentMark(6000, 1, of) == 10000);
+    // At double speed half as far.
+    tl.setClipSpeed(a, 2.0);
+    CHECK(tl.adjacentMark(0, 1, of) == 3000);
+    CHECK(tl.adjacentMark(3000, 1, of) == 6000);
+    // Split: both halves are the file's, each shows what's in its part.
+    tl.setClipSpeed(a, 1.0);
+    CHECK(tl.splitClip(a, 5000) != 0);
+    CHECK(tl.adjacentMark(0, 1, of) == 6000);
+    CHECK(tl.adjacentMark(6000, 1, of) == 10000);
+    // A second clip of the same file: its marks too.
+    tl.appendClip("a.insv", 10000, 30.0); // timeline 14000..24000
+    CHECK(tl.adjacentMark(10000, 1, of) == 15000);
+    CHECK(tl.adjacentMark(15000, 1, of) == 22000);
+    // A flat clip has no camera marks: its file isn't asked.
+    asked.clear();
+    tl.appendClip("phone.mp4", 5000, 30.0, 1080, 1920, 0, true);
+    marks.insert("phone.mp4", {100});
+    CHECK(tl.adjacentMark(22000, 1, of) == 22000);
+    CHECK(!asked.contains("phone.mp4"));
+}
+
 // A key a trim left on a clip's trim-out (the next clip's first frame) is
 // reached on the clip's last frame, 1 ms before the cut, and a key set there
 // -- the playhead's source time, as K takes it -- replaces it, at any speed.
@@ -669,6 +715,7 @@ int main()
     testKeyboardNavigation();
     testKeyNavigation();
     testKeyOnTrimOut();
+    testMarkNavigation();
     testTrimRemovesKeys();
     testTimelineStructure();
     testTimelineSplit();

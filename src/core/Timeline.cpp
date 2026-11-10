@@ -191,6 +191,33 @@ qint64 Timeline::adjacentKey(qint64 timelineMs, int direction, int overlayClipId
     return best;
 }
 
+qint64 Timeline::adjacentMark(qint64 timelineMs, int direction, const MarksOf &marksOf) const
+{
+    constexpr qint64 kOnMarkMs = 5; // as adjacentKey's
+    qint64 best = timelineMs;
+    if (!marksOf)
+        return best;
+    qint64 acc = 0;
+    for (const ClipItem &c : m_clips) {
+        const qint64 span = c.timelineDurationMs();
+        if (!c.flat)
+            for (const qint64 ms : marksOf(c.sourcePath)) {
+                if (ms < c.trimInMs || ms > c.trimOutMs)
+                    continue;
+                // A mark on the trim-out point is reached 1 ms before the
+                // cut, on this clip's last frame (as adjacentKey).
+                const qint64 p = acc + std::min(c.localAtSourceMs(ms), span - 1);
+                if (direction > 0 && p > timelineMs + kOnMarkMs && (best == timelineMs || p < best))
+                    best = p;
+                else if (direction < 0 && p < timelineMs - kOnMarkMs &&
+                         (best == timelineMs || p > best))
+                    best = p;
+            }
+        acc += span;
+    }
+    return best;
+}
+
 int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
                          double fps, int sourceWidth, int sourceHeight, int audioStreams,
                          bool flat, stitch::LensGuardProfiles lensGuards)

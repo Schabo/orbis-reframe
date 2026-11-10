@@ -2345,6 +2345,69 @@ void testGps()
     CHECK(!insv::ReadInsvGps("/nonexistent/clip.insv"));
 }
 
+// The anchors record 0xa00: its lists, and the highlight marks (list 1)
+// timed from the first frame. The bytes are an X5 clip's with two marks
+// (docs/formats/insta360-x5.md §4.3).
+void testHighlights()
+{
+    Bytes marked; // list 1: two marks; lists 2, 3, 4, 16, 17, 18 empty
+    marked.u8(1).u32(2).u64(75928729).u64(86128627);
+    for (uint8_t t : {2, 3, 4, 16, 17, 18})
+        marked.u8(t).u32(0);
+    CHECK(marked.b.size() == 51);
+    const auto lists = insv::ParseInsvAnchors(marked.b);
+    CHECK(lists.size() == 7);
+    if (lists.size() == 7) {
+        CHECK(lists[0].type == insv::kAnchorHighlights && lists[0].timestamps.size() == 2);
+        CHECK(lists[0].timestamps[1] == 86128627);
+        CHECK(lists[6].type == 18 && lists[6].timestamps.empty());
+    }
+    Bytes none; // what every clip without marks has: 35 bytes, all counts 0
+    for (uint8_t t : {1, 2, 3, 4, 16, 17, 18})
+        none.u8(t).u32(0);
+    CHECK(none.b.size() == 35 && insv::ParseInsvAnchors(none.b).size() == 7);
+    // A list running past the end: the ones before it are kept.
+    Bytes cut;
+    cut.u8(2).u32(0).u8(1).u32(3).u64(1);
+    const auto c = insv::ParseInsvAnchors(cut.b);
+    CHECK(c.size() == 1 && c[0].type == 2);
+    CHECK(insv::ParseInsvAnchors({}).empty());
+
+    Bytes meta;
+    meta.pbString(2, "Insta360 X5").pbVarint(24, 70062121);
+    Bytes later; // stored out of order, as a second list 1 might be
+    later.u8(1).u32(1).u64(80000000).raw(marked.b);
+    const std::string path =
+        writeX5Trailer("insv_test_marks.insv", {{0x101, meta.b}, {0xa00, later.b}});
+    const auto h = insv::ReadInsvHighlights(path);
+    CHECK(h && h->since_first_frame_sec.size() == 3);
+    if (h && h->since_first_frame_sec.size() == 3) {
+        CHECK(std::abs(h->since_first_frame_sec[0] - 5.866608) < 1e-6);
+        CHECK(std::abs(h->since_first_frame_sec[1] - 9.937879) < 1e-6);
+        CHECK(std::abs(h->since_first_frame_sec[2] - 16.066506) < 1e-6);
+    }
+    CHECK(h && h->time_map_offset_ms == 0 && h->frame_sec.empty());
+    // In ms ticks (the ONE X2's), the same marks are a thousand times as far.
+    const auto ms = insv::ReadInsvHighlights(path, 1000.0);
+    CHECK(ms && !ms->since_first_frame_sec.empty() &&
+          std::abs(ms->since_first_frame_sec[0] - 5866.608) < 1e-3);
+    std::filesystem::remove(path);
+
+    // No field 24 to time them by, no anchors record, no trailer.
+    Bytes model;
+    model.pbString(2, "Insta360 X5");
+    const std::string untimed =
+        writeX5Trailer("insv_test_marks_untimed.insv", {{0x101, model.b}, {0xa00, marked.b}});
+    const auto u = insv::ReadInsvHighlights(untimed);
+    CHECK(u && u->since_first_frame_sec.empty());
+    std::filesystem::remove(untimed);
+    const std::string bare = writeX5Trailer("insv_test_marks_none.insv", {{0x101, meta.b}});
+    const auto b = insv::ReadInsvHighlights(bare);
+    CHECK(b && b->since_first_frame_sec.empty());
+    std::filesystem::remove(bare);
+    CHECK(!insv::ReadInsvHighlights("/nonexistent/clip.insv"));
+}
+
 void testTrailerRecords()
 {
     // 0x300, raw counts (field 62): u64 time + 6 x u16, value = raw - 0x8000;
@@ -3058,6 +3121,7 @@ int main()
     testBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();
+    testHighlights();
     testGps();
     testOneX2Trailer();
     testA1Trailer();

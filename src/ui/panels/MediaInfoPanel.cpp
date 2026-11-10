@@ -256,6 +256,10 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
         addValue(tr("GPS"), gps,
                  tr("Whether a GPS source, such as the GPS remote, recorded a track. "
                     "The positions aren't shown here."));
+        addValue(tr("Highlight marks"),
+                 m.highlightMarks > 0 ? QString::number(m.highlightMarks) : tr("None"),
+                 tr("The moments marked while recording. They show as dots on the clip in the "
+                    "timeline."));
         if (m.rollingShutterMs > 0)
             addValue(tr("Sensor readout"), tr("%1 ms").arg(m.rollingShutterMs, 0, 'f', 1),
                      tr("How long the sensor takes to read one picture from top to bottom (the "

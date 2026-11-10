@@ -16,11 +16,6 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-- **Highlight markers**: the marks set while recording, read from the clip
-  and shown on the timeline to jump to; likely the start of general timeline
-  markers, saved in the project. Where the X5 stores the marks is known
-  now (record type 10, [X5 format](formats/insta360-x5.md) §4.3); other
-  cameras and marks made in the phone app still need clips.
 - **Preview from the Media tab**: play, scrub and look around in a file
   before it is on the timeline.
 - *Optional*: **`src/insv/` as its own repository**, once its API settles.
@@ -81,6 +76,15 @@ each is in its document in [`formats/`](formats/README.md).
 
 ## Planned, not scheduled
 
+- **Highlight markers, follow-ups**: the camera's marks are built (X5,
+  record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
+  clip, read from the file and not saved in the project, `Ctrl+↑` / `↓`
+  to jump. Left: marks you set yourself (a key, delete, saved in the
+  project and undoable -- a project-file change, so its own plan), hiding
+  a camera mark you don't want, what the record's other six lists hold,
+  whether marks made in the phone app reach the file, and other cameras'
+  marks (the ONE X2 writes the same record; GoPro's HiLight tags) once
+  clips with marks show them.
 - **The new stitcher** (*maintainer*) -- built, the default for new clips,
   still marked experimental; follow-ups below. The old stitcher's
   depth-aware seam moves and bends the picture round the seam in playback:

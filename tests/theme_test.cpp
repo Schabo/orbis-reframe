@@ -151,6 +151,8 @@ void testContrast()
         atLeast(c.textOnAccent, c.accent, 3.0, "text on accent");
         atLeast(c.text, c.clipVideo, 3.0, "clip name on a video clip");
         atLeast(c.text, c.clipAudio, 3.0, "clip name on an audio clip");
+        atLeast(c.marker, c.clipVideo, 3.0, "highlight mark on a video clip");
+        atLeast(c.marker, c.clipVideoAlt, 3.0, "highlight mark on the other video clip");
         atLeast(c.error, c.panel, 3.0, "error");
         atLeast(c.warning, c.panel, 3.0, "warning");
     }

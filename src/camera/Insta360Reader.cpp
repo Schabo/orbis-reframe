@@ -54,6 +54,28 @@ std::filesystem::path sibling(const std::filesystem::path& insv, const insv::Ins
 // Whether the file at `p` is from the same take as the clip `clip` came
 // from: the same camera and first-frame time (field 24), which a clip and
 // its proxy share whatever their names.
+// Video ms of a moment `camSec` seconds of the camera's clock after the
+// first recorded frame. The camera's clock runs `captureScale` times the
+// video's; in a timelapse the moment lies between two frames by their own
+// times (`frameSec`, as insv::InsvGps::frame_sec; they needn't be evenly
+// spaced), past either end by the capture scale.
+int64_t videoMsAt(double camSec, const ClipMetadata& clip, const std::vector<double>& frameSec) {
+    if (clip.captureScale == 1.0)
+        return std::llround(camSec * 1e3);
+    const std::vector<double>& frames = frameSec;
+    if (frames.size() < 2 || !(clip.fps > 0.0) || camSec <= frames.front())
+        return std::llround((camSec - (frames.empty() ? 0.0 : frames.front())) * 1e3 /
+                            clip.captureScale);
+    const size_t last = frames.size() - 1;
+    if (camSec >= frames.back())
+        return std::llround((static_cast<double>(last) / clip.fps +
+                             (camSec - frames.back()) / clip.captureScale) * 1e3);
+    const size_t hi = static_cast<size_t>(
+        std::upper_bound(frames.begin(), frames.end(), camSec) - frames.begin());
+    const double f = (camSec - frames[hi - 1]) / (frames[hi] - frames[hi - 1]);
+    return std::llround((static_cast<double>(hi - 1) + f) / clip.fps * 1e3);
+}
+
 bool sameTake(const std::filesystem::path& p, const insv::InsvMakerNotes& clip) {
     if (clip.first_frame_timestamp == 0)
         return false;
@@ -358,6 +380,17 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         out.gpsRateHz = tele->gps_rate_hz;
         out.gpsTrackSec = tele->gps_track_s;
     }
+    // The highlight marks set while recording (§4.3): device time from the
+    // first recorded frame, on the camera's clock; a trimmed file's video
+    // starts the time map's offset (video time) later.
+    if (const auto marks = insv::ReadInsvHighlights(out.path, model.telemetryTickUs)) {
+        const double offsetSec = marks->time_map_offset_ms * 1e-3 * out.captureScale;
+        for (const double sec : marks->since_first_frame_sec) {
+            const int64_t ms = videoMsAt(sec - offsetSec, out, marks->frame_sec);
+            if (ms >= 0 && (out.durationMs <= 0 || ms <= out.durationMs))
+                out.highlightMs.push_back(ms);
+        }
+    }
     return Result::Read;
 }
 
@@ -395,30 +428,13 @@ std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) 
     track.clockStamped = !gps->aligned_by_speed;
     track.fixes.reserve(gps->fixes.size());
     // A heading of -1 is the camera's "don't know", written while standing
-    // still (§8). Unix time runs with the camera's clock, not the video's;
-    // in a timelapse the fix lies between two frames by their own times
-    // (they needn't be evenly spaced), past either end by the capture scale.
-    const std::vector<double>& frames = gps->frame_sec;
-    const auto videoMs = [&clip, &frames](int64_t sinceFirstMs) -> int64_t {
-        if (clip.captureScale == 1.0)
-            return sinceFirstMs;
-        const double cam = static_cast<double>(sinceFirstMs) * 1e-3;
-        if (frames.size() < 2 || !(clip.fps > 0.0) || cam <= frames.front())
-            return std::llround((cam - (frames.empty() ? 0.0 : frames.front())) * 1e3 /
-                                clip.captureScale);
-        const size_t last = frames.size() - 1;
-        if (cam >= frames.back())
-            return std::llround((static_cast<double>(last) / clip.fps +
-                                 (cam - frames.back()) / clip.captureScale) * 1e3);
-        const size_t hi = static_cast<size_t>(
-            std::upper_bound(frames.begin(), frames.end(), cam) - frames.begin());
-        const double f = (cam - frames[hi - 1]) / (frames[hi] - frames[hi - 1]);
-        return std::llround((static_cast<double>(hi - 1) + f) / clip.fps * 1e3);
-    };
-    for (const insv::InsvGpsFix& f : gps->fixes)
-        track.fixes.push_back({videoMs(f.unix_ms - gps->first_frame_unix_ms), f.latitude, f.longitude,
+    // still (§8). Unix time runs with the camera's clock, not the video's.
+    for (const insv::InsvGpsFix& f : gps->fixes) {
+        const double camSec = static_cast<double>(f.unix_ms - gps->first_frame_unix_ms) * 1e-3;
+        track.fixes.push_back({videoMsAt(camSec, clip, gps->frame_sec), f.latitude, f.longitude,
                                f.speed_mps, f.heading_deg < 0.0 ? std::nan("") : f.heading_deg,
                                f.altitude_m});
+    }
     return track;
 }
 

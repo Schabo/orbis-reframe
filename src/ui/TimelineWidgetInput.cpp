@@ -574,7 +574,16 @@ bool TimelineWidget::event(QEvent *e)
     if (e->type() == QEvent::ToolTip) {
         const auto *he = static_cast<QHelpEvent *>(e);
         const Hit h = hitTest(he->pos());
-        if (keyAt(he->pos()).index >= 0)
+        const KeyHit k = keyAt(he->pos());
+        if (k.index >= 0 && k.mark) {
+            const qint64 s = m_rows[k.row].clip.markSourceMs[k.index] / 1000;
+            QToolTip::showText(he->globalPos(),
+                               tr("Highlight mark, set while recording: %1 into the clip. Click "
+                                  "to go to it.")
+                                   .arg(QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10,
+                                                                               QLatin1Char('0'))),
+                               this);
+        } else if (k.index >= 0)
             QToolTip::showText(he->globalPos(),
                                tr("Click to go to this keyframe."), this);
         else if (h.kind == Hit::Header &&

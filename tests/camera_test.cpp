@@ -47,7 +47,8 @@ constexpr uint8_t kLens1Grey = 40;
 
 std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTime = 0,
                                   const std::vector<uint8_t>& gps = {},
-                                  uint64_t firstFrameUnixMs = 0)
+                                  uint64_t firstFrameUnixMs = 0,
+                                  const std::vector<uint8_t>& anchors = {})
 {
     Bytes meta;
     meta.pbString(1, "IXSE0000000001").pbString(2, "Insta360 ONE X2").pbString(3, "v1.0.92_build1");
@@ -76,6 +77,8 @@ std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTi
     std::vector<testtrailer::TrailerRecord> records = {{0x300, imu.b}};
     if (!gps.empty())
         records.push_back({0x700, gps});
+    if (!anchors.empty())
+        records.push_back({0xa00, anchors});
     if (lensPictures) {
         records.push_back({0x200, testmedia::encodeH264Picture(64, 64, kLens0Grey)});
         records.push_back({0x500, testmedia::encodeH264Picture(64, 64, kLens1Grey)});
@@ -297,6 +300,28 @@ void testGps(const std::filesystem::path& dir)
     CHECK(!missing.gps && missing.motion.empty());
 }
 
+void testHighlights(const std::filesystem::path& dir)
+{
+    std::printf("  the highlight marks, as video time\n");
+    // Field 24 is 4407 in the ONE X2's ms ticks; the take is 2 s (50 frames
+    // at 25 fps). A mark before the first frame and one past the end are
+    // left out.
+    Bytes anchors;
+    anchors.u8(1).u32(4).u64(4407 + 1500).u64(4000).u64(4407 + 500).u64(4407 + 60000);
+    for (uint8_t t : {2, 3, 4, 16, 17, 18})
+        anchors.u8(t).u32(0);
+    std::filesystem::create_directories(dir / "marks");
+    const Take t = writeTake(dir / "marks");
+    CHECK(writeLens(t.lead, 64, 50));
+    appendTo(t.lead, oneX2Trailer(false, 0, {}, 0, anchors.b));
+    const auto clip = camera::ReadClipMetadata(t.lead);
+    CHECK(clip && clip->highlightMs == std::vector<int64_t>({500, 1500}));
+    // A take without the record has none.
+    std::filesystem::create_directories(dir / "marks_none");
+    const auto plain = camera::ReadClipMetadata(writeTake(dir / "marks_none").lead);
+    CHECK(plain && plain->highlightMs.empty());
+}
+
 // The A1's trailer, cut down: the model, field 24 (`firstFrame`), the
 // calibration, field 69, a little IMU and the flight controller's attitude:
 // level, then the nose 26 deg down (fast forward flight).
@@ -472,6 +497,7 @@ int main()
     testClipFileOf(t);
     testStitchedThumbnail(t);
     testGps(dir);
+    testHighlights(dir);
     testAntigravityA1(dir);
     testA1Renamed(dir);
     if (!g_failures)

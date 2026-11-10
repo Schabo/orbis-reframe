@@ -78,6 +78,14 @@ public:
     // Returns `timelineMs` if there is none that way.
     qint64 adjacentKey(qint64 timelineMs, int direction, int overlayClipId = 0,
                        int pane = 0) const;
+    // The nearest highlight mark strictly after / before `timelineMs`, in
+    // timeline ms, over the main track's 360 clips. A clip's marks are its
+    // file's (`marksOf`: source ms, not kept here -- they're the file's, not
+    // the project's). Marks trimmed out of view are skipped, and so is one
+    // within a few ms of `timelineMs`, as adjacentKey. Returns `timelineMs`
+    // if there is none that way.
+    using MarksOf = std::function<QList<qint64>(const QString &sourcePath)>;
+    qint64 adjacentMark(qint64 timelineMs, int direction, const MarksOf &marksOf) const;
 
     // A flattened, playback-facing view: one entry per clip in order, carrying
     // just what the playback layer needs to decode it. std::string (not

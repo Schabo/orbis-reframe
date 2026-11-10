@@ -120,6 +120,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
         out.gpsFixes = clip->gpsFixes;
         out.gpsRateHz = clip->gpsRateHz;
         out.gpsTrackSec = clip->gpsTrackSec;
+        out.highlightMarks = static_cast<int64_t>(clip->highlightMs.size());
         out.proxyPath = clip->proxyPath;
         for (const Lens& l : clip->lenses)
             if (l.source.path != path &&

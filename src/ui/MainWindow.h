@@ -81,7 +81,7 @@ class StitchingPanel;
 class StabilizationPanel;
 class TimelineWidget;
 class WaveformCache;
-class LensGuardCache;
+class ClipFactsCache;
 class TelemetryCache;
 class ThumbnailCache;
 class Autosave;
@@ -570,7 +570,7 @@ private:
     int m_selectedTransition = 0;   // a transition selected: the clip before its cut
     std::unique_ptr<TrackFiles> m_trackFiles; // audio files and overlay videos onto tracks
     WaveformCache *m_waveforms = nullptr;
-    LensGuardCache *m_lensGuards = nullptr; // which guard profiles each 360 file has
+    ClipFactsCache *m_clipFacts = nullptr; // each 360 file's guard profiles and marks
     // The Stitching panel's lens calibration choices for the clip it shows
     // (none = the camera file's), in its list's order.
     std::vector<std::optional<stitch::LensCalibration>> m_calibrationChoices;

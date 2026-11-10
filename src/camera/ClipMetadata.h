@@ -110,6 +110,11 @@ struct ClipMetadata {
     // title shows, and what the Media information panel lists.
     std::string recordedLocal;
 
+    // The highlight marks set while recording, as video ms from the first
+    // frame, in time order; empty when the file has none. Marks outside the
+    // video (a trimmed file's cut-off part) are left out.
+    std::vector<int64_t> highlightMs;
+
     // The camera's low-res proxy next to the clip, "" if not found.
     std::string proxyPath;
 

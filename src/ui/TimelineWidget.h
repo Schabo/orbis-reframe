@@ -110,6 +110,8 @@ public:
     // A clip's waveform: peak level per 1/kPeaksPerSec of source time (see
     // insv::AudioPeaks). Null = none (yet).
     static constexpr int kPeaksPerSec = 100;
+    // A highlight mark's dot: its centre this far below the clip's top edge.
+    static constexpr int kMarkInsetPx = 5;
     using Peaks = std::shared_ptr<const std::vector<float>>;
 
     struct Clip {
@@ -120,6 +122,9 @@ public:
         qint64 sourceDurationMs = 0;
         bool missing = false;
         QVector<qint64> keySourceMs; // reframe key times, in the clip's source time
+        // The highlight marks set while recording, in the clip's source
+        // time: dots on the clip's top edge, placed and clicked like keys.
+        QVector<qint64> markSourceMs;
         double speed = 1.0;          // ClipItem::speed
         // Span on the timeline, same rounding as ClipItem::timelineDurationMs.
         qint64 timelineSpanMs() const
@@ -333,16 +338,19 @@ private:
     QRect layerBox(int trackIndex) const;
     QString layerToolTip(int trackIndex) const;
     Hit hitTest(QPoint pos) const;
-    // A keyframe diamond under `pos` (small, so forgiven a few px). Main: row
-    // set; an overlay clip's: track + clip; index: into the keySourceMs.
+    // A keyframe diamond under `pos` (small, so forgiven a few px), or a
+    // highlight mark's dot (`mark`). Main: row set; an overlay clip's:
+    // track + clip; index: into the keySourceMs, or a mark's markSourceMs.
     struct KeyHit {
         int row = -1;
         int track = -1;
         int clip = -1;
         int index = -1;
+        bool mark = false;
         bool operator==(const KeyHit &o) const
         {
-            return row == o.row && track == o.track && clip == o.clip && index == o.index;
+            return row == o.row && track == o.track && clip == o.clip && index == o.index &&
+                   mark == o.mark;
         }
         bool operator!=(const KeyHit &o) const { return !(*this == o); }
     };

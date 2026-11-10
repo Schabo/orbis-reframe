@@ -13,6 +13,8 @@ overlays. For the names of the window's parts, see
 3. The **video track**, with your clips. The white diamonds along
    the bottom edge are reframe keyframes; a hollow diamond (◇) before a
    clip's name means it has none, and exports looking straight ahead.
+   Yellow dots along the top edge are the
+   [highlight marks](#highlight-marks) set while recording.
 4. The **Camera mic** track: the clips' sound, linked to them (the chain
    icon).
 5. An **audio track**, with a music file. The waveform shows how loud it
@@ -39,6 +41,7 @@ the playhead where it is.
 | `←` / `→` | One frame back / forward (pauses playback). |
 | `Shift+←` / `Shift+→` | One second back / forward. |
 | `↑` / `↓` | To the previous / next cut or clip edge. |
+| `Ctrl+↑` / `Ctrl+↓` | To the previous / next [highlight mark](#highlight-marks). |
 | `Home` / `End` | To the start / end of the timeline. |
 
 **Zooming.** Hold `Ctrl` and turn the mouse wheel over the timeline to zoom
@@ -181,6 +184,27 @@ match. Its sound is sped up or slowed down without changing its pitch.
 Slow motion looks smoothest with footage shot at a high frame rate: a clip
 recorded at 120 fps, played at 0.25×, shows every frame it recorded in a
 30 fps export.
+
+### Highlight marks
+
+While recording, you can mark a moment worth keeping. orbis-reframe reads
+the marks the camera stores in the file and shows each one as a yellow dot on the clip's top
+edge (dark gold in the Light theme), so you can find them again in a long
+recording.
+
+- Point at a dot to see its time in the recording, and click it to move
+  the playhead there.
+- `Ctrl+↓` and `Ctrl+↑` jump to the next and previous mark on the
+  timeline, across clips.
+- The marks belong to the footage: trimming, splitting and changing the
+  speed keep each one on the moment it marked, and a mark in a part
+  you've trimmed off is hidden until you trim the clip longer again.
+- **Media information** says how many marks the file has.
+
+The marks come from the file and aren't saved in the project, so you can't
+move or delete them, and you can't add your own yet. Only clips from
+cameras whose marks orbis-reframe knows how to read show them; so far
+that's the X5.
 
 ### Removing
 

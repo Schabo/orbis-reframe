@@ -27,6 +27,9 @@ struct ClipProbe {
     std::vector<std::string> other_files;
     // The lens-guard profiles the clip's file carries.
     LensGuardProfiles lens_guards;
+    // The highlight marks set while recording, video ms in time order
+    // (camera::ClipMetadata::highlightMs).
+    std::vector<int64_t> highlight_ms;
 };
 
 // Probes the clip `clip_path` is, or is part of.

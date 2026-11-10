@@ -22,7 +22,7 @@
 #include "LensCalibrationDialog.h"
 #endif
 #include "EditToolbar.h"
-#include "LensGuardCache.h"
+#include "ClipFactsCache.h"
 #include "PlaybackController.h"
 #include "PlayerBar.h"
 #include "TimelineWidget.h"
@@ -95,13 +95,13 @@ void MainWindow::connectStitchAndStabilization()
         const StitchingPanel::Method method = c->stitchMethod;
         const bool seamColourBlend = c->seamColourBlend;
         const bool seamFlow = c->seamFlow;
-        const stitch::LensGuardProfiles from = m_lensGuards->profiles(c->sourcePath);
+        const stitch::LensGuardProfiles from = m_clipFacts->profiles(c->sourcePath);
         const StitchingPanel::LensGuard guard = from.usable(c->lensGuard);
         for (int i = 0; i < m_timeline->count(); ++i) {
             const ClipItem &o = m_timeline->clipAt(i);
             if (o.flat)
                 continue;
-            const stitch::LensGuardProfiles to = m_lensGuards->profiles(o.sourcePath);
+            const stitch::LensGuardProfiles to = m_clipFacts->profiles(o.sourcePath);
             const bool takesGuard = from.any() && to.any() && to.has(guard);
             const auto g = takesGuard ? guard : o.lensGuard;
             m_timeline->setSourceStitch(o.sourcePath, g, method,
@@ -413,7 +413,7 @@ void MainWindow::syncStitchingPanel()
         m_stitchingPanel->setCalibrations({tr("From the camera file")}, {}, 0);
         return;
     }
-    m_stitchingPanel->setState(c->lensGuard, c->stitchMethod, m_lensGuards->profiles(c->sourcePath));
+    m_stitchingPanel->setState(c->lensGuard, c->stitchMethod, m_clipFacts->profiles(c->sourcePath));
     m_stitchingPanel->setSeamColourBlend(c->seamColourBlend);
     m_stitchingPanel->setSeamFlow(c->seamFlow);
 

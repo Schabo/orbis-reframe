@@ -13,6 +13,7 @@ shortcuts.
 | `Shift+←` / `Shift+→` | One second back / forward. |
 | `↑` / `↓` | To the previous / next cut or clip edge. |
 | `Shift+↑` / `Shift+↓` | To the previous / next reframe keyframe, on any clip. With an overlay clip selected: to its previous / next keyframe instead. |
+| `Ctrl+↑` / `Ctrl+↓` | To the previous / next highlight mark set while recording (see [The timeline](timeline.md#highlight-marks)). |
 | `Home` / `End` | To the start / end of the timeline. |
 | `Ctrl+G` | Type a time to jump to (the player bar's time display). |
 | `J` / `L` | Play slower / faster, `0.25×` to `2×`; `L` also starts playback. Only for watching; the sound plays at `1×` only. |

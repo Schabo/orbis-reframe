@@ -53,7 +53,7 @@ void PrintSummary(const insv::InsvTelemetry& t) {
 }
 
 const char kUsage[] =
-    "usage: insv_trailer_dump <input.insv> [--imu | --exposure | --gps]\n"
+    "usage: insv_trailer_dump <input.insv> [--imu | --exposure | --gps | --quats | --marks]\n"
     "  (no option)   maker notes + telemetry summary\n"
     "  --imu         every IMU sample, one per line\n"
     "  --exposure    every exposure sample, one per line\n"
@@ -61,7 +61,9 @@ const char kUsage[] =
     "                longitude, speed m/s, heading, altitude m\n"
     "  --quats       a timelapse's frames and orientation, one per line: `F index ms` for\n"
     "                each frame time (record 0x600), `Q index ms w x y z` for each\n"
-    "                orientation entry (record 0x1800, world -> camera axes)\n";
+    "                orientation entry (record 0x1800, world -> camera axes)\n"
+    "  --marks       the anchors record's lists (0xa00, device ms), then each highlight\n"
+    "                mark: index, seconds of the camera's clock from the first frame\n";
 
 } // namespace
 
@@ -80,6 +82,30 @@ int main(int argc, char** argv) {
     const bool want_exposure = argc > 2 && std::strcmp(argv[2], "--exposure") == 0;
     const bool want_gps = argc > 2 && std::strcmp(argv[2], "--gps") == 0;
     const bool want_quats = argc > 2 && std::strcmp(argv[2], "--quats") == 0;
+    const bool want_marks = argc > 2 && std::strcmp(argv[2], "--marks") == 0;
+
+    if (want_marks) {
+        const auto notes = insv::ReadInsvMakerNotes(path);
+        const double tick = notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0;
+        const auto marks = insv::ReadInsvHighlights(path, tick);
+        if (!marks) {
+            std::cerr << "No Insta360 trailer found in " << path << std::endl;
+            return 1;
+        }
+        const auto record = insv::ReadInsvRecord(path, 0xa00);
+        if (!record)
+            std::printf("# no anchors record (0xa00)\n");
+        else
+            for (const insv::InsvAnchorList& l : insv::ParseInsvAnchors(*record)) {
+                std::printf("# list %u: %zu", unsigned(l.type), l.timestamps.size());
+                for (const uint64_t t : l.timestamps)
+                    std::printf(" %.3f", static_cast<double>(t) * tick / 1000.0);
+                std::printf("\n");
+            }
+        for (size_t i = 0; i < marks->since_first_frame_sec.size(); ++i)
+            std::printf("%zu %.3f\n", i, marks->since_first_frame_sec[i]);
+        return 0;
+    }
 
     if (want_gps) {
         const auto notes = insv::ReadInsvMakerNotes(path);

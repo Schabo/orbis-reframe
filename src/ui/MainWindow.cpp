@@ -71,7 +71,7 @@
 #include "ThumbnailCache.h"
 #include "../core/Autosave.h"
 #include "WaveformCache.h"
-#include "LensGuardCache.h"
+#include "ClipFactsCache.h"
 #include "TelemetryCache.h"
 #include "PlayerBar.h"
 #include "EditToolbar.h"
@@ -107,7 +107,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
 
     m_timelineWidget = new TimelineWidget(this);
     m_waveforms = new WaveformCache(this); // the timeline's waveforms (scanned in the background)
-    m_lensGuards = new LensGuardCache(m_clipBackend.probe, this);
+    m_clipFacts = new ClipFactsCache(m_clipBackend.probe, this);
     m_telemetry = new TelemetryCache({}, this);
     m_editToolbar = new EditToolbar(this);
     m_playerBar = new PlayerBar(this);
@@ -672,11 +672,14 @@ void MainWindow::connectOverlaysAndAudio()
     });
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
-    // A file's guard profiles read in the background: the panel may show it.
-    connect(m_lensGuards, &LensGuardCache::ready, this, [this](const QString &path) {
+    // A file's guard profiles and marks read in the background: the panel
+    // may show it, the timeline its marks.
+    connect(m_clipFacts, &ClipFactsCache::ready, this, [this](const QString &path) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && c->sourcePath == path)
             syncStitchingPanel();
+        if (!m_clipFacts->highlights(path).isEmpty())
+            refreshTimelineWidget();
     });
     // A file's GPS and motion read in the background: the overlays reading
     // them, and the selected one's note on where there's none.
@@ -2259,6 +2262,15 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(play, tr("Previous / next keyframe: the selected overlay's, else the reframe ones"),
            {QKeySequence(Qt::SHIFT | Qt::Key_Up)}, [toKey] { toKey(-1); });
     addKey(play, QString(), {QKeySequence(Qt::SHIFT | Qt::Key_Down)}, [toKey] { toKey(1); });
+    const auto toMark = [this](int direction) {
+        navigateTo(m_timeline->adjacentMark(
+                       m_lastTimelineMs, direction,
+                       [this](const QString &path) { return m_clipFacts->highlights(path); }),
+                   false);
+    };
+    addKey(play, tr("Previous / next highlight mark"), {QKeySequence(Qt::CTRL | Qt::Key_Up)},
+           [toMark] { toMark(-1); });
+    addKey(play, QString(), {QKeySequence(Qt::CTRL | Qt::Key_Down)}, [toMark] { toMark(1); });
     addKey(play, tr("Start / end of the timeline"), {QKeySequence(Qt::Key_Home)}, toStart);
     addKey(play, QString(), {QKeySequence(Qt::Key_End)}, toEnd);
     // J / L: the player bar's speed (K is "set keyframe", so Space stops).
@@ -2622,6 +2634,9 @@ void MainWindow::refreshTimelineWidget()
         const ReframeTrack &keys = c.paneTrack(paneOf(c));
         for (qint64 t : keys.keyTimes())
             w.keySourceMs.push_back(t);
+        if (!c.flat && !c.mediaMissing)
+            for (qint64 t : m_clipFacts->highlights(c.sourcePath))
+                w.markSourceMs.push_back(t);
         clips.push_back(std::move(w));
         if (c.id == m_clipId && !keys.isEmpty())
             activeHasKeys = true;
@@ -2738,8 +2753,9 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
     for (const QString &file : paths) {
         // A 360 clip through the clip probe, a flat video through FFmpeg.
         QString why;
-        stitch::LensGuardProfiles guards = stitch::LensGuardProfiles::all();
-        const std::optional<MediaItem> m = probeMedia(file, &why, m_clipBackend.probe, &guards);
+        stitch::ClipProbe probe;
+        probe.lens_guards = stitch::LensGuardProfiles::all(); // a flat video's
+        const std::optional<MediaItem> m = probeMedia(file, &why, m_clipBackend.probe, &probe);
         if (!m || m->kind == MediaItem::Kind::Audio) {
             failed << tr("%1: %2").arg(QFileInfo(file).fileName(),
                                         m ? tr("not a video") : why);
@@ -2760,9 +2776,9 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         const bool flat = m->kind == MediaItem::Kind::Video;
         const bool wasEmpty = m_timeline->count() == 0;
         if (!flat)
-            m_lensGuards->set(path, guards);
+            m_clipFacts->set(path, probe);
         m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width, m->height,
-                               audioStreamCount(path), flat, guards);
+                               audioStreamCount(path), flat, probe.lens_guards);
         if (wasEmpty) {
             m_clipPath = path;
             m_fps = m->fps;
@@ -2852,7 +2868,7 @@ void MainWindow::recheckMissingMedia()
     m_controller->reopenSources(fresh);
     m_mediaPanel->forgetFiles(fresh);
     m_waveforms->forget(fresh);
-    m_lensGuards->forget(fresh);
+    m_clipFacts->forget(fresh);
     m_telemetry->forget(fresh);
     m_measurements->forgetFailures(fresh);
     if (mainTrack)

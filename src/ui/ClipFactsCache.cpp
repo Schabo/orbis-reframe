@@ -1,30 +1,39 @@
-#include "LensGuardCache.h"
+#include "ClipFactsCache.h"
 
 #include <QPointer>
 
 #include <ProbeClip.h> // stitch::ProbeClip
 
-LensGuardCache::LensGuardCache(ClipProbeFn probe, QObject *parent)
+ClipFileFacts ClipFileFacts::fromProbe(const stitch::ClipProbe &probe)
+{
+    ClipFileFacts f;
+    f.lensGuards = probe.lens_guards;
+    for (const int64_t ms : probe.highlight_ms)
+        f.highlightMs.push_back(ms);
+    return f;
+}
+
+ClipFactsCache::ClipFactsCache(ClipProbeFn probe, QObject *parent)
     : QObject(parent), m_probe(std::move(probe))
 {
     m_pool.setMaxThreadCount(1); // a trailer read each; the files share a disk
 }
 
-LensGuardCache::~LensGuardCache()
+ClipFactsCache::~ClipFactsCache()
 {
     m_pool.clear();
     m_pool.waitForDone();
 }
 
-stitch::LensGuardProfiles LensGuardCache::profiles(const QString &path)
+ClipFileFacts ClipFactsCache::facts(const QString &path)
 {
     if (const auto it = m_done.constFind(path); it != m_done.constEnd())
         return *it;
     if (path.isEmpty() || m_pending.contains(path))
-        return stitch::LensGuardProfiles::all();
+        return {};
     m_pending.insert(path);
 
-    QPointer<LensGuardCache> self(this);
+    QPointer<ClipFactsCache> self(this);
     m_pool.start([self, path, probe = m_probe] {
         stitch::ClipProbe p;
         std::string err;
@@ -32,8 +41,7 @@ stitch::LensGuardProfiles LensGuardCache::profiles(const QString &path)
                               : stitch::ProbeClip(path.toStdString(), p, err);
         // A file that can't be read doesn't play either; leave its choices
         // open rather than read it again on every look.
-        const stitch::LensGuardProfiles found = ok ? p.lens_guards
-                                                   : stitch::LensGuardProfiles::all();
+        const ClipFileFacts found = ok ? ClipFileFacts::fromProbe(p) : ClipFileFacts{};
         QMetaObject::invokeMethod(
             self.data(),
             [self, path, found] {
@@ -44,16 +52,16 @@ stitch::LensGuardProfiles LensGuardCache::profiles(const QString &path)
             },
             Qt::QueuedConnection);
     });
-    return stitch::LensGuardProfiles::all();
+    return {};
 }
 
-void LensGuardCache::set(const QString &path, stitch::LensGuardProfiles profiles)
+void ClipFactsCache::set(const QString &path, const stitch::ClipProbe &probe)
 {
     m_pending.remove(path);
-    m_done.insert(path, profiles);
+    m_done.insert(path, ClipFileFacts::fromProbe(probe));
 }
 
-void LensGuardCache::forget(const QStringList &paths)
+void ClipFactsCache::forget(const QStringList &paths)
 {
     for (const QString &p : paths) {
         m_done.remove(p);

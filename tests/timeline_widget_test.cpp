@@ -8,6 +8,7 @@
 // ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget at the end.
 
 #include "TimelineWidget.h"
+#include "Theme.h"
 #include "../src/core/Transition.h"
 
 #include <QApplication>
@@ -267,6 +268,54 @@ void testKeyDiamondClick()
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(10000), keyY));
     CHECK(seek.count() == 3 && seek.last().at(0).toLongLong() == 9999);
     CHECK(sel.last().at(0).toInt() == 1);
+}
+
+// Highlight marks: yellow dots on the clip's top edge, hovered and clicked
+// like the diamonds; a mark and a key at the same time stay apart.
+void testMarkDotClick()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimInMs = 1000;
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.keySourceMs = {4000};
+    a.markSourceMs = {500, 4000}; // the first trimmed out of view
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    b.markSourceMs = {2000};
+    f.w.setClips({a, b});
+
+    const int markY = kRulerH + TimelineWidget::kMarkInsetPx; // the dots' row
+    const int keyY = kRulerH + kMainH - 5;
+    QSignalSpy seek(&f.w, &TimelineWidget::seekRequested);
+    QSignalSpy sel(&f.w, &TimelineWidget::clipSelected);
+
+    const auto at = [&](qint64 ms, int y) {
+        return f.w.grab().toImage().pixelColor(Fixture::x(ms), y);
+    };
+    CHECK(at(3000, markY) == theme::colors().marker); // source 4 s, 3 s in
+    CHECK(f.w.grab().toImage().pixelColor(Fixture::x(3000) + 10, markY) != theme::colors().marker);
+    const QColor key = at(3000, keyY - 1);
+    QTest::mouseMove(&f.w, QPoint(Fixture::x(3000), markY));
+    CHECK(f.w.cursor().shape() == Qt::PointingHandCursor);
+    CHECK(at(3000, keyY - 1) == key); // the key at the same time isn't lit
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000), markY));
+    CHECK(seek.count() == 1 && seek.last().at(0).toLongLong() == 3000);
+    CHECK(sel.last().at(0).toInt() == 1);
+    // b's mark at source 2 s: 9 s (a) + 2 s.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(11000), markY));
+    CHECK(seek.count() == 2 && seek.last().at(0).toLongLong() == 11000);
+    // Where the trimmed-out mark would be: no dot, nothing to click.
+    CHECK(at(0, markY) != theme::colors().marker);
+    // The tooltip names it and its time in the file.
+    const QPoint dot(Fixture::x(3000), markY);
+    QHelpEvent he(QEvent::ToolTip, dot, f.w.mapToGlobal(dot));
+    QApplication::sendEvent(&f.w, &he);
+    CHECK(QToolTip::text().startsWith("Highlight mark") && QToolTip::text().contains("0:04"));
+    QToolTip::hideText();
 }
 
 void testHeaderAndMain()
@@ -981,6 +1030,7 @@ int main(int argc, char **argv)
     testOnlyOntoTracksThatHoldIt();
     testTrims();
     testKeyDiamondClick();
+    testMarkDotClick();
     testHeaderAndMain();
     testDuplicateMenu();
     testTransitions();

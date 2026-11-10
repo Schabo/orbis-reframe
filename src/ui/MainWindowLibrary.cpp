@@ -19,7 +19,7 @@
 #include <ClipSeamAnalysis.h> // stitch::SetSeamAnalysisDir
 
 #include "EditToolbar.h"
-#include "LensGuardCache.h"
+#include "ClipFactsCache.h"
 #include "MediaImporter.h"
 #include "ProjectFiles.h"
 #include "ProjectLibraryPage.h"
@@ -63,7 +63,7 @@ void MainWindow::openClip(const QString &clipPath)
     m_clipPath = clipPath;
     m_fps = probe.fps;
     m_rebindingModel = true;
-    m_lensGuards->set(clipPath, probe.lens_guards);
+    m_clipFacts->set(clipPath, probe);
     m_clipId = m_project->resetWithClip(clipPath, probe.duration_ms, probe.fps, probe.width,
                                         probe.height, audioStreamCount(clipPath), probe.lens_guards);
     m_rebindingModel = false;

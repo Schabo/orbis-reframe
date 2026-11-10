@@ -289,6 +289,38 @@ std::vector<InsvGpsFix> ParseInsvGps(const std::vector<uint8_t>& payload);
 std::optional<InsvGps> ReadInsvGps(const std::string& file_path, double tick_us = 1.0,
                                    double capture_scale = 1.0);
 
+// One list of the trailer's 0xa00 record, the camera's `anchors`
+// (docs/formats/insta360-x5.md §4.3): its type and its device-clock
+// timestamps, raw ticks as the file has them. Type 1 holds the highlight
+// marks set while recording; what the other types (2, 3, 4, 16, 17, 18 on
+// the X5) hold isn't known.
+struct InsvAnchorList {
+    uint8_t type = 0;
+    std::vector<uint64_t> timestamps;
+};
+constexpr uint8_t kAnchorHighlights = 1;
+
+// Decodes the 0xa00 payload: back-to-back {u8 type, u32 count, count x u64}
+// lists. Stops at the first list that runs past the end, keeping those
+// before it.
+std::vector<InsvAnchorList> ParseInsvAnchors(const std::vector<uint8_t>& payload);
+
+// The clip's highlight marks, with what lines them up with the video; only
+// records 0x101, 0xa00, 0x600 and 0x8000 are read.
+struct InsvHighlights {
+    // Seconds of the camera's clock from the first recorded frame (field
+    // 24) to each mark, in time order; `tick_us` as for ReadInsvTelemetry.
+    std::vector<double> since_first_frame_sec;
+    // As InsvTelemetry's: a trimmed file's video starts this much later.
+    double time_map_offset_ms = 0;
+    // As InsvGps::frame_sec: a timelapse's frames by their own times.
+    std::vector<double> frame_sec;
+};
+// nullopt when the file has no trailer; no marks when it has no 0xa00
+// record, no type-1 list or no field 24 to time them by.
+std::optional<InsvHighlights> ReadInsvHighlights(const std::string& file_path,
+                                                 double tick_us = 1.0);
+
 // Returns the raw bytes of the trailer itself -- everything from the end of
 // the file's `moov` box to EOF (confirmed empirically: in a real X5 file
 // this is exactly the proprietary `inst` box, contiguous through EOF; this

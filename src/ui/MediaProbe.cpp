@@ -11,7 +11,7 @@
 
 std::optional<MediaItem> probeMedia(const QString &path, QString *error,
                                     const ClipProbeFn &probeClip,
-                                    stitch::LensGuardProfiles *lensGuards)
+                                    stitch::ClipProbe *clipProbe)
 {
     const auto kind = media::kindForPath(path);
     if (!kind) {
@@ -39,8 +39,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
             m.path = QString::fromStdString(probe.clip_path);
         for (const std::string &f : probe.other_files)
             m.companions << QString::fromStdString(f);
-        if (lensGuards)
-            *lensGuards = probe.lens_guards;
+        if (clipProbe)
+            *clipProbe = probe;
         break;
     }
     case MediaItem::Kind::Video: {

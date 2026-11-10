@@ -240,7 +240,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                 const qint64 ks = r.clip.keySourceMs[j];
                 if (!r.clip.showsKeyAt(ks))
                     continue;
-                const bool hov = m_hoverKey.row == i && m_hoverKey.index == j;
+                const bool hov = !m_hoverKey.mark && m_hoverKey.row == i && m_hoverKey.index == j;
                 const int s = hov ? 5 : 3;
                 const int x = xForTimelineMs(r.startMs + r.clip.keyLocalMs(ks));
                 p.setBrush(hov ? tc.accent : tc.text);
@@ -249,6 +249,22 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                                       {double(x), double(cy + s)},
                                       {double(x - s), double(cy)}};
                 p.drawPolygon(d, 4);
+            }
+            p.setRenderHint(QPainter::Antialiasing, false);
+        }
+        // Highlight marks: dots on the top edge, clear of the diamonds.
+        if (!r.clip.markSourceMs.isEmpty() && r.durMs > 0) {
+            p.setRenderHint(QPainter::Antialiasing, true);
+            p.setPen(Qt::NoPen);
+            p.setBrush(tc.marker);
+            const double my = rc.top() + kMarkInsetPx;
+            for (int j = 0; j < r.clip.markSourceMs.size(); ++j) {
+                const qint64 ms = r.clip.markSourceMs[j];
+                if (!r.clip.showsKeyAt(ms))
+                    continue;
+                const bool hov = m_hoverKey.mark && m_hoverKey.row == i && m_hoverKey.index == j;
+                const double s = hov ? 4.5 : 3.0;
+                p.drawEllipse(QPointF(xForTimelineMs(r.startMs + r.clip.keyLocalMs(ms)), my), s, s);
             }
             p.setRenderHint(QPainter::Antialiasing, false);
         }
