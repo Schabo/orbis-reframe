@@ -13,7 +13,7 @@ shortcuts.
 | `Shift+←` / `Shift+→` | One second back / forward. |
 | `↑` / `↓` | To the previous / next cut or clip edge. |
 | `Shift+↑` / `Shift+↓` | To the previous / next reframe keyframe, on any clip. With an overlay clip selected: to its previous / next keyframe instead. |
-| `Ctrl+↑` / `Ctrl+↓` | To the previous / next highlight mark set while recording (see [The timeline](timeline.md#highlight-marks)). |
+| `Ctrl+↑` / `Ctrl+↓` | To the previous / next highlight mark, set while recording or by you (see [The timeline](timeline.md#highlight-marks)). |
 | `Home` / `End` | To the start / end of the timeline. |
 | `Ctrl+G` | Type a time to jump to (the player bar's time display). |
 | `J` / `L` | Play slower / faster, `0.25×` to `2×`; `L` also starts playback. Only for watching; the sound plays at `1×` only. |
@@ -28,6 +28,8 @@ shortcuts.
 | `R` | Restore: give the clip back its full length. Works on the selected audio or overlay clip, otherwise on the video clip. |
 | `S` | Split at the playhead: the selected audio or overlay clip, otherwise the video clip. |
 | `Delete` or `Backspace` | Delete the selected clip or transition. With nothing selected: delete the reframe keyframe at the playhead. |
+| `M` | Add a highlight mark at the playhead, on the clip under it. |
+| `Shift+M` | Delete the highlight mark at the playhead; one set while recording is hidden. |
 | `Esc` | Clear the selection. While drawing a box for Track subject or Blur a plate: cancel it. In full screen: leave full screen. |
 | `Ctrl+Z` | Undo. |
 | `Ctrl+Shift+Z` | Redo. |
@@ -114,7 +116,8 @@ file, `Alt+S` saves (`Enter` does too).
 | Click a clip | Select it. |
 | Drag a clip | Move it: reorder on the video track; move in time or to another track on audio and overlay tracks (a linked audio clip stays put). |
 | Drag a clip's edge | Trim it. |
-| Right-click a clip | Its menu: split, speed, insert, move, remove, link, put its sound on an audio track. |
+| Right-click a clip | Its menu: split, speed, duplicate, insert, show hidden highlight marks, move, remove, link, put its sound on an audio track. |
+| Click a highlight mark's dot | Move the playhead to it. Right-click: delete it (yours) or hide it (set while recording). |
 | Right-click an empty spot | Add clips, audio or overlays there; add, rename, move or remove tracks; zoom. |
 | Click **M** / **H** in a track header | Mute an audio track (the camera's sound: the *Camera mic* track) / hide an overlay track. |
 | Double-click a track name | Rename the track. |

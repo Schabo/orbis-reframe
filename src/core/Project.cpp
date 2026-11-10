@@ -476,7 +476,30 @@ struct ParsedClip {
     std::optional<stitch::LensCalibration> lensCalibration;
     bool flat = false;
     ClipItem::Fit fit = ClipItem::Fit::Bars;
+    QList<qint64> marks;
+    QList<qint64> hiddenMarks;
 };
+
+json marksToJson(const QList<qint64> &marks)
+{
+    json j = json::array();
+    for (const qint64 ms : marks)
+        j.push_back(ms);
+    return j;
+}
+
+// Sorted, without duplicates; anything but a number is skipped.
+QList<qint64> marksFromJson(const json &j)
+{
+    QList<qint64> out;
+    if (j.is_array())
+        for (const json &v : j)
+            if (v.is_number())
+                out.push_back(v.get<qint64>());
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
 
 // `linkedIndex`: the main-track index of the clip it's linked to, -1 if
 // none -- ids don't survive a save, indices do.
@@ -941,6 +964,7 @@ Project::Project(QObject *parent)
     connect(m_timeline, &Timeline::clipStabilizationChanged, this, edited);
     connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
     connect(m_timeline, &Timeline::clipSpeedChanged, this, edited);
+    connect(m_timeline, &Timeline::clipMarksChanged, this, edited);
     connect(m_timeline, &Timeline::clipStitchChanged, this, edited);
     connect(m_timeline, &Timeline::tracksChanged, this, edited);
     connect(m_timeline, &Timeline::transitionsChanged, this, edited);
@@ -1219,6 +1243,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool mixedStitch = false;
     bool anyLensCalibration = false; // a clip stitched with its camera's own calibration
     bool anyNewStitcher = false;     // a clip stitched with the new stitcher
+    bool anyMark = false;            // a mark of the user's, or a hidden camera one
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         const std::string source =
@@ -1240,6 +1265,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             anyLut = anyLut || !c.color.lut.isEmpty();
             if (c.fit == ClipItem::Fit::Fill)
                 clips.back()["fit"] = "fill";
+            if (!c.marks.isEmpty()) {
+                clips.back()["marks"] = marksToJson(c.marks);
+                anyMark = true;
+            }
             continue;
         }
         clips.push_back({
@@ -1302,6 +1331,11 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             if (!c.blurAdditions.empty())
                 jp["added"] = blurAdditionsToJson(c.blurAdditions);
         }
+        if (!c.marks.isEmpty())
+            clips.back()["marks"] = marksToJson(c.marks);
+        if (!c.hiddenMarks.isEmpty())
+            clips.back()["hiddenMarks"] = marksToJson(c.hiddenMarks);
+        anyMark = anyMark || !c.marks.isEmpty() || !c.hiddenMarks.isEmpty();
         if (!std::isnan(c.syncAdjustMs))
             clips.back()["syncFineTuneMs"] = c.syncAdjustMs; // absent until measured
         if (c.seamAdjustGuard >= 0) // absent until measured
@@ -1405,7 +1439,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyNewStitcher || anyLensCalibration ? kStitchFormatVersion
+        {"version", anyMark                   ? kMarkFormatVersion
+                    : anyNewStitcher || anyLensCalibration ? kStitchFormatVersion
                     : anyMotionOverlay        ? kMotionOverlayFormatVersion
                     : anyGauge                ? kGaugeFormatVersion
                     : anyBrace                ? kClockFormatVersion
@@ -1505,6 +1540,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             pc.flat = jc.value("flat", false);
             if (pc.flat && jc.value("fit", std::string()) == "fill")
                 pc.fit = ClipItem::Fit::Fill;
+            if (jc.contains("marks"))
+                pc.marks = marksFromJson(jc.at("marks"));
+            if (!pc.flat && jc.contains("hiddenMarks"))
+                pc.hiddenMarks = marksFromJson(jc.at("hiddenMarks"));
             pc.stabilization = projectStab;
             if (version >= 9 && jc.contains("stabilization"))
                 pc.stabilization = stabilizationFromJson(jc.at("stabilization"));
@@ -1680,6 +1719,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipBlurRemovals(id, pc.blurRemovals);
         m_timeline->setClipBlurAdditions(id, pc.blurAdditions);
         m_timeline->setClipSpeed(id, pc.speed);
+        for (const qint64 ms : pc.marks)
+            m_timeline->addClipMark(id, ms);
+        for (const qint64 ms : pc.hiddenMarks)
+            m_timeline->setClipMarkHidden(id, ms, true);
         if (!pc.flat) {
             m_timeline->setSourceStitch(pc.sourcePath, pc.lensGuard, pc.stitchMethod,
                                         pc.lensCalibration);

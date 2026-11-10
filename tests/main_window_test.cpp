@@ -505,6 +505,47 @@ void testKeyOnTrimOut(const Ctx &c)
     settle();
 }
 
+// M sets a highlight mark at the playhead, on the clip under it, Shift+M
+// deletes it (the Edit menu's Add mark / Delete mark), Ctrl+Up / Down reach
+// it; each is one undo step.
+void testMarkKeys(const Ctx &c)
+{
+    QAction *undo = action(c, "undoAction");
+    QAction *redo = action(c, "redoAction");
+    CHECK(action(c, "addMarkAction") && action(c, "deleteMarkAction"));
+    if (!undo || !redo || c.timeline->count() < 2)
+        return;
+    settle();
+    const qint64 at = kClipMs + 1000; // clip 2, 1 s in
+    CHECK(seekTo(c, at));
+    key(c, Qt::Key_M);
+    const auto marks = [&] { return c.timeline->clipAt(1).marks; };
+    CHECK(marks().size() == 1 && c.timeline->clipAt(0).marks.isEmpty());
+    if (marks().size() != 1)
+        return;
+    const qint64 mark = marks().first();
+    CHECK(std::abs(mark - c.timeline->clipAt(1).sourceAtLocalMs(1000)) <= 40);
+    key(c, Qt::Key_M); // there already
+    CHECK(marks().size() == 1);
+    settle();
+    key(c, Qt::Key_Home);
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() == 0; }));
+    key(c, Qt::Key_Down, Qt::ControlModifier);
+    const qint64 markAt = kClipMs + c.timeline->clipAt(1).localAtSourceMs(mark);
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() == markAt; }));
+    key(c, Qt::Key_M, Qt::ShiftModifier);
+    CHECK(marks().isEmpty());
+    undo->trigger();
+    CHECK(marks() == QList<qint64>{mark});
+    undo->trigger();
+    CHECK(marks().isEmpty());
+    redo->trigger();
+    CHECK(marks() == QList<qint64>{mark});
+    redo->trigger();
+    CHECK(marks().isEmpty());
+    settle();
+}
+
 // One frame step onto a cut shows the next clip's first frame, though it
 // starts a hair after the cut (its trim-in between two frames) -- not the
 // last clip's frame left on screen, which would get the next clip's view.
@@ -2196,6 +2237,7 @@ int main(int argc, char **argv)
             testNavigationKeys(c);
             testKeyOnTrimOut(c);
             testStepOntoCut(c);
+            testMarkKeys(c);
             testVideoEdits(c);
             testColour(c);
             testStitching(c);

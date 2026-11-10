@@ -79,11 +79,12 @@ public:
     qint64 adjacentKey(qint64 timelineMs, int direction, int overlayClipId = 0,
                        int pane = 0) const;
     // The nearest highlight mark strictly after / before `timelineMs`, in
-    // timeline ms, over the main track's 360 clips. A clip's marks are its
-    // file's (`marksOf`: source ms, not kept here -- they're the file's, not
-    // the project's). Marks trimmed out of view are skipped, and so is one
-    // within a few ms of `timelineMs`, as adjacentKey. Returns `timelineMs`
-    // if there is none that way.
+    // timeline ms, over the main track's clips: each clip's shown marks
+    // (ClipItem::shownMarks) -- its own, and its file's camera marks
+    // (`marksOf`: source ms, not kept here -- they're the file's, not the
+    // project's) that it doesn't hide. Marks trimmed out of view are
+    // skipped, and so is one within a few ms of `timelineMs`, as
+    // adjacentKey. Returns `timelineMs` if there is none that way.
     using MarksOf = std::function<QList<qint64>(const QString &sourcePath)>;
     qint64 adjacentMark(qint64 timelineMs, int direction, const MarksOf &marksOf) const;
 
@@ -215,12 +216,13 @@ public slots:
     // Split the clip at `atSourceMs` (its own source time). The clip keeps
     // [trimIn, atSourceMs]; a new clip with [atSourceMs, trimOut] is inserted
     // right after. Each half keeps the reframe keys inside it (one on the cut
-    // goes to both). Returns the new clip's id, or 0 if the point isn't
+    // goes to both), and both have all its highlight marks (each shows
+    // those in its part). Returns the new clip's id, or 0 if the point isn't
     // strictly inside the trim range (min gap each side).
     int splitClip(int clipId, qint64 atSourceMs);
     // Insert a copy of a main-track clip right after it, with everything it
     // has (trim, speed, reframe keys, colour, stabilization, stitch,
-    // privacy, fit) and a copy of its linked sound; the clips after it move
+    // privacy, fit, marks) and a copy of its linked sound; the clips after it move
     // right. Returns the copy's id, or 0 if there's no such clip.
     int duplicateClip(int clipId);
     // Drop every clip, transition and extra track.
@@ -364,6 +366,18 @@ public slots:
     // Emits clipReframeChanged.
     void setClipSplit(int clipId, const pane::Split &split, qint64 sourceMs = 0,
                       const std::vector<PanePose> *keys = nullptr);
+    // Highlight marks (ClipItem::marks / hiddenMarks), in the clip's source
+    // time; `cameraMarks` are its file's. Add one of the user's at
+    // `sourceMs` (ClipItem::addMark); the shown one nearest it, the user's
+    // deleted or a camera one hidden (ClipItem::removeMarkNear); the user's
+    // at exactly `sourceMs`; hide or show the camera's at `sourceMs`; show
+    // every hidden one. Each emits clipMarksChanged when it changed
+    // something.
+    void addClipMark(int clipId, qint64 sourceMs, const QList<qint64> &cameraMarks = {});
+    void removeClipMarkNear(int clipId, qint64 sourceMs, const QList<qint64> &cameraMarks = {});
+    void removeClipMark(int clipId, qint64 sourceMs);
+    void setClipMarkHidden(int clipId, qint64 sourceMs, bool hidden);
+    void showClipHiddenMarks(int clipId);
     // Playback speed (clamped to ClipItem::kMin/MaxSpeed). Changes the clip's
     // span on the timeline: emits clipSpeedChanged + durationChanged.
     void setClipSpeed(int clipId, double speed);
@@ -451,6 +465,9 @@ signals:
     // One clip's reframe tracks changed (key added / moved / removed /
     // cleared, in any pane), or its split.
     void clipReframeChanged(int id);
+    // One clip's highlight marks changed: one of the user's added or
+    // deleted, a camera one hidden or shown again.
+    void clipMarksChanged(int id);
     // One flat clip's fit changed. Carries the new value.
     void clipFitChanged(int id, ClipItem::Fit fit);
     // One clip's colour grade changed. Carries the new value.

@@ -500,6 +500,14 @@ void MainWindow::connectTimeline()
     });
     connect(m_timelineWidget, &TimelineWidget::clipSpeedRequested, m_timeline,
             &Timeline::setClipSpeed);
+    // Highlight marks from a dot's menu and the clip menu.
+    connect(m_timelineWidget, &TimelineWidget::markDeleteRequested, m_timeline,
+            &Timeline::removeClipMark);
+    connect(m_timelineWidget, &TimelineWidget::markHideRequested, this,
+            [this](int id, qint64 ms) { m_timeline->setClipMarkHidden(id, ms, true); });
+    connect(m_timelineWidget, &TimelineWidget::hiddenMarksShowRequested, m_timeline,
+            &Timeline::showClipHiddenMarks);
+    connect(m_timeline, &Timeline::clipMarksChanged, this, &MainWindow::refreshTimelineWidget);
 
     // Extra tracks. The widget edits them through Timeline; any change
     // comes back as tracksChanged, which redraws and re-feeds the mixer.
@@ -956,6 +964,19 @@ void MainWindow::setupMenus()
     m_redoAction->setEnabled(m_project->canRedo());
     connect(m_project, &Project::canUndoChanged, m_undoAction, &QAction::setEnabled);
     connect(m_project, &Project::canRedoChanged, m_redoAction, &QAction::setEnabled);
+    // Highlight marks at the playhead, on the clip under it. Application-wide
+    // like the editor's other single keys (the viewport is its own window).
+    editMenu->addSeparator();
+    m_addMarkAction = editMenu->addAction(tr("Add &mark"), this, &MainWindow::addMarkAtPlayhead);
+    m_addMarkAction->setObjectName(QStringLiteral("addMarkAction"));
+    m_addMarkAction->setShortcut(QKeySequence(Qt::Key_M));
+    m_addMarkAction->setShortcutContext(Qt::ApplicationShortcut);
+    m_deleteMarkAction =
+        editMenu->addAction(tr("&Delete mark"), this, &MainWindow::deleteMarkAtPlayhead);
+    m_deleteMarkAction->setObjectName(QStringLiteral("deleteMarkAction"));
+    m_deleteMarkAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_M));
+    m_deleteMarkAction->setShortcutContext(Qt::ApplicationShortcut);
+    m_editorActions += {m_addMarkAction, m_deleteMarkAction};
 
     // Media: into the project's media (the Media tab), or straight onto the
     // timeline.
@@ -2124,6 +2145,23 @@ void MainWindow::trimAtPlayhead(bool in)
         m_timeline->setClipTrimOut(m_clipId, m_lastPositionMs);
 }
 
+void MainWindow::addMarkAtPlayhead()
+{
+    if (const ClipItem *c = m_timeline->clipById(m_clipId))
+        m_timeline->addClipMark(c->id, m_lastPositionMs, cameraMarks(*c));
+}
+
+void MainWindow::deleteMarkAtPlayhead()
+{
+    if (const ClipItem *c = m_timeline->clipById(m_clipId))
+        m_timeline->removeClipMarkNear(c->id, m_lastPositionMs, cameraMarks(*c));
+}
+
+QList<qint64> MainWindow::cameraMarks(const ClipItem &c) const
+{
+    return c.flat ? QList<qint64>() : m_clipFacts->highlights(c.sourcePath);
+}
+
 void MainWindow::addKey(const QString &group, const QString &what,
                         const QList<QKeySequence> &keys, const std::function<void()> &fn,
                         const QString &keysLabel)
@@ -2329,6 +2367,14 @@ void MainWindow::setupKeyboardShortcuts()
                selectVideoClip(0);
                selectTransition(0);
            });
+
+    // The Edit menu's (setupMenus), in the list.
+    m_keyHelp.append({edit, tr("Add a highlight mark at the playhead"),
+                      m_addMarkAction->shortcuts(), QString()});
+    m_keyHelp.append({edit,
+                      tr("Delete the highlight mark at the playhead (one set while recording is "
+                         "hidden)"),
+                      m_deleteMarkAction->shortcuts(), QString()});
 
     const QString reframe = tr("Reframe");
     addKey(reframe, tr("Arm / disarm reframe authoring (drags and zooms set keyframes)"),
@@ -2634,9 +2680,15 @@ void MainWindow::refreshTimelineWidget()
         const ReframeTrack &keys = c.paneTrack(paneOf(c));
         for (qint64 t : keys.keyTimes())
             w.keySourceMs.push_back(t);
-        if (!c.flat && !c.mediaMissing)
-            for (qint64 t : m_clipFacts->highlights(c.sourcePath))
-                w.markSourceMs.push_back(t);
+        // The file's marks unless it's missing (not read then); the clip's
+        // own either way.
+        const QList<qint64> camera = c.flat || c.mediaMissing
+                                         ? QList<qint64>()
+                                         : m_clipFacts->highlights(c.sourcePath);
+        for (const ClipItem::Mark &m : c.shownMarks(camera))
+            w.marks.push_back({m.sourceMs, m.own});
+        for (const qint64 t : c.hiddenMarks)
+            w.hiddenMarks += camera.contains(t);
         clips.push_back(std::move(w));
         if (c.id == m_clipId && !keys.isEmpty())
             activeHasKeys = true;

@@ -79,9 +79,10 @@ each is in its document in [`formats/`](formats/README.md).
 - **Highlight markers, follow-ups**: the camera's marks are built (X5,
   record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
   clip, read from the file and not saved in the project, `Ctrl+↑` / `↓`
-  to jump. Left: marks you set yourself (a key, delete, saved in the
-  project and undoable -- a project-file change, so its own plan), hiding
-  a camera mark you don't want, what the record's other six lists hold,
+  to jump; and so are your own (`M`, `Shift+M` or the dot's menu deletes
+  one) and hiding a camera mark per clip, both saved in the project
+  (format version 21) and undoable. Left: what the record's other six
+  lists hold,
   whether marks made in the phone app reach the file, and other cameras'
   marks (the ONE X2 writes the same record; GoPro's HiLight tags) once
   clips with marks show them.

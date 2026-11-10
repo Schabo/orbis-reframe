@@ -12,6 +12,7 @@
 #include <LensColour.h>     // insv::LensColour (POD)
 #include <SeamCorrection.h> // insv::SeamCorrection (POD)
 
+#include <QList>
 #include <QString>
 
 #include <cmath>
@@ -162,6 +163,24 @@ struct ClipItem {
     // boxed them). Applied whether blurPlates is on or not.
     std::vector<privacy::BlurAddition> blurAdditions;
 
+    // Highlight marks. The user's own (M), in source ms, sorted -- on a flat
+    // clip too. The camera's marks are its file's (read from it, not kept
+    // here); `hiddenMarks` are the ones of them the user hid on this clip,
+    // by their source ms, sorted. Both are moments of footage, like the
+    // reframe keys, but a trim only hides a mark outside it: trimming the
+    // clip longer again brings it back.
+    QList<qint64> marks;
+    QList<qint64> hiddenMarks;
+    struct Mark {
+        qint64 sourceMs = 0;
+        bool own = false; // the user's, else the camera's
+        bool operator==(const Mark &o) const { return sourceMs == o.sourceMs && own == o.own; }
+    };
+    // The marks the clip shows, sorted: its own and those of the file's
+    // `cameraMarks` it doesn't hide (a flat clip has no camera marks).
+    // Trimmed-out ones too: the caller places them.
+    QList<Mark> shownMarks(const QList<qint64> &cameraMarks) const;
+
     // Playback speed: 1 = real time, 0.25 = 4x slow motion, 2 = double speed.
     // Stretches the clip's span on the timeline (timelineDurationMs = trimmed /
     // speed); trims, reframe keys, stabilization and sync all stay in source
@@ -248,6 +267,16 @@ struct ClipItem {
     bool setBlurAdditions(const std::vector<privacy::BlurAddition> &additions);
     bool setSpeed(double s); // clamped to [kMinSpeed, kMaxSpeed]
     bool setFit(Fit f);
+    // A mark of the user's at `sourceMs` (clamped to the source). Refused
+    // within a frame of a mark the clip shows (`cameraMarks`: its file's);
+    // a hidden camera mark there is shown again instead.
+    bool addMark(qint64 sourceMs, const QList<qint64> &cameraMarks = {});
+    // The shown mark nearest `sourceMs`, within kReframeDeleteSnapMs and
+    // the trim: the user's is deleted, a camera one hidden.
+    bool removeMarkNear(qint64 sourceMs, const QList<qint64> &cameraMarks = {});
+    bool removeMark(qint64 sourceMs); // the user's mark at exactly `sourceMs`
+    bool setMarkHidden(qint64 sourceMs, bool hidden); // a camera mark's
+    bool showHiddenMarks();
 
 private:
     // Clamp [inMs, outMs] into [0, sourceDuration] with the min-gap rule (the

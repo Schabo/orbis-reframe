@@ -1624,6 +1624,86 @@ void testLensCalibrationJson()
 
 // Stitch settings are per source file: kept on every clip of it, saved per
 // clip, and an older project's one setting becomes every clip's.
+// Highlight marks: the user's own and the camera's hidden ones, per clip,
+// written only when a clip has one -- as version 21, which the builds
+// before refuse rather than drop them on save; a flat clip's own ones too.
+void testMarksJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString a = tmp.path() + "/a.insv";
+    const QString v = tmp.path() + "/phone.mp4";
+    writeFile(a);
+    writeFile(v);
+    const QString file = tmp.path() + "/marks.orp";
+    auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+
+    QString err;
+    {
+        Project p;
+        Timeline *tl = p.timeline();
+        const int c = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2);
+        const int f = tl->appendClip(v, 5000, 30.0, 1920, 1080, 0, true);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() < Project::kMarkFormatVersion);
+        QJsonObject jc = document().value("timeline").toObject().value("clips").toArray().at(0).toObject();
+        CHECK(!jc.contains("marks") && !jc.contains("hiddenMarks"));
+
+        tl->addClipMark(c, 6000);
+        tl->addClipMark(c, 2000);
+        tl->setClipMarkHidden(c, 4000, true); // a camera mark
+        tl->addClipMark(f, 1500);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kMarkFormatVersion);
+        const QJsonArray clips = document().value("timeline").toObject().value("clips").toArray();
+        jc = clips.at(0).toObject();
+        CHECK(jc.value("marks").toArray() == QJsonArray({2000, 6000}));
+        CHECK(jc.value("hiddenMarks").toArray() == QJsonArray({4000}));
+        CHECK(clips.at(1).toObject().value("marks").toArray() == QJsonArray({1500}));
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        Timeline *tl = p.timeline();
+        CHECK(tl->clipAt(0).marks == (QList<qint64>{2000, 6000}));
+        CHECK(tl->clipAt(0).hiddenMarks == QList<qint64>{4000});
+        CHECK(tl->clipAt(1).marks == QList<qint64>{1500});
+        CHECK(!p.modified());
+
+        // An edit, and undo puts it back.
+        tl->removeClipMark(tl->clipAt(0).id, 2000);
+        CHECK(p.canUndo() && p.modified());
+        p.undo();
+        CHECK(tl->clipAt(0).marks == (QList<qint64>{2000, 6000}));
+        p.redo();
+        CHECK(tl->clipAt(0).marks == QList<qint64>{6000});
+
+        // None left: the version before again.
+        tl->removeClipMark(tl->clipAt(0).id, 6000);
+        tl->showClipHiddenMarks(tl->clipAt(0).id);
+        tl->removeClipMark(tl->clipAt(1).id, 1500);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() < Project::kMarkFormatVersion);
+    }
+    {
+        // A version 20 file: no marks; one with a version past this
+        // build's is refused.
+        writeFile(file, QByteArrayLiteral(
+                            R"({"format":"orbis-reframe-project","version":20,"timeline":{"clips":[{"source":"a.insv","sourceDurationMs":10000,"fps":30}]}})"));
+        Project p;
+        CHECK(p.load(file, &err));
+        CHECK(p.timeline()->count() == 1 && p.timeline()->clipAt(0).marks.isEmpty() &&
+              p.timeline()->clipAt(0).hiddenMarks.isEmpty());
+        writeFile(file, QByteArrayLiteral(
+                            R"({"format":"orbis-reframe-project","version":22,"timeline":{"clips":[]}})"));
+        CHECK(!p.load(file, &err));
+    }
+}
+
 void testClipStitchJson()
 {
     using G = stitch::PreviewStitchConfig::LensGuard;
@@ -2563,6 +2643,7 @@ int main(int argc, char **argv)
     testProjectSummary();
     testFlatClipJson();
     testClipStitchJson();
+    testMarksJson();
     testLensCalibrationJson();
     testLensCalibrationStore();
     testPlateScansInUse();

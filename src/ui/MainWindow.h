@@ -412,6 +412,12 @@ private:
     // (at the playhead's point in it), else the video clip under the playhead.
     void trimAtPlayhead(bool in);
     void clearTrim();
+    // Edit ▸ Add mark / Delete mark (M / Shift+M): on the clip under the
+    // playhead, at the playhead (Timeline::addClipMark / removeClipMarkNear).
+    void addMarkAtPlayhead();
+    void deleteMarkAtPlayhead();
+    // The highlight marks clip `c`'s file holds (none for a flat clip).
+    QList<qint64> cameraMarks(const ClipItem &c) const;
 
     // Keyboard shortcuts. Every single-key / navigation shortcut goes
     // through addKey(), which also lists it in Help -> Keyboard shortcuts
@@ -639,6 +645,8 @@ private:
     // a fresh id, so afterUndoRedo() rebinds from this instead.
     qint64 m_lastTimelineMs = 0;
     QAction *m_undoAction = nullptr;
+    QAction *m_addMarkAction = nullptr;    // Edit ▸ Add mark (M)
+    QAction *m_deleteMarkAction = nullptr; // Edit ▸ Delete mark (Shift+M)
     // The grade from Copy grade (Colour panel / a clip's right-click menu);
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;

@@ -552,8 +552,8 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
         if (pos.y() < r.rect.top() || pos.y() > r.rect.bottom())
             continue;
         const int my = r.rect.top() + kMarkInsetPx; // as drawn
-        for (int j = 0; j < r.clip.markSourceMs.size(); ++j) {
-            const qint64 ms = r.clip.markSourceMs[j];
+        for (int j = 0; j < r.clip.marks.size(); ++j) {
+            const qint64 ms = r.clip.marks[j].sourceMs;
             if (!r.clip.showsKeyAt(ms))
                 continue;
             check(xForTimelineMs(r.startMs + r.clip.keyLocalMs(ms)), my, j);
@@ -606,7 +606,7 @@ qint64 TimelineWidget::keyTimelineMs(const KeyHit &k) const
 {
     if (k.row >= 0) {
         const Row &r = m_rows[k.row];
-        return r.startMs + r.clip.keyLocalMs(k.mark ? r.clip.markSourceMs[k.index]
+        return r.startMs + r.clip.keyLocalMs(k.mark ? r.clip.marks[k.index].sourceMs
                                                     : r.clip.keySourceMs[k.index]);
     }
     const TrackClipView &c = m_tracks[k.track].clips[k.clip];

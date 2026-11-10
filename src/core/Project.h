@@ -84,7 +84,9 @@ public:
     //   previewStitch's);
     //   a flat video (ClipItem::flat): flat: true, fit: "fill" (absent =>
     //   "bars"), and none of the 360 fields;
-    //   optional: syncFineTuneMs (an older "syncAdjustMs" is ignored) and
+    //   optional: marks and hiddenMarks ([source ms, ...], sorted; a flat
+    //   clip has only marks), syncFineTuneMs (an older "syncAdjustMs" is
+    //   ignored) and
     //   seamAdjust {deg: [yaw,
     //   pitch, roll], lensGuard} once measured, and privacy:
     //     "plates": true -- the blur is on;
@@ -167,8 +169,12 @@ public:
     // stitcher (that object's "method": "new", with its "seamColourBlend"
     // and "seamFlow"),
     // written only when a clip has one: an older build would stitch it with
-    // the file's calibration, or with the old stitcher.
-    static constexpr int kFormatVersion = 20;
+    // the file's calibration, or with the old stitcher. Version 21 added
+    // highlight marks on a main-track clip ("marks": the user's, source ms;
+    // "hiddenMarks": the camera's the user hid, by their source ms), written
+    // only when a clip has either: an older build would drop them on save.
+    static constexpr int kFormatVersion = 21;
+    static constexpr int kMarkFormatVersion = 21;
     static constexpr int kStitchFormatVersion = 20;
     // The stitcher of a clip whose file doesn't name one: the old stitcher,
     // which was the only one, then the default, until the new stitcher became

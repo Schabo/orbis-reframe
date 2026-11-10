@@ -576,12 +576,10 @@ bool TimelineWidget::event(QEvent *e)
         const Hit h = hitTest(he->pos());
         const KeyHit k = keyAt(he->pos());
         if (k.index >= 0 && k.mark) {
-            const qint64 s = m_rows[k.row].clip.markSourceMs[k.index] / 1000;
             QToolTip::showText(he->globalPos(),
-                               tr("Highlight mark, set while recording: %1 into the clip. Click "
-                                  "to go to it.")
-                                   .arg(QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10,
-                                                                               QLatin1Char('0'))),
+                               m_rows[k.row].clip.marks[k.index].own
+                                   ? tr("Your mark. Click to go to it; Right-click to delete it.")
+                                   : tr("Camera mark. Click to go to it; Right-click to hide it."),
                                this);
         } else if (k.index >= 0)
             QToolTip::showText(he->globalPos(),
@@ -637,6 +635,23 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         return;
     }
 
+    // A highlight mark's dot: its own menu.
+    if (const KeyHit k = keyAt(e->pos()); k.index >= 0 && k.mark) {
+        // Copies: selecting the clip may hand the widget new clips.
+        const int clipId = m_rows[k.row].clip.id;
+        const Clip::Mark m = m_rows[k.row].clip.marks[k.index];
+        emit clipSelected(clipId);
+        QAction *act = menu.addAction(m.own ? tr("Delete mark") : tr("Hide mark"));
+        act->setObjectName(QStringLiteral("markRemoveAction"));
+        if (menu.exec(e->globalPos()) == act) {
+            if (m.own)
+                emit markDeleteRequested(clipId, m.sourceMs);
+            else
+                emit markHideRequested(clipId, m.sourceMs);
+        }
+        return;
+    }
+
     if (h.kind == Hit::MainClip) {
         emit clipSelected(m_rows[h.row].clip.id);
         const Row &r = m_rows[h.row];
@@ -663,6 +678,11 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         duplicate->setToolTip(tr("A copy of the clip right after it, with all its settings"));
         QAction *insertBefore = menu.addAction(tr("Insert clip before…"));
         QAction *insertAfter = menu.addAction(tr("Insert clip after…"));
+        QAction *showMarks = nullptr;
+        if (r.clip.hiddenMarks > 0) {
+            showMarks = menu.addAction(tr("Show hidden marks (%1)").arg(r.clip.hiddenMarks));
+            showMarks->setObjectName(QStringLiteral("showHiddenMarksAction"));
+        }
 
         menu.addSeparator();
         QAction *copyGrade = menu.addAction(tr("Copy colour grade"));
@@ -692,6 +712,8 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
             emit clipSplitRequested(r.clip.id, splitSrc);
         else if (chosen == duplicate)
             emit clipDuplicateRequested(r.clip.id);
+        else if (showMarks && chosen == showMarks)
+            emit hiddenMarksShowRequested(r.clip.id);
         else if (chosen == moveL)
             emit clipMoved(r.clip.id, h.row - 1);
         else if (chosen == moveR)

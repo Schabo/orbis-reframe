@@ -234,6 +234,99 @@ void testMarkNavigation()
     CHECK(!asked.contains("phone.mp4"));
 }
 
+// The user's own marks and hidden camera marks: added within the source,
+// refused on a mark already there, deleted or hidden at the playhead, kept
+// through a trim, copied by a split and a duplicate, in source time at any
+// speed; Ctrl+Up / Down over both kinds, hidden ones skipped; a flat clip
+// has only its own.
+void testUserMarks()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 10000, 30.0);
+    const QList<qint64> camera{4000, 8000}; // a.insv's
+    const Timeline::MarksOf of = [&](const QString &path) {
+        return path == "a.insv" ? camera : QList<qint64>();
+    };
+    int changes = 0;
+    QObject::connect(&tl, &Timeline::clipMarksChanged, [&](int id) { changes += id == a; });
+    tl.addClipMark(a, 2000, camera);
+    tl.addClipMark(a, 6000, camera);
+    tl.addClipMark(a, 2020, camera); // within a frame of one: refused
+    tl.addClipMark(a, 4010, camera); // on a camera mark: refused
+    CHECK(tl.clipAt(0).marks == (QList<qint64>{2000, 6000}));
+    CHECK(changes == 2);
+    tl.addClipMark(a, 20000, camera); // past the end: on the last moment
+    CHECK(tl.clipAt(0).marks.last() == 10000);
+    tl.removeClipMark(a, 10000);
+    // Both kinds shown, in order.
+    const QList<ClipItem::Mark> shown = tl.clipAt(0).shownMarks(camera);
+    CHECK(shown.size() == 4 && shown[0] == (ClipItem::Mark{2000, true}) &&
+          shown[1] == (ClipItem::Mark{4000, false}) && shown[3] == (ClipItem::Mark{8000, false}));
+
+    // Shift+M: the nearest within 150 ms -- the user's deleted, a camera
+    // one hidden; nothing that far from any.
+    changes = 0;
+    tl.removeClipMarkNear(a, 6100, camera);
+    CHECK(tl.clipAt(0).marks == QList<qint64>{2000});
+    tl.removeClipMarkNear(a, 3900, camera);
+    CHECK(tl.clipAt(0).hiddenMarks == QList<qint64>{4000});
+    tl.removeClipMarkNear(a, 5000, camera);
+    CHECK(changes == 2);
+    CHECK(tl.clipAt(0).shownMarks(camera).size() == 2);
+    // Navigation skips the hidden one.
+    CHECK(tl.adjacentMark(0, 1, of) == 2000);
+    CHECK(tl.adjacentMark(2000, 1, of) == 8000);
+    // M on a hidden camera mark shows it again, rather than add a second.
+    tl.addClipMark(a, 4000, camera);
+    CHECK(tl.clipAt(0).hiddenMarks.isEmpty() && tl.clipAt(0).marks == QList<qint64>{2000});
+    tl.setClipMarkHidden(a, 8000, true);
+    tl.setClipMarkHidden(a, 4000, true);
+    CHECK(tl.clipAt(0).hiddenMarks == (QList<qint64>{4000, 8000}));
+    tl.showClipHiddenMarks(a);
+    CHECK(tl.clipAt(0).hiddenMarks.isEmpty());
+    tl.setClipMarkHidden(a, 8000, true);
+
+    // A trim hides a mark outside it, doesn't delete it; Shift+M doesn't
+    // reach past the trim.
+    tl.setClipTrimIn(a, 3000);
+    CHECK(tl.clipAt(0).marks == QList<qint64>{2000});
+    CHECK(tl.adjacentMark(0, 1, of) == 1000); // camera 4000, 1 s in
+    tl.removeClipMarkNear(a, 3050, camera); // 2000 isn't in the clip
+    CHECK(tl.clipAt(0).marks == QList<qint64>{2000});
+    tl.setClipTrimIn(a, 0);
+    CHECK(tl.adjacentMark(0, 1, of) == 2000);
+    // At double speed: half as far, still at the same source time.
+    tl.setClipSpeed(a, 2.0);
+    CHECK(tl.adjacentMark(0, 1, of) == 1000);
+    CHECK(tl.adjacentMark(1000, 1, of) == 2000);
+    tl.setClipSpeed(a, 1.0);
+
+    // Split: both halves keep both lists, each shows what's in its part.
+    const int b = tl.splitClip(a, 5000);
+    CHECK(b != 0);
+    CHECK(tl.clipById(b)->marks == QList<qint64>{2000});
+    CHECK(tl.clipById(b)->hiddenMarks == QList<qint64>{8000});
+    CHECK(tl.adjacentMark(4000, 1, of) == 4000); // nothing after: 8000 hidden in b too
+    // Hiding is per clip: shown again on b only.
+    tl.setClipMarkHidden(b, 8000, false);
+    CHECK(tl.clipById(a)->hiddenMarks == QList<qint64>{8000});
+    CHECK(tl.adjacentMark(4000, 1, of) == 8000);
+    // Duplicate: a copy with the same marks.
+    const int d = tl.duplicateClip(a);
+    CHECK(tl.clipById(d)->marks == QList<qint64>{2000} &&
+          tl.clipById(d)->hiddenMarks == QList<qint64>{8000});
+
+    // A flat clip: its own marks, no camera ones to hide.
+    Timeline flat;
+    const int f = flat.appendClip("phone.mp4", 5000, 30.0, 1920, 1080, 0, true);
+    flat.addClipMark(f, 1000);
+    flat.setClipMarkHidden(f, 1000, true);
+    CHECK(flat.clipAt(0).marks == QList<qint64>{1000} && flat.clipAt(0).hiddenMarks.isEmpty());
+    CHECK(flat.adjacentMark(0, 1, {}) == 1000);
+    flat.removeClipMarkNear(f, 1100);
+    CHECK(flat.clipAt(0).marks.isEmpty());
+}
+
 // A key a trim left on a clip's trim-out (the next clip's first frame) is
 // reached on the clip's last frame, 1 ms before the cut, and a key set there
 // -- the playhead's source time, as K takes it -- replaces it, at any speed.
@@ -716,6 +809,7 @@ int main()
     testKeyNavigation();
     testKeyOnTrimOut();
     testMarkNavigation();
+    testUserMarks();
     testTrimRemovesKeys();
     testTimelineStructure();
     testTimelineSplit();

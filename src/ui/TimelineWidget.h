@@ -122,9 +122,15 @@ public:
         qint64 sourceDurationMs = 0;
         bool missing = false;
         QVector<qint64> keySourceMs; // reframe key times, in the clip's source time
-        // The highlight marks set while recording, in the clip's source
-        // time: dots on the clip's top edge, placed and clicked like keys.
-        QVector<qint64> markSourceMs;
+        // The highlight marks it shows, in the clip's source time: dots on
+        // the clip's top edge, placed and clicked like keys. `own`: the
+        // user's (deleted from its menu), else set while recording (hidden).
+        struct Mark {
+            qint64 sourceMs = 0;
+            bool own = false;
+        };
+        QVector<Mark> marks;
+        int hiddenMarks = 0; // camera marks hidden on it (the clip menu shows them again)
         double speed = 1.0;          // ClipItem::speed
         // Span on the timeline, same rounding as ClipItem::timelineDurationMs.
         qint64 timelineSpanMs() const
@@ -240,6 +246,11 @@ signals:
     void clipSplitRequested(int clipId, qint64 atSourceMs);
     void clipDuplicateRequested(int clipId);
     void clipSpeedRequested(int clipId, double speed);
+    // A mark's menu: delete the user's mark / hide the camera's, at its
+    // source time; the clip menu: show its hidden marks again.
+    void markDeleteRequested(int clipId, qint64 sourceMs);
+    void markHideRequested(int clipId, qint64 sourceMs);
+    void hiddenMarksShowRequested(int clipId);
     void gradeCopyRequested(int clipId);
     void gradePasteRequested(int clipId);
     void gradePasteAllRequested();
@@ -340,7 +351,7 @@ private:
     Hit hitTest(QPoint pos) const;
     // A keyframe diamond under `pos` (small, so forgiven a few px), or a
     // highlight mark's dot (`mark`). Main: row set; an overlay clip's:
-    // track + clip; index: into the keySourceMs, or a mark's markSourceMs.
+    // track + clip; index: into the keySourceMs, or a mark's marks.
     struct KeyHit {
         int row = -1;
         int track = -1;

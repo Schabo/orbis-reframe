@@ -195,24 +195,24 @@ qint64 Timeline::adjacentMark(qint64 timelineMs, int direction, const MarksOf &m
 {
     constexpr qint64 kOnMarkMs = 5; // as adjacentKey's
     qint64 best = timelineMs;
-    if (!marksOf)
-        return best;
+    const MarksOf of = marksOf ? marksOf : [](const QString &) { return QList<qint64>(); };
     qint64 acc = 0;
     for (const ClipItem &c : m_clips) {
         const qint64 span = c.timelineDurationMs();
-        if (!c.flat)
-            for (const qint64 ms : marksOf(c.sourcePath)) {
-                if (ms < c.trimInMs || ms > c.trimOutMs)
-                    continue;
-                // A mark on the trim-out point is reached 1 ms before the
-                // cut, on this clip's last frame (as adjacentKey).
-                const qint64 p = acc + std::min(c.localAtSourceMs(ms), span - 1);
-                if (direction > 0 && p > timelineMs + kOnMarkMs && (best == timelineMs || p < best))
-                    best = p;
-                else if (direction < 0 && p < timelineMs - kOnMarkMs &&
-                         (best == timelineMs || p > best))
-                    best = p;
-            }
+        for (const ClipItem::Mark &m :
+             c.shownMarks(c.flat ? QList<qint64>() : of(c.sourcePath))) {
+            const qint64 ms = m.sourceMs;
+            if (ms < c.trimInMs || ms > c.trimOutMs)
+                continue;
+            // A mark on the trim-out point is reached 1 ms before the
+            // cut, on this clip's last frame (as adjacentKey).
+            const qint64 p = acc + std::min(c.localAtSourceMs(ms), span - 1);
+            if (direction > 0 && p > timelineMs + kOnMarkMs && (best == timelineMs || p < best))
+                best = p;
+            else if (direction < 0 && p < timelineMs - kOnMarkMs &&
+                     (best == timelineMs || p > best))
+                best = p;
+        }
         acc += span;
     }
     return best;
@@ -625,6 +625,41 @@ void Timeline::setClipSplit(int clipId, const pane::Split &split, qint64 sourceM
                 changed = c->upsertReframeKey(sourceMs, k.second, k.first) || changed;
     if (changed)
         emit clipReframeChanged(c->id);
+}
+
+void Timeline::addClipMark(int clipId, qint64 sourceMs, const QList<qint64> &cameraMarks)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->addMark(sourceMs, cameraMarks))
+        emit clipMarksChanged(c->id);
+}
+
+void Timeline::removeClipMarkNear(int clipId, qint64 sourceMs, const QList<qint64> &cameraMarks)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->removeMarkNear(sourceMs, cameraMarks))
+        emit clipMarksChanged(c->id);
+}
+
+void Timeline::removeClipMark(int clipId, qint64 sourceMs)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->removeMark(sourceMs))
+        emit clipMarksChanged(c->id);
+}
+
+void Timeline::setClipMarkHidden(int clipId, qint64 sourceMs, bool hidden)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->setMarkHidden(sourceMs, hidden))
+        emit clipMarksChanged(c->id);
+}
+
+void Timeline::showClipHiddenMarks(int clipId)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->showHiddenMarks())
+        emit clipMarksChanged(c->id);
 }
 
 void Timeline::setClipSpeed(int clipId, double speed)

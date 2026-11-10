@@ -281,11 +281,11 @@ void testMarkDotClick()
     a.trimInMs = 1000;
     a.trimOutMs = a.sourceDurationMs = 10000;
     a.keySourceMs = {4000};
-    a.markSourceMs = {500, 4000}; // the first trimmed out of view
+    a.marks = {{500, false}, {4000, false}}; // the first trimmed out of view
     b.id = 2;
     b.label = "b";
     b.trimOutMs = b.sourceDurationMs = 10000;
-    b.markSourceMs = {2000};
+    b.marks = {{2000, false}};
     f.w.setClips({a, b});
 
     const int markY = kRulerH + TimelineWidget::kMarkInsetPx; // the dots' row
@@ -310,12 +310,75 @@ void testMarkDotClick()
     CHECK(seek.count() == 2 && seek.last().at(0).toLongLong() == 11000);
     // Where the trimmed-out mark would be: no dot, nothing to click.
     CHECK(at(0, markY) != theme::colors().marker);
-    // The tooltip names it and its time in the file.
+    // The tooltip names it.
     const QPoint dot(Fixture::x(3000), markY);
     QHelpEvent he(QEvent::ToolTip, dot, f.w.mapToGlobal(dot));
     QApplication::sendEvent(&f.w, &he);
-    CHECK(QToolTip::text().startsWith("Highlight mark") && QToolTip::text().contains("0:04"));
+    CHECK(QToolTip::text().startsWith("Camera mark."));
     QToolTip::hideText();
+}
+
+// A mark's dot has its own menu: Delete mark for the user's, Hide mark for
+// one set while recording; the clip menu shows hidden ones again, saying
+// how many. The tooltip says which kind a dot is.
+void testMarkMenus()
+{
+    Fixture f;
+    TimelineWidget::Clip a;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.marks = {{2000, true}, {6000, false}};
+    f.w.setClips({a});
+    const int markY = kRulerH + TimelineWidget::kMarkInsetPx;
+
+    // Right-click at `at`: the text of the menu's `name` action (empty if
+    // none), chosen when `choose`.
+    const auto menuAt = [&](QPoint at, const char *name, bool choose) {
+        QString text;
+        QTimer::singleShot(0, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            QAction *act = menu->findChild<QAction *>(QString::fromLatin1(name));
+            if (act)
+                text = act->text();
+            if (act && choose)
+                menu->setActiveAction(act);
+            QTest::keyClick(menu, act && choose ? Qt::Key_Return : Qt::Key_Escape);
+        });
+        QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+        QApplication::sendEvent(&f.w, &e);
+        return text;
+    };
+    QSignalSpy del(&f.w, &TimelineWidget::markDeleteRequested);
+    QSignalSpy hide(&f.w, &TimelineWidget::markHideRequested);
+    QSignalSpy show(&f.w, &TimelineWidget::hiddenMarksShowRequested);
+    CHECK(menuAt(QPoint(Fixture::x(2000), markY), "markRemoveAction", true) == "Delete mark");
+    CHECK(del.count() == 1 && del.last().at(0).toInt() == 1 &&
+          del.last().at(1).toLongLong() == 2000 && hide.isEmpty());
+    CHECK(menuAt(QPoint(Fixture::x(6000), markY), "markRemoveAction", true) == "Hide mark");
+    CHECK(hide.count() == 1 && hide.last().at(1).toLongLong() == 6000 && del.count() == 1);
+    // Off the dots: the clip's menu, with no hidden marks to show.
+    CHECK(menuAt(QPoint(Fixture::x(4000), mainY()), "markRemoveAction", false).isEmpty());
+    CHECK(menuAt(QPoint(Fixture::x(4000), mainY()), "showHiddenMarksAction", false).isEmpty());
+    a.hiddenMarks = 2;
+    f.w.setClips({a});
+    CHECK(menuAt(QPoint(Fixture::x(4000), mainY()), "showHiddenMarksAction", true) ==
+          "Show hidden marks (2)");
+    CHECK(show.count() == 1 && show.last().at(0).toInt() == 1);
+
+    // The tooltips.
+    const auto tip = [&](qint64 ms) {
+        const QPoint dot(Fixture::x(ms), markY);
+        QHelpEvent he(QEvent::ToolTip, dot, f.w.mapToGlobal(dot));
+        QApplication::sendEvent(&f.w, &he);
+        const QString t = QToolTip::text();
+        QToolTip::hideText();
+        return t;
+    };
+    CHECK(tip(2000) == "Your mark. Click to go to it; Right-click to delete it.");
+    CHECK(tip(6000) == "Camera mark. Click to go to it; Right-click to hide it.");
 }
 
 void testHeaderAndMain()
@@ -1031,6 +1094,7 @@ int main(int argc, char **argv)
     testTrims();
     testKeyDiamondClick();
     testMarkDotClick();
+    testMarkMenus();
     testHeaderAndMain();
     testDuplicateMenu();
     testTransitions();

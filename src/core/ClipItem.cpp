@@ -187,3 +187,75 @@ bool ClipItem::setStabilization(const insv::StabConfig &config)
     stabilization = config;
     return true;
 }
+
+QList<ClipItem::Mark> ClipItem::shownMarks(const QList<qint64> &cameraMarks) const
+{
+    QList<Mark> out;
+    out.reserve(marks.size() + (flat ? 0 : cameraMarks.size()));
+    for (const qint64 ms : marks)
+        out.push_back({ms, true});
+    if (!flat)
+        for (const qint64 ms : cameraMarks)
+            if (!std::binary_search(hiddenMarks.begin(), hiddenMarks.end(), ms))
+                out.push_back({ms, false});
+    std::stable_sort(out.begin(), out.end(),
+                     [](const Mark &a, const Mark &b) { return a.sourceMs < b.sourceMs; });
+    return out;
+}
+
+bool ClipItem::addMark(qint64 sourceMs, const QList<qint64> &cameraMarks)
+{
+    sourceMs = std::clamp<qint64>(sourceMs, 0, sourceDurationMs);
+    const qint64 frame = frameDurationMs();
+    for (const Mark &m : shownMarks(cameraMarks))
+        if (std::abs(m.sourceMs - sourceMs) < frame)
+            return false; // one there already
+    if (!flat)
+        for (const qint64 ms : cameraMarks)
+            if (std::abs(ms - sourceMs) < frame && setMarkHidden(ms, false))
+                return true;
+    marks.insert(std::lower_bound(marks.begin(), marks.end(), sourceMs), sourceMs);
+    return true;
+}
+
+bool ClipItem::removeMarkNear(qint64 sourceMs, const QList<qint64> &cameraMarks)
+{
+    const Mark *best = nullptr;
+    const QList<Mark> shown = shownMarks(cameraMarks);
+    for (const Mark &m : shown)
+        if (m.sourceMs >= trimInMs && m.sourceMs <= trimOutMs &&
+            std::abs(m.sourceMs - sourceMs) <= kReframeDeleteSnapMs &&
+            (!best || std::abs(m.sourceMs - sourceMs) < std::abs(best->sourceMs - sourceMs)))
+            best = &m;
+    if (!best)
+        return false;
+    return best->own ? removeMark(best->sourceMs) : setMarkHidden(best->sourceMs, true);
+}
+
+bool ClipItem::removeMark(qint64 sourceMs)
+{
+    return marks.removeOne(sourceMs);
+}
+
+bool ClipItem::setMarkHidden(qint64 sourceMs, bool hidden)
+{
+    if (flat)
+        return false; // no camera marks
+    const auto at = std::lower_bound(hiddenMarks.begin(), hiddenMarks.end(), sourceMs);
+    const bool is = at != hiddenMarks.end() && *at == sourceMs;
+    if (is == hidden)
+        return false;
+    if (hidden)
+        hiddenMarks.insert(at, sourceMs);
+    else
+        hiddenMarks.erase(at);
+    return true;
+}
+
+bool ClipItem::showHiddenMarks()
+{
+    if (hiddenMarks.isEmpty())
+        return false;
+    hiddenMarks.clear();
+    return true;
+}

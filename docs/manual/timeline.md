@@ -13,8 +13,8 @@ overlays. For the names of the window's parts, see
 3. The **video track**, with your clips. The white diamonds along
    the bottom edge are reframe keyframes; a hollow diamond (◇) before a
    clip's name means it has none, and exports looking straight ahead.
-   Yellow dots along the top edge are the
-   [highlight marks](#highlight-marks) set while recording.
+   Yellow dots along the top edge are
+   [highlight marks](#highlight-marks): set while recording, or by you.
 4. The **Camera mic** track: the clips' sound, linked to them (the chain
    icon).
 5. An **audio track**, with a music file. The waveform shows how loud it
@@ -42,6 +42,7 @@ the playhead where it is.
 | `Shift+←` / `Shift+→` | One second back / forward. |
 | `↑` / `↓` | To the previous / next cut or clip edge. |
 | `Ctrl+↑` / `Ctrl+↓` | To the previous / next [highlight mark](#highlight-marks). |
+| `M` / `Shift+M` | Add / delete a [highlight mark](#highlight-marks) at the playhead. |
 | `Home` / `End` | To the start / end of the timeline. |
 
 **Zooming.** Hold `Ctrl` and turn the mouse wheel over the timeline to zoom
@@ -162,14 +163,14 @@ of a recording, or give each part its own settings.
 - Or right-click the clip where you want the cut and choose **Split here**.
 
 Both halves keep everything the clip had: its stabilization, colour and
-audio settings. Each half keeps the keyframes inside it; a keyframe right on
+audio settings, and its highlight marks. Each half keeps the keyframes inside it; a keyframe right on
 the cut goes to both.
 
 ### Duplicating
 
 Right-click a clip and choose **Duplicate**. A copy goes right after it,
 with everything the clip has: trims, speed, reframe keyframes,
-stabilization, stitching, colour, privacy blur, and its sound on the audio
+highlight marks, stabilization, stitching, colour, privacy blur, and its sound on the audio
 tracks. The clips after it move up to make room. The copy is selected, so
 the settings sidebar changes the copy, not the original. Use it to show the
 same moment twice, say once from the front and once from behind, with
@@ -187,24 +188,35 @@ recorded at 120 fps, played at 0.25×, shows every frame it recorded in a
 
 ### Highlight marks
 
-While recording, you can mark a moment worth keeping. orbis-reframe reads
-the marks the camera stores in the file and shows each one as a yellow dot on the clip's top
-edge (dark gold in the Light theme), so you can find them again in a long
-recording.
+Highlight marks are yellow dots on a clip's top edge (dark gold in the
+Light theme) that help you find the moments worth keeping in a long
+recording. Some come from the camera: while recording, you can mark a
+moment, and orbis-reframe reads those marks from the file. You can add your
+own too, say while watching a ride through before you edit it.
 
-- Point at a dot to see its time in the recording, and click it to move
-  the playhead there.
+- `M` (or **Edit ▸ Add mark**) adds a mark at the playhead, on the clip
+  under it. It works on flat videos too.
+- `Shift+M` (or **Edit ▸ Delete mark**) deletes the mark at the playhead.
+  You can also right-click a dot and choose **Delete mark**.
+- A mark set while recording can't be deleted, since it's in the file, but
+  you can hide it: `Shift+M` on it, or right-click its dot and choose
+  **Hide mark**. To get the hidden ones back, right-click the clip and
+  choose **Show hidden marks**, which says how many there are.
+- Point at a dot to see whether it's yours or the camera's. Click it to
+  move the playhead there.
 - `Ctrl+↓` and `Ctrl+↑` jump to the next and previous mark on the
-  timeline, across clips.
+  timeline, across clips. Hidden marks are skipped.
 - The marks belong to the footage: trimming, splitting and changing the
   speed keep each one on the moment it marked, and a mark in a part
-  you've trimmed off is hidden until you trim the clip longer again.
+  you've trimmed off is hidden until you trim the clip longer again. Both
+  halves of a split and a duplicated clip keep the marks, and a mark hidden
+  on one clip still shows on the others.
+- Your marks and the ones you've hidden are saved in the project, and
+  adding, deleting or hiding a mark can be undone.
 - **Media information** says how many marks the file has.
 
-The marks come from the file and aren't saved in the project, so you can't
-move or delete them, and you can't add your own yet. Only clips from
-cameras whose marks orbis-reframe knows how to read show them; so far
-that's the X5.
+Only clips from cameras whose marks orbis-reframe knows how to read show
+the camera's marks; so far that's the X5.
 
 ### Removing
 
