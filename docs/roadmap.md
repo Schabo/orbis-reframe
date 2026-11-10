@@ -16,6 +16,12 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
+- **Highlight markers**: the marks set while recording, read from the clip
+  and shown on the timeline to jump to; likely the start of general timeline
+  markers, saved in the project. Needs clips with marks first (none of ours
+  has any).
+- **Preview from the Media tab**: play, scrub and look around in a file
+  before it is on the timeline.
 - *Optional*: **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing
