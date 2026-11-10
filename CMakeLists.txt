@@ -1127,6 +1127,14 @@ if(TARGET reframe_flatten)
     target_include_directories(inset_test PRIVATE src/core)
     target_link_libraries(inset_test PRIVATE reframe_flatten test_media)
     add_test(NAME inset_test COMMAND inset_test)
+
+    # The export's container timing: every frame written is shown (stream
+    # duration and edit list cover the last frame). Skipped (77) where
+    # there's no hardware encoder.
+    add_executable(flatten_writer_test tests/flatten_writer_test.cpp)
+    target_link_libraries(flatten_writer_test PRIVATE reframe_flatten)
+    add_test(NAME flatten_writer_test COMMAND flatten_writer_test)
+    set_tests_properties(flatten_writer_test PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # --- tests/insv_test: the cleanroom stitch core (calibration parse, radial

@@ -567,6 +567,12 @@ bool drainTo(Encoder& e, AVCodecContext* ctx, AVStream* stream, AVFrame* frame, 
             err = avErr("avcodec_receive_packet", ret);
             return false;
         }
+        // Every video frame is one tick of the 1/fps time base, but not every
+        // encoder carries the frame's duration over (hevc_nvenc / h264_nvenc
+        // leave it 0). Without one the MP4 muxer gives the last sample no
+        // length and the stream ends a frame early.
+        if (ctx->codec_type == AVMEDIA_TYPE_VIDEO && e.pkt->duration <= 0)
+            e.pkt->duration = 1;
         av_packet_rescale_ts(e.pkt, ctx->time_base, stream->time_base);
         e.pkt->stream_index = stream->index;
         av_interleaved_write_frame(e.fmt, e.pkt);
@@ -627,6 +633,11 @@ struct FlattenWriter::Impl {
                           enc.tenBit, err))
             return false;
         f->pts = written;
+        // One tick of the encoder's 1/fps time base. The encoder passes it
+        // on to the packet; without it the MP4 muxer takes each sample's
+        // length from the next one's DTS, gives the last sample none, and
+        // the stream (and its edit list) ends one frame early.
+        f->duration = 1;
         if (!drainEncoder(enc, f, err))
             return false;
         ++written;
