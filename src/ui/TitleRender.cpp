@@ -1,5 +1,7 @@
 #include "TitleRender.h"
 
+#include "OverlayText.h"
+
 #include <QFont>
 #include <QFontMetricsF>
 #include <QGlyphRun>
@@ -219,7 +221,9 @@ Picture draw(const title::Style &style, int fontPx, int visible, bool tabularDig
                : shown[size_t(i)] == 0 ? QList<QGlyphRun>()
                                        : line.glyphRuns(line.textStart(), shown[size_t(i)]);
     };
-    QPainterPath letters; // the outline's and the shadow's shapes
+    // The outline's and the shadow's shapes. (Read on the overlay text
+    // thread, as the letters are drawn: see OverlayText.h.)
+    QPainterPath letters;
     if (outlinePx > 0.0 || style.shadow.on)
         for (int i = 0; i < layout.lineCount(); ++i)
             for (const QGlyphRun &run : shownRuns(i)) {
@@ -278,14 +282,8 @@ Picture draw(const title::Style &style, int fontPx, int visible, bool tabularDig
             p.strokePath(letters, pen);
         }
         p.setPen(colorOf(style.rgb));
-        for (int i = 0; i < layout.lineCount(); ++i) {
-            if (whole(i)) {
-                layout.lineAt(i).draw(&p, lineOffset(i)); // typed in full
-                continue;
-            }
-            for (const QGlyphRun &run : shownRuns(i))
-                p.drawGlyphRun(lineOffset(i), run);
-        }
+        for (int i = 0; i < layout.lineCount(); ++i)
+            overlaytext::fillGlyphRuns(p, shownRuns(i), lineOffset(i));
     }
     auto rgba = std::make_shared<std::vector<uint8_t>>(size_t(w) * h * 4);
     for (int y = 0; y < h; ++y)
@@ -350,7 +348,8 @@ Picture render(const title::Style &style, int fontPx, int visible, bool tabularD
         return hit;
     // Drawn outside the lock: two threads may both draw the same picture,
     // and the cache then keeps one.
-    Picture pic = draw(style, fontPx, visible, tabularDigits);
+    Picture pic =
+        overlaytext::onTextThread([&] { return draw(style, fontPx, visible, tabularDigits); });
     Cache &c = cache();
     std::lock_guard<std::mutex> lk(c.mx);
     for (const Cached &o : c.list)

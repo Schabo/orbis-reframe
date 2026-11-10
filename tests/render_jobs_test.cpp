@@ -21,7 +21,10 @@
 #include <QGuiApplication>
 #include <QDir>
 #include <QFile>
+#include <QFont>
 #include <QHash>
+#include <QImage>
+#include <QPainter>
 #include <QTemporaryDir>
 #include <QTimeZone>
 
@@ -1746,6 +1749,68 @@ void testSuggestedPaths(const QString &dir)
 
 } // namespace
 
+// A title's or a gauge's picture doesn't depend on what the process drew
+// before it: drawn again once the picture caches have let it go, after text
+// through Qt's glyph cache (as the widgets draw theirs, on this thread), it
+// is the same to the byte. Qt's FreeType faces would
+// otherwise move outlines by the last cached glyph's sub-pixel offset.
+void testOverlayTextRepeats()
+{
+    title::Style t;
+    t.text = QStringLiteral("Col du Galibier\n2642 m");
+    t.bold = false;
+    t.outline.on = true;
+    t.outline.width = 0.05f;
+    t.letterSpacing = 0.013f; // a style no other test draws
+    gauge::Style dial;
+    dial.reads = gauge::Reads::Altitude;
+    dial.units.altitude = title::AltitudeUnit::Feet;
+    dial.max = 557.0;
+    Telemetry::Values v;
+    v.altitudeM = 457.0;
+    const gaugerender::Reading r = gaugerender::readingOf(dial, v, 1080);
+    const titlerender::Picture title1 = titlerender::render(t, 92);
+    const titlerender::Picture small1 = titlerender::render(t, 40);
+    const gaugerender::Picture gauge1 = gaugerender::render(dial, 1080, r);
+    CHECK(!title1.empty() && !small1.empty() && !gauge1.empty());
+
+    // Others drawn until both caches have let the pictures go.
+    for (int i = 0; i < 70; ++i) {
+        title::Style other = t;
+        other.text = QString::number(i);
+        titlerender::render(other, 20);
+    }
+    gauge::Style bar;
+    bar.kind = gauge::Kind::Bar;
+    for (int i = 0; i < 24; ++i) {
+        Telemetry::Values o;
+        o.speedMps = i;
+        gaugerender::render(bar, 1080, gaugerender::readingOf(bar, o, 1080));
+    }
+    CHECK(titlerender::cached(t, 92).empty() && gaugerender::cached(dial, 1080, r).empty());
+    for (int px : {3, 4, 8, 12, 20, 31})
+        for (double x : {0.13, 0.4, 0.77}) {
+            QImage img(px * 30, px * 2, QImage::Format_ARGB32_Premultiplied);
+            img.fill(Qt::transparent);
+            QPainter p(&img);
+            QFont f(QStringLiteral("Sans Serif"));
+            f.setPixelSize(px);
+            for (bool bold : {false, true}) {
+                f.setBold(bold);
+                p.setFont(f);
+                p.drawText(QPointF(x, px * 1.3),
+                           QStringLiteral("Col du Galibier 2642 m 0123456789 ft"));
+            }
+        }
+
+    const titlerender::Picture title2 = titlerender::render(t, 92);
+    const titlerender::Picture small2 = titlerender::render(t, 40);
+    const gaugerender::Picture gauge2 = gaugerender::render(dial, 1080, r);
+    CHECK(title2.rgba != title1.rgba && *title2.rgba == *title1.rgba);
+    CHECK(small2.rgba != small1.rgba && *small2.rgba == *small1.rgba);
+    CHECK(gauge2.rgba != gauge1.rgba && *gauge2.rgba == *gauge1.rgba);
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -1771,6 +1836,7 @@ int main(int argc, char **argv)
     testMotionClock();
     testTelemetryCache();
     testGaugeReadings();
+    testOverlayTextRepeats();
     testMotionFields();
     testMotionGaugeReadings();
     testRoute();

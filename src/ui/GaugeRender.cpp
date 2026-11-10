@@ -1,5 +1,7 @@
 #include "GaugeRender.h"
 
+#include "OverlayText.h"
+
 #include <QFont>
 #include <QFontMetricsF>
 #include <QImage>
@@ -123,7 +125,7 @@ QFont fontAt(const gauge::Style &s, double px, bool bold)
 void textAt(QPainter &p, const QString &text, double x, double y)
 {
     const double w = QFontMetricsF(p.font()).horizontalAdvance(text);
-    p.drawText(QPointF(x - w / 2.0, y), text);
+    overlaytext::drawText(p, QPointF(x - w / 2.0, y), text);
 }
 
 QString numberText(const Reading &r)
@@ -212,10 +214,11 @@ void drawBar(QPainter &p, const gauge::Style &s, const Reading &r, double w, dou
     p.setFont(big);
     const QString number = numberText(r);
     const double baseline = 0.50 * h;
-    p.drawText(QPointF(pad + 0.04 * h, baseline), number);
+    overlaytext::drawText(p, QPointF(pad + 0.04 * h, baseline), number);
     const double numberW = QFontMetricsF(big).horizontalAdvance(number);
     p.setFont(fontAt(s, 0.18 * h, false));
-    p.drawText(QPointF(pad + 0.04 * h + numberW + 0.06 * h, baseline), unitText(s));
+    overlaytext::drawText(p, QPointF(pad + 0.04 * h + numberW + 0.06 * h, baseline),
+                          unitText(s));
     // The bar along its scale, its ends labelled.
     const QRectF track(pad, 0.60 * h, w - 2.0 * pad, 0.13 * h);
     p.setPen(Qt::NoPen);
@@ -235,8 +238,8 @@ void drawBar(QPainter &p, const gauge::Style &s, const Reading &r, double w, dou
     p.setFont(fontAt(s, 0.12 * h, false));
     const QFontMetricsF fm(p.font());
     const QString lo = scaleLabel(s.min, step), hi = scaleLabel(s.max, step);
-    p.drawText(QPointF(pad, 0.90 * h), lo);
-    p.drawText(QPointF(w - pad - fm.horizontalAdvance(hi), 0.90 * h), hi);
+    overlaytext::drawText(p, QPointF(pad, 0.90 * h), lo);
+    overlaytext::drawText(p, QPointF(w - pad - fm.horizontalAdvance(hi), 0.90 * h), hi);
 }
 
 void drawTape(QPainter &p, const gauge::Style &s, const Reading &r, double w, double h)
@@ -380,8 +383,8 @@ void drawGForce(QPainter &p, const gauge::Style &s, const Reading &r, double h)
         // Labelled up and to the right, off the axes.
         const double a = std::numbers::pi / 4.0;
         p.setPen(rgbColor(s.text, 0.8));
-        p.drawText(
-            QPointF(c.x() + rr * std::cos(a) + 0.01 * h, c.y() - rr * std::sin(a) - 0.01 * h),
+        overlaytext::drawText(
+            p, QPointF(c.x() + rr * std::cos(a) + 0.01 * h, c.y() - rr * std::sin(a) - 0.01 * h),
             scaleLabel(v, step));
     }
     // The total in the lower half, between the rings; the dot over it.
@@ -393,9 +396,9 @@ void drawGForce(QPainter &p, const gauge::Style &s, const Reading &r, double h)
     const double left = c.x() - (numberW + QFontMetricsF(small).horizontalAdvance(unit)) / 2.0;
     const double baseline = c.y() + 0.66 * R;
     p.setFont(big);
-    p.drawText(QPointF(left, baseline), number);
+    overlaytext::drawText(p, QPointF(left, baseline), number);
     p.setFont(small);
-    p.drawText(QPointF(left + numberW, baseline), unit);
+    overlaytext::drawText(p, QPointF(left + numberW, baseline), unit);
     if (!r.hasValue)
         return;
     // Across the travel to the right, speeding up upwards; past the scale
@@ -928,8 +931,9 @@ Picture render(const gauge::Style &style, int heightPx, const Reading &reading, 
     // Drawn outside the lock: two threads may both draw the same picture,
     // and the cache then keeps one.
     const uint64_t routeKey = routeKeyOf(style, route);
-    Picture pic =
-        draw(style, heightPx, reading, style.kind == gauge::Kind::Route ? route : nullptr);
+    Picture pic = overlaytext::onTextThread([&] {
+        return draw(style, heightPx, reading, style.kind == gauge::Kind::Route ? route : nullptr);
+    });
     Cache &c = cache();
     std::lock_guard<std::mutex> lk(c.mx);
     for (const Cached &o : c.list)

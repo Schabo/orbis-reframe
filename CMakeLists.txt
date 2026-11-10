@@ -572,6 +572,8 @@ if(FFMPEG_FOUND)
         src/ui/InsetFeed.h
         src/ui/GaugeRender.cpp
         src/ui/GaugeRender.h
+        src/ui/OverlayText.cpp
+        src/ui/OverlayText.h
         src/ui/GaugeSource.cpp
         src/ui/GaugeSource.h
         src/ui/TitlePresets.cpp
