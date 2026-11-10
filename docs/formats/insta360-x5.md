@@ -43,6 +43,7 @@ ones (one clip `v1.11.6_build1`). Which modes they cover is in §3.4.
 | `Demo/…/card/` | | that day's card files other than the media: `MISC/Camera01/*.pb` sidecars of every clip and proxy (§9), `MISC/RECRST_IDX*.SUCC`, `DCIM/fileinfo_list.list`, `DCIM/.editinfo_list.list` |
 | `Modes/VID_20250905_185106_00_018.insv` (+ `.lrv`) | 24 s (726 frames) | timelapse at firmware v1.5.6, 8K, 2 s interval, on the move (§3.5) |
 | `Modes/VID_20260801_172932_00_024.insv` (+ `.lrv`) | 44 s | 8K 30 riding, firmware v1.11.6 |
+| `Marks/VID_20261110_220445_00_010.insv` (+ `.lrv`, `.insv.pb`) | 24.5 s | 8K 30 with **two highlight marks** set while recording (§4.3) |
 
 ---
 
@@ -420,7 +421,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x0600` | 6 | FramePts / TimelapseTimestamp | 9 832 (`_078`) | `u64` device µs per frame, plus one; timelapse only (§3.5; ExifTool: `VideoTimeStamp`) | ✅ |
 | `0x0700` | 7 | **GPS** | 22 790 | 53 B × 10 Hz, fix updated at 1 Hz (§8); only with a GPS source | ✅ |
 | `0x0900` | 9 | **AAAData** (auto-exposure / white-balance / focus) | 61 536 | **48 B per recorded frame** (§4.4) | 📖 |
-| `0x0a00` | 10 | Anchors / highlights | 35 | `{type u8, count u32}` lists (+ u64 timestamps). Here 7 types (1,2,3,4,16,17,18), all with count 0 | 📖 ✅ |
+| `0x0a00` | 10 | Anchors / highlights | 35 (51 with two marks) | `{type u8, count u32, count × u64}` lists, 7 types (1,2,3,4,16,17,18). The marks set while recording are in **type 1**, as device µs (below); all counts 0 on clips without marks | 📖 ✅ |
 | `0x0b00` | 11 | AAASimulation | 342 294 | **267 B per recorded frame** (the same on `192900` and `201257`). Each block starts with the same `u32` ms timestamp as type 9's; the rest is bit-packed and not decoded, with small 8-bit curves visible | 📖❓ |
 | — | 12–18 | ExposureSecondary, Magnetic, Euler, SecGyro, Speed, TBox, Quaternions | — | not on the X5 samples (other models) | |
 | `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, world → body, 11 per frame across the readout; timelapse only (§3.5) | ✅ |
@@ -429,6 +430,19 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz | ❓ |
 | `0x3900` | 57 | ? | — | only in the software-rewritten `_019-trim` clip, not in its card original: written by Insta360 software | ❓ |
 | `0x8000` | 128 | **TimeMap** | 862 136 (`144221_019-trim`) | written by Insta360 software on trimmed/re-timed exports (the card original of `144221` has none). Decoded ✅: header `{u32 32 (header size), u32 trimCount, u32 pairBytes, u32 frameCount, 16 B zero}`, then `trimCount × {f64 duration, source start, source end}` (ms), then `(video ms, original ms)` f64 pairs, one per frame. On the sample: 1 trim, source 2002.0 → 1 799 764.6 ms, pairs `(0, 2002.0), (33.37, 2035.37)…`. **Field 24 keeps naming the original first frame**, so sync must add the source offset (§7.1) | ✅ |
+
+**Highlight marks (type 10)** ✅ (2026-11-10, `Marks/…_220445_00_010`): the
+record is the camera's `anchors` (its name in the `.pb` sidecar, §9). Each
+list is `u8 type`, `u32 count`, then `count` little-endian `u64` timestamps,
+with no padding. On that clip, recorded with two marks, list 1 holds
+75 928 729 and 86 128 627 and the other six lists are empty (51 bytes; every
+clip without marks has the 35-byte record with all counts 0). The values are
+device µs on the clock of `first_frame_timestamp` (field 24, 70 062 121 here),
+so a mark's video time is `(mark − field 24) / 1e6` s: **5.867 s** and
+**16.067 s**, which match when the marks were set. The `.lrv` carries the same
+record; the `.pb` sidecar doesn't hold the times. What lists 2, 3, 4 and
+16-18 hold (marks made in the phone app? other kinds of highlight?) is
+unknown ❓.
 
 ExifTool decodes types 1 (partly), 2, 3, 4, 6 and 7. Its source notes that
 0x900/0xa00/0xb00 also occur on X3 / ONE RS / Ace Pro. Our parser reads types

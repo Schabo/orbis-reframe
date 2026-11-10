@@ -18,8 +18,9 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 - **Highlight markers**: the marks set while recording, read from the clip
   and shown on the timeline to jump to; likely the start of general timeline
-  markers, saved in the project. Needs clips with marks first (none of ours
-  has any).
+  markers, saved in the project. Where the X5 stores the marks is known
+  now (record type 10, [X5 format](formats/insta360-x5.md) §4.3); other
+  cameras and marks made in the phone app still need clips.
 - **Preview from the Media tab**: play, scrub and look around in a file
   before it is on the timeline.
 - *Optional*: **`src/insv/` as its own repository**, once its API settles.
