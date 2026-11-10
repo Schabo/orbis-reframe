@@ -33,8 +33,13 @@ AppImage for other distributions with glibc 2.41 or newer (Fedora, Arch,
 openSUSE Tumbleweed, ...). The
 [user manual](docs/manual/README.md) starts with the
 [getting-started guide](docs/manual/getting-started.md): what your computer
-needs and how to install. **Found a problem?**
+needs and how to install.
+
+**Found a problem?**
 [Open an issue](https://github.com/Schabo/orbis-reframe/issues).
+
+**Questions, or want to talk?** Join the
+[Discord server](https://discord.gg/zDXUDd5Te).
 
 **Insta360 X5:** fully supported, the camera orbis-reframe is built and
 tested on: every capture mode tried so far (8K, 5.7K/5.7K+, 5.7K 60,
@@ -72,8 +77,11 @@ cameras is planned, and needs real footage to build on:
 
 Setups other people have run orbis-reframe on and told us about, until
 there are enough that a list stops being useful. Each row says what was
-confirmed, not more. Run it somewhere else? Tell us in
-[Discussions](https://github.com/Schabo/orbis-reframe/discussions) -- what
+confirmed, not more. 
+
+Run it somewhere else? Tell us in
+[Discussions](https://github.com/Schabo/orbis-reframe/discussions) or on
+[Discord](https://discord.gg/zDXUDd5Te) -- what
 works is as useful to know as what doesn't.
 
 | System | Graphics | orbis-reframe | Confirmed |
