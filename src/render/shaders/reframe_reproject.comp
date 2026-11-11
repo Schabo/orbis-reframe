@@ -116,9 +116,9 @@ vec2 uvFor(vec3 rw)
 
 // BT.709, limited ("TV") range, 8-bit RGB(0..255) -> YUV -- what the encoder
 // tags the stream as (exportpipe::FlattenWriter) and what players assume for
-// untagged HD. Was BT.601 until 2026-09-27: HD players decoded it as 709 and
-// shifted reds / greens. The CPU reproject path's sws_scale is set to the same
-// matrix, so both paths produce the same colour.
+// untagged HD (BT.601 here would shift reds / greens in those players). The
+// CPU reproject path's sws_scale is set to the same matrix, so both paths
+// produce the same colour.
 float lumaY(vec3 c) { return 16.0 + 0.182586 * c.r + 0.614231 * c.g + 0.062007 * c.b; }
 float chromaU(vec3 c) { return 128.0 - 0.100644 * c.r - 0.338572 * c.g + 0.439216 * c.b; }
 float chromaV(vec3 c) { return 128.0 + 0.439216 * c.r - 0.398942 * c.g - 0.040274 * c.b; }

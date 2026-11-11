@@ -13,7 +13,7 @@ class QWidget;
 // app runs the script's steps against itself -- the real window, Vulkan
 // viewport, decoder, tracker, plate scan and NVENC export -- and prints what
 // it measured as "[smoke] name=value" lines on stdout, for a shell script to
-// judge (tests/gpu/smoke_test.sh). Without the variable nothing of this is
+// judge (tests/release/gpu_smoke.sh). Without the variable nothing of this is
 // created.
 //
 // Driven the way a user drives the app, by name rather than by position:

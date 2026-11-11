@@ -8,7 +8,8 @@
 // strip each (SeamFlowStrips: azimuth phi along the seam across, elevation e
 // off it down, at the template's geometry and capture-time correction, so
 // the strips show what the stitch would sample). The flow between them
-// (estimated outside this module -- stitch::EstimateSeamFlow) says where
+// (estimated outside this module: insv::SeamFlowEstimator on the CPU,
+// render::VulkanFisheyeStitcher::estimateSeamFlow on the GPU) says where
 // lens 0's content sits in lens 1 (F01) and lens 1's in lens 0 (F10).
 // SeamFlowWindow averages it over the last few frames so the warp holds
 // still; a frame's field depends only on those frames, so a seek that

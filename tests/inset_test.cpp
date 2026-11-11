@@ -1,4 +1,4 @@
-// Exportpipe::FlatVideoReader and InsetCompositor on generated video, plus the
+// exportpipe::FlatVideoReader and InsetCompositor on generated video, plus the
 // CPU export's colour grade (ReframeRenderer). Writes small MPEG-4 files whose
 // frames each carry their index in their colour, then checks frame timing,
 // seeking, rotation and the NV12 blend. Exit code is the failure count.

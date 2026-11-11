@@ -37,7 +37,9 @@ using RsRotationFn = std::function<void(double tSec, double dtSec, float r[3])>;
 //     row), relative to the frame time.
 //   readoutSec: per lens, rows read top to bottom over this time around the
 //     lens's capture time (0 = all rows at once).
-// GyroStabilizer::lensCaptureOffsetsSec / lensReadoutSec give the X5's.
+//   scanColumns: the sensor reads columns instead of rows.
+// The app sets readoutSec from GyroStabilizer::readoutSec (the file's rolling
+// shutter); lensOffsetSec and scanColumns only tools/residual_stab sets.
 struct CaptureTiming {
     double lensOffsetSec[2] = {0.0, 0.0};
     double readoutSec[2] = {0.0, 0.0};

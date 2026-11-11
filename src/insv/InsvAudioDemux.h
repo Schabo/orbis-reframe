@@ -15,10 +15,8 @@ namespace insv {
 
 // Sequential decode of an Insta360 `.insv` file's audio stream (AAC on the
 // X5). The X5 muxes in *two* AAC streams -- one flagged `default`, one not
-// (ffprobe, 2026-09-05) -- initially assumed here to be a throwaway near-
-// duplicate, but the user has since identified them as two genuinely
-// different sources: the camera's own mic and an external accessory mic
-// (Insta360 Mic Air), confirmed by the two streams' differing peak levels
+// (ffprobe) -- from two different sources: the camera's own mic and an
+// external accessory mic (Insta360 Mic Air); their peak levels differ
 // (ffmpeg volumedetect: -1.3 dB vs -8.9 dB on the sample clip). The caller
 // picks which one to decode by its ordinal among the file's audio streams
 // (TrackClip::stream: each stream is its own clip on the Camera mic / External mic

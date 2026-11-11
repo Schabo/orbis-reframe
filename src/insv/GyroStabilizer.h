@@ -47,9 +47,10 @@ struct StabConfig {
     // 0 = keep the followed (leaned) orientation; 1 = a level virtual camera
     // (zero pitch/roll against gravity, heading smoothed over windowYawSec).
     // Blends in between. > 0 also turns on build()'s weak, gravity-seeded
-    // accel anchor that keeps the track's world +Y on "up" (2026-09-25
-    // redesign); a track with ImuTrack::orientation anchors on its up
-    // instead, more firmly, and holds its heading to its north. Used by the HorizonLock preset and available in Custom.
+    // accel anchor that keeps the track's world +Y on "up"; a track with
+    // ImuTrack::orientation anchors on its up instead, more firmly, and holds
+    // its heading to its north. Used by the HorizonLock preset and available
+    // in Custom.
     float horizonLockAmount = 0.0f;
 
     // Scales the accel-anchor gain in build() (1 = ~20 s time constant). Only

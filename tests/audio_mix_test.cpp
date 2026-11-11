@@ -309,7 +309,7 @@ void testWindKeepsEngineCutsWind()
     // An engine-like comb (25 Hz fundamental, harmonics to 1 kHz) over the
     // same rumble: the harmonics keep their level, the rumble between them
     // still drops. (Less than alone: at 5.9 Hz bins the harmonics' own
-    // spread leaves little room between them -- as in the spike.)
+    // spread leaves little room between them.)
     std::vector<float> sig = lowNoise(3 * kRate, 3);
     for (size_t i = 0; i < sig.size(); ++i)
         for (int h = 1; h * f0 < 1000.0; ++h)

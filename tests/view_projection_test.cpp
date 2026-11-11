@@ -121,8 +121,7 @@ void testPose()
 {
     const view::Pose p;
     CHECK(p.distortionIsAuto() && p.yaw == 0.0f);
-    // The default frames what the old default, 75 degrees up and down, did
-    // at 16:9.
+    // The default field of view frames 75 degrees up and down at 16:9.
     CHECK(float(view::fovYFor(p.fov, 0.0, 16.0 / 9.0)) == 1.309f);
     view::Pose q = p;
     CHECK(q == p);

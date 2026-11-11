@@ -19,9 +19,8 @@
 // ResidualTrack is the OpenCV-free result that playback / export sample -- it
 // is header-only so consumers need not link insv_optical to apply a track.
 //
-// Prototyped in tools/optflow_stab_spike --render derotate2d; the productised
-// path drops the (ruled-out) image-based rotation solve and works on the
-// gyro-de-rotated feature directions instead.
+// It works on the gyro-de-rotated feature directions; an image-based
+// rotation solve was ruled out.
 
 namespace insv {
 

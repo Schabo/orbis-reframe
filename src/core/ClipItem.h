@@ -279,8 +279,7 @@ struct ClipItem {
     bool showHiddenMarks();
 
 private:
-    // Clamp [inMs, outMs] into [0, sourceDuration] with the min-gap rule (the
-    // opposite edge never moves), apply, return whether it changed. (Was
-    // ClipModel::setRange.)
+    // Clamp [inMs, outMs] into [0, sourceDurationMs] with the min-gap rule
+    // (the opposite edge never moves), apply, return whether it changed.
     bool setRange(qint64 inMs, qint64 outMs);
 };

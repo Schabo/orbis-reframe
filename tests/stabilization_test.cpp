@@ -222,7 +222,7 @@ void testStabConfig()
         CHECK(std::fabs(r[0] + 0.01f) < 1e-5f);
     }
 
-    // 2026-09-25: LeanFollow is pure gyro -- accelerometer junk (a 0.4 g 11 Hz
+    // LeanFollow is pure gyro -- accelerometer junk (a 0.4 g 11 Hz
     // stick resonance) must not move its correction at all. Auto-level (on by
     // default) only reads the clip's mean accel, a constant ~identity here;
     // with it off the correction is exactly identity.
@@ -289,9 +289,9 @@ void testStabConfig()
         CHECK(std::fabs(fwd[0] * b[0] + fwd[1] * b[1] + fwd[2] * b[2]) < 1e-3f);
     }
 
-    // 2026-10-09: a residual gyro bias (the X5 keeps ~0.3-0.4 deg/s) against
-    // the weak accel anchor used to leave Horizon lock several degrees off
-    // level. Still camera, gravity 20 deg off body +Y, 0.006 rad/s of bias on
+    // A residual gyro bias (the X5 keeps ~0.3-0.4 deg/s) against the weak
+    // accel anchor would leave Horizon lock several degrees off level. Still
+    // camera, gravity 20 deg off body +Y, 0.006 rad/s of bias on
     // the two axes across gravity: the whole-clip fit must level it.
     {
         const double a = 20.0 * std::numbers::pi / 180.0;
@@ -322,9 +322,9 @@ void testStabConfig()
 
     // Horizon lock levels on the samples where the accel shows gravity: ~1 g
     // and not turning. A camera on a stick or in the hand swings about the
-    // vertical all the time; those swings aren't turns (2026-11-05: counted
-    // as turns, they left 0-3 % of ONE X2 walks to level on, and the level
-    // drifted with the gyro bias by up to 21 deg). The track's up, in body
+    // vertical all the time; those swings aren't turns (counted as turns,
+    // they leave 0-3 % of ONE X2 walks to level on, and the level drifts with
+    // the gyro bias by up to 21 deg). The track's up, in body
     // axes (the X5's map "z,-x,-y" as above), at time t.
     auto trackUp = [](const insv::GyroStabilizer& g, double t) {
         const auto q = g.rawOrientation(t);

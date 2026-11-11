@@ -5,12 +5,12 @@
 #
 # orbis-reframe / stitch gate on FFmpeg (+ Vulkan) only; CMake
 # prints a STATUS line and skips them if the FFmpeg dev packages are absent.
-# libavfilter-dev is among them (atempo time-stretch for clip speed, 2026-09-27).
-# OpenCV (libopencv-dev) -> insv_optical (the new stitcher's seam flow,
-# the sync fine-tune) + tools/residual_stab, also
-# optional; its objdetect module -> lens calibration (src/calib/,
-# "Calibrate lenses" in the Stitching panel, tools/lens_calib). Subject tracking (src/track/ -> "Track subject" in the Reframe
-# panel, tools/track_subject) additionally needs the contrib tracking + dnn
+# libavfilter-dev is among them (atempo time-stretch for clip speed).
+# OpenCV (libopencv-dev) -> insv_optical (the new stitcher's seam flow, the
+# sync fine-tune) + tools/residual_stab, optional; its objdetect module ->
+# lens calibration (src/calib/, "Calibrate lenses" in the Stitching panel,
+# tools/lens_calib). Subject tracking (src/track/ -> "Track subject" in the
+# Reframe panel, tools/track_subject) also needs the contrib tracking + dnn
 # modules (libopencv-contrib-dev); without them the button is hidden.
 # ncnn -> the privacy blur's plate scan ("Scan clip" in the Privacy panel,
 # src/privacy/PlateScanner, tools/plate_scan; ncnn isn't in Debian):
@@ -31,9 +31,9 @@
 #
 # Clips are read through `camera` (src/camera/: the common clip description,
 # a reader per camera family). Stitching is stitch::NativeStitchSource: the
-# clip's description -> the src/insv/ cleanroom core (insv + insv_demux, the latter carrying the
-# Vulkan-video decoder) + render_gpu_stitch (headless Vulkan compute port of
-# the fisheye->equirect stitch: src/render/VulkanFisheyeStitcher +
+# clip's description -> the src/insv/ cleanroom core (insv + insv_demux, the
+# latter carrying the Vulkan-video decoder) + render_gpu_stitch (the Vulkan
+# compute stitch: src/render/VulkanFisheyeStitcher +
 # shaders/fisheye_stitch{,_nv12}.comp). The all-GPU path (Vulkan video decode +
 # compute stitch) runs real-time; INSV_NO_GPU_DECODE=1 forces CPU decode,
 # INSV_NO_GPU_STITCH=1 forces the CPU stitch, INSV_FLAT_VIA_EQUIRECT=1 sends
@@ -77,10 +77,10 @@ cmake -B "$BUILD_DIR" -S "$REPO_ROOT" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     ${NCNN_ROOT:+-DNCNN_ROOT="$NCNN_ROOT"}
 cmake --build "$BUILD_DIR" -j"$(nproc)"
 
-# Fast, no-hardware unit tests (src/core edit model; TimelineWidget mouse
-# handling on the offscreen platform, if qt6-base-dev's Qt6Test is present;
-# the audio mixer and the M7b overlay reader / compositor on generated files).
-# ctest exits non-zero on failure, so `set -e` fails the build.
+# The tests (tests/): the edit model, the widgets on the offscreen platform,
+# the readers and compositors on generated files, and the GPU paths where a
+# Vulkan device is present. ctest exits non-zero on failure, so `set -e`
+# fails the build.
 ctest --test-dir "$BUILD_DIR" --output-on-failure
 
 if [[ "$RUN_AFTER" -eq 1 ]]; then

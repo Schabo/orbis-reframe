@@ -210,8 +210,8 @@ ResidualTrack ResidualPanEstimator::finish(float strength01, double fps) const
         return rt;
 
     // Longer window == more aggressive high-pass (keeps only the very slow
-    // motion). `leanWindowFromStrength` is a half-window here, matching the
-    // original spike (`--win 0.9` felt right => strength 0.5).
+    // motion). `leanWindowFromStrength` is a half-window here: strength 0.5
+    // gives the 0.9 s window that was found to look right.
     const float winSec = leanWindowFromStrength(strength01);
     const int half = std::max(1, static_cast<int>(std::lround(winSec * fps)));
 

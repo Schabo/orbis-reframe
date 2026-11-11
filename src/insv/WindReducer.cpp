@@ -217,7 +217,7 @@ struct WindReducer::Impl {
             trackP[k] = trackTx.cplx[k].re * trackTx.cplx[k].re + trackTx.cplx[k].im * trackTx.cplx[k].im;
         const auto [f0, conf] = trackF0();
         // Full protection from a moderately confident f0 up: scaling it by the
-        // confidence itself leaked the cut into the harmonics (spike).
+        // confidence itself leaks the cut into the harmonics.
         protection(f0, std::clamp(conf * 2.5f, 0.0f, 1.0f));
 
         const float frameSec = static_cast<float>(kHop) / rate;

@@ -145,8 +145,7 @@ add_test(NAME hlg_lut_test
 
 # --- src/insv: cleanroom .insv processing.
 # GyroStabilizer + the stitch core: calibration-string parse
-# and the CPU fisheye->equirect projection (productised from
-# the since-removed tools/native_stitch_spike). No Qt / Vulkan / FFmpeg -- consumes
+# and the CPU fisheye->equirect projection. No Qt / Vulkan / FFmpeg -- consumes
 # only the raw calibration string via insv_trailer. `orbis_core` links this
 # for GyroStabilizer, so it must stay dependency-free.
 add_library(insv STATIC
@@ -520,7 +519,7 @@ if(FFMPEG_FOUND)
         src/export/ReframeFlatten.cpp
         src/export/ReframeRenderer.h
         src/export/ReframeRenderer.cpp
-        # M7b: flat video insets -- decode, and composite into the output.
+        # Flat video insets -- decode, and composite into the output.
         src/export/FlatVideoReader.h
         src/export/FlatVideoReader.cpp
         src/export/InsetCompositor.h
@@ -766,7 +765,7 @@ if(FFMPEG_FOUND)
     # stitch::NativeStitchSource (in-process GPU stitch) -> grayscale equirect -> insv::ResidualPanEstimator,
     # with the gyro de-rotation (insv::GyroStabilizer) folded in; optionally
     # renders a de-rotated / de-rotated+residual-2D clip through the GPU reproject
-    # path (exportpipe::FlattenWriter). Retires the two-binary optflow_stab_spike.
+    # path (exportpipe::FlattenWriter).
     if(OpenCV_FOUND)
         # --- privacy_scan: the privacy blur's number-plate scan
         # (src/privacy/PlateScanner): gyro-levelled
@@ -1125,7 +1124,7 @@ if(TARGET camera AND Qt6Test_FOUND)
     add_test(NAME settings_sidebar_test COMMAND settings_sidebar_test)
 endif()
 
-# M7b: the flat-video reader and the inset compositor on generated video.
+# The flat-video reader and the inset compositor on generated video.
 if(TARGET reframe_flatten)
     add_executable(inset_test tests/inset_test.cpp)
     target_include_directories(inset_test PRIVATE src/core)

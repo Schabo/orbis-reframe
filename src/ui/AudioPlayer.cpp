@@ -137,7 +137,7 @@ void AudioPlayer::applyMix(std::vector<insv::MixClip> clips)
         std::lock_guard<std::mutex> lk(m_mx);
         m_mixClips = std::move(clips);
         m_mixDirty = true;
-        // Drop the queued audio mixed the old way.
+        // Drop the queued audio, mixed from the clips as they were.
         requestSeekLocked(m_lastVideoMs, played);
     }
     m_cv.notify_all();

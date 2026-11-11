@@ -51,7 +51,7 @@ PrivacyPanel::PrivacyPanel(QWidget *parent)
     form()->addRow(m_showRegions);
 
     // The theme's plate colours, as the viewport draws them
-    // (MainWindow::pushRegionOverlay).
+    // (PrivacyBlur::pushTo's outline provider).
     m_legend = new QLabel(this);
     updateLegend();
     connect(theme::notifier(), &theme::Notifier::changed, this, [this] {

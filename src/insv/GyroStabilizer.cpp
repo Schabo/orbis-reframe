@@ -864,18 +864,18 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     };
 
     // Gyro integration, plus -- only for horizon leveling -- a weak Mahony
-    // accel term that keeps the world frame's +Y on gravity. Measured
-    // 2026-09-25 on the stick-mount clip:
-    //   - LeanFollow works on relative deltas and needs no "up" at all; the
-    //     old always-on 1 rad/s accel term injected the ~9 Hz stick resonance
-    //     and cost 26 % more residual rotation. So: pure gyro unless leveling.
+    // accel term that keeps the world frame's +Y on gravity. Measured on the
+    // stick-mount clip:
+    //   - LeanFollow works on relative deltas and needs no "up" at all; an
+    //     always-on 1 rad/s accel term injects the ~9 Hz stick resonance and
+    //     costs 26 % more residual rotation. So: pure gyro unless leveling.
     //   - For leveling, a strong term makes the horizon chase the accel, which
     //     in a coordinated turn points along the *leaned* bike, not gravity --
-    //     every corner dragged the horizon. The gain is now a slow anchor (~20
+    //     every corner drags the horizon. The gain is a slow anchor (~20
     //     s time constant), frozen while turning (sustained world yaw rate) or
     //     when the specific force isn't ~1 g, and the track is seeded level
     //     from the first half second of accel instead of converging from
-    //     identity. Studio behaves the same way (the since-removed tools/horizon_spike).
+    //     identity. Insta360 Studio's leveling behaves the same way.
     constexpr double kAccelGain = 0.05;     // rad/s per rad of tilt error at horizonGain 1
     // Turning: the vehicle's lateral acceleration is speed x yaw rate, so a
     // threshold on the yaw rate alone lets fast bends through -- at 0.08 rad/s

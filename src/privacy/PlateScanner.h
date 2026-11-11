@@ -35,7 +35,7 @@
 // view already rendered. A view moved between frames is an exact homography
 // (same centre of projection), so no frame is ever rendered twice.
 //
-// Unlike the spike, a new track on top of a live quad doesn't end it -- two
+// A new track on top of a live quad doesn't end it -- two
 // overlapping blurs beat a dropped one -- and the frame a quad is lost on is
 // covered by its hold.
 //

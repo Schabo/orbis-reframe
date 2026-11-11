@@ -58,7 +58,7 @@ void PrivacyBlur::pushTo(PlaybackController &controller, const Timeline &timelin
     // differ; the export takes the same blurFor.
     std::map<int, stitch::BlurQuadsFn> blurs;
     // "Show regions": the scan's regions of every clip with a scan, blur on or
-    // not, in the privacy spike's debug colours (by RegionKind; the Privacy
+    // not, in a colour per RegionKind (the theme's plate colours; the Privacy
     // panel's legend matches); the ones removed by hand in grey.
     struct Outlined {
         PlateScanCache::Scan scan;

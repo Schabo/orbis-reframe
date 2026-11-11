@@ -14,8 +14,7 @@
 
 // CPU fisheye -> equirectangular stitch (src/insv/).
 //
-// Productised from the since-removed tools/native_stitch_spike. For each
-// equirect texel: reconstruct the world ray, rotate each lens's ray into its
+// For each equirect texel: reconstruct the world ray, rotate each lens's ray into its
 // own frame, project it through the lens's MEI calibration, sample, and
 // feather-blend the two lenses across the overlap band, their colours matched
 // by the clip's lens colour (insv::LensColour). With StitchParams::depthSeam each lens is sampled from its own

@@ -1,5 +1,4 @@
-// Command-line tool for track::SubjectTracker (src/track/; the research spike
-// tools/track_spike, renamed 2026-10-05).
+// Command-line tool for track::SubjectTracker (src/track/).
 //
 // Stitches the clip (stitch::NativeStitchSource) from --t0, feeds each
 // equirect + its gyro de-rotation (insv::GyroStabilizer, Lean follow) to the

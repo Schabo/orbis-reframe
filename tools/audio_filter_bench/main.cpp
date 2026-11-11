@@ -15,10 +15,8 @@
 //
 // The X5 streams (camera mic and Mic Air) are dual mono: both channels are
 // bit-identical (measured on every sample clip, 2026-09-29), so everything
-// here works on channel 0 and writes mono.
-//
-// This tool's own first wind filter, which insv::WindReducer productised,
-// was removed 2026-10-05; its engine-f0 tracker stays as the scorer.
+// here works on channel 0 and writes mono. The engine-f0 tracker scores how
+// much of the engine a filter leaves.
 
 #include "ClipAudioReader.h"
 #include "GeneralWindReducer.h"

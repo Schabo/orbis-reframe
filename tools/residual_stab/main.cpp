@@ -1375,9 +1375,9 @@ int main(int argc, char** argv)
     std::printf("correction max |.|   %.3f / %.3f deg\n", maxAbs(track.dyaw) * kRadToDeg,
                 maxAbs(track.dpitch) * kRadToDeg);
 
-    // Gyro-correction roll/pitch over the range -- the old Euler HorizonLock
-    // path drifted / blew toward +-180; the fixed one should stay bounded and
-    // smooth (roll tracks and cancels the camera's roll).
+    // Gyro-correction roll/pitch over the range: they should stay bounded and
+    // smooth, not drift toward +-180 (roll tracks and cancels the camera's
+    // roll).
     if (gyro.ready()) {
         std::vector<float> corrRoll, corrPitch;
         for (const double ts : est.times()) {

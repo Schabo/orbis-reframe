@@ -912,7 +912,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
         return FlatFrame{};
     }
     // The fused pass unless it's missing or INSV_FLAT_VIA_EQUIRECT asks for
-    // the old equirect + reproject (comparisons, and a way back if needed).
+    // the stitch to an equirect and a reproject from it (for comparisons).
     const bool fused = GpuViewAvailable() &&
                        (!gpu_->reframeReady() || !std::getenv("INSV_FLAT_VIA_EQUIRECT"));
     FlatFrame frame;

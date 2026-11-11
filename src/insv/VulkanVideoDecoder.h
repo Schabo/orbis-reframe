@@ -24,9 +24,8 @@
 // submission to it from outside FFmpeg must hold the queue's lock
 // (queueLock()).
 //
-// Frames are allocated CONCURRENT across FFmpeg's queue families (verified
-// via the since-removed tools/vkdecode_spike), so no queue-family ownership
-// transfer is needed.
+// Frames are allocated CONCURRENT across FFmpeg's queue families, so no
+// queue-family ownership transfer is needed.
 //
 // The demux, decoders and seeking are LensDemuxer's, shared with InsvDemux;
 // this adds the Vulkan hwaccel set-up and the frame locking.
