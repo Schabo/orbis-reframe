@@ -66,10 +66,58 @@ int PlaybackController::segmentAt(const QList<Placed> &placed, qint64 timelineMs
 
 void PlaybackController::setTimeline(const QList<Segment> &segments)
 {
+    m_timelineSegments = segments;
+    if (!m_sourceShown)
+        applyTimeline(segments, m_positionMs, false);
+}
+
+void PlaybackController::showSource(Segment segment, std::vector<InsetFeed::Clip> insets)
+{
+    pause();
+    m_resumeAfterScrub = false;
+    if (!m_sourceShown)
+        m_timelinePositionMs = m_positionMs;
+    {
+        std::lock_guard<std::mutex> lk(m_programMx);
+        m_sourceShown = true;
+        m_insets.setClips(std::move(insets));
+    }
+    m_sourceLookForward = true;
+    segment.clipId = kSourceClipId;
+    emit sourceShownChanged(true);
+    applyTimeline({segment}, 0, true);
+}
+
+void PlaybackController::showTimeline()
+{
+    if (!m_sourceShown)
+        return;
+    pause();
+    m_resumeAfterScrub = false;
+    {
+        std::lock_guard<std::mutex> lk(m_programMx);
+        m_sourceShown = false;
+        m_insets.setClips(m_timelineInsets);
+    }
+    emit sourceShownChanged(false);
+    applyTimeline(m_timelineSegments, m_timelinePositionMs, true);
+}
+
+void PlaybackController::setInsets(std::vector<InsetFeed::Clip> clips)
+{
+    std::lock_guard<std::mutex> lk(m_programMx);
+    m_timelineInsets = clips;
+    if (!m_sourceShown)
+        m_insets.setClips(std::move(clips));
+}
+
+void PlaybackController::applyTimeline(const QList<Segment> &segments, qint64 positionMs,
+                                       bool switched)
+{
     QList<Placed> placed = placeSegments(segments);
     m_totalMs = placed.isEmpty() ? 0 : placed.back().endMs();
     m_haveTimeline = !placed.isEmpty();
-    m_positionMs = clampTimeline(m_positionMs);
+    m_positionMs = clampTimeline(positionMs);
     m_clockBaseMs = m_positionMs;
     m_clock.restart();
     m_presentAfterSeek = true;
@@ -100,6 +148,8 @@ void PlaybackController::setTimeline(const QList<Segment> &segments)
     }
 
     emit durationChanged(m_totalMs);
+    if (switched)
+        emit seeked(m_positionMs);
     emit positionChanged(m_positionMs, steadyNs());
 }
 
@@ -208,6 +258,34 @@ void PlaybackController::togglePlay()
 
 void PlaybackController::seek(qint64 timelineMs)
 {
+    if (m_sourceShown)
+        m_timelinePositionMs = std::max<qint64>(0, timelineMs); // clamped when it's back
+    else
+        seekShown(timelineMs);
+}
+
+void PlaybackController::scrub(qint64 timelineMs)
+{
+    if (m_sourceShown)
+        m_timelinePositionMs = std::max<qint64>(0, timelineMs);
+    else
+        scrubShown(timelineMs);
+}
+
+void PlaybackController::seekSource(qint64 sourceMs)
+{
+    if (m_sourceShown)
+        seekShown(sourceMs);
+}
+
+void PlaybackController::scrubSource(qint64 sourceMs)
+{
+    if (m_sourceShown)
+        scrubShown(sourceMs);
+}
+
+void PlaybackController::seekShown(qint64 timelineMs)
+{
     if (!m_haveTimeline)
         return;
     m_positionMs = clampTimeline(timelineMs);
@@ -244,7 +322,7 @@ void PlaybackController::setScrubbing(bool on)
     emit scrubbingChanged(on);
 }
 
-void PlaybackController::scrub(qint64 timelineMs)
+void PlaybackController::scrubShown(qint64 timelineMs)
 {
     if (!m_haveTimeline)
         return;
@@ -574,7 +652,20 @@ void PlaybackController::tick()
             }
             float stab[9];
             const auto stabT0 = render::framestats::Clock::now();
-            const bool haveStab = provider && provider(chosenClipId, chosenSourceUs, stab);
+            // A source (showSource) has the stabilization it would get on the
+            // timeline, if the provider has one for it; none of a clip's
+            // other settings, and the view the user's own.
+            const bool source = chosenClipId == kSourceClipId;
+            if (source) {
+                outlineProvider = nullptr;
+                viewProvider = nullptr;
+            }
+            bool haveStab = provider && provider(chosenClipId, chosenSourceUs, stab);
+            if (source && !haveStab) {
+                static constexpr float kIdentity[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+                std::copy(std::begin(kIdentity), std::end(kIdentity), stab);
+                haveStab = true;
+            }
             if (render::framestats::Enabled() && playing) {
                 ++m_stats.shown;
                 m_stats.lateMs.add(double(clockMs - chosen.timestamp_ms));
@@ -588,6 +679,12 @@ void PlaybackController::tick()
             EquirectViewportWindow::FrameView view;
             if (viewProvider)
                 viewProvider(chosenClipId, chosenSourceMs, view);
+            if (source) {
+                view.hasGrade = true; // neutral
+                view.hasPanes = true; // one pane
+                view.hasPose = m_sourceLookForward;
+                m_sourceLookForward = false;
+            }
             if (chosenLens)
                 m_viewport->SetLensFrame(std::move(chosenLens), haveStab ? stab : nullptr,
                                          std::move(outlines), view);

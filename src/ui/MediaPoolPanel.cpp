@@ -6,8 +6,10 @@
 #include <QDragEnterEvent>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollBar>
@@ -142,8 +144,7 @@ public:
         const auto kind = MediaItem::Kind(index.data(MediaPoolPanel::KindRole).toInt());
 
         // Thumbnail, or the kind's icon on a plain area.
-        const QSize ts = MediaPoolPanel::thumbnailSize();
-        const QRectF thumbRect(r.left() + kPad, r.top() + kPad, ts.width(), ts.height());
+        const QRectF thumbRect(MediaPoolPanel::thumbnailRect(r));
         QPainterPath shape;
         shape.addRoundedRect(thumbRect, kRadius, kRadius);
         p->save();
@@ -158,7 +159,31 @@ public:
                 .paint(p, icon.translated(thumbRect.center().toPoint() - icon.center()),
                        Qt::AlignCenter, missing ? QIcon::Normal : QIcon::Disabled);
         }
+        // The play button: under the mouse, and on the file previewed
+        // (pause while it plays).
+        const auto preview =
+            MediaPoolPanel::Preview(index.data(MediaPoolPanel::PreviewRole).toInt());
+        if (!missing && (hover || preview != MediaPoolPanel::Preview::None)) {
+            constexpr qreal kButton = 26;
+            const QRectF button(thumbRect.center() - QPointF(kButton / 2, kButton / 2),
+                                QSizeF(kButton, kButton));
+            QColor disc = tc.window;
+            disc.setAlpha(preview != MediaPoolPanel::Preview::None ? 235 : 200);
+            p->setPen(Qt::NoPen);
+            p->setBrush(disc);
+            p->drawEllipse(button);
+            const QRect icon(0, 0, 16, 16);
+            theme::icon(preview == MediaPoolPanel::Preview::Playing ? QStringLiteral("pause")
+                                                                    : QStringLiteral("play"),
+                        theme::IconTone::Accent)
+                .paint(p, icon.translated(button.center().toPoint() - icon.center()));
+        }
         p->restore();
+        if (preview != MediaPoolPanel::Preview::None) { // the file in the viewport: ringed
+            p->setPen(QPen(tc.accent, 2));
+            p->setBrush(Qt::NoBrush);
+            p->drawRoundedRect(thumbRect.adjusted(-1, -1, 1, 1), kRadius + 1, kRadius + 1);
+        }
 
         // Name (and the in-use mark), kind and length, size and rate.
         const int left = int(thumbRect.right()) + kPad + 2;
@@ -214,6 +239,62 @@ MediaPoolList::MediaPoolList(QWidget *parent) : QTreeWidget(parent)
     setFrameShape(QFrame::NoFrame);
     setExpandsOnDoubleClick(false);
     setItemDelegate(new MediaRowDelegate(this));
+}
+
+QString MediaPoolList::previewPath() const
+{
+    const QTreeWidgetItem *item = currentItem();
+    if (!item || item->data(0, MediaPoolPanel::FolderRole).toBool() ||
+        item->data(0, MediaPoolPanel::MissingRole).toBool())
+        return {};
+    return item->data(0, MediaPoolPanel::PathRole).toString();
+}
+
+bool MediaPoolList::event(QEvent *e)
+{
+    // Space previews the current file here rather than play the timeline
+    // (the window's shortcut).
+    if (e->type() == QEvent::ShortcutOverride) {
+        const auto *k = static_cast<QKeyEvent *>(e);
+        if (k->key() == Qt::Key_Space && k->modifiers() == Qt::NoModifier &&
+            !previewPath().isEmpty()) {
+            e->accept();
+            return true;
+        }
+    }
+    return QTreeWidget::event(e);
+}
+
+void MediaPoolList::keyPressEvent(QKeyEvent *e)
+{
+    if (e->key() == Qt::Key_Space && e->modifiers() == Qt::NoModifier) {
+        if (const QString path = previewPath(); !path.isEmpty()) {
+            if (!e->isAutoRepeat())
+                emit previewKeyPressed(path);
+            e->accept();
+            return;
+        }
+    }
+    QTreeWidget::keyPressEvent(e);
+}
+
+void MediaPoolList::mousePressEvent(QMouseEvent *e)
+{
+    // On a file's picture: its play button. The row is selected as by any
+    // click, but the press doesn't start a drag.
+    if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier) {
+        const QModelIndex index = indexAt(e->position().toPoint());
+        QTreeWidgetItem *item = itemFromIndex(index);
+        if (item && !item->data(0, MediaPoolPanel::FolderRole).toBool() &&
+            !item->data(0, MediaPoolPanel::MissingRole).toBool() &&
+            MediaPoolPanel::thumbnailRect(visualRect(index)).contains(e->position().toPoint())) {
+            setCurrentItem(item);
+            emit previewClicked(item->data(0, MediaPoolPanel::PathRole).toString());
+            e->accept();
+            return;
+        }
+    }
+    QTreeWidget::mousePressEvent(e);
 }
 
 QStringList MediaPoolList::mimeTypes() const { return {QStringLiteral("text/uri-list")}; }
@@ -297,6 +378,12 @@ void MediaPoolList::paintEvent(QPaintEvent *e)
 
 QSize MediaPoolPanel::thumbnailSize() { return {80, 45}; }
 
+QRect MediaPoolPanel::thumbnailRect(const QRect &row)
+{
+    return {row.left() + kPad, row.top() + kPad, thumbnailSize().width(),
+            thumbnailSize().height()};
+}
+
 MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(parent), m_pool(pool)
 {
     setObjectName(QStringLiteral("mediaPoolPanel"));
@@ -335,6 +422,8 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
 
     m_list = new MediaPoolList(this);
     connect(m_list, &MediaPoolList::filesDropped, this, &MediaPoolPanel::filesDropped);
+    connect(m_list, &MediaPoolList::previewClicked, this, &MediaPoolPanel::previewRequested);
+    connect(m_list, &MediaPoolList::previewKeyPressed, this, &MediaPoolPanel::previewRequested);
     connect(m_list, &QTreeWidget::itemSelectionChanged, this, &MediaPoolPanel::updateActions);
     connect(m_list, &QTreeWidget::itemClicked, this, [](QTreeWidgetItem *item) {
         if (item->data(0, FolderRole).toBool())
@@ -451,6 +540,24 @@ void MediaPoolPanel::setInUse(const QSet<QString> &paths)
     updateActions();
 }
 
+void MediaPoolPanel::setPreview(const QString &path, bool playing)
+{
+    const Preview preview =
+        path.isEmpty() ? Preview::None : playing ? Preview::Playing : Preview::Paused;
+    if (path == m_previewPath && preview == m_preview)
+        return;
+    m_previewPath = path;
+    m_preview = preview;
+    for (int i = 0; i < m_list->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *folder = m_list->topLevelItem(i);
+        for (int j = 0; j < folder->childCount(); ++j) {
+            QTreeWidgetItem *item = folder->child(j);
+            const bool shown = item->data(0, PathRole).toString() == m_previewPath;
+            item->setData(0, PreviewRole, int(shown ? m_preview : Preview::None));
+        }
+    }
+}
+
 void MediaPoolPanel::setStatus(const QString &text)
 {
     m_status->setText(text);
@@ -533,6 +640,7 @@ void MediaPoolPanel::rebuild()
         item->setData(0, MissingRole, m.missing);
         const bool inUse = m_inUse.contains(m.path);
         item->setData(0, InUseRole, inUse);
+        item->setData(0, PreviewRole, int(m.path == m_previewPath ? m_preview : Preview::None));
         item->setToolTip(0, QDir::toNativeSeparators(m.path) +
                                 (m.missing ? tr("\nFile not found: double-click to locate it")
                                  : inUse   ? tr("\nUsed on the timeline")

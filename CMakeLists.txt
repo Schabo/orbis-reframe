@@ -544,6 +544,7 @@ if(FFMPEG_FOUND)
         src/ui/MainWindowLibrary.cpp
         src/ui/MainWindowExport.cpp
         src/ui/MainWindowTransitions.cpp
+        src/ui/MainWindowSource.cpp
         src/ui/MainWindow.h
         src/ui/AudioPlayer.cpp
         src/ui/AudioPlayer.h

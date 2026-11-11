@@ -190,6 +190,12 @@ public slots:
                    double fps, int sourceWidth = 0, int sourceHeight = 0,
                    int audioStreams = 0, bool flat = false,
                    stitch::LensGuardProfiles lensGuards = stitch::LensGuardProfiles::all());
+    // The clip insertClip would put in at `index`, without its id and sound,
+    // and without putting it in: what the Media tab's preview plays a file
+    // as (its stitch settings, as it would get them).
+    ClipItem newClip(int index, const QString &sourcePath, qint64 sourceDurationMs, double fps,
+                     int sourceWidth = 0, int sourceHeight = 0, bool flat = false,
+                     stitch::LensGuardProfiles lensGuards = stitch::LensGuardProfiles::all()) const;
     // Append; same as insertClip(count(), ...).
     int appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,
                    int sourceWidth = 0, int sourceHeight = 0, int audioStreams = 0,

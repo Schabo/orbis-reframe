@@ -75,12 +75,13 @@ bool StabilizerCache::ensure(const ClipItem &c, double syncMs)
     return true;
 }
 
-std::map<int, stitch::CaptureTiming> StabilizerCache::publish(const Timeline &timeline)
+std::map<int, stitch::CaptureTiming> StabilizerCache::publish(const Timeline &timeline,
+                                                              const ClipItem *extra)
 {
     std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
     std::map<int, stitch::CaptureTiming> timings;
-    for (int i = 0; i < timeline.count(); ++i) {
-        const ClipItem &c = timeline.clipAt(i);
+    for (int i = 0; i < timeline.count() + (extra ? 1 : 0); ++i) {
+        const ClipItem &c = i < timeline.count() ? timeline.clipAt(i) : *extra;
         if (c.stabilization.mode == insv::StabMode::Off) {
             clips.emplace(c.id, nullptr); // identity
             continue;

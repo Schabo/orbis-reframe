@@ -50,8 +50,11 @@ public:
     bool ensure(const ClipItem &c, double syncMs);
     // Hand every timeline clip's built stabilizer to provider(); returns
     // their capture-time corrections for PlaybackController::setCaptureTimings.
-    // Call after the cache or the clips change.
-    std::map<int, stitch::CaptureTiming> publish(const Timeline &timeline);
+    // `extra` (by its own id) too: a file previewed from the Media tab, as
+    // the clip it would be on the timeline. Call after the cache or the
+    // clips change.
+    std::map<int, stitch::CaptureTiming> publish(const Timeline &timeline,
+                                                 const ClipItem *extra = nullptr);
     // Clip `c`'s correction at `sourceUs` (its exact source time, us) into
     // `m`; identity when its stabilization is Off or its stabilizer isn't built.
     void correctionFor(const ClipItem &c, double syncMs, qint64 sourceUs, float m[3][3]) const;

@@ -26,8 +26,15 @@ public:
 
 signals:
     void filesDropped(const QStringList &paths);
+    // A click on a file's picture (its play button).
+    void previewClicked(const QString &path);
+    // Space, with a file current (Qt's current item).
+    void previewKeyPressed(const QString &path);
 
 protected:
+    bool event(QEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
     QStringList mimeTypes() const override;
     QMimeData *mimeData(const QList<QTreeWidgetItem *> &items) const override;
     Qt::DropActions supportedDropActions() const override;
@@ -40,6 +47,8 @@ private:
     // Local files and folders among a drag's URLs; empty for a drag from the
     // list itself.
     QStringList droppedPaths(const QDropEvent *e) const;
+    // The file Space previews: the current row's, if it's a file that's there.
+    QString previewPath() const;
 };
 
 // The left sidebar's Media tab: the project's media pool (Project's
@@ -48,7 +57,9 @@ private:
 // frame rate; files used on the timeline are marked, missing files flagged.
 // Import buttons; drag a file onto the timeline; double-click or Enter adds
 // it there (a missing file: asks to locate it); right-click: add to
-// timeline, locate a missing file, show in the file manager, remove.
+// timeline, locate a missing file, show in the file manager, remove. The
+// play button on a file's picture, or Space, previews it (MainWindow plays
+// it in the viewport instead of the timeline; setPreview marks it).
 // Thumbnails and a 360 clip's recording mode ("8K") come from providers run
 // on worker threads (the app's decode a frame and ask the camera's reader;
 // none in tests).
@@ -67,7 +78,9 @@ public:
         MissingRole,                 // bool: the file isn't there
         ThumbnailRole,               // QImage
         CountRole,                   // int: a folder's file count
+        PreviewRole,                 // int: Preview, the file previewed (setPreview)
     };
+    enum class Preview { None, Paused, Playing };
 
     using ThumbnailProvider = std::function<QImage(const MediaItem &, const QSize &)>;
     // A 360 clip's recording mode as its camera names it ("5.7K"); empty when
@@ -86,6 +99,10 @@ public:
     void forgetFiles(const QStringList &paths);
     // A line under the header, e.g. "Adding 3 files…"; empty hides it.
     void setStatus(const QString &text);
+    // The file playing in the viewport instead of the timeline (empty:
+    // none), and whether it plays: its play button stays up, as pause
+    // while it plays.
+    void setPreview(const QString &path, bool playing);
 
     MediaPoolList *list() const { return m_list; }
     // The selected files (folder rows left out), in list order.
@@ -94,6 +111,8 @@ public:
 
     // Thumbnail size, in device-independent pixels.
     static QSize thumbnailSize();
+    // Where a file row's thumbnail (and its play button) is in the row.
+    static QRect thumbnailRect(const QRect &row);
 
 signals:
     void importFilesRequested();
@@ -103,6 +122,9 @@ signals:
     void addToTimelineRequested(const QStringList &paths);
     // Locate file… on a missing file.
     void locateRequested(const QString &path);
+    // Preview this file (its play button, Space), or play / pause it if
+    // it's the one previewed.
+    void previewRequested(const QString &path);
 
 private:
     void rebuild();
@@ -124,6 +146,8 @@ private:
     ThumbnailProvider m_thumbnailProvider;
     ModeProvider m_modeProvider;
     QSet<QString> m_inUse;
+    QString m_previewPath;
+    Preview m_preview = Preview::None;
     QSet<QString> m_collapsed; // folders closed by the user
     QHash<QString, QImage> m_thumbnails; // by path; null = none to be had
     QHash<QString, QString> m_modes;      // by path; empty = none to be had

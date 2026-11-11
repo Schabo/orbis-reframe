@@ -171,8 +171,10 @@ void MainWindow::updateExportEnabled()
 
 void MainWindow::updateScreenshotEnabled()
 {
+    // The screenshot is the timeline's frame: not while a Media tab file
+    // is shown instead.
     const bool on = !m_exports->savingStill() && !m_exports->exporting() &&
-                    m_timeline->count() > 0 && m_fps > 0.0;
+                    m_timeline->count() > 0 && m_fps > 0.0 && !previewing();
     m_screenshotAction->setEnabled(on);
     m_playerBar->setScreenshotEnabled(on);
     // While tracking, the button is the Stop control.

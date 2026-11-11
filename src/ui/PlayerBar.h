@@ -112,6 +112,11 @@ public slots:
     void setFullScreen(bool fullScreen);
     // Click-to-type on the time display, as a click on it does.
     void editTime();
+    // A file from the Media tab is playing instead of the timeline (its
+    // name; empty: the timeline again): a line over the bar says so, with
+    // a button back to the timeline. The times are then the file's.
+    void setSource(const QString &name);
+    QString source() const { return m_sourceName; }
 
 signals:
     void playPauseClicked();
@@ -129,6 +134,7 @@ signals:
     void mutedChanged(bool muted);
     void screenshotRequested();
     void fullScreenClicked();
+    void backToTimelineClicked();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -149,6 +155,9 @@ private:
     QSlider *m_volumeSlider = nullptr;
     QToolButton *m_fullScreenButton = nullptr;
     QLabel *m_bufferingLabel = nullptr;
+    QWidget *m_sourceRow = nullptr;
+    QLabel *m_sourceLabel = nullptr;
+    QString m_sourceName;
     // Delays showing the buffering label so a sub-second GetFrame() doesn't
     // make it flicker.
     QTimer *m_bufferingDelay = nullptr;

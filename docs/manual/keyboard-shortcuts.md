@@ -30,7 +30,7 @@ shortcuts.
 | `Delete` or `Backspace` | Delete the selected clip or transition. With nothing selected: delete the reframe keyframe at the playhead. |
 | `M` | Add a highlight mark at the playhead, on the clip under it. |
 | `Shift+M` | Delete the highlight mark at the playhead; one set while recording is hidden. |
-| `Esc` | Clear the selection. While drawing a box for Track subject or Blur a plate: cancel it. In full screen: leave full screen. |
+| `Esc` | Clear the selection. While drawing a box for Track subject or Blur a plate: cancel it. In full screen: leave full screen. While a Media tab file previews: back to the timeline. |
 | `Ctrl+Z` | Undo. |
 | `Ctrl+Shift+Z` | Redo. |
 
@@ -68,7 +68,11 @@ shortcuts.
 
 In the **Media** tab: `Enter` (or a double-click) puts the selected files on
 the timeline, `Delete` removes them from the project's media (the files
-stay).
+stay), and `Space` plays the selected file in the viewport without putting
+it on the timeline (again: pause). While a file previews, the playback keys
+above move in that file (`↑` / `↓` and `Home` / `End` to its start and end,
+`Ctrl+↑` / `Ctrl+↓` to its camera's highlight marks), and `Esc` goes back to
+the timeline; see [Previewing a file](main-window.md#previewing-a-file).
 
 ## Files
 

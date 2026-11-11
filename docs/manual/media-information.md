@@ -7,6 +7,9 @@ title to open it. It only shows information; nothing here can be changed.
 
 It shows the file of the clip you selected on the video track, or of the
 clip under the playhead if none is selected. With no clip, it's empty.
+While a file from the **Media** tab is previewed
+([Previewing a file](main-window.md#previewing-a-file)), it shows that file
+instead, and says *Previewed file* at its top right.
 
 <img src="images/media-information-panel.jpg" width="350" alt="The Media information section for an 8K clip">
 

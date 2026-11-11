@@ -32,6 +32,8 @@ bool MainWindow::trackingRunning() const
 void MainWindow::setTrackSelecting(bool on)
 {
 #ifdef ORBIS_REFRAME_HAVE_TRACKING
+    if (on)
+        leaveSource(); // the box goes on the timeline's picture
     if (on && m_plateSelecting)
         setPlateSelecting(false);
     const ClipItem *playing = m_timeline->clipById(m_clipId);

@@ -77,6 +77,7 @@ to fold it away.
 |---|---|
 | Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab (<img src="images/icons/import-files.png" width="24" alt="">), or drag files from your file manager onto the list. |
 | Add everything in a folder | **Media ▸ Import folder…**, the second button (<img src="images/icons/import-folder.png" width="24" alt="">), or drag the folder onto the list. Every video and audio file directly in it is added (not its subfolders). |
+| Watch a file before putting it on the timeline | Click the play button on its picture (it shows when the mouse is over the file), or select it and press `Space`. See [Previewing a file](#previewing-a-file). |
 | Put a file on the timeline | Drag it onto the timeline, or double-click it. A 360° clip goes onto the video track, a video onto an overlay track as a picture in picture, an audio file onto an audio track; see [The timeline](timeline.md). You can select several files and drag them together. |
 | Remove a file from the project | Right-click it and choose **Remove from project**, or press `Delete`. The file itself isn't deleted. A file used on the timeline can't be removed. |
 | Find a file on disk | Right-click it and choose **Show in file manager**. |
@@ -85,6 +86,43 @@ to fold it away.
 Importing is part of the project, so **Edit ▸ Undo** takes it back like any
 other edit. The `.lrv` preview files the camera writes next to each `.insv`
 aren't listed.
+
+### Previewing a file
+
+To see what's in a file before you put it on the timeline, click the play
+button on its picture in the **Media** tab, or select it and press `Space`.
+The viewport shows the file instead of the timeline and plays it with its
+sound; a line over the player bar says *Previewing* and the file's name, and
+the file's picture has an orange frame and keeps its button (a pause button
+while it plays). The timeline stays as it was, its playhead where you left
+it.
+
+While a file plays this way:
+
+- the player bar and its keys work in the file: play and pause (`Space`, or
+  the button on the file's picture again), the progress bar, one frame or
+  one second back and forward, its start and end (`Home` / `End`, and
+  `↑` / `↓`: a file has no cuts), and its highlight marks (`Ctrl+↑` /
+  `Ctrl+↓`, a 360° clip's marks set while recording);
+- drag in a 360° clip to look around, and turn the mouse wheel to zoom.
+  That's only looking: it sets no keyframes, even with reframe authoring
+  armed;
+- a 360° clip is stitched and stabilized as it would be if you put it on
+  the timeline now (with the stabilization of the last 360° clip on the
+  timeline; none if there isn't one), but without colour or a split screen:
+  those are set on a clip, once it's on the timeline;
+- **Media information** in the settings sidebar shows the file previewed
+  ([Media information](media-information.md));
+- a video shows as it would as the only clip on the video track, fitted
+  into the project's picture; an audio file plays with a black picture.
+
+To go back to the timeline, click **Back to timeline** on the line over the
+player bar, press `Esc`, or click the timeline. Anything you do to the
+timeline -- putting the file on it with a double-click or a drag, a trim, a
+keyframe (`K`), a mark (`M`), undo -- also goes back to it first or right
+after, so you always see what you changed. The view, and the playhead, are
+where they were before the preview. Nothing about a preview is saved in the
+project.
 
 ## The timeline
 

@@ -101,11 +101,25 @@ void MediaInfoPanel::addWideValue(const QString &value, const QString &toolTip)
     form()->addRow(v);
 }
 
-void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
+void MediaInfoPanel::setPreviewed(bool previewed)
+{
+    if (previewed && m_clipScope.isEmpty())
+        m_clipScope = scope();
+    if (previewed) {
+        setScope(tr("Previewed file"));
+    } else if (!m_clipScope.isEmpty()) {
+        setScope(m_clipScope);
+        m_clipScope.clear();
+    }
+}
+
+void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed)
 {
     clearRows();
     setBodyEnabled(true);
-    setHint(tr("The source file of the clip under the playhead."));
+    setPreviewed(previewed);
+    setHint(previewed ? tr("The file previewed from the Media tab, not on the timeline.")
+                      : tr("The source file of the clip under the playhead."));
     const QLocale locale;
 
     const QFileInfo fi(QString::fromStdString(m.path));
@@ -267,10 +281,11 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m)
     }
 }
 
-void MediaInfoPanel::setError(const QString &path, const QString &error)
+void MediaInfoPanel::setError(const QString &path, const QString &error, bool previewed)
 {
     clearRows();
     setBodyEnabled(true);
+    setPreviewed(previewed);
     setHint({});
     addSection(tr("File"));
     addWideValue(QFileInfo(path).fileName(), path);
@@ -280,6 +295,7 @@ void MediaInfoPanel::setError(const QString &path, const QString &error)
 void MediaInfoPanel::setNoClip()
 {
     clearRows();
+    setPreviewed(false);
     setHint(tr("No clip under the playhead."));
     setBodyEnabled(false);
 }

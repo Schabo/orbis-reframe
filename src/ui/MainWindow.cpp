@@ -288,6 +288,15 @@ void MainWindow::setupSourcesSidebar()
     connect(m_mediaPanel, &MediaPoolPanel::filesDropped, m_mediaImport, &MediaImporter::import);
     connect(m_mediaPanel, &MediaPoolPanel::addToTimelineRequested, this,
             &MainWindow::addMediaToTimeline);
+    connect(m_mediaPanel, &MediaPoolPanel::previewRequested, this, &MainWindow::previewMedia);
+    // The file previewed gone from the pool, or missing: the timeline again.
+    const auto previewGone = [this] {
+        const MediaItem *m = previewing() ? m_project->mediaPool()->item(m_sourcePath) : nullptr;
+        if (previewing() && (!m || m->missing))
+            leaveSource();
+    };
+    connect(m_project->mediaPool(), &MediaPool::changed, this, previewGone);
+    connect(m_project->mediaPool(), &MediaPool::missingChanged, this, previewGone);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
 }
 
@@ -480,11 +489,32 @@ void MainWindow::connectTimeline()
         QMetaObject::invokeMethod(m_controller, "scrub", Qt::QueuedConnection,
                                   Q_ARG(qint64, timelineMs));
     };
-    connect(m_timelineWidget, &TimelineWidget::seekRequested, this, seekTo);
-    connect(m_timelineWidget, &TimelineWidget::scrubRequested, this, scrubTo);
-    // The player bar's progress strip scrubs like the ruler.
-    connect(m_playerBar, &PlayerBar::seekRequested, this, seekTo);
-    connect(m_playerBar, &PlayerBar::scrubRequested, this, scrubTo);
+    // A click on the timeline shows it again, if a Media tab file was.
+    connect(m_timelineWidget, &TimelineWidget::seekRequested, this, [this, seekTo](qint64 ms) {
+        leaveSource();
+        seekTo(ms);
+    });
+    connect(m_timelineWidget, &TimelineWidget::scrubRequested, this, [this, scrubTo](qint64 ms) {
+        leaveSource();
+        scrubTo(ms);
+    });
+    // The player bar's progress strip scrubs like the ruler -- in the file
+    // previewed while there is one.
+    connect(m_playerBar, &PlayerBar::seekRequested, this, [this, seekTo](qint64 ms) {
+        if (previewing())
+            QMetaObject::invokeMethod(m_controller, "seekSource", Qt::QueuedConnection,
+                                      Q_ARG(qint64, ms));
+        else
+            seekTo(ms);
+    });
+    connect(m_playerBar, &PlayerBar::scrubRequested, this, [this, scrubTo](qint64 ms) {
+        if (previewing())
+            QMetaObject::invokeMethod(m_controller, "scrubSource", Qt::QueuedConnection,
+                                      Q_ARG(qint64, ms));
+        else
+            scrubTo(ms);
+    });
+    connect(m_playerBar, &PlayerBar::backToTimelineClicked, this, &MainWindow::leaveSource);
     connect(m_timelineWidget, &TimelineWidget::clipTrimInRequested, m_timeline,
             &Timeline::setClipTrimIn);
     connect(m_timelineWidget, &TimelineWidget::clipTrimOutRequested, m_timeline,
@@ -516,6 +546,25 @@ void MainWindow::connectTimeline()
     // Clicking a video clip selects it for the panels and the trim buttons,
     // without moving the playhead; 0 = back to following the playhead.
     connect(m_timelineWidget, &TimelineWidget::clipSelected, this, &MainWindow::selectVideoClip);
+    // Clicking a clip, or any edit, shows the timeline again if a Media tab
+    // file was shown: what's done is to the timeline.
+    connect(m_timelineWidget, &TimelineWidget::clipSelected, this, &MainWindow::leaveSource);
+    connect(m_timelineWidget, &TimelineWidget::trackClipSelected, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipInserted, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipRemoved, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipsReordered, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipTrimChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipReframeChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipMarksChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipFitChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipColorChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipStabilizationChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipPrivacyChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipSpeedChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::clipStitchChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::tracksChanged, this, &MainWindow::leaveSource);
+    connect(m_timeline, &Timeline::transitionsChanged, this, &MainWindow::leaveSource);
+    connect(m_project, &Project::projectReset, this, &MainWindow::leaveSource);
     connect(m_timeline, &Timeline::clipRemoved, this, [this](int id) {
         if (id == m_selectedClipId)
             selectVideoClip(0);
@@ -589,11 +638,14 @@ void MainWindow::connectTimeline()
 void MainWindow::connectOverlaysAndAudio()
 {
     // Picking an inset in the view selects its clip; dragging it moves it.
-    connect(m_viewport, &EquirectViewportWindow::insetPressed, this,
-            [this](int clipId) { selectTrackClip(clipId); });
+    // (Not a Media tab file's picture: it isn't the timeline's.)
+    connect(m_viewport, &EquirectViewportWindow::insetPressed, this, [this](int clipId) {
+        if (!previewing())
+            selectTrackClip(clipId);
+    });
     connect(m_viewport, &EquirectViewportWindow::insetMoved, this,
             [this](int clipId, float cx, float cy) {
-                const TrackClip *c = m_timeline->trackClipById(clipId);
+                const TrackClip *c = previewing() ? nullptr : m_timeline->trackClipById(clipId);
                 if (!c)
                     return;
                 const qint64 src = c->sourceAtLocalMs(
@@ -772,6 +824,8 @@ void MainWindow::connectReframe()
                 m_frameViews.setDragging(active);
             });
     connect(m_viewport, &EquirectViewportWindow::lookCommitted, this, [this] {
+        if (previewing()) // only looking around in a Media tab file
+            return;
         if (m_reframeArmed && m_clipId)
             m_timeline->upsertClipReframeKey(
                 m_clipId, m_lastPositionMs, m_viewport->Pose(), playingPane());
@@ -1077,8 +1131,16 @@ void MainWindow::connectController()
     // before taking a seek still carry the old position -- had the audio
     // seeked at the request, the next of those would read as a jump back.
     connect(m_controller, &PlaybackController::seeked, m_audioPlayer, &AudioPlayer::seek);
+    connect(m_controller, &PlaybackController::sourceShownChanged, this,
+            [this](bool shown) { m_positionsAreSource = shown; });
     connect(m_controller, &PlaybackController::positionChanged, this,
             [this](qint64 timelineMs, qint64 atNs) {
+                if (m_positionsAreSource) { // a Media tab file's (showSource)
+                    m_sourcePositionMs = timelineMs;
+                    m_playerBar->setPosition(timelineMs);
+                    m_audioPlayer->notePlaybackPosition(timelineMs, atNs);
+                    return;
+                }
                 m_lastTimelineMs = timelineMs;
                 showPlayhead(timelineMs);
                 m_audioPlayer->notePlaybackPosition(timelineMs, atNs);
@@ -1094,6 +1156,8 @@ void MainWindow::connectController()
             [this] { m_controller->makeGpuRoom(false); });
     connect(m_controller, &PlaybackController::playingChanged, this, [this](bool playing) {
         m_playing = playing;
+        if (previewing())
+            m_mediaPanel->setPreview(m_sourcePath, playing);
         m_measurements->setPlaying(playing);
         if (playing)
             return;
@@ -2259,20 +2323,32 @@ void MainWindow::setupKeyboardShortcuts()
     const auto playPause = [this] {
         QMetaObject::invokeMethod(m_controller, "togglePlay", Qt::QueuedConnection);
     };
+    // In a Media tab file previewed, they move in it (stepSource): a file
+    // has no cuts, so those go to its start / end.
     const auto frameBack = [this] {
-        navigateTo(m_timeline->stepFrames(m_lastTimelineMs, -1), true);
+        if (!stepSource(SourceStep::Frame, -1))
+            navigateTo(m_timeline->stepFrames(m_lastTimelineMs, -1), true);
     };
     const auto frameForward = [this] {
-        navigateTo(m_timeline->stepFrames(m_lastTimelineMs, 1), true);
+        if (!stepSource(SourceStep::Frame, 1))
+            navigateTo(m_timeline->stepFrames(m_lastTimelineMs, 1), true);
     };
     const auto previousCut = [this] {
-        navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, -1), false);
+        if (!stepSource(SourceStep::Edge, -1))
+            navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, -1), false);
     };
     const auto nextCut = [this] {
-        navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, 1), false);
+        if (!stepSource(SourceStep::Edge, 1))
+            navigateTo(m_timeline->adjacentEditPoint(m_lastTimelineMs, 1), false);
     };
-    const auto toStart = [this] { navigateTo(0, false); };
-    const auto toEnd = [this] { navigateTo(m_timeline->totalDurationMs(), false); };
+    const auto toStart = [this] {
+        if (!stepSource(SourceStep::Edge, -1))
+            navigateTo(0, false);
+    };
+    const auto toEnd = [this] {
+        if (!stepSource(SourceStep::Edge, 1))
+            navigateTo(m_timeline->totalDurationMs(), false);
+    };
     connect(m_playerBar, &PlayerBar::frameBackClicked, this, frameBack);
     connect(m_playerBar, &PlayerBar::frameForwardClicked, this, frameForward);
     connect(m_playerBar, &PlayerBar::previousCutClicked, this, previousCut);
@@ -2285,13 +2361,20 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(play, tr("Previous / next frame (pauses)"), {QKeySequence(Qt::Key_Left)}, frameBack);
     addKey(play, QString(), {QKeySequence(Qt::Key_Right)}, frameForward);
     addKey(play, tr("Back / forward 1 second"), {QKeySequence(Qt::SHIFT | Qt::Key_Left)},
-           [this] { navigateTo(m_lastTimelineMs - 1000, false); });
-    addKey(play, QString(), {QKeySequence(Qt::SHIFT | Qt::Key_Right)},
-           [this] { navigateTo(m_lastTimelineMs + 1000, false); });
+           [this] {
+               if (!stepSource(SourceStep::Second, -1))
+                   navigateTo(m_lastTimelineMs - 1000, false);
+           });
+    addKey(play, QString(), {QKeySequence(Qt::SHIFT | Qt::Key_Right)}, [this] {
+        if (!stepSource(SourceStep::Second, 1))
+            navigateTo(m_lastTimelineMs + 1000, false);
+    });
     addKey(play, tr("Previous / next cut or clip edge"), {QKeySequence(Qt::Key_Up)}, previousCut);
     addKey(play, QString(), {QKeySequence(Qt::Key_Down)}, nextCut);
     // With an overlay clip selected, its keys (as K / Shift+K).
     const auto toKey = [this](int direction) {
+        if (stepSource(SourceStep::None, direction)) // a file has no keyframes
+            return;
         const TrackClip *o = selectedOverlayClip();
         navigateTo(m_timeline->adjacentKey(m_lastTimelineMs, direction, o ? o->id : 0,
                                            m_viewport->ActivePane()),
@@ -2301,6 +2384,8 @@ void MainWindow::setupKeyboardShortcuts()
            {QKeySequence(Qt::SHIFT | Qt::Key_Up)}, [toKey] { toKey(-1); });
     addKey(play, QString(), {QKeySequence(Qt::SHIFT | Qt::Key_Down)}, [toKey] { toKey(1); });
     const auto toMark = [this](int direction) {
+        if (stepSource(SourceStep::Mark, direction)) // the file's camera marks
+            return;
         navigateTo(m_timeline->adjacentMark(
                        m_lastTimelineMs, direction,
                        [this](const QString &path) { return m_clipFacts->highlights(path); }),
@@ -2328,6 +2413,11 @@ void MainWindow::setupKeyboardShortcuts()
            });
     addKey(play, tr("Full screen on / off (also a double-click on the picture; Esc leaves)"),
            {QKeySequence(Qt::Key_F11)}, [this] { setFullScreenView(!m_fullScreen); });
+    // The Media list's own Space (MediaPoolList), in the list.
+    m_keyHelp.append({play,
+                      tr("In the Media tab: play the selected file in the viewport, not on the "
+                         "timeline (again: pause; Esc goes back to the timeline)"),
+                      {QKeySequence(Qt::Key_Space)}, QString()});
     // The window-level screenshot action (no menu holds it) in the list.
     m_keyHelp.append({play, tr("Save a screenshot of the frame at the playhead"),
                       m_screenshotAction->shortcuts(), QString()});
@@ -2348,8 +2438,8 @@ void MainWindow::setupKeyboardShortcuts()
            {QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)},
            [this] { deleteAtPlayhead(); });
     addKey(edit,
-           tr("Clear the selection (or cancel drawing a Track subject / Blur a plate box, or "
-              "leave full screen)"),
+           tr("Clear the selection (or cancel drawing a Track subject / Blur a plate box, "
+              "leave full screen, or go back to the timeline from a Media tab file)"),
            {QKeySequence(Qt::Key_Escape)}, [this] {
                if (m_trackSelecting) {
                    setTrackSelecting(false);
@@ -2361,6 +2451,10 @@ void MainWindow::setupKeyboardShortcuts()
                }
                if (m_fullScreen) {
                    setFullScreenView(false);
+                   return;
+               }
+               if (previewing()) {
+                   leaveSource();
                    return;
                }
                selectTrackClip(-1);
@@ -2389,6 +2483,7 @@ void MainWindow::setupKeyboardShortcuts()
            tr("Set a keyframe at the playhead: the selected overlay's look, else the "
               "current view"),
            {QKeySequence(Qt::Key_K)}, [this] {
+               leaveSource(); // the timeline's view and playhead
                if (selectedOverlayClip())
                    setOverlayKeyAtPlayhead();
                else if (m_clipId)
@@ -2400,6 +2495,7 @@ void MainWindow::setupKeyboardShortcuts()
            tr("Delete the keyframe at the playhead: the selected overlay's, else the "
               "reframe one"),
            {QKeySequence(Qt::SHIFT | Qt::Key_K)}, [this] {
+               leaveSource(); // the timeline's view and playhead
                if (selectedOverlayClip())
                    deleteOverlayKeyAtPlayhead();
                else if (m_clipId)
@@ -2409,6 +2505,7 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(reframe,
            tr("Delete all keyframes: the selected overlay's, else the video clip's reframe ones"),
            {QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K)}, [this] {
+               leaveSource(); // the timeline's view and playhead
                if (selectedOverlayClip())
                    clearOverlayKeys();
                else if (m_clipId)
@@ -2518,6 +2615,11 @@ void MainWindow::showPlayerBarForAWhile()
 
 void MainWindow::updatePlayerBar()
 {
+    if (previewing()) { // a Media tab file's times (showSource)
+        m_playerBar->setFrameRate(m_sourceFps);
+        m_playerBar->setCuts({});
+        return;
+    }
     const double firstFps = m_timeline->count() > 0 ? m_timeline->clipAt(0).fps : 0.0;
     m_playerBar->setFrameRate(m_project->output().effectiveFps(firstFps));
     QList<qint64> cuts;
@@ -2629,11 +2731,20 @@ const camera::MediaInfo *MainWindow::mediaInfoFor(const QString &path, QString *
 
 void MainWindow::syncMediaInfoPanel(const ClipItem &c)
 {
-    QString error;
-    if (const camera::MediaInfo *info = mediaInfoFor(c.sourcePath, &error))
-        m_mediaInfoPanel->setInfo(*info);
+    // A Media tab file previewed is the one on screen (MainWindowSource.cpp).
+    if (previewing())
+        showMediaInfo(m_sourcePath, true);
     else
-        m_mediaInfoPanel->setError(c.sourcePath, error);
+        showMediaInfo(c.sourcePath, false);
+}
+
+void MainWindow::showMediaInfo(const QString &path, bool previewed)
+{
+    QString error;
+    if (const camera::MediaInfo *info = mediaInfoFor(path, &error))
+        m_mediaInfoPanel->setInfo(*info, previewed);
+    else
+        m_mediaInfoPanel->setError(path, error, previewed);
 }
 
 void MainWindow::pushTimelineToController()

@@ -218,8 +218,10 @@ void MainWindow::showEditor()
 
 void MainWindow::setEditorActive(bool active)
 {
-    if (!active)
+    if (!active) {
         setFullScreenView(false);
+        leaveSource();
+    }
     for (QAction *a : std::as_const(m_editorActions))
         a->setEnabled(active);
     for (QShortcut *sc : std::as_const(m_editorShortcuts))

@@ -65,6 +65,12 @@ public:
     // The extra audio tracks' clips, in timeline frames at 48 kHz.
     // Replaces the previous set; re-seeks so the change is heard at once.
     void setMix(std::vector<insv::MixClip> clips);
+    // A media file's own sound in the timeline's place, as
+    // PlaybackController::showSource plays its picture: `segment` and
+    // `mix`. The timeline's setTimeline() / setMix() are kept meanwhile
+    // and heard again from showTimeline().
+    void showSource(const PlaybackController::Segment &segment, std::vector<insv::MixClip> mix);
+    void showTimeline();
 
     void play();
     void pause();
@@ -109,6 +115,13 @@ private:
     // The output's playback clock in output frames since it opened. Caller
     // must not hold m_mx.
     double playedFrames() const;
+    void applyTimeline(const QList<PlaybackController::Segment> &segments);
+    void applyMix(std::vector<insv::MixClip> clips);
+
+    // --- GUI thread: the timeline's while a source is shown ---
+    bool m_sourceShown = false;
+    QList<PlaybackController::Segment> m_timelineSegments;
+    std::vector<insv::MixClip> m_timelineMix;
     void pullFrames(float *out, uint32_t frames); // AudioOutput's thread
 
     std::unique_ptr<AudioOutput> m_out;

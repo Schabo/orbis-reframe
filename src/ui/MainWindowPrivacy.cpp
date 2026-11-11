@@ -204,6 +204,8 @@ platescan::Request MainWindow::plateRequestFor(const ClipItem &c)
 void MainWindow::setPlateSelecting(bool on)
 {
 #ifdef ORBIS_REFRAME_HAVE_PLATE_SCAN
+    if (on)
+        leaveSource(); // the box goes on the timeline's picture
     const ClipItem *c = m_timeline->clipById(m_clipId);
     if (on && (!c || c->flat || c->mediaMissing || plateJobRunning() || trackingRunning() ||
                m_exports->exporting()))

@@ -650,6 +650,33 @@ void testInsertLensGuard()
     CHECK(tl.clipById(again)->lensGuard == G::Premium);
 }
 
+// newClip: the clip insertClip would add, without adding it -- what the
+// Media tab's preview plays a file as: the nearest 360 clip's
+// stabilization, the file's own clips' stitch settings.
+void testNewClip()
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    Timeline tl;
+    {
+        const ClipItem c = tl.newClip(0, "a.insv", 10000, 30.0, 3840, 3840);
+        CHECK(c.stabilization.mode == insv::StabMode::Off); // no clip to take it from
+        CHECK(c.trimOutMs == 10000 && c.reframe.isEmpty());
+    }
+    const int a = tl.appendClip("a.insv", 10000, 30.0, 3840, 3840);
+    insv::StabConfig lean;
+    lean.mode = insv::StabMode::LeanFollow;
+    tl.setClipStabilization(a, lean);
+    tl.setSourceStitch("a.insv", G::Standard, stitch::PreviewStitchConfig::Method::DepthSeam,
+                       std::nullopt);
+    tl.appendClip("flat.mp4", 5000, 30.0, 1920, 1080, 0, true);
+    const ClipItem b = tl.newClip(tl.count(), "b.insv", 8000, 30.0, 3840, 3840);
+    CHECK(b.stabilization.mode == insv::StabMode::LeanFollow); // past the flat clip
+    CHECK(b.lensGuard == G::Standard && !b.flat);
+    const ClipItem again = tl.newClip(tl.count(), "a.insv", 10000, 30.0, 3840, 3840);
+    CHECK(again.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam);
+    CHECK(tl.count() == 2); // nothing went in
+}
+
 // Transitions: one per cut, kept at its cut through a split or a copy of
 // the clip before it, dropped with the cut; what plays is shortened to the
 // footage past the trims and to half of either clip.
@@ -816,6 +843,7 @@ int main()
     testSplitScreen();
     testTimelineDuplicate();
     testInsertLensGuard();
+    testNewClip();
     testTransitions();
     testTrackQueries();
     return modeltest::finish("timeline_test");

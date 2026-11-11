@@ -288,6 +288,10 @@ void MainWindow::ensureStabilizers()
         currentBuilt = ensure(m_timeline->clipAt(idx));
     if (idx >= 0 && idx + 1 < m_timeline->count())
         ensure(m_timeline->clipAt(idx + 1)); // ready for the cut
+    // A Media tab file previewed is what's on screen: last, so it's kept.
+    // (Built before its first frame: showSource calls this first.)
+    if (previewing() && m_sourceClip)
+        ensure(*m_sourceClip);
     publishStabilizer();
     if (currentBuilt) {
         applyStabilization(m_lastPositionMs); // the frame on screen, if paused
@@ -328,11 +332,14 @@ void MainWindow::updateSyncStatus()
 
 void MainWindow::publishStabilizer()
 {
-    m_controller->setCaptureTimings(m_stabilizers.publish(*m_timeline));
+    m_controller->setCaptureTimings(m_stabilizers.publish(
+        *m_timeline, previewing() && m_sourceClip ? &*m_sourceClip : nullptr));
 }
 
 void MainWindow::applyStabilization(qint64 sourceMs)
 {
+    if (previewing()) // a Media tab file plays as recorded (showSource)
+        return;
     float m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     if (const ClipItem *c = m_timeline->clipById(m_clipId)) {
         // At the frame on screen's own time, as playback took it; the

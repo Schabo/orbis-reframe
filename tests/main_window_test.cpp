@@ -21,6 +21,7 @@
 #include "SettingsSidebar.h"
 #include "panels/StabilizationPanel.h"
 #include "MediaPoolPanel.h"
+#include "PlayerBar.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
 #include "TabSidebar.h"
@@ -63,6 +64,7 @@
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
+#include <QTreeWidget>
 
 #include <atomic>
 #include <cmath>
@@ -1256,6 +1258,142 @@ void testFlatMainClip(const Ctx &c)
     settle();
 }
 
+// The Media tab's preview: a file plays in the viewport in the timeline's
+// place, without going on the timeline -- by the play button on its picture,
+// Space in the list, or previewRequested -- and the player bar's keys move in
+// it. Esc, the player bar's button, a click on the timeline or an edit
+// bring the timeline back where it was. A flat video's picture is its
+// layer; an audio file has none. Looking around writes no keys.
+void testMediaPreview(const Ctx &c)
+{
+    auto *panel = find<MediaPoolPanel>(c.w, "mediaPoolPanel");
+    auto *row = find<QWidget>(c.w, "playerSourceRow");
+    auto *label = find<QLabel>(c.w, "playerSourceLabel");
+    auto *back = find<QToolButton>(c.w, "playerBackToTimelineButton");
+    auto *time = find<QToolButton>(c.w, "playerTime");
+    auto *bar = find<PlayerBar>(c.w, "playerBar");
+    if (!panel || !row || !label || !back || !time || !bar)
+        return;
+    const QString clipC = QDir(c.dir).filePath(QStringLiteral("VID_20260101_130000_00_003.insv"));
+    writeFile(clipC);
+    emit panel->filesDropped({clipC});
+    MediaPool *pool = c.project->mediaPool();
+    CHECK(waitFor([&] { return pool->contains(clipC); }));
+    CHECK(seekTo(c, 1500));
+    settle();
+    const int clips = c.timeline->count();
+    const auto shows = [&](qint64 ms, qint64 durationMs, double fps) {
+        return time->text() == PlayerBar::formatTime(ms, fps) + QStringLiteral(" / ") +
+                                   PlayerBar::formatTime(durationMs, fps);
+    };
+
+    // A 360 clip not on the timeline: it plays, the timeline stays.
+    // Media information is about it meanwhile.
+    auto *info = find<MediaInfoPanel>(c.w, "mediaInfoPanel");
+    const auto infoNames = [&](const QString &path) {
+        for (const QLabel *l : info->findChildren<QLabel *>())
+            if (l->text() == QFileInfo(path).fileName())
+                return true;
+        return false;
+    };
+    const QString clipScope = info ? info->scope() : QString();
+    emit panel->previewRequested(clipC);
+    CHECK(waitFor([&] { return wasOpened(clipC); }));
+    CHECK(info && info->scope() == QLatin1String("Previewed file") && infoNames(clipC));
+    CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(clipC).fileName()));
+    CHECK(waitFor([&] { return time->text().endsWith(PlayerBar::formatTime(kClipMs, kFps)); }));
+    const QString started = time->text();
+    CHECK(waitFor([&] { return time->text() != started; })); // playing
+    emit panel->previewRequested(clipC); // again: pause
+    CHECK(c.timelineWidget->playhead() == 1500 && c.timeline->count() == clips);
+    // The playback keys move in the file.
+    key(c, Qt::Key_Home);
+    CHECK(waitFor([&] { return shows(0, kClipMs, kFps); }));
+    key(c, Qt::Key_Right);
+    CHECK(waitFor([&] { return shows(std::llround(std::ceil(1000.0 / kFps)), kClipMs, kFps); }));
+    key(c, Qt::Key_End);
+    CHECK(waitFor([&] { return shows(kClipMs, kClipMs, kFps); }));
+    CHECK(c.timelineWidget->playhead() == 1500);
+    // The screenshot is the timeline's: not while a file is shown.
+    if (QAction *shot = action(c, "screenshotAction"))
+        CHECK(!shot->isEnabled());
+    // Looking around is only looking: no key, even armed.
+    const int keys = c.timeline->clipAt(0).reframe.count();
+    key(c, Qt::Key_A);
+    emit c.w->viewport()->lookCommitted();
+    key(c, Qt::Key_A);
+    CHECK(c.timeline->clipAt(0).reframe.count() == keys && row->isVisibleTo(c.w));
+    // Esc: the timeline again, where it was.
+    key(c, Qt::Key_Escape);
+    CHECK(!row->isVisibleTo(c.w));
+    CHECK(info && info->scope() == clipScope && !infoNames(clipC));
+    CHECK(waitFor([&] {
+        return time->text().startsWith(PlayerBar::formatTime(1500, bar->frameRate()) +
+                                       QStringLiteral(" / "));
+    }));
+    CHECK(c.timelineWidget->playhead() == 1500);
+
+    // A flat video: its picture is a full-frame layer. A click on the
+    // timeline goes back to it.
+    emit panel->previewRequested(c.mp4);
+    CHECK(waitFor([&] {
+        for (const auto &d : c.w->viewport()->Insets())
+            if (d.rgba && d.look.width == 1.0f)
+                return true;
+        return false;
+    }));
+    CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(c.mp4).fileName()));
+    emit c.timelineWidget->seekRequested(500);
+    CHECK(!row->isVisibleTo(c.w));
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() == 500; }));
+
+    // An audio file, by Space on its row; the player bar's button back.
+    MediaPoolList *list = panel->list();
+    QTreeWidgetItem *wavItem = nullptr;
+    for (int i = 0; i < list->topLevelItemCount(); ++i)
+        for (int j = 0; j < list->topLevelItem(i)->childCount(); ++j)
+            if (list->topLevelItem(i)->child(j)->data(0, MediaPoolPanel::PathRole) == c.wav)
+                wavItem = list->topLevelItem(i)->child(j);
+    CHECK(wavItem);
+    if (wavItem) {
+        list->setCurrentItem(wavItem);
+        list->setFocus();
+        key(c, Qt::Key_Space);
+        CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(c.wav).fileName()));
+        key(c, Qt::Key_Space); // pause
+        back->click();
+        CHECK(!row->isVisibleTo(c.w));
+        CHECK(!list->hasFocus()); // Space plays the timeline again
+    }
+
+    // The play button on a file's picture; then an edit (a mark) is the
+    // timeline's, and shows it.
+    QTreeWidgetItem *clipItem = nullptr;
+    for (int i = 0; i < list->topLevelItemCount(); ++i)
+        for (int j = 0; j < list->topLevelItem(i)->childCount(); ++j)
+            if (list->topLevelItem(i)->child(j)->data(0, MediaPoolPanel::PathRole) == clipC)
+                clipItem = list->topLevelItem(i)->child(j);
+    CHECK(clipItem);
+    if (clipItem) {
+        list->scrollToItem(clipItem);
+        const QRect r = list->visualItemRect(clipItem);
+        QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          MediaPoolPanel::thumbnailRect(r).center());
+        CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(clipC).fileName()));
+        emit panel->previewRequested(clipC); // pause
+        const int marks = c.timeline->clipAt(0).marks.size();
+        key(c, Qt::Key_M);
+        CHECK(!row->isVisibleTo(c.w));
+        CHECK(c.timeline->clipAt(0).marks.size() == marks + 1);
+        settle();
+        if (QAction *undo = action(c, "undoAction"))
+            undo->trigger();
+    }
+    CHECK(c.timeline->count() == clips);
+    pool->remove({clipC});
+    settle();
+}
+
 // The Transitions tab's "Add at the nearest cut": a crossfade at the cut
 // nearest the playhead, selected, the Transition tab showing it -- why it
 // doesn't play with no footage past the trims, its duration edited there;
@@ -2251,6 +2389,7 @@ int main(int argc, char **argv)
             testOverlay(c);
             testOverlayLayers(c);
             testFlatMainClip(c);
+            testMediaPreview(c);
             testHlgClip(c);
             testTitle(c);
             testTitlePresets(c);

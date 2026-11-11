@@ -17,7 +17,15 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 ## Next, in order
 
 - **Preview from the Media tab**: play, scrub and look around in a file
-  before it is on the timeline.
+  before it is on the timeline. Built: the play button on a file's picture,
+  or `Space`, plays it in the main viewport in the timeline's place
+  (`PlaybackController::showSource`; one stitch stream, no second
+  viewport), with its sound, its camera marks and the playback keys; the
+  timeline is kept and comes back as it was. Nothing is saved in the
+  project. Next: in / out points set in the preview, and adding only that
+  part to the timeline. A 360 clip plays with the stitch and stabilization
+  it would get if added; Media information shows the file. Left open: a
+  preview from the `.lrv` proxy for slow cards.
 - *Optional*: **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing

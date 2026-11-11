@@ -223,9 +223,27 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
                          bool flat, stitch::LensGuardProfiles lensGuards)
 {
     index = std::clamp(index, 0, static_cast<int>(m_clips.size()));
-
-    ClipItem c;
+    ClipItem c = newClip(index, sourcePath, sourceDurationMs, fps, sourceWidth, sourceHeight,
+                         flat, lensGuards);
     c.id = m_nextId++;
+    m_clips.insert(index, c);
+
+    emit clipInserted(index);
+    emit durationChanged(totalDurationMs());
+    if (relinkAudio()) // clips after it moved
+        emit tracksChanged();
+    if (pruneTransitions()) // it went into a cut
+        emit transitionsChanged();
+    addClipSound(c.id, audioStreams);
+    return c.id;
+}
+
+ClipItem Timeline::newClip(int index, const QString &sourcePath, qint64 sourceDurationMs,
+                           double fps, int sourceWidth, int sourceHeight, bool flat,
+                           stitch::LensGuardProfiles lensGuards) const
+{
+    index = std::clamp(index, 0, static_cast<int>(m_clips.size()));
+    ClipItem c;
     c.sourcePath = sourcePath;
     c.sourceDurationMs = std::max<qint64>(0, sourceDurationMs);
     c.fps = fps;
@@ -265,16 +283,7 @@ int Timeline::insertClip(int index, const QString &sourcePath, qint64 sourceDura
             c.lensColourGuard = o.lensColourGuard;
             break;
         }
-    m_clips.insert(index, c);
-
-    emit clipInserted(index);
-    emit durationChanged(totalDurationMs());
-    if (relinkAudio()) // clips after it moved
-        emit tracksChanged();
-    if (pruneTransitions()) // it went into a cut
-        emit transitionsChanged();
-    addClipSound(c.id, audioStreams);
-    return c.id;
+    return c;
 }
 
 int Timeline::appendClip(const QString &sourcePath, qint64 sourceDurationMs, double fps,

@@ -417,6 +417,37 @@ PlayerBar::PlayerBar(QWidget *parent)
                                     tr("Full screen  ( F11 or double-click the picture; Esc leaves )"));
     connect(m_fullScreenButton, &QToolButton::clicked, this, &PlayerBar::fullScreenClicked);
 
+    // Over both rows while a Media tab file plays (setSource).
+    m_sourceRow = new QWidget(this);
+    m_sourceRow->setObjectName(QStringLiteral("playerSourceRow"));
+    auto *sourceIcon = new QLabel(m_sourceRow);
+    const auto tintSourceIcon = [this, sourceIcon] {
+        sourceIcon->setPixmap(theme::icon(QStringLiteral("film"), theme::IconTone::Accent)
+                                  .pixmap(QSize(16, 16), devicePixelRatioF()));
+    };
+    tintSourceIcon();
+    connect(theme::notifier(), &theme::Notifier::changed, sourceIcon, tintSourceIcon);
+    m_sourceLabel = new QLabel(m_sourceRow);
+    m_sourceLabel->setObjectName(QStringLiteral("playerSourceLabel"));
+    m_sourceLabel->setTextFormat(Qt::PlainText);
+    m_sourceLabel->setMinimumWidth(40);
+    auto *back = new QToolButton(m_sourceRow);
+    back->setObjectName(QStringLiteral("playerBackToTimelineButton"));
+    back->setAutoRaise(true);
+    back->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    back->setIcon(theme::icon(QStringLiteral("x")));
+    back->setText(tr("Back to timeline"));
+    back->setToolTip(tr("Show the timeline again, where it was  ( Esc, or a click on the "
+                        "timeline )"));
+    connect(back, &QToolButton::clicked, this, &PlayerBar::backToTimelineClicked);
+    auto *sourceLayout = new QHBoxLayout(m_sourceRow);
+    sourceLayout->setContentsMargins(0, 2, 0, 0);
+    sourceLayout->setSpacing(6);
+    sourceLayout->addWidget(sourceIcon);
+    sourceLayout->addWidget(m_sourceLabel, 1);
+    sourceLayout->addWidget(back);
+    m_sourceRow->setVisible(false);
+
     auto *topRow = new QHBoxLayout;
     topRow->setContentsMargins(0, 0, 0, 0);
     topRow->setSpacing(6);
@@ -460,10 +491,19 @@ PlayerBar::PlayerBar(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 4, 8, 2);
     layout->setSpacing(0);
+    layout->addWidget(m_sourceRow);
     layout->addLayout(topRow);
     layout->addLayout(bottomRow);
 
     updateTime();
+}
+
+void PlayerBar::setSource(const QString &name)
+{
+    m_sourceName = name;
+    m_sourceRow->setVisible(!name.isEmpty());
+    m_sourceLabel->setText(tr("Previewing %1 (not the timeline)").arg(name));
+    m_sourceLabel->setToolTip(name);
 }
 
 int PlayerBar::volume() const

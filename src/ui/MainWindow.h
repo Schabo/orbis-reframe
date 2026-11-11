@@ -275,6 +275,22 @@ private:
     // (-1 = none); react to any change to them.
     void refreshTrackRows();
     void selectTrackClip(int clipId);
+    // The Media tab's preview (MainWindowSource.cpp): a file played in the
+    // viewport in the timeline's place (PlaybackController::showSource),
+    // without putting it on the timeline. previewMedia is the play button /
+    // Space on a file: shows it and plays it, or plays / pauses it when it's
+    // the one shown. leaveSource goes back to the timeline, as it was; any
+    // edit, a click on the timeline, Esc and the player bar's button do.
+    void previewMedia(const QString &path);
+    bool showSource(const QString &path);
+    void leaveSource();
+    bool previewing() const { return !m_sourcePath.isEmpty(); }
+    // The playback keys and buttons in the file shown: a frame, a second,
+    // its start / end, its camera's highlight marks. False (nothing done)
+    // when the timeline is shown.
+    enum class SourceStep { Frame, Second, Edge, Mark, None };
+    bool stepSource(SourceStep step, int direction);
+    void seekSource(qint64 sourceMs, bool pause);
     // Transitions (MainWindowTransitions.cpp). Select the one at the cut
     // after clip `leftClipId` (0 = none): the Transition tab shows it.
     void selectTransition(int leftClipId);
@@ -454,6 +470,9 @@ private:
     // Reflect clip `c`'s source file in the Media information panel (probed
     // once per path, cached in m_mediaInfo; a failed probe isn't cached).
     void syncMediaInfoPanel(const ClipItem &c);
+    // `path`'s facts in the Media information section; `previewed`: a
+    // Media tab file shown instead of the timeline (MediaInfoPanel::setInfo).
+    void showMediaInfo(const QString &path, bool previewed);
     // `path`'s probe, from m_mediaInfo (probed and cached on first use);
     // nullptr, with *error, when it can't be probed.
     const camera::MediaInfo *mediaInfoFor(const QString &path, QString *error = nullptr);
@@ -607,6 +626,22 @@ private:
     QTimer *m_mediaCheck = nullptr; // recheckMissingMedia() while the app is in front
     // A sync / seam result arrived while playing; applied on the next pause.
     bool m_measuredWhilePlaying = false;
+    // The file previewed (previewMedia; empty: the timeline is shown), its
+    // frame rate, length, camera marks and the playhead in it (source ms),
+    // and the view the timeline had, given back when it's shown again.
+    // m_positionsAreSource follows the controller's sourceShownChanged: the
+    // positions it sends from then on are the file's.
+    QString m_sourcePath;
+    double m_sourceFps = 0.0;
+    qint64 m_sourceDurationMs = 0;
+    QList<qint64> m_sourceMarks;
+    qint64 m_sourcePositionMs = 0;
+    view::Pose m_sourceSavedPose;
+    bool m_positionsAreSource = false;
+    // A 360 file previewed as the clip it would be at the timeline's end
+    // (Timeline::newClip; id PlaybackController::kSourceClipId): its
+    // stabilization is built and published like a timeline clip's.
+    std::optional<ClipItem> m_sourceClip;
     // Total trimmed timeline length, cached from the last pushTimelineToController.
     qint64 m_totalTimelineMs = 0;
 

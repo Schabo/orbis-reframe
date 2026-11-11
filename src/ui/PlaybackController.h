@@ -153,7 +153,25 @@ public:
     // Replace the timeline. NOT a slot: MainWindow invokes it through a queued
     // lambda (QMetaObject::invokeMethod), so QList<Segment> needs no metatype
     // registration. Runs on the worker thread.
+    // While a source is shown (showSource) the timeline is kept, not played:
+    // it plays again, from where it was, at showTimeline().
     void setTimeline(const QList<Segment> &segments);
+    // A file from the media pool played on its own, not on the timeline
+    // (the Media tab's preview): `segment` (its whole length; its clipId is
+    // replaced by kSourceClipId) and `insets` (a flat video's full-frame
+    // layer) take the timeline's place, paused at the start, until
+    // showTimeline(). The timeline's segments, position and insets are kept
+    // meanwhile: setTimeline(), setInsets(), seek() and scrub() go on
+    // changing them, and seekSource() / scrubSource() move in the source.
+    // A source has the stabilization the stab provider gives kSourceClipId
+    // (none without), but no reframe path, grade, split screen or region
+    // outlines: its view is the viewport's own, looking forward when it
+    // starts. Invoked like setTimeline (worker thread).
+    // sourceShownChanged comes before the durationChanged / positionChanged
+    // of the program switched to.
+    static constexpr int kSourceClipId = -1;
+    void showSource(Segment segment, std::vector<InsetFeed::Clip> insets);
+    void showTimeline();
     // Open these files afresh from the next setTimeline() on, not from the
     // sources cached for them: a file that was gone and is back (a drive
     // plugged in again) left a cached source that can't read any more, and
@@ -224,7 +242,8 @@ public:
     // The video tracks' inset clips, bottom-most first. Thread-safe,
     // callable from the GUI thread; they're drawn over the view from the next
     // present tick, at the playhead.
-    void setInsets(std::vector<InsetFeed::Clip> clips) { m_insets.setClips(std::move(clips)); }
+    // While a source is shown they're kept for showTimeline().
+    void setInsets(std::vector<InsetFeed::Clip> clips);
     // Where a crossfade's layer asks for the source of its clip
     // (renderjobs::insetFeed's `lender`): the decoder lends it the next
     // clip's, sought to the layer's start, and takes it back at the cut; or
@@ -249,7 +268,12 @@ public slots:
     // lensFramesLost) and takes equirects for a while: paused, the frame on
     // screen is read again, as one; playing, the next reads are anyway.
     void viewportLostLensFrames();
+    // seek() and scrub() move the timeline's playhead; while a source is
+    // shown, only the position it comes back to (showSource).
     void seek(qint64 timelineMs);
+    // seek() / scrub() in the source shown (showSource); nothing otherwise.
+    void seekSource(qint64 sourceMs);
+    void scrubSource(qint64 sourceMs);
     // A seek while dragging the playhead: shows the source's nearest keyframe
     // (inside the clip's trim) instead of the exact frame -- one decode instead
     // of up to a GOP's worth -- and the drag's final seek() lands on the exact
@@ -286,6 +310,10 @@ signals:
     // tick still queued from before the seek can't read as a jump.
     void seeked(qint64 timelineMs);
     void playingChanged(bool playing);
+    // showSource() / showTimeline() switched what plays: the position,
+    // duration and seek signals after this one are the source's (in source
+    // ms) / the timeline's.
+    void sourceShownChanged(bool shown);
     // A scrub started (the first scrub() of a drag) or ended (no scrub() for
     // kScrubSettleMs, or playback started): background work that competes
     // for the GPU holds off meanwhile.
@@ -327,6 +355,12 @@ private:
     void tick();                                // present step, on the QObject's thread
     void presentInsets(qint64 timelineMs, bool playing); // tick's inset step
     void setClockHeld(bool held);               // emits clockHeldChanged on change
+    // setTimeline's work for the program shown: play `segments` from
+    // `positionMs` (clamped). `switched`: a showSource / showTimeline, which
+    // also says seeked.
+    void applyTimeline(const QList<Segment> &segments, qint64 positionMs, bool switched);
+    void seekShown(qint64 ms);
+    void scrubShown(qint64 ms);
 
     // --- decoder-thread helpers ---
     // Returns the open source for `path` (from the small cache, or freshly
@@ -553,6 +587,16 @@ private:
     // The insets' own decoder, and what was last handed to the viewport
     // (frame key + look per inset) so an unchanged picture isn't re-sent.
     InsetFeed m_insets;
+    // The timeline program while a source is shown (showSource): its
+    // segments and playhead (presenter thread) and its insets (setInsets
+    // is called from the GUI thread: guarded by m_programMx, as is
+    // m_sourceShown, which the presenter thread also reads without it).
+    QList<Segment> m_timelineSegments;
+    qint64 m_timelinePositionMs = 0;
+    std::mutex m_programMx;
+    std::vector<InsetFeed::Clip> m_timelineInsets;
+    std::atomic<bool> m_sourceShown{false};
+    bool m_sourceLookForward = false; // the source's next frame shown looks forward
     std::vector<EquirectViewportWindow::InsetDraw> m_lastInsets;
 
     void touchSourceLru(const QString &path);   // decoder thread

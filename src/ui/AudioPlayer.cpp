@@ -86,6 +86,37 @@ void AudioPlayer::stopDecoder()
 
 void AudioPlayer::setTimeline(const QList<PlaybackController::Segment> &segments)
 {
+    m_timelineSegments = segments;
+    if (!m_sourceShown)
+        applyTimeline(segments);
+}
+
+void AudioPlayer::setMix(std::vector<insv::MixClip> clips)
+{
+    m_timelineMix = clips;
+    if (!m_sourceShown)
+        applyMix(std::move(clips));
+}
+
+void AudioPlayer::showSource(const PlaybackController::Segment &segment,
+                             std::vector<insv::MixClip> mix)
+{
+    m_sourceShown = true;
+    applyTimeline({segment});
+    applyMix(std::move(mix));
+}
+
+void AudioPlayer::showTimeline()
+{
+    if (!m_sourceShown)
+        return;
+    m_sourceShown = false;
+    applyTimeline(m_timelineSegments);
+    applyMix(m_timelineMix);
+}
+
+void AudioPlayer::applyTimeline(const QList<PlaybackController::Segment> &segments)
+{
     QList<Placed> placed = PlaybackController::placeSegments(segments);
     const qint64 totalMs = placed.isEmpty() ? 0 : placed.back().endMs();
     const double played = playedFrames();
@@ -99,7 +130,7 @@ void AudioPlayer::setTimeline(const QList<PlaybackController::Segment> &segments
     m_cv.notify_all();
 }
 
-void AudioPlayer::setMix(std::vector<insv::MixClip> clips)
+void AudioPlayer::applyMix(std::vector<insv::MixClip> clips)
 {
     const double played = playedFrames();
     {
