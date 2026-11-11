@@ -2,6 +2,7 @@
 #include "Motion.h"
 
 #include "GyroStabilizer.h"
+#include "QuatMatrix.h"
 #include "Smooth.h"
 
 #include <algorithm>
@@ -34,10 +35,10 @@ using M3 = std::array<V3, 3>;
 // The body->world matrix of a unit {w,x,y,z}.
 M3 matrixOf(const std::array<double, 4>& q)
 {
-    const double w = q[0], x = q[1], y = q[2], z = q[3];
-    return {V3{1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)},
-            V3{2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)},
-            V3{2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)}};
+    double m[3][3];
+    QuatToMatrix(q.data(), m);
+    return {V3{m[0][0], m[0][1], m[0][2]}, V3{m[1][0], m[1][1], m[1][2]},
+            V3{m[2][0], m[2][1], m[2][2]}};
 }
 V3 transposedTimes(const M3& m, const V3& v)
 {

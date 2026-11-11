@@ -263,8 +263,8 @@ private:
     void redo();
     void afterUndoRedo();
 
-    // Rebuild the controller's segment list from the timeline (also updates
-    // m_totalTimelineMs). Queued to the worker thread.
+    // Rebuild the controller's segment list from the timeline. Queued to the
+    // worker thread.
     void pushTimelineToController();
     // Audio streams in `path`, cached per source.
     int audioStreamCount(const QString &path);
@@ -642,8 +642,6 @@ private:
     // (Timeline::newClip; id PlaybackController::kSourceClipId): its
     // stabilization is built and published like a timeline clip's.
     std::optional<ClipItem> m_sourceClip;
-    // Total trimmed timeline length, cached from the last pushTimelineToController.
-    qint64 m_totalTimelineMs = 0;
 
     PlaybackController *m_controller = nullptr;
     QThread *m_playbackThread = nullptr;

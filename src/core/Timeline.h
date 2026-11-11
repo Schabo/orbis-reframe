@@ -11,9 +11,7 @@
 
 #include <cstdint>
 #include <functional>
-#include <string>
 #include <utility>
-#include <vector>
 #include <vector>
 
 // The main video track -- an ordered list of ClipItems laid end to end, no
@@ -88,18 +86,6 @@ public:
     using MarksOf = std::function<QList<qint64>(const QString &sourcePath)>;
     qint64 adjacentMark(qint64 timelineMs, int direction, const MarksOf &marksOf) const;
 
-    // A flattened, playback-facing view: one entry per clip in order, carrying
-    // just what the playback layer needs to decode it. std::string (not
-    // QString) because the consumer is PlaybackController / the stitch source.
-    // Rebuilt on demand -- push it to the controller on any structural or trim
-    // change.
-    struct ClipPlan {
-        std::string sourcePath;
-        qint64 trimInMs = 0;
-        qint64 trimOutMs = 0;
-    };
-    std::vector<ClipPlan> playbackPlan() const;
-
     // --- transitions (Transition.h) ------------------------------------
     // In no particular order.
     const QList<Transition> &transitions() const { return m_transitions; }
@@ -153,8 +139,6 @@ public:
     const Track *trackById(int trackId) const;
     // The track clip with this id, and (if non-null) the id of its track.
     const TrackClip *trackClipById(int clipId, int *trackId = nullptr) const;
-    // Latest end of any clip on an extra track (0 if none).
-    qint64 extraTracksEndMs() const;
     // Whether clip `clipId` may be moved onto track `trackId`. The video
     // and overlay groups' audio tracks hold only their own source's sound:
     // a stream track the main video's streams of its role, an overlay's

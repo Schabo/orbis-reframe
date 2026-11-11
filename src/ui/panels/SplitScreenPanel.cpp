@@ -1,5 +1,7 @@
 #include "SplitScreenPanel.h"
 
+#include "PanelFields.h"
+
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -101,11 +103,7 @@ void SplitScreenPanel::setEditable(bool editable)
 void SplitScreenPanel::setGapColor(uint32_t rgb)
 {
     m_gapRgb = rgb & 0xffffff;
-    const QColor c = QColor::fromRgb(m_gapRgb);
-    m_gapColor->setText(c.name());
-    m_gapColor->setStyleSheet(
-        QStringLiteral("QPushButton { background: %1; color: %2; }")
-            .arg(c.name(), c.lightness() > 128 ? QStringLiteral("#000") : QStringLiteral("#fff")));
+    panelfields::showColor(m_gapColor, m_gapRgb);
 }
 
 void SplitScreenPanel::showSplitRows()

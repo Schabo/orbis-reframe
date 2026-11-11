@@ -1,6 +1,7 @@
 #include "GaugeRender.h"
 
 #include "OverlayText.h"
+#include "PictureCache.h"
 
 #include <QFont>
 #include <QFontMetricsF>
@@ -13,9 +14,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
-#include <deque>
 #include <limits>
-#include <mutex>
 #include <numbers>
 
 namespace gaugerender {
@@ -23,26 +22,21 @@ namespace gaugerender {
 namespace {
 
 // Pictures made lately: a gauge makes one per step its needle or tape
-// moves, and a ride sweeps back and forth over the same ones. Kept by
-// number and by size, so a few big export pictures don't pile up.
-constexpr size_t kCacheSize = 512;
-constexpr size_t kCacheBytes = size_t(256) << 20;
-struct Cached {
+// moves, and a ride sweeps back and forth over the same ones.
+struct CacheKey {
     gauge::Style style;
     int heightPx = 0;
     Reading reading;
     uint64_t routeKey = 0;
-    Picture picture;
-    size_t bytes() const { return picture.rgba ? picture.rgba->size() : 0; }
+    bool operator==(const CacheKey &o) const
+    {
+        return heightPx == o.heightPx && reading == o.reading && routeKey == o.routeKey &&
+               style == o.style;
+    }
 };
-struct Cache {
-    std::mutex mx;
-    std::deque<Cached> list; // most recent first
-    size_t bytes = 0;
-};
-Cache &cache()
+PictureCache<CacheKey, Picture> &cache()
 {
-    static Cache c;
+    static PictureCache<CacheKey, Picture> c(512, size_t(256) << 20);
     return c;
 }
 
@@ -910,43 +904,17 @@ uint64_t routeKeyOf(const gauge::Style &style, const Route *route)
 
 Picture cached(const gauge::Style &style, int heightPx, const Reading &reading, const Route *route)
 {
-    const uint64_t routeKey = routeKeyOf(style, route);
-    Cache &c = cache();
-    std::lock_guard<std::mutex> lk(c.mx);
-    for (auto it = c.list.begin(); it != c.list.end(); ++it)
-        if (it->heightPx == heightPx && it->reading == reading && it->routeKey == routeKey &&
-            it->style == style) {
-            Cached hit = *it; // most recent to the front
-            c.list.erase(it);
-            c.list.push_front(hit);
-            return hit.picture;
-        }
-    return {};
+    return cache().find({style, heightPx, reading, routeKeyOf(style, route)});
 }
 
 Picture render(const gauge::Style &style, int heightPx, const Reading &reading, const Route *route)
 {
     if (Picture hit = cached(style, heightPx, reading, route); !hit.empty())
         return hit;
-    // Drawn outside the lock: two threads may both draw the same picture,
-    // and the cache then keeps one.
-    const uint64_t routeKey = routeKeyOf(style, route);
     Picture pic = overlaytext::onTextThread([&] {
         return draw(style, heightPx, reading, style.kind == gauge::Kind::Route ? route : nullptr);
     });
-    Cache &c = cache();
-    std::lock_guard<std::mutex> lk(c.mx);
-    for (const Cached &o : c.list)
-        if (o.heightPx == heightPx && o.reading == reading && o.routeKey == routeKey &&
-            o.style == style)
-            return o.picture;
-    c.list.push_front({style, heightPx, reading, routeKey, pic});
-    c.bytes += c.list.front().bytes();
-    while (c.list.size() > 1 && (c.list.size() > kCacheSize || c.bytes > kCacheBytes)) {
-        c.bytes -= c.list.back().bytes();
-        c.list.pop_back();
-    }
-    return pic;
+    return cache().insert({style, heightPx, reading, routeKeyOf(style, route)}, std::move(pic));
 }
 
 } // namespace gaugerender

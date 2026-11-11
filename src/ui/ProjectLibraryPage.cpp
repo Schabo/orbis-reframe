@@ -2,6 +2,7 @@
 #include "Theme.h"
 
 #include "ClipThumbnail.h"
+#include "DurationText.h"
 
 #include "../core/ProjectFolder.h"
 #include "../core/ProjectLibrary.h"
@@ -43,17 +44,6 @@ QThreadPool &summaryPool()
         return p;
     }();
     return *pool;
-}
-
-QString durationText(qint64 ms)
-{
-    const qint64 s = (ms + 500) / 1000;
-    if (s >= 3600)
-        return QStringLiteral("%1:%2:%3")
-            .arg(s / 3600)
-            .arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
-            .arg(s % 60, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
 }
 
 QString whenText(const QDateTime &t)

@@ -121,6 +121,7 @@ add_library(insv_trailer STATIC
     src/insv/Gps.h
     src/insv/Gps.cpp
     src/insv/Imu.h
+    src/insv/QuatMatrix.h
     src/insv/Smooth.h
     src/insv/InsvTrailer.h
     src/insv/InsvTrailer.cpp
@@ -575,6 +576,7 @@ if(FFMPEG_FOUND)
         src/ui/GaugeRender.h
         src/ui/OverlayText.cpp
         src/ui/OverlayText.h
+        src/ui/PictureCache.h
         src/ui/GaugeSource.cpp
         src/ui/GaugeSource.h
         src/ui/TitlePresets.cpp
@@ -620,6 +622,7 @@ if(FFMPEG_FOUND)
         src/ui/TabSidebar.h
         src/ui/MediaImporter.cpp
         src/ui/MediaImporter.h
+        src/ui/DurationText.h
         src/ui/MediaPoolPanel.cpp
         src/ui/MediaPoolPanel.h
         src/ui/MediaProbe.cpp

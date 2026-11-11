@@ -215,6 +215,50 @@ struct VulkanFisheyeStitcher::Impl {
             unlockQueue();
         return r;
     }
+    // Submits `c`, which reads both lens frames, once the decoder is done with
+    // them -- it waits on each frame's timeline semaphore at its value and
+    // signals it one higher -- and waits for it to finish. *r0 / *r1 (if
+    // given) get the values signalled and `newLayout`, the layout `c` left the
+    // images in, for the decoder. *submitted (if given): when it was
+    // submitted.
+    bool submitAfterLenses(VkCommandBuffer c, const VulkanLensInput& f0, const VulkanLensInput& f1,
+                           VkImageLayout newLayout, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                           std::string& err,
+                           std::chrono::steady_clock::time_point* submitted = nullptr)
+    {
+        const VkSemaphore sems[2] = {f0.semaphore, f1.semaphore};
+        const uint64_t waitVals[2] = {f0.semWaitValue, f1.semWaitValue};
+        const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
+        const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+        VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+        ts.waitSemaphoreValueCount = 2;
+        ts.pWaitSemaphoreValues = waitVals;
+        ts.signalSemaphoreValueCount = 2;
+        ts.pSignalSemaphoreValues = signalVals;
+        VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        si.pNext = &ts;
+        si.waitSemaphoreCount = 2;
+        si.pWaitSemaphores = sems;
+        si.pWaitDstStageMask = waitStages;
+        si.signalSemaphoreCount = 2;
+        si.pSignalSemaphores = sems;
+        si.commandBufferCount = 1;
+        si.pCommandBuffers = &c;
+        if (submitted)
+            *submitted = std::chrono::steady_clock::now();
+        if (submit(si) != VK_SUCCESS) {
+            err = "vkQueueSubmit failed";
+            return false;
+        }
+        if (r0)
+            *r0 = {signalVals[0], newLayout};
+        if (r1)
+            *r1 = {signalVals[1], newLayout};
+        vkWaitForFences(device, 1, &fence, VK_TRUE, 5'000'000'000ULL);
+        vkResetFences(device, 1, &fence);
+        return true;
+    }
     // Before freeing resources our submissions use. Each submission is waited
     // on (its fence) before the call that made it returns, so on the shared,
     // adopted device there is nothing to wait for -- and a vkDeviceWaitIdle

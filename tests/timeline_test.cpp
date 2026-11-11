@@ -386,13 +386,13 @@ void testTimelineStructure()
     CHECK(!tl.moveClip(999, 1)); // unknown id
     CHECK(reordered == 1);
 
-    // playbackPlan reflects order + trims
+    // the order and the trims as the clips hold them
     tl.setClipTrimIn(a, 500);
     CHECK(trimTouched == 1);
-    const auto plan = tl.playbackPlan();
-    CHECK(plan.size() == 4);
-    CHECK(plan[0].sourcePath == "d.insv" && plan[0].trimInMs == 0);
-    CHECK(plan[1].sourcePath == "a.insv" && plan[1].trimInMs == 500 && plan[1].trimOutMs == 4000);
+    CHECK(tl.count() == 4);
+    CHECK(tl.clipAt(0).sourcePath == "d.insv" && tl.clipAt(0).trimInMs == 0);
+    CHECK(tl.clipAt(1).sourcePath == "a.insv" && tl.clipAt(1).trimInMs == 500 &&
+          tl.clipAt(1).trimOutMs == 4000);
 
     // remove
     CHECK(tl.removeClip(b));

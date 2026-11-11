@@ -2752,17 +2752,14 @@ void MainWindow::pushTimelineToController()
     pushBlur(); // the clips' trims / sources may have changed
     QList<PlaybackController::Segment> segments;
     segments.reserve(m_timeline->count());
-    qint64 total = 0;
     m_captureTimingOn.clear(); // ids don't survive a load / undo
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
         segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
                             c.sourceDurationMs, c.lensGuard, c.stitchMethod, c.mediaMissing,
                             c.lensCalibration, c.seamColourBlend, c.seamFlow});
-        total += c.timelineDurationMs();
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }
-    m_totalTimelineMs = total;
     pushInsetsToController(); // flat main clips are drawn as layers
     // Queued lambda (not a slot) so QList<Segment> needs no metatype.
     QMetaObject::invokeMethod(m_controller,

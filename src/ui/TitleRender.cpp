@@ -1,6 +1,7 @@
 #include "TitleRender.h"
 
 #include "OverlayText.h"
+#include "PictureCache.h"
 
 #include <QFont>
 #include <QFontMetricsF>
@@ -15,8 +16,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <deque>
-#include <mutex>
 
 namespace titlerender {
 
@@ -24,25 +23,20 @@ namespace {
 
 // Pictures made lately: a title is re-pushed to playback on every edit, and
 // its text only changes on some; a title typing on makes one per letter.
-// Kept by number and by size, so a few big export pictures don't pile up.
-constexpr size_t kCacheSize = 64;
-constexpr size_t kCacheBytes = size_t(256) << 20;
-struct Cached {
+struct CacheKey {
     title::Style style;
     int fontPx = 0;
     int visible = -1;
     bool tabular = false;
-    Picture picture;
-    size_t bytes() const { return picture.rgba ? picture.rgba->size() : 0; }
+    bool operator==(const CacheKey &o) const
+    {
+        return fontPx == o.fontPx && visible == o.visible && tabular == o.tabular &&
+               style == o.style;
+    }
 };
-struct Cache {
-    std::mutex mx;
-    std::deque<Cached> list; // most recent first
-    size_t bytes = 0;
-};
-Cache &cache()
+PictureCache<CacheKey, Picture> &cache()
 {
-    static Cache c;
+    static PictureCache<CacheKey, Picture> c(64, size_t(256) << 20);
     return c;
 }
 
@@ -327,17 +321,7 @@ Picture cached(const title::Style &style, int fontPx, int visible, bool tabularD
 {
     if (visible >= 0 && visible >= graphemeCount(style.text))
         visible = -1; // all of it
-    Cache &c = cache();
-    std::lock_guard<std::mutex> lk(c.mx);
-    for (auto it = c.list.begin(); it != c.list.end(); ++it)
-        if (it->fontPx == fontPx && it->visible == visible && it->tabular == tabularDigits &&
-            it->style == style) {
-            Cached hit = *it; // most recent to the front
-            c.list.erase(it);
-            c.list.push_front(hit);
-            return hit.picture;
-        }
-    return {};
+    return cache().find({style, fontPx, visible, tabularDigits});
 }
 
 Picture render(const title::Style &style, int fontPx, int visible, bool tabularDigits)
@@ -346,23 +330,9 @@ Picture render(const title::Style &style, int fontPx, int visible, bool tabularD
         visible = -1; // all of it
     if (Picture hit = cached(style, fontPx, visible, tabularDigits); !hit.empty())
         return hit;
-    // Drawn outside the lock: two threads may both draw the same picture,
-    // and the cache then keeps one.
     Picture pic =
         overlaytext::onTextThread([&] { return draw(style, fontPx, visible, tabularDigits); });
-    Cache &c = cache();
-    std::lock_guard<std::mutex> lk(c.mx);
-    for (const Cached &o : c.list)
-        if (o.fontPx == fontPx && o.visible == visible && o.tabular == tabularDigits &&
-            o.style == style)
-            return o.picture;
-    c.list.push_front({style, fontPx, visible, tabularDigits, pic});
-    c.bytes += c.list.front().bytes();
-    while (c.list.size() > 1 && (c.list.size() > kCacheSize || c.bytes > kCacheBytes)) {
-        c.bytes -= c.list.back().bytes();
-        c.list.pop_back();
-    }
-    return pic;
+    return cache().insert({style, fontPx, visible, tabularDigits}, std::move(pic));
 }
 
 int fontPxFor(float maxSize, int outH, int capPx)

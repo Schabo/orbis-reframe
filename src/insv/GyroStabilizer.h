@@ -346,6 +346,5 @@ private:
 
 void YawPitchRollToMatrix(float yaw, float pitch, float roll, float m[3][3]);
 void MatrixToYawPitchRoll(const float m[3][3], float& yaw, float& pitch, float& roll);
-void MatrixMul(const float a[3][3], const float b[3][3], float out[3][3]); // out = a * b
 
 } // namespace insv

@@ -198,7 +198,6 @@ void AudioPlayer::setHold(bool hold)
     // playing right away (at the seek / stall, where they belong) instead of
     // after the hold, and on release the audio re-seeks to exactly where the
     // video resumes from, behind nothing but silence.
-    const double played = playedFrames();
     {
         std::lock_guard<std::mutex> lk(m_mx);
         if (m_held == hold)

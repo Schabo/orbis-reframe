@@ -20,6 +20,7 @@
 
 #include <algorithm>
 
+#include "DurationText.h"
 #include "Theme.h"
 
 namespace {
@@ -27,17 +28,6 @@ namespace {
 constexpr int kPad = 6;
 constexpr int kFolderRowH = 26;
 constexpr int kRadius = 3;
-
-QString durationText(qint64 ms)
-{
-    const qint64 s = (ms + 500) / 1000;
-    if (s >= 3600)
-        return QStringLiteral("%1:%2:%3")
-            .arg(s / 3600)
-            .arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
-            .arg(s % 60, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
-}
 
 QString fpsText(double fps)
 {

@@ -507,37 +507,10 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
 
     vkEndCommandBuffer(d->cmd);
 
-    // Wait on both decode semaphores at their current value; signal each +1.
-    const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
-    const uint64_t waitVals[2] = {f0.semWaitValue, f1.semWaitValue};
-    const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
-    const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-    VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-    ts.waitSemaphoreValueCount = 2;
-    ts.pWaitSemaphoreValues = waitVals;
-    ts.signalSemaphoreValueCount = 2;
-    ts.pSignalSemaphoreValues = signalVals;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.pNext = &ts;
-    si.waitSemaphoreCount = 2;
-    si.pWaitSemaphores = waitSems;
-    si.pWaitDstStageMask = waitStages;
-    si.signalSemaphoreCount = 2;
-    si.pSignalSemaphores = waitSems;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &d->cmd;
-    const auto tSubmit = std::chrono::steady_clock::now();
-    if (d->submit(si) != VK_SUCCESS) {
-        err = "vkQueueSubmit failed";
+    std::chrono::steady_clock::time_point tSubmit;
+    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err,
+                              &tSubmit))
         return false;
-    }
-
-    if (r0) { r0->semSignalValue = signalVals[0]; r0->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-    if (r1) { r1->semSignalValue = signalVals[1]; r1->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-
-    vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, 5'000'000'000ULL);
-    vkResetFences(d->device, 1, &d->fence);
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
 
@@ -753,36 +726,10 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
 
     vkEndCommandBuffer(d->cmd);
 
-    const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
-    const uint64_t waitVals[2] = {f0.semWaitValue, f1.semWaitValue};
-    const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
-    const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-    VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-    ts.waitSemaphoreValueCount = 2;
-    ts.pWaitSemaphoreValues = waitVals;
-    ts.signalSemaphoreValueCount = 2;
-    ts.pSignalSemaphoreValues = signalVals;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.pNext = &ts;
-    si.waitSemaphoreCount = 2;
-    si.pWaitSemaphores = waitSems;
-    si.pWaitDstStageMask = waitStages;
-    si.signalSemaphoreCount = 2;
-    si.pSignalSemaphores = waitSems;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &d->cmd;
-    const auto tSubmit = std::chrono::steady_clock::now();
-    if (d->submit(si) != VK_SUCCESS) {
-        err = "vkQueueSubmit failed";
+    std::chrono::steady_clock::time_point tSubmit;
+    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err,
+                              &tSubmit))
         return false;
-    }
-
-    if (r0) { r0->semSignalValue = signalVals[0]; r0->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-    if (r1) { r1->semSignalValue = signalVals[1]; r1->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-
-    vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, 5'000'000'000ULL);
-    vkResetFences(d->device, 1, &d->fence);
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(true);
 
@@ -994,36 +941,10 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
     vkEndCommandBuffer(d->cmd);
 
-    const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
-    const uint64_t waitVals[2] = {f0.semWaitValue, f1.semWaitValue};
-    const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
-    const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-    VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-    ts.waitSemaphoreValueCount = 2;
-    ts.pWaitSemaphoreValues = waitVals;
-    ts.signalSemaphoreValueCount = 2;
-    ts.pSignalSemaphoreValues = signalVals;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.pNext = &ts;
-    si.waitSemaphoreCount = 2;
-    si.pWaitSemaphores = waitSems;
-    si.pWaitDstStageMask = waitStages;
-    si.signalSemaphoreCount = 2;
-    si.pSignalSemaphores = waitSems;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &d->cmd;
-    const auto tSubmit = std::chrono::steady_clock::now();
-    if (d->submit(si) != VK_SUCCESS) {
-        err = "vkQueueSubmit failed";
+    std::chrono::steady_clock::time_point tSubmit;
+    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err,
+                              &tSubmit))
         return false;
-    }
-
-    if (r0) { r0->semSignalValue = signalVals[0]; r0->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-    if (r1) { r1->semSignalValue = signalVals[1]; r1->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-
-    vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, 5'000'000'000ULL);
-    vkResetFences(d->device, 1, &d->fence);
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
 
@@ -1203,33 +1124,8 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
                          nullptr, 1, &toHost, 0, nullptr);
     vkEndCommandBuffer(cmd);
 
-    const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
-    const uint64_t waitVals[2] = {f0.semWaitValue, f1.semWaitValue};
-    const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
-    const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-    VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-    ts.waitSemaphoreValueCount = 2;
-    ts.pWaitSemaphoreValues = waitVals;
-    ts.signalSemaphoreValueCount = 2;
-    ts.pSignalSemaphoreValues = signalVals;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.pNext = &ts;
-    si.waitSemaphoreCount = 2;
-    si.pWaitSemaphores = waitSems;
-    si.pWaitDstStageMask = waitStages;
-    si.signalSemaphoreCount = 2;
-    si.pSignalSemaphores = waitSems;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &cmd;
-    if (d->submit(si) != VK_SUCCESS) {
-        err = "vkQueueSubmit failed";
+    if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err))
         return false;
-    }
-    if (r0) { r0->semSignalValue = signalVals[0]; r0->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-    if (r1) { r1->semSignalValue = signalVals[1]; r1->newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; }
-    vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, 5'000'000'000ULL);
-    vkResetFences(d->device, 1, &d->fence);
 
     const float* c = static_cast<const float*>(d->seamMap);
     if (out)
@@ -1390,34 +1286,10 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
     vkEndCommandBuffer(cmd);
 
-    const VkSemaphore waitSems[2] = {f0.semaphore, f1.semaphore};
-    const uint64_t waitVals[2] = {f0.semWaitValue, f1.semWaitValue};
-    const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
-    const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                                                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
-    VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-    ts.waitSemaphoreValueCount = 2;
-    ts.pWaitSemaphoreValues = waitVals;
-    ts.signalSemaphoreValueCount = 2;
-    ts.pSignalSemaphoreValues = signalVals;
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.pNext = &ts;
-    si.waitSemaphoreCount = 2;
-    si.pWaitSemaphores = waitSems;
-    si.pWaitDstStageMask = waitStages;
-    si.signalSemaphoreCount = 2;
-    si.pSignalSemaphores = waitSems;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &cmd;
-    const auto tSubmit = std::chrono::steady_clock::now();
-    if (d->submit(si) != VK_SUCCESS) {
-        err = "vkQueueSubmit failed";
+    std::chrono::steady_clock::time_point tSubmit;
+    if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r0, r1, err,
+                              &tSubmit))
         return false;
-    }
-    if (r0) { r0->semSignalValue = signalVals[0]; r0->newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; }
-    if (r1) { r1->semSignalValue = signalVals[1]; r1->newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL; }
-    vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, 5'000'000'000ULL);
-    vkResetFences(d->device, 1, &d->fence);
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
 

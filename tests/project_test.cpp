@@ -94,7 +94,6 @@ void testProjectJson()
 
         CHECK(p.previewStitch().width == 2560);
         CHECK(p.previewStitch() == sc);
-        CHECK(sc.cacheTag().find("2560x1280") != std::string::npos);
 
         insv::StabConfig stab = insv::StabConfig::preset(insv::StabMode::Custom);
         stab.windowYawSec = 0.7f;

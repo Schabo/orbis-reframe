@@ -30,7 +30,6 @@ void testAudioTracks()
     const TrackClip *c = tl.trackClipById(m, &onTrack);
     CHECK(c && onTrack == t1);
     CHECK(c->trimInMs == 0 && c->trimOutMs == 60000 && c->endMs() == 65000);
-    CHECK(tl.extraTracksEndMs() == 65000);
     CHECK(tl.totalDurationMs() == 20000); // the main track alone sets the length
 
     // Head trim keeps the remaining audio in place on the timeline.

@@ -523,15 +523,6 @@ bool Timeline::moveTransitionLeft(int fromLeftId, int toLeftId)
     return false;
 }
 
-std::vector<Timeline::ClipPlan> Timeline::playbackPlan() const
-{
-    std::vector<ClipPlan> plan;
-    plan.reserve(static_cast<size_t>(m_clips.size()));
-    for (const ClipItem &c : m_clips)
-        plan.push_back({c.sourcePath.toStdString(), c.trimInMs, c.trimOutMs});
-    return plan;
-}
-
 void Timeline::setClipTrimIn(int clipId, qint64 positionMs)
 {
     ClipItem *c = mutableClipById(clipId);
@@ -964,15 +955,6 @@ TrackClip *Timeline::mutableTrackClipById(int clipId, Track **track)
                 return &c;
             }
     return nullptr;
-}
-
-qint64 Timeline::extraTracksEndMs() const
-{
-    qint64 end = 0;
-    for (const Track &t : m_tracks)
-        for (const TrackClip &c : t.clips)
-            end = std::max(end, c.endMs());
-    return end;
 }
 
 int Timeline::addTrack(Track::Kind kind, const QString &name, Track::Role role, int ownerTrackId,

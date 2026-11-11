@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "InsvImu.h"
 
+#include "QuatMatrix.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -12,20 +14,6 @@
 namespace insv {
 
 namespace {
-
-// Row-major rotation matrix of the unit quaternion {w, x, y, z}: v' = M v.
-void QuatToMatrix(const double q[4], double m[3][3]) {
-    const double w = q[0], x = q[1], y = q[2], z = q[3];
-    m[0][0] = 1 - 2 * (y * y + z * z);
-    m[0][1] = 2 * (x * y - w * z);
-    m[0][2] = 2 * (x * z + w * y);
-    m[1][0] = 2 * (x * y + w * z);
-    m[1][1] = 1 - 2 * (x * x + z * z);
-    m[1][2] = 2 * (y * z - w * x);
-    m[2][0] = 2 * (x * z - w * y);
-    m[2][1] = 2 * (y * z + w * x);
-    m[2][2] = 1 - 2 * (x * x + y * y);
-}
 
 // World up and north in the IMU's axes at each attitude sample. The attitude
 // is body -> world in north-east-down, so up is -z of the world and north

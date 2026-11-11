@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "GyroStabilizer.h"
 
+#include "QuatMatrix.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -69,19 +71,7 @@ Q qslerp(Q a, Q b, double t)
 }
 
 // Row-major matrix for `world = M v`.
-void qToMat(const Q& q, double m[3][3])
-{
-    const double w = q.w, x = q.x, y = q.y, z = q.z;
-    m[0][0] = 1 - 2 * (y * y + z * z);
-    m[0][1] = 2 * (x * y - w * z);
-    m[0][2] = 2 * (x * z + w * y);
-    m[1][0] = 2 * (x * y + w * z);
-    m[1][1] = 1 - 2 * (x * x + z * z);
-    m[1][2] = 2 * (y * z - w * x);
-    m[2][0] = 2 * (x * z - w * y);
-    m[2][1] = 2 * (y * z + w * x);
-    m[2][2] = 1 - 2 * (x * x + y * y);
-}
+void qToMat(const Q& q, double m[3][3]) { QuatToMatrix(q.w, q.x, q.y, q.z, m); }
 
 // Rotation matrix (row-major, world = M v) -> unit quaternion (Shepperd).
 Q matToQ(const double m[3][3])
@@ -1387,17 +1377,6 @@ void MatrixToYawPitchRoll(const float m[3][3], float& yaw, float& pitch, float& 
     pitch = std::asin(std::clamp(-m[1][2], -1.0f, 1.0f));
     roll = std::atan2(m[1][0], m[1][1]);
     yaw = std::atan2(m[0][2], m[2][2]);
-}
-
-void MatrixMul(const float a[3][3], const float b[3][3], float out[3][3])
-{
-    float t[3][3];
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            t[r][c] = a[r][0] * b[0][c] + a[r][1] * b[1][c] + a[r][2] * b[2][c];
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            out[r][c] = t[r][c];
 }
 
 } // namespace insv

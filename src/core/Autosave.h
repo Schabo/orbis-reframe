@@ -36,8 +36,6 @@ public:
     // The unsaved changes were thrown away: remove the recovery file.
     void discard();
 
-    QString writtenPath() const { return m_written; }
-
 private:
     void removeWritten();
 

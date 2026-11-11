@@ -115,16 +115,6 @@ struct PreviewStitchConfig {
     // on top. The clip's own, like lensGuard (ClipItem::lensCalibration).
     std::optional<LensCalibration> lensCalibration;
 
-    // A stable per-config string (logs, tests); nothing caches by it today.
-    std::string cacheTag() const {
-        const std::string size =
-            width > 0 ? std::to_string(width) + "x" + std::to_string(height) : "auto";
-        return "v8-" + size + "-g" +
-               std::to_string(static_cast<int>(lensGuard)) + (method == Method::DepthSeam ? "-d" : method == Method::New ? "-n" : "") +
-               (seamColourBlendOn() ? "-sc" : "") + (seamFlowOn() ? "-sf" : "") +
-               (lensCalibration ? "-c" + lensCalibration->created : "");
-    }
-
     bool operator==(const PreviewStitchConfig& o) const {
         return width == o.width && height == o.height &&
                lensGuard == o.lensGuard && method == o.method &&

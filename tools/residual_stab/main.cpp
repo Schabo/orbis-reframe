@@ -71,7 +71,6 @@ struct Args {
     float horizonGain = 1.0f;               // accel-fusion gain (horizonLock / any mode)
     float accelLowPassHz = -1.0f;          // LP the accel before Mahony fusion (<0 = keep preset)
     std::string gyroAxes;                   // "" = StabConfig default
-    bool stabInSphere = true;               // --stab-compose view: legacy base * corr
     float timeOffsetMs = 0.0f;              // explicit video->IMU offset (0 = derive from trailer)
     float rsStitchMs[2] = {0.0f, 0.0f};     // per-lens row readout in the stitch (0 = off)
     bool rsCols = false;                    // ... scanning fisheye columns instead of rows
@@ -119,7 +118,6 @@ const char kUsage[] =
     "  --horizon-gain F    accel-fusion gain, 0=pure gyro (default 1)\n"
     "  --accel-lp HZ      low-pass the accel before horizon fusion, Hz "
     "(0=off; unset=preset, horizonLock defaults 1.5)\n"
-    "  --stab-compose M    sphere (corr*base, default) | view (legacy base*corr)\n"
     "  --gyro-axes MAP     gyro axis map, e.g. y,z,x (default: StabConfig's)\n"
     "  --time-offset MS    explicit video->IMU offset (default: from the trailer)\n"
     "  --rs-stitch MS[,MS1] per-lens sensor-row readout in the GPU stitch (sign = scan dir)\n"
@@ -188,8 +186,6 @@ Args parseArgs(int argc, char** argv)
             a.horizonGain = static_cast<float>(std::atof(next("--horizon-gain").c_str()));
         else if (k == "--accel-lp")
             a.accelLowPassHz = static_cast<float>(std::atof(next("--accel-lp").c_str()));
-        else if (k == "--stab-compose")
-            a.stabInSphere = next("--stab-compose") == "sphere";
         else if (k == "--gyro-axes")
             a.gyroAxes = next("--gyro-axes");
         else if (k == "--time-offset")
@@ -1516,8 +1512,7 @@ int main(int argc, char** argv)
     // hands us the pts -- baking by output index would be up to a frame off,
     // see NativeStitchSource::ReadFlatFrame), plus the residual yaw/pitch for
     // derotate2d. The gyro de-rotation rides as a sphere-frame matrix applied
-    // after the pose (the app's composition); the legacy --stab-compose view
-    // folds it into the pose instead (base * corr).
+    // after the pose, as the app composes it.
     const int64_t frameCount = static_cast<int64_t>(std::llround((trimOut - trimIn) / 1000.0 * fps));
     float base[3][3];
     insv::YawPitchRollToMatrix(static_cast<float>(a.baseYawDeg * kDegToRad),
@@ -1556,16 +1551,8 @@ int main(int argc, char** argv)
             gyro.correctionMatrix(tSec, corr);
         }
         float y = 0.0f, p = 0.0f, r = 0.0f;
-        float m[3][3];
-        if (a.stabInSphere) {
-            std::copy(&base[0][0], &base[0][0] + 9, &m[0][0]);
-            std::copy(&corr[0][0], &corr[0][0] + 9, stab);
-        } else {
-            insv::MatrixMul(base, corr, m); // base * correction, prepended to the ray
-            const float ident[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
-            std::copy(ident, ident + 9, stab);
-        }
-        insv::MatrixToYawPitchRoll(m, y, p, r);
+        std::copy(&corr[0][0], &corr[0][0] + 9, stab);
+        insv::MatrixToYawPitchRoll(base, y, p, r);
         if (a.render == "derotate2d") {
             float dY = 0.0f, dP = 0.0f;
             track.sample(tSec, dY, dP);
