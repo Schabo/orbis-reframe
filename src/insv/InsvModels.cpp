@@ -9,11 +9,12 @@ const InsvModel kModels[] = {
      {{3840, "8K"}, {2880, "5.7K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv",
      {1.0, 0.0, 0.0, 0.0}, 0.0, {}, "y,z,x", true, -0.5},
-    // IMU axes: the X5's, unconfirmed -- it needs a clip with deliberate
-    // rotations (docs/formats/insta360-x6.md). File names: taken to be the
-    // X5's (one .insv + .lrv per take; the proxy's exact name not checked).
-    // Timelapse orientation: no X6 timelapse seen yet. Capture time: the
-    // X5's, unmeasured.
+    // IMU axes: the X5's "z,-x,-y", confirmed 2026-11-11 on an 8K 30
+    // Standard clip with deliberate yaw/pitch/roll (docs/formats/insta360-x6.md):
+    // residual_stab --diagnose horizon ~0.4 deg, correction/raw ratio 1.02 at
+    // scale 1; residual pan lowest vs z,x,y and -x,y,-z on the same stretch.
+    // File names: the X5's (one .insv + .lrv per take). Timelapse orientation:
+    // no X6 timelapse seen yet. Capture time: the X5's, unmeasured.
     {"Insta360 X6", "Insta360", "z,-x,-y", nullptr, nullptr, 7680.0,
      {{3840, "8K"}, {3008, "6K"}, {1920, "4K"}, {0, nullptr}},
      {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv",
