@@ -29,8 +29,8 @@ drone) experimentally.
 **Download:** a `.deb` and a tarball for Debian Testing, Debian 13 and
 Ubuntu 26.04 LTS on the
 [releases page](https://github.com/Schabo/orbis-reframe/releases), and an
-AppImage for other distributions with glibc 2.41 or newer (Fedora, Arch,
-openSUSE Tumbleweed, ...). The
+AppImage for other distributions with glibc 2.39 or newer (Fedora, Arch,
+openSUSE Tumbleweed, ...; tested from 2.41). The
 [user manual](docs/manual/README.md) starts with the
 [getting-started guide](docs/manual/getting-started.md): what your computer
 needs and how to install.
@@ -130,6 +130,8 @@ no closed-source dependencies.
   scrubbing.
 - `.orp` projects and `.insv` clips open from the file manager.
 - The viewport renders straight from the fisheyes at full source detail.
+- Preview a file from the Media tab, with its sound, before putting it on
+  the timeline.
 
 **Reframing**
 - Keyframed virtual camera: yaw, pitch, roll, field of view and distortion,
@@ -156,7 +158,7 @@ no closed-source dependencies.
 - Flat videos (from a phone or an action camera) on the video track too,
   mixed with 360° clips, shown whole with bars or filling the frame.
 - Transitions at cuts: crossfade or dip to black.
-- Per-clip playback speed (0.1–4×) with pitch-preserving audio time-stretch.
+- Per-clip playback speed (0.25–2×) with pitch-preserving audio time-stretch.
 - Multiple tracks: any number of audio and video (overlay) tracks, which can
   be renamed, reordered, muted, zoomed and scrolled. Tracks keep to fixed
   groups, and a video track folds its sound tracks away under it.
@@ -164,6 +166,8 @@ no closed-source dependencies.
   drop them onto the timeline, where their waveforms are drawn.
 - Every audio stream in a clip gets its own track, linked to the video: the
   camera's mic and an external mic such as the Insta360 Mic Air.
+- **Highlight marks**: the ones set on the camera while recording, read from
+  the file, and your own (`M`); jump between them with `Ctrl+↑` / `Ctrl+↓`.
 - Keyboard shortcuts for frame stepping, jumping between cuts, split and
   delete (Help ▸ Keyboard shortcuts, F1).
 
@@ -197,15 +201,20 @@ no closed-source dependencies.
 
 **Stitching**
 - Stitch based on the MEI fisheye model, using the per-camera calibration
-  stored in each file.
-- Lens-guard profiles and a seam fine-tune per clip, so clips filmed with and
-  without lens guards mix in one project. The fine-tune is measured from the
-  video: how the back lens is turned, where its centre is, and its scale.
-- Depth-aware seam: the stitch distance is measured along the seam every
-  frame, so near objects (the bike, handlebars, hands) aren't doubled; the
-  seam is cut where the lenses agree. The two lenses' colours are measured
-  and matched per clip, so the seam shows no step, and the haze a low sun
-  lays over one lens is taken out along the seam.
+  stored in each file, or your camera's own: **Calibrate lenses** measures
+  it from a clip of a chart shown on your monitor.
+- The **new stitcher** (experimental, the default for new clips) joins the
+  lenses from their lens model and works the rest out from each frame and
+  the ones just before it, with no analysis of the clip: a **seam colour
+  blend** evens out the lenses' colours where they meet, and **seam flow**
+  lines up close things crossing the seam.
+- The **depth-aware seam** (what older projects keep): the stitch
+  distance is measured along the seam every frame, so near objects (the
+  bike, handlebars, hands) aren't doubled, and the seam is cut where the
+  lenses agree. The two lenses' colours are measured and matched per clip,
+  and the haze a low sun lays over one lens is taken out along the seam.
+- Lens-guard profiles per clip, so clips filmed with and without lens
+  guards mix in one project.
 
 **Look and sound**
 - Per-clip colour grading: exposure, contrast, saturation, temperature. The
