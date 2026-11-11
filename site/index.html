@@ -108,7 +108,7 @@
     border-radius: 10px;
     padding: 18px 20px;
   }
-  .card ul { margin: 0; font-size: 0.95rem; }
+  .card p { margin: 0; font-size: 0.95rem; }
 
   .sources li { margin: 10px 0; }
   .shot { padding: 36px 0 8px; }
@@ -231,168 +231,53 @@
 
   <section>
     <div class="wrap">
-      <h2>Features so far</h2>
+      <h2>What it does</h2>
       <div class="grid">
         <div class="card">
-          <h3>Import and playback</h3>
-          <ul>
-            <li>Opens X5 <code>.insv</code> files directly, in every capture mode tested so far
-              (8K, 5.7K/5.7K+, 5.7K 60, 4K 120); X6 (including its 10-bit I-Log and Dolby Vision
-              modes), ONE X2 and Antigravity A1 clips experimentally.</li>
-            <li>Real-time playback: Vulkan video decode, then a Vulkan compute fisheye→view pass on
-              the GPU, with CPU fallbacks.</li>
-            <li>Interactive 360° viewport: drag to look around during playback and while scrubbing.</li>
-            <li>The viewport renders straight from the fisheyes at full source detail.</li>
-            <li><code>.orp</code> projects and <code>.insv</code> clips open from the file
-              manager.</li>
-          </ul>
-        </div>
-        <div class="card">
           <h3>Reframing</h3>
-          <ul>
-            <li>Keyframed virtual camera: yaw, pitch, roll, field of view and distortion,
-              interpolated between keyframes.</li>
-            <li>Set keyframes by dragging the viewport or by typing values into the sidebar; click a
-              keyframe's diamond on the timeline to go to it.</li>
-            <li>Wide views drawn like a fisheye lens so the edges don't stretch, set automatically
-              from the field of view, all the way to <strong>tiny planets</strong>.</li>
-            <li>Easing per keyframe (Linear, Fast to slow, Slow to fast), and moves that start and
-              stop gently instead of abruptly.</li>
-            <li><strong>Track subject</strong>: draw a box around a rider, car or anything else, and
-              the camera follows it through the sphere. Tracking plays back live, with the box green
-              while the subject is found and red when it's lost, and you stop it when you've seen
-              enough. The result is ordinary keyframes you can edit.</li>
-            <li><strong>Split screen</strong>: a clip in two or four panes, each looking its own
-              way with its own keyframes, e.g. the road ahead and behind at once.</li>
-          </ul>
-        </div>
-        <div class="card">
-          <h3>Timeline</h3>
-          <ul>
-            <li>Multiple clips with trim in/out, split, duplicate and reorder, from the keyboard or
-              the edit toolbar above the timeline.</li>
-            <li>Flat videos (from a phone or an action camera) on the video track too, mixed with
-              360° clips, shown whole with bars or filling the frame.</li>
-            <li>Transitions at cuts: crossfade or dip to black.</li>
-            <li>Per-clip playback speed (0.25–2×) with pitch-preserving audio time-stretch.</li>
-            <li>Any number of audio and video (overlay) tracks, which can be renamed, reordered,
-              muted, zoomed and scrolled. Tracks keep to fixed groups, and a video track folds its
-              sound tracks away under it.</li>
-            <li>Music clips with trim, level and fades, added from the menu or by drag and drop,
-              with waveforms.</li>
-            <li>Every audio stream in a clip gets its own track, linked to the video: the camera's
-              mic and an external mic such as the Insta360 Mic Air.</li>
-            <li>Keyboard shortcuts for frame stepping, jumping between cuts, split and delete (F1
-              lists them).</li>
-          </ul>
-        </div>
-        <div class="card">
-          <h3>Picture-in-picture and titles</h3>
-          <ul>
-            <li>Flat video files on overlay tracks, drawn as insets over the reframed view: position,
-              size, opacity, rounded corners and a border.</li>
-            <li>Set in the Picture in picture tab or by dragging the inset in the viewport.</li>
-            <li>Keyframe an inset's position, size and opacity, and bring an overlay forward or send
-              it back. A PiP's own sound comes along on its own track, linked like a video
-              clip's.</li>
-            <li>Text titles on overlay tracks, started from ready-made tiles: font (the last three used on top), colour,
-              alignment, outline, shadow, box and spacing, keyframed and faded like an inset, and
-              sliding, popping or typing in and out.</li>
-          </ul>
-        </div>
-        <div class="card">
-          <h3>GPS, motion and gauges</h3>
-          <ul>
-            <li>Titles show the recording time as a running clock and the date.</li>
-            <li>From the camera's GPS: speed, altitude and heading. On the X5 the GPS is lined up
-              with the video by the motion sensor.</li>
-            <li>From its motion sensor: the lean angle and G-force.</li>
-            <li><strong>Gauges</strong> draw them as a dial, a bar, a heading tape, a lean dial or a
-              G circle, and a <strong>route</strong> map: the road around you, turning as you ride,
-              or the whole trip seen from above.</li>
-          </ul>
+          <p>Steer a keyframed virtual camera through the sphere: where it looks, how wide,
+            and how wide views are drawn, all the way to <strong>tiny planets</strong>.
+            <strong>Track subject</strong> follows a rider or a car for you, as keyframes you can
+            edit, and <strong>split screen</strong> shows the road ahead and behind at once.</p>
         </div>
         <div class="card">
           <h3>Stabilization</h3>
-          <ul>
-            <li>Native, from the camera's own IMU data.</li>
-            <li>Modes: <strong>Off / Lean follow / Horizon lock / Direction lock / Custom</strong>
-              (per-axis strength), à la Gyroflow. Direction lock keeps the horizon level and the
-              view pointing one way through bends.</li>
-            <li>Accelerometer-fused horizon reference, gyro↔video time sync and optional
-              rolling-shutter correction.</li>
-            <li>Antigravity A1 clips are leveled by the drone's own flight controller.</li>
-          </ul>
+          <p>From the camera's own gyro: <strong>Lean follow</strong>
+            removes the shake but keeps the bike's lean in corners, <strong>Horizon lock</strong>
+            keeps the horizon level, <strong>Direction lock</strong> keeps the view pointing one
+            way through bends.</p>
         </div>
         <div class="card">
           <h3>Stitching</h3>
-          <ul>
-            <li>Based on the MEI fisheye model, using the per-camera calibration stored in each
-              file.</li>
-            <li>Lens-guard profiles and a seam fine-tune per clip, so clips filmed with and without
-              lens guards mix in one project. The fine-tune is measured from the video.</li>
-            <li>Depth-aware seam: the stitch distance is measured along the seam every frame, so near
-              objects (the bike, handlebars, hands) aren't doubled; the seam is cut where the lenses
-              agree. The two lenses' colours are measured and matched per clip, so the seam shows no
-              step, and the haze a low sun lays over one lens is taken out along the seam.</li>
-          </ul>
+          <p>From the lens calibration in each file, or your camera's own, measured from a
+            chart on your monitor. The seam follows the distance of what's on it, so the bike,
+            the handlebars and your hands aren't doubled, and the lenses' colours are matched.</p>
         </div>
         <div class="card">
-          <h3>Look and sound</h3>
-          <ul>
-            <li>Per-clip colour grading: exposure, contrast, saturation, temperature. The same
-              formula runs in the viewport and in export.</li>
-            <li>A 3D LUT (<code>.cube</code>) per clip, with a strength: the camera maker's LUT for
-              log footage (Insta360 I-Log; load the downloaded zip as it is) or a look. Log clips
-              are recognised and ask for their LUT; HDR (HLG) clips are converted to normal video
-              with the LUT that comes with the app.</li>
-            <li>Level, mute and fades for every audio clip, a level and mute per track, and a mixer
-              used in both playback and export.</li>
-            <li>Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that tracks the
-              engine's harmonics and turns down the wind between them), hiss and mains hum for quiet
-              scenes, and voice isolation with DeepFilterNet 3 (“Voice only”, or “Voice + ambience”
-              that turns the rest down instead).</li>
-          </ul>
+          <h3>Ride data</h3>
+          <p>Speed, altitude, heading, lean angle and G-force from the camera's GPS and motion
+            sensor, as dials, bars, a heading tape, a lean dial, a G circle or a route map,
+            and titles with the recording's own clock and date.</p>
         </div>
         <div class="card">
           <h3>Privacy blur</h3>
-          <ul>
-            <li>Blur number plates per clip: “Scan clip” finds them faster than real time on the
-              GPU, and the blur shows in the viewport, export and screenshots.</li>
-            <li>“Show regions” outlines what the scan found.</li>
-            <li>Right-click a blur to remove a false hit, or use “Blur a plate…” to box a plate the
-              scan missed; it's followed forwards and backwards from the box.</li>
-          </ul>
+          <p>Number plates found on the GPU faster than real time and blurred on the sphere,
+            so the blur stays on them wherever the view looks. Remove a false hit with a right-click, or box one the
+            scan missed.</p>
         </div>
         <div class="card">
-          <h3>Output</h3>
-          <ul>
-            <li>Flat reframed export of the whole timeline to H.264/H.265 on the GPU's hardware
-              encoder (NVENC on NVIDIA, VA-API or Vulkan video on AMD and Intel), with the overlays,
-              titles and gauges composited in and the audio mixed.</li>
-            <li>Project settings: aspect ratio (16:9, 9:16, 1:1, 4:3), resolution, frame rate and
-              bit depth (8-bit, or 10-bit as H.265 Main 10); the viewport is letterboxed to
-              match.</li>
-            <li>Screenshot of the current view at project resolution (PNG), from the player
-              bar.</li>
-          </ul>
-        </div>
-        <div class="card">
-          <h3>Editor</h3>
-          <ul>
-            <li>A project library to start from: one folder per project, with its exports and
-              caches; rename and duplicate projects there.</li>
-            <li>Save/load (<code>.orp</code>, JSON), undo/redo, and autosave to a recovery file.</li>
-            <li>A Media tab with the project's files, which notices files going missing and
-              helps find moved ones, and a Media information section with what a clip's file
-              says.</li>
-            <li>A media sidebar in tabs (Media, Overlays, Transitions), settings in tabs (Video,
-              Audio, Picture in picture, Overlay, Transition, Privacy) with collapsible sections, a
-              player bar under the video, and the timeline across the full window.</li>
-            <li>Three themes: Ember, Light and Neutral dark.</li>
-          </ul>
+          <h3>Sound</h3>
+          <p>Wind reduction with a motorcycle mode that keeps the engine and turns down the
+            wind between its harmonics, hiss and hum removal, and voice isolation with
+            DeepFilterNet&nbsp;3. The camera's mic and an external mic each get a track.</p>
         </div>
       </div>
+      <p style="margin-top:20px">The result is a flat H.264 or H.265 video, made on the
+        GPU's hardware encoder, 8-bit or 10-bit, in 16:9, 9:16, 1:1 or 4:3. Around that, what
+        you'd expect from an editor: a multi-track timeline with trims, splits, speed and
+        transitions, picture in picture, titles, colour grading with LUTs for log and HDR
+        footage, undo and autosave. Everything is in the
+        <a href="https://github.com/Schabo/orbis-reframe/blob/main/docs/manual/README.md">user manual</a>.</p>
       <p style="margin-top:20px"><strong>Planned:</strong> more 360° cameras as sample clips come
         in (Insta360 X4 and X3, DJI Osmo 360, GoPro MAX), a second 360° clip as an inset, an
         effects library, HDR export and video noise removal. Further out: face and object blur. The
