@@ -1,10 +1,12 @@
 # Insta360 X6 file format
 
-**Desk research (2026-10-15), a contributor's test set (2026-10-18: 24
-clips, 8K / 6K / 4K, Standard, I-Log and Dolby Vision, firmware v1.2.36),
-and a local unit (2026-11-11: same firmware, 8K Standard / Dolby Vision /
-I-Log / 8K 50).** The ✅ below are from those sets. Public specs, Insta360's
-manuals and Gyroflow's telemetry-parser for the rest. Written as differences
+**Desk research (2026-10-15), then two contributors' clips, read with our
+code on their machines: a test set (2026-10-18: 24 clips, 8K / 6K / 4K,
+Standard, I-Log and Dolby Vision, firmware v1.2.36) and another camera
+(2026-11-11: same firmware, 8K 30 Standard with deliberate turns, Dolby
+Vision, I-Log, 8K 50).** The ✅ below are from those clips; the maintainer
+hasn't examined an X6 file yet. Public specs, Insta360's manuals and
+Gyroflow's telemetry-parser for the rest. Written as differences
 from the X5 ([`insta360-x5.md`](insta360-x5.md), "X5 §n" below). Markers as
 in [`README.md`](README.md).
 
@@ -26,27 +28,31 @@ in [`README.md`](README.md).
 - ✅ Vulkan decode + stitch on an AMD Radeon 8060S (Strix Halo iGPU, RADV),
   8K 30: ~84 fps decode, ~35 fps for the full 7680-wide stitch, ~60 fps for
   the direct view.
-- ✅ **8K 50** on an NVIDIA RTX 5070 Ti (2026-11-11, `playback_bench`
-  60 frames): decode ~30.9 fps (0.62× real time), fused view ~16.9 fps,
-  direct view ~18.4 fps — **not real time** at this rate (~1.5 Gpx/s across
-  both lenses, ~1.7× the X5's 8K 30, X5 §3.3).
+- ❓ **8K 50** in real time (~1.5 Gpx/s across both lenses, ~1.7× the
+  X5's 8K 30, X5 §3.3). A contributor's `playback_bench` (60 frames) on an
+  NVIDIA RTX 5070 Ti gave decode ~30.9 fps, fused view ~16.9 fps, direct
+  view ~18.4 fps. That is far below the AMD figure above at the same frame
+  size, and below an X5 8K 30 clip on an RTX 5070 (decode ~125 fps, fused
+  view ~94 fps, 2026-11-11), so something else likely limits that run; not
+  found yet.
 
 ## Modes and sample clips
 
-All the X6's modes 📖 (Insta360's shooting specs, Sources). **The
-contributor's set** is the 24 clips many ✅ came from first; **the local
-2026-11-11 set** (fw v1.2.36) adds the rows marked below. The status words
-are the X5's (X5 §3.4).
+All the X6's modes 📖 (Insta360's shooting specs, Sources). We have no X6
+file; **the contributor's set** is the 24 clips of 2026-10-18, **the
+contributor's camera** the 2026-11-11 clips (both fw v1.2.36). The status
+words are the X5's (X5 §3.4), and *enough* needs a clip we can run
+ourselves.
 
 | Mode | Spec | Files | Clips | Status |
 |---|---|---|---|---|
-| 360 Video 8K | 50 / 48 / 30 / 25 / 24 | one `.insv` + `.lrv` | contributor's + local 8K 30 Standard (IMU turns) and **8K 50** Standard | **enough** for 8K 30 / 50; other frame rates still open |
+| 360 Video 8K | 50 / 48 / 30 / 25 / 24 | one `.insv` + `.lrv` | contributor's set; contributor's camera: 8K 30 (turns), 8K 50 | **8K 50 wanted** (real-time decode, see above), and any 8K clip of our own |
 | 360 Video 6K | 60 / 50 / 48 / 30 / 25 / 24 | as above | contributor's set | one clip of our own wanted |
 | 360 Video 4K | 100 / 60 / 50 / 48 / 30 / 25 / 24 | as above | contributor's set | one clip of our own wanted |
-| I-Log 10-bit | | as above | contributor's + local 8K 30 moving | **enough**: opens, stitches, tagged limited BT.709, `I_Log` / log profile |
-| Dolby Vision (HLG) | | as above | contributor's + local 8K 30 | **enough** for tagging and export with the shipped HLG LUT; highlight roll-off still a look, not a number |
-| Lens guards (Standard, Premium) | | as above | none (local set bare; no field 145) | **one clip with each guard, and the same scene bare, wanted** |
-| IMU axes | | | local 8K 30 Standard, deliberate turns | **enough**: `"z,-x,-y"` (see Trailer) |
+| I-Log 10-bit | | as above | contributor's set; contributor's camera: 8K 30 moving | confirmed on contributors' clips (opens, stitches, limited-range BT.709, log profile); **one of our own wanted**, moving |
+| Dolby Vision (HLG) | | as above | contributor's set; contributor's camera: 8K 30 | tagging and export with the shipped HLG LUT confirmed on contributors' clips; **one of our own wanted**: the HLG LUT's roll-off |
+| Lens guards (Standard, Premium) | | as above | none known (the contributors' clips are bare: no field 145) | **one clip with each guard, and the same scene bare, wanted** |
+| IMU axes | | | contributor's camera: 8K 30, deliberate turns | `"z,-x,-y"` confirmed on a contributor's clip (see Trailer); **one of our own wanted** to check it with our own fit |
 | PureVideo | 8K / 4K, 30 / 25 / 24; 6K at **5760×2880** | ❓ | none | **wanted**: 2880² lenses, which the X6's modes don't list |
 | InstaFrame 2.0 | 360 8K 30 / 25 / 24 + flat 4K | `.insv` + `.mp4` ("360 Video Backup" on), `.mp4` only (off) | none | **wanted** |
 | Timelapse | 16K 15360×7680, 8K, 30 / 25 | ❓ | none | **wanted**: 16K is 7680² per lens |
@@ -61,12 +67,12 @@ are the X5's (X5 §3.4).
 ## Colour: 10-bit, log and HDR
 
 - 📖 Colour modes Standard, **Dolby Vision** and **I-Log 10-bit**.
-- ✅ Every clip of the sets is H.265 Main 10 (`yuv420p10le`), in all three
+- ✅ Every clip is H.265 Main 10 (`yuv420p10le`), in all three
   colour modes. Standard and I-Log clips are tagged `bt709`; **Dolby Vision
   clips are tagged `bt2020nc` + `arib-std-b67` (HLG), limited range**, with
   no Dolby Vision RPU side data.
-- ✅ **Standard and I-Log streams are limited range** on the local clips
-  (FFmpeg `tv` / `yuv420p10le` without full-range), unlike the X5's full
+- ✅ **Standard and I-Log streams are limited range** on the contributor's
+  camera's clips (FFmpeg `tv` / `yuv420p10le` without full-range), unlike the X5's full
   range (X5 §3.3). The app decodes each clip with the matrix and range its
   stream is tagged with; a stream without a range tag is taken as limited,
   the HEVC default.
@@ -90,7 +96,7 @@ are the X5's (X5 §3.4).
   stand-ins -- an X5 clip re-encoded to BT.2020 limited range, 8- and 10-bit:
   45-47 dB PSNR against the original, where the old fixed conversion gave
   29 dB -- and ✅ export of a real Dolby Vision clip through the shipped
-  HLG → Rec.709 LUT (local 2026-11-11, `reframe_export`).
+  HLG → Rec.709 LUT (a contributor's, 2026-11-11, `reframe_export`).
 - An I-Log clip stitches correctly but looks flat until Insta360's LUT is
   applied (below). Dolby Vision clips are HLG / BT.2020 as tagged and need
   an HLG -> Rec.709 LUT; Insta360 publishes none, so the app ships one
@@ -112,8 +118,10 @@ are the X5's (X5 §3.4).
   serial, model (`Insta360 X6`) and firmware; the IMU (0x300, ~1 kHz) and
   exposure (0x400) records parse with the X5's layouts.
 - ✅ The extended MEI calibration string is there, the X5's 56-token
-  layout: e.g. xi 2.455, fx / fy ~7220, cx / cy ~3865 / 3889, roll ~90,
-  combined frame **15488×7744**, type 193 (local unit). The sanity ranges in
+  layout: e.g. xi 2.455, fx / fy 7232, cx / cy ~3850 / 3880 (the
+  contributor's set) and fx / fy ~7220, cx / cy ~3865 / 3889 (the
+  contributor's camera) -- per unit, from the factory -- roll ~90,
+  combined frame **15488×7744**, type 193. The sanity ranges in
   `Calibration.cpp` hold. (`insv_trailer_dump`'s `Parameters:` line stays
   empty: the string is not in the short maker-notes tags; the app reads it
   through `ReadInsvExtendedCalibrationString`.)
@@ -123,8 +131,8 @@ are the X5's (X5 §3.4).
   `LensCalibExt::focalRefW`); with the X5's 5312 the lens circles come out
   too small and the sphere has gaps between them. A file without the field
   takes its model's value from `insv::InsvModel`, with a log line.
-- ✅ **No field 145 lens-profile table** in the contributor's set or the
-  local bare-lens clips: no lens-guard or dive-case profiles, so the stitch
+- ✅ **No field 145 lens-profile table** in any contributor's clip (all
+  bare lenses): no lens-guard or dive-case profiles, so the stitch
   takes every lens as bare at the default 200° field of view. Stitches at
   all three sizes cover the sphere without gaps, so 200° looks right for
   bare lenses.
@@ -139,9 +147,9 @@ are the X5's (X5 §3.4).
   X6 clip as bare lenses and greys out **Lens guards**; a guarded clip then
   stitches with a slightly wrong lens model.
 - ✅ **IMU axis map `"z,-x,-y"`** (the X5's, X5 §6.3; the X6 row of
-  `insv::InsvModel::imuAxes`), measured 2026-11-11 on a local 8K 30 Standard
-  clip (~27 s) with still start then deliberate turns about each axis, fw
-  v1.2.36. Method: `tools/residual_stab --diagnose` (trim 4–26 s) and the
+  `insv::InsvModel::imuAxes`), measured 2026-11-11 by a contributor on an
+  8K 30 Standard clip (~27 s) with a still start, then deliberate turns
+  about each axis, fw v1.2.36; to check on a clip of our own. Method: `tools/residual_stab --diagnose` (trim 4–26 s) and the
   same tool's residual pan on 4–12 s against `z,x,y` and `-x,y,-z`.
   - Horizon lock vs gravity: mean tilt ~0.4° with `"z,-x,-y"`.
   - Stick-band correction / raw rotation ratio **1.02** at scale 1.

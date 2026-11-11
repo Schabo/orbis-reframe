@@ -9,9 +9,10 @@ tested on. You don't need Insta360 Studio or any other Insta360 software.
 
 The **Insta360 X6** is supported experimentally: its clips open, stitch,
 [stabilize](stabilization.md) and export, including the 10-bit I-Log and
-Dolby Vision modes (with a LUT, see [Colour](colour.md#luts)). 8K 50 is
-heavier than real-time decode on the cards tried so far. Lens guards aren't
-read from the file yet (clips without a guard are fine). If something looks
+Dolby Vision modes (with a LUT, see [Colour](colour.md#luts)), but so far
+only contributors have tried it on real X6 files. Whether 8K 50 plays in
+real time isn't known yet. Lens guards aren't read from the file yet (clips
+without a guard are fine). If something looks
 wrong on your X6 clips, please
 [open an issue](https://github.com/Schabo/orbis-reframe/issues).
 

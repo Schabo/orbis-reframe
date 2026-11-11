@@ -34,13 +34,15 @@ each is in its document in [`formats/`](formats/README.md).
   table (`insv::InsvModel`) and fields read from the file (the focal
   reference, field 27); 6K named, 10-bit clips decoded and stitched with
   the stream's own colour matrix and range, HLG (Dolby Vision mode) clips
-  recognised with a shipped HLG -> Rec.709 LUT. IMU axes confirmed as the
-  X5's `"z,-x,-y"` on a local 8K 30 clip with deliberate turns; Dolby Vision
-  / I-Log tagging and an HLG LUT export checked on the same unit; 8K 50
-  decode measured at ~0.62× real time on an RTX 5070 Ti (not real time).
-  Left: **lens guards** (no field 145 on bare clips yet), 6K/4K of our own,
-  and the HLG LUT's highlight roll-off as a look
-  ([`formats/insta360-x6.md`](formats/insta360-x6.md)).
+  recognised with a shipped HLG -> Rec.709 LUT; a contributor's clip with
+  deliberate turns confirmed the IMU axes as the X5's, and a Dolby Vision
+  clip exported through the HLG LUT. Left: the same checks on clips of our
+  own; the HLG LUT's highlight roll-off; real-time decode at 8K 50 (a
+  contributor measured far less than the X5's 8K 30 reaches, not explained
+  yet); and **lens guards** -- the X6 has Standard and Premium guards, but
+  the clips we have carry no lens-guard profiles, so X6 clips are stitched
+  as bare lenses until a clip filmed with each guard shows what the file
+  records ([`formats/insta360-x6.md`](formats/insta360-x6.md)).
 - **Insta360 X4**: probably close to working; confirm the calibration string,
   IMU flag and scaling, and axis map.
 - **Insta360 ONE X2**: built, experimental (step 2 of the common camera

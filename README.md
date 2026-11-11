@@ -47,12 +47,11 @@ tested on: every capture mode tried so far (8K, 5.7K/5.7K+, 5.7K 60,
 axes measured, lens guards, and GPS from a connected GPS remote.
 
 **Insta360 X6:** experimental -- clips open, stitch and export, including the
-10-bit I-Log and Dolby Vision (HLG) modes through LUTs, but only a
-contributor has tried real X6 files so far. Stabilization may turn the
-picture the wrong way until an X6 clip confirms its motion axes; how the
-HLG LUT handles highlights on real Dolby Vision footage, real-time playback
-of 8K 50, and lens guards (the clips so far carry no lens-guard profiles)
-are unchecked.
+10-bit I-Log and Dolby Vision (HLG) modes through LUTs, but only
+contributors have tried real X6 files so far. Stabilization works (a clip
+with deliberate turns confirmed the motion axes); how the HLG LUT handles
+highlights on real Dolby Vision footage, real-time playback of 8K 50, and
+lens guards (the clips so far carry no lens-guard profiles) are unchecked.
 
 **Insta360 ONE X2:** experimental -- 5.7K clips (one file per lens, added
 from any of them) open,
