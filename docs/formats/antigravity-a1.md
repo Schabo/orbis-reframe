@@ -212,7 +212,8 @@ Markers as in [`README.md`](README.md).
   lens's brightness plane out first (`insv::SeamPatchScore`), and those
   bins stay far on all the frames checked. The table also stays within the X5's shift
   range (−0.9 to +5.9°), which at 71 mm ends at ~0.7 m, and a match has to
-  be clearly better than any other shift to count (`insv::SeamDepthTracker`):
+  be clearly better than any other shift to count (the uniqueness term,
+  `insv::SeamDepthTuning::uniqueLo` / `uniqueHi`):
   a frame solved from itself after a seek (`_018` at 22.36 s) took scattered
   matches at 0.3-0.5 m and pulled the far town into a loop.
 - ✅ **The lenses' colour** (measured 2026-10-31 from the picture, seam

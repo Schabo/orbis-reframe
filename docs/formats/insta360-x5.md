@@ -632,8 +632,8 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
   `u = fx·xd + cx`, `v = fy·yd + cy`, with (Xs, Ys) in the calibration's own
   image axes (u right, v down; our lens frame has both negated). Including
   p/s in these axes measurably improves the seam match;
-  the other sign choices make it worse. It's the only stitch model (the
-  legacy short-string path and `INSV_NO_MEI` were removed 2026-09-26).
+  the other sign choices make it worse. It's the only stitch model; the
+  short "Parameters" string isn't used.
 - The extrinsic `yaw pitch` are rotations about the calibration's x / y
   axes. In a frame with x and y negated (ours), they flip sign; `roll` doesn't.
   Getting this wrong misaligns the seam by up to ~0.8°.
@@ -793,8 +793,8 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
     signed permutation (scale ≈ 1). The camera rotation left after correcting
     with it: 0.37 °/frame vs 0.74 raw (0.96 with the old map).
   - The old default `"y,z,x"` (an early `|corr|` pick, sign-blind and made with
-    the ~0.8 s sync error) is ~120° off. `tools/horizon_spike`'s gravity fit
-    found `"z,x,y"` on the handlebar clip: the same permutation, with two
+    the ~0.8 s sync error) is ~120° off. An early gravity fit (a since-removed
+    experiment tool) found `"z,x,y"` on the handlebar clip: the same permutation, with two
     axes' signs flipped (and run without the §7.1 sync).
   - **Verified on four clips** ✅ (2026-09-25): 8 segments (20 s, the
     highest-rotation windows, 4 horizon-band views each, lag-corrected per
@@ -873,8 +873,7 @@ a trim keeps field 24 = the *original* first frame, but its video starts later.
 The TimeMap record (type 128, §4.3) gives the original time of video t = 0:
 2002 ms on `144221_019-trim` (its video has 53 880 frames against 53 981
 exposure samples after field 24's frame). Without adding it the gyro lands 2 s
-off, which made horizon lock tilt ~45° in corners and was
-`tools/horizon_spike`'s "corners" blocker. `InsvTelemetry::time_map_offset_ms`
+off, which made horizon lock tilt ~45° in corners. `InsvTelemetry::time_map_offset_ms`
 carries it (median source − video offset; speed-ramped maps aren't modelled).
 
 **Frame-clock drift + readout** ✅ (measured and fixed 2026-09-25). The MP4 PTS are a nominal constant 1001/30000 s
