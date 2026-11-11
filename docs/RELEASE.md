@@ -315,7 +315,10 @@ Publishing locks its files and tag for good.
 - Close the issues and milestones the release finished, and note what was
   tested and anything that came up.
 - README / project page (`site/`): if they mention the latest version or
-  "not published yet", update them. A push to `main` that changes `site/`
+  "not published yet", update them. The page describes the released
+  version only: add what the release brought to its *What it does* cards
+  where it's worth a mention (the README lists features as they land on
+  `main`). A push to `main` that changes `site/`
   publishes the page to <https://schabo.github.io/orbis-reframe/>
   (`.github/workflows/pages.yml`).
 - From the next commit on, builds call themselves `Y+1.gabc1234`, so a
