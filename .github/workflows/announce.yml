@@ -1,0 +1,87 @@
+# Announces a release on Discord when it's published (docs/RELEASE.md,
+# step 8) -- not when the release workflow makes the draft. The message is
+# the release notes' highlights: whatever stands above their first "### "
+# heading (the CHANGELOG.md section starts there), written by hand on the
+# draft. Below them: links to the AppImage and the .debs, and how many
+# features and fixes the full notes list. Without highlights it's only the
+# counts; the commit list itself is never posted.
+#
+# Needs the secret DISCORD_RELEASE_WEBHOOK, a Discord channel webhook's URL
+# as Discord gives it; without it the job only says so. The variable
+# DISCORD_RELEASE_ROLE, a Discord role id, makes the message mention that
+# role (those who want to be pinged for releases).
+name: Announce release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  discord:
+    name: Discord
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post the release
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          ROLE: ${{ vars.DISCORD_RELEASE_ROLE }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+              echo "::notice::No DISCORD_RELEASE_WEBHOOK secret: not announced"
+              exit 0
+          fi
+          jq --arg role "$ROLE" -f /dev/stdin "$GITHUB_EVENT_PATH" > message.json <<'JQ'
+          .release as $r
+          | ($r.body // "" | gsub("\r"; "") | split("\n")) as $lines
+          | ([$lines | to_entries[] | select(.value | startswith("### ")) | .key] | first // ($lines | length)) as $notes
+          | ($lines[:$notes] | join("\n") | sub("^\\s+"; "") | sub("\\s+$"; "")) as $highlights
+          # Entries ("- ...") under a "### <name>" heading of the notes.
+          | def count($name):
+              reduce $lines[$notes:][] as $l ({on: false, n: 0};
+                if ($l | startswith("### ")) then .on = ($l == "### " + $name)
+                elif .on and ($l | startswith("- ")) then .n += 1
+                else . end) | .n;
+          def counted($n; $one; $many): if $n == 0 then empty elif $n == 1 then "1 \($one)" else "\($n) \($many)" end;
+          ([counted(count("Feat"); "feature"; "features"), counted(count("Fix"); "fix"; "fixes")]
+           | join(", ")) as $counts
+          # What users install; checksums, sources and the .zsync stay on
+          # the release page. The Debian Testing .deb has no suffix.
+          | ([$r.assets[] | select(.name | test("(\\.AppImage|\\.deb)$"))
+              | {name, url: .browser_download_url,
+                 order: (if (.name | endswith(".AppImage")) then 0 else 1 end),
+                 label: (if (.name | endswith(".AppImage")) then "AppImage (any distribution)"
+                         elif (.name | test("\\.deb13_")) then "Debian 13 .deb"
+                         elif (.name | test("\\.ubuntu26\\.04_")) then "Ubuntu 26.04 .deb"
+                         elif (.name | test("^orbis-reframe_[0-9.]+_amd64\\.deb$")) then "Debian testing .deb"
+                         else .name end)}]
+             | sort_by(.order, .label)
+             | map("[\(.label)](\(.url))") | join(" · ")) as $downloads
+          # An embed's description holds at most 4096 characters.
+          | (if ($highlights | length) > 3500
+             then ($highlights[:3500] | sub("\\s*\\S*$"; "")) + " …"
+             else $highlights end) as $highlights
+          | {
+              username: "orbis-reframe",
+              content: (if $role != "" then "<@&\($role)>" else null end),
+              allowed_mentions: {roles: (if $role != "" then [$role] else [] end), parse: []},
+              embeds: [{
+                title: ($r.name // $r.tag_name),
+                url: $r.html_url,
+                color: 12086802,
+                description: ([
+                  (if $highlights != "" then $highlights else empty end),
+                  (if $downloads != "" then "**Download**\n" + $downloads else empty end),
+                  "[Full release notes](\($r.html_url))"
+                    + (if $counts != "" then " · " + $counts else "" end)
+                ] | join("\n\n")),
+                timestamp: $r.published_at
+              }]
+            }
+          | if .content == null then del(.content) else . end
+          JQ
+          cat message.json
+          curl -fsS --retry 3 -H "Content-Type: application/json" --data @message.json "$WEBHOOK"

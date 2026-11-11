@@ -184,7 +184,9 @@ The AppImage job runs on the runner itself, not in a `container:`:
 runtime, then builds the rest in its own `debian:trixie` container. Its
 FFmpeg and runtime are cached (`actions/cache`, keyed on their two
 scripts). `.github/workflows/appimage-updates.yml` checks the latest
-release's AppImage weekly (`docs/RELEASE.md`). Workflows are linted with
+release's AppImage weekly (`docs/RELEASE.md`), and
+`.github/workflows/announce.yml` posts a published release to Discord
+(step 8 there). Workflows are linted with
 `actionlint` (`.github/actionlint.yaml` names the GPU runner's label).
 
 `<version>` is the binary's (`cmake/GitVersion.cmake`). The `.deb`'s

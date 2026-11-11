@@ -310,6 +310,19 @@ Add anything the notes are missing (known issues, changed dependencies),
 then publish it there or with `gh release edit vY --draft=false`.
 Publishing locks its files and tag for good.
 
+Above the CHANGELOG section (its first `### ` heading), write the
+**highlights**: a few sentences on what the release brings for users. They
+are the release's announcement: publishing starts
+`.github/workflows/announce.yml`, which posts them to the Discord server's
+announcement channel with links to the AppImage and the `.deb`s and how
+many features and fixes the full notes list. Without highlights the post
+is only those links and counts. The webhook is the repository secret
+`DISCORD_RELEASE_WEBHOOK` (`gh secret set DISCORD_RELEASE_WEBHOOK`, the URL
+as Discord gives it); the variable `DISCORD_RELEASE_ROLE`, a role id, makes
+the post mention that role. Check that the post arrived
+(`gh run list --workflow announce.yml`); if it failed, fix the cause and
+`gh run rerun <run id>`.
+
 ## 9. Afterwards
 
 - Close the issues and milestones the release finished, and note what was
