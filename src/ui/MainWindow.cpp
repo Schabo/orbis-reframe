@@ -2538,7 +2538,7 @@ void MainWindow::setupKeyboardShortcuts()
     const int tabs = std::min(m_sidebar->count(), 9);
     for (int i = 0; i < tabs; ++i)
         addKey(sidebars,
-               i == 0 ? tr("Show a settings tab (Video, Audio, PiP, Title, Transition, "
+               i == 0 ? tr("Show a settings tab (Video, Audio, PiP, Overlay, Transition, "
                            "Privacy); again to close the sidebar")
                       : QString(),
                {QKeySequence(Qt::ALT | kDigits[i])}, [this, i] { m_sidebar->toggleTab(i); },
