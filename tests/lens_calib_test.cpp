@@ -304,8 +304,7 @@ void testDetect()
                 const double j00 = (xa - x) / h, j10 = (ya - y) / h, j01 = (xb - x) / h,
                              j11 = (yb - y) / h, det = j00 * j11 - j01 * j10;
                 // project()'s pixel frame: the centre of pixel (px, py) is at
-                // (px, py). ChArUco's absolute origin differs by ~½ px between
-                // OpenCV 4 and 5; the check below allows that global shift.
+                // (px, py), the frame the detector's corners are in.
                 const double ex = px - x, ey = py - y;
                 const double s1 = (j11 * ex - j01 * ey) / det, s2 = (-j10 * ex + j00 * ey) / det;
                 d = insv::normalize(Add(Add(d, e1, s1), e2, s2));
@@ -341,9 +340,9 @@ void testDetect()
                 "scatter median %.3f worst %.3f\n",
                 found.size(), calib::kChartCorners, bias, meanDu, meanDv,
                 err.empty() ? -1.0 : err[err.size() / 2], err.empty() ? -1.0 : err.back());
-    // Bias: OpenCV 4 vs 5 ChArUco origins differ by about half a pixel against
-    // project(); anything much larger is a real shift. Scatter: geometry.
-    CHECK(bias < 0.75);
+    // Bias: the corners in project()'s frame, whatever OpenCV's own is (half
+    // a pixel apart between versions). Scatter: geometry.
+    CHECK(bias < 0.1);
     CHECK(!err.empty() && err[err.size() / 2] < 0.3 && err.back() < 1.0);
 }
 
@@ -351,9 +350,23 @@ void testChartImage()
 {
     const calib::ChartImage img = calib::MakeChartImage(2560, 1440);
     CHECK(img.squarePx == 180); // 2560 / 14, 1440 / 8
-    // Found in its own picture, all of it.
-    CHECK(calib::DetectChartInPicture(img.grey.data(), img.width, img.height).size() ==
-          size_t(calib::kChartCorners));
+    // Found in its own picture, all of it, each corner where it is: on the
+    // boundary between two pixels, k - 0.5 between pixels k - 1 and k.
+    const std::vector<calib::ChartCorner> found =
+        calib::DetectChartInPicture(img.grey.data(), img.width, img.height);
+    CHECK(found.size() == size_t(calib::kChartCorners));
+    const int bx0 = (img.width - calib::kChartSquaresX * img.squarePx) / 2;
+    const int by0 = (img.height - calib::kChartSquaresY * img.squarePx) / 2;
+    double worst = 0;
+    for (const calib::ChartCorner& f : found) {
+        double x, y;
+        calib::ChartCornerPosition(f.id, x, y);
+        worst = std::max(worst, std::hypot(f.u - (bx0 + x * img.squarePx - 0.5),
+                                           f.v - (by0 + y * img.squarePx - 0.5)));
+    }
+    std::printf("  chart picture: %zu corners, worst %.3f px from where they are\n", found.size(),
+                worst);
+    CHECK(worst < 0.05);
 }
 
 } // namespace

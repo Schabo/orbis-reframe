@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -77,21 +78,71 @@ cv::Mat Grey(const insv::Image& img)
 // Fewer corners than this are too few to place the board.
 constexpr int kMinCorners = 8;
 
+// What to add to OpenCV's ChArUco corners to put them in the stitch's pixel
+// frame, where pixel (x, y)'s centre is at (x, y) (insv::Image::sample, the
+// GPU stitch's (u + 0.5) / w). OpenCV 4.7 to 4.13 and 5.0.0-alpha return
+// them half a pixel down and right of that, 4.14 and 5.0 don't; a
+// distribution may carry either. So it is measured once, on the chart's own
+// picture, where every corner sits exactly on a pixel boundary: between
+// pixels k - 1 and k is k - 0.5.
+cv::Point2f CornerFrameOffset()
+{
+    static const cv::Point2f offset = [] {
+        const ChartImage c = MakeChartImage(32 * (kChartSquaresX + 1), 32 * (kChartSquaresY + 1));
+        const cv::Mat img(c.height, c.width, CV_8UC1, const_cast<uint8_t*>(c.grey.data()));
+        std::vector<cv::Point2f> corners;
+        std::vector<int> ids;
+        MakeChartDetector().detectBoard(img, corners, ids);
+        const int bx0 = (c.width - kChartSquaresX * c.squarePx) / 2;
+        const int by0 = (c.height - kChartSquaresY * c.squarePx) / 2;
+        double du = 0, dv = 0;
+        for (size_t k = 0; k < corners.size(); ++k) {
+            double x, y;
+            ChartCornerPosition(ids[k], x, y);
+            du += corners[k].x - (bx0 + x * c.squarePx - 0.5);
+            dv += corners[k].y - (by0 + y * c.squarePx - 0.5);
+        }
+        const double n = double(std::max<size_t>(1, corners.size()));
+        du /= n, dv /= n;
+        // A frame convention is a whole number of half pixels, the same on
+        // both axes; anything else is not one this code knows.
+        const double half = std::round(2 * du) / 2;
+        if (corners.size() != size_t(kChartCorners) || std::fabs(du - half) > 0.05 ||
+            std::fabs(dv - half) > 0.05) {
+            std::fprintf(stderr,
+                         "lens calibration: can't tell OpenCV %s's chart corner frame (%zu "
+                         "corners, off by %.3f, %.3f px); using its corners as they are\n",
+                         CV_VERSION, corners.size(), du, dv);
+            return cv::Point2f(0, 0);
+        }
+        return cv::Point2f(float(-half), float(-half));
+    }();
+    return offset;
+}
+
+// The chart's corners in one picture, in the stitch's pixel frame; none
+// when too few are found.
+std::vector<ChartCorner> Detect(cv::aruco::CharucoDetector& det, const cv::Mat& grey)
+{
+    const cv::Point2f offset = CornerFrameOffset();
+    std::vector<cv::Point2f> corners;
+    std::vector<int> ids;
+    det.detectBoard(grey, corners, ids);
+    std::vector<ChartCorner> out;
+    if (int(corners.size()) < kMinCorners)
+        return out;
+    out.reserve(corners.size());
+    for (size_t k = 0; k < corners.size(); ++k)
+        out.push_back({ids[k], corners[k].x + offset.x, corners[k].y + offset.y});
+    return out;
+}
+
 } // namespace
 
 std::vector<ChartCorner> DetectChartInPicture(const uint8_t* grey, int width, int height)
 {
     cv::aruco::CharucoDetector det = MakeChartDetector();
-    const cv::Mat img(height, width, CV_8UC1, const_cast<uint8_t*>(grey));
-    std::vector<cv::Point2f> corners;
-    std::vector<int> ids;
-    det.detectBoard(img, corners, ids);
-    std::vector<ChartCorner> out;
-    if (int(corners.size()) < kMinCorners)
-        return out;
-    for (size_t k = 0; k < corners.size(); ++k)
-        out.push_back({ids[k], corners[k].x, corners[k].y});
-    return out;
+    return Detect(det, cv::Mat(height, width, CV_8UC1, const_cast<uint8_t*>(grey)));
 }
 
 bool DetectChart(const std::string& clipPath, ChartObservations& out, std::string& err,
@@ -124,15 +175,11 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
             cv::aruco::CharucoDetector det = MakeChartDetector();
             Job j;
             while (queue.pop(j)) {
-                std::vector<cv::Point2f> corners;
-                std::vector<int> ids;
-                det.detectBoard(j.grey, corners, ids);
-                if (int(corners.size()) < kMinCorners)
-                    continue;
                 ChartView v;
                 v.frame = j.frame;
-                for (size_t k = 0; k < corners.size(); ++k)
-                    v.corners.push_back({ids[k], corners[k].x, corners[k].y});
+                v.corners = Detect(det, j.grey);
+                if (v.corners.empty())
+                    continue;
                 std::lock_guard<std::mutex> lk(resultsMutex);
                 out.lens[j.lens].push_back(std::move(v));
             }
@@ -177,14 +224,18 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
     return ok;
 }
 
+// 2: corners in the stitch's pixel frame (version 1 files may be half a
+// pixel off it, depending on the OpenCV that found them).
+constexpr int kObservationsVersion = 2;
+
 bool WriteChartObservations(const std::string& path, const ChartObservations& obs)
 {
     std::ofstream f(path);
     if (!f)
         return false;
     f.imbue(std::locale::classic()); // '.' decimals whatever the user's locale
-    f << std::fixed << std::setprecision(6) << "chart-observations 1 " << obs.lensWidth << ' '
-      << obs.lensHeight << ' ' << obs.fps << ' ' << obs.framesRead << '\n'
+    f << std::fixed << std::setprecision(6) << "chart-observations " << kObservationsVersion << ' '
+      << obs.lensWidth << ' ' << obs.lensHeight << ' ' << obs.fps << ' ' << obs.framesRead << '\n'
       << std::setprecision(3);
     for (int l = 0; l < 2; ++l)
         for (const ChartView& v : obs.lens[l]) {
@@ -203,7 +254,7 @@ bool ReadChartObservations(const std::string& path, ChartObservations& obs)
     in.imbue(std::locale::classic());
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "chart-observations" || version != 1)
+    if (!(in >> tag >> version) || tag != "chart-observations" || version != kObservationsVersion)
         return false;
     in >> obs.lensWidth >> obs.lensHeight >> obs.fps >> obs.framesRead;
     while (in >> tag) {

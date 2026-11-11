@@ -421,7 +421,9 @@ build/lens_calib --chart 2560 1440 chart.pgm   # the chart for a screen
   stitches without a calibration.
 - `--corners FILE`: the detections. Read if the file exists, else found and
   written there, so the fit can be run again without the long part (finding
-  the chart takes about twice the clip's length).
+  the chart takes about twice the clip's length). A file from an older build
+  (version 1, whose corners may be half a pixel off) is refused: delete it to
+  find the corners again.
 - `--out FILE`: the calibration, JSON. `stitch_bench`'s `calibration=` and
   a copy in the app's `calibrations/` folder take it.
 

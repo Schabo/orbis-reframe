@@ -14,7 +14,9 @@ namespace calib {
 
 struct ChartCorner {
     int id = 0;
-    float u = 0, v = 0; // lens picture pixels, the stream's full size
+    // Lens picture pixels, the stream's full size, in the stitch's frame:
+    // pixel (x, y)'s centre is at (x, y).
+    float u = 0, v = 0;
 };
 struct ChartView {
     int frame = 0; // the clip's frame number
@@ -40,7 +42,7 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
 
 // The detections as text, to keep a run's and fit it again (tools/lens_calib):
 // a header line, then per lens and frame "F lens frame n" and n lines
-// "id u v".
+// "id u v". Reading refuses files of another version.
 bool WriteChartObservations(const std::string& path, const ChartObservations& obs);
 bool ReadChartObservations(const std::string& path, ChartObservations& obs);
 

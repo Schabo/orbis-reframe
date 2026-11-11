@@ -113,7 +113,10 @@ int main(int argc, char** argv)
     calib::ChartObservations obs;
     if (!cornersPath.empty() && std::filesystem::exists(cornersPath)) {
         if (!calib::ReadChartObservations(cornersPath, obs)) {
-            std::fprintf(stderr, "%s: not a corners file\n", cornersPath.c_str());
+            std::fprintf(stderr,
+                         "%s: not a corners file of this version (delete it to find the "
+                         "corners again)\n",
+                         cornersPath.c_str());
             return 1;
         }
         std::printf("corners from %s\n", cornersPath.c_str());
