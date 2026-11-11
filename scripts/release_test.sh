@@ -34,8 +34,8 @@
 #   4. Each export's video and audio streams are the same as the Debian
 #      Testing .deb's (its release test of the same version, run first).
 #
-# Needs podman and the NVIDIA Container Toolkit's CDI spec
-# (nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml). Results, logs and
+# Needs podman and the NVIDIA Container Toolkit's CDI spec, with the GPU's
+# render node in it (docs/RELEASE.md, one-time setup). Results, logs and
 # screenshots go to tmp/release-test/<version>/<target>/. Takes ~10 minutes;
 # the first run per target also builds its test image and fills an apt cache.
 # The containers use this machine's NVIDIA driver, whatever the target's own
@@ -124,6 +124,18 @@ finish() {
 }
 GPU=(--device nvidia.com/gpu=all -e NVIDIA_DRIVER_CAPABILITIES=graphics,video,compute,utility)
 NOCLEAN='rm -f /etc/apt/apt.conf.d/docker-clean'
+
+# Without a render node in the container, Sway can't composite on the GPU
+# and gpu_smoke.sh leaves out the viewport checks, as it must on the GPU
+# runner; a release test without them would still pass, so it doesn't start.
+# The node goes missing when the CDI spec was generated before the driver
+# made it: nvidia-cdi-refresh at boot writes /var/run/cdi/nvidia.yaml, which
+# takes precedence over /etc/cdi/ (docs/RELEASE.md, one-time setup).
+podman run --rm "${GPU[@]}" "$(target_image debian-13)" \
+    sh -c 'for n in /dev/dri/renderD*; do [ -r "$n" ] && [ -w "$n" ] && exit 0; done; exit 1' \
+    || die "the containers get no GPU render node (/dev/dri/renderD*), so the viewport can't be tested:
+regenerate the CDI spec the containers use (sudo systemctl start nvidia-cdi-refresh.service,
+or sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml without that service)"
 
 # --- the AppImage
 shopt -s nullglob

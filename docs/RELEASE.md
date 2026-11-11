@@ -38,7 +38,21 @@ A release is:
   `git config core.hooksPath .githooks`.
 - An NVIDIA machine with a Wayland desktop to test on (step 6).
 - For `scripts/release_test.sh` (step 6): `podman`, the NVIDIA Container
-  Toolkit (NVIDIA's apt repository) and its device list,
+  Toolkit (NVIDIA's apt repository) and its device list (CDI spec). Since
+  toolkit 1.18 its `nvidia-cdi-refresh` service writes the spec to
+  `/var/run/cdi/nvidia.yaml` at boot and after driver updates; that file
+  takes precedence over one in `/etc/cdi/`. At boot it can run before the
+  driver has made the GPU's render node, and then the containers get no
+  `/dev/dri` (`release_test.sh` stops, saying so). Make it wait for the
+  node with a drop-in, `sudo systemctl edit nvidia-cdi-refresh.service`:
+
+  ```ini
+  [Service]
+  ExecStartPre=/bin/sh -c 'for i in $(seq 30); do ls /sys/bus/pci/drivers/nvidia/*/drm/renderD* > /dev/null 2>&1 && exit 0; sleep 1; done'
+  ```
+
+  then `sudo systemctl start nvidia-cdi-refresh.service` to regenerate it
+  now. With an older toolkit, without that service:
   `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` -- again
   after every driver update. `ffmpeg` (for `ffprobe`) and the test clip in
   `sample_footage/` (named in `tests/release/smoke.orp`; `--footage DIR`
