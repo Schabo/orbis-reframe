@@ -34,7 +34,15 @@ in [`README.md`](README.md).
   view ~18.4 fps. That is far below the AMD figure above at the same frame
   size, and below an X5 8K 30 clip on an RTX 5070 (decode ~125 fps, fused
   view ~94 fps, 2026-11-11), so something else likely limits that run; not
-  found yet.
+  found yet. A stand-in on the RTX 5070 (2026-11-11; an X5 8K 30 clip's
+  lenses re-encoded to HEVC Main 10, 3840², 50 fps, P frames only, ~76 and
+  ~140 Mb/s per lens, Release `playback_bench --frames 60`): decode 188 /
+  160 fps, fused view 118 / 106, direct view 117 / 104 -- 5x real time.
+  Frame size, 10-bit and 50 fps don't explain the contributor's figure, nor
+  a Debug build (the same) or CPU decode (the bench reports nothing off the
+  all-GPU path, and that run did). Still ❓ until an X6 8K 50 file runs
+  here: its encoder settings (B frames, tiles, bitrate peaks) may differ
+  from the stand-in's.
 
 ## Modes and sample clips
 
@@ -122,9 +130,9 @@ ourselves.
   contributor's set) and fx / fy ~7220, cx / cy ~3865 / 3889 (the
   contributor's camera) -- per unit, from the factory -- roll ~90,
   combined frame **15488×7744**, type 193. The sanity ranges in
-  `Calibration.cpp` hold. (`insv_trailer_dump`'s `Parameters:` line stays
-  empty: the string is not in the short maker-notes tags; the app reads it
-  through `ReadInsvExtendedCalibrationString`.)
+  `Calibration.cpp` hold. It is not in the short maker-notes tags, so
+  `insv_trailer_dump`'s `Parameters:` line is empty; the string is on its
+  `Extended:` line.
 - ✅ Field 27 `window_crop_info`: src 7744², **dst 7680²** (X5: 5376² ->
   5312², X5 §5.1). The dst width is the window fx / fy are given in, so the
   stitch reads it from the file (`InsvMakerNotes::crop_dst_w` ->

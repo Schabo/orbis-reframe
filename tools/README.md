@@ -41,7 +41,9 @@ milliseconds of clip (source) time unless they're marked `S` (seconds).
 
 Prints what the X5 writes into a clip's `inst` trailer: camera model,
 firmware, lens calibration, capture settings, and a summary of the IMU and
-exposure data. `--imu` / `--exposure` print every sample, one per line, in
+exposure data. The lens calibration comes twice: `Parameters:` is the short
+string in the maker-notes record (empty on the X6), `Extended:` the
+extended MEI string the stitch uses. `--imu` / `--exposure` print every sample, one per line, in
 a layout that lines up with `exiftool -ee` for comparison. `--gps` prints
 each GPS fix once (the file repeats it ten times a second): its time in the
 clip in ms, Unix seconds, latitude, longitude, speed in m/s, heading (-1:

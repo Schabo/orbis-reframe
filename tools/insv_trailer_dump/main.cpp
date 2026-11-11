@@ -179,6 +179,10 @@ int main(int argc, char** argv) {
               << "Model:      " << calib->model << "\n"
               << "Firmware:   " << calib->firmware << "\n"
               << "Parameters: " << calib->parameters << "\n";
+    // The stitch's own calibration: the X6 leaves the short string above
+    // empty, so this is the only lens calibration such a clip prints.
+    if (const auto ext = insv::ReadInsvExtendedCalibrationString(path))
+        std::cout << "Extended:   " << *ext << "\n";
     if (!calib->offset_v3.empty())
         std::cout << "offset_v3:  " << calib->offset_v3 << "\n";
     for (const auto& lp : calib->lens_profiles) {
