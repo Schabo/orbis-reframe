@@ -293,7 +293,7 @@ void testDetect()
     insv::Vec3 d = insv::normalize(b.centre);
     for (int py = y0; py < y1; ++py)
         for (int px = x0; px < x1; ++px) {
-            // Newton: the direction d whose projection is (px + .5, py + .5).
+            // Newton: the direction d whose projection is the pixel centre (px, py).
             const insv::Vec3 e1 = insv::normalize(Cross(n, d)), e2 = Cross(d, e1);
             for (int it = 0; it < 8; ++it) {
                 double x, y, th, xa, ya, xb, yb;
@@ -303,7 +303,10 @@ void testDetect()
                 st.project(0, Add(d, e2, h), xb, yb, th);
                 const double j00 = (xa - x) / h, j10 = (ya - y) / h, j01 = (xb - x) / h,
                              j11 = (yb - y) / h, det = j00 * j11 - j01 * j10;
-                const double ex = px + 0.5 - x, ey = py + 0.5 - y;
+                // project()'s pixel frame: the centre of pixel (px, py) is at
+                // (px, py). ChArUco's absolute origin differs by ~½ px between
+                // OpenCV 4 and 5; the check below allows that global shift.
+                const double ex = px - x, ey = py - y;
                 const double s1 = (j11 * ex - j01 * ey) / det, s2 = (-j10 * ex + j00 * ey) / det;
                 d = insv::normalize(Add(Add(d, e1, s1), e2, s2));
                 if (std::fabs(ex) + std::fabs(ey) < 1e-4)
@@ -320,14 +323,27 @@ void testDetect()
             img[size_t(py) * S + px] = chart.grey[size_t(iy) * chart.width + ix];
         }
     const std::vector<calib::ChartCorner> found = calib::DetectChartInPicture(img.data(), S, S);
-    std::vector<double> err;
-    for (const calib::ChartCorner& f : found)
-        err.push_back(std::hypot(f.u - truth[f.id].u, f.v - truth[f.id].v));
-    std::sort(err.begin(), err.end());
-    std::printf("  detected %zu of %d corners, median %.3f px off, worst %.3f\n", found.size(),
-                calib::kChartCorners, err.empty() ? -1.0 : err[err.size() / 2],
-                err.empty() ? -1.0 : err.back());
     CHECK(found.size() >= 60);
+    double meanDu = 0, meanDv = 0;
+    for (const calib::ChartCorner& f : found) {
+        meanDu += f.u - truth[f.id].u;
+        meanDv += f.v - truth[f.id].v;
+    }
+    meanDu /= double(found.size());
+    meanDv /= double(found.size());
+    std::vector<double> err;
+    err.reserve(found.size());
+    for (const calib::ChartCorner& f : found)
+        err.push_back(std::hypot(f.u - truth[f.id].u - meanDu, f.v - truth[f.id].v - meanDv));
+    std::sort(err.begin(), err.end());
+    const double bias = std::hypot(meanDu, meanDv);
+    std::printf("  detected %zu of %d corners, bias %.3f px (du %.3f dv %.3f), "
+                "scatter median %.3f worst %.3f\n",
+                found.size(), calib::kChartCorners, bias, meanDu, meanDv,
+                err.empty() ? -1.0 : err[err.size() / 2], err.empty() ? -1.0 : err.back());
+    // Bias: OpenCV 4 vs 5 ChArUco origins differ by about half a pixel against
+    // project(); anything much larger is a real shift. Scatter: geometry.
+    CHECK(bias < 0.75);
     CHECK(!err.empty() && err[err.size() / 2] < 0.3 && err.back() < 1.0);
 }
 
