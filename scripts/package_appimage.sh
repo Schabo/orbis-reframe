@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the AppImage (docs/dev-environment.md, "The AppImage"): one file that
-# runs on every distribution with glibc 2.41 or newer, built on Debian 13 with
+# runs on every distribution with glibc 2.39 or newer, built on Debian 13 with
 # the libraries whose versions differ between distributions bundled. Only
 # glibc, libstdc++, the Vulkan loader, the graphics and VA-API drivers,
 # GL / EGL, fontconfig, freetype, X11 / xcb, libwayland-client and the
@@ -51,6 +51,12 @@ UPDATE_INFO="gh-releases-zsync|Schabo|orbis-reframe|latest|orbis-reframe-*-x86_6
 # glvnd's libraries Debian's Qt Gui links (libGLdispatch is what the other
 # two need).
 GLVND_FALLBACK=(libOpenGL.so.0 libGLX.so.0 libGLdispatch.so.0)
+# The newest glibc and libstdc++ symbol versions a file in the AppImage may
+# need: they set the oldest system it starts on, which the user manual names
+# (getting-started.md, glibc 2.39). Debian 13 builds with glibc 2.41, so a
+# library update or new code can need a newer symbol without anyone choosing
+# to; the checks fail then. Raise these only together with the manual.
+MAX_SYMBOL_VERSIONS=(GLIBC_2.39 GLIBCXX_3.4.32 CXXABI_1.3.15)
 
 die() { echo "$*" >&2; exit 1; }
 
@@ -391,6 +397,20 @@ done
 # Our FFmpeg, not another: avcodec_configuration() is the configure line.
 grep -qF -- "$(cat "$FFMPEG/share/doc/ffmpeg/configure.txt")" "$root"/usr/lib/libavcodec.so.* \
     || { echo "FAIL: the bundled libavcodec isn't our build" >&2; fail=1; }
+# No file needs a newer glibc or libstdc++ than the manual promises.
+symbol_versions=$(find "$root" -type f -print0 | while IFS= read -r -d '' f; do
+    file -b "$f" | grep -q '^ELF' || continue
+    { objdump -T "$f" | grep -oE '\((GLIBC|GLIBCXX|CXXABI)_[0-9.]+\)' || true; } | tr -d '()' | sort -u \
+        | while read -r v; do echo "$v ${f#"$root/"}"; done
+done)
+for limit in "${MAX_SYMBOL_VERSIONS[@]}"; do
+    too_new=$(while read -r v f; do
+        if [[ $v == "${limit%%_*}"_* && $(printf '%s\n' "$v" "$limit" | sort -V | tail -1) != "$limit" ]]; then
+            echo "  $v: $f"
+        fi
+    done <<< "$symbol_versions" | sort -V)
+    [[ -z "$too_new" ]] || { echo "FAIL: needs newer symbols than $limit (MAX_SYMBOL_VERSIONS):" >&2; echo "$too_new" >&2; fail=1; }
+done
 for f in libvulkan.so.1 orbis-reframe; do
     [[ ! -e "$root/usr/lib/$f" ]] || { echo "FAIL: usr/lib/$f shouldn't be bundled" >&2; fail=1; }
 done

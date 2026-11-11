@@ -24,7 +24,7 @@ A release is:
 | `orbis-reframe-<version>-ubuntu-26.04-x86_64.tar.xz` | The same for Ubuntu 26.04 |
 | `orbis-reframe_<version>.ubuntu26.04_amd64.deb` | Ubuntu 26.04's `.deb` (version `<version>~ubuntu26.04`) |
 | `orbis-reframe-<version>-source.tar.xz` | `git archive` of the release tag (GPL-3.0: the source goes with every binary) |
-| `orbis-reframe-<version>-x86_64.AppImage` | One file for every distribution with glibc 2.41 or newer, the libraries bundled |
+| `orbis-reframe-<version>-x86_64.AppImage` | One file for every distribution with glibc 2.39 or newer (tested from 2.41), the libraries bundled |
 | `orbis-reframe-<version>-x86_64.AppImage.zsync` | What AppImageUpdate and its kind download a new version with (the AppImage's update information points at the latest release's) |
 | `orbis-reframe-<version>-appimage-sources.txt` | Where the source of each copyleft library in the AppImage is: Debian's on snapshot.debian.org, by exact version, and the two files below |
 | `ffmpeg-<version>.tar.xz` (+ `.asc`) | The FFmpeg release the AppImage's FFmpeg is built from, with FFmpeg's signature |

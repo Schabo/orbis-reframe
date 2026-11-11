@@ -57,7 +57,7 @@ you have one, short clips from it help add it:
 
 | | Needed |
 |---|---|
-| **Operating system** | Linux, 64-bit (x86_64). On **Debian 13** ("trixie"), **Debian Testing** and **Ubuntu 26.04 LTS** there's a package for each, built on the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8); download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ. To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. **Other distributions** (Fedora, Arch, openSUSE Tumbleweed, ...): the **AppImage**, which brings its own libraries and runs where the system's C library is version 2.41 or newer (`ldd --version` prints it on its first line). |
+| **Operating system** | Linux, 64-bit (x86_64). On **Debian 13** ("trixie"), **Debian Testing** and **Ubuntu 26.04 LTS** there's a package for each, built on the library versions of its own release (Debian 13: Qt 6.8, FFmpeg 7.1; Testing: Qt 6.10, FFmpeg 9; Ubuntu 26.04: Qt 6.10, FFmpeg 8); download the one for your system. None of them starts on older releases, such as Ubuntu 24.04, whose versions differ (the AppImage does, below). To see which system you have: `grep -E '^(ID\|VERSION_ID)=' /etc/os-release` prints `ID=debian` and `VERSION_ID="13"` on Debian 13, `ID=debian` and no `VERSION_ID` on Testing, and `ID=ubuntu` and `VERSION_ID="26.04"` on Ubuntu 26.04. **Other distributions** (Fedora, Arch, openSUSE Tumbleweed, ...): the **AppImage**, which brings its own libraries and runs where the system's C library is version 2.39 or newer (`ldd --version` prints it on its first line); it's tested from version 2.41 on (step 3, option C). |
 | **Desktop session** | **Wayland**: Sway, GNOME, KDE Plasma or another Wayland desktop. An X11 session doesn't work: orbis-reframe exits at startup instead of falling back to X11. |
 | **Graphics card** | A card with **Vulkan**, including Vulkan video decoding. Export uses the card's hardware encoder: NVENC on NVIDIA, VAAPI or Vulkan video on AMD and Intel. **NVIDIA** with the proprietary driver is what orbis-reframe is tested on (an RTX 5070, driver 595); other NVIDIA cards from the GTX 16 / RTX 20 series onwards should work. **AMD** and **Intel** use the Mesa drivers that come with the system, and are supported best-effort: a contributor has tested playback and export on an AMD Radeon 8060S (Mesa 26.2); other AMD cards and Intel GPUs haven't been tried. If something doesn't work on yours, please [report it](#if-it-doesnt-start). |
 | **Graphics memory** | **6 GB** or more on the graphics card for projects of 8K clips (Insta360 X5); 8 GB or more is better. Each 8K clip that's open needs about 1 GB. orbis-reframe keeps as many of a project's clips ready as the card has room for, so that cuts between them play smoothly, and gives the memory back when it runs short: when other programs take more, or when you export. On 4 GB, projects of 8K clips still play and export, but a cut to another clip takes a moment (*Buffering…*) and the background measurements of new clips take longer. The desktop and other programs, such as a web browser, also use graphics memory. With too little, the viewport may not show the picture, or clips decode on the processor and play slowly; orbis-reframe says which (see [If it doesn't start](#if-it-doesnt-start)). |
@@ -299,10 +299,12 @@ To remove the tarball version, delete its folder.
 ### Option C: the AppImage
 
 Each release also has `orbis-reframe-<version>-x86_64.AppImage`: one file
-that runs on any 64-bit distribution whose C library (glibc) is version 2.41
-or newer, such as
-Debian 13, Ubuntu 26.04, Fedora 42 and newer, Arch and openSUSE Tumbleweed.
-It works on Debian and Ubuntu too, but there the `.deb` fits in better.
+that runs on any 64-bit distribution whose C library (glibc) is version 2.39
+or newer. It's tested on those with 2.41 or newer: Debian 13, Ubuntu 26.04,
+Fedora 42 and newer, Arch and openSUSE Tumbleweed. Older ones that have 2.39
+or 2.40, such as Ubuntu 24.04 LTS, Fedora 40 and 41 or Red Hat Enterprise
+Linux 10, meet what it needs, but nobody tests it there. It works on Debian
+13 and Ubuntu 26.04 too, but there the `.deb` fits in better.
 
 The AppImage carries the libraries that differ between distributions: Qt,
 FFmpeg, OpenCV, ONNX Runtime and what they need. It takes from your system
@@ -440,7 +442,7 @@ Start orbis-reframe from a terminal so you can see its messages.
 |---|---|
 | `error while loading shared libraries: libXYZ.so…` | A library is missing (tarball only: the `.deb` installs them). Use the `ldd` check from step 3, option B, to find which ones. With the AppImage, it's one of the few libraries it takes from the system (step 3, option C): install the package that has it, e.g. `libharfbuzz.so.0` is in `harfbuzz` or `libharfbuzz0b`. |
 | AppImage: *"No suitable fusermount binary found"* or *"Cannot mount AppImage"* | FUSE is missing: install `fuse3`, or start it with `--appimage-extract-and-run` (step 3, option C). |
-| AppImage: ``version `GLIBC_2.41' not found`` | The system is older than the AppImage supports (glibc 2.41, step 1). |
+| AppImage: ``version `GLIBC_2.38' not found`` (or another `GLIBC_2.3x`, `GLIBCXX_3.4.3x` or `CXXABI_1.3.1x`) | The system is older than the AppImage supports (glibc 2.39, step 1). |
 | `Could not load the Qt platform plugin "wayland"` | Install `qt6-wayland`. If it's installed, you are probably in an X11 session: log out and choose a Wayland session on the login screen. |
 | *"Vulkan couldn't be started"* or *"Vulkan found no graphics card"* | Vulkan isn't working. Check that `vulkaninfo --summary` lists your card. If it doesn't, install the card's Vulkan driver (step 2: `nvidia-vulkan-icd` for NVIDIA, `mesa-vulkan-drivers` for AMD and Intel) and restart. |
 | At startup: *"Your graphics card or driver can't decode video on the GPU"* | The card or driver has no Vulkan video decoding. orbis-reframe still works, but decodes on the processor, so 5.7K and 8K clips play slowly. On NVIDIA, update the driver; cards older than the GTX 16 / RTX 20 series can't decode on the GPU. On AMD and Intel, decoding needs a newer Mesa (step 2); `vulkaninfo \| grep video_decode` shows whether the driver has it. |

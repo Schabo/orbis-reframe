@@ -50,7 +50,8 @@ discussion in an issue first, not a pull request.
   as recorded; they don't convert transfer curves themselves.
 - **Releases**: one build per target on its own system libraries (Debian
   Testing, Debian 13, Ubuntu 26.04), as a tarball and a `.deb`; beside them
-  an AppImage for every distribution with glibc 2.41 or newer, built on
+  an AppImage for every distribution with glibc 2.39 or newer (tested from
+  2.41), built on
   Debian 13 with the libraries that differ between distributions bundled
   (Qt, OpenCV and ONNX Runtime from Debian 13, FFmpeg our own LGPL build;
   the drivers, Vulkan loader, GL / EGL and fonts from the system). Every

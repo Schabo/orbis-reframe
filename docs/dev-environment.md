@@ -198,7 +198,17 @@ Don't use Qt's private-ABI classes (`QVulkanDeviceFunctions` and friends,
 
 `./scripts/package.sh --target appimage` builds
 `dist/appimage/orbis-reframe-<version>-x86_64.AppImage` (+ `.zsync`): one
-file for every distribution with glibc 2.41 or newer, built on Debian 13.
+file for every distribution with glibc 2.39 or newer, built on Debian 13.
+Debian 13 has glibc 2.41, but nothing in the AppImage needs symbols newer
+than `GLIBC_2.39`, `GLIBCXX_3.4.32` and `CXXABI_1.3.15` (GCC 13.2's
+libstdc++), so it starts on Ubuntu 24.04, Fedora 40 and RHEL 10 too. The
+release test covers only glibc 2.41 and newer. One run on Ubuntu 24.04
+(0.8.0, 2026-11-11) passed every functional check, but its export wasn't
+bit-identical to the others: the subject tracker set 18 keys instead of
+20, so the camera path and then the picture drift. A likely cause is
+glibc 2.41's correctly rounded single-precision maths functions (`tanhf`,
+`erff`, `expm1f`, ...), which OpenCV's DNN and ONNX Runtime call from the
+system's libm; on older glibc they round differently. Not proven.
 Next to it go the release's files for the sources:
 `orbis-reframe-<version>-appimage-sources.txt` and the source archives it
 names (`ffmpeg-<version>.tar.xz` + `.asc`,
@@ -257,7 +267,10 @@ the packages `package.sh` installs, can also run directly:
   looks for updates) and `zsyncmake` writes the `.zsync`;
 - checks on the unpacked AppImage: `AppRun`, `--version`, the update
   information, every bundled ELF file's libraries found (`ldd` with no
-  `LD_LIBRARY_PATH`), FFmpeg (ours, by its configure line), ncnn and ONNX
+  `LD_LIBRARY_PATH`), no file needing a newer glibc / libstdc++ symbol
+  version than `MAX_SYMBOL_VERSIONS` in `scripts/package_appimage.sh` (the
+  floor above: raise it only together with the manual's), FFmpeg (ours, by
+  its configure line), ncnn and ONNX
   Runtime from `usr/lib/`, no Vulkan loader, the Qt plugins, the glvnd
   fallback, every bundled file in `bundled.txt` with licence texts for its
   package, the sources list and archives next to the AppImage,
