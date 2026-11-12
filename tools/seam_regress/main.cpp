@@ -961,7 +961,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     insv::Image lens[2];
     {
         insv::InsvDemux demux;
-        if (!demux.open(meta->lensSources(), err) || !demux.seekTo(pts, err))
+        if (!demux.open(meta->partSources(), err) || !demux.seekTo(pts, err))
             return false;
         insv::FramePts p{-1, -1};
         while (p.ms < pts)

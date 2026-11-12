@@ -295,7 +295,7 @@ private:
     // A read's or seek's first step: a released source taken up again, and
     // positioned where it was when the read carries on (resume_seek_).
     bool resumeForRead();
-    std::vector<insv::LensSource> lens_sources_; // Open()'s clip, for openDecode
+    std::vector<insv::ClipPart> lens_sources_; // Open()'s clip, its parts, for openDecode
     bool gpu_released_ = false;                  // ReleaseGpu, until resumed
     bool resume_seek_ = false; // resumed, or a lens frame failed, with no SeekTo since: the next read seeks to resume_at_ms_
     int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read

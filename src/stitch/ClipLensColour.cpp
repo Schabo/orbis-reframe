@@ -43,7 +43,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
     params.seam = seam;
 
     insv::InsvDemux demux;
-    if (!demux.open(clip->lensSources(), err))
+    if (!demux.open(clip->partSources(), err))
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)
         return fail(MeasureFailure::Unsupported, "one lens stream in the file");

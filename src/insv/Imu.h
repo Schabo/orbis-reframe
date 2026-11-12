@@ -94,4 +94,24 @@ struct ImuTrack {
     double readoutSec = 0.0;
 };
 
+// One part of a clip the camera split into several files (ClipPart): its
+// track as the part's own file gives it, and where the part's video sits in
+// the clip.
+struct ImuTrackPart {
+    ImuTrack track;
+    double startSec = 0.0;
+    double durationSec = 0.0;
+};
+
+// The parts' tracks as one, in clip time. The parts run on one device clock
+// and their records overlap where one file ends and the next begins (the
+// X5's with the same readings, docs/formats/insta360-x5.md §1), so a part
+// keeps its samples up to the next part's first and every part keeps its
+// own sync: its frames at their clip time, up to its end -- the nominal
+// frame rate and the clock part from each other over a part (72 ms over the
+// X5's 29 min 59 s), so one anchor for the whole would drift. A part
+// without frame times gives its formula's line from its start to its end.
+// The scale, clock rate, axes and readout are the first part's.
+ImuTrack JoinImuTracks(std::vector<ImuTrackPart>&& parts);
+
 } // namespace insv

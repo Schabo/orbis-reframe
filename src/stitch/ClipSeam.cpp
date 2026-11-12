@@ -34,7 +34,7 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
         return fail(why, err);
 
     insv::InsvDemux demux;
-    if (!demux.open(clip->lensSources(), err))
+    if (!demux.open(clip->partSources(), err))
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)
         return fail(MeasureFailure::Unsupported, "one lens stream in the file");

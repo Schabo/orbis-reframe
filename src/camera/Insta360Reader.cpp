@@ -256,6 +256,138 @@ std::string nameTime(const std::filesystem::path& p) {
     return {};
 }
 
+// The lenses of the clip file `path` whose video streams are `streams`:
+// both as streams of it, or lens 0 there and lens 1 in a file of its own
+// beside it (findSecondLens), whose length then caps the pair's (`durationUs`,
+// `durationMs`). False with `err` set when neither fits.
+bool lensSourcesOf(const std::string& path, const std::vector<insv::InsvStreamInfo>& streams,
+                   const insv::InsvModel& model, std::vector<LensSource>& lenses,
+                   int64_t& durationUs, int64_t& durationMs, std::string& err) {
+    durationUs = streams.empty() ? 0 : streams[0].durationUs;
+    durationMs = streams.empty() ? 0 : streams[0].durationMs;
+    if (streams.size() >= 2) {
+        lenses = {LensSource{path, 0}, LensSource{path, 1}};
+        return true;
+    }
+    if (streams.size() == 1 && model.secondLensToken) {
+        std::string other;
+        insv::InsvStreamInfo info;
+        if (!findSecondLens(path, streams[0], model, other, info, err))
+            return false;
+        lenses = {LensSource{path, 0}, LensSource{other, 0}};
+        // A pair plays as long as both have frames; the second may end one
+        // frame early.
+        durationUs = std::min(durationUs, info.durationUs);
+        durationMs = std::min(durationMs, info.durationMs);
+        return true;
+    }
+    err = "expected 2 fisheye video streams, found " + std::to_string(streams.size());
+    return false;
+}
+
+// The video streams of `path`; false with `err` set when it can't be opened.
+bool videoStreams(const std::string& path, std::vector<insv::InsvStreamInfo>& streams,
+                  std::string& err) {
+    insv::LensDemuxer demux;
+    if (!demux.open(
+            path, [](const auto*, const auto*, auto*, std::string&) { return true; }, err))
+        return false;
+    streams.clear();
+    for (int i = 0; i < demux.lensCount(); ++i)
+        streams.push_back(demux.lens(i));
+    return true;
+}
+
+// The files that continue the recording `out`'s file starts or continues
+// (docs/formats/insta360-x5.md §1, §5.1 field 26), as `out.parts` after its
+// own: beside it, named like it but for the counter, from the same camera,
+// naming the same first file and further on by field 26's index, in that
+// order, each starting where the one before ends. The first that doesn't
+// follow on ends the clip there: streams not like the first part's, or not
+// starting where the part before ends by the camera's clock (a part between
+// them missing).
+void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::InsvMakerNotes& notes,
+               const insv::InsvStreamInfo& s0) {
+    if (notes.file_group_identify.empty())
+        return;
+    namespace fs = std::filesystem;
+    const fs::path self(out.path);
+    const std::string name = self.filename().string();
+    const auto counter = name.rfind('_');
+    if (name.rfind("VID_", 0) != 0 || counter == std::string::npos)
+        return;
+    const std::string stem = name.substr(0, counter + 1);
+    struct Candidate {
+        uint64_t index = 0;
+        std::string path;
+        uint64_t firstFrame = 0;
+    };
+    std::vector<Candidate> candidates;
+    std::error_code ec;
+    const fs::path dir = self.has_parent_path() ? self.parent_path() : fs::path(".");
+    for (const fs::directory_entry& e : fs::directory_iterator(dir, ec)) {
+        const std::string n = e.path().filename().string();
+        if (n == name || n.rfind(stem, 0) != 0 || e.path().extension() != self.extension())
+            continue;
+        const auto other = insv::ReadInsvMakerNotes(e.path().string());
+        if (!other || other->serial_number != notes.serial_number ||
+            other->file_group_identify != notes.file_group_identify ||
+            other->file_group_index <= notes.file_group_index)
+            continue;
+        candidates.push_back({other->file_group_index, e.path().string(),
+                              other->first_frame_timestamp});
+    }
+    std::sort(candidates.begin(), candidates.end(),
+              [](const Candidate& a, const Candidate& b) { return a.index < b.index; });
+
+    uint64_t prevFirstFrame = notes.first_frame_timestamp;
+    for (const Candidate& c : candidates) {
+        std::string err;
+        std::vector<insv::InsvStreamInfo> streams;
+        Part part;
+        part.path = c.path;
+        int64_t durationMs = 0;
+        if (!videoStreams(c.path, streams, err) || streams.empty() ||
+            !lensSourcesOf(c.path, streams, model, part.lenses, part.durationUs, durationMs, err)) {
+            std::fprintf(stderr, "[camera] %s continues %s but can't be read (%s); the clip ends "
+                                 "before it\n",
+                         c.path.c_str(), out.path.c_str(), err.c_str());
+            break;
+        }
+        if (streams[0].width != s0.width || streams[0].height != s0.height ||
+            std::abs(streams[0].fps - s0.fps) > 1e-3) {
+            std::fprintf(stderr, "[camera] %s continues %s but its video isn't like it; the clip "
+                                 "ends before it\n",
+                         c.path.c_str(), out.path.c_str());
+            break;
+        }
+        const Part& prev = out.parts.back();
+        // By the camera's clock the next part starts where this one ends, to
+        // the frame clock's drift from the nominal rate (tens of ppm).
+        if (prevFirstFrame != 0 && c.firstFrame != 0) {
+            const double gapSec = static_cast<double>(static_cast<int64_t>(c.firstFrame - prevFirstFrame)) *
+                                  model.telemetryTickUs * 1e-6;
+            const double expectSec = static_cast<double>(prev.durationUs) * 1e-6 * out.captureScale;
+            if (std::abs(gapSec - expectSec) > std::max(1.0, 0.01 * expectSec)) {
+                std::fprintf(stderr, "[camera] %s doesn't start where %s ends (%.3f s on, not "
+                                     "%.3f); a part between them may be missing; the clip ends "
+                                     "before it\n",
+                             c.path.c_str(), prev.path.c_str(), gapSec, expectSec);
+                break;
+            }
+        }
+        part.startUs = prev.startUs + prev.durationUs;
+        out.parts.push_back(std::move(part));
+        prevFirstFrame = c.firstFrame;
+    }
+    if (out.parts.size() > 1) {
+        const Part& last = out.parts.back();
+        out.durationMs = (last.startUs + last.durationUs) / 1000;
+        std::fprintf(stderr, "[camera] %s: a recording in %zu files, %.3f s\n", out.path.c_str(),
+                     out.parts.size(), static_cast<double>(last.startUs + last.durationUs) * 1e-6);
+    }
+}
+
 std::optional<insv::LensProfile> profile(const insv::InsvMakerNotes& notes, const char* name) {
     if (!name)
         return std::nullopt;
@@ -284,24 +416,15 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     // Both lenses as streams of this file, or lens 0 here and lens 1 in a
     // file of its own beside it.
     out.projection = Projection::DualFisheye;
-    out.lenses.resize(2);
-    if (streams.size() >= 2) {
-        for (int i = 0; i < 2; ++i)
-            out.lenses[i].source = LensSource{out.path, i};
-    } else if (streams.size() == 1 && model.secondLensToken) {
-        std::string other;
-        insv::InsvStreamInfo info;
-        if (!findSecondLens(out.path, streams[0], model, other, info, err))
-            return Result::Failed;
-        out.lenses[0].source = LensSource{out.path, 0};
-        out.lenses[1].source = LensSource{other, 0};
-        // A pair plays as long as both have frames; the second may end one
-        // frame early.
-        out.durationMs = std::min(out.durationMs, info.durationMs);
-    } else {
-        err = "expected 2 fisheye video streams, found " + std::to_string(streams.size());
+    Part first;
+    first.path = out.path;
+    if (!lensSourcesOf(out.path, streams, model, first.lenses, first.durationUs, out.durationMs,
+                       err))
         return Result::Failed;
-    }
+    out.lenses.resize(2);
+    for (int i = 0; i < 2; ++i)
+        out.lenses[i].source = first.lenses[i];
+    out.parts = {std::move(first)};
     // The MEI calibration Insta360 Studio stitches with: the 56-token string
     // (every X5 clip carries it), else the shorter offset_v3 (field 54; the
     // ONE X2's only one).
@@ -380,15 +503,31 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         out.gpsRateHz = tele->gps_rate_hz;
         out.gpsTrackSec = tele->gps_track_s;
     }
-    // The highlight marks set while recording (§4.3): device time from the
-    // first recorded frame, on the camera's clock; a trimmed file's video
-    // starts the time map's offset (video time) later.
-    if (const auto marks = insv::ReadInsvHighlights(out.path, model.telemetryTickUs)) {
+    findParts(out, model, *notes, streams[0]);
+    for (size_t k = 1; k < out.parts.size(); ++k)
+        if (const auto tele = insv::ReadInsvTelemetry(out.parts[k].path, kImuProbeSamples,
+                                                      model.telemetryTickUs)) {
+            out.exposureRecords += static_cast<int64_t>(tele->exposure.size());
+            out.gpsRecords += static_cast<int64_t>(tele->gps_records);
+            out.gpsFixes += static_cast<int64_t>(tele->gps_fixes);
+            out.gpsTrackSec += tele->gps_track_s;
+            if (out.gpsRateHz == 0.0)
+                out.gpsRateHz = tele->gps_rate_hz;
+        }
+    // The highlight marks set while recording (§4.3), each part's: device
+    // time from its first recorded frame, on the camera's clock; a trimmed
+    // file's video starts the time map's offset (video time) later.
+    for (const Part& part : out.parts) {
+        const auto marks = insv::ReadInsvHighlights(part.path, model.telemetryTickUs);
+        if (!marks)
+            continue;
+        const int64_t startMs = part.startUs / 1000;
+        const int64_t lengthMs = out.parts.size() == 1 ? out.durationMs : part.durationUs / 1000;
         const double offsetSec = marks->time_map_offset_ms * 1e-3 * out.captureScale;
         for (const double sec : marks->since_first_frame_sec) {
             const int64_t ms = videoMsAt(sec - offsetSec, out, marks->frame_sec);
-            if (ms >= 0 && (out.durationMs <= 0 || ms <= out.durationMs))
-                out.highlightMs.push_back(ms);
+            if (ms >= 0 && (lengthMs <= 0 || ms <= lengthMs))
+                out.highlightMs.push_back(startMs + ms);
         }
     }
     return Result::Read;
@@ -399,41 +538,68 @@ std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) 
     auto tele = insv::ReadInsvTelemetry(clip.path, 0, model.telemetryTickUs);
     if (!tele || !clip.hasMotion)
         return std::nullopt;
-    return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model);
+    if (clip.parts.size() <= 1)
+        return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model);
+    // Each part's track by its own file, then one.
+    std::vector<insv::ImuTrackPart> tracks;
+    for (size_t k = 0; k < clip.parts.size(); ++k) {
+        const Part& part = clip.parts[k];
+        if (k > 0)
+            tele = insv::ReadInsvTelemetry(part.path, 0, model.telemetryTickUs);
+        if (!tele) {
+            std::fprintf(stderr, "[camera] no motion data in %s, part %zu of %s\n",
+                         part.path.c_str(), k + 1, clip.path.c_str());
+            continue;
+        }
+        tracks.push_back({insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model),
+                          static_cast<double>(part.startUs) * 1e-6,
+                          static_cast<double>(part.durationUs) * 1e-6});
+    }
+    return insv::JoinImuTracks(std::move(tracks));
 }
 
 std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {
     if (clip.gpsFixes == 0)
         return std::nullopt;
-    const auto gps = insv::ReadInsvGps(clip.path, insv::FindInsvModel(clip.model).telemetryTickUs,
-                                       clip.captureScale);
-    if (!gps || gps->fixes.empty())
-        return std::nullopt;
-    // The fixes carry Unix time; field 98.3 says when the first frame was
-    // recorded on the same scale (docs/formats/insta360-x5.md §8), or, on a
-    // drone without it, the fixes' speeds matched against the flight
-    // controller's (docs/formats/antigravity-a1.md). Without either the
-    // track isn't used.
-    if (gps->first_frame_unix_ms == 0) {
-        std::fprintf(stderr, "[camera] GPS in %s but nothing lines it up with the video (no field "
-                             "98, no flight-controller speed to match); not used\n",
-                     clip.path.c_str());
-        return std::nullopt;
-    }
-    if (gps->aligned_by_speed)
-        std::fprintf(stderr, "[camera] GPS in %s lined up with the video by its speed: first frame "
-                             "at Unix %.3f s\n",
-                     clip.path.c_str(), static_cast<double>(gps->first_frame_unix_ms) * 1e-3);
-    insv::GpsTrack track;
-    track.clockStamped = !gps->aligned_by_speed;
-    track.fixes.reserve(gps->fixes.size());
-    // A heading of -1 is the camera's "don't know", written while standing
-    // still (§8). Unix time runs with the camera's clock, not the video's.
-    for (const insv::InsvGpsFix& f : gps->fixes) {
-        const double camSec = static_cast<double>(f.unix_ms - gps->first_frame_unix_ms) * 1e-3;
-        track.fixes.push_back({videoMsAt(camSec, clip, gps->frame_sec), f.latitude, f.longitude,
-                               f.speed_mps, f.heading_deg < 0.0 ? std::nan("") : f.heading_deg,
-                               f.altitude_m});
+    // Each part's fixes by its own file, in clip time.
+    std::optional<insv::GpsTrack> track;
+    for (const Part& part : clip.parts) {
+        const auto gps = insv::ReadInsvGps(part.path,
+                                           insv::FindInsvModel(clip.model).telemetryTickUs,
+                                           clip.captureScale);
+        if (!gps || gps->fixes.empty())
+            continue;
+        // The fixes carry Unix time; field 98.3 says when the first frame was
+        // recorded on the same scale (docs/formats/insta360-x5.md §8), or, on
+        // a drone without it, the fixes' speeds matched against the flight
+        // controller's (docs/formats/antigravity-a1.md). Without either the
+        // fixes aren't used.
+        if (gps->first_frame_unix_ms == 0) {
+            std::fprintf(stderr, "[camera] GPS in %s but nothing lines it up with the video (no "
+                                 "field 98, no flight-controller speed to match); not used\n",
+                         part.path.c_str());
+            continue;
+        }
+        if (gps->aligned_by_speed)
+            std::fprintf(stderr, "[camera] GPS in %s lined up with the video by its speed: first "
+                                 "frame at Unix %.3f s\n",
+                         part.path.c_str(), static_cast<double>(gps->first_frame_unix_ms) * 1e-3);
+        if (!track) {
+            track.emplace();
+            track->clockStamped = !gps->aligned_by_speed;
+        }
+        track->fixes.reserve(track->fixes.size() + gps->fixes.size());
+        const int64_t startMs = part.startUs / 1000;
+        // A heading of -1 is the camera's "don't know", written while
+        // standing still (§8). Unix time runs with the camera's clock, not
+        // the video's.
+        for (const insv::InsvGpsFix& f : gps->fixes) {
+            const double camSec = static_cast<double>(f.unix_ms - gps->first_frame_unix_ms) * 1e-3;
+            track->fixes.push_back({startMs + videoMsAt(camSec, clip, gps->frame_sec), f.latitude,
+                                    f.longitude, f.speed_mps,
+                                    f.heading_deg < 0.0 ? std::nan("") : f.heading_deg,
+                                    f.altitude_m});
+        }
     }
     return track;
 }
@@ -469,6 +635,22 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
     };
     if (auto clip = byName(p.filename().string()))
         return clip;
+    // A later part of a split recording (§1, field 26): the recording's
+    // first file, when that is beside it and takes it in as a part; else it
+    // stands as a clip of its own.
+    if (p.extension() == ".insv")
+        if (const auto notes = insv::ReadInsvMakerNotes(path);
+            notes && notes->file_group_index > 0 && !notes->file_group_identify.empty()) {
+            const std::filesystem::path first =
+                p.parent_path() / std::filesystem::path(notes->file_group_identify).filename();
+            std::error_code ec;
+            if (first.filename() != p.filename() && std::filesystem::exists(first, ec))
+                if (const auto clip = ReadClipMetadata(first.string()))
+                    for (const Part& part : clip->parts)
+                        if (std::filesystem::equivalent(part.path, p, ec))
+                            return first.string();
+            return std::nullopt;
+        }
     // A renamed proxy: by the name it holds (the clip may have kept its
     // own), else the clip renamed alike, the same stem with `.insv`.
     // ClipFileOf checks that the clip finds this file as its proxy.

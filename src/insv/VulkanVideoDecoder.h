@@ -73,6 +73,8 @@ public:
     bool open(const std::string& path, std::string& err);
     // The same for lenses that may come from several files (LensDemuxer::open).
     bool open(const std::vector<LensSource>& lenses, std::string& err);
+    // A clip in parts, played back to back (LensDemuxer::open).
+    bool open(const std::vector<ClipPart>& parts, std::string& err);
     // After a failed open(): true when the GPU can't decode this video at all
     // (no decode queue for the codec), false when it should have and the
     // decoder or its device failed to start (most often out of graphics

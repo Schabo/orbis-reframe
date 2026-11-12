@@ -46,6 +46,8 @@ public:
     bool open(const std::string& path, std::string& err);
     // The same for lenses that may come from several files (LensDemuxer::open).
     bool open(const std::vector<LensSource>& lenses, std::string& err);
+    // A clip in parts, played back to back (LensDemuxer::open).
+    bool open(const std::vector<ClipPart>& parts, std::string& err);
 
     int lensCount() const { return m_demux.lensCount(); }
     const InsvStreamInfo& lens(int i) const { return m_demux.lens(i); }

@@ -33,8 +33,8 @@ struct Cached {
     std::uintmax_t size = 0;
     std::shared_ptr<const ClipMetadata> clip;
     const CameraReader* reader = nullptr;
-    // The clip's other files (a lens in a file of its own): a change to one
-    // is a change to the clip.
+    // The clip's other files (a lens in a file of its own, a later part of a
+    // split recording): a change to one is a change to the clip.
     std::vector<Stamp> others;
 };
 
@@ -105,15 +105,23 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
                 *err = e;
             return {};
         case CameraReader::Result::Read: {
-            Cached c{mtime, size, std::move(clip), r, {}};
-            for (const Lens& l : c.clip->lenses) {
-                Stamp o{l.source.path, {}, 0};
-                if (o.path != path &&
-                    std::none_of(c.others.begin(), c.others.end(),
-                                 [&](const Stamp& x) { return x.path == o.path; }) &&
-                    stat(o.path, o.mtime, o.size))
-                    c.others.push_back(std::move(o));
+            // A reader that knows no parts: the clip is one.
+            if (clip->parts.empty()) {
+                Part one{path, {}, 0, s0.durationUs};
+                for (const Lens& l : clip->lenses)
+                    one.lenses.push_back(l.source);
+                clip->parts.push_back(std::move(one));
             }
+            Cached c{mtime, size, std::move(clip), r, {}};
+            for (const Part& part : c.clip->parts)
+                for (const LensSource& l : part.lenses) {
+                    Stamp o{l.path, {}, 0};
+                    if (o.path != path &&
+                        std::none_of(c.others.begin(), c.others.end(),
+                                     [&](const Stamp& x) { return x.path == o.path; }) &&
+                        stat(o.path, o.mtime, o.size))
+                        c.others.push_back(std::move(o));
+                }
             std::lock_guard<std::mutex> lk(g_mx);
             g_cache[path] = c;
             return c;
@@ -158,8 +166,9 @@ std::string ClipFileOf(const std::string& path, std::string* err) {
             return !other.empty() && std::filesystem::equivalent(other, path, ec2);
         };
         bool claimed = same(clip->proxyPath);
-        for (const Lens& l : clip->lenses)
-            claimed = claimed || same(l.source.path);
+        for (const Part& part : clip->parts)
+            for (const LensSource& l : part.lenses)
+                claimed = claimed || same(l.path);
         if (!claimed) {
             if (err)
                 *err = "named as part of the clip " + name + ", which doesn't match it";

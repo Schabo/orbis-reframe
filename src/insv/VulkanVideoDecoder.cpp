@@ -113,6 +113,13 @@ bool VulkanVideoDecoder::open(const std::vector<LensSource>& lenses, std::string
                 err);
 }
 
+bool VulkanVideoDecoder::open(const std::vector<ClipPart>& parts, std::string& err)
+{
+    return open([this, &parts](const LensDemuxer::DecoderSetup& setup,
+                               std::string& e) { return m_demux.open(parts, setup, e); },
+                err);
+}
+
 bool VulkanVideoDecoder::open(
     const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
     std::string& err)

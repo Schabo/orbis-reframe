@@ -96,6 +96,11 @@ it, insert another clip before or after it, copy or paste its colour grade
   the viewport). They go in at the cut nearest to where you drop them, in
   the order the file manager gives them; on an empty timeline the first one
   starts the video track. Drop the `.insv` master, not the `.lrv` proxy.
+- A recording longer than the camera's file limit (29 min 59 s on the X5)
+  is split by the camera into several `.insv` files with the same date and
+  time in their names. It goes in as one clip whichever of its files you
+  add or drop, as long as they are in the same folder under the names the
+  camera gave them; dropping several of them adds it once.
 - Flat videos dropped on the video track (or on an empty timeline) go in
   the same way. Dropped anywhere else, they become pictures in picture
   ([below](#audio-and-overlay-tracks)).

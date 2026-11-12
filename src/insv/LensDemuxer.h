@@ -16,7 +16,11 @@
 // file the lenses come from (one `.insv` holding both on the X5, a file per
 // lens on the ONE X2), one persistent decoder per fisheye video stream
 // ("lens"), a FIFO of decoded frames per lens, and the strictly-forward pump
-// that fills them. A lens's read pumps only its own file.
+// that fills them. A lens's read pumps only its own file. A clip in several
+// parts (insv::ClipPart, a recording the camera split into files) plays them
+// back to back with one set of decoders: at a part's end they are drained
+// and go on into the next part's files, whose frames are handed out in clip
+// time; a seek goes to the part the target is in.
 // Seeking is frame-exact, and a target a little ahead of the last frame read,
 // with no keyframe in between, decodes on from there instead of seeking back
 // to the keyframe (frame steps, short forward scrubs).
@@ -50,6 +54,9 @@ struct InsvStreamInfo {
     int height = 0;
     double fps = 0.0;
     int64_t durationMs = 0;
+    // The same to the microsecond, rounded from the stream's time base:
+    // where the next part of a split recording starts.
+    int64_t durationUs = 0;
     int bitDepth = 8; // bits per sample: 8, or 10 for HEVC Main 10 (the X6's I-Log)
     // The stream's matrix and range (its VUI). The X5 tags its streams BT.709
     // full range, the X6's Dolby Vision mode BT.2020 limited range.
@@ -75,6 +82,10 @@ public:
     // name once. False with `err` set on failure (naming the file when it
     // isn't lens 0's), or if `lenses` is empty.
     bool open(const std::vector<LensSource>& lenses, const DecoderSetup& setup, std::string& err);
+    // Opens a clip in parts, in time order: the decoders as for the first
+    // part's lenses, which every other part's must match (the same codec,
+    // picture and time base). lens()'s length is then the whole clip's.
+    bool open(const std::vector<ClipPart>& parts, const DecoderSetup& setup, std::string& err);
     void close();
 
     int lensCount() const { return static_cast<int>(m_dec.size()); }
@@ -101,6 +112,17 @@ public:
     AVFrame* peekFrame(int lens, std::string* err = nullptr);
 
 private:
+    // One part's lenses: per lens its input and stream, and where the part
+    // starts in clip time in that stream's time base.
+    struct Part {
+        int64_t startUs = 0;
+        std::vector<int> lensInput;
+        std::vector<int> lensStream;
+        std::vector<int64_t> offset;
+    };
+    // A keyframe's time, in lens 0's time base on the clip's time line.
+    static constexpr int64_t kNoKeyframe = INT64_MIN;
+
     // One opened file.
     struct Input {
         std::string path;
@@ -115,6 +137,22 @@ private:
     // A decoder for stream `streamIndex` of input `input`, as the next lens.
     bool addLens(int input, int streamIndex, const DecoderSetup& setup, std::string& err);
     bool finishOpen(std::string& err);
+    // Opens `lenses` (a part's) and the stream each names, as `part`; with
+    // `setup` a decoder per lens (the first part), else checked against the
+    // first part's lenses. On failure `failedPath` is the file it was at.
+    bool openPart(const std::vector<LensSource>& lenses, const DecoderSetup* setup, Part& part,
+                  std::string& failedPath, std::string& err);
+    size_t partAt(int64_t timestampMs) const;
+    void usePart(size_t part);
+    // At the current part's end: on into the next part's files. False when
+    // there is none (or on error, `err` set).
+    bool nextPart(std::string& err);
+    // Lens 0's keyframes of part `part` at or before / after clip time
+    // `timestampMs`; kNoKeyframe where its index has none.
+    void partKeyframes(size_t part, int64_t timestampMs, int64_t& before, int64_t& after) const;
+    // Around `timestampMs` across the parts: a part's last keyframe and the
+    // next part's first count for a target near the join.
+    void keyframesAround(int64_t timestampMs, int64_t& before, int64_t& after) const;
     AVStream* lensStream(int lens) const;
     int streamToLens(int input, int streamIndex) const;
     void drainDecoder(int lens);                // pull ready frames into m_fifo[lens]
@@ -124,8 +162,10 @@ private:
 
     std::vector<Input> m_inputs;
     AVPacket* m_pkt = nullptr;
-    std::vector<int> m_lensInput;        // lens -> m_inputs index
-    std::vector<int> m_videoStreamIndex; // lens -> AVStream index in its input
+    std::vector<Part> m_parts;
+    size_t m_part = 0;                   // the part being read
+    std::vector<int> m_lensInput;        // lens -> m_inputs index, in the current part
+    std::vector<int> m_videoStreamIndex; // lens -> AVStream index in its input, likewise
     std::vector<InsvStreamInfo> m_lenses;
     std::vector<AVCodecContext*> m_dec;       // lens -> persistent decoder
     std::vector<std::deque<AVFrame*>> m_fifo; // lens -> decoded, not yet consumed

@@ -121,6 +121,7 @@ add_library(insv_trailer STATIC
     src/insv/Gps.h
     src/insv/Gps.cpp
     src/insv/Imu.h
+    src/insv/Imu.cpp
     src/insv/QuatMatrix.h
     src/insv/Smooth.h
     src/insv/InsvTrailer.h

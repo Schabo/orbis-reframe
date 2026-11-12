@@ -53,6 +53,15 @@ struct InsvMakerNotes {
     // proxy carries the same value, which ties the two together however
     // they're named. 0 when absent.
     uint64_t first_frame_timestamp = 0;
+    // Field 26 `file_group_info`: which files belong together. A recording
+    // longer than the camera's file limit continues in further files
+    // (docs/formats/insta360-x5.md §1); each of them, and each one's proxy,
+    // has a non-zero `file_group_index` (rising: 2 on the second video file,
+    // 1 and 3 on the proxies) and the recording's first file's card path
+    // (`/DCIM/Camera01/VID_….insv`) as `file_group_identify`, which the first
+    // file names too. 0 / empty when absent.
+    uint64_t file_group_index = 0;
+    std::string file_group_identify;
 };
 
 // The profile named `name` in `notes`, or nullptr.

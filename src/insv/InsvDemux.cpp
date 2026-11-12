@@ -43,6 +43,12 @@ bool InsvDemux::open(const std::vector<LensSource>& lenses, std::string& err)
     return m_demux.open(lenses, CpuDecoderSetup, err);
 }
 
+bool InsvDemux::open(const std::vector<ClipPart>& parts, std::string& err)
+{
+    close();
+    return m_demux.open(parts, CpuDecoderSetup, err);
+}
+
 void InsvDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)
 {
     out.alloc(frm->width, frm->height);

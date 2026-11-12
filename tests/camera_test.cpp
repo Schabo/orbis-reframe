@@ -4,9 +4,13 @@
 // checked; the clip's metadata follows a change to either file; every file of
 // the take names the clip. And an Antigravity A1 clip: both lenses in one
 // file, a slotted trailer, the proxy named without a lens token; renamed,
-// found again by the names its files hold. Exit code is the failure count.
+// found again by the names its files hold. And an X5 recording the camera
+// split into two files: one clip, its parts found from either file, its IMU
+// joined, its frames read on and seeked across the join. Exit code is the
+// failure count.
 
 #include "ClipMetadata.h"
+#include "InsvDemux.h"
 #include "InsvTrailer.h"
 #include "support/TestMedia.h"
 #include "support/TestTrailer.h"
@@ -485,6 +489,162 @@ void testA1Renamed(const std::filesystem::path& dir)
 
 } // namespace
 
+// An X5 trailer, cut down, for one file of a split recording (§1, field 26):
+// the model, field 24 (`firstFrame`, us), the group's `index` and first file
+// `identify`, and IMU samples 1 ms apart over [imuFrom, imuTo) us whose gyro
+// x is `gyroX` (so a test can tell the parts' samples apart).
+std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFrame, uint64_t index,
+                                   const std::string& identify, uint64_t imuFrom, uint64_t imuTo,
+                                   double gyroX)
+{
+    Bytes meta;
+    meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
+    meta.pbVarint(7, 20250927144221).pbVarint(24, firstFrame);
+    Bytes group; // {1: type, 2: index, 3: identify, 4: total}
+    group.pbVarint(1, 20).pbVarint(2, index).pbString(3, identify).pbVarint(4, 0);
+    meta.pbBytes(26, group.b);
+    Bytes imu;
+    for (uint64_t t = imuFrom; t < imuTo; t += 1000) {
+        imu.u64(t);
+        for (double v : {0.0, 1.0, 0.0, gyroX, 0.0, 0.0})
+            imu.f64(v);
+    }
+    return testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}}, true);
+}
+
+// Both lenses as streams of one file, `frames` frames whose grey tells the
+// part (`grey0`) and the frame.
+bool writeX5Part(const std::string& path, int frames, int grey0)
+{
+    testmedia::VideoSpec spec;
+    spec.width = spec.height = 64;
+    spec.fps = kFps;
+    spec.frames = frames;
+    spec.streams = 2;
+    spec.luma = [grey0](int frame, int, int) { return uint8_t(grey0 + 2 * frame); };
+    if (!testmedia::writeVideo(path + ".mp4", spec))
+        return false;
+    std::filesystem::rename(path + ".mp4", path);
+    return true;
+}
+
+// A recording the X5 split into `_019` (2 s) and `_020` (1.2 s), as the
+// camera writes them: the same date and time in the names, the next
+// counter, field 26 naming the first file, field 24 on one clock (part 2's
+// first frame 2 s + 3 ms of drift after part 1's), the IMU overlapping a
+// second at the join. Beside them a `_021` from another camera, which
+// isn't part of it.
+void testSplitRecording(const std::filesystem::path& dir)
+{
+    std::printf("  X5 split recording: one clip of two files, IMU and frames across the join\n");
+    const auto sub = dir / "split";
+    std::filesystem::create_directories(sub);
+    const std::string p1 = (sub / "VID_20250927_144221_00_019.insv").string();
+    const std::string p2 = (sub / "VID_20250927_144221_00_020.insv").string();
+    const std::string other = (sub / "VID_20250927_144221_00_021.insv").string();
+    const std::string identify = "/DCIM/Camera01/VID_20250927_144221_00_019.insv";
+    constexpr uint64_t kFirst1 = 10000000, kFirst2 = kFirst1 + 2003000;
+    CHECK(writeX5Part(p1, 50, 20));
+    appendTo(p1, x5PartTrailer("IAHEA2500000001", kFirst1, 0, identify, kFirst1 - 500000,
+                               kFirst1 + 2500000, 0.1));
+    CHECK(writeX5Part(p2, 30, 140));
+    appendTo(p2, x5PartTrailer("IAHEA2500000001", kFirst2, 2, identify, kFirst2 - 1000000,
+                               kFirst2 + 1500000, 0.2));
+    CHECK(writeX5Part(other, 30, 140));
+    appendTo(other, x5PartTrailer("IAHEA2599999999", kFirst2 + 1300000, 2, identify,
+                                  kFirst2 + 300000, kFirst2 + 2800000, 0.3));
+
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(p1, &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    CHECK(clip->parts.size() == 2);
+    if (clip->parts.size() != 2)
+        return;
+    CHECK(clip->parts[0].path == p1 && clip->parts[1].path == p2);
+    CHECK(clip->parts[0].startUs == 0 && clip->parts[1].startUs == 2000000);
+    CHECK(clip->parts[1].lenses.size() == 2 && clip->parts[1].lenses[1].path == p2 &&
+          clip->parts[1].lenses[1].stream == 1);
+    CHECK(clip->durationMs == 3200);
+    // Either part names the clip; the first part alone is still a clip.
+    CHECK(camera::ClipFileOf(p2) == p1);
+    CHECK(camera::ClipFileOf(p1) == p1);
+    CHECK(camera::ClipFileOf(other) == other);
+    const auto second = camera::ReadClipMetadata(p2);
+    CHECK(second && second->parts.size() == 1 && second->durationMs == 1200);
+
+    // The IMU: part 1's samples up to part 2's first, then part 2's; each
+    // part's frames by its own first frame (no exposure record here: each
+    // part's line from its start to its end).
+    const auto imu = camera::ReadClipImu(p1);
+    CHECK(imu);
+    if (imu) {
+        // Part 2's samples start 1 s before its first frame, 1.003 s after
+        // part 1's.
+        CHECK(imu->samples.size() == 1503 + 2500);
+        bool rising = true;
+        for (size_t i = 1; i < imu->samples.size(); ++i)
+            rising = rising && imu->samples[i].timestamp > imu->samples[i - 1].timestamp;
+        CHECK(rising);
+        CHECK(imu->samples[1502].gyro[0] == 0.1 && imu->samples[1503].gyro[0] == 0.2);
+        CHECK(imu->frameTimes.size() == 4);
+        if (imu->frameTimes.size() == 4) {
+            // Track time counts from the earliest sample, 0.5 s before part
+            // 1's first frame; the X5 model's capture lag is -0.5 ms.
+            const double lag = -0.5e-3;
+            CHECK(std::fabs(imu->frameTimes[0].videoSec) < 1e-9 &&
+                  std::fabs(imu->frameTimes[0].trackSec - (0.5 + lag)) < 1e-9);
+            CHECK(std::fabs(imu->frameTimes[2].videoSec - 2.0) < 1e-9 &&
+                  std::fabs(imu->frameTimes[2].trackSec - (2.503 + lag)) < 1e-9);
+            CHECK(std::fabs(imu->frameTimes[3].videoSec - 3.2) < 1e-9 &&
+                  std::fabs(imu->frameTimes[3].trackSec - (3.703 + lag)) < 1e-9);
+        }
+    }
+
+    // The frames: read on through the join, and seeked to either side.
+    insv::InsvDemux demux;
+    CHECK(demux.open(clip->partSources(), err));
+    CHECK(demux.lens(0).durationMs == 3200);
+    insv::Image a, b;
+    insv::FramePts pts;
+    int frames = 0;
+    int64_t last = -1;
+    bool ordered = true;
+    int greyAtJoin = -1;
+    while (demux.readNextPair(a, b, &pts, err)) {
+        ordered = ordered && pts.ms > last;
+        last = pts.ms;
+        if (frames == 50)
+            greyAtJoin = a.rgb[(32 * a.w + 32) * 3];
+        ++frames;
+    }
+    CHECK(err.empty());
+    CHECK(frames == 80 && ordered && last == 3160);
+    // The test video's limited-range grey as the decode's RGB.
+    const auto rgb = [](int luma) { return int(std::lround((luma - 16) * 255.0 / 219.0)); };
+    CHECK(std::abs(greyAtJoin - rgb(140)) <= 3); // part 2's first frame
+    const auto greyAt = [&](int64_t ms, int64_t& gotMs) {
+        if (!demux.seekTo(ms, err) || !demux.readNextPair(a, b, &pts, err))
+            return -1;
+        gotMs = pts.ms;
+        return int(a.rgb[(32 * a.w + 32) * 3]);
+    };
+    int64_t got = 0;
+    CHECK(std::abs(greyAt(2000, got) - rgb(140)) <= 3 && got == 2000);
+    CHECK(std::abs(greyAt(1960, got) - rgb(20 + 2 * 49)) <= 3 && got == 1960);
+    CHECK(std::abs(greyAt(2440, got) - rgb(140 + 2 * 11)) <= 3 && got == 2440);
+    CHECK(std::abs(greyAt(400, got) - rgb(20 + 2 * 10)) <= 3 && got == 400);
+    // Keyframes on both sides of the join: part 2 starts with one.
+    int64_t before = 0, after = 0;
+    demux.keyframesAroundMs(1990, before, after);
+    CHECK(before >= 0 && before < 2000 && after == 2000);
+    demux.keyframesAroundMs(2000, before, after);
+    CHECK(before == 2000);
+}
+
 int main()
 {
     const auto dir = std::filesystem::temp_directory_path() / "orbis_camera_test";
@@ -500,6 +660,7 @@ int main()
     testHighlights(dir);
     testAntigravityA1(dir);
     testA1Renamed(dir);
+    testSplitRecording(dir);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

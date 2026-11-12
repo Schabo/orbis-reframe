@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace insv {
 
@@ -11,6 +13,15 @@ namespace insv {
 struct LensSource {
     std::string path;
     int stream = 0; // index among the file's video streams
+};
+
+// A stretch of a clip with files of its own: a recording longer than the
+// camera's file limit is split over several files, which play back to back
+// as one clip. `startUs` is where its first frame sits in the clip; every
+// part has the same lenses, coded alike.
+struct ClipPart {
+    int64_t startUs = 0;
+    std::vector<LensSource> lenses;
 };
 
 } // namespace insv

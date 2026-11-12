@@ -74,6 +74,21 @@ MISC/Camera01/LRV_20250904_193105_01_002.lrv.pb
   (1799.8 s, 42.5 GB) and `…_020` (445.6 s, 10.5 GB) on the card ✅. Files aren't limited to 4 GB; 13–42
   GB single files exist. The continuation's metadata names the take's first
   file (§5.1 field 26).
+- **The parts join exactly** ✅ (measured on `144221_019` + `_020`): one
+  device clock runs through them. `_019`'s 53940 frames are exposure
+  records (§7) 23 to 53962 of its file; `_020`'s first frame (field 24,
+  1946493.467 ms) is `_019`'s exposure record 53963, so no frame is lost or
+  repeated. By the nominal 29.97 fps `_019` lasts 1799.798 s, by the
+  device clock 1799.870 s (the frame clock's ~40 ppm, §7.1): each part
+  lines its IMU up by its own field 24, not by one anchor for the whole
+  recording. The records overlap at the join: `_020`'s IMU starts ~5 s and
+  its exposure record ~20 s before its first frame, inside `_019`'s, and
+  the IMU samples there are the same readings in both files. The audio
+  doesn't overlap (the start of `_020`'s isn't found in the end of
+  `_019`'s), but `_019`'s runs 31 ms past its video and `_020`'s ends 74 ms
+  before its own, starting with a ~10 ms rise. Both files' video streams
+  are set up alike, down to the decoder configuration (`hvcC`). The app
+  opens such a recording as one clip from any of its files.
 - The metadata also records the file's own card path
   (`/DCIM/Camera01/VID_….insv`). So does the MP4 header, which a rename
   doesn't touch either: `moov` / `udta`, in the `free` box after `AMBA`,
@@ -247,7 +262,7 @@ frame rate); **wanted** means no clip yet.
 | TimeShift | not in the spec table | ❓ | none | **wanted** |
 | Bullet Time | not in the spec table | ❓ | none | **wanted** |
 | Loop Recording, Dashcam | | ❓ | none | wanted, low |
-| Split recording (over 29 min 59 s, §1) | | two `.insv` + two `.lrv` | one, as on the card and re-written by Insta360 software | enough: field 26 confirmed on the card original |
+| Split recording (over 29 min 59 s, §1) | | two `.insv` + two `.lrv` | one, as on the card and re-written by Insta360 software | enough: field 26 confirmed on the card original, the join measured (§1); a recording in three files wanted (the third part's index) |
 | Single-lens Video | 4K / 2.7K 60…24, 1080p 120…24 | `VID_….mp4` | none | **wanted** |
 | Single-lens FreeFrame | 3840² 30…24, 2720² / 1920² 60…24 | `PRO_VID_….mp4` | none | **wanted** |
 | Single-lens Me Mode | 4K 30…24, 2.7K / 1080p 120…24 | `.insv` (4K, and 50 fps and up), `.mp4` (2.7K / 1080p at 30 and below) | none | **wanted** |
@@ -530,7 +545,7 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | 22 | `gamma_mode` | `standard`; `I_Log` in I-Log | colour profile ✅ (both values seen) |
 | **24** | **`first_frame_timestamp`** | 2468081984 | **device µs of the first recorded video frame**; the sync anchor (§7.1) ✅ 📖 |
 | **25** | **`rolling_shutter_time`** | **21.244** (11.837 on `201257`) | **frame readout time, ms**. Gyroflow's `frame_readout_time` reads it directly ✅ 📖 |
-| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, 5 on Interval photos, otherwise not reliable (§3.5, §3.6); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`), `identify` is the first file's path and `total` stays 0 -- the same on the card original as on the re-written copy ✅. |
+| 26 | `file_group_info` | {type 20, index 0, identify "/DCIM/Camera01/…_019.insv", total 0} | field 1 is telemetry-parser's `SubMediaType`: 2 on timelapses, 5 on Interval photos, otherwise not reliable (§3.5, §3.6); 20 is past the published enum (max 17). For a split recording `index` is non-zero on continuations (2 on `_020`; the proxies have 1 and 3), `identify` is the first file's path and `total` stays 0 -- the same on the card original as on the re-written copy ✅. |
 | 27 | `window_crop_info` | {src 5376×5376, dst 5312×5312} | sensor crop window. `dst` is the focal reference: **`fx_video = fx · 3840/5312`**. Gyroflow computes `fx / (dst_w / dimension_w)` ✅ 📖 |
 | **28** | **`gyro_timestamp`** | **1.6** | **IMU timing offset, ms**. Gyroflow subtracts it from every gyro/accel time (§6.2) 📖 |
 | 29 | `is_has_gyro_timestamp` | true | enables field 28 |

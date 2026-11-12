@@ -220,7 +220,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     params_ = params;
     stitcher_ = std::move(stitcher);
     seam_flow_wanted_ = seam_flow_on_;
-    lens_sources_ = clip->lensSources();
+    lens_sources_ = clip->partSources();
     gpu_released_ = false;
     resume_seek_ = false;
     resume_at_ms_ = 0;

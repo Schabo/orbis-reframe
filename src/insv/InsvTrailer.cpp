@@ -717,6 +717,15 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path) {
                     if (f == 7 && wt == 0) result.creation_time = v;
                     if (f == 24 && wt == 0) result.first_frame_timestamp = v;
                     if (f == 54 && wt == 2) result.offset_v3.assign(b.begin(), b.end());
+                    if (f == 26 && wt == 2)
+                        WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv,
+                                            const std::vector<uint8_t>& gb) {
+                            // {1: type, 2: index, 3: identify, 4: total}
+                            if (g == 2 && gwt == 0)
+                                result.file_group_index = gv;
+                            else if (g == 3 && gwt == 2)
+                                result.file_group_identify.assign(gb.begin(), gb.end());
+                        });
                     if (f != 27 || wt != 2) return;
                     WalkProtobuf(b, [&](uint32_t g, int gwt, uint64_t gv,
                                         const std::vector<uint8_t>&) {

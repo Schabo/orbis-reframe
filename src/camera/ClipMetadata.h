@@ -52,6 +52,16 @@ struct Thumbnail {
     std::vector<uint8_t> nv12; // width * height * 3 / 2 bytes
 };
 
+// A stretch of the clip in files of its own: a recording longer than the
+// camera's file limit continues in further files (the X5 every 29 min 59 s,
+// docs/formats/insta360-x5.md §1), which play back to back as one clip.
+struct Part {
+    std::string path;         // its clip file
+    std::vector<LensSource> lenses; // in lens order, as Lens::source
+    int64_t startUs = 0;      // its first frame, in clip time
+    int64_t durationUs = 0;
+};
+
 struct ClipMetadata {
     std::string path;
 
@@ -61,13 +71,17 @@ struct ClipMetadata {
     std::string serial;
 
     Projection projection = Projection::DualFisheye;
-    std::vector<Lens> lenses; // front lens first
-    // Every lens's source, in lens order, as the decoders take them.
-    std::vector<LensSource> lensSources() const
+    std::vector<Lens> lenses; // front lens first; the sources are the first part's
+    // The clip's files: one part for a clip in one file, the first being
+    // `path`'s. `durationMs` is the whole clip's; the other facts below are
+    // the first part's unless they say otherwise.
+    std::vector<Part> parts;
+    // Every part's lens sources, as the decoders take them.
+    std::vector<insv::ClipPart> partSources() const
     {
-        std::vector<LensSource> s;
-        for (const Lens& l : lenses)
-            s.push_back(l.source);
+        std::vector<insv::ClipPart> s;
+        for (const Part& p : parts)
+            s.push_back({p.startUs, p.lenses});
         return s;
     }
     bool calibrated = false;  // every lens has its calibration from the file
@@ -111,7 +125,7 @@ struct ClipMetadata {
     std::string recordedLocal;
 
     // The highlight marks set while recording, as video ms from the first
-    // frame, in time order; empty when the file has none. Marks outside the
+    // frame, in time order, every part's; empty when the files have none. Marks outside the
     // video (a trimmed file's cut-off part) are left out.
     std::vector<int64_t> highlightMs;
 
@@ -127,7 +141,7 @@ struct ClipMetadata {
     bool hasMotion = false;
     double imuRateHz = 0.0;
     bool orientationPerFrame = false;
-    int64_t exposureRecords = 0;
+    int64_t exposureRecords = 0; // every part's together
     double rollingShutterMs = 0.0;
     // When the video doesn't play in real time: seconds of the camera's
     // clock per second of video (insv::CaptureScale; 1 for a normal clip),
@@ -139,6 +153,7 @@ struct ClipMetadata {
     double timelapseIntervalSec = 0.0;
     // GPS track: presence only, never positions -- the panel is what people
     // screenshot for bug reports. The track itself comes from ReadClipTelemetry.
+    // The counts and seconds are every part's together.
     int64_t gpsRecords = 0;
     int64_t gpsFixes = 0;     // records with an acquired position
     double gpsRateHz = 0.0;   // position updates per second

@@ -154,7 +154,7 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
     if (!clip)
         return false;
     insv::InsvDemux demux;
-    if (!demux.open(clip->lensSources(), err))
+    if (!demux.open(clip->partSources(), err))
         return false;
     if (demux.lensCount() < 2) {
         err = "the clip has one lens stream";

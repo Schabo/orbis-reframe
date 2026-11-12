@@ -233,7 +233,7 @@ IMU (`ReadClipImu`), the GPS track and the motion the overlays read
 read on demand. A reader per camera family fills it (`Insta360Reader`, the
 only one so far), picked by asking each in turn whether the file is its own:
 what differs between cameras -- lens layout and which file and stream each
-lens comes from, calibration, IMU timing and axes, colour profile, lens-guard
+lens comes from, the files a long recording is split into, calibration, IMU timing and axes, colour profile, lens-guard
 profiles, capture-mode names -- is data the reader fills in, not a code path
 per camera. Differences between models of one family are that reader's
 table (`insv::InsvModel` for Insta360). What's still to come is under
