@@ -20,6 +20,9 @@ bool ProbeClip(const std::string& clip_path, ClipProbe& out, std::string& err)
             std::find(out.other_files.begin(), out.other_files.end(), l.source.path) ==
                 out.other_files.end())
             out.other_files.push_back(l.source.path);
+    if (clip->parts.size() > 1)
+        for (const camera::Part& p : clip->parts)
+            out.parts.push_back({p.path, p.startUs / 1000, p.durationUs / 1000});
     out.width = clip->lensWidth;
     out.height = clip->lensHeight;
     out.fps = clip->fps;

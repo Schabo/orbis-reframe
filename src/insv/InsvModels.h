@@ -124,6 +124,14 @@ struct InsvModel {
     // moved it by nothing (docs/formats/insta360-x5.md §7.1).
     bool midExposure;
     double captureLagMs;
+
+    // The longest file the camera writes, in seconds of video: a longer
+    // recording goes on in another file (docs/formats/insta360-x5.md §1).
+    // A last part about this long, with nothing beside it to continue it,
+    // may have lost its continuation -- the first file doesn't say it goes
+    // on. X5: 29 min 59 s, per Insta360 (its `_019` holds 1799.8 s). 0 when
+    // not known: no such guess.
+    double fileLimitSec;
 };
 
 // Every row.

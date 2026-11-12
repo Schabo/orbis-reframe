@@ -950,6 +950,15 @@ Project::Project(QObject *parent)
         setModified(true);
         onUndoableEdited();
     });
+    // A clip of a recording with a part gone plays the rest.
+    connect(m_mediaPool, &MediaPool::changed, this, [this] {
+        if (!m_rebuilding)
+            applySourceGaps();
+    });
+    connect(m_timeline, &Timeline::clipInserted, this, [this] {
+        if (!m_rebuilding)
+            applySourceGaps();
+    });
     // Whatever goes on the timeline is in the pool too.
     connect(m_timeline, &Timeline::clipInserted, this, [this] { addTimelineSourcesToPool(); });
     connect(m_timeline, &Timeline::tracksChanged, this, [this] { addTimelineSourcesToPool(); });
@@ -976,6 +985,15 @@ Project::Project(QObject *parent)
     m_undoDebounce.setSingleShot(true);
     connect(&m_undoDebounce, &QTimer::timeout, this, &Project::commitPendingUndoPoint);
     m_lastSettledSnapshot = snapshot(); // baseline for the empty starting project
+}
+
+void Project::applySourceGaps()
+{
+    QHash<QString, QList<SourceGap>> gaps;
+    for (const MediaItem &m : m_mediaPool->items())
+        if (m.kind == MediaItem::Kind::Clip360)
+            gaps.insert(m.path, m.gaps());
+    m_timeline->setSourceGaps(gaps);
 }
 
 void Project::addTimelineSourcesToPool(bool rebuilt)
@@ -1052,9 +1070,12 @@ Project::MediaRecheck Project::recheckMissingMedia()
             r.replaced << path;
         }
     };
-    for (const MediaItem &m : m_mediaPool->items())
+    for (const MediaItem &m : m_mediaPool->items()) {
         for (const QString &f : m.files())
             look(f);
+        for (const QString &f : m.partFiles())
+            look(f);
+    }
     for (int i = 0; i < m_timeline->count(); ++i)
         look(m_timeline->clipAt(i).sourcePath);
     for (int i = 0; i < m_timeline->trackCount(); ++i)
@@ -1075,13 +1096,36 @@ Project::MediaRecheck Project::recheckMissingMedia()
         }
     }
 
+    // A part of a split recording gone or back: reported by its own file.
+    // What was read from the clip (its decoders, its IMU, its waveform) had
+    // the parts of then, so the clip counts as replaced.
+    for (const MediaItem &m : m_mediaPool->items()) {
+        for (const MediaItem::Part &p : m.parts) {
+            if (p.path == m.path)
+                continue;
+            const auto it = missing.constFind(p.path);
+            if (it != missing.cend() && *it != p.missing) {
+                (*it ? r.gone : r.back) << p.path;
+                if (!r.replaced.contains(m.path))
+                    r.replaced << m.path;
+            }
+            if (r.replaced.removeAll(p.path) > 0 && !r.replaced.contains(m.path))
+                r.replaced << m.path;
+        }
+    }
+
     QSet<QString> changed;
+    QHash<QString, bool> wasMissing;
+    for (const MediaItem &m : m_mediaPool->items())
+        wasMissing.insert(m.path, m.missing);
     for (const QString &path : m_mediaPool->setMissing(missing))
-        changed.insert(path);
+        if (wasMissing.value(path) != missing.value(path, wasMissing.value(path)))
+            changed.insert(path);
     for (const QString &path : m_timeline->setSourcesMissing(missing))
         changed.insert(path);
     for (const QString &path : changed)
         (missing.value(path) ? r.gone : r.back) << path;
+    applySourceGaps();
     return r;
 }
 
@@ -1411,6 +1455,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
 
     json media = json::array();
+    bool anyParts = false; // a recording in several files
     for (const MediaItem &m : m_mediaPool->items()) {
         media.push_back({
             {"source", (projectDir ? storedPath(m.path, *projectDir) : m.path).toStdString()},
@@ -1429,6 +1474,18 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 files.push_back((projectDir ? storedPath(f, *projectDir) : f).toStdString());
             media.back()["files"] = std::move(files);
         }
+        if (m.parts.size() > 1) {
+            anyParts = true;
+            json parts = json::array();
+            for (const MediaItem::Part &p : m.parts)
+                parts.push_back({
+                    {"source",
+                     (projectDir ? storedPath(p.path, *projectDir) : p.path).toStdString()},
+                    {"startMs", p.startMs},
+                    {"durationMs", p.durationMs},
+                });
+            media.back()["parts"] = std::move(parts);
+        }
     }
 
     // The project-wide stitch settings an older build reads: the clips' own.
@@ -1439,7 +1496,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyMark                   ? kMarkFormatVersion
+        {"version", anyParts                  ? kPartsFormatVersion
+                    : anyMark                 ? kMarkFormatVersion
                     : anyNewStitcher || anyLensCalibration ? kStitchFormatVersion
                     : anyMotionOverlay        ? kMotionOverlayFormatVersion
                     : anyGauge                ? kGaugeFormatVersion
@@ -1685,7 +1743,23 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                             const QString f = QString::fromStdString(jf.get<std::string>());
                             m.companions << (projectDir ? resolvedPath(f, *projectDir) : f);
                         }
+                if (jm.contains("parts") && jm.at("parts").is_array())
+                    for (const json &jp : jm.at("parts")) {
+                        if (!jp.is_object())
+                            continue;
+                        const QString f = QString::fromStdString(jp.value("source", std::string()));
+                        if (f.isEmpty())
+                            continue;
+                        MediaItem::Part p;
+                        p.path = projectDir ? resolvedPath(f, *projectDir) : f;
+                        p.startMs = jp.value("startMs", qint64(0));
+                        p.durationMs = jp.value("durationMs", qint64(0));
+                        m.parts.append(p);
+                    }
+                if (m.parts.size() < 2 || m.parts.front().path != m.path)
+                    m.parts.clear(); // not a recording in parts after all
                 m.missing = !media::firstMissingFile(m).isEmpty();
+                media::checkParts(m);
                 parsedMedia.append(m);
             }
         }
@@ -1807,6 +1881,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         if (!m.companions.isEmpty())
             takes.insert(m.path, m.missing);
     m_timeline->setSourcesMissing(takes);
+    applySourceGaps();
     m_rebuilding = false;
     emit projectReset();
     return true;

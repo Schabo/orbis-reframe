@@ -39,6 +39,8 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
             m.path = QString::fromStdString(probe.clip_path);
         for (const std::string &f : probe.other_files)
             m.companions << QString::fromStdString(f);
+        for (const stitch::ClipProbe::Part &p : probe.parts)
+            m.parts.append({QString::fromStdString(p.path), p.start_ms, p.duration_ms});
         if (clipProbe)
             *clipProbe = probe;
         break;

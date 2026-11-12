@@ -136,6 +136,17 @@ are. Your original files are never changed.
   same folder. The project remembers both; if either is gone, the clip is
   missing, and the messages name the file that is. Moved together, one
   **Locate file…** on the clip finds both.
+- **A recording split over several files** (the X5 starts a new file every
+  29 min 59 s; see [Timeline](timeline.md#adding-clips)) is one clip, and the
+  project remembers every file of it. If one of the later files is gone,
+  the rest of the clip still plays: the part that's gone is black and
+  silent, the messages name its file, and an export refuses to start while
+  the clip uses that part. Put the file back in the folder with the others,
+  under its own name, and it's found again by itself. A file that was
+  already missing when you added the recording (a middle one: the files
+  around it show the gap) plays black the same way, named as *a file of
+  its recording that isn't there*. Opened from a later file when the first
+  isn't in the folder, the clip starts at the file you opened.
 - **To move a project with its clips**, put the clips inside the project's
   folder, for example in a `media` folder next to the `.orp` file. orbis-reframe
   then stores their places relative to the project, so you can move or copy

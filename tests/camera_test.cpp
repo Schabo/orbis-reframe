@@ -514,11 +514,11 @@ std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFram
 
 // Both lenses as streams of one file, `frames` frames whose grey tells the
 // part (`grey0`) and the frame.
-bool writeX5Part(const std::string& path, int frames, int grey0)
+bool writeX5Part(const std::string& path, int frames, int grey0, int fps = kFps)
 {
     testmedia::VideoSpec spec;
     spec.width = spec.height = 64;
-    spec.fps = kFps;
+    spec.fps = fps;
     spec.frames = frames;
     spec.streams = 2;
     spec.luma = [grey0](int frame, int, int) { return uint8_t(grey0 + 2 * frame); };
@@ -645,6 +645,74 @@ void testSplitRecording(const std::filesystem::path& dir)
     CHECK(before == 2000);
 }
 
+// Parts that aren't here. A recording in three files whose middle one is
+// gone: the third goes where the camera's clock puts it, leaving a gap. The
+// third alone: the clip starts there, and says which file the recording
+// starts in. A last part as long as the camera writes a file: it says
+// which file the recording may go on in.
+void testMissingParts(const std::filesystem::path& dir)
+{
+    std::printf("  X5 split recording with parts missing: a gap, the first, maybe a next\n");
+    const auto sub = dir / "gap";
+    std::filesystem::create_directories(sub);
+    const std::string p1 = (sub / "VID_20250927_144221_00_019.insv").string();
+    const std::string p3 = (sub / "VID_20250927_144221_00_021.insv").string();
+    const std::string identify = "/DCIM/Camera01/VID_20250927_144221_00_019.insv";
+    // Part 1 2 s, the missing part 2 1.2 s, each with 3 ms of drift.
+    constexpr uint64_t kFirst1 = 10000000, kFirst3 = kFirst1 + 3206000;
+    CHECK(writeX5Part(p1, 50, 20));
+    appendTo(p1, x5PartTrailer("IAHEA2500000001", kFirst1, 0, identify, kFirst1 - 500000,
+                               kFirst1 + 2500000, 0.1));
+    CHECK(writeX5Part(p3, 25, 140));
+    appendTo(p3, x5PartTrailer("IAHEA2500000001", kFirst3, 4, identify, kFirst3 - 1000000,
+                               kFirst3 + 1500000, 0.3));
+
+    const auto clip = camera::ReadClipMetadata(p1);
+    CHECK(clip && clip->parts.size() == 2);
+    if (clip && clip->parts.size() == 2) {
+        CHECK(clip->parts[1].path == p3 && clip->parts[1].startUs == 3200000);
+        CHECK(clip->durationMs == 4200 && clip->missingFirst.empty() &&
+              clip->mayContinueIn.empty());
+        // The frames jump over the gap.
+        insv::InsvDemux demux;
+        std::string err;
+        CHECK(demux.open(clip->partSources(), err));
+        insv::Image a, b;
+        insv::FramePts pts;
+        int frames = 0;
+        int64_t afterJoin = -1;
+        while (demux.readNextPair(a, b, &pts, err))
+            if (++frames == 51)
+                afterJoin = pts.ms;
+        CHECK(frames == 75 && afterJoin == 3200);
+        // So do the IMU's frame times: part 3's by its own first frame.
+        const auto imu = camera::ReadClipImu(p1);
+        CHECK(imu && imu->frameTimes.size() == 4);
+        if (imu && imu->frameTimes.size() == 4)
+            CHECK(std::fabs(imu->frameTimes[2].videoSec - 3.2) < 1e-9 &&
+                  std::fabs(imu->frameTimes[2].trackSec - imu->frameTimes[0].trackSec - 3.206) <
+                      1e-9);
+    }
+    CHECK(camera::ClipFileOf(p3) == p1);
+
+    // Without the first file, the last one is a clip of its own, from its start.
+    std::filesystem::remove(p1);
+    const auto alone = camera::ReadClipMetadata(p3);
+    CHECK(alone && alone->parts.size() == 1 && alone->durationMs == 1000 &&
+          alone->missingFirst == "VID_20250927_144221_00_019.insv");
+    CHECK(camera::ClipFileOf(p3) == p3);
+
+    // A file as long as the X5 writes (29 min 59 s; 1 fps keeps it small)
+    // may go on in the next counter's.
+    const std::string full = (sub / "VID_20250927_150000_00_099.insv").string();
+    CHECK(writeX5Part(full, 1800, 20, 1));
+    appendTo(full, x5PartTrailer("IAHEA2500000001", kFirst1, 0,
+                                 "/DCIM/Camera01/VID_20250927_150000_00_099.insv", kFirst1,
+                                 kFirst1 + 1000, 0.1));
+    const auto longOne = camera::ReadClipMetadata(full);
+    CHECK(longOne && longOne->mayContinueIn == "VID_20250927_150000_00_100.insv");
+}
+
 int main()
 {
     const auto dir = std::filesystem::temp_directory_path() / "orbis_camera_test";
@@ -661,6 +729,7 @@ int main()
     testAntigravityA1(dir);
     testA1Renamed(dir);
     testSplitRecording(dir);
+    testMissingParts(dir);
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

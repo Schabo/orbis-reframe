@@ -173,7 +173,12 @@ public:
     // highlight marks on a main-track clip ("marks": the user's, source ms;
     // "hiddenMarks": the camera's the user hid, by their source ms), written
     // only when a clip has either: an older build would drop them on save.
-    static constexpr int kFormatVersion = 21;
+    // Version 22 added a media item's parts ("parts": every file of a
+    // recording the camera split, its "source", "startMs" and
+    // "durationMs"), written only when an item has more than one: an older
+    // build would drop them on save, and lose which part is gone.
+    static constexpr int kFormatVersion = 22;
+    static constexpr int kPartsFormatVersion = 22;
     static constexpr int kMarkFormatVersion = 21;
     static constexpr int kStitchFormatVersion = 20;
     // The stitcher of a clip whose file doesn't name one: the old stitcher,
@@ -333,6 +338,8 @@ private:
     // Add every timeline source that isn't in the media pool yet. Skipped
     // while rebuilding, unless `rebuilt` (the rebuild's own call at its end).
     void addTimelineSourcesToPool(bool rebuilt = false);
+    // The pool's split recordings' gaps (MediaItem::gaps) onto their clips.
+    void applySourceGaps();
     void setModified(bool modified);
     void setFilePath(const QString &path);
 

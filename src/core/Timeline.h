@@ -404,6 +404,10 @@ public slots:
     // mediaMissingChanged() -- not an edit, nothing else. Returns the paths
     // whose clips changed.
     QStringList setSourcesMissing(const QHash<QString, bool> &missing);
+    // Set sourceGaps from `gaps` (path -> its gaps) on every main-track clip
+    // cut from a path it names. Emits mediaMissingChanged() like
+    // setSourcesMissing. Returns the paths whose clips changed.
+    QStringList setSourceGaps(const QHash<QString, QList<SourceGap>> &gaps);
     // The stitch settings (ClipItem::lensGuard / stitchMethod /
     // lensCalibration) for every clip cut from `sourcePath`; the Stitching
     // panel edits them. A different calibration drops the source's seam

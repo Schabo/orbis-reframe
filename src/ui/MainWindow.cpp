@@ -1093,6 +1093,19 @@ void MainWindow::connectController()
                 // (found here too if it went since the last check): a line,
                 // not a dialog on top of the missing-media warning.
                 // For a take, any of its files (a ONE X2 clip's lens-1 file).
+                // A part of a split recording that was never found.
+                if (const ClipItem *c = m_timeline->clipById(clipId)) {
+                    for (const SourceGap &g : c->sourceGaps)
+                        if (g.file.isEmpty() &&
+                            path == PlaybackController::gapKey(c->sourcePath, g.fromMs)) {
+                            m_editToolbar->showNotice(
+                                tr("Can't play part of %1 (clip %2): a file of the recording "
+                                   "isn't there")
+                                    .arg(QFileInfo(c->sourcePath).fileName())
+                                    .arg(m_timeline->indexOfId(clipId) + 1));
+                            return;
+                        }
+                }
                 const MediaItem *item = m_project->mediaPool()->item(path);
                 const QString gone = item ? media::firstMissingFile(*item)
                                           : QFileInfo::exists(path) ? QString() : path;
@@ -2755,9 +2768,12 @@ void MainWindow::pushTimelineToController()
     m_captureTimingOn.clear(); // ids don't survive a load / undo
     for (int i = 0; i < m_timeline->count(); ++i) {
         const ClipItem &c = m_timeline->clipAt(i);
-        segments.push_back({c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
-                            c.sourceDurationMs, c.lensGuard, c.stitchMethod, c.mediaMissing,
-                            c.lensCalibration, c.seamColourBlend, c.seamFlow});
+        // A part of a split recording that's gone plays black; the rest plays.
+        segments += PlaybackController::cutAtGaps(
+            {c.sourcePath, c.trimInMs, c.trimOutMs, c.speed, c.id, c.flat, c.fps,
+             c.sourceDurationMs, c.lensGuard, c.stitchMethod, c.mediaMissing, c.lensCalibration,
+             c.seamColourBlend, c.seamFlow},
+            c.mediaMissing ? QList<SourceGap>() : c.sourceGaps);
         m_captureTimingOn[c.id] = StabilizerCache::captureTimingOn(c);
     }
     pushInsetsToController(); // flat main clips are drawn as layers

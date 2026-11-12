@@ -252,6 +252,7 @@ add_library(orbis_core STATIC
     src/core/Autosave.h
     src/core/ClipItem.cpp
     src/core/ClipItem.h
+    src/core/SourceGap.h
     src/core/TrackClip.cpp
     src/core/TrackClip.h
     src/core/Gauge.h

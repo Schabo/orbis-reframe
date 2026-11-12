@@ -1069,6 +1069,94 @@ void testTakeFiles()
     CHECK(q.mediaPool()->item(lead)->missing); // that one isn't there
 }
 
+// A recording the camera split over files: its parts are saved with the
+// media item (version 22), relative like its source. A part that's gone
+// leaves the clip playing the rest, with a gap where it was -- at load, and
+// when the files are checked -- and is reported by its own file.
+void testRecordingParts()
+{
+    QTemporaryDir tmp;
+    const QString dir = tmp.path();
+    const auto write = [](const QString &path, const char *text) {
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly))
+            f.write(text);
+    };
+    QDir().mkpath(dir + "/card");
+    const QString p1 = dir + "/card/VID_20250927_144221_00_019.insv";
+    const QString p2 = dir + "/card/VID_20250927_144221_00_020.insv";
+    write(p1, "part 1");
+    write(p2, "part 2");
+
+    Project p;
+    MediaItem rec{p1, MediaItem::Kind::Clip360, 2245000, 3840, 3840, 29.97};
+    rec.parts = {{p1, 0, 1799798}, {p2, 1799798, 445500}};
+    CHECK(p.mediaPool()->add(rec));
+    p.timeline()->appendClip(p1, 2245000, 29.97, 3840, 3840);
+    CHECK(p.timeline()->clipAt(0).sourceGaps.isEmpty());
+    const QString orp = dir + "/ride.orp";
+    CHECK(p.save(orp));
+    {
+        QFile f(orp);
+        CHECK(f.open(QIODevice::ReadOnly));
+        const QByteArray text = f.readAll();
+        CHECK(text.contains("\"version\":22"));
+        CHECK(text.contains("{\"durationMs\":445500,\"source\":\"card/VID_20250927_144221_00_020.insv\","
+                            "\"startMs\":1799798}"));
+    }
+
+    Project q;
+    CHECK(q.load(orp));
+    CHECK(q.mediaPool()->item(p1) && q.mediaPool()->item(p1)->parts == rec.parts);
+    CHECK(q.timeline()->clipAt(0).sourceGaps.isEmpty());
+
+    // Part 2 gone at load: the clip isn't missing, part 2's span is a gap.
+    CHECK(QFile::rename(p2, p2 + ".away"));
+    Project r;
+    CHECK(r.load(orp));
+    const SourceGap gone{1799798, 2245298, p2};
+    CHECK(!r.mediaPool()->item(p1)->missing && !r.timeline()->clipAt(0).mediaMissing);
+    CHECK(r.timeline()->clipAt(0).sourceGaps == QList<SourceGap>{gone});
+
+    // Open meanwhile: reported by the part's own file; the clip, read with
+    // the parts of then, is stale.
+    Project::MediaRecheck check = q.recheckMissingMedia();
+    CHECK(check.gone == QStringList{p2} && check.replaced == QStringList{p1});
+    CHECK(!q.timeline()->clipAt(0).mediaMissing &&
+          q.timeline()->clipAt(0).sourceGaps == QList<SourceGap>{gone});
+    CHECK(QFile::rename(p2 + ".away", p2));
+    check = q.recheckMissingMedia();
+    CHECK(check.back == QStringList{p2} && check.gone.isEmpty() &&
+          check.replaced == QStringList{p1});
+    CHECK(q.timeline()->clipAt(0).sourceGaps.isEmpty());
+
+    // A part that wasn't there when the clip went in: a gap known by no file.
+    const QString p3 = dir + "/card/VID_20250927_144221_00_021.insv";
+    write(p3, "part 3");
+    MediaItem gap{p3, MediaItem::Kind::Clip360, 0, 3840, 3840, 29.97};
+    gap.path = dir + "/card/VID_20250927_144221_00_019b.insv";
+    write(gap.path, "part 1 of another");
+    gap.parts = {{gap.path, 0, 1000}, {p3, 3000, 500}};
+    CHECK(q.mediaPool()->add(gap));
+    q.timeline()->appendClip(gap.path, 3500, 29.97, 3840, 3840);
+    CHECK(q.timeline()->clipAt(1).sourceGaps == (QList<SourceGap>{{1000, 3000, QString()}}));
+
+    // An older project's item: no parts, and none read from a single entry.
+    Project s;
+    MediaItem one{p1, MediaItem::Kind::Clip360, 1799798, 3840, 3840, 29.97};
+    one.parts = {{p1, 0, 1799798}};
+    CHECK(s.mediaPool()->add(one));
+    s.timeline()->appendClip(p1, 1799798, 29.97, 3840, 3840);
+    const QString single = dir + "/single.orp";
+    CHECK(s.save(single));
+    {
+        QFile f(single);
+        CHECK(f.open(QIODevice::ReadOnly));
+        const QByteArray text = f.readAll();
+        CHECK(!text.contains("\"parts\"") && !text.contains("\"version\":22"));
+    }
+}
+
 void testProjectFolder()
 {
     QTemporaryDir tmp;
@@ -1698,7 +1786,7 @@ void testMarksJson()
         CHECK(p.timeline()->count() == 1 && p.timeline()->clipAt(0).marks.isEmpty() &&
               p.timeline()->clipAt(0).hiddenMarks.isEmpty());
         writeFile(file, QByteArrayLiteral(
-                            R"({"format":"orbis-reframe-project","version":22,"timeline":{"clips":[]}})"));
+                            R"({"format":"orbis-reframe-project","version":23,"timeline":{"clips":[]}})"));
         CHECK(!p.load(file, &err));
     }
 }
@@ -2633,6 +2721,7 @@ int main(int argc, char **argv)
     testProjectVideoTracksJson();
     testMediaPool();
     testTakeFiles();
+    testRecordingParts();
     testProjectFolder();
     testAutosave();
     testMeasurementsWritten();

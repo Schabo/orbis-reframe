@@ -25,6 +25,15 @@ struct ClipProbe {
     // The take's other files the clip needs (a ONE X2 clip's lens-1 file);
     // empty for a clip in one file.
     std::vector<std::string> other_files;
+    // A recording the camera split over several files
+    // (camera::ClipMetadata::parts): every file in clip order, the clip's
+    // first; empty for a clip in one file.
+    struct Part {
+        std::string path;
+        int64_t start_ms = 0;
+        int64_t duration_ms = 0;
+    };
+    std::vector<Part> parts;
     // The lens-guard profiles the clip's file carries.
     LensGuardProfiles lens_guards;
     // The highlight marks set while recording, video ms in time order

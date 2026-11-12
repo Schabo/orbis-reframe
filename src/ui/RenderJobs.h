@@ -128,7 +128,9 @@ struct MissingSource {
 // uses (opening a project: unhiding a track later doesn't warn again).
 enum class MissingFor { Export, Timeline };
 // The source files that are missing (ClipItem::mediaMissing,
-// TrackClip::mediaMissing as last checked), each once, in timeline order:
+// TrackClip::mediaMissing as last checked, and a split recording's parts
+// within a clip's trim, ClipItem::sourceGaps -- a part never found by the
+// clip's own file), each once, in timeline order:
 // main-track clips first, then overlay and audio clips.
 QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which);
 // The same as display lines, "name.ext -- clip 2, clip 3" with the full path

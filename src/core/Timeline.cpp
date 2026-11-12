@@ -909,6 +909,22 @@ QStringList Timeline::setSourcesMissing(const QHash<QString, bool> &missing)
     return changed;
 }
 
+QStringList Timeline::setSourceGaps(const QHash<QString, QList<SourceGap>> &gaps)
+{
+    QStringList changed;
+    for (ClipItem &c : m_clips) {
+        const auto it = gaps.constFind(c.sourcePath);
+        if (it == gaps.cend() || c.sourceGaps == *it)
+            continue;
+        c.sourceGaps = *it;
+        if (!changed.contains(c.sourcePath))
+            changed << c.sourcePath;
+    }
+    if (!changed.isEmpty())
+        emit mediaMissingChanged();
+    return changed;
+}
+
 // ---------------------------------------------------------------------------
 // Extra tracks
 // ---------------------------------------------------------------------------

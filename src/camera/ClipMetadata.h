@@ -77,6 +77,17 @@ struct ClipMetadata {
     // `path`'s. `durationMs` is the whole clip's; the other facts below are
     // the first part's unless they say otherwise.
     std::vector<Part> parts;
+    // A recording that isn't all here. A part between two that are leaves a
+    // gap in `parts` where it belongs (a part's startUs past the end of the
+    // one before), placed by the camera's clock. `missingFirst`: the file
+    // the recording starts in (its name), when this file continues it and
+    // that one isn't beside it -- the file names it, so it's certain; the
+    // clip then starts here. `mayContinueIn`: the file name the recording
+    // would go on in, when the last part is as long as the camera writes a
+    // file (InsvModel::fileLimitSec) and nothing continues it -- a guess,
+    // the files don't say they go on. Both "" otherwise.
+    std::string missingFirst;
+    std::string mayContinueIn;
     // Every part's lens sources, as the decoders take them.
     std::vector<insv::ClipPart> partSources() const
     {

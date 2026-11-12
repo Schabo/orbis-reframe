@@ -654,9 +654,20 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which)
             it = out.insert(out.end(), MissingSource{path, {}});
         it->places << place;
     };
-    for (int i = 0; i < timeline.count(); ++i)
-        if (const ClipItem &c = timeline.clipAt(i); c.mediaMissing)
+    for (int i = 0; i < timeline.count(); ++i) {
+        const ClipItem &c = timeline.clipAt(i);
+        if (c.mediaMissing) {
             add(c.sourcePath, tr("clip %1").arg(i + 1));
+            continue;
+        }
+        // A part of a split recording, where the clip's trim reaches it.
+        for (const SourceGap &g : c.sourceGaps)
+            if (g.fromMs < c.trimOutMs && g.toMs > c.trimInMs)
+                add(g.file.isEmpty() ? c.sourcePath : g.file,
+                    g.file.isEmpty() ? tr("clip %1, a file of its recording that isn't there")
+                                           .arg(i + 1)
+                                     : tr("clip %1").arg(i + 1));
+    }
     for (int i = 0; i < timeline.trackCount(); ++i) {
         const Track &t = timeline.trackAt(i);
         // A hidden video track, a muted audio track or clip: not exported.

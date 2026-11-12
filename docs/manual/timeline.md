@@ -103,7 +103,9 @@ it, insert another clip before or after it, copy or paste its colour grade
   camera gave them; dropping several of them adds it once. It plays and
   exports straight through from one file into the next, picture,
   stabilization and sound alike; the sound crossfades over the first 20 ms
-  of the next file, so the cut doesn't click.
+  of the next file, so the cut doesn't click. If one of its files is
+  missing, the rest still plays
+  ([Where the clips are](projects-and-export.md#where-the-clips-are)).
 - Flat videos dropped on the video track (or on an empty timeline) go in
   the same way. Dropped anywhere else, they become pictures in picture
   ([below](#audio-and-overlay-tracks)).

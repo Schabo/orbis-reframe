@@ -8,6 +8,8 @@
 
 #include <optional>
 
+#include "SourceGap.h"
+
 // One file in the project's media pool. The source's metadata is stored with
 // the project (like a clip's) so a project opens without probing its media.
 struct MediaItem {
@@ -27,6 +29,21 @@ struct MediaItem {
     // ONE X2 clip's lens-1 file. `path` names the clip; it can't play
     // without these. Empty for a clip in one file.
     QStringList companions;
+    // A recording the camera split over several files: every file in clip
+    // order, `path`'s first, where each starts in the clip and how long it
+    // is (camera::ClipMetadata::parts). Kept so that a part gone later is
+    // known, and where. A part starting after the one before ends leaves a
+    // gap: a part that wasn't there when the clip was added. Empty for a
+    // clip in one file. Unlike a companion, a part that's gone leaves the
+    // rest of the clip playing.
+    struct Part {
+        QString path; // absolute
+        qint64 startMs = 0;
+        qint64 durationMs = 0;
+        bool missing = false; // as `missing`, for this file; not saved
+        bool operator==(const Part &) const = default;
+    };
+    QList<Part> parts;
     // The file -- or for a take, one of its files -- wasn't found when the
     // item was added, the project loaded, or the files were last checked
     // (Project::recheckMissingMedia). Not saved.
@@ -34,12 +51,17 @@ struct MediaItem {
 
     // `path`, then the companions.
     QStringList files() const { return QStringList{path} + companions; }
+    // The later parts' files.
+    QStringList partFiles() const;
+    // The source spans no file plays: the parts that are missing, and the
+    // gaps between parts, in source order.
+    QList<SourceGap> gaps() const;
 
     bool operator==(const MediaItem &o) const
     {
         return path == o.path && kind == o.kind && durationMs == o.durationMs &&
                width == o.width && height == o.height && fps == o.fps &&
-               companions == o.companions && missing == o.missing;
+               companions == o.companions && parts == o.parts && missing == o.missing;
     }
 };
 
@@ -59,7 +81,11 @@ const QStringList &extensions(MediaItem::Kind kind);
 QStringList filesInFolder(const QString &folder);
 
 // The first of `item`'s files that isn't on the disk, empty when all are.
+// Its parts aren't asked: a missing one leaves the rest playing.
 QString firstMissingFile(const MediaItem &item);
+
+// Marks each of `item`'s parts missing or not by whether its file is on the disk.
+void checkParts(MediaItem &item);
 
 } // namespace media
 
@@ -89,9 +115,10 @@ public:
     // path is in the pool already. `missing` is set from the disk. False if
     // `from` isn't in the pool.
     bool relink(const QString &from, MediaItem item);
-    // Set `missing` from `missing` (path -> missing) for the items it names.
-    // Emits missingChanged(), not changed(): a file coming and going isn't an
-    // edit. Returns the paths that changed.
+    // Set `missing` from `missing` (path -> missing) for the items it names,
+    // and each part's for the parts it names. Emits missingChanged(), not
+    // changed(): a file coming and going isn't an edit. Returns the items'
+    // paths that changed (an item whose part changed among them).
     QStringList setMissing(const QHash<QString, bool> &missing);
     // Replace everything (a project load / undo). Emits changed() once.
     void setItems(const QList<MediaItem> &items);

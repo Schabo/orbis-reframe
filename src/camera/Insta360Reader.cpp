@@ -302,10 +302,12 @@ bool videoStreams(const std::string& path, std::vector<insv::InsvStreamInfo>& st
 // (docs/formats/insta360-x5.md §1, §5.1 field 26), as `out.parts` after its
 // own: beside it, named like it but for the counter, from the same camera,
 // naming the same first file and further on by field 26's index, in that
-// order, each starting where the one before ends. The first that doesn't
-// follow on ends the clip there: streams not like the first part's, or not
-// starting where the part before ends by the camera's clock (a part between
-// them missing).
+// order, each starting where the one before ends by the camera's clock --
+// or later, a part between them missing, which leaves a gap. The first that
+// doesn't follow on ends the clip there: streams not like the first part's,
+// or starting before the part before ends. Then, when the last part is as
+// long as the camera writes a file, the name the next would have
+// (`mayContinueIn`).
 void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::InsvMakerNotes& notes,
                const insv::InsvStreamInfo& s0) {
     if (notes.file_group_identify.empty())
@@ -364,21 +366,53 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
         const Part& prev = out.parts.back();
         // By the camera's clock the next part starts where this one ends, to
         // the frame clock's drift from the nominal rate (tens of ppm).
+        part.startUs = prev.startUs + prev.durationUs;
         if (prevFirstFrame != 0 && c.firstFrame != 0) {
             const double gapSec = static_cast<double>(static_cast<int64_t>(c.firstFrame - prevFirstFrame)) *
                                   model.telemetryTickUs * 1e-6;
             const double expectSec = static_cast<double>(prev.durationUs) * 1e-6 * out.captureScale;
-            if (std::abs(gapSec - expectSec) > std::max(1.0, 0.01 * expectSec)) {
-                std::fprintf(stderr, "[camera] %s doesn't start where %s ends (%.3f s on, not "
-                                     "%.3f); a part between them may be missing; the clip ends "
-                                     "before it\n",
+            const double slackSec = std::max(1.0, 0.01 * expectSec);
+            if (gapSec < expectSec - slackSec) {
+                std::fprintf(stderr, "[camera] %s starts before %s ends (%.3f s on, not %.3f); "
+                                     "the clip ends before it\n",
                              c.path.c_str(), prev.path.c_str(), gapSec, expectSec);
                 break;
             }
+            if (gapSec > expectSec + slackSec) {
+                // A part between them isn't here: this one goes where the
+                // camera's clock puts it, on the frame grid. Off by the
+                // missing part's drift (tens of ms in 30 min), which only
+                // moves where the gap ends.
+                const double videoSec = gapSec / out.captureScale;
+                part.startUs = prev.startUs +
+                               (s0.fps > 0.0 ? std::llround(std::round(videoSec * s0.fps) * 1e6 / s0.fps)
+                                             : std::llround(videoSec * 1e6));
+                std::fprintf(stderr, "[camera] %s starts %.3f s after %s, not %.3f: a part "
+                                     "between them isn't here; a gap in the clip\n",
+                             c.path.c_str(), gapSec, prev.path.c_str(), expectSec);
+            }
         }
-        part.startUs = prev.startUs + prev.durationUs;
         out.parts.push_back(std::move(part));
         prevFirstFrame = c.firstFrame;
+    }
+    // The last part as long as the camera writes a file: the recording may
+    // go on in the next counter's file, which isn't here.
+    if (const Part& last = out.parts.back();
+        model.fileLimitSec > 0 &&
+        static_cast<double>(last.durationUs) * 1e-6 >= model.fileLimitSec - 1.0) {
+        const std::string lastName = fs::path(last.path).filename().string();
+        const auto dot = lastName.rfind('.');
+        const auto under = lastName.rfind('_', dot);
+        if (dot != std::string::npos && under != std::string::npos && dot > under + 1) {
+            const std::string digits = lastName.substr(under + 1, dot - under - 1);
+            if (std::all_of(digits.begin(), digits.end(),
+                            [](char ch) { return ch >= '0' && ch <= '9'; })) {
+                std::string next = std::to_string(std::stoull(digits) + 1);
+                if (next.size() < digits.size())
+                    next.insert(0, digits.size() - next.size(), '0');
+                out.mayContinueIn = lastName.substr(0, under + 1) + next + lastName.substr(dot);
+            }
+        }
     }
     if (out.parts.size() > 1) {
         const Part& last = out.parts.back();
@@ -504,6 +538,17 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         out.gpsTrackSec = tele->gps_track_s;
     }
     findParts(out, model, *notes, streams[0]);
+    // A later part of a recording whose first file isn't beside it (field
+    // 26 names that file): the clip starts here.
+    if (notes->file_group_index > 0 && !notes->file_group_identify.empty()) {
+        const std::filesystem::path self(out.path);
+        const std::string first =
+            std::filesystem::path(notes->file_group_identify).filename().string();
+        std::error_code ec;
+        if (!first.empty() && first != self.filename().string() &&
+            !std::filesystem::exists(self.parent_path() / first, ec))
+            out.missingFirst = first;
+    }
     for (size_t k = 1; k < out.parts.size(); ++k)
         if (const auto tele = insv::ReadInsvTelemetry(out.parts[k].path, kImuProbeSamples,
                                                       model.telemetryTickUs)) {

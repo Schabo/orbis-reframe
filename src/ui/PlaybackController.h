@@ -13,6 +13,7 @@
 #include "InsetFeed.h" // video-track insets
 #include "LayerLease.h" // a crossfade's layer reading our sources
 #include "../render/FrameStats.h" // ORBIS_FRAME_STATS
+#include "../core/SourceGap.h"
 
 #include <QStringList>
 
@@ -136,6 +137,17 @@ public:
         qint64 durationMs() const { return seg.timelineSpanMs(); }
         qint64 endMs() const { return startMs + durationMs(); }
     };
+    // `whole` (a clip's segment) cut where its source has no file
+    // (ClipItem::sourceGaps): each gap within its trim a segment of its own,
+    // missing, so it plays black. Keyed by the missing part's file, or for a
+    // part never found by gapKey(), never by the clip's own file, whose
+    // source the rest plays from.
+    static QList<Segment> cutAtGaps(const Segment &whole, const QList<SourceGap> &gaps);
+    // The stand-in "file" a gap with no known file plays as: not a path.
+    static QString gapKey(const QString &sourcePath, qint64 fromMs)
+    {
+        return sourcePath + QStringLiteral("#gap@") + QString::number(fromMs);
+    }
     // `segments` laid end to end from 0; the timeline's total is the last
     // one's endMs().
     static QList<Placed> placeSegments(const QList<Segment> &segments);

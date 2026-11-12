@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <system_error>
 
 namespace camera {
@@ -36,6 +37,7 @@ struct Cached {
     // The clip's other files (a lens in a file of its own, a later part of a
     // split recording): a change to one is a change to the clip.
     std::vector<Stamp> others;
+    std::optional<Stamp> folder; // its folder, by its time alone
 };
 
 std::mutex g_mx;
@@ -72,7 +74,12 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
                 std::filesystem::file_time_type m;
                 std::uintmax_t n = 0;
                 return stat(o.path, m, n) && m == o.mtime && n == o.size;
-            }))
+            }) &&
+            [&] {
+                const auto& d = it->second.folder;
+                std::error_code ec;
+                return !d || std::filesystem::last_write_time(d->path, ec) == d->mtime;
+            }())
             return it->second;
     }
 
@@ -113,6 +120,15 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
                 clip->parts.push_back(std::move(one));
             }
             Cached c{mtime, size, std::move(clip), r, {}};
+            // The folder, for a part of the recording that turns up or goes
+            // (a file added or removed changes the folder's time).
+            if (Stamp d{std::filesystem::path(path).parent_path().string(), {}, 0};
+                !d.path.empty()) {
+                std::error_code ec;
+                d.mtime = std::filesystem::last_write_time(d.path, ec);
+                if (!ec)
+                    c.folder = std::move(d);
+            }
             for (const Part& part : c.clip->parts)
                 for (const LensSource& l : part.lenses) {
                     Stamp o{l.path, {}, 0};

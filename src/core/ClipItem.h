@@ -3,6 +3,7 @@
 #include <limits>
 #include "PaneLayout.h"
 #include "ReframeTrack.h"
+#include "SourceGap.h"
 #include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
 #include <ColorLut.h>       // color::Grade (no Qt)
@@ -105,6 +106,10 @@ struct ClipItem {
     // Set on project load (step 4) when sourcePath can't be found. The clip
     // stays on the timeline so the edit isn't lost.
     bool mediaMissing = false;
+    // Its source's stretches with no file (MediaItem::gaps): a part of a
+    // split recording that's gone, or was never there. Set like
+    // mediaMissing; not saved.
+    QList<SourceGap> sourceGaps;
 
     // Edits.
     qint64 trimInMs = 0;

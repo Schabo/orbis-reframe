@@ -5,6 +5,7 @@
 // GPU, no media.
 
 #include "RenderJobs.h"
+#include "PlaybackController.h"
 
 #include "PrivacyBlur.h"
 #include "TitleRender.h"
@@ -1811,6 +1812,54 @@ void testOverlayTextRepeats()
     CHECK(gauge2.rgba != gauge1.rgba && *gauge2.rgba == *gauge1.rgba);
 }
 
+// A split recording's clip with parts gone: playback cuts it where its
+// source has no file, each gap a missing segment of its own (keyed by the
+// part's file, or a stand-in for one never found); export lists the parts
+// within the clip's trim.
+void testSourceGaps()
+{
+    Timeline t;
+    const QString p1 = "/c/VID_019.insv", p2 = "/c/VID_020.insv";
+    t.appendClip(p1, 10000, 30.0);
+    t.appendClip(p1, 10000, 30.0);
+    t.setSourceGaps({{p1, {{2000, 4000, QString()}, {6000, 10000, p2}}}});
+    t.setClipTrimOut(t.clipAt(1).id, 1500); // short of the gaps
+
+    PlaybackController::Segment whole;
+    whole.sourcePath = p1;
+    whole.inMs = 1000;
+    whole.outMs = 8000;
+    whole.sourceDurationMs = 10000;
+    const QList<PlaybackController::Segment> cut =
+        PlaybackController::cutAtGaps(whole, t.clipAt(0).sourceGaps);
+    CHECK(cut.size() == 4);
+    if (cut.size() == 4) {
+        CHECK(cut[0].sourcePath == p1 && !cut[0].missing && cut[0].inMs == 1000 &&
+              cut[0].outMs == 2000);
+        CHECK(cut[1].sourcePath == PlaybackController::gapKey(p1, 2000) && cut[1].missing &&
+              cut[1].inMs == 2000 && cut[1].outMs == 4000);
+        CHECK(cut[2].sourcePath == p1 && !cut[2].missing && cut[2].inMs == 4000 &&
+              cut[2].outMs == 6000);
+        CHECK(cut[3].sourcePath == p2 && cut[3].missing && cut[3].inMs == 6000 &&
+              cut[3].outMs == 8000 && cut[3].sourceDurationMs == 10000);
+    }
+    whole.inMs = 4500;
+    whole.outMs = 5500; // between the gaps: as it was
+    const QList<PlaybackController::Segment> inside =
+        PlaybackController::cutAtGaps(whole, t.clipAt(0).sourceGaps);
+    CHECK(inside.size() == 1 && inside[0].sourcePath == p1 && !inside[0].missing);
+
+    // Export: clip 1's trim reaches both gaps, clip 2's neither.
+    const QList<renderjobs::MissingSource> missing =
+        renderjobs::missingSources(t, renderjobs::MissingFor::Export);
+    CHECK(missing.size() == 2);
+    if (missing.size() == 2) {
+        CHECK(missing[0].path == p1 &&
+              missing[0].places == QStringList{"clip 1, a file of its recording that isn't there"});
+        CHECK(missing[1].path == p2 && missing[1].places == QStringList{"clip 1"});
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -1820,6 +1869,7 @@ int main(int argc, char **argv)
     CHECK(tmp.isValid());
     testMix();
     testMissingSources();
+    testSourceGaps();
     testOverlays();
     testManyOverlays();
     testTitles();

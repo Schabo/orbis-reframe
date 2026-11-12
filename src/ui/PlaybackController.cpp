@@ -37,6 +37,36 @@ PlaybackController::~PlaybackController()
 // Timeline math
 // ---------------------------------------------------------------------------
 
+QList<PlaybackController::Segment> PlaybackController::cutAtGaps(const Segment &whole,
+                                                                const QList<SourceGap> &gaps)
+{
+    QList<Segment> out;
+    qint64 at = whole.inMs; // source ms the next piece starts at
+    const auto piece = [&](qint64 to, const SourceGap *gap) {
+        if (to <= at)
+            return;
+        Segment s = whole;
+        s.inMs = at;
+        s.outMs = to;
+        if (gap) {
+            s.sourcePath = gap->file.isEmpty() ? gapKey(whole.sourcePath, gap->fromMs) : gap->file;
+            s.missing = true;
+        }
+        out.push_back(s);
+        at = to;
+    };
+    for (const SourceGap &g : gaps) {
+        if (g.toMs <= at || g.fromMs >= whole.outMs)
+            continue;
+        piece(std::min(g.fromMs, whole.outMs), nullptr);
+        piece(std::min(g.toMs, whole.outMs), &g);
+    }
+    piece(whole.outMs, nullptr);
+    if (out.isEmpty())
+        out.push_back(whole); // an empty trim: as it was
+    return out;
+}
+
 QList<PlaybackController::Placed> PlaybackController::placeSegments(const QList<Segment> &segments)
 {
     QList<Placed> placed;
