@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "HissHumReducer.h"
-#include "Rdft.h"
+#include "StftStream.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <numbers>
 
@@ -15,9 +14,8 @@ namespace {
 
 // --- hiss: the STFT stage (framing as in GeneralWindReducer) ---
 constexpr int kFft = 2048;     // 23 Hz bins, ~43 ms at 48 kHz
-constexpr int kHop = kFft / 4; // sqrt-Hann in and out, 75 % overlap
+constexpr int kHop = kFft / 4; // StftStream: sqrt-Hann in and out, 75 % overlap
 constexpr int kBins = kFft / 2 + 1;
-constexpr int64_t kFirstFrame = -(kFft - kHop);
 constexpr int kLatency = kFft;
 
 constexpr float kMaxCutDb = 24.0f;   // at strength 1
@@ -48,22 +46,8 @@ struct HissHumReducer::Impl {
     const int subLen;  // frames per sub-window of the noise minimum
 
     // --- hiss ---
-    Rdft tx{kFft, true};
-    const std::vector<float> win = sqrtHann(kFft);
+    StftStream stft; // its input is after the hum notches
 
-    // Input (after the hum notches) per channel from absolute frame
-    // `inBase` on; `inCount` frames pushed in total.
-    std::vector<std::vector<float>> in;
-    int64_t inBase = 0;
-    int64_t inCount = 0;
-    int64_t nextFrame = kFirstFrame;
-
-    std::vector<std::vector<float>> acc; // overlap-add, per channel
-    std::vector<float> ready;            // finished output, interleaved
-    size_t readyPos = 0;
-    int64_t outCount = 0;
-
-    std::vector<std::vector<AVComplexFloat>> spec;
     std::vector<float> power, powerSm, floorP, noise, cleanPrev, rawGain, gain;
     std::vector<float> subMin;                // this sub-window's minimum
     std::vector<std::vector<float>> subMins;  // the last kSubWindows' minima
@@ -105,10 +89,8 @@ struct HissHumReducer::Impl {
         , channels(std::max(1, ch))
         , minHalf(std::max(1, static_cast<int>(std::lround(70.0f / (static_cast<float>(r) / kFft)))))
         , subLen(std::max(1, static_cast<int>(std::lround(kMinWindowSec * r / kHop / kSubWindows))))
+        , stft(kFft, kLatency, channels)
     {
-        in.assign(channels, {});
-        acc.assign(channels, std::vector<float>(kFft, 0.0f));
-        spec.assign(channels, std::vector<AVComplexFloat>(kBins));
         for (auto* v : {&power, &powerSm, &floorP, &noise, &cleanPrev, &rawGain, &gain})
             v->assign(kBins, 0.0f);
         subMin.assign(kBins, std::numeric_limits<float>::max());
@@ -125,16 +107,7 @@ struct HissHumReducer::Impl {
 
     void reset()
     {
-        for (auto& c : in)
-            c.clear();
-        inBase = 0;
-        inCount = 0;
-        nextFrame = kFirstFrame;
-        for (auto& a : acc)
-            std::fill(a.begin(), a.end(), 0.0f);
-        ready.clear();
-        readyPos = 0;
-        outCount = 0;
+        stft.reset();
         std::fill(cleanPrev.begin(), cleanPrev.end(), 0.0f);
         std::fill(subMin.begin(), subMin.end(), std::numeric_limits<float>::max());
         subFill = subCount = subNext = 0;
@@ -159,17 +132,8 @@ struct HissHumReducer::Impl {
     // Back to input frame 0, keeping the noise minima and the hum found.
     void rewind()
     {
-        holdUntil = inCount;
-        for (auto& c : in)
-            c.clear();
-        inBase = 0;
-        inCount = 0;
-        nextFrame = kFirstFrame;
-        for (auto& a : acc)
-            std::fill(a.begin(), a.end(), 0.0f);
-        ready.clear();
-        readyPos = 0;
-        outCount = 0;
+        holdUntil = stft.input().count();
+        stft.reset();
         primed = false;
         ddFresh = true;
         std::fill(humRing.begin(), humRing.end(), 0.0f);
@@ -397,20 +361,13 @@ struct HissHumReducer::Impl {
 
     // --- hiss ---
 
-    float inputAt(const std::vector<float>& v, int64_t i) const
+    // The gains for the frame at `start`, whose spectra are in
+    // stft.spectra().
+    const float* frameGains(int64_t start, float strength)
     {
-        const int64_t k = i - inBase;
-        return (k >= 0 && k < static_cast<int64_t>(v.size())) ? v[static_cast<size_t>(k)] : 0.0f;
-    }
-
-    void processFrame(int64_t start, float strength)
-    {
+        const auto& spec = stft.spectra();
         std::fill(power.begin(), power.end(), 0.0f);
         for (int c = 0; c < channels; ++c) {
-            for (int i = 0; i < kFft; ++i)
-                tx.real[i] = inputAt(in[c], start + i) * win[i];
-            tx.forward();
-            std::copy(tx.cplx, tx.cplx + kBins, spec[c].begin());
             for (int k = 0; k < kBins; ++k)
                 power[k] += spec[c][k].re * spec[c][k].re + spec[c][k].im * spec[c][k].im;
         }
@@ -477,25 +434,7 @@ struct HissHumReducer::Impl {
         for (int k = 0; k < kBins; ++k)
             gain[k] = std::max({rawGain[std::max(0, k - 1)], rawGain[k], rawGain[std::min(kBins - 1, k + 1)]});
 
-        for (int c = 0; c < channels; ++c) {
-            for (int k = 0; k < kBins; ++k) {
-                tx.cplx[k].re = spec[c][k].re * gain[k];
-                tx.cplx[k].im = spec[c][k].im * gain[k];
-            }
-            tx.inverse();
-            float* a = acc[c].data(); // sqrt-Hann twice at 75 % overlap sums to 2
-            for (int i = 0; i < kFft; ++i)
-                a[i] += tx.real[i] * win[i] * 0.5f;
-        }
-
-        const int64_t from = std::max<int64_t>(start, 0);
-        for (int64_t t = from; t < start + kHop; ++t)
-            for (int c = 0; c < channels; ++c)
-                ready.push_back(acc[c][static_cast<size_t>(t - start)]);
-        for (auto& a : acc) {
-            std::memmove(a.data(), a.data() + kHop, sizeof(float) * (kFft - kHop));
-            std::fill(a.end() - kHop, a.end(), 0.0f);
-        }
+        return gain.data();
     }
 
     // Detection runs at fixed input positions (every kHumHop frames), so the
@@ -514,41 +453,7 @@ struct HissHumReducer::Impl {
             std::copy_n(x, channels, frameBuf.data());
             if (humHarmonics > 0)
                 notch(frameBuf.data());
-            for (int c = 0; c < channels; ++c)
-                in[c].push_back(frameBuf[c]);
-        }
-        inCount += frames;
-    }
-
-    void run(float strength)
-    {
-        while (inCount >= nextFrame + kLatency) {
-            processFrame(nextFrame, strength);
-            nextFrame += kHop;
-        }
-        const int64_t drop = nextFrame - inBase; // nothing reads before nextFrame
-        if (drop > 4 * kFft) {
-            for (auto& c : in)
-                c.erase(c.begin(), c.begin() + drop);
-            inBase += drop;
-        }
-    }
-
-    void pop(float* out, int frames)
-    {
-        const size_t ch = static_cast<size_t>(channels);
-        for (int i = 0; i < frames; ++i, ++outCount) {
-            float* o = out + static_cast<size_t>(i) * ch;
-            if (outCount < kLatency || readyPos + ch > ready.size()) {
-                std::fill(o, o + ch, 0.0f); // the leading delay
-                continue;
-            }
-            std::copy_n(ready.data() + readyPos, ch, o);
-            readyPos += ch;
-        }
-        if (readyPos > ready.size() / 2 && readyPos > 1 << 16) {
-            ready.erase(ready.begin(), ready.begin() + static_cast<std::ptrdiff_t>(readyPos));
-            readyPos = 0;
+            stft.input().pushFrame(frameBuf.data());
         }
     }
 };
@@ -592,13 +497,14 @@ float HissHumReducer::humConfidence() const
 
 void HissHumReducer::process(const float* in, float* out, int frames)
 {
-    if (!m_impl->tx.ok() || !m_impl->humTx.ok()) { // no FFT (never seen): silence
+    StftStream& stft = m_impl->stft;
+    if (!stft.ok() || !m_impl->humTx.ok()) { // no FFT (never seen): silence
         std::fill(out, out + static_cast<size_t>(frames) * m_impl->channels, 0.0f);
         return;
     }
     m_impl->push(in, frames, m_strength);
-    m_impl->run(m_strength);
-    m_impl->pop(out, frames);
+    stft.run([&](int64_t start) { return m_impl->frameGains(start, m_strength); });
+    stft.pop(out, frames);
 }
 
 } // namespace insv

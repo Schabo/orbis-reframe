@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "VoiceIsolator.h"
-#include "Rdft.h"
+#include "StftStream.h"
 
 // ONNX Runtime is loaded on first use (dlopen), not linked: the app starts
 // without it installed, and Debian's build prints ~2000 lines of "Schema
@@ -215,10 +215,7 @@ struct VoiceIsolator::Impl {
     Rdft tx{kN, true};
     float lim = 1.0f; // share of the original mixed back, 10^(-atten/20)
 
-    // Input per channel from absolute frame `inBase` on.
-    std::vector<std::vector<float>> in;
-    int64_t inBase = 0;
-    int64_t inCount = 0;
+    PcmInput in;
 
     // Analysed STFT frames from `frameBase` on. Frame t covers input
     // [(t-1)H, (t+1)H) (libDF's framing: before the first input, silence).
@@ -241,9 +238,7 @@ struct VoiceIsolator::Impl {
 
     // Synthesis (overlap-add) and the output queue.
     std::vector<std::vector<float>> synthMem; // per channel, kH
-    std::vector<float> ready;                 // finished output, interleaved
-    size_t readyPos = 0;
-    int64_t outCount = 0;
+    PcmOutput out;
 
     // Model I/O scratch.
     std::vector<float> featErb, featSpec;
@@ -253,13 +248,14 @@ struct VoiceIsolator::Impl {
     Impl(int rate, int ch)
         : channels(std::max(1, ch))
         , rateOk(rate == kRate)
+        , in(channels)
+        , out(channels, kLatency)
     {
         win.resize(kN);
         for (int i = 0; i < kN; ++i) {
             const double s = std::sin(std::numbers::pi * (i + 0.5) / kN);
             win[i] = static_cast<float>(std::sin(0.5 * std::numbers::pi * s * s));
         }
-        in.assign(channels, {});
         synthMem.assign(channels, std::vector<float>(kH, 0.0f));
         y.resize(static_cast<size_t>(channels) * kBins);
         frameOut.resize(static_cast<size_t>(channels) * kN);
@@ -268,9 +264,7 @@ struct VoiceIsolator::Impl {
 
     void reset()
     {
-        for (auto& c : in)
-            c.clear();
-        inBase = inCount = 0;
+        in.clear();
         frames.clear();
         frameBase = nextFrame = 0;
         // libDF's initial normalisation states.
@@ -283,16 +277,7 @@ struct VoiceIsolator::Impl {
         havePending = false;
         for (auto& m : synthMem)
             std::fill(m.begin(), m.end(), 0.0f);
-        ready.clear();
-        readyPos = 0;
-        outCount = 0;
-    }
-
-    float inputAt(int c, int64_t i) const
-    {
-        const int64_t k = i - inBase;
-        const auto& v = in[c];
-        return (k >= 0 && k < static_cast<int64_t>(v.size())) ? v[static_cast<size_t>(k)] : 0.0f;
+        out.clear();
     }
 
     const Frame& frameAt(int64_t t) const { return frames[static_cast<size_t>(t - frameBase)]; }
@@ -305,7 +290,7 @@ struct VoiceIsolator::Impl {
         const float wnorm = 2.0f * kH / (static_cast<float>(kN) * kN); // libDF
         for (int c = 0; c < channels; ++c) {
             for (int i = 0; i < kN; ++i)
-                tx.real[i] = inputAt(c, (t - 1) * kH + i) * win[i];
+                tx.real[i] = in.at(c, (t - 1) * kH + i) * win[i];
             tx.forward();
             for (int k = 0; k < kBins; ++k)
                 fr.spec[static_cast<size_t>(c) * kBins + k] = cfloat(tx.cplx[k].re, tx.cplx[k].im) * wnorm;
@@ -477,20 +462,12 @@ struct VoiceIsolator::Impl {
             return; // before the first input
         for (int i = 0; i < kH; ++i)
             for (int c = 0; c < channels; ++c)
-                ready.push_back(frameOut[static_cast<size_t>(c) * kN + i]);
-    }
-
-    void push(const float* pcm, int n)
-    {
-        for (int i = 0; i < n; ++i)
-            for (int c = 0; c < channels; ++c)
-                in[c].push_back(pcm[static_cast<size_t>(i) * channels + c]);
-        inCount += n;
+                out.push(frameOut[static_cast<size_t>(c) * kN + i]);
     }
 
     void run()
     {
-        while (inCount >= (nextFrame + 1) * kH)
+        while (in.count() >= (nextFrame + 1) * kH)
             analyse();
         while (nextFrame >= nextChunk + kBlock + kFade + kAhead)
             runChunk(nextChunk);
@@ -500,31 +477,7 @@ struct VoiceIsolator::Impl {
             frames.pop_front();
             ++frameBase;
         }
-        const int64_t keepIn = (nextFrame - 1) * kH; // the next frame's first sample
-        if (keepIn - inBase > 1 << 16) {
-            const int64_t drop = keepIn - inBase;
-            for (auto& c : in)
-                c.erase(c.begin(), c.begin() + drop);
-            inBase += drop;
-        }
-    }
-
-    void pop(float* out, int n)
-    {
-        const size_t ch = static_cast<size_t>(channels);
-        for (int i = 0; i < n; ++i, ++outCount) {
-            float* o = out + static_cast<size_t>(i) * ch;
-            if (outCount < kLatency || readyPos + ch > ready.size()) {
-                std::fill(o, o + ch, 0.0f); // the leading delay
-                continue;
-            }
-            std::copy_n(ready.data() + readyPos, ch, o);
-            readyPos += ch;
-        }
-        if (readyPos > ready.size() / 2 && readyPos > 1 << 16) {
-            ready.erase(ready.begin(), ready.begin() + static_cast<std::ptrdiff_t>(readyPos));
-            readyPos = 0;
-        }
+        in.dropBefore((nextFrame - 1) * kH, 1 << 16); // from the next frame's first sample
     }
 };
 
@@ -599,9 +552,9 @@ void VoiceIsolator::process(const float* in, float* out, int frames)
         std::fill(out, out + static_cast<size_t>(frames) * m_impl->channels, 0.0f);
         return;
     }
-    m_impl->push(in, frames);
+    m_impl->in.push(in, frames);
     m_impl->run();
-    m_impl->pop(out, frames);
+    m_impl->out.pop(out, frames);
 }
 
 } // namespace insv

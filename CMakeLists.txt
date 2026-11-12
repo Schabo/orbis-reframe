@@ -362,6 +362,8 @@ if(FFMPEG_FOUND)
         src/insv/NoiseFilter.h
         src/insv/NoiseFilter.cpp
         src/insv/Rdft.h
+        src/insv/StftStream.h
+        src/insv/StftStream.cpp
         src/insv/WindReducer.h
         src/insv/WindReducer.cpp
         src/insv/GeneralWindReducer.h

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include "WindReducer.h"
-#include "Rdft.h"
+#include "StftStream.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <numbers>
 
 namespace insv {
@@ -12,17 +11,14 @@ namespace insv {
 namespace {
 
 constexpr int kFft = 8192;          // filter STFT: 5.9 Hz bins at 48 kHz
-constexpr int kHop = kFft / 4;      // sqrt-Hann in and out, 75 % overlap
+constexpr int kHop = kFft / 4;      // StftStream: sqrt-Hann in and out, 75 % overlap
 constexpr int kBins = kFft / 2 + 1;
 constexpr int kTrackFft = 16384;    // engine tracking: 2.9 Hz bins
 constexpr int kTrackBins = kTrackFft / 2 + 1;
-// The first frame starts this far before sample 0, so sample 0 already gets
-// the full overlap-add.
-constexpr int64_t kFirstFrame = -(kFft - kHop);
-// A frame needs the tracker window around its centre: input up to
-// start + kFft/2 + kTrackFft/2. Samples [start, start + kHop) are final once
-// that frame is done, hence the delay.
+// A frame needs the tracker window around its centre: input from
+// start + kFft/2 - kTrackFft/2 up to start + kFft/2 + kTrackFft/2.
 constexpr int kLatency = kFft / 2 + kTrackFft / 2;
+constexpr int kTrackBack = kTrackFft / 2 - kFft / 2;
 
 constexpr float kMaxCutDb = 24.0f;
 constexpr float kTrackMaxHz = 1500.0f; // harmonics the tracker sums
@@ -46,29 +42,13 @@ struct WindReducer::Impl {
     const float binHz;
     const float trackBinHz;
 
-    Rdft tx{kFft, true};
+    StftStream stft;
     Rdft trackTx{kTrackFft, false};
-    const std::vector<float> win = sqrtHann(kFft);
     const std::vector<float> trackWin = sqrtHann(kTrackFft);
-
-    // Input, per channel plus the channel average, from absolute frame
-    // `inBase` on; `inCount` frames pushed in total.
-    std::vector<std::vector<float>> in;
-    std::vector<float> mono;
-    int64_t inBase = 0;
-    int64_t inCount = 0;
-    int64_t nextFrame = kFirstFrame;
-
-    // Overlap-add accumulator for [nextFrame, nextFrame + kFft), per channel.
-    std::vector<std::vector<float>> acc;
-    // Finished output, interleaved, from absolute frame `readyBase` on.
-    std::vector<float> ready;
-    size_t readyPos = 0; // floats already handed out
-    int64_t outCount = 0; // frames handed out (the leading silence included)
+    PcmInput mono{1}; // the channel average, alongside stft.input()
 
     // Per-bin state.
     std::vector<float> floorP, gainSm, protHold, prot, power, gain;
-    std::vector<std::vector<AVComplexFloat>> spec;
     // Tracker scratch + state.
     std::vector<float> trackP, logP, env;
     float prevF0 = 0.0f;
@@ -78,10 +58,8 @@ struct WindReducer::Impl {
         , channels(std::max(1, ch))
         , binHz(static_cast<float>(r) / kFft)
         , trackBinHz(static_cast<float>(r) / kTrackFft)
+        , stft(kFft, kLatency, channels)
     {
-        in.assign(channels, {});
-        acc.assign(channels, std::vector<float>(kFft, 0.0f));
-        spec.assign(channels, std::vector<AVComplexFloat>(kBins));
         floorP.assign(kBins, 0.0f);
         gainSm.assign(kBins, 1.0f);
         protHold.assign(kBins, 0.0f);
@@ -96,27 +74,12 @@ struct WindReducer::Impl {
 
     void reset()
     {
-        for (auto& c : in)
-            c.clear();
+        stft.reset();
         mono.clear();
-        inBase = 0;
-        inCount = 0;
-        nextFrame = kFirstFrame;
-        for (auto& a : acc)
-            std::fill(a.begin(), a.end(), 0.0f);
-        ready.clear();
-        readyPos = 0;
-        outCount = 0;
         std::fill(floorP.begin(), floorP.end(), 0.0f);
         std::fill(gainSm.begin(), gainSm.end(), 1.0f);
         std::fill(protHold.begin(), protHold.end(), 0.0f);
         prevF0 = 0.0f;
-    }
-
-    float inputAt(const std::vector<float>& v, int64_t i) const
-    {
-        const int64_t k = i - inBase;
-        return (k >= 0 && k < static_cast<int64_t>(v.size())) ? v[static_cast<size_t>(k)] : 0.0f;
     }
 
     // The engine fundamental (0 = none) and a 0..1 confidence, from the
@@ -192,15 +155,13 @@ struct WindReducer::Impl {
         }
     }
 
-    void processFrame(int64_t start, float strength)
+    // The gains for the frame at `start`, whose spectra are in
+    // stft.spectra().
+    const float* frameGains(int64_t start, float strength)
     {
-        // Analysis + per-channel spectra.
+        const auto& spec = stft.spectra();
         std::fill(power.begin(), power.end(), 0.0f);
         for (int c = 0; c < channels; ++c) {
-            for (int i = 0; i < kFft; ++i)
-                tx.real[i] = inputAt(in[c], start + i) * win[i];
-            tx.forward();
-            std::copy(tx.cplx, tx.cplx + kBins, spec[c].begin());
             for (int k = 0; k < kBins; ++k)
                 power[k] += spec[c][k].re * spec[c][k].re + spec[c][k].im * spec[c][k].im;
         }
@@ -210,7 +171,7 @@ struct WindReducer::Impl {
         // Engine tracking on the channel average, centred on this frame.
         const int64_t tStart = start + kFft / 2 - kTrackFft / 2;
         for (int i = 0; i < kTrackFft; ++i)
-            trackTx.real[i] = inputAt(mono, tStart + i) * trackWin[i] * trackWin[i];
+            trackTx.real[i] = mono.at(0, tStart + i) * trackWin[i] * trackWin[i];
         trackTx.forward();
         const int used = static_cast<int>(logP.size());
         for (int k = 0; k < used; ++k)
@@ -250,78 +211,26 @@ struct WindReducer::Impl {
             gainSm[k] = a2 * gainSm[k] + (1 - a2) * g;
         }
 
-        // Synthesis: same gains on every channel, overlap-add.
-        for (int c = 0; c < channels; ++c) {
-            for (int k = 0; k < kBins; ++k) {
-                tx.cplx[k].re = spec[c][k].re * gainSm[k];
-                tx.cplx[k].im = spec[c][k].im * gainSm[k];
-            }
-            tx.inverse();
-            // sqrt-Hann twice at 75 % overlap sums to 2.
-            float* a = acc[c].data();
-            for (int i = 0; i < kFft; ++i)
-                a[i] += tx.real[i] * win[i] * 0.5f;
-        }
-
-        // [start, start + kHop) is final: hand it on (from sample 0), shift.
-        const int64_t from = std::max<int64_t>(start, 0);
-        for (int64_t t = from; t < start + kHop; ++t)
-            for (int c = 0; c < channels; ++c)
-                ready.push_back(acc[c][static_cast<size_t>(t - start)]);
-        for (auto& a : acc) {
-            std::memmove(a.data(), a.data() + kHop, sizeof(float) * (kFft - kHop));
-            std::fill(a.end() - kHop, a.end(), 0.0f);
-        }
+        return gainSm.data();
     }
 
     void push(const float* pcm, int frames)
     {
         for (int i = 0; i < frames; ++i) {
+            const float* x = pcm + static_cast<size_t>(i) * channels;
             float m = 0.0f;
-            for (int c = 0; c < channels; ++c) {
-                const float v = pcm[static_cast<size_t>(i) * channels + c];
-                in[c].push_back(v);
-                m += v;
-            }
-            mono.push_back(m / static_cast<float>(channels));
+            for (int c = 0; c < channels; ++c)
+                m += x[c];
+            m /= static_cast<float>(channels);
+            stft.input().pushFrame(x);
+            mono.pushFrame(&m);
         }
-        inCount += frames;
     }
 
     void run(float strength)
     {
-        while (inCount >= nextFrame + kLatency) {
-            processFrame(nextFrame, strength);
-            nextFrame += kHop;
-        }
-        // Drop input no later frame reads (its tracker window starts
-        // kTrackFft/2 - kFft/2 before it).
-        const int64_t keepFrom = nextFrame - (kTrackFft / 2 - kFft / 2);
-        const int64_t drop = keepFrom - inBase;
-        if (drop > 4 * kFft) {
-            for (auto& c : in)
-                c.erase(c.begin(), c.begin() + drop);
-            mono.erase(mono.begin(), mono.begin() + drop);
-            inBase += drop;
-        }
-    }
-
-    void pop(float* out, int frames)
-    {
-        const size_t ch = static_cast<size_t>(channels);
-        for (int i = 0; i < frames; ++i, ++outCount) {
-            float* o = out + static_cast<size_t>(i) * ch;
-            if (outCount < kLatency || readyPos + ch > ready.size()) {
-                std::fill(o, o + ch, 0.0f); // the leading delay
-                continue;
-            }
-            std::copy_n(ready.data() + readyPos, ch, o);
-            readyPos += ch;
-        }
-        if (readyPos > ready.size() / 2 && readyPos > 1 << 16) {
-            ready.erase(ready.begin(), ready.begin() + static_cast<std::ptrdiff_t>(readyPos));
-            readyPos = 0;
-        }
+        stft.run([&](int64_t start) { return frameGains(start, strength); }, kTrackBack);
+        mono.dropBefore(stft.nextFrame() - kTrackBack, 4 * kFft);
     }
 };
 
@@ -349,13 +258,13 @@ int WindReducer::latency() const
 
 void WindReducer::process(const float* in, float* out, int frames)
 {
-    if (!m_impl->tx.ok() || !m_impl->trackTx.ok()) { // no FFT (never seen): silence
+    if (!m_impl->stft.ok() || !m_impl->trackTx.ok()) { // no FFT (never seen): silence
         std::fill(out, out + static_cast<size_t>(frames) * m_impl->channels, 0.0f);
         return;
     }
     m_impl->push(in, frames);
     m_impl->run(m_strength);
-    m_impl->pop(out, frames);
+    m_impl->stft.pop(out, frames);
 }
 
 } // namespace insv
