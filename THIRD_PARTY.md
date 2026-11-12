@@ -102,7 +102,7 @@ library, unpack the AppImage (`--appimage-extract`), replace the library in
 | xnnpack | Debian 13 | 0.0~git20241108.4ea82e5 | BSD-3-Clause | -- |
 | ffmpeg | our build (`scripts/build_ffmpeg.sh`), configure line in `licenses/ffmpeg/configure.txt` | 9.0.2 | LGPL-2.1-or-later | on the release |
 | ncnn | Tencent's release | 20260526 | BSD-3-Clause AND Zlib AND BSD-2-Clause | -- |
-| type2-runtime | our build (`scripts/build_appimage_runtime.sh`), the AppImage's runtime | fedfad5 | MIT AND LGPL-2.1-only AND BSD-2-Clause AND Zlib AND BSD-3-Clause | on the release |
+| type2-runtime | upstream's release (`scripts/build_appimage_runtime.sh`), the AppImage's runtime | fedfad5 | MIT AND LGPL-2.1-only AND BSD-2-Clause AND Zlib AND BSD-3-Clause | on the release |
 
 <!-- End of the generated table. -->
 

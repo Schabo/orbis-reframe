@@ -29,7 +29,7 @@ table() {
             if (v ~ /-/) sub(/-[^-]*$/, "", v)  # Debian revision
             if ($1 == "ffmpeg") from = "our build (`scripts/build_ffmpeg.sh`), configure line in `licenses/ffmpeg/configure.txt`"
             else if ($1 == "ncnn") from = "Tencent'"'"'s release"
-            else if ($1 == "type2-runtime") from = "our build (`scripts/build_appimage_runtime.sh`), the AppImage'"'"'s runtime"
+            else if ($1 == "type2-runtime") from = "upstream'"'"'s release (`scripts/build_appimage_runtime.sh`), the AppImage'"'"'s runtime"
             else from = "Debian 13"
             if ($5 == "snapshot") src = "snapshot.debian.org"
             else if ($5 == "hosted") src = "on the release"

@@ -336,29 +336,39 @@ so running against them needs `LD_LIBRARY_PATH=<folder>/usr/lib`.
 The runtime at the front of the AppImage (AppImage/type2-runtime, the part
 that mounts the image) links libfuse (LGPL-2.1-only) statically, so its
 source is hosted next to the AppImage. `scripts/build_appimage_runtime.sh`
-builds it from a pinned commit (`RUNTIME_COMMIT`, now `fedfad5`) with
-upstream's own Alpine container, in podman, and fails unless the result is
-byte-identical to upstream's release binary for that commit
-(`RUNTIME_SHA256`); the source archive is then exactly what's in the file.
-Output in `third_party/appimage-runtime/<commit>/`: `runtime-x86_64`,
-`type2-runtime-<commit>-source.tar.xz` (the runtime's tree, the libfuse and
-squashfuse tarballs its build downloads, the container's Alpine package
-list, and how to rebuild) and `licenses/` (the runtime's licence and those of
-what it links: libfuse and squashfuse from their tarballs; zstd, zlib,
-mimalloc and musl from upstream at the versions the Alpine packages have,
-as Alpine ships no licence texts for them). Reused when done; about 30 s
-otherwise.
+takes upstream's release binary for a pinned commit (`RUNTIME_COMMIT`, now
+`fedfad5`), checked by its SHA-256 (`RUNTIME_SHA256`): from upstream's
+`continuous` release while that is still this commit, after that from the
+front of the first AppImage of ours that shipped it (`RUNTIME_SHIPPED_IN`,
+with the two sections appimagetool fills in blanked again). It doesn't
+build the runtime itself: upstream builds in an Alpine container, Alpine
+keeps updating the packages linked in (zlib, zstd, musl, mimalloc) and keeps
+no older ones, so the same commit built later is a different file.
 
-- **Needs**: podman, network access and `/dev/fuse` on the host (libfuse's
-  install step would `mknod` it, which a rootless build can't). It runs on
-  the host, not inside the AppImage's `debian:trixie` build container.
-- **When it fails** on an unchanged commit, Alpine 3.21 has updated a
-  package the runtime links (zstd, zlib, mimalloc, musl; the error lists the
-  build's versions). Upstream's next release is built with them: move to
-  it as below.
+`--verify` builds it the way upstream's release workflow does, with
+upstream's Alpine container in podman, and fails unless the result is
+byte-identical to upstream's binary; that build's Alpine package list is
+then written to `packaging/appimage/type2-runtime-<commit>-packages.txt`,
+which goes into the source archive, so the source hosted is what's in the
+file. Output in `third_party/appimage-runtime/<commit>/`: `runtime-x86_64`,
+`type2-runtime-<commit>-source.tar.xz` (the runtime's tree, the libfuse and
+squashfuse tarballs its build downloads, that package list, and how to
+rebuild) and `licenses/` (the runtime's licence and those of what it links:
+libfuse and squashfuse from their tarballs; zstd, zlib, mimalloc and musl
+from upstream at the versions the package list has, as Alpine ships no
+licence texts for them). Reused when done; a few seconds otherwise.
+
+- **Needs**: network access and `readelf` (binutils). `--verify` also
+  needs podman and `/dev/fuse` on the host (libfuse's install step would
+  `mknod` it, which a rootless build can't), and runs on the host, not
+  inside the AppImage's `debian:trixie` build container.
 - **A new runtime**: set `RUNTIME_COMMIT` and `RUNTIME_SHA256` (that
-  release's `runtime-x86_64`), and review its row in
-  `packaging/appimage/licenses.tsv`.
+  release's `runtime-x86_64`), empty `RUNTIME_SHIPPED_IN`, review its row in
+  `packaging/appimage/licenses.tsv`, and run `--verify` soon after
+  upstream's release, while Alpine still has the packages it was built with
+  (if it fails, the error lists the build's versions: wait for upstream's
+  next release). Commit the package list it writes, and once a release has
+  shipped it, set `RUNTIME_SHIPPED_IN` to that release's AppImage.
 
 ## Build & run
 

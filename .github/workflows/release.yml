@@ -104,15 +104,16 @@ jobs:
           grep -qx "version = \"$v\"" .cz.toml || { echo ".cz.toml isn't at $v" >&2; exit 1; }
           sed -nE 's/^project\(orbis-reframe VERSION ([0-9.]+).*/\1/p' CMakeLists.txt | grep -qx "$v" \
               || { echo "CMakeLists.txt's project() isn't at $v" >&2; exit 1; }
-      # Our FFmpeg and the runtime, each reused by its script when its
-      # configuration is unchanged (the runtime's hash is checked on reuse).
+      # Our FFmpeg and the runtime with its source, each reused by its script
+      # when its configuration is unchanged (the runtime's hash is checked on
+      # reuse).
       - name: Cache FFmpeg and the runtime
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             third_party/ffmpeg
             third_party/appimage-runtime
-          key: appimage-${{ hashFiles('scripts/build_ffmpeg.sh', 'scripts/build_appimage_runtime.sh') }}
+          key: appimage-${{ hashFiles('scripts/build_ffmpeg.sh', 'scripts/build_appimage_runtime.sh', 'packaging/appimage/type2-runtime-*-packages.txt') }}
       - name: Fetch ncnn
         run: scripts/fetch_ncnn.sh
       - name: Build the AppImage
