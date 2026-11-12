@@ -46,6 +46,7 @@ QList<PlaybackController::Segment> PlaybackController::cutAtGaps(const Segment &
         if (to <= at)
             return;
         Segment s = whole;
+        s.clipInMs = whole.clipInMs.value_or(whole.inMs);
         s.inMs = at;
         s.outMs = to;
         if (gap) {

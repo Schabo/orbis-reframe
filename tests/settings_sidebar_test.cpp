@@ -1038,6 +1038,49 @@ void testMediaInfoProfile(SettingsSidebar &bar)
     panel->setNoClip();
 }
 
+// Media information on a split recording: the files with their spans,
+// one that's gone or never found, the first file and a next one guessed.
+void testMediaInfoParts(SettingsSidebar &bar)
+{
+    MediaInfoPanel *panel = bar.mediaInfo();
+    auto shows = [panel](const QString &text) {
+        for (const QLabel *l : panel->findChildren<QLabel *>())
+            if (l->text() == text)
+                return true;
+        return false;
+    };
+    camera::MediaInfo m;
+    m.path = "/c/VID_20250927_144221_00_019.insv";
+    panel->setInfo(m);
+    CHECK(!shows("Recording")); // one file
+
+    // As the disk has it: two files, the second 1 s after the first ends.
+    m.parts = {{m.path, 0, 1799798}, {"/c/VID_20250927_144221_00_021.insv", 1800798, 445512}};
+    panel->setInfo(m);
+    CHECK(shows("Recording") && shows("Files") && shows("Length") && shows("37:26.310"));
+    CHECK(shows("VID_20250927_144221_00_019.insv\n0:00.000 – 29:59.798"));
+    CHECK(shows("⚠ A file that isn't here\n29:59.798 – 30:00.798"));
+
+    // As the project knows it: the second file gone since it was added.
+    const QList<RecordingPart> known = {
+        {QString::fromStdString(m.path), 0, 1799798, false},
+        {"/c/VID_20250927_144221_00_020.insv", 1799798, 445512, true}};
+    m.mayContinueIn = "VID_20250927_144221_00_020.insv"; // the probe's guess: it's known
+    panel->setInfo(m, false, known);
+    CHECK(shows("VID_20250927_144221_00_020.insv\n⚠ 29:59.798 – 37:25.310, not here"));
+    CHECK(!shows("May go on in") && !shows("⚠ A file that isn't here\n29:59.798 – 30:00.798"));
+
+    // Opened from a later file without the first; and one that may go on.
+    m.parts.clear();
+    m.missingFirst = "VID_20250927_144221_00_019.insv";
+    m.mayContinueIn = "VID_20250927_144221_00_021.insv";
+    panel->setInfo(m);
+    CHECK(shows("Starts in") && shows("VID_20250927_144221_00_019.insv\n⚠ Not here"));
+    CHECK(shows("May go on in") && shows("VID_20250927_144221_00_021.insv\nNot here"));
+    CHECK(!shows("Files") && !shows("Length"));
+    panel->setNoClip();
+}
+
 int main(int argc, char **argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
@@ -1068,6 +1111,7 @@ int main(int argc, char **argv)
     testTransitionTab(bar);
     testColourLut(bar);
     testMediaInfoProfile(bar);
+    testMediaInfoParts(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

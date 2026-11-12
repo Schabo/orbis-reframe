@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QLocale>
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -113,7 +114,75 @@ void MediaInfoPanel::setPreviewed(bool previewed)
     }
 }
 
-void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed)
+void MediaInfoPanel::addRecording(const camera::MediaInfo &m, QList<RecordingPart> parts)
+{
+    if (parts.isEmpty()) // as the files on the disk have it
+        for (const camera::MediaPart &p : m.parts)
+            parts.append({QString::fromStdString(p.path), p.startMs, p.durationMs, false});
+    // Where a part starts after the one before ends, one was never found.
+    qint64 end = 0;
+    for (int i = 0; i < parts.size(); ++i) {
+        if (parts[i].startMs > end) {
+            parts.insert(i, {QString(), end, parts[i].startMs - end, true});
+            ++i;
+        }
+        end = std::max(end, parts[i].startMs + parts[i].durationMs);
+    }
+    const QString first = QString::fromStdString(m.missingFirst);
+    QString next = QString::fromStdString(m.mayContinueIn);
+    for (const RecordingPart &p : parts)
+        if (!next.isEmpty() && QFileInfo(p.path).fileName() == next)
+            next.clear(); // a part the project knows, shown as one: not a guess
+    if (parts.size() < 2 && first.isEmpty() && next.isEmpty())
+        return;
+
+    addSection(tr("Recording"));
+    if (!first.isEmpty())
+        addValue(tr("Starts in"), tr("%1\n⚠ Not here").arg(first),
+                 tr("The recording starts in an earlier file, which isn't in this folder. The "
+                    "clip starts where this file does, without what's before it. Added from "
+                    "the first file, the whole recording comes in as a clip of its own."));
+    if (parts.size() >= 2) {
+        const RecordingPart &last = parts.back();
+        addValue(tr("Length"), duration(last.startMs + last.durationMs),
+                 tr("The whole recording, every file of it: the clip's length before "
+                    "trimming. The camera starts a new file when one gets too long."));
+        const QString notHere = tr("The clip plays black and silent here, and can't be "
+                                   "exported over it.");
+        for (int i = 0; i < parts.size(); ++i) {
+            const RecordingPart &p = parts[i];
+            const QString span = QStringLiteral("%1 – %2").arg(duration(p.startMs),
+                                                               duration(p.startMs + p.durationMs));
+            const QString label = i == 0 ? tr("Files") : QString();
+            const QFileInfo f(p.path);
+            if (p.path.isEmpty())
+                addValue(label, tr("⚠ A file that isn't here\n%1").arg(span),
+                         tr("A file of this recording wasn't in the folder when the clip was "
+                            "added: the files around it leave a gap.") +
+                             QLatin1Char(' ') + notHere);
+            else if (p.missing)
+                addValue(label, tr("%1\n⚠ %2, not here").arg(f.fileName(), span),
+                         tr("This file of the recording isn't where the project expects it: "
+                            "%1.")
+                                 .arg(f.absoluteFilePath()) +
+                             QLatin1Char(' ') + notHere + QLatin1Char(' ') +
+                             tr("Put it back in the folder with the other files, under this "
+                                "name, and it plays again."));
+            else
+                addValue(label, QStringLiteral("%1\n%2").arg(f.fileName(), span),
+                         f.absoluteFilePath());
+        }
+    }
+    if (!next.isEmpty())
+        addValue(tr("May go on in"), tr("%1\nNot here").arg(next),
+                 tr("The last file is as long as the camera makes one, so the recording may "
+                    "go on in the next file, which isn't in this folder. The files don't say "
+                    "whether it does. If you have it, put it beside the others before adding "
+                    "the clip, and it comes in as part of the clip."));
+}
+
+void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
+                             const QList<RecordingPart> &parts)
 {
     clearRows();
     setBodyEnabled(true);
@@ -142,6 +211,7 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed)
                  m.proxyPath.empty()
                      ? tr("The camera's low-res preview file, expected next to the .insv.")
                      : QString::fromStdString(m.proxyPath));
+    addRecording(m, parts);
 
     addSection(tr("Video"));
     if (m.video.empty()) {

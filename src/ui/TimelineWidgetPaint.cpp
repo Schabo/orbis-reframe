@@ -216,12 +216,23 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.setPen(QPen(active ? tc.accent : tc.menuBar,
                       active ? 2 : 1));
         p.drawRect(rc.adjusted(0, 0, -1, -1));
+        // A part of its recording that isn't there, inside the border.
+        if (!r.clip.missing && m_drag != Drag::TrimIn && m_drag != Drag::TrimOut)
+            for (const Clip::Gap &g : r.clip.gaps) {
+                const int x0 = std::max(rc.left() + 1,
+                                        xForTimelineMs(r.startMs + r.clip.localMs(g.fromMs)));
+                const int x1 =
+                    std::min(rc.right(), xForTimelineMs(r.startMs + r.clip.localMs(g.toMs)));
+                if (x1 > x0)
+                    p.fillRect(QRect(x0, rc.top() + 1, x1 - x0, rc.height() - 2),
+                               clipFill(i, active, true));
+            }
 
         // Label.
         p.setPen(tc.text);
         // A hollow diamond marks a clip without reframe keys: it exports a
         // static forward view, whatever the viewport showed.
-        QString label = (r.clip.missing ? QStringLiteral("⚠ ") : QString()) +
+        QString label = (r.clip.missing || r.clip.showsGap() ? QStringLiteral("⚠ ") : QString()) +
                         (r.clip.keySourceMs.isEmpty() ? QStringLiteral("◇ ") : QString()) +
                         r.clip.label;
         if (r.clip.speed != 1.0)

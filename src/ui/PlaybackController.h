@@ -119,11 +119,26 @@ public:
         std::optional<stitch::LensCalibration> lensCalibration;
         bool seamColourBlend = true; // ClipItem::seamColourBlend, as lensGuard
         bool seamFlow = true; // ClipItem::seamFlow, likewise
-        qint64 timelineSpanMs() const { return std::llround((outMs - inMs) / speed); }
-        qint64 sourceAtLocalMs(qint64 localMs) const { return inMs + std::llround(localMs * speed); }
+        // A piece cutAtGaps() cut out of a clip: the clip's inMs, which its
+        // timeline times are rounded from, so the pieces add up to the
+        // clip's span and map source time as the clip does. Unset for a
+        // whole clip (counted from inMs).
+        std::optional<qint64> clipInMs;
+        qint64 timelineSpanMs() const { return localFromClipIn(outMs) - localFromClipIn(inMs); }
+        qint64 sourceAtLocalMs(qint64 localMs) const
+        {
+            const qint64 from = clipInMs.value_or(inMs);
+            return from + std::llround((localMs + localFromClipIn(inMs)) * speed);
+        }
         qint64 localAtSourceMs(qint64 sourceMs) const
         {
-            return std::llround((sourceMs - inMs) / speed);
+            return localFromClipIn(sourceMs) - localFromClipIn(inMs);
+        }
+
+    private:
+        qint64 localFromClipIn(qint64 sourceMs) const
+        {
+            return std::llround((sourceMs - clipInMs.value_or(inMs)) / speed);
         }
     };
 

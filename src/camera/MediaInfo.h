@@ -35,6 +35,13 @@ struct MediaAudioStream {
     int64_t bitRate = 0;
 };
 
+// A file of a recording the camera split over several (ClipMetadata::parts).
+struct MediaPart {
+    std::string path;
+    int64_t startMs = 0; // where it starts in the clip
+    int64_t durationMs = 0;
+};
+
 struct MediaInfo {
     std::string path;
     int64_t fileBytes = 0;
@@ -82,6 +89,13 @@ struct MediaInfo {
     // The take's other lens files (a ONE X2 clip's VID_…_10_…); empty when
     // the clip is one file.
     std::vector<std::string> lensFiles;
+    // A recording in several files: each one found, in clip order, `path`'s
+    // first; empty for a clip in one file. See ClipMetadata::parts /
+    // missingFirst / mayContinueIn: the file names, "" when not.
+    std::vector<MediaPart> parts;
+    int64_t clipDurationMs = 0; // the whole clip's: every part, gaps included
+    std::string missingFirst;
+    std::string mayContinueIn;
 
     // The camera's name for the resolution it was filmed at ("8K"), or "".
     std::string captureMode;

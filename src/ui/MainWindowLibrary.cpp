@@ -142,8 +142,7 @@ void MainWindow::openProject(const QString &projectPath)
         renderjobs::showMissingMedia(
             this, tr("Missing media"),
             tr("Source files are not where the project expects them:"), missing,
-            tr("If a file was moved or renamed, find it with Locate file… on it in "
-               "the Media tab."));
+            renderjobs::missingMediaAdvice(*m_timeline, renderjobs::MissingFor::Timeline));
     syncTimeline(); // opens paused on the first frame
 }
 

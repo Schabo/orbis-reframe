@@ -131,6 +131,14 @@ public:
         };
         QVector<Mark> marks;
         int hiddenMarks = 0; // camera marks hidden on it (the clip menu shows them again)
+        // Source spans with no file to play them (ClipItem::sourceGaps): a
+        // split recording's part that's gone, drawn like a missing clip.
+        struct Gap {
+            qint64 fromMs = 0;
+            qint64 toMs = 0;
+            QString file; // empty: a part never found
+        };
+        QVector<Gap> gaps;
         double speed = 1.0;          // ClipItem::speed
         // Span on the timeline, same rounding as ClipItem::timelineDurationMs.
         qint64 timelineSpanMs() const
@@ -153,6 +161,28 @@ public:
         qint64 keyLocalMs(qint64 sourceMs) const
         {
             return std::min(std::llround((sourceMs - trimInMs) / speed), timelineSpanMs() - 1);
+        }
+        // A source time's offset from the clip's start on the timeline,
+        // clamped to the clip (ClipItem::localAtSourceMs).
+        qint64 localMs(qint64 sourceMs) const
+        {
+            return std::clamp<qint64>(std::llround((sourceMs - trimInMs) / speed), 0,
+                                      timelineSpanMs());
+        }
+        // The gap at timeline offset `local`, or null.
+        const Gap *gapAt(qint64 local) const
+        {
+            for (const Gap &g : gaps)
+                if (local >= localMs(g.fromMs) && local < localMs(g.toMs))
+                    return &g;
+            return nullptr;
+        }
+        bool showsGap() const
+        {
+            for (const Gap &g : gaps)
+                if (localMs(g.toMs) > localMs(g.fromMs))
+                    return true;
+            return false;
         }
     };
 

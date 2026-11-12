@@ -140,13 +140,17 @@ are. Your original files are never changed.
   29 min 59 s; see [Timeline](timeline.md#adding-clips)) is one clip, and the
   project remembers every file of it. If one of the later files is gone,
   the rest of the clip still plays: the part that's gone is black and
-  silent, the messages name its file, and an export refuses to start while
-  the clip uses that part. Put the file back in the folder with the others,
-  under its own name, and it's found again by itself. A file that was
+  silent, and red on the timeline with a ⚠ on the clip (hover over it for
+  the file's name); the messages and the
+  [Media information](media-information.md#recording) section name its
+  file, and an export refuses to start while the clip uses that part. There
+  is no **Locate file…** for such a file: put it back in the folder with
+  the others, under its own name, and it's found again by itself. A file that was
   already missing when you added the recording (a middle one: the files
   around it show the gap) plays black the same way, named as *a file of
   its recording that isn't there*. Opened from a later file when the first
-  isn't in the folder, the clip starts at the file you opened.
+  isn't in the folder, the clip starts at the file you opened; Media
+  information names the first file.
 - **To move a project with its clips**, put the clips inside the project's
   folder, for example in a `media` folder next to the `.orp` file. orbis-reframe
   then stores their places relative to the project, so you can move or copy
@@ -266,7 +270,7 @@ timeline has sound, the file has no sound track at all.
 | Message | What to do |
 |---|---|
 | *Exporting needs a hardware video encoder (NVIDIA NVENC, Vulkan video or VAAPI)* | Export uses the graphics card to encode. On NVIDIA, install `libnvidia-encode1` ([Getting started](getting-started.md), step 2). On AMD and Intel, install the VA-API driver ([Getting started](getting-started.md#amd-and-intel)) and check with `vainfo` that it lists encoding (`VAEntrypointEncSlice`). **Show Details…** says why each encoder couldn't be used; if you report the problem, include it. |
-| *The timeline can't be exported: these source files are missing.* | A clip's file isn't where the project expects it -- on the video track, an overlay or an audio track (the list says which). Put it back, find it with **Locate file…** in the **Media** tab (see [Where the clips are](#where-the-clips-are)), or remove its clips from the timeline, then export again. Clips on hidden or muted tracks, and muted audio clips, don't count: they aren't exported anyway. |
+| *The timeline can't be exported: these source files are missing.* | A clip's file isn't where the project expects it -- on the video track, an overlay or an audio track (the list says which). Put it back, find it with **Locate file…** in the **Media** tab (see [Where the clips are](#where-the-clips-are)), or remove its clips from the timeline, then export again. A missing file of a recording the camera split over several files goes back in the folder with the others instead, or trim or split the clip so the timeline leaves that part out. Clips on hidden or muted tracks, and muted audio clips, don't count: they aren't exported anyway. |
 | *"…" has the privacy blur on, but it hasn't been scanned for plates yet* (or *only part of it has been scanned*) | Scan that clip in the **Privacy** tab, or turn its blur off. See [Privacy blur](privacy.md). |
 | *The privacy blur may be out of date and needs checking or redoing.* | The stabilization was changed after the plates were found. **Continue anyway**, or check the blurs first. See [Privacy blur](privacy.md). |
 | *The timeline is too short to export.* | The timeline is shorter than a tenth of a second. |

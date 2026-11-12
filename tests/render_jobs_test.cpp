@@ -1857,7 +1857,37 @@ void testSourceGaps()
         CHECK(missing[0].path == p1 &&
               missing[0].places == QStringList{"clip 1, a file of its recording that isn't there"});
         CHECK(missing[1].path == p2 && missing[1].places == QStringList{"clip 1"});
+        CHECK(missing[0].part && missing[1].part);
     }
+    // Only parts gone: put back, not Locate file…; a whole file gone too: both.
+    const QString advice = renderjobs::missingMediaAdvice(t, renderjobs::MissingFor::Export);
+    CHECK(!advice.contains("Locate file") && advice.contains("folder with the others") &&
+          advice.contains("trim or split"));
+    t.appendClip("/c/other.insv", 5000, 30.0);
+    t.setSourcesMissing({{"/c/other.insv", true}});
+    const QString both = renderjobs::missingMediaAdvice(t, renderjobs::MissingFor::Export);
+    CHECK(both.contains("Locate file") && both.contains("folder with the others") &&
+          both.contains("remove its clips"));
+    CHECK(renderjobs::missingMediaAdvice(t, renderjobs::MissingFor::Timeline).count("Or ") == 0);
+
+    // At a speed the pieces' spans don't round alike: they still add up to
+    // the clip's, and each maps source time as the whole clip does.
+    whole.inMs = 1001; // pieces of 999 / 2000 / 2000 / 2000 ms: 4665 on their own, 4667 in all
+    whole.outMs = 8001;
+    whole.speed = 1.5;
+    const QList<PlaybackController::Segment> fast =
+        PlaybackController::cutAtGaps(whole, t.clipAt(0).sourceGaps);
+    qint64 sum = 0;
+    for (const PlaybackController::Segment &s : fast) {
+        CHECK(s.localAtSourceMs(s.inMs) == 0);
+        const qint64 clipLocal = whole.localAtSourceMs(s.inMs); // where it starts in the clip
+        for (qint64 src : {s.inMs, s.inMs + 7, s.outMs - 1})
+            CHECK(clipLocal + s.localAtSourceMs(src) == whole.localAtSourceMs(src));
+        for (qint64 local : {qint64(0), qint64(5), s.timelineSpanMs() - 1})
+            CHECK(s.sourceAtLocalMs(local) == whole.sourceAtLocalMs(clipLocal + local));
+        sum += s.timelineSpanMs();
+    }
+    CHECK(fast.size() == 4 && sum == whole.timelineSpanMs());
 }
 
 int main(int argc, char **argv)

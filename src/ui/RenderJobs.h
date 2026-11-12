@@ -122,6 +122,9 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
 struct MissingSource {
     QString path;
     QStringList places;
+    // A file of a split recording whose other files play
+    // (ClipItem::sourceGaps): not relinked, put back beside the others.
+    bool part = false;
 };
 // Which missing files count: those an export needs (clips on hidden or muted
 // tracks and muted audio clips aren't exported), or every one the timeline
@@ -140,6 +143,10 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which);
 // clip's lens-1 file), not the clip file.
 QStringList missingSourceLines(const Timeline &timeline, MissingFor which,
                                const MediaPool *pool = nullptr);
+// What to do about the missing files `which` finds: Locate file… for a clip
+// or take, putting the file back for a part of a split recording; for an
+// export, leaving them out of the timeline too.
+QString missingMediaAdvice(const Timeline &timeline, MissingFor which);
 // Warn that source files are missing (missingSourceLines), then what to do
 // about them. Shared by open-project and export so the wording and layout
 // don't drift.

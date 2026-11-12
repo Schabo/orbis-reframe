@@ -24,11 +24,24 @@ full path, or what a value means.
 |---|---|
 | (file name) | The name of the `.insv` file (for a ONE X2 5.7K clip, the front lens's `VID_…_00_…`). Hover over it for the full path. |
 | **Size** | The file's size on disk. |
-| **Duration** | How long the whole recording is, in minutes, seconds and thousandths, before any trimming. |
+| **Duration** | How long the file is, in minutes, seconds and thousandths, before any trimming. For a recording in several files, the first file's; the whole recording's is under *Recording*. |
 | **Recorded** | When the recording started, by the camera's clock: the time the camera showed. For a video that isn't from a 360 camera, the time the file says, in your computer's time zone. |
 | **Bitrate** | How much data the file holds per second of video, sound included. Higher means more detail, and larger files. |
 | **Back lens file** | Only for a clip whose back lens is in a file of its own (the Insta360 ONE X2's 5.7K clips): that file's name. Hover over it for the full path. The clip needs it, in the same folder. |
 | **Preview file** | Whether the camera's low-resolution preview file (`.lrv`, the ONE X2's `LRV_…_11_….insv`, or the Antigravity A1's `PRX_….prx`) is next to the `.insv`. orbis-reframe doesn't need it, so *Not found* is fine. |
+
+## Recording
+
+Only for a recording the camera split over several files (the X5 starts a
+new file every 29 min 59 s; see [The timeline](timeline.md#adding-clips)),
+which is one clip.
+
+| Row | What it shows |
+|---|---|
+| **Length** | How long the whole recording is, every file of it: the clip's length before trimming. |
+| **Files** | Each file of the recording, in order, with where it plays in the clip, such as *29:59.798 – 37:25.376*. A file that's gone says *⚠ not here*: that stretch of the clip plays black and silent, and can't be exported (see [Where the clips are](projects-and-export.md#where-the-clips-are)). *A file that isn't here* is a gap between two files that are: a file of the recording that wasn't in the folder when you added it. Hover over a file for its full path. |
+| **Starts in** | When the clip was added from a later file of the recording and the first file isn't in the folder: the first file's name, *⚠ Not here*. The clip starts where the file you added does. Added from the first file, the whole recording comes in as a clip of its own. |
+| **May go on in** | When the last file is as long as the camera makes one, and the next file isn't in the folder: that file's name. The files don't say whether the recording went on, so this is a guess: if you have the file, put it beside the others before adding the clip. |
 
 ## Video
 

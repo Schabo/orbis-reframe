@@ -596,6 +596,21 @@ bool TimelineWidget::event(QEvent *e)
             QToolTip::showText(he->globalPos(), layerToolTip(h.track), this);
         else if (h.kind == Hit::Transition)
             QToolTip::showText(he->globalPos(), m_transitions[h.row].toolTip, this);
+        else if (const Clip::Gap *g =
+                     h.kind == Hit::MainClip && !m_rows[h.row].clip.missing
+                         ? m_rows[h.row].clip.gapAt(timelineMsAt(he->pos().x()) -
+                                                    m_rows[h.row].startMs)
+                         : nullptr)
+            QToolTip::showText(he->globalPos(),
+                               (g->file.isEmpty()
+                                    ? tr("A file of this recording isn't there.")
+                                    : tr("A file of this recording isn't there: %1. Put it "
+                                         "back beside the others, under this name.")
+                                          .arg(QFileInfo(g->file).fileName())) +
+                                   QLatin1Char(' ') +
+                                   tr("This part plays black and silent, and can't be "
+                                      "exported."),
+                               this);
         else if (h.kind == Hit::MainClip && m_rows[h.row].clip.keySourceMs.isEmpty())
             QToolTip::showText(he->globalPos(),
                                tr("No reframe keyframes: this clip exports looking straight "

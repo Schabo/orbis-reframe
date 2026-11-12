@@ -16,16 +16,6 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-- **A split recording as one clip.** A recording longer than the camera's
-  file limit (29 min 59 s on the X5) is in several files; it opens as one
-  clip from any of them, the parts played back to back -- picture,
-  stabilization, sound, GPS and highlight marks across the join -- and a
-  missing part is shown while the rest still works. In the camera layer:
-  `camera::ClipMetadata::parts`, each part lined up by its own first-frame
-  time, and `insv::LensDemuxer` decoding the parts back to back; the
-  project saves the part list. Being built: the picture, stabilization,
-  sound, GPS and marks are done, and so are missing parts and the saved
-  part list; Media information listing the parts is next.
 - *Optional*: **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing

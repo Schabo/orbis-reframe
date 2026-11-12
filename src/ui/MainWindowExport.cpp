@@ -159,8 +159,7 @@ bool MainWindow::checkSourcesPresent(const QStringList &missing)
     renderjobs::showMissingMedia(
         this, tr("Export flat video"),
         tr("The timeline can't be exported: these source files are missing."), missing,
-        tr("If a file was moved or renamed, find it with Locate file… on it in the "
-           "Media tab. Or remove its clips from the timeline."));
+        renderjobs::missingMediaAdvice(*m_timeline, renderjobs::MissingFor::Export));
     return false;
 }
 

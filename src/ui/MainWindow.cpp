@@ -2754,8 +2754,14 @@ void MainWindow::syncMediaInfoPanel(const ClipItem &c)
 void MainWindow::showMediaInfo(const QString &path, bool previewed)
 {
     QString error;
+    // A split recording's files as the project knows them: a part that's
+    // gone since is still named.
+    QList<RecordingPart> parts;
+    if (const MediaItem *item = m_project->mediaPool()->item(path))
+        for (const MediaItem::Part &p : item->parts)
+            parts.append({p.path, p.startMs, p.durationMs, p.missing});
     if (const camera::MediaInfo *info = mediaInfoFor(path, &error))
-        m_mediaInfoPanel->setInfo(*info, previewed);
+        m_mediaInfoPanel->setInfo(*info, previewed, parts);
     else
         m_mediaInfoPanel->setError(path, error, previewed);
 }
@@ -2799,6 +2805,8 @@ void MainWindow::refreshTimelineWidget()
         w.trimOutMs = c.trimOutMs;
         w.sourceDurationMs = c.sourceDurationMs;
         w.missing = c.mediaMissing;
+        for (const SourceGap &g : c.sourceGaps)
+            w.gaps.push_back({g.fromMs, g.toMs, g.file});
         w.speed = c.speed;
         // A split clip's diamonds are the active pane's keys.
         const ReframeTrack &keys = c.paneTrack(paneOf(c));
@@ -3047,6 +3055,8 @@ void MainWindow::recheckMissingMedia()
     m_clipFacts->forget(fresh);
     m_telemetry->forget(fresh);
     m_measurements->forgetFailures(fresh);
+    for (const QString &path : fresh + gone)
+        m_mediaInfo.remove(path); // a split recording's parts on the disk may differ now
     if (mainTrack)
         syncTimeline(); // the ⚠ marks; a clip that's back plays again
     onTracksChanged(); // the track rows, overlays and sound skip missing clips

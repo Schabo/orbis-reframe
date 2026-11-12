@@ -647,11 +647,11 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which)
 {
     const auto tr = [](const char *text) { return QCoreApplication::translate("RenderJobs", text); };
     QList<MissingSource> out;
-    const auto add = [&out](const QString &path, const QString &place) {
+    const auto add = [&out](const QString &path, const QString &place, bool part = false) {
         auto it = std::find_if(out.begin(), out.end(),
                                [&](const MissingSource &m) { return m.path == path; });
         if (it == out.end())
-            it = out.insert(out.end(), MissingSource{path, {}});
+            it = out.insert(out.end(), MissingSource{path, {}, part});
         it->places << place;
     };
     for (int i = 0; i < timeline.count(); ++i) {
@@ -666,7 +666,8 @@ QList<MissingSource> missingSources(const Timeline &timeline, MissingFor which)
                 add(g.file.isEmpty() ? c.sourcePath : g.file,
                     g.file.isEmpty() ? tr("clip %1, a file of its recording that isn't there")
                                            .arg(i + 1)
-                                     : tr("clip %1").arg(i + 1));
+                                     : tr("clip %1").arg(i + 1),
+                    true);
     }
     for (int i = 0; i < timeline.trackCount(); ++i) {
         const Track &t = timeline.trackAt(i);
@@ -697,6 +698,25 @@ QStringList missingSourceLines(const Timeline &timeline, MissingFor which,
                    .arg(QFileInfo(file).fileName(), m.places.join(QLatin1String(", ")), file);
     }
     return out;
+}
+
+QString missingMediaAdvice(const Timeline &timeline, MissingFor which)
+{
+    const auto tr = [](const char *text) { return QCoreApplication::translate("RenderJobs", text); };
+    bool files = false, parts = false;
+    for (const MissingSource &m : missingSources(timeline, which))
+        (m.part ? parts : files) = true;
+    QStringList out;
+    if (files)
+        out << tr("If a file was moved or renamed, find it with Locate file… on it in the "
+                  "Media tab.");
+    if (parts)
+        out << tr("A file of a recording the camera split over several files goes back in the "
+                  "folder with the others, under its own name: the clip finds it there.");
+    if (which == MissingFor::Export && (files || parts))
+        out << (parts && !files ? tr("Or trim or split the clip so the timeline leaves that part out.")
+                                : tr("Or remove its clips from the timeline."));
+    return out.join(QLatin1Char(' '));
 }
 
 void showMissingMedia(QWidget *parent, const QString &title, const QString &text,
