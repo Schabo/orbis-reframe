@@ -89,6 +89,20 @@ MISC/Camera01/LRV_20250904_193105_01_002.lrv.pb
   before its own, starting with a ~10 ms rise. Both files' video streams
   are set up alike, down to the decoder configuration (`hvcC`). The app
   opens such a recording as one clip from any of its files.
+- **Copies re-written by Insta360 software** ✅ (`Analysis/…144221_019-trim`,
+  the same take trimmed in Studio): each part is written as its own file
+  with `-trim` after the counter (`…_019-trim.insv`, `…_020-trim.insv`).
+  Each keeps its original's field 24 and field 26 (index 0 / 2, `identify`
+  still the card's `…_019.insv`), so the camera's files and the copies
+  can't be told apart by the metadata, only by the name. The trim shows in
+  the time map (§4.3, record 128): `_019-trim` starts 2002.0 ms into the
+  original and runs 1797.796 s, to the original's end (2002 + 1797.796 =
+  1799.798 s), `_020-trim` has no offset and is cut ~3 s short at its end.
+  So the copies join exactly, like the originals: placed by where each
+  video starts (field 24 plus the time map's offset), the frame step at
+  the join is 33.399 ms, as on the card. A copy cut short at the end of a
+  part can't be told from a missing part: nothing in a copy gives the
+  original's length (no field 98).
 - The metadata also records the file's own card path
   (`/DCIM/Camera01/VID_….insv`). So does the MP4 header, which a rename
   doesn't touch either: `moov` / `udta`, in the `free` box after `AMBA`,
@@ -262,7 +276,7 @@ frame rate); **wanted** means no clip yet.
 | TimeShift | not in the spec table | ❓ | none | **wanted** |
 | Bullet Time | not in the spec table | ❓ | none | **wanted** |
 | Loop Recording, Dashcam | | ❓ | none | wanted, low |
-| Split recording (over 29 min 59 s, §1) | | two `.insv` + two `.lrv` | one, as on the card and re-written by Insta360 software | enough: field 26 confirmed on the card original, the join measured (§1); a recording in three files wanted (the third part's index) |
+| Split recording (over 29 min 59 s, §1) | | two `.insv` + two `.lrv` | one, as on the card and re-written by Insta360 software | enough: field 26 confirmed on the card original, the join measured on both (§1); a recording in three files wanted (the third part's index) |
 | Single-lens Video | 4K / 2.7K 60…24, 1080p 120…24 | `VID_….mp4` | none | **wanted** |
 | Single-lens FreeFrame | 3840² 30…24, 2720² / 1920² 60…24 | `PRO_VID_….mp4` | none | **wanted** |
 | Single-lens Me Mode | 4K 30…24, 2.7K / 1080p 120…24 | `.insv` (4K, and 50 fps and up), `.mp4` (2.7K / 1080p at 30 and below) | none | **wanted** |

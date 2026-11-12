@@ -298,12 +298,50 @@ bool videoStreams(const std::string& path, std::vector<insv::InsvStreamInfo>& st
     return true;
 }
 
+// A camera file's name around its counter: "VID_20250927_144221_00_", "019"
+// and what follows, "-trim.insv" on a copy Insta360 software re-wrote after
+// a trim, ".insv" as the camera wrote it. Nothing when no digits follow the
+// last '_'.
+struct CounterName {
+    std::string stem;
+    std::string digits;
+    std::string rest;
+};
+std::optional<CounterName> splitCounter(const std::string& name) {
+    const auto under = name.rfind('_');
+    if (under == std::string::npos)
+        return std::nullopt;
+    size_t end = under + 1;
+    while (end < name.size() && name[end] >= '0' && name[end] <= '9')
+        ++end;
+    if (end == under + 1)
+        return std::nullopt;
+    return CounterName{name.substr(0, under + 1), name.substr(under + 1, end - under - 1),
+                       name.substr(end)};
+}
+
+// The name of the file a recording starts in, as it would be beside `self`:
+// field 26's file (`identify`, the camera's path) named the way `self` is
+// past its counter -- a re-written copy's first part is a copy too. Field
+// 26's name when either has no counter.
+std::string firstFileName(const std::string& self, const std::string& identify) {
+    const std::string first = std::filesystem::path(identify).filename().string();
+    const auto own = splitCounter(std::filesystem::path(self).filename().string());
+    const auto camera = splitCounter(first);
+    if (!own || !camera)
+        return first;
+    return camera->stem + camera->digits + own->rest;
+}
+
 // The files that continue the recording `out`'s file starts or continues
 // (docs/formats/insta360-x5.md §1, §5.1 field 26), as `out.parts` after its
-// own: beside it, named like it but for the counter, from the same camera,
+// own: beside it, named like it but for the counter (a copy Insta360
+// software re-wrote takes its other copies, not the camera's files), from
+// the same camera,
 // naming the same first file and further on by field 26's index, in that
 // order, each starting where the one before ends by the camera's clock --
-// or later, a part between them missing, which leaves a gap. The first that
+// or later, a part between them missing, which leaves a gap. A re-written
+// copy's video starts its time map's offset after field 24's frame. The first that
 // doesn't follow on ends the clip there: streams not like the first part's,
 // or starting before the part before ends. Then, when the last part is as
 // long as the camera writes a file, the name the next would have
@@ -315,10 +353,9 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
     namespace fs = std::filesystem;
     const fs::path self(out.path);
     const std::string name = self.filename().string();
-    const auto counter = name.rfind('_');
-    if (name.rfind("VID_", 0) != 0 || counter == std::string::npos)
+    const auto counter = splitCounter(name);
+    if (name.rfind("VID_", 0) != 0 || !counter)
         return;
-    const std::string stem = name.substr(0, counter + 1);
     struct Candidate {
         uint64_t index = 0;
         std::string path;
@@ -329,21 +366,24 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
     const fs::path dir = self.has_parent_path() ? self.parent_path() : fs::path(".");
     for (const fs::directory_entry& e : fs::directory_iterator(dir, ec)) {
         const std::string n = e.path().filename().string();
-        if (n == name || n.rfind(stem, 0) != 0 || e.path().extension() != self.extension())
+        const auto other = n == name ? std::nullopt : splitCounter(n);
+        if (!other || other->stem != counter->stem || other->rest != counter->rest)
             continue;
-        const auto other = insv::ReadInsvMakerNotes(e.path().string());
-        if (!other || other->serial_number != notes.serial_number ||
-            other->file_group_identify != notes.file_group_identify ||
-            other->file_group_index <= notes.file_group_index)
+        const auto theirs = insv::ReadInsvMakerNotes(e.path().string());
+        if (!theirs || theirs->serial_number != notes.serial_number ||
+            theirs->file_group_identify != notes.file_group_identify ||
+            theirs->file_group_index <= notes.file_group_index)
             continue;
-        candidates.push_back({other->file_group_index, e.path().string(),
-                              other->first_frame_timestamp});
+        candidates.push_back({theirs->file_group_index, e.path().string(),
+                              theirs->first_frame_timestamp});
     }
     std::sort(candidates.begin(), candidates.end(),
               [](const Candidate& a, const Candidate& b) { return a.index < b.index; });
 
     uint64_t prevFirstFrame = notes.first_frame_timestamp;
+    double prevOffsetMs = insv::ReadInsvTimeMapOffsetMs(out.path);
     for (const Candidate& c : candidates) {
+        const double offsetMs = insv::ReadInsvTimeMapOffsetMs(c.path);
         std::string err;
         std::vector<insv::InsvStreamInfo> streams;
         Part part;
@@ -368,8 +408,11 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
         // the frame clock's drift from the nominal rate (tens of ppm).
         part.startUs = prev.startUs + prev.durationUs;
         if (prevFirstFrame != 0 && c.firstFrame != 0) {
+            // From video start to video start: field 24 names the
+            // recording's frame, a re-written copy's video starts later.
             const double gapSec = static_cast<double>(static_cast<int64_t>(c.firstFrame - prevFirstFrame)) *
-                                  model.telemetryTickUs * 1e-6;
+                                      model.telemetryTickUs * 1e-6 +
+                                  (offsetMs - prevOffsetMs) * 1e-3 * out.captureScale;
             const double expectSec = static_cast<double>(prev.durationUs) * 1e-6 * out.captureScale;
             const double slackSec = std::max(1.0, 0.01 * expectSec);
             if (gapSec < expectSec - slackSec) {
@@ -394,24 +437,18 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
         }
         out.parts.push_back(std::move(part));
         prevFirstFrame = c.firstFrame;
+        prevOffsetMs = offsetMs;
     }
     // The last part as long as the camera writes a file: the recording may
     // go on in the next counter's file, which isn't here.
     if (const Part& last = out.parts.back();
         model.fileLimitSec > 0 &&
         static_cast<double>(last.durationUs) * 1e-6 >= model.fileLimitSec - 1.0) {
-        const std::string lastName = fs::path(last.path).filename().string();
-        const auto dot = lastName.rfind('.');
-        const auto under = lastName.rfind('_', dot);
-        if (dot != std::string::npos && under != std::string::npos && dot > under + 1) {
-            const std::string digits = lastName.substr(under + 1, dot - under - 1);
-            if (std::all_of(digits.begin(), digits.end(),
-                            [](char ch) { return ch >= '0' && ch <= '9'; })) {
-                std::string next = std::to_string(std::stoull(digits) + 1);
-                if (next.size() < digits.size())
-                    next.insert(0, digits.size() - next.size(), '0');
-                out.mayContinueIn = lastName.substr(0, under + 1) + next + lastName.substr(dot);
-            }
+        if (const auto lastName = splitCounter(fs::path(last.path).filename().string())) {
+            std::string next = std::to_string(std::stoull(lastName->digits) + 1);
+            if (next.size() < lastName->digits.size())
+                next.insert(0, lastName->digits.size() - next.size(), '0');
+            out.mayContinueIn = lastName->stem + next + lastName->rest;
         }
     }
     if (out.parts.size() > 1) {
@@ -542,8 +579,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     // 26 names that file): the clip starts here.
     if (notes->file_group_index > 0 && !notes->file_group_identify.empty()) {
         const std::filesystem::path self(out.path);
-        const std::string first =
-            std::filesystem::path(notes->file_group_identify).filename().string();
+        const std::string first = firstFileName(out.path, notes->file_group_identify);
         std::error_code ec;
         if (!first.empty() && first != self.filename().string() &&
             !std::filesystem::exists(self.parent_path() / first, ec))
@@ -687,7 +723,7 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
         if (const auto notes = insv::ReadInsvMakerNotes(path);
             notes && notes->file_group_index > 0 && !notes->file_group_identify.empty()) {
             const std::filesystem::path first =
-                p.parent_path() / std::filesystem::path(notes->file_group_identify).filename();
+                p.parent_path() / firstFileName(path, notes->file_group_identify);
             std::error_code ec;
             if (first.filename() != p.filename() && std::filesystem::exists(first, ec))
                 if (const auto clip = ReadClipMetadata(first.string()))

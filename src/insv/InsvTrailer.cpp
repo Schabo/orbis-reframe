@@ -1000,4 +1000,9 @@ std::optional<std::string> ReadInsvHeldName(const std::string& file_path) {
     return name;
 }
 
+double ReadInsvTimeMapOffsetMs(const std::string& file_path) {
+    const auto payload = ReadInsvRecord(file_path, 0x8000);
+    return payload ? ParseTimeMapOffsetMs(*payload) : 0.0;
+}
+
 } // namespace insv

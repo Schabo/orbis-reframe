@@ -222,6 +222,12 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 // std::nullopt when the file has no trailer or no such record.
 std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id);
 
+// A file re-written by Insta360 software after a trim: how far into the
+// original recording (ms of video) its video starts, from record 128
+// (TimeMap; InsvTelemetry::time_map_offset_ms), only that record read.
+// 0 for a file as the camera wrote it.
+double ReadInsvTimeMapOffsetMs(const std::string& file_path);
+
 // Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure,
 // 0x2500 attitude, 0x600 frame times, 0x1800 timelapse orientation; 0x700
 // GPS is only counted here; ReadInsvGps decodes it). Returns std::nullopt

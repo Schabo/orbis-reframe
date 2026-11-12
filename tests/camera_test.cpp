@@ -493,9 +493,11 @@ void testA1Renamed(const std::filesystem::path& dir)
 // the model, field 24 (`firstFrame`, us), the group's `index` and first file
 // `identify`, and IMU samples 1 ms apart over [imuFrom, imuTo) us whose gyro
 // x is `gyroX` (so a test can tell the parts' samples apart).
+// `timeMapOffsetMs` > 0: a copy Insta360 software re-wrote after a trim,
+// its video starting that far into the original (record 128, TimeMap).
 std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFrame, uint64_t index,
                                    const std::string& identify, uint64_t imuFrom, uint64_t imuTo,
-                                   double gyroX)
+                                   double gyroX, double timeMapOffsetMs = 0.0)
 {
     Bytes meta;
     meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
@@ -509,7 +511,17 @@ std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFram
         for (double v : {0.0, 1.0, 0.0, gyroX, 0.0, 0.0})
             imu.f64(v);
     }
-    return testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}}, true);
+    if (timeMapOffsetMs <= 0.0)
+        return testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}}, true);
+    // {u32 header size, trims, pair bytes, frames, 16 B zero}, a trim
+    // {duration, source start, source end}, then (video ms, original ms).
+    constexpr int kPairs = 10;
+    Bytes map;
+    map.u32(32).u32(1).u32(16 * kPairs).u32(kPairs).u64(0).u64(0);
+    map.f64(1000.0).f64(timeMapOffsetMs).f64(timeMapOffsetMs + 1000.0);
+    for (int i = 0; i < kPairs; ++i)
+        map.f64(i * 1000.0 / kFps).f64(i * 1000.0 / kFps + timeMapOffsetMs);
+    return testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x8000, map.b}}, true);
 }
 
 // Both lenses as streams of one file, `frames` frames whose grey tells the
@@ -713,6 +725,68 @@ void testMissingParts(const std::filesystem::path& dir)
     CHECK(longOne && longOne->mayContinueIn == "VID_20250927_150000_00_100.insv");
 }
 
+// A split recording beside the copies Insta360 software re-wrote after a
+// trim (`-trim`; §1, record 128): each copy keeps field 24 and 26 of the
+// file it was made from. `_019-trim` is `_019` from 1.2 s on (0.8 s long),
+// `_020-trim` is `_020` cut 0.2 s short. The originals take each other,
+// the copies each other, placed by where their video starts; a copy alone
+// names the copy it starts in.
+void testTrimmedCopies(const std::filesystem::path& dir)
+{
+    std::printf("  X5 split recording and its -trim copies in one folder\n");
+    const auto sub = dir / "trim";
+    std::filesystem::create_directories(sub);
+    const auto at = [&](const char* name) { return (sub / name).string(); };
+    const std::string p1 = at("VID_20250927_144221_00_019.insv");
+    const std::string p2 = at("VID_20250927_144221_00_020.insv");
+    const std::string t1 = at("VID_20250927_144221_00_019-trim.insv");
+    const std::string t2 = at("VID_20250927_144221_00_020-trim.insv");
+    const std::string identify = "/DCIM/Camera01/VID_20250927_144221_00_019.insv";
+    constexpr uint64_t kFirst1 = 10000000, kFirst2 = kFirst1 + 2003000;
+    CHECK(writeX5Part(p1, 50, 20));
+    appendTo(p1, x5PartTrailer("IAHEA2500000001", kFirst1, 0, identify, kFirst1 - 500000,
+                               kFirst1 + 2500000, 0.1));
+    CHECK(writeX5Part(p2, 30, 140));
+    appendTo(p2, x5PartTrailer("IAHEA2500000001", kFirst2, 2, identify, kFirst2 - 1000000,
+                               kFirst2 + 1500000, 0.2));
+    CHECK(writeX5Part(t1, 20, 68));
+    appendTo(t1, x5PartTrailer("IAHEA2500000001", kFirst1, 0, identify, kFirst1 - 500000,
+                               kFirst1 + 2500000, 0.1, 1200.0));
+    CHECK(writeX5Part(t2, 25, 140));
+    appendTo(t2, x5PartTrailer("IAHEA2500000001", kFirst2, 2, identify, kFirst2 - 1000000,
+                               kFirst2 + 1500000, 0.2));
+
+    const auto original = camera::ReadClipMetadata(p1);
+    CHECK(original && original->parts.size() == 2);
+    if (original && original->parts.size() == 2)
+        CHECK(original->parts[1].path == p2 && original->durationMs == 3200);
+    // Without the time map's 1.2 s, `_020-trim` would start 1.2 s after
+    // `_019-trim` ends: a gap.
+    const auto copy = camera::ReadClipMetadata(t1);
+    CHECK(copy && copy->parts.size() == 2);
+    if (copy && copy->parts.size() == 2) {
+        CHECK(copy->parts[1].path == t2 && copy->parts[1].startUs == 800000);
+        CHECK(copy->durationMs == 1800 && copy->mayContinueIn.empty());
+        // Part 2's first frame 0.803 s after part 1's on the camera's clock.
+        const auto imu = camera::ReadClipImu(t1);
+        CHECK(imu && imu->frameTimes.size() == 4);
+        if (imu && imu->frameTimes.size() == 4)
+            CHECK(std::fabs(imu->frameTimes[2].videoSec - 0.8) < 1e-9 &&
+                  std::fabs(imu->frameTimes[2].trackSec - imu->frameTimes[0].trackSec - 0.803) <
+                      1e-6);
+    }
+    CHECK(camera::ClipFileOf(p2) == p1);
+    CHECK(camera::ClipFileOf(t2) == t1);
+
+    // A copy without its first copy: that's the one it names, not the
+    // camera's file beside it.
+    std::filesystem::remove(t1);
+    const auto alone = camera::ReadClipMetadata(t2);
+    CHECK(alone && alone->parts.size() == 1 &&
+          alone->missingFirst == "VID_20250927_144221_00_019-trim.insv");
+    CHECK(camera::ClipFileOf(t2) == t2);
+}
+
 int main()
 {
     const auto dir = std::filesystem::temp_directory_path() / "orbis_camera_test";
@@ -729,6 +803,7 @@ int main()
     testAntigravityA1(dir);
     testA1Renamed(dir);
     testSplitRecording(dir);
+    testTrimmedCopies(dir);
     testMissingParts(dir);
     if (!g_failures)
         std::filesystem::remove_all(dir);

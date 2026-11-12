@@ -100,7 +100,10 @@ it, insert another clip before or after it, copy or paste its colour grade
   is split by the camera into several `.insv` files with the same date and
   time in their names. It goes in as one clip whichever of its files you
   add or drop, as long as they are in the same folder under the names the
-  camera gave them; dropping several of them adds it once. It plays and
+  camera gave them; dropping several of them adds it once. A copy that
+  Insta360's software wrote after a trim (`…_019-trim.insv`,
+  `…_020-trim.insv`) goes in the same way, with its other `-trim` files,
+  even in the same folder as the camera's own files. It plays and
   exports straight through from one file into the next, picture,
   stabilization and sound alike; the sound crossfades over the first 20 ms
   of the next file, so the cut doesn't click. If one of its files is
