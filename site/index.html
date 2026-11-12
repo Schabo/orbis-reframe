@@ -3,8 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>orbis-reframe</title>
-<meta name="description" content="A native Linux video editor for 360° camera footage: stitching, gyro stabilization and reframing.">
+<title>orbis-reframe – 360° camera video editor for Linux</title>
+<meta name="description" content="Edit 360° camera footage on Linux: GPU stitching, gyro stabilization and keyframed reframing to a flat video. Free and open source. Opens Insta360 .insv clips directly.">
+<link rel="canonical" href="https://schabo.github.io/orbis-reframe/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="orbis-reframe">
+<meta property="og:title" content="orbis-reframe – 360° camera video editor for Linux">
+<meta property="og:description" content="Edit 360° camera footage on Linux: GPU stitching, gyro stabilization and keyframed reframing to a flat video. Free and open source.">
+<meta property="og:url" content="https://schabo.github.io/orbis-reframe/">
+<meta property="og:image" content="https://schabo.github.io/orbis-reframe/screenshot-1400.jpg">
+<meta property="og:image:width" content="1400">
+<meta property="og:image:height" content="788">
+<meta property="og:image:alt" content="The orbis-reframe editor with a reframed motorcycle ride, the media sidebar and a multi-track timeline">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "orbis-reframe",
+  "description": "A native Linux video editor for 360° camera footage: stitching, gyro stabilization and keyframed reframing to a flat video. Opens Insta360 .insv clips directly.",
+  "applicationCategory": "MultimediaApplication",
+  "applicationSubCategory": "Video editor",
+  "operatingSystem": "Linux",
+  "url": "https://schabo.github.io/orbis-reframe/",
+  "downloadUrl": "https://github.com/Schabo/orbis-reframe/releases/latest",
+  "screenshot": "https://schabo.github.io/orbis-reframe/screenshot-1400.jpg",
+  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" }
+}
+</script>
 <style>
   :root {
     --bg: #f6f5f2;
@@ -63,6 +91,7 @@
     line-height: 1.05;
     letter-spacing: -0.03em;
   }
+  .tagline { font-size: 1.3rem; font-weight: 600; margin: -6px 0 20px; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; padding: 0; list-style: none; }
   .actions a {
     display: inline-block;
@@ -136,6 +165,7 @@
   <div class="wrap">
     <span class="eyebrow">Linux · 360° video · Insta360 X5, X6, ONE X2 · Antigravity A1</span>
     <h1>orbis-reframe</h1>
+    <p class="tagline">The 360° camera video editor for Linux</p>
     <ul class="actions">
       <li><a class="primary" href="https://github.com/Schabo/orbis-reframe/releases/latest">Download</a></li>
       <li><a href="https://github.com/Schabo/orbis-reframe/blob/main/docs/manual/README.md">User manual</a></li>
@@ -290,6 +320,32 @@
 
   <section>
     <div class="wrap">
+      <h2>360° video on Linux: questions</h2>
+      <h3>Can I edit 360° camera footage on Linux?</h3>
+      <p>Yes, with orbis-reframe. The camera makers' own editors (Insta360 Studio, DJI Studio,
+        GoPro Player) run on Windows and macOS only, and general Linux editors can't stitch the
+        two lenses or read the camera's motion data. orbis-reframe does both and exports a normal
+        flat video.</p>
+      <h3>Which cameras work?</h3>
+      <p>The Insta360 X5 fully; the Insta360 X6, ONE X2 and the Antigravity A1 drone
+        experimentally. More 360° cameras follow as sample clips come in: Insta360 X4 and X3,
+        DJI Osmo 360 and GoPro MAX are planned.</p>
+      <h3>How do I open Insta360 <code>.insv</code> files on Linux?</h3>
+      <p>Open the clip in orbis-reframe; it reads <code>.insv</code> files straight from the
+        camera's card, both lenses and the motion and GPS data, without converting them first.</p>
+      <h3>Can I stabilize 360° footage with the camera's gyro on Linux?</h3>
+      <p>Yes. orbis-reframe stabilizes from the gyro data recorded in the file, with a level
+        horizon, a mode that keeps a motorcycle's lean in corners, or one that keeps the view
+        pointing one way.</p>
+      <h3>Which Linux distributions?</h3>
+      <p>There are <code>.deb</code> packages for Debian Testing, Debian 13 and Ubuntu 26.04 LTS,
+        and an AppImage for other distributions with glibc 2.39 or newer (Fedora, Arch,
+        openSUSE Tumbleweed, ...). It needs a Vulkan GPU and a Wayland session.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
       <h2>Sources and thanks</h2>
       <p>Everything about the cameras' file formats (Insta360 X5, X6, ONE X2, Antigravity A1) was
         learned from <strong>interoperability documentation, published research and camera-produced
@@ -363,8 +419,9 @@
       <a href="https://opensource.org/license/mit">MIT</a> or
       <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache-2.0</a>, at your option.</p>
     <p class="gap">Insta360, Insta360 Studio, X5, X6 and ONE X2 are trademarks of Arashi Vision Inc.;
-      Antigravity and A1 are trademarks of their owner. This project is not affiliated with or
-      endorsed by Insta360 or Antigravity.</p>
+      Antigravity and A1 are trademarks of their owner; DJI, DJI Studio and Osmo are trademarks
+      of SZ DJI Technology Co., Ltd.; GoPro, GoPro Player and MAX are trademarks of GoPro, Inc.
+      This project is not affiliated with or endorsed by any camera maker.</p>
     <p class="gap"><a href="https://github.com/Schabo/orbis-reframe">Source code</a> · <a href="https://github.com/Schabo/orbis-reframe/issues">Report a problem</a> ·
       <a href="https://discord.gg/zDXUDd5Te">Discord</a> ·
       Contact: <a href="mailto:orbis-reframe@techmonkeys.se">orbis-reframe@techmonkeys.se</a></p>
