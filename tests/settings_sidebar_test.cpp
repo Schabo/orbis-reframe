@@ -1078,6 +1078,11 @@ void testMediaInfoParts(SettingsSidebar &bar)
     CHECK(shows("Starts in") && shows("VID_20250927_144221_00_019.insv\n⚠ Not here"));
     CHECK(shows("May go on in") && shows("VID_20250927_144221_00_021.insv\nNot here"));
     CHECK(!shows("Files") && !shows("Length"));
+    // Re-written by Insta360 software with cuts: said, not hidden.
+    CHECK(!shows("Re-written"));
+    m.unevenTimeMap = true;
+    panel->setInfo(m);
+    CHECK(shows("Re-written") && shows("⚠ With cuts or a speed change"));
     panel->setNoClip();
 }
 

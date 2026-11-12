@@ -96,6 +96,7 @@ struct MediaInfo {
     int64_t clipDurationMs = 0; // the whole clip's: every part, gaps included
     std::string missingFirst;
     std::string mayContinueIn;
+    bool unevenTimeMap = false; // ClipMetadata::unevenTimeMap
 
     // The camera's name for the resolution it was filmed at ("8K"), or "".
     std::string captureMode;

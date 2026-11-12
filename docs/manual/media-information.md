@@ -29,6 +29,7 @@ full path, or what a value means.
 | **Bitrate** | How much data the file holds per second of video, sound included. Higher means more detail, and larger files. |
 | **Back lens file** | Only for a clip whose back lens is in a file of its own (the Insta360 ONE X2's 5.7K clips): that file's name. Hover over it for the full path. The clip needs it, in the same folder. |
 | **Preview file** | Whether the camera's low-resolution preview file (`.lrv`, the ONE X2's `LRV_…_11_….insv`, or the Antigravity A1's `PRX_….prx`) is next to the `.insv`. orbis-reframe doesn't need it, so *Not found* is fine. |
+| **Re-written** | Only for a file Insta360's software re-wrote with stretches cut out of it or its speed changed: *⚠ With cuts or a speed change*. orbis-reframe lines such a file up with the camera's motion and GPS as if it were simply trimmed, so [stabilization](stabilization.md), highlight marks, and titles or gauges that use the GPS can be off in it. A file only trimmed at its start or end (`…-trim.insv`) is fine and shows no row. Use the camera's own file if you have it. |
 
 ## Recording
 

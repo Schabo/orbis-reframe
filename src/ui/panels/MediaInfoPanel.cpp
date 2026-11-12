@@ -211,6 +211,13 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
                  m.proxyPath.empty()
                      ? tr("The camera's low-res preview file, expected next to the .insv.")
                      : QString::fromStdString(m.proxyPath));
+    if (m.unevenTimeMap)
+        addValue(tr("Re-written"), tr("⚠ With cuts or a speed change"),
+                 tr("Insta360's software re-wrote this file with stretches cut out of it or its "
+                    "speed changed. orbis-reframe lines a re-written file up with the camera's "
+                    "motion and GPS as a plain trim, so stabilization, highlight marks and "
+                    "titles or gauges from the GPS can be off in it. The camera's own file "
+                    "doesn't have this problem."));
     addRecording(m, parts);
 
     addSection(tr("Video"));

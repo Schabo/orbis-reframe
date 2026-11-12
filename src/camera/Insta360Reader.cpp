@@ -381,9 +381,11 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
               [](const Candidate& a, const Candidate& b) { return a.index < b.index; });
 
     uint64_t prevFirstFrame = notes.first_frame_timestamp;
-    double prevOffsetMs = insv::ReadInsvTimeMapOffsetMs(out.path);
+    const auto ownMap = insv::ReadInsvTimeMap(out.path);
+    double prevOffsetMs = ownMap ? ownMap->offsetMs : 0.0;
     for (const Candidate& c : candidates) {
-        const double offsetMs = insv::ReadInsvTimeMapOffsetMs(c.path);
+        const auto map = insv::ReadInsvTimeMap(c.path);
+        const double offsetMs = map ? map->offsetMs : 0.0;
         std::string err;
         std::vector<insv::InsvStreamInfo> streams;
         Part part;
@@ -585,6 +587,14 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
             !std::filesystem::exists(self.parent_path() / first, ec))
             out.missingFirst = first;
     }
+    for (const Part& part : out.parts)
+        if (const auto map = insv::ReadInsvTimeMap(part.path); map && !map->plainTrim()) {
+            out.unevenTimeMap = true;
+            std::fprintf(stderr, "[camera] %s was re-written with %u cut(s), its offset into the "
+                                 "recording varying by %.1f ms; lined up by its median %.1f ms, "
+                                 "so stabilization, marks and GPS can be off in it\n",
+                         part.path.c_str(), map->cuts, map->offsetSpreadMs, map->offsetMs);
+        }
     for (size_t k = 1; k < out.parts.size(); ++k)
         if (const auto tele = insv::ReadInsvTelemetry(out.parts[k].path, kImuProbeSamples,
                                                       model.telemetryTickUs)) {

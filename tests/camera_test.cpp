@@ -494,10 +494,12 @@ void testA1Renamed(const std::filesystem::path& dir)
 // `identify`, and IMU samples 1 ms apart over [imuFrom, imuTo) us whose gyro
 // x is `gyroX` (so a test can tell the parts' samples apart).
 // `timeMapOffsetMs` > 0: a copy Insta360 software re-wrote after a trim,
-// its video starting that far into the original (record 128, TimeMap).
+// its video starting that far into the original (record 128, TimeMap);
+// `cutOutMs` > 0: made of two stretches, that much cut out after frame 5.
 std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFrame, uint64_t index,
                                    const std::string& identify, uint64_t imuFrom, uint64_t imuTo,
-                                   double gyroX, double timeMapOffsetMs = 0.0)
+                                   double gyroX, double timeMapOffsetMs = 0.0,
+                                   double cutOutMs = 0.0)
 {
     Bytes meta;
     meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.5.6_build1");
@@ -517,10 +519,17 @@ std::vector<uint8_t> x5PartTrailer(const std::string& serial, uint64_t firstFram
     // {duration, source start, source end}, then (video ms, original ms).
     constexpr int kPairs = 10;
     Bytes map;
-    map.u32(32).u32(1).u32(16 * kPairs).u32(kPairs).u64(0).u64(0);
-    map.f64(1000.0).f64(timeMapOffsetMs).f64(timeMapOffsetMs + 1000.0);
+    const double frameMs = 1000.0 / kFps;
+    map.u32(32).u32(cutOutMs > 0.0 ? 2 : 1).u32(16 * kPairs).u32(kPairs).u64(0).u64(0);
+    if (cutOutMs > 0.0) {
+        map.f64(6 * frameMs).f64(timeMapOffsetMs).f64(timeMapOffsetMs + 6 * frameMs);
+        const double second = timeMapOffsetMs + 6 * frameMs + cutOutMs;
+        map.f64((kPairs - 6) * frameMs).f64(second).f64(second + (kPairs - 6) * frameMs);
+    } else {
+        map.f64(kPairs * frameMs).f64(timeMapOffsetMs).f64(timeMapOffsetMs + kPairs * frameMs);
+    }
     for (int i = 0; i < kPairs; ++i)
-        map.f64(i * 1000.0 / kFps).f64(i * 1000.0 / kFps + timeMapOffsetMs);
+        map.f64(i * frameMs).f64(i * frameMs + timeMapOffsetMs + (i >= 6 ? cutOutMs : 0.0));
     return testtrailer::insvTrailer({{0x101, meta.b}, {0x300, imu.b}, {0x8000, map.b}}, true);
 }
 
@@ -777,6 +786,25 @@ void testTrimmedCopies(const std::filesystem::path& dir)
     }
     CHECK(camera::ClipFileOf(p2) == p1);
     CHECK(camera::ClipFileOf(t2) == t1);
+    // A plain trim: lined up right, nothing to warn about.
+    const auto map = insv::ReadInsvTimeMap(t1);
+    CHECK(map && map->cuts == 1 && map->offsetSpreadMs == 0.0 && map->offsetMs == 1200.0 &&
+          map->plainTrim());
+    CHECK(!insv::ReadInsvTimeMap(p1));
+    CHECK(original && !original->unevenTimeMap && copy && !copy->unevenTimeMap);
+
+    // A copy with 3 s cut out of its middle: one offset can't line it all
+    // up, which the clip says.
+    const std::string cuts = (dir / "VID_20250927_150000_00_030-trim.insv").string();
+    CHECK(writeX5Part(cuts, 10, 20));
+    appendTo(cuts, x5PartTrailer("IAHEA2500000001", kFirst1, 0,
+                                 "/DCIM/Camera01/VID_20250927_150000_00_030.insv", kFirst1 - 500000,
+                                 kFirst1 + 5000000, 0.1, 400.0, 3000.0));
+    const auto cutMap = insv::ReadInsvTimeMap(cuts);
+    CHECK(cutMap && cutMap->cuts == 2 && cutMap->offsetSpreadMs == 3000.0 &&
+          !cutMap->plainTrim());
+    const auto cutClip = camera::ReadClipMetadata(cuts);
+    CHECK(cutClip && cutClip->unevenTimeMap);
 
     // A copy without its first copy: that's the one it names, not the
     // camera's file beside it.

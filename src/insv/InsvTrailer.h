@@ -141,7 +141,8 @@ struct InsvTelemetry {
     // 24 still names the *original* first frame, so a trimmed file's video
     // starts this much later on the device clock (2002 ms on the sample
     // "-trim" clip). 0 when absent. Only pure trims are modelled -- a
-    // re-timed (speed-ramped) map is reduced to its median offset.
+    // re-timed (speed-ramped) or several-cut map is reduced to its median
+    // offset (InsvTimeMap::plainTrim).
     double time_map_offset_ms = 0;
     // When the camera's clock doesn't run with the video (CaptureScale).
     // Fields 195 / 196: the rate the sensor captured at and the rate the
@@ -222,11 +223,24 @@ std::optional<InsvThumbnail> ReadInsvThumbnail(const std::string& file_path);
 // std::nullopt when the file has no trailer or no such record.
 std::optional<std::vector<uint8_t>> ReadInsvRecord(const std::string& file_path, uint16_t id);
 
-// A file re-written by Insta360 software after a trim: how far into the
-// original recording (ms of video) its video starts, from record 128
-// (TimeMap; InsvTelemetry::time_map_offset_ms), only that record read.
-// 0 for a file as the camera wrote it.
-double ReadInsvTimeMapOffsetMs(const std::string& file_path);
+// Record 128 (TimeMap), written by Insta360 software into a file it
+// re-wrote: each frame's time in the original recording.
+struct InsvTimeMap {
+    // How far into the original (ms of video) the video is: the frames'
+    // median (InsvTelemetry::time_map_offset_ms).
+    double offsetMs = 0;
+    // The stretches of the original it is made of: 1 for a plain trim.
+    uint32_t cuts = 0;
+    // How far the frames' offsets differ, ms: 0 for a plain trim, more for
+    // a copy with stretches cut out or its speed changed.
+    double offsetSpreadMs = 0;
+    // The app models a plain trim only (one offset for the whole file):
+    // stabilization, marks and GPS are off where the offset isn't that.
+    bool plainTrim() const { return cuts <= 1 && offsetSpreadMs < 1.0; }
+};
+// The file's time map, only that record read; nothing for a file as the
+// camera wrote it.
+std::optional<InsvTimeMap> ReadInsvTimeMap(const std::string& file_path);
 
 // Parses the trailer's timed-telemetry records (0x300 IMU, 0x400 exposure,
 // 0x2500 attitude, 0x600 frame times, 0x1800 timelapse orientation; 0x700

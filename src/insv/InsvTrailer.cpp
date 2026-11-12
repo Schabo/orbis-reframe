@@ -373,21 +373,32 @@ void ParseImu(const std::vector<uint8_t>& p, const ImuMetadata& meta, std::size_
 // u32 frameCount, ...} header, then trimCount x 3 doubles (duration, source
 // start, source end; ms), then pairBytes/16 (video ms, source ms) f64 pairs
 // (layout per telemetry-parser; field meanings from the sample "-trim" clip).
-// Returns the median source-minus-video offset, ms; 0 if unparseable.
-double ParseTimeMapOffsetMs(const std::vector<uint8_t>& p) {
-    if (p.size() < 16) return 0.0;
+// The median source-minus-video offset and how far the pairs stray from it;
+// nothing if unparseable.
+std::optional<InsvTimeMap> ParseTimeMap(const std::vector<uint8_t>& p) {
+    if (p.size() < 16) return std::nullopt;
     const uint32_t hdr = ReadU32LE(&p[0]);
     const uint32_t trims = ReadU32LE(&p[4]);
     const uint32_t pairBytes = ReadU32LE(&p[8]);
     const size_t start = static_cast<size_t>(hdr) + static_cast<size_t>(trims) * 24;
-    if (hdr < 16 || trims > 1000 || start + pairBytes > p.size()) return 0.0;
+    if (hdr < 16 || trims > 1000 || start + pairBytes > p.size()) return std::nullopt;
     std::vector<double> diff;
     diff.reserve(pairBytes / 16);
     for (size_t off = start; off + 16 <= start + pairBytes; off += 16)
         diff.push_back(ReadDoubleLE(&p[off + 8]) - ReadDoubleLE(&p[off]));
-    if (diff.empty()) return 0.0;
+    if (diff.empty()) return std::nullopt;
+    InsvTimeMap out;
+    out.cuts = trims;
+    const auto [lo, hi] = std::minmax_element(diff.begin(), diff.end());
+    out.offsetSpreadMs = *hi - *lo;
     std::nth_element(diff.begin(), diff.begin() + diff.size() / 2, diff.end());
-    return diff[diff.size() / 2];
+    out.offsetMs = diff[diff.size() / 2];
+    return out;
+}
+
+double ParseTimeMapOffsetMs(const std::vector<uint8_t>& p) {
+    const auto map = ParseTimeMap(p);
+    return map ? map->offsetMs : 0.0;
 }
 
 // Field 145 of record 0x101: repeated {1: name, 2: 6 x double poly} profiles,
@@ -1000,9 +1011,9 @@ std::optional<std::string> ReadInsvHeldName(const std::string& file_path) {
     return name;
 }
 
-double ReadInsvTimeMapOffsetMs(const std::string& file_path) {
+std::optional<InsvTimeMap> ReadInsvTimeMap(const std::string& file_path) {
     const auto payload = ReadInsvRecord(file_path, 0x8000);
-    return payload ? ParseTimeMapOffsetMs(*payload) : 0.0;
+    return payload ? ParseTimeMap(*payload) : std::nullopt;
 }
 
 } // namespace insv

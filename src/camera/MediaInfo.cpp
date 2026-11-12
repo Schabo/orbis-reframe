@@ -134,6 +134,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
         out.clipDurationMs = clip->durationMs;
         out.missingFirst = clip->missingFirst;
         out.mayContinueIn = clip->mayContinueIn;
+        out.unevenTimeMap = clip->unevenTimeMap;
     }
     return true;
 }

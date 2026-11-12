@@ -88,6 +88,11 @@ struct ClipMetadata {
     // the files don't say they go on. Both "" otherwise.
     std::string missingFirst;
     std::string mayContinueIn;
+    // A file of the clip that Insta360 software re-wrote with stretches cut
+    // out or its speed changed (insv::InsvTimeMap::plainTrim): the clip is
+    // lined up with the camera's clock by one offset a file, so
+    // stabilization, highlight marks and GPS can be off in it.
+    bool unevenTimeMap = false;
     // Every part's lens sources, as the decoders take them.
     std::vector<insv::ClipPart> partSources() const
     {
