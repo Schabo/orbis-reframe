@@ -9,6 +9,8 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
+#include <ClipMetadata.h> // camera::ClipAudioParts
+
 namespace {
 
 constexpr quint32 kMagic = 0x57465031; // "WFP1": bump if the peak format changes
@@ -71,18 +73,25 @@ QString WaveformCache::key(const QString &path, int stream)
     return path + QLatin1Char('#') + QString::number(stream);
 }
 
-QString WaveformCache::diskPath(const QString &path, int stream) const
+QString WaveformCache::diskPath(const std::vector<insv::AudioPart> &parts, int stream,
+                                const QString &dir)
 {
-    const QFileInfo fi(path);
-    const QByteArray id = (fi.absoluteFilePath() + QLatin1Char('|') + QString::number(fi.size()) +
-                           QLatin1Char('|') +
-                           QString::number(fi.lastModified().toMSecsSinceEpoch()) +
-                           QLatin1Char('|') + QString::number(stream))
-                              .toUtf8();
+    // The first file's key as for a file alone, then a split recording's
+    // other parts, so a part changing (or turning up) is a new waveform.
+    auto stamp = [](const std::string &path) {
+        const QFileInfo fi(QString::fromStdString(path));
+        return fi.absoluteFilePath() + QLatin1Char('|') + QString::number(fi.size()) +
+               QLatin1Char('|') + QString::number(fi.lastModified().toMSecsSinceEpoch());
+    };
+    QString idText = stamp(parts.front().path) + QLatin1Char('|') + QString::number(stream);
+    for (size_t i = 1; i < parts.size(); ++i)
+        idText += QLatin1Char('|') + stamp(parts[i].path) + QLatin1Char('@') +
+                  QString::number(parts[i].startUs);
+    const QByteArray id = idText.toUtf8();
     const QString hash =
         QString::fromLatin1(QCryptographicHash::hash(id, QCryptographicHash::Sha1).toHex());
     const QString base =
-        m_dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : m_dir;
+        dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : dir;
     return base + QStringLiteral("/waveforms/") + hash + QStringLiteral(".peaks");
 }
 
@@ -102,14 +111,16 @@ WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
         return nullptr;
     m_pending.insert(k);
 
-    const QString disk = diskPath(path, stream);
     QPointer<WaveformCache> self(this);
     auto cancel = m_cancel;
-    m_pool.start([self, k, path, stream, disk, cancel] {
+    m_pool.start([self, k, path, stream, dir = m_dir, cancel] {
+        // Off the GUI thread: finding a clip's parts reads its file.
+        const std::vector<insv::AudioPart> parts = camera::ClipAudioParts(path.toStdString());
+        const QString disk = diskPath(parts, stream, dir);
         bool cached = false;
         insv::AudioPeaks p = load(disk, &cached);
         if (!cached) {
-            p = insv::ComputeAudioPeaks(path.toStdString(), stream, cancel.get());
+            p = insv::ComputeAudioPeaks(parts, stream, cancel.get());
             if (cancel->load())
                 return;
             save(disk, p);

@@ -11,12 +11,13 @@
 
 #include <atomic>
 #include <memory>
+#include <vector>
 
 // Waveforms for the timeline: an audio stream's peaks, computed once on a
 // background thread (insv::ComputeAudioPeaks) and kept in memory and on disk
-// (keyed by path + size + mtime + stream; the open project's cache/ folder,
-// or the user cache for an untitled or loose project), so reopening a
-// project doesn't rescan. peaks() never blocks: it returns null and starts the
+// (keyed by path + size + mtime + stream, and a split recording's other
+// parts; the open project's cache/ folder, or the user cache for an untitled
+// or loose project), so reopening a project doesn't rescan. peaks() never blocks: it returns null and starts the
 // scan, and ready() fires when it's done.
 class WaveformCache : public QObject {
     Q_OBJECT
@@ -41,7 +42,8 @@ signals:
 
 private:
     static QString key(const QString &path, int stream);
-    QString diskPath(const QString &path, int stream) const;
+    static QString diskPath(const std::vector<insv::AudioPart> &parts, int stream,
+                            const QString &dir);
 
     QString m_dir;
     QHash<QString, Peaks> m_done;

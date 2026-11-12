@@ -26,6 +26,7 @@
 #include "../core/MediaPool.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
+#include <ClipMetadata.h> // camera::ClipAudioParts
 
 namespace renderjobs {
 
@@ -292,7 +293,7 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline)
             if (c.muted || c.mediaMissing)
                 continue;
             insv::MixClip m;
-            m.path = c.sourcePath.toStdString();
+            m.parts = camera::ClipAudioParts(c.sourcePath.toStdString());
             m.stream = c.stream;
             m.startFrame = c.startMs * kFramesPerMs;
             m.lengthFrames = c.timelineDurationMs() * kFramesPerMs;

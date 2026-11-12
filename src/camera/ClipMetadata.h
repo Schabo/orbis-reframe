@@ -1,5 +1,6 @@
 #pragma once
 
+#include <AudioPart.h>   // insv::AudioPart
 #include <Calibration.h> // insv::LensCalibExt
 #include <Gps.h>         // insv::GpsTrack
 #include <Imu.h>         // insv::ImuTrack
@@ -180,6 +181,11 @@ std::shared_ptr<const ClipMetadata> ReadClipMetadata(const std::string& path,
 // with `err` set, when `path` is named as such a file but its clip file
 // isn't there or doesn't claim it. Safe from any thread.
 std::string ClipFileOf(const std::string& path, std::string* err = nullptr);
+
+// Where `path`'s sound comes from: each part of the clip it names, from
+// where it starts in the clip -- or `path` alone at 0 when it isn't a clip
+// (a music file) or is one file. Safe from any thread.
+std::vector<insv::AudioPart> ClipAudioParts(const std::string& path);
 
 // The clip's IMU, lined up with its video. Not cached: a long clip's track is
 // tens of MB. nullopt when the clip has none (or can't be read).

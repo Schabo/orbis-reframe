@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "AudioPart.h"
 #include "NoiseReduction.h"
 
 #include <cstdint>
@@ -14,7 +15,7 @@ class ClipAudioReader;
 
 // One clip on an extra audio track, in output-rate frames.
 struct MixClip {
-    std::string path;
+    std::vector<AudioPart> parts; // its file, or a split recording's files
     int stream = -1;          // InsvAudioDemux::open's ordinal, -1 = default
     int64_t startFrame = 0;   // timeline frame of the clip's first sample
     int64_t lengthFrames = 0; // its span on the timeline

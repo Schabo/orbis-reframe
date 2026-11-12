@@ -42,7 +42,7 @@ void AudioMixer::mixInto(float* out, int64_t start, int64_t frames)
             continue;
         if (!v.reader) {
             v.reader = std::make_unique<ClipAudioReader>(m_rate, m_channels);
-            v.reader->open(c.path, c.stream); // no audio => silence
+            v.reader->open(c.parts, c.stream); // no audio => silence
             v.reader->setTempo(c.speed);
             v.reader->setNoiseReduction(c.noise);
             v.nextFrame = -1;

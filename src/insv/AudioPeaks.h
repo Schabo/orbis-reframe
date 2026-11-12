@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "AudioPart.h"
+
 #include <atomic>
 #include <string>
 #include <vector>
@@ -16,10 +18,12 @@ struct AudioPeaks {
 };
 
 // Decodes the whole stream (`stream` as InsvAudioDemux::open's track; -1 =
-// the default) and returns its peaks. Slow-ish (a pass over all the audio,
-// decoded at a reduced rate) -- run it off the GUI thread. `cancel`, if
-// given, stops it early (returning what's done). FFmpeg-only, no Qt.
-AudioPeaks ComputeAudioPeaks(const std::string& path, int stream,
+// the default) of every part, in clip time, and returns its peaks. Each part
+// is cut where the next starts, as ClipAudioReader plays them. Slow-ish (a
+// pass over all the audio, decoded at a reduced rate) -- run it off the GUI
+// thread. `cancel`, if given, stops it early (returning what's done).
+// FFmpeg-only, no Qt.
+AudioPeaks ComputeAudioPeaks(const std::vector<AudioPart>& parts, int stream,
                              const std::atomic<bool>* cancel = nullptr);
 
 } // namespace insv

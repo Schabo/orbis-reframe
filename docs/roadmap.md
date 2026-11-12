@@ -24,7 +24,7 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
   `camera::ClipMetadata::parts`, each part lined up by its own first-frame
   time, and `insv::LensDemuxer` decoding the parts back to back; the
   project saves the part list. Being built: the picture, stabilization,
-  GPS and marks are done.
+  sound, GPS and marks are done.
 - *Optional*: **`src/insv/` as its own repository**, once its API settles.
 
 ## Other cameras -- ongoing

@@ -86,7 +86,7 @@ void testMix()
     CHECK(mix.size() == 1); // muted track, muted clip and missing file left out
     if (mix.size() == 1) {
         const insv::MixClip &m = mix[0];
-        CHECK(m.path == "/m/a.wav");
+        CHECK(m.parts.size() == 1 && m.parts[0].path == "/m/a.wav" && m.parts[0].startUs == 0);
         CHECK(m.startFrame == 1000 * 48 && m.lengthFrames == 5000 * 48 && m.inFrame == 0);
         CHECK(near(m.gain, std::pow(10.0, -12.0 / 20.0))); // clip + track
         CHECK(m.fadeInFrames == 500 * 48 && m.fadeOutFrames == 250 * 48);
@@ -1483,7 +1483,7 @@ void testTransitions()
     std::vector<insv::MixClip> mix = renderjobs::mixClips(t);
     const auto clipOf = [&](const char *path) -> const insv::MixClip * {
         for (const insv::MixClip &m : mix)
-            if (m.path == path)
+            if (m.parts.size() == 1 && m.parts[0].path == path)
                 return &m;
         return nullptr;
     };

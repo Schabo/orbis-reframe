@@ -71,6 +71,7 @@ public:
 
 private:
     void close();
+    bool openDecoder(std::string& err); // a new decoder and resampler for the stream
 
     AVFormatContext* m_fmt = nullptr;
     AVCodecContext* m_dec = nullptr;

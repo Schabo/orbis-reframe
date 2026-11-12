@@ -100,7 +100,10 @@ it, insert another clip before or after it, copy or paste its colour grade
   is split by the camera into several `.insv` files with the same date and
   time in their names. It goes in as one clip whichever of its files you
   add or drop, as long as they are in the same folder under the names the
-  camera gave them; dropping several of them adds it once.
+  camera gave them; dropping several of them adds it once. It plays and
+  exports straight through from one file into the next, picture,
+  stabilization and sound alike; the sound crossfades over the first 20 ms
+  of the next file, so the cut doesn't click.
 - Flat videos dropped on the video track (or on an empty timeline) go in
   the same way. Dropped anywhere else, they become pictures in picture
   ([below](#audio-and-overlay-tracks)).

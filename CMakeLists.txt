@@ -351,6 +351,7 @@ if(FFMPEG_FOUND)
         # of the fisheye decode above -- no stitching involved.
         src/insv/InsvAudioDemux.h
         src/insv/InsvAudioDemux.cpp
+        src/insv/AudioPart.h
         src/insv/ClipAudioReader.h
         src/insv/ClipAudioReader.cpp
         src/insv/AudioMixer.h

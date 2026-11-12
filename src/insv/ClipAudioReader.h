@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include "AudioPart.h"
 #include "NoiseReduction.h"
 
 #include <cstdint>
@@ -20,7 +21,9 @@ class NoiseFilter;
 // there's no audio to give (no stream, muted, a hole in the stream, past its
 // end), so the output is always exactly as long as asked. Shared by playback
 // (AudioPlayer) and export (ReframeExportController) so both trim the same
-// way. FFmpeg-only, no Qt.
+// way. A clip in several files (AudioPart) reads as one stream: each part's
+// sound plays from its start up to the next part's, where the next takes
+// over with a short crossfade (kJoinFadeMs). FFmpeg-only, no Qt.
 class ClipAudioReader {
 public:
     ClipAudioReader(int sampleRate, int channels);
@@ -28,11 +31,20 @@ public:
     ClipAudioReader(const ClipAudioReader&) = delete;
     ClipAudioReader& operator=(const ClipAudioReader&) = delete;
 
-    // Opens audio stream `track` (InsvAudioDemux::open's ordinal) of `path`.
-    // False if the file has no audio -- the reader then just yields silence.
-    // Leaves the position at source frame 0.
-    bool open(const std::string& path, int track);
-    bool hasAudio() const { return m_demux != nullptr; }
+    // How long a part's sound fades into the next's. The camera doesn't
+    // record across the cut: on the X5 the first file's sound runs a few
+    // tens of ms past its last frame, and the next file's starts at its
+    // first with a short rise (docs/formats/insta360-x5.md §1). The fade
+    // runs from the join over the first part's tail.
+    static constexpr int kJoinFadeMs = 20;
+
+    // Opens audio stream `track` (InsvAudioDemux::open's ordinal) of every
+    // part, in clip order. False if no part has audio -- the reader then just
+    // yields silence (so does a part without). Leaves the position at source
+    // frame 0.
+    bool open(const std::vector<AudioPart>& parts, int track);
+    bool open(const std::string& path, int track) { return open({{path, 0}}, track); }
+    bool hasAudio() const;
 
     void setMuted(bool muted) { m_muted = muted; }
     // Playback speed (ClipItem::speed): read() then returns audio stretched to
@@ -61,23 +73,34 @@ private:
     void readFiltered(float* out, int64_t frames); // readSource + noise reduction
     void primeFilter();
     void readSource(float* out, int64_t frames); // the tempo-1 read
+    // One part's audio stream, placed in clip frames.
+    struct Part {
+        std::unique_ptr<InsvAudioDemux> demux; // null: no audio in this file
+        int64_t start = 0;                     // clip frame of its stream's time 0
+        bool eof = false;
+        bool seekPending = true; // demux not yet positioned at pos
+        int64_t pos = 0;         // clip frame its next read returns
+        std::vector<float> chunk;
+        int64_t chunkStart = 0; // clip frame of chunk's first sample
+    };
+    // Part `p`'s sound for clip frames [from, from + frames), silence where it
+    // has none.
+    void readPart(Part& p, float* out, int64_t from, int64_t frames);
+    void repositionParts(); // after a jump of m_pos: each part seeks on its next read
     struct Tempo;                                 // libavfilter atempo graph
     std::unique_ptr<Tempo> m_tempo;               // null at tempo 1
     double m_speed = 1.0;
     const int m_rate;
     const int m_channels;
-    std::unique_ptr<InsvAudioDemux> m_demux;
+    std::vector<Part> m_parts; // in clip order
     bool m_muted = false;
-    bool m_eof = false;
-    bool m_seekPending = true; // demux not yet positioned at m_pos
-    int64_t m_pos = 0;         // next source frame read() returns
+    int64_t m_pos = 0; // next source frame read() returns
     NoiseReduction m_noise;
     std::unique_ptr<NoiseFilter> m_filter; // for m_noise.mode; null = no filtering
     bool m_filterPrimed = false;
     int64_t m_outPos = 0; // while filtering: source frame of the next output
     std::vector<float> m_filterIn;
-    std::vector<float> m_chunk;
-    int64_t m_chunkStart = 0; // source frame of m_chunk's first sample
+    std::vector<float> m_joinTail; // the part before's sound over a join's fade
 };
 
 } // namespace insv

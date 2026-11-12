@@ -114,14 +114,34 @@ ClipAudioReader::ClipAudioReader(int sampleRate, int channels)
 
 ClipAudioReader::~ClipAudioReader() = default;
 
-bool ClipAudioReader::open(const std::string& path, int track)
+bool ClipAudioReader::open(const std::vector<AudioPart>& parts, int track)
 {
-    m_demux = std::make_unique<InsvAudioDemux>();
-    std::string err;
-    if (!m_demux->open(path, m_rate, m_channels, err, track))
-        m_demux.reset();
+    m_parts.clear();
+    for (const AudioPart& a : parts) {
+        Part p;
+        p.start = a.startUs * m_rate / 1000000;
+        p.demux = std::make_unique<InsvAudioDemux>();
+        std::string err;
+        if (!p.demux->open(a.path, m_rate, m_channels, err, track))
+            p.demux.reset();
+        m_parts.push_back(std::move(p));
+    }
     seek(0);
     return hasAudio();
+}
+
+bool ClipAudioReader::hasAudio() const
+{
+    return std::any_of(m_parts.begin(), m_parts.end(),
+                       [](const Part& p) { return p.demux != nullptr; });
+}
+
+void ClipAudioReader::repositionParts()
+{
+    for (Part& p : m_parts) {
+        p.seekPending = true;
+        p.eof = false;
+    }
 }
 
 void ClipAudioReader::setTempo(double speed)
@@ -154,8 +174,7 @@ void ClipAudioReader::seek(int64_t frame)
     m_pos = std::max<int64_t>(frame, 0);
     m_outPos = m_pos;
     m_filterPrimed = false;
-    m_seekPending = true;
-    m_eof = false;
+    repositionParts();
     m_tempo.reset(); // the stretcher's buffered audio belongs to the old position
 }
 
@@ -223,8 +242,7 @@ void ClipAudioReader::primeFilter()
     std::vector<float> in(static_cast<size_t>(kBlock) * ch), out(in.size());
     auto runFrom = [&](int64_t from, int64_t frames) { // output discarded
         m_pos = from;
-        m_seekPending = true;
-        m_eof = false;
+        repositionParts();
         for (int64_t left = frames; left > 0;) {
             const int64_t n = std::min(left, kBlock);
             readSource(in.data(), n);
@@ -242,56 +260,110 @@ void ClipAudioReader::primeFilter()
     m_filterPrimed = true;
 }
 
+// The parts' sound back to back: each from its start up to the next part's,
+// where the next takes over, fading in over kJoinFadeMs while the one before
+// fades out over its tail past the join.
 void ClipAudioReader::readSource(float* out, int64_t frames)
 {
     const size_t ch = static_cast<size_t>(m_channels);
+    if (m_muted || m_parts.empty()) {
+        // The parts stay where they were; the next read after unmuting finds
+        // them behind m_pos and seeks them.
+        std::memset(out, 0, static_cast<size_t>(frames) * ch * sizeof(float));
+        m_pos += frames;
+        return;
+    }
+    const int64_t fade = int64_t{kJoinFadeMs} * m_rate / 1000;
+    int64_t done = 0;
+    while (done < frames) {
+        size_t k = 0; // the part playing at m_pos: the last that starts at or before it
+        while (k + 1 < m_parts.size() && m_parts[k + 1].start <= m_pos)
+            ++k;
+        Part& p = m_parts[k];
+        int64_t n = frames - done;
+        if (k + 1 < m_parts.size())
+            n = std::min(n, m_parts[k + 1].start - m_pos);
+        const bool joining = k > 0 && m_pos < p.start + fade;
+        if (joining)
+            n = std::min(n, p.start + fade - m_pos);
+        float* dst = out + done * ch;
+        readPart(p, dst, m_pos, n);
+        if (joining) {
+            // Equal power: the two sides are different moments, not the same
+            // sound, so their levels add as powers.
+            m_joinTail.resize(static_cast<size_t>(n) * ch);
+            readPart(m_parts[k - 1], m_joinTail.data(), m_pos, n);
+            constexpr double kHalfPi = 1.57079632679489662;
+            for (int64_t i = 0; i < n; ++i) {
+                const double w = (static_cast<double>(m_pos + i - p.start) + 0.5) / fade;
+                const float gIn = static_cast<float>(std::sin(w * kHalfPi));
+                const float gOut = static_cast<float>(std::cos(w * kHalfPi));
+                for (size_t c = 0; c < ch; ++c) {
+                    float& d = dst[static_cast<size_t>(i) * ch + c];
+                    d = d * gIn + m_joinTail[static_cast<size_t>(i) * ch + c] * gOut;
+                }
+            }
+        }
+        done += n;
+        m_pos += n;
+    }
+}
+
+void ClipAudioReader::readPart(Part& p, float* out, int64_t from, int64_t frames)
+{
+    const size_t ch = static_cast<size_t>(m_channels);
+    if (p.pos != from) {
+        p.pos = from;
+        p.seekPending = true;
+        p.eof = false;
+    }
     int64_t done = 0;
     auto silence = [&](int64_t n) {
         std::memset(out + done * ch, 0, static_cast<size_t>(n) * ch * sizeof(float));
         done += n;
-        m_pos += n;
+        p.pos += n;
     };
 
     while (done < frames) {
-        if (!m_demux || m_muted || m_eof) {
-            if (m_muted)
-                m_seekPending = true; // demux fell behind m_pos -- re-seek on unmute
+        if (!p.demux || p.eof) {
             silence(frames - done);
             break;
         }
-        if (m_seekPending) {
+        if (p.pos < p.start) { // before the part's stream begins
+            silence(std::min(frames - done, p.start - p.pos));
+            continue;
+        }
+        if (p.seekPending) {
             // Floor to the ms: InsvAudioDemux::seekTo returns the chunk that
-            // contains that instant, which starts at or before m_pos.
+            // contains that instant, which starts at or before p.pos.
             std::string err;
-            m_seekPending = false;
-            m_chunk.clear();
-            m_chunkStart = 0; // no stale "hole" up to the old chunk's start
-            if (!m_demux->seekTo(m_pos * 1000 / m_rate, err)) {
-                m_eof = true;
+            p.seekPending = false;
+            p.chunk.clear();
+            p.chunkStart = 0; // no stale "hole" up to the old chunk's start
+            if (!p.demux->seekTo((p.pos - p.start) * 1000 / m_rate, err)) {
+                p.eof = true;
                 continue;
             }
         }
-        const int64_t chunkFrames = static_cast<int64_t>(m_chunk.size() / ch);
-        if (m_pos >= m_chunkStart && m_pos < m_chunkStart + chunkFrames) {
-            const int64_t off = m_pos - m_chunkStart;
+        const int64_t chunkFrames = static_cast<int64_t>(p.chunk.size() / ch);
+        if (p.pos >= p.chunkStart && p.pos < p.chunkStart + chunkFrames) {
+            const int64_t off = p.pos - p.chunkStart;
             const int64_t n = std::min(frames - done, chunkFrames - off);
-            const float* src = m_chunk.data() + off * ch;
-            float* dst = out + done * ch;
-            std::copy_n(src, static_cast<size_t>(n) * ch, dst);
+            std::copy_n(p.chunk.data() + off * ch, static_cast<size_t>(n) * ch, out + done * ch);
             done += n;
-            m_pos += n;
-        } else if (m_pos < m_chunkStart) {
-            silence(std::min(frames - done, m_chunkStart - m_pos)); // a hole in the stream
+            p.pos += n;
+        } else if (p.pos < p.chunkStart) {
+            silence(std::min(frames - done, p.chunkStart - p.pos)); // a hole in the stream
         } else {
             double sec = 0.0;
             int64_t ms = 0;
             std::string err;
-            if (!m_demux->readNext(m_chunk, &ms, err, &sec)) {
-                m_eof = true; // end of stream (or a decode error): silence from here
-                m_chunk.clear();
+            if (!p.demux->readNext(p.chunk, &ms, err, &sec)) {
+                p.eof = true; // end of stream (or a decode error): silence from here
+                p.chunk.clear();
                 continue;
             }
-            m_chunkStart = std::llround(sec * m_rate);
+            p.chunkStart = p.start + std::llround(sec * m_rate);
         }
     }
 }

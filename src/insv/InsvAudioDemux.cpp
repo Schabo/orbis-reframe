@@ -105,17 +105,32 @@ bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outCha
     else if (m_fmt->duration != AV_NOPTS_VALUE)
         m_durationMs = m_fmt->duration / (AV_TIME_BASE / 1000);
 
+    if (!openDecoder(err)) {
+        close();
+        return false;
+    }
+
+    m_pkt = av_packet_alloc();
+    m_frame = av_frame_alloc();
+    return true;
+}
+
+bool InsvAudioDemux::openDecoder(std::string& err)
+{
+    if (m_swr)
+        swr_free(&m_swr);
+    if (m_dec)
+        avcodec_free_context(&m_dec);
+    const AVStream* st = m_fmt->streams[m_streamIndex];
     const AVCodec* codec = avcodec_find_decoder(st->codecpar->codec_id);
     if (!codec) {
         err = "no decoder for audio stream " + std::to_string(m_streamIndex);
-        close();
         return false;
     }
     m_dec = avcodec_alloc_context3(codec);
     avcodec_parameters_to_context(m_dec, st->codecpar);
     if (avcodec_open2(m_dec, codec, nullptr) < 0) {
         err = "avcodec_open2 failed for audio stream " + std::to_string(m_streamIndex);
-        close();
         return false;
     }
 
@@ -129,12 +144,8 @@ bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outCha
                             m_dec->sample_fmt, m_dec->sample_rate, 0, nullptr) < 0 ||
         swr_init(m_swr) < 0) {
         err = "swresample setup failed";
-        close();
         return false;
     }
-
-    m_pkt = av_packet_alloc();
-    m_frame = av_frame_alloc();
     return true;
 }
 
@@ -156,7 +167,14 @@ bool InsvAudioDemux::seekTo(int64_t timestampMs, std::string& err)
         err = "av_seek_frame failed at " + std::to_string(timestampMs) + " ms";
         return false;
     }
-    avcodec_flush_buffers(m_dec);
+    if (prerollMs > 0) {
+        avcodec_flush_buffers(m_dec);
+    } else if (!openDecoder(err)) {
+        // At the stream's start there's no earlier audio to decode in with,
+        // and a flushed AAC decoder doesn't decode the first frame as a new
+        // one does: start afresh, as a read from the file's start does.
+        return false;
+    }
     m_flushSent = false;
     m_seekTargetSec = timestampMs > 0 ? timestampMs / 1000.0 : -1.0;
     return true;

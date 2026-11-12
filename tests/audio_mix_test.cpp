@@ -70,7 +70,7 @@ void testPlacementGainFades(const std::string& dc)
     // 480-frame fade in, 960-frame fade out.
     insv::AudioMixer mix(kRate, kCh);
     insv::MixClip c;
-    c.path = dc;
+    c.parts = {{dc, 0}};
     c.startFrame = 4800;
     c.lengthFrames = 24000;
     c.inFrame = 2400;
@@ -124,7 +124,7 @@ void testSeekAndSource(const std::string& ramp)
     // plays source frame t - 500.
     insv::AudioMixer mix(kRate, kCh);
     insv::MixClip c;
-    c.path = ramp;
+    c.parts = {{ramp, 0}};
     c.startFrame = 1000;
     c.lengthFrames = 20000;
     c.inFrame = 500;
@@ -151,10 +151,10 @@ void testMissingAndMuted(const std::string& dc)
 {
     insv::AudioMixer mix(kRate, kCh);
     insv::MixClip gone;
-    gone.path = "/nonexistent/file.wav";
+    gone.parts = {{"/nonexistent/file.wav", 0}};
     gone.lengthFrames = 1000;
     insv::MixClip silent;
-    silent.path = dc;
+    silent.parts = {{dc, 0}};
     silent.lengthFrames = 1000;
     silent.gain = 0.0f; // muted clips are dropped
     mix.setClips({gone, silent});
@@ -176,16 +176,70 @@ void testLimiter()
 void testPeaks(const std::string& burst)
 {
     // 1 s: silence, then a 0.5 sine from 0.4 s to 0.6 s, then DC 0.1.
-    const insv::AudioPeaks p = insv::ComputeAudioPeaks(burst, -1);
+    const insv::AudioPeaks p = insv::ComputeAudioPeaks({{burst, 0}}, -1);
     CHECK(p.peaks.size() >= 99 && p.peaks.size() <= 101);
     if (p.peaks.size() < 99)
         return;
     CHECK(p.peaks[10] < 0.01f && p.peaks[38] < 0.01f);
     CHECK(near(p.peaks[45], 0.5f, 0.02f) && near(p.peaks[55], 0.5f, 0.02f));
     CHECK(near(p.peaks[80], 0.1f, 0.02f));
-    CHECK(insv::ComputeAudioPeaks("/nonexistent.wav", -1).peaks.empty());
+    CHECK(insv::ComputeAudioPeaks({{"/nonexistent.wav", 0}}, -1).peaks.empty());
     std::atomic<bool> stop{true};
-    CHECK(insv::ComputeAudioPeaks(burst, -1, &stop).peaks.empty()); // cancelled up front
+    CHECK(insv::ComputeAudioPeaks({{burst, 0}}, -1, &stop).peaks.empty()); // cancelled up front
+}
+
+// A recording split over two files: `dc` (1 s of 0.25) from 0, `tail` (0.6 s
+// of 0.1) from 0.8 s, so the first runs 0.2 s past the join as the camera's
+// does by a few tens of ms. The reader plays the first up to the join, then
+// the second, crossfading over kJoinFadeMs; the waveform cuts at the join.
+void testSplitRecording(const std::string& dc, const std::string& tail)
+{
+    const std::vector<insv::AudioPart> parts = {{dc, 0}, {tail, 800000}};
+    const int64_t join = kRate * 8 / 10;
+    const int64_t fade = int64_t{insv::ClipAudioReader::kJoinFadeMs} * kRate / 1000;
+    insv::ClipAudioReader r(kRate, kCh);
+    CHECK(r.open(parts, -1));
+    std::vector<float> all(static_cast<size_t>(2 * kRate) * kCh);
+    r.read(all.data(), 2 * kRate);
+    auto at = [&](int64_t f) { return all[static_cast<size_t>(f) * kCh]; };
+    CHECK(near(at(0), 0.25f) && near(at(join - 1), 0.25f)); // the first part up to the join
+    CHECK(at(join) > 0.24f);                                  // fading from it ...
+    CHECK(near(at(join + fade / 2), 0.25f * 0.70711f + 0.1f * 0.70711f, 1e-3f));
+    CHECK(near(at(join + fade), 0.1f) && near(at(join + kRate / 2), 0.1f)); // ... to the second
+    CHECK(near(at(join + 6 * kRate / 10 - 1), 0.1f));
+    CHECK(at(join + 6 * kRate / 10 + 10) == 0.0f); // past the second: silence
+    bool rightEqualsLeft = true;
+    for (int64_t f = 0; f < 2 * kRate; ++f)
+        rightEqualsLeft = rightEqualsLeft && all[static_cast<size_t>(f) * kCh] ==
+                                                 all[static_cast<size_t>(f) * kCh + 1];
+    CHECK(rightEqualsLeft);
+
+    // Seeks land on the same samples as reading on: into the fade, past it,
+    // and back before the join.
+    std::vector<float> got(static_cast<size_t>(480) * kCh);
+    for (const int64_t from : {join - 100, join + fade / 3, join + kRate / 4, int64_t{100}}) {
+        r.seek(from);
+        r.read(got.data(), 480);
+        bool same = true;
+        for (size_t i = 0; i < got.size(); ++i)
+            same = same && near(got[i], all[static_cast<size_t>(from) * kCh + i], 1e-6f);
+        CHECK(same);
+    }
+
+    // A part that isn't there is silent; the rest still plays.
+    insv::ClipAudioReader gone(kRate, kCh);
+    CHECK(gone.open({{dc, 0}, {"/nonexistent/part2.wav", 800000}}, -1));
+    std::vector<float> span(static_cast<size_t>(2 * fade) * kCh);
+    gone.seek(join - 10);
+    gone.read(span.data(), 2 * fade);
+    CHECK(near(span[0], 0.25f) && span[static_cast<size_t>(fade + 20) * kCh] == 0.0f);
+
+    // The waveform: 0.25 to the join, 0.1 after it (not the first part's tail).
+    const insv::AudioPeaks p = insv::ComputeAudioPeaks(parts, -1);
+    CHECK(p.peaks.size() >= 139 && p.peaks.size() <= 141);
+    if (p.peaks.size() >= 139)
+        CHECK(near(p.peaks[50], 0.25f, 0.02f) && near(p.peaks[79], 0.25f, 0.02f) &&
+              near(p.peaks[85], 0.1f, 0.02f) && near(p.peaks[130], 0.1f, 0.02f));
 }
 
 
@@ -761,6 +815,9 @@ int main()
         return i < 19200 ? 0.0 : i < 28800 ? 0.5 * std::sin(i * 2.0 * std::numbers::pi * 500.0 / kRate) : 0.1;
     });
     testPeaks(burst);
+    const std::string tail = (dir / "tail.wav").string();
+    writeWav(tail, kRate * 6 / 10, [](int) { return 0.1; });
+    testSplitRecording(dc, tail);
 
     testWindLatencyAndPassBand();
     testWindBlockSizes();

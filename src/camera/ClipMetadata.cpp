@@ -179,6 +179,34 @@ std::string ClipFileOf(const std::string& path, std::string* err) {
     return path;
 }
 
+std::vector<insv::AudioPart> ClipAudioParts(const std::string& path) {
+    // Asked for every sound on the timeline whenever it changes, music files
+    // too, which lookup() would open each time: remember which aren't clips.
+    static std::mutex mx;
+    static std::map<std::string, Stamp> notClips;
+    Stamp now{path, {}, 0};
+    if (!stat(path, now.mtime, now.size))
+        return {{path, 0}};
+    {
+        std::lock_guard<std::mutex> lk(mx);
+        if (const auto it = notClips.find(path);
+            it != notClips.end() && it->second.mtime == now.mtime && it->second.size == now.size)
+            return {{path, 0}};
+    }
+    const Cached c = lookup(path, nullptr, nullptr);
+    if (!c.clip) {
+        std::lock_guard<std::mutex> lk(mx);
+        notClips[path] = now;
+        return {{path, 0}};
+    }
+    if (c.clip->parts.size() < 2)
+        return {{path, 0}};
+    std::vector<insv::AudioPart> parts;
+    for (const Part& p : c.clip->parts)
+        parts.push_back({p.path, p.startUs});
+    return parts;
+}
+
 std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
     const Cached c = lookup(path, nullptr, nullptr);
     if (!c.clip || !c.clip->hasMotion)
