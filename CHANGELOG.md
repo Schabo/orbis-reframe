@@ -1,3 +1,45 @@
+## v0.9.0 (2026-11-12)
+
+### Feat
+
+- **insv**: print the extended calibration string in insv_trailer_dump
+- **ui**: preview a file from the Media tab
+- **timeline**: your own highlight marks, and hiding the camera's
+- **timeline**: show the camera's highlight marks
+- **stitch**: new clips use the new stitcher
+- **stab**: X5 timelapses stabilize from the orientation the camera stores
+
+### Fix
+
+- **ui**: name the Overlay tab in the shortcut help
+- **build**: the AppImage needs glibc 2.39, not 2.41
+- **calib**: put the chart's corners in the stitch's pixel frame
+- **calib**: aim the synthetic chart at project() pixel centres
+- **export**: the last frame of an export is shown again
+- **render**: titles and gauges no longer depend on what was drawn before
+- **render**: the viewport draws from the lenses again after a failed import
+- **audio**: read only the audio stream's packets from a clip
+- **playback**: a crossfade's other 360 clip reads playback's own decode
+- **stitch**: a stitch source can be told to decode on the CPU
+- **playback**: a frame that fails to read is tried again, not taken as the clip's end
+- **render**: the viewport survives having no room for its picture
+- **playback**: keep clips on the graphics card only while it has room
+- **stitch**: a stitch source can give its graphics memory back while idle
+- **stitch**: the new stitcher's lenses meet in a narrow fade, wide where they still differ
+- **stitch**: the seam colour blend follows the lenses within a quarter second
+- **render**: keep the seam flow texture in GENERAL layout
+- **stitch**: keep the seam flow still on bright featureless sky
+- **stab**: Horizon lock levels on a swinging camera
+- **build**: tell a snapshot.debian.org outage from a missing package
+- **stab**: residual_stab reads the exposure record on the camera's clock
+- **stab**: take each frame half its exposure before the camera's frame time
+- **stab**: take the correction at the frame's exact time, not the rounded ms
+- **render**: the equirect reproject wraps its left-edge column properly
+
+### Refactor
+
+- **core**: remove unused code and share duplicated helpers
+
 ## v0.8.0 (2026-11-04)
 
 ### Feat
