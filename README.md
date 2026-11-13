@@ -33,9 +33,11 @@ Ubuntu 26.04 LTS on the
 [releases page](https://github.com/Schabo/orbis-reframe/releases), and an
 AppImage for other distributions with glibc 2.39 or newer (Fedora, Arch,
 openSUSE Tumbleweed, ...; tested from 2.41). The
-[user manual](docs/manual/README.md) starts with the
-[getting-started guide](docs/manual/getting-started.md): what your computer
-needs and how to install.
+[user manual](https://schabo.github.io/orbis-reframe/manual/) (the newest
+release's; the development version's is in [`docs/manual/`](docs/manual/README.md))
+starts with the
+[getting-started guide](https://schabo.github.io/orbis-reframe/manual/getting-started/):
+what your computer needs and how to install.
 
 **Found a problem?**
 [Open an issue](https://github.com/Schabo/orbis-reframe/issues).
