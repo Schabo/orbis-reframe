@@ -387,6 +387,30 @@ build, so a failing test stops it before `-r` starts the app.
 invocation — keep it in sync whenever the build gains new flags, targets, or
 steps (e.g. running tests, packaging).
 
+## The project site
+
+The project site (<https://schabo.github.io/orbis-reframe/>) is the project
+page in `site/` plus the user manual and the camera format documents,
+rendered from their Markdown into one page each by
+`scripts/build_site.sh` (`scripts/site/`: the pandoc template, a Lua filter
+that rewrites the links for the site, the build and a link check). It
+needs pandoc (`apt install pandoc`) and python3; nothing else in the
+project does.
+
+```sh
+scripts/build_site.sh            # the working tree's manual, into tmp/site
+scripts/build_site.sh v0.9.1     # a release's manual, as published
+python3 -m http.server -d tmp/site
+```
+
+The published site has the newest release's manual and `main`'s formats;
+`.github/workflows/pages.yml` builds it on every push to `main` that touches
+`site/`, `docs/manual/`, `docs/formats/` or the build, and when a release is
+published. Pull requests that touch them get the build and the link check
+only. A link between Markdown files (`timeline.md#highlight-marks`) becomes
+a link between site pages; one to anything else in the repository (code,
+other docs) goes to GitHub at the version the page was taken from.
+
 ## Environment switches
 
 The app reads a few environment variables, for diagnosing problems and for

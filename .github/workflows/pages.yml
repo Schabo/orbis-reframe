@@ -1,32 +1,110 @@
-# Publishes the project page in site/ to GitHub Pages whenever it changes on main.
+# Publishes the project site to GitHub Pages: the project page in site/, the
+# user manual and the camera format documents rendered from their Markdown
+# (scripts/build_site.sh). The manual is the newest published release's, so
+# it matches what people download; the formats are main's.
+#
+# - A push to main that changes the site, the docs or the build: the
+#   working tree built and its links checked (the manual on main too, so its
+#   broken links show before a release), then published with the newest
+#   release's manual.
+# - A release published: published again with its manual. Only main may
+#   deploy to Pages (the github-pages environment), so the release event
+#   starts this workflow again on main, by hand, with the release's tag.
+# - By hand: published from main, with the manual of the tag given (empty:
+#   the newest release's).
+# - A pull request: built from the working tree and its links checked,
+#   nothing published.
 name: Project page
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/manual/**", "docs/formats/**", "scripts/build_site.sh",
+            "scripts/site/**", ".github/workflows/pages.yml"]
+  pull_request:
+    paths: ["site/**", "docs/manual/**", "docs/formats/**", "scripts/build_site.sh",
+            "scripts/site/**", ".github/workflows/pages.yml"]
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release whose manual to publish (empty: the newest)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  check:
+    name: Build + check links
+    if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+      - name: Build from the working tree
+        run: scripts/build_site.sh "" tmp/site
+
+  dispatch:
+    name: Publish on main
+    if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Start this workflow on main with the release's tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+
+  deploy:
+    name: Publish
+    # After `check` on a push; by hand there is none, so skipped counts.
+    needs: [check]
+    if: >-
+      ${{ !failure() && !cancelled() && github.ref == 'refs/heads/main' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+      - name: The release whose manual goes up
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.tag }}
+        run: |
+          tag="$WANTED"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          fi
+          echo "Manual of $tag"
+          git fetch --no-tags --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: scripts/build_site.sh "${{ steps.tag.outputs.tag }}" tmp/site
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: site
+          path: tmp/site
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

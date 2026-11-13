@@ -334,6 +334,11 @@ the post mention that role. Check that the post arrived
   `main`). A push to `main` that changes `site/`
   publishes the page to <https://schabo.github.io/orbis-reframe/>
   (`.github/workflows/pages.yml`).
+- The manual on the site: publishing the release starts
+  `.github/workflows/pages.yml`, which publishes the site again with vY's
+  manual (`gh run list --workflow pages.yml`: a run for the release, then
+  one on `main`). Check that
+  <https://schabo.github.io/orbis-reframe/manual/> says vY at the top.
 - From the next commit on, builds call themselves `Y+1.gabc1234`, so a
   dev build is never mistaken for the release.
 - Keep a copy of the Debian sources the AppImage links, in case
