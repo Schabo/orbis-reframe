@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Download the pinned ncnn release into third_party/ncnn/ (gitignored), where
-# CMakeLists.txt finds it without NCNN_ROOT. ncnn runs the privacy blur's plate
-# scan; it isn't packaged in Debian, so packaged builds ship libncnn.so.1 in
-# lib/orbis-reframe/. Keep NCNN_VERSION in sync
-# with CMakeLists.txt and docs/dev-environment.md.
+# Download the pinned ncnn release into third_party/ncnn/ (gitignored) for
+# builds with no installed ncnn. CMake picks explicit NCNN_ROOT, then an
+# installed ncnn, then this fetched copy; only the fetched / NCNN_ROOT copy
+# is bundled into lib/orbis-reframe/. Keep NCNN_VERSION in sync with
+# CMakeLists.txt and docs/dev-environment.md.
 set -euo pipefail
 
-NCNN_VERSION=20260526
+NCNN_VERSION=20261020
 NCNN_ASSET="ncnn-${NCNN_VERSION}-ubuntu-2404-shared"
-NCNN_SHA256=6f003ab9394921fe7090932151b144ad53b1855971429a78b8cf4a5dbc6ba23e
+NCNN_SHA256=996e07a787550b782dd5891a2a60d7fa5d8f84452bb2f244ce0f3f9c01417842
 URL="https://github.com/Tencent/ncnn/releases/download/${NCNN_VERSION}/${NCNN_ASSET}.zip"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -712,13 +712,11 @@ if(FFMPEG_FOUND)
 
     # Installed layout -- the same under /usr (.deb)
     # and in the tarball (cmake/Packaging.cmake): bin/orbis-reframe,
-    # lib/orbis-reframe/ (bundled ncnn, found through $ORIGIN),
-    # share/orbis-reframe/models/ (core::paths finds it from the binary's own
-    # location), share/doc/orbis-reframe/ (licenses, the manual), the desktop
-    # entry, icon and file types (the .deb's install runs shared-mime-info's
-    # and desktop-file-utils' triggers on them).
-    set_target_properties(orbis-reframe PROPERTIES
-        INSTALL_RPATH "\$ORIGIN/../lib/orbis-reframe")
+    # lib/orbis-reframe/ when ncnn is bundled (INSTALL_RPATH set with that,
+    # below), share/orbis-reframe/models/ (core::paths finds it from the
+    # binary's own location), share/doc/orbis-reframe/ (licenses, the manual),
+    # the desktop entry, icon and file types (the .deb's install runs
+    # shared-mime-info's and desktop-file-utils' triggers on them).
     install(TARGETS orbis-reframe RUNTIME DESTINATION bin)
     install(DIRECTORY resources/models/ DESTINATION share/orbis-reframe/models)
     install(DIRECTORY resources/luts/ DESTINATION share/orbis-reframe/luts)
@@ -775,21 +773,36 @@ if(FFMPEG_FOUND)
         # --- privacy_scan: the privacy blur's number-plate scan
         # (src/privacy/PlateScanner): gyro-levelled
         # tiles -> YOLOv9 plate model (resources/models/plates) on ncnn / Vulkan
-        # -> tracks + quad tracker -> regions for the stitch to mosaic. ncnn
-        # isn't packaged in Debian: an unpacked release
-        # (https://github.com/Tencent/ncnn/releases, *-ubuntu-2404-shared) via
-        # NCNN_ROOT=<dir with lib/cmake/ncnn>, or an installed one. Without it
-        # the app can't scan (the Privacy panel says so) but still applies a
-        # scan it has.
-        # scripts/fetch_ncnn.sh puts the pinned release here; NCNN_ROOT overrides.
-        set(NCNN_FETCHED ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ncnn/ncnn-20260526-ubuntu-2404-shared)
-        if(NOT NCNN_ROOT AND EXISTS ${NCNN_FETCHED}/lib/cmake/ncnn)
-            set(NCNN_ROOT ${NCNN_FETCHED})
-        endif()
+        # -> tracks + quad tracker -> regions for the stitch to mosaic. An
+        # installed ncnn is linked and not shipped; a fetched or NCNN_ROOT
+        # copy is bundled in lib/orbis-reframe/. Search order: explicit
+        # NCNN_ROOT, then an installed ncnn, then the fetched copy
+        # (scripts/fetch_ncnn.sh) — if the machine already has ncnn, that
+        # copy is used and the fetch is ignored. Without ncnn the app can't
+        # scan (the Privacy panel says so) but still applies a scan it has.
+        set(NCNN_FETCHED
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ncnn/ncnn-20261020-ubuntu-2404-shared)
         if(NCNN_ROOT)
             find_package(ncnn CONFIG PATHS ${NCNN_ROOT}/lib/cmake/ncnn NO_DEFAULT_PATH)
         else()
             find_package(ncnn CONFIG QUIET)
+            if(NOT ncnn_FOUND AND EXISTS ${NCNN_FETCHED}/lib/cmake/ncnn)
+                find_package(ncnn CONFIG PATHS ${NCNN_FETCHED}/lib/cmake/ncnn NO_DEFAULT_PATH)
+            endif()
+        endif()
+        # Bundle by where the copy is, not by which find_package found it: a
+        # reconfigure finds the fetched copy through the cached ncnn_DIR in
+        # the first, unrestricted call.
+        set(ORBIS_NCNN_BUNDLED FALSE)
+        if(ncnn_FOUND)
+            foreach(own IN ITEMS "${NCNN_ROOT}" "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ncnn")
+                if(own)
+                    cmake_path(IS_PREFIX own "${ncnn_DIR}" NORMALIZE inside)
+                    if(inside)
+                        set(ORBIS_NCNN_BUNDLED TRUE)
+                    endif()
+                endif()
+            endforeach()
         endif()
         if(ncnn_FOUND AND TARGET ${ORBIS_OPENCV_GEOMETRY} AND TARGET opencv_video)
             add_library(privacy_scan STATIC
@@ -810,15 +823,21 @@ if(FFMPEG_FOUND)
 
             target_sources(orbis_app PRIVATE src/ui/PlateScanJob.cpp src/ui/PlateScanJob.h
                 src/ui/PlateJobController.cpp src/ui/PlateJobController.h)
-            # ncnn isn't in Debian: installs ship it next to the app, in
-            # lib/orbis-reframe/ (orbis-reframe's INSTALL_RPATH, below).
-            install(IMPORTED_RUNTIME_ARTIFACTS ncnn LIBRARY DESTINATION lib/orbis-reframe)
             install(FILES packaging/licenses/ncnn-LICENSE.txt
                 DESTINATION share/doc/orbis-reframe/licenses)
+            if(ORBIS_NCNN_BUNDLED)
+                # Fetched / NCNN_ROOT copy: ship next to the app (INSTALL_RPATH).
+                install(IMPORTED_RUNTIME_ARTIFACTS ncnn LIBRARY DESTINATION lib/orbis-reframe)
+                set_target_properties(orbis-reframe PROPERTIES
+                    INSTALL_RPATH "\$ORIGIN/../lib/orbis-reframe")
+                message(STATUS "ncnn: bundling into lib/orbis-reframe/ (fetched or NCNN_ROOT)")
+            else()
+                message(STATUS "ncnn: using the installed copy (not bundling)")
+            endif()
             target_link_libraries(orbis_app PUBLIC privacy_scan)
             target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_PLATE_SCAN)
         else()
-            message(STATUS "ncnn not found (scripts/fetch_ncnn.sh, or NCNN_ROOT=<unpacked ncnn release>)"
+            message(STATUS "ncnn not found (install ncnn, or scripts/fetch_ncnn.sh / NCNN_ROOT)"
                 " -- no plate scan")
         endif()
 
