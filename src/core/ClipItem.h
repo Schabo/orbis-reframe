@@ -151,7 +151,7 @@ struct ClipItem {
     // A new clip takes the setting of its neighbour (Timeline::insertClip).
     insv::StabConfig stabilization;
 
-    // Privacy blur (Privacy panel): mosaic the number plates this clip's plate
+    // Privacy blur (Privacy panel): blur the number plates this clip's plate
     // scan found (src/privacy/PlateScanData.h -- the scan itself is cached,
     // not stored here). Applied in playback and export; an export with this
     // on refuses a clip whose trim range hasn't been scanned.

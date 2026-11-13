@@ -20,7 +20,7 @@ struct LensColour;     // src/insv/LensColour.h
 
 namespace stitch {
 
-// Privacy blur: the regions to mosaic in the frame at source time ptsMs
+// Privacy blur: the regions to blur in the frame at source time ptsMs
 // (insv::BlurQuad, equirect / sphere frame), appended to `out`. Called on the
 // reading thread for every frame stitched.
 using BlurQuadsFn = std::function<void(int64_t ptsMs, std::vector<insv::BlurQuad>& out)>;
@@ -313,7 +313,7 @@ public:
     // stitcher ignores it.
     virtual void SetLensColour(const insv::LensColour& /*c*/) {}
 
-    // Privacy blur for subsequent frames: every frame stitched is mosaicked
+    // Privacy blur for subsequent frames: every frame stitched is blurred
     // inside the quads `fn` returns for its time (empty fn = off). Safe to
     // call from another thread than the reader. False when the source can't
     // blur -- a caller that must not show the footage unblurred stops there.

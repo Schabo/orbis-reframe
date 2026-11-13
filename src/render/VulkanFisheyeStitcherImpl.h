@@ -71,6 +71,8 @@ struct ShaderParams {
 };
 static_assert(sizeof(ShaderParams) == 14624, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
+static_assert(LensSlot::kBlurCellsW == insv::kBlurCellsPerQuad && LensSlot::kBlurCellsH == insv::kMaxBlurQuads,
+              "the blur cell table: a row of kBlurCellsPerQuad per quad");
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then the
 // stabilization matrix as three vec4 columns (a mat3's std430 layout); the
@@ -328,6 +330,19 @@ struct VulkanFisheyeStitcher::Impl {
     std::shared_ptr<const insv::SeamFlowField> flowHeld;
     bool flowCopy = false;  // flowStage waits to be copied into flowImg
     bool flowFresh = false; // flowImg is new: its layout is still UNDEFINED, not GENERAL
+    // The privacy blur's cell colours (sampled at binding 8, written by pass
+    // 5 through binding 9): RGBA16F, a row of insv::kBlurCellsPerQuad per
+    // quad. Made with the UBO (ensureUbo) and left in GENERAL from then on,
+    // as flowImg.
+    VkSampler blurCellSampler = VK_NULL_HANDLE; // nearest: texelFetch only
+    VkImage blurCellImg = VK_NULL_HANDLE;
+    VkDeviceMemory blurCellMem = VK_NULL_HANDLE;
+    VkImageView blurCellView = VK_NULL_HANDLE;
+    bool ensureBlurCells(std::string& err);
+    // Pass 5 for p's quads into the begun `cmd` (the stitch pipeline, its set
+    // bound to this frame's lenses), the table left readable by every later
+    // stage. Nothing without quads.
+    void recordBlurCells(VkCommandBuffer cmd, const insv::StitchGpuParams& p);
     // The seam flow's strips (binding 7, pass 4), device-local: the seam
     // flow (below) reads them.
     VkBuffer stripBuf = VK_NULL_HANDLE;

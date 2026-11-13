@@ -323,21 +323,24 @@ void EquirectViewportRenderer::createLensResources()
     if (vkCreateSampler(device, &si, nullptr, &m_flowSampler) != VK_SUCCESS)
         return;
 
-    // Binding 0 the stitch's params, 1-4 the lens planes, 5 the seam flow.
-    VkDescriptorSetLayoutBinding b[6]{};
+    // Binding 0 the stitch's params, 1-4 the lens planes, 5 the seam flow, 6
+    // the privacy blur's cell colours: 1 + LensSlot::kImages.
+    constexpr uint32_t kBindings = 1 + render::LensSlot::kImages;
+    VkDescriptorSetLayoutBinding b[kBindings]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-    for (uint32_t i = 1; i <= 5; ++i)
+    for (uint32_t i = 1; i < kBindings; ++i)
         b[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{};
     sli.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    sli.bindingCount = 6;
+    sli.bindingCount = kBindings;
     sli.pBindings = b;
     if (vkCreateDescriptorSetLayout(device, &sli, nullptr, &m_lensSetLayout) != VK_SUCCESS)
         return;
 
     const uint32_t frames = static_cast<uint32_t>(std::max(1, m_window->concurrentFrameCount()));
     VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frames},
-                                  {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5 * frames}};
+                                  {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                   (kBindings - 1) * frames}};
     VkDescriptorPoolCreateInfo dpi{};
     dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     dpi.maxSets = frames;

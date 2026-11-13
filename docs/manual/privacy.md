@@ -2,7 +2,7 @@
 
 In many countries you should hide other people's number plates before you
 publish a video. A 360° video sees every car around you, so orbis-reframe
-can find the plates for you and cover them with a mosaic.
+can find the plates for you and blur them.
 
 orbis-reframe blurs **number plates** only. It doesn't blur faces.
 

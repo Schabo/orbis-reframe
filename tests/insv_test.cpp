@@ -2060,9 +2060,9 @@ void testBlurQuads()
     dirOf(30.0, -10.5, q.corner[3]);
     insv::BlurQuadFrame f;
     CHECK(insv::prepareBlurQuad(q, f));
-    // ~4:1 -> 5 cells on the short side, ~20 along the long one.
+    // ~4:1 -> kBlurCellsShort cells on the short side, ~4x that along the long one.
     CHECK(f.cells[1] == insv::kBlurCellsShort);
-    CHECK(f.cells[0] >= 18 && f.cells[0] <= 22);
+    CHECK(f.cells[0] >= 3.6 * insv::kBlurCellsShort && f.cells[0] <= 4.4 * insv::kBlurCellsShort);
 
     const double st[][2] = {{0.5, 0.5}, {0.1, 0.9}, {0.95, 0.02}, {0.3, 0.7}};
     for (const auto& p : st) {
@@ -2091,14 +2091,43 @@ void testBlurQuads()
     CHECK(near(insv::blurQuadWeight(0.5, 0.5), 1.0, 1e-12));
     CHECK(near(insv::blurQuadWeight(0.0, 0.5), 0.0, 1e-12));
     // Every tap of a cell lies in that cell.
-    for (int i = 0; i < insv::kBlurTaps; ++i)
-        for (int j = 0; j < insv::kBlurTaps; ++j) {
+    const int ns = static_cast<int>(f.cells[0]);
+    CHECK(insv::blurCellCount(f) == ns * static_cast<int>(f.cells[1]));
+    CHECK(insv::blurCellCount(f) <= insv::kBlurCellsPerQuad);
+    const int probe = 3 * ns + 11; // cell (11, 3)
+    for (int i = 0; i < insv::kBlurCellTaps; ++i)
+        for (int j = 0; j < insv::kBlurCellTaps; ++j) {
             double d[3], ts, tt;
-            insv::blurTapDir(f, 0.52, 0.47, i, j, d);
+            insv::blurCellTapDir(f, probe, i, j, d);
             CHECK(insv::blurQuadST(f, d, ts, tt));
-            CHECK(std::floor(ts * f.cells[0]) == std::floor(0.52 * f.cells[0]));
-            CHECK(std::floor(tt * f.cells[1]) == std::floor(0.47 * f.cells[1]));
+            CHECK(std::floor(ts * f.cells[0]) == 11.0);
+            CHECK(std::floor(tt * f.cells[1]) == 3.0);
         }
+    // The mix: a cell centre takes that cell alone; the weights sum to 1
+    // and change smoothly (no jump at a cell's edge); past the outer
+    // centres the nearest cells repeat.
+    {
+        int cell[4];
+        double w[4];
+        insv::blurCellMix(f, 11.5 / f.cells[0], 3.5 / f.cells[1], cell, w);
+        CHECK(cell[0] == probe && near(w[0], 1.0, 1e-9));
+        auto at = [&](double s, double t, int want) {
+            insv::blurCellMix(f, s, t, cell, w);
+            double sum = 0.0, got = 0.0;
+            for (int n = 0; n < 4; ++n) {
+                sum += w[n];
+                if (cell[n] == want)
+                    got += w[n];
+            }
+            CHECK(near(sum, 1.0, 1e-12));
+            return got;
+        };
+        const double edge = 12.0 / f.cells[0], tm = 3.5 / f.cells[1];
+        CHECK(near(at(edge - 1e-7, tm, probe), at(edge + 1e-7, tm, probe), 1e-5));
+        CHECK(near(at(edge, tm, probe), 0.5, 1e-6));
+        CHECK(near(at(0.0, 0.0, 0), 1.0, 1e-12));
+        CHECK(near(at(1.0, 1.0, insv::blurCellCount(f) - 1), 1.0, 1e-12));
+    }
     // Degenerate: all corners the same.
     insv::BlurQuad z;
     for (auto& c : z.corner)

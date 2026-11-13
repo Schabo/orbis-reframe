@@ -17,10 +17,18 @@
 // statistics (seamCutPass, one workgroup per bin and row across the band).
 // Pass 4 (likewise) unwraps both lenses over the overlap for the new
 // stitcher's seam flow (seamStripPass, insv::MeasureSeamFlowStrips).
+// Pass 5 (in the frame's submission, before the pass that renders) works
+// out the privacy blur's cell colours (blurCellPass).
 //
 // The seam flow's field (insv::SeamFlowField, F10 in .xy, F01 in .zw) is the
 // texture at SEAM_FLOW_BINDING (6 unless the includer says otherwise: the
 // viewport has its lens planes at 1-4); used when P.seamFlow.x != 0.
+//
+// The privacy blur's cell colours (insv/BlurQuads.h; RGBA16F, a row of
+// BLUR_CELLS_PER_QUAD per quad) are the texture at BLUR_CELL_BINDING (8
+// unless the includer says otherwise: the viewport has them at 6), written
+// by pass 5 through the storage image at 9 before the frame's other passes
+// read them.
 //
 // An includer that defines FISHEYE_STITCH_NO_MAIN (fisheye_view_nv12.comp,
 // the fused fisheye -> view render) gets only the projection core and the
@@ -48,7 +56,8 @@
 #define LENS_VEIL_GAMMA 2.2 // == insv::kLensVeilGamma
 #define LENS_VEIL_KEEP 0.3 // == insv::kLensVeilKeep
 #define MAX_BLUR 64 // == insv::kMaxBlurQuads
-#define BLUR_TAPS 3 // == insv::kBlurTaps
+#define BLUR_CELL_TAPS 16 // == insv::kBlurCellTaps
+#define BLUR_CELLS_PER_QUAD 200 // == insv::kBlurCellsPerQuad
 #define BLUR_FEATHER 0.08 // == insv::kBlurFeather
 
 layout(std140, binding = 0) uniform Params {
@@ -111,6 +120,11 @@ layout(std140, binding = 0) uniform Params {
 #define SEAM_FLOW_BINDING 6
 #endif
 layout(binding = SEAM_FLOW_BINDING) uniform sampler2D seamFlowTex;
+
+#ifndef BLUR_CELL_BINDING
+#define BLUR_CELL_BINDING 8
+#endif
+layout(binding = BLUR_CELL_BINDING) uniform sampler2D blurCellTex;
 
 #ifndef FISHEYE_STITCH_NO_BUFFERS
 layout(std430, binding = 3) writeonly buffer OutBuf { uint px[]; };
@@ -747,8 +761,9 @@ vec3 blendLenses(vec3 dir)
 
 // Privacy blur (insv/BlurQuads.h, mirrored there and in
 // FisheyeStitcher::renderEquirect): inside a blur quad the colour is the
-// quad's mosaic cell -- the mean of BLUR_TAPS^2 directions spread over the
-// cell -- faded into the picture over the outer BLUR_FEATHER of (s, t).
+// bilinear mix of the quad's cell colours (pass 5, each the mean of
+// BLUR_CELL_TAPS^2 directions spread over its cell), faded into the picture
+// over the outer BLUR_FEATHER of (s, t).
 float cross2(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
 
 // insv::blurQuadST: where `dir` falls in quad k, (s, t) in [0, 1]^2 inside.
@@ -767,19 +782,17 @@ bool blurST(int k, vec3 dir, out vec2 st)
     float k2 = cross2(g, f);
     float k1 = cross2(e, f) + cross2(h, g);
     float k0 = cross2(h, e);
-    float t0, t1;
-    if (abs(k2) < 1e-7) {
-        if (abs(k1) < 1e-12)
-            return false;
-        t0 = t1 = -k0 / k1;
-    } else {
-        float w = k1 * k1 - 4.0 * k0 * k2;
-        if (w < 0.0)
-            return false;
-        w = sqrt(w);
-        t0 = (-k1 - w) * 0.5 / k2;
-        t1 = (-k1 + w) * 0.5 / k2;
-    }
+    // k2 t^2 + k1 t + k0 = 0 in the cancellation-free form (insv::blurQuadST):
+    // a plate's quad is nearly a parallelogram, k2 tiny, and the textbook
+    // (-k1 + w) / 2 k2 loses every digit in float -- t came out as noise.
+    float w = k1 * k1 - 4.0 * k0 * k2;
+    if (w < 0.0)
+        return false;
+    float q = -0.5 * (k1 + (k1 < 0.0 ? -sqrt(w) : sqrt(w)));
+    if (q == 0.0)
+        return false;
+    float t0 = k0 / q;                                // the root in the quad
+    float t1 = abs(k2) > 1e-30 ? q / k2 : t0;        // the other one, far off
     for (int i = 0; i < 2; ++i) {
         float t = i == 0 ? t0 : t1;
         vec2 dd = e + g * t;
@@ -803,6 +816,21 @@ vec3 blurDir(int k, vec2 st)
     return normalize(A.xyz + B.xyz * p.x + C.xyz * p.y);
 }
 
+// insv::blurCellMix, then the mix of quad k's cell colours at `st`.
+vec3 blurCellMix(int k, vec2 st)
+{
+    vec2 cells = vec2(P.blurQ[k * 6].w, P.blurQ[k * 6 + 1].w);
+    vec2 g = clamp(st * cells - 0.5, vec2(0.0), cells - 1.0);
+    vec2 g0 = floor(g), f = g - g0;
+    ivec2 i0 = ivec2(g0), i1 = ivec2(min(g0 + 1.0, cells - 1.0));
+    int ns = int(cells.x);
+    vec3 c00 = texelFetch(blurCellTex, ivec2(i0.y * ns + i0.x, k), 0).rgb;
+    vec3 c10 = texelFetch(blurCellTex, ivec2(i0.y * ns + i1.x, k), 0).rgb;
+    vec3 c01 = texelFetch(blurCellTex, ivec2(i1.y * ns + i0.x, k), 0).rgb;
+    vec3 c11 = texelFetch(blurCellTex, ivec2(i1.y * ns + i1.x, k), 0).rgb;
+    return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+}
+
 // blendLenses() with the privacy blur applied: what every render path calls.
 vec3 blurredLenses(vec3 dir)
 {
@@ -812,18 +840,52 @@ vec3 blurredLenses(vec3 dir)
         vec2 st;
         if (!blurST(k, dir, st))
             continue;
-        vec2 cells = vec2(P.blurQ[k * 6].w, P.blurQ[k * 6 + 1].w);
-        vec2 cell = min(floor(st * cells), cells - 1.0);
-        vec3 mos = vec3(0.0);
-        for (int i = 0; i < BLUR_TAPS; ++i)
-            for (int j = 0; j < BLUR_TAPS; ++j)
-                mos += blendLenses(blurDir(k, (cell + (vec2(i, j) + 0.5) / float(BLUR_TAPS)) / cells));
-        mos /= float(BLUR_TAPS * BLUR_TAPS);
         float edge = min(min(st.x, 1.0 - st.x), min(st.y, 1.0 - st.y));
-        return mix(rgb, mos, smoothstep(0.0, BLUR_FEATHER, edge));
+        return mix(rgb, blurCellMix(k, st), smoothstep(0.0, BLUR_FEATHER, edge));
     }
     return rgb;
 }
+
+#ifndef FISHEYE_STITCH_NO_MAIN
+// Pass 5: the blur's cell colours. Workgroup (cell, quad) of 64 invocations,
+// 2 x 2 of the cell's BLUR_CELL_TAPS x BLUR_CELL_TAPS taps each
+// (insv::blurCellTapDir), summed in pass 2's shared memory; the mean goes
+// into the cell table. A quad's rows past its cells stay unused.
+layout(binding = 9, rgba16f) uniform writeonly image2D blurCellOut;
+
+void blurCellPass(uvec3 wg, uint lid)
+{
+    int cell = int(wg.x), k = int(wg.y);
+    if (k >= int(P.blur0.x))
+        return;
+    vec2 cells = vec2(P.blurQ[k * 6].w, P.blurQ[k * 6 + 1].w);
+    int ns = int(cells.x);
+    if (cell >= ns * int(cells.y))
+        return;
+    vec2 c = vec2(float(cell % ns), float(cell / ns));
+    ivec2 base = 2 * ivec2(int(lid) % 8, int(lid) / 8);
+    vec3 sum = vec3(0.0);
+    for (int a = 0; a < 2; ++a)
+        for (int b = 0; b < 2; ++b) {
+            vec2 tap = vec2(base + ivec2(a, b)) + 0.5;
+            sum += blendLenses(blurDir(k, (c + tap / float(BLUR_CELL_TAPS)) / cells));
+        }
+    seamRed[0][lid] = sum.r;
+    seamRed[1][lid] = sum.g;
+    seamRed[2][lid] = sum.b;
+    barrier();
+    for (uint stride = 32u; stride > 0u; stride >>= 1) {
+        if (lid < stride)
+            for (int ch = 0; ch < 3; ++ch)
+                seamRed[ch][lid] += seamRed[ch][lid + stride];
+        barrier();
+    }
+    if (lid == 0u)
+        imageStore(blurCellOut, ivec2(cell, k),
+                   vec4(seamRed[0][0], seamRed[1][0], seamRed[2][0], 0.0) /
+                       float(BLUR_CELL_TAPS * BLUR_CELL_TAPS));
+}
+#endif
 
 #ifndef FISHEYE_STITCH_NO_MAIN
 void main()
@@ -838,6 +900,10 @@ void main()
     }
     if (pc.pass == 4) {
         seamStripPass(ivec2(gl_GlobalInvocationID.xy));
+        return;
+    }
+    if (pc.pass == 5) {
+        blurCellPass(gl_WorkGroupID, gl_LocalInvocationIndex);
         return;
     }
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);

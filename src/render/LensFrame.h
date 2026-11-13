@@ -8,12 +8,14 @@
 // decoder device) to the viewport's (QVulkanWindow's), so the viewport can draw
 // the view straight from the lenses at present time.
 //
-// The pair lives in a ring slot of five plain images on the decoder device --
+// The pair lives in a ring slot of six plain images on the decoder device --
 // lens 0 Y (R8_UNORM, lensW x lensH), lens 0 CbCr (R8G8_UNORM, half size),
 // lens 1 Y, lens 1 CbCr; R16_UNORM / R16G16_UNORM for 10-bit pictures (P010:
 // the 10 bits at the top of each 16); then the new stitcher's seam flow field
 // (R16G16B16A16_SFLOAT, flowW x flowH: insv::SeamFlowField, 1 x 1 without
-// one) -- each in its own dedicated, exportable allocation
+// one), then the privacy blur's cell colours (R16G16B16A16_SFLOAT,
+// kBlurCellsW x kBlurCellsH: a row per quad, fisheye_stitch_common.glsl) --
+// each in its own dedicated, exportable allocation
 // (VK_KHR_external_memory_fd, opaque FD). The viewport imports each slot once
 // by FD and creates identical images over the memory. Plain Vulkan / POSIX,
 // no Qt, no FFmpeg: shared by render_gpu_stitch (exporter) and the viewport
@@ -23,10 +25,16 @@ namespace render {
 
 // One ring slot. Created and owned by the exporter; read-only to importers.
 struct LensSlot {
-    // Image order: lens0 Y, lens0 CbCr, lens1 Y, lens1 CbCr, seam flow.
-    static constexpr int kImages = 5;
+    // Image order: lens0 Y, lens0 CbCr, lens1 Y, lens1 CbCr, seam flow, blur
+    // cells.
+    static constexpr int kImages = 6;
     static constexpr int kFlowImage = 4;
-    int fd[kImages] = {-1, -1, -1, -1, -1}; // exporter keeps these; importers dup()
+    static constexpr int kBlurCellImage = 5;
+    // == insv::kBlurCellsPerQuad x insv::kMaxBlurQuads (render/ doesn't
+    // include insv/ here; VulkanFisheyeStitcherImpl.h checks they match).
+    static constexpr int kBlurCellsW = 200;
+    static constexpr int kBlurCellsH = 64;
+    int fd[kImages] = {-1, -1, -1, -1, -1, -1}; // exporter keeps these; importers dup()
     uint64_t memSize[kImages] = {};     // allocation size of each image
     int lensW = 0;                      // Y extent; CbCr is (lensW/2, lensH/2)
     int lensH = 0;

@@ -79,9 +79,10 @@ EquirectViewportRenderer::importFor(const render::LensFrame &f, bool &lasting)
     LensImport imp;
     for (int i = 0; i < render::LensSlot::kImages; ++i) {
         const bool flow = i == render::LensSlot::kFlowImage;
+        const bool cells = i == render::LensSlot::kBlurCellImage;
         const bool uv = (i & 1) != 0;
         const bool deep = slot.bitDepth > 8; // 10-bit: 16-bit planes
-        const VkFormat fmt = flow ? VK_FORMAT_R16G16B16A16_SFLOAT
+        const VkFormat fmt = flow || cells ? VK_FORMAT_R16G16B16A16_SFLOAT
                              : deep ? (uv ? VK_FORMAT_R16G16_UNORM : VK_FORMAT_R16_UNORM)
                                     : (uv ? VK_FORMAT_R8G8_UNORM : VK_FORMAT_R8_UNORM);
         // Must match the exporter's image exactly (VulkanFisheyeStitcher).
@@ -93,9 +94,11 @@ EquirectViewportRenderer::importFor(const render::LensFrame &f, bool &lasting)
         ii.pNext = &emi;
         ii.imageType = VK_IMAGE_TYPE_2D;
         ii.format = fmt;
-        ii.extent = flow ? VkExtent3D{static_cast<uint32_t>(slot.flowW),
-                                      static_cast<uint32_t>(slot.flowH), 1}
-                         : VkExtent3D{static_cast<uint32_t>(uv ? slot.lensW / 2 : slot.lensW),
+        ii.extent = flow    ? VkExtent3D{static_cast<uint32_t>(slot.flowW),
+                                         static_cast<uint32_t>(slot.flowH), 1}
+                    : cells ? VkExtent3D{static_cast<uint32_t>(render::LensSlot::kBlurCellsW),
+                                         static_cast<uint32_t>(render::LensSlot::kBlurCellsH), 1}
+                            : VkExtent3D{static_cast<uint32_t>(uv ? slot.lensW / 2 : slot.lensW),
                                       static_cast<uint32_t>(uv ? slot.lensH / 2 : slot.lensH), 1};
         ii.mipLevels = 1;
         ii.arrayLayers = 1;

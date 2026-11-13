@@ -1,7 +1,7 @@
 #pragma once
 
 // Privacy blur: the result of scanning a clip for number plates -- per frame, the regions
-// to mosaic -- and its cache file.
+// to blur -- and its cache file.
 //
 // The regions are quads in the equirect (sphere) frame of the stitch, the
 // frame a source's pixels live in before any stabilization: the scan levels

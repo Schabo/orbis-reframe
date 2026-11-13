@@ -629,6 +629,41 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
             rgb[c] = wsum > 1e-6 ? acc[c] / wsum : 0.0;
     };
 
+    // The blur's cell colours first (the stitch's pass 5): the mean of each
+    // cell's taps, rendered through outRot as the quads are in the sphere
+    // frame. One job per cell.
+    std::vector<double> blurCells(static_cast<size_t>(std::max(blurCount, 0)) * kBlurCellsPerQuad * 3, 0.0);
+    {
+        std::atomic<int> nextCell{0};
+        const int jobs = std::max(blurCount, 0) * kBlurCellsPerQuad;
+        auto cellWorker = [&] {
+            for (int j = nextCell.fetch_add(1); j < jobs; j = nextCell.fetch_add(1)) {
+                const int k = j / kBlurCellsPerQuad, cell = j % kBlurCellsPerQuad;
+                if (cell >= blurCellCount(blur[k]))
+                    continue;
+                double sum[3] = {0, 0, 0};
+                for (int ti = 0; ti < kBlurCellTaps; ++ti)
+                    for (int tj = 0; tj < kBlurCellTaps; ++tj) {
+                        double td[3], c[3];
+                        blurCellTapDir(blur[k], cell, ti, tj, td);
+                        shade(apply(m_outRot, Vec3{td[0], td[1], td[2]}), c);
+                        for (int ch = 0; ch < 3; ++ch)
+                            sum[ch] += c[ch];
+                    }
+                for (int ch = 0; ch < 3; ++ch)
+                    blurCells[static_cast<size_t>(j) * 3 + ch] = sum[ch] / (kBlurCellTaps * kBlurCellTaps);
+            }
+        };
+        if (jobs > 0) {
+            std::vector<std::thread> pool;
+            pool.reserve(hw);
+            for (unsigned i = 0; i < hw; ++i)
+                pool.emplace_back(cellWorker);
+            for (auto& t : pool)
+                t.join();
+        }
+    }
+
     auto worker = [&] {
         for (int y = nextRow.fetch_add(1); y < H; y = nextRow.fetch_add(1)) {
             const double lat = (0.5 - (y + 0.5) / H) * kPi;
@@ -639,26 +674,23 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
                 const Vec3 dir = apply(m_outRot, sphere);
                 double rgb[3];
                 shade(dir, rgb);
-                // Privacy blur: the quads are in the sphere frame, so test
-                // the sphere direction and render the taps through outRot
+                // Privacy blur: the quads are in the sphere frame
                 // (fisheye_stitch_common.glsl blurredLenses).
                 const double sd[3] = {sphere.x, sphere.y, sphere.z};
                 for (int k = 0; k < blurCount; ++k) {
                     double s, t;
                     if (!blurQuadST(blur[k], sd, s, t))
                         continue;
-                    double mos[3] = {0, 0, 0};
-                    for (int i = 0; i < kBlurTaps; ++i)
-                        for (int j = 0; j < kBlurTaps; ++j) {
-                            double td[3], c[3];
-                            blurTapDir(blur[k], s, t, i, j, td);
-                            shade(apply(m_outRot, Vec3{td[0], td[1], td[2]}), c);
-                            for (int ch = 0; ch < 3; ++ch)
-                                mos[ch] += c[ch];
-                        }
+                    int cell[4];
+                    double cw[4], mix[3] = {0, 0, 0};
+                    blurCellMix(blur[k], s, t, cell, cw);
+                    const double* cells = &blurCells[static_cast<size_t>(k) * kBlurCellsPerQuad * 3];
+                    for (int n = 0; n < 4; ++n)
+                        for (int ch = 0; ch < 3; ++ch)
+                            mix[ch] += cw[n] * cells[cell[n] * 3 + ch];
                     const double w = blurQuadWeight(s, t);
                     for (int ch = 0; ch < 3; ++ch)
-                        rgb[ch] += (mos[ch] / (kBlurTaps * kBlurTaps) - rgb[ch]) * w;
+                        rgb[ch] += (mix[ch] - rgb[ch]) * w;
                     break;
                 }
                 uint8_t* px = &out.rgb[(static_cast<std::size_t>(y) * W + x) * 3];

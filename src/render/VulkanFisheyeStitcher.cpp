@@ -275,6 +275,31 @@ void VulkanFisheyeStitcher::Impl::recordStitchPasses(int eqW, int eqH)
     vkCmdDispatch(cmd, gx, gy, 1);
 }
 
+void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c, const insv::StitchGpuParams& p)
+{
+    const int n = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
+    if (n == 0)
+        return;
+    VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    b.oldLayout = b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    b.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = blurCellImg;
+    b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &b);
+    vkCmdBindPipeline(c, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(c, VK_PIPELINE_BIND_POINT_COMPUTE, pipeLayout, 0, 1, &descSet, 0, nullptr);
+    const int32_t pass = 5;
+    vkCmdPushConstants(c, pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
+    vkCmdDispatch(c, static_cast<uint32_t>(insv::kBlurCellsPerQuad), static_cast<uint32_t>(n), 1);
+    b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &b);
+}
+
 bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
                                    const insv::StitchGpuParams& params, int eqW, int eqH,
                                    std::vector<uint8_t>& outRgba, std::string& err,
@@ -390,8 +415,10 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
     d->recordSeamFade(d->cmd, params);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
-    if (doStitch)
+    if (doStitch) {
+        d->recordBlurCells(d->cmd, params);
         d->recordStitchPasses(eqW, eqH);
+    }
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
 
     VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -492,6 +519,7 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+    d->recordBlurCells(d->cmd, params);
     d->recordStitchPasses(eqW, eqH);
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
 
@@ -656,6 +684,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+    d->recordBlurCells(d->cmd, params);
     d->recordStitchPasses(eqW, eqH);
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
 
@@ -858,7 +887,10 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         w[2].descriptorCount = 1;
         w[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[2].pBufferInfo = &flatInfo;
-        vkUpdateDescriptorSets(d->device, 3, w, 0, nullptr);
+        // The stitch set's lenses too: the blur's pass 5 runs in it.
+        VkWriteDescriptorSet ws[5] = {w[0], w[1], w[2], w[0], w[1]};
+        ws[3].dstSet = ws[4].dstSet = d->descSet;
+        vkUpdateDescriptorSets(d->device, 5, ws, 0, nullptr);
     }
 
     if (!d->ensureFlow(params, err))
@@ -888,6 +920,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+    d->recordBlurCells(d->cmd, params);
 
     if (clear) { // the canvas background, where no view goes
         recordCanvasFill(d->cmd, d->flatBuf, fmt, outW, outH, *clear);
@@ -1213,6 +1246,34 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     // The viewport converts the planes itself (fisheye_view.frag).
     insv::YcbcrToRgbRows(d->ycbcr, d->deepLens() ? 10 : 8, sp.ycc);
 
+    // The privacy blur's cell colours are worked out here (pass 5, from the
+    // decoder's images) and travel in the slot; the viewport only mixes them.
+    const bool blur = std::clamp(params.blurCount, 0, insv::kMaxBlurQuads) > 0;
+    if (blur) {
+        if (!d->ensureUbo(err))
+            return false;
+        const VkImageView v0 = d->nv12ViewFor(f0.image, f0.format);
+        const VkImageView v1 = d->nv12ViewFor(f1.image, f1.format);
+        if (!v0 || !v1) {
+            err = "vkCreateImageView (ycbcr) failed";
+            return false;
+        }
+        std::memcpy(d->uboMap, &sp, sizeof(sp));
+        VkDescriptorImageInfo img0{VK_NULL_HANDLE, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkDescriptorImageInfo img1{VK_NULL_HANDLE, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet w[2]{};
+        w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[0].dstSet = d->descSet;
+        w[0].dstBinding = 1;
+        w[0].descriptorCount = 1;
+        w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w[0].pImageInfo = &img0;
+        w[1] = w[0];
+        w[1].dstBinding = 2;
+        w[1].pImageInfo = &img1;
+        vkUpdateDescriptorSets(d->device, 2, w, 0, nullptr);
+    }
+
     VkCommandBuffer cmd = d->cmd;
     if (!d->ensureFlow(params, err))
         return false;
@@ -1239,13 +1300,25 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
 
+    // With a blur, the decoded pair is read by pass 5 first.
+    const VulkanLensInput* in[2] = {&f0, &f1};
+    if (blur) {
+        VkImageMemoryBarrier rd[2];
+        for (int i = 0; i < 2; ++i)
+            rd[i] = imgBarrier(in[i]->image, in[i]->layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0,
+                               VK_ACCESS_SHADER_READ_BIT);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+                             0, nullptr, 0, nullptr, 2, rd);
+        d->recordBlurCells(cmd, params);
+    }
+
     // Decoded pair -> transfer source (its writes are covered by the
     // semaphore wait); the slot's images -> transfer target (old contents
     // discarded, so no ownership acquire is needed).
-    const VulkanLensInput* in[2] = {&f0, &f1};
     VkImageMemoryBarrier pre[2 + LensSlot::kImages];
     for (int i = 0; i < 2; ++i)
-        pre[i] = imgBarrier(in[i]->image, in[i]->layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
+        pre[i] = imgBarrier(in[i]->image, blur ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : in[i]->layout,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, blur ? VK_ACCESS_SHADER_READ_BIT : 0,
                             VK_ACCESS_TRANSFER_READ_BIT);
     for (int i = 0; i < LensSlot::kImages; ++i)
         pre[2 + i] = imgBarrier(slot->img[i], VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1285,6 +1358,17 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
                         VK_ACCESS_TRANSFER_READ_BIT, 0);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
                              0, nullptr, 0, nullptr, 1, &fb);
+    }
+
+    // The blur's cell table (recordBlurCells left it readable by transfers;
+    // it stays in GENERAL). Without quads the slot's copy goes unread.
+    if (blur) {
+        VkImageCopy c{};
+        c.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        c.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        c.extent = {static_cast<uint32_t>(LensSlot::kBlurCellsW), static_cast<uint32_t>(LensSlot::kBlurCellsH), 1};
+        vkCmdCopyImage(cmd, d->blurCellImg, VK_IMAGE_LAYOUT_GENERAL, slot->img[LensSlot::kBlurCellImage],
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
     }
 
     // Release the slot's images to the importing device.

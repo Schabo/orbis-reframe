@@ -122,23 +122,23 @@ bool blurQuadST(const BlurQuadFrame& f, const double dir[3], double& s, double& 
         return std::abs(dx) > std::abs(dy) ? (hx - fx * tv) / dx : (hy - fy * tv) / dy;
     };
     auto inside = [](double a, double b) { return a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0; };
-    if (std::abs(k2) < 1e-7) { // a parallelogram: linear in t
-        if (std::abs(k1) < 1e-12)
-            return false;
-        t = -k0 / k1;
-        s = sFor(t);
-        return inside(s, t);
-    }
-    double w = k1 * k1 - 4.0 * k0 * k2;
+    // k2 t^2 + k1 t + k0 = 0 in the cancellation-free form: a plate's quad is
+    // nearly a parallelogram (k2 tiny), where the textbook formula loses its
+    // digits -- in the shader's float, all of them. k0 / q is the root that
+    // goes to the parallelogram's -k0 / k1 as k2 -> 0.
+    const double w = k1 * k1 - 4.0 * k0 * k2;
     if (w < 0.0)
         return false;
-    w = std::sqrt(w);
-    const double ik2 = 0.5 / k2;
-    t = (-k1 - w) * ik2;
+    const double q = -0.5 * (k1 + std::copysign(std::sqrt(w), k1));
+    if (q == 0.0)
+        return false;
+    t = k0 / q;
     s = sFor(t);
     if (inside(s, t))
         return true;
-    t = (-k1 + w) * ik2;
+    if (std::abs(k2) <= 1e-30)
+        return false;
+    t = q / k2;
     s = sFor(t);
     return inside(s, t);
 }
@@ -168,12 +168,42 @@ double blurQuadWeight(double s, double t)
     return x * x * (3.0 - 2.0 * x); // smoothstep, as the shader
 }
 
-void blurTapDir(const BlurQuadFrame& f, double s, double t, int i, int j, double dir[3])
+int blurCellCount(const BlurQuadFrame& f)
 {
-    const double cs = std::min(std::floor(s * f.cells[0]), f.cells[0] - 1.0);
-    const double ct = std::min(std::floor(t * f.cells[1]), f.cells[1] - 1.0);
-    blurQuadDir(f, (cs + (i + 0.5) / kBlurTaps) / f.cells[0], (ct + (j + 0.5) / kBlurTaps) / f.cells[1],
-                dir);
+    return static_cast<int>(f.cells[0]) * static_cast<int>(f.cells[1]);
+}
+
+void blurCellTapDir(const BlurQuadFrame& f, int cell, int i, int j, double dir[3])
+{
+    const int ns = static_cast<int>(f.cells[0]);
+    const double cs = cell % ns, ct = cell / ns;
+    blurQuadDir(f, (cs + (i + 0.5) / kBlurCellTaps) / f.cells[0],
+                (ct + (j + 0.5) / kBlurCellTaps) / f.cells[1], dir);
+}
+
+void blurCellMix(const BlurQuadFrame& f, double s, double t, int cell[4], double w[4])
+{
+    // As the shader: cell-centre coordinates, clamped to the outer centres.
+    const double st[2] = {s, t};
+    int i0[2], i1[2];
+    double fr[2];
+    for (int k = 0; k < 2; ++k) {
+        const double n = f.cells[k];
+        const double g = std::clamp(st[k] * n - 0.5, 0.0, n - 1.0);
+        const double g0 = std::floor(g);
+        fr[k] = g - g0;
+        i0[k] = static_cast<int>(g0);
+        i1[k] = static_cast<int>(std::min(g0 + 1.0, n - 1.0));
+    }
+    const int ns = static_cast<int>(f.cells[0]);
+    cell[0] = i0[1] * ns + i0[0];
+    cell[1] = i0[1] * ns + i1[0];
+    cell[2] = i1[1] * ns + i0[0];
+    cell[3] = i1[1] * ns + i1[0];
+    w[0] = (1.0 - fr[0]) * (1.0 - fr[1]);
+    w[1] = fr[0] * (1.0 - fr[1]);
+    w[2] = (1.0 - fr[0]) * fr[1];
+    w[3] = fr[0] * fr[1];
 }
 
 } // namespace insv

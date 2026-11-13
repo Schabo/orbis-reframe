@@ -281,7 +281,7 @@ struct StitchGpuParams {
     // flow window put into the flow texture (render::VulkanFisheyeStitcher::
     // measureSeamFlowVk), on the grid above. GPU stitch only.
     bool seamFlowGpu = false;
-    // Privacy blur (BlurQuads.h): regions mosaicked in this frame, equirect
+    // Privacy blur (BlurQuads.h): regions blurred in this frame, equirect
     // (sphere) frame, prepared. Per frame, like the RS taps.
     int blurCount = 0;
     BlurQuadFrame blur[kMaxBlurQuads];
@@ -302,7 +302,7 @@ public:
     // values, nullptr = all 0) is the depth-aware seam's per-azimuth inverse
     // stitch distance and `blend` its blend across the band (nullptr = the
     // plain cross-fade); both used only with StitchParams::depthSeam.
-    // `blur` (`blurCount` prepared quads, BlurQuads.h) are mosaicked.
+    // `blur` (`blurCount` prepared quads, BlurQuads.h) are blurred.
     // `seamColour` (StitchGpuParams::seamColour's layout, null = none) is the
     // new stitcher's seam colour blend (seamColourLog) and `seamVeil`
     // (StitchGpuParams::seamVeil's, null = none) the veiling light it takes

@@ -106,6 +106,12 @@ void VulkanFisheyeStitcher::Impl::destroyResources()
     flowView = VK_NULL_HANDLE;
     flowImg = VK_NULL_HANDLE;
     flowMem = VK_NULL_HANDLE;
+    if (blurCellView) vkDestroyImageView(device, blurCellView, nullptr);
+    if (blurCellImg) vkDestroyImage(device, blurCellImg, nullptr);
+    if (blurCellMem) vkFreeMemory(device, blurCellMem, nullptr);
+    blurCellView = VK_NULL_HANDLE;
+    blurCellImg = VK_NULL_HANDLE;
+    blurCellMem = VK_NULL_HANDLE;
     flowW = flowH = 0;
     flowStageBytes = stripBytes = 0;
     flowHeld.reset();
@@ -385,9 +391,99 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
     }
     vkUpdateDescriptorSets(device, n, w, 0, nullptr);
     // Bindings 6 and 7 valid from the start: a 1 x 1 flow texture of zeros
-    // and a token strip buffer, until the seam flow brings its own.
+    // and a token strip buffer, until the seam flow brings its own; 8 and 9
+    // the blur's cell table.
     insv::StitchGpuParams none;
-    return ensureFlow(none, err) && ensureStrips(16, err);
+    return ensureFlow(none, err) && ensureStrips(16, err) && ensureBlurCells(err);
+}
+
+bool VulkanFisheyeStitcher::Impl::ensureBlurCells(std::string& err)
+{
+    if (blurCellImg)
+        return true;
+    VkImageCreateInfo ii{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    ii.imageType = VK_IMAGE_TYPE_2D;
+    ii.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+    ii.extent = {static_cast<uint32_t>(insv::kBlurCellsPerQuad), static_cast<uint32_t>(insv::kMaxBlurQuads), 1};
+    ii.mipLevels = 1;
+    ii.arrayLayers = 1;
+    ii.samples = VK_SAMPLE_COUNT_1_BIT;
+    ii.tiling = VK_IMAGE_TILING_OPTIMAL;
+    // Transfer source: copied into each lens slot for the viewport.
+    ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (vkCreateImage(device, &ii, nullptr, &blurCellImg) != VK_SUCCESS) {
+        err = "blur cell image creation failed";
+        return false;
+    }
+    VkMemoryRequirements mr{};
+    vkGetImageMemoryRequirements(device, blurCellImg, &mr);
+    uint32_t type = 0;
+    if (!findMemoryType(mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, type)) {
+        err = "no device-local memory for the blur cell image";
+        return false;
+    }
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    ai.allocationSize = mr.size;
+    ai.memoryTypeIndex = type;
+    if (vkAllocateMemory(device, &ai, nullptr, &blurCellMem) != VK_SUCCESS ||
+        vkBindImageMemory(device, blurCellImg, blurCellMem, 0) != VK_SUCCESS) {
+        err = "blur cell image memory failed";
+        return false;
+    }
+    VkImageViewCreateInfo vi{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    vi.image = blurCellImg;
+    vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    vi.format = ii.format;
+    vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    if (vkCreateImageView(device, &vi, nullptr, &blurCellView) != VK_SUCCESS) {
+        err = "blur cell image view failed";
+        return false;
+    }
+    // Into GENERAL once, for good (zeros, though nothing reads a row before
+    // pass 5 has written it).
+    if (!submitOnce([&](VkCommandBuffer c) {
+            VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            b.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b.image = blurCellImg;
+            b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+            vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
+                                 nullptr, 0, nullptr, 1, &b);
+            const VkClearColorValue zero{};
+            vkCmdClearColorImage(c, blurCellImg, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &b.subresourceRange);
+            b.oldLayout = b.newLayout;
+            b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
+                                 nullptr, 0, nullptr, 1, &b);
+        }, err))
+        return false;
+    VkDescriptorImageInfo sampled{blurCellSampler, blurCellView, VK_IMAGE_LAYOUT_GENERAL};
+    VkDescriptorImageInfo storage{VK_NULL_HANDLE, blurCellView, VK_IMAGE_LAYOUT_GENERAL};
+    VkWriteDescriptorSet w[4]{};
+    int n = 0;
+    for (VkDescriptorSet set : {descSet, vwSet}) {
+        if (!set)
+            continue;
+        w[n] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w[n].dstSet = set;
+        w[n].dstBinding = 8;
+        w[n].descriptorCount = 1;
+        w[n].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w[n].pImageInfo = &sampled;
+        ++n;
+        w[n] = w[n - 1];
+        w[n].dstBinding = 9;
+        w[n].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        w[n].pImageInfo = &storage;
+        ++n;
+    }
+    vkUpdateDescriptorSets(device, n, w, 0, nullptr);
+    return true;
 }
 
 bool VulkanFisheyeStitcher::Impl::ensureOutput(int new_, int neh, std::string& err)
@@ -485,9 +581,11 @@ LensRingCore::Slot* VulkanFisheyeStitcher::Impl::acquireLensSlot(int lensW, int 
     // A new slot's images, each in its own exportable allocation.
     const auto makeImages = [&](LensRingCore::Slot& sl) {
         for (int i = 0; i < LensSlot::kImages; ++i) {
-            if (i == LensSlot::kFlowImage) {
-                if (!makeExportImage(VK_FORMAT_R16G16B16A16_SFLOAT, flowW, flowH, sl.img[i],
-                                     sl.mem[i], sl.pub.memSize[i], sl.pub.fd[i], err))
+            if (i == LensSlot::kFlowImage || i == LensSlot::kBlurCellImage) {
+                const bool flow = i == LensSlot::kFlowImage;
+                if (!makeExportImage(VK_FORMAT_R16G16B16A16_SFLOAT, flow ? flowW : LensSlot::kBlurCellsW,
+                                     flow ? flowH : LensSlot::kBlurCellsH, sl.img[i], sl.mem[i],
+                                     sl.pub.memSize[i], sl.pub.fd[i], err))
                     return false;
                 continue;
             }
@@ -696,6 +794,7 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         if (d->rfSetLayout) vkDestroyDescriptorSetLayout(d->device, d->rfSetLayout, nullptr);
         if (d->sampler) vkDestroySampler(d->device, d->sampler, nullptr);
         if (d->flowSampler) vkDestroySampler(d->device, d->flowSampler, nullptr);
+        if (d->blurCellSampler) vkDestroySampler(d->device, d->blurCellSampler, nullptr);
         if (d->ycbcrConv) vkDestroySamplerYcbcrConversion(d->device, d->ycbcrConv, nullptr);
         if (d->tsPool) vkDestroyQueryPool(d->device, d->tsPool, nullptr);
         if (d->fence) vkDestroyFence(d->device, d->fence, nullptr);
@@ -941,7 +1040,21 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
         }
     }
 
-    VkDescriptorSetLayoutBinding b[7]{};
+    // The blur's cell table (binding 8): read with texelFetch only.
+    {
+        VkSamplerCreateInfo ci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        ci.magFilter = VK_FILTER_NEAREST;
+        ci.minFilter = VK_FILTER_NEAREST;
+        ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        ci.addressModeU = ci.addressModeV = ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        ci.maxAnisotropy = 1.0f;
+        if (vkCreateSampler(d->device, &ci, nullptr, &d->blurCellSampler) != VK_SUCCESS) {
+            err = "vkCreateSampler (blur cells) failed";
+            return false;
+        }
+    }
+
+    VkDescriptorSetLayoutBinding b[9]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT,
             nv12Mode ? &immutable[0] : nullptr};
@@ -951,8 +1064,10 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     b[4] = {5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[5] = {6, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[6] = {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    b[7] = {8, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    b[8] = {9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    sli.bindingCount = 7;
+    sli.bindingCount = 9;
     sli.pBindings = b;
     if (vkCreateDescriptorSetLayout(d->device, &sli, nullptr, &d->setLayout) != VK_SUCCESS) {
         err = "vkCreateDescriptorSetLayout failed";
@@ -978,13 +1093,14 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     }
 
     // Two sets of this layout: the stitch's, and the fused view pass's.
-    VkDescriptorPoolSize ps[3]{
+    VkDescriptorPoolSize ps[4]{
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * samplerDescriptors + 2},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6}};
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * samplerDescriptors + 4},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6},
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 2;
-    dpi.poolSizeCount = 3;
+    dpi.poolSizeCount = 4;
     dpi.pPoolSizes = ps;
     if (vkCreateDescriptorPool(d->device, &dpi, nullptr, &d->descPool) != VK_SUCCESS) {
         err = "vkCreateDescriptorPool failed";

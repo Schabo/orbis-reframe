@@ -107,7 +107,7 @@ public:
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg) and lens colour.
         insv::SeamCorrection seamCorrection;
         insv::LensColour lensColour;
-        // Privacy blur: the plate regions per source time, mosaicked in the
+        // Privacy blur: the plate regions per source time, blurred in the
         // stitch (IStitchSource::SetBlurQuads); empty => none. Safe to call
         // from the export thread (captures its scan).
         stitch::BlurQuadsFn blur;
