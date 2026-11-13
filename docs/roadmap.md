@@ -192,12 +192,10 @@ each is in its document in [`formats/`](formats/README.md).
   per-model table, fields read from the file -- not in model checks spread
   through the code.
 
-- **More view shapes**, on top of the per-keyframe distortion (built): a
-  globe (the sphere as a ball seen from outside: the distortion `d` past 1,
-  up to orthographic), a
-  natural view (Panini: the same distortion applied only across, so
-  verticals stay straight), and, if the wide end of `d` isn't enough, a true
-  fisheye and a mirror ball. Each is a continuous amount per keyframe that
+- **More view shapes**, on top of the per-keyframe distortion and the globe
+  (both built): **Natural** (Panini: the same distortion applied only
+  across, so verticals stay straight), and, if the wide end of `d` isn't
+  enough, a true fisheye and a mirror ball. Each is a continuous amount per keyframe that
   is the normal view at its rest value, so it blends between keys like the
   field of view -- not a list of projection modes in the project file. The
   math goes into the shared view-projection files, like `d`.

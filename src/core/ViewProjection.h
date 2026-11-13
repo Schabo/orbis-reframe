@@ -25,6 +25,19 @@
 // rectilinear expressions, operation for operation, so the picture is
 // unchanged to the bit.
 //
+// Past d = 1 the projection centre leaves the sphere: the globe, the sphere
+// as a ball seen from outside. The world fits in a disc of plane radius
+// sqrt((d + 1) / (d - 1)), out to acos(-1 / d) off the axis, and the plane
+// beyond it has no ray (black); d -> infinity is orthographic, a hemisphere
+// in a disc. The ray kept is still the far one, so the picture isn't
+// mirrored and runs on from d = 1. What a pose stores, and every function
+// here takes, is the amount `a` from 0 to 2: d = a up to 1, so those
+// pictures are the same to the bit, and d = 1 / (2 - a) above it, worked
+// in e = 2 - a = 1 / d, which keeps the far end exact and the float
+// arithmetic from cancelling. A globe's size is taken as at d = 1: its
+// field of view makes the picture as big as the tiny planet of that angle
+// (halfHeight, fovYFor, maxFov).
+//
 // A pose gives its field of view as the diagonal angle, corner to corner,
 // so a landscape and a portrait frame take in alike, and its distortion
 // either fixed or Auto (following the field of view: none for a normal view,
@@ -42,6 +55,8 @@ namespace view {
 
 // The distortion of a pose that follows its field of view (autoDistortion).
 inline constexpr float kAutoDistortion = -1.0f;
+// The largest distortion amount: the globe's far end, orthographic.
+inline constexpr float kMaxDistortion = 2.0f;
 
 // A view's pose: where it looks and how much it takes in.
 struct Pose {
@@ -52,8 +67,8 @@ struct Pose {
     // 75 deg up and down takes in at 16:9. A double so that a vertical angle
     // turned into it (fovFor) comes back as the same float.
     double fov = 2.004501002893341;
-    // The projection's d, 0 (rectilinear) to 1 (stereographic), or
-    // kAutoDistortion.
+    // The distortion amount: 0 (rectilinear) to 1 (stereographic) to 2 (the
+    // globe's orthographic end), or kAutoDistortion.
     float distortion = kAutoDistortion;
 
     bool distortionIsAuto() const { return distortion < 0.0f; }
@@ -68,28 +83,63 @@ inline T planeRadius(T angle, T distortion)
 {
     if (distortion <= T(0))
         return std::tan(angle);
+    if (distortion > T(1)) {
+        const T e = T(2) - distortion; // 1 / d
+        return (T(1) + e) * std::sin(angle) / (T(1) + e * std::cos(angle));
+    }
     return (T(1) + distortion) * std::sin(angle) / (distortion + std::cos(angle));
 }
 
-// The plane's half-height for a vertical field of view (Lens::fovY).
+// The plane's half-height for a vertical field of view (Lens::fovY); a
+// globe's as at d = 1.
 template <class T>
 inline T halfHeight(T fovY, T distortion)
 {
-    return planeRadius(fovY * T(0.5), distortion);
+    return planeRadius(fovY * T(0.5), std::min(distortion, T(1)));
+}
+
+// The globe's disc: the largest z a point of the unit sphere can have and
+// still be seen, where the rays from the projection centre touch the sphere
+// (z = 1 / d); for d <= 1, the centre's own plane, z = d. A polygon clipped
+// against it projects edge by edge (pointToPlane).
+template <class T>
+inline T frontLimit(T distortion)
+{
+    return distortion > T(1) ? T(2) - distortion : distortion;
 }
 
 // Image-plane point (x, y) -> unit view ray `out` (x, y, z). The line from the
 // projection centre (0, 0, d) through (x, y, -1) meets the unit sphere on its
-// far side.
+// far side. False outside a globe's disc, where the line misses the sphere;
+// `out` is then the ray at the disc's rim in that direction.
 template <class T>
-inline void planeToRay(T x, T y, T distortion, T out[3])
+inline bool planeToRay(T x, T y, T distortion, T out[3])
 {
     if (distortion <= T(0)) {
         const T invLen = T(1) / std::sqrt(x * x + y * y + T(1));
         out[0] = x * invLen;
         out[1] = y * invLen;
         out[2] = -invLen;
-        return;
+        return true;
+    }
+    if (distortion > T(1)) {
+        // The same line scaled by e = 1 / d: P = (u x, u y, z) with u the far
+        // root of ww u^2 - 2 (1 + e) u + (1 - e^2) = 0.
+        const T e = T(2) - distortion;
+        const T rr = x * x + y * y;
+        const T k = (T(1) + e) * (T(1) + e) - rr * (T(1) - e * e);
+        const T sk = std::sqrt(std::max(k, T(0)));
+        const T ww = e * e * rr + (T(1) + e) * (T(1) + e);
+        const T u = (T(1) + e + e * sk) / ww;
+        out[0] = u * x;
+        out[1] = u * y;
+        out[2] = (e * rr - (T(1) + e) * sk) / ww;
+        if (k >= T(0))
+            return true;
+        const T invLen = T(1) / std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+        for (int i = 0; i < 3; ++i)
+            out[i] *= invLen;
+        return false;
     }
     const T d = distortion;
     const T wz = -(T(1) + d); // w = (x, y, -(1 + d)): centre -> plane point
@@ -99,24 +149,38 @@ inline void planeToRay(T x, T y, T distortion, T out[3])
     out[0] = s * x;
     out[1] = s * y;
     out[2] = d + s * wz;
+    return true;
 }
 
 // The ray of the pixel at NDC (ndcX, ndcY) of a view with half-height
-// `h` (halfHeight()) and `aspect` (width / height).
+// `h` (halfHeight()) and `aspect` (width / height); false outside a globe's
+// disc (planeToRay).
 template <class T>
-inline void ndcToRay(T ndcX, T ndcY, T h, T aspect, T distortion, T out[3])
+inline bool ndcToRay(T ndcX, T ndcY, T h, T aspect, T distortion, T out[3])
 {
-    planeToRay(ndcX * h * aspect, -ndcY * h, distortion, out);
+    return planeToRay(ndcX * h * aspect, -ndcY * h, distortion, out);
 }
 
 // A view-space point (any length; a direction or a point on a chord between
 // two) -> its image-plane point, the central projection from (0, 0, d).
 // False when it isn't in front of the projection centre (z >= d - `near`);
 // a straight 3D segment maps to a straight segment in the plane, so a
-// polygon clipped against z = d - near projects edge by edge.
+// polygon clipped against z = d - near projects edge by edge. On a globe
+// the sphere's points past frontLimit are hidden behind its rim; that is the
+// caller's to clip.
 template <class T>
 inline bool pointToPlane(const T p[3], T distortion, T& x, T& y, T near = T(0))
 {
+    if (distortion > T(1)) {
+        const T e = T(2) - distortion; // the depth below is e (d - z)
+        const T depth = T(1) - e * p[2];
+        if (!(depth > e * near))
+            return false;
+        const T k = (T(1) + e) / depth;
+        x = p[0] * k;
+        y = p[1] * k;
+        return true;
+    }
     const T depth = distortion - p[2]; // distance in front of the centre
     if (!(depth > near))
         return false;
@@ -157,18 +221,22 @@ inline T autoDistortion(T fov)
     return d + (T(1) - d) * (t * t * (T(3) - T(2) * t));
 }
 
-// The d a pose renders with: its own, or Auto's for its field of view.
+// The distortion amount a pose renders with: its own, or Auto's for its
+// field of view (never a globe: zooming out alone doesn't turn the picture
+// into a disc on black).
 inline double distortionOf(const Pose& pose)
 {
-    return pose.distortionIsAuto() ? autoDistortion(pose.fov)
-                                 : std::clamp(double(pose.distortion), 0.0, 1.0);
+    return pose.distortionIsAuto()
+               ? autoDistortion(pose.fov)
+               : std::clamp(double(pose.distortion), 0.0, double(kMaxDistortion));
 }
 
 // The field of view's range, radians diagonal. The widest keeps the corners
 // short of where the projection runs off to infinity (d + cos(theta) = 0):
 // 145 deg rectilinear, 330 deg stereographic (a tiny planet with the sky
 // round it). Auto: the widest stereographic, its distortion grows with the
-// angle fast enough to stay within it.
+// angle fast enough to stay within it. A globe: as stereographic, its size
+// is taken at d = 1.
 inline constexpr double kMinFov = 0.3490658503988659; // 20 deg
 template <class T>
 inline T maxFov(T distortion)
@@ -196,10 +264,12 @@ inline T angleOfRadius(T r, T distortion)
 
 // The vertical angle through the centre of a picture `aspect` (width /
 // height) wide whose diagonal angle is `fov`, and back. Its corner's plane
-// radius is the half-height times sqrt(1 + aspect^2).
+// radius is the half-height times sqrt(1 + aspect^2). A globe's angles are
+// taken at d = 1, as its size is.
 template <class T>
 inline T fovYFor(T fov, T distortion, T aspect)
 {
+    distortion = std::min(distortion, T(1));
     const T k = std::sqrt(T(1) + aspect * aspect);
     if (distortion <= T(0))
         return T(2) * std::atan(std::tan(fov * T(0.5)) / k);
@@ -208,6 +278,7 @@ inline T fovYFor(T fov, T distortion, T aspect)
 template <class T>
 inline T fovFor(T fovY, T distortion, T aspect)
 {
+    distortion = std::min(distortion, T(1));
     const T k = std::sqrt(T(1) + aspect * aspect);
     if (distortion <= T(0))
         return T(2) * std::atan(std::tan(fovY * T(0.5)) * k);
@@ -215,7 +286,8 @@ inline T fovFor(T fovY, T distortion, T aspect)
 }
 
 // What a renderer draws `pose` with at `aspect` (width / height): the
-// vertical angle through the centre (halfHeight's) and the d. The field of
+// vertical angle through the centre (halfHeight's) and the distortion
+// amount. The field of
 // view is held in its range for that d -- between two keys with different
 // distortions the blend can reach past it.
 struct Lens {

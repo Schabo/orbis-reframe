@@ -2,7 +2,9 @@
 // (which explains it): a general perspective projection from (0, 0, d), d
 // = 0 rectilinear, d = 1 stereographic. At d = 0 these are the plain
 // rectilinear expressions, so the picture is unchanged to the bit. The view
-// looks along -Z with +Y up; NDC y = -1 is the top.
+// looks along -Z with +Y up; NDC y = -1 is the top. `d` here is the
+// distortion amount: past 1 it is the globe, d = 1 / (2 - amount), worked
+// in e = 2 - amount, with no ray outside its disc (viewInPicture).
 //
 // Both forms are computed and one is selected, rather than branched on d: a
 // branch here changes how the driver compiles the rectilinear expressions
@@ -17,6 +19,14 @@ float viewPlaneRadius(float angle, float d)
     return d <= 0.0 ? rectilinear : general;
 }
 
+// A globe's disc: (1 + e)^2 - r^2 (1 - e^2), negative where the line from the
+// projection centre through the plane point misses the sphere.
+float viewGlobeRoot(vec2 p, float d)
+{
+    float e = 2.0 - d;
+    return (1.0 + e) * (1.0 + e) - dot(p, p) * (1.0 - e * e);
+}
+
 // Image-plane point -> unit view ray: the line from the projection centre
 // through (p, -1) meets the unit sphere on its far side.
 vec3 viewPlaneToRay(vec2 p, float d)
@@ -27,13 +37,29 @@ vec3 viewPlaneToRay(vec2 p, float d)
     float b = d * (1.0 + d);
     float s = (b + sqrt(max(b * b - ww * (d * d - 1.0), 0.0))) / ww;
     vec3 general = vec3(0.0, 0.0, d) + s * w;
-    return d <= 0.0 ? rectilinear : general;
+    // The globe: the same line scaled by e = 1 / d, its far root u.
+    float e = 2.0 - d;
+    float rr = dot(p, p);
+    float sk = sqrt(max(viewGlobeRoot(p, d), 0.0));
+    float gw = e * e * rr + (1.0 + e) * (1.0 + e);
+    float u = (1.0 + e + e * sk) / gw;
+    vec3 globe = vec3(u * p, (e * rr - (1.0 + e) * sk) / gw);
+    return d <= 0.0 ? rectilinear : d > 1.0 ? globe : general;
 }
 
 // The view ray of the pixel at `ndc` of a view with vertical field of view
 // `fovY`, `aspect` (width / height) and distortion `d`.
+// A globe's size is taken at d = 1.
 vec3 viewRayAt(vec2 ndc, float fovY, float aspect, float d)
 {
-    float h = viewPlaneRadius(fovY * 0.5, d);
+    float h = viewPlaneRadius(fovY * 0.5, min(d, 1.0));
     return viewPlaneToRay(vec2(ndc.x * h * aspect, -ndc.y * h), d);
+}
+
+// Whether the pixel at `ndc` shows the sphere: everywhere but outside a
+// globe's disc, which is black.
+bool viewInPicture(vec2 ndc, float fovY, float aspect, float d)
+{
+    float h = viewPlaneRadius(fovY * 0.5, min(d, 1.0));
+    return d <= 1.0 || viewGlobeRoot(vec2(ndc.x * h * aspect, -ndc.y * h), d) >= 0.0;
 }

@@ -81,4 +81,7 @@ void main() {
     vec3 dir = mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
     vec3 rgb = blurredLenses(dir) / 255.0;
     outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
+    // Outside a globe's disc: black.
+    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

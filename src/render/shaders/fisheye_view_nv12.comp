@@ -95,9 +95,13 @@ vec3 stitchDir(vec3 sphereDir)
     return mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
 }
 
+// A pixel's colour, 0..255; black outside a globe's disc.
 vec3 shade(int px, int py)
 {
-    return gradeColor(blurredLenses(stitchDir(viewDir(px, py))), pc.colorGrade, pc.colorLut, 255.0);
+    vec3 c = gradeColor(blurredLenses(stitchDir(viewDir(px, py))), pc.colorGrade, pc.colorLut, 255.0);
+    vec2 ndc = vec2((float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0,
+                    (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0);
+    return viewInPicture(ndc, pc.fovY, pc.aspect, pc.distortion) ? c : vec3(0.0);
 }
 
 // BT.709 limited range, as reframe_reproject.comp.

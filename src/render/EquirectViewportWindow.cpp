@@ -179,7 +179,7 @@ void EquirectViewportWindow::SetPose(const view::Pose &pose)
     m_pose.pitch = std::clamp(pose.pitch, -kMaxPitch, kMaxPitch);
     m_pose.roll = pose.roll;
     m_pose.distortion = pose.distortionIsAuto() ? view::kAutoDistortion
-                                                : std::clamp(pose.distortion, 0.0f, 1.0f);
+                                                : std::clamp(pose.distortion, 0.0f, view::kMaxDistortion);
     m_pose.fov = std::clamp(pose.fov, view::kMinFov, view::maxFov(m_pose));
 }
 
@@ -413,9 +413,8 @@ bool EquirectViewportWindow::sphereDirAt(QPointF pos, float out[3]) const
         return false;
     view::Pose poses[pane::kMaxPanes];
     PanePoses(poses);
-    sphereDir((pos.x() - rect.x()) / rect.width(), (pos.y() - rect.y()) / rect.height(),
-              poses[i], float(rect.width() / rect.height()), out);
-    return true;
+    return sphereDir((pos.x() - rect.x()) / rect.width(), (pos.y() - rect.y()) / rect.height(),
+                     poses[i], float(rect.width() / rect.height()), out);
 }
 
 void EquirectViewportWindow::SphereDirAtFraction(double fx, double fy, float out[3]) const
@@ -423,7 +422,7 @@ void EquirectViewportWindow::SphereDirAtFraction(double fx, double fy, float out
     sphereDir(fx, fy, m_pose, ViewAspect(), out);
 }
 
-void EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &pose, float aspect,
+bool EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &pose, float aspect,
                                        float out[3]) const
 {
     // equirect.frag's ray: view ray from the NDC (ViewProjection.h), roll,
@@ -432,8 +431,8 @@ void EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &p
     const float ndcY = float(2.0 * fy - 1.0);
     const view::Lens lens = view::lens(pose, aspect);
     float v[3];
-    view::ndcToRay(ndcX, ndcY, view::halfHeight(lens.fovY, lens.distortion), aspect,
-                   lens.distortion, v);
+    const bool inPicture = view::ndcToRay(ndcX, ndcY, view::halfHeight(lens.fovY, lens.distortion),
+                                          aspect, lens.distortion, v);
     const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
     const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
@@ -450,6 +449,7 @@ void EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &p
     n = std::sqrt(n);
     for (int i = 0; i < 3; ++i)
         out[i] /= n;
+    return inPicture;
 }
 
 int EquirectViewportWindow::insetAt(QPointF pos) const

@@ -59,19 +59,23 @@ ReframePanel::ReframePanel(QWidget *parent)
     distortionLayout->setContentsMargins(0, 0, 0, 0);
     m_distortionAuto = new QCheckBox(tr("Auto"), m_distortionRow);
     m_distortionAuto->setObjectName(QStringLiteral("reframeDistortionAuto"));
-    m_distortionAuto->setToolTip(tr("Follow the field of view: none up to about 90°, rising "
-                                    "to full at 170° and wider."));
+    m_distortionAuto->setToolTip(tr("Follow the field of view: none up to about 95°, rising "
+                                    "to 100 % for a tiny planet at 300° and wider."));
     m_distortion = new QSlider(Qt::Horizontal, m_distortionRow);
     m_distortion->setObjectName(QStringLiteral("reframeDistortion"));
-    m_distortion->setRange(0, 100);
+    // 0-100 % from straight lines to kept shapes, then on to 200 % the globe:
+    // the tiny planet's 100 % is the middle.
+    m_distortion->setRange(0, static_cast<int>(view::kMaxDistortion * 100.0f));
     m_distortion->setPageStep(10);
     m_distortion->setTracking(false); // one edit (and keyframe) per release
     m_distortion->setToolTip(tr("0 % keeps straight lines straight but stretches the edges "
                                 "of a wide view; 100 % keeps shapes and bends lines away from "
-                                "the centre, the fisheye and tiny-planet look."));
+                                "the centre, the fisheye and tiny-planet look. Past 100 % the "
+                                "world becomes a globe on black, seen from further away up "
+                                "to 200 %."));
     m_distortionValue = new QLabel(m_distortionRow);
     m_distortionValue->setMinimumWidth(
-        m_distortionValue->fontMetrics().horizontalAdvance(QStringLiteral("100%")));
+        m_distortionValue->fontMetrics().horizontalAdvance(QStringLiteral("200%")));
     distortionLayout->addWidget(m_distortionAuto);
     distortionLayout->addWidget(m_distortion, 1);
     distortionLayout->addWidget(m_distortionValue);

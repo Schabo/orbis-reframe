@@ -49,10 +49,11 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
         v[i][1] = -x1 * sr + y2 * cr;
         v[i][2] = z2;
     }
-    // Keep z <= d - kNear (in front of the projection centre (0, 0, d));
+    // Keep z <= d - kNear (in front of the projection centre (0, 0, d)), or
+    // on a globe z <= 1 / d - kNear (not behind its rim): view::frontLimit.
     // Sutherland-Hodgman against that plane.
     constexpr float kNear = 1e-3f;
-    const float zMax = lens.distortion - kNear;
+    const float zMax = view::frontLimit(lens.distortion) - kNear;
     float c[6][3];
     int n = 0;
     for (int i = 0; i < 4; ++i) {

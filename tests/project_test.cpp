@@ -1785,8 +1785,9 @@ void testMarksJson()
         CHECK(p.load(file, &err));
         CHECK(p.timeline()->count() == 1 && p.timeline()->clipAt(0).marks.isEmpty() &&
               p.timeline()->clipAt(0).hiddenMarks.isEmpty());
-        writeFile(file, QByteArrayLiteral(
-                            R"({"format":"orbis-reframe-project","version":23,"timeline":{"clips":[]}})"));
+        writeFile(file, QStringLiteral(R"({"format":"orbis-reframe-project","version":%1,"timeline":{"clips":[]}})")
+                .arg(Project::kFormatVersion + 1)
+                .toUtf8());
         CHECK(!p.load(file, &err));
     }
 }
@@ -2804,6 +2805,67 @@ void testWideViewJson()
     }
 }
 
+// Version 23: a key's distortion past 1, the globe, up to 2. Written only
+// when a key (a pane's too) has one; a larger amount is held at 2 on load.
+void testGlobeJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    writeFile(tmp.path() + "/clip.insv");
+    const QString in = tmp.path() + "/in.orp";
+    writeFile(in, QStringLiteral(R"({"format": "orbis-reframe-project", "version": 23,
+        "output": {"aspect": "16:9", "width": 1920, "height": 1080, "fps": 0},
+        "timeline": {"clips": [
+          {"source": "clip.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
+           "fps": 30, "reframe": {"keys": [
+             {"tMs": 0, "yaw": 0, "pitch": 0, "roll": 0, "diag": 3.5, "distortion": 1.6},
+             {"tMs": 1000, "yaw": 0, "pitch": 0, "roll": 0, "diag": 3.5, "distortion": 3.0}]}}]}})")
+                       .toUtf8());
+    const auto version = [](const QString &path) {
+        QFile f(path);
+        f.open(QIODevice::ReadOnly);
+        return QJsonDocument::fromJson(f.readAll()).object().value("version").toInt();
+    };
+    QString err;
+    const QString globe = tmp.path() + "/globe.orp", plain = tmp.path() + "/plain.orp",
+                  pane = tmp.path() + "/pane.orp";
+    {
+        Project p;
+        CHECK(p.load(in, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.reframe.count() == 2);
+        if (c.reframe.count() != 2)
+            return;
+        CHECK(c.reframe.keys()[0].pose.distortion == 1.6f);
+        CHECK(c.reframe.keys()[1].pose.distortion == view::kMaxDistortion);
+        CHECK(p.save(globe, &err));
+        CHECK(version(globe) == Project::kGlobeFormatVersion);
+
+        // No globe left: the version an older build reads.
+        const int id = c.id;
+        ReframePose k = c.reframe.keys()[0].pose;
+        k.distortion = 1.0f;
+        p.timeline()->upsertClipReframeKey(id, 0, k);
+        p.timeline()->upsertClipReframeKey(id, 1000, k);
+        CHECK(p.save(plain, &err));
+        CHECK(version(plain) < Project::kGlobeFormatVersion);
+
+        // A pane's globe counts too.
+        k.distortion = 1.25f;
+        p.timeline()->upsertClipReframeKey(id, 0, k, 1);
+        CHECK(p.save(pane, &err));
+        CHECK(version(pane) == Project::kGlobeFormatVersion);
+    }
+    {
+        Project p;
+        CHECK(p.load(globe, &err));
+        CHECK(p.timeline()->clipAt(0).reframe.keys()[0].pose.distortion == 1.6f);
+        CHECK(p.load(pane, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.panes[0].count() == 1 && c.panes[0].keys()[0].pose.distortion == 1.25f);
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -2836,5 +2898,6 @@ int main(int argc, char **argv)
     testLutJson();
     testSplitJson();
     testWideViewJson();
+    testGlobeJson();
     return modeltest::finish("project_test");
 }

@@ -106,7 +106,7 @@ const char kUsage[] =
     "  --keys FILE            reframe keyframes; lines of: time_ms yaw_rad pitch_rad fov_rad\n"
     "                        [roll_rad] [distortion] (fov: the diagonal; '#' comments\n"
     "                        allowed; times are clip-absolute; roll default 0,\n"
-    "                        distortion 0..1, default automatic)\n"
+    "                        distortion 0..2, default automatic)\n"
     "  --size WxH             output resolution (default 1920x1080)\n"
     "  --fps N                output frame rate (default: source fps)\n"
     "  --codec h264|h265     output codec (default h265)\n"
@@ -123,7 +123,8 @@ const char kUsage[] =
     "  --yaw DEG --pitch DEG --roll DEG --fov DEG   static pose when --keys is absent\n"
     "                        (fov: the diagonal, corner to corner; default 114.85)\n"
     "  --distortion D|auto   the static pose's projection, 0 rectilinear .. 1\n"
-    "                        stereographic (default auto: follows the fov)\n"
+    "                        stereographic .. 2 the globe's orthographic end\n"
+    "                        (default auto: follows the fov)\n"
     "  --exposure EV --contrast PCT --saturation PCT --temperature PCT\n"
     "                        colour grade (all default 0 = neutral)\n"
     "  --lut FILE.cube        a 3D LUT applied before the grade (e.g. a log-to-Rec.709 one)\n"
@@ -222,7 +223,8 @@ Args parseArgs(int argc, char** argv)
         else if (k == "--distortion") {
             const std::string d = next("--distortion");
             a.distortion = d == "auto" ? view::kAutoDistortion
-                                       : std::clamp(std::atof(d.c_str()), 0.0, 1.0);
+                                       : std::clamp(std::atof(d.c_str()), 0.0,
+                                                    double(view::kMaxDistortion));
         }
         else if (k == "--exposure")
             a.exposureEv = static_cast<float>(std::atof(next("--exposure").c_str()));
@@ -313,7 +315,7 @@ ReframeTrack loadKeys(const std::string& path, qint64 frameDurMs)
         float roll = 0.0f, distortion = view::kAutoDistortion;
         if (ls >> roll) // optional 5th and 6th columns
             if (ls >> distortion)
-                distortion = std::clamp(distortion, 0.0f, 1.0f);
+                distortion = std::clamp(distortion, 0.0f, view::kMaxDistortion);
         track.upsert(static_cast<qint64>(tms), ReframePose{yaw, pitch, roll, fov, distortion},
                      frameDurMs);
     }

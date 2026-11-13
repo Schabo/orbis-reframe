@@ -28,7 +28,7 @@ section (settings sidebar, **Video** tab):
 | **Pitch** | Up / down. 0° is level, 90° straight up. | −89° to 89° |
 | **Roll** | Tilts the picture, like tilting your head. Usually 0°. | −180° to 180° |
 | **Field of view** | How much the view takes in, from one corner of the picture to the opposite one. Small values zoom in, large values give a wide view. | 20° to 330°, depending on **Distortion** |
-| **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 % (see [Wide views and tiny planets](#wide-views-and-tiny-planets)). | Auto, 0 % to 100 % |
+| **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 %, and on to 200 % for a globe (see [Wide views and tiny planets](#wide-views-and-tiny-planets) and [Globes](#globes)). | Auto, 0 % to 200 % |
 
 In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
 the field of view. Roll and distortion can only be set in the section. The
@@ -73,6 +73,25 @@ of view to 250° or more: the ground curls into a small globe with the sky
 around it. Looking straight up instead turns the sky into a tunnel. A
 keyframe move from a normal view to a tiny planet zooms out smoothly, and
 with Auto on both keyframes the picture bends more and more as it widens.
+
+### Globes
+
+![A globe: looking straight down at 200° and 170 % distortion](images/globe.jpg)
+
+Past 100 %, **Distortion** shows the world as a globe: a ball you look at
+from outside, on black. At 100 % it is a tiny planet that fills the
+picture; as the amount rises, the world draws together into a disc and the
+picture around it turns black, as if you stepped further and further back.
+At 200 % you see one half of the world in the disc, the half the view looks
+at. 100 % is the middle of the slider.
+
+Look straight down for a planet-like globe, or straight up for the sky in a
+ball. On a globe, **Field of view** still sets how big the picture is: the
+disc is as large as the tiny planet at that angle would be at 100 %, so
+wider makes the globe smaller. Auto never goes past 100 %, so zooming out
+on Auto gives a tiny planet, not a globe; untick it and drag the slider
+past the middle. Between two keyframes the amount moves smoothly, so
+a tiny planet can turn into a globe and back.
 
 > **Projects from earlier versions** keep their views: each keyframe takes
 > the corner-to-corner angle that frames what it framed before, with

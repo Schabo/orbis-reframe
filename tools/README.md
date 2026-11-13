@@ -181,14 +181,15 @@ build/playback_bench --frames 300 --eq 3840,5760 clip.insv
 
 ## view_compare
 
-Renders a flat 1920x1080 view of one frame from a few directions -- two of
+Renders a flat 1920x1080 view of one frame from a few directions -- three of
 them through the distorted projection (`wide140_d50`, a wide view half way
-to stereographic, and `planet_d100`, a tiny planet) -- in two ways: straight from the fisheyes (the "fused" pass the viewport and export
+to stereographic, `planet_d100`, a tiny planet, and `globe_d170`, a globe
+on black; its PSNR counts the black too) -- in two ways: straight from the fisheyes (the "fused" pass the viewport and export
 use) and through an equirect of several sizes. It compares each with an 8K
 equirect reference: PSNR, and a sharpness figure. It also renders the
 fused view as P010 (the 10-bit export) and checks it against the NV12 one:
 within one 8-bit code, and with samples finer than 8 bits (a widened 8-bit
-picture has none); it exits 1 if not. `--seam Y,P,R,CU,CV,S` and
+picture has none; the black round a globe aside); it exits 1 if not. `--seam Y,P,R,CU,CV,S` and
 `--colour R,G,B,SR,SG,SB` stitch with a seam correction and a lens colour
 (as `stitch_source_smoke`'s), and `--new-stitcher` the new stitcher with
 its seam colour blend and seam flow (`--no-seam-flow` without the flow),
@@ -451,10 +452,11 @@ encoder was picked and why the ones before it can't be used; the "no usable
 hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
 `time_ms yaw pitch fov [roll] [distortion]`, angles in **radians**, the
-field of view corner to corner as the app's keys; distortion 0..1, left out
+field of view corner to corner as the app's keys; distortion 0..2, left out
 = automatic), or a fixed `--yaw/--pitch/--fov` (degrees, corner to corner)
 and `--distortion D|auto` (default auto): 0 is rectilinear, 1
-stereographic (with `--pitch -90` and a wide `--fov`, a tiny planet).
+stereographic (with `--pitch -90` and a wide `--fov`, a tiny planet), past
+1 the globe, a disc on black, orthographic at 2.
 The stitcher is as the Stitching section's *Stitcher*: by default the new
 stitcher, as a new clip's (`--new-stitcher` says so explicitly),
 `--no-seam-colour-blend` / `--no-seam-flow` without its seam colour blend /

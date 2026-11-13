@@ -315,15 +315,16 @@ private:
     QRectF outputRect() const;
     // The unit direction in the sphere frame that the picture shows at `pos`
     // (window coordinates) -- equirect.frag's ray, through the view of the
-    // pane under it. False outside the panes.
+    // pane under it. False outside the panes, and outside a globe's disc.
     bool sphereDirAt(QPointF pos, float out[3]) const;
     // Pane `i`'s rect in window coordinates (the output rect unsplit).
     QRectF paneRect(int i) const;
     // The pane under `pos` (window coordinates), or -1.
     int paneAt(QPointF pos) const;
     // The direction at fractions (fx, fy) of a pane `aspect` wide through
-    // `pose`, then the stabilization.
-    void sphereDir(double fx, double fy, const view::Pose &pose, float aspect, float out[3]) const;
+    // `pose`, then the stabilization. False outside a globe's disc, `out` the
+    // direction at its rim.
+    bool sphereDir(double fx, double fy, const view::Pose &pose, float aspect, float out[3]) const;
     // The topmost inset under `pos` (window coordinates), or -1.
     int insetAt(QPointF pos) const;
 

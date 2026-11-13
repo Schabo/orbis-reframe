@@ -125,7 +125,13 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
 
             // View-space ray (matches equirect.frag: +Y up, -Z forward).
             float ray[3];
-            view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray);
+            uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
+            if (!view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray)) {
+                // Outside a globe's disc: black.
+                dst[0] = dst[1] = dst[2] = 0;
+                dst[3] = 255;
+                continue;
+            }
             const float vx = ray[0], vy = ray[1], vz = ray[2];
 
             // Roll about Z (view axis), then pitch about X, then yaw about Y.
@@ -152,7 +158,6 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
             sampleEquirect(eq, eqW, eqH, u, v, rgba);
             gradeRgb(rgba, grade);
 
-            uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
             for (int c = 0; c < 4; ++c)
                 dst[c] = static_cast<uint8_t>(std::clamp(rgba[c] + 0.5f, 0.0f, 255.0f));
         }

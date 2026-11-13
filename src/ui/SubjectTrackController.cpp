@@ -124,7 +124,8 @@ bool SubjectTrackController::start(const Run &run)
         const double d = lens.distortion;
         const double p[3] = {v.x, v.y, v.z};
         double px = 0.0, py = 0.0;
-        if (view::pointToPlane(p, d, px, py, 1e-6)) {
+        // On a globe, a subject behind its rim isn't in the picture.
+        if (v.z < view::frontLimit(d) && view::pointToPlane(p, d, px, py, 1e-6)) {
             // The box at the subject's angular size, as the view's centre shows it.
             const double t = view::halfHeight<double>(lens.fovY, d);
             const double fx = (px / (t * aspect) + 1.0) * 0.5;

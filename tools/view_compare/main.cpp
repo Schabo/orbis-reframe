@@ -100,14 +100,19 @@ DepthCheck checkP010(const std::vector<uint8_t>& p010, const std::vector<uint8_t
     const size_t n = nv12.size();
     if (p010.size() != 2 * n)
         return {255, 0.0};
-    size_t fine = 0;
+    size_t fine = 0, picture = 0;
     for (size_t i = 0; i < n; ++i) {
         const int code10 = (p010[2 * i] | (p010[2 * i + 1] << 8)) >> 6;
-        fine += (code10 & 3) != 0;
         // Round half up, as the shader's q8: the nearest 8-bit code.
         c.maxDiff8 = std::max(c.maxDiff8, std::abs((code10 + 2) / 4 - int(nv12[i])));
+        // The black round a globe is exact 8-bit codes (Y 16, CbCr 128); only
+        // the picture counts.
+        if (code10 == (i < size_t(kW) * kH ? 64 : 512))
+            continue;
+        ++picture;
+        fine += (code10 & 3) != 0;
     }
-    c.fineShare = double(fine) / double(n);
+    c.fineShare = picture ? double(fine) / double(picture) : 0.0;
     return c;
 }
 
@@ -217,6 +222,8 @@ int main(int argc, char** argv)
         // stereographic, and a tiny planet looking straight down.
         {"wide140_d50", {30.0f * deg, -10.0f * deg, 0.0f, vert(140.0f, 0.5f), 0.5f}},
         {"planet_d100", {0.0f, -90.0f * deg, 0.0f, vert(250.0f, 1.0f), 1.0f}},
+        // The globe past 100 %, a disc on black, looking down.
+        {"globe_d170", {0.0f, -90.0f * deg, 0.0f, vert(160.0f, 1.0f), 1.7f}},
     };
     struct Path {
         const char* name;

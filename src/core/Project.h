@@ -73,8 +73,8 @@ public:
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
     //   diag, distortion, ease}]} (diag: the field of view, radians corner
-    //   to corner; distortion: 0..1, absent => automatic; ease: "easeOut" |
-    //   "easeIn", the move to the next key; absent => linear), color {exposureEv, contrast, saturation, temperature;
+    //   to corner; distortion: 0..2, past 1 the globe, absent =>
+    //   automatic; ease: "easeOut" | "easeIn", the move to the next key; absent => linear), color {exposureEv, contrast, saturation, temperature;
     //   optional: lut (a .cube file, stored like source), lutStrength},
     //   speed, stabilization {mode, windowYawSec, windowPitchSec,
     //   windowRollSec, horizonLockAmount, horizonGain, accelLowPassHz,
@@ -183,8 +183,11 @@ public:
     // build would drop them on save, and lose which part is gone. It also
     // added a media item's highlight marks ("marks", "hiddenMarks"),
     // written only when an item has either: an older build would drop them
-    // on save.
-    static constexpr int kFormatVersion = 22;
+    // on save. Version 23 added the globe: a key's "distortion" past 1, up
+    // to 2 (ViewProjection.h), written only when a key has one: an older
+    // build would clamp it to 1 and show a tiny planet.
+    static constexpr int kFormatVersion = 23;
+    static constexpr int kGlobeFormatVersion = 23;
     static constexpr int kPartsFormatVersion = 22;
     static constexpr int kMarkFormatVersion = 21;
     static constexpr int kStitchFormatVersion = 20;

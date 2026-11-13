@@ -68,4 +68,7 @@ void main() {
     vec2 uv = vec2(longitude / (2.0 * PI) + 0.5, 0.5 - latitude / PI);
     outColor = texture(equirectSampler, uv);
     outColor.rgb = gradeColor(outColor.rgb, pc.colorGrade, pc.colorLut, 1.0);
+    // Outside a globe's disc: black.
+    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

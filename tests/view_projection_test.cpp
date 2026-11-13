@@ -1,7 +1,8 @@
 // ViewProjection.h: the flat view's general perspective projection -- the
 // rectilinear and stereographic ends, rays and plane points round trip, the
 // centre's magnification, what is in front of the projection centre; the
-// diagonal field of view, the automatic distortion and the angle limits.
+// diagonal field of view, the automatic distortion and the angle limits;
+// the globe past d = 1.
 // The exit code is the failure count.
 
 #include "support/ModelTest.h"
@@ -226,6 +227,74 @@ void testLimits()
     CHECK(near(view::lens(p, 1.0).fovY, view::fovYFor(view::kMinFov, 0.0, 1.0), 1e-6));
 }
 
+// The globe, amounts past 1: d = 1 / (2 - a). The world fits a disc of plane
+// radius sqrt((d + 1) / (d - 1)), out to acos(-1 / d) off the axis; beyond
+// it no ray. It runs on from stereographic and ends orthographic, and its
+// size and angles are taken at d = 1.
+void testGlobe()
+{
+    constexpr double deg = kPi / 180.0;
+    for (double a : {1.2, 1.5, 1.8, 1.95, 2.0}) {
+        const double e = 2.0 - a;
+        // Directions out to just inside the rim round trip, as unit rays.
+        const double rim = std::acos(-e);
+        for (double t = 0.0; t < rim - 1e-3; t += 0.05) {
+            for (double phi = 0.0; phi < 2.0 * kPi; phi += 0.7) {
+                const double dir[3] = {std::sin(t) * std::cos(phi), std::sin(t) * std::sin(phi),
+                                       -std::cos(t)};
+                CHECK(dir[2] < view::frontLimit(a));
+                double x = 0.0, y = 0.0, r[3];
+                CHECK(view::pointToPlane(dir, a, x, y));
+                CHECK(near(std::hypot(x, y), view::planeRadius(t, a), 1e-9));
+                CHECK(view::planeToRay(x, y, a, r));
+                CHECK(near(r[0], dir[0], 1e-7) && near(r[1], dir[1], 1e-7) &&
+                      near(r[2], dir[2], 1e-7));
+            }
+        }
+        // The disc's rim, and black past it with the rim's ray, unit length.
+        const double disc = e > 0.0 ? std::sqrt((1.0 + e) / (1.0 - e)) : 1.0;
+        double r[3];
+        CHECK(view::planeToRay(disc * 0.999, 0.0, a, r));
+        CHECK(!view::planeToRay(disc * 1.001, 0.0, a, r));
+        CHECK(near(std::hypot(r[0], r[1], r[2]), 1.0, 1e-12));
+        CHECK(near(r[2], e, 1e-2) && r[0] > 0.0);
+        CHECK(!view::planeToRay(0.0, -5.0, a, r) && r[1] < 0.0);
+        // The centre is magnified as at every d.
+        CHECK(near(view::planeRadius(1e-6, a), 1e-6, 1e-6));
+    }
+    // Orthographic at 2: the plane point is the ray's x and y.
+    double r[3];
+    CHECK(view::planeToRay(0.6, -0.3, 2.0, r));
+    CHECK(near(r[0], 0.6, 1e-15) && near(r[1], -0.3, 1e-15) &&
+          near(r[2], -std::sqrt(1.0 - 0.45), 1e-15));
+    // On from stereographic: the rays and radii on both sides of 1 meet.
+    for (double x : {0.3, 1.0, 2.5, 6.0}) {
+        double lo[3], hi[3];
+        view::planeToRay(x, 0.4, 1.0, lo);
+        view::planeToRay(x, 0.4, 1.0 + 1e-9, hi);
+        for (int i = 0; i < 3; ++i)
+            CHECK(near(lo[i], hi[i], 1e-7));
+    }
+    CHECK(near(view::planeRadius(1.2, 1.0), view::planeRadius(1.2, 1.0 + 1e-12), 1e-9));
+    CHECK(view::frontLimit(1.0) == 1.0 && view::frontLimit(1.5) == 0.5 &&
+          view::frontLimit(0.3) == 0.3);
+    // The size and the angles are the tiny planet's.
+    CHECK(view::halfHeight(1.4, 1.7) == view::halfHeight(1.4, 1.0));
+    CHECK(view::fovYFor(4.0, 1.7, 16.0 / 9.0) == view::fovYFor(4.0, 1.0, 16.0 / 9.0));
+    CHECK(view::fovFor(2.0, 1.7, 16.0 / 9.0) == view::fovFor(2.0, 1.0, 16.0 / 9.0));
+    CHECK(view::maxFov(1.7) == view::maxFov(1.0));
+    view::Pose p;
+    p.fov = 200.0 * deg;
+    p.distortion = 1.7f;
+    CHECK(near(view::distortionOf(p), 1.7, 1e-7));
+    const view::Lens lens = view::lens(p, 16.0 / 9.0);
+    CHECK(lens.distortion == 1.7f);
+    p.distortion = 1.0f;
+    CHECK(lens.fovY == view::lens(p, 16.0 / 9.0).fovY);
+    p.distortion = 2.5f;
+    CHECK(view::distortionOf(p) == 2.0);
+}
+
 } // namespace
 
 int main()
@@ -241,5 +310,6 @@ int main()
     testOldVerticalExact();
     testAutoDistortion();
     testLimits();
+    testGlobe();
     return modeltest::finish("view_projection_test");
 }
