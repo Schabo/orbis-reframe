@@ -97,6 +97,13 @@ a tiny planet can turn into a globe and back.
 
 ### Natural
 
+![The same 157° view at 100 % distortion, without Natural and with Full](images/natural.jpg)
+
+1. 157° at 100 % distortion: the mast on the left bows outward, and so do
+   the lamp posts on the right.
+2. The same view with **Natural** on **Full**: the mast and the lamp posts
+   stand straight; the road still curves.
+
 **Natural** changes how **Distortion** bends the picture. A distorted view
 bends every line that doesn't run through the middle, upright ones too:
 lamp posts and door frames lean outward toward the sides. Natural takes the
