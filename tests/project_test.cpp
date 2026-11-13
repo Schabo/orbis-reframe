@@ -2839,7 +2839,7 @@ void testGlobeJson()
         CHECK(c.reframe.keys()[0].pose.distortion == 1.6f);
         CHECK(c.reframe.keys()[1].pose.distortion == view::kMaxDistortion);
         CHECK(p.save(globe, &err));
-        CHECK(version(globe) == Project::kGlobeFormatVersion);
+        CHECK(version(globe) == Project::kViewShapeFormatVersion);
 
         // No globe left: the version an older build reads.
         const int id = c.id;
@@ -2848,13 +2848,13 @@ void testGlobeJson()
         p.timeline()->upsertClipReframeKey(id, 0, k);
         p.timeline()->upsertClipReframeKey(id, 1000, k);
         CHECK(p.save(plain, &err));
-        CHECK(version(plain) < Project::kGlobeFormatVersion);
+        CHECK(version(plain) < Project::kViewShapeFormatVersion);
 
         // A pane's globe counts too.
         k.distortion = 1.25f;
         p.timeline()->upsertClipReframeKey(id, 0, k, 1);
         CHECK(p.save(pane, &err));
-        CHECK(version(pane) == Project::kGlobeFormatVersion);
+        CHECK(version(pane) == Project::kViewShapeFormatVersion);
     }
     {
         Project p;
@@ -2863,6 +2863,64 @@ void testGlobeJson()
         CHECK(p.load(pane, &err));
         const ClipItem &c = p.timeline()->clipAt(0);
         CHECK(c.panes[0].count() == 1 && c.panes[0].keys()[0].pose.distortion == 1.25f);
+    }
+}
+
+// Natural: a key's "panini", round trip, clamped on load, absent = 0;
+// version 23 only while a key has it.
+void testNaturalJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    writeFile(tmp.path() + "/clip.insv");
+    const QString in = tmp.path() + "/in.orp";
+    writeFile(in, QStringLiteral(R"({"format": "orbis-reframe-project", "version": 23,
+        "output": {"aspect": "16:9", "width": 1920, "height": 1080, "fps": 0},
+        "timeline": {"clips": [
+          {"source": "clip.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
+           "fps": 30, "reframe": {"keys": [
+             {"tMs": 0, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8, "distortion": 1.0,
+              "panini": 0.75},
+             {"tMs": 1000, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8, "panini": 4.0},
+             {"tMs": 2000, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8}]}}]}})")
+                       .toUtf8());
+    const auto version = [](const QString &path) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly))
+            return -1;
+        return QJsonDocument::fromJson(f.readAll()).object().value("version").toInt();
+    };
+    QString err;
+    const QString natural = tmp.path() + "/natural.orp", plain = tmp.path() + "/plain.orp";
+    {
+        Project p;
+        CHECK(p.load(in, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.reframe.count() == 3);
+        if (c.reframe.count() != 3)
+            return;
+        CHECK(c.reframe.keys()[0].pose.panini == 0.75f);
+        CHECK(c.reframe.keys()[1].pose.panini == 1.0f);
+        CHECK(c.reframe.keys()[2].pose.panini == 0.0f);
+        // Blended between keys.
+        const float mid = c.reframe.sample(500).panini;
+        CHECK(mid > 0.75f && mid < 1.0f);
+        CHECK(p.save(natural, &err));
+        CHECK(version(natural) == Project::kViewShapeFormatVersion);
+
+        const int id = c.id;
+        for (qint64 t : {0, 1000}) {
+            ReframePose k = p.timeline()->clipAt(0).reframe.sample(t);
+            k.panini = 0.0f;
+            p.timeline()->upsertClipReframeKey(id, t, k);
+        }
+        CHECK(p.save(plain, &err));
+        CHECK(version(plain) < Project::kViewShapeFormatVersion);
+    }
+    {
+        Project p;
+        CHECK(p.load(natural, &err));
+        CHECK(p.timeline()->clipAt(0).reframe.keys()[0].pose.panini == 0.75f);
     }
 }
 
@@ -2899,5 +2957,6 @@ int main(int argc, char **argv)
     testSplitJson();
     testWideViewJson();
     testGlobeJson();
+    testNaturalJson();
     return modeltest::finish("project_test");
 }

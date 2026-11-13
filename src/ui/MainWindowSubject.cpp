@@ -88,7 +88,7 @@ void MainWindow::startSubjectTracking(const QRectF &box)
     const view::Lens lens = view::lens(shown, aspect);
     req.seed = track::seedFromViewBox(box.x(), box.y(), box.width(), box.height(), shown.yaw,
                                       shown.pitch, shown.roll, lens.fovY, lens.distortion,
-                                      aspect);
+                                      aspect, lens.panini);
     const ReframeExportController::ClipJob job = exportJobFor(*c); // the stab, as exported
     req.clipPath = c->sourcePath.toStdString();
     req.fromMs = from;
@@ -161,7 +161,7 @@ void MainWindow::finishSubjectTracking(const subjecttrack::Result &r)
     QList<ReframeKey> list;
     for (const track::PathKey &k : keys)
         list.append(ReframeKey{
-            k.tMs, {float(k.yaw), float(k.pitch), look.roll, look.fov, look.distortion}});
+            k.tMs, {float(k.yaw), float(k.pitch), look.roll, look.fov, look.distortion, look.panini}});
     const qint64 until = r.samples.back().tMs;
     m_timeline->replaceClipReframeSpan(clipId, from, until, list, run.pane); // one undo step
     settle(until);

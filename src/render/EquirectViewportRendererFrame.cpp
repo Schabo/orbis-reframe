@@ -48,8 +48,8 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
         v[i][1] = -x1 * sr + y2 * cr;
         v[i][2] = z2;
     }
-    const int n = view::outlineToPlane(v, lens.distortion, out);
-    const float h = view::halfHeight(lens.fovY, lens.distortion);
+    const int n = view::outlineToPlane(v, lens.distortion, lens.panini, out);
+    const float h = view::halfHeight(lens.fovY, lens.distortion, lens.panini);
     for (int i = 0; i < n; ++i) {
         const float ndcX = out[i * 2] / (h * aspect);
         const float ndcY = -out[i * 2 + 1] / h;
@@ -563,6 +563,7 @@ void EquirectViewportRenderer::startNextFrame()
     const bool drawPicture = imp || (m_pipeline != VK_NULL_HANDLE &&
                                      m_descriptorSet != VK_NULL_HANDLE &&
                                      m_textureView != VK_NULL_HANDLE);
+    VkPipeline bound = imp ? m_lensPipeline : m_pipeline;
     if (imp) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lensPipeline);
         const VkDescriptorSet sets[2] = {m_lensSets[frameSlot], lutSet};
@@ -673,6 +674,7 @@ void EquirectViewportRenderer::startNextFrame()
     pc.fovY = panes[0].lens.fovY;
     pc.aspect = outAspect;
     pc.distortion = panes[0].lens.distortion;
+    pc.panini = panes[0].lens.panini;
     // Stabilization matrix, row-major in the window -> col-major (3 padded
     // vec3 columns) for std140.
     float stabRm[9];
@@ -702,6 +704,13 @@ void EquirectViewportRenderer::startNextFrame()
             pc.fovY = d.lens.fovY;
             pc.aspect = d.aspect;
             pc.distortion = d.lens.distortion;
+            pc.panini = d.lens.panini;
+        }
+        // A pane with Natural takes the shader's Natural build (the same
+        // layout, so the sets stay bound).
+        if (VkPipeline want = viewPipeline(imp != nullptr, pc.panini); want != bound) {
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, want);
+            bound = want;
         }
         vkCmdPushConstants(commandBuffer, imp ? m_lensPipelineLayout : m_pipelineLayout,
                            VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants), &pc);

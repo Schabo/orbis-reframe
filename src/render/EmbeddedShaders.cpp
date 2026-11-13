@@ -15,6 +15,10 @@ namespace {
 #include "seam_flow.comp.h"
 #include "reframe_reproject.comp.h"
 #include "fisheye_view_nv12.comp.h"
+#include "equirect.frag.natural.h"
+#include "fisheye_view.frag.natural.h"
+#include "reframe_reproject.comp.natural.h"
+#include "fisheye_view_nv12.comp.natural.h"
 } // namespace
 
 namespace render::shaders {
@@ -33,6 +37,10 @@ ORBIS_SPIRV(fisheyeStitchNv12Comp, kSpv_fisheye_stitch_nv12_comp)
 ORBIS_SPIRV(reframeReprojectComp, kSpv_reframe_reproject_comp)
 ORBIS_SPIRV(fisheyeViewNv12Comp, kSpv_fisheye_view_nv12_comp)
 ORBIS_SPIRV(seamFlowComp, kSpv_seam_flow_comp)
+ORBIS_SPIRV(equirectFragNatural, kSpv_equirect_frag_natural)
+ORBIS_SPIRV(fisheyeViewFragNatural, kSpv_fisheye_view_frag_natural)
+ORBIS_SPIRV(reframeReprojectCompNatural, kSpv_reframe_reproject_comp_natural)
+ORBIS_SPIRV(fisheyeViewNv12CompNatural, kSpv_fisheye_view_nv12_comp_natural)
 
 #undef ORBIS_SPIRV
 

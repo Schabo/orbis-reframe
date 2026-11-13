@@ -30,7 +30,10 @@ layout(push_constant) uniform PushConstants {
     float fovY;
     float aspect;
     float distortion; // view_projection.glsl's d
-    // 8 bytes of std140 padding (mat3 aligns at offset 32).
+#ifdef VIEW_NATURAL
+    float panini;     // and its p, Natural (that build only)
+#endif
+    // Up to 8 bytes of std140 padding (mat3 aligns at offset 32).
     mat3 stab;       // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
     vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
@@ -69,7 +72,11 @@ vec3 sampleLens(int i, vec2 uv)
 #include "view_projection.glsl"
 
 void main() {
+#ifdef VIEW_NATURAL
+    vec3 r = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini);
+#else
     vec3 r = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion);
+#endif
 
     float cr = cos(pc.roll), sr = sin(pc.roll);
     float cp = cos(pc.pitch), sp = sin(pc.pitch);
@@ -82,6 +89,10 @@ void main() {
     vec3 rgb = blurredLenses(dir) / 255.0;
     outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
     // Outside a globe's disc: black.
+#ifdef VIEW_NATURAL
+    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini))
+#else
     if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
+#endif
         outColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

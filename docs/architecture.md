@@ -149,13 +149,21 @@ The same view math exists in several places, and they must agree:
 - the subject tracker's crop (`src/track/`).
 
 The projection itself -- a view's pose (`view::Pose`: yaw, pitch, roll,
-the diagonal field of view, the distortion or Auto), what it renders with
-at an aspect (`view::lens`: the vertical angle and the distortion), and how
-its pixels become rays and back -- is written once, in
+the diagonal field of view, the distortion or Auto, Natural), what it
+renders with at an aspect (`view::lens`: the vertical angle, the distortion
+and Natural), and how its pixels become rays and back -- is written once, in
 `src/core/ViewProjection.h` and its GLSL twin
 `src/render/shaders/view_projection.glsl`; every implementation above, and
 viewport picking and overlays, goes through them, each turning the pose
 into a lens at the aspect it draws. Keep the two in step.
+
+Each of the four view shaders is built twice: as it is, and with
+`VIEW_NATURAL` defined, for a view whose Natural is above 0 (the renderer
+picks the pipeline per view). With Natural's code in the one shader, even
+behind a branch, NVIDIA's compiler changed the last bit of existing
+pictures; a view without Natural runs code that doesn't contain it. A new
+per-keyframe shape that has to leave existing output alone can do the
+same.
 
 A split clip's picture is several views, one per pane: where each pane
 goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)

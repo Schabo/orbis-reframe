@@ -31,8 +31,9 @@ struct PushConstants {
     float roll;
     float fovY;
     float aspect;
-    float distortion;    // view::Pose::distortion
-    float _pad[2];       // std140: mat3 below aligns at offset 32
+    float distortion;    // view::Lens::distortion
+    float panini;        // view::Lens::panini (Natural)
+    float _pad;          // std140: mat3 below aligns at offset 32
     float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major)
     float colorGrade[4]; // exposureEv, contrast%, saturation%, temperature%
     float colorLut[4];   // render::VulkanLutStore::pushValues
@@ -110,6 +111,10 @@ private:
     // A fullscreen-triangle graphics pipeline with equirect.vert and `frag`.
     // `blend`: straight alpha blending over what's drawn (the insets).
     VkPipeline makePipeline(render::shaders::Spirv frag, VkPipelineLayout layout, bool blend = false);
+    // The equirect (`lens` false) or lens pipeline for a view with Natural
+    // `panini`: above 0 the shader's Natural build (EmbeddedShaders.h), made
+    // the first time; if it can't be made, said once and the plain one.
+    VkPipeline viewPipeline(bool lens, float panini);
 
     // --- Picture-in-picture insets (inset.frag) ---
     // One per overlay on screen (PiP, title, gauge, a flat main clip), kept
@@ -181,6 +186,8 @@ private:
 
     VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_pipeline = VK_NULL_HANDLE;
+    VkPipeline m_pipelineNatural = VK_NULL_HANDLE; // viewPipeline
+    bool m_pipelineNaturalFailed = false;
     VkDescriptorSetLayout m_descriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet m_descriptorSet = VK_NULL_HANDLE;
@@ -226,6 +233,8 @@ private:
     std::vector<void *> m_lensUboMap;
     VkPipelineLayout m_lensPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_lensPipeline = VK_NULL_HANDLE;
+    VkPipeline m_lensPipelineNatural = VK_NULL_HANDLE; // viewPipeline
+    bool m_lensPipelineNaturalFailed = false;
     VkSampler m_lensSampler = VK_NULL_HANDLE;
     VkSampler m_flowSampler = VK_NULL_HANDLE; // the seam flow field: wraps in u, clamps in v
     std::map<uint64_t, LensImport> m_imports; // by LensSlot::id

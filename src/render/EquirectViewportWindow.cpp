@@ -180,6 +180,7 @@ void EquirectViewportWindow::SetPose(const view::Pose &pose)
     m_pose.roll = pose.roll;
     m_pose.distortion = pose.distortionIsAuto() ? view::kAutoDistortion
                                                 : std::clamp(pose.distortion, 0.0f, view::kMaxDistortion);
+    m_pose.panini = std::clamp(pose.panini, 0.0f, 1.0f);
     m_pose.fov = std::clamp(pose.fov, view::kMinFov, view::maxFov(m_pose));
 }
 
@@ -431,8 +432,9 @@ bool EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &p
     const float ndcY = float(2.0 * fy - 1.0);
     const view::Lens lens = view::lens(pose, aspect);
     float v[3];
-    const bool inPicture = view::ndcToRay(ndcX, ndcY, view::halfHeight(lens.fovY, lens.distortion),
-                                          aspect, lens.distortion, v);
+    const bool inPicture =
+        view::ndcToRay(ndcX, ndcY, view::halfHeight(lens.fovY, lens.distortion, lens.panini),
+                       aspect, lens.distortion, v, lens.panini);
     const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
     const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);

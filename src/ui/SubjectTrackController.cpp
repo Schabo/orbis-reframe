@@ -122,16 +122,20 @@ bool SubjectTrackController::start(const Run &run)
                                                 live->camYaw, live->camPitch, look.roll);
         const view::Lens lens = view::lens(look, aspect);
         const double d = lens.distortion;
-        const double p[3] = {v.x, v.y, v.z};
+        const double pn = lens.panini;
+        double p[3] = {v.x, v.y, v.z};
+        view::onSurface(p, pn);
         double px = 0.0, py = 0.0;
         // On a globe, a subject behind its rim isn't in the picture.
-        if (v.z < view::frontLimit(d) && view::pointToPlane(p, d, px, py, 1e-6)) {
-            // The box at the subject's angular size, as the view's centre shows it.
-            const double t = view::halfHeight<double>(lens.fovY, d);
+        if (p[2] < view::frontLimit(d) && view::pointToPlane(p, d, px, py, 1e-6)) {
+            // The box at the subject's angular size, as the view's centre
+            // shows it (Natural leaves the width alone).
+            const double t = view::halfHeight<double>(lens.fovY, d, pn);
             const double fx = (px / (t * aspect) + 1.0) * 0.5;
             const double fy = (-py / t + 1.0) * 0.5;
             const double fw = view::planeRadius(s.width * 0.5, d) / (t * aspect);
-            const double fh = view::planeRadius(s.height * 0.5, d) / t;
+            const double fh = (pn > 0.0 ? view::halfHeight(s.height, d, pn)
+                                        : view::planeRadius(s.height * 0.5, d)) / t;
             o.hasMarker = true;
             o.marker = QRectF(fx - fw * 0.5, fy - fh * 0.5, fw, fh);
             o.markerStyle = s.good ? EquirectViewportWindow::MarkerStyle::Tracking

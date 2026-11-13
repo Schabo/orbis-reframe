@@ -237,6 +237,8 @@ json reframeToJson(const ReframeTrack &track)
                 {"diag", k.pose.fov}};
         if (!k.pose.distortionIsAuto())
             jk["distortion"] = k.pose.distortion;
+        if (k.pose.panini > 0.0f)
+            jk["panini"] = k.pose.panini;
         if (k.ease != keytrack::Ease::Linear)
             jk["ease"] = keytrack::easeName(k.ease);
         keys.push_back(std::move(jk));
@@ -264,6 +266,7 @@ std::vector<ReframeKey> reframeKeysFromJson(const json &j, int version, double a
             if (jk.contains("distortion"))
                 k.pose.distortion =
                     std::clamp(jk.value("distortion", 0.0f), 0.0f, view::kMaxDistortion);
+            k.pose.panini = std::clamp(jk.value("panini", 0.0f), 0.0f, 1.0f);
         } else {
             k.pose.fov = view::fovFor<double>(jk.value("fovY", 1.309f), 0.0, aspect);
         }
@@ -1282,7 +1285,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyDirectionLock = false;
     bool anySplit = false;
     bool anyReframeKey = false; // keys hold the diagonal field of view
-    bool anyGlobe = false;      // a key's distortion past 1
+    bool anyViewShape = false;  // a key's distortion past 1, or Natural
     // The first 360 clip's stitch settings, and whether every 360 clip has
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
@@ -1347,12 +1350,13 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         const bool paneKeys = std::any_of(c.panes.begin(), c.panes.end(),
                                           [](const ReframeTrack &t) { return !t.isEmpty(); });
         anyReframeKey = anyReframeKey || paneKeys || !c.reframe.isEmpty();
-        const auto hasGlobe = [](const ReframeTrack &t) {
-            return std::any_of(t.keys().begin(), t.keys().end(),
-                               [](const ReframeKey &k) { return k.pose.distortion > 1.0f; });
+        const auto hasViewShape = [](const ReframeTrack &t) {
+            return std::any_of(t.keys().begin(), t.keys().end(), [](const ReframeKey &k) {
+                return k.pose.distortion > 1.0f || k.pose.panini > 0.0f;
+            });
         };
-        anyGlobe = anyGlobe || hasGlobe(c.reframe) ||
-                   std::any_of(c.panes.begin(), c.panes.end(), hasGlobe);
+        anyViewShape = anyViewShape || hasViewShape(c.reframe) ||
+                   std::any_of(c.panes.begin(), c.panes.end(), hasViewShape);
         if (c.split.isSplit() || paneKeys) {
             json jp = json::array();
             for (const ReframeTrack &t : c.panes)
@@ -1511,7 +1515,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyGlobe                  ? kGlobeFormatVersion
+        {"version", anyViewShape                  ? kViewShapeFormatVersion
                     : anyParts || anyMediaMark ? kPartsFormatVersion
                     : anyMark                 ? kMarkFormatVersion
                     : anyNewStitcher || anyLensCalibration ? kStitchFormatVersion

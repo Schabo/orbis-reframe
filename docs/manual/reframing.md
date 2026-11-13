@@ -19,7 +19,7 @@ four views at once.
 
 ## The view
 
-The view has five settings. You can see and type them in the **Reframe**
+The view has six settings. You can see and type them in the **Reframe**
 section (settings sidebar, **Video** tab):
 
 | Setting | What it is | Range |
@@ -29,9 +29,11 @@ section (settings sidebar, **Video** tab):
 | **Roll** | Tilts the picture, like tilting your head. Usually 0°. | −180° to 180° |
 | **Field of view** | How much the view takes in, from one corner of the picture to the opposite one. Small values zoom in, large values give a wide view. | 20° to 330°, depending on **Distortion** |
 | **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 %, and on to 200 % for a globe (see [Wide views and tiny planets](#wide-views-and-tiny-planets) and [Globes](#globes)). | Auto, 0 % to 200 % |
+| **Natural** | Bends a distorted view only sideways, so upright lines stay upright: **Full**, or an amount (see [Natural](#natural)). | Off, Full, or 0 % to 100 % |
 
 In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
-the field of view. Roll and distortion can only be set in the section. The
+the field of view. Roll, distortion and Natural can only be set in the
+section. The
 section is greyed out while there's no clip to reframe: none selected and
 none under the playhead.
 
@@ -93,6 +95,36 @@ on Auto gives a tiny planet, not a globe; untick it and drag the slider
 past the middle. Between two keyframes the amount moves smoothly, so
 a tiny planet can turn into a globe and back.
 
+### Natural
+
+**Natural** changes how **Distortion** bends the picture. A distorted view
+bends every line that doesn't run through the middle, upright ones too:
+lamp posts and door frames lean outward toward the sides. Natural takes the
+bend out of the up-and-down direction and leaves it in the sideways one, so
+upright lines stay upright and lines through the middle stay straight,
+while the width keeps the look the distortion gives it. Lines across the
+picture, like a horizon above or below the middle, still curve. That suits
+wide shots of streets, rooms and buildings.
+
+Tick **Full** to take the bend out of the up-and-down direction
+altogether (100 %); untick it to turn Natural off (0 %, the default). The
+slider sets an amount in between: it unticks **Full**, and dragging it
+back to 100 % ticks it again. With a lot of Natural the top and bottom of
+a very wide view stretch, and the widest field of view is a little less;
+an amount below 100 % trades some of the lean for less stretch, which can
+suit a tall picture. Full Natural at 100 % distortion is the view
+photographers call **Panini**.
+
+Natural works on the distortion, so at 0 % distortion it does nothing: the
+picture there has no bend to take out. With Auto, it acts on the amount
+Auto uses, which is small at the default field of view. To see it clearly,
+untick **Auto**, set the distortion to 100 % and the field of view to 170°
+or more, and look level at something upright near the sides. Upright lines
+come out upright when the view is level with the world: if the horizon is
+tilted, they straighten along the tilt. Between two keyframes the amount
+moves smoothly, like the distortion. Natural works on a globe too, which
+draws it as a barrel.
+
 > **Projects from earlier versions** keep their views: each keyframe takes
 > the corner-to-corner angle that frames what it framed before, with
 > distortion on Auto. Views wider than about 95° corner to corner now
@@ -102,8 +134,8 @@ a tiny planet can turn into a globe and back.
 
 ## Keyframes
 
-A keyframe stores the view (yaw, pitch, roll, field of view and distortion)
-at one moment of a clip. Between two keyframes the camera turns and zooms from one
+A keyframe stores the view (yaw, pitch, roll, field of view, distortion and
+Natural) at one moment of a clip. Between two keyframes the camera turns and zooms from one
 view to the other, the short way round, at the pace the first keyframe's
 **Easing** sets (see [Easing](#easing)). Distortion changes along with the
 field of view: between two keyframes on **Auto** it follows the field of view
@@ -312,7 +344,7 @@ very wide.
 The **active pane** is the one with the outline in the viewport. Everything
 that changes the view acts on it: dragging and the mouse wheel in the
 viewport, the **Yaw**, **Pitch**, **Roll**, **Field of view**,
-**Distortion** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
+**Distortion**, **Natural** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
 **Track subject…**. The keyframe diamonds on the clip are the active
 pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
 

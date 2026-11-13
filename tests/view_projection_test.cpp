@@ -2,7 +2,7 @@
 // rectilinear and stereographic ends, rays and plane points round trip, the
 // centre's magnification, what is in front of the projection centre; the
 // diagonal field of view, the automatic distortion and the angle limits;
-// the globe past d = 1; the region outlines.
+// the globe past d = 1; Natural (the Panini amount); the region outlines.
 // The exit code is the failure count.
 
 #include "support/ModelTest.h"
@@ -323,7 +323,7 @@ void testOutline()
 
     // Rectilinear: the arcs are the straight lines between the corners, the
     // picture the outline had as a plain quad.
-    int n = view::outlineToPlane(quad, 0.0, pts);
+    int n = view::outlineToPlane(quad, 0.0, 0.0, pts);
     CHECK(n == 4 * view::kOutlineSegments);
     double c[4][2];
     for (int k = 0; k < 4; ++k) {
@@ -339,7 +339,7 @@ void testOutline()
     // Every point is on its edge's great circle, at every distortion: its
     // ray lies in the plane through the centre and the edge's corners.
     for (double a : {0.0, 0.4, 1.0, 1.5, 2.0}) {
-        n = view::outlineToPlane(quad, a, pts);
+        n = view::outlineToPlane(quad, a, 0.0, pts);
         CHECK(n == 4 * view::kOutlineSegments);
         for (int i = 0; i < n; ++i) {
             const int k = i / view::kOutlineSegments;
@@ -352,9 +352,25 @@ void testOutline()
             CHECK(std::abs(r[0] * nrm[0] + r[1] * nrm[1] + r[2] * nrm[2]) / len < 1e-9);
         }
     }
+    // With Natural the points are the ellipsoid's, and still on the arcs.
+    for (double pn : {0.5, 1.0})
+        for (double a : {0.5, 1.0, 1.5}) {
+            n = view::outlineToPlane(quad, a, pn, pts);
+            CHECK(n == 4 * view::kOutlineSegments);
+            for (int i = 0; i < n; ++i) {
+                const int k = i / view::kOutlineSegments;
+                const double *p = quad[k], *q = quad[(k + 1) % 4];
+                double nrm[3] = {p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2],
+                                 p[0] * q[1] - p[1] * q[0]};
+                const double len = std::hypot(nrm[0], nrm[1], nrm[2]);
+                double r[3];
+                CHECK(view::planeToRay(pts[2 * i], pts[2 * i + 1], a, r, pn));
+                CHECK(std::abs(r[0] * nrm[0] + r[1] * nrm[1] + r[2] * nrm[2]) / len < 1e-9);
+            }
+        }
     // ... and bows away from the corners' straight lines once d > 0: the
     // middle of the top edge, off the chord.
-    n = view::outlineToPlane(quad, 1.0, pts);
+    n = view::outlineToPlane(quad, 1.0, 0.0, pts);
     {
         double a0[2], a1[2];
         view::pointToPlane(quad[0], 1.0, a0[0], a0[1]);
@@ -371,7 +387,7 @@ void testOutline()
     dir(150 * deg, -20 * deg, 1.0, wide[2]);
     dir(-60 * deg, -20 * deg, 1.0, wide[3]);
     for (double a : {0.0, 0.5, 1.0, 1.6}) {
-        n = view::outlineToPlane(wide, a, pts);
+        n = view::outlineToPlane(wide, a, 0.0, pts);
         CHECK(n >= 3 && n <= view::kOutlineMaxPoints);
         for (int i = 0; i < n; ++i) {
             CHECK(std::isfinite(pts[2 * i]) && std::isfinite(pts[2 * i + 1]));
@@ -382,8 +398,110 @@ void testOutline()
     for (int k = 0; k < 4; ++k)
         for (int i = 0; i < 3; ++i)
             back[k][i] = -quad[k][i];
-    CHECK(view::outlineToPlane(back, 0.0, pts) == 0);
-    CHECK(view::outlineToPlane(back, 1.5, pts) == 0);
+    CHECK(view::outlineToPlane(back, 0.0, 0.0, pts) == 0);
+    CHECK(view::outlineToPlane(back, 1.5, 0.0, pts) == 0);
+}
+
+// Natural: rays onto the ellipsoid x^2 + (1 - p) y^2 + z^2 = 1.
+void testNatural()
+{
+    constexpr double deg = kPi / 180.0;
+    const double aspect = 16.0 / 9.0;
+    // p = 0 is today's, to the bit.
+    for (float a : {0.0f, 0.3f, 1.0f, 1.6f}) {
+        float r0[3], r1[3];
+        CHECK(view::planeToRay(0.7f, -0.4f, a, r0) == view::planeToRay(0.7f, -0.4f, a, r1, 0.0f));
+        CHECK(r0[0] == r1[0] && r0[1] == r1[1] && r0[2] == r1[2]);
+        CHECK(view::halfHeight(1.2f, a) == view::halfHeight(1.2f, a, 0.0f));
+        CHECK(view::fovYFor(2.5f, a, 1.7f) == view::fovYFor(2.5f, a, 1.7f, 0.0f));
+        CHECK(view::fovFor(1.2f, a, 1.7f) == view::fovFor(1.2f, a, 1.7f, 0.0f));
+        CHECK(view::maxFov(a, 0.0f, 1.7f) == view::maxFov(a));
+    }
+    view::Pose plain;
+    plain.fov = 2.6;
+    plain.distortion = 0.6f;
+    const view::Lens l0 = view::lens(plain, aspect);
+    CHECK(l0.panini == 0.0f);
+    // At d = 0 the surface doesn't show: p changes nothing.
+    {
+        double r0[3], r1[3];
+        view::planeToRay(0.9, 0.6, 0.0, r0);
+        view::planeToRay(0.9, 0.6, 0.0, r1, 1.0);
+        CHECK(r0[0] == r1[0] && r0[1] == r1[1] && r0[2] == r1[2]);
+        CHECK(view::halfHeight(1.4, 0.0, 1.0) == view::halfHeight(1.4, 0.0));
+    }
+    for (double pn : {0.5, 1.0}) {
+        for (double a : {0.4, 1.0, 1.5}) {
+            // Round trip: ray -> onto the surface -> plane -> the same ray.
+            for (double az = -80.0; az <= 80.0; az += 20.0)
+                for (double el = -60.0; el <= 60.0; el += 20.0) {
+                    double v[3] = {std::cos(el * deg) * std::sin(az * deg), std::sin(el * deg),
+                                   -std::cos(el * deg) * std::cos(az * deg)};
+                    double s[3] = {v[0], v[1], v[2]};
+                    view::onSurface(s, pn);
+                    CHECK(near(s[0] * s[0] + (1.0 - pn) * s[1] * s[1] + s[2] * s[2], 1.0, 1e-12));
+                    double x = 0.0, y = 0.0, r[3];
+                    CHECK(view::pointToPlane(s, a, x, y));
+                    CHECK(view::planeToRay(x, y, a, r, pn));
+                    CHECK(near(r[0], v[0], 1e-9) && near(r[1], v[1], 1e-9) &&
+                          near(r[2], v[2], 1e-9));
+                }
+            // The horizontal through the centre is the sphere's.
+            for (double x : {0.2, 0.8, 1.6}) {
+                double r0[3], r1[3];
+                view::planeToRay(x, 0.0, a, r0);
+                view::planeToRay(x, 0.0, a, r1, pn);
+                CHECK(near(r0[0], r1[0], 1e-12) && near(r0[2], r1[2], 1e-12) && r1[1] == 0.0);
+            }
+            // The half-height is where the ray fovY / 2 up lands.
+            for (double fovY : {0.6, 1.4, 2.4}) {
+                const double h = view::halfHeight(fovY, a, pn);
+                double r[3];
+                view::planeToRay(0.0, h, std::min(a, 1.0), r, pn);
+                CHECK(near(std::atan2(r[1], -r[2]), fovY / 2.0, 1e-9));
+            }
+            // The diagonal and the vertical angle, both ways.
+            for (double fov : {1.0, 2.0, 3.0, 4.0}) {
+                if (fov >= view::maxFov(a, pn, aspect))
+                    continue;
+                const double fovY = view::fovYFor(fov, a, aspect, pn);
+                CHECK(near(view::fovFor(fovY, a, aspect, pn), fov, 1e-9));
+            }
+            // The limit is a little less than the sphere's (the same from
+            // stereographic on), and still in reach.
+            const double lim = view::maxFov(a, pn, aspect);
+            CHECK(a < 1.0 ? lim < view::maxFov(a) : lim == view::maxFov(a));
+            CHECK(lim > view::maxFov(a) - 20.0 * deg);
+            const double fovY = view::fovYFor(lim, a, aspect, pn);
+            // Up and down short of straight up on the cylinder, where a
+            // ray at 90 deg lands at infinity; over the top below it.
+            CHECK(std::isfinite(fovY) && fovY > 0.0 && fovY < (pn == 1.0 ? kPi : 2.0 * kPi));
+        }
+    }
+    // p = 1 is the cylinder, Sharpless et al.'s Panini family: x =
+    // (1 + d) sin(phi) / (d + cos(phi)), y = (1 + d) tan(lambda) / (d +
+    // cos(phi)); classic at d = 1.
+    for (double d : {0.5, 1.0})
+        for (double phi = -70.0; phi <= 70.0; phi += 35.0)
+            for (double lam = -50.0; lam <= 50.0; lam += 25.0) {
+                const double f = phi * deg, l = lam * deg;
+                double v[3] = {std::cos(l) * std::sin(f), std::sin(l), -std::cos(l) * std::cos(f)};
+                view::onSurface(v, 1.0);
+                double x = 0.0, y = 0.0;
+                view::pointToPlane(v, d, x, y);
+                CHECK(near(x, (1.0 + d) * std::sin(f) / (d + std::cos(f)), 1e-12));
+                CHECK(near(y, (1.0 + d) * std::tan(l) / (d + std::cos(f)), 1e-12));
+            }
+    // A pose: lens() carries it, held in range.
+    view::Pose p;
+    p.fov = 5.5;
+    p.distortion = 1.0f;
+    p.panini = 1.0f;
+    const view::Lens l = view::lens(p, aspect);
+    CHECK(l.panini == 1.0f && l.distortion == 1.0f);
+    CHECK(std::isfinite(view::halfHeight(l.fovY, l.distortion, l.panini)));
+    p.panini = 3.0f;
+    CHECK(view::lens(p, aspect).panini == 1.0f);
 }
 
 } // namespace
@@ -403,5 +521,6 @@ int main()
     testLimits();
     testGlobe();
     testOutline();
+    testNatural();
     return modeltest::finish("view_projection_test");
 }

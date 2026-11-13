@@ -72,8 +72,10 @@ struct ShaderParams {
 static_assert(sizeof(ShaderParams) == 14624, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 
-// Push constants for reframe_reproject.comp. 4 ints + 8 words, then a mat3
-// (16-byte aligned in std430) for the stabilization matrix.
+// Push constants for reframe_reproject.comp. 4 ints + 8 words, then the
+// stabilization matrix as three vec4 columns (a mat3's std430 layout); the
+// first column's w is Natural (view::Lens::panini) -- the block is exactly
+// Vulkan's guaranteed 128 bytes, so it rides in the padding.
 struct ReframePush {
     int32_t eqW;
     int32_t eqH;
@@ -88,14 +90,16 @@ struct ReframePush {
                     // y % 2 == 0) ...
     int32_t canvas; // ... and the canvas: width | height << 16; 0 = the view alone
     float distortion; // view::Pose::distortion
-    float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major)
+    float stab[12];      // 3 columns, each a vec3 padded to 16 bytes (col-major);
+                         // stab[3] = Natural
     float colorGrade[4]; // exposureEv, contrast%, saturation%, temperature%
     float colorLut[4];   // VulkanLutStore::pushValues
 };
 static_assert(sizeof(ReframePush) == 128, "ReframePush must match the compute push_constant block");
 
 // Push constants for fisheye_view_nv12.comp: 4 ints + 8 words, then the
-// stab mat3 as padded columns and the grade -- the same tail as ReframePush.
+// stab mat3 as padded columns (stab[3] = Natural) and the grade -- the same
+// tail as ReframePush.
 struct ViewPush {
     int32_t pass;
     int32_t outW;
@@ -405,6 +409,16 @@ struct VulkanFisheyeStitcher::Impl {
     VkDescriptorSet vwSet = VK_NULL_HANDLE;
     VkPipelineLayout vwPipeLayout = VK_NULL_HANDLE;
     VkPipeline vwPipeline = VK_NULL_HANDLE;
+
+    // The reproject and view passes' Natural builds (EmbeddedShaders.h), for a
+    // view with Natural above 0: made the first time one is drawn. If one
+    // can't be made it is said once and the view is drawn without Natural.
+    VkPipeline rfPipelineNatural = VK_NULL_HANDLE;
+    VkPipeline vwPipelineNatural = VK_NULL_HANDLE;
+    bool rfNaturalFailed = false, vwNaturalFailed = false;
+    // The pipeline of the reproject (`reframe`) or view pass for a view with
+    // Natural `panini`.
+    VkPipeline viewPassPipeline(bool reframe, float panini);
 
     // (Re)allocate the host-visible flat output buffer to hold `bytes`. Grows
     // only, so switching NV12 <-> RGBA or sizes doesn't thrash.

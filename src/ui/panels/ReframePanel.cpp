@@ -86,6 +86,34 @@ ReframePanel::ReframePanel(QWidget *parent)
     form()->addRow(tr("Field of view"), m_fov);
     form()->addRow(tr("Distortion"), m_distortionRow);
 
+    // Natural, the Panini amount: 0-100 %, under the distortion it works with.
+    // Full is the usual choice (on: 100 %, off: none); the slider fine-tunes,
+    // and Full shows whether it is at 100 %.
+    m_naturalRow = new QWidget(this);
+    auto *naturalLayout = new QHBoxLayout(m_naturalRow);
+    naturalLayout->setContentsMargins(0, 0, 0, 0);
+    m_naturalFull = new QCheckBox(tr("Full"), m_naturalRow);
+    m_naturalFull->setObjectName(QStringLiteral("reframeNaturalFull"));
+    m_naturalFull->setToolTip(tr("Upright lines upright: Natural at 100 %, or none when "
+                                 "unticked. The slider sets an amount in between."));
+    m_natural = new QSlider(Qt::Horizontal, m_naturalRow);
+    m_natural->setObjectName(QStringLiteral("reframeNatural"));
+    m_natural->setRange(0, 100);
+    m_natural->setPageStep(10);
+    m_natural->setTracking(false); // one edit (and keyframe) per release
+    m_natural->setToolTip(tr("Bends the picture only sideways: upright lines stay upright and "
+                             "lines through the centre stay straight, while the width keeps "
+                             "the Distortion's look. 100 % at 100 % distortion is the Panini "
+                             "view, good for wide shots of streets and rooms. Does nothing at "
+                             "0 % distortion."));
+    m_naturalValue = new QLabel(m_naturalRow);
+    m_naturalValue->setMinimumWidth(
+        m_naturalValue->fontMetrics().horizontalAdvance(QStringLiteral("100%")));
+    naturalLayout->addWidget(m_naturalFull);
+    naturalLayout->addWidget(m_natural, 1);
+    naturalLayout->addWidget(m_naturalValue);
+    form()->addRow(tr("Natural"), m_naturalRow);
+
     m_ease = easecombo::make(this);
     m_ease->setObjectName(QStringLiteral("reframeEaseCombo"));
     m_ease->setToolTip(tr("How the view moves from the key at the playhead (or the last one "
@@ -171,6 +199,14 @@ ReframePanel::ReframePanel(QWidget *parent)
             p.fov = std::min(p.fov, view::maxFov(p));
         });
     });
+    connect(m_natural, &QSlider::sliderMoved, this,
+            [this](int v) { m_naturalValue->setText(tr("%1%").arg(v)); });
+    connect(m_natural, &QSlider::valueChanged, this, [this](int v) {
+        edited([v](ReframePose &p) { p.panini = static_cast<float>(v) / 100.0f; });
+    });
+    connect(m_naturalFull, &QCheckBox::toggled, this, [this](bool on) {
+        edited([on](ReframePose &p) { p.panini = on ? 1.0f : 0.0f; });
+    });
 }
 
 void ReframePanel::edited(const std::function<void(ReframePose &)> &change)
@@ -210,6 +246,10 @@ void ReframePanel::showPose(const ReframePose &pose)
     m_distortion->setEnabled(!pose.distortionIsAuto() && !m_trackRunning);
     m_distortion->setValue(percent);
     m_distortionValue->setText(tr("%1%").arg(percent));
+    const int natural = static_cast<int>(std::lround(pose.panini * 100.0f));
+    m_natural->setValue(natural);
+    m_naturalValue->setText(tr("%1%").arg(natural));
+    m_naturalFull->setChecked(natural >= 100);
     m_updating = false;
 }
 
@@ -270,7 +310,7 @@ void ReframePanel::setClip(bool flat, bool fill)
     m_flat = flat;
     for (QWidget *w :
          std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionRow,
-                                          m_ease, m_track})
+                                          m_naturalRow, m_ease, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);
@@ -335,7 +375,8 @@ void ReframePanel::setTrackRunning(bool running)
     if (!running)
         m_trackStatus->clear();
     for (QWidget *w :
-         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionAuto, m_pane})
+         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionAuto,
+                                          m_naturalFull, m_natural, m_pane})
         w->setEnabled(!running);
     m_distortion->setEnabled(!running && !m_pose.distortionIsAuto());
     m_ease->setEnabled(m_easeAvailable && !running);

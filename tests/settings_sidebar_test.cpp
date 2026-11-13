@@ -872,6 +872,50 @@ void testTrackStatus(SettingsSidebar &bar)
     CHECK(!status->isVisible());
 }
 
+// Natural: shows the pose's amount without emitting, an edit sets it in
+// percent, hidden for a flat clip and greyed out while tracking runs.
+void testReframeNatural(SettingsSidebar &bar)
+{
+    ReframePanel *reframe = bar.reframe();
+    auto *natural = find<QSlider>(reframe, "reframeNatural");
+    auto *full = find<QCheckBox>(reframe, "reframeNaturalFull");
+    if (!natural || !full)
+        return;
+    bar.setCurrentIndex(SettingsSidebar::VideoTab);
+    reframe->setExpanded(true);
+    reframe->setClip(false);
+    QSignalSpy edited(reframe, &ReframePanel::poseEdited);
+    ReframePose pose;
+    pose.distortion = 1.0f;
+    pose.panini = 0.4f;
+    reframe->setPose(pose);
+    CHECK(natural->value() == 40 && !full->isChecked() && edited.isEmpty());
+    natural->setValue(100);
+    CHECK(edited.count() == 1 && full->isChecked());
+    if (edited.count() == 1) {
+        const ReframePose p = edited.at(0).at(0).value<ReframePose>();
+        CHECK(p.panini == 1.0f && p.distortion == 1.0f);
+    }
+    // Full off: none; on: 100 %. Fine-tuning on the slider unticks it.
+    full->setChecked(false);
+    CHECK(edited.count() == 2 && edited.at(1).at(0).value<ReframePose>().panini == 0.0f);
+    CHECK(natural->value() == 0);
+    full->setChecked(true);
+    CHECK(edited.count() == 3 && edited.at(2).at(0).value<ReframePose>().panini == 1.0f);
+    CHECK(natural->value() == 100);
+    natural->setValue(70);
+    CHECK(edited.count() == 4 && !full->isChecked());
+    CHECK(edited.at(3).at(0).value<ReframePose>().panini == 0.7f);
+    reframe->setTrackRunning(true);
+    CHECK(!natural->isEnabled() && !full->isEnabled());
+    reframe->setTrackRunning(false);
+    CHECK(natural->isEnabled() && full->isEnabled());
+    reframe->setClip(true);
+    CHECK(!natural->isVisibleTo(reframe));
+    reframe->setClip(false);
+    CHECK(natural->isVisibleTo(reframe));
+}
+
 // The Transition tab: the selected transition's length, why it plays
 // shorter, and removing it; greyed out with none selected.
 void testTransitionTab(SettingsSidebar &bar)
@@ -1113,6 +1157,7 @@ int main(int argc, char **argv)
     testEasing(bar);
     testTitleTab(bar);
     testTrackStatus(bar);
+    testReframeNatural(bar);
     testTransitionTab(bar);
     testColourLut(bar);
     testMediaInfoProfile(bar);

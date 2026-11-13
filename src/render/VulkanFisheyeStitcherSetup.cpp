@@ -687,6 +687,8 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         if (d->descPool) vkDestroyDescriptorPool(d->device, d->descPool, nullptr);
         if (d->setLayout) vkDestroyDescriptorSetLayout(d->device, d->setLayout, nullptr);
         if (d->vwPipeline) vkDestroyPipeline(d->device, d->vwPipeline, nullptr);
+        if (d->vwPipelineNatural) vkDestroyPipeline(d->device, d->vwPipelineNatural, nullptr);
+        if (d->rfPipelineNatural) vkDestroyPipeline(d->device, d->rfPipelineNatural, nullptr);
         if (d->vwPipeLayout) vkDestroyPipelineLayout(d->device, d->vwPipeLayout, nullptr);
         if (d->rfPipeline) vkDestroyPipeline(d->device, d->rfPipeline, nullptr);
         if (d->rfPipeLayout) vkDestroyPipelineLayout(d->device, d->rfPipeLayout, nullptr);
@@ -1190,6 +1192,43 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
     }
     m_viewReady = true;
     return true;
+}
+
+VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, float panini)
+{
+    VkPipeline plain = reframe ? rfPipeline : vwPipeline;
+    if (!(panini > 0.0f))
+        return plain;
+    VkPipeline &natural = reframe ? rfPipelineNatural : vwPipelineNatural;
+    bool &failed = reframe ? rfNaturalFailed : vwNaturalFailed;
+    if (natural || failed)
+        return natural ? natural : plain;
+    const shaders::Spirv spv = reframe ? shaders::reframeReprojectCompNatural()
+                                       : shaders::fisheyeViewNv12CompNatural();
+    VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    smi.codeSize = spv.bytes;
+    smi.pCode = spv.code;
+    VkShaderModule module = VK_NULL_HANDLE;
+    VkResult r = vkCreateShaderModule(device, &smi, nullptr, &module);
+    if (r == VK_SUCCESS) {
+        VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        cpi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        cpi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        cpi.stage.module = module;
+        cpi.stage.pName = "main";
+        cpi.layout = reframe ? rfPipeLayout : vwPipeLayout;
+        r = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpi, nullptr, &natural);
+        vkDestroyShaderModule(device, module, nullptr);
+    }
+    if (r != VK_SUCCESS) {
+        natural = VK_NULL_HANDLE;
+        failed = true;
+        std::fprintf(stderr, "[VulkanFisheyeStitcher] the %s pass's Natural build failed (VkResult "
+                             "%d); views are drawn without Natural\n",
+                     reframe ? "reframe" : "view", r);
+        return plain;
+    }
+    return natural;
 }
 
 bool VulkanFisheyeStitcher::lensExportReady() const

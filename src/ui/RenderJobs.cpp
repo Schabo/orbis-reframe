@@ -173,13 +173,14 @@ QString viewKey(const ClipItem &c, const Timeline &timeline)
         if (pane > 0)
             key += QStringLiteral("|pane%1").arg(pane);
         for (const ReframeKey &k : c.paneTrack(pane).keys())
-            key += QStringLiteral("|%1:%2,%3,%4,%5,%6,%7")
+            key += QStringLiteral("|%1:%2,%3,%4,%5,%6,%7,%8")
                        .arg(k.timeMs)
                        .arg(k.pose.yaw)
                        .arg(k.pose.pitch)
                        .arg(k.pose.roll)
                        .arg(k.pose.fov, 0, 'g', 17)
                        .arg(k.pose.distortion)
+                       .arg(k.pose.panini)
                        .arg(int(k.ease));
     }
     if (c.paneCount() > 1)

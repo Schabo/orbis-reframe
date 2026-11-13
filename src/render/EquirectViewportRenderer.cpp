@@ -259,6 +259,26 @@ void EquirectViewportRenderer::createPipeline()
         qFatal("Failed to create equirect graphics pipeline");
 }
 
+VkPipeline EquirectViewportRenderer::viewPipeline(bool lens, float panini)
+{
+    VkPipeline plain = lens ? m_lensPipeline : m_pipeline;
+    if (!(panini > 0.0f))
+        return plain;
+    VkPipeline &natural = lens ? m_lensPipelineNatural : m_pipelineNatural;
+    bool &failed = lens ? m_lensPipelineNaturalFailed : m_pipelineNaturalFailed;
+    if (!natural && !failed) {
+        natural = lens ? makePipeline(render::shaders::fisheyeViewFragNatural(),
+                                      m_lensPipelineLayout)
+                       : makePipeline(render::shaders::equirectFragNatural(), m_pipelineLayout);
+        failed = natural == VK_NULL_HANDLE;
+        if (failed)
+            std::fprintf(stderr, "[viewport] the %s view's Natural build failed; views are drawn "
+                                 "without Natural\n",
+                         lens ? "lens" : "equirect");
+    }
+    return natural ? natural : plain;
+}
+
 void EquirectViewportRenderer::createLensResources()
 {
     m_lensCapable = false;
@@ -416,6 +436,10 @@ void EquirectViewportRenderer::destroyLensResources()
     m_lensSets.clear();
     if (m_lensPipeline)
         vkDestroyPipeline(device, m_lensPipeline, nullptr);
+    if (m_lensPipelineNatural)
+        vkDestroyPipeline(device, m_lensPipelineNatural, nullptr);
+    m_lensPipelineNatural = VK_NULL_HANDLE;
+    m_lensPipelineNaturalFailed = false;
     if (m_lensPipelineLayout)
         vkDestroyPipelineLayout(device, m_lensPipelineLayout, nullptr);
     if (m_lensPool)
@@ -1046,6 +1070,10 @@ void EquirectViewportRenderer::releaseResources()
         vkDestroyDescriptorSetLayout(device, m_descriptorSetLayout, nullptr);
         m_descriptorSetLayout = VK_NULL_HANDLE;
     }
+    if (m_pipelineNatural != VK_NULL_HANDLE)
+        vkDestroyPipeline(device, m_pipelineNatural, nullptr);
+    m_pipelineNatural = VK_NULL_HANDLE;
+    m_pipelineNaturalFailed = false;
     if (m_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(device, m_pipeline, nullptr);
         m_pipeline = VK_NULL_HANDLE;

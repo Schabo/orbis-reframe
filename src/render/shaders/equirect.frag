@@ -18,7 +18,10 @@ layout(push_constant) uniform PushConstants {
     float fovY;   // vertical field of view, radians
     float aspect; // viewport width / height
     float distortion; // the projection's d: 0 rectilinear .. 1 stereographic
-    // 8 bytes of std140 padding here (6 floats -> mat3 aligns at offset 32).
+#ifdef VIEW_NATURAL
+    float panini;     // Natural, view_projection.glsl's p (its build only)
+#endif
+    // Up to 8 bytes of std140 padding here (mat3 aligns at offset 32).
     mat3 stab;    // Gyro de-rotation in the sphere frame, applied to the
                   // world ray AFTER the yaw/pitch/roll reframe pose.
                   // Identity when stabilization off.
@@ -34,7 +37,11 @@ const float PI = 3.14159265358979323846;
 #include "view_projection.glsl"
 
 void main() {
+#ifdef VIEW_NATURAL
+    vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini);
+#else
     vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion);
+#endif
 
     float cosRoll = cos(pc.roll);
     float sinRoll = sin(pc.roll);
@@ -69,6 +76,10 @@ void main() {
     outColor = texture(equirectSampler, uv);
     outColor.rgb = gradeColor(outColor.rgb, pc.colorGrade, pc.colorLut, 1.0);
     // Outside a globe's disc: black.
+#ifdef VIEW_NATURAL
+    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini))
+#else
     if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
+#endif
         outColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

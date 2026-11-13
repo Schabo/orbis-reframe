@@ -23,7 +23,8 @@ class QSlider;
 //
 // All angles are shown in degrees, the field of view corner to corner; the
 // signal / setter use radians to match ReframePose. Distortion is Auto
-// (following the field of view) or a fixed 0-100 %.
+// (following the field of view) or a fixed 0-200 %; Natural Full (100 %) or
+// none, or an amount 0-100 % on its slider.
 //
 // A split clip (SplitScreenPanel sets the layout): which pane the fields and
 // the viewport steer, the active pane.
@@ -100,6 +101,10 @@ private:
     QSlider *m_distortion = nullptr; // percent
     QLabel *m_distortionValue = nullptr;
     QWidget *m_distortionRow = nullptr;
+    QCheckBox *m_naturalFull = nullptr; // Natural at 100 % (ticked) or none
+    QSlider *m_natural = nullptr;       // percent, the Panini amount
+    QLabel *m_naturalValue = nullptr;
+    QWidget *m_naturalRow = nullptr;
     ReframePose m_pose; // the pose shown: an edit changes only its own field
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;

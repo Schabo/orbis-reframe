@@ -109,7 +109,7 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
 {
     const Grade grade(view.colorGrade);
     const view::Lens lens = view::lens(view.pose, double(outW) / double(outH));
-    const float h = view::halfHeight(lens.fovY, lens.distortion);
+    const float h = view::halfHeight(lens.fovY, lens.distortion, lens.panini);
     const float cosR = std::cos(view.pose.roll);
     const float sinR = std::sin(view.pose.roll);
     const float cosP = std::cos(view.pose.pitch);
@@ -126,7 +126,7 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
             // View-space ray (matches equirect.frag: +Y up, -Z forward).
             float ray[3];
             uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
-            if (!view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray)) {
+            if (!view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray, lens.panini)) {
                 // Outside a globe's disc: black.
                 dst[0] = dst[1] = dst[2] = 0;
                 dst[3] = 255;

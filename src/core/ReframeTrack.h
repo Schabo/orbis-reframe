@@ -23,7 +23,8 @@
 // view are plain lerp -- both are clamped ranges with no wraparound. Between
 // two Auto keys the distortion stays Auto, following the blended field of
 // view (a zoom out turns into the wide look by itself); otherwise the two
-// keys' distortions blend, an Auto key's being the one it shows.
+// keys' distortions blend, an Auto key's being the one it shows. Natural
+// (the Panini amount) is a plain lerp.
 
 using ReframePose = view::Pose;
 

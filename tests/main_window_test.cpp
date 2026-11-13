@@ -2351,6 +2351,23 @@ void testNewProjectResets(const Ctx &c)
           v->Pose().fov == ahead.fov && v->Pose().distortion == ahead.distortion);
 }
 
+// The Reframe panel's Natural reaches the viewport's live pose (the
+// viewport takes a pose field by field).
+void testNaturalReachesViewport(const Ctx &c)
+{
+    c.w->openProject(c.orp);
+    CHECK(c.timeline->count() > 0);
+    settle();
+    CHECK(seekTo(c, 500));
+    auto *natural = find<QSlider>(c.w, "reframeNatural");
+    if (!natural)
+        return;
+    natural->setValue(60);
+    CHECK(waitFor([&] { return c.w->viewport()->Pose().panini == 0.6f; }));
+    natural->setValue(0);
+    CHECK(waitFor([&] { return c.w->viewport()->Pose().panini == 0.0f; }));
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -2445,6 +2462,7 @@ int main(int argc, char **argv)
             testCloseWithChanges(c);
             testNewProject(c);
             testNewProjectResets(c);
+            testNaturalReachesViewport(c);
         }
     }
 

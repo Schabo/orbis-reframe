@@ -68,13 +68,13 @@ inline Vec3 stabToView(const Vec3& q, double yaw, double pitch, double roll = 0.
 }
 
 // A point of a view at fractions (fx, fy) of its width / height (0,0 = top
-// left) -> stabilized direction.
+// left) -> stabilized direction. `panini`: the view's Natural.
 inline Vec3 viewPointToStab(double fx, double fy, double yaw, double pitch, double roll,
-                            double fovY, double distortion, double aspect)
+                            double fovY, double distortion, double aspect, double panini = 0.0)
 {
     double r[3];
-    view::ndcToRay(fx * 2.0 - 1.0, fy * 2.0 - 1.0, view::halfHeight(fovY, distortion), aspect,
-                   distortion, r);
+    view::ndcToRay(fx * 2.0 - 1.0, fy * 2.0 - 1.0, view::halfHeight(fovY, distortion, panini),
+                   aspect, distortion, r, panini);
     return viewToStab({r[0], r[1], r[2]}, yaw, pitch, roll);
 }
 
@@ -87,10 +87,11 @@ struct Seed {
 
 // A box in a view (fractions of the view: x, y = top left, w, h) -> Seed.
 inline Seed seedFromViewBox(double x, double y, double w, double h, double yaw, double pitch,
-                            double roll, double fovY, double distortion, double aspect)
+                            double roll, double fovY, double distortion, double aspect,
+                            double panini = 0.0)
 {
     const auto at = [&](double fx, double fy) {
-        return viewPointToStab(fx, fy, yaw, pitch, roll, fovY, distortion, aspect);
+        return viewPointToStab(fx, fy, yaw, pitch, roll, fovY, distortion, aspect, panini);
     };
     Seed s;
     yawPitchFromDir(at(x + w * 0.5, y + h * 0.5), s.yaw, s.pitch);

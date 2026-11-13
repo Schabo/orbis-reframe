@@ -24,5 +24,11 @@ Spirv fisheyeStitchNv12Comp();
 Spirv reframeReprojectComp();
 Spirv fisheyeViewNv12Comp();
 Spirv seamFlowComp();
+// The view shaders built with Natural (VIEW_NATURAL): for a view whose
+// Natural is above 0; the ones above leave it out.
+Spirv equirectFragNatural();
+Spirv fisheyeViewFragNatural();
+Spirv reframeReprojectCompNatural();
+Spirv fisheyeViewNv12CompNatural();
 
 } // namespace render::shaders

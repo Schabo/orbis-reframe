@@ -80,7 +80,7 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
         m_keys, timeMs, [](const ReframeKey &a, const ReframeKey &b) {
             return a.pose.yaw == b.pose.yaw && a.pose.pitch == b.pose.pitch &&
                    a.pose.roll == b.pose.roll && a.pose.fov == b.pose.fov &&
-                   a.pose.distortion == b.pose.distortion;
+                   a.pose.distortion == b.pose.distortion && a.pose.panini == b.pose.panini;
         });
     if (!lo)
         return {};
@@ -96,5 +96,6 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
     else
         out.distortion = lerp(static_cast<float>(view::distortionOf(lo->pose)),
                               static_cast<float>(view::distortionOf(hi->pose)), t);
+    out.panini = lerp(lo->pose.panini, hi->pose.panini, t);
     return out;
 }

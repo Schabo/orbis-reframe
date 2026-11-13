@@ -38,6 +38,22 @@
 // field of view makes the picture as big as the tiny planet of that angle
 // (halfHeight, fovYFor, maxFov).
 //
+// Natural (the Panini amount p, 0 to 1) bends only the horizontal: the rays
+// land on the ellipsoid x^2 + (1 - p) y^2 + z^2 = 1 instead of the sphere,
+// then the same central projection from (0, 0, d). p = 0 is the sphere,
+// every function here unchanged to the bit; p = 1 the vertical cylinder,
+//     x = (1 + d) sin(phi) / (d + cos(phi)),
+//     y = (1 + d) tan(lambda) / (d + cos(phi))
+// (phi the azimuth, lambda the elevation): verticals stay vertical and
+// lines through the centre straight, while the width is the general
+// perspective's -- the Panini projection at d = 1 (Sharpless et al. 2010).
+// The centre is magnified as before, and the horizontal through it is
+// unchanged. At d = 0 p does nothing: seen from the centre the surface's
+// shape doesn't show. With p the picture isn't round, so the vertical
+// half-height and the diagonal field of view are taken along their own
+// lines (halfHeight, fovYFor), and a point of the sphere is put onto the
+// surface before it is projected (onSurface).
+//
 // A pose gives its field of view as the diagonal angle, corner to corner,
 // so a landscape and a portrait frame take in alike, and its distortion
 // either fixed or Auto (following the field of view: none for a normal view,
@@ -70,6 +86,8 @@ struct Pose {
     // The distortion amount: 0 (rectilinear) to 1 (stereographic) to 2 (the
     // globe's orthographic end), or kAutoDistortion.
     float distortion = kAutoDistortion;
+    // Natural, the Panini amount p: 0 (the sphere) to 1 (the cylinder).
+    float panini = 0.0f;
 
     bool distortionIsAuto() const { return distortion < 0.0f; }
     bool operator==(const Pose&) const = default;
@@ -91,11 +109,33 @@ inline T planeRadius(T angle, T distortion)
 }
 
 // The plane's half-height for a vertical field of view (Lens::fovY); a
-// globe's as at d = 1.
+// globe's as at d = 1. With Natural, the ray `fovY / 2` up meets the
+// ellipsoid at 1 / n of its length, n = sqrt(1 - p sin^2), so it lands at
+// (1 + d) sin / (d n + cos).
 template <class T>
-inline T halfHeight(T fovY, T distortion)
+inline T halfHeight(T fovY, T distortion, T panini = T(0))
 {
-    return planeRadius(fovY * T(0.5), std::min(distortion, T(1)));
+    const T d = std::min(distortion, T(1));
+    const T a = fovY * T(0.5);
+    if (panini <= T(0) || d <= T(0))
+        return planeRadius(a, d);
+    const T sa = std::sin(a);
+    const T n = std::sqrt(T(1) - panini * sa * sa);
+    return (T(1) + d) * sa / (d * n + std::cos(a));
+}
+
+// A direction (any length) -> the point of the view's surface it points
+// at: itself on the sphere (unchanged at p = 0: give a unit vector), the
+// ellipsoid's with Natural. Before pointToPlane, for a point of the sphere.
+template <class T>
+inline void onSurface(T v[3], T panini)
+{
+    if (panini <= T(0))
+        return;
+    const T n = std::sqrt(v[0] * v[0] + (T(1) - panini) * v[1] * v[1] + v[2] * v[2]);
+    if (n > T(0))
+        for (int i = 0; i < 3; ++i)
+            v[i] /= n;
 }
 
 // The globe's disc: the largest z a point of the unit sphere can have and
@@ -109,12 +149,44 @@ inline T frontLimit(T distortion)
 }
 
 // Image-plane point (x, y) -> unit view ray `out` (x, y, z). The line from the
-// projection centre (0, 0, d) through (x, y, -1) meets the unit sphere on its
-// far side. False outside a globe's disc, where the line misses the sphere;
-// `out` is then the ray at the disc's rim in that direction.
+// projection centre (0, 0, d) through (x, y, -1) meets the unit sphere (with
+// Natural, the ellipsoid) on its far side. False outside a globe's disc,
+// where the line misses it; `out` is then the ray at the disc's rim in that
+// direction. With Natural the meeting point is the quadratic's root as on
+// the sphere, with x^2 + q y^2 (q = 1 - p) for x^2 + y^2, then made a unit
+// ray.
 template <class T>
-inline bool planeToRay(T x, T y, T distortion, T out[3])
+inline bool planeToRay(T x, T y, T distortion, T out[3], T panini = T(0))
 {
+    if (panini > T(0) && distortion > T(0)) {
+        const T q = T(1) - panini;
+        const T rq = x * x + q * y * y;
+        bool hit = true;
+        if (distortion > T(1)) {
+            const T e = T(2) - distortion;
+            const T k = (T(1) + e) * (T(1) + e) - rq * (T(1) - e * e);
+            const T sk = std::sqrt(std::max(k, T(0)));
+            const T ww = e * e * rq + (T(1) + e) * (T(1) + e);
+            const T u = (T(1) + e + e * sk) / ww;
+            out[0] = u * x;
+            out[1] = u * y;
+            out[2] = (e * rq - (T(1) + e) * sk) / ww;
+            hit = k >= T(0);
+        } else {
+            const T d = distortion;
+            const T wz = -(T(1) + d);
+            const T ww = rq + wz * wz;
+            const T b = d * (T(1) + d);
+            const T s = (b + std::sqrt(b * b - ww * (d * d - T(1)))) / ww;
+            out[0] = s * x;
+            out[1] = s * y;
+            out[2] = d + s * wz;
+        }
+        const T invLen = T(1) / std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+        for (int i = 0; i < 3; ++i)
+            out[i] *= invLen;
+        return hit;
+    }
     if (distortion <= T(0)) {
         const T invLen = T(1) / std::sqrt(x * x + y * y + T(1));
         out[0] = x * invLen;
@@ -156,9 +228,9 @@ inline bool planeToRay(T x, T y, T distortion, T out[3])
 // `h` (halfHeight()) and `aspect` (width / height); false outside a globe's
 // disc (planeToRay).
 template <class T>
-inline bool ndcToRay(T ndcX, T ndcY, T h, T aspect, T distortion, T out[3])
+inline bool ndcToRay(T ndcX, T ndcY, T h, T aspect, T distortion, T out[3], T panini = T(0))
 {
-    return planeToRay(ndcX * h * aspect, -ndcY * h, distortion, out);
+    return planeToRay(ndcX * h * aspect, -ndcY * h, distortion, out, panini);
 }
 
 // A view-space point (any length; a direction or a point on a chord between
@@ -213,8 +285,8 @@ inline constexpr int kOutlineMaxPoints = 8 * kOutlineSegments;
 // centre, not behind a globe's rim) as a polygon of short chords
 // (Sutherland-Hodgman), so a cut outline closes along the picture's edge.
 template <class T>
-inline int outlineToPlane(const T corner[4][3], T distortion, T out[2 * kOutlineMaxPoints],
-                          T near = T(1e-3))
+inline int outlineToPlane(const T corner[4][3], T distortion, T panini,
+                          T out[2 * kOutlineMaxPoints], T near = T(1e-3))
 {
     constexpr int kRing = 4 * kOutlineSegments;
     T ring[kRing][3];
@@ -230,6 +302,7 @@ inline int outlineToPlane(const T corner[4][3], T distortion, T out[2 * kOutline
             if (len > T(0))
                 for (int k = 0; k < 3; ++k)
                     p[k] /= len;
+            onSurface(p, panini);
         }
     }
     const T zMax = frontLimit(distortion) - near;
@@ -303,6 +376,24 @@ inline T maxFov(T distortion)
     const T margin = T(0.30543261909900765) - T(0.04363323129985824) * d; // 17.5 .. 15 deg
     return T(2) * (std::acos(-d) - margin);
 }
+// With Natural, at `aspect`: the corner's plane point runs off to infinity
+// along (aspect, 1), where the line from the projection centre in that
+// direction meets the ellipsoid, at P = (s aspect, s, d) with
+// s^2 = (1 - d^2) / (aspect^2 + q); the corner's ray can reach
+// acos(-d / |P|) off the axis (acos(-d) on the sphere, |P| = 1).
+template <class T>
+inline T maxFov(T distortion, T panini, T aspect)
+{
+    if (panini <= T(0))
+        return maxFov(distortion);
+    const T d = std::clamp(distortion, T(0), T(1));
+    const T margin = T(0.30543261909900765) - T(0.04363323129985824) * d;
+    const T a2 = aspect * aspect;
+    const T pp = (a2 + T(1)) * (T(1) - d * d) / (a2 + T(1) - panini) + d * d;
+    return T(2) * (std::acos(-d / std::sqrt(pp)) - margin);
+}
+// The range the fields offer, without the picture's aspect: Natural's
+// limit (above) is a little less, which lens() holds to.
 inline double maxFov(const Pose& pose)
 {
     return maxFov(pose.distortionIsAuto() ? 1.0 : double(pose.distortion));
@@ -320,23 +411,51 @@ inline T angleOfRadius(T r, T distortion)
     return std::atan2(ray[0], -ray[2]);
 }
 
+// Natural's: the ray angle off the axis of the plane point (x, y).
+template <class T>
+inline T rayAngleAt(T x, T y, T distortion, T panini)
+{
+    T ray[3];
+    planeToRay(x, y, distortion, ray, panini);
+    return std::atan2(std::hypot(ray[0], ray[1]), -ray[2]);
+}
+
 // The vertical angle through the centre of a picture `aspect` (width /
 // height) wide whose diagonal angle is `fov`, and back. Its corner's plane
 // radius is the half-height times sqrt(1 + aspect^2). A globe's angles are
-// taken at d = 1, as its size is.
+// taken at d = 1, as its size is. With Natural the picture isn't round: the
+// corner's angle is its ray's, and the half-height that puts the corner at
+// fov / 2 is found by bisection (the corner's angle grows with it).
 template <class T>
-inline T fovYFor(T fov, T distortion, T aspect)
+inline T fovYFor(T fov, T distortion, T aspect, T panini = T(0))
 {
     distortion = std::min(distortion, T(1));
+    if (panini > T(0) && distortion > T(0)) {
+        const T target = fov * T(0.5);
+        T lo = T(0), hi = T(1);
+        while (hi < T(1e8) && rayAngleAt(hi * aspect, hi, distortion, panini) < target)
+            hi *= T(2);
+        for (int i = 0; i < 80; ++i) {
+            const T mid = T(0.5) * (lo + hi);
+            (rayAngleAt(mid * aspect, mid, distortion, panini) < target ? lo : hi) = mid;
+        }
+        T ray[3];
+        planeToRay(T(0), T(0.5) * (lo + hi), distortion, ray, panini);
+        return T(2) * std::atan2(ray[1], -ray[2]);
+    }
     const T k = std::sqrt(T(1) + aspect * aspect);
     if (distortion <= T(0))
         return T(2) * std::atan(std::tan(fov * T(0.5)) / k);
     return T(2) * angleOfRadius(planeRadius(fov * T(0.5), distortion) / k, distortion);
 }
 template <class T>
-inline T fovFor(T fovY, T distortion, T aspect)
+inline T fovFor(T fovY, T distortion, T aspect, T panini = T(0))
 {
     distortion = std::min(distortion, T(1));
+    if (panini > T(0) && distortion > T(0)) {
+        const T h = halfHeight(fovY, distortion, panini);
+        return T(2) * rayAngleAt(h * aspect, h, distortion, panini);
+    }
     const T k = std::sqrt(T(1) + aspect * aspect);
     if (distortion <= T(0))
         return T(2) * std::atan(std::tan(fovY * T(0.5)) * k);
@@ -344,21 +463,23 @@ inline T fovFor(T fovY, T distortion, T aspect)
 }
 
 // What a renderer draws `pose` with at `aspect` (width / height): the
-// vertical angle through the centre (halfHeight's) and the distortion
-// amount. The field of
-// view is held in its range for that d -- between two keys with different
-// distortions the blend can reach past it.
+// vertical angle through the centre (halfHeight's), the distortion amount
+// and Natural. The field of view is held in its range for that d and p --
+// between two keys with different distortions the blend can reach past it.
 struct Lens {
     float fovY = 1.309f;
     float distortion = 0.0f;
+    float panini = 0.0f;
 };
 inline Lens lens(const Pose& pose, double aspect)
 {
     if (!(aspect > 0.0))
         aspect = 16.0 / 9.0;
     const double d = distortionOf(pose);
-    const double fov = std::clamp(pose.fov, kMinFov, maxFov(d));
-    return {static_cast<float>(fovYFor(fov, d, aspect)), static_cast<float>(d)};
+    const double p = std::clamp(double(pose.panini), 0.0, 1.0);
+    const double fov = std::clamp(pose.fov, kMinFov, maxFov(d, p, aspect));
+    return {static_cast<float>(fovYFor(fov, d, aspect, p)), static_cast<float>(d),
+            static_cast<float>(p)};
 }
 
 } // namespace view

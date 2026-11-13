@@ -208,10 +208,11 @@ int main(int argc, char** argv)
         view::Pose p;
     };
     const float deg = std::numbers::pi_v<float> / 180.0f;
-    // A pose by its vertical angle through the centre at distortion d.
-    const auto vert = [](float fovYDeg, float d) {
+    // A pose by its vertical angle through the centre at distortion d and
+    // Natural p.
+    const auto vert = [](float fovYDeg, float d, float p = 0.0f) {
         return view::fovFor<double>(fovYDeg * std::numbers::pi_v<float> / 180.0f, d,
-                                    double(kW) / double(kH));
+                                    double(kW) / double(kH), p);
     };
     const Pose poses[] = {
         {"forward75", {0.0f, 0.0f, 0.0f, vert(75.0f, 0.0f), 0.0f}},
@@ -224,6 +225,8 @@ int main(int argc, char** argv)
         {"planet_d100", {0.0f, -90.0f * deg, 0.0f, vert(250.0f, 1.0f), 1.0f}},
         // The globe past 100 %, a disc on black, looking down.
         {"globe_d170", {0.0f, -90.0f * deg, 0.0f, vert(160.0f, 1.0f), 1.7f}},
+        // Natural at full, the Panini view (d = 1), wide and level.
+        {"panini_p100", {0.0f, 0.0f, 0.0f, vert(100.0f, 1.0f, 1.0f), 1.0f, 1.0f}},
     };
     struct Path {
         const char* name;

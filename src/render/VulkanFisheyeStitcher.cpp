@@ -692,7 +692,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         rp.colorGrade[i] = colorGrade ? colorGrade->adjust[i] : 0.0f;
     VulkanLutStore::pushValues(lut, colorGrade ? colorGrade->lutMix : 0.0f, rp.colorLut);
 
-    vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeline);
+    VkPipeline rfBound = d->rfPipeline;
+    vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, rfBound);
     const VkDescriptorSet rfSets[2] = {d->rfSet, lutSet};
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 0, 2, rfSets,
                             0, nullptr);
@@ -707,6 +708,13 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         rp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
         rp.origin = single ? 0 : v.x | (v.y << 16);
         rp.distortion = lens.distortion;
+        rp.stab[3] = lens.panini; // the first column's padding (ReframePush)
+        // A view with Natural takes the pass's Natural build (the same layout,
+        // so the sets stay bound).
+        if (VkPipeline want = d->viewPassPipeline(true, lens.panini); want != rfBound) {
+            vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, want);
+            rfBound = want;
+        }
         rp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
                            &rp);
@@ -894,7 +902,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
                              nullptr);
     }
 
-    vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeline);
+    VkPipeline vwBound = d->vwPipeline;
+    vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, vwBound);
     const VkDescriptorSet vwSets[2] = {d->vwSet, lutSet};
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeLayout, 0, 2, vwSets,
                             0, nullptr);
@@ -923,6 +932,11 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         vp.aspect = static_cast<float>(v.w) / static_cast<float>(v.h);
         vp.origin = single ? 0 : v.x | (v.y << 16);
         vp.distortion = lens.distortion;
+        vp.stab[3] = lens.panini; // the first column's padding (ViewPush)
+        if (VkPipeline want = d->viewPassPipeline(false, lens.panini); want != vwBound) {
+            vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, want); // as above
+            vwBound = want;
+        }
         vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,
