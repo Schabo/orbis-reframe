@@ -2,6 +2,7 @@
 #include "Theme.h"
 
 #include <QActionGroup>
+#include <QContextMenuEvent>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -23,6 +24,7 @@ namespace {
 
 constexpr int kHandleRadius = 5; // the playhead's dot on the progress strip
 constexpr int kDragSlopPx = 3;   // a click's jitter isn't a drag
+constexpr int kMarkHitPx = 5;    // a mark's dot, for the mouse
 
 QString speedText(double speed)
 {
@@ -73,6 +75,32 @@ void PlayerProgress::setCuts(const QList<qint64> &cutsMs)
     update();
 }
 
+void PlayerProgress::setMarks(const QList<highlight::Mark> &marks, int hiddenCount)
+{
+    if (marks == m_marks && hiddenCount == m_hiddenMarks)
+        return;
+    m_marks = marks;
+    m_hiddenMarks = hiddenCount;
+    m_hoverMark = -1;
+    update();
+}
+
+int PlayerProgress::markAt(int x) const
+{
+    if (m_durationMs <= 0)
+        return -1;
+    int best = -1;
+    int bestD = kMarkHitPx + 1;
+    for (int i = 0; i < m_marks.size(); ++i) {
+        const int d = std::abs(xAt(m_marks[i].sourceMs) - x);
+        if (d < bestD) {
+            best = i;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
 QRect PlayerProgress::grooveRect() const
 {
     const int h = m_hover || m_pressed ? 6 : 4;
@@ -119,6 +147,19 @@ void PlayerProgress::paintEvent(QPaintEvent *)
             continue;
         p.drawRect(xAt(cut) - 1, g.top() - 3, 2, g.height() + 6);
     }
+    // The highlight marks: dots on the groove, as on the timeline's clips,
+    // ringed in the bar's background to stand out on the played part.
+    if (enabled && !m_marks.isEmpty()) {
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(tc.window, 1.5));
+        p.setBrush(tc.marker);
+        const double cy = g.center().y() + 0.5;
+        for (int i = 0; i < m_marks.size(); ++i) {
+            const double r = i == m_hoverMark ? 4.5 : 3.0;
+            p.drawEllipse(QPointF(xAt(m_marks[i].sourceMs), cy), r, r);
+        }
+        p.setPen(Qt::NoPen);
+    }
     if (enabled) {
         p.setRenderHint(QPainter::Antialiasing);
         p.setBrush(m_hover || m_pressed ? tc.accent : tc.icon);
@@ -137,8 +178,9 @@ void PlayerProgress::mousePressEvent(QMouseEvent *e)
     m_dragMoved = false;
     m_pressX = e->position().toPoint().x();
     // The exact frame at once, as on the ruler: a scrub would show a
-    // keyframe first.
-    emit seekRequested(timeAt(m_pressX));
+    // keyframe first. On a dot, its mark's.
+    const int mark = markAt(m_pressX);
+    emit seekRequested(mark >= 0 ? m_marks[mark].sourceMs : timeAt(m_pressX));
     update();
 }
 
@@ -149,7 +191,18 @@ void PlayerProgress::mouseMoveEvent(QMouseEvent *e)
         m_hover = true;
         update();
     }
-    if (m_durationMs > 0)
+    const int mark = m_pressed ? -1 : markAt(x);
+    if (mark != m_hoverMark) {
+        m_hoverMark = mark;
+        update();
+    }
+    if (mark >= 0)
+        QToolTip::showText(e->globalPosition().toPoint(),
+                           m_marks[mark].own
+                               ? tr("Your mark. Click to go to it; Right-click to delete it.")
+                               : tr("Camera mark. Click to go to it; Right-click to hide it."),
+                           this);
+    else if (m_durationMs > 0)
         QToolTip::showText(e->globalPosition().toPoint(),
                            PlayerBar::formatTime(timeAt(x), m_fps),
                            this);
@@ -175,9 +228,40 @@ void PlayerProgress::mouseReleaseEvent(QMouseEvent *e)
     update();
 }
 
+void PlayerProgress::contextMenuEvent(QContextMenuEvent *e)
+{
+    const int mark = markAt(e->pos().x());
+    if (mark < 0 && m_hiddenMarks <= 0)
+        return;
+    QMenu menu(this);
+    QAction *remove = nullptr;
+    QAction *show = nullptr;
+    const highlight::Mark m = mark >= 0 ? m_marks[mark] : highlight::Mark{};
+    if (mark >= 0) {
+        remove = menu.addAction(m.own ? tr("Delete mark") : tr("Hide mark"));
+        remove->setObjectName(QStringLiteral("markRemoveAction"));
+    }
+    if (m_hiddenMarks > 0) {
+        show = menu.addAction(tr("Show hidden marks (%1)").arg(m_hiddenMarks));
+        show->setObjectName(QStringLiteral("showHiddenMarksAction"));
+    }
+    QAction *chosen = menu.exec(e->globalPos());
+    if (!chosen)
+        return;
+    if (chosen == remove) {
+        if (m.own)
+            emit markDeleteRequested(m.sourceMs);
+        else
+            emit markHideRequested(m.sourceMs);
+    } else if (chosen == show) {
+        emit hiddenMarksShowRequested();
+    }
+}
+
 void PlayerProgress::leaveEvent(QEvent *)
 {
     m_hover = false;
+    m_hoverMark = -1;
     QToolTip::hideText();
     update();
 }
@@ -326,6 +410,11 @@ PlayerBar::PlayerBar(QWidget *parent)
     m_progress->setObjectName(QStringLiteral("playerProgress"));
     connect(m_progress, &PlayerProgress::seekRequested, this, &PlayerBar::seekRequested);
     connect(m_progress, &PlayerProgress::scrubRequested, this, &PlayerBar::scrubRequested);
+    connect(m_progress, &PlayerProgress::markDeleteRequested, this,
+            &PlayerBar::markDeleteRequested);
+    connect(m_progress, &PlayerProgress::markHideRequested, this, &PlayerBar::markHideRequested);
+    connect(m_progress, &PlayerProgress::hiddenMarksShowRequested, this,
+            &PlayerBar::hiddenMarksShowRequested);
 
     m_speedButton = new QToolButton(this);
     m_speedButton->setObjectName(QStringLiteral("playerSpeed"));
@@ -552,6 +641,11 @@ void PlayerBar::setFrameRate(double fps)
 void PlayerBar::setCuts(const QList<qint64> &cutsMs)
 {
     m_progress->setCuts(cutsMs);
+}
+
+void PlayerBar::setMarks(const QList<highlight::Mark> &marks, int hiddenCount)
+{
+    m_progress->setMarks(marks, hiddenCount);
 }
 
 void PlayerBar::setScreenshotEnabled(bool enabled)

@@ -4,6 +4,7 @@
 #include <QFileInfo>
 
 #include <algorithm>
+#include <cmath>
 
 namespace media {
 
@@ -74,6 +75,12 @@ QStringList MediaItem::partFiles() const
     return out;
 }
 
+QList<highlight::Mark> MediaItem::shownMarks(const QList<qint64> &cameraMarks) const
+{
+    return highlight::shown(marks, hiddenMarks,
+                            kind == Kind::Clip360 ? cameraMarks : QList<qint64>());
+}
+
 QList<SourceGap> MediaItem::gaps() const
 {
     QList<SourceGap> out;
@@ -129,6 +136,9 @@ bool MediaPool::relink(const QString &from, MediaItem item)
         return false;
     if (item.path == from || contains(item.path)) {
         if (item.path != from) {
+            MediaItem &to = m_items[indexOf(item.path)];
+            to.marks = highlight::merged(to.marks, m_items[i].marks);
+            to.hiddenMarks = highlight::merged(to.hiddenMarks, m_items[i].hiddenMarks);
             m_items.removeAt(i);
         } else { // the same clip file; its take's other files may have moved
             m_items[i].companions = item.companions;
@@ -139,10 +149,75 @@ bool MediaPool::relink(const QString &from, MediaItem item)
     } else {
         item.missing = !media::firstMissingFile(item).isEmpty();
         media::checkParts(item);
+        item.marks = m_items[i].marks;
+        item.hiddenMarks = m_items[i].hiddenMarks;
         m_items[i] = std::move(item);
     }
     emit changed();
     return true;
+}
+
+namespace {
+
+// A frame of the file: how near another a new mark may not be. A file
+// whose rate isn't known takes 30 fps, as its preview plays it.
+qint64 frameMs(const MediaItem &m)
+{
+    return std::max<qint64>(1, std::llround(1000.0 / (m.fps > 0.0 ? m.fps : 30.0)));
+}
+
+QList<qint64> cameraMarksOf(const MediaItem &m, const QList<qint64> &cameraMarks)
+{
+    return m.kind == MediaItem::Kind::Clip360 ? cameraMarks : QList<qint64>();
+}
+
+} // namespace
+
+void MediaPool::addMark(const QString &path, qint64 sourceMs, const QList<qint64> &cameraMarks)
+{
+    const int i = indexOf(path);
+    if (i < 0 || m_items[i].kind == MediaItem::Kind::Audio)
+        return;
+    MediaItem &m = m_items[i];
+    if (highlight::add(m.marks, m.hiddenMarks, sourceMs, m.durationMs, frameMs(m),
+                       cameraMarksOf(m, cameraMarks)))
+        emit changed();
+}
+
+void MediaPool::removeMarkNear(const QString &path, qint64 sourceMs,
+                               const QList<qint64> &cameraMarks)
+{
+    const int i = indexOf(path);
+    if (i < 0 || m_items[i].kind == MediaItem::Kind::Audio)
+        return;
+    MediaItem &m = m_items[i];
+    if (highlight::removeNear(m.marks, m.hiddenMarks, sourceMs, 0, m.durationMs,
+                              cameraMarksOf(m, cameraMarks)))
+        emit changed();
+}
+
+void MediaPool::removeMark(const QString &path, qint64 sourceMs)
+{
+    const int i = indexOf(path);
+    if (i >= 0 && m_items[i].marks.removeOne(sourceMs))
+        emit changed();
+}
+
+void MediaPool::setMarkHidden(const QString &path, qint64 sourceMs, bool hidden)
+{
+    const int i = indexOf(path);
+    if (i >= 0 && m_items[i].kind == MediaItem::Kind::Clip360 &&
+        highlight::setHidden(m_items[i].hiddenMarks, sourceMs, hidden))
+        emit changed();
+}
+
+void MediaPool::showHiddenMarks(const QString &path)
+{
+    const int i = indexOf(path);
+    if (i < 0 || m_items[i].hiddenMarks.isEmpty())
+        return;
+    m_items[i].hiddenMarks.clear();
+    emit changed();
 }
 
 QStringList MediaPool::setMissing(const QHash<QString, bool> &missing)

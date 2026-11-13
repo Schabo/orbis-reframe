@@ -63,9 +63,13 @@ public:
     //     8)},
     //   "timeline": {clips: [...], tracks: [...]},
 //   "media": [{source, kind: "360" | "video" | "audio", durationMs, width,
-//     height, fps; optional: files}] -- the media pool (absent => only what
-//     the timeline uses). files: a take's other files, stored like source
-//     (a ONE X2 clip's lens-1 file; absent => the clip is one file).
+//     height, fps; optional: files, parts, marks, hiddenMarks}] -- the media
+//     pool (absent => only what the timeline uses). files: a take's other
+//     files, stored like source (a ONE X2 clip's lens-1 file; absent => the
+//     clip is one file). parts: see version 22 below. marks and
+//     hiddenMarks: the file's highlight marks set in the Media tab's preview
+//     (MediaItem::marks), as a clip's ([source ms, ...], sorted; a flat
+//     video has only marks, an audio file neither).
     // A main-track clip: source, trimInMs, trimOutMs, sourceDurationMs, fps,
     //   sourceWidth, sourceHeight, reframe {keys: [{tMs, yaw, pitch, roll,
     //   diag, distortion, ease}]} (diag: the field of view, radians corner
@@ -176,7 +180,10 @@ public:
     // Version 22 added a media item's parts ("parts": every file of a
     // recording the camera split, its "source", "startMs" and
     // "durationMs"), written only when an item has more than one: an older
-    // build would drop them on save, and lose which part is gone.
+    // build would drop them on save, and lose which part is gone. It also
+    // added a media item's highlight marks ("marks", "hiddenMarks"),
+    // written only when an item has either: an older build would drop them
+    // on save.
     static constexpr int kFormatVersion = 22;
     static constexpr int kPartsFormatVersion = 22;
     static constexpr int kMarkFormatVersion = 21;
@@ -305,6 +312,10 @@ public slots:
     // whatever was last saved, even if the content happens to coincide).
     void undo();
     void redo();
+    // Whether the last undo() / redo() changed only the media pool (a
+    // file's marks set in the Media tab's preview, an import): the
+    // timeline is as it was.
+    bool lastStepOnlyMedia() const { return m_lastStepOnlyMedia; }
 
 signals:
     void modifiedChanged(bool modified);
@@ -405,6 +416,7 @@ private:
     QList<QByteArray> m_undoStack;
     QList<QByteArray> m_redoStack;
     QByteArray m_lastSettledSnapshot;
+    bool m_lastStepOnlyMedia = false;
     bool m_pendingDirty = false;
     QTimer m_undoDebounce;
 };

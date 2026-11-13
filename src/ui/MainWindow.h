@@ -285,9 +285,16 @@ private:
     bool showSource(const QString &path);
     void leaveSource();
     bool previewing() const { return !m_sourcePath.isEmpty(); }
+    // The file shown's highlight marks on the player bar's strip: its own
+    // and its camera's it doesn't hide (MediaItem::marks), none on the
+    // timeline. Again after each change to the media pool.
+    void showSourceMarks();
+    // undo() / redo() of a step that changed only the media pool (a mark
+    // set in the preview) leave the file previewed shown, where it was.
+    void undoRedoKeepingSource(const std::function<void()> &step);
     // The playback keys and buttons in the file shown: a frame, a second,
-    // its start / end, its camera's highlight marks. False (nothing done)
-    // when the timeline is shown.
+    // its start / end, its highlight marks. False (nothing done) when the
+    // timeline is shown.
     enum class SourceStep { Frame, Second, Edge, Mark, None };
     bool stepSource(SourceStep step, int direction);
     void seekSource(qint64 sourceMs, bool pause);
@@ -627,7 +634,8 @@ private:
     // A sync / seam result arrived while playing; applied on the next pause.
     bool m_measuredWhilePlaying = false;
     // The file previewed (previewMedia; empty: the timeline is shown), its
-    // frame rate, length, camera marks and the playhead in it (source ms),
+    // frame rate, length, its camera's marks (its own are its media pool
+    // item's) and the playhead in it (source ms),
     // and the view the timeline had, given back when it's shown again.
     // m_positionsAreSource follows the controller's sourceShownChanged: the
     // positions it sends from then on are the file's.

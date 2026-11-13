@@ -81,7 +81,9 @@ each is in its document in [`formats/`](formats/README.md).
   clip, read from the file and not saved in the project, `Ctrl+↑` / `↓`
   to jump; and so are your own (`M`, `Shift+M` or the dot's menu deletes
   one) and hiding a camera mark per clip, both saved in the project
-  (format version 21) and undoable. Left: what the record's other six
+  (format version 21) and undoable, and the same on a file previewed in
+  the Media tab, copied into a clip made from it. Left: what the record's
+  other six
   lists hold,
   whether marks made in the phone app reach the file, and other cameras'
   marks (the ONE X2 writes the same record; GoPro's HiLight tags) once

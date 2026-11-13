@@ -228,6 +228,12 @@ own too, say while watching a ride through before you edit it.
 - Your marks and the ones you've hidden are saved in the project, and
   adding, deleting or hiding a mark can be undone.
 - **Media information** says how many marks the file has.
+- You can mark a file before it goes on the timeline, too, while you
+  preview it in the **Media** tab: its marks show on the player bar's
+  progress bar, and `M`, `Shift+M` and the dots work there the same way.
+  A clip you then make from the file starts with those marks; from then on
+  the clip's marks and the file's are separate. See [Previewing a
+  file](main-window.md#previewing-a-file).
 
 Only clips from cameras whose marks orbis-reframe knows how to read show
 the camera's marks; so far that's the X5.

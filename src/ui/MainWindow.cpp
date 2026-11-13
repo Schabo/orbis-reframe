@@ -296,6 +296,20 @@ void MainWindow::setupSourcesSidebar()
             leaveSource();
     };
     connect(m_project->mediaPool(), &MediaPool::changed, this, previewGone);
+    connect(m_project->mediaPool(), &MediaPool::changed, this, &MainWindow::showSourceMarks);
+    // The marks on the player bar's strip are the file previewed's.
+    connect(m_playerBar, &PlayerBar::markDeleteRequested, this, [this](qint64 ms) {
+        if (previewing())
+            m_project->mediaPool()->removeMark(m_sourcePath, ms);
+    });
+    connect(m_playerBar, &PlayerBar::markHideRequested, this, [this](qint64 ms) {
+        if (previewing())
+            m_project->mediaPool()->setMarkHidden(m_sourcePath, ms, true);
+    });
+    connect(m_playerBar, &PlayerBar::hiddenMarksShowRequested, this, [this] {
+        if (previewing())
+            m_project->mediaPool()->showHiddenMarks(m_sourcePath);
+    });
     connect(m_project->mediaPool(), &MediaPool::missingChanged, this, previewGone);
     connect(m_mediaPanel, &MediaPoolPanel::locateRequested, this, &MainWindow::locateMedia);
 }
@@ -2224,13 +2238,18 @@ void MainWindow::trimAtPlayhead(bool in)
 
 void MainWindow::addMarkAtPlayhead()
 {
-    if (const ClipItem *c = m_timeline->clipById(m_clipId))
+    // In a Media tab file previewed, on the file (an audio file takes none).
+    if (previewing())
+        m_project->mediaPool()->addMark(m_sourcePath, m_sourcePositionMs, m_sourceMarks);
+    else if (const ClipItem *c = m_timeline->clipById(m_clipId))
         m_timeline->addClipMark(c->id, m_lastPositionMs, cameraMarks(*c));
 }
 
 void MainWindow::deleteMarkAtPlayhead()
 {
-    if (const ClipItem *c = m_timeline->clipById(m_clipId))
+    if (previewing())
+        m_project->mediaPool()->removeMarkNear(m_sourcePath, m_sourcePositionMs, m_sourceMarks);
+    else if (const ClipItem *c = m_timeline->clipById(m_clipId))
         m_timeline->removeClipMarkNear(c->id, m_lastPositionMs, cameraMarks(*c));
 }
 
@@ -2872,20 +2891,24 @@ void MainWindow::undo()
 {
     if (!m_project->canUndo())
         return;
-    m_rebindingModel = true; // suppress the storm of remapPlayheadAfterEdit calls this triggers
-    m_project->undo();
-    m_rebindingModel = false;
-    afterUndoRedo();
+    undoRedoKeepingSource([this] {
+        m_rebindingModel = true; // suppress the storm of remapPlayheadAfterEdit calls this triggers
+        m_project->undo();
+        m_rebindingModel = false;
+        afterUndoRedo();
+    });
 }
 
 void MainWindow::redo()
 {
     if (!m_project->canRedo())
         return;
-    m_rebindingModel = true;
-    m_project->redo();
-    m_rebindingModel = false;
-    afterUndoRedo();
+    undoRedoKeepingSource([this] {
+        m_rebindingModel = true;
+        m_project->redo();
+        m_rebindingModel = false;
+        afterUndoRedo();
+    });
 }
 
 void MainWindow::showPlayhead(qint64 timelineMs)
@@ -2961,8 +2984,13 @@ void MainWindow::addClipFiles(const QStringList &paths, int index)
         const bool wasEmpty = m_timeline->count() == 0;
         if (!flat)
             m_clipFacts->set(path, probe);
-        m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width, m->height,
-                               audioStreamCount(path), flat, probe.lens_guards);
+        const int id = m_timeline->insertClip(index++, path, m->durationMs, m->fps, m->width,
+                                              m->height, audioStreamCount(path), flat,
+                                              probe.lens_guards);
+        // The marks set on the file in the Media tab's preview: a copy, the
+        // clip's own from now on.
+        if (const MediaItem *item = m_project->mediaPool()->item(path))
+            m_timeline->setClipMarks(id, item->marks, item->hiddenMarks);
         if (wasEmpty) {
             m_clipPath = path;
             m_fps = m->fps;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include "HighlightMarks.h"
 #include "PaneLayout.h"
 #include "ReframeTrack.h"
 #include "SourceGap.h"
@@ -176,11 +177,7 @@ struct ClipItem {
     // clip longer again brings it back.
     QList<qint64> marks;
     QList<qint64> hiddenMarks;
-    struct Mark {
-        qint64 sourceMs = 0;
-        bool own = false; // the user's, else the camera's
-        bool operator==(const Mark &o) const { return sourceMs == o.sourceMs && own == o.own; }
-    };
+    using Mark = highlight::Mark;
     // The marks the clip shows, sorted: its own and those of the file's
     // `cameraMarks` it doesn't hide (a flat clip has no camera marks).
     // Trimmed-out ones too: the caller places them.
@@ -276,7 +273,7 @@ struct ClipItem {
     // within a frame of a mark the clip shows (`cameraMarks`: its file's);
     // a hidden camera mark there is shown again instead.
     bool addMark(qint64 sourceMs, const QList<qint64> &cameraMarks = {});
-    // The shown mark nearest `sourceMs`, within kReframeDeleteSnapMs and
+    // The shown mark nearest `sourceMs`, within highlight::kRemoveSnapMs and
     // the trim: the user's is deleted, a camera one hidden.
     bool removeMarkNear(qint64 sourceMs, const QList<qint64> &cameraMarks = {});
     bool removeMark(qint64 sourceMs); // the user's mark at exactly `sourceMs`

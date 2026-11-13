@@ -662,6 +662,20 @@ void Timeline::showClipHiddenMarks(int clipId)
         emit clipMarksChanged(c->id);
 }
 
+void Timeline::setClipMarks(int clipId, const QList<qint64> &marks,
+                            const QList<qint64> &hiddenMarks)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (!c)
+        return;
+    const QList<qint64> hidden = c->flat ? QList<qint64>() : hiddenMarks;
+    if (c->marks == marks && c->hiddenMarks == hidden)
+        return;
+    c->marks = marks;
+    c->hiddenMarks = hidden;
+    emit clipMarksChanged(c->id);
+}
+
 void Timeline::setClipSpeed(int clipId, double speed)
 {
     ClipItem *c = mutableClipById(clipId);

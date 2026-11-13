@@ -256,6 +256,8 @@ add_library(orbis_core STATIC
     src/core/TrackClip.cpp
     src/core/TrackClip.h
     src/core/Gauge.h
+    src/core/HighlightMarks.cpp
+    src/core/HighlightMarks.h
     src/core/InsetGeometry.h
     src/core/KeyTrack.h
     src/core/LensCalibrationJson.cpp

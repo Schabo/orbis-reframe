@@ -48,7 +48,7 @@ namespace theme {
     X(clipMissing, "clips whose file is missing")                                                  \
     X(waveform, "waveforms and clip marks (fades, keyframes)")                                     \
     X(shade, "a translucent shade over the timeline past its end")                                 \
-    X(marker, "highlight marks on timeline clips")                                                 \
+    X(marker, "highlight marks: timeline clips, player bar")                                       \
     X(error, "errors, missing files, a lost track")                                                \
     X(warning, "warnings")                                                                         \
     X(success, "something going well: a subject being tracked")                                    \

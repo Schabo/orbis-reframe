@@ -1366,28 +1366,63 @@ void testMediaPreview(const Ctx &c)
         CHECK(!list->hasFocus()); // Space plays the timeline again
     }
 
-    // The play button on a file's picture; then an edit (a mark) is the
-    // timeline's, and shows it.
+    // The play button on a file's picture. M / Shift+M then mark the file,
+    // not the timeline, and the preview stays -- through their undo too.
+    // A clip made from the file takes its marks, a copy of them.
     QTreeWidgetItem *clipItem = nullptr;
     for (int i = 0; i < list->topLevelItemCount(); ++i)
         for (int j = 0; j < list->topLevelItem(i)->childCount(); ++j)
             if (list->topLevelItem(i)->child(j)->data(0, MediaPoolPanel::PathRole) == clipC)
                 clipItem = list->topLevelItem(i)->child(j);
     CHECK(clipItem);
-    if (clipItem) {
+    QAction *undo = action(c, "undoAction");
+    if (clipItem && undo) {
         list->scrollToItem(clipItem);
         const QRect r = list->visualItemRect(clipItem);
         QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier,
                           MediaPoolPanel::thumbnailRect(r).center());
         CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(clipC).fileName()));
         emit panel->previewRequested(clipC); // pause
-        const int marks = c.timeline->clipAt(0).marks.size();
+        const auto fileMarks = [&] {
+            const MediaItem *m = pool->item(clipC);
+            return m ? m->marks : QList<qint64>();
+        };
+        const int timelineMarks = c.timeline->clipAt(0).marks.size();
+        const qint64 mark = std::llround(std::ceil(1000.0 / kFps));
+        key(c, Qt::Key_Home);
+        key(c, Qt::Key_Right);
+        CHECK(waitFor([&] { return shows(mark, kClipMs, kFps); }));
         key(c, Qt::Key_M);
-        CHECK(!row->isVisibleTo(c.w));
-        CHECK(c.timeline->clipAt(0).marks.size() == marks + 1);
+        CHECK(row->isVisibleTo(c.w));
+        CHECK(fileMarks() == QList<qint64>{mark});
+        CHECK(c.timeline->clipAt(0).marks.size() == timelineMarks);
+        key(c, Qt::Key_End);
+        key(c, Qt::Key_Up, Qt::ControlModifier); // back to it
+        CHECK(waitFor([&] { return shows(mark, kClipMs, kFps); }));
         settle();
-        if (QAction *undo = action(c, "undoAction"))
-            undo->trigger();
+        key(c, Qt::Key_M, Qt::ShiftModifier);
+        CHECK(fileMarks().isEmpty() && row->isVisibleTo(c.w));
+        settle();
+        undo->trigger();
+        CHECK(fileMarks() == QList<qint64>{mark});
+        CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(clipC).fileName()));
+        CHECK(waitFor([&] { return shows(mark, kClipMs, kFps); }));
+        settle();
+        emit panel->addToTimelineRequested({clipC});
+        CHECK(c.timeline->count() == clips + 1);
+        if (c.timeline->count() == clips + 1) {
+            CHECK(c.timeline->clipAt(clips).marks == QList<qint64>{mark});
+            settle();
+            pool->removeMark(clipC, mark);
+            CHECK(fileMarks().isEmpty() && c.timeline->clipAt(clips).marks == QList<qint64>{mark});
+            settle();
+            undo->trigger(); // the mark
+            undo->trigger(); // the clip
+        }
+        settle();
+        undo->trigger(); // the file's mark
+        CHECK(fileMarks().isEmpty());
+        settle();
     }
     CHECK(c.timeline->count() == clips);
     pool->remove({clipC});

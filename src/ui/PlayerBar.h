@@ -5,6 +5,8 @@
 
 #include <optional>
 
+#include "../core/HighlightMarks.h"
+
 class QAbstractButton;
 class QLabel;
 class QLineEdit;
@@ -14,9 +16,10 @@ class QToolButton;
 
 // The scrub strip in the player bar: the whole project end to end, whatever
 // the timeline's zoom. Played part in the accent, the cuts as small ticks,
-// the time under the mouse as a tooltip. Scrubs like the timeline's ruler:
-// seekRequested (the exact frame) on press, scrubRequested while dragging,
-// seekRequested again on release after a drag.
+// highlight marks as dots, the time under the mouse as a tooltip. Scrubs
+// like the timeline's ruler: seekRequested (the exact frame) on press,
+// scrubRequested while dragging, seekRequested again on release after a
+// drag. A press on a dot seeks to its mark; its menu deletes or hides it.
 class PlayerProgress : public QWidget {
     Q_OBJECT
 
@@ -27,6 +30,9 @@ public:
     void setPosition(qint64 positionMs);
     // The cuts between clips, timeline ms (neither 0 nor the end).
     void setCuts(const QList<qint64> &cutsMs);
+    // The highlight marks shown (ms), and how many camera marks are hidden
+    // (the strip's menu shows them again).
+    void setMarks(const QList<highlight::Mark> &marks, int hiddenCount);
     // For the hover tooltip: how times are written (PlayerBar::formatTime).
     void setFrameRate(double fps) { m_fps = fps; }
 
@@ -38,9 +44,15 @@ public:
 signals:
     void seekRequested(qint64 timelineMs);
     void scrubRequested(qint64 timelineMs);
+    // A dot's menu: delete the user's mark / hide the camera's; the strip's
+    // menu: show the hidden ones again.
+    void markDeleteRequested(qint64 ms);
+    void markHideRequested(qint64 ms);
+    void hiddenMarksShowRequested();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
@@ -49,10 +61,15 @@ protected:
 private:
     QRect grooveRect() const;
     int xAt(qint64 ms) const;
+    // The mark whose dot is under x, the nearest; -1 for none.
+    int markAt(int x) const;
 
     qint64 m_durationMs = 0;
     qint64 m_positionMs = 0;
     QList<qint64> m_cutsMs;
+    QList<highlight::Mark> m_marks;
+    int m_hiddenMarks = 0;
+    int m_hoverMark = -1;
     double m_fps = 0.0;
     bool m_pressed = false;
     bool m_dragMoved = false;
@@ -99,6 +116,8 @@ public slots:
     void setFrameRate(double fps);
     double frameRate() const { return m_fps; }
     void setCuts(const QList<qint64> &cutsMs);
+    // The highlight marks on the progress strip (PlayerProgress::setMarks).
+    void setMarks(const QList<highlight::Mark> &marks, int hiddenCount);
     void setScreenshotEnabled(bool enabled);
     // Picks the nearest offered speed; emits speedChanged when it changes.
     void setSpeed(double speed);
@@ -129,6 +148,10 @@ signals:
     // The progress strip, and a time typed into the time display (seek only).
     void seekRequested(qint64 timelineMs);
     void scrubRequested(qint64 timelineMs);
+    // The progress strip's mark menus (PlayerProgress).
+    void markDeleteRequested(qint64 ms);
+    void markHideRequested(qint64 ms);
+    void hiddenMarksShowRequested();
     void speedChanged(double speed);
     void volumeChanged(int percent);
     void mutedChanged(bool muted);

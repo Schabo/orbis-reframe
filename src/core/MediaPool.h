@@ -8,6 +8,7 @@
 
 #include <optional>
 
+#include "HighlightMarks.h"
 #include "SourceGap.h"
 
 // One file in the project's media pool. The source's metadata is stored with
@@ -48,6 +49,14 @@ struct MediaItem {
     // item was added, the project loaded, or the files were last checked
     // (Project::recheckMissingMedia). Not saved.
     bool missing = false;
+    // Highlight marks set on the file in the Media tab's preview, in the
+    // file's source ms (a split recording's across its parts), as a clip
+    // keeps them (ClipItem::marks / hiddenMarks): the user's own, and the
+    // camera's the user hid. A clip made from the file starts with a copy
+    // of them; editing them later leaves clips already made as they are. A
+    // flat video has only its own; an audio file none.
+    QList<qint64> marks;
+    QList<qint64> hiddenMarks;
 
     // `path`, then the companions.
     QStringList files() const { return QStringList{path} + companions; }
@@ -56,12 +65,17 @@ struct MediaItem {
     // The source spans no file plays: the parts that are missing, and the
     // gaps between parts, in source order.
     QList<SourceGap> gaps() const;
+    // The marks the file shows, sorted: its own and those of the file's
+    // `cameraMarks` it doesn't hide (a flat video's are ignored: it has
+    // none).
+    QList<highlight::Mark> shownMarks(const QList<qint64> &cameraMarks) const;
 
     bool operator==(const MediaItem &o) const
     {
         return path == o.path && kind == o.kind && durationMs == o.durationMs &&
                width == o.width && height == o.height && fps == o.fps &&
-               companions == o.companions && parts == o.parts && missing == o.missing;
+               companions == o.companions && parts == o.parts && missing == o.missing &&
+               marks == o.marks && hiddenMarks == o.hiddenMarks;
     }
 };
 
@@ -112,14 +126,25 @@ public:
     void remove(const QStringList &paths);
     // The file at `from` is `item` now (found again after a move or rename):
     // it takes `from`'s place in the list, or `from` just goes when `item`'s
-    // path is in the pool already. `missing` is set from the disk. False if
-    // `from` isn't in the pool.
+    // path is in the pool already. `missing` is set from the disk; the
+    // highlight marks go with the file (into the item already there, with
+    // its own). False if `from` isn't in the pool.
     bool relink(const QString &from, MediaItem item);
     // Set `missing` from `missing` (path -> missing) for the items it names,
     // and each part's for the parts it names. Emits missingChanged(), not
     // changed(): a file coming and going isn't an edit. Returns the items'
     // paths that changed (an item whose part changed among them).
     QStringList setMissing(const QHash<QString, bool> &missing);
+    // The highlight marks of the file at `path` (MediaItem::marks), as the
+    // timeline edits a clip's (Timeline::addClipMark and the rest), over
+    // the whole file; `cameraMarks` are the file's. Refused on an audio
+    // file, and the hiding on a flat video. Each emits changed() when it
+    // changed something.
+    void addMark(const QString &path, qint64 sourceMs, const QList<qint64> &cameraMarks);
+    void removeMarkNear(const QString &path, qint64 sourceMs, const QList<qint64> &cameraMarks);
+    void removeMark(const QString &path, qint64 sourceMs);
+    void setMarkHidden(const QString &path, qint64 sourceMs, bool hidden);
+    void showHiddenMarks(const QString &path);
     // Replace everything (a project load / undo). Emits changed() once.
     void setItems(const QList<MediaItem> &items);
     void clear() { setItems({}); }

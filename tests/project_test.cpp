@@ -1791,6 +1791,100 @@ void testMarksJson()
     }
 }
 
+// A media pool file's highlight marks (set in the Media tab's preview):
+// edited as a clip's are, over the whole file; saved in the project as
+// version 22, undone without touching the timeline, carried by a relink.
+void testMediaMarks()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString a = tmp.path() + "/a.insv";
+    const QString moved = tmp.path() + "/moved.insv";
+    const QString v = tmp.path() + "/phone.mp4";
+    const QString w = tmp.path() + "/song.wav";
+    for (const QString &f : {a, moved, v, w})
+        writeFile(f);
+    const QString file = tmp.path() + "/pool.orp";
+    auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+    const QList<qint64> camera{4000, 8000};
+
+    Project p;
+    MediaPool *pool = p.mediaPool();
+    CHECK(pool->add({a, MediaItem::Kind::Clip360, 10000, 3840, 1920, 30.0}));
+    CHECK(pool->add({v, MediaItem::Kind::Video, 5000, 1920, 1080, 30.0}));
+    CHECK(pool->add({w, MediaItem::Kind::Audio, 5000}));
+    const auto item = [&](const QString &path) { return *pool->item(path); };
+
+    pool->addMark(a, 2000, camera);
+    pool->addMark(a, 2010, camera); // within a frame of it
+    pool->addMark(a, 20000, camera); // clamped to the end
+    pool->removeMarkNear(a, 4100, camera); // the camera's: hidden
+    CHECK(item(a).marks == (QList<qint64>{2000, 10000}));
+    CHECK(item(a).hiddenMarks == QList<qint64>{4000});
+    CHECK(item(a).shownMarks(camera) ==
+          (QList<highlight::Mark>{{2000, true}, {8000, false}, {10000, true}}));
+    pool->addMark(a, 4000, camera); // shows the hidden one again
+    CHECK(item(a).hiddenMarks.isEmpty() && item(a).marks.size() == 2);
+    pool->setMarkHidden(a, 8000, true);
+    pool->addMark(v, 1500, camera); // a flat video: its own only
+    pool->setMarkHidden(v, 4000, true);
+    CHECK(item(v).marks == QList<qint64>{1500} && item(v).hiddenMarks.isEmpty());
+    CHECK(item(v).shownMarks(camera).size() == 1);
+    pool->addMark(w, 1000, {}); // an audio file: none
+    CHECK(item(w).marks.isEmpty());
+
+    QString err;
+    CHECK(p.save(file, &err));
+    CHECK(document().value("version").toInt() == Project::kPartsFormatVersion);
+    const QJsonArray media = document().value("media").toArray();
+    CHECK(media.at(0).toObject().value("marks").toArray() == QJsonArray({2000, 10000}));
+    CHECK(media.at(0).toObject().value("hiddenMarks").toArray() == QJsonArray({8000}));
+    CHECK(media.at(1).toObject().value("marks").toArray() == QJsonArray({1500}));
+    CHECK(!media.at(2).toObject().contains("marks"));
+
+    Project q;
+    CHECK(q.load(file, &err));
+    MediaPool *qpool = q.mediaPool();
+    CHECK(qpool->item(a)->marks == (QList<qint64>{2000, 10000}));
+    CHECK(qpool->item(a)->hiddenMarks == QList<qint64>{8000});
+    CHECK(qpool->item(v)->marks == QList<qint64>{1500});
+    CHECK(!q.modified());
+
+    // An edit to the pool is one undo step, and the timeline isn't in it.
+    q.timeline()->appendClip(a, 10000, 30.0, 3840, 1920);
+    q.undo();
+    CHECK(!q.lastStepOnlyMedia() && q.timeline()->count() == 0);
+    q.redo();
+    qpool->removeMark(a, 2000);
+    qpool->showHiddenMarks(a);
+    CHECK(q.canUndo());
+    q.undo();
+    CHECK(q.lastStepOnlyMedia());
+    CHECK(qpool->item(a)->marks == (QList<qint64>{2000, 10000}));
+    CHECK(qpool->item(a)->hiddenMarks == QList<qint64>{8000});
+    CHECK(q.timeline()->count() == 1);
+
+    // A relink carries them; into an item already there, with its own.
+    MediaItem to{moved, MediaItem::Kind::Clip360, 10000, 3840, 1920, 30.0};
+    CHECK(q.relinkMedia(a, to) >= 0);
+    CHECK(qpool->item(moved) && qpool->item(moved)->marks == (QList<qint64>{2000, 10000}));
+    CHECK(qpool->add({a, MediaItem::Kind::Clip360, 10000, 3840, 1920, 30.0}));
+    qpool->addMark(a, 3000, {});
+    CHECK(q.relinkMedia(a, to) >= 0);
+    CHECK(!qpool->contains(a));
+    CHECK(qpool->item(moved)->marks == (QList<qint64>{2000, 3000, 10000}));
+
+    // No marks left: the version before (no parts either).
+    q.timeline()->removeClip(q.timeline()->clipAt(0).id);
+    qpool->setItems({});
+    CHECK(q.save(file, &err));
+    CHECK(document().value("version").toInt() < Project::kPartsFormatVersion);
+}
+
 void testClipStitchJson()
 {
     using G = stitch::PreviewStitchConfig::LensGuard;
@@ -2732,6 +2826,7 @@ int main(int argc, char **argv)
     testFlatClipJson();
     testClipStitchJson();
     testMarksJson();
+    testMediaMarks();
     testLensCalibrationJson();
     testLensCalibrationStore();
     testPlateScansInUse();

@@ -120,6 +120,7 @@ bool MainWindow::showSource(const QString &path)
     m_playerBar->setSource(QFileInfo(path).fileName());
     m_playerBar->setFrameRate(seg.fps);
     m_playerBar->setCuts({});
+    showSourceMarks();
     m_mediaPanel->setPreview(path, false);
     showMediaInfo(path, true);
     updateScreenshotEnabled();
@@ -141,6 +142,7 @@ void MainWindow::leaveSource()
     m_viewport->SetPose(m_sourceSavedPose);
     applyStabilization(m_lastPositionMs);
     m_playerBar->setSource(QString());
+    m_playerBar->setMarks({}, 0);
     updatePlayerBar();
     m_mediaPanel->setPreview(QString(), false);
     if (const ClipItem *c = m_timeline->clipById(editClipId()))
@@ -189,7 +191,10 @@ bool MainWindow::stepSource(SourceStep step, int direction)
         // A mark within a frame of the playhead is the one it's on.
         const qint64 near = std::llround(1000.0 / m_sourceFps / 2);
         qint64 to = -1;
-        for (const qint64 t : m_sourceMarks) {
+        const MediaItem *m = m_project->mediaPool()->item(m_sourcePath);
+        for (const highlight::Mark &mark : m ? m->shownMarks(m_sourceMarks)
+                                             : QList<highlight::Mark>()) {
+            const qint64 t = mark.sourceMs;
             if (direction > 0 && t > at + near && (to < 0 || t < to))
                 to = t;
             if (direction < 0 && t < at - near && (to < 0 || t > to))
@@ -203,4 +208,32 @@ bool MainWindow::stepSource(SourceStep step, int direction)
         break;
     }
     return true;
+}
+
+void MainWindow::showSourceMarks()
+{
+    const MediaItem *m = previewing() ? m_project->mediaPool()->item(m_sourcePath) : nullptr;
+    if (!m) {
+        m_playerBar->setMarks({}, 0);
+        return;
+    }
+    int hidden = 0;
+    for (const qint64 t : std::as_const(m_sourceMarks))
+        hidden += m->hiddenMarks.contains(t);
+    m_playerBar->setMarks(m->shownMarks(m_sourceMarks), hidden);
+}
+
+void MainWindow::undoRedoKeepingSource(const std::function<void()> &step)
+{
+    const QString path = m_sourcePath;
+    const qint64 at = m_sourcePositionMs;
+    const bool playing = m_playing;
+    const view::Pose pose = m_viewport->Pose();
+    step(); // rebuilds the project: the timeline is shown again
+    if (path.isEmpty() || !m_project->lastStepOnlyMedia() || !showSource(path))
+        return;
+    m_viewport->SetPose(pose);
+    seekSource(at, false);
+    if (playing)
+        QMetaObject::invokeMethod(m_controller, "play", Qt::QueuedConnection);
 }

@@ -170,6 +170,13 @@ void testProgress()
     if (seeks.size() == 2)
         CHECK(std::abs(seeks.last().first().toLongLong() - 30'000) < 500);
 
+    // A press near a mark's dot goes to the mark exactly.
+    seeks.clear();
+    bar.setMarks({{40'000, true}, {70'000, false}}, 1);
+    QTest::mouseClick(progress, Qt::LeftButton, {}, QPoint(xAt(40'000) + 3, y));
+    CHECK(seeks.size() == 1 && seeks.first().first().toLongLong() == 40'000);
+    bar.setMarks({}, 0);
+
     // Outside the strip it clamps to the project.
     CHECK(progress->timeAt(-50) == 0);
     CHECK(progress->timeAt(progress->width() + 50) == 100'000);

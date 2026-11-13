@@ -103,7 +103,15 @@ While a file plays this way:
   the button on the file's picture again), the progress bar, one frame or
   one second back and forward, its start and end (`Home` / `End`, and
   `↑` / `↓`: a file has no cuts), and its highlight marks (`Ctrl+↑` /
-  `Ctrl+↓`, a 360° clip's marks set while recording);
+  `Ctrl+↓`);
+- the file's highlight marks are yellow dots on the progress bar: a 360°
+  clip's marks set while recording, and your own. `M` adds one at the
+  playhead and `Shift+M` deletes the one there (one set while recording is
+  hidden), as on the timeline; click a dot to go to it, right-click it to
+  delete or hide it, and right-click the progress bar for **Show hidden
+  marks**. They're the file's: putting it on the timeline gives the clip a
+  copy of them, and a clip already on the timeline keeps its own. A video
+  takes marks too, an audio file doesn't;
 - drag in a 360° clip to look around, and turn the mouse wheel to zoom.
   That's only looking: it sets no keyframes, even with reframe authoring
   armed;
@@ -119,10 +127,11 @@ While a file plays this way:
 To go back to the timeline, click **Back to timeline** on the line over the
 player bar, press `Esc`, or click the timeline. Anything you do to the
 timeline -- putting the file on it with a double-click or a drag, a trim, a
-keyframe (`K`), a mark (`M`), undo -- also goes back to it first or right
-after, so you always see what you changed. The view, and the playhead, are
-where they were before the preview. Nothing about a preview is saved in the
-project.
+keyframe (`K`), undo of a change to the timeline -- also goes back to it
+first or right after, so you always see what you changed. Undoing a mark
+you set in the file keeps it previewed. The view, and the playhead, are
+where they were before the preview. Of a preview, only the file's marks are
+saved in the project.
 
 ## The timeline
 
@@ -171,7 +180,9 @@ The bar directly under the viewport is for watching. It has two rows.
 - **The progress bar**: the whole timeline from start to end, however far
   the timeline below is zoomed in. Click it to jump, or drag along it to
   scrub, just like the ruler. The small ticks are the cuts between clips.
-  Hover over it to see the time under the pointer.
+  Hover over it to see the time under the pointer. While a file from the
+  **Media** tab previews, it's that file's, with its highlight marks as
+  yellow dots.
 - **The speed**: `1×` normally. Click it to play slower or faster, from
   `0.25×` to `2×`, or press `J` (slower) and `L` (faster; `L` also starts
   playback). It's only for watching -- the export is never affected (to

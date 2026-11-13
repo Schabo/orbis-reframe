@@ -368,6 +368,10 @@ public slots:
     void removeClipMark(int clipId, qint64 sourceMs);
     void setClipMarkHidden(int clipId, qint64 sourceMs, bool hidden);
     void showClipHiddenMarks(int clipId);
+    // Replace the clip's marks with these (the user's, hidden camera ones;
+    // a flat clip keeps no hidden ones): a clip made from a media pool file
+    // takes the file's (MediaItem::marks).
+    void setClipMarks(int clipId, const QList<qint64> &marks, const QList<qint64> &hiddenMarks);
     // Playback speed (clamped to ClipItem::kMin/MaxSpeed). Changes the clip's
     // span on the timeline: emits clipSpeedChanged + durationChanged.
     void setClipSpeed(int clipId, double speed);

@@ -1455,7 +1455,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
 
     json media = json::array();
-    bool anyParts = false; // a recording in several files
+    bool anyParts = false;     // a recording in several files
+    bool anyMediaMark = false; // a file's highlight marks
     for (const MediaItem &m : m_mediaPool->items()) {
         media.push_back({
             {"source", (projectDir ? storedPath(m.path, *projectDir) : m.path).toStdString()},
@@ -1486,6 +1487,12 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 });
             media.back()["parts"] = std::move(parts);
         }
+        if (m.kind != MediaItem::Kind::Audio && !m.marks.isEmpty())
+            media.back()["marks"] = marksToJson(m.marks);
+        if (m.kind == MediaItem::Kind::Clip360 && !m.hiddenMarks.isEmpty())
+            media.back()["hiddenMarks"] = marksToJson(m.hiddenMarks);
+        anyMediaMark = anyMediaMark || media.back().contains("marks") ||
+                       media.back().contains("hiddenMarks");
     }
 
     // The project-wide stitch settings an older build reads: the clips' own.
@@ -1496,7 +1503,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyParts                  ? kPartsFormatVersion
+        {"version", anyParts || anyMediaMark  ? kPartsFormatVersion
                     : anyMark                 ? kMarkFormatVersion
                     : anyNewStitcher || anyLensCalibration ? kStitchFormatVersion
                     : anyMotionOverlay        ? kMotionOverlayFormatVersion
@@ -1758,6 +1765,10 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                     }
                 if (m.parts.size() < 2 || m.parts.front().path != m.path)
                     m.parts.clear(); // not a recording in parts after all
+                if (m.kind != MediaItem::Kind::Audio && jm.contains("marks"))
+                    m.marks = marksFromJson(jm.at("marks"));
+                if (m.kind == MediaItem::Kind::Clip360 && jm.contains("hiddenMarks"))
+                    m.hiddenMarks = marksFromJson(jm.at("hiddenMarks"));
                 m.missing = !media::firstMissingFile(m).isEmpty();
                 media::checkParts(m);
                 parsedMedia.append(m);
@@ -2092,6 +2103,25 @@ void Project::commitPendingUndoPoint()
     m_lastSettledSnapshot = now;
 }
 
+namespace {
+
+// Whether two snapshots differ in the media pool alone (and so maybe in
+// the format version: a file's marks need a newer one).
+bool onlyMediaDiffers(const QByteArray &a, const QByteArray &b)
+{
+    json ja = json::parse(a.begin(), a.end(), nullptr, false);
+    json jb = json::parse(b.begin(), b.end(), nullptr, false);
+    if (!ja.is_object() || !jb.is_object())
+        return false;
+    for (json *j : {&ja, &jb}) {
+        j->erase("media");
+        j->erase("version");
+    }
+    return ja == jb;
+}
+
+} // namespace
+
 void Project::undo()
 {
     commitPendingUndoPoint(); // don't drop an in-flight edit under Ctrl+Z
@@ -2099,6 +2129,7 @@ void Project::undo()
         return;
     m_redoStack.push_back(m_lastSettledSnapshot);
     const QByteArray prev = m_undoStack.takeLast();
+    m_lastStepOnlyMedia = onlyMediaDiffers(prev, m_lastSettledSnapshot);
     restoreSnapshot(prev);
     m_lastSettledSnapshot = prev;
     emit canUndoChanged(!m_undoStack.isEmpty());
@@ -2112,6 +2143,7 @@ void Project::redo()
         return;
     m_undoStack.push_back(m_lastSettledSnapshot);
     const QByteArray next = m_redoStack.takeLast();
+    m_lastStepOnlyMedia = onlyMediaDiffers(next, m_lastSettledSnapshot);
     restoreSnapshot(next);
     m_lastSettledSnapshot = next;
     emit canUndoChanged(true);
