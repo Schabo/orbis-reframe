@@ -19,7 +19,7 @@ models' licenses are next to each model, in
 
 | Component | Version | License | What it does here | License text |
 |---|---|---|---|---|
-| [ncnn](https://github.com/Tencent/ncnn) (Tencent) | 20260526, the `ubuntu-2404-shared` release | BSD-3-Clause (its third-party parts: zlib, BSD-2-Clause, BSD-3-Clause) | Runs the number-plate model on the GPU (plate scan). `libncnn.so.1` is bundled in `lib/orbis-reframe/` -- it isn't packaged in Debian | `packaging/licenses/ncnn-LICENSE.txt` |
+| [ncnn](https://github.com/Tencent/ncnn) (Tencent) | 20261020, the `ubuntu-2404-shared` release (or an installed copy when present) | BSD-3-Clause (its third-party parts: zlib, BSD-2-Clause, BSD-3-Clause) | Runs the number-plate model on the GPU (plate scan). An installed ncnn is linked and not shipped; the fetched or `NCNN_ROOT` copy is bundled in `lib/orbis-reframe/` | `packaging/licenses/ncnn-LICENSE.txt` |
 | [nlohmann/json](https://github.com/nlohmann/json) (Niels Lohmann) | 3.11.3 (Debian's `nlohmann-json3-dev`) | MIT | Reads and writes project files. Header-only, compiled into the binary | `packaging/licenses/nlohmann-json-LICENSE.MIT` |
 | [miniaudio](https://miniaud.io/) (David Reid) | 0.11.25, in `external/miniaudio/` | Unlicense OR MIT-0 | Plays the sound: compiled into the binary, it loads the system's libpulse / ALSA / JACK at run time | `external/miniaudio/LICENSE` |
 | [Lucide](https://lucide.dev/) icons (some derived from [Feather](https://feathericons.com/)) | -- | ISC (Feather parts: MIT) | Toolbar and panel icons, compiled into the binary | `resources/icons/LICENSE.lucide` |
@@ -101,7 +101,7 @@ library, unpack the AppImage (`--appimage-extract`), replace the library in
 | wayland | Debian 13 | 1.23.1 | MIT | -- |
 | xnnpack | Debian 13 | 0.0~git20241108.4ea82e5 | BSD-3-Clause | -- |
 | ffmpeg | our build (`scripts/build_ffmpeg.sh`), configure line in `licenses/ffmpeg/configure.txt` | 9.0.2 | LGPL-2.1-or-later | on the release |
-| ncnn | Tencent's release | 20260526 | BSD-3-Clause AND Zlib AND BSD-2-Clause | -- |
+| ncnn | Tencent's release | 20261020 | BSD-3-Clause AND Zlib AND BSD-2-Clause | -- |
 | type2-runtime | upstream's release (`scripts/build_appimage_runtime.sh`), the AppImage's runtime | fedfad5 | MIT AND LGPL-2.1-only AND BSD-2-Clause AND Zlib AND BSD-3-Clause | on the release |
 
 <!-- End of the generated table. -->
