@@ -61,15 +61,16 @@ struct MarkerPushConstants {
 };
 static_assert(sizeof(MarkerPushConstants) == 48, "MarkerPushConstants must match marker.frag");
 
-// region.frag's push constants (the privacy-blur region outlines).
+// region.frag's push constants (the privacy-blur region outlines): which of
+// the frame's outline points (RegionSlot's buffer) are this polygon's.
 struct RegionPushConstants {
     float origin[2]; // output rect's top-left, framebuffer px
     float border;
-    float count;     // corners in use
+    int32_t count;   // points in the polygon
     float color[4];  // rgb, a = opacity
-    float pts[12];   // up to 6 corners in output-rect px
+    int32_t first;   // its first point in the buffer
 };
-static_assert(sizeof(RegionPushConstants) == 80, "RegionPushConstants must match region.frag");
+static_assert(sizeof(RegionPushConstants) == 36, "RegionPushConstants must match region.frag");
 
 // Rendering-only concern: a pipeline that samples an equirect texture through a
 // fullscreen-triangle reprojection shader. See EquirectViewportWindow.h for why
@@ -272,7 +273,25 @@ private:
     // The Track subject box (marker.frag): no descriptors, push constants only.
     VkPipelineLayout m_markerPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_markerPipeline = VK_NULL_HANDLE;
-    // The privacy-blur region outlines (region.frag): push constants only.
+    // The privacy-blur region outlines (region.frag): their points in a
+    // storage buffer per frame in flight (an outline follows its arcs, more
+    // points than push constants hold), grown as a frame needs.
+    struct RegionSlot {
+        VkBuffer buf = VK_NULL_HANDLE;
+        VkDeviceMemory mem = VK_NULL_HANDLE;
+        void *map = nullptr;
+        VkDeviceSize bytes = 0;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+    };
+    std::vector<RegionSlot> m_regionSlots;
+    std::vector<float> m_regionPoints; // this frame's, reused
+    bool m_regionMemSaid = false;      // regionPoints' message, once
+    VkDescriptorSetLayout m_regionSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool m_regionPool = VK_NULL_HANDLE;
     VkPipelineLayout m_regionPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_regionPipeline = VK_NULL_HANDLE;
+    // Copy `pts` into frame `slot`'s buffer, growing it first if needed.
+    // False when there's no memory for it: the outlines are left out.
+    bool regionPoints(uint32_t slot, const std::vector<float> &pts);
+    void destroyRegionSlot(RegionSlot &slot);
 };

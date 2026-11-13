@@ -662,16 +662,122 @@ void EquirectViewportRenderer::createInsetResources()
     if (m_markerPipeline == VK_NULL_HANDLE)
         std::fprintf(stderr, "[viewport] marker pipeline failed; the tracking box won't show\n");
 
-    VkPushConstantRange rpcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(RegionPushConstants)};
-    VkPipelineLayoutCreateInfo rpli{};
-    rpli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    rpli.pushConstantRangeCount = 1;
-    rpli.pPushConstantRanges = &rpcr;
-    vkCreatePipelineLayout(device, &rpli, nullptr, &m_regionPipelineLayout);
-    m_regionPipeline = makePipeline(render::shaders::regionFrag(),
-                                    m_regionPipelineLayout, /*blend=*/true);
+    // The region outlines: set 0 is the frame's points (regionPoints).
+    VkDescriptorSetLayoutBinding rb{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+                                    VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    VkDescriptorSetLayoutCreateInfo rsli{};
+    rsli.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    rsli.bindingCount = 1;
+    rsli.pBindings = &rb;
+    const uint32_t frames = static_cast<uint32_t>(std::max(1, m_window->concurrentFrameCount()));
+    VkDescriptorPoolSize rps{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frames};
+    VkDescriptorPoolCreateInfo rdpi{};
+    rdpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    rdpi.maxSets = frames;
+    rdpi.poolSizeCount = 1;
+    rdpi.pPoolSizes = &rps;
+    std::vector<VkDescriptorSet> rsets(frames, VK_NULL_HANDLE);
+    bool regionOk =
+        vkCreateDescriptorSetLayout(device, &rsli, nullptr, &m_regionSetLayout) == VK_SUCCESS &&
+        vkCreateDescriptorPool(device, &rdpi, nullptr, &m_regionPool) == VK_SUCCESS;
+    if (regionOk) {
+        std::vector<VkDescriptorSetLayout> layouts(frames, m_regionSetLayout);
+        VkDescriptorSetAllocateInfo dsi{};
+        dsi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dsi.descriptorPool = m_regionPool;
+        dsi.descriptorSetCount = frames;
+        dsi.pSetLayouts = layouts.data();
+        regionOk = vkAllocateDescriptorSets(device, &dsi, rsets.data()) == VK_SUCCESS;
+    }
+    if (regionOk) {
+        m_regionSlots.assign(frames, RegionSlot{});
+        for (uint32_t i = 0; i < frames; ++i)
+            m_regionSlots[i].set = rsets[i];
+        VkPushConstantRange rpcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(RegionPushConstants)};
+        VkPipelineLayoutCreateInfo rpli{};
+        rpli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        rpli.setLayoutCount = 1;
+        rpli.pSetLayouts = &m_regionSetLayout;
+        rpli.pushConstantRangeCount = 1;
+        rpli.pPushConstantRanges = &rpcr;
+        regionOk = vkCreatePipelineLayout(device, &rpli, nullptr, &m_regionPipelineLayout) ==
+                   VK_SUCCESS;
+    }
+    if (regionOk)
+        m_regionPipeline = makePipeline(render::shaders::regionFrag(),
+                                        m_regionPipelineLayout, /*blend=*/true);
     if (m_regionPipeline == VK_NULL_HANDLE)
         std::fprintf(stderr, "[viewport] region pipeline failed; the blur regions won't show\n");
+}
+
+void EquirectViewportRenderer::destroyRegionSlot(RegionSlot &slot)
+{
+    VkDevice device = m_window->device();
+    if (slot.map)
+        vkUnmapMemory(device, slot.mem);
+    if (slot.buf)
+        vkDestroyBuffer(device, slot.buf, nullptr);
+    if (slot.mem)
+        vkFreeMemory(device, slot.mem, nullptr);
+    slot.buf = VK_NULL_HANDLE;
+    slot.mem = VK_NULL_HANDLE;
+    slot.map = nullptr;
+    slot.bytes = 0;
+}
+
+bool EquirectViewportRenderer::regionPoints(uint32_t index, const std::vector<float> &pts)
+{
+    if (index >= m_regionSlots.size())
+        return false;
+    RegionSlot &slot = m_regionSlots[index];
+    const VkDeviceSize need = pts.size() * sizeof(float);
+    if (need > slot.bytes) {
+        // This slot's last frame has finished (QVulkanWindow waited for it
+        // before handing the slot out again), so its buffer and set are free.
+        destroyRegionSlot(slot);
+        VkDeviceSize bytes = 64 * 1024; // ~8000 points: a few hundred outlines
+        while (bytes < need)
+            bytes *= 2;
+        VkDevice device = m_window->device();
+        VkBufferCreateInfo bi{};
+        bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bi.size = bytes;
+        bi.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bool ok = vkCreateBuffer(device, &bi, nullptr, &slot.buf) == VK_SUCCESS;
+        if (ok) {
+            VkMemoryRequirements req{};
+            vkGetBufferMemoryRequirements(device, slot.buf, &req);
+            VkMemoryAllocateInfo ai{};
+            ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            ai.allocationSize = req.size;
+            ai.memoryTypeIndex = m_window->hostVisibleMemoryIndex();
+            ok = vkAllocateMemory(device, &ai, nullptr, &slot.mem) == VK_SUCCESS &&
+                 vkBindBufferMemory(device, slot.buf, slot.mem, 0) == VK_SUCCESS &&
+                 vkMapMemory(device, slot.mem, 0, bytes, 0, &slot.map) == VK_SUCCESS;
+        }
+        if (!ok) {
+            destroyRegionSlot(slot);
+            if (!m_regionMemSaid)
+                std::fprintf(stderr, "[viewport] no memory for the blur region outlines; they "
+                                     "won't show\n");
+            m_regionMemSaid = true;
+            return false;
+        }
+        slot.bytes = bytes;
+        VkDescriptorBufferInfo info{slot.buf, 0, VK_WHOLE_SIZE};
+        VkWriteDescriptorSet wr{};
+        wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wr.dstSet = slot.set;
+        wr.dstBinding = 0;
+        wr.descriptorCount = 1;
+        wr.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        wr.pBufferInfo = &info;
+        vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+    }
+    m_regionMemSaid = false;
+    std::memcpy(slot.map, pts.data(), need);
+    return true;
 }
 
 void EquirectViewportRenderer::destroyInsetSlot(InsetSlot &slot)
@@ -770,6 +876,15 @@ void EquirectViewportRenderer::destroyInsetResources()
         vkDestroyPipelineLayout(device, m_regionPipelineLayout, nullptr);
     m_regionPipeline = VK_NULL_HANDLE;
     m_regionPipelineLayout = VK_NULL_HANDLE;
+    for (RegionSlot &slot : m_regionSlots)
+        destroyRegionSlot(slot); // the sets go with the pool
+    m_regionSlots.clear();
+    if (m_regionPool)
+        vkDestroyDescriptorPool(device, m_regionPool, nullptr);
+    if (m_regionSetLayout)
+        vkDestroyDescriptorSetLayout(device, m_regionSetLayout, nullptr);
+    m_regionPool = VK_NULL_HANDLE;
+    m_regionSetLayout = VK_NULL_HANDLE;
     if (m_insetSampler)
         vkDestroySampler(device, m_insetSampler, nullptr);
     m_insetPipeline = VK_NULL_HANDLE;

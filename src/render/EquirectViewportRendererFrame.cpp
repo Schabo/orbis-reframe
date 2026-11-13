@@ -23,14 +23,13 @@ namespace {
 
 // A region outline as the view shows it: its quad's corners taken from the
 // sphere frame into the view (the inverse of equirect.frag's ray: stab^T,
-// then yaw, pitch and roll undone), clipped to what lies in front of the
-// projection centre and projected into the output rect, px
-// (view::pointToPlane: the quad's straight edges stay straight). Up to 6
-// corners (4, plus one per edge the clip cuts). Fewer than 3 = nothing to
-// draw.
+// then yaw, pitch and roll undone), then view::outlineToPlane's polygon --
+// the arcs between them, clipped and projected -- in the output rect's px.
+// Writes up to view::kOutlineMaxPoints x, y pairs; fewer than 3 points =
+// nothing to draw.
 int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float stabRm[9],
                    const view::Pose &pose, const view::Lens &lens, float aspect, float rectW,
-                   float rectH, float out[12])
+                   float rectH, float out[2 * view::kOutlineMaxPoints])
 {
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
     const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
@@ -49,31 +48,11 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
         v[i][1] = -x1 * sr + y2 * cr;
         v[i][2] = z2;
     }
-    // Keep z <= d - kNear (in front of the projection centre (0, 0, d)), or
-    // on a globe z <= 1 / d - kNear (not behind its rim): view::frontLimit.
-    // Sutherland-Hodgman against that plane.
-    constexpr float kNear = 1e-3f;
-    const float zMax = view::frontLimit(lens.distortion) - kNear;
-    float c[6][3];
-    int n = 0;
-    for (int i = 0; i < 4; ++i) {
-        const float *a = v[i], *b = v[(i + 1) % 4];
-        const bool ina = a[2] <= zMax, inb = b[2] <= zMax;
-        if (ina)
-            std::copy(a, a + 3, c[n++]);
-        if (ina != inb) {
-            const float t = (zMax - a[2]) / (b[2] - a[2]);
-            for (int k = 0; k < 3; ++k)
-                c[n][k] = a[k] + t * (b[k] - a[k]);
-            ++n;
-        }
-    }
+    const int n = view::outlineToPlane(v, lens.distortion, out);
     const float h = view::halfHeight(lens.fovY, lens.distortion);
     for (int i = 0; i < n; ++i) {
-        float px = 0.0f, py = 0.0f;
-        view::pointToPlane(c[i], lens.distortion, px, py);
-        const float ndcX = px / (h * aspect);
-        const float ndcY = -py / h;
+        const float ndcX = out[i * 2] / (h * aspect);
+        const float ndcY = -out[i * 2 + 1] / h;
         out[i * 2] = (ndcX + 1.0f) * 0.5f * rectW;
         out[i * 2 + 1] = (ndcY + 1.0f) * 0.5f * rectH;
     }
@@ -734,29 +713,36 @@ void EquirectViewportRenderer::startNextFrame()
     }
 
     // The privacy-blur region outlines, on the picture (under the insets):
-    // each scissored to its own bounds, so a pass costs only its pixels.
+    // every outline in every pane, through its view, in its own rect. The
+    // points of all of them go into this frame's buffer; each is a draw
+    // scissored to its own bounds, so it costs only its pixels.
     const auto &outlines = m_window->Outlines();
     if (m_regionPipeline && !outlines.empty()) {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                      m_regionPipeline);
         const float border = 2.0f * float(m_window->devicePixelRatio());
-        // Every outline in every pane, through its view, in its own rect.
+        struct RegionDraw {
+            VkRect2D scissor;
+            int32_t first, count;
+            const float *rgb;
+        };
+        std::vector<RegionDraw> draws;
+        std::vector<float> &pts = m_regionPoints; // x, y pairs, output-rect px
+        pts.clear();
+        float poly[2 * view::kOutlineMaxPoints];
         for (size_t k = 0; k < panes.size() * outlines.size(); ++k) {
             const PaneDraw &d = panes[k / outlines.size()];
             const auto &o = outlines[k % outlines.size()];
-            RegionPushConstants rpc{};
-            const int n = projectOutline(o, stabRm, d.pose, d.lens, d.aspect, d.w, d.h, rpc.pts);
+            const int n = projectOutline(o, stabRm, d.pose, d.lens, d.aspect, d.w, d.h, poly);
             if (n < 3)
                 continue;
             for (int i = 0; i < n; ++i) { // pane px -> output rect px
-                rpc.pts[i * 2] += d.x - float(rectX);
-                rpc.pts[i * 2 + 1] += d.y - float(rectY);
+                poly[i * 2] += d.x - float(rectX);
+                poly[i * 2 + 1] += d.y - float(rectY);
             }
-            float lo[2] = {rpc.pts[0], rpc.pts[1]}, hi[2] = {lo[0], lo[1]};
+            float lo[2] = {poly[0], poly[1]}, hi[2] = {lo[0], lo[1]};
             for (int i = 1; i < n; ++i)
-                for (int k = 0; k < 2; ++k) {
-                    lo[k] = std::min(lo[k], rpc.pts[i * 2 + k]);
-                    hi[k] = std::max(hi[k], rpc.pts[i * 2 + k]);
+                for (int c = 0; c < 2; ++c) {
+                    lo[c] = std::min(lo[c], poly[i * 2 + c]);
+                    hi[c] = std::max(hi[c], poly[i * 2 + c]);
                 }
             const float pad = border + 1.0f;
             const VkRect2D ps = paneScissor(d);
@@ -768,23 +754,38 @@ void EquirectViewportRenderer::startNextFrame()
                                     int(std::ceil(std::min(hi[1] + pad, 1e6f))));
             if (x1 <= x0 || y1 <= y0)
                 continue;
-            VkRect2D rs{};
-            rs.offset.x = rectX + x0;
-            rs.offset.y = rectY + y0;
-            rs.extent.width = static_cast<uint32_t>(x1 - x0);
-            rs.extent.height = static_cast<uint32_t>(y1 - y0);
-            vkCmdSetScissor(commandBuffer, 0, 1, &rs);
-            rpc.origin[0] = float(rectX);
-            rpc.origin[1] = float(rectY);
-            rpc.border = border;
-            rpc.count = float(n);
-            std::copy(o.rgb, o.rgb + 3, rpc.color);
-            rpc.color[3] = 1.0f;
-            vkCmdPushConstants(commandBuffer, m_regionPipelineLayout,
-                                           VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(rpc), &rpc);
-            vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+            RegionDraw r{};
+            r.scissor.offset.x = rectX + x0;
+            r.scissor.offset.y = rectY + y0;
+            r.scissor.extent.width = static_cast<uint32_t>(x1 - x0);
+            r.scissor.extent.height = static_cast<uint32_t>(y1 - y0);
+            r.first = static_cast<int32_t>(pts.size() / 2);
+            r.count = n;
+            r.rgb = o.rgb;
+            pts.insert(pts.end(), poly, poly + 2 * n);
+            draws.push_back(r);
         }
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        if (!draws.empty() && regionPoints(frameSlot, pts)) {
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_regionPipeline);
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    m_regionPipelineLayout, 0, 1,
+                                    &m_regionSlots[frameSlot].set, 0, nullptr);
+            for (const RegionDraw &r : draws) {
+                vkCmdSetScissor(commandBuffer, 0, 1, &r.scissor);
+                RegionPushConstants rpc{};
+                rpc.origin[0] = float(rectX);
+                rpc.origin[1] = float(rectY);
+                rpc.border = border;
+                rpc.count = r.count;
+                std::copy(r.rgb, r.rgb + 3, rpc.color);
+                rpc.color[3] = 1.0f;
+                rpc.first = r.first;
+                vkCmdPushConstants(commandBuffer, m_regionPipelineLayout,
+                                   VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(rpc), &rpc);
+                vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+            }
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        }
     }
 
     // The insets over the view, bottom-most first, placed in the output rect

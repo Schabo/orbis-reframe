@@ -2,13 +2,14 @@
 // rectilinear and stereographic ends, rays and plane points round trip, the
 // centre's magnification, what is in front of the projection centre; the
 // diagonal field of view, the automatic distortion and the angle limits;
-// the globe past d = 1.
+// the globe past d = 1; the region outlines.
 // The exit code is the failure count.
 
 #include "support/ModelTest.h"
 
 #include "ViewProjection.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <numbers>
@@ -295,6 +296,96 @@ void testGlobe()
     CHECK(view::distortionOf(p) == 2.0);
 }
 
+// The distance from (x, y) to the segment a-b in the plane.
+double segmentDistance(double x, double y, const double a[2], const double b[2])
+{
+    const double ex = b[0] - a[0], ey = b[1] - a[1];
+    const double t = std::clamp(((x - a[0]) * ex + (y - a[1]) * ey) / (ex * ex + ey * ey), 0.0, 1.0);
+    return std::hypot(x - a[0] - t * ex, y - a[1] - t * ey);
+}
+
+void testOutline()
+{
+    constexpr double deg = kPi / 180.0;
+    // A quad ~40 deg wide round the view's centre, corners off the unit
+    // sphere's radius (the arcs don't depend on it).
+    auto dir = [](double az, double el, double len, double out[3]) {
+        out[0] = len * std::cos(el) * std::sin(az);
+        out[1] = len * std::sin(el);
+        out[2] = -len * std::cos(el) * std::cos(az);
+    };
+    double quad[4][3];
+    dir(-20 * deg, 15 * deg, 1.0, quad[0]);
+    dir(25 * deg, 12 * deg, 2.0, quad[1]);
+    dir(20 * deg, -18 * deg, 0.5, quad[2]);
+    dir(-22 * deg, -10 * deg, 1.0, quad[3]);
+    double pts[2 * view::kOutlineMaxPoints];
+
+    // Rectilinear: the arcs are the straight lines between the corners, the
+    // picture the outline had as a plain quad.
+    int n = view::outlineToPlane(quad, 0.0, pts);
+    CHECK(n == 4 * view::kOutlineSegments);
+    double c[4][2];
+    for (int k = 0; k < 4; ++k) {
+        CHECK(view::pointToPlane(quad[k], 0.0, c[k][0], c[k][1]));
+        const double *p = pts + 2 * k * view::kOutlineSegments;
+        CHECK(near(p[0], c[k][0], 1e-12) && near(p[1], c[k][1], 1e-12));
+    }
+    for (int i = 0; i < n; ++i) {
+        const int k = i / view::kOutlineSegments;
+        CHECK(segmentDistance(pts[2 * i], pts[2 * i + 1], c[k], c[(k + 1) % 4]) < 1e-12);
+    }
+
+    // Every point is on its edge's great circle, at every distortion: its
+    // ray lies in the plane through the centre and the edge's corners.
+    for (double a : {0.0, 0.4, 1.0, 1.5, 2.0}) {
+        n = view::outlineToPlane(quad, a, pts);
+        CHECK(n == 4 * view::kOutlineSegments);
+        for (int i = 0; i < n; ++i) {
+            const int k = i / view::kOutlineSegments;
+            const double *p = quad[k], *q = quad[(k + 1) % 4];
+            double nrm[3] = {p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2],
+                             p[0] * q[1] - p[1] * q[0]};
+            const double len = std::hypot(nrm[0], nrm[1], nrm[2]);
+            double r[3];
+            CHECK(view::planeToRay(pts[2 * i], pts[2 * i + 1], a, r));
+            CHECK(std::abs(r[0] * nrm[0] + r[1] * nrm[1] + r[2] * nrm[2]) / len < 1e-9);
+        }
+    }
+    // ... and bows away from the corners' straight lines once d > 0: the
+    // middle of the top edge, off the chord.
+    n = view::outlineToPlane(quad, 1.0, pts);
+    {
+        double a0[2], a1[2];
+        view::pointToPlane(quad[0], 1.0, a0[0], a0[1]);
+        view::pointToPlane(quad[1], 1.0, a1[0], a1[1]);
+        const double *m = pts + 2 * (view::kOutlineSegments / 2);
+        CHECK(segmentDistance(m[0], m[1], a0, a1) > 1e-3);
+    }
+
+    // Half of it behind the view: cut at the plane in front of the
+    // projection centre, the cut closing the polygon; no point past it.
+    double wide[4][3];
+    dir(-60 * deg, 20 * deg, 1.0, wide[0]);
+    dir(150 * deg, 20 * deg, 1.0, wide[1]);
+    dir(150 * deg, -20 * deg, 1.0, wide[2]);
+    dir(-60 * deg, -20 * deg, 1.0, wide[3]);
+    for (double a : {0.0, 0.5, 1.0, 1.6}) {
+        n = view::outlineToPlane(wide, a, pts);
+        CHECK(n >= 3 && n <= view::kOutlineMaxPoints);
+        for (int i = 0; i < n; ++i) {
+            CHECK(std::isfinite(pts[2 * i]) && std::isfinite(pts[2 * i + 1]));
+        }
+    }
+    // All of it behind: nothing.
+    double back[4][3];
+    for (int k = 0; k < 4; ++k)
+        for (int i = 0; i < 3; ++i)
+            back[k][i] = -quad[k][i];
+    CHECK(view::outlineToPlane(back, 0.0, pts) == 0);
+    CHECK(view::outlineToPlane(back, 1.5, pts) == 0);
+}
+
 } // namespace
 
 int main()
@@ -311,5 +402,6 @@ int main()
     testAutoDistortion();
     testLimits();
     testGlobe();
+    testOutline();
     return modeltest::finish("view_projection_test");
 }

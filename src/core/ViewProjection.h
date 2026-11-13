@@ -195,6 +195,64 @@ inline bool pointToPlane(const T p[3], T distortion, T& x, T& y, T near = T(0))
     return true;
 }
 
+// A region outline -- a quad on the sphere whose edges are great-circle
+// arcs, the privacy blur's shape -- as the view draws it: each edge cut
+// into kOutlineSegments pieces along its arc, clipped to what the view
+// sees, projected. The arcs bow in the picture wherever the projection
+// isn't rectilinear, so straight lines between the projected corners
+// wouldn't follow the blur.
+inline constexpr int kOutlineSegments = 8;
+// The most points outlineToPlane gives: the clip adds at most one point per
+// edge it cuts.
+inline constexpr int kOutlineMaxPoints = 8 * kOutlineSegments;
+
+// `corner`: the quad's four corners in view space (directions, any length).
+// Writes the outline's image-plane points to `out` (x, y pairs) and returns
+// how many; fewer than 3 = nothing to draw. The points along each arc are
+// clipped against z <= frontLimit - `near` (in front of the projection
+// centre, not behind a globe's rim) as a polygon of short chords
+// (Sutherland-Hodgman), so a cut outline closes along the picture's edge.
+template <class T>
+inline int outlineToPlane(const T corner[4][3], T distortion, T out[2 * kOutlineMaxPoints],
+                          T near = T(1e-3))
+{
+    constexpr int kRing = 4 * kOutlineSegments;
+    T ring[kRing][3];
+    for (int e = 0; e < 4; ++e) {
+        const T *a = corner[e], *b = corner[(e + 1) % 4];
+        for (int s = 0; s < kOutlineSegments; ++s) {
+            const T t = T(s) / T(kOutlineSegments);
+            T *p = ring[e * kOutlineSegments + s];
+            for (int k = 0; k < 3; ++k)
+                p[k] = a[k] + t * (b[k] - a[k]);
+            // Onto the sphere: the chord's point -> the arc's.
+            const T len = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+            if (len > T(0))
+                for (int k = 0; k < 3; ++k)
+                    p[k] /= len;
+        }
+    }
+    const T zMax = frontLimit(distortion) - near;
+    int n = 0;
+    for (int i = 0; i < kRing && n < kOutlineMaxPoints; ++i) {
+        const T *a = ring[i], *b = ring[(i + 1) % kRing];
+        const bool ina = a[2] <= zMax, inb = b[2] <= zMax;
+        T c[3];
+        if (ina) {
+            pointToPlane(a, distortion, out[n * 2], out[n * 2 + 1]);
+            ++n;
+        }
+        if (ina != inb && n < kOutlineMaxPoints) {
+            const T t = (zMax - a[2]) / (b[2] - a[2]);
+            for (int k = 0; k < 3; ++k)
+                c[k] = a[k] + t * (b[k] - a[k]);
+            pointToPlane(c, distortion, out[n * 2], out[n * 2 + 1]);
+            ++n;
+        }
+    }
+    return n;
+}
+
 // How much Auto lets a shape in the picture's corner stretch: the radial
 // over the tangential magnification there, (1 + d cos) / (d + cos) at the
 // corner's angle off the axis (1 / cos rectilinear, 1 stereographic).
