@@ -77,6 +77,13 @@ each is in its document in [`formats/`](formats/README.md).
 
 ## Planned, not scheduled
 
+- **The GPU stitch only** (*maintainer*): the CPU stitch fallback goes. It
+  can't play 5.7K / 8K in real time, differs visibly from the GPU export,
+  and doubles the work on every stitch and view feature. A graphics card
+  with Vulkan is required; decoding on the processor still feeds the GPU
+  stitch where the card can't decode a clip's codec. CPU-decoded clips
+  then export through the same GPU view pass as the rest, and the GPU tests
+  run in CI on Mesa's software Vulkan (lavapipe).
 - **`src/insv/` as its own repository**, once its API settles.
 - **Highlight markers, follow-ups**: the camera's marks are built (X5,
   record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
