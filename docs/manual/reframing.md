@@ -399,7 +399,9 @@ ahead and the road behind at once, or the four sides of the camera.
    | **Stacked** | Top and bottom. |
    | **Grid (2 × 2)** | Top left, top right, bottom left, bottom right. |
 
-The first pane keeps the clip's view and keyframes. Each new pane gets a
+The first pane keeps the clip's view and keyframes; if the clip has no
+keyframes yet, the first pane gets one at the playhead with the view you
+see. Each new pane gets a
 keyframe at the playhead that looks away from the first pane's view: back
 for two panes; right, left and back for the grid, with opposite views
 diagonal. A new pane's field of view is set so that the pane takes in 90°

@@ -865,6 +865,11 @@ void MainWindow::connectReframe()
                 for (const Timeline::PanePose &k : fillPoses(split, base))
                     if (c->paneTrack(k.first).isEmpty())
                         keys.push_back(k);
+                // A clip without keys has pane 1's view only as a free look,
+                // which the next pane click or seek drops to straight ahead
+                // -- away from the view the other panes were turned from.
+                if (split.isSplit() && c->reframe.isEmpty())
+                    keys.insert(keys.begin(), {0, base});
                 m_timeline->setClipSplit(c->id, split, at, &keys);
             });
     connect(m_splitScreenPanel, &SplitScreenPanel::fillPanesRequested, this,

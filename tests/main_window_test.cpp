@@ -923,8 +923,17 @@ void testSplitScreen(const Ctx &c)
     emit layout->activated(grid);
     const ClipItem *clip = c.timeline->clipById(a);
     CHECK(clip->split.layout == pane::Layout::Grid && clip->paneCount() == 4);
-    CHECK(clip->reframe.keyTimes() == before.reframe.keyTimes()); // pane 1 untouched
     const qint64 at = clip->sourceAtLocalMs(1000);
+    if (before.reframe.isEmpty()) {
+        // Pane 1 keeps the view the others were turned from, keyed.
+        CHECK(clip->reframe.count() == 1);
+        if (clip->reframe.count() == 1)
+            CHECK(clip->reframe.keys()[0].timeMs == at &&
+                  std::fabs(clip->reframe.keys()[0].pose.yaw - 0.5f) < 1e-4f);
+    } else {
+        CHECK(clip->reframe.keyTimes() == before.reframe.keyTimes()); // pane 1 untouched
+    }
+    const QList<qint64> pane1Keys = clip->reframe.keyTimes();
     for (int i = 1; i < 4; ++i) {
         const ReframeTrack &t = clip->paneTrack(i);
         CHECK(t.count() == 1);
@@ -946,7 +955,7 @@ void testSplitScreen(const Ctx &c)
     CHECK(seekTo(c, 2000));
     key(c, Qt::Key_K);
     clip = c.timeline->clipById(a);
-    CHECK(clip->paneTrack(2).count() == 2 && clip->reframe.keyTimes() == before.reframe.keyTimes());
+    CHECK(clip->paneTrack(2).count() == 2 && clip->reframe.keyTimes() == pane1Keys);
     key(c, Qt::Key_K, Qt::ShiftModifier); // and come off it
     CHECK(c.timeline->clipById(a)->paneTrack(2).count() == 1);
 
