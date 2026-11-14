@@ -16,7 +16,8 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-- *Optional*: **`src/insv/` as its own repository**, once its API settles.
+Nothing is scheduled; everything planned is under *Planned, not
+scheduled* below.
 
 ## Other cameras -- ongoing
 
@@ -76,6 +77,7 @@ each is in its document in [`formats/`](formats/README.md).
 
 ## Planned, not scheduled
 
+- **`src/insv/` as its own repository**, once its API settles.
 - **Highlight markers, follow-ups**: the camera's marks are built (X5,
   record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
   clip, read from the file and not saved in the project, `Ctrl+↑` / `↓`
