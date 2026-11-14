@@ -13,8 +13,8 @@ four views at once.
 1. The edit toolbar, with **Arm reframe authoring** on: the button
    outlined in orange. While it's on, every look-around in the viewport
    sets a keyframe.
-2. The **Reframe** section: the view at the playhead as numbers, and
-   **Track subject…**.
+2. The **Reframe** section: the **View** presets, the view at the
+   playhead as numbers, and **Track subject…**.
 3. The clip's keyframes: the white diamonds along the bottom of the clip.
 
 ## The view
@@ -31,8 +31,9 @@ section (settings sidebar, **Video** tab):
 | **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 %, and on to 200 % for a globe (see [Wide views and tiny planets](#wide-views-and-tiny-planets) and [Globes](#globes)). | Auto, 0 % to 200 % |
 | **Natural** | Bends a distorted view only sideways, so upright lines stay upright: **Full**, or an amount (see [Natural](#natural)). | Off, Full, or 0 % to 100 % |
 
-In the viewport, dragging changes yaw and pitch, and the mouse wheel changes
-the field of view. Roll, distortion and Natural can only be set in the
+Above the fields, the **View** buttons set a whole view shape at once
+(see [View presets](#view-presets)). In the viewport, dragging changes yaw
+and pitch, and the mouse wheel changes the field of view. Roll, distortion and Natural can only be set in the
 section. The
 section is greyed out while there's no clip to reframe: none selected and
 none under the playhead.
@@ -42,6 +43,29 @@ as much in a landscape picture as in a portrait one; only the shape of the
 picture differs. The project's aspect ratio (**File ▸ Project settings…**)
 sets that shape. Changing the aspect ratio later keeps your keyframes; the
 corners stay where they were, the edges of the picture move.
+
+### View presets
+
+The four buttons in the **View** row of the **Reframe** section set the
+shape of the view in one click; hold the pointer over one for its name and
+what it sets. They keep the yaw, so the camera still looks the same way,
+and set the roll to 0°:
+
+| Button | Pitch | Field of view | Distortion | Natural |
+|---|---|---|---|---|
+| **Normal**: a straight grid | 0° | 115° | Auto | Off |
+| **Natural**: the grid with a bent horizon | 0° | 170° | 100 % | Full |
+| **Tiny planet**: a house on a small world | −89° | 300° | 100 % | Off |
+| **Globe**: a ball | −89° | 200° | 170 % | Off |
+
+A button does what typing those values into the fields would: with **Arm
+reframe authoring** on it sets a keyframe at the playhead, and **Edit ▸
+Undo** takes the whole click back. It isn't a mode: the fields and sliders
+still show the view, and you can go on from the preset to anything in
+between. Two keyframes with different presets blend like any other two, so
+a key on **Normal** followed by one on **Tiny planet** zooms out into the
+planet, and one on **Globe** after it draws the planet together into a
+ball. The sections below say what each shape does.
 
 ### Wide views and tiny planets
 
@@ -70,8 +94,8 @@ line straight, 100 % keeps every shape. The widest field of view depends on
 the amount: 145° at 0 %, 330° at 100 % or with Auto. Lowering the amount
 narrows a view that is wider than it allows.
 
-For a **tiny planet**, look straight down (pitch −89°) and widen the field
-of view to 250° or more: the ground curls into a small globe with the sky
+For a **tiny planet**, click **Tiny planet** under **View**, or look
+straight down (pitch −89°) and widen the field of view to 250° or more: the ground curls into a small globe with the sky
 around it. Looking straight up instead turns the sky into a tunnel. A
 keyframe move from a normal view to a tiny planet zooms out smoothly, and
 with Auto on both keyframes the picture bends more and more as it widens.
@@ -87,7 +111,8 @@ picture around it turns black, as if you stepped further and further back.
 At 200 % you see one half of the world in the disc, the half the view looks
 at. 100 % is the middle of the slider.
 
-Look straight down for a planet-like globe, or straight up for the sky in a
+**Globe** under **View** sets one up. Look straight down for a
+planet-like globe, or straight up for the sky in a
 ball. On a globe, **Field of view** still sets how big the picture is: the
 disc is as large as the tiny planet at that angle would be at 100 %, so
 wider makes the globe smaller. Auto never goes past 100 %, so zooming out
@@ -125,8 +150,9 @@ photographers call **Panini**.
 Natural works on the distortion, so at 0 % distortion it does nothing: the
 picture there has no bend to take out. With Auto, it acts on the amount
 Auto uses, which is small at the default field of view. To see it clearly,
-untick **Auto**, set the distortion to 100 % and the field of view to 170°
-or more, and look level at something upright near the sides. Upright lines
+click **Natural** under **View** (or untick **Auto**, set the distortion to
+100 % and the field of view to 170° or more), and look level at something
+upright near the sides. Upright lines
 come out upright when the view is level with the world: if the horizon is
 tilted, they straighten along the tilt. Between two keyframes the amount
 moves smoothly, like the distortion. Natural works on a globe too, which
@@ -350,8 +376,8 @@ very wide.
 
 The **active pane** is the one with the outline in the viewport. Everything
 that changes the view acts on it: dragging and the mouse wheel in the
-viewport, the **Yaw**, **Pitch**, **Roll**, **Field of view**,
-**Distortion**, **Natural** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
+viewport, the **View** buttons, the **Yaw**, **Pitch**, **Roll**,
+**Field of view**, **Distortion**, **Natural** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
 **Track subject…**. The keyframe diamonds on the clip are the active
 pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
 

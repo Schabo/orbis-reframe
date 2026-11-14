@@ -2,6 +2,8 @@
 
 #include "EaseCombo.h"
 
+#include "../Theme.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -10,6 +12,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSlider>
+#include <QToolButton>
 
 #include <algorithm>
 #include <cmath>
@@ -31,6 +34,41 @@ QDoubleSpinBox *makeAngleBox(QWidget *parent, double lo, double hi, bool wrappin
     b->setKeyboardTracking(false); // emit once on commit, not per keystroke
     return b;
 }
+
+// A View button's shape: everything but the yaw, so the view keeps looking
+// the same way. The values are the manual's recipes.
+struct ViewPreset {
+    const char *objectName;
+    const char *icon;
+    const char *name;
+    const char *tip;
+    double pitchDeg;
+    double fovDeg; // corner to corner; 0: the default view's
+    float distortion;
+    float natural;
+};
+const ViewPreset kViewPresets[] = {
+    {"reframePresetNormal", "view-normal",
+     QT_TRANSLATE_NOOP("ReframePanel", "Normal"),
+     QT_TRANSLATE_NOOP("ReframePanel", "the default view, level, 115° with Auto "
+                                       "distortion."),
+     0.0, 0.0, view::kAutoDistortion, 0.0f},
+    {"reframePresetNatural", "view-natural",
+     QT_TRANSLATE_NOOP("ReframePanel", "Natural"),
+     QT_TRANSLATE_NOOP("ReframePanel", "a wide view with upright lines upright, "
+                                       "level, 170° at 100 % distortion and full Natural."),
+     0.0, 170.0, 1.0f, 1.0f},
+    {"reframePresetTinyPlanet", "view-tiny-planet",
+     QT_TRANSLATE_NOOP("ReframePanel", "Tiny planet"),
+     QT_TRANSLATE_NOOP("ReframePanel", "looking straight down, 300° at 100 % "
+                                       "distortion."),
+     -89.0, 300.0, 1.0f, 0.0f},
+    {"reframePresetGlobe", "view-globe",
+     QT_TRANSLATE_NOOP("ReframePanel", "Globe"),
+     QT_TRANSLATE_NOOP("ReframePanel", "the world as a ball on black, looking straight "
+                                       "down, 200° at 170 % distortion."),
+     -89.0, 200.0, 1.7f, 0.0f},
+};
 } // namespace
 
 ReframePanel::ReframePanel(QWidget *parent)
@@ -44,6 +82,33 @@ ReframePanel::ReframePanel(QWidget *parent)
                           "steer. Clicking a pane in the view picks it too."));
     form()->addRow(tr("Pane"), m_pane);
     connect(m_pane, &QComboBox::activated, this, [this](int i) { emit activePaneEdited(i); });
+
+    // View: the whole view shape at once, above the fields it sets.
+    m_presetRow = new QWidget(this);
+    auto *presetLayout = new QHBoxLayout(m_presetRow);
+    presetLayout->setContentsMargins(0, 0, 0, 0);
+    presetLayout->setSpacing(2);
+    for (const ViewPreset &preset : kViewPresets) {
+        auto *b = new QToolButton(m_presetRow);
+        b->setObjectName(QLatin1String(preset.objectName));
+        b->setIcon(theme::icon(QLatin1String(preset.icon)));
+        b->setIconSize(QSize(18, 18));
+        b->setToolTip(tr("%1: %2 The yaw stays.").arg(tr(preset.name), tr(preset.tip)));
+        b->setAccessibleName(tr(preset.name));
+        b->setAutoRaise(true);
+        presetLayout->addWidget(b);
+        connect(b, &QToolButton::clicked, this, [this, &preset] {
+            edited([&preset](ReframePose &p) {
+                p.pitch = static_cast<float>(preset.pitchDeg * kDegToRad);
+                p.roll = 0.0f;
+                p.fov = preset.fovDeg > 0.0 ? preset.fovDeg * kDegToRad : ReframePose{}.fov;
+                p.distortion = preset.distortion;
+                p.panini = preset.natural;
+            });
+        });
+    }
+    presetLayout->addStretch(1);
+    form()->addRow(tr("View"), m_presetRow);
 
     m_yaw = makeAngleBox(this, -180.0, 180.0, true);
     m_pitch = makeAngleBox(this, -89.0, 89.0, false);
@@ -309,7 +374,8 @@ void ReframePanel::setClip(bool flat, bool fill)
     updateBodyEnabled();
     m_flat = flat;
     for (QWidget *w :
-         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionRow,
+         std::initializer_list<QWidget *>{m_presetRow, m_yaw, m_pitch, m_roll, m_fov,
+                                          m_distortionRow,
                                           m_naturalRow, m_ease, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
@@ -375,8 +441,9 @@ void ReframePanel::setTrackRunning(bool running)
     if (!running)
         m_trackStatus->clear();
     for (QWidget *w :
-         std::initializer_list<QWidget *>{m_yaw, m_pitch, m_roll, m_fov, m_distortionAuto,
-                                          m_naturalFull, m_natural, m_pane})
+         std::initializer_list<QWidget *>{m_presetRow, m_yaw, m_pitch, m_roll, m_fov,
+                                          m_distortionAuto, m_naturalFull, m_natural,
+                                          m_pane})
         w->setEnabled(!running);
     m_distortion->setEnabled(!running && !m_pose.distortionIsAuto());
     m_ease->setEnabled(m_easeAvailable && !running);

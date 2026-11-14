@@ -13,6 +13,7 @@ class QDoubleSpinBox;
 class QLabel;
 class QPushButton;
 class QSlider;
+class QToolButton;
 
 // Numeric yaw / pitch / roll / field-of-view / distortion fields for the
 // view, an alternative to drag-authoring in the viewport. An edit sets the live
@@ -25,6 +26,11 @@ class QSlider;
 // signal / setter use radians to match ReframePose. Distortion is Auto
 // (following the field of view) or a fixed 0-200 %; Natural Full (100 %) or
 // none, or an amount 0-100 % on its slider.
+//
+// The View buttons set a whole view shape at once -- Normal, Natural, Tiny
+// planet, Globe -- as if their values were typed into the fields: one edit,
+// yaw kept. They are a quicker way to the values, not a mode; the fields
+// stay the view.
 //
 // A split clip (SplitScreenPanel sets the layout): which pane the fields and
 // the viewport steer, the active pane.
@@ -93,6 +99,7 @@ private:
     void showPaneRow();
     void updateBodyEnabled();
 
+    QWidget *m_presetRow = nullptr; // the View buttons
     QDoubleSpinBox *m_yaw = nullptr;
     QDoubleSpinBox *m_pitch = nullptr;
     QDoubleSpinBox *m_roll = nullptr;

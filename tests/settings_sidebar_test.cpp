@@ -52,6 +52,9 @@
 #include <QTextCursor>
 #include <QToolButton>
 
+#include <cmath>
+#include <numbers>
+
 #include <cstdio>
 
 namespace {
@@ -916,6 +919,67 @@ void testReframeNatural(SettingsSidebar &bar)
     CHECK(natural->isVisibleTo(reframe));
 }
 
+// The View buttons: each sets the whole view shape in one edit and keeps the
+// yaw; the values fit the field of view's range (none clamped); the buttons
+// are greyed out while tracking runs and hidden for a flat clip.
+void testReframeViewPresets(SettingsSidebar &bar)
+{
+    ReframePanel *reframe = bar.reframe();
+    auto *normal = find<QToolButton>(reframe, "reframePresetNormal");
+    auto *natural = find<QToolButton>(reframe, "reframePresetNatural");
+    auto *planet = find<QToolButton>(reframe, "reframePresetTinyPlanet");
+    auto *globe = find<QToolButton>(reframe, "reframePresetGlobe");
+    auto *fov = find<QDoubleSpinBox>(reframe, "reframeFov");
+    if (!normal || !natural || !planet || !globe || !fov)
+        return;
+    bar.setCurrentIndex(SettingsSidebar::VideoTab);
+    reframe->setExpanded(true);
+    reframe->setClip(false);
+    QSignalSpy edited(reframe, &ReframePanel::poseEdited);
+    ReframePose start;
+    start.yaw = 0.5f;
+    start.roll = 0.2f;
+    start.fov = 1.0;
+    start.distortion = 0.3f;
+    start.panini = 0.4f;
+    struct Want {
+        QToolButton *button;
+        double pitchDeg, fovDeg;
+        float distortion, natural;
+    };
+    const Want wants[] = {{normal, 0.0, ReframePose{}.fov * 180.0 / std::numbers::pi,
+                           view::kAutoDistortion, 0.0f},
+                          {natural, 0.0, 170.0, 1.0f, 1.0f},
+                          {planet, -89.0, 300.0, 1.0f, 0.0f},
+                          {globe, -89.0, 200.0, 1.7f, 0.0f}};
+    for (const Want &w : wants) {
+        reframe->setPose(start);
+        edited.clear();
+        CHECK(!w.button->accessibleName().isEmpty() &&
+              w.button->toolTip().startsWith(w.button->accessibleName()));
+        w.button->click();
+        CHECK(edited.count() == 1);
+        if (edited.count() != 1)
+            continue;
+        const ReframePose p = edited.at(0).at(0).value<ReframePose>();
+        CHECK(p.yaw == start.yaw && p.roll == 0.0f);
+        CHECK(std::abs(p.pitch * 180.0 / std::numbers::pi - w.pitchDeg) < 1e-4);
+        CHECK(std::abs(p.fov * 180.0 / std::numbers::pi - w.fovDeg) < 1e-4);
+        CHECK(p.distortion == w.distortion && p.panini == w.natural);
+        CHECK(p.fov <= view::maxFov(p) && p.fov >= view::kMinFov);
+        CHECK(std::abs(fov->value() - w.fovDeg) < 0.05);
+    }
+    reframe->setTrackRunning(true);
+    CHECK(!planet->isEnabled());
+    reframe->setTrackRunning(false);
+    CHECK(planet->isEnabled());
+    reframe->setClip(true);
+    CHECK(!planet->isVisibleTo(reframe));
+    reframe->setClip(false);
+    CHECK(planet->isVisibleTo(reframe));
+    reframe->setPose(ReframePose{});
+}
+
 // The Transition tab: the selected transition's length, why it plays
 // shorter, and removing it; greyed out with none selected.
 void testTransitionTab(SettingsSidebar &bar)
@@ -1158,6 +1222,7 @@ int main(int argc, char **argv)
     testTitleTab(bar);
     testTrackStatus(bar);
     testReframeNatural(bar);
+    testReframeViewPresets(bar);
     testTransitionTab(bar);
     testColourLut(bar);
     testMediaInfoProfile(bar);

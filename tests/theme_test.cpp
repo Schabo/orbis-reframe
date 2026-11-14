@@ -110,7 +110,8 @@ void testIcons()
     for (const char *name : {"arrow-left-to-line", "arrow-right-to-line", "camera", "clapperboard",
                              "download", "upload", "eye-off", "file-plus-2", "folder-open", "info", "layers",
                              "move-3d", "palette", "pause", "picture-in-picture-2", "rotate-ccw",
-                             "save", "trash-2", "vibrate", "volume-2", "x"}) {
+                             "save", "trash-2", "vibrate", "volume-2", "x", "view-normal", "view-natural",
+                             "view-tiny-planet", "view-globe"}) {
         const QColor s = strokeColor(theme::icon(QString::fromLatin1(name)).pixmap(24, 24));
         if (!near(s, c.icon))
             std::printf("FAIL  icon %s isn't drawn in the icon colour\n", name), ++g_failures;
