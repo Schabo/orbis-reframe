@@ -82,6 +82,7 @@ struct Args {
     std::string lutPath;       // a .cube 3D LUT, applied before the four above
     float lutStrength = 100.0f; // percent
     std::optional<fx::Vignette> vignette;
+    std::optional<fx::Grain> grain;
     // One flat-video overlay, composited like the app's export does.
     std::string insetPath;
     int64_t insetStartMs = 0; // on the output timeline (0 = the in-point)
@@ -140,6 +141,9 @@ const char kUsage[] =
     "  --lut-strength PCT     how much of the LUT (default 100)\n"
     "  --vignette A,S,F       a vignette after the grade: amount -100..100 (negative\n"
     "                        darkens), size and softness 0..100 (fx::Vignette)\n"
+    "  --grain A,S,C          film grain after the grade (and vignette): amount 0..100,\n"
+    "                        size 50..300 (100 = 1 px at 1080 lines), colour 0..100\n"
+    "                        (fx::Grain); new every output frame\n"
     "  --inset FILE[:START_MS]  a flat video overlaid from START_MS of the output\n"
     "  --inset-look CX,CY,W,OPACITY    its centre / width (fractions) and opacity\n"
     "  --inset-frame RADIUS,BORDER,RRGGBB  corner radius, border width (fractions)\n"
@@ -261,6 +265,13 @@ Args parseArgs(int argc, char** argv)
                 die("bad --vignette (want AMOUNT,SIZE,SOFTNESS)");
             v.clamp();
             a.vignette = v;
+        } else if (k == "--grain") {
+            fx::Grain g;
+            if (std::sscanf(next("--grain").c_str(), "%f,%f,%f", &g.amount, &g.size,
+                            &g.colour) != 3)
+                die("bad --grain (want AMOUNT,SIZE,COLOUR)");
+            g.clamp();
+            a.grain = g;
         }
         else if (k == "--inset") {
             a.insetPath = next("--inset");
@@ -454,12 +465,17 @@ int main(int argc, char** argv)
         std::printf("lut:    %s (%d^3, %.0f%%)\n", a.lutPath.c_str(), grade.lut->size,
                     grade.lutMix * 100.0f);
     }
-    if (a.vignette) {
+    if (a.vignette || a.grain) {
         fx::ClipEffects e;
         e.vignette = a.vignette;
+        e.grain = a.grain;
         grade.effects = e.render();
-        std::printf("vignette: amount=%.0f%% size=%.0f%% softness=%.0f%%\n", a.vignette->amount,
-                    a.vignette->size, a.vignette->softness);
+        if (a.vignette)
+            std::printf("vignette: amount=%.0f%% size=%.0f%% softness=%.0f%%\n",
+                        a.vignette->amount, a.vignette->size, a.vignette->softness);
+        if (a.grain)
+            std::printf("grain: amount=%.0f%% size=%.0f%% colour=%.0f%%\n", a.grain->amount,
+                        a.grain->size, a.grain->colour);
     }
     const color::Grade* colorGrade = &grade;
     if (a.exposureEv != 0.0f || a.contrast != 0.0f || a.saturation != 0.0f ||
@@ -514,7 +530,7 @@ int main(int argc, char** argv)
         j.frame = a.insetFrame;
         j.lookAt = [look = a.insetLook](int64_t) { return look; };
         insets = std::make_shared<exportpipe::InsetCompositor>(
-            std::vector<exportpipe::InsetClipJob>{j}, a.outW, a.outH);
+            std::vector<exportpipe::InsetClipJob>{j}, a.outW, a.outH, fps);
         writer.setFrameHook([insets, fps](int64_t k, uint8_t* y, int ys, uint8_t* uv, int uvs,
                                           bool p010, std::string& e) {
             return insets->composite(std::llround(k * 1000.0 / fps), y, ys, uv, uvs, e, p010);
@@ -554,6 +570,7 @@ int main(int argc, char** argv)
                           fillRgba);
     }
     while (written < frameCount) {
+        grade.effects.setFrame(uint32_t(written)); // the film grain's frame
         const view::Pose* pose =
             poseCount > 0 ? &poses[static_cast<size_t>(std::min<int64_t>(written, poseCount - 1))]
                           : nullptr;

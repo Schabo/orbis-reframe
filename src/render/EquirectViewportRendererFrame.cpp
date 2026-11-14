@@ -367,6 +367,8 @@ void EquirectViewportRenderer::startNextFrame()
     std::vector<uint8_t> rgba;
     std::shared_ptr<const render::LensFrame> lens;
     const bool newPicture = m_window->TakePendingFrame(width, height, rgba, lens);
+    if (newPicture)
+        ++m_grainFrame;
     if (render::framestats::Enabled())
         statsFrameStart(newPicture);
     // The lens frame shown until now: handed back once the new one imports,
@@ -530,7 +532,8 @@ void EquirectViewportRenderer::startNextFrame()
     // before the render pass is recorded. Every set picked here stays valid
     // for this command buffer, however many grades it binds.
     m_luts.beginFrame();
-    const color::Grade grade = m_window->CurrentColorGrade();
+    color::Grade grade = m_window->CurrentColorGrade();
+    grade.effects.setFrame(m_grainFrame);
     const VkDescriptorSet lutSet = m_luts.setFor(grade.hasLut() ? grade.lut : nullptr);
     std::vector<VkDescriptorSet> insetLutSets(insets.size(), VK_NULL_HANDLE);
     for (size_t i = 0; i < insets.size(); ++i)
@@ -834,9 +837,13 @@ void EquirectViewportRenderer::startNextFrame()
         const VkDescriptorSet sets[2] = {slot.set, insetLutSets[i]};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             m_insetPipelineLayout, 0, 2, sets, 0, nullptr);
-        if (insetEffects && insetBound != m_insetPipeline)
+        if (insetEffects && insetBound != m_insetPipeline) {
+            // Its grain changes with its picture.
+            fx::Render e = d.colorGrade.effects;
+            e.setFrame(uint32_t(d.frameKey));
             m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_insetPipelineLayout,
-                           2, d.colorGrade.effects, outputRect);
+                           2, e, outputRect);
+        }
         InsetPushConstants ipc{};
         ipc.rect[0] = float(r.x);
         ipc.rect[1] = float(r.y);

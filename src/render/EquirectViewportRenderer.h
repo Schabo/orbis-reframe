@@ -194,6 +194,10 @@ private:
     render::VulkanLutStore m_luts;
     // The clips' effects: set 2 of the same, read by their effects builds.
     render::VulkanEffectsRing m_effects;
+    // The film grain's frame (fx::Render::setFrame): one more for every new
+    // picture, so the grain moves while playing and stays still on a paused
+    // frame. Renderer thread.
+    uint32_t m_grainFrame = 0;
 
     VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_pipeline = VK_NULL_HANDLE;

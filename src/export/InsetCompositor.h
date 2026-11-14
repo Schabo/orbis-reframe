@@ -72,8 +72,11 @@ struct InsetClipJob {
 
 class InsetCompositor {
 public:
-    // `jobs` bottom-most first (drawn in that order).
-    InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH);
+    // `jobs` bottom-most first (drawn in that order). `fps`: the output's
+    // frame rate, which numbers the frames a flat clip's film grain is drawn
+    // for (fx::frameAt: the frame its picture first shows at); 0 = the same
+    // grain on every picture.
+    InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH, double fps = 0.0);
     ~InsetCompositor();
 
     bool empty() const { return m_jobs.empty(); }
@@ -125,6 +128,7 @@ private:
     std::vector<InsetClipJob> m_jobs;
     std::vector<std::unique_ptr<State>> m_states;
     int m_outW, m_outH;
+    double m_fps;
 };
 
 } // namespace exportpipe

@@ -180,7 +180,12 @@ shape), for a clip with video effects; a clip without them is drawn by the
 builds above, unchanged. The effects' settings don't fit the push
 constants (full at Vulkan's guaranteed 128 bytes): they come in a small
 uniform buffer, set 2 (`render::VulkanEffectsRing`). The CPU export's twin
-is `fx::applyEffects()`; change both together.
+is `fx::applyEffects()`; change both together. An effect that changes
+every frame (film grain) takes a frame number from whoever draws the frame
+(`fx::Render::setFrame`): the export uses the output frame on the timeline,
+a transition's layer its source frame, and the viewport counts the pictures it
+has shown, so a paused frame keeps its grain. Its noise is an integer hash,
+the same bits in GLSL and C++, so the paths agree at the same output size.
 
 A split clip's picture is several views, one per pane: where each pane
 goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)

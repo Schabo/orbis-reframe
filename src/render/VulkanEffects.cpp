@@ -119,6 +119,7 @@ void VulkanEffectsRing::bind(VkCommandBuffer cmd, VkPipelineBindPoint bindPoint,
     Block b{};
     std::memcpy(b.frame, frame, sizeof b.frame);
     std::memcpy(b.vignette, effects.vignette.data(), sizeof b.vignette);
+    std::memcpy(b.grain, effects.grain.data(), sizeof b.grain);
     std::memcpy(m_map + offset, &b, sizeof b);
     vkCmdBindDescriptorSets(cmd, bindPoint, pipelineLayout, set, 1, &m_set, 1, &offset);
 }

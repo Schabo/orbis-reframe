@@ -228,8 +228,8 @@ struct InsetCompositor::State {
     Nv12Converter toNv12;
 };
 
-InsetCompositor::InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH)
-    : m_jobs(std::move(jobs)), m_outW(outW), m_outH(outH)
+InsetCompositor::InsetCompositor(std::vector<InsetClipJob> jobs, int outW, int outH, double fps)
+    : m_jobs(std::move(jobs)), m_outW(outW), m_outH(outH), m_fps(fps)
 {
     for (size_t i = 0; i < m_jobs.size(); ++i)
         m_states.push_back(std::make_unique<State>());
@@ -355,13 +355,24 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
         // A flat clip's effects are placed against the output frame, so
         // they follow its rect.
         const float place[4] = {float(rect.x), float(rect.y), float(rect.w), float(rect.h)};
+        // The grain's frame: the output frame the picture first shows at. A
+        // picture shown again (a slower clip) keeps its grain, as a 360
+        // clip's does.
+        const uint32_t grain =
+            j.colorGrade.effects.grain[0] != 0.0f ? fx::frameAt(timelineMs, m_fps) : 0u;
         if (s.gradedFrom != f || s.gradedPts != f->ptsMs ||
             s.graded.size() != bytes + Nv12Converter::kPadding ||
             (j.colorGrade.hasEffects() && !std::equal(place, place + 4, s.gradedRect))) {
             s.graded.resize(bytes + Nv12Converter::kPadding);
             std::memcpy(s.graded.data(), f->rgba.data(), bytes);
-            GradeRgba(s.graded.data(), f->width, f->height, j.colorGrade, place, m_outW,
-                      m_outH);
+            if (grain != 0u) {
+                color::Grade g = j.colorGrade;
+                g.effects.setFrame(grain);
+                GradeRgba(s.graded.data(), f->width, f->height, g, place, m_outW, m_outH);
+            } else {
+                GradeRgba(s.graded.data(), f->width, f->height, j.colorGrade, place, m_outW,
+                          m_outH);
+            }
             s.gradedFrom = f;
             s.gradedPts = f->ptsMs;
             std::copy(place, place + 4, s.gradedRect);

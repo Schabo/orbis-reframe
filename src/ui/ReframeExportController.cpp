@@ -317,7 +317,7 @@ void ReframeExportController::run(const Request &req)
     // Overlays: output frame k is timeline time k / fps (the audio mix's
     // clock too).
     auto insets = std::make_shared<exportpipe::InsetCompositor>(req.insets, req.outWidth,
-                                                                req.outHeight);
+                                                                req.outHeight, req.fps);
     if (!insets->empty())
         writer->setFrameHook([insets, outFrameMs](int64_t k, uint8_t *y, int ys, uint8_t *uv,
                                                   int uvs, bool p010, std::string &e) {
@@ -477,6 +477,14 @@ void ReframeExportController::run(const Request &req)
         };
 
         int64_t written = 0;
+        // The grade with the film grain's frame: the timeline frame the
+        // next picture is written at first. A picture repeated (a slower
+        // source, slow motion) keeps its grain.
+        color::Grade grade = c.colorGrade;
+        auto gradeNext = [&]() -> const color::Grade * {
+            grade.effects.setFrame(uint32_t(firstFrame[i] + written));
+            return &grade;
+        };
         // How many of this clip's next output frames the source frame at
         // `ptsMs` stands for (0 = dropped).
         auto repeatsFor = [&](int64_t ptsMs) {
@@ -492,7 +500,8 @@ void ReframeExportController::run(const Request &req)
             }
 
             if (gpuFlat) {
-                stitch::FlatFrame ff = src->ReadFlatFrame(req.outWidth, req.outHeight, poseAt, &c.colorGrade);
+                stitch::FlatFrame ff =
+                    src->ReadFlatFrame(req.outWidth, req.outHeight, poseAt, gradeNext());
                 if (ff.data.empty()) { // clean end-of-clip, or error
                     const std::string &e = src->GetLastError();
                     if (!e.empty()) {
@@ -545,10 +554,10 @@ void ReframeExportController::run(const Request &req)
                         panes.empty()
                             ? writer->addEquirectFrame(eq.rgba.data(), eq.width, eq.height,
                                                        c.poseAt ? &pose : nullptr,
-                                                       c.stab ? stab : nullptr, &c.colorGrade, err)
+                                                       c.stab ? stab : nullptr, gradeNext(), err)
                             : writer->addEquirectPanes(eq.rgba.data(), eq.width, eq.height, panes,
                                                        fillRgba(c.split), c.stab ? stab : nullptr,
-                                                       &c.colorGrade, err);
+                                                       gradeNext(), err);
                     if (!added || !feedAudio()) {
                         failClip(QString::fromStdString(err));
                         return;

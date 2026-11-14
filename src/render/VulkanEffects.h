@@ -53,6 +53,7 @@ private:
     struct Block {
         float frame[4];
         float vignette[4];
+        float grain[4];
     };
 
     Device m_dev;

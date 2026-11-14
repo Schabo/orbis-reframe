@@ -229,6 +229,7 @@ void MainWindow::takeScreenshot()
         };
     still.sourceMs = m_lastPositionMs;
     still.timelineMs = std::max<qint64>(0, m_lastTimelineMs);
+    still.fps = m_project->output().effectiveFps(m_timeline->clipAt(0).fps);
     still.width = m_project->output().width;
     still.height = m_project->output().height;
 

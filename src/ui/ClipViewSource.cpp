@@ -77,8 +77,15 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
 bool ClipViewSource::readFrom(stitch::NativeStitchSource &src, exportpipe::VideoFrame &out)
 {
     const ReframeExportController::ClipJob &job = m_spec.job;
+    // The film grain's frame: the source frame's number -- a layer doesn't
+    // know its timeline time, and the grain only has to change with the
+    // picture.
+    color::Grade grade = job.colorGrade;
+    const double fps = m_spec.fps;
     // The view and stabilization at the frame's own time, as the export.
-    auto poseAt = [&job](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
+    auto poseAt = [&job, &grade, fps](const insv::FramePts &pts, view::Pose &pose,
+                                      float stab[9]) {
+        grade.effects.setFrame(fx::frameAt(pts.ms, fps));
         if (job.poseAt)
             job.poseAt(pts.ms, pose);
         if (job.stab) {
@@ -90,14 +97,14 @@ bool ClipViewSource::readFrom(stitch::NativeStitchSource &src, exportpipe::Video
     stitch::Frame f;
     if (src.GpuViewAvailable()) {
         ReframeExportController::applyPanes(src, job, m_w, m_h); // at this size
-        f = src.ReadViewFrame(m_w, m_h, poseAt, &job.colorGrade);
+        f = src.ReadViewFrame(m_w, m_h, poseAt, &grade); // poseAt sets its frame
     } else {
         const stitch::Frame eq = src.ReadFrame();
         if (!eq.rgba.empty()) {
             exportpipe::ReframeView view;
             poseAt({eq.timestamp_ms, eq.timestamp_us}, view.pose, view.stab);
             view.aspect = float(m_w) / m_h;
-            view.colorGrade = job.colorGrade;
+            view.colorGrade = grade;
             f.rgba.resize(size_t(m_w) * m_h * 4);
             const std::vector<exportpipe::PaneView> panes =
                 ReframeExportController::paneViews(job, m_w, m_h, eq.timestamp_ms, view.pose);

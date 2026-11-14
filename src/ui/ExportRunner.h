@@ -34,13 +34,15 @@ public:
 
     // A screenshot: clip `job`'s frame at `sourceMs` looked at with `pose`,
     // at w x h, with `insets` composited at
-    // `timelineMs` like the export does; written to `path` as a PNG. No-op
-    // while one is being saved.
+    // `timelineMs` like the export does (film grain as the export's frame
+    // there, at `fps`); written to `path` as a PNG. No-op while one is being
+    // saved.
     struct Still {
         ReframeExportController::ClipJob job;
         view::Pose pose;
         qint64 sourceMs = 0;
         qint64 timelineMs = 0;
+        double fps = 0.0;
         int width = 0, height = 0;
         std::vector<exportpipe::InsetClipJob> insets;
         QString path;
