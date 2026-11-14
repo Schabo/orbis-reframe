@@ -320,7 +320,7 @@ json effectsToJson(const fx::ClipEffects &e)
 {
     json j = json::object();
     if (e.vignette)
-        j["vignette"] = {{"on", e.vignette->on},
+        j[fx::kVignette] = {{"on", e.vignette->on},
                          {"amount", e.vignette->amount},
                          {"size", e.vignette->size},
                          {"softness", e.vignette->softness}};
@@ -333,7 +333,7 @@ fx::ClipEffects effectsFromJson(const json &j)
     if (!j.is_object())
         return e;
     for (const auto &[key, value] : j.items()) {
-        if (key == "vignette" && value.is_object()) {
+        if (key == fx::kVignette && value.is_object()) {
             fx::Vignette v; // defaults for any missing field
             v.on = value.value("on", v.on);
             v.amount = value.value("amount", v.amount);

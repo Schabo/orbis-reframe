@@ -21,6 +21,7 @@
 #include <climits>
 #include <cmath>
 
+#include "../core/ClipEffects.h" // fx::kMimeType
 #include "../core/MediaPool.h"  // media::extensions
 #include "../core/Title.h"      // title::kMimeType
 #include "../core/Transition.h" // Transition::kMimeType
@@ -58,7 +59,10 @@ void TimelineWidget::dragEnterEvent(QDragEnterEvent *e)
     const bool title = e->mimeData()->hasFormat(QString::fromLatin1(title::kMimeType));
     // A transition: onto a cut, so two clips at least.
     const bool transition = e->mimeData()->hasFormat(QString::fromLatin1(Transition::kMimeType));
-    if (transition ? m_rows.size() < 2
+    // An effect: onto a clip.
+    const bool effect = e->mimeData()->hasFormat(QString::fromLatin1(fx::kMimeType));
+    if (effect ? m_rows.isEmpty()
+        : transition ? m_rows.size() < 2
         : title    ? m_rows.isEmpty()
                    : !clip && !video && (m_rows.isEmpty() || !audio)) {
         e->ignore();
@@ -66,10 +70,11 @@ void TimelineWidget::dragEnterEvent(QDragEnterEvent *e)
     }
     e->acceptProposedAction();
     m_dropActive = true;
-    m_dropTransition = transition;
-    m_dropTitle = title && !transition;
-    m_dropClip = clip && !title; // a mix goes by the clip rules, then the audio rules
-    m_dropVideo = title || (video && !audio);
+    m_dropEffect = effect;
+    m_dropTransition = transition && !effect;
+    m_dropTitle = title && !transition && !effect;
+    m_dropClip = clip && !title && !effect; // a mix goes by the clip rules, then the audio rules
+    m_dropVideo = !effect && (title || (video && !audio));
     dragMoveEvent(e);
 }
 
@@ -91,7 +96,16 @@ void TimelineWidget::dropTo(QPoint pos)
     m_dropMain = m_dropVideo && !m_dropClip && !m_dropTitle &&
                  (m_rows.isEmpty() || (pos.y() >= mainTop() - kRowGap / 2 &&
                                        pos.y() < mainTop() + kMainH + kRowGap / 2));
-    if (m_dropTransition) {
+    if (m_dropEffect) {
+        // The clip under the pointer.
+        m_dropTrack = -1;
+        m_dropIndex = -1;
+        const qint64 ms = timelineMsAt(pos.x());
+        for (int i = 0; i < m_rows.size(); ++i)
+            if (ms >= m_rows[i].startMs && ms < m_rows[i].startMs + m_rows[i].durMs)
+                m_dropIndex = i;
+        m_dropMs = m_dropIndex >= 0 ? m_rows[m_dropIndex].startMs : 0;
+    } else if (m_dropTransition) {
         // The cut nearest the pointer, between two clips.
         m_dropTrack = -1;
         m_dropIndex = std::clamp(insertIndexAt(timelineMsAt(pos.x())), 1,
@@ -128,6 +142,15 @@ void TimelineWidget::dropEvent(QDropEvent *e)
     m_dropActive = false;
     m_autoScroll->stop();
     update();
+    if (active && m_dropEffect) {
+        if (m_dropIndex < 0 || m_dropIndex >= m_rows.size())
+            return;
+        e->acceptProposedAction();
+        emit effectDropped(
+            m_rows[m_dropIndex].clip.id,
+            QString::fromLatin1(e->mimeData()->data(QString::fromLatin1(fx::kMimeType))));
+        return;
+    }
     if (active && m_dropTransition) {
         if (m_dropIndex < 1 || m_dropIndex >= m_rows.size())
             return;
@@ -615,6 +638,10 @@ bool TimelineWidget::event(QEvent *e)
             QToolTip::showText(he->globalPos(),
                                tr("No reframe keyframes: this clip exports looking straight "
                                   "forward. Arm reframe authoring and set a key to frame it."),
+                               this);
+        else if (h.kind == Hit::MainClip && m_rows[h.row].clip.effects)
+            QToolTip::showText(he->globalPos(),
+                               tr("This clip has video effects: see Effects in the Video tab."),
                                this);
         else
             QToolTip::hideText();

@@ -109,7 +109,8 @@ void testLayout(SettingsSidebar &bar)
     if (auto *video = find<QScrollArea>(&bar, "videoSettings"))
         CHECK(sectionNames(video) == QStringList({"stitchingPanel", "stabilizationPanel",
                                                   "reframePanel", "splitScreenPanel",
-                                                  "colourPanel", "mediaInfoPanel"}));
+                                                  "colourPanel", "clipEffectsPanel",
+                                                  "mediaInfoPanel"}));
     if (auto *overlay = find<QScrollArea>(&bar, "overlaySettings"))
         CHECK(sectionNames(overlay) == QStringList({"overlayPanel", "overlayAnimationPanel"}));
     if (auto *title = find<QScrollArea>(&bar, "titleSettings"))
@@ -138,7 +139,7 @@ void testLayout(SettingsSidebar &bar)
     CHECK(bar.overlay()->isCollapsible() && bar.overlay()->isExpanded());
     CHECK(!bar.privacy()->isCollapsible());
     CHECK(!bar.transition()->isCollapsible());
-    CHECK(bar.sections().size() == 15); // the Audio tab's come and go (testAudioSections)
+    CHECK(bar.sections().size() == 16); // the Audio tab's come and go (testAudioSections)
 
     // Wide enough for every section: the pages don't scroll sideways.
     for (const char *name : pages)

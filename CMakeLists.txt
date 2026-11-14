@@ -598,6 +598,7 @@ if(FFMPEG_FOUND)
         src/ui/MainWindowLibrary.cpp
         src/ui/MainWindowExport.cpp
         src/ui/MainWindowTransitions.cpp
+        src/ui/MainWindowEffects.cpp
         src/ui/MainWindowSource.cpp
         src/ui/MainWindow.h
         src/ui/AudioPlayer.cpp
@@ -642,6 +643,8 @@ if(FFMPEG_FOUND)
         src/ui/TitlesPanel.h
         src/ui/TransitionsPanel.cpp
         src/ui/TransitionsPanel.h
+        src/ui/EffectsPanel.cpp
+        src/ui/EffectsPanel.h
         src/ui/ClipViewSource.cpp
         src/ui/ClipViewSource.h
         src/ui/LayerLease.cpp
@@ -704,6 +707,8 @@ if(FFMPEG_FOUND)
         src/ui/panels/AudioPanel.h
         src/ui/panels/ColourPanel.cpp
         src/ui/panels/ColourPanel.h
+        src/ui/panels/ClipEffectsPanel.cpp
+        src/ui/panels/ClipEffectsPanel.h
         src/ui/panels/OverlayPanel.cpp
         src/ui/panels/OverlayPanel.h
         src/ui/panels/TitleTextPanel.cpp
@@ -1178,6 +1183,7 @@ if(TARGET camera AND Qt6Test_FOUND)
         src/ui/panels/StabilizationPanel.cpp src/ui/panels/StabilizationPanel.h
         src/ui/panels/AudioPanel.cpp src/ui/panels/AudioPanel.h
         src/ui/panels/ColourPanel.cpp src/ui/panels/ColourPanel.h
+        src/ui/panels/ClipEffectsPanel.cpp src/ui/panels/ClipEffectsPanel.h
         src/ui/panels/OverlayPanel.cpp src/ui/panels/OverlayPanel.h
         src/ui/panels/TitleTextPanel.cpp src/ui/panels/TitleTextPanel.h
         src/ui/panels/TitleLookPanel.cpp src/ui/panels/TitleLookPanel.h

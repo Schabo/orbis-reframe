@@ -46,11 +46,13 @@ follow a view, you set **reframe keyframes**, covered in
 ## The media sidebar
 
 The sidebar on the left of the viewport holds what you put on the
-timeline, on three tabs: **Media** (<img src="images/icons/tab-media.png" width="24" alt="">),
+timeline, on four tabs: **Media** (<img src="images/icons/tab-media.png" width="24" alt="">),
 the files you work with, **Overlays** (<img src="images/icons/tab-overlays.png" width="24" alt="">),
-ready-made titles to put over the video (see [Titles](titles.md)), and **Transitions**
+ready-made titles to put over the video (see [Titles](titles.md)), **Transitions**
 (<img src="images/icons/tab-transitions.png" width="24" alt="">), to go
-over from one clip to the next at a cut (see [Transitions](transitions.md)). The icons along its
+over from one clip to the next at a cut (see [Transitions](transitions.md)), and
+**Effects** (<img src="images/icons/tab-effects.png" width="24" alt="">), to
+change the look of a clip, such as a vignette (see [Effects](effects.md)). The icons along its
 top pick the tab. The `<` button at its top-left closes the
 sidebar and leaves a slim strip at the window's edge; the `>` button on the
 strip opens it again. `Ctrl+B` does both. To make it wider or narrower,
@@ -249,7 +251,7 @@ key of the tab that's already showing closes the sidebar.
 
 | Tab | What it sets |
 |---|---|
-| <img src="images/icons/tab-video.png" width="24" alt=""> **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles, field of view and distortion, keyframes and their easing, and **Track subject**, which follows a person or vehicle automatically), **Split screen** (the clip in two or four panes, each looking its own way; see [Split screen](reframing.md#split-screen)), **Colour** (exposure, contrast, saturation and other colour corrections) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
+| <img src="images/icons/tab-video.png" width="24" alt=""> **Video** | Everything about the picture, in the order you'd usually work: **Stitching** (how the camera's two lenses are joined into one picture), **Stabilization** (smoothing out camera shake, keeping the horizon level), **Reframe** (the view: angles, field of view and distortion, keyframes and their easing, and **Track subject**, which follows a person or vehicle automatically), **Split screen** (the clip in two or four panes, each looking its own way; see [Split screen](reframing.md#split-screen)), **Colour** (exposure, contrast, saturation and other colour corrections), **Effects** (the clip's effects, such as a vignette, and their settings; see [Effects](effects.md)) and **Media information** (details of the clip's file, read only; see [Media information](media-information.md)). |
 | <img src="images/icons/tab-audio.png" width="24" alt=""> **Audio** | A section per audio clip: the selected one, or all of a video or PiP clip's sound (*Camera mic*, *External mic*). Noise and wind reduction, its volume and its track's, fades. See [Audio and noise reduction](audio.md). |
 | <img src="images/icons/tab-pip.png" width="24" alt=""> **Picture in picture** | Size, position and look of the selected PiP clip. |
 | <img src="images/icons/tab-overlay.png" width="24" alt=""> **Overlay** | The selected title's text, font, colour and alignment, its look (outline, shadow, box, spacing), how it slides, pops or types in and out, and its position, size and timing; for a gauge, its kind, units and look in the place of the text and look. See [Titles](titles.md). |

@@ -6,6 +6,7 @@
 
 class AnimationPanel;
 class AudioPanel;
+class ClipEffectsPanel;
 class ColourPanel;
 class GaugePanel;
 class MediaInfoPanel;
@@ -39,7 +40,7 @@ class TransitionPanel;
 // pages videoSettings / audioSettings / overlaySettings / titleSettings /
 // transitionSettings / privacySettings (their tab buttons <page>Tab), and
 // the sections stitchingPanel, stabilizationPanel, reframePanel,
-// splitScreenPanel, colourPanel, mediaInfoPanel, overlayPanel,
+// splitScreenPanel, colourPanel, clipEffectsPanel, mediaInfoPanel, overlayPanel,
 // overlayAnimationPanel, titleTextPanel, titleLookPanel, gaugePanel,
 // titleAnimationPanel, titlePlacementPanel, transitionPanel, privacyPanel (headers
 // <section>Header); the Audio tab's are AudioPanel's.
@@ -57,6 +58,7 @@ public:
     ReframePanel *reframe() const { return m_reframe; }
     SplitScreenPanel *splitScreen() const { return m_splitScreen; }
     ColourPanel *colour() const { return m_colour; }
+    ClipEffectsPanel *effects() const { return m_effects; }
     MediaInfoPanel *mediaInfo() const { return m_mediaInfo; }
     AudioPanel *audio() const { return m_audio; }
     OverlayPanel *overlay() const { return m_overlay; }
@@ -83,6 +85,7 @@ private:
     ReframePanel *m_reframe = nullptr;
     SplitScreenPanel *m_splitScreen = nullptr;
     ColourPanel *m_colour = nullptr;
+    ClipEffectsPanel *m_effects = nullptr;
     MediaInfoPanel *m_mediaInfo = nullptr;
     AudioPanel *m_audio = nullptr;
     OverlayPanel *m_overlay = nullptr;

@@ -997,6 +997,67 @@ void testSplitScreen(const Ctx &c)
     settle();
 }
 
+// Effects: the Effects tab's Add puts a vignette on the clip at the
+// playhead, the Video tab's Effects section showing it and the viewport
+// drawing it; the section edits it and turns it off; a drop onto the other
+// clip puts one there, and Remove takes it off; undo takes it all back.
+void testEffects(const Ctx &c)
+{
+    QAction *undo = action(c, "undoAction");
+    auto *amount = find<QSlider>(c.w, "vignetteAmount");
+    auto *on = find<QCheckBox>(c.w, "vignetteOn");
+    auto *remove = find<QToolButton>(c.w, "vignetteRemove");
+    auto *none = find<QLabel>(c.w, "effectsNone");
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    CHECK(find<QWidget>(c.w, "effectsPanel") && find<QWidget>(c.w, "clipEffectsPanel"));
+    if (!undo || !amount || !on || !remove || !none || !sidebar || c.timeline->count() < 2)
+        return;
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const int a = c.timeline->clipAt(0).id;
+    CHECK(c.timeline->clipById(a)->effects.isEmpty() && none->isVisibleTo(c.w));
+    trigger(c, "effectAddAction");
+    const ClipItem *clip = c.timeline->clipById(a);
+    CHECK(clip->effects.vignette && *clip->effects.vignette == fx::Vignette{});
+    CHECK(sidebar->currentIndex() == SettingsSidebar::VideoTab);
+    CHECK(!none->isVisibleTo(c.w) && amount->isVisibleTo(c.w) && amount->value() == -30);
+    CHECK(c.w->viewport()->CurrentColorGrade().effects == clip->effects.render());
+
+    settle();
+    amount->setValue(-70);
+    CHECK(c.timeline->clipById(a)->effects.vignette->amount == -70.0f);
+    settle();
+    on->setChecked(false);
+    CHECK(!c.timeline->clipById(a)->effects.vignette->on && !amount->isEnabled());
+    CHECK(!c.w->viewport()->CurrentColorGrade().hasEffects());
+    settle();
+    on->setChecked(true);
+    CHECK(c.w->viewport()->CurrentColorGrade().hasEffects());
+
+    // Dropped on the second clip: there too, that clip selected.
+    settle();
+    const int b = c.timeline->clipAt(1).id;
+    emit c.timelineWidget->effectDropped(b, QString::fromLatin1(fx::kVignette));
+    CHECK(c.timeline->clipById(b)->effects.vignette.has_value());
+    CHECK(amount->value() == -30); // the section shows b's
+    settle();
+    remove->click();
+    CHECK(c.timeline->clipById(b)->effects.isEmpty() && none->isVisibleTo(c.w));
+    CHECK(c.timeline->clipById(a)->effects.vignette.has_value());
+
+    // Undo back to none (undo rebuilds the clips: new ids).
+    settle();
+    const auto clean = [&] {
+        return c.timeline->clipAt(0).effects.isEmpty() && c.timeline->clipAt(1).effects.isEmpty();
+    };
+    for (int i = 0; i < 8 && !clean(); ++i)
+        undo->trigger();
+    CHECK(clean());
+    emit c.timelineWidget->clipSelected(0);
+    settle();
+}
+
 // Duplicate (the clip menu): the copy lands after the clip and is selected,
 // so the panels edit it; one undo step takes it away.
 void testDuplicateClip(const Ctx &c)
@@ -2451,6 +2512,7 @@ int main(int argc, char **argv)
             testStitchingWithoutGuards(c);
             testDirectionLock(c);
             testSplitScreen(c);
+            testEffects(c);
             testDuplicateClip(c);
             testMediaPool(c);
             testTakeFiles(c);

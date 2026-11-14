@@ -70,6 +70,8 @@ class AnimationPanel;
 class TitleLookPanel;
 class TitleTextPanel;
 class TransitionsPanel;
+class EffectsPanel;
+class ClipEffectsPanel;
 class TransitionPanel;
 class SettingsSidebar;
 class TabSidebar;
@@ -150,6 +152,12 @@ private:
     void connectEdits();
     void connectReframe();
     void connectColour();
+    // MainWindowEffects.cpp: the Effects tab, the timeline's effect drops
+    // and the clip's Effects section.
+    void connectEffects();
+    // Put the effect named `name` (fx::kVignette, ...) on clip `clipId`,
+    // with its defaults; one already on it stays as it is.
+    void addEffect(int clipId, const QString &name);
     void connectMeasurements();
     void connectPrivacy();
     void connectTransitions();
@@ -557,6 +565,7 @@ private:
     MediaPoolPanel *m_mediaPanel = nullptr;
     TitlesPanel *m_titlesPanel = nullptr;
     TransitionsPanel *m_transitionsPanel = nullptr;
+    EffectsPanel *m_effectsPanel = nullptr;
     MediaImporter *m_mediaImport = nullptr; // Import files… / folder…, drops, Locate file…
     QList<QShortcut *> m_editorShortcuts;
     QActionGroup *m_previewSize = nullptr;
@@ -577,6 +586,7 @@ private:
     AudioPanel *m_audioPanel = nullptr;
     QHash<QString, int> m_audioTrackCounts; // source path -> audio stream count
     ColourPanel *m_colourPanel = nullptr;
+    ClipEffectsPanel *m_clipEffectsPanel = nullptr;
     OverlayPanel *m_overlayPanel = nullptr;        // overlay videos
     AnimationPanel *m_overlayAnimationPanel = nullptr; // ... how they come and go
     TitleTextPanel *m_titleTextPanel = nullptr;     // the Overlay tab: a title's text

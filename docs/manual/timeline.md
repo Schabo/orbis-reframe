@@ -13,6 +13,7 @@ overlays. For the names of the window's parts, see
 3. The **video track**, with your clips. The white diamonds along
    the bottom edge are reframe keyframes; a hollow diamond (◇) before a
    clip's name means it has none, and exports looking straight ahead.
+   A ✦ before a clip's name means it has an [effect](effects.md) on.
    Yellow dots along the top edge are
    [highlight marks](#highlight-marks): set while recording, or by you.
 4. The **Camera mic** track: the clips' sound, linked to them (the chain
@@ -131,8 +132,8 @@ bars at the sides. To fill the frame instead, cropping the edges that don't
 fit, select the clip and set **Fit** in the **Reframe** section to **Fill
 the frame, edges cropped** ([Reframing](reframing.md#flat-videos)).
 
-Trimming, splitting, speed, colour, overlays over it, its sound and
-the export work as for any clip. The parts that need a 360° clip don't
+Trimming, splitting, speed, colour, effects, overlays over it, its sound
+and the export work as for any clip. The parts that need a 360° clip don't
 apply, and their sections say so: reframing and Track subject,
 stabilization, the number-plate blur, and stitching.
 

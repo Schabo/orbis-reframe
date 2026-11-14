@@ -133,6 +133,7 @@ file, `Alt+S` saves (`Enter` does too).
 | Drop files from the file manager | Add `.insv` clips at the nearest cut, flat videos too when dropped on the video track, or audio files and flat videos (as picture in picture) where you drop them (those need a clip on the video track first). |
 | Drop a title from the **Overlays** tab | Add a title where you drop it, on an overlay track (needs a clip on the video track first). |
 | Drop a transition from the **Transitions** tab | Put it on the cut nearest where you drop it (needs two clips on the video track). |
+| Drop an effect from the **Effects** tab | Put it on the clip on the video track you drop it on. |
 | Click a transition's box | Select it. Right-click: remove it. |
 
 ## When typing in a field

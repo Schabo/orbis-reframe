@@ -14,8 +14,14 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <string_view>
 
 namespace fx {
+
+// An effect dragged out of the Effects library: its name (kVignette, ...).
+constexpr const char *kMimeType = "application/x-orbis-reframe-effect";
+// The effects' names, as the library and the project file call them.
+constexpr const char *kVignette = "vignette";
 
 // Darker (or lighter) toward the edges of the output frame -- the whole
 // frame, also when a clip is split into panes. The falloff is an ellipse
@@ -67,6 +73,21 @@ struct ClipEffects {
     std::optional<Vignette> vignette;
 
     bool isEmpty() const { return !vignette; }
+    // Whether it has the effect named `name`; add() puts it on with its
+    // defaults (true if it wasn't there), remove() takes it off.
+    bool has(const char *name) const { return std::string_view(name) == kVignette && vignette; }
+    bool add(const char *name)
+    {
+        if (std::string_view(name) != kVignette || vignette)
+            return false;
+        vignette = Vignette{};
+        return true;
+    }
+    void remove(const char *name)
+    {
+        if (std::string_view(name) == kVignette)
+            vignette.reset();
+    }
     void clamp()
     {
         if (vignette)

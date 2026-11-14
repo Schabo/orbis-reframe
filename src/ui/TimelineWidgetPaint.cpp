@@ -234,7 +234,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         // static forward view, whatever the viewport showed.
         QString label = (r.clip.missing || r.clip.showsGap() ? QStringLiteral("⚠ ") : QString()) +
                         (r.clip.keySourceMs.isEmpty() ? QStringLiteral("◇ ") : QString()) +
-                        r.clip.label;
+                        (r.clip.effects ? QStringLiteral("✦ ") : QString()) + r.clip.label;
         if (r.clip.speed != 1.0)
             label += QStringLiteral("  %1×").arg(r.clip.speed);
         // On the visible part, so a clip that starts off screen keeps its name.
@@ -408,7 +408,17 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     p.setRenderHint(QPainter::Antialiasing, false);
 
     // A file drag: where it would land.
-    if (m_dropActive) {
+    if (m_dropActive && m_dropEffect) {
+        // An effect: the clip it would go on, outlined.
+        if (m_dropIndex >= 0 && m_dropIndex < m_rows.size()) {
+            QColor band = tc.accent;
+            band.setAlpha(50);
+            const QRect rc = m_rows[m_dropIndex].rect;
+            p.fillRect(rc, band);
+            p.setPen(QPen(tc.accent, 2));
+            p.drawRect(rc.adjusted(1, 1, -1, -1));
+        }
+    } else if (m_dropActive) {
         const int x = xForTimelineMs(m_dropMs);
         const QColor hl = tc.accent;
         int top = mainTop() + kMainH, bottom = rowsBottom;

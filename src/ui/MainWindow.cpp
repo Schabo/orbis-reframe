@@ -60,6 +60,7 @@
 #include "TitlePresets.h"
 #include "TitlesPanel.h"
 #include "TransitionsPanel.h"
+#include "EffectsPanel.h"
 #include "PlaybackController.h"
 #include "ProjectFiles.h"
 #include "ProjectSettingsDialog.h"
@@ -77,6 +78,7 @@
 #include "EditToolbar.h"
 #include "UserManual.h"
 #include "panels/AudioPanel.h"
+#include "panels/ClipEffectsPanel.h"
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
@@ -123,6 +125,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     connectEdits();
     connectReframe();
     connectColour();
+    connectEffects();
     connectMeasurements();
     connectPrivacy();
     connectTransitions();
@@ -269,6 +272,8 @@ void MainWindow::setupSourcesSidebar()
             [this](const QString &presetId) { addTitle(0, m_lastTimelineMs, presetId); });
     m_transitionsPanel = new TransitionsPanel;
     m_sourcesSidebar->addTab(m_transitionsPanel, QStringLiteral("blend"), tr("Transitions"));
+    m_effectsPanel = new EffectsPanel;
+    m_sourcesSidebar->addTab(m_effectsPanel, QStringLiteral("sparkles"), tr("Effects"));
     m_sourcesSidebar->setToggleKeys(
         QKeySequence(Qt::CTRL | Qt::Key_B).toString(QKeySequence::NativeText));
     m_sourcesSidebar->setOpen(
@@ -352,6 +357,8 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     m_audioPanel->setNoClip();
     m_colourPanel = m_sidebar->colour();
     m_colourPanel->setNoClip();
+    m_clipEffectsPanel = m_sidebar->effects();
+    m_clipEffectsPanel->setNoClip();
     m_privacyPanel = m_sidebar->privacy();         // starts in its no-clip state
     m_overlayPanel = m_sidebar->overlay();         // starts with no overlay clip
     m_overlayAnimationPanel = m_sidebar->overlayAnimation();
@@ -468,6 +475,7 @@ void MainWindow::setupPlayback()
     const auto views = [this] { m_frameViews.update(*m_timeline); };
     connect(m_timeline, &Timeline::clipReframeChanged, this, views);
     connect(m_timeline, &Timeline::clipColorChanged, this, views);
+    connect(m_timeline, &Timeline::clipEffectsChanged, this, views);
     connect(m_timeline, &Timeline::clipInserted, this, views);
     connect(m_timeline, &Timeline::clipRemoved, this, views);
     connect(m_timeline, &Timeline::clipsReordered, this, views);
@@ -1611,11 +1619,13 @@ void MainWindow::refreshClipPanels()
         m_reframePanel->setNoClip();
         m_splitScreenPanel->setNotApplicable(QString());
         m_splitScreenPanel->setNoClip();
+        m_clipEffectsPanel->setNoClip();
         refreshAudioPanel();
         return;
     }
     syncMediaInfoPanel(*c);
     syncColourPanel(c->color);
+    m_clipEffectsPanel->setState(c->effects);
     m_reframePanel->setClip(c->flat, c->fit == ClipItem::Fit::Fill);
     m_reframePanel->setPaneLayout(c->split.layout);
     m_splitScreenPanel->setNotApplicable(c->flat ? tr("A flat video isn't split into panes.")
@@ -2832,6 +2842,7 @@ void MainWindow::refreshTimelineWidget()
         for (const SourceGap &g : c.sourceGaps)
             w.gaps.push_back({g.fromMs, g.toMs, g.file});
         w.speed = c.speed;
+        w.effects = c.effects.render().any();
         // A split clip's diamonds are the active pane's keys.
         const ReframeTrack &keys = c.paneTrack(paneOf(c));
         for (qint64 t : keys.keyTimes())

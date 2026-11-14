@@ -9,6 +9,7 @@
 #include "panels/AudioPanel.h"
 #include "panels/GaugePanel.h"
 #include "panels/AnimationPanel.h"
+#include "panels/ClipEffectsPanel.h"
 #include "panels/ColourPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "panels/OverlayPanel.h"
@@ -42,6 +43,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_reframe = section<ReframePanel>("reframePanel", tr("Keys at the playhead"));
     m_splitScreen = section<SplitScreenPanel>("splitScreenPanel", thisClip);
     m_colour = section<ColourPanel>("colourPanel", thisClip);
+    m_effects = section<ClipEffectsPanel>("clipEffectsPanel", thisClip);
     m_mediaInfo = section<MediaInfoPanel>("mediaInfoPanel", thisClip);
     m_audio = new AudioPanel(this); // a section per clip, made as needed
     const QString selectedPip = tr("Selected PiP clip");
@@ -65,7 +67,7 @@ SettingsSidebar::SettingsSidebar(QWidget *parent)
     m_mediaInfo->setExpanded(false);
 
     const QList<SettingsPanel *> video = {m_stitching, m_stabilization, m_reframe,
-                                          m_splitScreen, m_colour, m_mediaInfo};
+                                          m_splitScreen, m_colour, m_effects, m_mediaInfo};
     m_sections = video;
     m_sections << m_overlay << m_overlayAnimation << m_titleText << m_titleLook << m_gauge << m_titleAnimation
                << m_titlePlacement << m_transition

@@ -85,6 +85,9 @@ class QTimer;
 //   the cut nearest the pointer -> transitionDropped (with two clips or
 //   more). A transition's box: click -> transitionSelected; right-click ->
 //   remove it; its tooltip says what it is.
+//   Effects: dragged from the Effects tab onto a main-track clip, the one
+//   under the pointer -> effectDropped. A clip with an effect on is labelled
+//   with a ✦.
 //   Waveforms: a clip given `peaks` draws its audio's level (dB scale), with
 //   its gain and fades applied.
 //   Reframe keys: a main-track clip's keys show as diamonds along its bottom
@@ -140,6 +143,7 @@ public:
         };
         QVector<Gap> gaps;
         double speed = 1.0;          // ClipItem::speed
+        bool effects = false;        // an effect on (fx::Render::any): a ✦ by its name
         // Span on the timeline, same rounding as ClipItem::timelineDurationMs.
         qint64 timelineSpanMs() const
         {
@@ -299,6 +303,8 @@ signals:
     // A transition dragged from the Transitions tab (Transition::kMimeType;
     // `type` its data) onto the cut after clip `leftClipId`.
     void transitionDropped(int leftClipId, const QString &type);
+    // An effect (fx::kMimeType's name) dropped onto a main-track clip.
+    void effectDropped(int clipId, const QString &name);
 
     void trackClipSelected(int clipId); // -1 = selection cleared
     void trackClipMoved(int clipId, int toTrackId, qint64 startMs);
@@ -509,6 +515,7 @@ private:
     bool m_dropClip = false;  // ... .insv clips, for the main track
     bool m_dropTitle = false; // ... a title, for an overlay track
     bool m_dropTransition = false; // ... a transition, for a cut (m_dropIndex: the clip after it)
+    bool m_dropEffect = false; // ... an effect, for a clip (m_dropIndex: that clip, -1 = none)
     bool m_dropMain = false;  // the video files go on the main track (pointer over it, or no clips yet)
     int m_dropIndex = 0;      // the main-track position they'd go in at
     qint64 m_dropMs = 0;
