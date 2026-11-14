@@ -261,6 +261,35 @@ void MainWindow::setupSourcesSidebar()
             .setValue(QStringLiteral("sidebars/sourcesWidth"), width);
     });
     m_mediaPanel = new MediaPoolPanel(m_project->mediaPool());
+    // The Media tab's view (list / grid) and each view's picture size are
+    // remembered per user; restored before the first thumbnails are read.
+    {
+        QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+        m_mediaPanel->setViewMode(
+            settings.value(QStringLiteral("mediaPool/view")).toString() ==
+                    QStringLiteral("grid")
+                ? MediaPoolPanel::ViewMode::Grid
+                : MediaPoolPanel::ViewMode::List);
+        m_mediaPanel->setListScale(
+            settings.value(QStringLiteral("mediaPool/listScale"), 1.0).toDouble());
+        m_mediaPanel->setGridScale(
+            settings.value(QStringLiteral("mediaPool/gridScale"), 1.0).toDouble());
+    }
+    connect(m_mediaPanel, &MediaPoolPanel::viewModeChanged, this,
+            [](MediaPoolPanel::ViewMode mode) {
+                QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+                    .setValue(QStringLiteral("mediaPool/view"),
+                              mode == MediaPoolPanel::ViewMode::Grid ? QStringLiteral("grid")
+                                                                     : QStringLiteral("list"));
+            });
+    connect(m_mediaPanel, &MediaPoolPanel::listScaleChanged, this, [](double scale) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("mediaPool/listScale"), scale);
+    });
+    connect(m_mediaPanel, &MediaPoolPanel::gridScaleChanged, this, [](double scale) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("mediaPool/gridScale"), scale);
+    });
     m_thumbnailCache = std::make_shared<ThumbnailCache>();
     m_mediaPanel->setThumbnailProvider(
         [cache = m_thumbnailCache](const MediaItem &item, const QSize &size) {
@@ -444,6 +473,15 @@ void MainWindow::setupPages()
     m_libraryPage = new ProjectLibraryPage(m_library.get(), this);
     m_libraryPage->setFlatThumbnail([](const QString &path, const QSize &size) {
         return mediaThumbnail({path, MediaItem::Kind::Video}, size);
+    });
+    // The cards' size is remembered per user.
+    m_libraryPage->setCardScale(
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .value(QStringLiteral("projectLibrary/cardScale"), 1.0)
+            .toDouble());
+    connect(m_libraryPage, &ProjectLibraryPage::cardScaleChanged, this, [](double scale) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("projectLibrary/cardScale"), scale);
     });
     connect(m_libraryPage, &ProjectLibraryPage::openRequested, this, &MainWindow::openProject);
     connect(m_libraryPage, &ProjectLibraryPage::newProjectRequested, this, &MainWindow::newProject);
