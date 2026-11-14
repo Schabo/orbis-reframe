@@ -46,6 +46,7 @@ struct ViewPreset {
     double fovDeg; // corner to corner; 0: the default view's
     float distortion;
     float natural;
+    float fisheye = 0.0f;
 };
 const ViewPreset kViewPresets[] = {
     {"reframePresetNormal", "view-normal",
@@ -104,6 +105,7 @@ ReframePanel::ReframePanel(QWidget *parent)
                 p.fov = preset.fovDeg > 0.0 ? preset.fovDeg * kDegToRad : ReframePose{}.fov;
                 p.distortion = preset.distortion;
                 p.panini = preset.natural;
+                p.fisheye = preset.fisheye;
             });
         });
     }
@@ -178,6 +180,28 @@ ReframePanel::ReframePanel(QWidget *parent)
     naturalLayout->addWidget(m_natural, 1);
     naturalLayout->addWidget(m_naturalValue);
     form()->addRow(tr("Natural"), m_naturalRow);
+
+    // Fisheye: 0-100 % from the view above to the equidistant fisheye, then
+    // on to 200 % the mirror ball, like the distortion's globe.
+    m_fisheyeRow = new QWidget(this);
+    auto *fisheyeLayout = new QHBoxLayout(m_fisheyeRow);
+    fisheyeLayout->setContentsMargins(0, 0, 0, 0);
+    m_fisheye = new QSlider(Qt::Horizontal, m_fisheyeRow);
+    m_fisheye->setObjectName(QStringLiteral("reframeFisheye"));
+    m_fisheye->setRange(0, static_cast<int>(view::kMaxFisheye * 100.0f));
+    m_fisheye->setPageStep(10);
+    m_fisheye->setTracking(false); // one edit (and keyframe) per release
+    m_fisheye->setToolTip(tr("Turns the view into a fisheye lens's picture: at 100 % a true "
+                             "fisheye, which can take in the whole world, with what's behind "
+                             "you round its rim. Past 100 % it becomes a mirror ball, the "
+                             "whole world in a disc on black, at 200 %. From 100 % up, "
+                             "Distortion and Natural only set the picture's size."));
+    m_fisheyeValue = new QLabel(m_fisheyeRow);
+    m_fisheyeValue->setMinimumWidth(
+        m_fisheyeValue->fontMetrics().horizontalAdvance(QStringLiteral("200%")));
+    fisheyeLayout->addWidget(m_fisheye, 1);
+    fisheyeLayout->addWidget(m_fisheyeValue);
+    form()->addRow(tr("Fisheye"), m_fisheyeRow);
 
     m_ease = easecombo::make(this);
     m_ease->setObjectName(QStringLiteral("reframeEaseCombo"));
@@ -272,6 +296,11 @@ ReframePanel::ReframePanel(QWidget *parent)
     connect(m_naturalFull, &QCheckBox::toggled, this, [this](bool on) {
         edited([on](ReframePose &p) { p.panini = on ? 1.0f : 0.0f; });
     });
+    connect(m_fisheye, &QSlider::sliderMoved, this,
+            [this](int v) { m_fisheyeValue->setText(tr("%1%").arg(v)); });
+    connect(m_fisheye, &QSlider::valueChanged, this, [this](int v) {
+        edited([v](ReframePose &p) { p.fisheye = static_cast<float>(v) / 100.0f; });
+    });
 }
 
 void ReframePanel::edited(const std::function<void(ReframePose &)> &change)
@@ -315,6 +344,9 @@ void ReframePanel::showPose(const ReframePose &pose)
     m_natural->setValue(natural);
     m_naturalValue->setText(tr("%1%").arg(natural));
     m_naturalFull->setChecked(natural >= 100);
+    const int fisheye = static_cast<int>(std::lround(pose.fisheye * 100.0f));
+    m_fisheye->setValue(fisheye);
+    m_fisheyeValue->setText(tr("%1%").arg(fisheye));
     m_updating = false;
 }
 
@@ -375,8 +407,8 @@ void ReframePanel::setClip(bool flat, bool fill)
     m_flat = flat;
     for (QWidget *w :
          std::initializer_list<QWidget *>{m_presetRow, m_yaw, m_pitch, m_roll, m_fov,
-                                          m_distortionRow,
-                                          m_naturalRow, m_ease, m_track})
+                                          m_distortionRow, m_naturalRow, m_fisheyeRow,
+                                          m_ease, m_track})
         form()->setRowVisible(w, !flat);
     form()->setRowVisible(m_trackUnavailable, !flat && !m_trackUnavailableReason.isEmpty());
     form()->setRowVisible(m_trackStatus, !flat && m_trackRunning);
@@ -443,7 +475,7 @@ void ReframePanel::setTrackRunning(bool running)
     for (QWidget *w :
          std::initializer_list<QWidget *>{m_presetRow, m_yaw, m_pitch, m_roll, m_fov,
                                           m_distortionAuto, m_naturalFull, m_natural,
-                                          m_pane})
+                                          m_fisheye, m_pane})
         w->setEnabled(!running);
     m_distortion->setEnabled(!running && !m_pose.distortionIsAuto());
     m_ease->setEnabled(m_easeAvailable && !running);

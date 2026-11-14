@@ -71,6 +71,7 @@ struct Args {
     // The static view's distortion (view::Pose), < 0 = automatic.
     double distortion = view::kAutoDistortion;
     double natural = 0.0; // and its Natural (view::Pose::panini), 0..1
+    double fisheye = 0.0; // and its Fisheye (view::Pose::fisheye), 0..2
     // Colour panel grade, applied to the whole export. See
     // ClipItem::ColorGrade for the ranges/units.
     float exposureEv = 0.0f;
@@ -105,10 +106,10 @@ const char kUsage[] =
     "  --trim-in MS           start of the exported range (default 0)\n"
     "  --trim-out MS          end of the exported range (default: clip end)\n"
     "  --keys FILE            reframe keyframes; lines of: time_ms yaw_rad pitch_rad fov_rad\n"
-    "                        [roll_rad] [distortion] [natural] (fov: the diagonal;\n"
-    "                        '#' comments allowed; times are clip-absolute; roll\n"
-    "                        default 0, distortion 0..2, default automatic; natural\n"
-    "                        0..1, default 0)\n"
+    "                        [roll_rad] [distortion] [natural] [fisheye] (fov: the\n"
+    "                        diagonal; '#' comments allowed; times are clip-absolute;\n"
+    "                        roll default 0, distortion 0..2, default automatic;\n"
+    "                        natural 0..1, fisheye 0..2, default 0)\n"
     "  --size WxH             output resolution (default 1920x1080)\n"
     "  --fps N                output frame rate (default: source fps)\n"
     "  --codec h264|h265     output codec (default h265)\n"
@@ -129,6 +130,8 @@ const char kUsage[] =
     "                        (default auto: follows the fov)\n"
     "  --natural P           the static pose's Natural, the Panini amount 0..1\n"
     "                        (default 0; does nothing at distortion 0)\n"
+    "  --fisheye F           the static pose's Fisheye 0..2: 1 the equidistant\n"
+    "                        fisheye, 2 the mirror ball (default 0)\n"
     "  --exposure EV --contrast PCT --saturation PCT --temperature PCT\n"
     "                        colour grade (all default 0 = neutral)\n"
     "  --lut FILE.cube        a 3D LUT applied before the grade (e.g. a log-to-Rec.709 one)\n"
@@ -232,6 +235,9 @@ Args parseArgs(int argc, char** argv)
         }
         else if (k == "--natural")
             a.natural = std::clamp(std::atof(next("--natural").c_str()), 0.0, 1.0);
+        else if (k == "--fisheye")
+            a.fisheye = std::clamp(std::atof(next("--fisheye").c_str()), 0.0,
+                                   double(view::kMaxFisheye));
         else if (k == "--exposure")
             a.exposureEv = static_cast<float>(std::atof(next("--exposure").c_str()));
         else if (k == "--contrast")
@@ -318,15 +324,18 @@ ReframeTrack loadKeys(const std::string& path, qint64 frameDurMs)
                 continue;
             die("bad --keys line " + std::to_string(lineno) + ": " + line);
         }
-        float roll = 0.0f, distortion = view::kAutoDistortion, natural = 0.0f;
-        if (ls >> roll) // optional 5th to 7th columns
+        float roll = 0.0f, distortion = view::kAutoDistortion, natural = 0.0f, fisheye = 0.0f;
+        if (ls >> roll) // optional 5th to 8th columns
             if (ls >> distortion) {
                 distortion = std::clamp(distortion, 0.0f, view::kMaxDistortion);
-                if (ls >> natural)
+                if (ls >> natural) {
                     natural = std::clamp(natural, 0.0f, 1.0f);
+                    if (ls >> fisheye)
+                        fisheye = std::clamp(fisheye, 0.0f, view::kMaxFisheye);
+                }
             }
         track.upsert(static_cast<qint64>(tms),
-                     ReframePose{yaw, pitch, roll, fov, distortion, natural}, frameDurMs);
+                     ReframePose{yaw, pitch, roll, fov, distortion, natural, fisheye}, frameDurMs);
     }
     if (track.isEmpty())
         die("--keys file has no keyframes: " + path);
@@ -381,11 +390,13 @@ int main(int argc, char** argv)
         poses = {{static_cast<float>(a.staticYawDeg * kDegToRad),
                   static_cast<float>(a.staticPitchDeg * kDegToRad),
                   static_cast<float>(a.staticRollDeg * kDegToRad), a.staticFovDeg * kDegToRad,
-                  static_cast<float>(a.distortion), static_cast<float>(a.natural)}};
+                  static_cast<float>(a.distortion), static_cast<float>(a.natural),
+                  static_cast<float>(a.fisheye)}};
         const view::Lens lens = view::lens(poses[0], double(a.outW) / double(a.outH));
-        std::printf("view:   distortion %.2f%s, natural %.2f, %.2f deg up and down\n",
+        std::printf("view:   distortion %.2f%s, natural %.2f, fisheye %.2f, %.2f deg up and "
+                    "down\n",
                     lens.distortion, a.distortion < 0.0 ? " (auto)" : "", lens.panini,
-                    lens.fovY / kDegToRad);
+                    lens.fisheye, lens.fovY / kDegToRad);
     }
     const int poseCount = static_cast<int>(poses.size());
 

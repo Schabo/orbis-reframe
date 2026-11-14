@@ -18,10 +18,12 @@ layout(push_constant) uniform PushConstants {
     float fovY;   // vertical field of view, radians
     float aspect; // viewport width / height
     float distortion; // the projection's d: 0 rectilinear .. 1 stereographic
-#ifdef VIEW_NATURAL
-    float panini;     // Natural, view_projection.glsl's p (its build only)
+#ifdef VIEW_SHAPE
+    float panini;     // Natural, view_projection.glsl's p and
+    float fisheye;    // Fisheye, its f (the view-shape build only)
 #endif
-    // Up to 8 bytes of std140 padding here (mat3 aligns at offset 32).
+    // Up to 8 bytes of std140 padding here (mat3 aligns at offset 32): the
+    // view-shape build fills it.
     mat3 stab;    // Gyro de-rotation in the sphere frame, applied to the
                   // world ray AFTER the yaw/pitch/roll reframe pose.
                   // Identity when stabilization off.
@@ -37,8 +39,8 @@ const float PI = 3.14159265358979323846;
 #include "view_projection.glsl"
 
 void main() {
-#ifdef VIEW_NATURAL
-    vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini);
+#ifdef VIEW_SHAPE
+    vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini, pc.fisheye);
 #else
     vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion);
 #endif
@@ -75,9 +77,9 @@ void main() {
     vec2 uv = vec2(longitude / (2.0 * PI) + 0.5, 0.5 - latitude / PI);
     outColor = texture(equirectSampler, uv);
     outColor.rgb = gradeColor(outColor.rgb, pc.colorGrade, pc.colorLut, 1.0);
-    // Outside a globe's disc: black.
-#ifdef VIEW_NATURAL
-    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini))
+    // Outside a globe's disc, or where Fisheye shows nothing: black.
+#ifdef VIEW_SHAPE
+    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini, pc.fisheye))
 #else
     if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
 #endif

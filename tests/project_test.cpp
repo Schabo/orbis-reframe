@@ -2924,6 +2924,64 @@ void testNaturalJson()
     }
 }
 
+// Fisheye: a key's "fisheye", round trip, clamped on load, absent = 0,
+// blended between keys; version 23 only while a key has it.
+void testFisheyeJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    writeFile(tmp.path() + "/clip.insv");
+    const QString in = tmp.path() + "/in.orp";
+    writeFile(in, QStringLiteral(R"({"format": "orbis-reframe-project", "version": 23,
+        "output": {"aspect": "16:9", "width": 1920, "height": 1080, "fps": 0},
+        "timeline": {"clips": [
+          {"source": "clip.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
+           "fps": 30, "reframe": {"keys": [
+             {"tMs": 0, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8, "fisheye": 1.25},
+             {"tMs": 1000, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8, "fisheye": 9.0},
+             {"tMs": 2000, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8, "fisheye": -1.0},
+             {"tMs": 3000, "yaw": 0, "pitch": 0, "roll": 0, "diag": 2.8}]}}]}})")
+                       .toUtf8());
+    const auto version = [](const QString &path) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly))
+            return -1;
+        return QJsonDocument::fromJson(f.readAll()).object().value("version").toInt();
+    };
+    QString err;
+    const QString fish = tmp.path() + "/fish.orp", plain = tmp.path() + "/plain.orp";
+    {
+        Project p;
+        CHECK(p.load(in, &err));
+        const ClipItem &c = p.timeline()->clipAt(0);
+        CHECK(c.reframe.count() == 4);
+        if (c.reframe.count() != 4)
+            return;
+        CHECK(c.reframe.keys()[0].pose.fisheye == 1.25f);
+        CHECK(c.reframe.keys()[1].pose.fisheye == view::kMaxFisheye);
+        CHECK(c.reframe.keys()[2].pose.fisheye == 0.0f);
+        CHECK(c.reframe.keys()[3].pose.fisheye == 0.0f);
+        const float mid = c.reframe.sample(500).fisheye;
+        CHECK(mid > 1.25f && mid < view::kMaxFisheye);
+        CHECK(p.save(fish, &err));
+        CHECK(version(fish) == Project::kViewShapeFormatVersion);
+
+        const int id = c.id;
+        for (qint64 t : {0, 1000}) {
+            ReframePose k = p.timeline()->clipAt(0).reframe.sample(t);
+            k.fisheye = 0.0f;
+            p.timeline()->upsertClipReframeKey(id, t, k);
+        }
+        CHECK(p.save(plain, &err));
+        CHECK(version(plain) < Project::kViewShapeFormatVersion);
+    }
+    {
+        Project p;
+        CHECK(p.load(fish, &err));
+        CHECK(p.timeline()->clipAt(0).reframe.keys()[0].pose.fisheye == 1.25f);
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -2958,5 +3016,6 @@ int main(int argc, char **argv)
     testWideViewJson();
     testGlobeJson();
     testNaturalJson();
+    testFisheyeJson();
     return modeltest::finish("project_test");
 }

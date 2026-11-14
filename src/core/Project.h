@@ -184,10 +184,11 @@ public:
     // build would drop them on save, and lose which part is gone. It also
     // added a media item's highlight marks ("marks", "hiddenMarks"),
     // written only when an item has either: an older build would drop them
-    // on save. Version 23 added the globe and Natural: a key's
-    // "distortion" past 1, up to 2, and its "panini" (Natural, 0..1, absent
-    // = 0; ViewProjection.h), written only when a key has either: an older
-    // build would clamp the globe to a tiny planet and drop Natural.
+    // on save. Version 23 added the globe, Natural and Fisheye: a key's
+    // "distortion" past 1, up to 2, its "panini" (Natural, 0..1, absent = 0)
+    // and its "fisheye" (0..2, absent = 0; ViewProjection.h), written only
+    // when a key has one: an older build would clamp the globe to a tiny
+    // planet and drop Natural and Fisheye.
     static constexpr int kFormatVersion = 23;
     static constexpr int kViewShapeFormatVersion = 23;
     static constexpr int kPartsFormatVersion = 22;

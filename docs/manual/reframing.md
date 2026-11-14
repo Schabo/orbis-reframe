@@ -19,7 +19,7 @@ four views at once.
 
 ## The view
 
-The view has six settings. You can see and type them in the **Reframe**
+The view has seven settings. You can see and type them in the **Reframe**
 section (settings sidebar, **Video** tab):
 
 | Setting | What it is | Range |
@@ -30,10 +30,11 @@ section (settings sidebar, **Video** tab):
 | **Field of view** | How much the view takes in, from one corner of the picture to the opposite one. Small values zoom in, large values give a wide view. | 20° to 330°, depending on **Distortion** |
 | **Distortion** | How a wide view is drawn: **Auto**, or a fixed amount from 0 % to 100 %, and on to 200 % for a globe (see [Wide views and tiny planets](#wide-views-and-tiny-planets) and [Globes](#globes)). | Auto, 0 % to 200 % |
 | **Natural** | Bends a distorted view only sideways, so upright lines stay upright: **Full**, or an amount (see [Natural](#natural)). | Off, Full, or 0 % to 100 % |
+| **Fisheye** | Turns the view into a fisheye lens's picture at 100 %, and on to a mirror ball at 200 % (see [Fisheyes and mirror balls](#fisheyes-and-mirror-balls)). | 0 % to 200 % |
 
 Above the fields, the **View** buttons set a whole view shape at once
 (see [View presets](#view-presets)). In the viewport, dragging changes yaw
-and pitch, and the mouse wheel changes the field of view. Roll, distortion and Natural can only be set in the
+and pitch, and the mouse wheel changes the field of view. Roll, distortion, Natural and Fisheye can only be set in the
 section. The
 section is greyed out while there's no clip to reframe: none selected and
 none under the playhead.
@@ -158,6 +159,37 @@ tilted, they straighten along the tilt. Between two keyframes the amount
 moves smoothly, like the distortion. Natural works on a globe too, which
 draws it as a barrel.
 
+### Fisheyes and mirror balls
+
+![A fisheye at 180° and a mirror ball at 270°, at 100 % distortion](images/fisheye.jpg)
+
+1. **Fisheye** at 100 %, 180°, looking a little down: the guard rail and
+   the lamp post bend round the middle, and the picture reaches far to
+   the sides without stretching.
+2. **Fisheye** at 200 %, 270°: a mirror ball, the whole world in a disc.
+
+**Fisheye** draws the view the way a fisheye lens does. At 100 % it is a
+true fisheye: how far a thing is from the middle of the picture is how far
+it is from where the view looks, so the picture can take in the whole
+world, with what's behind you round its rim and black beyond. Past 100 %
+the picture draws together into a **mirror ball**, the whole world in a
+disc on black, at 200 %. The middle of the ball is where the view looks; a
+real mirror ball shows the camera in its middle, which you get by turning
+the yaw 180°.
+
+Between 0 % and 100 % the picture moves from what **Distortion** and
+**Natural** give to the fisheye. From 100 % up they no longer change its
+shape, only its size: **Field of view** sets how big the picture is as it
+would without Fisheye, so at the same angle a fisheye takes in more than a
+plain view. For the whole mirror ball in a 16:9 picture, set the field of
+view to about 260° or more at 100 % distortion.
+
+Between two keyframes the amount moves smoothly, so a normal view can
+bend into a fisheye and on into a mirror ball. A tiny planet with Fisheye
+on draws together into a disc too, and quickly over the first few per
+cent. Fisheye works on a globe as well: the black round it opens out as
+the amount rises.
+
 > **Projects from earlier versions** keep their views: each keyframe takes
 > the corner-to-corner angle that frames what it framed before, with
 > distortion on Auto. Views wider than about 95° corner to corner now
@@ -167,8 +199,8 @@ draws it as a barrel.
 
 ## Keyframes
 
-A keyframe stores the view (yaw, pitch, roll, field of view, distortion and
-Natural) at one moment of a clip. Between two keyframes the camera turns and zooms from one
+A keyframe stores the view (yaw, pitch, roll, field of view, distortion,
+Natural and Fisheye) at one moment of a clip. Between two keyframes the camera turns and zooms from one
 view to the other, the short way round, at the pace the first keyframe's
 **Easing** sets (see [Easing](#easing)). Distortion changes along with the
 field of view: between two keyframes on **Auto** it follows the field of view
@@ -377,7 +409,7 @@ very wide.
 The **active pane** is the one with the outline in the viewport. Everything
 that changes the view acts on it: dragging and the mouse wheel in the
 viewport, the **View** buttons, the **Yaw**, **Pitch**, **Roll**,
-**Field of view**, **Distortion**, **Natural** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
+**Field of view**, **Distortion**, **Natural**, **Fisheye** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
 **Track subject…**. The keyframe diamonds on the clip are the active
 pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
 

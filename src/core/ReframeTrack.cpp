@@ -80,7 +80,8 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
         m_keys, timeMs, [](const ReframeKey &a, const ReframeKey &b) {
             return a.pose.yaw == b.pose.yaw && a.pose.pitch == b.pose.pitch &&
                    a.pose.roll == b.pose.roll && a.pose.fov == b.pose.fov &&
-                   a.pose.distortion == b.pose.distortion && a.pose.panini == b.pose.panini;
+                   a.pose.distortion == b.pose.distortion && a.pose.panini == b.pose.panini &&
+                   a.pose.fisheye == b.pose.fisheye;
         });
     if (!lo)
         return {};
@@ -97,5 +98,6 @@ ReframePose ReframeTrack::sample(qint64 timeMs) const
         out.distortion = lerp(static_cast<float>(view::distortionOf(lo->pose)),
                               static_cast<float>(view::distortionOf(hi->pose)), t);
     out.panini = lerp(lo->pose.panini, hi->pose.panini, t);
+    out.fisheye = lerp(lo->pose.fisheye, hi->pose.fisheye, t);
     return out;
 }

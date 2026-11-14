@@ -239,6 +239,8 @@ json reframeToJson(const ReframeTrack &track)
             jk["distortion"] = k.pose.distortion;
         if (k.pose.panini > 0.0f)
             jk["panini"] = k.pose.panini;
+        if (k.pose.fisheye > 0.0f)
+            jk["fisheye"] = k.pose.fisheye;
         if (k.ease != keytrack::Ease::Linear)
             jk["ease"] = keytrack::easeName(k.ease);
         keys.push_back(std::move(jk));
@@ -267,6 +269,7 @@ std::vector<ReframeKey> reframeKeysFromJson(const json &j, int version, double a
                 k.pose.distortion =
                     std::clamp(jk.value("distortion", 0.0f), 0.0f, view::kMaxDistortion);
             k.pose.panini = std::clamp(jk.value("panini", 0.0f), 0.0f, 1.0f);
+            k.pose.fisheye = std::clamp(jk.value("fisheye", 0.0f), 0.0f, view::kMaxFisheye);
         } else {
             k.pose.fov = view::fovFor<double>(jk.value("fovY", 1.309f), 0.0, aspect);
         }
@@ -1285,7 +1288,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anyDirectionLock = false;
     bool anySplit = false;
     bool anyReframeKey = false; // keys hold the diagonal field of view
-    bool anyViewShape = false;  // a key's distortion past 1, or Natural
+    bool anyViewShape = false;  // a key's distortion past 1, Natural or Fisheye
     // The first 360 clip's stitch settings, and whether every 360 clip has
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
@@ -1352,7 +1355,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         anyReframeKey = anyReframeKey || paneKeys || !c.reframe.isEmpty();
         const auto hasViewShape = [](const ReframeTrack &t) {
             return std::any_of(t.keys().begin(), t.keys().end(), [](const ReframeKey &k) {
-                return k.pose.distortion > 1.0f || k.pose.panini > 0.0f;
+                return k.pose.distortion > 1.0f || k.pose.panini > 0.0f ||
+                       k.pose.fisheye > 0.0f;
             });
         };
         anyViewShape = anyViewShape || hasViewShape(c.reframe) ||

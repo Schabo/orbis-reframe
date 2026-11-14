@@ -919,6 +919,42 @@ void testReframeNatural(SettingsSidebar &bar)
     CHECK(natural->isVisibleTo(reframe));
 }
 
+// Fisheye: shows the pose's amount without emitting, an edit sets it in
+// percent up to 200 %, hidden for a flat clip and greyed out while tracking
+// runs; a View button sets it back to none.
+void testReframeFisheye(SettingsSidebar &bar)
+{
+    ReframePanel *reframe = bar.reframe();
+    auto *fisheye = find<QSlider>(reframe, "reframeFisheye");
+    auto *normal = find<QToolButton>(reframe, "reframePresetNormal");
+    if (!fisheye || !normal)
+        return;
+    bar.setCurrentIndex(SettingsSidebar::VideoTab);
+    reframe->setExpanded(true);
+    reframe->setClip(false);
+    QSignalSpy edited(reframe, &ReframePanel::poseEdited);
+    ReframePose pose;
+    pose.fisheye = 1.3f;
+    reframe->setPose(pose);
+    CHECK(fisheye->value() == 130 && fisheye->maximum() == 200 && edited.isEmpty());
+    fisheye->setValue(200);
+    CHECK(edited.count() == 1);
+    if (edited.count() == 1)
+        CHECK(edited.at(0).at(0).value<ReframePose>().fisheye == 2.0f);
+    normal->click();
+    CHECK(edited.count() == 2 && edited.at(1).at(0).value<ReframePose>().fisheye == 0.0f);
+    CHECK(fisheye->value() == 0);
+    reframe->setTrackRunning(true);
+    CHECK(!fisheye->isEnabled());
+    reframe->setTrackRunning(false);
+    CHECK(fisheye->isEnabled());
+    reframe->setClip(true);
+    CHECK(!fisheye->isVisibleTo(reframe));
+    reframe->setClip(false);
+    CHECK(fisheye->isVisibleTo(reframe));
+    reframe->setPose(ReframePose{});
+}
+
 // The View buttons: each sets the whole view shape in one edit and keeps the
 // yaw; the values fit the field of view's range (none clamped); the buttons
 // are greyed out while tracking runs and hidden for a flat clip.
@@ -1223,6 +1259,7 @@ int main(int argc, char **argv)
     testTrackStatus(bar);
     testReframeNatural(bar);
     testReframeViewPresets(bar);
+    testReframeFisheye(bar);
     testTransitionTab(bar);
     testColourLut(bar);
     testMediaInfoProfile(bar);

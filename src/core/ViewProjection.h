@@ -54,6 +54,25 @@
 // lines (halfHeight, fovYFor), and a point of the sphere is put onto the
 // surface before it is projected (onSurface).
 //
+// Fisheye (the amount f, 0 to 2) leaves the central projection for the
+// radial maps of fisheye lenses, which take in the whole sphere. f = 0 is
+// the view above, every function here unchanged to the bit. From 1 to 2 the
+// picture is the family r = sin(k theta) / k, k = (f - 1) / 2: k = 0 is the
+// equidistant fisheye, r = theta (f = 1: the back of the sphere on a rim of
+// radius pi), k = 1/2 Lambert's equal-area map, r = 2 sin(theta / 2), the
+// whole sphere in a disc of radius 2 -- the mirror ball, centred on where
+// the view looks. Between 0 and 1 a pixel's ray is the base view's (d and
+// Natural) turned toward the equidistant one's: its angle off the axis
+// blended from the base's to the plane radius, its azimuth from the base's
+// to the pixel's (they agree without Natural). Every map has slope 1 at the
+// centre, so the centre is magnified as before, and the picture's size is
+// the base view's: the field of view sets it as without Fisheye. The plane
+// beyond the angle pi, where the sphere ends, is black; on a globe, so is
+// the plane beyond its disc scaled by 1 / (1 - f), which grows from the
+// globe's disc at f = 0 to everywhere at 1, so the black closes in or opens
+// out smoothly. Plane to ray is closed form; ray to plane (rayToPlane) is
+// solved, closed form from 1 up.
+//
 // A pose gives its field of view as the diagonal angle, corner to corner,
 // so a landscape and a portrait frame take in alike, and its distortion
 // either fixed or Auto (following the field of view: none for a normal view,
@@ -66,6 +85,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace view {
 
@@ -73,6 +93,8 @@ namespace view {
 inline constexpr float kAutoDistortion = -1.0f;
 // The largest distortion amount: the globe's far end, orthographic.
 inline constexpr float kMaxDistortion = 2.0f;
+// The largest Fisheye amount: the mirror ball.
+inline constexpr float kMaxFisheye = 2.0f;
 
 // A view's pose: where it looks and how much it takes in.
 struct Pose {
@@ -88,6 +110,9 @@ struct Pose {
     float distortion = kAutoDistortion;
     // Natural, the Panini amount p: 0 (the sphere) to 1 (the cylinder).
     float panini = 0.0f;
+    // Fisheye, f: 0 (the view above) to 1 (equidistant) to 2 (the mirror
+    // ball).
+    float fisheye = 0.0f;
 
     bool distortionIsAuto() const { return distortion < 0.0f; }
     bool operator==(const Pose&) const = default;
@@ -224,13 +249,80 @@ inline bool planeToRay(T x, T y, T distortion, T out[3], T panini = T(0))
     return true;
 }
 
-// The ray of the pixel at NDC (ndcX, ndcY) of a view with half-height
-// `h` (halfHeight()) and `aspect` (width / height); false outside a globe's
-// disc (planeToRay).
+// Fisheye's map from 1 up, k = (f - 1) / 2: the angle off the axis of plane
+// radius r, theta = asin(k r) / k (r at k = 0); false past the sphere's
+// back (theta > pi), or where asin has no value (k r > 1, beyond the mirror
+// ball's disc).
 template <class T>
-inline bool ndcToRay(T ndcX, T ndcY, T h, T aspect, T distortion, T out[3], T panini = T(0))
+inline bool fisheyeAngle(T r, T fisheye, T& theta)
 {
-    return planeToRay(ndcX * h * aspect, -ndcY * h, distortion, out, panini);
+    const T k = T(0.5) * (fisheye - T(1));
+    if (k < T(1e-6)) {
+        theta = r;
+    } else {
+        const T kr = k * r;
+        theta = std::asin(std::min(kr, T(1))) / k;
+        if (kr > T(1))
+            return false;
+    }
+    return theta <= T(std::numbers::pi);
+}
+
+// And back: the plane radius of a ray `theta` off the axis, sin(k theta) / k.
+template <class T>
+inline T fisheyeRadius(T theta, T fisheye)
+{
+    const T k = T(0.5) * (fisheye - T(1));
+    return k < T(1e-6) ? theta : std::sin(k * theta) / k;
+}
+
+// planeToRay with Fisheye `fisheye` (f, 0 to 2): at 0 planeToRay itself.
+// False where the picture is black: past the sphere's back, outside the
+// mirror ball's disc, or outside a globe's disc scaled by 1 / (1 - f); `out`
+// is then a ray in that direction (unit length).
+template <class T>
+inline bool planeToRay(T x, T y, T distortion, T out[3], T panini, T fisheye)
+{
+    if (!(fisheye > T(0)))
+        return planeToRay(x, y, distortion, out, panini);
+    const T r = std::sqrt(x * x + y * y);
+    const T psi = std::atan2(y, x);
+    T theta = T(0);
+    bool in = true;
+    T azimuth = psi;
+    if (fisheye >= T(1)) {
+        in = fisheyeAngle(r, fisheye, theta);
+    } else {
+        T b[3];
+        if (!planeToRay(x, y, distortion, b, panini)) {
+            // Outside a globe's disc: the rim's ray, and black only past the
+            // disc scaled by 1 / (1 - f).
+            T s[3];
+            const T g = T(1) - fisheye;
+            in = planeToRay(g * x, g * y, distortion, s, panini);
+        }
+        const T thetaB = std::atan2(std::sqrt(b[0] * b[0] + b[1] * b[1]), -b[2]);
+        const T psiB = std::atan2(b[1], b[0]);
+        theta = thetaB + fisheye * (r - thetaB);
+        azimuth = psiB + fisheye * std::remainder(psi - psiB, T(2) * T(std::numbers::pi));
+        in = in && theta <= T(std::numbers::pi);
+    }
+    theta = std::min(theta, T(std::numbers::pi));
+    const T s = std::sin(theta);
+    out[0] = s * std::cos(azimuth);
+    out[1] = s * std::sin(azimuth);
+    out[2] = -std::cos(theta);
+    return in;
+}
+
+// The ray of the pixel at NDC (ndcX, ndcY) of a view with half-height
+// `h` (halfHeight()) and `aspect` (width / height); false where the picture
+// is black, outside a globe's disc or past Fisheye's (planeToRay).
+template <class T>
+inline bool ndcToRay(T ndcX, T ndcY, T h, T aspect, T distortion, T out[3], T panini = T(0),
+                     T fisheye = T(0))
+{
+    return planeToRay(ndcX * h * aspect, -ndcY * h, distortion, out, panini, fisheye);
 }
 
 // A view-space point (any length; a direction or a point on a chord between
@@ -264,6 +356,106 @@ inline bool pointToPlane(const T p[3], T distortion, T& x, T& y, T near = T(0))
     const T k = (T(1) + distortion) / depth;
     x = p[0] * k;
     y = p[1] * k;
+    return true;
+}
+
+// A direction (any length) -> the image-plane point the view shows it at,
+// pointToPlane's counterpart for a direction with Fisheye `fisheye`; false
+// where the view doesn't show it: behind the projection centre or a globe's
+// rim (z >= frontLimit, depth <= `near`, as pointToPlane), or in the black.
+// At f = 0 the direction is put on the view's surface and projected; from
+// 1 up the map is closed form; in between it is solved: along the ray's
+// azimuth for its angle (the map is radial without Natural, and the angle
+// grows with the radius), then with Natural, whose azimuths differ, by
+// Newton's method on the plane point from there.
+template <class T>
+inline bool rayToPlane(const T v[3], T distortion, T panini, T fisheye, T& x, T& y,
+                       T near = T(1e-6))
+{
+    const double len = std::sqrt(double(v[0]) * v[0] + double(v[1]) * v[1] + double(v[2]) * v[2]);
+    if (!(len > 0.0))
+        return false;
+    if (!(fisheye > T(0))) {
+        T p[3] = {T(v[0] / len), T(v[1] / len), T(v[2] / len)};
+        onSurface(p, panini);
+        return p[2] < frontLimit(distortion) && pointToPlane(p, distortion, x, y, near);
+    }
+    const double u[3] = {v[0] / len, v[1] / len, v[2] / len};
+    const double s = std::sqrt(u[0] * u[0] + u[1] * u[1]);
+    const double theta = std::atan2(s, -u[2]);
+    // The ray's azimuth; straight ahead or behind, any.
+    const double cx = s > 0.0 ? u[0] / s : 1.0, cy = s > 0.0 ? u[1] / s : 0.0;
+    const double f = std::min(double(fisheye), double(kMaxFisheye));
+    if (f >= 1.0) {
+        if (s <= 0.0 && u[2] > 0.0)
+            return false; // the back of the sphere is the whole rim
+        const double r = fisheyeRadius(theta, f);
+        x = T(r * cx);
+        y = T(r * cy);
+        return true;
+    }
+    const double d = distortion, p = panini;
+    // The angle the view shows at plane radius r along (cx, cy), and whether
+    // that point is in the picture.
+    const auto angleAt = [&](double r, double& a) {
+        double ray[3];
+        const bool in = planeToRay(r * cx, r * cy, d, ray, p, f);
+        a = std::atan2(std::sqrt(ray[0] * ray[0] + ray[1] * ray[1]), -ray[2]);
+        return in;
+    };
+    double lo = 0.0, hi = 1.0, a = 0.0;
+    while (hi < 1e6 && angleAt(hi, a) && a < theta)
+        hi *= 2.0;
+    for (int i = 0; i < 80; ++i) {
+        const double mid = 0.5 * (lo + hi);
+        ((angleAt(mid, a) && a < theta) ? lo : hi) = mid;
+    }
+    double px = lo * cx, py = lo * cy;
+    if (!(p > 0.0)) {
+        if (!angleAt(lo, a) || std::abs(a - theta) > 1e-9)
+            return false;
+    } else {
+        // Newton on the plane point: the ray's error against u, least
+        // squares over its three components, the Jacobian by differences.
+        const auto err = [&](double ax, double ay, double e[3]) {
+            double ray[3];
+            const bool in = planeToRay(ax, ay, d, ray, p, f);
+            for (int k = 0; k < 3; ++k)
+                e[k] = ray[k] - u[k];
+            return in;
+        };
+        bool done = false;
+        for (int it = 0; it < 40 && !done; ++it) {
+            double e0[3], ex[3], ey[3];
+            err(px, py, e0);
+            if (e0[0] * e0[0] + e0[1] * e0[1] + e0[2] * e0[2] < 1e-26) {
+                done = true;
+                break;
+            }
+            const double h = 1e-7 * std::max(1.0, std::hypot(px, py));
+            err(px + h, py, ex);
+            err(px, py + h, ey);
+            double jxx = 0.0, jxy = 0.0, jyy = 0.0, gx = 0.0, gy = 0.0;
+            for (int k = 0; k < 3; ++k) {
+                const double dx = (ex[k] - e0[k]) / h, dy = (ey[k] - e0[k]) / h;
+                jxx += dx * dx;
+                jxy += dx * dy;
+                jyy += dy * dy;
+                gx += dx * e0[k];
+                gy += dy * e0[k];
+            }
+            const double det = jxx * jyy - jxy * jxy;
+            if (!(std::abs(det) > 1e-300))
+                return false;
+            px -= (jyy * gx - jxy * gy) / det;
+            py -= (jxx * gy - jxy * gx) / det;
+        }
+        double e[3];
+        if (!err(px, py, e) || e[0] * e[0] + e[1] * e[1] + e[2] * e[2] > 1e-16)
+            return false;
+    }
+    x = T(px);
+    y = T(py);
     return true;
 }
 
@@ -320,6 +512,65 @@ inline int outlineToPlane(const T corner[4][3], T distortion, T panini,
             for (int k = 0; k < 3; ++k)
                 c[k] = a[k] + t * (b[k] - a[k]);
             pointToPlane(c, distortion, out[n * 2], out[n * 2 + 1]);
+            ++n;
+        }
+    }
+    return n;
+}
+
+// outlineToPlane with Fisheye `fisheye`: at 0 the above. Otherwise the
+// points along each arc go through rayToPlane, which doesn't map a chord
+// straight; where the arc leaves the picture its last point in it is found
+// by bisection along the arc, so a cut outline closes along the edge of
+// what the view shows.
+template <class T>
+inline int outlineToPlane(const T corner[4][3], T distortion, T panini, T fisheye,
+                          T out[2 * kOutlineMaxPoints])
+{
+    if (!(fisheye > T(0)))
+        return outlineToPlane(corner, distortion, panini, out);
+    constexpr int kRing = 4 * kOutlineSegments;
+    T ring[kRing][3];
+    for (int e = 0; e < 4; ++e) {
+        const T *a = corner[e], *b = corner[(e + 1) % 4];
+        for (int s = 0; s < kOutlineSegments; ++s) {
+            const T t = T(s) / T(kOutlineSegments);
+            for (int k = 0; k < 3; ++k)
+                ring[e * kOutlineSegments + s][k] = a[k] + t * (b[k] - a[k]);
+        }
+    }
+    const auto project = [&](const T p[3], T& x, T& y) {
+        return rayToPlane(p, distortion, panini, fisheye, x, y);
+    };
+    int n = 0;
+    for (int i = 0; i < kRing && n < kOutlineMaxPoints; ++i) {
+        const T *a = ring[i], *b = ring[(i + 1) % kRing];
+        T ax, ay, bx, by;
+        const bool ina = project(a, ax, ay), inb = project(b, bx, by);
+        if (ina) {
+            out[n * 2] = ax;
+            out[n * 2 + 1] = ay;
+            ++n;
+        }
+        if (ina != inb && n < kOutlineMaxPoints) {
+            // The edge of the picture between a and b (the chord's points
+            // are directions on the arc).
+            T lo = T(0), hi = T(1), c[3], cx = ina ? ax : bx, cy = ina ? ay : by;
+            for (int it = 0; it < 30; ++it) {
+                const T mid = T(0.5) * (lo + hi);
+                for (int k = 0; k < 3; ++k)
+                    c[k] = a[k] + mid * (b[k] - a[k]);
+                T mx, my;
+                if (project(c, mx, my) == ina) {
+                    lo = mid;
+                    cx = mx;
+                    cy = my;
+                } else {
+                    hi = mid;
+                }
+            }
+            out[n * 2] = cx;
+            out[n * 2 + 1] = cy;
             ++n;
         }
     }
@@ -463,13 +714,19 @@ inline T fovFor(T fovY, T distortion, T aspect, T panini = T(0))
 }
 
 // What a renderer draws `pose` with at `aspect` (width / height): the
-// vertical angle through the centre (halfHeight's), the distortion amount
-// and Natural. The field of view is held in its range for that d and p --
-// between two keys with different distortions the blend can reach past it.
+// vertical angle through the centre (halfHeight's), the distortion amount,
+// Natural and Fisheye (which leaves the picture's size alone). The field of
+// view is held in its range for that d and p -- between two keys with
+// different distortions the blend can reach past it.
 struct Lens {
     float fovY = 1.309f;
     float distortion = 0.0f;
     float panini = 0.0f;
+    float fisheye = 0.0f;
+
+    // Whether it takes the view shaders' view-shape build (Natural or
+    // Fisheye above 0; view_projection.glsl).
+    bool shaped() const { return panini > 0.0f || fisheye > 0.0f; }
 };
 inline Lens lens(const Pose& pose, double aspect)
 {
@@ -479,7 +736,7 @@ inline Lens lens(const Pose& pose, double aspect)
     const double p = std::clamp(double(pose.panini), 0.0, 1.0);
     const double fov = std::clamp(pose.fov, kMinFov, maxFov(d, p, aspect));
     return {static_cast<float>(fovYFor(fov, d, aspect, p)), static_cast<float>(d),
-            static_cast<float>(p)};
+            static_cast<float>(p), std::clamp(pose.fisheye, 0.0f, kMaxFisheye)};
 }
 
 } // namespace view

@@ -48,7 +48,7 @@ int projectOutline(const EquirectViewportWindow::RegionOutline &o, const float s
         v[i][1] = -x1 * sr + y2 * cr;
         v[i][2] = z2;
     }
-    const int n = view::outlineToPlane(v, lens.distortion, lens.panini, out);
+    const int n = view::outlineToPlane(v, lens.distortion, lens.panini, lens.fisheye, out);
     const float h = view::halfHeight(lens.fovY, lens.distortion, lens.panini);
     for (int i = 0; i < n; ++i) {
         const float ndcX = out[i * 2] / (h * aspect);
@@ -678,6 +678,7 @@ void EquirectViewportRenderer::startNextFrame()
     pc.aspect = outAspect;
     pc.distortion = panes[0].lens.distortion;
     pc.panini = panes[0].lens.panini;
+    pc.fisheye = panes[0].lens.fisheye;
     // Stabilization matrix, row-major in the window -> col-major (3 padded
     // vec3 columns) for std140.
     float stabRm[9];
@@ -708,10 +709,12 @@ void EquirectViewportRenderer::startNextFrame()
             pc.aspect = d.aspect;
             pc.distortion = d.lens.distortion;
             pc.panini = d.lens.panini;
+            pc.fisheye = d.lens.fisheye;
         }
-        // A pane with Natural takes the shader's Natural build (the same
-        // layout, so the sets stay bound).
-        if (VkPipeline want = viewPipeline(imp != nullptr, pc.panini); want != bound) {
+        // A pane with Natural or Fisheye takes the shader's view-shape build
+        // (the same layout, so the sets stay bound).
+        if (VkPipeline want = viewPipeline(imp != nullptr, pc.panini > 0.0f || pc.fisheye > 0.0f);
+            want != bound) {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, want);
             bound = want;
         }

@@ -6,13 +6,15 @@
 // distortion amount: past 1 it is the globe, d = 1 / (2 - amount), worked
 // in e = 2 - amount, with no ray outside its disc (viewInPicture).
 //
-// Natural, the Panini amount p, is compiled in only with VIEW_NATURAL
-// defined (a second build of each view shader, for views with p above 0):
-// the rays land on the ellipsoid x^2 + (1 - p) y^2 + z^2 = 1 instead of the
-// sphere, and viewRayAt / viewInPicture take p. Without it these are the
-// sphere's alone: with Natural's expressions in the same shader -- selected
-// or behind a branch on p -- the driver compiled the others differently,
-// and the last bit of existing pictures changed.
+// Natural, the Panini amount p, and Fisheye, the amount f, are compiled in
+// only with VIEW_SHAPE defined (a second build of each view shader, for
+// views with p or f above 0): with Natural the rays land on the ellipsoid
+// x^2 + (1 - p) y^2 + z^2 = 1 instead of the sphere; Fisheye turns them
+// toward the fisheye's radial maps; viewRayAt / viewInPicture take p and
+// f. Without it these are the sphere's alone: with Natural's expressions in
+// the same shader -- selected or behind a branch on p -- the driver
+// compiled the others differently, and the last bit of existing pictures
+// changed.
 //
 // Both forms are computed and one is selected, rather than branched on d: a
 // branch here changes how the driver compiles the rectilinear expressions
@@ -55,7 +57,7 @@ vec3 viewPlaneToRay(vec2 p, float d)
     return d <= 0.0 ? rectilinear : d > 1.0 ? globe : general;
 }
 
-#ifdef VIEW_NATURAL
+#ifdef VIEW_SHAPE
 
 // The half-height of a vertical field of view `fovY` on the ellipsoid (a
 // globe's as at d = 1): the ray fovY / 2 up meets it at 1 / n of its length,
@@ -97,21 +99,74 @@ vec3 naturalPlaneToRay(vec2 p, float d, float pn)
     return d <= 0.0 ? rectilinear : normalize(d > 1.0 ? globe : general);
 }
 
-// The view ray of the pixel at `ndc` of a view with vertical field of view
-// `fovY`, `aspect` (width / height), distortion `d` and Natural `pn`.
-// A globe's size is taken at d = 1.
-vec3 viewRayAt(vec2 ndc, float fovY, float aspect, float d, float pn)
+const float VIEW_PI = 3.14159265358979323846;
+
+// Fisheye from 1 up, k = (f - 1) / 2: the angle off the axis of plane radius
+// r, asin(k r) / k (r at k = 0).
+float fisheyeAngle(float r, float f)
 {
-    float h = naturalHalfHeight(fovY, d, pn);
-    return naturalPlaneToRay(vec2(ndc.x * h * aspect, -ndc.y * h), d, pn);
+    float k = 0.5 * (f - 1.0);
+    float bent = asin(min(k * r, 1.0)) / max(k, 1e-6);
+    return k < 1e-6 ? r : bent;
 }
 
-// Whether the pixel at `ndc` shows the world: everywhere but outside a
-// globe's disc, which is black.
-bool viewInPicture(vec2 ndc, float fovY, float aspect, float d, float pn)
+// The angle off the axis Fisheye `f` shows at plane point `p`, and its
+// azimuth: from 1 up the fisheye's; below, the base view's ray `b` turned
+// toward the equidistant one (ViewProjection.h).
+vec2 fisheyeAngles(vec2 p, vec3 b, float f)
+{
+    float r = length(p);
+    vec2 pp = r > 0.0 ? p : vec2(1.0, 0.0);
+    vec2 bb = dot(b.xy, b.xy) > 0.0 ? b.xy : pp;
+    float thetaB = atan(length(b.xy), -b.z);
+    float psi = atan(pp.y, pp.x);
+    float psiB = atan(bb.y, bb.x);
+    float turn = psi - psiB;
+    turn -= 2.0 * VIEW_PI * round(turn / (2.0 * VIEW_PI));
+    vec2 blended = vec2(mix(thetaB, r, f), psiB + f * turn);
+    vec2 fish = vec2(fisheyeAngle(r, f), psi);
+    return f >= 1.0 ? fish : blended;
+}
+
+// Image-plane point -> unit view ray with Natural `pn` and Fisheye `f`.
+vec3 shapePlaneToRay(vec2 p, float d, float pn, float f)
+{
+    vec3 b = naturalPlaneToRay(p, d, pn);
+    vec2 a = fisheyeAngles(p, b, f);
+    float theta = min(a.x, VIEW_PI);
+    vec3 fish = vec3(sin(theta) * cos(a.y), sin(theta) * sin(a.y), -cos(theta));
+    return f <= 0.0 ? b : fish;
+}
+
+// Whether plane point `p` shows the world: everywhere but outside a globe's
+// disc (with Fisheye below 1, scaled by 1 / (1 - f)), past the sphere's
+// back, and outside the mirror ball's disc.
+bool shapeInPicture(vec2 p, float d, float pn, float f)
+{
+    float g = f > 0.0 && f < 1.0 ? 1.0 - f : 1.0;
+    bool globe = d <= 1.0 || naturalGlobeRoot(g * p, d, pn) >= 0.0;
+    vec2 a = fisheyeAngles(p, naturalPlaneToRay(p, d, pn), f);
+    float k = 0.5 * (f - 1.0);
+    bool ball = f < 1.0 || k < 1e-6 || k * length(p) <= 1.0;
+    bool fish = f >= 1.0 ? ball && a.x <= VIEW_PI : globe && a.x <= VIEW_PI;
+    return f <= 0.0 ? globe : fish;
+}
+
+// The view ray of the pixel at `ndc` of a view with vertical field of view
+// `fovY`, `aspect` (width / height), distortion `d`, Natural `pn` and
+// Fisheye `f`. A globe's size is taken at d = 1; Fisheye leaves it alone.
+vec3 viewRayAt(vec2 ndc, float fovY, float aspect, float d, float pn, float f)
 {
     float h = naturalHalfHeight(fovY, d, pn);
-    return d <= 1.0 || naturalGlobeRoot(vec2(ndc.x * h * aspect, -ndc.y * h), d, pn) >= 0.0;
+    return shapePlaneToRay(vec2(ndc.x * h * aspect, -ndc.y * h), d, pn, f);
+}
+
+// Whether the pixel at `ndc` shows the world (shapeInPicture); the rest is
+// black.
+bool viewInPicture(vec2 ndc, float fovY, float aspect, float d, float pn, float f)
+{
+    float h = naturalHalfHeight(fovY, d, pn);
+    return shapeInPicture(vec2(ndc.x * h * aspect, -ndc.y * h), d, pn, f);
 }
 
 #else

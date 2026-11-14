@@ -63,20 +63,21 @@ foreach(SHADER ${SHADER_SOURCES})
     )
     list(APPEND SHADER_HEADERS ${SPIRV_HEADER})
 endforeach()
-# The view shaders once more with VIEW_NATURAL defined (view_projection.glsl):
-# the build a view with Natural above 0 is drawn with. A view without it
-# takes the shader above, whose code doesn't carry Natural at all -- compiled
-# in, Natural's expressions changed how the driver compiles the others, and
+# The view shaders once more with VIEW_SHAPE defined (view_projection.glsl):
+# the build a view with Natural or Fisheye above 0 is drawn with. A view
+# without them takes the shader above, whose code doesn't carry them at all
+# -- compiled in, Natural's expressions changed how the driver compiles the
+# others, and
 # with it the last bit of existing pictures. equirect.frag ->
-# kSpv_equirect_frag_natural.
+# kSpv_equirect_frag_shape.
 foreach(SHADER src/render/shaders/equirect.frag src/render/shaders/fisheye_view.frag
                src/render/shaders/reframe_reproject.comp src/render/shaders/fisheye_view_nv12.comp)
     get_filename_component(SHADER_NAME ${SHADER} NAME)
-    string(REPLACE "." "_" SHADER_IDENT "kSpv_${SHADER_NAME}_natural")
-    set(SPIRV_HEADER ${SHADER_BINARY_DIR}/${SHADER_NAME}.natural.h)
+    string(REPLACE "." "_" SHADER_IDENT "kSpv_${SHADER_NAME}_shape")
+    set(SPIRV_HEADER ${SHADER_BINARY_DIR}/${SHADER_NAME}.shape.h)
     add_custom_command(
         OUTPUT ${SPIRV_HEADER}
-        COMMAND ${GLSLANG_VALIDATOR} -V --quiet -DVIEW_NATURAL
+        COMMAND ${GLSLANG_VALIDATOR} -V --quiet -DVIEW_SHAPE
             -I${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders
             --vn ${SHADER_IDENT}
             ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} -o ${SPIRV_HEADER}

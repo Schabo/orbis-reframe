@@ -785,8 +785,8 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         if (d->descPool) vkDestroyDescriptorPool(d->device, d->descPool, nullptr);
         if (d->setLayout) vkDestroyDescriptorSetLayout(d->device, d->setLayout, nullptr);
         if (d->vwPipeline) vkDestroyPipeline(d->device, d->vwPipeline, nullptr);
-        if (d->vwPipelineNatural) vkDestroyPipeline(d->device, d->vwPipelineNatural, nullptr);
-        if (d->rfPipelineNatural) vkDestroyPipeline(d->device, d->rfPipelineNatural, nullptr);
+        if (d->vwPipelineShape) vkDestroyPipeline(d->device, d->vwPipelineShape, nullptr);
+        if (d->rfPipelineShape) vkDestroyPipeline(d->device, d->rfPipelineShape, nullptr);
         if (d->vwPipeLayout) vkDestroyPipelineLayout(d->device, d->vwPipeLayout, nullptr);
         if (d->rfPipeline) vkDestroyPipeline(d->device, d->rfPipeline, nullptr);
         if (d->rfPipeLayout) vkDestroyPipelineLayout(d->device, d->rfPipeLayout, nullptr);
@@ -1310,17 +1310,17 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
     return true;
 }
 
-VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, float panini)
+VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, bool shaped)
 {
     VkPipeline plain = reframe ? rfPipeline : vwPipeline;
-    if (!(panini > 0.0f))
+    if (!shaped)
         return plain;
-    VkPipeline &natural = reframe ? rfPipelineNatural : vwPipelineNatural;
-    bool &failed = reframe ? rfNaturalFailed : vwNaturalFailed;
-    if (natural || failed)
-        return natural ? natural : plain;
-    const shaders::Spirv spv = reframe ? shaders::reframeReprojectCompNatural()
-                                       : shaders::fisheyeViewNv12CompNatural();
+    VkPipeline &shape = reframe ? rfPipelineShape : vwPipelineShape;
+    bool &failed = reframe ? rfShapeFailed : vwShapeFailed;
+    if (shape || failed)
+        return shape ? shape : plain;
+    const shaders::Spirv spv = reframe ? shaders::reframeReprojectCompShape()
+                                       : shaders::fisheyeViewNv12CompShape();
     VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     smi.codeSize = spv.bytes;
     smi.pCode = spv.code;
@@ -1333,18 +1333,18 @@ VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, float pan
         cpi.stage.module = module;
         cpi.stage.pName = "main";
         cpi.layout = reframe ? rfPipeLayout : vwPipeLayout;
-        r = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpi, nullptr, &natural);
+        r = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpi, nullptr, &shape);
         vkDestroyShaderModule(device, module, nullptr);
     }
     if (r != VK_SUCCESS) {
-        natural = VK_NULL_HANDLE;
+        shape = VK_NULL_HANDLE;
         failed = true;
-        std::fprintf(stderr, "[VulkanFisheyeStitcher] the %s pass's Natural build failed (VkResult "
-                             "%d); views are drawn without Natural\n",
+        std::fprintf(stderr, "[VulkanFisheyeStitcher] the %s pass's view-shape build failed "
+                             "(VkResult %d); views are drawn without Natural and Fisheye\n",
                      reframe ? "reframe" : "view", r);
         return plain;
     }
-    return natural;
+    return shape;
 }
 
 bool VulkanFisheyeStitcher::lensExportReady() const

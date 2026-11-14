@@ -181,11 +181,13 @@ build/playback_bench --frames 300 --eq 3840,5760 clip.insv
 
 ## view_compare
 
-Renders a flat 1920x1080 view of one frame from a few directions -- four of
-them through the distorted projection (`wide140_d50`, a wide view half way
+Renders a flat 1920x1080 view of one frame from a few directions -- seven of
+them through the view shapes (`wide140_d50`, a wide view half way
 to stereographic, `planet_d100`, a tiny planet, `globe_d170`, a globe
-on black, its PSNR counting the black too, and `panini_p100`, Natural at
-100 %, the Panini view) -- in two ways: straight from the fisheyes (the "fused" pass the viewport and export
+on black, its PSNR counting the black too, `panini_p100`, Natural at
+100 %, the Panini view, `natfish_f50`, Natural with Fisheye at 50 %,
+`fisheye_f100`, the fisheye, and `mirror_f200`, the mirror ball on black)
+-- in two ways: straight from the fisheyes (the "fused" pass the viewport and export
 use) and through an equirect of several sizes. It compares each with an 8K
 equirect reference: PSNR, and a sharpness figure. It also renders the
 fused view as P010 (the 10-bit export) and checks it against the NV12 one:
@@ -452,14 +454,16 @@ value is reported and ignored. With `ORBIS_VERBOSE=1` it prints which
 encoder was picked and why the ones before it can't be used; the "no usable
 hardware encoder" error says the same. The camera path
 comes from a `--keys` file (one line per keyframe:
-`time_ms yaw pitch fov [roll] [distortion] [natural]`, angles in
-**radians**, the field of view corner to corner as the app's keys;
-distortion 0..2, left out = automatic; natural 0..1, left out = 0), or a
+`time_ms yaw pitch fov [roll] [distortion] [natural] [fisheye]`, angles
+in **radians**, the field of view corner to corner as the app's keys;
+distortion 0..2, left out = automatic; natural 0..1 and fisheye 0..2, left
+out = 0), or a
 fixed `--yaw/--pitch/--fov` (degrees, corner to corner), `--distortion
 D|auto` (default auto): 0 is rectilinear, 1 stereographic (with `--pitch
 -90` and a wide `--fov`, a tiny planet), past 1 the globe, a disc on
-black, orthographic at 2 -- and `--natural P` (default 0), the Panini
-amount, which bends the picture only sideways.
+black, orthographic at 2 -- `--natural P` (default 0), the Panini
+amount, which bends the picture only sideways, and `--fisheye F` (default
+0): 1 the fisheye, 2 the mirror ball.
 The stitcher is as the Stitching section's *Stitcher*: by default the new
 stitcher, as a new clip's (`--new-stitcher` says so explicitly),
 `--no-seam-colour-blend` / `--no-seam-flow` without its seam colour blend /

@@ -25,7 +25,8 @@ class QToolButton;
 // All angles are shown in degrees, the field of view corner to corner; the
 // signal / setter use radians to match ReframePose. Distortion is Auto
 // (following the field of view) or a fixed 0-200 %; Natural Full (100 %) or
-// none, or an amount 0-100 % on its slider.
+// none, or an amount 0-100 % on its slider; Fisheye 0-200 % (100 % the
+// fisheye, 200 % the mirror ball).
 //
 // The View buttons set a whole view shape at once -- Normal, Natural, Tiny
 // planet, Globe -- as if their values were typed into the fields: one edit,
@@ -112,6 +113,9 @@ private:
     QSlider *m_natural = nullptr;       // percent, the Panini amount
     QLabel *m_naturalValue = nullptr;
     QWidget *m_naturalRow = nullptr;
+    QSlider *m_fisheye = nullptr; // percent: 100 the fisheye, 200 the mirror ball
+    QLabel *m_fisheyeValue = nullptr;
+    QWidget *m_fisheyeRow = nullptr;
     ReframePose m_pose; // the pose shown: an edit changes only its own field
     QComboBox *m_ease = nullptr;
     bool m_easeAvailable = false;

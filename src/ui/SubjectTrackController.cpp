@@ -123,19 +123,30 @@ bool SubjectTrackController::start(const Run &run)
         const view::Lens lens = view::lens(look, aspect);
         const double d = lens.distortion;
         const double pn = lens.panini;
-        double p[3] = {v.x, v.y, v.z};
-        view::onSurface(p, pn);
+        const double fe = lens.fisheye;
+        const double p[3] = {v.x, v.y, v.z};
         double px = 0.0, py = 0.0;
-        // On a globe, a subject behind its rim isn't in the picture.
-        if (p[2] < view::frontLimit(d) && view::pointToPlane(p, d, px, py, 1e-6)) {
+        // On a globe, a subject behind its rim isn't in the picture, nor is
+        // one in Fisheye's black.
+        if (view::rayToPlane(p, d, pn, fe, px, py)) {
             // The box at the subject's angular size, as the view's centre
-            // shows it (Natural leaves the width alone).
+            // shows it (Natural leaves the width alone): the plane point of
+            // a ray half its width across, half its height up.
             const double t = view::halfHeight<double>(lens.fovY, d, pn);
             const double fx = (px / (t * aspect) + 1.0) * 0.5;
             const double fy = (-py / t + 1.0) * 0.5;
-            const double fw = view::planeRadius(s.width * 0.5, d) / (t * aspect);
-            const double fh = (pn > 0.0 ? view::halfHeight(s.height, d, pn)
-                                        : view::planeRadius(s.height * 0.5, d)) / t;
+            double fw = view::planeRadius(s.width * 0.5, d) / (t * aspect);
+            double fh = (pn > 0.0 ? view::halfHeight(s.height, d, pn)
+                                  : view::planeRadius(s.height * 0.5, d)) / t;
+            if (fe > 0.0) {
+                const double across[3] = {std::sin(s.width * 0.5), 0.0, -std::cos(s.width * 0.5)};
+                const double up[3] = {0.0, std::sin(s.height * 0.5), -std::cos(s.height * 0.5)};
+                double ax = 0.0, ay = 0.0, ux = 0.0, uy = 0.0;
+                view::rayToPlane(across, d, pn, fe, ax, ay);
+                view::rayToPlane(up, d, pn, fe, ux, uy);
+                fw = ax / (t * aspect);
+                fh = uy / t;
+            }
             o.hasMarker = true;
             o.marker = QRectF(fx - fw * 0.5, fy - fh * 0.5, fw, fh);
             o.markerStyle = s.good ? EquirectViewportWindow::MarkerStyle::Tracking

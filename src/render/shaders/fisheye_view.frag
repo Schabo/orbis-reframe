@@ -30,10 +30,12 @@ layout(push_constant) uniform PushConstants {
     float fovY;
     float aspect;
     float distortion; // view_projection.glsl's d
-#ifdef VIEW_NATURAL
-    float panini;     // and its p, Natural (that build only)
+#ifdef VIEW_SHAPE
+    float panini;     // and its p, Natural and
+    float fisheye;    // Fisheye, its f (the view-shape build only)
 #endif
-    // Up to 8 bytes of std140 padding (mat3 aligns at offset 32).
+    // Up to 8 bytes of std140 padding (mat3 aligns at offset 32): the
+    // view-shape build fills it.
     mat3 stab;       // gyro de-rotation in the sphere frame, after the pose
     vec4 colorGrade; // exposureEv, contrast%, saturation%, temperature%
     vec4 colorLut;   // the clip's LUT: mix, domain min / max (color_grade.glsl)
@@ -74,8 +76,8 @@ vec3 sampleLens(int i, vec2 uv)
 #include "view_projection.glsl"
 
 void main() {
-#ifdef VIEW_NATURAL
-    vec3 r = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini);
+#ifdef VIEW_SHAPE
+    vec3 r = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini, pc.fisheye);
 #else
     vec3 r = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion);
 #endif
@@ -90,9 +92,9 @@ void main() {
     vec3 dir = mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
     vec3 rgb = blurredLenses(dir) / 255.0;
     outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
-    // Outside a globe's disc: black.
-#ifdef VIEW_NATURAL
-    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini))
+    // Outside a globe's disc, or where Fisheye shows nothing: black.
+#ifdef VIEW_SHAPE
+    if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini, pc.fisheye))
 #else
     if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
 #endif

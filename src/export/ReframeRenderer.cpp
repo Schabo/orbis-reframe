@@ -126,8 +126,9 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
             // View-space ray (matches equirect.frag: +Y up, -Z forward).
             float ray[3];
             uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
-            if (!view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray, lens.panini)) {
-                // Outside a globe's disc: black.
+            if (!view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray, lens.panini,
+                                lens.fisheye)) {
+                // Outside a globe's disc, past Fisheye's: black.
                 dst[0] = dst[1] = dst[2] = 0;
                 dst[3] = 255;
                 continue;

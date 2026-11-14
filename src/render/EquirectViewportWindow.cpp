@@ -181,6 +181,7 @@ void EquirectViewportWindow::SetPose(const view::Pose &pose)
     m_pose.distortion = pose.distortionIsAuto() ? view::kAutoDistortion
                                                 : std::clamp(pose.distortion, 0.0f, view::kMaxDistortion);
     m_pose.panini = std::clamp(pose.panini, 0.0f, 1.0f);
+    m_pose.fisheye = std::clamp(pose.fisheye, 0.0f, view::kMaxFisheye);
     m_pose.fov = std::clamp(pose.fov, view::kMinFov, view::maxFov(m_pose));
 }
 
@@ -434,7 +435,7 @@ bool EquirectViewportWindow::sphereDir(double fx, double fy, const view::Pose &p
     float v[3];
     const bool inPicture =
         view::ndcToRay(ndcX, ndcY, view::halfHeight(lens.fovY, lens.distortion, lens.panini),
-                       aspect, lens.distortion, v, lens.panini);
+                       aspect, lens.distortion, v, lens.panini, lens.fisheye);
     const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
     const float cp = std::cos(pose.pitch), sp = std::sin(pose.pitch);
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);

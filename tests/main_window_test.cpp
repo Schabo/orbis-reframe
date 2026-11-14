@@ -2351,7 +2351,7 @@ void testNewProjectResets(const Ctx &c)
           v->Pose().fov == ahead.fov && v->Pose().distortion == ahead.distortion);
 }
 
-// The Reframe panel's Natural reaches the viewport's live pose (the
+// The Reframe panel's Natural and Fisheye reach the viewport's live pose (the
 // viewport takes a pose field by field).
 void testNaturalReachesViewport(const Ctx &c)
 {
@@ -2366,6 +2366,14 @@ void testNaturalReachesViewport(const Ctx &c)
     CHECK(waitFor([&] { return c.w->viewport()->Pose().panini == 0.6f; }));
     natural->setValue(0);
     CHECK(waitFor([&] { return c.w->viewport()->Pose().panini == 0.0f; }));
+    // And Fisheye, up to the mirror ball.
+    auto *fisheye = find<QSlider>(c.w, "reframeFisheye");
+    if (!fisheye)
+        return;
+    fisheye->setValue(200);
+    CHECK(waitFor([&] { return c.w->viewport()->Pose().fisheye == 2.0f; }));
+    fisheye->setValue(0);
+    CHECK(waitFor([&] { return c.w->viewport()->Pose().fisheye == 0.0f; }));
 }
 
 } // namespace

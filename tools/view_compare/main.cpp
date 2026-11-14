@@ -227,6 +227,11 @@ int main(int argc, char** argv)
         {"globe_d170", {0.0f, -90.0f * deg, 0.0f, vert(160.0f, 1.0f), 1.7f}},
         // Natural at full, the Panini view (d = 1), wide and level.
         {"panini_p100", {0.0f, 0.0f, 0.0f, vert(100.0f, 1.0f, 1.0f), 1.0f, 1.0f}},
+        // Fisheye: half way there on a Natural view, the equidistant fisheye,
+        // and the mirror ball, its disc on black.
+        {"natfish_f50", {20.0f * deg, -10.0f * deg, 0.0f, vert(110.0f, 1.0f, 1.0f), 1.0f, 1.0f, 0.5f}},
+        {"fisheye_f100", {0.0f, 0.0f, 0.0f, vert(100.0f, 1.0f), 1.0f, 0.0f, 1.0f}},
+        {"mirror_f200", {0.0f, 0.0f, 0.0f, vert(200.0f, 1.0f), 1.0f, 0.0f, 2.0f}},
     };
     struct Path {
         const char* name;

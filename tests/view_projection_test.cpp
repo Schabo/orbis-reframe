@@ -2,7 +2,8 @@
 // rectilinear and stereographic ends, rays and plane points round trip, the
 // centre's magnification, what is in front of the projection centre; the
 // diagonal field of view, the automatic distortion and the angle limits;
-// the globe past d = 1; Natural (the Panini amount); the region outlines.
+// the globe past d = 1; Natural (the Panini amount); Fisheye; the region
+// outlines.
 // The exit code is the failure count.
 
 #include "support/ModelTest.h"
@@ -504,6 +505,148 @@ void testNatural()
     CHECK(view::lens(p, aspect).panini == 1.0f);
 }
 
+// Fisheye: f = 0 the view as before, to the bit; 1 the equidistant
+// fisheye, 2 the mirror ball (equal-area); continuous at 0 and 1; ray and
+// plane point round trip; the black past the sphere's back and round a
+// globe; the outline through rayToPlane.
+void testFisheye()
+{
+    // f = 0 is planeToRay itself.
+    for (double d : {0.0, 0.6, 1.0, 1.5})
+        for (double p : {0.0, 1.0})
+            for (double x : {-2.3, 0.0, 0.7})
+                for (double y : {-0.4, 0.0, 1.9}) {
+                    double a[3], b[3];
+                    const bool ina = view::planeToRay(x, y, d, a, p);
+                    const bool inb = view::planeToRay(x, y, d, b, p, 0.0);
+                    CHECK(ina == inb && a[0] == b[0] && a[1] == b[1] && a[2] == b[2]);
+                }
+    // The ends: the angle off the axis is the plane radius at 1, 2 asin(r / 2)
+    // at 2, whatever the distortion and Natural.
+    for (double r = 0.05; r < 3.1; r += 0.15) {
+        double v[3];
+        CHECK(view::planeToRay(r * 0.6, r * 0.8, 0.3, v, 1.0, 1.0));
+        CHECK(near(std::atan2(std::hypot(v[0], v[1]), -v[2]), r, 1e-12));
+        CHECK(near(v[1] / v[0], 0.8 / 0.6, 1e-12));
+        if (r < 2.0) {
+            CHECK(view::planeToRay(r, 0.0, 1.7, v, 0.0, 2.0));
+            CHECK(near(std::atan2(std::hypot(v[0], v[1]), -v[2]), 2.0 * std::asin(r / 2.0), 1e-12));
+        }
+    }
+    double v[3];
+    CHECK(!view::planeToRay(kPi + 0.01, 0.0, 1.0, v, 0.0, 1.0)); // past the back
+    CHECK(!view::planeToRay(0.0, 2.01, 1.0, v, 0.0, 2.0));       // past the ball
+    CHECK(view::planeToRay(0.0, 1.99, 1.0, v, 0.0, 2.0));
+    // The rim between: radius sin(k pi) / k.
+    CHECK(view::planeToRay(0.0, 2.5, 1.0, v, 0.0, 1.5));
+    CHECK(!view::planeToRay(0.0, 2.85, 1.0, v, 0.0, 1.5));
+
+    // Continuous at f = 1 from below and at f = 0 from above.
+    for (double d : {0.0, 0.5, 1.0, 1.6})
+        for (double p : {0.0, 0.6})
+            for (double x : {-1.1, 0.3, 2.0})
+                for (double y : {-0.9, 0.5}) {
+                    double a[3], b[3];
+                    if (view::planeToRay(x, y, d, a, p, 1.0)) {
+                        view::planeToRay(x, y, d, b, p, 1.0 - 1e-9);
+                        CHECK(near(a[0], b[0], 1e-6) && near(a[1], b[1], 1e-6) && near(a[2], b[2], 1e-6));
+                    }
+                    if (view::planeToRay(x, y, d, a, p)) {
+                        CHECK(view::planeToRay(x, y, d, b, p, 1e-9));
+                        CHECK(near(a[0], b[0], 1e-6) && near(a[1], b[1], 1e-6) && near(a[2], b[2], 1e-6));
+                    }
+                }
+
+    // The centre is magnified as before.
+    for (double f : {0.3, 1.0, 2.0}) {
+        CHECK(view::planeToRay(1e-6, 0.0, 0.5, v, 0.0, f));
+        CHECK(near(std::atan2(v[0], -v[2]), 1e-6, 1e-6));
+    }
+
+    // A globe's black opens out with f: past its disc scaled by 1 / (1 - f).
+    {
+        const double a = 1.6, e = 2.0 - a, rim = std::sqrt((1.0 + e) / (1.0 - e));
+        CHECK(!view::planeToRay(rim * 1.01, 0.0, a, v, 0.0, 0.0));
+        CHECK(view::planeToRay(rim * 1.9, 0.0, a, v, 0.0, 0.5));
+        CHECK(!view::planeToRay(rim * 2.1, 0.0, a, v, 0.0, 0.5));
+    }
+
+    // Round trips: every plane point in the picture comes back from its ray.
+    int trips = 0;
+    for (double d : {0.0, 0.5, 1.0, 1.4, 1.8})
+        for (double p : {0.0, 0.5, 1.0})
+            for (double f : {0.1, 0.5, 0.9, 1.0, 1.5, 2.0})
+                for (double x = -4.0; x <= 4.0; x += 0.37)
+                    for (double y = -3.0; y <= 3.0; y += 0.41) {
+                        double ray[3];
+                        if (!view::planeToRay(x, y, d, ray, p, f))
+                            continue;
+                        // Not on the rim, where the whole circle is one ray.
+                        if (std::atan2(std::hypot(ray[0], ray[1]), -ray[2]) > kPi - 1e-3)
+                            continue;
+                        double bx = 0.0, by = 0.0;
+                        const bool ok = view::rayToPlane(ray, d, p, f, bx, by);
+                        CHECK(ok && near(bx, x, 1e-6) && near(by, y, 1e-6));
+                        ++trips;
+                    }
+    CHECK(trips > 10000);
+    // f = 0 is the point on the surface, projected; behind the centre, none.
+    {
+        const double dir[3] = {0.3, -0.2, -0.9};
+        double x = 0.0, y = 0.0, px = 0.0, py = 0.0;
+        double q[3] = {0.3, -0.2, -0.9};
+        const double l = std::sqrt(0.3 * 0.3 + -0.2 * -0.2 + -0.9 * -0.9);
+        for (double &c : q)
+            c /= l;
+        view::onSurface(q, 0.5);
+        CHECK(view::rayToPlane(dir, 0.7, 0.5, 0.0, x, y) && view::pointToPlane(q, 0.7, px, py) &&
+              x == px && y == py);
+        const double back[3] = {0.0, 0.0, 1.0};
+        CHECK(!view::rayToPlane(back, 0.7, 0.0, 0.0, x, y));
+        // With Fisheye all but the very back is in the picture.
+        const double behind[3] = {0.05, 0.0, 1.0};
+        CHECK(view::rayToPlane(behind, 0.7, 0.0, 0.5, x, y));
+        CHECK(view::rayToPlane(behind, 0.7, 0.0, 2.0, x, y) && std::hypot(x, y) < 2.0);
+    }
+
+    // Lens: Fisheye is carried, held in range, and leaves the size alone.
+    view::Pose pose;
+    pose.fov = 2.6;
+    pose.distortion = 1.0f;
+    const view::Lens plain = view::lens(pose, 16.0 / 9.0);
+    pose.fisheye = 1.5f;
+    const view::Lens fish = view::lens(pose, 16.0 / 9.0);
+    CHECK(fish.fisheye == 1.5f && fish.fovY == plain.fovY && fish.distortion == plain.distortion);
+    pose.fisheye = 7.0f;
+    CHECK(view::lens(pose, 16.0 / 9.0).fisheye == view::kMaxFisheye);
+    pose.fisheye = -1.0f;
+    CHECK(view::lens(pose, 16.0 / 9.0).fisheye == 0.0f);
+
+    // The outline: f = 0 as before; with f its points are rayToPlane's of
+    // the arc's, and one round the back of a mirror ball is cut at the rim.
+    const double quad[4][3] = {{-0.3, 0.2, -1.0}, {0.3, 0.2, -1.0}, {0.3, -0.2, -1.0}, {-0.3, -0.2, -1.0}};
+    double a[2 * view::kOutlineMaxPoints], b[2 * view::kOutlineMaxPoints];
+    const int na = view::outlineToPlane(quad, 0.4, 0.3, a);
+    const int nb = view::outlineToPlane(quad, 0.4, 0.3, 0.0, b);
+    CHECK(na == nb);
+    for (int i = 0; i < 2 * na && i < 2 * nb; ++i)
+        CHECK(a[i] == b[i]);
+    const int nf = view::outlineToPlane(quad, 0.4, 0.3, 0.7, b);
+    CHECK(nf == 4 * view::kOutlineSegments);
+    double cx = 0.0, cy = 0.0;
+    CHECK(view::rayToPlane(quad[0], 0.4, 0.3, 0.7, cx, cy));
+    CHECK(near(b[0], cx, 1e-12) && near(b[1], cy, 1e-12));
+    // A globe half under Fisheye: the outline crossing its black is cut.
+    const double wide[4][3] = {{-3.0, 0.5, -1.0}, {3.0, 0.5, 1.0}, {3.0, -0.5, 1.0}, {-3.0, -0.5, -1.0}};
+    const int ng = view::outlineToPlane(wide, 1.9, 0.0, 0.2, b);
+    CHECK(ng >= 3);
+    for (int i = 0; i < ng; ++i) {
+        double ray[3];
+        view::planeToRay(b[2 * i] * 0.999, b[2 * i + 1] * 0.999, 1.9, ray, 0.0, 0.2);
+        CHECK(view::planeToRay(b[2 * i] * 0.999, b[2 * i + 1] * 0.999, 1.9, ray, 0.0, 0.2));
+    }
+}
+
 } // namespace
 
 int main()
@@ -522,5 +665,6 @@ int main()
     testGlobe();
     testOutline();
     testNatural();
+    testFisheye();
     return modeltest::finish("view_projection_test");
 }

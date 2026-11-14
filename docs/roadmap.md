@@ -192,13 +192,6 @@ each is in its document in [`formats/`](formats/README.md).
   per-model table, fields read from the file -- not in model checks spread
   through the code.
 
-- **More view shapes**, on top of the per-keyframe distortion, the globe
-  and Natural (the Panini view; all built): if the wide end of `d` isn't
-  enough, a true fisheye and a mirror ball. Each is a continuous amount per keyframe that
-  is the normal view at its rest value, so it blends between keys like the
-  field of view -- not a list of projection modes in the project file. The
-  math goes into the shared view-projection files, like `d`.
-
 - **Effects library**: a library of video and audio effects in the left
   sidebar's **Effects** tab, dragged onto a clip and adjusted in the right
   sidebar. Starting with a few simple ones: video -- vignette, sharpen, film
