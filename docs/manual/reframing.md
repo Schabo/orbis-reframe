@@ -47,17 +47,21 @@ corners stay where they were, the edges of the picture move.
 
 ### View presets
 
-The four buttons in the **View** row of the **Reframe** section set the
+The eight buttons in the **View** row of the **Reframe** section set the
 shape of the view in one click; hold the pointer over one for its name and
 what it sets. They keep the yaw, so the camera still looks the same way,
 and set the roll to 0°:
 
-| Button | Pitch | Field of view | Distortion | Natural |
-|---|---|---|---|---|
-| **Normal**: a straight grid | 0° | 115° | Auto | Off |
-| **Natural**: the grid with a bent horizon | 0° | 170° | 100 % | Full |
-| **Tiny planet**: a house on a small world | −89° | 300° | 100 % | Off |
-| **Globe**: a ball | −89° | 200° | 170 % | Off |
+| Button | Pitch | Field of view | Distortion | Natural | Fisheye |
+|---|---|---|---|---|---|
+| **Normal**: a straight grid | 0° | 115° | Auto | Off | 0 % |
+| **Natural**: the grid with a bent horizon | 0° | 170° | 100 % | Full | 0 % |
+| **Fisheye**: the grid bulging out | 0° | 180° | 100 % | Off | 100 % |
+| **Mirror ball**: a shiny ball | 0° | 270° | 100 % | Off | 200 % |
+| **Tiny planet**: a house on a small world | −89° | 300° | 100 % | Off | 0 % |
+| **Globe**: a ball | −89° | 200° | 170 % | Off | 0 % |
+| **Tunnel**: a house hanging into a ring | 89° | 300° | 100 % | Off | 0 % |
+| **Crystal ball**: a ball on a stand | 89° | 200° | 170 % | Off | 0 % |
 
 A button does what typing those values into the fields would: with **Arm
 reframe authoring** on it sets a keyframe at the playhead, and **Edit ▸
@@ -97,7 +101,8 @@ narrows a view that is wider than it allows.
 
 For a **tiny planet**, click **Tiny planet** under **View**, or look
 straight down (pitch −89°) and widen the field of view to 250° or more: the ground curls into a small globe with the sky
-around it. Looking straight up instead turns the sky into a tunnel. A
+around it. Looking straight up instead turns the sky into a tunnel, with
+the world round it (**Tunnel** under **View**). A
 keyframe move from a normal view to a tiny planet zooms out smoothly, and
 with Auto on both keyframes the picture bends more and more as it widens.
 
@@ -113,8 +118,8 @@ At 200 % you see one half of the world in the disc, the half the view looks
 at. 100 % is the middle of the slider.
 
 **Globe** under **View** sets one up. Look straight down for a
-planet-like globe, or straight up for the sky in a
-ball. On a globe, **Field of view** still sets how big the picture is: the
+planet-like globe, or straight up for the sky in a ball, the look of a
+crystal ball photo (**Crystal ball** under **View**). On a globe, **Field of view** still sets how big the picture is: the
 disc is as large as the tiny planet at that angle would be at 100 %, so
 wider makes the globe smaller. Auto never goes past 100 %, so zooming out
 on Auto gives a tiny planet, not a globe; untick it and drag the slider
@@ -173,7 +178,8 @@ true fisheye: how far a thing is from the middle of the picture is how far
 it is from where the view looks, so the picture can take in the whole
 world, with what's behind you round its rim and black beyond. Past 100 %
 the picture draws together into a **mirror ball**, the whole world in a
-disc on black, at 200 %. The middle of the ball is where the view looks; a
+disc on black, at 200 %. **Fisheye** and **Mirror ball** under **View**
+set them up. The middle of the ball is where the view looks; a
 real mirror ball shows the camera in its middle, which you get by turning
 the yaw 180°.
 

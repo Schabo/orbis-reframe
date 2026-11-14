@@ -965,8 +965,13 @@ void testReframeViewPresets(SettingsSidebar &bar)
     auto *natural = find<QToolButton>(reframe, "reframePresetNatural");
     auto *planet = find<QToolButton>(reframe, "reframePresetTinyPlanet");
     auto *globe = find<QToolButton>(reframe, "reframePresetGlobe");
+    auto *tunnel = find<QToolButton>(reframe, "reframePresetTunnel");
+    auto *crystal = find<QToolButton>(reframe, "reframePresetCrystalBall");
+    auto *fish = find<QToolButton>(reframe, "reframePresetFisheye");
+    auto *mirror = find<QToolButton>(reframe, "reframePresetMirrorBall");
     auto *fov = find<QDoubleSpinBox>(reframe, "reframeFov");
-    if (!normal || !natural || !planet || !globe || !fov)
+    if (!normal || !natural || !planet || !globe || !tunnel || !crystal || !fish || !mirror ||
+        !fov)
         return;
     bar.setCurrentIndex(SettingsSidebar::VideoTab);
     reframe->setExpanded(true);
@@ -978,16 +983,21 @@ void testReframeViewPresets(SettingsSidebar &bar)
     start.fov = 1.0;
     start.distortion = 0.3f;
     start.panini = 0.4f;
+    start.fisheye = 0.6f;
     struct Want {
         QToolButton *button;
         double pitchDeg, fovDeg;
-        float distortion, natural;
+        float distortion, natural, fisheye;
     };
     const Want wants[] = {{normal, 0.0, ReframePose{}.fov * 180.0 / std::numbers::pi,
-                           view::kAutoDistortion, 0.0f},
-                          {natural, 0.0, 170.0, 1.0f, 1.0f},
-                          {planet, -89.0, 300.0, 1.0f, 0.0f},
-                          {globe, -89.0, 200.0, 1.7f, 0.0f}};
+                           view::kAutoDistortion, 0.0f, 0.0f},
+                          {natural, 0.0, 170.0, 1.0f, 1.0f, 0.0f},
+                          {fish, 0.0, 180.0, 1.0f, 0.0f, 1.0f},
+                          {mirror, 0.0, 270.0, 1.0f, 0.0f, 2.0f},
+                          {planet, -89.0, 300.0, 1.0f, 0.0f, 0.0f},
+                          {globe, -89.0, 200.0, 1.7f, 0.0f, 0.0f},
+                          {tunnel, 89.0, 300.0, 1.0f, 0.0f, 0.0f},
+                          {crystal, 89.0, 200.0, 1.7f, 0.0f, 0.0f}};
     for (const Want &w : wants) {
         reframe->setPose(start);
         edited.clear();
@@ -1001,7 +1011,7 @@ void testReframeViewPresets(SettingsSidebar &bar)
         CHECK(p.yaw == start.yaw && p.roll == 0.0f);
         CHECK(std::abs(p.pitch * 180.0 / std::numbers::pi - w.pitchDeg) < 1e-4);
         CHECK(std::abs(p.fov * 180.0 / std::numbers::pi - w.fovDeg) < 1e-4);
-        CHECK(p.distortion == w.distortion && p.panini == w.natural);
+        CHECK(p.distortion == w.distortion && p.panini == w.natural && p.fisheye == w.fisheye);
         CHECK(p.fov <= view::maxFov(p) && p.fov >= view::kMinFov);
         CHECK(std::abs(fov->value() - w.fovDeg) < 0.05);
     }

@@ -53,5 +53,9 @@
     <file>icons/view-natural.svg</file>
     <file>icons/view-tiny-planet.svg</file>
     <file>icons/view-globe.svg</file>
+    <file>icons/view-tunnel.svg</file>
+    <file>icons/view-crystal-ball.svg</file>
+    <file>icons/view-fisheye.svg</file>
+    <file>icons/view-mirror-ball.svg</file>
   </qresource>
 </RCC>

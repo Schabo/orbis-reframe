@@ -28,10 +28,10 @@ class QToolButton;
 // none, or an amount 0-100 % on its slider; Fisheye 0-200 % (100 % the
 // fisheye, 200 % the mirror ball).
 //
-// The View buttons set a whole view shape at once -- Normal, Natural, Tiny
-// planet, Globe -- as if their values were typed into the fields: one edit,
-// yaw kept. They are a quicker way to the values, not a mode; the fields
-// stay the view.
+// The View buttons set a whole view shape at once -- Normal, Natural,
+// Fisheye, Mirror ball, Tiny planet, Globe, Tunnel, Crystal ball -- as if
+// their values were typed into the fields: one edit, yaw kept. They are a
+// quicker way to the values, not a mode; the fields stay the view.
 //
 // A split clip (SplitScreenPanel sets the layout): which pane the fields and
 // the viewport steer, the active pane.

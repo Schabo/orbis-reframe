@@ -59,6 +59,16 @@ const ViewPreset kViewPresets[] = {
      QT_TRANSLATE_NOOP("ReframePanel", "a wide view with upright lines upright, "
                                        "level, 170° at 100 % distortion and full Natural."),
      0.0, 170.0, 1.0f, 1.0f},
+    {"reframePresetFisheye", "view-fisheye",
+     QT_TRANSLATE_NOOP("ReframePanel", "Fisheye"),
+     QT_TRANSLATE_NOOP("ReframePanel", "a true fisheye, level, 180° at 100 % distortion "
+                                       "and 100 % Fisheye."),
+     0.0, 180.0, 1.0f, 0.0f, 1.0f},
+    {"reframePresetMirrorBall", "view-mirror-ball",
+     QT_TRANSLATE_NOOP("ReframePanel", "Mirror ball"),
+     QT_TRANSLATE_NOOP("ReframePanel", "the whole world in a disc on black, level, 270° "
+                                       "at 100 % distortion and 200 % Fisheye."),
+     0.0, 270.0, 1.0f, 0.0f, 2.0f},
     {"reframePresetTinyPlanet", "view-tiny-planet",
      QT_TRANSLATE_NOOP("ReframePanel", "Tiny planet"),
      QT_TRANSLATE_NOOP("ReframePanel", "looking straight down, 300° at 100 % "
@@ -69,6 +79,16 @@ const ViewPreset kViewPresets[] = {
      QT_TRANSLATE_NOOP("ReframePanel", "the world as a ball on black, looking straight "
                                        "down, 200° at 170 % distortion."),
      -89.0, 200.0, 1.7f, 0.0f},
+    {"reframePresetTunnel", "view-tunnel",
+     QT_TRANSLATE_NOOP("ReframePanel", "Tunnel"),
+     QT_TRANSLATE_NOOP("ReframePanel", "the sky in the middle with the world round it, "
+                                       "looking straight up, 300° at 100 % distortion."),
+     89.0, 300.0, 1.0f, 0.0f},
+    {"reframePresetCrystalBall", "view-crystal-ball",
+     QT_TRANSLATE_NOOP("ReframePanel", "Crystal ball"),
+     QT_TRANSLATE_NOOP("ReframePanel", "the sky in a ball on black, looking straight up, "
+                                       "200° at 170 % distortion."),
+     89.0, 200.0, 1.7f, 0.0f},
 };
 } // namespace
 
