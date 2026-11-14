@@ -16,13 +16,7 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-1. **Split screen, angles picked automatically** (*maintainer*): split
-   screen is built (a clip's picture in 2 or 4 panes, each with its own
-   keyframes, placed by `pane::rects` in `src/core/PaneLayout.h`
-   everywhere a view is drawn). Next, panes that choose their own
-   direction -- e.g. one following a subject found in the clip -- written
-   as ordinary pane keyframes, so they stay editable.
-2. **Video effects** (*maintainer*): a library of effects in the left
+1. **Video effects** (*maintainer*): a library of effects in the left
    sidebar's **Effects** tab, dragged onto a clip and adjusted in the
    right sidebar. Starting with a few simple ones: vignette, sharpen, film
    grain, colour presets (reusing the LUT code). Lens filters are video
@@ -303,6 +297,8 @@ Not wanted, unless something changes a lot:
 - Translational stabilization by depth and view synthesis.
 - Thumbnails along the video track, backward tracking in Track subject --
   unless users ask.
+- Split screen panes that pick their own angles: each pane's keyframes
+  and Track subject in a pane already do it.
 
 ## Good places to help
 
