@@ -264,6 +264,12 @@ target_link_libraries(audio_output PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
 add_library(view_projection INTERFACE src/core/ViewProjection.h)
 target_include_directories(view_projection INTERFACE src/core)
 
+# --- clip_effects: a clip's video effects and what the renderers apply,
+# shared by the model and every render path. Header-only, dependency-free;
+# its GLSL twin is src/render/shaders/clip_effects.glsl.
+add_library(clip_effects INTERFACE src/core/ClipEffects.h)
+target_include_directories(clip_effects INTERFACE src/core)
+
 # --- orbis_core: the src/core edit model (ClipItem, Timeline, Project, ...).
 # Qt Core + JSON only -- no FFmpeg / Vulkan -- so the model tests build
 # without the FFmpeg block below. src/stitch and src/privacy are on the path
@@ -273,6 +279,7 @@ add_library(orbis_core STATIC
     src/core/AudioLimits.h
     src/core/Autosave.cpp
     src/core/Autosave.h
+    src/core/ClipEffects.h
     src/core/ClipItem.cpp
     src/core/ClipItem.h
     src/core/SourceGap.h
@@ -316,7 +323,7 @@ add_library(orbis_core STATIC
 set_target_properties(orbis_core PROPERTIES AUTOMOC ON)
 target_include_directories(orbis_core PUBLIC src/core src/stitch src/privacy)
 target_link_libraries(orbis_core PUBLIC Qt6::Core nlohmann_json::nlohmann_json insv color_lut
-    view_projection PRIVATE zip_reader)
+    view_projection clip_effects PRIVATE zip_reader)
 
 # --- privacy_data: the privacy blur's plate-scan result + its cache file
 # (src/privacy/PlateScanData). Dependency-free, so the app can always apply a

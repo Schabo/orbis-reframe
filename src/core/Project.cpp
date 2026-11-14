@@ -8,6 +8,7 @@
 
 #include <limits>
 #include <cmath>
+#include <cstdio>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -311,6 +312,43 @@ ColorGrade colorGradeFromJson(const json &j, const QDir *projectDir)
     return g;
 }
 
+// "effects": {"vignette": {"on": true, "amount": -30, "size": 50,
+// "softness": 50}} -- a key per effect on the clip (fx::ClipEffects),
+// written only when the clip has one. A key this build doesn't know (an
+// effect of a later version) is left out with a message.
+json effectsToJson(const fx::ClipEffects &e)
+{
+    json j = json::object();
+    if (e.vignette)
+        j["vignette"] = {{"on", e.vignette->on},
+                         {"amount", e.vignette->amount},
+                         {"size", e.vignette->size},
+                         {"softness", e.vignette->softness}};
+    return j;
+}
+
+fx::ClipEffects effectsFromJson(const json &j)
+{
+    fx::ClipEffects e;
+    if (!j.is_object())
+        return e;
+    for (const auto &[key, value] : j.items()) {
+        if (key == "vignette" && value.is_object()) {
+            fx::Vignette v; // defaults for any missing field
+            v.on = value.value("on", v.on);
+            v.amount = value.value("amount", v.amount);
+            v.size = value.value("size", v.size);
+            v.softness = value.value("softness", v.softness);
+            e.vignette = v;
+        } else {
+            std::fprintf(stderr, "[project] clip effect \"%s\" not known; left out\n",
+                         key.c_str());
+        }
+    }
+    e.clamp();
+    return e;
+}
+
 // "noise": {"mode": "wind" | "windGeneral" | "hiss" | "voice" |
 // "voiceAmbience", "strength": 0.7} -- written only when on. "wind" is the
 // motorcycle one (it came first).
@@ -465,6 +503,7 @@ struct ParsedClip {
     int audioTrack = 0;
     insv::NoiseReduction noise;
     ColorGrade color;
+    fx::ClipEffects effects;
     insv::StabConfig stabilization;
     bool blurPlates = false;
     QString plateScan;
@@ -977,6 +1016,7 @@ Project::Project(QObject *parent)
     connect(m_timeline, &Timeline::clipTrimChanged, this, edited);
     connect(m_timeline, &Timeline::clipReframeChanged, this, edited);
     connect(m_timeline, &Timeline::clipColorChanged, this, edited);
+    connect(m_timeline, &Timeline::clipEffectsChanged, this, edited);
     connect(m_timeline, &Timeline::clipStabilizationChanged, this, edited);
     connect(m_timeline, &Timeline::clipPrivacyChanged, this, edited);
     connect(m_timeline, &Timeline::clipSpeedChanged, this, edited);
@@ -1289,6 +1329,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     bool anySplit = false;
     bool anyReframeKey = false; // keys hold the diagonal field of view
     bool anyViewShape = false;  // a key's distortion past 1, Natural or Fisheye
+    bool anyEffect = false;     // a clip with a video effect
     // The first 360 clip's stitch settings, and whether every 360 clip has
     // them (else an older build, which reads one setting for all, misreads).
     const ClipItem *firstStitched = nullptr;
@@ -1315,6 +1356,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                 {"speed", c.speed},
             });
             anyLut = anyLut || !c.color.lut.isEmpty();
+            if (!c.effects.isEmpty()) {
+                clips.back()["effects"] = effectsToJson(c.effects);
+                anyEffect = true;
+            }
             if (c.fit == ClipItem::Fit::Fill)
                 clips.back()["fit"] = "fill";
             if (!c.marks.isEmpty()) {
@@ -1338,6 +1383,10 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             {"stitch", json{{"lensGuard", lensGuardName(c.lensGuard)},
                             {"depthSeam", c.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam}}},
         });
+        if (!c.effects.isEmpty()) {
+            clips.back()["effects"] = effectsToJson(c.effects);
+            anyEffect = true;
+        }
         if (c.stitchMethod == stitch::PreviewStitchConfig::Method::New && !c.flat) {
             clips.back()["stitch"]["method"] = "new";
             clips.back()["stitch"]["seamColourBlend"] = c.seamColourBlend;
@@ -1519,7 +1568,8 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
     }
     json doc = {
         {"format", kFormatTag},
-        {"version", anyViewShape                  ? kViewShapeFormatVersion
+        {"version", anyEffect                     ? kEffectsFormatVersion
+                    : anyViewShape            ? kViewShapeFormatVersion
                     : anyParts || anyMediaMark ? kPartsFormatVersion
                     : anyMark                 ? kMarkFormatVersion
                     : anyNewStitcher || anyLensCalibration ? kStitchFormatVersion
@@ -1618,6 +1668,8 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
                 pc.noise = noiseFromJson(jc.at("noise"));
             if (jc.contains("color"))
                 pc.color = colorGradeFromJson(jc.at("color"), projectDir);
+            if (jc.contains("effects"))
+                pc.effects = effectsFromJson(jc.at("effects"));
             pc.speed = jc.value("speed", 1.0);
             pc.flat = jc.value("flat", false);
             if (pc.flat && jc.value("fit", std::string()) == "fill")
@@ -1815,6 +1867,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         m_timeline->setClipTrimIn(id, pc.trimInMs);
         m_timeline->setClipTrimOut(id, pc.trimOutMs);
         m_timeline->setClipColor(id, pc.color);
+        m_timeline->setClipEffects(id, pc.effects);
         m_timeline->setClipStabilization(id, pc.stabilization);
         m_timeline->setClipBlurPlates(id, pc.blurPlates);
         m_timeline->setClipPlateScan(id, pc.plateScan);

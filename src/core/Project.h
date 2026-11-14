@@ -188,8 +188,12 @@ public:
     // "distortion" past 1, up to 2, its "panini" (Natural, 0..1, absent = 0)
     // and its "fisheye" (0..2, absent = 0; ViewProjection.h), written only
     // when a key has one: an older build would clamp the globe to a tiny
-    // planet and drop Natural and Fisheye.
+    // planet and drop Natural and Fisheye. It also added a clip's video
+    // effects ("effects": {"vignette": {"on", "amount", "size",
+    // "softness"}}; ClipEffects.h), written only when a clip has one: an
+    // older build would drop them.
     static constexpr int kFormatVersion = 23;
+    static constexpr int kEffectsFormatVersion = 23;
     static constexpr int kViewShapeFormatVersion = 23;
     static constexpr int kPartsFormatVersion = 22;
     static constexpr int kMarkFormatVersion = 21;

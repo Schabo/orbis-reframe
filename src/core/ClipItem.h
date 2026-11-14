@@ -7,6 +7,7 @@
 #include "SourceGap.h"
 #include <BlurAddition.h>   // privacy::BlurAddition (header-only, no deps)
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
+#include <ClipEffects.h>    // fx::ClipEffects (no Qt)
 #include <ColorLut.h>       // color::Grade (no Qt)
 #include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
@@ -142,6 +143,9 @@ struct ClipItem {
 
     // Colour grade (Colour panel). See ColorGrade's own comment.
     ColorGrade color;
+    // Video effects (Effects library / section), on the picture after the
+    // grade. See fx::ClipEffects.
+    fx::ClipEffects effects;
 
     // Gyro stabilization (Stabilization panel: Off / Lean follow / Horizon
     // lock / Custom). Applied at reprojection time, composed with the reframe
@@ -262,6 +266,7 @@ struct ClipItem {
     bool removeKeysOutsideTrim();
     bool setSplit(const pane::Split &s); // clamped; refused on a flat clip
     bool setColorGrade(const ColorGrade &grade);
+    bool setEffects(const fx::ClipEffects &e); // clamped
     bool setStabilization(const insv::StabConfig &config);
     bool setBlurPlates(bool on);
     bool setPlateScan(const QString &key);

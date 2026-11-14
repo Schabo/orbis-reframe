@@ -381,6 +381,9 @@ public slots:
     // Colour grade (clamped to ColorGrade's own ranges); the Colour panel edits
     // all four fields together.
     void setClipColor(int clipId, const ColorGrade &grade);
+    // Video effects (clamped to their own ranges); the Effects section and a
+    // drop from the Effects library edit them.
+    void setClipEffects(int clipId, const fx::ClipEffects &effects);
     // Gyro stabilization (ClipItem::stabilization); the Stabilization panel
     // edits it.
     void setClipStabilization(int clipId, const insv::StabConfig &config);
@@ -470,6 +473,8 @@ signals:
     void clipFitChanged(int id, ClipItem::Fit fit);
     // One clip's colour grade changed. Carries the new value.
     void clipColorChanged(int id, ColorGrade grade);
+    // One clip's video effects changed. Carries the new value.
+    void clipEffectsChanged(int id, fx::ClipEffects effects);
     // One clip's stabilization changed. Carries the new value.
     void clipStabilizationChanged(int id, insv::StabConfig config);
     // One clip's privacy blur was switched on / off, or its removed tracks /

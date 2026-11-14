@@ -701,6 +701,13 @@ void Timeline::setClipColor(int clipId, const ColorGrade &grade)
         emit clipColorChanged(c->id, c->color);
 }
 
+void Timeline::setClipEffects(int clipId, const fx::ClipEffects &effects)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->setEffects(effects))
+        emit clipEffectsChanged(c->id, c->effects);
+}
+
 void Timeline::setClipStabilization(int clipId, const insv::StabConfig &config)
 {
     ClipItem *c = mutableClipById(clipId);

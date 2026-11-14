@@ -178,6 +178,16 @@ bool ClipItem::setColorGrade(const ColorGrade &grade)
     return true;
 }
 
+bool ClipItem::setEffects(const fx::ClipEffects &e)
+{
+    fx::ClipEffects clamped = e;
+    clamped.clamp();
+    if (clamped == effects)
+        return false;
+    effects = clamped;
+    return true;
+}
+
 bool ClipItem::setStabilization(const insv::StabConfig &config)
 {
     if (flat)

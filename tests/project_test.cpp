@@ -2982,6 +2982,122 @@ void testFisheyeJson()
     }
 }
 
+// A clip's video effects: saved only when there's one (format 23, clamped
+// on load, an unknown effect left out), kept by a split and a duplicate,
+// undone like any edit -- on a 360 clip and a flat one.
+void testEffectsJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString insv = tmp.path() + "/ride.insv";
+    const QString phone = tmp.path() + "/phone.mp4";
+    writeFile(insv);
+    writeFile(phone);
+    const QString file = tmp.path() + "/fx.orp";
+    const auto document = [&file] {
+        QFile f(file);
+        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()
+                                           : QJsonObject();
+    };
+    const auto clipJson = [&document](int i) {
+        return document().value("timeline").toObject().value("clips").toArray().at(i).toObject();
+    };
+    QString err;
+    {
+        Project p;
+        const int a = p.timeline()->appendClip(insv, 10000, 30.0, 7680, 3840, 0);
+        const int b = p.timeline()->appendClip(phone, 8000, 30.0, 1920, 1080, 0, true);
+        useOldStitcher(*p.timeline());
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() < Project::kEffectsFormatVersion);
+        CHECK(!clipJson(0).contains("effects"));
+
+        fx::ClipEffects e;
+        e.vignette = fx::Vignette{true, -250.0f, 40.0f, 130.0f}; // clamped
+        p.timeline()->setClipEffects(a, e);
+        const ClipItem *ca = p.timeline()->clipById(a);
+        CHECK(ca->effects.vignette && ca->effects.vignette->amount == fx::Vignette::kMinAmount &&
+              ca->effects.vignette->softness == 100.0f);
+        e.vignette = fx::Vignette{false, 20.0f, 60.0f, 10.0f};
+        p.timeline()->setClipEffects(b, e); // flat clips take them too
+        CHECK(p.timeline()->clipById(b)->effects == e);
+        // a split's halves and a duplicate keep them
+        const int half = p.timeline()->splitClip(a, 5000);
+        CHECK(half > 0 && p.timeline()->clipById(half)->effects ==
+                              p.timeline()->clipById(a)->effects);
+        const int copy = p.timeline()->duplicateClip(b);
+        CHECK(copy > 0 && p.timeline()->clipById(copy)->effects == e);
+        CHECK(p.save(file, &err));
+        CHECK(document().value("version").toInt() == Project::kEffectsFormatVersion);
+        const QJsonObject v =
+            clipJson(0).value("effects").toObject().value("vignette").toObject();
+        CHECK(v.value("on").toBool() && v.value("amount").toDouble() == -100.0 &&
+              v.value("size").toDouble() == 40.0 && v.value("softness").toDouble() == 100.0);
+    }
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        CHECK(p.timeline()->count() == 4);
+        const ClipItem &a = p.timeline()->clipAt(0);
+        CHECK(a.effects.vignette && a.effects.vignette->on && a.effects.vignette->size == 40.0f);
+        const ClipItem &b = p.timeline()->clipAt(2);
+        CHECK(b.flat && b.effects.vignette && !b.effects.vignette->on &&
+              b.effects.vignette->amount == 20.0f);
+        // undo takes an edit back
+        const int id = a.id;
+        p.timeline()->setClipEffects(id, fx::ClipEffects{});
+        CHECK(p.timeline()->clipAt(0).effects.isEmpty());
+        p.undo();
+        CHECK(p.timeline()->clipAt(0).effects.vignette.has_value());
+    }
+    // From a file: out-of-range values clamped, missing ones the defaults,
+    // an effect this build doesn't know left out.
+    const QString in = tmp.path() + "/in.orp";
+    writeFile(in, QStringLiteral(R"({"format": "orbis-reframe-project", "version": 23,
+        "output": {"aspect": "16:9", "width": 1920, "height": 1080, "fps": 0},
+        "timeline": {"clips": [
+          {"source": "ride.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
+           "fps": 30, "effects": {"vignette": {"amount": 300, "size": -5},
+                                  "sparkle": {"amount": 1}}}]}})")
+                      .toUtf8());
+    {
+        Project p;
+        CHECK(p.load(in, &err));
+        const fx::ClipEffects &e = p.timeline()->clipAt(0).effects;
+        CHECK(e.vignette && e.vignette->on && e.vignette->amount == fx::Vignette::kMaxAmount &&
+              e.vignette->size == 0.0f && e.vignette->softness == fx::Vignette{}.softness);
+    }
+}
+
+// What the renderers get: nothing without an active vignette, and the
+// falloff -- none inside `size`, the amount in full past the outer edge.
+void testEffectsRender()
+{
+    fx::ClipEffects e;
+    CHECK(!e.render().any());
+    e.vignette = fx::Vignette{};
+    e.vignette->amount = 0.0f;
+    CHECK(!e.render().any());
+    e.vignette->amount = -50.0f;
+    e.vignette->on = false;
+    CHECK(!e.render().any());
+    e.vignette->on = true;
+    e.vignette->size = 50.0f;
+    e.vignette->softness = 0.0f;
+    const fx::Render r = e.render();
+    CHECK(r.any() && r.vignette[0] == -0.5f && r.vignette[1] == 0.5f);
+    float mid[3] = {200.0f, 100.0f, 50.0f};
+    fx::applyEffects(mid, 960.0f, 540.0f, 1920.0f, 1080.0f, r, 255.0f);
+    CHECK(mid[0] == 200.0f && mid[1] == 100.0f && mid[2] == 50.0f);
+    float corner[3] = {200.0f, 100.0f, 50.0f};
+    fx::applyEffects(corner, 0.5f, 0.5f, 1920.0f, 1080.0f, r, 255.0f);
+    CHECK(std::fabs(corner[0] - 100.0f) < 0.01f && std::fabs(corner[2] - 25.0f) < 0.01f);
+    e.vignette->amount = 100.0f; // lightens toward white
+    float light[3] = {0.2f, 0.4f, 1.0f};
+    fx::applyEffects(light, 0.5f, 0.5f, 1920.0f, 1080.0f, e.render(), 1.0f);
+    CHECK(std::fabs(light[0] - 1.0f) < 1e-3f && std::fabs(light[2] - 1.0f) < 1e-6f);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -3017,5 +3133,7 @@ int main(int argc, char **argv)
     testGlobeJson();
     testNaturalJson();
     testFisheyeJson();
+    testEffectsJson();
+    testEffectsRender();
     return modeltest::finish("project_test");
 }
