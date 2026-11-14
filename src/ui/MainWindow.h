@@ -226,8 +226,9 @@ private:
     // Copy the viewport's current pose into the Reframe panel's numeric fields
     // (whatever's on screen -- sampled path, free-look, or a drag result).
     void syncReframePanel();
-    // Push a clip's colour grade into the viewport, its LUT loaded.
-    void applyColorGrade(const ColorGrade &grade);
+    // Push a clip's colour grade and effects into the viewport, its LUT
+    // loaded.
+    void applyColorGrade(const ClipItem &clip);
     // A clip's grade into the Colour panel, with the LUTs it offers and
     // whether the clip's own can be applied.
     void syncColourPanel(const ColorGrade &grade);

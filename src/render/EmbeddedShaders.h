@@ -30,5 +30,18 @@ Spirv equirectFragShape();
 Spirv fisheyeViewFragShape();
 Spirv reframeReprojectCompShape();
 Spirv fisheyeViewNv12CompShape();
+// Their effects build (EFFECTS, clip_effects.glsl), set 2 the clip's effects
+// (render::VulkanEffectsRing): for a clip with video effects
+// (fx::Render::any), with and without the view shape; and the inset's, for
+// a flat clip's picture.
+Spirv equirectFragFx();
+Spirv fisheyeViewFragFx();
+Spirv reframeReprojectCompFx();
+Spirv fisheyeViewNv12CompFx();
+Spirv equirectFragShapeFx();
+Spirv fisheyeViewFragShapeFx();
+Spirv reframeReprojectCompShapeFx();
+Spirv fisheyeViewNv12CompShapeFx();
+Spirv insetFragFx();
 
 } // namespace render::shaders

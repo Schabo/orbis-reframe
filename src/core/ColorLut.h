@@ -9,6 +9,8 @@
 // "r g b" output values with red changing fastest. '#' starts a comment. A
 // 1D-only file (LUT_1D_SIZE) is refused: camera makers ship 3D ones.
 
+#include "ClipEffects.h" // fx::Render
+
 #include <array>
 #include <cstddef>
 #include <memory>
@@ -46,18 +48,27 @@ std::shared_ptr<const Lut3D> cachedCube(const std::string &path, std::string *er
 
 // What a renderer applies to a clip: the LUT (when there is one), mixed with
 // the original by `lutMix`, then the four adjustments
-// (src/render/shaders/color_grade.glsl and exportpipe::gradeRgb()).
+// (src/render/shaders/color_grade.glsl and exportpipe::gradeRgb()), then the
+// clip's video effects, in the same pass (clip_effects.glsl,
+// fx::applyEffects()).
 struct Grade {
     // {exposureEv, contrast%, saturation%, temperature%}, all 0 = neutral.
     std::array<float, 4> adjust{};
     std::shared_ptr<const Lut3D> lut; // nullptr = none
     float lutMix = 1.0f;              // 0..1, how much of the LUT's output
+    // The clip's video effects (none for an inset, a title or a gauge).
+    fx::Render effects;
 
     bool hasLut() const { return lut && lutMix > 0.0f; }
-    bool isNeutral() const { return !hasLut() && adjust == std::array<float, 4>{}; }
+    bool hasEffects() const { return effects.any(); }
+    bool isNeutral() const
+    {
+        return !hasLut() && adjust == std::array<float, 4>{} && !hasEffects();
+    }
     bool operator==(const Grade &o) const
     {
-        return adjust == o.adjust && lut == o.lut && (!lut || lutMix == o.lutMix);
+        return adjust == o.adjust && lut == o.lut && (!lut || lutMix == o.lutMix) &&
+               effects == o.effects;
     }
     bool operator!=(const Grade &o) const { return !(*this == o); }
 };

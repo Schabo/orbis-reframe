@@ -68,7 +68,7 @@ void MainWindow::openClip(const QString &clipPath)
                                         probe.height, audioStreamCount(clipPath), probe.lens_guards);
     m_rebindingModel = false;
     if (const ClipItem *c = m_timeline->clipById(m_clipId))
-        applyColorGrade(c->color);
+        applyColorGrade(*c);
     refreshClipPanels();
     showEditor();
     syncTimeline(); // opens paused on the first frame
@@ -129,7 +129,7 @@ void MainWindow::openProject(const QString &projectPath)
     m_clipId = first.id;
     m_clipPath = first.sourcePath;
     m_fps = first.fps;
-    applyColorGrade(first.color);
+    applyColorGrade(first);
     refreshClipPanels(); // the first clip's: a load clears the selection
 
     // All of them, labelled with their place on the timeline (hidden and

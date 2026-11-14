@@ -70,17 +70,17 @@ void MainWindow::connectColour()
     connect(m_timeline, &Timeline::clipColorChanged, this, [this](int id, ColorGrade grade) {
         if (const ClipItem *c = m_timeline->clipById(id); c && c->flat)
             pushInsetsToController(); // its picture is a layer, graded there
-        if (id == m_clipId) // on screen
-            applyColorGrade(grade);
+        if (const ClipItem *c = m_timeline->clipById(id); c && id == m_clipId) // on screen
+            applyColorGrade(*c);
         if (id == editClipId()) // in the panel
             syncColourPanel(grade);
     });
     connect(m_colourPanel, &ColourPanel::loadLutRequested, this, &MainWindow::loadLut);
 }
 
-void MainWindow::applyColorGrade(const ColorGrade &grade)
+void MainWindow::applyColorGrade(const ClipItem &clip)
 {
-    const color::Grade g = grade.render();
+    const color::Grade g = clip.renderGrade();
     m_viewport->SetColorGrade(&g);
 }
 

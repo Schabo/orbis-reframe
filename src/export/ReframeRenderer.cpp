@@ -108,6 +108,13 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
                 const ReframeView& view, int rowBegin, int rowEnd)
 {
     const Grade grade(view.colorGrade);
+    const fx::Render& effects = view.colorGrade.effects;
+    const bool hasEffects = effects.any();
+    const bool ownFrame = view.frame[2] <= 0.0f;
+    const float frameX = ownFrame ? 0.0f : view.frame[0];
+    const float frameY = ownFrame ? 0.0f : view.frame[1];
+    const float frameW = ownFrame ? float(outW) : view.frame[2];
+    const float frameH = ownFrame ? float(outH) : view.frame[3];
     const view::Lens lens = view::lens(view.pose, double(outW) / double(outH));
     const float h = view::halfHeight(lens.fovY, lens.distortion, lens.panini);
     const float cosR = std::cos(view.pose.roll);
@@ -158,6 +165,9 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
             float rgba[4];
             sampleEquirect(eq, eqW, eqH, u, v, rgba);
             gradeRgb(rgba, grade);
+            if (hasEffects)
+                fx::applyEffects(rgba, float(px) + 0.5f - frameX, float(py) + 0.5f - frameY,
+                                 frameW, frameH, effects, kGradeWhite);
 
             for (int c = 0; c < 4; ++c)
                 dst[c] = static_cast<uint8_t>(std::clamp(rgba[c] + 0.5f, 0.0f, 255.0f));
@@ -220,6 +230,11 @@ void RenderRectilinearPanes(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* ou
         ReframeView v = view;
         v.pose = p.pose;
         v.aspect = static_cast<float>(p.w) / static_cast<float>(p.h);
+        // The effects against the whole frame, not the pane.
+        v.frame[0] = -float(p.x);
+        v.frame[1] = -float(p.y);
+        v.frame[2] = float(outW);
+        v.frame[3] = float(outH);
         pane.resize(static_cast<size_t>(p.w) * p.h * 4);
         RenderRectilinear(eqRgba, eqW, eqH, pane.data(), p.w, p.h, v);
         for (int row = 0; row < h; ++row)
@@ -252,6 +267,44 @@ void GradeRgba(uint8_t* rgba, size_t pixels, const color::Grade& grade)
     for (size_t b = band; b < pixels; b += band)
         pool.emplace_back(run, b, std::min(b + band, pixels));
     run(0, std::min(band, pixels));
+    for (std::thread& t : pool)
+        t.join();
+}
+
+void GradeRgba(uint8_t* rgba, int w, int h, const color::Grade& grade, const float rect[4],
+               int frameW, int frameH)
+{
+    if (!grade.hasEffects()) {
+        GradeRgba(rgba, size_t(w) * h, grade);
+        return;
+    }
+    if (w <= 0 || h <= 0 || frameW <= 0 || frameH <= 0)
+        return;
+    const Grade g(grade);
+    const fx::Render& effects = grade.effects;
+    // A picture pixel's centre in the frame: the rect scaled to the picture.
+    const float sx = rect[2] / float(w), sy = rect[3] / float(h);
+    auto run = [&](int rowBegin, int rowEnd) {
+        for (int row = rowBegin; row < rowEnd; ++row) {
+            const float fy = rect[1] + (float(row) + 0.5f) * sy;
+            for (int col = 0; col < w; ++col) {
+                uint8_t* p = rgba + (size_t(row) * w + col) * 4;
+                float c[4] = {float(p[0]), float(p[1]), float(p[2]), float(p[3])};
+                gradeRgb(c, g);
+                fx::applyEffects(c, rect[0] + (float(col) + 0.5f) * sx, fy, float(frameW),
+                                 float(frameH), effects, kGradeWhite);
+                for (int k = 0; k < 3; ++k)
+                    p[k] = static_cast<uint8_t>(std::clamp(c[k] + 0.5f, 0.0f, 255.0f));
+            }
+        }
+    };
+    const unsigned hw = std::thread::hardware_concurrency();
+    const int workers = size_t(w) * h < 64 * 1024 ? 1 : int(std::max(1u, hw == 0 ? 4u : hw));
+    const int band = (h + workers - 1) / workers;
+    std::vector<std::thread> pool;
+    for (int b = band; b < h; b += band)
+        pool.emplace_back(run, b, std::min(b + band, h));
+    run(0, std::min(band, h));
     for (std::thread& t : pool)
         t.join();
 }

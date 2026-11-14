@@ -246,8 +246,8 @@ void EquirectViewportRenderer::createPipeline()
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    const VkDescriptorSetLayout sets[2] = {m_descriptorSetLayout, m_luts.layout()};
-    layoutInfo.setLayoutCount = 2;
+    VkDescriptorSetLayout sets[3];
+    layoutInfo.setLayoutCount = setLayouts(m_descriptorSetLayout, sets);
     layoutInfo.pSetLayouts = sets;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushConstantRange;
@@ -259,23 +259,58 @@ void EquirectViewportRenderer::createPipeline()
         qFatal("Failed to create equirect graphics pipeline");
 }
 
-VkPipeline EquirectViewportRenderer::viewPipeline(bool lens, bool shaped)
+uint32_t EquirectViewportRenderer::setLayouts(VkDescriptorSetLayout first,
+                                              VkDescriptorSetLayout out[3]) const
+{
+    out[0] = first;
+    out[1] = m_luts.layout();
+    out[2] = m_effects.layout();
+    return m_effects.ready() ? 3 : 2;
+}
+
+VkPipeline EquirectViewportRenderer::viewPipeline(bool lens, bool shaped, bool effects)
 {
     VkPipeline plain = lens ? m_lensPipeline : m_pipeline;
-    if (!shaped)
+    effects = effects && m_effects.ready();
+    const int v = int(shaped) | int(effects) << 1;
+    if (v == 0)
         return plain;
-    VkPipeline &shape = lens ? m_lensPipelineShape : m_pipelineShape;
-    bool &failed = lens ? m_lensPipelineShapeFailed : m_pipelineShapeFailed;
-    if (!shape && !failed) {
-        shape = lens ? makePipeline(render::shaders::fisheyeViewFragShape(), m_lensPipelineLayout)
-                     : makePipeline(render::shaders::equirectFragShape(), m_pipelineLayout);
-        failed = shape == VK_NULL_HANDLE;
+    VkPipeline &p = lens ? m_lensPipelineVariants[v] : m_pipelineVariants[v];
+    bool &failed = lens ? m_lensPipelineVariantFailed[v] : m_pipelineVariantFailed[v];
+    if (!p && !failed) {
+        namespace sh = render::shaders;
+        static render::shaders::Spirv (*const kLens[4])() = {
+            nullptr, sh::fisheyeViewFragShape, sh::fisheyeViewFragFx, sh::fisheyeViewFragShapeFx};
+        static render::shaders::Spirv (*const kEquirect[4])() = {
+            nullptr, sh::equirectFragShape, sh::equirectFragFx, sh::equirectFragShapeFx};
+        p = makePipeline(lens ? kLens[v]() : kEquirect[v](),
+                         lens ? m_lensPipelineLayout : m_pipelineLayout);
+        failed = p == VK_NULL_HANDLE;
         if (failed)
-            std::fprintf(stderr, "[viewport] the %s view's view-shape build failed; views are "
-                                 "drawn without Natural and Fisheye\n",
-                         lens ? "lens" : "equirect");
+            std::fprintf(stderr, "[viewport] the %s view's %s build failed; views are drawn "
+                                 "without %s\n",
+                         lens ? "lens" : "equirect",
+                         v == 1 ? "view-shape" : v == 2 ? "effects" : "view-shape effects",
+                         v == 1 ? "Natural and Fisheye" : "their clip's effects");
     }
-    return shape ? shape : plain;
+    if (p)
+        return p;
+    return v == 3 ? viewPipeline(lens, true, false) : plain;
+}
+
+VkPipeline EquirectViewportRenderer::insetPipeline(bool effects)
+{
+    if (!effects || !m_effects.ready() || m_insetPipeline == VK_NULL_HANDLE)
+        return m_insetPipeline;
+    if (!m_insetPipelineFx && !m_insetPipelineFxFailed) {
+        m_insetPipelineFx = makePipeline(render::shaders::insetFragFx(), m_insetPipelineLayout,
+                                         /*blend=*/true);
+        m_insetPipelineFxFailed = m_insetPipelineFx == VK_NULL_HANDLE;
+        if (m_insetPipelineFxFailed)
+            std::fprintf(stderr, "[viewport] the inset's effects build failed; flat clips are "
+                                 "drawn without their effects\n");
+    }
+    return m_insetPipelineFx ? m_insetPipelineFx : m_insetPipeline;
 }
 
 void EquirectViewportRenderer::createLensResources()
@@ -383,8 +418,8 @@ void EquirectViewportRenderer::createLensResources()
     VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants)};
     VkPipelineLayoutCreateInfo pli{};
     pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    const VkDescriptorSetLayout sets[2] = {m_lensSetLayout, m_luts.layout()};
-    pli.setLayoutCount = 2;
+    VkDescriptorSetLayout sets[3];
+    pli.setLayoutCount = setLayouts(m_lensSetLayout, sets);
     pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
@@ -438,10 +473,12 @@ void EquirectViewportRenderer::destroyLensResources()
     m_lensSets.clear();
     if (m_lensPipeline)
         vkDestroyPipeline(device, m_lensPipeline, nullptr);
-    if (m_lensPipelineShape)
-        vkDestroyPipeline(device, m_lensPipelineShape, nullptr);
-    m_lensPipelineShape = VK_NULL_HANDLE;
-    m_lensPipelineShapeFailed = false;
+    for (int v = 0; v < 4; ++v) {
+        if (m_lensPipelineVariants[v])
+            vkDestroyPipeline(device, m_lensPipelineVariants[v], nullptr);
+        m_lensPipelineVariants[v] = VK_NULL_HANDLE;
+        m_lensPipelineVariantFailed[v] = false;
+    }
     if (m_lensPipelineLayout)
         vkDestroyPipelineLayout(device, m_lensPipelineLayout, nullptr);
     if (m_lensPool)
@@ -665,8 +702,8 @@ void EquirectViewportRenderer::createInsetResources()
         VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(InsetPushConstants)};
         VkPipelineLayoutCreateInfo pli{};
         pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        const VkDescriptorSetLayout sets[2] = {m_descriptorSetLayout, m_luts.layout()};
-        pli.setLayoutCount = 2;
+        VkDescriptorSetLayout sets[3];
+        pli.setLayoutCount = setLayouts(m_descriptorSetLayout, sets);
         pli.pSetLayouts = sets;
         pli.pushConstantRangeCount = 1;
         pli.pPushConstantRanges = &pcr;
@@ -885,6 +922,8 @@ void EquirectViewportRenderer::destroyInsetResources()
     m_insetSlots.clear();
     if (m_insetPipeline)
         vkDestroyPipeline(device, m_insetPipeline, nullptr);
+    if (m_insetPipelineFx)
+        vkDestroyPipeline(device, m_insetPipelineFx, nullptr);
     if (m_insetPipelineLayout)
         vkDestroyPipelineLayout(device, m_insetPipelineLayout, nullptr);
     for (VkDescriptorPool pool : m_insetPools)
@@ -914,6 +953,8 @@ void EquirectViewportRenderer::destroyInsetResources()
     if (m_insetSampler)
         vkDestroySampler(device, m_insetSampler, nullptr);
     m_insetPipeline = VK_NULL_HANDLE;
+    m_insetPipelineFx = VK_NULL_HANDLE;
+    m_insetPipelineFxFailed = false;
     m_insetPipelineLayout = VK_NULL_HANDLE;
     m_insetSampler = VK_NULL_HANDLE;
 }
@@ -1029,6 +1070,11 @@ void EquirectViewportRenderer::initResources()
     std::string lutErr;
     if (!m_luts.init(lutDev, VK_SHADER_STAGE_FRAGMENT_BIT, lutErr))
         std::fprintf(stderr, "[viewport] %s; the picture can't be drawn\n", lutErr.c_str());
+    std::string fxErr;
+    if (!m_effects.init({m_window->physicalDevice(), m_window->device()},
+                        VK_SHADER_STAGE_FRAGMENT_BIT, fxErr))
+        std::fprintf(stderr, "[viewport] %s; clips are drawn without their effects\n",
+                     fxErr.c_str());
     createSampler();
     createDescriptorSet();
     createPipeline();
@@ -1059,6 +1105,7 @@ void EquirectViewportRenderer::releaseResources()
     destroyLensResources();
     destroyTextureResources();
     m_luts.destroy();
+    m_effects.destroy();
 
     if (m_sampler != VK_NULL_HANDLE) {
         vkDestroySampler(device, m_sampler, nullptr);
@@ -1072,10 +1119,12 @@ void EquirectViewportRenderer::releaseResources()
         vkDestroyDescriptorSetLayout(device, m_descriptorSetLayout, nullptr);
         m_descriptorSetLayout = VK_NULL_HANDLE;
     }
-    if (m_pipelineShape != VK_NULL_HANDLE)
-        vkDestroyPipeline(device, m_pipelineShape, nullptr);
-    m_pipelineShape = VK_NULL_HANDLE;
-    m_pipelineShapeFailed = false;
+    for (int v = 0; v < 4; ++v) {
+        if (m_pipelineVariants[v] != VK_NULL_HANDLE)
+            vkDestroyPipeline(device, m_pipelineVariants[v], nullptr);
+        m_pipelineVariants[v] = VK_NULL_HANDLE;
+        m_pipelineVariantFailed[v] = false;
+    }
     if (m_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(device, m_pipeline, nullptr);
         m_pipeline = VK_NULL_HANDLE;

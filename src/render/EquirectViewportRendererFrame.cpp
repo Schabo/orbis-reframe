@@ -692,6 +692,14 @@ void EquirectViewportRenderer::startNextFrame()
     std::copy(grade.adjust.begin(), grade.adjust.end(), pc.colorGrade);
     render::VulkanLutStore::pushValues(grade.hasLut() ? grade.lut.get() : nullptr, grade.lutMix,
                                        pc.colorLut);
+    // The clip's effects, against the whole output rect (every pane's
+    // pipeline has the same layout, so the set stays bound).
+    const bool effects = drawPicture && grade.hasEffects() && m_effects.ready();
+    const float outputRect[4] = {float(rectX), float(rectY), float(rectW), float(rectH)};
+    if (effects)
+        m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                       imp ? m_lensPipelineLayout : m_pipelineLayout, 2, grade.effects,
+                       outputRect);
     for (const PaneDraw &d : panes) {
         if (!drawPicture)
             break;
@@ -711,9 +719,11 @@ void EquirectViewportRenderer::startNextFrame()
             pc.panini = d.lens.panini;
             pc.fisheye = d.lens.fisheye;
         }
-        // A pane with Natural or Fisheye takes the shader's view-shape build
-        // (the same layout, so the sets stay bound).
-        if (VkPipeline want = viewPipeline(imp != nullptr, pc.panini > 0.0f || pc.fisheye > 0.0f);
+        // A pane with Natural or Fisheye takes the shader's view-shape build,
+        // a clip with effects its effects build (the same layout, so the
+        // sets stay bound).
+        if (VkPipeline want =
+                viewPipeline(imp != nullptr, pc.panini > 0.0f || pc.fisheye > 0.0f, effects);
             want != bound) {
             vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, want);
             bound = want;
@@ -805,7 +815,7 @@ void EquirectViewportRenderer::startNextFrame()
 
     // The insets over the view, bottom-most first, placed in the output rect
     // exactly as the export places them (inset::place).
-    bool insetBound = false;
+    VkPipeline insetBound = VK_NULL_HANDLE;
     for (size_t i = 0; i < insets.size(); ++i) {
         const auto &d = insets[i];
         if (!insetSlots[i])
@@ -814,14 +824,19 @@ void EquirectViewportRenderer::startNextFrame()
         const inset::Rect r = inset::place(d.look, d.frame, d.aspect, rectW, rectH);
         if (r.empty() || d.look.opacity <= 0.0f)
             continue;
-        if (!insetBound) {
-            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                          m_insetPipeline);
-            insetBound = true;
+        // A flat clip's picture with its clip's effects: the inset's effects
+        // build, against the whole output rect like the view's.
+        const bool insetEffects = d.colorGrade.hasEffects() && m_effects.ready();
+        if (VkPipeline want = insetPipeline(insetEffects); want != insetBound) {
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, want);
+            insetBound = want;
         }
         const VkDescriptorSet sets[2] = {slot.set, insetLutSets[i]};
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                             m_insetPipelineLayout, 0, 2, sets, 0, nullptr);
+        if (insetEffects && insetBound != m_insetPipeline)
+            m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_insetPipelineLayout,
+                           2, d.colorGrade.effects, outputRect);
         InsetPushConstants ipc{};
         ipc.rect[0] = float(r.x);
         ipc.rect[1] = float(r.y);

@@ -1568,7 +1568,7 @@ void MainWindow::bindActiveClipAt(qint64 timelineMs)
         syncReframePanel();
     if (clipChanged) {
         if (!m_playing)
-            applyColorGrade(c.color); // the viewport shows this clip
+            applyColorGrade(c); // the viewport shows this clip
         if (!selectedVideoClip()) // the panels follow the playhead unless a clip is selected
             refreshClipPanels();
     }

@@ -74,6 +74,7 @@ vec3 sampleLens(int i, vec2 uv)
 
 #include "color_grade.glsl"
 #include "view_projection.glsl"
+#include "clip_effects.glsl"
 
 void main() {
 #ifdef VIEW_SHAPE
@@ -92,6 +93,9 @@ void main() {
     vec3 dir = mul3(P.outRot[0], P.outRot[1], P.outRot[2], sphereDir);
     vec3 rgb = blurredLenses(dir) / 255.0;
     outColor = vec4(gradeColor(rgb, pc.colorGrade, pc.colorLut, 1.0), 1.0);
+#ifdef EFFECTS
+    outColor.rgb = applyEffects(outColor.rgb, gl_FragCoord.xy, 1.0);
+#endif
     // Outside a globe's disc, or where Fisheye shows nothing: black.
 #ifdef VIEW_SHAPE
     if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini, pc.fisheye))

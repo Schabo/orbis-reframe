@@ -780,13 +780,16 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
             vkDestroyImageView(d->device, view, nullptr);
         d->nv12Views.clear();
         d->luts.destroy();
+        d->effects.destroy();
         if (d->pipeline) vkDestroyPipeline(d->device, d->pipeline, nullptr);
         if (d->pipeLayout) vkDestroyPipelineLayout(d->device, d->pipeLayout, nullptr);
         if (d->descPool) vkDestroyDescriptorPool(d->device, d->descPool, nullptr);
         if (d->setLayout) vkDestroyDescriptorSetLayout(d->device, d->setLayout, nullptr);
         if (d->vwPipeline) vkDestroyPipeline(d->device, d->vwPipeline, nullptr);
-        if (d->vwPipelineShape) vkDestroyPipeline(d->device, d->vwPipelineShape, nullptr);
-        if (d->rfPipelineShape) vkDestroyPipeline(d->device, d->rfPipelineShape, nullptr);
+        for (VkPipeline p : d->vwVariants)
+            if (p) vkDestroyPipeline(d->device, p, nullptr);
+        for (VkPipeline p : d->rfVariants)
+            if (p) vkDestroyPipeline(d->device, p, nullptr);
         if (d->vwPipeLayout) vkDestroyPipelineLayout(d->device, d->vwPipeLayout, nullptr);
         if (d->rfPipeline) vkDestroyPipeline(d->device, d->rfPipeline, nullptr);
         if (d->rfPipeLayout) vkDestroyPipelineLayout(d->device, d->rfPipeLayout, nullptr);
@@ -1168,6 +1171,11 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     lutDev.waitIdle = [impl = d] { impl->idleBeforeFree(); };
     if (!d->luts.init(lutDev, VK_SHADER_STAGE_COMPUTE_BIT, err))
         return false;
+    std::string fxErr;
+    if (!d->effects.init({d->phys, d->device}, VK_SHADER_STAGE_COMPUTE_BIT, fxErr))
+        std::fprintf(stderr, "[VulkanFisheyeStitcher] %s; clips are exported without their "
+                             "effects\n",
+                     fxErr.c_str());
 
     // The export reproject pass is optional -- a build without the SPV, or a
     // pipeline-creation failure, just leaves reframeReady() false and callers
@@ -1223,8 +1231,8 @@ bool VulkanFisheyeStitcher::buildReframePipeline(std::string& err)
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ReframePush)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    const VkDescriptorSetLayout sets[2] = {d->rfSetLayout, d->luts.layout()};
-    pli.setLayoutCount = 2;
+    VkDescriptorSetLayout sets[3];
+    pli.setLayoutCount = d->setLayouts(d->rfSetLayout, sets);
     pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
@@ -1274,8 +1282,8 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ViewPush)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    const VkDescriptorSetLayout sets[2] = {d->setLayout, d->luts.layout()};
-    pli.setLayoutCount = 2;
+    VkDescriptorSetLayout sets[3];
+    pli.setLayoutCount = d->setLayouts(d->setLayout, sets);
     pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
     pli.pPushConstantRanges = &pcr;
@@ -1310,41 +1318,51 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
     return true;
 }
 
-VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, bool shaped)
+VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, bool shaped, bool fx)
 {
     VkPipeline plain = reframe ? rfPipeline : vwPipeline;
-    if (!shaped)
+    fx = fx && effects.ready();
+    const int v = int(shaped) | int(fx) << 1;
+    if (v == 0)
         return plain;
-    VkPipeline &shape = reframe ? rfPipelineShape : vwPipelineShape;
-    bool &failed = reframe ? rfShapeFailed : vwShapeFailed;
-    if (shape || failed)
-        return shape ? shape : plain;
-    const shaders::Spirv spv = reframe ? shaders::reframeReprojectCompShape()
-                                       : shaders::fisheyeViewNv12CompShape();
-    VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-    smi.codeSize = spv.bytes;
-    smi.pCode = spv.code;
-    VkShaderModule module = VK_NULL_HANDLE;
-    VkResult r = vkCreateShaderModule(device, &smi, nullptr, &module);
-    if (r == VK_SUCCESS) {
-        VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-        cpi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        cpi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-        cpi.stage.module = module;
-        cpi.stage.pName = "main";
-        cpi.layout = reframe ? rfPipeLayout : vwPipeLayout;
-        r = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpi, nullptr, &shape);
-        vkDestroyShaderModule(device, module, nullptr);
+    VkPipeline &p = reframe ? rfVariants[v] : vwVariants[v];
+    bool &failed = reframe ? rfVariantFailed[v] : vwVariantFailed[v];
+    if (!p && !failed) {
+        static shaders::Spirv (*const kReframe[4])() = {
+            nullptr, shaders::reframeReprojectCompShape, shaders::reframeReprojectCompFx,
+            shaders::reframeReprojectCompShapeFx};
+        static shaders::Spirv (*const kView[4])() = {
+            nullptr, shaders::fisheyeViewNv12CompShape, shaders::fisheyeViewNv12CompFx,
+            shaders::fisheyeViewNv12CompShapeFx};
+        const shaders::Spirv spv = reframe ? kReframe[v]() : kView[v]();
+        VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        smi.codeSize = spv.bytes;
+        smi.pCode = spv.code;
+        VkShaderModule module = VK_NULL_HANDLE;
+        VkResult r = vkCreateShaderModule(device, &smi, nullptr, &module);
+        if (r == VK_SUCCESS) {
+            VkComputePipelineCreateInfo cpi{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            cpi.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            cpi.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            cpi.stage.module = module;
+            cpi.stage.pName = "main";
+            cpi.layout = reframe ? rfPipeLayout : vwPipeLayout;
+            r = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpi, nullptr, &p);
+            vkDestroyShaderModule(device, module, nullptr);
+        }
+        if (r != VK_SUCCESS) {
+            p = VK_NULL_HANDLE;
+            failed = true;
+            std::fprintf(stderr, "[VulkanFisheyeStitcher] the %s pass's %s build failed "
+                                 "(VkResult %d); views are drawn without %s\n",
+                         reframe ? "reframe" : "view",
+                         v == 1 ? "view-shape" : v == 2 ? "effects" : "view-shape effects", r,
+                         v == 1 ? "Natural and Fisheye" : "their clip's effects");
+        }
     }
-    if (r != VK_SUCCESS) {
-        shape = VK_NULL_HANDLE;
-        failed = true;
-        std::fprintf(stderr, "[VulkanFisheyeStitcher] the %s pass's view-shape build failed "
-                             "(VkResult %d); views are drawn without Natural and Fisheye\n",
-                     reframe ? "reframe" : "view", r);
-        return plain;
-    }
-    return shape;
+    if (p)
+        return p;
+    return v == 3 ? viewPassPipeline(reframe, true, false) : plain;
 }
 
 bool VulkanFisheyeStitcher::lensExportReady() const

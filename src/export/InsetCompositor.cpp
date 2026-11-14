@@ -222,6 +222,7 @@ struct InsetCompositor::State {
     std::vector<uint8_t> graded;
     const VideoFrame *gradedFrom = nullptr;
     int64_t gradedPts = -1;
+    float gradedRect[4] = {}; // where it was graded for (the effects)
     std::vector<uint8_t> gradedNv12;
     bool gradedNv12Done = false;
     Nv12Converter toNv12;
@@ -351,13 +352,19 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
     const uint8_t *rgba = f->rgba.data();
     if (graded) {
         const size_t bytes = size_t(f->width) * f->height * 4;
+        // A flat clip's effects are placed against the output frame, so
+        // they follow its rect.
+        const float place[4] = {float(rect.x), float(rect.y), float(rect.w), float(rect.h)};
         if (s.gradedFrom != f || s.gradedPts != f->ptsMs ||
-            s.graded.size() != bytes + Nv12Converter::kPadding) {
+            s.graded.size() != bytes + Nv12Converter::kPadding ||
+            (j.colorGrade.hasEffects() && !std::equal(place, place + 4, s.gradedRect))) {
             s.graded.resize(bytes + Nv12Converter::kPadding);
             std::memcpy(s.graded.data(), f->rgba.data(), bytes);
-            GradeRgba(s.graded.data(), size_t(f->width) * f->height, j.colorGrade);
+            GradeRgba(s.graded.data(), f->width, f->height, j.colorGrade, place, m_outW,
+                      m_outH);
             s.gradedFrom = f;
             s.gradedPts = f->ptsMs;
+            std::copy(place, place + 4, s.gradedRect);
             s.gradedNv12Done = false;
         }
         rgba = s.graded.data();

@@ -63,29 +63,43 @@ foreach(SHADER ${SHADER_SOURCES})
     )
     list(APPEND SHADER_HEADERS ${SPIRV_HEADER})
 endforeach()
-# The view shaders once more with VIEW_SHAPE defined (view_projection.glsl):
-# the build a view with Natural or Fisheye above 0 is drawn with. A view
-# without them takes the shader above, whose code doesn't carry them at all
-# -- compiled in, Natural's expressions changed how the driver compiles the
-# others, and
-# with it the last bit of existing pictures. equirect.frag ->
-# kSpv_equirect_frag_shape.
-foreach(SHADER src/render/shaders/equirect.frag src/render/shaders/fisheye_view.frag
-               src/render/shaders/reframe_reproject.comp src/render/shaders/fisheye_view_nv12.comp)
+# A shader once more with defines: glslang -D<each of DEFINES>, into
+# <name>.<suffix>.h as kSpv_<name>_<suffix>. A build carries only the code its
+# defines bring in -- compiled in behind a branch, Natural's expressions
+# changed how the driver compiles the rest, and with it the last bit of
+# existing pictures.
+function(orbis_shader_variant SHADER SUFFIX)
     get_filename_component(SHADER_NAME ${SHADER} NAME)
-    string(REPLACE "." "_" SHADER_IDENT "kSpv_${SHADER_NAME}_shape")
-    set(SPIRV_HEADER ${SHADER_BINARY_DIR}/${SHADER_NAME}.shape.h)
+    string(REPLACE "." "_" SHADER_IDENT "kSpv_${SHADER_NAME}_${SUFFIX}")
+    set(SPIRV_HEADER ${SHADER_BINARY_DIR}/${SHADER_NAME}.${SUFFIX}.h)
+    set(DEFINE_FLAGS "")
+    foreach(D ${ARGN})
+        list(APPEND DEFINE_FLAGS -D${D})
+    endforeach()
     add_custom_command(
         OUTPUT ${SPIRV_HEADER}
-        COMMAND ${GLSLANG_VALIDATOR} -V --quiet -DVIEW_SHAPE
+        COMMAND ${GLSLANG_VALIDATOR} -V --quiet ${DEFINE_FLAGS}
             -I${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders
             --vn ${SHADER_IDENT}
             ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} -o ${SPIRV_HEADER}
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} ${SHADER_INCLUDES}
         VERBATIM
     )
-    list(APPEND SHADER_HEADERS ${SPIRV_HEADER})
+    set(SHADER_HEADERS ${SHADER_HEADERS} ${SPIRV_HEADER} PARENT_SCOPE)
+endfunction()
+# The view shaders' view-shape build (VIEW_SHAPE, view_projection.glsl): what
+# a view with Natural or Fisheye above 0 is drawn with. Their effects build
+# (EFFECTS, clip_effects.glsl): what a clip with video effects is drawn with,
+# with and without the view shape. equirect.frag -> kSpv_equirect_frag_shape,
+# kSpv_equirect_frag_fx, kSpv_equirect_frag_shape_fx.
+foreach(SHADER src/render/shaders/equirect.frag src/render/shaders/fisheye_view.frag
+               src/render/shaders/reframe_reproject.comp src/render/shaders/fisheye_view_nv12.comp)
+    orbis_shader_variant(${SHADER} shape VIEW_SHAPE)
+    orbis_shader_variant(${SHADER} fx EFFECTS)
+    orbis_shader_variant(${SHADER} shape_fx VIEW_SHAPE EFFECTS)
 endforeach()
+# A flat clip's picture (and an inset's) with its clip's effects.
+orbis_shader_variant(src/render/shaders/inset.frag fx EFFECTS)
 add_custom_target(shaders DEPENDS ${SHADER_HEADERS})
 
 # --- render_shaders: the SPIR-V above, compiled in. No Qt, no Vulkan link --
@@ -238,10 +252,17 @@ if(ORBIS_SOURCE_TREE_FALLBACK)
                 ORBIS_SOURCE_LUTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/luts")
 endif()
 
+# --- clip_effects: a clip's video effects and what the renderers apply,
+# shared by the model and every render path. Header-only, dependency-free;
+# its GLSL twin is src/render/shaders/clip_effects.glsl.
+add_library(clip_effects INTERFACE src/core/ClipEffects.h)
+target_include_directories(clip_effects INTERFACE src/core)
+
 # --- color_lut: .cube 3D LUTs and color::Grade, what every layer that grades
 # shares (the model, the GPU stitch, the CPU export). Dependency-free.
 add_library(color_lut STATIC src/core/ColorLut.h src/core/ColorLut.cpp)
 target_include_directories(color_lut PUBLIC src/core)
+target_link_libraries(color_lut PUBLIC clip_effects)
 
 # --- zip_reader: files out of a .zip (LUT downloads come zipped). zlib only.
 add_library(zip_reader STATIC src/core/ZipReader.h src/core/ZipReader.cpp)
@@ -263,12 +284,6 @@ target_link_libraries(audio_output PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
 # src/render/shaders/view_projection.glsl.
 add_library(view_projection INTERFACE src/core/ViewProjection.h)
 target_include_directories(view_projection INTERFACE src/core)
-
-# --- clip_effects: a clip's video effects and what the renderers apply,
-# shared by the model and every render path. Header-only, dependency-free;
-# its GLSL twin is src/render/shaders/clip_effects.glsl.
-add_library(clip_effects INTERFACE src/core/ClipEffects.h)
-target_include_directories(clip_effects INTERFACE src/core)
 
 # --- orbis_core: the src/core edit model (ClipItem, Timeline, Project, ...).
 # Qt Core + JSON only -- no FFmpeg / Vulkan -- so the model tests build
@@ -351,6 +366,8 @@ add_library(render_gpu_stitch STATIC
     src/render/VulkanSeamFlow.cpp
     src/render/VulkanLut.h
     src/render/VulkanLut.cpp
+    src/render/VulkanEffects.h
+    src/render/VulkanEffects.cpp
 )
 target_include_directories(render_gpu_stitch PUBLIC src/render)
 target_link_libraries(render_gpu_stitch PUBLIC insv color_lut view_projection Vulkan::Vulkan PRIVATE render_shaders)

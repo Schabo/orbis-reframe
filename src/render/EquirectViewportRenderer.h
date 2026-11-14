@@ -12,6 +12,7 @@
 
 #include "EquirectViewportWindow.h"
 #include "VulkanLut.h"
+#include "VulkanEffects.h"
 #include "EmbeddedShaders.h"
 #include "FrameStats.h"
 
@@ -112,9 +113,17 @@ private:
     // `blend`: straight alpha blending over what's drawn (the insets).
     VkPipeline makePipeline(render::shaders::Spirv frag, VkPipelineLayout layout, bool blend = false);
     // The equirect (`lens` false) or lens pipeline for a view: `shaped`
-    // (view::Lens::shaped) the shader's view-shape build (EmbeddedShaders.h),
-    // made the first time; if it can't be made, said once and the plain one.
-    VkPipeline viewPipeline(bool lens, bool shaped);
+    // (view::Lens::shaped) the shader's view-shape build, `effects`
+    // (fx::Render::any) its effects build (EmbeddedShaders.h), made the first
+    // time; if it can't be made, said once and the plain one (the shape
+    // without effects, if that one can be made).
+    VkPipeline viewPipeline(bool lens, bool shaped, bool effects = false);
+    // The inset pipeline, or its effects build for a flat clip's picture
+    // with effects; likewise.
+    VkPipeline insetPipeline(bool effects);
+    // The pipeline layouts' sets: `first`, the LUTs and, when there's a
+    // ring, the effects. Returns how many.
+    uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[3]) const;
 
     // --- Picture-in-picture insets (inset.frag) ---
     // One per overlay on screen (PiP, title, gauge, a flat main clip), kept
@@ -183,11 +192,14 @@ private:
 
     // The grade's LUTs: set 1 of the equirect, lens and inset pipelines.
     render::VulkanLutStore m_luts;
+    // The clips' effects: set 2 of the same, read by their effects builds.
+    render::VulkanEffectsRing m_effects;
 
     VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_pipeline = VK_NULL_HANDLE;
-    VkPipeline m_pipelineShape = VK_NULL_HANDLE; // viewPipeline
-    bool m_pipelineShapeFailed = false;
+    // viewPipeline's builds, by (shaped | effects << 1); [0] unused.
+    VkPipeline m_pipelineVariants[4] = {};
+    bool m_pipelineVariantFailed[4] = {};
     VkDescriptorSetLayout m_descriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet m_descriptorSet = VK_NULL_HANDLE;
@@ -233,8 +245,8 @@ private:
     std::vector<void *> m_lensUboMap;
     VkPipelineLayout m_lensPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_lensPipeline = VK_NULL_HANDLE;
-    VkPipeline m_lensPipelineShape = VK_NULL_HANDLE; // viewPipeline
-    bool m_lensPipelineShapeFailed = false;
+    VkPipeline m_lensPipelineVariants[4] = {}; // as m_pipelineVariants
+    bool m_lensPipelineVariantFailed[4] = {};
     VkSampler m_lensSampler = VK_NULL_HANDLE;
     VkSampler m_flowSampler = VK_NULL_HANDLE; // the seam flow field: wraps in u, clamps in v
     std::map<uint64_t, LensImport> m_imports; // by LensSlot::id
@@ -278,6 +290,8 @@ private:
     std::vector<VkDescriptorPool> m_insetPools;
     VkPipelineLayout m_insetPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_insetPipeline = VK_NULL_HANDLE;
+    VkPipeline m_insetPipelineFx = VK_NULL_HANDLE; // insetPipeline
+    bool m_insetPipelineFxFailed = false;
 
     // The Track subject box (marker.frag): no descriptors, push constants only.
     VkPipelineLayout m_markerPipelineLayout = VK_NULL_HANDLE;

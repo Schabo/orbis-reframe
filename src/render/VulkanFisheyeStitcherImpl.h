@@ -7,6 +7,7 @@
 
 #include "VulkanFisheyeStitcher.h"
 #include "VulkanLut.h"
+#include "VulkanEffects.h"
 
 #include <SeamColourBlend.h> // insv::SeamVeilFade, the new stitcher's fade
 #include <SeamCut.h>         // insv::SeamCutStats, the cut pass's rows / patch
@@ -208,6 +209,17 @@ struct VulkanFisheyeStitcher::Impl {
     VkPipeline pipeline = VK_NULL_HANDLE;
     // The grade's LUTs (set 1 of the reproject and view pipelines).
     VulkanLutStore luts;
+    // The clips' effects (set 2 of the same, read by their effects builds).
+    VulkanEffectsRing effects;
+    // The reproject and view pipeline layouts' sets: `first`, the LUTs and,
+    // when there's a ring, the effects. Returns how many.
+    uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[3]) const
+    {
+        out[0] = first;
+        out[1] = luts.layout();
+        out[2] = effects.layout();
+        return effects.ready() ? 3 : 2;
+    }
 
     bool adopted = false; // device is FFmpeg's -- don't destroy it
     // Adopted: FFmpeg's lock on `queue` -- the device is shared by every
@@ -428,15 +440,17 @@ struct VulkanFisheyeStitcher::Impl {
     VkPipeline vwPipeline = VK_NULL_HANDLE;
 
     // The reproject and view passes' view-shape builds (EmbeddedShaders.h),
-    // for a view with Natural or Fisheye above 0: made the first time one is
-    // drawn. If one can't be made it is said once and the view is drawn
-    // without them.
-    VkPipeline rfPipelineShape = VK_NULL_HANDLE;
-    VkPipeline vwPipelineShape = VK_NULL_HANDLE;
-    bool rfShapeFailed = false, vwShapeFailed = false;
+    // for a view with Natural or Fisheye above 0, and their effects builds,
+    // for a clip with effects: made the first time one is drawn, by
+    // (shaped | effects << 1), [0] unused. If one can't be made it is said
+    // once and the view is drawn without them.
+    VkPipeline rfVariants[4] = {};
+    VkPipeline vwVariants[4] = {};
+    bool rfVariantFailed[4] = {}, vwVariantFailed[4] = {};
     // The pipeline of the reproject (`reframe`) or view pass for a view,
-    // `shaped` (view::Lens::shaped) or not.
-    VkPipeline viewPassPipeline(bool reframe, bool shaped);
+    // `shaped` (view::Lens::shaped) or not, with the clip's `effects`
+    // (fx::Render::any) or not.
+    VkPipeline viewPassPipeline(bool reframe, bool shaped, bool effects = false);
 
     // (Re)allocate the host-visible flat output buffer to hold `bytes`. Grows
     // only, so switching NV12 <-> RGBA or sizes doesn't thrash.

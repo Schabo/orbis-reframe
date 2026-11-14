@@ -23,6 +23,7 @@
 #include <memory>
 #include <numbers>
 #include <sstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,7 @@ struct Args {
     float temperature = 0.0f;
     std::string lutPath;       // a .cube 3D LUT, applied before the four above
     float lutStrength = 100.0f; // percent
+    std::optional<fx::Vignette> vignette;
     // One flat-video overlay, composited like the app's export does.
     std::string insetPath;
     int64_t insetStartMs = 0; // on the output timeline (0 = the in-point)
@@ -136,6 +138,8 @@ const char kUsage[] =
     "                        colour grade (all default 0 = neutral)\n"
     "  --lut FILE.cube        a 3D LUT applied before the grade (e.g. a log-to-Rec.709 one)\n"
     "  --lut-strength PCT     how much of the LUT (default 100)\n"
+    "  --vignette A,S,F       a vignette after the grade: amount -100..100 (negative\n"
+    "                        darkens), size and softness 0..100 (fx::Vignette)\n"
     "  --inset FILE[:START_MS]  a flat video overlaid from START_MS of the output\n"
     "  --inset-look CX,CY,W,OPACITY    its centre / width (fractions) and opacity\n"
     "  --inset-frame RADIUS,BORDER,RRGGBB  corner radius, border width (fractions)\n"
@@ -250,6 +254,14 @@ Args parseArgs(int argc, char** argv)
             a.lutPath = next("--lut");
         else if (k == "--lut-strength")
             a.lutStrength = static_cast<float>(std::atof(next("--lut-strength").c_str()));
+        else if (k == "--vignette") {
+            fx::Vignette v;
+            if (std::sscanf(next("--vignette").c_str(), "%f,%f,%f", &v.amount, &v.size,
+                            &v.softness) != 3)
+                die("bad --vignette (want AMOUNT,SIZE,SOFTNESS)");
+            v.clamp();
+            a.vignette = v;
+        }
         else if (k == "--inset") {
             a.insetPath = next("--inset");
             const auto colon = a.insetPath.rfind(':');
@@ -441,6 +453,13 @@ int main(int argc, char** argv)
         grade.lutMix = std::clamp(a.lutStrength, 0.0f, 100.0f) / 100.0f;
         std::printf("lut:    %s (%d^3, %.0f%%)\n", a.lutPath.c_str(), grade.lut->size,
                     grade.lutMix * 100.0f);
+    }
+    if (a.vignette) {
+        fx::ClipEffects e;
+        e.vignette = a.vignette;
+        grade.effects = e.render();
+        std::printf("vignette: amount=%.0f%% size=%.0f%% softness=%.0f%%\n", a.vignette->amount,
+                    a.vignette->size, a.vignette->softness);
     }
     const color::Grade* colorGrade = &grade;
     if (a.exposureEv != 0.0f || a.contrast != 0.0f || a.saturation != 0.0f ||

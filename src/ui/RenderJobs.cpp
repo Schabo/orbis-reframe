@@ -107,7 +107,7 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
     ClipViewSource::Spec spec;
     ReframeExportController::ClipJob &job = spec.job;
     job.clipPath = c.sourcePath;
-    job.colorGrade = c.color.render();
+    job.colorGrade = c.renderGrade();
     job.blur = privacy.blurFor(c);
     job.lensGuard = c.lensGuard;
     job.lensCalibration = c.lensCalibration;
@@ -409,7 +409,7 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         f.aspect = c.sourceHeight > 0 ? double(c.sourceWidth) / c.sourceHeight : 16.0 / 9.0;
         f.look = inset::fitted(f.aspect, outW, outH, c.fit == ClipItem::Fit::Fill);
         f.fullFrame = true;
-        f.colorGrade = c.color.render();
+        f.colorGrade = c.renderGrade();
         clips.push_back(std::move(f));
     }
     // The transitions' other clips and black, over the main track, under the
@@ -450,7 +450,7 @@ std::vector<InsetFeed::Clip> insetFeed(const Timeline &timeline, int outW, int o
         if (c.flat) {
             f.aspect = c.sourceHeight > 0 ? double(c.sourceWidth) / c.sourceHeight : 16.0 / 9.0;
             f.look = inset::fitted(f.aspect, outW, outH, c.fit == ClipItem::Fit::Fill);
-            f.colorGrade = c.color.render();
+            f.colorGrade = c.renderGrade();
         } else if (outW > 0 && outH > 0) {
             f.aspect = double(outW) / outH;
             f.look = inset::fitted(f.aspect, outW, outH, false);
@@ -629,7 +629,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     job.trimInMs = c.trimInMs;
     job.trimOutMs = c.trimOutMs;
     job.speed = c.speed;
-    job.colorGrade = c.color.render();
+    job.colorGrade = c.renderGrade();
     job.blur = privacy.blurFor(c);
     job.lensGuard = c.lensGuard;
     job.lensCalibration = c.lensCalibration;

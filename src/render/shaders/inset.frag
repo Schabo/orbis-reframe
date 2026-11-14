@@ -26,6 +26,7 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 #include "color_grade.glsl"
+#include "clip_effects.glsl"
 
 void main() {
     vec2 p = gl_FragCoord.xy - pc.origin; // pixel centre, output-rect px
@@ -44,5 +45,8 @@ void main() {
     if (alpha <= 0.0)
         discard;
     vec3 c = gradeColor(t.a > 0.0 ? min(t.rgb / t.a, vec3(1.0)) : vec3(0.0), pc.grade, pc.lut, 1.0);
+#ifdef EFFECTS
+    c = applyEffects(c, gl_FragCoord.xy, 1.0);
+#endif
     outColor = vec4(mix(c, pc.borderColor.rgb, border), alpha);
 }

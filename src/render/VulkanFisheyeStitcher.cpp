@@ -241,6 +241,16 @@ void recordCanvasFill(VkCommandBuffer cmd, VkBuffer buf, VulkanFisheyeStitcher::
     vkCmdFillBuffer(cmd, buf, pixels, pixels / 2, (q8(u) | (q8(v) << 8)) * 0x00010001u);
 }
 
+// The output frame in view `v`'s own pixels (clip_effects.glsl's `frame`):
+// the canvas it's one of, or the view alone.
+std::array<float, 4> effectsFrame(const VulkanFisheyeStitcher::ViewRect& v, bool single,
+                                  int canvasW, int canvasH)
+{
+    if (single)
+        return {0.0f, 0.0f, float(v.w), float(v.h)};
+    return {-float(v.x), -float(v.y), float(canvasW), float(canvasH)};
+}
+
 // Whether `views` fit a canvasW x canvasH canvas of `fmt`: inside it, x and
 // w on multiples of 4, h -- and for NV12 / P010's 2 x 2 chroma, y -- even.
 bool viewsFit(int canvasW, int canvasH, const std::vector<VulkanFisheyeStitcher::ViewRect>& views,
@@ -726,6 +736,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
     const VkDescriptorSet rfSets[2] = {d->rfSet, lutSet};
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 0, 2, rfSets,
                             0, nullptr);
+    const bool effects = colorGrade && colorGrade->hasEffects() && d->effects.ready();
     for (const ViewRect& v : views) { // each view, 4 pixels per invocation
         rp.outW = v.w;
         rp.outH = v.h;
@@ -739,12 +750,17 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         rp.distortion = lens.distortion;
         rp.stab[3] = lens.panini;  // the first column's padding (ReframePush)
         rp.stab[7] = lens.fisheye; // the second's
-        // A view with Natural or Fisheye takes the pass's view-shape build
-        // (the same layout, so the sets stay bound).
-        if (VkPipeline want = d->viewPassPipeline(true, lens.shaped()); want != rfBound) {
+        // A view with Natural or Fisheye takes the pass's view-shape build,
+        // a clip with effects its effects build (the same layout, so the
+        // sets stay bound); the effects placed against the whole canvas.
+        if (VkPipeline want = d->viewPassPipeline(true, lens.shaped(), effects);
+            want != rfBound) {
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, want);
             rfBound = want;
         }
+        if (effects)
+            d->effects.bind(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 2,
+                            colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data());
         rp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
                            &rp);
@@ -955,6 +971,7 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
     // Pass 1: each view, 4 pixels per invocation.
     vp.pass = 1;
+    const bool effects = colorGrade && colorGrade->hasEffects() && d->effects.ready();
     for (const ViewRect& v : views) {
         vp.outW = v.w;
         vp.outH = v.h;
@@ -968,10 +985,14 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         vp.distortion = lens.distortion;
         vp.stab[3] = lens.panini;  // the first column's padding (ViewPush)
         vp.stab[7] = lens.fisheye; // the second's
-        if (VkPipeline want = d->viewPassPipeline(false, lens.shaped()); want != vwBound) {
+        if (VkPipeline want = d->viewPassPipeline(false, lens.shaped(), effects);
+            want != vwBound) {
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, want); // as above
             vwBound = want;
         }
+        if (effects)
+            d->effects.bind(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeLayout, 2,
+                            colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data());
         vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,

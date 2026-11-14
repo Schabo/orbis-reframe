@@ -26,10 +26,15 @@ struct ReframeView {
     // Gyro de-rotation (row-major 3x3) in the sphere frame, applied to the
     // world ray after the pose -- same as equirect.frag's pc.stab.
     float stab[9] = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
-    // Colour panel: the LUT and the four adjustments; default = neutral.
-    // Same formula as the shaders' color_grade.glsl -- see
-    // ClipItem::ColorGrade.
+    // Colour panel: the LUT and the four adjustments, then the clip's
+    // effects; default = neutral. Same formula as the shaders'
+    // color_grade.glsl and clip_effects.glsl -- see ClipItem::ColorGrade and
+    // fx::ClipEffects.
     color::Grade colorGrade;
+    // The output frame the effects are placed against, in this view's
+    // pixels: x, y of its top-left corner, its width and height. Width 0 =
+    // the view itself.
+    float frame[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 // Reproject an interleaved 8-bit RGBA equirect frame (eqW x eqH) into an
@@ -58,7 +63,12 @@ void RenderRectilinearPanes(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* ou
 
 // Apply a colour grade (as ReframeView::colorGrade) to `pixels` interleaved
 // 8-bit RGBA pixels in place -- the same formula RenderRectilinear grades
-// with. A neutral grade is a no-op.
+// with. A neutral grade is a no-op. Without its effects: they need to know
+// where the picture is.
 void GradeRgba(uint8_t* rgba, size_t pixels, const color::Grade& grade);
+// The same, effects too, for a w x h picture that covers `rect` (x, y,
+// width, height) of a frameW x frameH output frame: a flat clip's picture.
+void GradeRgba(uint8_t* rgba, int w, int h, const color::Grade& grade, const float rect[4],
+               int frameW, int frameH);
 
 } // namespace exportpipe

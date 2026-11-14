@@ -19,6 +19,15 @@ namespace {
 #include "fisheye_view.frag.shape.h"
 #include "reframe_reproject.comp.shape.h"
 #include "fisheye_view_nv12.comp.shape.h"
+#include "equirect.frag.fx.h"
+#include "fisheye_view.frag.fx.h"
+#include "reframe_reproject.comp.fx.h"
+#include "fisheye_view_nv12.comp.fx.h"
+#include "equirect.frag.shape_fx.h"
+#include "fisheye_view.frag.shape_fx.h"
+#include "reframe_reproject.comp.shape_fx.h"
+#include "fisheye_view_nv12.comp.shape_fx.h"
+#include "inset.frag.fx.h"
 } // namespace
 
 namespace render::shaders {
@@ -41,6 +50,15 @@ ORBIS_SPIRV(equirectFragShape, kSpv_equirect_frag_shape)
 ORBIS_SPIRV(fisheyeViewFragShape, kSpv_fisheye_view_frag_shape)
 ORBIS_SPIRV(reframeReprojectCompShape, kSpv_reframe_reproject_comp_shape)
 ORBIS_SPIRV(fisheyeViewNv12CompShape, kSpv_fisheye_view_nv12_comp_shape)
+ORBIS_SPIRV(equirectFragFx, kSpv_equirect_frag_fx)
+ORBIS_SPIRV(fisheyeViewFragFx, kSpv_fisheye_view_frag_fx)
+ORBIS_SPIRV(reframeReprojectCompFx, kSpv_reframe_reproject_comp_fx)
+ORBIS_SPIRV(fisheyeViewNv12CompFx, kSpv_fisheye_view_nv12_comp_fx)
+ORBIS_SPIRV(equirectFragShapeFx, kSpv_equirect_frag_shape_fx)
+ORBIS_SPIRV(fisheyeViewFragShapeFx, kSpv_fisheye_view_frag_shape_fx)
+ORBIS_SPIRV(reframeReprojectCompShapeFx, kSpv_reframe_reproject_comp_shape_fx)
+ORBIS_SPIRV(fisheyeViewNv12CompShapeFx, kSpv_fisheye_view_nv12_comp_shape_fx)
+ORBIS_SPIRV(insetFragFx, kSpv_inset_frag_fx)
 
 #undef ORBIS_SPIRV
 

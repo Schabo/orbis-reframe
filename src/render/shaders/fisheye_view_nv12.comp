@@ -84,6 +84,7 @@ layout(std430, binding = 3) writeonly buffer OutBuf2 { uvec2 px2[]; };
 
 #include "color_grade.glsl"
 #include "view_projection.glsl"
+#include "clip_effects.glsl"
 
 // Output pixel -> sphere (equirect-frame) direction. Same as
 // reframe_reproject.comp's dirFor(): view ray from the FOV and the
@@ -117,6 +118,9 @@ vec3 stitchDir(vec3 sphereDir)
 vec3 shade(int px, int py)
 {
     vec3 c = gradeColor(blurredLenses(stitchDir(viewDir(px, py))), pc.colorGrade, pc.colorLut, 255.0);
+#ifdef EFFECTS
+    c = applyEffects(c, vec2(px, py) + 0.5, 255.0);
+#endif
     vec2 ndc = vec2((float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0,
                     (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0);
     return viewInPicture(ndc, pc.fovY, pc.aspect, pc.distortion VIEW_SHAPE_ARGS) ? c : vec3(0.0);

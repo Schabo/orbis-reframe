@@ -11,7 +11,7 @@ void FrameViewCache::update(const Timeline &timeline)
     std::map<int, Clip> clips;
     for (int i = 0; i < timeline.count(); ++i) {
         const ClipItem &c = timeline.clipAt(i);
-        clips[c.id] = {c.reframe, c.color.render(), c.flat ? pane::Split{} : c.split, c.panes};
+        clips[c.id] = {c.reframe, c.renderGrade(), c.flat ? pane::Split{} : c.split, c.panes};
     }
     std::lock_guard<std::mutex> lk(m_shared->mx);
     m_shared->clips = std::move(clips);

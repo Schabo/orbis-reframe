@@ -395,6 +395,32 @@ void testColorGrade()
     CHECK(px[0] == 195 && px[1] == 165 && px[2] == 135 && px[3] == 255);
 }
 
+// A flat clip's effects: placed against the output frame from where its
+// picture sits in it, so a picture in the frame's middle is untouched and
+// one in its corner darkened -- as fx::applyEffects() says.
+void testEffects()
+{
+    fx::ClipEffects e;
+    e.vignette = fx::Vignette{true, -80.0f, 20.0f, 0.0f};
+    color::Grade g;
+    g.effects = e.render();
+    // Without where it sits: the grade alone (a neutral one: untouched).
+    uint8_t one[4] = {200, 100, 50, 255};
+    exportpipe::GradeRgba(one, 1, g);
+    CHECK(one[0] == 200 && one[1] == 100 && one[2] == 50);
+    // A 2 x 2 picture covering a 20 x 20 rect in the middle of a 1000 x 500
+    // frame, and one in its top-left corner.
+    const auto pic = [] { return std::vector<uint8_t>(16, 200); };
+    std::vector<uint8_t> mid = pic(), corner = pic();
+    const float midRect[4] = {490, 240, 20, 20}, cornerRect[4] = {0, 0, 20, 20};
+    exportpipe::GradeRgba(mid.data(), 2, 2, g, midRect, 1000, 500);
+    exportpipe::GradeRgba(corner.data(), 2, 2, g, cornerRect, 1000, 500);
+    CHECK(mid[0] == 200 && mid[15] == 200); // alpha untouched
+    float want[3] = {200, 200, 200};
+    fx::applyEffects(want, 5.0f, 5.0f, 1000.0f, 500.0f, g.effects, 255.0f);
+    CHECK(corner[0] == uint8_t(want[0] + 0.5f) && corner[0] < 100 && corner[3] == 200);
+}
+
 } // namespace
 
 // A layer whose pictures come from a PictureSource (a transition's other
@@ -605,6 +631,7 @@ int main()
     testReaderNv12(dir);
     testFullFrameCopy(dir);
     testColorGrade();
+    testEffects();
     testFitted();
     testPictureLayer();
     testMotion();

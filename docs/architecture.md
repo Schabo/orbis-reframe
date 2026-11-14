@@ -130,8 +130,14 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    For speed, the viewport and the GPU export usually go straight from the
    fisheyes to the view (`fisheye_view.frag`, `fisheye_view_nv12.comp`)
    instead of building an equirect first.
-4. **Grade**: the clip's LUT and the Colour panel's adjustments
-   (`color::Grade`), applied to the flat picture.
+4. **Grade and effects**: the clip's LUT and the Colour panel's adjustments
+   (`color::Grade`), applied to the flat picture, then the clip's video
+   effects (`fx::ClipEffects`, `src/core/ClipEffects.h`) in the same pass.
+   A clip has at most one of each effect, run in a fixed order. Per-pixel
+   effects are placed against the whole output frame, not the pane or
+   inset being drawn; the picture outside the clip's (a split's divider, a
+   flat clip's bars) is left alone. The subject tracker and the plate scan
+   see the picture without them.
 5. **Compose and encode**: overlays, titles, gauges and transitions on top, then the
    encoder (NVENC, else VA-API, else Vulkan encode). The export is 8-bit
    NV12, or P010 into HEVC Main 10 when the project asks for 10-bit
@@ -167,6 +173,14 @@ a shape runs code that doesn't contain it. A new per-keyframe shape goes
 into the view-shape build; adding one there can move the last bit of that
 build's existing pictures (Fisheye did, for some Natural frames), so
 measure it and say so.
+
+The four view shaders and `inset.frag` (a flat clip's picture) also have an
+effects build (`EFFECTS`, `clip_effects.glsl`, with and without the view
+shape), for a clip with video effects; a clip without them is drawn by the
+builds above, unchanged. The effects' settings don't fit the push
+constants (full at Vulkan's guaranteed 128 bytes): they come in a small
+uniform buffer, set 2 (`render::VulkanEffectsRing`). The CPU export's twin
+is `fx::applyEffects()`; change both together.
 
 A split clip's picture is several views, one per pane: where each pane
 goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)

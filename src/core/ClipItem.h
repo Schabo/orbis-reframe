@@ -146,6 +146,14 @@ struct ClipItem {
     // Video effects (Effects library / section), on the picture after the
     // grade. See fx::ClipEffects.
     fx::ClipEffects effects;
+    // What the renderers apply to the clip's picture: its grade
+    // (ColorGrade::render) and its effects.
+    color::Grade renderGrade(std::string *lutError = nullptr) const
+    {
+        color::Grade g = color.render(lutError);
+        g.effects = effects.render();
+        return g;
+    }
 
     // Gyro stabilization (Stabilization panel: Off / Lean follow / Horizon
     // lock / Custom). Applied at reprojection time, composed with the reframe
