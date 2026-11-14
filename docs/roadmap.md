@@ -16,8 +16,36 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-Nothing is scheduled; everything planned is under *Planned, not
-scheduled* below.
+1. **Split screen, angles picked automatically** (*maintainer*): split
+   screen is built (a clip's picture in 2 or 4 panes, each with its own
+   keyframes, placed by `pane::rects` in `src/core/PaneLayout.h`
+   everywhere a view is drawn). Next, panes that choose their own
+   direction -- e.g. one following a subject found in the clip -- written
+   as ordinary pane keyframes, so they stay editable.
+2. **Video effects** (*maintainer*): a library of effects in the left
+   sidebar's **Effects** tab, dragged onto a clip and adjusted in the
+   right sidebar. Starting with a few simple ones: vignette, sharpen, film
+   grain, colour presets (reusing the LUT code). Lens filters are video
+   effects too: a **computed ND** filter -- the motion blur a longer
+   shutter would give, with a strength in stops and ND16 / ND32 / ND64
+   presets that multiply the exposure time the camera recorded per frame
+   (up to one frame interval), blurred along the stabilized view's motion
+   (from the gyro and the keyframes) and the scene's (optical flow, with
+   the view's motion alone as the fallback); a **graduated ND** that
+   darkens the sky against the horizon on the sphere, so it stays on the
+   sky however the view is reframed; diffusion / mist and a star filter.
+   The split screen layouts (side by side, stacked, grid) join the library
+   as **Layouts** to drop on a clip: a drop sets the clip's split, as its
+   **Split screen** section does. Split screen isn't an effect -- it is
+   several views into the sphere, not a filter on the flat picture -- so
+   it keeps its own section and its place in the clip. To settle before
+   building: video effects run on the flat picture after the colour grade,
+   a few (graduated ND) on the sphere before the reframe; how effects
+   stack per clip and are stored in the project, with room for the audio
+   effects later; what preview costs (the viewport shows the same blur as
+   the export).
+
+Everything else planned is under *Planned, not scheduled* below.
 
 ## Other cameras -- ongoing
 
@@ -201,27 +229,9 @@ each is in its document in [`formats/`](formats/README.md).
   per-model table, fields read from the file -- not in model checks spread
   through the code.
 
-- **Effects library**: a library of video and audio effects in the left
-  sidebar's **Effects** tab, dragged onto a clip and adjusted in the right
-  sidebar. Starting with a few simple ones: video -- vignette, sharpen, film
-  grain, colour presets (reusing the LUT code); audio -- EQ, compressor, the
-  existing noise filters as presets. Lens filters are video effects too: a
-  **computed ND** filter -- the motion blur a longer shutter would give,
-  with a strength in stops and ND16 / ND32 / ND64 presets that multiply the
-  exposure time the camera recorded per frame (up to one frame interval),
-  blurred along the stabilized view's motion (from the gyro and the
-  keyframes) and the scene's (optical flow, with the view's motion alone as
-  the fallback); a **graduated ND** that darkens the sky against the
-  horizon on the sphere, so it stays on the sky however the view is
-  reframed; diffusion / mist and a star filter. The split screen layouts
-  (side by side, stacked, grid) join the library as **Layouts** to drop
-  on a clip: a drop sets the clip's split, as its **Split screen** section
-  does. Split screen isn't an effect -- it is several views into the
-  sphere, not a filter on the flat picture -- so it keeps its own section
-  and its place in the clip. To settle before building: video effects run on the flat
-  picture after the colour grade, a few (graduated ND) on the sphere before
-  the reframe; how effects stack per clip and are stored in the project;
-  what preview costs (the viewport shows the same blur as the export).
+- **Audio effects**: audio effects in the same **Effects** library as the
+  video effects (see *Next*), after them: EQ, compressor, the existing
+  noise filters as presets.
 - **Keyframes**: hold keys, a smooth curve through all keys (no overshoot on
   the field of view), a default easing for new keys.
 - **Transitions**: more types (dip to a colour, wipes, a move through the
@@ -250,12 +260,6 @@ each is in its document in [`formats/`](formats/README.md).
   and the heading corrected from the GPS course where a clip has one.
 - **ProRes export** (maybe DNxHR) for handing off to other editors, beside
   H.264 / H.265.
-- **Split screen, angles picked automatically**: split screen is built (a
-  clip's picture in 2 or 4 panes, each with its own keyframes, placed by
-  `pane::rects` in `src/core/PaneLayout.h` everywhere a view is drawn).
-  Next, panes that choose their own direction -- e.g. one following a
-  subject found in the clip -- written as ordinary pane keyframes, so they
-  stay editable.
 - **Shooting modes**: the camera's special modes recognised and processed
   as such -- timelapse, TimeShift / hyperlapse, bullet time. Sample clips
   wanted.
