@@ -20,10 +20,10 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    sidebar's **Effects** tab, dragged onto a clip and adjusted in the
    right sidebar. Built: the library, a clip's effects (`fx::ClipEffects`
    in `src/core/ClipEffects.h`: at most one of each, in the pipeline's
-   fixed order, saved per clip) and the first effect, a vignette, on every
-   render path (`clip_effects.glsl` and its C++ twin, right after the
-   grade). Next, a few more simple ones: sharpen (its own pass: it needs
-   the neighbouring pixels), film grain, colour presets (reusing the LUT
+   fixed order, saved per clip) and the first effects, a vignette and film
+   grain, on every render path (`clip_effects.glsl` and its C++ twin, right
+   after the grade). Next, a few more simple ones: sharpen (its own pass:
+   it needs the neighbouring pixels), colour presets (reusing the LUT
    code). Lens filters are video
    effects too: a **computed ND** filter -- the motion blur a longer
    shutter would give, with a strength in stops and ND16 / ND32 / ND64

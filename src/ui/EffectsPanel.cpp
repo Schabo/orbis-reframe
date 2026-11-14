@@ -3,6 +3,7 @@
 #include "../core/ClipEffects.h"
 
 #include <QAction>
+#include <QImage>
 #include <QLabel>
 #include <QLinearGradient>
 #include <QMimeData>
@@ -14,7 +15,19 @@ namespace {
 
 constexpr int kNameRole = Qt::UserRole;
 
-// A vignette's tile: a picture's colours, darker toward the corners.
+// The picture the tiles show an effect on: a sky over a field.
+void paintScene(QPainter &p, const QRectF &r)
+{
+    QLinearGradient sky(r.topLeft(), r.bottomLeft());
+    sky.setColorAt(0.0, QColor(0x7a, 0xa6, 0xd0));
+    sky.setColorAt(0.6, QColor(0xc8, 0xb0, 0x80));
+    sky.setColorAt(1.0, QColor(0x6a, 0x7a, 0x4a));
+    p.setPen(Qt::NoPen);
+    p.setBrush(sky);
+    p.drawRoundedRect(r, 4, 4);
+}
+
+// A vignette's tile: the picture, darker toward the corners.
 QIcon vignetteTile(const QSize &size, qreal dpr)
 {
     QPixmap pm(size * dpr);
@@ -23,19 +36,47 @@ QIcon vignetteTile(const QSize &size, qreal dpr)
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);
     const QRectF r(QPointF(0, 0), QSizeF(size));
-    QLinearGradient sky(r.topLeft(), r.bottomLeft());
-    sky.setColorAt(0.0, QColor(0x7a, 0xa6, 0xd0));
-    sky.setColorAt(0.6, QColor(0xc8, 0xb0, 0x80));
-    sky.setColorAt(1.0, QColor(0x6a, 0x7a, 0x4a));
-    p.setPen(Qt::NoPen);
-    p.setBrush(sky);
-    p.drawRoundedRect(r, 4, 4);
+    paintScene(p, r);
     QRadialGradient dark(r.center(), r.width() * 0.62);
     dark.setColorAt(0.45, QColor(0, 0, 0, 0));
     dark.setColorAt(1.0, QColor(0, 0, 0, 220));
     p.setBrush(dark);
     p.drawRoundedRect(r, 4, 4);
     return QIcon(pm);
+}
+
+// Grain's tile: the picture with fx::applyEffects()' own grain on it, big
+// enough to see at the tile's size.
+QIcon grainTile(const QSize &size, qreal dpr)
+{
+    QImage img(size * dpr, QImage::Format_ARGB32_Premultiplied);
+    img.setDevicePixelRatio(dpr);
+    img.fill(Qt::transparent);
+    {
+        QPainter p(&img);
+        p.setRenderHint(QPainter::Antialiasing);
+        paintScene(p, QRectF(QPointF(0, 0), QSizeF(size)));
+    }
+    fx::ClipEffects e;
+    e.grain = fx::Grain{true, 70.0f, 100.0f, 0.0f};
+    fx::Render r = e.render();
+    r.grain[1] = float(img.height()) / 2.0f; // grains two pixels wide
+    for (int y = 0; y < img.height(); ++y) {
+        auto *line = reinterpret_cast<QRgb *>(img.scanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            const QRgb c = line[x];
+            const int a = qAlpha(c);
+            if (a == 0)
+                continue;
+            float rgb[3] = {float(qRed(c)) * 255 / a, float(qGreen(c)) * 255 / a,
+                            float(qBlue(c)) * 255 / a};
+            fx::applyEffects(rgb, x + 0.5f, y + 0.5f, float(img.width()), float(img.height()),
+                             r, 255.0f);
+            line[x] = qPremultiply(qRgba(int(rgb[0] + 0.5f), int(rgb[1] + 0.5f),
+                                         int(rgb[2] + 0.5f), a));
+        }
+    }
+    return QIcon(QPixmap::fromImage(img));
 }
 
 } // namespace
@@ -85,6 +126,10 @@ EffectsPanel::EffectsPanel(QWidget *parent) : QWidget(parent)
     vignette->setData(kNameRole, QString::fromLatin1(fx::kVignette));
     vignette->setToolTip(tr("Darker (or lighter) toward the edges of the picture. Drag it onto "
                             "a clip, or double-click to put it on the clip at the playhead."));
+    auto *grain = new QListWidgetItem(grainTile(tile, devicePixelRatioF()), tr("Grain"), m_list);
+    grain->setData(kNameRole, QString::fromLatin1(fx::kGrain));
+    grain->setToolTip(tr("Film grain over the picture, new on every frame. Drag it onto a "
+                         "clip, or double-click to put it on the clip at the playhead."));
     m_list->setCurrentItem(vignette);
     const auto add = [this] {
         if (const QListWidgetItem *item = m_list->currentItem())

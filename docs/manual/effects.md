@@ -1,8 +1,9 @@
 # Effects
 
 Effects change the look of a clip's picture after its colour. For now
-there is one, the **Vignette**: the picture gets darker (or lighter) toward
-its edges, drawing the eye to the middle. More are planned.
+there are two: the **Vignette**, which makes the picture darker (or lighter)
+toward its edges and draws the eye to the middle, and **Grain**, the
+look of film. More are planned.
 
 ![A clip with a vignette, the Effects tab, the clip's Effects section, and the ✦ on clips with an effect](images/effects.jpg)
 
@@ -17,8 +18,8 @@ its edges, drawing the eye to the middle. More are planned.
 Open the media sidebar's **Effects** tab
 (<img src="images/icons/tab-effects.png" width="24" alt="">), then:
 
-- drag **Vignette** onto a clip on the video track: the clip it would go
-  on is outlined; or
+- drag an effect (**Vignette**, **Grain**) onto a clip on the video track:
+  the clip it would go on is outlined; or
 - double-click it (or select it and press `Enter`, or right-click it and
   choose **Add to the clip at the playhead**) to put it on the selected
   clip, or else the clip under the playhead.
@@ -61,10 +62,32 @@ corners. It belongs to the whole video picture:
 - A flat video with bars at its sides gets darker toward the corners of
   the video too; the bars stay black.
 
+### Grain
+
+| Setting | What it does | Range |
+|---|---|---|
+| **Amount** | How strong the grain is. It is strongest in the midtones: black and white stay clean. | 0 % to 100 % (new: 25 %) |
+| **Size** | How big a grain is: at 100 % one pixel of a 1080p video. | 50 % to 300 % (new: 100 %) |
+| **Colour** | At 0 % the grain is grey, the same in red, green and blue. Toward 100 % each colour gets its own grain. | 0 % to 100 % (new: 0 %) |
+
+The grain is new on every frame, so it moves when the video plays. A
+paused frame keeps its grain. Its size goes with the video's size, not
+its pixels: a 4K export has the same grain as a 1080p one, just in more
+detail. When a clip runs slower than its own frame rate (slow motion, or a
+25 fps clip in a 50 fps project), a frame shown twice keeps its grain.
+
+The viewport draws the grain at its own size, one grain value per screen
+pixel at most. When the viewport is smaller than the export, the grain
+there looks coarser than in the export, at the export's strength.
+
+Colour grain is softer in an exported video than in the viewport: the
+video stores colour at half the resolution of brightness. Grey grain keeps
+its full detail.
+
 ## Effects and other edits
 
 - Effects come after the [colour](colour.md): the vignette darkens the
-  graded picture.
+  graded picture, then the grain goes on top.
 - The halves of a split clip and a duplicated clip keep its effects.
 - A transition blends the two clips with their effects.
 - [Track subject](reframing.md#track-subject) and the number-plate scan

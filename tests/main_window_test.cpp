@@ -1046,12 +1046,35 @@ void testEffects(const Ctx &c)
     CHECK(c.timeline->clipById(b)->effects.isEmpty() && none->isVisibleTo(c.w));
     CHECK(c.timeline->clipById(a)->effects.vignette.has_value());
 
+    // Grain beside the vignette: its own rows, edited on their own.
+    settle();
+    emit c.timelineWidget->effectDropped(a, QString::fromLatin1(fx::kGrain));
+    auto *grainAmount = find<QSlider>(c.w, "grainAmount");
+    auto *grainColour = find<QSlider>(c.w, "grainColour");
+    auto *grainRemove = find<QToolButton>(c.w, "grainRemove");
+    CHECK(grainAmount && grainColour && grainRemove);
+    if (!grainAmount || !grainColour || !grainRemove)
+        return;
+    clip = c.timeline->clipById(a);
+    CHECK(clip->effects.grain && *clip->effects.grain == fx::Grain{} && clip->effects.vignette);
+    CHECK(grainAmount->isVisibleTo(c.w) && grainAmount->value() == 25 &&
+          amount->isVisibleTo(c.w) && amount->value() == -70);
+    settle();
+    grainColour->setValue(40);
+    CHECK(c.timeline->clipById(a)->effects.grain->colour == 40.0f &&
+          c.timeline->clipById(a)->effects.vignette->amount == -70.0f);
+    CHECK(c.w->viewport()->CurrentColorGrade().effects == c.timeline->clipById(a)->effects.render());
+    settle();
+    grainRemove->click();
+    CHECK(!c.timeline->clipById(a)->effects.grain && c.timeline->clipById(a)->effects.vignette &&
+          !grainAmount->isVisibleTo(c.w));
+
     // Undo back to none (undo rebuilds the clips: new ids).
     settle();
     const auto clean = [&] {
         return c.timeline->clipAt(0).effects.isEmpty() && c.timeline->clipAt(1).effects.isEmpty();
     };
-    for (int i = 0; i < 8 && !clean(); ++i)
+    for (int i = 0; i < 16 && !clean(); ++i)
         undo->trigger();
     CHECK(clean());
     emit c.timelineWidget->clipSelected(0);

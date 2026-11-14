@@ -21,72 +21,113 @@ ClipEffectsPanel::ClipEffectsPanel(QWidget *parent) : SettingsPanel(tr("Effects"
     m_none->setWordWrap(true);
     form()->addRow(m_none);
 
-    // Vignette: its heading -- the name, on / off, Remove -- then its rows.
-    m_vignetteHead = new QWidget(this);
-    auto *head = new QHBoxLayout(m_vignetteHead);
-    head->setContentsMargins(0, 0, 0, 0);
-    m_vignetteOn = new QCheckBox(tr("Vignette"), m_vignetteHead);
-    m_vignetteOn->setObjectName(QStringLiteral("vignetteOn"));
-    m_vignetteOn->setToolTip(tr("Untick to see the clip without it; its settings are kept."));
-    m_vignetteRemove = new QToolButton(m_vignetteHead);
-    m_vignetteRemove->setObjectName(QStringLiteral("vignetteRemove"));
-    m_vignetteRemove->setText(tr("Remove"));
-    m_vignetteRemove->setToolTip(tr("Take the vignette off this clip."));
-    head->addWidget(m_vignetteOn, 1);
-    head->addWidget(m_vignetteRemove);
-    form()->addRow(m_vignetteHead);
+    // In the order they run.
+    m_vignette = addGroup(fx::kVignette, tr("Vignette"), tr("Take the vignette off this clip."),
+                          QStringLiteral("vignette"));
+    addSetting(m_vignette, tr("Amount"), int(fx::Vignette::kMinAmount),
+               int(fx::Vignette::kMaxAmount), QStringLiteral("vignetteAmount"),
+               tr("Below 0 the edges get darker, -100 % black; above 0 lighter, 100 % white."));
+    addSetting(m_vignette, tr("Size"), 0, 100, QStringLiteral("vignetteSize"),
+               tr("Where it starts: 0 % in the middle of the picture, 100 % in its corners."));
+    addSetting(m_vignette, tr("Softness"), 0, 100, QStringLiteral("vignetteSoftness"),
+               tr("How gradually it comes in: 0 % a hard edge."));
 
-    m_vignetteAmountRow = panelfields::sliderRow(this, int(fx::Vignette::kMinAmount),
-                                                 int(fx::Vignette::kMaxAmount), &m_vignetteAmount,
-                                                 &m_vignetteAmountValue);
-    m_vignetteAmount->setObjectName(QStringLiteral("vignetteAmount"));
-    m_vignetteAmountValue->setMinimumWidth(
-        fontMetrics().horizontalAdvance(QStringLiteral("-100%")));
-    m_vignetteAmount->setToolTip(tr("Below 0 the edges get darker, -100 % black; above 0 "
-                                    "lighter, 100 % white."));
-    form()->addRow(tr("Amount"), m_vignetteAmountRow);
-    m_vignetteSizeRow =
-        panelfields::sliderRow(this, 0, 100, &m_vignetteSize, &m_vignetteSizeValue);
-    m_vignetteSize->setObjectName(QStringLiteral("vignetteSize"));
-    m_vignetteSize->setToolTip(tr("Where it starts: 0 % in the middle of the picture, 100 % "
-                                  "in its corners."));
-    form()->addRow(tr("Size"), m_vignetteSizeRow);
-    m_vignetteSoftnessRow =
-        panelfields::sliderRow(this, 0, 100, &m_vignetteSoftness, &m_vignetteSoftnessValue);
-    m_vignetteSoftness->setObjectName(QStringLiteral("vignetteSoftness"));
-    m_vignetteSoftness->setToolTip(tr("How gradually it comes in: 0 % a hard edge."));
-    form()->addRow(tr("Softness"), m_vignetteSoftnessRow);
+    m_grain = addGroup(fx::kGrain, tr("Grain"), tr("Take the grain off this clip."),
+                       QStringLiteral("grain"));
+    addSetting(m_grain, tr("Amount"), 0, 100, QStringLiteral("grainAmount"),
+               tr("How strong the grain is. It is strongest in the midtones; black and white "
+                  "stay clean."));
+    addSetting(m_grain, tr("Size"), int(fx::Grain::kMinSize), int(fx::Grain::kMaxSize),
+               QStringLiteral("grainSize"),
+               tr("How big a grain is: 100 % is one pixel of a 1080p video, and it scales "
+                  "with the export size."));
+    addSetting(m_grain, tr("Colour"), 0, 100, QStringLiteral("grainColour"),
+               tr("0 % grey grain, the same in red, green and blue; 100 % each colour its "
+                  "own."));
 
     setHint(tr("Applies to this clip in playback and export, after Colour."));
     setState({});
+}
 
-    const auto percent = [this](QSlider *s, QLabel *value) {
-        connect(s, &QSlider::valueChanged, this, [this, value](int v) {
-            value->setText(tr("%1%").arg(v));
-            emitIfEdited();
-        });
-    };
-    percent(m_vignetteAmount, m_vignetteAmountValue);
-    percent(m_vignetteSize, m_vignetteSizeValue);
-    percent(m_vignetteSoftness, m_vignetteSoftnessValue);
-    connect(m_vignetteOn, &QCheckBox::toggled, this, [this] { emitIfEdited(); });
-    connect(m_vignetteRemove, &QToolButton::clicked, this, [this] {
+ClipEffectsPanel::Group ClipEffectsPanel::addGroup(const char *name, const QString &label,
+                                                   const QString &removeTip, const QString &id)
+{
+    Group g;
+    g.name = name;
+    g.head = new QWidget(this);
+    auto *head = new QHBoxLayout(g.head);
+    head->setContentsMargins(0, 0, 0, 0);
+    g.on = new QCheckBox(label, g.head);
+    g.on->setObjectName(id + QStringLiteral("On"));
+    g.on->setToolTip(tr("Untick to see the clip without it; its settings are kept."));
+    g.remove = new QToolButton(g.head);
+    g.remove->setObjectName(id + QStringLiteral("Remove"));
+    g.remove->setText(tr("Remove"));
+    g.remove->setToolTip(removeTip);
+    head->addWidget(g.on, 1);
+    head->addWidget(g.remove);
+    form()->addRow(g.head);
+    connect(g.on, &QCheckBox::toggled, this, [this] { emitIfEdited(); });
+    connect(g.remove, &QToolButton::clicked, this, [this, name] {
         fx::ClipEffects e = currentEffects();
-        e.remove(fx::kVignette);
+        e.remove(name);
         emit effectsEdited(e);
     });
+    return g;
+}
+
+void ClipEffectsPanel::addSetting(Group &g, const QString &label, int lo, int hi,
+                                  const QString &id, const QString &tip)
+{
+    Setting s;
+    s.row = panelfields::sliderRow(this, lo, hi, &s.slider, &s.value);
+    s.slider->setObjectName(id);
+    s.slider->setToolTip(tip);
+    s.value->setMinimumWidth(fontMetrics().horizontalAdvance(QStringLiteral("-100%")));
+    form()->addRow(label, s.row);
+    connect(s.slider, &QSlider::valueChanged, this, [this, value = s.value](int v) {
+        value->setText(tr("%1%").arg(v));
+        emitIfEdited();
+    });
+    g.settings.push_back(s);
+}
+
+float ClipEffectsPanel::value(const Group &g, size_t i) const
+{
+    return float(g.settings[i].slider->value());
 }
 
 fx::ClipEffects ClipEffectsPanel::currentEffects() const
 {
     fx::ClipEffects e = m_shown;
     if (e.vignette) {
-        e.vignette->on = m_vignetteOn->isChecked();
-        e.vignette->amount = float(m_vignetteAmount->value());
-        e.vignette->size = float(m_vignetteSize->value());
-        e.vignette->softness = float(m_vignetteSoftness->value());
+        e.vignette->on = m_vignette.on->isChecked();
+        e.vignette->amount = value(m_vignette, 0);
+        e.vignette->size = value(m_vignette, 1);
+        e.vignette->softness = value(m_vignette, 2);
+    }
+    if (e.grain) {
+        e.grain->on = m_grain.on->isChecked();
+        e.grain->amount = value(m_grain, 0);
+        e.grain->size = value(m_grain, 1);
+        e.grain->colour = value(m_grain, 2);
     }
     return e;
+}
+
+void ClipEffectsPanel::showGroup(const Group &g, bool present, bool on,
+                                 std::initializer_list<float> values)
+{
+    form()->setRowVisible(g.head, present);
+    g.on->setChecked(on);
+    size_t i = 0;
+    for (float x : values) {
+        const Setting &s = g.settings[i++];
+        form()->setRowVisible(s.row, present);
+        const int v = std::clamp(int(std::lround(x)), s.slider->minimum(), s.slider->maximum());
+        s.slider->setValue(v);
+        s.value->setText(tr("%1%").arg(v));
+    }
 }
 
 void ClipEffectsPanel::setState(const fx::ClipEffects &effects)
@@ -94,26 +135,21 @@ void ClipEffectsPanel::setState(const fx::ClipEffects &effects)
     m_updating = true;
     setBodyEnabled(true);
     m_shown = effects;
-    const bool vignette = effects.vignette.has_value();
     form()->setRowVisible(m_none, effects.isEmpty());
-    for (QWidget *row : {m_vignetteHead, m_vignetteAmountRow, m_vignetteSizeRow,
-                         m_vignetteSoftnessRow})
-        form()->setRowVisible(row, vignette);
     const fx::Vignette v = effects.vignette.value_or(fx::Vignette{});
-    m_vignetteOn->setChecked(v.on);
-    const auto show = [this](QSlider *s, QLabel *value, float x) {
-        const int i = std::clamp(int(std::lround(x)), s->minimum(), s->maximum());
-        s->setValue(i);
-        value->setText(tr("%1%").arg(i));
-    };
-    show(m_vignetteAmount, m_vignetteAmountValue, v.amount);
-    show(m_vignetteSize, m_vignetteSizeValue, v.size);
-    show(m_vignetteSoftness, m_vignetteSoftnessValue, v.softness);
-    for (QWidget *w : {static_cast<QWidget *>(m_vignetteAmount),
-                       static_cast<QWidget *>(m_vignetteSize),
-                       static_cast<QWidget *>(m_vignetteSoftness)})
-        w->setEnabled(v.on);
+    showGroup(m_vignette, effects.vignette.has_value(), v.on, {v.amount, v.size, v.softness});
+    const fx::Grain g = effects.grain.value_or(fx::Grain{});
+    showGroup(m_grain, effects.grain.has_value(), g.on, {g.amount, g.size, g.colour});
+    enableSettings(effects);
     m_updating = false;
+}
+
+void ClipEffectsPanel::enableSettings(const fx::ClipEffects &e)
+{
+    for (const auto &[g, on] : {std::pair{&m_vignette, !e.vignette || e.vignette->on},
+                                std::pair{&m_grain, !e.grain || e.grain->on}})
+        for (const Setting &s : g->settings)
+            s.slider->setEnabled(on);
 }
 
 void ClipEffectsPanel::setNoClip()
@@ -127,10 +163,7 @@ void ClipEffectsPanel::emitIfEdited()
     if (m_updating)
         return;
     const fx::ClipEffects e = currentEffects();
-    for (QWidget *w : {static_cast<QWidget *>(m_vignetteAmount),
-                       static_cast<QWidget *>(m_vignetteSize),
-                       static_cast<QWidget *>(m_vignetteSoftness)})
-        w->setEnabled(!e.vignette || e.vignette->on);
+    enableSettings(e);
     if (e != m_shown) {
         m_shown = e;
         emit effectsEdited(e);
