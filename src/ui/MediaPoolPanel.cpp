@@ -13,12 +13,15 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollBar>
+#include <QStackedWidget>
 #include <QStyledItemDelegate>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 
 #include <algorithm>
+#include <cmath>
 
 #include "DoubleClickToAddList.h"
 #include "DurationText.h"
@@ -29,6 +32,15 @@ namespace {
 constexpr int kPad = 6;
 constexpr int kFolderRowH = 26;
 constexpr int kRadius = 3;
+constexpr int kListThumbW = 80;
+constexpr int kListThumbH = 45;
+constexpr int kGridThumbW = 160;
+constexpr int kGridThumbH = 90;
+constexpr int kGridLineH = 18;
+constexpr double kZoomStep = 1.15;
+constexpr double kMinThumbScale = 0.5;
+constexpr double kMaxListScale = 3.0;
+constexpr double kMaxGridScale = 2.5;
 
 QString fpsText(double fps)
 {
@@ -81,6 +93,80 @@ QString iconFor(MediaItem::Kind kind)
     return QStringLiteral("music");
 }
 
+// Local files and folders among a drag's URLs; empty for a drag from the
+// view itself.
+QStringList mediaDropPaths(const QDropEvent *e, const QWidget *source)
+{
+    QStringList out;
+    if (e->source() == source || !e->mimeData()->hasUrls())
+        return out;
+    for (const QUrl &u : e->mimeData()->urls()) {
+        if (!u.isLocalFile())
+            continue;
+        const QString path = u.toLocalFile();
+        if (QFileInfo(path).isDir() || media::kindForPath(path))
+            out << path;
+    }
+    return out;
+}
+
+// The empty pool's hint, the same in both views.
+void paintEmptyMediaHint(QWidget *viewport)
+{
+    QPainter p(viewport);
+    p.setPen(theme::colors().textDim);
+    p.drawText(viewport->rect().adjusted(16, 16, -16, -16), Qt::AlignCenter | Qt::TextWordWrap,
+               MediaPoolPanel::tr("No media yet.\n\nImport files or a folder, or drop them here. "
+                                  "Drag them from here onto the timeline."));
+}
+
+// A file's picture: the thumbnail, or the kind's icon on a plain area; the
+// play button under the mouse (pause on the previewed file), and the
+// previewed file's ring. The same on a list row and a grid cell.
+void paintFileThumb(QPainter *p, const QRectF &thumbRect, const QModelIndex &index, bool hover,
+                    const theme::Colors &tc)
+{
+    const bool missing = index.data(MediaPoolPanel::MissingRole).toBool();
+    const auto kind = MediaItem::Kind(index.data(MediaPoolPanel::KindRole).toInt());
+    const auto preview =
+        MediaPoolPanel::Preview(index.data(MediaPoolPanel::PreviewRole).toInt());
+    p->save();
+    QPainterPath shape;
+    shape.addRoundedRect(thumbRect, kRadius, kRadius);
+    p->setClipPath(shape);
+    const QImage thumb = index.data(MediaPoolPanel::ThumbnailRole).value<QImage>();
+    if (!thumb.isNull() && !missing) {
+        p->drawImage(thumbRect, thumb);
+    } else {
+        p->fillRect(thumbRect, tc.window);
+        const QRect icon(0, 0, 20, 20);
+        theme::icon(missing ? QStringLiteral("triangle-alert") : iconFor(kind))
+            .paint(p, icon.translated(thumbRect.center().toPoint() - icon.center()),
+                   Qt::AlignCenter, missing ? QIcon::Normal : QIcon::Disabled);
+    }
+    if (!missing && (hover || preview != MediaPoolPanel::Preview::None)) {
+        constexpr qreal kButton = 26;
+        const QRectF button(thumbRect.center() - QPointF(kButton / 2, kButton / 2),
+                            QSizeF(kButton, kButton));
+        QColor disc = tc.window;
+        disc.setAlpha(preview != MediaPoolPanel::Preview::None ? 235 : 200);
+        p->setPen(Qt::NoPen);
+        p->setBrush(disc);
+        p->drawEllipse(button);
+        const QRect icon(0, 0, 16, 16);
+        theme::icon(preview == MediaPoolPanel::Preview::Playing ? QStringLiteral("pause")
+                                                                : QStringLiteral("play"),
+                    theme::IconTone::Accent)
+            .paint(p, icon.translated(button.center().toPoint() - icon.center()));
+    }
+    p->restore();
+    if (preview != MediaPoolPanel::Preview::None) {
+        p->setPen(QPen(tc.accent, 2));
+        p->setBrush(Qt::NoBrush);
+        p->drawRoundedRect(thumbRect.adjusted(-1, -1, 1, 1), kRadius + 1, kRadius + 1);
+    }
+}
+
 class MediaRowDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -89,7 +175,11 @@ public:
     {
         if (index.data(MediaPoolPanel::FolderRole).toBool())
             return {option.rect.width(), kFolderRowH};
-        return {option.rect.width(), MediaPoolPanel::thumbnailSize().height() + 2 * kPad};
+        const auto *list = qobject_cast<const MediaPoolList *>(parent());
+        const int thumbH = list ? list->thumbSize().height() : kListThumbH;
+        // Small pictures still leave the three text lines their height.
+        return {option.rect.width(),
+                std::max(thumbH + 2 * kPad, 3 * QFontMetrics(option.font).height() + kPad)};
     }
 
     void paint(QPainter *p, const QStyleOptionViewItem &option,
@@ -132,49 +222,11 @@ public:
             p->fillRect(r, tc.button);
 
         const bool missing = index.data(MediaPoolPanel::MissingRole).toBool();
-        const auto kind = MediaItem::Kind(index.data(MediaPoolPanel::KindRole).toInt());
-
-        // Thumbnail, or the kind's icon on a plain area.
-        const QRectF thumbRect(MediaPoolPanel::thumbnailRect(r));
-        QPainterPath shape;
-        shape.addRoundedRect(thumbRect, kRadius, kRadius);
-        p->save();
-        p->setClipPath(shape);
-        const QImage thumb = index.data(MediaPoolPanel::ThumbnailRole).value<QImage>();
-        if (!thumb.isNull() && !missing) {
-            p->drawImage(thumbRect, thumb);
-        } else {
-            p->fillRect(thumbRect, tc.window);
-            const QRect icon(0, 0, 20, 20);
-            theme::icon(missing ? QStringLiteral("triangle-alert") : iconFor(kind))
-                .paint(p, icon.translated(thumbRect.center().toPoint() - icon.center()),
-                       Qt::AlignCenter, missing ? QIcon::Normal : QIcon::Disabled);
-        }
-        // The play button: under the mouse, and on the file previewed
-        // (pause while it plays).
-        const auto preview =
-            MediaPoolPanel::Preview(index.data(MediaPoolPanel::PreviewRole).toInt());
-        if (!missing && (hover || preview != MediaPoolPanel::Preview::None)) {
-            constexpr qreal kButton = 26;
-            const QRectF button(thumbRect.center() - QPointF(kButton / 2, kButton / 2),
-                                QSizeF(kButton, kButton));
-            QColor disc = tc.window;
-            disc.setAlpha(preview != MediaPoolPanel::Preview::None ? 235 : 200);
-            p->setPen(Qt::NoPen);
-            p->setBrush(disc);
-            p->drawEllipse(button);
-            const QRect icon(0, 0, 16, 16);
-            theme::icon(preview == MediaPoolPanel::Preview::Playing ? QStringLiteral("pause")
-                                                                    : QStringLiteral("play"),
-                        theme::IconTone::Accent)
-                .paint(p, icon.translated(button.center().toPoint() - icon.center()));
-        }
-        p->restore();
-        if (preview != MediaPoolPanel::Preview::None) { // the file in the viewport: ringed
-            p->setPen(QPen(tc.accent, 2));
-            p->setBrush(Qt::NoBrush);
-            p->drawRoundedRect(thumbRect.adjusted(-1, -1, 1, 1), kRadius + 1, kRadius + 1);
-        }
+        const auto *list = qobject_cast<const MediaPoolList *>(parent());
+        const QRectF thumbRect =
+            list ? list->thumbRect(r)
+                 : QRectF(r.left() + kPad, r.top() + kPad, kListThumbW, kListThumbH);
+        paintFileThumb(p, thumbRect, index, hover, tc);
 
         // Name (and the in-use mark), kind and length, size and rate.
         const int left = int(thumbRect.right()) + kPad + 2;
@@ -207,6 +259,63 @@ public:
     }
 };
 
+// A grid cell: the file's picture on top, its name and its kind and length
+// under it.
+class MediaCellDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem &, const QModelIndex &) const override
+    {
+        const auto *grid = qobject_cast<const MediaPoolGrid *>(parent());
+        return grid ? grid->cellSize() : QSize(kGridThumbW + 2 * kPad, 130);
+    }
+
+    void paint(QPainter *p, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        const theme::Colors &tc = theme::colors();
+        p->save();
+        p->setRenderHint(QPainter::Antialiasing);
+        const QRect r = option.rect;
+        const QFontMetrics fm(option.font);
+
+        const bool selected = option.state & QStyle::State_Selected;
+        const bool hover = option.state & QStyle::State_MouseOver;
+        if (selected)
+            p->fillRect(r, tc.accentSoft);
+        else if (hover)
+            p->fillRect(r, tc.button);
+
+        const bool missing = index.data(MediaPoolPanel::MissingRole).toBool();
+        const auto *grid = qobject_cast<const MediaPoolGrid *>(parent());
+        const QRectF thumbRect =
+            grid ? grid->thumbRect(r)
+                 : QRectF(r.left() + kPad, r.top() + kPad, kGridThumbW, kGridThumbH);
+        paintFileThumb(p, thumbRect, index, hover, tc);
+
+        // The in-use mark in the corner.
+        if (index.data(MediaPoolPanel::InUseRole).toBool())
+            theme::icon(QStringLiteral("circle-check"), theme::IconTone::Accent)
+                .paint(p, QRect(r.right() - kPad - 14, r.top() + kPad - 2, 14, 14));
+
+        // Name, then kind and length -- "File not found" when missing.
+        const int left = r.left() + kPad + 2;
+        QRect line(left, int(thumbRect.bottom()) + 4, r.right() - kPad - left, kGridLineH);
+        p->setPen(missing ? tc.error : tc.text);
+        p->drawText(line, Qt::AlignLeft | Qt::AlignVCenter,
+                    fm.elidedText(index.data(Qt::DisplayRole).toString(), Qt::ElideMiddle,
+                                  line.width()));
+        line.translate(0, kGridLineH);
+        p->setPen(missing ? tc.error : tc.textDim);
+        p->drawText(line, Qt::AlignLeft | Qt::AlignVCenter,
+                    fm.elidedText(missing ? QObject::tr("File not found")
+                                          : index.data(MediaPoolPanel::DetailsRole).toString(),
+                                  Qt::ElideRight, line.width()));
+        p->restore();
+    }
+};
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -230,6 +339,43 @@ MediaPoolList::MediaPoolList(QWidget *parent) : QTreeWidget(parent)
     setFrameShape(QFrame::NoFrame);
     setExpandsOnDoubleClick(false);
     setItemDelegate(new MediaRowDelegate(this));
+}
+
+QSize MediaPoolList::thumbSize() const
+{
+    return {int(std::lround(kListThumbW * m_thumbScale)),
+            int(std::lround(kListThumbH * m_thumbScale))};
+}
+
+QRect MediaPoolList::thumbRect(const QRect &row) const
+{
+    const QSize ts = thumbSize();
+    return {row.left() + kPad, row.top() + (row.height() - ts.height()) / 2, ts.width(),
+            ts.height()};
+}
+
+void MediaPoolList::setThumbScale(double scale)
+{
+    scale = std::clamp(scale, kMinThumbScale, kMaxListScale);
+    if (scale == m_thumbScale)
+        return;
+    m_thumbScale = scale;
+    scheduleDelayedItemsLayout();
+    viewport()->update();
+    emit thumbScaleChanged(m_thumbScale);
+}
+
+void MediaPoolList::wheelEvent(QWheelEvent *e)
+{
+    // Ctrl + wheel zooms the files' pictures; the wheel alone scrolls.
+    if (e->modifiers() & Qt::ControlModifier) {
+        const int d = e->angleDelta().y();
+        if (d != 0)
+            setThumbScale(m_thumbScale * std::pow(kZoomStep, d / 120.0));
+        e->accept();
+        return;
+    }
+    QTreeWidget::wheelEvent(e);
 }
 
 QString MediaPoolList::previewPath() const
@@ -283,7 +429,7 @@ void MediaPoolList::mousePressEvent(QMouseEvent *e)
         QTreeWidgetItem *item = itemFromIndex(index);
         if (item && !item->data(0, MediaPoolPanel::FolderRole).toBool() &&
             !item->data(0, MediaPoolPanel::MissingRole).toBool() &&
-            MediaPoolPanel::thumbnailRect(visualRect(index)).contains(e->position().toPoint())) {
+            thumbRect(visualRect(index)).contains(e->position().toPoint())) {
             setCurrentItem(item);
             emit previewClicked(item->data(0, MediaPoolPanel::PathRole).toString());
             e->accept();
@@ -311,24 +457,9 @@ QMimeData *MediaPoolList::mimeData(const QList<QTreeWidgetItem *> &items) const
 
 Qt::DropActions MediaPoolList::supportedDropActions() const { return Qt::CopyAction; }
 
-QStringList MediaPoolList::droppedPaths(const QDropEvent *e) const
-{
-    QStringList out;
-    if (e->source() == this || !e->mimeData()->hasUrls())
-        return out;
-    for (const QUrl &u : e->mimeData()->urls()) {
-        if (!u.isLocalFile())
-            continue;
-        const QString path = u.toLocalFile();
-        if (QFileInfo(path).isDir() || media::kindForPath(path))
-            out << path;
-    }
-    return out;
-}
-
 void MediaPoolList::dragEnterEvent(QDragEnterEvent *e)
 {
-    if (droppedPaths(e).isEmpty()) {
+    if (mediaDropPaths(e, this).isEmpty()) {
         e->ignore();
         return;
     }
@@ -338,7 +469,7 @@ void MediaPoolList::dragEnterEvent(QDragEnterEvent *e)
 
 void MediaPoolList::dragMoveEvent(QDragMoveEvent *e)
 {
-    if (droppedPaths(e).isEmpty()) {
+    if (mediaDropPaths(e, this).isEmpty()) {
         e->ignore();
         return;
     }
@@ -348,7 +479,7 @@ void MediaPoolList::dragMoveEvent(QDragMoveEvent *e)
 
 void MediaPoolList::dropEvent(QDropEvent *e)
 {
-    const QStringList paths = droppedPaths(e);
+    const QStringList paths = mediaDropPaths(e, this);
     if (paths.isEmpty()) {
         e->ignore();
         return;
@@ -361,24 +492,185 @@ void MediaPoolList::dropEvent(QDropEvent *e)
 void MediaPoolList::paintEvent(QPaintEvent *e)
 {
     QTreeWidget::paintEvent(e);
-    if (topLevelItemCount() > 0)
-        return;
-    QPainter p(viewport());
-    p.setPen(theme::colors().textDim);
-    p.drawText(viewport()->rect().adjusted(16, 16, -16, -16), Qt::AlignCenter | Qt::TextWordWrap,
-               tr("No media yet.\n\nImport files or a folder, or drop them here. Drag them from "
-                  "here onto the timeline."));
+    if (topLevelItemCount() == 0)
+        paintEmptyMediaHint(viewport());
 }
 
 // ---------------------------------------------------------------------------
 
-QSize MediaPoolPanel::thumbnailSize() { return {80, 45}; }
-
-QRect MediaPoolPanel::thumbnailRect(const QRect &row)
+MediaPoolGrid::MediaPoolGrid(QWidget *parent) : QListWidget(parent)
 {
-    return {row.left() + kPad, row.top() + kPad, thumbnailSize().width(),
-            thumbnailSize().height()};
+    setObjectName(QStringLiteral("mediaPoolGrid"));
+    setViewMode(QListView::IconMode);
+    setResizeMode(QListView::Adjust);
+    setUniformItemSizes(true);
+    setSelectionMode(QAbstractItemView::ExtendedSelection);
+    setDragEnabled(true);
+    setAcceptDrops(true);
+    setDragDropMode(QAbstractItemView::DragDrop);
+    setDefaultDropAction(Qt::CopyAction);
+    setMouseTracking(true); // hover highlight
+    setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setFrameShape(QFrame::NoFrame);
+    setSpacing(4);
+    setItemDelegate(new MediaCellDelegate(this));
+    setGridSize(cellSize() + QSize(spacing(), spacing()));
 }
+
+QSize MediaPoolGrid::thumbSize() const
+{
+    return {int(std::lround(kGridThumbW * m_thumbScale)),
+            int(std::lround(kGridThumbH * m_thumbScale))};
+}
+
+QSize MediaPoolGrid::cellSize() const
+{
+    const QSize ts = thumbSize();
+    return {ts.width() + 2 * kPad, kPad + ts.height() + 4 + 2 * kGridLineH + kPad};
+}
+
+QRect MediaPoolGrid::thumbRect(const QRect &cell) const
+{
+    const QSize ts = thumbSize();
+    return {cell.left() + (cell.width() - ts.width()) / 2, cell.top() + kPad, ts.width(),
+            ts.height()};
+}
+
+void MediaPoolGrid::setThumbScale(double scale)
+{
+    scale = std::clamp(scale, kMinThumbScale, kMaxGridScale);
+    if (scale == m_thumbScale)
+        return;
+    m_thumbScale = scale;
+    setGridSize(cellSize() + QSize(spacing(), spacing()));
+    scheduleDelayedItemsLayout();
+    viewport()->update();
+    emit thumbScaleChanged(m_thumbScale);
+}
+
+void MediaPoolGrid::wheelEvent(QWheelEvent *e)
+{
+    if (e->modifiers() & Qt::ControlModifier) {
+        const int d = e->angleDelta().y();
+        if (d != 0)
+            setThumbScale(m_thumbScale * std::pow(kZoomStep, d / 120.0));
+        e->accept();
+        return;
+    }
+    QListWidget::wheelEvent(e);
+}
+
+QString MediaPoolGrid::previewPath() const
+{
+    const QListWidgetItem *item = currentItem();
+    if (!item || item->data(MediaPoolPanel::MissingRole).toBool())
+        return {};
+    return item->data(MediaPoolPanel::PathRole).toString();
+}
+
+bool MediaPoolGrid::event(QEvent *e)
+{
+    // Space previews the current file here rather than play the timeline
+    // (the window's shortcut), as in the list.
+    if (e->type() == QEvent::ShortcutOverride) {
+        const auto *k = static_cast<QKeyEvent *>(e);
+        if (k->key() == Qt::Key_Space && k->modifiers() == Qt::NoModifier &&
+            !previewPath().isEmpty()) {
+            e->accept();
+            return true;
+        }
+    }
+    return QListWidget::event(e);
+}
+
+void MediaPoolGrid::keyPressEvent(QKeyEvent *e)
+{
+    if (e->key() == Qt::Key_Space && e->modifiers() == Qt::NoModifier) {
+        if (const QString path = previewPath(); !path.isEmpty()) {
+            if (!e->isAutoRepeat())
+                emit previewKeyPressed(path);
+            e->accept();
+            return;
+        }
+    }
+    QListWidget::keyPressEvent(e);
+}
+
+void MediaPoolGrid::mousePressEvent(QMouseEvent *e)
+{
+    // On a file's picture: its play button, as on a list row.
+    if (e->button() == Qt::LeftButton && e->modifiers() == Qt::NoModifier) {
+        const QModelIndex index = indexAt(e->position().toPoint());
+        QListWidgetItem *item = itemFromIndex(index);
+        if (item && !item->data(MediaPoolPanel::MissingRole).toBool() &&
+            thumbRect(visualRect(index)).contains(e->position().toPoint())) {
+            setCurrentItem(item);
+            emit previewClicked(item->data(MediaPoolPanel::PathRole).toString());
+            e->accept();
+            return;
+        }
+    }
+    QListWidget::mousePressEvent(e);
+}
+
+QStringList MediaPoolGrid::mimeTypes() const { return {QStringLiteral("text/uri-list")}; }
+
+QMimeData *MediaPoolGrid::mimeData(const QList<QListWidgetItem *> &items) const
+{
+    QList<QUrl> urls;
+    for (const QListWidgetItem *item : items)
+        if (!item->data(MediaPoolPanel::MissingRole).toBool())
+            urls << QUrl::fromLocalFile(item->data(MediaPoolPanel::PathRole).toString());
+    if (urls.isEmpty())
+        return nullptr;
+    auto *mime = new QMimeData;
+    mime->setUrls(urls);
+    return mime;
+}
+
+Qt::DropActions MediaPoolGrid::supportedDropActions() const { return Qt::CopyAction; }
+
+void MediaPoolGrid::dragEnterEvent(QDragEnterEvent *e)
+{
+    if (mediaDropPaths(e, this).isEmpty()) {
+        e->ignore();
+        return;
+    }
+    e->setDropAction(Qt::CopyAction);
+    e->accept();
+}
+
+void MediaPoolGrid::dragMoveEvent(QDragMoveEvent *e)
+{
+    if (mediaDropPaths(e, this).isEmpty()) {
+        e->ignore();
+        return;
+    }
+    e->setDropAction(Qt::CopyAction);
+    e->accept();
+}
+
+void MediaPoolGrid::dropEvent(QDropEvent *e)
+{
+    const QStringList paths = mediaDropPaths(e, this);
+    if (paths.isEmpty()) {
+        e->ignore();
+        return;
+    }
+    e->setDropAction(Qt::CopyAction);
+    e->accept();
+    emit filesDropped(paths);
+}
+
+void MediaPoolGrid::paintEvent(QPaintEvent *e)
+{
+    QListWidget::paintEvent(e);
+    if (count() == 0)
+        paintEmptyMediaHint(viewport());
+}
+
+// ---------------------------------------------------------------------------
 
 MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(parent), m_pool(pool)
 {
@@ -404,6 +696,32 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     importFolder->setToolTip(tr("Import folder…: every video and audio file in it"));
     importFolder->setFocusPolicy(Qt::NoFocus);
     connect(importFolder, &QToolButton::clicked, this, &MediaPoolPanel::importFolderRequested);
+    // The two views; the checked one is the shown one.
+    m_viewList = new QToolButton(this);
+    m_viewList->setObjectName(QStringLiteral("mediaViewListButton"));
+    m_viewList->setAutoRaise(true);
+    m_viewList->setCheckable(true);
+    m_viewList->setAutoExclusive(true);
+    m_viewList->setChecked(true);
+    m_viewList->setIcon(theme::icon(QStringLiteral("list")));
+    m_viewList->setToolTip(tr("Show as a list, grouped by folder"));
+    m_viewList->setFocusPolicy(Qt::NoFocus);
+    connect(m_viewList, &QToolButton::toggled, this, [this](bool on) {
+        if (on)
+            setViewMode(ViewMode::List);
+    });
+    m_viewGrid = new QToolButton(this);
+    m_viewGrid->setObjectName(QStringLiteral("mediaViewGridButton"));
+    m_viewGrid->setAutoRaise(true);
+    m_viewGrid->setCheckable(true);
+    m_viewGrid->setAutoExclusive(true);
+    m_viewGrid->setIcon(theme::icon(QStringLiteral("layout-grid")));
+    m_viewGrid->setToolTip(tr("Show as a grid of pictures"));
+    m_viewGrid->setFocusPolicy(Qt::NoFocus);
+    connect(m_viewGrid, &QToolButton::toggled, this, [this](bool on) {
+        if (on)
+            setViewMode(ViewMode::Grid);
+    });
 
     auto *header = new QHBoxLayout;
     header->setContentsMargins(0, 0, 6, 0);
@@ -411,6 +729,8 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     header->addWidget(title, 1);
     header->addWidget(importFiles);
     header->addWidget(importFolder);
+    header->addWidget(m_viewList);
+    header->addWidget(m_viewGrid);
 
     m_status = new QLabel(this);
     m_status->setObjectName(QStringLiteral("mediaPoolStatus"));
@@ -420,6 +740,10 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     connect(m_list, &MediaPoolList::filesDropped, this, &MediaPoolPanel::filesDropped);
     connect(m_list, &MediaPoolList::previewClicked, this, &MediaPoolPanel::previewRequested);
     connect(m_list, &MediaPoolList::previewKeyPressed, this, &MediaPoolPanel::previewRequested);
+    connect(m_list, &MediaPoolList::thumbScaleChanged, this, [this](double scale) {
+        requestThumbnails();
+        emit listScaleChanged(scale);
+    });
     connect(m_list, &QTreeWidget::itemSelectionChanged, this, &MediaPoolPanel::updateActions);
     connect(m_list, &QTreeWidget::itemClicked, this, [](QTreeWidgetItem *item) {
         if (item->data(0, FolderRole).toBool())
@@ -450,7 +774,29 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         m_collapsed.remove(item->data(0, PathRole).toString());
     });
 
-    m_addAction = new QAction(tr("&Add to timeline"), m_list);
+    m_grid = new MediaPoolGrid(this);
+    connect(m_grid, &MediaPoolGrid::filesDropped, this, &MediaPoolPanel::filesDropped);
+    connect(m_grid, &MediaPoolGrid::previewClicked, this, &MediaPoolPanel::previewRequested);
+    connect(m_grid, &MediaPoolGrid::previewKeyPressed, this, &MediaPoolPanel::previewRequested);
+    connect(m_grid, &MediaPoolGrid::thumbScaleChanged, this, [this](double scale) {
+        requestThumbnails();
+        emit gridScaleChanged(scale);
+    });
+    connect(m_grid, &QListWidget::itemSelectionChanged, this, &MediaPoolPanel::updateActions);
+    connect(m_grid, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+        if (item->data(MissingRole).toBool()) {
+            emit locateRequested(item->data(PathRole).toString());
+            return;
+        }
+        if (m_addAction->isEnabled())
+            m_addAction->trigger();
+    });
+
+    m_stack = new QStackedWidget(this);
+    m_stack->addWidget(m_list);
+    m_stack->addWidget(m_grid);
+
+    m_addAction = new QAction(tr("&Add to timeline"), this);
     m_addAction->setObjectName(QStringLiteral("mediaAddToTimelineAction"));
     connect(m_addAction, &QAction::triggered, this, [this] {
         QStringList paths;
@@ -461,7 +807,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
             emit addToTimelineRequested(paths);
     });
     m_locateAction = new QAction(theme::icon(QStringLiteral("folder-open")), tr("&Locate file…"),
-                                 m_list);
+                                 this);
     m_locateAction->setObjectName(QStringLiteral("mediaLocateAction"));
     m_locateAction->setToolTip(tr("Find a moved or renamed file. Other missing files with "
                                   "the same names in that folder are found too."));
@@ -470,26 +816,32 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         if (paths.size() == 1)
             emit locateRequested(paths.first());
     });
-    m_showAction = new QAction(tr("Show in &file manager"), m_list);
+    m_showAction = new QAction(tr("Show in &file manager"), this);
     m_showAction->setObjectName(QStringLiteral("mediaShowInFileManagerAction"));
     connect(m_showAction, &QAction::triggered, this, &MediaPoolPanel::showInFileManager);
     m_removeAction = new QAction(theme::icon(QStringLiteral("x")), tr("&Remove from project"),
-                                 m_list);
+                                 this);
     m_removeAction->setObjectName(QStringLiteral("mediaRemoveAction"));
     m_removeAction->setShortcuts({QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)});
     m_removeAction->setShortcutContext(Qt::WidgetShortcut);
     connect(m_removeAction, &QAction::triggered, this, &MediaPoolPanel::removeSelected);
-    auto *separator = new QAction(m_list);
+    auto *separator = new QAction(this);
     separator->setSeparator(true);
-    m_list->addActions({m_addAction, m_locateAction, m_showAction, separator, m_removeAction});
+    // The same actions on both views: context menu and keys (Delete)
+    // follow whichever is shown.
+    const QList<QAction *> actions{m_addAction, m_locateAction, m_showAction, separator,
+                                   m_removeAction};
+    m_list->addActions(actions);
     m_list->setContextMenuPolicy(Qt::ActionsContextMenu);
+    m_grid->addActions(actions);
+    m_grid->setContextMenuPolicy(Qt::ActionsContextMenu);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addLayout(header);
     layout->addWidget(m_status);
-    layout->addWidget(m_list, 1);
+    layout->addWidget(m_stack, 1);
 
     connect(m_pool, &MediaPool::changed, this, &MediaPoolPanel::rebuild);
     connect(m_pool, &MediaPool::missingChanged, this, &MediaPoolPanel::rebuild);
@@ -541,6 +893,13 @@ void MediaPoolPanel::setInUse(const QSet<QString> &paths)
                                     (inUse ? tr("\nUsed on the timeline") : QString()));
         }
     }
+    for (int i = 0; i < m_grid->count(); ++i) {
+        QListWidgetItem *item = m_grid->item(i);
+        const bool inUse = m_inUse.contains(item->data(PathRole).toString());
+        item->setData(InUseRole, inUse);
+        item->setToolTip(item->data(PathRole).toString() +
+                         (inUse ? tr("\nUsed on the timeline") : QString()));
+    }
     updateActions();
 }
 
@@ -560,6 +919,11 @@ void MediaPoolPanel::setPreview(const QString &path, bool playing)
             item->setData(0, PreviewRole, int(shown ? m_preview : Preview::None));
         }
     }
+    for (int i = 0; i < m_grid->count(); ++i) {
+        QListWidgetItem *item = m_grid->item(i);
+        const bool shown = item->data(PathRole).toString() == m_previewPath;
+        item->setData(PreviewRole, int(shown ? m_preview : Preview::None));
+    }
 }
 
 void MediaPoolPanel::setStatus(const QString &text)
@@ -568,9 +932,38 @@ void MediaPoolPanel::setStatus(const QString &text)
     m_status->setVisible(!text.isEmpty());
 }
 
+void MediaPoolPanel::setViewMode(ViewMode mode)
+{
+    if (mode == m_viewMode)
+        return;
+    const QStringList selected = selectedPaths();
+    m_viewMode = mode;
+    m_stack->setCurrentIndex(mode == ViewMode::Grid ? 1 : 0);
+    m_viewList->setChecked(mode == ViewMode::List);
+    m_viewGrid->setChecked(mode == ViewMode::Grid);
+    if (!selected.isEmpty())
+        selectPaths(selected);
+    updateActions();
+    emit viewModeChanged(mode);
+}
+
+double MediaPoolPanel::listScale() const { return m_list->thumbScale(); }
+
+double MediaPoolPanel::gridScale() const { return m_grid->thumbScale(); }
+
+void MediaPoolPanel::setListScale(double scale) { m_list->setThumbScale(scale); }
+
+void MediaPoolPanel::setGridScale(double scale) { m_grid->setThumbScale(scale); }
+
 QStringList MediaPoolPanel::selectedPaths() const
 {
     QStringList out;
+    if (m_viewMode == ViewMode::Grid) {
+        for (int i = 0; i < m_grid->count(); ++i)
+            if (m_grid->item(i)->isSelected())
+                out << m_grid->item(i)->data(PathRole).toString();
+        return out;
+    }
     for (int i = 0; i < m_list->topLevelItemCount(); ++i) {
         const QTreeWidgetItem *folder = m_list->topLevelItem(i);
         for (int j = 0; j < folder->childCount(); ++j)
@@ -582,6 +975,23 @@ QStringList MediaPoolPanel::selectedPaths() const
 
 void MediaPoolPanel::selectPaths(const QStringList &paths)
 {
+    if (m_viewMode == ViewMode::Grid) {
+        m_grid->clearSelection();
+        QListWidgetItem *first = nullptr;
+        for (int i = 0; i < m_grid->count(); ++i) {
+            QListWidgetItem *item = m_grid->item(i);
+            if (!paths.contains(item->data(PathRole).toString()))
+                continue;
+            item->setSelected(true);
+            if (!first)
+                first = item;
+        }
+        if (first) {
+            m_grid->setCurrentItem(first, QItemSelectionModel::NoUpdate);
+            m_grid->scrollToItem(first);
+        }
+        return;
+    }
     m_list->clearSelection();
     QTreeWidgetItem *first = nullptr;
     for (int i = 0; i < m_list->topLevelItemCount(); ++i) {
@@ -607,7 +1017,10 @@ void MediaPoolPanel::rebuild()
 {
     const QStringList selected = selectedPaths();
     const int scroll = m_list->verticalScrollBar() ? m_list->verticalScrollBar()->value() : 0;
+    const int gridScroll =
+        m_grid->verticalScrollBar() ? m_grid->verticalScrollBar()->value() : 0;
     m_list->clear();
+    m_grid->clear();
 
     // Folder -> its files, folders and files sorted by name.
     QList<MediaItem> items = m_pool->items();
@@ -655,10 +1068,24 @@ void MediaPoolPanel::rebuild()
         item->setFlags(flags);
         folder->setData(0, CountRole, folder->data(0, CountRole).toInt() + 1);
 
-        if (const auto it = m_thumbnails.constFind(m.path); it != m_thumbnails.constEnd())
+        // The same file in the grid: all folders' files together.
+        auto *cell = new QListWidgetItem(fi.fileName(), m_grid);
+        cell->setData(PathRole, m.path);
+        cell->setData(KindRole, int(m.kind));
+        cell->setData(DetailsRole, item->data(0, DetailsRole));
+        cell->setData(FormatRole, item->data(0, FormatRole));
+        cell->setData(MissingRole, m.missing);
+        cell->setData(InUseRole, inUse);
+        cell->setData(PreviewRole, item->data(0, PreviewRole));
+        cell->setToolTip(item->toolTip(0));
+        cell->setFlags(flags);
+
+        if (const auto it = m_thumbnails.constFind(m.path); it != m_thumbnails.constEnd()) {
             item->setData(0, ThumbnailRole, *it);
-        else if (!m.missing)
+            cell->setData(ThumbnailRole, *it);
+        } else if (!m.missing) {
             requestThumbnail(m);
+        }
         if (m.kind == MediaItem::Kind::Clip360 && !m.missing && !m_modes.contains(m.path))
             requestMode(m);
     }
@@ -670,6 +1097,8 @@ void MediaPoolPanel::rebuild()
         selectPaths(selected);
     if (m_list->verticalScrollBar())
         m_list->verticalScrollBar()->setValue(scroll);
+    if (m_grid->verticalScrollBar())
+        m_grid->verticalScrollBar()->setValue(gridScroll);
     updateActions();
 }
 
@@ -692,18 +1121,34 @@ void MediaPoolPanel::updateActions()
                                              "not deleted."));
 }
 
+QSize MediaPoolPanel::thumbnailRequestSize() const
+{
+    const QSize l = m_list->thumbSize(), g = m_grid->thumbSize();
+    return g.width() > l.width() ? g : l;
+}
+
 void MediaPoolPanel::requestThumbnail(const MediaItem &m)
 {
     if (!m_thumbnailProvider)
         return;
     m_thumbnails.insert(m.path, QImage()); // asked for: don't ask again
-    const QSize size = thumbnailSize() * devicePixelRatioF();
+    const QSize size = thumbnailRequestSize() * devicePixelRatioF();
     m_thumbnailPool.start([this, m, size, provider = m_thumbnailProvider] {
         const QImage image = provider(m, size);
         QMetaObject::invokeMethod(
             this, [this, path = m.path, image] { applyThumbnail(path, image); },
             Qt::QueuedConnection);
     });
+}
+
+void MediaPoolPanel::requestThumbnails()
+{
+    // A view's zoom changed: read the pictures again at the new size. The
+    // old ones stay on the items until the new ones arrive.
+    const QList<QString> paths = m_thumbnails.keys();
+    for (const QString &path : paths)
+        if (const MediaItem *m = m_pool->item(path); m && !m->missing)
+            requestThumbnail(*m);
 }
 
 void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image)
@@ -717,6 +1162,9 @@ void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image)
             if (folder->child(j)->data(0, PathRole).toString() == path)
                 folder->child(j)->setData(0, ThumbnailRole, t);
     }
+    for (int i = 0; i < m_grid->count(); ++i)
+        if (m_grid->item(i)->data(PathRole).toString() == path)
+            m_grid->item(i)->setData(ThumbnailRole, t);
 }
 
 void MediaPoolPanel::requestMode(const MediaItem &m)
@@ -743,6 +1191,9 @@ void MediaPoolPanel::applyMode(const QString &path, const QString &mode)
             if (folder->child(j)->data(0, PathRole).toString() == path)
                 folder->child(j)->setData(0, FormatRole, formatText(*m, mode));
     }
+    for (int i = 0; i < m_grid->count(); ++i)
+        if (m_grid->item(i)->data(PathRole).toString() == path)
+            m_grid->item(i)->setData(FormatRole, formatText(*m, mode));
 }
 
 void MediaPoolPanel::removeSelected()

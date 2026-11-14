@@ -31,6 +31,7 @@
 #include <QTest>
 #include <QToolButton>
 #include <QUrl>
+#include <QWheelEvent>
 
 #include <cstdio>
 
@@ -392,6 +393,198 @@ void testMediaTab()
     list->viewport()->repaint();
 }
 
+// The grid view and the views' Ctrl + wheel zoom: the same files flat, the
+// same selection, drops, drags, preview and keys as the list; zoomed rows
+// and cells grow, and thumbnails are read again at the new size.
+void testMediaGridAndZoom()
+{
+    QTemporaryDir tmp;
+    const QString a = tmp.path() + QStringLiteral("/DCIM");
+    const QString b = tmp.path() + QStringLiteral("/Music");
+    QDir().mkpath(a);
+    QDir().mkpath(b);
+    const QString clip = a + QStringLiteral("/VID_1.insv");
+    const QString phone = a + QStringLiteral("/phone.mp4");
+    const QString song = b + QStringLiteral("/song.mp3");
+    const QString gone = b + QStringLiteral("/gone.wav");
+    for (const QString &f : {clip, phone, song})
+        writeFile(f);
+
+    MediaPool pool;
+    pool.add({clip, MediaItem::Kind::Clip360, 42000, 2880, 2880, 29.97});
+    pool.add({phone, MediaItem::Kind::Video, 9000, 1080, 1920, 30.0});
+    pool.add({song, MediaItem::Kind::Audio, 185000});
+    pool.add({gone, MediaItem::Kind::Audio, 1000});
+
+    MediaPoolPanel panel(&pool);
+    panel.resize(400, 500);
+    panel.show();
+    MediaPoolList *list = panel.list();
+    MediaPoolGrid *grid = panel.grid();
+    CHECK(grid && grid->objectName() == QStringLiteral("mediaPoolGrid"));
+    auto *viewList = find<QToolButton>(&panel, "mediaViewListButton");
+    auto *viewGrid = find<QToolButton>(&panel, "mediaViewGridButton");
+    if (!grid || !viewList || !viewGrid)
+        return;
+    CHECK(viewList->isChecked() && !viewGrid->isChecked());
+    CHECK(panel.viewMode() == MediaPoolPanel::ViewMode::List);
+    // Every file, no folder rows, in the list's folder-then-name order.
+    CHECK(grid->count() == 4);
+    CHECK(grid->item(0)->data(MediaPoolPanel::PathRole).toString() == phone);
+    CHECK(grid->item(3)->data(MediaPoolPanel::PathRole).toString() == song);
+    QListWidgetItem *goneCell = nullptr;
+    for (int i = 0; i < grid->count(); ++i)
+        if (grid->item(i)->data(MediaPoolPanel::PathRole).toString() == gone)
+            goneCell = grid->item(i);
+    CHECK(goneCell && goneCell->data(MediaPoolPanel::MissingRole).toBool());
+    CHECK(goneCell && !(goneCell->flags() & Qt::ItemIsDragEnabled));
+
+    // To the grid and back: the selection carries over.
+    panel.selectPaths({clip, phone});
+    viewGrid->click();
+    CHECK(panel.viewMode() == MediaPoolPanel::ViewMode::Grid);
+    CHECK(!list->isVisible() && grid->isVisible());
+    CHECK(panel.selectedPaths() == (QStringList{phone, clip}));
+    CHECK(viewGrid->isChecked() && !viewList->isChecked());
+
+    // Activate: a missing file asks to be located, another adds.
+    QSignalSpy locateSpy(&panel, &MediaPoolPanel::locateRequested);
+    emit grid->itemActivated(goneCell);
+    CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == gone);
+    QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
+    QListWidgetItem *clipCell = nullptr;
+    for (int i = 0; i < grid->count(); ++i)
+        if (grid->item(i)->data(MediaPoolPanel::PathRole).toString() == clip)
+            clipCell = grid->item(i);
+    CHECK(clipCell);
+    if (clipCell)
+        emit grid->itemActivated(clipCell);
+    CHECK(addSpy.size() == 1);
+
+    // Drag out: the files as URLs, the missing one left out.
+    {
+        const QMimeData *mime =
+            grid->model()->mimeData(grid->selectionModel()->selectedIndexes());
+        const QList<QUrl> urls = mime ? mime->urls() : QList<QUrl>{};
+        CHECK(urls.size() == 2 && urls.contains(QUrl::fromLocalFile(phone)) &&
+              urls.contains(QUrl::fromLocalFile(clip)));
+        delete mime;
+    }
+
+    // A drop from outside reports its files.
+    QSignalSpy dropSpy(&panel, &MediaPoolPanel::filesDropped);
+    {
+        QMimeData mime;
+        mime.setUrls({QUrl::fromLocalFile(tmp.path() + QStringLiteral("/DCIM"))});
+        const QPoint at = grid->viewport()->rect().center();
+        QDragEnterEvent enter(at, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(grid->viewport(), &enter);
+        QDropEvent drop(QPointF(at), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(grid->viewport(), &drop);
+        CHECK(dropSpy.size() == 1 && dropSpy.first().first().toStringList() == QStringList{a});
+    }
+
+    // The play button on a cell's picture, and Space on the current one.
+    QSignalSpy previewSpy(&panel, &MediaPoolPanel::previewRequested);
+    if (clipCell) {
+        grid->scrollToItem(clipCell);
+        const QRect r = grid->visualItemRect(clipCell);
+        QTest::mouseClick(grid->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          grid->thumbRect(r).center());
+        CHECK(previewSpy.size() == 1 && previewSpy.first().first().toString() == clip);
+        QTest::keyClick(grid, Qt::Key_Space);
+        CHECK(previewSpy.size() == 2);
+    }
+
+    // Remove with the action (the context menu's Delete) from the grid.
+    auto *remove = find<QAction>(&panel, "mediaRemoveAction");
+    if (remove) {
+        panel.selectPaths({phone});
+        CHECK(remove->isEnabled());
+        remove->trigger();
+        CHECK(!pool.contains(phone));
+        CHECK(grid->count() == 3);
+    }
+
+    // Back to the list: the removal and the selection follow.
+    viewList->click();
+    CHECK(panel.viewMode() == MediaPoolPanel::ViewMode::List);
+    CHECK(list->isVisible() && !grid->isVisible());
+    CHECK(rows(list) == (QStringList{QStringLiteral("DCIM/VID_1.insv"),
+                                     QStringLiteral("Music/gone.wav"),
+                                     QStringLiteral("Music/song.mp3")}));
+    CHECK(panel.selectedPaths().isEmpty());
+    panel.selectPaths({clip});
+    CHECK(panel.selectedPaths() == QStringList{clip});
+
+    // Ctrl + wheel on the list: bigger rows, listScaleChanged, thumbnails
+    // read again (the request size is the bigger view's -- the grid's).
+    int asked = 0;
+    QMutex askedMx;
+    panel.setThumbnailProvider([&](const MediaItem &m, const QSize &size) {
+        if (m.kind == MediaItem::Kind::Audio)
+            return QImage();
+        QMutexLocker lock(&askedMx);
+        ++asked;
+        QImage img(size, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        return img;
+    });
+    CHECK(QTest::qWaitFor([&] {
+        const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
+        return r && !r->data(0, MediaPoolPanel::ThumbnailRole).value<QImage>().isNull();
+    }, 5000));
+    const int rowH = list->visualItemRect(row(list, QStringLiteral("VID_1.insv"))).height();
+    int askedBefore;
+    {
+        QMutexLocker lock(&askedMx);
+        askedBefore = asked;
+    }
+    QSignalSpy listScaleSpy(&panel, &MediaPoolPanel::listScaleChanged);
+    {
+        QWheelEvent wheel(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(list->viewport(), &wheel);
+    }
+    CHECK(list->thumbScale() > 1.0);
+    CHECK(listScaleSpy.size() == 1);
+    CHECK(QTest::qWaitFor([&] {
+        const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
+        return r && list->visualItemRect(r).height() > rowH;
+    }, 2000));
+    CHECK(QTest::qWaitFor([&] {
+        QMutexLocker lock(&askedMx);
+        return asked > askedBefore;
+    }, 5000));
+
+    // Ctrl + wheel on the grid: bigger cells, gridScaleChanged, bigger
+    // pictures requested (160*scale over the list's 80).
+    viewGrid->click();
+    const int cellH = grid->visualItemRect(grid->item(0)).height();
+    QSignalSpy gridScaleSpy(&panel, &MediaPoolPanel::gridScaleChanged);
+    {
+        QWheelEvent wheel(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(grid->viewport(), &wheel);
+    }
+    CHECK(grid->thumbScale() > 1.0);
+    CHECK(gridScaleSpy.size() == 1);
+    CHECK(QTest::qWaitFor(
+        [&] { return grid->visualItemRect(grid->item(0)).height() > cellH; }, 2000));
+    // A picture at the grid's new size has arrived on a cell.
+    const int wantW = int(160 * grid->thumbScale() + 0.5);
+    CHECK(QTest::qWaitFor([&] {
+        for (int i = 0; i < grid->count(); ++i)
+            if (grid->item(i)->data(MediaPoolPanel::ThumbnailRole).value<QImage>().width() ==
+                wantW)
+                return true;
+        return false;
+    }, 5000));
+
+    if (const QByteArray shot = qgetenv("ORBIS_MEDIA_GRID_SHOT"); !shot.isEmpty())
+        panel.grab().save(QString::fromLocal8Bit(shot));
+}
+
 void testKinds()
 {
     CHECK(media::kindForPath(QStringLiteral("/a/VID.INSV")) == MediaItem::Kind::Clip360);
@@ -506,6 +699,7 @@ int main(int argc, char **argv)
     testSidebar();
     testSidebarResize();
     testMediaTab();
+    testMediaGridAndZoom();
     if (g_failures == 0)
         std::printf("media_pool_test: all checks passed\n");
     else

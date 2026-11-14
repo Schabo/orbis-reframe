@@ -75,6 +75,12 @@ again, turns normal again by itself. So does the card of a file that
 couldn't be read, once a good copy replaces it. Click a folder's name
 to fold it away.
 
+The last two buttons at the top of the tab switch between this list and a
+**grid** of pictures: every file's picture with its name and kind under it,
+all folders' files together (the folder is in a file's tooltip). `Ctrl` +
+mouse wheel makes the pictures bigger or smaller, in the list and in the
+grid -- orbis-reframe remembers the view and each view's size.
+
 | To | Do |
 |---|---|
 | Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab (<img src="images/icons/import-files.png" width="24" alt="">), or drag files from your file manager onto the list. |

@@ -27,6 +27,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QWheelEvent>
 
 #include <cstdio>
 #include <cstring>
@@ -146,6 +147,24 @@ void testLibraryPage()
     }
     auto *folderLabel = find<QLabel>(&page, "projectsFolderLabel");
     CHECK(folderLabel && folderLabel->text().contains("Projects"));
+
+    // Ctrl + wheel: the cards grow and shrink, and the zoom is reported.
+    QSignalSpy scaleSpy(&page, &ProjectLibraryPage::cardScaleChanged);
+    const QSize card = list->gridSize();
+    {
+        QWheelEvent wheel(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(list->viewport(), &wheel);
+    }
+    CHECK(page.cardScale() > 1.0);
+    CHECK(scaleSpy.size() == 1);
+    CHECK(list->gridSize().width() > card.width());
+    {
+        QWheelEvent wheel(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, -120),
+                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(list->viewport(), &wheel);
+    }
+    CHECK(list->gridSize() == card);
 
     // Buttons.
     if (auto *b = find<QPushButton>(&page, "newProjectButton"))

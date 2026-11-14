@@ -88,7 +88,8 @@ file](main-window.md#previewing-a-file).
 | `F1` | Show the keyboard shortcuts. |
 
 In the project library: `Enter` opens the selected project, `F2` renames
-it, `Delete` removes it from the list (its files stay).
+it, `Delete` removes it from the list (its files stay), and `Ctrl` + mouse
+wheel makes the cards bigger or smaller.
 
 ## Media
 
@@ -98,6 +99,9 @@ it, `Delete` removes it from the list (its files stay).
 | `Ctrl+Shift+A` | Add a clip to the timeline. |
 | `Ctrl+Shift+M` | Add an audio file. |
 | `Ctrl+Shift+V` | Add a picture in picture. |
+
+`Ctrl` + mouse wheel over the **Media** tab makes the files' pictures
+bigger or smaller, in the list and in the grid.
 
 When orbis-reframe asks whether to save unsaved changes, `S` saves, `D`
 discards them and `Esc` cancels. In the window for choosing where to save a
