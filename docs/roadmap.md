@@ -18,8 +18,13 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 1. **Video effects** (*maintainer*): a library of effects in the left
    sidebar's **Effects** tab, dragged onto a clip and adjusted in the
-   right sidebar. Starting with a few simple ones: vignette, sharpen, film
-   grain, colour presets (reusing the LUT code). Lens filters are video
+   right sidebar. Built: the library, a clip's effects (`fx::ClipEffects`
+   in `src/core/ClipEffects.h`: at most one of each, in the pipeline's
+   fixed order, saved per clip) and the first effect, a vignette, on every
+   render path (`clip_effects.glsl` and its C++ twin, right after the
+   grade). Next, a few more simple ones: sharpen (its own pass: it needs
+   the neighbouring pixels), film grain, colour presets (reusing the LUT
+   code). Lens filters are video
    effects too: a **computed ND** filter -- the motion blur a longer
    shutter would give, with a strength in stops and ND16 / ND32 / ND64
    presets that multiply the exposure time the camera recorded per frame
@@ -32,12 +37,10 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    as **Layouts** to drop on a clip: a drop sets the clip's split, as its
    **Split screen** section does. Split screen isn't an effect -- it is
    several views into the sphere, not a filter on the flat picture -- so
-   it keeps its own section and its place in the clip. To settle before
-   building: video effects run on the flat picture after the colour grade,
-   a few (graduated ND) on the sphere before the reframe; how effects
-   stack per clip and are stored in the project, with room for the audio
-   effects later; what preview costs (the viewport shows the same blur as
-   the export).
+   it keeps its own section and its place in the clip. To settle when
+   they're built: a few effects (graduated ND) run on the sphere before
+   the reframe; room for the audio effects in the same tab; what preview
+   costs (the viewport shows the same blur as the export).
 
 Everything else planned is under *Planned, not scheduled* below.
 
