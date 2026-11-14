@@ -3014,10 +3014,14 @@ void testEffectsJson()
 
         fx::ClipEffects e;
         e.vignette = fx::Vignette{true, -250.0f, 40.0f, 130.0f}; // clamped
+        e.grain = fx::Grain{true, 40.0f, 20.0f, 150.0f};
         p.timeline()->setClipEffects(a, e);
         const ClipItem *ca = p.timeline()->clipById(a);
         CHECK(ca->effects.vignette && ca->effects.vignette->amount == fx::Vignette::kMinAmount &&
               ca->effects.vignette->softness == 100.0f);
+        CHECK(ca->effects.grain && ca->effects.grain->size == fx::Grain::kMinSize &&
+              ca->effects.grain->colour == 100.0f && ca->effects.grain->amount == 40.0f);
+        e.grain.reset();
         e.vignette = fx::Vignette{false, 20.0f, 60.0f, 10.0f};
         p.timeline()->setClipEffects(b, e); // flat clips take them too
         CHECK(p.timeline()->clipById(b)->effects == e);
@@ -3033,6 +3037,10 @@ void testEffectsJson()
             clipJson(0).value("effects").toObject().value("vignette").toObject();
         CHECK(v.value("on").toBool() && v.value("amount").toDouble() == -100.0 &&
               v.value("size").toDouble() == 40.0 && v.value("softness").toDouble() == 100.0);
+        const QJsonObject g = clipJson(0).value("effects").toObject().value("grain").toObject();
+        CHECK(g.value("on").toBool() && g.value("amount").toDouble() == 40.0 &&
+              g.value("size").toDouble() == 50.0 && g.value("colour").toDouble() == 100.0);
+        CHECK(!clipJson(2).value("effects").toObject().contains("grain"));
     }
     {
         Project p;
@@ -3040,6 +3048,8 @@ void testEffectsJson()
         CHECK(p.timeline()->count() == 4);
         const ClipItem &a = p.timeline()->clipAt(0);
         CHECK(a.effects.vignette && a.effects.vignette->on && a.effects.vignette->size == 40.0f);
+        CHECK(a.effects.grain && a.effects.grain->amount == 40.0f &&
+              a.effects.grain->colour == 100.0f);
         const ClipItem &b = p.timeline()->clipAt(2);
         CHECK(b.flat && b.effects.vignette && !b.effects.vignette->on &&
               b.effects.vignette->amount == 20.0f);
@@ -3058,6 +3068,7 @@ void testEffectsJson()
         "timeline": {"clips": [
           {"source": "ride.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
            "fps": 30, "effects": {"vignette": {"amount": 300, "size": -5},
+                                  "grain": {"size": 900, "on": false},
                                   "sparkle": {"amount": 1}}}]}})")
                       .toUtf8());
     {
@@ -3066,6 +3077,8 @@ void testEffectsJson()
         const fx::ClipEffects &e = p.timeline()->clipAt(0).effects;
         CHECK(e.vignette && e.vignette->on && e.vignette->amount == fx::Vignette::kMaxAmount &&
               e.vignette->size == 0.0f && e.vignette->softness == fx::Vignette{}.softness);
+        CHECK(e.grain && !e.grain->on && e.grain->size == fx::Grain::kMaxSize &&
+              e.grain->amount == fx::Grain{}.amount);
     }
 }
 
@@ -3096,6 +3109,73 @@ void testEffectsRender()
     float light[3] = {0.2f, 0.4f, 1.0f};
     fx::applyEffects(light, 0.5f, 0.5f, 1920.0f, 1080.0f, e.render(), 1.0f);
     CHECK(std::fabs(light[0] - 1.0f) < 1e-3f && std::fabs(light[2] - 1.0f) < 1e-6f);
+}
+
+// Film grain: off at amount 0 or turned off; deterministic; zero mean and the
+// spread Amount asks for in the midtones, none at black or white; new on
+// every frame; the same grains at every export size (against the frame's
+// height); grey unless Colour.
+void testGrainRender()
+{
+    fx::ClipEffects e;
+    e.grain = fx::Grain{true, 0.0f, 100.0f, 0.0f};
+    CHECK(!e.render().any());
+    e.grain->amount = 50.0f;
+    e.grain->on = false;
+    CHECK(!e.render().any());
+    e.grain->on = true;
+    fx::Render r = e.render();
+    CHECK(r.any() && r.grain[0] == 0.075f && r.grain[1] == 1080.0f);
+    CHECK(fx::frameAt(1000, 30.0) == 30 && fx::frameAt(1017, 30.0) == 31 &&
+          fx::frameAt(-5, 30.0) == 0);
+
+    const auto at = [](const fx::Render &fxr, float x, float y, float w, float h, float v) {
+        float c[3] = {v, v, v};
+        fx::applyEffects(c, x, y, w, h, fxr, 255.0f);
+        return std::array<float, 3>{c[0], c[1], c[2]};
+    };
+    // a frame's spread in the midtones (grey 127.5: the full weight)
+    r.setFrame(7);
+    double sum = 0.0, sq = 0.0;
+    int n = 0;
+    bool grey = true;
+    for (int y = 0; y < 270; ++y)
+        for (int x = 0; x < 480; ++x) {
+            const auto c = at(r, x + 0.5f, y + 0.5f, 1920.0f, 1080.0f, 127.5f);
+            grey = grey && c[0] == c[1] && c[1] == c[2];
+            sum += c[0] - 127.5;
+            sq += (c[0] - 127.5) * (c[0] - 127.5);
+            ++n;
+        }
+    const double mean = sum / n, sd = std::sqrt(sq / n - mean * mean);
+    CHECK(grey && std::fabs(mean) < 0.2 && std::fabs(sd - 0.075 * 255.0) < 0.6);
+    CHECK(at(r, 100.5f, 50.5f, 1920.0f, 1080.0f, 127.5f) ==
+          at(r, 100.5f, 50.5f, 1920.0f, 1080.0f, 127.5f));
+    // black and white untouched
+    CHECK(at(r, 10.5f, 10.5f, 1920.0f, 1080.0f, 0.0f)[0] == 0.0f &&
+          at(r, 10.5f, 10.5f, 1920.0f, 1080.0f, 255.0f)[0] == 255.0f);
+    // another frame, other grain
+    fx::Render next = r;
+    next.setFrame(8);
+    int same = 0;
+    for (int x = 0; x < 100; ++x)
+        same += at(r, x + 0.5f, 3.5f, 1920.0f, 1080.0f, 127.5f) ==
+                at(next, x + 0.5f, 3.5f, 1920.0f, 1080.0f, 127.5f);
+    CHECK(same < 5);
+    // the same place in a 4K frame is on the same grain
+    for (int x = 0; x < 50; ++x)
+        CHECK(at(r, x + 0.5f, 20.5f, 1920.0f, 1080.0f, 127.5f) ==
+              at(r, 2.0f * x + 1.0f, 41.0f, 3840.0f, 2160.0f, 127.5f));
+    // Colour: each channel its own
+    e.grain->colour = 100.0f;
+    fx::Render col = e.render();
+    col.setFrame(7);
+    int differ = 0;
+    for (int x = 0; x < 100; ++x) {
+        const auto c = at(col, x + 0.5f, 3.5f, 1920.0f, 1080.0f, 127.5f);
+        differ += c[0] != c[1] && c[1] != c[2];
+    }
+    CHECK(differ > 90);
 }
 
 int main(int argc, char **argv)
@@ -3135,5 +3215,6 @@ int main(int argc, char **argv)
     testFisheyeJson();
     testEffectsJson();
     testEffectsRender();
+    testGrainRender();
     return modeltest::finish("project_test");
 }

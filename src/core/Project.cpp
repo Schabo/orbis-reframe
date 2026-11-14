@@ -313,7 +313,8 @@ ColorGrade colorGradeFromJson(const json &j, const QDir *projectDir)
 }
 
 // "effects": {"vignette": {"on": true, "amount": -30, "size": 50,
-// "softness": 50}} -- a key per effect on the clip (fx::ClipEffects),
+// "softness": 50}, "grain": {"on": true, "amount": 25, "size": 100,
+// "colour": 0}} -- a key per effect on the clip (fx::ClipEffects),
 // written only when the clip has one. A key this build doesn't know (an
 // effect of a later version) is left out with a message.
 json effectsToJson(const fx::ClipEffects &e)
@@ -324,6 +325,11 @@ json effectsToJson(const fx::ClipEffects &e)
                          {"amount", e.vignette->amount},
                          {"size", e.vignette->size},
                          {"softness", e.vignette->softness}};
+    if (e.grain)
+        j[fx::kGrain] = {{"on", e.grain->on},
+                         {"amount", e.grain->amount},
+                         {"size", e.grain->size},
+                         {"colour", e.grain->colour}};
     return j;
 }
 
@@ -340,6 +346,13 @@ fx::ClipEffects effectsFromJson(const json &j)
             v.size = value.value("size", v.size);
             v.softness = value.value("softness", v.softness);
             e.vignette = v;
+        } else if (key == fx::kGrain && value.is_object()) {
+            fx::Grain g;
+            g.on = value.value("on", g.on);
+            g.amount = value.value("amount", g.amount);
+            g.size = value.value("size", g.size);
+            g.colour = value.value("colour", g.colour);
+            e.grain = g;
         } else {
             std::fprintf(stderr, "[project] clip effect \"%s\" not known; left out\n",
                          key.c_str());
