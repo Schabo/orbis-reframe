@@ -91,8 +91,19 @@ each is in its document in [`formats/`](formats/README.md).
   correction, and 4K 100 plays at its rate; a renamed clip finds its
   recording time and preview file by the name it holds
   ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
-- **DJI Osmo 360**: a DJI reader, an equidistant lens model beside the
-  current one, D-Log M through a LUT, IMU timing fitted over packets.
+- **DJI Avata 360, then the Osmo 360 family** -- planned, the Avata 360
+  first and experimental, from a contributor's clip
+  ([`formats/dji-360.md`](formats/dji-360.md)). In this order: the lens
+  pose becomes data the camera's reader fills in instead of Insta360's
+  fixed sensor clock and lens yaws (X5 output unchanged); DJI's lens model,
+  a θ-polynomial with a tangential pair, beside MEI on every path that
+  projects a lens; a DJI reader behind the common camera model -- the
+  schema picked by product name, the master lens on track 0, the mount and
+  usable field of view measured on our clip, the cover picture as the
+  preview, GPS from the metadata, D-Log M through DJI's own LUT in the
+  Colour panel; then stabilization from the drone's fused attitude (no raw
+  gyro in the file) once a clip with deliberate turns arrives. The Osmo
+  360, 360 II and Air follow when their clips can be measured.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two
   tracks, so a cubemap picture source behind `IStitchSource` instead of the
   fisheye stitch; orientation from GoPro's GPMF metadata.
