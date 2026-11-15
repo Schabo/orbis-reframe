@@ -334,8 +334,8 @@ int main(int argc, char** argv)
             if (path == 2 && !cpuStill)
                 continue;
             if (path == 2) {
-                setenv("INSV_NO_GPU_DECODE", "1", 1);
-                setenv("INSV_NO_GPU_STITCH", "1", 1);
+                setenv("ORBIS_NO_GPU_DECODE", "1", 1);
+                setenv("ORBIS_NO_GPU_STITCH", "1", 1);
             }
             stitch::NativeStitchSource src;
             stitch::PreviewStitchConfig sc;
@@ -367,8 +367,8 @@ int main(int argc, char** argv)
                 writePpm(base + (path == 0 ? "_equirect.ppm" : "_cpu.ppm"), f.rgba.data(), f.width, f.height);
             }
             if (path == 2) {
-                unsetenv("INSV_NO_GPU_DECODE");
-                unsetenv("INSV_NO_GPU_STITCH");
+                unsetenv("ORBIS_NO_GPU_DECODE");
+                unsetenv("ORBIS_NO_GPU_STITCH");
             }
         }
     }

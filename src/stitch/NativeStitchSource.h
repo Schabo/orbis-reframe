@@ -108,7 +108,7 @@ public:
     bool GpuReframeAvailable() const;
 
     // True when the fused fisheye -> view pass is available (ReadViewFrame,
-    // and what ReadFlatFrame uses unless INSV_FLAT_VIA_EQUIRECT is set).
+    // and what ReadFlatFrame uses unless ORBIS_FLAT_VIA_EQUIRECT is set).
     bool GpuViewAvailable() const;
 
     // Reads the next lens pair and renders it on the GPU to an outW x outH
@@ -235,7 +235,7 @@ public:
 
     // IStitchSource: the decoded pair in an exportable ring slot
     // (render::VulkanFisheyeStitcher::fillLensFrameVk). Available on the
-    // all-GPU path unless INSV_PLAYBACK_EQUIRECT is set.
+    // all-GPU path unless ORBIS_PLAYBACK_EQUIRECT is set.
     bool LensFramesAvailable() const override;
     bool ReadLensFrame(render::LensFrame& out) override;
     void TrimLensFrames() override;

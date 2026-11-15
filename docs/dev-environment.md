@@ -421,12 +421,12 @@ set to anything except empty or `0`, unless the table says otherwise.
 |---|---|
 | `ORBIS_VERBOSE=1` | Progress messages on stderr: which decode / stitch path a clip got, sync and seam measurements and their results, and FFmpeg's own log (the app keeps it quiet otherwise; its errors print without the variable, prefixed `[ffmpeg]`). The app's warnings and fallbacks print without it. The first thing to ask for in a bug report. |
 | `ORBIS_FRAME_STATS=1` | About once a second, the viewport and the playback presenter each print a one-line timing summary to stderr. For checking smooth playback. |
-| `INSV_NO_GPU_DECODE` | Decode video on the CPU (FFmpeg) instead of with Vulkan video. Set to any value, even empty. |
-| `INSV_NO_GPU_STITCH` | Stitch on the CPU too (implies CPU decode). Slow; the reference path. Set to any value. |
-| `INSV_PLAYBACK_EQUIRECT` | Playback renders the view from a stitched equirect instead of straight from the lenses. Set to any value. |
-| `INSV_FLAT_VIA_EQUIRECT` | Export reprojects through an equirect instead of the direct fisheye -> view pass. For comparisons. Set to any value. |
+| `ORBIS_NO_GPU_DECODE` | Decode video on the CPU (FFmpeg) instead of with Vulkan video. Set to any value, even empty. |
+| `ORBIS_NO_GPU_STITCH` | Stitch on the CPU too (implies CPU decode). Slow; the reference path. Set to any value. |
+| `ORBIS_PLAYBACK_EQUIRECT` | Playback renders the view from a stitched equirect instead of straight from the lenses. Set to any value. |
+| `ORBIS_FLAT_VIA_EQUIRECT` | Export reprojects through an equirect instead of the direct fisheye -> view pass. For comparisons. Set to any value. |
 | `ORBIS_ENCODER=<backend>` | Export with one encoder backend only: `nvenc`, `vaapi` or `vulkan`, instead of trying them in that order. Any other value is reported and ignored. |
-| `INSV_VK_VALIDATE` | Turn on the Vulkan validation layer (`VK_LAYER_KHRONOS_validation`, package `vulkan-validationlayers`) for the stitcher. Set to any value. |
+| `ORBIS_VK_VALIDATE` | Turn on the Vulkan validation layer (`VK_LAYER_KHRONOS_validation`, package `vulkan-validationlayers`) for the stitcher. Set to any value. |
 | `ORBIS_DFN_MODEL_DIR=<dir>` | Load the DeepFilterNet voice model from `<dir>` instead of the installed one. |
 | `ORBIS_PLATE_MODEL=<file.param>` | Use another ncnn plate model (`.param`, with its `.bin` next to it). |
 | `ORBIS_TRACK_MODEL_DIR=<dir>` | Load the subject-tracking model (`vittrack.onnx`) from `<dir>`. |

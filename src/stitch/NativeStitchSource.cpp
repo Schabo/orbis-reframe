@@ -254,7 +254,8 @@ bool NativeStitchSource::openDecode() {
     // said once at startup instead, not per clip.
     bool decodeFailed = false;
     std::string decodeCodec;
-    if (!cpu_decode_ && !std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
+    if (!cpu_decode_ && !std::getenv("ORBIS_NO_GPU_DECODE") &&
+        !std::getenv("ORBIS_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<orbiscore::VulkanVideoDecoder>();
         std::string derr;
         // The process's one Vulkan device, which the stitch below adopts and
@@ -309,7 +310,7 @@ bool NativeStitchSource::openDecode() {
         last_error_ = "demux open failed: " + err + ": " + clip_path_;
         return false;
     }
-    if (!std::getenv("INSV_NO_GPU_STITCH")) {
+    if (!std::getenv("ORBIS_NO_GPU_STITCH")) {
         auto gpu = std::make_unique<render::VulkanFisheyeStitcher>();
         std::string gerr;
         if (gpu->init(gerr))
@@ -320,7 +321,7 @@ bool NativeStitchSource::openDecode() {
     }
     gpu_fallback_.decode = decodeFailed;
     gpu_fallback_.codec = decodeCodec;
-    gpu_fallback_.stitch = !gpu_ && !std::getenv("INSV_NO_GPU_STITCH");
+    gpu_fallback_.stitch = !gpu_ && !std::getenv("ORBIS_NO_GPU_STITCH");
     demux_ = std::move(demux);
     settleSeamFlow();
     return true;
@@ -931,10 +932,10 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
         last_error_ = "ReadFlatFrame without the all-GPU reproject path";
         return FlatFrame{};
     }
-    // The fused pass unless it's missing or INSV_FLAT_VIA_EQUIRECT asks for
+    // The fused pass unless it's missing or ORBIS_FLAT_VIA_EQUIRECT asks for
     // the stitch to an equirect and a reproject from it (for comparisons).
     const bool fused = GpuViewAvailable() &&
-                       (!gpu_->reframeReady() || !std::getenv("INSV_FLAT_VIA_EQUIRECT"));
+                       (!gpu_->reframeReady() || !std::getenv("ORBIS_FLAT_VIA_EQUIRECT"));
     FlatFrame frame;
     orbiscore::FramePts pts;
     frame.p010 = fused && flat_ten_bit_;
@@ -1180,7 +1181,7 @@ void NativeStitchSource::ReleaseHeldPair() {
 }
 
 bool NativeStitchSource::LensFramesAvailable() const {
-    return vdec_ && gpu_ && gpu_->lensExportReady() && !std::getenv("INSV_PLAYBACK_EQUIRECT");
+    return vdec_ && gpu_ && gpu_->lensExportReady() && !std::getenv("ORBIS_PLAYBACK_EQUIRECT");
 }
 
 void NativeStitchSource::TrimLensFrames() {

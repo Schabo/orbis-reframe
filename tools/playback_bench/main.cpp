@@ -6,7 +6,7 @@
 //               playback does today (decode -> stitch -> host-visible buffer
 //               -> memcpy into the Frame).
 //   flat N      ReadFlatFrame 1920x1080 NV12 through an N x N/2 equirect: the
-//               export path before the fused pass (INSV_FLAT_VIA_EQUIRECT).
+//               export path before the fused pass (ORBIS_FLAT_VIA_EQUIRECT).
 //   fused       ReadFlatFrame 1920x1080 NV12 straight from the fisheyes (the
 //               fused pass): what export does now.
 //   view        ReadViewFrame 1920x1080 RGBA, fused: a viewport-sized picture.
@@ -183,9 +183,9 @@ enum class FlatKind { ViaEquirect, FusedNv12, FusedRgba };
 
 void benchFlat(const std::string& path, int eqW, int frames, double fps, FlatKind kind) {
     if (kind == FlatKind::ViaEquirect)
-        setenv("INSV_FLAT_VIA_EQUIRECT", "1", 1);
+        setenv("ORBIS_FLAT_VIA_EQUIRECT", "1", 1);
     else
-        unsetenv("INSV_FLAT_VIA_EQUIRECT");
+        unsetenv("ORBIS_FLAT_VIA_EQUIRECT");
     auto src = openSource(path, eqW);
     if (!src)
         return;

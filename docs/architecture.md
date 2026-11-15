@@ -197,7 +197,7 @@ Anything that changes how a pose becomes a picture (a new projection, a
 field-of-view limit, a new per-keyframe parameter) changes all of them in the
 same pull request, and is checked by comparing the paths on the same frame:
 `tools/view_compare` for the direct view against the equirect path,
-`tools/reframe_export` (both GPU paths; `INSV_FLAT_VIA_EQUIRECT=1` for the
+`tools/reframe_export` (both GPU paths; `ORBIS_FLAT_VIA_EQUIRECT=1` for the
 equirect one) against a screenshot of the viewport.
 
 ### Stabilization

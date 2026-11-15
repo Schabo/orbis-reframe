@@ -283,7 +283,7 @@ public:
     // stitch gives up at a frame it can't allocate for); call from the
     // reading thread. A GPU that can't decode video at
     // all is said once at startup, so it isn't a fallback here; nor is a GPU
-    // path turned off on purpose (INSV_NO_GPU_*). Default: none.
+    // path turned off on purpose (ORBIS_NO_GPU_*). Default: none.
     virtual GpuFallback GetGpuFallback() const { return {}; }
 
     // Per-lens / per-sensor-row capture-time correction for subsequent frames

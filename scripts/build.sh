@@ -35,9 +35,9 @@
 # latter carrying the Vulkan-video decoder) + render_gpu_stitch (the Vulkan
 # compute stitch: src/render/VulkanFisheyeStitcher +
 # shaders/fisheye_stitch{,_nv12}.comp). The all-GPU path (Vulkan video decode +
-# compute stitch) runs real-time; INSV_NO_GPU_DECODE=1 forces CPU decode,
-# INSV_NO_GPU_STITCH=1 forces the CPU stitch, INSV_FLAT_VIA_EQUIRECT=1 sends
-# flat export back through an equirect, INSV_PLAYBACK_EQUIRECT=1 keeps the
+# compute stitch) runs real-time; ORBIS_NO_GPU_DECODE=1 forces CPU decode,
+# ORBIS_NO_GPU_STITCH=1 forces the CPU stitch, ORBIS_FLAT_VIA_EQUIRECT=1 sends
+# flat export back through an equirect, ORBIS_PLAYBACK_EQUIRECT=1 keeps the
 # viewport on the stitched equirect instead of the lenses. `stitch_source_smoke` exercises
 # the source directly; `playback_bench` times it per capture mode and
 # `view_compare` checks the fused fisheye -> view pass against it.

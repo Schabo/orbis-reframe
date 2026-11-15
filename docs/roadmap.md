@@ -53,9 +53,9 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    `CMakeLists.txt`, tests and tools, the includes as
    `<orbis-core/...>`, the `orbiscore::` namespace, and the CMake targets
    (`orbiscore`, `orbiscore_metadata`, `_media`, `_optical`, linked by
-   their `orbis-core::` aliases). Next: the `INSV_*` environment
-   variables, and the core no longer including the format folders'
-   headers.
+   their `orbis-core::` aliases), and the developer environment
+   variables' `ORBIS_` prefix. Next: the core no longer including the
+   format folders' headers.
 
 Everything else planned is under *Planned, not scheduled* below.
 

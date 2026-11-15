@@ -69,9 +69,9 @@ std::vector<uint8_t> renderView(const std::string& path, int64_t atMs, bool fuse
         return {};
     }
     if (fused)
-        unsetenv("INSV_FLAT_VIA_EQUIRECT");
+        unsetenv("ORBIS_FLAT_VIA_EQUIRECT");
     else
-        setenv("INSV_FLAT_VIA_EQUIRECT", "1", 1);
+        setenv("ORBIS_FLAT_VIA_EQUIRECT", "1", 1);
     if (fused && !src.GpuViewAvailable()) {
         std::fprintf(stderr, "fused view path unavailable\n");
         return {};

@@ -819,7 +819,7 @@ bool VulkanFisheyeStitcher::init(std::string& err)
     VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     ici.pApplicationInfo = &app;
     const char* valLayer = "VK_LAYER_KHRONOS_validation";
-    if (std::getenv("INSV_VK_VALIDATE")) {
+    if (std::getenv("ORBIS_VK_VALIDATE")) {
         ici.enabledLayerCount = 1;
         ici.ppEnabledLayerNames = &valLayer;
     }

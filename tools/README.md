@@ -496,14 +496,14 @@ set the divider.
 **When:** testing export without the app, e.g. to script many renders or
 to replay keys from `track_subject`. With `--lut`, to check the GPU's LUT
 against FFmpeg's own `lut3d` filter on an export without it (both GPU
-paths: set `INSV_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
+paths: set `ORBIS_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
 With `--vignette` or `--grain`, to check an effect on every path the same
 way, single and split (a split's vignette is placed against the whole
 frame). The grain is the same on every path at the same size: compare the
 paths' grain (each export minus one without it) rather than their PSNR,
 which the encoder lowers on noisy frames.
-With `--split`, to check the panes on every path (`INSV_FLAT_VIA_EQUIRECT=1`,
-`INSV_NO_GPU_STITCH=1` for the CPU one) against each other and against a
+With `--split`, to check the panes on every path (`ORBIS_FLAT_VIA_EQUIRECT=1`,
+`ORBIS_NO_GPU_STITCH=1` for the CPU one) against each other and against a
 single-pane export of one pane's view at the pane's size.
 
 ```sh

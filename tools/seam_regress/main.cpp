@@ -946,10 +946,10 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     stitch::Frame cpuFrame;
     std::vector<float> qCpu;
     if (opt.cpu) {
-        setenv("INSV_NO_GPU_STITCH", "1", 1);
+        setenv("ORBIS_NO_GPU_STITCH", "1", 1);
         stitch::NativeStitchSource cpu;
         const bool ok = open(cpu);
-        unsetenv("INSV_NO_GPU_STITCH");
+        unsetenv("ORBIS_NO_GPU_STITCH");
         if (!ok)
             return false;
         cpuFrame = cpu.GetFrame(e.timeMs);
