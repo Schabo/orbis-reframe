@@ -243,6 +243,17 @@ bool LensDemuxer::finishOpen(std::string& err)
     return true;
 }
 
+namespace {
+// A video stream that is a lens's picture: not a cover picture or a run of
+// thumbnails, which some cameras store as video streams of their own (the
+// DJI Avata 360's MJPEG cover, flagged attached_pic).
+bool isLensStream(const AVStream* st)
+{
+    return st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+           !(st->disposition & (AV_DISPOSITION_ATTACHED_PIC | AV_DISPOSITION_TIMED_THUMBNAILS));
+}
+} // namespace
+
 bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::string& err)
 {
     close();
@@ -250,7 +261,7 @@ bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::
         return false;
     const AVFormatContext* fmt = m_inputs[0].fmt;
     for (unsigned i = 0; i < fmt->nb_streams; ++i) {
-        if (fmt->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_VIDEO)
+        if (!isLensStream(fmt->streams[i]))
             continue;
         if (!addLens(0, static_cast<int>(i), setup, err)) {
             close();
@@ -282,12 +293,11 @@ bool LensDemuxer::openPart(const std::vector<LensSource>& lenses, const DecoderS
         const int input = openInput(src.path, err);
         if (input < 0)
             return false;
-        // The n-th video stream of the file.
+        // The n-th lens stream of the file.
         const AVFormatContext* fmt = m_inputs[input].fmt;
         int streamIndex = -1;
         for (unsigned i = 0, n = 0; i < fmt->nb_streams && streamIndex < 0; ++i)
-            if (fmt->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
-                static_cast<int>(n++) == src.stream)
+            if (isLensStream(fmt->streams[i]) && static_cast<int>(n++) == src.stream)
                 streamIndex = static_cast<int>(i);
         if (streamIndex < 0) {
             err = "no video stream " + std::to_string(src.stream);

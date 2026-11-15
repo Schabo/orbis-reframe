@@ -9,10 +9,11 @@ namespace insv {
 
 // Where a lens's picture comes from: a file and its n-th video stream. One
 // file can hold every lens (the X5: streams 0 and 1), or each lens has a file
-// of its own (the ONE X2 at 5.7K).
+// of its own (the ONE X2 at 5.7K). A cover picture stored as a video stream
+// (flagged attached_pic or timed_thumbnails) isn't counted.
 struct LensSource {
     std::string path;
-    int stream = 0; // index among the file's video streams
+    int stream = 0; // index among the file's video streams, covers left out
 };
 
 // A stretch of a clip with files of its own: a recording longer than the
