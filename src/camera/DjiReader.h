@@ -7,7 +7,7 @@
 // 360, and the metadata -- the lens calibration, the colour mode, the
 // drone's GPS -- as protobuf samples in a `djmd` data track, one per frame.
 // Beside the clip the camera writes a .LRF proxy (both lenses side by side,
-// the same metadata) and a .SRT. What differs per product is this reader's
+// a quarter of the metadata) and a .SRT; the reader needs neither. What differs per product is this reader's
 // table; only the Avata 360 is in it so far.
 
 namespace camera {

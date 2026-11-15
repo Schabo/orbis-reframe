@@ -45,9 +45,8 @@ contributor's clip (1920×1920 per lens at 100 fps, D-Log M): its clips
 (`DJI_….OSV`) open, play, stitch and export, the picture facing the
 drone's nose with the horizon where the two lenses meet. The `.LRF`
 preview file and the `.SRT` file the drone writes beside each clip aren't
-needed, but keep the `.LRF` there: the GPS track is read from it quickly,
-and the Media tab shows the clip's cover picture. Titles and gauges show
-the drone's GPS. Its clips aren't [stabilized](stabilization.md) yet: the
+needed: everything is read from the `.OSV` itself, and the Media tab shows
+the clip's cover picture. Titles and gauges show the drone's GPS. Its clips aren't [stabilized](stabilization.md) yet: the
 picture tilts as the drone banks. D-Log M needs DJI's LUT (see
 [Colour](colour.md#luts)). **Calibrate lenses…** doesn't work on its
 clips, and it has no lens guards. A clip you renamed keeps its recording

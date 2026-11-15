@@ -818,7 +818,7 @@ void testTrimmedCopies(const std::filesystem::path& dir)
 
 // The DJI reader on the Avata 360 sample clip (docs/formats/dji-360.md,
 // *Modes and sample clips*), with its .LRF and .SRT beside it.
-void testDjiAvata360(const std::filesystem::path& osv)
+void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::path& dir)
 {
     std::string err;
     const auto clip = camera::ReadClipMetadata(osv.string(), &err);
@@ -864,6 +864,24 @@ void testDjiAvata360(const std::filesystem::path& osv)
     // The proxy names the clip.
     std::filesystem::path lrf = osv;
     CHECK(camera::ClipFileOf(lrf.replace_extension(".LRF").string()) == osv.string());
+
+    // The clip on its own reads the same: its metadata comes from the clip,
+    // never the proxy.
+    const std::filesystem::path aloneDir = dir / "dji_alone";
+    std::filesystem::create_directories(aloneDir);
+    const std::filesystem::path alone = aloneDir / osv.filename();
+    std::filesystem::create_symlink(std::filesystem::absolute(osv), alone);
+    const auto clipAlone = camera::ReadClipMetadata(alone.string(), &err);
+    CHECK(clipAlone && clipAlone->proxyPath.empty() && clipAlone->gpsFixes == clip->gpsFixes);
+    const camera::ClipTelemetry teleAlone = camera::ReadClipTelemetry(alone.string());
+    CHECK(teleAlone.gps && tele.gps && teleAlone.gps->fixes.size() == tele.gps->fixes.size());
+    if (teleAlone.gps && tele.gps && teleAlone.gps->fixes.size() == tele.gps->fixes.size()) {
+        bool same = true;
+        for (size_t i = 0; i < tele.gps->fixes.size(); ++i)
+            same = same && teleAlone.gps->fixes[i].timeMs == tele.gps->fixes[i].timeMs &&
+                   teleAlone.gps->fixes[i].latitude == tele.gps->fixes[i].latitude;
+        CHECK(same);
+    }
 }
 
 int main(int argc, char** argv)
@@ -897,7 +915,7 @@ int main(int argc, char** argv)
                 break;
             }
         if (!dji.empty())
-            testDjiAvata360(dji);
+            testDjiAvata360(dji, dir);
         else
             std::printf("  (DJI Avata 360 sample clip not here: skipped)\n");
     }

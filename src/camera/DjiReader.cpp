@@ -253,22 +253,17 @@ std::optional<insv::DjiClipMeta> clipMeta(const Bytes& first, const DjiModel*& m
     return insv::ParseDjiClipMeta(first, insv::DjiSchemaEagle4());
 }
 
-// The clip's frame metadata, every sample: from the proxy when it's there
-// (the same samples at its own rate, 6 % of the clip's size), else the clip.
+// The clip's frame metadata, every sample, from the clip itself. Not from
+// the proxy: it keeps one frame's sample in four (docs/formats/dji-360.md
+// §1), and reading only the djmd track of the clip costs about the same.
 std::vector<insv::DjiFrameMeta> frames(const ClipMetadata& clip) {
     std::vector<insv::DjiFrameMeta> out;
-    for (const std::string& file : {clip.proxyPath, clip.path}) {
-        if (file.empty())
-            continue;
-        Mp4 mp4;
-        if (!mp4.open(file) || mp4.djmd < 0)
-            continue;
-        for (const Bytes& s : mp4.samples(0))
-            if (const auto f = insv::ParseDjiFrameMeta(s))
-                out.push_back(*f);
-        if (!out.empty())
-            return out;
-    }
+    Mp4 mp4;
+    if (!mp4.open(clip.path) || mp4.djmd < 0)
+        return out;
+    for (const Bytes& s : mp4.samples(0))
+        if (const auto f = insv::ParseDjiFrameMeta(s))
+            out.push_back(*f);
     return out;
 }
 
