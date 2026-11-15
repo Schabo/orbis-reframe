@@ -1,3 +1,50 @@
+## v0.10.0 (2026-11-15)
+
+### Feat
+
+- **track**: track_subject --project tracks in a project clip's stabilization
+- **stab**: stabilize the DJI Avata 360 from its fused attitude
+- **stitch**: lens masks, where a lens sees its own camera
+- **insv**: open the DJI Avata 360's .OSV clips
+- **stitch**: a second lens model, the theta-polynomial
+- **ui**: a Grain tile in the Effects tab and its settings
+- **render**: film grain on every render path
+- **core**: film grain, the second video effect
+- **ui**: the Effects tab, effects on a clip and its Effects section
+- **render**: clip effects on every render path, a vignette first
+- **core**: a clip's video effects, starting with a vignette
+- **ui**: Fisheye, Mirror ball, Tunnel and Crystal ball view presets
+- **render**: Fisheye, the fisheye and the mirror ball
+- **ui**: view presets in the Reframe section
+- **render**: Natural, the Panini view
+- **render**: the globe, distortion past 100 %
+- **ui**: highlight marks in the Media tab preview
+- **insv**: a file re-written with cuts or a speed change is flagged
+- **ui**: Media information lists a split recording's files
+- **core**: a split recording with a part gone plays the rest
+- **audio**: a split recording's sound plays across the join
+- **insv**: a split recording opens as one clip
+
+### Fix
+
+- **ui**: file dialogs show files named in capitals
+- **insv**: a cover picture stored as a video stream isn't a lens
+- **ui**: key pane 1 when a layout splits a clip without keys
+- **privacy**: the plate blur covers its region in every frame and stops flickering
+- **insv**: a split recording's -trim copies join each other
+
+### Refactor
+
+- **insv**: keep the camera formats out of orbis-core's core
+- **render**: rename the INSV_* environment variables to ORBIS_*
+- **insv**: rename the insv:: namespace to orbiscore::
+- **insv**: VulkanVideoDecoder runs on a device its caller passes in
+- **insv**: move src/insv to lib/orbis-core with its own CMakeLists
+- **insv**: read a DJI clip's frame metadata from the clip, not its proxy
+- **stitch**: the lens pose is the camera reader's data
+- **render**: region outlines follow their arcs
+- **audio**: one streaming STFT for the noise filters
+
 ## v0.9.1 (2026-11-12)
 
 ### Fix
