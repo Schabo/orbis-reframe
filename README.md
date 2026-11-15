@@ -5,7 +5,8 @@ gyro stabilization and, above all, **reframing**. Reframing means steering a
 virtual camera through the sphere over time to get a normal flat video out of a
 360° recording. It opens Insta360 `.insv` clips directly: the **X5** is
 fully supported, the **X6**, **ONE X2** and **Antigravity A1** (a 360
-drone) experimentally.
+drone) experimentally, and the **DJI Avata 360** drone's `.OSV` clips
+experimentally too.
 
 [![The orbis-reframe editor: a reframed ride on a country road with a picture-in-picture inset, the Media sidebar on the left, the Picture in picture tab on the right, a player bar under the video and a timeline with video, camera mic, music and overlay tracks below](site/screenshot-1400.jpg)](site/screenshot-full.jpg)
 
@@ -71,6 +72,13 @@ controller. Its GPS shows in titles and gauges once the drone has moved (a
 hover or a clip shorter than about 8 seconds gives nothing to line it up
 with the video by). Its photos don't open yet.
 
+**DJI Avata 360:** experimental -- `.OSV` clips (1920×1920 per lens at 100
+fps, D-Log M through DJI's LUT) open, play, stitch, stabilize and export,
+from one contributor's drone. It is stabilized from the drone's own record of
+where it pointed, and its GPS shows in titles and gauges. Lens calibration
+doesn't work on its clips, and it has no lens guards. The DJI Osmo 360
+family isn't supported yet.
+
 **Have another 360 camera?** Support for other Insta360, DJI and GoPro
 cameras is planned, and needs real footage to build on:
 [sample clips wanted](docs/formats/README.md#sample-clips-wanted).
@@ -127,7 +135,11 @@ no closed-source dependencies.
 **Import and playback**
 - Opens X5 `.insv` files directly, including every capture mode tested so far
   (8K, 5.7K/5.7K+, 5.7K 60, 4K 120); X6 (including its 10-bit I-Log and
-  Dolby Vision modes), ONE X2 and Antigravity A1 clips experimentally.
+  Dolby Vision modes), ONE X2, Antigravity A1 and DJI Avata 360 clips
+  experimentally.
+- A recording the camera split over several files opens as one clip, its
+  sound playing across the joins; if a file of it is missing, the rest
+  plays.
 - Real-time playback: Vulkan video decode, then a Vulkan compute
   fisheye→view pass on the GPU, with CPU fallbacks.
 - Interactive 360° viewport: drag to look around during playback and while
@@ -145,6 +157,9 @@ no closed-source dependencies.
 - Wide views drawn like a fisheye lens so the edges don't stretch, set
   automatically from the field of view, all the way to **tiny planets**
   (a keyframe move zooms smoothly from a normal view into one).
+- **View presets**: Normal, Natural (a Panini view: wide, with a bent
+  horizon), Fisheye, Mirror ball, Tiny planet, Globe, Tunnel and Crystal
+  ball, each in one click, and keyframed like any other view.
 - Easing per keyframe (Linear, Fast to slow, Slow to fast), and moves that
   start and stop gently instead of abruptly.
 - **Track subject**: draw a box around a rider, car or anything else in the
@@ -201,7 +216,8 @@ no closed-source dependencies.
   level and the view pointing one way through bends.
 - Accelerometer-fused horizon reference, gyro↔video time sync and optional
   rolling-shutter correction. Antigravity A1 clips are leveled by the
-  drone's own flight controller.
+  drone's own flight controller; DJI Avata 360 clips are stabilized from
+  the drone's recorded attitude.
 
 **Stitching**
 - Stitch based on the MEI fisheye model, using the per-camera calibration
@@ -227,6 +243,8 @@ no closed-source dependencies.
   log footage (Insta360 I-Log; load the downloaded zip as it is) or a look.
   Log clips are recognised and ask for their LUT; HDR (HLG) clips are
   converted to normal video with the LUT that comes with the app.
+- **Effects** per clip, dragged on from the Effects tab: a vignette and
+  film grain so far, in the viewport and the export alike.
 - Audio playback: level, mute and fades for every audio clip, a level and
   mute per track, and a mixer used in both playback and export.
 - Per-clip noise reduction: wind (a generic mode, and a motorcycle mode that
@@ -267,8 +285,8 @@ no closed-source dependencies.
 - Three themes: Ember, Light and Neutral dark.
 
 Planned: more 360° cameras as sample clips come in (Insta360 X4 and X3, DJI
-Osmo 360, GoPro MAX), a second 360° clip as an inset, an effects library,
-HDR export and video noise removal. Further out: face and object blur. The
+Osmo 360, GoPro MAX), a second 360° clip as an inset, more effects, HDR
+export and video noise removal. Further out: face and object blur. The
 [roadmap](docs/roadmap.md) has the details.
 
 ## Building
@@ -311,7 +329,7 @@ list and the pinned versions.
 ## Sources and thanks
 
 Everything about the cameras' file formats (Insta360 X5, X6, ONE X2,
-Antigravity A1) was learned from **interoperability documentation,
+Antigravity A1, DJI Avata 360) was learned from **interoperability documentation,
 published research and camera-produced files**. No vendor's SDK or software
 was ever disassembled. [`docs/formats/`](docs/formats/README.md) marks
 every fact with where it came from and how well it's verified. We're grateful
@@ -325,7 +343,8 @@ to these projects and people:
   alignment, the X5 IMU orientation and the lens-profile construction.
   Gyroflow's approach to gyro stabilization (smoothing, per-axis strength,
   horizon lock, rolling-shutter readout time) is the model for our
-  stabilization modes.
+  stabilization modes. Its DJI reader (`src/dji/`) ships the protobuf
+  schemas of the metadata DJI's 360 cameras write.
 - **[ExifTool](https://exiftool.org/)** by Phil Harvey. `QuickTimeStream.pl`
   (`ProcessInsta360`) gave an independent decode of the `inst` trailer, which
   we checked our parser against byte for byte. The
@@ -378,8 +397,9 @@ scan), and [Lucide](https://lucide.dev/) icons (ISC license; the parts
 derived from [Feather](https://feathericons.com/) MIT).
 
 Insta360, Insta360 Studio, X5, X6 and ONE X2 are trademarks of Arashi
-Vision Inc.; Antigravity and A1 are trademarks of their owner. This project
-is not affiliated with or endorsed by Insta360 or Antigravity.
+Vision Inc.; Antigravity and A1 are trademarks of their owner; DJI and
+Avata are trademarks of SZ DJI Technology Co., Ltd. This project is not
+affiliated with or endorsed by Insta360, Antigravity or DJI.
 
 ## License
 

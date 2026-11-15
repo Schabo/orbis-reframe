@@ -163,7 +163,7 @@
 
 <header class="hero">
   <div class="wrap">
-    <span class="eyebrow">Linux · 360° video · Insta360 X5, X6, ONE X2 · Antigravity A1</span>
+    <span class="eyebrow">Linux · 360° video · Insta360 X5, X6, ONE X2 · Antigravity A1 · DJI Avata 360</span>
     <h1>orbis-reframe</h1>
     <p class="tagline">The 360° camera video editor for Linux</p>
     <ul class="actions">
@@ -177,7 +177,8 @@
       stitching, gyro stabilization and, above all, <strong>reframing</strong>. You steer a
       virtual camera through the sphere over time and get a normal flat video out of a
       360° recording. It opens Insta360 <code>.insv</code> clips directly: the X5 fully, the X6,
-      ONE X2 and the Antigravity A1 drone experimentally.</p>
+      ONE X2 and the Antigravity A1 drone experimentally; and the DJI Avata 360 drone's
+      <code>.OSV</code> clips experimentally too.</p>
     <ul class="tags">
       <li>Qt 6</li><li>Vulkan</li><li>FFmpeg + hardware encode</li><li>Wayland</li><li>No closed-source dependencies</li>
     </ul>
@@ -215,7 +216,8 @@
       <p>The <strong>X5</strong> is the camera it's built and tested on, and fully supported: every
         capture mode tried so far, I-Log through the camera maker's LUT, stabilization, lens guards
         and GPS. The <strong>X6</strong>,
-        <strong>ONE X2</strong> (5.7K) and <strong>Antigravity A1</strong> (8K, 5.2K, 4K 100) are experimental:
+        <strong>ONE X2</strong> (5.7K), <strong>Antigravity A1</strong> (8K, 5.2K, 4K 100) and
+        <strong>DJI Avata 360</strong> (D-Log M through DJI's LUT) are experimental:
         their clips open, stitch and export, tried on a contributor's or a few test clips;
         the <a href="https://github.com/Schabo/orbis-reframe#status-works-on-my-computer">README</a>
         says what's still unchecked on each. Have another 360 camera? Support for other Insta360,
@@ -267,7 +269,8 @@
         <div class="card">
           <h3>Reframing</h3>
           <p>Steer a keyframed virtual camera through the sphere: where it looks, how wide,
-            and how wide views are drawn, all the way to <strong>tiny planets</strong>.
+            and how wide views are drawn, with <strong>view presets</strong> from a natural
+            wide view and a fisheye to a mirror ball, a globe and <strong>tiny planets</strong>.
             <strong>Track subject</strong> follows a rider or a car for you, as keyframes you can
             edit, and <strong>split screen</strong> shows the road ahead and behind at once.</p>
         </div>
@@ -309,11 +312,11 @@
         you'd expect from an editor: a multi-track timeline with trims, splits, speed and
         transitions, <strong>highlight marks</strong> from the camera and your own, a preview of
         each file before it goes on the timeline, picture in picture, titles, colour grading with LUTs for log and HDR
-        footage, undo and autosave. Everything is in the
+        footage, <strong>effects</strong> (a vignette and film grain so far), undo and autosave. Everything is in the
         <a href="manual/">user manual</a>.</p>
       <p style="margin-top:20px"><strong>Planned:</strong> more 360° cameras as sample clips come
-        in (Insta360 X4 and X3, DJI Osmo 360, GoPro MAX), a second 360° clip as an inset, an
-        effects library, HDR export and video noise removal. Further out: face and object blur. The
+        in (Insta360 X4 and X3, DJI Osmo 360, GoPro MAX), a second 360° clip as an inset, more
+        effects, HDR export and video noise removal. Further out: face and object blur. The
         <a href="https://github.com/Schabo/orbis-reframe/blob/main/docs/roadmap.md">roadmap</a> has
         the details.</p>
     </div>
@@ -328,8 +331,8 @@
         two lenses or read the camera's motion data. orbis-reframe does both and exports a normal
         flat video.</p>
       <h3>Which cameras work?</h3>
-      <p>The Insta360 X5 fully; the Insta360 X6, ONE X2 and the Antigravity A1 drone
-        experimentally. More 360° cameras follow as sample clips come in: Insta360 X4 and X3,
+      <p>The Insta360 X5 fully; the Insta360 X6, ONE X2, the Antigravity A1 drone and the
+        DJI Avata 360 drone experimentally. More 360° cameras follow as sample clips come in: Insta360 X4 and X3,
         DJI Osmo 360 and GoPro MAX are planned.</p>
       <h3>How do I open Insta360 <code>.insv</code> files on Linux?</h3>
       <p>Open the clip in orbis-reframe; it reads <code>.insv</code> files straight from the
@@ -350,7 +353,8 @@
   <section>
     <div class="wrap">
       <h2>Sources and thanks</h2>
-      <p>Everything about the cameras' file formats (Insta360 X5, X6, ONE X2, Antigravity A1) was
+      <p>Everything about the cameras' file formats (Insta360 X5, X6, ONE X2, Antigravity A1,
+        DJI Avata 360) was
         learned from <strong>interoperability documentation, published research and camera-produced
         files</strong>. No vendor's SDK or software was ever disassembled. The project's format notes mark every fact with where it came from and
         how well it's verified. We're grateful to these projects and people:</p>
@@ -361,7 +365,8 @@
           framing and type names, the protobuf schema of the metadata record, the raw-gyro scaling,
           the timestamp alignment, the X5 IMU orientation and the lens-profile construction.
           Gyroflow's approach to gyro stabilization (smoothing, per-axis strength, horizon lock,
-          rolling-shutter readout time) is the model for our stabilization modes.</li>
+          rolling-shutter readout time) is the model for our stabilization modes. Its DJI reader
+          ships the protobuf schemas of the metadata DJI's 360 cameras write.</li>
         <li><strong><a href="https://exiftool.org/">ExifTool</a></strong> by Phil Harvey.
           <code>QuickTimeStream.pl</code> (<code>ProcessInsta360</code>) gave an independent decode
           of the <code>inst</code> trailer, which we checked our parser against byte for byte. The
@@ -422,7 +427,7 @@
       <a href="https://opensource.org/license/mit">MIT</a> or
       <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache-2.0</a>, at your option.</p>
     <p class="gap">Insta360, Insta360 Studio, X5, X6 and ONE X2 are trademarks of Arashi Vision Inc.;
-      Antigravity and A1 are trademarks of their owner; DJI, DJI Studio and Osmo are trademarks
+      Antigravity and A1 are trademarks of their owner; DJI, DJI Studio, Osmo and Avata are trademarks
       of SZ DJI Technology Co., Ltd.; GoPro, GoPro Player and MAX are trademarks of GoPro, Inc.
       This project is not affiliated with or endorsed by any camera maker.</p>
     <p class="gap"><a href="https://github.com/Schabo/orbis-reframe">Source code</a> · <a href="https://github.com/Schabo/orbis-reframe/issues">Report a problem</a> ·
