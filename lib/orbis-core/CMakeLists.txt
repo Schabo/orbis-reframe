@@ -26,6 +26,11 @@ add_library(orbiscore_metadata STATIC
     orbis-core/Smooth.h
     orbis-core/insta360/InsvTrailer.h
     orbis-core/insta360/InsvTrailer.cpp
+    # Boxes from an MP4's header, which both formats keep metadata in.
+    orbis-core/media/Mp4Box.h
+    orbis-core/media/Mp4Box.cpp
+    # The lens-profile type the trailer's table is read into.
+    orbis-core/stitch/LensProfile.h
     # The protobuf wire format, which Insta360's records and DJI's djmd
     # track are written in.
     orbis-core/Protobuf.h
@@ -59,6 +64,8 @@ add_library(orbiscore STATIC
     orbis-core/Image.h
     orbis-core/stab/Motion.h
     orbis-core/stab/Motion.cpp
+    orbis-core/stitch/LensModel.h
+    orbis-core/stitch/LensModel.cpp
     orbis-core/insta360/Calibration.h
     orbis-core/insta360/Calibration.cpp
     orbis-core/stitch/LensSource.h
@@ -93,9 +100,9 @@ add_library(orbis-core::orbiscore ALIAS orbiscore)
 # above stays dependency-free. No Qt.
 if(FFMPEG_FOUND)
     add_library(orbiscore_media STATIC
-        orbis-core/media/InsvDemux.h
-        orbis-core/media/InsvDemux.cpp
-        # The demux / decode / seek core of InsvDemux and VulkanVideoDecoder.
+        orbis-core/media/FisheyeDemux.h
+        orbis-core/media/FisheyeDemux.cpp
+        # The demux / decode / seek core of FisheyeDemux and VulkanVideoDecoder.
         orbis-core/media/LensDemuxer.h
         orbis-core/media/LensDemuxer.cpp
         # One picture from an elementary stream (a camera's preview frame).
@@ -106,8 +113,8 @@ if(FFMPEG_FOUND)
         orbis-core/media/VulkanVideoDecoder.cpp
         # Audio playback: its own file handle, independent
         # of the fisheye decode above -- no stitching involved.
-        orbis-core/audio/InsvAudioDemux.h
-        orbis-core/audio/InsvAudioDemux.cpp
+        orbis-core/audio/AudioDemux.h
+        orbis-core/audio/AudioDemux.cpp
         orbis-core/audio/AudioPart.h
         orbis-core/audio/ClipAudioReader.h
         orbis-core/audio/ClipAudioReader.cpp
@@ -213,3 +220,10 @@ endif()
 add_executable(orbiscore_test tests/orbiscore_test.cpp)
 target_link_libraries(orbiscore_test PRIVATE orbiscore orbiscore_metadata)
 add_test(NAME orbiscore_test COMMAND orbiscore_test)
+
+# --- orbiscore_layering: the core includes no file format's headers, one
+# format none of another's, and the library nothing of Qt or the app
+# (tests/check_layering.cmake).
+add_test(NAME orbiscore_layering
+    COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/orbis-core
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_layering.cmake)

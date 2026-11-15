@@ -29,7 +29,7 @@
 // Frames are allocated CONCURRENT across FFmpeg's queue families, so no
 // queue-family ownership transfer is needed.
 //
-// The demux, decoders and seeking are LensDemuxer's, shared with InsvDemux;
+// The demux, decoders and seeking are LensDemuxer's, shared with FisheyeDemux;
 // this adds the Vulkan hwaccel set-up and the frame locking.
 //
 // Part of orbiscore_media (needs FFmpeg + Vulkan). Not thread-safe.
@@ -112,7 +112,7 @@ public:
     // A target a little ahead, with no keyframe since the last pair read,
     // decodes forward from there instead of from the keyframe again.
     bool seekTo(int64_t timestampMs, std::string& err);
-    // See InsvDemux::nearestKeyframeMs.
+    // See FisheyeDemux::nearestKeyframeMs.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
     // See orbiscore::KeyframesAroundMs.
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;

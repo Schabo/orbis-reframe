@@ -64,6 +64,16 @@ constexpr double kDeg = kPi / 180.0;
 
 bool near(double a, double b, double eps) { return std::fabs(a - b) <= eps; }
 
+// Stitch parameters with Insta360's lens poses, as the camera's reader sets
+// them; the stitch's own default is no camera's.
+orbiscore::StitchParams insta360Params()
+{
+    orbiscore::StitchParams p;
+    for (int i = 0; i < 2; ++i)
+        p.lensPose[i] = orbiscore::Insta360LensPose(i);
+    return p;
+}
+
 // The short "Parameters" maker-note string from the X5 sample clips -- not
 // parsed any more; only used to check the extended parser rejects it.
 const char* kX5Params =
@@ -86,7 +96,7 @@ const char* kX5Extended =
 
 void testExtendedCalibration()
 {
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     CHECK(orbiscore::ParseExtendedCalibrationString(kX5Extended, c));
     CHECK(c.lensesExt.size() == 2);
     if (c.lensesExt.size() != 2)
@@ -105,14 +115,14 @@ void testExtendedCalibration()
 
     // Tolerates the string embedded in a longer buffer (as it sits in a
     // protobuf field in the trailer, between binary framing bytes).
-    orbiscore::InsvCalibration c2;
+    orbiscore::CameraCalibration c2;
     const std::string embedded =
         std::string("\x01\x02\x03prefix", 9) + kX5Extended + std::string("\x00\x04end", 5);
     CHECK(orbiscore::ParseExtendedCalibrationString(embedded, c2));
     CHECK(c2.lensesExt.size() == 2);
 
     // Rejects strings that aren't the 56-token extended form; leaves `out` empty.
-    orbiscore::InsvCalibration c3;
+    orbiscore::CameraCalibration c3;
     CHECK(!orbiscore::ParseExtendedCalibrationString(kX5Params, c3)); // short "p2_" form
     CHECK(c3.lensesExt.empty());
     CHECK(!orbiscore::ParseExtendedCalibrationString("2_1_2_3", c3));
@@ -126,7 +136,7 @@ void testExtendedCalibration()
         std::printf("  (no decimal-comma locale installed; skipping the locale check)\n");
         return;
     }
-    orbiscore::InsvCalibration c4;
+    orbiscore::CameraCalibration c4;
     CHECK(orbiscore::ParseExtendedCalibrationString(kX5Extended, c4));
     CHECK(c4.lensesExt.size() == 2 && near(c4.lensesExt[0].fx, 4294.030, 1e-3));
 }
@@ -144,7 +154,7 @@ const char* kOneX2V3 =
 void testCalibrationV3()
 {
     std::printf("  offset_v3 calibration\n");
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     CHECK(orbiscore::ParseCalibrationV3String(kOneX2V3, c));
     CHECK(c.lensesExt.size() == 2);
     if (c.lensesExt.size() != 2)
@@ -163,7 +173,7 @@ void testCalibrationV3()
     CHECK(near(e1.p[1], -0.00041729, 1e-9));
 
     // Too short, or not a calibration at all: nothing, `out` untouched.
-    orbiscore::InsvCalibration bad;
+    orbiscore::CameraCalibration bad;
     CHECK(!orbiscore::ParseCalibrationV3String(kX5Params, bad)); // 16 tokens
     CHECK(!orbiscore::ParseCalibrationV3String("", bad));
     CHECK(bad.lensesExt.empty());
@@ -173,7 +183,7 @@ void testCalibrationV3()
     for (auto& e : c.lensesExt)
         e.focalRefW = 2880.0;
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(c, 2880, 2880, orbiscore::StitchParams{}));
+    CHECK(st.configure(c, 2880, 2880, insta360Params()));
 }
 
 // The extrinsics compose pitch, then yaw, then roll. With the Antigravity
@@ -184,7 +194,7 @@ void testCalibrationV3()
 void testExtrinsicsOrder()
 {
     std::printf("  extrinsics: pitch, yaw, roll\n");
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     CHECK(orbiscore::ParseCalibrationV3String(
         "2_1.5_3742.5_3741.8_2620.9_2617.6_-177.49_-89.95_90.397_0_0_0_"
         "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
@@ -194,7 +204,7 @@ void testExtrinsicsOrder()
     for (auto& e : c.lensesExt)
         e.focalRefW = 5248.0;
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(c, 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(st.configure(c, 3840, 3840, insta360Params()));
     if (!st.ready())
         return;
     // Each lens's optical axis in the world is its worldToLens's third row.
@@ -207,9 +217,9 @@ void testExtrinsicsOrder()
 
 // The X5 calibration as the reader hands it over: with field 27's focal
 // reference, which the string doesn't carry.
-orbiscore::InsvCalibration x5Calibration()
+orbiscore::CameraCalibration x5Calibration()
 {
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     CHECK(orbiscore::ParseExtendedCalibrationString(kX5Extended, c));
     for (orbiscore::LensCalibExt &e : c.lensesExt)
         e.focalRefW = 5312.0;
@@ -218,31 +228,31 @@ orbiscore::InsvCalibration x5Calibration()
 
 void testMeiProjection()
 {
-    orbiscore::InsvCalibration c = x5Calibration();
+    orbiscore::CameraCalibration c = x5Calibration();
 
     // fx / fy are in field 27's sensor window: no reference, no stitch; the
     // X6's larger window gives a shorter focal length in video pixels.
     {
-        orbiscore::InsvCalibration noRef = c;
+        orbiscore::CameraCalibration noRef = c;
         noRef.lensesExt[1].focalRefW = 0;
         orbiscore::FisheyeStitcher st;
-        CHECK(!st.configure(noRef, 3840, 3840, orbiscore::StitchParams{}));
-        orbiscore::InsvCalibration wide = c;
+        CHECK(!st.configure(noRef, 3840, 3840, insta360Params()));
+        orbiscore::CameraCalibration wide = c;
         for (orbiscore::LensCalibExt &e : wide.lensesExt)
             e.focalRefW = 7680.0;
         orbiscore::FisheyeStitcher a, b;
-        CHECK(a.configure(c, 3840, 3840, orbiscore::StitchParams{}));
-        CHECK(b.configure(wide, 3840, 3840, orbiscore::StitchParams{}));
+        CHECK(a.configure(c, 3840, 3840, insta360Params()));
+        CHECK(b.configure(wide, 3840, 3840, insta360Params()));
         CHECK(near(b.lensProjection(0).fx, a.lensProjection(0).fx * 5312.0 / 7680.0, 1e-9));
     }
 
     // configure() needs the extended calibration.
     orbiscore::FisheyeStitcher none;
-    CHECK(!none.configure(orbiscore::InsvCalibration{}, 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(!none.configure(orbiscore::CameraCalibration{}, 3840, 3840, insta360Params()));
     CHECK(!none.ready());
 
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(c, 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(st.configure(c, 3840, 3840, insta360Params()));
     CHECK(st.ready());
 
     const orbiscore::LensProjection& l0 = st.lensProjection(0);
@@ -301,10 +311,10 @@ orbiscore::LensCalibExt avataLens()
 
 void testThetaPolyProjection()
 {
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     c.lensesExt = {avataLens(), avataLens()};
     c.lensesExt[1].cx += 3840;
-    orbiscore::StitchParams p;
+    orbiscore::StitchParams p = insta360Params();
     p.lensModel = orbiscore::LensModel::ThetaPoly;
     p.thetaK5[0] = p.thetaK5[1] = 0.00108;
     p.lensPose[0] = p.lensPose[1] = orbiscore::LensPose{};
@@ -353,7 +363,7 @@ void testThetaPolyProjection()
 
     // MEI by default.
     orbiscore::FisheyeStitcher mei;
-    CHECK(mei.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(mei.configure(x5Calibration(), 3840, 3840, insta360Params()));
     CHECK(mei.gpuParams().thetaPoly == 0);
 }
 
@@ -424,10 +434,10 @@ void testLensMask()
     CHECK(m.clearRadAt(10 * kDeg) > 1e6);
     CHECK(near(m.clearRadAt(-270 * kDeg), 92 * kDeg, 1e-12)); // angles wrap
 
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     c.lensesExt = {avataLens(), avataLens()};
     c.lensesExt[1].cx += 3840;
-    orbiscore::StitchParams p;
+    orbiscore::StitchParams p = insta360Params();
     p.lensModel = orbiscore::LensModel::ThetaPoly;
     p.thetaK5[0] = p.thetaK5[1] = 0.00108;
     p.lensPose[0] = p.lensPose[1] = orbiscore::LensPose{};
@@ -629,7 +639,7 @@ void testLensProfile()
                                        orbiscore::FindLensProfile(notes, "ProtectorA")));
     CHECK(!missing.accessory);
 
-    orbiscore::InsvCalibration c = x5Calibration();
+    orbiscore::CameraCalibration c = x5Calibration();
     orbiscore::FisheyeStitcher sb, sg;
     CHECK(sb.configure(c, 3840, 3840, bare));
     CHECK(sg.configure(c, 3840, 3840, guard));
@@ -694,8 +704,8 @@ void testSyntheticRender()
     }
 
     orbiscore::FisheyeStitcher st;
-    orbiscore::InsvCalibration c = x5Calibration();
-    CHECK(st.configure(c, 800, 800, orbiscore::StitchParams{}));
+    orbiscore::CameraCalibration c = x5Calibration();
+    CHECK(st.configure(c, 800, 800, insta360Params()));
 
     orbiscore::Image eq = st.renderEquirect(l0, l1, 512);
     CHECK(eq.w == 512 && eq.h == 256);
@@ -719,8 +729,8 @@ void testSyntheticRender()
 // the per-lens rays.
 void testSeamDepthGeometry()
 {
-    orbiscore::InsvCalibration c = x5Calibration();
-    orbiscore::StitchParams p;
+    orbiscore::CameraCalibration c = x5Calibration();
+    orbiscore::StitchParams p = insta360Params();
     p.depthSeam = true;
     orbiscore::FisheyeStitcher st;
     CHECK(st.configure(c, 3840, 3840, p));
@@ -762,7 +772,7 @@ void testSeamDepthGeometry()
     CHECK(mid > 0.5 && mid < 9.5);
     CHECK(st.seamQAt(st.seamDir(10.5 * binRad, 0.0), nullptr) == 0.0);
     orbiscore::FisheyeStitcher off;
-    CHECK(off.configure(c, 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(off.configure(c, 3840, 3840, insta360Params()));
     CHECK(off.seamQAt(off.seamDir(10.5 * binRad, 0.0), table) == 0.0);
 
     // --baseline < 0 swaps the lenses.
@@ -1098,9 +1108,9 @@ orbiscore::Image seamLensPicture(const orbiscore::FisheyeStitcher &st, int lens,
 
 void testSeamAlignment()
 {
-    const orbiscore::InsvCalibration cal = x5Calibration();
+    const orbiscore::CameraCalibration cal = x5Calibration();
     constexpr int kSize = 1536;
-    orbiscore::StitchParams truthParams;
+    orbiscore::StitchParams truthParams = insta360Params();
     truthParams.seam = {{0.3, -0.4, 0.15}, {0.002, -0.0015}, 1.0015};
     orbiscore::FisheyeStitcher truth;
     CHECK(truth.configure(cal, kSize, kSize, truthParams));
@@ -1112,7 +1122,7 @@ void testSeamAlignment()
             seamLensPicture(truth, 0, kSize, seed, 140.0, 220.0, 1.0 / 3.0),
             seamLensPicture(truth, 1, kSize, seed, 140.0, 220.0, 1.0 / 3.0)));
 
-    const orbiscore::StitchParams none;
+    const orbiscore::StitchParams none = insta360Params();
     const orbiscore::SeamAlignmentResult r = orbiscore::EstimateSeamAlignment(cal, none, kSize, kSize, frames);
     std::printf("seam alignment: %s\n", r.message.c_str());
     CHECK(r.ok);
@@ -1123,7 +1133,7 @@ void testSeamAlignment()
     CHECK(near(r.correction.radialScale, 1.0015, 0.0003));
 
     // The correction applied, the lenses agree on far content.
-    orbiscore::StitchParams fitted;
+    orbiscore::StitchParams fitted = insta360Params();
     fitted.seam = r.correction;
     CHECK(orbiscore::MeasureSeamOffset(cal, fitted, kSize, kSize, frames) < 0.04);
     CHECK(orbiscore::MeasureSeamOffset(cal, none, kSize, kSize, frames) > 0.3);
@@ -1133,8 +1143,8 @@ void testSeamAlignment()
 // cross-fade without one.
 void testSeamBlend()
 {
-    orbiscore::InsvCalibration c = x5Calibration();
-    orbiscore::StitchParams p;
+    orbiscore::CameraCalibration c = x5Calibration();
+    orbiscore::StitchParams p = insta360Params();
     p.depthSeam = true;
     orbiscore::FisheyeStitcher st;
     CHECK(st.configure(c, 3840, 3840, p));
@@ -1269,7 +1279,7 @@ void testSeamBlend()
     // one; with the new stitcher's seam colour blend that too, unless its
     // seam flow brings a fade: its narrow one then.
     orbiscore::FisheyeStitcher off;
-    CHECK(off.configure(c, 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(off.configure(c, 3840, 3840, insta360Params()));
     orbiscore::Image l0, l1;
     l0.alloc(3840, 3840);
     l1.alloc(3840, 3840);
@@ -1492,7 +1502,7 @@ void testSeamFlow()
           orbiscore::SeamFlowShare(0.6 * reach, reach));
 
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(st.configure(x5Calibration(), 3840, 3840, insta360Params()));
     if (!st.ready())
         return;
     const orbiscore::SeamFlowGrid g = orbiscore::SeamFlowGridFor(st);
@@ -1771,7 +1781,7 @@ void testSeamColourBlend()
     std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t(100));
     std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t(100));
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 800, 800, orbiscore::StitchParams{}));
+    CHECK(st.configure(x5Calibration(), 800, 800, insta360Params()));
     std::vector<float> green(B * 3, 0.0f);
     for (int b = 0; b < B; ++b)
         green[b * 3 + 1] = 0.1f;
@@ -1961,7 +1971,7 @@ void testSeamFade()
     // A stitch with such a fade: narrow where the share is 0, the whole
     // band where it is 1 (seamBlendWeights with the field).
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(st.configure(x5Calibration(), 3840, 3840, insta360Params()));
     orbiscore::SeamFlowField sf = field(0);
     sf.grid = orbiscore::SeamFlowGridFor(st);
     sf.v.assign(static_cast<size_t>(sf.grid.rows) * sf.grid.cols * 4, 0.0f);
@@ -2012,7 +2022,7 @@ void testSeamVeilFade()
     // alone a degree off the seam where there's no veil, both mixed there
     // where the fade takes the whole band, and half and half on the seam.
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
+    CHECK(st.configure(x5Calibration(), 3840, 3840, insta360Params()));
     const double bandX5 = st.gpuParams().bandRad;
     std::vector<float> wide(B * 3, 0.0f);
     for (int b = 0; b < B; ++b)
@@ -2309,9 +2319,9 @@ void testFitLensColour()
 // content; on content 0.33 m away only once the depth table says so.
 void testSeamCutStats()
 {
-    const orbiscore::InsvCalibration cal = x5Calibration();
+    const orbiscore::CameraCalibration cal = x5Calibration();
     constexpr int kSize = 1536;
-    orbiscore::StitchParams p;
+    orbiscore::StitchParams p = insta360Params();
     p.depthSeam = true;
     orbiscore::FisheyeStitcher st;
     CHECK(st.configure(cal, kSize, kSize, p));

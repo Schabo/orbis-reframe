@@ -11,12 +11,12 @@
 
 namespace orbiscore {
 
-class InsvAudioDemux;
+class AudioDemux;
 class NoiseFilter;
 
 // Sample-exact reads of one clip's audio: "exactly N frames of interleaved
 // float32 PCM starting at source frame S", with the clip's level/mute baked
-// in. Wraps InsvAudioDemux, whose chunks are whole AAC frames (~21 ms) placed
+// in. Wraps AudioDemux, whose chunks are whole AAC frames (~21 ms) placed
 // by PTS: read() cuts them at the exact sample, and fills silence wherever
 // there's no audio to give (no stream, muted, a hole in the stream, past its
 // end), so the output is always exactly as long as asked. Shared by playback
@@ -38,7 +38,7 @@ public:
     // runs from the join over the first part's tail.
     static constexpr int kJoinFadeMs = 20;
 
-    // Opens audio stream `track` (InsvAudioDemux::open's ordinal) of every
+    // Opens audio stream `track` (AudioDemux::open's ordinal) of every
     // part, in clip order. False if no part has audio -- the reader then just
     // yields silence (so does a part without). Leaves the position at source
     // frame 0.
@@ -75,7 +75,7 @@ private:
     void readSource(float* out, int64_t frames); // the tempo-1 read
     // One part's audio stream, placed in clip frames.
     struct Part {
-        std::unique_ptr<InsvAudioDemux> demux; // null: no audio in this file
+        std::unique_ptr<AudioDemux> demux; // null: no audio in this file
         int64_t start = 0;                     // clip frame of its stream's time 0
         bool eof = false;
         bool seekPending = true; // demux not yet positioned at pos

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-// The demux / decode core shared by InsvDemux (CPU decode, RGB Image out) and
+// The demux / decode core shared by FisheyeDemux (CPU decode, RGB Image out) and
 // VulkanVideoDecoder (Vulkan hwaccel, AVVkFrame out): a format context per
 // file the lenses come from (one `.insv` holding both on the X5, a file per
 // lens on the ONE X2), one persistent decoder per fisheye video stream
@@ -39,7 +39,7 @@ struct AVStream;
 namespace orbiscore {
 
 // The keyframe of `stream` nearest `timestampMs`, in ms rounded up (see
-// InsvDemux::nearestKeyframeMs).
+// FisheyeDemux::nearestKeyframeMs).
 int64_t NearestKeyframeMs(AVFormatContext* fmt, int stream, int64_t timestampMs);
 // The keyframes of `stream` at or before / at or after `timestampMs`, in ms
 // rounded up as NearestKeyframeMs; -1 where the index has none.

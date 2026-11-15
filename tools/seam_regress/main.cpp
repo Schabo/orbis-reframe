@@ -53,7 +53,7 @@
 
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/Image.h>
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/stitch/LensColour.h>
 #include <orbis-core/stitch/SeamCut.h>
 #include <orbis-core/stitch/SeamDepth.h>
@@ -754,7 +754,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
 
     // The stitch as NativeStitchSource sets it up, for the strips.
     Geometry g;
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> meta;
     if (stitch::PrepareClipMeasurement(e.clip, e.guard, nullptr, calib, params, err, &meta) !=
@@ -966,7 +966,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     // The lenses as decoded, for the strips.
     orbiscore::Image lens[2];
     {
-        orbiscore::InsvDemux demux;
+        orbiscore::FisheyeDemux demux;
         if (!demux.open(meta->partSources(), err) || !demux.seekTo(pts, err))
             return false;
         orbiscore::FramePts p{-1, -1};

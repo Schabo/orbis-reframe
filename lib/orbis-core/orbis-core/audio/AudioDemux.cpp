@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/AudioDemux.h>
 
 #include <algorithm>
 #include <cmath>
@@ -13,9 +13,9 @@ extern "C" {
 
 namespace orbiscore {
 
-InsvAudioDemux::~InsvAudioDemux() { close(); }
+AudioDemux::~AudioDemux() { close(); }
 
-void InsvAudioDemux::close()
+void AudioDemux::close()
 {
     if (m_swr)
         swr_free(&m_swr);
@@ -33,7 +33,7 @@ void InsvAudioDemux::close()
     m_flushSent = false;
 }
 
-int InsvAudioDemux::countAudioStreams(const std::string& path)
+int AudioDemux::countAudioStreams(const std::string& path)
 {
     AVFormatContext* fmt = nullptr;
     if (avformat_open_input(&fmt, path.c_str(), nullptr, nullptr) < 0)
@@ -47,7 +47,7 @@ int InsvAudioDemux::countAudioStreams(const std::string& path)
     return n;
 }
 
-bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outChannels,
+bool AudioDemux::open(const std::string& path, int outSampleRate, int outChannels,
                           std::string& err, int track)
 {
     close();
@@ -115,7 +115,7 @@ bool InsvAudioDemux::open(const std::string& path, int outSampleRate, int outCha
     return true;
 }
 
-bool InsvAudioDemux::openDecoder(std::string& err)
+bool AudioDemux::openDecoder(std::string& err)
 {
     if (m_swr)
         swr_free(&m_swr);
@@ -149,7 +149,7 @@ bool InsvAudioDemux::openDecoder(std::string& err)
     return true;
 }
 
-bool InsvAudioDemux::seekTo(int64_t timestampMs, std::string& err)
+bool AudioDemux::seekTo(int64_t timestampMs, std::string& err)
 {
     if (!m_dec) {
         err = "seekTo before open";
@@ -180,7 +180,7 @@ bool InsvAudioDemux::seekTo(int64_t timestampMs, std::string& err)
     return true;
 }
 
-bool InsvAudioDemux::readNext(std::vector<float>& out, int64_t* ptsMs, std::string& err,
+bool AudioDemux::readNext(std::vector<float>& out, int64_t* ptsMs, std::string& err,
                               double* ptsSec)
 {
     for (;;) {

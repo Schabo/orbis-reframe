@@ -8,7 +8,7 @@
 //
 // Header-only and plain data: the project (src/core) keeps a copy per clip.
 
-#include <orbis-core/insta360/Calibration.h> // orbiscore::LensCalibExt
+#include <orbis-core/stitch/LensModel.h> // orbiscore::LensCalibExt
 
 #include <array>
 #include <cmath>

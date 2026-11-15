@@ -1,7 +1,7 @@
 #include "ClipSeam.h"
 
-#include <orbis-core/insta360/Calibration.h>
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/stitch/LensModel.h>
+#include <orbis-core/media/FisheyeDemux.h>
 
 #include <algorithm>
 #include <utility>
@@ -25,7 +25,7 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
         return out;
     };
     std::string err;
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> clip;
     if (const MeasureFailure why =
@@ -33,7 +33,7 @@ ClipSeamResult MeasureClipSeam(const std::string& clipPath, int64_t trimInMs, in
         why != MeasureFailure::None)
         return fail(why, err);
 
-    orbiscore::InsvDemux demux;
+    orbiscore::FisheyeDemux demux;
     if (!demux.open(clip->partSources(), err))
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)

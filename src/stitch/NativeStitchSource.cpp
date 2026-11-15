@@ -4,10 +4,10 @@
 #include "../core/VulkanHwDevice.h" // core::sharedVulkanDevice
 #include "ClipSeamAnalysis.h"
 
-#include <orbis-core/insta360/Calibration.h>           // orbiscore::InsvCalibration
+#include <orbis-core/stitch/LensModel.h>             // orbiscore::CameraCalibration
 #include <orbis-core/stitch/FisheyeProjection.h>     // orbiscore::FisheyeStitcher, StitchParams
 #include <orbis-core/Image.h>                 // orbiscore::Image
-#include <orbis-core/media/InsvDemux.h>             // orbiscore::InsvDemux
+#include <orbis-core/media/FisheyeDemux.h>             // orbiscore::FisheyeDemux
 #include <orbis-core/stitch/SeamFlow.h>              // SeamFlowStrips, MeasureSeamFlowStrips
 #ifdef ORBIS_SEAM_FLOW
 #include <orbis-core/stitch/SeamFlowEstimator.h>     // orbiscore::SeamFlowEstimator (OpenCV)
@@ -81,7 +81,7 @@ const orbiscore::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
                             const LensCalibration* calibration, bool modelCorrection,
-                            orbiscore::InsvCalibration& calib, orbiscore::StitchParams& params,
+                            orbiscore::CameraCalibration& calib, orbiscore::StitchParams& params,
                             std::string& err, bool* guardFound) {
     if (clip.projection != camera::Projection::DualFisheye || clip.lenses.size() != 2) {
         err = "not a dual-fisheye clip";
@@ -157,7 +157,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
         last_error_ = err + ": " + clip_path;
         return false;
     }
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     bool guardFound = true;
     const LensCalibration* lensCal = config.lensCalibration ? &*config.lensCalibration : nullptr;
@@ -304,7 +304,7 @@ bool NativeStitchSource::openDecode() {
     }
 
     // --- Stage 1 / fallback: CPU decode + (GPU or CPU) stitch ---
-    auto demux = std::make_unique<orbiscore::InsvDemux>();
+    auto demux = std::make_unique<orbiscore::FisheyeDemux>();
     std::string err;
     if (!demux->open(lens_sources_, err)) {
         last_error_ = "demux open failed: " + err + ": " + clip_path_;

@@ -182,7 +182,7 @@ std::optional<Thumbnail> stitchedThumbnail(const std::string& path) {
     }
     if (lens[0].w != lens[1].w || lens[0].h != lens[1].h)
         return std::nullopt;
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     for (const Lens& l : clip->lenses)
         calib.lensesExt.push_back(l.calibration);
     orbiscore::StitchParams params;
@@ -460,7 +460,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
     // The MEI calibration Insta360 Studio stitches with: the 56-token string
     // (every X5 clip carries it), else the shorter offset_v3 (field 54; the
     // ONE X2's only one).
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     const auto ext = orbiscore::ReadInsvExtendedCalibrationString(out.path);
     if (((ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) ||
          orbiscore::ParseCalibrationV3String(notes->offset_v3, calib)) &&

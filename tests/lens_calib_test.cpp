@@ -10,6 +10,7 @@
 #include "LensFit.h"
 
 #include <ClipMetadata.h>
+#include <orbis-core/insta360/Calibration.h> // orbiscore::Insta360LensPose
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <LensCalibrationJson.h>
 
@@ -79,9 +80,9 @@ camera::ClipMetadata Clip(int lensSize)
 }
 
 // The true camera: the file's, changed as the chart finds real ones are.
-orbiscore::InsvCalibration TrueCalibration(const camera::ClipMetadata& clip)
+orbiscore::CameraCalibration TrueCalibration(const camera::ClipMetadata& clip)
 {
-    orbiscore::InsvCalibration cal;
+    orbiscore::CameraCalibration cal;
     cal.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
     orbiscore::LensCalibExt &a = cal.lensesExt[0], &b = cal.lensesExt[1];
     a.fx *= 0.995, a.fy *= 0.995, a.cx += 3, a.cy -= 2, a.k[0] += 0.004;
@@ -143,9 +144,11 @@ Board MakeBoard(orbiscore::Vec3 dir, double dist, double tiltDeg, double spinDeg
 void testFit()
 {
     const camera::ClipMetadata clip = Clip(3840);
-    const orbiscore::InsvCalibration truth = TrueCalibration(clip);
+    const orbiscore::CameraCalibration truth = TrueCalibration(clip);
     orbiscore::FisheyeStitcher st;
     orbiscore::StitchParams params;
+    for (int i = 0; i < 2; ++i)
+        params.lensPose[i] = clip.lenses[i].pose;
     params.depthSeam = true; // project out to the circle's edge (100 deg)
     CHECK(st.configure(truth, 3840, 3840, params));
     // Lens 1's centre: the file's spacing behind lens 0 along its axis.
@@ -216,7 +219,7 @@ void testFit()
 
     // The fitted calibration, stitched: where it puts each direction against
     // where the true lens has it.
-    orbiscore::InsvCalibration fitted;
+    orbiscore::CameraCalibration fitted;
     fitted.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
     CHECK(r.calibration.matchesFile(fitted.lensesExt[0], fitted.lensesExt[1]));
     stitch::ApplyLensCalibration(r.calibration, fitted.lensesExt[0], fitted.lensesExt[1]);
@@ -262,10 +265,12 @@ void testDetect()
 {
     const int S = 1920;
     const camera::ClipMetadata clip = Clip(S);
-    orbiscore::InsvCalibration cal;
+    orbiscore::CameraCalibration cal;
     cal.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
     orbiscore::FisheyeStitcher st;
     orbiscore::StitchParams params;
+    for (int i = 0; i < 2; ++i)
+        params.lensPose[i] = clip.lenses[i].pose;
     params.depthSeam = true;
     CHECK(st.configure(cal, S, S, params));
     const orbiscore::Vec3 a0 = Axis(st, 0);

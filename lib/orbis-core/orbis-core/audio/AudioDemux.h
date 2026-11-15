@@ -22,18 +22,18 @@ namespace orbiscore {
 // (TrackClip::stream: each stream is its own clip on the Camera mic / External mic
 // track); the container carries nothing that says which stream is which mic.
 //
-// Independent of InsvDemux -- its own AVFormatContext, its own file handle --
+// Independent of FisheyeDemux -- its own AVFormatContext, its own file handle --
 // because audio playback needs no fisheye video and no stitch path at all.
 // Always resamples/remixes to a fixed output format (see open()) so a caller
 // never has to handle format variation between clips. FFmpeg-only, no Qt --
-// lives in orbiscore_media next to InsvDemux for the same reason (the one
+// lives in orbiscore_media next to FisheyeDemux for the same reason (the one
 // FFmpeg-dependent piece of orbis-core).
-class InsvAudioDemux {
+class AudioDemux {
 public:
-    InsvAudioDemux() = default;
-    ~InsvAudioDemux();
-    InsvAudioDemux(const InsvAudioDemux&) = delete;
-    InsvAudioDemux& operator=(const InsvAudioDemux&) = delete;
+    AudioDemux() = default;
+    ~AudioDemux();
+    AudioDemux(const AudioDemux&) = delete;
+    AudioDemux& operator=(const AudioDemux&) = delete;
 
     // Opens `path`'s audio stream and a resampler to interleaved float32 at
     // outSampleRate/outChannels. `track` is the ordinal among the file's audio

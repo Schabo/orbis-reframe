@@ -341,7 +341,7 @@ endif()
 
 if(FFMPEG_FOUND)
     # --- tools/audio_filter_bench: test bench for the audio noise filters --
-    # decodes one audio stream (InsvAudioDemux) to WAV, runs the app's filters
+    # decodes one audio stream (AudioDemux) to WAV, runs the app's filters
     # on it and scores the result; run_all.sh adds DeepFilterNet / afftdn.
     add_executable(audio_filter_bench tools/audio_filter_bench/main.cpp)
     target_link_libraries(audio_filter_bench PRIVATE orbis-core::media orbis_paths
@@ -974,7 +974,7 @@ if(Qt6Test_FOUND)
     add_test(NAME theme_test COMMAND theme_test)
 endif()
 
-# orbiscore::InsvDemux with a file per lens, on generated videos -- needs FFmpeg.
+# orbiscore::FisheyeDemux with a file per lens, on generated videos -- needs FFmpeg.
 if(TARGET orbis-core::media)
     add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
     target_link_libraries(lens_demuxer_test PRIVATE orbis-core::media test_media)

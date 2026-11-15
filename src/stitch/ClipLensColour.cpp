@@ -1,8 +1,8 @@
 #include "ClipLensColour.h"
 
-#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/stitch/LensModel.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/stitch/SeamAlignment.h> // orbiscore::SnapToKeyframeMs
 #include <orbis-core/stitch/SeamCut.h>
 
@@ -33,7 +33,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
         return out;
     };
     std::string err;
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> clip;
     if (const MeasureFailure why =
@@ -42,7 +42,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
         return fail(why, err);
     params.seam = seam;
 
-    orbiscore::InsvDemux demux;
+    orbiscore::FisheyeDemux demux;
     if (!demux.open(clip->partSources(), err))
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)

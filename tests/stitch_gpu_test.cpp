@@ -76,7 +76,7 @@ double Compare(const orbiscore::FisheyeStitcher& st, render::VulkanFisheyeStitch
 void testMei(render::VulkanFisheyeStitcher& gpu)
 {
     // An X5's two lenses in the 10752 x 5376 side-by-side frame.
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     for (int i = 0; i < 2; ++i) {
         orbiscore::LensCalibExt e;
         e.xi = 2, e.w = 10752, e.h = 5376, e.focalRefW = 5312;
@@ -88,8 +88,11 @@ void testMei(render::VulkanFisheyeStitcher& gpu)
         e.s[0] = -0.004, e.s[1] = -0.003, e.s[2] = 0.002, e.s[3] = 0.0004;
         c.lensesExt.push_back(e);
     }
+    orbiscore::StitchParams insta360;
+    for (int i = 0; i < 2; ++i)
+        insta360.lensPose[i] = orbiscore::Insta360LensPose(i);
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(c, kLens, kLens, orbiscore::StitchParams{}));
+    CHECK(st.configure(c, kLens, kLens, insta360));
     const double d = Compare(st, gpu);
     std::printf("MEI: mean difference %.3f levels\n", d);
     CHECK(d < 1.0);
@@ -101,7 +104,7 @@ void testThetaPoly(render::VulkanFisheyeStitcher& gpu)
     // of a side-by-side frame of its 3840 calibration frames, and its pose:
     // the master as it is, the slave a half turn about y with the file's
     // small deviation (as a reader puts the whole pose in the mount).
-    orbiscore::InsvCalibration c;
+    orbiscore::CameraCalibration c;
     const double fx[2] = {1039.390, 1035.882}, fy[2] = {1039.506, 1036.047};
     const double cx[2] = {1933.663, 1907.738}, cy[2] = {1912.346, 1924.519};
     const double k[2][4] = {{0.07275, -0.02460, 0.01725, -0.00826},

@@ -9,7 +9,7 @@
 #include <vector>
 
 // Tiny interleaved 8-bit RGB image, the currency of the stitch path
-// (orbis-core). Deliberately trivial and dependency-free -- InsvDemux fills one
+// (orbis-core). Deliberately trivial and dependency-free -- FisheyeDemux fills one
 // per fisheye frame, FisheyeStitcher reads two and writes an equirect one. For
 // an RGBA consumer (e.g. a future NativeStitchSource feeding IStitchSource::
 // Frame) convert at the boundary; the projection math is all RGB.

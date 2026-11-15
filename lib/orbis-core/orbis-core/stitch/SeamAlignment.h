@@ -66,7 +66,7 @@ SeamFrame MakeSeamFrame(const Image& lens0, const Image& lens1);
 // `cal` / `params` / `streamW` / `streamH` are what the stitch is configured
 // with (params.seam is ignored -- the fit starts from none). Needs the
 // extended MEI calibration. `cancel` (optional) is polled between steps.
-SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const StitchParams& params,
+SeamAlignmentResult EstimateSeamAlignment(const CameraCalibration& cal, const StitchParams& params,
                                           int streamW, int streamH,
                                           const std::vector<SeamFrame>& frames,
                                           const std::atomic<bool>* cancel = nullptr);
@@ -74,7 +74,7 @@ SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const Stit
 // The RMS offset between the lenses (as SeamAlignmentResult::offsetAfterDeg)
 // with the stitch as `params` has it, params.seam included; < 0 when no block
 // has enough detail. For checking a correction on other frames.
-double MeasureSeamOffset(const InsvCalibration& cal, const StitchParams& params, int streamW,
+double MeasureSeamOffset(const CameraCalibration& cal, const StitchParams& params, int streamW,
                          int streamH, const std::vector<SeamFrame>& frames);
 
 } // namespace orbiscore

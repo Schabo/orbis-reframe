@@ -6,7 +6,7 @@
 //                                        default bare)
 //
 // Flow: orbiscore::ReadInsvMakerNotes (trailer parser, orbis-core) ->
-// orbiscore::ParseExtendedCalibrationString -> orbiscore::InsvDemux (FFmpeg) x2 lenses ->
+// orbiscore::ParseExtendedCalibrationString -> orbiscore::FisheyeDemux (FFmpeg) x2 lenses ->
 // orbiscore::FisheyeStitcher -> PPM.
 
 #include <algorithm>
@@ -20,7 +20,7 @@
 #include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/Image.h>
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/insta360/InsvModels.h>
 #include <orbis-core/insta360/InsvTrailer.h> // orbiscore::ReadInsvMakerNotes
 #include <orbis-core/stitch/SeamAlignment.h>
@@ -155,7 +155,7 @@ int main(int argc, char** argv)
     std::printf("Parameters: %s\n", rawCalib->parameters.c_str());
 
     // Extended MEI calibration (Insta360 Studio's model).
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     const auto ext = orbiscore::ReadInsvExtendedCalibrationString(clip);
     // The 56-token string, else the 40-token offset_v3 (the ONE X2's).
     if (!(ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) &&
@@ -173,6 +173,8 @@ int main(int argc, char** argv)
     // How the camera holds its lenses: the model's (InsvModel::mountDeg).
     const orbiscore::InsvModel& model = orbiscore::FindInsvModel(rawCalib->model);
     const auto mount = [&model](orbiscore::StitchParams& p) {
+        for (int i = 0; i < 2; ++i)
+            p.lensPose[i] = orbiscore::Insta360LensPose(i);
         p.outYawDeg = model.mountDeg[0];
         p.outPitchDeg = model.mountDeg[1];
         p.outRollDeg = model.mountDeg[2];
@@ -185,7 +187,7 @@ int main(int argc, char** argv)
                                                      : orbiscore::FindLensProfile(*rawCalib, lensProfile);
     const bool profileMissing = !accProfile && !lensProfile.empty() && lensProfile != "bare";
 
-    orbiscore::InsvDemux demux;
+    orbiscore::FisheyeDemux demux;
     std::string err;
     if (!(lens1File.empty() ? demux.open(clip, err)
                             : demux.open({{clip, 0}, {lens1File, 0}}, err)))

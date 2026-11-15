@@ -1,10 +1,10 @@
 #pragma once
 
 #include <orbis-core/audio/AudioPart.h>   // orbiscore::AudioPart
-#include <orbis-core/insta360/Calibration.h> // orbiscore::LensCalibExt, orbiscore::LensPose
 #include <orbis-core/metadata/Gps.h>         // orbiscore::GpsTrack
 #include <orbis-core/metadata/Imu.h>         // orbiscore::ImuTrack
-#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::LensProfile
+#include <orbis-core/stitch/LensModel.h>   // orbiscore::LensCalibExt, orbiscore::LensPose
+#include <orbis-core/stitch/LensProfile.h> // orbiscore::LensProfile
 #include <orbis-core/stitch/LensSource.h>  // orbiscore::LensSource
 #include <orbis-core/stab/Motion.h>      // orbiscore::MotionTrack
 #include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection

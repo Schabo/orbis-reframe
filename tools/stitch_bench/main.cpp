@@ -281,7 +281,7 @@ bench::V3 ToBench(const orbiscore::Vec3& v) { return {v.x, v.y, v.z}; }
 bool SeamFrameOf(const Entry& e, bench::SeamFrame& out, std::shared_ptr<const camera::ClipMetadata>& meta,
                  std::string& err)
 {
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     if (stitch::PrepareClipMeasurement(e.clip, e.guard, nullptr, calib, params, err, &meta) !=
         stitch::MeasureFailure::None)

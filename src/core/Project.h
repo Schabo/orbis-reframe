@@ -249,7 +249,7 @@ public:
     // undo / redo step: the ones a project's cache must keep.
     QSet<QString> plateScansInUse() const;
 
-    // How many audio streams a source file has (InsvAudioDemux::
+    // How many audio streams a source file has (AudioDemux::
     // countAudioStreams; the model has no FFmpeg). Used to convert a project
     // from before version 10, whose clips' sound has to be put on the stream
     // tracks, and handed to the timeline (Timeline::setAudioStreamCounter).

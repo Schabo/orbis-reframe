@@ -17,7 +17,7 @@ struct AudioPeaks {
     std::vector<float> peaks;           // empty: no audio (or the file couldn't be read)
 };
 
-// Decodes the whole stream (`stream` as InsvAudioDemux::open's track; -1 =
+// Decodes the whole stream (`stream` as AudioDemux::open's track; -1 =
 // the default) of every part, in clip time, and returns its peaks. Each part
 // is cut where the next starts, as ClipAudioReader plays them. Slow-ish (a
 // pass over all the audio, decoded at a reduced rate) -- run it off the GUI

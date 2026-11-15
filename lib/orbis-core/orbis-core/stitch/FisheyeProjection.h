@@ -2,10 +2,10 @@
 #pragma once
 
 #include <orbis-core/stitch/BlurQuads.h>
-#include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/Image.h>
-#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::LensProfile
 #include <orbis-core/stitch/LensColour.h>
+#include <orbis-core/stitch/LensModel.h>
+#include <orbis-core/stitch/LensProfile.h>
 #include <orbis-core/stitch/SeamCorrection.h>
 
 #include <array>
@@ -25,9 +25,9 @@
 // src/export/ReframeRenderer: +X right, +Y up, -Z forward; equirect
 // longitude = atan2(x, -z), latitude = asin(y).
 //
-// Dependency-free (no Qt / FFmpeg / Vulkan) -- part of the `insv`
+// Dependency-free (no Qt / FFmpeg / Vulkan) -- part of the `orbiscore`
 // static lib. The .insv demux that produces the input frames is the separate
-// `orbiscore_media` lib (it needs FFmpeg); see InsvDemux.h.
+// `orbiscore_media` lib (it needs FFmpeg); see FisheyeDemux.h.
 
 namespace orbiscore {
 
@@ -116,9 +116,11 @@ struct StitchParams {
     // recorded.
     LensColour lensColour;
 
-    // Each lens's pose in the camera (camera::Lens::pose); the default is
-    // Insta360's.
-    LensPose lensPose[2] = {Insta360LensPose(0), Insta360LensPose(1)};
+    // Each lens's pose in the camera (camera::Lens::pose), which the
+    // camera's reader knows; the default is no camera's (both lenses facing
+    // the same way), so a caller that forgets it gets no seam rather than a
+    // nearly right one.
+    LensPose lensPose[2];
     // The lenses' model (camera::Lens::model; both have the same one), and
     // for the theta-polynomial each lens's fifth term (camera::Lens::k5).
     LensModel lensModel = LensModel::Mei;
@@ -311,7 +313,8 @@ public:
     // `cal` must carry the extended MEI calibration for exactly 2 lenses;
     // `streamW/streamH` are the decoded per-lens fisheye frame dimensions
     // (3840x3840 on the X5). Returns false otherwise. Cheap; safe to call again on a params change.
-    bool configure(const InsvCalibration& cal, int streamW, int streamH, const StitchParams& params);
+    bool configure(const CameraCalibration& cal, int streamW, int streamH,
+                   const StitchParams& params);
 
     bool ready() const { return m_ready; }
 

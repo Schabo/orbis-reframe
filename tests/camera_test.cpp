@@ -12,7 +12,7 @@
 
 #include "ClipMetadata.h"
 #include <orbis-core/stab/GyroStabilizer.h>
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/insta360/InsvTrailer.h>
 #include "support/TestMedia.h"
 #include "support/TestTrailer.h"
@@ -628,7 +628,7 @@ void testSplitRecording(const std::filesystem::path& dir)
     }
 
     // The frames: read on through the join, and seeked to either side.
-    orbiscore::InsvDemux demux;
+    orbiscore::FisheyeDemux demux;
     CHECK(demux.open(clip->partSources(), err));
     CHECK(demux.lens(0).durationMs == 3200);
     orbiscore::Image a, b;
@@ -697,7 +697,7 @@ void testMissingParts(const std::filesystem::path& dir)
         CHECK(clip->durationMs == 4200 && clip->missingFirst.empty() &&
               clip->mayContinueIn.empty());
         // The frames jump over the gap.
-        orbiscore::InsvDemux demux;
+        orbiscore::FisheyeDemux demux;
         std::string err;
         CHECK(demux.open(clip->partSources(), err));
         orbiscore::Image a, b;

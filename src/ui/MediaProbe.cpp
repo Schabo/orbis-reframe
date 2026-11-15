@@ -2,7 +2,7 @@
 
 #include <ClipMetadata.h>    // camera::ReadClipMetadata
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader
-#include <orbis-core/audio/InsvAudioDemux.h>  // orbiscore::InsvAudioDemux
+#include <orbis-core/audio/AudioDemux.h>  // orbiscore::AudioDemux
 #include <ProbeClip.h>       // stitch::ProbeClip
 
 #include <algorithm>
@@ -55,7 +55,7 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
         break;
     }
     case MediaItem::Kind::Audio: {
-        orbiscore::InsvAudioDemux demux;
+        orbiscore::AudioDemux demux;
         ok = demux.open(path.toStdString(), 48000, 2, err);
         m.durationMs = demux.durationMs();
         if (ok && m.durationMs <= 0) {

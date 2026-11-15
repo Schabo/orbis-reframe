@@ -227,8 +227,8 @@ struct BlockModel {
     double J[2][kParams] = {};
 };
 
-bool buildModels(const InsvCalibration& cal, const StitchParams& base, const Params& x, int streamW,
-                 int streamH, std::vector<BlockModel>& out)
+bool buildModels(const CameraCalibration& cal, const StitchParams& base, const Params& x,
+                 int streamW, int streamH, std::vector<BlockModel>& out)
 {
     StitchParams p = base;
     p.seam = toCorrection(x);
@@ -495,7 +495,7 @@ SeamFrame MakeSeamFrame(const Image& lens0, const Image& lens1)
     return f;
 }
 
-SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const StitchParams& params,
+SeamAlignmentResult EstimateSeamAlignment(const CameraCalibration& cal, const StitchParams& params,
                                           int streamW, int streamH,
                                           const std::vector<SeamFrame>& frames,
                                           const std::atomic<bool>* cancel)
@@ -572,7 +572,7 @@ SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const Stit
     return out;
 }
 
-double MeasureSeamOffset(const InsvCalibration& cal, const StitchParams& params, int streamW,
+double MeasureSeamOffset(const CameraCalibration& cal, const StitchParams& params, int streamW,
                          int streamH, const std::vector<SeamFrame>& frames)
 {
     if (cal.lensesExt.size() != 2 || frames.empty())

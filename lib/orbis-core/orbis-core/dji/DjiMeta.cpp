@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/dji/DjiMeta.h>
 
-#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::ReadMp4UserBox
+#include <orbis-core/media/Mp4Box.h>
 #include <orbis-core/Protobuf.h>
 
 #include <algorithm>

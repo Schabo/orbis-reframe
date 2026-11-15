@@ -2,7 +2,7 @@
 
 #include "ClipMetadata.h"
 
-#include <orbis-core/media/InsvDemux.h> // orbiscore::InsvStreamInfo
+#include <orbis-core/media/FisheyeDemux.h> // orbiscore::InsvStreamInfo
 
 #include <optional>
 #include <string>

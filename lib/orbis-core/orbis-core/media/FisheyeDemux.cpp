@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 
 #include <string>
 #include <utility>
@@ -11,9 +11,9 @@ extern "C" {
 
 namespace orbiscore {
 
-InsvDemux::~InsvDemux() { close(); }
+FisheyeDemux::~FisheyeDemux() { close(); }
 
-void InsvDemux::close()
+void FisheyeDemux::close()
 {
     m_demux.close();
     if (m_sws) {
@@ -31,25 +31,25 @@ bool CpuDecoderSetup(const AVStream*, const AVCodec*, AVCodecContext* ctx, std::
 }
 } // namespace
 
-bool InsvDemux::open(const std::string& path, std::string& err)
+bool FisheyeDemux::open(const std::string& path, std::string& err)
 {
     close();
     return m_demux.open(path, CpuDecoderSetup, err);
 }
 
-bool InsvDemux::open(const std::vector<LensSource>& lenses, std::string& err)
+bool FisheyeDemux::open(const std::vector<LensSource>& lenses, std::string& err)
 {
     close();
     return m_demux.open(lenses, CpuDecoderSetup, err);
 }
 
-bool InsvDemux::open(const std::vector<ClipPart>& parts, std::string& err)
+bool FisheyeDemux::open(const std::vector<ClipPart>& parts, std::string& err)
 {
     close();
     return m_demux.open(parts, CpuDecoderSetup, err);
 }
 
-void InsvDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)
+void FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)
 {
     out.alloc(frm->width, frm->height);
 
@@ -87,19 +87,22 @@ void InsvDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image&
     sws_scale(m_sws, frm->data, frm->linesize, 0, frm->height, dst, stride);
 }
 
-void InsvDemux::keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const
+void FisheyeDemux::keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const
 {
     m_demux.keyframesAroundMs(timestampMs, before, after);
 }
 
-int64_t InsvDemux::nearestKeyframeMs(int64_t timestampMs) const
+int64_t FisheyeDemux::nearestKeyframeMs(int64_t timestampMs) const
 {
     return m_demux.nearestKeyframeMs(timestampMs);
 }
 
-bool InsvDemux::seekTo(int64_t timestampMs, std::string& err) { return m_demux.seekTo(timestampMs, err); }
+bool FisheyeDemux::seekTo(int64_t timestampMs, std::string& err)
+{
+    return m_demux.seekTo(timestampMs, err);
+}
 
-bool InsvDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::string& err)
+bool FisheyeDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::string& err)
 {
     AVFrame* f0 = nullptr;
     AVFrame* f1 = nullptr;
@@ -112,7 +115,7 @@ bool InsvDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::strin
     return true;
 }
 
-bool InsvDemux::readFrameAt(int lens, int64_t timestampMs, Image& out, std::string& err)
+bool FisheyeDemux::readFrameAt(int lens, int64_t timestampMs, Image& out, std::string& err)
 {
     if (lens < 0 || lens >= lensCount()) {
         err = "lens index " + std::to_string(lens) + " out of range";

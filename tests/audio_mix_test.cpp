@@ -1,6 +1,6 @@
 // orbiscore::AudioMixer (extra audio tracks): placement, gain, fades, chunked vs.
 // one-shot reads, seeking, the limiter -- on WAV files written here (constant
-// PCM, so every mixed sample is exactly predictable). Also that InsvAudioDemux
+// PCM, so every mixed sample is exactly predictable). Also that AudioDemux
 // reports a WAV's duration (what "Add audio file" relies on). The per-clip
 // noise filters (orbiscore::WindReducer, GeneralWindReducer, HissHumReducer) on
 // synthetic signals, and ClipAudioReader's alignment with them on. Exit code is
@@ -9,7 +9,7 @@
 #include <orbis-core/audio/AudioMixer.h>
 #include <orbis-core/audio/AudioPeaks.h>
 #include <orbis-core/audio/ClipAudioReader.h>
-#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/AudioDemux.h>
 #include <orbis-core/audio/GeneralWindReducer.h>
 #include <orbis-core/audio/HissHumReducer.h>
 #ifdef ORBISCORE_HAVE_VOICE
@@ -58,7 +58,7 @@ bool near(float a, float b, float tol = 1e-4f) { return std::abs(a - b) <= tol; 
 
 void testDemuxDuration(const std::string& dc)
 {
-    orbiscore::InsvAudioDemux d;
+    orbiscore::AudioDemux d;
     std::string err;
     CHECK(d.open(dc, kRate, kCh, err));
     CHECK(d.durationMs() == 1000);

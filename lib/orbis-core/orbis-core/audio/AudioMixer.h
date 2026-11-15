@@ -16,7 +16,7 @@ class ClipAudioReader;
 // One clip on an extra audio track, in output-rate frames.
 struct MixClip {
     std::vector<AudioPart> parts; // its file, or a split recording's files
-    int stream = -1;          // InsvAudioDemux::open's ordinal, -1 = default
+    int stream = -1;          // AudioDemux::open's ordinal, -1 = default
     int64_t startFrame = 0;   // timeline frame of the clip's first sample
     int64_t lengthFrames = 0; // its span on the timeline
     int64_t inFrame = 0;      // source frame (at the output rate) at startFrame

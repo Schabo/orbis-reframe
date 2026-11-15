@@ -148,7 +148,7 @@ public:
     // own track; an overlay clip goes on any overlay track.
     bool canHoldClip(int trackId, int clipId) const;
 
-    // How many audio streams a source file has (InsvAudioDemux::
+    // How many audio streams a source file has (AudioDemux::
     // countAudioStreams; the model has no FFmpeg), which says which stream
     // is which mic (Track::roleOfStream). Unset, or 0 for a file: as many as
     // the timeline's clips of it use.
@@ -167,7 +167,7 @@ public slots:
     // Its stitch settings are those of the file's other clips, else the
     // nearest 360 clip's, its lens guard narrowed to what the file carries
     // (`lensGuards`, stitch::ProbeClip's; a guard without a profile is None).
-    // Its sound: addClipSound with `audioStreams`, the source's audio stream count (InsvAudioDemux::
+    // Its sound: addClipSound with `audioStreams`, the source's audio stream count (AudioDemux::
     // countAudioStreams; 0 = none, or added by the caller -- a project load).
     // Returns the new clip's id.
     int insertClip(int index, const QString &sourcePath, qint64 sourceDurationMs,

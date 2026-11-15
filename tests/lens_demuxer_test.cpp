@@ -1,9 +1,9 @@
-// orbiscore::InsvDemux / LensDemuxer with a file per lens (the ONE X2's layout):
+// orbiscore::FisheyeDemux / LensDemuxer with a file per lens (the ONE X2's layout):
 // two single-stream videos written here, each frame a flat grey that encodes
 // its index, decoded as one lens pair -- in step, after seeks, to the end,
 // and in the order the lenses are given. Exit code is the failure count.
 
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 #include "support/TestMedia.h"
 
 #include <cmath>
@@ -65,7 +65,7 @@ bool writeLens(const std::string& path, int (*grey)(int))
 }
 
 // The next pair's frame indices, {-1, -1} at the end.
-std::pair<int, int> nextPair(orbiscore::InsvDemux& d, int (*grey0)(int), int (*grey1)(int))
+std::pair<int, int> nextPair(orbiscore::FisheyeDemux& d, int (*grey0)(int), int (*grey1)(int))
 {
     orbiscore::Image a, b;
     std::string err;
@@ -80,7 +80,7 @@ std::pair<int, int> nextPair(orbiscore::InsvDemux& d, int (*grey0)(int), int (*g
 void testPairsInStep(const std::string& a, const std::string& b)
 {
     std::printf("  two files: every pair in step\n");
-    orbiscore::InsvDemux d;
+    orbiscore::FisheyeDemux d;
     std::string err;
     CHECK(d.open({{a, 0}, {b, 0}}, err));
     CHECK(d.lensCount() == 2);
@@ -103,7 +103,7 @@ void testPairsInStep(const std::string& a, const std::string& b)
 void testSeek(const std::string& a, const std::string& b)
 {
     std::printf("  two files: seeks land both lenses on the same frame\n");
-    orbiscore::InsvDemux d;
+    orbiscore::FisheyeDemux d;
     std::string err;
     CHECK(d.open({{a, 0}, {b, 0}}, err));
     const auto at = [&](int64_t ms) {
@@ -121,7 +121,7 @@ void testSeek(const std::string& a, const std::string& b)
 void testLensOrder(const std::string& a, const std::string& b)
 {
     std::printf("  two files: the lenses in the order given\n");
-    orbiscore::InsvDemux d;
+    orbiscore::FisheyeDemux d;
     std::string err;
     CHECK(d.open({{b, 0}, {a, 0}}, err));
     CHECK(d.seekTo(400, err));
@@ -143,7 +143,7 @@ void testExactTimes(const std::string& dir)
         spec.frames = 12;
         CHECK(testmedia::writeVideo(path, spec));
     }
-    orbiscore::InsvDemux d;
+    orbiscore::FisheyeDemux d;
     std::string err;
     CHECK(d.open({{a, 0}, {b, 0}}, err));
     orbiscore::Image l0, l1;
@@ -166,7 +166,7 @@ void testExactTimes(const std::string& dir)
 void testErrors(const std::string& a, const std::string& dir)
 {
     std::printf("  two files: errors name the other file\n");
-    orbiscore::InsvDemux d;
+    orbiscore::FisheyeDemux d;
     std::string err;
     const std::string gone = dir + "/gone.mp4";
     CHECK(!d.open({{a, 0}, {gone, 0}}, err));

@@ -26,7 +26,7 @@
 #include <orbis-core/audio/VoiceIsolator.h>
 #include "DataPaths.h"
 #endif
-#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/AudioDemux.h>
 #include <orbis-core/audio/Rdft.h>
 
 #include <algorithm>
@@ -495,7 +495,7 @@ int main(int argc, char** argv)
         return usage();
 
     const std::string clip = argv[2], outDir = argv[3];
-    orbiscore::InsvAudioDemux demux;
+    orbiscore::AudioDemux demux;
     std::string err;
     if (!demux.open(clip, kRate, 2, err, stream)) {
         std::fprintf(stderr, "open: %s\n", err.c_str());

@@ -23,7 +23,7 @@
 // projection/gyro core (`insv`) stays dependency-free. Cleanroom otherwise --
 // no Qt, no Vulkan.
 //
-// One InsvDemux instance holds a single shared demux read position plus a
+// One FisheyeDemux instance holds a single shared demux read position plus a
 // persistent decoder per lens. Do not interleave readFrameAt() with the
 // sequential API on the same instance -- readFrameAt() re-seeks and resets the
 // sequential playhead. NativeStitchSource uses only the sequential API;
@@ -34,12 +34,12 @@ struct SwsContext;
 
 namespace orbiscore {
 
-class InsvDemux {
+class FisheyeDemux {
 public:
-    InsvDemux() = default;
-    ~InsvDemux();
-    InsvDemux(const InsvDemux&) = delete;
-    InsvDemux& operator=(const InsvDemux&) = delete;
+    FisheyeDemux() = default;
+    ~FisheyeDemux();
+    FisheyeDemux(const FisheyeDemux&) = delete;
+    FisheyeDemux& operator=(const FisheyeDemux&) = delete;
 
     // Opens `path`, inventories its video streams, and spins up a persistent
     // decoder per lens. Returns false with `err` set on failure.

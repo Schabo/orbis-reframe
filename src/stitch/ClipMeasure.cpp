@@ -2,14 +2,14 @@
 
 #include "NativeStitchSource.h" // stitch::DualFisheyeStitchSetup
 
-#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/stitch/LensModel.h>
 
 namespace stitch {
 
 MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       PreviewStitchConfig::LensGuard lensGuard,
                                       const LensCalibration* calibration,
-                                      orbiscore::InsvCalibration& calib,
+                                      orbiscore::CameraCalibration& calib,
                                       orbiscore::StitchParams& params, std::string& err,
                                       std::shared_ptr<const camera::ClipMetadata>* clip)
 {

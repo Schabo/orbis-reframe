@@ -157,7 +157,7 @@ inst           Insta360 trailer, runs to EOF (12.5 MB on a 43 s clip)
 - The "8K" figure (7680×3840) is 2 × 3840². No stream has that size.
 - **Two audio streams** (`VID_20250828_192900`): the camera mic and an
   Insta360 Mic Air external mic. They're separate sources, not duplicates
-  (−1.3 dB vs −8.9 dB peak). `InsvAudioDemux::open` takes the stream's
+  (−1.3 dB vs −8.9 dB peak). `AudioDemux::open` takes the stream's
   ordinal among the audio streams; orbis-reframe puts each stream on its
   own track, *Camera mic* or *External mic*, by the order below
   (`Track::roleOfStream`). Nothing in the container (`handler_name` =

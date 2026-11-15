@@ -760,11 +760,13 @@ cv::Matx33d CalibAxes(const orbiscore::Mat3& worldToLens)
     return A;
 }
 
-// Lens 0 -> lens 1 rotation of a stitch set up with `cal`.
-cv::Matx33d RigRotation(const orbiscore::InsvCalibration& cal, int w, int h)
+// Lens 0 -> lens 1 rotation of a stitch set up with `cal` and the lens
+// poses in `poses`.
+cv::Matx33d RigRotation(const orbiscore::CameraCalibration& cal, int w, int h,
+                        const orbiscore::StitchParams& poses)
 {
     orbiscore::FisheyeStitcher st;
-    st.configure(cal, w, h, orbiscore::StitchParams{});
+    st.configure(cal, w, h, poses);
     return CalibAxes(st.lensProjection(1).worldToLens) *
            CalibAxes(st.lensProjection(0).worldToLens).t();
 }
@@ -772,11 +774,12 @@ cv::Matx33d RigRotation(const orbiscore::InsvCalibration& cal, int w, int h)
 // Lens 1's yaw / pitch / roll so the stitch's lens 0 -> lens 1 rotation is
 // `target` (Gauss-Newton through the stitch's own set-up, so whatever its
 // conventions are, the result means the same to it).
-bool SolveLens1Rotation(orbiscore::InsvCalibration& cal, int w, int h, const cv::Matx33d& target)
+bool SolveLens1Rotation(orbiscore::CameraCalibration& cal, int w, int h,
+                        const orbiscore::StitchParams& poses, const cv::Matx33d& target)
 {
     double* a[3] = {&cal.lensesExt[1].yaw, &cal.lensesExt[1].pitch, &cal.lensesExt[1].roll};
     auto err = [&] {
-        return RotVec(target * RigRotation(cal, w, h).t());
+        return RotVec(target * RigRotation(cal, w, h, poses).t());
     };
     for (int it = 0; it < 30; ++it) {
         const cv::Vec3d e = err();
@@ -817,7 +820,7 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
     };
     if (clip.lenses.size() != 2 || !clip.calibrated)
         return fail("the clip has no two-lens calibration");
-    // The fit is of MEI's terms, with the stitch's Insta360 poses.
+    // The fit is of MEI's terms, the lenses placed by the clip's poses.
     if (clip.lenses[0].model != orbiscore::LensModel::Mei || clip.lenses[1].model != orbiscore::LensModel::Mei)
         return fail("the camera's lenses follow another lens model than MEI");
     if (!(opt.squareMm > 0))
@@ -825,10 +828,15 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
     if (obs.lensWidth != clip.lensWidth || obs.lensHeight != clip.lensHeight)
         return fail("the corners are from another picture size");
 
-    orbiscore::InsvCalibration fileCal;
+    orbiscore::CameraCalibration fileCal;
     fileCal.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
+    // The stitch set up with the clip's lens poses only: the lens model as
+    // the file gives it, nothing of the per-clip corrections.
+    orbiscore::StitchParams poses;
+    for (int i = 0; i < 2; ++i)
+        poses.lensPose[i] = clip.lenses[i].pose;
     orbiscore::FisheyeStitcher st;
-    if (!st.configure(fileCal, clip.lensWidth, clip.lensHeight, orbiscore::StitchParams{}))
+    if (!st.configure(fileCal, clip.lensWidth, clip.lensHeight, poses))
         return fail("the file's calibration can't be set up");
     // The file's model as the app stitches it: the guard's profile on top.
     orbiscore::FisheyeStitcher stGuard;
@@ -838,7 +846,7 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
             opt.lensGuard == 1   ? clip.standardGuard
             : opt.lensGuard == 2 ? clip.premiumGuard
                                  : std::nullopt;
-        orbiscore::StitchParams pg;
+        orbiscore::StitchParams pg = poses;
         if (prof && clip.bareLens && orbiscore::ApplyLensProfile(pg, &*clip.bareLens, &*prof) &&
             pg.accessory && stGuard.configure(fileCal, clip.lensWidth, clip.lensHeight, pg))
             acc = &stGuard;
@@ -883,7 +891,7 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
 
     // Joint: the file's rig to start (lens 1's centre on lens 0's axis, the
     // spacing behind it), held in translation.
-    const cv::Matx33d Rfile = RigRotation(fileCal, clip.lensWidth, clip.lensHeight);
+    const cv::Matx33d Rfile = RigRotation(fileCal, clip.lensWidth, clip.lensHeight, poses);
     const cv::Vec3d cFile(0, 0, -st.baselineM() * 1000);
     std::map<int, RigFrame> byFrame;
     for (int l = 0; l < 2; ++l)
@@ -957,7 +965,7 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
     report(0.95);
 
     // Back into the file's units and the stitch's rotation for lens 1.
-    orbiscore::InsvCalibration fitCal = fileCal;
+    orbiscore::CameraCalibration fitCal = fileCal;
     for (int l = 0; l < 2; ++l) {
         orbiscore::LensCalibExt& e = fitCal.lensesExt[l];
         const double halfW = e.w * 0.5;
@@ -975,7 +983,7 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
         e.p[0] = p[8];
         e.p[1] = p[9];
     }
-    if (!SolveLens1Rotation(fitCal, clip.lensWidth, clip.lensHeight, Rot(g.r)))
+    if (!SolveLens1Rotation(fitCal, clip.lensWidth, clip.lensHeight, poses, Rot(g.r)))
         return fail("lens 1's rotation doesn't solve");
     cal.lenses = {fitCal.lensesExt[0], fitCal.lensesExt[1]};
     cal.fileLenses = {fileCal.lensesExt[0], fileCal.lensesExt[1]};
@@ -988,7 +996,7 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
     // directions 90 deg off its axis in the file's set-up, through the
     // file's model to a pixel, back out through the new one.
     orbiscore::FisheyeStitcher stFit;
-    stFit.configure(fitCal, clip.lensWidth, clip.lensHeight, orbiscore::StitchParams{});
+    stFit.configure(fitCal, clip.lensWidth, clip.lensHeight, poses);
     for (int l = 0; l < 2; ++l) {
         const cv::Matx33d Af = CalibAxes(st.lensProjection(l).worldToLens);
         const cv::Matx33d An = CalibAxes(stFit.lensProjection(l).worldToLens);

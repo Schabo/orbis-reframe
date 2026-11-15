@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/audio/ClipAudioReader.h>
 
-#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/AudioDemux.h>
 #include <orbis-core/audio/NoiseFilter.h>
 
 #include <algorithm>
@@ -120,7 +120,7 @@ bool ClipAudioReader::open(const std::vector<AudioPart>& parts, int track)
     for (const AudioPart& a : parts) {
         Part p;
         p.start = a.startUs * m_rate / 1000000;
-        p.demux = std::make_unique<InsvAudioDemux>();
+        p.demux = std::make_unique<AudioDemux>();
         std::string err;
         if (!p.demux->open(a.path, m_rate, m_channels, err, track))
             p.demux.reset();
@@ -334,7 +334,7 @@ void ClipAudioReader::readPart(Part& p, float* out, int64_t from, int64_t frames
             continue;
         }
         if (p.seekPending) {
-            // Floor to the ms: InsvAudioDemux::seekTo returns the chunk that
+            // Floor to the ms: AudioDemux::seekTo returns the chunk that
             // contains that instant, which starts at or before p.pos.
             std::string err;
             p.seekPending = false;

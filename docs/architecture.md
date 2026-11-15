@@ -20,7 +20,12 @@ discussion in an issue first, not a pull request.
 - **`lib/orbis-core/` stays independent**: no Qt, editor or Vulkan-loader
   dependency, licensed MIT OR Apache-2.0, so it can become its own library.
   It is built through its own `CMakeLists.txt`, with its tests and tools
-  beside it, and is included as `<orbis-core/...>`.
+  beside it, and is included as `<orbis-core/...>`. Its core is
+  camera-agnostic: each file format has its own folder (`insta360/`,
+  `dji/`) that fills the core's types (the lens model in
+  `stitch/LensModel.h`), and only that folder includes its headers. The
+  `orbiscore_layering` test checks this, and that the library includes
+  nothing of Qt or the app.
 - **Where format knowledge comes from**: files the cameras recorded, public
   documentation, published research, and format facts other projects
   published (cited and checked against real files). Never disassembling a
@@ -82,7 +87,7 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 
 ## The picture's path
 
-1. **Demux and decode** (`orbis-core/media/InsvDemux`, `orbis-core/media/VulkanVideoDecoder`): the
+1. **Demux and decode** (`orbis-core/media/FisheyeDemux`, `orbis-core/media/VulkanVideoDecoder`): the
    two fisheye lens streams, decoded on the GPU through FFmpeg's Vulkan
    hwaccel into NV12 (8-bit) or P010 (10-bit) images, with a CPU decode
    fallback when the GPU path can't be used.
@@ -267,7 +272,7 @@ read on demand. A reader per camera family fills it (`Insta360Reader`,
 what differs between cameras -- lens layout and which file and stream each
 lens comes from, the files a long recording is split into, calibration and
 its lens model (MEI, or DJI's theta-polynomial), where each lens sits in
-the camera (`orbiscore::LensPose`) and how the camera holds them (the mount),
+the camera (`orbiscore::LensPose`; the stitch assumes none) and how the camera holds them (the mount),
 where a lens's picture shows the camera itself (`orbiscore::LensMask`),
 IMU timing and axes, colour profile, lens-guard
 profiles, capture-mode names -- is data the reader fills in, not a code path

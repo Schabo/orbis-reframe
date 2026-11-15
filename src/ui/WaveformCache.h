@@ -27,7 +27,7 @@ public:
     ~WaveformCache() override; // cancels and waits for running scans
 
     using Peaks = std::shared_ptr<const orbiscore::AudioPeaks>;
-    // `stream` as InsvAudioDemux::open's track (-1 = default). Null until
+    // `stream` as AudioDemux::open's track (-1 = default). Null until
     // it's been scanned; an empty result (no audio) is a non-null, empty one.
     Peaks peaks(const QString &path, int stream);
     // Scan these files again on the next peaks(): replaced in place, or

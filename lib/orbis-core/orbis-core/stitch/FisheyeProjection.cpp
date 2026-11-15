@@ -91,7 +91,7 @@ bool ApplyLensProfile(StitchParams& params, const LensProfile* bare, const LensP
 
 // --- FisheyeStitcher ----------------------------------------------------
 
-bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int streamH,
+bool FisheyeStitcher::configure(const CameraCalibration& cal, int streamW, int streamH,
                                 const StitchParams& params)
 {
     m_ready = false;

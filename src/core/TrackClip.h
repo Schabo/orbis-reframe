@@ -74,7 +74,7 @@ struct TrackClip {
     qint64 sourceDurationMs = 0;
     bool mediaMissing = false;
     // Which audio stream of the source: ordinal among its audio streams, -1 =
-    // the default one (orbiscore::InsvAudioDemux::open's convention).
+    // the default one (orbiscore::AudioDemux::open's convention).
     int stream = -1;
 
     qint64 startMs = 0; // timeline position of the clip's first sample
@@ -197,7 +197,7 @@ struct Track {
     }
     bool isStreamTrack() const { return role == Role::CameraMic || role == Role::ExternalMic; }
 
-    // The role of stream `stream` (InsvAudioDemux's ordinal) of an .insv
+    // The role of stream `stream` (AudioDemux's ordinal) of an .insv
     // with `streamCount` audio streams: with an external mic connected the
     // first stream is the external mic (e.g. an Insta360 Mic Air) and the
     // second the camera's own mic, else

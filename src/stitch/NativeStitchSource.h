@@ -22,7 +22,7 @@
 struct AVFrame;
 
 namespace orbiscore {
-class InsvDemux;
+class FisheyeDemux;
 class FisheyeStitcher;
 class VulkanVideoDecoder;
 class SeamFlowEstimator;
@@ -62,7 +62,7 @@ struct ReadTiming {
 };
 
 // IStitchSource implemented entirely on the cleanroom orbis-core library (lib/orbis-core/):
-// the clip's description (camera::ReadClipMetadata) -> orbiscore::InsvDemux (2 lens streams) ->
+// the clip's description (camera::ReadClipMetadata) -> orbiscore::FisheyeDemux (2 lens streams) ->
 // orbiscore::FisheyeStitcher, all in-process, with true frame-at-time-T random
 // access. This is the only IStitchSource backend.
 //
@@ -240,7 +240,7 @@ public:
     bool ReadLensFrame(render::LensFrame& out) override;
     void TrimLensFrames() override;
 
-    // IStitchSource: the decoders (VulkanVideoDecoder or InsvDemux) and the
+    // IStitchSource: the decoders (VulkanVideoDecoder or FisheyeDemux) and the
     // GPU stitch let go, the clip as Open() parsed it kept. While released,
     // the GPU queries (AllGpu, LensFramesAvailable, Gpu*Available) say no
     // and the keyframe lookups know none; every read and SeekTo resumes.
@@ -328,11 +328,11 @@ private:
     // both halves init; else vdec_ is null and the stage-1 path runs.
     std::unique_ptr<orbiscore::VulkanVideoDecoder> vdec_;
 
-    std::unique_ptr<orbiscore::InsvDemux> demux_;          // CPU decode (stage 1 / fallback)
+    std::unique_ptr<orbiscore::FisheyeDemux> demux_;          // CPU decode (stage 1 / fallback)
     std::unique_ptr<orbiscore::FisheyeStitcher> stitcher_; // CPU reference / fallback
     std::unique_ptr<render::VulkanFisheyeStitcher> gpu_;   // GPU stitch (own device or FFmpeg's)
     orbiscore::StitchGpuParams gpu_params_{};              // geometry for gpu_, from stitcher_
-    orbiscore::InsvCalibration calib_;                     // what stitcher_ was configured with
+    orbiscore::CameraCalibration calib_;                     // what stitcher_ was configured with
     orbiscore::StitchParams params_;
     mutable std::mutex rs_mx_; // SetCaptureTiming may come from the GUI thread
     CaptureTiming capture_timing_; // guarded by rs_mx_; frames before capture_until_ms_
@@ -449,7 +449,7 @@ const orbiscore::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
                             const LensCalibration* calibration, bool modelCorrection,
-                            orbiscore::InsvCalibration& calib, orbiscore::StitchParams& params,
+                            orbiscore::CameraCalibration& calib, orbiscore::StitchParams& params,
                             std::string& err, bool* guardFound = nullptr);
 
 // Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource).

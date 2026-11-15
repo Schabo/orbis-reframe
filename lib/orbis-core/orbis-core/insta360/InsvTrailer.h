@@ -9,6 +9,7 @@
 
 #include <orbis-core/metadata/Imu.h>   // orbiscore::ImuSample
 #include <orbis-core/Ycbcr.h> // orbiscore::YcbcrCoding
+#include <orbis-core/stitch/LensProfile.h>
 
 namespace orbiscore {
 
@@ -17,17 +18,6 @@ namespace orbiscore {
 // orientation of each lens, raw resolution" per the format's public
 // documentation — see ReadInsvMakerNotes below). Kept raw for reference only:
 // the stitch uses the extended MEI string (ReadInsvExtendedCalibrationString).
-// One entry of the per-accessory lens-profile table (0x101 field 145,
-// docs/formats/insta360-x5.md §5.4): `poly` maps the off-axis angle in degrees to the
-// image height on the sensor in mm (sum poly[i] * theta^i), `fov_deg` is the
-// usable field of view. Names seen on the X5: "bare", "ProtectorA",
-// "ProtectorS", "ProtectorAS", "InvisibleDiveWater", "InvisibleDiveAir".
-struct LensProfile {
-    std::string name;
-    double poly[6] = {0, 0, 0, 0, 0, 0};
-    double fov_deg = 0; // 0 = not listed
-};
-
 struct InsvMakerNotes {
     std::string serial_number;
     std::string model;
@@ -373,11 +363,5 @@ std::vector<uint8_t> ExtractRawTrailer(const std::string& file_path);
 // a renamed clip its recording time and its proxy back. std::nullopt when
 // the file holds none.
 std::optional<std::string> ReadInsvHeldName(const std::string& file_path);
-
-// The payload of the MP4 header's user-data box `type` (`moov` / `udta` /
-// `type`, four characters), up to `max_bytes` of it; std::nullopt when the
-// file has none. Any MP4, not only an .insv (DJI's `fsid`).
-std::optional<std::vector<uint8_t>> ReadMp4UserBox(const std::string& file_path, const char* type,
-                                                   size_t max_bytes);
 
 } // namespace orbiscore

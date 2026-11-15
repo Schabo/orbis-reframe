@@ -42,7 +42,7 @@ bool DecodeStillPicture(const std::vector<uint8_t>& bitstream, const char* codec
         const int w = std::max(2, static_cast<int>(frm->width * s) & ~1);
         const int h = std::max(2, static_cast<int>(frm->height * s) & ~1);
         // The deprecated full-range (yuvj) formats: the plain format, with the
-        // range set apart (as InsvDemux does).
+        // range set apart (as FisheyeDemux does).
         auto fmt = static_cast<AVPixelFormat>(frm->format);
         bool full = frm->color_range == AVCOL_RANGE_JPEG;
         switch (fmt) {

@@ -2,7 +2,7 @@
 
 #include "NativeStitchSource.h"
 
-#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/stitch/LensModel.h>
 #include <ClipMetadata.h>
 #include <orbis-core/stab/GyroStabilizer.h>
 #include <orbis-core/stab/SyncEstimator.h>
@@ -28,7 +28,7 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
     // The file and its stitch first: one that can't be read has no IMU
     // either, and should say so as unreadable.
     std::string err;
-    orbiscore::InsvCalibration calib;
+    orbiscore::CameraCalibration calib;
     orbiscore::StitchParams params;
     if (const MeasureFailure why = PrepareClipMeasurement(clipPath, lensGuard, calibration, calib, params, err);
         why != MeasureFailure::None)

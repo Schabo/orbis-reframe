@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/audio/AudioPeaks.h>
 
-#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/AudioDemux.h>
 
 #include <algorithm>
 #include <cmath>
@@ -21,7 +21,7 @@ AudioPeaks ComputeAudioPeaks(const std::vector<AudioPart>& parts, int stream,
         const int64_t start = parts[k].startUs * kRate / 1000000; // in frames, clip time
         const int64_t end = k + 1 < parts.size() ? parts[k + 1].startUs * kRate / 1000000
                                                  : INT64_MAX;
-        InsvAudioDemux d;
+        AudioDemux d;
         std::string err;
         if (!d.open(parts[k].path, kRate, kCh, err, stream))
             continue;

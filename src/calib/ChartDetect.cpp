@@ -3,7 +3,7 @@
 #include "ChartDetector.h"
 
 #include <ClipMetadata.h>
-#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/media/FisheyeDemux.h>
 
 #include <opencv2/imgproc.hpp>
 
@@ -153,7 +153,7 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
     const auto clip = camera::ReadClipMetadata(clipPath, &err);
     if (!clip)
         return false;
-    orbiscore::InsvDemux demux;
+    orbiscore::FisheyeDemux demux;
     if (!demux.open(clip->partSources(), err))
         return false;
     if (demux.lensCount() < 2) {

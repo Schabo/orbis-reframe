@@ -9,6 +9,7 @@
 #include "NativeStitchSource.h"
 
 #include <ClipMetadata.h>
+#include <orbis-core/insta360/Calibration.h> // orbiscore::Insta360LensPose
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/insta360/InsvModels.h>
 
@@ -88,7 +89,7 @@ void testSetup()
     const orbiscore::SeamCorrection none;
     std::string err;
     {
-        orbiscore::InsvCalibration cal;
+        orbiscore::CameraCalibration cal;
         orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              nullptr, true, cal, p, err));
@@ -96,7 +97,7 @@ void testSetup()
     }
     {
         // The old stitcher and its per-clip fit: the file's as it is.
-        orbiscore::InsvCalibration cal;
+        orbiscore::CameraCalibration cal;
         orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              nullptr, false, cal, p, err));
@@ -110,7 +111,7 @@ void testSetup()
             chart.lenses[i] = clip.lenses[i].calibration;
         }
         chart.lenses[1].pitch += 0.2;
-        orbiscore::InsvCalibration cal;
+        orbiscore::CameraCalibration cal;
         orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              &chart, true, cal, p, err));
@@ -125,7 +126,7 @@ void testSetup()
             other.lenses[i] = clip.lenses[i].calibration;
         }
         other.fileLenses[0].cx += 1.0;
-        orbiscore::InsvCalibration cal;
+        orbiscore::CameraCalibration cal;
         orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              &other, true, cal, p, err));
@@ -152,7 +153,7 @@ void testStitchCorrection()
     // correction would, and the two compose: turns and centres add, scales
     // multiply.
     const camera::ClipMetadata clip = a1Clip();
-    orbiscore::InsvCalibration cal;
+    orbiscore::CameraCalibration cal;
     orbiscore::StitchParams base;
     std::string err;
     CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
