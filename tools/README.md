@@ -584,7 +584,10 @@ Tracks a subject through the 360 sphere with the same tracker as the app's
 `--dump-equirect` writes the stabilized sphere with a yaw/pitch grid, to
 read the box off. `--tracker` compares the app's hybrid tracker with plain
 CSRT, VitTrack and NanoTrack, and `--occlude` tests how it recovers after
-the subject is hidden.
+the subject is hidden. It de-rotates with Lean follow unless `--project`
+names a project file: then it uses the stabilization of that project's
+timeline clip of the file, the frame the app tracked in and the clip's keys
+are in -- to replay a track made in the app from its first key.
 
 **When:** tuning or debugging subject tracking on a clip where the app's
 tracking loses the subject.
@@ -592,6 +595,7 @@ tracking loses the subject.
 ```sh
 build/track_subject clip.insv --t0 60000 --dump-equirect grid.jpg
 build/track_subject clip.insv --t0 60000 --dur 15 --box 40,-5,8,10 --render follow.mp4
+build/track_subject clip.insv --project my.orp --t0 0 --dur 60 --box 10,-28,32,29 --debug-dir crops
 ```
 
 ## plate_scan

@@ -820,6 +820,7 @@ if(FFMPEG_FOUND)
             target_include_directories(track_subject PRIVATE src/stitch src/export
                 ${OpenCV_INCLUDE_DIRS})
             target_link_libraries(track_subject PRIVATE stitch subject_track reframe_flatten
+                nlohmann_json::nlohmann_json
                 opencv_core opencv_imgproc opencv_imgcodecs)
 
             target_sources(orbis_app PRIVATE src/ui/SubjectTrackJob.cpp src/ui/SubjectTrackJob.h

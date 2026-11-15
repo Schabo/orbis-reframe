@@ -1,8 +1,9 @@
 // Command-line tool for track::SubjectTracker (src/track/).
 //
 // Stitches the clip (stitch::NativeStitchSource) from --t0, feeds each
-// equirect + its gyro de-rotation (orbiscore::GyroStabilizer, Lean follow) to the
-// tracker from a --box seed, and reduces the path to reframe keys
+// equirect + its gyro de-rotation (orbiscore::GyroStabilizer: Lean follow, or
+// the stabilization of a --project clip) to the tracker from a --box seed,
+// and reduces the path to reframe keys
 // (track::reduceToKeys) in tools/reframe_export's --keys format (time_ms yaw
 // pitch fovY roll; stabilized frame). --tracker compares the hybrid the app
 // uses with plain CSRT / VitTrack / NanoTrack; --render bakes a follow-cam
@@ -16,11 +17,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -54,6 +58,7 @@ struct Args {
     std::string tracker = "hybrid"; // hybrid (CSRT + VitTrack verifier) | csrt | vit | nano
     std::string modelDir;         // "" = track::defaultModelDir()
     bool stab = true;
+    std::string project;          // take the stabilization from this .orp's clip of the input
     int workW = 3840;             // analysis equirect width (2:1)
     int crop = 512;               // tracking crop, square px
     double fovFactor = 4.0;       // crop FOV = factor * subject angular size
@@ -98,6 +103,9 @@ const char kUsage[] =
     "                        tracks, VitTrack scores it (track::SubjectTracker)\n"
     "  --model-dir D         where vittrack.onnx / nanotrack_*.onnx are (default: resources/models/vittrack)\n"
     "  --stab on|off         gyro de-rotation before tracking (default on)\n"
+    "  --project F.orp       de-rotate as that project's timeline clip of this file is\n"
+    "                        stabilized (mode, windows, gyro sync), the frame its keys\n"
+    "                        and the app's Track subject use; default Lean follow\n"
     "  --work-width PX       analysis equirect width (default 3840)\n"
     "  --crop PX             tracking crop size (default 512)\n"
     "  --fov-factor F        crop FOV / subject size (default 4)\n"
@@ -169,6 +177,8 @@ Args parseArgs(int argc, char** argv)
             a.modelDir = next("--model-dir");
         else if (k == "--stab")
             a.stab = next("--stab") != "off";
+        else if (k == "--project")
+            a.project = next("--project");
         else if (k == "--work-width")
             a.workW = std::atoi(next("--work-width").c_str()) & ~1;
         else if (k == "--crop")
@@ -220,6 +230,53 @@ Args parseArgs(int argc, char** argv)
 }
 
 // At the frame's exact time `tSec` (stitch::Frame::timestamp_us).
+// The stabilization of the first timeline clip in a project file (.orp)
+// whose source is `input`, read the way the app's project loader reads it
+// (src/core/Project.cpp: fields missing from the file keep their defaults).
+void projectStabilization(const std::string& orp, const std::string& input,
+                          orbiscore::StabConfig& cfg, double& syncMs)
+{
+    namespace fs = std::filesystem;
+    std::ifstream in(orp);
+    if (!in)
+        die("can't read " + orp);
+    nlohmann::json doc;
+    try {
+        doc = nlohmann::json::parse(in);
+    } catch (const std::exception& e) {
+        die(orp + ": " + e.what());
+    }
+    const fs::path dir = fs::path(orp).parent_path();
+    std::error_code ec;
+    for (const auto& jc : doc.value("timeline", nlohmann::json::object()).value("clips", nlohmann::json::array())) {
+        fs::path src = jc.value("source", std::string());
+        if (src.is_relative())
+            src = dir / src;
+        if (!fs::equivalent(src, input, ec))
+            continue;
+        const nlohmann::json j = jc.value("stabilization", nlohmann::json::object());
+        orbiscore::StabConfig c;
+        c.mode = orbiscore::stabModeFromString(j.value("mode", std::string("off")));
+        c.windowYawSec = j.value("windowYawSec", c.windowYawSec);
+        c.windowPitchSec = j.value("windowPitchSec", c.windowPitchSec);
+        c.windowRollSec = j.value("windowRollSec", c.windowRollSec);
+        c.horizonLockAmount = j.value("horizonLockAmount", c.horizonLockAmount);
+        c.horizonGain = j.value("horizonGain", c.horizonGain);
+        c.accelLowPassHz = j.value("accelLowPassHz", c.accelLowPassHz);
+        c.pitchOffsetRad = j.value("pitchOffsetRad", c.pitchOffsetRad);
+        c.rollOffsetRad = j.value("rollOffsetRad", c.rollOffsetRad);
+        c.autoLevel = j.value("autoLevel", c.autoLevel);
+        c.lockDirection = j.value("lockDirection", c.lockDirection);
+        c.directionSec = j.value("directionSec", c.directionSec);
+        cfg = c;
+        syncMs = jc.contains("syncFineTuneMs") && jc.at("syncFineTuneMs").is_number()
+                     ? jc.at("syncFineTuneMs").get<double>()
+                     : 0.0;
+        return;
+    }
+    die(orp + " has no timeline clip of " + input);
+}
+
 void gyroMatrix(const orbiscore::GyroStabilizer& g, bool on, double tSec, float m[9])
 {
     float mm[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
@@ -283,13 +340,21 @@ int main(int argc, char** argv)
     const int64_t t1Ms = std::min<int64_t>(a.t0Ms + static_cast<int64_t>(a.durSec * 1000.0), probe.duration_ms);
     const double halfFrameMs = 500.0 / fps;
 
-    // --- gyro (Lean follow, the app's default mode) --------------------------
+    // --- gyro (Lean follow, the app's default mode, or the project's) --------
+    orbiscore::StabConfig stabCfg = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
+    double syncMs = 0.0;
+    if (!a.project.empty())
+        projectStabilization(a.project, a.input, stabCfg, syncMs);
     orbiscore::GyroStabilizer gyro;
     if (a.stab) {
         if (const auto imu = camera::ReadClipImu(a.input))
-            gyro.build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow), 0.0);
+            gyro.build(*imu, stabCfg, syncMs / 1000.0);
     }
-    std::printf("gyro: %s\n", gyro.ready() ? "Lean follow de-rotation" : "off");
+    if (gyro.ready())
+        std::printf("gyro: %s de-rotation, sync %+.1f ms\n",
+                    orbiscore::stabModeToString(stabCfg.mode), syncMs);
+    else
+        std::printf("gyro: off\n");
 
     stitch::PreviewStitchConfig sc;
     sc.width = a.workW;
