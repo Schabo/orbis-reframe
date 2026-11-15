@@ -2826,7 +2826,8 @@ void testGlobeJson()
                        .toUtf8());
     const auto version = [](const QString &path) {
         QFile f(path);
-        f.open(QIODevice::ReadOnly);
+        if (!f.open(QIODevice::ReadOnly))
+            return -1;
         return QJsonDocument::fromJson(f.readAll()).object().value("version").toInt();
     };
     QString err;
