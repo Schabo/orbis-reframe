@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/media/VulkanVideoDecoder.h>
 
-#include "VulkanHwDevice.h" // core::sharedVulkanDevice
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -99,40 +97,60 @@ std::string CodecName(AVCodecID codec, const AVCodec* dec)
 
 } // namespace
 
-bool VulkanVideoDecoder::open(const std::string& path, std::string& err)
+bool VulkanVideoDecoder::open(AVBufferRef* hwDevice, const std::string& path, std::string& err)
 {
-    return open([this, &path](const LensDemuxer::DecoderSetup& setup,
-                              std::string& e) { return m_demux.open(path, setup, e); },
-                err);
+    return open(
+        hwDevice,
+        [this, &path](const LensDemuxer::DecoderSetup& setup, std::string& e) {
+            return m_demux.open(path, setup, e);
+        },
+        err);
 }
 
-bool VulkanVideoDecoder::open(const std::vector<LensSource>& lenses, std::string& err)
+bool VulkanVideoDecoder::open(AVBufferRef* hwDevice, const std::vector<LensSource>& lenses,
+                              std::string& err)
 {
-    return open([this, &lenses](const LensDemuxer::DecoderSetup& setup,
-                                std::string& e) { return m_demux.open(lenses, setup, e); },
-                err);
+    return open(
+        hwDevice,
+        [this, &lenses](const LensDemuxer::DecoderSetup& setup, std::string& e) {
+            return m_demux.open(lenses, setup, e);
+        },
+        err);
 }
 
-bool VulkanVideoDecoder::open(const std::vector<ClipPart>& parts, std::string& err)
+bool VulkanVideoDecoder::open(AVBufferRef* hwDevice, const std::vector<ClipPart>& parts,
+                              std::string& err)
 {
-    return open([this, &parts](const LensDemuxer::DecoderSetup& setup,
-                               std::string& e) { return m_demux.open(parts, setup, e); },
-                err);
+    return open(
+        hwDevice,
+        [this, &parts](const LensDemuxer::DecoderSetup& setup, std::string& e) {
+            return m_demux.open(parts, setup, e);
+        },
+        err);
 }
 
 bool VulkanVideoDecoder::open(
+    AVBufferRef* hwDevice,
     const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
     std::string& err)
 {
     close();
     m_unsupported = false;
     m_unsupportedCodec.clear();
-    m_hwDevice = core::sharedVulkanDevice();
-    if (!m_hwDevice) {
+    if (!hwDevice) {
         // Not "unsupported": the device also fails to create when the
-        // graphics memory is full, and without any Vulkan the app says so
-        // at startup.
+        // graphics memory is full.
         err = "no Vulkan hw device (no driver support, or the graphics memory is full)";
+        return false;
+    }
+    if (reinterpret_cast<const AVHWDeviceContext*>(hwDevice->data)->type !=
+        AV_HWDEVICE_TYPE_VULKAN) {
+        err = "the hw device given isn't a Vulkan one";
+        return false;
+    }
+    m_hwDevice = av_buffer_ref(hwDevice);
+    if (!m_hwDevice) {
+        err = "out of memory";
         return false;
     }
     AVBufferRef* hw = m_hwDevice;

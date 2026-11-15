@@ -1,6 +1,7 @@
 #include "NativeStitchSource.h"
 
 #include "../core/Log.h"
+#include "../core/VulkanHwDevice.h" // core::sharedVulkanDevice
 #include "ClipSeamAnalysis.h"
 
 #include <orbis-core/insta360/Calibration.h>           // insv::InsvCalibration
@@ -12,6 +13,10 @@
 #include <orbis-core/stitch/SeamFlowEstimator.h>     // insv::SeamFlowEstimator (OpenCV)
 #endif
 #include <VulkanFisheyeStitcher.h> // render::VulkanFisheyeStitcher
+
+extern "C" {
+#include <libavutil/buffer.h>
+}
 #include <orbis-core/media/VulkanVideoDecoder.h>    // insv::VulkanVideoDecoder (stage 2, GPU decode)
 
 #include <algorithm>
@@ -252,7 +257,13 @@ bool NativeStitchSource::openDecode() {
     if (!cpu_decode_ && !std::getenv("INSV_NO_GPU_DECODE") && !std::getenv("INSV_NO_GPU_STITCH")) {
         auto vdec = std::make_unique<insv::VulkanVideoDecoder>();
         std::string derr;
-        if (vdec->open(lens_sources_, derr)) {
+        // The process's one Vulkan device, which the stitch below adopts and
+        // a Vulkan export encoder runs on too; the decoder keeps its own
+        // reference.
+        AVBufferRef* hw = core::sharedVulkanDevice();
+        const bool opened = vdec->open(hw, lens_sources_, derr);
+        av_buffer_unref(&hw);
+        if (opened) {
             VkInstance inst = VK_NULL_HANDLE;
             VkPhysicalDevice phys = VK_NULL_HANDLE;
             VkDevice dev = VK_NULL_HANDLE;

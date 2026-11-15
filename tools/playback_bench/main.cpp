@@ -28,9 +28,14 @@
 
 #include <LensFrame.h>
 #include <NativeStitchSource.h>
+#include <VulkanHwDevice.h> // core::sharedVulkanDevice
 #include <orbis-core/media/VulkanVideoDecoder.h>
 
 #include <vulkan/vulkan.h>
+
+extern "C" {
+#include <libavutil/buffer.h>
+}
 
 #include <algorithm>
 #include <chrono>
@@ -76,7 +81,10 @@ bool gSeamFlow = true;
 void benchDecode(const std::string& path, int frames, double fps) {
     insv::VulkanVideoDecoder dec;
     std::string err;
-    if (!dec.open(path, err)) {
+    AVBufferRef* hw = core::sharedVulkanDevice(); // the app's device
+    const bool opened = dec.open(hw, path, err);
+    av_buffer_unref(&hw);
+    if (!opened) {
         std::printf("  decode      FAILED: %s\n", err.c_str());
         return;
     }

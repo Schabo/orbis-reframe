@@ -16,13 +16,15 @@
 // back two AVFrame*s carrying AVVkFrame (NV12, one 2-plane image each), which a
 // Vulkan compute stitch samples directly.
 //
-// FFmpeg creates and owns the VkInstance/VkDevice; deviceHandles() exposes them
-// so the compute stitch can run on the same device. One device serves every
-// decoder in the process: creating one costs ~0.3 s, and on the NVIDIA driver
-// it stalls other threads' presents meanwhile, so opening a clip mid-playback
-// must not create another. Since decoders on several threads share it, a
-// submission to it from outside FFmpeg must hold the queue's lock
-// (queueLock()).
+// The decoder runs on an FFmpeg Vulkan hw device the caller creates
+// (av_hwdevice_ctx_create with AV_HWDEVICE_TYPE_VULKAN) and passes to open();
+// FFmpeg owns its VkInstance/VkDevice, and deviceHandles() exposes them so the
+// compute stitch can run on the same device. A program with several decoders
+// is best served by one device for all of them: creating one costs ~0.3 s,
+// and on the NVIDIA driver it stalls other threads' presents meanwhile, so
+// opening a clip mid-playback shouldn't create another. When decoders on
+// several threads share it, a submission to it from outside FFmpeg must hold
+// the queue's lock (queueLock()).
 //
 // Frames are allocated CONCURRENT across FFmpeg's queue families, so no
 // queue-family ownership transfer is needed.
@@ -67,14 +69,16 @@ public:
     VulkanVideoDecoder(const VulkanVideoDecoder&) = delete;
     VulkanVideoDecoder& operator=(const VulkanVideoDecoder&) = delete;
 
-    // Creates the Vulkan hw device and per-lens decoders, and decodes each
-    // lens's first frame. Returns false with `err` set if Vulkan video decode
-    // is unavailable or doesn't start (caller falls back).
-    bool open(const std::string& path, std::string& err);
+    // Creates the per-lens decoders on `hwDevice` (an FFmpeg Vulkan hw
+    // device; the decoder takes its own reference, the caller keeps its) and
+    // decodes each lens's first frame. Returns false with `err` set if
+    // `hwDevice` is null, or Vulkan video decode is unavailable or doesn't
+    // start (caller falls back).
+    bool open(AVBufferRef* hwDevice, const std::string& path, std::string& err);
     // The same for lenses that may come from several files (LensDemuxer::open).
-    bool open(const std::vector<LensSource>& lenses, std::string& err);
+    bool open(AVBufferRef* hwDevice, const std::vector<LensSource>& lenses, std::string& err);
     // A clip in parts, played back to back (LensDemuxer::open).
-    bool open(const std::vector<ClipPart>& parts, std::string& err);
+    bool open(AVBufferRef* hwDevice, const std::vector<ClipPart>& parts, std::string& err);
     // After a failed open(): true when the GPU can't decode this video at all
     // (no decode queue for the codec), false when it should have and the
     // decoder or its device failed to start (most often out of graphics
@@ -140,9 +144,10 @@ public:
 
 private:
     void close();
-    // Shared by both open()s: the device, then `openDemux` with the hwaccel
+    // Shared by the open()s: the device, then `openDemux` with the hwaccel
     // decoder set-up.
-    bool open(const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
+    bool open(AVBufferRef* hwDevice,
+              const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
               std::string& err);
 
     LensDemuxer m_demux;

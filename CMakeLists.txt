@@ -390,7 +390,8 @@ if(FFMPEG_FOUND)
         src/stitch/ClipSeamAnalysis.cpp
     )
     target_include_directories(stitch PUBLIC src/stitch)
-    target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch)
+    target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch
+        PRIVATE vulkan_hw_device PkgConfig::FFMPEG)
     # The new stitcher's seam flow estimates its flow with OpenCV
     # (insv::SeamFlowEstimator); without it the stitcher has no seam flow.
     if(TARGET insv_optical)
@@ -632,7 +633,7 @@ if(FFMPEG_FOUND)
     # --- tools/playback_bench: per-mode decode / stitch / copy-back /
     # seek timings on the all-GPU path. Measure-only.
     add_executable(playback_bench tools/playback_bench/main.cpp)
-    target_link_libraries(playback_bench PRIVATE stitch)
+    target_link_libraries(playback_bench PRIVATE stitch vulkan_hw_device PkgConfig::FFMPEG)
 
     # --- tools/view_compare: the fused fisheye -> view pass against the
     # equirect + reproject path (PSNR / sharpness per pose). Measure-only.

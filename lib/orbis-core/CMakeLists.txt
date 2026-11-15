@@ -6,8 +6,8 @@
 #
 # Built from the app's CMakeLists.txt with add_subdirectory(); it relies on
 # what the app finds there: Threads, Vulkan, FFmpeg (FFMPEG_FOUND,
-# PkgConfig::FFMPEG), OpenCV (OpenCV_FOUND, ORBIS_OPENCV_FEATURES) and the
-# shared FFmpeg Vulkan device (vulkan_hw_device).
+# PkgConfig::FFMPEG) and OpenCV (OpenCV_FOUND, ORBIS_OPENCV_FEATURES). It
+# links none of the app's targets.
 
 # --- insv_trailer: file metadata and telemetry -- the .insv trailer
 # (calibration + IMU / exposure / GPS records), DJI's djmd track, the IMU
@@ -128,7 +128,7 @@ if(FFMPEG_FOUND)
         orbis-core/audio/AudioPeaks.cpp
     )
     target_include_directories(insv_demux PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(insv_demux PUBLIC insv Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG vulkan_hw_device)
+    target_link_libraries(insv_demux PUBLIC insv Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG)
 
     # The "Voice only" / "Voice + ambience" noise modes: DeepFilterNet 3
     # (resources/models/deepfilternet3) run with ONNX Runtime -- optional
