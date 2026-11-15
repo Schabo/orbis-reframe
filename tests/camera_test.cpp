@@ -878,9 +878,18 @@ int main(int argc, char** argv)
     testTrimmedCopies(dir);
     testMissingParts(dir);
     if (argc > 1) {
-        const std::filesystem::path dji =
-            std::filesystem::path(argv[1]) / "dji-avata-360" / "DJI_20261018153702_0001_D_2026.OSV";
-        if (std::filesystem::exists(dji))
+        // Found by name: the sample folder is sorted into sub-folders by
+        // whoever keeps it, and the test shouldn't stop running when it is.
+        std::filesystem::path dji;
+        const std::filesystem::path root = std::filesystem::path(argv[1]) / "dji-avata-360";
+        std::error_code ec;
+        for (std::filesystem::recursive_directory_iterator it(root, ec), end; !ec && it != end;
+             it.increment(ec))
+            if (it->path().filename() == "DJI_20261018153702_0001_D_2026.OSV") {
+                dji = it->path();
+                break;
+            }
+        if (!dji.empty())
             testDjiAvata360(dji);
         else
             std::printf("  (DJI Avata 360 sample clip not here: skipped)\n");
