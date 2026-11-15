@@ -9,6 +9,11 @@ Run a tool with `--help` to see all of its options. This page says what
 each tool is for and when you'd reach for it. The examples use clips from
 `sample_footage/` (not in the repository; any X5 `.insv` works).
 
+The tools that open a clip the way the app does -- `stitch_source_smoke`,
+`playback_bench`, `view_compare` and `reframe_export` among them -- take a
+DJI Avata 360 `.OSV` as well. `insv_trailer_dump` and `insv_stitch` read
+Insta360's trailer themselves, so they take `.insv` files only.
+
 | Tool | Use it to… | Needs |
 |---|---|---|
 | [`insv_trailer_dump`](#insv_trailer_dump) | see what's inside a clip's metadata trailer | — |

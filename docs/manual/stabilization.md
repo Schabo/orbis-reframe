@@ -6,7 +6,10 @@ its support is experimental: see
 [Getting started](getting-started.md); stabilization may turn its picture
 the wrong way. The ONE X2 does too, also experimentally. So does the
 Antigravity A1, also experimentally, and its horizon comes from the drone's
-flight controller: see [On the Antigravity A1](#on-the-antigravity-a1).)
+flight controller: see [On the Antigravity A1](#on-the-antigravity-a1).
+The DJI Avata 360 records how it moved too, but orbis-reframe doesn't read
+it yet: its clips aren't stabilized, and the **Stabilization** section
+says so.)
 orbis-reframe uses this
 to steady the picture: it turns the 360° view against the camera's shake,
 so the view holds still while the camera moves. It can also keep the

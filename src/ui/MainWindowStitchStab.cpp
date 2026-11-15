@@ -354,9 +354,20 @@ void MainWindow::applyStabilization(qint64 sourceMs)
 void MainWindow::syncStabilizationPanel()
 {
     const ClipItem *c = m_timeline->clipById(editClipId());
-    m_stabilizationPanel->setNotApplicable(
-        c && c->flat ? tr("A flat video has no motion data to stabilize with.") : QString());
-    if (!c || c->flat) {
+    QString why;
+    if (c && c->flat) {
+        why = tr("A flat video has no motion data to stabilize with.");
+    } else if (c) {
+        // Read once per file and cached.
+        const auto clip = camera::ReadClipMetadata(c->sourcePath.toStdString());
+        if (clip && !clip->hasMotion)
+            why = clip->motionNotRead
+                      ? tr("The camera records its motion, but orbis-reframe doesn't read this "
+                           "camera's motion recording yet, so its clips aren't stabilized.")
+                      : tr("This clip has no motion data to stabilize with.");
+    }
+    m_stabilizationPanel->setNotApplicable(why);
+    if (!c || !why.isEmpty()) {
         m_stabilizationPanel->setNoClip();
         return;
     }

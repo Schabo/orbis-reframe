@@ -63,6 +63,8 @@ struct MediaInfo {
     double imuRateHz = 0.0; // 0 if the file has no IMU track
     // No IMU, but the camera's orientation per frame (ClipMetadata::orientationPerFrame).
     bool orientationPerFrame = false;
+    // Motion recorded that isn't read yet (ClipMetadata::motionNotRead).
+    bool motionNotRead = false;
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
     // See ClipMetadata::captureFps / timelapseIntervalSec; 0 when the clip

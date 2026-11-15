@@ -6,6 +6,7 @@ to start orbis-reframe and open your first clip.
 orbis-reframe is a video editor for 360° camera footage. It opens Insta360
 `.insv` files directly, and the **Insta360 X5** is the camera it's built and
 tested on. You don't need Insta360 Studio or any other Insta360 software.
+It also opens the DJI Avata 360's `.OSV` files, experimentally (below).
 
 The **Insta360 X6** is supported experimentally: its clips open, stitch,
 [stabilize](stabilization.md) and export, including the 10-bit I-Log and
@@ -39,8 +40,22 @@ recording time: the drone writes the clip's original name into the file.
 Its preview file is found if you renamed it alike (`flight.insv` and
 `flight.prx`) or left its name as it was.
 
-Other cameras (other Insta360 models, DJI, GoPro) aren't supported yet. If
-you have one, short clips from it help add it:
+The **DJI Avata 360**, a 360° drone, is supported experimentally, from one
+contributor's clip (1920×1920 per lens at 100 fps, D-Log M): its clips
+(`DJI_….OSV`) open, play, stitch and export, the picture facing the
+drone's nose with the horizon where the two lenses meet. The `.LRF`
+preview file and the `.SRT` file the drone writes beside each clip aren't
+needed, but keep the `.LRF` there: the GPS track is read from it quickly,
+and the Media tab shows the clip's cover picture. Titles and gauges show
+the drone's GPS. Its clips aren't [stabilized](stabilization.md) yet: the
+picture tilts as the drone banks. D-Log M needs DJI's LUT (see
+[Colour](colour.md#luts)). **Calibrate lenses…** doesn't work on its
+clips, and it has no lens guards. A clip you renamed keeps its recording
+time and finds its `.LRF`: the drone writes the clip's original name into
+both files.
+
+Other cameras (other Insta360 models, the DJI Osmo 360 family, GoPro)
+aren't supported yet. If you have one, short clips from it help add it:
 [sample clips wanted](../formats/README.md#sample-clips-wanted).
 
 > **Early software.** orbis-reframe has been built and tested on one computer

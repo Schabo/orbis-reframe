@@ -328,6 +328,7 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
         addValue(tr("Motion data"),
                  m.imuRateHz > 0          ? tr("~%1 Hz").arg(qRound(m.imuRateHz))
                  : m.orientationPerFrame ? tr("Orientation per frame")
+                 : m.motionNotRead       ? tr("Recorded, not used yet")
                                          : tr("Not recorded"),
                  tr("How often the camera recorded its movement, which stabilization works "
                     "from."));

@@ -6,8 +6,9 @@
 // file, a slotted trailer, the proxy named without a lens token; renamed,
 // found again by the names its files hold. And an X5 recording the camera
 // split into two files: one clip, its parts found from either file, its IMU
-// joined, its frames read on and seeked across the join. Exit code is the
-// failure count.
+// joined, its frames read on and seeked across the join. And, where the
+// sample footage is there (the first argument), the DJI Avata 360 clip.
+// Exit code is the failure count.
 
 #include "ClipMetadata.h"
 #include "InsvDemux.h"
@@ -815,7 +816,50 @@ void testTrimmedCopies(const std::filesystem::path& dir)
     CHECK(camera::ClipFileOf(t2) == t2);
 }
 
-int main()
+// The DJI reader on the Avata 360 sample clip (docs/formats/dji-360.md,
+// *Modes and sample clips*), with its .LRF and .SRT beside it.
+void testDjiAvata360(const std::filesystem::path& osv)
+{
+    std::string err;
+    const auto clip = camera::ReadClipMetadata(osv.string(), &err);
+    CHECK(clip);
+    if (!clip) {
+        std::printf("  %s\n", err.c_str());
+        return;
+    }
+    CHECK(clip->maker == "DJI" && clip->model == "DJI Avata 360");
+    CHECK(clip->firmware == "01.00.06.00" && !clip->serial.empty());
+    CHECK(clip->calibrated && clip->lenses.size() == 2);
+    CHECK(clip->lensWidth == 1920 && clip->lensHeight == 1920 && std::abs(clip->fps - 100) < 1e-6);
+    // The cover picture isn't a lens; the master lens is the first track.
+    CHECK(clip->lenses[0].source.stream == 0 && clip->lenses[1].source.stream == 1);
+    for (const camera::Lens& l : clip->lenses) {
+        CHECK(l.model == insv::LensModel::ThetaPoly && l.k5 != 0.0);
+        CHECK(l.calibration.w == 7680 && l.calibration.focalRefW == 3840);
+        CHECK(l.calibration.p[0] != 0.0 && l.calibration.p[1] != 0.0);
+    }
+    // The master looks along the rig's axis, the slave the other way.
+    CHECK(clip->lenses[0].pose.mount[8] > 0.999 && clip->lenses[1].pose.mount[8] < -0.999);
+    CHECK(clip->colorProfile == "D-Log M" && clip->logProfile == "D-Log M");
+    CHECK(clip->recordedLocal == "2026-10-18T15:37:02");
+    CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRF");
+    CHECK(!clip->hasMotion && clip->motionNotRead && !camera::ReadClipImu(osv.string()));
+    CHECK(clip->gpsFixes > 500 && std::abs(clip->gpsRateHz - 10) < 1);
+
+    const auto thumb = camera::ReadClipThumbnail(osv.string());
+    CHECK(thumb && thumb->flat && thumb->width == 960 && thumb->height == 540);
+    const camera::ClipTelemetry tele = camera::ReadClipTelemetry(osv.string());
+    CHECK(tele.gps && tele.gps->fixes.size() == static_cast<size_t>(clip->gpsFixes));
+    if (tele.gps && !tele.gps->fixes.empty())
+        CHECK(tele.gps->fixes.front().timeMs >= 0 && tele.gps->fixes.front().timeMs < 200 &&
+              tele.gps->fixes.back().timeMs > 80000);
+
+    // The proxy names the clip.
+    std::filesystem::path lrf = osv;
+    CHECK(camera::ClipFileOf(lrf.replace_extension(".LRF").string()) == osv.string());
+}
+
+int main(int argc, char** argv)
 {
     const auto dir = std::filesystem::temp_directory_path() / "orbis_camera_test";
     std::filesystem::remove_all(dir);
@@ -833,6 +877,14 @@ int main()
     testSplitRecording(dir);
     testTrimmedCopies(dir);
     testMissingParts(dir);
+    if (argc > 1) {
+        const std::filesystem::path dji =
+            std::filesystem::path(argv[1]) / "dji-avata-360" / "DJI_20261018153702_0001_D_2026.OSV";
+        if (std::filesystem::exists(dji))
+            testDjiAvata360(dji);
+        else
+            std::printf("  (DJI Avata 360 sample clip not here: skipped)\n");
+    }
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

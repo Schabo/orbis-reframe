@@ -8,6 +8,7 @@
 
 #include "BlurQuads.h"
 #include "Calibration.h"
+#include "DjiMeta.h"
 #include "FisheyeProjection.h"
 #include "Gps.h"
 #include "Image.h"
@@ -353,6 +354,104 @@ void testThetaPolyProjection()
     insv::FisheyeStitcher mei;
     CHECK(mei.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
     CHECK(mei.gpuParams().thetaPoly == 0);
+}
+
+// A DJI djmd sample (docs/formats/dji-360.md §2.1) with the Avata 360's
+// clip header and a lens pair at PanoDewarpParams field `panoField`, the
+// tangential pair packed or one field per value.
+std::vector<uint8_t> djiFirstSample(uint32_t panoField, bool packedP)
+{
+    using testtrailer::Bytes;
+    Bytes header;
+    header.pbString(1, "dvtm_AVATA360.proto").pbString(5, "SERIAL0001").pbString(6, "01.00.06.00");
+    header.pbVarint(9, 250472750).pbString(10, "DJI Avata360");
+    Bytes lro, res;
+    lro.pbVarint(1, 2443);
+    res.pbVarint(1, 3840).pbVarint(2, 3840);
+    Bytes clip;
+    clip.pbBytes(1, header.b).pbBytes(11, lro.b).pbBytes(12, res.b);
+    const auto dewarp = [&](double fx, double cx, double yaw, double p1, double p2) {
+        Bytes d;
+        d.pbFloat(1, float(fx)).pbFloat(2, float(fx)).pbFloat(3, float(cx)).pbFloat(4, 1912.0f);
+        d.pbFloat(5, 0.07f).pbFloat(6, -0.02f).pbFloat(7, 0.017f).pbFloat(8, -0.008f);
+        d.pbFloat(10, 3840).pbFloat(11, 3840).pbFloat(12, float(yaw)).pbFloat(13, 90.0f);
+        d.pbFloat(14, 0.5f).pbFloat(15, 0.001f).pbFloat(24, 8.0f);
+        if (packedP) {
+            Bytes p;
+            p.f32(float(p1)).f32(float(p2));
+            d.pbBytes(20, p.b);
+        } else {
+            d.pbFloat(20, float(p1)).pbFloat(20, float(p2));
+        }
+        Bytes zero; // field 27, tangent_coeff: zeros, not the pair
+        zero.f32(0).f32(0);
+        d.pbBytes(27, zero.b);
+        return d.b;
+    };
+    Bytes temperatureOnly;
+    temperatureOnly.pbFloat(25, 23.0f);
+    Bytes pano;
+    pano.pbBytes(1, temperatureOnly.b).pbBytes(2, temperatureOnly.b);
+    pano.pbBytes(3, dewarp(1035.9, 1907.7, -179.1, 0.00005, 0.00054));
+    pano.pbBytes(4, dewarp(1039.4, 1933.7, -0.07, 0.00022, -0.00184));
+    Bytes colour, cam, video;
+    colour.pbVarint(1, 19);
+    cam.pbBytes(4, colour.b);
+    video.pbVarint(1, 1920).pbVarint(2, 1920).pbFloat(3, 100.0f).pbVarint(5, 10);
+    Bytes stream;
+    stream.pbBytes(2, cam.b).pbBytes(3, video.b).pbBytes(panoField, pano.b);
+    Bytes sample;
+    sample.pbBytes(1, clip.b).pbBytes(2, stream.b);
+    return sample.b;
+}
+
+void testDjiMeta()
+{
+    // The Avata 360's schema (pano at 5) reads the pair, packed or not; the
+    // Osmo 360's (pano at 6) finds no calibration in the same sample.
+    for (const bool packed : {true, false}) {
+        const auto s = djiFirstSample(5, packed);
+        CHECK(insv::DjiProductName(s) == "DJI Avata360");
+        const auto m = insv::ParseDjiClipMeta(s, insv::DjiSchemaEagle4());
+        CHECK(m && m->calibrated && m->slot == insv::DjiSlot::NativeRefineFar);
+        if (!m)
+            continue;
+        CHECK(m->productName == "DJI Avata360" && m->firmware == "01.00.06.00");
+        CHECK(m->clipTimestampUs == 250472750 && m->lroNsPerLine == 2443);
+        CHECK(m->sensorWidth == 3840 && m->width == 1920 && m->bitDepth == 10);
+        CHECK(m->hasColorMode && m->colorMode == 19);
+        CHECK(insv::DjiLogProfile(m->colorMode) == "D-Log M");
+        CHECK(near(m->master.fx, 1039.4, 1e-3) && near(m->slave.yaw, -179.1, 1e-4));
+        CHECK(near(m->master.p[0], 0.00022, 1e-9) && near(m->master.p[1], -0.00184, 1e-9));
+        CHECK(near(m->master.k[4], 0.001, 1e-9) && near(m->master.lensModel, 8, 0));
+        const auto wrong = insv::ParseDjiClipMeta(s, insv::DjiSchemaOq101());
+        CHECK(wrong && !wrong->calibrated);
+    }
+    CHECK(insv::ParseDjiClipMeta(djiFirstSample(6, true), insv::DjiSchemaOq101())->calibrated);
+
+    // A later sample: only the frame; the drone's GPS and attitude, a
+    // negative attitude as int32 (a ten-byte varint).
+    using testtrailer::Bytes;
+    Bytes header, vel, att, pos, gps, drone, frame, sample;
+    header.pbVarint(1, 7).pbVarint(2, 250542750);
+    vel.pbFloat(1, -0.6f).pbFloat(2, -1.8f);
+    att.pbVarint(1, uint64_t(int64_t(-5))).pbVarint(2, 19).pbVarint(3, 1781);
+    pos.pbDouble(2, 47.25).pbDouble(3, -122.5);
+    gps.pbBytes(1, pos.b).pbVarint(2, 121833);
+    drone.pbBytes(2, vel.b).pbBytes(3, att.b).pbBytes(4, gps.b);
+    frame.pbBytes(1, header.b).pbBytes(4, drone.b);
+    sample.pbBytes(3, frame.b);
+    const auto f = insv::ParseDjiFrameMeta(sample.b);
+    CHECK(f && f->hasDrone && f->hasPosition);
+    if (f) {
+        CHECK(f->timestampUs == 250542750);
+        CHECK(near(f->latitude, 47.25, 1e-12) && near(f->longitude, -122.5, 1e-12));
+        CHECK(near(f->altitudeM, 121.833, 1e-9));
+        CHECK(near(f->velocityN, -0.6, 1e-6) && near(f->velocityE, -1.8, 1e-6));
+        CHECK(near(f->pitchDeg, -0.5, 1e-9) && near(f->rollDeg, 1.9, 1e-9) &&
+              near(f->yawDeg, 178.1, 1e-9));
+    }
+    CHECK(!insv::ParseDjiClipMeta(sample.b, insv::DjiSchemaEagle4()));
 }
 
 // The X5's field-145 lens profiles (theta deg -> mm) as read from the sample
@@ -3198,6 +3297,7 @@ int main()
     testExtrinsicsOrder();
     testMeiProjection();
     testThetaPolyProjection();
+    testDjiMeta();
     testLensProfile();
     testLinearAlgebra();
     testSyntheticRender();

@@ -163,6 +163,13 @@ add_library(insv_trailer STATIC
     src/insv/Smooth.h
     src/insv/InsvTrailer.h
     src/insv/InsvTrailer.cpp
+    # The protobuf wire format, which Insta360's records and DJI's djmd
+    # track are written in.
+    src/insv/Protobuf.h
+    src/insv/Protobuf.cpp
+    # DJI's djmd metadata samples (docs/formats/dji-360.md).
+    src/insv/DjiMeta.h
+    src/insv/DjiMeta.cpp
     # Lining the trailer's IMU up with the video, and what differs per model.
     src/insv/InsvImu.h
     src/insv/InsvImu.cpp
@@ -529,6 +536,10 @@ if(FFMPEG_FOUND)
         src/camera/CameraReader.h
         src/camera/Insta360Reader.h
         src/camera/Insta360Reader.cpp
+        src/camera/DjiReader.h
+        src/camera/DjiReader.cpp
+        src/camera/ReaderUtil.h
+        src/camera/ReaderUtil.cpp
         src/camera/MediaInfo.h
         src/camera/MediaInfo.cpp
     )
@@ -1155,7 +1166,9 @@ endif()
 if(TARGET camera AND TARGET test_media)
     add_executable(camera_test tests/camera_test.cpp)
     target_link_libraries(camera_test PRIVATE camera test_media)
-    add_test(NAME camera_test COMMAND camera_test)
+    # The sample footage, where it is there, for the readers' checks on
+    # real clips.
+    add_test(NAME camera_test COMMAND camera_test ${CMAKE_CURRENT_SOURCE_DIR}/sample_footage)
 endif()
 
 # insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.

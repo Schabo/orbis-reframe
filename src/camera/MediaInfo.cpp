@@ -56,7 +56,9 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
     for (unsigned i = 0; i < fmt->nb_streams; ++i) {
         const AVStream* st = fmt->streams[i];
         const AVCodecParameters* p = st->codecpar;
-        if (p->codec_type == AVMEDIA_TYPE_VIDEO) {
+        // A cover picture stored as a video stream (DJI's .OSV) isn't video.
+        if (p->codec_type == AVMEDIA_TYPE_VIDEO &&
+            !(st->disposition & (AV_DISPOSITION_ATTACHED_PIC | AV_DISPOSITION_TIMED_THUMBNAILS))) {
             MediaVideoStream v;
             v.codec = avcodec_get_name(p->codec_id);
             v.profile = profileName(p);
@@ -110,6 +112,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
         out.firmware = clip->firmware;
         out.imuRateHz = clip->imuRateHz;
         out.orientationPerFrame = clip->orientationPerFrame;
+        out.motionNotRead = clip->motionNotRead;
         out.exposureRecords = clip->exposureRecords;
         out.rollingShutterMs = clip->rollingShutterMs;
         out.captureFps = clip->captureFps;

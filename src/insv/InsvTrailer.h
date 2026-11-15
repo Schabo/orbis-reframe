@@ -374,4 +374,10 @@ std::vector<uint8_t> ExtractRawTrailer(const std::string& file_path);
 // the file holds none.
 std::optional<std::string> ReadInsvHeldName(const std::string& file_path);
 
+// The payload of the MP4 header's user-data box `type` (`moov` / `udta` /
+// `type`, four characters), up to `max_bytes` of it; std::nullopt when the
+// file has none. Any MP4, not only an .insv (DJI's `fsid`).
+std::optional<std::vector<uint8_t>> ReadMp4UserBox(const std::string& file_path, const char* type,
+                                                   size_t max_bytes);
+
 } // namespace insv

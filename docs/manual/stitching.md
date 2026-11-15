@@ -46,8 +46,8 @@ or with the standard ones, change this first; when the whole project was
 filmed the same way, **Apply to all clips** gives every 360° clip the
 settings shown.
 
-Some cameras, the ONE X2 and the X6 among them, record no lens-guard
-models. Their clips are always stitched with bare lenses: **Lens guards**
+Some cameras, the ONE X2, the X6 and the DJI Avata 360 among them, record
+no lens-guard models. Their clips are always stitched with bare lenses: **Lens guards**
 shows **None**, greyed out, with a line saying why. A clip from such a
 camera comes in with **None** whatever the clip beside it has, and **Apply
 to all clips** leaves its lens guards alone; applied from one of its clips,
@@ -62,7 +62,9 @@ can be off by a few tenths of a degree: far-away things along the seam then
 don't quite line up, and the picture as a whole sits slightly differently
 from where Insta360 Studio puts it. **Calibrate lenses…** measures your own
 camera's lenses with a chart on your monitor, so the two pictures line up
-better than with the model in the file.
+better than with the model in the file. It works on Insta360 cameras: the
+DJI Avata 360 describes its lenses another way, and its clips are always
+stitched with the model in their file.
 
 **Lens calibration** says which model a clip is stitched with:
 

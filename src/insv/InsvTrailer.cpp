@@ -2,6 +2,7 @@
 #include "InsvTrailer.h"
 
 #include "Gps.h" // insv::AlignGpsBySpeed
+#include "Protobuf.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -239,46 +240,6 @@ struct ImuMetadata {
     uint64_t timelapse_interval = 0;    // field 30
     bool timelapse_interval_ms = false; // field 59: field 30 is in ms
 };
-
-bool ReadVarint(const std::vector<uint8_t>& b, size_t& i, uint64_t& v) {
-    v = 0;
-    for (int shift = 0; i < b.size() && shift < 64; shift += 7) {
-        const uint8_t c = b[i++];
-        v |= static_cast<uint64_t>(c & 0x7f) << shift;
-        if (!(c & 0x80)) return true;
-    }
-    return false;
-}
-
-// Flat protobuf walk: calls `visit(field, wire_type, varint, bytes)`; `bytes`
-// holds the payload of fixed64 / fixed32 / length-delimited fields.
-void WalkProtobuf(const std::vector<uint8_t>& b,
-                  const std::function<void(uint32_t, int, uint64_t,
-                                           const std::vector<uint8_t>&)>& visit) {
-    size_t i = 0;
-    while (i < b.size()) {
-        uint64_t key, v = 0;
-        if (!ReadVarint(b, i, key)) return;
-        const int wt = static_cast<int>(key & 7);
-        size_t n = 0;
-        if (wt == 0) {
-            if (!ReadVarint(b, i, v)) return;
-        } else if (wt == 1) {
-            n = 8;
-        } else if (wt == 5) {
-            n = 4;
-        } else if (wt == 2) {
-            if (!ReadVarint(b, i, v)) return;
-            n = static_cast<size_t>(v);
-        } else {
-            return; // groups / unknown: stop rather than misparse
-        }
-        if (n > b.size() - i) return;
-        const std::vector<uint8_t> bytes(b.begin() + i, b.begin() + i + n);
-        i += n;
-        visit(static_cast<uint32_t>(key >> 3), wt, v, bytes);
-    }
-}
 
 ImuMetadata ParseImuMetadata(const std::vector<uint8_t>& payload) {
     ImuMetadata m;
@@ -1009,6 +970,25 @@ std::optional<std::string> ReadInsvHeldName(const std::string& file_path) {
     const std::string name = path.substr(path.find_last_of('\\') + 1);
     if (name.empty()) return std::nullopt;
     return name;
+}
+
+std::optional<std::vector<uint8_t>> ReadMp4UserBox(const std::string& file_path, const char* type,
+                                                   size_t max_bytes) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) return std::nullopt;
+    file.seekg(0, std::ios::end);
+    const int64_t file_size = static_cast<int64_t>(file.tellg());
+    int64_t moov = 0, moov_end = 0, udta = 0, udta_end = 0, box = 0, box_end = 0;
+    if (!FindBox(file, 0, file_size, "moov", moov, moov_end) ||
+        !FindBox(file, moov, moov_end, "udta", udta, udta_end) ||
+        !FindBox(file, udta, udta_end, type, box, box_end))
+        return std::nullopt;
+    std::vector<uint8_t> bytes(static_cast<size_t>(std::min<int64_t>(box_end - box,
+                                                                     static_cast<int64_t>(max_bytes))));
+    file.seekg(box, std::ios::beg);
+    file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!file) return std::nullopt;
+    return bytes;
 }
 
 std::optional<InsvTimeMap> ReadInsvTimeMap(const std::string& file_path) {

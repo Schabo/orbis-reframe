@@ -77,6 +77,11 @@ the one to pick for a normal export is *X6_I-Log_to_Rec709_BT1886_s65_v2*,
 where the list starts (the others are for HDR video, which orbis-reframe
 doesn't export, or a smaller grid).
 
+**DJI D-Log M.** DJI publishes a LUT for each camera's D-Log M on the
+camera's download page (for the Avata 360: *DJI Avata 360 D-Log M to
+Rec.709*, a `.cube` file). Load it as it is, and only on clips filmed in
+D-Log M.
+
 **HDR (HLG) clips.** Some cameras film in HDR: the Insta360 X6's *Dolby
 Vision* mode, for example, records HLG (the HDR format of broadcast TV).
 orbis-reframe shows and exports normal (SDR, Rec.709) video, where an HLG
@@ -88,7 +93,7 @@ HLG clips.
 
 orbis-reframe recognises a clip filmed in a log profile (the camera notes
 it in the file; **Media information** shows it as the *Colour profile*). For
-now that's Insta360's I-Log. It also recognises an HDR clip, 360 or flat
+now that's Insta360's I-Log and DJI's D-Log M. It also recognises an HDR clip, 360 or flat
 (phones film HLG too), from the format its video says it is in (HLG or PQ). While such a clip has no LUT, the
 **LUT** field has a red frame and the section says which LUT it needs: for
 an HLG clip, **HLG to Rec.709**; for a PQ clip, a PQ to Rec.709 LUT you

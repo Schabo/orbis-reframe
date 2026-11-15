@@ -253,20 +253,23 @@ project expect to see it? Then it's in the project.
 
 Today the code reads `.insv` files: the Insta360 X5, and experimentally the
 X6, the ONE X2 and the Antigravity A1 (a 360° drone that writes Insta360's
-format). Everything known about a format is in its document in
+format); and experimentally the DJI Avata 360's `.OSV`. Everything known about a format is in its document in
 [`formats/`](formats/README.md).
 
 The app reads clips only through one description, `camera::ClipMetadata`
 (`src/camera/`), from the cached `camera::ReadClipMetadata(path)`, with the
 IMU (`ReadClipImu`), the GPS track and the motion the overlays read
 (`ReadClipTelemetry`) and the camera's preview picture (`ReadClipThumbnail`)
-read on demand. A reader per camera family fills it (`Insta360Reader`, the
-only one so far), picked by asking each in turn whether the file is its own:
+read on demand. A reader per camera family fills it (`Insta360Reader`,
+`DjiReader`), picked by asking each in turn whether the file is its own:
 what differs between cameras -- lens layout and which file and stream each
-lens comes from, the files a long recording is split into, calibration, IMU timing and axes, colour profile, lens-guard
+lens comes from, the files a long recording is split into, calibration and
+its lens model (MEI, or DJI's theta-polynomial), where each lens sits in
+the camera (`insv::LensPose`) and how the camera holds them (the mount),
+IMU timing and axes, colour profile, lens-guard
 profiles, capture-mode names -- is data the reader fills in, not a code path
 per camera. Differences between models of one family are that reader's
-table (`insv::InsvModel` for Insta360). What's still to come is under
+table (`insv::InsvModel` for Insta360, `DjiReader`'s for DJI). What's still to come is under
 *Common camera model* in [`roadmap.md`](roadmap.md).
 
 ## Testing

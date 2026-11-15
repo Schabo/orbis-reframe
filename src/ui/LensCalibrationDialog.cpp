@@ -363,6 +363,12 @@ void LensCalibrationDialog::start()
                               .arg(clip ? tr("its lens model can't be read") : QString::fromStdString(err)));
         return;
     }
+    if (clip->lenses[0].model != insv::LensModel::Mei) {
+        m_status->setText(tr("Calibrate lenses works on Insta360 recordings so far. This camera "
+                             "describes its lenses another way; its clips stitch with the "
+                             "calibration in their files."));
+        return;
+    }
     if (clip->serial.empty()) {
         m_status->setText(tr("The recording doesn't say which camera filmed it."));
         return;

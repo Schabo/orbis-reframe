@@ -14,7 +14,7 @@ differences from it, or, for another vendor, from scratch.
 | Insta360 X3 | 360, one `.insv` per lens at 5.7K | [`insta360-x3.md`](insta360-x3.md) | not yet; desk research, no clips |
 | Antigravity A1 | 360 drone, one `.insv` with both lenses | [`antigravity-a1.md`](antigravity-a1.md) | experimental: 8K, 5.2K and 4K 100 clips, H.265 or H.264, open, stitch, play, stabilize (leveled by the drone's own attitude) and export (a contributor's clips); GPS lined up with the video by the drone's own speed, Direction lock held by its attitude; a renamed clip found again by the name it holds; open: photos |
 | Insta360 Luna (Pro / Ultra) | flat gimbal camera, `.mp4` | [`insta360-luna.md`](insta360-luna.md) | not yet; desk research, no clips |
-| DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | not yet; one Avata 360 clip examined (a contributor's): streams, metadata, calibration and seam measured; the Osmo 360 family is desk research |
+| DJI Osmo 360, Osmo 360 II / Air, Avata 360 | 360, `.osv` | [`dji-360.md`](dji-360.md) | Avata 360 experimental: opens, stitches (DJI's own lens model), plays and exports, GPS for titles and gauges, D-Log M through DJI's LUT (a contributor's clip); open: stabilization from the drone's attitude, other modes; the Osmo 360 family not yet, desk research |
 | GoPro MAX, MAX2 | 360 stitched in the camera, `.360` (EAC) | [`gopro-max.md`](gopro-max.md) | not yet; desk research, no clips |
 
 ## Sample clips wanted

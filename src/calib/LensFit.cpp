@@ -817,6 +817,9 @@ LensFitResult FitLensCalibration(const camera::ClipMetadata& clip, const ChartOb
     };
     if (clip.lenses.size() != 2 || !clip.calibrated)
         return fail("the clip has no two-lens calibration");
+    // The fit is of MEI's terms, with the stitch's Insta360 poses.
+    if (clip.lenses[0].model != insv::LensModel::Mei || clip.lenses[1].model != insv::LensModel::Mei)
+        return fail("the camera's lenses follow another lens model than MEI");
     if (!(opt.squareMm > 0))
         return fail("no square size");
     if (obs.lensWidth != clip.lensWidth || obs.lensHeight != clip.lensHeight)

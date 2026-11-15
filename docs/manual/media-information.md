@@ -28,7 +28,7 @@ full path, or what a value means.
 | **Recorded** | When the recording started, by the camera's clock: the time the camera showed. For a video that isn't from a 360 camera, the time the file says, in your computer's time zone. |
 | **Bitrate** | How much data the file holds per second of video, sound included. Higher means more detail, and larger files. |
 | **Back lens file** | Only for a clip whose back lens is in a file of its own (the Insta360 ONE X2's 5.7K clips): that file's name. Hover over it for the full path. The clip needs it, in the same folder. |
-| **Preview file** | Whether the camera's low-resolution preview file (`.lrv`, the ONE X2's `LRV_…_11_….insv`, or the Antigravity A1's `PRX_….prx`) is next to the `.insv`. orbis-reframe doesn't need it, so *Not found* is fine. |
+| **Preview file** | Whether the camera's low-resolution preview file (`.lrv`, the ONE X2's `LRV_…_11_….insv`, the Antigravity A1's `PRX_….prx`, or the DJI Avata 360's `.LRF`) is next to the `.insv`. orbis-reframe doesn't need it, so *Not found* is fine. |
 | **Re-written** | Only for a file Insta360's software re-wrote with stretches cut out of it or its speed changed: *⚠ With cuts or a speed change*. orbis-reframe lines such a file up with the camera's motion and GPS as if it were simply trimmed, so [stabilization](stabilization.md), highlight marks, and titles or gauges that use the GPS can be off in it. A file only trimmed at its start or end (`…-trim.insv`) is fine and shows no row. Use the camera's own file if you have it. |
 
 ## Recording
@@ -48,7 +48,7 @@ which is one clip.
 
 | Row | What it shows |
 |---|---|
-| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. |
+| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. Not shown for the DJI Avata 360, whose modes have no names here yet. |
 | **Lenses** | The size of each of the two fisheye pictures, in pixels. |
 | **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. |
 | **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. |
@@ -76,8 +76,8 @@ the data rate.
 | **Model** | The camera that recorded the file, such as *Insta360 X5*. |
 | **Serial** | The camera's serial number. Blur it out if you share a screenshot of this section. |
 | **Firmware** | The camera's software version at the time of recording. |
-| **Motion data** | How often the camera recorded its movement, which [stabilization](stabilization.md) works from: about 1000 times a second on the X5. *Orientation per frame* on an X5 timelapse, which records which way the camera pointed at each frame instead. *Not recorded* means stabilization can't work for this clip. |
-| **GPS** | Whether a GPS source, such as Insta360's GPS remote, recorded where you were: how often the position was updated (about once a second), or *Not recorded*. A second line says when the track covers only part of the recording, for example because the signal was lost, or *no position fix* if the GPS never found its position. The positions themselves aren't shown, so a screenshot of the section doesn't give away where you rode. An Antigravity A1 records its GPS too; titles and gauges use it once the drone has moved (see [Getting started](getting-started.md)). |
+| **Motion data** | How often the camera recorded its movement, which [stabilization](stabilization.md) works from: about 1000 times a second on the X5. *Orientation per frame* on an X5 timelapse, which records which way the camera pointed at each frame instead. *Recorded, not used yet* on the DJI Avata 360, which records its motion in a form orbis-reframe doesn't read yet. *Not recorded* means stabilization can't work for this clip. |
+| **GPS** | Whether a GPS source, such as Insta360's GPS remote, recorded where you were: how often the position was updated (about once a second), or *Not recorded*. A second line says when the track covers only part of the recording, for example because the signal was lost, or *no position fix* if the GPS never found its position. The positions themselves aren't shown, so a screenshot of the section doesn't give away where you rode. An Antigravity A1 records its GPS too, and so does a DJI Avata 360 (about ten times a second); titles and gauges use it once the drone has moved (see [Getting started](getting-started.md)). |
 | **Highlight marks** | How many moments were marked while recording, or *None*. They show as yellow dots on the clip in the timeline (see [The timeline](timeline.md#highlight-marks)). |
 | **Sensor readout** | How long the camera's sensor takes to read one picture from top to bottom (the rolling shutter). orbis-reframe uses it to straighten the picture during fast movement. |
 
