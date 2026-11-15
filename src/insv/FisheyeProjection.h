@@ -119,6 +119,10 @@ struct StitchParams {
     // Each lens's pose in the camera (camera::Lens::pose); the default is
     // Insta360's.
     LensPose lensPose[2] = {Insta360LensPose(0), Insta360LensPose(1)};
+    // The lenses' model (camera::Lens::model; both have the same one), and
+    // for the theta-polynomial each lens's fifth term (camera::Lens::k5).
+    LensModel lensModel = LensModel::Mei;
+    double thetaK5[2] = {0.0, 0.0};
 
     // Global equirect orientation applied to the sampling ray (Ry(yaw) Rx(pitch)
     // Rz(roll)): how the camera holds its lenses, so the picture is level and
@@ -141,21 +145,28 @@ bool ApplyLensProfile(StitchParams& params, const LensProfile* bare,
 struct LensProjection {
     Mat3 worldToLens; // R_lens^T
 
-    // MEI (Mei/unified omnidirectional) model, from the extended calibration
-    // (insv::LensCalibExt). project() maps the lens-frame ray d to the
-    // calibration's image axes (u right, v down -- our lens frame has both
-    // flipped):
+    // The lens model (StitchParams::lensModel) with the calibration's
+    // coefficients (insv::LensCalibExt). project() maps the lens-frame ray d
+    // to the calibration's image axes (u right, v down -- our lens frame has
+    // both flipped). MEI:
     //   x = -d.x/(d.z+xi), y = -d.y/(d.z+xi),  r^2 = x^2+y^2
     //   radial = 1 + k1 r^2 + k2 r^4 + k3 r^6 + k4 r^8
+    // The theta-polynomial, theta the off-axis angle:
+    //   theta_d = theta (1 + k1 theta^2 + k2 theta^4 + ... + k5 theta^10)
+    //   x = -d.x theta_d/|d.xy|, y = -d.y theta_d/|d.xy|,  r^2 = theta_d^2
+    //   radial = 1, s1..s4 = 0
+    // Then for both:
     //   xd = x radial + 2 p1 x y + p2 (r^2 + 2x^2) + s1 r^2 + s2 r^4
     //   yd = y radial + p1 (r^2 + 2y^2) + 2 p2 x y + s3 r^2 + s4 r^4
     //   u = cx + fx*xd*acc(theta),  v = cy + fy*yd*acc(theta)
     // acc() is the accessory scale (StitchParams::accessory, 1 without).
     // The tangential/thin-prism terms move the rim by up to ~9 px; including
     // them in these axes measurably improves the seam match.
+    LensModel model = LensModel::Mei;
     double cx = 0, cy = 0;
     double xi = 0, fx = 0, fy = 0;
     double k[4] = {0, 0, 0, 0};
+    double k5 = 0; // the theta-polynomial's theta^10 term
     double p[2] = {0, 0};       // tangential
     double s[4] = {0, 0, 0, 0}; // thin-prism
 };
@@ -198,7 +209,10 @@ struct SeamBlend {
 struct StitchGpuParams {
     float worldToLens[2][9];
     float outRot[9];
-    // MEI model (see LensProjection).
+    // The lens model (see LensProjection): thetaPoly 1 = the
+    // theta-polynomial, its fifth terms in k5; else MEI.
+    int thetaPoly = 0;
+    float k5[2] = {0, 0};
     float cx[2] = {0, 0};
     float cy[2] = {0, 0};
     float xi[2] = {0, 0};

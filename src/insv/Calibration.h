@@ -57,6 +57,20 @@ struct LensCalibExt {
     double focalRefW = 0;
 };
 
+// How a lens maps an off-axis angle onto its sensor (LensProjection has the
+// formulas). The coefficients are LensCalibExt's either way: fx fy cx cy, the
+// radial k1..k4, the tangential p1 p2.
+enum class LensModel {
+    // Mei's unified omnidirectional model (xi, a polynomial in r^2,
+    // thin-prism s1..s4 besides). Insta360's.
+    Mei,
+    // Equidistant with a polynomial in the angle (Kannala-Brandt):
+    // theta_d = theta (1 + k1 theta^2 + ... + k5 theta^10), no xi, no
+    // thin-prism terms; k5 comes beside the calibration. DJI's
+    // (docs/formats/dji-360.md §3).
+    ThetaPoly,
+};
+
 // Where a lens sits in the camera, which the camera's reader knows (the
 // calibration gives each lens's small deviation from it). The stitch places
 // lens i, in its lens frame (x and y the calibration image's negated, z the

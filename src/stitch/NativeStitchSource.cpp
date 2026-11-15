@@ -87,8 +87,11 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
         return false;
     }
     calib.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 2; ++i) {
         params.lensPose[i] = clip.lenses[i].pose;
+        params.thetaK5[i] = clip.lenses[i].k5;
+    }
+    params.lensModel = clip.lenses[0].model;
     params.outYawDeg = clip.mountYawDeg;
     params.outPitchDeg = clip.mountPitchDeg;
     params.outRollDeg = clip.mountRollDeg;

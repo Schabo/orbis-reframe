@@ -66,6 +66,10 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.meiB[1] = p.fy[1];
     sp.meiB[2] = 0.0f;
     sp.meiB[3] = static_cast<float>(p.accessory);
+    sp.lensModel[0] = static_cast<float>(p.thetaPoly);
+    sp.lensModel[1] = p.k5[0];
+    sp.lensModel[2] = p.k5[1];
+    sp.lensModel[3] = 0.0f;
     for (int k = 0; k < 4; ++k) {
         sp.kd0[k] = p.kdist[0][k];
         sp.kd1[k] = p.kdist[1][k];

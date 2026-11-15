@@ -36,9 +36,12 @@ using LensSource = insv::LensSource;
 
 struct Lens {
     LensSource source;
-    // The lens model (Mei / MEI, insv::LensCalibExt); valid when
-    // ClipMetadata::calibrated.
+    // The lens's calibration (insv::LensCalibExt), read as `model` says;
+    // valid when ClipMetadata::calibrated. The theta-polynomial's fifth
+    // term is `k5` (k1..k4 are the calibration's).
+    insv::LensModel model = insv::LensModel::Mei;
     insv::LensCalibExt calibration;
+    double k5 = 0.0;
     // Where it sits in the camera, which the calibration's angles are
     // counted from (insv::LensPose, insv::StitchParams::lensPose).
     insv::LensPose pose;

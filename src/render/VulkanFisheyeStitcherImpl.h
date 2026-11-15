@@ -69,8 +69,9 @@ struct ShaderParams {
     float blur0[4]; // privacy blur: count, -, -, -
     float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
     float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
+    float lensModel[4]; // theta-polynomial (0/1), its theta^10 term of lens 0, 1, -
 };
-static_assert(sizeof(ShaderParams) == 14624, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 14640, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 static_assert(LensSlot::kBlurCellsW == insv::kBlurCellsPerQuad && LensSlot::kBlurCellsH == insv::kMaxBlurQuads,
               "the blur cell table: a row of kBlurCellsPerQuad per quad");

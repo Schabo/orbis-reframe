@@ -155,7 +155,9 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         const double cxLocal = e.cx - (i == 0 ? 0.0 : halfW);
         const double sVideoPerSensor = static_cast<double>(streamW) / halfW;
         const double sVideoPerCrop = static_cast<double>(streamW) / e.focalRefW;
+        m_lens[i].model = params.lensModel;
         m_lens[i].xi = e.xi;
+        m_lens[i].k5 = params.thetaK5[i];
         const double radialScale = params.modelCorrection.radialScale * params.seam.radialScale;
         m_lens[i].fx = e.fx * sVideoPerCrop * radialScale;
         m_lens[i].fy = e.fy * sVideoPerCrop * radialScale;
@@ -313,6 +315,7 @@ StitchGpuParams FisheyeStitcher::gpuParams() const
         p.cx[i] = static_cast<float>(m_lens[i].cx);
         p.cy[i] = static_cast<float>(m_lens[i].cy);
         p.xi[i] = static_cast<float>(m_lens[i].xi);
+        p.k5[i] = static_cast<float>(m_lens[i].k5);
         p.fx[i] = static_cast<float>(m_lens[i].fx);
         p.fy[i] = static_cast<float>(m_lens[i].fy);
         for (int k = 0; k < 4; ++k) {
@@ -322,6 +325,7 @@ StitchGpuParams FisheyeStitcher::gpuParams() const
         p.pdist[i][0] = static_cast<float>(m_lens[i].p[0]);
         p.pdist[i][1] = static_cast<float>(m_lens[i].p[1]);
     }
+    p.thetaPoly = m_lens[0].model == LensModel::ThetaPoly ? 1 : 0;
     p.accessory = m_accessory ? 1 : 0;
     for (int k = 0; k < 6; ++k) {
         p.barePoly[k] = static_cast<float>(m_params.barePoly[k]);
@@ -370,6 +374,21 @@ double meiRadial(double theta, double xi, const double k[4])
     const double radial = 1.0 + k[0] * r2 + k[1] * r4 + k[2] * r2 * r4 + k[3] * r4 * r4;
     return rho * radial;
 }
+
+// The theta-polynomial's theta_d(theta): the sampled radius in units of fx.
+double thetaPolyRadial(double theta, const double k[4], double k5)
+{
+    const double t2 = theta * theta;
+    return theta * (1.0 + t2 * (k[0] + t2 * (k[1] + t2 * (k[2] + t2 * (k[3] + t2 * k5)))));
+}
+
+// The sampled radius of lens L at off-axis angle theta, before the
+// tangential terms, in units of fx.
+double lensRadial(const LensProjection& L, double theta)
+{
+    return L.model == LensModel::ThetaPoly ? thetaPolyRadial(theta, L.k, L.k5)
+                                           : meiRadial(theta, L.xi, L.k);
+}
 } // namespace
 
 double FisheyeStitcher::accessoryScale(double theta) const
@@ -393,9 +412,8 @@ double FisheyeStitcher::radiusForTheta(double theta) const
     // circleEdgeWeight() expects. Uses lens 0's intrinsics (the two lenses
     // differ only marginally, and this only drives edge feather).
     const double tref = std::max(m_thetaRefRad, 1e-3);
-    const double ref = meiRadial(tref, m_lens[0].xi, m_lens[0].k) * accessoryScale(tref);
-    return ref > 1e-9 ? meiRadial(theta, m_lens[0].xi, m_lens[0].k) * accessoryScale(theta) / ref
-                      : 0.0;
+    const double ref = lensRadial(m_lens[0], tref) * accessoryScale(tref);
+    return ref > 1e-9 ? lensRadial(m_lens[0], theta) * accessoryScale(theta) / ref : 0.0;
 }
 
 bool FisheyeStitcher::project(int i, const Vec3& world, double& u, double& v, double& theta) const
@@ -406,15 +424,29 @@ bool FisheyeStitcher::project(int i, const Vec3& world, double& u, double& v, do
         return false;
 
     const LensProjection& L = m_lens[i];
-    const double denom = d.z + L.xi;
-    if (denom < 1e-6)
-        return false;
     // Calibration image axes (u right, v down): our lens frame has both
     // flipped. See LensProjection.
-    const double x = -d.x / denom, y = -d.y / denom;
-    const double r2 = x * x + y * y, r4 = r2 * r2;
-    const double* k = L.k;
-    const double radial = 1.0 + k[0] * r2 + k[1] * r4 + k[2] * r2 * r4 + k[3] * r4 * r4;
+    double x, y, r2, radial;
+    if (L.model == LensModel::ThetaPoly) {
+        const double td = thetaPolyRadial(theta, L.k, L.k5);
+        const double rho = std::hypot(d.x, d.y);
+        const double sc = rho > 1e-12 ? td / rho : 0.0;
+        x = -d.x * sc;
+        y = -d.y * sc;
+        r2 = td * td;
+        radial = 1.0;
+    } else {
+        const double denom = d.z + L.xi;
+        if (denom < 1e-6)
+            return false;
+        x = -d.x / denom;
+        y = -d.y / denom;
+        r2 = x * x + y * y;
+        const double r4 = r2 * r2;
+        const double* k = L.k;
+        radial = 1.0 + k[0] * r2 + k[1] * r4 + k[2] * r2 * r4 + k[3] * r4 * r4;
+    }
+    const double r4 = r2 * r2;
     const double xd = x * radial + 2 * L.p[0] * x * y + L.p[1] * (r2 + 2 * x * x) +
                       L.s[0] * r2 + L.s[1] * r4;
     const double yd = y * radial + L.p[0] * (r2 + 2 * y * y) + 2 * L.p[1] * x * y +

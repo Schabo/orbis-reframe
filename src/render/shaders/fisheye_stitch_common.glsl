@@ -114,6 +114,9 @@ layout(std140, binding = 0) uniform Params {
     // For fisheye_view.frag, which samples the planes itself; the stitch's
     // ycbcr sampler converts on its own.
     vec4 ycc[3];
+    // The lens model (insv::StitchGpuParams::thetaPoly): x 1 = the
+    // theta-polynomial, else MEI; y, z its theta^10 term of lens 0, 1.
+    vec4 lensModel;
 } P;
 
 #ifndef SEAM_FLOW_BINDING
@@ -165,6 +168,14 @@ float meiRadial(float theta, float xi, vec4 k)
     return rho * (1.0 + k.x * r2 + k.y * r4 + k.z * r2 * r4 + k.w * r4 * r4);
 }
 
+// The theta-polynomial's theta_d(theta): the sampled radius (units of fx)
+// before the tangential terms. See insv::LensProjection.
+float thetaPolyRadial(float theta, vec4 k, float k5)
+{
+    float t2 = theta * theta;
+    return theta * (1.0 + t2 * (k.x + t2 * (k.y + t2 * (k.z + t2 * (k.w + t2 * k5)))));
+}
+
 // Accessory (lens guard / dive case) radial scale: accessoryPoly(deg) /
 // barePoly(deg). 1 without an accessory. See insv::StitchParams::accessory.
 float accessoryScale(float theta)
@@ -182,6 +193,10 @@ float accessoryScale(float theta)
 float radiusForTheta(float theta)
 {
     float tref = max(P.seam.w, 1e-3);
+    if (P.lensModel.x != 0.0) {
+        float ref = max(thetaPolyRadial(tref, P.kd0, P.lensModel.y) * accessoryScale(tref), 1e-9);
+        return thetaPolyRadial(theta, P.kd0, P.lensModel.y) * accessoryScale(theta) / ref;
+    }
     float ref = max(meiRadial(tref, P.meiA.x, P.kd0) * accessoryScale(tref), 1e-9);
     return meiRadial(theta, P.meiA.x, P.kd0) * accessoryScale(theta) / ref;
 }
@@ -206,14 +221,28 @@ vec3 project(int i, vec3 world)
     vec4 k = (i == 0) ? P.kd0 : P.kd1;
     vec4 pd = (i == 0) ? P.pd0 : P.pd1;
     vec2 s34 = (i == 0) ? P.sd.xy : P.sd.zw;
-    float denom = d.z + xi;
-    if (denom < 1e-6)
-        return vec3(0.0, 0.0, -1.0);
     // Calibration image axes (u right, v down): our lens frame has both
     // flipped. See insv::LensProjection.
-    float x = -d.x / denom, y = -d.y / denom;
-    float r2 = x * x + y * y, r4 = r2 * r2;
-    float radial = 1.0 + k.x * r2 + k.y * r4 + k.z * r2 * r4 + k.w * r4 * r4;
+    float x, y, r2, r4, radial;
+    if (P.lensModel.x != 0.0) {
+        float td = thetaPolyRadial(theta, k, (i == 0) ? P.lensModel.y : P.lensModel.z);
+        float rho = length(d.xy);
+        float sc = rho > 1e-9 ? td / rho : 0.0;
+        x = -d.x * sc;
+        y = -d.y * sc;
+        r2 = td * td;
+        r4 = r2 * r2;
+        radial = 1.0;
+    } else {
+        float denom = d.z + xi;
+        if (denom < 1e-6)
+            return vec3(0.0, 0.0, -1.0);
+        x = -d.x / denom;
+        y = -d.y / denom;
+        r2 = x * x + y * y;
+        r4 = r2 * r2;
+        radial = 1.0 + k.x * r2 + k.y * r4 + k.z * r2 * r4 + k.w * r4 * r4;
+    }
     float xd = x * radial + 2.0 * pd.x * x * y + pd.y * (r2 + 2.0 * x * x) + pd.z * r2 + pd.w * r4;
     float yd = y * radial + pd.x * (r2 + 2.0 * y * y) + 2.0 * pd.y * x * y + s34.x * r2 + s34.y * r4;
     float acc = accessoryScale(theta);

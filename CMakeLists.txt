@@ -1246,6 +1246,14 @@ endif()
 add_test(NAME seam_flow_gpu_test COMMAND seam_flow_gpu_test)
 set_tests_properties(seam_flow_gpu_test PROPERTIES SKIP_RETURN_CODE 77)
 
+# --- tests/stitch_gpu_test: the GPU stitch against the CPU's on synthetic
+# lens pictures, for each lens model. Skipped (77) where there's no Vulkan
+# device.
+add_executable(stitch_gpu_test tests/stitch_gpu_test.cpp)
+target_link_libraries(stitch_gpu_test PRIVATE render_gpu_stitch)
+add_test(NAME stitch_gpu_test COMMAND stitch_gpu_test)
+set_tests_properties(stitch_gpu_test PROPERTIES SKIP_RETURN_CODE 77)
+
 # The privacy blur's plate-scan data (lookup, spans, merge, cache file).
 add_executable(privacy_test tests/privacy_test.cpp)
 target_link_libraries(privacy_test PRIVATE privacy_data)

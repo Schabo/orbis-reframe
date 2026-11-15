@@ -284,6 +284,77 @@ void testMeiProjection()
     CHECK(!st.project(0, behind, u, v, theta));
 }
 
+// The DJI Avata 360's master lens (docs/formats/dji-360.md §2.1) as a
+// reader hands it over: the theta-polynomial, the 3840 calibration frame as
+// one half of a side-by-side frame, no pose of its own.
+insv::LensCalibExt avataLens()
+{
+    insv::LensCalibExt e;
+    e.fx = 1039.390, e.fy = 1039.506, e.cx = 1933.663, e.cy = 1912.346;
+    const double k[4] = {0.07275, -0.02460, 0.01725, -0.00826};
+    std::copy(k, k + 4, e.k);
+    e.p[0] = 0.00022, e.p[1] = -0.00184;
+    e.w = 7680, e.h = 3840, e.focalRefW = 3840;
+    return e;
+}
+
+void testThetaPolyProjection()
+{
+    insv::InsvCalibration c;
+    c.lensesExt = {avataLens(), avataLens()};
+    c.lensesExt[1].cx += 3840;
+    insv::StitchParams p;
+    p.lensModel = insv::LensModel::ThetaPoly;
+    p.thetaK5[0] = p.thetaK5[1] = 0.00108;
+    p.lensPose[0] = p.lensPose[1] = insv::LensPose{};
+    p.lensPose[1].mount[0] = p.lensPose[1].mount[8] = -1; // a half turn about y
+    insv::FisheyeStitcher st;
+    CHECK(st.configure(c, 1920, 1920, p));
+    CHECK(st.gpuParams().thetaPoly == 1);
+    CHECK(near(st.gpuParams().k5[1], 0.00108, 1e-9));
+
+    // The 1920 stream is the 3840 frame at half size.
+    const insv::LensProjection& l0 = st.lensProjection(0);
+    CHECK(near(l0.fx, 1039.390 / 2, 1e-9) && near(l0.cx, 1933.663 / 2, 1e-9));
+    double u, v, theta;
+    CHECK(st.project(0, insv::Vec3{0, 0, 1}, u, v, theta));
+    CHECK(near(theta, 0.0, 1e-9) && near(u, l0.cx, 1e-9) && near(v, l0.cy, 1e-9));
+    CHECK(st.project(1, insv::Vec3{0, 0, -1}, u, v, theta));
+    CHECK(near(theta, 0.0, 1e-9) && near(u, st.lensProjection(1).cx, 1e-9));
+    CHECK(near(st.lensProjection(1).cx, 1933.663 / 2, 1e-9));
+
+    // Against the formula, in the calibration's image axes (x right, y down:
+    // our lens frame's negated), with the tangential pair.
+    const double th = 70 * kDeg, ph = 25 * kDeg;
+    const insv::Vec3 ray{-std::sin(th) * std::cos(ph), -std::sin(th) * std::sin(ph), std::cos(th)};
+    CHECK(st.project(0, ray, u, v, theta));
+    CHECK(near(theta, th, 1e-9));
+    const double t2 = th * th;
+    const double td =
+        th * (1 + t2 * (0.07275 + t2 * (-0.02460 + t2 * (0.01725 + t2 * (-0.00826 + t2 * 0.00108)))));
+    const double x = td * std::cos(ph), y = td * std::sin(ph), r2 = td * td;
+    const double p1 = 0.00022, p2 = -0.00184;
+    const double xd = x + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+    const double yd = y + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+    CHECK(near(u, (1039.390 * xd + 1933.663) / 2, 1e-9));
+    CHECK(near(v, (1039.506 * yd + 1912.346) / 2, 1e-9));
+
+    // The radius grows to past the frame's edge across the seam band, and
+    // is 1 at the edge angle.
+    double prev = -1;
+    for (double deg = 0; deg <= 100; deg += 2.5) {
+        const double r = st.radiusForTheta(deg * kDeg);
+        CHECK(std::isfinite(r) && r > prev);
+        prev = r;
+    }
+    CHECK(near(st.radiusForTheta(100 * kDeg), 1.0, 1e-9));
+
+    // MEI by default.
+    insv::FisheyeStitcher mei;
+    CHECK(mei.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    CHECK(mei.gpuParams().thetaPoly == 0);
+}
+
 // The X5's field-145 lens profiles (theta deg -> mm) as read from the sample
 // footage.
 insv::InsvMakerNotes x5LensProfiles()
@@ -3126,6 +3197,7 @@ int main()
     testCalibrationV3();
     testExtrinsicsOrder();
     testMeiProjection();
+    testThetaPolyProjection();
     testLensProfile();
     testLinearAlgebra();
     testSyntheticRender();
