@@ -2949,11 +2949,8 @@ void MainWindow::afterUndoRedo()
 // videos, for a file dialog's filter.
 static QString clipFileGlobs()
 {
-    QStringList globs;
-    for (const auto kind : {MediaItem::Kind::Clip360, MediaItem::Kind::Video})
-        for (const QString &ext : media::extensions(kind))
-            globs << QStringLiteral("*.") + ext;
-    return globs.join(QLatin1Char(' '));
+    return media::fileGlobs(media::extensions(MediaItem::Kind::Clip360) +
+                            media::extensions(MediaItem::Kind::Video));
 }
 
 void MainWindow::addClipToTimeline(int index)

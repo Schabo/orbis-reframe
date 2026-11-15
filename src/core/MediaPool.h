@@ -90,6 +90,11 @@ std::optional<MediaItem::Kind> kindForPath(const QString &path);
 // The extensions of one kind, lower case, no dot.
 const QStringList &extensions(MediaItem::Kind kind);
 
+// A file dialog's patterns for `exts` (lower case, no dot): each in lower and
+// upper case, "*.mp4 *.MP4 ...". The dialog's matching is case-sensitive on
+// Linux, and cameras name their files in capitals (DJI's .OSV, .MP4).
+QString fileGlobs(const QStringList &exts);
+
 // The files of a folder (not its subfolders) that kindForPath() knows, sorted
 // by name.
 QStringList filesInFolder(const QString &folder);

@@ -16,6 +16,7 @@
 #include "../core/ClipItem.h"
 #include "../core/ColorLut.h"
 #include "../core/DataPaths.h"
+#include "../core/MediaPool.h"
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
@@ -185,7 +186,8 @@ void MainWindow::loadLut()
         return;
     const QString picked = QFileDialog::getOpenFileName(
         this, tr("Load LUT"), m_lastLutDir.isEmpty() ? QDir::homePath() : m_lastLutDir,
-        tr("3D LUTs (*.cube *.zip);;All files (*)"));
+        tr("3D LUTs (%1);;All files (*)")
+            .arg(media::fileGlobs({QStringLiteral("cube"), QStringLiteral("zip")})));
     if (picked.isEmpty())
         return;
     m_lastLutDir = QFileInfo(picked).absolutePath();

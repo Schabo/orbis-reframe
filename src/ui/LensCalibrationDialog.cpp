@@ -2,6 +2,7 @@
 
 #include "../core/LensCalibrationStore.h"
 #include "../core/Log.h"
+#include "../core/MediaPool.h"
 
 #include <ChartBoard.h>
 #include <ChartDetect.h>
@@ -345,7 +346,9 @@ void LensCalibrationDialog::browse()
                             ? m_recording->property("startDir").toString()
                             : QFileInfo(m_recording->text()).absolutePath();
     const QString path = QFileDialog::getOpenFileName(this, tr("The recording of the chart"), dir,
-                                                      tr("360 videos (*.insv);;All files (*)"));
+                                                      tr("360 videos (%1);;All files (*)")
+                                                          .arg(media::fileGlobs(media::extensions(
+                                                              MediaItem::Kind::Clip360))));
     if (!path.isEmpty())
         m_recording->setText(path);
 }

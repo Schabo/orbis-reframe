@@ -381,6 +381,9 @@ void testKinds()
     CHECK(media::kindForPath(QStringLiteral("x.opus")) == MediaItem::Kind::Audio);
     CHECK(!media::kindForPath(QStringLiteral("LRV_1.lrv")));
     CHECK(!media::kindForPath(QStringLiteral("x.orp")));
+    // A file dialog's patterns name both cases: its matching is case-sensitive.
+    CHECK(media::fileGlobs({QStringLiteral("mp4"), QStringLiteral("insv")}) ==
+          QStringLiteral("*.mp4 *.MP4 *.insv *.INSV"));
 
     QTemporaryDir tmp;
     for (const char *name : {"b.mp4", "a.insv", "a.lrv", "c.txt", "d.wav"})

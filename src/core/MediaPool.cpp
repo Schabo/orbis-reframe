@@ -30,6 +30,14 @@ const QStringList &extensions(MediaItem::Kind kind)
     return audio;
 }
 
+QString fileGlobs(const QStringList &exts)
+{
+    QStringList globs;
+    for (const QString &ext : exts)
+        globs << QStringLiteral("*.") + ext << QStringLiteral("*.") + ext.toUpper();
+    return globs.join(QLatin1Char(' '));
+}
+
 std::optional<MediaItem::Kind> kindForPath(const QString &path)
 {
     const QString suffix = QFileInfo(path).suffix().toLower();

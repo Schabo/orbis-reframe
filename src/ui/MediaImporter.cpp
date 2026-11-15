@@ -33,14 +33,13 @@ MediaImporter::MediaImporter(Project *project, MediaPoolPanel *panel, TabSidebar
 
 void MediaImporter::importFiles()
 {
-    QStringList patterns;
+    QStringList exts;
     for (const auto kind :
          {MediaItem::Kind::Clip360, MediaItem::Kind::Video, MediaItem::Kind::Audio})
-        for (const QString &ext : media::extensions(kind))
-            patterns << QStringLiteral("*.") + ext;
+        exts << media::extensions(kind);
     const QStringList paths = QFileDialog::getOpenFileNames(
         m_window, tr("Import files"), m_lastDir.isEmpty() ? QDir::homePath() : m_lastDir,
-        tr("Video and audio files (%1);;All files (*)").arg(patterns.join(QLatin1Char(' '))));
+        tr("Video and audio files (%1);;All files (*)").arg(media::fileGlobs(exts)));
     if (paths.isEmpty())
         return;
     m_lastDir = QFileInfo(paths.first()).absolutePath();
@@ -183,14 +182,11 @@ MediaImporter::Relinks MediaImporter::locate(const QString &path)
     QDir start(oldInfo.absolutePath());
     while (!start.exists() && start.cdUp()) {
     }
-    QStringList patterns;
-    for (const QString &ext : media::extensions(old.kind))
-        patterns << QStringLiteral("*.") + ext;
     const QString picked = QFileDialog::getOpenFileName(
         m_window, tr("Locate %1").arg(oldInfo.fileName()),
         start.exists() ? start.absolutePath() : QDir::homePath(),
         tr("%1 (%2);;All files (*)")
-            .arg(oldInfo.fileName(), patterns.join(QLatin1Char(' '))));
+            .arg(oldInfo.fileName(), media::fileGlobs(media::extensions(old.kind))));
     if (picked.isEmpty())
         return {};
 

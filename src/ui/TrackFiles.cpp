@@ -30,7 +30,8 @@ std::optional<int> TrackFiles::pickAudio(int trackId, qint64 atMs)
     const QStringList paths = QFileDialog::getOpenFileNames(
         m_window, tr("Add audio files"),
         m_lastAudioDir.isEmpty() ? QDir::homePath() : m_lastAudioDir,
-        tr("Audio files (*.mp3 *.wav *.flac *.aac *.m4a *.ogg *.opus);;All files (*)"));
+        tr("Audio files (%1);;All files (*)")
+            .arg(media::fileGlobs(media::extensions(MediaItem::Kind::Audio))));
     if (paths.isEmpty())
         return std::nullopt;
     m_lastAudioDir = QFileInfo(paths.first()).absolutePath();
@@ -90,7 +91,8 @@ std::optional<int> TrackFiles::pickVideo(int trackId, qint64 atMs)
     const QStringList paths = QFileDialog::getOpenFileNames(
         m_window, tr("Add picture in picture"),
         m_lastVideoDir.isEmpty() ? QDir::homePath() : m_lastVideoDir,
-        tr("Video files (*.mp4 *.mov *.mkv *.m4v *.webm *.avi);;All files (*)"));
+        tr("Video files (%1);;All files (*)")
+            .arg(media::fileGlobs(media::extensions(MediaItem::Kind::Video))));
     if (paths.isEmpty())
         return std::nullopt;
     m_lastVideoDir = QFileInfo(paths.first()).absolutePath();
