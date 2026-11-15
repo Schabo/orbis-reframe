@@ -555,7 +555,10 @@ placed by their own times, which needn't be evenly spaced. Blocks [1] and
 image blocks work in video time. An X5 timelapse has no IMU, only the
 orientation it stores per frame: the stabilizer runs on that, the IMU
 blocks have nothing to read, and with 2 s between frames the image blocks'
-features barely match (rely on `--render` and look instead).
+features barely match (rely on `--render` and look instead). A DJI Avata
+360 clip has no IMU samples either, only the camera's fused attitude at
+4 kHz: the stabilizer runs on that; blocks [1], [2], [5] and [6] have
+nothing to read, the image blocks work as usual.
 
 ```sh
 build/residual_stab clip.insv --diagnose --trim-in 0 --trim-out 30000

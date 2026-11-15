@@ -11,6 +11,7 @@
 // Exit code is the failure count.
 
 #include "ClipMetadata.h"
+#include "GyroStabilizer.h"
 #include "InsvDemux.h"
 #include "InsvTrailer.h"
 #include "support/TestMedia.h"
@@ -850,7 +851,33 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(clip->colorProfile == "D-Log M" && clip->logProfile == "D-Log M");
     CHECK(clip->recordedLocal == "2026-10-18T15:37:02");
     CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRF");
-    CHECK(!clip->hasMotion && clip->motionNotRead && !camera::ReadClipImu(osv.string()));
+    // The motion: the fused attitude alone, 4 kHz, every frame timed, the
+    // readout from DJI's line time; level while the drone hovers at the start
+    // (pitch -0.5, roll 1.9 deg by its own attitude).
+    CHECK(clip->hasMotion && std::abs(clip->imuRateHz - 4000) < 20);
+    CHECK(std::abs(clip->rollingShutterMs - 9.38) < 0.01);
+    const auto imu = camera::ReadClipImu(osv.string());
+    CHECK(imu && imu->samples.empty() && imu->axisMap == "y,x,-z" && imu->hasOffset);
+    if (imu) {
+        CHECK(imu->orientation.size() > 340000 && imu->frameTimes.size() == 8552);
+        CHECK(std::abs(imu->readoutSec - 0.00938) < 1e-4);
+        bool ordered = true;
+        for (size_t i = 1; i < imu->orientation.size(); ++i)
+            ordered = ordered && imu->orientation[i].timestamp > imu->orientation[i - 1].timestamp;
+        CHECK(ordered);
+        const double spanUs = static_cast<double>(imu->orientation.back().timestamp -
+                                                  imu->orientation.front().timestamp);
+        CHECK(std::abs(spanUs / static_cast<double>(imu->orientation.size() - 1) - 250.0) < 0.5);
+        if (!imu->orientation.empty()) {
+            const insv::AxisMap am = insv::ParseAxisMap(imu->axisMap);
+            double up[3];
+            am.apply(imu->orientation.front().up, up);
+            CHECK(up[1] > std::cos(5.0 * std::numbers::pi / 180.0));
+        }
+        // Frame 0 sits half the readout after its stamp, on the track's clock.
+        CHECK(std::abs(imu->offsetSec - imu->frameTimes.front().trackSec) < 1e-12);
+        CHECK(imu->offsetSec > 0.0 && imu->offsetSec < 0.02);
+    }
     CHECK(clip->gpsFixes > 500 && std::abs(clip->gpsRateHz - 10) < 1);
 
     const auto thumb = camera::ReadClipThumbnail(osv.string());
@@ -873,6 +900,9 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     std::filesystem::create_symlink(std::filesystem::absolute(osv), alone);
     const auto clipAlone = camera::ReadClipMetadata(alone.string(), &err);
     CHECK(clipAlone && clipAlone->proxyPath.empty() && clipAlone->gpsFixes == clip->gpsFixes);
+    const auto imuAlone = camera::ReadClipImu(alone.string());
+    CHECK(imu && imuAlone && imuAlone->orientation.size() == imu->orientation.size() &&
+          imuAlone->offsetSec == imu->offsetSec);
     const camera::ClipTelemetry teleAlone = camera::ReadClipTelemetry(alone.string());
     CHECK(teleAlone.gps && tele.gps && teleAlone.gps->fixes.size() == tele.gps->fixes.size());
     if (teleAlone.gps && tele.gps && teleAlone.gps->fixes.size() == tele.gps->fixes.size()) {

@@ -361,10 +361,7 @@ void MainWindow::syncStabilizationPanel()
         // Read once per file and cached.
         const auto clip = camera::ReadClipMetadata(c->sourcePath.toStdString());
         if (clip && !clip->hasMotion)
-            why = clip->motionNotRead
-                      ? tr("The camera records its motion, but orbis-reframe doesn't read this "
-                           "camera's motion recording yet, so its clips aren't stabilized.")
-                      : tr("This clip has no motion data to stabilize with.");
+            why = tr("This clip has no motion data to stabilize with.");
     }
     m_stabilizationPanel->setNotApplicable(why);
     if (!c || !why.isEmpty()) {

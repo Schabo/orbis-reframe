@@ -42,6 +42,9 @@ struct DjiModel {
     // Where the master lens's picture and the other's show the product's
     // own body (insv::LensMask::clearDeg, kMaskSamples each); null for none.
     const double* mask[2];
+    // The fused attitude's IMU axes in the sphere's (insv::ImuTrack::axisMap),
+    // measured against the picture's own rotation (docs/formats/dji-360.md §4).
+    const char* imuAxes;
 };
 
 constexpr int kMaskSamples = 180; // every 2 degrees round the picture
@@ -96,13 +99,13 @@ const double kAvata360SlaveMask[kMaskSamples] = {
 // ~100 deg off each lens's axis before the frame's edge and the housing.
 const DjiModel kModels[] = {
     {"DJI Avata360", "DJI Avata 360", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
-     {kAvata360MasterMask, kAvata360SlaveMask}},
+     {kAvata360MasterMask, kAvata360SlaveMask}, "y,x,-z"},
 };
 
 // For a product not in the table: the schema tried in turn, the master on
 // the first track, the lens axes as the Avata 360's.
 const DjiModel kUnknown = {"", "", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
-                           {nullptr, nullptr}};
+                           {nullptr, nullptr}, "y,x,-z"};
 
 const DjiModel* findModel(const std::string& productName) {
     for (const DjiModel& m : kModels)
@@ -297,6 +300,122 @@ insv::GpsTrack gpsTrack(const std::vector<insv::DjiFrameMeta>& f, uint64_t first
 }
 
 // The first sample of the clip's djmd track, by which the clip is claimed.
+// The sensor's readout, seconds: DJI's line time over all its lines (the
+// stream is the whole frame scaled), 9.4 ms on the Avata 360; 0 when the
+// file doesn't say.
+double readoutSec(const insv::DjiClipMeta& meta) {
+    return static_cast<double>(meta.lroNsPerLine) * 1e-9 * static_cast<double>(meta.sensorHeight);
+}
+
+// The camera's fused attitude as an orientation track: 4 kHz on the Avata
+// 360, the only motion its files record (no raw gyro, docs/formats/dji-360.md
+// §4). Each frame's batch is stamped with its first sample's time on a 32-bit
+// device clock, so it is put back on the frame's 64-bit one by their small
+// difference; the samples are timed by a straight line of stamp against
+// sample count over the neighbouring batches (a stamp alone sits on a 250 us
+// grid). Times stay on the frames' clock, device us. Each frame is taken at
+// the middle of its readout, half of `readoutSec` after its own stamp,
+// which is where the picture's rotation lines up with the attitude's
+// (measured 4.6-5.8 ms on six clips, against 4.7). nullopt with fewer than
+// two batches.
+std::optional<insv::ImuTrack> attitudeTrack(const std::vector<insv::DjiFrameMeta>& frames,
+                                            const insv::DjiClipMeta& meta, const DjiModel& model,
+                                            double fps, double readoutSec) {
+    struct Batch {
+        double stampUs;  // first sample, on the frames' clock
+        double index;    // its count among all samples
+        const insv::DjiFrameMeta* frame;
+    };
+    std::vector<Batch> batches;
+    size_t total = 0;
+    for (const insv::DjiFrameMeta& m : frames) {
+        if (m.attitude.empty())
+            continue;
+        const auto behind = static_cast<int32_t>(static_cast<uint32_t>(m.timestampUs) -
+                                                 static_cast<uint32_t>(m.attitudeUs));
+        batches.push_back({static_cast<double>(m.timestampUs) - behind, static_cast<double>(total),
+                           &m});
+        total += m.attitude.size();
+    }
+    if (batches.size() < 2 || total < 2 || !(fps > 0.0))
+        return std::nullopt;
+
+    // The line over +-kHalf batches, by running sums; a slope far from the
+    // stated rate (a batch count out of step with its stamps) is replaced by it.
+    constexpr size_t kHalf = 50;
+    const double statedUs = meta.imuRateHz > 0 ? 1e6 / meta.imuRateHz : 0.0;
+    const size_t n = batches.size();
+    std::vector<double> sx(n + 1, 0.0), sy(n + 1, 0.0), sxx(n + 1, 0.0), sxy(n + 1, 0.0);
+    for (size_t k = 0; k < n; ++k) {
+        const double x = batches[k].index, y = batches[k].stampUs - batches[0].stampUs;
+        sx[k + 1] = sx[k] + x;
+        sy[k + 1] = sy[k] + y;
+        sxx[k + 1] = sxx[k] + x * x;
+        sxy[k + 1] = sxy[k] + x * y;
+    }
+    size_t offRate = 0;
+    const auto lineAt = [&](size_t k, double& a, double& b) {
+        const size_t lo = k > kHalf ? k - kHalf : 0, hi = std::min(n, k + kHalf + 1);
+        const double c = static_cast<double>(hi - lo);
+        const double mx = (sx[hi] - sx[lo]) / c, my = (sy[hi] - sy[lo]) / c;
+        const double vxx = (sxx[hi] - sxx[lo]) / c - mx * mx;
+        b = vxx > 0.0 ? ((sxy[hi] - sxy[lo]) / c - mx * my) / vxx : statedUs;
+        if (statedUs > 0.0 && std::abs(b - statedUs) > 0.05 * statedUs) {
+            b = statedUs;
+            ++offRate;
+        }
+        a = my - b * mx;
+    };
+
+    insv::ImuTrack track;
+    track.axisMap = model.imuAxes;
+    track.orientation.reserve(total);
+    const double t0 = batches[0].stampUs;
+    for (size_t k = 0; k < n; ++k) {
+        double a = 0.0, b = 0.0;
+        lineAt(k, a, b);
+        const std::vector<std::array<float, 4>>& q = batches[k].frame->attitude;
+        for (size_t i = 0; i < q.size(); ++i) {
+            const double w = q[i][0], x = q[i][1], y = q[i][2], z = q[i][3];
+            const double norm = std::sqrt(w * w + x * x + y * y + z * z);
+            if (norm < 0.5)
+                continue;
+            // World <- IMU, the world NED: world up (-z) and north (+x) in the
+            // IMU's axes are the third row negated and the first row.
+            const double s2 = 2.0 / (norm * norm);
+            insv::OrientationSample o;
+            const double tUs = t0 + a + b * (batches[k].index + static_cast<double>(i));
+            o.timestamp = static_cast<uint64_t>(std::llround(tUs));
+            o.up[0] = -(s2 * (x * z - w * y));
+            o.up[1] = -(s2 * (y * z + w * x));
+            o.up[2] = -(1.0 - s2 * (x * x + y * y));
+            o.north[0] = 1.0 - s2 * (y * y + z * z);
+            o.north[1] = s2 * (x * y - w * z);
+            o.north[2] = s2 * (x * z + w * y);
+            track.orientation.push_back(o);
+        }
+    }
+    if (offRate)
+        std::fprintf(stderr, "[camera] DJI attitude: %zu of %zu batches out of step with their "
+                             "stamps; timed at the stated %u Hz there\n",
+                     offRate, n, meta.imuRateHz);
+    if (track.orientation.size() < 2)
+        return std::nullopt;
+
+    // Video frame k is the djmd track's sample k, both at the stream's rate;
+    // track time counts from the earliest sample.
+    const auto firstUs = static_cast<double>(track.orientation.front().timestamp);
+    track.frameTimes.reserve(frames.size());
+    for (size_t k = 0; k < frames.size(); ++k)
+        track.frameTimes.push_back(
+            {static_cast<double>(k) / fps,
+             (static_cast<double>(frames[k].timestampUs) - firstUs) * 1e-6 + 0.5 * readoutSec});
+    track.hasOffset = true;
+    track.offsetSec = track.frameTimes.front().trackSec;
+    track.readoutSec = readoutSec;
+    return track;
+}
+
 std::optional<Bytes> firstSample(const std::string& path, bool* djiFile = nullptr) {
     Mp4 mp4;
     if (!mp4.open(path))
@@ -380,8 +499,7 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
             out.colorProfile = "colour mode " + std::to_string(meta->colorMode);
         out.logProfile = insv::DjiLogProfile(meta->colorMode);
     }
-    if (meta->lroNsPerLine > 0 && meta->sensorHeight > 0)
-        out.rollingShutterMs = meta->lroNsPerLine * 1e-6 * meta->sensorHeight;
+    out.rollingShutterMs = readoutSec(*meta) * 1e3;
 
     const fs::path self(out.path);
     const std::optional<std::string> held = insv::ReadDjiHeldName(out.path);
@@ -392,11 +510,20 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
     if (out.recordedLocal.empty())
         out.recordedLocal = nameTime(self.filename().string());
 
-    // The drone's fused attitude, the only motion the file records, isn't
-    // read yet (DjiReader::readImu).
-    out.motionNotRead = true;
+    const std::vector<insv::DjiFrameMeta> all = frames(out);
+    // The motion: the camera's fused attitude (DjiReader::readImu), at its
+    // rate over the clip.
+    size_t samples = 0;
+    for (const insv::DjiFrameMeta& m : all)
+        samples += m.attitude.size();
+    if (samples >= 2 && all.size() >= 2 && all.back().timestampUs > all.front().timestampUs) {
+        out.hasMotion = true;
+        out.imuRateHz = static_cast<double>(samples) * 1e6 /
+                        (static_cast<double>(all.back().timestampUs - all.front().timestampUs) +
+                         1e6 / std::max(out.fps, 1.0));
+    }
     // The GPS facts the Media information panel lists.
-    const insv::GpsTrack gps = gpsTrack(frames(out), meta->clipTimestampUs);
+    const insv::GpsTrack gps = gpsTrack(all, meta->clipTimestampUs);
     out.gpsRecords = out.gpsFixes = static_cast<int64_t>(gps.fixes.size());
     if (gps.fixes.size() >= 2) {
         const double sec =
@@ -408,10 +535,15 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
     return Result::Read;
 }
 
-std::optional<insv::ImuTrack> DjiReader::readImu(const ClipMetadata&) const {
-    // The file has DJI's fused attitude only (no raw gyro); stabilizing from
-    // it waits for a clip that turns to check it on.
-    return std::nullopt;
+std::optional<insv::ImuTrack> DjiReader::readImu(const ClipMetadata& clip) const {
+    const auto first = firstSample(clip.path);
+    if (!first)
+        return std::nullopt;
+    const DjiModel* model = nullptr;
+    const auto meta = clipMeta(*first, model, clip.path);
+    if (!meta)
+        return std::nullopt;
+    return attitudeTrack(frames(clip), *meta, *model, clip.fps, readoutSec(*meta));
 }
 
 std::optional<insv::GpsTrack> DjiReader::readGps(const ClipMetadata& clip) const {

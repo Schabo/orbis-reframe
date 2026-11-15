@@ -583,6 +583,12 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::Ori
         std::printf("  (no track)\n");
         return;
     }
+    if (imu.samples.size() < 2) {
+        // The camera's own orientation alone (a timelapse's, a DJI's fused
+        // attitude): no accelerometer to hold its up against.
+        std::printf("  (no IMU samples: the track is the camera's own orientation)\n");
+        return;
+    }
     std::vector<insv::ImuSample> s = imu.samples;
     std::sort(s.begin(), s.end(), [](const insv::ImuSample& x, const insv::ImuSample& y) {
         return x.timestamp < y.timestamp;
@@ -1420,10 +1426,10 @@ int main(int argc, char** argv)
         else
             std::printf("\n=== [3] skipped -- no IMU track ===\n");
 
-        if (imu && estRaw && estRaw->intervalCount() >= 2)
+        if (imu && imu->samples.size() >= 2 && estRaw && estRaw->intervalCount() >= 2)
             diagVideoImuSync(*estRaw, imu->samples, exposure, fps, diagCfg, a);
         else
-            std::printf("\n=== [5] skipped -- no IMU / raw-image track ===\n");
+            std::printf("\n=== [5] skipped -- no IMU samples / raw-image track ===\n");
 
         std::printf("\n=== [4] forward narrow vs. wide residual (rotation vs. parallax) ===\n");
         if (estWide && estWide->intervalCount() >= 2) {

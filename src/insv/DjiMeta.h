@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -37,6 +38,10 @@ struct DjiDewarp {
     double width = 0, height = 0;
     double yaw = 0, pitch = 0, roll = 0;
     double lensModel = 0; // field 24, as stored (8 on the Avata 360)
+    // Field 26, cam_imu_extri_q: the rotation between this lens's camera
+    // and the IMU the fused attitude is in, w x y z; identity when absent.
+    double imuQ[4] = {1, 0, 0, 0};
+    bool hasImuQ = false;
     // A calibration, not one of the empty records: a focal length and a
     // frame.
     bool filled() const { return fx > 0 && fy > 0 && width > 0 && height > 0; }
@@ -102,6 +107,12 @@ struct DjiFrameMeta {
     double velocityN = 0, velocityE = 0, velocityD = 0;
     // 3.4.3, degrees, NED.
     double pitchDeg = 0, rollDeg = 0, yawDeg = 0;
+    // The camera's fused attitude over the frame (3.3.2.1, current_frame):
+    // the time of its first sample, device us, and the samples, w x y z,
+    // IMU -> world (docs/formats/dji-360.md §4). 40 at 4 kHz on the Avata
+    // 360. Empty where the sample has none.
+    uint64_t attitudeUs = 0;
+    std::vector<std::array<float, 4>> attitude;
 };
 std::optional<DjiFrameMeta> ParseDjiFrameMeta(const std::vector<uint8_t>& sample);
 

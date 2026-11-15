@@ -168,10 +168,6 @@ struct ClipMetadata {
     bool hasMotion = false;
     double imuRateHz = 0.0;
     bool orientationPerFrame = false;
-    // The file records how the camera moved, in a form the reader doesn't
-    // use yet (DJI's fused attitude): no motion data, but not because there
-    // is none.
-    bool motionNotRead = false;
     int64_t exposureRecords = 0; // every part's together
     double rollingShutterMs = 0.0;
     // When the video doesn't play in real time: seconds of the camera's

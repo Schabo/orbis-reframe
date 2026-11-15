@@ -112,9 +112,10 @@ each is in its document in [`formats/`](formats/README.md).
   in the Colour panel; where the drone's body shows in each lens, a mask
   per lens (`insv::LensMask`) the stitch leaves out of the blend and its
   measurements. Chart calibration stays MEI-only and says so.
-  Still planned: stabilization from the drone's fused attitude (no raw
-  gyro in the file) once a clip with deliberate turns arrives; until then
-  the clip plays unstabilized and the Stabilization section says why.
+  Stabilization from the camera's fused attitude (the file has no raw
+  gyro): DJI's 4 kHz quaternions as an orientation-only track, read from
+  the `.OSV` (the `.LRF` keeps a quarter of them), the IMU's axes and the
+  timing measured against the picture's own rotation on six clips.
   The Osmo 360, 360 II and Air follow when their clips can be measured.
 - **GoPro MAX / MAX2**: stitched in the camera into a cubemap over two
   tracks, so a cubemap picture source behind `IStitchSource` instead of the
@@ -241,8 +242,8 @@ each is in its document in [`formats/`](formats/README.md).
     the orientation across its own readout, and that is what the X5 stores
     there in place of the gyro. A track with an orientation and no gyro
     samples is stabilized from the orientation alone (built for the X5's
-    timelapse; GoPro's `CORI` and DJI's per-frame attitude would plug in
-    the same way), each frame placed by its own time
+    timelapse, then the DJI Avata 360's 4 kHz fused attitude; GoPro's
+    `CORI` would plug in the same way), each frame placed by its own time
     (`insv::ImuTrack::frameTimes`), since a timelapse's frames needn't be
     evenly spaced.
 

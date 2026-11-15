@@ -386,6 +386,9 @@ std::vector<uint8_t> djiFirstSample(uint32_t panoField, bool packedP)
         Bytes zero; // field 27, tangent_coeff: zeros, not the pair
         zero.f32(0).f32(0);
         d.pbBytes(27, zero.b);
+        Bytes q; // field 26, cam_imu_extri_q, unnormalised; a zero field left out
+        q.pbFloat(1, 2.0f).pbFloat(4, 2.0f * 0.0111f);
+        d.pbBytes(26, q.b);
         return d.b;
     };
     Bytes temperatureOnly;
@@ -541,6 +544,10 @@ void testDjiMeta()
         CHECK(near(m->master.fx, 1039.4, 1e-3) && near(m->slave.yaw, -179.1, 1e-4));
         CHECK(near(m->master.p[0], 0.00022, 1e-9) && near(m->master.p[1], -0.00184, 1e-9));
         CHECK(near(m->master.k[4], 0.001, 1e-9) && near(m->master.lensModel, 8, 0));
+        // The extrinsic, normalised.
+        CHECK(m->master.hasImuQ && near(m->master.imuQ[0], 1.0 / std::hypot(1.0, 0.0111), 1e-6) &&
+              near(m->master.imuQ[3], 0.0111 / std::hypot(1.0, 0.0111), 1e-6) &&
+              m->master.imuQ[1] == 0.0 && m->master.imuQ[2] == 0.0);
         const auto wrong = insv::ParseDjiClipMeta(s, insv::DjiSchemaOq101());
         CHECK(wrong && !wrong->calibrated);
     }
@@ -556,7 +563,16 @@ void testDjiMeta()
     pos.pbDouble(2, 47.25).pbDouble(3, -122.5);
     gps.pbBytes(1, pos.b).pbVarint(2, 121833);
     drone.pbBytes(2, vel.b).pbBytes(3, att.b).pbBytes(4, gps.b);
-    frame.pbBytes(1, header.b).pbBytes(4, drone.b);
+    // The fused attitude: the batch's first-sample stamp (32-bit), its vsync
+    // and three quaternions, the third with w left out (zero).
+    Bytes q0, q1, q2, cur, fused, imu;
+    q0.pbFloat(1, 1.0f);
+    q1.pbFloat(1, 0.5f).pbFloat(2, 0.5f).pbFloat(3, -0.5f).pbFloat(4, 0.5f);
+    q2.pbFloat(2, 1.0f);
+    cur.pbVarint(1, 250542370).pbVarint(2, 3).pbBytes(3, q0.b).pbBytes(3, q1.b).pbBytes(3, q2.b);
+    fused.pbBytes(1, cur.b);
+    imu.pbBytes(2, fused.b);
+    frame.pbBytes(1, header.b).pbBytes(3, imu.b).pbBytes(4, drone.b);
     sample.pbBytes(3, frame.b);
     const auto f = insv::ParseDjiFrameMeta(sample.b);
     CHECK(f && f->hasDrone && f->hasPosition);
@@ -567,6 +583,12 @@ void testDjiMeta()
         CHECK(near(f->velocityN, -0.6, 1e-6) && near(f->velocityE, -1.8, 1e-6));
         CHECK(near(f->pitchDeg, -0.5, 1e-9) && near(f->rollDeg, 1.9, 1e-9) &&
               near(f->yawDeg, 178.1, 1e-9));
+        CHECK(f->attitudeUs == 250542370 && f->attitude.size() == 3);
+        if (f->attitude.size() == 3) {
+            CHECK(f->attitude[0] == (std::array<float, 4>{1, 0, 0, 0}));
+            CHECK(f->attitude[1] == (std::array<float, 4>{0.5f, 0.5f, -0.5f, 0.5f}));
+            CHECK(f->attitude[2] == (std::array<float, 4>{0, 1, 0, 0}));
+        }
     }
     CHECK(!insv::ParseDjiClipMeta(sample.b, insv::DjiSchemaEagle4()));
 }

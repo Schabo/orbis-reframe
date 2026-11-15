@@ -5,6 +5,7 @@
 #include "Protobuf.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace insv {
 
@@ -77,6 +78,18 @@ DjiDewarp parseDewarp(const Bytes& m)
         d.p[1] = p[1];
     }
     d.lensModel = floatOr(m, 24);
+    if (const auto q = ProtobufBytes(m, 26)) {
+        for (int k = 0; k < 4; ++k)
+            d.imuQ[k] = floatOr(*q, static_cast<uint32_t>(k + 1));
+        const double n = std::sqrt(d.imuQ[0] * d.imuQ[0] + d.imuQ[1] * d.imuQ[1] +
+                                   d.imuQ[2] * d.imuQ[2] + d.imuQ[3] * d.imuQ[3]);
+        d.hasImuQ = n > 0.5;
+        if (d.hasImuQ)
+            for (double& c : d.imuQ)
+                c /= n;
+        else
+            d.imuQ[0] = 1, d.imuQ[1] = d.imuQ[2] = d.imuQ[3] = 0;
+    }
     return d;
 }
 
@@ -190,6 +203,15 @@ std::optional<DjiFrameMeta> ParseDjiFrameMeta(const std::vector<uint8_t>& sample
     DjiFrameMeta f;
     if (const auto h = ProtobufBytes(*frame, 1))
         f.timestampUs = varintOr(*h, 2);
+    if (const auto cur = ProtobufMessage(*frame, {3, 2, 1})) {
+        f.attitudeUs = varintOr(*cur, 1);
+        WalkProtobuf(*cur, [&](uint32_t field, int wire, uint64_t, const Bytes& q) {
+            if (field != 3 || wire != 2)
+                return;
+            f.attitude.push_back({static_cast<float>(floatOr(q, 1)), static_cast<float>(floatOr(q, 2)),
+                                  static_cast<float>(floatOr(q, 3)), static_cast<float>(floatOr(q, 4))});
+        });
+    }
     const auto drone = ProtobufBytes(*frame, 4);
     if (!drone)
         return f;

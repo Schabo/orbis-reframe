@@ -7,9 +7,8 @@ its support is experimental: see
 the wrong way. The ONE X2 does too, also experimentally. So does the
 Antigravity A1, also experimentally, and its horizon comes from the drone's
 flight controller: see [On the Antigravity A1](#on-the-antigravity-a1).
-The DJI Avata 360 records how it moved too, but orbis-reframe doesn't read
-it yet: its clips aren't stabilized, and the **Stabilization** section
-says so.)
+The DJI Avata 360 records which way its camera pointed instead, also
+experimentally: see [On the DJI Avata 360](#on-the-dji-avata-360).)
 orbis-reframe uses this
 to steady the picture: it turns the 360° view against the camera's shake,
 so the view holds still while the camera moves. It can also keep the
@@ -99,8 +98,8 @@ direction.
 **Amount** and **Vibration filter** work as in Horizon lock.
 
 The camera has no compass, so the held direction comes from its gyroscope
-alone, which drifts slowly (except on the Antigravity A1, see
-[below](#on-the-antigravity-a1)). On an X5 the view turns by about 8 to 16° a
+alone, which drifts slowly (except on the Antigravity A1 and the DJI
+Avata 360, see [below](#on-the-antigravity-a1)). On an X5 the view turns by about 8 to 16° a
 minute, so on a long clip it slowly wanders off the direction you locked.
 Lock to a point near the part that matters, or split a long clip and lock
 each part on its own.
@@ -140,6 +139,19 @@ the accelerometer, so it does nothing on A1 clips.
 The flight controller also knows which way the drone points, without the
 slow drift of a gyroscope, so on A1 clips **Direction lock** holds its
 direction by that and doesn't wander off it, however long the flight.
+
+### On the DJI Avata 360
+
+The Avata 360 doesn't store its gyroscope's readings. It stores which way
+its camera pointed, 4000 times a second, worked out by the drone itself
+from its sensors, and orbis-reframe stabilizes Avata clips from that.
+**Horizon lock** keeps the real horizon level through turns and banks, and
+**Direction lock** holds its direction without drifting off it. The
+**Vibration filter** works on the accelerometer, which the Avata's clips
+don't have, so it does nothing on them.
+
+All of this is read from the `.OSV` itself: a clip copied without its
+`.LRF` and `.SRT` files stabilizes the same.
 
 ### Slow motion and timelapse
 
