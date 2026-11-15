@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <string>
 
-#include <LensColour.h>     // insv::LensColourFit
-#include <SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>     // insv::LensColourFit
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
 
 #include "ClipMeasure.h"   // stitch::MeasureFailure
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard

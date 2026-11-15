@@ -49,7 +49,11 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    orbis-reframe edits on, with a camera-agnostic core and one folder per
    file format. A pure refactor: stitched frames, stabilizer output and exports
    stay identical. It comes before the library moves to its own
-   repository.
+   repository. Built: the move to `lib/orbis-core/`, with its own
+   `CMakeLists.txt`, tests and tools, and the includes as
+   `<orbis-core/...>`. Next: the `insv::` namespace, the target names,
+   the `INSV_*` environment variables, and the core no longer including
+   the format folders' headers.
 
 Everything else planned is under *Planned, not scheduled* below.
 
@@ -134,7 +138,7 @@ each is in its document in [`formats/`](formats/README.md).
   stitch where the card can't decode a clip's codec. CPU-decoded clips
   then export through the same GPU view pass as the rest, and the GPU tests
   run in CI on Mesa's software Vulkan (lavapipe).
-- **`src/insv/` as its own repository**, once its API settles.
+- **`lib/orbis-core/` as its own repository**, once its API settles.
 - **Highlight markers, follow-ups**: the camera's marks are built (X5,
   record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
   clip, read from the file and not saved in the project, `Ctrl+↑` / `↓`

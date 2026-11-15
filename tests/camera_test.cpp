@@ -11,9 +11,9 @@
 // Exit code is the failure count.
 
 #include "ClipMetadata.h"
-#include "GyroStabilizer.h"
-#include "InsvDemux.h"
-#include "InsvTrailer.h"
+#include <orbis-core/stab/GyroStabilizer.h>
+#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/insta360/InsvTrailer.h>
 #include "support/TestMedia.h"
 #include "support/TestTrailer.h"
 

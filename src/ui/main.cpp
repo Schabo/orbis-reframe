@@ -25,7 +25,7 @@ extern "C" {
 }
 
 #ifdef INSV_HAVE_VOICE
-#include <VoiceIsolator.h>
+#include <orbis-core/audio/VoiceIsolator.h>
 #endif
 
 #include <clocale>

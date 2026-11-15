@@ -150,85 +150,12 @@ else()
     set(ORBIS_OPENCV_GEOMETRY opencv_calib3d)
 endif()
 
-# --- src/insv: .insv trailer parser (calibration + IMU/exposure telemetry), no
-# FFmpeg/Qt dependency — see src/insv/InsvTrailer.h. Its own tiny lib
-# (rather than folded into `insv`) so targets that only need trailer parsing
-# don't pull the rest of the module.
-add_library(insv_trailer STATIC
-    src/insv/Gps.h
-    src/insv/Gps.cpp
-    src/insv/Imu.h
-    src/insv/Imu.cpp
-    src/insv/QuatMatrix.h
-    src/insv/Smooth.h
-    src/insv/InsvTrailer.h
-    src/insv/InsvTrailer.cpp
-    # The protobuf wire format, which Insta360's records and DJI's djmd
-    # track are written in.
-    src/insv/Protobuf.h
-    src/insv/Protobuf.cpp
-    # DJI's djmd metadata samples (docs/formats/dji-360.md).
-    src/insv/DjiMeta.h
-    src/insv/DjiMeta.cpp
-    # Lining the trailer's IMU up with the video, and what differs per model.
-    src/insv/InsvImu.h
-    src/insv/InsvImu.cpp
-    src/insv/InsvModels.h
-    src/insv/InsvModels.cpp
-)
-target_include_directories(insv_trailer PUBLIC src/insv)
-
-add_executable(insv_trailer_dump tools/insv_trailer_dump/main.cpp)
-target_link_libraries(insv_trailer_dump PRIVATE insv_trailer)
-
 # --- tools/make_hlg_lut: writes the shipped HLG -> Rec.709 LUT
 # (resources/luts/) from the BT.2100 formulas; the test checks the shipped
 # file is what it writes.
 add_executable(make_hlg_lut tools/make_hlg_lut/main.cpp)
 add_test(NAME hlg_lut_test
     COMMAND make_hlg_lut --check "${CMAKE_CURRENT_SOURCE_DIR}/resources/luts/HLG to Rec.709.cube")
-
-# --- src/insv: cleanroom .insv processing.
-# GyroStabilizer + the stitch core: calibration-string parse
-# and the CPU fisheye->equirect projection. No Qt / Vulkan / FFmpeg -- consumes
-# only the raw calibration string via insv_trailer. `orbis_core` links this
-# for GyroStabilizer, so it must stay dependency-free.
-add_library(insv STATIC
-    src/insv/BlurQuads.h
-    src/insv/BlurQuads.cpp
-    src/insv/FramePts.h
-    src/insv/GyroStabilizer.h
-    src/insv/GyroStabilizer.cpp
-    src/insv/Image.h
-    src/insv/Motion.h
-    src/insv/Motion.cpp
-    src/insv/Calibration.h
-    src/insv/Calibration.cpp
-    src/insv/LensSource.h
-    src/insv/FisheyeProjection.h
-    src/insv/FisheyeProjection.cpp
-    src/insv/SeamAlignment.h
-    src/insv/SeamCorrection.h
-    src/insv/SeamAlignment.cpp
-    src/insv/SeamDepth.h
-    src/insv/SeamDepth.cpp
-    src/insv/SeamCut.h
-    src/insv/SeamCut.cpp
-    src/insv/SeamWindow.h
-    src/insv/SeamWindow.cpp
-    src/insv/LensColour.h
-    src/insv/LensColour.cpp
-    src/insv/SeamColourBlend.h
-    src/insv/SeamColourBlend.cpp
-    src/insv/SeamFade.h
-    src/insv/SeamFade.cpp
-    src/insv/SeamFlow.h
-    src/insv/SeamFlow.cpp
-    src/insv/Ycbcr.h
-    src/insv/Ycbcr.cpp
-)
-target_include_directories(insv PUBLIC src/insv)
-target_link_libraries(insv PUBLIC insv_trailer Threads::Threads)
 
 # --- orbis_version: the version string (src/core/Version) -- PROJECT_VERSION
 # (set by `cz bump`, .cz.toml) plus `git describe` metadata, regenerated on
@@ -359,7 +286,7 @@ add_library(privacy_data STATIC
 target_include_directories(privacy_data PUBLIC src/privacy)
 target_link_libraries(privacy_data PUBLIC insv)
 
-# --- render_gpu_stitch: headless Vulkan compute port of the src/insv/ CPU
+# --- render_gpu_stitch: headless Vulkan compute port of the lib/orbis-core/ CPU
 # fisheye->equirect stitch. Its own
 # VkInstance/VkDevice so it works from a CLI tool or inside the Qt app. Links
 # Vulkan + insv (for insv::StitchGpuParams, the shared geometry struct) only --
@@ -388,110 +315,12 @@ if(FFMPEG_FOUND)
     target_link_libraries(vulkan_hw_device PUBLIC Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG)
 endif()
 
-# --- insv_demux: the one FFmpeg-dependent piece of src/insv/ (decode a fisheye
-# frame from an .insv at time T). Separate lib so the projection/gyro core above
-# stays dependency-free. Still cleanroom -- no Qt / Vulkan.
-if(FFMPEG_FOUND)
-    add_library(insv_demux STATIC
-        src/insv/InsvDemux.h
-        src/insv/InsvDemux.cpp
-        # The demux / decode / seek core of InsvDemux and VulkanVideoDecoder.
-        src/insv/LensDemuxer.h
-        src/insv/LensDemuxer.cpp
-        # One picture from an elementary stream (a camera's preview frame).
-        src/insv/StillPicture.h
-        src/insv/StillPicture.cpp
-        # GPU-resident decode via FFmpeg's Vulkan hwaccel.
-        src/insv/VulkanVideoDecoder.h
-        src/insv/VulkanVideoDecoder.cpp
-        # Audio playback: its own file handle, independent
-        # of the fisheye decode above -- no stitching involved.
-        src/insv/InsvAudioDemux.h
-        src/insv/InsvAudioDemux.cpp
-        src/insv/AudioPart.h
-        src/insv/ClipAudioReader.h
-        src/insv/ClipAudioReader.cpp
-        src/insv/AudioMixer.h
-        src/insv/AudioMixer.cpp
-        # Audio noise reduction, per mic clip: "MC: Wind reduction"
-        # (WindReducer), "Wind reduction" (GeneralWindReducer) and
-        # "Hiss / hum" (HissHumReducer); the voice modes (VoiceIsolator)
-        # below, with ONNX Runtime.
-        src/insv/NoiseReduction.h
-        src/insv/NoiseFilter.h
-        src/insv/NoiseFilter.cpp
-        src/insv/Rdft.h
-        src/insv/StftStream.h
-        src/insv/StftStream.cpp
-        src/insv/WindReducer.h
-        src/insv/WindReducer.cpp
-        src/insv/GeneralWindReducer.h
-        src/insv/GeneralWindReducer.cpp
-        src/insv/HissHumReducer.h
-        src/insv/HissHumReducer.cpp
-        src/insv/AudioPeaks.h
-        src/insv/AudioPeaks.cpp
-    )
-    target_include_directories(insv_demux PUBLIC src/insv)
-    target_link_libraries(insv_demux PUBLIC insv Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG vulkan_hw_device)
-
-    # The "Voice only" / "Voice + ambience" noise modes: DeepFilterNet 3
-    # (resources/models/deepfilternet3) run with ONNX Runtime -- optional
-    # (libonnxruntime-dev); without it those modes are hidden. Only its
-    # headers are needed to build: VoiceIsolator dlopen()s the library on
-    # first use (so the app runs without it, and Debian's build's load-time
-    # log spam can be silenced). ONNXRUNTIME_ROOT points at an unpacked copy
-    # instead of the system one.
-    find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
-        HINTS ${ONNXRUNTIME_ROOT}/include PATH_SUFFIXES onnxruntime)
-    find_library(ONNXRUNTIME_LIBRARY onnxruntime
-        HINTS ${ONNXRUNTIME_ROOT}/lib ${ONNXRUNTIME_ROOT}/lib/x86_64-linux-gnu)
-    if(ONNXRUNTIME_INCLUDE_DIR)
-        message(STATUS "ONNX Runtime headers: ${ONNXRUNTIME_INCLUDE_DIR} -- voice noise modes on")
-        target_sources(insv_demux PRIVATE src/insv/VoiceIsolator.h src/insv/VoiceIsolator.cpp)
-        target_include_directories(insv_demux PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
-        target_link_libraries(insv_demux PRIVATE ${CMAKE_DL_LIBS})
-        target_compile_definitions(insv_demux PUBLIC INSV_HAVE_VOICE)
-        # The headers' ORT_API_VERSION is the runtime's 1.x minor version,
-        # after which Debian names it: libonnxruntime1.23, .so.1.23 (Debian
-        # 13: 1.21). The .deb's Depends and the "install it" hint use it.
-        file(STRINGS ${ONNXRUNTIME_INCLUDE_DIR}/onnxruntime_c_api.h ORT_API_LINE
-            REGEX "^#define ORT_API_VERSION [0-9]+")
-        string(REGEX MATCH "[0-9]+$" ORT_API_MINOR "${ORT_API_LINE}")
-        set(ORBIS_ORT_PACKAGE libonnxruntime1.${ORT_API_MINOR})
-        target_compile_definitions(insv_demux PUBLIC INSV_ORT_PACKAGE="${ORBIS_ORT_PACKAGE}")
-        # The library found here is tried first (an ONNXRUNTIME_ROOT copy
-        # isn't on the loader's path). A bundle that carries its own (the
-        # AppImage) turns it off, so the bundled one loads, not the build
-        # machine's path on the user's system.
-        option(ORBIS_ORT_BUILD_PATH
-            "Try the ONNX Runtime library found at build time before the loader's search" ON)
-        if(ONNXRUNTIME_LIBRARY AND ORBIS_ORT_BUILD_PATH)
-            target_compile_definitions(insv_demux PRIVATE INSV_ORT_LIBRARY="${ONNXRUNTIME_LIBRARY}")
-        endif()
-    else()
-        message(STATUS "ONNX Runtime not found (libonnxruntime-dev) -- voice noise modes off")
-    endif()
-endif()
-
-# --- insv_optical: the OpenCV-dependent piece of src/insv/ -- residual 2-D
-# stabilization (ResidualPanEstimator: feature tracking + optical flow -> a
-# per-frame yaw/pitch correction). Separate lib so the core stays OpenCV-free;
-# the apply side (ResidualTrack::sample) is header-only in ResidualStab.h.
-if(OpenCV_FOUND)
-    add_library(insv_optical STATIC
-        src/insv/ResidualStab.h
-        src/insv/ResidualPanEstimator.h
-        src/insv/ResidualPanEstimator.cpp
-        src/insv/SyncEstimator.h
-        src/insv/SyncEstimator.cpp
-        src/insv/SeamFlowEstimator.h
-        src/insv/SeamFlowEstimator.cpp
-    )
-    target_include_directories(insv_optical PUBLIC src/insv PRIVATE ${OpenCV_INCLUDE_DIRS})
-    target_link_libraries(insv_optical PUBLIC insv
-        PRIVATE opencv_core opencv_imgproc opencv_video ${ORBIS_OPENCV_FEATURES})
-endif()
+# --- lib/orbis-core: the camera-file and sphere library (file metadata and
+# telemetry, lens models, seam work, stabilizer, decode, audio), with its
+# own CMakeLists.txt, tests and tools. Its binaries land next to the app's,
+# so build/insv_stitch etc. stay where they were.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+add_subdirectory(lib/orbis-core)
 
 # --- stitch_bench_metrics: tools/stitch_bench's measurements on stitched
 # pictures (no GPU, no clip), so stitch_bench_test can check them.
@@ -509,12 +338,6 @@ if(OpenCV_FOUND)
 endif()
 
 if(FFMPEG_FOUND)
-    # --- tools/insv_stitch: smoke CLI. Turns an .insv into an
-    # equirect through src/insv/ alone -- the standalone proof of the cleanroom
-    # module. Links insv + insv_demux + insv_trailer, nothing else.
-    add_executable(insv_stitch tools/insv_stitch/main.cpp)
-    target_link_libraries(insv_stitch PRIVATE insv insv_demux insv_trailer)
-
     # --- tools/audio_filter_bench: test bench for the audio noise filters --
     # decodes one audio stream (InsvAudioDemux) to WAV, runs the app's filters
     # on it and scores the result; run_all.sh adds DeepFilterNet / afftdn.
@@ -523,7 +346,7 @@ if(FFMPEG_FOUND)
 endif()
 
 # --- src/stitch: the Stitch Integration Layer. IStitchSource is served entirely by
-# stitch::NativeStitchSource: trailer/calibration parse -> src/insv/
+# stitch::NativeStitchSource: trailer/calibration parse -> lib/orbis-core/
 # Vulkan video decode + Vulkan compute fisheye->equirect stitch, in-process,
 # frame-at-time-T.
 if(FFMPEG_FOUND)
@@ -547,7 +370,7 @@ if(FFMPEG_FOUND)
     target_link_libraries(camera PUBLIC insv insv_demux PRIVATE PkgConfig::FFMPEG)
 
     # --- stitch: IStitchSource + NativeStitchSource + the clip probe. Pulls
-    # in the src/insv/ cleanroom stitch core (insv + insv_demux, the latter
+    # in the lib/orbis-core/ cleanroom stitch core (insv + insv_demux, the latter
     # carrying the Vulkan-video decoder) and render_gpu_stitch (the Vulkan
     # compute stitch). Links no Qt.
     add_library(stitch STATIC
@@ -797,9 +620,9 @@ if(FFMPEG_FOUND)
         DESTINATION share/doc/orbis-reframe/licenses)
     install(FILES external/miniaudio/LICENSE DESTINATION share/doc/orbis-reframe/licenses
         RENAME miniaudio-LICENSE)
-    install(FILES src/insv/LICENSE-MIT DESTINATION share/doc/orbis-reframe/licenses
+    install(FILES lib/orbis-core/LICENSE-MIT DESTINATION share/doc/orbis-reframe/licenses
         RENAME insv-LICENSE-MIT)
-    install(FILES src/insv/LICENSE-APACHE DESTINATION share/doc/orbis-reframe/licenses
+    install(FILES lib/orbis-core/LICENSE-APACHE DESTINATION share/doc/orbis-reframe/licenses
         RENAME insv-LICENSE-APACHE)
     install(DIRECTORY docs/manual/ DESTINATION share/doc/orbis-reframe/manual)
 
@@ -883,7 +706,7 @@ if(FFMPEG_FOUND)
             # tools/plate_scan: the scan from the command line, plus stills of
             # the blur through the app's stitch paths (equirect and fused view).
             add_executable(plate_scan tools/plate_scan/main.cpp)
-            target_include_directories(plate_scan PRIVATE src/insv src/stitch)
+            target_include_directories(plate_scan PRIVATE src/stitch)
             target_link_libraries(plate_scan PRIVATE stitch privacy_scan)
 
             target_sources(orbis_app PRIVATE src/ui/PlateScanJob.cpp src/ui/PlateScanJob.h
@@ -957,12 +780,12 @@ if(FFMPEG_FOUND)
         # the measurements are stitch_bench_metrics (tested by
         # stitch_bench_test).
         add_executable(stitch_bench tools/stitch_bench/main.cpp)
-        target_include_directories(stitch_bench PRIVATE src/insv src/stitch src/export)
+        target_include_directories(stitch_bench PRIVATE src/stitch src/export)
         target_link_libraries(stitch_bench PRIVATE stitch stitch_bench_metrics reframe_flatten
             orbis_core)
 
         add_executable(residual_stab tools/residual_stab/main.cpp)
-        target_include_directories(residual_stab PRIVATE src/insv src/stitch src/export)
+        target_include_directories(residual_stab PRIVATE src/stitch src/export)
         target_link_libraries(residual_stab PRIVATE stitch insv_optical reframe_flatten clip_sync)
 
         # --- subject_track: object tracking (src/track/) -- a gyro-stabilized
@@ -978,14 +801,14 @@ if(FFMPEG_FOUND)
                 src/track/SubjectTracker.cpp
             )
             target_include_directories(subject_track PUBLIC src/track
-                PRIVATE src/insv src/export ${OpenCV_INCLUDE_DIRS})
+                PRIVATE src/export ${OpenCV_INCLUDE_DIRS})
             target_link_libraries(subject_track PUBLIC insv reframe_flatten
                 PRIVATE orbis_paths opencv_core opencv_imgproc opencv_video opencv_dnn opencv_tracking)
 
             # tools/track_subject: the SubjectTracker CLI (compares trackers,
             # renders a follow-cam).
             add_executable(track_subject tools/track_subject/main.cpp)
-            target_include_directories(track_subject PRIVATE src/insv src/stitch src/export
+            target_include_directories(track_subject PRIVATE src/stitch src/export
                 ${OpenCV_INCLUDE_DIRS})
             target_link_libraries(track_subject PRIVATE stitch subject_track reframe_flatten
                 opencv_core opencv_imgproc opencv_imgcodecs)
@@ -1166,6 +989,9 @@ endif()
 if(TARGET camera AND TARGET test_media)
     add_executable(camera_test tests/camera_test.cpp)
     target_link_libraries(camera_test PRIVATE camera test_media)
+    # support/TestTrailer.h (Insta360 trailers built record by record) is
+    # the library's test helper.
+    target_include_directories(camera_test PRIVATE lib/orbis-core/tests)
     # The sample footage, where it is there, for the readers' checks on
     # real clips.
     add_test(NAME camera_test COMMAND camera_test ${CMAKE_CURRENT_SOURCE_DIR}/sample_footage)
@@ -1231,14 +1057,6 @@ if(TARGET reframe_flatten)
     add_test(NAME flatten_writer_test COMMAND flatten_writer_test)
     set_tests_properties(flatten_writer_test PROPERTIES SKIP_RETURN_CODE 77)
 endif()
-
-# --- tests/insv_test: the cleanroom stitch core (calibration parse, radial
-# model, linear algebra, FisheyeStitcher geometry, the trailer thumbnail). All
-# synthetic -- links only the dependency-free `insv` and `insv_trailer` libs, no
-# Qt / FFmpeg / .insv file needed.
-add_executable(insv_test tests/insv_test.cpp)
-target_link_libraries(insv_test PRIVATE insv insv_trailer)
-add_test(NAME insv_test COMMAND insv_test)
 
 # --- tests/vulkan_lut_test: the GPU colour LUT store on a real device (its
 # own instance, no window). Skipped (77) where there's no Vulkan device.

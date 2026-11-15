@@ -10,7 +10,7 @@
 #include "LensFit.h"
 
 #include <ClipMetadata.h>
-#include <FisheyeProjection.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
 #include <LensCalibrationJson.h>
 
 #include <algorithm>

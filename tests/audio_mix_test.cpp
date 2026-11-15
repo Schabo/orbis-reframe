@@ -6,17 +6,17 @@
 // synthetic signals, and ClipAudioReader's alignment with them on. Exit code is
 // the failure count.
 
-#include "AudioMixer.h"
-#include "AudioPeaks.h"
-#include "ClipAudioReader.h"
-#include "InsvAudioDemux.h"
-#include "GeneralWindReducer.h"
-#include "HissHumReducer.h"
+#include <orbis-core/audio/AudioMixer.h>
+#include <orbis-core/audio/AudioPeaks.h>
+#include <orbis-core/audio/ClipAudioReader.h>
+#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/GeneralWindReducer.h>
+#include <orbis-core/audio/HissHumReducer.h>
 #ifdef INSV_HAVE_VOICE
-#include "VoiceIsolator.h"
+#include <orbis-core/audio/VoiceIsolator.h>
 #include "DataPaths.h"
 #endif
-#include "WindReducer.h"
+#include <orbis-core/audio/WindReducer.h>
 #include "support/TestMedia.h"
 
 #include <atomic>

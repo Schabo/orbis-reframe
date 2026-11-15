@@ -6,7 +6,7 @@
 
 #include "PlaybackController.h" // reuses PlaybackController::Segment / Placed
 
-#include <AudioMixer.h> // insv::MixClip
+#include <orbis-core/audio/AudioMixer.h> // insv::MixClip
 
 #include <condition_variable>
 #include <cstdint>

@@ -4,7 +4,7 @@
 
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 
-#include <GyroStabilizer.h> // insv::StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // insv::StabConfig
 
 #include <memory>
 #include <string>

@@ -1,7 +1,7 @@
 #include "ClipSeam.h"
 
-#include <Calibration.h>
-#include <InsvDemux.h>
+#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/media/InsvDemux.h>
 
 #include <algorithm>
 #include <utility>

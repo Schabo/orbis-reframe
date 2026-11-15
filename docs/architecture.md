@@ -17,8 +17,10 @@ discussion in an issue first, not a pull request.
 - **Neural networks run in-process**: ncnn on Vulkan for detection (number
   plates), OpenCV for Track subject (CSRT + VitTrack), ONNX Runtime on the
   CPU for DeepFilterNet. No CUDA, no ONNX Runtime GPU.
-- **`src/insv/` stays independent**: no Qt, editor or Vulkan-loader
+- **`lib/orbis-core/` stays independent**: no Qt, editor or Vulkan-loader
   dependency, licensed MIT OR Apache-2.0, so it can become its own library.
+  It is built through its own `CMakeLists.txt`, with its tests and tools
+  beside it, and is included as `<orbis-core/...>`.
 - **Where format knowledge comes from**: files the cameras recorded, public
   documentation, published research, and format facts other projects
   published (cited and checked against real files). Never disassembling a
@@ -64,7 +66,7 @@ discussion in an issue first, not a pull request.
 
 | Folder | What it is | Depends on |
 |---|---|---|
-| `src/insv/` | The camera-file library: `.insv` trailer, calibration, IMU timing, the Insta360 per-model table, demux, Vulkan video decode, the fisheye model, gyro stabilization, seam measurement, audio filters | std C++, FFmpeg (demux / decode parts) -- no Qt |
+| `lib/orbis-core/` | orbis-core, the camera-file library: `.insv` trailer, calibration, IMU timing, the Insta360 per-model table, demux, Vulkan video decode, the fisheye model, gyro stabilization, seam measurement, audio filters | std C++, FFmpeg (demux / decode parts) -- no Qt |
 | `src/camera/` | The common clip description (`ClipMetadata`, read once per file and cached), a reader per camera family that fills it, and the Media information probe | `insv`, FFmpeg -- no Qt, no Vulkan |
 | `src/core/` | The project model: media pool, timeline, clips, keyframe tracks, titles, gauges, transitions, the colour grade, the `.orp` file, undo, autosave | Qt Core, nlohmann-json, zlib (LUT zips) -- no widgets, no Vulkan |
 | `src/stitch/` | `IStitchSource` ("the frame at time T of clip X"), `NativeStitchSource` (dual fisheye), clip probing, clip sync, per-clip seam | `camera`, `insv`, `render` |
@@ -80,7 +82,7 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 
 ## The picture's path
 
-1. **Demux and decode** (`insv/InsvDemux`, `insv/VulkanVideoDecoder`): the
+1. **Demux and decode** (`orbis-core/media/InsvDemux`, `orbis-core/media/VulkanVideoDecoder`): the
    two fisheye lens streams, decoded on the GPU through FFmpeg's Vulkan
    hwaccel into NV12 (8-bit) or P010 (10-bit) images, with a CPU decode
    fallback when the GPU path can't be used.
@@ -94,21 +96,21 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    with the depth-aware seam or a fixed one, both with the clip's measured
    seam alignment and lens colour -- what a project file that names no
    stitcher loads as, `Project::kOlderFileStitchMethod` (see
-   [the roadmap](roadmap.md)); the new stitcher's seam colour blend (`insv/SeamColourBlend`)
+   [the roadmap](roadmap.md)); the new stitcher's seam colour blend (`orbis-core/stitch/SeamColourBlend`)
    matches the lenses' colour per stretch of the seam from what they see in
    the overlap over each frame and the quarter second before it, and its seam
-   flow (`insv/SeamFlow`) warps each lens near the seam by its share of
+   flow (`orbis-core/stitch/SeamFlow`) warps each lens near the seam by its share of
    the optical flow between them in the overlap, averaged over the frame
    and the four before it -- a texture beside the stitch's parameters on
    every GPU path, the viewport's lens frames included. On the GPU the
    strips, the flow (DIS, `render/shaders/seam_flow.comp`) and the average
    stay there, in the frame's measuring submission; the CPU stitch
-   fallback estimates it with OpenCV's DIS (`insv/SeamFlowEstimator`).
+   fallback estimates it with OpenCV's DIS (`orbis-core/stitch/SeamFlowEstimator`).
    Both run on the strips anchored first: bright featureless parts get the
    same fixed pattern in both lenses, so the flow stays zero there
    (`insv::AnchorSeamFlowStrips`, the shader's anchor passes). With both
    on, the lenses meet in a narrow fade on the seam, widened per stretch
-   where they still differ near the seam after the flow (`insv/SeamFade`):
+   where they still differ near the seam after the flow (`orbis-core/stitch/SeamFade`):
    each frame's patch means of the warped raw strips are kept with its
    flow, and the share of the band per strip column is solved with the
    frame's colour table into the flow texture's last row -- on the GPU in
@@ -118,7 +120,7 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    The depth-aware seam's state
    (the distance per stretch of the seam, the cut across the overlap, the
    colour correction there) is a function of the measurements of the frames
-   either side of a frame (`insv/SeamWindow`), worked out once per clip in a
+   either side of a frame (`orbis-core/stitch/SeamWindow`), worked out once per clip in a
    background pass and kept in the project's cache
    (`stitch/ClipSeamAnalysis`): every path that stitches a frame --
    playback, stepping, screenshots, export -- stitches it the same way.
@@ -201,7 +203,7 @@ equirect one) against a screenshot of the viewport.
 ### Stabilization
 
 The camera's gyro (from the file) gives a rotation per frame; the stabilizer
-(`insv/GyroStabilizer`, cached per clip in `ui/StabilizerCache`) smooths it
+(`orbis-core/stab/GyroStabilizer`, cached per clip in `ui/StabilizerCache`) smooths it
 and hands the view a de-rotation matrix. It is rotation only. Lining the gyro
 up with the video (timing, axis map, rolling-shutter readout) is
 camera-specific: the camera's reader does it and hands the stabilizer an

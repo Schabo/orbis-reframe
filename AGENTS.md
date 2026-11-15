@@ -28,7 +28,7 @@ write it out for your person to post.
    design doesn't fit what you found, stop and tell your person why; don't
    quietly work around it.
 3. **Read the docs for the area you touch**: the camera's document in
-   [`docs/formats/`](docs/formats/README.md) before any `src/insv/`,
+   [`docs/formats/`](docs/formats/README.md) before any `lib/orbis-core/`,
    calibration, gyro or file-format work; the user manual chapter
    ([`docs/manual/`](docs/manual/README.md)) for the feature you change.
 4. **Agree on a plan with the maintainer first** for anything that is more

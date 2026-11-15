@@ -1,0 +1,304 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+#include <orbis-core/media/VulkanVideoDecoder.h>
+
+#include "VulkanHwDevice.h" // core::sharedVulkanDevice
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/hwcontext.h>
+#include <libavutil/hwcontext_vulkan.h>
+#include <libavutil/version.h>
+}
+
+namespace insv {
+
+namespace {
+
+// get_format: take AV_PIX_FMT_VULKAN and build a hw_frames_ctx that keeps the
+// NV12 image as a single 2-plane image (default) with SAMPLED usage, so the
+// compute stitch can sample it through a ycbcr-conversion sampler.
+enum AVPixelFormat pickVulkan(AVCodecContext* ctx, const enum AVPixelFormat* fmts)
+{
+    for (const enum AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; ++p) {
+        if (*p != AV_PIX_FMT_VULKAN)
+            continue;
+        if (avcodec_get_hw_frames_parameters(ctx, ctx->hw_device_ctx, AV_PIX_FMT_VULKAN,
+                                             &ctx->hw_frames_ctx) < 0)
+            return AV_PIX_FMT_NONE;
+        auto* fc = reinterpret_cast<AVHWFramesContext*>(ctx->hw_frames_ctx->data);
+        auto* vfc = reinterpret_cast<AVVulkanFramesContext*>(fc->hwctx);
+        vfc->usage = static_cast<VkImageUsageFlagBits>(vfc->usage | VK_IMAGE_USAGE_SAMPLED_BIT);
+        if (av_hwframe_ctx_init(ctx->hw_frames_ctx) < 0)
+            return AV_PIX_FMT_NONE;
+        return AV_PIX_FMT_VULKAN;
+    }
+    return AV_PIX_FMT_NONE;
+}
+
+} // namespace
+
+VulkanVideoDecoder::~VulkanVideoDecoder() { close(); }
+
+void VulkanVideoDecoder::close()
+{
+    m_demux.close(); // the decoders hold their own device references
+    if (m_hwDevice)
+        av_buffer_unref(&m_hwDevice);
+}
+
+namespace {
+
+// Whether the device has a video decode queue for `codec`. FFmpeg opens the
+// Vulkan hwaccel on any Vulkan device and only fails frame by frame ("Device
+// does not support the VK_KHR_video_decode_queue extension", a grey viewport:
+// llvmpipe, other vendors' or older GPUs / drivers), so check up front and let
+// the caller fall back to CPU decode.
+// AV_CODEC_ID_NONE asks whether the device decodes any video at all.
+bool CanDecode(const AVBufferRef* hwDevice, AVCodecID codec)
+{
+    VkVideoCodecOperationFlagsKHR op = 0;
+    switch (codec) {
+    case AV_CODEC_ID_NONE:
+        op = ~VkVideoCodecOperationFlagsKHR(0);
+        break;
+    case AV_CODEC_ID_HEVC:
+        op = VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR;
+        break;
+    case AV_CODEC_ID_H264:
+        op = VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
+        break;
+    case AV_CODEC_ID_AV1:
+        op = VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR;
+        break;
+    default:
+        return false;
+    }
+    const auto* dctx = reinterpret_cast<const AVHWDeviceContext*>(hwDevice->data);
+    const auto* vk = static_cast<const AVVulkanDeviceContext*>(dctx->hwctx);
+    for (int i = 0; i < vk->nb_qf; ++i)
+        if ((vk->qf[i].flags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) && (vk->qf[i].video_caps & op))
+            return true;
+    return false;
+}
+
+// The name people know a codec by, for messages.
+std::string CodecName(AVCodecID codec, const AVCodec* dec)
+{
+    switch (codec) {
+    case AV_CODEC_ID_HEVC:
+        return "H.265";
+    case AV_CODEC_ID_H264:
+        return "H.264";
+    case AV_CODEC_ID_AV1:
+        return "AV1";
+    default:
+        return dec ? dec->name : "this";
+    }
+}
+
+} // namespace
+
+bool VulkanVideoDecoder::open(const std::string& path, std::string& err)
+{
+    return open([this, &path](const LensDemuxer::DecoderSetup& setup,
+                              std::string& e) { return m_demux.open(path, setup, e); },
+                err);
+}
+
+bool VulkanVideoDecoder::open(const std::vector<LensSource>& lenses, std::string& err)
+{
+    return open([this, &lenses](const LensDemuxer::DecoderSetup& setup,
+                                std::string& e) { return m_demux.open(lenses, setup, e); },
+                err);
+}
+
+bool VulkanVideoDecoder::open(const std::vector<ClipPart>& parts, std::string& err)
+{
+    return open([this, &parts](const LensDemuxer::DecoderSetup& setup,
+                               std::string& e) { return m_demux.open(parts, setup, e); },
+                err);
+}
+
+bool VulkanVideoDecoder::open(
+    const std::function<bool(const LensDemuxer::DecoderSetup&, std::string&)>& openDemux,
+    std::string& err)
+{
+    close();
+    m_unsupported = false;
+    m_unsupportedCodec.clear();
+    m_hwDevice = core::sharedVulkanDevice();
+    if (!m_hwDevice) {
+        // Not "unsupported": the device also fails to create when the
+        // graphics memory is full, and without any Vulkan the app says so
+        // at startup.
+        err = "no Vulkan hw device (no driver support, or the graphics memory is full)";
+        return false;
+    }
+    AVBufferRef* hw = m_hwDevice;
+    bool unsupported = false;
+    std::string unsupportedCodec;
+    const bool ok = openDemux(
+        [hw, &unsupported, &unsupportedCodec](const AVStream* st, const AVCodec* dec,
+                                              AVCodecContext* ctx, std::string& e) {
+            if (!CanDecode(hw, st->codecpar->codec_id)) {
+                unsupported = true;
+                if (CanDecode(hw, AV_CODEC_ID_NONE))
+                    unsupportedCodec = CodecName(st->codecpar->codec_id, dec);
+                e = std::string("the GPU has no Vulkan video decode for ") + dec->name;
+                return false;
+            }
+            ctx->hw_device_ctx = av_buffer_ref(hw);
+            ctx->get_format = pickVulkan;
+            return true;
+        },
+        err);
+    if (ok && m_demux.lensCount() < 2)
+        err = "expected 2 video streams, found " + std::to_string(m_demux.lensCount());
+    if (!ok || m_demux.lensCount() < 2) {
+        m_unsupported = unsupported;
+        m_unsupportedCodec = unsupportedCodec;
+        close();
+        return false;
+    }
+    // FFmpeg sets the hwaccel up at the first frame, not in avcodec_open2,
+    // so a decoder that can't start (its frame pool or video session doesn't
+    // fit in the graphics memory) only shows here: as no frame, or a frame
+    // that isn't on the GPU.
+    for (int l = 0; l < 2; ++l) {
+        std::string e;
+        const AVFrame* f = m_demux.peekFrame(l, &e);
+        if (f && f->hw_frames_ctx)
+            continue;
+        err = "the Vulkan video decoder didn't start on lens " + std::to_string(l) +
+              (e.empty() ? std::string(f ? " (frames not on the GPU)" : " (no frame decoded)")
+                         : " (" + e + ")") +
+              "; the graphics memory may be full";
+        close();
+        return false;
+    }
+    return true;
+}
+
+void VulkanVideoDecoder::deviceHandles(VkInstance& inst, VkPhysicalDevice& phys, VkDevice& dev,
+                                       uint32_t& computeQueueFamily,
+                                       VkDeviceQueueCreateFlags& queueFlags) const
+{
+    auto* dctx = reinterpret_cast<AVHWDeviceContext*>(m_hwDevice->data);
+    auto* vk = reinterpret_cast<AVVulkanDeviceContext*>(dctx->hwctx);
+    inst = vk->inst;
+    phys = vk->phys_dev;
+    dev = vk->act_dev;
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(60, 32, 100)
+    queueFlags = vk->queue_flags;
+#else
+    queueFlags = 0; // older FFmpeg creates its queues without flags
+#endif
+    computeQueueFamily = UINT32_MAX;
+    for (int i = 0; i < vk->nb_qf; ++i) {
+        if (vk->qf[i].flags & VK_QUEUE_COMPUTE_BIT) {
+            computeQueueFamily = vk->qf[i].idx;
+            break;
+        }
+    }
+    if (computeQueueFamily == UINT32_MAX)
+        for (int i = 0; i < vk->nb_qf; ++i)
+            if (vk->qf[i].flags & VK_QUEUE_TRANSFER_BIT) {
+                computeQueueFamily = vk->qf[i].idx;
+                break;
+            }
+}
+
+VkFormat VulkanVideoDecoder::frameFormat()
+{
+    VkFormat fmt[2] = {VK_FORMAT_UNDEFINED, VK_FORMAT_UNDEFINED};
+    for (int l = 0; l < 2; ++l) {
+        const AVFrame* f = m_demux.peekFrame(l);
+        if (!f || !f->hw_frames_ctx)
+            return VK_FORMAT_UNDEFINED;
+        auto* fc = reinterpret_cast<AVHWFramesContext*>(f->hw_frames_ctx->data);
+        fmt[l] = reinterpret_cast<AVVulkanFramesContext*>(fc->hwctx)->format[0];
+    }
+    return fmt[0] == fmt[1] ? fmt[0] : VK_FORMAT_UNDEFINED;
+}
+
+void VulkanVideoDecoder::keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const
+{
+    m_demux.keyframesAroundMs(timestampMs, before, after);
+}
+
+int64_t VulkanVideoDecoder::nearestKeyframeMs(int64_t timestampMs) const
+{
+    return m_demux.nearestKeyframeMs(timestampMs);
+}
+
+bool VulkanVideoDecoder::seekTo(int64_t timestampMs, std::string& err)
+{
+    return m_demux.seekTo(timestampMs, err);
+}
+
+bool VulkanVideoDecoder::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts,
+                                      std::string& err)
+{
+    return m_demux.readNextPair(out0, out1, pts, err);
+}
+
+void VulkanVideoDecoder::lockFrame(AVFrame* f, VulkanLensFrame& lf)
+{
+    auto* fc = reinterpret_cast<AVHWFramesContext*>(f->hw_frames_ctx->data);
+    auto* vfc = reinterpret_cast<AVVulkanFramesContext*>(fc->hwctx);
+    auto* vkf = reinterpret_cast<AVVkFrame*>(f->data[0]);
+    if (vfc->lock_frame)
+        vfc->lock_frame(fc, vkf);
+    lf.image = vkf->img[0];
+    lf.format = vfc->format[0];
+    lf.layout = vkf->layout[0];
+    lf.semaphore = vkf->sem[0];
+    lf.semWaitValue = vkf->sem_value[0];
+    lf.width = f->width;
+    lf.height = f->height;
+    lf.usage = vfc->usage;
+}
+
+void VulkanVideoDecoder::unlockFrame(AVFrame* f, const VulkanLensFrameResult& r)
+{
+    auto* fc = reinterpret_cast<AVHWFramesContext*>(f->hw_frames_ctx->data);
+    auto* vfc = reinterpret_cast<AVVulkanFramesContext*>(fc->hwctx);
+    auto* vkf = reinterpret_cast<AVVkFrame*>(f->data[0]);
+    vkf->sem_value[0] = r.semSignalValue;
+    vkf->layout[0] = r.newLayout;
+    vkf->access[0] = VK_ACCESS_SHADER_READ_BIT;
+    if (vfc->unlock_frame)
+        vfc->unlock_frame(fc, vkf);
+}
+
+void VulkanVideoDecoder::freeFrame(AVFrame*& f) { av_frame_free(&f); }
+
+VulkanVideoDecoder::QueueLock VulkanVideoDecoder::queueLock(uint32_t family, uint32_t index) const
+{
+    std::shared_ptr<void> keep = deviceKeepAlive();
+    auto* dctx = reinterpret_cast<AVHWDeviceContext*>(m_hwDevice->data);
+    auto* vk = reinterpret_cast<AVVulkanDeviceContext*>(dctx->hwctx);
+    // Deprecated for VK_KHR_internally_synchronized_queues, which this
+    // FFmpeg / driver pair doesn't offer; FFmpeg itself still locks with it.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    auto lockFn = vk->lock_queue;
+    auto unlockFn = vk->unlock_queue;
+#pragma GCC diagnostic pop
+    return {[keep, dctx, lockFn, family, index] { lockFn(dctx, family, index); },
+            [keep, dctx, unlockFn, family, index] { unlockFn(dctx, family, index); }};
+}
+
+std::shared_ptr<void> VulkanVideoDecoder::deviceKeepAlive() const
+{
+    if (!m_hwDevice)
+        return nullptr;
+    AVBufferRef* ref = av_buffer_ref(m_hwDevice);
+    return std::shared_ptr<void>(ref, [](void* p) {
+        auto* r = static_cast<AVBufferRef*>(p);
+        av_buffer_unref(&r);
+    });
+}
+
+} // namespace insv

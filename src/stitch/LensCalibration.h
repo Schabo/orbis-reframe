@@ -8,7 +8,7 @@
 //
 // Header-only and plain data: the project (src/core) keeps a copy per clip.
 
-#include <Calibration.h> // insv::LensCalibExt
+#include <orbis-core/insta360/Calibration.h> // insv::LensCalibExt
 
 #include <array>
 #include <cmath>

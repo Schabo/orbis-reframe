@@ -11,8 +11,8 @@
 #include <SubjectTracker.h> // track::Seed, TrackSample
 
 #include <NativeStitchSource.h> // stitch::PreviewStitchConfig, stitch::Frame
-#include <LensColour.h>         // insv::LensColour
-#include <SeamCorrection.h>     // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>         // insv::LensColour
+#include <orbis-core/stitch/SeamCorrection.h>     // insv::SeamCorrection
 
 #include <atomic>
 #include <cstdint>

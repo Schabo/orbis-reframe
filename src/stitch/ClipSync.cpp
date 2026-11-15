@@ -2,10 +2,10 @@
 
 #include "NativeStitchSource.h"
 
-#include <Calibration.h>
+#include <orbis-core/insta360/Calibration.h>
 #include <ClipMetadata.h>
-#include <GyroStabilizer.h>
-#include <SyncEstimator.h>
+#include <orbis-core/stab/GyroStabilizer.h>
+#include <orbis-core/stab/SyncEstimator.h>
 
 #include <algorithm>
 #include <cstdio>

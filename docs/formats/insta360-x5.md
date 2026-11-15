@@ -3,7 +3,7 @@
 Everything this project knows about the Insta360 X5's recorded video files: the
 MP4 container, the video/audio streams, the proprietary `inst` trailer, the
 telemetry in it (gyro, accelerometer, exposure, GPS), and the lens calibration.
-It collects the findings from `src/insv/`, the spikes/tools, the project's
+It collects the findings from `lib/orbis-core/`, the spikes/tools, the project's
 development notes, a direct re-inspection of the sample footage, and a
 cross-check against the external sources in §13 (2026-09-24).
 
@@ -391,7 +391,7 @@ v1.11.10):
 ## 4. The `inst` trailer — framing
 
 The trailer is anchored at **EOF**. Everything is little-endian.
-Implemented in `src/insv/InsvTrailer.cpp` (`WalkTrailerRecords`). The
+Implemented in `lib/orbis-core/orbis-core/insta360/InsvTrailer.cpp` (`WalkTrailerRecords`). The
 structure below is confirmed independently by ExifTool and telemetry-parser.
 
 ### 4.1 Footer (last 78 bytes) ✅
@@ -1044,12 +1044,12 @@ differences on the LRV), the speed by field 98.3 at ~46.2 s, lined up at
 ~44.1 s. Whether it's the camera's clock (set from the phone) against GPS
 time, the GPS source's latency or both isn't known; it differs per clip and
 drifts within one ❓. `camera::ReadClipTelemetry` therefore lines a field-98
-track up against the IMU (`insv::AlignGpsByAcceleration`, `src/insv/Gps.h`, on
+track up against the IMU (`insv::AlignGpsByAcceleration`, `lib/orbis-core/orbis-core/metadata/Gps.h`, on
 `insv::BuildMotion`'s forward acceleration): the shift over each ~2 min,
 straight between them. A clip that stands still or keeps a steady speed
 (`_081`, `_082`, `_084`) stays on field 98.3.
 
-`ReadInsvGps` (`src/insv/InsvTrailer`) decodes the record: acquired fixes,
+`ReadInsvGps` (`lib/orbis-core/orbis-core/insta360/InsvTrailer`) decodes the record: acquired fixes,
 each once (the first record carrying it; the lost-fix repeat and anything
 out of order dropped), the hemisphere letters as signs, with field 98.3.
 Checked against `exiftool -ee -n` on `193105` (43 fixes) and `_080` (1222):

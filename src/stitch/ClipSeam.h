@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include <SeamAlignment.h> // insv::SeamAlignmentResult
+#include <orbis-core/stitch/SeamAlignment.h> // insv::SeamAlignmentResult
 
 #include "ClipMeasure.h"   // stitch::MeasureFailure
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard

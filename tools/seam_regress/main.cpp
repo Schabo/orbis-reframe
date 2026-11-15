@@ -51,12 +51,12 @@
 #include <ClipSeamAnalysis.h>
 #include <NativeStitchSource.h>
 
-#include <FisheyeProjection.h>
-#include <Image.h>
-#include <InsvDemux.h>
-#include <LensColour.h>
-#include <SeamCut.h>
-#include <SeamDepth.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/Image.h>
+#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/stitch/LensColour.h>
+#include <orbis-core/stitch/SeamCut.h>
+#include <orbis-core/stitch/SeamDepth.h>
 
 #include <algorithm>
 #include <array>

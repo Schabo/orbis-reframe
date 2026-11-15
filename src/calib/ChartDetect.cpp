@@ -3,7 +3,7 @@
 #include "ChartDetector.h"
 
 #include <ClipMetadata.h>
-#include <InsvDemux.h>
+#include <orbis-core/media/InsvDemux.h>
 
 #include <opencv2/imgproc.hpp>
 

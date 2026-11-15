@@ -1,14 +1,14 @@
 #pragma once
 
-#include <AudioPart.h>   // insv::AudioPart
-#include <Calibration.h> // insv::LensCalibExt, insv::LensPose
-#include <Gps.h>         // insv::GpsTrack
-#include <Imu.h>         // insv::ImuTrack
-#include <InsvTrailer.h> // insv::LensProfile
-#include <LensSource.h>  // insv::LensSource
-#include <Motion.h>      // insv::MotionTrack
-#include <SeamCorrection.h> // insv::SeamCorrection
-#include <Ycbcr.h>       // insv::YcbcrCoding
+#include <orbis-core/audio/AudioPart.h>   // insv::AudioPart
+#include <orbis-core/insta360/Calibration.h> // insv::LensCalibExt, insv::LensPose
+#include <orbis-core/metadata/Gps.h>         // insv::GpsTrack
+#include <orbis-core/metadata/Imu.h>         // insv::ImuTrack
+#include <orbis-core/insta360/InsvTrailer.h> // insv::LensProfile
+#include <orbis-core/stitch/LensSource.h>  // insv::LensSource
+#include <orbis-core/stab/Motion.h>      // insv::MotionTrack
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/Ycbcr.h>       // insv::YcbcrCoding
 
 #include <cstdint>
 #include <memory>

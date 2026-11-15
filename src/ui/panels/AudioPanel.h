@@ -5,7 +5,7 @@
 #include <QList>
 #include <QObject>
 
-#include <NoiseReduction.h> // insv::NoiseReduction
+#include <orbis-core/audio/NoiseReduction.h> // insv::NoiseReduction
 
 class QCheckBox;
 class QComboBox;

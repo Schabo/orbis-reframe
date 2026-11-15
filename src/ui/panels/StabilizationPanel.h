@@ -2,7 +2,7 @@
 
 #include "../SettingsPanel.h"
 
-#include <GyroStabilizer.h> // insv::StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // insv::StabConfig
 
 class QCheckBox;
 class QComboBox;

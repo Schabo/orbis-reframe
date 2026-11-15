@@ -1,10 +1,10 @@
 #pragma once
 
-#include <FisheyeProjection.h> // insv::StitchGpuParams
-#include <SeamCut.h>           // insv::SeamCutStats
-#include <SeamDepth.h>         // insv::SeamCosts
-#include <SeamFlow.h>          // insv::SeamFlowStrips, insv::SeamFlowField
-#include <Ycbcr.h>             // insv::YcbcrCoding
+#include <orbis-core/stitch/FisheyeProjection.h> // insv::StitchGpuParams
+#include <orbis-core/stitch/SeamCut.h>           // insv::SeamCutStats
+#include <orbis-core/stitch/SeamDepth.h>         // insv::SeamCosts
+#include <orbis-core/stitch/SeamFlow.h>          // insv::SeamFlowStrips, insv::SeamFlowField
+#include <orbis-core/Ycbcr.h>             // insv::YcbcrCoding
 
 #include "ColorLut.h" // color::Grade
 #include "ViewProjection.h" // view::Pose

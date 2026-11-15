@@ -8,7 +8,7 @@
 
 #include "PlateScanner.h"
 
-#include <FramePts.h>
+#include <orbis-core/metadata/FramePts.h>
 
 #include <cstdint>
 #include <deque>

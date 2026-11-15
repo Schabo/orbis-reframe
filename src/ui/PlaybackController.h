@@ -6,8 +6,8 @@
 #include <QString>
 
 #include <IStitchSource.h> // stitch::Frame
-#include <LensColour.h>     // insv::LensColour
-#include <SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>     // insv::LensColour
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
 #include <LensFrame.h>     // render::LensFrame
 
 #include "InsetFeed.h" // video-track insets

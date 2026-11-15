@@ -7,7 +7,7 @@
 #include "../export/ReframeFlatten.h"
 #include "../render/EquirectViewportWindow.h"
 
-#include <NoiseFilter.h> // insv::voiceModesReady
+#include <orbis-core/audio/NoiseFilter.h> // insv::voiceModesReady
 
 #include <QApplication>
 #include <QClipboard>
@@ -106,8 +106,8 @@ void showAboutDialog(QWidget *parent, EquirectViewportWindow *viewport, const QS
         "<p>Video editor for 360&deg; camera footage: stitching, gyro stabilization "
         "and reframing.</p>"
         "<p>Copyright &copy; 2026 Markku Kokko<br>"
-        "Licensed under the GNU General Public License v3.0 or later. The .insv library "
-        "(src/insv) is licensed under MIT OR Apache-2.0.</p>"
+        "Licensed under the GNU General Public License v3.0 or later. The orbis-core library "
+        "(camera files, stitch, stabilization) is licensed under MIT OR Apache-2.0.</p>"
         "<p>Built with Qt, Vulkan, FFmpeg, OpenCV, ncnn, ONNX Runtime and nlohmann/json; "
         "DeepFilterNet 3, VitTrack and a YOLOv9 plate model; Lucide icons. Their licenses "
         "are listed in THIRD_PARTY.md, installed with the documentation "

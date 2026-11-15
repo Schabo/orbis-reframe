@@ -1,10 +1,10 @@
 #include "ClipLensColour.h"
 
-#include <Calibration.h>
-#include <FisheyeProjection.h>
-#include <InsvDemux.h>
-#include <SeamAlignment.h> // insv::SnapToKeyframeMs
-#include <SeamCut.h>
+#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/media/InsvDemux.h>
+#include <orbis-core/stitch/SeamAlignment.h> // insv::SnapToKeyframeMs
+#include <orbis-core/stitch/SeamCut.h>
 
 #include <memory>
 #include <utility>

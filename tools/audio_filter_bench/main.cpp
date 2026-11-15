@@ -18,16 +18,16 @@
 // here works on channel 0 and writes mono. The engine-f0 tracker scores how
 // much of the engine a filter leaves.
 
-#include "ClipAudioReader.h"
-#include "GeneralWindReducer.h"
-#include "HissHumReducer.h"
-#include "NoiseFilter.h"
+#include <orbis-core/audio/ClipAudioReader.h>
+#include <orbis-core/audio/GeneralWindReducer.h>
+#include <orbis-core/audio/HissHumReducer.h>
+#include <orbis-core/audio/NoiseFilter.h>
 #ifdef INSV_HAVE_VOICE
-#include "VoiceIsolator.h"
+#include <orbis-core/audio/VoiceIsolator.h>
 #include "DataPaths.h"
 #endif
-#include "InsvAudioDemux.h"
-#include "Rdft.h"
+#include <orbis-core/audio/InsvAudioDemux.h>
+#include <orbis-core/audio/Rdft.h>
 
 #include <algorithm>
 #include <cmath>

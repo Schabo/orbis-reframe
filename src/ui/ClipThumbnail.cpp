@@ -1,7 +1,7 @@
 #include "ClipThumbnail.h"
 
 #include <ClipMetadata.h> // camera::ReadClipThumbnail
-#include <Ycbcr.h>        // insv::YcbcrToRgbRows
+#include <orbis-core/Ycbcr.h>        // insv::YcbcrToRgbRows
 
 #include <algorithm>
 #include <cmath>

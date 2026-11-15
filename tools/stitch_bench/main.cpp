@@ -65,8 +65,8 @@
 #include <FlatVideoReader.h>
 #include <NativeStitchSource.h>
 
-#include <FisheyeProjection.h>
-#include <GyroStabilizer.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/stab/GyroStabilizer.h>
 
 #include <ClipMetadata.h> // camera::ReadClipImu
 

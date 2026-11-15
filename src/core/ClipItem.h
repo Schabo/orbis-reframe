@@ -9,11 +9,11 @@
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
 #include <ClipEffects.h>    // fx::ClipEffects (no Qt)
 #include <ColorLut.h>       // color::Grade (no Qt)
-#include <GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
+#include <orbis-core/stab/GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
 #include <LensCalibration.h> // stitch::LensCalibration (plain data)
-#include <LensColour.h>     // insv::LensColour (POD)
-#include <SeamCorrection.h> // insv::SeamCorrection (POD)
+#include <orbis-core/stitch/LensColour.h>     // insv::LensColour (POD)
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection (POD)
 
 #include <QList>
 #include <QString>

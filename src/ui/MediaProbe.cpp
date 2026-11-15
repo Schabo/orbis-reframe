@@ -2,7 +2,7 @@
 
 #include <ClipMetadata.h>    // camera::ReadClipMetadata
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader
-#include <InsvAudioDemux.h>  // insv::InsvAudioDemux
+#include <orbis-core/audio/InsvAudioDemux.h>  // insv::InsvAudioDemux
 #include <ProbeClip.h>       // stitch::ProbeClip
 
 #include <algorithm>

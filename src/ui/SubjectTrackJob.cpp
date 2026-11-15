@@ -1,6 +1,6 @@
 #include "SubjectTrackJob.h"
 
-#include <GyroStabilizer.h>
+#include <orbis-core/stab/GyroStabilizer.h>
 #include <VulkanHwDevice.h> // core::waitForGpuRoom
 
 #include <algorithm>

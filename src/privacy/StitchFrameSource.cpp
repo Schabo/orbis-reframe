@@ -1,6 +1,6 @@
 #include "StitchFrameSource.h"
 
-#include <GyroStabilizer.h>
+#include <orbis-core/stab/GyroStabilizer.h>
 #include <NativeStitchSource.h>
 
 #include <opencv2/imgproc.hpp>

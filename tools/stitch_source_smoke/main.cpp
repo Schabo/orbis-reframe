@@ -10,7 +10,7 @@
 #include <VulkanHwDevice.h> // core::sharedDeviceMemory
 
 #include <ClipMetadata.h>  // camera::ReadClipImu
-#include <GyroStabilizer.h>
+#include <orbis-core/stab/GyroStabilizer.h>
 
 #include <nlohmann/json.hpp>
 

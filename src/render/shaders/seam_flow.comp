@@ -80,7 +80,7 @@ layout(push_constant) uniform PC {
 #define PASS_FADE_SPREAD 12 // column
 #define PASS_FADE_SMOOTH 13 // column
 
-// The fade (insv/SeamFade.h).
+// The fade (orbis-core/stitch/SeamFade.h).
 #define FADE_ROW_STEP 2      // insv::kSeamFadeRowStep
 #define FADE_PATCH_W 11      // insv::kSeamFadePatchW
 #define FADE_PATCH_H 5       // insv::kSeamFadePatchH

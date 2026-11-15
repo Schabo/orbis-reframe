@@ -2,7 +2,7 @@
 
 #include "DataPaths.h"
 
-#include <GyroStabilizer.h>  // insv::leanWindowFromStrength
+#include <orbis-core/stab/GyroStabilizer.h>  // insv::leanWindowFromStrength
 #include <ReframeRenderer.h> // exportpipe::RenderRectilinear
 
 #include <opencv2/core.hpp>

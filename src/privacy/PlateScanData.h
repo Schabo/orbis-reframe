@@ -13,7 +13,7 @@
 // Dependency-free (insv's BlurQuad only), so the app can always apply a scan
 // it has -- only making one needs the detector (PlateScanner).
 
-#include <BlurQuads.h> // insv::BlurQuad
+#include <orbis-core/stitch/BlurQuads.h> // insv::BlurQuad
 
 #include "BlurAddition.h"
 #include "BlurRemoval.h"

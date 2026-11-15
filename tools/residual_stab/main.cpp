@@ -34,14 +34,14 @@
 #include <string>
 #include <vector>
 
-#include <GyroStabilizer.h>       // insv::GyroStabilizer, StabConfig, MatrixToYawPitchRoll
+#include <orbis-core/stab/GyroStabilizer.h>       // insv::GyroStabilizer, StabConfig, MatrixToYawPitchRoll
 #include <ClipMetadata.h>         // camera::ReadClipImu
-#include <InsvModels.h>           // insv::FindInsvModel (the telemetry clock tick)
-#include <InsvTrailer.h>          // insv::ReadInsvTelemetry (the exposure record)
+#include <orbis-core/insta360/InsvModels.h>           // insv::FindInsvModel (the telemetry clock tick)
+#include <orbis-core/insta360/InsvTrailer.h>          // insv::ReadInsvTelemetry (the exposure record)
 #include <NativeStitchSource.h>   // stitch::NativeStitchSource, stitch::Frame
 #include <ProbeClip.h>            // stitch::ProbeClip
 #include <ClipSync.h>             // stitch::MeasureClipSync
-#include <ResidualPanEstimator.h> // insv::ResidualPanEstimator, ResidualTrack
+#include <orbis-core/stab/ResidualPanEstimator.h> // insv::ResidualPanEstimator, ResidualTrack
 
 #include "ReframeFlatten.h" // exportpipe::FlattenWriter
 #include "spectrum.h"       // diag:: FFT + spectral helpers (header-only)

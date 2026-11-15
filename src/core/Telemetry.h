@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Gps.h> // insv::GpsTrack
+#include <orbis-core/metadata/Gps.h> // insv::GpsTrack
 
 #include <array>
 #include <cstdint>

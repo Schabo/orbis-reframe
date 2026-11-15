@@ -13,10 +13,10 @@
 
 #include "VulkanFisheyeStitcher.h"
 
-#include <SeamFade.h>
+#include <orbis-core/stitch/SeamFade.h>
 
 #ifdef ORBIS_SEAM_FLOW
-#include <SeamFlowEstimator.h>
+#include <orbis-core/stitch/SeamFlowEstimator.h>
 #endif
 
 #include <algorithm>

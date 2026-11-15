@@ -2,9 +2,9 @@
 
 #include "ReaderUtil.h"
 
-#include <DjiMeta.h>
-#include <FisheyeProjection.h> // insv::Mat3, rotX / rotY / rotZ
-#include <StillPicture.h>
+#include <orbis-core/dji/DjiMeta.h>
+#include <orbis-core/stitch/FisheyeProjection.h> // insv::Mat3, rotX / rotY / rotZ
+#include <orbis-core/media/StillPicture.h>
 
 extern "C" {
 #include <libavformat/avformat.h>

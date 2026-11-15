@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 
-#include <LensColour.h>     // insv::LensColour
-#include <SeamCorrection.h> // insv::SeamCorrection
-#include <SeamWindow.h>     // insv::SeamState
+#include <orbis-core/stitch/LensColour.h>     // insv::LensColour
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/SeamWindow.h>     // insv::SeamState
 
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard
 

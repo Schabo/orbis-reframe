@@ -31,7 +31,7 @@
 #
 # Clips are read through `camera` (src/camera/: the common clip description,
 # a reader per camera family). Stitching is stitch::NativeStitchSource: the
-# clip's description -> the src/insv/ cleanroom core (insv + insv_demux, the
+# clip's description -> the lib/orbis-core/ cleanroom core (insv + insv_demux, the
 # latter carrying the Vulkan-video decoder) + render_gpu_stitch (the Vulkan
 # compute stitch: src/render/VulkanFisheyeStitcher +
 # shaders/fisheye_stitch{,_nv12}.comp). The all-GPU path (Vulkan video decode +

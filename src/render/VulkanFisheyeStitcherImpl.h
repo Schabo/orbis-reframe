@@ -9,11 +9,11 @@
 #include "VulkanLut.h"
 #include "VulkanEffects.h"
 
-#include <SeamColourBlend.h> // insv::SeamVeilFade, the new stitcher's fade
-#include <SeamCut.h>         // insv::SeamCutStats, the cut pass's rows / patch
-#include <SeamDepth.h>       // insv::SeamCosts, the cost pass's candidates / patch
-#include <SeamFade.h>        // insv::SeamFadeRows, the fade passes' patches
-#include <SeamFlow.h>        // insv::SeamFlowField, the seam flow texture
+#include <orbis-core/stitch/SeamColourBlend.h> // insv::SeamVeilFade, the new stitcher's fade
+#include <orbis-core/stitch/SeamCut.h>         // insv::SeamCutStats, the cut pass's rows / patch
+#include <orbis-core/stitch/SeamDepth.h>       // insv::SeamCosts, the cost pass's candidates / patch
+#include <orbis-core/stitch/SeamFade.h>        // insv::SeamFadeRows, the fade passes' patches
+#include <orbis-core/stitch/SeamFlow.h>        // insv::SeamFlowField, the seam flow texture
 
 #include <vulkan/vulkan.h>
 

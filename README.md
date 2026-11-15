@@ -118,7 +118,7 @@ Orbis Reframe doesn't use Insta360's Media SDK. An early prototype was built
 on it, but its Linux support (an Ubuntu 22.04 / CUDA build and a file-to-file
 stitch API) didn't fit an interactive editor on current Linux. So the
 container and trailer parser, lens calibration, fisheye→equirect stitch and
-gyro stabilization were **reimplemented independently** (`src/insv/`), from
+gyro stabilization were **reimplemented independently** (`lib/orbis-core/`), from
 public documentation and from studying camera-produced files. The editor has
 no closed-source dependencies.
 
@@ -388,13 +388,13 @@ Copyright (C) 2026 Markku Kokko
 The editor is licensed under the **GNU General Public License v3.0 or later**
 ([`LICENSE`](LICENSE)).
 
-The `.insv` library in [`src/insv/`](src/insv/) (container and trailer parsing,
+The orbis-core library in [`lib/orbis-core/`](lib/orbis-core/) (container and trailer parsing,
 lens calibration, stitching, gyro stabilization, audio processing) is licensed
 more permissively, under **MIT OR Apache-2.0** at your option
-([`src/insv/LICENSE-MIT`](src/insv/LICENSE-MIT),
-[`src/insv/LICENSE-APACHE`](src/insv/LICENSE-APACHE)). Every file there carries
+([`lib/orbis-core/LICENSE-MIT`](lib/orbis-core/LICENSE-MIT),
+[`lib/orbis-core/LICENSE-APACHE`](lib/orbis-core/LICENSE-APACHE)). Every file there carries
 an SPDX header saying so. That way other projects can use it, and it can move to
-its own repository later. Contributions to `src/insv/` are accepted under the
+its own repository later. Contributions to `lib/orbis-core/` are accepted under the
 same dual license.
 
 Third-party components, their licenses and where the license texts are (in the

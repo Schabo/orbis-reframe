@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-#include <AudioMixer.h>      // insv::MixClip
+#include <orbis-core/audio/AudioMixer.h>      // insv::MixClip
 #include <InsetCompositor.h> // exportpipe::InsetClipJob
 
 #include "InsetFeed.h"               // InsetFeed::Clip

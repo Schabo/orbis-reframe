@@ -13,9 +13,9 @@ namespace render {
 struct LensFrame; // src/render/LensFrame.h
 }
 namespace insv {
-struct BlurQuad;       // src/insv/BlurQuads.h
-struct SeamCorrection; // src/insv/SeamCorrection.h
-struct LensColour;     // src/insv/LensColour.h
+struct BlurQuad;       // orbis-core/stitch/BlurQuads.h
+struct SeamCorrection; // orbis-core/stitch/SeamCorrection.h
+struct LensColour;     // orbis-core/stitch/LensColour.h
 }
 
 namespace stitch {
@@ -103,7 +103,7 @@ struct PreviewStitchConfig {
     bool seamColourBlend = true;
     bool seamColourBlendOn() const { return method == Method::New && seamColourBlend; }
 
-    // The new stitcher's seam flow (insv/SeamFlow.h): near things crossing
+    // The new stitcher's seam flow (orbis-core/stitch/SeamFlow.h): near things crossing
     // the seam joined up by optical flow between the lenses in the overlap,
     // the rest kept at the template's geometry; each frame's flow averaged
     // with the few frames before it (which SeekTo measures first). Only
@@ -216,7 +216,7 @@ struct Frame {
 // Serves stitched equirect frames from an Insta360 .insv file for interactive
 // playback/scrubbing.
 //
-// The implementation (stitch::NativeStitchSource, src/insv/) does true
+// The implementation (stitch::NativeStitchSource, lib/orbis-core/) does true
 // frame-at-time-T stitching in-process: Open() only parses the calibration
 // trailer and opens the demux, then SeekTo()/ReadFrame()/GetFrame() decode the
 // lens pair at the requested time and stitch on demand (Vulkan compute, with a

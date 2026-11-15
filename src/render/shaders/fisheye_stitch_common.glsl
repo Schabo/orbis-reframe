@@ -24,7 +24,7 @@
 // texture at SEAM_FLOW_BINDING (6 unless the includer says otherwise: the
 // viewport has its lens planes at 1-4); used when P.seamFlow.x != 0.
 //
-// The privacy blur's cell colours (insv/BlurQuads.h; RGBA16F, a row of
+// The privacy blur's cell colours (orbis-core/stitch/BlurQuads.h; RGBA16F, a row of
 // BLUR_CELLS_PER_QUAD per quad) are the texture at BLUR_CELL_BINDING (8
 // unless the includer says otherwise: the viewport has them at 6), written
 // by pass 5 through the storage image at 9 before the frame's other passes
@@ -853,7 +853,7 @@ vec3 blendLenses(vec3 dir)
     return wsum > 1e-6 ? acc / wsum : vec3(0.0);
 }
 
-// Privacy blur (insv/BlurQuads.h, mirrored there and in
+// Privacy blur (orbis-core/stitch/BlurQuads.h, mirrored there and in
 // FisheyeStitcher::renderEquirect): inside a blur quad the colour is the
 // bilinear mix of the quad's cell colours (pass 5, each the mean of
 // BLUR_CELL_TAPS^2 directions spread over its cell), faded into the picture

@@ -2,7 +2,7 @@
 
 #include "NativeStitchSource.h" // stitch::DualFisheyeStitchSetup
 
-#include <Calibration.h>
+#include <orbis-core/insta360/Calibration.h>
 
 namespace stitch {
 

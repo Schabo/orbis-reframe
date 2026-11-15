@@ -3,7 +3,7 @@
 #include "ChartBoard.h"
 
 #include <ClipMetadata.h>
-#include <FisheyeProjection.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
 
 #include <opencv2/core.hpp>
 

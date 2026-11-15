@@ -3,7 +3,7 @@
 // its index, decoded as one lens pair -- in step, after seeks, to the end,
 // and in the order the lenses are given. Exit code is the failure count.
 
-#include "InsvDemux.h"
+#include <orbis-core/media/InsvDemux.h>
 #include "support/TestMedia.h"
 
 #include <cmath>

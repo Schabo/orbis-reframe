@@ -1,8 +1,8 @@
 # Third-party components
 
 orbis-reframe is licensed under the GNU General Public License v3.0 or later
-(`LICENSE`); the `.insv` library in `src/insv/` under MIT OR Apache-2.0
-(`src/insv/LICENSE-MIT`, `src/insv/LICENSE-APACHE`). This file lists what
+(`LICENSE`); the orbis-core library in `lib/orbis-core/` under MIT OR Apache-2.0
+(`lib/orbis-core/LICENSE-MIT`, `lib/orbis-core/LICENSE-APACHE`). This file lists what
 else goes into the program and its packages, under which license, and where
 the license text is.
 
@@ -10,7 +10,7 @@ Paths are given in the source tree. In the packages (`/usr` for the `.deb`,
 the unpacked folder for the tarball, `usr/` inside the AppImage) they are in
 `share/doc/orbis-reframe/`:
 this file, `LICENSE`, `LICENSE.lucide`, and `licenses/` (ncnn, nlohmann/json,
-miniaudio, and `src/insv/`'s two as `insv-LICENSE-MIT` /
+miniaudio, and `lib/orbis-core/`'s two as `insv-LICENSE-MIT` /
 `insv-LICENSE-APACHE`). The
 models' licenses are next to each model, in
 `share/orbis-reframe/models/<model>/`.
@@ -140,7 +140,7 @@ The projects the `.insv` format knowledge came from (telemetry-parser /
 Gyroflow, ExifTool, insv-stitch) and the published methods the code
 implements (the MEI fisheye camera model, the Mahony complementary filter,
 OpenCV's CSRT tracker) are credited in `README.md` ("Sources and thanks").
-No code was copied from them: the `src/insv/` parser is written from the
+No code was copied from them: the `lib/orbis-core/` parser is written from the
 documented layouts (`docs/formats/insta360-x5.md`).
 
 Insta360, Insta360 Studio and X5 are trademarks of Arashi Vision Inc. This

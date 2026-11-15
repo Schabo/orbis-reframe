@@ -4,6 +4,9 @@ Command-line tools for checking, measuring and debugging the pieces of
 orbis-reframe on real `.insv` clips. They use the same code as the app, but
 without the user interface. They're for development only: `scripts/build.sh`
 builds them into `build/`, and the release packages don't include them.
+`insv_trailer_dump` and `insv_stitch` build on the orbis-core library
+alone, so their sources are with it, in `lib/orbis-core/tools/`; the rest
+are here.
 
 Run a tool with `--help` to see all of its options. This page says what
 each tool is for and when you'd reach for it. The examples use clips from
@@ -68,7 +71,7 @@ turns those into video time, by the capture scale in slow motion and a
 timelapse.
 
 **When:** a clip behaves oddly (stitch, sync, stabilization, GPS) and you want
-to see what the camera recorded; or when working on `src/insv/InsvTrailer`.
+to see what the camera recorded; or when working on `lib/orbis-core/orbis-core/insta360/InsvTrailer`.
 `docs/formats/insta360-x5.md` explains the fields.
 
 ```sh
@@ -80,8 +83,8 @@ build/insv_trailer_dump timelapse.insv --quats > quats.txt
 
 ## insv_stitch
 
-Stitches one frame into an equirect with the CPU stitcher in `src/insv/`
-alone. No Qt, no Vulkan. This is the reference the GPU stitch is checked
+Stitches one frame into an equirect with the CPU stitcher in orbis-core
+(`lib/orbis-core/`) alone. No Qt, no Vulkan. This is the reference the GPU stitch is checked
 against, and the app's fallback. It can also measure the seam between the
 two lenses:
 - `--measure-seam IN OUT` fits the seam correction (lens-1 rotation, its

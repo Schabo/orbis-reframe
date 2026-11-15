@@ -1,7 +1,7 @@
 # DeepFilterNet 3 (ONNX)
 
 The speech-enhancement model behind the "Voice only" and "Voice + ambience"
-noise modes (`src/insv/VoiceIsolator`).
+noise modes (`lib/orbis-core/orbis-core/audio/VoiceIsolator`).
 
 - Source: <https://github.com/Rikorose/DeepFilterNet>,
   `models/DeepFilterNet3_onnx.tar.gz` (repository commit `84d57ec`,

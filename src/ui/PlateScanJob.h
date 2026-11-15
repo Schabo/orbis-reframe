@@ -14,8 +14,8 @@
 #include <PlateScanner.h> // privacy::FollowResult
 
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
-#include <LensColour.h>     // insv::LensColour
-#include <SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>     // insv::LensColour
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
 
 #include <atomic>
 #include <cstdint>

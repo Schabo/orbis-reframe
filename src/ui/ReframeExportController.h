@@ -5,12 +5,12 @@
 #include <QObject>
 #include <QString>
 
-#include <AudioMixer.h>     // insv::MixClip (Request::mix)
+#include <orbis-core/audio/AudioMixer.h>     // insv::MixClip (Request::mix)
 #include <InsetCompositor.h> // exportpipe::InsetClipJob (Request::insets)
-#include <GyroStabilizer.h> // insv::GyroStabilizer (ClipJob::stab)
+#include <orbis-core/stab/GyroStabilizer.h> // insv::GyroStabilizer (ClipJob::stab)
 #include <IStitchSource.h>  // stitch::CaptureTiming
-#include <LensColour.h>     // insv::LensColour (ClipJob::lensColour)
-#include <SeamCorrection.h> // insv::SeamCorrection (ClipJob::seamCorrection)
+#include <orbis-core/stitch/LensColour.h>     // insv::LensColour (ClipJob::lensColour)
+#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection (ClipJob::seamCorrection)
 #include <PaneLayout.h>     // pane::Split (ClipJob::split)
 
 #include <ReframeRenderer.h> // exportpipe::PaneView

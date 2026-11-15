@@ -28,7 +28,7 @@
 
 #include <LensFrame.h>
 #include <NativeStitchSource.h>
-#include <VulkanVideoDecoder.h>
+#include <orbis-core/media/VulkanVideoDecoder.h>
 
 #include <vulkan/vulkan.h>
 

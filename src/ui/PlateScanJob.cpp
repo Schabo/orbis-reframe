@@ -3,7 +3,7 @@
 #include <PlateScanner.h>
 #include <StitchFrameSource.h>
 
-#include <GyroStabilizer.h>
+#include <orbis-core/stab/GyroStabilizer.h>
 #include <ClipMetadata.h>
 #include <NativeStitchSource.h>
 #include <VulkanHwDevice.h> // core::waitForGpuRoom

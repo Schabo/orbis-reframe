@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
 #include <MediaInfo.h>   // camera::MediaInfo
 
 #include "PrivacyBlur.h"              // PrivacyBlur

@@ -11,7 +11,7 @@
 #include <utility>
 
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader::probe
-#include <InsvAudioDemux.h>  // insv::InsvAudioDemux
+#include <orbis-core/audio/InsvAudioDemux.h>  // insv::InsvAudioDemux
 
 #include "../core/MediaPool.h"
 #include "../core/Project.h"

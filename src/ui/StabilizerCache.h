@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
 #include <IStitchSource.h>  // stitch::CaptureTiming
 
 #include "PlaybackController.h" // PlaybackController::StabProvider

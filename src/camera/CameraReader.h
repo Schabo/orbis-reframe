@@ -2,7 +2,7 @@
 
 #include "ClipMetadata.h"
 
-#include <InsvDemux.h> // insv::InsvStreamInfo
+#include <orbis-core/media/InsvDemux.h> // insv::InsvStreamInfo
 
 #include <optional>
 #include <string>

@@ -9,9 +9,9 @@
 
 #include "VulkanFisheyeStitcher.h"
 
-#include <Calibration.h>
-#include <FisheyeProjection.h>
-#include <Image.h>
+#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/Image.h>
 
 #include <algorithm>
 #include <cmath>

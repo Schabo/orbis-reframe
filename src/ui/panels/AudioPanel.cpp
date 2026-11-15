@@ -2,7 +2,7 @@
 
 #include "../../core/AudioLimits.h"
 
-#include <NoiseFilter.h> // insv::voiceModesReady
+#include <orbis-core/audio/NoiseFilter.h> // insv::voiceModesReady
 
 #include <QApplication>
 #include <QCheckBox>

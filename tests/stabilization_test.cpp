@@ -6,8 +6,8 @@
 
 #include "support/ModelTest.h"
 
-#include <InsvImu.h>    // insv::MakeInsvImuTrack
-#include <InsvModels.h> // insv::FindInsvModel
+#include <orbis-core/insta360/InsvImu.h>    // insv::MakeInsvImuTrack
+#include <orbis-core/insta360/InsvModels.h> // insv::FindInsvModel
 
 #include <QCoreApplication>
 

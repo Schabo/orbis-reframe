@@ -7,7 +7,7 @@
 #include <QStringList>
 #include <QThreadPool>
 
-#include <AudioPeaks.h> // insv::AudioPeaks
+#include <orbis-core/audio/AudioPeaks.h> // insv::AudioPeaks
 
 #include <atomic>
 #include <memory>

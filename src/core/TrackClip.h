@@ -5,7 +5,7 @@
 #include "KeyTrack.h" // keytrack::Ease
 #include "Gauge.h"
 #include "Title.h"
-#include <NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
+#include <orbis-core/audio/NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
 
 #include <QList>
 #include <QString>

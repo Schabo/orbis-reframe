@@ -111,9 +111,10 @@ By contributing, you agree that your contribution is licensed under the
 project's licenses:
 
 - the application: [GNU General Public License v3.0 or later](LICENSE);
-- the `.insv` library in [`src/insv/`](src/insv/): MIT OR Apache-2.0, at
-  the user's option ([`LICENSE-MIT`](src/insv/LICENSE-MIT),
-  [`LICENSE-APACHE`](src/insv/LICENSE-APACHE)).
+- the orbis-core library in [`lib/orbis-core/`](lib/orbis-core/): MIT OR
+  Apache-2.0, at the user's option
+  ([`LICENSE-MIT`](lib/orbis-core/LICENSE-MIT),
+  [`LICENSE-APACHE`](lib/orbis-core/LICENSE-APACHE)).
 
 Third-party code or models need a license compatible with these. Add them
 to [`THIRD_PARTY.md`](THIRD_PARTY.md) with their license text.

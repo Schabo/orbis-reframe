@@ -6,12 +6,12 @@
 
 #include <ColorLut.h>          // color::Grade
 #include <ViewProjection.h>    // view::Pose
-#include <FisheyeProjection.h> // insv::StitchGpuParams (value member below)
-#include <FramePts.h>          // insv::FramePts
-#include <SeamWindow.h>        // insv::SeamWindow (value member below)
-#include <SeamColourBlend.h>   // insv::SeamColourBlend (value member below)
-#include <SeamFade.h>          // insv::SeamFadeWindow (value member below)
-#include <SeamFlow.h>          // insv::SeamFlowWindow (value member below)
+#include <orbis-core/stitch/FisheyeProjection.h> // insv::StitchGpuParams (value member below)
+#include <orbis-core/metadata/FramePts.h>          // insv::FramePts
+#include <orbis-core/stitch/SeamWindow.h>        // insv::SeamWindow (value member below)
+#include <orbis-core/stitch/SeamColourBlend.h>   // insv::SeamColourBlend (value member below)
+#include <orbis-core/stitch/SeamFade.h>          // insv::SeamFadeWindow (value member below)
+#include <orbis-core/stitch/SeamFlow.h>          // insv::SeamFlowWindow (value member below)
 
 #include <functional>
 #include <map>
@@ -61,7 +61,7 @@ struct ReadTiming {
     double seamMs = 0.0;        // depth-aware seam: cost pass + solve (0 when off)
 };
 
-// IStitchSource implemented entirely on the cleanroom src/insv/ module:
+// IStitchSource implemented entirely on the cleanroom orbis-core library (lib/orbis-core/):
 // the clip's description (camera::ReadClipMetadata) -> insv::InsvDemux (2 lens streams) ->
 // insv::FisheyeStitcher, all in-process, with true frame-at-time-T random
 // access. This is the only IStitchSource backend.

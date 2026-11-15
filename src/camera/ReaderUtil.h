@@ -2,7 +2,7 @@
 
 #include "ClipMetadata.h"
 
-#include <Image.h>
+#include <orbis-core/Image.h>
 
 #include <string>
 

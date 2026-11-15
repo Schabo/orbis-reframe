@@ -2,13 +2,13 @@
 
 #include "ReaderUtil.h"
 
-#include <Calibration.h>
-#include <FisheyeProjection.h>
-#include <InsvImu.h>
-#include <InsvModels.h>
-#include <InsvTrailer.h>
-#include <LensDemuxer.h>
-#include <StillPicture.h>
+#include <orbis-core/insta360/Calibration.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/insta360/InsvImu.h>
+#include <orbis-core/insta360/InsvModels.h>
+#include <orbis-core/insta360/InsvTrailer.h>
+#include <orbis-core/media/LensDemuxer.h>
+#include <orbis-core/media/StillPicture.h>
 
 #include <algorithm>
 #include <cmath>

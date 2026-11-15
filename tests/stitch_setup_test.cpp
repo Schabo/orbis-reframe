@@ -9,8 +9,8 @@
 #include "NativeStitchSource.h"
 
 #include <ClipMetadata.h>
-#include <FisheyeProjection.h>
-#include <InsvModels.h>
+#include <orbis-core/stitch/FisheyeProjection.h>
+#include <orbis-core/insta360/InsvModels.h>
 
 #include <algorithm>
 #include <cmath>

@@ -3,7 +3,7 @@
 #include "DjiReader.h"
 #include "Insta360Reader.h"
 
-#include <LensDemuxer.h>
+#include <orbis-core/media/LensDemuxer.h>
 
 #include <algorithm>
 #include <cstdio>

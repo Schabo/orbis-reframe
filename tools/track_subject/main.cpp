@@ -25,7 +25,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include <GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
+#include <orbis-core/stab/GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
 #include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource
 #include <ProbeClip.h>          // stitch::ProbeClip

@@ -7,7 +7,7 @@
 #include <PlateScanner.h>
 #include <StitchFrameSource.h>
 
-#include <GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
+#include <orbis-core/stab/GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
 #include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource
 #include <ProbeClip.h>          // stitch::ProbeClip

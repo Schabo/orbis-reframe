@@ -3,16 +3,16 @@
 #include "../core/Log.h"
 #include "ClipSeamAnalysis.h"
 
-#include <Calibration.h>           // insv::InsvCalibration
-#include <FisheyeProjection.h>     // insv::FisheyeStitcher, insv::StitchParams
-#include <Image.h>                 // insv::Image
-#include <InsvDemux.h>             // insv::InsvDemux
-#include <SeamFlow.h>              // insv::SeamFlowStrips, MeasureSeamFlowStrips
+#include <orbis-core/insta360/Calibration.h>           // insv::InsvCalibration
+#include <orbis-core/stitch/FisheyeProjection.h>     // insv::FisheyeStitcher, insv::StitchParams
+#include <orbis-core/Image.h>                 // insv::Image
+#include <orbis-core/media/InsvDemux.h>             // insv::InsvDemux
+#include <orbis-core/stitch/SeamFlow.h>              // insv::SeamFlowStrips, MeasureSeamFlowStrips
 #ifdef ORBIS_SEAM_FLOW
-#include <SeamFlowEstimator.h>     // insv::SeamFlowEstimator (OpenCV)
+#include <orbis-core/stitch/SeamFlowEstimator.h>     // insv::SeamFlowEstimator (OpenCV)
 #endif
 #include <VulkanFisheyeStitcher.h> // render::VulkanFisheyeStitcher
-#include <VulkanVideoDecoder.h>    // insv::VulkanVideoDecoder (stage 2, GPU decode)
+#include <orbis-core/media/VulkanVideoDecoder.h>    // insv::VulkanVideoDecoder (stage 2, GPU decode)
 
 #include <algorithm>
 #include <chrono>
