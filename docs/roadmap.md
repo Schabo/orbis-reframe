@@ -41,6 +41,14 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    they're built: a few effects (graduated ND) run on the sphere before
    the reframe; room for the audio effects in the same tab; what preview
    costs (the viewport shows the same blur as the export).
+2. **Rename and reorganize `src/insv/`** (*maintainer*): the library
+   isn't `.insv`-specific any more -- DJI's `.OSV` metadata is read there
+   too, and most of it (lens models, the stitch's seam work, the
+   stabilizer, decode, audio) belongs to no one camera. It gets a new
+   name and namespace, a camera-agnostic core, and one folder per file
+   format. A pure refactor: stitched frames, stabilizer output and exports
+   stay identical. It comes before the library moves to its own
+   repository.
 
 Everything else planned is under *Planned, not scheduled* below.
 
