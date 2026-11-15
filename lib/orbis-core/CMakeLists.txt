@@ -8,13 +8,16 @@
 # what the app finds there: Threads, Vulkan, FFmpeg (FFMPEG_FOUND,
 # PkgConfig::FFMPEG) and OpenCV (OpenCV_FOUND, ORBIS_OPENCV_FEATURES). It
 # links none of the app's targets.
+#
+# Users link the orbis-core:: aliases (orbis-core::orbiscore, ::metadata,
+# ::media, ::optical), the names an installed package will export.
 
-# --- insv_trailer: file metadata and telemetry -- the .insv trailer
+# --- orbiscore_metadata: file metadata and telemetry -- the .insv trailer
 # (calibration + IMU / exposure / GPS records), DJI's djmd track, the IMU
 # and GPS types. No FFmpeg / Qt dependency. Its own tiny lib (rather than
-# folded into `insv`) so targets that only need trailer parsing don't pull
+# folded into `orbiscore`) so targets that only need trailer parsing don't pull
 # the rest of the library.
-add_library(insv_trailer STATIC
+add_library(orbiscore_metadata STATIC
     orbis-core/metadata/Gps.h
     orbis-core/metadata/Gps.cpp
     orbis-core/metadata/Imu.h
@@ -36,17 +39,18 @@ add_library(insv_trailer STATIC
     orbis-core/insta360/InsvModels.h
     orbis-core/insta360/InsvModels.cpp
 )
-target_include_directories(insv_trailer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(orbiscore_metadata PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(orbis-core::metadata ALIAS orbiscore_metadata)
 
 add_executable(insv_trailer_dump tools/insv_trailer_dump/main.cpp)
-target_link_libraries(insv_trailer_dump PRIVATE insv_trailer)
+target_link_libraries(insv_trailer_dump PRIVATE orbiscore_metadata)
 
-# --- insv: the core. GyroStabilizer + the stitch core: calibration-string
+# --- orbiscore: the core. GyroStabilizer + the stitch core: calibration-string
 # parse and the CPU fisheye->equirect projection. No Qt / Vulkan / FFmpeg --
-# consumes only the raw calibration string via insv_trailer. The app's
+# consumes only the raw calibration string via orbiscore_metadata. The app's
 # project model links this for GyroStabilizer, so it must stay
 # dependency-free.
-add_library(insv STATIC
+add_library(orbiscore STATIC
     orbis-core/stitch/BlurQuads.h
     orbis-core/stitch/BlurQuads.cpp
     orbis-core/metadata/FramePts.h
@@ -80,14 +84,15 @@ add_library(insv STATIC
     orbis-core/Ycbcr.h
     orbis-core/Ycbcr.cpp
 )
-target_include_directories(insv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(insv PUBLIC insv_trailer Threads::Threads)
+target_include_directories(orbiscore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(orbiscore PUBLIC orbiscore_metadata Threads::Threads)
+add_library(orbis-core::orbiscore ALIAS orbiscore)
 
-# --- insv_demux: the FFmpeg-dependent piece (decode a fisheye frame from a
+# --- orbiscore_media: the FFmpeg-dependent piece (decode a fisheye frame from a
 # clip at time T, and the audio). Separate lib so the projection/gyro core
 # above stays dependency-free. No Qt.
 if(FFMPEG_FOUND)
-    add_library(insv_demux STATIC
+    add_library(orbiscore_media STATIC
         orbis-core/media/InsvDemux.h
         orbis-core/media/InsvDemux.cpp
         # The demux / decode / seek core of InsvDemux and VulkanVideoDecoder.
@@ -127,8 +132,9 @@ if(FFMPEG_FOUND)
         orbis-core/audio/AudioPeaks.h
         orbis-core/audio/AudioPeaks.cpp
     )
-    target_include_directories(insv_demux PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(insv_demux PUBLIC insv Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG)
+    target_include_directories(orbiscore_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(orbiscore_media PUBLIC orbiscore Vulkan::Vulkan PRIVATE PkgConfig::FFMPEG)
+    add_library(orbis-core::media ALIAS orbiscore_media)
 
     # The "Voice only" / "Voice + ambience" noise modes: DeepFilterNet 3
     # (resources/models/deepfilternet3) run with ONNX Runtime -- optional
@@ -143,10 +149,10 @@ if(FFMPEG_FOUND)
         HINTS ${ONNXRUNTIME_ROOT}/lib ${ONNXRUNTIME_ROOT}/lib/x86_64-linux-gnu)
     if(ONNXRUNTIME_INCLUDE_DIR)
         message(STATUS "ONNX Runtime headers: ${ONNXRUNTIME_INCLUDE_DIR} -- voice noise modes on")
-        target_sources(insv_demux PRIVATE orbis-core/audio/VoiceIsolator.h orbis-core/audio/VoiceIsolator.cpp)
-        target_include_directories(insv_demux PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
-        target_link_libraries(insv_demux PRIVATE ${CMAKE_DL_LIBS})
-        target_compile_definitions(insv_demux PUBLIC ORBISCORE_HAVE_VOICE)
+        target_sources(orbiscore_media PRIVATE orbis-core/audio/VoiceIsolator.h orbis-core/audio/VoiceIsolator.cpp)
+        target_include_directories(orbiscore_media PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+        target_link_libraries(orbiscore_media PRIVATE ${CMAKE_DL_LIBS})
+        target_compile_definitions(orbiscore_media PUBLIC ORBISCORE_HAVE_VOICE)
         # The headers' ORT_API_VERSION is the runtime's 1.x minor version,
         # after which Debian names it: libonnxruntime1.23, .so.1.23 (Debian
         # 13: 1.21). The .deb's Depends and the "install it" hint use it,
@@ -156,7 +162,7 @@ if(FFMPEG_FOUND)
         string(REGEX MATCH "[0-9]+$" ORT_API_MINOR "${ORT_API_LINE}")
         set(ORBIS_ORT_PACKAGE libonnxruntime1.${ORT_API_MINOR})
         set(ORBIS_ORT_PACKAGE ${ORBIS_ORT_PACKAGE} PARENT_SCOPE)
-        target_compile_definitions(insv_demux PUBLIC ORBISCORE_ORT_PACKAGE="${ORBIS_ORT_PACKAGE}")
+        target_compile_definitions(orbiscore_media PUBLIC ORBISCORE_ORT_PACKAGE="${ORBIS_ORT_PACKAGE}")
         # The library found here is tried first (an ONNXRUNTIME_ROOT copy
         # isn't on the loader's path). A bundle that carries its own (the
         # AppImage) turns it off, so the bundled one loads, not the build
@@ -164,28 +170,28 @@ if(FFMPEG_FOUND)
         option(ORBIS_ORT_BUILD_PATH
             "Try the ONNX Runtime library found at build time before the loader's search" ON)
         if(ONNXRUNTIME_LIBRARY AND ORBIS_ORT_BUILD_PATH)
-            target_compile_definitions(insv_demux PRIVATE
+            target_compile_definitions(orbiscore_media PRIVATE
                 ORBISCORE_ORT_LIBRARY="${ONNXRUNTIME_LIBRARY}")
         endif()
     else()
         message(STATUS "ONNX Runtime not found (libonnxruntime-dev) -- voice noise modes off")
     endif()
 
-    # --- tools/insv_stitch: smoke CLI. Turns an .insv into an equirect
+    # --- tools/orbis_stitch: smoke CLI. Turns an .insv into an equirect
     # through this library alone -- the standalone proof that it builds and
-    # works without the app. Links insv + insv_demux + insv_trailer, nothing
-    # else.
-    add_executable(insv_stitch tools/insv_stitch/main.cpp)
-    target_link_libraries(insv_stitch PRIVATE insv insv_demux insv_trailer)
+    # works without the app. Links orbiscore + orbiscore_media +
+    # orbiscore_metadata, nothing else.
+    add_executable(orbis_stitch tools/orbis_stitch/main.cpp)
+    target_link_libraries(orbis_stitch PRIVATE orbiscore orbiscore_media orbiscore_metadata)
 endif()
 
-# --- insv_optical: the OpenCV-dependent piece -- residual 2-D
+# --- orbiscore_optical: the OpenCV-dependent piece -- residual 2-D
 # stabilization (ResidualPanEstimator: feature tracking + optical flow -> a
 # per-frame yaw/pitch correction), the gyro sync's fine-tune and the CPU
 # seam flow. Separate lib so the core stays OpenCV-free; the apply side
 # (ResidualTrack::sample) is header-only in ResidualStab.h.
 if(OpenCV_FOUND)
-    add_library(insv_optical STATIC
+    add_library(orbiscore_optical STATIC
         orbis-core/stab/ResidualStab.h
         orbis-core/stab/ResidualPanEstimator.h
         orbis-core/stab/ResidualPanEstimator.cpp
@@ -194,15 +200,16 @@ if(OpenCV_FOUND)
         orbis-core/stitch/SeamFlowEstimator.h
         orbis-core/stitch/SeamFlowEstimator.cpp
     )
-    target_include_directories(insv_optical PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${OpenCV_INCLUDE_DIRS})
-    target_link_libraries(insv_optical PUBLIC insv
+    target_include_directories(orbiscore_optical PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(orbiscore_optical PUBLIC orbiscore
         PRIVATE opencv_core opencv_imgproc opencv_video ${ORBIS_OPENCV_FEATURES})
+    add_library(orbis-core::optical ALIAS orbiscore_optical)
 endif()
 
-# --- tests/insv_test: the stitch core (calibration parse, radial model,
+# --- tests/orbiscore_test: the stitch core (calibration parse, radial model,
 # linear algebra, FisheyeStitcher geometry, the trailer thumbnail). All
-# synthetic -- links only the dependency-free `insv` and `insv_trailer` libs,
-# no Qt / FFmpeg / .insv file needed.
-add_executable(insv_test tests/insv_test.cpp)
-target_link_libraries(insv_test PRIVATE insv insv_trailer)
-add_test(NAME insv_test COMMAND insv_test)
+# synthetic -- links only the dependency-free `orbiscore` and
+# `orbiscore_metadata` libs, no Qt / FFmpeg / .insv file needed.
+add_executable(orbiscore_test tests/orbiscore_test.cpp)
+target_link_libraries(orbiscore_test PRIVATE orbiscore orbiscore_metadata)
+add_test(NAME orbiscore_test COMMAND orbiscore_test)

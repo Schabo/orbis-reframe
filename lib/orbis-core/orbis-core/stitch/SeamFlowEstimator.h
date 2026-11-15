@@ -1,7 +1,7 @@
 #pragma once
 
 // The seam flow's estimate (SeamFlow.h): OpenCV's DIS optical flow between
-// the two lenses' strips, both ways. Part of insv_optical, so the stitch
+// the two lenses' strips, both ways. Part of orbiscore_optical, so the stitch
 // core stays OpenCV-free; without OpenCV there is no seam flow.
 
 #include <orbis-core/stitch/SeamFlow.h>

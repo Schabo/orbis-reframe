@@ -34,7 +34,7 @@
 // (one-sided), and the shift along the seam -- which parallax can't touch --
 // carries the principal point. A weak pull towards no correction keeps the
 // directions the clip's blocks don't pin down where they are.
-// Dependency-free (insv lib).
+// Dependency-free (orbiscore lib).
 
 namespace orbiscore {
 

@@ -26,7 +26,7 @@ namespace orbiscore {
 // because audio playback needs no fisheye video and no stitch path at all.
 // Always resamples/remixes to a fixed output format (see open()) so a caller
 // never has to handle format variation between clips. FFmpeg-only, no Qt --
-// lives in insv_demux next to InsvDemux for the same reason (the one
+// lives in orbiscore_media next to InsvDemux for the same reason (the one
 // FFmpeg-dependent piece of orbis-core).
 class InsvAudioDemux {
 public:

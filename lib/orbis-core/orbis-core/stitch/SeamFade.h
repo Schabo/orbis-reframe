@@ -28,7 +28,7 @@
 // does. Then spread and smoothed along the seam, so the fade's width
 // doesn't step from column to column. The strips are the raw ones, before
 // the flow's anchor pattern. Mirrored in seam_flow.comp's fade passes.
-// Dependency-free (insv lib).
+// Dependency-free (orbiscore lib).
 
 #include <orbis-core/stitch/FisheyeProjection.h> // kSeamDepthBins
 #include <orbis-core/stitch/SeamFlow.h>

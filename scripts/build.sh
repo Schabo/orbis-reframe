@@ -6,7 +6,7 @@
 # orbis-reframe / stitch gate on FFmpeg (+ Vulkan) only; CMake
 # prints a STATUS line and skips them if the FFmpeg dev packages are absent.
 # libavfilter-dev is among them (atempo time-stretch for clip speed).
-# OpenCV (libopencv-dev) -> insv_optical (the new stitcher's seam flow, the
+# OpenCV (libopencv-dev) -> orbiscore_optical (the new stitcher's seam flow, the
 # sync fine-tune) + tools/residual_stab, optional; its objdetect module ->
 # lens calibration (src/calib/, "Calibrate lenses" in the Stitching panel,
 # tools/lens_calib). Subject tracking (src/track/ -> "Track subject" in the
@@ -31,7 +31,7 @@
 #
 # Clips are read through `camera` (src/camera/: the common clip description,
 # a reader per camera family). Stitching is stitch::NativeStitchSource: the
-# clip's description -> the lib/orbis-core/ cleanroom core (insv + insv_demux, the
+# clip's description -> the lib/orbis-core/ cleanroom core (orbiscore + orbiscore_media, the
 # latter carrying the Vulkan-video decoder) + render_gpu_stitch (the Vulkan
 # compute stitch: src/render/VulkanFisheyeStitcher +
 # shaders/fisheye_stitch{,_nv12}.comp). The all-GPU path (Vulkan video decode +

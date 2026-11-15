@@ -15,9 +15,9 @@
 // on top of (after) the gyro de-rotation. It does NOT fix near-field parallax
 // -- that needs depth + view synthesis (a stretch goal).
 //
-// The estimator (ResidualPanEstimator) needs OpenCV and lives in insv_optical.
+// The estimator (ResidualPanEstimator) needs OpenCV and lives in orbiscore_optical.
 // ResidualTrack is the OpenCV-free result that playback / export sample -- it
-// is header-only so consumers need not link insv_optical to apply a track.
+// is header-only so consumers need not link orbiscore_optical to apply a track.
 //
 // It works on the gyro-de-rotated feature directions; an image-based
 // rotation solve was ruled out.

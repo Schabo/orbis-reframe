@@ -46,7 +46,7 @@
 // Only the frames before it, so playback has them as it plays, and a seek
 // measures that window before the frame it goes to (stitch::
 // NativeStitchSource::SeekTo): every path stitches a frame the same way.
-// Dependency-free (insv lib).
+// Dependency-free (orbiscore lib).
 
 namespace orbiscore {
 

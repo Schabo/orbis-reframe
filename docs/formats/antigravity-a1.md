@@ -200,7 +200,7 @@ Markers as in [`README.md`](README.md).
   in front along its own axis as on the X5: the depth-aware seam lines up
   houses, poles and wires along the horizon when the drone flies low
   (`_011` at 1 s, confidence 0.89), and with the sign flipped
-  (`insv_stitch --baseline -0.0711`) they double again.
+  (`orbis_stitch --baseline -0.0711`) they double again.
 - ✅ **A low sun on the seam** (2026-10-30, `_021` at 60-70.4 s, flying
   high toward a setting sun): the up lens sees the sun at its rim with its
   own glare and rays, the down lens a weaker, different flare. Matched as

@@ -297,7 +297,7 @@ void testGps(const std::filesystem::path& dir)
     }
     const Take unaligned = take("gps_no98", 0);
     CHECK(camera::ReadClipMetadata(unaligned.lead));
-    // The trailer's IMU spans 200 us, less than a step of motion (insv_test
+    // The trailer's IMU spans 200 us, less than a step of motion (orbiscore_test
     // has BuildMotion on a ride).
     CHECK(tele.motion.empty());
     CHECK(!camera::ReadClipTelemetry(unaligned.lead).gps);

@@ -86,7 +86,7 @@ These come from reviews; a pull request that breaks one is sent back.
   `ctest`); `./scripts/build.sh -r` starts the app. Toolchain and versions:
   [`docs/dev-environment.md`](docs/dev-environment.md).
 - Check on real clips with the tools in [`tools/README.md`](tools/README.md)
-  (`reframe_export`, `insv_stitch`, `view_compare`, `insv_trailer_dump`, ...)
+  (`reframe_export`, `orbis_stitch`, `view_compare`, `insv_trailer_dump`, ...)
   and say in the PR which clips and which GPU you used.
 - Use `tmp/` in the repository for scratch files, not `/tmp`.
 - Match the code around the change: naming, formatting, comment density.

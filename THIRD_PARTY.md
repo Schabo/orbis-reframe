@@ -10,8 +10,8 @@ Paths are given in the source tree. In the packages (`/usr` for the `.deb`,
 the unpacked folder for the tarball, `usr/` inside the AppImage) they are in
 `share/doc/orbis-reframe/`:
 this file, `LICENSE`, `LICENSE.lucide`, and `licenses/` (ncnn, nlohmann/json,
-miniaudio, and `lib/orbis-core/`'s two as `insv-LICENSE-MIT` /
-`insv-LICENSE-APACHE`). The
+miniaudio, and `lib/orbis-core/`'s two as `orbis-core-LICENSE-MIT` /
+`orbis-core-LICENSE-APACHE`). The
 models' licenses are next to each model, in
 `share/orbis-reframe/models/<model>/`.
 

@@ -4,7 +4,7 @@ Command-line tools for checking, measuring and debugging the pieces of
 orbis-reframe on real `.insv` clips. They use the same code as the app, but
 without the user interface. They're for development only: `scripts/build.sh`
 builds them into `build/`, and the release packages don't include them.
-`insv_trailer_dump` and `insv_stitch` build on the orbis-core library
+`insv_trailer_dump` and `orbis_stitch` build on the orbis-core library
 alone, so their sources are with it, in `lib/orbis-core/tools/`; the rest
 are here.
 
@@ -14,13 +14,13 @@ each tool is for and when you'd reach for it. The examples use clips from
 
 The tools that open a clip the way the app does -- `stitch_source_smoke`,
 `playback_bench`, `view_compare` and `reframe_export` among them -- take a
-DJI Avata 360 `.OSV` as well. `insv_trailer_dump` and `insv_stitch` read
+DJI Avata 360 `.OSV` as well. `insv_trailer_dump` and `orbis_stitch` read
 Insta360's trailer themselves, so they take `.insv` files only.
 
 | Tool | Use it to… | Needs |
 |---|---|---|
 | [`insv_trailer_dump`](#insv_trailer_dump) | see what's inside a clip's metadata trailer | — |
-| [`insv_stitch`](#insv_stitch) | stitch a frame on the CPU, or measure the lens seam | FFmpeg |
+| [`orbis_stitch`](#orbis_stitch) | stitch a frame on the CPU, or measure the lens seam | FFmpeg |
 | [`stitch_source_smoke`](#stitch_source_smoke) | check that the app's stitch, seek and decode work | GPU |
 | [`playback_bench`](#playback_bench) | time each step of playback and export | GPU |
 | [`view_compare`](#view_compare) | compare the direct view render with the equirect path | GPU |
@@ -81,7 +81,7 @@ build/insv_trailer_dump clip.insv --gps > gps.txt
 build/insv_trailer_dump timelapse.insv --quats > quats.txt
 ```
 
-## insv_stitch
+## orbis_stitch
 
 Stitches one frame into an equirect with the CPU stitcher in orbis-core
 (`lib/orbis-core/`) alone. No Qt, no Vulkan. This is the reference the GPU stitch is checked
@@ -120,12 +120,12 @@ two lenses:
 checking that the `.insv` library works on its own.
 
 ```sh
-build/insv_stitch clip.insv --time-ms 5000 --eq-width 3840 --out eq.ppm
-build/insv_stitch clip.insv --time-ms 5000 --lens-profile ProtectorA --depth-dump
-build/insv_stitch clip.insv --measure-seam 0 10000
-build/insv_stitch clip.insv --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 \
+build/orbis_stitch clip.insv --time-ms 5000 --eq-width 3840 --out eq.ppm
+build/orbis_stitch clip.insv --time-ms 5000 --lens-profile ProtectorA --depth-dump
+build/orbis_stitch clip.insv --measure-seam 0 10000
+build/orbis_stitch clip.insv --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 \
     --seam-frames 16 --seam-offset 500 9500
-build/insv_stitch clip.insv --lens-profile ProtectorA \
+build/orbis_stitch clip.insv --lens-profile ProtectorA \
     --seam -0.15,0.28,0.01,-0.077,-0.029,-0.072 --lens-colour 0 60000
 ```
 
@@ -138,7 +138,7 @@ STEP` reads a run of frames instead and writes one every STEP ms.
 `--measure-seam IN OUT` measures the seam correction as the app does and
 stitches with it; `--seam Y,P,R[,CU,CV,S]` stitches with a given one.
 `--lens-colour IN OUT` and `--colour R,G,B[,SR,SG,SB]` do the same for the
-lens colour (as `insv_stitch`'s; measured after the seam, with it).
+lens colour (as `orbis_stitch`'s; measured after the seam, with it).
 `--no-depth-seam` and `--new-stitcher` pick the stitcher (as the Stitching
 section's *Stitcher*; default the depth-aware seam; `--no-seam-colour-blend`
 and `--no-seam-flow` turn the new one's seam colour blend and seam flow

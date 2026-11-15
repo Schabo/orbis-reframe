@@ -301,7 +301,7 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
   41`, flag 134144 (0x20C00).
 - The `original_` copies (17, 55, 56) equal the working ones.
 - ✅ **The stitch takes it as the X5's string** (checked 2026-10-21 on
-  `_001`, `insv_stitch --lens1`): `cx / cy` scaled by 2880 / 3040 (half the
+  `_001`, `orbis_stitch --lens1`): `cx / cy` scaled by 2880 / 3040 (half the
   6080 frame), `fx / fy` by 2880 / field 27's dst 2880, and the same roll
   handling as the X5 (the stored roll less 90°). The stitched frame is
   continuous. Not yet compared with Insta360 Studio's stitch of the same

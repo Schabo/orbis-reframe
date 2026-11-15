@@ -123,7 +123,7 @@ if(NOT FFMPEG_FOUND)
         " libavformat-dev libavutil-dev libswscale-dev libswresample-dev)")
 endif()
 
-# --- OpenCV: optional. Drives residual 2-D stabilization (insv_optical +
+# --- OpenCV: optional. Drives residual 2-D stabilization (orbiscore_optical +
 # tools/residual_stab). Same "build it
 # only if present" pattern as the FFmpeg check above. Deliberately only
 # core/imgproc/video -- NOT cv::VideoCapture: opencv_videoio drags in GStreamer
@@ -132,7 +132,7 @@ endif()
 find_package(OpenCV QUIET COMPONENTS core imgproc video)
 if(NOT OpenCV_FOUND)
     message(STATUS "OpenCV not found (sudo apt install libopencv-dev)"
-        " -- skipping insv_optical and tools/residual_stab")
+        " -- skipping orbiscore_optical and tools/residual_stab")
 endif()
 # OpenCV 5 moved what we use out of two modules: goodFeaturesToTrack from
 # imgproc into `features`, findHomography / estimateAffinePartial2D from
@@ -219,12 +219,12 @@ target_link_libraries(audio_output PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
 add_library(view_projection INTERFACE src/core/ViewProjection.h)
 target_include_directories(view_projection INTERFACE src/core)
 
-# --- orbis_core: the src/core edit model (ClipItem, Timeline, Project, ...).
+# --- reframe_model: the src/core edit model (ClipItem, Timeline, Project, ...).
 # Qt Core + JSON only -- no FFmpeg / Vulkan -- so the model tests build
 # without the FFmpeg block below. src/stitch and src/privacy are on the path
 # for the header-only POD settings Project.h / ClipItem.h store
 # (stitch::PreviewStitchConfig, privacy::BlurAddition / BlurRemoval).
-add_library(orbis_core STATIC
+add_library(reframe_model STATIC
     src/core/AudioLimits.h
     src/core/Autosave.cpp
     src/core/Autosave.h
@@ -269,9 +269,10 @@ add_library(orbis_core STATIC
     src/core/TitleClock.h
     src/core/Transition.h
 )
-set_target_properties(orbis_core PROPERTIES AUTOMOC ON)
-target_include_directories(orbis_core PUBLIC src/core src/stitch src/privacy)
-target_link_libraries(orbis_core PUBLIC Qt6::Core nlohmann_json::nlohmann_json insv color_lut
+set_target_properties(reframe_model PROPERTIES AUTOMOC ON)
+target_include_directories(reframe_model PUBLIC src/core src/stitch src/privacy)
+target_link_libraries(reframe_model PUBLIC Qt6::Core nlohmann_json::nlohmann_json
+    orbis-core::orbiscore color_lut
     view_projection clip_effects PRIVATE zip_reader)
 
 # --- privacy_data: the privacy blur's plate-scan result + its cache file
@@ -284,12 +285,12 @@ add_library(privacy_data STATIC
     src/privacy/BlurRemoval.h
 )
 target_include_directories(privacy_data PUBLIC src/privacy)
-target_link_libraries(privacy_data PUBLIC insv)
+target_link_libraries(privacy_data PUBLIC orbis-core::orbiscore)
 
 # --- render_gpu_stitch: headless Vulkan compute port of the lib/orbis-core/ CPU
 # fisheye->equirect stitch. Its own
 # VkInstance/VkDevice so it works from a CLI tool or inside the Qt app. Links
-# Vulkan + insv (for orbiscore::StitchGpuParams, the shared geometry struct) only --
+# Vulkan + orbiscore (for orbiscore::StitchGpuParams, the shared geometry struct) only --
 # no Qt, no FFmpeg. Consumed by NativeStitchSource via stitch.
 add_library(render_gpu_stitch STATIC
     src/render/LensFrame.h
@@ -304,7 +305,8 @@ add_library(render_gpu_stitch STATIC
     src/render/VulkanEffects.cpp
 )
 target_include_directories(render_gpu_stitch PUBLIC src/render)
-target_link_libraries(render_gpu_stitch PUBLIC insv color_lut view_projection Vulkan::Vulkan PRIVATE render_shaders)
+target_link_libraries(render_gpu_stitch PUBLIC orbis-core::orbiscore color_lut view_projection
+    Vulkan::Vulkan PRIVATE render_shaders)
 
 if(FFMPEG_FOUND)
     # --- vulkan_hw_device: the process's one FFmpeg Vulkan device, shared by
@@ -318,7 +320,7 @@ endif()
 # --- lib/orbis-core: the camera-file and sphere library (file metadata and
 # telemetry, lens models, seam work, stabilizer, decode, audio), with its
 # own CMakeLists.txt, tests and tools. Its binaries land next to the app's,
-# so build/insv_stitch etc. stay where they were.
+# so build/orbis_stitch etc. stay where they were.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 add_subdirectory(lib/orbis-core)
 
@@ -342,7 +344,8 @@ if(FFMPEG_FOUND)
     # decodes one audio stream (InsvAudioDemux) to WAV, runs the app's filters
     # on it and scores the result; run_all.sh adds DeepFilterNet / afftdn.
     add_executable(audio_filter_bench tools/audio_filter_bench/main.cpp)
-    target_link_libraries(audio_filter_bench PRIVATE insv_demux orbis_paths PkgConfig::FFMPEG)
+    target_link_libraries(audio_filter_bench PRIVATE orbis-core::media orbis_paths
+        PkgConfig::FFMPEG)
 endif()
 
 # --- src/stitch: the Stitch Integration Layer. IStitchSource is served entirely by
@@ -367,12 +370,13 @@ if(FFMPEG_FOUND)
         src/camera/MediaInfo.cpp
     )
     target_include_directories(camera PUBLIC src/camera)
-    target_link_libraries(camera PUBLIC insv insv_demux PRIVATE PkgConfig::FFMPEG)
+    target_link_libraries(camera PUBLIC orbis-core::orbiscore orbis-core::media
+        PRIVATE PkgConfig::FFMPEG)
 
     # --- stitch: IStitchSource + NativeStitchSource + the clip probe. Pulls
-    # in the lib/orbis-core/ cleanroom stitch core (insv + insv_demux, the latter
-    # carrying the Vulkan-video decoder) and render_gpu_stitch (the Vulkan
-    # compute stitch). Links no Qt.
+    # in the lib/orbis-core/ cleanroom stitch core (orbiscore + orbiscore_media,
+    # the latter carrying the Vulkan-video decoder) and render_gpu_stitch (the
+    # Vulkan compute stitch). Links no Qt.
     add_library(stitch STATIC
         src/stitch/IStitchSource.h
         src/stitch/LensCalibration.h
@@ -390,12 +394,13 @@ if(FFMPEG_FOUND)
         src/stitch/ClipSeamAnalysis.cpp
     )
     target_include_directories(stitch PUBLIC src/stitch)
-    target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch
+    target_link_libraries(stitch PUBLIC camera orbis-core::orbiscore orbis-core::media
+        render_gpu_stitch
         PRIVATE vulkan_hw_device PkgConfig::FFMPEG)
     # The new stitcher's seam flow estimates its flow with OpenCV
     # (orbiscore::SeamFlowEstimator); without it the stitcher has no seam flow.
-    if(TARGET insv_optical)
-        target_link_libraries(stitch PUBLIC insv_optical)
+    if(TARGET orbis-core::optical)
+        target_link_libraries(stitch PUBLIC orbis-core::optical)
         target_compile_definitions(stitch PRIVATE ORBIS_SEAM_FLOW=1)
     endif()
 
@@ -590,8 +595,9 @@ if(FFMPEG_FOUND)
     # reframe_flatten pulls system FFmpeg into orbis-reframe for the export's
     # decode/reproject/encode half.
     target_link_libraries(orbis_app PUBLIC
-        Qt6::Widgets Qt6::Gui Vulkan::Vulkan orbis_core stitch reframe_flatten insv
-        privacy_data render_shaders orbis_paths orbis_version audio_output vulkan_hw_device)
+        Qt6::Widgets Qt6::Gui Vulkan::Vulkan reframe_model stitch reframe_flatten
+        orbis-core::orbiscore privacy_data render_shaders orbis_paths orbis_version audio_output
+        vulkan_hw_device)
 
     # The resources go into each executable: a static library's resource
     # initializer would be dropped by the linker.
@@ -622,13 +628,13 @@ if(FFMPEG_FOUND)
     install(FILES external/miniaudio/LICENSE DESTINATION share/doc/orbis-reframe/licenses
         RENAME miniaudio-LICENSE)
     install(FILES lib/orbis-core/LICENSE-MIT DESTINATION share/doc/orbis-reframe/licenses
-        RENAME insv-LICENSE-MIT)
+        RENAME orbis-core-LICENSE-MIT)
     install(FILES lib/orbis-core/LICENSE-APACHE DESTINATION share/doc/orbis-reframe/licenses
-        RENAME insv-LICENSE-APACHE)
+        RENAME orbis-core-LICENSE-APACHE)
     install(DIRECTORY docs/manual/ DESTINATION share/doc/orbis-reframe/manual)
 
     add_executable(stitch_source_smoke tools/stitch_source_smoke/main.cpp)
-    target_link_libraries(stitch_source_smoke PRIVATE stitch orbis_core vulkan_hw_device)
+    target_link_libraries(stitch_source_smoke PRIVATE stitch reframe_model vulkan_hw_device)
 
     # --- tools/playback_bench: per-mode decode / stitch / copy-back /
     # seek timings on the all-GPU path. Measure-only.
@@ -651,7 +657,7 @@ if(FFMPEG_FOUND)
     # stitch::NativeStitchSource -> exportpipe::FlattenWriter (reproject + NVENC).
     add_executable(reframe_export tools/reframe_export/main.cpp)
     target_include_directories(reframe_export PRIVATE src/stitch src/export src/core)
-    target_link_libraries(reframe_export PRIVATE orbis_core stitch reframe_flatten)
+    target_link_libraries(reframe_export PRIVATE reframe_model stitch reframe_flatten)
 
     # --- tools/residual_stab: residual 2-D stabilization end to end.
     # stitch::NativeStitchSource (in-process GPU stitch) -> grayscale equirect -> orbiscore::ResidualPanEstimator,
@@ -732,11 +738,11 @@ if(FFMPEG_FOUND)
 
         # --- clip_sync: per-clip video<->IMU sync fine-tune --
         # NativeStitchSource windows -> orbiscore::SyncEstimator. OpenCV
-        # via insv_optical, so optional: without it the app skips the
+        # via orbiscore_optical, so optional: without it the app skips the
         # fine-tune.
         add_library(clip_sync STATIC src/stitch/ClipSync.h src/stitch/ClipSync.cpp)
         target_include_directories(clip_sync PUBLIC src/stitch)
-        target_link_libraries(clip_sync PUBLIC stitch insv_optical)
+        target_link_libraries(clip_sync PUBLIC stitch orbis-core::optical)
 
         # --- lens_calibration: a camera's own lens calibration from a clip
         # of the chart (src/calib/): ChArUco corners in both lenses, the
@@ -754,16 +760,17 @@ if(FFMPEG_FOUND)
             )
             target_include_directories(lens_calibration PUBLIC src/calib
                 PRIVATE ${OpenCV_INCLUDE_DIRS})
-            target_link_libraries(lens_calibration PUBLIC camera insv insv_demux
+            target_link_libraries(lens_calibration PUBLIC camera orbis-core::orbiscore
+                orbis-core::media
                 PRIVATE opencv_core opencv_imgproc opencv_objdetect)
             target_include_directories(lens_calibration PUBLIC src/stitch)
 
             # tools/lens_calib: the calibration without the app.
             add_executable(lens_calib tools/lens_calib/main.cpp)
-            target_link_libraries(lens_calib PRIVATE lens_calibration orbis_core)
+            target_link_libraries(lens_calib PRIVATE lens_calibration reframe_model)
 
             add_executable(lens_calib_test tests/lens_calib_test.cpp)
-            target_link_libraries(lens_calib_test PRIVATE lens_calibration orbis_core)
+            target_link_libraries(lens_calib_test PRIVATE lens_calibration reframe_model)
             add_test(NAME lens_calib_test COMMAND lens_calib_test)
 
             target_sources(orbis_app PRIVATE src/ui/LensCalibrationDialog.cpp
@@ -783,11 +790,12 @@ if(FFMPEG_FOUND)
         add_executable(stitch_bench tools/stitch_bench/main.cpp)
         target_include_directories(stitch_bench PRIVATE src/stitch src/export)
         target_link_libraries(stitch_bench PRIVATE stitch stitch_bench_metrics reframe_flatten
-            orbis_core)
+            reframe_model)
 
         add_executable(residual_stab tools/residual_stab/main.cpp)
         target_include_directories(residual_stab PRIVATE src/stitch src/export)
-        target_link_libraries(residual_stab PRIVATE stitch insv_optical reframe_flatten clip_sync)
+        target_link_libraries(residual_stab PRIVATE stitch orbis-core::optical reframe_flatten
+            clip_sync)
 
         # --- subject_track: object tracking (src/track/) -- a gyro-stabilized
         # rectilinear crop around the subject, OpenCV CSRT tracking it and
@@ -803,7 +811,7 @@ if(FFMPEG_FOUND)
             )
             target_include_directories(subject_track PUBLIC src/track
                 PRIVATE src/export ${OpenCV_INCLUDE_DIRS})
-            target_link_libraries(subject_track PUBLIC insv reframe_flatten
+            target_link_libraries(subject_track PUBLIC orbis-core::orbiscore reframe_flatten
                 PRIVATE orbis_paths opencv_core opencv_imgproc opencv_video opencv_dnn opencv_tracking)
 
             # tools/track_subject: the SubjectTracker CLI (compares trackers,
@@ -850,7 +858,7 @@ foreach(model_test clip_item_test timeline_test timeline_tracks_test stabilizati
         telemetry_test)
     add_executable(${model_test} tests/${model_test}.cpp tests/support/ModelTest.h)
     target_include_directories(${model_test} PRIVATE tests)
-    target_link_libraries(${model_test} PRIVATE orbis_core)
+    target_link_libraries(${model_test} PRIVATE reframe_model)
     add_test(NAME ${model_test} COMMAND ${model_test})
 endforeach()
 # Makes its test zips with zlib.
@@ -878,7 +886,7 @@ if(Qt6Test_FOUND)
         src/ui/Theme.cpp src/ui/Theme.h)
     set_target_properties(timeline_widget_test PROPERTIES AUTOMOC ON)
     target_include_directories(timeline_widget_test PRIVATE src/ui)
-    target_link_libraries(timeline_widget_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
+    target_link_libraries(timeline_widget_test PRIVATE reframe_model Qt6::Widgets Qt6::Test)
     add_test(NAME timeline_widget_test COMMAND timeline_widget_test)
 
     # The project library's start screen and New project dialog, found by
@@ -893,7 +901,7 @@ if(Qt6Test_FOUND)
             resources/resources.qrc)
         set_target_properties(project_library_test PROPERTIES AUTOMOC ON AUTORCC ON)
         target_include_directories(project_library_test PRIVATE src/ui)
-        target_link_libraries(project_library_test PRIVATE orbis_core camera Qt6::Widgets
+        target_link_libraries(project_library_test PRIVATE reframe_model camera Qt6::Widgets
             Qt6::Test)
         add_test(NAME project_library_test COMMAND project_library_test)
     endif()
@@ -934,7 +942,7 @@ if(Qt6Test_FOUND)
         resources/resources.qrc)
     set_target_properties(media_pool_test PROPERTIES AUTOMOC ON AUTORCC ON)
     target_include_directories(media_pool_test PRIVATE src/ui)
-    target_link_libraries(media_pool_test PRIVATE orbis_core Qt6::Widgets Qt6::Test)
+    target_link_libraries(media_pool_test PRIVATE reframe_model Qt6::Widgets Qt6::Test)
     add_test(NAME media_pool_test COMMAND media_pool_test)
 
     # The edit toolbar above the timeline, found by objectName (no GPU).
@@ -967,9 +975,9 @@ if(Qt6Test_FOUND)
 endif()
 
 # orbiscore::InsvDemux with a file per lens, on generated videos -- needs FFmpeg.
-if(TARGET insv_demux)
+if(TARGET orbis-core::media)
     add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
-    target_link_libraries(lens_demuxer_test PRIVATE insv_demux test_media)
+    target_link_libraries(lens_demuxer_test PRIVATE orbis-core::media test_media)
     add_test(NAME lens_demuxer_test COMMAND lens_demuxer_test)
 endif()
 
@@ -998,10 +1006,10 @@ if(TARGET camera AND TARGET test_media)
     add_test(NAME camera_test COMMAND camera_test ${CMAKE_CURRENT_SOURCE_DIR}/sample_footage)
 endif()
 
-# orbiscore::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.
-if(TARGET insv_demux)
+# orbiscore::AudioMixer on generated WAVs -- needs FFmpeg, like orbiscore_media.
+if(TARGET orbis-core::media)
     add_executable(audio_mix_test tests/audio_mix_test.cpp)
-    target_link_libraries(audio_mix_test PRIVATE insv_demux orbis_paths test_media)
+    target_link_libraries(audio_mix_test PRIVATE orbis-core::media orbis_paths test_media)
     add_test(NAME audio_mix_test COMMAND audio_mix_test)
     # The voice-mode checks need the model even when the source-tree fallback
     # is off (package builds, scripts/package.sh).
@@ -1011,7 +1019,7 @@ endif()
 
 # The right sidebar (settings tabs and sections) and the Project settings
 # dialog, found by objectName. Its Audio and Media information sections use
-# insv_demux and camera (noise modes, the media probe's types), hence FFmpeg.
+# orbiscore_media and camera (noise modes, the media probe's types), hence FFmpeg.
 if(TARGET camera AND Qt6Test_FOUND)
     add_executable(settings_sidebar_test tests/settings_sidebar_test.cpp
         src/ui/SettingsSidebar.cpp src/ui/SettingsSidebar.h
@@ -1038,7 +1046,7 @@ if(TARGET camera AND Qt6Test_FOUND)
         resources/resources.qrc)
     set_target_properties(settings_sidebar_test PROPERTIES AUTOMOC ON AUTORCC ON)
     target_include_directories(settings_sidebar_test PRIVATE src/ui)
-    target_link_libraries(settings_sidebar_test PRIVATE orbis_core insv_demux camera
+    target_link_libraries(settings_sidebar_test PRIVATE reframe_model orbis-core::media camera
         Qt6::Widgets Qt6::Test)
     add_test(NAME settings_sidebar_test COMMAND settings_sidebar_test)
 endif()
@@ -1071,8 +1079,8 @@ set_tests_properties(vulkan_lut_test PROPERTIES SKIP_RETURN_CODE 77)
 # OpenCV is there. Skipped (77) where there's no Vulkan device.
 add_executable(seam_flow_gpu_test tests/seam_flow_gpu_test.cpp)
 target_link_libraries(seam_flow_gpu_test PRIVATE render_gpu_stitch)
-if(TARGET insv_optical)
-    target_link_libraries(seam_flow_gpu_test PRIVATE insv_optical)
+if(TARGET orbis-core::optical)
+    target_link_libraries(seam_flow_gpu_test PRIVATE orbis-core::optical)
     target_compile_definitions(seam_flow_gpu_test PRIVATE ORBIS_SEAM_FLOW=1)
 endif()
 add_test(NAME seam_flow_gpu_test COMMAND seam_flow_gpu_test)

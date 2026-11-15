@@ -3,7 +3,7 @@
 // FisheyeStitcher geometry, the trailer's thumbnail record, the lens streams'
 // Y'CbCr conversion. All synthetic -- no
 // .insv file, no FFmpeg, no Qt -- so it links only the dependency-free `insv`
-// and `insv_trailer` libs and runs anywhere. Exit code
+// and `orbiscore_metadata` libs and runs anywhere. Exit code
 // is the failure count. Mirrors the model tests' harness (tests/support/ModelTest.h).
 
 #include <orbis-core/stitch/BlurQuads.h>
@@ -3500,8 +3500,8 @@ int main()
     testYcbcrRows();
 
     if (g_failures == 0)
-        std::printf("insv_test: all checks passed\n");
+        std::printf("orbiscore_test: all checks passed\n");
     else
-        std::printf("insv_test: %d check(s) FAILED\n", g_failures);
+        std::printf("orbiscore_test: %d check(s) FAILED\n", g_failures);
     return g_failures;
 }

@@ -19,7 +19,7 @@
 //
 // The demux, decoders and seeking are LensDemuxer's, shared with
 // VulkanVideoDecoder; this adds CPU decode set-up and the RGB conversion.
-// FFmpeg-dependent, hence in its own static lib (`insv_demux`); the
+// FFmpeg-dependent, hence in its own static lib (`orbiscore_media`); the
 // projection/gyro core (`insv`) stays dependency-free. Cleanroom otherwise --
 // no Qt, no Vulkan.
 //
@@ -27,7 +27,7 @@
 // persistent decoder per lens. Do not interleave readFrameAt() with the
 // sequential API on the same instance -- readFrameAt() re-seeks and resets the
 // sequential playhead. NativeStitchSource uses only the sequential API;
-// tools/insv_stitch uses only readFrameAt().
+// tools/orbis_stitch uses only readFrameAt().
 
 struct AVFrame;
 struct SwsContext;

@@ -18,7 +18,7 @@
 // high-passed, so slow forward-motion parallax drops out, and only cells the
 // gyro explains well take part (the rider / bike move with the camera,
 // and near objects show parallax). Needs OpenCV -> compiled into
-// insv_optical; pimpl'd so this header pulls in none.
+// orbiscore_optical; pimpl'd so this header pulls in none.
 
 namespace orbiscore {
 

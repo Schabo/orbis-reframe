@@ -35,7 +35,7 @@
 // state from the frames so far (one-sided); a full set comes from a pass
 // over the clip (stitch::ClipSeamAnalysis). The state is held in half
 // precision, as that cache stores it, so a state solved here and one read
-// back from the cache are the same. Dependency-free (insv lib).
+// back from the cache are the same. Dependency-free (orbiscore lib).
 
 namespace orbiscore {
 

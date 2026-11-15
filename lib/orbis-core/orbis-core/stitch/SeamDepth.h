@@ -32,7 +32,7 @@
 // The average keeps a bin from flipping for a few frames to the road 3 m
 // behind a crash bar 0.6 m away when the road's texture matches a little
 // better; its neighbours, steadier now too, carry the bar's depth across.
-// Dependency-free (insv lib).
+// Dependency-free (orbiscore lib).
 
 namespace orbiscore {
 

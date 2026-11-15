@@ -10,7 +10,7 @@
 // Per-clip video <-> IMU sync fine-tune: stitches a few short windows of the
 // clip unstabilized at low resolution and runs orbiscore::SyncEstimator on them.
 // Seconds of GPU stitch + feature tracking; run it off the GUI thread. Needs
-// OpenCV (built only with insv_optical).
+// OpenCV (built only with orbiscore_optical).
 
 namespace stitch {
 

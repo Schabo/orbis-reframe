@@ -67,14 +67,14 @@ discussion in an issue first, not a pull request.
 | Folder | What it is | Depends on |
 |---|---|---|
 | `lib/orbis-core/` | orbis-core, the camera-file library: `.insv` trailer, calibration, IMU timing, the Insta360 per-model table, demux, Vulkan video decode, the fisheye model, gyro stabilization, seam measurement, audio filters | std C++, FFmpeg (demux / decode parts) -- no Qt |
-| `src/camera/` | The common clip description (`ClipMetadata`, read once per file and cached), a reader per camera family that fills it, and the Media information probe | `insv`, FFmpeg -- no Qt, no Vulkan |
+| `src/camera/` | The common clip description (`ClipMetadata`, read once per file and cached), a reader per camera family that fills it, and the Media information probe | `orbis-core`, FFmpeg -- no Qt, no Vulkan |
 | `src/core/` | The project model: media pool, timeline, clips, keyframe tracks, titles, gauges, transitions, the colour grade, the `.orp` file, undo, autosave | Qt Core, nlohmann-json, zlib (LUT zips) -- no widgets, no Vulkan |
-| `src/stitch/` | `IStitchSource` ("the frame at time T of clip X"), `NativeStitchSource` (dual fisheye), clip probing, clip sync, per-clip seam | `camera`, `insv`, `render` |
+| `src/stitch/` | `IStitchSource` ("the frame at time T of clip X"), `NativeStitchSource` (dual fisheye), clip probing, clip sync, per-clip seam | `camera`, `orbis-core`, `render` |
 | `src/render/` | Vulkan: the fisheye stitch, the viewport renderer and its shaders, LUTs on the GPU | Vulkan |
 | `src/export/` | Export: the CPU reproject (`ReframeRenderer`), flattening the timeline into the encoder, flat-video reading, inset compositing | FFmpeg |
-| `src/privacy/` | Number-plate scan, tracking and blur regions | `insv`, ncnn |
+| `src/privacy/` | Number-plate scan, tracking and blur regions | `orbis-core`, ncnn |
 | `src/track/` | Track subject | OpenCV |
-| `src/calib/` | Lens calibration from a clip of the chart: ChArUco corners in both lenses, the stitch's lens model fitted to them | `camera`, `insv`, OpenCV (objdetect) |
+| `src/calib/` | Lens calibration from a clip of the chart: ChArUco corners in both lenses, the stitch's lens model fitted to them | `camera`, `orbis-core`, OpenCV (objdetect) |
 | `src/ui/` | The Qt Widgets app: main window, panels, timeline widget, playback, background jobs | everything above |
 
 `tools/` holds command-line tools that link the same libraries, for checking

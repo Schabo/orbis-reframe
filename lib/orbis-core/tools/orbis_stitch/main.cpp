@@ -1,7 +1,7 @@
-// insv_stitch -- turn an Insta360 .insv into an equirect with no Qt or
+// orbis_stitch -- turn an Insta360 .insv into an equirect with no Qt or
 // Vulkan linked: the CPU stitch of orbis-core on its own.
 //
-//   insv_stitch <clip.insv> [--time-ms N] [--eq-width N] [--out eq.ppm]
+//   orbis_stitch <clip.insv> [--time-ms N] [--eq-width N] [--out eq.ppm]
 //               [--lens-profile NAME]   (field-145 profile, e.g. ProtectorA;
 //                                        default bare)
 //
@@ -50,7 +50,7 @@ bool writePpm(const std::string& path, const orbiscore::Image& im)
 }
 
 const char kUsage[] =
-    "usage: insv_stitch <clip.insv> [--time-ms N] [--eq-width N] [--out eq.ppm]\n"
+    "usage: orbis_stitch <clip.insv> [--time-ms N] [--eq-width N] [--out eq.ppm]\n"
     "       [--lens-profile NAME]  (e.g. ProtectorA; default bare)\n"
     "       [--lens1 FILE]  (lens 1's own file, e.g. a ONE X2's VID_..._10_...)\n"
     "       [--seam Y,P,R[,CU,CV,S]]  (seam correction: lens 1 yaw / pitch / roll,\n"
@@ -84,7 +84,7 @@ int main(int argc, char** argv)
     const std::string clip = argv[1];
     int64_t timeMs = 0;
     int eqWidth = 2048;
-    std::string outPath = "insv_stitch.ppm";
+    std::string outPath = "orbis_stitch.ppm";
     std::string lensProfile;
     std::string lens1File; // empty: both lenses are streams of `clip`
     double seamArg[6] = {0, 0, 0, 0, 0, 0}; // --seam: deg, deg, deg, %, %, %

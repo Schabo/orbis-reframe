@@ -27,7 +27,7 @@
 //
 // The owner picks the decoder set-up (hwaccel or not) through open()'s hook
 // and turns the AVFrames it gets back into whatever it hands out. Part of
-// insv_demux (needs FFmpeg). Not thread-safe.
+// orbiscore_media (needs FFmpeg). Not thread-safe.
 
 struct AVCodec;
 struct AVCodecContext;

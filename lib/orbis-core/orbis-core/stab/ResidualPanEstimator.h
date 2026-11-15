@@ -7,7 +7,7 @@
 #include <memory>
 
 // Estimator half of residual 2-D stabilization (see ResidualStab.h). Needs
-// OpenCV (feature tracking + optical flow) -> compiled into insv_optical.
+// OpenCV (feature tracking + optical flow) -> compiled into orbiscore_optical.
 // Pimpl'd so this header pulls in no OpenCV -- consumers that only apply a
 // ResidualTrack include ResidualStab.h instead.
 

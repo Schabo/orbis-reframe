@@ -32,7 +32,7 @@
 // The demux, decoders and seeking are LensDemuxer's, shared with InsvDemux;
 // this adds the Vulkan hwaccel set-up and the frame locking.
 //
-// Part of insv_demux (needs FFmpeg + Vulkan). Not thread-safe.
+// Part of orbiscore_media (needs FFmpeg + Vulkan). Not thread-safe.
 
 struct AVBufferRef;
 struct AVFrame;

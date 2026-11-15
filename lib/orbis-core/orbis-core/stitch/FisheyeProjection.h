@@ -27,7 +27,7 @@
 //
 // Dependency-free (no Qt / FFmpeg / Vulkan) -- part of the `insv`
 // static lib. The .insv demux that produces the input frames is the separate
-// `insv_demux` lib (it needs FFmpeg); see InsvDemux.h.
+// `orbiscore_media` lib (it needs FFmpeg); see InsvDemux.h.
 
 namespace orbiscore {
 
@@ -99,7 +99,7 @@ struct StitchParams {
     // both lenses at one point.
     bool depthSeam = false;
     // 0 = from the calibration (|lens-1 tz|); negative swaps which lens is
-    // in front (a diagnostic for the sign, tools/insv_stitch --baseline).
+    // in front (a diagnostic for the sign, tools/orbis_stitch --baseline).
     double baselineM = 0.0;
     double depthRampDeg = 20.0;
 

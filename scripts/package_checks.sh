@@ -25,7 +25,8 @@ check_install_tree() {
     for f in doc/orbis-reframe/LICENSE doc/orbis-reframe/THIRD_PARTY.md \
              doc/orbis-reframe/LICENSE.lucide doc/orbis-reframe/licenses/ncnn-LICENSE.txt \
              doc/orbis-reframe/licenses/nlohmann-json-LICENSE.MIT doc/orbis-reframe/licenses/miniaudio-LICENSE \
-             doc/orbis-reframe/licenses/insv-LICENSE-MIT doc/orbis-reframe/licenses/insv-LICENSE-APACHE \
+             doc/orbis-reframe/licenses/orbis-core-LICENSE-MIT \
+             doc/orbis-reframe/licenses/orbis-core-LICENSE-APACHE \
              orbis-reframe/models/deepfilternet3/LICENSE-MIT orbis-reframe/models/deepfilternet3/LICENSE-APACHE \
              orbis-reframe/models/vittrack/LICENSE-APACHE orbis-reframe/models/plates/LICENSE-MIT; do
         [[ -f "$top/share/$f" ]] || { echo "FAIL: license file share/$f missing" >&2; bad=1; }

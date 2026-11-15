@@ -37,7 +37,7 @@
 // within a clip, per azimuth bin a faster local correction
 // (SeamBlend::local) where the difference changes round the seam, and the
 // veiling light a low sun adds to one lens there (SeamBlend::veil), taken out
-// before the colour is matched. Dependency-free (insv lib).
+// before the colour is matched. Dependency-free (orbiscore lib).
 
 namespace orbiscore {
 
