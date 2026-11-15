@@ -81,18 +81,20 @@ void MeasureSeamCosts(const FisheyeStitcher& st, const Image& lens0, const Image
     std::atomic<int> next{0};
     auto worker = [&] {
         Vec3 dirs[kSamples];
+        bool clear[kSamples];
         for (int b = next.fetch_add(1); b < kSeamDepthBins; b = next.fetch_add(1)) {
             for (int s = 0; s < kSamples; ++s) {
                 double phi, e;
                 SeamPatchSample(b, s, phi, e);
                 dirs[s] = st.seamDir(phi, e);
+                clear[s] = st.lensClear(0, dirs[s]) && st.lensClear(1, dirs[s]);
             }
             for (int k = 0; k < kSeamDepthCands; ++k) {
                 const double q = SeamCandQ(k);
                 double sums[kSeamPatchSums] = {};
                 for (int s = 0; s < kSamples; ++s) {
                     double x, y;
-                    if (!grey(0, st.lensRay(0, dirs[s], q), x) ||
+                    if (!clear[s] || !grey(0, st.lensRay(0, dirs[s], q), x) ||
                         !grey(1, st.lensRay(1, dirs[s], q), y))
                         continue;
                     SeamPatchAccumulate(sums, s, x, y);

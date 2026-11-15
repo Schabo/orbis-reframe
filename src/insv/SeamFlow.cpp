@@ -79,6 +79,8 @@ void MeasureSeamFlowStrips(const FisheyeStitcher& st, const SeamFlowGrid& grid, 
                 const double e = grid.eOf(y);
                 for (int x = 0; x < grid.cols; ++x) {
                     const Vec3 dir = st.seamDir(grid.phiOf(x), e);
+                    const size_t at = static_cast<size_t>(y) * grid.cols + x;
+                    bool seen[2] = {false, false};
                     for (int i = 0; i < 2; ++i) {
                         double u, v, th;
                         if (!st.project(i, dir, u, v, th) || u < 0 || v < 0 || u > lim[i]->w - 1.0 ||
@@ -86,9 +88,15 @@ void MeasureSeamFlowStrips(const FisheyeStitcher& st, const SeamFlowGrid& grid, 
                             continue;
                         const auto s = lim[i]->sample(u, v);
                         const double l = 0.299 * s[0] + 0.587 * s[1] + 0.114 * s[2];
-                        out.grey[i][static_cast<size_t>(y) * grid.cols + x] =
-                            static_cast<uint8_t>(std::clamp(l + 0.5, 0.0, 255.0));
+                        out.grey[i][at] = static_cast<uint8_t>(std::clamp(l + 0.5, 0.0, 255.0));
+                        seen[i] = true;
                     }
+                    // Where a lens shows its own camera (its mask), the strip
+                    // takes the other lens's picture: the flow finds nothing
+                    // to move there instead of following the camera's edge.
+                    for (int i = 0; i < 2; ++i)
+                        if (seen[1 - i] && st.lensClear(1 - i, dir) && !st.lensClear(i, dir))
+                            out.grey[i][at] = out.grey[1 - i][at];
                 }
             }
         });

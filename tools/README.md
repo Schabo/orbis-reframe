@@ -267,7 +267,8 @@ What the summary measures:
   (`seam_colour_pct`).
 - `colour_*`: the lenses' colour difference where they meet (the fade's
   centre, per bin, unclipped samples), lens 0 against lens 1 in %, after
-  the colour correction; `raw_colour_*` before it. For the new stitcher:
+  the colour correction; `raw_colour_*` before it; where a lens shows its
+  own camera (the clip's lens mask) neither is measured. For the new stitcher:
   on the seam circle, at the template's geometry, after its seam colour
   blend and veiling light (the seam flow moves no colour).
 - `cold_*`: the cold frame against the played one: depth table, PSNR over

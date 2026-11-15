@@ -53,6 +53,7 @@
 #define LENS_COLOUR_KNEE_HI 250.0 // == insv::kLensColourKneeHi
 #define SEAM_COLOUR_FULL_RAD 0.20943951 // == insv::kSeamColourFullDeg (12 deg)
 #define SEAM_COLOUR_END_RAD 0.52359878 // == insv::kSeamColourEndDeg (30 deg)
+#define LENS_MASK_RAMP_RAD 0.03490659 // == insv::FisheyeStitcher::kLensMaskRampDeg (2 deg)
 #define LENS_VEIL_GAMMA 2.2 // == insv::kLensVeilGamma
 #define LENS_VEIL_KEEP 0.3 // == insv::kLensVeilKeep
 #define MAX_BLUR 64 // == insv::kMaxBlurQuads
@@ -115,8 +116,13 @@ layout(std140, binding = 0) uniform Params {
     // ycbcr sampler converts on its own.
     vec4 ycc[3];
     // The lens model (insv::StitchGpuParams::thetaPoly): x 1 = the
-    // theta-polynomial, else MEI; y, z its theta^10 term of lens 0, 1.
+    // theta-polynomial, else MEI; y, z its theta^10 term of lens 0, 1; w 1 =
+    // the lens masks (insv::StitchGpuParams::maskActive) are on.
     vec4 lensModel;
+    // The lens masks on the seam frame (insv::StitchGpuParams::seamClear):
+    // per azimuth bin, lens 0 clear above elevation x, lens 1 below y (rad),
+    // 2 bins per vec4.
+    vec4 seamClear[SEAM_BINS / 2];
 } P;
 
 #ifndef SEAM_FLOW_BINDING
@@ -334,6 +340,51 @@ vec2 seamPosition(vec3 dir, out int i0, out int i1)
     i0 = (int(fl) + SEAM_BINS) % SEAM_BINS;
     i1 = (i0 + 1) % SEAM_BINS;
     return vec2(e, f - fl);
+}
+
+// The lens masks at a seamPosition(): where lens 0's clear part ends (x)
+// and lens 1's (y), the more cautious of the two bins round it.
+vec2 seamClearAt(int i0, int i1)
+{
+    vec4 a = P.seamClear[i0 >> 1], b = P.seamClear[i1 >> 1];
+    vec2 c0 = (i0 & 1) == 0 ? a.xy : a.zw, c1 = (i1 & 1) == 0 ? b.xy : b.zw;
+    return vec2(max(c0.x, c1.x), min(c0.y, c1.y));
+}
+
+// Whether lens i sees the scene at `dir`, not its own camera
+// (insv::FisheyeStitcher::lensClear).
+bool lensClear(int i, vec3 dir)
+{
+    if (P.lensModel.w == 0.0)
+        return true;
+    int i0, i1;
+    vec2 pos = seamPosition(dir, i0, i1);
+    vec2 c = seamClearAt(i0, i1);
+    return i == 0 ? pos.x > c.x : pos.x < c.y;
+}
+
+// The two lenses' feather kept off the lens masks
+// (insv::FisheyeStitcher::clearFade).
+vec2 clearFade(vec3 dir, vec2 w)
+{
+    if (P.lensModel.w == 0.0)
+        return w;
+    int i0, i1;
+    vec2 pos = seamPosition(dir, i0, i1);
+    vec2 c = seamClearAt(i0, i1);
+    float e = pos.x, s0, s1;
+    if (c.y <= c.x) {
+        s0 = e > 0.5 * (c.x + c.y) ? 1.0 : 0.0;
+        s1 = 1.0 - s0;
+    } else {
+        float ramp = min(LENS_MASK_RAMP_RAD, 0.5 * (c.y - c.x));
+        float x0 = clamp((e - c.x) / ramp, 0.0, 1.0), x1 = clamp((c.y - e) / ramp, 0.0, 1.0);
+        s0 = x0 * x0 * (3.0 - 2.0 * x0);
+        s1 = x1 * x1 * (3.0 - 2.0 * x1);
+        if (s0 >= 1.0 && s1 >= 1.0)
+            return w;
+    }
+    return vec2(s0 * (w.x + (1.0 - s1) * w.y), s1 * (w.y + (1.0 - s0) * w.x));
 }
 
 // The depth table at a seamPosition(): linear in azimuth, faded to 0 over
@@ -557,6 +608,7 @@ void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w
     w1 = 0.0;
     vec2 wsl;
     float q = seamTables(dir, wsl, local, veil);
+    wsl = clearFade(dir, wsl);
     for (int i = 0; i < 2; ++i) {
         float ws = wsl[i];
         if (ws <= 0.0)
@@ -603,6 +655,8 @@ void seamCostPass(uvec3 wg, uint lid)
         float phi = (float(bin) + (float(az) + 0.5) / float(SEAM_PATCH)) * (2.0 * PI / float(SEAM_BINS));
         float e = (-1.0 + (2.0 * float(el) + 1.0) / float(SEAM_PATCH)) * P.seamC.z;
         vec3 dir = cos(e) * (cos(phi) * P.seamU.xyz + sin(phi) * P.seamV.xyz) + sin(e) * P.seamA.xyz;
+        if (!lensClear(0, dir) || !lensClear(1, dir))
+            continue;
         vec3 p0 = projectRS(0, lensRay(0, dir, q));
         vec3 p1 = projectRS(1, lensRay(1, dir, q));
         if (p0.z < 0.0 || p1.z < 0.0)
@@ -679,7 +733,7 @@ void seamCutPass(uvec3 wg, uint lid)
     float q = seamQAt(dir);
     vec3 p0 = projectRS(0, lensRay(0, dir, q));
     vec3 p1 = projectRS(1, lensRay(1, dir, q));
-    bool ok = p0.z >= 0.0 && p1.z >= 0.0 &&
+    bool ok = lensClear(0, dir) && lensClear(1, dir) && p0.z >= 0.0 && p1.z >= 0.0 &&
               p0.x >= 0.0 && p0.y >= 0.0 && p0.x <= fw - 1.0 && p0.y <= fh - 1.0 &&
               p1.x >= 0.0 && p1.y >= 0.0 && p1.x <= fw - 1.0 && p1.y <= fh - 1.0;
     float x = 0.0, y = 0.0;
@@ -753,18 +807,29 @@ void seamStripPass(ivec2 gid)
     float strip = P.seamFlow.y;
     float e = strip - float(gid.y) * 2.0 * strip / float(rows - 1);
     float fw = float(P.dims.x), fh = float(P.dims.y);
-    for (int i = 0; i < 2; ++i) {
-        uint packed = 0u;
-        for (int k = 0; k < 4; ++k) {
-            float phi = (float(gid.x * 4 + k) + 0.5) * 2.0 * PI / float(cols);
-            vec3 pr = projectRS(i, seamDirAt(phi, e));
-            float g = 0.0;
-            if (pr.z >= 0.0 && pr.x >= 0.0 && pr.y >= 0.0 && pr.x <= fw - 1.0 && pr.y <= fh - 1.0)
-                g = clamp(luma(sampleLens(i, (pr.xy + 0.5) / vec2(fw, fh))) + 0.5, 0.0, 255.0);
-            packed |= uint(g) << (8 * k);
+    uint packed[2] = uint[2](0u, 0u);
+    for (int k = 0; k < 4; ++k) {
+        float phi = (float(gid.x * 4 + k) + 0.5) * 2.0 * PI / float(cols);
+        vec3 dir = seamDirAt(phi, e);
+        float g[2] = float[2](0.0, 0.0);
+        bool seen[2] = bool[2](false, false);
+        for (int i = 0; i < 2; ++i) {
+            vec3 pr = projectRS(i, dir);
+            if (pr.z >= 0.0 && pr.x >= 0.0 && pr.y >= 0.0 && pr.x <= fw - 1.0 && pr.y <= fh - 1.0) {
+                g[i] = clamp(luma(sampleLens(i, (pr.xy + 0.5) / vec2(fw, fh))) + 0.5, 0.0, 255.0);
+                seen[i] = true;
+            }
         }
-        seamStrip[i * (rows * cols / 4) + (gid.y * cols + gid.x * 4) / 4] = packed;
+        // Where a lens shows its own camera, the other lens's picture
+        // (insv::MeasureSeamFlowStrips).
+        for (int i = 0; i < 2; ++i)
+            if (seen[1 - i] && lensClear(1 - i, dir) && !lensClear(i, dir))
+                g[i] = g[1 - i];
+        for (int i = 0; i < 2; ++i)
+            packed[i] |= uint(g[i]) << (8 * k);
     }
+    for (int i = 0; i < 2; ++i)
+        seamStrip[i * (rows * cols / 4) + (gid.y * cols + gid.x * 4) / 4] = packed[i];
 }
 #endif
 

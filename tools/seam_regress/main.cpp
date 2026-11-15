@@ -612,7 +612,10 @@ std::vector<ColourBin> MeasureColour(const Geometry& g, const insv::Image (&lens
                 bool seen = true;
                 for (int i = 0; i < 2 && seen; ++i) {
                     double u, v, th;
-                    seen = g.st.project(i, g.st.lensRay(i, d, qq), u, v, th) && u >= 0 && v >= 0 &&
+                    // Where a lens shows its own camera (its mask) the
+                    // stitch doesn't use it, so the colour isn't measured.
+                    seen = g.st.lensClear(i, d) &&
+                           g.st.project(i, g.st.lensRay(i, d, qq), u, v, th) && u >= 0 && v >= 0 &&
                            u <= lens[i].w - 1 && v <= lens[i].h - 1;
                     if (seen)
                         c[i] = lens[i].sample(u, v);

@@ -266,6 +266,7 @@ what differs between cameras -- lens layout and which file and stream each
 lens comes from, the files a long recording is split into, calibration and
 its lens model (MEI, or DJI's theta-polynomial), where each lens sits in
 the camera (`insv::LensPose`) and how the camera holds them (the mount),
+where a lens's picture shows the camera itself (`insv::LensMask`),
 IMU timing and axes, colour profile, lens-guard
 profiles, capture-mode names -- is data the reader fills in, not a code path
 per camera. Differences between models of one family are that reader's

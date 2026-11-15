@@ -45,6 +45,10 @@ struct Lens {
     // Where it sits in the camera, which the calibration's angles are
     // counted from (insv::LensPose, insv::StitchParams::lensPose).
     insv::LensPose pose;
+    // Where its picture shows the camera itself (insv::LensMask,
+    // insv::StitchParams::lensMask); empty for a lens that sees only the
+    // scene.
+    insv::LensMask mask;
 };
 
 // The camera's own preview picture: the whole sphere as an equirectangular

@@ -158,6 +158,13 @@ greyed out in builds made without OpenCV's chart detection.
   camera model; with your calibration it doesn't. Projects with a clip
   set to it can't be opened by orbis-reframe versions before 0.8.
 
+Where a camera's own body shows in its pictures -- behind the DJI Avata
+360, the drone's frame reaches into both lenses' pictures where they meet
+-- every stitcher takes that stretch from the lens that sees past it, and
+the seam colour blend and seam flow measure nothing from the body. The two
+pictures share only a narrow strip there, so close things behind the drone
+join less well than elsewhere.
+
 A clip added to a project takes the stitcher of the 360 clip next to it, so
 a project made before the new stitcher became the default keeps the
 stitcher it was made with, for its new clips too; a project opened from

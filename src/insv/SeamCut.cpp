@@ -77,7 +77,8 @@ void MeasureSeamCutStats(const FisheyeStitcher& st, const Image& lens0, const Im
                 SeamCutSample(b, r, s, band, phi, e);
                 const Vec3 dir = st.seamDir(phi, e);
                 const double q = st.seamQAt(dir, seamQ);
-                if (!colour(0, st.lensRay(0, dir, q), c0, g0[n]) ||
+                if (!st.lensClear(0, dir) || !st.lensClear(1, dir) ||
+                    !colour(0, st.lensRay(0, dir, q), c0, g0[n]) ||
                     !colour(1, st.lensRay(1, dir, q), c1, g1[n]))
                     continue;
                 s0 += g0[n], s1 += g1[n];

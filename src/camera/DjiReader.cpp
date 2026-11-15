@@ -39,6 +39,53 @@ struct DjiModel {
     double mountDeg[3];
     // The usable field of view, degrees (insv::StitchParams::fovDeg).
     double fovDeg;
+    // Where the master lens's picture and the other's show the product's
+    // own body (insv::LensMask::clearDeg, kMaskSamples each); null for none.
+    const double* mask[2];
+};
+
+constexpr int kMaskSamples = 180; // every 2 degrees round the picture
+
+// Where the Avata 360's body shows in each lens's picture (the rear duct and
+// its arms, up to ~91 deg off the axis -- inside the overlap behind the
+// drone), as insv::LensMask::clearDeg every 2 degrees: measured from our six
+// clips, the body being what stays put in a lens's picture while the scene
+// moves past (docs/formats/dji-360.md §3.2), drawn half a degree in and over
+// the next 2 degrees either side. The file's own occlusion polygon
+// (occlusion_pt_x/y) is zero on the Avata 360.
+const double kAvata360MasterMask[kMaskSamples] = {
+    93.9, 95.1, 95.9, 96.1, 96.1, 96.4, 96.5, 96.6, 97.0, 97.4, 97.9, 98.4,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 97.2, 96.9, 96.6, 96.3, 96.3, 96.0, 95.9, 95.7,
+    95.6, 95.5, 95.4, 95.4, 95.4, 95.4, 95.4, 94.9, 94.3, 93.9, 93.5, 93.3,
+    93.1, 92.9, 92.5, 92.5, 92.6, 92.6, 92.7, 92.9, 93.1, 93.3, 93.6, 93.9,
+    94.2, 94.0, 93.9, 93.8, 93.8, 93.8, 93.8, 93.8, 93.8, 93.9, 93.9, 94.1,
+    94.1, 94.2, 94.4, 94.7, 95.2, 95.2, 95.8, 96.9, 97.3, 97.3, 97.2, 97.0,
+    96.9, 96.8, 96.6, 96.4, 96.3, 96.3, 95.7, 95.7, 93.3, 93.3, 93.0, 93.0,
+};
+const double kAvata360SlaveMask[kMaskSamples] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 98.1, 97.8, 97.6, 97.4, 97.3, 97.2,
+    96.9, 96.3, 96.3, 96.3, 96.9, 97.1, 97.8, 98.2, 98.6, 99.0, 97.2, 97.2,
+    97.2, 97.2, 97.0, 97.0, 94.3, 94.3, 94.3, 94.3, 94.2, 93.5, 93.5, 93.5,
+    93.6, 93.6, 94.2, 94.6, 94.1, 93.8, 93.4, 93.0, 92.6, 92.5, 92.4, 92.0,
+    92.0, 92.1, 92.1, 91.9, 91.5, 91.2, 91.2, 92.3, 92.4, 92.8, 92.9, 93.3,
+    93.7, 93.7, 95.6, 95.4, 95.2, 94.4, 94.3, 94.3, 94.3, 94.3, 95.1, 95.2,
+    95.3, 95.4, 95.4, 95.4, 96.2, 98.3, 0, 0, 0, 0, 0, 0,
+    0, 98.8, 98.4, 98.1, 98.0, 98.0, 98.5, 98.8, 98.9, 0, 0, 0,
 };
 
 // The Avata 360 flies its camera with the lens axes vertical, the master
@@ -48,12 +95,14 @@ struct DjiModel {
 // drone's own attitude (docs/formats/dji-360.md §3); the picture reaches
 // ~100 deg off each lens's axis before the frame's edge and the housing.
 const DjiModel kModels[] = {
-    {"DJI Avata360", "DJI Avata 360", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0},
+    {"DJI Avata360", "DJI Avata 360", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
+     {kAvata360MasterMask, kAvata360SlaveMask}},
 };
 
 // For a product not in the table: the schema tried in turn, the master on
 // the first track, the lens axes as the Avata 360's.
-const DjiModel kUnknown = {"", "", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0};
+const DjiModel kUnknown = {"", "", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
+                           {nullptr, nullptr}};
 
 const DjiModel* findModel(const std::string& productName) {
     for (const DjiModel& m : kModels)
@@ -302,6 +351,9 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
     if (meta->calibrated) {
         out.lenses = {lens(meta->master, 0, {out.path, master}),
                       lens(meta->slave, 1, {out.path, slave})};
+        for (int i = 0; i < 2; ++i)
+            if (model->mask[i])
+                out.lenses[i].mask.clearDeg.assign(model->mask[i], model->mask[i] + kMaskSamples);
         out.calibrated = true;
         if (meta->slot != insv::DjiSlot::NativeRefineFar)
             std::fprintf(stderr, "[camera] %s: no %s calibration; stitching with the %s one\n",

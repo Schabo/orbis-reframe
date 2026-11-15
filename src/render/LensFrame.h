@@ -60,7 +60,7 @@ struct LensFrame {
     // colour blend, the seam flow's grid, the privacy blur quads, the lenses' Y'CbCr -> R'G'B'
     // conversion), packed by the exporter. Within the 16 KiB every Vulkan
     // device takes in a uniform buffer.
-    static constexpr int kParamsBytes = 14640;
+    static constexpr int kParamsBytes = 15664;
     std::array<uint8_t, kParamsBytes> params{};
     int64_t timestamp_ms = 0; // rounded to the ms, as stitch::Frame
     int64_t timestamp_us = 0; // exact, for the stabilizer's correction

@@ -130,6 +130,30 @@ void testThetaPoly(render::VulkanFisheyeStitcher& gpu)
     std::printf("theta-polynomial: mean difference %.3f levels\n", d);
     CHECK(d < 1.0);
 
+    // With lens masks (insv::LensMask) as the Avata's body makes them: each
+    // lens sees its camera from 92-94 deg off its axis over a third of its
+    // picture. Both paths leave it out alike, and it changes the picture.
+    insv::StitchParams masked = params;
+    for (int i = 0; i < 2; ++i) {
+        masked.lensMask[i].clearDeg.assign(180, 0.0);
+        for (int s = 0; s < 60; ++s)
+            masked.lensMask[i].clearDeg[(110 + s + 15 * i) % 180] = 92.0 + 2.0 * std::sin(s / 9.0);
+    }
+    insv::FisheyeStitcher maskSt;
+    CHECK(maskSt.configure(c, kLens, kLens, masked));
+    CHECK(maskSt.gpuParams().maskActive == 1);
+    const double dm = Compare(maskSt, gpu);
+    std::printf("theta-polynomial, lens masks: mean difference %.3f levels\n", dm);
+    CHECK(dm < 1.0);
+    {
+        const insv::Image a = st.renderEquirect(Pattern(0), Pattern(1), kEqW);
+        const insv::Image b = maskSt.renderEquirect(Pattern(0), Pattern(1), kEqW);
+        size_t changed = 0;
+        for (size_t i = 0; i < a.rgb.size(); ++i)
+            changed += a.rgb[i] != b.rgb[i];
+        CHECK(changed > a.rgb.size() / 200); // the masked stretch of the seam
+    }
+
     // The same lenses read as MEI land elsewhere: the comparison would see it.
     insv::StitchParams wrong = params;
     wrong.lensModel = insv::LensModel::Mei;

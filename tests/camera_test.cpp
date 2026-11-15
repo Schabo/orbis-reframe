@@ -840,6 +840,13 @@ void testDjiAvata360(const std::filesystem::path& osv)
     }
     // The master looks along the rig's axis, the slave the other way.
     CHECK(clip->lenses[0].pose.mount[8] > 0.999 && clip->lenses[1].pose.mount[8] < -0.999);
+    // The body behind the drone in both lenses' pictures, up at the top
+    // (image angle 270 deg), and nowhere near the bottom.
+    for (const camera::Lens& l : clip->lenses) {
+        CHECK(l.mask.clearDeg.size() == 180);
+        constexpr double deg = std::numbers::pi / 180.0;
+        CHECK(l.mask.clearRadAt(270 * deg) < 95 * deg && l.mask.clearRadAt(90 * deg) > 1e6);
+    }
     CHECK(clip->colorProfile == "D-Log M" && clip->logProfile == "D-Log M");
     CHECK(clip->recordedLocal == "2026-10-18T15:37:02");
     CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRF");

@@ -108,7 +108,7 @@ Strip sampleStrip(const FisheyeStitcher& st, const SeamFrame& f, double scale)
             const Vec3 w = stripDir(l2w, 90.0 + (r - kStripHalf) * kCellDeg, c * kCellDeg);
             for (int i = 0; i < 2; ++i) {
                 double u, v, t;
-                if (!st.project(i, w, u, v, t))
+                if (!st.lensClear(i, w) || !st.project(i, w, u, v, t))
                     continue;
                 u *= scale, v *= scale;
                 if (u < 0 || v < 0 || u > f.w - 1 || v > f.h - 1)

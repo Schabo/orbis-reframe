@@ -101,7 +101,9 @@ each is in its document in [`formats/`](formats/README.md).
   name, the master lens on track 0, the mount (the nose measured from the
   sun) and usable field of view per product, the cover picture as the
   preview, GPS from the metadata at 10 Hz, D-Log M named for DJI's own LUT
-  in the Colour panel. Chart calibration stays MEI-only and says so.
+  in the Colour panel; where the drone's body shows in each lens, a mask
+  per lens (`insv::LensMask`) the stitch leaves out of the blend and its
+  measurements. Chart calibration stays MEI-only and says so.
   Still planned: stabilization from the drone's fused attitude (no raw
   gyro in the file) once a clip with deliberate turns arrives; until then
   the clip plays unstabilized and the Stabilization section says why.

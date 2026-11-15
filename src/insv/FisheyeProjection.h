@@ -123,6 +123,9 @@ struct StitchParams {
     // for the theta-polynomial each lens's fifth term (camera::Lens::k5).
     LensModel lensModel = LensModel::Mei;
     double thetaK5[2] = {0.0, 0.0};
+    // Where each lens sees its own camera (camera::Lens::mask); none by
+    // default.
+    LensMask lensMask[2];
 
     // Global equirect orientation applied to the sampling ray (Ry(yaw) Rx(pitch)
     // Rz(roll)): how the camera holds its lenses, so the picture is level and
@@ -265,6 +268,13 @@ struct StitchGpuParams {
     float halfBaseline = 0;
     float depthRampRad = 0;
     float seamQ[kSeamDepthBins] = {};
+    // The lens masks (StitchParams::lensMask) on the seam frame, per azimuth
+    // bin: lens 0 sees the scene above elevation seamClear[b][0], lens 1
+    // below seamClear[b][1] (radians, towards lens 0), each the bin's most
+    // cautious over its width (FisheyeStitcher::lensClear). maskActive 0 =
+    // no mask, the table unused.
+    int maskActive = 0;
+    float seamClear[kSeamDepthBins][2] = {};
     // Per frame: the blend across the band (all 0 = the plain cross-fade).
     SeamBlend seamBlend;
     // Per frame: the new stitcher's seam colour blend (insv::SeamColourBlend)
@@ -410,6 +420,20 @@ public:
     // Circle-edge weight for an off-axis angle (radians) actually sampled.
     double edgeWeight(double thetaRad) const;
 
+    // --- lens masks (StitchParams::lensMask) -------------------------------
+    bool hasLensMask() const { return m_hasMask; }
+    // Whether lens i sees the scene at `dir`, not its own camera: from the
+    // per-bin table (StitchGpuParams::seamClear), the more cautious of the
+    // two bins round dir. Always true without a mask.
+    bool lensClear(int lens, const Vec3& dir) const;
+    // The two lenses' feather `w` (seamBlendWeights) kept off the masks: as
+    // dir nears where a lens's mask starts, that lens's weight goes over to
+    // the other, by a smoothstep over the nearer of kLensMaskRampDeg and half
+    // the clear stretch both share; where they share none, each lens up to
+    // the middle of it. Untouched (to the bit) where neither mask is near.
+    void clearFade(const Vec3& dir, double w[2]) const;
+    static constexpr double kLensMaskRampDeg = 2.0;
+
 private:
     bool m_ready = false;
     bool m_accessory = false; // accessory radial scale active
@@ -426,6 +450,9 @@ private:
     Vec3 m_seamU{1, 0, 0};
     Vec3 m_seamV{0, 1, 0};
     double m_halfBaseline = 0;
+    bool m_hasMask = false;
+    float m_clear[kSeamDepthBins][2] = {};
+    void buildMaskTable(); // m_clear from m_params.lensMask, after the seam frame
 };
 
 } // namespace insv

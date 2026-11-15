@@ -92,6 +92,25 @@ struct LensPose {
 // axis from lens 0.
 LensPose Insta360LensPose(int lens);
 
+// Where a lens's picture shows part of its own camera or carrier (a drone's
+// body reaching into the overlap), which the camera's reader knows. The
+// stitch uses the other lens there, and measures nothing from it -- the seam
+// cut, flow, colour, veiling light and depth all compare the lenses on the
+// scene.
+//
+// The lens's clear radius, degrees off its axis, sampled evenly round its
+// picture: sample k at the image angle k * 360 / size degrees, counted from
+// the calibration image's +u axis towards +v (u right, v down). 0 where the
+// picture is clear out to the edge of the field. Empty: no mask.
+struct LensMask {
+    std::vector<double> clearDeg;
+    bool empty() const { return clearDeg.empty(); }
+    // The clear radius at image angle azRad, radians: the smaller of the two
+    // samples either side, so an edge between samples isn't cut; a very
+    // large value where both are clear. Only for a non-empty mask.
+    double clearRadAt(double azRad) const;
+};
+
 struct InsvCalibration {
     std::vector<LensCalibExt> lensesExt; // extended MEI form; empty until parsed
 };

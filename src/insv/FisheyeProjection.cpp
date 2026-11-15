@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <numbers>
 #include <thread>
 #include <vector>
@@ -209,8 +210,97 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
     if (params.depthSeam)
         m_thetaMaxRad = std::max(m_thetaMaxRad, m_thetaRefRad);
 
+    buildMaskTable();
     m_ready = true;
     return true;
+}
+
+void FisheyeStitcher::buildMaskTable()
+{
+    m_hasMask = !m_params.lensMask[0].empty() || !m_params.lensMask[1].empty();
+    if (!m_hasMask)
+        return;
+    // Per bin and lens, walking from the lens's own side of the seam
+    // outwards, the elevation where its picture first shows its mask; the
+    // most cautious of a few azimuths across the bin. Past where the lens is
+    // sampled at all (project's reach) nothing is masked.
+    constexpr int kSub = 5;
+    constexpr double kStepRad = 0.05 * kDeg;
+    const double reach = m_thetaMaxRad - m_thetaSeamRad + 2.0 * kDeg;
+    auto masked = [&](int i, const Vec3& dir, bool& seen) {
+        double u, v, theta;
+        seen = project(i, dir, u, v, theta);
+        if (!seen || m_params.lensMask[i].empty())
+            return false;
+        const double az = std::atan2(v - m_lens[i].cy, u - m_lens[i].cx);
+        return theta > m_params.lensMask[i].clearRadAt(az);
+    };
+    for (int b = 0; b < kSeamDepthBins; ++b) {
+        double lo = -0.5 * kPi, hi = 0.5 * kPi;
+        for (int s = 0; s < kSub; ++s) {
+            const double phi = (b + (s + 0.5) / kSub) * (2.0 * kPi / kSeamDepthBins);
+            for (double e = reach; e > -reach; e -= kStepRad) { // lens 0: from its side down
+                bool seen;
+                if (masked(0, seamDir(phi, e), seen)) {
+                    lo = std::max(lo, e);
+                    break;
+                }
+                if (!seen && e < 0.0)
+                    break;
+            }
+            for (double e = -reach; e < reach; e += kStepRad) { // lens 1: from its side up
+                bool seen;
+                if (masked(1, seamDir(phi, e), seen)) {
+                    hi = std::min(hi, e);
+                    break;
+                }
+                if (!seen && e > 0.0)
+                    break;
+            }
+        }
+        m_clear[b][0] = static_cast<float>(lo);
+        m_clear[b][1] = static_cast<float>(hi);
+    }
+}
+
+bool FisheyeStitcher::lensClear(int lens, const Vec3& dir) const
+{
+    if (!m_hasMask)
+        return true;
+    double e, t;
+    int i0, i1;
+    seamPosition(dir, e, i0, i1, t);
+    if (lens == 0)
+        return e > std::max(m_clear[i0][0], m_clear[i1][0]);
+    return e < std::min(m_clear[i0][1], m_clear[i1][1]);
+}
+
+void FisheyeStitcher::clearFade(const Vec3& dir, double w[2]) const
+{
+    if (!m_hasMask)
+        return;
+    double e, t;
+    int i0, i1;
+    seamPosition(dir, e, i0, i1, t);
+    const double lo = std::max(m_clear[i0][0], m_clear[i1][0]);
+    const double hi = std::min(m_clear[i0][1], m_clear[i1][1]);
+    double s0, s1;
+    if (hi <= lo) {
+        s0 = e > 0.5 * (lo + hi) ? 1.0 : 0.0;
+        s1 = 1.0 - s0;
+    } else {
+        const double ramp = std::min(kLensMaskRampDeg * kDeg, 0.5 * (hi - lo));
+        auto smooth = [](double x) {
+            return x <= 0.0 ? 0.0 : x >= 1.0 ? 1.0 : x * x * (3.0 - 2.0 * x);
+        };
+        s0 = smooth((e - lo) / ramp);
+        s1 = smooth((hi - e) / ramp);
+        if (s0 >= 1.0 && s1 >= 1.0)
+            return;
+    }
+    const double w0 = w[0], w1 = w[1];
+    w[0] = s0 * (w0 + (1.0 - s1) * w1);
+    w[1] = s1 * (w1 + (1.0 - s0) * w0);
 }
 
 Vec3 FisheyeStitcher::lensCentre(int lens) const
@@ -356,6 +446,9 @@ StitchGpuParams FisheyeStitcher::gpuParams() const
     }
     p.halfBaseline = static_cast<float>(m_halfBaseline);
     p.depthRampRad = static_cast<float>(m_params.depthRampDeg * kDeg);
+    p.maskActive = m_hasMask ? 1 : 0;
+    if (m_hasMask)
+        std::memcpy(p.seamClear, m_clear, sizeof p.seamClear);
     return p;
 }
 
@@ -637,6 +730,7 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
         const double q = seamQAt(dir, seamQ);
         double ws[2], lg[2][3], veil[2][3];
         seamBlendWeights(dir, fade, ws, narrow ? flow : nullptr);
+        clearFade(dir, ws);
         lensLogGains(dir, m_params.depthSeam ? blend : nullptr, lg, veil);
         if (seamVeil)
             this->seamVeil(dir, seamVeil, veil);

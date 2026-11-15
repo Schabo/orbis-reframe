@@ -405,6 +405,123 @@ std::vector<uint8_t> djiFirstSample(uint32_t panoField, bool packedP)
     return sample.b;
 }
 
+// A lens mask (insv::LensMask): lens 0 sees its own camera from 92 deg off
+// its axis between the image angles 60 and 120 deg. There lens 0 is left
+// out -- of the feather, the seam's measurements, the flow's strips -- and
+// lens 1 used; everywhere else nothing changes.
+void testLensMask()
+{
+    insv::LensMask m;
+    m.clearDeg.assign(180, 0.0);
+    for (int k = 30; k <= 60; ++k) // 60..120 deg
+        m.clearDeg[k] = 92.0;
+    CHECK(near(m.clearRadAt(90 * kDeg), 92 * kDeg, 1e-12));
+    CHECK(near(m.clearRadAt(59 * kDeg), 92 * kDeg, 1e-12)); // the cautious side of 58..60
+    CHECK(m.clearRadAt(10 * kDeg) > 1e6);
+    CHECK(near(m.clearRadAt(-270 * kDeg), 92 * kDeg, 1e-12)); // angles wrap
+
+    insv::InsvCalibration c;
+    c.lensesExt = {avataLens(), avataLens()};
+    c.lensesExt[1].cx += 3840;
+    insv::StitchParams p;
+    p.lensModel = insv::LensModel::ThetaPoly;
+    p.thetaK5[0] = p.thetaK5[1] = 0.00108;
+    p.lensPose[0] = p.lensPose[1] = insv::LensPose{};
+    p.lensPose[1].mount[0] = p.lensPose[1].mount[8] = -1;
+    insv::FisheyeStitcher plain, st;
+    CHECK(plain.configure(c, 1920, 1920, p));
+    CHECK(!plain.hasLensMask() && plain.gpuParams().maskActive == 0);
+    p.lensMask[0] = m;
+    CHECK(st.configure(c, 1920, 1920, p));
+    CHECK(st.hasLensMask() && st.gpuParams().maskActive == 1);
+
+    // Lens 0's frame is the image's negated: image angle a, off-axis th.
+    auto dirAt = [](double aDeg, double thDeg) {
+        const double a = aDeg * kDeg, th = thDeg * kDeg;
+        return insv::Vec3{-std::sin(th) * std::cos(a), -std::sin(th) * std::sin(a), std::cos(th)};
+    };
+    const insv::Vec3 masked = dirAt(90, 95), beside = dirAt(0, 95), inside = dirAt(90, 89);
+    double u, v, th;
+    CHECK(st.project(0, masked, u, v, th));
+    CHECK(near(std::atan2(v - st.lensProjection(0).cy, u - st.lensProjection(0).cx), 90 * kDeg,
+               0.02));
+    CHECK(!st.lensClear(0, masked) && st.lensClear(1, masked));
+    CHECK(st.lensClear(0, beside) && st.lensClear(0, inside));
+    CHECK(plain.lensClear(0, masked));
+
+    // The table: where lens 0's mask starts in the masked bin, about 2 deg
+    // past the seam circle (its 92 deg; elevation is towards lens 0).
+    {
+        double e, t;
+        int i0, i1;
+        st.seamPosition(masked, e, i0, i1, t);
+        const insv::StitchGpuParams g = st.gpuParams();
+        CHECK(near(g.seamClear[i0][0], -2.0 * kDeg, 0.3 * kDeg));
+        CHECK(g.seamClear[i0][1] > 80 * kDeg); // lens 1 has no mask
+        CHECK(near(e, -5.0 * kDeg, 0.2 * kDeg));
+    }
+
+    // The feather: lens 0 gives its weight over to lens 1 past its mask, the
+    // same as without a mask away from it.
+    double w[2], wp[2];
+    st.seamBlendWeights(masked, nullptr, w);
+    CHECK(w[0] > 0.0); // the plain cross-fade still has lens 0 there
+    st.clearFade(masked, w);
+    CHECK(w[0] == 0.0 && near(w[1], 1.0, 0.05));
+    for (const insv::Vec3& d : {beside, inside, dirAt(200, 91)}) {
+        st.seamBlendWeights(d, nullptr, w);
+        plain.seamBlendWeights(d, nullptr, wp);
+        st.clearFade(d, w);
+        CHECK(w[0] == wp[0] && w[1] == wp[1]);
+    }
+
+    // The seam's statistics leave out the samples lens 0 has masked, and the
+    // flow's strips show lens 1's picture in lens 0's there.
+    insv::Image l0, l1;
+    l0.alloc(1920, 1920);
+    l1.alloc(1920, 1920);
+    std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t(200));
+    std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t(100));
+    insv::SeamCutStats stats, statsPlain;
+    insv::MeasureSeamCutStats(st, l0, l1, nullptr, stats);
+    insv::MeasureSeamCutStats(plain, l0, l1, nullptr, statsPlain);
+    double e, t;
+    int i0, i1;
+    st.seamPosition(masked, e, i0, i1, t);
+    const double band = st.gpuParams().bandRad, lo = st.gpuParams().seamClear[i0][0];
+    int cut = 0, kept = 0;
+    for (int r = 0; r < insv::kSeamCutRows; ++r) {
+        const double re = insv::SeamCutRowE(r, band);
+        if (re < lo - 1.0 * kDeg)
+            cut += stats.cell[i0][r].n == 0 && statsPlain.cell[i0][r].n > 0;
+        else if (re > lo + 1.0 * kDeg)
+            kept += stats.cell[i0][r].n == statsPlain.cell[i0][r].n && stats.cell[i0][r].n > 0;
+    }
+    CHECK(cut >= 1 && kept >= 1);
+    for (int b : {0, 40, 100})
+        for (int r = 0; r < insv::kSeamCutRows; ++r)
+            if (b != i0 && b != i1 && std::abs(b - i0) > 3)
+                CHECK(stats.cell[b][r].n == statsPlain.cell[b][r].n);
+
+    const insv::SeamFlowGrid grid = insv::SeamFlowGridFor(st);
+    CHECK(grid.valid());
+    insv::SeamFlowStrips strips;
+    insv::MeasureSeamFlowStrips(st, grid, l0, l1, strips);
+    int copied = 0, own = 0;
+    for (int y = 0; y < grid.rows; ++y)
+        for (int x = 0; x < grid.cols; ++x) {
+            const insv::Vec3 d = st.seamDir(grid.phiOf(x), grid.eOf(y));
+            const size_t at = static_cast<size_t>(y) * grid.cols + x;
+            if (strips.grey[1][at] == 0)
+                continue;
+            if (!st.lensClear(0, d))
+                copied += strips.grey[0][at] == strips.grey[1][at];
+            else
+                own += strips.grey[0][at] == 200;
+        }
+    CHECK(copied > 0 && own > grid.rows * grid.cols / 2);
+}
+
 void testDjiMeta()
 {
     // The Avata 360's schema (pano at 5) reads the pair, packed or not; the
@@ -3297,6 +3414,7 @@ int main()
     testExtrinsicsOrder();
     testMeiProjection();
     testThetaPolyProjection();
+    testLensMask();
     testDjiMeta();
     testLensProfile();
     testLinearAlgebra();
