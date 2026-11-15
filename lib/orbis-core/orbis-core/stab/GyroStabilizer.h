@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include <orbis-core/metadata/Imu.h> // insv::ImuSample, insv::ImuTrack
+#include <orbis-core/metadata/Imu.h> // orbiscore::ImuSample, orbiscore::ImuTrack
 
 // GyroStabilizer integrates the camera's own IMU track into a smoothed
 // orientation and produces a per-frame de-rotation to apply at reprojection
@@ -14,7 +14,7 @@
 // it composes AFTER the reframe pose: d_sphere = C * P * d_view (applying it to
 // the view ray before P turns its axes with the view -- wrong for any reframed
 // look direction; measured 2026-09-25). No Qt, no Vulkan, and nothing about
-// any camera's file: its input is an insv::ImuTrack (Imu.h) that the
+// any camera's file: its input is an orbiscore::ImuTrack (Imu.h) that the
 // camera's reader lined up with the video.
 //
 // Modes over one mechanism:
@@ -25,7 +25,7 @@
 //   - DirectionLock : Horizon lock whose heading doesn't follow the camera's
 //                     turns but holds one direction in the world.
 
-namespace insv {
+namespace orbiscore {
 
 enum class StabMode {
     Off,
@@ -192,7 +192,7 @@ public:
     // hundred k samples); safe to call again to rebuild on a settings change.
     // A track with < 2 samples, or mode == Off, leaves the stabilizer
     // not-ready (identity).
-    void build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg);
+    void build(const std::vector<orbiscore::ImuSample>& imu, const StabConfig& cfg);
 
     // As above, on a camera's track lined up with the video by its reader:
     // its axis map, video->IMU offset, capture scale, frame-clock rate and
@@ -210,7 +210,7 @@ public:
     // If cfg.timeOffsetSec is non-zero it is an explicit override and used
     // as-is (the clock rate still applies); a non-empty cfg.gyroAxes replaces
     // the track's map. `syncAdjustSec` is added to the track's offset (not to
-    // an override): the clip's measured fine-tune (insv::SyncEstimator /
+    // an override): the clip's measured fine-tune (orbiscore::SyncEstimator /
     // stitch::MeasureClipSync), since the file only pins the sync to a few ms.
     void build(const ImuTrack& track, const StabConfig& cfg, double syncAdjustSec = 0.0);
 
@@ -272,7 +272,7 @@ public:
 private:
     // Both build()s: `ref` is the track's ImuTrack::orientation (empty:
     // level against the accelerometer, the heading the gyro's alone).
-    void buildTrack(const std::vector<insv::ImuSample>& imu,
+    void buildTrack(const std::vector<orbiscore::ImuSample>& imu,
                     const std::vector<OrientationSample>& ref, const StabConfig& cfg);
     // build(ImuTrack, ...) on a track with an orientation and no samples:
     // the orientation itself (its up and north) is the raw track.
@@ -348,4 +348,4 @@ private:
 void YawPitchRollToMatrix(float yaw, float pitch, float roll, float m[3][3]);
 void MatrixToYawPitchRoll(const float m[3][3], float& yaw, float& pitch, float& roll);
 
-} // namespace insv
+} // namespace orbiscore

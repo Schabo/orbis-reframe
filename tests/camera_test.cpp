@@ -419,7 +419,7 @@ void testAntigravityA1(const std::filesystem::path& dir)
     if (track && track->orientation.size() == 2) {
         for (int k = 0; k < 2; ++k) {
             const double p = (k == 0 ? 0.0 : nose) + 9.7 * std::numbers::pi / 180.0;
-            const insv::OrientationSample& u = track->orientation[k];
+            const orbiscore::OrientationSample& u = track->orientation[k];
             CHECK(u.timestamp == (k == 0 ? 1000000u : 1020000u));
             CHECK(std::fabs(u.up[0]) < 1e-6 && std::fabs(u.up[1] - std::cos(p)) < 1e-6 &&
                   std::fabs(u.up[2] - std::sin(p)) < 1e-6);
@@ -461,8 +461,8 @@ void testA1Renamed(const std::filesystem::path& dir)
     const std::string vid = (sub / "Video8K30.insv").string();
     const std::string prx = (sub / "Video8K30.prx").string();
     write(vid, prx, "20261029_170732_021", 659569622, 659569622);
-    CHECK(insv::ReadInsvHeldName(vid) == "VID_20261029_170732_021.insv");
-    CHECK(insv::ReadInsvHeldName(prx) == "PRX_20261029_170732_021.prx");
+    CHECK(orbiscore::ReadInsvHeldName(vid) == "VID_20261029_170732_021.insv");
+    CHECK(orbiscore::ReadInsvHeldName(prx) == "PRX_20261029_170732_021.prx");
     const auto clip = camera::ReadClipMetadata(vid, &err);
     CHECK(clip && clip->recordedLocal == "2026-10-29T17:07:32");
     CHECK(clip && clip->proxyPath == prx);
@@ -486,7 +486,7 @@ void testA1Renamed(const std::filesystem::path& dir)
     CHECK(camera::ClipFileOf(stray, &err).empty());
 
     // A file that holds no name (FFmpeg's own MP4).
-    CHECK(!insv::ReadInsvHeldName((dir / "VID_20261028_165044_011.insv").string()));
+    CHECK(!orbiscore::ReadInsvHeldName((dir / "VID_20261028_165044_011.insv").string()));
 }
 
 } // namespace
@@ -628,11 +628,11 @@ void testSplitRecording(const std::filesystem::path& dir)
     }
 
     // The frames: read on through the join, and seeked to either side.
-    insv::InsvDemux demux;
+    orbiscore::InsvDemux demux;
     CHECK(demux.open(clip->partSources(), err));
     CHECK(demux.lens(0).durationMs == 3200);
-    insv::Image a, b;
-    insv::FramePts pts;
+    orbiscore::Image a, b;
+    orbiscore::FramePts pts;
     int frames = 0;
     int64_t last = -1;
     bool ordered = true;
@@ -697,11 +697,11 @@ void testMissingParts(const std::filesystem::path& dir)
         CHECK(clip->durationMs == 4200 && clip->missingFirst.empty() &&
               clip->mayContinueIn.empty());
         // The frames jump over the gap.
-        insv::InsvDemux demux;
+        orbiscore::InsvDemux demux;
         std::string err;
         CHECK(demux.open(clip->partSources(), err));
-        insv::Image a, b;
-        insv::FramePts pts;
+        orbiscore::Image a, b;
+        orbiscore::FramePts pts;
         int frames = 0;
         int64_t afterJoin = -1;
         while (demux.readNextPair(a, b, &pts, err))
@@ -789,10 +789,10 @@ void testTrimmedCopies(const std::filesystem::path& dir)
     CHECK(camera::ClipFileOf(p2) == p1);
     CHECK(camera::ClipFileOf(t2) == t1);
     // A plain trim: lined up right, nothing to warn about.
-    const auto map = insv::ReadInsvTimeMap(t1);
+    const auto map = orbiscore::ReadInsvTimeMap(t1);
     CHECK(map && map->cuts == 1 && map->offsetSpreadMs == 0.0 && map->offsetMs == 1200.0 &&
           map->plainTrim());
-    CHECK(!insv::ReadInsvTimeMap(p1));
+    CHECK(!orbiscore::ReadInsvTimeMap(p1));
     CHECK(original && !original->unevenTimeMap && copy && !copy->unevenTimeMap);
 
     // A copy with 3 s cut out of its middle: one offset can't line it all
@@ -802,7 +802,7 @@ void testTrimmedCopies(const std::filesystem::path& dir)
     appendTo(cuts, x5PartTrailer("IAHEA2500000001", kFirst1, 0,
                                  "/DCIM/Camera01/VID_20250927_150000_00_030.insv", kFirst1 - 500000,
                                  kFirst1 + 5000000, 0.1, 400.0, 3000.0));
-    const auto cutMap = insv::ReadInsvTimeMap(cuts);
+    const auto cutMap = orbiscore::ReadInsvTimeMap(cuts);
     CHECK(cutMap && cutMap->cuts == 2 && cutMap->offsetSpreadMs == 3000.0 &&
           !cutMap->plainTrim());
     const auto cutClip = camera::ReadClipMetadata(cuts);
@@ -835,7 +835,7 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     // The cover picture isn't a lens; the master lens is the first track.
     CHECK(clip->lenses[0].source.stream == 0 && clip->lenses[1].source.stream == 1);
     for (const camera::Lens& l : clip->lenses) {
-        CHECK(l.model == insv::LensModel::ThetaPoly && l.k5 != 0.0);
+        CHECK(l.model == orbiscore::LensModel::ThetaPoly && l.k5 != 0.0);
         CHECK(l.calibration.w == 7680 && l.calibration.focalRefW == 3840);
         CHECK(l.calibration.p[0] != 0.0 && l.calibration.p[1] != 0.0);
     }
@@ -869,7 +869,7 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
                                                   imu->orientation.front().timestamp);
         CHECK(std::abs(spanUs / static_cast<double>(imu->orientation.size() - 1) - 250.0) < 0.5);
         if (!imu->orientation.empty()) {
-            const insv::AxisMap am = insv::ParseAxisMap(imu->axisMap);
+            const orbiscore::AxisMap am = orbiscore::ParseAxisMap(imu->axisMap);
             double up[3];
             am.apply(imu->orientation.front().up, up);
             CHECK(up[1] > std::cos(5.0 * std::numbers::pi / 180.0));

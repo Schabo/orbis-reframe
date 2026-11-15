@@ -8,7 +8,7 @@
 // strip each (SeamFlowStrips: azimuth phi along the seam across, elevation e
 // off it down, at the template's geometry and capture-time correction, so
 // the strips show what the stitch would sample). The flow between them
-// (estimated outside this module: insv::SeamFlowEstimator on the CPU,
+// (estimated outside this module: orbiscore::SeamFlowEstimator on the CPU,
 // render::VulkanFisheyeStitcher::estimateSeamFlow on the GPU) says where
 // lens 0's content sits in lens 1 (F01) and lens 1's in lens 0 (F10).
 // SeamFlowWindow averages it over the last few frames so the warp holds
@@ -32,7 +32,7 @@
 #include <deque>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // The strips' resolution: as good as 10 px/deg in the measurements, and
 // the flow on them half the time.
@@ -147,4 +147,4 @@ private:
     std::deque<SeamFlowField> frames_;
 };
 
-} // namespace insv
+} // namespace orbiscore

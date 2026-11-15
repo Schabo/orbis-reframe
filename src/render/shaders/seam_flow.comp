@@ -1,6 +1,6 @@
 #version 450
 
-// The new stitcher's seam flow on the GPU (insv::SeamFlowEstimator's DIS
+// The new stitcher's seam flow on the GPU (orbiscore::SeamFlowEstimator's DIS
 // on the CPU; SeamFlow.h for what the field means): optical flow both ways
 // between the two lenses' strips, then the last few frames' fields averaged
 // into the flow texture the stitch samples.
@@ -31,10 +31,10 @@ layout(std430, binding = 0) readonly buffer Strips { uint strip[]; };
 // and the dense flow; offsets in the push constants.
 layout(std430, binding = 1) buffer Work { float w[]; };
 // The last frames' fields at the finest scale, one slot per frame: per
-// pixel F10 (dphi, de), F01 (dphi, de) in radians (insv::SeamFlowField).
+// pixel F10 (dphi, de), F01 (dphi, de) in radians (orbiscore::SeamFlowField).
 layout(std430, binding = 2) buffer Ring { vec4 ring[]; };
 // The averaged field at the strips' full size, as the stitch samples it,
-// and under it the fade's row (insv::SeamFlowField::fade: the share in R).
+// and under it the fade's row (orbiscore::SeamFlowField::fade: the share in R).
 layout(binding = 3, rgba16f) uniform image2D field;
 
 layout(push_constant) uniform PC {
@@ -58,11 +58,11 @@ layout(push_constant) uniform PC {
     int anchor;      // the anchored strips (cols x rows per lens), then their box means
     float reach;     // the warp's reach (rad)
     int fadeMeans;   // the fade: per ring slot and lens fadeN x cols patch means (-1 none)
-    int fadeColour;  // the seam colour blend's table (insv::StitchGpuParams::seamColour)
+    int fadeColour;  // the seam colour blend's table (orbiscore::StitchGpuParams::seamColour)
     int fadeRaw;     // per column the share, newest frames pooled
     int fadeMax;     // ... spread along the seam
-    int fadeN;       // patch centres (insv::SeamFadeRows)
-    int fadeRow0;    // the first one's strip row (insv::SeamFadeRowY)
+    int fadeN;       // patch centres (orbiscore::SeamFadeRows)
+    int fadeRow0;    // the first one's strip row (orbiscore::SeamFadeRowY)
 } pc;
 
 #define PASS_PYRAMID 0  // (x, y) of this scale, z = lens
@@ -76,21 +76,21 @@ layout(push_constant) uniform PC {
 #define PASS_ANCHOR_MEAN 8 // (x, y) of the strips, z = lens
 #define PASS_ANCHOR 9      // likewise
 #define PASS_FADE_MEANS 10  // (column, patch centre) of the strips
-#define PASS_FADE_SHARE 11  // column (the fade passes: insv::SeamFadeWindow)
+#define PASS_FADE_SHARE 11  // column (the fade passes: orbiscore::SeamFadeWindow)
 #define PASS_FADE_SPREAD 12 // column
 #define PASS_FADE_SMOOTH 13 // column
 
 // The fade (orbis-core/stitch/SeamFade.h).
-#define FADE_ROW_STEP 2      // insv::kSeamFadeRowStep
-#define FADE_PATCH_W 11      // insv::kSeamFadePatchW
-#define FADE_PATCH_H 5       // insv::kSeamFadePatchH
-#define FADE_LO 12.0         // insv::kSeamFadeLo
-#define FADE_HI 30.0         // insv::kSeamFadeHi
-#define FADE_SPREAD_DEG 1.5  // insv::kSeamFadeSpreadDeg
-#define FADE_SMOOTH_DEG 1.5  // insv::kSeamFadeSmoothDeg
-#define FADE_BINS 128        // insv::kSeamDepthBins
+#define FADE_ROW_STEP 2      // orbiscore::kSeamFadeRowStep
+#define FADE_PATCH_W 11      // orbiscore::kSeamFadePatchW
+#define FADE_PATCH_H 5       // orbiscore::kSeamFadePatchH
+#define FADE_LO 12.0         // orbiscore::kSeamFadeLo
+#define FADE_HI 30.0         // orbiscore::kSeamFadeHi
+#define FADE_SPREAD_DEG 1.5  // orbiscore::kSeamFadeSpreadDeg
+#define FADE_SMOOTH_DEG 1.5  // orbiscore::kSeamFadeSmoothDeg
+#define FADE_BINS 128        // orbiscore::kSeamDepthBins
 
-#define RING 5 // == insv::kSeamFlowFrames
+#define RING 5 // == orbiscore::kSeamFlowFrames
 #define PI 3.14159265358979
 #define PATCH 8
 #define STRIDE 4
@@ -106,18 +106,18 @@ float stripAt(int lens, int x, int y)
     return float((strip[i >> 2] >> (8 * (i & 3))) & 0xffu);
 }
 
-// The strips anchored (insv::AnchorSeamFlowStrips): where a strip is
+// The strips anchored (orbiscore::AnchorSeamFlowStrips): where a strip is
 // bright and has little texture of its own (clipped sky, the sun's veil),
 // both get the same fixed pattern added, so the flow there matches only
 // unshifted instead of anywhere. Texture: the RMS of the strip less its
 // box mean; brightness: the box mean; both over +-ANCHOR_BOX (x wrapping
 // round, rows past the ends repeating them).
-#define ANCHOR_BOX 8           // insv::kSeamFlowAnchorBoxPx
-#define ANCHOR_TEX_LO 5.0      // insv::kSeamFlowAnchorTexLo
-#define ANCHOR_TEX_HI 20.0     // insv::kSeamFlowAnchorTexHi
-#define ANCHOR_BRIGHT_LO 140.0 // insv::kSeamFlowAnchorBrightLo
-#define ANCHOR_BRIGHT_HI 180.0 // insv::kSeamFlowAnchorBrightHi
-#define ANCHOR_AMP 32.0        // insv::kSeamFlowAnchorAmp
+#define ANCHOR_BOX 8           // orbiscore::kSeamFlowAnchorBoxPx
+#define ANCHOR_TEX_LO 5.0      // orbiscore::kSeamFlowAnchorTexLo
+#define ANCHOR_TEX_HI 20.0     // orbiscore::kSeamFlowAnchorTexHi
+#define ANCHOR_BRIGHT_LO 140.0 // orbiscore::kSeamFlowAnchorBrightLo
+#define ANCHOR_BRIGHT_HI 180.0 // orbiscore::kSeamFlowAnchorBrightHi
+#define ANCHOR_AMP 32.0        // orbiscore::kSeamFlowAnchorAmp
 float anchoredAt(int lens, int x, int y) { return w[pc.anchor + lens * pc.rows * pc.cols + y * pc.cols + x]; }
 float anchorMeanAt(int lens, int x, int y) { return w[pc.anchor + (2 + lens) * pc.rows * pc.cols + y * pc.cols + x]; }
 
@@ -129,7 +129,7 @@ float anchorHash(uint ix, uint iy, uint octave)
     return float(h & 0xffffu) / 65535.0 * 2.0 - 1.0;
 }
 
-// insv::SeamFlowAnchorNoise.
+// orbiscore::SeamFlowAnchorNoise.
 float anchorNoise(int x, int y)
 {
     float sum = 0.0;
@@ -321,7 +321,7 @@ void sweep(bool forward)
     }
 }
 
-// The raw strip bilinear at (x, y) (insv::SeamFade's StripSample): x wraps,
+// The raw strip bilinear at (x, y) (orbiscore::SeamFade's StripSample): x wraps,
 // y clamps; false where a tap has no sample.
 bool fadeStrip(int lens, float x, float y, out float v)
 {
@@ -353,7 +353,7 @@ vec4 slotField(int slot, int x, int y)
     return mix(t, u, a.y);
 }
 
-// insv::SeamFadeShares for one frame's slot at column x, `g` the lenses'
+// orbiscore::SeamFadeShares for one frame's slot at column x, `g` the lenses'
 // colour gains there.
 float fadeShareOf(int slot, int x, vec2 g)
 {

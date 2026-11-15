@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace insv {
+namespace orbiscore {
 
 PcmInput::PcmInput(int channels)
     : m_in(static_cast<size_t>(std::max(1, channels)))
@@ -136,4 +136,4 @@ void StftStream::synthesise(int64_t start, const float* gain)
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

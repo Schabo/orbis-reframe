@@ -1,8 +1,8 @@
 // VulkanFisheyeStitcher's seam flow (seam_flow.comp): the flow between the
 // lenses' strips and the window over the last frames, on the GPU, recorded
 // into the submission that measured the strips -- nothing comes back to the
-// CPU. Mirrors insv::SeamFlowEstimator (OpenCV's DIS, fast preset) and
-// insv::SeamFlowWindow.
+// CPU. Mirrors orbiscore::SeamFlowEstimator (OpenCV's DIS, fast preset) and
+// orbiscore::SeamFlowWindow.
 #include "VulkanFisheyeStitcherImpl.h"
 
 #include "EmbeddedShaders.h"
@@ -53,13 +53,13 @@ struct SeamFlowPush {
 };
 static_assert(sizeof(SeamFlowPush) == 116, "SeamFlowPush must match seam_flow.comp's push constants");
 // seam_flow.comp's fade passes' constants.
-static_assert(insv::kSeamFadeRowStep == 2 && insv::kSeamFadePatchW == 11 && insv::kSeamFadePatchH == 5,
+static_assert(orbiscore::kSeamFadeRowStep == 2 && orbiscore::kSeamFadePatchW == 11 && orbiscore::kSeamFadePatchH == 5,
               "seam_flow.comp's FADE_ROW_STEP / FADE_PATCH_W / FADE_PATCH_H");
-static_assert(insv::kSeamFadeLo == 12.0 && insv::kSeamFadeHi == 30.0 &&
-                  insv::kSeamFadeSpreadDeg == 1.5 && insv::kSeamFadeSmoothDeg == 1.5,
+static_assert(orbiscore::kSeamFadeLo == 12.0 && orbiscore::kSeamFadeHi == 30.0 &&
+                  orbiscore::kSeamFadeSpreadDeg == 1.5 && orbiscore::kSeamFadeSmoothDeg == 1.5,
               "seam_flow.comp's FADE_LO / FADE_HI / FADE_SPREAD_DEG / FADE_SMOOTH_DEG");
-static_assert(insv::kSeamDepthBins == 128, "seam_flow.comp's FADE_BINS");
-static_assert(insv::kSeamFlowFrames == 5, "seam_flow.comp's RING is the window's length");
+static_assert(orbiscore::kSeamDepthBins == 128, "seam_flow.comp's FADE_BINS");
+static_assert(orbiscore::kSeamFlowFrames == 5, "seam_flow.comp's RING is the window's length");
 
 // DIS at OpenCV's fast preset (what the CPU estimator runs): the finest
 // scale a quarter of the strip, 8 x 8 patches every 4 pixels (the shader's
@@ -172,7 +172,8 @@ bool VulkanFisheyeStitcher::Impl::buildSeamFlowPipeline(std::string& err)
     return true;
 }
 
-bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const insv::StitchGpuParams& p, std::string& err)
+bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const orbiscore::StitchGpuParams& p,
+                                                 std::string& err)
 {
     const int cols = p.seamFlowCols, rows = p.seamFlowRows;
     if (cols <= 0 || rows <= 1 || (cols & 3) || !(p.seamFlowStripRad > 0)) {
@@ -180,7 +181,7 @@ bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const insv::StitchGpuParams& p,
         return false;
     }
     // The texture at the grid's size, whatever field the frame had before.
-    insv::StitchGpuParams grid;
+    orbiscore::StitchGpuParams grid;
     grid.seamFlowCols = cols;
     grid.seamFlowRows = rows;
     grid.seamFlowGpu = true;
@@ -228,24 +229,24 @@ bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const insv::StitchGpuParams& p,
         sf.anchor = at;
         at += 4 * cols * rows;
         // The fade's patch means per ring slot, its colour table and shares.
-        insv::SeamFlowGrid g;
+        orbiscore::SeamFlowGrid g;
         g.cols = cols;
         g.rows = rows;
         g.stripRad = p.seamFlowStripRad;
         g.reachRad = p.seamFlowReachRad;
-        sf.fadeN = insv::SeamFadeRows(g);
-        sf.fadeRow0 = insv::SeamFadeRowY(g, 0);
+        sf.fadeN = orbiscore::SeamFadeRows(g);
+        sf.fadeRow0 = orbiscore::SeamFadeRowY(g, 0);
         sf.fadeMeans = at;
-        at += insv::kSeamFlowFrames * 2 * sf.fadeN * cols;
+        at += orbiscore::kSeamFlowFrames * 2 * sf.fadeN * cols;
         sf.fadeColour = at;
-        at += insv::kSeamDepthBins * 3;
+        at += orbiscore::kSeamDepthBins * 3;
         sf.fadeRaw = at;
         at += cols;
         sf.fadeMax = at;
         at += cols;
         if (!makeBuffer(static_cast<VkDeviceSize>(at) * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sf.work, sf.workMem, nullptr) ||
-            !makeBuffer(static_cast<VkDeviceSize>(insv::kSeamFlowFrames) * fin.W * fin.H * 16,
+            !makeBuffer(static_cast<VkDeviceSize>(orbiscore::kSeamFlowFrames) * fin.W * fin.H * 16,
                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                         sf.ring, sf.ringMem, nullptr)) {
             destroySeamFlow();
@@ -306,7 +307,7 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
         p.prevDense = coarser ? coarser->dense : 0;
         p.iters = kDescentIters;
         p.slot = sf.slot;
-        p.count = std::min(sf.count + 1, insv::kSeamFlowFrames);
+        p.count = std::min(sf.count + 1, orbiscore::kSeamFlowFrames);
         p.radX = sf.radX;
         p.radY = sf.radY;
         p.sx = sc.sx;
@@ -384,17 +385,18 @@ void VulkanFisheyeStitcher::Impl::recordSeamFlow(VkCommandBuffer c)
     }
     flowFresh = false;
     flowHeld.reset(); // the texture is the GPU's field now, not a CPU one
-    sf.slot = (sf.slot + 1) % insv::kSeamFlowFrames;
-    sf.count = std::min(sf.count + 1, insv::kSeamFlowFrames);
+    sf.slot = (sf.slot + 1) % orbiscore::kSeamFlowFrames;
+    sf.count = std::min(sf.count + 1, orbiscore::kSeamFlowFrames);
 }
 
-void VulkanFisheyeStitcher::Impl::recordSeamFade(VkCommandBuffer c, const insv::StitchGpuParams& p)
+void VulkanFisheyeStitcher::Impl::recordSeamFade(VkCommandBuffer c,
+                                                 const orbiscore::StitchGpuParams& p)
 {
     const bool gpuField = !(p.seamFlow && !p.seamFlow->empty()) && p.seamFlowGpu;
     if (!p.seamColourActive || !gpuField || !sf.pipeline || sf.fadeN <= 0 || sf.count <= 0 ||
         !flowImg || flowW != sf.cols || flowH != sf.rows + 1)
         return;
-    float colour[insv::kSeamDepthBins * 3];
+    float colour[orbiscore::kSeamDepthBins * 3];
     std::memcpy(colour, &p.seamColour[0][0], sizeof colour);
     VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
     mb.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
@@ -418,7 +420,7 @@ void VulkanFisheyeStitcher::Impl::recordSeamFade(VkCommandBuffer c, const insv::
     SeamFlowPush q{};
     q.cols = sf.cols;
     q.rows = sf.rows;
-    q.slot = (sf.slot + insv::kSeamFlowFrames - 1) % insv::kSeamFlowFrames; // the newest
+    q.slot = (sf.slot + orbiscore::kSeamFlowFrames - 1) % orbiscore::kSeamFlowFrames; // the newest
     q.count = sf.count;
     q.radX = sf.radX;
     q.radY = sf.radY;
@@ -494,15 +496,15 @@ bool VulkanFisheyeStitcher::Impl::submitOnce(const std::function<void(VkCommandB
     return true;
 }
 
-bool VulkanFisheyeStitcher::estimateSeamFlow(const insv::SeamFlowStrips& s, std::string& err)
+bool VulkanFisheyeStitcher::estimateSeamFlow(const orbiscore::SeamFlowStrips& s, std::string& err)
 {
-    const insv::SeamFlowGrid& g = s.grid;
+    const orbiscore::SeamFlowGrid& g = s.grid;
     const size_t n = static_cast<size_t>(g.rows) * g.cols;
     if (!m_ready || !g.valid() || s.grey[0].size() != n || s.grey[1].size() != n) {
         err = "estimateSeamFlow: not ready or invalid strips";
         return false;
     }
-    insv::StitchGpuParams p;
+    orbiscore::StitchGpuParams p;
     p.seamFlowCols = g.cols;
     p.seamFlowRows = g.rows;
     p.seamFlowStripRad = g.stripRad;
@@ -535,20 +537,21 @@ bool VulkanFisheyeStitcher::estimateSeamFlow(const insv::SeamFlowStrips& s, std:
     return ok;
 }
 
-bool VulkanFisheyeStitcher::solveSeamFade(const insv::StitchGpuParams& params, std::string& err)
+bool VulkanFisheyeStitcher::solveSeamFade(const orbiscore::StitchGpuParams& params,
+                                          std::string& err)
 {
     if (!m_ready || d->sf.count <= 0) {
         err = "solveSeamFade: no GPU seam flow";
         return false;
     }
-    insv::StitchGpuParams p = params;
+    orbiscore::StitchGpuParams p = params;
     p.seamColourActive = 1;
     p.seamFlow.reset();
     p.seamFlowGpu = true;
     return d->submitOnce([&](VkCommandBuffer c) { d->recordSeamFade(c, p); }, err);
 }
 
-bool VulkanFisheyeStitcher::readSeamFlow(insv::SeamFlowField& out, std::string& err)
+bool VulkanFisheyeStitcher::readSeamFlow(orbiscore::SeamFlowField& out, std::string& err)
 {
     out.v.clear();
     if (!m_ready || !d->flowImg || d->sf.cols != d->flowW || d->sf.rows + 1 != d->flowH) {

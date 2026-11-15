@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/insta360/InsvModels.h>
 
-namespace insv {
+namespace orbiscore {
 namespace {
 
 const InsvModel kModels[] = {
@@ -42,7 +42,7 @@ const InsvModel kModels[] = {
     // three sample clips; the camera sits pitched up 9.7 deg in the
     // airframe, fitted from the attitude's rotation against the gyro on all
     // three (9.5-9.9 deg; one unit measured). Lens correction: the median of
-    // the per-clip seam fit (insv::EstimateSeamAlignment) over 17 sample
+    // the per-clip seam fit (orbiscore::EstimateSeamAlignment) over 17 sample
     // clips in every mode, term by term: the lenses 0.14 deg apart at the
     // seam on average, against 0.42 with the file's calibration alone, and
     // the sharpest seam of the corrections tried. One unit measured, its
@@ -78,4 +78,4 @@ const InsvModel& FindInsvModel(const std::string& model, bool* known) {
     return kModels[0];
 }
 
-} // namespace insv
+} // namespace orbiscore

@@ -86,21 +86,21 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
     }
 
     std::string e;
-    insv::LensDemuxer demux;
+    orbiscore::LensDemuxer demux;
     if (!demux.open(
             path, [](const auto*, const auto*, auto*, std::string&) { return true; }, e)) {
         if (err)
             *err = "demux open failed: " + e;
         return {};
     }
-    std::vector<insv::InsvStreamInfo> streams;
+    std::vector<orbiscore::InsvStreamInfo> streams;
     for (int i = 0; i < demux.lensCount(); ++i)
         streams.push_back(demux.lens(i));
     demux.close();
 
     auto clip = std::make_shared<ClipMetadata>();
     clip->path = path;
-    const insv::InsvStreamInfo& s0 = streams.front(); // open() fails without a video stream
+    const orbiscore::InsvStreamInfo& s0 = streams.front(); // open() fails without a video stream
     clip->lensWidth = s0.width;
     clip->lensHeight = s0.height;
     clip->fps = s0.fps;
@@ -197,7 +197,7 @@ std::string ClipFileOf(const std::string& path, std::string* err) {
     return path;
 }
 
-std::vector<insv::AudioPart> ClipAudioParts(const std::string& path) {
+std::vector<orbiscore::AudioPart> ClipAudioParts(const std::string& path) {
     // Asked for every sound on the timeline whenever it changes, music files
     // too, which lookup() would open each time: remember which aren't clips.
     static std::mutex mx;
@@ -219,13 +219,13 @@ std::vector<insv::AudioPart> ClipAudioParts(const std::string& path) {
     }
     if (c.clip->parts.size() < 2)
         return {{path, 0}};
-    std::vector<insv::AudioPart> parts;
+    std::vector<orbiscore::AudioPart> parts;
     for (const Part& p : c.clip->parts)
         parts.push_back({p.path, p.startUs});
     return parts;
 }
 
-std::optional<insv::ImuTrack> ReadClipImu(const std::string& path) {
+std::optional<orbiscore::ImuTrack> ReadClipImu(const std::string& path) {
     const Cached c = lookup(path, nullptr, nullptr);
     if (!c.clip || !c.clip->hasMotion)
         return std::nullopt;
@@ -239,15 +239,15 @@ ClipTelemetry ReadClipTelemetry(const std::string& path) {
         return out;
     if (c.clip->hasMotion)
         if (const auto imu = c.reader->readImu(*c.clip))
-            out.motion = insv::BuildMotion(*imu);
+            out.motion = orbiscore::BuildMotion(*imu);
     if (c.clip->gpsFixes == 0)
         return out;
     out.gps = c.reader->readGps(*c.clip);
     // The match is by the accelerometer, which a per-frame orientation doesn't have.
     if (!out.gps || !out.gps->clockStamped || !c.clip->hasMotion || c.clip->orientationPerFrame)
         return out;
-    const auto fit = insv::AlignGpsByAcceleration(*out.gps, out.motion.forwardG,
-                                                  out.motion.stepSec);
+    const auto fit = orbiscore::AlignGpsByAcceleration(*out.gps, out.motion.forwardG,
+                                                       out.motion.stepSec);
     if (!fit) {
         std::fprintf(stderr, "[camera] GPS in %s: its speed doesn't match the IMU clearly; timed "
                              "by the camera's clock alone\n",
@@ -257,7 +257,7 @@ ClipTelemetry ReadClipTelemetry(const std::string& path) {
     std::fprintf(stderr, "[camera] GPS in %s lined up with the IMU: it ran %.2f s behind the video "
                          "at the start, %.2f s at the end\n",
                  path.c_str(), fit->shifts.front().second, fit->shifts.back().second);
-    for (insv::GpsFix& f : out.gps->fixes)
+    for (orbiscore::GpsFix& f : out.gps->fixes)
         f.timeMs = fit->videoMs(f.timeMs);
     return out;
 }

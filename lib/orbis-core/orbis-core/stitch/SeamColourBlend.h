@@ -48,7 +48,7 @@
 // NativeStitchSource::SeekTo): every path stitches a frame the same way.
 // Dependency-free (insv lib).
 
-namespace insv {
+namespace orbiscore {
 
 struct SeamCutStats;
 
@@ -152,4 +152,4 @@ private:
     std::vector<Frame> m_frames;
 };
 
-} // namespace insv
+} // namespace orbiscore

@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-namespace insv {
+namespace orbiscore {
 
 // A streaming noise filter over interleaved float PCM, as ClipAudioReader
 // runs it: output is the input delayed by exactly latency() frames (the
@@ -48,4 +48,4 @@ bool voiceModesAvailable(std::string* why = nullptr);
 // them now if needed; VoiceIsolator::ready). For diagnostics.
 bool voiceModesReady(std::string* why = nullptr);
 
-} // namespace insv
+} // namespace orbiscore

@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace insv {
+namespace orbiscore {
 
 AudioMixer::AudioMixer(int sampleRate, int channels) : m_rate(sampleRate), m_channels(channels) {}
 
@@ -83,4 +83,4 @@ void AudioMixer::limit(float* pcm, int64_t samples)
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

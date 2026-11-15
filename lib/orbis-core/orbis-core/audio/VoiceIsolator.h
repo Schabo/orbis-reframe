@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-namespace insv {
+namespace orbiscore {
 
 // "Voice only" / "Voice + ambience": DeepFilterNet 3 speech enhancement
 // (Schröter et al., MIT/Apache-2.0; its ONNX export run with ONNX Runtime).
@@ -71,4 +71,4 @@ private:
     float m_strength;
 };
 
-} // namespace insv
+} // namespace orbiscore

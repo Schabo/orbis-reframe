@@ -19,7 +19,7 @@ extern "C" {
 #include <libavutil/frame.h>
 }
 
-namespace insv {
+namespace orbiscore {
 
 // abuffer -> atempo[,atempo...] -> aformat(flt) -> abuffersink, interleaved
 // float32 in and out. atempo takes 0.5..100 per stage, so slower speeds chain
@@ -368,4 +368,4 @@ void ClipAudioReader::readPart(Part& p, float* out, int64_t from, int64_t frames
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

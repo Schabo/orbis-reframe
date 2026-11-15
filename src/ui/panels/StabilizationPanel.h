@@ -2,7 +2,7 @@
 
 #include "../SettingsPanel.h"
 
-#include <orbis-core/stab/GyroStabilizer.h> // insv::StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::StabConfig
 
 class QCheckBox;
 class QComboBox;
@@ -14,7 +14,7 @@ class QWidget;
 
 // Stabilization mode picker + per-mode controls for one clip (the selected
 // one, else the one under the playhead), like the Colour panel. All modes
-// drive the native reprojection-time path (insv::GyroStabilizer,
+// drive the native reprojection-time path (orbiscore::GyroStabilizer,
 // ClipItem::stabilization):
 //   Off;
 //   Lean follow  -- smooth the shake, keep the bike's lean; one Strength slider
@@ -26,7 +26,7 @@ class QWidget;
 //                   playhead's time in the clip);
 //   Custom       -- the raw per-axis windows + level-horizon + mount offsets,
 //                   and Lock direction (then Direction lock's row too).
-// MainWindow writes the emitted insv::StabConfig onto the clip
+// MainWindow writes the emitted orbiscore::StabConfig onto the clip
 // (Timeline::setClipStabilization). Copy / Paste ask MainWindow, which holds
 // the copied setting (shared with the timeline's right-click menu).
 class StabilizationPanel : public SettingsPanel {
@@ -41,7 +41,7 @@ public:
     // `cfg` is the native gyro config for `mode`: for Lean follow the Strength
     // slider is derived from its shared window, for Custom it fills the raw
     // knobs, otherwise it is ignored.
-    void setState(Mode mode, const insv::StabConfig &cfg);
+    void setState(Mode mode, const orbiscore::StabConfig &cfg);
 
     // Direction lock: where the held direction is (the time it was taken at).
     void setDirectionStatus(const QString &text);
@@ -55,10 +55,10 @@ public:
     void setCanPaste(bool canPaste);
 
 signals:
-    // mode is the picker choice; nativeConfig is the insv::StabConfig for that
+    // mode is the picker choice; nativeConfig is the orbiscore::StabConfig for that
     // mode (LeanFollow window from the Strength slider, Custom from the raw
     // knobs, an Off config otherwise).
-    void modeChanged(StabilizationPanel::Mode mode, const insv::StabConfig &nativeConfig);
+    void modeChanged(StabilizationPanel::Mode mode, const orbiscore::StabConfig &nativeConfig);
     // Direction lock's button: hold the direction under the playhead.
     void lockDirectionRequested();
     void copyRequested();
@@ -66,7 +66,7 @@ signals:
 
 private:
     void emitIfEdited();
-    insv::StabConfig nativeConfigForMode() const;
+    orbiscore::StabConfig nativeConfigForMode() const;
     void updateModeVisibility();
 
     QComboBox *m_mode = nullptr;

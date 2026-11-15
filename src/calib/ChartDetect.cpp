@@ -67,7 +67,7 @@ private:
     bool closed_ = false;
 };
 
-cv::Mat Grey(const insv::Image& img)
+cv::Mat Grey(const orbiscore::Image& img)
 {
     const cv::Mat rgb(img.h, img.w, CV_8UC3, const_cast<uint8_t*>(img.rgb.data()));
     cv::Mat g;
@@ -79,7 +79,7 @@ cv::Mat Grey(const insv::Image& img)
 constexpr int kMinCorners = 8;
 
 // What to add to OpenCV's ChArUco corners to put them in the stitch's pixel
-// frame, where pixel (x, y)'s centre is at (x, y) (insv::Image::sample, the
+// frame, where pixel (x, y)'s centre is at (x, y) (orbiscore::Image::sample, the
 // GPU stitch's (u + 0.5) / w). OpenCV 4.7 to 4.13 and 5.0.0-alpha return
 // them half a pixel down and right of that, 4.14 and 5.0 don't; a
 // distribution may carry either. So it is measured once, on the chart's own
@@ -153,7 +153,7 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
     const auto clip = camera::ReadClipMetadata(clipPath, &err);
     if (!clip)
         return false;
-    insv::InsvDemux demux;
+    orbiscore::InsvDemux demux;
     if (!demux.open(clip->partSources(), err))
         return false;
     if (demux.lensCount() < 2) {
@@ -188,8 +188,8 @@ bool DetectChart(const std::string& clipPath, ChartObservations& out, std::strin
     bool ok = true;
     if (!demux.seekTo(0, err))
         ok = false;
-    insv::Image l0, l1;
-    insv::FramePts pts;
+    orbiscore::Image l0, l1;
+    orbiscore::FramePts pts;
     for (int n = 0; ok; ++n) {
         if (cancel && cancel->load()) {
             err = "cancelled";

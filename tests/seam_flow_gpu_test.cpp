@@ -5,7 +5,7 @@
 // lenses; a shift in one part of the strip stays there; the window averages
 // the frames it holds and starts again after a reset; the fade between the
 // lenses widens where one lens is brighter near the seam, and only there, as
-// the CPU's (insv::SeamFadeWindow) on the same strips and field. Where the CPU's
+// the CPU's (orbiscore::SeamFadeWindow) on the same strips and field. Where the CPU's
 // estimator is built (OpenCV), the two agree on a near thing crossing the
 // seam.
 // Standalone; the exit code is the failure count, 77 (skipped) without a
@@ -40,9 +40,9 @@ int g_failures = 0;
     } while (0)
 
 // The X5's grid: 7 px/deg round the circle, +-5.5 deg across.
-insv::SeamFlowGrid Grid()
+orbiscore::SeamFlowGrid Grid()
 {
-    insv::SeamFlowGrid g;
+    orbiscore::SeamFlowGrid g;
     g.cols = 2520;
     g.rows = 78;
     g.stripRad = static_cast<float>(5.5 * std::numbers::pi / 180.0);
@@ -97,9 +97,9 @@ uint8_t Grey(double v) { return static_cast<uint8_t>(std::clamp(std::lround(v), 
 // Lens 0 shows the texture; lens 1 the same thing `shift(x, y)` strip
 // pixels further on (so F01 = shift), `offset` grey levels brighter.
 template <class Shift>
-insv::SeamFlowStrips Strips(const Texture& t, Shift shift, double offset = 0.0)
+orbiscore::SeamFlowStrips Strips(const Texture& t, Shift shift, double offset = 0.0)
 {
-    insv::SeamFlowStrips s;
+    orbiscore::SeamFlowStrips s;
     s.grid = Grid();
     const int C = s.grid.cols, R = s.grid.rows;
     for (int i = 0; i < 2; ++i)
@@ -116,7 +116,7 @@ insv::SeamFlowStrips Strips(const Texture& t, Shift shift, double offset = 0.0)
 }
 
 // The field's F01 / F10 at (x, y) in strip pixels.
-void FlowPx(const insv::SeamFlowField& f, int x, int y, double f01[2], double f10[2])
+void FlowPx(const orbiscore::SeamFlowField& f, int x, int y, double f01[2], double f10[2])
 {
     const float* v = f.v.data() + (static_cast<size_t>(y) * f.grid.cols + x) * 4;
     const double px = f.grid.cols / (2 * std::numbers::pi);
@@ -130,7 +130,7 @@ void FlowPx(const insv::SeamFlowField& f, int x, int y, double f01[2], double f1
 // The median |F01 - want| and |F10 + want| (strip pixels) over the rows
 // [y0, y1) and the columns where `use` says.
 template <class Use>
-double MedianError(const insv::SeamFlowField& f, double wx, double wy, int y0, int y1, Use use)
+double MedianError(const orbiscore::SeamFlowField& f, double wx, double wy, int y0, int y1, Use use)
 {
     std::vector<double> e;
     for (int y = y0; y < y1; ++y)
@@ -148,8 +148,8 @@ double MedianError(const insv::SeamFlowField& f, double wx, double wy, int y0, i
     return e[e.size() / 2];
 }
 
-bool Estimate(render::VulkanFisheyeStitcher& gpu, const insv::SeamFlowStrips& s,
-              insv::SeamFlowField& out)
+bool Estimate(render::VulkanFisheyeStitcher& gpu, const orbiscore::SeamFlowStrips& s,
+              orbiscore::SeamFlowField& out)
 {
     std::string err;
     if (!gpu.estimateSeamFlow(s, err) || !gpu.readSeamFlow(out, err)) {
@@ -166,7 +166,7 @@ void testWholeShift(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 {
     // 1.6 px along, 0.7 px across, lens 1 eight grey levels brighter.
     gpu.resetSeamFlow();
-    insv::SeamFlowField f;
+    orbiscore::SeamFlowField f;
     if (!Estimate(gpu, Strips(t, [](int, int, double& dx, double& dy) { dx = 1.6, dy = 0.7; }, 8.0), f))
         return;
     CHECK(gpu.seamFlowFrames() == 1);
@@ -186,7 +186,7 @@ void testLocalShift(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     // A near thing: 4 px along over 300 columns, nothing elsewhere.
     auto inThing = [](int x) { return x >= 1000 && x < 1300; };
     gpu.resetSeamFlow();
-    insv::SeamFlowField f;
+    orbiscore::SeamFlowField f;
     if (!Estimate(gpu,
                   Strips(t, [&](int x, int, double& dx, double& dy) { dx = inThing(x) ? 4.0 : 0.0, dy = 0; }),
                   f))
@@ -200,7 +200,7 @@ void testLocalShift(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 
 // The step in F01 along the strip from column a to column b, median over the
 // rows away from the strip's edges (strip pixels).
-double ColumnStep(const insv::SeamFlowField& f, int a, int b)
+double ColumnStep(const orbiscore::SeamFlowField& f, int a, int b)
 {
     std::vector<double> e;
     for (int y = 8; y < f.grid.rows - 8; ++y) {
@@ -230,7 +230,7 @@ void testShiftAtWrap(render::VulkanFisheyeStitcher& gpu, const Texture& t)
             dy = 0;
         };
     };
-    insv::SeamFlowField wrap, mid;
+    orbiscore::SeamFlowField wrap, mid;
     gpu.resetSeamFlow();
     if (!Estimate(gpu, Strips(t, bump(0)), wrap))
         return;
@@ -251,7 +251,7 @@ void testWindow(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     // Two frames, 1 px and 2 px: the window holds their mean; a reset
     // starts again with the next.
     gpu.resetSeamFlow();
-    insv::SeamFlowField f;
+    orbiscore::SeamFlowField f;
     Estimate(gpu, Strips(t, [](int, int, double& dx, double& dy) { dx = 1.0, dy = 0; }), f);
     if (!Estimate(gpu, Strips(t, [](int, int, double& dx, double& dy) { dx = 2.0, dy = 0; }), f))
         return;
@@ -261,7 +261,7 @@ void testWindow(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     CHECK(mean < 0.15);
     for (int i = 0; i < 6; ++i)
         Estimate(gpu, Strips(t, [](int, int, double& dx, double& dy) { dx = 2.0, dy = 0; }), f);
-    CHECK(gpu.seamFlowFrames() == insv::kSeamFlowFrames);
+    CHECK(gpu.seamFlowFrames() == orbiscore::kSeamFlowFrames);
     CHECK(MedianError(f, 2.0, 0, 8, f.grid.rows - 8, kAll) < 0.15); // the 1 px frame gone
     gpu.resetSeamFlow();
     CHECK(gpu.seamFlowFrames() == 0);
@@ -282,7 +282,7 @@ void testWindowOrder(render::VulkanFisheyeStitcher& gpu, const Texture& t)
             dy = 0.1 * i;
         });
     };
-    insv::SeamFlowField played, fresh;
+    orbiscore::SeamFlowField played, fresh;
     gpu.resetSeamFlow();
     for (int i = 0; i < 6; ++i)
         if (!Estimate(gpu, frame(i), played))
@@ -296,7 +296,7 @@ void testWindowOrder(render::VulkanFisheyeStitcher& gpu, const Texture& t)
 
 // The p90 of |F01| and |F10| (strip pixels) over the rows [y0, y1) and the
 // columns [x0, x1).
-double P90Flow(const insv::SeamFlowField& f, int x0, int x1, int y0, int y1)
+double P90Flow(const orbiscore::SeamFlowField& f, int x0, int x1, int y0, int y1)
 {
     std::vector<double> m;
     for (int y = y0; y < y1; ++y)
@@ -319,7 +319,7 @@ void testBrightSky(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     // sky is anchored, so the flow stays zero in both. A near thing
     // shifted across the seam elsewhere is still joined up.
     auto acrossThing = [](int x) { return x >= 400 && x < 700; };
-    insv::SeamFlowStrips s = Strips(t, [&](int x, int, double& dx, double& dy) {
+    orbiscore::SeamFlowStrips s = Strips(t, [&](int x, int, double& dx, double& dy) {
         dx = 0;
         dy = acrossThing(x) ? 6.0 : 0.0;
     });
@@ -333,10 +333,10 @@ void testBrightSky(render::VulkanFisheyeStitcher& gpu, const Texture& t)
             s.grey[1][k] = Grey(base + 14.0 * a * a * (1.0 - 0.5 * y / sky));
         }
     gpu.resetSeamFlow();
-    insv::SeamFlowField f;
+    orbiscore::SeamFlowField f;
     if (!Estimate(gpu, s, f))
         return;
-    auto report = [&](const char* who, const insv::SeamFlowField& g) {
+    auto report = [&](const char* who, const orbiscore::SeamFlowField& g) {
         const double inSky = P90Flow(g, 1040, 1460, 4, sky - 4);
         const double below = P90Flow(g, 1040, 1460, sky, R - 8);
         const double across = MedianError(g, 0, 6.0, 8, R - 8, [](int x) { return x >= 440 && x < 660; });
@@ -349,8 +349,8 @@ void testBrightSky(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     };
     report("", f);
 #ifdef ORBIS_SEAM_FLOW
-    insv::SeamFlowEstimator est;
-    insv::SeamFlowField c;
+    orbiscore::SeamFlowEstimator est;
+    orbiscore::SeamFlowField c;
     CHECK(est.estimate(s, c));
     report("CPU, ", c);
 #endif
@@ -363,7 +363,7 @@ void testFade(render::VulkanFisheyeStitcher& gpu, const Texture& t)
     // and stays narrow away from it; the CPU's from the same strips and the
     // GPU's own field agrees.
     auto none = [](int, int, double& dx, double& dy) { dx = dy = 0.0; };
-    insv::SeamFlowStrips s = Strips(t, none);
+    orbiscore::SeamFlowStrips s = Strips(t, none);
     const int C = s.grid.cols;
     for (int y = 0; y < s.grid.rows; ++y)
         for (int x = 950; x < 1050; ++x) {
@@ -371,9 +371,9 @@ void testFade(render::VulkanFisheyeStitcher& gpu, const Texture& t)
             v = Grey(v + 40.0);
         }
     gpu.resetSeamFlow();
-    insv::SeamFlowField g;
+    orbiscore::SeamFlowField g;
     std::string err;
-    insv::StitchGpuParams p;
+    orbiscore::StitchGpuParams p;
     p.seamFlowCols = C;
     p.seamFlowRows = s.grid.rows;
     if (!Estimate(gpu, s, g) || !gpu.solveSeamFade(p, err) || !gpu.readSeamFlow(g, err)) {
@@ -386,12 +386,12 @@ void testFade(render::VulkanFisheyeStitcher& gpu, const Texture& t)
         return;
     CHECK(g.fade[1000] > 0.95f);
     CHECK(g.fade[2000] < 0.02f && g.fade[300] < 0.02f);
-    insv::SeamFadeFrame f;
-    insv::MeasureSeamFadeFrame(s, g, f);
-    insv::SeamFadeWindow w;
+    orbiscore::SeamFadeFrame f;
+    orbiscore::MeasureSeamFadeFrame(s, g, f);
+    orbiscore::SeamFadeWindow w;
     w.add(std::move(f));
     std::vector<float> cpu;
-    const float colour[insv::kSeamDepthBins * 3] = {};
+    const float colour[orbiscore::kSeamDepthBins * 3] = {};
     w.solve(colour, cpu);
     double worst = 0.0;
     for (int x = 0; x < C; ++x)
@@ -412,12 +412,12 @@ void testAgreesWithCpu(render::VulkanFisheyeStitcher& gpu, const Texture& t)
         dx = 3.0 * a * b;
         dy = 0.8 * a * b;
     };
-    const insv::SeamFlowStrips s = Strips(t, shift, 5.0);
+    const orbiscore::SeamFlowStrips s = Strips(t, shift, 5.0);
     gpu.resetSeamFlow();
-    insv::SeamFlowField g, c;
+    orbiscore::SeamFlowField g, c;
     if (!Estimate(gpu, s, g))
         return;
-    insv::SeamFlowEstimator est;
+    orbiscore::SeamFlowEstimator est;
     CHECK(est.estimate(s, c));
     std::vector<double> d;
     for (int y = 8; y < s.grid.rows - 8; ++y)

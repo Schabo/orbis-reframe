@@ -839,14 +839,14 @@ void testDirectionLock(const Ctx &c)
         return;
     const int a = c.timeline->clipAt(0).id;
     const int b = c.timeline->clipAt(1).id;
-    const insv::StabConfig beforeA = c.timeline->clipAt(0).stabilization;
-    const insv::StabConfig beforeB = c.timeline->clipAt(1).stabilization;
+    const orbiscore::StabConfig beforeA = c.timeline->clipAt(0).stabilization;
+    const orbiscore::StabConfig beforeB = c.timeline->clipAt(1).stabilization;
     settle();
     CHECK(seekTo(c, 1500));
     settle();
     mode->setCurrentIndex(mode->findData(int(StabilizationPanel::Mode::DirectionLock)));
-    const insv::StabConfig *s = &c.timeline->clipById(a)->stabilization;
-    CHECK(s->mode == insv::StabMode::DirectionLock && s->lockDirection);
+    const orbiscore::StabConfig *s = &c.timeline->clipById(a)->stabilization;
+    CHECK(s->mode == orbiscore::StabMode::DirectionLock && s->lockDirection);
     CHECK(std::fabs(s->directionSec - 1.5f) < 0.01f);
     CHECK(waitFor([&] { return where->text().contains(QLatin1String("00:00:01")); }));
 
@@ -882,17 +882,17 @@ void testDirectionLock(const Ctx &c)
     settle();
     mode->setCurrentIndex(mode->findData(int(StabilizationPanel::Mode::Custom)));
     s = &c.timeline->clipAt(0).stabilization;
-    CHECK(s->mode == insv::StabMode::Custom && !s->lockDirection);
+    CHECK(s->mode == orbiscore::StabMode::Custom && !s->lockDirection);
     CHECK(custom->isVisibleTo(body) && !custom->isChecked() && !lock->isVisibleTo(body));
     custom->setChecked(true);
     s = &c.timeline->clipAt(0).stabilization;
-    CHECK(s->mode == insv::StabMode::Custom && s->lockDirection);
+    CHECK(s->mode == orbiscore::StabMode::Custom && s->lockDirection);
     CHECK(std::fabs(s->directionSec - 2.0f) < 0.01f);
     CHECK(lock->isVisibleTo(body));
     CHECK(waitFor([&] { return where->text().contains(QLatin1String("00:00:02")); }));
     custom->setChecked(false);
     s = &c.timeline->clipAt(0).stabilization;
-    CHECK(s->mode == insv::StabMode::Custom && !s->lockDirection && !lock->isVisibleTo(body));
+    CHECK(s->mode == orbiscore::StabMode::Custom && !s->lockDirection && !lock->isVisibleTo(body));
     for (int i = 0; i < 3; ++i)
         undo->trigger();
     CHECK(c.timeline->clipAt(0).stabilization == beforeA);
@@ -2424,8 +2424,8 @@ void testNewProjectResets(const Ctx &c)
     settle();
     CHECK(seekTo(c, 500));
     const int clipId = c.timeline->clipAt(0).id;
-    c.timeline->setClipStabilization(clipId,
-                                     insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    c.timeline->setClipStabilization(
+        clipId, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
     exposure->setValue(10); // +1.0 EV
     CHECK(waitFor([&] { return mode->currentIndex() != 0; }));
     arm->setChecked(true);

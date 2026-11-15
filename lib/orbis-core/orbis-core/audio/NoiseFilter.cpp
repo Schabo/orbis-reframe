@@ -2,12 +2,12 @@
 #include <orbis-core/audio/NoiseFilter.h>
 #include <orbis-core/audio/GeneralWindReducer.h>
 #include <orbis-core/audio/HissHumReducer.h>
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
 #include <orbis-core/audio/VoiceIsolator.h>
 #endif
 #include <orbis-core/audio/WindReducer.h>
 
-namespace insv {
+namespace orbiscore {
 
 std::unique_ptr<NoiseFilter> makeNoiseFilter(NoiseMode mode, int sampleRate, int channels)
 {
@@ -22,7 +22,7 @@ std::unique_ptr<NoiseFilter> makeNoiseFilter(NoiseMode mode, int sampleRate, int
         return std::make_unique<HissHumReducer>(sampleRate, channels);
     case NoiseMode::Voice:
     case NoiseMode::VoiceAmbience:
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
         return std::make_unique<VoiceIsolator>(sampleRate, channels,
                                                mode == NoiseMode::Voice ? VoiceIsolator::Kind::VoiceOnly
                                                                         : VoiceIsolator::Kind::VoiceAmbience);
@@ -35,7 +35,7 @@ std::unique_ptr<NoiseFilter> makeNoiseFilter(NoiseMode mode, int sampleRate, int
 
 bool voiceModesAvailable(std::string* why)
 {
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     return VoiceIsolator::available(why);
 #else
     if (why)
@@ -46,11 +46,11 @@ bool voiceModesAvailable(std::string* why)
 
 bool voiceModesReady(std::string* why)
 {
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     return VoiceIsolator::ready(why);
 #else
     return voiceModesAvailable(why);
 #endif
 }
 
-} // namespace insv
+} // namespace orbiscore

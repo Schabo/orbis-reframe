@@ -1,14 +1,14 @@
 #pragma once
 
-#include <orbis-core/audio/AudioPart.h>   // insv::AudioPart
-#include <orbis-core/insta360/Calibration.h> // insv::LensCalibExt, insv::LensPose
-#include <orbis-core/metadata/Gps.h>         // insv::GpsTrack
-#include <orbis-core/metadata/Imu.h>         // insv::ImuTrack
-#include <orbis-core/insta360/InsvTrailer.h> // insv::LensProfile
-#include <orbis-core/stitch/LensSource.h>  // insv::LensSource
-#include <orbis-core/stab/Motion.h>      // insv::MotionTrack
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
-#include <orbis-core/Ycbcr.h>       // insv::YcbcrCoding
+#include <orbis-core/audio/AudioPart.h>   // orbiscore::AudioPart
+#include <orbis-core/insta360/Calibration.h> // orbiscore::LensCalibExt, orbiscore::LensPose
+#include <orbis-core/metadata/Gps.h>         // orbiscore::GpsTrack
+#include <orbis-core/metadata/Imu.h>         // orbiscore::ImuTrack
+#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::LensProfile
+#include <orbis-core/stitch/LensSource.h>  // orbiscore::LensSource
+#include <orbis-core/stab/Motion.h>      // orbiscore::MotionTrack
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection
+#include <orbis-core/Ycbcr.h>       // orbiscore::YcbcrCoding
 
 #include <cstdint>
 #include <memory>
@@ -32,23 +32,23 @@ enum class Projection {
 
 // Where a lens's picture comes from: a file and its n-th video stream (the
 // decoders take the same type).
-using LensSource = insv::LensSource;
+using LensSource = orbiscore::LensSource;
 
 struct Lens {
     LensSource source;
-    // The lens's calibration (insv::LensCalibExt), read as `model` says;
+    // The lens's calibration (orbiscore::LensCalibExt), read as `model` says;
     // valid when ClipMetadata::calibrated. The theta-polynomial's fifth
     // term is `k5` (k1..k4 are the calibration's).
-    insv::LensModel model = insv::LensModel::Mei;
-    insv::LensCalibExt calibration;
+    orbiscore::LensModel model = orbiscore::LensModel::Mei;
+    orbiscore::LensCalibExt calibration;
     double k5 = 0.0;
     // Where it sits in the camera, which the calibration's angles are
-    // counted from (insv::LensPose, insv::StitchParams::lensPose).
-    insv::LensPose pose;
-    // Where its picture shows the camera itself (insv::LensMask,
-    // insv::StitchParams::lensMask); empty for a lens that sees only the
+    // counted from (orbiscore::LensPose, orbiscore::StitchParams::lensPose).
+    orbiscore::LensPose pose;
+    // Where its picture shows the camera itself (orbiscore::LensMask,
+    // orbiscore::StitchParams::lensMask); empty for a lens that sees only the
     // scene.
-    insv::LensMask mask;
+    orbiscore::LensMask mask;
 };
 
 // The camera's own preview picture: the whole sphere as an equirectangular
@@ -59,7 +59,7 @@ struct Thumbnail {
     int width = 0;
     int height = 0;
     bool flat = false;
-    insv::YcbcrCoding coding{insv::YcbcrMatrix::Bt601, false};
+    orbiscore::YcbcrCoding coding{orbiscore::YcbcrMatrix::Bt601, false};
     std::vector<uint8_t> nv12; // width * height * 3 / 2 bytes
 };
 
@@ -99,14 +99,14 @@ struct ClipMetadata {
     std::string missingFirst;
     std::string mayContinueIn;
     // A file of the clip that Insta360 software re-wrote with stretches cut
-    // out or its speed changed (insv::InsvTimeMap::plainTrim): the clip is
+    // out or its speed changed (orbiscore::InsvTimeMap::plainTrim): the clip is
     // lined up with the camera's clock by one offset a file, so
     // stabilization, highlight marks and GPS can be off in it.
     bool unevenTimeMap = false;
     // Every part's lens sources, as the decoders take them.
-    std::vector<insv::ClipPart> partSources() const
+    std::vector<orbiscore::ClipPart> partSources() const
     {
-        std::vector<insv::ClipPart> s;
+        std::vector<orbiscore::ClipPart> s;
         for (const Part& p : parts)
             s.push_back({p.startUs, p.lenses});
         return s;
@@ -114,15 +114,15 @@ struct ClipMetadata {
     bool calibrated = false;  // every lens has its calibration from the file
     // How the lenses sit in the picture: the turn from the stitch's lens
     // frame to the sphere's forward and up, yaw / pitch / roll in degrees
-    // (insv::StitchParams::outYawDeg / outPitchDeg / outRollDeg). The
+    // (orbiscore::StitchParams::outYawDeg / outPitchDeg / outRollDeg). The
     // camera's, not the file's: the calibration places the lenses relative
     // to each other, not how the camera is held.
     double mountYawDeg = 180.0;
     double mountPitchDeg = 0.0;
     double mountRollDeg = 0.0;
     // The camera model's correction on top of the file's lens calibration
-    // (insv::InsvModel::lensCorrection, insv::StitchParams::modelCorrection).
-    insv::SeamCorrection lensCorrection;
+    // (orbiscore::InsvModel::lensCorrection, orbiscore::StitchParams::modelCorrection).
+    orbiscore::SeamCorrection lensCorrection;
 
     // Every lens stream's picture: decoded size, rate, length.
     int lensWidth = 0;
@@ -140,11 +140,11 @@ struct ClipMetadata {
     std::string logProfile;
 
     // The lens shape with nothing in front of it and with each lens guard
-    // (accessory profiles: insv::ApplyLensProfile); empty when the file has
+    // (accessory profiles: orbiscore::ApplyLensProfile); empty when the file has
     // none.
-    std::optional<insv::LensProfile> bareLens;
-    std::optional<insv::LensProfile> standardGuard;
-    std::optional<insv::LensProfile> premiumGuard;
+    std::optional<orbiscore::LensProfile> bareLens;
+    std::optional<orbiscore::LensProfile> standardGuard;
+    std::optional<orbiscore::LensProfile> premiumGuard;
 
     // When recording started, by the camera's own clock: local time with no
     // zone, "YYYY-MM-DDThh:mm:ss"; "" when the file doesn't say. The date a
@@ -171,7 +171,7 @@ struct ClipMetadata {
     int64_t exposureRecords = 0; // every part's together
     double rollingShutterMs = 0.0;
     // When the video doesn't play in real time: seconds of the camera's
-    // clock per second of video (insv::CaptureScale; 1 for a normal clip),
+    // clock per second of video (orbiscore::CaptureScale; 1 for a normal clip),
     // what the motion data and the GPS are timed by. In slow motion the rate
     // the sensor captured at (`captureFps`, 0 = as stored), in a timelapse
     // the time between frames (`timelapseIntervalSec`, 0 = not one).
@@ -211,22 +211,22 @@ std::string ClipFileOf(const std::string& path, std::string* err = nullptr);
 // Where `path`'s sound comes from: each part of the clip it names, from
 // where it starts in the clip -- or `path` alone at 0 when it isn't a clip
 // (a music file) or is one file. Safe from any thread.
-std::vector<insv::AudioPart> ClipAudioParts(const std::string& path);
+std::vector<orbiscore::AudioPart> ClipAudioParts(const std::string& path);
 
 // The clip's IMU, lined up with its video. Not cached: a long clip's track is
 // tens of MB. nullopt when the clip has none (or can't be read).
-std::optional<insv::ImuTrack> ReadClipImu(const std::string& path);
+std::optional<orbiscore::ImuTrack> ReadClipImu(const std::string& path);
 
 // What the overlays read from a clip besides the picture, lined up with its
 // video: the GPS track, and the vehicle's lean and G-forces from the IMU
-// (insv::BuildMotion). A GPS track the camera timed only by its clock stamp
+// (orbiscore::BuildMotion). A GPS track the camera timed only by its clock stamp
 // (GpsTrack::clockStamped) is matched against that motion
-// (insv::AlignGpsByAcceleration). Not cached, like the IMU: read when an
+// (orbiscore::AlignGpsByAcceleration). Not cached, like the IMU: read when an
 // overlay needs it, seconds for a long clip, so off the GUI thread. Each part
 // is empty when the clip has none (or can't be read).
 struct ClipTelemetry {
-    std::optional<insv::GpsTrack> gps;
-    insv::MotionTrack motion;
+    std::optional<orbiscore::GpsTrack> gps;
+    orbiscore::MotionTrack motion;
 };
 ClipTelemetry ReadClipTelemetry(const std::string& path);
 

@@ -4,7 +4,7 @@
 
 #include "ReframeExportController.h" // ReframeExportController::ClipJob
 
-#include <orbis-core/stab/GyroStabilizer.h> // insv::StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::StabConfig
 
 #include <memory>
 #include <string>
@@ -30,7 +30,7 @@ public:
         // When job.stab is null: build the stabilizer on open() (reads the
         // clip's trailer -- not on the GUI thread) under this setting, the
         // clip's frame rate and its sync fine-tune. Off = none.
-        insv::StabConfig buildStab;
+        orbiscore::StabConfig buildStab;
         double fps = 0.0;
         double syncMs = 0.0;
     };

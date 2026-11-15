@@ -4,7 +4,7 @@
 #include <orbis-core/stitch/BlurQuads.h>
 #include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/Image.h>
-#include <orbis-core/insta360/InsvTrailer.h> // insv::LensProfile
+#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::LensProfile
 #include <orbis-core/stitch/LensColour.h>
 #include <orbis-core/stitch/SeamCorrection.h>
 
@@ -17,8 +17,8 @@
 // For each equirect texel: reconstruct the world ray, rotate each lens's ray into its
 // own frame, project it through the lens's MEI calibration, sample, and
 // feather-blend the two lenses across the overlap band, their colours matched
-// by the clip's lens colour (insv::LensColour). With StitchParams::depthSeam each lens is sampled from its own
-// centre at a per-azimuth stitch distance (insv::SeamDepth), so near content on
+// by the clip's lens colour (orbiscore::LensColour). With StitchParams::depthSeam each lens is sampled from its own
+// centre at a per-azimuth stitch distance (orbiscore::SeamDepth), so near content on
 // the seam lines up; no dense optical-flow warp beyond that.
 //
 // World convention matches src/render/shaders/equirect.frag and
@@ -29,7 +29,7 @@
 // static lib. The .insv demux that produces the input frames is the separate
 // `insv_demux` lib (it needs FFmpeg); see InsvDemux.h.
 
-namespace insv {
+namespace orbiscore {
 
 struct SeamFlowField; // SeamFlow.h
 
@@ -81,7 +81,7 @@ struct StitchParams {
     double accessoryPoly[6] = {0, 0, 0, 0, 0, 0};
 
     // Measured correction to the lens calibration: the seam alignment
-    // fine-tune (insv::EstimateSeamAlignment).
+    // fine-tune (orbiscore::EstimateSeamAlignment).
     SeamCorrection seam;
     // The correction the camera model's files need on top of their
     // calibration (camera::ClipMetadata::lensCorrection), in `seam`'s terms
@@ -94,7 +94,7 @@ struct StitchParams {
     // distance D on the seam is seen ~baselineM/D rad apart by the two lenses.
     // With `depthSeam` each lens is projected from its own centre at a
     // per-azimuth stitch distance (the table passed to renderEquirect /
-    // StitchGpuParams::seamQ, solved per frame by insv::SeamWindow),
+    // StitchGpuParams::seamQ, solved per frame by orbiscore::SeamWindow),
     // fading back to infinity over `depthRampDeg` beyond the blend band. Off =
     // both lenses at one point.
     bool depthSeam = false;
@@ -111,7 +111,7 @@ struct StitchParams {
     double edgeStartFrac = 0.90;
     double edgeEndFrac = 1.00;
 
-    // The clip's lens colour (insv::FitLensColour): each lens's gain per
+    // The clip's lens colour (orbiscore::FitLensColour): each lens's gain per
     // channel, so the seam has no step in brightness or colour. All 0 = as
     // recorded.
     LensColour lensColour;
@@ -149,7 +149,7 @@ struct LensProjection {
     Mat3 worldToLens; // R_lens^T
 
     // The lens model (StitchParams::lensModel) with the calibration's
-    // coefficients (insv::LensCalibExt). project() maps the lens-frame ray d
+    // coefficients (orbiscore::LensCalibExt). project() maps the lens-frame ray d
     // to the calibration's image axes (u right, v down -- our lens frame has
     // both flipped). MEI:
     //   x = -d.x/(d.z+xi), y = -d.y/(d.z+xi),  r^2 = x^2+y^2
@@ -179,7 +179,7 @@ struct LensProjection {
 // infinity). Must match SEAM_BINS in fisheye_stitch_common.glsl.
 constexpr int kSeamDepthBins = 128;
 
-// The depth-aware seam's blend per azimuth bin (insv::SeamWindow): where
+// The depth-aware seam's blend per azimuth bin (orbiscore::SeamWindow): where
 // across the band the two lenses meet and how wide the fade there is. Narrow
 // where the lenses agree at the meeting line, today's full-band cross-fade
 // where they don't. A fade of 0 (no frame measured yet) is the plain
@@ -187,8 +187,8 @@ constexpr int kSeamDepthBins = 128;
 //
 // And this frame's colour residual: what is left of the lenses' colour
 // difference after the clip's lens colour (StitchParams::lensColour), added
-// to its log ratio (insv::LensColourLog); per azimuth bin a local correction
-// on top, and the veiling light one lens adds there (insv::LensVeilPerBin).
+// to its log ratio (orbiscore::LensColourLog); per azimuth bin a local correction
+// on top, and the veiling light one lens adds there (orbiscore::LensVeilPerBin).
 struct SeamBlend {
     // Elevation of the fade's centre off the seam circle, radians, towards
     // lens 0 (the seam frame, FisheyeStitcher::seamDir).
@@ -198,7 +198,7 @@ struct SeamBlend {
     // log(lens 0 / lens 1), R G B.
     float colour[3] = {};
     // And per azimuth bin what is left of it after that, near the seam
-    // (insv::kLensColourLocalMaxLog), R G B.
+    // (orbiscore::kLensColourLocalMaxLog), R G B.
     float local[kSeamDepthBins][3] = {};
     // Veiling light per azimuth bin, linear, R G B: lens 0 less lens 1 (> 0
     // lens 0 has it, < 0 lens 1), taken out of that lens.
@@ -277,9 +277,9 @@ struct StitchGpuParams {
     float seamClear[kSeamDepthBins][2] = {};
     // Per frame: the blend across the band (all 0 = the plain cross-fade).
     SeamBlend seamBlend;
-    // Per frame: the new stitcher's seam colour blend (insv::SeamColourBlend)
+    // Per frame: the new stitcher's seam colour blend (orbiscore::SeamColourBlend)
     // -- per azimuth bin log(lens 0 / lens 1) R G B, half to each lens,
-    // faded across the seam by insv::SeamColourFade. 0 = off.
+    // faded across the seam by orbiscore::SeamColourFade. 0 = off.
     int seamColourActive = 0;
     float seamColour[kSeamDepthBins][3] = {};
     // ... and the veiling light it takes out (SeamColourWindow::solve's
@@ -400,7 +400,7 @@ public:
     // Each lens's log gain per channel for `dir` from the clip's lens colour
     // and the frame's residual and local correction (`blend`, null = none;
     // the local one in the band, faded out over kLensColourLocalRampDeg past
-    // it): lens 0 -L / 2, lens 1 L / 2 (insv::LensColourLog). Applied with
+    // it): lens 0 -L / 2, lens 1 L / 2 (orbiscore::LensColourLog). Applied with
     // LensColourGain, after `veil`: each lens's veiling light there
     // (linear, >= 0, faded out as the local correction), taken out with
     // LensVeilRemove.
@@ -408,7 +408,7 @@ public:
                       double veil[2][3]) const;
     // The seam colour blend's log ratio lens 0 / lens 1 for `dir` from the
     // per-bin `table` (StitchGpuParams::seamColour's layout): interpolated
-    // between bins, faded across the seam (insv::SeamColourFade). Lens 0
+    // between bins, faded across the seam (orbiscore::SeamColourFade). Lens 0
     // takes -L / 2, lens 1 L / 2, as lensLogGains.
     void seamColourLog(const Vec3& dir, const float* table, double L[3]) const;
     // The new stitcher's veiling light for `dir` from the per-bin `table`
@@ -455,4 +455,4 @@ private:
     void buildMaskTable(); // m_clear from m_params.lensMask, after the seam frame
 };
 
-} // namespace insv
+} // namespace orbiscore

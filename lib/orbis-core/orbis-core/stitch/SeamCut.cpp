@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -266,4 +266,4 @@ void SeamCutBlend(const int* row, const float* width, double bandRad, SeamBlend&
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

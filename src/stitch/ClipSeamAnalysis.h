@@ -11,14 +11,14 @@
 #include <string>
 #include <vector>
 
-#include <orbis-core/stitch/LensColour.h>     // insv::LensColour
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
-#include <orbis-core/stitch/SeamWindow.h>     // insv::SeamState
+#include <orbis-core/stitch/LensColour.h>     // orbiscore::LensColour
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection
+#include <orbis-core/stitch/SeamWindow.h>     // orbiscore::SeamState
 
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard
 
 // The depth-aware seam's state for every frame of a clip, measured once in a
-// pass over it and kept: insv::SeamWindow's solve over the frames either side
+// pass over it and kept: orbiscore::SeamWindow's solve over the frames either side
 // of each one, which a frame played into can't have (the frames after it
 // aren't decoded yet) and a frame seeked to wouldn't (no frames before it).
 // With it, every path that stitches a frame -- playback, a step back, a
@@ -43,8 +43,8 @@ constexpr int kSeamAnalysisVersion = 1;
 struct SeamAnalysisKey {
     std::string path;
     PreviewStitchConfig::LensGuard guard = PreviewStitchConfig::LensGuard::Premium;
-    insv::SeamCorrection seam;
-    insv::LensColour colour;
+    orbiscore::SeamCorrection seam;
+    orbiscore::LensColour colour;
     std::optional<LensCalibration> calibration; // the camera's own; none = the file's
 
     // Canonical text of it with the file's size and time and
@@ -62,7 +62,7 @@ public:
     SeamAnalysis& operator=(const SeamAnalysis&) = delete;
 
     // The state of the frame at ptsMs, if analysed.
-    bool stateAt(int64_t ptsMs, insv::SeamState& out) const;
+    bool stateAt(int64_t ptsMs, orbiscore::SeamState& out) const;
     // Whether every frame in [inMs, outMs] is analysed; the analysed share of
     // it (0..1).
     bool covers(int64_t inMs, int64_t outMs) const;
@@ -72,7 +72,7 @@ public:
 
     // A pass's results: a frame's state, and a stretch every frame of which
     // it has put.
-    void put(int64_t ptsMs, const insv::SeamState& s);
+    void put(int64_t ptsMs, const orbiscore::SeamState& s);
     void markDone(int64_t inMs, int64_t outMs);
     // Writes what is buffered to the file.
     void flush();

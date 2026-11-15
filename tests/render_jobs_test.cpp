@@ -83,10 +83,10 @@ void testMix()
     t.addAudioClip(muted, "/m/b.wav", 1000, 0);
     t.setSourcesMissing({{"/m/gone.wav", true}});
 
-    const std::vector<insv::MixClip> mix = renderjobs::mixClips(t);
+    const std::vector<orbiscore::MixClip> mix = renderjobs::mixClips(t);
     CHECK(mix.size() == 1); // muted track, muted clip and missing file left out
     if (mix.size() == 1) {
-        const insv::MixClip &m = mix[0];
+        const orbiscore::MixClip &m = mix[0];
         CHECK(m.parts.size() == 1 && m.parts[0].path == "/m/a.wav" && m.parts[0].startUs == 0);
         CHECK(m.startFrame == 1000 * 48 && m.lengthFrames == 5000 * 48 && m.inFrame == 0);
         CHECK(near(m.gain, std::pow(10.0, -12.0 / 20.0))); // clip + track
@@ -751,7 +751,7 @@ void testGpsFields()
 // ~280 ms.
 std::shared_ptr<const Telemetry> rampTelemetry()
 {
-    insv::GpsTrack track;
+    orbiscore::GpsTrack track;
     for (int s = 0; s <= 20; ++s)
         track.fixes.push_back({s * 1000, 59.0, 18.0, 10.0 + s, 90.0, 100.0 + s});
     return std::make_shared<const Telemetry>(track);
@@ -797,9 +797,9 @@ void testGpsClock()
 
 // A clip's motion: leaning 1 degree further right each second, from upright
 // at its start, the G-forces likewise in hundredths of a g.
-insv::MotionTrack rampMotion(int seconds)
+orbiscore::MotionTrack rampMotion(int seconds)
 {
-    insv::MotionTrack m;
+    orbiscore::MotionTrack m;
     for (int i = 0; i <= seconds * 100; ++i) {
         m.leanDeg.push_back(float(i) / 100.0f);
         m.lateralG.push_back(float(i) / 10000.0f);
@@ -854,7 +854,7 @@ void testMotionGaugesFeedVsExport()
         const int id = t.addGaugeClip(v, 1000, style, 4000);
         renderjobs::FieldSources sources;
         sources.gps.insert("/c/a.insv", movingTelemetry());
-        insv::MotionTrack motion = rampMotion(20);
+        orbiscore::MotionTrack motion = rampMotion(20);
         for (float &g : motion.lateralG)
             g *= 20.0f; // up to 0.6 g over a's 3 s
         motion.travelFit = 0.9;
@@ -911,8 +911,8 @@ void testTelemetryCache()
         std::lock_guard<std::mutex> wait(gate);
         camera::ClipTelemetry t;
         if (path == "/c/ride.insv") {
-            t.gps = insv::GpsTrack{{{0, 59.0, 18.0, 10.0, 90.0, 5.0},
-                                    {1000, 59.0, 18.0, 11.0, 90.0, 5.0}}};
+            t.gps = orbiscore::GpsTrack{{{0, 59.0, 18.0, 10.0, 90.0, 5.0},
+                                         {1000, 59.0, 18.0, 11.0, 90.0, 5.0}}};
             t.motion = rampMotion(2);
         }
         return t;
@@ -1166,7 +1166,7 @@ void testMotionGaugeReadings()
 // 0.0002 east each.
 std::shared_ptr<const Telemetry> movingTelemetry()
 {
-    insv::GpsTrack track;
+    orbiscore::GpsTrack track;
     for (int s = 0; s <= 20; ++s)
         track.fixes.push_back({s * 1000, 59.0 + s * 1e-4, 18.0 + s * 2e-4, 10.0, 45.0, 100.0});
     return std::make_shared<const Telemetry>(track);
@@ -1481,15 +1481,15 @@ void testTransitions()
 
     // The sound: a's runs half the transition past the cut and fades out
     // over all of it, b's starts half of it early and fades in.
-    std::vector<insv::MixClip> mix = renderjobs::mixClips(t);
-    const auto clipOf = [&](const char *path) -> const insv::MixClip * {
-        for (const insv::MixClip &m : mix)
+    std::vector<orbiscore::MixClip> mix = renderjobs::mixClips(t);
+    const auto clipOf = [&](const char *path) -> const orbiscore::MixClip * {
+        for (const orbiscore::MixClip &m : mix)
             if (m.parts.size() == 1 && m.parts[0].path == path)
                 return &m;
         return nullptr;
     };
-    const insv::MixClip *ma = clipOf("/c/a.insv");
-    const insv::MixClip *mb = clipOf("/c/b.insv");
+    const orbiscore::MixClip *ma = clipOf("/c/a.insv");
+    const orbiscore::MixClip *mb = clipOf("/c/b.insv");
     CHECK(ma && mb);
     if (!ma || !mb)
         return;

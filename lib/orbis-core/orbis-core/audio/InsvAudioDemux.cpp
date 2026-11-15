@@ -11,7 +11,7 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-namespace insv {
+namespace orbiscore {
 
 InsvAudioDemux::~InsvAudioDemux() { close(); }
 
@@ -245,4 +245,4 @@ bool InsvAudioDemux::readNext(std::vector<float>& out, int64_t* ptsMs, std::stri
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

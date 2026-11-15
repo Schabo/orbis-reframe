@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
-namespace insv {
+namespace orbiscore {
 
 // Row-major rotation matrix of the unit quaternion (w, x, y, z): v' = M v.
 // A body -> world quaternion gives world = M body.
@@ -24,4 +24,4 @@ inline void QuatToMatrix(const double q[4], double m[3][3])
     QuatToMatrix(q[0], q[1], q[2], q[3], m);
 }
 
-} // namespace insv
+} // namespace orbiscore

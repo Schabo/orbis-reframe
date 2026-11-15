@@ -26,7 +26,7 @@
 // SeamDepthData turns a frame's costs into a confidence-weighted data term
 // (texture, the best match, and how much better it is than any match away
 // from it); SolveSeamDepth turns the data term averaged over the frames
-// around one (insv::SeamWindow) into the per-bin q table the stitch uses
+// around one (orbiscore::SeamWindow) into the per-bin q table the stitch uses
 // (StitchGpuParams::seamQ).
 //
 // The average keeps a bin from flipping for a few frames to the road 3 m
@@ -34,7 +34,7 @@
 // better; its neighbours, steadier now too, carry the bar's depth across.
 // Dependency-free (insv lib).
 
-namespace insv {
+namespace orbiscore {
 
 // Candidate inverse distances, 1/m: q_k = kSeamQMin + k * step. Slightly
 // negative values let the table take up a small residual misalignment (it
@@ -156,4 +156,4 @@ void SeamDepthData(const SeamCosts& costs, double baselineM, const SeamDepthTuni
 // smoothing. A function of `data` alone.
 void SolveSeamDepth(const float* data, double baselineM, const SeamDepthTuning& tuning, float* q);
 
-} // namespace insv
+} // namespace orbiscore

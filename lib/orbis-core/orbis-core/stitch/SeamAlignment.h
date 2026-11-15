@@ -11,7 +11,7 @@
 #include <vector>
 
 // Seam alignment fine-tune: fits a small correction of the lens calibration
-// (StitchParams::seam, insv::SeamCorrection) so the two lenses agree across
+// (StitchParams::seam, orbiscore::SeamCorrection) so the two lenses agree across
 // the stitch seam on far content. Measured from the video, like the gyro
 // sync fine-tune.
 //
@@ -36,7 +36,7 @@
 // directions the clip's blocks don't pin down where they are.
 // Dependency-free (insv lib).
 
-namespace insv {
+namespace orbiscore {
 
 struct SeamAlignmentResult {
     bool ok = false;
@@ -77,4 +77,4 @@ SeamAlignmentResult EstimateSeamAlignment(const InsvCalibration& cal, const Stit
 double MeasureSeamOffset(const InsvCalibration& cal, const StitchParams& params, int streamW,
                          int streamH, const std::vector<SeamFrame>& frames);
 
-} // namespace insv
+} // namespace orbiscore

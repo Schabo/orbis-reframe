@@ -51,7 +51,7 @@ public:
     // Outlines drawn over the picture, on the sphere: the Privacy panel's
     // "Show regions" (privacy blur regions of the frame shown). Corners TL,
     // TR, BR, BL as unit directions in the equirect (sphere) frame -- the
-    // frame insv::BlurQuad uses -- so they follow look-around and the
+    // frame orbiscore::BlurQuad uses -- so they follow look-around and the
     // stabilization like the picture does. Edges are great-circle arcs,
     // straight in the rectilinear view.
     struct RegionOutline {
@@ -291,7 +291,7 @@ signals:
     void boxSelectCanceled();
     // A right click (no drag) on the picture: `globalPos` for a context menu,
     // `dir` the unit direction under it in the sphere frame -- the frame
-    // RegionOutline / insv::BlurQuad use (the Privacy panel's "Remove this
+    // RegionOutline / orbiscore::BlurQuad use (the Privacy panel's "Remove this
     // blur").
     void pictureContextMenu(const QPoint &globalPos, const std::array<float, 3> &dir);
     // A left double-click that isn't drawing a box or on an inset: full

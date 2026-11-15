@@ -3,7 +3,7 @@
 
 #include <cstring>
 
-namespace insv {
+namespace orbiscore {
 
 bool ReadVarint(const std::vector<uint8_t>& b, size_t& i, uint64_t& v)
 {
@@ -153,4 +153,4 @@ std::optional<std::vector<uint8_t>> ProtobufMessage(const std::vector<uint8_t>& 
     return cur;
 }
 
-} // namespace insv
+} // namespace orbiscore

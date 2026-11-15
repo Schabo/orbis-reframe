@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 // A frame within `halfMs` of `ptsMs` (frame times are whole milliseconds;
@@ -281,4 +281,4 @@ bool SeamWindow::solve(int64_t ptsMs, SeamState& out) const
     return true;
 }
 
-} // namespace insv
+} // namespace orbiscore

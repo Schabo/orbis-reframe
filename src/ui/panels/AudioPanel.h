@@ -5,7 +5,7 @@
 #include <QList>
 #include <QObject>
 
-#include <orbis-core/audio/NoiseReduction.h> // insv::NoiseReduction
+#include <orbis-core/audio/NoiseReduction.h> // orbiscore::NoiseReduction
 
 class QCheckBox;
 class QComboBox;
@@ -33,7 +33,7 @@ struct AudioClipState {
     QString trackName;
     double trackGainDb = 0.0;
     bool trackMuted = false;
-    insv::NoiseReduction noise;
+    orbiscore::NoiseReduction noise;
 };
 
 // One audio clip's section of the Audio tab, titled by its track: which
@@ -52,11 +52,11 @@ public:
 signals:
     void clipEdited(int clipId, double gainDb, bool muted, qint64 fadeInMs, qint64 fadeOutMs,
                     qint64 startMs);
-    void noiseEdited(int clipId, const insv::NoiseReduction &noise);
+    void noiseEdited(int clipId, const orbiscore::NoiseReduction &noise);
     void trackLevelEdited(int trackId, double gainDb, bool muted);
 
 private:
-    void setNoise(const insv::NoiseReduction &n);
+    void setNoise(const orbiscore::NoiseReduction &n);
     void emitIfEdited();
     void emitTrackIfEdited();
     void emitNoiseIfEdited();
@@ -116,7 +116,7 @@ public:
 signals:
     void audioClipEdited(int clipId, double gainDb, bool muted, qint64 fadeInMs,
                          qint64 fadeOutMs, qint64 startMs);
-    void noiseEdited(int clipId, const insv::NoiseReduction &noise);
+    void noiseEdited(int clipId, const orbiscore::NoiseReduction &noise);
     void trackLevelEdited(int trackId, double gainDb, bool muted);
 
 private:

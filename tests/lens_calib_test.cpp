@@ -36,9 +36,9 @@ constexpr double kSquareMm = 42.0;
 
 // An X5's file calibration (both lenses; frame 10752 x 5376, focal window
 // 5312), as its 56-token string has it.
-insv::LensCalibExt X5Lens(int i)
+orbiscore::LensCalibExt X5Lens(int i)
 {
-    insv::LensCalibExt e;
+    orbiscore::LensCalibExt e;
     e.xi = 2;
     e.w = 10752;
     e.h = 5376;
@@ -74,30 +74,30 @@ camera::ClipMetadata Clip(int lensSize)
     c.fps = 30;
     c.lenses.resize(2);
     for (int i = 0; i < 2; ++i)
-        c.lenses[i].calibration = X5Lens(i), c.lenses[i].pose = insv::Insta360LensPose(i);
+        c.lenses[i].calibration = X5Lens(i), c.lenses[i].pose = orbiscore::Insta360LensPose(i);
     return c;
 }
 
 // The true camera: the file's, changed as the chart finds real ones are.
-insv::InsvCalibration TrueCalibration(const camera::ClipMetadata& clip)
+orbiscore::InsvCalibration TrueCalibration(const camera::ClipMetadata& clip)
 {
-    insv::InsvCalibration cal;
+    orbiscore::InsvCalibration cal;
     cal.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
-    insv::LensCalibExt &a = cal.lensesExt[0], &b = cal.lensesExt[1];
+    orbiscore::LensCalibExt &a = cal.lensesExt[0], &b = cal.lensesExt[1];
     a.fx *= 0.995, a.fy *= 0.995, a.cx += 3, a.cy -= 2, a.k[0] += 0.004;
     b.fx *= 1.005, b.fy *= 1.004, b.cx -= 2, b.cy += 4, b.k[1] -= 0.03;
     b.yaw += 0.2, b.pitch -= 0.1;
     return cal;
 }
 
-insv::Vec3 Axis(const insv::FisheyeStitcher& st, int lens)
+orbiscore::Vec3 Axis(const orbiscore::FisheyeStitcher& st, int lens)
 {
-    const insv::Mat3& w = st.lensProjection(lens).worldToLens;
+    const orbiscore::Mat3& w = st.lensProjection(lens).worldToLens;
     return {w.m[2][0], w.m[2][1], w.m[2][2]};
 }
 
-insv::Vec3 Add(insv::Vec3 a, insv::Vec3 b, double s = 1) { return {a.x + s * b.x, a.y + s * b.y, a.z + s * b.z}; }
-insv::Vec3 Cross(insv::Vec3 a, insv::Vec3 b)
+orbiscore::Vec3 Add(orbiscore::Vec3 a, orbiscore::Vec3 b, double s = 1) { return {a.x + s * b.x, a.y + s * b.y, a.z + s * b.z}; }
+orbiscore::Vec3 Cross(orbiscore::Vec3 a, orbiscore::Vec3 b)
 {
     return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
@@ -105,8 +105,8 @@ insv::Vec3 Cross(insv::Vec3 a, insv::Vec3 b)
 // A board pose: its centre `dist` mm along `dir`, facing the camera with a
 // tilt, turned in its plane. Corner id -> world point (mm, lens 0 at 0).
 struct Board {
-    insv::Vec3 centre, ex, ey; // ex, ey: the board's axes, unit
-    insv::Vec3 corner(int id) const
+    orbiscore::Vec3 centre, ex, ey; // ex, ey: the board's axes, unit
+    orbiscore::Vec3 corner(int id) const
     {
         double x, y;
         calib::ChartCornerPosition(id, x, y);
@@ -116,25 +116,26 @@ struct Board {
     }
 };
 
-Board MakeBoard(insv::Vec3 dir, double dist, double tiltDeg, double spinDeg, double tiltAzDeg)
+Board MakeBoard(orbiscore::Vec3 dir, double dist, double tiltDeg, double spinDeg, double tiltAzDeg)
 {
-    dir = insv::normalize(dir);
-    insv::Vec3 up{0, 1, 0};
+    dir = orbiscore::normalize(dir);
+    orbiscore::Vec3 up{0, 1, 0};
     if (std::fabs(dir.y) > 0.9)
         up = {1, 0, 0};
-    insv::Vec3 u = insv::normalize(Cross(up, dir)), v = Cross(dir, u);
+    orbiscore::Vec3 u = orbiscore::normalize(Cross(up, dir)), v = Cross(dir, u);
     // Spin in the plane, then tilt the normal away from the camera axis.
     const double s = spinDeg * kDeg, t = tiltDeg * kDeg, a = tiltAzDeg * kDeg;
-    insv::Vec3 ex = Add(insv::Vec3{u.x * std::cos(s), u.y * std::cos(s), u.z * std::cos(s)}, v, std::sin(s));
-    insv::Vec3 ey = Cross(dir, ex);
-    const insv::Vec3 tiltAxis = Add(insv::Vec3{ex.x * std::cos(a), ex.y * std::cos(a), ex.z * std::cos(a)},
-                                    ey, std::sin(a));
-    auto rot = [&](insv::Vec3 p) { // Rodrigues about tiltAxis by t
-        const insv::Vec3 k = tiltAxis, kxp = Cross(k, p);
+    orbiscore::Vec3 ex = Add(orbiscore::Vec3{u.x * std::cos(s), u.y * std::cos(s), u.z * std::cos(s)}, v, std::sin(s));
+    orbiscore::Vec3 ey = Cross(dir, ex);
+    const orbiscore::Vec3 tiltAxis = Add(orbiscore::Vec3{ex.x * std::cos(a), ex.y * std::cos(a), ex.z * std::cos(a)},
+                                         ey, std::sin(a));
+    auto rot = [&](orbiscore::Vec3 p) { // Rodrigues about tiltAxis by t
+        const orbiscore::Vec3 k = tiltAxis, kxp = Cross(k, p);
         const double kp = k.x * p.x + k.y * p.y + k.z * p.z;
-        return insv::Vec3{p.x * std::cos(t) + kxp.x * std::sin(t) + k.x * kp * (1 - std::cos(t)),
-                          p.y * std::cos(t) + kxp.y * std::sin(t) + k.y * kp * (1 - std::cos(t)),
-                          p.z * std::cos(t) + kxp.z * std::sin(t) + k.z * kp * (1 - std::cos(t))};
+        const double c = std::cos(t), s = std::sin(t);
+        return orbiscore::Vec3{p.x * c + kxp.x * s + k.x * kp * (1 - c),
+                               p.y * c + kxp.y * s + k.y * kp * (1 - c),
+                               p.z * c + kxp.z * s + k.z * kp * (1 - c)};
     };
     return {{dir.x * dist, dir.y * dist, dir.z * dist}, rot(ex), rot(ey)};
 }
@@ -142,15 +143,15 @@ Board MakeBoard(insv::Vec3 dir, double dist, double tiltDeg, double spinDeg, dou
 void testFit()
 {
     const camera::ClipMetadata clip = Clip(3840);
-    const insv::InsvCalibration truth = TrueCalibration(clip);
-    insv::FisheyeStitcher st;
-    insv::StitchParams params;
+    const orbiscore::InsvCalibration truth = TrueCalibration(clip);
+    orbiscore::FisheyeStitcher st;
+    orbiscore::StitchParams params;
     params.depthSeam = true; // project out to the circle's edge (100 deg)
     CHECK(st.configure(truth, 3840, 3840, params));
     // Lens 1's centre: the file's spacing behind lens 0 along its axis.
-    const insv::Vec3 a0 = Axis(st, 0), a1 = Axis(st, 1);
+    const orbiscore::Vec3 a0 = Axis(st, 0), a1 = Axis(st, 1);
     const double baseMm = st.baselineM() * 1000;
-    const insv::Vec3 c1{-a0.x * baseMm, -a0.y * baseMm, -a0.z * baseMm};
+    const orbiscore::Vec3 c1{-a0.x * baseMm, -a0.y * baseMm, -a0.z * baseMm};
 
     std::mt19937 rng(11);
     std::uniform_real_distribution<double> uni(0, 1);
@@ -161,19 +162,19 @@ void testFit()
     int frame = 0;
     for (int k = 0; k < 520; ++k) {
         // Around one lens's axis, out to 98 deg, the far ones seen by both.
-        const insv::Vec3 axis = k % 2 ? a1 : a0;
-        insv::Vec3 up{0, 1, 0};
-        const insv::Vec3 u = insv::normalize(Cross(up, axis)), v = Cross(axis, u);
+        const orbiscore::Vec3 axis = k % 2 ? a1 : a0;
+        orbiscore::Vec3 up{0, 1, 0};
+        const orbiscore::Vec3 u = orbiscore::normalize(Cross(up, axis)), v = Cross(axis, u);
         const double th = std::sqrt(uni(rng)) * 98 * kDeg, ph = uni(rng) * 2 * std::numbers::pi;
-        const insv::Vec3 dir = Add(Add(insv::Vec3{axis.x * std::cos(th), axis.y * std::cos(th), axis.z * std::cos(th)},
-                                       u, std::sin(th) * std::cos(ph)),
-                                   v, std::sin(th) * std::sin(ph));
+        const orbiscore::Vec3 dir = Add(Add(orbiscore::Vec3{axis.x * std::cos(th), axis.y * std::cos(th), axis.z * std::cos(th)},
+                                            u, std::sin(th) * std::cos(ph)),
+                                        v, std::sin(th) * std::sin(ph));
         const Board b = MakeBoard(dir, 550 + 350 * uni(rng), 35 * uni(rng), 360 * uni(rng),
                                   360 * uni(rng));
         calib::ChartView view[2];
         for (int l = 0; l < 2; ++l) {
             for (int id = 0; id < calib::kChartCorners; ++id) {
-                insv::Vec3 p = b.corner(id);
+                orbiscore::Vec3 p = b.corner(id);
                 if (l == 1)
                     p = Add(p, c1, -1);
                 double px, py, theta;
@@ -215,21 +216,23 @@ void testFit()
 
     // The fitted calibration, stitched: where it puts each direction against
     // where the true lens has it.
-    insv::InsvCalibration fitted;
+    orbiscore::InsvCalibration fitted;
     fitted.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
     CHECK(r.calibration.matchesFile(fitted.lensesExt[0], fitted.lensesExt[1]));
     stitch::ApplyLensCalibration(r.calibration, fitted.lensesExt[0], fitted.lensesExt[1]);
-    insv::FisheyeStitcher sf;
+    orbiscore::FisheyeStitcher sf;
     CHECK(sf.configure(fitted, 3840, 3840, params));
     for (int l = 0; l < 2; ++l) {
         double worst = 0;
-        const insv::Vec3 axis = l ? a1 : a0;
-        const insv::Vec3 u = insv::normalize(Cross(insv::Vec3{0, 1, 0}, axis)), v = Cross(axis, u);
+        const orbiscore::Vec3 axis = l ? a1 : a0;
+        const orbiscore::Vec3 u = orbiscore::normalize(Cross(orbiscore::Vec3{0, 1, 0}, axis));
+        const orbiscore::Vec3 v = Cross(axis, u);
         for (int th = 0; th <= 95; th += 5)
             for (int ph = 0; ph < 360; ph += 10) {
-                const insv::Vec3 d =
-                    Add(Add(insv::Vec3{axis.x * std::cos(th * kDeg), axis.y * std::cos(th * kDeg),
-                                       axis.z * std::cos(th * kDeg)},
+                const orbiscore::Vec3 d =
+                    Add(Add(orbiscore::Vec3{axis.x * std::cos(th * kDeg),
+                                            axis.y * std::cos(th * kDeg),
+                                            axis.z * std::cos(th * kDeg)},
                             u, std::sin(th * kDeg) * std::cos(ph * kDeg)),
                         v, std::sin(th * kDeg) * std::sin(ph * kDeg));
                 double x0, y0, x1, y1, t0, t1;
@@ -259,18 +262,19 @@ void testDetect()
 {
     const int S = 1920;
     const camera::ClipMetadata clip = Clip(S);
-    insv::InsvCalibration cal;
+    orbiscore::InsvCalibration cal;
     cal.lensesExt = {clip.lenses[0].calibration, clip.lenses[1].calibration};
-    insv::FisheyeStitcher st;
-    insv::StitchParams params;
+    orbiscore::FisheyeStitcher st;
+    orbiscore::StitchParams params;
     params.depthSeam = true;
     CHECK(st.configure(cal, S, S, params));
-    const insv::Vec3 a0 = Axis(st, 0);
+    const orbiscore::Vec3 a0 = Axis(st, 0);
     // 50 deg off the axis, 0.7 m away, tilted.
-    const insv::Vec3 u = insv::normalize(Cross(insv::Vec3{0, 1, 0}, a0));
-    const insv::Vec3 dir = Add(insv::Vec3{a0.x * std::cos(50 * kDeg), a0.y * std::cos(50 * kDeg),
-                                          a0.z * std::cos(50 * kDeg)},
-                               u, std::sin(50 * kDeg));
+    const orbiscore::Vec3 u = orbiscore::normalize(Cross(orbiscore::Vec3{0, 1, 0}, a0));
+    const orbiscore::Vec3 dir = Add(orbiscore::Vec3{a0.x * std::cos(50 * kDeg),
+                                                    a0.y * std::cos(50 * kDeg),
+                                                    a0.z * std::cos(50 * kDeg)},
+                                    u, std::sin(50 * kDeg));
     const Board b = MakeBoard(dir, 700, 20, 15, 40);
     const calib::ChartImage chart = calib::MakeChartImage(13 * 80 + 160, 7 * 80 + 160);
     const int bx0 = (chart.width - 13 * chart.squarePx) / 2, by0 = (chart.height - 7 * chart.squarePx) / 2;
@@ -289,12 +293,12 @@ void testDetect()
     const int x0 = std::max(0, int(minX) - pad), x1 = std::min(S, int(maxX) + pad);
     const int y0 = std::max(0, int(minY) - pad), y1 = std::min(S, int(maxY) + pad);
     std::vector<uint8_t> img(size_t(S) * S, 128);
-    const insv::Vec3 n = Cross(b.ex, b.ey);
-    insv::Vec3 d = insv::normalize(b.centre);
+    const orbiscore::Vec3 n = Cross(b.ex, b.ey);
+    orbiscore::Vec3 d = orbiscore::normalize(b.centre);
     for (int py = y0; py < y1; ++py)
         for (int px = x0; px < x1; ++px) {
             // Newton: the direction d whose projection is the pixel centre (px, py).
-            const insv::Vec3 e1 = insv::normalize(Cross(n, d)), e2 = Cross(d, e1);
+            const orbiscore::Vec3 e1 = orbiscore::normalize(Cross(n, d)), e2 = Cross(d, e1);
             for (int it = 0; it < 8; ++it) {
                 double x, y, th, xa, ya, xb, yb;
                 st.project(0, d, x, y, th);
@@ -307,14 +311,15 @@ void testDetect()
                 // (px, py), the frame the detector's corners are in.
                 const double ex = px - x, ey = py - y;
                 const double s1 = (j11 * ex - j01 * ey) / det, s2 = (-j10 * ex + j00 * ey) / det;
-                d = insv::normalize(Add(Add(d, e1, s1), e2, s2));
+                d = orbiscore::normalize(Add(Add(d, e1, s1), e2, s2));
                 if (std::fabs(ex) + std::fabs(ey) < 1e-4)
                     break;
             }
             // Onto the board's plane, in squares from its top-left.
             const double dn = d.x * n.x + d.y * n.y + d.z * n.z;
             const double tt = (b.centre.x * n.x + b.centre.y * n.y + b.centre.z * n.z) / dn;
-            const insv::Vec3 p = Add(insv::Vec3{d.x * tt, d.y * tt, d.z * tt}, b.centre, -1);
+            const orbiscore::Vec3 p =
+                Add(orbiscore::Vec3{d.x * tt, d.y * tt, d.z * tt}, b.centre, -1);
             const double bxs = (p.x * b.ex.x + p.y * b.ex.y + p.z * b.ex.z) / kSquareMm + 6.5;
             const double bys = (p.x * b.ey.x + p.y * b.ey.y + p.z * b.ey.z) / kSquareMm + 3.5;
             const double cx = bx0 + bxs * chart.squarePx, cy = by0 + bys * chart.squarePx;

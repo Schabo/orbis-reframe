@@ -23,7 +23,7 @@
 //
 // Dependency-free, like the rest of orbis-core.
 
-namespace insv {
+namespace orbiscore {
 
 // Per stitch call. A frame with more is clamped (the caller warns).
 constexpr int kMaxBlurQuads = 64;
@@ -89,4 +89,4 @@ void blurCellTapDir(const BlurQuadFrame& f, int cell, int i, int j, double dir[3
 // (summing to 1; at the quad's edge the nearest cells repeat).
 void blurCellMix(const BlurQuadFrame& f, double s, double t, int cell[4], double w[4]);
 
-} // namespace insv
+} // namespace orbiscore

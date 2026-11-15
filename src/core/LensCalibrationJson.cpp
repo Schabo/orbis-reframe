@@ -8,7 +8,7 @@ namespace {
 
 constexpr int kVersion = 1;
 
-json LensToJson(const insv::LensCalibExt& e)
+json LensToJson(const orbiscore::LensCalibExt& e)
 {
     return json{
         {"xi", e.xi},
@@ -51,7 +51,7 @@ bool Number(const json& j, const char* key, double& out)
     return true;
 }
 
-bool LensFromJson(const json& j, insv::LensCalibExt& e)
+bool LensFromJson(const json& j, orbiscore::LensCalibExt& e)
 {
     if (!j.is_object())
         return false;

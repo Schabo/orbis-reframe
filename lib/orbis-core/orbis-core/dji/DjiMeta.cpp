@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/dji/DjiMeta.h>
 
-#include <orbis-core/insta360/InsvTrailer.h> // insv::ReadMp4UserBox
+#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::ReadMp4UserBox
 #include <orbis-core/Protobuf.h>
 
 #include <algorithm>
 #include <cmath>
 
-namespace insv {
+namespace orbiscore {
 
 const DjiSchema& DjiSchemaEagle4()
 {
@@ -264,4 +264,4 @@ std::optional<std::string> ReadDjiHeldName(const std::string& file_path)
     return name;
 }
 
-} // namespace insv
+} // namespace orbiscore

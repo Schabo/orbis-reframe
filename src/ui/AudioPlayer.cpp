@@ -91,7 +91,7 @@ void AudioPlayer::setTimeline(const QList<PlaybackController::Segment> &segments
         applyTimeline(segments);
 }
 
-void AudioPlayer::setMix(std::vector<insv::MixClip> clips)
+void AudioPlayer::setMix(std::vector<orbiscore::MixClip> clips)
 {
     m_timelineMix = clips;
     if (!m_sourceShown)
@@ -99,7 +99,7 @@ void AudioPlayer::setMix(std::vector<insv::MixClip> clips)
 }
 
 void AudioPlayer::showSource(const PlaybackController::Segment &segment,
-                             std::vector<insv::MixClip> mix)
+                             std::vector<orbiscore::MixClip> mix)
 {
     m_sourceShown = true;
     applyTimeline({segment});
@@ -130,7 +130,7 @@ void AudioPlayer::applyTimeline(const QList<PlaybackController::Segment> &segmen
     m_cv.notify_all();
 }
 
-void AudioPlayer::applyMix(std::vector<insv::MixClip> clips)
+void AudioPlayer::applyMix(std::vector<orbiscore::MixClip> clips)
 {
     const double played = playedFrames();
     {
@@ -314,12 +314,12 @@ void AudioPlayer::requestSeekLocked(qint64 timelineMs, double playedFrames)
 
 void AudioPlayer::decoderLoop()
 {
-    m_mixer = std::make_unique<insv::AudioMixer>(kSampleRate, kChannels);
+    m_mixer = std::make_unique<orbiscore::AudioMixer>(kSampleRate, kChannels);
     for (;;) {
         bool doSeek = false;
         bool tlChanged = false;
         bool mixChanged = false;
-        std::vector<insv::MixClip> mix;
+        std::vector<orbiscore::MixClip> mix;
         qint64 seekMs = 0;
         uint64_t gen = 0;
         {
@@ -388,7 +388,7 @@ void AudioPlayer::decoderLoop()
         Chunk chunk;
         chunk.pcm.assign(static_cast<size_t>(n) * kChannels, 0.0f);
         m_mixer->mixInto(chunk.pcm.data(), m_decCursor, n); // the audio tracks
-        insv::AudioMixer::limit(chunk.pcm.data(), n * kChannels);
+        orbiscore::AudioMixer::limit(chunk.pcm.data(), n * kChannels);
         m_decCursor += n;
 
         std::lock_guard<std::mutex> lk(m_mx);

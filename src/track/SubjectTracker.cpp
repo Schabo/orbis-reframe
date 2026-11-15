@@ -2,7 +2,7 @@
 
 #include "DataPaths.h"
 
-#include <orbis-core/stab/GyroStabilizer.h>  // insv::leanWindowFromStrength
+#include <orbis-core/stab/GyroStabilizer.h>  // orbiscore::leanWindowFromStrength
 #include <ReframeRenderer.h> // exportpipe::RenderRectilinear
 
 #include <opencv2/core.hpp>
@@ -412,7 +412,7 @@ std::vector<PathKey> reduceToKeys(const std::vector<TrackSample>& samples, doubl
     fillGaps(y, good);
     fillGaps(p, good);
     const double sigma =
-        insv::leanWindowFromStrength(params.smoothStrength) * fps / 3.0;
+        orbiscore::leanWindowFromStrength(params.smoothStrength) * fps / 3.0;
     const std::vector<double> ys = gaussSmooth(y, sigma), ps = gaussSmooth(p, sigma);
 
     std::vector<PathKey> path(n);

@@ -9,7 +9,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-namespace insv {
+namespace orbiscore {
 
 InsvDemux::~InsvDemux() { close(); }
 
@@ -143,4 +143,4 @@ bool InsvDemux::readFrameAt(int lens, int64_t timestampMs, Image& out, std::stri
     return true;
 }
 
-} // namespace insv
+} // namespace orbiscore

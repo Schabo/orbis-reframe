@@ -6,7 +6,7 @@
 // CPU decode's swscale set-up, the GPU stitch's ycbcr conversion and the
 // viewport's own conversion, so all three agree. Dependency-free.
 
-namespace insv {
+namespace orbiscore {
 
 // The Y'CbCr -> R'G'B' matrix.
 enum class YcbcrMatrix { Bt601, Bt709, Bt2020 };
@@ -23,4 +23,4 @@ struct YcbcrCoding {
 // arithmetic as a Vulkan ycbcr conversion (range expansion, then the model).
 void YcbcrToRgbRows(const YcbcrCoding& coding, int bitDepth, float rows[3][4]);
 
-} // namespace insv
+} // namespace orbiscore

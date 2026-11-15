@@ -13,7 +13,7 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video/tracking.hpp>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -302,4 +302,4 @@ SyncEstimator::Result SyncEstimator::estimate(const GyroStabilizer& gyro, double
     return res;
 }
 
-} // namespace insv
+} // namespace orbiscore

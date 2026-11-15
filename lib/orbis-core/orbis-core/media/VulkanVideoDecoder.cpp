@@ -9,7 +9,7 @@ extern "C" {
 #include <libavutil/version.h>
 }
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -319,4 +319,4 @@ std::shared_ptr<void> VulkanVideoDecoder::deviceKeepAlive() const
     });
 }
 
-} // namespace insv
+} // namespace orbiscore

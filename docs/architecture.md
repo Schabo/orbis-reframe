@@ -108,7 +108,7 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    fallback estimates it with OpenCV's DIS (`orbis-core/stitch/SeamFlowEstimator`).
    Both run on the strips anchored first: bright featureless parts get the
    same fixed pattern in both lenses, so the flow stays zero there
-   (`insv::AnchorSeamFlowStrips`, the shader's anchor passes). With both
+   (`orbiscore::AnchorSeamFlowStrips`, the shader's anchor passes). With both
    on, the lenses meet in a narrow fade on the seam, widened per stretch
    where they still differ near the seam after the flow (`orbis-core/stitch/SeamFade`):
    each frame's patch means of the warped raw strips are kept with its
@@ -207,7 +207,7 @@ The camera's gyro (from the file) gives a rotation per frame; the stabilizer
 and hands the view a de-rotation matrix. It is rotation only. Lining the gyro
 up with the video (timing, axis map, rolling-shutter readout) is
 camera-specific: the camera's reader does it and hands the stabilizer an
-`insv::ImuTrack` (`camera::ReadClipImu`); the camera's format document
+`orbiscore::ImuTrack` (`camera::ReadClipImu`); the camera's format document
 describes it. The track is gyro samples, or, where a camera stores its
 orientation instead (the X5's timelapse), that orientation alone; either
 way video time maps to the track's time by the reader's timing, frame by
@@ -215,7 +215,7 @@ frame where the file gives each frame's own time.
 
 Every path takes the de-rotation (and the stitch's capture-time correction,
 and the sync fine-tune's measurement) at the frame's exact time from the
-stream -- `timestamp_us` on the decoded frame, `insv::FramePts::us` from the
+stream -- `timestamp_us` on the decoded frame, `orbiscore::FramePts::us` from the
 demuxer -- never at `timestamp_ms`, which is rounded to the millisecond for
 seeks, trims and the timeline. At 29.97 fps the rounding is up to 0.37 ms,
 and the correction moves with the camera's rotation in that time: on a
@@ -267,12 +267,12 @@ read on demand. A reader per camera family fills it (`Insta360Reader`,
 what differs between cameras -- lens layout and which file and stream each
 lens comes from, the files a long recording is split into, calibration and
 its lens model (MEI, or DJI's theta-polynomial), where each lens sits in
-the camera (`insv::LensPose`) and how the camera holds them (the mount),
-where a lens's picture shows the camera itself (`insv::LensMask`),
+the camera (`orbiscore::LensPose`) and how the camera holds them (the mount),
+where a lens's picture shows the camera itself (`orbiscore::LensMask`),
 IMU timing and axes, colour profile, lens-guard
 profiles, capture-mode names -- is data the reader fills in, not a code path
 per camera. Differences between models of one family are that reader's
-table (`insv::InsvModel` for Insta360, `DjiReader`'s for DJI). What's still to come is under
+table (`orbiscore::InsvModel` for Insta360, `DjiReader`'s for DJI). What's still to come is under
 *Common camera model* in [`roadmap.md`](roadmap.md).
 
 ## Testing

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 // Columns wrapped round onto either end of a strip before the flow, so it
@@ -61,4 +61,4 @@ bool SeamFlowEstimator::estimate(const SeamFlowStrips& s, SeamFlowField& out)
     return true;
 }
 
-} // namespace insv
+} // namespace orbiscore

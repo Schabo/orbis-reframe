@@ -3,7 +3,7 @@
 #include "ReaderUtil.h"
 
 #include <orbis-core/dji/DjiMeta.h>
-#include <orbis-core/stitch/FisheyeProjection.h> // insv::Mat3, rotX / rotY / rotZ
+#include <orbis-core/stitch/FisheyeProjection.h> // orbiscore::Mat3, rotX / rotY / rotZ
 #include <orbis-core/media/StillPicture.h>
 
 extern "C" {
@@ -33,16 +33,16 @@ constexpr double kDeg = std::numbers::pi / 180.0;
 struct DjiModel {
     const char* productName; // as clip_meta_header names it
     const char* name;        // as we show it
-    const insv::DjiSchema& (*schema)();
+    const orbiscore::DjiSchema& (*schema)();
     int masterTrack; // the lens stream that holds the master lens
     // ClipMetadata::mountYawDeg / mountPitchDeg / mountRollDeg.
     double mountDeg[3];
-    // The usable field of view, degrees (insv::StitchParams::fovDeg).
+    // The usable field of view, degrees (orbiscore::StitchParams::fovDeg).
     double fovDeg;
     // Where the master lens's picture and the other's show the product's
-    // own body (insv::LensMask::clearDeg, kMaskSamples each); null for none.
+    // own body (orbiscore::LensMask::clearDeg, kMaskSamples each); null for none.
     const double* mask[2];
-    // The fused attitude's IMU axes in the sphere's (insv::ImuTrack::axisMap),
+    // The fused attitude's IMU axes in the sphere's (orbiscore::ImuTrack::axisMap),
     // measured against the picture's own rotation (docs/formats/dji-360.md §4).
     const char* imuAxes;
 };
@@ -51,7 +51,7 @@ constexpr int kMaskSamples = 180; // every 2 degrees round the picture
 
 // Where the Avata 360's body shows in each lens's picture (the rear duct and
 // its arms, up to ~91 deg off the axis -- inside the overlap behind the
-// drone), as insv::LensMask::clearDeg every 2 degrees: measured from our six
+// drone), as orbiscore::LensMask::clearDeg every 2 degrees: measured from our six
 // clips, the body being what stays put in a lens's picture while the scene
 // moves past (docs/formats/dji-360.md §3.2), drawn half a degree in and over
 // the next 2 degrees either side. The file's own occlusion polygon
@@ -98,13 +98,13 @@ const double kAvata360SlaveMask[kMaskSamples] = {
 // drone's own attitude (docs/formats/dji-360.md §3); the picture reaches
 // ~100 deg off each lens's axis before the frame's edge and the housing.
 const DjiModel kModels[] = {
-    {"DJI Avata360", "DJI Avata 360", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
+    {"DJI Avata360", "DJI Avata 360", &orbiscore::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
      {kAvata360MasterMask, kAvata360SlaveMask}, "y,x,-z"},
 };
 
 // For a product not in the table: the schema tried in turn, the master on
 // the first track, the lens axes as the Avata 360's.
-const DjiModel kUnknown = {"", "", &insv::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
+const DjiModel kUnknown = {"", "", &orbiscore::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
                            {nullptr, nullptr}, "y,x,-z"};
 
 const DjiModel* findModel(const std::string& productName) {
@@ -191,17 +191,19 @@ std::string nameTime(const std::string& name) {
 
 // A lens's pose from DJI's yaw / pitch / roll (camera from rig,
 // Ry(yaw) Rz(roll) Rx(pitch - 90) in image axes, x right and y down;
-// docs/formats/dji-360.md §3) in the stitch's terms (insv::LensPose): its
+// docs/formats/dji-360.md §3) in the stitch's terms (orbiscore::LensPose): its
 // lens frame is the image's turned half a turn about the optical axis, so
 // lens -> rig is that turn on both sides of the transposed rotation. The
 // whole pose goes into the mount; the calibration's own angles stay 0.
-insv::LensPose lensPose(const insv::DjiDewarp& d) {
-    const insv::Mat3 camFromRig =
-        insv::mul(insv::mul(insv::rotY(d.yaw * kDeg), insv::rotZ(d.roll * kDeg)),
-                  insv::rotX((d.pitch - 90.0) * kDeg));
-    const insv::Mat3 flip = insv::rotZ(std::numbers::pi);
-    const insv::Mat3 m = insv::mul(insv::mul(flip, insv::transpose(camFromRig)), flip);
-    insv::LensPose p;
+orbiscore::LensPose lensPose(const orbiscore::DjiDewarp& d) {
+    const orbiscore::Mat3 camFromRig =
+        orbiscore::mul(orbiscore::mul(orbiscore::rotY(d.yaw * kDeg),
+                                      orbiscore::rotZ(d.roll * kDeg)),
+                       orbiscore::rotX((d.pitch - 90.0) * kDeg));
+    const orbiscore::Mat3 flip = orbiscore::rotZ(std::numbers::pi);
+    const orbiscore::Mat3 m =
+        orbiscore::mul(orbiscore::mul(flip, orbiscore::transpose(camFromRig)), flip);
+    orbiscore::LensPose p;
     for (int r = 0; r < 3; ++r)
         for (int c = 0; c < 3; ++c)
             p.mount[r * 3 + c] = m.m[r][c];
@@ -211,12 +213,12 @@ insv::LensPose lensPose(const insv::DjiDewarp& d) {
 
 // A lens as the clip description takes it: the theta-polynomial in the
 // calibration's fields, its frame as lens `index`'s half of a side-by-side
-// frame of two (insv::LensCalibExt's convention), the fifth term beside.
-Lens lens(const insv::DjiDewarp& d, int index, const LensSource& source) {
+// frame of two (orbiscore::LensCalibExt's convention), the fifth term beside.
+Lens lens(const orbiscore::DjiDewarp& d, int index, const LensSource& source) {
     Lens l;
     l.source = source;
-    l.model = insv::LensModel::ThetaPoly;
-    insv::LensCalibExt& e = l.calibration;
+    l.model = orbiscore::LensModel::ThetaPoly;
+    orbiscore::LensCalibExt& e = l.calibration;
     e.fx = d.fx;
     e.fy = d.fy;
     e.cx = d.cx + index * d.width;
@@ -236,14 +238,14 @@ Lens lens(const insv::DjiDewarp& d, int index, const LensSource& source) {
 // The clip metadata of the first sample, parsed by the product's schema,
 // or -- for a product not in the table -- by the first schema that yields a
 // calibration.
-std::optional<insv::DjiClipMeta> clipMeta(const Bytes& first, const DjiModel*& model,
-                                          const std::string& path) {
-    const std::string product = insv::DjiProductName(first);
+std::optional<orbiscore::DjiClipMeta> clipMeta(const Bytes& first, const DjiModel*& model,
+                                               const std::string& path) {
+    const std::string product = orbiscore::DjiProductName(first);
     model = findModel(product);
     if (model)
-        return insv::ParseDjiClipMeta(first, model->schema());
-    for (const auto schema : {&insv::DjiSchemaEagle4, &insv::DjiSchemaOq101}) {
-        auto meta = insv::ParseDjiClipMeta(first, schema());
+        return orbiscore::ParseDjiClipMeta(first, model->schema());
+    for (const auto schema : {&orbiscore::DjiSchemaEagle4, &orbiscore::DjiSchemaOq101}) {
+        auto meta = orbiscore::ParseDjiClipMeta(first, schema());
         if (meta && meta->calibrated) {
             std::fprintf(stderr, "[camera] %s: \"%s\" isn't a DJI product we have measured; its "
                                  "metadata read by %s, the lenses placed as the Avata 360's\n",
@@ -253,29 +255,29 @@ std::optional<insv::DjiClipMeta> clipMeta(const Bytes& first, const DjiModel*& m
         }
     }
     model = &kUnknown;
-    return insv::ParseDjiClipMeta(first, insv::DjiSchemaEagle4());
+    return orbiscore::ParseDjiClipMeta(first, orbiscore::DjiSchemaEagle4());
 }
 
 // The clip's frame metadata, every sample, from the clip itself. Not from
 // the proxy: it keeps one frame's sample in four (docs/formats/dji-360.md
 // §1), and reading only the djmd track of the clip costs about the same.
-std::vector<insv::DjiFrameMeta> frames(const ClipMetadata& clip) {
-    std::vector<insv::DjiFrameMeta> out;
+std::vector<orbiscore::DjiFrameMeta> frames(const ClipMetadata& clip) {
+    std::vector<orbiscore::DjiFrameMeta> out;
     Mp4 mp4;
     if (!mp4.open(clip.path) || mp4.djmd < 0)
         return out;
     for (const Bytes& s : mp4.samples(0))
-        if (const auto f = insv::ParseDjiFrameMeta(s))
+        if (const auto f = orbiscore::ParseDjiFrameMeta(s))
             out.push_back(*f);
     return out;
 }
 
 // The GPS track in video time from the frames: a fix wherever the drone's
 // part changes (10 Hz on the Avata 360), at the first frame that has it.
-insv::GpsTrack gpsTrack(const std::vector<insv::DjiFrameMeta>& f, uint64_t firstFrameUs) {
-    insv::GpsTrack t;
-    const insv::DjiFrameMeta* last = nullptr;
-    for (const insv::DjiFrameMeta& m : f) {
+orbiscore::GpsTrack gpsTrack(const std::vector<orbiscore::DjiFrameMeta>& f, uint64_t firstFrameUs) {
+    orbiscore::GpsTrack t;
+    const orbiscore::DjiFrameMeta* last = nullptr;
+    for (const orbiscore::DjiFrameMeta& m : f) {
         if (!m.hasDrone || !m.hasPosition)
             continue;
         if (last && last->latitude == m.latitude && last->longitude == m.longitude &&
@@ -283,7 +285,7 @@ insv::GpsTrack gpsTrack(const std::vector<insv::DjiFrameMeta>& f, uint64_t first
             last->altitudeM == m.altitudeM)
             continue;
         last = &m;
-        insv::GpsFix x;
+        orbiscore::GpsFix x;
         x.timeMs = static_cast<int64_t>(
             std::llround((static_cast<double>(m.timestampUs) - static_cast<double>(firstFrameUs)) /
                          1000.0));
@@ -303,7 +305,7 @@ insv::GpsTrack gpsTrack(const std::vector<insv::DjiFrameMeta>& f, uint64_t first
 // The sensor's readout, seconds: DJI's line time over all its lines (the
 // stream is the whole frame scaled), 9.4 ms on the Avata 360; 0 when the
 // file doesn't say.
-double readoutSec(const insv::DjiClipMeta& meta) {
+double readoutSec(const orbiscore::DjiClipMeta& meta) {
     return static_cast<double>(meta.lroNsPerLine) * 1e-9 * static_cast<double>(meta.sensorHeight);
 }
 
@@ -318,17 +320,18 @@ double readoutSec(const insv::DjiClipMeta& meta) {
 // which is where the picture's rotation lines up with the attitude's
 // (measured 4.6-5.8 ms on six clips, against 4.7). nullopt with fewer than
 // two batches.
-std::optional<insv::ImuTrack> attitudeTrack(const std::vector<insv::DjiFrameMeta>& frames,
-                                            const insv::DjiClipMeta& meta, const DjiModel& model,
-                                            double fps, double readoutSec) {
+std::optional<orbiscore::ImuTrack> attitudeTrack(const std::vector<orbiscore::DjiFrameMeta>& frames,
+                                                 const orbiscore::DjiClipMeta& meta,
+                                                 const DjiModel& model, double fps,
+                                                 double readoutSec) {
     struct Batch {
         double stampUs;  // first sample, on the frames' clock
         double index;    // its count among all samples
-        const insv::DjiFrameMeta* frame;
+        const orbiscore::DjiFrameMeta* frame;
     };
     std::vector<Batch> batches;
     size_t total = 0;
-    for (const insv::DjiFrameMeta& m : frames) {
+    for (const orbiscore::DjiFrameMeta& m : frames) {
         if (m.attitude.empty())
             continue;
         const auto behind = static_cast<int32_t>(static_cast<uint32_t>(m.timestampUs) -
@@ -367,7 +370,7 @@ std::optional<insv::ImuTrack> attitudeTrack(const std::vector<insv::DjiFrameMeta
         a = my - b * mx;
     };
 
-    insv::ImuTrack track;
+    orbiscore::ImuTrack track;
     track.axisMap = model.imuAxes;
     track.orientation.reserve(total);
     const double t0 = batches[0].stampUs;
@@ -383,7 +386,7 @@ std::optional<insv::ImuTrack> attitudeTrack(const std::vector<insv::DjiFrameMeta
             // World <- IMU, the world NED: world up (-z) and north (+x) in the
             // IMU's axes are the third row negated and the first row.
             const double s2 = 2.0 / (norm * norm);
-            insv::OrientationSample o;
+            orbiscore::OrientationSample o;
             const double tUs = t0 + a + b * (batches[k].index + static_cast<double>(i));
             o.timestamp = static_cast<uint64_t>(std::llround(tUs));
             o.up[0] = -(s2 * (x * z - w * y));
@@ -433,7 +436,7 @@ std::optional<Bytes> firstSample(const std::string& path, bool* djiFile = nullpt
 
 } // namespace
 
-CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& streams,
+CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo>& streams,
                                      ClipMetadata& out, std::string& err) const {
     bool dji = false;
     const auto first = firstSample(out.path, &dji);
@@ -469,10 +472,11 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
             if (model->mask[i])
                 out.lenses[i].mask.clearDeg.assign(model->mask[i], model->mask[i] + kMaskSamples);
         out.calibrated = true;
-        if (meta->slot != insv::DjiSlot::NativeRefineFar)
+        if (meta->slot != orbiscore::DjiSlot::NativeRefineFar)
             std::fprintf(stderr, "[camera] %s: no %s calibration; stitching with the %s one\n",
-                         out.path.c_str(), insv::DjiSlotName(insv::DjiSlot::NativeRefineFar),
-                         insv::DjiSlotName(meta->slot));
+                         out.path.c_str(),
+                         orbiscore::DjiSlotName(orbiscore::DjiSlot::NativeRefineFar),
+                         orbiscore::DjiSlotName(meta->slot));
         if (meta->master.width != meta->master.height ||
             std::abs(meta->master.width / out.lensWidth - std::round(meta->master.width /
                                                                      out.lensWidth)) > 1e-6)
@@ -491,18 +495,18 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
     out.mountPitchDeg = model->mountDeg[1];
     out.mountRollDeg = model->mountDeg[2];
     // No lens profile in the file: the bare lens's field of view is ours.
-    out.bareLens = insv::LensProfile{"bare", {0, 0, 0, 0, 0, 0}, model->fovDeg};
+    out.bareLens = orbiscore::LensProfile{"bare", {0, 0, 0, 0, 0, 0}, model->fovDeg};
 
     if (meta->hasColorMode) {
-        out.colorProfile = insv::DjiColorModeName(meta->colorMode);
+        out.colorProfile = orbiscore::DjiColorModeName(meta->colorMode);
         if (out.colorProfile.empty())
             out.colorProfile = "colour mode " + std::to_string(meta->colorMode);
-        out.logProfile = insv::DjiLogProfile(meta->colorMode);
+        out.logProfile = orbiscore::DjiLogProfile(meta->colorMode);
     }
     out.rollingShutterMs = readoutSec(*meta) * 1e3;
 
     const fs::path self(out.path);
-    const std::optional<std::string> held = insv::ReadDjiHeldName(out.path);
+    const std::optional<std::string> held = orbiscore::ReadDjiHeldName(out.path);
     out.proxyPath = sibling(self, self.stem().string(), ".LRF");
     if (out.proxyPath.empty() && held)
         out.proxyPath = sibling(self, fs::path(*held).stem().string(), ".LRF");
@@ -510,11 +514,11 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
     if (out.recordedLocal.empty())
         out.recordedLocal = nameTime(self.filename().string());
 
-    const std::vector<insv::DjiFrameMeta> all = frames(out);
+    const std::vector<orbiscore::DjiFrameMeta> all = frames(out);
     // The motion: the camera's fused attitude (DjiReader::readImu), at its
     // rate over the clip.
     size_t samples = 0;
-    for (const insv::DjiFrameMeta& m : all)
+    for (const orbiscore::DjiFrameMeta& m : all)
         samples += m.attitude.size();
     if (samples >= 2 && all.size() >= 2 && all.back().timestampUs > all.front().timestampUs) {
         out.hasMotion = true;
@@ -523,7 +527,7 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
                          1e6 / std::max(out.fps, 1.0));
     }
     // The GPS facts the Media information panel lists.
-    const insv::GpsTrack gps = gpsTrack(all, meta->clipTimestampUs);
+    const orbiscore::GpsTrack gps = gpsTrack(all, meta->clipTimestampUs);
     out.gpsRecords = out.gpsFixes = static_cast<int64_t>(gps.fixes.size());
     if (gps.fixes.size() >= 2) {
         const double sec =
@@ -535,7 +539,7 @@ CameraReader::Result DjiReader::read(const std::vector<insv::InsvStreamInfo>& st
     return Result::Read;
 }
 
-std::optional<insv::ImuTrack> DjiReader::readImu(const ClipMetadata& clip) const {
+std::optional<orbiscore::ImuTrack> DjiReader::readImu(const ClipMetadata& clip) const {
     const auto first = firstSample(clip.path);
     if (!first)
         return std::nullopt;
@@ -546,7 +550,7 @@ std::optional<insv::ImuTrack> DjiReader::readImu(const ClipMetadata& clip) const
     return attitudeTrack(frames(clip), *meta, *model, clip.fps, readoutSec(*meta));
 }
 
-std::optional<insv::GpsTrack> DjiReader::readGps(const ClipMetadata& clip) const {
+std::optional<orbiscore::GpsTrack> DjiReader::readGps(const ClipMetadata& clip) const {
     const auto first = firstSample(clip.path);
     if (!first)
         return std::nullopt;
@@ -554,7 +558,7 @@ std::optional<insv::GpsTrack> DjiReader::readGps(const ClipMetadata& clip) const
     const auto meta = clipMeta(*first, model, clip.path);
     if (!meta)
         return std::nullopt;
-    insv::GpsTrack t = gpsTrack(frames(clip), meta->clipTimestampUs);
+    orbiscore::GpsTrack t = gpsTrack(frames(clip), meta->clipTimestampUs);
     if (t.fixes.empty())
         return std::nullopt;
     return t;
@@ -570,9 +574,9 @@ std::optional<Thumbnail> DjiReader::readThumbnail(const std::string& path) const
             continue;
         const char* codec = avcodec_get_name(st->codecpar->codec_id);
         const Bytes pic(st->attached_pic.data, st->attached_pic.data + st->attached_pic.size);
-        insv::Image rgb;
+        orbiscore::Image rgb;
         std::string err;
-        if (!insv::DecodeStillPicture(pic, codec, 1024, rgb, err)) {
+        if (!orbiscore::DecodeStillPicture(pic, codec, 1024, rgb, err)) {
             std::fprintf(stderr, "[camera] the cover picture of %s doesn't decode: %s\n",
                          path.c_str(), err.c_str());
             return std::nullopt;
@@ -591,7 +595,7 @@ std::optional<std::string> DjiReader::clipFileFor(const std::string& path) const
     if (lower(p.extension().string()) != ".lrf")
         return std::nullopt;
     std::string stem = p.stem().string();
-    if (const auto held = insv::ReadDjiHeldName(path))
+    if (const auto held = orbiscore::ReadDjiHeldName(path))
         stem = fs::path(*held).stem().string();
     if (stem.compare(0, 4, "DJI_") != 0)
         return std::nullopt;

@@ -2,7 +2,7 @@
 
 #include "../../core/AudioLimits.h"
 
-#include <orbis-core/audio/NoiseFilter.h> // insv::voiceModesReady
+#include <orbis-core/audio/NoiseFilter.h> // orbiscore::voiceModesReady
 
 #include <QApplication>
 #include <QCheckBox>
@@ -26,8 +26,8 @@
 namespace {
 
 // Debian's ONNX Runtime package for the version built against (CMakeLists.txt).
-#ifdef INSV_ORT_PACKAGE
-const char *const kOrtPackage = INSV_ORT_PACKAGE;
+#ifdef ORBISCORE_ORT_PACKAGE
+const char *const kOrtPackage = ORBISCORE_ORT_PACKAGE;
 #else
 const char *const kOrtPackage = "libonnxruntime";
 #endif
@@ -77,15 +77,15 @@ AudioClipSection::AudioClipSection(QWidget *parent)
 
     // Noise reduction.
     m_noiseMode = new QComboBox(this);
-    m_noiseMode->addItem(tr("Off"), int(insv::NoiseMode::Off));
-    m_noiseMode->addItem(tr("Wind reduction"), int(insv::NoiseMode::Wind));
-    m_noiseMode->addItem(tr("MC: Wind reduction"), int(insv::NoiseMode::MotorcycleWind));
-    m_noiseMode->addItem(tr("Hiss / hum"), int(insv::NoiseMode::Hiss));
-#ifdef INSV_HAVE_VOICE
+    m_noiseMode->addItem(tr("Off"), int(orbiscore::NoiseMode::Off));
+    m_noiseMode->addItem(tr("Wind reduction"), int(orbiscore::NoiseMode::Wind));
+    m_noiseMode->addItem(tr("MC: Wind reduction"), int(orbiscore::NoiseMode::MotorcycleWind));
+    m_noiseMode->addItem(tr("Hiss / hum"), int(orbiscore::NoiseMode::Hiss));
+#ifdef ORBISCORE_HAVE_VOICE
     // Listed even when ONNX Runtime or the model is missing: picking one then
     // says why it can't run (below) instead of the modes just not being there.
-    m_noiseMode->addItem(tr("Voice only"), int(insv::NoiseMode::Voice));
-    m_noiseMode->addItem(tr("Voice + ambience"), int(insv::NoiseMode::VoiceAmbience));
+    m_noiseMode->addItem(tr("Voice only"), int(orbiscore::NoiseMode::Voice));
+    m_noiseMode->addItem(tr("Voice + ambience"), int(orbiscore::NoiseMode::VoiceAmbience));
 #endif
     m_noiseMode->setToolTip(
         tr("Noise reduction for this clip, in playback and export.\n"
@@ -157,12 +157,12 @@ AudioClipSection::AudioClipSection(QWidget *parent)
     });
     connect(m_mute, &QCheckBox::toggled, this, [this](bool) { emitIfEdited(); });
     connect(m_noiseMode, &QComboBox::currentIndexChanged, this, [this](int index) {
-        const auto mode = static_cast<insv::NoiseMode>(m_noiseMode->currentData().toInt());
-        if (!m_updating && (mode == insv::NoiseMode::Voice || mode == insv::NoiseMode::VoiceAmbience)) {
+        const auto mode = static_cast<orbiscore::NoiseMode>(m_noiseMode->currentData().toInt());
+        if (!m_updating && (mode == orbiscore::NoiseMode::Voice || mode == orbiscore::NoiseMode::VoiceAmbience)) {
             // Loads ONNX Runtime and the model if needed (~0.5 s, once).
             QApplication::setOverrideCursor(Qt::WaitCursor);
             std::string why;
-            const bool ready = insv::voiceModesReady(&why);
+            const bool ready = orbiscore::voiceModesReady(&why);
             QApplication::restoreOverrideCursor();
             if (!ready) {
                 {
@@ -180,11 +180,12 @@ AudioClipSection::AudioClipSection(QWidget *parent)
             }
         }
         m_lastNoiseIndex = index;
-        m_noiseStrength->parentWidget()->setEnabled(mode != insv::NoiseMode::Off);
-        if (!m_updating && mode != insv::NoiseMode::Off) {
+        m_noiseStrength->parentWidget()->setEnabled(mode != orbiscore::NoiseMode::Off);
+        if (!m_updating && mode != orbiscore::NoiseMode::Off) {
             // A newly picked mode starts at its own default strength.
             const QSignalBlocker block(m_noiseStrength);
-            const int pct = int(std::lround(insv::NoiseReduction::defaultStrength(mode) * 100.0f));
+            const int pct =
+                int(std::lround(orbiscore::NoiseReduction::defaultStrength(mode) * 100.0f));
             m_noiseStrength->setValue(pct);
             m_noiseStrengthValue->setText(tr("%1 %").arg(pct));
         }
@@ -237,22 +238,22 @@ void AudioClipSection::setState(const AudioClipState &s)
 }
 
 // Called with m_updating set: reflects `n`, doesn't emit.
-void AudioClipSection::setNoise(const insv::NoiseReduction &n)
+void AudioClipSection::setNoise(const orbiscore::NoiseReduction &n)
 {
     m_noiseMode->setCurrentIndex(std::max(0, m_noiseMode->findData(int(n.mode))));
     m_lastNoiseIndex = m_noiseMode->currentIndex();
     const int pct = int(std::lround(std::clamp(n.strength, 0.0f, 1.0f) * 100.0f));
     m_noiseStrength->setValue(pct);
     m_noiseStrengthValue->setText(tr("%1 %").arg(pct));
-    m_noiseStrength->parentWidget()->setEnabled(n.mode != insv::NoiseMode::Off);
+    m_noiseStrength->parentWidget()->setEnabled(n.mode != orbiscore::NoiseMode::Off);
 }
 
 void AudioClipSection::emitNoiseIfEdited()
 {
     if (m_updating)
         return;
-    insv::NoiseReduction n;
-    n.mode = static_cast<insv::NoiseMode>(m_noiseMode->currentData().toInt());
+    orbiscore::NoiseReduction n;
+    n.mode = static_cast<orbiscore::NoiseMode>(m_noiseMode->currentData().toInt());
     n.strength = m_noiseStrength->value() / 100.0f;
     emit noiseEdited(m_state.clipId, n);
 }

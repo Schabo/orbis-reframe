@@ -14,7 +14,7 @@
 // an RGBA consumer (e.g. a future NativeStitchSource feeding IStitchSource::
 // Frame) convert at the boundary; the projection math is all RGB.
 
-namespace insv {
+namespace orbiscore {
 
 struct Image {
     int w = 0;
@@ -59,4 +59,4 @@ struct Image {
     }
 };
 
-} // namespace insv
+} // namespace orbiscore

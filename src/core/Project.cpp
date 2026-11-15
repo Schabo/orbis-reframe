@@ -91,20 +91,20 @@ stitch::PreviewStitchConfig previewStitchFromJson(const json &j)
 // A source's measured seam fine-tune. "method" says which estimator measured
 // it; one from an older estimator (no "method": lens-1 rotation only) isn't
 // read back, so the clip is measured again.
-json seamAdjustToJson(const insv::SeamCorrection &c, int lensGuard)
+json seamAdjustToJson(const orbiscore::SeamCorrection &c, int lensGuard)
 {
     return json{
         {"deg", {c.lens1RotDeg[0], c.lens1RotDeg[1], c.lens1RotDeg[2]}},
         {"centre", {c.lens1Centre[0], c.lens1Centre[1]}},
         {"scale", c.radialScale},
         {"lensGuard", lensGuard},
-        {"method", insv::kSeamCorrectionMethod},
+        {"method", orbiscore::kSeamCorrectionMethod},
     };
 }
 
-bool seamAdjustFromJson(const json &j, insv::SeamCorrection &c, int &lensGuard)
+bool seamAdjustFromJson(const json &j, orbiscore::SeamCorrection &c, int &lensGuard)
 {
-    if (!j.is_object() || j.value("method", 1) != insv::kSeamCorrectionMethod ||
+    if (!j.is_object() || j.value("method", 1) != orbiscore::kSeamCorrectionMethod ||
         !j.contains("deg") || !j.at("deg").is_array() || j.at("deg").size() != 3 ||
         !j.contains("centre") || !j.at("centre").is_array() || j.at("centre").size() != 2 ||
         !j.contains("scale") || !j.at("scale").is_number() || !j.contains("lensGuard") ||
@@ -120,25 +120,26 @@ bool seamAdjustFromJson(const json &j, insv::SeamCorrection &c, int &lensGuard)
 }
 
 // A source's measured lens colour, likewise with the estimator's "method".
-json lensColourToJson(const insv::LensColour &c, int lensGuard)
+json lensColourToJson(const orbiscore::LensColour &c, int lensGuard)
 {
     return json{
         {"logRatio", {c.logRatio[0], c.logRatio[1], c.logRatio[2]}},
         {"slope", {c.slope[0], c.slope[1], c.slope[2]}},
         {"spread", c.spread},
         {"lensGuard", lensGuard},
-        {"method", insv::kLensColourMethod},
+        {"method", orbiscore::kLensColourMethod},
     };
 }
 
-bool lensColourFromJson(const json &j, insv::LensColour &c, int &lensGuard)
+bool lensColourFromJson(const json &j, orbiscore::LensColour &c, int &lensGuard)
 {
     auto triple = [&j](const char *key) {
         return j.contains(key) && j.at(key).is_array() && j.at(key).size() == 3 &&
                j.at(key)[0].is_number() && j.at(key)[1].is_number() && j.at(key)[2].is_number();
     };
-    if (!j.is_object() || j.value("method", 0) != insv::kLensColourMethod || !triple("logRatio") ||
-        !triple("slope") || !j.contains("spread") || !j.at("spread").is_number() ||
+    if (!j.is_object() || j.value("method", 0) != orbiscore::kLensColourMethod ||
+        !triple("logRatio") || !triple("slope") || !j.contains("spread") ||
+        !j.at("spread").is_number() ||
         !j.contains("lensGuard") || !j.at("lensGuard").is_number_integer())
         return false;
     for (int k = 0; k < 3; ++k) {
@@ -150,10 +151,10 @@ bool lensColourFromJson(const json &j, insv::LensColour &c, int &lensGuard)
     return true;
 }
 
-json stabilizationToJson(const insv::StabConfig &c)
+json stabilizationToJson(const orbiscore::StabConfig &c)
 {
     json j{
-        {"mode", insv::stabModeToString(c.mode)},
+        {"mode", orbiscore::stabModeToString(c.mode)},
         {"windowYawSec", c.windowYawSec},
         {"windowPitchSec", c.windowPitchSec},
         {"windowRollSec", c.windowRollSec},
@@ -207,12 +208,12 @@ OutputSettings outputFromJson(const json &j)
     return o;
 }
 
-insv::StabConfig stabilizationFromJson(const json &j)
+orbiscore::StabConfig stabilizationFromJson(const json &j)
 {
-    insv::StabConfig c; // defaults for any missing field
+    orbiscore::StabConfig c; // defaults for any missing field
     if (!j.is_object())
         return c;
-    c.mode = insv::stabModeFromString(j.value("mode", std::string("off")));
+    c.mode = orbiscore::stabModeFromString(j.value("mode", std::string("off")));
     c.windowYawSec = j.value("windowYawSec", c.windowYawSec);
     c.windowPitchSec = j.value("windowPitchSec", c.windowPitchSec);
     c.windowRollSec = j.value("windowRollSec", c.windowRollSec);
@@ -365,35 +366,35 @@ fx::ClipEffects effectsFromJson(const json &j)
 // "noise": {"mode": "wind" | "windGeneral" | "hiss" | "voice" |
 // "voiceAmbience", "strength": 0.7} -- written only when on. "wind" is the
 // motorcycle one (it came first).
-json noiseToJson(const insv::NoiseReduction &n)
+json noiseToJson(const orbiscore::NoiseReduction &n)
 {
     const char *mode = "wind";
     switch (n.mode) {
-    case insv::NoiseMode::Wind: mode = "windGeneral"; break;
-    case insv::NoiseMode::Hiss: mode = "hiss"; break;
-    case insv::NoiseMode::Voice: mode = "voice"; break;
-    case insv::NoiseMode::VoiceAmbience: mode = "voiceAmbience"; break;
+    case orbiscore::NoiseMode::Wind: mode = "windGeneral"; break;
+    case orbiscore::NoiseMode::Hiss: mode = "hiss"; break;
+    case orbiscore::NoiseMode::Voice: mode = "voice"; break;
+    case orbiscore::NoiseMode::VoiceAmbience: mode = "voiceAmbience"; break;
     default: break;
     }
     return json{{"mode", mode}, {"strength", n.strength}};
 }
 
-insv::NoiseReduction noiseFromJson(const json &j)
+orbiscore::NoiseReduction noiseFromJson(const json &j)
 {
-    insv::NoiseReduction n; // off unless a known mode is given
+    orbiscore::NoiseReduction n; // off unless a known mode is given
     if (!j.is_object())
         return n;
     const std::string mode = j.value("mode", std::string());
     if (mode == "wind")
-        n.mode = insv::NoiseMode::MotorcycleWind;
+        n.mode = orbiscore::NoiseMode::MotorcycleWind;
     else if (mode == "windGeneral")
-        n.mode = insv::NoiseMode::Wind;
+        n.mode = orbiscore::NoiseMode::Wind;
     else if (mode == "hiss")
-        n.mode = insv::NoiseMode::Hiss;
+        n.mode = orbiscore::NoiseMode::Hiss;
     else if (mode == "voice")
-        n.mode = insv::NoiseMode::Voice;
+        n.mode = orbiscore::NoiseMode::Voice;
     else if (mode == "voiceAmbience")
-        n.mode = insv::NoiseMode::VoiceAmbience;
+        n.mode = orbiscore::NoiseMode::VoiceAmbience;
     n.strength = std::clamp(j.value("strength", n.strength), 0.0f, 1.0f);
     return n;
 }
@@ -514,19 +515,19 @@ struct ParsedClip {
     double audioGainDb = 0.0;
     bool audioMuted = false;
     int audioTrack = 0;
-    insv::NoiseReduction noise;
+    orbiscore::NoiseReduction noise;
     ColorGrade color;
     fx::ClipEffects effects;
-    insv::StabConfig stabilization;
+    orbiscore::StabConfig stabilization;
     bool blurPlates = false;
     QString plateScan;
     std::vector<privacy::BlurRemoval> blurRemovals;
     std::vector<privacy::BlurAddition> blurAdditions;
     double speed = 1.0;
     double syncAdjustMs = std::numeric_limits<double>::quiet_NaN();
-    insv::SeamCorrection seamCorrection;
+    orbiscore::SeamCorrection seamCorrection;
     int seamAdjustGuard = -1;
-    insv::LensColour lensColour;
+    orbiscore::LensColour lensColour;
     int lensColourGuard = -1;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     stitch::PreviewStitchConfig::Method stitchMethod = Project::kOlderFileStitchMethod;
@@ -579,7 +580,7 @@ json trackClipToJson(const TrackClip &c, const QDir *projectDir, int linkedIndex
         {"fadeInMs", static_cast<qint64>(c.fadeInMs)},
         {"fadeOutMs", static_cast<qint64>(c.fadeOutMs)},
     };
-    if (c.noise.mode != insv::NoiseMode::Off)
+    if (c.noise.mode != orbiscore::NoiseMode::Off)
         j["noise"] = noiseToJson(c.noise);
     if (linkedIndex >= 0) {
         j["linkedClip"] = linkedIndex;
@@ -1435,7 +1436,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
         }
         anyLut = anyLut || !c.color.lut.isEmpty();
         anyDirectionLock = anyDirectionLock || c.stabilization.lockDirection ||
-                           c.stabilization.mode == insv::StabMode::DirectionLock;
+                           c.stabilization.mode == orbiscore::StabMode::DirectionLock;
         if (!firstStitched)
             firstStitched = &c;
         else if (c.lensGuard != firstStitched->lensGuard ||
@@ -1652,7 +1653,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
         if (doc.contains("previewStitch"))
             parsedStitch = previewStitchFromJson(doc.at("previewStitch"));
         // Version 8: one setting for the whole project, which every clip takes.
-        insv::StabConfig projectStab;
+        orbiscore::StabConfig projectStab;
         if (version == 8 && doc.contains("stabilization"))
             projectStab = stabilizationFromJson(doc.at("stabilization"));
         if (doc.contains("output"))

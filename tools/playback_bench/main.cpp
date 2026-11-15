@@ -1,7 +1,7 @@
 // Playback benchmark: where does a frame's time go on today's all-GPU path,
 // per clip / capture mode and per equirect size? Measure-only, no output files.
 //
-//   decode      insv::VulkanVideoDecoder alone: both lenses, no stitch.
+//   decode      orbiscore::VulkanVideoDecoder alone: both lenses, no stitch.
 //   eq N        NativeStitchSource::ReadFrame at an N x N/2 equirect: what
 //               playback does today (decode -> stitch -> host-visible buffer
 //               -> memcpy into the Frame).
@@ -79,7 +79,7 @@ bool gSeamColourBlend = true;
 bool gSeamFlow = true;
 
 void benchDecode(const std::string& path, int frames, double fps) {
-    insv::VulkanVideoDecoder dec;
+    orbiscore::VulkanVideoDecoder dec;
     std::string err;
     AVBufferRef* hw = core::sharedVulkanDevice(); // the app's device
     const bool opened = dec.open(hw, path, err);
@@ -102,12 +102,12 @@ void benchDecode(const std::string& path, int frames, double fps) {
             t0 = Clock::now();
         AVFrame* f0 = nullptr;
         AVFrame* f1 = nullptr;
-        insv::FramePts pts;
+        orbiscore::FramePts pts;
         if (!dec.readNextPair(f0, f1, &pts, err))
             break;
         const bool last = i == frames + kWarmup - 1;
         if (last) { // make sure the GPU has actually finished decoding
-            insv::VulkanLensFrame l0, l1;
+            orbiscore::VulkanLensFrame l0, l1;
             dec.lockFrame(f0, l0);
             dec.lockFrame(f1, l1);
             const VkSemaphore sems[2] = {l0.semaphore, l1.semaphore};
@@ -194,7 +194,8 @@ void benchFlat(const std::string& path, int eqW, int frames, double fps, FlatKin
         return;
     }
     const view::Pose pose;
-    const auto fixedPose = [&pose](const insv::FramePts &, view::Pose &p, float[9]) { p = pose; };
+    const auto fixedPose =
+        [&pose](const orbiscore::FramePts &, view::Pose &p, float[9]) { p = pose; };
     Stats total, dec, wait, gpu, rf, copy, seam;
     for (int i = 0; i < frames + kWarmup; ++i) {
         const auto t0 = Clock::now();

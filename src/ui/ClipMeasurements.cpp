@@ -169,8 +169,8 @@ void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
     // After the seam and lens colour measurements: the seam's state depends
     // on both, as the stitch has them (none, if one failed).
     const Timeline *t = m_project->timeline();
-    insv::SeamCorrection seam;
-    insv::LensColour colour;
+    orbiscore::SeamCorrection seam;
+    orbiscore::LensColour colour;
     if (!(t->sourceSeamCorrection(clipPath, seam) || m_seamFailed.contains(clipPath)) ||
         !(t->sourceLensColour(clipPath, colour) || m_colourFailed.contains(clipPath)))
         return;
@@ -284,7 +284,7 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
 
 void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
 {
-    insv::SeamCorrection seam;
+    orbiscore::SeamCorrection seam;
     if (!m_enabled || clipPath.isEmpty() || m_seamThread ||
         m_project->timeline()->sourceSeamCorrection(clipPath, seam) ||
         m_seamFailed.contains(clipPath))
@@ -327,8 +327,8 @@ void ClipMeasurements::maybeMeasureColour(const QString &clipPath)
 {
     // After the seam: the lenses' colours are compared where they line up.
     // A source whose seam couldn't be aligned is measured with none.
-    insv::LensColour colour;
-    insv::SeamCorrection seam;
+    orbiscore::LensColour colour;
+    orbiscore::SeamCorrection seam;
     if (!m_enabled || clipPath.isEmpty() || m_colourThread || m_seamThread ||
         m_project->timeline()->sourceLensColour(clipPath, colour) ||
         m_colourFailed.contains(clipPath) ||
@@ -356,7 +356,7 @@ void ClipMeasurements::maybeMeasureColour(const QString &clipPath)
             // Stale if the guard, the calibration or the seam changed
             // meanwhile: dropped, and measured again below.
             const ClipItem *now = measurableClip(clipPath);
-            insv::SeamCorrection seamNow;
+            orbiscore::SeamCorrection seamNow;
             m_project->timeline()->sourceSeamCorrection(clipPath, seamNow);
             if (r.ok && now && guard == now->lensGuard && cal == now->lensCalibration &&
                 seam == seamNow)
@@ -404,7 +404,7 @@ QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) cons
     const QString &path = c->sourcePath;
     const Timeline *t = m_project->timeline();
 
-    insv::SeamCorrection seam;
+    orbiscore::SeamCorrection seam;
     QString seamWhy, colourWhy;
     State s = State::None, k = State::None;
     if (t->sourceSeamCorrection(path, seam)) {
@@ -415,7 +415,7 @@ QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) cons
         s = State::Failed;
         seamWhy = failureText(*it, true);
     }
-    insv::LensColour colour;
+    orbiscore::LensColour colour;
     if (t->sourceLensColour(path, colour)) {
         k = State::Done;
     } else if (m_colourMeasuringPath == path) {
@@ -501,7 +501,7 @@ QString ClipMeasurements::stitchStatus(const ClipItem *c, QString *details) cons
 
 QString ClipMeasurements::syncStatus(const ClipItem *c) const
 {
-    if (!c || c->stabilization.mode == insv::StabMode::Off)
+    if (!c || c->stabilization.mode == orbiscore::StabMode::Off)
         return QString();
     const double ms = m_project->timeline()->sourceSyncAdjust(c->sourcePath);
     if (!std::isnan(ms))

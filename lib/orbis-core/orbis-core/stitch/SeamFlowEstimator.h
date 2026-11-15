@@ -8,7 +8,7 @@
 
 #include <memory>
 
-namespace insv {
+namespace orbiscore {
 
 class SeamFlowEstimator {
 public:
@@ -28,4 +28,4 @@ private:
     std::unique_ptr<Impl> d_;
 };
 
-} // namespace insv
+} // namespace orbiscore

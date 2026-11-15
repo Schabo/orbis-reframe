@@ -52,7 +52,7 @@ void testLookup()
     CHECK(s.frameAt(1040) && s.frameAt(1040)->tMs == 1033); // nearest
     CHECK(!s.frameAt(900));                                  // before the scan
     CHECK(!s.frameAt(2100));                                 // after it
-    std::vector<insv::BlurQuad> q;
+    std::vector<orbiscore::BlurQuad> q;
     s.quadsAt(1500, q);
     CHECK(q.size() == 1);
     s.quadsAt(5000, q);
@@ -124,9 +124,9 @@ void testTiming()
 }
 
 // A quad of half-size `h` (radians) around the direction at yaw / pitch.
-insv::BlurQuad quadAround(double yaw, double pitch, double h = 0.01)
+orbiscore::BlurQuad quadAround(double yaw, double pitch, double h = 0.01)
 {
-    insv::BlurQuad q;
+    orbiscore::BlurQuad q;
     const double c[4][2] = {{-h, h}, {h, h}, {h, -h}, {-h, -h}}; // TL TR BR BL
     for (int k = 0; k < 4; ++k) {
         const double y = yaw + c[k][0], p = pitch + c[k][1];
@@ -167,7 +167,7 @@ privacy::PlateScan rigScan(int n, int rigId, int rigFrom, int rigTo, int carId, 
 void testRemoval()
 {
     float d[3];
-    const insv::BlurQuad q = quadAround(1.0, 0.2);
+    const orbiscore::BlurQuad q = quadAround(1.0, 0.2);
     dirAt(1.0, 0.2, d);
     CHECK(privacy::quadContains(q, d));
     dirAt(1.0 + 0.009, 0.2 - 0.009, d);
@@ -190,7 +190,7 @@ void testRemoval()
     CHECK(whole.path.size() >= 17 && whole.path.back().tMs == s.frames[60].tMs);
     privacy::RemovedSpans rs = s.resolveRemovals({whole});
     CHECK(rs.size() == 1 && rs[0].track == 7);
-    std::vector<insv::BlurQuad> out;
+    std::vector<orbiscore::BlurQuad> out;
     s.quadsAt(s.frames[30].tMs, out, &rs);
     CHECK(out.size() == 1); // the car only
     out.clear();
@@ -241,7 +241,7 @@ void testAdded()
     for (int i = 10; i <= 20; ++i) {
         privacy::BlurAddition::Frame f;
         f.tMs = std::llround(i * 1000.0 / 30.0);
-        const insv::BlurQuad q = quadAround(0.5 + 0.001 * i, 0.0);
+        const orbiscore::BlurQuad q = quadAround(0.5 + 0.001 * i, 0.0);
         std::copy(&q.corner[0][0], &q.corner[0][0] + 12, &f.corner[0][0]);
         a.frames.push_back(f);
     }
@@ -249,7 +249,7 @@ void testAdded()
     CHECK(privacy::addedFrameAt(a, 510, 30.0) && privacy::addedFrameAt(a, 510, 30.0)->tMs == 500); // nearest
     CHECK(!privacy::addedFrameAt(a, 300, 30.0)); // before it
     CHECK(!privacy::addedFrameAt(a, 700, 30.0)); // after it
-    std::vector<insv::BlurQuad> out;
+    std::vector<orbiscore::BlurQuad> out;
     privacy::addedQuadsAt({a, a}, 400, 30.0, out);
     CHECK(out.size() == 2);
     out.clear();

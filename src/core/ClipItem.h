@@ -9,11 +9,11 @@
 #include <BlurRemoval.h>    // privacy::BlurRemoval (header-only, no deps)
 #include <ClipEffects.h>    // fx::ClipEffects (no Qt)
 #include <ColorLut.h>       // color::Grade (no Qt)
-#include <orbis-core/stab/GyroStabilizer.h> // insv::StabConfig (POD; no FFmpeg/Qt)
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::StabConfig (POD; no FFmpeg/Qt)
 #include <IStitchSource.h>  // stitch::PreviewStitchConfig::LensGuard (POD; no FFmpeg)
 #include <LensCalibration.h> // stitch::LensCalibration (plain data)
-#include <orbis-core/stitch/LensColour.h>     // insv::LensColour (POD)
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection (POD)
+#include <orbis-core/stitch/LensColour.h>     // orbiscore::LensColour (POD)
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection (POD)
 
 #include <QList>
 #include <QString>
@@ -161,7 +161,7 @@ struct ClipItem {
     // On (any mode but Off) also turns on the stitch's capture-time
     // (rolling-shutter) correction, which is baked into the stitched frames.
     // A new clip takes the setting of its neighbour (Timeline::insertClip).
-    insv::StabConfig stabilization;
+    orbiscore::StabConfig stabilization;
 
     // Privacy blur (Privacy panel): blur the number plates this clip's plate
     // scan found (src/privacy/PlateScanData.h -- the scan itself is cached,
@@ -233,13 +233,13 @@ struct ClipItem {
     // seamAdjustGuard (stitch::PreviewStitchConfig::LensGuard as int; -1 = not
     // measured) -- a different guard setting needs a new measurement. Shared
     // by clips of the same source, like syncAdjustMs.
-    insv::SeamCorrection seamCorrection;
+    orbiscore::SeamCorrection seamCorrection;
     int seamAdjustGuard = -1;
     // Measured lens colour for this source (stitch::MeasureClipLensColour):
     // how its two lenses differ in colour, matched in the stitch. Measured
     // with the seam correction under a lens-guard profile, recorded in
     // lensColourGuard (-1 = not measured); shared like seamCorrection.
-    insv::LensColour lensColour;
+    orbiscore::LensColour lensColour;
     int lensColourGuard = -1;
 
     qint64 trimmedDurationMs() const { return trimOutMs - trimInMs; }
@@ -275,7 +275,7 @@ struct ClipItem {
     bool setSplit(const pane::Split &s); // clamped; refused on a flat clip
     bool setColorGrade(const ColorGrade &grade);
     bool setEffects(const fx::ClipEffects &e); // clamped
-    bool setStabilization(const insv::StabConfig &config);
+    bool setStabilization(const orbiscore::StabConfig &config);
     bool setBlurPlates(bool on);
     bool setPlateScan(const QString &key);
     bool setBlurRemovals(const std::vector<privacy::BlurRemoval> &removals);

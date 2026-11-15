@@ -34,11 +34,11 @@ int g_failures = 0;
     } while (0)
 
 // A small quad around the direction (x, 0, 0), x = +1 or -1.
-insv::BlurQuad quadAround(float x)
+orbiscore::BlurQuad quadAround(float x)
 {
     const float a = 0.05f;
     const float corners[4][3] = {{x, -a, a}, {x, a, a}, {x, a, -a}, {x, -a, -a}};
-    insv::BlurQuad q;
+    orbiscore::BlurQuad q;
     for (int k = 0; k < 4; ++k) {
         const float n = std::sqrt(corners[k][0] * corners[k][0] + corners[k][1] * corners[k][1] +
                                   corners[k][2] * corners[k][2]);
@@ -70,7 +70,7 @@ privacy::PlateScan makeScan(int64_t fromMs, int64_t toMs)
 
 size_t quadsAt(const stitch::BlurQuadsFn &fn, int64_t ms)
 {
-    std::vector<insv::BlurQuad> out;
+    std::vector<orbiscore::BlurQuad> out;
     if (fn)
         fn(ms, out);
     return out.size();
@@ -145,7 +145,7 @@ void testScanAndRemovals(const QString &dir)
     CHECK(pb.staleness(c, c.trimInMs, c.trimOutMs, false)
               .startsWith("The plate scan was made with the stabilization on"));
     CHECK(pb.staleness(c, c.trimInMs, c.trimOutMs, true).startsWith("“a.insv”: "));
-    c.stabilization.mode = insv::StabMode::HorizonLock;
+    c.stabilization.mode = orbiscore::StabMode::HorizonLock;
     CHECK(pb.staleness(c, c.trimInMs, c.trimOutMs, false).isEmpty());
 
     // No scan for another source.
@@ -167,7 +167,7 @@ void testHandBlurs(const QString &dir)
     for (int64_t t = 0; t <= 300; t += 33) {
         privacy::BlurAddition::Frame f;
         f.tMs = t;
-        const insv::BlurQuad q = quadAround(1.0f);
+        const orbiscore::BlurQuad q = quadAround(1.0f);
         std::copy(&q.corner[0][0], &q.corner[0][0] + 12, &f.corner[0][0]);
         a.frames.push_back(f);
     }
@@ -233,8 +233,8 @@ void testPerClip(const QString &dir)
     t.setClipPlateScan(copy, onKey);
     CHECK(pb.staleness(*t.clipById(first), 0, 1000, false).isEmpty()); // still its own
     t.setClipStabilization(copy, [] {
-        insv::StabConfig s;
-        s.mode = insv::StabMode::HorizonLock;
+        orbiscore::StabConfig s;
+        s.mode = orbiscore::StabMode::HorizonLock;
         return s;
     }());
     CHECK(pb.staleness(*t.clipById(copy), 0, 1000, false).isEmpty());

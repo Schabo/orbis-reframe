@@ -5,7 +5,7 @@
 
 #include <memory>
 
-namespace insv {
+namespace orbiscore {
 
 // "Wind reduction": wind noise reduction for any sound, engine or not (the
 // motorcycle-specific one, which keeps an engine's harmonics, is
@@ -48,4 +48,4 @@ private:
     float m_strength = kDefaultStrength;
 };
 
-} // namespace insv
+} // namespace orbiscore

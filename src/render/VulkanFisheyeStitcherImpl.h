@@ -9,11 +9,11 @@
 #include "VulkanLut.h"
 #include "VulkanEffects.h"
 
-#include <orbis-core/stitch/SeamColourBlend.h> // insv::SeamVeilFade, the new stitcher's fade
-#include <orbis-core/stitch/SeamCut.h>         // insv::SeamCutStats, the cut pass's rows / patch
-#include <orbis-core/stitch/SeamDepth.h>       // insv::SeamCosts, the cost pass's candidates / patch
-#include <orbis-core/stitch/SeamFade.h>        // insv::SeamFadeRows, the fade passes' patches
-#include <orbis-core/stitch/SeamFlow.h>        // insv::SeamFlowField, the seam flow texture
+#include <orbis-core/stitch/SeamColourBlend.h> // orbiscore::SeamVeilFade, the new stitcher's fade
+#include <orbis-core/stitch/SeamCut.h>         // SeamCutStats, the cut pass's rows / patch
+#include <orbis-core/stitch/SeamDepth.h>       // orbiscore::SeamCosts, the cost pass's candidates / patch
+#include <orbis-core/stitch/SeamFade.h>        // orbiscore::SeamFadeRows, the fade passes' patches
+#include <orbis-core/stitch/SeamFlow.h>        // orbiscore::SeamFlowField, the seam flow texture
 
 #include <vulkan/vulkan.h>
 
@@ -46,7 +46,7 @@ struct ShaderParams {
     float kd0[4];   // lens 0 radial k1..k4
     float kd1[4];   // lens 1 radial k1..k4
     float rs[4];    // capture timing: active, useColumns, -, -
-    float rsRot[2 * insv::StitchGpuParams::kRsTaps][4]; // per lens, rotation vectors (stitch world frame), -
+    float rsRot[2 * orbiscore::StitchGpuParams::kRsTaps][4]; // per lens, rotation vectors (stitch world frame), -
     float pd0[4];   // lens 0 tangential p1, p2, thin-prism s1, s2
     float pd1[4];   // lens 1 likewise
     float sd[4];    // thin-prism s3, s4 of lens 0, then of lens 1
@@ -57,25 +57,25 @@ struct ShaderParams {
     float seamU[4]; // seam-plane u xyz, half baseline (m)
     float seamV[4]; // seam-plane v xyz, ramp past the band (rad)
     float seamC[4]; // cost pass: q min, q max (1/m), patch elevation half-range (rad); cut pass: row max (rad)
-    float seamQ[insv::kSeamDepthBins]; // vec4[kSeamDepthBins / 4]: per-bin inverse distance
-    float seamCF[insv::kSeamDepthBins][2]; // vec4[kSeamDepthBins / 2]: per-bin fade centre, half-width
+    float seamQ[orbiscore::kSeamDepthBins]; // vec4[kSeamDepthBins / 4]: per-bin inverse distance
+    float seamCF[orbiscore::kSeamDepthBins][2]; // vec4[kSeamDepthBins / 2]: per-bin fade centre, half-width
     float lensCol[4];  // lens colour: log(lens 0 / lens 1) RGB (with the frame's residual), -
     float lensColS[4]; // its slope per radian of elevation, RGB, -
-    float lensLocal[insv::kSeamDepthBins][4]; // per-bin local correction RGB, -
-    float lensVeil[insv::kSeamDepthBins][4];  // per-bin veiling light RGB, -
-    float seamCol[insv::kSeamDepthBins][4];   // per-bin seam colour blend RGB, - (active: edge.z)
+    float lensLocal[orbiscore::kSeamDepthBins][4]; // per-bin local correction RGB, -
+    float lensVeil[orbiscore::kSeamDepthBins][4];  // per-bin veiling light RGB, -
+    float seamCol[orbiscore::kSeamDepthBins][4];   // per-bin seam colour blend RGB, - (on: edge.z)
     float seamFlow[4];    // seam flow: active, strip half-height (rad), reach (rad), -
     int32_t seamFlowN[4]; // its grid: columns, rows, -, -
     float blur0[4]; // privacy blur: count, -, -, -
-    float blurQ[insv::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
-    float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (insv::YcbcrToRgbRows), lens frames only
+    float blurQ[orbiscore::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
+    float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (orbiscore::YcbcrToRgbRows), lens frames only
     float lensModel[4]; // theta-polynomial (0/1), its theta^10 term of lens 0, 1, masks on (0/1)
     // vec4[kSeamDepthBins / 2]: per bin where lens 0's and lens 1's clear parts end (rad)
-    float seamClear[insv::kSeamDepthBins][2];
+    float seamClear[orbiscore::kSeamDepthBins][2];
 };
 static_assert(sizeof(ShaderParams) == 15664, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
-static_assert(LensSlot::kBlurCellsW == insv::kBlurCellsPerQuad && LensSlot::kBlurCellsH == insv::kMaxBlurQuads,
+static_assert(LensSlot::kBlurCellsW == orbiscore::kBlurCellsPerQuad && LensSlot::kBlurCellsH == orbiscore::kMaxBlurQuads,
               "the blur cell table: a row of kBlurCellsPerQuad per quad");
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then the
@@ -301,7 +301,7 @@ struct VulkanFisheyeStitcher::Impl {
     VkFormat lensFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
     bool deepLens() const { return lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM; }
     // The decoder's stream's matrix and range (initAdopt).
-    insv::YcbcrCoding ycbcr;
+    orbiscore::YcbcrCoding ycbcr;
     // Cached ycbcr image views over the decoder's pooled images (nv12 mode).
     std::map<VkImage, VkImageView> nv12Views;
 
@@ -318,16 +318,16 @@ struct VulkanFisheyeStitcher::Impl {
     // Depth-aware seam measures (binding 5): the cost volume, (NCC, texture)
     // per bin x candidate, then the cut statistics, four vec4 per bin x row.
     static constexpr VkDeviceSize kSeamCostBytes =
-        sizeof(float) * 2 * insv::kSeamDepthBins * insv::kSeamDepthCands;
+        sizeof(float) * 2 * orbiscore::kSeamDepthBins * orbiscore::kSeamDepthCands;
     static constexpr VkDeviceSize kSeamBufBytes =
-        kSeamCostBytes + sizeof(float) * 16 * insv::kSeamDepthBins * insv::kSeamCutRows;
+        kSeamCostBytes + sizeof(float) * 16 * orbiscore::kSeamDepthBins * orbiscore::kSeamCutRows;
     VkBuffer seamBuf = VK_NULL_HANDLE;
     VkDeviceMemory seamMem = VK_NULL_HANDLE;
     void* seamMap = nullptr;
     // The new stitcher's seam flow (binding 6): the frame's field as an
     // RGBA16F texture of its grid (1 x 1 of zeros until a field comes),
     // wrapping round in azimuth, clamped across, and under the grid's rows
-    // one more: the fade's share per column in R (insv::SeamFlowField::fade;
+    // one more: the fade's share per column in R (orbiscore::SeamFlowField::fade;
     // the GPU's own written by recordSeamFade). A frame whose field isn't
     // the one up (flowHeld) has it staged (ensureFlow) and copied in at the
     // start of its submission (recordFlowUpload). The image stays in
@@ -344,11 +344,11 @@ struct VulkanFisheyeStitcher::Impl {
     VkDeviceMemory flowStageMem = VK_NULL_HANDLE;
     void* flowStageMap = nullptr;
     VkDeviceSize flowStageBytes = 0;
-    std::shared_ptr<const insv::SeamFlowField> flowHeld;
+    std::shared_ptr<const orbiscore::SeamFlowField> flowHeld;
     bool flowCopy = false;  // flowStage waits to be copied into flowImg
     bool flowFresh = false; // flowImg is new: its layout is still UNDEFINED, not GENERAL
     // The privacy blur's cell colours (sampled at binding 8, written by pass
-    // 5 through binding 9): RGBA16F, a row of insv::kBlurCellsPerQuad per
+    // 5 through binding 9): RGBA16F, a row of orbiscore::kBlurCellsPerQuad per
     // quad. Made with the UBO (ensureUbo) and left in GENERAL from then on,
     // as flowImg.
     VkSampler blurCellSampler = VK_NULL_HANDLE; // nearest: texelFetch only
@@ -359,7 +359,7 @@ struct VulkanFisheyeStitcher::Impl {
     // Pass 5 for p's quads into the begun `cmd` (the stitch pipeline, its set
     // bound to this frame's lenses), the table left readable by every later
     // stage. Nothing without quads.
-    void recordBlurCells(VkCommandBuffer cmd, const insv::StitchGpuParams& p);
+    void recordBlurCells(VkCommandBuffer cmd, const orbiscore::StitchGpuParams& p);
     // The seam flow's strips (binding 7, pass 4), device-local: the seam
     // flow (below) reads them.
     VkBuffer stripBuf = VK_NULL_HANDLE;
@@ -389,7 +389,7 @@ struct VulkanFisheyeStitcher::Impl {
         int slot = 0;  // the ring slot the next frame goes into
         int count = 0; // frames held
         int anchor = 0;    // offset into work of the anchored strips (floats)
-        // The fade (insv::SeamFadeFrame on the GPU): per ring slot both
+        // The fade (orbiscore::SeamFadeFrame on the GPU): per ring slot both
         // lenses' patch means, fadeN patch centres from strip row fadeRow0;
         // the colour table it's solved with; per column the share, before
         // and after the spread (offsets into work, floats).
@@ -399,12 +399,12 @@ struct VulkanFisheyeStitcher::Impl {
     // The pipeline, the buffers for params' grid, the set pointed at the
     // strips and the texture (both made here if they aren't yet). Before
     // recording.
-    bool ensureSeamFlow(const insv::StitchGpuParams& p, std::string& err);
+    bool ensureSeamFlow(const orbiscore::StitchGpuParams& p, std::string& err);
     // The fade's share per column from the ring's patch means and p's seam
-    // colour (insv::SeamFadeWindow::solve) into the texture's fade row,
+    // colour (orbiscore::SeamFadeWindow::solve) into the texture's fade row,
     // where p stitches with the GPU's own field and its seam colour blend;
     // nothing otherwise. Before the passes that sample the texture.
-    void recordSeamFade(VkCommandBuffer cmd, const insv::StitchGpuParams& p);
+    void recordSeamFade(VkCommandBuffer cmd, const orbiscore::StitchGpuParams& p);
     // The flow of the strips in stripBuf added to the window and its mean
     // written into the flow texture, into the begun `cmd`; the texture left
     // readable by every later stage.
@@ -418,7 +418,7 @@ struct VulkanFisheyeStitcher::Impl {
     // The flow texture for a frame's params: (re)made at the field's size
     // (with seamFlowGpu, the grid's), the field staged when it isn't the
     // one up. Before recording.
-    bool ensureFlow(const insv::StitchGpuParams& p, std::string& err);
+    bool ensureFlow(const orbiscore::StitchGpuParams& p, std::string& err);
     // The staged field copied into the texture, into the begun `cmd`; left
     // readable by every later stage. Nothing when nothing is staged.
     void recordFlowUpload(VkCommandBuffer cmd);

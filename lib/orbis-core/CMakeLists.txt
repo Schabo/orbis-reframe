@@ -146,7 +146,7 @@ if(FFMPEG_FOUND)
         target_sources(insv_demux PRIVATE orbis-core/audio/VoiceIsolator.h orbis-core/audio/VoiceIsolator.cpp)
         target_include_directories(insv_demux PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
         target_link_libraries(insv_demux PRIVATE ${CMAKE_DL_LIBS})
-        target_compile_definitions(insv_demux PUBLIC INSV_HAVE_VOICE)
+        target_compile_definitions(insv_demux PUBLIC ORBISCORE_HAVE_VOICE)
         # The headers' ORT_API_VERSION is the runtime's 1.x minor version,
         # after which Debian names it: libonnxruntime1.23, .so.1.23 (Debian
         # 13: 1.21). The .deb's Depends and the "install it" hint use it,
@@ -156,7 +156,7 @@ if(FFMPEG_FOUND)
         string(REGEX MATCH "[0-9]+$" ORT_API_MINOR "${ORT_API_LINE}")
         set(ORBIS_ORT_PACKAGE libonnxruntime1.${ORT_API_MINOR})
         set(ORBIS_ORT_PACKAGE ${ORBIS_ORT_PACKAGE} PARENT_SCOPE)
-        target_compile_definitions(insv_demux PUBLIC INSV_ORT_PACKAGE="${ORBIS_ORT_PACKAGE}")
+        target_compile_definitions(insv_demux PUBLIC ORBISCORE_ORT_PACKAGE="${ORBIS_ORT_PACKAGE}")
         # The library found here is tried first (an ONNXRUNTIME_ROOT copy
         # isn't on the loader's path). A bundle that carries its own (the
         # AppImage) turns it off, so the bundled one loads, not the build
@@ -164,7 +164,8 @@ if(FFMPEG_FOUND)
         option(ORBIS_ORT_BUILD_PATH
             "Try the ONNX Runtime library found at build time before the loader's search" ON)
         if(ONNXRUNTIME_LIBRARY AND ORBIS_ORT_BUILD_PATH)
-            target_compile_definitions(insv_demux PRIVATE INSV_ORT_LIBRARY="${ONNXRUNTIME_LIBRARY}")
+            target_compile_definitions(insv_demux PRIVATE
+                ORBISCORE_ORT_LIBRARY="${ONNXRUNTIME_LIBRARY}")
         endif()
     else()
         message(STATUS "ONNX Runtime not found (libonnxruntime-dev) -- voice noise modes off")

@@ -15,9 +15,9 @@ namespace {
 
 constexpr quint32 kMagic = 0x57465031; // "WFP1": bump if the peak format changes
 
-insv::AudioPeaks load(const QString &file, bool *ok)
+orbiscore::AudioPeaks load(const QString &file, bool *ok)
 {
-    insv::AudioPeaks p;
+    orbiscore::AudioPeaks p;
     *ok = false;
     QFile f(file);
     if (!f.open(QIODevice::ReadOnly))
@@ -26,7 +26,7 @@ insv::AudioPeaks load(const QString &file, bool *ok)
     quint64 n = 0;
     if (f.read(reinterpret_cast<char *>(&magic), 4) != 4 || magic != kMagic ||
         f.read(reinterpret_cast<char *>(&perSec), 4) != 4 ||
-        perSec != quint32(insv::AudioPeaks::kPerSec) ||
+        perSec != quint32(orbiscore::AudioPeaks::kPerSec) ||
         f.read(reinterpret_cast<char *>(&n), 8) != 8 || n > (1u << 28))
         return p;
     p.peaks.resize(n);
@@ -39,13 +39,13 @@ insv::AudioPeaks load(const QString &file, bool *ok)
     return p;
 }
 
-void save(const QString &file, const insv::AudioPeaks &p)
+void save(const QString &file, const orbiscore::AudioPeaks &p)
 {
     QDir().mkpath(QFileInfo(file).absolutePath());
     QSaveFile f(file);
     if (!f.open(QIODevice::WriteOnly))
         return;
-    const quint32 magic = kMagic, perSec = insv::AudioPeaks::kPerSec;
+    const quint32 magic = kMagic, perSec = orbiscore::AudioPeaks::kPerSec;
     const quint64 n = p.peaks.size();
     f.write(reinterpret_cast<const char *>(&magic), 4);
     f.write(reinterpret_cast<const char *>(&perSec), 4);
@@ -73,7 +73,7 @@ QString WaveformCache::key(const QString &path, int stream)
     return path + QLatin1Char('#') + QString::number(stream);
 }
 
-QString WaveformCache::diskPath(const std::vector<insv::AudioPart> &parts, int stream,
+QString WaveformCache::diskPath(const std::vector<orbiscore::AudioPart> &parts, int stream,
                                 const QString &dir)
 {
     // The first file's key as for a file alone, then a split recording's
@@ -115,17 +115,17 @@ WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
     auto cancel = m_cancel;
     m_pool.start([self, k, path, stream, dir = m_dir, cancel] {
         // Off the GUI thread: finding a clip's parts reads its file.
-        const std::vector<insv::AudioPart> parts = camera::ClipAudioParts(path.toStdString());
+        const std::vector<orbiscore::AudioPart> parts = camera::ClipAudioParts(path.toStdString());
         const QString disk = diskPath(parts, stream, dir);
         bool cached = false;
-        insv::AudioPeaks p = load(disk, &cached);
+        orbiscore::AudioPeaks p = load(disk, &cached);
         if (!cached) {
-            p = insv::ComputeAudioPeaks(parts, stream, cancel.get());
+            p = orbiscore::ComputeAudioPeaks(parts, stream, cancel.get());
             if (cancel->load())
                 return;
             save(disk, p);
         }
-        auto result = std::make_shared<const insv::AudioPeaks>(std::move(p));
+        auto result = std::make_shared<const orbiscore::AudioPeaks>(std::move(p));
         QMetaObject::invokeMethod(
             self.data(),
             [self, k, result] {

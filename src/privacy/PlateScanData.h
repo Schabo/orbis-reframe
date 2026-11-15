@@ -7,13 +7,13 @@
 // frame a source's pixels live in before any stabilization: the scan levels
 // the sphere with the gyro to detect, then maps every region back. So one
 // scan serves every stabilization mode, reframe path and export, and the
-// stitch blurs it the same way everywhere (insv::BlurQuad,
+// stitch blurs it the same way everywhere (orbiscore::BlurQuad,
 // stitch::IStitchSource::SetBlurQuads).
 //
 // Dependency-free (insv's BlurQuad only), so the app can always apply a scan
 // it has -- only making one needs the detector (PlateScanner).
 
-#include <orbis-core/stitch/BlurQuads.h> // insv::BlurQuad
+#include <orbis-core/stitch/BlurQuads.h> // orbiscore::BlurQuad
 
 #include "BlurAddition.h"
 #include "BlurRemoval.h"
@@ -30,7 +30,7 @@ namespace privacy {
 enum class RegionKind : uint8_t { Detected = 0, Filled = 1, Tracked = 2, Unverified = 3 };
 
 struct BlurRegion {
-    insv::BlurQuad quad;
+    orbiscore::BlurQuad quad;
     RegionKind kind = RegionKind::Detected;
     // The plate track it belongs to: unique within its PlateScan (merge()
     // renumbers the newer scan's), not stable across rescans -- a removal
@@ -48,14 +48,14 @@ struct RemovedSpan {
 using RemovedSpans = std::vector<RemovedSpan>;
 
 // Whether `dir` (a unit direction in the sphere frame) lies inside the quad.
-bool quadContains(const insv::BlurQuad& q, const float dir[3]);
+bool quadContains(const orbiscore::BlurQuad& q, const float dir[3]);
 
 // Hand-added blurs (BlurAddition.h): the frame of `a` nearest `ptsMs` within
 // half a frame at `fps`, else null.
 const BlurAddition::Frame* addedFrameAt(const BlurAddition& a, int64_t ptsMs, double fps);
 // Appends every addition's quad at `ptsMs`.
 void addedQuadsAt(const std::vector<BlurAddition>& adds, int64_t ptsMs, double fps,
-                  std::vector<insv::BlurQuad>& out);
+                  std::vector<orbiscore::BlurQuad>& out);
 // The last addition whose region at `ptsMs` contains `dir`, or -1.
 int addedAt(const std::vector<BlurAddition>& adds, int64_t ptsMs, double fps, const float dir[3]);
 
@@ -85,7 +85,7 @@ struct PlateScan {
     const ScanFrame* frameAt(int64_t ptsMs) const;
     // Appends the quads for the frame at `ptsMs` (none outside the scan),
     // leaving out those `removed` covers.
-    void quadsAt(int64_t ptsMs, std::vector<insv::BlurQuad>& out, const RemovedSpans* removed = nullptr) const;
+    void quadsAt(int64_t ptsMs, std::vector<orbiscore::BlurQuad>& out, const RemovedSpans* removed = nullptr) const;
     // Whether `removed` covers region `r` of the frame at `tMs`.
     static bool isRemoved(const BlurRegion& r, int64_t tMs, const RemovedSpans* removed);
 

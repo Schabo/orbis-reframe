@@ -11,8 +11,8 @@
 #include <SubjectTracker.h> // track::Seed, TrackSample
 
 #include <NativeStitchSource.h> // stitch::PreviewStitchConfig, stitch::Frame
-#include <orbis-core/stitch/LensColour.h>         // insv::LensColour
-#include <orbis-core/stitch/SeamCorrection.h>     // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>         // orbiscore::LensColour
+#include <orbis-core/stitch/SeamCorrection.h>     // orbiscore::SeamCorrection
 
 #include <atomic>
 #include <cstdint>
@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 class GyroStabilizer;
 }
 
@@ -34,11 +34,11 @@ struct Request {
     double fps = 30.0;
     track::Seed seed;
     // The clip's gyro de-rotation, as the viewport applies it; null => off.
-    std::shared_ptr<const insv::GyroStabilizer> stab;
+    std::shared_ptr<const orbiscore::GyroStabilizer> stab;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     std::optional<stitch::LensCalibration> lensCalibration;
-    insv::SeamCorrection seamCorrection;
-    insv::LensColour lensColour;
+    orbiscore::SeamCorrection seamCorrection;
+    orbiscore::LensColour lensColour;
     int workWidth = 3840;     // analysis equirect width (2:1)
     bool realTime = true;     // no faster than the footage plays, so it can be watched
     double maxLostSec = 0.0;  // stop after this long without a verified frame; 0 = never

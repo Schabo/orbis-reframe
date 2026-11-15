@@ -5,7 +5,7 @@
 #include <vector>
 
 // How the two lenses of a clip differ in colour, measured from the video so
-// the stitch can match them across the seam (insv::FitLensColour). Plain
+// the stitch can match them across the seam (orbiscore::FitLensColour). Plain
 // data, no dependencies: the project model stores it per source file.
 //
 // The lenses of one camera expose together, but their colour still differs
@@ -26,7 +26,7 @@
 // continuous over the whole of each lens. Half of it goes to each lens: lens
 // 0 by exp(-L / 2), lens 1 by exp(L / 2), both to their geometric mean.
 
-namespace insv {
+namespace orbiscore {
 
 struct SeamCutStats;
 
@@ -144,4 +144,4 @@ void RemoveLensVeil(SeamCutStats& stats, const float* veil);
 bool LensColourResidual(const SeamCutStats& stats, double bandRad, const LensColour& c,
                         double out[3]);
 
-} // namespace insv
+} // namespace orbiscore

@@ -1,7 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-// GPU port of insv::FisheyeStitcher::renderEquirect -- RGB fisheye inputs
+// GPU port of orbiscore::FisheyeStitcher::renderEquirect -- RGB fisheye inputs
 // (CPU-decoded frames uploaded as RGBA8). The NV12 variant is
 // fisheye_stitch_nv12.comp; both share fisheye_stitch_common.glsl.
 

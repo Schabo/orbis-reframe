@@ -52,9 +52,9 @@ void monotoneSlopes(const std::vector<double> &t, const std::vector<double> &y, 
 
 } // namespace
 
-Telemetry::Telemetry(const insv::GpsTrack &track)
+Telemetry::Telemetry(const orbiscore::GpsTrack &track)
 {
-    for (const insv::GpsFix &f : track.fixes) {
+    for (const orbiscore::GpsFix &f : track.fixes) {
         if (!m_points.empty() && f.timeMs <= m_points.back().timeMs)
             continue;
         Point p;

@@ -7,14 +7,14 @@
 #include <QStringList>
 #include <QThreadPool>
 
-#include <orbis-core/audio/AudioPeaks.h> // insv::AudioPeaks
+#include <orbis-core/audio/AudioPeaks.h> // orbiscore::AudioPeaks
 
 #include <atomic>
 #include <memory>
 #include <vector>
 
 // Waveforms for the timeline: an audio stream's peaks, computed once on a
-// background thread (insv::ComputeAudioPeaks) and kept in memory and on disk
+// background thread (orbiscore::ComputeAudioPeaks) and kept in memory and on disk
 // (keyed by path + size + mtime + stream, and a split recording's other
 // parts; the open project's cache/ folder, or the user cache for an untitled
 // or loose project), so reopening a project doesn't rescan. peaks() never blocks: it returns null and starts the
@@ -26,7 +26,7 @@ public:
     explicit WaveformCache(QObject *parent = nullptr);
     ~WaveformCache() override; // cancels and waits for running scans
 
-    using Peaks = std::shared_ptr<const insv::AudioPeaks>;
+    using Peaks = std::shared_ptr<const orbiscore::AudioPeaks>;
     // `stream` as InsvAudioDemux::open's track (-1 = default). Null until
     // it's been scanned; an empty result (no audio) is a non-null, empty one.
     Peaks peaks(const QString &path, int stream);
@@ -42,7 +42,7 @@ signals:
 
 private:
     static QString key(const QString &path, int stream);
-    static QString diskPath(const std::vector<insv::AudioPart> &parts, int stream,
+    static QString diskPath(const std::vector<orbiscore::AudioPart> &parts, int stream,
                             const QString &dir);
 
     QString m_dir;

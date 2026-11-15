@@ -22,11 +22,11 @@ namespace {
 // ReframeExportController::captureTimingFor does for playback / export with
 // the stabilization on). *timing: the stitch it set up.
 bool openStitch(const Request& req, stitch::NativeStitchSource& src,
-                std::shared_ptr<insv::GyroStabilizer>& level, privacy::StitchTiming* timing, std::string& err)
+                std::shared_ptr<orbiscore::GyroStabilizer>& level, privacy::StitchTiming* timing, std::string& err)
 {
-    level = std::make_shared<insv::GyroStabilizer>();
+    level = std::make_shared<orbiscore::GyroStabilizer>();
     if (const auto imu = camera::ReadClipImu(req.clipPath))
-        level->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock),
+        level->build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock),
                      req.syncAdjustMs / 1000.0);
     // The views come straight from the lenses; 7680 is the equirect the CPU
     // fallback cuts them from.
@@ -71,7 +71,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const ProgressFn& 
         return res;
     res.device = scanner.device();
     stitch::NativeStitchSource src;
-    std::shared_ptr<insv::GyroStabilizer> level;
+    std::shared_ptr<orbiscore::GyroStabilizer> level;
     privacy::StitchTiming timing = privacy::StitchTiming::Corrected;
     if (!openStitch(req, src, level, &timing, res.error))
         return res;
@@ -104,7 +104,7 @@ Result run(const Request& req, const std::atomic<bool>& stop, const ProgressFn& 
 
 namespace platescan {
 
-FollowResult follow(const Request& req, const insv::BlurQuad& seed, int64_t backToMs,
+FollowResult follow(const Request& req, const orbiscore::BlurQuad& seed, int64_t backToMs,
                     const std::atomic<bool>& stop, const FollowProgressFn& progress)
 {
     const core::GpuJobScope gpuJob;
@@ -114,7 +114,7 @@ FollowResult follow(const Request& req, const insv::BlurQuad& seed, int64_t back
     if (!scanner.init(privacy::ScanParams{}, res.error))
         return res;
     stitch::NativeStitchSource src;
-    std::shared_ptr<insv::GyroStabilizer> level;
+    std::shared_ptr<orbiscore::GyroStabilizer> level;
     if (!openStitch(req, src, level, &res.timing, res.error))
         return res;
     int n = 0;

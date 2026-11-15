@@ -24,7 +24,7 @@ in [`README.md`](README.md).
   | 4K | 3840×1920 | 100 / 60 / 50 / 48 / 30 / 25 / 24 | 1920² |
 
 - ✅ Clips at all three lens sizes open and stitch. The app names a clip's
-  mode by its lens size: 3008² is **6K** (the X6 row of `insv::InsvModel`).
+  mode by its lens size: 3008² is **6K** (the X6 row of `orbiscore::InsvModel`).
 - ✅ Vulkan decode + stitch on an AMD Radeon 8060S (Strix Halo iGPU, RADV),
   8K 30: ~84 fps decode, ~35 fps for the full 7680-wide stitch, ~60 fps for
   the direct view.
@@ -138,7 +138,7 @@ ourselves.
   stitch reads it from the file (`InsvMakerNotes::crop_dst_w` ->
   `LensCalibExt::focalRefW`); with the X5's 5312 the lens circles come out
   too small and the sphere has gaps between them. A file without the field
-  takes its model's value from `insv::InsvModel`, with a log line.
+  takes its model's value from `orbiscore::InsvModel`, with a log line.
 - ✅ **No field 145 lens-profile table** in any contributor's clip (all
   bare lenses): no lens-guard or dive-case profiles, so the stitch
   takes every lens as bare at the default 200° field of view. Stitches at
@@ -155,7 +155,7 @@ ourselves.
   X6 clip as bare lenses and greys out **Lens guards**; a guarded clip then
   stitches with a slightly wrong lens model.
 - ✅ **IMU axis map `"z,-x,-y"`** (the X5's, X5 §6.3; the X6 row of
-  `insv::InsvModel::imuAxes`), measured 2026-11-11 by a contributor on an
+  `orbiscore::InsvModel::imuAxes`), measured 2026-11-11 by a contributor on an
   8K 30 Standard clip (~27 s) with a still start, then deliberate turns
   about each axis, fw v1.2.36; to check on a clip of our own. Method: `tools/residual_stab --diagnose` (trim 4–26 s) and the
   same tool's residual pan on 4–12 s against `z,x,y` and `-x,y,-z`.

@@ -10,7 +10,7 @@
 #include <cmath>
 #include <limits>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -237,4 +237,4 @@ MotionTrack BuildMotion(const ImuTrack& track)
     return out;
 }
 
-} // namespace insv
+} // namespace orbiscore

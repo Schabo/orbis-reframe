@@ -12,7 +12,7 @@
 namespace render {
 struct LensFrame; // src/render/LensFrame.h
 }
-namespace insv {
+namespace orbiscore {
 struct BlurQuad;       // orbis-core/stitch/BlurQuads.h
 struct SeamCorrection; // orbis-core/stitch/SeamCorrection.h
 struct LensColour;     // orbis-core/stitch/LensColour.h
@@ -21,12 +21,12 @@ struct LensColour;     // orbis-core/stitch/LensColour.h
 namespace stitch {
 
 // Privacy blur: the regions to blur in the frame at source time ptsMs
-// (insv::BlurQuad, equirect / sphere frame), appended to `out`. Called on the
+// (orbiscore::BlurQuad, equirect / sphere frame), appended to `out`. Called on the
 // reading thread for every frame stitched.
-using BlurQuadsFn = std::function<void(int64_t ptsMs, std::vector<insv::BlurQuad>& out)>;
+using BlurQuadsFn = std::function<void(int64_t ptsMs, std::vector<orbiscore::BlurQuad>& out)>;
 
 // Camera rotation from video time tSec to tSec + dtSec as a rotation vector
-// (rad, sphere frame at tSec) -- insv::GyroStabilizer::bodyRotation.
+// (rad, sphere frame at tSec) -- orbiscore::GyroStabilizer::bodyRotation.
 using RsRotationFn = std::function<void(double tSec, double dtSec, float r[3])>;
 
 // When each part of a frame was actually captured, relative to the frame time
@@ -58,7 +58,7 @@ struct CaptureTiming {
 // ClipItem::lensGuard / stitchMethod / seamColourBlend / seamFlow).
 //
 // NativeStitchSource honours all of them. Stabilization is not a stitch
-// setting: insv::StabConfig.
+// setting: orbiscore::StabConfig.
 struct PreviewStitchConfig {
     // Equirect preview resolution. Must stay 2:1 (equirect is 360x180 and the
     // reprojection shader assumes it) -- the panel only offers 2:1 presets.
@@ -95,7 +95,7 @@ struct PreviewStitchConfig {
     Method method = Method::New;
     bool depthSeam() const { return method == Method::DepthSeam; }
 
-    // The new stitcher's seam colour blend (insv::SeamColourBlend): the
+    // The new stitcher's seam colour blend (orbiscore::SeamColourBlend): the
     // lenses' colour matched per stretch of the seam from what both see in
     // the overlap over each frame and the quarter second before it (which SeekTo
     // measures first). Only with Method::New; the old stitcher has
@@ -210,7 +210,7 @@ struct Frame {
     int width = 0;
     int height = 0;
     int64_t timestamp_ms = 0; // rounded to the ms: seeks, trims, keyframes, the timeline
-    int64_t timestamp_us = 0; // exact: the stabilizer's correction (insv::FramePts)
+    int64_t timestamp_us = 0; // exact: the stabilizer's correction (orbiscore::FramePts)
 };
 
 // Serves stitched equirect frames from an Insta360 .insv file for interactive
@@ -301,17 +301,17 @@ public:
         SetCaptureTiming(std::move(timing), INT64_MAX, CaptureTiming{});
     }
 
-    // Seam alignment fine-tune (insv::StitchParams::seam, measured by
+    // Seam alignment fine-tune (orbiscore::StitchParams::seam, measured by
     // stitch::MeasureClipSeam) for subsequently stitched frames. Call from
     // the reading thread. Default: unsupported, ignored. The new stitcher
     // (PreviewStitchConfig::Method::New) ignores it.
-    virtual void SetSeamCorrection(const insv::SeamCorrection& /*c*/) {}
+    virtual void SetSeamCorrection(const orbiscore::SeamCorrection& /*c*/) {}
 
-    // The clip's lens colour (insv::StitchParams::lensColour, measured by
+    // The clip's lens colour (orbiscore::StitchParams::lensColour, measured by
     // stitch::MeasureClipLensColour) for subsequently stitched frames. Call
     // from the reading thread. Default: unsupported, ignored. The new
     // stitcher ignores it.
-    virtual void SetLensColour(const insv::LensColour& /*c*/) {}
+    virtual void SetLensColour(const orbiscore::LensColour& /*c*/) {}
 
     // Privacy blur for subsequent frames: every frame stitched is blurred
     // inside the quads `fn` returns for its time (empty fn = off). Safe to

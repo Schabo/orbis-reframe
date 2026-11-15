@@ -9,7 +9,7 @@
 #include <numbers>
 #include <thread>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -593,4 +593,4 @@ double MeasureSeamOffset(const InsvCalibration& cal, const StitchParams& params,
     return rmsOffset(measureAll(st, frames, scale, kSearchFirst), models, nullptr);
 }
 
-} // namespace insv
+} // namespace orbiscore

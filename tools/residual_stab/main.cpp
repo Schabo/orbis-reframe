@@ -1,8 +1,8 @@
 // Residual 2-D stabilization, end to end.
 //
-// The gyro path (insv::GyroStabilizer) only removes the rotation the .insv IMU
+// The gyro path (orbiscore::GyroStabilizer) only removes the rotation the .insv IMU
 // recorded -- tiny on rigidly-mounted motorcycle footage. This tool runs the
-// residual estimator (insv::ResidualPanEstimator): stitch the clip in process
+// residual estimator (orbiscore::ResidualPanEstimator): stitch the clip in process
 // (stitch::NativeStitchSource), reduce each equirect to grayscale, and measure
 // the forward-view 2-D pan that remains after the gyro de-rotation. finish()
 // high-passes that into a per-frame yaw/pitch correction to add on top of the
@@ -15,7 +15,7 @@
 // shake is a stick swing -- largely *rotational* for far scene content and in
 // principle gyro-visible. This mode reports (1) the raw IMU gyro/accel spectra
 // (where is the stick resonance? what is the IMU's usable bandwidth?),
-// (2) what insv::GyroStabilizer actually removes vs. the raw rotation, sweeping
+// (2) what orbiscore::GyroStabilizer actually removes vs. the raw rotation, sweeping
 // the gyro axis-map / scale / time-offset, (3) the image-derived forward-view
 // pan spectrum vs. the gyro (does the image show a band the IMU doesn't?), and
 // (4) a forward narrow-vs-wide residual split (rotation- vs parallax-dominated).
@@ -34,14 +34,14 @@
 #include <string>
 #include <vector>
 
-#include <orbis-core/stab/GyroStabilizer.h>       // insv::GyroStabilizer, StabConfig, MatrixToYawPitchRoll
+#include <orbis-core/stab/GyroStabilizer.h>       // orbiscore::GyroStabilizer, StabConfig, MatrixToYawPitchRoll
 #include <ClipMetadata.h>         // camera::ReadClipImu
-#include <orbis-core/insta360/InsvModels.h>           // insv::FindInsvModel (the telemetry clock tick)
-#include <orbis-core/insta360/InsvTrailer.h>          // insv::ReadInsvTelemetry (the exposure record)
+#include <orbis-core/insta360/InsvModels.h>           // orbiscore::FindInsvModel (the telemetry clock tick)
+#include <orbis-core/insta360/InsvTrailer.h>          // orbiscore::ReadInsvTelemetry (the exposure record)
 #include <NativeStitchSource.h>   // stitch::NativeStitchSource, stitch::Frame
 #include <ProbeClip.h>            // stitch::ProbeClip
 #include <ClipSync.h>             // stitch::MeasureClipSync
-#include <orbis-core/stab/ResidualPanEstimator.h> // insv::ResidualPanEstimator, ResidualTrack
+#include <orbis-core/stab/ResidualPanEstimator.h> // orbiscore::ResidualPanEstimator, ResidualTrack
 
 #include "ReframeFlatten.h" // exportpipe::FlattenWriter
 #include "spectrum.h"       // diag:: FFT + spectral helpers (header-only)
@@ -267,22 +267,22 @@ Args parseArgs(int argc, char** argv)
     return a;
 }
 
-insv::StabConfig gyroConfig(const Args& a)
+orbiscore::StabConfig gyroConfig(const Args& a)
 {
-    insv::StabConfig c;
+    orbiscore::StabConfig c;
     if (a.stabMode == "off")
         return c; // mode == Off
     if (a.stabMode == "custom")
-        c = insv::StabConfig::preset(insv::StabMode::Custom);
+        c = orbiscore::StabConfig::preset(orbiscore::StabMode::Custom);
     else if (a.stabMode == "horizonLock")
-        c = insv::StabConfig::preset(insv::StabMode::HorizonLock);
+        c = orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock);
     else if (a.stabMode == "directionLock") {
-        c = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        c = orbiscore::StabConfig::preset(orbiscore::StabMode::DirectionLock);
         c.directionSec = a.directionMs / 1000.0f;
     } else {
-        c = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+        c = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
         c.windowYawSec = c.windowPitchSec = c.windowRollSec =
-            insv::leanWindowFromStrength(a.stabStrength);
+            orbiscore::leanWindowFromStrength(a.stabStrength);
     }
     c.horizonGain = a.horizonGain;
     if (a.accelLowPassHz >= 0.0f) // <0 => keep the mode preset's value
@@ -352,7 +352,7 @@ struct SlicedImu {
     double srHz = 0.0;                        // sample rate from the median timestep
 };
 
-SlicedImu sliceImu(const std::vector<insv::ImuSample>& s, double t0Sec, double t1Sec)
+SlicedImu sliceImu(const std::vector<orbiscore::ImuSample>& s, double t0Sec, double t1Sec)
 {
     SlicedImu o;
     if (s.size() < 2)
@@ -480,7 +480,7 @@ void printSpectrumLine(const char* label, const diag::Spectrum& sp, double loHz,
 // exposure -- motion blur that no geometric (per-frame or per-row) de-rotation
 // can remove. Long-shutter (low-light) footage of a high-frequency mount
 // resonance is blur-limited, not correction-limited.
-void diagExposureBlur(const std::vector<insv::ExposureSample>& exp, const SlicedImu& s,
+void diagExposureBlur(const std::vector<orbiscore::ExposureSample>& exp, const SlicedImu& s,
                       double trimIn, double trimOut, int outH, double fovDeg, const Args& a)
 {
     std::printf("\n=== [0] exposure / motion-blur budget ===\n");
@@ -568,12 +568,12 @@ void diagImuSpectra(const SlicedImu& s, const Args& a)
 // track is level and any visible tilt comes from the IMU->sphere mapping.
 // A clip that records its own up (ImuTrack::orientation's up, a drone's attitude; `ref`,
 // kept with --no-up-ref) is compared against that too, on every sample.
-void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::OrientationSample>& ref,
+void diagHorizonVsGravity(const orbiscore::ImuTrack& imu, const std::vector<orbiscore::OrientationSample>& ref,
                           double t0Sec, double t1Sec, const Args& a)
 {
-    insv::StabConfig hc = insv::StabConfig::preset(insv::StabMode::HorizonLock);
+    orbiscore::StabConfig hc = orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock);
     hc.gyroAxes = a.gyroAxes.empty() ? imu.axisMap : a.gyroAxes;
-    insv::GyroStabilizer hl;
+    orbiscore::GyroStabilizer hl;
     if (a.noAutoSync)
         hl.build(imu.samples, hc);
     else
@@ -589,8 +589,8 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::Ori
         std::printf("  (no IMU samples: the track is the camera's own orientation)\n");
         return;
     }
-    std::vector<insv::ImuSample> s = imu.samples;
-    std::sort(s.begin(), s.end(), [](const insv::ImuSample& x, const insv::ImuSample& y) {
+    std::vector<orbiscore::ImuSample> s = imu.samples;
+    std::sort(s.begin(), s.end(), [](const orbiscore::ImuSample& x, const orbiscore::ImuSample& y) {
         return x.timestamp < y.timestamp;
     });
     const AxisMap am = parseAxisMap(hc.gyroAxes);
@@ -662,8 +662,8 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::Ori
             s[i].timestamp <= ref.back().timestamp) {
             while (j + 2 < ref.size() && ref[j + 1].timestamp <= s[i].timestamp)
                 ++j;
-            const insv::OrientationSample& u0 = ref[j];
-            const insv::OrientationSample& u1 = ref[j + 1];
+            const orbiscore::OrientationSample& u0 = ref[j];
+            const orbiscore::OrientationSample& u1 = ref[j + 1];
             const double span = static_cast<double>(u1.timestamp) - static_cast<double>(u0.timestamp);
             const double f =
                 span > 0.0 ? (static_cast<double>(s[i].timestamp) - static_cast<double>(u0.timestamp)) / span
@@ -726,8 +726,8 @@ void diagHorizonVsGravity(const insv::ImuTrack& imu, const std::vector<insv::Ori
 }
 
 // --- Block 2: what GyroStabilizer removes vs. the raw rotation ---------------
-void diagIntegratedVsApplied(const SlicedImu& s, const insv::GyroStabilizer& gyro,
-                             const insv::StabConfig& gcfg, const Args& a)
+void diagIntegratedVsApplied(const SlicedImu& s, const orbiscore::GyroStabilizer& gyro,
+                             const orbiscore::StabConfig& gcfg, const Args& a)
 {
     std::printf("\n=== [2] raw rotation vs. applied correction  (map '%s', scale %.2f) ===\n",
                 gcfg.gyroAxes.c_str(), gcfg.gyroScale);
@@ -758,7 +758,7 @@ void diagIntegratedVsApplied(const SlicedImu& s, const insv::GyroStabilizer& gyr
         float m[3][3];
         gyro.correctionMatrix(gyro.ready() ? gyro.videoTime(s.t[i]) : s.t[i], m);
         float y, p, r;
-        insv::MatrixToYawPitchRoll(m, y, p, r);
+        orbiscore::MatrixToYawPitchRoll(m, y, p, r);
         appYpr[0][i] = y * kRadToDeg;
         appYpr[1][i] = p * kRadToDeg;
         appYpr[2][i] = r * kRadToDeg;
@@ -823,8 +823,8 @@ void diagIntegratedVsApplied(const SlicedImu& s, const insv::GyroStabilizer& gyr
 // Uses the estimator's already-collected forward-view pan path (accumulatedYaw/
 // Pitch, one entry per analysed frame interval) and the full IMU track (to
 // rebuild candidate gyro configs cheaply -- no re-stitch).
-void diagImageVsGyro(const insv::ResidualPanEstimator& est,
-                     const insv::ImuTrack& imu, const insv::StabConfig& baseCfg,
+void diagImageVsGyro(const orbiscore::ResidualPanEstimator& est,
+                     const orbiscore::ImuTrack& imu, const orbiscore::StabConfig& baseCfg,
                      double fps, const Args& a)
 {
     std::printf("\n=== [3] image-derived pan vs. gyro ===\n");
@@ -881,10 +881,10 @@ void diagImageVsGyro(const insv::ResidualPanEstimator& est,
         double bandRatio = 0.0;
     };
     std::vector<Cand> ranked;
-    insv::GyroStabilizer g;
+    orbiscore::GyroStabilizer g;
     for (const std::string& mp : maps) {
         for (double sc : scales) {
-            insv::StabConfig c = baseCfg;
+            orbiscore::StabConfig c = baseCfg;
             c.gyroAxes = mp;
             c.gyroScale = static_cast<float>(sc);
             // The track's capture scale and clock rate; baseCfg's (effective)
@@ -898,7 +898,7 @@ void diagImageVsGyro(const insv::ResidualPanEstimator& est,
                 float m[3][3];
                 g.correctionMatrix(it[i], m);
                 float y, p, r;
-                insv::MatrixToYawPitchRoll(m, y, p, r);
+                orbiscore::MatrixToYawPitchRoll(m, y, p, r);
                 ay[i] = y * kRadToDeg;
                 ap[i] = p * kRadToDeg;
             }
@@ -989,10 +989,10 @@ void diagImageVsGyro(const insv::ResidualPanEstimator& est,
 // from video frame 0 -- no image analysis needed. Cross-check: a lock-in
 // between the raw forward-view image motion (`estRaw`, fed IDENTITY
 // de-rotation) and the axis-mapped gyro, demodulated at the stick resonance.
-void diagVideoImuSync(const insv::ResidualPanEstimator& estRaw,
-                      const std::vector<insv::ImuSample>& imu,
-                      const std::vector<insv::ExposureSample>& exposure, double fps,
-                      const insv::StabConfig& cfg, const Args& a)
+void diagVideoImuSync(const orbiscore::ResidualPanEstimator& estRaw,
+                      const std::vector<orbiscore::ImuSample>& imu,
+                      const std::vector<orbiscore::ExposureSample>& exposure, double fps,
+                      const orbiscore::StabConfig& cfg, const Args& a)
 {
     std::printf("\n=== [5] video<->IMU time sync  (map '%s', scale %.2f) ===\n",
                 cfg.gyroAxes.c_str(), cfg.gyroScale);
@@ -1215,21 +1215,21 @@ int main(int argc, char** argv)
     }
 
     // --- gyro track --------------------------------------------------------
-    insv::StabConfig gcfg = gyroConfig(a);
-    insv::GyroStabilizer gyro;
+    orbiscore::StabConfig gcfg = gyroConfig(a);
+    orbiscore::GyroStabilizer gyro;
     // The camera's track, lined up with the video as the app does; the
     // exposure record only for the diagnostics that read it (Insta360 files).
-    std::optional<insv::ImuTrack> imu;
-    std::vector<insv::OrientationSample> upRef; // the clip's own orientation, kept for [6] under --no-up-ref
-    std::vector<insv::ExposureSample> exposure;
+    std::optional<orbiscore::ImuTrack> imu;
+    std::vector<orbiscore::OrientationSample> upRef; // the clip's own orientation, kept for [6] under --no-up-ref
+    std::vector<orbiscore::ExposureSample> exposure;
     // The configs the diagnostics print and re-map with: the track's own axis
     // map unless --gyro-axes overrides it.
-    auto withAxes = [&imu](insv::StabConfig c) {
+    auto withAxes = [&imu](orbiscore::StabConfig c) {
         if (c.gyroAxes.empty() && imu)
             c.gyroAxes = imu->axisMap;
         return c;
     };
-    if (gcfg.mode != insv::StabMode::Off || a.diagnose || a.rsStitchMs[0] != 0.0f ||
+    if (gcfg.mode != orbiscore::StabMode::Off || a.diagnose || a.rsStitchMs[0] != 0.0f ||
         a.rsStitchMs[1] != 0.0f) {
         imu = camera::ReadClipImu(a.input);
         if (imu) {
@@ -1240,17 +1240,18 @@ int main(int argc, char** argv)
         // In µs like the IMU, whatever the camera's clock tick (the ONE X2's
         // is a millisecond).
         if (imu && a.diagnose) {
-            const auto notes = insv::ReadInsvMakerNotes(a.input);
-            if (auto tele = insv::ReadInsvTelemetry(
-                    a.input, 1, notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0))
+            const auto notes = orbiscore::ReadInsvMakerNotes(a.input);
+            const double tickUs =
+                notes ? orbiscore::FindInsvModel(notes->model).telemetryTickUs : 1.0;
+            if (auto tele = orbiscore::ReadInsvTelemetry(a.input, 1, tickUs))
                 exposure = std::move(tele->exposure);
         }
         if (imu) {
             gcfg = withAxes(gcfg);
-            const insv::StabConfig bc =
-                gcfg.mode != insv::StabMode::Off
+            const orbiscore::StabConfig bc =
+                gcfg.mode != orbiscore::StabMode::Off
                     ? gcfg
-                    : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
+                    : withAxes(orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
             if (a.noAutoSync)
                 gyro.build(imu->samples, bc);
             else
@@ -1287,10 +1288,10 @@ int main(int argc, char** argv)
                          a);
         diagImuSpectra(sImu, a);
         if (gyro.ready()) {
-            const insv::StabConfig used =
-                gcfg.mode != insv::StabMode::Off
+            const orbiscore::StabConfig used =
+                gcfg.mode != orbiscore::StabMode::Off
                     ? gcfg
-                    : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
+                    : withAxes(orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
             diagIntegratedVsApplied(sImu, gyro, used, a);
         } else {
             std::printf("\n=== [2] skipped -- no gyro track ===\n");
@@ -1307,19 +1308,19 @@ int main(int argc, char** argv)
     if (!asrc->Open(a.input, asc) || !asrc->SeekTo(trimIn))
         die(asrc->GetLastError());
 
-    insv::ResidualPanEstimator est;
+    orbiscore::ResidualPanEstimator est;
     // Block [4]: a second estimator over a wider forward cone -- picks up more
     // peripheral / down-angled (nearer) scene content. Comparing its
     // post-de-rotation residual to `est`'s narrow-forward residual is a rough
     // far-field(rotation) vs near-field(parallax) split.
-    insv::ResidualPanEstimator::Params wideP;
+    orbiscore::ResidualPanEstimator::Params wideP;
     wideP.forwardZMax = -0.15;   // ~forward 80 deg cone vs the default ~60 deg
     wideP.poleMarginFrac = 0.22; // still keep the true equirect caps out
-    auto estWide = a.diagnose ? std::make_unique<insv::ResidualPanEstimator>(wideP) : nullptr;
+    auto estWide = a.diagnose ? std::make_unique<orbiscore::ResidualPanEstimator>(wideP) : nullptr;
     // Block [5]: raw image motion (fed IDENTITY de-rotation) for the time-sync
     // lock-in -- `est` above is fed the LeanFollow de-rotation, which would
     // partly cancel the very band the sync rides on.
-    auto estRaw = a.diagnose ? std::make_unique<insv::ResidualPanEstimator>() : nullptr;
+    auto estRaw = a.diagnose ? std::make_unique<orbiscore::ResidualPanEstimator>() : nullptr;
 
     std::vector<uint8_t> gray(static_cast<size_t>(aw) * ah);
     const double halfFrameMs = 500.0 / fps;
@@ -1366,7 +1367,7 @@ int main(int argc, char** argv)
         die("too few analysable frames");
     }
 
-    const insv::ResidualTrack track = est.finish(a.residStrength, fps);
+    const orbiscore::ResidualTrack track = est.finish(a.residStrength, fps);
 
     // --- report ----------------------------------------------------------
     const double rawYawRms = rmsFirstDiff(est.accumulatedYaw()) * kRadToDeg;
@@ -1377,7 +1378,7 @@ int main(int argc, char** argv)
     std::printf("raw pan RMS          %.4f / %.4f deg/frame (yaw/pitch)\n", rawYawRms, rawPitchRms);
     std::printf("correction RMS       %.4f / %.4f deg  (strength %.2f, window %.2f s half)\n",
                 rms(track.dyaw) * kRadToDeg, rms(track.dpitch) * kRadToDeg, a.residStrength,
-                insv::leanWindowFromStrength(a.residStrength));
+                orbiscore::leanWindowFromStrength(a.residStrength));
     std::printf("correction max |.|   %.3f / %.3f deg\n", maxAbs(track.dyaw) * kRadToDeg,
                 maxAbs(track.dpitch) * kRadToDeg);
 
@@ -1389,7 +1390,7 @@ int main(int argc, char** argv)
         for (const double ts : est.times()) {
             float m[3][3], y, p, r;
             gyro.correctionMatrix(ts, m);
-            insv::MatrixToYawPitchRoll(m, y, p, r);
+            orbiscore::MatrixToYawPitchRoll(m, y, p, r);
             corrRoll.push_back(r);
             corrPitch.push_back(p);
         }
@@ -1416,10 +1417,10 @@ int main(int argc, char** argv)
 
     // --- diagnostic blocks [3] and [4] (need the analysed image) ----------
     if (a.diagnose) {
-        insv::StabConfig diagCfg =
-            gcfg.mode != insv::StabMode::Off
+        orbiscore::StabConfig diagCfg =
+            gcfg.mode != orbiscore::StabMode::Off
                 ? gcfg
-                : withAxes(insv::StabConfig::preset(insv::StabMode::LeanFollow));
+                : withAxes(orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
         diagCfg.timeOffsetSec = gyro.effectiveTimeOffsetSec();
         if (imu)
             diagImageVsGyro(est, *imu, diagCfg, fps, a);
@@ -1476,9 +1477,9 @@ int main(int argc, char** argv)
     // on): every sensor row brought to the stab's instant over the clip's
     // readout; --rs-stitch / --lens-offset override it for experiments.
     // Camera motion from a pure-gyro track, independent of --stab-mode.
-    insv::GyroStabilizer rsGyro;
+    orbiscore::GyroStabilizer rsGyro;
     if (imu && (a.rsStitchMs[0] != 0.0f || a.rsStitchMs[1] != 0.0f || !a.noCaptureTiming)) {
-        insv::StabConfig rc = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+        orbiscore::StabConfig rc = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
         rc.timeOffsetSec = a.timeOffsetMs / 1000.0f; // same sync as the stab (0 = the file's)
         rsGyro.build(*imu, rc, a.syncAdjustMs / 1000.0);
         stitch::CaptureTiming ct;
@@ -1521,9 +1522,9 @@ int main(int argc, char** argv)
     // after the pose, as the app composes it.
     const int64_t frameCount = static_cast<int64_t>(std::llround((trimOut - trimIn) / 1000.0 * fps));
     float base[3][3];
-    insv::YawPitchRollToMatrix(static_cast<float>(a.baseYawDeg * kDegToRad),
-                               static_cast<float>(a.basePitchDeg * kDegToRad),
-                               static_cast<float>(a.baseRollDeg * kDegToRad), base);
+    orbiscore::YawPitchRollToMatrix(static_cast<float>(a.baseYawDeg * kDegToRad),
+                                    static_cast<float>(a.basePitchDeg * kDegToRad),
+                                    static_cast<float>(a.baseRollDeg * kDegToRad), base);
     // --stab-in: lines of "tSec m00 m01 ... m22"; the nearest time is used.
     std::vector<double> stabInT;
     std::vector<std::array<float, 9>> stabInM;
@@ -1544,7 +1545,7 @@ int main(int argc, char** argv)
         if (stabInT.empty())
             die("--stab-in: no matrices");
     }
-    auto poseAt = [&](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
+    auto poseAt = [&](const orbiscore::FramePts &pts, view::Pose &pose, float stab[9]) {
         const double tSec = pts.sec();
         float corr[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         if (!stabInT.empty()) {
@@ -1558,7 +1559,7 @@ int main(int argc, char** argv)
         }
         float y = 0.0f, p = 0.0f, r = 0.0f;
         std::copy(&corr[0][0], &corr[0][0] + 9, stab);
-        insv::MatrixToYawPitchRoll(base, y, p, r);
+        orbiscore::MatrixToYawPitchRoll(base, y, p, r);
         if (a.render == "derotate2d") {
             float dY = 0.0f, dP = 0.0f;
             track.sample(tSec, dY, dP);

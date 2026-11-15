@@ -5,7 +5,7 @@
 #include "KeyTrack.h" // keytrack::Ease
 #include "Gauge.h"
 #include "Title.h"
-#include <orbis-core/audio/NoiseReduction.h> // insv::NoiseReduction (header-only, no deps)
+#include <orbis-core/audio/NoiseReduction.h> // orbiscore::NoiseReduction (header-only, no deps)
 
 #include <QList>
 #include <QString>
@@ -74,7 +74,7 @@ struct TrackClip {
     qint64 sourceDurationMs = 0;
     bool mediaMissing = false;
     // Which audio stream of the source: ordinal among its audio streams, -1 =
-    // the default one (insv::InsvAudioDemux::open's convention).
+    // the default one (orbiscore::InsvAudioDemux::open's convention).
     int stream = -1;
 
     qint64 startMs = 0; // timeline position of the clip's first sample
@@ -104,7 +104,7 @@ struct TrackClip {
     qint64 fadeOutMs = 0;
     // Noise reduction on this clip's sound (audio tracks only), as
     // ClipItem::noise.
-    insv::NoiseReduction noise;
+    orbiscore::NoiseReduction noise;
 
     // --- video tracks only ---
     int sourceWidth = 0; // display size of the video (its aspect sizes the inset)
@@ -158,7 +158,7 @@ struct TrackClip {
     bool setGainDb(double db);
     bool setMuted(bool m);
     bool setFades(qint64 inMs, qint64 outMs);
-    bool setNoise(const insv::NoiseReduction &nr); // strength clamped to [0, 1]
+    bool setNoise(const orbiscore::NoiseReduction &nr); // strength clamped to [0, 1]
 
 private:
     void clampFades();

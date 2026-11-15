@@ -30,7 +30,7 @@ constexpr int kAudioChannels = 2;
 } // namespace
 
 stitch::CaptureTiming
-ReframeExportController::captureTimingFor(std::shared_ptr<const insv::GyroStabilizer> stab)
+ReframeExportController::captureTimingFor(std::shared_ptr<const orbiscore::GyroStabilizer> stab)
 {
     stitch::CaptureTiming t;
     if (!stab || !stab->ready())
@@ -42,14 +42,14 @@ ReframeExportController::captureTimingFor(std::shared_ptr<const insv::GyroStabil
     return t;
 }
 
-std::shared_ptr<const insv::GyroStabilizer>
-ReframeExportController::buildStabilizer(const QString &path, const insv::StabConfig &config,
+std::shared_ptr<const orbiscore::GyroStabilizer>
+ReframeExportController::buildStabilizer(const QString &path, const orbiscore::StabConfig &config,
                                          double syncMs)
 {
     const auto imu = camera::ReadClipImu(path.toStdString());
     if (!imu)
         return nullptr;
-    auto stab = std::make_shared<insv::GyroStabilizer>();
+    auto stab = std::make_shared<orbiscore::GyroStabilizer>();
     stab->build(*imu, config, syncMs / 1000.0);
     return stab->ready() ? stab : nullptr;
 }
@@ -168,7 +168,7 @@ QImage ReframeExportController::renderStill(const ClipJob &c, qint64 sourceMs,
     if (src.GpuViewAvailable() && outW % 4 == 0 && outH % 2 == 0) {
         const stitch::Frame f = src.ReadViewFrame(
             outW, outH,
-            [&](const insv::FramePts &pts, view::Pose &p, float stab[9]) {
+            [&](const orbiscore::FramePts &pts, view::Pose &p, float stab[9]) {
                 p = pose;
                 stabAt(pts.us, stab);
             },
@@ -271,7 +271,7 @@ void ReframeExportController::run(const Request &req)
     cfg.bitrate_kbps = req.bitrateKbps;
     // An audio track only if there's something on the audio tracks.
     const bool withAudio = !req.mix.empty();
-    insv::AudioMixer mixer(kAudioRate, kAudioChannels);
+    orbiscore::AudioMixer mixer(kAudioRate, kAudioChannels);
     mixer.setClips(req.mix);
     if (withAudio) {
         cfg.audio_sample_rate = kAudioRate;
@@ -363,7 +363,7 @@ void ReframeExportController::run(const Request &req)
                 return true;
             pcm.assign(static_cast<size_t>(need) * kAudioChannels, 0.0f);
             mixer.mixInto(pcm.data(), writer->audioFramesWritten(), need); // the audio tracks
-            insv::AudioMixer::limit(pcm.data(), need * kAudioChannels);
+            orbiscore::AudioMixer::limit(pcm.data(), need * kAudioChannels);
             return writer->addAudio(pcm.data(), need, err);
         };
 
@@ -466,7 +466,7 @@ void ReframeExportController::run(const Request &req)
 
         // Pose + stab for a decoded frame, at that frame's source time (the
         // stab at the exact time).
-        auto poseAt = [&c](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
+        auto poseAt = [&c](const orbiscore::FramePts &pts, view::Pose &pose, float stab[9]) {
             if (c.poseAt)
                 c.poseAt(pts.ms, pose);
             if (c.stab) {

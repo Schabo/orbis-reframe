@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace insv {
+namespace orbiscore {
 
 // Where a clip's sound comes from: a file whose audio streams play from
 // `startUs` in clip time. A recording the camera split over several files
@@ -15,4 +15,4 @@ struct AudioPart {
     int64_t startUs = 0;
 };
 
-} // namespace insv
+} // namespace orbiscore

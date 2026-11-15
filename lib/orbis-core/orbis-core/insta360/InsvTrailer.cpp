@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/insta360/InsvTrailer.h>
 
-#include <orbis-core/metadata/Gps.h> // insv::AlignGpsBySpeed
+#include <orbis-core/metadata/Gps.h> // orbiscore::AlignGpsBySpeed
 #include <orbis-core/Protobuf.h>
 
 #include <algorithm>
@@ -14,7 +14,7 @@
 #include <numbers>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -996,4 +996,4 @@ std::optional<InsvTimeMap> ReadInsvTimeMap(const std::string& file_path) {
     return payload ? ParseTimeMap(*payload) : std::nullopt;
 }
 
-} // namespace insv
+} // namespace orbiscore

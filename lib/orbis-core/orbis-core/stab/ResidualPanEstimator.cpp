@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/stab/ResidualPanEstimator.h>
 
-#include <orbis-core/stab/GyroStabilizer.h> // insv::leanWindowFromStrength
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::leanWindowFromStrength
 
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
@@ -14,7 +14,7 @@
 #include <numbers>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -235,4 +235,4 @@ ResidualTrack ResidualPanEstimator::finish(float strength01, double fps) const
     return rt;
 }
 
-} // namespace insv
+} // namespace orbiscore

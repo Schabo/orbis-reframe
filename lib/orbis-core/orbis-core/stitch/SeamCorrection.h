@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
-namespace insv {
+namespace orbiscore {
 
 // Per-clip correction of the trailer's lens calibration, measured from the
 // video so the two lenses agree across the stitch seam
-// (insv::EstimateSeamAlignment). Plain data, no dependencies: the project
+// (orbiscore::EstimateSeamAlignment). Plain data, no dependencies: the project
 // model stores it per source file.
 //
 // Only the relative fit of the two lenses can be seen at the seam, so the
@@ -30,4 +30,4 @@ struct SeamCorrection {
 // older one (rotation only) is measured again rather than used.
 constexpr int kSeamCorrectionMethod = 2;
 
-} // namespace insv
+} // namespace orbiscore

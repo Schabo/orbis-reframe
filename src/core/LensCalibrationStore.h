@@ -26,7 +26,7 @@ bool Save(const stitch::LensCalibration& c, QString* error = nullptr);
 // The calibration a clip can use: its camera's for `lensGuard`, if it was
 // measured against the calibration the clip's file carries.
 std::optional<stitch::LensCalibration> ForClip(const std::string& serial, int lensGuard,
-                                               const insv::LensCalibExt& lens0,
-                                               const insv::LensCalibExt& lens1);
+                                               const orbiscore::LensCalibExt& lens0,
+                                               const orbiscore::LensCalibExt& lens1);
 
 } // namespace lenscal

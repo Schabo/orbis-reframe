@@ -78,7 +78,7 @@ set(CPACK_DEBIAN_PACKAGE_DESCRIPTION
 # Linked libraries come from dpkg-shlibdeps (it follows the RUNPATH into the
 # bundled ncnn, so libgomp1 is found too). It can't see what is loaded at run
 # time: Qt's Wayland platform and SVG icon plugins, ONNX Runtime
-# (dlopen()ed for the voice modes, insv::VoiceIsolator) and libpulse (the
+# (dlopen()ed for the voice modes, orbiscore::VoiceIsolator) and libpulse (the
 # sound output's, loaded by miniaudio).
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 # ORBIS_ORT_PACKAGE (CMakeLists.txt) is the ONNX Runtime built against.

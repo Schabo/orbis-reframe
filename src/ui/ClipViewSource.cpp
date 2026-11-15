@@ -20,7 +20,7 @@ bool ClipViewSource::open(std::string &err)
 void ClipViewSource::prepare()
 {
     const ReframeExportController::ClipJob &job = m_spec.job;
-    if (!job.stab && m_spec.buildStab.mode != insv::StabMode::Off)
+    if (!job.stab && m_spec.buildStab.mode != orbiscore::StabMode::Off)
         m_spec.job.stab = ReframeExportController::buildStabilizer(job.clipPath, m_spec.buildStab,
                                                                    m_spec.syncMs);
     if (m_spec.fps > 0.0)
@@ -83,7 +83,7 @@ bool ClipViewSource::readFrom(stitch::NativeStitchSource &src, exportpipe::Video
     color::Grade grade = job.colorGrade;
     const double fps = m_spec.fps;
     // The view and stabilization at the frame's own time, as the export.
-    auto poseAt = [&job, &grade, fps](const insv::FramePts &pts, view::Pose &pose,
+    auto poseAt = [&job, &grade, fps](const orbiscore::FramePts &pts, view::Pose &pose,
                                       float stab[9]) {
         grade.effects.setFrame(fx::frameAt(pts.ms, fps));
         if (job.poseAt)

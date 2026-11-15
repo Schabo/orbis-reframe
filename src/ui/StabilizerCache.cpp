@@ -38,7 +38,7 @@ PlaybackController::StabProvider StabilizerCache::provider() const
 
 const StabilizerCache::Built *StabilizerCache::find(const ClipItem &c, double syncMs) const
 {
-    if (c.stabilization.mode == insv::StabMode::Off)
+    if (c.stabilization.mode == orbiscore::StabMode::Off)
         return nullptr;
     syncMs = orZero(syncMs);
     for (const Built &b : m_built)
@@ -49,7 +49,7 @@ const StabilizerCache::Built *StabilizerCache::find(const ClipItem &c, double sy
 
 bool StabilizerCache::ensure(const ClipItem &c, double syncMs)
 {
-    if (c.stabilization.mode == insv::StabMode::Off || c.mediaMissing)
+    if (c.stabilization.mode == orbiscore::StabMode::Off || c.mediaMissing)
         return false;
     if (const Built *b = find(c, syncMs)) { // most recently used goes last
         std::rotate(m_built.begin() + (b - m_built.data()),
@@ -64,7 +64,7 @@ bool StabilizerCache::ensure(const ClipItem &c, double syncMs)
     // file -- fast enough for a clip switch / settings change on the GUI
     // thread.
     if (const auto imu = camera::ReadClipImu(c.sourcePath.toStdString())) {
-        auto stab = std::make_shared<insv::GyroStabilizer>();
+        auto stab = std::make_shared<orbiscore::GyroStabilizer>();
         stab->build(*imu, c.stabilization, built.syncMs / 1000.0);
         if (stab->ready())
             built.stab = std::move(stab);
@@ -78,11 +78,11 @@ bool StabilizerCache::ensure(const ClipItem &c, double syncMs)
 std::map<int, stitch::CaptureTiming> StabilizerCache::publish(const Timeline &timeline,
                                                               const ClipItem *extra)
 {
-    std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
+    std::unordered_map<int, std::shared_ptr<const orbiscore::GyroStabilizer>> clips;
     std::map<int, stitch::CaptureTiming> timings;
     for (int i = 0; i < timeline.count() + (extra ? 1 : 0); ++i) {
         const ClipItem &c = i < timeline.count() ? timeline.clipAt(i) : *extra;
-        if (c.stabilization.mode == insv::StabMode::Off) {
+        if (c.stabilization.mode == orbiscore::StabMode::Off) {
             clips.emplace(c.id, nullptr); // identity
             continue;
         }

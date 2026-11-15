@@ -313,7 +313,7 @@ public slots:
     void setTrackClipTrimIn(int clipId, qint64 sourceMs);
     void setTrackClipTrimOut(int clipId, qint64 sourceMs);
     void setAudioClipLevel(int clipId, double gainDb, bool muted);
-    void setAudioClipNoise(int clipId, const insv::NoiseReduction &nr);
+    void setAudioClipNoise(int clipId, const orbiscore::NoiseReduction &nr);
     void setTrackClipFades(int clipId, qint64 fadeInMs, qint64 fadeOutMs);
     // How a clip comes on and goes off (TrackClip::motion).
     void setTrackClipMotion(int clipId, const inset::Motion &motion);
@@ -386,7 +386,7 @@ public slots:
     void setClipEffects(int clipId, const fx::ClipEffects &effects);
     // Gyro stabilization (ClipItem::stabilization); the Stabilization panel
     // edits it.
-    void setClipStabilization(int clipId, const insv::StabConfig &config);
+    void setClipStabilization(int clipId, const orbiscore::StabConfig &config);
     // Privacy blur on / off (ClipItem::blurPlates); the Privacy panel edits it.
     void setClipBlurPlates(int clipId, bool on);
     // The clip's plate scan (ClipItem::plateScan), set when one is made.
@@ -434,11 +434,11 @@ public slots:
     void setSourceSyncAdjust(const QString &sourcePath, double ms);
     // Measured seam fine-tune (ClipItem::seamCorrection / seamAdjustGuard) for
     // every clip cut from `sourcePath`.
-    void setSourceSeamCorrection(const QString &sourcePath, const insv::SeamCorrection &seam,
+    void setSourceSeamCorrection(const QString &sourcePath, const orbiscore::SeamCorrection &seam,
                              int lensGuard);
     // Measured lens colour (ClipItem::lensColour / lensColourGuard) for every
     // clip cut from `sourcePath`. Emits clipSeamChanged per clip that changed.
-    void setSourceLensColour(const QString &sourcePath, const insv::LensColour &colour,
+    void setSourceLensColour(const QString &sourcePath, const orbiscore::LensColour &colour,
                              int lensGuard);
     // A source's sync fine-tune: the first main-track clip cut from it; NaN
     // when it has none (not measured, or no clip of it).
@@ -446,15 +446,15 @@ public slots:
     // A source's seam fine-tune if one of its main-track clips has it
     // measured under `lensGuard`; else false and `seam` none.
     bool sourceSeamCorrection(const QString &sourcePath, int lensGuard,
-                              insv::SeamCorrection &seam) const;
+                              orbiscore::SeamCorrection &seam) const;
     // The same, measured under the lens guards the source is set to now
     // (ClipItem::lensGuard): what its stitch uses.
-    bool sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrection &seam) const;
+    bool sourceSeamCorrection(const QString &sourcePath, orbiscore::SeamCorrection &seam) const;
     // A source's lens colour, as sourceSeamCorrection: measured under
     // `lensGuard`, or under the guards the source is set to now.
     bool sourceLensColour(const QString &sourcePath, int lensGuard,
-                          insv::LensColour &colour) const;
-    bool sourceLensColour(const QString &sourcePath, insv::LensColour &colour) const;
+                          orbiscore::LensColour &colour) const;
+    bool sourceLensColour(const QString &sourcePath, orbiscore::LensColour &colour) const;
 
 signals:
     void clipInserted(int index);
@@ -476,7 +476,7 @@ signals:
     // One clip's video effects changed. Carries the new value.
     void clipEffectsChanged(int id, fx::ClipEffects effects);
     // One clip's stabilization changed. Carries the new value.
-    void clipStabilizationChanged(int id, insv::StabConfig config);
+    void clipStabilizationChanged(int id, orbiscore::StabConfig config);
     // One clip's privacy blur was switched on / off, or its removed tracks /
     // hand-added blurs changed.
     void clipPrivacyChanged(int id, bool blurPlates);

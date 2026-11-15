@@ -32,7 +32,8 @@ public:
     bool startScan(const platescan::Request &req);
     // Follow the plate `seed` from req.fromMs to req.toMs, then back from
     // req.fromMs to `backToMs`.
-    bool startFollow(const platescan::Request &req, const insv::BlurQuad &seed, qint64 backToMs);
+    bool startFollow(const platescan::Request &req, const orbiscore::BlurQuad &seed,
+                     qint64 backToMs);
     // A stopped scan keeps the part scanned; a stopped follow, the part
     // followed.
     void stop() { m_stop = true; }

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -206,4 +206,4 @@ void blurCellMix(const BlurQuadFrame& f, double s, double t, int cell[4], double
     w[3] = fr[0] * fr[1];
 }
 
-} // namespace insv
+} // namespace orbiscore

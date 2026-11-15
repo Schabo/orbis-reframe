@@ -60,7 +60,7 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     form()->addRow(tr("Mode"), m_mode);
 
     // Lean follow: one Strength slider standing in for the shared smoothing
-    // window (insv::leanWindowFromStrength). Left = follow the ride closely,
+    // window (orbiscore::leanWindowFromStrength). Left = follow the ride closely,
     // right = steadier; a slow cornering lean is kept at any setting.
     m_leanRow = new QWidget(this);
     auto *lr = new QHBoxLayout(m_leanRow);
@@ -105,7 +105,7 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     form()->addRow(tr("Amount"), m_horizonRow);
 
     // Horizon lock: Smoothing slider for the heading window
-    // (insv::horizonWindowFromStrength). Left = the view follows turns
+    // (orbiscore::horizonWindowFromStrength). Left = the view follows turns
     // closely, right = holds its heading longer (calmer, lags in corners).
     m_horizonSmoothRow = new QWidget(this);
     auto *hsr = new QHBoxLayout(m_horizonSmoothRow);
@@ -202,7 +202,8 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
     m_accelLowPass->setSingleStep(0.5);
     m_accelLowPass->setDecimals(1);
     m_accelLowPass->setSuffix(QStringLiteral(" Hz"));
-    m_accelLowPass->setValue(insv::StabConfig::preset(insv::StabMode::HorizonLock).accelLowPassHz);
+    m_accelLowPass->setValue(
+        orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock).accelLowPassHz);
     m_accelLowPass->setToolTip(tr("Filters vibration out of the camera's motion sensor before "
                                   "it's used to find the horizon. If the horizon trembles on a "
                                   "vibrating mount, try a lower value; 0 turns the filter off."));
@@ -239,19 +240,20 @@ StabilizationPanel::StabilizationPanel(QWidget *parent)
                "export. Lean follow keeps a motorcycle's lean in corners; Horizon lock keeps "
                "the horizon level; Direction lock also keeps the view pointing one way."));
 
-    setState(Mode::Off, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    setState(Mode::Off, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
 
     connect(m_mode, &QComboBox::currentIndexChanged, this, [this] {
         updateModeVisibility();
         emitIfEdited();
     });
     connect(m_leanStrength, &QSlider::valueChanged, this, [this](int v) {
-        m_leanStrengthValue->setText(strengthLabel(v, insv::leanWindowFromStrength(v / 100.0f)));
+        m_leanStrengthValue->setText(strengthLabel(v,
+                                                   orbiscore::leanWindowFromStrength(v / 100.0f)));
         emitIfEdited();
     });
     connect(m_horizonSmooth, &QSlider::valueChanged, this, [this](int v) {
         m_horizonSmoothValue->setText(
-            strengthLabel(v, insv::horizonWindowFromStrength(v / 100.0f)));
+            strengthLabel(v, orbiscore::horizonWindowFromStrength(v / 100.0f)));
         emitIfEdited();
     });
     connect(m_horizonAmount, &QSlider::valueChanged, this, [this](int v) {
@@ -284,32 +286,33 @@ void StabilizationPanel::updateModeVisibility()
     form()->setRowVisible(m_accelLpRow, level || m == int(Mode::Custom));
 }
 
-insv::StabConfig StabilizationPanel::nativeConfigForMode() const
+orbiscore::StabConfig StabilizationPanel::nativeConfigForMode() const
 {
     const auto mode = Mode(m_mode->currentData().toInt());
     const float accelLp = float(m_accelLowPass->value()); // Horizon lock / Custom only
     if (mode == Mode::LeanFollow) {
-        insv::StabConfig c = insv::StabConfig::preset(insv::StabMode::LeanFollow);
-        const float w = insv::leanWindowFromStrength(float(m_leanStrength->value()) / 100.0f);
+        orbiscore::StabConfig c = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
+        const float w = orbiscore::leanWindowFromStrength(float(m_leanStrength->value()) / 100.0f);
         c.windowYawSec = c.windowPitchSec = c.windowRollSec = w;
         return c;
     }
     if (mode == Mode::HorizonLock) {
-        insv::StabConfig c = insv::StabConfig::preset(insv::StabMode::HorizonLock);
+        orbiscore::StabConfig c = orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock);
         c.horizonLockAmount = float(m_horizonAmount->value()) / 100.0f;
-        c.windowYawSec = insv::horizonWindowFromStrength(float(m_horizonSmooth->value()) / 100.0f);
+        c.windowYawSec =
+            orbiscore::horizonWindowFromStrength(float(m_horizonSmooth->value()) / 100.0f);
         c.accelLowPassHz = accelLp;
         return c;
     }
     if (mode == Mode::DirectionLock) {
-        insv::StabConfig c = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        orbiscore::StabConfig c = orbiscore::StabConfig::preset(orbiscore::StabMode::DirectionLock);
         c.horizonLockAmount = float(m_horizonAmount->value()) / 100.0f;
         c.accelLowPassHz = accelLp;
         c.directionSec = m_directionSec;
         return c;
     }
     if (mode == Mode::Custom) {
-        insv::StabConfig c = insv::StabConfig::preset(insv::StabMode::Custom);
+        orbiscore::StabConfig c = orbiscore::StabConfig::preset(orbiscore::StabMode::Custom);
         c.windowYawSec = float(m_winYaw->value());
         c.windowPitchSec = float(m_winPitch->value());
         c.windowRollSec = float(m_winRoll->value());
@@ -322,10 +325,10 @@ insv::StabConfig StabilizationPanel::nativeConfigForMode() const
         c.accelLowPassHz = accelLp;
         return c;
     }
-    return insv::StabConfig{}; // Off -> no native stab
+    return orbiscore::StabConfig{}; // Off -> no native stab
 }
 
-void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
+void StabilizationPanel::setState(Mode mode, const orbiscore::StabConfig &cfg)
 {
     setBodyEnabled(true);
     m_updating = true;
@@ -336,11 +339,12 @@ void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
     // reflecting; otherwise sit at the default so switching to Lean follow lands
     // on the tuned preset.
     const float strength01 = mode == Mode::LeanFollow
-                                 ? insv::leanStrengthFromWindow(cfg.windowRollSec)
+                                 ? orbiscore::leanStrengthFromWindow(cfg.windowRollSec)
                                  : 0.5f;
     const int pct = int(std::lround(strength01 * 100.0f));
     m_leanStrength->setValue(pct);
-    m_leanStrengthValue->setText(strengthLabel(pct, insv::leanWindowFromStrength(pct / 100.0f)));
+    m_leanStrengthValue->setText(strengthLabel(pct,
+                                               orbiscore::leanWindowFromStrength(pct / 100.0f)));
 
     const int hpct = mode == Mode::HorizonLock || mode == Mode::DirectionLock
                          ? std::clamp(int(std::lround(cfg.horizonLockAmount * 100.0f)), 0, 100)
@@ -349,12 +353,12 @@ void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
     m_horizonAmountValue->setText(QStringLiteral("%1%").arg(hpct));
 
     // Horizon-lock Smoothing: same pattern as the Lean Strength above.
-    const float hs01 = mode == Mode::HorizonLock ? insv::horizonStrengthFromWindow(cfg.windowYawSec)
-                                                 : 0.5f;
+    const float hs01 =
+        mode == Mode::HorizonLock ? orbiscore::horizonStrengthFromWindow(cfg.windowYawSec) : 0.5f;
     const int hspct = int(std::lround(hs01 * 100.0f));
     m_horizonSmooth->setValue(hspct);
     m_horizonSmoothValue->setText(
-        strengthLabel(hspct, insv::horizonWindowFromStrength(hspct / 100.0f)));
+        strengthLabel(hspct, orbiscore::horizonWindowFromStrength(hspct / 100.0f)));
 
     m_winYaw->setValue(cfg.windowYawSec);
     m_winPitch->setValue(cfg.windowPitchSec);
@@ -371,7 +375,7 @@ void StabilizationPanel::setState(Mode mode, const insv::StabConfig &cfg)
     m_accelLowPass->setValue(
         (mode == Mode::HorizonLock || mode == Mode::DirectionLock || mode == Mode::Custom)
             ? cfg.accelLowPassHz
-            : insv::StabConfig::preset(insv::StabMode::HorizonLock).accelLowPassHz);
+            : orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock).accelLowPassHz);
     updateModeVisibility();
     m_updating = false;
 }
@@ -397,7 +401,7 @@ void StabilizationPanel::setSyncStatus(const QString &text)
 
 void StabilizationPanel::setNoClip()
 {
-    setState(Mode::Off, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    setState(Mode::Off, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
     setBodyEnabled(false);
 }
 

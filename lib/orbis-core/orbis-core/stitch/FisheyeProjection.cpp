@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -847,4 +847,4 @@ Image FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, in
     return out;
 }
 
-} // namespace insv
+} // namespace orbiscore

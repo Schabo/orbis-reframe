@@ -33,7 +33,7 @@ struct BlurAddition {
     struct Frame {
         int64_t tMs = 0; // source time of the frame
         // The region: corners TL, TR, BR, BL as unit directions in the
-        // stitch's sphere frame (insv::BlurQuad's).
+        // stitch's sphere frame (orbiscore::BlurQuad's).
         float corner[4][3] = {};
         uint8_t kind = 0; // privacy::RegionKind, for the overlay
         bool operator==(const Frame &o) const

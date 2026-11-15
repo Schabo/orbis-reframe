@@ -471,7 +471,7 @@ so a mark's video time is `(mark − field 24) / 1e6` s: **5.867 s** and
 **16.067 s**, which match when the marks were set. The `.lrv` carries the same
 record; the `.pb` sidecar doesn't hold the times. What lists 2, 3, 4 and
 16-18 hold (marks made in the phone app? other kinds of highlight?) is
-unknown ❓. Read by `insv::ReadInsvHighlights`; `insv_trailer_dump --marks`
+unknown ❓. Read by `orbiscore::ReadInsvHighlights`; `insv_trailer_dump --marks`
 prints the lists.
 
 ExifTool decodes types 1 (partly), 2, 3, 4, 6 and 7. Its source notes that
@@ -639,7 +639,7 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
 | 54/56 | `offset_v3` | 40 | 19: **`xi fx fy cx cy yaw pitch roll tx ty tz k1 k2 k3 p1 p2 w h lensType`** 📖, then a trailing `flag` |
 | 111/112 | (v4?) | 56 | 27: the full MEI model below ✅ 📖 (insv-stitch). Slightly different values (fx 4294.03 vs 4297.15), so probably a newer or refined calibration |
 
-**56-token MEI layout** (`insv::LensCalibExt`, matching insv-stitch):
+**56-token MEI layout** (`orbiscore::LensCalibExt`, matching insv-stitch):
 
 | idx | field | lens 0 value | notes |
 |---|---|---|---|
@@ -685,7 +685,7 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
   rotation can't; parallax only moves things across the seam), and an
   offset *across* it of +0.25 to +0.34° all round (the lenses disagree on
   the image radius near 90°: a radial scale), plus a small tilt. Fitted
-  per clip (`insv::EstimateSeamAlignment`): lens 1 centre −0.08 to −0.15 %
+  per clip (`orbiscore::EstimateSeamAlignment`): lens 1 centre −0.08 to −0.15 %
   of the width across and −0.03 to −0.04 % down, both lenses' radius
   −0.06 to −0.08 %, pitch +0.3 to +0.4°; the offset on other frames of the
   clip drops from 0.16–0.18° (rotation only) to 0.04–0.10°. The app
@@ -811,7 +811,7 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
   that matrix unit-specific. So even Gyroflow's mapping isn't the whole
   answer for 360 reprojection.
 - **Ours** ✅ (measured 2026-09-25): **`"z,-x,-y"`** (the X5 row of
-  `insv::InsvModel::imuAxes`), i.e.
+  `orbiscore::InsvModel::imuAxes`), i.e.
   sphere X ← raw z, Y ← −raw x, Z ← −raw y, in the stitched sphere's frame
   (+X right, +Y up, −Z forward; `reframe_reproject.comp`).
   - Method: render raw pinhole views, estimate per-frame camera rotation with
@@ -865,7 +865,7 @@ insv-stitch's `x5_pipeline.md` table, which lists gyro first, 56-byte samples,
   `193105`), and changing across the overlap per channel, red rising and
   green / blue falling towards lens 0 by ~0.5 % per degree: the two lenses'
   rims fall off differently, in colour too. The app measures it per clip
-  (`insv::FitLensColour`). The camera's own snapshots (§4.5) show the same
+  (`orbiscore::FitLensColour`). The camera's own snapshots (§4.5) show the same
   difference, and no record read so far (types 1, 4, 9, 22, 28) holds a
   colour value per lens.
 
@@ -894,7 +894,7 @@ video frame n                 ↔ exposure[k + n],   exposure[k].ts == field24
 
 Our code used to assume `exposure[0]` is frame 0 (a "−26.5 ms"
 offset; the real offset is **+0.16 to +0.78 s**). Fixed 2026-09-25:
-`insv::MakeInsvImuTrack` anchors on field 24 + field 28,
+`orbiscore::MakeInsvImuTrack` anchors on field 24 + field 28,
 verified against image motion on two clips.
 
 **Trimmed files** ✅ (2026-09-25): a file re-written by Insta360 software after
@@ -920,7 +920,7 @@ readout. Image-measured best lag on 8 segments / 4 clips vs
 rows the tracked features sit in). Rotational shake removed (residual vs
 none, 8-segment mean): 35 % now → 40 % with drift → 43 % with drift +
 readout/2 (per-segment best lag: 48 %).
-`insv::MakeInsvImuTrack` now fits the clock rate from the
+`orbiscore::MakeInsvImuTrack` now fits the clock rate from the
 exposure record (least-squares slope vs `n/fps`) and maps video time as
 `t·(1 + rate) + offset`, the derived offset including `field25/2`:
 
@@ -957,7 +957,7 @@ the readout time adds nothing. The Antigravity A1 gives the same
 (antigravity-a1.md). Exposures over 10 ms weren't measured with motion, but
 the camera's own timelapse orientation (§3.5) puts each frame's centre row
 half its exposure before the frame's time over 0.2–33 ms. Auto exposure
-changes the exposure from frame to frame, so `insv::MakeInsvImuTrack` times
+changes the exposure from frame to frame, so `orbiscore::MakeInsvImuTrack` times
 each frame by its own (`ImuTrack::frameTimes`); the per-clip fine-tune is
 left with ±0.3 ms.
 
@@ -1044,8 +1044,8 @@ differences on the LRV), the speed by field 98.3 at ~46.2 s, lined up at
 ~44.1 s. Whether it's the camera's clock (set from the phone) against GPS
 time, the GPS source's latency or both isn't known; it differs per clip and
 drifts within one ❓. `camera::ReadClipTelemetry` therefore lines a field-98
-track up against the IMU (`insv::AlignGpsByAcceleration`, `lib/orbis-core/orbis-core/metadata/Gps.h`, on
-`insv::BuildMotion`'s forward acceleration): the shift over each ~2 min,
+track up against the IMU (`orbiscore::AlignGpsByAcceleration`, `lib/orbis-core/orbis-core/metadata/Gps.h`, on
+`orbiscore::BuildMotion`'s forward acceleration): the shift over each ~2 min,
 straight between them. A clip that stands still or keeps a steady speed
 (`_081`, `_082`, `_084`) stays on field 98.3.
 
@@ -1054,7 +1054,7 @@ each once (the first record carrying it; the lost-fix repeat and anything
 out of order dropped), the hemisphere letters as signs, with field 98.3.
 Checked against `exiftool -ee -n` on `193105` (43 fixes) and `_080` (1222):
 every value equal (ExifTool gives the speed in km/h). `Insta360Reader`
-turns it into the common `insv::GpsTrack` in video time (heading -1 as
+turns it into the common `orbiscore::GpsTrack` in video time (heading -1 as
 unknown), read through `camera::ReadClipTelemetry`. `ReadInsvTelemetry`
 still
 only counts the record for the Media information panel -- records, `A`

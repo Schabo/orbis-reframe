@@ -7,7 +7,7 @@
 #include "../export/ReframeFlatten.h"
 #include "../render/EquirectViewportWindow.h"
 
-#include <orbis-core/audio/NoiseFilter.h> // insv::voiceModesReady
+#include <orbis-core/audio/NoiseFilter.h> // orbiscore::voiceModesReady
 
 #include <QApplication>
 #include <QClipboard>
@@ -82,7 +82,7 @@ QString diagnostics(EquirectViewportWindow *viewport, const QString &audioOutput
     const QString cantScan = syscheck::plateScanUnavailableReason();
     out << QStringLiteral("Plate scan: %1").arg(cantScan.isEmpty() ? QStringLiteral("ready") : cantScan);
     std::string why;
-    const bool voice = insv::voiceModesReady(&why);
+    const bool voice = orbiscore::voiceModesReady(&why);
     out << QStringLiteral("Voice noise modes: %1")
                .arg(voice ? QStringLiteral("ready") : QString::fromStdString(why));
     out << QStringLiteral("Models: %1").arg(QString::fromStdString(core::paths::modelDir({})));

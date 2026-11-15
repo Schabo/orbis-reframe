@@ -42,7 +42,7 @@ bool get(FILE* f, T& v)
 }
 
 // A region's centre: its corners' mean, normalised.
-void centreOf(const insv::BlurQuad& q, float out[3])
+void centreOf(const orbiscore::BlurQuad& q, float out[3])
 {
     double c[3] = {0, 0, 0};
     for (int k = 0; k < 4; ++k)
@@ -62,7 +62,7 @@ constexpr double kMatchShare = 0.6;
 
 } // namespace
 
-bool quadContains(const insv::BlurQuad& q, const float d[3])
+bool quadContains(const orbiscore::BlurQuad& q, const float d[3])
 {
     // A convex quad on the sphere: `d` lies on the same side of every edge's
     // great circle, and in the quad's hemisphere.
@@ -93,11 +93,11 @@ const BlurAddition::Frame* addedFrameAt(const BlurAddition& a, int64_t ptsMs, do
 }
 
 void addedQuadsAt(const std::vector<BlurAddition>& adds, int64_t ptsMs, double fps,
-                  std::vector<insv::BlurQuad>& out)
+                  std::vector<orbiscore::BlurQuad>& out)
 {
     for (const BlurAddition& a : adds)
         if (const BlurAddition::Frame* f = addedFrameAt(a, ptsMs, fps)) {
-            insv::BlurQuad q;
+            orbiscore::BlurQuad q;
             std::memcpy(q.corner, f->corner, sizeof q.corner);
             out.push_back(q);
         }
@@ -107,7 +107,7 @@ int addedAt(const std::vector<BlurAddition>& adds, int64_t ptsMs, double fps, co
 {
     for (int i = static_cast<int>(adds.size()) - 1; i >= 0; --i)
         if (const BlurAddition::Frame* f = addedFrameAt(adds[i], ptsMs, fps)) {
-            insv::BlurQuad q;
+            orbiscore::BlurQuad q;
             std::memcpy(q.corner, f->corner, sizeof q.corner);
             if (quadContains(q, dir))
                 return i;
@@ -132,7 +132,7 @@ const ScanFrame* PlateScan::frameAt(int64_t ptsMs) const
     return best && std::abs(static_cast<double>(best->tMs - ptsMs)) <= halfFrameMs(fps) ? best : nullptr;
 }
 
-void PlateScan::quadsAt(int64_t ptsMs, std::vector<insv::BlurQuad>& out, const RemovedSpans* removed) const
+void PlateScan::quadsAt(int64_t ptsMs, std::vector<orbiscore::BlurQuad>& out, const RemovedSpans* removed) const
 {
     if (const ScanFrame* f = frameAt(ptsMs))
         for (const BlurRegion& r : f->regions)

@@ -37,7 +37,7 @@
 // precision, as that cache stores it, so a state solved here and one read
 // back from the cache are the same. Dependency-free (insv lib).
 
-namespace insv {
+namespace orbiscore {
 
 struct SeamWindowTuning {
     double depthHalfMs = 150.0;
@@ -108,4 +108,4 @@ private:
     LensColour m_colour;
 };
 
-} // namespace insv
+} // namespace orbiscore

@@ -7,7 +7,7 @@
 #include <cmath>
 #include <limits>
 
-namespace insv {
+namespace orbiscore {
 
 std::optional<double> AlignGpsBySpeed(const std::vector<SpeedSample>& fixes,
                                       const std::vector<SpeedSample>& reference) {
@@ -208,4 +208,4 @@ std::optional<GpsClockFit> AlignGpsByAcceleration(const GpsTrack& track,
     return fit;
 }
 
-} // namespace insv
+} // namespace orbiscore

@@ -10,7 +10,7 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-namespace insv {
+namespace orbiscore {
 
 bool DecodeStillPicture(const std::vector<uint8_t>& bitstream, const char* codec, int maxSide,
                         Image& out, std::string& err)
@@ -75,4 +75,4 @@ bool DecodeStillPicture(const std::vector<uint8_t>& bitstream, const char* codec
     return ok;
 }
 
-} // namespace insv
+} // namespace orbiscore

@@ -1,7 +1,7 @@
 #include "ClipThumbnail.h"
 
 #include <ClipMetadata.h> // camera::ReadClipThumbnail
-#include <orbis-core/Ycbcr.h>        // insv::YcbcrToRgbRows
+#include <orbis-core/Ycbcr.h>        // orbiscore::YcbcrToRgbRows
 
 #include <algorithm>
 #include <cmath>
@@ -35,7 +35,7 @@ QImage clipThumbnail(const QString &path, const QSize &size)
     const int y0 = ((h - ch) / 2) & ~1;
 
     float m[3][4];
-    insv::YcbcrToRgbRows(thumb->coding, 8, m);
+    orbiscore::YcbcrToRgbRows(thumb->coding, 8, m);
     QImage crop(cw, ch, QImage::Format_RGB32);
     const uint8_t *yPlane = thumb->nv12.data();
     const uint8_t *uvPlane = yPlane + size_t(w) * h;

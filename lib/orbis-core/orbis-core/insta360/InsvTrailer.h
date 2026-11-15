@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include <orbis-core/metadata/Imu.h>   // insv::ImuSample
-#include <orbis-core/Ycbcr.h> // insv::YcbcrCoding
+#include <orbis-core/metadata/Imu.h>   // orbiscore::ImuSample
+#include <orbis-core/Ycbcr.h> // orbiscore::YcbcrCoding
 
-namespace insv {
+namespace orbiscore {
 
 // Insta360's own maker-notes fields from an .insv file's proprietary trailer.
 // `parameters` is the short lens calibration ("number of lenses, 6-axis
@@ -67,7 +67,7 @@ struct InsvMakerNotes {
 // The profile named `name` in `notes`, or nullptr.
 const LensProfile* FindLensProfile(const InsvMakerNotes& notes, const std::string& name);
 
-// The trailer's 0x300 record holds one insv::ImuSample (Imu.h) per IMU
+// The trailer's 0x300 record holds one orbiscore::ImuSample (Imu.h) per IMU
 // reading; its raw timestamp is ExifTool's "Time Code" * 1000, ~1000 apart at
 // the X5's ~1 kHz, so ~microseconds on the same clock as
 // ExposureSample::timestamp and the video-frame timestamps.
@@ -172,7 +172,7 @@ struct InsvTelemetry {
 // .insv/.insp files, to recover lens calibration without a live camera
 // connection. This file-based extraction is what feeds the native stitch
 // pipeline (ReadInsvExtendedCalibrationString ->
-// insv::ParseExtendedCalibrationString -> insv::FisheyeStitcher).
+// orbiscore::ParseExtendedCalibrationString -> orbiscore::FisheyeStitcher).
 //
 // The trailer format (magic-anchored footer, backward-walked TLV records, and
 // — on newer cameras including the X5 — a record-locator directory table in
@@ -189,7 +189,7 @@ struct InsvTelemetry {
 std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path);
 
 // Recovers the *extended* fisheye calibration string (the Mei/MEI model Insta360
-// Studio stitches with -- see insv::LensCalibExt). Unlike the short "p2_" string
+// Studio stitches with -- see orbiscore::LensCalibExt). Unlike the short "p2_" string
 // in ReadInsvMakerNotes()->parameters, this one isn't in the 0x101 maker-notes
 // record; it sits as plaintext ("2_<count>_<27 values/lens>_...") in a
 // length-delimited protobuf field elsewhere in the trailer, past where the
@@ -197,7 +197,7 @@ std::optional<InsvMakerNotes> ReadInsvMakerNotes(const std::string& file_path);
 // richest such run (>= 55 numeric tokens). Returns std::nullopt if the file has
 // no trailer or no extended string is present (older firmware / spliced
 // calibration-only trailers) -- callers fall back to the short "p2_" form.
-// Hand the result to insv::ParseExtendedCalibrationString.
+// Hand the result to orbiscore::ParseExtendedCalibrationString.
 std::optional<std::string> ReadInsvExtendedCalibrationString(const std::string& file_path);
 
 // The camera's own preview picture from the trailer's 0x200 record, in
@@ -380,4 +380,4 @@ std::optional<std::string> ReadInsvHeldName(const std::string& file_path);
 std::optional<std::vector<uint8_t>> ReadMp4UserBox(const std::string& file_path, const char* type,
                                                    size_t max_bytes);
 
-} // namespace insv
+} // namespace orbiscore

@@ -1,7 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-// GPU port of insv::FisheyeStitcher::renderEquirect -- NV12 fisheye inputs
+// GPU port of orbiscore::FisheyeStitcher::renderEquirect -- NV12 fisheye inputs
 // straight from FFmpeg's Vulkan video decoder. Each lens is a 2-plane
 // G8_B8R8_2PLANE_420_UNORM image (P010 for 10-bit) sampled through an
 // immutable VkSamplerYcbcrConversion with the stream's matrix and range, so

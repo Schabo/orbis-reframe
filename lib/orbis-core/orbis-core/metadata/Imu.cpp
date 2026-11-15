@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -97,4 +97,4 @@ ImuTrack JoinImuTracks(std::vector<ImuTrackPart>&& parts)
     return out;
 }
 
-} // namespace insv
+} // namespace orbiscore

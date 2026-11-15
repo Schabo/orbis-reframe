@@ -8,7 +8,7 @@
 #include <limits>
 #include <numbers>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -507,4 +507,4 @@ void HissHumReducer::process(const float* in, float* out, int frames)
     stft.pop(out, frames);
 }
 
-} // namespace insv
+} // namespace orbiscore

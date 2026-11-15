@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -243,4 +243,4 @@ void SolveSeamDepth(const float* data, double baselineM, const SeamDepthTuning& 
         q[b] = 0.25f * (qNew[(b + B - 1) % B] + 2.0f * qNew[b] + qNew[(b + 1) % B]);
 }
 
-} // namespace insv
+} // namespace orbiscore

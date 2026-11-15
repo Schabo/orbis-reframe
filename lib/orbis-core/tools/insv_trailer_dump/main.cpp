@@ -30,7 +30,7 @@
 
 namespace {
 
-void PrintSummary(const insv::InsvTelemetry& t) {
+void PrintSummary(const orbiscore::InsvTelemetry& t) {
     std::cout << "IMU samples:      " << t.imu.size();
     if (t.imu.size() >= 2) {
         const double span = (t.imu.back().timestamp - t.imu.front().timestamp) / 1000.0;
@@ -85,18 +85,18 @@ int main(int argc, char** argv) {
     const bool want_marks = argc > 2 && std::strcmp(argv[2], "--marks") == 0;
 
     if (want_marks) {
-        const auto notes = insv::ReadInsvMakerNotes(path);
-        const double tick = notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0;
-        const auto marks = insv::ReadInsvHighlights(path, tick);
+        const auto notes = orbiscore::ReadInsvMakerNotes(path);
+        const double tick = notes ? orbiscore::FindInsvModel(notes->model).telemetryTickUs : 1.0;
+        const auto marks = orbiscore::ReadInsvHighlights(path, tick);
         if (!marks) {
             std::cerr << "No Insta360 trailer found in " << path << std::endl;
             return 1;
         }
-        const auto record = insv::ReadInsvRecord(path, 0xa00);
+        const auto record = orbiscore::ReadInsvRecord(path, 0xa00);
         if (!record)
             std::printf("# no anchors record (0xa00)\n");
         else
-            for (const insv::InsvAnchorList& l : insv::ParseInsvAnchors(*record)) {
+            for (const orbiscore::InsvAnchorList& l : orbiscore::ParseInsvAnchors(*record)) {
                 std::printf("# list %u: %zu", unsigned(l.type), l.timestamps.size());
                 for (const uint64_t t : l.timestamps)
                     std::printf(" %.3f", static_cast<double>(t) * tick / 1000.0);
@@ -108,9 +108,9 @@ int main(int argc, char** argv) {
     }
 
     if (want_gps) {
-        const auto notes = insv::ReadInsvMakerNotes(path);
-        const auto gps = insv::ReadInsvGps(
-            path, notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0);
+        const auto notes = orbiscore::ReadInsvMakerNotes(path);
+        const auto gps = orbiscore::ReadInsvGps(
+            path, notes ? orbiscore::FindInsvModel(notes->model).telemetryTickUs : 1.0);
         if (!gps) {
             std::cerr << "No Insta360 trailer found in " << path << std::endl;
             return 1;
@@ -131,9 +131,9 @@ int main(int argc, char** argv) {
     }
 
     if (want_quats) {
-        const auto notes = insv::ReadInsvMakerNotes(path);
-        const auto tel = insv::ReadInsvTelemetry(
-            path, 1, notes ? insv::FindInsvModel(notes->model).telemetryTickUs : 1.0);
+        const auto notes = orbiscore::ReadInsvMakerNotes(path);
+        const auto tel = orbiscore::ReadInsvTelemetry(
+            path, 1, notes ? orbiscore::FindInsvModel(notes->model).telemetryTickUs : 1.0);
         if (!tel) {
             std::cerr << "No Insta360 trailer found in " << path << std::endl;
             return 1;
@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
     }
 
     if (want_imu || want_exposure) {
-        const auto tel = insv::ReadInsvTelemetry(path);
+        const auto tel = orbiscore::ReadInsvTelemetry(path);
         if (!tel) {
             std::cerr << "No Insta360 trailer found in " << path << std::endl;
             return 1;
@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    const auto calib = insv::ReadInsvMakerNotes(path);
+    const auto calib = orbiscore::ReadInsvMakerNotes(path);
     if (!calib) {
         std::cerr << "No Insta360 trailer/maker-notes record found in " << path << std::endl;
         return 1;
@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
               << "Parameters: " << calib->parameters << "\n";
     // The stitch's own calibration: the X6 leaves the short string above
     // empty, so this is the only lens calibration such a clip prints.
-    if (const auto ext = insv::ReadInsvExtendedCalibrationString(path))
+    if (const auto ext = orbiscore::ReadInsvExtendedCalibrationString(path))
         std::cout << "Extended:   " << *ext << "\n";
     if (!calib->offset_v3.empty())
         std::cout << "offset_v3:  " << calib->offset_v3 << "\n";
@@ -193,7 +193,8 @@ int main(int argc, char** argv) {
 
     // At the model's clock tick (ms on the ONE X2), so the rate is in Hz.
     const auto tel =
-        insv::ReadInsvTelemetry(path, 0, insv::FindInsvModel(calib->model).telemetryTickUs);
+        orbiscore::ReadInsvTelemetry(path, 0,
+                                     orbiscore::FindInsvModel(calib->model).telemetryTickUs);
     if (tel) PrintSummary(*tel);
     return 0;
 }

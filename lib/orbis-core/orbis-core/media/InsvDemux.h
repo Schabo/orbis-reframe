@@ -32,7 +32,7 @@
 struct AVFrame;
 struct SwsContext;
 
-namespace insv {
+namespace orbiscore {
 
 class InsvDemux {
 public:
@@ -69,7 +69,7 @@ public:
     // ms so seekTo() of it lands on that keyframe and decodes nothing else;
     // `timestampMs` itself if the index is unavailable. For scrubbing.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
-    // See insv::KeyframesAroundMs.
+    // See orbiscore::KeyframesAroundMs.
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
 
     // Returns the next lens-0 / lens-1 fisheye frame pair (RGB24) in play order,
@@ -89,4 +89,4 @@ private:
     int m_swsCoefId = -1;       // last SWS_CS_* matrix id set
 };
 
-} // namespace insv
+} // namespace orbiscore

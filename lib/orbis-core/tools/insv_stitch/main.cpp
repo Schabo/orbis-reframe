@@ -5,9 +5,9 @@
 //               [--lens-profile NAME]   (field-145 profile, e.g. ProtectorA;
 //                                        default bare)
 //
-// Flow: insv::ReadInsvMakerNotes (trailer parser, orbis-core) ->
-// insv::ParseExtendedCalibrationString -> insv::InsvDemux (FFmpeg) x2 lenses ->
-// insv::FisheyeStitcher -> PPM.
+// Flow: orbiscore::ReadInsvMakerNotes (trailer parser, orbis-core) ->
+// orbiscore::ParseExtendedCalibrationString -> orbiscore::InsvDemux (FFmpeg) x2 lenses ->
+// orbiscore::FisheyeStitcher -> PPM.
 
 #include <algorithm>
 #include <cstdio>
@@ -22,7 +22,7 @@
 #include <orbis-core/Image.h>
 #include <orbis-core/media/InsvDemux.h>
 #include <orbis-core/insta360/InsvModels.h>
-#include <orbis-core/insta360/InsvTrailer.h> // insv::ReadInsvMakerNotes
+#include <orbis-core/insta360/InsvTrailer.h> // orbiscore::ReadInsvMakerNotes
 #include <orbis-core/stitch/SeamAlignment.h>
 #include <orbis-core/stitch/SeamCut.h>
 #include <orbis-core/stitch/SeamDepth.h>
@@ -38,7 +38,7 @@ namespace {
     std::exit(1);
 }
 
-bool writePpm(const std::string& path, const insv::Image& im)
+bool writePpm(const std::string& path, const orbiscore::Image& im)
 {
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f)
@@ -148,44 +148,44 @@ int main(int argc, char** argv)
     if (eqWidth <= 0 || eqWidth % 2)
         die("--eq-width must be a positive even number");
 
-    const auto rawCalib = insv::ReadInsvMakerNotes(clip);
+    const auto rawCalib = orbiscore::ReadInsvMakerNotes(clip);
     if (!rawCalib)
         die("no readable calibration trailer in " + clip);
     std::printf("model=%s fw=%s\n", rawCalib->model.c_str(), rawCalib->firmware.c_str());
     std::printf("Parameters: %s\n", rawCalib->parameters.c_str());
 
     // Extended MEI calibration (Insta360 Studio's model).
-    insv::InsvCalibration calib;
-    const auto ext = insv::ReadInsvExtendedCalibrationString(clip);
+    orbiscore::InsvCalibration calib;
+    const auto ext = orbiscore::ReadInsvExtendedCalibrationString(clip);
     // The 56-token string, else the 40-token offset_v3 (the ONE X2's).
-    if (!(ext && insv::ParseExtendedCalibrationString(*ext, calib)) &&
-        !insv::ParseCalibrationV3String(rawCalib->offset_v3, calib))
+    if (!(ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) &&
+        !orbiscore::ParseCalibrationV3String(rawCalib->offset_v3, calib))
         die("no MEI lens calibration in the trailer");
     // fx / fy are in field 27's sensor window; the model's when it's absent.
     const double focalRefW = rawCalib->crop_dst_w > 0 ? rawCalib->crop_dst_w
-                                                      : insv::FindInsvModel(rawCalib->model).focalRefW;
-    for (insv::LensCalibExt& e : calib.lensesExt)
+                                                      : orbiscore::FindInsvModel(rawCalib->model).focalRefW;
+    for (orbiscore::LensCalibExt& e : calib.lensesExt)
         e.focalRefW = focalRefW;
     std::printf("extended MEI calibration: xi=%.3f fx=%.1f (lens 0), focal reference %g%s\n",
                 calib.lensesExt[0].xi, calib.lensesExt[0].fx, focalRefW,
                 rawCalib->crop_dst_w > 0 ? "" : " (not in the file: the model's)");
 
     // How the camera holds its lenses: the model's (InsvModel::mountDeg).
-    const insv::InsvModel& model = insv::FindInsvModel(rawCalib->model);
-    const auto mount = [&model](insv::StitchParams& p) {
+    const orbiscore::InsvModel& model = orbiscore::FindInsvModel(rawCalib->model);
+    const auto mount = [&model](orbiscore::StitchParams& p) {
         p.outYawDeg = model.mountDeg[0];
         p.outPitchDeg = model.mountDeg[1];
         p.outRollDeg = model.mountDeg[2];
     };
 
     // The lens-guard / dive-case profile by its field-145 name; "" = bare.
-    const insv::LensProfile* bareProfile = insv::FindLensProfile(*rawCalib, "bare");
-    const insv::LensProfile* accProfile =
+    const orbiscore::LensProfile* bareProfile = orbiscore::FindLensProfile(*rawCalib, "bare");
+    const orbiscore::LensProfile* accProfile =
         lensProfile.empty() || lensProfile == "bare" ? nullptr
-                                                     : insv::FindLensProfile(*rawCalib, lensProfile);
+                                                     : orbiscore::FindLensProfile(*rawCalib, lensProfile);
     const bool profileMissing = !accProfile && !lensProfile.empty() && lensProfile != "bare";
 
-    insv::InsvDemux demux;
+    orbiscore::InsvDemux demux;
     std::string err;
     if (!(lens1File.empty() ? demux.open(clip, err)
                             : demux.open({{clip, 0}, {lens1File, 0}}, err)))
@@ -195,7 +195,7 @@ int main(int argc, char** argv)
 
     // --seam in the stitch's units: fractions instead of percentages.
     const auto seamCorrection = [&] {
-        insv::SeamCorrection c;
+        orbiscore::SeamCorrection c;
         for (int k = 0; k < 3; ++k)
             c.lens1RotDeg[k] = seamArg[k];
         c.lens1Centre[0] = seamArg[3] * 0.01;
@@ -207,30 +207,30 @@ int main(int argc, char** argv)
     if (seamIn >= 0 || offsetIn >= 0) {
         const bool fit = seamIn >= 0;
         const int64_t in = fit ? seamIn : offsetIn, out = fit ? seamOut : offsetOut;
-        insv::StitchParams params;
-        insv::ApplyLensProfile(params, bareProfile, accProfile);
+        orbiscore::StitchParams params;
+        orbiscore::ApplyLensProfile(params, bareProfile, accProfile);
         mount(params);
-        std::vector<insv::SeamFrame> frames;
+        std::vector<orbiscore::SeamFrame> frames;
         for (int k = 0; k < seamFrames; ++k) {
-            const int64_t t = insv::SnapToKeyframeMs(
+            const int64_t t = orbiscore::SnapToKeyframeMs(
                 in + (out - in) * (2 * k + 1) / (2 * seamFrames), demux.lens(0).fps);
-            insv::Image a, b;
+            orbiscore::Image a, b;
             if (demux.seekTo(t, err) && demux.readNextPair(a, b, nullptr, err))
-                frames.push_back(insv::MakeSeamFrame(a, b));
+                frames.push_back(orbiscore::MakeSeamFrame(a, b));
         }
         const int w = demux.lens(0).width, h = demux.lens(0).height;
         if (fit) {
-            const auto r = insv::EstimateSeamAlignment(calib, params, w, h, frames);
+            const auto r = orbiscore::EstimateSeamAlignment(calib, params, w, h, frames);
             std::printf("seam: %s (%s)\n", r.ok ? "ok" : "FAILED", r.message.c_str());
             return r.ok ? 0 : 1;
         }
         params.seam = seamCorrection();
-        const double o = insv::MeasureSeamOffset(calib, params, w, h, frames);
+        const double o = orbiscore::MeasureSeamOffset(calib, params, w, h, frames);
         std::printf("seam offset: %.3f deg over %zu frames\n", o, frames.size());
         return o >= 0 ? 0 : 1;
     }
 
-    insv::Image lens0, lens1;
+    orbiscore::Image lens0, lens1;
     if (!demux.readFrameAt(0, timeMs, lens0, err))
         die("lens 0: " + err);
     if (!demux.readFrameAt(1, timeMs, lens1, err))
@@ -239,12 +239,13 @@ int main(int argc, char** argv)
     if (lens0.w != lens1.w || lens0.h != lens1.h)
         die("lens streams differ in size");
 
-    insv::FisheyeStitcher stitcher;
-    insv::StitchParams params;
+    orbiscore::FisheyeStitcher stitcher;
+    orbiscore::StitchParams params;
     mount(params);
     // False without a bare profile too (the ONE X2 has no profile table): a
     // failure only when a guard was asked for.
-    if ((!insv::ApplyLensProfile(params, bareProfile, accProfile) && accProfile) || profileMissing)
+    if ((!orbiscore::ApplyLensProfile(params, bareProfile, accProfile) && accProfile) ||
+        profileMissing)
         die("no \"" + lensProfile + "\" lens profile in the trailer");
     params.seam = seamCorrection();
     std::printf("lens profile: %s (fov %.0f deg)\n", lensProfile.empty() ? "bare" : lensProfile.c_str(),
@@ -260,20 +261,21 @@ int main(int argc, char** argv)
         // As stitch::MeasureClipLensColour: the lenses raw at the seam, no
         // depth, frames evenly over the range.
         constexpr int kColourFrames = 24;
-        std::vector<std::unique_ptr<insv::SeamCutStats>> stats;
-        std::vector<const insv::SeamCutStats*> frames;
+        std::vector<std::unique_ptr<orbiscore::SeamCutStats>> stats;
+        std::vector<const orbiscore::SeamCutStats*> frames;
         for (int k = 0; k < kColourFrames; ++k) {
-            const int64_t t = insv::SnapToKeyframeMs(
+            const int64_t t = orbiscore::SnapToKeyframeMs(
                 colourIn + (colourOut - colourIn) * (2 * k + 1) / (2 * kColourFrames),
                 demux.lens(0).fps);
-            insv::Image a, b;
+            orbiscore::Image a, b;
             if (!demux.seekTo(t, err) || !demux.readNextPair(a, b, nullptr, err))
                 continue;
-            stats.push_back(std::make_unique<insv::SeamCutStats>());
-            insv::MeasureSeamCutStats(stitcher, a, b, nullptr, *stats.back());
+            stats.push_back(std::make_unique<orbiscore::SeamCutStats>());
+            orbiscore::MeasureSeamCutStats(stitcher, a, b, nullptr, *stats.back());
             frames.push_back(stats.back().get());
         }
-        const insv::LensColourFit r = insv::FitLensColour(frames, stitcher.gpuParams().bandRad);
+        const orbiscore::LensColourFit r =
+            orbiscore::FitLensColour(frames, stitcher.gpuParams().bandRad);
         std::printf("lens colour: %s (%s)\n", r.ok ? "ok" : "FAILED", r.message.c_str());
         if (!r.ok)
             return 1;
@@ -286,21 +288,21 @@ int main(int argc, char** argv)
         die("stitcher configure failed");
     // One frame, cold, as the app's first frame after a seek: its cut
     // statistics on the table of no frames before it (all far).
-    insv::SeamWindow window;
+    orbiscore::SeamWindow window;
     window.configure(stitcher.baselineM(), stitcher.gpuParams().bandRad);
     window.setLensColour(params.lensColour); // the frame's residual against it
-    insv::SeamState state;
-    insv::SeamDepthFrame depthData{};
+    orbiscore::SeamState state;
+    orbiscore::SeamDepthFrame depthData{};
     if (depthSeam) {
-        auto costs = std::make_unique<insv::SeamCosts>();
-        insv::MeasureSeamCosts(stitcher, lens0, lens1, *costs);
-        float q0[insv::kSeamDepthBins];
+        auto costs = std::make_unique<orbiscore::SeamCosts>();
+        orbiscore::MeasureSeamCosts(stitcher, lens0, lens1, *costs);
+        float q0[orbiscore::kSeamDepthBins];
         window.measureTable(timeMs, q0);
-        auto cutStats = std::make_unique<insv::SeamCutStats>();
-        insv::MeasureSeamCutStats(stitcher, lens0, lens1, q0, *cutStats);
+        auto cutStats = std::make_unique<orbiscore::SeamCutStats>();
+        orbiscore::MeasureSeamCutStats(stitcher, lens0, lens1, q0, *cutStats);
         window.add(timeMs, *costs, *cutStats);
         window.solve(timeMs, state);
-        insv::SeamDepthData(*costs, stitcher.baselineM(), window.tuning.depth, depthData);
+        orbiscore::SeamDepthData(*costs, stitcher.baselineM(), window.tuning.depth, depthData);
         const float* q = state.q;
         std::printf("depth seam: baseline %+.4f m, mean confidence %.2f\n",
                     2 * stitcher.lensCentre(0).x * stitcher.seamAxis().x +
@@ -309,21 +311,21 @@ int main(int argc, char** argv)
                     state.depthConf);
         if (depthDump) {
             int k0 = 0;
-            for (int k = 1; k < insv::kSeamDepthCands; ++k)
-                if (std::fabs(insv::SeamCandQ(k)) < std::fabs(insv::SeamCandQ(k0)))
+            for (int k = 1; k < orbiscore::kSeamDepthCands; ++k)
+                if (std::fabs(orbiscore::SeamCandQ(k)) < std::fabs(orbiscore::SeamCandQ(k0)))
                     k0 = k;
             std::printf(" bin  phi   tex   ncc@0  best(q)        uniq  conf  table q  dist\n");
             double sum0 = 0, sumBest = 0, sumTable = 0;
             int nTex = 0;
-            for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+            for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
                 int kb = 0;
-                for (int k = 1; k < insv::kSeamDepthCands; ++k)
+                for (int k = 1; k < orbiscore::kSeamDepthCands; ++k)
                     if (costs->ncc[b][k] > costs->ncc[b][kb])
                         kb = k;
                 if (costs->texture[b][k0] > 6.0) {
                     int kt = 0; // the candidate nearest the solved table
-                    for (int k = 1; k < insv::kSeamDepthCands; ++k)
-                        if (std::fabs(insv::SeamCandQ(k) - q[b]) < std::fabs(insv::SeamCandQ(kt) - q[b]))
+                    for (int k = 1; k < orbiscore::kSeamDepthCands; ++k)
+                        if (std::fabs(orbiscore::SeamCandQ(k) - q[b]) < std::fabs(orbiscore::SeamCandQ(kt) - q[b]))
                             kt = k;
                     sum0 += costs->ncc[b][k0];
                     sumBest += costs->ncc[b][kb];
@@ -331,8 +333,8 @@ int main(int argc, char** argv)
                     ++nTex;
                 }
                 std::printf("%4d %5.1f %5.1f %6.3f %6.3f(%+5.2f)  %5.2f %5.2f  %+6.2f  %s\n", b,
-                            (b + 0.5) * 360.0 / insv::kSeamDepthBins, costs->texture[b][k0],
-                            costs->ncc[b][k0], costs->ncc[b][kb], insv::SeamCandQ(kb),
+                            (b + 0.5) * 360.0 / orbiscore::kSeamDepthBins, costs->texture[b][k0],
+                            costs->ncc[b][k0], costs->ncc[b][kb], orbiscore::SeamCandQ(kb),
                             depthData.unique[b], depthData.conf[b], q[b],
                             q[b] > 0.05 ? (std::to_string(1.0 / q[b]).substr(0, 4) + " m").c_str()
                                         : "far");
@@ -344,8 +346,9 @@ int main(int argc, char** argv)
         }
     }
 
-    insv::Image eq = stitcher.renderEquirect(lens0, lens1, eqWidth, depthSeam ? state.q : nullptr,
-                                             depthSeam ? &state.blend : nullptr);
+    orbiscore::Image eq = stitcher.renderEquirect(lens0, lens1, eqWidth,
+                                                  depthSeam ? state.q : nullptr,
+                                                  depthSeam ? &state.blend : nullptr);
     std::printf("rendered equirect %dx%d\n", eq.w, eq.h);
 
     if (!writePpm(outPath, eq))

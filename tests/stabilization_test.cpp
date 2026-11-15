@@ -1,4 +1,4 @@
-// Stabilization: insv::StabConfig and the gyro stabilizer on synthetic IMU
+// Stabilization: orbiscore::StabConfig and the gyro stabilizer on synthetic IMU
 // data (lean follow, horizon lock, direction lock, auto-level, readout), and
 // the per-clip setting on the Timeline and in the project file.
 // Standalone (no event loop: same-thread signals fire inside emit); the
@@ -6,8 +6,8 @@
 
 #include "support/ModelTest.h"
 
-#include <orbis-core/insta360/InsvImu.h>    // insv::MakeInsvImuTrack
-#include <orbis-core/insta360/InsvModels.h> // insv::FindInsvModel
+#include <orbis-core/insta360/InsvImu.h>    // orbiscore::MakeInsvImuTrack
+#include <orbis-core/insta360/InsvModels.h> // orbiscore::FindInsvModel
 
 #include <QCoreApplication>
 
@@ -19,8 +19,8 @@
 namespace {
 
 // The synthetic IMU samples below are in the X5's sensor axes.
-const char *x5Axes() { return insv::FindInsvModel("Insta360 X5").imuAxes; }
-insv::StabConfig x5(insv::StabConfig c)
+const char *x5Axes() { return orbiscore::FindInsvModel("Insta360 X5").imuAxes; }
+orbiscore::StabConfig x5(orbiscore::StabConfig c)
 {
     c.gyroAxes = x5Axes();
     return c;
@@ -30,33 +30,34 @@ void testStabConfig()
 {
     // Lean-follow Strength (0..1) <-> shared smoothing window (s), the mapping
     // the Stabilization panel's slider rides on.
-    CHECK(insv::leanWindowFromStrength(0.0f) < insv::leanWindowFromStrength(0.5f));
-    CHECK(insv::leanWindowFromStrength(0.5f) < insv::leanWindowFromStrength(1.0f));
+    CHECK(orbiscore::leanWindowFromStrength(0.0f) < orbiscore::leanWindowFromStrength(0.5f));
+    CHECK(orbiscore::leanWindowFromStrength(0.5f) < orbiscore::leanWindowFromStrength(1.0f));
     // 0.5 reproduces the historical ~0.9 s LeanFollow default.
-    CHECK(std::fabs(insv::leanWindowFromStrength(0.5f) - 0.9f) < 0.05f);
-    CHECK(insv::StabConfig::preset(insv::StabMode::LeanFollow).windowRollSec ==
-          insv::leanWindowFromStrength(0.5f));
+    CHECK(std::fabs(orbiscore::leanWindowFromStrength(0.5f) - 0.9f) < 0.05f);
+    CHECK(orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow).windowRollSec ==
+          orbiscore::leanWindowFromStrength(0.5f));
     // mutually inverse in the interior
     for (float s : {0.1f, 0.35f, 0.6f, 0.9f}) {
-        const float back = insv::leanStrengthFromWindow(insv::leanWindowFromStrength(s));
+        const float back = orbiscore::leanStrengthFromWindow(orbiscore::leanWindowFromStrength(s));
         CHECK(std::fabs(back - s) < 1e-3f);
     }
     // clamp-safe both directions
-    CHECK(insv::leanWindowFromStrength(-1.0f) == insv::leanWindowFromStrength(0.0f));
-    CHECK(insv::leanWindowFromStrength(2.0f) == insv::leanWindowFromStrength(1.0f));
-    CHECK(insv::leanStrengthFromWindow(0.01f) == 0.0f);
-    CHECK(insv::leanStrengthFromWindow(99.0f) == 1.0f);
-    CHECK(std::fabs(insv::leanWindowFromStrength(1.0f) - 5.0f) < 1e-4f); // heavy-smoothing end
+    CHECK(orbiscore::leanWindowFromStrength(-1.0f) == orbiscore::leanWindowFromStrength(0.0f));
+    CHECK(orbiscore::leanWindowFromStrength(2.0f) == orbiscore::leanWindowFromStrength(1.0f));
+    CHECK(orbiscore::leanStrengthFromWindow(0.01f) == 0.0f);
+    CHECK(orbiscore::leanStrengthFromWindow(99.0f) == 1.0f);
+    CHECK(std::fabs(orbiscore::leanWindowFromStrength(1.0f) - 5.0f) < 1e-4f); // heavy-smoothing end
 
     // Horizon-lock Smoothing <-> heading window: 0.3..10 s, 0.5 == the preset.
-    CHECK(std::fabs(insv::horizonWindowFromStrength(0.0f) - 0.3f) < 1e-4f);
-    CHECK(std::fabs(insv::horizonWindowFromStrength(1.0f) - 10.0f) < 1e-3f);
-    CHECK(std::fabs(insv::horizonWindowFromStrength(0.5f) -
-                    insv::StabConfig::preset(insv::StabMode::HorizonLock).windowYawSec) < 1e-3f);
+    CHECK(std::fabs(orbiscore::horizonWindowFromStrength(0.0f) - 0.3f) < 1e-4f);
+    CHECK(std::fabs(orbiscore::horizonWindowFromStrength(1.0f) - 10.0f) < 1e-3f);
+    CHECK(std::fabs(orbiscore::horizonWindowFromStrength(0.5f) -
+                    orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock).windowYawSec) <
+          1e-3f);
     for (float s : {0.0f, 0.2f, 0.5f, 0.8f, 1.0f})
-        CHECK(std::fabs(insv::horizonStrengthFromWindow(insv::horizonWindowFromStrength(s)) - s) <
-              1e-3f);
-    CHECK(insv::horizonWindowFromStrength(0.3f) < insv::horizonWindowFromStrength(0.7f));
+        CHECK(std::fabs(orbiscore::horizonStrengthFromWindow(
+                            orbiscore::horizonWindowFromStrength(s)) - s) < 1e-3f);
+    CHECK(orbiscore::horizonWindowFromStrength(0.3f) < orbiscore::horizonWindowFromStrength(0.7f));
 
     // MakeInsvImuTrack fits the frame clock's rate against the nominal fps
     // from the exposure record. The offset targets the centre sensor row:
@@ -68,9 +69,9 @@ void testStabConfig()
     // exposures, 10 ms from frame 9000 on, 20 ms readout.
     {
         const double fps = 30000.0 / 1001.0;
-        insv::InsvTelemetry tele;
+        orbiscore::InsvTelemetry tele;
         for (int i = 0; i < 700000; ++i) { // ~700 s
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = 1000000 + static_cast<uint64_t>(i) * 1000; // us
             s.accel[1] = 1.0;
             tele.imu.push_back(s);
@@ -78,7 +79,7 @@ void testStabConfig()
         const double rate = 40e-6;
         const uint64_t f24 = 1500000; // 0.5 s after IMU[0]
         for (int n = -5; n < 20000; ++n) {
-            insv::ExposureSample e;
+            orbiscore::ExposureSample e;
             e.timestamp = static_cast<uint64_t>(
                 static_cast<int64_t>(f24) + std::llround(n / fps * (1.0 + rate) * 1e6));
             e.exposure_time = n < 9000 ? 0.004 : 0.010;
@@ -88,12 +89,12 @@ void testStabConfig()
         tele.gyro_timestamp_ms = 1.6;
         tele.rolling_shutter_ms = 20.0;
 
-        const insv::ImuTrack track =
-            insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), fps,
-                                   insv::FindInsvModel("Insta360 X5"));
+        const orbiscore::ImuTrack track =
+            orbiscore::MakeInsvImuTrack(orbiscore::InsvTelemetry(tele), fps,
+                                        orbiscore::FindInsvModel("Insta360 X5"));
         CHECK(track.axisMap == x5Axes());
-        insv::GyroStabilizer g;
-        g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        orbiscore::GyroStabilizer g;
+        g.build(track, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
         CHECK(g.ready());
         CHECK(std::fabs(g.clockRatePpm() - 40.0) < 0.5);
         // 0.5 s pre-roll + 1.6 ms IMU latency - 0.5 ms - half of 4 ms
@@ -108,25 +109,26 @@ void testStabConfig()
             CHECK(std::fabs(g.trackTime(t) - want) < 2e-6);
         }
         // A measured fine-tune adds to the derived offset, and moves every frame.
-        insv::GyroStabilizer gs;
-        gs.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.003);
+        orbiscore::GyroStabilizer gs;
+        gs.build(track, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow), 0.003);
         CHECK(std::fabs(gs.effectiveTimeOffsetSec() - 0.5021f) < 1e-5f);
         CHECK(std::fabs(gs.trackTime(15000 / fps) - g.trackTime(15000 / fps) - 0.003) < 1e-6);
 
         // The ONE X2: one lag, no frame times.
-        const insv::ImuTrack x2 = insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), fps,
-                                                         insv::FindInsvModel("Insta360 ONE X2"));
+        const orbiscore::ImuTrack x2 =
+            orbiscore::MakeInsvImuTrack(orbiscore::InsvTelemetry(tele), fps,
+                                        orbiscore::FindInsvModel("Insta360 ONE X2"));
         CHECK(x2.frameTimes.empty() && std::fabs(x2.offsetSec - 0.4993) < 1e-9);
 
         // Explicit override: offset kept as-is, clock rate still fitted.
-        insv::StabConfig ov = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+        orbiscore::StabConfig ov = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
         ov.timeOffsetSec = 0.25f;
         g.build(track, ov);
         CHECK(g.effectiveTimeOffsetSec() == 0.25f);
         CHECK(std::fabs(g.clockRatePpm() - 40.0) < 0.5);
 
         // The plain IMU overload knows nothing about frames: nominal time.
-        g.build(track.samples, x5(insv::StabConfig::preset(insv::StabMode::LeanFollow)));
+        g.build(track.samples, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow)));
         CHECK(g.clockRatePpm() == 0.0);
     }
 
@@ -134,15 +136,15 @@ void testStabConfig()
     // video's. A steady turn of w rad/s about raw gyro z, 40 s of IMU; the
     // video turns w * captureScale rad per second of it.
     {
-        auto turned = [](const insv::GyroStabilizer& g, double t0, double t1) {
+        auto turned = [](const orbiscore::GyroStabilizer& g, double t0, double t1) {
             const auto a = g.rawOrientation(t0), b = g.rawOrientation(t1);
             const double dot = std::fabs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
             return 2.0 * std::acos(std::min(1.0, dot));
         };
         auto telemetry = [](double w) {
-            insv::InsvTelemetry tele;
+            orbiscore::InsvTelemetry tele;
             for (int i = 0; i < 40000; ++i) {
-                insv::ImuSample s;
+                orbiscore::ImuSample s;
                 s.timestamp = 1000000 + static_cast<uint64_t>(i) * 1000; // us, 1 kHz
                 s.gyro[2] = w;
                 tele.imu.push_back(s);
@@ -150,23 +152,23 @@ void testStabConfig()
             tele.first_frame_timestamp = 1500000;
             return tele;
         };
-        const insv::InsvModel& a1 = insv::FindInsvModel("Antigravity A1");
+        const orbiscore::InsvModel& a1 = orbiscore::FindInsvModel("Antigravity A1");
 
         // 4K Slow Motion: 100 fps stored at 29.97, one exposure entry per
         // stored frame, 10 ms apart, on a +40 ppm clock.
-        insv::InsvTelemetry slow = telemetry(0.5);
+        orbiscore::InsvTelemetry slow = telemetry(0.5);
         slow.capture_fps = 100.0;
         slow.stored_fps = 29.97;
         for (int n = 0; n < 3000; ++n) {
-            insv::ExposureSample e;
+            orbiscore::ExposureSample e;
             e.timestamp = 1500000 + static_cast<uint64_t>(std::llround(n * 10000.0 * (1.0 + 40e-6)));
             slow.exposure.push_back(e);
         }
-        const insv::ImuTrack st = insv::MakeInsvImuTrack(std::move(slow), 29.97, a1);
+        const orbiscore::ImuTrack st = orbiscore::MakeInsvImuTrack(std::move(slow), 29.97, a1);
         CHECK(std::fabs(st.captureScale - 0.2997) < 1e-12);
         CHECK(std::fabs(st.clockRate - 40e-6) < 1e-6); // fitted against the scale, kept
-        insv::GyroStabilizer g;
-        g.build(st, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        orbiscore::GyroStabilizer g;
+        g.build(st, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
         CHECK(g.ready() && std::fabs(g.captureScale() - 0.2997) < 1e-12);
         CHECK(std::fabs(turned(g, 2.0, 12.0) - 0.5 * 10.0 * 0.2997 * (1.0 + 40e-6)) < 1e-3);
         for (double t : {0.0, 3.0, 50.0})
@@ -180,22 +182,23 @@ void testStabConfig()
 
         // Timelapse, a frame every 2 s at 29.97 by record 0x600; the exposure
         // record runs at the sensor rate and isn't fitted.
-        insv::InsvTelemetry lapse = telemetry(0.01);
+        orbiscore::InsvTelemetry lapse = telemetry(0.01);
         lapse.timelapse_interval_ms = 2000.0;
         for (int n = 0; n < 19; ++n)
             lapse.frame_timestamps.push_back(1500000 + static_cast<uint64_t>(n) * 2002000);
         for (int n = 0; n < 1000; ++n) {
-            insv::ExposureSample e;
+            orbiscore::ExposureSample e;
             e.timestamp = 1500000 + static_cast<uint64_t>(std::llround(n * 33366.7));
             lapse.exposure.push_back(e);
         }
-        const insv::ImuTrack lt = insv::MakeInsvImuTrack(std::move(lapse), 30000.0 / 1001.0, a1);
+        const orbiscore::ImuTrack lt =
+            orbiscore::MakeInsvImuTrack(std::move(lapse), 30000.0 / 1001.0, a1);
         CHECK(std::fabs(lt.captureScale - 2.002 * 30000.0 / 1001.0) < 1e-9);
         CHECK(lt.clockRate == 0.0);
         // A stabilizer of its own: its track cache knows a track by its
         // samples' count and ends, which this one shares with the one above.
-        insv::GyroStabilizer gl;
-        gl.build(lt, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        orbiscore::GyroStabilizer gl;
+        gl.build(lt, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
         CHECK(gl.ready());
         CHECK(std::fabs(turned(gl, 0.1, 0.5) - 0.01 * 0.4 * lt.captureScale) < 1e-3);
     }
@@ -204,15 +207,15 @@ void testStabConfig()
     // stitch RS correction. A constant 1 rad/s about raw gyro z lands on body X
     // under the X5's "z,-x,-y" map (no accel -> pure gyro integration).
     {
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 3000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000; // us, 1 kHz
             s.gyro[2] = 1.0;
             imu.push_back(s);
         }
-        insv::GyroStabilizer g;
-        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::LeanFollow)));
+        orbiscore::GyroStabilizer g;
+        g.build(imu, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow)));
         CHECK(g.ready());
         float r[3];
         g.bodyRotation(1.5, 0.01, r); // 10 ms at 1 rad/s
@@ -227,9 +230,9 @@ void testStabConfig()
     // default) only reads the clip's mean accel, a constant ~identity here;
     // with it off the correction is exactly identity.
     {
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 3000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000; // us, 1 kHz
             const double n = 2.0 * std::numbers::pi * 11.0 * i * 1e-3;
             s.accel[0] = -1.0;
@@ -238,9 +241,10 @@ void testStabConfig()
             imu.push_back(s);
         }
         for (const bool autoLevel : {true, false}) {
-            insv::StabConfig lc = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+            orbiscore::StabConfig lc =
+                orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
             lc.autoLevel = autoLevel;
-            insv::GyroStabilizer g;
+            orbiscore::GyroStabilizer g;
             g.build(imu, x5(lc));
             CHECK(g.ready());
             float m0[3][3];
@@ -267,9 +271,9 @@ void testStabConfig()
     {
         const double a = 20.0 * std::numbers::pi / 180.0;
         const double b[3] = {std::sin(a), std::cos(a), 0.0}; // body up
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 3000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             // the X5's map "z,-x,-y": body X <- z, Y <- -x, Z <- -y
             s.accel[2] = b[0];
@@ -277,8 +281,8 @@ void testStabConfig()
             s.accel[1] = -b[2];
             imu.push_back(s);
         }
-        insv::GyroStabilizer g;
-        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        orbiscore::GyroStabilizer g;
+        g.build(imu, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock)));
         CHECK(g.ready());
         float m[3][3];
         g.correctionMatrix(1.5, m);
@@ -296,9 +300,9 @@ void testStabConfig()
     {
         const double a = 20.0 * std::numbers::pi / 180.0;
         const double b[3] = {std::sin(a), std::cos(a), 0.0}; // body up
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 20000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             s.accel[2] = b[0]; // the X5's map "z,-x,-y"
             s.accel[0] = -b[1];
@@ -307,8 +311,8 @@ void testStabConfig()
             s.gyro[2] = 0.004;  // body X: pitches it
             imu.push_back(s);
         }
-        insv::GyroStabilizer g;
-        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        orbiscore::GyroStabilizer g;
+        g.build(imu, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock)));
         CHECK(g.ready());
         double worst = 0.0;
         for (double t : {0.5, 5.0, 10.0, 19.5}) {
@@ -326,7 +330,7 @@ void testStabConfig()
     // they leave 0-3 % of ONE X2 walks to level on, and the level drifts with
     // the gyro bias by up to 21 deg). The track's up, in body
     // axes (the X5's map "z,-x,-y" as above), at time t.
-    auto trackUp = [](const insv::GyroStabilizer& g, double t) {
+    auto trackUp = [](const orbiscore::GyroStabilizer& g, double t) {
         const auto q = g.rawOrientation(t);
         const double w = q[0], x = q[1], y = q[2], z = q[3];
         return std::array<double, 3>{2 * (x * y + w * z), 1 - 2 * (x * x + z * z),
@@ -342,11 +346,11 @@ void testStabConfig()
     {
         const double a = 20.0 * std::numbers::pi / 180.0;
         const double b[3] = {std::sin(a), std::cos(a), 0.0}; // body up
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 60000; ++i) {
             const double t = i * 1e-3;
             const double yaw = 0.15 * std::sin(2.0 * std::numbers::pi * 0.3 * t); // rad/s
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             s.accel[2] = b[0];
             s.accel[0] = -b[1];
@@ -356,8 +360,8 @@ void testStabConfig()
             s.gyro[1] = -(yaw * b[2] + 0.006); // body Z
             imu.push_back(s);
         }
-        insv::GyroStabilizer g;
-        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        orbiscore::GyroStabilizer g;
+        g.build(imu, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock)));
         CHECK(g.ready());
         double worst = 0.0;
         for (double t = 0.5; t < 59.5; t += 0.5)
@@ -369,7 +373,7 @@ void testStabConfig()
     // drive. The bend's specific force mustn't lean the level.
     {
         const double b[3] = {0.0, 1.0, 0.0};
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 60000; ++i) {
             const double t = i * 1e-3;
             // In and out over 1 s each (raised cosine).
@@ -381,15 +385,15 @@ void testStabConfig()
             else if (t >= 34.0 && t < 35.0)
                 f = 0.5 + 0.5 * std::cos(std::numbers::pi * (t - 34.0));
             const double yaw = 0.15 * f;
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             s.accel[2] = 15.0 * yaw / 9.80665; // body X: towards the bend's centre
             s.accel[0] = -1.0;
             s.gyro[0] = -yaw;
             imu.push_back(s);
         }
-        insv::GyroStabilizer g;
-        g.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        orbiscore::GyroStabilizer g;
+        g.build(imu, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock)));
         CHECK(g.ready());
         double worst = 0.0;
         for (double t = 0.5; t < 59.5; t += 0.5)
@@ -402,18 +406,18 @@ void testStabConfig()
     {
         const double a = 20.0 * std::numbers::pi / 180.0;
         const double b[3] = {std::sin(a), std::cos(a), 0.0}; // body up
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 3000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             s.accel[2] = b[0];
             s.accel[0] = -b[1];
             s.accel[1] = -b[2];
             imu.push_back(s);
         }
-        insv::StabConfig lc = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+        orbiscore::StabConfig lc = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
         CHECK(lc.autoLevel);
-        insv::GyroStabilizer g;
+        orbiscore::GyroStabilizer g;
         g.build(imu, x5(lc));
         float m[3][3];
         g.correctionMatrix(1.5, m);
@@ -441,10 +445,10 @@ void testStabConfig()
             out[0] = -b[1];
             out[1] = -b[2];
         };
-        insv::ImuTrack track;
+        orbiscore::ImuTrack track;
         track.axisMap = x5Axes();
         for (int i = 0; i < 20000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             toX5(ba, s.accel);
             for (double &c : s.accel)
@@ -453,16 +457,16 @@ void testStabConfig()
             s.gyro[2] = 0.004;
             track.samples.push_back(s);
             if (i % 20 == 0) { // 50 Hz
-                insv::OrientationSample u;
+                orbiscore::OrientationSample u;
                 u.timestamp = s.timestamp;
                 toX5(bt, u.up);
                 track.orientation.push_back(u);
             }
         }
-        insv::ImuTrack accelOnly = track;
+        orbiscore::ImuTrack accelOnly = track;
         accelOnly.orientation.clear();
         // Worst angle between the view's up and `b` over the clip.
-        auto worstDeg = [](const insv::GyroStabilizer &g, const double b[3]) {
+        auto worstDeg = [](const orbiscore::GyroStabilizer &g, const double b[3]) {
             double worst = 0.0;
             for (double t : {0.5, 5.0, 10.0, 19.5}) {
                 float m[3][3];
@@ -472,9 +476,9 @@ void testStabConfig()
             }
             return worst;
         };
-        for (const insv::StabMode mode : {insv::StabMode::HorizonLock, insv::StabMode::LeanFollow}) {
-            const insv::StabConfig c = insv::StabConfig::preset(mode);
-            insv::GyroStabilizer g;
+        for (const orbiscore::StabMode mode : {orbiscore::StabMode::HorizonLock, orbiscore::StabMode::LeanFollow}) {
+            const orbiscore::StabConfig c = orbiscore::StabConfig::preset(mode);
+            orbiscore::GyroStabilizer g;
             g.build(track, c);
             CHECK(g.ready() && worstDeg(g, bt) < 0.2);
             // The same stabilizer again, without the reference: its cached
@@ -488,23 +492,25 @@ void testStabConfig()
 
     // Field 69 missing: the model row's mount stands in for it.
     {
-        insv::InsvTelemetry tele;
+        orbiscore::InsvTelemetry tele;
         for (int i = 0; i < 4; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = 1000000 + static_cast<uint64_t>(i) * 1000;
             tele.imu.push_back(s);
-            insv::AttitudeSample at;
+            orbiscore::AttitudeSample at;
             at.timestamp = s.timestamp;
             at.q[0] = std::cos(0.1 * i), at.q[2] = std::sin(0.1 * i);
             tele.attitude.push_back(at);
         }
-        const insv::InsvModel &a1 = insv::FindInsvModel("Antigravity A1");
-        insv::InsvTelemetry withMount = tele;
+        const orbiscore::InsvModel &a1 = orbiscore::FindInsvModel("Antigravity A1");
+        orbiscore::InsvTelemetry withMount = tele;
         withMount.has_imu_mount = true;
         for (int k = 0; k < 4; ++k)
             withMount.imu_mount[k] = a1.imuMount[k];
-        const insv::ImuTrack from69 = insv::MakeInsvImuTrack(std::move(withMount), 30.0, a1);
-        const insv::ImuTrack fallback = insv::MakeInsvImuTrack(insv::InsvTelemetry(tele), 30.0, a1);
+        const orbiscore::ImuTrack from69 =
+            orbiscore::MakeInsvImuTrack(std::move(withMount), 30.0, a1);
+        const orbiscore::ImuTrack fallback =
+            orbiscore::MakeInsvImuTrack(orbiscore::InsvTelemetry(tele), 30.0, a1);
         CHECK(from69.orientation.size() == 4 && fallback.orientation.size() == 4);
         for (size_t i = 0; i < std::min(from69.orientation.size(), fallback.orientation.size()); ++i)
             for (int k = 0; k < 3; ++k)
@@ -512,7 +518,8 @@ void testStabConfig()
                       from69.orientation[i].north[k] == fallback.orientation[i].north[k]);
         // The cameras record no attitude.
         tele.attitude.clear();
-        CHECK(insv::MakeInsvImuTrack(std::move(tele), 30.0, insv::FindInsvModel("Insta360 X5"))
+        CHECK(orbiscore::MakeInsvImuTrack(std::move(tele), 30.0,
+                                          orbiscore::FindInsvModel("Insta360 X5"))
                   .orientation.empty());
     }
 
@@ -521,9 +528,9 @@ void testStabConfig()
     // keeps the heading the camera had at directionSec, level, throughout.
     {
         constexpr double kPi = std::numbers::pi;
-        std::vector<insv::ImuSample> imu;
+        std::vector<orbiscore::ImuSample> imu;
         for (int i = 0; i < 8000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             s.accel[0] = -1.0; // the X5's map "z,-x,-y": body up (+Y) <- -x
             const double t = i / 1000.0;
@@ -532,7 +539,7 @@ void testStabConfig()
             imu.push_back(s);
         }
         // The view's forward in the world, as a heading (deg), and its tilt.
-        auto view = [](const insv::GyroStabilizer &g, double t, double *tiltDeg = nullptr) {
+        auto view = [](const orbiscore::GyroStabilizer &g, double t, double *tiltDeg = nullptr) {
             const std::array<double, 4> q = g.rawOrientation(t);
             const double w = q[0], x = q[1], y = q[2], z = q[3];
             const double R[3][3] = {{1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)},
@@ -550,14 +557,15 @@ void testStabConfig()
                 *tiltDeg = std::acos(std::min(1.0, u[1])) * 180.0 / kPi;
             return std::atan2(-f[0], -f[2]) * 180.0 / kPi;
         };
-        insv::GyroStabilizer hl;
-        hl.build(imu, x5(insv::StabConfig::preset(insv::StabMode::HorizonLock)));
+        orbiscore::GyroStabilizer hl;
+        hl.build(imu, x5(orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock)));
         CHECK(std::fabs(std::fabs(view(hl, 7.0) - view(hl, 1.0)) - 90.0) < 1.0);
 
-        insv::StabConfig dc = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        orbiscore::StabConfig dc =
+            orbiscore::StabConfig::preset(orbiscore::StabMode::DirectionLock);
         CHECK(dc.lockDirection && dc.horizonLockAmount == 1.0f);
         dc.directionSec = 1.0f;
-        insv::GyroStabilizer dl;
+        orbiscore::GyroStabilizer dl;
         dl.build(imu, x5(dc));
         CHECK(dl.ready());
         const double held = view(dl, 1.0);
@@ -583,10 +591,10 @@ void testStabConfig()
     {
         constexpr double kPi = std::numbers::pi;
         constexpr double kBias = 0.3 * kPi / 180.0;
-        insv::ImuTrack track;
+        orbiscore::ImuTrack track;
         track.axisMap = x5Axes();
         for (int i = 0; i < 30000; ++i) {
-            insv::ImuSample s;
+            orbiscore::ImuSample s;
             s.timestamp = static_cast<uint64_t>(i) * 1000;
             s.accel[0] = -1.0;
             const double t = i / 1000.0;
@@ -597,7 +605,7 @@ void testStabConfig()
                 // start, is (sin th, 0, -cos th) in the body, raw (0, cos th,
                 // sin th) through "z,-x,-y".
                 const double th = std::clamp((t - 2.0) * kPi / 6.0, 0.0, kPi / 2.0);
-                insv::OrientationSample o;
+                orbiscore::OrientationSample o;
                 o.timestamp = s.timestamp;
                 o.up[0] = -1.0;
                 o.north[1] = std::cos(th);
@@ -607,7 +615,7 @@ void testStabConfig()
         }
         // The view's heading in the true world: the camera body has turned
         // by th about +Y, so the view's forward is Ry(th) * C * (0, 0, -1).
-        auto heading = [&](const insv::GyroStabilizer &g, double t) {
+        auto heading = [&](const orbiscore::GyroStabilizer &g, double t) {
             const double th = std::clamp((t - 2.0) * kPi / 6.0, 0.0, kPi / 2.0);
             float m[3][3];
             g.correctionMatrix(t, m);
@@ -616,10 +624,11 @@ void testStabConfig()
             const double fz = -std::sin(th) * bx + std::cos(th) * bz;
             return std::atan2(-fx, -fz) * 180.0 / kPi;
         };
-        auto worstTurn = [&](const insv::ImuTrack &tr) {
-            insv::StabConfig dc = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+        auto worstTurn = [&](const orbiscore::ImuTrack &tr) {
+            orbiscore::StabConfig dc =
+                orbiscore::StabConfig::preset(orbiscore::StabMode::DirectionLock);
             dc.directionSec = 1.0f;
-            insv::GyroStabilizer dl;
+            orbiscore::GyroStabilizer dl;
             dl.build(tr, x5(dc));
             double worst = 0.0;
             for (double t = 0.5; t < 29.5; t += 0.5) {
@@ -630,8 +639,8 @@ void testStabConfig()
             return worst;
         };
         CHECK(worstTurn(track) < 0.1);
-        insv::ImuTrack upOnly = track; // a source that knows only up: the gyro's drift
-        for (insv::OrientationSample &o : upOnly.orientation)
+        orbiscore::ImuTrack upOnly = track; // a source that knows only up: the gyro's drift
+        for (orbiscore::OrientationSample &o : upOnly.orientation)
             o.north[1] = o.north[2] = 0.0;
         CHECK(worstTurn(upOnly) > 5.0);
     }
@@ -641,9 +650,9 @@ void testStabConfig()
     QTemporaryDir tmp;
     CHECK(tmp.isValid());
     const QString projFile = tmp.path() + "/lean.orp";
-    insv::StabConfig lean = insv::StabConfig::preset(insv::StabMode::LeanFollow);
+    orbiscore::StabConfig lean = orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
     lean.windowYawSec = lean.windowPitchSec = lean.windowRollSec =
-        insv::leanWindowFromStrength(0.8f);
+        orbiscore::leanWindowFromStrength(0.8f);
     {
         Project p;
         const int id = p.timeline()->appendClip("a.insv", 1000, 30.0);
@@ -658,11 +667,11 @@ void testStabConfig()
         QString err;
         CHECK(p.load(projFile, &err));
         CHECK(p.timeline()->count() == 1);
-        const insv::StabConfig &st = p.timeline()->clipAt(0).stabilization;
-        CHECK(st.mode == insv::StabMode::LeanFollow);
-        CHECK(std::fabs(st.windowRollSec - insv::leanWindowFromStrength(0.8f)) < 1e-4f);
+        const orbiscore::StabConfig &st = p.timeline()->clipAt(0).stabilization;
+        CHECK(st.mode == orbiscore::StabMode::LeanFollow);
+        CHECK(std::fabs(st.windowRollSec - orbiscore::leanWindowFromStrength(0.8f)) < 1e-4f);
         // the slider position the panel would show on load
-        CHECK(std::fabs(insv::leanStrengthFromWindow(st.windowRollSec) - 0.8f) < 1e-3f);
+        CHECK(std::fabs(orbiscore::leanStrengthFromWindow(st.windowRollSec) - 0.8f) < 1e-3f);
     }
 
     // Direction lock round-trips with its direction, as version 15; a
@@ -674,7 +683,7 @@ void testStabConfig()
                    : -1;
     };
     CHECK(versionOf(projFile) < 15);
-    insv::StabConfig dir = insv::StabConfig::preset(insv::StabMode::DirectionLock);
+    orbiscore::StabConfig dir = orbiscore::StabConfig::preset(orbiscore::StabMode::DirectionLock);
     dir.directionSec = 12.5f;
     dir.horizonLockAmount = 0.6f;
     const QString dirFile = tmp.path() + "/direction.orp";
@@ -783,12 +792,12 @@ double frameTime(int n)
 }
 // `frames` frames' worth of record 0x1800 and 0x600, one run more than
 // frames in 0x600 as the X5 writes, plus a stray run 300 s before the first.
-insv::InsvTelemetry recorded(int frames)
+orbiscore::InsvTelemetry recorded(int frames)
 {
     // The record's axes: world x north, z up; body "y,z,x" to the sphere's.
     const M3 toQWorld = {{{0, 0, -1}, {-1, 0, 0}, {0, 1, 0}}};
     const M3 toQBody = {{{0, 0, 1}, {1, 0, 0}, {0, 1, 0}}};
-    insv::InsvTelemetry tele;
+    orbiscore::InsvTelemetry tele;
     tele.first_frame_timestamp = kStartUs;
     tele.rolling_shutter_ms = 21.244;
     tele.timelapse_interval_ms = 2000.0;
@@ -797,7 +806,7 @@ insv::InsvTelemetry recorded(int frames)
     auto run = [&](double centre) {
         for (int i = -5; i <= 5; ++i) {
             const double t = centre + i * kStepSec;
-            insv::TimelapseQuat e;
+            orbiscore::TimelapseQuat e;
             e.timestamp = kStartUs + uint64_t(std::llround(t * 1e6));
             const auto q = quatOf(mul(mul(toQBody, transposed(truth(t))), transposed(toQWorld)));
             std::copy(q.begin(), q.end(), e.q);
@@ -810,9 +819,9 @@ insv::InsvTelemetry recorded(int frames)
     return tele;
 }
 // The same motion as the X5's gyro and accelerometer record it, 1 kHz.
-insv::InsvTelemetry gyro(int frames)
+orbiscore::InsvTelemetry gyro(int frames)
 {
-    insv::InsvTelemetry tele = recorded(frames);
+    orbiscore::InsvTelemetry tele = recorded(frames);
     tele.timelapse_quats.clear();
     const double h = 1e-4;
     for (double t = -1.0; t < frameTime(frames) + 1.0; t += 0.001) {
@@ -822,7 +831,7 @@ insv::InsvTelemetry gyro(int frames)
                              (d[1][0] - d[0][1]) / (4 * h)};
         const double up[3] = {b[1][0], b[1][1], b[1][2]};
         // Sphere -> the X5's sensor ("z,-x,-y"): raw x = -Y, y = -Z, z = X.
-        insv::ImuSample s;
+        orbiscore::ImuSample s;
         s.timestamp = kStartUs + uint64_t(std::llround(t * 1e6));
         s.gyro[0] = -w[1], s.gyro[1] = -w[2], s.gyro[2] = w[0];
         s.accel[0] = -up[1], s.accel[1] = -up[2], s.accel[2] = up[0];
@@ -837,8 +846,8 @@ void testTimelapseOrientation()
     using namespace lapse;
     const double fps = 30000.0 / 1001.0;
     constexpr int kFrames = 120; // 4 min: frames more than a smoothing window from either end
-    const insv::InsvModel &x5 = insv::FindInsvModel("Insta360 X5");
-    const insv::ImuTrack track = insv::MakeInsvImuTrack(recorded(kFrames), fps, x5);
+    const orbiscore::InsvModel &x5 = orbiscore::FindInsvModel("Insta360 X5");
+    const orbiscore::ImuTrack track = orbiscore::MakeInsvImuTrack(recorded(kFrames), fps, x5);
     // The stray run is left out; each frame keeps its 11 entries, timed by
     // its centre one.
     CHECK(track.samples.empty() && track.axisMap == x5.timelapseQuatAxes);
@@ -849,8 +858,8 @@ void testTimelapseOrientation()
         CHECK(std::fabs(track.frameTimes[size_t(n)].videoSec - n / fps) < 1e-12 &&
               std::fabs(track.frameTimes[size_t(n)].trackSec - frameTime(n) - 5 * kStepSec) < 2e-6);
 
-    insv::GyroStabilizer g;
-    g.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    orbiscore::GyroStabilizer g;
+    g.build(track, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
     CHECK(g.ready());
     // Each frame's orientation is the camera's then, through the frames' own
     // times: frame 2 sits 4.1 s in, not the 2 x 2.025 s an even spacing gives.
@@ -873,8 +882,8 @@ void testTimelapseOrientation()
         CHECK(std::fabs(g.videoTime(g.trackTime(t)) - t) < 1e-9);
     CHECK(std::fabs(g.trackTime(2 / fps) - g.trackTime(0.0) - 4.1) < 1e-6);
     // A sync fine-tune shifts every frame.
-    insv::GyroStabilizer gs;
-    gs.build(track, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.002);
+    orbiscore::GyroStabilizer gs;
+    gs.build(track, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow), 0.002);
     CHECK(std::fabs(gs.trackTime(3 / fps) - g.trackTime(3 / fps) - 0.002) < 1e-6);
 
     // Lean follow gives what the gyro's integral of the same motion gives,
@@ -882,10 +891,10 @@ void testTimelapseOrientation()
     // side, is cut off there, and the gyro runs on past the frames). What's
     // left, 0.26 deg, is the window read at the frames -- unevenly spaced --
     // against the gyro's even samples.
-    const insv::ImuTrack gt = insv::MakeInsvImuTrack(gyro(kFrames), fps, x5);
+    const orbiscore::ImuTrack gt = orbiscore::MakeInsvImuTrack(gyro(kFrames), fps, x5);
     CHECK(gt.frameTimes.size() == size_t(kFrames) + 1);
-    insv::GyroStabilizer gg;
-    gg.build(gt, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    orbiscore::GyroStabilizer gg;
+    gg.build(gt, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
     double apart = 0.0;
     for (int n = 35; n < kFrames - 35; ++n) {
         float a[3][3], b[3][3];
@@ -898,9 +907,10 @@ void testTimelapseOrientation()
 
     // Horizon lock levels the view by the recorded up; Direction lock holds
     // one heading.
-    for (insv::StabMode mode : {insv::StabMode::HorizonLock, insv::StabMode::DirectionLock}) {
-        insv::GyroStabilizer h;
-        h.build(track, insv::StabConfig::preset(mode));
+    for (orbiscore::StabMode mode : {orbiscore::StabMode::HorizonLock,
+                                     orbiscore::StabMode::DirectionLock}) {
+        orbiscore::GyroStabilizer h;
+        h.build(track, orbiscore::StabConfig::preset(mode));
         double tilt = 0.0, minYaw = 1e9, maxYaw = -1e9;
         for (int n = 0; n < kFrames; ++n) {
             float c[3][3];
@@ -912,34 +922,36 @@ void testTimelapseOrientation()
             maxYaw = std::max(maxYaw, yaw);
         }
         CHECK(tilt < 1e-4);
-        if (mode == insv::StabMode::DirectionLock)
+        if (mode == orbiscore::StabMode::DirectionLock)
             CHECK(maxYaw - minYaw < 1e-4);
         else
             CHECK(maxYaw - minYaw > 1.0); // it follows the 4.9 rad turn
     }
 
     // No map for the record's axes (a model not measured): no track.
-    insv::InsvModel unknown = x5;
+    orbiscore::InsvModel unknown = x5;
     unknown.timelapseQuatAxes = nullptr;
-    const insv::ImuTrack none = insv::MakeInsvImuTrack(recorded(kFrames), fps, unknown);
+    const orbiscore::ImuTrack none = orbiscore::MakeInsvImuTrack(recorded(kFrames), fps, unknown);
     CHECK(none.orientation.empty() && none.samples.empty());
 }
 
 void testPerClipStabilization()
 {
-    const insv::StabConfig lean = insv::StabConfig::preset(insv::StabMode::LeanFollow);
-    const insv::StabConfig level = insv::StabConfig::preset(insv::StabMode::HorizonLock);
+    const orbiscore::StabConfig lean =
+        orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow);
+    const orbiscore::StabConfig level =
+        orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock);
 
     // A new clip takes the setting of the clip before it (after it when it
     // goes first); the first one on an empty timeline starts Off.
     {
         Timeline tl;
         int changed = 0;
-        QObject::connect(&tl, &Timeline::clipStabilizationChanged, [&](int, insv::StabConfig) {
+        QObject::connect(&tl, &Timeline::clipStabilizationChanged, [&](int, orbiscore::StabConfig) {
             ++changed;
         });
         const int a = tl.appendClip("a.insv", 10000, 30.0);
-        CHECK(tl.clipById(a)->stabilization == insv::StabConfig{});
+        CHECK(tl.clipById(a)->stabilization == orbiscore::StabConfig{});
         tl.setClipStabilization(a, lean);
         CHECK(changed == 1);
         tl.setClipStabilization(a, lean); // unchanged: no signal
@@ -967,7 +979,7 @@ void testPerClipStabilization()
         p.timeline()->setClipStabilization(id, level);
         CHECK(p.modified());
         p.undo();
-        CHECK(p.timeline()->clipAt(0).stabilization == insv::StabConfig{});
+        CHECK(p.timeline()->clipAt(0).stabilization == orbiscore::StabConfig{});
         p.redo();
         CHECK(p.timeline()->clipAt(0).stabilization == level);
     }
@@ -994,7 +1006,7 @@ void testPerClipStabilization()
         Project q;
         CHECK(q.load(file, &err));
         CHECK(q.timeline()->clipAt(0).stabilization == level);
-        CHECK(q.timeline()->clipAt(1).stabilization == insv::StabConfig{});
+        CHECK(q.timeline()->clipAt(1).stabilization == orbiscore::StabConfig{});
     }
 
     // A version 8 (0.1.0) project: its project-wide setting goes onto every
@@ -1015,8 +1027,8 @@ void testPerClipStabilization()
         CHECK(!p.modified());
         CHECK(p.timeline()->count() == 2);
         for (int i = 0; i < p.timeline()->count(); ++i) {
-            const insv::StabConfig &st = p.timeline()->clipAt(i).stabilization;
-            CHECK(st.mode == insv::StabMode::HorizonLock); // a per-clip value is ignored in v8
+            const orbiscore::StabConfig &st = p.timeline()->clipAt(i).stabilization;
+            CHECK(st.mode == orbiscore::StabMode::HorizonLock); // a per-clip value is ignored in v8
             CHECK(st.horizonLockAmount == 0.5f);
         }
     }

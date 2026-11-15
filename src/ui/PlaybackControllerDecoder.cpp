@@ -279,8 +279,9 @@ void PlaybackController::setCaptureTimings(std::map<int, stitch::CaptureTiming> 
     m_rsGen.fetch_add(1);
 }
 
-void PlaybackController::setSeamCorrection(const QString &path, const insv::SeamCorrection &seam,
-                                           const insv::LensColour &colour)
+void PlaybackController::setSeamCorrection(const QString &path,
+                                           const orbiscore::SeamCorrection &seam,
+                                           const orbiscore::LensColour &colour)
 {
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
@@ -372,8 +373,8 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
 {
     RsSetting s;
     RsSetting after;
-    insv::SeamCorrection seam;
-    insv::LensColour colour;
+    orbiscore::SeamCorrection seam;
+    orbiscore::LensColour colour;
     stitch::BlurQuadsFn blur, blurAfter;
     {
         std::lock_guard<std::mutex> lk(m_rsMx);
@@ -395,7 +396,7 @@ void PlaybackController::applySourceSettings(stitch::IStitchSource &src, const Q
     }
     if (blurAfter || (blur && handOver.afterClipId))
         blur = [own = std::move(blur), after = std::move(blurAfter),
-                untilMs = handOver.untilMs](int64_t ptsMs, std::vector<insv::BlurQuad> &out) {
+                untilMs = handOver.untilMs](int64_t ptsMs, std::vector<orbiscore::BlurQuad> &out) {
             if (const stitch::BlurQuadsFn &fn = ptsMs < untilMs ? own : after)
                 fn(ptsMs, out);
         };
@@ -811,7 +812,7 @@ void PlaybackController::takeBackLentOut(bool force)
     LentOut l = std::move(*m_lentOut);
     m_lentOut.reset();
     if (auto *native = dynamic_cast<stitch::NativeStitchSource *>(l.src.get()))
-        native->SetViewPanes({}, {}, 0); // the layer's split screen, if any
+        native->SetViewPanes({}, {}, 0);     // the layer's split screen, if any
     // Cached again, unless the file was opened afresh meanwhile or has left
     // the timeline.
     const bool onTimeline = std::any_of(m_decPlaced.begin(), m_decPlaced.end(), [&](const Placed &p) {

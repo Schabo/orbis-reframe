@@ -122,7 +122,7 @@ public:
     virtual ~FrameSource() = default;
     // Move on to the next frame: its source time and levelling matrix
     // (row-major 3x3, levelled direction -> the stitch's sphere direction:
-    // insv::GyroStabilizer::correctionMatrix in Horizon lock). False at the
+    // orbiscore::GyroStabilizer::correctionMatrix in Horizon lock). False at the
     // end (err empty) or on error.
     virtual bool next(int64_t& tMs, float level[9], std::string& err) = 0;
     // `views` of the current frame into a canvasW x canvasH RGBA8 canvas
@@ -161,7 +161,7 @@ public:
     // gets each frame's time and whether the detector found the plate on it.
     // False (+ err) on a source error before the first frame. Independent of
     // run() / finish().
-    bool follow(FrameSource& src, const insv::BlurQuad& seed, const FollowParams& fp,
+    bool follow(FrameSource& src, const orbiscore::BlurQuad& seed, const FollowParams& fp,
                 const std::atomic<bool>* stop, const std::function<void(int64_t tMs, bool detected)>& progress,
                 FollowResult& out, std::string& err);
 

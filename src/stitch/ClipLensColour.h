@@ -4,19 +4,19 @@
 #include <cstdint>
 #include <string>
 
-#include <orbis-core/stitch/LensColour.h>     // insv::LensColourFit
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>     // orbiscore::LensColourFit
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection
 
 #include "ClipMeasure.h"   // stitch::MeasureFailure
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard
 
 namespace stitch {
 
-struct ClipLensColourResult : insv::LensColourFit {
+struct ClipLensColourResult : orbiscore::LensColourFit {
     MeasureFailure failure = MeasureFailure::None; // why not ok
 };
 
-// Measures the clip's lens colour (insv::FitLensColour) for `clipPath` from
+// Measures the clip's lens colour (orbiscore::FitLensColour) for `clipPath` from
 // kLensColourFrames lens pairs spread over [trimInMs, trimOutMs], with the
 // stitch set up as NativeStitchSource would for `lensGuard` and
 // `calibration` (null: the file's) and with the
@@ -27,7 +27,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
                                            int64_t trimOutMs,
                                            PreviewStitchConfig::LensGuard lensGuard,
                                            const LensCalibration* calibration,
-                                           const insv::SeamCorrection& seam,
+                                           const orbiscore::SeamCorrection& seam,
                                            const std::atomic<bool>* cancel = nullptr);
 
 } // namespace stitch

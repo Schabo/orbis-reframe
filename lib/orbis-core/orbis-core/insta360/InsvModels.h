@@ -11,7 +11,7 @@
 // model, one row each (docs/formats/). Everything a file does say is read
 // from it instead.
 
-namespace insv {
+namespace orbiscore {
 
 struct InsvModel {
     const char* name;  // the trailer's model field, "Insta360 X5"
@@ -91,7 +91,7 @@ struct InsvModel {
     double attitudeTiltDeg;
 
     // The correction the model's files need on top of their own lens
-    // calibration, in the per-clip seam fit's terms (insv::SeamCorrection:
+    // calibration, in the per-clip seam fit's terms (orbiscore::SeamCorrection:
     // lens 1's turn and centre, both lenses' radius), as offsets from the
     // file's values, so each camera keeps its own calibration under it
     // (StitchParams::modelCorrection): measured where the file's calibration
@@ -142,4 +142,4 @@ std::span<const InsvModel> InsvModels();
 // say so.
 const InsvModel& FindInsvModel(const std::string& model, bool* known = nullptr);
 
-} // namespace insv
+} // namespace orbiscore

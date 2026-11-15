@@ -7,10 +7,10 @@
 
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard
 
-namespace insv {
+namespace orbiscore {
 struct InsvCalibration;
 struct StitchParams;
-} // namespace insv
+} // namespace orbiscore
 
 // What the per-clip measurements (MeasureClipSeam, MeasureClipSync) share:
 // why one gave no result, and the set-up step both start with.
@@ -36,8 +36,8 @@ enum class MeasureFailure {
 MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       PreviewStitchConfig::LensGuard lensGuard,
                                       const LensCalibration* calibration,
-                                      insv::InsvCalibration& calib, insv::StitchParams& params,
-                                      std::string& err,
+                                      orbiscore::InsvCalibration& calib,
+                                      orbiscore::StitchParams& params, std::string& err,
                                       std::shared_ptr<const camera::ClipMetadata>* clip = nullptr);
 
 } // namespace stitch

@@ -21,44 +21,44 @@ namespace {
 constexpr char kMagic[8] = {'O', 'R', 'B', 'S', 'E', 'A', 'M', '\n'};
 constexpr uint8_t kFrameRecord = 1;
 constexpr uint8_t kDoneRecord = 2;
-constexpr int kB = insv::kSeamDepthBins;
+constexpr int kB = orbiscore::kSeamDepthBins;
 // q, cut, fade, local RGB, veil RGB per bin; the residual RGB; the depth
 // confidence.
 constexpr size_t kStateHalves = static_cast<size_t>(kB) * 9 + 3 + 1;
 constexpr size_t kFrameBytes = 8 + kStateHalves * 2;
 
-void Pack(const insv::SeamState& s, uint16_t* h)
+void Pack(const orbiscore::SeamState& s, uint16_t* h)
 {
     size_t i = 0;
     for (int b = 0; b < kB; ++b) {
-        h[i++] = insv::FloatToHalf(s.q[b]);
-        h[i++] = insv::FloatToHalf(s.blend.cut[b]);
-        h[i++] = insv::FloatToHalf(s.blend.fade[b]);
+        h[i++] = orbiscore::FloatToHalf(s.q[b]);
+        h[i++] = orbiscore::FloatToHalf(s.blend.cut[b]);
+        h[i++] = orbiscore::FloatToHalf(s.blend.fade[b]);
         for (int k = 0; k < 3; ++k)
-            h[i++] = insv::FloatToHalf(s.blend.local[b][k]);
+            h[i++] = orbiscore::FloatToHalf(s.blend.local[b][k]);
         for (int k = 0; k < 3; ++k)
-            h[i++] = insv::FloatToHalf(s.blend.veil[b][k]);
+            h[i++] = orbiscore::FloatToHalf(s.blend.veil[b][k]);
     }
     for (int k = 0; k < 3; ++k)
-        h[i++] = insv::FloatToHalf(s.blend.colour[k]);
-    h[i++] = insv::FloatToHalf(s.depthConf);
+        h[i++] = orbiscore::FloatToHalf(s.blend.colour[k]);
+    h[i++] = orbiscore::FloatToHalf(s.depthConf);
 }
 
-void Unpack(const uint16_t* h, insv::SeamState& s)
+void Unpack(const uint16_t* h, orbiscore::SeamState& s)
 {
     size_t i = 0;
     for (int b = 0; b < kB; ++b) {
-        s.q[b] = insv::HalfToFloat(h[i++]);
-        s.blend.cut[b] = insv::HalfToFloat(h[i++]);
-        s.blend.fade[b] = insv::HalfToFloat(h[i++]);
+        s.q[b] = orbiscore::HalfToFloat(h[i++]);
+        s.blend.cut[b] = orbiscore::HalfToFloat(h[i++]);
+        s.blend.fade[b] = orbiscore::HalfToFloat(h[i++]);
         for (int k = 0; k < 3; ++k)
-            s.blend.local[b][k] = insv::HalfToFloat(h[i++]);
+            s.blend.local[b][k] = orbiscore::HalfToFloat(h[i++]);
         for (int k = 0; k < 3; ++k)
-            s.blend.veil[b][k] = insv::HalfToFloat(h[i++]);
+            s.blend.veil[b][k] = orbiscore::HalfToFloat(h[i++]);
     }
     for (int k = 0; k < 3; ++k)
-        s.blend.colour[k] = insv::HalfToFloat(h[i++]);
-    s.depthConf = insv::HalfToFloat(h[i++]);
+        s.blend.colour[k] = orbiscore::HalfToFloat(h[i++]);
+    s.depthConf = orbiscore::HalfToFloat(h[i++]);
 }
 
 // 64-bit FNV-1a, for the cache file's name.
@@ -235,7 +235,7 @@ void SeamAnalysis::appendRecord(uint8_t type, const void* data, size_t size)
     std::fwrite(data, 1, size, m_fp);
 }
 
-bool SeamAnalysis::stateAt(int64_t ptsMs, insv::SeamState& out) const
+bool SeamAnalysis::stateAt(int64_t ptsMs, orbiscore::SeamState& out) const
 {
     std::lock_guard<std::mutex> lk(m_mx);
     std::vector<uint16_t> h(kStateHalves);
@@ -299,7 +299,7 @@ std::vector<std::pair<int64_t, int64_t>> SeamAnalysis::missing(int64_t inMs, int
     return gaps;
 }
 
-void SeamAnalysis::put(int64_t ptsMs, const insv::SeamState& s)
+void SeamAnalysis::put(int64_t ptsMs, const orbiscore::SeamState& s)
 {
     std::vector<uint16_t> h(kStateHalves);
     Pack(s, h.data());
@@ -448,7 +448,7 @@ SeamAnalysisResult AnalyseClipSeam(const SeamAnalysisKey& key, int64_t inMs, int
     src.SetSeamCorrection(key.seam);
     src.SetLensColour(key.colour);
     src.SetSeamAnalysisEnabled(false); // measure every frame, whatever is analysed
-    insv::SeamWindow w;
+    orbiscore::SeamWindow w;
     src.ConfigureSeamWindow(w);
 
     int frames = 0;
@@ -487,7 +487,7 @@ SeamAnalysisResult AnalyseClipSeam(const SeamAnalysisKey& key, int64_t inMs, int
             }
             // A frame is solved once the frames lookAheadMs() after it are in.
             while (!pending.empty() && (eof || pending.front() + w.lookAheadMs() <= w.latestPts())) {
-                insv::SeamState s;
+                orbiscore::SeamState s;
                 w.solve(pending.front(), s);
                 analysis->put(pending.front(), s);
                 lastSolved = pending.front();

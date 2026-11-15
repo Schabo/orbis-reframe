@@ -36,7 +36,7 @@
 #include <deque>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // Patch centres every kSeamFadeRowStep strip rows within this of the seam
 // circle (degrees): where a narrow fade puts the lenses' difference.
@@ -100,4 +100,4 @@ private:
 // wraps round): SeamFadeWindow::solve's last step, shared with the GPU's.
 void SeamFadeAlongSeam(const SeamFlowGrid& g, std::vector<float>& share);
 
-} // namespace insv
+} // namespace orbiscore

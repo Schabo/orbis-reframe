@@ -708,7 +708,7 @@ void Timeline::setClipEffects(int clipId, const fx::ClipEffects &effects)
         emit clipEffectsChanged(c->id, c->effects);
 }
 
-void Timeline::setClipStabilization(int clipId, const insv::StabConfig &config)
+void Timeline::setClipStabilization(int clipId, const orbiscore::StabConfig &config)
 {
     ClipItem *c = mutableClipById(clipId);
     if (c && c->setStabilization(config))
@@ -798,7 +798,7 @@ void Timeline::setSourceSyncAdjust(const QString &sourcePath, double ms)
 }
 
 void Timeline::setSourceSeamCorrection(const QString &sourcePath,
-                                       const insv::SeamCorrection &seam, int lensGuard)
+                                       const orbiscore::SeamCorrection &seam, int lensGuard)
 {
     for (ClipItem &c : m_clips) {
         if (c.sourcePath != sourcePath ||
@@ -810,7 +810,7 @@ void Timeline::setSourceSeamCorrection(const QString &sourcePath,
     }
 }
 
-void Timeline::setSourceLensColour(const QString &sourcePath, const insv::LensColour &colour,
+void Timeline::setSourceLensColour(const QString &sourcePath, const orbiscore::LensColour &colour,
                                    int lensGuard)
 {
     for (ClipItem &c : m_clips) {
@@ -832,7 +832,7 @@ double Timeline::sourceSyncAdjust(const QString &sourcePath) const
 }
 
 bool Timeline::sourceSeamCorrection(const QString &sourcePath, int lensGuard,
-                                    insv::SeamCorrection &seam) const
+                                    orbiscore::SeamCorrection &seam) const
 {
     for (const ClipItem &c : m_clips) {
         if (c.sourcePath == sourcePath && c.seamAdjustGuard == lensGuard) {
@@ -844,7 +844,8 @@ bool Timeline::sourceSeamCorrection(const QString &sourcePath, int lensGuard,
     return false;
 }
 
-bool Timeline::sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrection &seam) const
+bool Timeline::sourceSeamCorrection(const QString &sourcePath,
+                                    orbiscore::SeamCorrection &seam) const
 {
     for (const ClipItem &c : m_clips)
         if (c.sourcePath == sourcePath)
@@ -854,7 +855,7 @@ bool Timeline::sourceSeamCorrection(const QString &sourcePath, insv::SeamCorrect
 }
 
 bool Timeline::sourceLensColour(const QString &sourcePath, int lensGuard,
-                                insv::LensColour &colour) const
+                                orbiscore::LensColour &colour) const
 {
     for (const ClipItem &c : m_clips) {
         if (c.sourcePath == sourcePath && c.lensColourGuard == lensGuard) {
@@ -866,7 +867,7 @@ bool Timeline::sourceLensColour(const QString &sourcePath, int lensGuard,
     return false;
 }
 
-bool Timeline::sourceLensColour(const QString &sourcePath, insv::LensColour &colour) const
+bool Timeline::sourceLensColour(const QString &sourcePath, orbiscore::LensColour &colour) const
 {
     for (const ClipItem &c : m_clips)
         if (c.sourcePath == sourcePath)
@@ -1585,7 +1586,7 @@ void Timeline::setTrackClipTrimOut(int clipId, qint64 sourceMs)
     }
 }
 
-void Timeline::setAudioClipNoise(int clipId, const insv::NoiseReduction &nr)
+void Timeline::setAudioClipNoise(int clipId, const orbiscore::NoiseReduction &nr)
 {
     TrackClip *c = mutableTrackClipById(clipId);
     if (c && c->setNoise(nr))

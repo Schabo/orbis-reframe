@@ -338,7 +338,7 @@ k3 p1 p2 w h lensType` (X5 §5.3), trailing flag 199680 (0x30C00):
 - 📖 Axes: telemetry-parser has `xZy` for the ONE X2, but only in its branch
   for files *without* `offset_v3`. These files have it, so it would use its
   default `Xyz` after rotating by lens 0's `yaw pitch roll`.
-- ✅ **Ours: `"z,x,y"`** (the ONE X2 row of `insv::InsvModel::imuAxes`;
+- ✅ **Ours: `"z,x,y"`** (the ONE X2 row of `orbiscore::InsvModel::imuAxes`;
   measured 2026-10-21): sphere X ← raw z, Y ← raw x, Z ← raw y -- the X5's
   `z,-x,-y` turned 180° about sphere X. Method as X5 §6.3: four horizon
   views (yaw 0 / 90 / 180 / 270°, 90° FOV) rendered unstabilized by

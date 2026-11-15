@@ -3,7 +3,7 @@
 #include <orbis-core/insta360/Calibration.h>
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/media/InsvDemux.h>
-#include <orbis-core/stitch/SeamAlignment.h> // insv::SnapToKeyframeMs
+#include <orbis-core/stitch/SeamAlignment.h> // orbiscore::SnapToKeyframeMs
 #include <orbis-core/stitch/SeamCut.h>
 
 #include <memory>
@@ -23,7 +23,7 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
                                            int64_t trimOutMs,
                                            PreviewStitchConfig::LensGuard lensGuard,
                                            const LensCalibration* calibration,
-                                           const insv::SeamCorrection& seam,
+                                           const orbiscore::SeamCorrection& seam,
                                            const std::atomic<bool>* cancel)
 {
     ClipLensColourResult out;
@@ -33,8 +33,8 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
         return out;
     };
     std::string err;
-    insv::InsvCalibration calib;
-    insv::StitchParams params;
+    orbiscore::InsvCalibration calib;
+    orbiscore::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> clip;
     if (const MeasureFailure why =
             PrepareClipMeasurement(clipPath, lensGuard, calibration, calib, params, err, &clip);
@@ -42,13 +42,13 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
         return fail(why, err);
     params.seam = seam;
 
-    insv::InsvDemux demux;
+    orbiscore::InsvDemux demux;
     if (!demux.open(clip->partSources(), err))
         return fail(MeasureFailure::Unreadable, "demux open failed: " + err);
     if (demux.lensCount() < 2)
         return fail(MeasureFailure::Unsupported, "one lens stream in the file");
     const int w = demux.lens(0).width, h = demux.lens(0).height;
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     if (!st.configure(calib, w, h, params))
         return fail(MeasureFailure::Unsupported, "the stitch can't be set up");
     if (trimOutMs <= trimInMs)
@@ -56,26 +56,27 @@ ClipLensColourResult MeasureClipLensColour(const std::string& clipPath, int64_t 
 
     // Frames evenly over the range, the lenses sampled raw at the seam (no
     // depth: what doesn't line up at infinity is left out as disagreeing).
-    std::vector<std::unique_ptr<insv::SeamCutStats>> stats;
+    std::vector<std::unique_ptr<orbiscore::SeamCutStats>> stats;
     for (int k = 0; k < kLensColourFrames; ++k) {
         if (cancel && cancel->load())
             return fail(MeasureFailure::Cancelled, "cancelled");
-        const int64_t t = insv::SnapToKeyframeMs(
+        const int64_t t = orbiscore::SnapToKeyframeMs(
             trimInMs + (trimOutMs - trimInMs) * (2 * k + 1) / (2 * kLensColourFrames),
             demux.lens(0).fps);
-        insv::Image l0, l1;
+        orbiscore::Image l0, l1;
         if (!demux.seekTo(t, err) || !demux.readNextPair(l0, l1, nullptr, err))
             continue;
-        auto s = std::make_unique<insv::SeamCutStats>();
-        insv::MeasureSeamCutStats(st, l0, l1, nullptr, *s);
+        auto s = std::make_unique<orbiscore::SeamCutStats>();
+        orbiscore::MeasureSeamCutStats(st, l0, l1, nullptr, *s);
         stats.push_back(std::move(s));
     }
     if (stats.empty())
         return fail(MeasureFailure::Unreadable, "no frame decoded: " + err);
-    std::vector<const insv::SeamCutStats*> frames;
+    std::vector<const orbiscore::SeamCutStats*> frames;
     for (const auto& s : stats)
         frames.push_back(s.get());
-    static_cast<insv::LensColourFit&>(out) = insv::FitLensColour(frames, st.gpuParams().bandRad);
+    static_cast<orbiscore::LensColourFit&>(out) =
+        orbiscore::FitLensColour(frames, st.gpuParams().bandRad);
     if (!out.ok)
         out.failure = MeasureFailure::TooLittleDetail;
     return out;

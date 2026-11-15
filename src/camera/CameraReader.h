@@ -2,7 +2,7 @@
 
 #include "ClipMetadata.h"
 
-#include <orbis-core/media/InsvDemux.h> // insv::InsvStreamInfo
+#include <orbis-core/media/InsvDemux.h> // orbiscore::InsvStreamInfo
 
 #include <optional>
 #include <string>
@@ -27,13 +27,13 @@ public:
     // Fills `out` from the file at `out.path`, whose video streams are
     // `streams` (in file order; `out`'s stream facts are already set from
     // them).
-    virtual Result read(const std::vector<insv::InsvStreamInfo>& streams, ClipMetadata& out,
+    virtual Result read(const std::vector<orbiscore::InsvStreamInfo>& streams, ClipMetadata& out,
                         std::string& err) const = 0;
 
-    virtual std::optional<insv::ImuTrack> readImu(const ClipMetadata& clip) const = 0;
+    virtual std::optional<orbiscore::ImuTrack> readImu(const ClipMetadata& clip) const = 0;
     // The GPS track lined up with the video; nullopt when the clip has none
     // or the file doesn't say how it lines up.
-    virtual std::optional<insv::GpsTrack> readGps(const ClipMetadata& clip) const = 0;
+    virtual std::optional<orbiscore::GpsTrack> readGps(const ClipMetadata& clip) const = 0;
     // By its name (or, renamed, the name the file holds): the clip file
     // `path` would belong to if it is another file of a take (a lens's own
     // file, the camera's proxy); nullopt for any other file. ClipFileOf

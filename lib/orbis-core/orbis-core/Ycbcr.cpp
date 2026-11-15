@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/Ycbcr.h>
 
-namespace insv {
+namespace orbiscore {
 
 void YcbcrToRgbRows(const YcbcrCoding& coding, int bitDepth, float rows[3][4])
 {
@@ -40,4 +40,4 @@ void YcbcrToRgbRows(const YcbcrCoding& coding, int bitDepth, float rows[3][4])
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

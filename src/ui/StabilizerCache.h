@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <orbis-core/stab/GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::GyroStabilizer / StabConfig
 #include <IStitchSource.h>  // stitch::CaptureTiming
 
 #include "PlaybackController.h" // PlaybackController::StabProvider
@@ -34,7 +34,7 @@ public:
     // builds it. A plate scan / followed plate is found in that stitch.
     static bool captureTimingOn(const ClipItem &c)
     {
-        return c.stabilization.mode != insv::StabMode::Off;
+        return c.stabilization.mode != orbiscore::StabMode::Off;
     }
 
     // For PlaybackController::setStabilizationProvider: a clip that publish()
@@ -62,9 +62,9 @@ public:
 private:
     struct Built {
         QString path;
-        insv::StabConfig config;
+        orbiscore::StabConfig config;
         double syncMs = 0.0;
-        std::shared_ptr<const insv::GyroStabilizer> stab; // null: no IMU track
+        std::shared_ptr<const orbiscore::GyroStabilizer> stab; // null: no IMU track
     };
     static constexpr size_t kSize = 4;
     std::vector<Built> m_built; // least recently used first
@@ -75,7 +75,7 @@ private:
     // stabilizer, or null for identity (Off, or no IMU track).
     struct Shared {
         std::mutex mx;
-        std::unordered_map<int, std::shared_ptr<const insv::GyroStabilizer>> clips;
+        std::unordered_map<int, std::shared_ptr<const orbiscore::GyroStabilizer>> clips;
     };
     std::shared_ptr<Shared> m_shared;
 };

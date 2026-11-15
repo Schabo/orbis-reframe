@@ -14,7 +14,7 @@
 // carries the clip and stream metadata, every sample the frame's. No
 // FFmpeg: the samples come from the caller (camera::DjiReader reads them).
 
-namespace insv {
+namespace orbiscore {
 
 // How a DJI product numbers its metadata: the schema differs by product and
 // is chosen by product name, not by the proto file name a clip declares.
@@ -123,4 +123,4 @@ std::optional<DjiFrameMeta> ParseDjiFrameMeta(const std::vector<uint8_t>& sample
 // its proxy and recording time by it. std::nullopt when the file holds none.
 std::optional<std::string> ReadDjiHeldName(const std::string& file_path);
 
-} // namespace insv
+} // namespace orbiscore

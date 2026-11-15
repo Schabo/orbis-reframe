@@ -4,18 +4,18 @@
 #include <cstdint>
 #include <string>
 
-#include <orbis-core/stitch/SeamAlignment.h> // insv::SeamAlignmentResult
+#include <orbis-core/stitch/SeamAlignment.h> // orbiscore::SeamAlignmentResult
 
 #include "ClipMeasure.h"   // stitch::MeasureFailure
 #include "IStitchSource.h" // stitch::PreviewStitchConfig::LensGuard
 
 namespace stitch {
 
-struct ClipSeamResult : insv::SeamAlignmentResult {
+struct ClipSeamResult : orbiscore::SeamAlignmentResult {
     MeasureFailure failure = MeasureFailure::None; // why not ok
 };
 
-// Measures the seam alignment fine-tune (insv::EstimateSeamAlignment) for
+// Measures the seam alignment fine-tune (orbiscore::EstimateSeamAlignment) for
 // `clipPath` from kSeamFrames lens pairs spread over [trimInMs, trimOutMs],
 // with the stitch set up as NativeStitchSource would for `lensGuard` and
 // `calibration` (null: the file's). CPU

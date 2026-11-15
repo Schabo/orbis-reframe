@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace insv {
+namespace orbiscore {
 
 // A decoded frame's presentation time, twice. `ms` is rounded to the
 // millisecond, the unit of seeks, trims, keyframes and the timeline. `us` is
@@ -17,4 +17,4 @@ struct FramePts {
     double sec() const { return static_cast<double>(us) * 1e-6; }
 };
 
-} // namespace insv
+} // namespace orbiscore

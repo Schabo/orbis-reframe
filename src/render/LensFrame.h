@@ -12,7 +12,7 @@
 // lens 0 Y (R8_UNORM, lensW x lensH), lens 0 CbCr (R8G8_UNORM, half size),
 // lens 1 Y, lens 1 CbCr; R16_UNORM / R16G16_UNORM for 10-bit pictures (P010:
 // the 10 bits at the top of each 16); then the new stitcher's seam flow field
-// (R16G16B16A16_SFLOAT, flowW x flowH: insv::SeamFlowField, 1 x 1 without
+// (R16G16B16A16_SFLOAT, flowW x flowH: orbiscore::SeamFlowField, 1 x 1 without
 // one), then the privacy blur's cell colours (R16G16B16A16_SFLOAT,
 // kBlurCellsW x kBlurCellsH: a row per quad, fisheye_stitch_common.glsl) --
 // each in its own dedicated, exportable allocation
@@ -30,7 +30,7 @@ struct LensSlot {
     static constexpr int kImages = 6;
     static constexpr int kFlowImage = 4;
     static constexpr int kBlurCellImage = 5;
-    // == insv::kBlurCellsPerQuad x insv::kMaxBlurQuads (render/ doesn't
+    // == orbiscore::kBlurCellsPerQuad x orbiscore::kMaxBlurQuads (render/ doesn't
     // include insv/ here; VulkanFisheyeStitcherImpl.h checks they match).
     static constexpr int kBlurCellsW = 200;
     static constexpr int kBlurCellsH = 64;

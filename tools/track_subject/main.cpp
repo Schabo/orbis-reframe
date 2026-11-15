@@ -1,7 +1,7 @@
 // Command-line tool for track::SubjectTracker (src/track/).
 //
 // Stitches the clip (stitch::NativeStitchSource) from --t0, feeds each
-// equirect + its gyro de-rotation (insv::GyroStabilizer, Lean follow) to the
+// equirect + its gyro de-rotation (orbiscore::GyroStabilizer, Lean follow) to the
 // tracker from a --box seed, and reduces the path to reframe keys
 // (track::reduceToKeys) in tools/reframe_export's --keys format (time_ms yaw
 // pitch fovY roll; stabilized frame). --tracker compares the hybrid the app
@@ -25,7 +25,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include <orbis-core/stab/GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
+#include <orbis-core/stab/GyroStabilizer.h>     // orbiscore::GyroStabilizer, StabConfig
 #include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource
 #include <ProbeClip.h>          // stitch::ProbeClip
@@ -220,7 +220,7 @@ Args parseArgs(int argc, char** argv)
 }
 
 // At the frame's exact time `tSec` (stitch::Frame::timestamp_us).
-void gyroMatrix(const insv::GyroStabilizer& g, bool on, double tSec, float m[9])
+void gyroMatrix(const orbiscore::GyroStabilizer& g, bool on, double tSec, float m[9])
 {
     float mm[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
     if (on && g.ready())
@@ -284,10 +284,10 @@ int main(int argc, char** argv)
     const double halfFrameMs = 500.0 / fps;
 
     // --- gyro (Lean follow, the app's default mode) --------------------------
-    insv::GyroStabilizer gyro;
+    orbiscore::GyroStabilizer gyro;
     if (a.stab) {
         if (const auto imu = camera::ReadClipImu(a.input))
-            gyro.build(*imu, insv::StabConfig::preset(insv::StabMode::LeanFollow), 0.0);
+            gyro.build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow), 0.0);
     }
     std::printf("gyro: %s\n", gyro.ready() ? "Lean follow de-rotation" : "off");
 
@@ -499,7 +499,7 @@ int main(int argc, char** argv)
     exportpipe::FlattenWriter writer;
     if (!writer.open(fc, err))
         die(err);
-    auto poseAt = [&](const insv::FramePts &pts, view::Pose &pose, float stab[9]) {
+    auto poseAt = [&](const orbiscore::FramePts &pts, view::Pose &pose, float stab[9]) {
         keyPose(pts.ms, pose.yaw, pose.pitch);
         pose.roll = 0.0f;
         pose.fov = outFov;

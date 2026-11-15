@@ -16,7 +16,7 @@ extern "C" {
 #include <libavutil/rational.h>
 }
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 // A seek keeps the first frame within this of the target: targets are whole
@@ -714,4 +714,4 @@ AVFrame* LensDemuxer::peekFrame(int lens, std::string* err)
     }
 }
 
-} // namespace insv
+} // namespace orbiscore

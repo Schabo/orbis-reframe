@@ -171,7 +171,7 @@ Markers as in [`README.md`](README.md).
   that rotation. No other order of the angles gives it (the closest,
   `Rx Rz Ry`, still leaves 0.27°). ❓ Where Studio's tilt comes from.
 - ✅ **The app's new stitcher corrects the file's calibration by a fixed
-  amount for the model** (`insv::InsvModel::lensCorrection`, as offsets
+  amount for the model** (`orbiscore::InsvModel::lensCorrection`, as offsets
   from the file's values in the per-clip seam fit's terms, measured
   2026-11-03): lens 1 turned (+0.006, +0.238, +0.468)° (yaw / pitch / roll
   on top of the file's angles), its centre moved (−0.0749, +0.0016) % of
@@ -209,11 +209,11 @@ Markers as in [`README.md`](README.md).
   smooth gradient lines up with itself at any shift, so the depth-aware
   seam took 0.3-0.4 m and bent the town round the sun; at the 71 mm
   baseline 0.3 m is a 13° shift (X5: 6°). The seam's match now takes each
-  lens's brightness plane out first (`insv::SeamPatchScore`), and those
+  lens's brightness plane out first (`orbiscore::SeamPatchScore`), and those
   bins stay far on all the frames checked. The table also stays within the X5's shift
   range (−0.9 to +5.9°), which at 71 mm ends at ~0.7 m, and a match has to
   be clearly better than any other shift to count (the uniqueness term,
-  `insv::SeamDepthTuning::uniqueLo` / `uniqueHi`):
+  `orbiscore::SeamDepthTuning::uniqueLo` / `uniqueHi`):
   a frame solved from itself after a seek (`_018` at 22.36 s) took scattered
   matches at 0.3-0.5 m and pulled the far town into a loop.
 - ✅ **The lenses' colour** (measured 2026-10-31 from the picture, seam
@@ -231,25 +231,25 @@ Markers as in [`README.md`](README.md).
   that lens's veiling flare adds light (lens 1 ≈ 0.56-0.87 × lens 0 + 26-90
   levels on the sun's side): such frames show as a wide spread of the
   ratio along the seam, and the app's per-clip measurement
-  (`insv::FitLensColour`) leaves them out. ⚠️ **Not the same all round the
+  (`orbiscore::FitLensColour`) leaves them out. ⚠️ **Not the same all round the
   seam** within a frame: on `_020` at 3-5 s (flying low, the sun near the
   horizon) the lenses agree within 1-5 % on half the seam circle, while on
   the ~135° facing the sun the down lens is 15-45 % darker (most in blue);
   and away from the sun the per-clip value (G −2.4 %) is ~2 % off on
   stretches where the lenses agree. The stitch therefore also matches them
-  per stretch of the seam, per frame (`insv::SeamBlend::local`).
+  per stretch of the seam, per frame (`orbiscore::SeamBlend::local`).
   ⚠️ **Veiling light is added light, not a gain** (measured 2026-10-31 on
   `_015` at 23.9 s, the sun just above the horizon at the up lens's side):
   on the seam stretch under the sun the up lens sees shadowed grass at G
   107 against the down lens's 58, and the sky next to it a little brighter
   -- in linear light (levels^2.2) both about +0.10, a ratio of 2.6 on the
   grass and 1.7 on the sky. No gain matches both; taking the added light
-  out does (`insv::LensVeilPerBin`, `SeamBlend::veil`: up to 0.25 linear
+  out does (`orbiscore::LensVeilPerBin`, `SeamBlend::veil`: up to 0.25 linear
   there). On the same frame the sky's blue is near clipping (245-250) in
   both lenses while red and green agree within 1-2 levels: with whole cells
   left out for one clipped colour, that stretch had no data and was given
   its neighbour's correction (a 14 % step). The lens colour is measured per
-  colour since (`insv::kLensColourMethod` 2). ⚠️ **The difference depends
+  colour since (`orbiscore::kLensColourMethod` 2). ⚠️ **The difference depends
   on the content** (measured 2026-10-31 on `_020` at 2.17 s, turning): in
   the sky just above the trees the lenses agree within 1-2 levels, in the
   trees' shadows below lens 1 is 8-12 levels higher in blue -- a small
@@ -399,7 +399,7 @@ Markers as in [`README.md`](README.md).
 time is not the drone's clock**: the motion and exposure records run in
 real time while the video plays slower or faster. The app turns video
 time into the drone's clock by a **capture scale**, seconds of the clock
-per second of video (`insv::CaptureScale`): field 196 over field 195 in
+per second of video (`orbiscore::CaptureScale`): field 196 over field 195 in
 slow motion (0.2997), a timelapse's frame interval times the stored rate
 (60), from its frames' own times (type 6) where it has them, else from
 field 30. Sync, stabilization (its smoothing windows stay in video time),

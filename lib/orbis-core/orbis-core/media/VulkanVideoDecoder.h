@@ -37,7 +37,7 @@
 struct AVBufferRef;
 struct AVFrame;
 
-namespace insv {
+namespace orbiscore {
 
 using VulkanVideoStreamInfo = InsvStreamInfo;
 
@@ -114,7 +114,7 @@ public:
     bool seekTo(int64_t timestampMs, std::string& err);
     // See InsvDemux::nearestKeyframeMs.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
-    // See insv::KeyframesAroundMs.
+    // See orbiscore::KeyframesAroundMs.
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
 
     // Next lens-0 / lens-1 frame pair in play order (AVFrame* carrying
@@ -156,4 +156,4 @@ private:
     std::string m_unsupportedCodec;
 };
 
-} // namespace insv
+} // namespace orbiscore

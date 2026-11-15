@@ -20,7 +20,7 @@
 // and near objects show parallax). Needs OpenCV -> compiled into
 // insv_optical; pimpl'd so this header pulls in none.
 
-namespace insv {
+namespace orbiscore {
 
 class GyroStabilizer;
 
@@ -77,4 +77,4 @@ private:
     std::unique_ptr<Impl> m;
 };
 
-} // namespace insv
+} // namespace orbiscore

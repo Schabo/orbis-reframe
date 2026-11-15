@@ -6,12 +6,12 @@
 
 #include <ColorLut.h>          // color::Grade
 #include <ViewProjection.h>    // view::Pose
-#include <orbis-core/stitch/FisheyeProjection.h> // insv::StitchGpuParams (value member below)
-#include <orbis-core/metadata/FramePts.h>          // insv::FramePts
-#include <orbis-core/stitch/SeamWindow.h>        // insv::SeamWindow (value member below)
-#include <orbis-core/stitch/SeamColourBlend.h>   // insv::SeamColourBlend (value member below)
-#include <orbis-core/stitch/SeamFade.h>          // insv::SeamFadeWindow (value member below)
-#include <orbis-core/stitch/SeamFlow.h>          // insv::SeamFlowWindow (value member below)
+#include <orbis-core/stitch/FisheyeProjection.h> // orbiscore::StitchGpuParams (value member below)
+#include <orbis-core/metadata/FramePts.h>          // orbiscore::FramePts
+#include <orbis-core/stitch/SeamWindow.h>        // orbiscore::SeamWindow (value member below)
+#include <orbis-core/stitch/SeamColourBlend.h>   // orbiscore::SeamColourBlend (value member below)
+#include <orbis-core/stitch/SeamFade.h>          // orbiscore::SeamFadeWindow (value member below)
+#include <orbis-core/stitch/SeamFlow.h>          // orbiscore::SeamFlowWindow (value member below)
 
 #include <functional>
 #include <map>
@@ -21,12 +21,12 @@
 
 struct AVFrame;
 
-namespace insv {
+namespace orbiscore {
 class InsvDemux;
 class FisheyeStitcher;
 class VulkanVideoDecoder;
 class SeamFlowEstimator;
-} // namespace insv
+} // namespace orbiscore
 
 namespace render {
 class VulkanFisheyeStitcher;
@@ -62,23 +62,23 @@ struct ReadTiming {
 };
 
 // IStitchSource implemented entirely on the cleanroom orbis-core library (lib/orbis-core/):
-// the clip's description (camera::ReadClipMetadata) -> insv::InsvDemux (2 lens streams) ->
-// insv::FisheyeStitcher, all in-process, with true frame-at-time-T random
+// the clip's description (camera::ReadClipMetadata) -> orbiscore::InsvDemux (2 lens streams) ->
+// orbiscore::FisheyeStitcher, all in-process, with true frame-at-time-T random
 // access. This is the only IStitchSource backend.
 //
 // Quality: geometry + feather blend + the clip's lens colour match + pole
 // handling (see FisheyeProjection.h), plus the depth-aware seam
 // (PreviewStitchConfig::Method::DepthSeam): every frame the seam's cost volume and
 // the cut statistics across the band are measured first
-// (render::VulkanFisheyeStitcher::measureSeamVk, or insv::MeasureSeamCosts /
-// MeasureSeamCutStats on the CPU path), and insv::SeamWindow solves the
+// (render::VulkanFisheyeStitcher::measureSeamVk, or orbiscore::MeasureSeamCosts /
+// MeasureSeamCutStats on the CPU path), and orbiscore::SeamWindow solves the
 // per-azimuth stitch distance, where the lenses meet and how wide the fade
 // there is from the frames measured so far; that frame is stitched with
 // it. Of
 // PreviewStitchConfig, width/height (the equirect output size), lensGuard (the
 // trailer lens profile), method and the new stitcher's layers are honoured;
 // quality is inert. Stabilization is applied at reprojection time
-// (insv::StabConfig), never here.
+// (orbiscore::StabConfig), never here.
 //
 // Open() is cheap (trailer parse + demux open, no stitching). Frames are
 // produced on demand in SeekTo/ReadFrame/GetFrame. Not safe to call
@@ -138,7 +138,7 @@ public:
     // phase error large enough to undo most of the stabilization. `pose` is
     // prefilled with a forward view and `stab` with identity.
     using FramePoseFn =
-        std::function<void(const insv::FramePts& pts, view::Pose& pose, float stab[9])>;
+        std::function<void(const orbiscore::FramePts& pts, view::Pose& pose, float stab[9])>;
     FlatFrame ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                             const color::Grade* colorGrade = nullptr);
 
@@ -186,7 +186,7 @@ public:
         view::Pose pose;
         int x = 0, y = 0, w = 0, h = 0;
     };
-    bool HoldNextPair(insv::FramePts& pts);
+    bool HoldNextPair(orbiscore::FramePts& pts);
     bool RenderHeldViews(int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& rgba);
     void ReleaseHeldPair();
@@ -199,7 +199,7 @@ public:
     // RenderKeptViews is RenderHeldViews on one of them. Each pair stays in
     // GPU memory (~44 MB at 8K) until ReleaseKeptPair, Open or destruction.
     // Requires GpuViewAvailable().
-    int KeepNextPair(insv::FramePts& pts);
+    int KeepNextPair(orbiscore::FramePts& pts);
     bool RenderKeptViews(int handle, int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& rgba);
     void ReleaseKeptPair(int handle);
@@ -207,7 +207,7 @@ public:
     size_t KeptPairBytes() const;
 
     // Per-lens / per-sensor-row capture-time correction in the GPU stitch
-    // (insv::StitchGpuParams::rsRot), from `timing.rotationAt`
+    // (orbiscore::StitchGpuParams::rsRot), from `timing.rotationAt`
     // evaluated around each frame's video time; which of the two timings by
     // the frame's own time. The CPU stitch path ignores it.
     using IStitchSource::SetCaptureTiming;
@@ -217,13 +217,13 @@ public:
     // IStitchSource::SetSeamCorrection). Cheap; a no-op when unchanged, and
     // for the new stitcher (PreviewStitchConfig::Method::New), which joins the
     // lenses from their calibration alone.
-    void SetSeamCorrection(const insv::SeamCorrection& c) override;
+    void SetSeamCorrection(const orbiscore::SeamCorrection& c) override;
     // Likewise the lens colour (IStitchSource::SetLensColour).
-    void SetLensColour(const insv::LensColour& c) override;
+    void SetLensColour(const orbiscore::LensColour& c) override;
 
     // Privacy blur (IStitchSource::SetBlurQuads): applied in paramsAt, so
     // every path -- equirect, fused view / flat, lens frames for the
-    // viewport, the CPU stitch -- carries it. More than insv::kMaxBlurQuads
+    // viewport, the CPU stitch -- carries it. More than orbiscore::kMaxBlurQuads
     // in one frame: the rest are dropped with a warning.
     bool SetBlurQuads(BlurQuadsFn fn) override;
 
@@ -249,15 +249,15 @@ public:
     bool ResumeGpu() override;
 
     // The depth-aware seam's current per-azimuth inverse stitch distance
-    // (insv::kSeamDepthBins values, 1/m; all 0 when off or before a frame).
+    // (orbiscore::kSeamDepthBins values, 1/m; all 0 when off or before a frame).
     const float* SeamDepthTable() const { return seam_state_.q; }
     // ... and its blend across the band and colour correction there, as the
     // last frame was stitched with.
-    const insv::SeamBlend& SeamBlendState() const { return seam_state_.blend; }
+    const orbiscore::SeamBlend& SeamBlendState() const { return seam_state_.blend; }
     // ... and the depth measurement's mean confidence on that frame (0..1).
     double SeamDepthConfidence() const { return seam_state_.depthConf; }
     // The new stitcher's seam colour blend as the last frame was stitched
-    // with (insv::StitchGpuParams::seamColour's layout; all 0 when off or
+    // with (orbiscore::StitchGpuParams::seamColour's layout; all 0 when off or
     // before a frame).
     const float* SeamColourTable() const { return &seam_colour_table_[0][0]; }
     // ... and the veiling light it took out (StitchGpuParams::seamVeil's
@@ -276,11 +276,11 @@ public:
 
     // For stitch::AnalyseClipSeam: `w` set up as this source's own seam
     // window (baseline, band, lens colour) ...
-    void ConfigureSeamWindow(insv::SeamWindow& w) const;
+    void ConfigureSeamWindow(orbiscore::SeamWindow& w) const;
     // ... and the next lens pair decoded and its seam measured into `w`
     // (on w.measureTable(pts)), nothing stitched. False at the end of the
     // clip (GetLastError() empty) or on an error.
-    bool MeasureNextSeamFrame(insv::SeamWindow& w, int64_t& pts_ms);
+    bool MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t& pts_ms);
 
     // Timing of the last all-GPU ReadFrame() / ReadFlatFrame(). Zeroes on the
     // CPU-decode path.
@@ -295,12 +295,13 @@ private:
     // A read's or seek's first step: a released source taken up again, and
     // positioned where it was when the read carries on (resume_seek_).
     bool resumeForRead();
-    std::vector<insv::ClipPart> lens_sources_; // Open()'s clip, its parts, for openDecode
+    std::vector<orbiscore::ClipPart> lens_sources_; // Open()'s clip, its parts, for openDecode
     bool gpu_released_ = false;                  // ReleaseGpu, until resumed
     bool resume_seek_ = false; // resumed, or a lens frame failed, with no SeekTo since: the next read seeks to resume_at_ms_
     int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read
 
-    insv::StitchGpuParams paramsAt(const insv::FramePts& pts) const; // gpu_params_ + per-frame RS
+    // gpu_params_ + per-frame RS
+    orbiscore::StitchGpuParams paramsAt(const orbiscore::FramePts& pts) const;
     // A decoded pair, unlocked between uses (the decoder may lock it as a
     // reference frame meanwhile): locked only around each GPU submission.
     struct HeldPair;
@@ -310,8 +311,9 @@ private:
     // paramsAt() plus the depth-aware seam's table and blend for this frame
     // (seamStateFor; measured on the GPU, advancing in0 / in1 past that
     // submission). Just paramsAt() when it's off.
-    insv::StitchGpuParams paramsWithSeam(const insv::FramePts& pts, render::VulkanLensInput& in0,
-                                         render::VulkanLensInput& in1);
+    orbiscore::StitchGpuParams paramsWithSeam(const orbiscore::FramePts& pts,
+                                              render::VulkanLensInput& in0,
+                                              render::VulkanLensInput& in1);
     Frame readGpuAllVulkan();  // vdec_ + gpu_->stitchVk (stage 2, all-GPU)
     Frame readCpuDecode();     // demux_ + gpu_->stitch or stitcher_ (stage 1 / CPU)
     void copyGpuTiming();      // gpu_->lastTiming() -> last_timing_
@@ -320,18 +322,18 @@ private:
     // fused). False with last_error_ set on error; false with it empty at EOS.
     enum class FlatPath { ViaEquirect, FusedNv12, FusedP010, FusedRgba };
     bool readView(int outW, int outH, const FramePoseFn& perFrame, const color::Grade* colorGrade,
-                  FlatPath path, std::vector<uint8_t>& out, insv::FramePts& pts);
+                  FlatPath path, std::vector<uint8_t>& out, orbiscore::FramePts& pts);
 
     // Stage 2: GPU-resident decode -> GPU stitch, nothing on the CPU. Used when
     // both halves init; else vdec_ is null and the stage-1 path runs.
-    std::unique_ptr<insv::VulkanVideoDecoder> vdec_;
+    std::unique_ptr<orbiscore::VulkanVideoDecoder> vdec_;
 
-    std::unique_ptr<insv::InsvDemux> demux_;               // CPU decode (stage 1 / fallback)
-    std::unique_ptr<insv::FisheyeStitcher> stitcher_;      // CPU reference / fallback
+    std::unique_ptr<orbiscore::InsvDemux> demux_;          // CPU decode (stage 1 / fallback)
+    std::unique_ptr<orbiscore::FisheyeStitcher> stitcher_; // CPU reference / fallback
     std::unique_ptr<render::VulkanFisheyeStitcher> gpu_;   // GPU stitch (own device or FFmpeg's)
-    insv::StitchGpuParams gpu_params_{};                   // geometry for gpu_, from stitcher_
-    insv::InsvCalibration calib_;                          // what stitcher_ was configured with
-    insv::StitchParams params_;
+    orbiscore::StitchGpuParams gpu_params_{};              // geometry for gpu_, from stitcher_
+    orbiscore::InsvCalibration calib_;                     // what stitcher_ was configured with
+    orbiscore::StitchParams params_;
     mutable std::mutex rs_mx_; // SetCaptureTiming may come from the GUI thread
     CaptureTiming capture_timing_; // guarded by rs_mx_; frames before capture_until_ms_
     int64_t capture_until_ms_ = INT64_MAX; // guarded by rs_mx_
@@ -351,16 +353,16 @@ private:
     bool analysis_enabled_ = true;
     bool analysis_dirty_ = true;                      // look the analysis up again before the next frame
     std::shared_ptr<SeamAnalysis> analysis_;    // stitch::SeamAnalysisFor, or none
-    insv::SeamWindow seam_window_;                    // depth-aware seam: the frames so far
-    insv::SeamState seam_state_;                      // ... the last frame's state
-    std::unique_ptr<insv::SeamCosts> seam_costs_;     // a frame's cost volume (scratch)
-    std::unique_ptr<insv::SeamCutStats> cut_stats_;   // ... and cut statistics (scratch)
+    orbiscore::SeamWindow seam_window_;               // depth-aware seam: the frames so far
+    orbiscore::SeamState seam_state_;                 // ... the last frame's state
+    std::unique_ptr<orbiscore::SeamCosts> seam_costs_;   // a frame's cost volume (scratch)
+    std::unique_ptr<orbiscore::SeamCutStats> cut_stats_; // ... and cut statistics (scratch)
     bool seam_colour_on_ = false;                     // Open()'s seamColourBlendOn()
     bool quick_seek_ = false;                         // SetQuickSeek: the next SeekTo without pre-roll
     bool scrub_frame_ = false;                        // ... and the frame read after it unmeasured
-    insv::SeamColourWindow seam_colour_window_;       // its frames played so far
-    float seam_colour_table_[insv::kSeamDepthBins][3] = {}; // ... the last frame's table
-    float seam_veil_[insv::kSeamDepthBins][3] = {};         // ... and veiling light
+    orbiscore::SeamColourWindow seam_colour_window_;  // its frames played so far
+    float seam_colour_table_[orbiscore::kSeamDepthBins][3] = {}; // ... the last frame's table
+    float seam_veil_[orbiscore::kSeamDepthBins][3] = {};         // ... and veiling light
     // The new stitcher's seam flow: Open()'s seamFlowOn() where the flow can
     // be estimated (a GPU stitch, or OpenCV for the CPU's) and the lenses share
     // an overlap, and its grid. With a GPU stitch it is measured, windowed
@@ -370,17 +372,17 @@ private:
     // the last frame's field (the one stitched with, kept likewise).
     bool seam_flow_on_ = false;
     bool seam_flow_wanted_ = false; // seam_flow_on_ as Open() set it, before settleSeamFlow
-    insv::SeamFlowGrid seam_flow_grid_;
+    orbiscore::SeamFlowGrid seam_flow_grid_;
     bool seam_flow_gpu_ = false;
-    insv::SeamFlowWindow seam_flow_window_;
+    orbiscore::SeamFlowWindow seam_flow_window_;
     // With the seam colour blend, its frames' patch means for the fade
     // between the lenses (SeamFade.h), alongside the flow's.
-    insv::SeamFadeWindow seam_fade_window_;
-    std::shared_ptr<const insv::SeamFlowField> seam_flow_field_;
-    std::unique_ptr<insv::SeamFlowStrips> seam_flow_strips_; // a frame's strips (scratch)
+    orbiscore::SeamFadeWindow seam_fade_window_;
+    std::shared_ptr<const orbiscore::SeamFlowField> seam_flow_field_;
+    std::unique_ptr<orbiscore::SeamFlowStrips> seam_flow_strips_; // a frame's strips (scratch)
     // Shared, not unique: its deleter comes with it from where it's made,
     // so a build without OpenCV (no estimator) needn't link one.
-    std::shared_ptr<insv::SeamFlowEstimator> seam_flow_estimator_;
+    std::shared_ptr<orbiscore::SeamFlowEstimator> seam_flow_estimator_;
     // The flow of the strips in seam_flow_strips_ added to the window and
     // the window's field solved into seam_flow_field_ (the CPU's seam flow).
     // False (the field as it was) when it can't be estimated.
@@ -409,8 +411,8 @@ private:
     // (measure failed): `p` without it.
     // The last frame's seam colour blend into `p`, for a scrub's passing
     // frame (none measured).
-    void heldSeamColour(insv::StitchGpuParams& p) const;
-    bool applySeamColour(int64_t pts_ms, insv::StitchGpuParams& p,
+    void heldSeamColour(orbiscore::StitchGpuParams& p) const;
+    bool applySeamColour(int64_t pts_ms, orbiscore::StitchGpuParams& p,
                          const std::function<bool()>& measure);
     bool seam_warned_ = false;
     double seam_ms_ = 0.0; // the last paramsWithSeam(), for ReadTiming::seamMs
@@ -429,8 +431,8 @@ private:
 
 // The clip's lens profile for a lens-guard choice; null for none (bare lens)
 // and when the file doesn't carry it.
-const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
-                                          PreviewStitchConfig::LensGuard guard);
+const orbiscore::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
+                                               PreviewStitchConfig::LensGuard guard);
 
 // The calibration of a dual-fisheye clip (its two lenses in one file or one
 // each; the decoders open them from the lenses' sources) and `params` set up
@@ -447,7 +449,7 @@ const insv::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
 bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
                             PreviewStitchConfig::LensGuard guard,
                             const LensCalibration* calibration, bool modelCorrection,
-                            insv::InsvCalibration& calib, insv::StitchParams& params,
+                            orbiscore::InsvCalibration& calib, orbiscore::StitchParams& params,
                             std::string& err, bool* guardFound = nullptr);
 
 // Returns a fresh, un-Open()'d stitch source (always a NativeStitchSource).

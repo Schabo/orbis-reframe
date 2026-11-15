@@ -9,8 +9,8 @@ namespace stitch {
 MeasureFailure PrepareClipMeasurement(const std::string& clipPath,
                                       PreviewStitchConfig::LensGuard lensGuard,
                                       const LensCalibration* calibration,
-                                      insv::InsvCalibration& calib, insv::StitchParams& params,
-                                      std::string& err,
+                                      orbiscore::InsvCalibration& calib,
+                                      orbiscore::StitchParams& params, std::string& err,
                                       std::shared_ptr<const camera::ClipMetadata>* clip)
 {
     camera::ReadFailure why = camera::ReadFailure::Unreadable;

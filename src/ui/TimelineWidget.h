@@ -111,7 +111,7 @@ public:
     QSize minimumSizeHint() const override;
 
     // A clip's waveform: peak level per 1/kPeaksPerSec of source time (see
-    // insv::AudioPeaks). Null = none (yet).
+    // orbiscore::AudioPeaks). Null = none (yet).
     static constexpr int kPeaksPerSec = 100;
     // A highlight mark's dot: its centre this far below the clip's top edge.
     static constexpr int kMarkInsetPx = 5;

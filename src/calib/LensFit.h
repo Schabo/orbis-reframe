@@ -2,7 +2,7 @@
 
 // A camera's lens calibration from a clip of the chart (ChartDetect.h).
 //
-// The model is the stitch's (insv::LensProjection, MEI with radial,
+// The model is the stitch's (orbiscore::LensProjection, MEI with radial,
 // tangential and thin-prism terms), started from the file's own calibration.
 // First each lens alone (the board's pose per frame and the lens's
 // parameters), then both together with the rotation from lens 0 to lens 1

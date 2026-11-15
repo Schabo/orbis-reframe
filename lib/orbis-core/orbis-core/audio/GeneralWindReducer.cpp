@@ -6,7 +6,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -203,4 +203,4 @@ void GeneralWindReducer::process(const float* in, float* out, int frames)
     stft.pop(out, frames);
 }
 
-} // namespace insv
+} // namespace orbiscore

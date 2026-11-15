@@ -109,8 +109,8 @@ struct Entry {
     bool captureTiming = true;
     bool seamColourBlend = true;
     bool seamFlow = true;
-    std::optional<insv::SeamCorrection> seam;
-    std::optional<insv::LensColour> colour;
+    std::optional<orbiscore::SeamCorrection> seam;
+    std::optional<orbiscore::LensColour> colour;
     std::optional<stitch::LensCalibration> calibration;
     std::string ref;
     double refStartMs = 0;
@@ -208,7 +208,7 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                     err = where + "seam= wants Y,P,R,CU,CV,S";
                     return false;
                 }
-                insv::SeamCorrection s;
+                orbiscore::SeamCorrection s;
                 for (int i = 0; i < 3; ++i)
                     s.lens1RotDeg[i] = a[i];
                 s.lens1Centre[0] = a[3] * 0.01;
@@ -222,7 +222,7 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                     err = where + "colour= wants R,G,B,SR,SG,SB,SPREAD";
                     return false;
                 }
-                insv::LensColour c;
+                orbiscore::LensColour c;
                 for (int i = 0; i < 3; ++i) {
                     c.logRatio[i] = std::log1p(a[i] * 0.01);
                     c.slope[i] = a[3 + i] * 0.01;
@@ -273,7 +273,7 @@ const char* MethodName(Method m)
 
 // --- the seam frame from the file ------------------------------------------
 
-bench::V3 ToBench(const insv::Vec3& v) { return {v.x, v.y, v.z}; }
+bench::V3 ToBench(const orbiscore::Vec3& v) { return {v.x, v.y, v.z}; }
 
 // The band and the lenses' axes in the sphere frame, from the calibration
 // and the guard alone: no seam correction, nothing measured, so every
@@ -281,24 +281,25 @@ bench::V3 ToBench(const insv::Vec3& v) { return {v.x, v.y, v.z}; }
 bool SeamFrameOf(const Entry& e, bench::SeamFrame& out, std::shared_ptr<const camera::ClipMetadata>& meta,
                  std::string& err)
 {
-    insv::InsvCalibration calib;
-    insv::StitchParams params;
+    orbiscore::InsvCalibration calib;
+    orbiscore::StitchParams params;
     if (stitch::PrepareClipMeasurement(e.clip, e.guard, nullptr, calib, params, err, &meta) !=
         stitch::MeasureFailure::None)
         return false;
     params.depthSeam = true; // for the seam frame
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     if (!st.configure(calib, meta->lensWidth, meta->lensHeight, params)) {
         err = "FisheyeStitcher::configure failed";
         return false;
     }
-    const insv::Mat3 toSphere = insv::transpose(st.outRotation()); // world = R * sphere
-    out.axis = ToBench(insv::apply(toSphere, st.seamAxis()));
-    out.u = ToBench(insv::apply(toSphere, st.seamU()));
-    out.v = ToBench(insv::apply(toSphere, st.seamV()));
+    const orbiscore::Mat3 toSphere = orbiscore::transpose(st.outRotation()); // world = R * sphere
+    out.axis = ToBench(orbiscore::apply(toSphere, st.seamAxis()));
+    out.u = ToBench(orbiscore::apply(toSphere, st.seamU()));
+    out.v = ToBench(orbiscore::apply(toSphere, st.seamV()));
     for (int i = 0; i < 2; ++i) {
-        const insv::Mat3& w2l = st.lensProjection(i).worldToLens; // the lens's +z is its axis
-        out.lensAxis[i] = ToBench(insv::apply(toSphere, {w2l.m[2][0], w2l.m[2][1], w2l.m[2][2]}));
+        const orbiscore::Mat3& w2l = st.lensProjection(i).worldToLens; // the lens's +z is its axis
+        out.lensAxis[i] =
+            ToBench(orbiscore::apply(toSphere, {w2l.m[2][0], w2l.m[2][1], w2l.m[2][2]}));
     }
     if (bench::Dot(out.lensAxis[0], out.axis) < 0 || bench::Dot(out.lensAxis[1], out.axis) > 0) {
         err = "the lenses' axes don't face the seam axis's two ways";
@@ -333,7 +334,7 @@ public:
     {
         endMs_ = e.endMs;
         const stitch::LensCalibration* cal = e.calibration ? &*e.calibration : nullptr;
-        insv::SeamCorrection seam;
+        orbiscore::SeamCorrection seam;
         std::string seamFrom = "list", colourFrom = "list";
         if (e.method == Method::New) {
             seamFrom = colourFrom = "not used by the new stitcher";
@@ -345,7 +346,7 @@ public:
             if (r.ok)
                 seam = r.correction;
         }
-        insv::LensColour colour;
+        orbiscore::LensColour colour;
         if (e.method == Method::New) {
         } else if (e.colour) {
             colour = *e.colour;
@@ -397,11 +398,12 @@ public:
         src_.SetLensColour(colour);
         // The capture-time correction, from the gyro as playback has it
         // (the clip's own sync, 0, as a clip without a measured one).
-        stab_ = std::make_shared<insv::GyroStabilizer>();
+        stab_ = std::make_shared<orbiscore::GyroStabilizer>();
         if (!e.captureTiming)
             info += "\n  (rs=off: no capture-time correction)";
         else if (const auto imu = camera::ReadClipImu(e.clip))
-            stab_->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock), 0.0);
+            stab_->build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock),
+                         0.0);
         if (stab_->ready()) {
             stitch::CaptureTiming t;
             t.readoutSec[0] = t.readoutSec[1] = stab_->readoutSec();
@@ -432,7 +434,7 @@ public:
 
 private:
     stitch::NativeStitchSource src_;
-    std::shared_ptr<insv::GyroStabilizer> stab_;
+    std::shared_ptr<orbiscore::GyroStabilizer> stab_;
     int64_t endMs_ = 0;
 };
 
@@ -533,8 +535,8 @@ public:
         t.captureTiming = false;
         t.seamColourBlend = false;
         t.seamFlow = false;
-        t.seam = insv::SeamCorrection{};
-        t.colour = insv::LensColour{};
+        t.seam = orbiscore::SeamCorrection{};
+        t.colour = orbiscore::LensColour{};
         std::string info;
         if (!src_.open(t, opt, meta, info)) {
             err = "template: " + src_.error;

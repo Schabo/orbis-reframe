@@ -78,9 +78,9 @@ bool TrackClip::setMuted(bool m)
     return true;
 }
 
-bool TrackClip::setNoise(const insv::NoiseReduction &nr)
+bool TrackClip::setNoise(const orbiscore::NoiseReduction &nr)
 {
-    const insv::NoiseReduction n = nr.clamped();
+    const orbiscore::NoiseReduction n = nr.clamped();
     if (n == noise)
         return false;
     noise = n;

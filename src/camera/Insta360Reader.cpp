@@ -31,7 +31,7 @@ constexpr std::size_t kImuProbeSamples = 4000;
 // extension by `ext`; "" when the name isn't the model's `VID_…` clip name
 // (docs/formats/insta360-x5.md §1). A model whose names carry no lens token
 // takes no `token`: only the prefix and extension change.
-std::filesystem::path sibling(const std::filesystem::path& insv, const insv::InsvModel& model,
+std::filesystem::path sibling(const std::filesystem::path& insv, const orbiscore::InsvModel& model,
                               const char* token, const char* prefix = nullptr,
                               const char* ext = nullptr) {
     std::string name = insv.filename().string();
@@ -59,7 +59,7 @@ std::filesystem::path sibling(const std::filesystem::path& insv, const insv::Ins
 // Video ms of a moment `camSec` seconds of the camera's clock after the
 // first recorded frame. The camera's clock runs `captureScale` times the
 // video's; in a timelapse the moment lies between two frames by their own
-// times (`frameSec`, as insv::InsvGps::frame_sec; they needn't be evenly
+// times (`frameSec`, as orbiscore::InsvGps::frame_sec; they needn't be evenly
 // spaced), past either end by the capture scale.
 int64_t videoMsAt(double camSec, const ClipMetadata& clip, const std::vector<double>& frameSec) {
     if (clip.captureScale == 1.0)
@@ -78,10 +78,10 @@ int64_t videoMsAt(double camSec, const ClipMetadata& clip, const std::vector<dou
     return std::llround((static_cast<double>(hi - 1) + f) / clip.fps * 1e3);
 }
 
-bool sameTake(const std::filesystem::path& p, const insv::InsvMakerNotes& clip) {
+bool sameTake(const std::filesystem::path& p, const orbiscore::InsvMakerNotes& clip) {
     if (clip.first_frame_timestamp == 0)
         return false;
-    const auto other = insv::ReadInsvMakerNotes(p.string());
+    const auto other = orbiscore::ReadInsvMakerNotes(p.string());
     return other && other->serial_number == clip.serial_number &&
            other->first_frame_timestamp == clip.first_frame_timestamp;
 }
@@ -89,11 +89,11 @@ bool sameTake(const std::filesystem::path& p, const insv::InsvMakerNotes& clip) 
 // The camera's proxy beside the clip (the X5's LRV_…_01_….lrv, the ONE X2's
 // LRV_…_11_….insv, the A1's PRX_….prx), "" if it isn't there. Named from
 // the clip's name; for a renamed clip from the name it holds (`heldName`,
-// insv::ReadInsvHeldName), or the clip's own stem with the proxy's
+// orbiscore::ReadInsvHeldName), or the clip's own stem with the proxy's
 // extension (both renamed alike). Those two are taken only when the file is
 // the same take's (sameTake).
-std::string findProxy(const std::filesystem::path& insv, const insv::InsvModel& model,
-                      const insv::InsvMakerNotes& notes,
+std::string findProxy(const std::filesystem::path& insv, const orbiscore::InsvModel& model,
+                      const orbiscore::InsvMakerNotes& notes,
                       const std::optional<std::string>& heldName) {
     std::error_code ec;
     const auto there = [&](const std::filesystem::path& p) {
@@ -121,9 +121,9 @@ std::string findProxy(const std::filesystem::path& insv, const insv::InsvModel& 
 // length (it may end one frame early) without a trailer of its own -- a file
 // with one is another clip's. False with `err` set otherwise; else `other`
 // is its path and `info` its stream.
-bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
-                    const insv::InsvModel& model, std::string& other, insv::InsvStreamInfo& info,
-                    std::string& err) {
+bool findSecondLens(const std::string& path, const orbiscore::InsvStreamInfo& lens0,
+                    const orbiscore::InsvModel& model, std::string& other,
+                    orbiscore::InsvStreamInfo& info, std::string& err) {
     const std::filesystem::path p = sibling(path, model, model.secondLensToken);
     std::error_code ec;
     if (p.empty() || !std::filesystem::exists(p, ec)) {
@@ -133,14 +133,14 @@ bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
         return false;
     }
     other = p.string();
-    insv::LensDemuxer demux;
+    orbiscore::LensDemuxer demux;
     std::string e;
     if (!demux.open(
             other, [](const auto*, const auto*, auto*, std::string&) { return true; }, e)) {
         err = "the second lens's file can't be read (" + e + "): " + other;
         return false;
     }
-    const insv::InsvStreamInfo& s = demux.lens(0);
+    const orbiscore::InsvStreamInfo& s = demux.lens(0);
     info = s;
     const double frameMs = lens0.fps > 0 ? 1000.0 / lens0.fps : 0.0;
     if (demux.lensCount() != 1 || s.width != lens0.width || s.height != lens0.height ||
@@ -150,7 +150,7 @@ bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
               other;
         return false;
     }
-    if (insv::ReadInsvMakerNotes(other)) {
+    if (orbiscore::ReadInsvMakerNotes(other)) {
         err = "the second lens's file is a clip of its own: " + other;
         return false;
     }
@@ -165,34 +165,34 @@ bool findSecondLens(const std::string& path, const insv::InsvStreamInfo& lens0,
 constexpr int kThumbLensSide = 720; // a lens picture, decoded down to this
 constexpr int kThumbWidth = 1024;   // the equirect preview's width
 std::optional<Thumbnail> stitchedThumbnail(const std::string& path) {
-    const auto rec0 = insv::ReadInsvRecord(path, 0x200);
-    const auto rec1 = rec0 ? insv::ReadInsvRecord(path, 0x500) : std::nullopt;
+    const auto rec0 = orbiscore::ReadInsvRecord(path, 0x200);
+    const auto rec1 = rec0 ? orbiscore::ReadInsvRecord(path, 0x500) : std::nullopt;
     if (!rec1)
         return std::nullopt;
     const auto clip = ReadClipMetadata(path);
     if (!clip || !clip->calibrated || clip->lenses.size() != 2)
         return std::nullopt;
-    insv::Image lens[2];
+    orbiscore::Image lens[2];
     std::string err;
-    if (!insv::DecodeStillPicture(*rec0, "h264", kThumbLensSide, lens[0], err) ||
-        !insv::DecodeStillPicture(*rec1, "h264", kThumbLensSide, lens[1], err)) {
+    if (!orbiscore::DecodeStillPicture(*rec0, "h264", kThumbLensSide, lens[0], err) ||
+        !orbiscore::DecodeStillPicture(*rec1, "h264", kThumbLensSide, lens[1], err)) {
         std::fprintf(stderr, "[camera] no preview from the lens pictures in %s: %s\n",
                      path.c_str(), err.c_str());
         return std::nullopt;
     }
     if (lens[0].w != lens[1].w || lens[0].h != lens[1].h)
         return std::nullopt;
-    insv::InsvCalibration calib;
+    orbiscore::InsvCalibration calib;
     for (const Lens& l : clip->lenses)
         calib.lensesExt.push_back(l.calibration);
-    insv::StitchParams params;
-    insv::ApplyLensProfile(params, clip->bareLens ? &*clip->bareLens : nullptr, nullptr);
+    orbiscore::StitchParams params;
+    orbiscore::ApplyLensProfile(params, clip->bareLens ? &*clip->bareLens : nullptr, nullptr);
     for (int i = 0; i < 2; ++i)
         params.lensPose[i] = clip->lenses[i].pose;
     params.outYawDeg = clip->mountYawDeg;
     params.outPitchDeg = clip->mountPitchDeg;
     params.outRollDeg = clip->mountRollDeg;
-    insv::FisheyeStitcher stitcher;
+    orbiscore::FisheyeStitcher stitcher;
     if (!stitcher.configure(calib, lens[0].w, lens[0].h, params))
         return std::nullopt;
     return ThumbnailFromRgb(stitcher.renderEquirect(lens[0], lens[1], kThumbWidth));
@@ -217,8 +217,8 @@ std::string nameTime(const std::filesystem::path& p) {
 // both as streams of it, or lens 0 there and lens 1 in a file of its own
 // beside it (findSecondLens), whose length then caps the pair's (`durationUs`,
 // `durationMs`). False with `err` set when neither fits.
-bool lensSourcesOf(const std::string& path, const std::vector<insv::InsvStreamInfo>& streams,
-                   const insv::InsvModel& model, std::vector<LensSource>& lenses,
+bool lensSourcesOf(const std::string& path, const std::vector<orbiscore::InsvStreamInfo>& streams,
+                   const orbiscore::InsvModel& model, std::vector<LensSource>& lenses,
                    int64_t& durationUs, int64_t& durationMs, std::string& err) {
     durationUs = streams.empty() ? 0 : streams[0].durationUs;
     durationMs = streams.empty() ? 0 : streams[0].durationMs;
@@ -228,7 +228,7 @@ bool lensSourcesOf(const std::string& path, const std::vector<insv::InsvStreamIn
     }
     if (streams.size() == 1 && model.secondLensToken) {
         std::string other;
-        insv::InsvStreamInfo info;
+        orbiscore::InsvStreamInfo info;
         if (!findSecondLens(path, streams[0], model, other, info, err))
             return false;
         lenses = {LensSource{path, 0}, LensSource{other, 0}};
@@ -243,9 +243,9 @@ bool lensSourcesOf(const std::string& path, const std::vector<insv::InsvStreamIn
 }
 
 // The video streams of `path`; false with `err` set when it can't be opened.
-bool videoStreams(const std::string& path, std::vector<insv::InsvStreamInfo>& streams,
+bool videoStreams(const std::string& path, std::vector<orbiscore::InsvStreamInfo>& streams,
                   std::string& err) {
-    insv::LensDemuxer demux;
+    orbiscore::LensDemuxer demux;
     if (!demux.open(
             path, [](const auto*, const auto*, auto*, std::string&) { return true; }, err))
         return false;
@@ -303,8 +303,9 @@ std::string firstFileName(const std::string& self, const std::string& identify) 
 // or starting before the part before ends. Then, when the last part is as
 // long as the camera writes a file, the name the next would have
 // (`mayContinueIn`).
-void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::InsvMakerNotes& notes,
-               const insv::InsvStreamInfo& s0) {
+void findParts(ClipMetadata& out, const orbiscore::InsvModel& model,
+               const orbiscore::InsvMakerNotes& notes,
+               const orbiscore::InsvStreamInfo& s0) {
     if (notes.file_group_identify.empty())
         return;
     namespace fs = std::filesystem;
@@ -326,7 +327,7 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
         const auto other = n == name ? std::nullopt : splitCounter(n);
         if (!other || other->stem != counter->stem || other->rest != counter->rest)
             continue;
-        const auto theirs = insv::ReadInsvMakerNotes(e.path().string());
+        const auto theirs = orbiscore::ReadInsvMakerNotes(e.path().string());
         if (!theirs || theirs->serial_number != notes.serial_number ||
             theirs->file_group_identify != notes.file_group_identify ||
             theirs->file_group_index <= notes.file_group_index)
@@ -338,13 +339,13 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
               [](const Candidate& a, const Candidate& b) { return a.index < b.index; });
 
     uint64_t prevFirstFrame = notes.first_frame_timestamp;
-    const auto ownMap = insv::ReadInsvTimeMap(out.path);
+    const auto ownMap = orbiscore::ReadInsvTimeMap(out.path);
     double prevOffsetMs = ownMap ? ownMap->offsetMs : 0.0;
     for (const Candidate& c : candidates) {
-        const auto map = insv::ReadInsvTimeMap(c.path);
+        const auto map = orbiscore::ReadInsvTimeMap(c.path);
         const double offsetMs = map ? map->offsetMs : 0.0;
         std::string err;
-        std::vector<insv::InsvStreamInfo> streams;
+        std::vector<orbiscore::InsvStreamInfo> streams;
         Part part;
         part.path = c.path;
         int64_t durationMs = 0;
@@ -418,23 +419,24 @@ void findParts(ClipMetadata& out, const insv::InsvModel& model, const insv::Insv
     }
 }
 
-std::optional<insv::LensProfile> profile(const insv::InsvMakerNotes& notes, const char* name) {
+std::optional<orbiscore::LensProfile> profile(const orbiscore::InsvMakerNotes& notes,
+                                              const char* name) {
     if (!name)
         return std::nullopt;
-    if (const insv::LensProfile* p = insv::FindLensProfile(notes, name))
+    if (const orbiscore::LensProfile* p = orbiscore::FindLensProfile(notes, name))
         return *p;
     return std::nullopt;
 }
 
 } // namespace
 
-CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo>& streams,
+CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStreamInfo>& streams,
                                           ClipMetadata& out, std::string& err) const {
-    const auto notes = insv::ReadInsvMakerNotes(out.path);
+    const auto notes = orbiscore::ReadInsvMakerNotes(out.path);
     if (!notes)
         return Result::NotMine;
     bool known = false;
-    const insv::InsvModel& model = insv::FindInsvModel(notes->model, &known);
+    const orbiscore::InsvModel& model = orbiscore::FindInsvModel(notes->model, &known);
     if (!known)
         std::fprintf(stderr, "[camera] no table entry for \"%s\"; using the %s's\n",
                      notes->model.c_str(), model.name);
@@ -458,10 +460,10 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     // The MEI calibration Insta360 Studio stitches with: the 56-token string
     // (every X5 clip carries it), else the shorter offset_v3 (field 54; the
     // ONE X2's only one).
-    insv::InsvCalibration calib;
-    const auto ext = insv::ReadInsvExtendedCalibrationString(out.path);
-    if (((ext && insv::ParseExtendedCalibrationString(*ext, calib)) ||
-         insv::ParseCalibrationV3String(notes->offset_v3, calib)) &&
+    orbiscore::InsvCalibration calib;
+    const auto ext = orbiscore::ReadInsvExtendedCalibrationString(out.path);
+    if (((ext && orbiscore::ParseExtendedCalibrationString(*ext, calib)) ||
+         orbiscore::ParseCalibrationV3String(notes->offset_v3, calib)) &&
         calib.lensesExt.size() == 2) {
         // fx / fy are given in field 27's sensor window.
         double focalRefW = notes->crop_dst_w;
@@ -475,7 +477,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         for (int i = 0; i < 2; ++i) {
             out.lenses[i].calibration = calib.lensesExt[i];
             out.lenses[i].calibration.focalRefW = focalRefW;
-            out.lenses[i].pose = insv::Insta360LensPose(i);
+            out.lenses[i].pose = orbiscore::Insta360LensPose(i);
         }
     }
     out.mountYawDeg = model.mountDeg[0];
@@ -488,7 +490,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     out.bareLens = profile(*notes, "bare");
     out.standardGuard = profile(*notes, model.standardGuard);
     out.premiumGuard = profile(*notes, model.premiumGuard);
-    const std::optional<std::string> heldName = insv::ReadInsvHeldName(out.path);
+    const std::optional<std::string> heldName = orbiscore::ReadInsvHeldName(out.path);
     out.proxyPath = findProxy(out.path, model, *notes, heldName);
     // By the camera's clock: field 7 where the model writes it to the second
     // (the ONE X2 doesn't write it, the A1 only to the minute), else the
@@ -506,7 +508,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     }
 
     if (const auto tele =
-            insv::ReadInsvTelemetry(out.path, kImuProbeSamples, model.telemetryTickUs)) {
+            orbiscore::ReadInsvTelemetry(out.path, kImuProbeSamples, model.telemetryTickUs)) {
         if (tele->imu.size() >= 2) {
             out.hasMotion = true;
             // Microseconds, whatever the model's tick (ReadInsvTelemetry).
@@ -521,7 +523,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         }
         out.exposureRecords = static_cast<int64_t>(tele->exposure.size());
         out.rollingShutterMs = tele->rolling_shutter_ms;
-        out.captureScale = insv::CaptureScale(*tele, out.fps);
+        out.captureScale = orbiscore::CaptureScale(*tele, out.fps);
         if (out.captureScale > 1.0)
             out.timelapseIntervalSec = out.fps > 0.0 ? out.captureScale / out.fps : 0.0;
         else if (out.captureScale < 1.0)
@@ -546,7 +548,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
             out.missingFirst = first;
     }
     for (const Part& part : out.parts)
-        if (const auto map = insv::ReadInsvTimeMap(part.path); map && !map->plainTrim()) {
+        if (const auto map = orbiscore::ReadInsvTimeMap(part.path); map && !map->plainTrim()) {
             out.unevenTimeMap = true;
             std::fprintf(stderr, "[camera] %s was re-written with %u cut(s), its offset into the "
                                  "recording varying by %.1f ms; lined up by its median %.1f ms, "
@@ -554,8 +556,8 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
                          part.path.c_str(), map->cuts, map->offsetSpreadMs, map->offsetMs);
         }
     for (size_t k = 1; k < out.parts.size(); ++k)
-        if (const auto tele = insv::ReadInsvTelemetry(out.parts[k].path, kImuProbeSamples,
-                                                      model.telemetryTickUs)) {
+        if (const auto tele = orbiscore::ReadInsvTelemetry(out.parts[k].path, kImuProbeSamples,
+                                                           model.telemetryTickUs)) {
             out.exposureRecords += static_cast<int64_t>(tele->exposure.size());
             out.gpsRecords += static_cast<int64_t>(tele->gps_records);
             out.gpsFixes += static_cast<int64_t>(tele->gps_fixes);
@@ -567,7 +569,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     // time from its first recorded frame, on the camera's clock; a trimmed
     // file's video starts the time map's offset (video time) later.
     for (const Part& part : out.parts) {
-        const auto marks = insv::ReadInsvHighlights(part.path, model.telemetryTickUs);
+        const auto marks = orbiscore::ReadInsvHighlights(part.path, model.telemetryTickUs);
         if (!marks)
             continue;
         const int64_t startMs = part.startUs / 1000;
@@ -582,40 +584,40 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
     return Result::Read;
 }
 
-std::optional<insv::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) const {
-    const insv::InsvModel& model = insv::FindInsvModel(clip.model);
-    auto tele = insv::ReadInsvTelemetry(clip.path, 0, model.telemetryTickUs);
+std::optional<orbiscore::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) const {
+    const orbiscore::InsvModel& model = orbiscore::FindInsvModel(clip.model);
+    auto tele = orbiscore::ReadInsvTelemetry(clip.path, 0, model.telemetryTickUs);
     if (!tele || !clip.hasMotion)
         return std::nullopt;
     if (clip.parts.size() <= 1)
-        return insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model);
+        return orbiscore::MakeInsvImuTrack(std::move(*tele), clip.fps, model);
     // Each part's track by its own file, then one.
-    std::vector<insv::ImuTrackPart> tracks;
+    std::vector<orbiscore::ImuTrackPart> tracks;
     for (size_t k = 0; k < clip.parts.size(); ++k) {
         const Part& part = clip.parts[k];
         if (k > 0)
-            tele = insv::ReadInsvTelemetry(part.path, 0, model.telemetryTickUs);
+            tele = orbiscore::ReadInsvTelemetry(part.path, 0, model.telemetryTickUs);
         if (!tele) {
             std::fprintf(stderr, "[camera] no motion data in %s, part %zu of %s\n",
                          part.path.c_str(), k + 1, clip.path.c_str());
             continue;
         }
-        tracks.push_back({insv::MakeInsvImuTrack(std::move(*tele), clip.fps, model),
+        tracks.push_back({orbiscore::MakeInsvImuTrack(std::move(*tele), clip.fps, model),
                           static_cast<double>(part.startUs) * 1e-6,
                           static_cast<double>(part.durationUs) * 1e-6});
     }
-    return insv::JoinImuTracks(std::move(tracks));
+    return orbiscore::JoinImuTracks(std::move(tracks));
 }
 
-std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {
+std::optional<orbiscore::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) const {
     if (clip.gpsFixes == 0)
         return std::nullopt;
     // Each part's fixes by its own file, in clip time.
-    std::optional<insv::GpsTrack> track;
+    std::optional<orbiscore::GpsTrack> track;
     for (const Part& part : clip.parts) {
-        const auto gps = insv::ReadInsvGps(part.path,
-                                           insv::FindInsvModel(clip.model).telemetryTickUs,
-                                           clip.captureScale);
+        const auto gps =
+            orbiscore::ReadInsvGps(part.path, orbiscore::FindInsvModel(clip.model).telemetryTickUs,
+                                   clip.captureScale);
         if (!gps || gps->fixes.empty())
             continue;
         // The fixes carry Unix time; field 98.3 says when the first frame was
@@ -642,7 +644,7 @@ std::optional<insv::GpsTrack> Insta360Reader::readGps(const ClipMetadata& clip) 
         // A heading of -1 is the camera's "don't know", written while
         // standing still (§8). Unix time runs with the camera's clock, not
         // the video's.
-        for (const insv::InsvGpsFix& f : gps->fixes) {
+        for (const orbiscore::InsvGpsFix& f : gps->fixes) {
             const double camSec = static_cast<double>(f.unix_ms - gps->first_frame_unix_ms) * 1e-3;
             track->fixes.push_back({startMs + videoMsAt(camSec, clip, gps->frame_sec), f.latitude,
                                     f.longitude, f.speed_mps,
@@ -660,7 +662,7 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
     // lens token is the last `_xx_` (the date and time are longer runs).
     const std::filesystem::path p(path);
     const auto byName = [&](const std::string& name) -> std::optional<std::string> {
-        const auto clipName = [&](const insv::InsvModel& m, const char* token) {
+        const auto clipName = [&](const orbiscore::InsvModel& m, const char* token) {
             std::string n = name;
             if (token)
                 n.replace(n.rfind(token), std::strlen(token), m.clipToken);
@@ -670,7 +672,7 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
             return c.string();
         };
         const std::filesystem::path np(name);
-        for (const insv::InsvModel& m : insv::InsvModels()) {
+        for (const orbiscore::InsvModel& m : orbiscore::InsvModels()) {
             if (m.secondLensToken && m.clipToken && name.rfind("VID_", 0) == 0 &&
                 name.ends_with(".insv") && name.rfind(m.secondLensToken) != std::string::npos)
                 return clipName(m, m.secondLensToken);
@@ -688,7 +690,7 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
     // first file, when that is beside it and takes it in as a part; else it
     // stands as a clip of its own.
     if (p.extension() == ".insv")
-        if (const auto notes = insv::ReadInsvMakerNotes(path);
+        if (const auto notes = orbiscore::ReadInsvMakerNotes(path);
             notes && notes->file_group_index > 0 && !notes->file_group_identify.empty()) {
             const std::filesystem::path first =
                 p.parent_path() / firstFileName(path, notes->file_group_identify);
@@ -704,10 +706,10 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
     // own), else the clip renamed alike, the same stem with `.insv`.
     // ClipFileOf checks that the clip finds this file as its proxy.
     std::vector<std::string> candidates;
-    if (const auto held = insv::ReadInsvHeldName(path))
+    if (const auto held = orbiscore::ReadInsvHeldName(path))
         if (auto clip = byName(*held))
             candidates.push_back(*clip);
-    for (const insv::InsvModel& m : insv::InsvModels())
+    for (const orbiscore::InsvModel& m : orbiscore::InsvModels())
         if (p.extension() == m.proxyExt && p.extension() != ".insv") {
             candidates.push_back(std::filesystem::path(p).replace_extension(".insv").string());
             break;
@@ -722,7 +724,7 @@ std::optional<std::string> Insta360Reader::clipFileFor(const std::string& path) 
 }
 
 std::optional<Thumbnail> Insta360Reader::readThumbnail(const std::string& path) const {
-    auto thumb = insv::ReadInsvThumbnail(path);
+    auto thumb = orbiscore::ReadInsvThumbnail(path);
     if (!thumb)
         return stitchedThumbnail(path);
     return Thumbnail{thumb->width, thumb->height, thumb->flat, thumb->coding,

@@ -54,7 +54,7 @@ vec3 sampleLens(int i, vec2 uv);
 #include "fisheye_stitch_common.glsl"
 
 // The stream's matrix and range, folded with the planes' bit depth into P.ycc
-// on the decoder side (insv::YcbcrToRgbRows).
+// on the decoder side (orbiscore::YcbcrToRgbRows).
 vec3 ycbcrToRgb(float y, vec2 cbcr)
 {
     vec3 c = vec3(y, cbcr);

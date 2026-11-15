@@ -8,7 +8,7 @@
 //
 // Header-only and plain data: the project (src/core) keeps a copy per clip.
 
-#include <orbis-core/insta360/Calibration.h> // insv::LensCalibExt
+#include <orbis-core/insta360/Calibration.h> // orbiscore::LensCalibExt
 
 #include <array>
 #include <cmath>
@@ -20,11 +20,11 @@ struct LensCalibration {
     // Per lens, the fitted model: xi, fx, fy, cx, cy, k, p, s and the
     // rotation (yaw, pitch, roll), in the file's units. The rest of each
     // LensCalibExt (frame size, focal window, lens offset) is the file's.
-    std::array<insv::LensCalibExt, 2> lenses;
+    std::array<orbiscore::LensCalibExt, 2> lenses;
     // The file calibration it was measured against. It applies to a clip
     // whose file carries the same one (the same camera, the same
     // calibration string), whatever the capture mode.
-    std::array<insv::LensCalibExt, 2> fileLenses;
+    std::array<orbiscore::LensCalibExt, 2> fileLenses;
 
     std::string serial;    // the camera's
     int lensGuard = 0;     // stitch::PreviewStitchConfig::LensGuard as int
@@ -36,7 +36,7 @@ struct LensCalibration {
     double coverageDeg[2] = {0, 0}; // furthest off-axis angle with corners
 
     // The model's parameters equal (what the stitch uses).
-    static bool sameModel(const insv::LensCalibExt& a, const insv::LensCalibExt& b)
+    static bool sameModel(const orbiscore::LensCalibExt& a, const orbiscore::LensCalibExt& b)
     {
         if (a.xi != b.xi || a.fx != b.fx || a.fy != b.fy || a.cx != b.cx || a.cy != b.cy ||
             a.yaw != b.yaw || a.pitch != b.pitch || a.roll != b.roll || a.tx != b.tx ||
@@ -48,7 +48,8 @@ struct LensCalibration {
         return a.p[0] == b.p[0] && a.p[1] == b.p[1];
     }
     // Whether it was measured against `file` (a clip's lens calibration).
-    bool matchesFile(const insv::LensCalibExt& lens0, const insv::LensCalibExt& lens1) const
+    bool matchesFile(const orbiscore::LensCalibExt& lens0,
+                     const orbiscore::LensCalibExt& lens1) const
     {
         return sameModel(fileLenses[0], lens0) && sameModel(fileLenses[1], lens1);
     }
@@ -69,13 +70,13 @@ struct LensCalibration {
 // `file` (a clip's two lenses as its file has them) with `cal`'s model in
 // place: the lens parameters and rotations; frame size, focal window and
 // lens offsets stay the clip's.
-inline void ApplyLensCalibration(const LensCalibration& cal, insv::LensCalibExt& lens0,
-                                 insv::LensCalibExt& lens1)
+inline void ApplyLensCalibration(const LensCalibration& cal, orbiscore::LensCalibExt& lens0,
+                                 orbiscore::LensCalibExt& lens1)
 {
-    insv::LensCalibExt* out[2] = {&lens0, &lens1};
+    orbiscore::LensCalibExt* out[2] = {&lens0, &lens1};
     for (int i = 0; i < 2; ++i) {
-        const insv::LensCalibExt& c = cal.lenses[i];
-        insv::LensCalibExt& e = *out[i];
+        const orbiscore::LensCalibExt& c = cal.lenses[i];
+        orbiscore::LensCalibExt& e = *out[i];
         e.xi = c.xi;
         e.fx = c.fx;
         e.fy = c.fy;

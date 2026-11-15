@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <numbers>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -708,12 +708,12 @@ void GyroStabilizer::buildOrientationOnly(const std::vector<OrientationSample>& 
     lockHeading();
 }
 
-void GyroStabilizer::build(const std::vector<insv::ImuSample>& imu, const StabConfig& cfg)
+void GyroStabilizer::build(const std::vector<orbiscore::ImuSample>& imu, const StabConfig& cfg)
 {
     buildTrack(imu, {}, cfg);
 }
 
-void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
+void GyroStabilizer::buildTrack(const std::vector<orbiscore::ImuSample>& imu,
                                 const std::vector<OrientationSample>& ref, const StabConfig& cfg)
 {
     m_clockRate = 0.0; // build(ImuTrack, ...) sets it after this returns
@@ -734,7 +734,7 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     const bool fuse = cfg.horizonLockAmount > 0.0f;
     const auto [lo, hi] = std::minmax_element(
         imu.begin(), imu.end(),
-        [](const insv::ImuSample& a, const insv::ImuSample& b) { return a.timestamp < b.timestamp; });
+        [](const orbiscore::ImuSample& a, const orbiscore::ImuSample& b) { return a.timestamp < b.timestamp; });
     const size_t upN = ref.size() >= 2 ? ref.size() : 0;
     const uint64_t upFirst = upN ? ref.front().timestamp : 0;
     const uint64_t upLast = upN ? ref.back().timestamp : 0;
@@ -750,8 +750,8 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
         return;
     }
 
-    std::vector<insv::ImuSample> s = imu;
-    std::sort(s.begin(), s.end(), [](const insv::ImuSample& a, const insv::ImuSample& b) {
+    std::vector<orbiscore::ImuSample> s = imu;
+    std::sort(s.begin(), s.end(), [](const orbiscore::ImuSample& a, const orbiscore::ImuSample& b) {
         return a.timestamp < b.timestamp;
     });
 
@@ -880,7 +880,7 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     // Turning: the vehicle's lateral acceleration is speed x yaw rate, so a
     // threshold on the yaw rate alone lets fast bends through -- at 0.08 rad/s
     // a 20 m/s sweeper (0.16 g) counted as level and leaned the horizon a
-    // degree or more into it (insv::BuildMotion's lateral g, levelled by this,
+    // degree or more into it (orbiscore::BuildMotion's lateral g, levelled by this,
     // read 0.87 of speed x yaw rate on a 21 min ride; 0.94 at 0.04 rad/s,
     // with 22 % of its samples left quiet; 0.01 left too few on a shorter
     // one).
@@ -1117,7 +1117,7 @@ void GyroStabilizer::buildTrack(const std::vector<insv::ImuSample>& imu,
     // From the accel, the level is the quiet samples' up over ~20 s: what
     // still passes as quiet -- speeding up, slowing down, the gentlest bends
     // -- comes and goes over that and averages out, the gyro's drift doesn't
-    // build up in it (its bias is fitted). insv::BuildMotion's forward g,
+    // build up in it (its bias is fitted). orbiscore::BuildMotion's forward g,
     // levelled by this, read 0.64-0.69 of the GPS's change of speed at a 4 s
     // scale with 10 s here, 0.85-0.92 with 20 s (two rides of 4-5 min).
     // Against a true up the anchor can be much firmer: 2 s takes the gyro's
@@ -1379,4 +1379,4 @@ void MatrixToYawPitchRoll(const float m[3][3], float& yaw, float& pitch, float& 
     yaw = std::atan2(m[0][2], m[2][2]);
 }
 
-} // namespace insv
+} // namespace orbiscore

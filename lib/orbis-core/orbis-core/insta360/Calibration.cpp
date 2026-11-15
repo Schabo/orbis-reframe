@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -185,4 +185,4 @@ bool ParseCalibrationV3String(const std::string& s, InsvCalibration& out)
     return true;
 }
 
-} // namespace insv
+} // namespace orbiscore

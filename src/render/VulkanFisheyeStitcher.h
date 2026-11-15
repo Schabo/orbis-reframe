@@ -1,10 +1,10 @@
 #pragma once
 
-#include <orbis-core/stitch/FisheyeProjection.h> // insv::StitchGpuParams
-#include <orbis-core/stitch/SeamCut.h>           // insv::SeamCutStats
-#include <orbis-core/stitch/SeamDepth.h>         // insv::SeamCosts
-#include <orbis-core/stitch/SeamFlow.h>          // insv::SeamFlowStrips, insv::SeamFlowField
-#include <orbis-core/Ycbcr.h>             // insv::YcbcrCoding
+#include <orbis-core/stitch/FisheyeProjection.h> // orbiscore::StitchGpuParams
+#include <orbis-core/stitch/SeamCut.h>           // orbiscore::SeamCutStats
+#include <orbis-core/stitch/SeamDepth.h>         // orbiscore::SeamCosts
+#include <orbis-core/stitch/SeamFlow.h>          // orbiscore::SeamFlowStrips, SeamFlowField
+#include <orbis-core/Ycbcr.h>             // orbiscore::YcbcrCoding
 
 #include "ColorLut.h" // color::Grade
 #include "ViewProjection.h" // view::Pose
@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-// Vulkan compute port of insv::FisheyeStitcher::renderEquirect.
+// Vulkan compute port of orbiscore::FisheyeStitcher::renderEquirect.
 //
 // Two ways to use it:
 //   * init()      -- creates its own compute-only VkInstance/VkDevice; stitch()
@@ -33,7 +33,7 @@
 namespace render {
 
 // Handles for one decoder-owned (FFmpeg Vulkan) fisheye frame, extracted under
-// the frame lock. Mirrors insv::VulkanLensFrame (kept separate so the two libs'
+// the frame lock. Mirrors orbiscore::VulkanLensFrame (kept separate so the two libs'
 // headers stay independent).
 struct VulkanLensInput {
     VkImage image = VK_NULL_HANDLE;
@@ -85,11 +85,11 @@ public:
     // (VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16, 10-bit, e.g. the
     // X6's I-Log); also false when the device can't sample it through a
     // ycbcr conversion with linear filtering. `ycbcr` is the stream's matrix
-    // and range (insv::InsvStreamInfo), which the conversion and the
+    // and range (orbiscore::InsvStreamInfo), which the conversion and the
     // viewport's lens frames (fillLensFrameVk) take.
     bool initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                    uint32_t computeQueueFamily, VkDeviceQueueCreateFlags queueFlags,
-                   std::string& err, VkFormat lensFormat, const insv::YcbcrCoding& ycbcr);
+                   std::string& err, VkFormat lensFormat, const orbiscore::YcbcrCoding& ycbcr);
 
     bool ready() const { return m_ready; }
 
@@ -102,20 +102,20 @@ public:
     // With `measureSeamFlow`, the pair's seam flow is measured into the
     // window first (as measureSeamFlowVk), in the same submission, and the
     // stitch uses it (params.seamFlowGpu needn't be set).
-    bool stitch(const uint8_t* rgb0, const uint8_t* rgb1, const insv::StitchGpuParams& params,
+    bool stitch(const uint8_t* rgb0, const uint8_t* rgb1, const orbiscore::StitchGpuParams& params,
                 int eqW, int eqH, std::vector<uint8_t>& outRgba, std::string& err,
                 bool measureSeamFlow = false);
     // stage 1's seam flow alone: the pair's flow measured into the window,
     // no stitch (a seek's pre-roll). Blocking.
     bool measureSeamFlow(const uint8_t* rgb0, const uint8_t* rgb1,
-                         const insv::StitchGpuParams& params, std::string& err);
+                         const orbiscore::StitchGpuParams& params, std::string& err);
 
     // stage 2: reproject a decoder-owned NV12 fisheye pair straight from VRAM.
     // Waits on each frame's timeline semaphore at semWaitValue and signals it
     // forward; *r0 / *r1 get the signalled value + left layout for the caller
     // to write back into the AVVkFrame. Blocking.
     bool stitchVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                  const insv::StitchGpuParams& params, int eqW, int eqH,
+                  const orbiscore::StitchGpuParams& params, int eqW, int eqH,
                   std::vector<uint8_t>& outRgba, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                   std::string& err);
 
@@ -130,7 +130,7 @@ public:
     // (nullptr => neutral) is the Colour panel grade, its LUT included, applied to the equirect sample before it's
     // reprojected.
     bool stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                            const insv::StitchGpuParams& params, int eqW, int eqH, int outW, int outH,
+                            const orbiscore::StitchGpuParams& params, int eqW, int eqH, int outW, int outH,
                             const view::Pose* pose, const float stab[9],
                             const color::Grade* colorGrade, std::vector<uint8_t>& outNv12,
                             VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
@@ -147,7 +147,7 @@ public:
     // `fillRgba` (R in the low byte) where no view goes. Each view's x and w
     // multiples of 4, y and h of 2. Same stab and grade for all.
     bool stitchAndReframeViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                 const insv::StitchGpuParams& params, int eqW, int eqH,
+                                 const orbiscore::StitchGpuParams& params, int eqW, int eqH,
                                  int canvasW, int canvasH, const std::vector<ViewRect>& views,
                                  const float stab[9], const color::Grade* colorGrade,
                                  uint32_t fillRgba, std::vector<uint8_t>& outNv12,
@@ -162,47 +162,48 @@ public:
     // same submission also measures the seam cut's statistics (pass 3, with
     // params.seamQ -- the table the frame before) into it.
     bool measureSeamVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                       const insv::StitchGpuParams& params, insv::SeamCosts& out,
-                       insv::SeamCutStats* cutOut, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
-                       std::string& err);
+                       const orbiscore::StitchGpuParams& params, orbiscore::SeamCosts& out,
+                       orbiscore::SeamCutStats* cutOut, VulkanLensOutcome* r0,
+                       VulkanLensOutcome* r1, std::string& err);
 
     // measureSeamVk's pass 3 alone: the seam cut's statistics (with
     // params.seamQ; all 0 or depth off = the template's geometry) into
     // `out`, no cost volume. The new stitcher's seam colour blend measures
     // the lenses' colour from them. Same handshake, blocking.
     bool measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                          const insv::StitchGpuParams& params, insv::SeamCutStats& out,
+                          const orbiscore::StitchGpuParams& params, orbiscore::SeamCutStats& out,
                           VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
     // The new stitcher's seam flow, all on the GPU: both lenses unwrapped
     // over the overlap (pass 4, on params' seam flow grid;
-    // insv::MeasureSeamFlowStrips with the capture-time correction), the
-    // flow between them both ways (seam_flow.comp; insv::SeamFlowEstimator's
+    // orbiscore::MeasureSeamFlowStrips with the capture-time correction), the
+    // flow between them both ways (seam_flow.comp; orbiscore::SeamFlowEstimator's
     // DIS), added to the stitcher's window of the last
-    // insv::kSeamFlowFrames frames (insv::SeamFlowWindow) and the window's
+    // orbiscore::kSeamFlowFrames frames (orbiscore::SeamFlowWindow) and the window's
     // mean put into the flow texture -- what a frame with
     // params.seamFlowGpu stitches with. With `cutOut` the cut statistics
     // (pass 3, as measureSeamCutVk) in the same submission. Same handshake,
     // blocking.
     bool measureSeamFlowVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                           const insv::StitchGpuParams& params, insv::SeamCutStats* cutOut,
-                           VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
+                           const orbiscore::StitchGpuParams& params,
+                           orbiscore::SeamCutStats* cutOut, VulkanLensOutcome* r0,
+                           VulkanLensOutcome* r1, std::string& err);
     // The seam flow window emptied (a seek): the next measured frame starts
     // it again. The texture keeps the last field until then.
     void resetSeamFlow();
-    // Frames in the seam flow window (0 .. insv::kSeamFlowFrames).
+    // Frames in the seam flow window (0 .. orbiscore::kSeamFlowFrames).
     int seamFlowFrames() const;
     // The flow of strips measured elsewhere (`s`, on its own grid) added to
     // the window, as measureSeamFlowVk does with its own; for tests and
     // tools. Blocking.
-    bool estimateSeamFlow(const insv::SeamFlowStrips& s, std::string& err);
+    bool estimateSeamFlow(const orbiscore::SeamFlowStrips& s, std::string& err);
     // The flow texture read back (the window's mean; the field the GPU
     // stitch samples, at half precision; and the fade's row as the last
     // stitch left it). For tests and tools.
-    bool readSeamFlow(insv::SeamFlowField& out, std::string& err);
+    bool readSeamFlow(orbiscore::SeamFlowField& out, std::string& err);
     // The fade's row solved from the window with `params`' seam colour
     // blend (its seamColour), as a stitch with the GPU's own field does
     // before it samples the texture; for tests and tools. Blocking.
-    bool solveSeamFade(const insv::StitchGpuParams& params, std::string& err);
+    bool solveSeamFade(const orbiscore::StitchGpuParams& params, std::string& err);
 
     // Whether renderViewVk() is usable (the fused view pipeline built -- needs
     // initAdopt(); fisheye_view_nv12.comp).
@@ -220,7 +221,7 @@ public:
     // outW must be a multiple of 4, outH of 2. Same semaphore handshake as
     // stitchVk(). Requires viewReady().
     bool renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                      const insv::StitchGpuParams& params, int outW,
+                      const orbiscore::StitchGpuParams& params, int outW,
                       int outH, const view::Pose* pose, const float stab[9],
                       const color::Grade* colorGrade, ViewFormat fmt, std::vector<uint8_t>& out,
                       VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
@@ -232,7 +233,7 @@ public:
     // the rectangle's. Same stab for all, no colour grade. For the privacy
     // blur's plate scan: the detector's tiles and the quad tracker's views.
     bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                       const insv::StitchGpuParams& params,
+                       const orbiscore::StitchGpuParams& params,
                        int canvasW, int canvasH, const std::vector<ViewRect>& views,
                        const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& out,
                        VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
@@ -241,7 +242,7 @@ public:
     // export, RGBA for a transition's layer). For NV12 / P010 each view's y
     // is even too.
     bool renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                       const insv::StitchGpuParams& params,
+                       const orbiscore::StitchGpuParams& params,
                        int canvasW, int canvasH, const std::vector<ViewRect>& views,
                        const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
                        uint32_t fillRgba, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
@@ -252,7 +253,7 @@ public:
     bool lensExportReady() const;
 
     // The adopted device's lock on the compute queue this stitcher submits to
-    // (insv::VulkanVideoDecoder::queueLock): the device is shared by other
+    // (orbiscore::VulkanVideoDecoder::queueLock): the device is shared by other
     // threads' decoders. Set it right after initAdopt().
     void setQueueLock(std::function<void()> lock, std::function<void()> unlock);
 
@@ -271,7 +272,7 @@ public:
     // as stitchVk(). Requires lensExportReady() and a decoder image with
     // TRANSFER_SRC usage.
     bool fillLensFrameVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                         const insv::StitchGpuParams& params, LensFrame& out,
+                         const orbiscore::StitchGpuParams& params, LensFrame& out,
                          VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
 
     // Free the ring slots nobody holds (a source going idle).
@@ -287,15 +288,15 @@ private:
     // equirect into one NV12 buffer (canvas 0 x 0 = the single view); `fill`
     // fills it first.
     bool stitchAndReframeImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                              const insv::StitchGpuParams& params, int eqW, int eqH, int canvasW,
-                              int canvasH, const std::vector<ViewRect>& views, const float stab[9],
-                              const color::Grade* colorGrade, const uint32_t* fill,
-                              std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0,
-                              VulkanLensOutcome* r1, std::string& err);
+                              const orbiscore::StitchGpuParams& params, int eqW, int eqH,
+                              int canvasW, int canvasH, const std::vector<ViewRect>& views,
+                              const float stab[9], const color::Grade* colorGrade,
+                              const uint32_t* fill, std::vector<uint8_t>& outNv12,
+                              VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err);
     // renderViewVk / renderViewsVk: `views` into one buffer (canvas 0 x 0 =
     // the single view, NV12 or RGBA as `fmt`); `clear` fills it first.
     bool renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                         const insv::StitchGpuParams& params,
+                         const orbiscore::StitchGpuParams& params,
                          int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], const color::Grade* colorGrade, ViewFormat fmt,
                          const uint32_t* clear, std::vector<uint8_t>& out, VulkanLensOutcome* r0,
@@ -305,12 +306,12 @@ private:
     // `out`, pass 3 into `cutOut` (each: null = not run), with `flow` pass
     // 4 and the seam flow.
     bool measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                         const insv::StitchGpuParams& params, insv::SeamCosts* out,
-                         insv::SeamCutStats* cutOut, bool flow, VulkanLensOutcome* r0,
+                         const orbiscore::StitchGpuParams& params, orbiscore::SeamCosts* out,
+                         orbiscore::SeamCutStats* cutOut, bool flow, VulkanLensOutcome* r0,
                          VulkanLensOutcome* r1, std::string& err);
     // stitch / measureSeamFlow: the RGB pair uploaded; with `measureFlow`
     // the seam flow measured from it; with eqW > 0 stitched into outRgba.
-    bool stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rgb1, const insv::StitchGpuParams& params,
+    bool stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rgb1, const orbiscore::StitchGpuParams& params,
                        int eqW, int eqH, std::vector<uint8_t>* outRgba, bool measureFlow,
                        std::string& err);
 

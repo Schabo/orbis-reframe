@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 class InsvAudioDemux;
 class NoiseFilter;
@@ -103,4 +103,4 @@ private:
     std::vector<float> m_joinTail; // the part before's sound over a join's fade
 };
 
-} // namespace insv
+} // namespace orbiscore

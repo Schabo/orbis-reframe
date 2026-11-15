@@ -32,7 +32,7 @@ double msBetween(std::chrono::steady_clock::time_point a, std::chrono::steady_cl
     return std::chrono::duration<double, std::milli>(b - a).count();
 }
 
-void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& sp)
+void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderParams& sp)
 {
     for (int r = 0; r < 3; ++r) {
         for (int c = 0; c < 3; ++c) {
@@ -70,7 +70,7 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.lensModel[1] = p.k5[0];
     sp.lensModel[2] = p.k5[1];
     sp.lensModel[3] = static_cast<float>(p.maskActive);
-    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
         sp.seamClear[b][0] = p.maskActive ? p.seamClear[b][0] : 0.0f;
         sp.seamClear[b][1] = p.maskActive ? p.seamClear[b][1] : 0.0f;
     }
@@ -101,7 +101,7 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
             out[k] = p.outRot[k * 3 + 0] * r[0] + p.outRot[k * 3 + 1] * r[1] + p.outRot[k * 3 + 2] * r[2];
         out[3] = 0.0f;
     };
-    constexpr int kTaps = insv::StitchGpuParams::kRsTaps;
+    constexpr int kTaps = orbiscore::StitchGpuParams::kRsTaps;
     for (int i = 0; i < 2; ++i)
         for (int k = 0; k < kTaps; ++k)
             toStitchWorld(p.rsRot[i][k], sp.rsRot[i * kTaps + k]);
@@ -116,10 +116,10 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.seamA[3] = static_cast<float>(p.depthActive);
     sp.seamU[3] = p.halfBaseline;
     sp.seamV[3] = p.depthRampRad;
-    sp.seamC[0] = static_cast<float>(insv::kSeamQMin);
-    sp.seamC[1] = static_cast<float>(insv::kSeamQMax);
-    sp.seamC[2] = static_cast<float>(insv::kSeamPatchElDeg * std::numbers::pi / 180.0);
-    sp.seamC[3] = static_cast<float>(insv::SeamCutRowMax(p.bandRad));
+    sp.seamC[0] = static_cast<float>(orbiscore::kSeamQMin);
+    sp.seamC[1] = static_cast<float>(orbiscore::kSeamQMax);
+    sp.seamC[2] = static_cast<float>(orbiscore::kSeamPatchElDeg * std::numbers::pi / 180.0);
+    sp.seamC[3] = static_cast<float>(orbiscore::SeamCutRowMax(p.bandRad));
     std::memcpy(sp.seamQ, p.seamQ, sizeof sp.seamQ);
     // The fade between the lenses: the depth-aware seam's cut, or with the
     // new stitcher's seam colour blend and seam flow its narrow fade, which
@@ -127,11 +127,11 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     // (it reads it on edge.z and seamFlow.x then).
     const bool anyFlow = (p.seamFlow && !p.seamFlow->empty()) || (p.seamFlowGpu && p.seamFlowCols > 0);
     const bool narrowFade = !p.depthActive && p.seamColourActive && anyFlow;
-    insv::SeamBlend veilFade;
+    orbiscore::SeamBlend veilFade;
     if (narrowFade)
-        insv::SeamVeilFade(&p.seamVeil[0][0], p.bandRad, veilFade);
-    const insv::SeamBlend& fade = narrowFade ? veilFade : p.seamBlend;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+        orbiscore::SeamVeilFade(&p.seamVeil[0][0], p.bandRad, veilFade);
+    const orbiscore::SeamBlend& fade = narrowFade ? veilFade : p.seamBlend;
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
         sp.seamCF[b][0] = fade.cut[b];
         sp.seamCF[b][1] = fade.fade[b];
     }
@@ -143,14 +143,14 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     // The veiling light: the depth-aware seam's, or with the new stitcher's
     // seam colour blend its own (the shader reads it on edge.z then).
     const bool seamVeil = !p.depthActive && p.seamColourActive;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
         for (int c = 0; c < 3; ++c) {
             sp.lensLocal[b][c] = p.seamBlend.local[b][c];
             sp.lensVeil[b][c] = seamVeil ? p.seamVeil[b][c] : p.seamBlend.veil[b][c];
         }
         sp.lensLocal[b][3] = sp.lensVeil[b][3] = 0.0f;
     }
-    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
         for (int c = 0; c < 3; ++c)
             sp.seamCol[b][c] = p.seamColourActive ? p.seamColour[b][c] : 0.0f;
         sp.seamCol[b][3] = 0.0f;
@@ -168,12 +168,12 @@ void packParams(const insv::StitchGpuParams& p, int eqW, int eqH, ShaderParams& 
     sp.seamFlowN[2] = sp.seamFlowN[3] = 0;
     // Privacy blur quads, sphere frame -> stitch world (rotations keep the
     // tangent-plane coordinates, so only the three axes move).
-    const int nBlur = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
+    const int nBlur = std::clamp(p.blurCount, 0, orbiscore::kMaxBlurQuads);
     sp.blur0[0] = static_cast<float>(nBlur);
     sp.blur0[1] = sp.blur0[2] = sp.blur0[3] = 0.0f;
     std::memset(sp.blurQ, 0, sizeof sp.blurQ);
     for (int k = 0; k < nBlur; ++k) {
-        const insv::BlurQuadFrame& b = p.blur[k];
+        const orbiscore::BlurQuadFrame& b = p.blur[k];
         float(*q)[4] = &sp.blurQ[k * 6];
         toStitchWorld(b.c, q[0]);
         toStitchWorld(b.r, q[1]);
@@ -293,9 +293,10 @@ void VulkanFisheyeStitcher::Impl::recordStitchPasses(int eqW, int eqH)
     vkCmdDispatch(cmd, gx, gy, 1);
 }
 
-void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c, const insv::StitchGpuParams& p)
+void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c,
+                                                  const orbiscore::StitchGpuParams& p)
 {
-    const int n = std::clamp(p.blurCount, 0, insv::kMaxBlurQuads);
+    const int n = std::clamp(p.blurCount, 0, orbiscore::kMaxBlurQuads);
     if (n == 0)
         return;
     VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -311,7 +312,8 @@ void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c, const insv:
     vkCmdBindDescriptorSets(c, VK_PIPELINE_BIND_POINT_COMPUTE, pipeLayout, 0, 1, &descSet, 0, nullptr);
     const int32_t pass = 5;
     vkCmdPushConstants(c, pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
-    vkCmdDispatch(c, static_cast<uint32_t>(insv::kBlurCellsPerQuad), static_cast<uint32_t>(n), 1);
+    vkCmdDispatch(c, static_cast<uint32_t>(orbiscore::kBlurCellsPerQuad),
+                  static_cast<uint32_t>(n), 1);
     b.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
@@ -319,7 +321,7 @@ void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c, const insv:
 }
 
 bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
-                                   const insv::StitchGpuParams& params, int eqW, int eqH,
+                                   const orbiscore::StitchGpuParams& params, int eqW, int eqH,
                                    std::vector<uint8_t>& outRgba, std::string& err,
                                    bool measureSeamFlow)
 {
@@ -331,14 +333,15 @@ bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
 }
 
 bool VulkanFisheyeStitcher::measureSeamFlow(const uint8_t* rgb0, const uint8_t* rgb1,
-                                            const insv::StitchGpuParams& params, std::string& err)
+                                            const orbiscore::StitchGpuParams& params,
+                                            std::string& err)
 {
     return stitchRgbImpl(rgb0, rgb1, params, 0, 0, nullptr, true, err);
 }
 
 bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rgb1,
-                                          const insv::StitchGpuParams& paramsIn, int eqW, int eqH,
-                                          std::vector<uint8_t>* outRgba, bool measureFlow,
+                                          const orbiscore::StitchGpuParams& paramsIn, int eqW,
+                                          int eqH, std::vector<uint8_t>* outRgba, bool measureFlow,
                                           std::string& err)
 {
     if (!m_ready) {
@@ -346,13 +349,13 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
         return false;
     }
     // Measured here, the frame stitches with the GPU's own field.
-    insv::StitchGpuParams flowParams;
+    orbiscore::StitchGpuParams flowParams;
     if (measureFlow) {
         flowParams = paramsIn;
         flowParams.seamFlow.reset();
         flowParams.seamFlowGpu = true;
     }
-    const insv::StitchGpuParams& params = measureFlow ? flowParams : paramsIn;
+    const orbiscore::StitchGpuParams& params = measureFlow ? flowParams : paramsIn;
     const bool doStitch = eqW > 0 && outRgba;
     const int fwv = params.fisheyeW;
     const int fhv = params.fisheyeH;
@@ -470,7 +473,7 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
 }
 
 bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                     const insv::StitchGpuParams& params, int eqW, int eqH,
+                                     const orbiscore::StitchGpuParams& params, int eqW, int eqH,
                                      std::vector<uint8_t>& outRgba, VulkanLensOutcome* r0,
                                      VulkanLensOutcome* r1, std::string& err)
 {
@@ -569,7 +572,7 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
 }
 
 bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                               const insv::StitchGpuParams& params, int eqW, int eqH,
+                                               const orbiscore::StitchGpuParams& params, int eqW, int eqH,
                                                int outW, int outH, const view::Pose* pose,
                                                const float stab[9], const color::Grade* colorGrade,
                                                std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0,
@@ -585,7 +588,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeVk(const VulkanLensInput& f0, const 
 }
 
 bool VulkanFisheyeStitcher::stitchAndReframeViewsVk(
-    const VulkanLensInput& f0, const VulkanLensInput& f1, const insv::StitchGpuParams& params,
+    const VulkanLensInput& f0, const VulkanLensInput& f1, const orbiscore::StitchGpuParams& params,
     int eqW, int eqH, int canvasW, int canvasH, const std::vector<ViewRect>& views,
     const float stab[9], const color::Grade* colorGrade, uint32_t fillRgba,
     std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err)
@@ -597,7 +600,7 @@ bool VulkanFisheyeStitcher::stitchAndReframeViewsVk(
 }
 
 bool VulkanFisheyeStitcher::stitchAndReframeImpl(
-    const VulkanLensInput& f0, const VulkanLensInput& f1, const insv::StitchGpuParams& params,
+    const VulkanLensInput& f0, const VulkanLensInput& f1, const orbiscore::StitchGpuParams& params,
     int eqW, int eqH, int canvasW, int canvasH, const std::vector<ViewRect>& views,
     const float stab[9], const color::Grade* colorGrade, const uint32_t* fill,
     std::vector<uint8_t>& outNv12, VulkanLensOutcome* r0, VulkanLensOutcome* r1, std::string& err)
@@ -804,8 +807,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
 }
 
 bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                         const insv::StitchGpuParams& params, int outW, int outH,
-                                         const view::Pose* pose,
+                                         const orbiscore::StitchGpuParams& params, int outW,
+                                         int outH, const view::Pose* pose,
                                          const float stab[9], const color::Grade* colorGrade,
                                          ViewFormat fmt, std::vector<uint8_t>& out,
                                          VulkanLensOutcome* r0, VulkanLensOutcome* r1,
@@ -821,7 +824,7 @@ bool VulkanFisheyeStitcher::renderViewVk(const VulkanLensInput& f0, const Vulkan
 }
 
 bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                          const insv::StitchGpuParams& params, int canvasW, int canvasH,
+                                          const orbiscore::StitchGpuParams& params, int canvasW, int canvasH,
                                           const std::vector<ViewRect>& views, const float stab[9],
                                           uint32_t clearRgba, std::vector<uint8_t>& out,
                                           VulkanLensOutcome* r0, VulkanLensOutcome* r1,
@@ -832,7 +835,7 @@ bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const Vulka
 }
 
 bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                          const insv::StitchGpuParams& params, int canvasW, int canvasH,
+                                          const orbiscore::StitchGpuParams& params, int canvasW, int canvasH,
                                           const std::vector<ViewRect>& views, const float stab[9],
                                           const color::Grade* colorGrade, ViewFormat fmt,
                                           uint32_t fillRgba, std::vector<uint8_t>& out,
@@ -846,7 +849,7 @@ bool VulkanFisheyeStitcher::renderViewsVk(const VulkanLensInput& f0, const Vulka
 }
 
 bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                            const insv::StitchGpuParams& params, int canvasW, int canvasH,
+                                            const orbiscore::StitchGpuParams& params, int canvasW, int canvasH,
                                             const std::vector<ViewRect>& views,
                                             const float stab[9], const color::Grade* colorGrade,
                                             ViewFormat fmt, const uint32_t* clear,
@@ -1034,34 +1037,36 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 }
 
 bool VulkanFisheyeStitcher::measureSeamVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                          const insv::StitchGpuParams& params,
-                                          insv::SeamCosts& out, insv::SeamCutStats* cutOut,
-                                          VulkanLensOutcome* r0,
+                                          const orbiscore::StitchGpuParams& params,
+                                          orbiscore::SeamCosts& out,
+                                          orbiscore::SeamCutStats* cutOut, VulkanLensOutcome* r0,
                                           VulkanLensOutcome* r1, std::string& err)
 {
     return measureSeamImpl(f0, f1, params, &out, cutOut, false, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamCutVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                             const insv::StitchGpuParams& params,
-                                             insv::SeamCutStats& out, VulkanLensOutcome* r0,
+                                             const orbiscore::StitchGpuParams& params,
+                                             orbiscore::SeamCutStats& out, VulkanLensOutcome* r0,
                                              VulkanLensOutcome* r1, std::string& err)
 {
     return measureSeamImpl(f0, f1, params, nullptr, &out, false, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamFlowVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                              const insv::StitchGpuParams& params,
-                                              insv::SeamCutStats* cutOut, VulkanLensOutcome* r0,
-                                              VulkanLensOutcome* r1, std::string& err)
+                                              const orbiscore::StitchGpuParams& params,
+                                              orbiscore::SeamCutStats* cutOut,
+                                              VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                              std::string& err)
 {
     return measureSeamImpl(f0, f1, params, nullptr, cutOut, true, r0, r1, err);
 }
 
 bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                            const insv::StitchGpuParams& params,
-                                            insv::SeamCosts* out, insv::SeamCutStats* cutOut,
-                                            bool flow, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                                            const orbiscore::StitchGpuParams& params,
+                                            orbiscore::SeamCosts* out,
+                                            orbiscore::SeamCutStats* cutOut, bool flow,
+                                            VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                                             std::string& err)
 {
     const int stripCols = params.seamFlowCols, stripRows = params.seamFlowRows;
@@ -1159,7 +1164,7 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
             vkCmdPushConstants(cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
         }
         // One 64-invocation workgroup per (bin, candidate).
-        vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamDepthCands, 1);
+        vkCmdDispatch(cmd, orbiscore::kSeamDepthBins, orbiscore::kSeamDepthCands, 1);
     }
     // Pass 3, the cut statistics: one per (bin, row); writes its own part of
     // the buffer, so no barrier between the two.
@@ -1172,7 +1177,7 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
             const int32_t pass = 3;
             vkCmdPushConstants(cmd, d->pipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, 4, &pass);
         }
-        vkCmdDispatch(cmd, insv::kSeamDepthBins, insv::kSeamCutRows, 1);
+        vkCmdDispatch(cmd, orbiscore::kSeamDepthBins, orbiscore::kSeamCutRows, 1);
     }
     // Pass 4, the seam flow's strips: four columns of a row per invocation,
     // into its own buffer; then the flow from them.
@@ -1207,18 +1212,18 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
 
     const float* c = static_cast<const float*>(d->seamMap);
     if (out)
-        for (int b = 0; b < insv::kSeamDepthBins; ++b)
-            for (int k = 0; k < insv::kSeamDepthCands; ++k) {
-                const float* v = c + 2 * (b * insv::kSeamDepthCands + k);
+        for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
+            for (int k = 0; k < orbiscore::kSeamDepthCands; ++k) {
+                const float* v = c + 2 * (b * orbiscore::kSeamDepthCands + k);
                 out->ncc[b][k] = v[0];
                 out->texture[b][k] = v[1];
             }
     if (cutOut) {
         const float* s = c + d->kSeamCostBytes / sizeof(float);
-        for (int b = 0; b < insv::kSeamDepthBins; ++b)
-            for (int r = 0; r < insv::kSeamCutRows; ++r) {
-                const float* v = s + 16 * (b * insv::kSeamCutRows + r);
-                insv::SeamCutStats::Cell& cell = cutOut->cell[b][r];
+        for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
+            for (int r = 0; r < orbiscore::kSeamCutRows; ++r) {
+                const float* v = s + 16 * (b * orbiscore::kSeamCutRows + r);
+                orbiscore::SeamCutStats::Cell& cell = cutOut->cell[b][r];
                 cell.n = v[0];
                 cell.zsad = v[1];
                 cell.texture = v[2];
@@ -1233,9 +1238,9 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
 }
 
 bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const VulkanLensInput& f1,
-                                            const insv::StitchGpuParams& params, LensFrame& out,
-                                            VulkanLensOutcome* r0, VulkanLensOutcome* r1,
-                                            std::string& err)
+                                            const orbiscore::StitchGpuParams& params,
+                                            LensFrame& out, VulkanLensOutcome* r0,
+                                            VulkanLensOutcome* r1, std::string& err)
 {
     if (!lensExportReady()) {
         err = "fillLensFrameVk requires initAdopt(), the view pipeline and external memory";
@@ -1275,11 +1280,11 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     ShaderParams sp{};
     packParams(params, 0, 0, sp); // no equirect: dims.zw unused
     // The viewport converts the planes itself (fisheye_view.frag).
-    insv::YcbcrToRgbRows(d->ycbcr, d->deepLens() ? 10 : 8, sp.ycc);
+    orbiscore::YcbcrToRgbRows(d->ycbcr, d->deepLens() ? 10 : 8, sp.ycc);
 
     // The privacy blur's cell colours are worked out here (pass 5, from the
     // decoder's images) and travel in the slot; the viewport only mixes them.
-    const bool blur = std::clamp(params.blurCount, 0, insv::kMaxBlurQuads) > 0;
+    const bool blur = std::clamp(params.blurCount, 0, orbiscore::kMaxBlurQuads) > 0;
     if (blur) {
         if (!d->ensureUbo(err))
             return false;

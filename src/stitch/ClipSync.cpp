@@ -28,8 +28,8 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
     // The file and its stitch first: one that can't be read has no IMU
     // either, and should say so as unreadable.
     std::string err;
-    insv::InsvCalibration calib;
-    insv::StitchParams params;
+    orbiscore::InsvCalibration calib;
+    orbiscore::StitchParams params;
     if (const MeasureFailure why = PrepareClipMeasurement(clipPath, lensGuard, calibration, calib, params, err);
         why != MeasureFailure::None)
         return fail(why, err);
@@ -42,8 +42,8 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
         return fail(MeasureFailure::NoGyro, "no gyro samples, the camera's orientation per frame");
     // The raw orientation track, synced exactly as stabilization would be
     // (before any fine-tune); the estimate is relative to it.
-    insv::GyroStabilizer gyro;
-    gyro.build(*imu, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+    orbiscore::GyroStabilizer gyro;
+    gyro.build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
     if (!gyro.ready())
         return fail(MeasureFailure::NoGyro, "gyro track not usable");
 
@@ -72,7 +72,7 @@ ClipSyncResult MeasureClipSync(const std::string& clipPath, int64_t trimInMs, in
     }
     const int64_t winMs = std::min(kWindowMs, span);
 
-    insv::SyncEstimator est;
+    orbiscore::SyncEstimator est;
     std::vector<uint8_t> gray;
     for (const int64_t start : starts) {
         if (!src.SeekTo(start))

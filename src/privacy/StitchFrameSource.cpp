@@ -35,7 +35,7 @@ stitch::NativeStitchSource::ViewRect viewRect(const ScanView& v)
 } // namespace
 
 StitchFrameSource::StitchFrameSource(stitch::NativeStitchSource& src, int64_t fromMs, int64_t toMs, double fps,
-                                     std::shared_ptr<const insv::GyroStabilizer> level)
+                                     std::shared_ptr<const orbiscore::GyroStabilizer> level)
     : m_src(src), m_fromMs(fromMs), m_toMs(toMs), m_halfFrameMs(500.0 / fps),
       m_level(std::move(level)), m_gpu(src.GpuViewAvailable())
 {
@@ -44,7 +44,7 @@ StitchFrameSource::StitchFrameSource(stitch::NativeStitchSource& src, int64_t fr
 bool StitchFrameSource::next(int64_t& tMs, float level[9], std::string& err)
 {
     for (;;) {
-        insv::FramePts pts;
+        orbiscore::FramePts pts;
         if (m_gpu) {
             if (!m_src.HoldNextPair(pts)) {
                 err = m_src.GetLastError();
@@ -137,7 +137,7 @@ void StitchFrameSource::release()
 
 ReverseStitchFrameSource::ReverseStitchFrameSource(stitch::NativeStitchSource& src, int64_t fromMs,
                                                    int64_t startMs, double fps,
-                                                   std::shared_ptr<const insv::GyroStabilizer> level,
+                                                   std::shared_ptr<const orbiscore::GyroStabilizer> level,
                                                    int chunkFrames)
     : m_src(src), m_fromMs(fromMs), m_frameMs(1000.0 / fps),
       m_boundary(startMs + 0.5 * m_frameMs), m_level(std::move(level)), m_chunk(chunkFrames)
@@ -175,7 +175,7 @@ bool ReverseStitchFrameSource::loadChunk(std::string& err)
         return false;
     }
     for (;;) {
-        insv::FramePts pts;
+        orbiscore::FramePts pts;
         const int h = m_src.KeepNextPair(pts);
         if (!h) {
             err = m_src.GetLastError(); // empty at the clip's end

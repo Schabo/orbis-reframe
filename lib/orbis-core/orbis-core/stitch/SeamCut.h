@@ -10,7 +10,7 @@
 #include <vector>
 
 // Depth-aware seam, the blend across the band: where the two lenses meet and
-// how wide the fade between them is, per azimuth bin (insv::SeamBlend).
+// how wide the fade between them is, per azimuth bin (orbiscore::SeamBlend).
 //
 // The depth table (SeamDepth.h) lines the lenses up at one distance per bin,
 // but inside a bin the depth still varies -- a mirror stem in front of the
@@ -27,19 +27,19 @@
 // the whole band. The statistics are measured on the GPU (pass 3 of
 // fisheye_stitch_common.glsl, beside the depth cost volume) or by
 // MeasureSeamCutStats on the CPU, with the depth table of the frames just
-// before, and averaged over the frames around one (insv::SeamWindow), so the
+// before, and averaged over the frames around one (orbiscore::SeamWindow), so the
 // cut and its width don't flicker.
 //
 // The same rows measure the lenses' colour: each lens's mean R, G, B, each
 // channel where neither lens has it clipped. Over a clip they give its lens
-// colour (insv::FitLensColour); per frame, what is left of the difference after it,
+// colour (orbiscore::FitLensColour); per frame, what is left of the difference after it,
 // a small slow residual (SeamBlend::colour) for lenses that drift apart
 // within a clip, per azimuth bin a faster local correction
 // (SeamBlend::local) where the difference changes round the seam, and the
 // veiling light a low sun adds to one lens there (SeamBlend::veil), taken out
 // before the colour is matched. Dependency-free (insv lib).
 
-namespace insv {
+namespace orbiscore {
 
 // Rows across the band, evenly from -SeamCutRowMax to +SeamCutRowMax.
 constexpr int kSeamCutRows = 9;
@@ -147,4 +147,4 @@ double SeamFadeRad(double share, double bandRad);
 // linear) widens the fade to: the whole band from kLensVeilWide.
 double SeamVeilShare(double veilGreen);
 
-} // namespace insv
+} // namespace orbiscore

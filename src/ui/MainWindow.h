@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include <orbis-core/stab/GyroStabilizer.h> // insv::GyroStabilizer / StabConfig
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::GyroStabilizer / StabConfig
 #include <MediaInfo.h>   // camera::MediaInfo
 
 #include "PrivacyBlur.h"              // PrivacyBlur
@@ -223,8 +223,8 @@ private:
     // (ClipItem::seamCorrection / lensColour), each if it was measured under
     // the current lens-guard setting (else none). pushSeamCorrection() hands
     // every timeline source's values to the playback controller.
-    void seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam,
-                           insv::LensColour &colour) const;
+    void seamCorrectionFor(const QString &clipPath, orbiscore::SeamCorrection &seam,
+                           orbiscore::LensColour &colour) const;
     void pushSeamCorrection();
     // Push the current clip's (m_clipId) correction for the frame on screen
     // (the playhead's `sourceMs` until that clip has shown one) into the
@@ -336,8 +336,8 @@ private:
     // `cfg` for clip `target`, pasted from a clip of `fromSource`: a held
     // direction is a time in its file, so on another file's clip it starts
     // at that clip's first frame.
-    insv::StabConfig pastedStabilization(insv::StabConfig cfg, const QString &fromSource,
-                                         const ClipItem &target) const;
+    orbiscore::StabConfig pastedStabilization(orbiscore::StabConfig cfg, const QString &fromSource,
+                                              const ClipItem &target) const;
     // The Stitching panel shows the clip it edits (editClipId), or nothing.
     void syncStitchingPanel();
     // Lens calibrations (Calibrate lenses): the one kept for `sourcePath`'s
@@ -703,8 +703,8 @@ private:
     // kept for the session, not in the project.
     std::optional<ColorGrade> m_copiedGrade;
     QString m_lastLutDir; // where Load LUT... last found one
-    std::optional<insv::StabConfig> m_copiedStab; // Copy / Paste stabilization
-    QString m_copiedStabSource;                   // ... and the file it was copied from
+    std::optional<orbiscore::StabConfig> m_copiedStab; // Copy / Paste stabilization
+    QString m_copiedStabSource;                        // ... and the file it was copied from
     QList<KeyHelp> m_keyHelp; // shortcuts made by addKey(), in order
     QAction *m_redoAction = nullptr;
     // Reframe authoring armed (drag/zoom writes a keyframe); viewport drag in

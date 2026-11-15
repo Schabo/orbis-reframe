@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace insv {
+namespace orbiscore {
 
 AudioPeaks ComputeAudioPeaks(const std::vector<AudioPart>& parts, int stream,
                              const std::atomic<bool>* cancel)
@@ -59,4 +59,4 @@ AudioPeaks ComputeAudioPeaks(const std::vector<AudioPart>& parts, int stream,
     return out;
 }
 
-} // namespace insv
+} // namespace orbiscore

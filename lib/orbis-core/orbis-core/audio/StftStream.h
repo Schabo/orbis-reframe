@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // Input per channel, held from some absolute frame on; frames are counted
 // from the first push after construction or clear().
@@ -126,4 +126,4 @@ private:
     std::vector<std::vector<float>> m_acc; // overlap-add, per channel
 };
 
-} // namespace insv
+} // namespace orbiscore

@@ -41,10 +41,10 @@ constexpr int kW = 1920;
 constexpr int kH = 1080;
 constexpr int kRefEq = 7680;
 
-insv::SeamCorrection g_seam; // --seam
-insv::LensColour g_colour;   // --colour
-bool g_newStitcher = false;  // --new-stitcher
-bool g_seamFlow = true;      // --no-seam-flow turns it off
+orbiscore::SeamCorrection g_seam; // --seam
+orbiscore::LensColour g_colour;   // --colour
+bool g_newStitcher = false;       // --new-stitcher
+bool g_seamFlow = true;           // --no-seam-flow turns it off
 
 // One NV12 render of the frame at `atMs`: fused (eqW unused) or via an eqW
 // equirect. `p010`: the fused render as P010.

@@ -289,7 +289,7 @@ target_link_libraries(privacy_data PUBLIC insv)
 # --- render_gpu_stitch: headless Vulkan compute port of the lib/orbis-core/ CPU
 # fisheye->equirect stitch. Its own
 # VkInstance/VkDevice so it works from a CLI tool or inside the Qt app. Links
-# Vulkan + insv (for insv::StitchGpuParams, the shared geometry struct) only --
+# Vulkan + insv (for orbiscore::StitchGpuParams, the shared geometry struct) only --
 # no Qt, no FFmpeg. Consumed by NativeStitchSource via stitch.
 add_library(render_gpu_stitch STATIC
     src/render/LensFrame.h
@@ -393,7 +393,7 @@ if(FFMPEG_FOUND)
     target_link_libraries(stitch PUBLIC camera insv insv_demux render_gpu_stitch
         PRIVATE vulkan_hw_device PkgConfig::FFMPEG)
     # The new stitcher's seam flow estimates its flow with OpenCV
-    # (insv::SeamFlowEstimator); without it the stitcher has no seam flow.
+    # (orbiscore::SeamFlowEstimator); without it the stitcher has no seam flow.
     if(TARGET insv_optical)
         target_link_libraries(stitch PUBLIC insv_optical)
         target_compile_definitions(stitch PRIVATE ORBIS_SEAM_FLOW=1)
@@ -654,8 +654,8 @@ if(FFMPEG_FOUND)
     target_link_libraries(reframe_export PRIVATE orbis_core stitch reframe_flatten)
 
     # --- tools/residual_stab: residual 2-D stabilization end to end.
-    # stitch::NativeStitchSource (in-process GPU stitch) -> grayscale equirect -> insv::ResidualPanEstimator,
-    # with the gyro de-rotation (insv::GyroStabilizer) folded in; optionally
+    # stitch::NativeStitchSource (in-process GPU stitch) -> grayscale equirect -> orbiscore::ResidualPanEstimator,
+    # with the gyro de-rotation (orbiscore::GyroStabilizer) folded in; optionally
     # renders a de-rotated / de-rotated+residual-2D clip through the GPU reproject
     # path (exportpipe::FlattenWriter).
     if(OpenCV_FOUND)
@@ -731,7 +731,7 @@ if(FFMPEG_FOUND)
         endif()
 
         # --- clip_sync: per-clip video<->IMU sync fine-tune --
-        # NativeStitchSource windows -> insv::SyncEstimator. OpenCV
+        # NativeStitchSource windows -> orbiscore::SyncEstimator. OpenCV
         # via insv_optical, so optional: without it the app skips the
         # fine-tune.
         add_library(clip_sync STATIC src/stitch/ClipSync.h src/stitch/ClipSync.cpp)
@@ -966,7 +966,7 @@ if(Qt6Test_FOUND)
     add_test(NAME theme_test COMMAND theme_test)
 endif()
 
-# insv::InsvDemux with a file per lens, on generated videos -- needs FFmpeg.
+# orbiscore::InsvDemux with a file per lens, on generated videos -- needs FFmpeg.
 if(TARGET insv_demux)
     add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
     target_link_libraries(lens_demuxer_test PRIVATE insv_demux test_media)
@@ -998,7 +998,7 @@ if(TARGET camera AND TARGET test_media)
     add_test(NAME camera_test COMMAND camera_test ${CMAKE_CURRENT_SOURCE_DIR}/sample_footage)
 endif()
 
-# insv::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.
+# orbiscore::AudioMixer on generated WAVs -- needs FFmpeg, like insv_demux.
 if(TARGET insv_demux)
     add_executable(audio_mix_test tests/audio_mix_test.cpp)
     target_link_libraries(audio_mix_test PRIVATE insv_demux orbis_paths test_media)

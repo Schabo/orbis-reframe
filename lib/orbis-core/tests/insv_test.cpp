@@ -86,8 +86,8 @@ const char* kX5Extended =
 
 void testExtendedCalibration()
 {
-    insv::InsvCalibration c;
-    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c));
+    orbiscore::InsvCalibration c;
+    CHECK(orbiscore::ParseExtendedCalibrationString(kX5Extended, c));
     CHECK(c.lensesExt.size() == 2);
     if (c.lensesExt.size() != 2)
         return;
@@ -105,19 +105,19 @@ void testExtendedCalibration()
 
     // Tolerates the string embedded in a longer buffer (as it sits in a
     // protobuf field in the trailer, between binary framing bytes).
-    insv::InsvCalibration c2;
+    orbiscore::InsvCalibration c2;
     const std::string embedded =
         std::string("\x01\x02\x03prefix", 9) + kX5Extended + std::string("\x00\x04end", 5);
-    CHECK(insv::ParseExtendedCalibrationString(embedded, c2));
+    CHECK(orbiscore::ParseExtendedCalibrationString(embedded, c2));
     CHECK(c2.lensesExt.size() == 2);
 
     // Rejects strings that aren't the 56-token extended form; leaves `out` empty.
-    insv::InsvCalibration c3;
-    CHECK(!insv::ParseExtendedCalibrationString(kX5Params, c3)); // short "p2_" form
+    orbiscore::InsvCalibration c3;
+    CHECK(!orbiscore::ParseExtendedCalibrationString(kX5Params, c3)); // short "p2_" form
     CHECK(c3.lensesExt.empty());
-    CHECK(!insv::ParseExtendedCalibrationString("2_1_2_3", c3));
-    CHECK(!insv::ParseExtendedCalibrationString("", c3));
-    CHECK(!insv::ParseExtendedCalibrationString("2_2.0_junk", c3));
+    CHECK(!orbiscore::ParseExtendedCalibrationString("2_1_2_3", c3));
+    CHECK(!orbiscore::ParseExtendedCalibrationString("", c3));
+    CHECK(!orbiscore::ParseExtendedCalibrationString("2_2.0_junk", c3));
     CHECK(c3.lensesExt.empty());
 
     // The file's '.' decimals parse the same under a decimal-comma locale.
@@ -126,8 +126,8 @@ void testExtendedCalibration()
         std::printf("  (no decimal-comma locale installed; skipping the locale check)\n");
         return;
     }
-    insv::InsvCalibration c4;
-    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c4));
+    orbiscore::InsvCalibration c4;
+    CHECK(orbiscore::ParseExtendedCalibrationString(kX5Extended, c4));
     CHECK(c4.lensesExt.size() == 2 && near(c4.lensesExt[0].fx, 4294.030, 1e-3));
 }
 
@@ -144,8 +144,8 @@ const char* kOneX2V3 =
 void testCalibrationV3()
 {
     std::printf("  offset_v3 calibration\n");
-    insv::InsvCalibration c;
-    CHECK(insv::ParseCalibrationV3String(kOneX2V3, c));
+    orbiscore::InsvCalibration c;
+    CHECK(orbiscore::ParseCalibrationV3String(kOneX2V3, c));
     CHECK(c.lensesExt.size() == 2);
     if (c.lensesExt.size() != 2)
         return;
@@ -163,17 +163,17 @@ void testCalibrationV3()
     CHECK(near(e1.p[1], -0.00041729, 1e-9));
 
     // Too short, or not a calibration at all: nothing, `out` untouched.
-    insv::InsvCalibration bad;
-    CHECK(!insv::ParseCalibrationV3String(kX5Params, bad)); // 16 tokens
-    CHECK(!insv::ParseCalibrationV3String("", bad));
+    orbiscore::InsvCalibration bad;
+    CHECK(!orbiscore::ParseCalibrationV3String(kX5Params, bad)); // 16 tokens
+    CHECK(!orbiscore::ParseCalibrationV3String("", bad));
     CHECK(bad.lensesExt.empty());
 
     // The stitch takes it as it takes the X5's: fx in field 27's window
     // (2880 on the ONE X2), cx / cy in the 3040-wide lens half.
     for (auto& e : c.lensesExt)
         e.focalRefW = 2880.0;
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(c, 2880, 2880, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(c, 2880, 2880, orbiscore::StitchParams{}));
 }
 
 // The extrinsics compose pitch, then yaw, then roll. With the Antigravity
@@ -184,8 +184,8 @@ void testCalibrationV3()
 void testExtrinsicsOrder()
 {
     std::printf("  extrinsics: pitch, yaw, roll\n");
-    insv::InsvCalibration c;
-    CHECK(insv::ParseCalibrationV3String(
+    orbiscore::InsvCalibration c;
+    CHECK(orbiscore::ParseCalibrationV3String(
         "2_1.5_3742.5_3741.8_2620.9_2617.6_-177.49_-89.95_90.397_0_0_0_"
         "-0.056_0.204_-0.534_0.0008_0.00004_10496_5248_155_"
         "1.5_3754.8_3755.1_7875.9_2606.2_-179.449_-89.922_89.441_-0.0001_0.00002_"
@@ -193,8 +193,8 @@ void testExtrinsicsOrder()
         c));
     for (auto& e : c.lensesExt)
         e.focalRefW = 5248.0;
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(c, 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(c, 3840, 3840, orbiscore::StitchParams{}));
     if (!st.ready())
         return;
     // Each lens's optical axis in the world is its worldToLens's third row.
@@ -207,45 +207,45 @@ void testExtrinsicsOrder()
 
 // The X5 calibration as the reader hands it over: with field 27's focal
 // reference, which the string doesn't carry.
-insv::InsvCalibration x5Calibration()
+orbiscore::InsvCalibration x5Calibration()
 {
-    insv::InsvCalibration c;
-    CHECK(insv::ParseExtendedCalibrationString(kX5Extended, c));
-    for (insv::LensCalibExt &e : c.lensesExt)
+    orbiscore::InsvCalibration c;
+    CHECK(orbiscore::ParseExtendedCalibrationString(kX5Extended, c));
+    for (orbiscore::LensCalibExt &e : c.lensesExt)
         e.focalRefW = 5312.0;
     return c;
 }
 
 void testMeiProjection()
 {
-    insv::InsvCalibration c = x5Calibration();
+    orbiscore::InsvCalibration c = x5Calibration();
 
     // fx / fy are in field 27's sensor window: no reference, no stitch; the
     // X6's larger window gives a shorter focal length in video pixels.
     {
-        insv::InsvCalibration noRef = c;
+        orbiscore::InsvCalibration noRef = c;
         noRef.lensesExt[1].focalRefW = 0;
-        insv::FisheyeStitcher st;
-        CHECK(!st.configure(noRef, 3840, 3840, insv::StitchParams{}));
-        insv::InsvCalibration wide = c;
-        for (insv::LensCalibExt &e : wide.lensesExt)
+        orbiscore::FisheyeStitcher st;
+        CHECK(!st.configure(noRef, 3840, 3840, orbiscore::StitchParams{}));
+        orbiscore::InsvCalibration wide = c;
+        for (orbiscore::LensCalibExt &e : wide.lensesExt)
             e.focalRefW = 7680.0;
-        insv::FisheyeStitcher a, b;
-        CHECK(a.configure(c, 3840, 3840, insv::StitchParams{}));
-        CHECK(b.configure(wide, 3840, 3840, insv::StitchParams{}));
+        orbiscore::FisheyeStitcher a, b;
+        CHECK(a.configure(c, 3840, 3840, orbiscore::StitchParams{}));
+        CHECK(b.configure(wide, 3840, 3840, orbiscore::StitchParams{}));
         CHECK(near(b.lensProjection(0).fx, a.lensProjection(0).fx * 5312.0 / 7680.0, 1e-9));
     }
 
     // configure() needs the extended calibration.
-    insv::FisheyeStitcher none;
-    CHECK(!none.configure(insv::InsvCalibration{}, 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher none;
+    CHECK(!none.configure(orbiscore::InsvCalibration{}, 3840, 3840, orbiscore::StitchParams{}));
     CHECK(!none.ready());
 
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(c, 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(c, 3840, 3840, orbiscore::StitchParams{}));
     CHECK(st.ready());
 
-    const insv::LensProjection& l0 = st.lensProjection(0);
+    const orbiscore::LensProjection& l0 = st.lensProjection(0);
     // cx/cy scaled sensor(5376) -> video(3840): 2703.31 * 3840/5376.
     CHECK(near(l0.cx, 2703.310 * 3840.0 / 5376.0, 1e-2));
     CHECK(near(l0.cy, 2684.030 * 3840.0 / 5376.0, 1e-2));
@@ -255,13 +255,13 @@ void testMeiProjection()
     // World +Z is within the lens's small (~0.24 deg) extrinsic tilt of its
     // optical axis, so it must project very close to the principal point.
     double u, v, theta;
-    CHECK(st.project(0, insv::Vec3{0, 0, 1}, u, v, theta));
+    CHECK(st.project(0, orbiscore::Vec3{0, 0, 1}, u, v, theta));
     CHECK(near(theta, 0.0, 0.02)); // rad; extrinsic yaw/pitch ~ 0.25 deg
     CHECK(near(u, l0.cx, 15.0) && near(v, l0.cy, 15.0));
     // The lens's own optical axis (worldToLens^T * +Z) projects to the
     // principal point to sub-pixel.
-    const insv::Mat3& w2l = l0.worldToLens;
-    const insv::Vec3 axis{w2l.m[2][0], w2l.m[2][1], w2l.m[2][2]}; // 3rd row = w2l^T col 2
+    const orbiscore::Mat3& w2l = l0.worldToLens;
+    const orbiscore::Vec3 axis{w2l.m[2][0], w2l.m[2][1], w2l.m[2][2]}; // 3rd row = w2l^T col 2
     CHECK(st.project(0, axis, u, v, theta));
     CHECK(near(theta, 0.0, 1e-6));
     CHECK(near(u, l0.cx, 1e-3) && near(v, l0.cy, 1e-3));
@@ -276,21 +276,21 @@ void testMeiProjection()
     CHECK(near(st.radiusForTheta(100 * kDeg), 1.0, 1e-6));
 
     // An off-axis ray lands a sane distance from the centre (inside the frame).
-    CHECK(st.project(0, insv::normalize(insv::Vec3{0.5, 0.0, 1.0}), u, v, theta));
+    CHECK(st.project(0, orbiscore::normalize(orbiscore::Vec3{0.5, 0.0, 1.0}), u, v, theta));
     const double rad = std::hypot(u - l0.cx, v - l0.cy);
     CHECK(rad > 10.0 && rad < 3840.0);
 
     // Directly behind lens 0's axis (theta = 180) is past the cutoff.
-    const insv::Vec3 behind{-axis.x, -axis.y, -axis.z};
+    const orbiscore::Vec3 behind{-axis.x, -axis.y, -axis.z};
     CHECK(!st.project(0, behind, u, v, theta));
 }
 
 // The DJI Avata 360's master lens (docs/formats/dji-360.md §2.1) as a
 // reader hands it over: the theta-polynomial, the 3840 calibration frame as
 // one half of a side-by-side frame, no pose of its own.
-insv::LensCalibExt avataLens()
+orbiscore::LensCalibExt avataLens()
 {
-    insv::LensCalibExt e;
+    orbiscore::LensCalibExt e;
     e.fx = 1039.390, e.fy = 1039.506, e.cx = 1933.663, e.cy = 1912.346;
     const double k[4] = {0.07275, -0.02460, 0.01725, -0.00826};
     std::copy(k, k + 4, e.k);
@@ -301,33 +301,34 @@ insv::LensCalibExt avataLens()
 
 void testThetaPolyProjection()
 {
-    insv::InsvCalibration c;
+    orbiscore::InsvCalibration c;
     c.lensesExt = {avataLens(), avataLens()};
     c.lensesExt[1].cx += 3840;
-    insv::StitchParams p;
-    p.lensModel = insv::LensModel::ThetaPoly;
+    orbiscore::StitchParams p;
+    p.lensModel = orbiscore::LensModel::ThetaPoly;
     p.thetaK5[0] = p.thetaK5[1] = 0.00108;
-    p.lensPose[0] = p.lensPose[1] = insv::LensPose{};
+    p.lensPose[0] = p.lensPose[1] = orbiscore::LensPose{};
     p.lensPose[1].mount[0] = p.lensPose[1].mount[8] = -1; // a half turn about y
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     CHECK(st.configure(c, 1920, 1920, p));
     CHECK(st.gpuParams().thetaPoly == 1);
     CHECK(near(st.gpuParams().k5[1], 0.00108, 1e-9));
 
     // The 1920 stream is the 3840 frame at half size.
-    const insv::LensProjection& l0 = st.lensProjection(0);
+    const orbiscore::LensProjection& l0 = st.lensProjection(0);
     CHECK(near(l0.fx, 1039.390 / 2, 1e-9) && near(l0.cx, 1933.663 / 2, 1e-9));
     double u, v, theta;
-    CHECK(st.project(0, insv::Vec3{0, 0, 1}, u, v, theta));
+    CHECK(st.project(0, orbiscore::Vec3{0, 0, 1}, u, v, theta));
     CHECK(near(theta, 0.0, 1e-9) && near(u, l0.cx, 1e-9) && near(v, l0.cy, 1e-9));
-    CHECK(st.project(1, insv::Vec3{0, 0, -1}, u, v, theta));
+    CHECK(st.project(1, orbiscore::Vec3{0, 0, -1}, u, v, theta));
     CHECK(near(theta, 0.0, 1e-9) && near(u, st.lensProjection(1).cx, 1e-9));
     CHECK(near(st.lensProjection(1).cx, 1933.663 / 2, 1e-9));
 
     // Against the formula, in the calibration's image axes (x right, y down:
     // our lens frame's negated), with the tangential pair.
     const double th = 70 * kDeg, ph = 25 * kDeg;
-    const insv::Vec3 ray{-std::sin(th) * std::cos(ph), -std::sin(th) * std::sin(ph), std::cos(th)};
+    const orbiscore::Vec3 ray{-std::sin(th) * std::cos(ph), -std::sin(th) * std::sin(ph),
+                              std::cos(th)};
     CHECK(st.project(0, ray, u, v, theta));
     CHECK(near(theta, th, 1e-9));
     const double t2 = th * th;
@@ -351,8 +352,8 @@ void testThetaPolyProjection()
     CHECK(near(st.radiusForTheta(100 * kDeg), 1.0, 1e-9));
 
     // MEI by default.
-    insv::FisheyeStitcher mei;
-    CHECK(mei.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher mei;
+    CHECK(mei.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
     CHECK(mei.gpuParams().thetaPoly == 0);
 }
 
@@ -408,13 +409,13 @@ std::vector<uint8_t> djiFirstSample(uint32_t panoField, bool packedP)
     return sample.b;
 }
 
-// A lens mask (insv::LensMask): lens 0 sees its own camera from 92 deg off
+// A lens mask (orbiscore::LensMask): lens 0 sees its own camera from 92 deg off
 // its axis between the image angles 60 and 120 deg. There lens 0 is left
 // out -- of the feather, the seam's measurements, the flow's strips -- and
 // lens 1 used; everywhere else nothing changes.
 void testLensMask()
 {
-    insv::LensMask m;
+    orbiscore::LensMask m;
     m.clearDeg.assign(180, 0.0);
     for (int k = 30; k <= 60; ++k) // 60..120 deg
         m.clearDeg[k] = 92.0;
@@ -423,15 +424,15 @@ void testLensMask()
     CHECK(m.clearRadAt(10 * kDeg) > 1e6);
     CHECK(near(m.clearRadAt(-270 * kDeg), 92 * kDeg, 1e-12)); // angles wrap
 
-    insv::InsvCalibration c;
+    orbiscore::InsvCalibration c;
     c.lensesExt = {avataLens(), avataLens()};
     c.lensesExt[1].cx += 3840;
-    insv::StitchParams p;
-    p.lensModel = insv::LensModel::ThetaPoly;
+    orbiscore::StitchParams p;
+    p.lensModel = orbiscore::LensModel::ThetaPoly;
     p.thetaK5[0] = p.thetaK5[1] = 0.00108;
-    p.lensPose[0] = p.lensPose[1] = insv::LensPose{};
+    p.lensPose[0] = p.lensPose[1] = orbiscore::LensPose{};
     p.lensPose[1].mount[0] = p.lensPose[1].mount[8] = -1;
-    insv::FisheyeStitcher plain, st;
+    orbiscore::FisheyeStitcher plain, st;
     CHECK(plain.configure(c, 1920, 1920, p));
     CHECK(!plain.hasLensMask() && plain.gpuParams().maskActive == 0);
     p.lensMask[0] = m;
@@ -441,9 +442,10 @@ void testLensMask()
     // Lens 0's frame is the image's negated: image angle a, off-axis th.
     auto dirAt = [](double aDeg, double thDeg) {
         const double a = aDeg * kDeg, th = thDeg * kDeg;
-        return insv::Vec3{-std::sin(th) * std::cos(a), -std::sin(th) * std::sin(a), std::cos(th)};
+        return orbiscore::Vec3{-std::sin(th) * std::cos(a), -std::sin(th) * std::sin(a),
+                               std::cos(th)};
     };
-    const insv::Vec3 masked = dirAt(90, 95), beside = dirAt(0, 95), inside = dirAt(90, 89);
+    const orbiscore::Vec3 masked = dirAt(90, 95), beside = dirAt(0, 95), inside = dirAt(90, 89);
     double u, v, th;
     CHECK(st.project(0, masked, u, v, th));
     CHECK(near(std::atan2(v - st.lensProjection(0).cy, u - st.lensProjection(0).cx), 90 * kDeg,
@@ -458,7 +460,7 @@ void testLensMask()
         double e, t;
         int i0, i1;
         st.seamPosition(masked, e, i0, i1, t);
-        const insv::StitchGpuParams g = st.gpuParams();
+        const orbiscore::StitchGpuParams g = st.gpuParams();
         CHECK(near(g.seamClear[i0][0], -2.0 * kDeg, 0.3 * kDeg));
         CHECK(g.seamClear[i0][1] > 80 * kDeg); // lens 1 has no mask
         CHECK(near(e, -5.0 * kDeg, 0.2 * kDeg));
@@ -471,7 +473,7 @@ void testLensMask()
     CHECK(w[0] > 0.0); // the plain cross-fade still has lens 0 there
     st.clearFade(masked, w);
     CHECK(w[0] == 0.0 && near(w[1], 1.0, 0.05));
-    for (const insv::Vec3& d : {beside, inside, dirAt(200, 91)}) {
+    for (const orbiscore::Vec3& d : {beside, inside, dirAt(200, 91)}) {
         st.seamBlendWeights(d, nullptr, w);
         plain.seamBlendWeights(d, nullptr, wp);
         st.clearFade(d, w);
@@ -480,21 +482,21 @@ void testLensMask()
 
     // The seam's statistics leave out the samples lens 0 has masked, and the
     // flow's strips show lens 1's picture in lens 0's there.
-    insv::Image l0, l1;
+    orbiscore::Image l0, l1;
     l0.alloc(1920, 1920);
     l1.alloc(1920, 1920);
     std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t(200));
     std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t(100));
-    insv::SeamCutStats stats, statsPlain;
-    insv::MeasureSeamCutStats(st, l0, l1, nullptr, stats);
-    insv::MeasureSeamCutStats(plain, l0, l1, nullptr, statsPlain);
+    orbiscore::SeamCutStats stats, statsPlain;
+    orbiscore::MeasureSeamCutStats(st, l0, l1, nullptr, stats);
+    orbiscore::MeasureSeamCutStats(plain, l0, l1, nullptr, statsPlain);
     double e, t;
     int i0, i1;
     st.seamPosition(masked, e, i0, i1, t);
     const double band = st.gpuParams().bandRad, lo = st.gpuParams().seamClear[i0][0];
     int cut = 0, kept = 0;
-    for (int r = 0; r < insv::kSeamCutRows; ++r) {
-        const double re = insv::SeamCutRowE(r, band);
+    for (int r = 0; r < orbiscore::kSeamCutRows; ++r) {
+        const double re = orbiscore::SeamCutRowE(r, band);
         if (re < lo - 1.0 * kDeg)
             cut += stats.cell[i0][r].n == 0 && statsPlain.cell[i0][r].n > 0;
         else if (re > lo + 1.0 * kDeg)
@@ -502,18 +504,18 @@ void testLensMask()
     }
     CHECK(cut >= 1 && kept >= 1);
     for (int b : {0, 40, 100})
-        for (int r = 0; r < insv::kSeamCutRows; ++r)
+        for (int r = 0; r < orbiscore::kSeamCutRows; ++r)
             if (b != i0 && b != i1 && std::abs(b - i0) > 3)
                 CHECK(stats.cell[b][r].n == statsPlain.cell[b][r].n);
 
-    const insv::SeamFlowGrid grid = insv::SeamFlowGridFor(st);
+    const orbiscore::SeamFlowGrid grid = orbiscore::SeamFlowGridFor(st);
     CHECK(grid.valid());
-    insv::SeamFlowStrips strips;
-    insv::MeasureSeamFlowStrips(st, grid, l0, l1, strips);
+    orbiscore::SeamFlowStrips strips;
+    orbiscore::MeasureSeamFlowStrips(st, grid, l0, l1, strips);
     int copied = 0, own = 0;
     for (int y = 0; y < grid.rows; ++y)
         for (int x = 0; x < grid.cols; ++x) {
-            const insv::Vec3 d = st.seamDir(grid.phiOf(x), grid.eOf(y));
+            const orbiscore::Vec3 d = st.seamDir(grid.phiOf(x), grid.eOf(y));
             const size_t at = static_cast<size_t>(y) * grid.cols + x;
             if (strips.grey[1][at] == 0)
                 continue;
@@ -531,16 +533,16 @@ void testDjiMeta()
     // Osmo 360's (pano at 6) finds no calibration in the same sample.
     for (const bool packed : {true, false}) {
         const auto s = djiFirstSample(5, packed);
-        CHECK(insv::DjiProductName(s) == "DJI Avata360");
-        const auto m = insv::ParseDjiClipMeta(s, insv::DjiSchemaEagle4());
-        CHECK(m && m->calibrated && m->slot == insv::DjiSlot::NativeRefineFar);
+        CHECK(orbiscore::DjiProductName(s) == "DJI Avata360");
+        const auto m = orbiscore::ParseDjiClipMeta(s, orbiscore::DjiSchemaEagle4());
+        CHECK(m && m->calibrated && m->slot == orbiscore::DjiSlot::NativeRefineFar);
         if (!m)
             continue;
         CHECK(m->productName == "DJI Avata360" && m->firmware == "01.00.06.00");
         CHECK(m->clipTimestampUs == 250472750 && m->lroNsPerLine == 2443);
         CHECK(m->sensorWidth == 3840 && m->width == 1920 && m->bitDepth == 10);
         CHECK(m->hasColorMode && m->colorMode == 19);
-        CHECK(insv::DjiLogProfile(m->colorMode) == "D-Log M");
+        CHECK(orbiscore::DjiLogProfile(m->colorMode) == "D-Log M");
         CHECK(near(m->master.fx, 1039.4, 1e-3) && near(m->slave.yaw, -179.1, 1e-4));
         CHECK(near(m->master.p[0], 0.00022, 1e-9) && near(m->master.p[1], -0.00184, 1e-9));
         CHECK(near(m->master.k[4], 0.001, 1e-9) && near(m->master.lensModel, 8, 0));
@@ -548,10 +550,11 @@ void testDjiMeta()
         CHECK(m->master.hasImuQ && near(m->master.imuQ[0], 1.0 / std::hypot(1.0, 0.0111), 1e-6) &&
               near(m->master.imuQ[3], 0.0111 / std::hypot(1.0, 0.0111), 1e-6) &&
               m->master.imuQ[1] == 0.0 && m->master.imuQ[2] == 0.0);
-        const auto wrong = insv::ParseDjiClipMeta(s, insv::DjiSchemaOq101());
+        const auto wrong = orbiscore::ParseDjiClipMeta(s, orbiscore::DjiSchemaOq101());
         CHECK(wrong && !wrong->calibrated);
     }
-    CHECK(insv::ParseDjiClipMeta(djiFirstSample(6, true), insv::DjiSchemaOq101())->calibrated);
+    CHECK(orbiscore::ParseDjiClipMeta(djiFirstSample(6, true),
+                                      orbiscore::DjiSchemaOq101())->calibrated);
 
     // A later sample: only the frame; the drone's GPS and attitude, a
     // negative attitude as int32 (a ten-byte varint).
@@ -574,7 +577,7 @@ void testDjiMeta()
     imu.pbBytes(2, fused.b);
     frame.pbBytes(1, header.b).pbBytes(3, imu.b).pbBytes(4, drone.b);
     sample.pbBytes(3, frame.b);
-    const auto f = insv::ParseDjiFrameMeta(sample.b);
+    const auto f = orbiscore::ParseDjiFrameMeta(sample.b);
     CHECK(f && f->hasDrone && f->hasPosition);
     if (f) {
         CHECK(f->timestampUs == 250542750);
@@ -590,14 +593,14 @@ void testDjiMeta()
             CHECK(f->attitude[2] == (std::array<float, 4>{0, 1, 0, 0}));
         }
     }
-    CHECK(!insv::ParseDjiClipMeta(sample.b, insv::DjiSchemaEagle4()));
+    CHECK(!orbiscore::ParseDjiClipMeta(sample.b, orbiscore::DjiSchemaEagle4()));
 }
 
 // The X5's field-145 lens profiles (theta deg -> mm) as read from the sample
 // footage.
-insv::InsvMakerNotes x5LensProfiles()
+orbiscore::InsvMakerNotes x5LensProfiles()
 {
-    insv::InsvMakerNotes n;
+    orbiscore::InsvMakerNotes n;
     n.lens_profiles.push_back({"bare", {0, 0.03159, -8.415e-05, 2.201e-06, -1.284e-08, 0}, 200});
     n.lens_profiles.push_back(
         {"ProtectorA", {0, 0.0321906505, -9.37245e-05, 2.5248e-06, -1.5e-08, 0}, 195});
@@ -606,26 +609,28 @@ insv::InsvMakerNotes x5LensProfiles()
 
 void testLensProfile()
 {
-    const insv::InsvMakerNotes notes = x5LensProfiles();
-    CHECK(insv::FindLensProfile(notes, "ProtectorA") != nullptr);
-    CHECK(insv::FindLensProfile(notes, "ProtectorX") == nullptr);
+    const orbiscore::InsvMakerNotes notes = x5LensProfiles();
+    CHECK(orbiscore::FindLensProfile(notes, "ProtectorA") != nullptr);
+    CHECK(orbiscore::FindLensProfile(notes, "ProtectorX") == nullptr);
 
-    const insv::LensProfile* bareProfile = insv::FindLensProfile(notes, "bare");
-    insv::StitchParams bare;
-    CHECK(insv::ApplyLensProfile(bare, bareProfile, nullptr));
+    const orbiscore::LensProfile* bareProfile = orbiscore::FindLensProfile(notes, "bare");
+    orbiscore::StitchParams bare;
+    CHECK(orbiscore::ApplyLensProfile(bare, bareProfile, nullptr));
     CHECK(!bare.accessory && near(bare.fovDeg, 200, 1e-9));
 
-    insv::StitchParams guard;
-    CHECK(insv::ApplyLensProfile(guard, bareProfile, insv::FindLensProfile(notes, "ProtectorA")));
+    orbiscore::StitchParams guard;
+    CHECK(orbiscore::ApplyLensProfile(guard, bareProfile,
+                                      orbiscore::FindLensProfile(notes, "ProtectorA")));
     CHECK(guard.accessory && near(guard.fovDeg, 195, 1e-9));
 
     // An accessory profile without the bare one to scale against.
-    insv::StitchParams missing;
-    CHECK(!insv::ApplyLensProfile(missing, nullptr, insv::FindLensProfile(notes, "ProtectorA")));
+    orbiscore::StitchParams missing;
+    CHECK(!orbiscore::ApplyLensProfile(missing, nullptr,
+                                       orbiscore::FindLensProfile(notes, "ProtectorA")));
     CHECK(!missing.accessory);
 
-    insv::InsvCalibration c = x5Calibration();
-    insv::FisheyeStitcher sb, sg;
+    orbiscore::InsvCalibration c = x5Calibration();
+    orbiscore::FisheyeStitcher sb, sg;
     CHECK(sb.configure(c, 3840, 3840, bare));
     CHECK(sg.configure(c, 3840, 3840, guard));
 
@@ -635,10 +640,10 @@ void testLensProfile()
     CHECK(near(sg.accessoryScale(92 * kDeg), 1.024, 0.002));
     CHECK(near(sg.accessoryScale(0.0), 0.0321906505 / 0.03159, 1e-3));
 
-    const insv::LensProjection& l0 = sg.lensProjection(0);
-    const insv::Mat3& w2l = l0.worldToLens;
-    const insv::Mat3 l2w = insv::transpose(w2l);
-    const insv::Vec3 at92 = insv::apply(l2w, insv::Vec3{std::sin(92 * kDeg), 0, std::cos(92 * kDeg)});
+    const orbiscore::LensProjection& l0 = sg.lensProjection(0);
+    const orbiscore::Mat3& w2l = l0.worldToLens;
+    const orbiscore::Mat3 l2w = orbiscore::transpose(w2l);
+    const orbiscore::Vec3 at92 = orbiscore::apply(l2w, orbiscore::Vec3{std::sin(92 * kDeg), 0, std::cos(92 * kDeg)});
     double ub, vb, ug, vg, t;
     CHECK(sb.project(0, at92, ub, vb, t));
     CHECK(sg.project(0, at92, ug, vg, t));
@@ -648,37 +653,39 @@ void testLensProfile()
     // Edge normalisation follows the FOV: ~1 at 97.5 deg with guards.
     CHECK(near(sg.radiusForTheta(97.5 * kDeg), 1.0, 1e-6));
     // ...and the seam band ends inside it.
-    const insv::StitchGpuParams gp = sg.gpuParams();
+    const orbiscore::StitchGpuParams gp = sg.gpuParams();
     CHECK(gp.accessory == 1);
-    CHECK((gp.seamRad + gp.bandRad) / kDeg <= 97.5 - insv::StitchParams::kSeamMarginDeg + 1e-4);
+    CHECK((gp.seamRad + gp.bandRad) / kDeg <=
+          97.5 - orbiscore::StitchParams::kSeamMarginDeg + 1e-4);
 }
 
 void testLinearAlgebra()
 {
     // rotations are orthonormal: transpose(R) * R == I
     for (double a : {0.3, -1.2, 2.7}) {
-        for (const insv::Mat3& R : {insv::rotX(a), insv::rotY(a), insv::rotZ(a)}) {
-            const insv::Mat3 I = insv::mul(insv::transpose(R), R);
+        for (const orbiscore::Mat3& R : {orbiscore::rotX(a), orbiscore::rotY(a),
+                                         orbiscore::rotZ(a)}) {
+            const orbiscore::Mat3 I = orbiscore::mul(orbiscore::transpose(R), R);
             for (int i = 0; i < 3; ++i)
                 for (int j = 0; j < 3; ++j)
                     CHECK(near(I.m[i][j], i == j ? 1.0 : 0.0, 1e-9));
         }
     }
     // rotZ(90deg) maps +X -> +Y
-    const insv::Vec3 x = insv::apply(insv::rotZ(kPi / 2), insv::Vec3{1, 0, 0});
+    const orbiscore::Vec3 x = orbiscore::apply(orbiscore::rotZ(kPi / 2), orbiscore::Vec3{1, 0, 0});
     CHECK(near(x.x, 0.0, 1e-9) && near(x.y, 1.0, 1e-9) && near(x.z, 0.0, 1e-9));
     // mul is real composition: (Ry * Rx) applied == Ry(Rx v)
-    const insv::Mat3 Ry = insv::rotY(0.7), Rx = insv::rotX(-0.4);
-    const insv::Vec3 v{0.2, -0.5, 0.9};
-    const insv::Vec3 a = insv::apply(insv::mul(Ry, Rx), v);
-    const insv::Vec3 b = insv::apply(Ry, insv::apply(Rx, v));
+    const orbiscore::Mat3 Ry = orbiscore::rotY(0.7), Rx = orbiscore::rotX(-0.4);
+    const orbiscore::Vec3 v{0.2, -0.5, 0.9};
+    const orbiscore::Vec3 a = orbiscore::apply(orbiscore::mul(Ry, Rx), v);
+    const orbiscore::Vec3 b = orbiscore::apply(Ry, orbiscore::apply(Rx, v));
     CHECK(near(a.x, b.x, 1e-9) && near(a.y, b.y, 1e-9) && near(a.z, b.z, 1e-9));
 }
 
 void testSyntheticRender()
 {
     // lens 0 solid red, lens 1 solid blue.
-    insv::Image l0, l1;
+    orbiscore::Image l0, l1;
     l0.alloc(800, 800);
     l1.alloc(800, 800);
     for (size_t i = 0; i < l0.rgb.size(); i += 3) {
@@ -686,11 +693,11 @@ void testSyntheticRender()
         l1.rgb[i + 2] = 220; // B
     }
 
-    insv::FisheyeStitcher st;
-    insv::InsvCalibration c = x5Calibration();
-    CHECK(st.configure(c, 800, 800, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    orbiscore::InsvCalibration c = x5Calibration();
+    CHECK(st.configure(c, 800, 800, orbiscore::StitchParams{}));
 
-    insv::Image eq = st.renderEquirect(l0, l1, 512);
+    orbiscore::Image eq = st.renderEquirect(l0, l1, 512);
     CHECK(eq.w == 512 && eq.h == 256);
 
     auto px = [&](int x, int y) {
@@ -712,40 +719,40 @@ void testSyntheticRender()
 // the per-lens rays.
 void testSeamDepthGeometry()
 {
-    insv::InsvCalibration c = x5Calibration();
-    insv::StitchParams p;
+    orbiscore::InsvCalibration c = x5Calibration();
+    orbiscore::StitchParams p;
     p.depthSeam = true;
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     CHECK(st.configure(c, 3840, 3840, p));
 
     // Seam frame: orthonormal, the axis along lens 0's optical axis.
-    const insv::Vec3 &a = st.seamAxis(), &u = st.seamU(), &v = st.seamV();
-    auto dot = [](const insv::Vec3& x, const insv::Vec3& y) { return x.x * y.x + x.y * y.y + x.z * y.z; };
+    const orbiscore::Vec3 &a = st.seamAxis(), &u = st.seamU(), &v = st.seamV();
+    auto dot = [](const orbiscore::Vec3& x, const orbiscore::Vec3& y) { return x.x * y.x + x.y * y.y + x.z * y.z; };
     CHECK(near(dot(a, a), 1.0, 1e-9) && near(dot(u, u), 1.0, 1e-9) && near(dot(v, v), 1.0, 1e-9));
     CHECK(near(dot(a, u), 0.0, 1e-9) && near(dot(a, v), 0.0, 1e-9) && near(dot(u, v), 0.0, 1e-9));
     const double* z0 = st.lensProjection(0).worldToLens.m[2];
-    CHECK(dot(a, insv::Vec3{z0[0], z0[1], z0[2]}) > 0.999);
+    CHECK(dot(a, orbiscore::Vec3{z0[0], z0[1], z0[2]}) > 0.999);
 
     // Lens 0 in front along its axis, lens 1 behind: |tz| = 31.8 mm apart.
-    const insv::Vec3 c0 = st.lensCentre(0), c1 = st.lensCentre(1);
+    const orbiscore::Vec3 c0 = st.lensCentre(0), c1 = st.lensCentre(1);
     CHECK(near(dot(c0, a), 0.031796 / 2, 1e-6) && near(dot(c1, a), -0.031796 / 2, 1e-6));
 
     // q = 0 leaves the ray alone; q > 0 pushes each lens's ray away from its
     // own axis, by ~ q * baseline / 2 rad on the seam.
-    const insv::Vec3 d = st.seamDir(1.0, 0.0);
-    const insv::Vec3 r0 = st.lensRay(0, d, 0.0);
+    const orbiscore::Vec3 d = st.seamDir(1.0, 0.0);
+    const orbiscore::Vec3 r0 = st.lensRay(0, d, 0.0);
     CHECK(near(r0.x, d.x, 1e-12) && near(r0.y, d.y, 1e-12) && near(r0.z, d.z, 1e-12));
     const double q = 2.0; // 0.5 m
-    const insv::Vec3 s0 = st.lensRay(0, d, q), s1 = st.lensRay(1, d, q);
+    const orbiscore::Vec3 s0 = st.lensRay(0, d, q), s1 = st.lensRay(1, d, q);
     CHECK(near(std::asin(dot(s0, a)), -q * 0.031796 / 2, 1e-4)); // towards lens 1's side
     CHECK(near(std::asin(dot(s1, a)), +q * 0.031796 / 2, 1e-4));
 
     // The table: linear in azimuth between bin centres, full inside the blend
     // band, faded to 0 past band + ramp; nothing without a table or when off.
-    float table[insv::kSeamDepthBins];
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+    float table[orbiscore::kSeamDepthBins];
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
         table[b] = static_cast<float>(b);
-    const double binRad = 2 * kPi / insv::kSeamDepthBins;
+    const double binRad = 2 * kPi / orbiscore::kSeamDepthBins;
     CHECK(near(st.seamQAt(st.seamDir(10.5 * binRad, 0.0), table), 10.0, 1e-6));
     CHECK(near(st.seamQAt(st.seamDir(11.0 * binRad, 0.0), table), 10.5, 1e-6));
     CHECK(near(st.seamQAt(st.seamDir(0.0, 0.0), table), 0.5 * (127 + 0), 1e-6)); // wraps
@@ -754,14 +761,14 @@ void testSeamDepthGeometry()
     const double mid = st.seamQAt(st.seamDir(10.5 * binRad, 15 * kDeg), table); // in the ramp
     CHECK(mid > 0.5 && mid < 9.5);
     CHECK(st.seamQAt(st.seamDir(10.5 * binRad, 0.0), nullptr) == 0.0);
-    insv::FisheyeStitcher off;
-    CHECK(off.configure(c, 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher off;
+    CHECK(off.configure(c, 3840, 3840, orbiscore::StitchParams{}));
     CHECK(off.seamQAt(off.seamDir(10.5 * binRad, 0.0), table) == 0.0);
 
     // --baseline < 0 swaps the lenses.
-    insv::StitchParams pf = p;
+    orbiscore::StitchParams pf = p;
     pf.baselineM = -0.05;
-    insv::FisheyeStitcher flipped;
+    orbiscore::FisheyeStitcher flipped;
     CHECK(flipped.configure(c, 3840, 3840, pf));
     CHECK(near(dot(flipped.lensCentre(0), flipped.seamAxis()), -0.025, 1e-9));
 }
@@ -771,7 +778,7 @@ void testSeamDepthGeometry()
 // different textures (glare from a low sun on the seam) is not.
 void testSeamPatchScore()
 {
-    constexpr int N = insv::kSeamPatchAz * insv::kSeamPatchEl;
+    constexpr int N = orbiscore::kSeamPatchAz * orbiscore::kSeamPatchEl;
     uint32_t seed = 12345;
     auto noise = [&] { // -1..1
         seed = seed * 1664525u + 1013904223u;
@@ -781,17 +788,19 @@ void testSeamPatchScore()
     for (int s = 0; s < N; ++s)
         t0[s] = noise(), t1[s] = noise();
     auto score = [&](auto&& x, auto&& y, bool (*keep)(int), float& ncc, float& tex) {
-        double sums[insv::kSeamPatchSums] = {};
+        double sums[orbiscore::kSeamPatchSums] = {};
         for (int s = 0; s < N; ++s)
             if (keep(s)) {
-                const double a = s % insv::kSeamPatchAz - 7.5, e = s / insv::kSeamPatchAz - 7.5;
-                insv::SeamPatchAccumulate(sums, s, x(s, a, e), y(s, a, e));
+                const double a = s % orbiscore::kSeamPatchAz - 7.5;
+                const double e = s / orbiscore::kSeamPatchAz - 7.5;
+                orbiscore::SeamPatchAccumulate(sums, s, x(s, a, e), y(s, a, e));
             }
-        insv::SeamPatchScore(sums, ncc, tex);
+        orbiscore::SeamPatchScore(sums, ncc, tex);
     };
     auto all = [](int) { return true; };
     // A corner of the patch outside the lens: the plane still comes out exactly.
-    auto corner = [](int s) { return !(s % insv::kSeamPatchAz < 6 && s / insv::kSeamPatchAz < 6); };
+    auto corner =
+        [](int s) { return !(s % orbiscore::kSeamPatchAz < 6 && s / orbiscore::kSeamPatchAz < 6); };
     float ncc, tex;
     for (auto keep : {+all, +corner}) {
         score([&](int s, double a, double e) { return 100 + 10 * t0[s] + 3 * a + 1 * e; },
@@ -818,24 +827,24 @@ void testSeamPatchScore()
 // their neighbours.
 void testSeamDepthWindow()
 {
-    constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands;
+    constexpr int B = orbiscore::kSeamDepthBins, K = orbiscore::kSeamDepthCands;
     const double band = 5.0 * kDeg;
-    auto costs = std::make_unique<insv::SeamCosts>();
-    auto stats = std::make_unique<insv::SeamCutStats>(); // no cells: the cut keeps out of it
+    auto costs = std::make_unique<orbiscore::SeamCosts>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>(); // no cells: the cut keeps out of it
     auto fill = [&](double nearQ) {
         for (int b = 0; b < B; ++b) {
             const double truth = (b >= 40 && b < 70) ? nearQ : 0.0;
             const bool textured = !(b == 55 || b == 100);
             for (int k = 0; k < K; ++k) {
-                const double dq = insv::SeamCandQ(k) - truth;
+                const double dq = orbiscore::SeamCandQ(k) - truth;
                 costs->ncc[b][k] = static_cast<float>(textured ? 0.95 - 0.8 * std::min(std::fabs(dq), 1.0) : 0.0);
                 costs->texture[b][k] = textured ? 30.0f : 0.5f;
             }
         }
     };
-    insv::SeamWindow w;
+    orbiscore::SeamWindow w;
     w.configure(0.032, band);
-    insv::SeamState s;
+    orbiscore::SeamState s;
     CHECK(!w.solve(1000, s));
     fill(1.8);
     w.add(1000, *costs, *stats);
@@ -853,13 +862,13 @@ void testSeamDepthWindow()
         fill(nearQ);
         for (int b = from; b < to; ++b)
             for (int k = 0; k < K; ++k) {
-                const double qq = insv::SeamCandQ(k);
+                const double qq = orbiscore::SeamCandQ(k);
                 const double dn = std::fabs(qq - nearQ), df = std::fabs(qq - farQ);
                 costs->ncc[b][k] = static_cast<float>(
                     std::max(0.70 - 0.8 * std::min(dn, 1.0), 0.95 - 0.8 * std::min(df, 1.0)));
             }
     };
-    insv::SeamWindow single;
+    orbiscore::SeamWindow single;
     single.tuning.depthHalfMs = 0;
     single.configure(0.032, band);
     w.reset();
@@ -871,7 +880,7 @@ void testSeamDepthWindow()
         w.add(1000 + 33 * f, *costs, *stats);
         single.add(1000 + 33 * f, *costs, *stats);
     }
-    insv::SeamState s1;
+    orbiscore::SeamState s1;
     w.solve(1000 + 33 * 7, s);
     single.solve(1000 + 33 * 7, s1);
     CHECK(s.q[58] > 1.6);
@@ -902,21 +911,21 @@ void testSeamDepthWindow()
 // camera's baseline gives (the X5's shift: the A1 stops at ~0.7 m).
 void testSeamDepthUniqueness()
 {
-    constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands;
-    auto costs = std::make_unique<insv::SeamCosts>();
-    auto data = std::make_unique<insv::SeamDepthFrame>();
-    const insv::SeamDepthTuning tuning;
+    constexpr int B = orbiscore::kSeamDepthBins, K = orbiscore::kSeamDepthCands;
+    auto costs = std::make_unique<orbiscore::SeamCosts>();
+    auto data = std::make_unique<orbiscore::SeamDepthFrame>();
+    const orbiscore::SeamDepthTuning tuning;
     auto confidence = [&](const std::function<double(int)>& ncc) {
         for (int b = 0; b < B; ++b)
             for (int k = 0; k < K; ++k) {
                 costs->ncc[b][k] = static_cast<float>(ncc(k));
                 costs->texture[b][k] = 30.0f;
             }
-        insv::SeamDepthData(*costs, 0.032, tuning, *data); // the X5's 32 mm
+        orbiscore::SeamDepthData(*costs, 0.032, tuning, *data); // the X5's 32 mm
         return data->meanConf;
     };
     const double clean = confidence([](int k) {
-        const double dq = insv::SeamCandQ(k) - 1.0;
+        const double dq = orbiscore::SeamCandQ(k) - 1.0;
         return 0.9 * std::exp(-dq * dq / (2 * 0.15 * 0.15));
     });
     const double ramp = confidence([](int k) { return 0.2 + 0.7 * k / (K - 1.0); });
@@ -934,20 +943,20 @@ void testSeamDepthUniqueness()
     // range; the table takes the weaker one at 1.0 1/m.
     for (int b = 0; b < B; ++b)
         for (int k = 0; k < K; ++k) {
-            const double q = insv::SeamCandQ(k);
+            const double q = orbiscore::SeamCandQ(k);
             costs->ncc[b][k] = static_cast<float>(std::max(0.95 - 2.0 * std::fabs(q - 2.5),
                                                            0.8 - 2.0 * std::fabs(q - 1.0)));
             costs->texture[b][k] = 30.0f;
         }
     float x5[B], a1[B];
-    insv::SeamDepthData(*costs, 0.032, tuning, *data);
-    insv::SolveSeamDepth(&data->data[0][0], 0.032, tuning, x5);
-    insv::SeamDepthData(*costs, 0.071, tuning, *data);
-    insv::SolveSeamDepth(&data->data[0][0], 0.071, tuning, a1);
+    orbiscore::SeamDepthData(*costs, 0.032, tuning, *data);
+    orbiscore::SolveSeamDepth(&data->data[0][0], 0.032, tuning, x5);
+    orbiscore::SeamDepthData(*costs, 0.071, tuning, *data);
+    orbiscore::SolveSeamDepth(&data->data[0][0], 0.071, tuning, a1);
     CHECK(near(x5[20], 2.5, 0.15));
     CHECK(near(a1[20], 1.0, 0.15));
     for (int b = 0; b < B; ++b)
-        CHECK(0.071 * a1[b] <= insv::kSeamShiftMaxRad + 1e-6);
+        CHECK(0.071 * a1[b] <= orbiscore::kSeamShiftMaxRad + 1e-6);
 }
 
 // The state at a frame is the same whichever way it is reached: played into
@@ -958,11 +967,12 @@ void testSeamDepthUniqueness()
 // differ.
 void testSeamWindowPathIndependence()
 {
-    constexpr int B = insv::kSeamDepthBins, K = insv::kSeamDepthCands, R = insv::kSeamCutRows;
+    constexpr int B = orbiscore::kSeamDepthBins, K = orbiscore::kSeamDepthCands,
+                  R = orbiscore::kSeamCutRows;
     const double band = 5.0 * kDeg;
-    auto costs = std::make_unique<insv::SeamCosts>();
-    auto stats = std::make_unique<insv::SeamCutStats>();
-    insv::LensColour clip;
+    auto costs = std::make_unique<orbiscore::SeamCosts>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
+    orbiscore::LensColour clip;
     clip.logRatio[0] = 0.05;
     auto frame = [&](int f, const float* qMeas) {
         const double nearQ = 1.0 + 0.03 * f;
@@ -970,13 +980,13 @@ void testSeamWindowPathIndependence()
         for (int b = 0; b < B; ++b) {
             const double truth = b >= from && b < from + 25 ? nearQ : 0.0;
             for (int k = 0; k < K; ++k) {
-                const double dq = insv::SeamCandQ(k) - truth;
+                const double dq = orbiscore::SeamCandQ(k) - truth;
                 costs->ncc[b][k] = static_cast<float>(0.95 - 0.8 * std::min(std::fabs(dq), 1.0) -
                                                       0.02 * ((b * 7 + f * 3) % 5));
                 costs->texture[b][k] = 30.0f;
             }
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
                 c.n = 64;
                 c.texture = 20;
                 // Agreement where the table measured on is right.
@@ -989,7 +999,7 @@ void testSeamWindowPathIndependence()
             }
         }
     };
-    auto feed = [&](insv::SeamWindow& w, int from, int to) {
+    auto feed = [&](orbiscore::SeamWindow& w, int from, int to) {
         for (int f = from; f <= to; ++f) {
             float q[B];
             w.measureTable(1000 + 33 * f, q);
@@ -997,8 +1007,8 @@ void testSeamWindowPathIndependence()
             w.add(1000 + 33 * f, *costs, *stats);
         }
     };
-    insv::SeamWindow played, seeked, short_;
-    for (insv::SeamWindow* w : {&played, &seeked, &short_}) {
+    orbiscore::SeamWindow played, seeked, short_;
+    for (orbiscore::SeamWindow* w : {&played, &seeked, &short_}) {
         w->configure(0.032, band);
         w->setLensColour(clip);
     }
@@ -1013,7 +1023,7 @@ void testSeamWindowPathIndependence()
         ++last;
     feed(seeked, first, last);
     feed(short_, first + 6, last);
-    insv::SeamState a, b, c;
+    orbiscore::SeamState a, b, c;
     CHECK(played.solve(t, a) && seeked.solve(t, b) && short_.solve(t, c));
     CHECK(std::memcmp(a.q, b.q, sizeof a.q) == 0);
     CHECK(std::memcmp(&a.blend, &b.blend, sizeof a.blend) == 0);
@@ -1021,7 +1031,8 @@ void testSeamWindowPathIndependence()
 
     // Half precision round trip.
     for (float v : {0.0f, 1.0f, -2.5f, 0.0123f, 3.2f, 1e-6f, 65504.0f})
-        CHECK(near(insv::HalfToFloat(insv::FloatToHalf(v)), v, std::fabs(v) / 1024.0 + 1e-7));
+        CHECK(near(orbiscore::HalfToFloat(orbiscore::FloatToHalf(v)), v,
+                   std::fabs(v) / 1024.0 + 1e-7));
 }
 
 // Privacy blur quads: (s, t) <-> direction round trip, corners, rejects, cells.
@@ -1033,13 +1044,13 @@ namespace {
 
 // Grey texture on the sphere: plane waves of ~1.5-2.5 deg wavelength in
 // scattered directions, so every block matches in one place only.
-double seamTexture(const insv::Vec3 &d, int seed)
+double seamTexture(const orbiscore::Vec3 &d, int seed)
 {
     double v = 128.0;
     for (int j = 0; j < 7; ++j) {
         const double t = 1.7 * j + 0.9 * seed, f = 150.0 + 17.0 * ((j * 5 + seed) % 7);
-        const insv::Vec3 k{std::cos(t) * std::sin(1.1 * t + 0.4), std::sin(t) * std::sin(1.1 * t + 0.4),
-                           std::cos(1.1 * t + 0.4)};
+        const orbiscore::Vec3 k{std::cos(t) * std::sin(1.1 * t + 0.4), std::sin(t) * std::sin(1.1 * t + 0.4),
+                                std::cos(1.1 * t + 0.4)};
         v += 15.0 * std::sin(f * (k.x * d.x + k.y * d.y + k.z * d.z) + 0.7 * j + seed);
     }
     return std::clamp(v, 0.0, 255.0);
@@ -1048,27 +1059,27 @@ double seamTexture(const insv::Vec3 &d, int seed)
 // Lens i's picture around the seam (78..102 deg off lens 0's axis) through
 // `st`. Between azimuths nearFrom..nearTo (deg) the scene is 1/nearQ m away,
 // so each lens sees it from its own centre.
-insv::Image seamLensPicture(const insv::FisheyeStitcher &st, int lens, int size, int seed,
-                            double nearFrom, double nearTo, double nearQ)
+orbiscore::Image seamLensPicture(const orbiscore::FisheyeStitcher &st, int lens, int size, int seed,
+                                 double nearFrom, double nearTo, double nearQ)
 {
-    insv::Image im;
+    orbiscore::Image im;
     im.alloc(size, size);
-    const insv::Mat3 l2w = insv::transpose(st.lensProjection(0).worldToLens);
-    const insv::Vec3 c = st.lensCentre(lens);
+    const orbiscore::Mat3 l2w = orbiscore::transpose(st.lensProjection(0).worldToLens);
+    const orbiscore::Vec3 c = st.lensCentre(lens);
     constexpr double step = 0.05;
     for (double th = 78.0; th <= 102.0; th += step)
         for (double a = 0.0; a < 360.0; a += step) {
-            const insv::Vec3 d = insv::apply(
+            const orbiscore::Vec3 d = orbiscore::apply(
                 l2w, {std::cos(a * kDeg) * std::sin(th * kDeg), std::sin(a * kDeg) * std::sin(th * kDeg),
                       std::cos(th * kDeg)});
-            insv::Vec3 scene = d;
+            orbiscore::Vec3 scene = d;
             if (a >= nearFrom && a < nearTo) {
                 // The point on the sphere of radius 1/q that lens `lens` sees
                 // along d: |c + s d| = 1/q.
                 const double R = 1.0 / nearQ, cd = c.x * d.x + c.y * d.y + c.z * d.z;
                 const double cc = c.x * c.x + c.y * c.y + c.z * c.z;
                 const double s = -cd + std::sqrt(cd * cd - cc + R * R);
-                scene = insv::normalize({c.x + s * d.x, c.y + s * d.y, c.z + s * d.z});
+                scene = orbiscore::normalize({c.x + s * d.x, c.y + s * d.y, c.z + s * d.z});
             }
             double u, v, t;
             if (!st.project(lens, d, u, v, t))
@@ -1087,22 +1098,22 @@ insv::Image seamLensPicture(const insv::FisheyeStitcher &st, int lens, int size,
 
 void testSeamAlignment()
 {
-    const insv::InsvCalibration cal = x5Calibration();
+    const orbiscore::InsvCalibration cal = x5Calibration();
     constexpr int kSize = 1536;
-    insv::StitchParams truthParams;
+    orbiscore::StitchParams truthParams;
     truthParams.seam = {{0.3, -0.4, 0.15}, {0.002, -0.0015}, 1.0015};
-    insv::FisheyeStitcher truth;
+    orbiscore::FisheyeStitcher truth;
     CHECK(truth.configure(cal, kSize, kSize, truthParams));
 
     // Far everywhere but 140..220 deg, 3 m away there.
-    std::vector<insv::SeamFrame> frames;
+    std::vector<orbiscore::SeamFrame> frames;
     for (int seed = 0; seed < 2; ++seed)
-        frames.push_back(insv::MakeSeamFrame(
+        frames.push_back(orbiscore::MakeSeamFrame(
             seamLensPicture(truth, 0, kSize, seed, 140.0, 220.0, 1.0 / 3.0),
             seamLensPicture(truth, 1, kSize, seed, 140.0, 220.0, 1.0 / 3.0)));
 
-    const insv::StitchParams none;
-    const insv::SeamAlignmentResult r = insv::EstimateSeamAlignment(cal, none, kSize, kSize, frames);
+    const orbiscore::StitchParams none;
+    const orbiscore::SeamAlignmentResult r = orbiscore::EstimateSeamAlignment(cal, none, kSize, kSize, frames);
     std::printf("seam alignment: %s\n", r.message.c_str());
     CHECK(r.ok);
     CHECK(r.offsetBeforeDeg > 0.3 && r.offsetAfterDeg < 0.04);
@@ -1112,28 +1123,28 @@ void testSeamAlignment()
     CHECK(near(r.correction.radialScale, 1.0015, 0.0003));
 
     // The correction applied, the lenses agree on far content.
-    insv::StitchParams fitted;
+    orbiscore::StitchParams fitted;
     fitted.seam = r.correction;
-    CHECK(insv::MeasureSeamOffset(cal, fitted, kSize, kSize, frames) < 0.04);
-    CHECK(insv::MeasureSeamOffset(cal, none, kSize, kSize, frames) > 0.3);
+    CHECK(orbiscore::MeasureSeamOffset(cal, fitted, kSize, kSize, frames) < 0.04);
+    CHECK(orbiscore::MeasureSeamOffset(cal, none, kSize, kSize, frames) > 0.3);
 }
 
 // The seam cut's blend: weights from the per-bin cut and fade, the plain
 // cross-fade without one.
 void testSeamBlend()
 {
-    insv::InsvCalibration c = x5Calibration();
-    insv::StitchParams p;
+    orbiscore::InsvCalibration c = x5Calibration();
+    orbiscore::StitchParams p;
     p.depthSeam = true;
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     CHECK(st.configure(c, 3840, 3840, p));
     const double band = st.gpuParams().bandRad;
     const double phi = 1.234;
 
     // No blend, or one not measured yet (fade 0): today's cross-fade.
-    insv::SeamBlend none;
+    orbiscore::SeamBlend none;
     for (double e : {-6.0, -2.0, 0.0, 1.0, 4.5}) {
-        const insv::Vec3 d = st.seamDir(phi, e * kDeg);
+        const orbiscore::Vec3 d = st.seamDir(phi, e * kDeg);
         double w[2], wz[2];
         st.seamBlendWeights(d, nullptr, w);
         st.seamBlendWeights(d, &none, wz);
@@ -1143,8 +1154,8 @@ void testSeamBlend()
 
     // A narrow fade around a cut 1 deg towards lens 0: lens 0 alone above
     // it, lens 1 alone below, half and half on it, adding up to 1.
-    insv::SeamBlend narrow;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+    orbiscore::SeamBlend narrow;
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
         narrow.cut[b] = static_cast<float>(1.0 * kDeg);
         narrow.fade[b] = static_cast<float>(0.75 * kDeg);
     }
@@ -1160,11 +1171,11 @@ void testSeamBlend()
 
     // The full band around the seam circle is today's cross-fade (up to the
     // lens axes being a little off the seam frame's).
-    insv::SeamBlend wide;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+    orbiscore::SeamBlend wide;
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
         wide.fade[b] = static_cast<float>(band);
     for (double e : {-4.0, -1.0, 0.0, 2.0, 4.0}) {
-        const insv::Vec3 d = st.seamDir(phi, e * kDeg);
+        const orbiscore::Vec3 d = st.seamDir(phi, e * kDeg);
         st.seamBlendWeights(d, &wide, w);
         CHECK(near(w[0], st.seamBlendWeight(0, d), 0.02) && near(w[1], st.seamBlendWeight(1, d), 0.02));
     }
@@ -1173,11 +1184,11 @@ void testSeamBlend()
     // green rising 1 % per degree towards lens 0. Both lenses go to the
     // geometric mean, the slope held at the band's edge beyond it, the
     // frame's residual added.
-    insv::StitchParams pc = p;
+    orbiscore::StitchParams pc = p;
     pc.lensColour.logRatio[0] = std::log(1.2);
     pc.lensColour.logRatio[2] = std::log(0.9);
     pc.lensColour.slope[1] = 0.01;
-    insv::FisheyeStitcher sc;
+    orbiscore::FisheyeStitcher sc;
     CHECK(sc.configure(c, 3840, 3840, pc));
     double lg[2][3], vl[2][3];
     sc.lensLogGains(sc.seamDir(phi, 2.0 * kDeg), nullptr, lg, vl);
@@ -1189,63 +1200,66 @@ void testSeamBlend()
     CHECK(near(lg[1][1] - lg[0][1], edgeG, 1e-6) && near(lg[1][0] - lg[0][0], std::log(1.2), 1e-6));
     sc.lensLogGains(sc.seamDir(phi, -60.0 * kDeg), nullptr, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], -edgeG, 1e-6));
-    insv::SeamBlend residual;
+    orbiscore::SeamBlend residual;
     residual.colour[0] = 0.15f;
     residual.colour[2] = -0.05f;
     sc.lensLogGains(sc.seamDir(phi, 0.0), &residual, lg, vl);
-    CHECK(near(lg[1][0] - lg[0][0], insv::kLensColourMaxLog, 1e-6)); // bounded
+    CHECK(near(lg[1][0] - lg[0][0], orbiscore::kLensColourMaxLog, 1e-6)); // bounded
     CHECK(near(lg[1][2] - lg[0][2], std::log(0.9) - 0.05, 1e-6));
     // The GPU gets the same, per radian.
     CHECK(near(sc.gpuParams().lensColourSlope[1], 0.01 / kDeg, 1e-6));
     // The local correction: whole in the band, half way along the ramp past
     // it, gone beyond; the sum bounded.
-    insv::SeamBlend local;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+    orbiscore::SeamBlend local;
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
         local.local[b][1] = 0.1f;
     sc.lensLogGains(sc.seamDir(phi, 1.0 * kDeg), &local, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], 0.01 + 0.1, 1e-6));
-    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * insv::kLensColourLocalRampDeg * kDeg), &local, lg, vl);
+    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * orbiscore::kLensColourLocalRampDeg * kDeg), &local, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], edgeG + 0.05, 1e-6));
-    sc.lensLogGains(sc.seamDir(phi, band + insv::kLensColourLocalRampDeg * kDeg + 0.01), &local, lg, vl);
+    sc.lensLogGains(sc.seamDir(phi, band + orbiscore::kLensColourLocalRampDeg * kDeg + 0.01), &local, lg, vl);
     CHECK(near(lg[1][1] - lg[0][1], edgeG, 1e-6));
     local.local[3][0] = local.local[4][0] = 0.25f;
-    sc.lensLogGains(sc.seamDir((3.5 + 0.5) * 2.0 * std::numbers::pi / insv::kSeamDepthBins, 0.0),
+    sc.lensLogGains(sc.seamDir((3.5 + 0.5) * 2.0 * std::numbers::pi / orbiscore::kSeamDepthBins,
+                               0.0),
                     &local, lg, vl);
-    CHECK(near(lg[1][0] - lg[0][0], insv::kLensColourMaxLog, 1e-6));
+    CHECK(near(lg[1][0] - lg[0][0], orbiscore::kLensColourMaxLog, 1e-6));
     CHECK(vl[0][1] == 0.0 && vl[1][1] == 0.0);
     // The veiling light likewise, to the lens that has it.
-    insv::SeamBlend veiled;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+    orbiscore::SeamBlend veiled;
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
         veiled.veil[b][1] = -0.1f; // lens 1
     sc.lensLogGains(sc.seamDir(phi, 1.0 * kDeg), &veiled, lg, vl);
     CHECK(vl[0][1] == 0.0 && near(vl[1][1], 0.1, 1e-6) && vl[1][0] == 0.0);
-    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * insv::kLensColourLocalRampDeg * kDeg), &veiled, lg, vl);
+    sc.lensLogGains(sc.seamDir(phi, band + 0.5 * orbiscore::kLensColourLocalRampDeg * kDeg), &veiled, lg, vl);
     CHECK(near(vl[1][1], 0.05, 1e-6));
-    sc.lensLogGains(sc.seamDir(phi, -band - insv::kLensColourLocalRampDeg * kDeg - 0.01), &veiled, lg, vl);
+    sc.lensLogGains(sc.seamDir(phi, -band - orbiscore::kLensColourLocalRampDeg * kDeg - 0.01), &veiled, lg, vl);
     CHECK(vl[1][1] == 0.0);
     // Taken out in linear light: a dark level loses relatively more than a
     // bright one, never below kLensVeilKeep of its light; nothing over the
     // knee; still rising with the level.
-    const auto lin = [](double v) { return std::pow(v / 255.0, insv::kLensVeilGamma); };
-    CHECK(insv::LensVeilRemove(100.0, 0.0) == 100.0);
-    CHECK(near(lin(insv::LensVeilRemove(150.0, 0.1)), lin(150.0) - 0.1, 1e-9));
-    CHECK(near(lin(insv::LensVeilRemove(40.0, 0.1)), insv::kLensVeilKeep * lin(40.0), 1e-9));
-    CHECK(insv::LensVeilRemove(insv::kLensColourKneeHi, 0.2) == insv::kLensColourKneeHi);
+    const auto lin = [](double v) { return std::pow(v / 255.0, orbiscore::kLensVeilGamma); };
+    CHECK(orbiscore::LensVeilRemove(100.0, 0.0) == 100.0);
+    CHECK(near(lin(orbiscore::LensVeilRemove(150.0, 0.1)), lin(150.0) - 0.1, 1e-9));
+    CHECK(near(lin(orbiscore::LensVeilRemove(40.0, 0.1)), orbiscore::kLensVeilKeep * lin(40.0),
+               1e-9));
+    CHECK(orbiscore::LensVeilRemove(orbiscore::kLensColourKneeHi, 0.2) ==
+          orbiscore::kLensColourKneeHi);
     double lastV = -1.0;
     for (double v = 0.5; v <= 255.0; v += 0.5) {
-        const double out = insv::LensVeilRemove(v, 0.15);
+        const double out = orbiscore::LensVeilRemove(v, 0.15);
         CHECK(out > lastV);
         lastV = out;
     }
 
     // Highlights: the gain eases to 1 over the knee, a channel still rising.
-    CHECK(near(insv::LensColourGain(0.1, 100.0), std::exp(0.1), 1e-12));
-    CHECK(insv::LensColourGain(0.1, insv::kLensColourKneeHi) == 1.0);
-    CHECK(insv::LensColourGain(-0.1, 255.0) == 1.0);
-    for (double lgv : {-0.5 * insv::kLensColourMaxLog, 0.5 * insv::kLensColourMaxLog}) {
+    CHECK(near(orbiscore::LensColourGain(0.1, 100.0), std::exp(0.1), 1e-12));
+    CHECK(orbiscore::LensColourGain(0.1, orbiscore::kLensColourKneeHi) == 1.0);
+    CHECK(orbiscore::LensColourGain(-0.1, 255.0) == 1.0);
+    for (double lgv : {-0.5 * orbiscore::kLensColourMaxLog, 0.5 * orbiscore::kLensColourMaxLog}) {
         double last = 0.0;
         for (double v = 0.5; v <= 255.0; v += 0.5) {
-            const double out = v * insv::LensColourGain(lgv, v);
+            const double out = v * orbiscore::LensColourGain(lgv, v);
             CHECK(out > last);
             last = out;
         }
@@ -1254,35 +1268,35 @@ void testSeamBlend()
     // Off: the render ignores the blend -- the plain cross-fade, as without
     // one; with the new stitcher's seam colour blend that too, unless its
     // seam flow brings a fade: its narrow one then.
-    insv::FisheyeStitcher off;
-    CHECK(off.configure(c, 3840, 3840, insv::StitchParams{}));
-    insv::Image l0, l1;
+    orbiscore::FisheyeStitcher off;
+    CHECK(off.configure(c, 3840, 3840, orbiscore::StitchParams{}));
+    orbiscore::Image l0, l1;
     l0.alloc(3840, 3840);
     l1.alloc(3840, 3840);
     std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t{200});
     std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t{50});
-    const insv::Image plain = off.renderEquirect(l0, l1, 512);
-    insv::Image withBlend;
+    const orbiscore::Image plain = off.renderEquirect(l0, l1, 512);
+    orbiscore::Image withBlend;
     withBlend.alloc(512, 256);
     off.renderEquirect(l0, l1, withBlend, nullptr, &narrow);
     CHECK(withBlend.rgb == plain.rgb);
-    const std::vector<float> noVeil(insv::kSeamDepthBins * 3, 0.0f), noColour = noVeil;
-    insv::Image colourOnly;
+    const std::vector<float> noVeil(orbiscore::kSeamDepthBins * 3, 0.0f), noColour = noVeil;
+    orbiscore::Image colourOnly;
     colourOnly.alloc(512, 256);
     off.renderEquirect(l0, l1, colourOnly, nullptr, nullptr, nullptr, 0, noColour.data(), nullptr,
                        noVeil.data());
     CHECK(colourOnly.rgb == plain.rgb);
     // A still flow field whose fade is narrow everywhere: fewer mixed
     // pixels, only those within the narrow fade.
-    insv::SeamFlowField still;
-    still.grid = insv::SeamFlowGridFor(off);
+    orbiscore::SeamFlowField still;
+    still.grid = orbiscore::SeamFlowGridFor(off);
     still.v.assign(static_cast<size_t>(still.grid.rows) * still.grid.cols * 4, 0.0f);
     still.fade.assign(still.grid.cols, 0.0f);
-    insv::Image narrowFade;
+    orbiscore::Image narrowFade;
     narrowFade.alloc(512, 256);
     off.renderEquirect(l0, l1, narrowFade, nullptr, nullptr, nullptr, 0, noColour.data(), &still,
                        noVeil.data());
-    auto mixed = [](const insv::Image& im) {
+    auto mixed = [](const orbiscore::Image& im) {
         int n = 0;
         for (size_t i = 0; i < im.rgb.size(); i += 3)
             n += im.rgb[i] > 52 && im.rgb[i] < 198;
@@ -1302,26 +1316,26 @@ namespace {
 
 // Costs that match at infinity everywhere: the depth side quiet, for the
 // cut and colour tests.
-std::unique_ptr<insv::SeamCosts> farCosts()
+std::unique_ptr<orbiscore::SeamCosts> farCosts()
 {
-    auto c = std::make_unique<insv::SeamCosts>();
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
-        for (int k = 0; k < insv::kSeamDepthCands; ++k) {
-            c->ncc[b][k] = static_cast<float>(0.95 - 0.8 * std::min(std::fabs(insv::SeamCandQ(k)), 1.0));
+    auto c = std::make_unique<orbiscore::SeamCosts>();
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
+        for (int k = 0; k < orbiscore::kSeamDepthCands; ++k) {
+            c->ncc[b][k] = static_cast<float>(0.95 - 0.8 * std::min(std::fabs(orbiscore::SeamCandQ(k)), 1.0));
             c->texture[b][k] = 30.0f;
         }
     return c;
 }
 
 // The state of a window holding `stats` alone, at band half-width `band`.
-insv::SeamState solveOne(const insv::SeamCutStats& stats, double band,
-                         const insv::LensColour& clip = {})
+orbiscore::SeamState solveOne(const orbiscore::SeamCutStats& stats, double band,
+                              const orbiscore::LensColour& clip = {})
 {
-    insv::SeamWindow w;
+    orbiscore::SeamWindow w;
     w.configure(0.032, band);
     w.setLensColour(clip);
     w.add(1000, *farCosts(), stats);
-    insv::SeamState s;
+    orbiscore::SeamState s;
     w.solve(1000, s);
     return s;
 }
@@ -1332,24 +1346,25 @@ insv::SeamState solveOne(const insv::SeamCutStats& stats, double band,
 // one row everywhere but an arc where no row agrees (an occlusion).
 void testSeamCutWindow()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
-    const double band = 5.0 * kDeg, narrow = insv::kSeamCutFadeDeg * kDeg;
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
+    const double band = 5.0 * kDeg, narrow = orbiscore::kSeamCutFadeDeg * kDeg;
     const double half = 1e-4; // the state's half precision
-    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
     auto costs = farCosts();
     auto fill = [&](int bestRow, float bestZsad) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& cell = stats->cell[b][r];
+                orbiscore::SeamCutStats::Cell& cell = stats->cell[b][r];
                 cell.n = 64;
                 cell.texture = 20;
                 cell.zsad = (b >= 80 && b < 90) ? 40.0f : (r == bestRow ? bestZsad : 12.0f);
             }
     };
     fill(6, 2.0f);
-    insv::SeamState s = solveOne(*stats, band);
-    const insv::SeamBlend& bl = s.blend;
-    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), half) && near(bl.fade[20], narrow, half));
+    orbiscore::SeamState s = solveOne(*stats, band);
+    const orbiscore::SeamBlend& bl = s.blend;
+    CHECK(near(bl.cut[20], orbiscore::SeamCutRowE(6, band), half) &&
+          near(bl.fade[20], narrow, half));
     CHECK(near(bl.cut[84], 0.0, half) && near(bl.fade[84], band, half)); // occluded: the full fade
     CHECK(bl.fade[79] > narrow && bl.fade[79] < band);                  // widening gradually
     CHECK(near(bl.fade[76], narrow, half));
@@ -1358,7 +1373,7 @@ void testSeamCutWindow()
 
     // One frame of a slightly better row among its neighbours doesn't move
     // the cut there ...
-    insv::SeamWindow w;
+    orbiscore::SeamWindow w;
     w.configure(0.032, band);
     for (int f = 0; f < 9; ++f) {
         if (f == 4)
@@ -1368,14 +1383,14 @@ void testSeamCutWindow()
         w.add(1000 + 33 * f, *costs, *stats);
     }
     w.solve(1000 + 33 * 4, s);
-    CHECK(near(bl.cut[20], insv::SeamCutRowE(6, band), half));
+    CHECK(near(bl.cut[20], orbiscore::SeamCutRowE(6, band), half));
     // ... a clearly better one, kept up, does.
     w.reset();
     fill(2, 0.5f);
     for (int f = 0; f < 9; ++f)
         w.add(1000 + 33 * f, *costs, *stats);
     w.solve(1000 + 33 * 4, s);
-    CHECK(near(bl.cut[20], insv::SeamCutRowE(2, band), half));
+    CHECK(near(bl.cut[20], orbiscore::SeamCutRowE(2, band), half));
 
     // Rows the lenses don't both see are never cut through.
     fill(6, 2.0f);
@@ -1383,7 +1398,7 @@ void testSeamCutWindow()
         stats->cell[b][6].n = 10;
     s = solveOne(*stats, band);
     for (int b = 0; b < 80; ++b)
-        CHECK(!near(bl.cut[b], insv::SeamCutRowE(6, band), half));
+        CHECK(!near(bl.cut[b], orbiscore::SeamCutRowE(6, band), half));
 
     // The colour residual against the clip's lens colour: lens 0 (120, 100,
     // 80) against lens 1 (100, 100, 100) where the lenses agree; nothing
@@ -1393,7 +1408,7 @@ void testSeamCutWindow()
     auto colours = [&](float red0) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& cell = stats->cell[b][r];
+                orbiscore::SeamCutStats::Cell& cell = stats->cell[b][r];
                 for (int k = 0; k < 3; ++k)
                     cell.nColour[k] = b >= 20 && b < 40 ? 0.0f : 64.0f;
                 const float m0[3] = {red0, 100, 80};
@@ -1404,7 +1419,7 @@ void testSeamCutWindow()
             }
     };
     colours(120);
-    insv::LensColour clip;
+    orbiscore::LensColour clip;
     clip.logRatio[0] = std::log(1.15);
     clip.logRatio[2] = std::log(0.8);
     s = solveOne(*stats, band, clip);
@@ -1451,7 +1466,7 @@ void testSeamCutWindow()
     CHECK(near(g[0], 0.0, half));
     colours(150); // log(1.5 / 1.2) = 0.22: bounded
     s = solveOne(*stats, band, clip);
-    CHECK(near(g[0], insv::kLensColourResidualMaxLog, half));
+    CHECK(near(g[0], orbiscore::kLensColourResidualMaxLog, half));
 }
 
 // The new stitcher's seam colour blend: the fade across the seam; a known
@@ -1466,30 +1481,33 @@ void testSeamFlow()
 {
     std::printf("  seam flow\n");
     const double reach = 8.0 * kDeg;
-    CHECK(insv::SeamFlowShare(reach, reach) == 0.0 && insv::SeamFlowShare(-reach, reach) == 1.0);
-    CHECK(insv::SeamFlowShare(20 * kDeg, reach) == 0.0);
-    CHECK(near(insv::SeamFlowShare(0.0, reach), 0.5, 1e-12));
-    CHECK(near(insv::SeamFlowShare(0.3 * reach, reach) + insv::SeamFlowShare(-0.3 * reach, reach),
+    CHECK(orbiscore::SeamFlowShare(reach, reach) == 0.0 &&
+          orbiscore::SeamFlowShare(-reach, reach) == 1.0);
+    CHECK(orbiscore::SeamFlowShare(20 * kDeg, reach) == 0.0);
+    CHECK(near(orbiscore::SeamFlowShare(0.0, reach), 0.5, 1e-12));
+    CHECK(near(orbiscore::SeamFlowShare(0.3 * reach, reach) +
+                   orbiscore::SeamFlowShare(-0.3 * reach, reach),
                1.0, 1e-12));
-    CHECK(insv::SeamFlowShare(0.2 * reach, reach) > insv::SeamFlowShare(0.6 * reach, reach));
+    CHECK(orbiscore::SeamFlowShare(0.2 * reach, reach) >
+          orbiscore::SeamFlowShare(0.6 * reach, reach));
 
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
     if (!st.ready())
         return;
-    const insv::SeamFlowGrid g = insv::SeamFlowGridFor(st);
-    CHECK(g.valid() && g.cols == static_cast<int>(std::lround(360.0 * insv::kSeamFlowPxDeg)));
+    const orbiscore::SeamFlowGrid g = orbiscore::SeamFlowGridFor(st);
+    CHECK(g.valid() && g.cols == static_cast<int>(std::lround(360.0 * orbiscore::kSeamFlowPxDeg)));
     CHECK(g.cols % 4 == 0); // the GPU's strip pass packs four columns
     CHECK(g.stripRad > 1.0 * kDeg && g.stripRad <= 11.0 * kDeg + 1e-6);
     CHECK(g.rows ==
-          static_cast<int>(std::lround(2.0 * g.stripRad / kDeg * insv::kSeamFlowPxDeg)) + 1);
+          static_cast<int>(std::lround(2.0 * g.stripRad / kDeg * orbiscore::kSeamFlowPxDeg)) + 1);
     CHECK(near(g.xOf(g.phiOf(17.0)), 17.0, 1e-9) && near(g.yOf(g.eOf(5.0)), 5.0, 1e-9));
     if (!g.valid())
         return;
 
     // F10 = (a, b) everywhere, F01 = (-a, -b).
     const float a = 0.004f, b = -0.002f;
-    insv::SeamFlowField f;
+    orbiscore::SeamFlowField f;
     f.grid = g;
     f.v.resize(static_cast<size_t>(g.rows) * g.cols * 4);
     for (size_t k = 0; k < f.v.size(); k += 4) {
@@ -1502,26 +1520,26 @@ void testSeamFlow()
     f.at(-0.5, -3.0, out); // wraps round in x, clamps in y
     CHECK(near(out[0], a, 1e-7) && near(out[3], -b, 1e-7));
 
-    auto dist = [](const insv::Vec3& p, const insv::Vec3& q) {
+    auto dist = [](const orbiscore::Vec3& p, const orbiscore::Vec3& q) {
         return std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) +
                          (p.z - q.z) * (p.z - q.z));
     };
     // On the seam both lenses move half way, to the same place; past the
     // reach neither does.
-    const insv::Vec3 onSeam = st.seamDir(1.0, 0.0);
+    const orbiscore::Vec3 onSeam = st.seamDir(1.0, 0.0);
     CHECK(dist(st.seamFlowRay(0, onSeam, f), st.seamDir(1.0 + 0.5 * a, 0.5 * b)) < 1e-6);
     CHECK(dist(st.seamFlowRay(1, onSeam, f), st.seamDir(1.0 - 0.5 * a, -0.5 * b)) < 1e-6);
-    const insv::Vec3 far = st.seamDir(1.0, 9.0 * kDeg);
-    const insv::Vec3 farW = st.seamFlowRay(0, far, f);
+    const orbiscore::Vec3 far = st.seamDir(1.0, 9.0 * kDeg);
+    const orbiscore::Vec3 farW = st.seamFlowRay(0, far, f);
     CHECK(farW.x == far.x && farW.y == far.y && farW.z == far.z);
     // Half way to the reach on lens 0's side lens 0 moves less than half.
-    const double e = 0.5 * reach, share = insv::SeamFlowShare(e, reach);
+    const double e = 0.5 * reach, share = orbiscore::SeamFlowShare(e, reach);
     CHECK(share > 0.0 && share < 0.5);
     CHECK(dist(st.seamFlowRay(0, st.seamDir(1.0, e), f), st.seamDir(1.0 + share * a, e + share * b)) <
           1e-6);
 
     // A zero field is the template, to the byte; a field moves the seam only.
-    insv::Image l0, l1;
+    orbiscore::Image l0, l1;
     l0.alloc(3840, 3840);
     l1.alloc(3840, 3840);
     for (int y = 0; y < 3840; ++y)
@@ -1531,10 +1549,10 @@ void testSeamFlow()
                 l0.rgb[i] = static_cast<uint8_t>((x * 7 + y * 3 + c * 40) & 255);
                 l1.rgb[i] = static_cast<uint8_t>((x * 5 + y * 11 + c * 70) & 255);
             }
-    const insv::Image plain = st.renderEquirect(l0, l1, 1024);
-    insv::SeamFlowField zero = f;
+    const orbiscore::Image plain = st.renderEquirect(l0, l1, 1024);
+    orbiscore::SeamFlowField zero = f;
     std::fill(zero.v.begin(), zero.v.end(), 0.0f);
-    insv::Image zeroEq, flowEq;
+    orbiscore::Image zeroEq, flowEq;
     zeroEq.alloc(1024, 512);
     flowEq.alloc(1024, 512);
     st.renderEquirect(l0, l1, zeroEq, nullptr, nullptr, nullptr, 0, nullptr, &zero);
@@ -1549,27 +1567,27 @@ void testSeamFlow()
             ++changed;
             const double lat = (0.5 - (y + 0.5) / 512) * std::numbers::pi;
             const double lon = ((x + 0.5) / 1024 - 0.5) * 2.0 * std::numbers::pi;
-            const insv::Vec3 dir = insv::apply(
+            const orbiscore::Vec3 dir = orbiscore::apply(
                 st.outRotation(), {std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
-            const insv::Vec3& ax = st.seamAxis();
+            const orbiscore::Vec3& ax = st.seamAxis();
             changedFar += std::fabs(dir.x * ax.x + dir.y * ax.y + dir.z * ax.z) >= std::sin(reach);
         }
     CHECK(changed > 1000 && changedFar == 0);
 
     // The window: the mean of the last kSeamFlowFrames frames; another grid
     // starts it again.
-    insv::SeamFlowWindow w;
-    for (int k = 0; k <= insv::kSeamFlowFrames + 1; ++k) {
-        insv::SeamFlowField fk = zero;
+    orbiscore::SeamFlowWindow w;
+    for (int k = 0; k <= orbiscore::kSeamFlowFrames + 1; ++k) {
+        orbiscore::SeamFlowField fk = zero;
         std::fill(fk.v.begin(), fk.v.end(), static_cast<float>(k));
         w.add(std::move(fk));
     }
-    CHECK(w.size() == insv::kSeamFlowFrames);
-    insv::SeamFlowField mean;
+    CHECK(w.size() == orbiscore::kSeamFlowFrames);
+    orbiscore::SeamFlowField mean;
     w.solve(mean);
-    const double want = (2.0 + insv::kSeamFlowFrames + 1) / 2.0; // frames 2 .. N + 1
+    const double want = (2.0 + orbiscore::kSeamFlowFrames + 1) / 2.0; // frames 2 .. N + 1
     CHECK(!mean.empty() && near(mean.v.front(), want, 1e-5) && near(mean.v.back(), want, 1e-5));
-    insv::SeamFlowField other = zero;
+    orbiscore::SeamFlowField other = zero;
     other.grid.rows -= 2;
     other.v.resize(static_cast<size_t>(other.grid.rows) * other.grid.cols * 4);
     w.add(std::move(other));
@@ -1580,7 +1598,7 @@ void testSeamFlow()
 
     // The anchor: bright flat sky gets the pattern, the same in both
     // lenses; a dark flat area and a textured one are left as they are.
-    insv::SeamFlowStrips raw;
+    orbiscore::SeamFlowStrips raw;
     raw.grid.cols = 720;
     raw.grid.rows = 40;
     raw.grid.stripRad = static_cast<float>(5 * kDeg);
@@ -1600,8 +1618,8 @@ void testSeamFlow()
                 raw.grey[i][static_cast<size_t>(y) * AC + x] = v;
             }
     }
-    insv::SeamFlowStrips anchored;
-    insv::AnchorSeamFlowStrips(raw, anchored);
+    orbiscore::SeamFlowStrips anchored;
+    orbiscore::AnchorSeamFlowStrips(raw, anchored);
     CHECK(anchored.grid == raw.grid);
     double skySq = 0;
     int skyN = 0, samePattern = 0, darkKept = 0, texKept = 0, darkN = 0, texN = 0;
@@ -1622,32 +1640,34 @@ void testSeamFlow()
             }
         }
     const double skyRms = std::sqrt(skySq / skyN);
-    CHECK(skyRms > 0.6 * insv::kSeamFlowAnchorAmp && skyRms < 1.4 * insv::kSeamFlowAnchorAmp);
+    CHECK(skyRms > 0.6 * orbiscore::kSeamFlowAnchorAmp &&
+          skyRms < 1.4 * orbiscore::kSeamFlowAnchorAmp);
     CHECK(samePattern > 0.95 * skyN);
     CHECK(darkKept == darkN);
     CHECK(texKept == texN);
     // The pattern is the position's alone.
-    CHECK(insv::SeamFlowAnchorNoise(123, 45) == insv::SeamFlowAnchorNoise(123, 45));
-    CHECK(insv::SeamFlowAnchorNoise(123, 45) != insv::SeamFlowAnchorNoise(124, 45));
+    CHECK(orbiscore::SeamFlowAnchorNoise(123, 45) == orbiscore::SeamFlowAnchorNoise(123, 45));
+    CHECK(orbiscore::SeamFlowAnchorNoise(123, 45) != orbiscore::SeamFlowAnchorNoise(124, 45));
 }
 
 void testSeamColourBlend()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
-    CHECK(insv::SeamColourFade(0.0) == 1.0 && insv::SeamColourFade(12.0 * kDeg) == 1.0);
-    CHECK(near(insv::SeamColourFade(21.0 * kDeg), 0.5, 1e-9));
-    CHECK(near(insv::SeamColourFade(-21.0 * kDeg), 0.5, 1e-9));
-    CHECK(insv::SeamColourFade(30.0 * kDeg) == 0.0 && insv::SeamColourFade(-50.0 * kDeg) == 0.0);
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
+    CHECK(orbiscore::SeamColourFade(0.0) == 1.0 && orbiscore::SeamColourFade(12.0 * kDeg) == 1.0);
+    CHECK(near(orbiscore::SeamColourFade(21.0 * kDeg), 0.5, 1e-9));
+    CHECK(near(orbiscore::SeamColourFade(-21.0 * kDeg), 0.5, 1e-9));
+    CHECK(orbiscore::SeamColourFade(30.0 * kDeg) == 0.0 &&
+          orbiscore::SeamColourFade(-50.0 * kDeg) == 0.0);
 
     const double band = 5.0 * kDeg;
     auto truth = [](int b, int k) { return 0.08 * std::sin(2.0 * std::numbers::pi * b / B + k); };
-    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
     // Lens 0 at exp(L / 2) of the scene, lens 1 at exp(-L / 2); the scene's
     // level changes across the band and with the channel.
     auto fill = [&](const std::function<double(int, int)>& L) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
                 c.n = 64;
                 c.texture = 20;
                 c.zsad = 2;
@@ -1669,7 +1689,7 @@ void testSeamColourBlend()
             for (int k = 0; k < 3; ++k)
                 stats->cell[b][r].mean[0][k] *= static_cast<float>(std::exp(scatter[r]));
     float table[B * 3];
-    CHECK(insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    CHECK(orbiscore::MeasureSeamColour(*stats, band, orbiscore::SeamColourTuning{}, table));
     double worst = 0, worstSky = 0, worstFlare = 0;
     for (int b = 0; b < B; ++b)
         for (int k = 0; k < 3; ++k) {
@@ -1686,20 +1706,20 @@ void testSeamColourBlend()
 
     // Bounded; a frame with nothing usable is no correction.
     fill([](int, int) { return 0.4; });
-    CHECK(insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
-    CHECK(near(table[50 * 3 + 1], insv::kSeamColourMaxLog, 1e-6));
+    CHECK(orbiscore::MeasureSeamColour(*stats, band, orbiscore::SeamColourTuning{}, table));
+    CHECK(near(table[50 * 3 + 1], orbiscore::kSeamColourMaxLog, 1e-6));
     for (int b = 0; b < B; ++b)
         for (int r = 0; r < R; ++r)
             stats->cell[b][r].n = 0;
-    CHECK(!insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    CHECK(!orbiscore::MeasureSeamColour(*stats, band, orbiscore::SeamColourTuning{}, table));
     CHECK(table[50 * 3 + 1] == 0.0f);
 
     // The window: a frame's table pools it and the frames in the
     // kSeamColourWindowMs before it, the nearer weighing more -- never the
     // frames after it. Frames 33 ms apart, the lenses 10 % apart in green up
     // to 1000 ms, then 0.
-    insv::SeamColourWindow win;
-    float t[insv::kSeamDepthBins * 3];
+    orbiscore::SeamColourWindow win;
+    float t[orbiscore::kSeamDepthBins * 3];
     auto step = [&](int64_t pts) {
         fill([pts](int, int k) { return k == 1 && pts <= 1000 ? 0.1 : 0.0; });
         win.add(pts, *stats, band);
@@ -1711,7 +1731,7 @@ void testSeamColourBlend()
     CHECK(win.solve(990, t) && near(t[20 * 3 + 1], 0.1, 1e-6));  // later frames don't count
     CHECK(win.solve(2000, t) && near(t[20 * 3 + 1], 0.0, 1e-6)); // all of its window at 0
     // Half a window on: the older half, weighing less.
-    CHECK(win.solve(1000 + insv::kSeamColourWindowMs / 2, t));
+    CHECK(win.solve(1000 + orbiscore::kSeamColourWindowMs / 2, t));
     CHECK(t[20 * 3 + 1] > 0.015 && t[20 * 3 + 1] < 0.04);
     CHECK(near(t[20 * 3], 0.0, 1e-6));
     win.dropBefore(1500);
@@ -1731,7 +1751,7 @@ void testSeamColourBlend()
     fill([](int, int) { return 0.0; });
     for (int b = 0; b < B; ++b)
         for (int r = 0; r < R; ++r) {
-            const double e = insv::SeamCutRowE(r, band) / band; // -1..1
+            const double e = orbiscore::SeamCutRowE(r, band) / band; // -1..1
             const double L = 0.05 + 0.1 * e * e;
             for (int k = 0; k < 3; ++k) {
                 const double scene = 60.0 + 10.0 * r + 15.0 * k;
@@ -1739,19 +1759,19 @@ void testSeamColourBlend()
                 stats->cell[b][r].mean[1][k] = static_cast<float>(scene * std::exp(-0.5 * L));
             }
         }
-    CHECK(insv::MeasureSeamColour(*stats, band, insv::SeamColourTuning{}, table));
+    CHECK(orbiscore::MeasureSeamColour(*stats, band, orbiscore::SeamColourTuning{}, table));
     CHECK(std::fabs(table[40 * 3 + 1] - 0.05) < 0.01);
 
     // The CPU stitch: uniform grey lenses, green 10 % apart in the table
     // everywhere. Lens 0 alone (past the band) gets darker in green by
     // exp(-0.05) times the fade, lens 1 brighter; past 30 deg nothing moves.
-    insv::Image l0, l1;
+    orbiscore::Image l0, l1;
     l0.alloc(800, 800);
     l1.alloc(800, 800);
     std::fill(l0.rgb.begin(), l0.rgb.end(), uint8_t(100));
     std::fill(l1.rgb.begin(), l1.rgb.end(), uint8_t(100));
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 800, 800, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 800, 800, orbiscore::StitchParams{}));
     std::vector<float> green(B * 3, 0.0f);
     for (int b = 0; b < B; ++b)
         green[b * 3 + 1] = 0.1f;
@@ -1760,7 +1780,7 @@ void testSeamColourBlend()
     CHECK(near(L[1], 0.1, 1e-6) && L[0] == 0.0);
     st.seamColourLog(st.seamDir(1.0, -21.0 * kDeg), green.data(), L);
     CHECK(near(L[1], 0.05, 1e-6));
-    insv::Image plain, matched;
+    orbiscore::Image plain, matched;
     plain.alloc(256, 128);
     matched.alloc(256, 128);
     st.renderEquirect(l0, l1, plain);
@@ -1771,9 +1791,9 @@ void testSeamColourBlend()
         for (int x = 0; x < 256; x += 3) {
             const double lat = (0.5 - (y + 0.5) / 128) * std::numbers::pi;
             const double lon = ((x + 0.5) / 256 - 0.5) * 2.0 * std::numbers::pi;
-            const insv::Vec3 dir = insv::apply(
+            const orbiscore::Vec3 dir = orbiscore::apply(
                 st.outRotation(),
-                insv::Vec3{std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
+                orbiscore::Vec3{std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
             double e, t;
             int i0, i1;
             st.seamPosition(dir, e, i0, i1, t);
@@ -1783,7 +1803,8 @@ void testSeamColourBlend()
             const int g = matched.rgb[o + 1], g0 = plain.rgb[o + 1];
             if (std::fabs(e) < bandRad + 0.5 * kDeg)
                 continue; // blended from both
-            const double want = g0 * std::exp((e > 0 ? -0.05 : 0.05) * insv::SeamColourFade(e));
+            const double want =
+                g0 * std::exp((e > 0 ? -0.05 : 0.05) * orbiscore::SeamColourFade(e));
             ++checked;
             if (std::abs(g - want) > 0.75 || matched.rgb[o] != plain.rgb[o])
                 ++wrong;
@@ -1794,7 +1815,7 @@ void testSeamColourBlend()
     // half way through the ramp past it, none beyond; none at all leaves the
     // stitch as it was, bit for bit.
     std::vector<float> veil(B * 3, 0.0f);
-    insv::Image unveiled;
+    orbiscore::Image unveiled;
     unveiled.alloc(256, 128);
     st.renderEquirect(l0, l1, unveiled, nullptr, nullptr, nullptr, 0, nullptr, nullptr, veil.data());
     CHECK(unveiled.rgb == plain.rgb);
@@ -1803,12 +1824,12 @@ void testSeamColourBlend()
     double vl[2][3];
     st.seamVeil(st.seamDir(1.0, 3.0 * kDeg), veil.data(), vl);
     CHECK(near(vl[0][1], 0.04, 1e-6) && vl[1][1] == 0.0 && vl[0][0] == 0.0);
-    const double rampRad = insv::kLensColourLocalRampDeg * kDeg;
+    const double rampRad = orbiscore::kLensColourLocalRampDeg * kDeg;
     st.seamVeil(st.seamDir(1.0, -(bandRad + 0.5 * rampRad)), veil.data(), vl);
     CHECK(near(vl[0][1], 0.02, 1e-6));
     st.seamVeil(st.seamDir(1.0, bandRad + rampRad + 0.1 * kDeg), veil.data(), vl);
     CHECK(vl[0][1] == 0.0);
-    insv::Image veiled;
+    orbiscore::Image veiled;
     veiled.alloc(256, 128);
     st.renderEquirect(l0, l1, veiled, nullptr, nullptr, nullptr, 0, nullptr, nullptr, veil.data());
     int darker = 0, moved = 0;
@@ -1816,9 +1837,9 @@ void testSeamColourBlend()
         for (int x = 0; x < 256; ++x) {
             const double lat = (0.5 - (y + 0.5) / 128) * std::numbers::pi;
             const double lon = ((x + 0.5) / 256 - 0.5) * 2.0 * std::numbers::pi;
-            const insv::Vec3 dir = insv::apply(
+            const orbiscore::Vec3 dir = orbiscore::apply(
                 st.outRotation(),
-                insv::Vec3{std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
+                orbiscore::Vec3{std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)});
             double e, t;
             int i0, i1;
             st.seamPosition(dir, e, i0, i1, t);
@@ -1840,14 +1861,14 @@ void testSeamColourBlend()
 // spreads and changes smoothly.
 void testSeamFade()
 {
-    insv::SeamFlowGrid g;
+    orbiscore::SeamFlowGrid g;
     g.cols = 2520;
     g.rows = 78;
     g.stripRad = static_cast<float>(5.5 * kDeg);
     g.reachRad = static_cast<float>(8.0 * kDeg);
     const int C = g.cols, R = g.rows;
-    CHECK(insv::SeamFadeRows(g) == 2 * (static_cast<int>(2.0 * (R - 1) / 11.0) / 2) + 1);
-    CHECK(insv::SeamFadeRowY(g, insv::SeamFadeRows(g) / 2) == (R - 1) / 2); // the middle one on the seam
+    CHECK(orbiscore::SeamFadeRows(g) == 2 * (static_cast<int>(2.0 * (R - 1) / 11.0) / 2) + 1);
+    CHECK(orbiscore::SeamFadeRowY(g, orbiscore::SeamFadeRows(g) / 2) == (R - 1) / 2); // the middle one on the seam
     // A textured picture; lens 1 the same, shifted `sx` pixels along the
     // seam, times `gain`, `add` grey levels brighter in columns [a, b).
     auto picture = [&](double x, int y) { // round the seam in whole periods
@@ -1855,7 +1876,7 @@ void testSeamFade()
         return 128.0 + 50.0 * std::sin(125 * a) * std::cos(y * 0.23) + 30.0 * std::sin(19 * a + y * 0.11);
     };
     auto strips = [&](double sx, double gain, double add, int a, int b) {
-        insv::SeamFlowStrips s;
+        orbiscore::SeamFlowStrips s;
         s.grid = g;
         for (int i = 0; i < 2; ++i)
             s.grey[i].resize(static_cast<size_t>(C) * R);
@@ -1869,7 +1890,7 @@ void testSeamFade()
         return s;
     };
     auto field = [&](double sx) { // F01 = +sx px, F10 = -sx px
-        insv::SeamFlowField f;
+        orbiscore::SeamFlowField f;
         f.grid = g;
         f.v.resize(static_cast<size_t>(C) * R * 4);
         const float d = static_cast<float>(sx * 2.0 * std::numbers::pi / C);
@@ -1881,12 +1902,12 @@ void testSeamFade()
         }
         return f;
     };
-    const std::vector<float> noColour(insv::kSeamDepthBins * 3, 0.0f);
-    auto shares = [&](const insv::SeamFlowStrips& s, const insv::SeamFlowField& f, const float* colour) {
-        insv::SeamFadeFrame fr;
-        insv::MeasureSeamFadeFrame(s, f, fr);
+    const std::vector<float> noColour(orbiscore::kSeamDepthBins * 3, 0.0f);
+    auto shares = [&](const orbiscore::SeamFlowStrips& s, const orbiscore::SeamFlowField& f, const float* colour) {
+        orbiscore::SeamFadeFrame fr;
+        orbiscore::MeasureSeamFadeFrame(s, f, fr);
         std::vector<float> sh;
-        insv::SeamFadeShares(fr, colour, sh);
+        orbiscore::SeamFadeShares(fr, colour, sh);
         return sh;
     };
 
@@ -1901,7 +1922,7 @@ void testSeamFade()
     // seam colour blend's ratio is given, which matches it.
     sh = shares(strips(0, 1.2, 0, 0, 0), field(0), noColour.data());
     CHECK(sh[1500] > 0.3f);
-    std::vector<float> ratio(insv::kSeamDepthBins * 3, static_cast<float>(-std::log(1.2)));
+    std::vector<float> ratio(orbiscore::kSeamDepthBins * 3, static_cast<float>(-std::log(1.2)));
     sh = shares(strips(0, 1.2, 0, 0, 0), field(0), ratio.data());
     CHECK(*std::max_element(sh.begin(), sh.end()) < 0.05f);
 
@@ -1916,10 +1937,10 @@ void testSeamFade()
     // more frames without it, gone. Spread and smoothed along the seam: the
     // stretch stays wide inside, falls off over a few degrees round its ends,
     // and nowhere does a column step far from its neighbour.
-    insv::SeamFadeWindow w;
-    insv::SeamFadeFrame step, alike;
-    insv::MeasureSeamFadeFrame(strips(0, 1, 40, 1000, 1100), field(0), step);
-    insv::MeasureSeamFadeFrame(strips(0, 1, 0, 0, 0), field(0), alike);
+    orbiscore::SeamFadeWindow w;
+    orbiscore::SeamFadeFrame step, alike;
+    orbiscore::MeasureSeamFadeFrame(strips(0, 1, 40, 1000, 1100), field(0), step);
+    orbiscore::MeasureSeamFadeFrame(strips(0, 1, 0, 0, 0), field(0), alike);
     w.add(step);
     w.add(alike);
     w.add(alike);
@@ -1929,7 +1950,7 @@ void testSeamFade()
     for (int x = 0; x < C; ++x)
         CHECK(std::fabs(sh[x] - sh[(x + 1) % C]) < 0.05f);
     CHECK(sh[1000] > 0.4f && sh[970] < sh[985] && sh[985] < sh[1000] && sh[960] < 0.01f);
-    for (int k = 0; k < insv::kSeamFlowFrames; ++k)
+    for (int k = 0; k < orbiscore::kSeamFlowFrames; ++k)
         w.add(alike);
     w.solve(noColour.data(), sh);
     CHECK(*std::max_element(sh.begin(), sh.end()) == 0.0f);
@@ -1939,16 +1960,16 @@ void testSeamFade()
 
     // A stitch with such a fade: narrow where the share is 0, the whole
     // band where it is 1 (seamBlendWeights with the field).
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
-    insv::SeamFlowField sf = field(0);
-    sf.grid = insv::SeamFlowGridFor(st);
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
+    orbiscore::SeamFlowField sf = field(0);
+    sf.grid = orbiscore::SeamFlowGridFor(st);
     sf.v.assign(static_cast<size_t>(sf.grid.rows) * sf.grid.cols * 4, 0.0f);
     sf.fade.assign(sf.grid.cols, 0.0f);
     for (int x = sf.grid.cols / 2; x < sf.grid.cols; ++x)
         sf.fade[x] = 1.0f;
-    insv::SeamBlend nf;
-    insv::SeamVeilFade(noColour.data(), st.gpuParams().bandRad, nf);
+    orbiscore::SeamBlend nf;
+    orbiscore::SeamVeilFade(noColour.data(), st.gpuParams().bandRad, nf);
     double wn[2], ww[2];
     st.seamBlendWeights(st.seamDir(0.5 * std::numbers::pi, 1.0 * kDeg), &nf, wn, &sf);
     st.seamBlendWeights(st.seamDir(1.5 * std::numbers::pi, 1.0 * kDeg), &nf, ww, &sf);
@@ -1960,25 +1981,27 @@ void testSeamFade()
 // weights it gives.
 void testSeamVeilFade()
 {
-    constexpr int B = insv::kSeamDepthBins;
-    const double band = 7.5 * kDeg, narrow = insv::kSeamCutFadeDeg * kDeg;
-    CHECK(near(insv::SeamFadeRad(0.0, band), narrow, 1e-12));
-    CHECK(near(insv::SeamFadeRad(1.0, band), band, 1e-12));
-    CHECK(near(insv::SeamFadeRad(0.0, 0.5 * kDeg), 0.5 * kDeg, 1e-12)); // never wider than the band
-    CHECK(insv::SeamVeilShare(0.0) == 0.0);
-    CHECK(near(insv::SeamVeilShare(-0.5 * insv::kLensVeilWide), 0.5, 1e-12)); // either lens
-    CHECK(insv::SeamVeilShare(3.0 * insv::kLensVeilWide) == 1.0);
+    constexpr int B = orbiscore::kSeamDepthBins;
+    const double band = 7.5 * kDeg, narrow = orbiscore::kSeamCutFadeDeg * kDeg;
+    CHECK(near(orbiscore::SeamFadeRad(0.0, band), narrow, 1e-12));
+    CHECK(near(orbiscore::SeamFadeRad(1.0, band), band, 1e-12));
+    // Never wider than the band.
+    CHECK(near(orbiscore::SeamFadeRad(0.0, 0.5 * kDeg), 0.5 * kDeg, 1e-12));
+    CHECK(orbiscore::SeamVeilShare(0.0) == 0.0);
+    // Either lens.
+    CHECK(near(orbiscore::SeamVeilShare(-0.5 * orbiscore::kLensVeilWide), 0.5, 1e-12));
+    CHECK(orbiscore::SeamVeilShare(3.0 * orbiscore::kLensVeilWide) == 1.0);
 
     // No veil but in bin 10 (lens 0's, green only counts) and bin 11 (lens
     // 1's, half the full-band amount).
     std::vector<float> veil(B * 3, 0.0f);
     veil[10 * 3 + 0] = veil[10 * 3 + 2] = 0.5f;
-    veil[10 * 3 + 1] = static_cast<float>(insv::kLensVeilWide);
-    veil[11 * 3 + 1] = static_cast<float>(-0.5 * insv::kLensVeilWide);
-    insv::SeamBlend f;
+    veil[10 * 3 + 1] = static_cast<float>(orbiscore::kLensVeilWide);
+    veil[11 * 3 + 1] = static_cast<float>(-0.5 * orbiscore::kLensVeilWide);
+    orbiscore::SeamBlend f;
     f.cut[3] = 1.0f;
     f.colour[0] = 0.25f;
-    insv::SeamVeilFade(veil.data(), band, f);
+    orbiscore::SeamVeilFade(veil.data(), band, f);
     for (int b = 0; b < B; ++b)
         CHECK(f.cut[b] == 0.0f);
     CHECK(near(f.fade[0], narrow, 1e-6) && near(f.fade[10], band, 1e-6));
@@ -1988,15 +2011,15 @@ void testSeamVeilFade()
     // The weights on an X5 stitcher without the depth-aware seam: lens 0
     // alone a degree off the seam where there's no veil, both mixed there
     // where the fade takes the whole band, and half and half on the seam.
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(x5Calibration(), 3840, 3840, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 3840, 3840, orbiscore::StitchParams{}));
     const double bandX5 = st.gpuParams().bandRad;
     std::vector<float> wide(B * 3, 0.0f);
     for (int b = 0; b < B; ++b)
-        wide[b * 3 + 1] = static_cast<float>(insv::kLensVeilWide);
-    insv::SeamBlend fn, fw;
-    insv::SeamVeilFade(std::vector<float>(B * 3, 0.0f).data(), bandX5, fn);
-    insv::SeamVeilFade(wide.data(), bandX5, fw);
+        wide[b * 3 + 1] = static_cast<float>(orbiscore::kLensVeilWide);
+    orbiscore::SeamBlend fn, fw;
+    orbiscore::SeamVeilFade(std::vector<float>(B * 3, 0.0f).data(), bandX5, fn);
+    orbiscore::SeamVeilFade(wide.data(), bandX5, fw);
     const double phi = 1.234;
     double w[2];
     st.seamBlendWeights(st.seamDir(phi, 1.0 * kDeg), &fn, w);
@@ -2014,14 +2037,14 @@ void testSeamVeilFade()
 // does a stretch with no data of its own; it follows flare frames.
 void testLensColourLocal()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
     const double band = 5.0 * kDeg;
-    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
     auto costs = farCosts();
     auto fill = [&](double veil) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
                 c.n = 64;
                 c.texture = 20;
                 c.zsad = 2;
@@ -2037,12 +2060,12 @@ void testLensColourLocal()
             }
     };
     fill(0.2);
-    insv::SeamWindow w;
+    orbiscore::SeamWindow w;
     w.configure(0.032, band);
     w.add(1000, *costs, *stats);
-    insv::SeamState s;
+    orbiscore::SeamState s;
     w.solve(1000, s);
-    const insv::SeamBlend& bl = s.blend;
+    const orbiscore::SeamBlend& bl = s.blend;
     CHECK(near(bl.local[40][1], -0.2, 0.01));
     CHECK(near(bl.local[90][1], 0.0, 1e-4));
     CHECK(bl.local[5][1] == 0.0f);         // no data of its own, out of reach: none
@@ -2076,15 +2099,15 @@ void testLensColourLocal()
 // tell a veil from a gain: none.
 void testLensVeil()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
     const double band = 5.0 * kDeg;
     const double veil[3] = {0.08, 0.06, 0.04};
-    auto enc = [](double lin) { return 255.0 * std::pow(lin, 1.0 / insv::kLensVeilGamma); };
-    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto enc = [](double lin) { return 255.0 * std::pow(lin, 1.0 / orbiscore::kLensVeilGamma); };
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
     auto fill = [&](bool levels) {
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& c = stats->cell[b][r];
+                orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
                 c.n = 64;
                 c.texture = 20;
                 c.zsad = 2;
@@ -2098,13 +2121,13 @@ void testLensVeil()
     };
     fill(true);
     std::vector<float> v(B * 3);
-    insv::LensVeilPerBin(*stats, v.data());
+    orbiscore::LensVeilPerBin(*stats, v.data());
     for (int k = 0; k < 3; ++k) {
         CHECK(near(v[40 * 3 + k], -veil[k], 0.01) && near(v[35 * 3 + k], -veil[k], 0.01));
         CHECK(v[90 * 3 + k] == 0.0f && v[10 * 3 + k] == 0.0f);
     }
-    const insv::SeamState s = solveOne(*stats, band);
-    const insv::SeamBlend& bl = s.blend;
+    const orbiscore::SeamState s = solveOne(*stats, band);
+    const orbiscore::SeamBlend& bl = s.blend;
     CHECK(near(bl.veil[40][1], -veil[1], 0.01) && bl.veil[90][1] == 0.0f);
     CHECK(near(bl.colour[1], std::log(1.05), 0.01));
     CHECK(std::fabs(bl.local[40][1]) < 0.02 && std::fabs(bl.local[90][1]) < 0.01);
@@ -2113,7 +2136,7 @@ void testLensVeil()
     // the colour with it taken out: the 5 % gain alone, there as elsewhere.
     // The veil is held kSeamVeilWindowMs: a frame 100 ms on without one has
     // none.
-    insv::SeamColourWindow win;
+    orbiscore::SeamColourWindow win;
     win.add(0, *stats, band);
     std::vector<float> table(B * 3), wv(B * 3);
     CHECK(win.solve(0, table.data(), wv.data()));
@@ -2129,7 +2152,7 @@ void testLensVeil()
 
     // One level everywhere, lens 1 brighter there: a gain, not a veil.
     fill(false);
-    insv::LensVeilPerBin(*stats, v.data());
+    orbiscore::LensVeilPerBin(*stats, v.data());
     CHECK(v[40 * 3 + 1] == 0.0f);
 }
 
@@ -2138,12 +2161,12 @@ void testLensVeil()
 // given the neighbouring stretches' correction.
 void testLensColourClippedChannel()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
     const double band = 5.0 * kDeg;
-    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
     for (int b = 0; b < B; ++b)
         for (int r = 0; r < R; ++r) {
-            insv::SeamCutStats::Cell& c = stats->cell[b][r];
+            orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
             c.n = 64;
             c.texture = 20;
             c.zsad = 2;
@@ -2154,8 +2177,8 @@ void testLensColourClippedChannel()
                 c.mean[0][k] = sky && k != 2 ? 132.0f : (b >= 90 && b < 100 && k == 2 ? 150.0f : 120.0f);
             }
         }
-    const insv::SeamState s = solveOne(*stats, band);
-    const insv::SeamBlend& bl = s.blend;
+    const orbiscore::SeamState s = solveOne(*stats, band);
+    const orbiscore::SeamBlend& bl = s.blend;
     CHECK(near(bl.local[110][0], std::log(1.1), 0.01));
     CHECK(near(bl.local[95][2], std::log(1.25), 0.01));
     CHECK(bl.local[110][2] == 0.0f);
@@ -2166,12 +2189,12 @@ void testLensColourClippedChannel()
 // offset in their shadows); matched on the trees, the sky would split.
 void testLensColourWhereTheyMeet()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
     const double band = 6.0 * kDeg;
-    auto stats = std::make_unique<insv::SeamCutStats>();
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
     for (int b = 0; b < B; ++b)
         for (int r = 0; r < R; ++r) {
-            insv::SeamCutStats::Cell& c = stats->cell[b][r];
+            orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
             c.n = 64;
             c.texture = 20;
             c.zsad = 2;
@@ -2181,16 +2204,16 @@ void testLensColourWhereTheyMeet()
                 c.mean[0][k] = r <= 2 ? 150.0f : static_cast<float>(150 * 1.1);
             }
         }
-    const double rowStep = 2.0 * insv::SeamCutRowMax(band) / (R - 1);
-    std::vector<float> meet(B, static_cast<float>(insv::SeamCutRowE(0, band)));
+    const double rowStep = 2.0 * orbiscore::SeamCutRowMax(band) / (R - 1);
+    std::vector<float> meet(B, static_cast<float>(orbiscore::SeamCutRowE(0, band)));
     std::vector<float> reach(B, static_cast<float>(rowStep));
     std::vector<float> v(B * 3), w(B * 3);
     const double none[3] = {0, 0, 0};
-    insv::LensColourPerBin(*stats, band, insv::LensColour{}, none, meet.data(), reach.data(),
-                           v.data(), w.data());
+    orbiscore::LensColourPerBin(*stats, band, orbiscore::LensColour{}, none, meet.data(),
+                                reach.data(), v.data(), w.data());
     CHECK(std::fabs(v[10 * 3 + 1]) < 0.005 && w[10 * 3 + 1] > 64);
-    insv::LensColourPerBin(*stats, band, insv::LensColour{}, none, nullptr, nullptr, v.data(),
-                           w.data());
+    orbiscore::LensColourPerBin(*stats, band, orbiscore::LensColour{}, none, nullptr, nullptr,
+                                v.data(), w.data());
     CHECK(near(v[10 * 3 + 1], std::log(1.1), 0.005));
 }
 
@@ -2198,22 +2221,22 @@ void testLensColourWhereTheyMeet()
 // the band, with frames of flare mixed in, clipped and disagreeing cells.
 void testFitLensColour()
 {
-    constexpr int B = insv::kSeamDepthBins, R = insv::kSeamCutRows;
+    constexpr int B = orbiscore::kSeamDepthBins, R = orbiscore::kSeamCutRows;
     const double band = 7.5 * kDeg;
     const double a[3] = {0.02, -0.01, -0.06}, slope[3] = {0.004, 0.0, -0.008}; // per degree
-    std::vector<std::unique_ptr<insv::SeamCutStats>> frames;
+    std::vector<std::unique_ptr<orbiscore::SeamCutStats>> frames;
     for (int f = 0; f < 24; ++f) {
-        auto s = std::make_unique<insv::SeamCutStats>();
+        auto s = std::make_unique<orbiscore::SeamCutStats>();
         const bool flare = f % 6 == 2; // 4 of 24
         for (int b = 0; b < B; ++b)
             for (int r = 0; r < R; ++r) {
-                insv::SeamCutStats::Cell& c = s->cell[b][r];
+                orbiscore::SeamCutStats::Cell& c = s->cell[b][r];
                 c.n = 64;
                 for (float& n : c.nColour)
                     n = 64;
                 c.texture = 20;
                 c.zsad = (b * 7 + r + f) % 23 == 0 ? 30.0f : 4.0f; // some disagree
-                const double e = insv::SeamCutRowE(r, band) / kDeg;
+                const double e = orbiscore::SeamCutRowE(r, band) / kDeg;
                 // Scene colour varies by bin and frame; a little noise per cell.
                 const double base = 60.0 + 100.0 * ((b * 13 + f * 5) % 17) / 17.0;
                 for (int k = 0; k < 3; ++k) {
@@ -2231,10 +2254,10 @@ void testFitLensColour()
             }
         frames.push_back(std::move(s));
     }
-    std::vector<const insv::SeamCutStats*> ptrs;
+    std::vector<const orbiscore::SeamCutStats*> ptrs;
     for (const auto& s : frames)
         ptrs.push_back(s.get());
-    const insv::LensColourFit r = insv::FitLensColour(ptrs, band);
+    const orbiscore::LensColourFit r = orbiscore::FitLensColour(ptrs, band);
     std::printf("lens colour: %s\n", r.message.c_str());
     CHECK(r.ok && r.frames == 20 && r.flareFrames == 4);
     for (int k = 0; k < 3; ++k)
@@ -2244,10 +2267,10 @@ void testFitLensColour()
     // The residual of an ordinary frame against it is ~0; a flare frame's
     // isn't taken.
     double res[3];
-    CHECK(insv::LensColourResidual(*frames[0], band, r.colour, res));
+    CHECK(orbiscore::LensColourResidual(*frames[0], band, r.colour, res));
     for (int k = 0; k < 3; ++k)
         CHECK(near(res[k], 0.0, 0.006));
-    CHECK(!insv::LensColourResidual(*frames[2], band, r.colour, res));
+    CHECK(!orbiscore::LensColourResidual(*frames[2], band, r.colour, res));
 
     // A difference on one side of the seam in every frame (3 of the 8
     // stretches) doesn't move the clip's value.
@@ -2259,7 +2282,7 @@ void testFitLensColour()
     ptrs.clear();
     for (const auto& s : frames)
         ptrs.push_back(s.get());
-    const insv::LensColourFit sided = insv::FitLensColour(ptrs, band);
+    const orbiscore::LensColourFit sided = orbiscore::FitLensColour(ptrs, band);
     std::printf("lens colour, one side darker: %s\n", sided.message.c_str());
     CHECK(sided.ok);
     for (int k = 0; k < 3; ++k)
@@ -2271,7 +2294,7 @@ void testFitLensColour()
         for (int b = 0; b < 64; ++b)
             for (int r = 0; r < R; ++r)
                 st->cell[b][r].nColour[2] = 0;
-    const insv::LensColourFit clipped = insv::FitLensColour(ptrs, band);
+    const orbiscore::LensColourFit clipped = orbiscore::FitLensColour(ptrs, band);
     std::printf("lens colour, blue clipped on half the seam: %s\n", clipped.message.c_str());
     CHECK(clipped.ok && clipped.cells == sided.cells);
     for (int k = 0; k < 3; ++k)
@@ -2279,30 +2302,30 @@ void testFitLensColour()
 
     // Too few frames: no fit.
     ptrs.resize(2);
-    CHECK(!insv::FitLensColour(ptrs, band).ok);
+    CHECK(!orbiscore::FitLensColour(ptrs, band).ok);
 }
 
 // The cut statistics on synthetic lens pictures: the lenses agree on far
 // content; on content 0.33 m away only once the depth table says so.
 void testSeamCutStats()
 {
-    const insv::InsvCalibration cal = x5Calibration();
+    const orbiscore::InsvCalibration cal = x5Calibration();
     constexpr int kSize = 1536;
-    insv::StitchParams p;
+    orbiscore::StitchParams p;
     p.depthSeam = true;
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     CHECK(st.configure(cal, kSize, kSize, p));
     const double nearQ = 3.0;
-    const insv::Image l0 = seamLensPicture(st, 0, kSize, 1, 140.0, 220.0, nearQ);
-    const insv::Image l1 = seamLensPicture(st, 1, kSize, 1, 140.0, 220.0, nearQ);
+    const orbiscore::Image l0 = seamLensPicture(st, 0, kSize, 1, 140.0, 220.0, nearQ);
+    const orbiscore::Image l1 = seamLensPicture(st, 1, kSize, 1, 140.0, 220.0, nearQ);
     // Bins whose patch lies wholly inside / outside the near stretch, by
     // lens 0's azimuth (seamLensPicture's) at the patch centre.
-    const insv::Mat3& w2l = st.lensProjection(0).worldToLens;
+    const orbiscore::Mat3& w2l = st.lensProjection(0).worldToLens;
     auto nearBin = [&](int b, int r) {
         double phi, e, lo = 400, hi = -400;
-        for (int s : {0, insv::kSeamCutPatchAz - 1}) {
-            insv::SeamCutSample(b, r, s, st.gpuParams().bandRad, phi, e);
-            const insv::Vec3 d = insv::apply(w2l, st.seamDir(phi, e));
+        for (int s : {0, orbiscore::kSeamCutPatchAz - 1}) {
+            orbiscore::SeamCutSample(b, r, s, st.gpuParams().bandRad, phi, e);
+            const orbiscore::Vec3 d = orbiscore::apply(w2l, st.seamDir(phi, e));
             double a = std::atan2(d.y, d.x) / kDeg;
             if (a < 0)
                 a += 360;
@@ -2311,13 +2334,13 @@ void testSeamCutStats()
         return hi - lo > 180 ? 0 : (lo > 142 && hi < 218) ? 1 : (hi < 138 || lo > 222) ? -1 : 0;
     };
     auto disagreement = [&](const float* table, int want) {
-        auto stats = std::make_unique<insv::SeamCutStats>();
-        insv::MeasureSeamCutStats(st, l0, l1, table, *stats);
+        auto stats = std::make_unique<orbiscore::SeamCutStats>();
+        orbiscore::MeasureSeamCutStats(st, l0, l1, table, *stats);
         double sum = 0;
         int n = 0;
-        for (int b = 0; b < insv::kSeamDepthBins; ++b)
-            for (int r = 0; r < insv::kSeamCutRows; ++r) {
-                const insv::SeamCutStats::Cell& c = stats->cell[b][r];
+        for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
+            for (int r = 0; r < orbiscore::kSeamCutRows; ++r) {
+                const orbiscore::SeamCutStats::Cell& c = stats->cell[b][r];
                 if (nearBin(b, r) != want || c.n < 32)
                     continue;
                 sum += c.zsad / (c.texture + 4.0);
@@ -2326,9 +2349,9 @@ void testSeamCutStats()
         CHECK(n > 50);
         return sum / std::max(n, 1);
     };
-    float far[insv::kSeamDepthBins] = {}, depth[insv::kSeamDepthBins];
-    for (int b = 0; b < insv::kSeamDepthBins; ++b)
-        depth[b] = nearBin(b, insv::kSeamCutRows / 2) >= 0 ? static_cast<float>(nearQ) : 0.0f;
+    float far[orbiscore::kSeamDepthBins] = {}, depth[orbiscore::kSeamDepthBins];
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
+        depth[b] = nearBin(b, orbiscore::kSeamCutRows / 2) >= 0 ? static_cast<float>(nearQ) : 0.0f;
     const double farAtFar = disagreement(far, -1), nearAtFar = disagreement(far, 1);
     const double nearAtDepth = disagreement(depth, 1);
     std::printf("seam cut: disagreement far %.3f, near with the far table %.3f, with its depth %.3f\n",
@@ -2338,13 +2361,13 @@ void testSeamCutStats()
 
     // Lens 1 a fifth darker: the lens colour fit finds it from the lens
     // pictures, and the stitched colours of the two lenses then meet.
-    insv::Image dark = l1;
+    orbiscore::Image dark = l1;
     for (auto& v : dark.rgb)
         v = static_cast<uint8_t>(std::lround(v * 0.8));
-    auto stats = std::make_unique<insv::SeamCutStats>();
-    insv::MeasureSeamCutStats(st, l0, dark, depth, *stats);
-    const std::vector<const insv::SeamCutStats*> three(3, stats.get());
-    const insv::LensColourFit fit = insv::FitLensColour(three, st.gpuParams().bandRad);
+    auto stats = std::make_unique<orbiscore::SeamCutStats>();
+    orbiscore::MeasureSeamCutStats(st, l0, dark, depth, *stats);
+    const std::vector<const orbiscore::SeamCutStats*> three(3, stats.get());
+    const orbiscore::LensColourFit fit = orbiscore::FitLensColour(three, st.gpuParams().bandRad);
     std::printf("seam cut: lens colour %s\n", fit.message.c_str());
     CHECK(fit.ok);
     for (int k = 0; k < 3; ++k)
@@ -2362,29 +2385,30 @@ void testBlurQuads()
     };
     // A plate-sized (2 x 0.5 deg) quad, a bit to the right and down, slightly
     // skewed: TL, TR, BR, BL.
-    insv::BlurQuad q;
+    orbiscore::BlurQuad q;
     dirOf(30.0, -10.0, q.corner[0]);
     dirOf(32.0, -10.1, q.corner[1]);
     dirOf(32.1, -10.6, q.corner[2]);
     dirOf(30.0, -10.5, q.corner[3]);
-    insv::BlurQuadFrame f;
-    CHECK(insv::prepareBlurQuad(q, f));
+    orbiscore::BlurQuadFrame f;
+    CHECK(orbiscore::prepareBlurQuad(q, f));
     // ~4:1 -> kBlurCellsShort cells on the short side, ~4x that along the long one.
-    CHECK(f.cells[1] == insv::kBlurCellsShort);
-    CHECK(f.cells[0] >= 3.6 * insv::kBlurCellsShort && f.cells[0] <= 4.4 * insv::kBlurCellsShort);
+    CHECK(f.cells[1] == orbiscore::kBlurCellsShort);
+    CHECK(f.cells[0] >= 3.6 * orbiscore::kBlurCellsShort &&
+          f.cells[0] <= 4.4 * orbiscore::kBlurCellsShort);
 
     const double st[][2] = {{0.5, 0.5}, {0.1, 0.9}, {0.95, 0.02}, {0.3, 0.7}};
     for (const auto& p : st) {
         double d[3], s = -1, t = -1;
-        insv::blurQuadDir(f, p[0], p[1], d);
-        CHECK(insv::blurQuadST(f, d, s, t));
+        orbiscore::blurQuadDir(f, p[0], p[1], d);
+        CHECK(orbiscore::blurQuadST(f, d, s, t));
         CHECK(near(s, p[0], 1e-5) && near(t, p[1], 1e-5));
     }
     // The corners map to the unit square's corners.
     const double cst[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     for (int k = 0; k < 4; ++k) {
         double d[3];
-        insv::blurQuadDir(f, cst[k][0], cst[k][1], d);
+        orbiscore::blurQuadDir(f, cst[k][0], cst[k][1], d);
         CHECK(near(d[0], q.corner[k][0], 1e-6) && near(d[1], q.corner[k][1], 1e-6) &&
               near(d[2], q.corner[k][2], 1e-6));
     }
@@ -2393,22 +2417,22 @@ void testBlurQuads()
     double s, t;
     dirOf(29.0, -10.2, out);
     const double od[3] = {out[0], out[1], out[2]};
-    CHECK(!insv::blurQuadST(f, od, s, t));
+    CHECK(!orbiscore::blurQuadST(f, od, s, t));
     const double anti[3] = {-f.c[0], -f.c[1], -f.c[2]};
-    CHECK(!insv::blurQuadST(f, anti, s, t));
+    CHECK(!orbiscore::blurQuadST(f, anti, s, t));
     // Feather: full inside, zero on the edge.
-    CHECK(near(insv::blurQuadWeight(0.5, 0.5), 1.0, 1e-12));
-    CHECK(near(insv::blurQuadWeight(0.0, 0.5), 0.0, 1e-12));
+    CHECK(near(orbiscore::blurQuadWeight(0.5, 0.5), 1.0, 1e-12));
+    CHECK(near(orbiscore::blurQuadWeight(0.0, 0.5), 0.0, 1e-12));
     // Every tap of a cell lies in that cell.
     const int ns = static_cast<int>(f.cells[0]);
-    CHECK(insv::blurCellCount(f) == ns * static_cast<int>(f.cells[1]));
-    CHECK(insv::blurCellCount(f) <= insv::kBlurCellsPerQuad);
+    CHECK(orbiscore::blurCellCount(f) == ns * static_cast<int>(f.cells[1]));
+    CHECK(orbiscore::blurCellCount(f) <= orbiscore::kBlurCellsPerQuad);
     const int probe = 3 * ns + 11; // cell (11, 3)
-    for (int i = 0; i < insv::kBlurCellTaps; ++i)
-        for (int j = 0; j < insv::kBlurCellTaps; ++j) {
+    for (int i = 0; i < orbiscore::kBlurCellTaps; ++i)
+        for (int j = 0; j < orbiscore::kBlurCellTaps; ++j) {
             double d[3], ts, tt;
-            insv::blurCellTapDir(f, probe, i, j, d);
-            CHECK(insv::blurQuadST(f, d, ts, tt));
+            orbiscore::blurCellTapDir(f, probe, i, j, d);
+            CHECK(orbiscore::blurQuadST(f, d, ts, tt));
             CHECK(std::floor(ts * f.cells[0]) == 11.0);
             CHECK(std::floor(tt * f.cells[1]) == 3.0);
         }
@@ -2418,10 +2442,10 @@ void testBlurQuads()
     {
         int cell[4];
         double w[4];
-        insv::blurCellMix(f, 11.5 / f.cells[0], 3.5 / f.cells[1], cell, w);
+        orbiscore::blurCellMix(f, 11.5 / f.cells[0], 3.5 / f.cells[1], cell, w);
         CHECK(cell[0] == probe && near(w[0], 1.0, 1e-9));
         auto at = [&](double s, double t, int want) {
-            insv::blurCellMix(f, s, t, cell, w);
+            orbiscore::blurCellMix(f, s, t, cell, w);
             double sum = 0.0, got = 0.0;
             for (int n = 0; n < 4; ++n) {
                 sum += w[n];
@@ -2435,13 +2459,13 @@ void testBlurQuads()
         CHECK(near(at(edge - 1e-7, tm, probe), at(edge + 1e-7, tm, probe), 1e-5));
         CHECK(near(at(edge, tm, probe), 0.5, 1e-6));
         CHECK(near(at(0.0, 0.0, 0), 1.0, 1e-12));
-        CHECK(near(at(1.0, 1.0, insv::blurCellCount(f) - 1), 1.0, 1e-12));
+        CHECK(near(at(1.0, 1.0, orbiscore::blurCellCount(f) - 1), 1.0, 1e-12));
     }
     // Degenerate: all corners the same.
-    insv::BlurQuad z;
+    orbiscore::BlurQuad z;
     for (auto& c : z.corner)
         dirOf(10.0, 0.0, c);
-    CHECK(!insv::prepareBlurQuad(z, f));
+    CHECK(!orbiscore::prepareBlurQuad(z, f));
 }
 
 // A file that ends in a minimal Insta360 trailer holding one record:
@@ -2482,14 +2506,14 @@ void testTrailerThumbnail()
     for (size_t i = 40; i < rec.size(); ++i) rec[i] = uint8_t(i);
 
     const std::string ok = writeTrailerFile("insv_test_thumb.insv", 0x200, rec);
-    const auto thumb = insv::ReadInsvThumbnail(ok);
+    const auto thumb = orbiscore::ReadInsvThumbnail(ok);
     CHECK(thumb.has_value());
     if (thumb) {
         CHECK(thumb->width == w && thumb->height == h);
         CHECK(thumb->nv12.size() == size_t(w * h * 3 / 2));
         CHECK(!thumb->nv12.empty() && thumb->nv12.front() == 40 && thumb->nv12.back() == uint8_t(rec.size() - 1));
         CHECK(!thumb->flat);
-        CHECK(thumb->coding.matrix == insv::YcbcrMatrix::Bt601 && !thumb->coding.fullRange);
+        CHECK(thumb->coding.matrix == orbiscore::YcbcrMatrix::Bt601 && !thumb->coding.fullRange);
     }
     std::filesystem::remove(ok);
 
@@ -2511,11 +2535,11 @@ void testTrailerThumbnail()
             for (int x = 0; x < aw; ++x)
                 a1[size_t(64 + row * stride + x)] = uint8_t(row * 10 + x);
         const std::string path = writeTrailerFile("insv_test_thumb_a1.insv", 0x200, a1);
-        const auto t = insv::ReadInsvThumbnail(path);
+        const auto t = orbiscore::ReadInsvThumbnail(path);
         CHECK(t.has_value());
         if (t) {
             CHECK(t->width == aw && t->height == ah && t->flat);
-            CHECK(t->coding.matrix == insv::YcbcrMatrix::Bt709 && t->coding.fullRange);
+            CHECK(t->coding.matrix == orbiscore::YcbcrMatrix::Bt709 && t->coding.fullRange);
             CHECK(t->nv12.size() == size_t(aw * ah * 3 / 2));
             bool rows = t->nv12.size() == size_t(aw * ah * 3 / 2);
             for (int row = 0; rows && row < ah * 3 / 2; ++row)
@@ -2528,7 +2552,7 @@ void testTrailerThumbnail()
         // A picture size that doesn't match the rows: nothing.
         put(8, uint32_t(stride * ah * 3 / 2 - 1));
         const std::string bad = writeTrailerFile("insv_test_thumb_a1_bad.insv", 0x200, a1);
-        CHECK(!insv::ReadInsvThumbnail(bad).has_value());
+        CHECK(!orbiscore::ReadInsvThumbnail(bad).has_value());
         std::filesystem::remove(bad);
     }
 
@@ -2536,12 +2560,12 @@ void testTrailerThumbnail()
     // record, no trailer at all: nothing.
     rec.pop_back();
     const std::string bad = writeTrailerFile("insv_test_thumb_bad.insv", 0x200, rec);
-    CHECK(!insv::ReadInsvThumbnail(bad).has_value());
+    CHECK(!orbiscore::ReadInsvThumbnail(bad).has_value());
     std::filesystem::remove(bad);
     const std::string other = writeTrailerFile("insv_test_thumb_other.insv", 0x400, rec);
-    CHECK(!insv::ReadInsvThumbnail(other).has_value());
+    CHECK(!orbiscore::ReadInsvThumbnail(other).has_value());
     std::filesystem::remove(other);
-    CHECK(!insv::ReadInsvThumbnail("/nonexistent/clip.insv").has_value());
+    CHECK(!orbiscore::ReadInsvThumbnail("/nonexistent/clip.insv").has_value());
 }
 
 // --- a whole X5-shaped trailer, built record by record ---------------------
@@ -2651,11 +2675,11 @@ void testGps()
 
     const std::string path =
         writeX5Trailer("insv_test_gps.insv", {{0x101, meta.b}, {0x700, gps.b}});
-    const auto g = insv::ReadInsvGps(path);
+    const auto g = orbiscore::ReadInsvGps(path);
     CHECK(g && g->first_frame_unix_ms == int64_t(t0 + 871));
     CHECK(g && g->fixes.size() == 4);
     if (g && g->fixes.size() == 4) {
-        const insv::InsvGpsFix& a = g->fixes[0];
+        const orbiscore::InsvGpsFix& a = g->fixes[0];
         CHECK(a.unix_ms == int64_t(t0 + 999));
         CHECK(a.latitude == -33.5 && a.longitude == -70.25);
         CHECK(a.speed_mps == 10.0 && a.heading_deg == 350.0 && a.altitude_m == -2.5);
@@ -2665,22 +2689,22 @@ void testGps()
         CHECK(g->fixes[3].heading_deg == -1.0); // standing still: kept as written
     }
     // The count for the Media information panel is unchanged by the decode.
-    const auto t = insv::ReadInsvTelemetry(path);
+    const auto t = orbiscore::ReadInsvTelemetry(path);
     CHECK(t && t->gps_records == 67 && t->gps_fixes == 57);
     std::filesystem::remove(path);
 
     // No field 98 (Insta360's trimmed exports), no GPS record, no trailer.
     const std::string bare = writeX5Trailer("insv_test_gps_bare.insv",
                                             {{0x101, metadataRecord(false)}, {0x700, gps.b}});
-    const auto b = insv::ReadInsvGps(bare);
+    const auto b = orbiscore::ReadInsvGps(bare);
     CHECK(b && b->first_frame_unix_ms == 0 && b->fixes.size() == 4);
     std::filesystem::remove(bare);
     const std::string none =
         writeX5Trailer("insv_test_gps_none.insv", {{0x101, metadataRecord(false)}});
-    const auto n = insv::ReadInsvGps(none);
+    const auto n = orbiscore::ReadInsvGps(none);
     CHECK(n && n->fixes.empty());
     std::filesystem::remove(none);
-    CHECK(!insv::ReadInsvGps("/nonexistent/clip.insv"));
+    CHECK(!orbiscore::ReadInsvGps("/nonexistent/clip.insv"));
 }
 
 // The anchors record 0xa00: its lists, and the highlight marks (list 1)
@@ -2693,23 +2717,23 @@ void testHighlights()
     for (uint8_t t : {2, 3, 4, 16, 17, 18})
         marked.u8(t).u32(0);
     CHECK(marked.b.size() == 51);
-    const auto lists = insv::ParseInsvAnchors(marked.b);
+    const auto lists = orbiscore::ParseInsvAnchors(marked.b);
     CHECK(lists.size() == 7);
     if (lists.size() == 7) {
-        CHECK(lists[0].type == insv::kAnchorHighlights && lists[0].timestamps.size() == 2);
+        CHECK(lists[0].type == orbiscore::kAnchorHighlights && lists[0].timestamps.size() == 2);
         CHECK(lists[0].timestamps[1] == 86128627);
         CHECK(lists[6].type == 18 && lists[6].timestamps.empty());
     }
     Bytes none; // what every clip without marks has: 35 bytes, all counts 0
     for (uint8_t t : {1, 2, 3, 4, 16, 17, 18})
         none.u8(t).u32(0);
-    CHECK(none.b.size() == 35 && insv::ParseInsvAnchors(none.b).size() == 7);
+    CHECK(none.b.size() == 35 && orbiscore::ParseInsvAnchors(none.b).size() == 7);
     // A list running past the end: the ones before it are kept.
     Bytes cut;
     cut.u8(2).u32(0).u8(1).u32(3).u64(1);
-    const auto c = insv::ParseInsvAnchors(cut.b);
+    const auto c = orbiscore::ParseInsvAnchors(cut.b);
     CHECK(c.size() == 1 && c[0].type == 2);
-    CHECK(insv::ParseInsvAnchors({}).empty());
+    CHECK(orbiscore::ParseInsvAnchors({}).empty());
 
     Bytes meta;
     meta.pbString(2, "Insta360 X5").pbVarint(24, 70062121);
@@ -2717,7 +2741,7 @@ void testHighlights()
     later.u8(1).u32(1).u64(80000000).raw(marked.b);
     const std::string path =
         writeX5Trailer("insv_test_marks.insv", {{0x101, meta.b}, {0xa00, later.b}});
-    const auto h = insv::ReadInsvHighlights(path);
+    const auto h = orbiscore::ReadInsvHighlights(path);
     CHECK(h && h->since_first_frame_sec.size() == 3);
     if (h && h->since_first_frame_sec.size() == 3) {
         CHECK(std::abs(h->since_first_frame_sec[0] - 5.866608) < 1e-6);
@@ -2726,7 +2750,7 @@ void testHighlights()
     }
     CHECK(h && h->time_map_offset_ms == 0 && h->frame_sec.empty());
     // In ms ticks (the ONE X2's), the same marks are a thousand times as far.
-    const auto ms = insv::ReadInsvHighlights(path, 1000.0);
+    const auto ms = orbiscore::ReadInsvHighlights(path, 1000.0);
     CHECK(ms && !ms->since_first_frame_sec.empty() &&
           std::abs(ms->since_first_frame_sec[0] - 5866.608) < 1e-3);
     std::filesystem::remove(path);
@@ -2736,14 +2760,14 @@ void testHighlights()
     model.pbString(2, "Insta360 X5");
     const std::string untimed =
         writeX5Trailer("insv_test_marks_untimed.insv", {{0x101, model.b}, {0xa00, marked.b}});
-    const auto u = insv::ReadInsvHighlights(untimed);
+    const auto u = orbiscore::ReadInsvHighlights(untimed);
     CHECK(u && u->since_first_frame_sec.empty());
     std::filesystem::remove(untimed);
     const std::string bare = writeX5Trailer("insv_test_marks_none.insv", {{0x101, meta.b}});
-    const auto b = insv::ReadInsvHighlights(bare);
+    const auto b = orbiscore::ReadInsvHighlights(bare);
     CHECK(b && b->since_first_frame_sec.empty());
     std::filesystem::remove(bare);
-    CHECK(!insv::ReadInsvHighlights("/nonexistent/clip.insv"));
+    CHECK(!orbiscore::ReadInsvHighlights("/nonexistent/clip.insv"));
 }
 
 void testTrailerRecords()
@@ -2784,7 +2808,7 @@ void testTrailerRecords()
                               {0x700, gps.b},
                               {0x8000, timeMap.b}});
 
-    const auto notes = insv::ReadInsvMakerNotes(path);
+    const auto notes = orbiscore::ReadInsvMakerNotes(path);
     CHECK(notes.has_value());
     if (notes) {
         CHECK(notes->serial_number == "IAHEA2500000001");
@@ -2794,15 +2818,15 @@ void testTrailerRecords()
         CHECK(notes->lens_profiles.size() == 2);
         CHECK(notes->crop_dst_w == 5312.0);
         CHECK(notes->creation_time == 20250904193105ull);
-        const insv::LensProfile* bare = insv::FindLensProfile(*notes, "bare");
+        const orbiscore::LensProfile* bare = orbiscore::FindLensProfile(*notes, "bare");
         CHECK(bare && near(bare->poly[1], 0.05, 1e-12) && near(bare->poly[3], 2e-8, 1e-20));
         CHECK(bare && bare->fov_deg == 200.0);
-        const insv::LensProfile* protector = insv::FindLensProfile(*notes, "ProtectorA");
+        const orbiscore::LensProfile* protector = orbiscore::FindLensProfile(*notes, "ProtectorA");
         CHECK(protector && near(protector->poly[1], 0.049, 1e-12) && protector->fov_deg == 195.0);
-        CHECK(!insv::FindLensProfile(*notes, "InvisibleDiveAir"));
+        CHECK(!orbiscore::FindLensProfile(*notes, "InvisibleDiveAir"));
     }
 
-    const auto t = insv::ReadInsvTelemetry(path);
+    const auto t = orbiscore::ReadInsvTelemetry(path);
     CHECK(t.has_value());
     if (t) {
         CHECK(t->first_frame_timestamp == 2468081984ull);
@@ -2824,14 +2848,14 @@ void testTrailerRecords()
         CHECK(near(t->time_map_offset_ms, 2002.0, 1e-9));
     }
     // A capped read stops early.
-    const auto capped = insv::ReadInsvTelemetry(path, 2);
+    const auto capped = orbiscore::ReadInsvTelemetry(path, 2);
     CHECK(capped && capped->imu.size() == 2);
 
-    const auto ext = insv::ReadInsvExtendedCalibrationString(path);
+    const auto ext = orbiscore::ReadInsvExtendedCalibrationString(path);
     CHECK(ext && *ext == extendedCalibrationString());
 
     // Everything after `moov`: the trailer, footer and all.
-    const std::vector<uint8_t> raw = insv::ExtractRawTrailer(path);
+    const std::vector<uint8_t> raw = orbiscore::ExtractRawTrailer(path);
     CHECK(raw.size() == std::filesystem::file_size(path) - 24 - 48);
     CHECK(raw.size() >= 32 && std::memcmp(raw.data() + raw.size() - 32, "8db42d694ccc418790edff439fe026bf", 32) == 0);
     std::filesystem::remove(path);
@@ -2845,13 +2869,13 @@ void testTrailerRecords()
     }
     const std::string d = writeX5Trailer("insv_test_x5_doubles.insv",
                                          {{0x101, metadataRecord(false)}, {0x300, doubles.b}});
-    const auto td = insv::ReadInsvTelemetry(d);
+    const auto td = orbiscore::ReadInsvTelemetry(d);
     CHECK(td && td->imu.size() == 2);
     if (td && td->imu.size() == 2)
         CHECK(td->imu[1].timestamp == 5001 && td->imu[1].accel[2] == 1.0 && td->imu[1].gyro[2] == 0.3);
     CHECK(td && td->exposure.empty() && td->gps_records == 0 && td->time_map_offset_ms == 0.0);
     CHECK(td && td->gamma_mode.empty()); // no field 22
-    const auto nd = insv::ReadInsvMakerNotes(d);
+    const auto nd = orbiscore::ReadInsvMakerNotes(d);
     CHECK(nd && nd->crop_dst_w == 0.0); // no field 27
     std::filesystem::remove(d);
 
@@ -2862,12 +2886,12 @@ void testTrailerRecords()
         const std::vector<char> junk(200, 0x33);
         f.write(junk.data(), std::streamsize(junk.size()));
     }
-    CHECK(!insv::ReadInsvMakerNotes(plain).has_value());
-    CHECK(!insv::ReadInsvTelemetry(plain).has_value());
-    CHECK(!insv::ReadInsvExtendedCalibrationString(plain).has_value());
-    CHECK(insv::ExtractRawTrailer(plain).empty());
+    CHECK(!orbiscore::ReadInsvMakerNotes(plain).has_value());
+    CHECK(!orbiscore::ReadInsvTelemetry(plain).has_value());
+    CHECK(!orbiscore::ReadInsvExtendedCalibrationString(plain).has_value());
+    CHECK(orbiscore::ExtractRawTrailer(plain).empty());
     std::filesystem::remove(plain);
-    CHECK(!insv::ReadInsvTelemetry("/nonexistent/clip.insv").has_value());
+    CHECK(!orbiscore::ReadInsvTelemetry("/nonexistent/clip.insv").has_value());
 }
 
 // A ONE X2-shaped trailer: a plain record chain (no offsets table), the
@@ -2907,21 +2931,21 @@ void testOneX2Trailer()
         f.write(reinterpret_cast<const char*>(t.data()), std::streamsize(t.size()));
     }
 
-    const auto notes = insv::ReadInsvMakerNotes(path);
+    const auto notes = orbiscore::ReadInsvMakerNotes(path);
     CHECK(notes && notes->model == "Insta360 ONE X2" && notes->crop_dst_w == 2880.0);
     CHECK(notes && notes->offset_v3 == kOneX2V3);
     CHECK(notes && notes->lens_profiles.empty());
-    CHECK(!insv::ReadInsvExtendedCalibrationString(path).has_value());
+    CHECK(!orbiscore::ReadInsvExtendedCalibrationString(path).has_value());
 
     bool known = false;
-    const insv::InsvModel& model = insv::FindInsvModel("Insta360 ONE X2", &known);
+    const orbiscore::InsvModel& model = orbiscore::FindInsvModel("Insta360 ONE X2", &known);
     CHECK(known && model.telemetryTickUs == 1000.0);
     CHECK(model.secondLensToken && std::string(model.secondLensToken) == "_10_");
     CHECK(std::string(model.captureMode(2880)) == "5.7K");
 
-    const auto raw = insv::ReadInsvTelemetry(path); // the file's own ticks
+    const auto raw = orbiscore::ReadInsvTelemetry(path); // the file's own ticks
     CHECK(raw && raw->imu.size() == 3 && raw->imu[1].timestamp == 2802);
-    const auto t = insv::ReadInsvTelemetry(path, 0, model.telemetryTickUs);
+    const auto t = orbiscore::ReadInsvTelemetry(path, 0, model.telemetryTickUs);
     CHECK(t.has_value());
     if (t) {
         CHECK(t->imu.size() == 3 && t->imu[1].timestamp == 2802000);
@@ -2953,10 +2977,10 @@ void testCaptureTiming()
         Bytes m;
         m.pbBytes(195, rate(100000, 1000)).pbBytes(196, rate(29970, 1000));
         const std::string path = writeX5Trailer("insv_test_slowmo.insv", {{0x101, m.b}});
-        const auto t = insv::ReadInsvTelemetry(path);
+        const auto t = orbiscore::ReadInsvTelemetry(path);
         CHECK(t && t->capture_fps == 100.0 && t->stored_fps == 29.97);
         CHECK(t && t->timelapse_interval_ms == 0.0 && t->frame_timestamps.empty());
-        CHECK(t && std::fabs(insv::CaptureScale(*t, 29.97) - 0.2997) < 1e-12);
+        CHECK(t && std::fabs(orbiscore::CaptureScale(*t, 29.97) - 0.2997) < 1e-12);
         std::filesystem::remove(path);
     }
     // Timelapse, one frame every 2 s at 29.97: the frames' own times (2.002 s
@@ -2970,23 +2994,24 @@ void testCaptureTiming()
             stamps.u64(477724154ull + uint64_t(i) * 2002000ull);
         const std::string path =
             writeX5Trailer("insv_test_timelapse.insv", {{0x101, m.b}, {0x600, stamps.b}});
-        const auto t = insv::ReadInsvTelemetry(path);
+        const auto t = orbiscore::ReadInsvTelemetry(path);
         CHECK(t && t->timelapse_interval_ms == 2000.0 && t->frame_timestamps.size() == 150);
         CHECK(t && t->frame_timestamps.front() == 477724154ull);
-        CHECK(t && std::fabs(insv::CaptureScale(*t, 29.97) - 60.0) < 1e-9);
+        CHECK(t && std::fabs(orbiscore::CaptureScale(*t, 29.97) - 60.0) < 1e-9);
         std::filesystem::remove(path);
     }
     // Without frame times the interval gives it; without field 196 the
     // video's rate stands in; a normal clip (equal rates, or none) is 1.
     {
-        insv::InsvTelemetry t;
+        orbiscore::InsvTelemetry t;
         t.timelapse_interval_ms = 2000.0;
-        CHECK(std::fabs(insv::CaptureScale(t, 30000.0 / 1001.0) - 2.0 * 30000.0 / 1001.0) < 1e-12);
+        CHECK(std::fabs(orbiscore::CaptureScale(t, 30000.0 / 1001.0) - 2.0 * 30000.0 / 1001.0) <
+              1e-12);
         t.timelapse_interval_ms = 0.0;
         t.capture_fps = t.stored_fps = 60000.0 / 1001.0;
-        CHECK(insv::CaptureScale(t, 59.94) == 1.0);
-        CHECK(insv::CaptureScale(insv::InsvTelemetry{}, 29.97) == 1.0);
-        CHECK(insv::CaptureScale(insv::InsvTelemetry{}, 0.0) == 1.0);
+        CHECK(orbiscore::CaptureScale(t, 59.94) == 1.0);
+        CHECK(orbiscore::CaptureScale(orbiscore::InsvTelemetry{}, 29.97) == 1.0);
+        CHECK(orbiscore::CaptureScale(orbiscore::InsvTelemetry{}, 0.0) == 1.0);
     }
 }
 
@@ -3014,7 +3039,7 @@ void testTimelapseOrientation()
         run(f[n] * 1e-6 - 0.0005, 0.1 * static_cast<double>(n));
     const std::string path = writeX5Trailer(
         "insv_test_tlquat.insv", {{0x101, m.b}, {0x600, frames.b}, {0x1800, quats.b}});
-    const auto t = insv::ReadInsvTelemetry(path);
+    const auto t = orbiscore::ReadInsvTelemetry(path);
     std::filesystem::remove(path);
     CHECK(t && t->imu.empty() && t->timelapse_quats.size() == 77 && t->frame_timestamps.size() == 7);
     if (!t)
@@ -3025,8 +3050,9 @@ void testTimelapseOrientation()
     CHECK(std::fabs(t->timelapse_quats[0].q[0] - 1.0) < 1e-12);
 
     const double fps = 30000.0 / 1001.0;
-    const insv::ImuTrack track =
-        insv::MakeInsvImuTrack(insv::InsvTelemetry(*t), fps, insv::FindInsvModel("Insta360 X5"));
+    const orbiscore::ImuTrack track =
+        orbiscore::MakeInsvImuTrack(orbiscore::InsvTelemetry(*t), fps,
+                                    orbiscore::FindInsvModel("Insta360 X5"));
     CHECK(track.samples.empty() && track.orientation.size() == 66 && track.frameTimes.size() == 6);
     CHECK(track.axisMap == std::string("y,z,x"));
     // Frame 3 is 6.1 s after frame 0, by its own entries.
@@ -3034,12 +3060,12 @@ void testTimelapseOrientation()
     CHECK(std::fabs(track.frameTimes[3].videoSec - 3.0 / fps) < 1e-12);
     // Up is the record's world z in its axes, north its world x: frame 1
     // turned 0.1 rad about up.
-    const insv::OrientationSample& o = track.orientation[11 + 5];
+    const orbiscore::OrientationSample& o = track.orientation[11 + 5];
     CHECK(std::fabs(o.up[2] - 1.0) < 1e-9);
     CHECK(std::fabs(o.north[0] - std::cos(0.1)) < 1e-9 && std::fabs(o.north[1] - std::sin(0.1)) < 1e-9);
 
     // The motion overlays: the lean from the orientation, no G-forces.
-    const insv::MotionTrack motion = insv::BuildMotion(track);
+    const orbiscore::MotionTrack motion = orbiscore::BuildMotion(track);
     CHECK(!motion.empty());
     bool lean = false, g = false;
     for (size_t i = 0; i < motion.size(); ++i) {
@@ -3086,11 +3112,11 @@ void testA1Trailer()
         f.write(reinterpret_cast<const char*>(t.data()), std::streamsize(t.size()));
     }
 
-    const auto notes = insv::ReadInsvMakerNotes(path);
+    const auto notes = orbiscore::ReadInsvMakerNotes(path);
     CHECK(notes && notes->model == "Antigravity A1" && notes->firmware == "10.0.397.3_5.5");
     CHECK(notes && notes->offset_v3 == kOneX2V3);
     bool known = false;
-    const insv::InsvModel& model = insv::FindInsvModel("Antigravity A1", &known);
+    const orbiscore::InsvModel& model = orbiscore::FindInsvModel("Antigravity A1", &known);
     CHECK(known && std::string(model.maker) == "Antigravity" && model.telemetryTickUs == 1.0);
     CHECK(!model.secondLensToken && !model.clipToken);
     CHECK(std::string(model.captureMode(3840)) == "8K");
@@ -3098,12 +3124,12 @@ void testA1Trailer()
     CHECK(model.mountDeg[0] == -90.0 && model.mountDeg[1] == 90.0 && model.mountDeg[2] == 0.0);
     CHECK(std::string(model.imuAxes) == "-x,y,-z");
     // Insta360's cameras keep the stitch's default: lens 0's opposite forward.
-    const insv::StitchParams defaults;
-    for (const insv::InsvModel& m : insv::InsvModels())
+    const orbiscore::StitchParams defaults;
+    for (const orbiscore::InsvModel& m : orbiscore::InsvModels())
         if (std::string(m.maker) == "Insta360")
             CHECK(m.mountDeg[0] == defaults.outYawDeg && m.mountDeg[1] == defaults.outPitchDeg &&
                   m.mountDeg[2] == defaults.outRollDeg);
-    const auto t = insv::ReadInsvTelemetry(path);
+    const auto t = orbiscore::ReadInsvTelemetry(path);
     CHECK(t.has_value());
     if (t) {
         CHECK(t->imu.size() == 4 && t->imu[3].timestamp == 1003000);
@@ -3114,11 +3140,11 @@ void testA1Trailer()
               t->imu_mount[2] == -0.5 && t->imu_mount[3] == 0.5);
         CHECK(t->attitude.size() == 2);
         if (t->attitude.size() == 2) {
-            const insv::AttitudeSample& a = t->attitude[0];
+            const orbiscore::AttitudeSample& a = t->attitude[0];
             CHECK(a.timestamp == 1000000 && a.q[0] == 1.0 && a.q[1] == 0.0 && a.q[3] == 0.0);
             CHECK(a.velocity_ned[0] == 1.5 && a.velocity_ned[1] == -2.0 &&
                   a.velocity_ned[2] == 0.25);
-            const insv::AttitudeSample& b = t->attitude[1];
+            const orbiscore::AttitudeSample& b = t->attitude[1];
             CHECK(b.timestamp == 1020000 && near(b.q[0], c30, 1e-6) && near(b.q[2], s30, 1e-6));
         }
     }
@@ -3163,31 +3189,31 @@ void testGpsAlignedBySpeed()
         return path;
     };
     const std::string flying = clip("insv_test_gps_speed.insv", false);
-    const auto g = insv::ReadInsvGps(flying);
+    const auto g = orbiscore::ReadInsvGps(flying);
     CHECK(g && g->fixes.size() == 18 && g->aligned_by_speed);
     CHECK(g && std::llabs(g->first_frame_unix_ms - int64_t(kFirstFrameUnixMs)) <= 2);
     std::filesystem::remove(flying);
     const std::string hovering = clip("insv_test_gps_hover.insv", true);
-    const auto h = insv::ReadInsvGps(hovering);
+    const auto h = orbiscore::ReadInsvGps(hovering);
     CHECK(h && h->fixes.size() == 18 && h->first_frame_unix_ms == 0 && !h->aligned_by_speed);
     std::filesystem::remove(hovering);
 
     // A speed that repeats every 3.2 s fits two fixes on as well as on time.
-    std::vector<insv::SpeedSample> reference, fixes;
+    std::vector<orbiscore::SpeedSample> reference, fixes;
     for (int k = 0; k < 1500; ++k)
         reference.push_back({k * 0.02, 6.0 + 3.0 * std::sin(2.0 * kPi * k * 0.02 / 3.2)});
     for (int k = 0; k < 15; ++k)
         fixes.push_back({k * 1.6, 6.0 + 3.0 * std::sin(2.0 * kPi * (k * 1.6 + 0.7) / 3.2)});
-    CHECK(!insv::AlignGpsBySpeed(fixes, reference));
+    CHECK(!orbiscore::AlignGpsBySpeed(fixes, reference));
     // The same fixes against a speed that doesn't repeat: on time.
     reference.clear(), fixes.clear();
     for (int k = 0; k < 1500; ++k)
         reference.push_back({k * 0.02, speed(k * 0.02)});
     for (int k = 0; k < 15; ++k)
         fixes.push_back({k * 1.6, speed(k * 1.6 + 0.7)});
-    const auto shift = insv::AlignGpsBySpeed(fixes, reference);
+    const auto shift = orbiscore::AlignGpsBySpeed(fixes, reference);
     CHECK(shift && near(*shift, 0.7, 0.002));
-    CHECK(!insv::AlignGpsBySpeed({fixes.begin(), fixes.begin() + 4}, reference)); // too few
+    CHECK(!orbiscore::AlignGpsBySpeed({fixes.begin(), fixes.begin() + 4}, reference)); // too few
 }
 
 // A ride as the camera's IMU records it: a vehicle taking corners between
@@ -3245,13 +3271,13 @@ struct Ride {
     }
 };
 
-insv::ImuTrack record(const Ride& r, double seconds)
+orbiscore::ImuTrack record(const Ride& r, double seconds)
 {
-    insv::ImuTrack track;
+    orbiscore::ImuTrack track;
     track.hasOffset = true;
     const double dt = 0.002, h = 1e-4;
     for (double t = 0.0; t < seconds; t += dt) {
-        insv::ImuSample s;
+        orbiscore::ImuSample s;
         s.timestamp = static_cast<uint64_t>(std::llround(t * 1e6));
         const M3 q = r.orientation(t);
         // Specific force in g: the acceleration plus gravity's reaction (up).
@@ -3285,7 +3311,7 @@ void testMotion()
 {
     std::printf("  motion: lean and G about the travel, a turned and tilted mount\n");
     const ride::Ride weave{0.35};
-    const insv::MotionTrack m = insv::BuildMotion(ride::record(weave, 90.0));
+    const orbiscore::MotionTrack m = orbiscore::BuildMotion(ride::record(weave, 90.0));
     CHECK(m.size() > 8900 && m.travelFit > 0.9);
     // Against the truth smoothed as the track is (0.25 s lean, 0.5 s G).
     std::vector<double> lean, lat, fwd;
@@ -3295,9 +3321,9 @@ void testMotion()
         lat.push_back(weave.speed(t) * weave.turn(t) / ride::kG);
         fwd.push_back(weave.accel(t) / ride::kG);
     }
-    lean = insv::GaussianSmooth(lean, m.stepSec, 0.25);
-    lat = insv::GaussianSmooth(lat, m.stepSec, 0.5);
-    fwd = insv::GaussianSmooth(fwd, m.stepSec, 0.5);
+    lean = orbiscore::GaussianSmooth(lean, m.stepSec, 0.25);
+    lat = orbiscore::GaussianSmooth(lat, m.stepSec, 0.5);
+    fwd = orbiscore::GaussianSmooth(fwd, m.stepSec, 0.5);
     double leanErr = 0, latErr = 0, fwdErr = 0, maxLean = 0;
     for (size_t i = 500; i + 500 < m.size(); ++i) { // the smoothing's ends aside
         leanErr = std::max(leanErr, std::fabs(m.leanDeg[i] - lean[i]));
@@ -3313,7 +3339,7 @@ void testMotion()
     // Straight on: nothing to fit the travel to, so the camera's forward --
     // 40 deg off it, so the speeding up shows mostly along it.
     const ride::Ride straight{0.0};
-    const insv::MotionTrack s = insv::BuildMotion(ride::record(straight, 60.0));
+    const orbiscore::MotionTrack s = orbiscore::BuildMotion(ride::record(straight, 60.0));
     CHECK(s.size() > 5900 && s.travelFit == 0.0);
     double sLean = 0, sFwd = 0, sRatio = 0;
     for (size_t i = 500; i + 500 < s.size(); ++i) {
@@ -3326,11 +3352,11 @@ void testMotion()
     // slowing down every 23 s leave part of a cycle: ~0.7 deg, 0.012 g.
     CHECK(sLean < 0.5 && sFwd < 0.015 && sRatio > 0.02);
 
-    insv::ImuTrack noAccel = ride::record(weave, 5.0);
-    for (insv::ImuSample& x : noAccel.samples)
+    orbiscore::ImuTrack noAccel = ride::record(weave, 5.0);
+    for (orbiscore::ImuSample& x : noAccel.samples)
         x.accel[0] = x.accel[1] = x.accel[2] = 0.0;
-    CHECK(insv::BuildMotion(noAccel).empty());
-    CHECK(insv::BuildMotion({}).empty());
+    CHECK(orbiscore::BuildMotion(noAccel).empty());
+    CHECK(orbiscore::BuildMotion({}).empty());
 }
 
 // A GPS track timed by the camera's clock stamp, running behind the video by
@@ -3349,11 +3375,11 @@ void testGpsAlignedByAcceleration()
     std::vector<float> forwardG;
     for (double t = 0.0; t < seconds; t += step)
         forwardG.push_back(float((speed(t + 0.001) - speed(t - 0.001)) / 0.002 / ride::kG));
-    insv::GpsTrack track;
+    orbiscore::GpsTrack track;
     track.clockStamped = true;
     for (double t = 0.4; t < seconds; t += 1.0) // a fix a second, stamped late
         track.fixes.push_back({std::llround((t + behind(t)) * 1e3), 45.0, 7.0, speed(t), 90.0, 10.0});
-    const auto fit = insv::AlignGpsByAcceleration(track, forwardG, step);
+    const auto fit = orbiscore::AlignGpsByAcceleration(track, forwardG, step);
     CHECK(fit && fit->shifts.size() >= 4);
     if (fit) {
         double worst = 0.0;
@@ -3365,27 +3391,27 @@ void testGpsAlignedByAcceleration()
     }
 
     // Standing still, or a steady speed: nothing to match.
-    insv::GpsTrack steady = track;
-    for (insv::GpsFix& f : steady.fixes)
+    orbiscore::GpsTrack steady = track;
+    for (orbiscore::GpsFix& f : steady.fixes)
         f.speedMps = 0.0;
-    CHECK(!insv::AlignGpsByAcceleration(steady, forwardG, step));
+    CHECK(!orbiscore::AlignGpsByAcceleration(steady, forwardG, step));
     // A speed that has nothing to do with the IMU's.
-    insv::GpsTrack other = track;
+    orbiscore::GpsTrack other = track;
     for (size_t i = 0; i < other.fixes.size(); ++i)
         other.fixes[i].speedMps = speed(3.7 * double(i) + 100.0);
-    CHECK(!insv::AlignGpsByAcceleration(other, forwardG, step));
-    CHECK(!insv::AlignGpsByAcceleration({}, forwardG, step));
+    CHECK(!orbiscore::AlignGpsByAcceleration(other, forwardG, step));
+    CHECK(!orbiscore::AlignGpsByAcceleration({}, forwardG, step));
 }
 
 // The Y'CbCr -> R'G'B' rows the viewport converts lens planes with must match
 // the stitch's Vulkan ycbcr conversion for every matrix, range and depth.
 void testYcbcrRows()
 {
-    using insv::YcbcrMatrix;
+    using orbiscore::YcbcrMatrix;
     // BT.709 full range, 8-bit: the X5's, and the constants the viewport used
     // before the conversion came from the stream.
     float r[3][4];
-    insv::YcbcrToRgbRows({YcbcrMatrix::Bt709, true}, 8, r);
+    orbiscore::YcbcrToRgbRows({YcbcrMatrix::Bt709, true}, 8, r);
     CHECK(near(r[0][0], 1.0, 1e-6) && near(r[0][1], 0.0, 1e-6) && near(r[0][2], 1.5748, 1e-4));
     CHECK(near(r[1][1], -0.1873, 1e-4) && near(r[1][2], -0.4681, 1e-4));
     CHECK(near(r[2][1], 1.8556, 1e-4) && near(r[2][2], 0.0, 1e-6));
@@ -3397,7 +3423,7 @@ void testYcbcrRows()
                             Weights{YcbcrMatrix::Bt2020, 0.2627, 0.0593}}) {
         for (const bool full : {false, true}) {
             for (const int depth : {8, 10}) {
-                insv::YcbcrToRgbRows({w.m, full}, depth, r);
+                orbiscore::YcbcrToRgbRows({w.m, full}, depth, r);
                 const double step = depth == 8 ? 1.0 : 4.0;
                 const double maxCode = depth == 8 ? 255.0 : 1023.0;
                 // A code value as the plane's texel reads it (10-bit: P010).

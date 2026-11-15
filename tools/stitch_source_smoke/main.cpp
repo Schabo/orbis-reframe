@@ -78,9 +78,9 @@ int main(int argc, char** argv) {
     int64_t range_start = -1, range_end = -1, range_step = 0;
     int64_t seam_in = -1, seam_out = -1;
     bool seam_ok = false;
-    insv::SeamCorrection seam;
+    orbiscore::SeamCorrection seam;
     int64_t colour_in = -1, colour_out = -1;
-    insv::LensColour colour;
+    orbiscore::LensColour colour;
     bool dump_depth = false;
     bool capture_timing = false;
     bool release_gpu = false;
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
     }
     if (colour_in >= 0) {
         const auto r = stitch::MeasureClipLensColour(input_path, colour_in, colour_out,
-                                                     config.lensGuard, cal, seam_ok ? seam : insv::SeamCorrection{});
+                                                     config.lensGuard, cal, seam_ok ? seam : orbiscore::SeamCorrection{});
         std::cout << "Lens colour: " << (r.ok ? "ok" : "FAILED") << " (" << r.message << ")"
                   << std::endl;
         if (r.ok)
@@ -203,10 +203,10 @@ int main(int argc, char** argv) {
     if (seam_ok)
         source->SetSeamCorrection(seam);
     source->SetLensColour(colour);
-    auto stab = std::make_shared<insv::GyroStabilizer>();
+    auto stab = std::make_shared<orbiscore::GyroStabilizer>();
     if (capture_timing) {
         if (const auto imu = camera::ReadClipImu(input_path))
-            stab->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock), 0.0);
+            stab->build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock), 0.0);
         if (!stab->ready()) {
             std::cerr << "--capture-timing: the clip has no gyro track" << std::endl;
             return 1;
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
                 if (auto* ns = dynamic_cast<stitch::NativeStitchSource*>(source.get())) {
                     const float* q = ns->SeamDepthTable();
                     std::printf("depth %lld:", static_cast<long long>(frame.timestamp_ms));
-                    for (int b = 0; b < insv::kSeamDepthBins; ++b)
+                    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
                         std::printf(" %.3f", q[b]);
                     std::printf("\n");
                 }
@@ -287,7 +287,7 @@ int main(int argc, char** argv) {
             if (auto* ns = dynamic_cast<stitch::NativeStitchSource*>(source.get())) {
                 const float* q = ns->SeamDepthTable();
                 std::cout << "seam depth q (1/m) per bin:";
-                for (int b = 0; b < insv::kSeamDepthBins; ++b)
+                for (int b = 0; b < orbiscore::kSeamDepthBins; ++b)
                     std::printf("%s%+.2f", b % 16 ? " " : "\n  ", q[b]);
                 std::cout << std::endl;
             }

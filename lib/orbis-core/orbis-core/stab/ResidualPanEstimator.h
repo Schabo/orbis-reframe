@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
-#include <orbis-core/stab/ResidualStab.h> // insv::ResidualTrack
+#include <orbis-core/stab/ResidualStab.h> // orbiscore::ResidualTrack
 
 #include <cstdint>
 #include <memory>
@@ -11,7 +11,7 @@
 // Pimpl'd so this header pulls in no OpenCV -- consumers that only apply a
 // ResidualTrack include ResidualStab.h instead.
 
-namespace insv {
+namespace orbiscore {
 
 class ResidualPanEstimator {
 public:
@@ -38,7 +38,7 @@ public:
     // Feed consecutive equirect frames in play order. `gray`: 8-bit single
     // channel, w x h, a 2:1 equirect (any analysis resolution). `gyro`:
     // row-major 3x3 de-rotation for this frame's time (identity if no gyro
-    // track) -- the same matrix insv::GyroStabilizer::correctionMatrix returns.
+    // track) -- the same matrix orbiscore::GyroStabilizer::correctionMatrix returns.
     // The first call just stores the frame; each later call measures the
     // inter-frame forward-hemisphere pan of the gyro-de-rotated sphere and
     // accumulates it.
@@ -56,7 +56,7 @@ public:
 
     // High-pass the accumulated pan path into a correction track: for each
     // interval, dyaw/dpitch = smoothed(path) - path, where the smoothing window
-    // comes from strength01 via insv::leanWindowFromStrength (0 => ~0.2 s, barely
+    // comes from strength01 via orbiscore::leanWindowFromStrength (0 => ~0.2 s, barely
     // any correction; 1 => ~2.5 s, heavy). `fps` sets the window length in
     // samples. Returns an empty track if fewer than 2 intervals were measured.
     ResidualTrack finish(float strength01, double fps) const;
@@ -66,4 +66,4 @@ private:
     std::unique_ptr<Impl> d;
 };
 
-} // namespace insv
+} // namespace orbiscore

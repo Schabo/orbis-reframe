@@ -48,7 +48,7 @@ bool PlateJobController::startScan(const platescan::Request &req)
     return true;
 }
 
-bool PlateJobController::startFollow(const platescan::Request &req, const insv::BlurQuad &seed,
+bool PlateJobController::startFollow(const platescan::Request &req, const orbiscore::BlurQuad &seed,
                                      qint64 backToMs)
 {
     if (m_thread)

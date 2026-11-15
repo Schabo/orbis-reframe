@@ -169,7 +169,7 @@ int main(int argc, char** argv)
                 r.shiftDeg[0], r.shiftMaxDeg[0], r.shiftDeg[1], r.shiftMaxDeg[1],
                 r.rotationChangeDeg);
     for (int l = 0; l < 2; ++l) {
-        const insv::LensCalibExt& e = c.lenses[l];
+        const orbiscore::LensCalibExt& e = c.lenses[l];
         std::printf("lens %d: xi %.3f fx %.4f fy %.4f cx %.4f cy %.4f ypr %.5f %.5f %.5f\n", l, e.xi,
                     e.fx, e.fy, e.cx, e.cy, e.yaw, e.pitch, e.roll);
     }

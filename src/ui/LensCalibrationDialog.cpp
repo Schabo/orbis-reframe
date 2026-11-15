@@ -363,7 +363,7 @@ void LensCalibrationDialog::start()
                               .arg(clip ? tr("its lens model can't be read") : QString::fromStdString(err)));
         return;
     }
-    if (clip->lenses[0].model != insv::LensModel::Mei) {
+    if (clip->lenses[0].model != orbiscore::LensModel::Mei) {
         m_status->setText(tr("Calibrate lenses works on Insta360 recordings so far. This camera "
                              "describes its lenses another way; its clips stitch with the "
                              "calibration in their files."));

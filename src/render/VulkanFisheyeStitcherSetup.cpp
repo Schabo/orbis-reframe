@@ -151,9 +151,9 @@ uint16_t ToHalf(float f)
 }
 } // namespace
 
-bool VulkanFisheyeStitcher::Impl::ensureFlow(const insv::StitchGpuParams& p, std::string& err)
+bool VulkanFisheyeStitcher::Impl::ensureFlow(const orbiscore::StitchGpuParams& p, std::string& err)
 {
-    const insv::SeamFlowField* want = p.seamFlow && !p.seamFlow->empty() ? p.seamFlow.get() : nullptr;
+    const orbiscore::SeamFlowField* want = p.seamFlow && !p.seamFlow->empty() ? p.seamFlow.get() : nullptr;
     const bool gpu = !want && p.seamFlowGpu && p.seamFlowCols > 0 && p.seamFlowRows > 0;
     const int W = want ? want->grid.cols : gpu ? p.seamFlowCols : (flowImg ? flowW : 1);
     // A grid's rows and the fade's row under them (the texture's last).
@@ -393,7 +393,7 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
     // Bindings 6 and 7 valid from the start: a 1 x 1 flow texture of zeros
     // and a token strip buffer, until the seam flow brings its own; 8 and 9
     // the blur's cell table.
-    insv::StitchGpuParams none;
+    orbiscore::StitchGpuParams none;
     return ensureFlow(none, err) && ensureStrips(16, err) && ensureBlurCells(err);
 }
 
@@ -404,7 +404,7 @@ bool VulkanFisheyeStitcher::Impl::ensureBlurCells(std::string& err)
     VkImageCreateInfo ii{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ii.imageType = VK_IMAGE_TYPE_2D;
     ii.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    ii.extent = {static_cast<uint32_t>(insv::kBlurCellsPerQuad), static_cast<uint32_t>(insv::kMaxBlurQuads), 1};
+    ii.extent = {static_cast<uint32_t>(orbiscore::kBlurCellsPerQuad), static_cast<uint32_t>(orbiscore::kMaxBlurQuads), 1};
     ii.mipLevels = 1;
     ii.arrayLayers = 1;
     ii.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -884,7 +884,7 @@ bool VulkanFisheyeStitcher::init(std::string& err)
 bool VulkanFisheyeStitcher::initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                                       uint32_t computeQueueFamily,
                                       VkDeviceQueueCreateFlags queueFlags, std::string& err,
-                                      VkFormat lensFormat, const insv::YcbcrCoding& ycbcr)
+                                      VkFormat lensFormat, const orbiscore::YcbcrCoding& ycbcr)
 {
     if (lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
         lensFormat != VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16) {
@@ -986,11 +986,11 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
         VkSamplerYcbcrConversionCreateInfo ycci{
             VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO};
         ycci.format = d->lensFormat; // NV12, or P010 for 10-bit
-        // The stream's own matrix and range (insv::YcbcrToRgbRows does the
+        // The stream's own matrix and range (orbiscore::YcbcrToRgbRows does the
         // same arithmetic for the viewport).
-        ycci.ycbcrModel = d->ycbcr.matrix == insv::YcbcrMatrix::Bt601
+        ycci.ycbcrModel = d->ycbcr.matrix == orbiscore::YcbcrMatrix::Bt601
                               ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601
-                          : d->ycbcr.matrix == insv::YcbcrMatrix::Bt2020
+                          : d->ycbcr.matrix == orbiscore::YcbcrMatrix::Bt2020
                               ? VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020
                               : VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
         ycci.ycbcrRange = d->ycbcr.fullRange ? VK_SAMPLER_YCBCR_RANGE_ITU_FULL

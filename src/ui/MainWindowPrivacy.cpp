@@ -257,7 +257,7 @@ void MainWindow::startPlateFollow(const QRectF &box)
         return;
     }
     // The box's corners on the sphere, through the frame on screen.
-    insv::BlurQuad seed;
+    orbiscore::BlurQuad seed;
     const double xs[4] = {box.left(), box.right(), box.right(), box.left()};
     const double ys[4] = {box.top(), box.top(), box.bottom(), box.bottom()};
     for (int k = 0; k < 4; ++k)

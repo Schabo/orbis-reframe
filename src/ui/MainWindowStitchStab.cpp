@@ -123,14 +123,14 @@ void MainWindow::connectStitchAndStabilization()
     // Stabilization panel -> the clip it shows (the selected one, else the
     // one under the playhead), like the Colour panel. All modes drive the
     // native reprojection-time path; the panel hands back the right
-    // insv::StabConfig for the mode (LeanFollow window from its Strength
+    // orbiscore::StabConfig for the mode (LeanFollow window from its Strength
     // slider, Custom from the knobs, Off otherwise).
     connect(m_stabilizationPanel, &StabilizationPanel::modeChanged, this,
-            [this](StabilizationPanel::Mode, const insv::StabConfig &nativeCfg) {
+            [this](StabilizationPanel::Mode, const orbiscore::StabConfig &nativeCfg) {
                 const ClipItem *c = m_timeline->clipById(editClipId());
                 if (!c)
                     return;
-                insv::StabConfig cfg = nativeCfg;
+                orbiscore::StabConfig cfg = nativeCfg;
                 // Switching into Direction lock, or ticking Custom's Lock
                 // direction, holds the way the camera faces under the
                 // playhead.
@@ -142,7 +142,7 @@ void MainWindow::connectStitchAndStabilization()
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (!c || !c->stabilization.lockDirection)
             return;
-        insv::StabConfig cfg = c->stabilization;
+        orbiscore::StabConfig cfg = c->stabilization;
         cfg.directionSec = directionSecAtPlayhead(*c);
         m_timeline->setClipStabilization(c->id, cfg);
     });
@@ -204,7 +204,7 @@ void MainWindow::connectStitchAndStabilization()
             syncStitchingPanel();
     });
     connect(m_timeline, &Timeline::clipStabilizationChanged, this,
-            [this](int id, const insv::StabConfig &) {
+            [this](int id, const orbiscore::StabConfig &) {
                 if (m_rebindingModel)
                     return; // a load / undo: the rebind after it covers this
                 if (id == editClipId())
@@ -299,8 +299,8 @@ void MainWindow::ensureStabilizers()
     }
 }
 
-void MainWindow::seamCorrectionFor(const QString &clipPath, insv::SeamCorrection &seam,
-                                   insv::LensColour &colour) const
+void MainWindow::seamCorrectionFor(const QString &clipPath, orbiscore::SeamCorrection &seam,
+                                   orbiscore::LensColour &colour) const
 {
     m_timeline->sourceSeamCorrection(clipPath, seam);
     m_timeline->sourceLensColour(clipPath, colour);
@@ -310,8 +310,8 @@ void MainWindow::pushSeamCorrection()
 {
     for (int i = 0; i < m_timeline->count(); ++i) {
         const QString &path = m_timeline->clipAt(i).sourcePath;
-        insv::SeamCorrection seam;
-        insv::LensColour colour;
+        orbiscore::SeamCorrection seam;
+        orbiscore::LensColour colour;
         seamCorrectionFor(path, seam, colour);
         m_controller->setSeamCorrection(path, seam, colour);
     }
@@ -369,18 +369,18 @@ void MainWindow::syncStabilizationPanel()
         return;
     }
     using M = StabilizationPanel::Mode;
-    const insv::StabConfig &s = c->stabilization;
+    const orbiscore::StabConfig &s = c->stabilization;
     M mode = M::Off;
-    if (s.mode == insv::StabMode::LeanFollow)
+    if (s.mode == orbiscore::StabMode::LeanFollow)
         mode = M::LeanFollow;
-    else if (s.mode == insv::StabMode::HorizonLock)
+    else if (s.mode == orbiscore::StabMode::HorizonLock)
         mode = M::HorizonLock;
-    else if (s.mode == insv::StabMode::Custom)
+    else if (s.mode == orbiscore::StabMode::Custom)
         mode = M::Custom;
-    else if (s.mode == insv::StabMode::DirectionLock)
+    else if (s.mode == orbiscore::StabMode::DirectionLock)
         mode = M::DirectionLock;
     m_stabilizationPanel->setState(
-        mode, mode != M::Off ? s : insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        mode, mode != M::Off ? s : orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
 
     // Where the held direction is: its time on the timeline, or in the file
     // when the clip's trim leaves it out.
@@ -409,8 +409,9 @@ float MainWindow::directionSecAtPlayhead(const ClipItem &c) const
     return float(c.trimInMs) / 1000.0f;
 }
 
-insv::StabConfig MainWindow::pastedStabilization(insv::StabConfig cfg, const QString &fromSource,
-                                                 const ClipItem &target) const
+orbiscore::StabConfig MainWindow::pastedStabilization(orbiscore::StabConfig cfg,
+                                                      const QString &fromSource,
+                                                      const ClipItem &target) const
 {
     if (cfg.lockDirection && target.sourcePath != fromSource)
         cfg.directionSec = float(target.trimInMs) / 1000.0f;

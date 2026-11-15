@@ -17,7 +17,7 @@
 // lens on the ONE X2), one persistent decoder per fisheye video stream
 // ("lens"), a FIFO of decoded frames per lens, and the strictly-forward pump
 // that fills them. A lens's read pumps only its own file. A clip in several
-// parts (insv::ClipPart, a recording the camera split into files) plays them
+// parts (orbiscore::ClipPart, a recording the camera split into files) plays them
 // back to back with one set of decoders: at a part's end they are drained
 // and go on into the next part's files, whose frames are handed out in clip
 // time; a seek goes to the part the target is in.
@@ -36,7 +36,7 @@ struct AVFrame;
 struct AVPacket;
 struct AVStream;
 
-namespace insv {
+namespace orbiscore {
 
 // The keyframe of `stream` nearest `timestampMs`, in ms rounded up (see
 // InsvDemux::nearestKeyframeMs).
@@ -94,7 +94,7 @@ public:
     // Frame-exact: the next read returns the first frame at or after
     // `timestampMs` (see the class comment for the decode-on shortcut).
     bool seekTo(int64_t timestampMs, std::string& err);
-    // Lens 0's index; see insv::NearestKeyframeMs / KeyframesAroundMs.
+    // Lens 0's index; see orbiscore::NearestKeyframeMs / KeyframesAroundMs.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
 
@@ -174,4 +174,4 @@ private:
     double m_lastReadSec = -1.0;              // pts of the last frame (pair) read; -1 after open / a seek
 };
 
-} // namespace insv
+} // namespace orbiscore

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <orbis-core/metadata/Gps.h> // insv::GpsTrack
+#include <orbis-core/metadata/Gps.h> // orbiscore::GpsTrack
 
 #include <array>
 #include <cstdint>
@@ -34,7 +34,7 @@ public:
     static constexpr int64_t kHoldMs = kMaxGapMs / 2;
 
     Telemetry() = default;
-    explicit Telemetry(const insv::GpsTrack &track);
+    explicit Telemetry(const orbiscore::GpsTrack &track);
 
     bool isEmpty() const { return m_points.empty(); }
     // The values at `sourceMs` of the clip's video, nullopt where there's no

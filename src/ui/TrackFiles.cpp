@@ -11,7 +11,7 @@
 #include <utility>
 
 #include <FlatVideoReader.h> // exportpipe::FlatVideoReader::probe
-#include <orbis-core/audio/InsvAudioDemux.h>  // insv::InsvAudioDemux
+#include <orbis-core/audio/InsvAudioDemux.h>  // orbiscore::InsvAudioDemux
 
 #include "../core/MediaPool.h"
 #include "../core/Project.h"
@@ -48,7 +48,7 @@ std::optional<int> TrackFiles::addAudio(const QStringList &paths, int trackId, q
     QStringList failed;
     qint64 total = 0;
     for (const QString &path : paths) {
-        insv::InsvAudioDemux probe;
+        orbiscore::InsvAudioDemux probe;
         std::string err;
         if (!probe.open(path.toStdString(), 48000, 2, err) || probe.durationMs() <= 0) {
             failed << QFileInfo(path).fileName() +

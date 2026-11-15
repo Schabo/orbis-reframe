@@ -659,18 +659,18 @@ void testNewClip()
     Timeline tl;
     {
         const ClipItem c = tl.newClip(0, "a.insv", 10000, 30.0, 3840, 3840);
-        CHECK(c.stabilization.mode == insv::StabMode::Off); // no clip to take it from
+        CHECK(c.stabilization.mode == orbiscore::StabMode::Off); // no clip to take it from
         CHECK(c.trimOutMs == 10000 && c.reframe.isEmpty());
     }
     const int a = tl.appendClip("a.insv", 10000, 30.0, 3840, 3840);
-    insv::StabConfig lean;
-    lean.mode = insv::StabMode::LeanFollow;
+    orbiscore::StabConfig lean;
+    lean.mode = orbiscore::StabMode::LeanFollow;
     tl.setClipStabilization(a, lean);
     tl.setSourceStitch("a.insv", G::Standard, stitch::PreviewStitchConfig::Method::DepthSeam,
                        std::nullopt);
     tl.appendClip("flat.mp4", 5000, 30.0, 1920, 1080, 0, true);
     const ClipItem b = tl.newClip(tl.count(), "b.insv", 8000, 30.0, 3840, 3840);
-    CHECK(b.stabilization.mode == insv::StabMode::LeanFollow); // past the flat clip
+    CHECK(b.stabilization.mode == orbiscore::StabMode::LeanFollow); // past the flat clip
     CHECK(b.lensGuard == G::Standard && !b.flat);
     const ClipItem again = tl.newClip(tl.count(), "a.insv", 10000, 30.0, 3840, 3840);
     CHECK(again.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam);

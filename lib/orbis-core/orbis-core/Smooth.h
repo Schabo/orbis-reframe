@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // `x` on an even grid of `stepSec`, through a Gaussian of `sigmaSec`
 // centred on each sample (zero phase: a change shows when it happens, not
@@ -42,4 +42,4 @@ std::vector<T> GaussianSmooth(const std::vector<T>& x, double stepSec, double si
     return y;
 }
 
-} // namespace insv
+} // namespace orbiscore

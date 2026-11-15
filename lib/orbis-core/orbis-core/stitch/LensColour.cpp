@@ -9,7 +9,7 @@
 #include <numbers>
 #include <utility>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kDeg = std::numbers::pi / 180.0;
@@ -477,4 +477,4 @@ void RemoveLensVeil(SeamCutStats& stats, const float* veil)
         }
 }
 
-} // namespace insv
+} // namespace orbiscore

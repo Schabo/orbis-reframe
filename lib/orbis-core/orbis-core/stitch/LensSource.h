@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // Where a lens's picture comes from: a file and its n-th video stream. One
 // file can hold every lens (the X5: streams 0 and 1), or each lens has a file
@@ -25,4 +25,4 @@ struct ClipPart {
     std::vector<LensSource> lenses;
 };
 
-} // namespace insv
+} // namespace orbiscore

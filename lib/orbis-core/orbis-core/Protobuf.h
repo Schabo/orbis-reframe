@@ -12,7 +12,7 @@
 // djmd track). It knows the wire format only: which field holds what is the
 // caller's (each camera's format document).
 
-namespace insv {
+namespace orbiscore {
 
 // One varint at b[i], i moved past it; false when it runs off the end.
 bool ReadVarint(const std::vector<uint8_t>& b, size_t& i, uint64_t& v);
@@ -48,4 +48,4 @@ inline int64_t ProtobufSigned(uint64_t v)
     return static_cast<int64_t>(v);
 }
 
-} // namespace insv
+} // namespace orbiscore

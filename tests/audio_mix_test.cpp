@@ -1,8 +1,8 @@
-// insv::AudioMixer (extra audio tracks): placement, gain, fades, chunked vs.
+// orbiscore::AudioMixer (extra audio tracks): placement, gain, fades, chunked vs.
 // one-shot reads, seeking, the limiter -- on WAV files written here (constant
 // PCM, so every mixed sample is exactly predictable). Also that InsvAudioDemux
 // reports a WAV's duration (what "Add audio file" relies on). The per-clip
-// noise filters (insv::WindReducer, GeneralWindReducer, HissHumReducer) on
+// noise filters (orbiscore::WindReducer, GeneralWindReducer, HissHumReducer) on
 // synthetic signals, and ClipAudioReader's alignment with them on. Exit code is
 // the failure count.
 
@@ -12,7 +12,7 @@
 #include <orbis-core/audio/InsvAudioDemux.h>
 #include <orbis-core/audio/GeneralWindReducer.h>
 #include <orbis-core/audio/HissHumReducer.h>
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
 #include <orbis-core/audio/VoiceIsolator.h>
 #include "DataPaths.h"
 #endif
@@ -58,7 +58,7 @@ bool near(float a, float b, float tol = 1e-4f) { return std::abs(a - b) <= tol; 
 
 void testDemuxDuration(const std::string& dc)
 {
-    insv::InsvAudioDemux d;
+    orbiscore::InsvAudioDemux d;
     std::string err;
     CHECK(d.open(dc, kRate, kCh, err));
     CHECK(d.durationMs() == 1000);
@@ -68,8 +68,8 @@ void testPlacementGainFades(const std::string& dc)
 {
     // DC 0.25 for 1 s. Clip: timeline frames [4800, 4800 + 24000), gain 0.5,
     // 480-frame fade in, 960-frame fade out.
-    insv::AudioMixer mix(kRate, kCh);
-    insv::MixClip c;
+    orbiscore::AudioMixer mix(kRate, kCh);
+    orbiscore::MixClip c;
     c.parts = {{dc, 0}};
     c.startFrame = 4800;
     c.lengthFrames = 24000;
@@ -95,14 +95,14 @@ void testPlacementGainFades(const std::string& dc)
     CHECK(at(4800 + 24000) == 0.0f && at(total - 1) == 0.0f); // after the clip
 
     // Adding, not overwriting: the same mix over a 0.1 floor.
-    insv::AudioMixer mix2(kRate, kCh);
+    orbiscore::AudioMixer mix2(kRate, kCh);
     mix2.setClips({c});
     std::vector<float> floor(total * kCh, 0.1f);
     mix2.mixInto(floor.data(), 0, total);
     CHECK(near(floor[15000 * kCh], 0.225f) && near(floor[0], 0.1f));
 
     // Chunked in odd sizes = one shot.
-    insv::AudioMixer mix3(kRate, kCh);
+    orbiscore::AudioMixer mix3(kRate, kCh);
     mix3.setClips({c});
     std::vector<float> chunked(total * kCh, 0.0f);
     int64_t pos = 0;
@@ -122,8 +122,8 @@ void testSeekAndSource(const std::string& ramp)
     // A ramp: frame i of the source holds i / 32768 (exact in 16 bits). The
     // clip starts at timeline 1000 with in-point 500, so timeline frame t
     // plays source frame t - 500.
-    insv::AudioMixer mix(kRate, kCh);
-    insv::MixClip c;
+    orbiscore::AudioMixer mix(kRate, kCh);
+    orbiscore::MixClip c;
     c.parts = {{ramp, 0}};
     c.startFrame = 1000;
     c.lengthFrames = 20000;
@@ -149,11 +149,11 @@ void testSeekAndSource(const std::string& ramp)
 
 void testMissingAndMuted(const std::string& dc)
 {
-    insv::AudioMixer mix(kRate, kCh);
-    insv::MixClip gone;
+    orbiscore::AudioMixer mix(kRate, kCh);
+    orbiscore::MixClip gone;
     gone.parts = {{"/nonexistent/file.wav", 0}};
     gone.lengthFrames = 1000;
-    insv::MixClip silent;
+    orbiscore::MixClip silent;
     silent.parts = {{dc, 0}};
     silent.lengthFrames = 1000;
     silent.gain = 0.0f; // muted clips are dropped
@@ -166,7 +166,7 @@ void testMissingAndMuted(const std::string& dc)
 void testLimiter()
 {
     float s[] = {0.0f, 0.5f, -0.8f, 0.89f, 0.95f, -1.5f, 3.0f, 100.0f};
-    insv::AudioMixer::limit(s, 8);
+    orbiscore::AudioMixer::limit(s, 8);
     CHECK(s[0] == 0.0f && s[1] == 0.5f && s[2] == -0.8f && s[3] == 0.89f); // untouched
     CHECK(s[4] > 0.9f && s[4] < 0.95f);
     CHECK(s[5] < -0.95f && s[5] > -1.0f);
@@ -176,16 +176,17 @@ void testLimiter()
 void testPeaks(const std::string& burst)
 {
     // 1 s: silence, then a 0.5 sine from 0.4 s to 0.6 s, then DC 0.1.
-    const insv::AudioPeaks p = insv::ComputeAudioPeaks({{burst, 0}}, -1);
+    const orbiscore::AudioPeaks p = orbiscore::ComputeAudioPeaks({{burst, 0}}, -1);
     CHECK(p.peaks.size() >= 99 && p.peaks.size() <= 101);
     if (p.peaks.size() < 99)
         return;
     CHECK(p.peaks[10] < 0.01f && p.peaks[38] < 0.01f);
     CHECK(near(p.peaks[45], 0.5f, 0.02f) && near(p.peaks[55], 0.5f, 0.02f));
     CHECK(near(p.peaks[80], 0.1f, 0.02f));
-    CHECK(insv::ComputeAudioPeaks({{"/nonexistent.wav", 0}}, -1).peaks.empty());
+    CHECK(orbiscore::ComputeAudioPeaks({{"/nonexistent.wav", 0}}, -1).peaks.empty());
     std::atomic<bool> stop{true};
-    CHECK(insv::ComputeAudioPeaks({{burst, 0}}, -1, &stop).peaks.empty()); // cancelled up front
+    // Cancelled up front.
+    CHECK(orbiscore::ComputeAudioPeaks({{burst, 0}}, -1, &stop).peaks.empty());
 }
 
 // A recording split over two files: `dc` (1 s of 0.25) from 0, `tail` (0.6 s
@@ -194,10 +195,10 @@ void testPeaks(const std::string& burst)
 // the second, crossfading over kJoinFadeMs; the waveform cuts at the join.
 void testSplitRecording(const std::string& dc, const std::string& tail)
 {
-    const std::vector<insv::AudioPart> parts = {{dc, 0}, {tail, 800000}};
+    const std::vector<orbiscore::AudioPart> parts = {{dc, 0}, {tail, 800000}};
     const int64_t join = kRate * 8 / 10;
-    const int64_t fade = int64_t{insv::ClipAudioReader::kJoinFadeMs} * kRate / 1000;
-    insv::ClipAudioReader r(kRate, kCh);
+    const int64_t fade = int64_t{orbiscore::ClipAudioReader::kJoinFadeMs} * kRate / 1000;
+    orbiscore::ClipAudioReader r(kRate, kCh);
     CHECK(r.open(parts, -1));
     std::vector<float> all(static_cast<size_t>(2 * kRate) * kCh);
     r.read(all.data(), 2 * kRate);
@@ -227,7 +228,7 @@ void testSplitRecording(const std::string& dc, const std::string& tail)
     }
 
     // A part that isn't there is silent; the rest still plays.
-    insv::ClipAudioReader gone(kRate, kCh);
+    orbiscore::ClipAudioReader gone(kRate, kCh);
     CHECK(gone.open({{dc, 0}, {"/nonexistent/part2.wav", 800000}}, -1));
     std::vector<float> span(static_cast<size_t>(2 * fade) * kCh);
     gone.seek(join - 10);
@@ -235,7 +236,7 @@ void testSplitRecording(const std::string& dc, const std::string& tail)
     CHECK(near(span[0], 0.25f) && span[static_cast<size_t>(fade + 20) * kCh] == 0.0f);
 
     // The waveform: 0.25 to the join, 0.1 after it (not the first part's tail).
-    const insv::AudioPeaks p = insv::ComputeAudioPeaks(parts, -1);
+    const orbiscore::AudioPeaks p = orbiscore::ComputeAudioPeaks(parts, -1);
     CHECK(p.peaks.size() >= 139 && p.peaks.size() <= 141);
     if (p.peaks.size() >= 139)
         CHECK(near(p.peaks[50], 0.25f, 0.02f) && near(p.peaks[79], 0.25f, 0.02f) &&
@@ -254,7 +255,7 @@ std::vector<float> interleave(const std::vector<float>& mono)
     return v;
 }
 
-template <typename Filter = insv::WindReducer>
+template <typename Filter = orbiscore::WindReducer>
 std::vector<float> runWind(const std::vector<float>& pcm, float strength, int block)
 {
     Filter w(kRate, kCh);
@@ -270,7 +271,7 @@ std::vector<float> runWind(const std::vector<float>& pcm, float strength, int bl
 
 // Largest |out(t) - in(t - latency)| over frames [from, end).
 float delayedError(const std::vector<float>& in, const std::vector<float>& out, int from,
-                   int lat = insv::WindReducer(kRate, kCh).latency())
+                   int lat = orbiscore::WindReducer(kRate, kCh).latency())
 {
     float err = 0.0f;
     for (size_t i = static_cast<size_t>(from) * kCh; i < out.size(); ++i)
@@ -313,7 +314,7 @@ void testWindLatencyAndPassBand()
         sine[i] = 0.5f * static_cast<float>(std::sin(i * 2.0 * std::numbers::pi * 5000.0 / kRate));
     const auto in = interleave(sine);
     const auto out = runWind(in, 0.7f, 1000);
-    const int lat = insv::WindReducer(kRate, kCh).latency();
+    const int lat = orbiscore::WindReducer(kRate, kCh).latency();
     CHECK(lat > 0 && lat < kRate / 2);
     CHECK(out[0] == 0.0f && out[static_cast<size_t>(lat - 1) * kCh] == 0.0f);
     CHECK(delayedError(in, out, lat + 8192) < 1e-3f);
@@ -324,7 +325,7 @@ void testWindBlockSizes()
     // Any block size gives the same output as one call.
     const auto in = interleave(lowNoise(kRate, 1));
     const auto one = runWind(in, 0.7f, kRate);
-    insv::WindReducer w(kRate, kCh);
+    orbiscore::WindReducer w(kRate, kCh);
     std::vector<float> out(in.size());
     std::mt19937 rng(7);
     for (int i = 0; i < kRate;) {
@@ -352,7 +353,7 @@ void testWindKeepsEngineCutsWind()
     // in the noise for a weak engine and protects it -- tuned so, because
     // the opposite mistake would cut a real engine.
     constexpr double f0 = 25.0;
-    const int lat = insv::WindReducer(kRate, kCh).latency();
+    const int lat = orbiscore::WindReducer(kRate, kCh).latency();
     const auto rumble = interleave(lowNoise(3 * kRate, 3));
     const auto rumbleOut = runWind(rumble, 0.7f, 2048);
     double rin = 0, rout = 0;
@@ -438,7 +439,7 @@ double bandChangeDb(const std::vector<float>& in, const std::vector<float>& out,
 
 void testGeneralWind()
 {
-    using GW = insv::GeneralWindReducer;
+    using GW = orbiscore::GeneralWindReducer;
     const int lat = GW(kRate, kCh).latency();
     CHECK(lat > 0 && lat < kRate / 10); // short: fine for speech sync
 
@@ -542,7 +543,7 @@ double lateChangeDb(const std::vector<float>& in, const std::vector<float>& out,
 
 void testHissHum()
 {
-    using HH = insv::HissHumReducer;
+    using HH = orbiscore::HissHumReducer;
     const int lat = HH(kRate, kCh).latency();
     CHECK(lat > 0 && lat < kRate / 10);
     constexpr int kLen = 5 * kRate;
@@ -669,9 +670,9 @@ void testHissHumAtFileStart(const std::string& wav)
 {
     const int frames = 4 * kRate;
     const auto src = hissHumSignal(frames); // as written, before 16-bit rounding
-    insv::ClipAudioReader r(kRate, kCh);
+    orbiscore::ClipAudioReader r(kRate, kCh);
     CHECK(r.open(wav, -1));
-    r.setNoiseReduction({insv::NoiseMode::Hiss, 0.5f});
+    r.setNoiseReduction({orbiscore::NoiseMode::Hiss, 0.5f});
     r.seek(0);
     std::vector<float> out(static_cast<size_t>(frames) * kCh);
     r.read(out.data(), frames);
@@ -700,7 +701,7 @@ void testHissHumAtFileStart(const std::string& wav)
     CHECK(hissStart < -6.0 && std::abs(hissStart - hissLate) < 2.0);
 }
 
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
 // VoiceIsolator (DeepFilterNet): no speech to hand here (its output on real
 // speech was checked against the reference deep-filter CLI, 2026-09-30),
 // so what synthetic signals can show -- noise alone is taken
@@ -708,7 +709,7 @@ void testHissHumAtFileStart(const std::string& wav)
 // 0 changes nothing; the output doesn't depend on the block size.
 void testVoice()
 {
-    using VI = insv::VoiceIsolator;
+    using VI = orbiscore::VoiceIsolator;
     std::string why;
     CHECK(VI::available(&why));
     if (!VI::available())
@@ -752,7 +753,7 @@ void testVoice()
 }
 #endif
 
-void testReaderWithWind(const std::string& sine5k, insv::NoiseMode mode, float tol = 2e-3f,
+void testReaderWithWind(const std::string& sine5k, orbiscore::NoiseMode mode, float tol = 2e-3f,
                         float strength = 0.7f)
 {
     // ClipAudioReader keeps sample alignment with the filter on: after a
@@ -762,7 +763,7 @@ void testReaderWithWind(const std::string& sine5k, insv::NoiseMode mode, float t
         return static_cast<float>(std::lround(0.5 * std::sin(i * 2.0 * std::numbers::pi * 5000.0 / kRate) * 32768.0) /
                                   32768.0);
     };
-    insv::ClipAudioReader r(kRate, kCh);
+    orbiscore::ClipAudioReader r(kRate, kCh);
     CHECK(r.open(sine5k, -1));
     r.setNoiseReduction({mode, strength});
     std::vector<float> buf(3000 * kCh);
@@ -781,7 +782,7 @@ void testReaderWithWind(const std::string& sine5k, insv::NoiseMode mode, float t
     r.seek(0); // warm-up before the file's start
     r.read(buf.data(), 3000);
     CHECK(matches(0, 3000, 1500)); // (the abrupt onset itself is filtered)
-    r.setNoiseReduction({insv::NoiseMode::Off, 0.7f});
+    r.setNoiseReduction({orbiscore::NoiseMode::Off, 0.7f});
     CHECK(r.position() == 3000);
     r.read(buf.data(), 1000);
     CHECK(matches(3000, 1000));
@@ -791,10 +792,10 @@ void testReaderWithWind(const std::string& sine5k, insv::NoiseMode mode, float t
 
 int main()
 {
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     // The DeepFilterNet model as the app finds it (ORBIS_DFN_MODEL_DIR wins).
     if (!std::getenv("ORBIS_DFN_MODEL_DIR"))
-        insv::VoiceIsolator::setModelDirectory(core::paths::modelDir("deepfilternet3"));
+        orbiscore::VoiceIsolator::setModelDirectory(core::paths::modelDir("deepfilternet3"));
 #endif
     const auto dir = std::filesystem::temp_directory_path() / "orbis_audio_mix_test";
     std::filesystem::create_directories(dir);
@@ -825,24 +826,24 @@ int main()
     testWindKeepsEngineCutsWind();
     testGeneralWind();
     testHissHum();
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     testVoice();
 #endif
     const std::string sine5k = (dir / "sine5k.wav").string();
     writeWav(sine5k, 3 * kRate / 2, [](int i) { return 0.5 * std::sin(i * 2.0 * std::numbers::pi * 5000.0 / kRate); });
-    testReaderWithWind(sine5k, insv::NoiseMode::MotorcycleWind);
-    testReaderWithWind(sine5k, insv::NoiseMode::Wind);
-    testReaderWithWind(sine5k, insv::NoiseMode::Hiss, 0.015f);
+    testReaderWithWind(sine5k, orbiscore::NoiseMode::MotorcycleWind);
+    testReaderWithWind(sine5k, orbiscore::NoiseMode::Wind);
+    testReaderWithWind(sine5k, orbiscore::NoiseMode::Hiss, 0.015f);
     const std::string hissHum = (dir / "hisshum.wav").string();
     {
         const auto sig = hissHumSignal(4 * kRate);
         writeWav(hissHum, 4 * kRate, [&](int i) { return static_cast<double>(sig[static_cast<size_t>(i)]); });
     }
     testHissHumAtFileStart(hissHum);
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     // The 5 kHz tone isn't speech, so at any strength the model would take
     // it out: alignment is checked at strength 0 (the same path, unchanged).
-    testReaderWithWind(sine5k, insv::NoiseMode::Voice, 2e-3f, 0.0f);
+    testReaderWithWind(sine5k, orbiscore::NoiseMode::Voice, 2e-3f, 0.0f);
 #endif
 
     std::filesystem::remove_all(dir);

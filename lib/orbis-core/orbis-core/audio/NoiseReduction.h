@@ -3,7 +3,7 @@
 
 #include <algorithm>
 
-namespace insv {
+namespace orbiscore {
 
 // Per-clip audio noise reduction: chosen per mic clip -- a video clip's own sound or a clip on an
 // audio track -- and applied by ClipAudioReader in playback and export alike.
@@ -66,4 +66,4 @@ struct NoiseReduction {
     bool operator!=(const NoiseReduction& o) const { return !(*this == o); }
 };
 
-} // namespace insv
+} // namespace orbiscore

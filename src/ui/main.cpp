@@ -24,7 +24,7 @@ extern "C" {
 #include <libavutil/log.h>
 }
 
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
 #include <orbis-core/audio/VoiceIsolator.h>
 #endif
 
@@ -127,11 +127,11 @@ int main(int argc, char *argv[])
     // options). Put numbers back to "C" before any thread starts; widgets
     // format through QLocale, which still follows the user's language.
     std::setlocale(LC_NUMERIC, "C");
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     // The voice noise modes' DeepFilterNet model ships with the app (installed
     // next to it, or the source tree in a dev build); ORBIS_DFN_MODEL_DIR wins.
     if (qEnvironmentVariableIsEmpty("ORBIS_DFN_MODEL_DIR"))
-        insv::VoiceIsolator::setModelDirectory(core::paths::modelDir("deepfilternet3"));
+        orbiscore::VoiceIsolator::setModelDirectory(core::paths::modelDir("deepfilternet3"));
 #endif
     // Qt's Wayland text-input-v3 warns "Try to disable surface X with focusing
     // surface Y" whenever focus has already moved to another surface (e.g. a

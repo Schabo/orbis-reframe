@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-// Residual 2-D stabilization. The gyro path (insv::GyroStabilizer)
+// Residual 2-D stabilization. The gyro path (orbiscore::GyroStabilizer)
 // counter-rotates the sphere by the rotation the .insv IMU actually recorded --
 // on rigidly-mounted motorcycle footage that is tiny (~0.1 deg/frame). What is
 // left is apparent bounce of distant content (road, horizon, scenery): a
@@ -22,7 +22,7 @@
 // It works on the gyro-de-rotated feature directions; an image-based
 // rotation solve was ruled out.
 
-namespace insv {
+namespace orbiscore {
 
 // Per-frame residual correction, radians, to ADD to the reframe pose's yaw /
 // pitch at a given video source-time. Built by ResidualPanEstimator::finish();
@@ -62,4 +62,4 @@ struct ResidualTrack {
     }
 };
 
-} // namespace insv
+} // namespace orbiscore

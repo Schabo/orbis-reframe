@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // Decodes the one picture in `bitstream` -- an elementary stream of codec
 // `codec` (an FFmpeg decoder name, "h264"), as a camera stores a preview frame
@@ -18,4 +18,4 @@ namespace insv {
 bool DecodeStillPicture(const std::vector<uint8_t>& bitstream, const char* codec, int maxSide,
                         Image& out, std::string& err);
 
-} // namespace insv
+} // namespace orbiscore

@@ -598,7 +598,7 @@ bool PlateScanner::run(FrameSource& src, const std::atomic<bool>* stop,
     return ok;
 }
 
-bool PlateScanner::follow(FrameSource& src, const insv::BlurQuad& seed, const FollowParams& fp,
+bool PlateScanner::follow(FrameSource& src, const orbiscore::BlurQuad& seed, const FollowParams& fp,
                           const std::atomic<bool>* stop,
                           const std::function<void(int64_t tMs, bool detected)>& progress, FollowResult& out,
                           std::string& err)

@@ -72,8 +72,8 @@ bool Save(const stitch::LensCalibration& c, QString* error)
 }
 
 std::optional<stitch::LensCalibration> ForClip(const std::string& serial, int lensGuard,
-                                               const insv::LensCalibExt& lens0,
-                                               const insv::LensCalibExt& lens1)
+                                               const orbiscore::LensCalibExt& lens0,
+                                               const orbiscore::LensCalibExt& lens1)
 {
     auto c = Load(serial, lensGuard);
     if (c && !c->matchesFile(lens0, lens1))

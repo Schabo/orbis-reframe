@@ -6,7 +6,7 @@
 
 #include "PlaybackController.h" // reuses PlaybackController::Segment / Placed
 
-#include <orbis-core/audio/AudioMixer.h> // insv::MixClip
+#include <orbis-core/audio/AudioMixer.h> // orbiscore::MixClip
 
 #include <condition_variable>
 #include <cstdint>
@@ -47,7 +47,7 @@ class AudioOutput;
 // idle -- no decoding -- and the video plays on its own clock.
 //
 // Everything heard is on the audio tracks (setMix) -- the video clips' own
-// streams too, as linked clips: summed by an insv::AudioMixer on the decoder
+// streams too, as linked clips: summed by an orbiscore::AudioMixer on the decoder
 // thread, then the whole mix goes through AudioMixer::limit -- the same code
 // the export runs.
 class AudioPlayer : public QObject {
@@ -64,12 +64,13 @@ public:
     void setTimeline(const QList<PlaybackController::Segment> &segments);
     // The extra audio tracks' clips, in timeline frames at 48 kHz.
     // Replaces the previous set; re-seeks so the change is heard at once.
-    void setMix(std::vector<insv::MixClip> clips);
+    void setMix(std::vector<orbiscore::MixClip> clips);
     // A media file's own sound in the timeline's place, as
     // PlaybackController::showSource plays its picture: `segment` and
     // `mix`. The timeline's setTimeline() / setMix() are kept meanwhile
     // and heard again from showTimeline().
-    void showSource(const PlaybackController::Segment &segment, std::vector<insv::MixClip> mix);
+    void showSource(const PlaybackController::Segment &segment,
+                    std::vector<orbiscore::MixClip> mix);
     void showTimeline();
 
     void play();
@@ -116,12 +117,12 @@ private:
     // must not hold m_mx.
     double playedFrames() const;
     void applyTimeline(const QList<PlaybackController::Segment> &segments);
-    void applyMix(std::vector<insv::MixClip> clips);
+    void applyMix(std::vector<orbiscore::MixClip> clips);
 
     // --- GUI thread: the timeline's while a source is shown ---
     bool m_sourceShown = false;
     QList<PlaybackController::Segment> m_timelineSegments;
-    std::vector<insv::MixClip> m_timelineMix;
+    std::vector<orbiscore::MixClip> m_timelineMix;
     void pullFrames(float *out, uint32_t frames); // AudioOutput's thread
 
     std::unique_ptr<AudioOutput> m_out;
@@ -131,7 +132,7 @@ private:
     std::condition_variable m_cv;
     QList<Placed> m_placed;
     bool m_timelineDirty = false;
-    std::vector<insv::MixClip> m_mixClips;
+    std::vector<orbiscore::MixClip> m_mixClips;
     bool m_mixDirty = false;
     bool m_playing = false;
     bool m_held = false;
@@ -172,5 +173,5 @@ private:
     QList<Placed> m_decPlaced;
     int m_decSegIndex = -1;
     int64_t m_decCursor = 0; // next timeline frame the decoder emits
-    std::unique_ptr<insv::AudioMixer> m_mixer;
+    std::unique_ptr<orbiscore::AudioMixer> m_mixer;
 };

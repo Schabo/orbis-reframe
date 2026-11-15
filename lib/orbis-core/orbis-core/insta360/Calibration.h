@@ -5,13 +5,13 @@
 #include <vector>
 
 // Parses the Insta360 `.insv` lens calibration: the extended per-lens MEI string
-// (insv::ReadInsvExtendedCalibrationString, orbis-core/insta360/InsvTrailer.h) that every
+// (orbiscore::ReadInsvExtendedCalibrationString, orbis-core/insta360/InsvTrailer.h) that every
 // X5 clip carries, or the shorter `offset_v3` form older models carry. The
 // trailer's short "Parameters" maker-note string (InsvMakerNotes::parameters,
 // docs/formats/insta360-x5.md §5.2) is not parsed: it describes an equidistant
 // lens model, and the stitch uses MEI only.
 
-namespace insv {
+namespace orbiscore {
 
 // The *extended* per-lens calibration (the Mei/MEI unified omnidirectional
 // model) that Insta360 Studio actually stitches with. It is NOT in the short
@@ -135,4 +135,4 @@ bool ParseExtendedCalibrationString(const std::string& s, InsvCalibration& out);
 // Same sanity checks and contract as ParseExtendedCalibrationString.
 bool ParseCalibrationV3String(const std::string& s, InsvCalibration& out);
 
-} // namespace insv
+} // namespace orbiscore

@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // "MC: Wind reduction" (reduce wind, keep the engine) noise reduction (tuned
 // in tools/audio_filter_bench, 2026-09-29). A
@@ -53,4 +53,4 @@ private:
     float m_strength = kDefaultStrength;
 };
 
-} // namespace insv
+} // namespace orbiscore

@@ -6,8 +6,8 @@
 #include <QString>
 
 #include <IStitchSource.h> // stitch::Frame
-#include <orbis-core/stitch/LensColour.h>     // insv::LensColour
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>     // orbiscore::LensColour
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection
 #include <LensFrame.h>     // render::LensFrame
 
 #include "InsetFeed.h" // video-track insets
@@ -224,8 +224,8 @@ public:
     // Seam alignment fine-tune and lens colour for one source
     // (IStitchSource::SetSeamCorrection / SetLensColour). Thread-safe; applies
     // from the next decoded frame -- seek to refresh a paused picture.
-    void setSeamCorrection(const QString &path, const insv::SeamCorrection &seam,
-                           const insv::LensColour &colour);
+    void setSeamCorrection(const QString &path, const orbiscore::SeamCorrection &seam,
+                           const orbiscore::LensColour &colour);
     // Privacy blur per clip id (IStitchSource::SetBlurQuads): the whole set,
     // a clip not in it = none. Per clip, not per source, as two clips of one
     // file may differ. Thread-safe; applies from the next decoded frame --
@@ -583,7 +583,7 @@ private:
     std::mutex m_rsMx;
     std::map<int, RsSetting> m_rsSettings; // guarded by m_rsMx
     // guarded by m_rsMx, same generation
-    std::map<QString, std::pair<insv::SeamCorrection, insv::LensColour>> m_seamCorrection;
+    std::map<QString, std::pair<orbiscore::SeamCorrection, orbiscore::LensColour>> m_seamCorrection;
     std::map<int, stitch::BlurQuadsFn> m_blurQuads;        // guarded by m_rsMx, same generation
     std::atomic<uint64_t> m_rsGen{0};          // bumped on every change
     uint64_t m_decRsGen = ~uint64_t(0);        // decoder: generation last applied

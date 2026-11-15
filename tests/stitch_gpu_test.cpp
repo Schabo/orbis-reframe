@@ -1,5 +1,5 @@
 // The GPU stitch (fisheye_stitch.comp) against the CPU's
-// (insv::FisheyeStitcher::renderEquirect) on the same synthetic lens
+// (orbiscore::FisheyeStitcher::renderEquirect) on the same synthetic lens
 // pictures, for each lens model: an X5's MEI lenses, and the DJI Avata 360's
 // theta-polynomial ones with their tangential pair. A different projection
 // moves the pattern and shows as a large difference; the two paths differ
@@ -36,9 +36,9 @@ constexpr int kEqW = 1024;
 
 // A smooth pattern that differs per lens and per channel, so a lens sampled
 // in the wrong place shows.
-insv::Image Pattern(int lens)
+orbiscore::Image Pattern(int lens)
 {
-    insv::Image im;
+    orbiscore::Image im;
     im.alloc(kLens, kLens);
     for (int y = 0; y < kLens; ++y)
         for (int x = 0; x < kLens; ++x) {
@@ -52,10 +52,10 @@ insv::Image Pattern(int lens)
 
 // Mean absolute difference per channel between the CPU's equirect and the
 // GPU's (RGBA), over the pixels either path covers.
-double Compare(const insv::FisheyeStitcher& st, render::VulkanFisheyeStitcher& gpu)
+double Compare(const orbiscore::FisheyeStitcher& st, render::VulkanFisheyeStitcher& gpu)
 {
-    const insv::Image l0 = Pattern(0), l1 = Pattern(1);
-    const insv::Image cpu = st.renderEquirect(l0, l1, kEqW);
+    const orbiscore::Image l0 = Pattern(0), l1 = Pattern(1);
+    const orbiscore::Image cpu = st.renderEquirect(l0, l1, kEqW);
     std::vector<uint8_t> out;
     std::string err;
     if (!gpu.stitch(l0.rgb.data(), l1.rgb.data(), st.gpuParams(), cpu.w, cpu.h, out, err)) {
@@ -76,9 +76,9 @@ double Compare(const insv::FisheyeStitcher& st, render::VulkanFisheyeStitcher& g
 void testMei(render::VulkanFisheyeStitcher& gpu)
 {
     // An X5's two lenses in the 10752 x 5376 side-by-side frame.
-    insv::InsvCalibration c;
+    orbiscore::InsvCalibration c;
     for (int i = 0; i < 2; ++i) {
-        insv::LensCalibExt e;
+        orbiscore::LensCalibExt e;
         e.xi = 2, e.w = 10752, e.h = 5376, e.focalRefW = 5312;
         e.fx = 4294.03 - 16 * i, e.fy = 4293.86 - 16 * i;
         e.cx = 2703.31 + 5370 * i, e.cy = 2684.03 + 8 * i;
@@ -88,8 +88,8 @@ void testMei(render::VulkanFisheyeStitcher& gpu)
         e.s[0] = -0.004, e.s[1] = -0.003, e.s[2] = 0.002, e.s[3] = 0.0004;
         c.lensesExt.push_back(e);
     }
-    insv::FisheyeStitcher st;
-    CHECK(st.configure(c, kLens, kLens, insv::StitchParams{}));
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(c, kLens, kLens, orbiscore::StitchParams{}));
     const double d = Compare(st, gpu);
     std::printf("MEI: mean difference %.3f levels\n", d);
     CHECK(d < 1.0);
@@ -101,53 +101,53 @@ void testThetaPoly(render::VulkanFisheyeStitcher& gpu)
     // of a side-by-side frame of its 3840 calibration frames, and its pose:
     // the master as it is, the slave a half turn about y with the file's
     // small deviation (as a reader puts the whole pose in the mount).
-    insv::InsvCalibration c;
+    orbiscore::InsvCalibration c;
     const double fx[2] = {1039.390, 1035.882}, fy[2] = {1039.506, 1036.047};
     const double cx[2] = {1933.663, 1907.738}, cy[2] = {1912.346, 1924.519};
     const double k[2][4] = {{0.07275, -0.02460, 0.01725, -0.00826},
                             {0.09104, -0.04372, 0.02720, -0.01079}};
     const double p[2][2] = {{0.00022, -0.00184}, {0.00005, 0.00054}};
     for (int i = 0; i < 2; ++i) {
-        insv::LensCalibExt e;
+        orbiscore::LensCalibExt e;
         e.fx = fx[i], e.fy = fy[i], e.cx = cx[i] + 3840 * i, e.cy = cy[i];
         std::copy(k[i], k[i] + 4, e.k);
         e.p[0] = p[i][0], e.p[1] = p[i][1];
         e.w = 7680, e.h = 3840, e.focalRefW = 3840;
         c.lensesExt.push_back(e);
     }
-    insv::StitchParams params;
-    params.lensModel = insv::LensModel::ThetaPoly;
+    orbiscore::StitchParams params;
+    params.lensModel = orbiscore::LensModel::ThetaPoly;
     params.thetaK5[0] = 0.00108, params.thetaK5[1] = 0.00132;
-    params.lensPose[0] = insv::LensPose{};
-    const insv::Mat3 m = insv::mul(insv::rotY(3.13), insv::rotX(0.004));
+    params.lensPose[0] = orbiscore::LensPose{};
+    const orbiscore::Mat3 m = orbiscore::mul(orbiscore::rotY(3.13), orbiscore::rotX(0.004));
     for (int r = 0; r < 3; ++r)
         for (int col = 0; col < 3; ++col)
             params.lensPose[1].mount[r * 3 + col] = m.m[r][col];
     params.lensPose[1].rollZeroDeg = 0;
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     CHECK(st.configure(c, kLens, kLens, params));
     const double d = Compare(st, gpu);
     std::printf("theta-polynomial: mean difference %.3f levels\n", d);
     CHECK(d < 1.0);
 
-    // With lens masks (insv::LensMask) as the Avata's body makes them: each
+    // With lens masks (orbiscore::LensMask) as the Avata's body makes them: each
     // lens sees its camera from 92-94 deg off its axis over a third of its
     // picture. Both paths leave it out alike, and it changes the picture.
-    insv::StitchParams masked = params;
+    orbiscore::StitchParams masked = params;
     for (int i = 0; i < 2; ++i) {
         masked.lensMask[i].clearDeg.assign(180, 0.0);
         for (int s = 0; s < 60; ++s)
             masked.lensMask[i].clearDeg[(110 + s + 15 * i) % 180] = 92.0 + 2.0 * std::sin(s / 9.0);
     }
-    insv::FisheyeStitcher maskSt;
+    orbiscore::FisheyeStitcher maskSt;
     CHECK(maskSt.configure(c, kLens, kLens, masked));
     CHECK(maskSt.gpuParams().maskActive == 1);
     const double dm = Compare(maskSt, gpu);
     std::printf("theta-polynomial, lens masks: mean difference %.3f levels\n", dm);
     CHECK(dm < 1.0);
     {
-        const insv::Image a = st.renderEquirect(Pattern(0), Pattern(1), kEqW);
-        const insv::Image b = maskSt.renderEquirect(Pattern(0), Pattern(1), kEqW);
+        const orbiscore::Image a = st.renderEquirect(Pattern(0), Pattern(1), kEqW);
+        const orbiscore::Image b = maskSt.renderEquirect(Pattern(0), Pattern(1), kEqW);
         size_t changed = 0;
         for (size_t i = 0; i < a.rgb.size(); ++i)
             changed += a.rgb[i] != b.rgb[i];
@@ -155,14 +155,14 @@ void testThetaPoly(render::VulkanFisheyeStitcher& gpu)
     }
 
     // The same lenses read as MEI land elsewhere: the comparison would see it.
-    insv::StitchParams wrong = params;
-    wrong.lensModel = insv::LensModel::Mei;
-    for (insv::LensCalibExt& e : c.lensesExt)
+    orbiscore::StitchParams wrong = params;
+    wrong.lensModel = orbiscore::LensModel::Mei;
+    for (orbiscore::LensCalibExt& e : c.lensesExt)
         e.xi = 1.0;
-    insv::FisheyeStitcher meiSt;
+    orbiscore::FisheyeStitcher meiSt;
     CHECK(meiSt.configure(c, kLens, kLens, wrong));
-    const insv::Image cpuA = st.renderEquirect(Pattern(0), Pattern(1), kEqW);
-    const insv::Image cpuB = meiSt.renderEquirect(Pattern(0), Pattern(1), kEqW);
+    const orbiscore::Image cpuA = st.renderEquirect(Pattern(0), Pattern(1), kEqW);
+    const orbiscore::Image cpuB = meiSt.renderEquirect(Pattern(0), Pattern(1), kEqW);
     double diff = 0;
     for (size_t i = 0; i < cpuA.rgb.size(); ++i)
         diff += std::abs(static_cast<int>(cpuA.rgb[i]) - static_cast<int>(cpuB.rgb[i]));

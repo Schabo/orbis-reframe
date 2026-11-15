@@ -7,7 +7,7 @@
 #include <PlateScanner.h>
 #include <StitchFrameSource.h>
 
-#include <orbis-core/stab/GyroStabilizer.h>     // insv::GyroStabilizer, StabConfig
+#include <orbis-core/stab/GyroStabilizer.h>     // orbiscore::GyroStabilizer, StabConfig
 #include <ClipMetadata.h>       // camera::ReadClipImu
 #include <NativeStitchSource.h> // stitch::NativeStitchSource
 #include <ProbeClip.h>          // stitch::ProbeClip
@@ -155,9 +155,9 @@ int main(int argc, char** argv)
     // stitch's capture-time correction, as in the app (PlateScanJob), so the
     // scan and the stills stitch the way playback / export do with the
     // stabilization on.
-    auto level = std::make_shared<insv::GyroStabilizer>();
+    auto level = std::make_shared<orbiscore::GyroStabilizer>();
     if (const auto imu = camera::ReadClipImu(input))
-        level->build(*imu, insv::StabConfig::preset(insv::StabMode::HorizonLock), 0.0);
+        level->build(*imu, orbiscore::StabConfig::preset(orbiscore::StabMode::HorizonLock), 0.0);
     auto captureTiming = [&level] {
         stitch::CaptureTiming t;
         if (level->ready()) {
@@ -202,7 +202,7 @@ int main(int argc, char** argv)
         const double up[3] = {rt[1] * fw[2] - rt[2] * fw[1], rt[2] * fw[0] - rt[0] * fw[2],
                               rt[0] * fw[1] - rt[1] * fw[0]};
         const double sx[4] = {-1, 1, 1, -1}, sy[4] = {1, 1, -1, -1};
-        insv::BlurQuad seed;
+        orbiscore::BlurQuad seed;
         for (int k = 0; k < 4; ++k) {
             double v[3], n = 0;
             for (int i = 0; i < 3; ++i) {
@@ -308,7 +308,7 @@ int main(int argc, char** argv)
         }
     }
 
-    auto blurFn = [&scan](int64_t ptsMs, std::vector<insv::BlurQuad>& out) { scan.quadsAt(ptsMs, out); };
+    auto blurFn = [&scan](int64_t ptsMs, std::vector<orbiscore::BlurQuad>& out) { scan.quadsAt(ptsMs, out); };
     for (const int64_t at : stills) {
         // Aim the view at the frame's first region.
         // The still is 1280x720, rectilinear, FOV its vertical angle.
@@ -351,7 +351,7 @@ int main(int argc, char** argv)
                     std::printf("fused view unavailable\n");
                     continue;
                 }
-                const stitch::Frame f = src.ReadViewFrame(1280, 720, [&](const insv::FramePts&, view::Pose& p, float[9]) {
+                const stitch::Frame f = src.ReadViewFrame(1280, 720, [&](const orbiscore::FramePts&, view::Pose& p, float[9]) {
                     p = pose;
                 });
                 if (f.rgba.empty())

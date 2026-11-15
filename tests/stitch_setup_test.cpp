@@ -1,5 +1,5 @@
 // stitch::DualFisheyeStitchSetup and the camera model's correction to its
-// files' lens calibration (insv::InsvModel::lensCorrection): which cameras
+// files' lens calibration (orbiscore::InsvModel::lensCorrection): which cameras
 // carry one, that the set-up applies it only when asked (the new stitcher)
 // and only over the file's calibration, not a chart calibration, and that
 // the stitch applies it as it does the seam correction, the two composing.
@@ -30,9 +30,9 @@ int g_failures = 0;
     } while (0)
 
 // A lens of the A1's (docs/formats/antigravity-a1.md): MEI, pitch -90.
-insv::LensCalibExt a1Lens(int i)
+orbiscore::LensCalibExt a1Lens(int i)
 {
-    insv::LensCalibExt e;
+    orbiscore::LensCalibExt e;
     e.xi = 1.50377;
     e.fx = i ? 3754.78 : 3742.54;
     e.fy = i ? 3755.14 : 3741.81;
@@ -58,9 +58,9 @@ camera::ClipMetadata a1Clip()
     c.projection = camera::Projection::DualFisheye;
     c.lenses.resize(2);
     for (int i = 0; i < 2; ++i)
-        c.lenses[i].calibration = a1Lens(i), c.lenses[i].pose = insv::Insta360LensPose(i);
+        c.lenses[i].calibration = a1Lens(i), c.lenses[i].pose = orbiscore::Insta360LensPose(i);
     c.calibrated = true;
-    const insv::InsvModel& m = insv::FindInsvModel(c.model);
+    const orbiscore::InsvModel& m = orbiscore::FindInsvModel(c.model);
     c.lensCorrection = m.lensCorrection;
     c.mountYawDeg = m.mountDeg[0];
     c.mountPitchDeg = m.mountDeg[1];
@@ -73,8 +73,8 @@ void testModels()
 {
     // Insta360's files line the lenses up as they are; the A1's need a
     // correction.
-    for (const insv::InsvModel& m : insv::InsvModels()) {
-        const bool none = m.lensCorrection == insv::SeamCorrection{};
+    for (const orbiscore::InsvModel& m : orbiscore::InsvModels()) {
+        const bool none = m.lensCorrection == orbiscore::SeamCorrection{};
         if (std::string(m.maker) == "Insta360")
             CHECK(none);
         else
@@ -85,19 +85,19 @@ void testModels()
 void testSetup()
 {
     const camera::ClipMetadata clip = a1Clip();
-    const insv::SeamCorrection none;
+    const orbiscore::SeamCorrection none;
     std::string err;
     {
-        insv::InsvCalibration cal;
-        insv::StitchParams p;
+        orbiscore::InsvCalibration cal;
+        orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              nullptr, true, cal, p, err));
         CHECK(p.modelCorrection == clip.lensCorrection);
     }
     {
         // The old stitcher and its per-clip fit: the file's as it is.
-        insv::InsvCalibration cal;
-        insv::StitchParams p;
+        orbiscore::InsvCalibration cal;
+        orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              nullptr, false, cal, p, err));
         CHECK(p.modelCorrection == none);
@@ -110,8 +110,8 @@ void testSetup()
             chart.lenses[i] = clip.lenses[i].calibration;
         }
         chart.lenses[1].pitch += 0.2;
-        insv::InsvCalibration cal;
-        insv::StitchParams p;
+        orbiscore::InsvCalibration cal;
+        orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              &chart, true, cal, p, err));
         CHECK(p.modelCorrection == none);
@@ -125,8 +125,8 @@ void testSetup()
             other.lenses[i] = clip.lenses[i].calibration;
         }
         other.fileLenses[0].cx += 1.0;
-        insv::InsvCalibration cal;
-        insv::StitchParams p;
+        orbiscore::InsvCalibration cal;
+        orbiscore::StitchParams p;
         CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                              &other, true, cal, p, err));
         CHECK(p.modelCorrection == clip.lensCorrection);
@@ -134,10 +134,10 @@ void testSetup()
 }
 
 // The largest difference between two stitchers' lens models.
-double lensDiff(const insv::FisheyeStitcher& a, const insv::FisheyeStitcher& b, int lens)
+double lensDiff(const orbiscore::FisheyeStitcher& a, const orbiscore::FisheyeStitcher& b, int lens)
 {
-    const insv::LensProjection& x = a.lensProjection(lens);
-    const insv::LensProjection& y = b.lensProjection(lens);
+    const orbiscore::LensProjection& x = a.lensProjection(lens);
+    const orbiscore::LensProjection& y = b.lensProjection(lens);
     double d = std::max({std::fabs(x.fx - y.fx), std::fabs(x.fy - y.fy), std::fabs(x.cx - y.cx),
                          std::fabs(x.cy - y.cy)});
     for (int r = 0; r < 3; ++r)
@@ -152,28 +152,28 @@ void testStitchCorrection()
     // correction would, and the two compose: turns and centres add, scales
     // multiply.
     const camera::ClipMetadata clip = a1Clip();
-    insv::InsvCalibration cal;
-    insv::StitchParams base;
+    orbiscore::InsvCalibration cal;
+    orbiscore::StitchParams base;
     std::string err;
     CHECK(stitch::DualFisheyeStitchSetup(clip, stitch::PreviewStitchConfig::LensGuard::None,
                                          nullptr, false, cal, base, err));
-    const insv::SeamCorrection& m = clip.lensCorrection;
-    insv::StitchParams model = base, viaSeam = base;
+    const orbiscore::SeamCorrection& m = clip.lensCorrection;
+    orbiscore::StitchParams model = base, viaSeam = base;
     model.modelCorrection = m;
     viaSeam.seam = m;
-    insv::FisheyeStitcher a, b, c;
+    orbiscore::FisheyeStitcher a, b, c;
     CHECK(a.configure(cal, 3840, 3840, base));
     CHECK(b.configure(cal, 3840, 3840, model));
     CHECK(c.configure(cal, 3840, 3840, viaSeam));
     CHECK(lensDiff(a, b, 1) > 1e-3); // lens 1 moves (~0.5 deg)
     CHECK(lensDiff(b, c, 0) == 0.0 && lensDiff(b, c, 1) == 0.0);
 
-    insv::SeamCorrection s;
+    orbiscore::SeamCorrection s;
     s.lens1RotDeg[0] = 0.1;
     s.lens1RotDeg[2] = -0.2;
     s.lens1Centre[1] = 0.0003;
     s.radialScale = 1.002;
-    insv::StitchParams both = base, summed = base;
+    orbiscore::StitchParams both = base, summed = base;
     both.modelCorrection = m;
     both.seam = s;
     for (int i = 0; i < 3; ++i)
@@ -181,7 +181,7 @@ void testStitchCorrection()
     for (int i = 0; i < 2; ++i)
         summed.seam.lens1Centre[i] = m.lens1Centre[i] + s.lens1Centre[i];
     summed.seam.radialScale = m.radialScale * s.radialScale;
-    insv::FisheyeStitcher d, e;
+    orbiscore::FisheyeStitcher d, e;
     CHECK(d.configure(cal, 3840, 3840, both));
     CHECK(e.configure(cal, 3840, 3840, summed));
     CHECK(lensDiff(d, e, 0) < 1e-9 && lensDiff(d, e, 1) < 1e-9);

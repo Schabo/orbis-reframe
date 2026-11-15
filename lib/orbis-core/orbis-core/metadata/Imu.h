@@ -11,7 +11,7 @@
 // fills one (for Insta360 files: MakeInsvImuTrack, InsvImu.h); the stabilizer
 // knows nothing about the file it came from.
 
-namespace insv {
+namespace orbiscore {
 
 // One inertial-measurement sample: the camera's accelerometer + gyroscope at a
 // point in time. GyroStabilizer integrates these into a per-frame orientation;
@@ -73,7 +73,7 @@ struct ImuTrack {
     double offsetSec = 0.0;
     // Seconds of the camera's clock per second of video, by what the mode
     // says: 1, but 60 in a timelapse of one frame every 2 s at 29.97 and
-    // 0.2997 in 100 fps slow motion stored at 29.97 (insv::CaptureScale).
+    // 0.2997 in 100 fps slow motion stored at 29.97 (orbiscore::CaptureScale).
     double captureScale = 1.0;
     double clockRate = 0.0; // the camera's frame clock vs that, a few ppm
 
@@ -114,4 +114,4 @@ struct ImuTrackPart {
 // The scale, clock rate, axes and readout are the first part's.
 ImuTrack JoinImuTracks(std::vector<ImuTrackPart>&& parts);
 
-} // namespace insv
+} // namespace orbiscore

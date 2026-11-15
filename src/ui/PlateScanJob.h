@@ -14,8 +14,8 @@
 #include <PlateScanner.h> // privacy::FollowResult
 
 #include <IStitchSource.h> // stitch::PreviewStitchConfig
-#include <orbis-core/stitch/LensColour.h>     // insv::LensColour
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection
+#include <orbis-core/stitch/LensColour.h>     // orbiscore::LensColour
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection
 
 #include <atomic>
 #include <cstdint>
@@ -32,8 +32,8 @@ struct Request {
     int64_t toMs = 0;
     double fps = 30.0;
     double syncAdjustMs = 0.0; // the clip's video <-> IMU fine-tune
-    insv::SeamCorrection seamCorrection;
-    insv::LensColour lensColour;
+    orbiscore::SeamCorrection seamCorrection;
+    orbiscore::LensColour lensColour;
     stitch::PreviewStitchConfig::LensGuard lensGuard = stitch::PreviewStitchConfig::LensGuard::Premium;
     std::optional<stitch::LensCalibration> lensCalibration;
     stitch::PreviewStitchConfig::Method stitchMethod = stitch::PreviewStitchConfig::Method::New;
@@ -75,7 +75,7 @@ struct FollowResult {
 // Called every few frames: the frame's source time, and whether it is the
 // backward pass.
 using FollowProgressFn = std::function<void(int64_t tMs, bool backward)>;
-FollowResult follow(const Request& req, const insv::BlurQuad& seed, int64_t backToMs,
+FollowResult follow(const Request& req, const orbiscore::BlurQuad& seed, int64_t backToMs,
                     const std::atomic<bool>& stop, const FollowProgressFn& progress);
 
 // A followed plate as the clip stores it (ClipItem::blurAdditions): every

@@ -5,7 +5,7 @@
 
 #include <memory>
 
-namespace insv {
+namespace orbiscore {
 
 // "Hiss / hum": takes out steady background noise -- hiss, fan or air
 // noise, mains hum -- and keeps what comes and goes or stands clear as a
@@ -57,4 +57,4 @@ private:
     float m_strength = kDefaultStrength;
 };
 
-} // namespace insv
+} // namespace orbiscore

@@ -11,7 +11,7 @@ struct AVFrame;
 struct AVPacket;
 struct SwrContext;
 
-namespace insv {
+namespace orbiscore {
 
 // Sequential decode of an Insta360 `.insv` file's audio stream (AAC on the
 // X5). The X5 muxes in *two* AAC streams -- one flagged `default`, one not
@@ -86,4 +86,4 @@ private:
     bool m_flushSent = false;
 };
 
-} // namespace insv
+} // namespace orbiscore

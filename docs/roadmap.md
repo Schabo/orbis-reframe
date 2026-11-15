@@ -50,10 +50,10 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    file format. A pure refactor: stitched frames, stabilizer output and exports
    stay identical. It comes before the library moves to its own
    repository. Built: the move to `lib/orbis-core/`, with its own
-   `CMakeLists.txt`, tests and tools, and the includes as
-   `<orbis-core/...>`. Next: the `insv::` namespace, the target names,
-   the `INSV_*` environment variables, and the core no longer including
-   the format folders' headers.
+   `CMakeLists.txt`, tests and tools, the includes as
+   `<orbis-core/...>`, and the `orbiscore::` namespace. Next: the target
+   names, the `INSV_*` environment variables, and the core no longer
+   including the format folders' headers.
 
 Everything else planned is under *Planned, not scheduled* below.
 
@@ -68,7 +68,7 @@ each is in its document in [`formats/`](formats/README.md).
 
 - **Insta360 X6**: built, experimental, from a contributor's work on the
   common camera model: the X6's facts are its row in the Insta360 reader's
-  table (`insv::InsvModel`) and fields read from the file (the focal
+  table (`orbiscore::InsvModel`) and fields read from the file (the focal
   reference, field 27); 6K named, 10-bit clips decoded and stitched with
   the stream's own colour matrix and range, HLG (Dolby Vision mode) clips
   recognised with a shipped HLG -> Rec.709 LUT; a contributor's clip with
@@ -107,7 +107,7 @@ each is in its document in [`formats/`](formats/README.md).
 - **DJI Avata 360**: built, experimental, from a contributor's clip
   (1920² per lens, 100 fps, D-Log M;
   [`formats/dji-360.md`](formats/dji-360.md)): the lens pose is data the
-  camera's reader fills in (`insv::LensPose`) instead of Insta360's fixed
+  camera's reader fills in (`orbiscore::LensPose`) instead of Insta360's fixed
   sensor clock and lens yaws (X5 output unchanged); DJI's lens model, a
   θ-polynomial with a tangential pair, beside MEI on every path that
   projects a lens; `camera::DjiReader` -- the schema picked by product
@@ -115,7 +115,7 @@ each is in its document in [`formats/`](formats/README.md).
   sun) and usable field of view per product, the cover picture as the
   preview, GPS from the metadata at 10 Hz, D-Log M named for DJI's own LUT
   in the Colour panel; where the drone's body shows in each lens, a mask
-  per lens (`insv::LensMask`) the stitch leaves out of the blend and its
+  per lens (`orbiscore::LensMask`) the stitch leaves out of the blend and its
   measurements. Chart calibration stays MEI-only and says so.
   Stabilization from the camera's fused attitude (the file has no raw
   gyro): DJI's 4 kHz quaternions as an orientation-only track, read from
@@ -212,13 +212,13 @@ each is in its document in [`formats/`](formats/README.md).
     serial, projection kind, the lenses with their calibration and which
     file and stream each comes from, colour and log profile, lens-guard
     profiles, capture-mode name, the proxy file, telemetry facts -- and on
-    demand the IMU (`ReadClipImu`, an `insv::ImuTrack`: samples, axis map,
+    demand the IMU (`ReadClipImu`, an `orbiscore::ImuTrack`: samples, axis map,
     video <-> IMU timing, readout), the GPS track and the vehicle's lean and
-    G-forces (`ReadClipTelemetry`: an `insv::GpsTrack` and an
-    `insv::MotionTrack` in the clip's video time) and the preview picture
+    G-forces (`ReadClipTelemetry`: an `orbiscore::GpsTrack` and an
+    `orbiscore::MotionTrack` in the clip's video time) and the preview picture
     (`ReadClipThumbnail`). One reader per camera family, asked in turn
     (`Insta360Reader`); Insta360's per-model differences are a table
-    (`insv::InsvModel`: IMU axis map, lens-guard profile names,
+    (`orbiscore::InsvModel`: IMU axis map, lens-guard profile names,
     capture-mode names). The stitch, sync, seam, stabilizer, export, plate
     scan, thumbnails, the Media information panel and the media pool's mode
     names read clips only through it; `GyroStabilizer` no longer knows the
@@ -236,7 +236,7 @@ each is in its document in [`formats/`](formats/README.md).
     in-camera cubemap (`Projection`) behind its own `IStitchSource`, an
     orientation track for cameras that record one, readout time per mode.
     The orientation track is built, from the Antigravity A1:
-    `insv::ImuTrack::orientation`, world up and a fixed horizontal
+    `orbiscore::ImuTrack::orientation`, world up and a fixed horizontal
     direction (the flight controller's north) over time in the IMU's axes.
     The stabilizer levels against its up instead of the accelerometer
     wherever the track has it (Horizon lock's anchor, the auto-level), and
@@ -249,7 +249,7 @@ each is in its document in [`formats/`](formats/README.md).
     samples is stabilized from the orientation alone (built for the X5's
     timelapse, then the DJI Avata 360's 4 kHz fused attitude; GoPro's
     `CORI` would plug in the same way), each frame placed by its own time
-    (`insv::ImuTrack::frameTimes`), since a timelapse's frames needn't be
+    (`orbiscore::ImuTrack::frameTimes`), since a timelapse's frames needn't be
     evenly spaced.
 
   New camera support keeps its differences in data -- the reader's

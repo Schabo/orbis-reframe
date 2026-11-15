@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 class ClipAudioReader;
 
@@ -65,4 +65,4 @@ private:
     std::vector<float> m_tmp;
 };
 
-} // namespace insv
+} // namespace orbiscore

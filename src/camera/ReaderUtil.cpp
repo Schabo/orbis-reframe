@@ -4,8 +4,8 @@
 
 namespace camera {
 
-Thumbnail ThumbnailFromRgb(const insv::Image& rgb) {
-    Thumbnail t{rgb.w & ~1, rgb.h & ~1, false, {insv::YcbcrMatrix::Bt601, false}, {}};
+Thumbnail ThumbnailFromRgb(const orbiscore::Image& rgb) {
+    Thumbnail t{rgb.w & ~1, rgb.h & ~1, false, {orbiscore::YcbcrMatrix::Bt601, false}, {}};
     t.nv12.resize(static_cast<size_t>(t.width) * t.height * 3 / 2);
     uint8_t* y = t.nv12.data();
     uint8_t* uv = y + static_cast<size_t>(t.width) * t.height;

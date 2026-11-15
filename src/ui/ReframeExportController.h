@@ -5,12 +5,12 @@
 #include <QObject>
 #include <QString>
 
-#include <orbis-core/audio/AudioMixer.h>     // insv::MixClip (Request::mix)
+#include <orbis-core/audio/AudioMixer.h>     // orbiscore::MixClip (Request::mix)
 #include <InsetCompositor.h> // exportpipe::InsetClipJob (Request::insets)
-#include <orbis-core/stab/GyroStabilizer.h> // insv::GyroStabilizer (ClipJob::stab)
+#include <orbis-core/stab/GyroStabilizer.h> // orbiscore::GyroStabilizer (ClipJob::stab)
 #include <IStitchSource.h>  // stitch::CaptureTiming
-#include <orbis-core/stitch/LensColour.h>     // insv::LensColour (ClipJob::lensColour)
-#include <orbis-core/stitch/SeamCorrection.h> // insv::SeamCorrection (ClipJob::seamCorrection)
+#include <orbis-core/stitch/LensColour.h>     // orbiscore::LensColour (ClipJob::lensColour)
+#include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection (ClipJob::seamCorrection)
 #include <PaneLayout.h>     // pane::Split (ClipJob::split)
 
 #include <ReframeRenderer.h> // exportpipe::PaneView
@@ -41,7 +41,7 @@ class NativeStitchSource;
 //
 // Audio: if anything is on the audio tracks (Request::mix -- the video clips'
 // own streams are linked clips there too), the output gets one AAC track.
-// An insv::AudioMixer sums them at the output timeline's frames, fed after
+// An orbiscore::AudioMixer sums them at the output timeline's frames, fed after
 // every video frame up to that frame's end -- so the audio spans exactly the
 // exported video and rounding never accumulates across clips -- and the
 // whole mix is limited: the same code playback runs (AudioPlayer).
@@ -65,12 +65,13 @@ public:
     // is computed for (the X5's rolling shutter, `stab->readoutSec()`).
     // Inactive when `stab` is null / not ready. Shared by playback
     // (MainWindow) and export.
-    static stitch::CaptureTiming captureTimingFor(std::shared_ptr<const insv::GyroStabilizer> stab);
+    static stitch::CaptureTiming
+    captureTimingFor(std::shared_ptr<const orbiscore::GyroStabilizer> stab);
     // A stabilizer for clip file `path` under `config`, with the source's
     // sync fine-tune `syncMs`: built from its IMU track (reads the file).
     // Null when it has none.
-    static std::shared_ptr<const insv::GyroStabilizer>
-    buildStabilizer(const QString &path, const insv::StabConfig &config, double syncMs);
+    static std::shared_ptr<const orbiscore::GyroStabilizer>
+    buildStabilizer(const QString &path, const orbiscore::StabConfig &config, double syncMs);
 
     // One timeline clip's contribution to the export.
     struct ClipJob {
@@ -93,7 +94,7 @@ public:
         // one at-or-after trimIn, and a frame of phase error undoes most of
         // the stick shake correction) and applied after the pose in the sphere
         // frame, like the viewport does. Null => no stabilization.
-        std::shared_ptr<const insv::GyroStabilizer> stab;
+        std::shared_ptr<const orbiscore::GyroStabilizer> stab;
         // The Colour panel grade (its LUT and four adjustments), static for
         // the whole clip (no colour keyframing). Default => neutral.
         color::Grade colorGrade;
@@ -105,8 +106,8 @@ public:
         bool seamFlow = true;
         std::optional<stitch::LensCalibration> lensCalibration;
         // Measured seam fine-tune (lens-1 yaw/pitch/roll, deg) and lens colour.
-        insv::SeamCorrection seamCorrection;
-        insv::LensColour lensColour;
+        orbiscore::SeamCorrection seamCorrection;
+        orbiscore::LensColour lensColour;
         // Privacy blur: the plate regions per source time, blurred in the
         // stitch (IStitchSource::SetBlurQuads); empty => none. Safe to call
         // from the export thread (captures its scan).
@@ -135,7 +136,7 @@ public:
         int stitchHeight = 0;
         QList<ClipJob> clips;
         // The extra audio tracks' clips, timeline frames at 48 kHz.
-        std::vector<insv::MixClip> mix;
+        std::vector<orbiscore::MixClip> mix;
         // The overlay tracks' clips, bottom-most first: composited into every
         // output frame at its timeline time.
         std::vector<exportpipe::InsetClipJob> insets;

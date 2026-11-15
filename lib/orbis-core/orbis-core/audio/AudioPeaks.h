@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 // A clip's waveform for the timeline: the peak level of each 1/perSec slice of
 // an audio stream, in source time. Mono (the louder of the channels), linear
@@ -26,4 +26,4 @@ struct AudioPeaks {
 AudioPeaks ComputeAudioPeaks(const std::vector<AudioPart>& parts, int stream,
                              const std::atomic<bool>* cancel = nullptr);
 
-} // namespace insv
+} // namespace orbiscore

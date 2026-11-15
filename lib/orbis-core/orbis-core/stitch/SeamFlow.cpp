@@ -6,7 +6,7 @@
 #include <numbers>
 #include <thread>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -235,4 +235,4 @@ void SeamFlowWindow::solve(SeamFlowField& out) const
         x *= w;
 }
 
-} // namespace insv
+} // namespace orbiscore

@@ -112,7 +112,7 @@ inline std::vector<uint8_t> insvTrailer(const std::vector<TrailerRecord>& record
 
 // Gives the MP4 at `path` the card path the X5 and the Antigravity A1
 // write into its header (`moov` / `udta`, a `free` box after an `AMBA` one;
-// insv::ReadInsvHeldName), naming the file `name`. The `moov` must be the
+// orbiscore::ReadInsvHeldName), naming the file `name`. The `moov` must be the
 // file's last box, as FFmpeg writes it and before a trailer is appended:
 // nothing after it moves, so no chunk offset changes. False otherwise.
 inline bool holdName(const std::string& path, const std::string& name)

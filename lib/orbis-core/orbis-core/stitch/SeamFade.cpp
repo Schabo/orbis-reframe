@@ -6,7 +6,7 @@
 #include <limits>
 #include <numbers>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -202,4 +202,4 @@ void SeamFadeWindow::solve(const float* seamColour, std::vector<float>& share) c
     SeamFadeAlongSeam(g, share);
 }
 
-} // namespace insv
+} // namespace orbiscore

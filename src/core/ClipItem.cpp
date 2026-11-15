@@ -188,7 +188,7 @@ bool ClipItem::setEffects(const fx::ClipEffects &e)
     return true;
 }
 
-bool ClipItem::setStabilization(const insv::StabConfig &config)
+bool ClipItem::setStabilization(const orbiscore::StabConfig &config)
 {
     if (flat)
         return false; // no gyro data

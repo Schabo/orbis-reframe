@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace insv {
+namespace orbiscore {
 
 // Lines an Insta360 trailer's IMU up with the video (docs/formats/insta360-x5.md
 // §7.1) and hands it over as the stabilizer's ImuTrack, taking the samples out
@@ -45,4 +45,4 @@ namespace insv {
 // times, the track is empty and that is logged.
 ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& model);
 
-} // namespace insv
+} // namespace orbiscore

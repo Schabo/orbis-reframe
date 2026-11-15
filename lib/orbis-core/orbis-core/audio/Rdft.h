@@ -14,7 +14,7 @@ extern "C" {
 #include <numbers>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 inline std::vector<float> sqrtHann(int n)
 {
@@ -62,4 +62,4 @@ struct Rdft {
     void inverse() { invFn(inv, real, cplx, sizeof(AVComplexFloat)); }
 };
 
-} // namespace insv
+} // namespace orbiscore

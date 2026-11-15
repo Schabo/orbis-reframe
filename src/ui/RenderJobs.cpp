@@ -127,11 +127,11 @@ ClipViewSource::Spec viewSpec(const ClipItem &c, const Timeline &timeline,
 // layer's InsetFeed::Clip::pictureKey.
 QString viewKey(const ClipItem &c, const Timeline &timeline)
 {
-    insv::SeamCorrection seam;
+    orbiscore::SeamCorrection seam;
     timeline.sourceSeamCorrection(c.sourcePath, seam);
-    insv::LensColour colour;
+    orbiscore::LensColour colour;
     timeline.sourceLensColour(c.sourcePath, colour);
-    const insv::StabConfig &s = c.stabilization;
+    const orbiscore::StabConfig &s = c.stabilization;
     QString key = QStringLiteral("%1|%2|%3,%4,%5,%6|%7,%8|%9,%10,%11")
                       .arg(c.id)
                       .arg(c.sourcePath)
@@ -268,7 +268,7 @@ std::vector<TransitionLayer> transitionLayers(const Timeline &timeline)
     return layers;
 }
 
-std::vector<insv::MixClip> mixClips(const Timeline &timeline)
+std::vector<orbiscore::MixClip> mixClips(const Timeline &timeline)
 {
     constexpr int kFramesPerMs = 48; // playback and export both mix at 48 kHz
     // Each transition's half span, by the clip it runs on past (its end at
@@ -286,7 +286,7 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline)
             beforeStart[t.rightClipId] = {span.cutMs, span.durationMs / 2, t.usesHandles()};
         }
     }
-    std::vector<insv::MixClip> mix;
+    std::vector<orbiscore::MixClip> mix;
     for (int i = 0; i < timeline.trackCount(); ++i) {
         const Track &t = timeline.trackAt(i);
         if (t.muted || t.kind != Track::Kind::Audio)
@@ -294,7 +294,7 @@ std::vector<insv::MixClip> mixClips(const Timeline &timeline)
         for (const TrackClip &c : t.clips) {
             if (c.muted || c.mediaMissing)
                 continue;
-            insv::MixClip m;
+            orbiscore::MixClip m;
             m.parts = camera::ClipAudioParts(c.sourcePath.toStdString());
             m.stream = c.stream;
             m.startFrame = c.startMs * kFramesPerMs;
@@ -622,7 +622,7 @@ ReframeExportController::ClipJob clipJob(const ClipItem &c, const Timeline &time
     // Stabilization (Lean follow / Horizon Lock / Custom) is a per-frame
     // sphere-frame matrix next to the reframe pose, applied after it like the
     // viewport's pc.stab -- the native stitch itself is never stabilized.
-    const bool nativeStab = c.stabilization.mode != insv::StabMode::Off;
+    const bool nativeStab = c.stabilization.mode != orbiscore::StabMode::Off;
     ReframeExportController::ClipJob job;
     job.flat = c.flat;
     job.clipPath = c.sourcePath;

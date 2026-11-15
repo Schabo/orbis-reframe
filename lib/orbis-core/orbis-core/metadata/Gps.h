@@ -11,7 +11,7 @@
 // camera's reader fills one (for Insta360 files: from ReadInsvGps,
 // InsvTrailer.h); the telemetry knows nothing about the file it came from.
 
-namespace insv {
+namespace orbiscore {
 
 struct GpsFix {
     // Video time of the file: ms after its first frame, negative before it.
@@ -76,4 +76,4 @@ std::optional<GpsClockFit> AlignGpsByAcceleration(const GpsTrack& track,
                                                   const std::vector<float>& forwardG,
                                                   double stepSec);
 
-} // namespace insv
+} // namespace orbiscore

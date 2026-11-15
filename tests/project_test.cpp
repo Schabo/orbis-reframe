@@ -50,7 +50,7 @@ void testProjectJson()
             if (cam && !cam->clips.isEmpty()) {
                 const int mic = cam->clips.first().id;
                 p.timeline()->setAudioClipLevel(mic, -4.5, true);
-                p.timeline()->setAudioClipNoise(mic, {insv::NoiseMode::MotorcycleWind, 0.5f});
+                p.timeline()->setAudioClipNoise(mic, {orbiscore::NoiseMode::MotorcycleWind, 0.5f});
             }
         }
         ColorGrade grade;
@@ -95,7 +95,7 @@ void testProjectJson()
         CHECK(p.previewStitch().width == 2560);
         CHECK(p.previewStitch() == sc);
 
-        insv::StabConfig stab = insv::StabConfig::preset(insv::StabMode::Custom);
+        orbiscore::StabConfig stab = orbiscore::StabConfig::preset(orbiscore::StabMode::Custom);
         stab.windowYawSec = 0.7f;
         stab.windowRollSec = 1.3f;
         stab.horizonLockAmount = 0.25f;
@@ -105,7 +105,7 @@ void testProjectJson()
         stab.autoLevel = false;
         p.timeline()->setClipStabilization(a, stab); // Stabilization panel
         CHECK(p.timeline()->clipById(a)->stabilization == stab);
-        CHECK(p.timeline()->clipAt(1).stabilization == insv::StabConfig{}); // per clip
+        CHECK(p.timeline()->clipAt(1).stabilization == orbiscore::StabConfig{}); // per clip
 
         OutputSettings out; // Project Settings panel
         out.aspect = OutputSettings::Aspect::Portrait9x16;
@@ -176,9 +176,10 @@ void testProjectJson()
                 const TrackClip &m = cam.clips[0];
                 CHECK(m.linkedClipId == a.id && m.stream == 1);
                 CHECK(m.gainDb == -4.5 && m.muted);
-                CHECK(m.noise.mode == insv::NoiseMode::MotorcycleWind && m.noise.strength == 0.5f);
+                CHECK(m.noise.mode == orbiscore::NoiseMode::MotorcycleWind &&
+                      m.noise.strength == 0.5f);
                 CHECK(cam.clips[1].linkedClipId == tl->clipAt(1).id && cam.clips[1].stream == 0);
-                CHECK(cam.clips[1].noise == insv::NoiseReduction{} && !cam.clips[1].muted);
+                CHECK(cam.clips[1].noise == orbiscore::NoiseReduction{} && !cam.clips[1].muted);
             }
         }
         CHECK(a.speed == 0.5);
@@ -219,9 +220,9 @@ void testProjectJson()
         const stitch::PreviewStitchConfig &sc = p.previewStitch();
         CHECK(sc.width == 2560 && sc.height == 1280);
 
-        CHECK(tl->clipAt(1).stabilization == insv::StabConfig{}); // never touched
-        const insv::StabConfig &st = tl->clipAt(0).stabilization; // round-trips
-        CHECK(st.mode == insv::StabMode::Custom);
+        CHECK(tl->clipAt(1).stabilization == orbiscore::StabConfig{}); // never touched
+        const orbiscore::StabConfig &st = tl->clipAt(0).stabilization; // round-trips
+        CHECK(st.mode == orbiscore::StabMode::Custom);
         CHECK(st.windowYawSec > 0.69f && st.windowYawSec < 0.71f);
         CHECK(st.windowRollSec > 1.29f && st.windowRollSec < 1.31f);
         CHECK(st.horizonLockAmount > 0.24f && st.horizonLockAmount < 0.26f);
@@ -468,7 +469,7 @@ void testProjectConvertSound()
         const TrackClip &m = cam.clips[0]; // the picked stream: the camera's own mic
         CHECK(m.stream == 1 && m.linkedClipId == tl->clipAt(0).id);
         // Its level and noise, muted by the video track's old "M".
-        CHECK(m.gainDb == -4.0 && m.muted && m.noise.mode == insv::NoiseMode::MotorcycleWind);
+        CHECK(m.gainDb == -4.0 && m.muted && m.noise.mode == orbiscore::NoiseMode::MotorcycleWind);
         // The missing file: as many streams as its picked one needs.
         CHECK(cam.clips[1].stream == 0 && cam.clips[1].linkedClipId == tl->clipAt(1).id);
     }
@@ -520,19 +521,19 @@ void testProjectTracksJson()
         mic.trimInMs = 1000;
         mic.trimOutMs = 5000;
         mic.speed = 0.5;
-        mic.noise = {insv::NoiseMode::Wind, 0.4f}; // "windGeneral"
+        mic.noise = {orbiscore::NoiseMode::Wind, 0.4f}; // "windGeneral"
         p.timeline()->insertTrackClip(t2, mic);
         TrackClip quiet = mic; // later on the same track, "hiss"
         quiet.startMs = 9000;
         quiet.speed = 1.0;
-        quiet.noise = {insv::NoiseMode::Hiss, 0.8f};
+        quiet.noise = {orbiscore::NoiseMode::Hiss, 0.8f};
         p.timeline()->insertTrackClip(t2, quiet);
         TrackClip talk = quiet; // "voice", "voiceAmbience"
         talk.startMs = 14000;
-        talk.noise = {insv::NoiseMode::Voice, 1.0f};
+        talk.noise = {orbiscore::NoiseMode::Voice, 1.0f};
         p.timeline()->insertTrackClip(t2, talk);
         talk.startMs = 19000;
-        talk.noise = {insv::NoiseMode::VoiceAmbience, 0.5f};
+        talk.noise = {orbiscore::NoiseMode::VoiceAmbience, 0.5f};
         p.timeline()->insertTrackClip(t2, talk);
         p.timeline()->setTrackAudio(t2, 0.0, true);
         useOldStitcher(*p.timeline());
@@ -562,16 +563,16 @@ void testProjectTracksJson()
         CHECK(m.startMs == 2000 && m.trimInMs == 500 && m.trimOutMs == 9500);
         CHECK(m.gainDb == -6.0 && m.fadeInMs == 1000 && m.fadeOutMs == 2500);
         CHECK(m.stream == -1 && m.speed == 1.0);
-        CHECK(m.noise.mode == insv::NoiseMode::Off);
+        CHECK(m.noise.mode == orbiscore::NoiseMode::Off);
         const Track &t2 = tl->trackAt(1);
         CHECK(t2.name == "Audio 1" && t2.muted && t2.clips.size() == 4);
         CHECK(t2.clips[0].stream == 1 && t2.clips[0].speed == 0.5);
-        CHECK(t2.clips[0].noise.mode == insv::NoiseMode::Wind && t2.clips[0].noise.strength == 0.4f);
+        CHECK(t2.clips[0].noise.mode == orbiscore::NoiseMode::Wind && t2.clips[0].noise.strength == 0.4f);
         CHECK(t2.clips[0].timelineDurationMs() == 8000);
         CHECK(t2.clips[1].startMs == 9000);
-        CHECK(t2.clips[1].noise.mode == insv::NoiseMode::Hiss && t2.clips[1].noise.strength == 0.8f);
-        CHECK(t2.clips[2].noise.mode == insv::NoiseMode::Voice && t2.clips[2].noise.strength == 1.0f);
-        CHECK(t2.clips[3].noise.mode == insv::NoiseMode::VoiceAmbience && t2.clips[3].noise.strength == 0.5f);
+        CHECK(t2.clips[1].noise.mode == orbiscore::NoiseMode::Hiss && t2.clips[1].noise.strength == 0.8f);
+        CHECK(t2.clips[2].noise.mode == orbiscore::NoiseMode::Voice && t2.clips[2].noise.strength == 1.0f);
+        CHECK(t2.clips[3].noise.mode == orbiscore::NoiseMode::VoiceAmbience && t2.clips[3].noise.strength == 0.5f);
     }
 
     // A file without "tracks" loads with no extra tracks but the clip's
@@ -1309,7 +1310,7 @@ void testMeasurementsWritten()
     p.timeline()->setSourceSyncAdjust(a, -3.1);
     p.timeline()->setSourceSeamCorrection(b, {{-0.5, 0.25, 0.1}}, 2);
     CHECK(!p.modified()); // not an edit
-    insv::SeamCorrection seam{{1.0, 1.0, 1.0}};
+    orbiscore::SeamCorrection seam{{1.0, 1.0, 1.0}};
     CHECK(p.timeline()->sourceSyncAdjust(a) == -3.1);
     CHECK(std::isnan(p.timeline()->sourceSyncAdjust(b)));
     CHECK(std::isnan(p.timeline()->sourceSyncAdjust(tmp.path() + "/c.insv")));
@@ -1341,15 +1342,15 @@ void testMeasurementsWritten()
     CHECK(savedClip(0).syncAdjustMs == 0.4 && !fileText().contains("\"syncAdjustMs\""));
 
     // The lens colour likewise: per source and lens guard, straight into the file.
-    insv::LensColour colour;
+    orbiscore::LensColour colour;
     colour.logRatio[2] = -0.06;
     colour.slope[0] = 0.004;
     colour.spread = 0.2;
     p.timeline()->setSourceLensColour(b, colour, 2);
     CHECK(!p.modified());
-    insv::LensColour got;
+    orbiscore::LensColour got;
     CHECK(p.timeline()->sourceLensColour(b, 2, got) && got == colour);
-    CHECK(!p.timeline()->sourceLensColour(b, 1, got) && got == insv::LensColour{});
+    CHECK(!p.timeline()->sourceLensColour(b, 1, got) && got == orbiscore::LensColour{});
     CHECK(!p.timeline()->sourceLensColour(a, 2, got));
     CHECK(savedClip(1).lensColourGuard == 2 && savedClip(1).lensColour == colour);
     CHECK(savedClip(0).lensColourGuard == -1);
@@ -1393,7 +1394,7 @@ void testOldSeamMeasurement()
     {
         Project q;
         CHECK(q.load(file) && q.timeline()->count() == 1);
-        insv::SeamCorrection seam;
+        orbiscore::SeamCorrection seam;
         CHECK(q.timeline()->sourceSeamCorrection(a, 2, seam) && seam.radialScale == 1.001);
     }
     // Rewritten as the older estimator saved it.
@@ -1413,8 +1414,8 @@ void testOldSeamMeasurement()
     f.close();
     Project q;
     CHECK(q.load(file) && q.timeline()->count() == 1);
-    insv::SeamCorrection seam;
-    CHECK(!q.timeline()->sourceSeamCorrection(a, 2, seam) && seam == insv::SeamCorrection{});
+    orbiscore::SeamCorrection seam;
+    CHECK(!q.timeline()->sourceSeamCorrection(a, 2, seam) && seam == orbiscore::SeamCorrection{});
     CHECK(q.timeline()->clipAt(0).seamAdjustGuard == -1);
 }
 
@@ -1426,7 +1427,7 @@ void testLensColourMethod()
     CHECK(tmp.isValid());
     const QString file = projectfolder::create(tmp.path(), "Ride");
     const QString a = tmp.path() + "/a.insv";
-    insv::LensColour colour;
+    orbiscore::LensColour colour;
     colour.logRatio[0] = 0.03;
     colour.slope[1] = -0.002;
     {
@@ -1438,7 +1439,7 @@ void testLensColourMethod()
     {
         Project q;
         CHECK(q.load(file) && q.timeline()->count() == 1);
-        insv::LensColour got;
+        orbiscore::LensColour got;
         CHECK(q.timeline()->sourceLensColour(a, 2, got) && got == colour);
     }
     QFile f(file);
@@ -1449,8 +1450,8 @@ void testLensColourMethod()
     QJsonArray clips = timeline["clips"].toArray();
     QJsonObject clip = clips[0].toObject();
     QJsonObject lc = clip["lensColour"].toObject();
-    CHECK(lc["method"].toInt() == insv::kLensColourMethod);
-    lc["method"] = insv::kLensColourMethod + 1;
+    CHECK(lc["method"].toInt() == orbiscore::kLensColourMethod);
+    lc["method"] = orbiscore::kLensColourMethod + 1;
     clip["lensColour"] = lc;
     clips[0] = clip;
     timeline["clips"] = clips;
@@ -1615,7 +1616,7 @@ void testLensCalibrationStore()
     cal.created = "2026-11-02T10:00:00Z";
     cal.squareMm = 41.96;
     for (int i = 0; i < 2; ++i) {
-        insv::LensCalibExt e;
+        orbiscore::LensCalibExt e;
         e.xi = 2, e.fx = 4294.03 - 16 * i, e.fy = 4293.86, e.cx = 2703.31 + 5370 * i;
         e.cy = 2684.03, e.w = 10752, e.h = 5376, e.focalRefW = 5312;
         cal.fileLenses[i] = e;
@@ -1629,7 +1630,7 @@ void testLensCalibrationStore()
     CHECK(!lenscal::Load("IAHEA25088AYDQ", 2)); // another guard
     CHECK(!lenscal::Load("OTHER", 0));
     CHECK(lenscal::ForClip("IAHEA25088AYDQ", 0, cal.fileLenses[0], cal.fileLenses[1]) == cal);
-    insv::LensCalibExt other = cal.fileLenses[1];
+    orbiscore::LensCalibExt other = cal.fileLenses[1];
     other.fx += 1; // a file with another calibration: not for it
     CHECK(!lenscal::ForClip("IAHEA25088AYDQ", 0, cal.fileLenses[0], other));
     QDir(lenscal::StoreDir()).removeRecursively();
@@ -1661,7 +1662,7 @@ void testLensCalibrationJson()
     cal.transferDeg = 0.019;
     cal.coverageDeg[0] = 100, cal.coverageDeg[1] = 95;
     for (int i = 0; i < 2; ++i) {
-        insv::LensCalibExt e;
+        orbiscore::LensCalibExt e;
         e.xi = 2, e.fx = 4294.03 + i, e.fy = 4293.86, e.cx = 2703.31 + 5370 * i, e.cy = 2684.03;
         e.yaw = 0.241 / 3, e.pitch = 0.068, e.roll = 89.993, e.tz = -0.031796 * i;
         e.k[0] = 0.22969893, e.k[3] = -3.16975212, e.p[1] = 0.00040147, e.s[2] = 0.00195414;
@@ -1682,7 +1683,7 @@ void testLensCalibrationJson()
         const int a2 = tl->appendClip(a, 10000, 30.0, 7680, 3840, 2); // the same file
         CHECK(tl->clipById(a1)->lensCalibration == cal && tl->clipById(a2)->lensCalibration == cal);
         // Measured through the file's calibration: gone.
-        insv::SeamCorrection seam;
+        orbiscore::SeamCorrection seam;
         CHECK(!tl->sourceSeamCorrection(a, seam) && tl->clipById(a1)->seamAdjustGuard == -1);
         CHECK(p.save(file, &err));
         CHECK(document().value("version").toInt() == Project::kStitchFormatVersion);
@@ -2096,12 +2097,13 @@ void testFlatClipJson()
     {
         Project p;
         const int a = p.timeline()->appendClip(insv, 10000, 30.0, 7680, 3840, 2);
-        p.timeline()->setClipStabilization(a, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        p.timeline()->setClipStabilization(
+            a, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
         const int b = p.timeline()->appendClip(phone, 8000, 60.0, 1080, 1920, 1, true);
         const ClipItem *flat = p.timeline()->clipById(b);
         CHECK(flat && flat->flat && flat->fit == ClipItem::Fit::Bars);
         // a flat clip doesn't take its neighbour's stabilization
-        CHECK(flat && flat->stabilization.mode == insv::StabMode::Off);
+        CHECK(flat && flat->stabilization.mode == orbiscore::StabMode::Off);
         p.timeline()->setClipFit(b, ClipItem::Fit::Fill);
         p.timeline()->setClipTrimIn(b, 1000);
         p.timeline()->setClipSpeed(b, 2.0);
@@ -2111,14 +2113,15 @@ void testFlatClipJson()
         // the 360-only edits don't take on a flat clip
         p.timeline()->upsertClipReframeKey(b, 2000, {0.5f, 0.0f, 0.0f, 1.0f});
         p.timeline()->setClipBlurPlates(b, true);
-        p.timeline()->setClipStabilization(b, insv::StabConfig::preset(insv::StabMode::LeanFollow));
+        p.timeline()->setClipStabilization(
+            b, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
         CHECK(flat->reframe.isEmpty() && !flat->blurPlates &&
-              flat->stabilization.mode == insv::StabMode::Off);
+              flat->stabilization.mode == orbiscore::StabMode::Off);
         p.timeline()->setClipFit(a, ClipItem::Fit::Fill); // no-op on a 360 clip
         CHECK(p.timeline()->clipById(a)->fit == ClipItem::Fit::Bars);
         // a 360 clip after a flat one takes the 360 clip's stabilization
         const int c = p.timeline()->appendClip(insv, 10000, 30.0, 7680, 3840, 0);
-        CHECK(p.timeline()->clipById(c)->stabilization.mode == insv::StabMode::LeanFollow);
+        CHECK(p.timeline()->clipById(c)->stabilization.mode == orbiscore::StabMode::LeanFollow);
         useOldStitcher(*p.timeline());
         CHECK(p.save(file, &err));
         CHECK(versionOf() == 11);

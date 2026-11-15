@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-MotionTelemetry::MotionTelemetry(insv::MotionTrack track) : m_track(std::move(track)) {}
+MotionTelemetry::MotionTelemetry(orbiscore::MotionTrack track) : m_track(std::move(track)) {}
 
 std::optional<MotionTelemetry::Values> MotionTelemetry::sample(size_t i) const
 {

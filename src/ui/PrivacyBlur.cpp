@@ -44,7 +44,7 @@ stitch::BlurQuadsFn PrivacyBlur::blurFor(const ClipItem &c) const
     if (scan)
         removed = resolveRemovals(c, *scan);
     const double fps = c.fps;
-    return [scan, removed, added = c.blurAdditions, fps](int64_t ptsMs, std::vector<insv::BlurQuad> &out) {
+    return [scan, removed, added = c.blurAdditions, fps](int64_t ptsMs, std::vector<orbiscore::BlurQuad> &out) {
         if (scan)
             scan->quadsAt(ptsMs, out, removed.get());
         privacy::addedQuadsAt(added, ptsMs, fps, out);

@@ -110,8 +110,8 @@ struct Entry {
     int64_t timeMs = 0;
     stitch::PreviewStitchConfig::LensGuard guard = stitch::PreviewStitchConfig::LensGuard::Premium;
     bool newStitcher = false;
-    std::optional<insv::SeamCorrection> seam;
-    std::optional<insv::LensColour> colour;
+    std::optional<orbiscore::SeamCorrection> seam;
+    std::optional<orbiscore::LensColour> colour;
     std::string ref;
     double refRotDeg[3] = {0, 0, 0}; // z, y, x
 };
@@ -171,7 +171,7 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                     err = where + "seam= wants Y,P,R,CU,CV,S";
                     return false;
                 }
-                insv::SeamCorrection s;
+                orbiscore::SeamCorrection s;
                 for (int i = 0; i < 3; ++i)
                     s.lens1RotDeg[i] = a[i];
                 s.lens1Centre[0] = a[3] * 0.01;
@@ -185,7 +185,7 @@ bool ParseList(const std::string& path, std::vector<Entry>& out, std::string& er
                     err = where + "colour= wants R,G,B,SR,SG,SB,SPREAD";
                     return false;
                 }
-                insv::LensColour c;
+                orbiscore::LensColour c;
                 for (int i = 0; i < 3; ++i) {
                     c.logRatio[i] = std::log1p(a[i] * 0.01);
                     c.slope[i] = a[3 + i] * 0.01;
@@ -283,14 +283,14 @@ void SampleEquirect(const Rgb& im, double lon, double lat, double out[3])
 }
 
 // An equirect pixel's direction on the sphere (renderEquirect's).
-insv::Vec3 PixelSphere(int x, int y, int W, int H)
+orbiscore::Vec3 PixelSphere(int x, int y, int W, int H)
 {
     const double lat = (0.5 - (y + 0.5) / H) * kPi;
     const double lon = ((x + 0.5) / W - 0.5) * 2.0 * kPi;
     return {std::cos(lat) * std::sin(lon), std::sin(lat), -std::cos(lat) * std::cos(lon)};
 }
 
-void SphereLonLat(const insv::Vec3& s, double& lon, double& lat)
+void SphereLonLat(const orbiscore::Vec3& s, double& lon, double& lat)
 {
     lon = std::atan2(s.x, -s.z);
     lat = std::asin(std::clamp(s.y, -1.0, 1.0));
@@ -337,12 +337,12 @@ double Psnr(double sse, double n)
 // --- the stitch geometry ---------------------------------------------------
 
 struct Geometry {
-    insv::FisheyeStitcher st;
+    orbiscore::FisheyeStitcher st;
     double bandRad = 0;
 
-    insv::Vec3 toSphere(const insv::Vec3& world) const
+    orbiscore::Vec3 toSphere(const orbiscore::Vec3& world) const
     {
-        const insv::Mat3& R = st.outRotation(); // world = R * sphere
+        const orbiscore::Mat3& R = st.outRotation(); // world = R * sphere
         return {R.m[0][0] * world.x + R.m[1][0] * world.y + R.m[2][0] * world.z,
                 R.m[0][1] * world.x + R.m[1][1] * world.y + R.m[2][1] * world.z,
                 R.m[0][2] * world.x + R.m[1][2] * world.y + R.m[2][2] * world.z};
@@ -352,10 +352,10 @@ struct Geometry {
     {
         double e, t;
         int i0, i1;
-        st.seamPosition(insv::apply(st.outRotation(), PixelSphere(x, y, W, H)), e, i0, i1, t);
+        st.seamPosition(orbiscore::apply(st.outRotation(), PixelSphere(x, y, W, H)), e, i0, i1, t);
         return e;
     }
-    void sampleWorld(const Rgb& eq, const insv::Vec3& world, double out[3]) const
+    void sampleWorld(const Rgb& eq, const orbiscore::Vec3& world, double out[3]) const
     {
         double lon, lat;
         SphereLonLat(toSphere(world), lon, lat);
@@ -404,13 +404,13 @@ constexpr double kStripElDeg = 12.0;
 // cut. The new stitcher: its seam colour blend's table and veiling light on
 // the seam circle, at the template's geometry.
 struct Treatment {
-    const insv::FisheyeStitcher* st = nullptr;
-    const insv::SeamBlend* blend = nullptr; // the depth-aware seam's
-    const float* seamColour = nullptr;      // the new stitcher's (StitchGpuParams::seamColour)
-    const float* seamVeil = nullptr;        // ... and its veiling light (StitchGpuParams::seamVeil)
+    const orbiscore::FisheyeStitcher* st = nullptr;
+    const orbiscore::SeamBlend* blend = nullptr; // the depth-aware seam's
+    const float* seamColour = nullptr;           // the new stitcher's (StitchGpuParams::seamColour)
+    const float* seamVeil = nullptr;             // ... and its veiling light (StitchGpuParams::seamVeil)
     const float* q = nullptr;
 
-    void gains(const insv::Vec3& d, double lg[2][3], double veil[2][3]) const
+    void gains(const orbiscore::Vec3& d, double lg[2][3], double veil[2][3]) const
     {
         st->lensLogGains(d, blend, lg, veil);
         if (seamVeil)
@@ -433,7 +433,7 @@ struct LensStrips {
     std::vector<float> treated[2]; // after the veiling light and colour correction
 };
 
-LensStrips MakeLensStrips(const Geometry& g, const insv::Image (&lens)[2], const Treatment& tr)
+LensStrips MakeLensStrips(const Geometry& g, const orbiscore::Image (&lens)[2], const Treatment& tr)
 {
     LensStrips s;
     s.W = int(360 * kStripPxDeg);
@@ -446,7 +446,7 @@ LensStrips MakeLensStrips(const Geometry& g, const insv::Image (&lens)[2], const
         const double e = (kStripElDeg - (y + 0.5) / kStripPxDeg) * kDeg;
         for (int x = 0; x < s.W; ++x) {
             const double phi = (x + 0.5) / kStripPxDeg * kDeg;
-            const insv::Vec3 d = g.st.seamDir(phi, e);
+            const orbiscore::Vec3 d = g.st.seamDir(phi, e);
             const double qq = g.st.seamQAt(d, tr.q);
             double lg[2][3], veil[2][3];
             tr.gains(d, lg, veil);
@@ -459,8 +459,8 @@ LensStrips MakeLensStrips(const Geometry& g, const insv::Image (&lens)[2], const
                 const size_t o = (size_t(y) * s.W + x) * 3;
                 for (int k = 0; k < 3; ++k) {
                     s.raw[i][o + k] = c[k];
-                    const double r = insv::LensVeilRemove(c[k], veil[i][k]);
-                    s.treated[i][o + k] = float(insv::LensColourGain(lg[i][k], r) * r);
+                    const double r = orbiscore::LensVeilRemove(c[k], veil[i][k]);
+                    s.treated[i][o + k] = float(orbiscore::LensColourGain(lg[i][k], r) * r);
                 }
             }
         }
@@ -538,7 +538,8 @@ std::vector<Block> MeasureOffsets(const LensStrips& s, double bandDeg, const flo
         };
         Block& B = blocks[bi];
         B.phiDeg = (b0 + blk / 2.0) / kStripPxDeg;
-        B.q = q[std::min(insv::kSeamDepthBins - 1, int(B.phiDeg / 360.0 * insv::kSeamDepthBins))];
+        B.q = q[std::min(orbiscore::kSeamDepthBins - 1,
+                         int(B.phiDeg / 360.0 * orbiscore::kSeamDepthBins))];
         B.ncc0 = ncc(0, 0, &B.tex);
         double best = B.ncc0;
         int bx = 0, by = 0;
@@ -591,20 +592,20 @@ struct ColourBin {
     double raw[3] = {0, 0, 0}, treated[3] = {0, 0, 0};
 };
 
-std::vector<ColourBin> MeasureColour(const Geometry& g, const insv::Image (&lens)[2],
+std::vector<ColourBin> MeasureColour(const Geometry& g, const orbiscore::Image (&lens)[2],
                                      const Treatment& tr)
 {
-    std::vector<ColourBin> bins(insv::kSeamDepthBins);
-    const double binRad = 2 * kPi / insv::kSeamDepthBins;
-    ParallelFor(insv::kSeamDepthBins, [&](int b) {
+    std::vector<ColourBin> bins(orbiscore::kSeamDepthBins);
+    const double binRad = 2 * kPi / orbiscore::kSeamDepthBins;
+    ParallelFor(orbiscore::kSeamDepthBins, [&](int b) {
         double sum[2][2][3] = {}, n[3] = {};
-        for (int ei = 0; ei < insv::kSeamCutPatchEl; ++ei)
-            for (int ai = 0; ai < insv::kSeamCutPatchAz; ++ai) {
-                const double phi = (b + (ai + 0.5) / insv::kSeamCutPatchAz) * binRad;
+        for (int ei = 0; ei < orbiscore::kSeamCutPatchEl; ++ei)
+            for (int ai = 0; ai < orbiscore::kSeamCutPatchAz; ++ai) {
+                const double phi = (b + (ai + 0.5) / orbiscore::kSeamCutPatchAz) * binRad;
                 const double e = tr.cutRad(b) +
-                                 ((ei + 0.5) / insv::kSeamCutPatchEl - 0.5) * 2 *
-                                     insv::kSeamCutPatchElDeg * kDeg;
-                const insv::Vec3 d = g.st.seamDir(phi, e);
+                                 ((ei + 0.5) / orbiscore::kSeamCutPatchEl - 0.5) * 2 *
+                                     orbiscore::kSeamCutPatchElDeg * kDeg;
+                const orbiscore::Vec3 d = g.st.seamDir(phi, e);
                 const double qq = g.st.seamQAt(d, tr.q);
                 double lg[2][3], veil[2][3];
                 tr.gains(d, lg, veil);
@@ -623,12 +624,12 @@ std::vector<ColourBin> MeasureColour(const Geometry& g, const insv::Image (&lens
                 if (!seen)
                     continue;
                 for (int k = 0; k < 3; ++k) {
-                    if (c[0][k] > insv::kSeamCutClip || c[1][k] > insv::kSeamCutClip)
+                    if (c[0][k] > orbiscore::kSeamCutClip || c[1][k] > orbiscore::kSeamCutClip)
                         continue;
                     for (int i = 0; i < 2; ++i) {
-                        const double r = insv::LensVeilRemove(c[i][k], veil[i][k]);
+                        const double r = orbiscore::LensVeilRemove(c[i][k], veil[i][k]);
                         sum[i][0][k] += c[i][k];
-                        sum[i][1][k] += insv::LensColourGain(lg[i][k], r) * r;
+                        sum[i][1][k] += orbiscore::LensColourGain(lg[i][k], r) * r;
                     }
                     n[k] += 1;
                 }
@@ -753,8 +754,8 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
 
     // The stitch as NativeStitchSource sets it up, for the strips.
     Geometry g;
-    insv::InsvCalibration calib;
-    insv::StitchParams params;
+    orbiscore::InsvCalibration calib;
+    orbiscore::StitchParams params;
     std::shared_ptr<const camera::ClipMetadata> meta;
     if (stitch::PrepareClipMeasurement(e.clip, e.guard, nullptr, calib, params, err, &meta) !=
         stitch::MeasureFailure::None)
@@ -763,7 +764,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     // The new stitcher takes neither the seam correction nor the lens
     // colour: it joins the lenses from the lens model, with the camera
     // model's lens correction.
-    insv::SeamCorrection seam;
+    orbiscore::SeamCorrection seam;
     std::string seamFrom = "list";
     if (e.newStitcher) {
         seamFrom = "not used: the new stitcher";
@@ -775,7 +776,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         if (r.ok)
             seam = r.correction;
     }
-    insv::LensColour colour;
+    orbiscore::LensColour colour;
     std::string colourFrom = "list";
     if (e.newStitcher) {
         colourFrom = "not used: the new stitcher";
@@ -857,7 +858,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     const int sW = int(360 * 5), sH = int(2 * (bandDeg + 11) * 5); // 5 px/deg, the band and beside it
     std::vector<float> prevStrip;
     std::vector<float> prevQ;
-    insv::SeamBlend prevBlend;
+    orbiscore::SeamBlend prevBlend;
     std::vector<float> prevColour;
     std::vector<FlickerStep> flicker;
     stitch::Frame played;
@@ -874,7 +875,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
             const Rgb eq = FromFrame(f);
             std::vector<float> strip = EquirectStrip(g, eq, sW, sH, 5.0, bandDeg + 11);
             const float* q = gpu.SeamDepthTable();
-            const insv::SeamBlend& bl = gpu.SeamBlendState();
+            const orbiscore::SeamBlend& bl = gpu.SeamBlendState();
             const float* sc = gpu.SeamColourTable();
             if (!prevStrip.empty()) {
                 FlickerStep st;
@@ -893,7 +894,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
                 }
                 st.band /= std::max(1.0, nb);
                 st.outside /= std::max(1.0, no);
-                for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+                for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
                     st.q += std::fabs(q[b] - prevQ[b]);
                     st.cut += std::fabs(bl.cut[b] - prevBlend.cut[b]) / kDeg;
                     st.fade += std::fabs(bl.fade[b] - prevBlend.fade[b]) / kDeg;
@@ -901,16 +902,16 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
                         st.local += std::fabs(bl.local[b][k] - prevBlend.local[b][k]) * 100 / 3 +
                                     std::fabs(sc[b * 3 + k] - prevColour[b * 3 + k]) * 100 / 3;
                 }
-                st.q /= insv::kSeamDepthBins;
-                st.cut /= insv::kSeamDepthBins;
-                st.fade /= insv::kSeamDepthBins;
-                st.local /= insv::kSeamDepthBins;
+                st.q /= orbiscore::kSeamDepthBins;
+                st.cut /= orbiscore::kSeamDepthBins;
+                st.fade /= orbiscore::kSeamDepthBins;
+                st.local /= orbiscore::kSeamDepthBins;
                 flicker.push_back(st);
             }
             prevStrip = std::move(strip);
-            prevQ.assign(q, q + insv::kSeamDepthBins);
+            prevQ.assign(q, q + orbiscore::kSeamDepthBins);
             prevBlend = bl;
-            prevColour.assign(sc, sc + insv::kSeamDepthBins * 3);
+            prevColour.assign(sc, sc + orbiscore::kSeamDepthBins * 3);
         }
         if (last) {
             played = std::move(f);
@@ -918,12 +919,13 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         }
     }
     const int64_t pts = played.timestamp_ms;
-    std::vector<float> qPlayed(gpu.SeamDepthTable(), gpu.SeamDepthTable() + insv::kSeamDepthBins);
-    const insv::SeamBlend blendPlayed = gpu.SeamBlendState();
+    std::vector<float> qPlayed(gpu.SeamDepthTable(),
+                               gpu.SeamDepthTable() + orbiscore::kSeamDepthBins);
+    const orbiscore::SeamBlend blendPlayed = gpu.SeamBlendState();
     const std::vector<float> colourPlayed(gpu.SeamColourTable(),
-                                          gpu.SeamColourTable() + insv::kSeamDepthBins * 3);
+                                          gpu.SeamColourTable() + orbiscore::kSeamDepthBins * 3);
     const std::vector<float> veilPlayed(gpu.SeamVeilTable(),
-                                        gpu.SeamVeilTable() + insv::kSeamDepthBins * 3);
+                                        gpu.SeamVeilTable() + orbiscore::kSeamDepthBins * 3);
     const double confPlayed = gpu.SeamDepthConfidence();
     std::printf("  frame %lld ms, played in over %d frames\n", static_cast<long long>(pts), runFrames);
 
@@ -935,8 +937,9 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
     }
     if (cold.timestamp_ms != pts)
         std::printf("  note: the cold frame is at %lld ms\n", static_cast<long long>(cold.timestamp_ms));
-    std::vector<float> qCold(gpu.SeamDepthTable(), gpu.SeamDepthTable() + insv::kSeamDepthBins);
-    const insv::SeamBlend blendCold = gpu.SeamBlendState();
+    std::vector<float> qCold(gpu.SeamDepthTable(),
+                             gpu.SeamDepthTable() + orbiscore::kSeamDepthBins);
+    const orbiscore::SeamBlend blendCold = gpu.SeamBlendState();
     const double confCold = gpu.SeamDepthConfidence();
 
     // The CPU fallback, cold (the app's path without a GPU stitch).
@@ -954,19 +957,19 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
             err = "CPU frame: " + cpu.GetLastError();
             return false;
         }
-        qCpu.assign(cpu.SeamDepthTable(), cpu.SeamDepthTable() + insv::kSeamDepthBins);
+        qCpu.assign(cpu.SeamDepthTable(), cpu.SeamDepthTable() + orbiscore::kSeamDepthBins);
         if (cpuFrame.timestamp_ms != cold.timestamp_ms)
             std::printf("  note: the CPU frame is at %lld ms\n",
                         static_cast<long long>(cpuFrame.timestamp_ms));
     }
 
     // The lenses as decoded, for the strips.
-    insv::Image lens[2];
+    orbiscore::Image lens[2];
     {
-        insv::InsvDemux demux;
+        orbiscore::InsvDemux demux;
         if (!demux.open(meta->partSources(), err) || !demux.seekTo(pts, err))
             return false;
-        insv::FramePts p{-1, -1};
+        orbiscore::FramePts p{-1, -1};
         while (p.ms < pts)
             if (!demux.readNextPair(lens[0], lens[1], &p, err)) {
                 err = "lens frames: " + (err.empty() ? std::string("end of stream") : err);
@@ -1025,7 +1028,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         double fade = 0;
         for (float f : blendPlayed.fade)
             fade += f / kDeg;
-        sum.emplace_back("fade_mean_deg", fade / insv::kSeamDepthBins);
+        sum.emplace_back("fade_mean_deg", fade / orbiscore::kSeamDepthBins);
     }
     {
         const char* ch = "rgb";
@@ -1052,13 +1055,13 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
                          const std::string& prefix) {
         double s = 0, m = 0;
         int n = 0;
-        for (int i = 0; i < insv::kSeamDepthBins; ++i) {
+        for (int i = 0; i < orbiscore::kSeamDepthBins; ++i) {
             const double d = std::fabs(a[i] - b[i]);
             s += d;
             m = std::max(m, d);
             n += d > 0.1;
         }
-        sum.emplace_back(prefix + "_q_mean_abs_diff", s / insv::kSeamDepthBins);
+        sum.emplace_back(prefix + "_q_mean_abs_diff", s / orbiscore::kSeamDepthBins);
         sum.emplace_back(prefix + "_q_max_abs_diff", m);
         sum.emplace_back(prefix + "_bins_differ", n);
     };
@@ -1116,7 +1119,7 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         aligned.alloc(eqPlayed.w, eqPlayed.h);
         ParallelFor(aligned.h, [&](int y) {
             for (int x = 0; x < aligned.w; ++x) {
-                const insv::Vec3 s = PixelSphere(x, y, aligned.w, aligned.h);
+                const orbiscore::Vec3 s = PixelSphere(x, y, aligned.w, aligned.h);
                 const double P[3] = {-s.z, s.x, s.y}; // ours -> x forward, y left, z up
                 double Q[3];
                 for (int i = 0; i < 3; ++i)
@@ -1224,27 +1227,27 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
         j.s << table(qCpu);
     }
     j.key("cut_deg");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendPlayed.cut[i] / kDeg); });
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) { return Json::num(blendPlayed.cut[i] / kDeg); });
     j.key("fade_deg");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendPlayed.fade[i] / kDeg); });
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) { return Json::num(blendPlayed.fade[i] / kDeg); });
     j.key("residual_pct");
     j.s << Json::arr(3, [&](int k) { return Json::num(std::expm1(blendPlayed.colour[k]) * 100); });
     j.key("local_pct");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) {
         return Json::arr(3, [&](int k) { return Json::num(std::expm1(blendPlayed.local[i][k]) * 100); });
     });
     j.key("seam_colour_pct");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) {
         return Json::arr(3, [&](int k) { return Json::num(std::expm1(colourPlayed[i * 3 + k]) * 100); });
     });
     j.key("veil");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) {
         return Json::arr(3, [&](int k) {
             return Json::num(e.newStitcher ? veilPlayed[i * 3 + k] : blendPlayed.veil[i][k]);
         });
     });
     j.key("cold_cut_deg");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) { return Json::num(blendCold.cut[i] / kDeg); });
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) { return Json::num(blendCold.cut[i] / kDeg); });
     j.key("blocks");
     j.s << Json::arr(int(blocks.size()), [&](int i) {
         const Block& b = blocks[i];
@@ -1254,12 +1257,12 @@ bool RunEntry(const Entry& e, const Options& opt, std::string& err)
                ", \"q\": " + Json::num(b.q) + ", \"textured\": " + (b.textured ? "true" : "false") + "}";
     });
     j.key("colour_pct");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) {
         const ColourBin& b = colourBins[i];
         return Json::arr(3, [&](int k) { return b.ok[k] ? Json::num(b.treated[k]) : "null"; });
     });
     j.key("raw_colour_pct");
-    j.s << Json::arr(insv::kSeamDepthBins, [&](int i) {
+    j.s << Json::arr(orbiscore::kSeamDepthBins, [&](int i) {
         const ColourBin& b = colourBins[i];
         return Json::arr(3, [&](int k) { return b.ok[k] ? Json::num(b.raw[k]) : "null"; });
     });

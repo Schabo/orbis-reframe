@@ -6,21 +6,21 @@
 //
 // so the RGB (fisheye_stitch.comp) and NV12/ycbcr (fisheye_stitch_nv12.comp)
 // variants can share everything else. Kept a faithful mirror of the CPU
-// reference insv::FisheyeStitcher::renderEquirect -- constants come from
-// insv::FisheyeStitcher::gpuParams().
+// reference orbiscore::FisheyeStitcher::renderEquirect -- constants come from
+// orbiscore::FisheyeStitcher::gpuParams().
 //
 // Pass 1 (pc.pass==1) renders, each lens's colour matched by the clip's lens
-// colour (insv::LensColour). Passes 2 and 3 (their own submission, before
+// colour (orbiscore::LensColour). Passes 2 and 3 (their own submission, before
 // it) measure for the depth-aware seam: the
 // cost volume (seamCostPass, one workgroup per azimuth bin and candidate
 // distance, NCC of the two lenses over the bin's patch) and the cut
 // statistics (seamCutPass, one workgroup per bin and row across the band).
 // Pass 4 (likewise) unwraps both lenses over the overlap for the new
-// stitcher's seam flow (seamStripPass, insv::MeasureSeamFlowStrips).
+// stitcher's seam flow (seamStripPass, orbiscore::MeasureSeamFlowStrips).
 // Pass 5 (in the frame's submission, before the pass that renders) works
 // out the privacy blur's cell colours (blurCellPass).
 //
-// The seam flow's field (insv::SeamFlowField, F10 in .xy, F01 in .zw) is the
+// The seam flow's field (orbiscore::SeamFlowField, F10 in .xy, F01 in .zw) is the
 // texture at SEAM_FLOW_BINDING (6 unless the includer says otherwise: the
 // viewport has its lens planes at 1-4); used when P.seamFlow.x != 0.
 //
@@ -37,29 +37,29 @@
 // FISHEYE_STITCH_NO_BUFFERS (fisheye_view.frag, the viewport) gets no OutBuf
 // / SeamBuf.
 
-#define RS_TAPS 7 // == insv::StitchGpuParams::kRsTaps
-#define SEAM_BINS 128 // == insv::kSeamDepthBins
-#define SEAM_CANDS 40 // == insv::kSeamDepthCands
-#define SEAM_PATCH 16 // == insv::kSeamPatchAz == insv::kSeamPatchEl
-#define SEAM_ROWS 9 // == insv::kSeamCutRows
-#define SEAM_CUT_AZ 16 // == insv::kSeamCutPatchAz (x insv::kSeamCutPatchEl = 64 samples)
-#define SEAM_CUT_EL 4 // == insv::kSeamCutPatchEl
-#define SEAM_CUT_EL_RAD 0.010471976 // == insv::kSeamCutPatchElDeg (0.6 deg)
-#define SEAM_CUT_CLIP 250.0 // == insv::kSeamCutClip
-#define SEAM_CUT_FADE_RAD 0.013089969 // == insv::kSeamCutFadeDeg (0.75 deg)
-#define LENS_COLOUR_MAX_LOG 0.3 // == insv::kLensColourMaxLog
-#define LENS_COLOUR_LOCAL_RAMP_RAD 0.17453293 // == insv::kLensColourLocalRampDeg (10 deg)
-#define LENS_COLOUR_KNEE_LO 192.0 // == insv::kLensColourKneeLo
-#define LENS_COLOUR_KNEE_HI 250.0 // == insv::kLensColourKneeHi
-#define SEAM_COLOUR_FULL_RAD 0.20943951 // == insv::kSeamColourFullDeg (12 deg)
-#define SEAM_COLOUR_END_RAD 0.52359878 // == insv::kSeamColourEndDeg (30 deg)
-#define LENS_MASK_RAMP_RAD 0.03490659 // == insv::FisheyeStitcher::kLensMaskRampDeg (2 deg)
-#define LENS_VEIL_GAMMA 2.2 // == insv::kLensVeilGamma
-#define LENS_VEIL_KEEP 0.3 // == insv::kLensVeilKeep
-#define MAX_BLUR 64 // == insv::kMaxBlurQuads
-#define BLUR_CELL_TAPS 16 // == insv::kBlurCellTaps
-#define BLUR_CELLS_PER_QUAD 200 // == insv::kBlurCellsPerQuad
-#define BLUR_FEATHER 0.08 // == insv::kBlurFeather
+#define RS_TAPS 7 // == orbiscore::StitchGpuParams::kRsTaps
+#define SEAM_BINS 128 // == orbiscore::kSeamDepthBins
+#define SEAM_CANDS 40 // == orbiscore::kSeamDepthCands
+#define SEAM_PATCH 16 // == orbiscore::kSeamPatchAz == orbiscore::kSeamPatchEl
+#define SEAM_ROWS 9 // == orbiscore::kSeamCutRows
+#define SEAM_CUT_AZ 16 // == orbiscore::kSeamCutPatchAz (x orbiscore::kSeamCutPatchEl = 64 samples)
+#define SEAM_CUT_EL 4 // == orbiscore::kSeamCutPatchEl
+#define SEAM_CUT_EL_RAD 0.010471976 // == orbiscore::kSeamCutPatchElDeg (0.6 deg)
+#define SEAM_CUT_CLIP 250.0 // == orbiscore::kSeamCutClip
+#define SEAM_CUT_FADE_RAD 0.013089969 // == orbiscore::kSeamCutFadeDeg (0.75 deg)
+#define LENS_COLOUR_MAX_LOG 0.3 // == orbiscore::kLensColourMaxLog
+#define LENS_COLOUR_LOCAL_RAMP_RAD 0.17453293 // == orbiscore::kLensColourLocalRampDeg (10 deg)
+#define LENS_COLOUR_KNEE_LO 192.0 // == orbiscore::kLensColourKneeLo
+#define LENS_COLOUR_KNEE_HI 250.0 // == orbiscore::kLensColourKneeHi
+#define SEAM_COLOUR_FULL_RAD 0.20943951 // == orbiscore::kSeamColourFullDeg (12 deg)
+#define SEAM_COLOUR_END_RAD 0.52359878 // == orbiscore::kSeamColourEndDeg (30 deg)
+#define LENS_MASK_RAMP_RAD 0.03490659 // == orbiscore::FisheyeStitcher::kLensMaskRampDeg (2 deg)
+#define LENS_VEIL_GAMMA 2.2 // == orbiscore::kLensVeilGamma
+#define LENS_VEIL_KEEP 0.3 // == orbiscore::kLensVeilKeep
+#define MAX_BLUR 64 // == orbiscore::kMaxBlurQuads
+#define BLUR_CELL_TAPS 16 // == orbiscore::kBlurCellTaps
+#define BLUR_CELLS_PER_QUAD 200 // == orbiscore::kBlurCellsPerQuad
+#define BLUR_FEATHER 0.08 // == orbiscore::kBlurFeather
 
 layout(std140, binding = 0) uniform Params {
     vec4 w2l0[3];   // worldToLens[0] rows (.xyz)
@@ -69,7 +69,7 @@ layout(std140, binding = 0) uniform Params {
     vec4 seam;      // seamRad, bandRad, thetaMaxRad, thetaRef (circle edge, rad)
     vec4 edge;      // edgeStartFrac, edgeEndFrac, seam colour blend on (0/1), -
     ivec4 dims;     // fisheyeW, fisheyeH, eqW, eqH
-    // Extended MEI (Mei/unified) model. See insv::LensProjection / gpuParams().
+    // Extended MEI (Mei/unified) model. See orbiscore::LensProjection / gpuParams().
     vec4 meiA;      // xi0, xi1, fx0, fx1
     vec4 meiB;      // fy0, fy1, -, accessory(as float)
     vec4 kd0;       // lens 0 radial distortion k1..k4
@@ -82,44 +82,44 @@ layout(std140, binding = 0) uniform Params {
     vec4 accA;      // accessory poly c0..c3   (theta deg -> mm, 0x101 field 145)
     vec4 accB;      // accessory poly c4, c5, bare poly c0, c1
     vec4 accC;      // bare poly c2..c5
-    // Depth-aware seam (insv::StitchGpuParams::seamAxis etc.).
+    // Depth-aware seam (orbiscore::StitchGpuParams::seamAxis etc.).
     vec4 seamA;     // seam axis (lens 0's way) xyz, depth active (0/1)
     vec4 seamU;     // seam-plane basis u xyz, half baseline (m; lens 0 at +h * axis)
     vec4 seamV;     // seam-plane basis v xyz, ramp past the band (rad)
     vec4 seamC;     // cost pass: candidate q min, q max (1/m), patch elevation half-range (rad);
-                    // cut pass: outermost row's elevation (rad, insv::SeamCutRowMax)
+                    // cut pass: outermost row's elevation (rad, orbiscore::SeamCutRowMax)
     vec4 seamQ[SEAM_BINS / 4]; // per azimuth bin: inverse stitch distance (1/m)
-    vec4 seamCF[SEAM_BINS / 2]; // per azimuth bin: the fade's centre, half-width (rad; insv::SeamBlend), 2 bins per vec4
-    // The lens colour (insv::LensColourLog): log(lens 0 / lens 1) R, G, B on
+    vec4 seamCF[SEAM_BINS / 2]; // per azimuth bin: the fade's centre, half-width (rad; orbiscore::SeamBlend), 2 bins per vec4
+    // The lens colour (orbiscore::LensColourLog): log(lens 0 / lens 1) R, G, B on
     // the seam circle, the frame's residual added; its slope per radian.
     vec4 lensCol;   // R, G, B, -
     vec4 lensColS;  // R, G, B, -
-    vec4 lensLocal[SEAM_BINS]; // per azimuth bin: the local correction R, G, B, - (insv::SeamBlend::local)
-    vec4 lensVeil[SEAM_BINS];  // per azimuth bin: the veiling light R, G, B, - (insv::SeamBlend::veil;
+    vec4 lensLocal[SEAM_BINS]; // per azimuth bin: the local correction R, G, B, - (orbiscore::SeamBlend::local)
+    vec4 lensVeil[SEAM_BINS];  // per azimuth bin: the veiling light R, G, B, - (orbiscore::SeamBlend::veil;
                                // the new stitcher's, StitchGpuParams::seamVeil, when edge.z != 0)
-    // The new stitcher's seam colour blend (insv::StitchGpuParams::seamColour):
+    // The new stitcher's seam colour blend (orbiscore::StitchGpuParams::seamColour):
     // per azimuth bin log(lens 0 / lens 1) R, G, B, -; on when edge.z != 0.
     vec4 seamCol[SEAM_BINS];
-    // The new stitcher's seam flow (insv::StitchGpuParams::seamFlow): on,
+    // The new stitcher's seam flow (orbiscore::StitchGpuParams::seamFlow): on,
     // the strips' half-height and the warp's reach (rad), -; its grid's
     // columns and rows.
     vec4 seamFlow;
     ivec4 seamFlowN;
-    // Privacy blur (insv::BlurQuadFrame, carried into the stitch world frame):
+    // Privacy blur (orbiscore::BlurQuadFrame, carried into the stitch world frame):
     // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
     // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
     vec4 blur0; // count, -, -, -
     vec4 blurQ[MAX_BLUR * 6];
-    // The lenses' Y'CbCr -> R'G'B' (insv::YcbcrToRgbRows): component i is
+    // The lenses' Y'CbCr -> R'G'B' (orbiscore::YcbcrToRgbRows): component i is
     // dot(ycc[i].xyz, vec3(y, cb, cr)) + ycc[i].w on the planes' texel values.
     // For fisheye_view.frag, which samples the planes itself; the stitch's
     // ycbcr sampler converts on its own.
     vec4 ycc[3];
-    // The lens model (insv::StitchGpuParams::thetaPoly): x 1 = the
+    // The lens model (orbiscore::StitchGpuParams::thetaPoly): x 1 = the
     // theta-polynomial, else MEI; y, z its theta^10 term of lens 0, 1; w 1 =
-    // the lens masks (insv::StitchGpuParams::maskActive) are on.
+    // the lens masks (orbiscore::StitchGpuParams::maskActive) are on.
     vec4 lensModel;
-    // The lens masks on the seam frame (insv::StitchGpuParams::seamClear):
+    // The lens masks on the seam frame (orbiscore::StitchGpuParams::seamClear):
     // per azimuth bin, lens 0 clear above elevation x, lens 1 below y (rad),
     // 2 bins per vec4.
     vec4 seamClear[SEAM_BINS / 2];
@@ -138,16 +138,16 @@ layout(binding = BLUR_CELL_BINDING) uniform sampler2D blurCellTex;
 #ifndef FISHEYE_STITCH_NO_BUFFERS
 layout(std430, binding = 3) writeonly buffer OutBuf { uint px[]; };
 // Pass 2 output: per (bin, candidate) = bin * SEAM_CANDS + k: (NCC, texture),
-// as insv::SeamCosts. Pass 3's after it: per (bin, row) = bin * SEAM_ROWS + r,
+// as orbiscore::SeamCosts. Pass 3's after it: per (bin, row) = bin * SEAM_ROWS + r,
 // four vec4 -- (samples, zero-mean difference, texture, -), the unclipped
 // samples per channel RGB, lens 0's mean RGB, lens 1's -- as
-// insv::SeamCutStats::Cell.
+// orbiscore::SeamCutStats::Cell.
 layout(std430, binding = 5) writeonly buffer SeamBuf {
     vec2 seamCost[SEAM_BINS * SEAM_CANDS];
     vec4 seamCutStat[];
 };
 // Pass 4 output: both lenses' strips, grey 0..255, four columns per uint
-// (lowest byte first), lens 0's rows then lens 1's (insv::SeamFlowStrips).
+// (lowest byte first), lens 0's rows then lens 1's (orbiscore::SeamFlowStrips).
 layout(std430, binding = 7) writeonly buffer StripBuf { uint seamStrip[]; };
 #endif
 
@@ -175,7 +175,7 @@ float meiRadial(float theta, float xi, vec4 k)
 }
 
 // The theta-polynomial's theta_d(theta): the sampled radius (units of fx)
-// before the tangential terms. See insv::LensProjection.
+// before the tangential terms. See orbiscore::LensProjection.
 float thetaPolyRadial(float theta, vec4 k, float k5)
 {
     float t2 = theta * theta;
@@ -183,7 +183,7 @@ float thetaPolyRadial(float theta, vec4 k, float k5)
 }
 
 // Accessory (lens guard / dive case) radial scale: accessoryPoly(deg) /
-// barePoly(deg). 1 without an accessory. See insv::StitchParams::accessory.
+// barePoly(deg). 1 without an accessory. See orbiscore::StitchParams::accessory.
 float accessoryScale(float theta)
 {
     if (P.meiB.w == 0.0)
@@ -228,7 +228,7 @@ vec3 project(int i, vec3 world)
     vec4 pd = (i == 0) ? P.pd0 : P.pd1;
     vec2 s34 = (i == 0) ? P.sd.xy : P.sd.zw;
     // Calibration image axes (u right, v down): our lens frame has both
-    // flipped. See insv::LensProjection.
+    // flipped. See orbiscore::LensProjection.
     float x, y, r2, r4, radial;
     if (P.lensModel.x != 0.0) {
         float td = thetaPolyRadial(theta, k, (i == 0) ? P.lensModel.y : P.lensModel.z);
@@ -322,11 +322,11 @@ vec3 eqTexelDir(ivec2 t, int W, int H)
     return mul3(P.outRot[0], P.outRot[1], P.outRot[2], vec3(cl * sin(lon), sl, -cl * cos(lon)));
 }
 
-// --- depth-aware seam (insv::FisheyeStitcher::seamQAt / lensRay) ----------
+// --- depth-aware seam (orbiscore::FisheyeStitcher::seamQAt / lensRay) ----------
 
 float seamQBin(int b) { return P.seamQ[b >> 2][b & 3]; }
 
-// Where `dir` is on the seam (insv::FisheyeStitcher::seamPosition): x the
+// Where `dir` is on the seam (orbiscore::FisheyeStitcher::seamPosition): x the
 // elevation off the seam circle (rad, towards lens 0), y the bin position
 // (bin centres at integers; i0 = floor, i1 = i0 + 1 wrapped).
 vec2 seamPosition(vec3 dir, out int i0, out int i1)
@@ -352,7 +352,7 @@ vec2 seamClearAt(int i0, int i1)
 }
 
 // Whether lens i sees the scene at `dir`, not its own camera
-// (insv::FisheyeStitcher::lensClear).
+// (orbiscore::FisheyeStitcher::lensClear).
 bool lensClear(int i, vec3 dir)
 {
     if (P.lensModel.w == 0.0)
@@ -364,7 +364,7 @@ bool lensClear(int i, vec3 dir)
 }
 
 // The two lenses' feather kept off the lens masks
-// (insv::FisheyeStitcher::clearFade).
+// (orbiscore::FisheyeStitcher::clearFade).
 vec2 clearFade(vec3 dir, vec2 w)
 {
     if (P.lensModel.w == 0.0)
@@ -418,10 +418,10 @@ vec3 lensRay(int i, vec3 dir, float q)
     return normalize(dir - (q * h) * P.seamA.xyz);
 }
 
-// --- the new stitcher's seam flow (insv::FisheyeStitcher::seamFlowRay) ----
+// --- the new stitcher's seam flow (orbiscore::FisheyeStitcher::seamFlowRay) ----
 
 // The seam frame's direction at azimuth phi, elevation e (towards lens 0)
-// (insv::FisheyeStitcher::seamDir).
+// (orbiscore::FisheyeStitcher::seamDir).
 vec3 seamDirAt(float phi, float e)
 {
     return cos(e) * (cos(phi) * P.seamU.xyz + sin(phi) * P.seamV.xyz) + sin(e) * P.seamA.xyz;
@@ -429,7 +429,7 @@ vec3 seamDirAt(float phi, float e)
 
 // The direction lens i is sampled in for `dir`: moved along the seam frame by
 // its share of the flow there -- lens 0 b(e) of F10, lens 1 1 - b(e) of F01
-// (insv::SeamFlowShare: 0 at +reach, 1/2 on the seam, 1 at -reach); `dir`
+// (orbiscore::SeamFlowShare: 0 at +reach, 1/2 on the seam, 1 at -reach); `dir`
 // past the reach or with the flow off.
 vec3 seamFlowRay(int i, vec3 dir)
 {
@@ -465,7 +465,7 @@ float seamBlendWeight(int i, vec3 dir)
 vec2 seamCFBin(int b) { vec4 v = P.seamCF[b >> 1]; return (b & 1) == 0 ? v.xy : v.zw; }
 
 // The new stitcher's veiling light for `dir` (lens 0 less lens 1;
-// insv::FisheyeStitcher::seamVeil): the per-bin table interpolated along the
+// orbiscore::FisheyeStitcher::seamVeil): the per-bin table interpolated along the
 // seam, in the band and faded out over LENS_COLOUR_LOCAL_RAMP_RAD past it.
 vec3 seamVeil(vec3 dir)
 {
@@ -478,7 +478,7 @@ vec3 seamVeil(vec3 dir)
     return a * mix(P.lensVeil[i0].xyz, P.lensVeil[i1].xyz, pos.y);
 }
 
-// The new stitcher's fade share at `dir`'s azimuth (insv::FisheyeStitcher::
+// The new stitcher's fade share at `dir`'s azimuth (orbiscore::FisheyeStitcher::
 // seamFadeShare): the seam flow texture's last row, linear between columns.
 float seamFadeShare(vec3 dir)
 {
@@ -489,7 +489,7 @@ float seamFadeShare(vec3 dir)
     return textureLod(seamFlowTex, vec2(phi / (2.0 * PI), (rows + 0.5) / (rows + 1.0)), 0.0).x;
 }
 
-// The two lenses' feather at a seamPosition() (insv::FisheyeStitcher::
+// The two lenses' feather at a seamPosition() (orbiscore::FisheyeStitcher::
 // seamBlendWeights): the cosine ramp round the bin's cut with its own
 // half-width (seamCF), else -- not measured yet -- the plain cross-fade.
 vec2 seamFadeWeights(vec3 dir, vec2 pos, int i0, int i1, bool flowFade)
@@ -498,7 +498,7 @@ vec2 seamFadeWeights(vec3 dir, vec2 pos, int i0, int i1, bool flowFade)
     if (c0.y > 0.0 && c1.y > 0.0) {
         vec2 cf = mix(c0, c1, pos.y);
         if (flowFade) {
-            float narrow = min(SEAM_CUT_FADE_RAD, P.seam.y); // insv::SeamFadeRad
+            float narrow = min(SEAM_CUT_FADE_RAD, P.seam.y); // orbiscore::SeamFadeRad
             cf.y = max(cf.y, narrow + (P.seam.y - narrow) * seamFadeShare(dir));
         }
         float x = (pos.x - cf.x) / cf.y;
@@ -509,13 +509,13 @@ vec2 seamFadeWeights(vec3 dir, vec2 pos, int i0, int i1, bool flowFade)
 }
 
 // The seam's per-bin tables at `dir`, its position found once: returns the
-// inverse stitch distance (insv::FisheyeStitcher::seamQAt); `w` the two
+// inverse stitch distance (orbiscore::FisheyeStitcher::seamQAt); `w` the two
 // lenses' feather -- with the depth-aware seam its cut, with the new
 // stitcher's seam colour blend the narrow fade its veiling light widens
-// (insv::SeamVeilFade; both in seamCF, seamFadeWeights), else the plain
+// (orbiscore::SeamVeilFade; both in seamCF, seamFadeWeights), else the plain
 // cross-fade; `local` the lens colour's local correction there and `veil`
 // the veiling light (lens 0 less lens 1), in the band and faded out past it
-// (insv::FisheyeStitcher::lensLogGains), 0 without the seam -- or the new
+// (orbiscore::FisheyeStitcher::lensLogGains), 0 without the seam -- or the new
 // stitcher's with its seam colour blend (seamVeil).
 float seamTables(vec3 dir, out vec2 w, out vec3 local, out vec3 veil)
 {
@@ -526,7 +526,7 @@ float seamTables(vec3 dir, out vec2 w, out vec3 local, out vec3 veil)
             int i0, i1;
             vec2 pos = seamPosition(dir, i0, i1);
             // The narrow fade with the seam flow's (seamCF from the veiling
-            // light, insv::SeamVeilFade; seamFadeShare), else the plain one.
+            // light, orbiscore::SeamVeilFade; seamFadeShare), else the plain one.
             w = P.seamFlow.x != 0.0 ? seamFadeWeights(dir, pos, i0, i1, true)
                                     : vec2(seamBlendWeight(0, dir), seamBlendWeight(1, dir));
             veil = seamVeil(dir);
@@ -548,7 +548,7 @@ float seamTables(vec3 dir, out vec2 w, out vec3 local, out vec3 veil)
 }
 
 // The lens colour's log ratio L (lens 0 / lens 1) for `dir`
-// (insv::FisheyeStitcher::lensLogGains): at dir's elevation off the seam
+// (orbiscore::FisheyeStitcher::lensLogGains): at dir's elevation off the seam
 // circle, held at the band's edge beyond it, plus the `local` correction
 // (seamTables); lens 0 takes -L / 2, lens 1 L / 2.
 vec3 lensColourLog(vec3 dir, vec3 local)
@@ -560,9 +560,9 @@ vec3 lensColourLog(vec3 dir, vec3 local)
 }
 
 // The seam colour blend's log ratio (lens 0 / lens 1) for `dir`
-// (insv::FisheyeStitcher::seamColourLog): the per-bin table interpolated
+// (orbiscore::FisheyeStitcher::seamColourLog): the per-bin table interpolated
 // along the seam, whole to SEAM_COLOUR_FULL_RAD off it, a cosine to none at
-// SEAM_COLOUR_END_RAD (insv::SeamColourFade). 0 when off.
+// SEAM_COLOUR_END_RAD (orbiscore::SeamColourFade). 0 when off.
 vec3 seamColourLog(vec3 dir)
 {
     if (P.edge.z == 0.0)
@@ -580,8 +580,8 @@ vec3 seamColourLog(vec3 dir)
 }
 
 // A lens sample `s` (0..255) with the veiling light `veil` (linear, >= 0)
-// taken out (insv::LensVeilRemove), then log gain `lg` per channel, both
-// eased off over the highlight knee (insv::LensColourGain).
+// taken out (orbiscore::LensVeilRemove), then log gain `lg` per channel, both
+// eased off over the highlight knee (orbiscore::LensColourGain).
 vec3 lensColourApply(vec3 s, vec3 lg, vec3 veil)
 {
     vec3 knee = 1.0 - smoothstep(vec3(LENS_COLOUR_KNEE_LO), vec3(LENS_COLOUR_KNEE_HI), s);
@@ -633,10 +633,10 @@ void lensWeights(vec3 dir, out vec2 uv0, out vec2 uv1, out float w0, out float w
 // invocations samples the bin's SEAM_PATCH x SEAM_PATCH patch (4 samples
 // each) from both lenses, each from its own centre at candidate distance k,
 // and writes the grey NCC + texture with each lens's brightness plane taken
-// out -- insv::MeasureSeamCosts on the GPU (same sample pattern,
-// insv::SeamPatchSample; same sums and score, insv::SeamPatchAccumulate /
-// insv::SeamPatchScore).
-#define SEAM_SUMS 15 // == insv::kSeamPatchSums
+// out -- orbiscore::MeasureSeamCosts on the GPU (same sample pattern,
+// orbiscore::SeamPatchSample; same sums and score, orbiscore::SeamPatchAccumulate /
+// orbiscore::SeamPatchScore).
+#define SEAM_SUMS 15 // == orbiscore::kSeamPatchSums
 shared float seamRed[SEAM_SUMS][64]; // pass 2 uses all rows, pass 3 the first 9
 
 void seamCostPass(uvec3 wg, uint lid)
@@ -704,7 +704,7 @@ void seamCostPass(uvec3 wg, uint lid)
             float vy = max(seamRed[13][0] - dot(by, inv * by), 0.0) / n;
             float cxy = (seamRed[14][0] - dot(bx, inv * by)) / n;
             res.y = sqrt(min(vx, vy));
-            // == insv::kSeamMinVariance: a flat patch's variance is float noise.
+            // == orbiscore::kSeamMinVariance: a flat patch's variance is float noise.
             res.x = (vx > 0.25 && vy > 0.25) ? clamp(cxy / sqrt(vx * vy), -1.0, 1.0) : 0.0;
         } else {
             res.x = -2.0;
@@ -716,8 +716,8 @@ void seamCostPass(uvec3 wg, uint lid)
 // Pass 3: the seam cut's statistics. Workgroup (bin, row) of 64 invocations,
 // one sample of the row's patch each, both lenses warped by the depth table
 // in P.seamQ (the frame before): the zero-mean grey difference and the
-// texture -- insv::MeasureSeamCutStats on the GPU (same sample pattern,
-// insv::SeamCutSample). Reduces in pass 2's shared memory.
+// texture -- orbiscore::MeasureSeamCutStats on the GPU (same sample pattern,
+// orbiscore::SeamCutSample). Reduces in pass 2's shared memory.
 void seamCutPass(uvec3 wg, uint lid)
 {
     int bin = int(wg.x), row = int(wg.y);
@@ -796,7 +796,7 @@ void seamCutPass(uvec3 wg, uint lid)
 #endif
 
 #ifndef FISHEYE_STITCH_NO_BUFFERS
-// Pass 4: the seam flow's strips (insv::MeasureSeamFlowStrips, here with the
+// Pass 4: the seam flow's strips (orbiscore::MeasureSeamFlowStrips, here with the
 // capture-time correction, as the stitch samples). Invocation (gx, y) does
 // columns 4 gx .. 4 gx + 3 of row y of both lenses; grey is BT.601 luma.
 void seamStripPass(ivec2 gid)
@@ -821,7 +821,7 @@ void seamStripPass(ivec2 gid)
             }
         }
         // Where a lens shows its own camera, the other lens's picture
-        // (insv::MeasureSeamFlowStrips).
+        // (orbiscore::MeasureSeamFlowStrips).
         for (int i = 0; i < 2; ++i)
             if (seen[1 - i] && lensClear(1 - i, dir) && !lensClear(i, dir))
                 g[i] = g[1 - i];
@@ -860,7 +860,7 @@ vec3 blendLenses(vec3 dir)
 // over the outer BLUR_FEATHER of (s, t).
 float cross2(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
 
-// insv::blurQuadST: where `dir` falls in quad k, (s, t) in [0, 1]^2 inside.
+// orbiscore::blurQuadST: where `dir` falls in quad k, (s, t) in [0, 1]^2 inside.
 bool blurST(int k, vec3 dir, out vec2 st)
 {
     st = vec2(-1.0);
@@ -876,7 +876,7 @@ bool blurST(int k, vec3 dir, out vec2 st)
     float k2 = cross2(g, f);
     float k1 = cross2(e, f) + cross2(h, g);
     float k0 = cross2(h, e);
-    // k2 t^2 + k1 t + k0 = 0 in the cancellation-free form (insv::blurQuadST):
+    // k2 t^2 + k1 t + k0 = 0 in the cancellation-free form (orbiscore::blurQuadST):
     // a plate's quad is nearly a parallelogram, k2 tiny, and the textbook
     // (-k1 + w) / 2 k2 loses every digit in float -- t came out as noise.
     float w = k1 * k1 - 4.0 * k0 * k2;
@@ -899,7 +899,7 @@ bool blurST(int k, vec3 dir, out vec2 st)
     return false;
 }
 
-// insv::blurQuadDir: (s, t) in quad k -> its direction.
+// orbiscore::blurQuadDir: (s, t) in quad k -> its direction.
 vec3 blurDir(int k, vec2 st)
 {
     vec4 A = P.blurQ[k * 6], B = P.blurQ[k * 6 + 1], C = P.blurQ[k * 6 + 2];
@@ -910,7 +910,7 @@ vec3 blurDir(int k, vec2 st)
     return normalize(A.xyz + B.xyz * p.x + C.xyz * p.y);
 }
 
-// insv::blurCellMix, then the mix of quad k's cell colours at `st`.
+// orbiscore::blurCellMix, then the mix of quad k's cell colours at `st`.
 vec3 blurCellMix(int k, vec2 st)
 {
     vec2 cells = vec2(P.blurQ[k * 6].w, P.blurQ[k * 6 + 1].w);
@@ -943,7 +943,7 @@ vec3 blurredLenses(vec3 dir)
 #ifndef FISHEYE_STITCH_NO_MAIN
 // Pass 5: the blur's cell colours. Workgroup (cell, quad) of 64 invocations,
 // 2 x 2 of the cell's BLUR_CELL_TAPS x BLUR_CELL_TAPS taps each
-// (insv::blurCellTapDir), summed in pass 2's shared memory; the mean goes
+// (orbiscore::blurCellTapDir), summed in pass 2's shared memory; the mean goes
 // into the cell table. A quad's rows past its cells stay unused.
 layout(binding = 9, rgba16f) uniform writeonly image2D blurCellOut;
 

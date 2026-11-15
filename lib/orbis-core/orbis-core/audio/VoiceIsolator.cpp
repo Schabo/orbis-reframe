@@ -26,7 +26,7 @@
 #include <numbers>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -132,8 +132,8 @@ std::string loadRuntime()
 {
     // Debian's soname is the 1.x version, which ORT_API_VERSION is.
     const std::string names[] = {
-#ifdef INSV_ORT_LIBRARY
-        INSV_ORT_LIBRARY, // the one found at build time
+#ifdef ORBISCORE_ORT_LIBRARY
+        ORBISCORE_ORT_LIBRARY, // the one found at build time
 #endif
         "libonnxruntime.so.1." + std::to_string(ORT_API_VERSION), "libonnxruntime.so.1",
         "libonnxruntime.so"};
@@ -557,4 +557,4 @@ void VoiceIsolator::process(const float* in, float* out, int frames)
     m_impl->out.pop(out, frames);
 }
 
-} // namespace insv
+} // namespace orbiscore

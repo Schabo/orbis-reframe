@@ -7,7 +7,7 @@
 //   audio_filter_bench extract <clip.insv> <outdir> [--stream N] [--start S]
 //                      [--dur S] [--strength 0..1] [--fft N]
 //     raw_sN.wav, and wind_sN.wav through the app's path (ClipAudioReader +
-//     insv::WindReducer, "MC: Wind reduction")
+//     orbiscore::WindReducer, "MC: Wind reduction")
 //   audio_filter_bench analyze <raw.wav> <test.wav> [--fft N]
 //   audio_filter_bench general|hiss|voice|voiceamb <in.wav> <out.wav> [--strength 0..1]
 //     (the app's "Wind reduction" / "Hiss / hum" / "Voice only" /
@@ -22,7 +22,7 @@
 #include <orbis-core/audio/GeneralWindReducer.h>
 #include <orbis-core/audio/HissHumReducer.h>
 #include <orbis-core/audio/NoiseFilter.h>
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
 #include <orbis-core/audio/VoiceIsolator.h>
 #include "DataPaths.h"
 #endif
@@ -131,8 +131,8 @@ bool readWav(const std::string& path, std::vector<float>& mono, int& rate)
 std::vector<std::vector<float>> powerFrames(const std::vector<float>& x, int n)
 {
     const int hop = n / 4;
-    insv::Rdft tx(n, false);
-    const auto win = insv::sqrtHann(n);
+    orbiscore::Rdft tx(n, false);
+    const auto win = orbiscore::sqrtHann(n);
     std::vector<std::vector<float>> out;
     for (size_t start = 0; start + n <= x.size(); start += hop) {
         for (int i = 0; i < n; ++i)
@@ -250,8 +250,8 @@ float windBand(float hz)
 constexpr int kTrackFft = 16384;
 
 struct TrackSpectrum {
-    insv::Rdft tx{kTrackFft, false};
-    std::vector<float> win = insv::sqrtHann(kTrackFft);
+    orbiscore::Rdft tx{kTrackFft, false};
+    std::vector<float> win = orbiscore::sqrtHann(kTrackFft);
     std::vector<float> p = std::vector<float>(kTrackFft / 2 + 1);
 
     const std::vector<float>& at(const std::vector<float>& x, long centre)
@@ -364,10 +364,10 @@ int main(int argc, char** argv)
             std::fputs(kUsage, stdout);
             return 0;
         }
-#ifdef INSV_HAVE_VOICE
+#ifdef ORBISCORE_HAVE_VOICE
     // The DeepFilterNet model as the app finds it (ORBIS_DFN_MODEL_DIR wins).
     if (!std::getenv("ORBIS_DFN_MODEL_DIR"))
-        insv::VoiceIsolator::setModelDirectory(core::paths::modelDir("deepfilternet3"));
+        orbiscore::VoiceIsolator::setModelDirectory(core::paths::modelDir("deepfilternet3"));
 #endif
     if (argc < 4)
         return usage();
@@ -440,18 +440,19 @@ int main(int argc, char** argv)
             std::fprintf(stderr, "can't read %s as %d Hz\n", argv[2], kRate);
             return 1;
         }
-        insv::GeneralWindReducer g(kRate, 1);
-        insv::HissHumReducer h(kRate, 1);
-        std::unique_ptr<insv::NoiseFilter> v;
+        orbiscore::GeneralWindReducer g(kRate, 1);
+        orbiscore::HissHumReducer h(kRate, 1);
+        std::unique_ptr<orbiscore::NoiseFilter> v;
         if (cmd == "voice" || cmd == "voiceamb") {
-            v = insv::makeNoiseFilter(cmd == "voice" ? insv::NoiseMode::Voice : insv::NoiseMode::VoiceAmbience,
-                                      kRate, 1);
+            v = orbiscore::makeNoiseFilter(cmd == "voice" ? orbiscore::NoiseMode::Voice : orbiscore::NoiseMode::VoiceAmbience,
+                                           kRate, 1);
             if (!v) {
                 std::fprintf(stderr, "built without the voice modes\n");
                 return 1;
             }
         }
-        insv::NoiseFilter& f = v ? *v : cmd == "hiss" ? static_cast<insv::NoiseFilter&>(h) : g;
+        orbiscore::NoiseFilter& f =
+            v ? *v : cmd == "hiss" ? static_cast<orbiscore::NoiseFilter&>(h) : g;
         f.setStrength(strength);
         const int lat = f.latency();
         std::vector<float> in(x), out(x.size() + lat);
@@ -494,7 +495,7 @@ int main(int argc, char** argv)
         return usage();
 
     const std::string clip = argv[2], outDir = argv[3];
-    insv::InsvAudioDemux demux;
+    orbiscore::InsvAudioDemux demux;
     std::string err;
     if (!demux.open(clip, kRate, 2, err, stream)) {
         std::fprintf(stderr, "open: %s\n", err.c_str());
@@ -538,10 +539,10 @@ int main(int argc, char** argv)
     const std::string rawPath = outDir + "/raw_" + tag + ".wav";
     const std::string windPath = outDir + "/wind_" + tag + ".wav";
 
-    // The app's "MC: Wind reduction" (ClipAudioReader + insv::WindReducer).
-    insv::ClipAudioReader reader(kRate, 2);
+    // The app's "MC: Wind reduction" (ClipAudioReader + orbiscore::WindReducer).
+    orbiscore::ClipAudioReader reader(kRate, 2);
     reader.open(clip, stream);
-    reader.setNoiseReduction({insv::NoiseMode::MotorcycleWind, strength});
+    reader.setNoiseReduction({orbiscore::NoiseMode::MotorcycleWind, strength});
     reader.seek(int64_t(startS * kRate));
     std::vector<float> stereo(mono.size() * 2), wind(mono.size());
     reader.read(stereo.data(), int64_t(mono.size()));

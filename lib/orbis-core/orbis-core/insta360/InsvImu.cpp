@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 
@@ -331,4 +331,4 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
     return track;
 }
 
-} // namespace insv
+} // namespace orbiscore

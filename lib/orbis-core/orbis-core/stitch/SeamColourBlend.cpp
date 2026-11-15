@@ -11,7 +11,7 @@
 #include <numbers>
 #include <vector>
 
-namespace insv {
+namespace orbiscore {
 
 namespace {
 constexpr double kPi = std::numbers::pi;
@@ -190,4 +190,4 @@ void SeamColourWindow::dropBefore(int64_t ptsMs)
     m_frames.erase(m_frames.begin(), m_frames.begin() + static_cast<std::ptrdiff_t>(n));
 }
 
-} // namespace insv
+} // namespace orbiscore

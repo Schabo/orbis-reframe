@@ -25,7 +25,7 @@ struct BlurRemoval {
     // matched track's end.
     bool wholeTrack = true;
     // The track's centre over that range, a unit direction in the stitch's
-    // sphere frame (insv::BlurQuad's), sampled every few frames.
+    // sphere frame (orbiscore::BlurQuad's), sampled every few frames.
     struct Point {
         int64_t tMs = 0;
         float dir[3] = {0, 0, 0};

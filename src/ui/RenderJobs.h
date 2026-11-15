@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-#include <orbis-core/audio/AudioMixer.h>      // insv::MixClip
+#include <orbis-core/audio/AudioMixer.h>      // orbiscore::MixClip
 #include <InsetCompositor.h> // exportpipe::InsetClipJob
 
 #include "InsetFeed.h"               // InsetFeed::Clip
@@ -32,7 +32,7 @@ namespace renderjobs {
 // two clips crossfades over it: the clip before's runs on past the cut and
 // fades out, the clip after's starts early and fades in. Playback and export
 // both use this.
-std::vector<insv::MixClip> mixClips(const Timeline &timeline);
+std::vector<orbiscore::MixClip> mixClips(const Timeline &timeline);
 
 // When each source file was recorded (recordedTime), by its path: what a
 // title's clock reads. Looked up on the GUI thread (the files' media

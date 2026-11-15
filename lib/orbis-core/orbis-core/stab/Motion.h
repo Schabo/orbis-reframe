@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
-#include <orbis-core/metadata/Imu.h> // insv::ImuTrack
+#include <orbis-core/metadata/Imu.h> // orbiscore::ImuTrack
 
 #include <cstddef>
 #include <vector>
@@ -19,7 +19,7 @@
 // the travel follows the turn rate), fitted once per clip. Where the clip
 // hardly turns (or the fit finds no such axis) the camera's own forward is
 // taken.
-namespace insv {
+namespace orbiscore {
 
 struct MotionTrack {
     // One value per step of video time, the first at 0 s; NaN where the IMU
@@ -51,4 +51,4 @@ struct MotionTrack {
 // don't change with the Stabilization panel). ~0.5 s for a 4 min X5 clip.
 MotionTrack BuildMotion(const ImuTrack& track);
 
-} // namespace insv
+} // namespace orbiscore

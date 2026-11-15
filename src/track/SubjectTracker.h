@@ -120,7 +120,7 @@ private:
 
 // A tracked path -> sparse reframe keys: lost samples are bridged linearly
 // (held at the ends), yaw unwrapped, both axes Gaussian-smoothed over the
-// lean-follow window for `smoothStrength` (insv::leanWindowFromStrength), then
+// lean-follow window for `smoothStrength` (orbiscore::leanWindowFromStrength), then
 // Ramer-Douglas-Peucker keeps the fewest samples whose linear interpolation
 // (ReframeTrack::sample's) stays within `tolRad` of the smoothed path.
 struct PathKey {

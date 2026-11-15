@@ -27,10 +27,10 @@ int g_failures = 0;
     } while (0)
 
 // A state that differs per frame, already at the store's half precision.
-insv::SeamState stateFor(int64_t pts)
+orbiscore::SeamState stateFor(int64_t pts)
 {
-    insv::SeamState s;
-    for (int b = 0; b < insv::kSeamDepthBins; ++b) {
+    orbiscore::SeamState s;
+    for (int b = 0; b < orbiscore::kSeamDepthBins; ++b) {
         s.q[b] = 0.01f * static_cast<float>((b * 7 + pts) % 300);
         s.blend.cut[b] = 0.001f * static_cast<float>(b % 9) - 0.004f;
         s.blend.fade[b] = 0.013f + 0.0001f * static_cast<float>(pts % 50);
@@ -42,11 +42,11 @@ insv::SeamState stateFor(int64_t pts)
     s.blend.colour[0] = 0.031f;
     s.blend.colour[2] = -0.017f;
     s.depthConf = 0.62f;
-    insv::QuantiseSeamState(s);
+    orbiscore::QuantiseSeamState(s);
     return s;
 }
 
-bool same(const insv::SeamState& a, const insv::SeamState& b)
+bool same(const orbiscore::SeamState& a, const orbiscore::SeamState& b)
 {
     return std::memcmp(a.q, b.q, sizeof a.q) == 0 &&
            std::memcmp(&a.blend, &b.blend, sizeof a.blend) == 0 && a.depthConf == b.depthConf;
@@ -63,7 +63,7 @@ void testStore(const std::filesystem::path& clip, const std::filesystem::path& d
     stitch::SetSeamAnalysisDir("");
     auto mem = stitch::SeamAnalysisFor(key);
     CHECK(stitch::SeamAnalysisFor(key) == mem); // the one already open
-    insv::SeamState s;
+    orbiscore::SeamState s;
     CHECK(!mem->stateAt(0, s));
     CHECK(!mem->covers(0, 100) && mem->missing(0, 100).size() == 1);
     for (int64_t t = 0; t <= 200; t += 33)
