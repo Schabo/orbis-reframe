@@ -52,8 +52,8 @@ Mat3 rotX(double rad);
 Mat3 rotY(double rad);
 Mat3 rotZ(double rad);
 
-// Stitch parameters. The lens geometry itself comes from the calibration;
-// these are the seam/blend choices plus the fixed X5 conventions.
+// Stitch parameters. The lens geometry itself comes from the calibration and
+// the lens poses; these are the seam/blend choices.
 struct StitchParams {
     // Per-lens cutoff / feather centre, and the feather half-width around it.
     // The two lenses face opposite ways, so 90 splits the sphere evenly; the
@@ -116,14 +116,9 @@ struct StitchParams {
     // recorded.
     LensColour lensColour;
 
-    // The X5 stores roll ~ 90 for both lenses -- a fixed sensor-frame clock,
-    // not a per-unit correction. Subtracted from each lens's stored roll so
-    // only the small real deviation is applied.
-    double tzNominalDeg = 90.0;
-
-    // Nominal hemisphere yaw per lens (lens 0 forward-ish, lens 1 ~180 apart).
-    double nominalYaw0Deg = 0.0;
-    double nominalYaw1Deg = 180.0;
+    // Each lens's pose in the camera (camera::Lens::pose); the default is
+    // Insta360's.
+    LensPose lensPose[2] = {Insta360LensPose(0), Insta360LensPose(1)};
 
     // Global equirect orientation applied to the sampling ray (Ry(yaw) Rx(pitch)
     // Rz(roll)): how the camera holds its lenses, so the picture is level and

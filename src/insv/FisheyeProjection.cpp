@@ -121,14 +121,16 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
     for (int i = 0; i < 2; ++i) {
         const LensCalibExt& e = cal.lensesExt[i];
 
-        // Extrinsic, stored as yaw/pitch/roll (deg), roll ~ 90 being a fixed
-        // sensor clock. The calibration's image axes are ours with x and y
-        // negated (a 180 deg turn about the optical axis, see LensProjection),
-        // so its yaw/pitch (about x / y) flip sign too; roll (about z) doesn't.
-        // Measured: the seam match improves on every sample clip.
+        // Extrinsic: the lens's mount, then yaw/pitch/roll (deg) as the
+        // deviation from it, the roll counted from the camera's zero (90 on
+        // Insta360's, a fixed sensor clock; LensPose). The
+        // calibration's image axes are ours with x and y negated (a 180 deg
+        // turn about the optical axis, see LensProjection), so its yaw/pitch
+        // (about x / y) flip sign too; roll (about z) doesn't. Measured: the
+        // seam match improves on every sample clip.
         double ax = -e.yaw * kDeg;
         double ay = -e.pitch * kDeg;
-        double az = (e.roll - params.tzNominalDeg) * kDeg;
+        double az = (e.roll - params.lensPose[i].rollZeroDeg) * kDeg;
         if (i == 1) {
             const SeamCorrection& m = params.modelCorrection;
             ax += (m.lens1RotDeg[0] + params.seam.lens1RotDeg[0]) * kDeg;
@@ -143,9 +145,11 @@ bool FisheyeStitcher::configure(const InsvCalibration& cal, int streamW, int str
         // finds no seam; Rx Rz Ry breaks the ONE X2's), and it leaves the
         // per-clip seam fit only small corrections on all three cameras.
         const Mat3 corr = mul(mul(rotZ(az), rotX(ax)), rotY(ay));
-        const double nominalYaw =
-            (i == 0 ? params.nominalYaw0Deg : params.nominalYaw1Deg) * kDeg;
-        m_lens[i].worldToLens = transpose(mul(rotY(nominalYaw), corr));
+        Mat3 mount;
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 3; ++c)
+                mount.m[r][c] = params.lensPose[i].mount[r * 3 + c];
+        m_lens[i].worldToLens = transpose(mul(mount, corr));
 
         const double halfW = e.w * 0.5; // side-by-side combined frame
         const double cxLocal = e.cx - (i == 0 ? 0.0 : halfW);

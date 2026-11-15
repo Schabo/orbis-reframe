@@ -74,7 +74,7 @@ camera::ClipMetadata Clip(int lensSize)
     c.fps = 30;
     c.lenses.resize(2);
     for (int i = 0; i < 2; ++i)
-        c.lenses[i].calibration = X5Lens(i);
+        c.lenses[i].calibration = X5Lens(i), c.lenses[i].pose = insv::Insta360LensPose(i);
     return c;
 }
 

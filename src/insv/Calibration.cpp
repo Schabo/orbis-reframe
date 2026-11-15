@@ -2,6 +2,8 @@
 #include "Calibration.h"
 
 #include <charconv>
+#include <cmath>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -60,6 +62,20 @@ bool sane(const LensCalibExt (&lens)[2])
 }
 
 } // namespace
+
+LensPose Insta360LensPose(int lens)
+{
+    // Ry(0) / Ry(180 deg) as the stitch's rotY makes them, so the stitch is
+    // the same to the last bit as when these were its fixed conventions.
+    const double a = (lens == 0 ? 0.0 : 180.0) * (std::numbers::pi / 180.0);
+    const double c = std::cos(a), s = std::sin(a);
+    LensPose p;
+    const double m[9] = {c, 0, s, 0, 1, 0, -s, 0, c};
+    for (int i = 0; i < 9; ++i)
+        p.mount[i] = m[i];
+    p.rollZeroDeg = 90.0;
+    return p;
+}
 
 bool ParseExtendedCalibrationString(const std::string& s, InsvCalibration& out)
 {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <AudioPart.h>   // insv::AudioPart
-#include <Calibration.h> // insv::LensCalibExt
+#include <Calibration.h> // insv::LensCalibExt, insv::LensPose
 #include <Gps.h>         // insv::GpsTrack
 #include <Imu.h>         // insv::ImuTrack
 #include <InsvTrailer.h> // insv::LensProfile
@@ -39,6 +39,9 @@ struct Lens {
     // The lens model (Mei / MEI, insv::LensCalibExt); valid when
     // ClipMetadata::calibrated.
     insv::LensCalibExt calibration;
+    // Where it sits in the camera, which the calibration's angles are
+    // counted from (insv::LensPose, insv::StitchParams::lensPose).
+    insv::LensPose pose;
 };
 
 // The camera's own preview picture: the whole sphere as an equirectangular

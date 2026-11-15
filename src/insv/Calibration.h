@@ -57,6 +57,27 @@ struct LensCalibExt {
     double focalRefW = 0;
 };
 
+// Where a lens sits in the camera, which the camera's reader knows (the
+// calibration gives each lens's small deviation from it). The stitch places
+// lens i, in its lens frame (x and y the calibration image's negated, z the
+// optical axis), by
+//
+//   lens -> rig = mount * Rz(roll - rollZeroDeg) * Rx(-yaw) * Ry(-pitch)
+//
+// with yaw / pitch / roll the calibration's (LensCalibExt, degrees) and
+// `mount` row-major. The seam fine-tune adds to those three angles. A reader
+// with the whole pose as one rotation puts it in `mount` and the
+// calibration's angles at 0.
+struct LensPose {
+    double mount[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    double rollZeroDeg = 0.0;
+};
+
+// Insta360's (lens 0 or 1): the roll counted from 90, a fixed sensor clock
+// every model stores for both lenses, and lens 1 a half turn about the up
+// axis from lens 0.
+LensPose Insta360LensPose(int lens);
+
 struct InsvCalibration {
     std::vector<LensCalibExt> lensesExt; // extended MEI form; empty until parsed
 };

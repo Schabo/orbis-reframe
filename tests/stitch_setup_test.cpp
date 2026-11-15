@@ -58,7 +58,7 @@ camera::ClipMetadata a1Clip()
     c.projection = camera::Projection::DualFisheye;
     c.lenses.resize(2);
     for (int i = 0; i < 2; ++i)
-        c.lenses[i].calibration = a1Lens(i);
+        c.lenses[i].calibration = a1Lens(i), c.lenses[i].pose = insv::Insta360LensPose(i);
     c.calibrated = true;
     const insv::InsvModel& m = insv::FindInsvModel(c.model);
     c.lensCorrection = m.lensCorrection;

@@ -217,6 +217,8 @@ std::optional<Thumbnail> stitchedThumbnail(const std::string& path) {
         calib.lensesExt.push_back(l.calibration);
     insv::StitchParams params;
     insv::ApplyLensProfile(params, clip->bareLens ? &*clip->bareLens : nullptr, nullptr);
+    for (int i = 0; i < 2; ++i)
+        params.lensPose[i] = clip->lenses[i].pose;
     params.outYawDeg = clip->mountYawDeg;
     params.outPitchDeg = clip->mountPitchDeg;
     params.outRollDeg = clip->mountRollDeg;
@@ -518,6 +520,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<insv::InsvStreamInfo
         for (int i = 0; i < 2; ++i) {
             out.lenses[i].calibration = calib.lensesExt[i];
             out.lenses[i].calibration.focalRefW = focalRefW;
+            out.lenses[i].pose = insv::Insta360LensPose(i);
         }
     }
     out.mountYawDeg = model.mountDeg[0];
