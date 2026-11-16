@@ -41,6 +41,15 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    they're built: a few effects (graduated ND) run on the sphere before
    the reframe; room for the audio effects in the same tab; what preview
    costs (the viewport shows the same blur as the export).
+2. **Proxy playback** (*maintainer*): play from the camera's own
+   low-resolution preview file (the X5's `.lrv`, the A1's `.prx`, the DJI
+   Avata 360's `.LRF`) when the full files are too slow -- a GPU without
+   hardware decode for the clip, little graphics memory, a slow disk. The
+   preview file only supplies the picture: motion data, stabilization,
+   marks and keyframes stay on the full file, and export always uses the
+   full file. An app setting, not saved in the project, since it doesn't
+   change the output; the app offers it when playback can't keep up. The
+   plan is proposed and still to be agreed.
 
 Everything else planned is under *Planned, not scheduled* below.
 
