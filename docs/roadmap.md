@@ -48,8 +48,9 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    preview file only supplies the picture: motion data, stabilization,
    marks and keyframes stay on the full file, and export always uses the
    full file. An app setting, not saved in the project, since it doesn't
-   change the output; the app offers it when playback can't keep up. The
-   plan is proposed and still to be agreed.
+   change the output; the app offers it when playback can't keep up, and
+   plays the preview file by itself only when the clip couldn't play at
+   all otherwise (not enough graphics memory). Plan agreed, not started.
 
 Everything else planned is under *Planned, not scheduled* below.
 
