@@ -41,22 +41,6 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    they're built: a few effects (graduated ND) run on the sphere before
    the reframe; room for the audio effects in the same tab; what preview
    costs (the viewport shows the same blur as the export).
-2. **Proxy playback** (*maintainer*): play from the camera's own
-   low-resolution preview file (the X5's `.lrv`, the A1's `.prx`, the DJI
-   Avata 360's `.LRF`) when the full files are too slow -- a GPU without
-   hardware decode for the clip, little graphics memory, a slow disk. The
-   preview file only supplies the picture: motion data, stabilization,
-   marks and keyframes stay on the full file, and export always uses the
-   full file. An app setting, not saved in the project, since it doesn't
-   change the output; the app offers it when playback can't keep up, and
-   plays the preview file by itself only when the clip couldn't play at
-   all otherwise (not enough graphics memory). Plan agreed; built: the
-   readers' map of each camera's preview file (which half of its picture
-   holds which lens), and playback from it under *View ▸ Play from preview
-   files* (Never / Always) with a *Preview file* badge, and the offer when
-   the full files are too slow (decoded on the CPU, or decoding slower
-   than the clip plays). Left: the automatic switch when the stitch can't
-   start.
 
 Everything else planned is under *Planned, not scheduled* below.
 
@@ -141,7 +125,10 @@ each is in its document in [`formats/`](formats/README.md).
   with Vulkan is required; decoding on the processor still feeds the GPU
   stitch where the card can't decode a clip's codec. CPU-decoded clips
   then export through the same GPU view pass as the rest, and the GPU tests
-  run in CI on Mesa's software Vulkan (lavapipe).
+  run in CI on Mesa's software Vulkan (lavapipe). When the GPU stitch can't start
+  on a clip (not enough graphics memory), it plays from the camera's
+  preview file instead, if it has one, rather than showing no picture;
+  an export stops with the clip named.
 - **`lib/orbis-core/` as its own repository**, once its API settles.
 - **Highlight markers, follow-ups**: the camera's marks are built (X5,
   record type 10, [X5 format](formats/insta360-x5.md) §4.3): dots on the
