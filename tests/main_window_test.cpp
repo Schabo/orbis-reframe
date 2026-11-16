@@ -97,6 +97,7 @@ template <typename T> T *find(QObject *root, const char *name)
 // Every stand-in clip: 4 s of 30 fps, the X5's 8K sphere.
 constexpr int64_t kClipMs = 4000;
 constexpr double kFps = 30.0;
+constexpr int64_t kSourceCameraMarkMs = 2000;
 
 std::atomic<int> g_framesServed{0};
 // A stand-in clip whose file name contains "_h264_" reports that the GPU
@@ -193,6 +194,10 @@ ClipBackend standIns()
             return false;
         }
         out = {7680, 3840, kFps, kClipMs, {}};
+        // The Media tab preview's file carries a camera highlight mark.
+        if (QFileInfo(QString::fromStdString(path)).fileName() ==
+            QLatin1String("VID_20260101_130000_00_003.insv"))
+            out.highlight_ms = {kSourceCameraMarkMs};
         // A ONE X2 take's lens-1 file and proxy are its VID_…_00_… clip
         // (camera::ClipFileOf does this by reading the clip).
         QString clip = QString::fromStdString(path);
@@ -1407,6 +1412,10 @@ void testMediaPreview(const Ctx &c)
     key(c, Qt::Key_End);
     CHECK(waitFor([&] { return shows(kClipMs, kClipMs, kFps); }));
     CHECK(c.timelineWidget->playhead() == 1500);
+    // Its camera's mark, though the file was read in the background after
+    // the preview began: Ctrl+Up goes to it.
+    key(c, Qt::Key_Up, Qt::ControlModifier);
+    CHECK(waitFor([&] { return shows(kSourceCameraMarkMs, kClipMs, kFps); }));
     // The screenshot is the timeline's: not while a file is shown.
     if (QAction *shot = action(c, "screenshotAction"))
         CHECK(!shot->isEnabled());
@@ -1489,8 +1498,8 @@ void testMediaPreview(const Ctx &c)
         CHECK(row->isVisibleTo(c.w));
         CHECK(fileMarks() == QList<qint64>{mark});
         CHECK(c.timeline->clipAt(0).marks.size() == timelineMarks);
-        key(c, Qt::Key_End);
-        key(c, Qt::Key_Up, Qt::ControlModifier); // back to it
+        key(c, Qt::Key_Home);
+        key(c, Qt::Key_Down, Qt::ControlModifier); // back to it
         CHECK(waitFor([&] { return shows(mark, kClipMs, kFps); }));
         settle();
         key(c, Qt::Key_M, Qt::ShiftModifier);

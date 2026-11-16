@@ -755,13 +755,23 @@ void MainWindow::connectOverlaysAndAudio()
     // Waveforms arrive from background scans: redraw.
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
     // A file's guard profiles and marks read in the background: the panel
-    // may show it, the timeline its marks.
+    // may show it, the timeline its marks, and the preview its camera's
+    // marks when it's the file previewed (a file looked at for the first
+    // time is previewed before its read is in).
     connect(m_clipFacts, &ClipFactsCache::ready, this, [this](const QString &path) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && c->sourcePath == path)
             syncStitchingPanel();
-        if (!m_clipFacts->highlights(path).isEmpty())
-            refreshTimelineWidget();
+        if (m_clipFacts->highlights(path).isEmpty())
+            return;
+        refreshTimelineWidget();
+        const MediaItem *m = previewing() && m_sourcePath == path
+                                 ? m_project->mediaPool()->item(path)
+                                 : nullptr;
+        if (m && m->kind == MediaItem::Kind::Clip360) {
+            m_sourceMarks = m_clipFacts->highlights(path);
+            showSourceMarks();
+        }
     });
     // A file's GPS and motion read in the background: the overlays reading
     // them, and the selected one's note on where there's none.
