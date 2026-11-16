@@ -206,10 +206,10 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
                  tr("The back lens's picture is in a file of its own, next to this one: %1")
                      .arg(lf.absoluteFilePath()));
     }
-    if (fi.suffix().compare(QLatin1String("insv"), Qt::CaseInsensitive) == 0) // a 360 clip's
+    if (m.cameraClip) // by the reader, not the extension: a DJI clip is an .OSV
         addValue(tr("Preview file"), m.proxyPath.empty() ? tr("Not found") : tr("Found"),
                  m.proxyPath.empty()
-                     ? tr("The camera's low-res preview file, expected next to the .insv.")
+                     ? tr("The camera's low-res preview file, expected next to the clip.")
                      : QString::fromStdString(m.proxyPath));
     if (m.unevenTimeMap)
         addValue(tr("Re-written"), tr("⚠ With cuts or a speed change"),

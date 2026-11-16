@@ -84,6 +84,8 @@ struct MediaInfo {
     // The highlight marks set while recording (ClipMetadata::highlightMs).
     int64_t highlightMarks = 0;
 
+    // A clip a camera reader knows (ReadClipMetadata), whatever its extension.
+    bool cameraClip = false;
     // The camera's low-res proxy next to the clip.
     std::string proxyPath; // "" if not found
     // The take's other lens files (a ONE X2 clip's VID_…_10_…); empty when

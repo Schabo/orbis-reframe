@@ -11,6 +11,7 @@
 // Exit code is the failure count.
 
 #include "ClipMetadata.h"
+#include "MediaInfo.h"
 #include <orbis-core/stab/GyroStabilizer.h>
 #include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/insta360/InsvTrailer.h>
@@ -852,6 +853,10 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(clip->colorProfile == "D-Log M" && clip->logProfile == "D-Log M");
     CHECK(clip->recordedLocal == "2026-10-18T15:37:02");
     CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRF");
+    // Media information knows it for a camera clip, though it isn't an .insv.
+    camera::MediaInfo info;
+    CHECK(camera::ProbeMediaInfo(osv.string(), info, err) && info.cameraClip &&
+          info.proxyPath == clip->proxyPath);
     // The motion: the fused attitude alone, 4 kHz, every frame timed, the
     // readout from DJI's line time; level while the drone hovers at the start
     // (pitch -0.5, roll 1.9 deg by its own attitude).

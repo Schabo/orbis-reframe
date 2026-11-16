@@ -106,6 +106,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
 
     // Camera facts for a clip a camera reader knows; a plain video has none.
     if (const auto clip = ReadClipMetadata(path)) {
+        out.cameraClip = true;
         out.cameraModel = clip->model;
         out.recordedLocal = clip->recordedLocal;
         out.serialNumber = clip->serial;
