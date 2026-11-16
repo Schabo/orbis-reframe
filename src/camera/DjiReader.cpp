@@ -45,7 +45,16 @@ struct DjiModel {
     // The fused attitude's IMU axes in the sphere's (orbiscore::ImuTrack::axisMap),
     // measured against the picture's own rotation (docs/formats/dji-360.md §4).
     const char* imuAxes;
+    // Lens stream sizes (square) our clips show to be the whole calibration
+    // frame scaled, though not by a whole factor; 0-terminated, null for none.
+    // Another size off a whole factor might be a crop, so it is logged.
+    const int* scaledSizes;
 };
+
+// The Avata 360's 3000 px modes: the whole 3840 px frame at 0.78125, by the
+// image circle's place in the frame and by the seam (docs/formats/dji-360.md
+// §3).
+const int kAvata360ScaledSizes[] = {3000, 0};
 
 constexpr int kMaskSamples = 180; // every 2 degrees round the picture
 
@@ -99,13 +108,21 @@ const double kAvata360SlaveMask[kMaskSamples] = {
 // ~100 deg off each lens's axis before the frame's edge and the housing.
 const DjiModel kModels[] = {
     {"DJI Avata360", "DJI Avata 360", &orbiscore::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
-     {kAvata360MasterMask, kAvata360SlaveMask}, "y,x,-z"},
+     {kAvata360MasterMask, kAvata360SlaveMask}, "y,x,-z", kAvata360ScaledSizes},
 };
 
 // For a product not in the table: the schema tried in turn, the master on
 // the first track, the lens axes as the Avata 360's.
 const DjiModel kUnknown = {"", "", &orbiscore::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
-                           {nullptr, nullptr}, "y,x,-z"};
+                           {nullptr, nullptr}, "y,x,-z", nullptr};
+
+// Whether `size` is one of `model`'s measured whole-frame scales.
+bool knownScale(const DjiModel& model, int size) {
+    for (const int* s = model.scaledSizes; s && *s; ++s)
+        if (*s == size)
+            return true;
+    return false;
+}
 
 const DjiModel* findModel(const std::string& productName) {
     for (const DjiModel& m : kModels)
@@ -303,8 +320,8 @@ orbiscore::GpsTrack gpsTrack(const std::vector<orbiscore::DjiFrameMeta>& f, uint
 
 // The first sample of the clip's djmd track, by which the clip is claimed.
 // The sensor's readout, seconds: DJI's line time over all its lines (the
-// stream is the whole frame scaled), 9.4 ms on the Avata 360; 0 when the
-// file doesn't say.
+// stream is the whole frame scaled), 9.4 ms on the Avata 360 at 100 fps,
+// 16.2 ms in its 24-60 fps modes; 0 when the file doesn't say.
 double readoutSec(const orbiscore::DjiClipMeta& meta) {
     return static_cast<double>(meta.lroNsPerLine) * 1e-9 * static_cast<double>(meta.sensorHeight);
 }
@@ -318,8 +335,8 @@ double readoutSec(const orbiscore::DjiClipMeta& meta) {
 // grid). Times stay on the frames' clock, device us. Each frame is taken at
 // the middle of its readout, half of `readoutSec` after its own stamp,
 // which is where the picture's rotation lines up with the attitude's
-// (measured 4.6-5.8 ms on six clips, against 4.7). nullopt with fewer than
-// two batches.
+// (measured 4.4-5.8 ms on seven 100 fps clips, against 4.7; 7.4-9.7 ms on
+// five at 30 and 60 fps, against 8.1). nullopt with fewer than two batches.
 std::optional<orbiscore::ImuTrack> attitudeTrack(const std::vector<orbiscore::DjiFrameMeta>& frames,
                                                  const orbiscore::DjiClipMeta& meta,
                                                  const DjiModel& model, double fps,
@@ -477,9 +494,11 @@ CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo
                          out.path.c_str(),
                          orbiscore::DjiSlotName(orbiscore::DjiSlot::NativeRefineFar),
                          orbiscore::DjiSlotName(meta->slot));
+        const bool wholeScale =
+            std::abs(meta->master.width / out.lensWidth -
+                     std::round(meta->master.width / out.lensWidth)) <= 1e-6;
         if (meta->master.width != meta->master.height ||
-            std::abs(meta->master.width / out.lensWidth - std::round(meta->master.width /
-                                                                     out.lensWidth)) > 1e-6)
+            (!wholeScale && !(out.lensWidth == out.lensHeight && knownScale(*model, out.lensWidth))))
             std::fprintf(stderr, "[camera] %s: the calibration's %gx%g frame isn't the %dx%d "
                                  "stream's at a whole scale; taken as the whole frame scaled\n",
                          out.path.c_str(), meta->master.width, meta->master.height,

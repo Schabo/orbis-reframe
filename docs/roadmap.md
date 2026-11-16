@@ -91,8 +91,9 @@ each is in its document in [`formats/`](formats/README.md).
   correction, and 4K 100 plays at its rate; a renamed clip finds its
   recording time and preview file by the name it holds
   ([`formats/antigravity-a1.md`](formats/antigravity-a1.md)).
-- **DJI Avata 360**: built, experimental, from a contributor's clip
-  (1920² per lens, 100 fps, D-Log M;
+- **DJI Avata 360**: built, experimental, from a contributor's clips
+  (1920² per lens at 100 fps, 3000² and 3840² at 24-60 fps, Normal and
+  D-Log M;
   [`formats/dji-360.md`](formats/dji-360.md)): the lens pose is data the
   camera's reader fills in (`orbiscore::LensPose`) instead of Insta360's fixed
   sensor clock and lens yaws (X5 output unchanged); DJI's lens model, a

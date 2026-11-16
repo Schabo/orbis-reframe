@@ -41,7 +41,9 @@ Its preview file is found if you renamed it alike (`flight.insv` and
 `flight.prx`) or left its name as it was.
 
 The **DJI Avata 360**, a 360° drone, is supported experimentally, from one
-contributor's drone (1920×1920 per lens at 100 fps, D-Log M): its clips
+contributor's drone (1920×1920 per lens at 100 fps, 3000×3000 and
+3840×3840 at 24, 30 and 60 fps, each in Normal colour or D-Log M):
+its clips
 (`DJI_….OSV`) open, play, stitch and export, the picture facing the
 drone's nose with the horizon where the two lenses meet. The `.LRF`
 preview file and the `.SRT` file the drone writes beside each clip aren't
@@ -51,7 +53,8 @@ from the camera's own record of where it pointed. D-Log M needs DJI's LUT (see
 [Colour](colour.md#luts)). **Calibrate lenses…** doesn't work on its
 clips, and it has no lens guards. A clip you renamed keeps its recording
 time and finds its `.LRF`: the drone writes the clip's original name into
-both files.
+both files. Its photos (stitched `.JPG`, raw `.DNG` per lens) don't open
+yet.
 
 Other cameras (other Insta360 models, the DJI Osmo 360 family, GoPro)
 aren't supported yet. If you have one, short clips from it help add it:
