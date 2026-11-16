@@ -48,7 +48,7 @@ which is one clip.
 
 | Row | What it shows |
 |---|---|
-| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. Not shown for the DJI Avata 360, whose modes have no names here yet. |
+| **Mode** | The recording mode: **8K**, **5.7K** or **4K** 360° on the X5, **8K**, **6K** or **4K** on the X6, **5.7K** on the ONE X2, **8K**, **5.2K** or **4K** on the Antigravity A1, **8K**, **6K** or **4K** on the DJI Avata 360. Read from the size of the lens pictures. The X5's 5.7K+ records pictures the same size as 5.7K, so it shows as 5.7K. |
 | **Lenses** | The size of each of the two fisheye pictures, in pixels. |
 | **Sphere** | The size of the whole 360° picture once the two are stitched together, as a flat world-map image. |
 | **Frame rate** | Frames per second, such as 29.97, 59.94 or 119.88. |

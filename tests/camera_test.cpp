@@ -832,6 +832,7 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(clip->firmware == "01.00.06.00" && !clip->serial.empty());
     CHECK(clip->calibrated && clip->lenses.size() == 2);
     CHECK(clip->lensWidth == 1920 && clip->lensHeight == 1920 && std::abs(clip->fps - 100) < 1e-6);
+    CHECK(clip->captureMode == "4K");
     // The cover picture isn't a lens; the master lens is the first track.
     CHECK(clip->lenses[0].source.stream == 0 && clip->lenses[1].source.stream == 1);
     for (const camera::Lens& l : clip->lenses) {

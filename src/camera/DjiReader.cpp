@@ -31,6 +31,11 @@ constexpr double kDeg = std::numbers::pi / 180.0;
 // its axis each lens's picture is usable. Rows only for what our own clips
 // show (docs/formats/dji-360.md, *Modes and sample clips*).
 struct DjiModel {
+    struct Mode {
+        int lensWidth;
+        const char* name;
+    };
+
     const char* productName; // as clip_meta_header names it
     const char* name;        // as we show it
     const orbiscore::DjiSchema& (*schema)();
@@ -49,12 +54,21 @@ struct DjiModel {
     // frame scaled, though not by a whole factor; 0-terminated, null for none.
     // Another size off a whole factor might be a crop, so it is logged.
     const int* scaledSizes;
+    // The product's names for its 360 video modes by lens stream size
+    // (ClipMetadata::captureMode); 0-terminated, null for none.
+    const Mode* modes;
 };
 
 // The Avata 360's 3000 px modes: the whole 3840 px frame at 0.78125, by the
 // image circle's place in the frame and by the seam (docs/formats/dji-360.md
 // §3).
 const int kAvata360ScaledSizes[] = {3000, 0};
+
+// The Avata 360's 360 video modes as DJI names them (its spec page; 4K is
+// the 100 fps mode a firmware update added), by their lens stream sizes on
+// our clips (docs/formats/dji-360.md, *Modes and sample clips*). The file
+// names no mode itself.
+const DjiModel::Mode kAvata360Modes[] = {{3840, "8K"}, {3000, "6K"}, {1920, "4K"}, {0, nullptr}};
 
 constexpr int kMaskSamples = 180; // every 2 degrees round the picture
 
@@ -108,13 +122,13 @@ const double kAvata360SlaveMask[kMaskSamples] = {
 // ~100 deg off each lens's axis before the frame's edge and the housing.
 const DjiModel kModels[] = {
     {"DJI Avata360", "DJI Avata 360", &orbiscore::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
-     {kAvata360MasterMask, kAvata360SlaveMask}, "y,x,-z", kAvata360ScaledSizes},
+     {kAvata360MasterMask, kAvata360SlaveMask}, "y,x,-z", kAvata360ScaledSizes, kAvata360Modes},
 };
 
 // For a product not in the table: the schema tried in turn, the master on
 // the first track, the lens axes as the Avata 360's.
 const DjiModel kUnknown = {"", "", &orbiscore::DjiSchemaEagle4, 0, {90.0, -90.0, 90.0}, 200.0,
-                           {nullptr, nullptr}, "y,x,-z", nullptr};
+                           {nullptr, nullptr}, "y,x,-z", nullptr, nullptr};
 
 // Whether `size` is one of `model`'s measured whole-frame scales.
 bool knownScale(const DjiModel& model, int size) {
@@ -122,6 +136,14 @@ bool knownScale(const DjiModel& model, int size) {
         if (*s == size)
             return true;
     return false;
+}
+
+// `model`'s name for the mode filmed at `lensWidth`, or "" when it has none.
+const char* modeName(const DjiModel& model, int lensWidth) {
+    for (const DjiModel::Mode* m = model.modes; m && m->name; ++m)
+        if (m->lensWidth == lensWidth)
+            return m->name;
+    return "";
 }
 
 const DjiModel* findModel(const std::string& productName) {
@@ -479,6 +501,8 @@ CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo
     out.firmware = meta->firmware;
     out.serial = meta->productSerial;
     out.projection = Projection::DualFisheye;
+    if (out.lensWidth == out.lensHeight)
+        out.captureMode = modeName(*model, out.lensWidth);
 
     // The master lens is lens 0, wherever its stream is.
     const int master = model->masterTrack, slave = 1 - model->masterTrack;
