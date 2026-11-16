@@ -1,3 +1,10 @@
+## v0.10.1 (2026-11-16)
+
+### Fix
+
+- **ui**: the Media tab preview shows the camera's marks on a file's first look
+- **insv**: the Avata 360's 3000 px modes are a known scale, no warning
+
 ## v0.10.0 (2026-11-15)
 
 ### Feat
