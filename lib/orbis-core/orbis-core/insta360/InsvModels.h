@@ -79,6 +79,10 @@ struct InsvModel {
     const char* proxyPrefix;
     const char* proxyToken;
     const char* proxyExt;
+    // The proxy holds both fisheyes side by side in one stream; true when
+    // lens 0 (the clip's first stream, or its `clipToken` file) is the left
+    // half: the ONE X2 and the A1, where the X5 puts it on the right.
+    bool proxyLens0Left;
 
     // How a flight controller's attitude track (InsvTelemetry::attitude)
     // turns into "up" for the IMU: body <- IMU = Ry(attitudeTiltDeg) *

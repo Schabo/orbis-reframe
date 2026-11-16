@@ -553,6 +553,15 @@ CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo
     out.proxyPath = sibling(self, self.stem().string(), ".LRF");
     if (out.proxyPath.empty() && held)
         out.proxyPath = sibling(self, fs::path(*held).stem().string(), ".LRF");
+    // One clip, one file; the proxy holds both lenses side by side, the
+    // first lens track on the left (docs/formats/dji-360.md).
+    Part part{out.path, {}, 0, streams[0].durationUs, {}};
+    for (const Lens& l : out.lenses) {
+        part.lenses.push_back(l.source);
+        if (!out.proxyPath.empty())
+            part.proxyLenses.push_back({out.proxyPath, 0, {l.source.stream == 0 ? 0.0 : 0.5, 0.0, 0.5, 1.0}});
+    }
+    out.parts = {std::move(part)};
     out.recordedLocal = held ? nameTime(*held) : std::string();
     if (out.recordedLocal.empty())
         out.recordedLocal = nameTime(self.filename().string());

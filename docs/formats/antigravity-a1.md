@@ -51,7 +51,11 @@ Markers as in [`README.md`](README.md).
   (the X5's is `VID_…_00_…`), and the proxy beside it
   **`PRX_<date>_<time>_<n>.prx`**: the same name with `PRX` and `.prx`, both
   fisheyes side by side at 2560×1280 (the X5's `.lrv`, X5 §3.2), with a
-  trailer of its own (records 1 and 2). ✅ The MP4's `creation_time` is
+  trailer of its own (records 1 and 2). ✅ **Lens 0 (`.insv` stream 0) is
+  the left half**, where the X5's is the right: on `_011` at 10 s, each
+  lens's frame scaled to 128² against each half of the proxy's, mean
+  difference 4.7 levels against 93-99 for the other half (the same check
+  on an X5 clip finds its lens 0 on the right, 5.6 against 47). ✅ The MP4's `creation_time` is
   the recording start in UTC to the second: on our first three clips it is
   the name's time, which is local, four hours ahead (five on the
   2026-11-01 set, the day the contributor's clocks went back).

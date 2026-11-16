@@ -116,7 +116,7 @@ Cached lookup(const std::string& path, std::string* err, ReadFailure* why) {
         case CameraReader::Result::Read: {
             // A reader that knows no parts: the clip is one.
             if (clip->parts.empty()) {
-                Part one{path, {}, 0, s0.durationUs};
+                Part one{path, {}, 0, s0.durationUs, {}};
                 for (const Lens& l : clip->lenses)
                     one.lenses.push_back(l.source);
                 clip->parts.push_back(std::move(one));

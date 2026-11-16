@@ -71,6 +71,11 @@ struct Part {
     std::vector<LensSource> lenses; // in lens order, as Lens::source
     int64_t startUs = 0;      // its first frame, in clip time
     int64_t durationUs = 0;
+    // The same lenses in the camera's low-res proxy of this part, in lens
+    // order: one stream, each lens its half of the frame. Only the picture
+    // comes from it -- calibration, motion and timing stay the part's own.
+    // Empty when the part has no proxy beside it.
+    std::vector<LensSource> proxyLenses;
 };
 
 struct ClipMetadata {
@@ -109,6 +114,18 @@ struct ClipMetadata {
         std::vector<orbiscore::ClipPart> s;
         for (const Part& p : parts)
             s.push_back({p.startUs, p.lenses});
+        return s;
+    }
+    // The same from the camera's proxies (Part::proxyLenses); empty unless
+    // every part has one.
+    std::vector<orbiscore::ClipPart> proxySources() const
+    {
+        std::vector<orbiscore::ClipPart> s;
+        for (const Part& p : parts) {
+            if (p.proxyLenses.empty())
+                return {};
+            s.push_back({p.startUs, p.proxyLenses});
+        }
         return s;
     }
     bool calibrated = false;  // every lens has its calibration from the file
@@ -156,7 +173,8 @@ struct ClipMetadata {
     // video (a trimmed file's cut-off part) are left out.
     std::vector<int64_t> highlightMs;
 
-    // The camera's low-res proxy next to the clip, "" if not found.
+    // The camera's low-res proxy next to the clip (the first part's), "" if
+    // not found; its lenses are Part::proxyLenses.
     std::string proxyPath;
 
     // What the file records besides the picture. Facts for the Media

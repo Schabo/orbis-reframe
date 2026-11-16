@@ -115,6 +115,16 @@ std::string findProxy(const std::filesystem::path& insv, const orbiscore::InsvMo
     return {};
 }
 
+// The lenses in the proxy `proxy` ("" for none): one stream, both fisheyes
+// side by side, lens 0 in the half the model says.
+std::vector<LensSource> proxyLensesOf(const std::string& proxy, const orbiscore::InsvModel& model) {
+    if (proxy.empty())
+        return {};
+    const double lens0 = model.proxyLens0Left ? 0.0 : 0.5;
+    return {LensSource{proxy, 0, {lens0, 0.0, 0.5, 1.0}},
+            LensSource{proxy, 0, {0.5 - lens0, 0.0, 0.5, 1.0}}};
+}
+
 // The second lens's file of a clip whose own file holds lens 0 only (the
 // ONE X2 at 5.7K, docs/formats/insta360-one-x2.md §1). Found by its name
 // beside the clip; taken only if it is a one-lens file of the same shape and
@@ -363,6 +373,9 @@ void findParts(ClipMetadata& out, const orbiscore::InsvModel& model,
                          c.path.c_str(), out.path.c_str());
             break;
         }
+        if (const auto theirs = orbiscore::ReadInsvMakerNotes(c.path))
+            part.proxyLenses = proxyLensesOf(
+                findProxy(c.path, model, *theirs, orbiscore::ReadInsvHeldName(c.path)), model);
         const Part& prev = out.parts.back();
         // By the camera's clock the next part starts where this one ends, to
         // the frame clock's drift from the nominal rate (tens of ppm).
@@ -492,6 +505,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
     out.premiumGuard = profile(*notes, model.premiumGuard);
     const std::optional<std::string> heldName = orbiscore::ReadInsvHeldName(out.path);
     out.proxyPath = findProxy(out.path, model, *notes, heldName);
+    out.parts[0].proxyLenses = proxyLensesOf(out.proxyPath, model);
     // By the camera's clock: field 7 where the model writes it to the second
     // (the ONE X2 doesn't write it, the A1 only to the minute), else the
     // name the camera gave the file, which carries the same time: the one

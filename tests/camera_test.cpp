@@ -153,6 +153,15 @@ void testPair(const Take& t)
     CHECK(clip->lensWidth == 64 && clip->fps == kFps);
     CHECK(clip->durationMs == 49 * 1000 / kFps); // the shorter lens
     CHECK(clip->proxyPath == t.proxy);
+    // The proxy's lenses: one stream, the _00_ lens the left half.
+    const auto proxy = clip->proxySources();
+    CHECK(proxy.size() == 1 && proxy[0].lenses.size() == 2);
+    if (proxy.size() == 1 && proxy[0].lenses.size() == 2) {
+        const auto& l = proxy[0].lenses;
+        CHECK(l[0].path == t.proxy && l[0].stream == 0 && l[1].path == t.proxy && l[1].stream == 0);
+        CHECK(l[0].rect.x == 0.0 && l[1].rect.x == 0.5 && l[0].rect.w == 0.5 &&
+              l[1].rect.w == 0.5 && l[0].rect.h == 1.0);
+    }
     CHECK(clip->hasMotion);
     CHECK(clip->imuRateHz > 499.0 && clip->imuRateHz < 501.0); // ms ticks read as such
 }
@@ -408,6 +417,10 @@ void testAntigravityA1(const std::filesystem::path& dir)
     // the drone's nose.
     CHECK(clip->mountYawDeg == -90.0 && clip->mountPitchDeg == 90.0 && clip->mountRollDeg == 0.0);
     CHECK(clip->proxyPath == prx);
+    // Lens 0 is the proxy's left half, as on the ONE X2 (not the X5).
+    CHECK(clip->parts[0].proxyLenses.size() == 2 &&
+          clip->parts[0].proxyLenses[0].path == prx && clip->parts[0].proxyLenses[0].rect.x == 0.0 &&
+          clip->parts[0].proxyLenses[1].rect.x == 0.5);
     CHECK(camera::ClipFileOf(vid) == vid);
     CHECK(camera::ClipFileOf(prx, &err) == vid);
 
@@ -577,6 +590,9 @@ void testSplitRecording(const std::filesystem::path& dir)
     CHECK(writeX5Part(other, 30, 140));
     appendTo(other, x5PartTrailer("IAHEA2599999999", kFirst2 + 1300000, 2, identify,
                                   kFirst2 + 300000, kFirst2 + 2800000, 0.3));
+    // A proxy beside the second part only.
+    const std::string lrv2 = (sub / "LRV_20250927_144221_01_020.lrv").string();
+    CHECK(writeLens(lrv2, 32, 30));
 
     std::string err;
     const auto clip = camera::ReadClipMetadata(p1, &err);
@@ -592,6 +608,11 @@ void testSplitRecording(const std::filesystem::path& dir)
     CHECK(clip->parts[0].startUs == 0 && clip->parts[1].startUs == 2000000);
     CHECK(clip->parts[1].lenses.size() == 2 && clip->parts[1].lenses[1].path == p2 &&
           clip->parts[1].lenses[1].stream == 1);
+    // The second part's proxy, lens 0 its right half; with none for the
+    // first, the clip can't play from proxies.
+    CHECK(clip->parts[0].proxyLenses.empty() && clip->proxySources().empty());
+    CHECK(clip->parts[1].proxyLenses.size() == 2 && clip->parts[1].proxyLenses[0].path == lrv2 &&
+          clip->parts[1].proxyLenses[0].rect.x == 0.5 && clip->parts[1].proxyLenses[1].rect.x == 0.0);
     CHECK(clip->durationMs == 3200);
     // Either part names the clip; the first part alone is still a clip.
     CHECK(camera::ClipFileOf(p2) == p1);
@@ -853,6 +874,14 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
     CHECK(clip->colorProfile == "D-Log M" && clip->logProfile == "D-Log M");
     CHECK(clip->recordedLocal == "2026-10-18T15:37:02");
     CHECK(std::filesystem::path(clip->proxyPath).extension() == ".LRF");
+    // The proxy's lenses: the first lens track on the left, whichever lens
+    // that is.
+    CHECK(clip->parts.size() == 1 && clip->parts[0].proxyLenses.size() == 2);
+    for (size_t i = 0; i < clip->parts[0].proxyLenses.size(); ++i) {
+        const camera::LensSource& l = clip->parts[0].proxyLenses[i];
+        CHECK(l.path == clip->proxyPath && l.stream == 0 &&
+              l.rect.x == (clip->lenses[i].source.stream == 0 ? 0.0 : 0.5) && l.rect.w == 0.5);
+    }
     // Media information knows it for a camera clip, though it isn't an .insv.
     camera::MediaInfo info;
     CHECK(camera::ProbeMediaInfo(osv.string(), info, err) && info.cameraClip &&

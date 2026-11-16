@@ -7,17 +7,18 @@ namespace {
 const InsvModel kModels[] = {
     {"Insta360 X5", "Insta360", "z,-x,-y", "ProtectorS", "ProtectorA", 5312.0,
      {{3840, "8K"}, {2880, "5.7K"}, {1920, "4K"}, {0, nullptr}},
-     {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv",
+     {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
      {1.0, 0.0, 0.0, 0.0}, 0.0, {}, "y,z,x", true, -0.5, 1799.0},
     // IMU axes: the X5's "z,-x,-y", confirmed 2026-11-11 on an 8K 30
     // Standard clip with deliberate yaw/pitch/roll (docs/formats/insta360-x6.md):
     // residual_stab --diagnose horizon ~0.4 deg, correction/raw ratio 1.02 at
     // scale 1; residual pan lowest vs z,x,y and -x,y,-z on the same stretch.
-    // File names: the X5's (one .insv + .lrv per take). Timelapse orientation:
+    // File names and proxy layout: the X5's (one .insv + .lrv per take; no
+    // X6 proxy checked yet). Timelapse orientation:
     // no X6 timelapse seen yet. Capture time: the X5's, unmeasured.
     {"Insta360 X6", "Insta360", "z,-x,-y", nullptr, nullptr, 7680.0,
      {{3840, "8K"}, {3008, "6K"}, {1920, "4K"}, {0, nullptr}},
-     {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv",
+     {180.0, 0.0, 0.0}, 1.0, "_00_", nullptr, "LRV", "_01_", ".lrv", false,
      {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, true, -0.5, 0.0},
     // A lens per file at 5.7K, proxy LRV_…_11_….insv, telemetry in ms, no
     // lens-guard profiles (docs/formats/insta360-one-x2.md §1, §6, §8). IMU
@@ -29,7 +30,7 @@ const InsvModel kModels[] = {
     // about a millisecond, more than its short exposures move it).
     {"Insta360 ONE X2", "Insta360", "z,x,y", nullptr, nullptr, 2880.0,
      {{2880, "5.7K"}, {0, nullptr}, {0, nullptr}, {0, nullptr}},
-     {180.0, 0.0, 0.0}, 1000.0, "_00_", "_10_", "LRV", "_11_", ".insv",
+     {180.0, 0.0, 0.0}, 1000.0, "_00_", "_10_", "LRV", "_11_", ".insv", true,
      {1.0, 0.0, 0.0, 0.0}, 0.0, {}, nullptr, false, -2.3, 0.0},
     // A 360 drone writing Insta360's .insv (docs/formats/antigravity-a1.md):
     // both lenses in one file, the proxy PRX_….prx with the clip's own name,
@@ -49,7 +50,7 @@ const InsvModel kModels[] = {
     // calibration the same in every clip (docs/formats/antigravity-a1.md).
     {"Antigravity A1", "Antigravity", "-x,y,-z", nullptr, nullptr, 5248.0,
      {{3840, "8K"}, {2624, "5.2K"}, {1920, "4K"}, {0, nullptr}},
-     {-90.0, 90.0, 0.0}, 1.0, nullptr, nullptr, "PRX", nullptr, ".prx",
+     {-90.0, 90.0, 0.0}, 1.0, nullptr, nullptr, "PRX", nullptr, ".prx", true,
      {0.5, 0.5, -0.5, 0.5}, 9.7, {{0.006, 0.238, 0.468}, {-0.000749, 0.000016}, 0.998714}, nullptr,
      true, -0.5, 0.0},
 };
