@@ -411,6 +411,7 @@ void PlaybackController::setRate(double rate)
     m_clockBaseMs = m_positionMs;
     m_clock.restart();
     m_rate = rate;
+    m_decRate = rate;
 }
 
 void PlaybackController::settle()

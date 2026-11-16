@@ -75,6 +75,7 @@
 #include "ClipFactsCache.h"
 #include "TelemetryCache.h"
 #include "PlayerBar.h"
+#include "ProxyOfferBar.h"
 #include "EditToolbar.h"
 #include "UserManual.h"
 #include "panels/AudioPanel.h"
@@ -113,6 +114,7 @@ MainWindow::MainWindow(QVulkanInstance *vulkanInstance, ClipBackend clipBackend,
     m_telemetry = new TelemetryCache({}, this);
     m_editToolbar = new EditToolbar(this);
     m_playerBar = new PlayerBar(this);
+    m_proxyOfferBar = new ProxyOfferBar(this);
 
     setupModel();
     setupSourcesSidebar();
@@ -328,6 +330,7 @@ void MainWindow::setupLayout(QWidget *viewportContainer)
     viewColumn->setContentsMargins(0, 0, 0, 0);
     viewColumn->setSpacing(0);
     viewColumn->addWidget(viewportContainer, 1);
+    viewColumn->addWidget(m_proxyOfferBar, 0);
     viewColumn->addWidget(m_playerBar, 0);
     auto *top = new QHBoxLayout;
     top->setContentsMargins(0, 0, 0, 0);
@@ -1165,17 +1168,47 @@ void MainWindow::connectController()
     // A clip that plays on the CPU because the GPU part didn't start: said
     // once per file, or a stutter looks like a bug. Short, to fit the
     // toolbar; what to do is in the manual, the details in the log.
+    // "Clip 2", or the file's name when it's not on the timeline (the
+    // Media tab's preview).
+    const auto clipName = [this](const QString &path, int clipId) {
+        const int i = m_timeline->indexOfId(clipId);
+        return i >= 0 ? tr("Clip %1").arg(i + 1) : QFileInfo(path).fileName();
+    };
+    // A clip with a camera preview file it isn't playing from offers it
+    // instead, in the bar under the viewport, with the same reason.
     connect(m_controller, &PlaybackController::gpuFallback, this,
-            [this](const QString &path, int clipId, bool decode, bool stitch,
-                   const QString &codec) {
+            [this, clipName](const QString &path, int clipId, bool decode, bool stitch,
+                   const QString &codec, bool fromProxy, bool proxyAvailable) {
+                // The preview file is small enough to decode on the CPU.
+                if (fromProxy && !stitch)
+                    return;
                 if (m_gpuFallbackNoticed.contains(path))
                     return;
                 m_gpuFallbackNoticed.insert(path);
-                const int i = m_timeline->indexOfId(clipId);
-                const QString what =
-                    i >= 0 ? tr("Clip %1").arg(i + 1) : QFileInfo(path).fileName();
-                m_editToolbar->showNotice(syscheck::gpuFallbackNotice(what, decode, stitch, codec));
+                const QString text =
+                    syscheck::gpuFallbackNotice(clipName(path, clipId), decode, stitch, codec);
+                if (!(proxyAvailable && offerProxies(text)))
+                    m_editToolbar->showNotice(text);
             });
+    // A clip too slow for this machine (decoded on the CPU by a GPU without
+    // video decode, or decoding slower than it plays) with a preview file.
+    connect(m_controller, &PlaybackController::proxyOffer, this,
+            [this, clipName](const QString &path, int clipId, bool behind) {
+                const QString what = clipName(path, clipId);
+                offerProxies(behind ? tr("%1 plays slowly: this computer decodes it slower than "
+                                         "it plays")
+                                          .arg(what)
+                                    : tr("%1 plays slowly: the graphics card can't decode "
+                                         "video, so the processor does")
+                                          .arg(what));
+            });
+    connect(m_proxyOfferBar, &ProxyOfferBar::accepted, this, [this] { setPlayFromProxies(true); });
+    connect(m_proxyOfferBar, &ProxyOfferBar::dismissed, this,
+            [this] { m_proxyOfferAnswered = true; });
+    connect(m_proxyOfferBar, &ProxyOfferBar::declined, this, [] {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("player/offerProxies"), false);
+    });
     // The audio follows the seeks the controller has applied, not the
     // requests: the controller runs on its own thread, and ticks it queued
     // before taking a seek still carry the old position -- had the audio
@@ -2357,7 +2390,7 @@ void MainWindow::setupViewMenu()
         tr("Play the clips from the low-resolution preview files the camera writes beside them, "
            "for a computer that can't play the full files smoothly. The picture is softer; "
            "the export and screenshots always use the full files.");
-    auto *proxyGroup = new QActionGroup(this);
+    m_proxyGroup = new QActionGroup(this);
     m_playFromProxies = QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
                             .value(QStringLiteral("player/proxies")) == QStringLiteral("always");
     for (const bool always : {false, true}) {
@@ -2368,18 +2401,10 @@ void MainWindow::setupViewMenu()
         a->setCheckable(true);
         a->setChecked(always == m_playFromProxies);
         a->setToolTip(proxyTip);
-        proxyGroup->addAction(a);
+        m_proxyGroup->addAction(a);
     }
-    connect(proxyGroup, &QActionGroup::triggered, this, [this](QAction *a) {
-        const bool always = a->data().toBool();
-        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
-            .setValue(QStringLiteral("player/proxies"),
-                      always ? QStringLiteral("always") : QStringLiteral("never"));
-        if (always == m_playFromProxies)
-            return;
-        m_playFromProxies = always;
-        pushPreviewConfig(m_project->previewStitch());
-    });
+    connect(m_proxyGroup, &QActionGroup::triggered, this,
+            [this](QAction *a) { setPlayFromProxies(a->data().toBool()); });
     m_editorActions += proxyMenu->menuAction();
 
     // The app's colours, per user (QSettings ui/theme, read in main()).

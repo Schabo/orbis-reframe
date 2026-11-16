@@ -338,6 +338,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     last_error_.clear();
     gpu_fallback_ = {};
     gpu_released_ = false;
+    has_proxy_ = false;
 
     std::string err;
     const auto clip = camera::ReadClipMetadata(clip_path, &err);
@@ -367,6 +368,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     // files, whose lenses are smaller (the calibration, stated at a reference
     // size, scales to them as to the full files).
     lens_sources_ = clip->partSources();
+    has_proxy_ = !clip->proxySources().empty();
     int lensW = info_.width, lensH = info_.height;
     if (config.proxy) {
         auto grid = std::make_unique<ProxyGrid>();

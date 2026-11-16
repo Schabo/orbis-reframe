@@ -476,9 +476,44 @@ void PlaybackController::noteGpuFallback(int clipId)
         fb.codec == m_fallbackSeen.codec)
         return;
     m_fallbackSeen = fb;
+    const bool proxy = m_activeSource->UsingProxy();
     if (fb.any())
         emit gpuFallback(m_activePath, clipId, fb.decode, fb.stitch,
-                         QString::fromStdString(fb.codec));
+                         QString::fromStdString(fb.codec), proxy,
+                         !proxy && m_activeSource->HasProxy());
+}
+
+void PlaybackController::notePace(int clipId, bool playing, bool timed, double readMs)
+{
+    stitch::IStitchSource &src = *m_activeSource;
+    const bool offerable = src.HasProxy() && !src.UsingProxy();
+    if (m_paceSource.lock() != m_activeSource) {
+        m_paceSource = m_activeSource;
+        m_pace.reset();
+        m_behindOffered = false;
+        // A GPU without video decode at all: no fallback to report, but
+        // the full files decode on the CPU, slowly.
+        if (offerable && src.DecodesOnCpu() && !src.GetGpuFallback().decode)
+            emit proxyOffer(m_activePath, clipId, false);
+    }
+    const double fps = src.GetInfo().fps;
+    if (!playing || !offerable || m_behindOffered || fps <= 0.0) {
+        m_pace.reset();
+        return;
+    }
+    if (!timed)
+        return;
+    // The time playback gives a frame: slower than 1x more, faster not less
+    // -- a machine that can't fast-forward a clip isn't too slow for it.
+    const double frameMs = 1000.0 / fps / std::min(m_decRate.load(), 1.0);
+    const double nowS = std::chrono::duration<double>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    if (m_pace.add(readMs, frameMs, nowS)) {
+        m_behindOffered = true;
+        core::log::Info("[playback] %s decodes slower than it plays\n", qPrintable(m_activePath));
+        emit proxyOffer(m_activePath, clipId, true);
+    }
 }
 
 void PlaybackController::noteProxy()
@@ -1030,6 +1065,7 @@ void PlaybackController::decoderLoop()
             // A scrub's passing frames quickly; its final seek is exact.
             m_activeSource->SetQuickSeek(seekToKeyframe);
             m_activeSource->SeekTo(target); // m_hardStall stays until the first read
+            m_pace.reset(); // the read after it decodes up to the target
             m_decLastSourceMs = -1;
             m_decSegIndex = idx;
             std::lock_guard<std::mutex> lk(m_mx);
@@ -1066,6 +1102,7 @@ void PlaybackController::decoderLoop()
         stitch::Frame frame;
         std::shared_ptr<render::LensFrame> lens;
         bool got = false;
+        const bool timed = !m_heldRead;
         if (m_heldRead) {
             frame = std::move(m_heldRead->frame);
             lens = std::move(m_heldRead->lens);
@@ -1077,6 +1114,8 @@ void PlaybackController::decoderLoop()
         noteGpuFallback(cur.seg.clipId);
         noteProxy();
         const auto t1 = std::chrono::steady_clock::now();
+        notePace(cur.seg.clipId, playing, timed && got,
+                 std::chrono::duration<double, std::milli>(t1 - t0).count());
         if (render::framestats::Enabled() && got) {
             std::lock_guard<std::mutex> lk(m_mx);
             m_statsReadMs.add(render::framestats::MsBetween(t0, t1));

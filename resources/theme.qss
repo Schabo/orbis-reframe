@@ -465,3 +465,7 @@ QToolButton#playerSpeed::menu-indicator {
     border-radius: 3px;
     padding: 0 4px;
 }
+#proxyOfferBar {
+    background-color: @menuBar;
+    border-top: 1px solid @border;
+}

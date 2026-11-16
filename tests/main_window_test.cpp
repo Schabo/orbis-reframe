@@ -103,6 +103,9 @@ std::atomic<int> g_framesServed{0};
 // A stand-in clip whose file name contains "_h264_" reports that the GPU
 // decodes video but not its codec, as NativeStitchSource does.
 const QString kH264Mark = QStringLiteral("_h264_");
+// One whose name contains "_proxy_" has a camera preview file, and plays from
+// it when the config asks (View ▸ Play from preview files).
+const QString kProxyMark = QStringLiteral("_proxy_");
 std::mutex g_openedMutex;
 std::set<std::string> g_opened; // paths the stand-in source was opened on
 std::map<std::string, stitch::PreviewStitchConfig> g_openedWith; // the last open's config
@@ -141,6 +144,8 @@ public:
         m_grey = QString::fromStdString(path).endsWith(QLatin1String("_002.insv")) ? 200 : 128;
         if (QString::fromStdString(path).contains(kH264Mark))
             m_fallback = {true, false, "H.264"};
+        m_hasProxy = QString::fromStdString(path).contains(kProxyMark);
+        m_proxy = m_hasProxy && config.proxy;
         return true;
     }
     const stitch::ClipInfo &GetInfo() const override { return m_info; }
@@ -176,10 +181,14 @@ public:
     }
     const std::string &GetLastError() const override { return m_error; }
     stitch::GpuFallback GetGpuFallback() const override { return m_fallback; }
+    bool UsingProxy() const override { return m_proxy; }
+    bool HasProxy() const override { return m_hasProxy; }
 
 private:
     stitch::ClipInfo m_info;
     stitch::GpuFallback m_fallback;
+    bool m_hasProxy = false;
+    bool m_proxy = false;
     int64_t m_frame = 0;
     uint8_t m_grey = 128;
     std::string m_error;
@@ -2338,6 +2347,76 @@ void testUndecodableCodec(const Ctx &c)
     c.timeline->removeClip(id);
 }
 
+// A clip the graphics card can't decode that has a camera preview file: the
+// bar under the viewport offers the preview files instead of the toolbar's
+// notice. Accepting sets View ▸ Play from preview files to Always and plays
+// from it (the badge); a clip that decodes its preview file on the CPU says
+// nothing. Don't ask again leaves later clips to the toolbar's notice.
+void testProxyOffer(const Ctx &c)
+{
+    auto *bar = find<QWidget>(c.w, "proxyOfferBar");
+    auto *text = find<QLabel>(c.w, "proxyOfferText");
+    auto *accept = find<QAbstractButton>(c.w, "proxyOfferAccept");
+    auto *decline = find<QAbstractButton>(c.w, "proxyOfferDecline");
+    auto *notice = find<QLabel>(c.w, "editNotice");
+    auto *badge = find<QLabel>(c.w, "playerProxy");
+    QAction *always = action(c, "proxyAlwaysAction");
+    if (!bar || !text || !accept || !decline || !notice || !badge || !always)
+        return;
+    const QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
+    trigger(c, "proxyNeverAction");
+    CHECK(bar->isHidden());
+    notice->clear();
+
+    // Appended, played into; removed again.
+    auto playIn = [&](const QString &name) {
+        const QString path = QDir(c.dir).filePath(name);
+        writeFile(path);
+        const int id = c.timeline->appendClip(path, kClipMs, kFps);
+        qint64 start = 0;
+        for (int i = 0; i < c.timeline->count() && c.timeline->clipAt(i).id != id; ++i)
+            start += c.timeline->clipAt(i).timelineDurationMs();
+        CHECK(seekTo(c, start + 500));
+        return std::make_pair(path, id);
+    };
+
+    auto [first, firstId] = playIn(QStringLiteral("VID_20260101_140000") + kH264Mark +
+                                   kProxyMark + QStringLiteral("004.insv"));
+    CHECK(waitFor([&] { return !bar->isHidden(); }));
+    CHECK(text->text().contains(QLatin1String("can't decode H.264 video")));
+    CHECK(!notice->text().contains(QLatin1String("H.264"))); // said in the bar instead
+    CHECK(badge->isHidden());
+    accept->click();
+    CHECK(bar->isHidden());
+    CHECK(always->isChecked());
+    CHECK(settings.value(QStringLiteral("player/proxies")).toString() == QLatin1String("always"));
+    CHECK(waitFor([&] {
+        std::lock_guard<std::mutex> lock(g_openedMutex);
+        return g_openedWith[first.toStdString()].proxy;
+    }));
+    CHECK(seekTo(c, c.timelineWidget->playhead() + 100)); // a frame from the reopened source
+    CHECK(waitFor([&] { return !badge->isHidden(); }));
+    CHECK(!notice->text().contains(QLatin1String("H.264"))); // its preview file decodes fine
+    c.timeline->removeClip(firstId);
+
+    trigger(c, "proxyNeverAction");
+    auto [second, secondId] = playIn(QStringLiteral("VID_20260101_141000") + kH264Mark +
+                                     kProxyMark + QStringLiteral("005.insv"));
+    CHECK(waitFor([&] { return !bar->isHidden(); }));
+    CHECK(badge->isHidden());
+    decline->click();
+    CHECK(bar->isHidden());
+    CHECK(!settings.value(QStringLiteral("player/offerProxies"), true).toBool());
+    CHECK(!always->isChecked());
+    c.timeline->removeClip(secondId);
+
+    auto [third, thirdId] = playIn(QStringLiteral("VID_20260101_142000") + kH264Mark +
+                                   kProxyMark + QStringLiteral("006.insv"));
+    CHECK(waitFor([&] { return notice->text().contains(QLatin1String("H.264")); }));
+    CHECK(bar->isHidden());
+    c.timeline->removeClip(thirdId);
+}
+
 // A clip's file moved: it shows as missing, and Locate file… relinks it.
 void testLocateMovedFile(const Ctx &c)
 {
@@ -2534,6 +2613,7 @@ int main(int argc, char **argv)
             testAddClipByMenu(c);
             testPlayAcrossCut(c);
             testUndecodableCodec(c);
+            testProxyOffer(c);
             testNavigationKeys(c);
             testKeyOnTrimOut(c);
             testStepOntoCut(c);

@@ -101,6 +101,10 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    work as on the full file; the frame's microsecond time is the proxy
    frame's, which the stabilization follows. Calibration, motion, seam
    analysis, export and screenshots stay on the full files.
+   The app offers the setting when a clip with a proxy decodes on the CPU
+   or its decoder falls behind the clip's frame rate
+   (`PlaybackController::proxyOffer`, `DecodePace`); display skips don't
+   count.
 2. **Stitch** (`render/VulkanFisheyeStitcher`, `fisheye_stitch*.comp`): the
    lens calibration from the file (or the clip's own, made with Calibrate
    lenses, which has the guard in it), the lens-guard profile and the

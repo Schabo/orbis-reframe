@@ -461,6 +461,7 @@ if(FFMPEG_FOUND)
         src/ui/FrameViewCache.h
         src/ui/PlaybackController.cpp
         src/ui/PlaybackController.h
+        src/ui/DecodePace.h
         src/ui/PlaybackControllerDecoder.cpp
         src/ui/BlankClipSource.cpp
         src/ui/PlaybackTuning.h
@@ -494,6 +495,8 @@ if(FFMPEG_FOUND)
         src/ui/EditToolbar.cpp
         src/ui/EditToolbar.h
         src/ui/PlayerBar.cpp
+        src/ui/ProxyOfferBar.cpp
+        src/ui/ProxyOfferBar.h
         src/ui/PlayerBar.h
         src/ui/TimelineWidget.cpp
         src/ui/TimelineWidget.h
@@ -870,6 +873,11 @@ target_link_libraries(zip_reader_test PRIVATE zip_reader ZLIB::ZLIB)
 add_executable(audio_output_test tests/audio_output_test.cpp)
 target_link_libraries(audio_output_test PRIVATE audio_output Threads::Threads)
 add_test(NAME audio_output_test COMMAND audio_output_test)
+
+# The playback controller's measure of a decoder that can't keep up.
+add_executable(decode_pace_test tests/decode_pace_test.cpp src/ui/DecodePace.h)
+target_include_directories(decode_pace_test PRIVATE src/ui)
+add_test(NAME decode_pace_test COMMAND decode_pace_test)
 
 # Help > User manual's link per version (release tag or main).
 add_executable(user_manual_test tests/user_manual_test.cpp

@@ -51,6 +51,7 @@ class Timeline;
 struct ClipItem;
 class EquirectViewportWindow;
 class PlaybackController;
+class ProxyOfferBar;
 class PlateJobController;
 class ClipMeasurements;
 class ExportRunner;
@@ -462,6 +463,13 @@ private:
     // View ▸ Play from preview files on top (not the project's: it doesn't
     // change the output).
     void pushPreviewConfig(const stitch::PreviewStitchConfig &cfg);
+    // View ▸ Play from preview files, from the menu or the offer bar: saved
+    // (QSettings player/proxies), the menu ticked, playback told.
+    void setPlayFromProxies(bool always);
+    // Offers the preview files in the bar under the viewport, `reason` first
+    // ("Clip 2 plays slowly: …"); false when it isn't asked now (playing
+    // from them already, answered this session, or Don't ask again).
+    bool offerProxies(const QString &reason);
     // File ▸ Project settings…
     void editProjectSettings();
     // `keysLabel` replaces the keys' own names in the list ("Alt+1 … Alt+9").
@@ -574,6 +582,9 @@ private:
     QList<QShortcut *> m_editorShortcuts;
     QActionGroup *m_previewSize = nullptr;
     bool m_playFromProxies = false; // View ▸ Play from preview files (QSettings player/proxies)
+    QActionGroup *m_proxyGroup = nullptr; // its Never / Always
+    ProxyOfferBar *m_proxyOfferBar = nullptr; // offers it when the full files are too slow
+    bool m_proxyOfferAnswered = false; // Not now: not again this session
 
     ClipBackend m_clipBackend;
     EquirectViewportWindow *m_viewport = nullptr;

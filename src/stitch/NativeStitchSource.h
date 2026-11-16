@@ -103,6 +103,8 @@ public:
     const std::string& GetLastError() const override { return last_error_; }
     GpuFallback GetGpuFallback() const override { return gpu_fallback_; }
     bool UsingProxy() const override { return proxy_ != nullptr; }
+    bool HasProxy() const override { return has_proxy_; }
+    bool DecodesOnCpu() const override { return demux_ != nullptr; }
 
     // True when ReadFlatFrame() can run: the all-GPU path is active and either
     // the fused view pipeline or the reproject pipeline built. Otherwise
@@ -449,6 +451,7 @@ private:
     int eq_h_ = 0;
     bool flat_ten_bit_ = false; // SetFlatTenBit
     bool cpu_decode_ = false;   // SetCpuDecode
+    bool has_proxy_ = false;    // HasProxy
     std::vector<ViewPane> panes_; // SetViewPanes
     PanePoseFn pane_pose_;
     uint32_t pane_fill_ = 0;

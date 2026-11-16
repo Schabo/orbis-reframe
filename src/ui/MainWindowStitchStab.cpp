@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QLocale>
 #include <QSet>
+#include <QSettings>
 #include <QActionGroup>
 #include <QMetaObject>
 
@@ -25,6 +26,7 @@
 #include "ClipFactsCache.h"
 #include "PlaybackController.h"
 #include "PlayerBar.h"
+#include "ProxyOfferBar.h"
 #include "TimelineWidget.h"
 #include "panels/StabilizationPanel.h"
 #include "panels/StitchingPanel.h"
@@ -542,6 +544,34 @@ void MainWindow::pushPreviewConfig(const stitch::PreviewStitchConfig &cfg)
     QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, playback] {
         ctrl->setPreviewConfig(playback);
     });
+}
+
+void MainWindow::setPlayFromProxies(bool always)
+{
+    QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+        .setValue(QStringLiteral("player/proxies"),
+                  always ? QStringLiteral("always") : QStringLiteral("never"));
+    for (QAction *a : m_proxyGroup->actions())
+        if (a->data().toBool() == always)
+            a->setChecked(true);
+    if (always)
+        m_proxyOfferBar->hide(); // answered, from the menu
+    if (always == m_playFromProxies)
+        return;
+    m_playFromProxies = always;
+    pushPreviewConfig(m_project->previewStitch());
+}
+
+bool MainWindow::offerProxies(const QString &reason)
+{
+    if (m_playFromProxies || m_proxyOfferAnswered ||
+        !QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+             .value(QStringLiteral("player/offerProxies"), true)
+             .toBool())
+        return false;
+    if (!m_proxyOfferBar->isVisible()) // the first reason stays until answered
+        m_proxyOfferBar->offer(reason);
+    return true;
 }
 
 void MainWindow::updatePreviewMenu(const stitch::PreviewStitchConfig &cfg)

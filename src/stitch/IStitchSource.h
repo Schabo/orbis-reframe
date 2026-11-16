@@ -295,6 +295,12 @@ public:
     // The picture comes from the camera's preview file, not the full one
     // (PreviewStitchConfig::proxy, and the clip has one). Default: no.
     virtual bool UsingProxy() const { return false; }
+    // The clip has a camera preview file for every part, whichever file the
+    // picture comes from now: playback could take it. Default: no.
+    virtual bool HasProxy() const { return false; }
+    // After a successful Open(): the lenses decode on the CPU, for whatever
+    // reason (GetGpuFallback, a GPU with no video decode at all). Default: no.
+    virtual bool DecodesOnCpu() const { return false; }
 
     // Per-lens / per-sensor-row capture-time correction for subsequent frames
     // (see CaptureTiming, NativeStitchSource): `timing` for frames before

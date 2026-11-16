@@ -10,6 +10,7 @@
 #include <orbis-core/stitch/SeamCorrection.h> // orbiscore::SeamCorrection
 #include <LensFrame.h>     // render::LensFrame
 
+#include "DecodePace.h" // when to offer the camera's preview files
 #include "InsetFeed.h" // video-track insets
 #include "LayerLease.h" // a crossfade's layer reading our sources
 #include "../render/FrameStats.h" // ORBIS_FRAME_STATS
@@ -321,9 +322,18 @@ signals:
     // Part of the playing source's stitch runs on the CPU because the GPU
     // part didn't start (IStitchSource::GetGpuFallback): it plays, slowly.
     // `codec` is set when the GPU can't decode the clip's codec at all.
-    // May come again for the same file when it's opened again.
+    // May come again for the same file when it's opened again. `fromProxy`:
+    // the picture comes from the camera's preview file; `proxyAvailable`:
+    // it doesn't, but could (IStitchSource::HasProxy).
     void gpuFallback(const QString &path, int clipId, bool decode, bool stitch,
-                     const QString &codec);
+                     const QString &codec, bool fromProxy, bool proxyAvailable);
+    // The playing source has a camera preview file it isn't playing from, and
+    // the full file looks too slow for this machine: it decodes on the CPU
+    // although no GPU part failed (a GPU without video decode; the GPU
+    // fallbacks come with gpuFallback's `proxyAvailable`), or, `behind`, its
+    // decoder took longer per frame than the clip plays, over several
+    // seconds (DecodePace). Once per opened source and reason.
+    void proxyOffer(const QString &path, int clipId, bool behind);
     // The picture being read comes from the camera's preview file
     // (IStitchSource::UsingProxy), or no longer does.
     void proxyChanged(bool fromProxy);
@@ -402,6 +412,11 @@ private:
     void noteGpuFallback(int clipId);
     // proxyChanged when the playing source's picture source changed.
     void noteProxy();
+    // After a read from the active source that took `readMs` (`timed`: a read
+    // of its own, not one a prefetch or a lending made): proxyOffer when the
+    // source has a preview file it isn't playing from and decodes on the
+    // CPU, or doesn't keep up.
+    void notePace(int clipId, bool playing, bool timed, double readMs);
     // A new, unopened source for `seg`: a BlankClipSource for a flat clip,
     // else m_makeSource's, or the real one. Any thread.
     std::unique_ptr<stitch::IStitchSource> makeSource(const Segment &seg) const;
@@ -546,6 +561,12 @@ private:
     std::weak_ptr<stitch::IStitchSource> m_fallbackSource;
     stitch::GpuFallback m_fallbackSeen;
     bool m_proxyNoted = false; // what proxyChanged said last (decoder thread)
+    // Whether the active source keeps up (notePace), and which source that is
+    // about; whether proxyOffer said it's behind for it. Decoder thread.
+    DecodePace m_pace;
+    std::weak_ptr<stitch::IStitchSource> m_paceSource;
+    bool m_behindOffered = false;
+    std::atomic<double> m_decRate{1.0}; // m_rate, for the decoder thread
 
     // The next segment's source, sought and its first frame read on a worker
     // thread shortly before the boundary, so the cut doesn't wait for the
