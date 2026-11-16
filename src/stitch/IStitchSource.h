@@ -117,11 +117,17 @@ struct PreviewStitchConfig {
     // on top. The clip's own, like lensGuard (ClipItem::lensCalibration).
     std::optional<LensCalibration> lensCalibration;
 
+    // The picture from the camera's low-res preview files (camera::
+    // ClipMetadata::proxySources) where the clip has them -- the app setting
+    // *Play from the camera's preview files*. Playback only: an export, a
+    // screenshot and the seam analysis always read the full file.
+    bool proxy = false;
+
     bool operator==(const PreviewStitchConfig& o) const {
         return width == o.width && height == o.height &&
                lensGuard == o.lensGuard && method == o.method &&
                seamColourBlend == o.seamColourBlend && seamFlow == o.seamFlow &&
-               lensCalibration == o.lensCalibration;
+               lensCalibration == o.lensCalibration && proxy == o.proxy;
     }
     bool operator!=(const PreviewStitchConfig& o) const { return !(*this == o); }
 };
@@ -285,6 +291,10 @@ public:
     // all is said once at startup, so it isn't a fallback here; nor is a GPU
     // path turned off on purpose (ORBIS_NO_GPU_*). Default: none.
     virtual GpuFallback GetGpuFallback() const { return {}; }
+
+    // The picture comes from the camera's preview file, not the full one
+    // (PreviewStitchConfig::proxy, and the clip has one). Default: no.
+    virtual bool UsingProxy() const { return false; }
 
     // Per-lens / per-sensor-row capture-time correction for subsequent frames
     // (see CaptureTiming, NativeStitchSource): `timing` for frames before

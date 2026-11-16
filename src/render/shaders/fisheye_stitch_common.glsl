@@ -123,7 +123,21 @@ layout(std140, binding = 0) uniform Params {
     // per azimuth bin, lens 0 clear above elevation x, lens 1 below y (rad),
     // 2 bins per vec4.
     vec4 seamClear[SEAM_BINS / 2];
+    // Per lens where its picture is in the image the sampler reads, x, y, w,
+    // h as fractions of it (orbiscore::StitchGpuParams::lensRect): the whole
+    // image, or a half of a camera's proxy. The box its samples stay in, min
+    // uv and max uv (unbounded for a whole image).
+    vec4 lensRect[2];
+    vec4 lensBox[2];
 } P;
+
+// Lens i's colour at `uv` in its own picture (0..1 over fisheyeW x fisheyeH):
+// in its part of the sampled image, never past it into the other lens.
+vec3 sampleLensIn(int i, vec2 uv)
+{
+    return sampleLens(i, clamp(P.lensRect[i].xy + uv * P.lensRect[i].zw, P.lensBox[i].xy,
+                               P.lensBox[i].zw));
+}
 
 #ifndef SEAM_FLOW_BINDING
 #define SEAM_FLOW_BINDING 6
@@ -666,8 +680,8 @@ void seamCostPass(uvec3 wg, uint lid)
             continue;
         // Grey less mid-grey: the plane absorbs the offset, and float sums of
         // squares lose less to it (the CPU sums in double).
-        float x = luma(sampleLens(0, (p0.xy + 0.5) / vec2(fw, fh))) - 128.0;
-        float y = luma(sampleLens(1, (p1.xy + 0.5) / vec2(fw, fh))) - 128.0;
+        float x = luma(sampleLensIn(0, (p0.xy + 0.5) / vec2(fw, fh))) - 128.0;
+        float y = luma(sampleLensIn(1, (p1.xy + 0.5) / vec2(fw, fh))) - 128.0;
         float a = float(az) - 0.5 * float(SEAM_PATCH - 1);
         float b = float(el) - 0.5 * float(SEAM_PATCH - 1);
         acc[0] += 1.0; acc[1] += a; acc[2] += b; acc[3] += a * a; acc[4] += b * b; acc[5] += a * b;
@@ -739,8 +753,8 @@ void seamCutPass(uvec3 wg, uint lid)
     float x = 0.0, y = 0.0;
     vec3 c0 = vec3(0.0), c1 = vec3(0.0);
     if (ok) {
-        c0 = sampleLens(0, (p0.xy + 0.5) / vec2(fw, fh));
-        c1 = sampleLens(1, (p1.xy + 0.5) / vec2(fw, fh));
+        c0 = sampleLensIn(0, (p0.xy + 0.5) / vec2(fw, fh));
+        c1 = sampleLensIn(1, (p1.xy + 0.5) / vec2(fw, fh));
         x = luma(c0);
         y = luma(c1);
     }
@@ -816,7 +830,7 @@ void seamStripPass(ivec2 gid)
         for (int i = 0; i < 2; ++i) {
             vec3 pr = projectRS(i, dir);
             if (pr.z >= 0.0 && pr.x >= 0.0 && pr.y >= 0.0 && pr.x <= fw - 1.0 && pr.y <= fh - 1.0) {
-                g[i] = clamp(luma(sampleLens(i, (pr.xy + 0.5) / vec2(fw, fh))) + 0.5, 0.0, 255.0);
+                g[i] = clamp(luma(sampleLensIn(i, (pr.xy + 0.5) / vec2(fw, fh))) + 0.5, 0.0, 255.0);
                 seen[i] = true;
             }
         }
@@ -848,8 +862,8 @@ vec3 blendLenses(vec3 dir)
         lg += 0.5 * seamColourLog(dir);
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
-    if (w0 > 0.0) { acc += w0 * lensColourApply(sampleLens(0, uv0), -lg, max(veil, 0.0)); wsum += w0; }
-    if (w1 > 0.0) { acc += w1 * lensColourApply(sampleLens(1, uv1), lg, max(-veil, 0.0)); wsum += w1; }
+    if (w0 > 0.0) { acc += w0 * lensColourApply(sampleLensIn(0, uv0), -lg, max(veil, 0.0)); wsum += w0; }
+    if (w1 > 0.0) { acc += w1 * lensColourApply(sampleLensIn(1, uv1), lg, max(-veil, 0.0)); wsum += w1; }
     return wsum > 1e-6 ? acc / wsum : vec3(0.0);
 }
 

@@ -51,8 +51,11 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    change the output; the app offers it when playback can't keep up, and
    plays the preview file by itself only when the clip couldn't play at
    all otherwise (not enough graphics memory). Plan agreed; built: the
-   first step, the readers' map of each camera's preview file (which half
-   of its picture holds which lens).
+   readers' map of each camera's preview file (which half of its picture
+   holds which lens), and playback from it under *View ▸ Play from preview
+   files* (Never / Always) with a *Preview file* badge. Left: the offer when
+   playback can't keep up, and the automatic switch when the stitch can't
+   start.
 
 Everything else planned is under *Planned, not scheduled* below.
 

@@ -6,6 +6,10 @@
 #include <orbis-core/media/FisheyeDemux.h>
 #include "support/TestMedia.h"
 
+extern "C" {
+#include <libavutil/frame.h>
+}
+
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -128,6 +132,58 @@ void testLensOrder(const std::string& a, const std::string& b)
     CHECK(nextPair(d, greyB, greyA) == std::make_pair(10, 10));
 }
 
+// A camera's proxy: both lenses side by side in one stream (left half lens
+// A's grey, right half lens B's), opened as two lenses on its halves -- one
+// decoder, each lens its half, in either order.
+void testSideBySide(const std::string& dir)
+{
+    std::printf("  one stream, two lenses side by side: one decode, each lens its half\n");
+    const std::string path = dir + "/proxy.mp4";
+    testmedia::VideoSpec spec;
+    spec.width = 128;
+    spec.height = 64;
+    spec.fps = kFps;
+    spec.frames = kFrames;
+    spec.luma = [](int frame, int x, int) {
+        return static_cast<uint8_t>(x < 64 ? greyA(frame) : greyB(frame));
+    };
+    CHECK(testmedia::writeVideo(path, spec));
+    const orbiscore::LensRect left{0.0, 0.0, 0.5, 1.0}, right{0.5, 0.0, 0.5, 1.0};
+    orbiscore::FisheyeDemux d;
+    std::string err;
+    CHECK(d.open({{path, 0, right}, {path, 0, left}}, err));
+    CHECK(d.lensCount() == 2 && d.lens(1).width == 128);
+    orbiscore::Image a, b;
+    CHECK(d.seekTo(400, err) && d.readNextPair(a, b, nullptr, err));
+    CHECK(a.w == 64 && a.h == 64 && b.w == 64 && b.h == 64);
+    // Away from the seam between the halves, which the codec blurs.
+    const auto inner = [](const orbiscore::Image& img) {
+        orbiscore::Image c;
+        c.alloc(img.w - 8, img.h);
+        for (int y = 0; y < img.h; ++y)
+            for (int x = 4; x < img.w - 4; ++x)
+                for (int k = 0; k < 3; ++k)
+                    c.rgb[(y * c.w + x - 4) * 3 + k] = img.rgb[(y * img.w + x) * 3 + k];
+        return c;
+    };
+    CHECK(frameOf(inner(a), greyB) == 10 && frameOf(inner(b), greyA) == 10);
+    // The shared decoder hands out one frame per pair: on to the end.
+    int pairs = 1;
+    while (d.readNextPair(a, b, nullptr, err))
+        ++pairs;
+    CHECK(err.empty() && pairs == kFrames - 10);
+
+    // The decoder's own pair: the same frame for both lenses.
+    orbiscore::LensDemuxer demux;
+    CHECK(demux.open({{path, 0, left}, {path, 0, right}},
+                     [](const auto*, const auto*, auto*, std::string&) { return true; }, err));
+    AVFrame* f0 = nullptr;
+    AVFrame* f1 = nullptr;
+    CHECK(demux.readNextPair(f0, f1, nullptr, err) && f0 && f1 && f0->data[0] == f1->data[0]);
+    av_frame_free(&f0);
+    av_frame_free(&f1);
+}
+
 // At 29.97 fps a frame's time isn't a whole millisecond: `ms` is rounded as
 // ever, `us` is the stream's time (what the stabilizer's correction takes).
 void testExactTimes(const std::string& dir)
@@ -193,6 +249,7 @@ int main()
     testLensOrder(a, b);
     testErrors(a, dir.string());
     testExactTimes(dir.string());
+    testSideBySide(dir.string());
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

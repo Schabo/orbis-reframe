@@ -26,6 +26,7 @@ class FisheyeDemux;
 class FisheyeStitcher;
 class VulkanVideoDecoder;
 class SeamFlowEstimator;
+struct Image;
 } // namespace orbiscore
 
 namespace render {
@@ -101,6 +102,7 @@ public:
     Frame ReadFrame() override;
     const std::string& GetLastError() const override { return last_error_; }
     GpuFallback GetGpuFallback() const override { return gpu_fallback_; }
+    bool UsingProxy() const override { return proxy_ != nullptr; }
 
     // True when ReadFlatFrame() can run: the all-GPU path is active and either
     // the fused view pipeline or the reproject pipeline built. Otherwise
@@ -295,7 +297,33 @@ private:
     // A read's or seek's first step: a released source taken up again, and
     // positioned where it was when the read carries on (resume_seek_).
     bool resumeForRead();
-    std::vector<orbiscore::ClipPart> lens_sources_; // Open()'s clip, its parts, for openDecode
+    // Open()'s clip, its parts (or their proxies), for openDecode.
+    std::vector<orbiscore::ClipPart> lens_sources_;
+    // Proxy mode (PreviewStitchConfig::proxy): the camera's preview files give
+    // the picture, on the clip's own frame times (ProxyGrid, in the .cpp);
+    // null when the full files do.
+    struct ProxyGrid;
+    std::unique_ptr<ProxyGrid> proxy_;
+    // A lens's picture as the stitch has it: the clip's, or its proxy's.
+    int lens_w_ = 0, lens_h_ = 0;
+    // A proxy's lens size (each lens's part of its stream) and frame time;
+    // false with `err` set when its lenses aren't alike or it won't open.
+    static bool proxyLensSize(const std::vector<orbiscore::ClipPart>& proxies, int& w, int& h,
+                              double& frameUs, std::string& err);
+    // The next pair, as the decoders' readNextPair; in proxy mode the next of
+    // the clip's frames, showing the proxy frame at its time: `pts->ms` is the
+    // clip frame's time, `pts->us` the proxy frame's (the time its picture
+    // was taken, which the stabilization follows).
+    bool readPairVk(AVFrame*& f0, AVFrame*& f1, orbiscore::FramePts* pts, std::string& err);
+    // The last pair read shows the proxy frame the clip frame before it did:
+    // its seam is that frame's, not measured again (as a scrub's frame).
+    bool picture_repeat_ = false;
+    // The seam colour of a frame not measured: a scrub's keeps the last
+    // table; a repeat (`solve`) solves it at its own time from the frames
+    // measured. Into `p` as heldSeamColour.
+    void repeatSeamColour(int64_t pts_ms, orbiscore::StitchGpuParams& p, bool solve);
+    bool readPairCpu(orbiscore::Image& a, orbiscore::Image& b, orbiscore::FramePts* pts,
+                     std::string& err);
     bool gpu_released_ = false;                  // ReleaseGpu, until resumed
     bool resume_seek_ = false; // resumed, or a lens frame failed, with no SeekTo since: the next read seeks to resume_at_ms_
     int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read

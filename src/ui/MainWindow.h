@@ -458,6 +458,10 @@ private:
     // View menu: the preview's stitch size.
     void setupViewMenu();
     void updatePreviewMenu(const stitch::PreviewStitchConfig &cfg);
+    // The project's preview config as playback takes it: with the app's
+    // View ▸ Play from preview files on top (not the project's: it doesn't
+    // change the output).
+    void pushPreviewConfig(const stitch::PreviewStitchConfig &cfg);
     // File ▸ Project settings…
     void editProjectSettings();
     // `keysLabel` replaces the keys' own names in the list ("Alt+1 … Alt+9").
@@ -569,6 +573,7 @@ private:
     MediaImporter *m_mediaImport = nullptr; // Import files… / folder…, drops, Locate file…
     QList<QShortcut *> m_editorShortcuts;
     QActionGroup *m_previewSize = nullptr;
+    bool m_playFromProxies = false; // View ▸ Play from preview files (QSettings player/proxies)
 
     ClipBackend m_clipBackend;
     EquirectViewportWindow *m_viewport = nullptr;

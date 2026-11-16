@@ -111,6 +111,9 @@ public slots:
     void setPosition(qint64 positionMs);
     void setPlaying(bool playing);
     void setBuffering(bool buffering);
+    // The picture plays from the camera's preview file (View ▸ Play from
+    // preview files): a badge says so.
+    void setFromProxy(bool fromProxy);
     // The rate the time display counts frames in (the project's output rate);
     // 0 shows hundredths.
     void setFrameRate(double fps);
@@ -178,6 +181,7 @@ private:
     QSlider *m_volumeSlider = nullptr;
     QToolButton *m_fullScreenButton = nullptr;
     QLabel *m_bufferingLabel = nullptr;
+    QLabel *m_proxyLabel = nullptr;
     QWidget *m_sourceRow = nullptr;
     QLabel *m_sourceLabel = nullptr;
     QString m_sourceName;

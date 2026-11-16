@@ -245,6 +245,11 @@ struct StitchGpuParams {
     float lensColourSlope[3] = {0, 0, 0};
     int fisheyeW = 0;
     int fisheyeH = 0;
+    // Where each lens's fisheyeW x fisheyeH picture is in the image the GPU
+    // samples, x, y, w, h as fractions of it (LensSource::rect): the whole
+    // image, or a half where one decoded frame holds both lenses (a camera's
+    // proxy). Sampling stays inside the lens's own part.
+    float lensRect[2][4] = {{0, 0, 1, 1}, {0, 0, 1, 1}};
     // Per-frame capture-time correction (GPU stitch only; rsActive 0 = off).
     // Lens i's fisheye row v was captured at the frame time + lens offset +
     // (v/fisheyeH - 0.5) * that lens's readout (stitch::CaptureTiming); the

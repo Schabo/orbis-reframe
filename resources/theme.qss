@@ -459,3 +459,9 @@ QToolButton#playerSpeed::menu-indicator {
 #playerBuffering {
     color: @textDim;
 }
+#playerProxy {
+    color: @accent;
+    border: 1px solid @accent;
+    border-radius: 3px;
+    padding: 0 4px;
+}

@@ -182,9 +182,7 @@ void MainWindow::connectStitchAndStabilization()
     connect(m_project, &Project::previewStitchChanged, this,
             [this](const stitch::PreviewStitchConfig &cfg) {
                 updatePreviewMenu(cfg);
-                QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, cfg] {
-                    ctrl->setPreviewConfig(cfg);
-                });
+                pushPreviewConfig(cfg);
             });
     // A file's stitch settings: its segments carry them to the controller,
     // which re-opens its stitch. A seam fine-tune is only valid for the guards
@@ -535,6 +533,15 @@ void MainWindow::openLensCalibration()
             });
     dlg->show();
 #endif
+}
+
+void MainWindow::pushPreviewConfig(const stitch::PreviewStitchConfig &cfg)
+{
+    stitch::PreviewStitchConfig playback = cfg;
+    playback.proxy = m_playFromProxies;
+    QMetaObject::invokeMethod(m_controller, [ctrl = m_controller, playback] {
+        ctrl->setPreviewConfig(playback);
+    });
 }
 
 void MainWindow::updatePreviewMenu(const stitch::PreviewStitchConfig &cfg)

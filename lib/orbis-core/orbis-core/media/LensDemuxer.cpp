@@ -157,6 +157,7 @@ void LensDemuxer::close()
     m_lenses.clear();
     m_seekTargetSec = -1.0;
     m_lastReadSec = -1.0;
+    m_shared = false;
 }
 
 int LensDemuxer::openInput(const std::string& path, std::string& err)
@@ -337,13 +338,25 @@ bool LensDemuxer::open(const std::vector<ClipPart>& parts, const DecoderSetup& s
         err = "no lenses to open";
         return false;
     }
+    // Two lenses in one stream: one decoder for both, in every part.
+    const auto sharesStream = [](const std::vector<LensSource>& l) {
+        return l.size() == 2 && l[0].path == l[1].path && l[0].stream == l[1].stream;
+    };
+    const bool shared = sharesStream(parts.front().lenses);
+    for (const ClipPart& p : parts)
+        if (sharesStream(p.lenses) != shared) {
+            err = "the parts don't hold their lenses alike";
+            return false;
+        }
     for (size_t p = 0; p < parts.size(); ++p) {
         // The first part's first file is the clip's, which the caller
         // names; another one is named here.
         Part part;
         part.startUs = parts[p].startUs;
         std::string failedPath;
-        if (!openPart(parts[p].lenses, p == 0 ? &setup : nullptr, part, failedPath, err)) {
+        const std::vector<LensSource> lenses =
+            shared ? std::vector<LensSource>{parts[p].lenses[0]} : parts[p].lenses;
+        if (!openPart(lenses, p == 0 ? &setup : nullptr, part, failedPath, err)) {
             if (p > 0)
                 err += " (part " + std::to_string(p + 1) + ")";
             if (failedPath != parts[0].lenses[0].path)
@@ -374,6 +387,7 @@ bool LensDemuxer::open(const std::vector<ClipPart>& parts, const DecoderSetup& s
             m_lenses[l].durationUs = last.startUs + us;
             m_lenses[l].durationMs = m_lenses[l].durationUs / 1000;
         }
+    m_shared = shared;
     return finishOpen(err);
 }
 
@@ -638,17 +652,18 @@ AVFrame* LensDemuxer::popFront(int lens)
 
 bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, std::string& err)
 {
-    if (m_dec.size() < 2) {
+    if (lensCount() < 2) {
         err = "readNextPair requires 2 lens streams, have " + std::to_string(m_dec.size());
         return false;
     }
+    const int d1 = decoderOf(1);
     for (;;) {
         dropStale(0);
-        dropStale(1);
-        if (!m_fifo[0].empty() && !m_fifo[1].empty())
+        dropStale(d1);
+        if (!m_fifo[0].empty() && !m_fifo[d1].empty())
             break;
         const bool ex0 = m_streamEof[0] && m_fifo[0].empty();
-        const bool ex1 = m_streamEof[1] && m_fifo[1].empty();
+        const bool ex1 = m_streamEof[d1] && m_fifo[d1].empty();
         if (ex0 || ex1) {
             if (nextPart(err))
                 continue;
@@ -656,11 +671,16 @@ bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, st
         }
         // The file of a lens still waiting for its frame (the same one for
         // both lenses of one file).
-        if (!pumpOnce(m_lensInput[m_fifo[0].empty() ? 0 : 1], err))
+        if (!pumpOnce(m_lensInput[m_fifo[0].empty() ? 0 : d1], err))
             return false;
     }
     out0 = popFront(0);
-    out1 = popFront(1);
+    out1 = d1 == 0 ? av_frame_clone(out0) : popFront(1);
+    if (!out1) {
+        av_frame_free(&out0);
+        err = "out of memory";
+        return false;
+    }
     m_seekTargetSec = -1.0; // satisfied by this pair
     m_lastReadSec = ptsSec(out0, lensStream(0)->time_base);
     if (pts) {
@@ -672,10 +692,11 @@ bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, st
 
 bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
 {
-    if (lens < 0 || lens >= static_cast<int>(m_dec.size())) {
+    if (lens < 0 || lens >= lensCount()) {
         err = "lens index " + std::to_string(lens) + " out of range";
         return false;
     }
+    lens = decoderOf(lens);
     for (;;) {
         dropStale(lens);
         if (!m_fifo[lens].empty())
@@ -697,8 +718,9 @@ bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
 
 AVFrame* LensDemuxer::peekFrame(int lens, std::string* err)
 {
-    if (lens < 0 || lens >= static_cast<int>(m_dec.size()))
+    if (lens < 0 || lens >= lensCount())
         return nullptr;
+    lens = decoderOf(lens);
     std::string e;
     for (;;) {
         dropStale(lens);

@@ -191,7 +191,8 @@ inst           Insta360 trailer, runs to EOF (12.5 MB on a 43 s clip)
   run from the LRV alone.
 - Per Insta360, the LRV is for "playback, preview, AI recognition, and scene
   analysis".
-- Not used by the editor yet (proxy playback is planned).
+- The editor plays from it when *Play from preview files* is on: the
+  picture only, each lens its half, on the master's frame times.
 
 ### 3.3 Capture modes ✅
 

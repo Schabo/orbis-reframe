@@ -73,6 +73,8 @@ public:
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
 
     // Returns the next lens-0 / lens-1 fisheye frame pair (RGB24) in play order,
+    // each lens its part of its frame (LensSource::rect: a camera's proxy holds
+    // both in one),
     // decoding strictly forward -- no per-call seek, no decoder flush.
     // `*pts` (may be null) gets the pair's presentation time.
     // Returns false with `err` empty at end-of-stream, or `err` set on error.
@@ -82,11 +84,14 @@ public:
 private:
     void close();
     void convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out);
+    // Cuts lens `lens`'s part (m_rect) out of `img`; a whole frame stays.
+    void crop(int lens, Image& img) const;
 
     LensDemuxer m_demux;
     SwsContext* m_sws = nullptr;
     int m_swsSrcFullRange = -1; // last range fed to sws_setColorspaceDetails (-1 = unset)
     int m_swsCoefId = -1;       // last SWS_CS_* matrix id set
+    LensRect m_rect[2];         // each lens's part of its frame, the first part's
 };
 
 } // namespace orbiscore

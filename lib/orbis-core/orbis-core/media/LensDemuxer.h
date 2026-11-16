@@ -21,6 +21,9 @@
 // back to back with one set of decoders: at a part's end they are drained
 // and go on into the next part's files, whose frames are handed out in clip
 // time; a seek goes to the part the target is in.
+// Two lenses in one stream (a camera's proxy: both fisheyes side by side)
+// share one decoder: each pair hands out its frame twice (a new reference),
+// and each lens's LensSource::rect says which part of it is that lens's.
 // Seeking is frame-exact, and a target a little ahead of the last frame read,
 // with no keyframe in between, decodes on from there instead of seeking back
 // to the keyframe (frame steps, short forward scrubs).
@@ -88,8 +91,9 @@ public:
     bool open(const std::vector<ClipPart>& parts, const DecoderSetup& setup, std::string& err);
     void close();
 
-    int lensCount() const { return static_cast<int>(m_dec.size()); }
-    const InsvStreamInfo& lens(int i) const { return m_lenses.at(i); }
+    int lensCount() const { return m_shared ? 2 : static_cast<int>(m_dec.size()); }
+    // The lens's stream: with both lenses in one stream, the same for both.
+    const InsvStreamInfo& lens(int i) const { return m_lenses.at(decoderOf(i)); }
 
     // Frame-exact: the next read returns the first frame at or after
     // `timestampMs` (see the class comment for the decode-on shortcut).
@@ -112,6 +116,9 @@ public:
     AVFrame* peekFrame(int lens, std::string* err = nullptr);
 
 private:
+    // The decoder lens `i` is read with: 0 for both of a shared pair.
+    int decoderOf(int i) const { return m_shared && i == 1 ? 0 : i; }
+
     // One part's lenses: per lens its input and stream, and where the part
     // starts in clip time in that stream's time base.
     struct Part {
@@ -172,6 +179,7 @@ private:
     std::vector<char> m_streamEof;            // lens -> decoder drained (vector<bool> avoided)
     double m_seekTargetSec = -1.0;            // drop frames earlier than this
     double m_lastReadSec = -1.0;              // pts of the last frame (pair) read; -1 after open / a seek
+    bool m_shared = false;                    // two lenses, one stream: one decoder (decoderOf)
 };
 
 } // namespace orbiscore

@@ -56,7 +56,7 @@ const char kUsage[] =
     "       [--seam Y,P,R[,CU,CV,S]] [--no-depth-seam | --new-stitcher [--no-seam-colour-blend]\n"
     "       [--no-seam-flow]] [--dump-depth]\n"
     "       [--calibration FILE.json] [--capture-timing]\n"
-    "       [--measure-seam IN_MS OUT_MS] [--release-gpu]\n"
+    "       [--measure-seam IN_MS OUT_MS] [--release-gpu] [--proxy]\n"
     "       [--colour R,G,B[,SR,SG,SB]] [--lens-colour IN_MS OUT_MS]\n"
     "       <input.insv> <timestamp_ms>...\n"
     "   or: stitch_source_smoke [options] --range START END STEP <input.insv>\n";
@@ -131,6 +131,8 @@ int main(int argc, char** argv) {
             config.seamColourBlend = false;
         } else if (a == "--no-seam-flow") {
             config.seamFlow = false;
+        } else if (a == "--proxy") {
+            config.proxy = true;
         } else if (a == "--calibration" && arg + 1 < argc) {
             // --calibration FILE.json : a camera's own lens calibration (as
             // lens_calib --out writes it and the app keeps it) in place of
@@ -219,7 +221,9 @@ int main(int argc, char** argv) {
 
     const stitch::ClipInfo& info = source->GetInfo();
     std::cout << "Source: " << info.width << "x" << info.height << " @ " << info.fps << " fps, "
-              << info.duration_ms << " ms" << std::endl;
+              << info.duration_ms << " ms"
+              << (source->UsingProxy() ? ", from the preview file" : "")
+              << std::endl;
 
     if (range_step > 0) {
         if (!source->SeekTo(range_start)) {
@@ -243,6 +247,10 @@ int main(int argc, char** argv) {
                 break;
             if (frame.timestamp_ms > range_end)
                 break;
+            if (config.proxy)
+                std::printf("frame %lld ms, picture %lld us\n",
+                            static_cast<long long>(frame.timestamp_ms),
+                            static_cast<long long>(frame.timestamp_us));
             if (dump_depth)
                 if (auto* ns = dynamic_cast<stitch::NativeStitchSource*>(source.get())) {
                     const float* q = ns->SeamDepthTable();

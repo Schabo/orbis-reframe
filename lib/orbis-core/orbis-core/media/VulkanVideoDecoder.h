@@ -139,6 +139,11 @@ public:
     QueueLock queueLock(uint32_t family, uint32_t index) const;
     // Write the post-submission state back and release the frame lock.
     void unlockFrame(AVFrame* f, const VulkanLensFrameResult& r);
+    // The same for a pair from readNextPair. Both lenses of one stream share
+    // a frame: it is locked once, both get its state, and r0 is written back.
+    void lockPair(AVFrame* f0, AVFrame* f1, VulkanLensFrame& lf0, VulkanLensFrame& lf1);
+    void unlockPair(AVFrame* f0, AVFrame* f1, const VulkanLensFrameResult& r0,
+                    const VulkanLensFrameResult& r1);
     // av_frame_free() wrapper so callers need no FFmpeg headers.
     void freeFrame(AVFrame*& f);
 

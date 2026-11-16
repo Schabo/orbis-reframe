@@ -448,6 +448,13 @@ PlayerBar::PlayerBar(QWidget *parent)
     m_bufferingDelay->setInterval(150);
     connect(m_bufferingDelay, &QTimer::timeout, this,
             [this] { m_bufferingLabel->setVisible(true); });
+    m_proxyLabel = new QLabel(tr("Preview file"), this);
+    m_proxyLabel->setObjectName(QStringLiteral("playerProxy"));
+    m_proxyLabel->setToolTip(
+        tr("The picture plays from the camera's low-resolution preview file (View ▸ Play from "
+           "preview files): softer than the clip, and sharpening, grain and noise removal look "
+           "different. The export always uses the full file."));
+    m_proxyLabel->setVisible(false);
 
     QToolButton *toStart = makeButton("playerToStartButton", QStringLiteral("chevron-first"),
                                       tr("To the start  ( Home )"));
@@ -550,6 +557,7 @@ PlayerBar::PlayerBar(QWidget *parent)
     auto *left = new QWidget(this);
     auto *leftLayout = new QHBoxLayout(left);
     leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->addWidget(m_proxyLabel);
     leftLayout->addWidget(m_bufferingLabel);
     leftLayout->addStretch(1);
     auto *right = new QWidget(this);
@@ -629,6 +637,11 @@ void PlayerBar::setBuffering(bool buffering)
         m_bufferingDelay->stop();
         m_bufferingLabel->setVisible(false);
     }
+}
+
+void PlayerBar::setFromProxy(bool fromProxy)
+{
+    m_proxyLabel->setVisible(fromProxy);
 }
 
 void PlayerBar::setFrameRate(double fps)

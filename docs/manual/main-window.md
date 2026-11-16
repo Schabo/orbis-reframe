@@ -87,7 +87,7 @@ to fold it away.
 
 Importing is part of the project, so **Edit ▸ Undo** takes it back like any
 other edit. The `.lrv` preview files the camera writes next to each `.insv`
-aren't listed.
+aren't listed; **View ▸ Play from preview files** plays from them.
 
 ### Previewing a file
 
@@ -202,7 +202,10 @@ does:
 | <img src="images/icons/frame-back.png" width="24" alt=""> <img src="images/icons/frame-forward.png" width="24" alt=""> One frame back / forward | Steps one frame and pauses (`←` / `→`). Hold the button to keep stepping. |
 | <img src="images/icons/play.png" width="24" alt=""> Play / pause | Starts or stops playback (`Space`). |
 
-On the left, *Buffering…* shows while the video loads. On the right:
+On the left, *Buffering…* shows while the video loads, and a
+*Preview file* badge while the picture plays from the camera's
+low-resolution preview files (**View ▸ Play from preview files**, below).
+On the right:
 
 | Button | What it does |
 |---|---|
@@ -293,7 +296,7 @@ in the sidebar: it's in **File ▸ Project settings…**, see
 | **File** | New project, open project, back to the project library; save, save as; **Project settings…** (the output format); export, quit. (Screenshots are in the player bar.) |
 | **Edit** | **Undo** (`Ctrl+Z`) and **Redo** (`Ctrl+Shift+Z`). Undo steps back through your edits to the project; looking around in the viewport isn't an edit and isn't undone. **Add mark** (`M`) and **Delete mark** (`Shift+M`): a [highlight mark](timeline.md#highlight-marks) at the playhead. |
 | **Media** | **Import files…** (`Ctrl+I`) and **Import folder…**, into the project's media ([above](#the-media-sidebar)); **Add clip to timeline…** (`Ctrl+Shift+A`), **Add audio file…** (`Ctrl+Shift+M`) and **Add picture in picture…** (`Ctrl+Shift+V`), straight onto the timeline; **Add audio track** and **Add overlay track**. **Calibrate camera lenses…** measures your camera's lenses with a chart on your monitor; it needs no project, so it's there in the project library too (see [Stitching](stitching.md#calibrating-your-camera)). |
-| **View** | **Preview size**: how large the preview in the viewport is stitched when the graphics card can't draw it straight from the lenses. It changes only what you see while editing, never the export; see [Stitching](stitching.md#preview-size). **Theme**: the app's colours -- **Ember** (dark grey with an orange accent, the default), **Light**, or **Neutral dark** (dark grey with a blue accent). It changes at once and is remembered; the area around the picture stays dark in every theme, so the picture's brightness is judged the same way. |
+| **View** | **Preview size**: how large the preview in the viewport is stitched when the graphics card can't draw it straight from the lenses. It changes only what you see while editing, never the export; see [Stitching](stitching.md#preview-size). **Play from preview files**: **Never** (the default) or **Always**. With **Always**, clips play from the low-resolution preview files the camera writes beside them (the X5's and X6's `.lrv`, the ONE X2's `LRV_…_11_….insv`, the Antigravity A1's `PRX_….prx`, the DJI Avata 360's `.LRF`), for a computer that can't play the full files smoothly: a graphics card without video decoding for the clips, with little graphics memory, or clips on a slow disk. The picture is softer, so sharpening, grain and noise removal look different from the export; a *Preview file* badge in the player bar says when it's on. Stabilization, marks and keyframes still follow the full file, and the export and screenshots always use the full files. A clip without a preview file (some modes write none) plays from the full file. orbis-reframe remembers the choice; it isn't part of the project. **Theme**: the app's colours -- **Ember** (dark grey with an orange accent, the default), **Light**, or **Neutral dark** (dark grey with a blue accent). It changes at once and is remembered; the area around the picture stays dark in every theme, so the picture's brightness is judged the same way. |
 | **Help** | **User manual** opens this manual in your web browser, on GitHub: for a release, the copy that matches your version. **Keyboard shortcuts** (`F1`), and **About orbis-reframe**, with the version and the diagnostics to include in a problem report. |
 
 When you close the window, open another project or go back to the project

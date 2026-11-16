@@ -24,7 +24,9 @@
 //
 // usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]
 //                       [--depth-seam | --no-depth-seam | --new-stitcher
-//                       [--no-seam-colour-blend] [--no-seam-flow]] <clip.insv>...
+//                       [--no-seam-colour-blend] [--no-seam-flow]] [--proxy] <clip.insv>...
+//   --proxy plays the picture from the camera's preview file, as the app
+//   does with View > Play from preview files.
 
 #include <LensFrame.h>
 #include <NativeStitchSource.h>
@@ -77,6 +79,7 @@ constexpr int kWarmup = 5;
 stitch::PreviewStitchConfig::Method gMethod = stitch::PreviewStitchConfig::Method::New; // as a new clip's
 bool gSeamColourBlend = true;
 bool gSeamFlow = true;
+bool gProxy = false; // --proxy: the picture from the camera's preview file
 
 void benchDecode(const std::string& path, int frames, double fps) {
     orbiscore::VulkanVideoDecoder dec;
@@ -108,8 +111,7 @@ void benchDecode(const std::string& path, int frames, double fps) {
         const bool last = i == frames + kWarmup - 1;
         if (last) { // make sure the GPU has actually finished decoding
             orbiscore::VulkanLensFrame l0, l1;
-            dec.lockFrame(f0, l0);
-            dec.lockFrame(f1, l1);
+            dec.lockPair(f0, f1, l0, l1);
             const VkSemaphore sems[2] = {l0.semaphore, l1.semaphore};
             const uint64_t vals[2] = {l0.semWaitValue, l1.semWaitValue};
             VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
@@ -117,8 +119,7 @@ void benchDecode(const std::string& path, int frames, double fps) {
             wi.pSemaphores = sems;
             wi.pValues = vals;
             vkWaitSemaphores(dev, &wi, 5'000'000'000ULL);
-            dec.unlockFrame(f0, {l0.semWaitValue, l0.layout});
-            dec.unlockFrame(f1, {l1.semWaitValue, l1.layout});
+            dec.unlockPair(f0, f1, {l0.semWaitValue, l0.layout}, {l1.semWaitValue, l1.layout});
         }
         dec.freeFrame(f0);
         dec.freeFrame(f1);
@@ -138,6 +139,7 @@ std::unique_ptr<stitch::NativeStitchSource> openSource(const std::string& path, 
     cfg.method = gMethod;
     cfg.seamColourBlend = gSeamColourBlend;
     cfg.seamFlow = gSeamFlow;
+    cfg.proxy = gProxy;
     if (!src->Open(path, cfg)) {
         std::printf("  open FAILED: %s\n", src->GetLastError().c_str());
         return nullptr;
@@ -305,7 +307,7 @@ void benchSeek(const std::string& path, int64_t durationMs, int eqW) {
 const char kUsage[] =
     "usage: playback_bench [--frames N] [--eq W,W,...] [--only-flat]\n"
     "       [--depth-seam | --no-depth-seam | --new-stitcher [--no-seam-colour-blend]\n"
-    "       [--no-seam-flow]]\n"
+    "       [--no-seam-flow]] [--proxy]\n"
     "       <clip.insv>...\n";
 
 } // namespace
@@ -334,6 +336,8 @@ int main(int argc, char** argv) {
             gSeamColourBlend = false;
         } else if (a == "--no-seam-flow") {
             gSeamFlow = false;
+        } else if (a == "--proxy") {
+            gProxy = true;
         } else if (a == "--only-flat") {
             onlyFlat = true;
         } else if (a == "--eq" && i + 1 < argc) {

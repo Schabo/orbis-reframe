@@ -32,6 +32,14 @@
 
 namespace render {
 
+// How many images a lens pair is: one when both lenses are halves of one
+// decoded frame (a camera's proxy, LensSource::rect), whose barriers and
+// semaphore are then the one image's.
+inline int lensImages(const VulkanLensInput& f0, const VulkanLensInput& f1)
+{
+    return f1.image == f0.image ? 1 : 2;
+}
+
 // std140 layout matching fisheye_stitch.comp's `Params` uniform block.
 struct ShaderParams {
     float w2l0[3][4];
@@ -72,8 +80,12 @@ struct ShaderParams {
     float lensModel[4]; // theta-polynomial (0/1), its theta^10 term of lens 0, 1, masks on (0/1)
     // vec4[kSeamDepthBins / 2]: per bin where lens 0's and lens 1's clear parts end (rad)
     float seamClear[orbiscore::kSeamDepthBins][2];
+    // Per lens where its picture is in the sampled image (x, y, w, h, as
+    // fractions), and the box its samples stay in (min uv, max uv).
+    float lensRect[2][4];
+    float lensBox[2][4];
 };
-static_assert(sizeof(ShaderParams) == 15664, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 15728, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 static_assert(LensSlot::kBlurCellsW == orbiscore::kBlurCellsPerQuad && LensSlot::kBlurCellsH == orbiscore::kMaxBlurQuads,
               "the blur cell table: a row of kBlurCellsPerQuad per quad");
@@ -254,17 +266,18 @@ struct VulkanFisheyeStitcher::Impl {
         const uint64_t signalVals[2] = {f0.semWaitValue + 1, f1.semWaitValue + 1};
         const VkPipelineStageFlags waitStages[2] = {VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                                                     VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
+        const uint32_t n = static_cast<uint32_t>(lensImages(f0, f1));
         VkTimelineSemaphoreSubmitInfo ts{VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-        ts.waitSemaphoreValueCount = 2;
+        ts.waitSemaphoreValueCount = n;
         ts.pWaitSemaphoreValues = waitVals;
-        ts.signalSemaphoreValueCount = 2;
+        ts.signalSemaphoreValueCount = n;
         ts.pSignalSemaphoreValues = signalVals;
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         si.pNext = &ts;
-        si.waitSemaphoreCount = 2;
+        si.waitSemaphoreCount = n;
         si.pWaitSemaphores = sems;
         si.pWaitDstStageMask = waitStages;
-        si.signalSemaphoreCount = 2;
+        si.signalSemaphoreCount = n;
         si.pSignalSemaphores = sems;
         si.commandBufferCount = 1;
         si.pCommandBuffers = &c;

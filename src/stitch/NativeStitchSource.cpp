@@ -16,6 +16,7 @@
 
 extern "C" {
 #include <libavutil/buffer.h>
+#include <libavutil/frame.h>
 }
 #include <orbis-core/media/VulkanVideoDecoder.h>    // orbiscore::VulkanVideoDecoder (stage 2, GPU decode)
 
@@ -50,6 +51,15 @@ Frame ToRgbaFrame(const orbiscore::Image& eq, const orbiscore::FramePts& pts) {
         dst[i * 4 + 3] = 255;
     }
     return f;
+}
+
+// `next` as the stitch's parameters, where the lenses are in the decoded
+// frame kept from `p` (openDecode's, not the stitcher's).
+void keepLensRect(orbiscore::StitchGpuParams& p, const orbiscore::StitchGpuParams& next) {
+    float rect[2][4];
+    std::memcpy(rect, p.lensRect, sizeof rect);
+    p = next;
+    std::memcpy(p.lensRect, rect, sizeof rect);
 }
 
 render::VulkanLensInput toRenderInput(const orbiscore::VulkanLensFrame& lf) {
@@ -129,10 +139,187 @@ bool DualFisheyeStitchSetup(const camera::ClipMetadata& clip,
 }
 
 NativeStitchSource::NativeStitchSource() = default;
+
+// Proxy mode: the camera's preview file runs at its own rate (the X5's at
+// 29.97 for a 120 fps clip, the Avata 360's at 25 for 100 fps), and a frame
+// or two short. The clip keeps its own frames -- every frame time a full file
+// has, so steps, trims, seeks and the timeline work as ever -- each showing
+// the proxy frame on screen at that time: the last one at or before it
+// (`held`), found by reading on while the next one (`ahead`) is due. Both
+// files start at the same time (field 24 ties a proxy to its clip; every
+// sample's first frame is at 0). Past the proxy's last frame it holds that.
+struct NativeStitchSource::ProxyGrid {
+    struct Span {
+        int64_t startUs = 0;
+        int64_t durationUs = 0;
+    };
+    std::vector<Span> parts; // the clip's, as its full files have them
+    double fps = 0.0;        // the clip's frame rate
+    double proxyFrameUs = 0.0;
+    int64_t nextUs = 0;      // the clip frame the next read hands out; -1 past the end
+
+    // The proxy frames: on the GPU decode path AVFrame pairs, else images.
+    AVFrame* held[2] = {};
+    AVFrame* ahead[2] = {};
+    orbiscore::Image heldImg[2], aheadImg[2];
+    bool heldValid = false, aheadValid = false, aheadEnd = false;
+    orbiscore::FramePts heldPts, aheadPts;
+
+    ~ProxyGrid() { drop(); }
+    void drop()
+    {
+        for (int i = 0; i < 2; ++i) {
+            av_frame_free(&held[i]);
+            av_frame_free(&ahead[i]);
+        }
+        heldImg[0] = heldImg[1] = aheadImg[0] = aheadImg[1] = orbiscore::Image{};
+        heldValid = aheadValid = aheadEnd = false;
+    }
+    // The clip's first frame at or after `us`; -1 past its last.
+    int64_t frameAtOrAfter(int64_t us) const
+    {
+        for (const Span& p : parts) {
+            if (us >= p.startUs + p.durationUs)
+                continue;
+            const double local = static_cast<double>(std::max<int64_t>(0, us - p.startUs));
+            // A frame's own time, rounded to the microsecond or the ms, is
+            // still that frame.
+            const double j = std::ceil(local * fps * 1e-6 - 1e-3);
+            const int64_t t = p.startUs + std::llround(j * 1e6 / fps);
+            if (t < p.startUs + p.durationUs)
+                return t;
+        }
+        return -1;
+    }
+    // Reads on until `held` is the proxy frame on screen at nextUs: `read`
+    // fills `ahead` (false at the end, with `err` empty; on error, set).
+    // False when there is none.
+    template <class Read>
+    bool settle(const Read& read, std::string& err)
+    {
+        // A proxy frame within half a ms of the clip frame is that frame
+        // (the two round their times apart).
+        constexpr int64_t kSlackUs = 500;
+        for (;;) {
+            if (!aheadValid && !aheadEnd) {
+                if (read())
+                    aheadValid = true;
+                else if (!err.empty())
+                    return false;
+                else
+                    aheadEnd = true;
+            }
+            if (aheadValid && (!heldValid || aheadPts.us <= nextUs + kSlackUs)) {
+                for (int i = 0; i < 2; ++i) {
+                    av_frame_free(&held[i]);
+                    std::swap(held[i], ahead[i]);
+                    std::swap(heldImg[i], aheadImg[i]);
+                }
+                heldPts = aheadPts;
+                heldValid = true;
+                aheadValid = false;
+                continue;
+            }
+            return heldValid;
+        }
+    }
+    // The handed-out pair's times, then on to the next clip frame. `repeat`:
+    // the clip frame before it showed the same proxy frame -- told by the
+    // times alone, so a seek and playing on into a frame agree.
+    void advance(orbiscore::FramePts* pts, bool& repeat)
+    {
+        constexpr int64_t kSlackUs = 500; // as settle()'s
+        if (pts) {
+            pts->ms = std::llround(static_cast<double>(nextUs) * 1e-3);
+            pts->us = heldPts.us;
+        }
+        const int64_t prevUs = nextUs - std::llround(1e6 / fps);
+        repeat = false;
+        for (const Span& p : parts)
+            if (nextUs >= p.startUs && nextUs < p.startUs + p.durationUs)
+                repeat = prevUs >= p.startUs - kSlackUs && heldPts.us <= prevUs + kSlackUs;
+        nextUs = frameAtOrAfter(nextUs + std::llround(5e5 / fps));
+    }
+    // Where the decoder goes for a seek to clip time `ms`: a proxy frame
+    // before the clip frame there, so settle() finds the one on screen.
+    int64_t seekTo(int64_t ms)
+    {
+        drop();
+        nextUs = frameAtOrAfter(ms * 1000);
+        const int64_t at = nextUs < 0 ? ms * 1000 : nextUs;
+        return std::max<int64_t>(0, static_cast<int64_t>(std::floor((at - proxyFrameUs) * 1e-3)));
+    }
+};
+
+bool NativeStitchSource::proxyLensSize(const std::vector<orbiscore::ClipPart>& proxies, int& w,
+                                       int& h, double& frameUs, std::string& err) {
+    orbiscore::LensDemuxer demux;
+    if (!demux.open(
+            proxies, [](const auto*, const auto*, auto*, std::string&) { return true; }, err))
+        return false;
+    const orbiscore::InsvStreamInfo& s = demux.lens(0);
+    const orbiscore::LensRect& r0 = proxies[0].lenses[0].rect;
+    const orbiscore::LensRect& r1 = proxies[0].lenses[1].rect;
+    w = static_cast<int>(std::lround(r0.w * s.width));
+    h = static_cast<int>(std::lround(r0.h * s.height));
+    // Square fisheyes, both alike: two halves of a 2:1 frame.
+    if (w <= 0 || w != h || r1.w != r0.w || r1.h != r0.h || demux.lens(1).width != s.width) {
+        err = "a " + std::to_string(s.width) + "x" + std::to_string(s.height) +
+              " picture, not two lenses side by side";
+        return false;
+    }
+    frameUs = s.fps > 0.0 ? 1e6 / s.fps : 1e6 / 30.0;
+    return true;
+}
+
+bool NativeStitchSource::readPairVk(AVFrame*& f0, AVFrame*& f1, orbiscore::FramePts* pts,
+                                    std::string& err) {
+    picture_repeat_ = false;
+    if (!proxy_)
+        return vdec_->readNextPair(f0, f1, pts, err);
+    ProxyGrid& g = *proxy_;
+    err.clear();
+    if (g.nextUs < 0)
+        return false;
+    const auto read = [&] { return vdec_->readNextPair(g.ahead[0], g.ahead[1], &g.aheadPts, err); };
+    if (!g.settle(read, err))
+        return false;
+    f0 = av_frame_clone(g.held[0]);
+    f1 = av_frame_clone(g.held[1]);
+    if (!f0 || !f1) {
+        av_frame_free(&f0);
+        av_frame_free(&f1);
+        err = "out of memory";
+        return false;
+    }
+    g.advance(pts, picture_repeat_);
+    return true;
+}
+
+bool NativeStitchSource::readPairCpu(orbiscore::Image& a, orbiscore::Image& b,
+                                     orbiscore::FramePts* pts, std::string& err) {
+    picture_repeat_ = false;
+    if (!proxy_)
+        return demux_->readNextPair(a, b, pts, err);
+    ProxyGrid& g = *proxy_;
+    err.clear();
+    if (g.nextUs < 0)
+        return false;
+    const auto read = [&] {
+        return demux_->readNextPair(g.aheadImg[0], g.aheadImg[1], &g.aheadPts, err);
+    };
+    if (!g.settle(read, err))
+        return false;
+    a = g.heldImg[0];
+    b = g.heldImg[1];
+    g.advance(pts, picture_repeat_);
+    return true;
+}
 NativeStitchSource::~NativeStitchSource() {
     // Held / kept frames go before the decoder.
     while (!kept_.empty())
         ReleaseKeptPair(kept_.begin()->first);
+    proxy_.reset();
     // Tear the GPU stitch down before the decoder: on the all-GPU path the
     // stitcher borrows the decoder's VkDevice.
     gpu_.reset();
@@ -142,6 +329,7 @@ NativeStitchSource::~NativeStitchSource() {
 bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchConfig& config) {
     while (!kept_.empty())
         ReleaseKeptPair(kept_.begin()->first);
+    proxy_.reset();
     vdec_.reset();
     demux_.reset();
     stitcher_.reset();
@@ -175,7 +363,34 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     info_.fps = clip->fps;
     info_.duration_ms = clip->durationMs;
 
-    eq_w_ = config.width > 0 ? config.width : AutoPreviewWidth(info_.width, info_.fps);
+    // The picture's files: the clip's own, or in proxy mode its preview
+    // files, whose lenses are smaller (the calibration, stated at a reference
+    // size, scales to them as to the full files).
+    lens_sources_ = clip->partSources();
+    int lensW = info_.width, lensH = info_.height;
+    if (config.proxy) {
+        auto grid = std::make_unique<ProxyGrid>();
+        const std::vector<orbiscore::ClipPart> proxies = clip->proxySources();
+        if (proxies.empty()) {
+            core::log::Info("[NativeStitchSource] no preview file for every part of %s; playing "
+                            "the full file\n", clip_path.c_str());
+        } else if (proxyLensSize(proxies, lensW, lensH, grid->proxyFrameUs, err)) {
+            for (const camera::Part& p : clip->parts)
+                grid->parts.push_back({p.startUs, p.durationUs});
+            grid->fps = info_.fps > 0.0 ? info_.fps : 30.0;
+            lens_sources_ = proxies;
+            proxy_ = std::move(grid);
+            core::log::Info("[NativeStitchSource] playing from the preview file %s (%dx%d a "
+                            "lens)\n", proxies[0].lenses[0].path.c_str(), lensW, lensH);
+        } else {
+            lensW = info_.width;
+            lensH = info_.height;
+            core::log::Info("[NativeStitchSource] the preview file of %s doesn't fit (%s); "
+                            "playing the full file\n", clip_path.c_str(), err.c_str());
+        }
+    }
+
+    eq_w_ = config.width > 0 ? config.width : AutoPreviewWidth(lensW, info_.fps);
     eq_h_ = config.width > 0 && config.height > 0 ? config.height : eq_w_ / 2;
 
     params.depthSeam = config.depthSeam();
@@ -192,7 +407,9 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     if (!cut_stats_)
         cut_stats_ = std::make_unique<orbiscore::SeamCutStats>();
     auto stitcher = std::make_unique<orbiscore::FisheyeStitcher>();
-    if (!stitcher->configure(calib, info_.width, info_.height, params)) {
+    lens_w_ = lensW;
+    lens_h_ = lensH;
+    if (!stitcher->configure(calib, lensW, lensH, params)) {
         last_error_ = "FisheyeStitcher::configure failed: " + clip_path;
         return false;
     }
@@ -231,7 +448,6 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     params_ = params;
     stitcher_ = std::move(stitcher);
     seam_flow_wanted_ = seam_flow_on_;
-    lens_sources_ = clip->partSources();
     gpu_released_ = false;
     resume_seek_ = false;
     resume_at_ms_ = 0;
@@ -240,6 +456,16 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
 
 bool NativeStitchSource::openDecode() {
     gpu_fallback_ = {};
+    // Where each lens is in the frame the stitch samples: the decoder's
+    // whole frame, or its half of a proxy's (the CPU decode cuts the halves
+    // out itself, so its lenses are whole frames).
+    for (int i = 0; i < 2; ++i) {
+        const orbiscore::LensRect whole;
+        gpu_params_.lensRect[i][0] = static_cast<float>(whole.x);
+        gpu_params_.lensRect[i][1] = static_cast<float>(whole.y);
+        gpu_params_.lensRect[i][2] = static_cast<float>(whole.w);
+        gpu_params_.lensRect[i][3] = static_cast<float>(whole.h);
+    }
     // settleSeamFlow may have turned the seam flow off for want of a GPU
     // stitch last time; this time there may be one.
     if (seam_flow_wanted_ && !seam_flow_on_) {
@@ -285,6 +511,14 @@ bool NativeStitchSource::openDecode() {
                 gpu->setDeviceKeepAlive(vdec->deviceKeepAlive());
                 vdec_ = std::move(vdec);
                 gpu_ = std::move(gpu);
+                const auto& lenses = lens_sources_[0].lenses;
+                for (int i = 0; i < 2 && i < static_cast<int>(lenses.size()); ++i) {
+                    const orbiscore::LensRect& r = lenses[i].rect;
+                    gpu_params_.lensRect[i][0] = static_cast<float>(r.x);
+                    gpu_params_.lensRect[i][1] = static_cast<float>(r.y);
+                    gpu_params_.lensRect[i][2] = static_cast<float>(r.w);
+                    gpu_params_.lensRect[i][3] = static_cast<float>(r.h);
+                }
                 core::log::Info("[NativeStitchSource] all-GPU path: Vulkan video decode + "
                                 "compute stitch\n");
                 settleSeamFlow();
@@ -375,7 +609,11 @@ bool NativeStitchSource::preRollSeam(int64_t t) {
     // stitched as playback into it has it. Every frame before the one the
     // seek below lands on (the first at or after t) counts, so read on
     // until a frame at or after t; that one is read again after the seek.
-    const double frameMs = info_.fps > 0 ? 1000.0 / info_.fps : 33.4;
+    // The flow's frames are pictures: in proxy mode the preview file's, as
+    // playing on measures them (each once, not its repeats).
+    const double frameMs = proxy_                 ? proxy_->proxyFrameUs * 1e-3
+                           : info_.fps > 0 ? 1000.0 / info_.fps
+                                           : 33.4;
     const int64_t flowFrom =
         seam_flow_on_ ? t - std::llround((orbiscore::kSeamFlowFrames - 0.5) * frameMs) : INT64_MAX;
     int64_t from = t;
@@ -391,7 +629,7 @@ bool NativeStitchSource::preRollSeam(int64_t t) {
             break; // the end, or an error: the frames so far
         if (pts >= t)
             break; // the seek's own frame: measured when it's read
-        if (seam_colour_on_)
+        if (seam_colour_on_ && !picture_repeat_)
             seam_colour_window_.add(pts, *cut_stats_, gpu_params_.bandRad);
         if (flowMeasured)
             addSeamFlow();
@@ -419,6 +657,8 @@ bool NativeStitchSource::addSeamFlow() {
 
 bool NativeStitchSource::seekDecoder(int64_t t) {
     std::string err;
+    if (proxy_)
+        t = proxy_->seekTo(t);
     if (vdec_) {
         if (!vdec_->seekTo(t, err)) {
             last_error_ = "seek failed: " + err;
@@ -469,7 +709,7 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     orbiscore::FramePts pts;
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(f0, f1, &pts, err);
+    const bool got = readPairVk(f0, f1, &pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -480,8 +720,7 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     orbiscore::VulkanLensFrame lf0, lf1;
-    vdec_->lockFrame(f0, lf0);
-    vdec_->lockFrame(f1, lf1);
+    vdec_->lockPair(f0, f1, lf0, lf1);
 
     Frame frame;
     frame.width = eq_w_;
@@ -497,12 +736,10 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     orbiscore::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
     orbiscore::VulkanLensFrameResult r1{oc1.semSignalValue, oc1.newLayout};
     if (ok) {
-        vdec_->unlockFrame(f0, r0);
-        vdec_->unlockFrame(f1, r1);
+        vdec_->unlockPair(f0, f1, r0, r1);
     } else {
         // On failure the frames are as the seam measure (if any) left them.
-        vdec_->unlockFrame(f0, {in0.semWaitValue, in0.layout});
-        vdec_->unlockFrame(f1, {in1.semWaitValue, in1.layout});
+        vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
     }
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
@@ -519,8 +756,8 @@ void NativeStitchSource::SetSeamCorrection(const orbiscore::SeamCorrection& c) {
     if (!stitcher_ || c == params_.seam || method_ == PreviewStitchConfig::Method::New)
         return;
     params_.seam = c;
-    if (stitcher_->configure(calib_, info_.width, info_.height, params_)) {
-        gpu_params_ = stitcher_->gpuParams(); // keeps the per-frame RS fields: set in paramsAt
+    if (stitcher_->configure(calib_, lens_w_, lens_h_, params_)) {
+        keepLensRect(gpu_params_, stitcher_->gpuParams()); // RS fields: set in paramsAt
         seam_window_.configure(stitcher_->baselineM(), gpu_params_.bandRad); // frames measured on the old one go
     }
     analysis_dirty_ = true;
@@ -532,8 +769,8 @@ void NativeStitchSource::SetLensColour(const orbiscore::LensColour& c) {
     params_.lensColour = c;
     seam_window_.setLensColour(c); // the frames' residuals are measured against it
     analysis_dirty_ = true;
-    if (stitcher_->configure(calib_, info_.width, info_.height, params_))
-        gpu_params_ = stitcher_->gpuParams();
+    if (stitcher_->configure(calib_, lens_w_, lens_h_, params_))
+        keepLensRect(gpu_params_, stitcher_->gpuParams());
 }
 
 void NativeStitchSource::SetCaptureTiming(CaptureTiming timing, int64_t untilMs,
@@ -573,14 +810,13 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
         AVFrame* f0 = nullptr;
         AVFrame* f1 = nullptr;
         std::string err;
-        if (!vdec_->readNextPair(f0, f1, &pts, err)) {
+        if (!readPairVk(f0, f1, &pts, err)) {
             last_error_ = err; // empty at EOS
             return false;
         }
         resume_at_ms_ = pts.ms + 1; // a resume carries on after it
         orbiscore::VulkanLensFrame lf0, lf1;
-        vdec_->lockFrame(f0, lf0);
-        vdec_->lockFrame(f1, lf1);
+        vdec_->lockPair(f0, f1, lf0, lf1);
         render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
         orbiscore::StitchGpuParams p = gpu_params_;
         pts_ms = pts.ms;
@@ -589,11 +825,11 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
         render::VulkanLensOutcome o0, o1;
         const bool ok = gpu_->measureSeamVk(in0, in1, p, *seam_costs_, cut_stats_.get(), &o0, &o1, err);
         if (ok) {
-            vdec_->unlockFrame(f0, {o0.semSignalValue, o0.newLayout});
-            vdec_->unlockFrame(f1, {o1.semSignalValue, o1.newLayout});
+            vdec_->unlockPair(f0, f1, {o0.semSignalValue, o0.newLayout},
+                              {o1.semSignalValue, o1.newLayout});
         } else {
-            vdec_->unlockFrame(f0, {in0.semWaitValue, in0.layout});
-            vdec_->unlockFrame(f1, {in1.semWaitValue, in1.layout});
+            vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout},
+                              {in1.semWaitValue, in1.layout});
         }
         vdec_->freeFrame(f0);
         vdec_->freeFrame(f1);
@@ -604,7 +840,7 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
     } else if (demux_ && stitcher_) {
         orbiscore::Image a, b;
         std::string err;
-        if (!demux_->readNextPair(a, b, &pts, err)) {
+        if (!readPairCpu(a, b, &pts, err)) {
             last_error_ = err;
             return false;
         }
@@ -691,13 +927,17 @@ orbiscore::StitchGpuParams NativeStitchSource::paramsWithSeam(const orbiscore::F
                                                               render::VulkanLensInput& in1) {
     orbiscore::StitchGpuParams p = paramsAt(pts);
     seam_ms_ = 0.0;
-    const bool scrub = scrub_frame_;
+    // A repeat of the frame before's picture: the new stitcher's measures of
+    // it are there already. The depth-aware seam (the old stitcher) measures
+    // every frame, as on the full file.
+    const bool quickScrub = scrub_frame_;
+    const bool scrub = quickScrub || (picture_repeat_ && !p.depthActive);
     scrub_frame_ = false;
     if (scrub) {
         // A scrub's passing frame: no seam measurement, the last frame's
         // seam (the depth seam's from its analysis where it has the frame).
         if (seam_colour_on_)
-            heldSeamColour(p);
+            repeatSeamColour(pts.ms, p, picture_repeat_ && !quickScrub);
         if (seam_flow_on_)
             p.seamFlowGpu = seam_flow_gpu_;
         if (p.depthActive) {
@@ -787,6 +1027,18 @@ void NativeStitchSource::heldSeamColour(orbiscore::StitchGpuParams& p) const {
               &p.seamVeil[0][0]);
 }
 
+void NativeStitchSource::repeatSeamColour(int64_t pts_ms, orbiscore::StitchGpuParams& p,
+                                          bool solve) {
+    // A repeat of the frame before's picture is solved at its own time from
+    // the frames measured, as playing on and a seek's pre-roll (which measures
+    // but doesn't solve) both have them; a scrub's frame keeps the last table.
+    if (solve) {
+        seam_colour_window_.solve(pts_ms, &seam_colour_table_[0][0], &seam_veil_[0][0]);
+        seam_colour_window_.dropBefore(pts_ms - seam_colour_window_.lookBackMs());
+    }
+    heldSeamColour(p);
+}
+
 bool NativeStitchSource::applySeamColour(int64_t pts_ms, orbiscore::StitchGpuParams& p,
                                          const std::function<bool()>& measure) {
     if (!measure())
@@ -808,20 +1060,19 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         AVFrame* f0 = nullptr;
         AVFrame* f1 = nullptr;
         std::string err;
-        if (!vdec_->readNextPair(f0, f1, &pts, err)) {
+        if (!readPairVk(f0, f1, &pts, err)) {
             last_error_ = err; // empty at EOS
             return false;
         }
         pts_ms = pts.ms;
         orbiscore::VulkanLensFrame lf0, lf1;
-        vdec_->lockFrame(f0, lf0);
-        vdec_->lockFrame(f1, lf1);
+        vdec_->lockPair(f0, f1, lf0, lf1);
         render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
         render::VulkanLensOutcome o0, o1;
         // Measured as playback measures this frame: with its capture-time
         // correction, which moves what the strips see.
         const orbiscore::StitchGpuParams p = paramsAt(pts);
-        const bool measure = pts_ms < until;
+        const bool measure = pts_ms < until && !picture_repeat_; // a repeat: measured already
         const bool flow = measure && seam_flow_on_ && pts_ms >= flowFrom;
         bool ok = true;
         if (flow)
@@ -834,11 +1085,11 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         if (flow && ok)
             seam_flow_gpu_ = true;
         if (ok) {
-            vdec_->unlockFrame(f0, {o0.semSignalValue, o0.newLayout});
-            vdec_->unlockFrame(f1, {o1.semSignalValue, o1.newLayout});
+            vdec_->unlockPair(f0, f1, {o0.semSignalValue, o0.newLayout},
+                              {o1.semSignalValue, o1.newLayout});
         } else {
-            vdec_->unlockFrame(f0, {in0.semWaitValue, in0.layout});
-            vdec_->unlockFrame(f1, {in1.semWaitValue, in1.layout});
+            vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout},
+                              {in1.semWaitValue, in1.layout});
         }
         vdec_->freeFrame(f0);
         vdec_->freeFrame(f1);
@@ -849,12 +1100,12 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
     } else if (demux_ && stitcher_) {
         orbiscore::Image a, b;
         std::string err;
-        if (!demux_->readNextPair(a, b, &pts, err)) {
+        if (!readPairCpu(a, b, &pts, err)) {
             last_error_ = err;
             return false;
         }
         pts_ms = pts.ms;
-        if (pts_ms >= until)
+        if (pts_ms >= until || picture_repeat_) // a repeat: measured already
             return true;
         const float none[orbiscore::kSeamDepthBins] = {};
         if (seam_colour_on_)
@@ -882,7 +1133,7 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
 }
 
 bool NativeStitchSource::SensorRowOf(const double eqDir[3], int& lens, double& rowFrac) const {
-    if (!stitcher_ || info_.height <= 0)
+    if (!stitcher_ || lens_h_ <= 0)
         return false;
     const orbiscore::Mat3& R = stitcher_->outRotation(); // stitch world = outRot * eqDir
     const orbiscore::Vec3 w{R.m[0][0] * eqDir[0] + R.m[0][1] * eqDir[1] + R.m[0][2] * eqDir[2],
@@ -898,7 +1149,7 @@ bool NativeStitchSource::SensorRowOf(const double eqDir[3], int& lens, double& r
     if (!ok[0] && !ok[1])
         return false;
     lens = (ok[0] && (!ok[1] || th[0] < th[1])) ? 0 : 1;
-    rowFrac = v[lens] / static_cast<double>(info_.height);
+    rowFrac = v[lens] / static_cast<double>(lens_h_);
     return rowFrac >= 0.0 && rowFrac <= 1.0;
 }
 
@@ -986,7 +1237,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     pts = {};
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(f0, f1, &pts, err);
+    const bool got = readPairVk(f0, f1, &pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -997,8 +1248,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     orbiscore::VulkanLensFrame lf0, lf1;
-    vdec_->lockFrame(f0, lf0);
-    vdec_->lockFrame(f1, lf1);
+    vdec_->lockPair(f0, f1, lf0, lf1);
 
     view::Pose pose; // forward view, the reproject's default
     float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
@@ -1042,11 +1292,9 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     orbiscore::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
     orbiscore::VulkanLensFrameResult r1{oc1.semSignalValue, oc1.newLayout};
     if (ok) {
-        vdec_->unlockFrame(f0, r0);
-        vdec_->unlockFrame(f1, r1);
+        vdec_->unlockPair(f0, f1, r0, r1);
     } else {
-        vdec_->unlockFrame(f0, {in0.semWaitValue, in0.layout});
-        vdec_->unlockFrame(f1, {in1.semWaitValue, in1.layout});
+        vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
     }
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
@@ -1078,7 +1326,7 @@ int NativeStitchSource::KeepNextPair(orbiscore::FramePts& pts) {
     auto h = std::make_unique<HeldPair>();
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(h->f0, h->f1, &h->pts, err);
+    const bool got = readPairVk(h->f0, h->f1, &h->pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -1088,12 +1336,10 @@ int NativeStitchSource::KeepNextPair(orbiscore::FramePts& pts) {
     }
     resume_at_ms_ = h->pts.ms + 1; // a resume carries on after it
     orbiscore::VulkanLensFrame lf0, lf1;
-    vdec_->lockFrame(h->f0, lf0);
-    vdec_->lockFrame(h->f1, lf1);
+    vdec_->lockPair(h->f0, h->f1, lf0, lf1);
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     h->params = paramsWithSeam(h->pts, in0, in1);
-    vdec_->unlockFrame(h->f0, {in0.semWaitValue, in0.layout});
-    vdec_->unlockFrame(h->f1, {in1.semWaitValue, in1.layout});
+    vdec_->unlockPair(h->f0, h->f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
     pts = h->pts;
     const int id = next_kept_++;
     kept_.emplace(id, std::move(h));
@@ -1118,21 +1364,19 @@ bool NativeStitchSource::RenderKeptViews(int handle, int canvasW, int canvasH,
         vr[i].h = views[i].h;
     }
     orbiscore::VulkanLensFrame lf0, lf1;
-    vdec_->lockFrame(h.f0, lf0);
-    vdec_->lockFrame(h.f1, lf1);
+    vdec_->lockPair(h.f0, h.f1, lf0, lf1);
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     const bool ok = gpu_->renderViewsVk(in0, in1, h.params, canvasW, canvasH, vr, stab,
                                         clearRgba, rgba, &oc0, &oc1, gerr);
     if (ok) {
-        vdec_->unlockFrame(h.f0, {oc0.semSignalValue, oc0.newLayout});
-        vdec_->unlockFrame(h.f1, {oc1.semSignalValue, oc1.newLayout});
+        vdec_->unlockPair(h.f0, h.f1, {oc0.semSignalValue, oc0.newLayout},
+                          {oc1.semSignalValue, oc1.newLayout});
         copyGpuTiming();
         return true;
     }
-    vdec_->unlockFrame(h.f0, {in0.semWaitValue, in0.layout});
-    vdec_->unlockFrame(h.f1, {in1.semWaitValue, in1.layout});
+    vdec_->unlockPair(h.f0, h.f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
     last_error_ = "GPU renderViewsVk failed: " + gerr;
     return false;
 }
@@ -1197,6 +1441,8 @@ bool NativeStitchSource::ReleaseGpu() {
     // The stitch first: on the all-GPU path it borrows the decoder's device.
     // Its lens ring lives on while a viewport shows one of its frames.
     gpu_.reset();
+    if (proxy_)
+        proxy_->drop(); // its frames are the decoder's
     vdec_.reset();
     demux_.reset(); // the CPU decode's: openDecode tries the GPU again
     gpu_released_ = true;
@@ -1243,7 +1489,7 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     orbiscore::FramePts pts;
     std::string err;
     const auto t0 = std::chrono::steady_clock::now();
-    const bool got = vdec_->readNextPair(f0, f1, &pts, err);
+    const bool got = readPairVk(f0, f1, &pts, err);
     last_timing_ = ReadTiming{};
     last_timing_.decodeMs =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -1254,19 +1500,17 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     resume_at_ms_ = pts.ms + 1; // a resume carries on after it
 
     orbiscore::VulkanLensFrame lf0, lf1;
-    vdec_->lockFrame(f0, lf0);
-    vdec_->lockFrame(f1, lf1);
+    vdec_->lockPair(f0, f1, lf0, lf1);
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     const orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
     const bool ok = gpu_->fillLensFrameVk(in0, in1, params, out, &oc0, &oc1, gerr);
     if (ok) {
-        vdec_->unlockFrame(f0, {oc0.semSignalValue, oc0.newLayout});
-        vdec_->unlockFrame(f1, {oc1.semSignalValue, oc1.newLayout});
+        vdec_->unlockPair(f0, f1, {oc0.semSignalValue, oc0.newLayout},
+                          {oc1.semSignalValue, oc1.newLayout});
     } else {
-        vdec_->unlockFrame(f0, {in0.semWaitValue, in0.layout});
-        vdec_->unlockFrame(f1, {in1.semWaitValue, in1.layout});
+        vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
     }
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
@@ -1288,7 +1532,7 @@ Frame NativeStitchSource::readCpuDecode() {
     orbiscore::Image a, b;
     orbiscore::FramePts pts;
     std::string err;
-    if (!demux_->readNextPair(a, b, &pts, err)) {
+    if (!readPairCpu(a, b, &pts, err)) {
         last_error_ = err; // empty on a clean end-of-stream
         return Frame{};
     }
@@ -1296,7 +1540,8 @@ Frame NativeStitchSource::readCpuDecode() {
 
     // A scrub's passing frame is stitched with the last frame's seam, as the
     // GPU path.
-    const bool scrub = scrub_frame_;
+    const bool quickScrub = scrub_frame_;
+    const bool scrub = quickScrub || (picture_repeat_ && !params_.depthSeam); // as the GPU path
     scrub_frame_ = false;
     // Depth-aware seam: the cost volume on the CPU here (no GPU-resident
     // lenses to run the GPU pass on).
@@ -1319,7 +1564,7 @@ Frame NativeStitchSource::readCpuDecode() {
     // template's geometry, as the GPU path.
     orbiscore::StitchGpuParams p = paramsAt(pts); // and the privacy blur quads
     if (seam_colour_on_ && scrub) {
-        heldSeamColour(p);
+        repeatSeamColour(pts.ms, p, picture_repeat_ && !quickScrub);
     } else if (seam_colour_on_) {
         const auto t0 = std::chrono::steady_clock::now();
         applySeamColour(pts.ms, p, [&] {

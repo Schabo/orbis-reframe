@@ -324,6 +324,9 @@ signals:
     // May come again for the same file when it's opened again.
     void gpuFallback(const QString &path, int clipId, bool decode, bool stitch,
                      const QString &codec);
+    // The picture being read comes from the camera's preview file
+    // (IStitchSource::UsingProxy), or no longer does.
+    void proxyChanged(bool fromProxy);
     void durationChanged(qint64 totalMs);
     // The playhead is at timelineMs, read at atNs (steadyNs()). While playing
     // the clock runs on from there: a listener on another thread gets this
@@ -397,6 +400,8 @@ private:
     // has newly fallen back to the CPU (at its open, or at a frame the GPU
     // stitch couldn't allocate for).
     void noteGpuFallback(int clipId);
+    // proxyChanged when the playing source's picture source changed.
+    void noteProxy();
     // A new, unopened source for `seg`: a BlankClipSource for a flat clip,
     // else m_makeSource's, or the real one. Any thread.
     std::unique_ptr<stitch::IStitchSource> makeSource(const Segment &seg) const;
@@ -540,6 +545,7 @@ private:
     // (noteGpuFallback), and for which source.
     std::weak_ptr<stitch::IStitchSource> m_fallbackSource;
     stitch::GpuFallback m_fallbackSeen;
+    bool m_proxyNoted = false; // what proxyChanged said last (decoder thread)
 
     // The next segment's source, sought and its first frame read on a worker
     // thread shortly before the boundary, so the cut doesn't wait for the

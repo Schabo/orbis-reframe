@@ -1226,6 +1226,11 @@ void MainWindow::connectController()
     connect(m_timeline, &Timeline::clipTrimChanged, m_measurements, &ClipMeasurements::schedule);
     connect(m_controller, &PlaybackController::bufferingChanged,
             m_playerBar, &PlayerBar::setBuffering);
+    connect(m_controller, &PlaybackController::proxyChanged, m_playerBar,
+            &PlayerBar::setFromProxy);
+    // The project says only when its config changes; View ▸ Play from
+    // preview files counts from the start.
+    pushPreviewConfig(m_project->previewStitch());
     // Every play/pause entry point (transport button, Space, export pausing
     // playback, reaching end-of-timeline) funnels through this one signal.
     // Off 1x the preview is silent (the player bar's speed).
@@ -2341,6 +2346,41 @@ void MainWindow::setupViewMenu()
     });
     m_editorActions += sizeMenu->menuAction();
     updatePreviewMenu(m_project->previewStitch());
+
+    // Play from the camera's low-res preview files (.lrv, .prx, .LRF) where
+    // the full files are too slow for this machine. Per user, not in the
+    // project: it changes only what's seen while editing.
+    QMenu *proxyMenu = viewMenu->addMenu(tr("Play from &preview files"));
+    proxyMenu->setObjectName(QStringLiteral("proxyMenu"));
+    proxyMenu->setToolTipsVisible(true);
+    const QString proxyTip =
+        tr("Play the clips from the low-resolution preview files the camera writes beside them, "
+           "for a computer that can't play the full files smoothly. The picture is softer; "
+           "the export and screenshots always use the full files.");
+    auto *proxyGroup = new QActionGroup(this);
+    m_playFromProxies = QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+                            .value(QStringLiteral("player/proxies")) == QStringLiteral("always");
+    for (const bool always : {false, true}) {
+        QAction *a = proxyMenu->addAction(always ? tr("&Always") : tr("&Never"));
+        a->setObjectName(always ? QStringLiteral("proxyAlwaysAction")
+                                : QStringLiteral("proxyNeverAction"));
+        a->setData(always);
+        a->setCheckable(true);
+        a->setChecked(always == m_playFromProxies);
+        a->setToolTip(proxyTip);
+        proxyGroup->addAction(a);
+    }
+    connect(proxyGroup, &QActionGroup::triggered, this, [this](QAction *a) {
+        const bool always = a->data().toBool();
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("player/proxies"),
+                      always ? QStringLiteral("always") : QStringLiteral("never"));
+        if (always == m_playFromProxies)
+            return;
+        m_playFromProxies = always;
+        pushPreviewConfig(m_project->previewStitch());
+    });
+    m_editorActions += proxyMenu->menuAction();
 
     // The app's colours, per user (QSettings ui/theme, read in main()).
     // Also on the start screen, unlike the preview's settings.

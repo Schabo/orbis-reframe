@@ -290,6 +290,24 @@ void VulkanVideoDecoder::unlockFrame(AVFrame* f, const VulkanLensFrameResult& r)
         vfc->unlock_frame(fc, vkf);
 }
 
+void VulkanVideoDecoder::lockPair(AVFrame* f0, AVFrame* f1, VulkanLensFrame& lf0,
+                                  VulkanLensFrame& lf1)
+{
+    lockFrame(f0, lf0);
+    if (f1->data[0] == f0->data[0])
+        lf1 = lf0;
+    else
+        lockFrame(f1, lf1);
+}
+
+void VulkanVideoDecoder::unlockPair(AVFrame* f0, AVFrame* f1, const VulkanLensFrameResult& r0,
+                                    const VulkanLensFrameResult& r1)
+{
+    unlockFrame(f0, r0);
+    if (f1->data[0] != f0->data[0])
+        unlockFrame(f1, r1);
+}
+
 void VulkanVideoDecoder::freeFrame(AVFrame*& f) { av_frame_free(&f); }
 
 VulkanVideoDecoder::QueueLock VulkanVideoDecoder::queueLock(uint32_t family, uint32_t index) const

@@ -74,6 +74,21 @@ void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderPar
         sp.seamClear[b][0] = p.maskActive ? p.seamClear[b][0] : 0.0f;
         sp.seamClear[b][1] = p.maskActive ? p.seamClear[b][1] : 0.0f;
     }
+    for (int i = 0; i < 2; ++i) {
+        const float* r = p.lensRect[i];
+        for (int k = 0; k < 4; ++k)
+            sp.lensRect[i][k] = r[k];
+        // A lens in part of the image: its samples stay half a texel inside
+        // its part, so the bilinear filter never reaches the other lens. A
+        // lens that is the whole image is sampled as ever.
+        const bool whole = r[0] == 0.0f && r[1] == 0.0f && r[2] == 1.0f && r[3] == 1.0f;
+        const float hx = whole || p.fisheyeW <= 0 ? 0.0f : 0.5f * r[2] / p.fisheyeW;
+        const float hy = whole || p.fisheyeH <= 0 ? 0.0f : 0.5f * r[3] / p.fisheyeH;
+        sp.lensBox[i][0] = whole ? -1e9f : r[0] + hx;
+        sp.lensBox[i][1] = whole ? -1e9f : r[1] + hy;
+        sp.lensBox[i][2] = whole ? 1e9f : r[0] + r[2] - hx;
+        sp.lensBox[i][3] = whole ? 1e9f : r[1] + r[3] - hy;
+    }
     for (int k = 0; k < 4; ++k) {
         sp.kd0[k] = p.kdist[0][k];
         sp.kd1[k] = p.kdist[1][k];
@@ -537,7 +552,8 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
         toRead[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     }
     vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr,
+                         lensImages(f0, f1), toRead);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     d->recordBlurCells(d->cmd, params);
@@ -702,7 +718,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         toRead[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     }
     vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr,
+                         lensImages(f0, f1), toRead);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     d->recordBlurCells(d->cmd, params);
@@ -945,7 +962,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         toRead[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     }
     vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 2, toRead);
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr,
+                         lensImages(f0, f1), toRead);
 
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     d->recordBlurCells(d->cmd, params);
@@ -1142,7 +1160,7 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
         toRead[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     }
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         0, 0, nullptr, 0, nullptr, 2, toRead);
+                         0, 0, nullptr, 0, nullptr, lensImages(f0, f1), toRead);
 
     if (viaView) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeline);
@@ -1251,8 +1269,20 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         err = "decoder images can't be copied from (no TRANSFER_SRC usage)";
         return false;
     }
-    const int lw = f0.width, lh = f0.height;
-    if (lw <= 0 || lh <= 0 || f1.width != lw || f1.height != lh || (lw & 1) || (lh & 1)) {
+    if (f1.width != f0.width || f1.height != f0.height) {
+        err = "bad lens dimensions";
+        return false;
+    }
+    // Each lens's part of its image (the whole of it, or a half of a
+    // camera's proxy), on even pixels for the half-size chroma plane.
+    int lx[2], ly[2];
+    for (int i = 0; i < 2; ++i) {
+        lx[i] = static_cast<int>(std::lround(params.lensRect[i][0] * f0.width)) & ~1;
+        ly[i] = static_cast<int>(std::lround(params.lensRect[i][1] * f0.height)) & ~1;
+    }
+    const int lw = static_cast<int>(std::lround(params.lensRect[0][2] * f0.width));
+    const int lh = static_cast<int>(std::lround(params.lensRect[0][3] * f0.height));
+    if (lw <= 0 || lh <= 0 || (lw & 1) || (lh & 1)) {
         err = "bad lens dimensions";
         return false;
     }
@@ -1344,7 +1374,7 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
             rd[i] = imgBarrier(in[i]->image, in[i]->layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0,
                                VK_ACCESS_SHADER_READ_BIT);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-                             0, nullptr, 0, nullptr, 2, rd);
+                             0, nullptr, 0, nullptr, lensImages(f0, f1), rd);
         d->recordBlurCells(cmd, params);
     }
 
@@ -1352,16 +1382,17 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     // semaphore wait); the slot's images -> transfer target (old contents
     // discarded, so no ownership acquire is needed).
     VkImageMemoryBarrier pre[2 + LensSlot::kImages];
-    for (int i = 0; i < 2; ++i)
+    const int nIn = lensImages(f0, f1);
+    for (int i = 0; i < nIn; ++i)
         pre[i] = imgBarrier(in[i]->image, blur ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : in[i]->layout,
                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, blur ? VK_ACCESS_SHADER_READ_BIT : 0,
                             VK_ACCESS_TRANSFER_READ_BIT);
     for (int i = 0; i < LensSlot::kImages; ++i)
-        pre[2 + i] = imgBarrier(slot->img[i], VK_IMAGE_LAYOUT_UNDEFINED,
+        pre[nIn + i] = imgBarrier(slot->img[i], VK_IMAGE_LAYOUT_UNDEFINED,
                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
                                 VK_ACCESS_TRANSFER_WRITE_BIT);
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-                         0, nullptr, 0, nullptr, 2 + LensSlot::kImages, pre);
+                         0, nullptr, 0, nullptr, nIn + LensSlot::kImages, pre);
 
     for (int lens = 0; lens < 2; ++lens) {
         for (int plane = 0; plane < 2; ++plane) {
@@ -1369,6 +1400,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
             c.srcSubresource = {plane == 0 ? VK_IMAGE_ASPECT_PLANE_0_BIT : VK_IMAGE_ASPECT_PLANE_1_BIT,
                                 0, 0, 1};
             c.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            c.srcOffset = {plane == 0 ? lx[lens] : lx[lens] / 2,
+                           plane == 0 ? ly[lens] : ly[lens] / 2, 0};
             c.extent = {static_cast<uint32_t>(plane == 0 ? lw : lw / 2),
                         static_cast<uint32_t>(plane == 0 ? lh : lh / 2), 1};
             vkCmdCopyImage(cmd, in[lens]->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -1428,6 +1461,12 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     d->tsRead(false);
 
     out.fill = ++slot->fill;
+    // The viewport samples the copies, each a whole lens.
+    for (int i = 0; i < 2; ++i) {
+        const float whole[4] = {0.0f, 0.0f, 1.0f, 1.0f}, open[4] = {-1e9f, -1e9f, 1e9f, 1e9f};
+        std::memcpy(sp.lensRect[i], whole, sizeof whole);
+        std::memcpy(sp.lensBox[i], open, sizeof open);
+    }
     std::memcpy(out.params.data(), &sp, sizeof(sp));
     // The handle: hands the slot back to the ring when its last copy goes.
     std::shared_ptr<LensRingCore> ring = d->ring;

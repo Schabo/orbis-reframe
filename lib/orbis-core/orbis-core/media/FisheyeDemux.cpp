@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #include <orbis-core/media/FisheyeDemux.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <string>
 #include <utility>
 
@@ -39,14 +42,34 @@ bool FisheyeDemux::open(const std::string& path, std::string& err)
 
 bool FisheyeDemux::open(const std::vector<LensSource>& lenses, std::string& err)
 {
-    close();
-    return m_demux.open(lenses, CpuDecoderSetup, err);
+    return open(std::vector<ClipPart>{{0, lenses}}, err);
 }
 
 bool FisheyeDemux::open(const std::vector<ClipPart>& parts, std::string& err)
 {
     close();
+    for (size_t i = 0; i < 2; ++i)
+        m_rect[i] =
+            !parts.empty() && i < parts[0].lenses.size() ? parts[0].lenses[i].rect : LensRect{};
     return m_demux.open(parts, CpuDecoderSetup, err);
+}
+
+void FisheyeDemux::crop(int lens, Image& img) const
+{
+    const LensRect& r = m_rect[lens];
+    if (r.x == 0.0 && r.y == 0.0 && r.w == 1.0 && r.h == 1.0)
+        return;
+    const int x = static_cast<int>(std::lround(r.x * img.w));
+    const int y = static_cast<int>(std::lround(r.y * img.h));
+    const int w = std::min(static_cast<int>(std::lround(r.w * img.w)), img.w - x);
+    const int h = std::min(static_cast<int>(std::lround(r.h * img.h)), img.h - y);
+    Image out;
+    out.alloc(std::max(w, 0), std::max(h, 0));
+    for (int row = 0; row < out.h; ++row)
+        std::memcpy(out.rgb.data() + static_cast<size_t>(row) * out.w * 3,
+                    img.rgb.data() + (static_cast<size_t>(y + row) * img.w + x) * 3,
+                    static_cast<size_t>(out.w) * 3);
+    img = std::move(out);
 }
 
 void FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)
@@ -109,7 +132,12 @@ bool FisheyeDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::st
     if (!m_demux.readNextPair(f0, f1, pts, err))
         return false;
     convert(f0, lens(0), out0);
-    convert(f1, lens(1), out1);
+    if (f1->data[0] == f0->data[0]) // both lenses in one frame: converted once
+        out1 = out0;
+    else
+        convert(f1, lens(1), out1);
+    crop(0, out0);
+    crop(1, out1);
     av_frame_free(&f0);
     av_frame_free(&f1);
     return true;

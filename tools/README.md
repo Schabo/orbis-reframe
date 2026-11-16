@@ -147,7 +147,11 @@ the depth-aware seam's table per frame, `--calibration FILE.json` takes
 a camera's own lens calibration (as `lens_calib --out` writes it and the
 app keeps it) in place of the file's, for the stitch and the measurements,
 and `--capture-timing` stitches with the capture-time correction from the
-clip's gyro, as playback has it with the stabilization on. A frame from a
+clip's gyro, as playback has it with the stabilization on. `--proxy` reads
+the picture from the camera's preview file, as playback does with *Play from
+preview files* (a `--range` then also prints each frame's time and its
+picture's); its frames compared with the full file's at the same `--width`
+should line up to within a pixel (PSNR highest unshifted). A frame from a
 `--range` and the same frame seeked to must be byte-identical: that is how
 the new stitcher's seek pre-roll is checked. `--release-gpu` gives the
 source's graphics memory back before each frame asked for (after the
@@ -177,6 +181,9 @@ colour blend and seam flow unless `--no-seam-colour-blend` /
 depth-aware seam) or `--no-depth-seam` (the old one with a fixed seam); the
 `seam` column is the new stitcher's measuring (the colour blend's fit and
 the flow), or the depth-aware seam's measuring and solving.
+
+`--proxy` measures playback from the camera's preview file instead (*Play
+from preview files*); the `decode` row still reads the full file.
 
 **When:** after a change to decoding, stitching or the frame path, to see
 whether a mode still plays in real time. The preview-size presets and the

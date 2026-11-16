@@ -481,6 +481,15 @@ void PlaybackController::noteGpuFallback(int clipId)
                          QString::fromStdString(fb.codec));
 }
 
+void PlaybackController::noteProxy()
+{
+    const bool proxy = m_activeSource && m_activeSource->UsingProxy();
+    if (proxy == m_proxyNoted)
+        return;
+    m_proxyNoted = proxy;
+    emit proxyChanged(proxy);
+}
+
 bool PlaybackController::holdFailedRead(const std::string &err, bool playing)
 {
     bool first = false;
@@ -1066,6 +1075,7 @@ void PlaybackController::decoderLoop()
             got = readSourceFrame(*m_activeSource, useLens, frame, lens);
         }
         noteGpuFallback(cur.seg.clipId);
+        noteProxy();
         const auto t1 = std::chrono::steady_clock::now();
         if (render::framestats::Enabled() && got) {
             std::lock_guard<std::mutex> lk(m_mx);
