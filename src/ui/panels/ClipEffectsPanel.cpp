@@ -1,8 +1,11 @@
 #include "ClipEffectsPanel.h"
 
 #include "PanelFields.h"
+#include "../LookNames.h"
 
 #include <QCheckBox>
+#include <QComboBox>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -11,6 +14,22 @@
 
 #include <algorithm>
 #include <cmath>
+
+namespace {
+
+// The look list's data: "preset:<id>" for a built-in look, else the .cube's
+// path (absolute, so never starting with "preset:").
+const QString kPresetPrefix = QStringLiteral("preset:");
+// Its Load LUT... item.
+constexpr int kLoadRole = Qt::UserRole + 1;
+
+QString lookData(const fx::Look &l)
+{
+    return l.lut.empty() ? kPresetPrefix + QString::fromStdString(l.preset)
+                         : QString::fromStdString(l.lut);
+}
+
+} // namespace
 
 ClipEffectsPanel::ClipEffectsPanel(QWidget *parent) : SettingsPanel(tr("Effects"), parent)
 {
@@ -22,6 +41,35 @@ ClipEffectsPanel::ClipEffectsPanel(QWidget *parent) : SettingsPanel(tr("Effects"
     form()->addRow(m_none);
 
     // In the order they run.
+    m_look = addGroup(fx::kLook, tr("Colour look"), tr("Take the colour look off this clip."),
+                      QStringLiteral("look"));
+    m_lookChoice = new QComboBox(this);
+    m_lookChoice->setObjectName(QStringLiteral("lookChoice"));
+    m_lookChoice->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_lookChoice->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_lookChoice->setMinimumContentsLength(8);
+    m_lookChoice->setToolTip(tr("A built-in look, or a 3D LUT (.cube) of your own, applied after "
+                                "the Colour section's grade."));
+    m_lookRow = m_lookChoice;
+    form()->addRow(tr("Look"), m_lookChoice);
+    m_lookProblem = new QLabel(this);
+    m_lookProblem->setObjectName(QStringLiteral("lookProblem"));
+    m_lookProblem->setWordWrap(true);
+    form()->addRow(m_lookProblem);
+    form()->setRowVisible(m_lookProblem, false);
+    addSetting(m_look, tr("Strength"), 0, 100, QStringLiteral("lookStrength"),
+               tr("How much of the look: 100 % is the look itself, 0 % the clip without it."));
+    connect(m_lookChoice, &QComboBox::activated, this, [this](int index) {
+        if (m_lookChoice->itemData(index, kLoadRole).toBool()) {
+            if (m_shown.look)
+                selectLook(*m_shown.look); // until a file is picked
+            emit loadLookRequested();
+            return;
+        }
+        emitIfEdited();
+    });
+    setLookFiles({});
+
     m_vignette = addGroup(fx::kVignette, tr("Vignette"), tr("Take the vignette off this clip."),
                           QStringLiteral("vignette"));
     addSetting(m_vignette, tr("Amount"), int(fx::Vignette::kMinAmount),
@@ -100,6 +148,18 @@ float ClipEffectsPanel::value(const Group &g, size_t i) const
 fx::ClipEffects ClipEffectsPanel::currentEffects() const
 {
     fx::ClipEffects e = m_shown;
+    if (e.look) {
+        e.look->on = m_look.on->isChecked();
+        e.look->strength = value(m_look, 0);
+        const QString data = m_lookChoice->currentData().toString();
+        if (data.startsWith(kPresetPrefix)) {
+            e.look->preset = data.mid(kPresetPrefix.size()).toStdString();
+            e.look->lut.clear();
+        } else if (!data.isEmpty()) {
+            e.look->lut = data.toStdString();
+            e.look->preset.clear();
+        }
+    }
     if (e.vignette) {
         e.vignette->on = m_vignette.on->isChecked();
         e.vignette->amount = value(m_vignette, 0);
@@ -136,6 +196,12 @@ void ClipEffectsPanel::setState(const fx::ClipEffects &effects)
     setBodyEnabled(true);
     m_shown = effects;
     form()->setRowVisible(m_none, effects.isEmpty());
+    const fx::Look l = effects.look.value_or(fx::Look{});
+    showGroup(m_look, effects.look.has_value(), l.on, {l.strength});
+    form()->setRowVisible(m_lookRow, effects.look.has_value());
+    if (!effects.look)
+        setLookProblem({});
+    selectLook(l);
     const fx::Vignette v = effects.vignette.value_or(fx::Vignette{});
     showGroup(m_vignette, effects.vignette.has_value(), v.on, {v.amount, v.size, v.softness});
     const fx::Grain g = effects.grain.value_or(fx::Grain{});
@@ -146,10 +212,55 @@ void ClipEffectsPanel::setState(const fx::ClipEffects &effects)
 
 void ClipEffectsPanel::enableSettings(const fx::ClipEffects &e)
 {
-    for (const auto &[g, on] : {std::pair{&m_vignette, !e.vignette || e.vignette->on},
+    for (const auto &[g, on] : {std::pair{&m_look, !e.look || e.look->on},
+                                std::pair{&m_vignette, !e.vignette || e.vignette->on},
                                 std::pair{&m_grain, !e.grain || e.grain->on}})
         for (const Setting &s : g->settings)
             s.slider->setEnabled(on);
+    m_lookChoice->setEnabled(!e.look || e.look->on);
+}
+
+void ClipEffectsPanel::setLookFiles(const QStringList &paths)
+{
+    m_lookFiles = paths;
+    const bool was = m_updating;
+    m_updating = true;
+    m_lookChoice->clear();
+    for (const char *id : color::look::kPresets)
+        m_lookChoice->addItem(looknames::name(QString::fromLatin1(id)),
+                              kPresetPrefix + QString::fromLatin1(id));
+    for (const QString &p : m_lookFiles) {
+        m_lookChoice->addItem(QFileInfo(p).completeBaseName(), p);
+        m_lookChoice->setItemData(m_lookChoice->count() - 1, p, Qt::ToolTipRole);
+    }
+    m_lookChoice->insertSeparator(m_lookChoice->count());
+    m_lookChoice->addItem(tr("Load LUT…"));
+    m_lookChoice->setItemData(m_lookChoice->count() - 1, true, kLoadRole);
+    selectLook(m_shown.look.value_or(fx::Look{}));
+    m_updating = was;
+}
+
+void ClipEffectsPanel::selectLook(const fx::Look &look)
+{
+    const QString data = lookData(look);
+    int i = m_lookChoice->findData(data);
+    if (i < 0) { // not listed: a file from elsewhere, or a later version's look
+        i = m_lookChoice->count() - 2; // before the separator
+        const QString name =
+            look.lut.empty()
+                ? tr("%1 (not in this version)").arg(QString::fromStdString(look.preset))
+                : QFileInfo(data).completeBaseName();
+        m_lookChoice->insertItem(i, name, data);
+        m_lookChoice->setItemData(i, data, Qt::ToolTipRole);
+    }
+    const QSignalBlocker block(m_lookChoice);
+    m_lookChoice->setCurrentIndex(i);
+}
+
+void ClipEffectsPanel::setLookProblem(const QString &problem)
+{
+    m_lookProblem->setText(problem);
+    form()->setRowVisible(m_lookProblem, !problem.isEmpty());
 }
 
 void ClipEffectsPanel::setNoClip()

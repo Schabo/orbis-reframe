@@ -1673,7 +1673,7 @@ void MainWindow::refreshClipPanels()
     }
     syncMediaInfoPanel(*c);
     syncColourPanel(c->color);
-    m_clipEffectsPanel->setState(c->effects);
+    syncEffectsPanel(*c);
     m_reframePanel->setClip(c->flat, c->fit == ClipItem::Fit::Fill);
     m_reframePanel->setPaneLayout(c->split.layout);
     m_splitScreenPanel->setNotApplicable(c->flat ? tr("A flat video isn't split into panes.")

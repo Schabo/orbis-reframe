@@ -411,7 +411,7 @@ QWidget[sidebarPart="strip"] QToolButton:hover {
 }
 
 /* Effects tab. */
-#effectsPanel, #effectList {
+#effectsPanel, #effectList, #lookList, #effectsScroll, #effectsPage {
     background-color: @panel;
 }
 #effectsHint {

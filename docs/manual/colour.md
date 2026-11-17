@@ -34,7 +34,10 @@ A LUT changes every colour of the picture into another one, by a table in a
 file. Camera makers publish one for their log modes: footage filmed in a log
 mode looks flat and grey on purpose (it keeps more detail in the bright and
 dark parts), and the maker's LUT turns it into normal-looking colours. Other
-LUTs give a picture a look (a film stock, a teal-and-orange grade).
+LUTs give a picture a look (a film stock, a teal-and-orange grade): those
+go on the clip as a [colour look](effects.md#colour-look) in **Effects**,
+after this section's settings, so a log clip can have both its camera's
+LUT here and a look there.
 orbis-reframe reads 3D LUTs in the `.cube` format, the one camera makers and
 most LUT packs use.
 

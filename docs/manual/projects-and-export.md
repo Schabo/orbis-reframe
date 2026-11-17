@@ -30,7 +30,7 @@ or some of its media files are missing.
 | Start a new project | **New project…** (`Ctrl+N`). |
 | Open a project file that isn't listed | **Open other…** (`Ctrl+O`). |
 | Rename a project | Right-click its card ▸ **Rename…**, or select it and press `F2`. Both the project's folder and its project file get the new name. |
-| Copy a project | Right-click its card ▸ **Duplicate…** and give the copy a name (`<name> copy` is suggested). The copy gets its own folder beside the original, with the project file, its `cache/` (privacy-blur scans and waveforms) and its `luts/`, but not its exports or screenshots. The media files aren't copied: both projects use the same clips. |
+| Copy a project | Right-click its card ▸ **Duplicate…** and give the copy a name (`<name> copy` is suggested). The copy gets its own folder beside the original, with the project file, its `cache/` (privacy-blur scans and waveforms), its `luts/` and its `looks/`, but not its exports or screenshots. The media files aren't copied: both projects use the same clips. |
 | See a project's files | Right-click its card ▸ **Show in file manager**. |
 | Take a project off the list | Right-click its card ▸ **Remove from list**, or select it and press `Delete`. Its files are not deleted. |
 | Come back to the library | **File ▸ Project library…**. It closes the open project, asking first if there are unsaved changes. |
@@ -56,6 +56,7 @@ Summer trip/
   exports/          where exports are saved by default
   screenshots/      where screenshots are saved by default
   luts/             the clips' colour LUTs, copied in when loaded (see Colour)
+  looks/            the clips' colour look LUTs, copied in when loaded (see Effects)
 ```
 
 Deleting the folder deletes the whole project, scans included. The video

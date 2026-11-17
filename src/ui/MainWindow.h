@@ -33,6 +33,7 @@
 #include "RenderJobs.h"               // renderjobs::FieldSources
 #include "../core/ClipItem.h"         // ColorGrade (the copied grade)
 #include "../core/InsetGeometry.h"    // inset::Look (overlays)
+#include "../core/ProjectFolder.h"    // projectfolder::LutUse
 
 class QAction;
 class QTimer;
@@ -157,8 +158,19 @@ private:
     // and the clip's Effects section.
     void connectEffects();
     // Put the effect named `name` (fx::kVignette, ...) on clip `clipId`,
-    // with its defaults; one already on it stays as it is.
+    // with its defaults; one already on it stays as it is. A colour look
+    // tile (EffectsPanel::lookTile, kCustomLook) replaces the clip's look;
+    // Custom LUT asks for the file first.
     void addEffect(int clipId, const QString &name);
+    // The clip's effects into the Effects section, with the look files it
+    // offers and whether the clip's look can be applied.
+    void syncEffectsPanel(const ClipItem &clip);
+    // The project's looks (its looks/ folder) and the clips' look files.
+    QStringList availableLooks() const;
+    // Effects ▸ Load LUT... (and the Custom LUT tile): pick a .cube (or a
+    // zip with them), copy it into the project's looks/, make it clip
+    // `clipId`'s look. Nothing changes when the user cancels.
+    void loadLook(int clipId);
     void connectMeasurements();
     void connectPrivacy();
     void connectTransitions();
@@ -250,6 +262,10 @@ private:
     // Colour panel ▸ Load LUT...: pick a .cube (or a zip with them), copy it
     // into the project, give it to the clip in the panel.
     void loadLut();
+    // The Load LUT dialog: the .cube the user picks (or one out of a zip),
+    // checked and copied into the project's luts/ or looks/. Empty when
+    // cancelled or, after telling the user why, when it can't be used.
+    QString pickLut(projectfolder::LutUse use);
     // `grade` with its LUT in the project's luts/ folder: one from elsewhere
     // (a LUT the app ships, another project's, through copy / paste) is
     // copied in, so the project doesn't depend on a file outside its folder.
@@ -258,7 +274,8 @@ private:
     // The .cube the user picks out of `zipFile` (asked when there are
     // several), unpacked into the project. Empty with *error set when that
     // fails, empty with *error untouched when the user cancels.
-    QString lutFromZip(const QString &zipFile, QString *error);
+    QString lutFromZip(const QString &zipFile, QString *error,
+                       projectfolder::LutUse use = projectfolder::LutUse::Clip);
     // Bind authoring (m_clipId / m_lastPositionMs / stabilizer / viewport pose
     // / Audio+Colour panels) to whichever clip covers `timelineMs`. Shared by
     // the playback position tick and undo()/redo() (which replace the whole

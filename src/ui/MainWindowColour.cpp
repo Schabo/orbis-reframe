@@ -181,44 +181,50 @@ bool MainWindow::lutIntoProject(ColorGrade &grade)
 void MainWindow::loadLut()
 {
     const int id = editClipId();
+    if (!m_timeline->clipById(id))
+        return;
+    const QString lut = pickLut(projectfolder::LutUse::Clip);
     const ClipItem *c = m_timeline->clipById(id);
-    if (!c)
+    if (lut.isEmpty() || !c)
         return;
-    const QString picked = QFileDialog::getOpenFileName(
-        this, tr("Load LUT"), m_lastLutDir.isEmpty() ? QDir::homePath() : m_lastLutDir,
-        tr("3D LUTs (%1);;All files (*)")
-            .arg(media::fileGlobs({QStringLiteral("cube"), QStringLiteral("zip")})));
-    if (picked.isEmpty())
-        return;
-    m_lastLutDir = QFileInfo(picked).absolutePath();
-    QString error;
-    QString lut;
-    if (QFileInfo(picked).suffix().compare(QLatin1String("zip"), Qt::CaseInsensitive) == 0) {
-        // The maker's download as it is: pick the .cube out of it.
-        lut = lutFromZip(picked, &error);
-        if (lut.isEmpty() && error.isEmpty())
-            return; // the choice was cancelled
-    } else {
-        std::string why;
-        if (!color::loadCube(picked.toStdString(), &why)) {
-            QMessageBox::warning(this, tr("Can't use this LUT"),
-                                 tr("%1 can't be used as a LUT: %2.")
-                                     .arg(QFileInfo(picked).fileName(), QString::fromStdString(why)));
-            return;
-        }
-        lut = projectfolder::importLut(m_project->filePath(), picked, &error);
-    }
-    if (lut.isEmpty()) {
-        QMessageBox::warning(this, tr("Can't use this LUT"), error);
-        return;
-    }
     ColorGrade g = c->color;
     g.lut = lut;
     m_timeline->setClipColor(id, g);
     syncColourPanel(m_timeline->clipById(id)->color); // the new LUT in the list
 }
 
-QString MainWindow::lutFromZip(const QString &zipFile, QString *error)
+QString MainWindow::pickLut(projectfolder::LutUse use)
+{
+    const QString picked = QFileDialog::getOpenFileName(
+        this, tr("Load LUT"), m_lastLutDir.isEmpty() ? QDir::homePath() : m_lastLutDir,
+        tr("3D LUTs (%1);;All files (*)")
+            .arg(media::fileGlobs({QStringLiteral("cube"), QStringLiteral("zip")})));
+    if (picked.isEmpty())
+        return {};
+    m_lastLutDir = QFileInfo(picked).absolutePath();
+    QString error;
+    QString lut;
+    if (QFileInfo(picked).suffix().compare(QLatin1String("zip"), Qt::CaseInsensitive) == 0) {
+        // The maker's download as it is: pick the .cube out of it.
+        lut = lutFromZip(picked, &error, use);
+        if (lut.isEmpty() && error.isEmpty())
+            return {}; // the choice was cancelled
+    } else {
+        std::string why;
+        if (!color::loadCube(picked.toStdString(), &why)) {
+            QMessageBox::warning(this, tr("Can't use this LUT"),
+                                 tr("%1 can't be used as a LUT: %2.")
+                                     .arg(QFileInfo(picked).fileName(), QString::fromStdString(why)));
+            return {};
+        }
+        lut = projectfolder::importLut(m_project->filePath(), picked, &error, use);
+    }
+    if (lut.isEmpty())
+        QMessageBox::warning(this, tr("Can't use this LUT"), error);
+    return lut;
+}
+
+QString MainWindow::lutFromZip(const QString &zipFile, QString *error, projectfolder::LutUse use)
 {
     int preferred = 0;
     const QList<projectfolder::ZippedLut> luts = projectfolder::lutsInZip(zipFile, &preferred, error);
@@ -245,5 +251,5 @@ QString MainWindow::lutFromZip(const QString &zipFile, QString *error)
             return {};
         entry = luts[names.indexOf(name)].entry;
     }
-    return projectfolder::importLutFromZip(m_project->filePath(), zipFile, entry, error);
+    return projectfolder::importLutFromZip(m_project->filePath(), zipFile, entry, error, use);
 }

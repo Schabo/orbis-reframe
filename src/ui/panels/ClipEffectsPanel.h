@@ -7,6 +7,7 @@
 #include <vector>
 
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QSlider;
 class QToolButton;
@@ -27,9 +28,17 @@ public:
     void setState(const fx::ClipEffects &effects);
     // No clip under the playhead: none, greyed out. Does not emit.
     void setNoClip();
+    // The .cube looks the look list offers besides the built-in ones
+    // (absolute paths: the project's looks/ folder and the clips' looks).
+    void setLookFiles(const QStringList &paths);
+    // Why the clip's look isn't applied (a missing file, a later version's
+    // built-in look), or empty.
+    void setLookProblem(const QString &problem);
 
 signals:
     void effectsEdited(const fx::ClipEffects &effects);
+    // The look list's Load LUT...: pick a .cube for the clip's look.
+    void loadLookRequested();
 
 private:
     // One effect's rows: its heading (the name to tick on / off, Remove),
@@ -57,12 +66,19 @@ private:
     // order.
     void showGroup(const Group &g, bool present, bool on, std::initializer_list<float> values);
     float value(const Group &g, size_t i) const;
+    // The look list's entry for `look` (added when it isn't listed), current.
+    void selectLook(const fx::Look &look);
     fx::ClipEffects currentEffects() const;
     void emitIfEdited();
     void enableSettings(const fx::ClipEffects &e);
 
     fx::ClipEffects m_shown;
     QLabel *m_none = nullptr; // "No effects": how to put one on
+    Group m_look;
+    QWidget *m_lookRow = nullptr;
+    QComboBox *m_lookChoice = nullptr;
+    QLabel *m_lookProblem = nullptr;
+    QStringList m_lookFiles;
     Group m_vignette;
     Group m_grain;
     bool m_updating = false;

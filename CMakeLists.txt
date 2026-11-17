@@ -487,6 +487,7 @@ if(FFMPEG_FOUND)
         src/ui/TransitionsPanel.h
         src/ui/EffectsPanel.cpp
         src/ui/EffectsPanel.h
+        src/ui/LookNames.h
         src/ui/ClipViewSource.cpp
         src/ui/ClipViewSource.h
         src/ui/LayerLease.cpp

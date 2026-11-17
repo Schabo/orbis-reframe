@@ -21,6 +21,7 @@
 #include "SettingsSidebar.h"
 #include "panels/StabilizationPanel.h"
 #include "MediaPoolPanel.h"
+#include "EffectsPanel.h"
 #include "PlayerBar.h"
 #include "ProjectFiles.h"
 #include "Theme.h"
@@ -34,6 +35,7 @@
 #include "../core/Autosave.h"
 #include "../core/DataPaths.h"
 #include "../core/MediaPool.h"
+#include "../core/LookPresets.h"
 #include "../core/Project.h"
 #include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
@@ -1086,6 +1088,124 @@ void testEffects(const Ctx &c)
           !grainAmount->isVisibleTo(c.w));
 
     // Undo back to none (undo rebuilds the clips: new ids).
+    settle();
+    const auto clean = [&] {
+        return c.timeline->clipAt(0).effects.isEmpty() && c.timeline->clipAt(1).effects.isEmpty();
+    };
+    for (int i = 0; i < 16 && !clean(); ++i)
+        undo->trigger();
+    CHECK(clean());
+    emit c.timelineWidget->clipSelected(0);
+    settle();
+}
+
+// Colour looks: the Effects tab's Black & White on the clip at the playhead,
+// the section's Colour look group showing it and the viewport drawing it;
+// Strength; Custom LUT asks for a .cube and copies it into the project's
+// looks/ (not luts/), the look list offers it to the other clip; a look tile
+// replaces a clip's look; a missing file is said; Remove; undo.
+void testLooks(const Ctx &c)
+{
+    QAction *undo = action(c, "undoAction");
+    auto *choice = find<QComboBox>(c.w, "lookChoice");
+    auto *strength = find<QSlider>(c.w, "lookStrength");
+    auto *remove = find<QToolButton>(c.w, "lookRemove");
+    auto *problem = find<QLabel>(c.w, "lookProblem");
+    auto *looks = find<QListWidget>(c.w, "lookList");
+    CHECK(choice && strength && remove && problem && looks && c.timeline->count() >= 2);
+    if (!undo || !choice || !strength || !remove || !problem || !looks ||
+        c.timeline->count() < 2)
+        return;
+    CHECK(looks->count() == 2 && looks->item(0)->text() == QStringLiteral("Black & White") &&
+          looks->item(1)->text() == QStringLiteral("Custom LUT"));
+    settle();
+    CHECK(seekTo(c, 1000));
+    settle();
+    const int a = c.timeline->clipAt(0).id;
+    const int b = c.timeline->clipAt(1).id;
+    CHECK(!choice->isVisibleTo(c.w));
+    looks->setCurrentRow(0);
+    trigger(c, "lookAddAction");
+    const ClipItem *clip = c.timeline->clipById(a);
+    CHECK(clip->effects.look && clip->effects.look->preset == "bw" && clip->effects.look->lut.empty());
+    CHECK(choice->isVisibleTo(c.w) && choice->currentText() == QStringLiteral("Black & White") &&
+          strength->value() == 100 && !problem->isVisibleTo(c.w));
+    color::Grade g = c.w->viewport()->CurrentColorGrade();
+    CHECK(g.hasLook() && g.look == color::look::presetLut(color::look::kBlackWhite));
+    settle();
+    strength->setValue(40);
+    CHECK(c.timeline->clipById(a)->effects.look->strength == 40.0f);
+    CHECK(std::abs(c.w->viewport()->CurrentColorGrade().lookMix - 0.4f) < 1e-6f);
+
+    // Custom LUT on the other clip: the file dialog, then a copy in looks/.
+    std::string cube = "LUT_3D_SIZE 2\n";
+    for (int i = 0; i < 8; ++i)
+        cube += std::to_string((i & 1) * 0.9) + ' ' + std::to_string(((i >> 1) & 1) * 0.8) + ' ' +
+                std::to_string((i >> 2) & 1) + '\n';
+    const QString file = QDir(c.dir).filePath(QStringLiteral("Downloads/Warm look.cube"));
+    QDir().mkpath(QFileInfo(file).absolutePath());
+    {
+        QFile f(file);
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write(cube.data(), qint64(cube.size()));
+    }
+    settle();
+    whenDialog([&](QWidget *w) {
+        auto *files = qobject_cast<QFileDialog *>(w);
+        CHECK(files);
+        if (!files) {
+            w->close();
+            return;
+        }
+        files->findChild<QLineEdit *>(QStringLiteral("fileNameEdit"))->setText(file);
+        static_cast<QDialog *>(files)->accept();
+    });
+    emit c.timelineWidget->effectDropped(b, QString::fromLatin1(EffectsPanel::kCustomLook));
+    const QString copy = QDir(c.dir).filePath(QStringLiteral("Ride/looks/Warm look.cube"));
+    clip = c.timeline->clipById(b);
+    CHECK(clip->effects.look && clip->effects.look->lut == copy.toStdString() &&
+          clip->effects.look->preset.empty() && QFile::exists(copy));
+    CHECK(!QFile::exists(QDir(c.dir).filePath(QStringLiteral("Ride/luts/Warm look.cube"))));
+    CHECK(choice->currentText() == QStringLiteral("Warm look") && strength->value() == 100);
+    // The Colour section's LUT list doesn't offer it.
+    if (auto *lut = find<QComboBox>(c.w, "colourLut"))
+        CHECK(lut->findText(QStringLiteral("Warm look")) < 0);
+    // Cancelling Custom LUT changes nothing.
+    settle();
+    whenDialog([](QWidget *w) { static_cast<QDialog *>(w)->reject(); });
+    emit c.timelineWidget->effectDropped(a, QString::fromLatin1(EffectsPanel::kCustomLook));
+    CHECK(c.timeline->clipById(a)->effects.look->preset == "bw");
+
+    // The look list on clip a offers b's file; picking it gives a that look.
+    settle();
+    emit c.timelineWidget->clipSelected(a);
+    settle();
+    const int warm = choice->findText(QStringLiteral("Warm look"));
+    CHECK(warm >= 0 && choice->currentText() == QStringLiteral("Black & White"));
+    choice->setCurrentIndex(warm);
+    emit choice->activated(warm);
+    CHECK(c.timeline->clipById(a)->effects.look->lut == copy.toStdString() &&
+          c.timeline->clipById(a)->effects.look->strength == 40.0f);
+
+    // Black & White dropped on b replaces its file, at full strength.
+    settle();
+    emit c.timelineWidget->effectDropped(b, EffectsPanel::lookTile(QStringLiteral("bw")));
+    clip = c.timeline->clipById(b);
+    CHECK(clip->effects.look && clip->effects.look->preset == "bw" && clip->effects.look->lut.empty());
+
+    // A look file that's gone: said in the section, nothing applied.
+    settle();
+    fx::ClipEffects gone = c.timeline->clipById(b)->effects;
+    gone.look->preset.clear();
+    gone.look->lut = QDir(c.dir).filePath(QStringLiteral("nowhere.cube")).toStdString();
+    c.timeline->setClipEffects(b, gone);
+    CHECK(problem->isVisibleTo(c.w) && problem->text().contains(QStringLiteral("isn't applied")));
+    CHECK(!c.timeline->clipById(b)->renderGrade().hasLook());
+    settle();
+    remove->click();
+    CHECK(!c.timeline->clipById(b)->effects.look && !choice->isVisibleTo(c.w) &&
+          !problem->isVisibleTo(c.w));
+
     settle();
     const auto clean = [&] {
         return c.timeline->clipAt(0).effects.isEmpty() && c.timeline->clipAt(1).effects.isEmpty();
@@ -2682,6 +2802,7 @@ int main(int argc, char **argv)
             testSaveAs(c);
             testPasteGradeFromElsewhere(c);
             testLoadLutFromZip(c);
+            testLooks(c); // in a project folder: the file goes into its looks/
             testSaveAsTakesLuts();
             testMeasurementFailureReasons(c);
             testMenuFileDialogs(c);
