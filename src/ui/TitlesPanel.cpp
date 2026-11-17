@@ -199,7 +199,7 @@ QIcon gaugeTile(const titlepresets::GaugePreset &preset, const QSize &size, qrea
 
 } // namespace
 
-TitleList::TitleList(QWidget *parent) : QListWidget(parent)
+TitleList::TitleList(QWidget *parent) : DoubleClickToAddList(parent)
 {
     setObjectName(QStringLiteral("titleList"));
     setViewMode(QListView::IconMode);
@@ -249,7 +249,8 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
         if (const QListWidgetItem *item = m_list->currentItem())
             emit addTitleRequested(item->data(kPresetRole).toString());
     };
-    connect(m_list, &QListWidget::itemActivated, this, addCurrent);
+    connect(m_list, &QListWidget::itemDoubleClicked, this, [addCurrent] { addCurrent(); });
+    connect(m_list, &DoubleClickToAddList::activationKeyPressed, this, addCurrent);
 
     // An animated tile plays its In and Out while the mouse is over it.
     m_list->viewport()->setMouseTracking(true);
@@ -284,9 +285,13 @@ TitlesPanel::TitlesPanel(QWidget *parent) : QWidget(parent)
         item->setData(kPresetRole, preset.id);
         item->setToolTip(preset.toolTip);
     }
-    connect(m_gauges, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
-        emit addTitleRequested(item->data(kPresetRole).toString());
-    });
+    const auto addGaugeItem = [this](const QListWidgetItem *item) {
+        if (item)
+            emit addTitleRequested(item->data(kPresetRole).toString());
+    };
+    connect(m_gauges, &QListWidget::itemDoubleClicked, this, addGaugeItem);
+    connect(m_gauges, &DoubleClickToAddList::activationKeyPressed, this,
+            [this, addGaugeItem] { addGaugeItem(m_gauges->currentItem()); });
     auto *addGauge = new QAction(tr("&Add to timeline"), m_gauges);
     addGauge->setObjectName(QStringLiteral("gaugeAddToTimelineAction"));
     connect(addGauge, &QAction::triggered, this, [this] {

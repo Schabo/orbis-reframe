@@ -3,11 +3,13 @@
 #include <QListWidget>
 #include <QWidget>
 
+#include "DoubleClickToAddList.h"
+
 class QScrollArea;
 
 // The effects to pick from, as tiles. Dragging one out hands it over as an
 // fx::kMimeType drag (the timeline takes it onto a clip).
-class EffectList : public QListWidget {
+class EffectList : public DoubleClickToAddList {
     Q_OBJECT
 
 public:

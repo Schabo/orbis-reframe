@@ -265,6 +265,12 @@ void MediaPoolList::keyPressEvent(QKeyEvent *e)
             return;
         }
     }
+    if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
+        && e->modifiers() == Qt::NoModifier && currentItem()) {
+        emit activationKeyPressed();
+        e->accept();
+        return;
+    }
     QTreeWidget::keyPressEvent(e);
 }
 
@@ -419,8 +425,12 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         if (item->data(0, FolderRole).toBool())
             item->setExpanded(!item->isExpanded());
     });
-    connect(m_list, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem *item) {
-        if (item->data(0, FolderRole).toBool())
+    // Adding is a double-click, or Return / Enter on the current item. Not a
+    // click: on a desktop set to open things on one click Qt reports that
+    // click as an activation, and it would add a file the user meant only to
+    // select. A folder or a missing file still does what its own click does.
+    const auto activate = [this](QTreeWidgetItem *item) {
+        if (!item || item->data(0, FolderRole).toBool())
             return;
         if (item->data(0, MissingRole).toBool()) {
             emit locateRequested(item->data(0, PathRole).toString());
@@ -428,7 +438,10 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         }
         if (m_addAction->isEnabled())
             m_addAction->trigger();
-    });
+    };
+    connect(m_list, &QTreeWidget::itemDoubleClicked, this, activate);
+    connect(m_list, &MediaPoolList::activationKeyPressed, this,
+            [this, activate] { activate(m_list->currentItem()); });
     connect(m_list, &QTreeWidget::itemCollapsed, this, [this](QTreeWidgetItem *item) {
         m_collapsed.insert(item->data(0, PathRole).toString());
     });

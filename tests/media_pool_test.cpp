@@ -1,7 +1,9 @@
 // The left sidebar and its Media tab, driven with QTest on the offscreen
 // platform and found by objectName: the sidebar's close / reopen, the media
 // pool's list (folders, sort order, in use, missing), drag out (file URLs),
-// drops in, add to timeline, remove, thumbnails (and their disk cache). No GPU, no media decoding.
+// drops in, add to timeline (a double-click or Enter, not a click), remove,
+// thumbnails (and their disk cache). No GPU, no media decoding. The run is on a
+// simulated KDE single-click desktop, where a click is an activation.
 // Exit code is the failure count. ORBIS_MEDIA_SHOT=<path> saves a picture of
 // the sidebar.
 
@@ -22,6 +24,7 @@
 #include <QLabel>
 #include <QMimeData>
 #include <QMutex>
+#include <QProxyStyle>
 #include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -263,7 +266,7 @@ void testMediaTab()
     CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == gone);
     {
         QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
-        emit list->itemActivated(row(list, QStringLiteral("gone.wav")), 0);
+        emit list->itemDoubleClicked(row(list, QStringLiteral("gone.wav")), 0);
         CHECK(locateSpy.size() == 2 && addSpy.isEmpty());
     }
 
@@ -281,9 +284,21 @@ void testMediaTab()
     QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
     add->trigger();
     CHECK(addSpy.size() == 1 && addSpy.first().first().toStringList() == QStringList{clip2});
-    // Double-click / Enter on a row does the same.
-    emit list->itemActivated(row(list, QStringLiteral("phone.mp4")), 0);
-    CHECK(addSpy.size() == 2);
+    // A double-click on a row does the same, and so does Enter; a plain click
+    // only selects it, even here, where Qt reports one click as an activation.
+    {
+        QTreeWidgetItem *const phone = row(list, QStringLiteral("phone.mp4"));
+        const QPoint at = list->visualItemRect(phone).center();
+        QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        CHECK(list->currentItem() == phone);
+        CHECK(addSpy.size() == 1);
+        // 10 ms apart, or QTest spaces them 500 ms and they are two clicks.
+        QTest::mouseDClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, at, 10);
+        CHECK(addSpy.size() == 2);
+        QTest::keyClick(list, Qt::Key_Return);
+        CHECK(addSpy.size() == 3);
+        panel.selectPaths({clip2, gone}); // as the section above left them
+    }
 
     // Remove: gone from the pool and the list; the selection stays on the rest.
     remove->trigger();
@@ -457,6 +472,21 @@ void testThumbnailCache()
     CHECK(made == before);
 }
 
+// The desktop setting, as Qt sees it.
+class SingleClickDesktop : public QProxyStyle {
+public:
+    using QProxyStyle::QProxyStyle;
+
+    int styleHint(StyleHint hint, const QStyleOption *option = nullptr,
+                  const QWidget *widget = nullptr,
+                  QStyleHintReturn *returnData = nullptr) const override
+    {
+        if (hint == SH_ItemView_ActivateItemOnSingleClick)
+            return 1;
+        return QProxyStyle::styleHint(hint, option, widget, returnData);
+    }
+};
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -464,6 +494,9 @@ int main(int argc, char **argv)
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
+    // KDE's "single-click to open files and folders": the hint every item view
+    // reads, and what turns a click in the media list into an activation.
+    QApplication::setStyle(new SingleClickDesktop(QApplication::style()));
     theme::apply(app, theme::themes().first());
     testKinds();
     testThumbnailCache();

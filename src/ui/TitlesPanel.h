@@ -5,12 +5,14 @@
 #include <QTimer>
 #include <QWidget>
 
+#include "DoubleClickToAddList.h"
+
 class QScrollArea;
 
 // The titles to pick from, as tiles. Dragging one out hands it over as a
 // title::kMimeType drag carrying its preset's id (the timeline takes it onto
 // an overlay track).
-class TitleList : public QListWidget {
+class TitleList : public DoubleClickToAddList {
     Q_OBJECT
 
 public:

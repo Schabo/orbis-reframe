@@ -139,7 +139,7 @@ QString EffectsPanel::lookTile(const QString &presetId)
     return QString::fromLatin1(fx::kLook) + QLatin1Char(':') + presetId;
 }
 
-EffectList::EffectList(QWidget *parent) : QListWidget(parent)
+EffectList::EffectList(QWidget *parent) : DoubleClickToAddList(parent)
 {
     setObjectName(QStringLiteral("effectList"));
     setViewMode(QListView::IconMode);
@@ -219,7 +219,8 @@ EffectsPanel::EffectsPanel(QWidget *parent) : QWidget(parent)
             if (const QListWidgetItem *item = l->currentItem())
                 emit addEffectRequested(item->data(kNameRole).toString());
         };
-        connect(l, &QListWidget::itemActivated, this, add);
+        connect(l, &QListWidget::itemDoubleClicked, this, [add] { add(); });
+        connect(l, &DoubleClickToAddList::activationKeyPressed, this, add);
         auto *addAction = new QAction(tr("&Add to the clip at the playhead"), l);
         addAction->setObjectName(l == m_list ? QStringLiteral("effectAddAction")
                                              : QStringLiteral("lookAddAction"));
