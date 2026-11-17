@@ -535,11 +535,15 @@ void EquirectViewportRenderer::startNextFrame()
     color::Grade grade = m_window->CurrentColorGrade();
     grade.effects.setFrame(m_grainFrame);
     const VkDescriptorSet lutSet = m_luts.setFor(grade.hasLut() ? grade.lut : nullptr);
+    const VkDescriptorSet lookSet = m_luts.setFor(grade.hasLook() ? grade.look : nullptr);
     std::vector<VkDescriptorSet> insetLutSets(insets.size(), VK_NULL_HANDLE);
+    std::vector<VkDescriptorSet> insetLookSets(insets.size(), VK_NULL_HANDLE);
     for (size_t i = 0; i < insets.size(); ++i)
-        if (insetSlots[i])
-            insetLutSets[i] =
-                m_luts.setFor(insets[i].colorGrade.hasLut() ? insets[i].colorGrade.lut : nullptr);
+        if (insetSlots[i]) {
+            const color::Grade &g = insets[i].colorGrade;
+            insetLutSets[i] = m_luts.setFor(g.hasLut() ? g.lut : nullptr);
+            insetLookSets[i] = m_luts.setFor(g.hasLook() ? g.look : nullptr);
+        }
 
     const QSize size = m_window->swapChainImageSize();
 
@@ -702,7 +706,7 @@ void EquirectViewportRenderer::startNextFrame()
     if (effects)
         m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                        imp ? m_lensPipelineLayout : m_pipelineLayout, 2, grade.effects,
-                       outputRect);
+                       outputRect, lookSet);
     for (const PaneDraw &d : panes) {
         if (!drawPicture)
             break;
@@ -842,7 +846,7 @@ void EquirectViewportRenderer::startNextFrame()
             fx::Render e = d.colorGrade.effects;
             e.setFrame(uint32_t(d.frameKey));
             m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_insetPipelineLayout,
-                           2, e, outputRect);
+                           2, e, outputRect, insetLookSets[i]);
         }
         InsetPushConstants ipc{};
         ipc.rect[0] = float(r.x);

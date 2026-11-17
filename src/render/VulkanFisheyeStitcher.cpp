@@ -653,9 +653,13 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         return false;
     }
 
-    // The LUT is uploaded (its own submission) before this frame is recorded.
+    // The LUTs are uploaded (their own submissions) before this frame is
+    // recorded; both sets stay valid for it (beginFrame).
     const color::Lut3D* lut = colorGrade && colorGrade->hasLut() ? colorGrade->lut.get() : nullptr;
+    d->luts.beginFrame();
     const VkDescriptorSet lutSet = d->luts.setFor(lut ? colorGrade->lut : nullptr);
+    const VkDescriptorSet lookSet =
+        d->luts.setFor(colorGrade && colorGrade->hasLook() ? colorGrade->look : nullptr);
 
     ShaderParams sp{};
     packParams(params, eqW, eqH, sp);
@@ -788,7 +792,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         }
         if (effects)
             d->effects.bind(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 2,
-                            colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data());
+                            colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data(),
+                            lookSet);
         rp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
                            &rp);
@@ -904,9 +909,13 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         return false;
     }
 
-    // The LUT is uploaded (its own submission) before this frame is recorded.
+    // The LUTs are uploaded (their own submissions) before this frame is
+    // recorded; both sets stay valid for it (beginFrame).
     const color::Lut3D* lut = colorGrade && colorGrade->hasLut() ? colorGrade->lut.get() : nullptr;
+    d->luts.beginFrame();
     const VkDescriptorSet lutSet = d->luts.setFor(lut ? colorGrade->lut : nullptr);
+    const VkDescriptorSet lookSet =
+        d->luts.setFor(colorGrade && colorGrade->hasLook() ? colorGrade->look : nullptr);
 
     ShaderParams sp{};
     packParams(params, 0, 0, sp); // no equirect: dims.zw unused
@@ -1021,7 +1030,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         }
         if (effects)
             d->effects.bind(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeLayout, 2,
-                            colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data());
+                            colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data(),
+                            lookSet);
         vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,

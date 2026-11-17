@@ -421,6 +421,40 @@ void testEffects()
     CHECK(corner[0] == uint8_t(want[0] + 0.5f) && corner[0] < 100 && corner[3] == 200);
 }
 
+// A flat clip's colour look: after the grade, on both CPU grade paths (with
+// and without where the picture sits), mixed in by its strength.
+void testLook()
+{
+    color::Grade g;
+    g.adjust = {0.0f, 0.0f, 0.0f, 0.0f};
+    g.setLook(color::look::presetLut(color::look::kBlackWhite), 1.0f);
+    CHECK(g.hasLook() && g.hasEffects());
+    float bw[3];
+    const float in[3] = {200 / 255.0f, 100 / 255.0f, 50 / 255.0f};
+    color::look::presetLut(color::look::kBlackWhite)->apply(in, bw);
+    const uint8_t grey = uint8_t(bw[0] * 255.0f + 0.5f);
+    uint8_t one[4] = {200, 100, 50, 255};
+    exportpipe::GradeRgba(one, 1, g);
+    CHECK(one[0] == grey && one[1] == grey && one[2] == grey && one[3] == 255);
+    std::vector<uint8_t> pic = {200, 100, 50, 255, 200, 100, 50, 255,
+                                200, 100, 50, 255, 200, 100, 50, 255};
+    const float rect[4] = {490, 240, 20, 20};
+    exportpipe::GradeRgba(pic.data(), 2, 2, g, rect, 1000, 500);
+    CHECK(pic[0] == grey && pic[13] == grey && pic[15] == 255);
+    // Half strength: halfway between the colour and the grey.
+    g.setLook(g.look, 0.5f);
+    uint8_t half[4] = {200, 100, 50, 255};
+    exportpipe::GradeRgba(half, 1, g);
+    CHECK(std::abs(int(half[0]) - int(std::lround((200 + bw[0] * 255.0f) / 2))) <= 1);
+    CHECK(std::abs(int(half[2]) - int(std::lround((50 + bw[0] * 255.0f) / 2))) <= 1);
+    // After the grade: exposure first, then the look.
+    g.setLook(g.look, 1.0f);
+    g.adjust = {1.0f, 0.0f, 0.0f, 0.0f};
+    uint8_t lit[4] = {100, 50, 25, 255};
+    exportpipe::GradeRgba(lit, 1, g);
+    CHECK(lit[0] == grey && lit[2] == grey);
+}
+
 } // namespace
 
 // A layer whose pictures come from a PictureSource (a transition's other
@@ -632,6 +666,7 @@ int main()
     testFullFrameCopy(dir);
     testColorGrade();
     testEffects();
+    testLook();
     testFitted();
     testPictureLayer();
     testMotion();

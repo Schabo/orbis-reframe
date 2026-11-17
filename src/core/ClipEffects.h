@@ -8,8 +8,9 @@
 // of each, so a clip's effects are a set of optional members, not a list.
 // Per-pixel effects run in the shaders that grade, right after the grade:
 // src/render/shaders/clip_effects.glsl is the GLSL twin of applyEffects()
-// below; change both together. A colour look is a LUT, so it rides in the
-// grade itself (color::Grade::look), not in Render.
+// below; change both together. A colour look is a LUT: the grade carries it
+// (color::Grade::look, set with setLook()), and Render only its mix and
+// domain.
 
 #include <algorithm>
 #include <array>
@@ -134,13 +135,19 @@ struct Render {
     // frame number}; spread 0 = off. The frame number seeds the noise: the
     // renderer sets it for the frame it draws (setFrame).
     std::array<float, 4> grain{};
+    // The colour look: {mix 0..1, the LUT's domain min, its domain max,
+    // unused}; mix 0 = off. The LUT itself is color::Grade::look.
+    std::array<float, 4> look{};
 
-    bool any() const { return vignette[0] != 0.0f || grain[0] != 0.0f; }
+    bool any() const { return look[0] != 0.0f || vignette[0] != 0.0f || grain[0] != 0.0f; }
     // The frame the grain is drawn for -- the output frame on the timeline
     // (frameAt), or any number that changes with the picture. Kept to 24
     // bits, which a float holds exactly (77 hours at 60 fps).
     void setFrame(uint32_t n) { grain[3] = float(n & 0xFFFFFFu); }
-    bool operator==(const Render &o) const { return vignette == o.vignette && grain == o.grain; }
+    bool operator==(const Render &o) const
+    {
+        return look == o.look && vignette == o.vignette && grain == o.grain;
+    }
     bool operator!=(const Render &o) const { return !(*this == o); }
 };
 
@@ -270,7 +277,9 @@ inline uint32_t grainSeed(float frame, uint32_t channel)
 
 // The effects at one output pixel: `rgb` in [0, white] (white = 1 or 255,
 // as the grade's), the pixel's centre (x, y) in a frame of w x h pixels.
-// The C++ twin of clip_effects.glsl's applyEffects().
+// The C++ twin of clip_effects.glsl's applyEffects(), but for the colour
+// look, which needs the LUT: the CPU export applies it with the grade
+// (exportpipe::gradeRgb).
 inline void applyEffects(float rgb[3], float x, float y, float w, float h, const Render &e,
                          float white)
 {

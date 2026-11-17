@@ -122,8 +122,8 @@ private:
     // with effects; likewise.
     VkPipeline insetPipeline(bool effects);
     // The pipeline layouts' sets: `first`, the LUTs and, when there's a
-    // ring, the effects. Returns how many.
-    uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[3]) const;
+    // ring, the effects and the colour look's LUT. Returns how many.
+    uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[4]) const;
 
     // --- Picture-in-picture insets (inset.frag) ---
     // One per overlay on screen (PiP, title, gauge, a flat main clip), kept

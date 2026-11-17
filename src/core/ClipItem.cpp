@@ -29,14 +29,15 @@ color::Grade ClipItem::renderGrade(std::string *lutError, std::string *lookError
     g.effects = effects.render();
     if (effects.look && effects.look->active()) {
         const fx::Look &l = *effects.look;
+        std::shared_ptr<const color::Lut3D> lut;
         if (!l.lut.empty()) {
-            g.look = color::cachedCube(l.lut, lookError);
+            lut = color::cachedCube(l.lut, lookError);
         } else {
-            g.look = color::look::presetLut(l.preset);
-            if (!g.look && lookError)
+            lut = color::look::presetLut(l.preset);
+            if (!lut && lookError)
                 *lookError = "this version doesn't have the look \"" + l.preset + "\"";
         }
-        g.lookMix = l.strength / 100.0f;
+        g.setLook(std::move(lut), l.strength / 100.0f);
     }
     return g;
 }

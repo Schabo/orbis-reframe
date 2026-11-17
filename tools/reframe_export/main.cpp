@@ -83,6 +83,8 @@ struct Args {
     float lutStrength = 100.0f; // percent
     std::optional<fx::Vignette> vignette;
     std::optional<fx::Grain> grain;
+    std::string look;           // a built-in look's id or a .cube file
+    float lookStrength = 100.0f; // percent
     // One flat-video overlay, composited like the app's export does.
     std::string insetPath;
     int64_t insetStartMs = 0; // on the output timeline (0 = the in-point)
@@ -139,6 +141,9 @@ const char kUsage[] =
     "                        colour grade (all default 0 = neutral)\n"
     "  --lut FILE.cube        a 3D LUT applied before the grade (e.g. a log-to-Rec.709 one)\n"
     "  --lut-strength PCT     how much of the LUT (default 100)\n"
+    "  --look bw|FILE.cube    a colour look after the grade: a built-in one by id\n"
+    "                        (bw = Black & White) or a 3D LUT file (fx::Look)\n"
+    "  --look-strength PCT    how much of the look (default 100)\n"
     "  --vignette A,S,F       a vignette after the grade: amount -100..100 (negative\n"
     "                        darkens), size and softness 0..100 (fx::Vignette)\n"
     "  --grain A,S,C          film grain after the grade (and vignette): amount 0..100,\n"
@@ -258,6 +263,10 @@ Args parseArgs(int argc, char** argv)
             a.lutPath = next("--lut");
         else if (k == "--lut-strength")
             a.lutStrength = static_cast<float>(std::atof(next("--lut-strength").c_str()));
+        else if (k == "--look")
+            a.look = next("--look");
+        else if (k == "--look-strength")
+            a.lookStrength = static_cast<float>(std::atof(next("--look-strength").c_str()));
         else if (k == "--vignette") {
             fx::Vignette v;
             if (std::sscanf(next("--vignette").c_str(), "%f,%f,%f", &v.amount, &v.size,
@@ -476,6 +485,20 @@ int main(int argc, char** argv)
         if (a.grain)
             std::printf("grain: amount=%.0f%% size=%.0f%% colour=%.0f%%\n", a.grain->amount,
                         a.grain->size, a.grain->colour);
+    }
+    if (!a.look.empty()) { // after the effects: setLook puts its values into them
+        std::string lookErr;
+        std::shared_ptr<const color::Lut3D> look = color::look::isPreset(a.look)
+                                                       ? color::look::presetLut(a.look)
+                                                       : color::loadCube(a.look, &lookErr);
+        if (!look) {
+            std::fprintf(stderr, "error: --look %s: %s\n", a.look.c_str(),
+                         lookErr.empty() ? "not a built-in look or a .cube file" : lookErr.c_str());
+            return 2;
+        }
+        grade.setLook(look, std::clamp(a.lookStrength, 0.0f, 100.0f) / 100.0f);
+        std::printf("look:   %s (%d^3, %.0f%%)\n", a.look.c_str(), look->size,
+                    grade.lookMix * 100.0f);
     }
     const color::Grade* colorGrade = &grade;
     if (a.exposureEv != 0.0f || a.contrast != 0.0f || a.saturation != 0.0f ||

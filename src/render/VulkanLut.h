@@ -57,7 +57,8 @@ public:
                            std::string* err = nullptr);
 
     // For a caller that binds several LUTs in one command buffer (the
-    // viewport: the picture and every overlay's grade): the sets setFor
+    // viewport: the picture's and every overlay's grade and colour look; the
+    // GPU export: a frame's grade and look): the sets setFor
     // hands out from here until the next beginFrame() stay valid, even past
     // kMaxLuts -- the store grows for that frame, and the next beginFrame()
     // frees what's over the limit and wasn't used in it. Without it, setFor

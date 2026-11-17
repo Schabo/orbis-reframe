@@ -56,7 +56,9 @@ struct Grade {
     std::array<float, 4> adjust{};
     std::shared_ptr<const Lut3D> lut; // nullptr = none
     float lutMix = 1.0f;              // 0..1, how much of the LUT's output
-    // The clip's colour look (fx::Look), after the adjustments.
+    // The clip's colour look (fx::Look), after the adjustments; the shaders
+    // apply it in their effects builds, so set it with setLook(), which
+    // puts its mix and domain into `effects` too.
     std::shared_ptr<const Lut3D> look; // nullptr = none
     float lookMix = 1.0f;              // 0..1, how much of the look's output
     // The clip's video effects (none for an inset, a title or a gauge).
@@ -64,6 +66,13 @@ struct Grade {
 
     bool hasLut() const { return lut && lutMix > 0.0f; }
     bool hasLook() const { return look && lookMix > 0.0f; }
+    void setLook(std::shared_ptr<const Lut3D> lut, float mix)
+    {
+        look = std::move(lut);
+        lookMix = mix;
+        effects.look = hasLook() ? std::array<float, 4>{mix, look->domainMin, look->domainMax, 0.0f}
+                                 : std::array<float, 4>{};
+    }
     bool hasEffects() const { return effects.any(); }
     bool isNeutral() const
     {

@@ -492,7 +492,9 @@ prints when the encoder falls back to 8-bit, or when the frames are 8-bit
 `--vignette A,S,F` adds the clip effect, a vignette (amount −100..100,
 negative darkens; size and softness 0..100), after the grade; `--grain
 A,S,C` film grain (amount 0..100, size 50..300 with 100 = one pixel at 1080
-lines, colour 0..100), new on every output frame.
+lines, colour 0..100), new on every output frame. `--look bw|FILE.cube`
+adds a colour look after the grade, a built-in one by its id (`bw`, Black &
+White) or a 3D LUT file, with `--look-strength PCT`.
 `--split side|stacked|grid` exports a split screen, as a clip split in the
 app does: the `--keys` / fixed view is pane 1, `--pane-keys N FILE` gives
 pane N (2-4) its own keys, and a pane without them looks the way the app's
@@ -504,7 +506,7 @@ set the divider.
 to replay keys from `track_subject`. With `--lut`, to check the GPU's LUT
 against FFmpeg's own `lut3d` filter on an export without it (both GPU
 paths: set `ORBIS_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
-With `--vignette` or `--grain`, to check an effect on every path the same
+With `--look`, `--vignette` or `--grain`, to check an effect on every path the same
 way, single and split (a split's vignette is placed against the whole
 frame). The grain is the same on every path at the same size: compare the
 paths' grain (each export minus one without it) rather than their PSNR,

@@ -1231,7 +1231,7 @@ bool VulkanFisheyeStitcher::buildReframePipeline(std::string& err)
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ReframePush)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    VkDescriptorSetLayout sets[3];
+    VkDescriptorSetLayout sets[4];
     pli.setLayoutCount = d->setLayouts(d->rfSetLayout, sets);
     pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
@@ -1282,7 +1282,7 @@ bool VulkanFisheyeStitcher::buildViewPipeline(std::string& err)
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ViewPush)};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    VkDescriptorSetLayout sets[3];
+    VkDescriptorSetLayout sets[4];
     pli.setLayoutCount = d->setLayouts(d->setLayout, sets);
     pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;

@@ -246,7 +246,7 @@ void EquirectViewportRenderer::createPipeline()
 
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    VkDescriptorSetLayout sets[3];
+    VkDescriptorSetLayout sets[4];
     layoutInfo.setLayoutCount = setLayouts(m_descriptorSetLayout, sets);
     layoutInfo.pSetLayouts = sets;
     layoutInfo.pushConstantRangeCount = 1;
@@ -260,12 +260,13 @@ void EquirectViewportRenderer::createPipeline()
 }
 
 uint32_t EquirectViewportRenderer::setLayouts(VkDescriptorSetLayout first,
-                                              VkDescriptorSetLayout out[3]) const
+                                              VkDescriptorSetLayout out[4]) const
 {
     out[0] = first;
     out[1] = m_luts.layout();
     out[2] = m_effects.layout();
-    return m_effects.ready() ? 3 : 2;
+    out[3] = m_luts.layout(); // the colour look's LUT
+    return m_effects.ready() ? 4 : 2;
 }
 
 VkPipeline EquirectViewportRenderer::viewPipeline(bool lens, bool shaped, bool effects)
@@ -418,7 +419,7 @@ void EquirectViewportRenderer::createLensResources()
     VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants)};
     VkPipelineLayoutCreateInfo pli{};
     pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    VkDescriptorSetLayout sets[3];
+    VkDescriptorSetLayout sets[4];
     pli.setLayoutCount = setLayouts(m_lensSetLayout, sets);
     pli.pSetLayouts = sets;
     pli.pushConstantRangeCount = 1;
@@ -702,7 +703,7 @@ void EquirectViewportRenderer::createInsetResources()
         VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(InsetPushConstants)};
         VkPipelineLayoutCreateInfo pli{};
         pli.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        VkDescriptorSetLayout sets[3];
+        VkDescriptorSetLayout sets[4];
         pli.setLayoutCount = setLayouts(m_descriptorSetLayout, sets);
         pli.pSetLayouts = sets;
         pli.pushConstantRangeCount = 1;

@@ -154,7 +154,9 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
 4. **Grade and effects**: the clip's LUT and the Colour panel's adjustments
    (`color::Grade`), applied to the flat picture, then the clip's video
    effects (`fx::ClipEffects`, `src/core/ClipEffects.h`) in the same pass.
-   A clip has at most one of each effect, run in a fixed order. Per-pixel
+   A clip has at most one of each effect, run in a fixed order: the colour
+   look (a creative 3D LUT, `fx::Look`; the camera's conversion LUT is the
+   grade's, before the adjustments), the vignette, the grain. Per-pixel
    effects are placed against the whole output frame, not the pane or
    inset being drawn; the picture outside the clip's (a split's divider, a
    flat clip's bars) is left alone. The subject tracker and the plate scan
@@ -200,8 +202,12 @@ effects build (`EFFECTS`, `clip_effects.glsl`, with and without the view
 shape), for a clip with video effects; a clip without them is drawn by the
 builds above, unchanged. The effects' settings don't fit the push
 constants (full at Vulkan's guaranteed 128 bytes): they come in a small
-uniform buffer, set 2 (`render::VulkanEffectsRing`). The CPU export's twin
-is `fx::applyEffects()`; change both together. An effect that changes
+uniform buffer, set 2 (`render::VulkanEffectsRing`); the colour look's 3D
+LUT is set 3, from the same `render::VulkanLutStore` as the grade's (set 1),
+the identity one for a clip without a look. A built-in look
+(`src/core/LookPresets.*`) is a formula sampled into a LUT, so it takes the
+same path as a `.cube` file. The CPU export's twin is `fx::applyEffects()`,
+with the look applied by `exportpipe::gradeRgb()`; change both together. An effect that changes
 every frame (film grain) takes a frame number from whoever draws the frame
 (`fx::Render::setFrame`): the export uses the output frame on the timeline,
 a transition's layer its source frame, and the viewport counts the pictures it

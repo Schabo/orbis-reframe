@@ -50,8 +50,10 @@ void sampleEquirect(const uint8_t* eq, int w, int h, float u, float v, float out
 // Colour grade, applied in [0,255] rgb space -- the C++ twin of
 // src/render/shaders/color_grade.glsl's gradeColor() (which can't be included
 // here): change both together, constants included. Order: the LUT (mixed
-// with the input by lutMix), temperature, exposure, contrast, saturation.
-// Leaves alpha untouched.
+// with the input by lutMix), temperature, exposure, contrast, saturation,
+// then the colour look (mixed in by lookMix) -- which the shaders apply first
+// thing in clip_effects.glsl's applyEffects(), on the graded picture, so the
+// same place in the order. Leaves alpha untouched.
 constexpr float kGradeTemperaturePush = 40.0f; // levels at temperature +-100%
 constexpr float kGradeContrastPivot = 128.0f;
 constexpr float kGradeWhite = 255.0f;
@@ -61,24 +63,32 @@ struct Grade {
     float t, ef, cf, sf;
     const color::Lut3D* lut; // nullptr = none
     float lutMix;
+    const color::Lut3D* look; // nullptr = none
+    float lookMix;
     explicit Grade(const color::Grade& g)
         : t(g.adjust[3] / 100.0f), ef(std::pow(2.0f, g.adjust[0])),
           cf(1.0f + g.adjust[1] / 100.0f), sf(1.0f + g.adjust[2] / 100.0f),
-          lut(g.hasLut() ? g.lut.get() : nullptr), lutMix(std::min(g.lutMix, 1.0f))
+          lut(g.hasLut() ? g.lut.get() : nullptr), lutMix(std::min(g.lutMix, 1.0f)),
+          look(g.hasLook() ? g.look.get() : nullptr), lookMix(std::min(g.lookMix, 1.0f))
     {
     }
 };
 
+// `lut`'s output for rgb in [0, kGradeWhite], mixed in by `mix`.
+inline void applyLut(float rgb[3], const color::Lut3D& lut, float mix)
+{
+    float in[3], out[3];
+    for (int c = 0; c < 3; ++c)
+        in[c] = std::clamp(rgb[c] / kGradeWhite, 0.0f, 1.0f);
+    lut.apply(in, out);
+    for (int c = 0; c < 3; ++c)
+        rgb[c] += (std::clamp(out[c], 0.0f, 1.0f) * kGradeWhite - rgb[c]) * mix;
+}
+
 inline void gradeRgb(float rgba[4], const Grade &g)
 {
-    if (g.lut) {
-        float in[3], out[3];
-        for (int c = 0; c < 3; ++c)
-            in[c] = std::clamp(rgba[c] / kGradeWhite, 0.0f, 1.0f);
-        g.lut->apply(in, out);
-        for (int c = 0; c < 3; ++c)
-            rgba[c] += (std::clamp(out[c], 0.0f, 1.0f) * kGradeWhite - rgba[c]) * g.lutMix;
-    }
+    if (g.lut)
+        applyLut(rgba, *g.lut, g.lutMix);
     float r = rgba[0] + g.t * kGradeTemperaturePush;
     float gr = rgba[1];
     float b = rgba[2] - g.t * kGradeTemperaturePush;
@@ -102,6 +112,8 @@ inline void gradeRgb(float rgba[4], const Grade &g)
     rgba[0] = std::clamp(r, 0.0f, kGradeWhite);
     rgba[1] = std::clamp(gr, 0.0f, kGradeWhite);
     rgba[2] = std::clamp(b, 0.0f, kGradeWhite);
+    if (g.look)
+        applyLut(rgba, *g.look, g.lookMix);
 }
 
 void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int outH,

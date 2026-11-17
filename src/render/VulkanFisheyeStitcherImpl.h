@@ -224,16 +224,18 @@ struct VulkanFisheyeStitcher::Impl {
     VkPipeline pipeline = VK_NULL_HANDLE;
     // The grade's LUTs (set 1 of the reproject and view pipelines).
     VulkanLutStore luts;
-    // The clips' effects (set 2 of the same, read by their effects builds).
+    // The clips' effects (set 2 of the same, read by their effects builds,
+    // with the colour look's LUT from `luts` as set 3).
     VulkanEffectsRing effects;
     // The reproject and view pipeline layouts' sets: `first`, the LUTs and,
-    // when there's a ring, the effects. Returns how many.
-    uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[3]) const
+    // when there's a ring, the effects and the look's LUT. Returns how many.
+    uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[4]) const
     {
         out[0] = first;
         out[1] = luts.layout();
         out[2] = effects.layout();
-        return effects.ready() ? 3 : 2;
+        out[3] = luts.layout();
+        return effects.ready() ? 4 : 2;
     }
 
     bool adopted = false; // device is FFmpeg's -- don't destroy it

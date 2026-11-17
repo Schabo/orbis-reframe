@@ -11,7 +11,8 @@
 namespace render {
 
 // A clip's video effects for the shaders' EFFECTS builds
-// (clip_effects.glsl's `fx` block, set 2): one host-visible uniform buffer,
+// (clip_effects.glsl's `fx` block, set 2, and its colour look's LUT, set 3):
+// one host-visible uniform buffer,
 // a ring of small blocks, and one descriptor set bound with a dynamic offset
 // per draw or dispatch. Used by the viewport (EquirectViewportRenderer) and
 // the GPU export (VulkanFisheyeStitcher), each on its own device.
@@ -42,9 +43,12 @@ public:
 
     // Write `effects` and the output frame -- x, y of its top-left corner,
     // its width and height, in the shader's own pixel coordinates -- into the
-    // next block, and bind it as set `set` of `pipelineLayout`.
+    // next block, and bind it as set `set` of `pipelineLayout`, with
+    // `lookSet` (the colour look's LUT, VulkanLutStore::setFor; the identity
+    // one for none) as set `set` + 1.
     void bind(VkCommandBuffer cmd, VkPipelineBindPoint bindPoint, VkPipelineLayout pipelineLayout,
-              uint32_t set, const fx::Render& effects, const float frame[4]);
+              uint32_t set, const fx::Render& effects, const float frame[4],
+              VkDescriptorSet lookSet);
 
     static constexpr uint32_t kSlots = 1024;
 
@@ -54,6 +58,7 @@ private:
         float frame[4];
         float vignette[4];
         float grain[4];
+        float look[4];
     };
 
     Device m_dev;

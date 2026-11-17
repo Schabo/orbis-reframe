@@ -11,13 +11,19 @@
 // `vignette` is fx::Render::vignette: {amount -1..1 (0 = off), inner radius,
 // outer radius, unused}, the radius 1 in the frame's corners. `grain` is
 // fx::Render::grain: {spread (fraction of white, 0 = off), grains per frame
-// height, colour 0..1, frame number}.
+// height, colour 0..1, frame number}. `look` is fx::Render::look: {mix 0..1
+// (0 = off), the LUT's domain min and max, unused}, the colour look's LUT
+// being lookLut (set 3, render::VulkanLutStore; the identity one when the
+// clip has no look). The look runs first, on the graded picture; the CPU
+// export applies it in exportpipe::gradeRgb().
 #ifdef EFFECTS
 layout(set = 2, binding = 0) uniform ClipEffects {
     vec4 frame;
     vec4 vignette;
     vec4 grain;
+    vec4 look;
 } fx;
+layout(set = 3, binding = 0) uniform sampler3D lookLut;
 
 // fx::grainHash / grainCell / grainNoise / grainSeed.
 uint grainHash(uint x)
@@ -59,6 +65,13 @@ uint grainSeed(float frame, uint channel)
 // `c` in [0, white]; `p` the pixel's centre in the shader's coordinates.
 vec3 applyEffects(vec3 c, vec2 p, float white)
 {
+    if (fx.look.x > 0.0) {
+        // As gradeColor()'s LUT: texel centres, entry 0 at 0.5 / n.
+        float n = float(textureSize(lookLut, 0).x);
+        vec3 x = clamp((clamp(c / white, 0.0, 1.0) - fx.look.y) / (fx.look.z - fx.look.y), 0.0, 1.0);
+        vec3 l = texture(lookLut, x * ((n - 1.0) / n) + 0.5 / n).rgb;
+        c = mix(c, clamp(l, 0.0, 1.0) * white, fx.look.x);
+    }
     if (fx.vignette.x != 0.0) {
         vec2 uv = 2.0 * (p - fx.frame.xy) / fx.frame.zw - 1.0;
         float r = sqrt(dot(uv, uv) * 0.5);

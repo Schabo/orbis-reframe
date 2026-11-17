@@ -262,13 +262,16 @@ void testLookGrade()
     CHECK(c.effects.add(fx::kLook) && c.effects.look->preset == color::look::kBlackWhite);
     color::Grade g = c.renderGrade();
     CHECK(g.look == color::look::presetLut(color::look::kBlackWhite) && near(g.lookMix, 1.0f));
-    CHECK(g.hasLook() && !g.isNeutral() && !g.hasEffects());
+    // The shaders draw it in their effects build: its mix and domain ride in
+    // the effects.
+    CHECK(g.hasLook() && !g.isNeutral() && g.hasEffects());
+    CHECK(g.effects.look == (std::array<float, 4>{1.0f, 0.0f, 1.0f, 0.0f}));
     c.effects.look->strength = 40.0f;
     CHECK(near(c.renderGrade().lookMix, 0.4f) && c.renderGrade() != g);
     c.effects.look->lut = path.toStdString(); // a file wins over the preset
     CHECK(c.renderGrade().look == color::cachedCube(path.toStdString()));
     c.effects.look->on = false;
-    CHECK(!c.renderGrade().look);
+    CHECK(!c.renderGrade().look && !c.renderGrade().hasEffects());
     c.effects.look->on = true;
     c.effects.look->strength = 0.0f;
     CHECK(!c.renderGrade().look);

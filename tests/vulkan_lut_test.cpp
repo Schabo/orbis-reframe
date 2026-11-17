@@ -157,8 +157,8 @@ void testFrameKeepsItsLuts(const Gpu &gpu)
     CHECK(store.uploaded() == kMax);
 }
 
-// Without beginFrame() (the GPU stitch: one LUT per submission) the store
-// never holds more than kMaxLuts.
+// Without beginFrame() (a caller that binds one LUT per submission) the
+// store never holds more than kMaxLuts.
 void testWithoutFrames(const Gpu &gpu)
 {
     render::VulkanLutStore store;
