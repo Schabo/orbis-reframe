@@ -49,26 +49,30 @@ std::shared_ptr<const Lut3D> cachedCube(const std::string &path, std::string *er
 // What a renderer applies to a clip: the LUT (when there is one), mixed with
 // the original by `lutMix`, then the four adjustments
 // (src/render/shaders/color_grade.glsl and exportpipe::gradeRgb()), then the
-// clip's video effects, in the same pass (clip_effects.glsl,
-// fx::applyEffects()).
+// colour look's LUT mixed in by `lookMix`, then the clip's other video
+// effects, in the same pass (clip_effects.glsl, fx::applyEffects()).
 struct Grade {
     // {exposureEv, contrast%, saturation%, temperature%}, all 0 = neutral.
     std::array<float, 4> adjust{};
     std::shared_ptr<const Lut3D> lut; // nullptr = none
     float lutMix = 1.0f;              // 0..1, how much of the LUT's output
+    // The clip's colour look (fx::Look), after the adjustments.
+    std::shared_ptr<const Lut3D> look; // nullptr = none
+    float lookMix = 1.0f;              // 0..1, how much of the look's output
     // The clip's video effects (none for an inset, a title or a gauge).
     fx::Render effects;
 
     bool hasLut() const { return lut && lutMix > 0.0f; }
+    bool hasLook() const { return look && lookMix > 0.0f; }
     bool hasEffects() const { return effects.any(); }
     bool isNeutral() const
     {
-        return !hasLut() && adjust == std::array<float, 4>{} && !hasEffects();
+        return !hasLut() && adjust == std::array<float, 4>{} && !hasLook() && !hasEffects();
     }
     bool operator==(const Grade &o) const
     {
         return adjust == o.adjust && lut == o.lut && (!lut || lutMix == o.lutMix) &&
-               effects == o.effects;
+               look == o.look && (!look || lookMix == o.lookMix) && effects == o.effects;
     }
     bool operator!=(const Grade &o) const { return !(*this == o); }
 };

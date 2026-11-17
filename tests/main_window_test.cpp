@@ -22,6 +22,7 @@
 #include "panels/StabilizationPanel.h"
 #include "MediaPoolPanel.h"
 #include "PlayerBar.h"
+#include "ProjectFiles.h"
 #include "Theme.h"
 #include "TimelineWidget.h"
 #include "TabSidebar.h"
@@ -34,6 +35,7 @@
 #include "../core/DataPaths.h"
 #include "../core/MediaPool.h"
 #include "../core/Project.h"
+#include "../core/ProjectFolder.h"
 #include "../core/Timeline.h"
 #include "../render/EquirectViewportWindow.h"
 
@@ -2273,6 +2275,41 @@ void testLoadLutFromZip(const Ctx &c)
     settle();
 }
 
+// Save As into a project folder takes the clips' LUTs and looks along, each
+// into its own folder, and points the clips at the copies.
+void testSaveAsTakesLuts()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString video = tmp.path() + "/clip.insv";
+    const QString lut = tmp.path() + "/Log.cube";
+    const QString look = tmp.path() + "/Film.cube";
+    for (const QString &path : {video, lut, look}) {
+        QFile f(path);
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write("LUT_3D_SIZE 2\n");
+    }
+    Project p;
+    const int id = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+    ColorGrade g;
+    g.lut = lut;
+    p.timeline()->setClipColor(id, g);
+    fx::ClipEffects e;
+    e.look = fx::Look{};
+    e.look->preset.clear();
+    e.look->lut = look.toStdString();
+    p.timeline()->setClipEffects(id, e);
+    QString err;
+    const QString file = projectfolder::create(tmp.path(), "Saved", &err);
+    CHECK(!file.isEmpty());
+    ProjectFiles::copyLuts(p, file);
+    const ClipItem &c = p.timeline()->clipAt(0);
+    CHECK(c.color.lut == tmp.path() + "/Saved/luts/Log.cube" && QFile::exists(c.color.lut));
+    CHECK(c.effects.look &&
+          c.effects.look->lut == (tmp.path() + "/Saved/looks/Film.cube").toStdString());
+    CHECK(QFile::exists(tmp.path() + "/Saved/looks/Film.cube"));
+}
+
 // Changes autosaved but never saved are offered when the project opens.
 void testRecovery(const Ctx &c)
 {
@@ -2645,6 +2682,7 @@ int main(int argc, char **argv)
             testSaveAs(c);
             testPasteGradeFromElsewhere(c);
             testLoadLutFromZip(c);
+            testSaveAsTakesLuts();
             testMeasurementFailureReasons(c);
             testMenuFileDialogs(c);
             testRecovery(c);

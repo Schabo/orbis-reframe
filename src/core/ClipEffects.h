@@ -8,14 +8,18 @@
 // of each, so a clip's effects are a set of optional members, not a list.
 // Per-pixel effects run in the shaders that grade, right after the grade:
 // src/render/shaders/clip_effects.glsl is the GLSL twin of applyEffects()
-// below; change both together.
+// below; change both together. A colour look is a LUT, so it rides in the
+// grade itself (color::Grade::look), not in Render.
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
+
+#include "LookPresets.h"
 
 namespace fx {
 
@@ -24,6 +28,30 @@ constexpr const char *kMimeType = "application/x-orbis-reframe-effect";
 // The effects' names, as the library and the project file call them.
 constexpr const char *kVignette = "vignette";
 constexpr const char *kGrain = "grain";
+constexpr const char *kLook = "look";
+
+// A colour look: a 3D LUT on the graded picture, before the other effects --
+// a creative one, on top of the camera's conversion LUT in the Colour
+// section. A built-in look (`preset`, an id from LookPresets.h) or a .cube
+// file (`lut`, an absolute path; copied into the project's looks/ folder when
+// picked, stored relative to the project like media). `lut` when it's set,
+// else `preset`.
+struct Look {
+    bool on = true;
+    std::string preset = color::look::kBlackWhite;
+    std::string lut;
+    // Percent: the mix of the look's output with the graded picture.
+    float strength = 100.0f;
+
+    void clamp() { strength = std::clamp(strength, 0.0f, 100.0f); }
+    // Changes the picture: on, with a strength and a LUT to apply.
+    bool active() const { return on && strength > 0.0f && (!lut.empty() || !preset.empty()); }
+    bool operator==(const Look &o) const
+    {
+        return on == o.on && preset == o.preset && lut == o.lut && strength == o.strength;
+    }
+    bool operator!=(const Look &o) const { return !(*this == o); }
+};
 
 // Darker (or lighter) toward the edges of the output frame -- the whole
 // frame, also when a clip is split into panes. The falloff is an ellipse
@@ -119,20 +147,25 @@ struct Render {
 // The effects on one clip, as the Effects section edits them and the project
 // stores them. Absent = not on the clip.
 struct ClipEffects {
+    std::optional<Look> look;
     std::optional<Vignette> vignette;
     std::optional<Grain> grain;
 
-    bool isEmpty() const { return !vignette && !grain; }
+    bool isEmpty() const { return !look && !vignette && !grain; }
     // Whether it has the effect named `name`; add() puts it on with its
     // defaults (true if it wasn't there), remove() takes it off.
     bool has(const char *name) const
     {
         const std::string_view n(name);
-        return (n == kVignette && vignette) || (n == kGrain && grain);
+        return (n == kLook && look) || (n == kVignette && vignette) || (n == kGrain && grain);
     }
     bool add(const char *name)
     {
         const std::string_view n(name);
+        if (n == kLook && !look) {
+            look = Look{};
+            return true;
+        }
         if (n == kVignette && !vignette) {
             vignette = Vignette{};
             return true;
@@ -146,13 +179,17 @@ struct ClipEffects {
     void remove(const char *name)
     {
         const std::string_view n(name);
-        if (n == kVignette)
+        if (n == kLook)
+            look.reset();
+        else if (n == kVignette)
             vignette.reset();
         else if (n == kGrain)
             grain.reset();
     }
     void clamp()
     {
+        if (look)
+            look->clamp();
         if (vignette)
             vignette->clamp();
         if (grain)
@@ -160,10 +197,12 @@ struct ClipEffects {
     }
     bool operator==(const ClipEffects &o) const
     {
-        return vignette == o.vignette && grain == o.grain;
+        return look == o.look && vignette == o.vignette && grain == o.grain;
     }
     bool operator!=(const ClipEffects &o) const { return !(*this == o); }
 
+    // The per-pixel effects; the look goes into the grade
+    // (ClipItem::renderGrade).
     Render render() const
     {
         Render r;

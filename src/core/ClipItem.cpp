@@ -23,6 +23,24 @@ color::Grade ColorGrade::render(std::string *lutError) const
     return g;
 }
 
+color::Grade ClipItem::renderGrade(std::string *lutError, std::string *lookError) const
+{
+    color::Grade g = color.render(lutError);
+    g.effects = effects.render();
+    if (effects.look && effects.look->active()) {
+        const fx::Look &l = *effects.look;
+        if (!l.lut.empty()) {
+            g.look = color::cachedCube(l.lut, lookError);
+        } else {
+            g.look = color::look::presetLut(l.preset);
+            if (!g.look && lookError)
+                *lookError = "this version doesn't have the look \"" + l.preset + "\"";
+        }
+        g.lookMix = l.strength / 100.0f;
+    }
+    return g;
+}
+
 qint64 ClipItem::frameDurationMs() const
 {
     return std::max<qint64>(1, std::llround(1000.0 / fps));

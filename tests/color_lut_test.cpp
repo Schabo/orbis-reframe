@@ -1,12 +1,14 @@
 // Colour LUTs: the .cube reader (sizes, domain, comments, what it refuses),
 // the trilinear lookup the GPU's sampler matches, the per-path cache, and a
-// clip's ColorGrade carrying one (render(), equality).
+// clip's ColorGrade carrying one (render(), equality), and the colour looks:
+// the built-in Black & White and a clip's look in its grade.
 // Standalone; the exit code is the failure count.
 
 #include "support/CommaLocale.h"
 #include "support/ModelTest.h"
 
 #include "ColorLut.h"
+#include "LookPresets.h"
 
 #include <QTemporaryDir>
 
@@ -174,6 +176,118 @@ void testCacheAndGrade()
     CHECK(!g.render(&why).lut && !why.empty());
 }
 
+// Black & White: grey out, black and white kept, brighter in never darker
+// out, a blue sky darker than Rec.709's luminance makes it, and the LUT the
+// formula is sampled into.
+void testBlackWhite()
+{
+    using color::look::blackWhite;
+    CHECK(color::look::isPreset(color::look::kBlackWhite) && !color::look::isPreset("sepia"));
+    float out[3];
+    const float black[3] = {0, 0, 0}, white[3] = {1, 1, 1};
+    blackWhite(black, out);
+    CHECK(near(out[0], 0.0f));
+    blackWhite(white, out);
+    CHECK(near(out[0], 1.0f, 1e-3f));
+    const float tints[][3] = {{0.8f, 0.3f, 0.1f}, {0.2f, 0.7f, 0.4f}, {0.3f, 0.5f, 0.9f}};
+    for (const auto &t : tints) {
+        blackWhite(t, out);
+        CHECK(out[0] == out[1] && out[1] == out[2]);
+    }
+    // Monotonic: more of any channel never makes the grey darker.
+    for (int k = 0; k < 3; ++k) {
+        float prev = -1.0f;
+        for (int i = 0; i <= 100; ++i) {
+            float in[3] = {0.4f, 0.4f, 0.4f};
+            in[k] = i / 100.0f;
+            blackWhite(in, out);
+            CHECK(out[0] >= prev);
+            prev = out[0];
+        }
+    }
+    // Some contrast: a dark grey darker, a light one lighter.
+    const float dark[3] = {0.25f, 0.25f, 0.25f}, light[3] = {0.75f, 0.75f, 0.75f};
+    blackWhite(dark, out);
+    CHECK(out[0] < 0.25f);
+    blackWhite(light, out);
+    CHECK(out[0] > 0.75f);
+    // A blue sky against the grey of the same Rec.709 luminance.
+    const float sky[3] = {0.35f, 0.55f, 0.9f};
+    float y709 = 0.0f;
+    const float w709[3] = {0.2126f, 0.7152f, 0.0722f};
+    for (int k = 0; k < 3; ++k)
+        y709 += w709[k] * std::pow(sky[k], 2.4f);
+    const float g = std::pow(y709, 1.0f / 2.4f);
+    const float grey[3] = {g, g, g};
+    float skyOut[3], greyOut[3];
+    blackWhite(sky, skyOut);
+    blackWhite(grey, greyOut);
+    CHECK(skyOut[0] < greyOut[0] - 0.01f);
+
+    // The LUT: built once, the formula at its grid points, close between.
+    const auto lut = color::look::presetLut(color::look::kBlackWhite);
+    CHECK(lut && lut->size == 33 && lut->rgb.size() == 33u * 33u * 33u * 3u);
+    CHECK(color::look::presetLut(color::look::kBlackWhite) == lut);
+    CHECK(!color::look::presetLut("sepia"));
+    for (const auto &t : tints) {
+        float a[3], b[3];
+        blackWhite(t, a);
+        lut->apply(t, b);
+        CHECK(near(a[0], b[0], 2e-3f) && near(b[0], b[1]) && near(b[1], b[2]));
+    }
+    const float grid[3] = {16 / 32.0f, 8 / 32.0f, 24 / 32.0f};
+    float a[3], b[3];
+    blackWhite(grid, a);
+    lut->apply(grid, b);
+    CHECK(near(a[0], b[0], 1e-5f));
+}
+
+// A clip's look in what the renderers get: a built-in one or a file, its
+// strength as the mix, none when off; a later version's look or a missing
+// file left out with why.
+void testLookGrade()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString path = tmp.path() + "/Warm.cube";
+    {
+        QFile f(path);
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray::fromStdString(cubeText(2, [](float r, float g, float b, float *o) {
+            o[0] = r, o[1] = g, o[2] = b * 0.5f;
+        })));
+    }
+    ClipItem c;
+    CHECK(!c.renderGrade().hasLook() && c.renderGrade().isNeutral());
+    CHECK(c.effects.add(fx::kLook) && c.effects.look->preset == color::look::kBlackWhite);
+    color::Grade g = c.renderGrade();
+    CHECK(g.look == color::look::presetLut(color::look::kBlackWhite) && near(g.lookMix, 1.0f));
+    CHECK(g.hasLook() && !g.isNeutral() && !g.hasEffects());
+    c.effects.look->strength = 40.0f;
+    CHECK(near(c.renderGrade().lookMix, 0.4f) && c.renderGrade() != g);
+    c.effects.look->lut = path.toStdString(); // a file wins over the preset
+    CHECK(c.renderGrade().look == color::cachedCube(path.toStdString()));
+    c.effects.look->on = false;
+    CHECK(!c.renderGrade().look);
+    c.effects.look->on = true;
+    c.effects.look->strength = 0.0f;
+    CHECK(!c.renderGrade().look);
+    c.effects.look->strength = 150.0f;
+    c.effects.clamp();
+    CHECK(c.effects.look->strength == 100.0f);
+    std::string why;
+    c.effects.look->lut = (tmp.path() + "/gone.cube").toStdString();
+    CHECK(!c.renderGrade(nullptr, &why).look && !why.empty());
+    why.clear();
+    c.effects.look->lut.clear();
+    c.effects.look->preset = "from-a-later-version";
+    CHECK(!c.renderGrade(nullptr, &why).look && why.find("from-a-later-version") != std::string::npos);
+    // has / remove, like the other effects.
+    CHECK(c.effects.has(fx::kLook) && !c.effects.add(fx::kLook));
+    c.effects.remove(fx::kLook);
+    CHECK(!c.effects.look && c.effects.isEmpty());
+}
+
 } // namespace
 
 int main()
@@ -181,5 +295,7 @@ int main()
     testParse();
     testApply();
     testCacheAndGrade();
+    testBlackWhite();
+    testLookGrade();
     return modeltest::finish("color_lut_test");
 }

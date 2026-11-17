@@ -313,14 +313,26 @@ ColorGrade colorGradeFromJson(const json &j, const QDir *projectDir)
     return g;
 }
 
-// "effects": {"vignette": {"on": true, "amount": -30, "size": 50,
-// "softness": 50}, "grain": {"on": true, "amount": 25, "size": 100,
-// "colour": 0}} -- a key per effect on the clip (fx::ClipEffects),
-// written only when the clip has one. A key this build doesn't know (an
+// "effects": {"look": {"on": true, "preset": "bw", "strength": 100},
+// "vignette": {"on": true, "amount": -30, "size": 50, "softness": 50},
+// "grain": {"on": true, "amount": 25, "size": 100, "colour": 0}} -- a key
+// per effect on the clip (fx::ClipEffects), written only when the clip has
+// one. A look is a built-in one ("preset") or a .cube file ("lut", stored
+// relative to the project like media). A key this build doesn't know (an
 // effect of a later version) is left out with a message.
-json effectsToJson(const fx::ClipEffects &e)
+json effectsToJson(const fx::ClipEffects &e, const QDir *projectDir)
 {
     json j = json::object();
+    if (e.look) {
+        json l{{"on", e.look->on}, {"strength", e.look->strength}};
+        if (!e.look->lut.empty()) {
+            const QString lut = QString::fromStdString(e.look->lut);
+            l["lut"] = (projectDir ? storedPath(lut, *projectDir) : lut).toStdString();
+        } else {
+            l["preset"] = e.look->preset;
+        }
+        j[fx::kLook] = l;
+    }
     if (e.vignette)
         j[fx::kVignette] = {{"on", e.vignette->on},
                          {"amount", e.vignette->amount},
@@ -334,13 +346,27 @@ json effectsToJson(const fx::ClipEffects &e)
     return j;
 }
 
-fx::ClipEffects effectsFromJson(const json &j)
+fx::ClipEffects effectsFromJson(const json &j, const QDir *projectDir)
 {
     fx::ClipEffects e;
     if (!j.is_object())
         return e;
     for (const auto &[key, value] : j.items()) {
-        if (key == fx::kVignette && value.is_object()) {
+        if (key == fx::kLook && value.is_object()) {
+            fx::Look l;
+            l.on = value.value("on", l.on);
+            l.strength = value.value("strength", l.strength);
+            const QString lut = QString::fromStdString(value.value("lut", std::string()));
+            if (!lut.isEmpty()) {
+                l.lut = (projectDir ? resolvedPath(lut, *projectDir) : lut).toStdString();
+                l.preset.clear();
+            } else {
+                // A later version's built-in look stays as it is, so saving
+                // doesn't lose it; it isn't drawn (ClipItem::renderGrade).
+                l.preset = value.value("preset", l.preset);
+            }
+            e.look = l;
+        } else if (key == fx::kVignette && value.is_object()) {
             fx::Vignette v; // defaults for any missing field
             v.on = value.value("on", v.on);
             v.amount = value.value("amount", v.amount);
@@ -1371,7 +1397,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
             });
             anyLut = anyLut || !c.color.lut.isEmpty();
             if (!c.effects.isEmpty()) {
-                clips.back()["effects"] = effectsToJson(c.effects);
+                clips.back()["effects"] = effectsToJson(c.effects, projectDir);
                 anyEffect = true;
             }
             if (c.fit == ClipItem::Fit::Fill)
@@ -1398,7 +1424,7 @@ QByteArray Project::buildDocument(const QDir *projectDir) const
                             {"depthSeam", c.stitchMethod == stitch::PreviewStitchConfig::Method::DepthSeam}}},
         });
         if (!c.effects.isEmpty()) {
-            clips.back()["effects"] = effectsToJson(c.effects);
+            clips.back()["effects"] = effectsToJson(c.effects, projectDir);
             anyEffect = true;
         }
         if (c.stitchMethod == stitch::PreviewStitchConfig::Method::New && !c.flat) {
@@ -1683,7 +1709,7 @@ bool Project::applyDocument(const QByteArray &text, const QDir *projectDir, QStr
             if (jc.contains("color"))
                 pc.color = colorGradeFromJson(jc.at("color"), projectDir);
             if (jc.contains("effects"))
-                pc.effects = effectsFromJson(jc.at("effects"));
+                pc.effects = effectsFromJson(jc.at("effects"), projectDir);
             pc.speed = jc.value("speed", 1.0);
             pc.flat = jc.value("flat", false);
             if (pc.flat && jc.value("fit", std::string()) == "fill")
@@ -2021,8 +2047,9 @@ bool Project::copyFile(const QString &from, const QString &to, QString *error)
         return fail(QStringLiteral("%1 is not a valid project file: %2").arg(from, e.what()));
     }
     // Every media path in every version is a "source" string, or one of a
-    // media item's "files". A clip's "lut" stays as it is: a project folder's
-    // copy brings its luts/ along, and a loose project's copy goes beside it.
+    // media item's "files". A clip's "lut" and its look's stay as they are: a
+    // project folder's copy brings its luts/ and looks/ along, and a loose
+    // project's copy goes beside it.
     const QDir fromDir = QFileInfo(from).absoluteDir();
     const QDir toDir = QFileInfo(to).absoluteDir();
     std::function<void(json &)> relocate = [&](json &j) {

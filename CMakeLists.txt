@@ -189,12 +189,13 @@ endif()
 # --- clip_effects: a clip's video effects and what the renderers apply,
 # shared by the model and every render path. Header-only, dependency-free;
 # its GLSL twin is src/render/shaders/clip_effects.glsl.
-add_library(clip_effects INTERFACE src/core/ClipEffects.h)
+add_library(clip_effects INTERFACE src/core/ClipEffects.h src/core/LookPresets.h)
 target_include_directories(clip_effects INTERFACE src/core)
 
 # --- color_lut: .cube 3D LUTs and color::Grade, what every layer that grades
 # shares (the model, the GPU stitch, the CPU export). Dependency-free.
-add_library(color_lut STATIC src/core/ColorLut.h src/core/ColorLut.cpp)
+add_library(color_lut STATIC src/core/ColorLut.h src/core/ColorLut.cpp
+    src/core/LookPresets.cpp)
 target_include_directories(color_lut PUBLIC src/core)
 target_link_libraries(color_lut PUBLIC clip_effects)
 

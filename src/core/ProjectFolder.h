@@ -5,13 +5,14 @@
 
 // A project's own folder: everything that belongs to one project in one place,
 // so deleting the folder removes it all. Media is referenced, not copied;
-// colour LUTs are copied in (small, and easy to lose track of).
+// colour LUTs and looks are copied in (small, and easy to lose track of).
 //
 //   <name>/<name>.orp   the project file
 //   <name>/cache/       plate scans, waveforms, thumbnails (rebuilt if deleted)
 //   <name>/exports/     where exports are suggested
 //   <name>/screenshots/ where screenshots are suggested
 //   <name>/luts/        the clips' colour LUTs (.cube), made when one is picked
+//   <name>/looks/       the clips' colour looks (.cube), made when one is picked
 //
 // A project file that isn't <name>/<name>.orp is a loose one (projects saved
 // before project folders existed): it still opens and saves where it is, and
@@ -38,14 +39,22 @@ bool isProjectFolder(const QString &projectFile);
 QString cacheDir(const QString &projectFile);
 QString exportsDir(const QString &projectFile);
 QString screenshotsDir(const QString &projectFile);
-QString lutsDir(const QString &projectFile);
 
-// `lutFile` copied into the luts/ folder of the project whose file is
-// `projectFile`, and the copy's path: the same name, or "<name> 2.cube", ...
-// when a different file has it (the same file again is reused). A loose or
-// untitled project has no folder: `lutFile` itself. Empty, with *error set,
-// when the copy fails.
-QString importLut(const QString &projectFile, const QString &lutFile, QString *error = nullptr);
+// What a .cube file is for: a clip's LUT in the Colour section (log or HDR
+// to Rec.709) or a colour look among its effects. Each has its own folder,
+// so the Colour section and the look offer their own files.
+enum class LutUse { Clip, Look };
+
+// luts/ or looks/.
+QString lutsDir(const QString &projectFile, LutUse use = LutUse::Clip);
+
+// `lutFile` copied into the luts/ (or looks/) folder of the project whose
+// file is `projectFile`, and the copy's path: the same name, or
+// "<name> 2.cube", ... when a different file has it (the same file again is
+// reused). A loose or untitled project has no folder: `lutFile` itself.
+// Empty, with *error set, when the copy fails.
+QString importLut(const QString &projectFile, const QString &lutFile, QString *error = nullptr,
+                  LutUse use = LutUse::Clip);
 
 // A .cube file in a zip: camera makers publish their LUTs as zip downloads.
 struct ZippedLut {
@@ -63,15 +72,17 @@ struct ZippedLut {
 QList<ZippedLut> lutsInZip(const QString &zipFile, int *preferred = nullptr, QString *error = nullptr);
 
 // The .cube `entry` unpacked from the zip at `zipFile`, checked to be a LUT
-// we can use, and put into the project's luts/ folder like importLut(). A
-// loose or untitled project has no folder, and a zip leaves no file to point
-// at, so it goes into unpackedLutsDir() then (saving the project as a folder
-// copies it in from there). Empty, with *error set, when that fails.
+// we can use, and put into the project's luts/ (or looks/) folder like
+// importLut(). A loose or untitled project has no folder, and a zip leaves
+// no file to point at, so it goes into unpackedLutsDir() then (saving the
+// project as a folder copies it in from there). Empty, with *error set, when
+// that fails.
 QString importLutFromZip(const QString &projectFile, const QString &zipFile, const QString &entry,
-                         QString *error = nullptr);
+                         QString *error = nullptr, LutUse use = LutUse::Clip);
 
-// Where LUTs from zips go for projects without a folder: <app data>/luts.
-QString unpackedLutsDir();
+// Where LUTs from zips go for projects without a folder: <app data>/luts
+// (or /looks).
+QString unpackedLutsDir(LutUse use = LutUse::Clip);
 
 // Rename the project whose file is `projectFile` to `newName`: a project
 // folder's folder and file (<parent>/<newName>/<newName>.orp), a loose
@@ -81,7 +92,7 @@ QString rename(const QString &projectFile, const QString &newName, QString *erro
 
 // Copy the project whose file is `projectFile` as a new project `newName`
 // beside it: a project folder gets a new folder with the project file and
-// its cache/ (plate scans are slow to redo) and luts/, not its exports or
+// its cache/ (plate scans are slow to redo), luts/ and looks/, not its exports or
 // screenshots;
 // a loose project a new file next to it. Media is referenced, not copied
 // (Project::copyFile). Returns the new project file, empty with *error set.

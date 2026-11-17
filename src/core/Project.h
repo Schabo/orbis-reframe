@@ -191,7 +191,10 @@ public:
     // planet and drop Natural and Fisheye. It also added a clip's video
     // effects ("effects": {"vignette": {"on", "amount", "size",
     // "softness"}}; ClipEffects.h), written only when a clip has one: an
-    // older build would drop them.
+    // older build would drop them. A clip's colour look ("look": {"on",
+    // "preset" or "lut", "strength"}) came after 0.10.0 with no new version:
+    // 0.10.0 reads 23 and leaves an effect it doesn't know out, with a
+    // message.
     static constexpr int kFormatVersion = 23;
     static constexpr int kEffectsFormatVersion = 23;
     static constexpr int kViewShapeFormatVersion = 23;

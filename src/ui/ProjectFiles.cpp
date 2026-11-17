@@ -84,19 +84,32 @@ void ProjectFiles::copyLuts(Project &project, const QString &toFile)
     if (projectfolder::lutsDir(toFile).isEmpty())
         return;
     Timeline *timeline = project.timeline();
-    for (int i = 0; i < timeline->count(); ++i) {
-        const ClipItem &c = timeline->clipAt(i);
-        if (c.color.lut.isEmpty() || !QFileInfo::exists(c.color.lut))
-            continue;
+    const auto copyOf = [&](const QString &lut, projectfolder::LutUse use) {
+        if (lut.isEmpty() || !QFileInfo::exists(lut))
+            return QString();
         QString error;
-        const QString copy = projectfolder::importLut(toFile, c.color.lut, &error);
-        if (copy.isEmpty()) {
+        const QString copy = projectfolder::importLut(toFile, lut, &error, use);
+        if (copy.isEmpty())
             std::fprintf(stderr, "[lut] %s\n", qPrintable(error));
-            continue;
+        return copy;
+    };
+    for (int i = 0; i < timeline->count(); ++i) {
+        const ClipItem c = timeline->clipAt(i);
+        if (const QString copy = copyOf(c.color.lut, projectfolder::LutUse::Clip);
+            !copy.isEmpty()) {
+            ColorGrade g = c.color;
+            g.lut = copy;
+            timeline->setClipColor(c.id, g);
         }
-        ColorGrade g = c.color;
-        g.lut = copy;
-        timeline->setClipColor(c.id, g);
+        if (!c.effects.look)
+            continue;
+        if (const QString copy = copyOf(QString::fromStdString(c.effects.look->lut),
+                                        projectfolder::LutUse::Look);
+            !copy.isEmpty()) {
+            fx::ClipEffects e = c.effects;
+            e.look->lut = copy.toStdString();
+            timeline->setClipEffects(c.id, e);
+        }
     }
 }
 

@@ -2638,6 +2638,92 @@ void testLutJson()
     }
 }
 
+// A clip's colour look: a built-in one stored by id, a file copied into the
+// project's own looks/ (apart from the clip LUTs' luts/) and stored relative
+// to it, a later version's look kept as it is, the file brought along by a
+// duplicate.
+void testLookJson()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString video = tmp.path() + "/clip.insv";
+    writeFile(video);
+    const QString downloads = tmp.path() + "/Downloads";
+    QDir().mkpath(downloads);
+    {
+        QFile f(downloads + "/Film.cube");
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write("LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n");
+    }
+    QString err;
+    const QString file = projectfolder::create(tmp.path(), "Look", &err);
+    CHECK(!file.isEmpty());
+    using projectfolder::LutUse;
+    CHECK(projectfolder::lutsDir(file, LutUse::Look) == tmp.path() + "/Look/looks");
+    const QString copy =
+        projectfolder::importLut(file, downloads + "/Film.cube", &err, LutUse::Look);
+    CHECK(copy == tmp.path() + "/Look/looks/Film.cube" && QFileInfo::exists(copy));
+    CHECK(!QFileInfo::exists(tmp.path() + "/Look/luts/Film.cube"));
+    CHECK(projectfolder::unpackedLutsDir(LutUse::Look).endsWith("/looks"));
+
+    auto effectsJson = [](const QString &path, int i) {
+        QFile f(path);
+        CHECK(f.open(QIODevice::ReadOnly));
+        return QJsonDocument::fromJson(f.readAll())
+            .object().value("timeline").toObject().value("clips").toArray().at(i).toObject()
+            .value("effects").toObject();
+    };
+    {
+        Project p;
+        const int a = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        const int b = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        const int c = p.timeline()->appendClip(video, 10000, 30.0, 7680, 3840, 0);
+        useOldStitcher(*p.timeline());
+        fx::ClipEffects e;
+        e.look = fx::Look{};
+        e.look->strength = 60.0f;
+        p.timeline()->setClipEffects(a, e);
+        e.look->preset.clear();
+        e.look->lut = copy.toStdString();
+        e.look->on = false;
+        p.timeline()->setClipEffects(b, e);
+        e.look = fx::Look{};
+        e.look->preset = "from-a-later-version";
+        p.timeline()->setClipEffects(c, e);
+        CHECK(p.save(file, &err));
+    }
+    const QJsonObject a = effectsJson(file, 0).value("look").toObject();
+    CHECK(a.value("on").toBool() && a.value("preset").toString() == "bw" &&
+          a.value("strength").toDouble() == 60.0 && !a.contains("lut"));
+    const QJsonObject b = effectsJson(file, 1).value("look").toObject();
+    CHECK(!b.value("on").toBool() && b.value("lut").toString() == "looks/Film.cube" &&
+          !b.contains("preset"));
+    {
+        Project p;
+        CHECK(p.load(file, &err));
+        const fx::Look *la = p.timeline()->clipAt(0).effects.look ?
+                                 &*p.timeline()->clipAt(0).effects.look : nullptr;
+        CHECK(la && la->on && la->preset == "bw" && la->lut.empty() && la->strength == 60.0f);
+        const auto &lb = p.timeline()->clipAt(1).effects.look;
+        CHECK(lb && !lb->on && lb->lut == copy.toStdString() && lb->preset.empty());
+        const auto &lc = p.timeline()->clipAt(2).effects.look;
+        CHECK(lc && lc->preset == "from-a-later-version");
+        CHECK(p.save(file, &err)); // kept as it is
+    }
+    CHECK(effectsJson(file, 2).value("look").toObject().value("preset").toString() ==
+          "from-a-later-version");
+
+    // Duplicated: the copy has its own looks/, and the clip points there.
+    const QString dup = projectfolder::duplicate(file, "Look copy", &err);
+    CHECK(!dup.isEmpty() && QFileInfo::exists(tmp.path() + "/Look copy/looks/Film.cube"));
+    {
+        Project p;
+        CHECK(p.load(dup, &err));
+        CHECK(p.timeline()->clipAt(1).effects.look->lut ==
+              (tmp.path() + "/Look copy/looks/Film.cube").toStdString());
+    }
+}
+
 void testSplitJson()
 {
     QTemporaryDir tmp;
@@ -3212,6 +3298,7 @@ int main(int argc, char **argv)
     testGaugeJson();
     testTransitionJson();
     testLutJson();
+    testLookJson();
     testSplitJson();
     testWideViewJson();
     testGlobeJson();

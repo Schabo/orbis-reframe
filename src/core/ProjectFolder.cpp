@@ -90,7 +90,10 @@ bool isProjectFolder(const QString &projectFile)
 QString cacheDir(const QString &projectFile) { return subDir(projectFile, "cache"); }
 QString exportsDir(const QString &projectFile) { return subDir(projectFile, "exports"); }
 QString screenshotsDir(const QString &projectFile) { return subDir(projectFile, "screenshots"); }
-QString lutsDir(const QString &projectFile) { return subDir(projectFile, "luts"); }
+QString lutsDir(const QString &projectFile, LutUse use)
+{
+    return subDir(projectFile, use == LutUse::Look ? "looks" : "luts");
+}
 
 namespace {
 
@@ -135,9 +138,9 @@ std::unique_ptr<zip::Archive> openZip(const QString &zipFile, QString *error)
 
 } // namespace
 
-QString importLut(const QString &projectFile, const QString &lutFile, QString *error)
+QString importLut(const QString &projectFile, const QString &lutFile, QString *error, LutUse use)
 {
-    const QString dir = lutsDir(projectFile);
+    const QString dir = lutsDir(projectFile, use);
     const QFileInfo src(lutFile);
     if (dir.isEmpty())
         return src.absoluteFilePath();
@@ -184,7 +187,7 @@ QList<ZippedLut> lutsInZip(const QString &zipFile, int *preferred, QString *erro
 }
 
 QString importLutFromZip(const QString &projectFile, const QString &zipFile, const QString &entry,
-                         QString *error)
+                         QString *error, LutUse use)
 {
     const auto archive = openZip(zipFile, error);
     if (!archive)
@@ -200,15 +203,16 @@ QString importLutFromZip(const QString &projectFile, const QString &zipFile, con
         !color::parseCube(text, &why))
         return failWith(error, QObject::tr("%1 can't be used as a LUT: %2.")
                                    .arg(name, QString::fromStdString(why)));
-    QString dir = lutsDir(projectFile);
+    QString dir = lutsDir(projectFile, use);
     if (dir.isEmpty())
-        dir = unpackedLutsDir();
+        dir = unpackedLutsDir(use);
     return writeLut(dir, name, QByteArray::fromStdString(text), error);
 }
 
-QString unpackedLutsDir()
+QString unpackedLutsDir(LutUse use)
 {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/luts");
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+           (use == LutUse::Look ? QStringLiteral("/looks") : QStringLiteral("/luts"));
 }
 
 namespace {
@@ -328,7 +332,8 @@ QString duplicate(const QString &projectFile, const QString &newName, QString *e
     QString err;
     if (!Project::copyFile(fi.absoluteFilePath(), file, &err) ||
         !copyTree(cacheDir(projectFile), cacheDir(file)) ||
-        !copyTree(lutsDir(projectFile), lutsDir(file))) {
+        !copyTree(lutsDir(projectFile), lutsDir(file)) ||
+        !copyTree(lutsDir(projectFile, LutUse::Look), lutsDir(file, LutUse::Look))) {
         QDir(target.taken).removeRecursively();
         return failWith(error, err.isEmpty() ? QObject::tr("Can't copy the project's cache.") : err);
     }
