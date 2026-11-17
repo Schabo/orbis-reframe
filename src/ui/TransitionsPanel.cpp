@@ -63,7 +63,7 @@ QIcon dipTile(const QSize &size, qreal dpr)
 
 } // namespace
 
-TransitionList::TransitionList(QWidget *parent) : QListWidget(parent)
+TransitionList::TransitionList(QWidget *parent) : DoubleClickToAddList(parent)
 {
     setObjectName(QStringLiteral("transitionList"));
     setViewMode(QListView::IconMode);
@@ -120,7 +120,8 @@ TransitionsPanel::TransitionsPanel(QWidget *parent) : QWidget(parent)
         if (const QListWidgetItem *item = m_list->currentItem())
             emit addTransitionRequested(item->data(kTypeRole).toString());
     };
-    connect(m_list, &QListWidget::itemActivated, this, add);
+    connect(m_list, &QListWidget::itemDoubleClicked, this, [add] { add(); });
+    connect(m_list, &DoubleClickToAddList::activationKeyPressed, this, add);
 
     auto *addAction = new QAction(tr("&Add at the nearest cut"), m_list);
     addAction->setObjectName(QStringLiteral("transitionAddAction"));

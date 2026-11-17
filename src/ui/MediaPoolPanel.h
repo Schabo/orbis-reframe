@@ -30,6 +30,11 @@ signals:
     void previewClicked(const QString &path);
     // Space, with a file current (Qt's current item).
     void previewKeyPressed(const QString &path);
+    // Return or Enter, with an item current: add it, as a double-click does.
+    // A click itself can be an activation when the desktop asks for one
+    // (KDE's single-click setting), which here would add a file the user meant
+    // only to select: a click selects, and adding is a deliberate gesture.
+    void activationKeyPressed();
 
 protected:
     bool event(QEvent *e) override;

@@ -483,6 +483,7 @@ if(FFMPEG_FOUND)
         src/ui/TitleSource.h
         src/ui/TitlesPanel.cpp
         src/ui/TitlesPanel.h
+        src/ui/DoubleClickToAddList.h
         src/ui/TransitionsPanel.cpp
         src/ui/TransitionsPanel.h
         src/ui/EffectsPanel.cpp

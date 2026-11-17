@@ -3,9 +3,11 @@
 #include <QListWidget>
 #include <QWidget>
 
+#include "DoubleClickToAddList.h"
+
 // The transitions to pick from, as tiles. Dragging one out hands it over as
 // a Transition::kMimeType drag (the timeline takes it onto a cut).
-class TransitionList : public QListWidget {
+class TransitionList : public DoubleClickToAddList {
     Q_OBJECT
 
 public:
