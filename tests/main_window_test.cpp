@@ -10,8 +10,8 @@
 // pool, audio and overlay tracks, the Colour section, the View and Help
 // menus, Save as, autosave recovery, locating a moved file, and closing with
 // unsaved changes; also full screen, overlay layers, Track subject's box
-// mode and the menu entries that ask for files. Exit code is the failure
-// count.
+// mode, the menu entries that ask for files, and the tiles to add on a
+// single-click desktop. Exit code is the failure count.
 
 #include "ClipBackend.h"
 #include "ClipMeasurements.h"
@@ -28,6 +28,8 @@
 #include "TimelineWidget.h"
 #include "TabSidebar.h"
 #include "TitlePresets.h"
+#include "TitlesPanel.h"
+#include "TransitionsPanel.h"
 #include "panels/MediaInfoPanel.h"
 #include "support/TestMedia.h"
 #include "support/TestZip.h"
@@ -59,8 +61,10 @@
 #include <QMimeData>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QProxyStyle>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QSlider>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -2395,6 +2399,70 @@ void testLoadLutFromZip(const Ctx &c)
     settle();
 }
 
+// KDE's "single-click to open files and folders", as Qt's item views see it.
+class SingleClickStyle : public QProxyStyle {
+public:
+    using QProxyStyle::QProxyStyle;
+
+    int styleHint(StyleHint hint, const QStyleOption *option = nullptr,
+                  const QWidget *widget = nullptr,
+                  QStyleHintReturn *returnData = nullptr) const override
+    {
+        if (hint == SH_ItemView_ActivateItemOnSingleClick)
+            return 1;
+        return QProxyStyle::styleHint(hint, option, widget, returnData);
+    }
+};
+
+// The tiles of the Overlays, Transitions and Effects tabs on a single-click
+// desktop: a click on a tile only selects it, even where Qt reports that
+// click as an activation; a double-click, Return or the keypad's Enter adds
+// it. (The Media tab's own test covers its list.)
+void testSingleClickDesktop()
+{
+    SingleClickStyle style;
+    const auto check = [&style](auto *panel, const char *listName, auto signal) {
+        panel->resize(400, 900);
+        panel->show();
+        CHECK(QTest::qWaitForWindowExposed(panel));
+        auto *list = panel->template findChild<QListWidget *>(QString::fromLatin1(listName));
+        CHECK(list && list->count() > 0);
+        if (!list || list->count() == 0)
+            return;
+        list->setStyle(&style);
+        QListWidgetItem *const item = list->item(0);
+        const QPoint at = list->visualItemRect(item).center();
+        QSignalSpy activated(list, &QListWidget::itemActivated);
+        QSignalSpy added(panel, signal);
+        QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, at);
+        CHECK(list->currentItem() == item);
+        CHECK(activated.size() == 1); // the desktop setting is in effect
+        CHECK(added.isEmpty());
+        // 10 ms apart, or QTest spaces them 500 ms and they are two clicks.
+        QTest::mouseDClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, at, 10);
+        CHECK(added.size() == 1);
+        QTest::keyClick(list, Qt::Key_Return);
+        CHECK(added.size() == 2);
+        QTest::keyClick(list, Qt::Key_Enter, Qt::KeypadModifier);
+        CHECK(added.size() == 3);
+        list->setStyle(nullptr);
+    };
+    {
+        TitlesPanel titles;
+        check(&titles, "titleList", &TitlesPanel::addTitleRequested);
+        check(&titles, "gaugeList", &TitlesPanel::addTitleRequested);
+    }
+    {
+        TransitionsPanel transitions;
+        check(&transitions, "transitionList", &TransitionsPanel::addTransitionRequested);
+    }
+    {
+        EffectsPanel effects;
+        check(&effects, "effectList", &EffectsPanel::addEffectRequested);
+        check(&effects, "lookList", &EffectsPanel::addEffectRequested);
+    }
+}
+
 // Save As into a project folder takes the clips' LUTs and looks along, each
 // into its own folder, and points the clips at the copies.
 void testSaveAsTakesLuts()
@@ -2804,6 +2872,7 @@ int main(int argc, char **argv)
             testLoadLutFromZip(c);
             testLooks(c); // in a project folder: the file goes into its looks/
             testSaveAsTakesLuts();
+            testSingleClickDesktop();
             testMeasurementFailureReasons(c);
             testMenuFileDialogs(c);
             testRecovery(c);

@@ -20,6 +20,7 @@
 
 #include <algorithm>
 
+#include "DoubleClickToAddList.h"
 #include "DurationText.h"
 #include "Theme.h"
 
@@ -265,8 +266,7 @@ void MediaPoolList::keyPressEvent(QKeyEvent *e)
             return;
         }
     }
-    if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
-        && e->modifiers() == Qt::NoModifier && currentItem()) {
+    if (DoubleClickToAddList::isActivationKey(e) && currentItem()) {
         emit activationKeyPressed();
         e->accept();
         return;
@@ -428,7 +428,8 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     // Adding is a double-click, or Return / Enter on the current item. Not a
     // click: on a desktop set to open things on one click Qt reports that
     // click as an activation, and it would add a file the user meant only to
-    // select. A folder or a missing file still does what its own click does.
+    // select. A folder folds on its click (above); on a missing file the same
+    // gestures ask where it is now.
     const auto activate = [this](QTreeWidgetItem *item) {
         if (!item || item->data(0, FolderRole).toBool())
             return;

@@ -15,6 +15,15 @@ class DoubleClickToAddList : public QListWidget {
 public:
     using QListWidget::QListWidget;
 
+    // Return, or the keypad's Enter, with no other modifier: the key that adds.
+    // The keypad's key always carries Qt::KeypadModifier, so that one is
+    // ignored.
+    static bool isActivationKey(const QKeyEvent *e)
+    {
+        return (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
+               && (e->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier;
+    }
+
 signals:
     // Return or Enter, with an item current.
     void activationKeyPressed();
@@ -22,8 +31,7 @@ signals:
 protected:
     void keyPressEvent(QKeyEvent *e) override
     {
-        if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
-            && e->modifiers() == Qt::NoModifier && currentItem()) {
+        if (isActivationKey(e) && currentItem()) {
             emit activationKeyPressed();
             e->accept();
             return;

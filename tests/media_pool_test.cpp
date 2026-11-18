@@ -297,6 +297,9 @@ void testMediaTab()
         CHECK(addSpy.size() == 2);
         QTest::keyClick(list, Qt::Key_Return);
         CHECK(addSpy.size() == 3);
+        // The keypad's Enter, which always comes with Qt::KeypadModifier.
+        QTest::keyClick(list, Qt::Key_Enter, Qt::KeypadModifier);
+        CHECK(addSpy.size() == 4);
         panel.selectPaths({clip2, gone}); // as the section above left them
     }
 
