@@ -7,6 +7,7 @@
 
 #include "support/ModelTest.h"
 
+#include "Sharpen.h"
 #include "TitleClock.h"
 #include "LensCalibrationStore.h"
 
@@ -3105,13 +3106,18 @@ void testEffectsJson()
         fx::ClipEffects e;
         e.vignette = fx::Vignette{true, -250.0f, 40.0f, 130.0f}; // clamped
         e.grain = fx::Grain{true, 40.0f, 20.0f, 150.0f};
+        e.sharpen = fx::Sharpen{true, 80.0f, 400.0f, 30.0f};
         p.timeline()->setClipEffects(a, e);
         const ClipItem *ca = p.timeline()->clipById(a);
         CHECK(ca->effects.vignette && ca->effects.vignette->amount == fx::Vignette::kMinAmount &&
               ca->effects.vignette->softness == 100.0f);
         CHECK(ca->effects.grain && ca->effects.grain->size == fx::Grain::kMinSize &&
               ca->effects.grain->colour == 100.0f && ca->effects.grain->amount == 40.0f);
+        CHECK(ca->effects.sharpen && ca->effects.sharpen->amount == 80.0f &&
+              ca->effects.sharpen->radius == fx::Sharpen::kMaxRadius &&
+              ca->effects.sharpen->threshold == fx::Sharpen::kMaxThreshold);
         e.grain.reset();
+        e.sharpen.reset();
         e.vignette = fx::Vignette{false, 20.0f, 60.0f, 10.0f};
         p.timeline()->setClipEffects(b, e); // flat clips take them too
         CHECK(p.timeline()->clipById(b)->effects == e);
@@ -3131,6 +3137,11 @@ void testEffectsJson()
         CHECK(g.value("on").toBool() && g.value("amount").toDouble() == 40.0 &&
               g.value("size").toDouble() == 50.0 && g.value("colour").toDouble() == 100.0);
         CHECK(!clipJson(2).value("effects").toObject().contains("grain"));
+        const QJsonObject s =
+            clipJson(0).value("effects").toObject().value("sharpen").toObject();
+        CHECK(s.value("on").toBool() && s.value("amount").toDouble() == 80.0 &&
+              s.value("radius").toDouble() == 300.0 && s.value("threshold").toDouble() == 20.0);
+        CHECK(!clipJson(2).value("effects").toObject().contains("sharpen"));
     }
     {
         Project p;
@@ -3140,6 +3151,8 @@ void testEffectsJson()
         CHECK(a.effects.vignette && a.effects.vignette->on && a.effects.vignette->size == 40.0f);
         CHECK(a.effects.grain && a.effects.grain->amount == 40.0f &&
               a.effects.grain->colour == 100.0f);
+        CHECK(a.effects.sharpen && a.effects.sharpen->on && a.effects.sharpen->amount == 80.0f &&
+              a.effects.sharpen->radius == 300.0f && a.effects.sharpen->threshold == 20.0f);
         const ClipItem &b = p.timeline()->clipAt(2);
         CHECK(b.flat && b.effects.vignette && !b.effects.vignette->on &&
               b.effects.vignette->amount == 20.0f);
@@ -3159,6 +3172,7 @@ void testEffectsJson()
           {"source": "ride.insv", "trimInMs": 0, "trimOutMs": 5000, "sourceDurationMs": 5000,
            "fps": 30, "effects": {"vignette": {"amount": 300, "size": -5},
                                   "grain": {"size": 900, "on": false},
+                                  "sharpen": {"amount": 500, "radius": 10},
                                   "sparkle": {"amount": 1}}}]}})")
                       .toUtf8());
     {
@@ -3169,6 +3183,9 @@ void testEffectsJson()
               e.vignette->size == 0.0f && e.vignette->softness == fx::Vignette{}.softness);
         CHECK(e.grain && !e.grain->on && e.grain->size == fx::Grain::kMaxSize &&
               e.grain->amount == fx::Grain{}.amount);
+        CHECK(e.sharpen && e.sharpen->on && e.sharpen->amount == fx::Sharpen::kMaxAmount &&
+              e.sharpen->radius == fx::Sharpen::kMinRadius &&
+              e.sharpen->threshold == fx::Sharpen{}.threshold);
     }
 }
 
@@ -3268,6 +3285,99 @@ void testGrainRender()
     CHECK(differ > 90);
 }
 
+// Sharpen: off at amount 0 or turned off; a flat picture unchanged; an
+// edge overshoots on both sides by the amount, the colours kept; the
+// threshold leaves small differences alone; the radius against the frame's
+// height; taps on another label (no picture, another pane) left out.
+void testSharpenRender()
+{
+    fx::ClipEffects e;
+    e.sharpen = fx::Sharpen{true, 0.0f, 100.0f, 0.0f};
+    CHECK(!e.render().any());
+    e.sharpen->amount = 100.0f;
+    e.sharpen->on = false;
+    CHECK(!e.render().any());
+    e.sharpen->on = true;
+    const fx::Render r = e.render();
+    CHECK(r.any() && r.sharpens() && !r.perPixel() && r.sharpen[0] == 1.0f);
+    CHECK(fx::sharpenKernel(r, 1080.0f).sigma == 1.0f && fx::sharpenKernel(r, 1080.0f).taps == 3);
+    CHECK(fx::sharpenKernel(r, 2160.0f).taps == 6);
+    e.sharpen->radius = fx::Sharpen::kMaxRadius;
+    CHECK(fx::sharpenKernel(e.render(), 4320.0f).taps == 36);
+    e.sharpen->radius = 100.0f;
+
+    const int w = 32, h = 8;
+    const auto picture = [w, h](float left, float right) {
+        std::vector<float> px(size_t(w) * h * 3);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+                float *p = &px[(size_t(y) * w + x) * 3];
+                const float v = x < w / 2 ? left : right;
+                p[0] = v + 20.0f;
+                p[1] = v;
+                p[2] = v - 10.0f;
+            }
+        return px;
+    };
+    const auto row = [w](const std::vector<float> &px, int x, int k = 1) {
+        return px[(size_t(3) * w + x) * 3 + k];
+    };
+    // flat: unchanged (but for float rounding)
+    std::vector<float> flat = picture(100.0f, 100.0f);
+    const std::vector<float> flatBefore = flat;
+    fx::sharpen(flat.data(), 3, nullptr, w, h, 1080.0f, r, 255.0f);
+    bool same = true;
+    for (size_t i = 0; i < flat.size(); ++i)
+        same = same && std::fabs(flat[i] - flatBefore[i]) < 1e-3f;
+    CHECK(same);
+    // an edge from 80 to 160: darker before it, lighter after, far away as
+    // it was; red, green and blue moved alike
+    std::vector<float> edge = picture(80.0f, 160.0f);
+    fx::sharpen(edge.data(), 3, nullptr, w, h, 1080.0f, r, 255.0f);
+    CHECK(row(edge, 15) < 70.0f && row(edge, 16) > 170.0f);
+    CHECK(std::fabs(row(edge, 2) - 80.0f) < 1e-3f && std::fabs(row(edge, 29) - 160.0f) < 1e-3f);
+    CHECK(std::fabs(row(edge, 15, 0) - row(edge, 15, 1) - 20.0f) < 1e-3f &&
+          std::fabs(row(edge, 15, 1) - row(edge, 15, 2) - 10.0f) < 1e-3f);
+    // amount 200 %: twice the overshoot
+    e.sharpen->amount = 200.0f;
+    std::vector<float> twice = picture(80.0f, 160.0f);
+    fx::sharpen(twice.data(), 3, nullptr, w, h, 1080.0f, e.render(), 255.0f);
+    CHECK(std::fabs((80.0f - row(twice, 15)) - 2.0f * (80.0f - row(edge, 15))) < 1e-2f);
+    e.sharpen->amount = 100.0f;
+    // the threshold: a step of 4 under a threshold of 2 % of white (5.1) is
+    // left alone, one of 80 is sharpened
+    e.sharpen->threshold = 2.0f;
+    std::vector<float> small = picture(100.0f, 104.0f);
+    const std::vector<float> smallBefore = small;
+    fx::sharpen(small.data(), 3, nullptr, w, h, 1080.0f, e.render(), 255.0f);
+    CHECK(small == smallBefore);
+    std::vector<float> big = picture(80.0f, 160.0f);
+    fx::sharpen(big.data(), 3, nullptr, w, h, 1080.0f, e.render(), 255.0f);
+    CHECK(row(big, 15) < 80.0f && row(big, 15) > row(edge, 15));
+    // the same edge in a frame twice as high: a blur twice as wide, so the
+    // overshoot reaches twice as far
+    std::vector<float> high = picture(80.0f, 160.0f);
+    fx::sharpen(high.data(), 3, nullptr, w, h, 2160.0f, r, 255.0f);
+    CHECK(std::fabs(row(edge, 12) - 80.0f) < 0.5f && row(high, 12) < 79.0f);
+    // the edge between two labels (two panes, or picture and bars): no
+    // overshoot, and a label-0 pixel stays as it was
+    std::vector<uint8_t> labels(size_t(w) * h);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+            labels[size_t(y) * w + x] = x < w / 2 ? 1 : (x == w - 1 ? 0 : 2);
+    std::vector<float> panes = picture(80.0f, 160.0f);
+    const float bar = 7.0f;
+    for (int y = 0; y < h; ++y)
+        panes[(size_t(y) * w + w - 1) * 3 + 1] = bar;
+    fx::sharpen(panes.data(), 3, labels.data(), w, h, 1080.0f, r, 255.0f);
+    CHECK(std::fabs(row(panes, 15) - 80.0f) < 1e-3f && std::fabs(row(panes, 16) - 160.0f) < 1e-3f);
+    CHECK(std::fabs(row(panes, w - 2) - 160.0f) < 1e-3f && row(panes, w - 1) == bar);
+    // white stays in range
+    std::vector<float> bright = picture(80.0f, 230.0f);
+    fx::sharpen(bright.data(), 3, nullptr, w, h, 1080.0f, r, 255.0f);
+    CHECK(row(bright, 16, 0) == 255.0f && row(bright, 15, 2) >= 0.0f);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
@@ -3307,5 +3417,6 @@ int main(int argc, char **argv)
     testEffectsJson();
     testEffectsRender();
     testGrainRender();
+    testSharpenRender();
     return modeltest::finish("project_test");
 }

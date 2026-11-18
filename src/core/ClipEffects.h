@@ -10,7 +10,8 @@
 // src/render/shaders/clip_effects.glsl is the GLSL twin of applyEffects()
 // below; change both together. A colour look is a LUT: the grade carries it
 // (color::Grade::look, set with setLook()), and Render only its mix and
-// domain.
+// domain. Sharpen isn't per pixel -- it needs its neighbours -- so it has a
+// pass of its own (Sharpen.h, the CPU twin of shaders/sharpen.comp).
 
 #include <algorithm>
 #include <array>
@@ -30,6 +31,7 @@ constexpr const char *kMimeType = "application/x-orbis-reframe-effect";
 constexpr const char *kVignette = "vignette";
 constexpr const char *kGrain = "grain";
 constexpr const char *kLook = "look";
+constexpr const char *kSharpen = "sharpen";
 
 // A colour look: a 3D LUT on the graded picture, before the other effects --
 // a creative one, on top of the camera's conversion LUT in the Colour
@@ -52,6 +54,43 @@ struct Look {
         return on == o.on && preset == o.preset && lut == o.lut && strength == o.strength;
     }
     bool operator!=(const Look &o) const { return !(*this == o); }
+};
+
+// Sharpen: an unsharp mask on the brightness (luma) alone -- the picture's
+// luma blurred, the difference added back equally to red, green and blue, so
+// the colours stay as they are. After the look, before the vignette and the
+// grain (grain mustn't be sharpened). Its radius is against the output
+// frame's height, so it looks the same at every export size.
+struct Sharpen {
+    static constexpr float kMaxAmount = 200.0f;
+    static constexpr float kMinRadius = 50.0f;
+    static constexpr float kMaxRadius = 300.0f;
+    static constexpr float kMaxThreshold = 20.0f;
+
+    bool on = true;
+    // Percent of the difference from the blurred picture added back.
+    float amount = 50.0f;
+    // Percent: the blur's size, 100 = a spread (one standard deviation) of
+    // one pixel of a 1080-line frame.
+    float radius = 100.0f;
+    // Percent of white: differences smaller than this aren't sharpened (and
+    // larger ones by what's over it), so noise and compression blocks stay
+    // as they are.
+    float threshold = 2.0f;
+
+    void clamp()
+    {
+        amount = std::clamp(amount, 0.0f, kMaxAmount);
+        radius = std::clamp(radius, kMinRadius, kMaxRadius);
+        threshold = std::clamp(threshold, 0.0f, kMaxThreshold);
+    }
+    bool active() const { return on && amount > 0.0f; }
+    bool operator==(const Sharpen &o) const
+    {
+        return on == o.on && amount == o.amount && radius == o.radius &&
+               threshold == o.threshold;
+    }
+    bool operator!=(const Sharpen &o) const { return !(*this == o); }
 };
 
 // Darker (or lighter) toward the edges of the output frame -- the whole
@@ -138,15 +177,23 @@ struct Render {
     // The colour look: {mix 0..1, the LUT's domain min, its domain max,
     // unused}; mix 0 = off. The LUT itself is color::Grade::look.
     std::array<float, 4> look{};
+    // Sharpen: {amount (0..2, 0 = off), the blur's spread as a fraction of
+    // the output frame's height, threshold (fraction of white), unused}. Not
+    // in the shaders' block: the sharpen pass has its own (Sharpen.h).
+    std::array<float, 4> sharpen{};
 
-    bool any() const { return look[0] != 0.0f || vignette[0] != 0.0f || grain[0] != 0.0f; }
+    bool any() const { return perPixel() || sharpens(); }
+    // The effects clip_effects.glsl / applyEffects() draw.
+    bool perPixel() const { return look[0] != 0.0f || vignette[0] != 0.0f || grain[0] != 0.0f; }
+    bool sharpens() const { return sharpen[0] != 0.0f; }
     // The frame the grain is drawn for -- the output frame on the timeline
     // (frameAt), or any number that changes with the picture. Kept to 24
     // bits, which a float holds exactly (77 hours at 60 fps).
     void setFrame(uint32_t n) { grain[3] = float(n & 0xFFFFFFu); }
     bool operator==(const Render &o) const
     {
-        return look == o.look && vignette == o.vignette && grain == o.grain;
+        return look == o.look && sharpen == o.sharpen && vignette == o.vignette &&
+               grain == o.grain;
     }
     bool operator!=(const Render &o) const { return !(*this == o); }
 };
@@ -155,22 +202,28 @@ struct Render {
 // stores them. Absent = not on the clip.
 struct ClipEffects {
     std::optional<Look> look;
+    std::optional<Sharpen> sharpen;
     std::optional<Vignette> vignette;
     std::optional<Grain> grain;
 
-    bool isEmpty() const { return !look && !vignette && !grain; }
+    bool isEmpty() const { return !look && !sharpen && !vignette && !grain; }
     // Whether it has the effect named `name`; add() puts it on with its
     // defaults (true if it wasn't there), remove() takes it off.
     bool has(const char *name) const
     {
         const std::string_view n(name);
-        return (n == kLook && look) || (n == kVignette && vignette) || (n == kGrain && grain);
+        return (n == kLook && look) || (n == kSharpen && sharpen) ||
+               (n == kVignette && vignette) || (n == kGrain && grain);
     }
     bool add(const char *name)
     {
         const std::string_view n(name);
         if (n == kLook && !look) {
             look = Look{};
+            return true;
+        }
+        if (n == kSharpen && !sharpen) {
+            sharpen = Sharpen{};
             return true;
         }
         if (n == kVignette && !vignette) {
@@ -188,6 +241,8 @@ struct ClipEffects {
         const std::string_view n(name);
         if (n == kLook)
             look.reset();
+        else if (n == kSharpen)
+            sharpen.reset();
         else if (n == kVignette)
             vignette.reset();
         else if (n == kGrain)
@@ -197,6 +252,8 @@ struct ClipEffects {
     {
         if (look)
             look->clamp();
+        if (sharpen)
+            sharpen->clamp();
         if (vignette)
             vignette->clamp();
         if (grain)
@@ -204,15 +261,19 @@ struct ClipEffects {
     }
     bool operator==(const ClipEffects &o) const
     {
-        return look == o.look && vignette == o.vignette && grain == o.grain;
+        return look == o.look && sharpen == o.sharpen && vignette == o.vignette &&
+               grain == o.grain;
     }
     bool operator!=(const ClipEffects &o) const { return !(*this == o); }
 
-    // The per-pixel effects; the look goes into the grade
+    // What the renderers apply; the look's LUT goes into the grade
     // (ClipItem::renderGrade).
     Render render() const
     {
         Render r;
+        if (sharpen && sharpen->active())
+            r.sharpen = {sharpen->amount / 100.0f, sharpen->radius / 100.0f / 1080.0f,
+                         sharpen->threshold / 100.0f, 0.0f};
         if (vignette && vignette->active()) {
             const float inner = vignette->size / 100.0f;
             // The outer edge a little past the inner one at softness 0, so

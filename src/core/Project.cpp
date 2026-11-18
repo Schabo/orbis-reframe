@@ -314,6 +314,7 @@ ColorGrade colorGradeFromJson(const json &j, const QDir *projectDir)
 }
 
 // "effects": {"look": {"on": true, "preset": "bw", "strength": 100},
+// "sharpen": {"on": true, "amount": 50, "radius": 100, "threshold": 2},
 // "vignette": {"on": true, "amount": -30, "size": 50, "softness": 50},
 // "grain": {"on": true, "amount": 25, "size": 100, "colour": 0}} -- a key
 // per effect on the clip (fx::ClipEffects), written only when the clip has
@@ -333,6 +334,11 @@ json effectsToJson(const fx::ClipEffects &e, const QDir *projectDir)
         }
         j[fx::kLook] = l;
     }
+    if (e.sharpen)
+        j[fx::kSharpen] = {{"on", e.sharpen->on},
+                           {"amount", e.sharpen->amount},
+                           {"radius", e.sharpen->radius},
+                           {"threshold", e.sharpen->threshold}};
     if (e.vignette)
         j[fx::kVignette] = {{"on", e.vignette->on},
                          {"amount", e.vignette->amount},
@@ -366,6 +372,13 @@ fx::ClipEffects effectsFromJson(const json &j, const QDir *projectDir)
                 l.preset = value.value("preset", l.preset);
             }
             e.look = l;
+        } else if (key == fx::kSharpen && value.is_object()) {
+            fx::Sharpen s;
+            s.on = value.value("on", s.on);
+            s.amount = value.value("amount", s.amount);
+            s.radius = value.value("radius", s.radius);
+            s.threshold = value.value("threshold", s.threshold);
+            e.sharpen = s;
         } else if (key == fx::kVignette && value.is_object()) {
             fx::Vignette v; // defaults for any missing field
             v.on = value.value("on", v.on);
