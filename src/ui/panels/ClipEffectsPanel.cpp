@@ -70,6 +70,21 @@ ClipEffectsPanel::ClipEffectsPanel(QWidget *parent) : SettingsPanel(tr("Effects"
     });
     setLookFiles({});
 
+    m_sharpen = addGroup(fx::kSharpen, tr("Sharpen"), tr("Take the sharpen off this clip."),
+                         QStringLiteral("sharpen"));
+    addSetting(m_sharpen, tr("Amount"), 0, int(fx::Sharpen::kMaxAmount),
+               QStringLiteral("sharpenAmount"),
+               tr("How much crisper edges and detail get. Only the brightness is sharpened, so "
+                  "the colours stay as they are."));
+    addSetting(m_sharpen, tr("Radius"), int(fx::Sharpen::kMinRadius),
+               int(fx::Sharpen::kMaxRadius), QStringLiteral("sharpenRadius"),
+               tr("How wide the edges it sharpens are: 100 % is about one pixel of a 1080p "
+                  "video, and it scales with the export size."));
+    addSetting(m_sharpen, tr("Threshold"), 0, int(fx::Sharpen::kMaxThreshold),
+               QStringLiteral("sharpenThreshold"),
+               tr("Differences smaller than this (in % of white) aren't sharpened, so noise and "
+                  "compression blocks in flat areas stay as they are."));
+
     m_vignette = addGroup(fx::kVignette, tr("Vignette"), tr("Take the vignette off this clip."),
                           QStringLiteral("vignette"));
     addSetting(m_vignette, tr("Amount"), int(fx::Vignette::kMinAmount),
@@ -160,6 +175,12 @@ fx::ClipEffects ClipEffectsPanel::currentEffects() const
             e.look->preset.clear();
         }
     }
+    if (e.sharpen) {
+        e.sharpen->on = m_sharpen.on->isChecked();
+        e.sharpen->amount = value(m_sharpen, 0);
+        e.sharpen->radius = value(m_sharpen, 1);
+        e.sharpen->threshold = value(m_sharpen, 2);
+    }
     if (e.vignette) {
         e.vignette->on = m_vignette.on->isChecked();
         e.vignette->amount = value(m_vignette, 0);
@@ -202,6 +223,8 @@ void ClipEffectsPanel::setState(const fx::ClipEffects &effects)
     if (!effects.look)
         setLookProblem({});
     selectLook(l);
+    const fx::Sharpen sh = effects.sharpen.value_or(fx::Sharpen{});
+    showGroup(m_sharpen, effects.sharpen.has_value(), sh.on, {sh.amount, sh.radius, sh.threshold});
     const fx::Vignette v = effects.vignette.value_or(fx::Vignette{});
     showGroup(m_vignette, effects.vignette.has_value(), v.on, {v.amount, v.size, v.softness});
     const fx::Grain g = effects.grain.value_or(fx::Grain{});
@@ -213,6 +236,7 @@ void ClipEffectsPanel::setState(const fx::ClipEffects &effects)
 void ClipEffectsPanel::enableSettings(const fx::ClipEffects &e)
 {
     for (const auto &[g, on] : {std::pair{&m_look, !e.look || e.look->on},
+                                std::pair{&m_sharpen, !e.sharpen || e.sharpen->on},
                                 std::pair{&m_vignette, !e.vignette || e.vignette->on},
                                 std::pair{&m_grain, !e.grain || e.grain->on}})
         for (const Setting &s : g->settings)

@@ -79,6 +79,7 @@ private:
     QComboBox *m_lookChoice = nullptr;
     QLabel *m_lookProblem = nullptr;
     QStringList m_lookFiles;
+    Group m_sharpen;
     Group m_vignette;
     Group m_grain;
     bool m_updating = false;

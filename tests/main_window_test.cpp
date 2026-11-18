@@ -1022,7 +1022,8 @@ void testSplitScreen(const Ctx &c)
 // Effects: the Effects tab's Add puts a vignette on the clip at the
 // playhead, the Video tab's Effects section showing it and the viewport
 // drawing it; the section edits it and turns it off; a drop onto the other
-// clip puts one there, and Remove takes it off; undo takes it all back.
+// clip puts one there, and Remove takes it off; the grain and the sharpen
+// beside it; undo takes it all back.
 void testEffects(const Ctx &c)
 {
     QAction *undo = action(c, "undoAction");
@@ -1039,6 +1040,16 @@ void testEffects(const Ctx &c)
     settle();
     const int a = c.timeline->clipAt(0).id;
     CHECK(c.timeline->clipById(a)->effects.isEmpty() && none->isVisibleTo(c.w));
+    // The library's first tile is the sharpen's (they're in the order they
+    // run); pick the vignette's.
+    auto *library = find<QListWidget>(c.w, "effectList");
+    CHECK(library && library->count() == 3 &&
+          library->item(0)->text() == QStringLiteral("Sharpen") &&
+          library->currentItem() == library->item(0));
+    if (!library || library->count() < 2)
+        return;
+    library->setCurrentItem(library->item(1));
+    CHECK(library->currentItem()->text() == QStringLiteral("Vignette"));
     trigger(c, "effectAddAction");
     const ClipItem *clip = c.timeline->clipById(a);
     CHECK(clip->effects.vignette && *clip->effects.vignette == fx::Vignette{});
@@ -1090,6 +1101,40 @@ void testEffects(const Ctx &c)
     grainRemove->click();
     CHECK(!c.timeline->clipById(a)->effects.grain && c.timeline->clipById(a)->effects.vignette &&
           !grainAmount->isVisibleTo(c.w));
+
+    // Sharpen: its rows above the vignette's (it runs first), its defaults,
+    // edited on their own, off and on.
+    settle();
+    emit c.timelineWidget->effectDropped(a, QString::fromLatin1(fx::kSharpen));
+    auto *sharpenAmount = find<QSlider>(c.w, "sharpenAmount");
+    auto *sharpenRadius = find<QSlider>(c.w, "sharpenRadius");
+    auto *sharpenThreshold = find<QSlider>(c.w, "sharpenThreshold");
+    auto *sharpenOn = find<QCheckBox>(c.w, "sharpenOn");
+    auto *sharpenRemove = find<QToolButton>(c.w, "sharpenRemove");
+    CHECK(sharpenAmount && sharpenRadius && sharpenThreshold && sharpenOn && sharpenRemove);
+    if (!sharpenAmount || !sharpenRadius || !sharpenThreshold || !sharpenOn || !sharpenRemove)
+        return;
+    clip = c.timeline->clipById(a);
+    CHECK(clip->effects.sharpen && *clip->effects.sharpen == fx::Sharpen{} &&
+          clip->effects.vignette);
+    CHECK(sharpenAmount->isVisibleTo(c.w) && sharpenAmount->value() == 50 &&
+          sharpenRadius->value() == 100 && sharpenThreshold->value() == 2 &&
+          sharpenAmount->maximum() == 200 && sharpenThreshold->maximum() == 20);
+    CHECK(sharpenAmount->mapTo(c.w, QPoint()).y() < amount->mapTo(c.w, QPoint()).y());
+    settle();
+    sharpenRadius->setValue(180);
+    CHECK(c.timeline->clipById(a)->effects.sharpen->radius == 180.0f &&
+          c.timeline->clipById(a)->effects.vignette->amount == -70.0f);
+    CHECK(c.w->viewport()->CurrentColorGrade().effects == c.timeline->clipById(a)->effects.render());
+    CHECK(c.w->viewport()->CurrentColorGrade().effects.sharpens());
+    settle();
+    sharpenOn->setChecked(false);
+    CHECK(!c.timeline->clipById(a)->effects.sharpen->on && !sharpenRadius->isEnabled() &&
+          !c.w->viewport()->CurrentColorGrade().effects.sharpens());
+    settle();
+    sharpenRemove->click();
+    CHECK(!c.timeline->clipById(a)->effects.sharpen && c.timeline->clipById(a)->effects.vignette &&
+          !sharpenAmount->isVisibleTo(c.w));
 
     // Undo back to none (undo rebuilds the clips: new ids).
     settle();

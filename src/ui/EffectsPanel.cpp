@@ -3,6 +3,7 @@
 #include "../core/ClipEffects.h"
 #include "../core/ColorLut.h"
 #include "../core/LookPresets.h"
+#include "../core/Sharpen.h"
 #include "LookNames.h"
 
 #include <QAction>
@@ -12,11 +13,14 @@
 #include <QLinearGradient>
 #include <QMimeData>
 #include <QPainter>
+#include <QPainterPath>
 #include <QRadialGradient>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace {
 
@@ -50,6 +54,78 @@ QIcon vignetteTile(const QSize &size, qreal dpr)
     p.setBrush(dark);
     p.drawRoundedRect(r, 4, 4);
     return QIcon(pm);
+}
+
+// Sharpen's tile: the picture with detail in it (a tree line, fence posts),
+// soft, and its right half through fx::sharpen() -- the effect's own
+// formula, its blur big enough to see at the tile's size.
+QIcon sharpenTile(const QSize &size, qreal dpr)
+{
+    // Drawn at half the size and scaled up, so it starts out soft.
+    QImage small(size * dpr / 2, QImage::Format_ARGB32_Premultiplied);
+    small.fill(Qt::transparent);
+    {
+        QPainter p(&small);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.scale(dpr / 2, dpr / 2);
+        const QRectF r(QPointF(0, 0), QSizeF(size));
+        paintScene(p, r);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0x2e, 0x40, 0x24));
+        QPainterPath trees;
+        const qreal horizon = r.height() * 0.62;
+        trees.moveTo(0, horizon);
+        for (qreal x = 0; x <= r.width(); x += 6)
+            trees.lineTo(x, horizon - 4 - 5 * std::abs(std::sin(x * 0.37)));
+        trees.lineTo(r.width(), horizon + 2);
+        trees.lineTo(0, horizon + 2);
+        p.drawPath(trees);
+        p.setPen(QPen(QColor(0x3a, 0x2c, 0x20), 1.5));
+        for (qreal x = 8; x < r.width(); x += 11)
+            p.drawLine(QPointF(x, r.height() * 0.74), QPointF(x, r.height() * 0.92));
+        p.drawLine(QPointF(0, r.height() * 0.78), QPointF(r.width(), r.height() * 0.78));
+    }
+    QImage img = small.scaled(size * dpr, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                     .convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const int w = img.width(), h = img.height();
+    std::vector<float> px(size_t(w) * h * 3);
+    std::vector<uint8_t> labels(size_t(w) * h);
+    for (int y = 0; y < h; ++y) {
+        const auto *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
+        for (int x = 0; x < w; ++x) {
+            const QRgb c = line[x];
+            const int a = qAlpha(c);
+            const size_t i = size_t(y) * w + x;
+            labels[i] = a == 255 && x >= w / 2 ? 1 : 0; // the right half, off the corners
+            if (a > 0) {
+                px[i * 3] = float(qRed(c)) * 255 / a;
+                px[i * 3 + 1] = float(qGreen(c)) * 255 / a;
+                px[i * 3 + 2] = float(qBlue(c)) * 255 / a;
+            }
+        }
+    }
+    fx::ClipEffects e;
+    e.sharpen = fx::Sharpen{true, 200.0f, 100.0f, 0.0f};
+    // A blur of 1.2 tile pixels: the radius is against the frame's height.
+    fx::sharpen(px.data(), 3, labels.data(), w, h, float(1080.0 * 1.2 * dpr), e.render(), 255.0f);
+    for (int y = 0; y < h; ++y) {
+        auto *line = reinterpret_cast<QRgb *>(img.scanLine(y));
+        for (int x = w / 2; x < w; ++x) {
+            const size_t i = size_t(y) * w + x;
+            if (labels[i] == 0)
+                continue;
+            const auto level = [](float v) { return std::clamp(int(v + 0.5f), 0, 255); };
+            line[x] = qRgba(level(px[i * 3]), level(px[i * 3 + 1]), level(px[i * 3 + 2]), 255);
+        }
+    }
+    img.setDevicePixelRatio(dpr);
+    {
+        QPainter p(&img); // where the sharpen starts
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor(255, 255, 255, 200), 1.5));
+        p.drawLine(QPointF(size.width() / 2.0, 0), QPointF(size.width() / 2.0, size.height()));
+    }
+    return QIcon(QPixmap::fromImage(img));
 }
 
 // Grain's tile: the picture with fx::applyEffects()' own grain on it, big
@@ -179,6 +255,12 @@ EffectsPanel::EffectsPanel(QWidget *parent) : QWidget(parent)
     m_list = new EffectList(this);
     const QSize tile(128, 72);
     m_list->setIconSize(tile);
+    // In the order they run.
+    auto *sharpen =
+        new QListWidgetItem(sharpenTile(tile, devicePixelRatioF()), tr("Sharpen"), m_list);
+    sharpen->setData(kNameRole, QString::fromLatin1(fx::kSharpen));
+    sharpen->setToolTip(tr("Crisper edges and detail. Drag it onto a clip, or double-click to "
+                           "put it on the clip at the playhead."));
     auto *vignette =
         new QListWidgetItem(vignetteTile(tile, devicePixelRatioF()), tr("Vignette"), m_list);
     vignette->setData(kNameRole, QString::fromLatin1(fx::kVignette));
@@ -188,7 +270,7 @@ EffectsPanel::EffectsPanel(QWidget *parent) : QWidget(parent)
     grain->setData(kNameRole, QString::fromLatin1(fx::kGrain));
     grain->setToolTip(tr("Film grain over the picture, new on every frame. Drag it onto a "
                          "clip, or double-click to put it on the clip at the playhead."));
-    m_list->setCurrentItem(vignette);
+    m_list->setCurrentItem(sharpen);
 
     // The colour looks: a creative LUT after the Colour section's grade, one
     // per clip -- a built-in one, or a .cube of your own.

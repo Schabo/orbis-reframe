@@ -1,10 +1,11 @@
 # Effects
 
 Effects change the look of a clip's picture after its colour. For now
-there are two, the **Vignette**, which makes the picture darker (or lighter)
-toward its edges and draws the eye to the middle, and **Grain**, the
-look of film, and a **colour look**: **Black & White**, or a LUT of your
-own. More are planned.
+there are three: **Sharpen**, which makes edges and detail crisper, the
+**Vignette**, which makes the picture darker (or lighter) toward its edges
+and draws the eye to the middle, and **Grain**, the look of film; and a
+**colour look**: **Black & White**, or a LUT of your own. More are
+planned.
 
 ![A clip with a vignette, the Effects tab, the clip's Effects section, and the ✦ on clips with an effect](images/effects.jpg)
 
@@ -20,7 +21,7 @@ own. More are planned.
 Open the media sidebar's **Effects** tab
 (<img src="images/icons/tab-effects.png" width="24" alt="">), then:
 
-- drag an effect (**Vignette**, **Grain**, a colour look) onto a clip on
+- drag an effect (**Sharpen**, **Vignette**, **Grain**, a colour look) onto a clip on
   the video track: the clip it would go on is outlined; or
 - double-click it (or select it and press `Enter`, or right-click it and
   choose **Add to the clip at the playhead**) to put it on the selected
@@ -83,6 +84,28 @@ section's LUTs in `luts/`, so each list offers only its own kind. As in
 is until you save it. If a clip's look file is missing, the clip is shown
 without it, and the **Effects** section says why under **Look**.
 
+### Sharpen
+
+| Setting | What it does | Range |
+|---|---|---|
+| **Amount** | How much crisper edges and detail get. | 0 % to 200 % (new: 50 %) |
+| **Radius** | How wide the edges it works on are: at 100 % about one pixel of a 1080p video. A bigger radius makes bigger shapes stand out more; a small one, fine detail. | 50 % to 300 % (new: 100 %) |
+| **Threshold** | Differences in brightness smaller than this (in % of white) aren't sharpened, so the noise and compression blocks in a smooth sky or road stay as they were. At 0 % everything is sharpened. | 0 % to 20 % (new: 2 %) |
+
+Sharpen works on the brightness only: edges get a little darker on their
+dark side and lighter on their bright side, and the colours stay as they
+are. Too much of it shows as bright or dark fringes along edges.
+
+Like the grain, its radius goes with the video's size: a 4K export is
+sharpened as much as a 1080p one, in more detail. The viewport sharpens
+the picture at its own size, so when it is smaller than the export a
+small radius is hard to see there; enlarge the viewport or look at a
+screenshot at the export size to judge it.
+
+Each [split screen](reframing.md#split-screen) pane is sharpened on its
+own, so no fringe appears along the divider, and a flat video's bars stay
+as they are.
+
 ### Vignette
 
 | Setting | What it does | Range |
@@ -125,7 +148,8 @@ its full detail.
 ## Effects and other edits
 
 - Effects come after the [colour](colour.md), in this order: the colour
-  look, then the vignette darkens the picture, then the grain goes on top.
+  look, then the sharpen, then the vignette darkens the picture, then the
+  grain goes on top (so the grain isn't sharpened).
 - The halves of a split clip and a duplicated clip keep its effects.
 - A transition blends the two clips with their effects.
 - [Track subject](reframing.md#track-subject) and the number-plate scan
@@ -133,4 +157,4 @@ its full detail.
 
 A project with an effect on a clip can't be opened by orbis-reframe
 versions before effects. Versions with effects but without colour looks
-(0.10) open it and leave the colour looks out.
+and the sharpen (0.10) open it and leave those out.
