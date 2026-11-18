@@ -88,10 +88,16 @@ const exportpipe::VideoFrame *LentClipView::frameAt(int64_t ms)
     const double halfFrame = 500.0 / std::max(1.0, fps());
     // As ClipViewSource: the frame whose window [pts - half, pts + half)
     // holds `ms`. A lent source only reads on: behind what was read, or well
-    // ahead of it (a seek), ask again from there.
-    const int64_t from = std::llround(ms - halfFrame);
-    const bool jump = m_haveCur ? (ms + halfFrame < m_cur.ptsMs || ms > m_cur.ptsMs + 1000)
-                                : (m_lease && from + 1 < m_lease->fromMs());
+    // ahead of it (a seek), ask again from there -- which gives the lent
+    // source up, so only then. What was read is the last frame handed out
+    // either way, by this or by readNext() (InsetFeed anchors here, reads on
+    // there, and anchors again when it falls behind). Asked from the file's
+    // start at the earliest, as ask() does: a layer starting on the file's
+    // first frame isn't behind its lease.
+    const int64_t from = std::max<int64_t>(0, std::llround(ms - halfFrame));
+    const int64_t readMs = m_haveCur ? m_cur.ptsMs : m_lastMs;
+    const bool jump = readMs >= 0 ? (ms + halfFrame < readMs || ms > readMs + 1000)
+                                  : (m_lease && from + 1 < m_lease->fromMs());
     if (!m_lease || jump)
         ask(from);
     if (!m_haveCur) {
@@ -130,6 +136,7 @@ bool LentClipView::readNext(exportpipe::VideoFrame &out)
     if (m_haveNext) {
         out = std::move(m_next);
         m_haveNext = false;
+        m_haveCur = false; // behind what's handed out now: frameAt goes by m_lastMs
         m_lastMs = out.ptsMs;
         return true;
     }
@@ -137,6 +144,7 @@ bool LentClipView::readNext(exportpipe::VideoFrame &out)
         return false;
     switch (m_lease->next(out)) {
     case LayerLease::Next::Frame:
+        m_haveCur = false;
         m_lastMs = out.ptsMs;
         return true;
     case LayerLease::Next::Gone: {

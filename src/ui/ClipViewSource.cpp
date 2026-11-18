@@ -7,7 +7,13 @@
 #include <cmath>
 #include <utility>
 
-ClipViewSource::ClipViewSource(Spec spec) : m_spec(std::move(spec)) {}
+ClipViewSource::ClipViewSource(Spec spec) : m_spec(std::move(spec))
+{
+    // Known before prepare(): LentClipView asks for its frames, half a frame
+    // ahead, before the stabilizer is built.
+    if (m_spec.fps > 0.0)
+        m_fps = m_spec.fps;
+}
 
 ClipViewSource::~ClipViewSource() = default;
 
