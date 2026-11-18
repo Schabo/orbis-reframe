@@ -489,7 +489,9 @@ seam flow; `--depth-seam` the old stitcher with its depth-aware seam,
 encodes HEVC Main 10 from the fused view's P010 output (H.265 only); it
 prints when the encoder falls back to 8-bit, or when the frames are 8-bit
 (no fused GPU pass) widened into the 10-bit file.
-`--vignette A,S,F` adds the clip effect, a vignette (amount −100..100,
+`--sharpen A,R,T` sharpens after the grade and look (amount 0..200, radius
+50..300 with 100 = a one-pixel blur at 1080 lines, threshold 0..20 % of
+white). `--vignette A,S,F` adds the clip effect, a vignette (amount −100..100,
 negative darkens; size and softness 0..100), after the grade; `--grain
 A,S,C` film grain (amount 0..100, size 50..300 with 100 = one pixel at 1080
 lines, colour 0..100), new on every output frame. `--look bw|FILE.cube`
@@ -506,9 +508,11 @@ set the divider.
 to replay keys from `track_subject`. With `--lut`, to check the GPU's LUT
 against FFmpeg's own `lut3d` filter on an export without it (both GPU
 paths: set `ORBIS_FLAT_VIA_EQUIRECT=1` for the equirect + reproject one).
-With `--look`, `--vignette` or `--grain`, to check an effect on every path the same
-way, single and split (a split's vignette is placed against the whole
-frame). The grain is the same on every path at the same size: compare the
+With `--look`, `--sharpen`, `--vignette` or `--grain`, to check an effect on every
+path the same way, single and split (a split's vignette is placed against the whole
+frame; its panes are sharpened each against its own pixels, so compare the
+sharpen's own change -- each export minus one without it -- between paths: the
+fused path's picture starts out sharper, so its sharpen changes a little more). The grain is the same on every path at the same size: compare the
 paths' grain (each export minus one without it) rather than their PSNR,
 which the encoder lowers on noisy frames.
 With `--split`, to check the panes on every path (`ORBIS_FLAT_VIA_EQUIRECT=1`,

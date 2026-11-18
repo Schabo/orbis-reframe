@@ -45,10 +45,12 @@ public:
     // its width and height, in the shader's own pixel coordinates -- into the
     // next block, and bind it as set `set` of `pipelineLayout`, with
     // `lookSet` (the colour look's LUT, VulkanLutStore::setFor; the identity
-    // one for none) as set `set` + 1.
+    // one for none) as set `set` + 1. `canvasLabel` > 0: the draw writes
+    // the sharpen's canvas with that label (clip_effects.glsl's `canvas`,
+    // VulkanSharpen).
     void bind(VkCommandBuffer cmd, VkPipelineBindPoint bindPoint, VkPipelineLayout pipelineLayout,
               uint32_t set, const fx::Render& effects, const float frame[4],
-              VkDescriptorSet lookSet);
+              VkDescriptorSet lookSet, float canvasLabel = 0.0f);
 
     static constexpr uint32_t kSlots = 1024;
 
@@ -59,6 +61,7 @@ private:
         float vignette[4];
         float grain[4];
         float look[4];
+        float canvas[4];
     };
 
     Device m_dev;

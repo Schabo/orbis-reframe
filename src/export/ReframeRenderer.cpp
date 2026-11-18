@@ -1,5 +1,7 @@
 #include "ReframeRenderer.h"
 
+#include "Sharpen.h"
+
 #include <cstring>
 
 #include <algorithm>
@@ -116,12 +118,58 @@ inline void gradeRgb(float rgba[4], const Grade &g)
         applyLut(rgba, *g.look, g.lookMix);
 }
 
+// Runs fn(rowBegin, rowEnd) over h rows across the cores; small pictures
+// on this thread alone.
+template <typename Fn>
+void acrossRows(int h, size_t pixels, Fn fn)
+{
+    const unsigned hw = std::thread::hardware_concurrency();
+    const int workers =
+        pixels < 64 * 1024 ? 1 : std::min(h, int(std::max(1u, hw == 0 ? 4u : hw)));
+    const int band = (h + workers - 1) / workers;
+    std::vector<std::thread> pool;
+    for (int b = band; b < h; b += band)
+        pool.emplace_back(fn, b, std::min(b + band, h));
+    fn(0, std::min(band, h));
+    for (std::thread& t : pool)
+        t.join();
+}
+
+// The per-pixel effects and the rounding to 8 bits, after the sharpen:
+// `graded` (w x h, 4 floats a pixel) into `out`. A pixel without a picture
+// (label 0) as it is. The pixel (col, row)'s centre in the frame is
+// (x0 + (col + 0.5) * sx, y0 + (row + 0.5) * sy).
+void finishSharpened(const std::vector<float>& graded, const uint8_t* labels, uint8_t* out,
+                     int w, int h, const fx::Render& effects, float x0, float y0, float sx,
+                     float sy, float frameW, float frameH)
+{
+    acrossRows(h, size_t(w) * h, [&](int rowBegin, int rowEnd) {
+        for (int row = rowBegin; row < rowEnd; ++row)
+            for (int col = 0; col < w; ++col) {
+                const size_t i = size_t(row) * w + col;
+                float c[4] = {graded[i * 4], graded[i * 4 + 1], graded[i * 4 + 2],
+                              graded[i * 4 + 3]};
+                if (effects.perPixel() && (!labels || labels[i] != 0))
+                    fx::applyEffects(c, x0 + (float(col) + 0.5f) * sx,
+                                     y0 + (float(row) + 0.5f) * sy, frameW, frameH, effects,
+                                     kGradeWhite);
+                for (int k = 0; k < 4; ++k)
+                    out[i * 4 + k] = static_cast<uint8_t>(std::clamp(c[k] + 0.5f, 0.0f, 255.0f));
+            }
+    });
+}
+
+// With `graded` (outW x outH x 4 floats) and `labels`, the rows are left
+// graded there for the sharpen -- the look on, the other effects not yet,
+// a pixel's label 1 where the picture is, 0 outside a globe's disc -- and
+// `out` isn't written.
 void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int outH,
-                const ReframeView& view, int rowBegin, int rowEnd)
+                const ReframeView& view, int rowBegin, int rowEnd, float* graded = nullptr,
+                uint8_t* labels = nullptr)
 {
     const Grade grade(view.colorGrade);
     const fx::Render& effects = view.colorGrade.effects;
-    const bool hasEffects = effects.any();
+    const bool hasEffects = effects.perPixel() && !graded;
     const bool ownFrame = view.frame[2] <= 0.0f;
     const float frameX = ownFrame ? 0.0f : view.frame[0];
     const float frameY = ownFrame ? 0.0f : view.frame[1];
@@ -144,12 +192,19 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
 
             // View-space ray (matches equirect.frag: +Y up, -Z forward).
             float ray[3];
-            uint8_t* dst = out + (static_cast<size_t>(py) * outW + px) * 4;
+            const size_t at = static_cast<size_t>(py) * outW + px;
             if (!view::ndcToRay(ndcX, ndcY, h, view.aspect, lens.distortion, ray, lens.panini,
                                 lens.fisheye)) {
                 // Outside a globe's disc, past Fisheye's: black.
-                dst[0] = dst[1] = dst[2] = 0;
-                dst[3] = 255;
+                if (graded) {
+                    std::fill(graded + at * 4, graded + at * 4 + 3, 0.0f);
+                    graded[at * 4 + 3] = 255.0f;
+                    labels[at] = 0;
+                } else {
+                    uint8_t* dst = out + at * 4;
+                    dst[0] = dst[1] = dst[2] = 0;
+                    dst[3] = 255;
+                }
                 continue;
             }
             const float vx = ray[0], vy = ray[1], vz = ray[2];
@@ -177,10 +232,16 @@ void renderRows(const uint8_t* eq, int eqW, int eqH, uint8_t* out, int outW, int
             float rgba[4];
             sampleEquirect(eq, eqW, eqH, u, v, rgba);
             gradeRgb(rgba, grade);
+            if (graded) {
+                std::copy(rgba, rgba + 4, graded + at * 4);
+                labels[at] = 1;
+                continue;
+            }
             if (hasEffects)
                 fx::applyEffects(rgba, float(px) + 0.5f - frameX, float(py) + 0.5f - frameY,
                                  frameW, frameH, effects, kGradeWhite);
 
+            uint8_t* dst = out + at * 4;
             for (int c = 0; c < 4; ++c)
                 dst[c] = static_cast<uint8_t>(std::clamp(rgba[c] + 0.5f, 0.0f, 255.0f));
         }
@@ -194,6 +255,27 @@ void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba
 {
     if (eqW <= 0 || eqH <= 0 || outW <= 0 || outH <= 0)
         return;
+
+    const fx::Render& effects = view.colorGrade.effects;
+    if (effects.sharpens()) {
+        // Graded first, the whole picture, as the sharpen needs its
+        // neighbours; then the per-pixel effects on the sharpened picture.
+        const size_t pixels = size_t(outW) * outH;
+        std::vector<float> graded(pixels * 4);
+        std::vector<uint8_t> labels(pixels);
+        acrossRows(outH, pixels, [&](int rowBegin, int rowEnd) {
+            renderRows(eqRgba, eqW, eqH, outRgba, outW, outH, view, rowBegin, rowEnd,
+                       graded.data(), labels.data());
+        });
+        const bool ownFrame = view.frame[2] <= 0.0f;
+        const float frameW = ownFrame ? float(outW) : view.frame[2];
+        const float frameH = ownFrame ? float(outH) : view.frame[3];
+        fx::sharpen(graded.data(), 4, labels.data(), outW, outH, frameH, effects, kGradeWhite);
+        finishSharpened(graded, labels.data(), outRgba, outW, outH, effects,
+                        ownFrame ? 0.0f : -view.frame[0], ownFrame ? 0.0f : -view.frame[1],
+                        1.0f, 1.0f, frameW, frameH);
+        return;
+    }
 
     unsigned hw = std::thread::hardware_concurrency();
     int workers = static_cast<int>(hw == 0 ? 4u : hw);
@@ -218,7 +300,8 @@ void RenderRectilinear(const uint8_t* eqRgba, int eqW, int eqH, uint8_t* outRgba
         if (w == workers - 1) {
             renderRows(eqRgba, eqW, eqH, outRgba, outW, outH, view, begin, end);
         } else {
-            pool.emplace_back(renderRows, eqRgba, eqW, eqH, outRgba, outW, outH, view, begin, end);
+            pool.emplace_back(renderRows, eqRgba, eqW, eqH, outRgba, outW, outH, view, begin, end,
+                              nullptr, nullptr);
         }
     }
     for (auto& t : pool)
@@ -296,6 +379,24 @@ void GradeRgba(uint8_t* rgba, int w, int h, const color::Grade& grade, const flo
     const fx::Render& effects = grade.effects;
     // A picture pixel's centre in the frame: the rect scaled to the picture.
     const float sx = rect[2] / float(w), sy = rect[3] / float(h);
+    if (effects.sharpens()) {
+        // Graded first, then sharpened -- its radius against the frame's
+        // height, in the picture's own pixels -- then the other effects.
+        const size_t pixels = size_t(w) * h;
+        std::vector<float> graded(pixels * 4);
+        acrossRows(h, pixels, [&](int rowBegin, int rowEnd) {
+            for (size_t i = size_t(rowBegin) * w; i < size_t(rowEnd) * w; ++i) {
+                float* c = &graded[i * 4];
+                for (int k = 0; k < 4; ++k)
+                    c[k] = float(rgba[i * 4 + k]);
+                gradeRgb(c, g);
+            }
+        });
+        fx::sharpen(graded.data(), 4, nullptr, w, h, float(frameH) / sy, effects, kGradeWhite);
+        finishSharpened(graded, nullptr, rgba, w, h, effects, rect[0], rect[1], sx, sy,
+                        float(frameW), float(frameH));
+        return;
+    }
     auto run = [&](int rowBegin, int rowEnd) {
         for (int row = rowBegin; row < rowEnd; ++row) {
             const float fy = rect[1] + (float(row) + 0.5f) * sy;

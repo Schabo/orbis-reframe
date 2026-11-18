@@ -274,6 +274,27 @@ std::array<float, 4> effectsFrame(const VulkanFisheyeStitcher::ViewRect& v, bool
     return {-float(v.x), -float(v.y), float(canvasW), float(canvasH)};
 }
 
+// Whether a frame with `colorGrade` is drawn through the sharpen's canvas
+// (VulkanSharpen) -- and, if so, its buffers ready for a w x h frame written
+// into `out`. Without the memory for them it's drawn without the sharpen,
+// said once.
+bool useSharpen(VulkanSharpen& sharpen, const color::Grade* colorGrade, bool effects, int w,
+                int h, VkBuffer out)
+{
+    if (!effects || !colorGrade->effects.sharpens() || !sharpen.ready())
+        return false;
+    std::string err;
+    if (sharpen.ensure(w, h, out, err))
+        return true;
+    static bool said = false;
+    if (!said) {
+        said = true;
+        std::fprintf(stderr, "[VulkanFisheyeStitcher] %s; exported without the sharpen\n",
+                     err.c_str());
+    }
+    return false;
+}
+
 // Whether `views` fit a canvasW x canvasH canvas of `fmt`: inside it, x and
 // w on multiples of 4, h -- and for NV12 / P010's 2 x 2 chroma, y -- even.
 bool viewsFit(int canvasW, int canvasH, const std::vector<VulkanFisheyeStitcher::ViewRect>& views,
@@ -681,10 +702,15 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         w[1].pImageInfo = &img1;
         vkUpdateDescriptorSets(d->device, 2, w, 0, nullptr);
     }
-    // Reproject set: equirect OutBuf in, NV12 flatBuf out.
+    // A clip with a sharpen: its views draw the canvas, which the sharpen
+    // writes into flatBuf.
+    const bool effects = colorGrade && colorGrade->hasEffects() && d->effects.ready();
+    const bool sharpens = useSharpen(d->sharpen, colorGrade, effects, outW, outH, d->flatBuf);
+    // Reproject set: equirect OutBuf in, NV12 flatBuf (or the canvas) out.
     {
         VkDescriptorBufferInfo eqInfo{d->outBuf, 0, VK_WHOLE_SIZE};
-        VkDescriptorBufferInfo flatInfo{d->flatBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo flatInfo{sharpens ? d->sharpen.canvas() : d->flatBuf, 0,
+                                        VK_WHOLE_SIZE};
         VkWriteDescriptorSet w[2]{};
         w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[0].dstSet = d->rfSet;
@@ -739,7 +765,9 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
     eqRW.size = VK_WHOLE_SIZE;
     vkCmdPipelineBarrier(d->cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &eqRW, 0, nullptr);
-    if (fill) { // the canvas background, where no view goes
+    if (fill && sharpens) {
+        d->sharpen.recordFill(d->cmd, outW, outH, *fill, 255.0f, d->effects, lookSet);
+    } else if (fill) { // the canvas background, where no view goes
         recordCanvasFill(d->cmd, d->flatBuf, ViewFormat::Nv12, outW, outH, *fill);
         VkBufferMemoryBarrier fb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         fb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -768,8 +796,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
     const VkDescriptorSet rfSets[2] = {d->rfSet, lutSet};
     vkCmdBindDescriptorSets(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 0, 2, rfSets,
                             0, nullptr);
-    const bool effects = colorGrade && colorGrade->hasEffects() && d->effects.ready();
-    for (const ViewRect& v : views) { // each view, 4 pixels per invocation
+    for (size_t i = 0; i < views.size(); ++i) { // each view, 4 pixels per invocation
+        const ViewRect& v = views[i];
         rp.outW = v.w;
         rp.outH = v.h;
         rp.yaw = v.pose.yaw;
@@ -790,16 +818,19 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, want);
             rfBound = want;
         }
-        if (effects)
+        if (effects) // with a sharpen, each view its own label
             d->effects.bind(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->rfPipeLayout, 2,
                             colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data(),
-                            lookSet);
+                            lookSet, sharpens ? float(i + 1) : 0.0f);
         rp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->rfPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(rp),
                            &rp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,
                       (static_cast<uint32_t>(v.h) + 3) / 4, 1);
     }
+    if (sharpens)
+        d->sharpen.recordSharpen(d->cmd, outW, outH, VulkanSharpen::Format::Nv12, 255.0f,
+                                 colorGrade->effects, d->effects, lookSet);
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 2);
 
     VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -921,10 +952,15 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     packParams(params, 0, 0, sp); // no equirect: dims.zw unused
     std::memcpy(d->uboMap, &sp, sizeof(sp));
 
+    // A clip with a sharpen: its views draw the canvas, which the sharpen
+    // writes into flatBuf.
+    const bool effects = colorGrade && colorGrade->hasEffects() && d->effects.ready();
+    const bool sharpens = useSharpen(d->sharpen, colorGrade, effects, outW, outH, d->flatBuf);
     {
         VkDescriptorImageInfo img0{VK_NULL_HANDLE, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkDescriptorImageInfo img1{VK_NULL_HANDLE, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkDescriptorBufferInfo flatInfo{d->flatBuf, 0, VK_WHOLE_SIZE};
+        VkDescriptorBufferInfo flatInfo{sharpens ? d->sharpen.canvas() : d->flatBuf, 0,
+                                        VK_WHOLE_SIZE};
         VkWriteDescriptorSet w[3]{};
         w[0] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[0].dstSet = d->vwSet;
@@ -977,7 +1013,9 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     d->tsWrite(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
     d->recordBlurCells(d->cmd, params);
 
-    if (clear) { // the canvas background, where no view goes
+    if (clear && sharpens) {
+        d->sharpen.recordFill(d->cmd, outW, outH, *clear, 255.0f, d->effects, lookSet);
+    } else if (clear) { // the canvas background, where no view goes
         recordCanvasFill(d->cmd, d->flatBuf, fmt, outW, outH, *clear);
         VkBufferMemoryBarrier fb{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
         fb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1009,8 +1047,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
     // Pass 1: each view, 4 pixels per invocation.
     vp.pass = 1;
-    const bool effects = colorGrade && colorGrade->hasEffects() && d->effects.ready();
-    for (const ViewRect& v : views) {
+    for (size_t i = 0; i < views.size(); ++i) {
+        const ViewRect& v = views[i];
         vp.outW = v.w;
         vp.outH = v.h;
         vp.yaw = v.pose.yaw;
@@ -1028,15 +1066,21 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
             vkCmdBindPipeline(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, want); // as above
             vwBound = want;
         }
-        if (effects)
+        if (effects) // with a sharpen, each view its own label
             d->effects.bind(d->cmd, VK_PIPELINE_BIND_POINT_COMPUTE, d->vwPipeLayout, 2,
                             colorGrade->effects, effectsFrame(v, single, canvasW, canvasH).data(),
-                            lookSet);
+                            lookSet, sharpens ? float(i + 1) : 0.0f);
         vp.canvas = single ? 0 : canvasW | (canvasH << 16);
         vkCmdPushConstants(d->cmd, d->vwPipeLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(vp), &vp);
         vkCmdDispatch(d->cmd, (static_cast<uint32_t>(v.w / 4) + 15) / 16,
                       (static_cast<uint32_t>(v.h) + 3) / 4, 1);
     }
+    if (sharpens)
+        d->sharpen.recordSharpen(d->cmd, outW, outH,
+                                 fmt == ViewFormat::Rgba   ? VulkanSharpen::Format::Rgba
+                                 : fmt == ViewFormat::P010 ? VulkanSharpen::Format::P010
+                                                           : VulkanSharpen::Format::Nv12,
+                                 255.0f, colorGrade->effects, d->effects, lookSet);
     d->tsWrite(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 1);
 
     VkBufferMemoryBarrier toHost{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};

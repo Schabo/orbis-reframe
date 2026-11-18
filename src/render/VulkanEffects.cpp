@@ -113,7 +113,7 @@ void VulkanEffectsRing::destroy()
 void VulkanEffectsRing::bind(VkCommandBuffer cmd, VkPipelineBindPoint bindPoint,
                              VkPipelineLayout pipelineLayout, uint32_t set,
                              const fx::Render& effects, const float frame[4],
-                             VkDescriptorSet lookSet)
+                             VkDescriptorSet lookSet, float canvasLabel)
 {
     const uint32_t slot = m_next.fetch_add(1, std::memory_order_relaxed) % kSlots;
     const uint32_t offset = uint32_t(slot * m_stride);
@@ -122,6 +122,7 @@ void VulkanEffectsRing::bind(VkCommandBuffer cmd, VkPipelineBindPoint bindPoint,
     std::memcpy(b.vignette, effects.vignette.data(), sizeof b.vignette);
     std::memcpy(b.grain, effects.grain.data(), sizeof b.grain);
     std::memcpy(b.look, effects.look.data(), sizeof b.look);
+    b.canvas[0] = canvasLabel;
     std::memcpy(m_map + offset, &b, sizeof b);
     const VkDescriptorSet sets[2] = {m_set, lookSet};
     vkCmdBindDescriptorSets(cmd, bindPoint, pipelineLayout, set, 2, sets, 1, &offset);

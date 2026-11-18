@@ -24,6 +24,9 @@ Spirv fisheyeStitchNv12Comp();
 Spirv reframeReprojectComp();
 Spirv fisheyeViewNv12Comp();
 Spirv seamFlowComp();
+// The sharpen on a clip's canvas, then the effects after it
+// (render::VulkanSharpen).
+Spirv sharpenComp();
 // The view shaders' view-shape build (VIEW_SHAPE): for a view whose Natural
 // or Fisheye is above 0 (view::Lens::shaped); the ones above leave them out.
 Spirv equirectFragShape();

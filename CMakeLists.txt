@@ -33,6 +33,7 @@ set(SHADER_SOURCES
     src/render/shaders/reframe_reproject.comp
     src/render/shaders/fisheye_view_nv12.comp
     src/render/shaders/seam_flow.comp
+    src/render/shaders/sharpen.comp
     src/render/shaders/inset.frag
     src/render/shaders/marker.frag
     src/render/shaders/region.frag
@@ -305,6 +306,8 @@ add_library(render_gpu_stitch STATIC
     src/render/VulkanLut.cpp
     src/render/VulkanEffects.h
     src/render/VulkanEffects.cpp
+    src/render/VulkanSharpen.h
+    src/render/VulkanSharpen.cpp
 )
 target_include_directories(render_gpu_stitch PUBLIC src/render)
 target_link_libraries(render_gpu_stitch PUBLIC orbis-core::orbiscore color_lut view_projection
@@ -574,6 +577,7 @@ if(FFMPEG_FOUND)
         src/render/EquirectViewportRenderer.h
         src/render/EquirectViewportRenderer.cpp
         src/render/EquirectViewportRendererFrame.cpp
+        src/render/EquirectViewportRendererSharpen.cpp
         src/render/EquirectViewportWindow.h
         src/render/FrameStats.h
         src/ui/AboutDialog.cpp

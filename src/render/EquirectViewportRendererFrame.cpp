@@ -547,25 +547,6 @@ void EquirectViewportRenderer::startNextFrame()
 
     const QSize size = m_window->swapChainImageSize();
 
-    // One clear value per attachment the default render pass clears: colour,
-    // depth-stencil, and the multisample colour when MSAA is on
-    // (VUID-VkRenderPassBeginInfo-clearValueCount-00902).
-    VkClearValue clearValues[3]{};
-    const float *surround = m_window->SurroundColor();
-    clearValues[0].color = {{surround[0], surround[1], surround[2], 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
-    clearValues[2].color = clearValues[0].color;
-
-    VkRenderPassBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    beginInfo.renderPass = m_window->defaultRenderPass();
-    beginInfo.framebuffer = m_window->currentFramebuffer();
-    beginInfo.renderArea.extent.width = static_cast<uint32_t>(size.width());
-    beginInfo.renderArea.extent.height = static_cast<uint32_t>(size.height());
-    beginInfo.clearValueCount = m_window->sampleCountFlagBits() > VK_SAMPLE_COUNT_1_BIT ? 3 : 2;
-    beginInfo.pClearValues = clearValues;
-
-    vkCmdBeginRenderPass(commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
     // Without the equirect texture's set (its creation failed, logged in
     // initResources) or the texture (no room for it, ensureTextureResources)
     // the equirect preview isn't drawn, only the surround; the view straight
@@ -573,18 +554,6 @@ void EquirectViewportRenderer::startNextFrame()
     const bool drawPicture = imp || (m_pipeline != VK_NULL_HANDLE &&
                                      m_descriptorSet != VK_NULL_HANDLE &&
                                      m_textureView != VK_NULL_HANDLE);
-    VkPipeline bound = imp ? m_lensPipeline : m_pipeline;
-    if (imp) {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lensPipeline);
-        const VkDescriptorSet sets[2] = {m_lensSets[frameSlot], lutSet};
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            m_lensPipelineLayout, 0, 2, sets, 0, nullptr);
-    } else if (drawPicture) {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
-        const VkDescriptorSet sets[2] = {m_descriptorSet, lutSet};
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            m_pipelineLayout, 0, 2, sets, 0, nullptr);
-    }
 
     // Letterbox / pillarbox the picture to the project's output aspect: the
     // render pass clears the whole window to black, the draw covers only the
@@ -608,14 +577,12 @@ void EquirectViewportRenderer::startNextFrame()
     viewport.height = static_cast<float>(rectH);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset.x = rectX;
     scissor.offset.y = rectY;
     scissor.extent.width = static_cast<uint32_t>(rectW);
     scissor.extent.height = static_cast<uint32_t>(rectH);
-    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     // Split screen: each pane its part of the output rect (as the export
     // places them, pane::rects at the output size) and its own view; the
@@ -664,18 +631,9 @@ void EquirectViewportRenderer::startNextFrame()
         r.extent = {uint32_t(std::max(0, x1 - x0)), uint32_t(std::max(0, y1 - y0))};
         return r;
     };
-    if (panes.size() > 1 && drawPicture) {
-        VkClearAttachment gap{};
-        gap.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        gap.colorAttachment = 0;
-        gap.clearValue.color = {{((split.gapRgb >> 16) & 0xff) / 255.0f,
-                                 ((split.gapRgb >> 8) & 0xff) / 255.0f,
-                                 (split.gapRgb & 0xff) / 255.0f, 1.0f}};
-        VkClearRect cr{};
-        cr.rect = scissor;
-        cr.layerCount = 1;
-        vkCmdClearAttachments(commandBuffer, 1, &gap, 1, &cr);
-    }
+    const VkClearColorValue gapColor = {{((split.gapRgb >> 16) & 0xff) / 255.0f,
+                                         ((split.gapRgb >> 8) & 0xff) / 255.0f,
+                                         (split.gapRgb & 0xff) / 255.0f, 1.0f}};
 
     PushConstants pc{};
     pc.yaw = panes[0].pose.yaw;
@@ -703,12 +661,203 @@ void EquirectViewportRenderer::startNextFrame()
     // pipeline has the same layout, so the set stays bound).
     const bool effects = drawPicture && grade.hasEffects() && m_effects.ready();
     const float outputRect[4] = {float(rectX), float(rectY), float(rectW), float(rectH)};
-    if (effects)
+
+    // A clip with a sharpen: drawn into the canvas, sharpened, and drawn
+    // into the window from its result slot below -- the view, and each
+    // flat clip's picture with one. The canvas is the output rect, rounded
+    // up to the sharpen's 4 x 2 blocks.
+    const uint32_t canvasW = (uint32_t(rectW) + 3u) & ~3u;
+    const uint32_t canvasH = (uint32_t(rectH) + 1u) & ~1u;
+    const auto beginCanvas = [&](const VkClearColorValue &clear) {
+        VkClearValue cv{};
+        cv.color = clear;
+        cv.color.float32[3] = 0.0f; // label 0: no picture
+        VkRenderPassBeginInfo cb{};
+        cb.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        cb.renderPass = m_canvasPass;
+        cb.framebuffer = m_canvas.fb;
+        cb.renderArea.extent = {m_canvas.w, m_canvas.h};
+        cb.clearValueCount = 1;
+        cb.pClearValues = &cv;
+        vkCmdBeginRenderPass(commandBuffer, &cb, VK_SUBPASS_CONTENTS_INLINE);
+        const VkViewport cvp{0.0f, 0.0f, float(rectW), float(rectH), 0.0f, 1.0f};
+        const VkRect2D cs{{0, 0}, {uint32_t(rectW), uint32_t(rectH)}};
+        vkCmdSetViewport(commandBuffer, 0, 1, &cvp);
+        vkCmdSetScissor(commandBuffer, 0, 1, &cs);
+    };
+    const bool sharpenView = effects && grade.effects.sharpens();
+    InsetSlot *viewSharpened = nullptr;
+    if (sharpenView && ensureCanvas(canvasW, canvasH) &&
+        (viewSharpened = sharpenResult(0, canvasW, canvasH)) &&
+        canvasPipeline(imp != nullptr, false)) {
+        const VkPipelineLayout layout = imp ? m_lensPipelineLayout : m_pipelineLayout;
+        beginCanvas(panes.size() > 1 ? gapColor : VkClearColorValue{{0.0f, 0.0f, 0.0f, 0.0f}});
+        const VkDescriptorSet sets[2] = {imp ? m_lensSets[frameSlot] : m_descriptorSet, lutSet};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 2,
+                                sets, 0, nullptr);
+        VkPipeline canvasBound = VK_NULL_HANDLE;
+        PushConstants cpc = pc;
+        for (size_t i = 0; i < panes.size(); ++i) {
+            const PaneDraw &d = panes[i];
+            VkRect2D ps = paneScissor(d);
+            if (ps.extent.width == 0 || ps.extent.height == 0)
+                continue;
+            ps.offset.x -= rectX;
+            ps.offset.y -= rectY;
+            const VkViewport pv{d.x - float(rectX), d.y - float(rectY), d.w, d.h, 0.0f, 1.0f};
+            vkCmdSetViewport(commandBuffer, 0, 1, &pv);
+            vkCmdSetScissor(commandBuffer, 0, 1, &ps);
+            cpc.yaw = d.pose.yaw;
+            cpc.pitch = d.pose.pitch;
+            cpc.roll = d.pose.roll;
+            cpc.fovY = d.lens.fovY;
+            cpc.aspect = d.aspect;
+            cpc.distortion = d.lens.distortion;
+            cpc.panini = d.lens.panini;
+            cpc.fisheye = d.lens.fisheye;
+            VkPipeline want =
+                canvasPipeline(imp != nullptr, cpc.panini > 0.0f || cpc.fisheye > 0.0f);
+            if (!want)
+                want = canvasPipeline(imp != nullptr, false);
+            if (want != canvasBound) {
+                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, want);
+                canvasBound = want;
+            }
+            // Each pane its own label, so it's sharpened against its own
+            // pixels.
+            m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2,
+                           grade.effects, outputRect, lookSet, float(i + 1));
+            vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                               sizeof(PushConstants), &cpc);
+            vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        }
+        vkCmdEndRenderPass(commandBuffer);
+        recordSharpened(commandBuffer, *viewSharpened, grade.effects, lookSet, rectW, rectH,
+                        /*labelAlpha=*/false);
+    } else {
+        viewSharpened = nullptr;
+    }
+    // The flat clips' pictures with a sharpen, transparent around them.
+    std::vector<InsetSlot *> insetSharpened(insets.size(), nullptr);
+    for (size_t i = 0, n = 1; i < insets.size(); ++i) {
+        const auto &d = insets[i];
+        if (!insetSlots[i] || !d.colorGrade.effects.sharpens() || !m_effects.ready() ||
+            d.look.opacity <= 0.0f)
+            continue;
+        const inset::Rect r = inset::place(d.look, d.frame, d.aspect, rectW, rectH);
+        if (r.empty())
+            continue;
+        InsetSlot *result = nullptr;
+        if (!ensureCanvas(canvasW, canvasH) || !insetCanvasPipeline() ||
+            !(result = sharpenResult(int(n), canvasW, canvasH)))
+            continue; // drawn without its sharpen (said)
+        ++n;
+        beginCanvas({{0.0f, 0.0f, 0.0f, 0.0f}});
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_insetCanvasPipeline);
+        const VkDescriptorSet sets[2] = {insetSlots[i]->set, insetLutSets[i]};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                m_insetPipelineLayout, 0, 2, sets, 0, nullptr);
+        fx::Render e = d.colorGrade.effects;
+        e.setFrame(uint32_t(d.frameKey)); // its grain changes with its picture
+        m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_insetPipelineLayout, 2, e,
+                       outputRect, insetLookSets[i], 1.0f);
+        InsetPushConstants ipc{};
+        ipc.rect[0] = float(r.x);
+        ipc.rect[1] = float(r.y);
+        ipc.rect[2] = float(r.w);
+        ipc.rect[3] = float(r.h);
+        ipc.radius = float(r.radius);
+        ipc.borderColor[3] = 1.0f; // its opacity when it's drawn into the window
+        std::copy(d.colorGrade.adjust.begin(), d.colorGrade.adjust.end(), ipc.grade);
+        render::VulkanLutStore::pushValues(d.colorGrade.hasLut() ? d.colorGrade.lut.get() : nullptr,
+                                           d.colorGrade.lutMix, ipc.lut);
+        vkCmdPushConstants(commandBuffer, m_insetPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(ipc), &ipc);
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdEndRenderPass(commandBuffer);
+        recordSharpened(commandBuffer, *result, e, insetLookSets[i], rectW, rectH,
+                        /*labelAlpha=*/true);
+        insetSharpened[i] = result;
+    }
+    // A sharpened picture is drawn as an inset over the whole canvas, as it
+    // is: no grade (it's in the picture), the identity LUT.
+    const VkDescriptorSet identitySet =
+        (viewSharpened || std::any_of(insetSharpened.begin(), insetSharpened.end(),
+                                      [](InsetSlot *s) { return s != nullptr; }))
+            ? m_luts.setFor(nullptr)
+            : VK_NULL_HANDLE;
+    const auto drawSharpened = [&](const InsetSlot &result, float opacity) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_insetPipeline);
+        const VkDescriptorSet sets[2] = {result.set, identitySet};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                m_insetPipelineLayout, 0, 2, sets, 0, nullptr);
+        InsetPushConstants ipc{};
+        ipc.rect[2] = float(canvasW);
+        ipc.rect[3] = float(canvasH);
+        ipc.origin[0] = float(rectX);
+        ipc.origin[1] = float(rectY);
+        ipc.borderColor[3] = opacity;
+        render::VulkanLutStore::pushValues(nullptr, 0.0f, ipc.lut);
+        vkCmdPushConstants(commandBuffer, m_insetPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(ipc), &ipc);
+        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    };
+
+    // One clear value per attachment the default render pass clears: colour,
+    // depth-stencil, and the multisample colour when MSAA is on
+    // (VUID-VkRenderPassBeginInfo-clearValueCount-00902).
+    VkClearValue clearValues[3]{};
+    const float *surround = m_window->SurroundColor();
+    clearValues[0].color = {{surround[0], surround[1], surround[2], 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
+    clearValues[2].color = clearValues[0].color;
+
+    VkRenderPassBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    beginInfo.renderPass = m_window->defaultRenderPass();
+    beginInfo.framebuffer = m_window->currentFramebuffer();
+    beginInfo.renderArea.extent.width = static_cast<uint32_t>(size.width());
+    beginInfo.renderArea.extent.height = static_cast<uint32_t>(size.height());
+    beginInfo.clearValueCount = m_window->sampleCountFlagBits() > VK_SAMPLE_COUNT_1_BIT ? 3 : 2;
+    beginInfo.pClearValues = clearValues;
+
+    vkCmdBeginRenderPass(commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    VkPipeline bound = imp ? m_lensPipeline : m_pipeline;
+    if (viewSharpened) {
+        // drawn below, from its result
+    } else if (imp) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_lensPipeline);
+        const VkDescriptorSet sets[2] = {m_lensSets[frameSlot], lutSet};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            m_lensPipelineLayout, 0, 2, sets, 0, nullptr);
+    } else if (drawPicture) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+        const VkDescriptorSet sets[2] = {m_descriptorSet, lutSet};
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            m_pipelineLayout, 0, 2, sets, 0, nullptr);
+    }
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+    if (viewSharpened)
+        drawSharpened(*viewSharpened, 1.0f);
+    if (panes.size() > 1 && drawPicture && !viewSharpened) {
+        VkClearAttachment gap{};
+        gap.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        gap.colorAttachment = 0;
+        gap.clearValue.color = gapColor;
+        VkClearRect cr{};
+        cr.rect = scissor;
+        cr.layerCount = 1;
+        vkCmdClearAttachments(commandBuffer, 1, &gap, 1, &cr);
+    }
+
+    if (effects && !viewSharpened)
         m_effects.bind(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                        imp ? m_lensPipelineLayout : m_pipelineLayout, 2, grade.effects,
                        outputRect, lookSet);
     for (const PaneDraw &d : panes) {
-        if (!drawPicture)
+        if (!drawPicture || viewSharpened)
             break;
         if (panes.size() > 1) {
             const VkViewport pv{d.x, d.y, d.w, d.h, 0.0f, 1.0f};
@@ -827,6 +976,11 @@ void EquirectViewportRenderer::startNextFrame()
         const auto &d = insets[i];
         if (!insetSlots[i])
             continue; // no picture yet, or no memory for it
+        if (insetSharpened[i]) { // a flat clip with a sharpen, from its result
+            drawSharpened(*insetSharpened[i], d.look.opacity);
+            insetBound = m_insetPipeline;
+            continue;
+        }
         const InsetSlot &slot = *insetSlots[i];
         const inset::Rect r = inset::place(d.look, d.frame, d.aspect, rectW, rectH);
         if (r.empty() || d.look.opacity <= 0.0f)

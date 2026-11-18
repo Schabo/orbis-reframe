@@ -779,6 +779,7 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         for (auto& [img, view] : d->nv12Views)
             vkDestroyImageView(d->device, view, nullptr);
         d->nv12Views.clear();
+        d->sharpen.destroy();
         d->luts.destroy();
         d->effects.destroy();
         if (d->pipeline) vkDestroyPipeline(d->device, d->pipeline, nullptr);
@@ -1175,6 +1176,10 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     if (!d->effects.init({d->phys, d->device}, VK_SHADER_STAGE_COMPUTE_BIT, fxErr))
         std::fprintf(stderr, "[VulkanFisheyeStitcher] %s; clips are exported without their "
                              "effects\n",
+                     fxErr.c_str());
+    else if (!d->sharpen.init({d->phys, d->device}, d->luts.layout(), d->effects.layout(), fxErr))
+        std::fprintf(stderr, "[VulkanFisheyeStitcher] %s; clips are exported without their "
+                             "sharpen\n",
                      fxErr.c_str());
 
     // The export reproject pass is optional -- a build without the SPV, or a

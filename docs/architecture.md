@@ -156,8 +156,9 @@ a change on real clips without the GUI ([`tools/README.md`](../tools/README.md))
    effects (`fx::ClipEffects`, `src/core/ClipEffects.h`) in the same pass.
    A clip has at most one of each effect, run in a fixed order: the colour
    look (a creative 3D LUT, `fx::Look`; the camera's conversion LUT is the
-   grade's, before the adjustments), the vignette, the grain. Per-pixel
-   effects are placed against the whole output frame, not the pane or
+   grade's, before the adjustments), the sharpen, the vignette, the grain.
+   The sharpen needs its neighbours, so it is a pass of its own (below).
+   Per-pixel effects are placed against the whole output frame, not the pane or
    inset being drawn; the picture outside the clip's (a split's divider, a
    flat clip's bars) is left alone. The subject tracker and the plate scan
    see the picture without them.
@@ -213,6 +214,25 @@ every frame (film grain) takes a frame number from whoever draws the frame
 a transition's layer its source frame, and the viewport counts the pictures it
 has shown, so a paused frame keeps its grain. Its noise is an integer hash,
 the same bits in GLSL and C++, so the paths agree at the same output size.
+
+The sharpen (`fx::Sharpen`, an unsharp mask on the luma) can't be drawn
+pixel by pixel. A clip with one draws its views into a canvas instead of
+its frame (the effects block's `canvas`): the graded picture with its
+look, and each pixel's label -- 0 where there's no picture (a split's
+divider, a flat clip's bars, outside a globe's disc), another number per
+pane. `src/render/shaders/sharpen.comp` (`render::VulkanSharpen`) then
+blurs the canvas's luma across and down, each pixel only from pixels of
+its own label, adds the difference back to red, green and blue alike,
+runs the vignette and grain, and writes the frame (NV12, P010 or RGBA8).
+So no halo crosses a pane's edge and the divider stays as it is. The GPU
+export's canvas is a buffer the view compute shaders write; the viewport's
+is an RGBA16F image (`EquirectViewportRendererSharpen.cpp`) drawn before
+the window's render pass and copied into the same buffer, the sharpened
+frame drawn into the window as a full-output inset, with the overlays on
+top. The CPU export grades a whole picture first, then sharpens it
+(`src/core/Sharpen.h`, the shader's twin), then runs the per-pixel
+effects. Its radius is against the output frame's height, so the viewport
+sharpens at its own size. A clip without a sharpen is drawn as before.
 
 A split clip's picture is several views, one per pane: where each pane
 goes, and so its aspect, comes from `pane::rects` (`src/core/PaneLayout.h`)

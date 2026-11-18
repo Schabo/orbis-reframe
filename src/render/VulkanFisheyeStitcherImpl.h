@@ -8,6 +8,7 @@
 #include "VulkanFisheyeStitcher.h"
 #include "VulkanLut.h"
 #include "VulkanEffects.h"
+#include "VulkanSharpen.h"
 
 #include <orbis-core/stitch/SeamColourBlend.h> // orbiscore::SeamVeilFade, the new stitcher's fade
 #include <orbis-core/stitch/SeamCut.h>         // SeamCutStats, the cut pass's rows / patch
@@ -227,6 +228,9 @@ struct VulkanFisheyeStitcher::Impl {
     // The clips' effects (set 2 of the same, read by their effects builds,
     // with the colour look's LUT from `luts` as set 3).
     VulkanEffectsRing effects;
+    // A clip's sharpen: its views draw its canvas, which this sharpens and
+    // writes into flatBuf (with the effects after it).
+    VulkanSharpen sharpen;
     // The reproject and view pipeline layouts' sets: `first`, the LUTs and,
     // when there's a ring, the effects and the look's LUT. Returns how many.
     uint32_t setLayouts(VkDescriptorSetLayout first, VkDescriptorSetLayout out[4]) const

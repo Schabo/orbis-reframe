@@ -46,6 +46,15 @@ void main() {
         discard;
     vec3 c = gradeColor(t.a > 0.0 ? min(t.rgb / t.a, vec3(1.0)) : vec3(0.0), pc.grade, pc.lut, 1.0);
 #ifdef EFFECTS
+    // A flat main clip with a sharpen: its picture into the sharpen's canvas
+    // (drawn without blending), its label in alpha -- a pixel the picture
+    // covers at least half of; the rest has no picture.
+    if (drawsCanvas()) {
+        if (alpha < 0.5)
+            discard;
+        outColor = vec4(applyLook(c, 1.0), fx.canvas.x);
+        return;
+    }
     c = applyEffects(c, gl_FragCoord.xy, 1.0);
 #endif
     outColor = vec4(mix(c, pc.borderColor.rgb, border), alpha);

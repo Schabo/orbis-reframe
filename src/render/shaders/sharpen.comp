@@ -1,0 +1,175 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+// The sharpen (fx::Sharpen) on a frame's canvas, and the effects after it:
+// the GPU twin of src/core/Sharpen.h -- change both together. The views of a
+// clip with a sharpen draw into the canvas (clip_effects.glsl, `canvas`):
+// the graded picture with its look, and each pixel's label (0 = no picture
+// there -- a split screen's divider, outside a globe's disc; another number
+// per pane). Then:
+//   pass 0: (before the views) the canvas filled with `fill`, label 0 --
+//           what no view covers;
+//   pass 1: the canvas's luma blurred across, each pixel only from pixels
+//           of its own label, into `across`;
+//   pass 2: that blurred down, likewise; the pixel sharpened by the
+//           difference (Sharpen.h's sharpenPixel), the vignette and grain
+//           (applyPixelEffects) on pixels with a picture, and the frame
+//           written out as NV12, RGBA8 or P010 (fisheye_view_nv12.comp's
+//           layouts). One invocation is a 4 x 2 block, so w is a multiple
+//           of 4 and h of 2. The vignette and grain are placed against the
+//           effects block's `frame`, and the blur's spread is against the
+//           frame's height (the caller's), which can be smaller than the
+//           canvas (the viewport's, rounded up to whole blocks).
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// The canvas: per pixel two words, half floats -- red and green, then blue
+// and the label. Values in [0, white].
+layout(std430, set = 0, binding = 0) buffer Canvas { uvec2 canvas[]; };
+layout(std430, set = 0, binding = 1) buffer Across { float across[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Out1 { uint px[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Out2 { uvec2 px2[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer Out4 { uvec4 px4[]; };
+
+layout(push_constant) uniform PC {
+    int pass;
+    int w;
+    int h;
+    int fmt;         // 0 = NV12, 1 = RGBA8, 2 = P010
+    float amount;    // fx::Render::sharpen[0]
+    float sigma;     // the blur's spread, pixels
+    float threshold; // in canvas units (a fraction of white, times white)
+    int taps;        // either side of the centre (fx::sharpenKernel)
+    float white;     // the canvas's white: 255 (the export), 1 (the viewport)
+    uint fill;       // pass 0: RGBA, R in the low byte
+    // RGBA8: 1 = alpha 0 (and black) where there's no picture (label 0), for
+    // a picture drawn over another (the viewport's flat clip); 0 = opaque.
+    int labelAlpha;
+} pc;
+
+// The effects block (set 2) without the look, which the views have drawn.
+#define EFFECTS
+#define CLIP_EFFECTS_NO_LOOK
+#include "clip_effects.glsl"
+
+vec3 rgbAt(int i)
+{
+    uvec2 v = canvas[i];
+    return vec3(unpackHalf2x16(v.x), unpackHalf2x16(v.y).x);
+}
+float labelAt(int i) { return unpackHalf2x16(canvas[i].y).y; }
+// Sharpen.h's sharpenLuma.
+float lumaOf(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+float weight(int i) { return exp(-float(i * i) / (2.0 * pc.sigma * pc.sigma)); }
+
+// Pass 2's colour at (x, y), 0..255; alpha 0 where there's no picture.
+vec4 finished(int x, int y)
+{
+    int i = y * pc.w + x;
+    vec3 c = rgbAt(i);
+    float l = labelAt(i);
+    if (l == 0.0)
+        return vec4(c * (255.0 / pc.white), 0.0);
+    float sum = across[i], wsum = 1.0;
+    for (int k = 1; k <= pc.taps; ++k) {
+        float wk = weight(k);
+        if (y - k >= 0 && labelAt(i - k * pc.w) == l) {
+            sum += across[i - k * pc.w] * wk;
+            wsum += wk;
+        }
+        if (y + k < pc.h && labelAt(i + k * pc.w) == l) {
+            sum += across[i + k * pc.w] * wk;
+            wsum += wk;
+        }
+    }
+    float d = lumaOf(c) - sum / wsum;
+    float add = pc.amount * sign(d) * max(abs(d) - pc.threshold, 0.0);
+    c = clamp(c + add, vec3(0.0), vec3(pc.white));
+    c = applyPixelEffects(c, vec2(x, y) + 0.5, pc.white);
+    return vec4(c * (255.0 / pc.white), 1.0);
+}
+
+// fisheye_view_nv12.comp's BT.709 limited range and packing.
+float lumaY(vec3 c) { return 16.0 + 0.182586 * c.r + 0.614231 * c.g + 0.062007 * c.b; }
+float chromaU(vec3 c) { return 128.0 - 0.100644 * c.r - 0.338572 * c.g + 0.439216 * c.b; }
+float chromaV(vec3 c) { return 128.0 + 0.439216 * c.r - 0.398942 * c.g - 0.040274 * c.b; }
+uint q8(float x) { return uint(clamp(x + 0.5, 0.0, 255.0)); }
+uint q10(float x) { return uint(clamp(x * 4.0 + 0.5, 0.0, 1023.0)) << 6; }
+uint pack10(float a, float b) { return q10(a) | (q10(b) << 16); }
+uint rgba8(vec4 c)
+{
+    if (pc.labelAlpha != 0 && c.a == 0.0)
+        return 0u;
+    uvec3 q = uvec3(clamp(c.rgb + 0.5, vec3(0.0), vec3(255.0)));
+    return q.r | (q.g << 8) | (q.b << 16) | (255u << 24);
+}
+
+void main()
+{
+    ivec2 g = ivec2(gl_GlobalInvocationID.xy);
+    if (pc.pass == 0 || pc.pass == 1) {
+        if (g.x >= pc.w || g.y >= pc.h)
+            return;
+        int i = g.y * pc.w + g.x;
+        if (pc.pass == 0) {
+            vec3 c = vec3(float(pc.fill & 0xFFu), float((pc.fill >> 8) & 0xFFu),
+                          float((pc.fill >> 16) & 0xFFu)) * (pc.white / 255.0);
+            canvas[i] = uvec2(packHalf2x16(c.rg), packHalf2x16(vec2(c.b, 0.0)));
+            return;
+        }
+        float l = labelAt(i);
+        if (l == 0.0)
+            return;
+        float sum = lumaOf(rgbAt(i)), wsum = 1.0;
+        for (int k = 1; k <= pc.taps; ++k) {
+            float wk = weight(k);
+            if (g.x - k >= 0 && labelAt(i - k) == l) {
+                sum += lumaOf(rgbAt(i - k)) * wk;
+                wsum += wk;
+            }
+            if (g.x + k < pc.w && labelAt(i + k) == l) {
+                sum += lumaOf(rgbAt(i + k)) * wk;
+                wsum += wk;
+            }
+        }
+        across[i] = sum / wsum;
+        return;
+    }
+
+    // Pass 2: the 4 x 2 block at (4 g.x, 2 g.y).
+    if (g.x >= pc.w / 4 || g.y >= pc.h / 2)
+        return;
+    int x0 = g.x * 4, y0 = g.y * 2;
+    vec4 f[8];
+    for (int r = 0; r < 2; ++r)
+        for (int k = 0; k < 4; ++k)
+            f[r * 4 + k] = finished(x0 + k, y0 + r);
+
+    int quads = pc.w / 4; // 4-pixel words per row
+    if (pc.fmt == 1) {
+        for (int r = 0; r < 2; ++r)
+            px4[(y0 + r) * quads + g.x] = uvec4(rgba8(f[r * 4]), rgba8(f[r * 4 + 1]),
+                                                rgba8(f[r * 4 + 2]), rgba8(f[r * 4 + 3]));
+        return;
+    }
+    vec3 c[8];
+    for (int k = 0; k < 8; ++k)
+        c[k] = f[k].rgb;
+    vec3 c0 = (c[0] + c[1] + c[4] + c[5]) * 0.25;
+    vec3 c1 = (c[2] + c[3] + c[6] + c[7]) * 0.25;
+    int uvAt = pc.h * quads + g.y * quads + g.x;
+    if (pc.fmt == 2) {
+        for (int r = 0; r < 2; ++r)
+            px2[(y0 + r) * quads + g.x] =
+                uvec2(pack10(lumaY(c[r * 4]), lumaY(c[r * 4 + 1])),
+                      pack10(lumaY(c[r * 4 + 2]), lumaY(c[r * 4 + 3])));
+        px2[uvAt] = uvec2(pack10(chromaU(c0), chromaV(c0)), pack10(chromaU(c1), chromaV(c1)));
+        return;
+    }
+    for (int r = 0; r < 2; ++r)
+        px[(y0 + r) * quads + g.x] = q8(lumaY(c[r * 4])) | (q8(lumaY(c[r * 4 + 1])) << 8) |
+                                     (q8(lumaY(c[r * 4 + 2])) << 16) |
+                                     (q8(lumaY(c[r * 4 + 3])) << 24);
+    px[uvAt] = q8(chromaU(c0)) | (q8(chromaV(c0)) << 8) | (q8(chromaU(c1)) << 16) |
+               (q8(chromaV(c1)) << 24);
+}

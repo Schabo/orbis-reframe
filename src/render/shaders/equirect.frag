@@ -39,6 +39,12 @@ const float PI = 3.14159265358979323846;
 #include "view_projection.glsl"
 #include "clip_effects.glsl"
 
+#ifdef EFFECTS
+#define OUTSIDE_ALPHA (drawsCanvas() ? 0.0 : 1.0)
+#else
+#define OUTSIDE_ALPHA 1.0
+#endif
+
 void main() {
 #ifdef VIEW_SHAPE
     vec3 rayView = viewRayAt(inNdc, pc.fovY, pc.aspect, pc.distortion, pc.panini, pc.fisheye);
@@ -79,7 +85,11 @@ void main() {
     outColor = texture(equirectSampler, uv);
     outColor.rgb = gradeColor(outColor.rgb, pc.colorGrade, pc.colorLut, 1.0);
 #ifdef EFFECTS
-    outColor.rgb = applyEffects(outColor.rgb, gl_FragCoord.xy, 1.0);
+    // The sharpen's canvas: the label in alpha, 0 where there's no picture.
+    if (drawsCanvas())
+        outColor = vec4(applyLook(outColor.rgb, 1.0), fx.canvas.x);
+    else
+        outColor.rgb = applyEffects(outColor.rgb, gl_FragCoord.xy, 1.0);
 #endif
     // Outside a globe's disc, or where Fisheye shows nothing: black.
 #ifdef VIEW_SHAPE
@@ -87,5 +97,5 @@ void main() {
 #else
     if (!viewInPicture(inNdc, pc.fovY, pc.aspect, pc.distortion))
 #endif
-        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        outColor = vec4(0.0, 0.0, 0.0, OUTSIDE_ALPHA);
 }

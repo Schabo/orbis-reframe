@@ -7,6 +7,7 @@
 #include "InsetCompositor.h"
 #include "InsetGeometry.h"
 #include "ReframeRenderer.h"
+#include "Sharpen.h"
 #include "support/TestMedia.h"
 
 #include <algorithm>
@@ -455,6 +456,89 @@ void testLook()
     CHECK(lit[0] == grey && lit[2] == grey);
 }
 
+// The sharpen on the CPU export's two paths. A 360 view: a flat picture
+// stays as it is (and still gets the vignette after it), an edge
+// overshoots on both sides, and the pixels outside a globe's disc stay
+// black. A flat clip's picture: sharpened in its own pixels, the radius
+// against the frame's height -- as fx::sharpen() on the graded picture.
+void testSharpen()
+{
+    fx::ClipEffects e;
+    e.sharpen = fx::Sharpen{true, 150.0f, 100.0f, 0.0f};
+    exportpipe::ReframeView view;
+    view.colorGrade.effects = e.render();
+    constexpr int kEqW = 1024, kEqH = 512, kOut = 64;
+    std::vector<uint8_t> eq(size_t(kEqW) * kEqH * 4, 255);
+    const auto paint = [&](int split) { // columns before `split` dark, the rest light
+        for (int y = 0; y < kEqH; ++y)
+            for (int x = 0; x < kEqW; ++x)
+                for (int k = 0; k < 3; ++k)
+                    eq[(size_t(y) * kEqW + x) * 4 + k] = x < split ? 60 : 180;
+    };
+    std::vector<uint8_t> plain(size_t(kOut) * kOut * 4), sharp(plain.size());
+    paint(0);
+    exportpipe::RenderRectilinear(eq.data(), kEqW, kEqH, sharp.data(), kOut, kOut, view);
+    CHECK(std::all_of(sharp.begin(), sharp.end(), [](uint8_t v) { return v == 180 || v == 255; }));
+    // with a vignette: the same as the vignette alone
+    e.vignette = fx::Vignette{true, -60.0f, 20.0f, 50.0f};
+    view.colorGrade.effects = e.render();
+    exportpipe::RenderRectilinear(eq.data(), kEqW, kEqH, sharp.data(), kOut, kOut, view);
+    exportpipe::ReframeView vig = view;
+    vig.colorGrade.effects.sharpen = {};
+    exportpipe::RenderRectilinear(eq.data(), kEqW, kEqH, plain.data(), kOut, kOut, vig);
+    CHECK(sharp == plain && sharp[0] < 180);
+    e.vignette.reset();
+    view.colorGrade.effects = e.render();
+
+    // An edge straight ahead (the view's middle column looks at the
+    // equirect's middle), sharpened at a 1080-line frame.
+    paint(kEqW / 2);
+    view.frame[0] = view.frame[1] = 0.0f;
+    view.frame[2] = 1920.0f;
+    view.frame[3] = 1080.0f;
+    vig.colorGrade.effects = {};
+    vig.pose.fov = view.pose.fov = 0.7; // 40 degrees
+    exportpipe::RenderRectilinear(eq.data(), kEqW, kEqH, plain.data(), kOut, kOut, vig);
+    exportpipe::RenderRectilinear(eq.data(), kEqW, kEqH, sharp.data(), kOut, kOut, view);
+    const auto at = [](const std::vector<uint8_t> &px, int x) {
+        return int(px[(size_t(kOut / 2) * kOut + x) * 4 + 1]);
+    };
+    int lo = 255, hi = 0;
+    for (int x = 0; x < kOut; ++x) {
+        lo = std::min(lo, at(sharp, x));
+        hi = std::max(hi, at(sharp, x));
+    }
+    CHECK(lo < 55 && hi > 185 && at(sharp, 2) == at(plain, 2) && at(sharp, kOut - 3) == 180);
+
+    // A globe: the corners outside its disc stay black.
+    exportpipe::ReframeView globe = view;
+    globe.pose.fov = 3.0;
+    globe.pose.distortion = 2.0f; // the orthographic end: a disc
+    exportpipe::RenderRectilinear(eq.data(), kEqW, kEqH, sharp.data(), kOut, kOut, globe);
+    CHECK(sharp[0] == 0 && sharp[1] == 0 && sharp[2] == 0 && sharp[3] == 255);
+
+    // A flat clip's 32 x 8 picture covering 64 x 16 pixels of a 1080-line
+    // frame: sharpened at half the radius in its own pixels.
+    constexpr int kW = 32, kH = 8;
+    std::vector<uint8_t> pic(size_t(kW) * kH * 4);
+    std::vector<float> want(size_t(kW) * kH * 4);
+    for (int i = 0; i < kW * kH; ++i)
+        for (int k = 0; k < 4; ++k) {
+            const uint8_t v = k == 3 ? 255 : (i % kW < kW / 2 ? 60 : 180);
+            pic[size_t(i) * 4 + k] = v;
+            want[size_t(i) * 4 + k] = v;
+        }
+    color::Grade g;
+    g.effects = e.render();
+    const float rect[4] = {100.0f, 100.0f, 64.0f, 16.0f};
+    exportpipe::GradeRgba(pic.data(), kW, kH, g, rect, 1920, 1080);
+    fx::sharpen(want.data(), 4, nullptr, kW, kH, 540.0f, g.effects, 255.0f);
+    bool same = true;
+    for (size_t i = 0; i < pic.size(); ++i)
+        same = same && std::abs(int(pic[i]) - int(std::lround(want[i]))) <= 1;
+    CHECK(same && pic[(kW / 2 - 1) * 4] < 60 && pic[(kW / 2) * 4] > 180);
+}
+
 } // namespace
 
 // A layer whose pictures come from a PictureSource (a transition's other
@@ -667,6 +751,7 @@ int main()
     testColorGrade();
     testEffects();
     testLook();
+    testSharpen();
     testFitted();
     testPictureLayer();
     testMotion();

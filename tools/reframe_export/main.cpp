@@ -83,6 +83,7 @@ struct Args {
     float lutStrength = 100.0f; // percent
     std::optional<fx::Vignette> vignette;
     std::optional<fx::Grain> grain;
+    std::optional<fx::Sharpen> sharpen;
     std::string look;           // a built-in look's id or a .cube file
     float lookStrength = 100.0f; // percent
     // One flat-video overlay, composited like the app's export does.
@@ -144,6 +145,9 @@ const char kUsage[] =
     "  --look bw|FILE.cube    a colour look after the grade: a built-in one by id\n"
     "                        (bw = Black & White) or a 3D LUT file (fx::Look)\n"
     "  --look-strength PCT    how much of the look (default 100)\n"
+    "  --sharpen A,R,T        sharpen after the grade (and look): amount 0..200,\n"
+    "                        radius 50..300 (100 = 1 px at 1080 lines), threshold\n"
+    "                        0..20 % of white (fx::Sharpen)\n"
     "  --vignette A,S,F       a vignette after the grade: amount -100..100 (negative\n"
     "                        darkens), size and softness 0..100 (fx::Vignette)\n"
     "  --grain A,S,C          film grain after the grade (and vignette): amount 0..100,\n"
@@ -274,6 +278,13 @@ Args parseArgs(int argc, char** argv)
                 die("bad --vignette (want AMOUNT,SIZE,SOFTNESS)");
             v.clamp();
             a.vignette = v;
+        } else if (k == "--sharpen") {
+            fx::Sharpen s;
+            if (std::sscanf(next("--sharpen").c_str(), "%f,%f,%f", &s.amount, &s.radius,
+                            &s.threshold) != 3)
+                die("bad --sharpen (want AMOUNT,RADIUS,THRESHOLD)");
+            s.clamp();
+            a.sharpen = s;
         } else if (k == "--grain") {
             fx::Grain g;
             if (std::sscanf(next("--grain").c_str(), "%f,%f,%f", &g.amount, &g.size,
@@ -474,11 +485,15 @@ int main(int argc, char** argv)
         std::printf("lut:    %s (%d^3, %.0f%%)\n", a.lutPath.c_str(), grade.lut->size,
                     grade.lutMix * 100.0f);
     }
-    if (a.vignette || a.grain) {
+    if (a.vignette || a.grain || a.sharpen) {
         fx::ClipEffects e;
         e.vignette = a.vignette;
         e.grain = a.grain;
+        e.sharpen = a.sharpen;
         grade.effects = e.render();
+        if (a.sharpen)
+            std::printf("sharpen: amount=%.0f%% radius=%.0f%% threshold=%.1f%%\n",
+                        a.sharpen->amount, a.sharpen->radius, a.sharpen->threshold);
         if (a.vignette)
             std::printf("vignette: amount=%.0f%% size=%.0f%% softness=%.0f%%\n",
                         a.vignette->amount, a.vignette->size, a.vignette->softness);

@@ -144,7 +144,7 @@ void EquirectViewportRenderer::createDescriptorSet()
 }
 
 VkPipeline EquirectViewportRenderer::makePipeline(render::shaders::Spirv frag, VkPipelineLayout layout,
-                                                  bool blend)
+                                                  bool blend, VkRenderPass pass)
 {
     VkShaderModule vertShader = loadShader(render::shaders::equirectVert());
     VkShaderModule fragShader = loadShader(frag);
@@ -180,7 +180,8 @@ VkPipeline EquirectViewportRenderer::makePipeline(render::shaders::Spirv frag, V
 
     VkPipelineMultisampleStateCreateInfo multisample{};
     multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisample.rasterizationSamples = m_window->sampleCountFlagBits();
+    multisample.rasterizationSamples =
+        pass ? VK_SAMPLE_COUNT_1_BIT : m_window->sampleCountFlagBits();
 
     // QVulkanWindow's default render pass has a depth-stencil attachment; the
     // fullscreen triangle neither tests nor writes it, but the pipeline must
@@ -225,7 +226,7 @@ VkPipeline EquirectViewportRenderer::makePipeline(render::shaders::Spirv frag, V
     pipelineInfo.pColorBlendState = &colorBlend;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = layout;
-    pipelineInfo.renderPass = m_window->defaultRenderPass();
+    pipelineInfo.renderPass = pass ? pass : m_window->defaultRenderPass();
 
     VkPipeline pipeline = VK_NULL_HANDLE;
     const VkResult r = vkCreateGraphicsPipelines(m_window->device(), VK_NULL_HANDLE, 1,
@@ -960,7 +961,8 @@ void EquirectViewportRenderer::destroyInsetResources()
     m_insetSampler = VK_NULL_HANDLE;
 }
 
-bool EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h)
+bool EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h,
+                                               bool staging)
 {
     if (slot.img && slot.w == w && slot.h == h)
         return true;
@@ -1008,7 +1010,7 @@ bool EquirectViewportRenderer::ensureInsetSlot(InsetSlot &slot, uint32_t w, uint
     }
 
     const VkDeviceSize bytes = VkDeviceSize(w) * h * 4;
-    const int frames = std::max(1, m_window->concurrentFrameCount());
+    const int frames = staging ? std::max(1, m_window->concurrentFrameCount()) : 0;
     slot.staging.assign(frames, VK_NULL_HANDLE);
     slot.stagingMem.assign(frames, VK_NULL_HANDLE);
     slot.stagingMap.assign(frames, nullptr);
@@ -1069,11 +1071,12 @@ void EquirectViewportRenderer::initResources()
     lutDev.queueFamily = m_window->graphicsQueueFamilyIndex();
     lutDev.waitIdle = [device = lutDev.device] { vkDeviceWaitIdle(device); };
     std::string lutErr;
-    if (!m_luts.init(lutDev, VK_SHADER_STAGE_FRAGMENT_BIT, lutErr))
+    // Compute too: the sharpen's pass reads the effects and a LUT set.
+    if (!m_luts.init(lutDev, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, lutErr))
         std::fprintf(stderr, "[viewport] %s; the picture can't be drawn\n", lutErr.c_str());
     std::string fxErr;
     if (!m_effects.init({m_window->physicalDevice(), m_window->device()},
-                        VK_SHADER_STAGE_FRAGMENT_BIT, fxErr))
+                        VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, fxErr))
         std::fprintf(stderr, "[viewport] %s; clips are drawn without their effects\n",
                      fxErr.c_str());
     createSampler();
@@ -1081,6 +1084,7 @@ void EquirectViewportRenderer::initResources()
     createPipeline();
     createLensResources();
     createInsetResources();
+    createSharpenResources();
 
     if (!m_lastRgba.empty()) {
         // Resources were rebuilt (e.g. resize on Wayland) -- restore the frame
@@ -1102,6 +1106,7 @@ void EquirectViewportRenderer::releaseResources()
     VkDevice device = m_window->device();
 
     vkDeviceWaitIdle(device);
+    destroySharpenResources(); // its result slots' sets come from the inset pools
     destroyInsetResources();
     destroyLensResources();
     destroyTextureResources();

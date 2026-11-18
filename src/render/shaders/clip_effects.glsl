@@ -16,14 +16,22 @@
 // being lookLut (set 3, render::VulkanLutStore; the identity one when the
 // clip has no look). The look runs first, on the graded picture; the CPU
 // export applies it in exportpipe::gradeRgb().
+//
+// `canvas.x` > 0: the clip has a sharpen, and this draw writes its canvas --
+// the graded picture with the look but not the other effects, and its label
+// (canvas.x; 0 where the view has no picture) in place of alpha -- for
+// sharpen.comp, which sharpens it and then runs applyPixelEffects().
 #ifdef EFFECTS
 layout(set = 2, binding = 0) uniform ClipEffects {
     vec4 frame;
     vec4 vignette;
     vec4 grain;
     vec4 look;
+    vec4 canvas;
 } fx;
+#ifndef CLIP_EFFECTS_NO_LOOK
 layout(set = 3, binding = 0) uniform sampler3D lookLut;
+#endif
 
 // fx::grainHash / grainCell / grainNoise / grainSeed.
 uint grainHash(uint x)
@@ -62,8 +70,12 @@ uint grainSeed(float frame, uint channel)
     return grainHash(uint(frame) * 4u + channel + 1u);
 }
 
-// `c` in [0, white]; `p` the pixel's centre in the shader's coordinates.
-vec3 applyEffects(vec3 c, vec2 p, float white)
+// Whether this draw writes the sharpen's canvas (see the top).
+bool drawsCanvas() { return fx.canvas.x > 0.0; }
+
+#ifndef CLIP_EFFECTS_NO_LOOK
+// `c` in [0, white].
+vec3 applyLook(vec3 c, float white)
 {
     if (fx.look.x > 0.0) {
         // As gradeColor()'s LUT: texel centres, entry 0 at 0.5 / n.
@@ -72,6 +84,14 @@ vec3 applyEffects(vec3 c, vec2 p, float white)
         vec3 l = texture(lookLut, x * ((n - 1.0) / n) + 0.5 / n).rgb;
         c = mix(c, clamp(l, 0.0, 1.0) * white, fx.look.x);
     }
+    return c;
+}
+#endif
+
+// The effects after the look and the sharpen: the vignette and the grain.
+// `c` in [0, white]; `p` the pixel's centre in the shader's coordinates.
+vec3 applyPixelEffects(vec3 c, vec2 p, float white)
+{
     if (fx.vignette.x != 0.0) {
         vec2 uv = 2.0 * (p - fx.frame.xy) / fx.frame.zw - 1.0;
         float r = sqrt(dot(uv, uv) * 0.5);
@@ -94,4 +114,12 @@ vec3 applyEffects(vec3 c, vec2 p, float white)
     }
     return c;
 }
+
+#ifndef CLIP_EFFECTS_NO_LOOK
+// All of them, for a clip without a sharpen.
+vec3 applyEffects(vec3 c, vec2 p, float white)
+{
+    return applyPixelEffects(applyLook(c, white), p, white);
+}
+#endif
 #endif

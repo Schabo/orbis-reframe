@@ -13,6 +13,7 @@ namespace {
 #include "fisheye_stitch.comp.h"
 #include "fisheye_stitch_nv12.comp.h"
 #include "seam_flow.comp.h"
+#include "sharpen.comp.h"
 #include "reframe_reproject.comp.h"
 #include "fisheye_view_nv12.comp.h"
 #include "equirect.frag.shape.h"
@@ -46,6 +47,7 @@ ORBIS_SPIRV(fisheyeStitchNv12Comp, kSpv_fisheye_stitch_nv12_comp)
 ORBIS_SPIRV(reframeReprojectComp, kSpv_reframe_reproject_comp)
 ORBIS_SPIRV(fisheyeViewNv12Comp, kSpv_fisheye_view_nv12_comp)
 ORBIS_SPIRV(seamFlowComp, kSpv_seam_flow_comp)
+ORBIS_SPIRV(sharpenComp, kSpv_sharpen_comp)
 ORBIS_SPIRV(equirectFragShape, kSpv_equirect_frag_shape)
 ORBIS_SPIRV(fisheyeViewFragShape, kSpv_fisheye_view_frag_shape)
 ORBIS_SPIRV(reframeReprojectCompShape, kSpv_reframe_reproject_comp_shape)

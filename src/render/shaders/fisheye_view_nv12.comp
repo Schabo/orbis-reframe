@@ -119,12 +119,33 @@ vec3 shade(int px, int py)
 {
     vec3 c = gradeColor(blurredLenses(stitchDir(viewDir(px, py))), pc.colorGrade, pc.colorLut, 255.0);
 #ifdef EFFECTS
-    c = applyEffects(c, vec2(px, py) + 0.5, 255.0);
+    c = drawsCanvas() ? applyLook(c, 255.0) : applyEffects(c, vec2(px, py) + 0.5, 255.0);
 #endif
     vec2 ndc = vec2((float(px) + 0.5) / float(pc.outW) * 2.0 - 1.0,
                     (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0);
     return viewInPicture(ndc, pc.fovY, pc.aspect, pc.distortion VIEW_SHAPE_ARGS) ? c : vec3(0.0);
 }
+
+#ifdef EFFECTS
+// The sharpen's canvas (clip_effects.glsl): 4 pixels from basePx on, as
+// half floats -- red and green, then blue and the label -- in two 16-byte
+// words at the canvas's pixel (row, 4 * col).
+uvec4 canvasWords(int basePx, int py, int i0)
+{
+    uint w[4];
+    for (int i = 0; i < 2; ++i) {
+        int x = basePx + i0 + i;
+        vec2 ndc = vec2((float(x) + 0.5) / float(pc.outW) * 2.0 - 1.0,
+                        (float(py) + 0.5) / float(pc.outH) * 2.0 - 1.0);
+        float label =
+            viewInPicture(ndc, pc.fovY, pc.aspect, pc.distortion VIEW_SHAPE_ARGS) ? fx.canvas.x : 0.0;
+        vec3 c = shade(x, py);
+        w[i * 2] = packHalf2x16(c.rg);
+        w[i * 2 + 1] = packHalf2x16(vec2(c.b, label));
+    }
+    return uvec4(w[0], w[1], w[2], w[3]);
+}
+#endif
 
 // BT.709 limited range, as reframe_reproject.comp.
 float lumaY(vec3 c) { return 16.0 + 0.182586 * c.r + 0.614231 * c.g + 0.062007 * c.b; }
@@ -164,6 +185,14 @@ void main()
     int row = gid.y + ((pc.origin >> 16) & 0xFFFF);
     int col = (pc.origin & 0xFFFF) / 4 + gid.x;
 
+#ifdef EFFECTS
+    if (drawsCanvas()) { // binding 3 is the canvas
+        int at = (row * strideQ + col) * 2;
+        px4[at] = canvasWords(basePx, gid.y, 0);
+        px4[at + 1] = canvasWords(basePx, gid.y, 2);
+        return;
+    }
+#endif
     if (pc.fmt == 1) {
         uint w[4];
         for (int i = 0; i < 4; ++i) {

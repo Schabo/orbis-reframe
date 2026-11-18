@@ -13,6 +13,7 @@
 #include "EquirectViewportWindow.h"
 #include "VulkanLut.h"
 #include "VulkanEffects.h"
+#include "VulkanSharpen.h"
 #include "EmbeddedShaders.h"
 #include "FrameStats.h"
 
@@ -111,7 +112,10 @@ private:
     void endOneTimeCommands(VkCommandBuffer cmd) const;
     // A fullscreen-triangle graphics pipeline with equirect.vert and `frag`.
     // `blend`: straight alpha blending over what's drawn (the insets).
-    VkPipeline makePipeline(render::shaders::Spirv frag, VkPipelineLayout layout, bool blend = false);
+    // `pass`: for that render pass (single-sampled, one colour attachment,
+    // no depth), not the window's.
+    VkPipeline makePipeline(render::shaders::Spirv frag, VkPipelineLayout layout, bool blend = false,
+                            VkRenderPass pass = VK_NULL_HANDLE);
     // The equirect (`lens` false) or lens pipeline for a view: `shaped`
     // (view::Lens::shaped) the shader's view-shape build, `effects`
     // (fx::Render::any) its effects build (EmbeddedShaders.h), made the first
@@ -157,8 +161,9 @@ private:
     InsetSlot *insetSlot(const InsetSlotKey &key);
     // (Re)size `slot` for a w x h picture; waits for the device if it had
     // to recreate it. False (slot left empty, logged) when the GPU has no
-    // memory for it.
-    bool ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h);
+    // memory for it. Without `staging`, for a picture made on the GPU (the
+    // sharpen's results): no upload buffers.
+    bool ensureInsetSlot(InsetSlot &slot, uint32_t w, uint32_t h, bool staging = true);
     // Frees the slot's image and buffers; its descriptor set stays.
     void destroyInsetSlot(InsetSlot &slot);
     // Upload `rgba` into the slot's image, recorded into `cmd`.
@@ -321,4 +326,49 @@ private:
     // False when there's no memory for it: the outlines are left out.
     bool regionPoints(uint32_t slot, const std::vector<float> &pts);
     void destroyRegionSlot(RegionSlot &slot);
+
+    // --- The sharpen (EquirectViewportRendererSharpen.cpp) ---
+    // A clip with a sharpen isn't drawn straight into the window: its views
+    // (or a flat clip's picture) draw into m_canvas, the output rect's size
+    // rounded up to whole 4 x 2 blocks, in their canvas mode
+    // (clip_effects.glsl); that's copied into m_sharpen's canvas, sharpened
+    // with the effects after it into RGBA8, and copied into a slot drawn
+    // into the window as a full-output inset -- before the render pass, so
+    // the insets and outlines still go on top. No compute on the graphics
+    // queue, or no memory: drawn without the sharpen, said once.
+    struct Canvas {
+        VkImage img = VK_NULL_HANDLE;
+        VkDeviceMemory mem = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+        VkFramebuffer fb = VK_NULL_HANDLE;
+        uint32_t w = 0, h = 0;
+        uint32_t failedW = 0, failedH = 0; // ensureCanvas's last failure
+    };
+    void createSharpenResources();
+    void destroySharpenResources();
+    // The canvas, the sharpen's buffers and the result slot `n` (0 the
+    // view, 1 + i the i-th sharpened inset) for a w x h canvas; false when
+    // there's no memory for them.
+    bool ensureCanvas(uint32_t w, uint32_t h);
+    InsetSlot *sharpenResult(int n, uint32_t w, uint32_t h);
+    // The canvas build of a view's pipeline (as viewPipeline's, effects
+    // always) and of the inset's (no blending), for m_canvasPass.
+    VkPipeline canvasPipeline(bool lens, bool shaped);
+    VkPipeline insetCanvasPipeline();
+    // After the canvas pass: the canvas sharpened (`e`, its other effects,
+    // against the frameW x frameH output rect) into `result`.
+    void recordSharpened(VkCommandBuffer cmd, InsetSlot &result, const fx::Render &e,
+                         VkDescriptorSet lookSet, int frameW, int frameH, bool labelAlpha);
+    // Says once why a clip is shown without its sharpen.
+    void sharpenUnavailable(const char *why);
+
+    render::VulkanSharpen m_sharpen;
+    VkRenderPass m_canvasPass = VK_NULL_HANDLE;
+    Canvas m_canvas;
+    VkPipeline m_canvasPipelines[4] = {};    // by lens | shaped << 1
+    bool m_canvasPipelineFailed[4] = {};
+    VkPipeline m_insetCanvasPipeline = VK_NULL_HANDLE;
+    bool m_insetCanvasPipelineFailed = false;
+    std::map<int, InsetSlot> m_sharpenResults; // sharpenResult's, sets from the inset pools
+    bool m_sharpenSaid = false;
 };
