@@ -15,7 +15,8 @@ four views at once.
    sets a keyframe.
 2. The **Reframe** section: the **View** presets, the view at the
    playhead as numbers, and **Track subject…**.
-3. The clip's keyframes: the white diamonds along the bottom of the clip.
+3. The clip's keyframes: the white diamonds in the lane along the bottom
+   of the clip.
 
 ## The view
 
@@ -288,6 +289,16 @@ following the keyframes.
   click **Delete keyframe** in the edit toolbar. The playhead doesn't have
   to be on the exact frame: a keyframe within 0.15 seconds is deleted.
   `Delete` does the same when no clip is selected.
+- **Delete a stretch of keyframes:** drag along the keyframe lane at the
+  bottom of the clip, over the keyframes you want to go. They take the
+  highlight colour (orange in the default theme) and the stretch is
+  tinted. `Shift`+drag adds another stretch. Press `Delete`, or right-click
+  the clip and choose **Delete keyframes (N)**: they're all deleted, as
+  one step that `Ctrl+Z` brings back. While keyframes are selected,
+  `Delete` deletes them and never the clip. `Esc`, a click on the lane
+  between keyframes, or a click on any clip outside the lane clears the
+  selection. A drag in the lane never moves the clip; the clip's ends
+  still trim it.
 - **Delete all keyframes of a clip:** move the playhead into the clip, and
   click **Delete all keyframes** in the edit toolbar (`Ctrl+Shift+K`).
 
@@ -361,7 +372,11 @@ where the subject was last seen, and the playhead waits there. Move the
 playhead to where the subject is visible again and track again from there.
 
 The tracked keyframes are ordinary keyframes. You can change or delete any
-of them, add your own, or delete them all and try again.
+of them, add your own, or delete them all and try again. Tracking sets a
+lot of keyframes; where it went wrong, drag along the clip's keyframe lane
+over that stretch and press `Delete` to clear it (see
+[Changing and deleting keyframes](#changing-and-deleting-keyframes)), then
+track that part again or set keyframes yourself.
 
 **If Track subject is greyed out.** With a note under the button, the
 tracking model is missing from the installation: install orbis-reframe
@@ -419,7 +434,8 @@ that changes the view acts on it: dragging and the mouse wheel in the
 viewport, the **View** buttons, the **Yaw**, **Pitch**, **Roll**,
 **Field of view**, **Distortion**, **Natural**, **Fisheye** and **Easing** fields, `K`, `Shift+K` and **Delete all keyframes**, and
 **Track subject…**. The keyframe diamonds on the clip are the active
-pane's, and `Shift+↓` / `Shift+↑` go to its keyframes.
+pane's, a drag in the keyframe lane selects only its keyframes, and
+`Shift+↓` / `Shift+↑` go to its keyframes.
 
 To make another pane active, click it in the viewport, or pick it under
 **Pane** at the top of the **Reframe** section (it's there only while the

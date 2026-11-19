@@ -161,6 +161,14 @@ bool removeNear(QList<Key> &keys, qint64 timeMs, qint64 snapMs)
     return true;
 }
 
+// Remove the keys at exactly these times (a selection of them); times with
+// no key are ignored. True if any was removed.
+template <class Key>
+bool removeTimes(QList<Key> &keys, const QList<qint64> &timesMs)
+{
+    return keys.removeIf([&](const Key &k) { return timesMs.contains(k.timeMs); }) > 0;
+}
+
 // Remove the keys outside [fromMs, toMs] (a trim or split left them out of
 // the clip); keys on either end stay. True if any was removed.
 template <class Key>

@@ -510,6 +510,31 @@ void testTrimRemovesKeys()
     CHECK(tl.clipById(a)->reframe.keyTimes() == (QList<qint64>{4000, 9000}));
 }
 
+// A selection of keys removed at once (the timeline's key lane): only those
+// times, only that pane, one signal; times without a key change nothing.
+void testRemoveKeys()
+{
+    Timeline tl;
+    const int a = tl.appendClip("a.insv", 20000, 30.0);
+    pane::Split side;
+    side.layout = pane::Layout::SideBySide;
+    tl.setClipSplit(a, side);
+    for (qint64 t : {1000, 2000, 3000, 4000, 5000})
+        tl.upsertClipReframeKey(a, t, {});
+    tl.upsertClipReframeKey(a, 2000, {}, 1);
+    int changes = 0;
+    QObject::connect(&tl, &Timeline::clipReframeChanged, &tl, [&](int) { ++changes; });
+
+    tl.removeClipReframeKeys(a, {2000, 3000, 4000});
+    CHECK(tl.clipById(a)->reframe.keyTimes() == (QList<qint64>{1000, 5000}));
+    CHECK(tl.clipById(a)->panes[0].keyTimes() == QList<qint64>{2000}); // the other pane's stays
+    CHECK(changes == 1);
+    tl.removeClipReframeKeys(a, {2500, 4000}); // no key there (any more)
+    CHECK(changes == 1 && tl.clipById(a)->reframe.count() == 2);
+    tl.removeClipReframeKeys(a, {2000}, 1);
+    CHECK(tl.clipById(a)->panes[0].isEmpty() && changes == 2);
+}
+
 // Split screen: the layout and the pane cameras (ClipItem::paneTrack); the
 // key edits address a pane; a flat clip refuses a split.
 void testSplitScreen()
@@ -838,6 +863,7 @@ int main()
     testMarkNavigation();
     testUserMarks();
     testTrimRemovesKeys();
+    testRemoveKeys();
     testTimelineStructure();
     testTimelineSplit();
     testSplitScreen();

@@ -342,6 +342,9 @@ public slots:
     // own reframe track; ClipItem::paneTrack).
     void upsertClipReframeKey(int clipId, qint64 sourceMs, ReframePose pose, int pane = 0);
     void removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane = 0);
+    // Remove the keys at exactly these source times (a selection of them on
+    // the timeline) -- one edit, one undo step.
+    void removeClipReframeKeys(int clipId, const QList<qint64> &sourceMs, int pane = 0);
     // Ease of the move from the key at sourceMs (within
     // ClipItem::kReframeDeleteSnapMs, else the last one before) to the next.
     void setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease, int pane = 0);

@@ -960,6 +960,12 @@ void MainWindow::connectReframe()
         if (m_clipId)
             m_timeline->removeClipReframeKeyNear(m_clipId, m_lastPositionMs, playingPane());
     });
+    connect(m_timelineWidget, &TimelineWidget::keysDeleteRequested, this,
+            [this](int clipId, const QVector<qint64> &keys) {
+                // The keys the lane shows: that clip's active pane's.
+                if (const ClipItem *c = m_timeline->clipById(clipId))
+                    m_timeline->removeClipReframeKeys(clipId, keys, paneOf(*c));
+            });
     connect(m_editToolbar, &EditToolbar::clearReframeRequested, this, [this] {
         if (m_clipId)
             m_timeline->clearClipReframe(m_clipId, playingPane());
@@ -2555,8 +2561,8 @@ void MainWindow::setupKeyboardShortcuts()
     addKey(edit, tr("Split the selected audio / overlay clip, else the video clip, at the playhead"),
            {QKeySequence(Qt::Key_S)}, [this] { splitAtPlayhead(); });
     addKey(edit,
-           tr("Delete the selected clip or transition, else the reframe keyframe at the "
-              "playhead"),
+           tr("Delete the keyframes selected on the timeline, else the selected clip or "
+              "transition, else the reframe keyframe at the playhead"),
            {QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)},
            [this] { deleteAtPlayhead(); });
     addKey(edit,
@@ -2579,6 +2585,7 @@ void MainWindow::setupKeyboardShortcuts()
                    leaveSource();
                    return;
                }
+               m_timelineWidget->clearKeySelection();
                selectTrackClip(-1);
                selectVideoClip(0);
                selectTransition(0);
@@ -2788,6 +2795,11 @@ void MainWindow::splitAtPlayhead()
 
 void MainWindow::deleteAtPlayhead()
 {
+    // Keys selected in a clip's key lane go first: never the clip itself.
+    if (m_timelineWidget->hasKeySelection()) {
+        m_timelineWidget->deleteSelectedKeys();
+        return;
+    }
     if (m_selectedTransition) {
         m_timeline->removeTransition(m_selectedTransition);
         return;

@@ -55,6 +55,9 @@ public:
     // key was removed.
     bool removeNear(qint64 timeMs, qint64 snapMs);
 
+    // Remove the keys at exactly these times. True if any was removed.
+    bool removeTimes(const QList<qint64> &timesMs);
+
     // Remove the keys outside [fromMs, toMs]; keys on either end stay. True
     // if any was removed.
     bool removeOutside(qint64 fromMs, qint64 toMs);

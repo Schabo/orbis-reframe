@@ -63,6 +63,7 @@
 #include <QPlainTextEdit>
 #include <QProxyStyle>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QSlider>
@@ -526,6 +527,56 @@ void testKeyOnTrimOut(const Ctx &c)
     CHECK(c.timeline->clipAt(1).reframe.isEmpty());
     key(c, Qt::Key_K, Qt::ShiftModifier);
     CHECK(c.timeline->clipAt(0).reframe.isEmpty());
+    settle();
+}
+
+// Keys swept in a clip's key lane: Delete removes those (not the selected
+// clip) as one undo step; Escape drops the selection, after which Delete
+// acts on the clip again.
+void testKeyLaneDelete(const Ctx &c)
+{
+    QAction *undo = action(c, "undoAction");
+    if (!undo || c.timeline->count() < 2)
+        return;
+    settle();
+    const int a = c.timeline->clipAt(0).id;
+    for (qint64 t : {500, 1500, 2500, 3500})
+        c.timeline->upsertClipReframeKey(a, t, {});
+    settle();
+    // Where the widget draws a time: the content starts after the headers
+    // and its margin; the lane is the main row's bottom (rows unscrolled).
+    TimelineWidget *w = c.timelineWidget;
+    const auto *vs = w->findChild<QScrollBar *>(QStringLiteral("timelineVScroll"));
+    CHECK(vs && vs->value() == 0);
+    if (!vs || vs->value() != 0)
+        return;
+    const int left = 180 + 3;
+    const int width = w->width() - left - 3 - (vs->isVisible() ? 12 : 0);
+    const qint64 total = c.timeline->totalDurationMs();
+    const auto lane = [&](qint64 ms) {
+        return QPoint(left + int(ms * width / total), 14 + 50 - 5);
+    };
+    QTest::mousePress(w, Qt::LeftButton, Qt::NoModifier, lane(1000));
+    for (int i = 1; i <= 8; ++i)
+        QTest::mouseMove(w, lane(1000 + 2000 * i / 8));
+    QTest::mouseRelease(w, Qt::LeftButton, Qt::NoModifier, lane(3000));
+    CHECK(w->selectedKeys() == (QVector<qint64>{1500, 2500}));
+    key(c, Qt::Key_Delete);
+    CHECK(c.timeline->count() >= 2 && c.timeline->clipAt(0).id == a);
+    CHECK(c.timeline->clipAt(0).reframe.keyTimes() == (QList<qint64>{500, 3500}));
+    CHECK(!w->hasKeySelection());
+    undo->trigger();
+    CHECK(c.timeline->clipAt(0).reframe.keyTimes() == (QList<qint64>{500, 1500, 2500, 3500}));
+
+    settle();
+    QTest::mousePress(w, Qt::LeftButton, Qt::NoModifier, lane(1000));
+    for (int i = 1; i <= 8; ++i)
+        QTest::mouseMove(w, lane(1000 + 2000 * i / 8));
+    QTest::mouseRelease(w, Qt::LeftButton, Qt::NoModifier, lane(3000));
+    CHECK(w->hasKeySelection());
+    key(c, Qt::Key_Escape);
+    CHECK(!w->hasKeySelection());
+    c.timeline->clearClipReframe(c.timeline->clipAt(0).id);
     settle();
 }
 
@@ -2886,6 +2937,7 @@ int main(int argc, char **argv)
             testProxyOffer(c);
             testNavigationKeys(c);
             testKeyOnTrimOut(c);
+            testKeyLaneDelete(c);
             testStepOntoCut(c);
             testMarkKeys(c);
             testVideoEdits(c);

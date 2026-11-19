@@ -12,7 +12,8 @@ namespace timelinelayout {
 constexpr int kHeaderW = 180; // track headers, left of the clips
 constexpr int kMarginX = 3;
 constexpr int kRulerH = 14;
-constexpr int kMainH = 40;    // the main video track's row
+constexpr int kMainH = 50;    // the main video track's row, its key lane included
+constexpr int kKeyLaneH = 11; // a main-track clip's key lane, along its bottom
 constexpr int kTrackH = 28;   // an audio track's row
 constexpr int kRowGap = 2;
 constexpr int kGroupGap = 8; // more air between two groups of tracks

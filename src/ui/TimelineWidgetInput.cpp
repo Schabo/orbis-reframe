@@ -198,6 +198,12 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     m_drag = Drag::None;
 
     const Hit h = hitTest(e->pos());
+    // Picking anything else drops a selection of keys; the ruler (seeking)
+    // and the headers keep it, and a press in a clip's key lane decides
+    // below.
+    if (h.kind != Hit::Ruler && h.kind != Hit::Header &&
+        !(h.kind == Hit::MainClip && (inKeyLane(h.row, e->pos()) || keyAt(e->pos()).row >= 0)))
+        clearKeySelection();
     switch (h.kind) {
     case Hit::Header:
         if (h.track < 0) { // the main video track: folds its sound tracks away / back
@@ -225,10 +231,22 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     case Hit::MainClip: {
         m_dragRow = h.row;
         emit clipSelected(m_rows[h.row].clip.id);
-        // A keyframe diamond: jump the playhead to it, no drag on the clip.
+        // A keyframe diamond or a mark's dot: jump the playhead to it, no
+        // drag on the clip.
         const KeyHit k = keyAt(e->pos());
-        if (k.row >= 0) {
+        if (k.row >= 0)
             emit seekRequested(std::min(keyTimelineMs(k), m_totalMs));
+        if (k.mark)
+            return;
+        // A sweep along the key lane (or from a diamond, also one on the
+        // clip's in or out point) selects the keys in it: from scratch, or
+        // with Shift added to those already selected in this clip.
+        if (k.row >= 0 || inKeyLane(h.row, e->pos())) {
+            m_drag = Drag::KeySelect;
+            m_keyPressOnDiamond = k.row >= 0;
+            const bool add = (e->modifiers() & Qt::ShiftModifier) &&
+                             m_keySel.clipId == m_rows[h.row].clip.id;
+            m_keySelBase = add ? m_keySel : KeySelection();
             return;
         }
         const QRect &rc = m_rows[m_dragRow].rect;
@@ -413,6 +431,10 @@ void TimelineWidget::dragTo(QPoint pos)
         update();
         break;
     }
+    case Drag::KeySelect:
+        if (m_dragMoved) // a click's jitter isn't a sweep
+            selectKeysTo(pos);
+        break;
     case Drag::Reorder:
         if (m_dragMoved) {
             m_reorderTarget = dropIndexForX(pos.x());
@@ -505,6 +527,16 @@ void TimelineWidget::mouseReleaseEvent(QMouseEvent *e)
     case Drag::TrimOut:
         if (m_dragMoved && row >= 0)
             emit clipTrimOutRequested(m_rows[row].clip.id, m_provTrimMs);
+        break;
+    case Drag::KeySelect:
+        if (m_dragMoved)
+            selectKeysTo(e->pos());
+        // A sweep that caught no key leaves nothing selected; so does a
+        // click on the lane between keys (one on a diamond only seeks, and
+        // Shift keeps what's there).
+        if (m_dragMoved ? m_keySel.keys.isEmpty()
+                        : !m_keyPressOnDiamond && !(e->modifiers() & Qt::ShiftModifier))
+            m_keySel = KeySelection();
         break;
     case Drag::Reorder:
         if (m_dragMoved && row >= 0) {
@@ -634,6 +666,12 @@ bool TimelineWidget::event(QEvent *e)
                                    tr("This part plays black and silent, and can't be "
                                       "exported."),
                                this);
+        else if (h.kind == Hit::MainClip && !m_rows[h.row].clip.keySourceMs.isEmpty() &&
+                 inKeyLane(h.row, he->pos()))
+            QToolTip::showText(he->globalPos(),
+                               tr("Drag along the keyframes to select them (Shift+drag adds "
+                                  "more), then press Delete to remove them."),
+                               this);
         else if (h.kind == Hit::MainClip && m_rows[h.row].clip.keySourceMs.isEmpty())
             QToolTip::showText(he->globalPos(),
                                tr("No reframe keyframes: this clip exports looking straight "
@@ -698,6 +736,14 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         emit clipSelected(m_rows[h.row].clip.id);
         const Row &r = m_rows[h.row];
         const qint64 splitSrc = r.clip.trimInMs + std::llround((atMs - r.startMs) * r.clip.speed);
+        // The keys selected in its lane, first: what a right-click on them
+        // is most likely for.
+        QAction *deleteKeys = nullptr;
+        if (keySelectionClipId() == r.clip.id) {
+            deleteKeys = menu.addAction(tr("Delete keyframes (%1)").arg(m_keySel.keys.size()));
+            deleteKeys->setObjectName(QStringLiteral("keysDeleteAction"));
+            menu.addSeparator();
+        }
         QAction *split = menu.addAction(tr("Split here"));
         split->setEnabled(splitSrc > r.clip.trimInMs + kMinTrimMs
                           && splitSrc < r.clip.trimOutMs - kMinTrimMs);
@@ -750,7 +796,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         QAction *chosen = menu.exec(e->globalPos());
         if (!chosen)
             return;
-        if (chosen == split)
+        if (deleteKeys && chosen == deleteKeys)
+            deleteSelectedKeys();
+        else if (chosen == split)
             emit clipSplitRequested(r.clip.id, splitSrc);
         else if (chosen == duplicate)
             emit clipDuplicateRequested(r.clip.id);

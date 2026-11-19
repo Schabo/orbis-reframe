@@ -10,8 +10,11 @@ overlays. For the names of the window's parts, see
 
 1. The **ruler**, with the time in minutes and seconds.
 2. The **playhead**: the frame shown in the viewport.
-3. The **video track**, with your clips. The white diamonds along
-   the bottom edge are reframe keyframes; a hollow diamond (◇) before a
+3. The **video track**, with your clips. The white diamonds in the darker
+   lane along the bottom are reframe keyframes; drag along the lane to
+   select a stretch of them and `Delete` to remove them
+   ([Changing and deleting keyframes](reframing.md#changing-and-deleting-keyframes)).
+   A hollow diamond (◇) before a
    clip's name means it has none, and exports looking straight ahead.
    A ✦ before a clip's name means it has an [effect](effects.md) on.
    Yellow dots along the top edge are

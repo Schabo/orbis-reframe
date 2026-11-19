@@ -14,6 +14,7 @@ class QTimer;
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 // The timeline: a ruler, the main video track (clip blocks sized by timeline
@@ -90,11 +91,17 @@ class QTimer;
 //   with a ✦.
 //   Waveforms: a clip given `peaks` draws its audio's level (dB scale), with
 //   its gain and fades applied.
-//   Reframe keys: a main-track clip's keys show as diamonds along its bottom
-//   (an overlay clip's look keys the same on its track); one highlights on
-//   hover, and clicking it seeks the playhead to that frame -> seekRequested
-//   (and selects the clip). A clip without any is labelled with a hollow
+//   Reframe keys: a main-track clip's keys show as diamonds in a lane along
+//   its bottom (an overlay clip's look keys the same on its track); one
+//   highlights on hover, and clicking it seeks the playhead to that frame ->
+//   seekRequested (and selects the clip). A drag in the lane selects the
+//   keys in its span instead of moving the clip (Shift+drag adds to the
+//   selection; a click on the lane between keys clears it); the selection
+//   stays in one clip and is view state, dropped when that clip's keys
+//   change. deleteSelectedKeys() or the clip menu's "Delete keyframes" ->
+//   keysDeleteRequested. A clip without any keys is labelled with a hollow
 //   diamond (and says why in its tooltip) -- it exports a static forward view.
+//   The lane stops short of the clip's ends, which stay trim handles.
 //   Zoom: Ctrl+wheel (around the pointer) or zoomIn / zoomOut / zoomToFit;
 //   the wheel or the scrollbar under the tracks pans.
 //   Height: whatever the window gives it; rows that don't fit scroll up and
@@ -264,6 +271,13 @@ public:
     // track's id.
     void setSoundCollapsed(int videoTrackId, bool collapsed);
     bool isSoundCollapsed(int videoTrackId) const { return m_collapsedSound.contains(videoTrackId); }
+    // Keys selected in a main-track clip's lane (view state; doesn't emit).
+    bool hasKeySelection() const { return !m_keySel.keys.isEmpty(); }
+    int keySelectionClipId() const { return hasKeySelection() ? m_keySel.clipId : 0; }
+    QVector<qint64> selectedKeys() const { return m_keySel.keys; } // source ms, sorted
+    void clearKeySelection();
+    // keysDeleteRequested for the selection, if there is one; clears it.
+    void deleteSelectedKeys();
 
 public slots:
     void zoomIn();   // around the playhead if it's in view, else the centre
@@ -272,6 +286,9 @@ public slots:
 
 signals:
     void seekRequested(qint64 timelineMs);  // exact: a press, a drag's release
+    // Remove the reframe keys at these source times from clip `clipId` (the
+    // keys selected in its lane, as shown: its active pane's).
+    void keysDeleteRequested(int clipId, const QVector<qint64> &sourceMs);
     void scrubRequested(qint64 timelineMs); // while dragging: fast preview
     void clipTrimInRequested(int clipId, qint64 newTrimInMs);
     void clipTrimOutRequested(int clipId, qint64 newTrimOutMs);
@@ -404,6 +421,13 @@ private:
     KeyHit keyAt(QPoint pos) const;
     // The timeline ms a KeyHit seeks to (the key's frame on its clip).
     qint64 keyTimelineMs(const KeyHit &k) const;
+    // A main-track clip's key lane, inside its border, for the clip drawn at
+    // `rc`: kEdgeGrabPx short of either end, which stay trim handles.
+    static QRect keyLaneRect(const QRect &rc);
+    bool inKeyLane(int row, QPoint pos) const;
+    // A KeySelect drag at pos: the press's selection (with Shift) plus the
+    // keys between the press and pos, clamped to the clip.
+    void selectKeysTo(QPoint pos);
     // Main-track insert position for a clip added at `ms`: the cut nearest to it.
     int insertIndexAt(qint64 ms) const;
     // Transition `index`'s box over its cut; null if its clip isn't laid out.
@@ -476,9 +500,22 @@ private:
     bool m_canPasteStab = false;
     int m_selectedAudioId = -1;
     KeyHit m_hoverKey; // the diamond under the pointer (drawn highlighted)
+    // Keys selected in a clip's lane, by source ms; `spans` (source ms) the
+    // stretches swept to select them, tinted in the lane; `clipKeys` the
+    // clip's keys when they were selected -- any change drops the selection.
+    struct KeySelection {
+        int clipId = 0;
+        QVector<qint64> keys;
+        QVector<std::pair<qint64, qint64>> spans;
+        QVector<qint64> clipKeys;
+    };
+    KeySelection m_keySel;
+    KeySelection m_keySelBase; // a KeySelect drag's start: kept (Shift) or empty
+    bool m_keyPressOnDiamond = false; // the KeySelect press sought to a key
 
     enum class Drag {
-        None, Seek, TrimIn, TrimOut, Reorder, AudioMove, AudioTrimIn, AudioTrimOut, TrackMove
+        None, Seek, TrimIn, TrimOut, Reorder, KeySelect, AudioMove, AudioTrimIn, AudioTrimOut,
+        TrackMove
     };
     Drag m_drag = Drag::None;
     int m_dragRow = -1;

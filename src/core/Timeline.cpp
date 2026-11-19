@@ -588,6 +588,13 @@ void Timeline::removeClipReframeKeyNear(int clipId, qint64 sourceMs, int pane)
         emit clipReframeChanged(c->id);
 }
 
+void Timeline::removeClipReframeKeys(int clipId, const QList<qint64> &sourceMs, int pane)
+{
+    ClipItem *c = mutableClipById(clipId);
+    if (c && c->removeReframeKeys(sourceMs, pane))
+        emit clipReframeChanged(c->id);
+}
+
 void Timeline::setClipReframeEase(int clipId, qint64 sourceMs, keytrack::Ease ease, int pane)
 {
     ClipItem *c = mutableClipById(clipId);

@@ -228,7 +228,27 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                                clipFill(i, active, true));
             }
 
-        // Label.
+        // The key lane along its bottom: the clip's colour shaded (a gap
+        // shows through), under a thin line; the stretches swept to select
+        // keys tinted.
+        const QRect lane = keyLaneRect(rc);
+        if (lane.width() > 0) {
+            p.fillRect(lane, tc.shade);
+            p.setPen(tc.shade);
+            p.drawLine(lane.left(), lane.top() - 1, lane.right(), lane.top() - 1);
+            if (m_keySel.clipId == r.clip.id)
+                for (const auto &[from, to] : m_keySel.spans) {
+                    const int x0 = std::max(lane.left(),
+                                            xForTimelineMs(r.startMs + r.clip.localMs(from)));
+                    const int x1 = std::min(lane.right(),
+                                            xForTimelineMs(r.startMs + r.clip.localMs(to)));
+                    if (x1 >= x0)
+                        p.fillRect(QRect(x0, lane.top(), x1 - x0 + 1, lane.height()),
+                                   withAlpha(tc.accent, 70));
+                }
+        }
+
+        // Label, above the lane.
         p.setPen(tc.text);
         // A hollow diamond marks a clip without reframe keys: it exports a
         // static forward view, whatever the viewport showed.
@@ -238,23 +258,27 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         if (r.clip.speed != 1.0)
             label += QStringLiteral("  %1×").arg(r.clip.speed);
         // On the visible part, so a clip that starts off screen keeps its name.
-        const QRect vis = rc.intersected(QRect(cLeft, 0, usableW, height()));
+        const QRect vis =
+            rc.adjusted(0, 0, 0, -kKeyLaneH).intersected(QRect(cLeft, 0, usableW, height()));
         p.drawText(vis.adjusted(5, 0, -5, 0), Qt::AlignVCenter | Qt::AlignLeft,
                    fm.elidedText(label, Qt::ElideMiddle, vis.width() - 10));
 
-        // Keyframe diamonds; the hovered one reads as clickable.
+        // Keyframe diamonds in the lane; the hovered one reads as
+        // clickable, the selected ones are in the accent colour.
         if (!r.clip.keySourceMs.isEmpty() && r.durMs > 0) {
             p.setRenderHint(QPainter::Antialiasing, true);
             p.setPen(Qt::NoPen);
-            const int cy = rc.bottom() - 5;
+            const int cy = rc.bottom() - kKeyLaneH / 2;
+            const bool hasSel = m_keySel.clipId == r.clip.id;
             for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
                 const qint64 ks = r.clip.keySourceMs[j];
                 if (!r.clip.showsKeyAt(ks))
                     continue;
                 const bool hov = !m_hoverKey.mark && m_hoverKey.row == i && m_hoverKey.index == j;
-                const int s = hov ? 5 : 3;
+                const bool sel = hasSel && m_keySel.keys.contains(ks);
+                const int s = hov ? 5 : sel ? 4 : 3;
                 const int x = xForTimelineMs(r.startMs + r.clip.keyLocalMs(ks));
-                p.setBrush(hov ? tc.accent : tc.text);
+                p.setBrush(hov || sel ? tc.accent : tc.text);
                 const QPointF d[4] = {{double(x), double(cy - s)},
                                       {double(x + s), double(cy)},
                                       {double(x), double(cy + s)},

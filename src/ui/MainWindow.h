@@ -509,8 +509,9 @@ private:
     // S: split the selected audio / overlay clip at the playhead if there is
     // one, else the video clip under the playhead.
     void splitAtPlayhead();
-    // Delete: the selected audio / overlay clip, else the selected video
-    // clip, else the reframe keyframe at the playhead.
+    // Delete: the keys selected in a clip's key lane, else the selected
+    // transition, audio / overlay clip or video clip, else the reframe
+    // keyframe at the playhead.
     void deleteAtPlayhead();
     // Reflect clip `c`'s source file in the Media information panel (probed
     // once per path, cached in m_mediaInfo; a failed probe isn't cached).

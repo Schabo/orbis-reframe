@@ -4,7 +4,8 @@
 // reorders; overlay (video) tracks above the main track; rows scrolling
 // when the widget is shorter than them, also while a drag is held at
 // their edge; folding a video's sound tracks; keyframe diamonds that
-// highlight and seek. Exit code is the failure count.
+// highlight and seek; selecting keys in a clip's key lane and deleting them.
+// Exit code is the failure count.
 // ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget at the end.
 
 #include "TimelineWidget.h"
@@ -45,7 +46,7 @@ int g_failures = 0;
 constexpr int kHeaderW = 180;
 constexpr int kMarginX = 3;
 constexpr int kRulerH = 14;
-constexpr int kMainH = 40;
+constexpr int kMainH = 50; // its key lane, kKeyLaneH = 11, along the bottom
 constexpr int kTrackH = 28;
 constexpr int kRowGap = 2;
 constexpr int kGroupGap = 8; // between two groups of tracks (and the main track)
@@ -268,6 +269,130 @@ void testKeyDiamondClick()
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(10000), keyY));
     CHECK(seek.count() == 3 && seek.last().at(0).toLongLong() == 9999);
     CHECK(sel.last().at(0).toInt() == 1);
+}
+
+void dragWith(QWidget *w, QPoint from, QPoint to, Qt::KeyboardModifiers mods)
+{
+    QTest::mousePress(w, Qt::LeftButton, mods, from);
+    const int steps = 8;
+    for (int i = 1; i <= steps; ++i) {
+        QMouseEvent move(QEvent::MouseMove, from + (to - from) * i / steps,
+                         w->mapToGlobal(from + (to - from) * i / steps), Qt::NoButton,
+                         Qt::LeftButton, mods);
+        QApplication::sendEvent(w, &move);
+    }
+    QTest::mouseRelease(w, Qt::LeftButton, mods, to);
+}
+
+// The key lane: a drag along it selects the keys it sweeps (clamped to its
+// clip) instead of moving the clip, Shift+drag adds, a click between keys
+// or on the clip's body clears; a diamond click seeks and keeps the
+// selection. Selected keys draw in the accent colour. Delete (the
+// widget's deleteSelectedKeys, the clip menu) asks for them, once; the
+// selection goes when the clip's keys change. The clip's ends stay trim
+// handles at the lane's height.
+void testKeyLane()
+{
+    Fixture f;
+    TimelineWidget::Clip a, b;
+    a.id = 1;
+    a.label = "a";
+    a.trimOutMs = a.sourceDurationMs = 10000;
+    a.keySourceMs = {1000, 2000, 3000, 4000, 6000, 10000}; // the last on the trim-out
+    b.id = 2;
+    b.label = "b";
+    b.trimOutMs = b.sourceDurationMs = 10000;
+    b.keySourceMs = {5000};
+    f.w.setClips({a, b});
+
+    const int laneY = kRulerH + kMainH - 5;
+    QSignalSpy moved(&f.w, &TimelineWidget::clipMoved);
+    QSignalSpy sel(&f.w, &TimelineWidget::clipSelected);
+    QSignalSpy seek(&f.w, &TimelineWidget::seekRequested);
+    QSignalSpy del(&f.w, &TimelineWidget::keysDeleteRequested);
+    const auto lane = [&](qint64 ms) { return QPoint(Fixture::x(ms), laneY); };
+
+    drag(&f.w, lane(1500), lane(3500));
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{2000, 3000}));
+    CHECK(f.w.keySelectionClipId() == 1 && sel.last().at(0).toInt() == 1);
+    CHECK(moved.isEmpty() && seek.isEmpty());
+    const QColor accent = theme::colors().accent;
+    const auto pixel = [&](qint64 ms) {
+        return f.w.grab().toImage().pixelColor(Fixture::x(ms), kRulerH + kMainH - 6);
+    };
+    CHECK(pixel(2000) == accent && pixel(3000) == accent && pixel(1000) != accent);
+
+    // Shift adds; a sweep past the clip's end stops at it (b's key isn't
+    // caught, a's on the trim-out is).
+    dragWith(&f.w, lane(5000), lane(17000), Qt::ShiftModifier);
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{2000, 3000, 6000, 10000}));
+    CHECK(f.w.keySelectionClipId() == 1);
+    // Without Shift a sweep starts over.
+    drag(&f.w, lane(3500), lane(4500));
+    CHECK(f.w.selectedKeys() == QVector<qint64>{4000});
+
+    // A diamond's click seeks and keeps it; the ruler too.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, lane(1000));
+    CHECK(seek.count() == 1 && seek.last().at(0).toLongLong() == 1000);
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(8000), 5));
+    CHECK(f.w.selectedKeys() == QVector<qint64>{4000});
+    // A click between keys clears it, so does one on the clip's body.
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, lane(5000));
+    CHECK(!f.w.hasKeySelection() && f.w.keySelectionClipId() == 0);
+    drag(&f.w, lane(3500), lane(4500));
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(5000), mainY()));
+    CHECK(!f.w.hasKeySelection());
+    // A sweep that catches nothing selects nothing.
+    drag(&f.w, lane(4200), lane(5800));
+    CHECK(!f.w.hasKeySelection());
+    CHECK(moved.isEmpty());
+
+    // Delete: one request with the selected keys; the selection is gone.
+    drag(&f.w, lane(1500), lane(3500));
+    f.w.deleteSelectedKeys();
+    CHECK(del.count() == 1 && del.last().at(0).toInt() == 1 &&
+          del.last().at(1).value<QVector<qint64>>() == (QVector<qint64>{2000, 3000}));
+    CHECK(!f.w.hasKeySelection());
+    f.w.deleteSelectedKeys();
+    CHECK(del.count() == 1);
+
+    // The same clips again keep a selection; other keys drop it.
+    drag(&f.w, lane(1500), lane(3500));
+    f.w.setClips({a, b});
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{2000, 3000}));
+    a.keySourceMs = {1000, 2000, 4000, 6000, 10000};
+    f.w.setClips({a, b});
+    CHECK(!f.w.hasKeySelection());
+
+    // The clip's menu deletes them; only the clip they're in offers it.
+    const auto menuAt = [&](QPoint at, bool choose) {
+        QString text;
+        QTimer::singleShot(0, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            QAction *act = menu->findChild<QAction *>(QStringLiteral("keysDeleteAction"));
+            if (act)
+                text = act->text();
+            if (act && choose)
+                menu->setActiveAction(act);
+            QTest::keyClick(menu, act && choose ? Qt::Key_Return : Qt::Key_Escape);
+        });
+        QContextMenuEvent e(QContextMenuEvent::Mouse, at, f.w.mapToGlobal(at));
+        QApplication::sendEvent(&f.w, &e);
+        return text;
+    };
+    drag(&f.w, lane(1500), lane(4500));
+    CHECK(menuAt(QPoint(Fixture::x(15000), mainY()), false).isEmpty());
+    CHECK(menuAt(QPoint(Fixture::x(5000), mainY()), true) == "Delete keyframes (2)");
+    CHECK(del.count() == 2 &&
+          del.last().at(1).value<QVector<qint64>>() == (QVector<qint64>{2000, 4000}));
+
+    // b's right end, at the lane's height, still trims.
+    QSignalSpy trimOut(&f.w, &TimelineWidget::clipTrimOutRequested);
+    drag(&f.w, QPoint(Fixture::x(20000) - 1, laneY), QPoint(Fixture::x(18000), laneY));
+    CHECK(trimOut.count() == 1 && !f.w.hasKeySelection());
+    CHECK(moved.isEmpty());
 }
 
 // Highlight marks: yellow dots on the clip's top edge, hovered and clicked
@@ -1093,6 +1218,7 @@ int main(int argc, char **argv)
     testOnlyOntoTracksThatHoldIt();
     testTrims();
     testKeyDiamondClick();
+    testKeyLane();
     testMarkDotClick();
     testMarkMenus();
     testHeaderAndMain();

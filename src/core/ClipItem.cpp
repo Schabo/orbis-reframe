@@ -112,6 +112,11 @@ bool ClipItem::removeReframeKeyNear(qint64 sourceMs, int pane)
     return paneTrack(pane).removeNear(sourceMs, kReframeDeleteSnapMs);
 }
 
+bool ClipItem::removeReframeKeys(const QList<qint64> &sourceMs, int pane)
+{
+    return paneTrack(pane).removeTimes(sourceMs);
+}
+
 bool ClipItem::clearReframe(int pane)
 {
     ReframeTrack &t = paneTrack(pane);

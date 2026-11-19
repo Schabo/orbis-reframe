@@ -208,6 +208,14 @@ QSize TimelineWidget::minimumSizeHint() const
 void TimelineWidget::setClips(const QVector<Clip> &clips)
 {
     m_clips = clips;
+    // A selection of keys that are no longer as they were (deleted, a pane
+    // or a trim changed them, the clip is gone) is dropped.
+    if (m_keySel.clipId) {
+        const auto it = std::find_if(clips.begin(), clips.end(),
+                                     [&](const Clip &c) { return c.id == m_keySel.clipId; });
+        if (it == clips.end() || it->keySourceMs != m_keySel.clipKeys)
+            m_keySel = KeySelection();
+    }
     rebuildLayout();
     update();
 }
@@ -563,7 +571,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
                 return k;
             }
         }
-        const int cy = r.rect.bottom() - 5; // as drawn
+        const int cy = r.rect.bottom() - kKeyLaneH / 2; // as drawn
         for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
             const qint64 ks = r.clip.keySourceMs[j];
             if (!r.clip.showsKeyAt(ks))
@@ -600,6 +608,65 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
         }
     }
     return k;
+}
+
+QRect TimelineWidget::keyLaneRect(const QRect &rc)
+{
+    return QRect(QPoint(rc.left() + kEdgeGrabPx + 1, rc.bottom() - kKeyLaneH + 1),
+                 QPoint(rc.right() - kEdgeGrabPx - 1, rc.bottom() - 1));
+}
+
+bool TimelineWidget::inKeyLane(int row, QPoint pos) const
+{
+    // Down to the clip's bottom edge: a press on its border is in the lane.
+    return row >= 0 && row < m_rows.size() &&
+           keyLaneRect(m_rows[row].rect).adjusted(0, 0, 0, 1).contains(pos);
+}
+
+void TimelineWidget::selectKeysTo(QPoint pos)
+{
+    if (m_dragRow < 0 || m_dragRow >= m_rows.size())
+        return;
+    const Row &r = m_rows[m_dragRow];
+    // The sweep in timeline ms (the view may have scrolled since the
+    // press), clamped to the clip: a key on its in or out point, outside
+    // the lane, is still caught.
+    const qint64 end = r.startMs + r.durMs;
+    const qint64 a = std::clamp(m_pressMs, r.startMs, end);
+    const qint64 b = std::clamp(timelineMsAt(pos.x()), r.startMs, end);
+    const qint64 lo = std::min(a, b), hi = std::max(a, b);
+    const auto source = [&](qint64 ms) {
+        return r.clip.trimInMs + std::llround((ms - r.startMs) * r.clip.speed);
+    };
+    m_keySel = m_keySelBase;
+    m_keySel.clipId = r.clip.id;
+    m_keySel.clipKeys = r.clip.keySourceMs;
+    m_keySel.spans.push_back({source(lo), source(hi)});
+    for (const qint64 ks : r.clip.keySourceMs) {
+        // Where its diamond is drawn.
+        const qint64 t = r.startMs + r.clip.keyLocalMs(ks);
+        if (r.clip.showsKeyAt(ks) && t >= lo && t <= hi && !m_keySel.keys.contains(ks))
+            m_keySel.keys.push_back(ks);
+    }
+    std::sort(m_keySel.keys.begin(), m_keySel.keys.end());
+    update();
+}
+
+void TimelineWidget::clearKeySelection()
+{
+    if (!m_keySel.clipId)
+        return;
+    m_keySel = KeySelection();
+    update();
+}
+
+void TimelineWidget::deleteSelectedKeys()
+{
+    if (!hasKeySelection())
+        return;
+    const KeySelection sel = m_keySel;
+    clearKeySelection();
+    emit keysDeleteRequested(sel.clipId, sel.keys);
 }
 
 qint64 TimelineWidget::keyTimelineMs(const KeyHit &k) const
