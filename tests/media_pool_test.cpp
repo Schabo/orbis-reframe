@@ -1,6 +1,6 @@
 // The left sidebar and its Media tab, driven with QTest on the offscreen
 // platform and found by objectName: the sidebar's close / reopen, the media
-// pool's list (folders, sort order, in use, missing), drag out (file URLs),
+// pool's list (folders, sort order, in use, missing, backup audio), drag out (file URLs),
 // drops in, add to timeline (a double-click or Enter, not a click), remove,
 // thumbnails (and their disk cache). No GPU, no media decoding. The run is on a
 // simulated KDE single-click desktop, where a click is an activation.
@@ -633,6 +633,82 @@ void testMediaGridAndZoom()
         panel.grab().save(QString::fromLocal8Bit(shot));
 }
 
+// A camera's backup sound file (<clip stem>_backup.wav beside the clip) is
+// hidden until the header's mic button shows it; one the timeline uses is
+// always shown. A wav with no clip beside it isn't a backup file.
+void testBackupAudio()
+{
+    QTemporaryDir tmp;
+    const QString dcim = tmp.path() + QStringLiteral("/DCIM");
+    const QString other = tmp.path() + QStringLiteral("/Other");
+    QDir().mkpath(dcim);
+    QDir().mkpath(other);
+    const QString clip = dcim + QStringLiteral("/VID_1.insv");
+    const QString backup = dcim + QStringLiteral("/VID_1_backup.wav");
+    const QString lone = dcim + QStringLiteral("/lone_backup.wav"); // no lone.* video
+    const QString orphan = other + QStringLiteral("/VID_9_backup.wav");
+    for (const QString &f : {clip, backup, lone, orphan,
+                             other + QStringLiteral("/VID_9.mp4")})
+        writeFile(f);
+
+    CHECK(media::isBackupAudio(backup));
+    CHECK(media::isBackupAudio(orphan)); // its clip isn't in the pool, is on the disk
+    CHECK(!media::isBackupAudio(lone));
+    CHECK(!media::isBackupAudio(clip));
+    CHECK(!media::isBackupAudio(dcim + QStringLiteral("/VID_1_backup.mp3")));
+
+    MediaPool pool;
+    pool.add({clip, MediaItem::Kind::Clip360, 42000, 2880, 2880, 29.97});
+    pool.add({backup, MediaItem::Kind::Audio, 42000});
+    pool.add({lone, MediaItem::Kind::Audio, 1000});
+    pool.add({orphan, MediaItem::Kind::Audio, 5000});
+
+    MediaPoolPanel panel(&pool);
+    panel.resize(300, 400);
+    panel.show();
+    MediaPoolList *list = panel.list();
+    MediaPoolGrid *grid = panel.grid();
+    auto *toggle = find<QToolButton>(&panel, "mediaBackupAudioButton");
+    if (!toggle)
+        return;
+    CHECK(!panel.backupAudioShown());
+    CHECK(!toggle->isChecked());
+
+    // Hidden: DCIM keeps its clip and the plain wav, Other vanishes whole.
+    CHECK(rows(list) == (QStringList{QStringLiteral("DCIM/lone_backup.wav"),
+                                     QStringLiteral("DCIM/VID_1.insv")}));
+    CHECK(list->topLevelItem(0)->data(0, MediaPoolPanel::CountRole).toInt() == 2);
+    CHECK(grid->count() == 2);
+
+    // On the timeline, the backup file shows and is marked -- in the list
+    // and the grid alike -- and hides again when the timeline drops it.
+    panel.setInUse({backup});
+    CHECK(rows(list) == (QStringList{QStringLiteral("DCIM/lone_backup.wav"),
+                                     QStringLiteral("DCIM/VID_1.insv"),
+                                     QStringLiteral("DCIM/VID_1_backup.wav")}));
+    CHECK(row(list, QStringLiteral("VID_1_backup.wav"))
+              ->data(0, MediaPoolPanel::InUseRole)
+              .toBool());
+    CHECK(grid->count() == 3);
+    panel.setInUse({});
+    CHECK(!row(list, QStringLiteral("VID_1_backup.wav")));
+    CHECK(grid->count() == 2);
+
+    // The button shows every backup file; toggled off, they go again.
+    QSignalSpy shownSpy(&panel, &MediaPoolPanel::backupAudioShownChanged);
+    toggle->click();
+    CHECK(panel.backupAudioShown());
+    CHECK(shownSpy.size() == 1 && shownSpy.first().first().toBool() == true);
+    CHECK(rows(list) == (QStringList{QStringLiteral("DCIM/lone_backup.wav"),
+                                     QStringLiteral("DCIM/VID_1.insv"),
+                                     QStringLiteral("DCIM/VID_1_backup.wav"),
+                                     QStringLiteral("Other/VID_9_backup.wav")}));
+    CHECK(grid->count() == 4);
+    toggle->click();
+    CHECK(!panel.backupAudioShown());
+    CHECK(grid->count() == 2);
+}
+
 void testKinds()
 {
     CHECK(media::kindForPath(QStringLiteral("/a/VID.INSV")) == MediaItem::Kind::Clip360);
@@ -743,6 +819,7 @@ int main(int argc, char **argv)
     QApplication::setStyle(new SingleClickDesktop(QApplication::style()));
     theme::apply(app, theme::themes().first());
     testKinds();
+    testBackupAudio();
     testThumbnailCache();
     testSidebar();
     testSidebarResize();

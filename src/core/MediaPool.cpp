@@ -58,6 +58,22 @@ QStringList filesInFolder(const QString &folder)
     return out;
 }
 
+bool isBackupAudio(const QString &path)
+{
+    const QFileInfo fi(path);
+    QString stem = fi.completeBaseName();
+    if (fi.suffix().compare(QStringLiteral("wav"), Qt::CaseInsensitive) != 0 ||
+        !stem.endsWith(QStringLiteral("_backup"), Qt::CaseInsensitive))
+        return false;
+    stem.chop(QStringLiteral("_backup").size());
+    const QDir dir = fi.absoluteDir();
+    for (const auto kind : {MediaItem::Kind::Clip360, MediaItem::Kind::Video})
+        for (const QString &ext : extensions(kind))
+            if (dir.exists(stem + QLatin1Char('.') + ext))
+                return true;
+    return false;
+}
+
 QString firstMissingFile(const MediaItem &item)
 {
     for (const QString &f : item.files())

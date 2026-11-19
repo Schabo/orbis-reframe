@@ -724,6 +724,19 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         if (on)
             setViewMode(ViewMode::Grid);
     });
+    // The cameras' backup sound files (…_backup.wav) sit out of the way
+    // until this shows them.
+    m_backupAudio = new QToolButton(this);
+    m_backupAudio->setObjectName(QStringLiteral("mediaBackupAudioButton"));
+    m_backupAudio->setAutoRaise(true);
+    m_backupAudio->setCheckable(true);
+    m_backupAudio->setIcon(theme::icon(QStringLiteral("mic")));
+    m_backupAudio->setToolTip(
+        tr("Show the cameras' backup audio files (a clip's …_backup.wav). "
+           "A backup file used on the timeline always shows."));
+    m_backupAudio->setFocusPolicy(Qt::NoFocus);
+    connect(m_backupAudio, &QToolButton::toggled, this,
+            &MediaPoolPanel::setBackupAudioShown);
 
     auto *header = new QHBoxLayout;
     header->setContentsMargins(0, 0, 6, 0);
@@ -731,6 +744,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     header->addWidget(title, 1);
     header->addWidget(importFiles);
     header->addWidget(importFolder);
+    header->addWidget(m_backupAudio);
     header->addWidget(m_viewList);
     header->addWidget(m_viewGrid);
 
@@ -894,7 +908,17 @@ void MediaPoolPanel::setInUse(const QSet<QString> &paths)
 {
     if (paths == m_inUse)
         return;
+    // A hidden backup file entering or leaving the timeline's use joins or
+    // leaves the shown files: rebuild for it.
+    const QSet<QString> toggled = (paths - m_inUse) + (m_inUse - paths);
     m_inUse = paths;
+    if (!m_showBackupAudio) {
+        for (const QString &path : toggled)
+            if (media::isBackupAudio(path)) {
+                rebuild();
+                return;
+            }
+    }
     for (int i = 0; i < m_list->topLevelItemCount(); ++i) {
         QTreeWidgetItem *folder = m_list->topLevelItem(i);
         for (int j = 0; j < folder->childCount(); ++j) {
@@ -957,6 +981,16 @@ void MediaPoolPanel::setViewMode(ViewMode mode)
         selectPaths(selected);
     updateActions();
     emit viewModeChanged(mode);
+}
+
+void MediaPoolPanel::setBackupAudioShown(bool shown)
+{
+    if (shown == m_showBackupAudio)
+        return;
+    m_showBackupAudio = shown;
+    m_backupAudio->setChecked(shown);
+    rebuild();
+    emit backupAudioShownChanged(shown);
 }
 
 double MediaPoolPanel::listScale() const { return m_list->thumbScale(); }
@@ -1047,6 +1081,11 @@ void MediaPoolPanel::rebuild()
     QTreeWidgetItem *folder = nullptr;
     QString folderPath;
     for (const MediaItem &m : items) {
+        // Backup sound files stay out unless the user shows them or the
+        // timeline uses them. A folder with nothing shown gets no header.
+        const bool inUse = m_inUse.contains(m.path);
+        if (!m_showBackupAudio && !inUse && media::isBackupAudio(m.path))
+            continue;
         const QFileInfo fi(m.path);
         if (!folder || fi.absolutePath() != folderPath) {
             folderPath = fi.absolutePath();
@@ -1067,7 +1106,6 @@ void MediaPoolPanel::rebuild()
                       QStringLiteral("%1 · %2").arg(kindText(m.kind), durationText(m.durationMs)));
         item->setData(0, FormatRole, formatText(m, m_modes.value(m.path)));
         item->setData(0, MissingRole, m.missing);
-        const bool inUse = m_inUse.contains(m.path);
         item->setData(0, InUseRole, inUse);
         item->setData(0, PreviewRole, int(m.path == m_previewPath ? m_preview : Preview::None));
         item->setToolTip(0, QDir::toNativeSeparators(m.path) +
