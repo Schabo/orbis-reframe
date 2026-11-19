@@ -83,6 +83,11 @@ it on the timeline, and the table below applies to both. `Ctrl` +
 mouse wheel makes the pictures bigger or smaller, in the list and in the
 grid -- orbis-reframe remembers the view and each view's size.
 
+The microphone button left of them shows or hides the cameras' **backup
+audio**: an X6 writes an uncompressed `<clip>_backup.wav` copy of a clip's
+sound, and those stay out of the way until you ask for them. A backup file
+that's on the timeline always shows. This too is remembered.
+
 | To | Do |
 |---|---|
 | Add files | **Media ▸ Import files…** (`Ctrl+I`), the first button at the top of the tab (<img src="images/icons/import-files.png" width="24" alt="">), or drag files from your file manager onto the list. |
@@ -95,7 +100,8 @@ grid -- orbis-reframe remembers the view and each view's size.
 
 Importing is part of the project, so **Edit ▸ Undo** takes it back like any
 other edit. The `.lrv` preview files the camera writes next to each `.insv`
-aren't listed; **View ▸ Play from preview files** plays from them.
+aren't listed; **View ▸ Play from preview files** plays from them. The
+`_backup.wav` files are imported but hidden (see above).
 
 ### Previewing a file
 

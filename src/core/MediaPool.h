@@ -99,6 +99,12 @@ QString fileGlobs(const QStringList &exts);
 // by name.
 QStringList filesInFolder(const QString &folder);
 
+// A camera's backup sound recording: an X6 writes "<clip stem>_backup.wav"
+// beside each clip, the same take's sound uncompressed (docs/formats/
+// insta360-x6.md). True for such a wav whose clip is beside it; one's own
+// "song_backup.wav" without a video of that name isn't one.
+bool isBackupAudio(const QString &path);
+
 // The first of `item`'s files that isn't on the disk, empty when all are.
 // Its parts aren't asked: a missing one leaves the rest playing.
 QString firstMissingFile(const MediaItem &item);

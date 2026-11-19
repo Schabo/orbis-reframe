@@ -128,6 +128,8 @@ private:
 // the file manager, remove. The play button on a file's picture, or Space,
 // previews it (MainWindow plays it in the viewport instead of the timeline;
 // setPreview marks it). Ctrl + wheel changes the pictures' size, per view.
+// The cameras' <clip>_backup.wav files are hidden until the header's mic
+// button shows them; a backup file on the timeline always shows.
 // Thumbnails and a 360 clip's recording mode ("8K") come from providers run
 // on worker threads (the app's decode a frame and ask the camera's reader;
 // none in tests).
@@ -176,6 +178,11 @@ public:
     // The view the files are shown in; the selection carries over.
     ViewMode viewMode() const { return m_viewMode; }
     void setViewMode(ViewMode mode);
+    // The cameras' backup sound files (…_backup.wav beside their clip):
+    // shown or hidden -- a file on the timeline always shows. Hidden out of
+    // the box.
+    bool backupAudioShown() const { return m_showBackupAudio; }
+    void setBackupAudioShown(bool shown);
     // The views' wheel zooms, 1.0 the default; kept per view.
     double listScale() const;
     double gridScale() const;
@@ -199,8 +206,10 @@ signals:
     // Preview this file (its play button, Space), or play / pause it if
     // it's the one previewed.
     void previewRequested(const QString &path);
-    // The view and the views' zooms changed (remembered per user).
+    // The view, the backup-audio filter and the views' zooms changed
+    // (remembered per user).
     void viewModeChanged(ViewMode mode);
+    void backupAudioShownChanged(bool shown);
     void listScaleChanged(double scale);
     void gridScaleChanged(double scale);
 
@@ -227,6 +236,7 @@ private:
     QLabel *m_status = nullptr;
     QToolButton *m_viewList = nullptr;
     QToolButton *m_viewGrid = nullptr;
+    QToolButton *m_backupAudio = nullptr;
     QAction *m_addAction = nullptr;
     QAction *m_locateAction = nullptr;
     QAction *m_showAction = nullptr;
@@ -234,6 +244,7 @@ private:
     ThumbnailProvider m_thumbnailProvider;
     ModeProvider m_modeProvider;
     ViewMode m_viewMode = ViewMode::List;
+    bool m_showBackupAudio = false;
     QSet<QString> m_inUse;
     QString m_previewPath;
     Preview m_preview = Preview::None;

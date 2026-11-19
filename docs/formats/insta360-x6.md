@@ -13,6 +13,10 @@ in [`README.md`](README.md).
 ## Files and streams
 
 - 📖 One `.insv` per take holding both lenses, the X5's naming (X5 §1).
+- ✅ The camera can also write `<file stem>_backup.wav` beside a clip
+  (`VID_…_00_NNN_backup.wav`, on our own cards): the take's sound again,
+  uncompressed (PCM s32le, 48 kHz stereo), running a hair past the clip's
+  end. 37 wavs for 38 clips on a day's card -- the first clip had none.
 - 📖 Two 1/1.1" square sensors (a third more area than the X5's). H.265
   only, up to 180 Mb/s.
 - 📖 360 modes:
