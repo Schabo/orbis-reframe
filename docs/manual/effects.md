@@ -67,12 +67,23 @@ The **Colour looks** in the **Effects** tab:
   picture gets a little more contrast without losing the brightest and
   darkest parts. It's more than **Saturation** at −100 % in **Colour**,
   which treats every colour the same.
+- **Deep sky** does to a sky what a polarizing filter does: blues and
+  cyans get deeper and a little darker, so white clouds stand out. Greys,
+  white, skin, reds and greens stay as they were. (A real polarizer also
+  takes reflections off water and glass; no look can do that afterwards.)
+- **Teal & orange** is the film-poster look: greens and blues move
+  toward teal, skin and orange tones keep their colour and get a little
+  richer, the shadows are a little teal and the highlights a little warm,
+  with a touch more contrast.
+- **Faded film** looks like an old print: the blacks are lifted to a dark
+  grey, the whites softly toned down, the colours muted, and the
+  shadows a little warm.
 - **Custom LUT** asks for a `.cube` file (or the `.zip` a LUT pack comes
   in, as **Load LUT…** in **Colour** does) and makes it the clip's look.
 
 | Setting | What it does | Range |
 |---|---|---|
-| **Look** | Which look: **Black & White**, a LUT file the project has, or **Load LUT…** to pick another file. | |
+| **Look** | Which look: a built-in one (**Black & White**, **Deep sky**, **Teal & orange**, **Faded film**), a LUT file the project has, or **Load LUT…** to pick another file. | |
 | **Strength** | How much of the look: 100 % is the look itself, 0 % the clip without it. 50 % of **Black & White** gives faded colours. | 0 % to 100 % (new: 100 %) |
 
 A clip has one colour look. Dropping another one on it replaces it; to

@@ -15,6 +15,12 @@ inline QString name(const QString &presetId)
 {
     if (presetId == QLatin1String(color::look::kBlackWhite))
         return QCoreApplication::translate("looknames", "Black & White");
+    if (presetId == QLatin1String(color::look::kDeepSky))
+        return QCoreApplication::translate("looknames", "Deep sky");
+    if (presetId == QLatin1String(color::look::kTealOrange))
+        return QCoreApplication::translate("looknames", "Teal & orange");
+    if (presetId == QLatin1String(color::look::kFaded))
+        return QCoreApplication::translate("looknames", "Faded film");
     return presetId;
 }
 

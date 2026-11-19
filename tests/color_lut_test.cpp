@@ -12,6 +12,8 @@
 
 #include <QTemporaryDir>
 
+#include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -242,6 +244,172 @@ void testBlackWhite()
     CHECK(near(a[0], b[0], 1e-5f));
 }
 
+// Hue in degrees and HSV saturation of an encoded colour, for the looks'
+// checks.
+void hueSat(const float c[3], float &h, float &s)
+{
+    const float mx = std::max({c[0], c[1], c[2]}), mn = std::min({c[0], c[1], c[2]});
+    const float d = mx - mn;
+    s = mx > 0.0f ? d / mx : 0.0f;
+    if (d <= 0.0f)
+        h = 0.0f;
+    else if (mx == c[0])
+        h = 60.0f * std::fmod((c[1] - c[2]) / d + 6.0f, 6.0f);
+    else if (mx == c[1])
+        h = 60.0f * ((c[2] - c[0]) / d + 2.0f);
+    else
+        h = 60.0f * ((c[0] - c[1]) / d + 4.0f);
+}
+
+float hueDistance(float a, float b)
+{
+    const float d = std::fabs(a - b);
+    return std::min(d, 360.0f - d);
+}
+
+float luma709(const float c[3])
+{
+    return 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2];
+}
+
+// Every built-in look: known by its id, a 33-point LUT built once and
+// shared, its formula at the grid points, the output in 0..1 and no jump
+// between neighbouring entries (a smooth look under trilinear filtering).
+void testPresets()
+{
+    using namespace color::look;
+    CHECK(kPresets.size() == 4);
+    const struct {
+        const char *id;
+        void (*formula)(const float *, float *);
+    } looks[] = {{kBlackWhite, blackWhite}, {kDeepSky, deepSky}, {kTealOrange, tealOrange},
+                 {kFaded, faded}};
+    for (const auto &l : looks) {
+        CHECK(isPreset(l.id));
+        const auto lut = presetLut(l.id);
+        const bool shaped = lut && lut->size == 33 && lut->rgb.size() == 33u * 33u * 33u * 3u;
+        CHECK(shaped);
+        if (!shaped) // the scan below reads it as a 33-point cube
+            continue;
+        CHECK(presetLut(l.id) == lut && !lut->title.empty());
+        float worst = 0.0f;
+        bool inRange = true;
+        const auto at = [&](int r, int g, int b, int c) {
+            return lut->rgb[((std::size_t(b) * 33 + g) * 33 + r) * 3 + c];
+        };
+        for (int b = 0; b < 33; ++b)
+            for (int g = 0; g < 33; ++g)
+                for (int r = 0; r < 33; ++r)
+                    for (int c = 0; c < 3; ++c) {
+                        const float v = at(r, g, b, c);
+                        inRange = inRange && v >= 0.0f && v <= 1.0f;
+                        if (r)
+                            worst = std::max(worst, std::fabs(v - at(r - 1, g, b, c)));
+                        if (g)
+                            worst = std::max(worst, std::fabs(v - at(r, g - 1, b, c)));
+                        if (b)
+                            worst = std::max(worst, std::fabs(v - at(r, g, b - 1, c)));
+                    }
+        CHECK(inRange);
+        // A grid step is 1/32 (0.031); no look is steeper than ~3x anywhere.
+        CHECK(worst < 0.1f);
+        const float grid[3] = {16 / 32.0f, 8 / 32.0f, 24 / 32.0f};
+        float a[3], b[3];
+        l.formula(grid, a);
+        lut->apply(grid, b);
+        for (int k = 0; k < 3; ++k)
+            CHECK(near(a[k], b[k], 1e-5f));
+    }
+}
+
+// Deep sky: a blue sky more saturated and darker, greys, white clouds, reds,
+// skin and greens (nearly) as they were.
+void testDeepSky()
+{
+    using color::look::deepSky;
+    float out[3], h0, s0, h1, s1;
+    const float skies[][3] = {{0.35f, 0.55f, 0.9f}, {0.55f, 0.7f, 0.9f}, {0.4f, 0.7f, 0.85f}};
+    for (const auto &sky : skies) {
+        deepSky(sky, out);
+        hueSat(sky, h0, s0);
+        hueSat(out, h1, s1);
+        CHECK(s1 > s0 + 0.02f && luma709(out) < luma709(sky) - 0.02f && hueDistance(h0, h1) < 5.0f);
+    }
+    const float keep[][3] = {{0.5f, 0.5f, 0.5f},   {1, 1, 1},          {0.9f, 0.92f, 0.96f},
+                             {0.8f, 0.2f, 0.15f},  {0.85f, 0.6f, 0.5f}, {0.3f, 0.55f, 0.2f},
+                             {0.05f, 0.05f, 0.05f}};
+    for (const auto &c : keep) {
+        deepSky(c, out);
+        for (int k = 0; k < 3; ++k)
+            CHECK(near(out[k], c[k], 0.01f));
+    }
+}
+
+// Teal & orange: a green-blue moves toward teal, a skin tone keeps its hue
+// and gains a little saturation, black and white stay put.
+void testTealOrange()
+{
+    using color::look::tealOrange;
+    float out[3], h0, s0, h1, s1;
+    const float foliage[3] = {0.3f, 0.55f, 0.35f}, sky[3] = {0.35f, 0.55f, 0.9f};
+    for (const auto *c : {foliage, sky}) {
+        tealOrange(c, out);
+        hueSat(c, h0, s0);
+        hueSat(out, h1, s1);
+        CHECK(hueDistance(h1, 185.0f) < hueDistance(h0, 185.0f) - 5.0f);
+    }
+    const float skins[][3] = {{0.85f, 0.6f, 0.5f}, {0.6f, 0.4f, 0.3f}, {0.9f, 0.72f, 0.62f}};
+    for (const auto &skin : skins) {
+        tealOrange(skin, out);
+        hueSat(skin, h0, s0);
+        hueSat(out, h1, s1);
+        CHECK(hueDistance(h0, h1) < 4.0f && s1 > s0);
+    }
+    const float black[3] = {0, 0, 0}, white[3] = {1, 1, 1};
+    tealOrange(black, out);
+    CHECK(near(out[0], 0.0f) && near(out[1], 0.0f) && near(out[2], 0.0f));
+    tealOrange(white, out);
+    CHECK(out[0] > 0.97f && out[1] > 0.97f && out[2] > 0.9f);
+    // A bright saturated ramp keeps its gradation to the end: the warm
+    // highlights and the curve roll off into white rather than clip.
+    float prev = -1.0f;
+    for (int i = 26; i <= 32; ++i) {
+        const float ramp[3] = {i / 32.0f, 0.59375f, 0.96875f};
+        tealOrange(ramp, out);
+        CHECK(out[0] > prev + 0.002f);
+        prev = out[0];
+    }
+    // The split tone: a dark grey a little teal, a light one a little warm.
+    const float dark[3] = {0.2f, 0.2f, 0.2f}, light[3] = {0.8f, 0.8f, 0.8f};
+    tealOrange(dark, out);
+    CHECK(out[2] > out[0] && out[0] < 0.2f);
+    tealOrange(light, out);
+    CHECK(out[0] > out[2] && out[0] > 0.8f);
+}
+
+// Faded film: black lifted to ~0.06, white down to ~0.94, a mid grey still
+// grey, colours muted.
+void testFaded()
+{
+    using color::look::faded;
+    float out[3], h0, s0, h1, s1;
+    const float black[3] = {0, 0, 0}, white[3] = {1, 1, 1}, grey[3] = {0.5f, 0.5f, 0.5f};
+    faded(black, out);
+    for (int k = 0; k < 3; ++k)
+        CHECK(near(out[k], 0.06f, 0.015f));
+    CHECK(out[0] > out[2]); // warm
+    faded(white, out);
+    for (int k = 0; k < 3; ++k)
+        CHECK(near(out[k], 0.94f, 1e-3f));
+    faded(grey, out);
+    CHECK(near(out[0], out[1], 0.01f) && near(out[1], out[2], 0.01f));
+    const float red[3] = {0.8f, 0.2f, 0.15f};
+    faded(red, out);
+    hueSat(red, h0, s0);
+    hueSat(out, h1, s1);
+    CHECK(s1 < s0 - 0.1f && hueDistance(h0, h1) < 6.0f);
+}
+
 // A clip's look in what the renderers get: a built-in one or a file, its
 // strength as the mix, none when off; a later version's look or a missing
 // file left out with why.
@@ -299,6 +467,10 @@ int main()
     testApply();
     testCacheAndGrade();
     testBlackWhite();
+    testPresets();
+    testDeepSky();
+    testTealOrange();
+    testFaded();
     testLookGrade();
     return modeltest::finish("color_lut_test");
 }

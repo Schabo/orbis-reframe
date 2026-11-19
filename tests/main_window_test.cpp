@@ -1216,8 +1216,11 @@ void testLooks(const Ctx &c)
     if (!undo || !choice || !strength || !remove || !problem || !looks ||
         c.timeline->count() < 2)
         return;
-    CHECK(looks->count() == 2 && looks->item(0)->text() == QStringLiteral("Black & White") &&
-          looks->item(1)->text() == QStringLiteral("Custom LUT"));
+    CHECK(looks->count() == 5 && looks->item(0)->text() == QStringLiteral("Black & White") &&
+          looks->item(1)->text() == QStringLiteral("Deep sky") &&
+          looks->item(2)->text() == QStringLiteral("Teal & orange") &&
+          looks->item(3)->text() == QStringLiteral("Faded film") &&
+          looks->item(4)->text() == QStringLiteral("Custom LUT"));
     settle();
     CHECK(seekTo(c, 1000));
     settle();

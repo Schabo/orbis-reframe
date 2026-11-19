@@ -20,9 +20,19 @@ namespace look {
 // on film (a blue sky a little darker, so clouds stand out) and a gentle
 // filmic curve -- not the flat grey of the Colour panel's Saturation -100.
 constexpr const char *kBlackWhite = "bw";
+// Deep sky: what a polarizer does to a sky -- blues and cyans deeper and a
+// little darker, so white clouds stand out; greys, skin, reds and greens as
+// they were.
+constexpr const char *kDeepSky = "deep-sky";
+// Teal & orange: greens and blues pulled toward teal, skin and orange kept
+// and a little richer, teal shadows and warm highlights, a little contrast.
+constexpr const char *kTealOrange = "teal-orange";
+// Faded film: lifted blacks, softly rolled-off whites, muted colours and a
+// slightly warm shadow, like an old print.
+constexpr const char *kFaded = "faded";
 
 // The built-in looks' ids, in the library's order.
-constexpr std::array<const char *, 1> kPresets{kBlackWhite};
+constexpr std::array<const char *, 4> kPresets{kBlackWhite, kDeepSky, kTealOrange, kFaded};
 
 constexpr bool isPreset(std::string_view id)
 {
@@ -39,6 +49,10 @@ std::shared_ptr<const Lut3D> presetLut(std::string_view id);
 // Black & White at one colour (Rec.709-encoded, each 0..1): the formula
 // presetLut(kBlackWhite) samples.
 void blackWhite(const float in[3], float out[3]);
+// The other looks' formulas, the same way.
+void deepSky(const float in[3], float out[3]);
+void tealOrange(const float in[3], float out[3]);
+void faded(const float in[3], float out[3]);
 
 } // namespace look
 } // namespace color
