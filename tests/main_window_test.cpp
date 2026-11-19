@@ -1498,6 +1498,19 @@ void testOverlay(const Ctx &c)
     clip = c.timeline->trackClipById(clipId);
     CHECK(clip && clip->insetKeys.count() == 2);
     CHECK(keyCount && keyCount->text() == QStringLiteral("2 keys"));
+    // Keys selected in its lane are deleted together (here the first).
+    if (clip && clip->insetKeys.count() == 2) {
+        const qint64 first = clip->insetKeys.keys()[0].timeMs;
+        const qint64 second = clip->insetKeys.keys()[1].timeMs;
+        emit c.timelineWidget->trackClipKeysDeleteRequested(clipId, {first});
+        clip = c.timeline->trackClipById(clipId);
+        CHECK(clip && clip->insetKeys.count() == 1 && clip->insetKeys.keys()[0].timeMs == second);
+        CHECK(keyCount && keyCount->text() == QStringLiteral("1 key"));
+        CHECK(seekTo(c, 1000));
+        key(c, Qt::Key_K); // back as it was
+        clip = c.timeline->trackClipById(clipId);
+        CHECK(clip && clip->insetKeys.count() == 2);
+    }
     // Its tab's Animation: sliding in from the left, on top of its keys; the
     // Overlay tab's (titles') stays out of it.
     auto *motionIn = find<QComboBox>(c.w, "overlayMotionIn");

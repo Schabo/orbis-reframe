@@ -201,8 +201,10 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     // Picking anything else drops a selection of keys; the ruler (seeking)
     // and the headers keep it, and a press in a clip's key lane decides
     // below.
+    const bool keyPress = keyAt(e->pos()).index >= 0;
     if (h.kind != Hit::Ruler && h.kind != Hit::Header &&
-        !(h.kind == Hit::MainClip && (inKeyLane(h.row, e->pos()) || keyAt(e->pos()).row >= 0)))
+        !(h.kind == Hit::MainClip && (inKeyLane(h.row, e->pos()) || keyPress)) &&
+        !(h.kind == Hit::TrackClip && (inOverlayLane(h.track, h.clip, e->pos()) || keyPress)))
         clearKeySelection();
     switch (h.kind) {
     case Hit::Header:
@@ -215,7 +217,7 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
             toggleSound(h.track);
             return;
         }
-        if (muteBox(trackTop(h.track), kTrackH).contains(e->pos())) {
+        if (muteBox(trackTop(h.track), trackH(h.track)).contains(e->pos())) {
             emit trackMuteToggled(m_tracks[h.track].id, !m_tracks[h.track].muted);
             return;
         }
@@ -245,7 +247,7 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
             m_drag = Drag::KeySelect;
             m_keyPressOnDiamond = k.row >= 0;
             const bool add = (e->modifiers() & Qt::ShiftModifier) &&
-                             m_keySel.clipId == m_rows[h.row].clip.id;
+                             keySelectionClipId() == m_rows[h.row].clip.id;
             m_keySelBase = add ? m_keySel : KeySelection();
             return;
         }
@@ -264,14 +266,25 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
         return;
     }
     case Hit::TrackClip: {
-        const TrackClipView &c = m_tracks[h.track].clips[h.clip];
-        emit trackClipSelected(c.id);
-        // A look-key diamond: jump the playhead to it, no drag on the clip.
+        const int clipId = m_tracks[h.track].clips[h.clip].id;
+        emit trackClipSelected(clipId);
+        // A look-key diamond: jump the playhead to it, no drag on the clip;
+        // a drag from it or along the clip's key lane selects keys, as on
+        // the main track.
         const KeyHit k = keyAt(e->pos());
-        if (k.index >= 0) {
+        if (k.index >= 0)
             emit seekRequested(std::min(keyTimelineMs(k), m_totalMs));
+        if (k.index >= 0 || inOverlayLane(h.track, h.clip, e->pos())) {
+            m_drag = Drag::KeySelect;
+            m_keyPressOnDiamond = k.index >= 0;
+            const bool add = (e->modifiers() & Qt::ShiftModifier) &&
+                             keySelectionTrackClipId() == clipId;
+            m_keySelBase = add ? m_keySel : KeySelection();
+            m_keySelBase.overlay = true;
+            m_keySelBase.clipId = clipId;
             return;
         }
+        const TrackClipView &c = m_tracks[h.track].clips[h.clip];
         m_dragAudioOrig = m_dragAudio = c;
         m_dragAudioTrack = m_provTrack = h.track;
         m_provStartMs = c.startMs;
@@ -329,7 +342,7 @@ void TimelineWidget::mouseMoveEvent(QMouseEvent *e)
         else if (h.kind == Hit::Transition)
             shape = Qt::PointingHandCursor;
         else if (h.kind == Hit::Header && h.track >= 0 &&
-                 !muteBox(trackTop(h.track), kTrackH).contains(e->pos()))
+                 !muteBox(trackTop(h.track), trackH(h.track)).contains(e->pos()))
             shape = Qt::OpenHandCursor; // drag to reorder, double-click to rename
         setCursor(shape);
         return;
@@ -581,7 +594,7 @@ void TimelineWidget::mouseDoubleClickEvent(QMouseEvent *e)
 {
     const Hit h = hitTest(e->pos());
     if (e->button() == Qt::LeftButton && h.kind == Hit::Header && h.track >= 0 &&
-        !muteBox(trackTop(h.track), kTrackH).contains(e->pos()) &&
+        !muteBox(trackTop(h.track), trackH(h.track)).contains(e->pos()) &&
         !(hasOwnSound(h.track) && foldBox(h.track).contains(e->pos()))) {
         m_drag = Drag::None;
         startRename(h.track);
@@ -605,7 +618,8 @@ void TimelineWidget::startRename(int trackIndex)
     m_renameTrackId = m_tracks[trackIndex].id;
     m_renameCancelled = false;
     m_renameEdit->setText(m_tracks[trackIndex].name);
-    m_renameEdit->setGeometry(2, trackTop(trackIndex) + 1, std::max(kHeaderW + 80, 170), kTrackH - 2);
+    m_renameEdit->setGeometry(2, trackTop(trackIndex) + (trackH(trackIndex) - kTrackH) / 2 + 1,
+                              std::max(kHeaderW + 80, 170), kTrackH - 2);
     m_renameEdit->show();
     m_renameEdit->raise();
     m_renameEdit->setFocus();
@@ -647,7 +661,7 @@ bool TimelineWidget::event(QEvent *e)
                                   "Folded tracks still play and export."),
                                this);
         else if (h.kind == Hit::Header && h.track >= 0 && m_tracks[h.track].video &&
-                 !muteBox(trackTop(h.track), kTrackH).contains(he->pos()))
+                 !muteBox(trackTop(h.track), trackH(h.track)).contains(he->pos()))
             QToolTip::showText(he->globalPos(), layerToolTip(h.track), this);
         else if (h.kind == Hit::Transition)
             QToolTip::showText(he->globalPos(), m_transitions[h.row].toolTip, this);
@@ -668,6 +682,12 @@ bool TimelineWidget::event(QEvent *e)
                                this);
         else if (h.kind == Hit::MainClip && !m_rows[h.row].clip.keySourceMs.isEmpty() &&
                  inKeyLane(h.row, he->pos()))
+            QToolTip::showText(he->globalPos(),
+                               tr("Drag along the keyframes to select them (Shift+drag adds "
+                                  "more), then press Delete to remove them."),
+                               this);
+        else if (h.kind == Hit::TrackClip && !m_tracks[h.track].clips[h.clip].keySourceMs.isEmpty() &&
+                 inOverlayLane(h.track, h.clip, he->pos()))
             QToolTip::showText(he->globalPos(),
                                tr("Drag along the keyframes to select them (Shift+drag adds "
                                   "more), then press Delete to remove them."),
@@ -835,6 +855,12 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         const TrackClipView &c = m_tracks[h.track].clips[h.clip];
         emit trackClipSelected(c.id);
         const qint64 atSrc = c.trimInMs + std::llround((atMs - c.startMs) * c.speed);
+        QAction *deleteKeys = nullptr; // its selected look keys, as a video clip's
+        if (keySelectionTrackClipId() == c.id) {
+            deleteKeys = menu.addAction(tr("Delete keyframes (%1)").arg(m_keySel.keys.size()));
+            deleteKeys->setObjectName(QStringLiteral("keysDeleteAction"));
+            menu.addSeparator();
+        }
         QAction *split = menu.addAction(tr("Split here"));
         split->setEnabled(atSrc > c.trimInMs + kMinTrimMs && atSrc < c.trimOutMs - kMinTrimMs);
         QAction *link = nullptr;
@@ -853,7 +879,9 @@ void TimelineWidget::contextMenuEvent(QContextMenuEvent *e)
         QAction *chosen = menu.exec(e->globalPos());
         if (!chosen)
             return;
-        if (chosen == split)
+        if (deleteKeys && chosen == deleteKeys)
+            deleteSelectedKeys();
+        else if (chosen == split)
             emit trackClipSplitRequested(clipId, atMs);
         else if (chosen == link)
             emit audioClipLinkRequested(clipId, !wasLinked);

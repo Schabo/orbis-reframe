@@ -122,7 +122,7 @@ file, `Alt+S` saves (`Enter` does too).
 | Drag a clip | Move it: reorder on the video track; move in time or to another track on audio and overlay tracks (a linked audio clip stays put). |
 | Drag a clip's edge | Trim it. |
 | Right-click a clip | Its menu: split, speed, duplicate, insert, show hidden highlight marks, move, remove, link, put its sound on an audio track. |
-| Drag along a video clip's keyframe lane (its bottom strip) | Select the reframe keyframes in that stretch; `Shift`+drag adds more. `Delete` or the clip's right-click **Delete keyframes** removes them; `Esc` or a click on the lane between keyframes clears the selection. |
+| Drag along a video or overlay clip's keyframe lane (its bottom strip) | Select the keyframes in that stretch; `Shift`+drag adds more. `Delete` or the clip's right-click **Delete keyframes** removes them; `Esc` or a click on the lane between keyframes clears the selection. |
 | Click a highlight mark's dot | Move the playhead to it. Right-click: delete it (yours) or hide it (set while recording). |
 | Right-click an empty spot | Add clips, audio or overlays there; add, rename, move or remove tracks; zoom. |
 | Click **M** / **H** in a track header | Mute an audio track (the camera's sound: the *Camera mic* track) / hide an overlay track. |

@@ -324,6 +324,10 @@ public slots:
     // kInsetKeySnapMs; remove to one within kInsetKeyDeleteSnapMs.
     void upsertTrackClipInsetKey(int clipId, qint64 sourceMs, const inset::Look &look);
     void removeTrackClipInsetKeyNear(int clipId, qint64 sourceMs);
+    // Remove the keys at exactly these source times (a selection of them on
+    // the timeline) -- one edit. If none is left, the clip keeps the look
+    // at `atSourceMs` as its static one.
+    void removeTrackClipInsetKeys(int clipId, const QList<qint64> &sourceMs, qint64 atSourceMs);
     // Drop every key; the clip keeps the look at `sourceMs` as its static one.
     void clearTrackClipInsetKeys(int clipId, qint64 sourceMs);
     // Ease of the move from the key at sourceMs (within kInsetKeyDeleteSnapMs,

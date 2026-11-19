@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <functional>
 
 using namespace timelinelayout;
 
@@ -79,7 +80,7 @@ void TimelineWidget::layoutRows()
             continue;
         }
         m_trackY[i] = y;
-        y += kTrackH + kRowGap;
+        y += trackH(i) + kRowGap;
     }
     m_rowsEndY = y;
 }
@@ -94,7 +95,7 @@ bool TimelineWidget::hasOwnSound(int trackIndex) const
 QRect TimelineWidget::foldBox(int trackIndex) const
 {
     const int top = trackIndex < 0 ? mainTop() : trackTop(trackIndex);
-    const int h = trackIndex < 0 ? kMainH : kTrackH;
+    const int h = trackIndex < 0 ? kMainH : trackH(trackIndex);
     return QRect(2, top + (h - 14) / 2, kNameX - 4, 14);
 }
 
@@ -114,7 +115,7 @@ int TimelineWidget::overlayLayer(int trackIndex, int *count) const
 
 QRect TimelineWidget::layerBox(int trackIndex) const
 {
-    const QRect mb = muteBox(trackTop(trackIndex), kTrackH);
+    const QRect mb = muteBox(trackTop(trackIndex), trackH(trackIndex));
     return QRect(mb.left() - 4 - kLayerBoxW, mb.top(), kLayerBoxW, mb.height());
 }
 
@@ -154,6 +155,11 @@ void TimelineWidget::toggleSound(int trackIndex)
     const bool collapsed = !isSoundCollapsed(id);
     setSoundCollapsed(id, collapsed);
     emit soundCollapsedToggled(id, collapsed);
+}
+
+int TimelineWidget::trackH(int index) const
+{
+    return m_tracks[index].video ? kOverlayH : kTrackH;
 }
 
 int TimelineWidget::trackTop(int trackIndex) const
@@ -210,7 +216,7 @@ void TimelineWidget::setClips(const QVector<Clip> &clips)
     m_clips = clips;
     // A selection of keys that are no longer as they were (deleted, a pane
     // or a trim changed them, the clip is gone) is dropped.
-    if (m_keySel.clipId) {
+    if (m_keySel.clipId && !m_keySel.overlay) {
         const auto it = std::find_if(clips.begin(), clips.end(),
                                      [&](const Clip &c) { return c.id == m_keySel.clipId; });
         if (it == clips.end() || it->keySourceMs != m_keySel.clipKeys)
@@ -256,6 +262,12 @@ void TimelineWidget::setTracks(const QVector<TrackView> &tracks)
 {
     const bool resized = tracks.size() != m_tracks.size();
     m_tracks = tracks;
+    // An overlay clip's selected keys, as for a main clip's (setClips).
+    if (m_keySel.clipId && m_keySel.overlay) {
+        const TrackClipView *c = trackClipById(m_keySel.clipId);
+        if (!c || c->keySourceMs != m_keySel.clipKeys)
+            m_keySel = KeySelection();
+    }
     layoutRows();
     if (m_drag == Drag::AudioMove || m_drag == Drag::AudioTrimIn || m_drag == Drag::AudioTrimOut)
         m_drag = Drag::None; // the model changed under the drag
@@ -481,7 +493,7 @@ QRect TimelineWidget::trackClipRect(int trackIndex, const TrackClipView &c) cons
 {
     const int x0 = xForTimelineMs(c.startMs);
     const int x1 = xForTimelineMs(c.endMs());
-    return QRect(x0, trackTop(trackIndex), std::max(2, x1 - x0), kTrackH);
+    return QRect(x0, trackTop(trackIndex), std::max(2, x1 - x0), trackH(trackIndex));
 }
 
 int TimelineWidget::trackAtY(int y) const
@@ -490,7 +502,7 @@ int TimelineWidget::trackAtY(int y) const
         if (!trackShown(i))
             continue;
         const int top = trackTop(i);
-        if (y >= top - kRowGap / 2 && y < top + kTrackH + kRowGap)
+        if (y >= top - kRowGap / 2 && y < top + trackH(i) + kRowGap)
             return i;
     }
     return -1;
@@ -593,7 +605,7 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
             const QRect rc = trackClipRect(t, tc);
             if (pos.y() < rc.top() || pos.y() > rc.bottom())
                 continue;
-            const int cy = rc.bottom() - 4; // as drawn
+            const int cy = rc.bottom() - kOverlayLaneH / 2; // as drawn
             for (int j = 0; j < tc.keySourceMs.size(); ++j) {
                 const qint64 ks = tc.keySourceMs[j];
                 if (!tc.showsKeyAt(ks))
@@ -610,9 +622,9 @@ TimelineWidget::KeyHit TimelineWidget::keyAt(QPoint pos) const
     return k;
 }
 
-QRect TimelineWidget::keyLaneRect(const QRect &rc)
+QRect TimelineWidget::keyLaneRect(const QRect &rc, int laneH)
 {
-    return QRect(QPoint(rc.left() + kEdgeGrabPx + 1, rc.bottom() - kKeyLaneH + 1),
+    return QRect(QPoint(rc.left() + kEdgeGrabPx + 1, rc.bottom() - laneH + 1),
                  QPoint(rc.right() - kEdgeGrabPx - 1, rc.bottom() - 1));
 }
 
@@ -620,32 +632,79 @@ bool TimelineWidget::inKeyLane(int row, QPoint pos) const
 {
     // Down to the clip's bottom edge: a press on its border is in the lane.
     return row >= 0 && row < m_rows.size() &&
-           keyLaneRect(m_rows[row].rect).adjusted(0, 0, 0, 1).contains(pos);
+           keyLaneRect(m_rows[row].rect, kKeyLaneH).adjusted(0, 0, 0, 1).contains(pos);
+}
+
+bool TimelineWidget::inOverlayLane(int track, int clip, QPoint pos) const
+{
+    return track >= 0 && track < m_tracks.size() && m_tracks[track].video && clip >= 0 &&
+           clip < m_tracks[track].clips.size() &&
+           keyLaneRect(trackClipRect(track, m_tracks[track].clips[clip]), kOverlayLaneH)
+               .adjusted(0, 0, 0, 1)
+               .contains(pos);
+}
+
+const TimelineWidget::TrackClipView *TimelineWidget::trackClipById(int id, int *trackIndex) const
+{
+    for (int t = 0; t < m_tracks.size(); ++t)
+        for (const TrackClipView &c : m_tracks[t].clips)
+            if (c.id == id) {
+                if (trackIndex)
+                    *trackIndex = t;
+                return &c;
+            }
+    return nullptr;
 }
 
 void TimelineWidget::selectKeysTo(QPoint pos)
 {
-    if (m_dragRow < 0 || m_dragRow >= m_rows.size())
-        return;
-    const Row &r = m_rows[m_dragRow];
+    // The clip swept: a main-track row (m_dragRow), or an overlay clip
+    // (m_keySelBase's, looked up by id: the tracks may be handed in anew).
+    int id = 0;
+    qint64 start = 0, end = 0, trimIn = 0;
+    double speed = 1.0;
+    const QVector<qint64> *keys = nullptr;
+    std::function<bool(qint64)> shows;
+    std::function<qint64(qint64)> keyAtMs; // where a key's diamond is, timeline ms
+    if (m_keySelBase.overlay) {
+        const TrackClipView *c = trackClipById(m_keySelBase.clipId);
+        if (!c)
+            return;
+        id = c->id;
+        start = c->startMs;
+        end = c->endMs();
+        trimIn = c->trimInMs;
+        speed = c->speed;
+        keys = &c->keySourceMs;
+        shows = [c](qint64 ks) { return c->showsKeyAt(ks); };
+        keyAtMs = [c](qint64 ks) { return c->keyTimelineMs(ks); };
+    } else {
+        if (m_dragRow < 0 || m_dragRow >= m_rows.size())
+            return;
+        const Row &r = m_rows[m_dragRow];
+        id = r.clip.id;
+        start = r.startMs;
+        end = r.startMs + r.durMs;
+        trimIn = r.clip.trimInMs;
+        speed = r.clip.speed;
+        keys = &r.clip.keySourceMs;
+        shows = [&r](qint64 ks) { return r.clip.showsKeyAt(ks); };
+        keyAtMs = [&r](qint64 ks) { return r.startMs + r.clip.keyLocalMs(ks); };
+    }
     // The sweep in timeline ms (the view may have scrolled since the
     // press), clamped to the clip: a key on its in or out point, outside
     // the lane, is still caught.
-    const qint64 end = r.startMs + r.durMs;
-    const qint64 a = std::clamp(m_pressMs, r.startMs, end);
-    const qint64 b = std::clamp(timelineMsAt(pos.x()), r.startMs, end);
+    const qint64 a = std::clamp(m_pressMs, start, end);
+    const qint64 b = std::clamp(timelineMsAt(pos.x()), start, end);
     const qint64 lo = std::min(a, b), hi = std::max(a, b);
-    const auto source = [&](qint64 ms) {
-        return r.clip.trimInMs + std::llround((ms - r.startMs) * r.clip.speed);
-    };
+    const auto source = [&](qint64 ms) { return trimIn + std::llround((ms - start) * speed); };
     m_keySel = m_keySelBase;
-    m_keySel.clipId = r.clip.id;
-    m_keySel.clipKeys = r.clip.keySourceMs;
+    m_keySel.clipId = id;
+    m_keySel.clipKeys = *keys;
     m_keySel.spans.push_back({source(lo), source(hi)});
-    for (const qint64 ks : r.clip.keySourceMs) {
-        // Where its diamond is drawn.
-        const qint64 t = r.startMs + r.clip.keyLocalMs(ks);
-        if (r.clip.showsKeyAt(ks) && t >= lo && t <= hi && !m_keySel.keys.contains(ks))
+    for (const qint64 ks : *keys) {
+        const qint64 t = keyAtMs(ks);
+        if (shows(ks) && t >= lo && t <= hi && !m_keySel.keys.contains(ks))
             m_keySel.keys.push_back(ks);
     }
     std::sort(m_keySel.keys.begin(), m_keySel.keys.end());
@@ -666,7 +725,10 @@ void TimelineWidget::deleteSelectedKeys()
         return;
     const KeySelection sel = m_keySel;
     clearKeySelection();
-    emit keysDeleteRequested(sel.clipId, sel.keys);
+    if (sel.overlay)
+        emit trackClipKeysDeleteRequested(sel.clipId, sel.keys);
+    else
+        emit keysDeleteRequested(sel.clipId, sel.keys);
 }
 
 qint64 TimelineWidget::keyTimelineMs(const KeyHit &k) const
@@ -692,7 +754,7 @@ int TimelineWidget::trackGapAtY(int y) const
 {
     int gap = 0;
     for (int i = 0; i < m_tracks.size(); ++i)
-        if (y > trackTop(i) + kTrackH / 2)
+        if (y > trackTop(i) + trackH(i) / 2)
             gap = i + 1;
     return gap;
 }

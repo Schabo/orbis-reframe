@@ -23,7 +23,8 @@ overlays. For the names of the window's parts, see
    icon).
 5. An **audio track**, with a music file. The waveform shows how loud it
    is, and the slanted lines at its ends are fades.
-6. An **overlay track**, with a picture-in-picture clip.
+6. An **overlay track**, with a picture-in-picture clip. Its keyframes
+   are in a lane along its bottom, like a video clip's.
 7. The **track headers**: each track's name and its **M** (mute) or **H**
    (hide) box. An overlay track also shows its layer number (1 is in
    front).

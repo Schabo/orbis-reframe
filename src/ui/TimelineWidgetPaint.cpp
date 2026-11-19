@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 // Painting the timeline: the ruler, the track headers, the clips with their
 // labels, keyframes and waveforms, the drop and reorder marks, the playhead.
@@ -178,7 +179,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
     p.fillRect(QRect(cLeft, mainTop(), usableW, kMainH), rowBg);
     for (int i = 0; i < m_tracks.size(); ++i)
         if (trackShown(i))
-            p.fillRect(QRect(cLeft, trackTop(i), usableW, kTrackH), rowBg);
+            p.fillRect(QRect(cLeft, trackTop(i), usableW, trackH(i)), rowBg);
 
     // Past the end of the main track: audio there isn't played.
     if (m_extentMs > m_totalMs) {
@@ -191,6 +192,26 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         p.drawText(QRect(cLeft, mainTop(), usableW, kMainH), Qt::AlignCenter,
                    tr("No clips — open a clip or add one to the timeline"));
     }
+
+    // A clip's key lane: its colour shaded (a gap shows through) under a
+    // thin line; with `selected`, the stretches swept to select keys tinted
+    // (`xAt` a source ms's x).
+    const auto drawLane = [&](const QRect &lane, bool selected,
+                              const std::function<int(qint64)> &xAt) {
+        if (lane.width() <= 0)
+            return;
+        p.fillRect(lane, tc.shade);
+        p.setPen(tc.shade);
+        p.drawLine(lane.left(), lane.top() - 1, lane.right(), lane.top() - 1);
+        if (selected)
+            for (const auto &[from, to] : m_keySel.spans) {
+                const int x0 = std::max(lane.left(), xAt(from));
+                const int x1 = std::min(lane.right(), xAt(to));
+                if (x1 >= x0)
+                    p.fillRect(QRect(x0, lane.top(), x1 - x0 + 1, lane.height()),
+                               withAlpha(tc.accent, 70));
+            }
+    };
 
     // Main-track clip blocks.
     p.setRenderHint(QPainter::Antialiasing, false);
@@ -228,25 +249,10 @@ void TimelineWidget::paintEvent(QPaintEvent *)
                                clipFill(i, active, true));
             }
 
-        // The key lane along its bottom: the clip's colour shaded (a gap
-        // shows through), under a thin line; the stretches swept to select
-        // keys tinted.
-        const QRect lane = keyLaneRect(rc);
-        if (lane.width() > 0) {
-            p.fillRect(lane, tc.shade);
-            p.setPen(tc.shade);
-            p.drawLine(lane.left(), lane.top() - 1, lane.right(), lane.top() - 1);
-            if (m_keySel.clipId == r.clip.id)
-                for (const auto &[from, to] : m_keySel.spans) {
-                    const int x0 = std::max(lane.left(),
-                                            xForTimelineMs(r.startMs + r.clip.localMs(from)));
-                    const int x1 = std::min(lane.right(),
-                                            xForTimelineMs(r.startMs + r.clip.localMs(to)));
-                    if (x1 >= x0)
-                        p.fillRect(QRect(x0, lane.top(), x1 - x0 + 1, lane.height()),
-                                   withAlpha(tc.accent, 70));
-                }
-        }
+        // The key lane along its bottom.
+        const bool hasSel = m_keySel.clipId == r.clip.id && !m_keySel.overlay;
+        drawLane(keyLaneRect(rc, kKeyLaneH), hasSel,
+                 [&](qint64 ms) { return xForTimelineMs(r.startMs + r.clip.localMs(ms)); });
 
         // Label, above the lane.
         p.setPen(tc.text);
@@ -269,7 +275,6 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             p.setRenderHint(QPainter::Antialiasing, true);
             p.setPen(Qt::NoPen);
             const int cy = rc.bottom() - kKeyLaneH / 2;
-            const bool hasSel = m_keySel.clipId == r.clip.id;
             for (int j = 0; j < r.clip.keySourceMs.size(); ++j) {
                 const qint64 ks = r.clip.keySourceMs[j];
                 if (!r.clip.showsKeyAt(ks))
@@ -362,11 +367,21 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         if (c.fadeOutMs > 0)
             p.drawLine(xForTimelineMs(c.endMs() - c.fadeOutMs), rc.top() + 1, rc.right(), rc.bottom());
         p.setRenderHint(QPainter::Antialiasing, false);
+        // An overlay clip's key lane, as a video clip's.
+        const bool overlay = m_tracks[trackIndex].video;
+        const bool hasSel = overlay && m_keySel.overlay && m_keySel.clipId == c.id;
+        if (overlay)
+            drawLane(keyLaneRect(rc, kOverlayLaneH), hasSel, [&](qint64 ms) {
+                return xForTimelineMs(
+                    c.startMs +
+                    std::clamp<qint64>(std::llround((ms - c.trimInMs) / c.speed), 0, c.spanMs()));
+            });
         p.setPen(tc.text);
         QString label = (c.missing ? QStringLiteral("⚠ ") : QString()) + c.label;
         if (c.speed != 1.0)
             label += QStringLiteral("  %1×").arg(c.speed);
-        QRect vis = rc.intersected(QRect(cLeft, 0, usableW, height()));
+        QRect vis = rc.adjusted(0, 0, 0, overlay ? -kOverlayLaneH : 0)
+                        .intersected(QRect(cLeft, 0, usableW, height()));
         // A linked clip (the video's own sound) starts with a link icon: an
         // icon, not an emoji, which needs an emoji font to show.
         if (c.linked && !vis.isEmpty()) {
@@ -382,16 +397,17 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         if (!c.keySourceMs.isEmpty()) {
             p.setRenderHint(QPainter::Antialiasing, true);
             p.setPen(Qt::NoPen);
-            const int cy = rc.bottom() - 4;
+            const int cy = rc.bottom() - kOverlayLaneH / 2;
             for (int j = 0; j < c.keySourceMs.size(); ++j) {
                 const qint64 ks = c.keySourceMs[j];
                 if (!c.showsKeyAt(ks))
                     continue;
                 const bool hov = m_hoverKey.track == trackIndex && m_hoverKey.clip == clipIndex &&
                                  m_hoverKey.index == j;
-                const int s = hov ? 5 : 3;
+                const bool sel = hasSel && m_keySel.keys.contains(ks);
+                const int s = hov ? 5 : sel ? 4 : 3;
                 const int x = xForTimelineMs(c.keyTimelineMs(ks));
-                p.setBrush(hov ? tc.accent : tc.text);
+                p.setBrush(hov || sel ? tc.accent : tc.text);
                 const QPointF d[4] = {{double(x), double(cy - s)},
                                       {double(x + s), double(cy)},
                                       {double(x), double(cy + s)},
@@ -452,10 +468,10 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         }
         if (m_dropTrack >= 0) {
             top = trackTop(m_dropTrack);
-            bottom = top + kTrackH;
+            bottom = top + trackH(m_dropTrack);
             QColor band = hl;
             band.setAlpha(50);
-            p.fillRect(QRect(cLeft, top, usableW, kTrackH), band);
+            p.fillRect(QRect(cLeft, top, usableW, trackH(m_dropTrack)), band);
         }
         p.setPen(QPen(hl, 2));
         p.drawLine(x, top, x, bottom);
@@ -483,9 +499,10 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         const TrackView &t = m_tracks[i];
         const int top = trackTop(i);
         const bool dragged = m_drag == Drag::TrackMove && m_dragMoved && i == m_dragTrackIndex;
-        p.fillRect(QRect(0, top, kHeaderW, kTrackH),
+        const int rowH = trackH(i);
+        p.fillRect(QRect(0, top, kHeaderW, rowH),
                    dragged ? tc.accentSoft : headerBg);
-        const QRect mb = muteBox(top, kTrackH);
+        const QRect mb = muteBox(top, rowH);
         // A video's own sound is indented under it: the main track's mics,
         // an overlay track's audio track.
         const bool ownAudio = t.overlayAudio || t.group == TrackView::Group::Main;
@@ -504,7 +521,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
             nameRight = lb.left() - 2;
         }
         p.setPen(tc.text);
-        p.drawText(QRect(indent, top, nameRight - indent, kTrackH),
+        p.drawText(QRect(indent, top, nameRight - indent, rowH),
                    Qt::AlignVCenter | Qt::AlignLeft,
                    fm.elidedText(t.name, Qt::ElideRight, nameRight - indent));
         drawMuteBox(mb, t.muted, t.video ? QStringLiteral("H") : QStringLiteral("M"));
@@ -514,7 +531,7 @@ void TimelineWidget::paintEvent(QPaintEvent *)
         m_dragTrackIndex >= 0 && m_dragTrackIndex < m_tracks.size()) {
         int first = 0, end = 0;
         groupSpan(m_dragTrackIndex, &first, &end);
-        const int y = m_trackGap >= end ? trackTop(end - 1) + kTrackH + kRowGap / 2 // the group's end
+        const int y = m_trackGap >= end ? trackTop(end - 1) + trackH(end - 1) + kRowGap / 2 // the group's end
                                         : trackTop(m_trackGap) - kRowGap / 2 - 1;
         p.setPen(QPen(tc.accent, 2));
         p.drawLine(0, y, width(), y);

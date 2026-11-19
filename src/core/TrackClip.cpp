@@ -120,6 +120,11 @@ bool InsetKeyTrack::removeNear(qint64 timeMs, qint64 snapMs)
     return keytrack::removeNear(m_keys, timeMs, snapMs);
 }
 
+bool InsetKeyTrack::removeTimes(const QList<qint64> &timesMs)
+{
+    return keytrack::removeTimes(m_keys, timesMs);
+}
+
 bool InsetKeyTrack::removeOutside(qint64 fromMs, qint64 toMs)
 {
     return keytrack::removeOutside(m_keys, fromMs, toMs);

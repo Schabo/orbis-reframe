@@ -581,6 +581,22 @@ void testVideoTracks()
     tl.removeTrackClipInsetKeyNear(c, 1100);
     pc = tl.trackClipById(c);
     CHECK(pc->insetKeys.isEmpty() && pc->look.centerX == 0.2f);
+    // A selection of keys removed at once (the timeline's key lane): only
+    // those times; with none left, the look at the given time stays.
+    tl.upsertTrackClipInsetKey(c, 500, k0);
+    tl.upsertTrackClipInsetKey(c, 1000, k1);
+    tl.upsertTrackClipInsetKey(c, 1500, k0);
+    int changes = 0;
+    const auto conn = QObject::connect(&tl, &Timeline::tracksChanged, [&] { ++changes; });
+    tl.removeTrackClipInsetKeys(c, {500, 1500}, 0);
+    pc = tl.trackClipById(c);
+    CHECK(pc->insetKeys.count() == 1 && pc->insetKeys.keys()[0].timeMs == 1000 && changes == 1);
+    tl.removeTrackClipInsetKeys(c, {700}, 0); // no key there
+    CHECK(changes == 1);
+    tl.removeTrackClipInsetKeys(c, {1000}, 1000);
+    pc = tl.trackClipById(c);
+    CHECK(pc->insetKeys.isEmpty() && pc->look.centerX == 0.6f && changes == 2);
+    QObject::disconnect(conn);
 
     // Placement: 1920x1080 output, a 16:9 inset 30% wide centred at (0.75, 0.5).
     inset::Look l;

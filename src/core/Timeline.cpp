@@ -1666,6 +1666,20 @@ void Timeline::removeTrackClipInsetKeyNear(int clipId, qint64 sourceMs)
     emit tracksChanged();
 }
 
+void Timeline::removeTrackClipInsetKeys(int clipId, const QList<qint64> &sourceMs,
+                                        qint64 atSourceMs)
+{
+    TrackClip *c = mutableTrackClipById(clipId);
+    if (!c || c->insetKeys.isEmpty())
+        return;
+    const inset::Look at = c->insetKeys.sample(atSourceMs);
+    if (!c->insetKeys.removeTimes(sourceMs))
+        return;
+    if (c->insetKeys.isEmpty())
+        c->look = at; // what showed there stays
+    emit tracksChanged();
+}
+
 void Timeline::setTrackClipInsetEase(int clipId, qint64 sourceMs, keytrack::Ease ease)
 {
     TrackClip *c = mutableTrackClipById(clipId);

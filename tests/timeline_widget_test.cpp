@@ -48,6 +48,7 @@ constexpr int kMarginX = 3;
 constexpr int kRulerH = 14;
 constexpr int kMainH = 50; // its key lane, kKeyLaneH = 11, along the bottom
 constexpr int kTrackH = 28;
+constexpr int kOverlayH = 36; // an overlay track's row: its clips' key lane, 9 px, at the bottom
 constexpr int kRowGap = 2;
 constexpr int kGroupGap = 8; // between two groups of tracks (and the main track)
 constexpr int kWidth = kHeaderW + 3 + 1000 + 3; // 1000 px for the extent: 1 px = extent / 1000
@@ -393,6 +394,91 @@ void testKeyLane()
     drag(&f.w, QPoint(Fixture::x(20000) - 1, laneY), QPoint(Fixture::x(18000), laneY));
     CHECK(trimOut.count() == 1 && !f.w.hasKeySelection());
     CHECK(moved.isEmpty());
+}
+
+// An overlay clip's key lane works as a video clip's: a sweep selects its
+// look keys (clamped to it) instead of moving it, Shift adds, Delete and its
+// menu ask for them; picking another clip clears them; its left end still
+// trims; an audio clip has no lane.
+void testOverlayKeyLane()
+{
+    Fixture f;
+    TimelineWidget::TrackView music, cam;
+    music.id = 11;
+    music.name = "Music";
+    TimelineWidget::TrackClipView song;
+    song.id = 100;
+    song.startMs = 2000;
+    song.trimOutMs = song.sourceDurationMs = 5000;
+    music.clips = {song};
+    cam.id = 21;
+    cam.name = "Cam";
+    cam.video = true;
+    cam.group = TimelineWidget::TrackView::Group::Overlay;
+    TimelineWidget::TrackClipView pip;
+    pip.id = 200;
+    pip.label = "pip.mp4";
+    pip.startMs = 4000;
+    pip.trimOutMs = pip.sourceDurationMs = 6000;
+    pip.keySourceMs = {1000, 3000, 6000}; // at 5, 7 and (on the trim-out) 9.999 s
+    cam.clips = {pip};
+    f.w.setTracks({music, cam});
+    f.w.resize(kWidth, f.w.sizeHint().height());
+    const int musicY = trackY(0);
+    const int camTop = musicY + kTrackH / 2 + kRowGap + kGroupGap;
+    const int laneY = camTop + kOverlayH - 5;
+    const auto lane = [&](qint64 ms) { return QPoint(Fixture::x(ms), laneY); };
+
+    QSignalSpy sel(&f.w, &TimelineWidget::trackClipSelected);
+    QSignalSpy moved(&f.w, &TimelineWidget::trackClipMoved);
+    QSignalSpy del(&f.w, &TimelineWidget::trackClipKeysDeleteRequested);
+    QSignalSpy mainDel(&f.w, &TimelineWidget::keysDeleteRequested);
+
+    drag(&f.w, lane(6000), lane(8000));
+    CHECK(f.w.selectedKeys() == QVector<qint64>{3000});
+    CHECK(f.w.keySelectionTrackClipId() == 200 && f.w.keySelectionClipId() == 0);
+    CHECK(sel.last().at(0).toInt() == 200 && moved.isEmpty());
+    CHECK(f.w.grab().toImage().pixelColor(Fixture::x(7000), laneY) == theme::colors().accent);
+    dragWith(&f.w, lane(4500), lane(5500), Qt::ShiftModifier);
+    CHECK(f.w.selectedKeys() == (QVector<qint64>{1000, 3000}));
+    drag(&f.w, lane(8500), lane(15000)); // past its end: stops there
+    CHECK(f.w.selectedKeys() == QVector<qint64>{6000});
+    f.w.deleteSelectedKeys();
+    CHECK(del.count() == 1 && del.last().at(0).toInt() == 200 &&
+          del.last().at(1).value<QVector<qint64>>() == QVector<qint64>{6000});
+    CHECK(mainDel.isEmpty() && !f.w.hasKeySelection());
+
+    // Its menu; a click on a video clip clears the selection; so do other
+    // look keys.
+    drag(&f.w, lane(6000), lane(8000));
+    bool offered = false;
+    QTimer::singleShot(0, [&] {
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        QAction *a = menu ? menu->findChild<QAction *>(QStringLiteral("keysDeleteAction")) : nullptr;
+        offered = a && a->text() == "Delete keyframes (1)";
+        if (menu)
+            QTest::keyClick(menu, Qt::Key_Escape);
+    });
+    const QPoint body(Fixture::x(6000), camTop + 10);
+    QContextMenuEvent ce(QContextMenuEvent::Mouse, body, f.w.mapToGlobal(body));
+    QApplication::sendEvent(&f.w, &ce);
+    CHECK(offered && f.w.hasKeySelection());
+    QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(3000), mainY()));
+    CHECK(!f.w.hasKeySelection());
+    drag(&f.w, lane(6000), lane(8000));
+    pip.keySourceMs = {1000, 3000};
+    cam.clips = {pip};
+    f.w.setTracks({music, cam});
+    CHECK(!f.w.hasKeySelection());
+
+    // Its left end trims at the lane's height; an audio clip's bottom just
+    // moves it.
+    QSignalSpy trimIn(&f.w, &TimelineWidget::trackClipTrimInRequested);
+    drag(&f.w, QPoint(Fixture::x(4000), laneY), QPoint(Fixture::x(4500), laneY));
+    CHECK(trimIn.count() == 1 && !f.w.hasKeySelection());
+    drag(&f.w, QPoint(Fixture::x(3000), musicY + kTrackH / 2 - 3),
+         QPoint(Fixture::x(3500), musicY + kTrackH / 2 - 3));
+    CHECK(moved.count() == 1 && !f.w.hasKeySelection());
 }
 
 // Highlight marks: yellow dots on the clip's top edge, hovered and clicked
@@ -810,13 +896,15 @@ void testOverlayTracks()
     f.w.setTracks({a1, v1, s1, v2});
     f.w.resize(kWidth, f.w.sizeHint().height());
 
-    // Rows: the main track; Music; Cam, Cam audio, Overlay 2.
+    // Rows: the main track; Music; Cam, Cam audio, Overlay 2 (the overlay
+    // tracks' rows taller).
     const int mainRowY = mainY();
     const int musicY = trackY(0);
-    const int camY = trackY(1) + kGroupGap;
-    const int soundY = trackY(2) + kGroupGap;
-    const int ov2Y = trackY(3) + kGroupGap;
-    CHECK(f.w.sizeHint().height() > ov2Y + kTrackH / 2);
+    const int camTop = musicY + kTrackH / 2 + kRowGap + kGroupGap;
+    const int camY = camTop + kOverlayH / 2;
+    const int soundY = camTop + kOverlayH + kRowGap + kTrackH / 2;
+    const int ov2Y = soundY + kTrackH / 2 + kRowGap + kOverlayH / 2;
+    CHECK(f.w.sizeHint().height() > ov2Y + kOverlayH / 2);
 
     // Each overlay header says its layer: the first overlay track in front.
     const auto tip = [&](int y) {
@@ -841,7 +929,7 @@ void testOverlayTracks()
     // A look-key diamond seeks to its key and selects the overlay clip: the
     // key at source 3 s sits at 7 s on the timeline. Beside it, no seek.
     QSignalSpy seek(&f.w, &TimelineWidget::seekRequested);
-    const int camKeyY = camY + kTrackH / 2 - 5; // the diamonds' row
+    const int camKeyY = camTop + kOverlayH - 5; // the diamonds' row, in its lane
     QTest::mouseClick(&f.w, Qt::LeftButton, Qt::NoModifier, QPoint(Fixture::x(7000), camKeyY));
     CHECK(seek.count() == 1 && seek.last().at(0).toLongLong() == 7000);
     CHECK(sel.last().at(0).toInt() == 200);
@@ -1059,8 +1147,8 @@ void testFoldSound()
     const int step = kTrackH + kRowGap;
     const int micY = trackY(0) - kGroupGap;
     const int musicY = trackY(1);
-    const int camY = trackY(2) + kGroupGap;
-    const int camAudioY = trackY(3) + kGroupGap;
+    const int camY = trackY(2) + kGroupGap + (kOverlayH - kTrackH) / 2;
+    const int camAudioY = trackY(3) + kGroupGap + kOverlayH - kTrackH;
     const int h = f.w.sizeHint().height();
 
     // The main track's header folds the mic away; Music moves up.
@@ -1219,6 +1307,7 @@ int main(int argc, char **argv)
     testTrims();
     testKeyDiamondClick();
     testKeyLane();
+    testOverlayKeyLane();
     testMarkDotClick();
     testMarkMenus();
     testHeaderAndMain();

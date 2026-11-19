@@ -966,6 +966,16 @@ void MainWindow::connectReframe()
                 if (const ClipItem *c = m_timeline->clipById(clipId))
                     m_timeline->removeClipReframeKeys(clipId, keys, paneOf(*c));
             });
+    connect(m_timelineWidget, &TimelineWidget::trackClipKeysDeleteRequested, this,
+            [this](int clipId, const QVector<qint64> &keys) {
+                // With none left, the look at the playhead stays (as Delete
+                // all keyframes).
+                if (const TrackClip *c = m_timeline->trackClipById(clipId))
+                    m_timeline->removeTrackClipInsetKeys(
+                        clipId, keys,
+                        c->sourceAtLocalMs(std::clamp<qint64>(m_lastTimelineMs - c->startMs, 0,
+                                                              c->timelineDurationMs())));
+            });
     connect(m_editToolbar, &EditToolbar::clearReframeRequested, this, [this] {
         if (m_clipId)
             m_timeline->clearClipReframe(m_clipId, playingPane());

@@ -12,8 +12,8 @@ kind is a title ([Titles](titles.md)).
 
 1. The PiP in the viewport. Drag it to move it.
 2. The settings sidebar's **Picture in picture** tab, with the settings of the selected PiP.
-3. The PiP clip on its overlay track. The white diamonds are its
-   keyframes.
+3. The PiP clip on its overlay track. The white diamonds in the darker
+   lane along its bottom are its keyframes.
 
 ## Adding a picture in picture
 
@@ -86,6 +86,12 @@ the next. This works like the reframe keyframes of the 360° view
   0.15 seconds of it).
 - **Clear** removes all keyframes. The PiP stays as it looks at the
   playhead.
+- To remove a stretch of keyframes, drag along the keyframe lane at the
+  bottom of the PiP clip, over the keyframes you want to go (`Shift`+drag
+  adds another stretch), and press `Delete`, or right-click the clip and
+  choose **Delete keyframes (N)**. It works as for reframe keyframes
+  ([Changing and deleting keyframes](reframing.md#changing-and-deleting-keyframes)).
+  If that leaves none, the PiP stays as it looks at the playhead.
 - **Easing** sets how the PiP moves from the keyframe at the playhead
   (or the last one before it) to the next: **Linear** (an even pace),
   **Fast to slow** (slows down into the next keyframe) or **Slow to fast**
@@ -106,10 +112,11 @@ While a PiP clip is selected, `K` and `Shift+K` work on its keyframes,
 not the video clip's reframe keyframes. Click the video track (or press
 `Esc`) to get back to those.
 
-> `Delete` on the keyboard removes the selected PiP **clip**, not a
-> keyframe. Use `Shift+K` or the **Delete** button in the tab for
-> keyframes. **Edit ▸ Undo** (`Ctrl+Z`) brings back anything removed by
-> mistake.
+> `Delete` on the keyboard removes the selected PiP **clip**, not the
+> keyframe at the playhead -- unless keyframes are selected in its lane,
+> then it deletes those. Use `Shift+K` or the **Delete** button in the tab
+> for the keyframe at the playhead. **Edit ▸ Undo** (`Ctrl+Z`) brings back
+> anything removed by mistake.
 
 ## The frame
 
