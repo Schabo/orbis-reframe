@@ -409,8 +409,10 @@ bool VulkanFisheyeStitcher::Impl::ensureBlurCells(std::string& err)
     ii.arrayLayers = 1;
     ii.samples = VK_SAMPLE_COUNT_1_BIT;
     ii.tiling = VK_IMAGE_TILING_OPTIMAL;
-    // Transfer source: copied into each lens slot for the viewport.
-    ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    // Transfer source: copied into each lens slot for the viewport;
+    // destination: cleared to zeros once below.
+    ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+               VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     if (vkCreateImage(device, &ii, nullptr, &blurCellImg) != VK_SUCCESS) {

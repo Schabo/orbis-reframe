@@ -244,7 +244,10 @@ bool VulkanFisheyeStitcher::Impl::ensureSeamFlow(const orbiscore::StitchGpuParam
         at += cols;
         sf.fadeMax = at;
         at += cols;
-        if (!makeBuffer(static_cast<VkDeviceSize>(at) * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        // Transfer destination: each frame's fade colour goes in with
+        // vkCmdUpdateBuffer.
+        if (!makeBuffer(static_cast<VkDeviceSize>(at) * sizeof(float),
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sf.work, sf.workMem, nullptr) ||
             !makeBuffer(static_cast<VkDeviceSize>(orbiscore::kSeamFlowFrames) * fin.W * fin.H * 16,
                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
