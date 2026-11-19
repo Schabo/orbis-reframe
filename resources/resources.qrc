@@ -60,5 +60,6 @@
     <file>icons/view-mirror-ball.svg</file>
     <file>icons/list.svg</file>
     <file>icons/layout-grid.svg</file>
+    <file>icons/mic.svg</file>
   </qresource>
 </RCC>

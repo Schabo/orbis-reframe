@@ -261,8 +261,9 @@ void MainWindow::setupSourcesSidebar()
             .setValue(QStringLiteral("sidebars/sourcesWidth"), width);
     });
     m_mediaPanel = new MediaPoolPanel(m_project->mediaPool());
-    // The Media tab's view (list / grid) and each view's picture size are
-    // remembered per user; restored before the first thumbnails are read.
+    // The Media tab's view (list / grid), backup-audio filter and each
+    // view's picture size are remembered per user; restored before the
+    // first thumbnails are read.
     {
         QSettings settings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"));
         m_mediaPanel->setViewMode(
@@ -270,6 +271,8 @@ void MainWindow::setupSourcesSidebar()
                     QStringLiteral("grid")
                 ? MediaPoolPanel::ViewMode::Grid
                 : MediaPoolPanel::ViewMode::List);
+        m_mediaPanel->setBackupAudioShown(
+            settings.value(QStringLiteral("mediaPool/showBackupAudio"), false).toBool());
         m_mediaPanel->setListScale(
             settings.value(QStringLiteral("mediaPool/listScale"), 1.0).toDouble());
         m_mediaPanel->setGridScale(
@@ -282,6 +285,10 @@ void MainWindow::setupSourcesSidebar()
                               mode == MediaPoolPanel::ViewMode::Grid ? QStringLiteral("grid")
                                                                      : QStringLiteral("list"));
             });
+    connect(m_mediaPanel, &MediaPoolPanel::backupAudioShownChanged, this, [](bool shown) {
+        QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
+            .setValue(QStringLiteral("mediaPool/showBackupAudio"), shown);
+    });
     connect(m_mediaPanel, &MediaPoolPanel::listScaleChanged, this, [](double scale) {
         QSettings(QStringLiteral("orbis-reframe"), QStringLiteral("orbis-reframe"))
             .setValue(QStringLiteral("mediaPool/listScale"), scale);
