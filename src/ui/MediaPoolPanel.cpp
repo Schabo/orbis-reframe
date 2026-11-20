@@ -498,7 +498,7 @@ void MediaPoolList::paintEvent(QPaintEvent *e)
 
 // ---------------------------------------------------------------------------
 
-MediaPoolGrid::MediaPoolGrid(QWidget *parent) : QListWidget(parent)
+MediaPoolGrid::MediaPoolGrid(QWidget *parent) : DoubleClickToAddList(parent)
 {
     setObjectName(QStringLiteral("mediaPoolGrid"));
     setViewMode(QListView::IconMode);
@@ -594,7 +594,8 @@ void MediaPoolGrid::keyPressEvent(QKeyEvent *e)
             return;
         }
     }
-    QListWidget::keyPressEvent(e);
+    // Return / Enter: activationKeyPressed, the grid's add.
+    DoubleClickToAddList::keyPressEvent(e);
 }
 
 void MediaPoolGrid::mousePressEvent(QMouseEvent *e)
@@ -753,20 +754,23 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     // click: on a desktop set to open things on one click Qt reports that
     // click as an activation, and it would add a file the user meant only to
     // select. A folder folds on its click (above); on a missing file the same
-    // gestures ask where it is now.
-    const auto activate = [this](QTreeWidgetItem *item) {
-        if (!item || item->data(0, FolderRole).toBool())
-            return;
-        if (item->data(0, MissingRole).toBool()) {
-            emit locateRequested(item->data(0, PathRole).toString());
+    // gestures ask where it is now. The grid's cells do the same (below).
+    const auto activate = [this](const QString &path, bool missing) {
+        if (missing) {
+            emit locateRequested(path);
             return;
         }
         if (m_addAction->isEnabled())
             m_addAction->trigger();
     };
-    connect(m_list, &QTreeWidget::itemDoubleClicked, this, activate);
+    const auto activateRow = [activate](const QTreeWidgetItem *item) {
+        if (item && !item->data(0, FolderRole).toBool())
+            activate(item->data(0, PathRole).toString(), item->data(0, MissingRole).toBool());
+    };
+    connect(m_list, &QTreeWidget::itemDoubleClicked, this,
+            [activateRow](QTreeWidgetItem *item) { activateRow(item); });
     connect(m_list, &MediaPoolList::activationKeyPressed, this,
-            [this, activate] { activate(m_list->currentItem()); });
+            [this, activateRow] { activateRow(m_list->currentItem()); });
     connect(m_list, &QTreeWidget::itemCollapsed, this, [this](QTreeWidgetItem *item) {
         m_collapsed.insert(item->data(0, PathRole).toString());
     });
@@ -783,14 +787,14 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
         emit gridScaleChanged(scale);
     });
     connect(m_grid, &QListWidget::itemSelectionChanged, this, &MediaPoolPanel::updateActions);
-    connect(m_grid, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
-        if (item->data(MissingRole).toBool()) {
-            emit locateRequested(item->data(PathRole).toString());
-            return;
-        }
-        if (m_addAction->isEnabled())
-            m_addAction->trigger();
-    });
+    const auto activateCell = [activate](const QListWidgetItem *item) {
+        if (item)
+            activate(item->data(PathRole).toString(), item->data(MissingRole).toBool());
+    };
+    connect(m_grid, &QListWidget::itemDoubleClicked, this,
+            [activateCell](QListWidgetItem *item) { activateCell(item); });
+    connect(m_grid, &DoubleClickToAddList::activationKeyPressed, this,
+            [this, activateCell] { activateCell(m_grid->currentItem()); });
 
     m_stack = new QStackedWidget(this);
     m_stack->addWidget(m_list);

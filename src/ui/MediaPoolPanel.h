@@ -10,6 +10,8 @@
 
 #include <functional>
 
+#include "DoubleClickToAddList.h"
+
 #include "../core/MediaPool.h"
 
 class QAction;
@@ -72,8 +74,10 @@ private:
 // The media pool's grid: every file as a cell with its picture on top and
 // its name and kind underneath, all folders' files together in the list's
 // folder-then-name order. The same drags, drops, preview and keys as the
-// list; Ctrl + wheel grows and shrinks the cells' pictures (thumbScale).
-class MediaPoolGrid : public QListWidget {
+// list: a click selects, and adding is a double-click or Return / Enter
+// (DoubleClickToAddList), never Qt's activation. Ctrl + wheel grows and
+// shrinks the cells' pictures (thumbScale).
+class MediaPoolGrid : public DoubleClickToAddList {
     Q_OBJECT
 
 public:

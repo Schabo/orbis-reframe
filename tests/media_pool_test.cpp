@@ -447,19 +447,50 @@ void testMediaGridAndZoom()
     CHECK(panel.selectedPaths() == (QStringList{phone, clip}));
     CHECK(viewGrid->isChecked() && !viewList->isChecked());
 
-    // Activate: a missing file asks to be located, another adds.
+    // A double-click or Return on a missing file asks to locate it, on
+    // another file adds it; a plain click only selects, even here, where Qt
+    // reports one click as an activation. Clicks on the name, below the
+    // picture (the picture is the play button).
+    const auto cellOf = [grid](const QString &path) -> QListWidgetItem * {
+        for (int i = 0; i < grid->count(); ++i)
+            if (grid->item(i)->data(MediaPoolPanel::PathRole).toString() == path)
+                return grid->item(i);
+        return nullptr;
+    };
+    const auto nameAt = [grid](QListWidgetItem *cell) {
+        grid->scrollToItem(cell);
+        const QRect r = grid->visualItemRect(cell);
+        return QPoint(r.center().x(), r.bottom() - 8);
+    };
     QSignalSpy locateSpy(&panel, &MediaPoolPanel::locateRequested);
-    emit grid->itemActivated(goneCell);
-    CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == gone);
     QSignalSpy addSpy(&panel, &MediaPoolPanel::addToTimelineRequested);
-    QListWidgetItem *clipCell = nullptr;
-    for (int i = 0; i < grid->count(); ++i)
-        if (grid->item(i)->data(MediaPoolPanel::PathRole).toString() == clip)
-            clipCell = grid->item(i);
+    QListWidgetItem *clipCell = cellOf(clip);
     CHECK(clipCell);
-    if (clipCell)
-        emit grid->itemActivated(clipCell);
-    CHECK(addSpy.size() == 1);
+    if (goneCell && clipCell) {
+        CHECK(!grid->thumbRect(grid->visualItemRect(clipCell)).contains(nameAt(clipCell)));
+        QTest::mouseClick(grid->viewport(), Qt::LeftButton, Qt::NoModifier, nameAt(goneCell));
+        CHECK(grid->currentItem() == goneCell);
+        CHECK(locateSpy.isEmpty());
+        // 10 ms apart, or QTest spaces them 500 ms and they are two clicks.
+        QTest::mouseDClick(grid->viewport(), Qt::LeftButton, Qt::NoModifier, nameAt(goneCell),
+                           10);
+        CHECK(locateSpy.size() == 1 && locateSpy.first().first().toString() == gone);
+        QTest::keyClick(grid, Qt::Key_Return);
+        CHECK(locateSpy.size() == 2);
+        CHECK(addSpy.isEmpty());
+
+        QTest::mouseClick(grid->viewport(), Qt::LeftButton, Qt::NoModifier, nameAt(clipCell));
+        CHECK(grid->currentItem() == clipCell);
+        CHECK(panel.selectedPaths() == QStringList{clip});
+        CHECK(addSpy.isEmpty());
+        QTest::mouseDClick(grid->viewport(), Qt::LeftButton, Qt::NoModifier, nameAt(clipCell),
+                           10);
+        CHECK(addSpy.size() == 1 && addSpy.first().first().toStringList() == QStringList{clip});
+        QTest::keyClick(grid, Qt::Key_Enter, Qt::KeypadModifier);
+        CHECK(addSpy.size() == 2);
+        CHECK(locateSpy.size() == 2);
+    }
+    panel.selectPaths({clip, phone}); // as the section above left them
 
     // Drag out: the files as URLs, the missing one left out.
     {
