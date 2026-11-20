@@ -6,6 +6,9 @@
 # Claude Code local working state (plans, task locks) — not for git.
 /.claude/
 
+# Codex local working state (plans, task locks) — not for git.
+/.codex/
+
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
