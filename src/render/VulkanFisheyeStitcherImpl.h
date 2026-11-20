@@ -244,7 +244,7 @@ struct VulkanFisheyeStitcher::Impl {
 
     bool adopted = false; // device is FFmpeg's -- don't destroy it
     // Adopted: FFmpeg's lock on `queue` -- the device is shared by every
-    // decoder in the process, on other threads (setQueueLock).
+    // decoder in the process, on other threads (initAdopt).
     std::function<void()> lockQueue, unlockQueue;
 
     VkResult submit(const VkSubmitInfo& si)

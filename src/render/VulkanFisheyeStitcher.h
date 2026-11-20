@@ -62,6 +62,19 @@ struct StitchTiming {
     double copyMs = 0.0;        // memcpy out of the host-visible output buffer
 };
 
+// What initAdopt() needs to share a device with other threads.
+struct AdoptedQueue {
+    // The adopted device's lock on the compute queue the stitcher submits to
+    // (orbiscore::VulkanVideoDecoder::queueLock): the device is shared by other
+    // threads' decoders, and Vulkan allows one thread at a time on a queue.
+    std::function<void()> lock, unlock;
+    // Keeps the adopted device alive for as long as any LensFrame handed out
+    // still references a ring slot (slots are freed on this device when the
+    // last reference goes, which can be after the stitcher is gone): the
+    // decoder's hw device reference.
+    std::shared_ptr<void> keepAlive;
+};
+
 class VulkanFisheyeStitcher {
 public:
     VulkanFisheyeStitcher();
@@ -87,9 +100,13 @@ public:
     // ycbcr conversion with linear filtering. `ycbcr` is the stream's matrix
     // and range (orbiscore::InsvStreamInfo), which the conversion and the
     // viewport's lens frames (fillLensFrameVk) take.
+    // `queue` is the adopted device's lock on the compute queue and the
+    // device's owner (AdoptedQueue): taken before anything is submitted,
+    // setup's own uploads included.
     bool initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                    uint32_t computeQueueFamily, VkDeviceQueueCreateFlags queueFlags,
-                   std::string& err, VkFormat lensFormat, const orbiscore::YcbcrCoding& ycbcr);
+                   AdoptedQueue queue, std::string& err, VkFormat lensFormat,
+                   const orbiscore::YcbcrCoding& ycbcr);
 
     bool ready() const { return m_ready; }
 
@@ -251,17 +268,6 @@ public:
     // Whether fillLensFrameVk() is usable -- exportable memory on this
     // device.
     bool lensExportReady() const;
-
-    // The adopted device's lock on the compute queue this stitcher submits to
-    // (orbiscore::VulkanVideoDecoder::queueLock): the device is shared by other
-    // threads' decoders. Set it right after initAdopt().
-    void setQueueLock(std::function<void()> lock, std::function<void()> unlock);
-
-    // Keeps the adopted device alive for as long as any LensFrame handed out
-    // still references a ring slot (slots are freed on this device when the
-    // last reference goes, which can be after this stitcher is gone). Set it
-    // before the first fillLensFrameVk(): the decoder's hw device reference.
-    void setDeviceKeepAlive(std::shared_ptr<void> keepAlive);
 
     // Hand the decoded NV12 pair to another Vulkan device. Copies both lenses'
     // Y / CbCr planes into a free slot of this stitcher's exportable ring

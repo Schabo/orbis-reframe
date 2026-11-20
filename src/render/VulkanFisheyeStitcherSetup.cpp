@@ -768,11 +768,15 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
         // On an adopted device, idle only our queue -- FFmpeg may still be
         // using the device on another thread.
         if (d->adopted) {
-            if (d->lockQueue)
-                d->lockQueue();
-            vkQueueWaitIdle(d->queue);
-            if (d->unlockQueue)
-                d->unlockQueue();
+            // No queue when adoption failed before getting one: nothing of
+            // ours was submitted.
+            if (d->queue) {
+                if (d->lockQueue)
+                    d->lockQueue();
+                vkQueueWaitIdle(d->queue);
+                if (d->unlockQueue)
+                    d->unlockQueue();
+            }
         } else
             vkDeviceWaitIdle(d->device);
         d->destroyResources();
@@ -886,9 +890,16 @@ bool VulkanFisheyeStitcher::init(std::string& err)
 
 bool VulkanFisheyeStitcher::initAdopt(VkInstance inst, VkPhysicalDevice phys, VkDevice dev,
                                       uint32_t computeQueueFamily,
-                                      VkDeviceQueueCreateFlags queueFlags, std::string& err,
-                                      VkFormat lensFormat, const orbiscore::YcbcrCoding& ycbcr)
+                                      VkDeviceQueueCreateFlags queueFlags, AdoptedQueue queue,
+                                      std::string& err, VkFormat lensFormat,
+                                      const orbiscore::YcbcrCoding& ycbcr)
 {
+    // First: setup submits (the LUT store's identity upload), and a failed
+    // setup's teardown waits on the queue, while other threads' decoders
+    // and stitchers submit to it.
+    d->lockQueue = std::move(queue.lock);
+    d->unlockQueue = std::move(queue.unlock);
+    d->keepAlive = std::move(queue.keepAlive);
     if (lensFormat != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
         lensFormat != VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16) {
         err = "unsupported lens picture format " + std::to_string(int(lensFormat));
@@ -1156,8 +1167,8 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
         return false;
     }
 
-    // The grade's LUTs, for the reproject and view passes below. The queue
-    // lock is set after initAdopt(), so look it up at each upload.
+    // The grade's LUTs, for the reproject and view passes below. Adopted,
+    // the queue lock is already set (initAdopt).
     VulkanLutStore::Device lutDev;
     lutDev.phys = d->phys;
     lutDev.device = d->device;
@@ -1375,19 +1386,6 @@ VkPipeline VulkanFisheyeStitcher::Impl::viewPassPipeline(bool reframe, bool shap
 bool VulkanFisheyeStitcher::lensExportReady() const
 {
     return m_ready && d->nv12 && d->getMemoryFd;
-}
-
-void VulkanFisheyeStitcher::setQueueLock(std::function<void()> lock, std::function<void()> unlock)
-{
-    d->lockQueue = std::move(lock);
-    d->unlockQueue = std::move(unlock);
-}
-
-void VulkanFisheyeStitcher::setDeviceKeepAlive(std::shared_ptr<void> keepAlive)
-{
-    d->keepAlive = std::move(keepAlive);
-    if (d->ring)
-        d->ring->keepAlive = d->keepAlive;
 }
 
 void VulkanFisheyeStitcher::trimLensRing()

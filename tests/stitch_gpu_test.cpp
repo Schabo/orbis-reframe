@@ -4,6 +4,8 @@
 // theta-polynomial ones with their tangential pair. A different projection
 // moves the pattern and shows as a large difference; the two paths differ
 // only by float rounding and the GPU's 8-bit sampling.
+// Also: a stitcher adopting a device another thread submits to takes the
+// queue's lock for its own setup's submits and its teardown.
 // Standalone; the exit code is the failure count, 77 (skipped) without a
 // Vulkan device.
 
@@ -13,9 +15,14 @@
 #include <orbis-core/stitch/FisheyeProjection.h>
 #include <orbis-core/Image.h>
 
+#include <orbis-core/Ycbcr.h>
+
+#include <vulkan/vulkan.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -172,6 +179,110 @@ void testThetaPoly(render::VulkanFisheyeStitcher& gpu)
     CHECK(diff / cpuA.rgb.size() > 10.0);
 }
 
+
+// A device of our own standing in for FFmpeg's: one compute queue, ycbcr
+// conversion on. False where there is none (the test is skipped).
+struct OwnDevice {
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice phys = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    uint32_t family = 0;
+
+    bool create()
+    {
+        VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+        app.apiVersion = VK_API_VERSION_1_2;
+        VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+        ici.pApplicationInfo = &app;
+        if (vkCreateInstance(&ici, nullptr, &instance) != VK_SUCCESS)
+            return false;
+        uint32_t n = 0;
+        vkEnumeratePhysicalDevices(instance, &n, nullptr);
+        std::vector<VkPhysicalDevice> devs(n);
+        vkEnumeratePhysicalDevices(instance, &n, devs.data());
+        for (VkPhysicalDevice pd : devs) {
+            uint32_t nq = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(pd, &nq, nullptr);
+            std::vector<VkQueueFamilyProperties> qf(nq);
+            vkGetPhysicalDeviceQueueFamilyProperties(pd, &nq, qf.data());
+            for (uint32_t i = 0; i < nq; ++i)
+                if (qf[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                    phys = pd;
+                    family = i;
+                    break;
+                }
+            if (phys)
+                break;
+        }
+        if (!phys)
+            return false;
+        const float prio = 1.0f;
+        VkDeviceQueueCreateInfo qci{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+        qci.queueFamilyIndex = family;
+        qci.queueCount = 1;
+        qci.pQueuePriorities = &prio;
+        VkPhysicalDeviceVulkan12Features f12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+        f12.timelineSemaphore = VK_TRUE;
+        VkPhysicalDeviceVulkan11Features f11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+        f11.samplerYcbcrConversion = VK_TRUE;
+        f11.pNext = &f12;
+        VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+        dci.pNext = &f11;
+        dci.queueCreateInfoCount = 1;
+        dci.pQueueCreateInfos = &qci;
+        return vkCreateDevice(phys, &dci, nullptr, &device) == VK_SUCCESS;
+    }
+    ~OwnDevice()
+    {
+        if (device)
+            vkDestroyDevice(device, nullptr);
+        if (instance)
+            vkDestroyInstance(instance, nullptr);
+    }
+};
+
+// The queue is shared with other threads, so every submit and wait of the
+// adopting stitcher goes under the lock -- setup's own (the LUT store's
+// identity upload) and a teardown's included, not only the stitch's.
+void testAdoptLocksQueue()
+{
+    OwnDevice own;
+    if (!own.create()) {
+        std::printf("SKIP  testAdoptLocksQueue: no device with ycbcr conversion\n");
+        return;
+    }
+    int locks = 0, unlocks = 0;
+    bool held = false, nested = false, strayUnlock = false;
+    render::AdoptedQueue q;
+    q.lock = [&] {
+        nested |= held;
+        held = true;
+        ++locks;
+    };
+    q.unlock = [&] {
+        strayUnlock |= !held;
+        held = false;
+        ++unlocks;
+    };
+    orbiscore::YcbcrCoding coding;
+    auto gpu = std::make_unique<render::VulkanFisheyeStitcher>();
+    std::string err;
+    if (!gpu->initAdopt(own.instance, own.phys, own.device, own.family, 0, q, err,
+                        VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, coding)) {
+        std::printf("SKIP  testAdoptLocksQueue: %s\n", err.c_str());
+        return;
+    }
+    CHECK(locks > 0); // the identity LUT's upload
+    CHECK(!held);
+    const int afterSetup = locks;
+    gpu.reset(); // teardown idles the queue, under the lock too
+    CHECK(locks > afterSetup);
+    CHECK(locks == unlocks);
+    CHECK(!held);
+    CHECK(!nested);
+    CHECK(!strayUnlock);
+}
+
 } // namespace
 
 int main()
@@ -184,6 +295,7 @@ int main()
     }
     testMei(gpu);
     testThetaPoly(gpu);
+    testAdoptLocksQueue();
     std::printf("%s (%d failure%s)\n", g_failures ? "FAILED" : "OK", g_failures,
                 g_failures == 1 ? "" : "s");
     return g_failures;

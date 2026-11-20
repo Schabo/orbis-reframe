@@ -506,11 +506,10 @@ bool NativeStitchSource::openDecode() {
             // it from the stream's bit depth. A format the stitcher can't
             // sample (or none) fails initAdopt: CPU decode below.
             const VkFormat lensFormat = vdec->frameFormat();
-            if (gpu->initAdopt(inst, phys, dev, qf, qflags, gerr, lensFormat,
-                               vdec->lens(0).ycbcr)) {
-                auto ql = vdec->queueLock(qf, 0);
-                gpu->setQueueLock(std::move(ql.lock), std::move(ql.unlock));
-                gpu->setDeviceKeepAlive(vdec->deviceKeepAlive());
+            auto ql = vdec->queueLock(qf, 0);
+            if (gpu->initAdopt(inst, phys, dev, qf, qflags,
+                               {std::move(ql.lock), std::move(ql.unlock), vdec->deviceKeepAlive()},
+                               gerr, lensFormat, vdec->lens(0).ycbcr)) {
                 vdec_ = std::move(vdec);
                 gpu_ = std::move(gpu);
                 const auto& lenses = lens_sources_[0].lenses;
