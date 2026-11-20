@@ -25,14 +25,27 @@
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
 #include <QThreadPool>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWheelEvent>
+
+#include <cmath>
 
 namespace {
 
 constexpr int kPad = 10;
 constexpr int kRadius = 6;
 constexpr int kLineH = 18;
+constexpr int kCardW = 268;
+constexpr int kThumbW = 256;
+constexpr int kThumbH = 144;
+// The card's part under the picture: its text lines don't grow with the
+// wheel, only the picture does.
+constexpr int kTextH = 12 + 3 * kLineH + 2 * kPad;
+constexpr double kZoomStep = 1.15;
+constexpr double kMinCardScale = 0.5;
+constexpr double kMaxCardScale = 2.0;
 
 QThreadPool &summaryPool()
 {
@@ -66,7 +79,8 @@ public:
 
     QSize sizeHint(const QStyleOptionViewItem &, const QModelIndex &) const override
     {
-        return ProjectCardList::cardSize();
+        const auto *list = qobject_cast<const ProjectCardList *>(parent());
+        return list ? list->cardSize() : QSize(kCardW, kThumbH + kTextH);
     }
 
     void paint(QPainter *p, const QStyleOptionViewItem &option,
@@ -86,7 +100,8 @@ public:
 
         // Thumbnail across the top; a plain area with the project icon when
         // there's none (empty project, flat video first, file missing).
-        const QSize ts = ProjectCardList::thumbnailSize();
+        const auto *cardList = qobject_cast<const ProjectCardList *>(parent());
+        const QSize ts = cardList ? cardList->thumbnailSize() : QSize(kThumbW, kThumbH);
         const QRectF thumbRect(card.left(), card.top(), card.width(), ts.height());
         p->save();
         p->setClipPath(shape);
@@ -152,11 +167,48 @@ ProjectCardList::ProjectCardList(QWidget *parent) : QListWidget(parent)
     setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     setFrameShape(QFrame::NoFrame);
     setItemDelegate(new ProjectCardDelegate(this));
+    applyGridSize();
 }
 
-QSize ProjectCardList::cardSize() { return {268, 144 + 12 + 3 * kLineH + 2 * kPad}; }
+QSize ProjectCardList::cardSize() const
+{
+    return {int(std::lround(kCardW * m_scale)), int(std::lround(kThumbH * m_scale)) + kTextH};
+}
 
-QSize ProjectCardList::thumbnailSize() { return {256, 144}; }
+QSize ProjectCardList::thumbnailSize() const
+{
+    return {int(std::lround(kThumbW * m_scale)), int(std::lround(kThumbH * m_scale))};
+}
+
+void ProjectCardList::applyGridSize()
+{
+    setGridSize(cardSize() + QSize(spacing(), spacing()));
+}
+
+void ProjectCardList::setScale(double scale)
+{
+    scale = std::clamp(scale, kMinCardScale, kMaxCardScale);
+    if (scale == m_scale)
+        return;
+    m_scale = scale;
+    applyGridSize();
+    scheduleDelayedItemsLayout();
+    viewport()->update();
+    emit scaleChanged(m_scale);
+}
+
+void ProjectCardList::wheelEvent(QWheelEvent *e)
+{
+    // Ctrl + wheel grows and shrinks the cards; the wheel alone scrolls.
+    if (e->modifiers() & Qt::ControlModifier) {
+        const int d = e->angleDelta().y();
+        if (d != 0)
+            setScale(m_scale * std::pow(kZoomStep, d / 120.0));
+        e->accept();
+        return;
+    }
+    QListWidget::wheelEvent(e);
+}
 
 ProjectLibraryPage::ProjectLibraryPage(ProjectLibrary *library, QWidget *parent)
     : QWidget(parent), m_library(library)
@@ -185,6 +237,15 @@ ProjectLibraryPage::ProjectLibraryPage(ProjectLibrary *library, QWidget *parent)
     header->addWidget(newProject);
 
     m_list = new ProjectCardList(this);
+    // A new size re-reads the cards' pictures once the wheel settles.
+    m_thumbTimer = new QTimer(this);
+    m_thumbTimer->setSingleShot(true);
+    m_thumbTimer->setInterval(300);
+    connect(m_thumbTimer, &QTimer::timeout, this, &ProjectLibraryPage::rethumbnails);
+    connect(m_list, &ProjectCardList::scaleChanged, this, [this](double scale) {
+        emit cardScaleChanged(scale);
+        m_thumbTimer->start();
+    });
     connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         emit openRequested(item->data(PathRole).toString());
     });
@@ -275,6 +336,7 @@ void ProjectLibraryPage::refresh()
                                .arg(QDir::toNativeSeparators(m_library->projectsFolder())));
 
     const auto entries = m_library->entries();
+    const QSize thumbSize = m_list->thumbnailSize() * devicePixelRatio();
     m_pending = int(entries.size());
     for (const auto &e : entries) {
         auto *item = new QListWidgetItem(QFileInfo(e.path).completeBaseName(), m_list);
@@ -286,14 +348,14 @@ void ProjectLibraryPage::refresh()
         item->setData(DetailsRole, tr("Reading…"));
         item->setToolTip(QDir::toNativeSeparators(e.path));
 
-        summaryPool().start([this, generation, path = e.path, flatThumbnail = m_flatThumbnail] {
+        summaryPool().start(
+            [this, generation, path = e.path, flatThumbnail = m_flatThumbnail, thumbSize] {
             const ProjectSummary s = ProjectSummary::read(path);
-            const QSize size = ProjectCardList::thumbnailSize() * devicePixelRatio();
             QImage thumb;
             if (s.firstClipFlat && flatThumbnail)
-                thumb = flatThumbnail(s.firstClip, size);
+                thumb = flatThumbnail(s.firstClip, thumbSize);
             else if (!s.firstClip.isEmpty() && !s.firstClipFlat)
-                thumb = clipThumbnail(s.firstClip, size);
+                thumb = clipThumbnail(s.firstClip, thumbSize);
             QMetaObject::invokeMethod(
                 this, [this, generation, s, thumb] { applySummary(generation, s, thumb); },
                 Qt::QueuedConnection);
@@ -330,6 +392,8 @@ void ProjectLibraryPage::applySummary(int generation, const ProjectSummary &s, c
                                           : tr("%1 media files missing").arg(s.missingMedia);
         item->setData(DetailsRole, details);
         item->setData(ProblemRole, problem);
+        item->setData(FirstClipRole, s.firstClip);
+        item->setData(FlatClipRole, s.firstClipFlat);
         if (!thumb.isNull()) {
             QImage t = thumb;
             t.setDevicePixelRatio(devicePixelRatio());
@@ -343,6 +407,53 @@ void ProjectLibraryPage::applySummary(int generation, const ProjectSummary &s, c
     }
     if (--m_pending == 0)
         emit loaded();
+}
+
+double ProjectLibraryPage::cardScale() const { return m_list->scale(); }
+
+void ProjectLibraryPage::setCardScale(double scale) { m_list->setScale(scale); }
+
+void ProjectLibraryPage::rethumbnails()
+{
+    // The wheel zoom settled: the cards' pictures again at the new size.
+    // Only cards that got one are re-read -- the placeholder can't become a
+    // picture by being bigger.
+    const int generation = m_generation;
+    const QSize size = m_list->thumbnailSize() * devicePixelRatio();
+    for (int i = 0; i < m_list->count(); ++i) {
+        const QListWidgetItem *item = m_list->item(i);
+        if (item->data(ThumbnailRole).value<QImage>().isNull())
+            continue;
+        const QString clip = item->data(FirstClipRole).toString();
+        if (clip.isEmpty())
+            continue;
+        const bool flat = item->data(FlatClipRole).toBool();
+        const QString path = item->data(PathRole).toString();
+        summaryPool().start([this, generation, path, clip, flat, size,
+                             flatThumbnail = m_flatThumbnail] {
+            QImage thumb;
+            if (flat && flatThumbnail)
+                thumb = flatThumbnail(clip, size);
+            else if (!flat)
+                thumb = clipThumbnail(clip, size);
+            QMetaObject::invokeMethod(
+                this,
+                [this, generation, path, thumb] {
+                    if (generation != m_generation || thumb.isNull())
+                        return;
+                    for (int i = 0; i < m_list->count(); ++i) {
+                        QListWidgetItem *item = m_list->item(i);
+                        if (item->data(PathRole).toString() != path)
+                            continue;
+                        QImage t = thumb;
+                        t.setDevicePixelRatio(devicePixelRatio());
+                        item->setData(ThumbnailRole, t);
+                        break;
+                    }
+                },
+                Qt::QueuedConnection);
+        });
+    }
 }
 
 QString ProjectLibraryPage::selectedPath() const

@@ -1729,7 +1729,7 @@ void testMediaPreview(const Ctx &c)
         list->scrollToItem(clipItem);
         const QRect r = list->visualItemRect(clipItem);
         QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier,
-                          MediaPoolPanel::thumbnailRect(r).center());
+                          list->thumbRect(r).center());
         CHECK(row->isVisibleTo(c.w) && label->text().contains(QFileInfo(clipC).fileName()));
         emit panel->previewRequested(clipC); // pause
         const auto fileMarks = [&] {
