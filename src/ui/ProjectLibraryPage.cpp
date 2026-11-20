@@ -337,6 +337,7 @@ void ProjectLibraryPage::refresh()
 
     const auto entries = m_library->entries();
     const QSize thumbSize = m_list->thumbnailSize() * devicePixelRatio();
+    m_thumbReadSize = thumbSize;
     m_pending = int(entries.size());
     for (const auto &e : entries) {
         auto *item = new QListWidgetItem(QFileInfo(e.path).completeBaseName(), m_list);
@@ -415,11 +416,14 @@ void ProjectLibraryPage::setCardScale(double scale) { m_list->setScale(scale); }
 
 void ProjectLibraryPage::rethumbnails()
 {
-    // The wheel zoom settled: the cards' pictures again at the new size.
-    // Only cards that got one are re-read -- the placeholder can't become a
-    // picture by being bigger.
+    // The wheel zoom settled: the cards' pictures again at the new size, if
+    // it's bigger than they were read at. Only cards that got one are
+    // re-read -- the placeholder can't become a picture by being bigger.
     const int generation = m_generation;
     const QSize size = m_list->thumbnailSize() * devicePixelRatio();
+    if (size.width() <= m_thumbReadSize.width())
+        return;
+    m_thumbReadSize = size;
     for (int i = 0; i < m_list->count(); ++i) {
         const QListWidgetItem *item = m_list->item(i);
         if (item->data(ThumbnailRole).value<QImage>().isNull())

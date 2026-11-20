@@ -15,6 +15,7 @@
 #include <QScrollBar>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
+#include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -737,12 +738,19 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     m_status->setObjectName(QStringLiteral("mediaPoolStatus"));
     m_status->hide();
 
+    // A zoom reads the pictures again once the wheel settles, not at every
+    // notch: each read decodes every file and keeps a picture per size.
+    m_thumbnailTimer = new QTimer(this);
+    m_thumbnailTimer->setSingleShot(true);
+    m_thumbnailTimer->setInterval(300);
+    connect(m_thumbnailTimer, &QTimer::timeout, this, &MediaPoolPanel::requestThumbnails);
+
     m_list = new MediaPoolList(this);
     connect(m_list, &MediaPoolList::filesDropped, this, &MediaPoolPanel::filesDropped);
     connect(m_list, &MediaPoolList::previewClicked, this, &MediaPoolPanel::previewRequested);
     connect(m_list, &MediaPoolList::previewKeyPressed, this, &MediaPoolPanel::previewRequested);
     connect(m_list, &MediaPoolList::thumbScaleChanged, this, [this](double scale) {
-        requestThumbnails();
+        m_thumbnailTimer->start();
         emit listScaleChanged(scale);
     });
     connect(m_list, &QTreeWidget::itemSelectionChanged, this, &MediaPoolPanel::updateActions);
@@ -783,7 +791,7 @@ MediaPoolPanel::MediaPoolPanel(MediaPool *pool, QWidget *parent) : QWidget(paren
     connect(m_grid, &MediaPoolGrid::previewClicked, this, &MediaPoolPanel::previewRequested);
     connect(m_grid, &MediaPoolGrid::previewKeyPressed, this, &MediaPoolPanel::previewRequested);
     connect(m_grid, &MediaPoolGrid::thumbScaleChanged, this, [this](double scale) {
-        requestThumbnails();
+        m_thumbnailTimer->start();
         emit gridScaleChanged(scale);
     });
     connect(m_grid, &QListWidget::itemSelectionChanged, this, &MediaPoolPanel::updateActions);
@@ -1128,35 +1136,52 @@ void MediaPoolPanel::updateActions()
 QSize MediaPoolPanel::thumbnailRequestSize() const
 {
     const QSize l = m_list->thumbSize(), g = m_grid->thumbSize();
-    return g.width() > l.width() ? g : l;
+    return (g.width() > l.width() ? g : l) * devicePixelRatioF();
 }
 
 void MediaPoolPanel::requestThumbnail(const MediaItem &m)
 {
     if (!m_thumbnailProvider)
         return;
-    m_thumbnails.insert(m.path, QImage()); // asked for: don't ask again
-    const QSize size = thumbnailRequestSize() * devicePixelRatioF();
-    m_thumbnailPool.start([this, m, size, provider = m_thumbnailProvider] {
-        const QImage image = provider(m, size);
-        QMetaObject::invokeMethod(
-            this, [this, path = m.path, image] { applyThumbnail(path, image); },
-            Qt::QueuedConnection);
-    });
+    // Asked for: don't ask again. A picture being read again at a bigger
+    // size stays until the new one arrives.
+    if (!m_thumbnails.contains(m.path))
+        m_thumbnails.insert(m.path, QImage());
+    if (m_thumbnailReadSize.isEmpty())
+        m_thumbnailReadSize = thumbnailRequestSize();
+    const QSize size = m_thumbnailReadSize;
+    m_thumbnailPool.start(
+        [this, m, size, generation = m_thumbnailGeneration, provider = m_thumbnailProvider] {
+            const QImage image = provider(m, size);
+            QMetaObject::invokeMethod(
+                this,
+                [this, path = m.path, image, generation] {
+                    applyThumbnail(path, image, generation);
+                },
+                Qt::QueuedConnection);
+        });
 }
 
 void MediaPoolPanel::requestThumbnails()
 {
-    // A view's zoom changed: read the pictures again at the new size. The
-    // old ones stay on the items until the new ones arrive.
+    const QSize want = thumbnailRequestSize();
+    if (want.width() <= m_thumbnailReadSize.width())
+        return;
+    m_thumbnailReadSize = want;
+    ++m_thumbnailGeneration;
     const QList<QString> paths = m_thumbnails.keys();
     for (const QString &path : paths)
-        if (const MediaItem *m = m_pool->item(path); m && !m->missing)
+        if (const MediaItem *m = m_pool->item(path);
+            m && !m->missing && m->kind != MediaItem::Kind::Audio)
             requestThumbnail(*m);
 }
 
-void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image)
+void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image, int generation)
 {
+    // A picture read before the last zoom in: only while there's none yet,
+    // so it can't replace the bigger one if it comes in after it.
+    if (generation != m_thumbnailGeneration && !m_thumbnails.value(path).isNull())
+        return;
     QImage t = image;
     t.setDevicePixelRatio(devicePixelRatioF());
     m_thumbnails.insert(path, t);
