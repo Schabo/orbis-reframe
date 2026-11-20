@@ -29,6 +29,7 @@
 #include <QTest>
 #include <QWheelEvent>
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 
@@ -231,6 +232,71 @@ QString readAll(const QString &path)
 }
 
 // Rename and duplicate, in projectfolder and from the cards.
+// The cards' pictures after a Ctrl + wheel zoom: read again once the wheel
+// settles, at the last size, and not at all for a smaller one.
+void testCardZoomReads()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    const QString folder = tmp.path() + "/Projects";
+    const QString video = tmp.path() + "/phone.mp4";
+    writeFile(video);
+    {
+        Project p;
+        p.timeline()->appendClip(video, 10000, 30.0, 1920, 1080, 0, true);
+        p.save(projectfolder::create(folder, "Flat"));
+    }
+    ProjectLibrary library(tmp.path() + "/projects.json");
+    library.load();
+    CHECK(library.setProjectsFolder(folder));
+
+    ProjectLibraryPage page(&library);
+    std::atomic<int> reads = 0, lastWidth = 0;
+    page.setFlatThumbnail([&](const QString &, const QSize &size) {
+        ++reads;
+        lastWidth = size.width();
+        QImage img(size, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        return img;
+    });
+    page.resize(1000, 700);
+    page.show();
+    QSignalSpy loaded(&page, &ProjectLibraryPage::loaded);
+    page.refresh();
+    CHECK(waitLoaded(page, loaded));
+    auto *list = find<QListWidget>(&page, "projectList");
+    if (!list || list->count() != 1) {
+        CHECK(false);
+        return;
+    }
+    const QListWidgetItem *card = list->item(0);
+    const auto pictureWidth = [card] {
+        return card->data(ProjectLibraryPage::ThumbnailRole).value<QImage>().width();
+    };
+    CHECK(QTest::qWaitFor([&] { return pictureWidth() > 0; }, 5000));
+    CHECK(reads == 1);
+    const int readWidth = pictureWidth();
+
+    const auto wheel = [list](int notches) {
+        QWheelEvent e(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120 * notches),
+                      Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(list->viewport(), &e);
+    };
+    for (int i = 0; i < 3; ++i)
+        wheel(1);
+    CHECK(QTest::qWaitFor([&] { return pictureWidth() > readWidth; }, 5000));
+    QTest::qWait(500);
+    CHECK(reads == 2);
+    const int zoomedWidth = pictureWidth();
+    CHECK(lastWidth == zoomedWidth);
+
+    // Smaller: the bigger picture stays, drawn smaller.
+    wheel(-2);
+    QTest::qWait(500);
+    CHECK(reads == 2);
+    CHECK(pictureWidth() == zoomedWidth);
+}
+
 void testRenameDuplicate()
 {
     QTemporaryDir tmp;
@@ -443,6 +509,7 @@ int main(int argc, char **argv)
         qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     testLibraryPage();
+    testCardZoomReads();
     testRenameDuplicate();
     testNewProjectDialog();
     if (g_failures == 0)

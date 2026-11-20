@@ -395,7 +395,8 @@ void testMediaTab()
 
 // The grid view and the views' Ctrl + wheel zoom: the same files flat, the
 // same selection, drops, drags, preview and keys as the list; zoomed rows
-// and cells grow, and thumbnails are read again at the new size.
+// and cells grow, and thumbnails are read again at a bigger size once the
+// wheel settles.
 void testMediaGridAndZoom()
 {
     QTemporaryDir tmp;
@@ -548,69 +549,85 @@ void testMediaGridAndZoom()
     panel.selectPaths({clip});
     CHECK(panel.selectedPaths() == QStringList{clip});
 
-    // Ctrl + wheel on the list: bigger rows, listScaleChanged, thumbnails
-    // read again (the request size is the bigger view's -- the grid's).
+    // Ctrl + wheel: bigger rows and cells at once, the scale signals at each
+    // notch, but the pictures read again only once the wheel settles, and
+    // only when the views want them bigger than they were read (the
+    // request size is the bigger view's -- the grid's).
     int asked = 0;
+    QSize askedSize;
     QMutex askedMx;
     panel.setThumbnailProvider([&](const MediaItem &m, const QSize &size) {
         if (m.kind == MediaItem::Kind::Audio)
             return QImage();
         QMutexLocker lock(&askedMx);
         ++asked;
+        askedSize = size;
         QImage img(size, QImage::Format_RGB32);
         img.fill(Qt::red);
         return img;
     });
-    CHECK(QTest::qWaitFor([&] {
-        const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
-        return r && !r->data(0, MediaPoolPanel::ThumbnailRole).value<QImage>().isNull();
-    }, 5000));
-    const int rowH = list->visualItemRect(row(list, QStringLiteral("VID_1.insv"))).height();
-    int askedBefore;
-    {
+    const auto askedNow = [&] {
         QMutexLocker lock(&askedMx);
-        askedBefore = asked;
-    }
+        return asked;
+    };
+    const auto clipPicture = [&] {
+        const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
+        return r ? r->data(0, MediaPoolPanel::ThumbnailRole).value<QImage>() : QImage();
+    };
+    CHECK(QTest::qWaitFor([&] { return !clipPicture().isNull(); }, 5000));
+    CHECK(clipPicture().width() == 160);
+    const auto wheel = [](QAbstractItemView *view, int notches) {
+        QWheelEvent e(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120 * notches),
+                      Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(view->viewport(), &e);
+    };
+    // The only file with a picture: phone.mp4 is gone, the rest is audio.
+    const int pictured = 1;
+
+    // The list: bigger rows, still smaller pictures than the grid's, so
+    // nothing is read again.
+    const int rowH = list->visualItemRect(row(list, QStringLiteral("VID_1.insv"))).height();
+    int askedBefore = askedNow();
     QSignalSpy listScaleSpy(&panel, &MediaPoolPanel::listScaleChanged);
-    {
-        QWheelEvent wheel(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120),
-                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
-        QApplication::sendEvent(list->viewport(), &wheel);
-    }
+    wheel(list, 1);
     CHECK(list->thumbScale() > 1.0);
     CHECK(listScaleSpy.size() == 1);
     CHECK(QTest::qWaitFor([&] {
         const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
         return r && list->visualItemRect(r).height() > rowH;
     }, 2000));
-    CHECK(QTest::qWaitFor([&] {
-        QMutexLocker lock(&askedMx);
-        return asked > askedBefore;
-    }, 5000));
+    QTest::qWait(500);
+    CHECK(askedNow() == askedBefore);
 
-    // Ctrl + wheel on the grid: bigger cells, gridScaleChanged, bigger
-    // pictures requested (160*scale over the list's 80).
+    // The grid, three notches in a row: bigger cells, gridScaleChanged at
+    // each, and each picture read once, at the last size.
     viewGrid->click();
     const int cellH = grid->visualItemRect(grid->item(0)).height();
     QSignalSpy gridScaleSpy(&panel, &MediaPoolPanel::gridScaleChanged);
-    {
-        QWheelEvent wheel(QPointF(10, 10), QPointF(10, 10), QPoint(), QPoint(0, 120),
-                          Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
-        QApplication::sendEvent(grid->viewport(), &wheel);
-    }
-    CHECK(grid->thumbScale() > 1.0);
-    CHECK(gridScaleSpy.size() == 1);
+    for (int i = 0; i < 3; ++i)
+        wheel(grid, 1);
+    CHECK(grid->thumbScale() > 1.5);
+    CHECK(gridScaleSpy.size() == 3);
     CHECK(QTest::qWaitFor(
         [&] { return grid->visualItemRect(grid->item(0)).height() > cellH; }, 2000));
-    // A picture at the grid's new size has arrived on a cell.
     const int wantW = int(160 * grid->thumbScale() + 0.5);
-    CHECK(QTest::qWaitFor([&] {
-        for (int i = 0; i < grid->count(); ++i)
-            if (grid->item(i)->data(MediaPoolPanel::ThumbnailRole).value<QImage>().width() ==
-                wantW)
-                return true;
-        return false;
-    }, 5000));
+    CHECK(QTest::qWaitFor([&] { return clipPicture().width() == wantW; }, 5000));
+    QTest::qWait(500);
+    CHECK(askedNow() == askedBefore + pictured);
+    {
+        QMutexLocker lock(&askedMx);
+        CHECK(askedSize.width() == wantW);
+    }
+    QListWidgetItem *cell = cellOf(clip);
+    CHECK(cell && cell->data(MediaPoolPanel::ThumbnailRole).value<QImage>().width() == wantW);
+
+    // Smaller again: the bigger pictures stay, drawn smaller; nothing read.
+    askedBefore = askedNow();
+    wheel(grid, -2);
+    CHECK(gridScaleSpy.size() == 4);
+    QTest::qWait(500);
+    CHECK(askedNow() == askedBefore);
+    CHECK(clipPicture().width() == wantW);
 
     if (const QByteArray shot = qgetenv("ORBIS_MEDIA_GRID_SHOT"); !shot.isEmpty())
         panel.grab().save(QString::fromLocal8Bit(shot));

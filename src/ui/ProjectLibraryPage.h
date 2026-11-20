@@ -123,6 +123,9 @@ private:
     QAction *m_duplicateAction = nullptr;
     QAction *m_removeAction = nullptr;
     QTimer *m_thumbTimer = nullptr;
+    // The size the cards' pictures were read at (device pixels). Zooming
+    // out reads nothing: a bigger picture is drawn smaller.
+    QSize m_thumbReadSize;
     NamePrompt m_namePrompt;
     int m_generation = 0; // results from an older refresh() are dropped
     int m_pending = 0;

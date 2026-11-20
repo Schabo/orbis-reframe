@@ -17,6 +17,7 @@
 class QAction;
 class QLabel;
 class QStackedWidget;
+class QTimer;
 class QToolButton;
 
 // The media pool's list: a header row per folder, the folder's files under
@@ -206,12 +207,14 @@ signals:
 private:
     void rebuild();
     void updateActions();
-    // The size thumbnails are read at: the bigger of the views' pictures.
+    // The size thumbnails are wanted at, in device pixels: the bigger of
+    // the views' pictures.
     QSize thumbnailRequestSize() const;
     void requestThumbnail(const MediaItem &m);
-    // The thumbnails again at the views' current zoom.
+    // A view's zoom settled: the thumbnails again, if the views now want
+    // them bigger than they were read.
     void requestThumbnails();
-    void applyThumbnail(const QString &path, const QImage &image);
+    void applyThumbnail(const QString &path, const QImage &image, int generation);
     void requestMode(const MediaItem &m);
     void applyMode(const QString &path, const QString &mode);
     void removeSelected();
@@ -235,7 +238,12 @@ private:
     QString m_previewPath;
     Preview m_preview = Preview::None;
     QSet<QString> m_collapsed; // folders closed by the user
-    QHash<QString, QImage> m_thumbnails; // by path; null = none to be had
+    QHash<QString, QImage> m_thumbnails; // by path; null = none (yet) to be had
+    // The size thumbnails are read at (device pixels). It only grows: the
+    // views draw a bigger picture smaller, so zooming out reads nothing.
+    QSize m_thumbnailReadSize;
+    int m_thumbnailGeneration = 0; // bumped by each re-read at a new size
+    QTimer *m_thumbnailTimer = nullptr; // the wheel settling
     QHash<QString, QString> m_modes;      // by path; empty = none to be had
     QThreadPool m_thumbnailPool;
 };
