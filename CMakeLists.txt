@@ -952,7 +952,7 @@ if(Qt6Test_FOUND)
     # The left sidebar and its Media tab (the media pool), found by
     # objectName (no GPU, no FFmpeg: no thumbnails).
     add_executable(media_pool_test tests/media_pool_test.cpp
-        src/ui/MediaPoolPanel.cpp src/ui/MediaPoolPanel.h
+        src/ui/MediaPoolPanel.cpp src/ui/MediaPoolPanel.h src/ui/DoubleClickToAddList.h
         src/ui/ThumbnailCache.cpp src/ui/ThumbnailCache.h
         src/ui/TabSidebar.cpp src/ui/TabSidebar.h
         src/ui/Theme.cpp src/ui/Theme.h

@@ -77,7 +77,9 @@ to fold it away.
 
 The last two buttons at the top of the tab switch between this list and a
 **grid** of pictures: every file's picture with its name and kind under it,
-all folders' files together (the folder is in a file's tooltip). `Ctrl` +
+all folders' files together (the folder is in a file's tooltip). The grid
+works like the list: a click selects a file, a double-click or a drag puts
+it on the timeline, and the table below applies to both. `Ctrl` +
 mouse wheel makes the pictures bigger or smaller, in the list and in the
 grid -- orbis-reframe remembers the view and each view's size.
 
