@@ -33,12 +33,14 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <cstdio>
 #include <mutex>
 #include <set>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -53,6 +55,19 @@ int g_failures = 0;
     } while (0)
 
 bool near(double a, double b, double eps = 1e-4) { return std::abs(a - b) < eps; }
+
+// The different pictures among those inserted, by content. A list compared
+// for equality, not a std::set: ordering byte vectors makes GCC 14's
+// -Wstringop-overread misfire inside libstdc++, and only equality matters.
+struct DistinctPictures {
+    std::vector<std::vector<uint8_t>> seen;
+    void insert(const std::vector<uint8_t> &picture)
+    {
+        if (std::find(seen.begin(), seen.end(), picture) == seen.end())
+            seen.push_back(picture);
+    }
+    size_t size() const { return seen.size(); }
+};
 
 // Where the export draws a title job's picture at clip-local `localMs`
 // (before its motion), and that picture.
@@ -872,7 +887,7 @@ void testMotionGaugesFeedVsExport()
         InsetFeed player;
         player.setClips(feed);
         const TrackClip &c = *t.trackClipById(id);
-        std::set<std::vector<uint8_t>> pictures;
+        DistinctPictures pictures;
         for (qint64 ms : {1000, 1500, 2999, 3000, 4999}) {
             exportpipe::Still jp;
             const inset::Rect er = titleRect(jobs[0], ms - c.startMs, 1920, 1080, &jp);
@@ -989,7 +1004,7 @@ void testGpsFeedVsExport()
     player.setClips(feed);
     const exportpipe::InsetClipJob &j = jobs[0];
     const TrackClip &c = *t.trackClipById(id);
-    std::set<std::vector<uint8_t>> pictures;
+    DistinctPictures pictures;
     // 40, 41 and 43 km/h; the cut at 3 s: b has no GPS -- "-- km/h".
     for (qint64 ms : {1000, 1300, 1999, 3000, 4999}) {
         exportpipe::Still jp;
@@ -1396,7 +1411,7 @@ void testGaugeFeedVsExport()
     InsetFeed player;
     player.setClips(feed);
     const TrackClip &c = *t.trackClipById(id);
-    std::set<std::vector<uint8_t>> pictures;
+    DistinctPictures pictures;
     for (qint64 ms : {1000, 1500, 2999, 3000, 4999}) {
         exportpipe::Still jp;
         const inset::Rect er = titleRect(jobs[0], ms - c.startMs, 1920, 1080, &jp);
