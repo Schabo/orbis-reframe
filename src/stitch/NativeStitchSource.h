@@ -445,9 +445,16 @@ private:
     // seam_flow_strips_ (*flowMeasured says whether, for addSeamFlow). A
     // pair at or after `until` (the seek's own frame, measured when it's
     // read) is read but not measured: on the GPU measuring the flow adds it.
-    // False at the end (last_error_ empty) or on an error.
+    // *colourMeasured says whether cut_stats_ holds the pair's colour. A
+    // measurement that fails is left out as playback leaves it out
+    // (seamMeasureFailed). False at the end (last_error_ empty) or when the
+    // pair can't be read (last_error_ says why).
     bool measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, int64_t until,
-                              bool* flowMeasured);
+                              bool* colourMeasured, bool* flowMeasured);
+    // A frame's seam measurement on the GPU failed: warned about once, and
+    // the seam flow off from the next frame on (the colour blend still
+    // measures). Playing on and a seek's pre-roll both.
+    void seamMeasureFailed(const std::string& err);
     // The seam colour blend for the frame at pts_ms into `p`: `measure`
     // fills cut_stats_ at the template's geometry and the frame is pooled
     // with the frames in its window before it (seam_colour_window_). False when it can't

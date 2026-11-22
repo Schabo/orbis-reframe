@@ -631,12 +631,16 @@ bool NativeStitchSource::preRollSeam(int64_t t) {
         return false;
     for (;;) {
         int64_t pts = 0;
+        bool colourMeasured = false;
         bool flowMeasured = false;
-        if (!measureNextSeamFrame(pts, flowFrom, t, &flowMeasured))
-            break; // the end, or an error: the frames so far
+        if (!measureNextSeamFrame(pts, flowFrom, t, &colourMeasured, &flowMeasured)) {
+            if (!last_error_.empty())
+                return false; // not the frame playing into t would show
+            break;            // the clip ends before t: the frames so far
+        }
         if (pts >= t)
             break; // the seek's own frame: measured when it's read
-        if (seam_colour_on_ && !picture_repeat_)
+        if (colourMeasured)
             seam_colour_window_.add(pts, *cut_stats_, gpu_params_.bandRad);
         if (flowMeasured)
             addSeamFlow();
@@ -1004,16 +1008,7 @@ orbiscore::StitchGpuParams NativeStitchSource::paramsWithSeam(const orbiscore::F
             in1.semWaitValue = o1.semSignalValue;
             in1.layout = o1.newLayout;
         } else {
-            if (!seam_warned_) {
-                seam_warned_ = true;
-                std::fprintf(stderr, "[NativeStitchSource] seam %s measure failed (%s); "
-                                     "stitching without it\n",
-                             seam_flow_on_ ? "flow" : "colour", err.c_str());
-            }
-            // Without the flow from the next frame on, so the colour blend
-            // still measures.
-            seam_flow_on_ = false;
-            seam_flow_gpu_ = false;
+            seamMeasureFailed(err);
         }
         if (seam_colour_on_)
             applySeamColour(pts.ms, p, [&] { return measured; });
@@ -1088,9 +1083,23 @@ bool NativeStitchSource::applySeamColour(int64_t pts_ms, orbiscore::StitchGpuPar
     return true;
 }
 
+void NativeStitchSource::seamMeasureFailed(const std::string& err) {
+    if (!seam_warned_) {
+        seam_warned_ = true;
+        std::fprintf(stderr, "[NativeStitchSource] seam %s measure failed (%s); "
+                             "stitching without it\n",
+                     seam_flow_on_ ? "flow" : "colour", err.c_str());
+    }
+    // Without the flow from the next frame on, so the colour blend still
+    // measures.
+    seam_flow_on_ = false;
+    seam_flow_gpu_ = false;
+}
+
 bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, int64_t until,
-                                              bool* flowMeasured) {
+                                              bool* colourMeasured, bool* flowMeasured) {
     last_error_.clear();
+    *colourMeasured = false;
     *flowMeasured = false;
     orbiscore::FramePts pts;
     if (vdec_) {
@@ -1122,6 +1131,7 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
             o0 = {in0.semWaitValue, in0.layout}, o1 = {in1.semWaitValue, in1.layout};
         if (flow && ok)
             seam_flow_gpu_ = true;
+        *colourMeasured = ok && measure && seam_colour_on_;
         if (ok) {
             vdec_->unlockPair(f0, f1, {o0.semSignalValue, o0.newLayout},
                               {o1.semSignalValue, o1.newLayout});
@@ -1131,10 +1141,8 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         }
         vdec_->freeFrame(f0);
         vdec_->freeFrame(f1);
-        if (!ok) {
-            last_error_ = "seam measure failed: " + err;
-            return false;
-        }
+        if (!ok)
+            seamMeasureFailed(err); // as playing into the frame has it
     } else if (demux_ && stitcher_) {
         orbiscore::Image a, b;
         std::string err;
@@ -1146,17 +1154,18 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         if (pts_ms >= until || picture_repeat_) // a repeat: measured already
             return true;
         const float none[orbiscore::kSeamDepthBins] = {};
-        if (seam_colour_on_)
+        if (seam_colour_on_) {
             orbiscore::MeasureSeamCutStats(*stitcher_, a, b, none, *cut_stats_);
+            *colourMeasured = true;
+        }
         if (seam_flow_on_ && pts_ms >= flowFrom) {
             if (gpu_) {
                 // Measured as playback measures this frame (with its
                 // capture-time correction).
-                if (!gpu_->measureSeamFlow(a.rgb.data(), b.rgb.data(), paramsAt(pts), err)) {
-                    last_error_ = "seam measure failed: " + err;
-                    return false;
-                }
-                seam_flow_gpu_ = true;
+                if (gpu_->measureSeamFlow(a.rgb.data(), b.rgb.data(), paramsAt(pts), err))
+                    seam_flow_gpu_ = true;
+                else
+                    seamMeasureFailed(err);
             } else {
                 orbiscore::MeasureSeamFlowStrips(*stitcher_, seam_flow_grid_, a, b,
                                                  *seam_flow_strips_);

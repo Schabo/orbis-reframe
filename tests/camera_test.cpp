@@ -167,6 +167,20 @@ void testFailedSeek(const Take& t)
     ffmpegfaults::reset();
     f = s.ReadFrame();
     CHECK(!f.rgba.empty() && f.timestamp_ms == 400);
+
+    // A read that fails in the frames the seek measures the seam from
+    // first: the seek fails, not a frame stitched from fewer of them; the
+    // next read seeks again and has the frame a clean seek has.
+    std::printf("  a read error before a seek's target fails the seek\n");
+    CHECK(s.SeekTo(1000));
+    const stitch::Frame clean = s.ReadFrame();
+    CHECK(!clean.rgba.empty() && clean.timestamp_ms == 1000);
+    ffmpegfaults::arm(Call::ReadFrame, 2, AVERROR(EIO));
+    CHECK(!s.SeekTo(1000));
+    CHECK(ffmpegfaults::failed(Call::ReadFrame) == 1 && !s.GetLastError().empty());
+    ffmpegfaults::reset();
+    f = s.ReadFrame();
+    CHECK(f.timestamp_ms == 1000 && f.rgba == clean.rgba);
     unsetenv("ORBIS_NO_GPU_STITCH");
 }
 
