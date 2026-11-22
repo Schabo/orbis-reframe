@@ -19,17 +19,6 @@ extern "C" {
 namespace orbiscore {
 
 namespace {
-// A seek keeps the first frame within this of the target: targets are whole
-// ms, frame times aren't, and a keyframe target (nearestKeyframeMs, rounded up)
-// must not drop the keyframe itself.
-constexpr double kSeekSlackSec = 0.001;
-
-double ptsSec(const AVFrame* f, AVRational tb)
-{
-    const int64_t p = (f->best_effort_timestamp == AV_NOPTS_VALUE) ? f->pts : f->best_effort_timestamp;
-    return (p == AV_NOPTS_VALUE) ? 0.0 : p * av_q2d(tb);
-}
-
 // `what`, then FFmpeg's message for `rc`.
 std::string AvError(const std::string& what, int rc)
 {
@@ -38,7 +27,7 @@ std::string AvError(const std::string& what, int rc)
     return what + ": " + why;
 }
 
-// ptsSec in microseconds, rounded from the time base exactly.
+// A frame's time in microseconds, rounded from the time base exactly.
 int64_t ptsUs(const AVFrame* f, AVRational tb)
 {
     const int64_t p = (f->best_effort_timestamp == AV_NOPTS_VALUE) ? f->pts : f->best_effort_timestamp;
@@ -96,7 +85,7 @@ void KeyframesAroundMs(AVFormatContext* fmt, int stream, int64_t timestampMs, in
     AVStream* st = fmt->streams[stream];
     const int64_t ts = av_rescale_q(timestampMs, AVRational{1, 1000}, st->time_base);
     auto ms = [&](const AVIndexEntry* e) {
-        return e ? static_cast<int64_t>(std::ceil(e->timestamp * av_q2d(st->time_base) * 1000.0 - 1e-9))
+        return e ? MsOfUs(av_rescale_q(e->timestamp, st->time_base, AVRational{1, 1000000}))
                  : int64_t(-1);
     };
     before = ms(avformat_index_get_entry_from_timestamp(st, ts, AVSEEK_FLAG_BACKWARD));
@@ -118,8 +107,7 @@ int64_t NearestKeyframeMs(AVFormatContext* fmt, int stream, int64_t timestampMs)
         best = after;
     if (!best)
         return timestampMs;
-    const double ms = best->timestamp * av_q2d(st->time_base) * 1000.0;
-    return static_cast<int64_t>(std::ceil(ms - 1e-9));
+    return MsOfUs(av_rescale_q(best->timestamp, st->time_base, AVRational{1, 1000000}));
 }
 
 double KeyframeAtOrBeforeSec(AVFormatContext* fmt, int stream, int64_t timestampMs)
@@ -163,8 +151,8 @@ void LensDemuxer::close()
     m_lensInput.clear();
     m_videoStreamIndex.clear();
     m_lenses.clear();
-    m_seekTargetSec = -1.0;
-    m_lastReadSec = -1.0;
+    m_seekFromUs = kNoTime;
+    m_lastReadUs = kNoTime;
     m_seekFailed.clear();
     m_shared = false;
 }
@@ -477,8 +465,8 @@ bool LensDemuxer::sendPacket(int lens, const AVPacket* pkt, std::string& err)
 std::string LensDemuxer::where(int input) const
 {
     std::string w = " of " + m_inputs[input].path;
-    if (m_lastReadSec >= 0)
-        w += " after " + std::to_string(std::llround(m_lastReadSec * 1000.0)) + " ms";
+    if (m_lastReadUs != kNoTime)
+        w += " after " + std::to_string(MsOfUs(m_lastReadUs)) + " ms";
     return w;
 }
 
@@ -534,8 +522,13 @@ void LensDemuxer::resetDecoders()
 
 size_t LensDemuxer::partAt(int64_t timestampMs) const
 {
+    return partAtUs(timestampMs * 1000);
+}
+
+size_t LensDemuxer::partAtUs(int64_t us) const
+{
     size_t p = 0;
-    while (p + 1 < m_parts.size() && m_parts[p + 1].startUs <= timestampMs * 1000)
+    while (p + 1 < m_parts.size() && m_parts[p + 1].startUs <= us)
         ++p;
     return p;
 }
@@ -586,9 +579,8 @@ void LensDemuxer::keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_
     keyframesAround(timestampMs, b, a);
     const AVRational tb = lensStream(0)->time_base;
     const auto ms = [&](int64_t t) {
-        return t == kNoKeyframe
-                   ? int64_t(-1)
-                   : static_cast<int64_t>(std::ceil(t * av_q2d(tb) * 1000.0 - 1e-9));
+        return t == kNoKeyframe ? int64_t(-1)
+                                : MsOfUs(av_rescale_q(t, tb, AVRational{1, 1000000}));
     };
     before = ms(b);
     after = ms(a);
@@ -610,51 +602,59 @@ int64_t LensDemuxer::nearestKeyframeMs(int64_t timestampMs) const
         best = after;
     if (best == kNoKeyframe)
         return timestampMs;
-    return static_cast<int64_t>(std::ceil(best * av_q2d(tb) * 1000.0 - 1e-9));
+    return MsOfUs(av_rescale_q(best, tb, AVRational{1, 1000000}));
 }
 
 bool LensDemuxer::seekTo(int64_t timestampMs, std::string& err)
+{
+    return seekToUs(FirstUsOfMs(timestampMs), err);
+}
+
+bool LensDemuxer::seekToUs(int64_t fromUs, std::string& err)
 {
     if (m_dec.empty()) {
         err = "seekTo before open";
         return false;
     }
+    const int64_t at = std::max<int64_t>(0, fromUs);
     // Ahead of the last frame read with no keyframe in between: the seek would
     // land on the keyframe this GOP started from and decode more frames than
     // carrying on from here (frame steps, short forward scrubs). Lens 0's
     // keyframes decide; with a file per lens, carrying on is right for the
     // other one too, just not always the cheaper way.
     // Only within the part being read: another part's files start over.
-    const double targetSec = timestampMs / 1000.0;
-    const size_t part = partAt(timestampMs);
-    if (m_lastReadSec >= 0 && targetSec > m_lastReadSec + kSeekSlackSec && part == m_part) {
+    const size_t part = partAtUs(at);
+    if (m_lastReadUs != kNoTime && fromUs > m_lastReadUs && part == m_part) {
+        const int64_t atMs = at / 1000; // at or before the frame wanted
         double kf = -1.0;
         if (m_parts.size() == 1) {
-            kf = KeyframeAtOrBeforeSec(m_inputs[m_lensInput[0]].fmt, m_videoStreamIndex[0],
-                                       timestampMs);
+            kf = KeyframeAtOrBeforeSec(m_inputs[m_lensInput[0]].fmt, m_videoStreamIndex[0], atMs);
         } else {
             int64_t before = 0, unused = 0;
-            partKeyframes(part, timestampMs, before, unused);
+            partKeyframes(part, atMs, before, unused);
             if (before != kNoKeyframe)
                 kf = before * av_q2d(lensStream(0)->time_base);
         }
-        if (kf >= 0 && kf <= m_lastReadSec + kSeekSlackSec) {
-            m_seekTargetSec = targetSec;
+        if (kf >= 0 && std::llround(kf * 1e6) <= m_lastReadUs) {
+            m_seekFromUs = fromUs;
             return true;
         }
     }
-    m_lastReadSec = -1.0;
+    m_lastReadUs = kNoTime;
     usePart(part);
-    // In the part's own time.
-    const int64_t targetUs = std::max<int64_t>(
-        0, timestampMs * (AV_TIME_BASE / 1000) - m_parts[part].startUs);
+    // In the part's own time. To the end of the window the frame wanted
+    // lies in (it is the only frame there): a keyframe there is landed on,
+    // not the one before it, as a seek to the start of the window would.
+    const double fps = m_lenses.empty() ? 0.0 : m_lenses[0].fps;
+    const int64_t windowUs = fps > 0.0 ? std::max<int64_t>(0, std::llround(1e6 / fps) - 1) : 0;
+    const int64_t targetUs = std::max<int64_t>(0, at + windowUs - m_parts[part].startUs);
     for (size_t i = 0; i < m_inputs.size(); ++i) {
         const std::vector<int>& ins = m_parts[part].lensInput;
         if (std::find(ins.begin(), ins.end(), static_cast<int>(i)) == ins.end())
             continue;
         Input& in = m_inputs[i];
         if (const int rc = av_seek_frame(in.fmt, -1, targetUs, AVSEEK_FLAG_BACKWARD); rc < 0) {
-            err = AvError("seeking to " + std::to_string(timestampMs) + " ms", rc);
+            err = AvError("seeking to " + std::to_string(MsOfUs(fromUs)) + " ms", rc);
             if (in.path != m_inputs[m_parts[0].lensInput[0]].path)
                 err += " (" + in.path + ")";
             // The files before this one have moved, this one hasn't: no
@@ -666,8 +666,7 @@ bool LensDemuxer::seekTo(int64_t timestampMs, std::string& err)
     }
     resetDecoders();
     m_seekFailed.clear();
-    // Frame-exact from 1 ms on (frame stepping reaches frame 1 at ~34 ms).
-    m_seekTargetSec = timestampMs > 0 ? timestampMs / 1000.0 : -1.0;
+    m_seekFromUs = fromUs;
     return true;
 }
 
@@ -701,8 +700,8 @@ bool LensDemuxer::nextPart(std::string& err)
 void LensDemuxer::dropStale(int lens)
 {
     const AVRational tb = lensStream(lens)->time_base;
-    while (!m_fifo[lens].empty() && m_seekTargetSec >= 0 &&
-           ptsSec(m_fifo[lens].front(), tb) + kSeekSlackSec < m_seekTargetSec) {
+    while (!m_fifo[lens].empty() && m_seekFromUs != kNoTime &&
+           ptsUs(m_fifo[lens].front(), tb) < m_seekFromUs) {
         AVFrame* f = popFront(lens);
         av_frame_free(&f);
     }
@@ -750,11 +749,11 @@ bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, st
         err = "out of memory";
         return false;
     }
-    m_seekTargetSec = -1.0; // satisfied by this pair
-    m_lastReadSec = ptsSec(out0, lensStream(0)->time_base);
+    m_seekFromUs = kNoTime; // satisfied by this pair
+    m_lastReadUs = ptsUs(out0, lensStream(0)->time_base);
     if (pts) {
-        pts->ms = static_cast<int64_t>(std::llround(m_lastReadSec * 1000.0));
-        pts->us = ptsUs(out0, lensStream(0)->time_base);
+        pts->ms = MsOfUs(m_lastReadUs);
+        pts->us = m_lastReadUs;
     }
     return true;
 }
@@ -783,9 +782,9 @@ bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
             return false;
     }
     out = popFront(lens);
-    m_seekTargetSec = -1.0;
+    m_seekFromUs = kNoTime;
     // The shortcut in seekTo reads lens 0's keyframes.
-    m_lastReadSec = lens == 0 ? ptsSec(out, lensStream(0)->time_base) : -1.0;
+    m_lastReadUs = lens == 0 ? ptsUs(out, lensStream(0)->time_base) : kNoTime;
     return true;
 }
 

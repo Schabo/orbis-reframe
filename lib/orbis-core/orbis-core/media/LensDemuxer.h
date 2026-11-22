@@ -41,11 +41,11 @@ struct AVStream;
 
 namespace orbiscore {
 
-// The keyframe of `stream` nearest `timestampMs`, in ms rounded up (see
-// FisheyeDemux::nearestKeyframeMs).
+// The keyframe of `stream` nearest `timestampMs`, in ms as a read reports
+// its frame (MsOfUs; see FisheyeDemux::nearestKeyframeMs).
 int64_t NearestKeyframeMs(AVFormatContext* fmt, int stream, int64_t timestampMs);
 // The keyframes of `stream` at or before / at or after `timestampMs`, in ms
-// rounded up as NearestKeyframeMs; -1 where the index has none.
+// as NearestKeyframeMs; -1 where the index has none.
 void KeyframesAroundMs(AVFormatContext* fmt, int stream, int64_t timestampMs, int64_t& before,
                        int64_t& after);
 // The last keyframe of `stream` at or before `timestampMs`, in seconds; -1 if
@@ -96,12 +96,18 @@ public:
     const InsvStreamInfo& lens(int i) const { return m_lenses.at(decoderOf(i)); }
 
     // Frame-exact: the next read returns the first frame at or after
-    // `timestampMs` (see the class comment for the decode-on shortcut).
+    // `timestampMs` -- the first whose time, rounded to the ms as reads
+    // report it (MsOfUs), is `timestampMs` or later (see the class comment
+    // for the decode-on shortcut). seekToUs(FirstUsOfMs(timestampMs)).
     // A seek that fails (`err` set) leaves no position: the frames buffered
     // are dropped, and every read fails with the seek's error until a seek
     // works -- with a file per lens, one file may have moved and the other
     // not, so nothing read on would be a pair.
     bool seekTo(int64_t timestampMs, std::string& err);
+    // The same to the microsecond: the next read returns the first frame
+    // whose exact time (FramePts::us) is `fromUs` or later. Past a frame
+    // read: seekToUs(its us + 1).
+    bool seekToUs(int64_t fromUs, std::string& err);
     // Lens 0's index; see orbiscore::NearestKeyframeMs / KeyframesAroundMs.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
@@ -156,6 +162,7 @@ private:
     bool openPart(const std::vector<LensSource>& lenses, const DecoderSetup* setup, Part& part,
                   std::string& failedPath, std::string& err);
     size_t partAt(int64_t timestampMs) const;
+    size_t partAtUs(int64_t us) const;
     void usePart(size_t part);
     // At the current part's end: on into the next part's files. False when
     // there is none (or on error, `err` set).
@@ -194,8 +201,9 @@ private:
     std::vector<AVCodecContext*> m_dec;       // lens -> persistent decoder
     std::vector<std::deque<AVFrame*>> m_fifo; // lens -> decoded, not yet consumed
     std::vector<char> m_streamEof;            // lens -> decoder drained (vector<bool> avoided)
-    double m_seekTargetSec = -1.0;            // drop frames earlier than this
-    double m_lastReadSec = -1.0;              // pts of the last frame (pair) read; -1 after open / a seek
+    static constexpr int64_t kNoTime = INT64_MIN;
+    int64_t m_seekFromUs = kNoTime;           // drop frames earlier than this
+    int64_t m_lastReadUs = kNoTime;           // time of the last frame (pair) read; none after open / a seek
     std::string m_seekFailed;                 // the failed seek's error, until a seek works (seekTo)
     bool m_shared = false;                    // two lenses, one stream: one decoder (decoderOf)
 };

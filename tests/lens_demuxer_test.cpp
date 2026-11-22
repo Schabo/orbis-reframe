@@ -227,6 +227,57 @@ void testExactTimes(const std::string& dir)
     CHECK(pts.us == 233567);
 }
 
+// 30 fps: frame times aren't whole ms (33.333, 66.667, ...), and reads
+// report them rounded. A seek to the ms a read reported finds that frame;
+// a ms past it, the next one (a frame a hair under the ms isn't taken for
+// it); to the microsecond past a frame's exact time, the next one; to a
+// keyframe's time as the index gives it, that keyframe.
+void testSeekAtReportedTimes(const std::string& dir)
+{
+    std::printf("  30 fps: a seek to a reported time finds that frame, a ms past it the next\n");
+    const std::string a = dir + "/thirty0.mp4", b = dir + "/thirty1.mp4";
+    for (const auto& [path, grey] : {std::pair{a, greyA}, std::pair{b, greyB}}) {
+        testmedia::VideoSpec spec;
+        spec.width = 64;
+        spec.height = 64;
+        spec.fps = 30;
+        spec.frames = kFrames;
+        spec.luma = [grey](int frame, int, int) { return static_cast<uint8_t>(grey(frame)); };
+        CHECK(testmedia::writeVideo(path, spec));
+    }
+    orbiscore::FisheyeDemux d;
+    std::string err;
+    CHECK(d.open({{a, 0}, {b, 0}}, err));
+    std::vector<orbiscore::FramePts> times;
+    orbiscore::Image l0, l1;
+    orbiscore::FramePts pts;
+    while (d.readNextPair(l0, l1, &pts, err))
+        times.push_back(pts);
+    CHECK(err.empty() && times.size() == size_t(kFrames));
+    const auto frameAt = [&](bool ok) {
+        orbiscore::Image x, y;
+        if (!ok || !d.readNextPair(x, y, nullptr, err))
+            return -1;
+        return frameOf(x, greyA);
+    };
+    int wrong = 0;
+    for (int n = 0; n < int(times.size()); ++n) {
+        CHECK(times[n].ms == orbiscore::MsOfUs(times[n].us));
+        wrong += frameAt(d.seekTo(times[n].ms, err)) != n;
+        if (n + 1 < int(times.size())) {
+            wrong += frameAt(d.seekTo(times[n].ms + 1, err)) != n + 1;
+            wrong += frameAt(d.seekToUs(times[n].us + 1, err)) != n + 1;
+        }
+    }
+    if (wrong)
+        std::printf("    %d seeks landed on another frame\n", wrong);
+    CHECK(wrong == 0);
+    // Keyframes every 10 frames: frame 10 at 333.333 ms.
+    const int64_t kf = d.nearestKeyframeMs(400);
+    CHECK(kf == times[10].ms);
+    CHECK(frameAt(d.seekTo(kf, err)) == 10);
+}
+
 void testErrors(const std::string& a, const std::string& dir)
 {
     std::printf("  two files: errors name the other file\n");
@@ -554,6 +605,7 @@ int main()
     testAllocErrors(a, b, dir.string());
     testFailedSeek(a, b, dir.string());
     testExactTimes(dir.string());
+    testSeekAtReportedTimes(dir.string());
     testSideBySide(dir.string());
     if (!g_failures)
         std::filesystem::remove_all(dir);

@@ -329,8 +329,14 @@ private:
     bool readPairCpu(orbiscore::Image& a, orbiscore::Image& b, orbiscore::FramePts* pts,
                      std::string& err);
     bool gpu_released_ = false;                  // ReleaseGpu, until resumed
-    bool resume_seek_ = false; // resumed, a lens frame failed, or a SeekTo failed, with no SeekTo working since: the next read seeks to resume_at_ms_
-    int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read
+    bool resume_seek_ = false; // resumed, a lens frame failed, or a SeekTo failed, with no SeekTo working since: the next read seeks to resume_from_us_
+    // Where the next read carries on (seekFromUs): the last SeekTo's target,
+    // or just past the last pair read -- exact, so a resume never hands that
+    // pair out again (a ms past its rounded time can still be that pair).
+    int64_t resume_from_us_ = 0;
+    // The clip time (exact) of the last pair read: in proxy mode the clip
+    // frame's, not its picture's (FramePts::us there).
+    int64_t last_clip_us_ = 0;
 
     // gpu_params_ + per-frame RS; no privacy blur (blurQuadsAt).
     orbiscore::StitchGpuParams paramsAt(const orbiscore::FramePts& pts) const;
@@ -437,20 +443,25 @@ private:
     // SeekTo's parts: the decoder positioned at t, and the frames before t
     // the new stitcher's layers pool measured (the seam colour blend's window,
     // the seam flow's window; the decoder left before t).
-    bool seekDecoder(int64_t t);
-    bool preRollSeam(int64_t t);
+    // SeekTo to the microsecond: the first frame whose clip time (exact) is
+    // `from_us` or later. A resume carries on with it past the last frame
+    // read (its time + 1).
+    bool seekFromUs(int64_t from_us);
+    bool seekDecoder(int64_t from_us);
+    bool preRollSeam(int64_t from_us);
     // The next lens pair decoded and measured, nothing stitched (the
     // pre-roll): its colour in the overlap at the template's geometry into
     // cut_stats_ (with the seam colour blend), and from `flowFrom` on its
     // seam flow -- on the GPU into its window, else its strips into
     // seam_flow_strips_ (*flowMeasured says whether, for addSeamFlow). A
-    // pair at or after `until` (the seek's own frame, measured when it's
+    // pair at or after `untilUs` (the seek's own frame, measured when it's
     // read) is read but not measured: on the GPU measuring the flow adds it.
+    // Both bounds are clip times to the microsecond (last_clip_us_).
     // *colourMeasured says whether cut_stats_ holds the pair's colour. A
     // measurement that fails is left out as playback leaves it out
     // (seamMeasureFailed). False at the end (last_error_ empty) or when the
     // pair can't be read (last_error_ says why).
-    bool measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, int64_t until,
+    bool measureNextSeamFrame(int64_t& pts_ms, int64_t flowFromUs, int64_t untilUs,
                               bool* colourMeasured, bool* flowMeasured);
     // A frame's seam measurement on the GPU failed: warned about once, and
     // the seam flow off from the next frame on (the colour blend still

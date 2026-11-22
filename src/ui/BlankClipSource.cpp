@@ -1,5 +1,7 @@
 #include "BlankClipSource.h"
 
+#include <orbis-core/metadata/FramePts.h> // MsOfUs
+
 #include <cmath>
 #include <filesystem>
 #include <system_error>
@@ -30,7 +32,7 @@ bool BlankClipSource::Open(const std::string &clipPath, const stitch::PreviewSti
 
 int64_t BlankClipSource::msOfFrame(int64_t frame) const
 {
-    return static_cast<int64_t>(std::llround(frame * 1000.0 / m_info.fps));
+    return orbiscore::MsOfUs(std::llround(frame * 1e6 / m_info.fps));
 }
 
 stitch::Frame BlankClipSource::GetFrame(int64_t timestampMs)

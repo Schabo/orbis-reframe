@@ -142,6 +142,11 @@ bool FisheyeDemux::seekTo(int64_t timestampMs, std::string& err)
     return m_demux.seekTo(timestampMs, err);
 }
 
+bool FisheyeDemux::seekToUs(int64_t fromUs, std::string& err)
+{
+    return m_demux.seekToUs(fromUs, err);
+}
+
 bool FisheyeDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::string& err)
 {
     AVFrame* f0 = nullptr;

@@ -17,4 +17,17 @@ struct FramePts {
     double sec() const { return static_cast<double>(us) * 1e-6; }
 };
 
+// The one rounding between the two: a frame at `us` is at MsOfUs(us) ms,
+// rounded half up. Everything that reports a frame time in ms rounds this
+// way, so a time a frame was reported at finds that frame again.
+inline int64_t MsOfUs(int64_t us)
+{
+    return us >= 0 ? (us + 500) / 1000 : -((-us - 500 + 999) / 1000);
+}
+
+// "The first frame at or after `ms`" is the first frame whose time rounds
+// to `ms` or later (MsOfUs): the first at or after this many us. Exact --
+// no slack -- so the frame before, a hair under the ms, isn't taken for it.
+inline int64_t FirstUsOfMs(int64_t ms) { return ms * 1000 - 500; }
+
 } // namespace orbiscore

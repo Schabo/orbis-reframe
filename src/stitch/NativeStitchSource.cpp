@@ -157,6 +157,7 @@ struct NativeStitchSource::ProxyGrid {
     double fps = 0.0;        // the clip's frame rate
     double proxyFrameUs = 0.0;
     int64_t nextUs = 0;      // the clip frame the next read hands out; -1 past the end
+    int64_t handedUs = 0;    // the clip frame the last read handed out
 
     // The proxy frames: on the GPU decode path AVFrame pairs, else images.
     AVFrame* held[2] = {};
@@ -175,17 +176,25 @@ struct NativeStitchSource::ProxyGrid {
         heldImg[0] = heldImg[1] = aheadImg[0] = aheadImg[1] = orbiscore::Image{};
         heldValid = aheadValid = aheadEnd = false;
     }
-    // The clip's first frame at or after `us`; -1 past its last.
+    // Frame `j` of part `p`, to the microsecond.
+    int64_t frameUs(const Span& p, int64_t j) const
+    {
+        return p.startUs + std::llround(static_cast<double>(j) * 1e6 / fps);
+    }
+    // The clip's first frame at or after `us` (exact, on the frame times
+    // frameUs gives); -1 past its last.
     int64_t frameAtOrAfter(int64_t us) const
     {
         for (const Span& p : parts) {
             if (us >= p.startUs + p.durationUs)
                 continue;
-            const double local = static_cast<double>(std::max<int64_t>(0, us - p.startUs));
-            // A frame's own time, rounded to the microsecond or the ms, is
-            // still that frame.
-            const double j = std::ceil(local * fps * 1e-6 - 1e-3);
-            const int64_t t = p.startUs + std::llround(j * 1e6 / fps);
+            const int64_t local = std::max<int64_t>(0, us - p.startUs);
+            int64_t j = static_cast<int64_t>(std::ceil(static_cast<double>(local) * fps * 1e-6));
+            while (j > 0 && frameUs(p, j - 1) >= p.startUs + local)
+                --j;
+            while (frameUs(p, j) < p.startUs + local)
+                ++j;
+            const int64_t t = frameUs(p, j);
             if (t < p.startUs + p.durationUs)
                 return t;
         }
@@ -230,24 +239,26 @@ struct NativeStitchSource::ProxyGrid {
     {
         constexpr int64_t kSlackUs = 500; // as settle()'s
         if (pts) {
-            pts->ms = std::llround(static_cast<double>(nextUs) * 1e-3);
+            pts->ms = orbiscore::MsOfUs(nextUs);
             pts->us = heldPts.us;
         }
+        handedUs = nextUs;
         const int64_t prevUs = nextUs - std::llround(1e6 / fps);
         repeat = false;
         for (const Span& p : parts)
             if (nextUs >= p.startUs && nextUs < p.startUs + p.durationUs)
                 repeat = prevUs >= p.startUs - kSlackUs && heldPts.us <= prevUs + kSlackUs;
-        nextUs = frameAtOrAfter(nextUs + std::llround(5e5 / fps));
+        nextUs = frameAtOrAfter(nextUs + 1);
     }
-    // Where the decoder goes for a seek to clip time `ms`: a proxy frame
-    // before the clip frame there, so settle() finds the one on screen.
-    int64_t seekTo(int64_t ms)
+    // A seek to the first clip frame at or after `fromUs`: where the decoder
+    // goes (us), a proxy frame before the clip frame there, so settle()
+    // finds the one on screen.
+    int64_t seekToUs(int64_t fromUs)
     {
         drop();
-        nextUs = frameAtOrAfter(ms * 1000);
-        const int64_t at = nextUs < 0 ? ms * 1000 : nextUs;
-        return std::max<int64_t>(0, static_cast<int64_t>(std::floor((at - proxyFrameUs) * 1e-3)));
+        nextUs = frameAtOrAfter(fromUs);
+        const int64_t at = nextUs < 0 ? fromUs : nextUs;
+        return std::max<int64_t>(0, at - std::llround(proxyFrameUs));
     }
 };
 
@@ -275,8 +286,15 @@ bool NativeStitchSource::proxyLensSize(const std::vector<orbiscore::ClipPart>& p
 bool NativeStitchSource::readPairVk(AVFrame*& f0, AVFrame*& f1, orbiscore::FramePts* pts,
                                     std::string& err) {
     picture_repeat_ = false;
-    if (!proxy_)
-        return vdec_->readNextPair(f0, f1, pts, err);
+    if (!proxy_) {
+        orbiscore::FramePts own;
+        if (!pts)
+            pts = &own;
+        if (!vdec_->readNextPair(f0, f1, pts, err))
+            return false;
+        last_clip_us_ = pts->us;
+        return true;
+    }
     ProxyGrid& g = *proxy_;
     err.clear();
     if (g.nextUs < 0)
@@ -293,14 +311,22 @@ bool NativeStitchSource::readPairVk(AVFrame*& f0, AVFrame*& f1, orbiscore::Frame
         return false;
     }
     g.advance(pts, picture_repeat_);
+    last_clip_us_ = g.handedUs;
     return true;
 }
 
 bool NativeStitchSource::readPairCpu(orbiscore::Image& a, orbiscore::Image& b,
                                      orbiscore::FramePts* pts, std::string& err) {
     picture_repeat_ = false;
-    if (!proxy_)
-        return demux_->readNextPair(a, b, pts, err);
+    if (!proxy_) {
+        orbiscore::FramePts own;
+        if (!pts)
+            pts = &own;
+        if (!demux_->readNextPair(a, b, pts, err))
+            return false;
+        last_clip_us_ = pts->us;
+        return true;
+    }
     ProxyGrid& g = *proxy_;
     err.clear();
     if (g.nextUs < 0)
@@ -313,6 +339,7 @@ bool NativeStitchSource::readPairCpu(orbiscore::Image& a, orbiscore::Image& b,
     a = g.heldImg[0];
     b = g.heldImg[1];
     g.advance(pts, picture_repeat_);
+    last_clip_us_ = g.handedUs;
     return true;
 }
 NativeStitchSource::~NativeStitchSource() {
@@ -452,7 +479,7 @@ bool NativeStitchSource::Open(const std::string& clip_path, const PreviewStitchC
     seam_flow_wanted_ = seam_flow_on_;
     gpu_released_ = false;
     resume_seek_ = false;
-    resume_at_ms_ = 0;
+    resume_from_us_ = 0;
     return openDecode();
 }
 
@@ -578,13 +605,16 @@ void NativeStitchSource::settleSeamFlow() {
 }
 
 bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
+    return seekFromUs(orbiscore::FirstUsOfMs(timestamp_ms < 0 ? 0 : timestamp_ms));
+}
+
+bool NativeStitchSource::seekFromUs(int64_t from_us) {
     blur_refused_ = false;
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
-    const int64_t t = timestamp_ms < 0 ? 0 : timestamp_ms;
     // Wanted until the seek is done: a read after one that failed seeks
     // here again first, never reads on from where the decoder was.
     resume_seek_ = true;
-    resume_at_ms_ = t;
+    resume_from_us_ = from_us;
     if (!ResumeGpu())
         return false;
     const bool quick = quick_seek_;
@@ -602,30 +632,32 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
         seam_flow_field_.reset();
         seam_flow_gpu_ = false;
     }
-    if ((seam_colour_on_ || seam_flow_on_) && !quick && t > 0 && !preRollSeam(t))
+    if ((seam_colour_on_ || seam_flow_on_) && !quick && from_us > 0 && !preRollSeam(from_us))
         return false;
-    if (!seekDecoder(t))
+    if (!seekDecoder(from_us))
         return false;
     resume_seek_ = false;
     return true;
 }
 
-bool NativeStitchSource::preRollSeam(int64_t t) {
+bool NativeStitchSource::preRollSeam(int64_t from_us) {
     // The seam colour blend pools the quarter second before a frame, the seam flow
-    // the few frames before it: measure them now, so the frame at t is
-    // stitched as playback into it has it. Every frame before the one the
-    // seek below lands on (the first at or after t) counts, so read on
-    // until a frame at or after t; that one is read again after the seek.
+    // the few frames before it: measure them now, so the frame the seek
+    // lands on is stitched as playback into it has it. Every frame before
+    // that one (the first at or after from_us) counts, so read on until a
+    // frame at or after from_us; that one is read again after the seek.
     // The flow's frames are pictures: in proxy mode the preview file's, as
     // playing on measures them (each once, not its repeats).
     const double frameMs = proxy_                 ? proxy_->proxyFrameUs * 1e-3
                            : info_.fps > 0 ? 1000.0 / info_.fps
                                            : 33.4;
     const int64_t flowFrom =
-        seam_flow_on_ ? t - std::llround((orbiscore::kSeamFlowFrames - 0.5) * frameMs) : INT64_MAX;
-    int64_t from = t;
+        seam_flow_on_
+            ? from_us - std::llround((orbiscore::kSeamFlowFrames - 0.5) * frameMs) * 1000
+            : INT64_MAX;
+    int64_t from = from_us;
     if (seam_colour_on_)
-        from = t - seam_colour_window_.lookBackMs();
+        from = from_us - seam_colour_window_.lookBackMs() * 1000;
     from = std::min(from, flowFrom);
     if (!seekDecoder(std::max<int64_t>(0, from)))
         return false;
@@ -633,12 +665,12 @@ bool NativeStitchSource::preRollSeam(int64_t t) {
         int64_t pts = 0;
         bool colourMeasured = false;
         bool flowMeasured = false;
-        if (!measureNextSeamFrame(pts, flowFrom, t, &colourMeasured, &flowMeasured)) {
+        if (!measureNextSeamFrame(pts, flowFrom, from_us, &colourMeasured, &flowMeasured)) {
             if (!last_error_.empty())
-                return false; // not the frame playing into t would show
-            break;            // the clip ends before t: the frames so far
+                return false; // not the frame playing into the target would show
+            break;            // the clip ends before it: the frames so far
         }
-        if (pts >= t)
+        if (last_clip_us_ >= from_us)
             break; // the seek's own frame: measured when it's read
         if (colourMeasured)
             seam_colour_window_.add(pts, *cut_stats_, gpu_params_.bandRad);
@@ -666,12 +698,12 @@ bool NativeStitchSource::addSeamFlow() {
     return true;
 }
 
-bool NativeStitchSource::seekDecoder(int64_t t) {
+bool NativeStitchSource::seekDecoder(int64_t from_us) {
     std::string err;
     if (proxy_)
-        t = proxy_->seekTo(t);
+        from_us = proxy_->seekToUs(from_us);
     if (vdec_) {
-        if (!vdec_->seekTo(t, err)) {
+        if (!vdec_->seekToUs(from_us, err)) {
             last_error_ = "seek failed: " + err;
             return false;
         }
@@ -681,7 +713,7 @@ bool NativeStitchSource::seekDecoder(int64_t t) {
         last_error_ = "SeekTo before a successful Open";
         return false;
     }
-    if (!demux_->seekTo(t, err)) {
+    if (!demux_->seekToUs(from_us, err)) {
         last_error_ = "seek failed: " + err;
         return false;
     }
@@ -728,7 +760,7 @@ Frame NativeStitchSource::readGpuAllVulkan() {
         last_error_ = err; // empty at EOS
         return Frame{};
     }
-    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
+    resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
 
     orbiscore::VulkanLensFrame lf0, lf1;
     vdec_->lockPair(f0, f1, lf0, lf1);
@@ -833,7 +865,7 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
             last_error_ = err; // empty at EOS
             return false;
         }
-        resume_at_ms_ = pts.ms + 1; // a resume carries on after it
+        resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
         orbiscore::VulkanLensFrame lf0, lf1;
         vdec_->lockPair(f0, f1, lf0, lf1);
         render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
@@ -863,7 +895,7 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
             last_error_ = err;
             return false;
         }
-        resume_at_ms_ = pts.ms + 1; // a resume carries on after it
+        resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
         pts_ms = pts.ms;
         w.measureTable(pts_ms, q);
         orbiscore::MeasureSeamCutStats(*stitcher_, a, b, q, *cut_stats_);
@@ -1096,7 +1128,7 @@ void NativeStitchSource::seamMeasureFailed(const std::string& err) {
     seam_flow_gpu_ = false;
 }
 
-bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom, int64_t until,
+bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFromUs, int64_t untilUs,
                                               bool* colourMeasured, bool* flowMeasured) {
     last_error_.clear();
     *colourMeasured = false;
@@ -1119,8 +1151,8 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
         // Measured as playback measures this frame: with its capture-time
         // correction, which moves what the strips see.
         const orbiscore::StitchGpuParams p = paramsAt(pts);
-        const bool measure = pts_ms < until && !picture_repeat_; // a repeat: measured already
-        const bool flow = measure && seam_flow_on_ && pts_ms >= flowFrom;
+        const bool measure = last_clip_us_ < untilUs && !picture_repeat_; // a repeat: measured already
+        const bool flow = measure && seam_flow_on_ && last_clip_us_ >= flowFromUs;
         bool ok = true;
         if (flow)
             ok = gpu_->measureSeamFlowVk(in0, in1, p, seam_colour_on_ ? cut_stats_.get() : nullptr,
@@ -1151,14 +1183,14 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFrom,
             return false;
         }
         pts_ms = pts.ms;
-        if (pts_ms >= until || picture_repeat_) // a repeat: measured already
+        if (last_clip_us_ >= untilUs || picture_repeat_) // a repeat: measured already
             return true;
         const float none[orbiscore::kSeamDepthBins] = {};
         if (seam_colour_on_) {
             orbiscore::MeasureSeamCutStats(*stitcher_, a, b, none, *cut_stats_);
             *colourMeasured = true;
         }
-        if (seam_flow_on_ && pts_ms >= flowFrom) {
+        if (seam_flow_on_ && last_clip_us_ >= flowFromUs) {
             if (gpu_) {
                 // Measured as playback measures this frame (with its
                 // capture-time correction).
@@ -1295,7 +1327,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
         last_error_ = err; // empty at EOS
         return false;
     }
-    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
+    resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
 
     orbiscore::VulkanLensFrame lf0, lf1;
     vdec_->lockPair(f0, f1, lf0, lf1);
@@ -1391,7 +1423,7 @@ int NativeStitchSource::KeepNextPair(orbiscore::FramePts& pts) {
         last_error_ = err; // empty at EOS
         return 0;
     }
-    resume_at_ms_ = h->pts.ms + 1; // a resume carries on after it
+    resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
     orbiscore::VulkanLensFrame lf0, lf1;
     vdec_->lockPair(h->f0, h->f1, lf0, lf1);
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
@@ -1538,7 +1570,7 @@ bool NativeStitchSource::resumeForRead() {
     // target of a seek that failed. SeekTo clears the flag once it has
     // worked; its pre-roll measures the seam into that frame as playing on
     // would have.
-    return SeekTo(resume_at_ms_);
+    return seekFromUs(resume_from_us_);
 }
 
 bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
@@ -1563,7 +1595,7 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
         last_error_ = err; // empty at EOS
         return false;
     }
-    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
+    resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
 
     orbiscore::VulkanLensFrame lf0, lf1;
     vdec_->lockPair(f0, f1, lf0, lf1);
@@ -1594,7 +1626,7 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
         // Most often the graphics memory is full for the moment: the next
         // read decodes this pair again rather than going on without it.
         last_error_ = "GPU fillLensFrameVk failed: " + gerr;
-        resume_at_ms_ = pts.ms;
+        resume_from_us_ = last_clip_us_;
         resume_seek_ = true;
         return false;
     }
@@ -1612,7 +1644,7 @@ Frame NativeStitchSource::readCpuDecode() {
         last_error_ = err; // empty on a clean end-of-stream
         return Frame{};
     }
-    resume_at_ms_ = pts.ms + 1; // a resume carries on after it
+    resume_from_us_ = last_clip_us_ + 1; // a resume carries on after it
 
     // A scrub's passing frame is stitched with the last frame's seam, as the
     // GPU path.

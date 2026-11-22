@@ -259,6 +259,11 @@ bool VulkanVideoDecoder::seekTo(int64_t timestampMs, std::string& err)
     return m_demux.seekTo(timestampMs, err);
 }
 
+bool VulkanVideoDecoder::seekToUs(int64_t fromUs, std::string& err)
+{
+    return m_demux.seekToUs(fromUs, err);
+}
+
 bool VulkanVideoDecoder::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts,
                                       std::string& err)
 {

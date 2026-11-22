@@ -64,10 +64,13 @@ public:
     // there instead of from the keyframe again (LensDemuxer). Returns false
     // with `err` set on failure.
     bool seekTo(int64_t timestampMs, std::string& err);
+    // See LensDemuxer::seekToUs.
+    bool seekToUs(int64_t fromUs, std::string& err);
 
-    // The keyframe nearest `timestampMs` (lens 0's index), rounded up to the
-    // ms so seekTo() of it lands on that keyframe and decodes nothing else;
-    // `timestampMs` itself if the index is unavailable. For scrubbing.
+    // The keyframe nearest `timestampMs` (lens 0's index), in ms as a read
+    // reports its frame (MsOfUs), so seekTo() of it lands on that keyframe
+    // and decodes nothing else; `timestampMs` itself if the index is
+    // unavailable. For scrubbing.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
     // See orbiscore::KeyframesAroundMs.
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;

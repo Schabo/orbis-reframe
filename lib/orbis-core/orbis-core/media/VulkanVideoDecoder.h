@@ -112,6 +112,8 @@ public:
     // A target a little ahead, with no keyframe since the last pair read,
     // decodes forward from there instead of from the keyframe again.
     bool seekTo(int64_t timestampMs, std::string& err);
+    // See LensDemuxer::seekToUs.
+    bool seekToUs(int64_t fromUs, std::string& err);
     // See FisheyeDemux::nearestKeyframeMs.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
     // See orbiscore::KeyframesAroundMs.

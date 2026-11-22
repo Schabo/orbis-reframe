@@ -102,11 +102,11 @@ std::vector<uint8_t> oneX2Trailer(bool lensPictures = false, uint64_t creationTi
 }
 
 // An MP4 under the camera's name (the writer goes by the extension).
-bool writeLens(const std::string& path, int size, int frames)
+bool writeLens(const std::string& path, int size, int frames, int fps = kFps)
 {
     testmedia::VideoSpec spec;
     spec.width = spec.height = size;
-    spec.fps = kFps;
+    spec.fps = fps;
     spec.frames = frames;
     if (!testmedia::writeVideo(path + ".mp4", spec))
         return false;
@@ -127,15 +127,15 @@ struct Take {
 // Writes the take: lens 0 with the trailer, lens 1 one frame shorter (as the
 // camera writes it), the proxy. `stamp` is the name's date and time.
 Take writeTake(const std::filesystem::path& dir, const std::string& stamp = "20250816_103807",
-               uint64_t creationTime = 0)
+               uint64_t creationTime = 0, int fps = kFps)
 {
     Take t{(dir / ("VID_" + stamp + "_00_001.insv")).string(),
            (dir / ("VID_" + stamp + "_10_001.insv")).string(),
            (dir / ("LRV_" + stamp + "_11_001.insv")).string()};
-    CHECK(writeLens(t.lead, 64, 50));
+    CHECK(writeLens(t.lead, 64, 50, fps));
     appendTo(t.lead, oneX2Trailer(false, creationTime));
-    CHECK(writeLens(t.second, 64, 49));
-    CHECK(writeLens(t.proxy, 32, 49));
+    CHECK(writeLens(t.second, 64, 49, fps));
+    CHECK(writeLens(t.proxy, 32, 49, fps));
     return t;
 }
 
@@ -182,6 +182,75 @@ void testFailedSeek(const Take& t)
     f = s.ReadFrame();
     CHECK(f.timestamp_ms == 1000 && f.rgba == clean.rgba);
     unsetenv("ORBIS_NO_GPU_STITCH");
+}
+
+// Frame times that aren't whole ms (30 fps: 33.333, 66.667 ms, ...), read
+// as ms rounded. A seek to the time a read reported finds that frame, from
+// the full files and in proxy mode (where the clip's frames are a grid of
+// their own); a seek a ms past it finds the next one. A source given back
+// and taken up again after any frame -- frame 0 too -- carries on with the
+// next frame, never that one again.
+void testExactFrameTimes(const std::filesystem::path& dir)
+{
+    std::printf("  30 fps: seeks find the frame a read reported, a resume the next one\n");
+    setenv("ORBIS_NO_GPU_STITCH", "1", 1); // the same everywhere, GPU or not
+    std::filesystem::create_directories(dir / "thirty");
+    const Take t = writeTake(dir / "thirty", "20250816_103807", 0, 30);
+    {
+        // A proxy proxy mode takes: the two lenses side by side.
+        testmedia::VideoSpec spec;
+        spec.width = 64;
+        spec.height = 32;
+        spec.fps = 30;
+        spec.frames = 49;
+        CHECK(testmedia::writeVideo(t.proxy + ".mp4", spec));
+        std::filesystem::rename(t.proxy + ".mp4", t.proxy);
+    }
+    constexpr int kRead = 12;
+    std::vector<int64_t> want; // frame n's time as reads report it
+    for (int n = 0; n < kRead; ++n)
+        want.push_back(orbiscore::MsOfUs(std::llround(n * 1e6 / 30.0)));
+    for (const bool proxy : {false, true}) {
+        stitch::PreviewStitchConfig sc;
+        sc.proxy = proxy;
+        stitch::NativeStitchSource s;
+        CHECK(s.Open(t.lead, sc));
+        CHECK(s.UsingProxy() == proxy);
+        for (int n = 0; n < kRead; ++n)
+            CHECK(s.ReadFrame().timestamp_ms == want[n]);
+        for (int n = 0; n < kRead; ++n) {
+            CHECK(s.SeekTo(want[n]));
+            const int64_t got = s.ReadFrame().timestamp_ms;
+            if (got != want[n])
+                std::printf("    %s: seek to %lld ms gave %lld\n", proxy ? "proxy" : "full",
+                            static_cast<long long>(want[n]), static_cast<long long>(got));
+            CHECK(got == want[n]);
+        }
+        for (int n = 0; n + 1 < kRead; ++n) {
+            CHECK(s.SeekTo(want[n] + 1));
+            CHECK(s.ReadFrame().timestamp_ms == want[n + 1]);
+        }
+    }
+    unsetenv("ORBIS_NO_GPU_STITCH");
+    // Given back after every frame read: a source on the GPU, or fallen back
+    // from it (not one told to stay on the CPU, which holds nothing to give).
+    for (const bool proxy : {false, true}) {
+        stitch::PreviewStitchConfig sc;
+        sc.proxy = proxy;
+        stitch::NativeStitchSource s;
+        CHECK(s.Open(t.lead, sc));
+        int released = 0;
+        for (int n = 0; n < kRead; ++n) {
+            const int64_t got = s.ReadFrame().timestamp_ms;
+            if (got != want[n])
+                std::printf("    %s: after a resume frame %d read as %lld ms, not %lld\n",
+                            proxy ? "proxy" : "full", n, static_cast<long long>(got),
+                            static_cast<long long>(want[n]));
+            CHECK(got == want[n]);
+            released += s.ReleaseGpu();
+        }
+        CHECK(released == kRead);
+    }
 }
 
 void testPair(const Take& t)
@@ -1013,6 +1082,7 @@ int main(int argc, char** argv)
     testClipFileOf(t);
     testStitchedThumbnail(t);
     testFailedSeek(t);
+    testExactFrameTimes(dir);
     testGps(dir);
     testHighlights(dir);
     testAntigravityA1(dir);
