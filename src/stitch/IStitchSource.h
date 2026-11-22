@@ -250,8 +250,9 @@ public:
 
     // Positions the sequential playhead. The next ReadFrame() returns the first
     // frame at or after timestamp_ms. Blocks until that frame is decoded and
-    // stitched. Returns false with GetLastError() set on failure. Valid only
-    // after a successful Open().
+    // stitched. Returns false with GetLastError() set on failure; the next
+    // read then seeks there again first (and fails if that does), never
+    // reading on from before the seek. Valid only after a successful Open().
     virtual bool SeekTo(int64_t timestamp_ms) = 0;
 
     // A quick seek: the next SeekTo (that one only) and the frame read after

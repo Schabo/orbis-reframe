@@ -346,6 +346,84 @@ void testReadErrors(const std::string& a, const std::string& b)
     ffmpegfaults::reset();
 }
 
+// The frames of the next pair, {-1, -1} when it fails.
+std::pair<int, int> pairAt(orbiscore::FisheyeDemux& d, int64_t* ms = nullptr)
+{
+    orbiscore::Image l0, l1;
+    orbiscore::FramePts pts;
+    std::string err;
+    if (!d.readNextPair(l0, l1, &pts, err))
+        return {-1, -1};
+    if (ms)
+        *ms = pts.ms;
+    return {frameOf(l0, greyA), frameOf(l1, greyB)};
+}
+
+// A seek that moves one lens's file and not the other's: no read until a
+// seek works, and none from where the reads were, nor half from each file.
+void testFailedSeek(const std::string& a, const std::string& b, const std::string& dir)
+{
+    using ffmpegfaults::Call;
+    std::printf("  a seek failing for the second file: no pair, then the seek's frame\n");
+    {
+        orbiscore::FisheyeDemux d;
+        ffmpegfaults::reset();
+        std::string err;
+        CHECK(d.open({{a, 0}, {b, 0}}, err));
+        for (int i = 0; i < 5; ++i)
+            CHECK(pairAt(d).first == i);
+        ffmpegfaults::arm(Call::SeekFrame, 1, AVERROR(EIO)); // the first file's works
+        CHECK(!d.seekTo(1000, err));
+        CHECK(err.find("Input/output error") != std::string::npos && err.find(b) != std::string::npos);
+        orbiscore::Image l0, l1;
+        std::string readErr;
+        CHECK(!d.readNextPair(l0, l1, nullptr, readErr) && readErr == err);
+        ffmpegfaults::reset();
+        readErr.clear();
+        CHECK(!d.readNextPair(l0, l1, nullptr, readErr) && readErr == err); // until a seek works
+        err.clear();
+        CHECK(d.seekTo(1000, err));
+        int64_t ms = -1;
+        CHECK(pairAt(d, &ms) == std::make_pair(25, 25) && ms == 1000);
+        // As a fresh seek has it.
+        orbiscore::FisheyeDemux fresh;
+        CHECK(fresh.open({{a, 0}, {b, 0}}, err) && fresh.seekTo(1000, err));
+        CHECK(pairAt(fresh) == std::make_pair(25, 25));
+        CHECK(pairAt(d) == std::make_pair(26, 26));
+    }
+
+    std::printf("  the next part's file failing to rewind: an error, then on into the part\n");
+    {
+        const std::string a2 = dir + "/part2_lens0.mp4", b2 = dir + "/part2_lens1.mp4";
+        std::filesystem::copy_file(a, a2, std::filesystem::copy_options::overwrite_existing);
+        std::filesystem::copy_file(b, b2, std::filesystem::copy_options::overwrite_existing);
+        const int64_t partUs = int64_t(kFrames) * 1000000 / kFps;
+        orbiscore::FisheyeDemux d;
+        ffmpegfaults::reset();
+        std::string err;
+        CHECK(d.open(std::vector<orbiscore::ClipPart>{{0, {{a, 0}, {b, 0}}}, {partUs, {{a2, 0}, {b2, 0}}}},
+                     err));
+        for (int i = 0; i < kFrames; ++i)
+            CHECK(pairAt(d).first == i);
+        ffmpegfaults::arm(Call::SeekFrame, 1, AVERROR(EIO)); // the second part's second file
+        orbiscore::Image l0, l1;
+        CHECK(!d.readNextPair(l0, l1, nullptr, err));
+        CHECK(err.find("Input/output error") != std::string::npos && err.find(b2) != std::string::npos);
+        int pairs = 0;
+        bool inOrder = true;
+        for (int64_t ms = -1;; ++pairs) {
+            const auto [f0, f1] = pairAt(d, &ms);
+            if (f0 < 0)
+                break;
+            inOrder = inOrder && f0 == pairs && f1 == pairs && ms == partUs / 1000 + pairs * 1000 / kFps;
+        }
+        CHECK(inOrder && pairs == kFrames);
+        std::filesystem::remove(a2);
+        std::filesystem::remove(b2);
+    }
+    ffmpegfaults::reset();
+}
+
 void testAllocErrors(const std::string& a, const std::string& b, const std::string& dir)
 {
     using ffmpegfaults::Call;
@@ -474,6 +552,7 @@ int main()
     testErrors(a, dir.string());
     testReadErrors(a, b);
     testAllocErrors(a, b, dir.string());
+    testFailedSeek(a, b, dir.string());
     testExactTimes(dir.string());
     testSideBySide(dir.string());
     if (!g_failures)

@@ -580,11 +580,13 @@ void NativeStitchSource::settleSeamFlow() {
 bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
     blur_refused_ = false;
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
+    const int64_t t = timestamp_ms < 0 ? 0 : timestamp_ms;
+    // Wanted until the seek is done: a read after one that failed seeks
+    // here again first, never reads on from where the decoder was.
+    resume_seek_ = true;
+    resume_at_ms_ = t;
     if (!ResumeGpu())
         return false;
-    const int64_t t = timestamp_ms < 0 ? 0 : timestamp_ms;
-    resume_seek_ = false;
-    resume_at_ms_ = t;
     const bool quick = quick_seek_;
     quick_seek_ = false;
     scrub_frame_ = quick;
@@ -602,7 +604,10 @@ bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
     }
     if ((seam_colour_on_ || seam_flow_on_) && !quick && t > 0 && !preRollSeam(t))
         return false;
-    return seekDecoder(t);
+    if (!seekDecoder(t))
+        return false;
+    resume_seek_ = false;
+    return true;
 }
 
 bool NativeStitchSource::preRollSeam(int64_t t) {
@@ -1519,8 +1524,9 @@ bool NativeStitchSource::resumeForRead() {
         return false;
     if (!resume_seek_)
         return true;
-    // Where the source was: the frame after the last one read. SeekTo clears
-    // the flag; its pre-roll measures the seam into that frame as playing on
+    // Where the source was: the frame after the last one read, or the
+    // target of a seek that failed. SeekTo clears the flag once it has
+    // worked; its pre-roll measures the seam into that frame as playing on
     // would have.
     return SeekTo(resume_at_ms_);
 }

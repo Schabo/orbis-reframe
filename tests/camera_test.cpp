@@ -12,12 +12,19 @@
 
 #include "ClipMetadata.h"
 #include "MediaInfo.h"
+#include "NativeStitchSource.h"
 #include <orbis-core/stab/GyroStabilizer.h>
 #include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/insta360/InsvTrailer.h>
+#include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
 #include "support/TestTrailer.h"
 
+extern "C" {
+#include <libavutil/error.h>
+}
+
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -130,6 +137,37 @@ Take writeTake(const std::filesystem::path& dir, const std::string& stamp = "202
     CHECK(writeLens(t.second, 64, 49));
     CHECK(writeLens(t.proxy, 32, 49));
     return t;
+}
+
+// A seek of the take that fails for the second lens's file (the first's has
+// moved): the next read seeks again rather than reading on from before it,
+// and fails while that does too -- no frame from the old place.
+void testFailedSeek(const Take& t)
+{
+    using ffmpegfaults::Call;
+    std::printf("  a failed seek: the next read goes to its target, not on from before\n");
+    setenv("ORBIS_NO_GPU_STITCH", "1", 1); // the same everywhere, GPU or not
+    stitch::NativeStitchSource s;
+    ffmpegfaults::reset();
+    CHECK(s.Open(t.lead, stitch::PreviewStitchConfig{}));
+    CHECK(s.ReadFrame().timestamp_ms == 0);
+    CHECK(s.ReadFrame().timestamp_ms == 40);
+    ffmpegfaults::arm(Call::SeekFrame, 1, AVERROR(EIO));
+    CHECK(!s.SeekTo(1000));
+    ffmpegfaults::reset();
+    stitch::Frame f = s.ReadFrame();
+    CHECK(!f.rgba.empty() && f.timestamp_ms == 1000);
+    CHECK(s.ReadFrame().timestamp_ms == 1040);
+
+    // The seeks keep failing: so do the reads, until they work.
+    ffmpegfaults::arm(Call::SeekFrame, 1, AVERROR(EIO), -1);
+    CHECK(!s.SeekTo(400));
+    f = s.ReadFrame();
+    CHECK(f.rgba.empty() && !s.GetLastError().empty());
+    ffmpegfaults::reset();
+    f = s.ReadFrame();
+    CHECK(!f.rgba.empty() && f.timestamp_ms == 400);
+    unsetenv("ORBIS_NO_GPU_STITCH");
 }
 
 void testPair(const Take& t)
@@ -960,6 +998,7 @@ int main(int argc, char** argv)
     testSecondLensChecked(t);
     testClipFileOf(t);
     testStitchedThumbnail(t);
+    testFailedSeek(t);
     testGps(dir);
     testHighlights(dir);
     testAntigravityA1(dir);

@@ -97,6 +97,10 @@ public:
 
     // Frame-exact: the next read returns the first frame at or after
     // `timestampMs` (see the class comment for the decode-on shortcut).
+    // A seek that fails (`err` set) leaves no position: the frames buffered
+    // are dropped, and every read fails with the seek's error until a seek
+    // works -- with a file per lens, one file may have moved and the other
+    // not, so nothing read on would be a pair.
     bool seekTo(int64_t timestampMs, std::string& err);
     // Lens 0's index; see orbiscore::NearestKeyframeMs / KeyframesAroundMs.
     int64_t nearestKeyframeMs(int64_t timestampMs) const;
@@ -192,6 +196,7 @@ private:
     std::vector<char> m_streamEof;            // lens -> decoder drained (vector<bool> avoided)
     double m_seekTargetSec = -1.0;            // drop frames earlier than this
     double m_lastReadSec = -1.0;              // pts of the last frame (pair) read; -1 after open / a seek
+    std::string m_seekFailed;                 // the failed seek's error, until a seek works (seekTo)
     bool m_shared = false;                    // two lenses, one stream: one decoder (decoderOf)
 };
 

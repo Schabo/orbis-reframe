@@ -328,7 +328,7 @@ private:
     bool readPairCpu(orbiscore::Image& a, orbiscore::Image& b, orbiscore::FramePts* pts,
                      std::string& err);
     bool gpu_released_ = false;                  // ReleaseGpu, until resumed
-    bool resume_seek_ = false; // resumed, or a lens frame failed, with no SeekTo since: the next read seeks to resume_at_ms_
+    bool resume_seek_ = false; // resumed, a lens frame failed, or a SeekTo failed, with no SeekTo working since: the next read seeks to resume_at_ms_
     int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read
 
     // gpu_params_ + per-frame RS; no privacy blur (blurQuadsAt).

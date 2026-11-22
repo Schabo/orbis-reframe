@@ -1029,7 +1029,9 @@ endif()
 # camera::ReadClipMetadata on generated videos with synthetic trailers.
 if(TARGET camera AND TARGET test_media)
     add_executable(camera_test tests/camera_test.cpp)
-    target_link_libraries(camera_test PRIVATE camera test_media)
+    # The stitch source too, for a seek that fails part-way (FfmpegFaults).
+    target_link_libraries(camera_test PRIVATE camera stitch test_media)
+    orbis_wrap_ffmpeg_faults(camera_test)
     # support/TestTrailer.h (Insta360 trailers built record by record) is
     # the library's test helper.
     target_include_directories(camera_test PRIVATE lib/orbis-core/tests)

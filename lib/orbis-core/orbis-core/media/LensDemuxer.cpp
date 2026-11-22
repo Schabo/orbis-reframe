@@ -165,6 +165,7 @@ void LensDemuxer::close()
     m_lenses.clear();
     m_seekTargetSec = -1.0;
     m_lastReadSec = -1.0;
+    m_seekFailed.clear();
     m_shared = false;
 }
 
@@ -652,14 +653,19 @@ bool LensDemuxer::seekTo(int64_t timestampMs, std::string& err)
         if (std::find(ins.begin(), ins.end(), static_cast<int>(i)) == ins.end())
             continue;
         Input& in = m_inputs[i];
-        if (av_seek_frame(in.fmt, -1, targetUs, AVSEEK_FLAG_BACKWARD) < 0) {
-            err = "av_seek_frame failed at " + std::to_string(timestampMs) + " ms";
+        if (const int rc = av_seek_frame(in.fmt, -1, targetUs, AVSEEK_FLAG_BACKWARD); rc < 0) {
+            err = AvError("seeking to " + std::to_string(timestampMs) + " ms", rc);
             if (in.path != m_inputs[m_parts[0].lensInput[0]].path)
-                err += ": " + in.path;
+                err += " (" + in.path + ")";
+            // The files before this one have moved, this one hasn't: no
+            // read may go on from here (see seekTo in the header).
+            resetDecoders();
+            m_seekFailed = err;
             return false;
         }
     }
     resetDecoders();
+    m_seekFailed.clear();
     // Frame-exact from 1 ms on (frame stepping reaches frame 1 at ~34 ms).
     m_seekTargetSec = timestampMs > 0 ? timestampMs / 1000.0 : -1.0;
     return true;
@@ -677,14 +683,17 @@ bool LensDemuxer::nextPart(std::string& err)
         while (!m_streamEof[l])
             if (!pumpOnce(m_lensInput[l], err))
                 return false;
-    usePart(m_part + 1);
-    for (const int i : m_lensInput) {
+    // The next part's files to their start before going on into them: if
+    // one can't, this part stays the one read (at its end), and the next
+    // read tries again.
+    for (const int i : m_parts[m_part + 1].lensInput) {
         Input& in = m_inputs[i];
-        if (av_seek_frame(in.fmt, -1, 0, AVSEEK_FLAG_BACKWARD) < 0) {
-            err = "av_seek_frame failed at the start of " + in.path;
+        if (const int rc = av_seek_frame(in.fmt, -1, 0, AVSEEK_FLAG_BACKWARD); rc < 0) {
+            err = AvError("seeking to the start of " + in.path, rc);
             return false;
         }
     }
+    usePart(m_part + 1);
     resetDecoders();
     return true;
 }
@@ -710,6 +719,10 @@ bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, st
 {
     if (lensCount() < 2) {
         err = "readNextPair requires 2 lens streams, have " + std::to_string(m_dec.size());
+        return false;
+    }
+    if (!m_seekFailed.empty()) {
+        err = m_seekFailed;
         return false;
     }
     const int d1 = decoderOf(1);
@@ -752,6 +765,10 @@ bool LensDemuxer::readNextFrame(int lens, AVFrame*& out, std::string& err)
         err = "lens index " + std::to_string(lens) + " out of range";
         return false;
     }
+    if (!m_seekFailed.empty()) {
+        err = m_seekFailed;
+        return false;
+    }
     lens = decoderOf(lens);
     for (;;) {
         dropStale(lens);
@@ -776,6 +793,11 @@ AVFrame* LensDemuxer::peekFrame(int lens, std::string* err)
 {
     if (lens < 0 || lens >= lensCount())
         return nullptr;
+    if (!m_seekFailed.empty()) {
+        if (err)
+            *err = m_seekFailed;
+        return nullptr;
+    }
     lens = decoderOf(lens);
     std::string e;
     for (;;) {
