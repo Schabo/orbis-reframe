@@ -78,12 +78,14 @@ public:
     // decoding strictly forward -- no per-call seek, no decoder flush.
     // `*pts` (may be null) gets the pair's presentation time.
     // Returns false with `err` empty at end-of-stream, or `err` set on error.
-    // Requires exactly 2 lens streams.
+    // A pair that fails to convert is an error and is gone: the next call
+    // returns the pair after it. Requires exactly 2 lens streams.
     bool readNextPair(Image& out0, Image& out1, FramePts* pts, std::string& err);
 
 private:
     void close();
-    void convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out);
+    // `frm` as RGB24 into `out`; false with `err` set if swscale can't.
+    bool convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out, std::string& err);
     // Cuts lens `lens`'s part (m_rect) out of `img`; a whole frame stays.
     void crop(int lens, Image& img) const;
 

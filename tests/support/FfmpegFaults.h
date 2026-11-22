@@ -2,7 +2,7 @@
 
 // Makes FFmpeg's read and decode calls fail the way a damaged file or a
 // failing disk does, and their allocations fail as they do when memory runs
-// out, for the readers' error tests. A test executable links this with
+// out and their pixel conversions fail, for the readers' error tests. A test executable links this with
 // `-Wl,--wrap=` for each function below (the CMake function
 // orbis_wrap_ffmpeg_faults); every call from the program's own code (not
 // FFmpeg's calls inside its libraries) then goes through here, and passes
@@ -23,6 +23,8 @@ enum class Call {
     PacketAlloc,     // av_packet_alloc (fails as null)
     FrameAlloc,      // av_frame_alloc (fails as null)
     BufferRef,       // av_buffer_ref (fails as null)
+    ScalerSetup,     // sws_getContext, sws_getCachedContext (null), sws_init_context
+    Scale,           // sws_scale, sws_scale_frame
 };
 
 // From the `after`+1-th call of `call` on (counting from now), `times` calls

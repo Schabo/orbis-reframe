@@ -3,6 +3,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
 }
 
 #include <set>
@@ -19,7 +20,7 @@ struct Fault {
     int failed = 0;
 };
 
-constexpr int kCalls = 11;
+constexpr int kCalls = 13;
 Fault g_faults[kCalls];
 // The decoders that took the flush since reset(), for Call::ReceiveDraining.
 std::set<const AVCodecContext *> g_draining;
@@ -71,6 +72,17 @@ int __real_avcodec_parameters_to_context(AVCodecContext *codec, const AVCodecPar
 AVPacket *__real_av_packet_alloc(void);
 AVFrame *__real_av_frame_alloc(void);
 AVBufferRef *__real_av_buffer_ref(const AVBufferRef *buf);
+SwsContext *__real_sws_getContext(int srcW, int srcH, AVPixelFormat srcFormat, int dstW, int dstH,
+                                  AVPixelFormat dstFormat, int flags, SwsFilter *srcFilter,
+                                  SwsFilter *dstFilter, const double *param);
+SwsContext *__real_sws_getCachedContext(SwsContext *context, int srcW, int srcH,
+                                        AVPixelFormat srcFormat, int dstW, int dstH,
+                                        AVPixelFormat dstFormat, int flags, SwsFilter *srcFilter,
+                                        SwsFilter *dstFilter, const double *param);
+int __real_sws_init_context(SwsContext *sws_context, SwsFilter *srcFilter, SwsFilter *dstFilter);
+int __real_sws_scale(SwsContext *c, const uint8_t *const srcSlice[], const int srcStride[],
+                     int srcSliceY, int srcSliceH, uint8_t *const dst[], const int dstStride[]);
+int __real_sws_scale_frame(SwsContext *c, AVFrame *dst, const AVFrame *src);
 
 int __wrap_av_read_frame(AVFormatContext *s, AVPacket *pkt)
 {
@@ -131,6 +143,51 @@ AVFrame *__wrap_av_frame_alloc(void)
 AVBufferRef *__wrap_av_buffer_ref(const AVBufferRef *buf)
 {
     return ffmpegfaults::fails(Call::BufferRef) ? nullptr : __real_av_buffer_ref(buf);
+}
+
+SwsContext *__wrap_sws_getContext(int srcW, int srcH, AVPixelFormat srcFormat, int dstW, int dstH,
+                                  AVPixelFormat dstFormat, int flags, SwsFilter *srcFilter,
+                                  SwsFilter *dstFilter, const double *param)
+{
+    if (ffmpegfaults::fails(Call::ScalerSetup))
+        return nullptr;
+    return __real_sws_getContext(srcW, srcH, srcFormat, dstW, dstH, dstFormat, flags, srcFilter,
+                                 dstFilter, param);
+}
+
+SwsContext *__wrap_sws_getCachedContext(SwsContext *context, int srcW, int srcH,
+                                        AVPixelFormat srcFormat, int dstW, int dstH,
+                                        AVPixelFormat dstFormat, int flags, SwsFilter *srcFilter,
+                                        SwsFilter *dstFilter, const double *param)
+{
+    if (ffmpegfaults::fails(Call::ScalerSetup)) {
+        sws_freeContext(context); // as FFmpeg does when it can't make the new one
+        return nullptr;
+    }
+    return __real_sws_getCachedContext(context, srcW, srcH, srcFormat, dstW, dstH, dstFormat, flags,
+                                       srcFilter, dstFilter, param);
+}
+
+int __wrap_sws_init_context(SwsContext *sws_context, SwsFilter *srcFilter, SwsFilter *dstFilter)
+{
+    if (ffmpegfaults::fails(Call::ScalerSetup))
+        return ffmpegfaults::rcOf(Call::ScalerSetup);
+    return __real_sws_init_context(sws_context, srcFilter, dstFilter);
+}
+
+int __wrap_sws_scale(SwsContext *c, const uint8_t *const srcSlice[], const int srcStride[],
+                     int srcSliceY, int srcSliceH, uint8_t *const dst[], const int dstStride[])
+{
+    if (ffmpegfaults::fails(Call::Scale))
+        return ffmpegfaults::rcOf(Call::Scale);
+    return __real_sws_scale(c, srcSlice, srcStride, srcSliceY, srcSliceH, dst, dstStride);
+}
+
+int __wrap_sws_scale_frame(SwsContext *c, AVFrame *dst, const AVFrame *src)
+{
+    if (ffmpegfaults::fails(Call::Scale))
+        return ffmpegfaults::rcOf(Call::Scale);
+    return __real_sws_scale_frame(c, dst, src);
 }
 
 } // extern "C"

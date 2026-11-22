@@ -72,7 +72,8 @@ void FisheyeDemux::crop(int lens, Image& img) const
     img = std::move(out);
 }
 
-void FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out)
+bool FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Image& out,
+                           std::string& err)
 {
     out.alloc(frm->width, frm->height);
 
@@ -95,9 +96,16 @@ void FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Ima
                                                               : SWS_CS_ITU601;
 
     SwsContext* prev = m_sws;
+    // On failure the old context is freed: the next call starts afresh.
     m_sws = sws_getCachedContext(m_sws, frm->width, frm->height, srcFmt, frm->width, frm->height,
                                  AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
-    if (m_sws && (m_sws != prev || srcFullRange != m_swsSrcFullRange || coefId != m_swsCoefId)) {
+    if (!m_sws) {
+        err = "can't set up the RGB conversion of the " + std::to_string(frm->width) + "x" +
+              std::to_string(frm->height) + " frame";
+        out = {};
+        return false;
+    }
+    if (m_sws != prev || srcFullRange != m_swsSrcFullRange || coefId != m_swsCoefId) {
         const int* coef = sws_getCoefficients(coefId);
         // src range = srcFullRange, dst (RGB) range = full; neutral bright/contrast/sat.
         sws_setColorspaceDetails(m_sws, coef, srcFullRange, coef, 1, 0, 1 << 16, 1 << 16);
@@ -107,7 +115,16 @@ void FisheyeDemux::convert(const AVFrame* frm, const InsvStreamInfo& stream, Ima
 
     uint8_t* dst[1] = {out.rgb.data()};
     int stride[1] = {out.w * 3};
-    sws_scale(m_sws, frm->data, frm->linesize, 0, frm->height, dst, stride);
+    if (const int r = sws_scale(m_sws, frm->data, frm->linesize, 0, frm->height, dst, stride);
+        r <= 0) {
+        char why[AV_ERROR_MAX_STRING_SIZE] = {0};
+        if (r < 0)
+            av_strerror(r, why, sizeof(why));
+        err = std::string("converting the frame to RGB failed") + (r < 0 ? ": " : "") + why;
+        out = {};
+        return false;
+    }
+    return true;
 }
 
 void FisheyeDemux::keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const
@@ -131,15 +148,20 @@ bool FisheyeDemux::readNextPair(Image& out0, Image& out1, FramePts* pts, std::st
     AVFrame* f1 = nullptr;
     if (!m_demux.readNextPair(f0, f1, pts, err))
         return false;
-    convert(f0, lens(0), out0);
-    if (f1->data[0] == f0->data[0]) // both lenses in one frame: converted once
+    bool ok = convert(f0, lens(0), out0, err);
+    if (ok && f1->data[0] == f0->data[0]) // both lenses in one frame: converted once
         out1 = out0;
-    else
-        convert(f1, lens(1), out1);
-    crop(0, out0);
-    crop(1, out1);
+    else if (ok)
+        ok = convert(f1, lens(1), out1, err);
     av_frame_free(&f0);
     av_frame_free(&f1);
+    if (!ok) { // neither lens's picture: no half pair
+        out0 = {};
+        out1 = {};
+        return false;
+    }
+    crop(0, out0);
+    crop(1, out1);
     return true;
 }
 
@@ -159,9 +181,9 @@ bool FisheyeDemux::readFrameAt(int lens, int64_t timestampMs, Image& out, std::s
                 err = "no frame decoded for lens " + std::to_string(lens);
             return false;
         }
-        convert(f, this->lens(lens), out);
+        const bool ok = convert(f, this->lens(lens), out, err);
         av_frame_free(&f);
-        return true;
+        return ok;
     }
     Image a, b;
     if (!readNextPair(a, b, nullptr, err)) {

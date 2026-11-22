@@ -83,6 +83,8 @@ struct Scaler {
 
     bool setup(const Key &k)
     {
+        if (!src || !dst) // out of memory when this was made
+            return false;
         if (sws && k == key)
             return true;
         sws_freeContext(sws);
@@ -367,8 +369,9 @@ struct FlatVideoReader::Impl {
         return err.empty(); // a decode error on the way: not at `ms`
     }
 
-    // Convert `f` to the output format and size, rotation applied.
-    void convert(const AVFrame *f, VideoFrame &out)
+    // Convert `f` to the output format and size, rotation applied. False
+    // with `err` set if swscale can't: `out` is then not a picture.
+    bool convert(const AVFrame *f, VideoFrame &out)
     {
         int w = outW > 0 ? outW : info.width;
         int h = outH > 0 ? outH : info.height;
@@ -387,16 +390,19 @@ struct FlatVideoReader::Impl {
             // matrices); else via RGBA.
             if (!rotation && space == SWS_CS_ITU709 &&
                 scaleTo(f, w, h, AV_PIX_FMT_NV12, space, srcFull, out.nv12))
-                return;
+                return true;
             rotated.resize(size_t(w) * h * 4 + kSwsSlack);
-            if (!toRgba(f, w, h, space, srcFull, rotated.data()) ||
-                !toNv12.convert(rotated.data(), w, h, out.nv12))
-                blackNv12(w, h, out.nv12);
-            return;
+            if (toRgba(f, w, h, space, srcFull, rotated.data()) &&
+                toNv12.convert(rotated.data(), w, h, out.nv12))
+                return true;
+            err = "convert the frame at " + std::to_string(out.ptsMs) + " ms to NV12";
+            return false;
         }
         out.rgba.resize(size_t(w) * h * 4);
-        if (!toRgba(f, w, h, space, srcFull, out.rgba.data()))
-            std::fill(out.rgba.begin(), out.rgba.end(), 0);
+        if (toRgba(f, w, h, space, srcFull, out.rgba.data()))
+            return true;
+        err = "convert the frame at " + std::to_string(out.ptsMs) + " ms to RGBA";
+        return false;
     }
 
     // `f` scaled to w x h in `fmt` into `buf` (resized, kSwsSlack longer).
@@ -419,12 +425,6 @@ struct FlatVideoReader::Impl {
             strides[1] = strides[2] = strides[3] = 0;
         }
         return scaler.scale(f, planes, strides, buf.size());
-    }
-
-    static void blackNv12(int w, int h, std::vector<uint8_t> &buf)
-    {
-        buf.assign(size_t(w) * h * 3 / 2 + kSwsSlack, 128);
-        std::fill_n(buf.begin(), size_t(w) * h, 16);
     }
 
     // `f` as RGBA at w x h, rotation applied, into `dst` (w * h * 4).
@@ -596,7 +596,11 @@ bool FlatVideoReader::readNext(VideoFrame &out)
     AVFrame *f = d->pop();
     if (!f)
         return false;
-    d->convert(f, out);
+    if (!d->convert(f, out)) {
+        // Still the next frame: a read after this one converts it again.
+        d->ahead.push_front(f);
+        return false;
+    }
     // It is now the frame showing, for a later frameAt().
     if (d->cur)
         av_frame_free(&d->cur);
@@ -638,7 +642,8 @@ const VideoFrame *FlatVideoReader::frameAt(int64_t ms)
     if (!d->err.empty()) // as above: a later frame may be the one due
         return nullptr;
     if (!d->curConverted) {
-        d->convert(d->cur, d->curOut);
+        if (!d->convert(d->cur, d->curOut))
+            return nullptr; // not converted: the next call tries again
         d->curConverted = true;
     }
     return &d->curOut;

@@ -410,6 +410,60 @@ void testCompositor(const std::string &dir)
 // NV12 frames (Format::Nv12): via RGBA for a small clip (untagged, so
 // BT.601 by its size), straight from the decoder for an HD one (BT.709),
 // and turned for a rotated one.
+// Conversions made to fail (support/FfmpegFaults.h): an error, never a
+// black or transparent picture in the frame's place, and the frame converts
+// once the conversion works again -- none lost, none kept as converted.
+void testConversionErrors(const std::string &dir)
+{
+    using ffmpegfaults::Call;
+    using Format = exportpipe::FlatVideoReader::Format;
+    const std::string path = dir + "/solid.mp4";
+    std::string err;
+    ffmpegfaults::reset();
+    int all = 0;
+    {
+        exportpipe::FlatVideoReader r;
+        CHECK(r.open(path, err));
+        all = readThrough(r).frames;
+    }
+    std::printf("  a failed conversion in readNext(): an error, then the same frame\n");
+    for (Call call : {Call::Scale, Call::ScalerSetup}) {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        // The scaler is set up at the first frame, and kept.
+        ffmpegfaults::arm(call, call == Call::Scale ? 20 : 0, AVERROR(ENOMEM));
+        const Run run = readThrough(r);
+        CHECK(ffmpegfaults::failed(call) == 1);
+        CHECK(run.errors == 1 && run.lastErr.find("to RGBA") != std::string::npos);
+        CHECK(run.frames == all && run.inOrder);
+    }
+
+    std::printf("  a failed conversion in frameAt(): null, then the frame due\n");
+    for (Format format : {Format::Rgba, Format::Nv12}) {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        r.setOutputFormat(format);
+        CHECK(r.frameAt(0));
+        // Every conversion fails: the direct NV12 one and the one through
+        // RGBA alike.
+        ffmpegfaults::arm(Call::Scale, 0, AVERROR(ENOMEM), -1);
+        CHECK(!r.frameAt(400));
+        CHECK(r.lastError().find(format == Format::Nv12 ? "to NV12" : "to RGBA") !=
+              std::string::npos);
+        CHECK(!r.frameAt(400)); // not cached as converted
+        ffmpegfaults::reset();
+        const exportpipe::VideoFrame *f = r.frameAt(400);
+        CHECK(f && f->ptsMs == 400 && r.lastError().empty());
+        if (f && format == Format::Rgba)
+            CHECK(frameIndexOf(*f) == 10);
+        if (f && format == Format::Nv12)
+            CHECK(std::abs(f->nv12[size_t(kH / 2) * kW + kW / 2] - lumaFor(10)) <= 2);
+    }
+    ffmpegfaults::reset();
+}
+
 void testReaderNv12(const std::string &dir)
 {
     std::string err;
@@ -913,6 +967,7 @@ int main()
     testRotation(dir);
     testCompositor(dir);
     testReaderNv12(dir);
+    testConversionErrors(dir);
     testFullFrameCopy(dir);
     testColorGrade();
     testEffects();

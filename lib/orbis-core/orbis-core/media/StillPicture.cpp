@@ -62,7 +62,11 @@ bool DecodeStillPicture(const std::vector<uint8_t>& bitstream, const char* codec
             out.alloc(w, h);
             uint8_t* dst[1] = {out.rgb.data()};
             int stride[1] = {w * 3};
-            sws_scale(sws, frm->data, frm->linesize, 0, frm->height, dst, stride);
+            if (sws_scale(sws, frm->data, frm->linesize, 0, frm->height, dst, stride) <= 0) {
+                ok = false;
+                err = "can't convert the decoded picture";
+                out = {};
+            }
             sws_freeContext(sws);
         } else {
             ok = false;

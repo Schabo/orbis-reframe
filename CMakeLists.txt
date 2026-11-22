@@ -870,7 +870,8 @@ if(FFMPEG_FOUND)
         target_link_libraries(${target} PRIVATE ffmpeg_faults)
         target_link_options(${target} PRIVATE
             "LINKER:--wrap=av_read_frame,--wrap=av_seek_frame,--wrap=avcodec_send_packet,--wrap=avcodec_receive_frame"
-            "LINKER:--wrap=avcodec_alloc_context3,--wrap=avcodec_parameters_to_context,--wrap=av_packet_alloc,--wrap=av_frame_alloc,--wrap=av_buffer_ref")
+            "LINKER:--wrap=avcodec_alloc_context3,--wrap=avcodec_parameters_to_context,--wrap=av_packet_alloc,--wrap=av_frame_alloc,--wrap=av_buffer_ref"
+            "LINKER:--wrap=sws_getContext,--wrap=sws_getCachedContext,--wrap=sws_init_context,--wrap=sws_scale,--wrap=sws_scale_frame")
     endfunction()
 endif()
 

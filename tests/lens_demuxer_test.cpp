@@ -5,6 +5,7 @@
 // on purpose (support/FfmpegFaults.h). Exit code is the failure count.
 
 #include <orbis-core/media/FisheyeDemux.h>
+#include <orbis-core/media/StillPicture.h>
 #include <orbis-core/media/VulkanVideoDecoder.h>
 #include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
@@ -382,6 +383,39 @@ void testAllocErrors(const std::string& a, const std::string& b, const std::stri
         CHECK(run.errors == 1);
         CHECK(run.lastErr.find("out of memory decoding lens") != std::string::npos);
         CHECK(run.pairs == kFrames && run.inOrder && run.inStep);
+    }
+    ffmpegfaults::reset();
+
+    std::printf("  a pair that doesn't convert: an error, no picture, then the next pair\n");
+    for (Call call : {Call::Scale, Call::ScalerSetup}) {
+        orbiscore::FisheyeDemux d;
+        ffmpegfaults::reset();
+        std::string err;
+        CHECK(d.open({{a, 0}, {b, 0}}, err));
+        orbiscore::Image l0, l1;
+        CHECK(d.readNextPair(l0, l1, nullptr, err));
+        ffmpegfaults::arm(call, 0, AVERROR(ENOMEM));
+        CHECK(!d.readNextPair(l0, l1, nullptr, err));
+        CHECK(ffmpegfaults::failed(call) == 1);
+        CHECK(err.find("RGB conversion") != std::string::npos ||
+              err.find("to RGB failed") != std::string::npos);
+        CHECK(l0.empty() && l1.empty());
+        const Run rest = readThrough(d, 2); // pair 1 is gone
+        CHECK(rest.errors == 0 && rest.inOrder && rest.inStep && rest.pairs == kFrames - 2);
+    }
+
+    std::printf("  a preview picture that doesn't convert: no picture\n");
+    if (const std::vector<uint8_t> pic = testmedia::encodeH264Picture(64, 64, 128); !pic.empty()) {
+        for (Call call : {Call::Scale, Call::ScalerSetup}) {
+            ffmpegfaults::reset();
+            ffmpegfaults::arm(call, 0, AVERROR(ENOMEM));
+            orbiscore::Image img;
+            std::string err;
+            CHECK(!orbiscore::DecodeStillPicture(pic, "h264", 64, img, err));
+            CHECK(!err.empty() && img.empty());
+            ffmpegfaults::reset();
+            CHECK(orbiscore::DecodeStillPicture(pic, "h264", 64, img, err) && img.w == 64);
+        }
     }
     ffmpegfaults::reset();
 
