@@ -80,7 +80,9 @@ public:
     void setOutputFormat(Format format);
 
     // Position so the next readNext() returns the frame showing at `ms` (the
-    // last one at or before it; the first frame if `ms` precedes it).
+    // last one at or before it; the first frame if `ms` precedes it). False
+    // (lastError() says why) if the file can't seek there -- a file that
+    // can't seek at all still starts from its beginning before any read.
     bool seek(int64_t ms);
     // The next frame in decode order, converted. False at the end or on an
     // error (lastError() says which).

@@ -2,8 +2,8 @@
 
 // Makes FFmpeg's read and decode calls fail the way a damaged file or a
 // failing disk does, for the readers' error tests. A test executable links
-// this with `-Wl,--wrap=` for av_read_frame, avcodec_send_packet and
-// avcodec_receive_frame (the CMake function orbis_wrap_ffmpeg_faults); every
+// this with `-Wl,--wrap=` for av_read_frame, av_seek_frame, avcodec_send_packet
+// and avcodec_receive_frame (the CMake function orbis_wrap_ffmpeg_faults); every
 // call then goes through here, and passes straight on to FFmpeg unless a test
 // armed a fault for it. Not thread-safe: arm and read from the test's thread.
 
@@ -15,6 +15,7 @@ enum class Call {
     SendFlush,       // avcodec_send_packet(ctx, nullptr), the flush at the end
     ReceiveFrame,    // avcodec_receive_frame, any time
     ReceiveDraining, // avcodec_receive_frame on a decoder that took the flush (since reset())
+    SeekFrame,       // av_seek_frame
 };
 
 // From the `after`+1-th call of `call` on (counting from now), `times` calls

@@ -199,6 +199,9 @@ struct FlatVideoReader::Impl {
     bool eof = false;       // demuxer drained
     bool drained = false;   // decoder drained too
     int64_t decodedMs = -1; // the last frame decoded, for error messages; -1 after a seek
+    // Nothing read since open or a seek to the start: the next packet is
+    // the file's first, whether or not the file can seek.
+    bool atStart = true;
     AVPacket *pkt = nullptr;
     std::deque<AVFrame *> ahead; // decoded, not handed out yet
     std::string err;
@@ -277,6 +280,7 @@ struct FlatVideoReader::Impl {
                 err = "decode: the decoder stalled at the end of the file";
                 break;
             }
+            atStart = false;
             const int rr = av_read_frame(fmt, pkt);
             if (rr == AVERROR_EOF) {
                 const int s = avcodec_send_packet(ctx, nullptr); // flush
@@ -330,10 +334,14 @@ struct FlatVideoReader::Impl {
         curConverted = false;
         const int64_t ts = startPts + av_rescale_q(std::max<int64_t>(0, ms), AVRational{1, 1000}, timeBase);
         const int r = av_seek_frame(fmt, streamIndex, ts, AVSEEK_FLAG_BACKWARD);
-        if (r < 0 && ms > 0) {
-            err = avErr("seek", r);
+        // A file that can't seek still plays from its start, as long as
+        // nothing was read yet; after that, the start is out of reach.
+        if (r < 0 && !(ms <= 0 && atStart)) {
+            err = avErr("seek to " + std::to_string(ms) + " ms", r);
             return false;
         }
+        if (r >= 0 && ms <= 0)
+            atStart = true;
         avcodec_flush_buffers(ctx);
         eof = drained = false;
         decodedMs = -1;
@@ -527,6 +535,7 @@ bool FlatVideoReader::open(const std::string &path, std::string &err)
     }
     d->eof = d->drained = false;
     d->decodedMs = -1;
+    d->atStart = true;
     return true;
 }
 

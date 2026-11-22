@@ -212,6 +212,35 @@ void testReaderErrors(const std::string &dir)
         f = r.frameAt(failedAt);
         CHECK(f && f->ptsMs == failedAt && r.lastError().empty());
     }
+
+    // A rewind that fails after frames were read: an error, not a later
+    // frame passed off as frame 0 -- through frameAt() going back and
+    // through seek(). Before any read the start needs no seek.
+    {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        const exportpipe::VideoFrame *f = r.frameAt(400);
+        CHECK(f && frameIndexOf(*f) == 10);
+        ffmpegfaults::arm(Call::SeekFrame, 0, AVERROR(EIO), -1);
+        CHECK(!r.frameAt(0) && r.lastError().find("seek to 0 ms") != std::string::npos);
+        CHECK(!r.seek(0) && !r.lastError().empty());
+        ffmpegfaults::reset();
+        f = r.frameAt(0); // seeks again, and can
+        CHECK(f && f->ptsMs == 0 && frameIndexOf(*f) == 0 && r.lastError().empty());
+    }
+    {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        ffmpegfaults::arm(Call::SeekFrame, 0, AVERROR(ENOSYS), -1); // a file that can't seek
+        const exportpipe::VideoFrame *f = r.frameAt(0);
+        CHECK(f && f->ptsMs == 0 && frameIndexOf(*f) == 0 && r.lastError().empty());
+        exportpipe::VideoFrame v;
+        CHECK(r.readNext(v) && frameIndexOf(v) == 1);
+        CHECK(!r.seek(0)); // read from now: the start is gone
+        CHECK(!r.seek(800) && r.lastError().find("seek to 800 ms") != std::string::npos);
+    }
     ffmpegfaults::reset();
 }
 

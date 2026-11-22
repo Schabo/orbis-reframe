@@ -19,7 +19,7 @@ struct Fault {
     int failed = 0;
 };
 
-constexpr int kCalls = 5;
+constexpr int kCalls = 6;
 Fault g_faults[kCalls];
 // The decoders that took the flush since reset(), for Call::ReceiveDraining.
 std::set<const AVCodecContext *> g_draining;
@@ -63,6 +63,7 @@ using ffmpegfaults::Call;
 extern "C" {
 
 int __real_av_read_frame(AVFormatContext *s, AVPacket *pkt);
+int __real_av_seek_frame(AVFormatContext *s, int stream_index, int64_t timestamp, int flags);
 int __real_avcodec_send_packet(AVCodecContext *avctx, const AVPacket *avpkt);
 int __real_avcodec_receive_frame(AVCodecContext *avctx, AVFrame *frame);
 
@@ -71,6 +72,13 @@ int __wrap_av_read_frame(AVFormatContext *s, AVPacket *pkt)
     if (ffmpegfaults::fails(Call::ReadFrame))
         return ffmpegfaults::rcOf(Call::ReadFrame);
     return __real_av_read_frame(s, pkt);
+}
+
+int __wrap_av_seek_frame(AVFormatContext *s, int stream_index, int64_t timestamp, int flags)
+{
+    if (ffmpegfaults::fails(Call::SeekFrame))
+        return ffmpegfaults::rcOf(Call::SeekFrame);
+    return __real_av_seek_frame(s, stream_index, timestamp, flags);
 }
 
 int __wrap_avcodec_send_packet(AVCodecContext *avctx, const AVPacket *avpkt)
