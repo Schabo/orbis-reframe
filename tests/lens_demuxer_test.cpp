@@ -1,15 +1,19 @@
 // orbiscore::FisheyeDemux / LensDemuxer with a file per lens (the ONE X2's layout):
 // two single-stream videos written here, each frame a flat grey that encodes
 // its index, decoded as one lens pair -- in step, after seeks, to the end,
-// and in the order the lenses are given. Exit code is the failure count.
+// and in the order the lenses are given; and with read and decode errors made
+// on purpose (support/FfmpegFaults.h). Exit code is the failure count.
 
 #include <orbis-core/media/FisheyeDemux.h>
+#include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
 
 extern "C" {
+#include <libavutil/error.h>
 #include <libavutil/frame.h>
 }
 
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -232,6 +236,112 @@ void testErrors(const std::string& a, const std::string& dir)
     CHECK(err == "no video stream 1");
 }
 
+// Pairs read to the end through any errors (at most a few in a row: a read
+// that fails for ever ends it).
+struct Run {
+    int pairs = 0;
+    int errors = 0;
+    std::string lastErr;
+    bool inStep = true;  // every pair the same frame of both lenses
+    bool inOrder = true; // pair n frame n (counting from `first`)
+};
+
+Run readThrough(orbiscore::FisheyeDemux& d, int first = 0)
+{
+    Run run;
+    for (int errorsInARow = 0;;) {
+        orbiscore::Image a, b;
+        std::string err;
+        if (d.readNextPair(a, b, nullptr, err)) {
+            const int f0 = frameOf(a, greyA), f1 = frameOf(b, greyB);
+            run.inStep = run.inStep && f0 == f1;
+            run.inOrder = run.inOrder && f0 == first + run.pairs;
+            ++run.pairs;
+            errorsInARow = 0;
+            continue;
+        }
+        if (err.empty())
+            break;
+        run.lastErr = err;
+        ++run.errors;
+        if (++errorsInARow > 3)
+            break;
+    }
+    return run;
+}
+
+void testReadErrors(const std::string& a, const std::string& b)
+{
+    using ffmpegfaults::Call;
+    const auto open = [&](orbiscore::FisheyeDemux& d) {
+        ffmpegfaults::reset();
+        std::string err;
+        CHECK(d.open({{a, 0}, {b, 0}}, err));
+    };
+
+    std::printf("  a read error: reported, not the end; the next read carries on\n");
+    {
+        orbiscore::FisheyeDemux d;
+        open(d);
+        ffmpegfaults::arm(Call::ReadFrame, 30, AVERROR(EIO));
+        const Run run = readThrough(d);
+        CHECK(run.errors == 1);
+        CHECK(run.lastErr.find("Input/output error") != std::string::npos);
+        CHECK(run.lastErr.find(a) != std::string::npos || run.lastErr.find(b) != std::string::npos);
+        CHECK(run.pairs == kFrames && run.inOrder && run.inStep);
+    }
+
+    std::printf("  a decode error: reported, and no frame lost\n");
+    {
+        orbiscore::FisheyeDemux d;
+        open(d);
+        ffmpegfaults::arm(Call::ReceiveFrame, 40, AVERROR_INVALIDDATA);
+        const Run run = readThrough(d);
+        CHECK(run.errors == 1);
+        CHECK(run.lastErr.find("decoding lens") != std::string::npos);
+        CHECK(run.pairs == kFrames && run.inOrder && run.inStep);
+    }
+
+    std::printf("  a packet the decoder refuses: reported, then on to the end\n");
+    {
+        orbiscore::FisheyeDemux d;
+        open(d);
+        ffmpegfaults::arm(Call::SendPacket, 30, AVERROR_INVALIDDATA);
+        const Run run = readThrough(d);
+        CHECK(run.errors == 1);
+        CHECK(run.lastErr.find("decoding lens") != std::string::npos);
+        // The refused packet's frame is gone (and the lenses out of step
+        // after it): only that the read gets to the end is checked.
+        CHECK(run.pairs >= kFrames - 2);
+    }
+
+    std::printf("  a refused flush: reported, and the frames held still come out\n");
+    {
+        orbiscore::FisheyeDemux d;
+        open(d);
+        ffmpegfaults::arm(Call::SendFlush, 0, AVERROR(ENOMEM));
+        const Run run = readThrough(d);
+        CHECK(run.errors == 1);
+        CHECK(run.pairs == kFrames && run.inOrder && run.inStep);
+    }
+
+    std::printf("  a decoder that stalls after the flush: an error, not a hang\n");
+    {
+        orbiscore::FisheyeDemux d;
+        open(d);
+        ffmpegfaults::arm(Call::ReceiveDraining, 0, AVERROR(EAGAIN), -1);
+        const Run stalled = readThrough(d);
+        CHECK(stalled.errors > 0);
+        CHECK(stalled.lastErr.find("stalled") != std::string::npos);
+        CHECK(stalled.inOrder && stalled.inStep);
+        ffmpegfaults::reset();
+        const Run rest = readThrough(d, stalled.pairs);
+        CHECK(rest.errors == 0 && rest.inOrder && rest.inStep);
+        CHECK(stalled.pairs + rest.pairs == kFrames);
+    }
+    ffmpegfaults::reset();
+}
+
 } // namespace
 
 int main()
@@ -248,6 +358,7 @@ int main()
     testSeek(a, b);
     testLensOrder(a, b);
     testErrors(a, dir.string());
+    testReadErrors(a, b);
     testExactTimes(dir.string());
     testSideBySide(dir.string());
     if (!g_failures)

@@ -198,6 +198,7 @@ struct FlatVideoReader::Impl {
     int outW = 0, outH = 0;
     bool eof = false;       // demuxer drained
     bool drained = false;   // decoder drained too
+    int64_t decodedMs = -1; // the last frame decoded, for error messages; -1 after a seek
     AVPacket *pkt = nullptr;
     std::deque<AVFrame *> ahead; // decoded, not handed out yet
     std::string err;
@@ -244,35 +245,60 @@ struct FlatVideoReader::Impl {
         return av_rescale_q(pts - startPts, timeBase, AVRational{1, 1000});
     }
 
-    // The next decoded frame (owned by the caller), or null at the end.
+    // " after <ms> ms": where in the file the last frame decoded was.
+    std::string after() const
+    {
+        return decodedMs >= 0 ? " after " + std::to_string(decodedMs) + " ms" : std::string();
+    }
+
+    // The next decoded frame (owned by the caller), or null at the end or
+    // on an error (`err` set). After an error the next call carries on
+    // from where it failed: the end isn't taken as reached.
     AVFrame *decodeOne()
     {
         AVFrame *f = av_frame_alloc();
         for (;;) {
             const int r = avcodec_receive_frame(ctx, f);
-            if (r == 0)
+            if (r == 0) {
+                decodedMs = ptsMs(f);
                 return f;
+            }
             if (r == AVERROR_EOF) {
                 drained = true;
                 break;
             }
             if (r != AVERROR(EAGAIN)) {
-                err = avErr("decode", r);
+                err = avErr("decode" + after(), r);
                 break;
             }
-            if (eof) { // flushing, and nothing more came out
-                drained = true;
+            // The decoder wants input. Flushed, it has none coming: a
+            // decoder asking now would leave the read waiting for ever.
+            if (eof) {
+                err = "decode: the decoder stalled at the end of the file";
                 break;
             }
             const int rr = av_read_frame(fmt, pkt);
-            if (rr < 0) {
+            if (rr == AVERROR_EOF) {
+                const int s = avcodec_send_packet(ctx, nullptr); // flush
+                if (s < 0) {
+                    err = avErr("decode at the end of the file", s);
+                    break;
+                }
                 eof = true;
-                avcodec_send_packet(ctx, nullptr); // flush
                 continue;
             }
-            if (pkt->stream_index == streamIndex)
-                avcodec_send_packet(ctx, pkt);
+            if (rr < 0) { // not the end: a damaged file or a failing disk
+                err = avErr("read" + after(), rr);
+                break;
+            }
+            // The decoder just asked for input, so it isn't full: a refusal
+            // is an error.
+            const int s = pkt->stream_index == streamIndex ? avcodec_send_packet(ctx, pkt) : 0;
             av_packet_unref(pkt);
+            if (s < 0) {
+                err = avErr("decode" + after(), s);
+                break;
+            }
         }
         av_frame_free(&f);
         return nullptr;
@@ -310,6 +336,7 @@ struct FlatVideoReader::Impl {
         }
         avcodec_flush_buffers(ctx);
         eof = drained = false;
+        decodedMs = -1;
         // Decode up to the frame showing at `ms`; leave it at the front.
         AVFrame *prev = nullptr;
         for (;;) {
@@ -325,7 +352,7 @@ struct FlatVideoReader::Impl {
         }
         if (prev)
             ahead.push_front(prev);
-        return true;
+        return err.empty(); // a decode error on the way: not at `ms`
     }
 
     // Convert `f` to the output format and size, rotation applied.
@@ -499,6 +526,7 @@ bool FlatVideoReader::open(const std::string &path, std::string &err)
         return false;
     }
     d->eof = d->drained = false;
+    d->decodedMs = -1;
     return true;
 }
 
@@ -527,13 +555,17 @@ void FlatVideoReader::setOutputFormat(Format format)
 
 bool FlatVideoReader::seek(int64_t ms)
 {
-    return isOpen() && d->seek(ms);
+    if (!isOpen())
+        return false;
+    d->err.clear();
+    return d->seek(ms);
 }
 
 bool FlatVideoReader::readNext(VideoFrame &out)
 {
     if (!isOpen())
         return false;
+    d->err.clear();
     AVFrame *f = d->pop();
     if (!f)
         return false;
@@ -550,9 +582,14 @@ const VideoFrame *FlatVideoReader::frameAt(int64_t ms)
 {
     if (!isOpen())
         return nullptr;
+    d->err.clear();
     constexpr int64_t kSeekAheadMs = 2000; // further than this: seek, don't decode through
     const bool behind = d->cur && ms < d->ptsMs(d->cur);
     const AVFrame *next = d->cur ? d->peek() : nullptr;
+    // The frame after the one showing didn't decode: which frame shows at
+    // `ms` is unknown, so not the one before.
+    if (!d->err.empty())
+        return nullptr;
     const bool farAhead = d->cur && next && ms > d->ptsMs(next) + kSeekAheadMs;
     if (!d->cur || behind || farAhead) {
         if (!d->seek(ms))
@@ -571,6 +608,8 @@ const VideoFrame *FlatVideoReader::frameAt(int64_t ms)
         d->cur = n;
         d->curConverted = false;
     }
+    if (!d->err.empty()) // as above: a later frame may be the one due
+        return nullptr;
     if (!d->curConverted) {
         d->convert(d->cur, d->curOut);
         d->curConverted = true;

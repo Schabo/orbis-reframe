@@ -132,6 +132,12 @@ are. Your original files are never changed.
   up the same way, within a couple of seconds: the clip plays again and its
   Media card gets its picture and recording mode, without reopening the
   project.
+- **A file that breaks off partway** (a damaged copy, or a memory card or
+  drive that fails to read): playback holds the last frame that read,
+  tries again for about five seconds, then goes on to the next clip. An
+  export stops with the file's name and how far into it the reading
+  failed, instead of finishing with that clip cut short. Copy a good file
+  over it, or trim the clip to end a little before that point.
 - **A clip in two files** (the Insta360 ONE X2 writes each lens of a 5.7K
   clip to its own file, `VID_…_00_…` and `VID_…_10_…`) needs both, in the
   same folder. The project remembers both; if either is gone, the clip is

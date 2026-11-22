@@ -82,15 +82,19 @@ public:
     // Position so the next readNext() returns the frame showing at `ms` (the
     // last one at or before it; the first frame if `ms` precedes it).
     bool seek(int64_t ms);
-    // The next frame in decode order, converted. False at the end or on error.
+    // The next frame in decode order, converted. False at the end or on an
+    // error (lastError() says which).
     bool readNext(VideoFrame &out);
 
     // The frame showing at source time `ms`: decodes forward from the current
     // position, and seeks only when `ms` is behind it or well ahead. The
     // pointer stays valid until the next call. Null if there is no frame (an
-    // empty file, or an error).
+    // empty file), or on an error -- never an earlier frame in its place.
     const VideoFrame *frameAt(int64_t ms);
 
+    // Why the last open, seek or read failed; empty when it succeeded or
+    // only found the end of the file. A read after a failed one carries on
+    // from where it failed.
     const std::string &lastError() const;
 
 private:

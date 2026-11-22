@@ -104,7 +104,9 @@ public:
 
     // The next lens-0 / lens-1 frame pair in play order; the caller owns both
     // (av_frame_free). `*pts` (may be null) gets lens 0's time. False with
-    // `err` empty at end of stream, `err` set on error. Needs 2 lenses.
+    // `err` empty at end of stream, `err` set on a read or decode error
+    // (the file and time in it); a read after an error carries on from
+    // where it failed. Needs 2 lenses.
     bool readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, std::string& err);
     // The next frame of `lens` alone, for a single-stream file; the caller
     // owns it. False as readNextPair.
@@ -134,7 +136,7 @@ private:
     struct Input {
         std::string path;
         AVFormatContext* fmt = nullptr;
-        bool drainStarted = false; // read to its end, flush packet sent to its decoders
+        bool drainStarted = false; // read to its end, its decoders took the flush
     };
 
     void clearFifos();
@@ -162,8 +164,19 @@ private:
     void keyframesAround(int64_t timestampMs, int64_t& before, int64_t& after) const;
     AVStream* lensStream(int lens) const;
     int streamToLens(int input, int streamIndex) const;
-    void drainDecoder(int lens);                // pull ready frames into m_fifo[lens]
-    bool pumpOnce(int input, std::string& err); // read one packet of `input` / advance its draining
+    // Pulls the frames lens `lens`'s decoder has ready into m_fifo[lens].
+    // False with `err` set on a decode error.
+    bool drainDecoder(int lens, std::string& err);
+    // Hands `pkt` (null: the flush at the file's end) to lens `lens`'s
+    // decoder, draining it first if it is full. False with `err` set if
+    // the decoder refuses it.
+    bool sendPacket(int lens, const AVPacket* pkt, std::string& err);
+    // " of <input's file>[ after <last frame read> ms]", for error messages.
+    std::string where(int input) const;
+    // Reads one packet of `input` into its decoders, or at the file's end
+    // drains them. False with `err` set on a read or decode error: the end
+    // of the file is not an error, and a read error doesn't end the file.
+    bool pumpOnce(int input, std::string& err);
     void dropStale(int lens);                   // frames before the seek target
     AVFrame* popFront(int lens);
 

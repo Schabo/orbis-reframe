@@ -859,6 +859,18 @@ if(FFMPEG_FOUND)
     add_library(test_media STATIC tests/support/TestMedia.cpp tests/support/TestMedia.h)
     target_include_directories(test_media PUBLIC tests)
     target_link_libraries(test_media PRIVATE PkgConfig::FFMPEG)
+
+    # tests/support/FfmpegFaults: a test makes FFmpeg's reads and decodes
+    # fail through it. The linker sends the three calls to its stand-ins, in
+    # the test executable only.
+    add_library(ffmpeg_faults STATIC tests/support/FfmpegFaults.cpp tests/support/FfmpegFaults.h)
+    target_include_directories(ffmpeg_faults PUBLIC tests)
+    target_link_libraries(ffmpeg_faults PRIVATE PkgConfig::FFMPEG)
+    function(orbis_wrap_ffmpeg_faults target)
+        target_link_libraries(${target} PRIVATE ffmpeg_faults)
+        target_link_options(${target} PRIVATE
+            "LINKER:--wrap=av_read_frame,--wrap=avcodec_send_packet,--wrap=avcodec_receive_frame")
+    endfunction()
 endif()
 
 # --- the src/core edit model's tests, one per area (tests/support/ModelTest.h
@@ -995,6 +1007,7 @@ endif()
 if(TARGET orbis-core::media)
     add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
     target_link_libraries(lens_demuxer_test PRIVATE orbis-core::media test_media)
+    orbis_wrap_ffmpeg_faults(lens_demuxer_test)
     add_test(NAME lens_demuxer_test COMMAND lens_demuxer_test)
 endif()
 
@@ -1073,6 +1086,7 @@ if(TARGET reframe_flatten)
     add_executable(inset_test tests/inset_test.cpp)
     target_include_directories(inset_test PRIVATE src/core)
     target_link_libraries(inset_test PRIVATE reframe_flatten test_media)
+    orbis_wrap_ffmpeg_faults(inset_test)
     add_test(NAME inset_test COMMAND inset_test)
 
     # The export's container timing: every frame written is shown (stream

@@ -8,10 +8,16 @@
 #include "InsetGeometry.h"
 #include "ReframeRenderer.h"
 #include "Sharpen.h"
+#include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
+
+extern "C" {
+#include <libavutil/error.h>
+}
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -98,6 +104,115 @@ void testReader(const std::string &dir)
     r.setOutputSize(160, 90);
     f = r.frameAt(900);
     CHECK(f && f->width == 160 && f->height == 90 && f->rgba.size() == 160u * 90 * 4);
+}
+
+// readNext() to the end through any errors (at most a few in a row).
+struct Run {
+    int frames = 0;
+    int errors = 0;
+    std::string lastErr;
+    bool inOrder = true; // frame n is the file's frame n
+};
+
+Run readThrough(exportpipe::FlatVideoReader &r)
+{
+    Run run;
+    exportpipe::VideoFrame v;
+    for (int errorsInARow = 0;;) {
+        if (r.readNext(v)) {
+            run.inOrder = run.inOrder && frameIndexOf(v) == run.frames;
+            ++run.frames;
+            errorsInARow = 0;
+            continue;
+        }
+        if (r.lastError().empty())
+            break;
+        run.lastErr = r.lastError();
+        ++run.errors;
+        if (++errorsInARow > 3)
+            break;
+    }
+    return run;
+}
+
+// Read and decode errors made on purpose (support/FfmpegFaults.h): each is
+// reported, not taken for the end of the file, and the reader carries on
+// after it; frameAt() never hands out an earlier frame for one that failed.
+void testReaderErrors(const std::string &dir)
+{
+    using ffmpegfaults::Call;
+    const std::string path = dir + "/solid.mp4"; // testReader's
+    std::string err;
+    ffmpegfaults::reset();
+    int all = 0; // the frames the file decodes to (see testReader)
+    {
+        exportpipe::FlatVideoReader r;
+        CHECK(r.open(path, err));
+        const Run run = readThrough(r);
+        CHECK(run.errors == 0 && run.inOrder);
+        all = run.frames;
+        CHECK(all >= kFrames - 1);
+    }
+    const auto faulty = [&](Call call, int after, int rc) {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        ffmpegfaults::arm(call, after, rc);
+        return readThrough(r);
+    };
+
+    Run run = faulty(Call::ReadFrame, 20, AVERROR(EIO));
+    CHECK(run.errors == 1 && run.lastErr.find("Input/output error") != std::string::npos);
+    CHECK(run.frames == all && run.inOrder);
+
+    run = faulty(Call::ReceiveFrame, 30, AVERROR_INVALIDDATA);
+    CHECK(run.errors == 1 && run.frames == all && run.inOrder);
+
+    run = faulty(Call::SendFlush, 0, AVERROR(ENOMEM));
+    CHECK(run.errors == 1 && run.frames == all && run.inOrder);
+
+    // The refused packet's frame is lost; the rest still read to the end.
+    run = faulty(Call::SendPacket, 20, AVERROR_INVALIDDATA);
+    CHECK(run.errors == 1 && run.frames >= all - 1);
+
+    // A decoder that wants input after the flush: an error, not a hang.
+    {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        ffmpegfaults::arm(Call::ReceiveDraining, 0, AVERROR(EAGAIN), -1);
+        const Run stalled = readThrough(r);
+        CHECK(stalled.errors > 0 && stalled.lastErr.find("stalled") != std::string::npos);
+        ffmpegfaults::reset();
+        const Run rest = readThrough(r);
+        CHECK(rest.errors == 0 && stalled.frames + rest.frames == all);
+    }
+
+    // frameAt() with every read failing from frame 1 on: the frames already
+    // decoded show, each at its own time, then null with the error -- not
+    // the frame before -- and once the reads work again, the frame due.
+    {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        const exportpipe::VideoFrame *f = r.frameAt(0);
+        CHECK(f && f->ptsMs == 0);
+        ffmpegfaults::arm(Call::ReadFrame, 0, AVERROR(EIO), -1);
+        int64_t failedAt = -1;
+        for (int64_t ms = 40; ms < 2000; ms += 40) {
+            f = r.frameAt(ms);
+            if (!f) {
+                failedAt = ms;
+                break;
+            }
+            CHECK(f->ptsMs == ms && frameIndexOf(*f) == ms / 40);
+        }
+        CHECK(failedAt > 0 && r.lastError().find("Input/output error") != std::string::npos);
+        ffmpegfaults::reset();
+        f = r.frameAt(failedAt);
+        CHECK(f && f->ptsMs == failedAt && r.lastError().empty());
+    }
+    ffmpegfaults::reset();
 }
 
 void testRotation(const std::string &dir)
@@ -744,6 +859,7 @@ int main()
         return 1;
     }
     testReader(dir);
+    testReaderErrors(dir);
     testRotation(dir);
     testCompositor(dir);
     testReaderNv12(dir);

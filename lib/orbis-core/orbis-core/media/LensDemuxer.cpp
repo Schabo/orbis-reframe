@@ -30,6 +30,14 @@ double ptsSec(const AVFrame* f, AVRational tb)
     return (p == AV_NOPTS_VALUE) ? 0.0 : p * av_q2d(tb);
 }
 
+// `what`, then FFmpeg's message for `rc`.
+std::string AvError(const std::string& what, int rc)
+{
+    char why[AV_ERROR_MAX_STRING_SIZE] = {0};
+    av_strerror(rc, why, sizeof(why));
+    return what + ": " + why;
+}
+
 // ptsSec in microseconds, rounded from the time base exactly.
 int64_t ptsUs(const AVFrame* f, AVRational tb)
 {
@@ -404,16 +412,20 @@ int LensDemuxer::streamToLens(int input, int streamIndex) const
     return -1;
 }
 
-void LensDemuxer::drainDecoder(int lens)
+bool LensDemuxer::drainDecoder(int lens, std::string& err)
 {
     for (;;) {
         AVFrame* frm = av_frame_alloc();
         const int r = avcodec_receive_frame(m_dec[lens], frm);
-        if (r < 0) { // EAGAIN, EOF or an error
+        if (r < 0) {
             av_frame_free(&frm);
             if (r == AVERROR_EOF)
                 m_streamEof[lens] = 1;
-            return;
+            else if (r != AVERROR(EAGAIN)) {
+                err = AvError("decoding lens " + std::to_string(lens) + where(m_lensInput[lens]), r);
+                return false;
+            }
+            return true;
         }
         // Into clip time: a later part's frames count from its own start.
         if (const int64_t off = m_parts[m_part].offset[lens]; off != 0) {
@@ -426,43 +438,70 @@ void LensDemuxer::drainDecoder(int lens)
     }
 }
 
+bool LensDemuxer::sendPacket(int lens, const AVPacket* pkt, std::string& err)
+{
+    int s = avcodec_send_packet(m_dec[lens], pkt);
+    if (s == AVERROR(EAGAIN)) { // decoder full -- make room, then once more
+        if (!drainDecoder(lens, err))
+            return false;
+        // Emptied, a decoder takes input: FFmpeg never refuses both ways.
+        s = avcodec_send_packet(m_dec[lens], pkt);
+    }
+    if (!pkt && s == AVERROR_EOF) // flushing already (a read retried after an error)
+        return true;
+    if (s < 0) {
+        err = AvError("decoding lens " + std::to_string(lens) + where(m_lensInput[lens]), s);
+        return false;
+    }
+    return true;
+}
+
+std::string LensDemuxer::where(int input) const
+{
+    std::string w = " of " + m_inputs[input].path;
+    if (m_lastReadSec >= 0)
+        w += " after " + std::to_string(std::llround(m_lastReadSec * 1000.0)) + " ms";
+    return w;
+}
+
 bool LensDemuxer::pumpOnce(int input, std::string& err)
 {
     Input& in = m_inputs[input];
     const auto drainAll = [&] {
         for (size_t l = 0; l < m_dec.size(); ++l)
-            if (m_lensInput[l] == input)
-                drainDecoder(static_cast<int>(l));
-    };
-    if (in.drainStarted) {
-        drainAll();
-        return true;
-    }
-    int r = av_read_frame(in.fmt, m_pkt);
-    if (r < 0) {
+            if (m_lensInput[l] == input && !drainDecoder(static_cast<int>(l), err))
+                return false;
+        // Flushed and emptied, every decoder of the file is at its end; one
+        // that still wants input would leave the read waiting for ever.
         for (size_t l = 0; l < m_dec.size(); ++l)
-            if (m_lensInput[l] == input)
-                avcodec_send_packet(m_dec[l], nullptr);
-        in.drainStarted = true;
-        drainAll();
+            if (m_lensInput[l] == input && !m_streamEof[l]) {
+                err = "lens " + std::to_string(l) + "'s decoder stalled at the end" + where(input);
+                return false;
+            }
         return true;
+    };
+    if (in.drainStarted)
+        return drainAll();
+    const int r = av_read_frame(in.fmt, m_pkt);
+    if (r == AVERROR_EOF) {
+        // At the file's end: the frames the decoders still hold come out.
+        for (size_t l = 0; l < m_dec.size(); ++l)
+            if (m_lensInput[l] == input && !sendPacket(static_cast<int>(l), nullptr, err))
+                return false;
+        in.drainStarted = true;
+        return drainAll();
+    }
+    if (r < 0) {
+        // Not the end: a damaged file or a failing disk. Reported, and the
+        // file isn't taken as read to its end -- a read after this one
+        // tries again where it failed.
+        err = AvError("reading" + where(input), r);
+        return false;
     }
     const int lens = streamToLens(input, m_pkt->stream_index);
-    if (lens >= 0) {
-        int s = avcodec_send_packet(m_dec[lens], m_pkt);
-        if (s == AVERROR(EAGAIN)) {
-            drainDecoder(lens); // decoder full -- make room, then retry once
-            s = avcodec_send_packet(m_dec[lens], m_pkt);
-        }
-        if (s < 0 && s != AVERROR(EAGAIN)) {
-            av_packet_unref(m_pkt);
-            err = "avcodec_send_packet failed on lens " + std::to_string(lens);
-            return false;
-        }
-        drainDecoder(lens);
-    }
+    const bool sent = lens < 0 || (sendPacket(lens, m_pkt, err) && drainDecoder(lens, err));
     av_packet_unref(m_pkt);
-    return true;
+    return sent;
 }
 
 void LensDemuxer::resetDecoders()
