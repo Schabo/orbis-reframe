@@ -49,6 +49,7 @@ struct FlatFrame {
     int width = 0;
     int height = 0;
     int64_t timestamp_ms = 0;
+    int64_t timestamp_us = 0; // exact (orbiscore::FramePts)
 };
 
 // Where the time went in the last all-GPU ReadFrame() / ReadFlatFrame()

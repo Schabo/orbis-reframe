@@ -403,11 +403,16 @@ void ReframeExportController::run(const Request &req)
         // Conform: output frame k of this clip shows the source frame whose
         // time window [pts - half, pts + half) holds the source time of its
         // timeline time. A faster source (or speed > 1) drops frames, a
-        // slower one (or slow motion) repeats them.
+        // slower one (or slow motion) repeats them. Both times exact, not
+        // rounded to the ms: where the output frames fall about half a
+        // source frame from the source's (a trim between two frames), the
+        // rounding would tip each frame to one side or the other, and a
+        // source at the output's rate would stutter, repeating and dropping
+        // frames, instead of showing each once.
         const double srcHalfMs = 500.0 / probe.fps;
-        auto targetSrcMs = [&](int64_t k) {
-            const int64_t ms = std::llround((firstFrame[i] + k) * outFrameMs);
-            return c.trimInMs + double(ms - clipStartMs[i]) * c.speed;
+        auto targetSrcUs = [&](int64_t k) {
+            const double ms = (firstFrame[i] + k) * outFrameMs;
+            return (c.trimInMs + (ms - clipStartMs[i]) * c.speed) * 1000.0;
         };
         eqW &= ~1;
         stitch::PreviewStitchConfig sc;
@@ -486,10 +491,11 @@ void ReframeExportController::run(const Request &req)
             return &grade;
         };
         // How many of this clip's next output frames the source frame at
-        // `ptsMs` stands for (0 = dropped).
-        auto repeatsFor = [&](int64_t ptsMs) {
+        // `ptsUs` stands for (0 = dropped).
+        auto repeatsFor = [&](int64_t ptsUs) {
+            const double untilUs = double(ptsUs) + srcHalfMs * 1000.0;
             int64_t n = 0;
-            while (written + n < frames[i] && targetSrcMs(written + n) < ptsMs + srcHalfMs)
+            while (written + n < frames[i] && targetSrcUs(written + n) < untilUs)
                 ++n;
             return n;
         };
@@ -512,7 +518,7 @@ void ReframeExportController::run(const Request &req)
                 }
                 if (ff.timestamp_ms + srcHalfMs < c.trimInMs)
                     continue; // straggler ahead of the in-point
-                const int64_t reps = repeatsFor(ff.timestamp_ms);
+                const int64_t reps = repeatsFor(ff.timestamp_us);
                 checkDepth(ff.p010);
                 for (int64_t r = 0; r < reps; ++r) {
                     ++outFrames;
@@ -539,7 +545,7 @@ void ReframeExportController::run(const Request &req)
                 // drop any straggler still ahead of the in-point just in case.
                 if (eq.timestamp_ms + srcHalfMs < c.trimInMs)
                     continue;
-                const int64_t reps = repeatsFor(eq.timestamp_ms);
+                const int64_t reps = repeatsFor(eq.timestamp_us);
                 if (reps == 0)
                     continue; // dropped: skip the CPU reproject too
                 checkDepth(false);

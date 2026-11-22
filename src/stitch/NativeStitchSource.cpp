@@ -1245,6 +1245,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
                   frame.data, pts))
         return FlatFrame{};
     frame.timestamp_ms = pts.ms;
+    frame.timestamp_us = pts.us;
     frame.width = outW;
     frame.height = outH;
     return frame;
