@@ -56,7 +56,7 @@
 #define LENS_MASK_RAMP_RAD 0.03490659 // == orbiscore::FisheyeStitcher::kLensMaskRampDeg (2 deg)
 #define LENS_VEIL_GAMMA 2.2 // == orbiscore::kLensVeilGamma
 #define LENS_VEIL_KEEP 0.3 // == orbiscore::kLensVeilKeep
-#define MAX_BLUR 64 // == orbiscore::kMaxBlurQuads
+#define MAX_BLUR 256 // == orbiscore::kMaxBlurQuads
 #define BLUR_CELL_TAPS 16 // == orbiscore::kBlurCellTaps
 #define BLUR_CELLS_PER_QUAD 200 // == orbiscore::kBlurCellsPerQuad
 #define BLUR_FEATHER 0.08 // == orbiscore::kBlurFeather
@@ -105,11 +105,8 @@ layout(std140, binding = 0) uniform Params {
     // columns and rows.
     vec4 seamFlow;
     ivec4 seamFlowN;
-    // Privacy blur (orbiscore::BlurQuadFrame, carried into the stitch world frame):
-    // per quad 6 vec4: c.xyz + cells along s, r.xyz + cells along t, u.xyz +
-    // cos radius, corners 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -).
+    // Privacy blur: how many regions BlurQuads (below) has for this frame.
     vec4 blur0; // count, -, -, -
-    vec4 blurQ[MAX_BLUR * 6];
     // The lenses' Y'CbCr -> R'G'B' (orbiscore::YcbcrToRgbRows): component i is
     // dot(ycc[i].xyz, vec3(y, cb, cr)) + ycc[i].w on the planes' texel values.
     // For fisheye_view.frag, which samples the planes itself; the stitch's
@@ -148,6 +145,18 @@ layout(binding = SEAM_FLOW_BINDING) uniform sampler2D seamFlowTex;
 #define BLUR_CELL_BINDING 8
 #endif
 layout(binding = BLUR_CELL_BINDING) uniform sampler2D blurCellTex;
+
+// Privacy blur regions (orbiscore::BlurQuadFrame, carried into the stitch
+// world frame), P.blur0.x of them, up to MAX_BLUR: per region 6 vec4 --
+// c.xyz + cells along s, r.xyz + cells along t, u.xyz + cos radius, corners
+// 0 / 1 (xy, xy), corners 2 / 3, (scale, -, -, -). A storage buffer, not
+// Params: MAX_BLUR of them don't fit in the 16 KiB a uniform buffer is sure
+// to have. At BLUR_QUAD_BINDING (10 unless the includer says otherwise: the
+// viewport has it at 7).
+#ifndef BLUR_QUAD_BINDING
+#define BLUR_QUAD_BINDING 10
+#endif
+layout(std430, binding = BLUR_QUAD_BINDING) readonly buffer BlurQuads { vec4 blurQ[]; };
 
 #ifndef FISHEYE_STITCH_NO_BUFFERS
 layout(std430, binding = 3) writeonly buffer OutBuf { uint px[]; };
@@ -878,12 +887,12 @@ float cross2(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
 bool blurST(int k, vec3 dir, out vec2 st)
 {
     st = vec2(-1.0);
-    vec4 A = P.blurQ[k * 6], B = P.blurQ[k * 6 + 1], C = P.blurQ[k * 6 + 2];
+    vec4 A = blurQ[k * 6], B = blurQ[k * 6 + 1], C = blurQ[k * 6 + 2];
     float z = dot(dir, A.xyz);
     if (z < C.w || z <= 0.0)
         return false;
-    vec4 D = P.blurQ[k * 6 + 3], E = P.blurQ[k * 6 + 4];
-    float scale = P.blurQ[k * 6 + 5].x;
+    vec4 D = blurQ[k * 6 + 3], E = blurQ[k * 6 + 4];
+    float scale = blurQ[k * 6 + 5].x;
     vec2 p = vec2(dot(dir, B.xyz), dot(dir, C.xyz)) / (z * scale);
     vec2 a = D.xy;
     vec2 e = D.zw - a, f = E.zw - a, g = a - D.zw + E.xy - E.zw, h = p - a;
@@ -916,9 +925,9 @@ bool blurST(int k, vec3 dir, out vec2 st)
 // orbiscore::blurQuadDir: (s, t) in quad k -> its direction.
 vec3 blurDir(int k, vec2 st)
 {
-    vec4 A = P.blurQ[k * 6], B = P.blurQ[k * 6 + 1], C = P.blurQ[k * 6 + 2];
-    vec4 D = P.blurQ[k * 6 + 3], E = P.blurQ[k * 6 + 4];
-    float scale = P.blurQ[k * 6 + 5].x;
+    vec4 A = blurQ[k * 6], B = blurQ[k * 6 + 1], C = blurQ[k * 6 + 2];
+    vec4 D = blurQ[k * 6 + 3], E = blurQ[k * 6 + 4];
+    float scale = blurQ[k * 6 + 5].x;
     vec2 top = mix(D.xy, D.zw, st.x), bot = mix(E.zw, E.xy, st.x);
     vec2 p = mix(top, bot, st.y) * scale;
     return normalize(A.xyz + B.xyz * p.x + C.xyz * p.y);
@@ -927,7 +936,7 @@ vec3 blurDir(int k, vec2 st)
 // orbiscore::blurCellMix, then the mix of quad k's cell colours at `st`.
 vec3 blurCellMix(int k, vec2 st)
 {
-    vec2 cells = vec2(P.blurQ[k * 6].w, P.blurQ[k * 6 + 1].w);
+    vec2 cells = vec2(blurQ[k * 6].w, blurQ[k * 6 + 1].w);
     vec2 g = clamp(st * cells - 0.5, vec2(0.0), cells - 1.0);
     vec2 g0 = floor(g), f = g - g0;
     ivec2 i0 = ivec2(g0), i1 = ivec2(min(g0 + 1.0, cells - 1.0));
@@ -966,7 +975,7 @@ void blurCellPass(uvec3 wg, uint lid)
     int cell = int(wg.x), k = int(wg.y);
     if (k >= int(P.blur0.x))
         return;
-    vec2 cells = vec2(P.blurQ[k * 6].w, P.blurQ[k * 6 + 1].w);
+    vec2 cells = vec2(blurQ[k * 6].w, blurQ[k * 6 + 1].w);
     int ns = int(cells.x);
     if (cell >= ns * int(cells.y))
         return;

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 // A decoded fisheye pair handed from a stitch source's Vulkan device (FFmpeg's
 // decoder device) to the viewport's (QVulkanWindow's), so the viewport can draw
@@ -33,7 +34,7 @@ struct LensSlot {
     // == orbiscore::kBlurCellsPerQuad x orbiscore::kMaxBlurQuads (render/ doesn't
     // include insv/ here; VulkanFisheyeStitcherImpl.h checks they match).
     static constexpr int kBlurCellsW = 200;
-    static constexpr int kBlurCellsH = 64;
+    static constexpr int kBlurCellsH = 256;
     int fd[kImages] = {-1, -1, -1, -1, -1, -1}; // exporter keeps these; importers dup()
     uint64_t memSize[kImages] = {};     // allocation size of each image
     int lensW = 0;                      // Y extent; CbCr is (lensW/2, lensH/2)
@@ -57,11 +58,16 @@ struct LensFrame {
     uint64_t fill = 0;
     // The stitch's std140 Params UBO for this frame (geometry, lens model,
     // per-frame capture-time taps, the depth-aware seam's table, the seam
-    // colour blend, the seam flow's grid, the privacy blur quads, the lenses' Y'CbCr -> R'G'B'
-    // conversion), packed by the exporter. Within the 16 KiB every Vulkan
-    // device takes in a uniform buffer.
-    static constexpr int kParamsBytes = 15728;
+    // colour blend, the seam flow's grid, the privacy blur's region count,
+    // the lenses' Y'CbCr -> R'G'B' conversion), packed by the exporter.
+    // Within the 16 KiB every Vulkan device takes in a uniform buffer.
+    static constexpr int kParamsBytes = 9584;
     std::array<uint8_t, kParamsBytes> params{};
+    // The privacy blur's regions (the stitch's BlurQuads storage buffer,
+    // fisheye_stitch_common.glsl): kBlurQuadFloats per region, as many as
+    // `params` counts -- at most kBlurCellsH. Empty without a blur.
+    static constexpr int kBlurQuadFloats = 24;
+    std::vector<float> blurQuads;
     int64_t timestamp_ms = 0; // rounded to the ms, as stitch::Frame
     int64_t timestamp_us = 0; // exact, for the stabilizer's correction
 };

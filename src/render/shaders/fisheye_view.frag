@@ -13,7 +13,7 @@
 // stream's matrix and range (P.ycc) and the midpoint chroma siting the
 // stitch's ycbcr sampler uses. Params (binding 0) is the
 // stitch's own UBO for this frame, packed on the decoder side; binding 5 the
-// seam flow's field, 6 the privacy blur's cell colours.
+// seam flow's field, 6 the privacy blur's cell colours, 7 its regions.
 
 layout(location = 0) in vec2 inNdc;
 layout(location = 0) out vec4 outColor;
@@ -51,6 +51,8 @@ vec3 sampleLens(int i, vec2 uv);
 #define SEAM_FLOW_BINDING 5
 // The privacy blur's cell colours (RGBA16F), likewise (the sixth image).
 #define BLUR_CELL_BINDING 6
+// Its regions (render::LensFrame::blurQuads), copied in for each frame.
+#define BLUR_QUAD_BINDING 7
 #include "fisheye_stitch_common.glsl"
 
 // The stream's matrix and range, folded with the planes' bit depth into P.ycc

@@ -578,6 +578,7 @@ void NativeStitchSource::settleSeamFlow() {
 }
 
 bool NativeStitchSource::SeekTo(int64_t timestamp_ms) {
+    blur_refused_ = false;
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     if (!ResumeGpu())
         return false;
@@ -731,8 +732,11 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    const orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
-    const bool ok = gpu_->stitchVk(in0, in1, params, eq_w_, eq_h_, frame.rgba, &oc0, &oc1, gerr);
+    orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    std::string blurErr;
+    const bool blurred = blurQuadsAt(pts, params, blurErr);
+    const bool ok =
+        blurred && gpu_->stitchVk(in0, in1, params, eq_w_, eq_h_, frame.rgba, &oc0, &oc1, gerr);
 
     orbiscore::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
     orbiscore::VulkanLensFrameResult r1{oc1.semSignalValue, oc1.newLayout};
@@ -745,6 +749,10 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
 
+    if (!blurred) {
+        refuseFrame(std::move(blurErr));
+        return refusedFrame(pts);
+    }
     if (!ok) {
         last_error_ = "GPU stitchVk failed: " + gerr;
         return Frame{};
@@ -802,6 +810,7 @@ void NativeStitchSource::ConfigureSeamWindow(orbiscore::SeamWindow& w) const {
 
 bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t& pts_ms) {
     last_error_.clear();
+    blur_refused_ = false;
     if (!resumeForRead())
         return false;
     float q[orbiscore::kSeamDepthBins];
@@ -860,32 +869,12 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
 
 orbiscore::StitchGpuParams NativeStitchSource::paramsAt(const orbiscore::FramePts& pts) const {
     orbiscore::StitchGpuParams p = gpu_params_;
+    p.blur.clear();
     CaptureTiming ct;
-    BlurQuadsFn blur;
     {
         std::lock_guard<std::mutex> lk(rs_mx_);
         // copy: call rotationAt outside the lock
         ct = pts.ms < capture_until_ms_ ? capture_timing_ : capture_after_;
-        blur = blur_quads_;
-    }
-    p.blurCount = 0;
-    if (blur) {
-        std::vector<orbiscore::BlurQuad> quads;
-        blur(pts.ms, quads);
-        for (const orbiscore::BlurQuad& q : quads) {
-            if (p.blurCount == orbiscore::kMaxBlurQuads) {
-                if (!blur_warned_) {
-                    blur_warned_ = true;
-                    std::fprintf(stderr, "[NativeStitchSource] %zu blur regions at %lld ms; only %d "
-                                         "fit\n",
-                                 quads.size(), static_cast<long long>(pts.ms),
-                                 orbiscore::kMaxBlurQuads);
-                }
-                break;
-            }
-            if (orbiscore::prepareBlurQuad(q, p.blur[p.blurCount]))
-                ++p.blurCount;
-        }
     }
     if (!ct.active())
         return p;
@@ -900,6 +889,49 @@ orbiscore::StitchGpuParams NativeStitchSource::paramsAt(const orbiscore::FramePt
     p.rsActive = 1;
     p.rsUseColumns = ct.scanColumns ? 1 : 0;
     return p;
+}
+
+bool NativeStitchSource::blurQuadsAt(const orbiscore::FramePts& pts, orbiscore::StitchGpuParams& p,
+                                     std::string& err) const {
+    p.blur.clear();
+    BlurQuadsFn blur;
+    {
+        std::lock_guard<std::mutex> lk(rs_mx_);
+        blur = blur_quads_;
+    }
+    if (!blur)
+        return true;
+    std::vector<orbiscore::BlurQuad> quads;
+    blur(pts.ms, quads);
+    if (orbiscore::prepareBlurQuads(quads, p.blur))
+        return true;
+    // Never some of them: the ones left out would show what they cover.
+    const long long ms = pts.ms;
+    char at[32];
+    std::snprintf(at, sizeof at, "%lld:%02lld.%03lld", ms / 60000, ms / 1000 % 60, ms % 1000);
+    err = std::to_string(p.blur.size()) + " privacy regions at " + at +
+          " in the file; the blur takes at most " + std::to_string(orbiscore::kMaxBlurQuads) +
+          " in one frame";
+    p.blur.clear();
+    return false;
+}
+
+void NativeStitchSource::refuseFrame(std::string err) {
+    last_error_ = std::move(err);
+    blur_refused_ = true;
+}
+
+Frame NativeStitchSource::refusedFrame(const orbiscore::FramePts& pts) {
+    Frame f;
+    f.timestamp_ms = pts.ms;
+    f.timestamp_us = pts.us;
+    return f;
+}
+
+IStitchSource::ReadFailure NativeStitchSource::GetLastFailure() const {
+    if (blur_refused_)
+        return ReadFailure::TooManyBlurRegions;
+    return last_error_.empty() ? ReadFailure::None : ReadFailure::Error;
 }
 
 bool NativeStitchSource::seamStateFor(int64_t pts_ms,
@@ -1178,6 +1210,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const view::Pose
 
 FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseFn& perFrame,
                                             const color::Grade* colorGrade) {
+    blur_refused_ = false;
     if (!resumeForRead())
         return FlatFrame{};
     if (!GpuReframeAvailable()) {
@@ -1205,6 +1238,7 @@ FlatFrame NativeStitchSource::ReadFlatFrame(int outW, int outH, const FramePoseF
 
 Frame NativeStitchSource::ReadViewFrame(int outW, int outH, const FramePoseFn& perFrame,
                                         const color::Grade* colorGrade) {
+    blur_refused_ = false;
     if (!resumeForRead())
         return Frame{};
     if (!GpuViewAvailable()) {
@@ -1258,7 +1292,9 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    const orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    std::string blurErr;
+    const bool blurred = blurQuadsAt(pts, params, blurErr);
     const render::VulkanFisheyeStitcher::ViewFormat fmt =
         path == FlatPath::FusedRgba   ? render::VulkanFisheyeStitcher::ViewFormat::Rgba
         : path == FlatPath::FusedP010 ? render::VulkanFisheyeStitcher::ViewFormat::P010
@@ -1276,8 +1312,8 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
         v.w = panes_[i].w;
         v.h = panes_[i].h;
     }
-    const bool ok =
-        !views.empty()
+    const bool ok = blurred &&
+        (!views.empty()
             ? (path == FlatPath::ViaEquirect
                    ? gpu_->stitchAndReframeViewsVk(in0, in1, params, eq_w_, eq_h_, outW, outH,
                                                    views, stab, colorGrade, pane_fill_, out, &oc0,
@@ -1288,7 +1324,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
             ? gpu_->stitchAndReframeVk(in0, in1, params, eq_w_, eq_h_, outW, outH, &pose, stab,
                                        colorGrade, out, &oc0, &oc1, gerr)
             : gpu_->renderViewVk(in0, in1, params, outW, outH, &pose, stab, colorGrade,
-                                 fmt, out, &oc0, &oc1, gerr);
+                                 fmt, out, &oc0, &oc1, gerr));
 
     orbiscore::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
     orbiscore::VulkanLensFrameResult r1{oc1.semSignalValue, oc1.newLayout};
@@ -1300,6 +1336,10 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
 
+    if (!blurred) {
+        refuseFrame(std::move(blurErr));
+        return false;
+    }
     if (!ok) {
         last_error_ = std::string(path == FlatPath::ViaEquirect ? "GPU stitchAndReframeVk"
                                                                 : "GPU renderViewVk") +
@@ -1318,6 +1358,7 @@ struct NativeStitchSource::HeldPair {
 };
 
 int NativeStitchSource::KeepNextPair(orbiscore::FramePts& pts) {
+    blur_refused_ = false;
     if (!resumeForRead())
         return 0;
     if (!GpuViewAvailable()) {
@@ -1341,6 +1382,13 @@ int NativeStitchSource::KeepNextPair(orbiscore::FramePts& pts) {
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     h->params = paramsWithSeam(h->pts, in0, in1);
     vdec_->unlockPair(h->f0, h->f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
+    std::string blurErr;
+    if (!blurQuadsAt(h->pts, h->params, blurErr)) {
+        vdec_->freeFrame(h->f0);
+        vdec_->freeFrame(h->f1);
+        refuseFrame(std::move(blurErr));
+        return 0;
+    }
     pts = h->pts;
     const int id = next_kept_++;
     kept_.emplace(id, std::move(h));
@@ -1478,6 +1526,7 @@ bool NativeStitchSource::resumeForRead() {
 }
 
 bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
+    blur_refused_ = false;
     ReleaseHeldPair(); // a held frame goes before the decoder moves on
     if (!resumeForRead())
         return false;
@@ -1505,8 +1554,10 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    const orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
-    const bool ok = gpu_->fillLensFrameVk(in0, in1, params, out, &oc0, &oc1, gerr);
+    orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    std::string blurErr;
+    const bool blurred = blurQuadsAt(pts, params, blurErr);
+    const bool ok = blurred && gpu_->fillLensFrameVk(in0, in1, params, out, &oc0, &oc1, gerr);
     if (ok) {
         vdec_->unlockPair(f0, f1, {oc0.semSignalValue, oc0.newLayout},
                           {oc1.semSignalValue, oc1.newLayout});
@@ -1515,6 +1566,14 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
     }
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
+    if (!blurred) {
+        // Not decoded again: the next read goes on past it.
+        refuseFrame(std::move(blurErr));
+        out = render::LensFrame{};
+        out.timestamp_ms = pts.ms;
+        out.timestamp_us = pts.us;
+        return false;
+    }
     if (!ok) {
         // Most often the graphics memory is full for the moment: the next
         // read decodes this pair again rather than going on without it.
@@ -1563,7 +1622,7 @@ Frame NativeStitchSource::readCpuDecode() {
     const orbiscore::SeamBlend* blend = params_.depthSeam ? &seam_state_.blend : nullptr;
     // The seam colour blend: the lenses' colour in the overlap at the
     // template's geometry, as the GPU path.
-    orbiscore::StitchGpuParams p = paramsAt(pts); // and the privacy blur quads
+    orbiscore::StitchGpuParams p = paramsAt(pts);
     if (seam_colour_on_ && scrub) {
         repeatSeamColour(pts.ms, p, picture_repeat_ && !quickScrub);
     } else if (seam_colour_on_) {
@@ -1604,6 +1663,12 @@ Frame NativeStitchSource::readCpuDecode() {
         }
     }
 
+    // Measured as for any frame (as the GPU path), then the blur.
+    std::string blurErr;
+    if (!blurQuadsAt(pts, p, blurErr)) {
+        refuseFrame(std::move(blurErr));
+        return refusedFrame(pts);
+    }
     if (gpu_) {
         Frame f;
         f.width = eq_w_;
@@ -1632,13 +1697,14 @@ Frame NativeStitchSource::readCpuDecode() {
 
     orbiscore::Image eq;
     eq.alloc(eq_w_, eq_h_);
-    stitcher_->renderEquirect(a, b, eq, seamQ, blend, p.blur, p.blurCount,
+    stitcher_->renderEquirect(a, b, eq, seamQ, blend, p.blur.data(), static_cast<int>(p.blur.size()),
                               p.seamColourActive ? &p.seamColour[0][0] : nullptr, p.seamFlow.get(),
                               p.seamColourActive ? &p.seamVeil[0][0] : nullptr);
     return ToRgbaFrame(eq, pts);
 }
 
 Frame NativeStitchSource::ReadFrame() {
+    blur_refused_ = false;
     if (!resumeForRead())
         return Frame{};
     if (vdec_)

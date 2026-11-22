@@ -100,6 +100,18 @@ bool prepareBlurQuad(const BlurQuad& q, BlurQuadFrame& out)
 }
 
 // Inverse bilinear (after Inigo Quilez): p = a + s e + t f + s t g.
+bool prepareBlurQuads(const std::vector<BlurQuad>& quads, std::vector<BlurQuadFrame>& out)
+{
+    out.clear();
+    out.reserve(quads.size());
+    for (const BlurQuad& q : quads) {
+        BlurQuadFrame f;
+        if (prepareBlurQuad(q, f))
+            out.push_back(f);
+    }
+    return out.size() <= static_cast<size_t>(kMaxBlurQuads);
+}
+
 bool blurQuadST(const BlurQuadFrame& f, const double dir[3], double& s, double& t)
 {
     const double z = dot3(dir, f.c);

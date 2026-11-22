@@ -75,8 +75,7 @@ struct ShaderParams {
     float seamCol[orbiscore::kSeamDepthBins][4];   // per-bin seam colour blend RGB, - (on: edge.z)
     float seamFlow[4];    // seam flow: active, strip half-height (rad), reach (rad), -
     int32_t seamFlowN[4]; // its grid: columns, rows, -, -
-    float blur0[4]; // privacy blur: count, -, -, -
-    float blurQ[orbiscore::kMaxBlurQuads * 6][4]; // per quad, see fisheye_stitch_common.glsl
+    float blur0[4]; // privacy blur: count, -, -, - (the regions: blurBuf)
     float ycc[3][4]; // lens Y'CbCr -> R'G'B' rows (orbiscore::YcbcrToRgbRows), lens frames only
     float lensModel[4]; // theta-polynomial (0/1), its theta^10 term of lens 0, 1, masks on (0/1)
     // vec4[kSeamDepthBins / 2]: per bin where lens 0's and lens 1's clear parts end (rad)
@@ -86,10 +85,17 @@ struct ShaderParams {
     float lensRect[2][4];
     float lensBox[2][4];
 };
-static_assert(sizeof(ShaderParams) == 15728, "ShaderParams must match the std140 UBO");
+static_assert(sizeof(ShaderParams) == 9584, "ShaderParams must match the std140 UBO");
 static_assert(sizeof(ShaderParams) == LensFrame::kParamsBytes, "LensFrame::params carries ShaderParams");
 static_assert(LensSlot::kBlurCellsW == orbiscore::kBlurCellsPerQuad && LensSlot::kBlurCellsH == orbiscore::kMaxBlurQuads,
               "the blur cell table: a row of kBlurCellsPerQuad per quad");
+
+// The privacy blur's regions as the shaders read them (BlurQuads at binding
+// 10, fisheye_stitch_common.glsl): per region 6 vec4, in the stitch world
+// frame. Room for orbiscore::kMaxBlurQuads.
+constexpr int kBlurQuadVec4s = 6;
+static_assert(kBlurQuadVec4s * 4 == LensFrame::kBlurQuadFloats, "LensFrame::blurQuads carries them");
+constexpr VkDeviceSize kBlurQuadBytes = sizeof(float) * 4 * kBlurQuadVec4s * orbiscore::kMaxBlurQuads;
 
 // Push constants for reframe_reproject.comp. 4 ints + 8 words, then the
 // stabilization matrix as three vec4 columns (a mat3's std430 layout); the
@@ -370,6 +376,11 @@ struct VulkanFisheyeStitcher::Impl {
     // 5 through binding 9): RGBA16F, a row of orbiscore::kBlurCellsPerQuad per
     // quad. Made with the UBO (ensureUbo) and left in GENERAL from then on,
     // as flowImg.
+    // The regions themselves (binding 10): host-visible, written with the
+    // UBO for each submission (writeParams).
+    VkBuffer blurBuf = VK_NULL_HANDLE;
+    VkDeviceMemory blurMem = VK_NULL_HANDLE;
+    void* blurMap = nullptr;
     VkSampler blurCellSampler = VK_NULL_HANDLE; // nearest: texelFetch only
     VkImage blurCellImg = VK_NULL_HANDLE;
     VkDeviceMemory blurCellMem = VK_NULL_HANDLE;
@@ -535,9 +546,15 @@ struct VulkanFisheyeStitcher::Impl {
     // pooled 2-plane images.
     VkImageView nv12ViewFor(VkImage img, VkFormat fmt);
 
-    // UBO + gain buffer + seam cost buffer, created once, and bound (0, 4
-    // and 5) in both the stitch set and the view set.
+    // UBO + seam cost buffer + blur region buffer, created once, and bound
+    // (0, 5 and 10) in both the stitch set and the view set.
     bool ensureUbo(std::string& err);
+
+    // `sp` (packed from `p`) into the UBO and p's blur regions into blurBuf,
+    // for the submission about to be recorded; after ensureUbo. False, with
+    // nothing written, when p has more regions than blurBuf holds: the frame
+    // must not be stitched with some left out.
+    bool writeParams(const ShaderParams& sp, const orbiscore::StitchGpuParams& p, std::string& err);
 
     // The equirect output SSBO (stitch set binding 3), plus ensureUbo(). Both
     // modes.

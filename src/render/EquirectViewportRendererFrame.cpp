@@ -454,9 +454,18 @@ void EquirectViewportRenderer::startNextFrame()
         imp->lastUsed = m_frameCounter;
         std::memcpy(m_lensUboMap[frameSlot], m_currentLens->params.data(),
                     render::LensFrame::kParamsBytes);
+        // The regions the params count; the exporter refuses a frame with
+        // more than the buffer holds, so the clamp only guards it.
+        const size_t blurFloats =
+            std::min(m_currentLens->blurQuads.size(),
+                     size_t(render::LensFrame::kBlurQuadFloats) * render::LensSlot::kBlurCellsH);
+        if (blurFloats)
+            std::memcpy(m_lensBlurMap[frameSlot], m_currentLens->blurQuads.data(),
+                        blurFloats * sizeof(float));
         VkDescriptorBufferInfo uboInfo{m_lensUbo[frameSlot], 0, render::LensFrame::kParamsBytes};
+        VkDescriptorBufferInfo blurInfo{m_lensBlur[frameSlot], 0, VK_WHOLE_SIZE};
         VkDescriptorImageInfo imgInfo[render::LensSlot::kImages];
-        VkWriteDescriptorSet w[1 + render::LensSlot::kImages]{};
+        VkWriteDescriptorSet w[2 + render::LensSlot::kImages]{};
         w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         w[0].dstSet = m_lensSets[frameSlot];
         w[0].dstBinding = 0;
@@ -472,7 +481,12 @@ void EquirectViewportRenderer::startNextFrame()
             w[1 + i].pBufferInfo = nullptr;
             w[1 + i].pImageInfo = &imgInfo[i];
         }
-        vkUpdateDescriptorSets(m_window->device(), 1 + render::LensSlot::kImages, w, 0, nullptr);
+        constexpr int kBlurWrite = 1 + render::LensSlot::kImages;
+        w[kBlurWrite] = w[0];
+        w[kBlurWrite].dstBinding = kBlurWrite;
+        w[kBlurWrite].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        w[kBlurWrite].pBufferInfo = &blurInfo;
+        vkUpdateDescriptorSets(m_window->device(), 2 + render::LensSlot::kImages, w, 0, nullptr);
     }
 
     // Drop imports of slots not drawn for a while (a trimmed ring, a closed

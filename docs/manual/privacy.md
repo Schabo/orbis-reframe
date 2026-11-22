@@ -114,6 +114,19 @@ export or screenshot asks before going ahead. Check the blurs with **Show
 regions**, or scan again and blur the hand-blurred plates again, or set the
 stabilization back to how it was.
 
+## A frame with too many plates
+
+orbis-reframe blurs up to 256 plates in one frame, the scan's and yours
+together. That's far more than even a busy car park shows. If a frame ever
+has more, orbis-reframe doesn't blur only some of them:
+
+- Playback leaves the frame out and keeps the picture before it. The edit
+  toolbar names the clip, the number of plates and the time in the file.
+- An export stops at that frame with the same message.
+
+Remove blurs you don't need in those frames (see above), or trim the
+frames out of the clip.
+
 ## If the buttons are greyed out
 
 On a flat video on the video track, the tab says the blur works on 360°

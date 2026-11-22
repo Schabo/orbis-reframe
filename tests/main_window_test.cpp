@@ -115,6 +115,14 @@ const QString kH264Mark = QStringLiteral("_h264_");
 // One whose name contains "_proxy_" has a camera preview file, and plays from
 // it when the config asks (View ▸ Play from preview files).
 const QString kProxyMark = QStringLiteral("_proxy_");
+// One whose name contains "_busy_" has frames in [kBusyFromMs, kBusyToMs)
+// with more privacy regions than the blur takes: refused, as
+// NativeStitchSource refuses them. g_busyServedAfter counts its frames from
+// kBusyToMs on that were read.
+const QString kBusyMark = QStringLiteral("_busy_");
+constexpr int64_t kBusyFromMs = 1000;
+constexpr int64_t kBusyToMs = 2000;
+std::atomic<int> g_busyServedAfter{0};
 std::mutex g_openedMutex;
 std::set<std::string> g_opened; // paths the stand-in source was opened on
 std::map<std::string, stitch::PreviewStitchConfig> g_openedWith; // the last open's config
@@ -155,6 +163,7 @@ public:
             m_fallback = {true, false, "H.264"};
         m_hasProxy = QString::fromStdString(path).contains(kProxyMark);
         m_proxy = m_hasProxy && config.proxy;
+        m_busy = QString::fromStdString(path).contains(kBusyMark);
         return true;
     }
     const stitch::ClipInfo &GetInfo() const override { return m_info; }
@@ -167,6 +176,7 @@ public:
     // times rounded to the ms, as ReadFrame's).
     bool SeekTo(int64_t ms) override
     {
+        m_refused = false;
         m_frame = static_cast<int64_t>(std::floor(ms * kFps / 1000.0));
         while (frameMs(m_frame) < ms)
             ++m_frame;
@@ -177,8 +187,18 @@ public:
     {
         stitch::Frame f;
         const int64_t ms = frameMs(m_frame);
+        m_refused = false;
         if (ms >= m_info.duration_ms)
             return f;
+        if (m_busy && ms >= kBusyFromMs && ms < kBusyToMs) {
+            m_refused = true;
+            m_error = "300 privacy regions at 0:01.000 in the file";
+            f.timestamp_ms = ms;
+            ++m_frame;
+            return f;
+        }
+        if (m_busy && ms >= kBusyToMs)
+            ++g_busyServedAfter;
         f.width = 64;
         f.height = 32;
         f.rgba.assign(size_t(f.width) * f.height * 4, m_grey);
@@ -189,6 +209,10 @@ public:
         return f;
     }
     const std::string &GetLastError() const override { return m_error; }
+    ReadFailure GetLastFailure() const override
+    {
+        return m_refused ? ReadFailure::TooManyBlurRegions : IStitchSource::GetLastFailure();
+    }
     stitch::GpuFallback GetGpuFallback() const override { return m_fallback; }
     bool UsingProxy() const override { return m_proxy; }
     bool HasProxy() const override { return m_hasProxy; }
@@ -198,6 +222,8 @@ private:
     stitch::GpuFallback m_fallback;
     bool m_hasProxy = false;
     bool m_proxy = false;
+    bool m_busy = false;    // kBusyMark
+    bool m_refused = false; // the last read was a busy frame
     int64_t m_frame = 0;
     uint8_t m_grey = 128;
     std::string m_error;
@@ -2663,6 +2689,47 @@ void testPlayPastMissingClip(const Ctx &c)
     c.timeline->removeClip(third);
 }
 
+// A clip with frames too busy to blur: playing goes through them -- left
+// out, no retries, not on to the next clip -- and on in the same clip after
+// them, with a notice that names them. Paused at one, the decoder waits for
+// play rather than reading past it, and the player doesn't say it's
+// buffering.
+void testBlurRefused(const Ctx &c)
+{
+    const QString path = QDir(c.dir).filePath(QStringLiteral("VID_20260101_131000") + kBusyMark +
+                                              QStringLiteral("006.insv"));
+    writeFile(path);
+    const int id = c.timeline->appendClip(path, kClipMs, kFps);
+    auto *notice = find<QLabel>(c.w, "editNotice");
+    auto *play = find<QToolButton>(c.w, "playerPlayButton");
+    auto *buffering = find<QLabel>(c.w, "playerBuffering");
+    if (notice && play && buffering) {
+        qint64 start = 0;
+        for (int i = 0; i < c.timeline->count() && c.timeline->clipAt(i).id != id; ++i)
+            start += c.timeline->clipAt(i).timelineDurationMs();
+        notice->clear();
+        CHECK(seekTo(c, start + 500));
+        g_busyServedAfter = 0;
+        play->click();
+        CHECK(waitFor([&] { return c.timelineWidget->playhead() > start + kBusyToMs + 500; }));
+        play->click();
+        CHECK(g_busyServedAfter.load() > 0); // the clip's own frames after them
+        CHECK(notice->text().contains(QLatin1String("300 privacy regions")));
+
+        // Paused into them: nothing read past, no "Buffering…"; play reads on.
+        CHECK(seekTo(c, start + kBusyFromMs + 300));
+        QTest::qWait(500);
+        g_busyServedAfter = 0;
+        QTest::qWait(300);
+        CHECK(g_busyServedAfter.load() == 0);
+        CHECK(buffering->isHidden());
+        play->click();
+        CHECK(waitFor([&] { return g_busyServedAfter.load() > 0; }));
+        play->click();
+    }
+    c.timeline->removeClip(id);
+}
+
 // A clip the graphics card can't decode (its codec, not its memory): the
 // edit toolbar names the codec when it plays, and says nothing of memory.
 void testUndecodableCodec(const Ctx &c)
@@ -2950,6 +3017,7 @@ int main(int argc, char **argv)
             testAddClipByMenu(c);
             testPlayAcrossCut(c);
             testUndecodableCodec(c);
+            testBlurRefused(c);
             testProxyOffer(c);
             testNavigationKeys(c);
             testKeyOnTrimOut(c);

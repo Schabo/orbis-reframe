@@ -360,12 +360,15 @@ void EquirectViewportRenderer::createLensResources()
         return;
 
     // Binding 0 the stitch's params, 1-4 the lens planes, 5 the seam flow, 6
-    // the privacy blur's cell colours: 1 + LensSlot::kImages.
-    constexpr uint32_t kBindings = 1 + render::LensSlot::kImages;
+    // the privacy blur's cell colours (1 + LensSlot::kImages), 7 its regions.
+    constexpr uint32_t kImageBindings = 1 + render::LensSlot::kImages;
+    constexpr uint32_t kBindings = kImageBindings + 1;
     VkDescriptorSetLayoutBinding b[kBindings]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-    for (uint32_t i = 1; i < kBindings; ++i)
+    for (uint32_t i = 1; i < kImageBindings; ++i)
         b[i] = {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
+    b[kImageBindings] = {kImageBindings, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+                         VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{};
     sli.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     sli.bindingCount = kBindings;
@@ -374,13 +377,14 @@ void EquirectViewportRenderer::createLensResources()
         return;
 
     const uint32_t frames = static_cast<uint32_t>(std::max(1, m_window->concurrentFrameCount()));
-    VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frames},
+    VkDescriptorPoolSize ps[3] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frames},
                                   {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                   (kBindings - 1) * frames}};
+                                   (kImageBindings - 1) * frames},
+                                  {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frames}};
     VkDescriptorPoolCreateInfo dpi{};
     dpi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     dpi.maxSets = frames;
-    dpi.poolSizeCount = 2;
+    dpi.poolSizeCount = 3;
     dpi.pPoolSizes = ps;
     if (vkCreateDescriptorPool(device, &dpi, nullptr, &m_lensPool) != VK_SUCCESS)
         return;
@@ -394,28 +398,41 @@ void EquirectViewportRenderer::createLensResources()
     if (vkAllocateDescriptorSets(device, &dsi, m_lensSets.data()) != VK_SUCCESS)
         return;
 
-    m_lensUbo.assign(frames, VK_NULL_HANDLE);
-    m_lensUboMem.assign(frames, VK_NULL_HANDLE);
-    m_lensUboMap.assign(frames, nullptr);
-    for (uint32_t i = 0; i < frames; ++i) {
+    // A host-visible buffer per frame in flight, mapped.
+    auto makeMapped = [&](VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer &buf,
+                          VkDeviceMemory &mem, void *&map) {
         VkBufferCreateInfo bi{};
         bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bi.size = render::LensFrame::kParamsBytes;
-        bi.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bi.size = size;
+        bi.usage = usage;
         bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device, &bi, nullptr, &m_lensUbo[i]) != VK_SUCCESS)
-            return;
+        if (vkCreateBuffer(device, &bi, nullptr, &buf) != VK_SUCCESS)
+            return false;
         VkMemoryRequirements req{};
-        vkGetBufferMemoryRequirements(device, m_lensUbo[i], &req);
+        vkGetBufferMemoryRequirements(device, buf, &req);
         VkMemoryAllocateInfo ai{};
         ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         ai.allocationSize = req.size;
         ai.memoryTypeIndex = m_window->hostVisibleMemoryIndex();
-        if (vkAllocateMemory(device, &ai, nullptr, &m_lensUboMem[i]) != VK_SUCCESS)
+        if (vkAllocateMemory(device, &ai, nullptr, &mem) != VK_SUCCESS)
+            return false;
+        vkBindBufferMemory(device, buf, mem, 0);
+        return vkMapMemory(device, mem, 0, size, 0, &map) == VK_SUCCESS;
+    };
+    m_lensUbo.assign(frames, VK_NULL_HANDLE);
+    m_lensUboMem.assign(frames, VK_NULL_HANDLE);
+    m_lensUboMap.assign(frames, nullptr);
+    m_lensBlur.assign(frames, VK_NULL_HANDLE);
+    m_lensBlurMem.assign(frames, VK_NULL_HANDLE);
+    m_lensBlurMap.assign(frames, nullptr);
+    constexpr VkDeviceSize kBlurBytes = sizeof(float) * render::LensFrame::kBlurQuadFloats *
+                                        render::LensSlot::kBlurCellsH;
+    for (uint32_t i = 0; i < frames; ++i)
+        if (!makeMapped(render::LensFrame::kParamsBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                        m_lensUbo[i], m_lensUboMem[i], m_lensUboMap[i]) ||
+            !makeMapped(kBlurBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, m_lensBlur[i],
+                        m_lensBlurMem[i], m_lensBlurMap[i]))
             return;
-        vkBindBufferMemory(device, m_lensUbo[i], m_lensUboMem[i], 0);
-        vkMapMemory(device, m_lensUboMem[i], 0, bi.size, 0, &m_lensUboMap[i]);
-    }
 
     VkPushConstantRange pcr{VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstants)};
     VkPipelineLayoutCreateInfo pli{};
@@ -469,9 +486,20 @@ void EquirectViewportRenderer::destroyLensResources()
         if (m_lensUboMem[i])
             vkFreeMemory(device, m_lensUboMem[i], nullptr);
     }
+    for (size_t i = 0; i < m_lensBlur.size(); ++i) {
+        if (m_lensBlurMap[i])
+            vkUnmapMemory(device, m_lensBlurMem[i]);
+        if (m_lensBlur[i])
+            vkDestroyBuffer(device, m_lensBlur[i], nullptr);
+        if (m_lensBlurMem[i])
+            vkFreeMemory(device, m_lensBlurMem[i], nullptr);
+    }
     m_lensUbo.clear();
     m_lensUboMem.clear();
     m_lensUboMap.clear();
+    m_lensBlur.clear();
+    m_lensBlurMem.clear();
+    m_lensBlurMap.clear();
     m_lensSets.clear();
     if (m_lensPipeline)
         vkDestroyPipeline(device, m_lensPipeline, nullptr);

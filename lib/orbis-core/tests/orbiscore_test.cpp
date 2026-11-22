@@ -2478,6 +2478,85 @@ void testBlurQuads()
     CHECK(!orbiscore::prepareBlurQuad(z, f));
 }
 
+// A frame's regions past the 64 the stitch once held: prepareBlurQuads takes
+// kMaxBlurQuads and refuses one more, and the CPU stitch blurs the 200th as
+// it does the first -- the last region changes the picture exactly as it
+// does on its own.
+void testManyBlurQuads()
+{
+    // Region k of a grid round the sphere: 3 x 1.5 deg, 20 to a row of 18 deg
+    // apart, rows 10 deg apart from -60 deg up, none touching another.
+    auto quadAt = [](int k) {
+        auto dirOf = [](double lonDeg, double latDeg, float out[3]) {
+            const double lon = lonDeg * std::numbers::pi / 180.0;
+            const double lat = latDeg * std::numbers::pi / 180.0;
+            out[0] = static_cast<float>(std::cos(lat) * std::sin(lon));
+            out[1] = static_cast<float>(std::sin(lat));
+            out[2] = static_cast<float>(-std::cos(lat) * std::cos(lon));
+        };
+        const double lon = -171.0 + 18.0 * (k % 20), lat = -60.0 + 10.0 * (k / 20);
+        orbiscore::BlurQuad q;
+        dirOf(lon, lat, q.corner[0]);
+        dirOf(lon + 3.0, lat, q.corner[1]);
+        dirOf(lon + 3.0, lat - 1.5, q.corner[2]);
+        dirOf(lon, lat - 1.5, q.corner[3]);
+        return q;
+    };
+    std::vector<orbiscore::BlurQuad> quads;
+    for (int k = 0; k < orbiscore::kMaxBlurQuads; ++k)
+        quads.push_back(quadAt(k));
+    std::vector<orbiscore::BlurQuadFrame> prepared;
+    CHECK(orbiscore::prepareBlurQuads(quads, prepared));
+    CHECK(prepared.size() == quads.size());
+    // A degenerate one covers nothing: it doesn't count.
+    orbiscore::BlurQuad z;
+    for (auto& c : z.corner)
+        c[0] = 1.0f;
+    quads.push_back(z);
+    CHECK(orbiscore::prepareBlurQuads(quads, prepared));
+    CHECK(prepared.size() == static_cast<size_t>(orbiscore::kMaxBlurQuads));
+    quads.back() = quadAt(orbiscore::kMaxBlurQuads);
+    CHECK(!orbiscore::prepareBlurQuads(quads, prepared));
+    CHECK(prepared.size() == static_cast<size_t>(orbiscore::kMaxBlurQuads) + 1);
+
+    // The CPU stitch with 200: what the last adds is what it does alone.
+    constexpr int kMany = 200;
+    orbiscore::Image l0, l1;
+    l0.alloc(800, 800);
+    l1.alloc(800, 800);
+    for (int y = 0; y < 800; ++y)
+        for (int x = 0; x < 800; ++x)
+            for (int c = 0; c < 3; ++c) {
+                const size_t i = (static_cast<size_t>(y) * 800 + x) * 3 + c;
+                l0.rgb[i] = static_cast<uint8_t>((x * 37 + y * 13 + c * 40) & 255);
+                l1.rgb[i] = static_cast<uint8_t>((x * 29 + y * 41 + c * 70) & 255);
+            }
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 800, 800, insta360Params()));
+    auto render = [&](int from, int to) {
+        std::vector<orbiscore::BlurQuad> qs;
+        for (int k = from; k < to; ++k)
+            qs.push_back(quadAt(k));
+        std::vector<orbiscore::BlurQuadFrame> f;
+        CHECK(orbiscore::prepareBlurQuads(qs, f));
+        orbiscore::Image eq;
+        eq.alloc(1024, 512);
+        st.renderEquirect(l0, l1, eq, nullptr, nullptr, f.data(), static_cast<int>(f.size()));
+        return eq;
+    };
+    const orbiscore::Image plain = render(0, 0), last = render(kMany - 1, kMany);
+    const orbiscore::Image most = render(0, kMany - 1), all = render(0, kMany);
+    size_t byLast = 0, mismatched = 0;
+    for (size_t i = 0; i < plain.rgb.size(); ++i) {
+        const bool alone = last.rgb[i] != plain.rgb[i];
+        byLast += alone;
+        if (alone != (all.rgb[i] != most.rgb[i]) || (alone && all.rgb[i] != last.rgb[i]))
+            ++mismatched;
+    }
+    CHECK(byLast > 50);
+    CHECK(mismatched == 0);
+}
+
 // A file that ends in a minimal Insta360 trailer holding one record:
 // `payload` with id `id`, right before the 78-byte footer (sequential layout).
 std::string writeTrailerFile(const char* name, uint16_t id, const std::vector<uint8_t>& payload)
@@ -3496,6 +3575,7 @@ int main()
     testSeamFade();
     testSeamFlow();
     testBlurQuads();
+    testManyBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();
     testHighlights();

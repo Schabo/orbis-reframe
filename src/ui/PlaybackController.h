@@ -334,6 +334,11 @@ signals:
     // decoder took longer per frame than the clip plays, over several
     // seconds (DecodePace). Once per opened source and reason.
     void proxyOffer(const QString &path, int clipId, bool behind);
+    // The playing source left out a frame with more privacy regions than
+    // the blur takes (IStitchSource::ReadFailure::TooManyBlurRegions):
+    // `error` says where. Such frames aren't shown -- the one before stays
+    // up -- and the export stops at them. Once per opened source.
+    void blurRefused(const QString &path, int clipId, const QString &error);
     // The picture being read comes from the camera's preview file
     // (IStitchSource::UsingProxy), or no longer does.
     void proxyChanged(bool fromProxy);
@@ -410,6 +415,9 @@ private:
     // has newly fallen back to the CPU (at its open, or at a frame the GPU
     // stitch couldn't allocate for).
     void noteGpuFallback(int clipId);
+    // After a read the active source refused for its blur: blurRefused, the
+    // first time for this source.
+    void noteBlurRefused(int clipId);
     // proxyChanged when the playing source's picture source changed.
     void noteProxy();
     // After a read from the active source that took `readMs` (`timed`: a read
@@ -531,6 +539,9 @@ private:
     // lookahead's (m_readParked), at the next play or seek.
     bool m_readFailed = false;
     bool m_readParked = false;
+    // Paused at a frame the source refused for its blur (noteBlurRefused):
+    // the decoder reads on at the next play or seek.
+    bool m_blurParked = false;
     std::chrono::steady_clock::time_point m_readRetryAt;
     bool m_gpuRoomPending = false; // makeGpuRoom: the decoder makes room
     bool m_gpuRoomEvenShown = false; // ... the active source's too, if paused
@@ -560,6 +571,8 @@ private:
     // (noteGpuFallback), and for which source.
     std::weak_ptr<stitch::IStitchSource> m_fallbackSource;
     stitch::GpuFallback m_fallbackSeen;
+    // The source blurRefused was last said for (noteBlurRefused).
+    std::weak_ptr<stitch::IStitchSource> m_blurRefusedSource;
     bool m_proxyNoted = false; // what proxyChanged said last (decoder thread)
     // Whether the active source keeps up (notePace), and which source that is
     // about; whether proxyOffer said it's behind for it. Decoder thread.

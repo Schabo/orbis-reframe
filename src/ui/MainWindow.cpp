@@ -1251,6 +1251,16 @@ void MainWindow::connectController()
                 if (!(proxyAvailable && offerProxies(text)))
                     m_editToolbar->showNotice(text);
             });
+    // A clip with frames too busy to blur: they're left out, never shown
+    // unblurred, and the export stops at the first.
+    connect(m_controller, &PlaybackController::blurRefused, this,
+            [this, clipName](const QString &path, int clipId, const QString &error) {
+                m_editToolbar->showNotice(
+                    tr("%1: %2. Playback leaves such frames out; an export stops at the "
+                       "first.")
+                        .arg(clipName(path, clipId), error),
+                    true); // until another notice: the export won't go through
+            });
     // A clip too slow for this machine (decoded on the CPU by a GPU without
     // video decode, or decoding slower than it plays) with a preview file.
     connect(m_controller, &PlaybackController::proxyOffer, this,

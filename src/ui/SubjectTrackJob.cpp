@@ -47,6 +47,14 @@ Result run(const Request& req, const std::atomic<bool>& stop, const FrameFn& onF
             break;
         }
         stitch::Frame f = src.ReadFrame();
+        // A frame too busy to blur isn't shown in playback either: tracked
+        // across, from the frame before to the one after.
+        if (f.rgba.empty() &&
+            src.GetLastFailure() == stitch::IStitchSource::ReadFailure::TooManyBlurRegions) {
+            if (f.timestamp_ms > req.toMs)
+                break;
+            continue;
+        }
         if (f.rgba.empty()) {
             if (!src.GetLastError().empty() && !started)
                 res.error = src.GetLastError();

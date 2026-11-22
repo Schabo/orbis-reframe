@@ -4,7 +4,8 @@
 // theta-polynomial ones with their tangential pair. A different projection
 // moves the pattern and shows as a large difference; the two paths differ
 // only by float rounding and the GPU's 8-bit sampling.
-// Also: a stitcher adopting a device another thread submits to takes the
+// Also: the privacy blur with more regions than the stitch once held, and
+// a stitcher adopting a device another thread submits to takes the
 // queue's lock for its own setup's submits and its teardown.
 // Standalone; the exit code is the failure count, 77 (skipped) without a
 // Vulkan device.
@@ -23,6 +24,7 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -80,9 +82,9 @@ double Compare(const orbiscore::FisheyeStitcher& st, render::VulkanFisheyeStitch
     return n ? sum / n : 1e9;
 }
 
-void testMei(render::VulkanFisheyeStitcher& gpu)
+// An X5's two lenses in the 10752 x 5376 side-by-side frame.
+orbiscore::CameraCalibration x5Lenses()
 {
-    // An X5's two lenses in the 10752 x 5376 side-by-side frame.
     orbiscore::CameraCalibration c;
     for (int i = 0; i < 2; ++i) {
         orbiscore::LensCalibExt e;
@@ -95,11 +97,21 @@ void testMei(render::VulkanFisheyeStitcher& gpu)
         e.s[0] = -0.004, e.s[1] = -0.003, e.s[2] = 0.002, e.s[3] = 0.0004;
         c.lensesExt.push_back(e);
     }
+    return c;
+}
+
+orbiscore::StitchParams insta360Params()
+{
     orbiscore::StitchParams insta360;
     for (int i = 0; i < 2; ++i)
         insta360.lensPose[i] = orbiscore::Insta360LensPose(i);
+    return insta360;
+}
+
+void testMei(render::VulkanFisheyeStitcher& gpu)
+{
     orbiscore::FisheyeStitcher st;
-    CHECK(st.configure(c, kLens, kLens, insta360));
+    CHECK(st.configure(x5Lenses(), kLens, kLens, insta360Params()));
     const double d = Compare(st, gpu);
     std::printf("MEI: mean difference %.3f levels\n", d);
     CHECK(d < 1.0);
@@ -177,6 +189,105 @@ void testThetaPoly(render::VulkanFisheyeStitcher& gpu)
     for (size_t i = 0; i < cpuA.rgb.size(); ++i)
         diff += std::abs(static_cast<int>(cpuA.rgb[i]) - static_cast<int>(cpuB.rgb[i]));
     CHECK(diff / cpuA.rgb.size() > 10.0);
+}
+
+// More privacy regions than the 64 the stitch's uniform buffer once held:
+// the GPU blurs the 200th as the CPU does, and refuses a frame with one past
+// orbiscore::kMaxBlurQuads rather than leaving any out.
+void testManyBlurRegions(render::VulkanFisheyeStitcher& gpu)
+{
+    // Region k of a grid round the sphere: 8 x 4 deg, 20 to a row 18 deg
+    // apart, rows 10 deg apart from -60 deg up, none touching another.
+    auto quadAt = [](int k) {
+        auto dirOf = [](double lonDeg, double latDeg, float out[3]) {
+            const double lon = lonDeg * std::numbers::pi / 180.0;
+            const double lat = latDeg * std::numbers::pi / 180.0;
+            out[0] = static_cast<float>(std::cos(lat) * std::sin(lon));
+            out[1] = static_cast<float>(std::sin(lat));
+            out[2] = static_cast<float>(-std::cos(lat) * std::cos(lon));
+        };
+        const double lon = -171.0 + 18.0 * (k % 20), lat = -60.0 + 10.0 * (k / 20);
+        orbiscore::BlurQuad q;
+        dirOf(lon, lat, q.corner[0]);
+        dirOf(lon + 8.0, lat, q.corner[1]);
+        dirOf(lon + 8.0, lat - 4.0, q.corner[2]);
+        dirOf(lon, lat - 4.0, q.corner[3]);
+        return q;
+    };
+    auto prepared = [&](int from, int to) {
+        std::vector<orbiscore::BlurQuad> qs;
+        for (int k = from; k < to; ++k)
+            qs.push_back(quadAt(k));
+        std::vector<orbiscore::BlurQuadFrame> f;
+        orbiscore::prepareBlurQuads(qs, f);
+        return f;
+    };
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Lenses(), kLens, kLens, insta360Params()));
+    // A fine checker, which the blur flattens.
+    orbiscore::Image l0, l1;
+    for (orbiscore::Image* im : {&l0, &l1}) {
+        im->alloc(kLens, kLens);
+        for (int y = 0; y < kLens; ++y)
+            for (int x = 0; x < kLens; ++x)
+                for (int c = 0; c < 3; ++c)
+                    im->rgb[(static_cast<size_t>(y) * kLens + x) * 3 + c] =
+                        ((x / 3 + y / 3 + c) & 1) ? 220 : 40;
+    }
+    auto cpu = [&](const std::vector<orbiscore::BlurQuadFrame>& b) {
+        orbiscore::Image eq;
+        eq.alloc(kEqW, kEqW / 2);
+        st.renderEquirect(l0, l1, eq, nullptr, nullptr, b.data(), static_cast<int>(b.size()));
+        return eq;
+    };
+    auto gpuStitch = [&](const std::vector<orbiscore::BlurQuadFrame>& b, std::string& err) {
+        orbiscore::StitchGpuParams p = st.gpuParams();
+        p.blur = b;
+        std::vector<uint8_t> out;
+        if (!gpu.stitch(l0.rgb.data(), l1.rgb.data(), p, kEqW, kEqW / 2, out, err))
+            out.clear();
+        return out;
+    };
+    constexpr int kMany = 200;
+    const orbiscore::Image cpuPlain = cpu({}), cpuLast = cpu(prepared(kMany - 1, kMany));
+    const orbiscore::Image cpuAll = cpu(prepared(0, kMany));
+    std::string err;
+    const std::vector<uint8_t> gpuPlain = gpuStitch({}, err), gpuAll = gpuStitch(prepared(0, kMany), err);
+    CHECK(!gpuPlain.empty() && !gpuAll.empty());
+    if (gpuPlain.empty() || gpuAll.empty()) {
+        std::printf("FAIL  GPU stitch: %s\n", err.c_str());
+        return;
+    }
+    // Where the last region changes the CPU's picture, the GPU's changes too,
+    // to the CPU's colours.
+    double offCpu = 0, moved = 0, all = 0;
+    size_t n = 0;
+    for (size_t i = 0; i < static_cast<size_t>(kEqW) * (kEqW / 2); ++i) {
+        int lastMoves = 0;
+        for (int c = 0; c < 3; ++c)
+            lastMoves = std::max(lastMoves, std::abs(cpuLast.rgb[i * 3 + c] - cpuPlain.rgb[i * 3 + c]));
+        for (int c = 0; c < 3; ++c)
+            all += std::abs(int(cpuAll.rgb[i * 3 + c]) - int(gpuAll[i * 4 + c]));
+        if (lastMoves < 8)
+            continue;
+        ++n;
+        for (int c = 0; c < 3; ++c) {
+            offCpu += std::abs(int(cpuAll.rgb[i * 3 + c]) - int(gpuAll[i * 4 + c]));
+            moved += std::abs(int(gpuPlain[i * 4 + c]) - int(gpuAll[i * 4 + c]));
+        }
+    }
+    all /= 3.0 * kEqW * (kEqW / 2);
+    std::printf("blur: %zu px of the 200th region, GPU off the CPU by %.2f there (%.3f overall), "
+                "moved by %.1f\n",
+                n, n ? offCpu / (3 * n) : 0.0, all, n ? moved / (3 * n) : 0.0);
+    CHECK(n > 50);
+    CHECK(n && offCpu / (3 * n) < 2.0);
+    CHECK(n && moved / (3 * n) > 8.0);
+    CHECK(all < 1.0);
+    // One past the limit: no picture.
+    err.clear();
+    CHECK(gpuStitch(prepared(0, orbiscore::kMaxBlurQuads + 1), err).empty());
+    CHECK(err.find("privacy") != std::string::npos);
 }
 
 
@@ -295,6 +406,7 @@ int main()
     }
     testMei(gpu);
     testThetaPoly(gpu);
+    testManyBlurRegions(gpu);
     testAdoptLocksQueue();
     std::printf("%s (%d failure%s)\n", g_failures ? "FAILED" : "OK", g_failures,
                 g_failures == 1 ? "" : "s");

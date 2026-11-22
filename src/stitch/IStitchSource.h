@@ -283,6 +283,23 @@ public:
 
     virtual const std::string& GetLastError() const = 0;
 
+    // Why the last read gave no frame, beside GetLastError()'s text.
+    enum class ReadFailure {
+        None,  // it gave one, or the clip ended (GetLastError() empty)
+        Error, // GetLastError() says what
+        // The frame has more privacy regions than the stitch can blur
+        // (orbiscore::kMaxBlurQuads): it isn't stitched at all, rather than
+        // with some regions left out. The source is past it -- the next read
+        // gives the next frame -- and GetLastError() names its time; the
+        // empty Frame of ReadFrame, or the LensFrame of ReadLensFrame,
+        // carries its timestamp.
+        TooManyBlurRegions,
+    };
+    // After a read that gave no frame. Default: from GetLastError().
+    virtual ReadFailure GetLastFailure() const {
+        return GetLastError().empty() ? ReadFailure::None : ReadFailure::Error;
+    }
+
     // After a successful Open(): what of this clip runs on the CPU although
     // the GPU should do it -- the GPU part failed to start, most often
     // because the graphics memory is full. Can grow on a read (the GPU
@@ -333,6 +350,7 @@ public:
     // inside the quads `fn` returns for its time (empty fn = off). Safe to
     // call from another thread than the reader. False when the source can't
     // blur -- a caller that must not show the footage unblurred stops there.
+    // A frame with too many quads is refused (ReadFailure::TooManyBlurRegions).
     virtual bool SetBlurQuads(BlurQuadsFn /*fn*/) { return false; }
 
     // The next frame as the decoded fisheye pair on the GPU, shareable with

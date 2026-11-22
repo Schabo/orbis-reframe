@@ -95,6 +95,7 @@ void VulkanFisheyeStitcher::Impl::destroyResources()
     };
     killBuf(staging, stagingMem, stagingMap);
     killBuf(ubo, uboMem, uboMap);
+    killBuf(blurBuf, blurMem, blurMap);
     killBuf(outBuf, outMem, outMap);
     killBuf(seamBuf, seamMem, seamMap);
     killBuf(flatBuf, flatMem, flatMap);
@@ -365,13 +366,16 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
     if (!makeBuffer(sizeof(ShaderParams), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, hostVis, ubo,
                     uboMem, &uboMap) ||
         !makeReadbackBuffer(kSeamBufBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, seamBuf, seamMem,
-                            &seamMap)) {
-        err = "uniform / seam buffer allocation failed";
+                            &seamMap) ||
+        !makeBuffer(kBlurQuadBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, hostVis, blurBuf, blurMem,
+                    &blurMap)) {
+        err = "uniform / seam / blur region buffer allocation failed";
         return false;
     }
     VkDescriptorBufferInfo uboInfo{ubo, 0, sizeof(ShaderParams)};
     VkDescriptorBufferInfo seamInfo{seamBuf, 0, VK_WHOLE_SIZE};
-    VkWriteDescriptorSet w[4]{};
+    VkDescriptorBufferInfo blurInfo{blurBuf, 0, VK_WHOLE_SIZE};
+    VkWriteDescriptorSet w[6]{};
     int n = 0;
     for (VkDescriptorSet set : {descSet, vwSet}) {
         if (!set)
@@ -387,6 +391,10 @@ bool VulkanFisheyeStitcher::Impl::ensureUbo(std::string& err)
         w[n].dstBinding = 5;
         w[n].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         w[n].pBufferInfo = &seamInfo;
+        ++n;
+        w[n] = w[n - 1];
+        w[n].dstBinding = 10;
+        w[n].pBufferInfo = &blurInfo;
         ++n;
     }
     vkUpdateDescriptorSets(device, n, w, 0, nullptr);
@@ -1071,7 +1079,7 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
         }
     }
 
-    VkDescriptorSetLayoutBinding b[9]{};
+    VkDescriptorSetLayoutBinding b[10]{};
     b[0] = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[1] = {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT,
             nv12Mode ? &immutable[0] : nullptr};
@@ -1083,8 +1091,9 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     b[6] = {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[7] = {8, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     b[8] = {9, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+    b[9] = {10, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
     VkDescriptorSetLayoutCreateInfo sli{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    sli.bindingCount = 9;
+    sli.bindingCount = 10;
     sli.pBindings = b;
     if (vkCreateDescriptorSetLayout(d->device, &sli, nullptr, &d->setLayout) != VK_SUCCESS) {
         err = "vkCreateDescriptorSetLayout failed";
@@ -1113,7 +1122,7 @@ bool VulkanFisheyeStitcher::bringUp(bool nv12Mode, std::string& err)
     VkDescriptorPoolSize ps[4]{
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * samplerDescriptors + 4},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8},
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2}};
     VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     dpi.maxSets = 2;

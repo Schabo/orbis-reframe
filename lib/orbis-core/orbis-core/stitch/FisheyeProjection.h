@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 // CPU fisheye -> equirectangular stitch (orbis-core).
 //
@@ -308,9 +309,9 @@ struct StitchGpuParams {
     // measureSeamFlowVk), on the grid above. GPU stitch only.
     bool seamFlowGpu = false;
     // Privacy blur (BlurQuads.h): regions blurred in this frame, equirect
-    // (sphere) frame, prepared. Per frame, like the RS taps.
-    int blurCount = 0;
-    BlurQuadFrame blur[kMaxBlurQuads];
+    // (sphere) frame, prepared. Per frame, like the RS taps. At most
+    // kMaxBlurQuads: the GPU stitch refuses a frame with more.
+    std::vector<BlurQuadFrame> blur;
 };
 
 class FisheyeStitcher {

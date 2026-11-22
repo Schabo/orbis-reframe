@@ -32,6 +32,45 @@ double msBetween(std::chrono::steady_clock::time_point a, std::chrono::steady_cl
     return std::chrono::duration<double, std::milli>(b - a).count();
 }
 
+// A direction or rotation vector of the equirect (sphere) frame in the
+// stitch world: outRot * r, padded to a vec4.
+void toStitchWorld(const orbiscore::StitchGpuParams& p, const float r[3], float out[4])
+{
+    for (int k = 0; k < 3; ++k)
+        out[k] = p.outRot[k * 3 + 0] * r[0] + p.outRot[k * 3 + 1] * r[1] + p.outRot[k * 3 + 2] * r[2];
+    out[3] = 0.0f;
+}
+
+// p's privacy blur regions as the shaders' BlurQuads buffer has them
+// (kBlurQuadVec4s each, fisheye_stitch_common.glsl): carried from the sphere
+// frame into the stitch world (rotations keep the tangent-plane
+// coordinates, so only the three axes move). `out` holds p.blur.size().
+void packBlurQuads(const orbiscore::StitchGpuParams& p, float (*out)[4])
+{
+    for (size_t k = 0; k < p.blur.size(); ++k) {
+        const orbiscore::BlurQuadFrame& b = p.blur[k];
+        float(*q)[4] = &out[k * kBlurQuadVec4s];
+        toStitchWorld(p, b.c, q[0]);
+        toStitchWorld(p, b.r, q[1]);
+        toStitchWorld(p, b.u, q[2]);
+        q[0][3] = b.cells[0];
+        q[1][3] = b.cells[1];
+        q[2][3] = b.cosRadius;
+        q[3][0] = b.p[0][0];
+        q[3][1] = b.p[0][1];
+        q[3][2] = b.p[1][0];
+        q[3][3] = b.p[1][1];
+        q[4][0] = b.p[2][0];
+        q[4][1] = b.p[2][1];
+        q[4][2] = b.p[3][0];
+        q[4][3] = b.p[3][1];
+        q[5][0] = b.scale;
+        q[5][1] = q[5][2] = q[5][3] = 0.0f;
+    }
+}
+
+// The count only: the regions go into their own buffer (packBlurQuads), and
+// a frame with more than it holds is refused there (writeParams).
 void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderParams& sp)
 {
     for (int r = 0; r < 3; ++r) {
@@ -111,15 +150,10 @@ void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderPar
     std::memcpy(sp.accC, acc + 8, sizeof sp.accC);
     // The capture-time rotations arrive in the equirect frame; the shader's
     // lens rays are outRot * eqDir, so carry them into that frame.
-    auto toStitchWorld = [&p](const float r[3], float out[4]) {
-        for (int k = 0; k < 3; ++k)
-            out[k] = p.outRot[k * 3 + 0] * r[0] + p.outRot[k * 3 + 1] * r[1] + p.outRot[k * 3 + 2] * r[2];
-        out[3] = 0.0f;
-    };
     constexpr int kTaps = orbiscore::StitchGpuParams::kRsTaps;
     for (int i = 0; i < 2; ++i)
         for (int k = 0; k < kTaps; ++k)
-            toStitchWorld(p.rsRot[i][k], sp.rsRot[i * kTaps + k]);
+            toStitchWorld(p, p.rsRot[i][k], sp.rsRot[i * kTaps + k]);
     sp.rs[0] = static_cast<float>(p.rsActive);
     sp.rs[1] = static_cast<float>(p.rsUseColumns);
     sp.rs[2] = sp.rs[3] = 0.0f;
@@ -181,31 +215,8 @@ void packParams(const orbiscore::StitchGpuParams& p, int eqW, int eqH, ShaderPar
     sp.seamFlowN[0] = flow ? p.seamFlow->grid.cols : p.seamFlowCols;
     sp.seamFlowN[1] = flow ? p.seamFlow->grid.rows : p.seamFlowRows;
     sp.seamFlowN[2] = sp.seamFlowN[3] = 0;
-    // Privacy blur quads, sphere frame -> stitch world (rotations keep the
-    // tangent-plane coordinates, so only the three axes move).
-    const int nBlur = std::clamp(p.blurCount, 0, orbiscore::kMaxBlurQuads);
-    sp.blur0[0] = static_cast<float>(nBlur);
+    sp.blur0[0] = static_cast<float>(std::min<size_t>(p.blur.size(), orbiscore::kMaxBlurQuads));
     sp.blur0[1] = sp.blur0[2] = sp.blur0[3] = 0.0f;
-    std::memset(sp.blurQ, 0, sizeof sp.blurQ);
-    for (int k = 0; k < nBlur; ++k) {
-        const orbiscore::BlurQuadFrame& b = p.blur[k];
-        float(*q)[4] = &sp.blurQ[k * 6];
-        toStitchWorld(b.c, q[0]);
-        toStitchWorld(b.r, q[1]);
-        toStitchWorld(b.u, q[2]);
-        q[0][3] = b.cells[0];
-        q[1][3] = b.cells[1];
-        q[2][3] = b.cosRadius;
-        q[3][0] = b.p[0][0];
-        q[3][1] = b.p[0][1];
-        q[3][2] = b.p[1][0];
-        q[3][3] = b.p[1][1];
-        q[4][0] = b.p[2][0];
-        q[4][1] = b.p[2][1];
-        q[4][2] = b.p[3][0];
-        q[4][3] = b.p[3][1];
-        q[5][0] = b.scale;
-    }
 }
 
 // Interleave an RGB24 buffer into RGBA8 (opaque alpha), parallel over rows.
@@ -332,7 +343,7 @@ void VulkanFisheyeStitcher::Impl::recordStitchPasses(int eqW, int eqH)
 void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c,
                                                   const orbiscore::StitchGpuParams& p)
 {
-    const int n = std::clamp(p.blurCount, 0, orbiscore::kMaxBlurQuads);
+    const int n = static_cast<int>(std::min<size_t>(p.blur.size(), orbiscore::kMaxBlurQuads));
     if (n == 0)
         return;
     VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -354,6 +365,23 @@ void VulkanFisheyeStitcher::Impl::recordBlurCells(VkCommandBuffer c,
     b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &b);
+}
+
+bool VulkanFisheyeStitcher::Impl::writeParams(const ShaderParams& sp,
+                                              const orbiscore::StitchGpuParams& p, std::string& err)
+{
+    if (p.blur.size() > static_cast<size_t>(orbiscore::kMaxBlurQuads)) {
+        err = std::to_string(p.blur.size()) + " privacy blur regions in one frame; the stitch holds " +
+              std::to_string(orbiscore::kMaxBlurQuads);
+        return false;
+    }
+    if (!uboMap || !blurMap) {
+        err = "stitch parameter buffers not mapped";
+        return false;
+    }
+    std::memcpy(uboMap, &sp, sizeof(sp));
+    packBlurQuads(p, static_cast<float(*)[4]>(blurMap));
+    return true;
 }
 
 bool VulkanFisheyeStitcher::stitch(const uint8_t* rgb0, const uint8_t* rgb1,
@@ -412,7 +440,8 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
 
     ShaderParams sp{};
     packParams(params, doStitch ? eqW : 16, doStitch ? eqH : 8, sp);
-    std::memcpy(d->uboMap, &sp, sizeof(sp));
+    if (!d->writeParams(sp, params, err))
+        return false;
 
     if (!d->ensureFlow(params, err))
         return false;
@@ -533,7 +562,8 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
 
     ShaderParams sp{};
     packParams(params, eqW, eqH, sp);
-    std::memcpy(d->uboMap, &sp, sizeof(sp));
+    if (!d->writeParams(sp, params, err))
+        return false;
 
     VkDescriptorImageInfo img0{VK_NULL_HANDLE, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     VkDescriptorImageInfo img1{VK_NULL_HANDLE, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -684,7 +714,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
 
     ShaderParams sp{};
     packParams(params, eqW, eqH, sp);
-    std::memcpy(d->uboMap, &sp, sizeof(sp));
+    if (!d->writeParams(sp, params, err))
+        return false;
 
     // Stitch set: point the lens bindings at this pair.
     {
@@ -950,7 +981,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
 
     ShaderParams sp{};
     packParams(params, 0, 0, sp); // no equirect: dims.zw unused
-    std::memcpy(d->uboMap, &sp, sizeof(sp));
+    if (!d->writeParams(sp, params, err))
+        return false;
 
     // A clip with a sharpen: its views draw the canvas, which the sharpen
     // writes into flatBuf.
@@ -1165,7 +1197,8 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
     }
     ShaderParams sp{};
     packParams(params, 16, 8, sp); // no equirect involved; dims.zw unused by pass 2
-    std::memcpy(d->uboMap, &sp, sizeof(sp));
+    if (!d->writeParams(sp, params, err))
+        return false;
 
     const VkDescriptorSet set = viaView ? d->vwSet : d->descSet;
     {
@@ -1368,7 +1401,7 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
 
     // The privacy blur's cell colours are worked out here (pass 5, from the
     // decoder's images) and travel in the slot; the viewport only mixes them.
-    const bool blur = std::clamp(params.blurCount, 0, orbiscore::kMaxBlurQuads) > 0;
+    const bool blur = !params.blur.empty();
     if (blur) {
         if (!d->ensureUbo(err))
             return false;
@@ -1378,7 +1411,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
             err = "vkCreateImageView (ycbcr) failed";
             return false;
         }
-        std::memcpy(d->uboMap, &sp, sizeof(sp));
+        if (!d->writeParams(sp, params, err))
+            return false;
         VkDescriptorImageInfo img0{VK_NULL_HANDLE, v0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkDescriptorImageInfo img1{VK_NULL_HANDLE, v1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet w[2]{};
@@ -1489,7 +1523,7 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         VkImageCopy c{};
         c.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
         c.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        c.extent = {static_cast<uint32_t>(LensSlot::kBlurCellsW), static_cast<uint32_t>(LensSlot::kBlurCellsH), 1};
+        c.extent = {static_cast<uint32_t>(LensSlot::kBlurCellsW), static_cast<uint32_t>(params.blur.size()), 1};
         vkCmdCopyImage(cmd, d->blurCellImg, VK_IMAGE_LAYOUT_GENERAL, slot->img[LensSlot::kBlurCellImage],
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
     }
@@ -1522,6 +1556,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         std::memcpy(sp.lensBox[i], open, sizeof open);
     }
     std::memcpy(out.params.data(), &sp, sizeof(sp));
+    out.blurQuads.resize(params.blur.size() * LensFrame::kBlurQuadFloats);
+    packBlurQuads(params, reinterpret_cast<float(*)[4]>(out.blurQuads.data()));
     // The handle: hands the slot back to the ring when its last copy goes.
     std::shared_ptr<LensRingCore> ring = d->ring;
     out.slot = std::shared_ptr<const LensSlot>(&slot->pub, [ring, slot](const LensSlot*) {

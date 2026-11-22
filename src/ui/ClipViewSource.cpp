@@ -162,8 +162,14 @@ const exportpipe::VideoFrame *ClipViewSource::frameAt(int64_t ms)
     // `ms`, as the export conforms the main clip's.
     for (;;) {
         if (!m_haveNext) {
-            if (!read(m_next))
+            if (!read(m_next)) {
+                // A frame too busy to blur: not the end, and no picture to
+                // hold up in its place -- the export stops there.
+                if (m_src->GetLastFailure() ==
+                    stitch::IStitchSource::ReadFailure::TooManyBlurRegions)
+                    return nullptr;
                 break; // the end: the last one stays
+            }
             m_haveNext = true;
         }
         if (m_next.ptsMs - halfFrame > ms)

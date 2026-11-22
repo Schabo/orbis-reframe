@@ -252,6 +252,9 @@ private:
     std::vector<VkBuffer> m_lensUbo;         // the stitch Params, one per frame in flight
     std::vector<VkDeviceMemory> m_lensUboMem;
     std::vector<void *> m_lensUboMap;
+    std::vector<VkBuffer> m_lensBlur; // its privacy blur regions (LensFrame::blurQuads), likewise
+    std::vector<VkDeviceMemory> m_lensBlurMem;
+    std::vector<void *> m_lensBlurMap;
     VkPipelineLayout m_lensPipelineLayout = VK_NULL_HANDLE;
     VkPipeline m_lensPipeline = VK_NULL_HANDLE;
     VkPipeline m_lensPipelineVariants[4] = {}; // as m_pipelineVariants

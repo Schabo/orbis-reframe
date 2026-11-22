@@ -101,6 +101,7 @@ public:
     void KeyframesAround(int64_t timestamp_ms, int64_t& before, int64_t& after) const override;
     Frame ReadFrame() override;
     const std::string& GetLastError() const override { return last_error_; }
+    ReadFailure GetLastFailure() const override;
     GpuFallback GetGpuFallback() const override { return gpu_fallback_; }
     bool UsingProxy() const override { return proxy_ != nullptr; }
     bool HasProxy() const override { return has_proxy_; }
@@ -225,10 +226,10 @@ public:
     // Likewise the lens colour (IStitchSource::SetLensColour).
     void SetLensColour(const orbiscore::LensColour& c) override;
 
-    // Privacy blur (IStitchSource::SetBlurQuads): applied in paramsAt, so
-    // every path -- equirect, fused view / flat, lens frames for the
-    // viewport, the CPU stitch -- carries it. More than orbiscore::kMaxBlurQuads
-    // in one frame: the rest are dropped with a warning.
+    // Privacy blur (IStitchSource::SetBlurQuads): added by blurQuadsAt on
+    // every path that makes a picture -- equirect, fused view / flat, lens
+    // frames for the viewport, the CPU stitch. A frame with more than
+    // orbiscore::kMaxBlurQuads is refused on all of them alike.
     bool SetBlurQuads(BlurQuadsFn fn) override;
 
     // Which lens and sensor row the stitched picture takes direction `eqDir`
@@ -330,8 +331,18 @@ private:
     bool resume_seek_ = false; // resumed, or a lens frame failed, with no SeekTo since: the next read seeks to resume_at_ms_
     int64_t resume_at_ms_ = 0; // where the next read carries on: the last SeekTo, or past the last pair read
 
-    // gpu_params_ + per-frame RS
+    // gpu_params_ + per-frame RS; no privacy blur (blurQuadsAt).
     orbiscore::StitchGpuParams paramsAt(const orbiscore::FramePts& pts) const;
+    // The privacy blur's regions at pts into p.blur, prepared (a degenerate
+    // one covers nothing and is left out). False with err set when more than
+    // orbiscore::kMaxBlurQuads are left: the frame mustn't be stitched.
+    bool blurQuadsAt(const orbiscore::FramePts& pts, orbiscore::StitchGpuParams& p,
+                     std::string& err) const;
+    // The frame at pts refused for its blur (blurQuadsAt's err): last_error_
+    // and GetLastFailure() say so. The source stays past it.
+    void refuseFrame(std::string err);
+    // What ReadFrame gives for a refused frame: no picture, its time.
+    static Frame refusedFrame(const orbiscore::FramePts& pts);
     // A decoded pair, unlocked between uses (the decoder may lock it as a
     // reference frame meanwhile): locked only around each GPU submission.
     struct HeldPair;
@@ -369,7 +380,9 @@ private:
     int64_t capture_until_ms_ = INT64_MAX; // guarded by rs_mx_
     CaptureTiming capture_after_;  // guarded by rs_mx_; frames from capture_until_ms_ on
     BlurQuadsFn blur_quads_;       // guarded by rs_mx_
-    mutable bool blur_warned_ = false;
+    // The last read refused its frame for its blur (GetLastFailure); reset
+    // by every read.
+    bool blur_refused_ = false;
     // The depth-aware seam's state for the frame at pts_ms into seam_state_:
     // the frames measured so far (seam_window_), this one measured first by
     // `measure`, which fills seam_costs_ / cut_stats_ with the cut

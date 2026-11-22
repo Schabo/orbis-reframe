@@ -23,10 +23,15 @@
 //
 // Dependency-free, like the rest of orbis-core.
 
+#include <vector>
+
 namespace orbiscore {
 
-// Per stitch call. A frame with more is clamped (the caller warns).
-constexpr int kMaxBlurQuads = 64;
+// Per stitch call: the GPU stitch's region buffer and cell table hold this
+// many. A frame with more isn't stitched at all -- never with some of its
+// regions left out -- so the source refuses it (stitch::NativeStitchSource).
+// A busy car park has a few dozen readable plates in view at most.
+constexpr int kMaxBlurQuads = 256;
 // Cells across the quad's shorter side; the longer side gets as many as keep
 // the cells roughly square.
 constexpr int kBlurCellsShort = 5;
@@ -64,6 +69,12 @@ struct BlurQuadFrame {
 // False when the quad is degenerate (a corner > 80 deg off the centroid, or
 // zero area); `out` is then unusable.
 bool prepareBlurQuad(const BlurQuad& q, BlurQuadFrame& out);
+
+// A frame's quads prepared into `out`, in order; a degenerate one covers
+// nothing and is left out. False when more than kMaxBlurQuads are left:
+// `out` then has them all (its size says how many) and the frame must not be
+// stitched with them -- nor with only some.
+bool prepareBlurQuads(const std::vector<BlurQuad>& quads, std::vector<BlurQuadFrame>& out);
 
 // Where `dir` (unit, same frame as the quad) falls in the quad: true with
 // (s, t) in [0, 1]^2 when inside.

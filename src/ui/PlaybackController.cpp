@@ -251,6 +251,7 @@ void PlaybackController::play()
         m_playing = true;
         m_readRetryAt = {}; // a frame that failed while paused: try it now
         m_readParked = false;
+        m_blurParked = false;
     }
     m_cv.notify_all();
     emit playingChanged(true);
@@ -665,7 +666,9 @@ void PlaybackController::tick()
             }
         }
         queueEmpty = m_queue.empty();
-        eof = m_decoderEof;
+        // Paused at a frame too busy to blur, nothing more comes until play:
+        // not a wait to show "Buffering…" for.
+        eof = m_decoderEof || (m_blurParked && !playing);
     }
     if (haveChosen)
         m_cv.notify_all(); // room in the queue -- let the decoder run

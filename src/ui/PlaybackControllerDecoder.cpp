@@ -22,19 +22,19 @@ using namespace playbacktuning;
 namespace {
 
 // The next frame of `src`: the lens pair if `useLens`, else the stitched
-// equirect. False at the end of the source or on an error.
+// equirect. False at the end of the source or on an error; a frame the
+// source refused (IStitchSource::ReadFailure) leaves its time in `frame`.
 bool readSourceFrame(stitch::IStitchSource &src, bool useLens, stitch::Frame &frame,
                      std::shared_ptr<render::LensFrame> &lens)
 {
     if (useLens) {
         lens = std::make_shared<render::LensFrame>();
-        if (src.ReadLensFrame(*lens)) {
-            frame.timestamp_ms = lens->timestamp_ms;
-            frame.timestamp_us = lens->timestamp_us;
-            return true;
-        }
-        lens.reset();
-        return false;
+        const bool got = src.ReadLensFrame(*lens);
+        frame.timestamp_ms = lens->timestamp_ms;
+        frame.timestamp_us = lens->timestamp_us;
+        if (!got)
+            lens.reset();
+        return got;
     }
     frame = src.ReadFrame(); // the slow part
     return !frame.rgba.empty();
@@ -483,6 +483,17 @@ void PlaybackController::noteGpuFallback(int clipId)
                          !proxy && m_activeSource->HasProxy());
 }
 
+void PlaybackController::noteBlurRefused(int clipId)
+{
+    if (m_blurRefusedSource.lock() == m_activeSource)
+        return;
+    m_blurRefusedSource = m_activeSource;
+    const std::string &why = m_activeSource->GetLastError();
+    std::fprintf(stderr, "[playback] %s: %s; such frames are left out\n", qPrintable(m_activePath),
+                 why.c_str());
+    emit blurRefused(m_activePath, clipId, QString::fromStdString(why));
+}
+
 void PlaybackController::notePace(int clipId, bool playing, bool timed, double readMs)
 {
     stitch::IStitchSource &src = *m_activeSource;
@@ -910,8 +921,10 @@ void PlaybackController::decoderLoop()
                 const bool retryLater =
                     m_readFailed &&
                     (m_readParked || std::chrono::steady_clock::now() < m_readRetryAt);
+                const bool blurParked = m_blurParked && !m_playing;
                 const bool canDecode = !m_decPlaced.isEmpty() && !m_decoderEof &&
-                                       m_queue.size() < cap && !parked && !retryLater;
+                                       m_queue.size() < cap && !parked && !retryLater &&
+                                       !blurParked;
                 return m_stop || m_seekPending || m_timelineDirty || m_previewConfigDirty ||
                        m_gpuRoomPending || canDecode || m_lender->anyAsks();
             };
@@ -959,8 +972,10 @@ void PlaybackController::decoderLoop()
             makeRoomEvenShown = std::exchange(m_gpuRoomEvenShown, false);
             gen = m_seekGen;
             playing = m_playing;
-            if (tlChanged || cfgChanged || doSeek)
+            if (tlChanged || cfgChanged || doSeek) {
                 m_readFailed = false; // another frame, or another source
+                m_blurParked = false;
+            }
         }
         if (tlChanged || cfgChanged || doSeek) {
             invalidatePrefetch();
@@ -1124,10 +1139,29 @@ void PlaybackController::decoderLoop()
         // the decoding up to the target, the slow part of a seek or boundary.
         setHardStall(false);
 
+        // A frame with more privacy regions than the blur takes isn't shown
+        // at all: the picture before it stays up, and the source is already
+        // past it. Nothing to retry -- the next frame reads as usual -- but
+        // past the trim-out it ends the clip as any frame there would.
+        const bool refused =
+            !got && m_activeSource->GetLastFailure() ==
+                        stitch::IStitchSource::ReadFailure::TooManyBlurRegions;
+        if (refused) {
+            noteBlurRefused(cur.seg.clipId);
+            if (frame.timestamp_ms < cur.seg.outMs) {
+                // Paused, the frames after it aren't the playhead's: none
+                // until play or a seek.
+                if (!playing) {
+                    std::lock_guard<std::mutex> lk(m_mx);
+                    m_blurParked = true;
+                }
+                continue;
+            }
+        }
         // A read that failed is not the clip's end: going on to the next
         // clip would leave the decoder clips ahead of the playhead, each
         // failing the same way while the graphics memory is full.
-        if (!got && !m_activeSource->GetLastError().empty() &&
+        if (!got && !refused && !m_activeSource->GetLastError().empty() &&
             holdFailedRead(m_activeSource->GetLastError(), playing))
             continue;
         if (got) {
