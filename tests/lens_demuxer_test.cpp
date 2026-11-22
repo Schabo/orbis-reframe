@@ -236,7 +236,8 @@ void testSeekAtReportedTimes(const std::string& dir)
 {
     std::printf("  30 fps: a seek to a reported time finds that frame, a ms past it the next\n");
     const std::string a = dir + "/thirty0.mp4", b = dir + "/thirty1.mp4";
-    for (const auto& [path, grey] : {std::pair{a, greyA}, std::pair{b, greyB}}) {
+    using Lens = std::pair<std::string, int (*)(int)>;
+    for (const auto& [path, grey] : {Lens{a, greyA}, Lens{b, greyB}}) {
         testmedia::VideoSpec spec;
         spec.width = 64;
         spec.height = 64;
