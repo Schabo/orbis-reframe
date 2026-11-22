@@ -175,6 +175,27 @@ void testReaderErrors(const std::string &dir)
     run = faulty(Call::SendPacket, 20, AVERROR_INVALIDDATA);
     CHECK(run.errors == 1 && run.frames >= all - 1);
 
+    // No memory for a decoded frame: reported, and no frame lost.
+    run = faulty(Call::FrameAlloc, 20, 0);
+    CHECK(ffmpegfaults::failed(Call::FrameAlloc) == 1);
+    CHECK(run.errors == 1 && run.lastErr.find("out of memory") != std::string::npos);
+    CHECK(run.frames == all && run.inOrder);
+
+    // No memory for the decoder, its parameters or the packet: open fails,
+    // and the same reader then opens the file.
+    for (Call call : {Call::AllocContext, Call::ParamsToContext, Call::PacketAlloc}) {
+        exportpipe::FlatVideoReader r;
+        ffmpegfaults::reset();
+        ffmpegfaults::arm(call, 0, AVERROR(ENOMEM));
+        err.clear();
+        CHECK(!r.open(path, err));
+        CHECK(ffmpegfaults::failed(call) == 1 && !err.empty());
+        ffmpegfaults::reset();
+        CHECK(r.open(path, err));
+        const Run again = readThrough(r);
+        CHECK(again.errors == 0 && again.frames == all && again.inOrder);
+    }
+
     // A decoder that wants input after the flush: an error, not a hang.
     {
         exportpipe::FlatVideoReader r;

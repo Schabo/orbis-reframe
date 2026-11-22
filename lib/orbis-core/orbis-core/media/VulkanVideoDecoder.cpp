@@ -167,6 +167,10 @@ bool VulkanVideoDecoder::open(
                 return false;
             }
             ctx->hw_device_ctx = av_buffer_ref(hw);
+            if (!ctx->hw_device_ctx) {
+                e = "out of memory";
+                return false;
+            }
             ctx->get_format = pickVulkan;
             return true;
         },

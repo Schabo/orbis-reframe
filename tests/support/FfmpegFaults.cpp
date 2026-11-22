@@ -19,7 +19,7 @@ struct Fault {
     int failed = 0;
 };
 
-constexpr int kCalls = 6;
+constexpr int kCalls = 11;
 Fault g_faults[kCalls];
 // The decoders that took the flush since reset(), for Call::ReceiveDraining.
 std::set<const AVCodecContext *> g_draining;
@@ -66,6 +66,11 @@ int __real_av_read_frame(AVFormatContext *s, AVPacket *pkt);
 int __real_av_seek_frame(AVFormatContext *s, int stream_index, int64_t timestamp, int flags);
 int __real_avcodec_send_packet(AVCodecContext *avctx, const AVPacket *avpkt);
 int __real_avcodec_receive_frame(AVCodecContext *avctx, AVFrame *frame);
+AVCodecContext *__real_avcodec_alloc_context3(const AVCodec *codec);
+int __real_avcodec_parameters_to_context(AVCodecContext *codec, const AVCodecParameters *par);
+AVPacket *__real_av_packet_alloc(void);
+AVFrame *__real_av_frame_alloc(void);
+AVBufferRef *__real_av_buffer_ref(const AVBufferRef *buf);
 
 int __wrap_av_read_frame(AVFormatContext *s, AVPacket *pkt)
 {
@@ -99,6 +104,33 @@ int __wrap_avcodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     if (ffmpegfaults::g_draining.count(avctx) && ffmpegfaults::fails(Call::ReceiveDraining))
         return ffmpegfaults::rcOf(Call::ReceiveDraining);
     return __real_avcodec_receive_frame(avctx, frame);
+}
+
+AVCodecContext *__wrap_avcodec_alloc_context3(const AVCodec *codec)
+{
+    return ffmpegfaults::fails(Call::AllocContext) ? nullptr : __real_avcodec_alloc_context3(codec);
+}
+
+int __wrap_avcodec_parameters_to_context(AVCodecContext *codec, const AVCodecParameters *par)
+{
+    if (ffmpegfaults::fails(Call::ParamsToContext))
+        return ffmpegfaults::rcOf(Call::ParamsToContext);
+    return __real_avcodec_parameters_to_context(codec, par);
+}
+
+AVPacket *__wrap_av_packet_alloc(void)
+{
+    return ffmpegfaults::fails(Call::PacketAlloc) ? nullptr : __real_av_packet_alloc();
+}
+
+AVFrame *__wrap_av_frame_alloc(void)
+{
+    return ffmpegfaults::fails(Call::FrameAlloc) ? nullptr : __real_av_frame_alloc();
+}
+
+AVBufferRef *__wrap_av_buffer_ref(const AVBufferRef *buf)
+{
+    return ffmpegfaults::fails(Call::BufferRef) ? nullptr : __real_av_buffer_ref(buf);
 }
 
 } // extern "C"

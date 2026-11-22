@@ -43,7 +43,7 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     avformat_alloc_output_context2(&fmt, nullptr, nullptr, path.c_str());
     if (!fmt)
         return false;
-    const AVCodec *enc = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+    const AVCodec *enc = avcodec_find_encoder(spec.h264 ? AV_CODEC_ID_H264 : AV_CODEC_ID_MPEG4);
     if (!enc)
         return false;
     AVCodecContext *ctx = avcodec_alloc_context3(enc);
@@ -59,8 +59,10 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     }
     ctx->gop_size = 10;
     ctx->max_b_frames = 0;
-    ctx->flags |= AV_CODEC_FLAG_QSCALE;
-    ctx->global_quality = FF_QP2LAMBDA * 2;
+    if (!spec.h264) { // near-lossless, so a frame's grey reads back as written
+        ctx->flags |= AV_CODEC_FLAG_QSCALE;
+        ctx->global_quality = FF_QP2LAMBDA * 2;
+    }
     if (fmt->oformat->flags & AVFMT_GLOBALHEADER)
         ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     if (avcodec_open2(ctx, enc, nullptr) < 0)

@@ -17,9 +17,15 @@
 #include "DataPaths.h"
 #endif
 #include <orbis-core/audio/WindReducer.h>
+#include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
 
+extern "C" {
+#include <libavutil/error.h>
+}
+
 #include <atomic>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -115,6 +121,54 @@ void testPlacementGainFades(const std::string& dc)
     for (size_t i = 0; i < one.size(); ++i)
         same = same && near(one[i], chunked[i], 1e-6f);
     CHECK(same);
+}
+
+// The samples to the end, or -1 on an error.
+int64_t readAll(orbiscore::AudioDemux& d)
+{
+    int64_t frames = 0;
+    std::vector<float> chunk;
+    std::string err;
+    while (d.readNext(chunk, nullptr, err))
+        frames += static_cast<int64_t>(chunk.size()) / kCh;
+    return err.empty() ? frames : -1;
+}
+
+void testDemuxAllocErrors(const std::string& dc)
+{
+    using ffmpegfaults::Call;
+    std::printf("  no memory for the decoder, its parameters, packet or frame: open fails\n");
+    for (Call call : {Call::AllocContext, Call::ParamsToContext, Call::PacketAlloc, Call::FrameAlloc}) {
+        orbiscore::AudioDemux d;
+        ffmpegfaults::reset();
+        ffmpegfaults::arm(call, 0, AVERROR(ENOMEM));
+        std::string err;
+        CHECK(!d.open(dc, kRate, kCh, err));
+        CHECK(ffmpegfaults::failed(call) == 1);
+        CHECK(!err.empty());
+        ffmpegfaults::reset();
+        err.clear();
+        CHECK(d.open(dc, kRate, kCh, err));
+        CHECK(readAll(d) == kRate);
+    }
+
+    std::printf("  no new decoder for a seek to the start: the read fails, not crashes\n");
+    {
+        orbiscore::AudioDemux d;
+        ffmpegfaults::reset();
+        std::string err;
+        CHECK(d.open(dc, kRate, kCh, err));
+        ffmpegfaults::arm(Call::AllocContext, 0, 0);
+        CHECK(!d.seekTo(0, err));
+        CHECK(err.find("out of memory") != std::string::npos);
+        ffmpegfaults::reset();
+        std::vector<float> chunk;
+        err.clear();
+        CHECK(!d.readNext(chunk, nullptr, err) && !err.empty());
+        CHECK(d.open(dc, kRate, kCh, err));
+        CHECK(readAll(d) == kRate);
+    }
+    ffmpegfaults::reset();
 }
 
 void testSeekAndSource(const std::string& ramp)
@@ -805,6 +859,7 @@ int main()
     writeWav(ramp, 30000, [](int i) { return i / 32768.0; });
 
     testDemuxDuration(dc);
+    testDemuxAllocErrors(dc);
     testPlacementGainFades(dc);
     testSeekAndSource(ramp);
     testMissingAndMuted(dc);

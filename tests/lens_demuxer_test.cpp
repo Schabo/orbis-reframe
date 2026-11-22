@@ -5,12 +5,15 @@
 // on purpose (support/FfmpegFaults.h). Exit code is the failure count.
 
 #include <orbis-core/media/FisheyeDemux.h>
+#include <orbis-core/media/VulkanVideoDecoder.h>
 #include "support/FfmpegFaults.h"
 #include "support/TestMedia.h"
 
 extern "C" {
 #include <libavutil/error.h>
+#include <libavutil/buffer.h>
 #include <libavutil/frame.h>
+#include <libavutil/hwcontext.h>
 }
 
 #include <cerrno>
@@ -342,6 +345,83 @@ void testReadErrors(const std::string& a, const std::string& b)
     ffmpegfaults::reset();
 }
 
+void testAllocErrors(const std::string& a, const std::string& b, const std::string& dir)
+{
+    using ffmpegfaults::Call;
+    // The demux fails to open with `want` in the error, and the same demux
+    // then opens and reads the clip to its end.
+    const auto failsOpen = [&](Call call, int after, int rc, const std::string& want) {
+        orbiscore::FisheyeDemux d;
+        ffmpegfaults::reset();
+        ffmpegfaults::arm(call, after, rc);
+        std::string err;
+        CHECK(!d.open({{a, 0}, {b, 0}}, err));
+        CHECK(ffmpegfaults::failed(call) == 1);
+        CHECK(err.find(want) != std::string::npos);
+        ffmpegfaults::reset();
+        err.clear();
+        CHECK(d.open({{a, 0}, {b, 0}}, err));
+        const Run run = readThrough(d);
+        CHECK(run.errors == 0 && run.pairs == kFrames && run.inOrder && run.inStep);
+    };
+    std::printf("  no memory for a decoder, its parameters or the packet: open fails\n");
+    failsOpen(Call::AllocContext, 0, 0, "out of memory for the decoder of video stream 0");
+    failsOpen(Call::AllocContext, 1, 0, "out of memory for the decoder of video stream 0: " + b);
+    failsOpen(Call::ParamsToContext, 1, AVERROR(ENOMEM), "setting up the decoder of video stream");
+    failsOpen(Call::PacketAlloc, 0, 0, "out of memory");
+
+    std::printf("  no memory for a decoded frame: reported, and no frame lost\n");
+    {
+        orbiscore::FisheyeDemux d;
+        ffmpegfaults::reset();
+        std::string err;
+        CHECK(d.open({{a, 0}, {b, 0}}, err));
+        ffmpegfaults::arm(Call::FrameAlloc, 20, 0);
+        const Run run = readThrough(d);
+        CHECK(ffmpegfaults::failed(Call::FrameAlloc) == 1);
+        CHECK(run.errors == 1);
+        CHECK(run.lastErr.find("out of memory decoding lens") != std::string::npos);
+        CHECK(run.pairs == kFrames && run.inOrder && run.inStep);
+    }
+    ffmpegfaults::reset();
+
+    // The Vulkan decoder's per-lens device reference; needs a GPU that
+    // decodes H.264.
+    AVBufferRef* dev = nullptr;
+    if (av_hwdevice_ctx_create(&dev, AV_HWDEVICE_TYPE_VULKAN, nullptr, nullptr, 0) < 0) {
+        std::printf("  (no Vulkan device: the decoder's device reference not checked)\n");
+        return;
+    }
+    const std::string clip = dir + "/h264_two_lenses.mp4";
+    testmedia::VideoSpec spec;
+    spec.width = 256;
+    spec.height = 256;
+    spec.frames = 10;
+    spec.streams = 2;
+    spec.h264 = true;
+    std::string err;
+    if (!testmedia::writeVideo(clip, spec) || !orbiscore::VulkanVideoDecoder().open(dev, clip, err)) {
+        std::printf("  (no H.264 encoder or Vulkan H.264 decode: the device reference not checked)\n");
+        av_buffer_unref(&dev);
+        return;
+    }
+    std::printf("  no device reference for a lens's decoder: open fails, references balanced\n");
+    for (int after : {0, 1, 2}) { // the decoder's own, lens 0's, lens 1's
+        orbiscore::VulkanVideoDecoder v;
+        ffmpegfaults::arm(Call::BufferRef, after, 0);
+        err.clear();
+        CHECK(!v.open(dev, clip, err));
+        CHECK(ffmpegfaults::failed(Call::BufferRef) == 1);
+        CHECK(err.find("out of memory") != std::string::npos);
+        CHECK(!v.unsupported());
+        ffmpegfaults::reset();
+        CHECK(av_buffer_get_ref_count(dev) == 1);
+        err.clear();
+        CHECK(v.open(dev, clip, err));
+    }
+    av_buffer_unref(&dev);
+}
+
 } // namespace
 
 int main()
@@ -359,6 +439,7 @@ int main()
     testLensOrder(a, b);
     testErrors(a, dir.string());
     testReadErrors(a, b);
+    testAllocErrors(a, b, dir.string());
     testExactTimes(dir.string());
     testSideBySide(dir.string());
     if (!g_failures)

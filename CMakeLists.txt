@@ -860,16 +860,17 @@ if(FFMPEG_FOUND)
     target_include_directories(test_media PUBLIC tests)
     target_link_libraries(test_media PRIVATE PkgConfig::FFMPEG)
 
-    # tests/support/FfmpegFaults: a test makes FFmpeg's reads and decodes
-    # fail through it. The linker sends the four calls to its stand-ins, in
-    # the test executable only.
+    # tests/support/FfmpegFaults: a test makes FFmpeg's reads, decodes and
+    # allocations fail through it. The linker sends the calls to its
+    # stand-ins, in the test executable only.
     add_library(ffmpeg_faults STATIC tests/support/FfmpegFaults.cpp tests/support/FfmpegFaults.h)
     target_include_directories(ffmpeg_faults PUBLIC tests)
     target_link_libraries(ffmpeg_faults PRIVATE PkgConfig::FFMPEG)
     function(orbis_wrap_ffmpeg_faults target)
         target_link_libraries(${target} PRIVATE ffmpeg_faults)
         target_link_options(${target} PRIVATE
-            "LINKER:--wrap=av_read_frame,--wrap=av_seek_frame,--wrap=avcodec_send_packet,--wrap=avcodec_receive_frame")
+            "LINKER:--wrap=av_read_frame,--wrap=av_seek_frame,--wrap=avcodec_send_packet,--wrap=avcodec_receive_frame"
+            "LINKER:--wrap=avcodec_alloc_context3,--wrap=avcodec_parameters_to_context,--wrap=av_packet_alloc,--wrap=av_frame_alloc,--wrap=av_buffer_ref")
     endfunction()
 endif()
 
@@ -1040,6 +1041,7 @@ endif()
 if(TARGET orbis-core::media)
     add_executable(audio_mix_test tests/audio_mix_test.cpp)
     target_link_libraries(audio_mix_test PRIVATE orbis-core::media orbis_paths test_media)
+    orbis_wrap_ffmpeg_faults(audio_mix_test)
     add_test(NAME audio_mix_test COMMAND audio_mix_test)
     # The voice-mode checks need the model even when the source-tree fallback
     # is off (package builds, scripts/package.sh).

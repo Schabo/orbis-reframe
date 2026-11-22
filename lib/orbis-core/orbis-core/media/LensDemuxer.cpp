@@ -222,7 +222,15 @@ bool LensDemuxer::addLens(int input, int streamIndex, const DecoderSetup& setup,
         return false;
     }
     AVCodecContext* ctx = avcodec_alloc_context3(dec);
-    avcodec_parameters_to_context(ctx, st->codecpar);
+    if (!ctx) {
+        err = "out of memory for the decoder of video stream " + std::to_string(streamIndex);
+        return false;
+    }
+    if (const int rc = avcodec_parameters_to_context(ctx, st->codecpar); rc < 0) {
+        avcodec_free_context(&ctx);
+        err = AvError("setting up the decoder of video stream " + std::to_string(streamIndex), rc);
+        return false;
+    }
     if (setup && !setup(st, dec, ctx, err)) {
         avcodec_free_context(&ctx);
         return false;
@@ -249,6 +257,11 @@ bool LensDemuxer::finishOpen(std::string& err)
     m_fifo.resize(m_dec.size());
     m_streamEof.assign(m_dec.size(), 0);
     m_pkt = av_packet_alloc();
+    if (!m_pkt) {
+        err = "out of memory";
+        close();
+        return false;
+    }
     return true;
 }
 
@@ -416,6 +429,10 @@ bool LensDemuxer::drainDecoder(int lens, std::string& err)
 {
     for (;;) {
         AVFrame* frm = av_frame_alloc();
+        if (!frm) {
+            err = "out of memory decoding lens " + std::to_string(lens) + where(m_lensInput[lens]);
+            return false;
+        }
         const int r = avcodec_receive_frame(m_dec[lens], frm);
         if (r < 0) {
             av_frame_free(&frm);

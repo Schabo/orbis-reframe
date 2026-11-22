@@ -112,6 +112,11 @@ bool AudioDemux::open(const std::string& path, int outSampleRate, int outChannel
 
     m_pkt = av_packet_alloc();
     m_frame = av_frame_alloc();
+    if (!m_pkt || !m_frame) {
+        err = "out of memory";
+        close();
+        return false;
+    }
     return true;
 }
 
@@ -128,7 +133,14 @@ bool AudioDemux::openDecoder(std::string& err)
         return false;
     }
     m_dec = avcodec_alloc_context3(codec);
-    avcodec_parameters_to_context(m_dec, st->codecpar);
+    if (!m_dec) {
+        err = "out of memory for the decoder of audio stream " + std::to_string(m_streamIndex);
+        return false;
+    }
+    if (avcodec_parameters_to_context(m_dec, st->codecpar) < 0) {
+        err = "setting up the decoder of audio stream " + std::to_string(m_streamIndex) + " failed";
+        return false;
+    }
     if (avcodec_open2(m_dec, codec, nullptr) < 0) {
         err = "avcodec_open2 failed for audio stream " + std::to_string(m_streamIndex);
         return false;
@@ -173,6 +185,9 @@ bool AudioDemux::seekTo(int64_t timestampMs, std::string& err)
         // At the stream's start there's no earlier audio to decode in with,
         // and a flushed AAC decoder doesn't decode the first frame as a new
         // one does: start afresh, as a read from the file's start does.
+        // Without a decoder the file can't be read on: closed, as if it
+        // never opened.
+        close();
         return false;
     }
     m_flushSent = false;
@@ -183,6 +198,10 @@ bool AudioDemux::seekTo(int64_t timestampMs, std::string& err)
 bool AudioDemux::readNext(std::vector<float>& out, int64_t* ptsMs, std::string& err,
                               double* ptsSec)
 {
+    if (!m_dec) {
+        err = "readNext before open";
+        return false;
+    }
     for (;;) {
         int r = avcodec_receive_frame(m_dec, m_frame);
         if (r == AVERROR_EOF) {

@@ -56,7 +56,9 @@ public:
     // Seeks so the next readNext() returns the chunk that contains
     // timestampMs (it starts at or before it, by up to one AAC frame) -- the
     // caller cuts the head off at the exact sample if it needs to (see
-    // ClipAudioReader). Returns false with `err` set on failure.
+    // ClipAudioReader). Returns false with `err` set on failure; one that
+    // leaves no decoder (at the stream's start a new one is made) closes the
+    // file, and readNext() fails until the next open().
     bool seekTo(int64_t timestampMs, std::string& err);
 
     // Replaces `out` with the next chunk of interleaved float32 samples (one

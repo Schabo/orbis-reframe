@@ -260,6 +260,10 @@ struct FlatVideoReader::Impl {
     AVFrame *decodeOne()
     {
         AVFrame *f = av_frame_alloc();
+        if (!f) {
+            err = "decode" + after() + ": out of memory";
+            return nullptr;
+        }
         for (;;) {
             const int r = avcodec_receive_frame(ctx, f);
             if (r == 0) {
@@ -501,7 +505,16 @@ bool FlatVideoReader::open(const std::string &path, std::string &err)
         return false;
     }
     d->ctx = avcodec_alloc_context3(dec);
-    avcodec_parameters_to_context(d->ctx, st->codecpar);
+    if (!d->ctx) {
+        err = "out of memory for the decoder";
+        d->close();
+        return false;
+    }
+    if ((r = avcodec_parameters_to_context(d->ctx, st->codecpar)) < 0) {
+        err = avErr("set up the decoder", r);
+        d->close();
+        return false;
+    }
     d->ctx->thread_count = 0; // auto
     d->ctx->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
     if ((r = avcodec_open2(d->ctx, dec, nullptr)) < 0) {
@@ -510,6 +523,11 @@ bool FlatVideoReader::open(const std::string &path, std::string &err)
         return false;
     }
     d->pkt = av_packet_alloc();
+    if (!d->pkt) {
+        err = "out of memory";
+        d->close();
+        return false;
+    }
     d->timeBase = st->time_base;
     d->startPts = st->start_time != AV_NOPTS_VALUE ? st->start_time : 0;
     d->rotation = streamRotation(st);
