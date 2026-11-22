@@ -11,7 +11,7 @@
 // frames: a 360 clip's view, rendered through its stitch -- the other clip
 // of a transition, drawn over the main picture. The layers (the export's
 // InsetCompositor, playback's InsetFeed) read it the way they read a
-// FlatVideoReader: frameAt() for the picture at a source time, readNext()
+// FlatVideoReader: frameAtUs() for the picture at a source time, readNext()
 // to run on. RGBA frames, opaque.
 //
 // Made by a PictureSource::Factory on the thread that reads it (opening a
@@ -31,14 +31,14 @@ public:
     virtual double fps() const = 0;
     // Size of the frames handed out from the next one on.
     virtual void setOutputSize(int width, int height) = 0;
-    // The frame showing at source time `ms`: reads forward from the current
-    // position, and jumps only when `ms` is behind it or well ahead. The
-    // pointer stays valid until the next call. Null at the end or on error
-    // (lastError()).
-    virtual const VideoFrame *frameAt(int64_t ms) = 0;
+    // The frame showing at source time `us` (microseconds, exact, as
+    // FlatVideoReader::frameAtUs): reads forward from the current position,
+    // and jumps only when `us` is behind it or well ahead. The pointer stays
+    // valid until the next call. Null at the end or on error (lastError()).
+    virtual const VideoFrame *frameAtUs(int64_t us) = 0;
     // The next frame. False at the end or on error.
     virtual bool readNext(VideoFrame &out) = 0;
-    // frameAt() gave nothing because the picture isn't ready to read yet
+    // frameAtUs() gave nothing because the picture isn't ready to read yet
     // (its stitch is being got ready elsewhere), not because it ended: the
     // reader asks again once told (playback's InsetFeed::poke).
     virtual bool waiting() const { return false; }

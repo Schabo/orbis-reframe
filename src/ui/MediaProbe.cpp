@@ -100,7 +100,7 @@ QImage mediaThumbnail(const MediaItem &item, const QSize &size)
     reader.setOutputSize(std::max(2, int(info.width * scale + 0.5)) & ~1,
                          std::max(2, int(info.height * scale + 0.5)) & ~1);
     const int64_t at = info.durationMs > 2000 ? 1000 : info.durationMs / 2;
-    const exportpipe::VideoFrame *frame = reader.frameAt(at);
+    const exportpipe::VideoFrame *frame = reader.frameAtUs(at * 1000);
     if (!frame || frame->rgba.empty())
         return {};
     const QImage full(frame->rgba.data(), frame->width, frame->height, frame->width * 4,

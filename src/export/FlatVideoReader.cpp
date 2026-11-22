@@ -208,7 +208,7 @@ struct FlatVideoReader::Impl {
     std::deque<AVFrame *> ahead; // decoded, not handed out yet
     std::string err;
 
-    // frameAt(): the frame showing, raw, and its converted copy.
+    // frameAtUs(): the frame showing, raw, and its converted copy.
     AVFrame *cur = nullptr;
     VideoFrame curOut;
     bool curConverted = false;
@@ -248,6 +248,15 @@ struct FlatVideoReader::Impl {
         if (pts == AV_NOPTS_VALUE)
             return 0;
         return av_rescale_q(pts - startPts, timeBase, AVRational{1, 1000});
+    }
+    int64_t ptsUs(const AVFrame *f) const
+    {
+        int64_t pts = f->best_effort_timestamp;
+        if (pts == AV_NOPTS_VALUE)
+            pts = f->pts;
+        if (pts == AV_NOPTS_VALUE)
+            return 0;
+        return av_rescale_q(pts - startPts, timeBase, AVRational{1, 1000000});
     }
 
     // " after <ms> ms": where in the file the last frame decoded was.
@@ -330,38 +339,41 @@ struct FlatVideoReader::Impl {
         return f;
     }
 
-    bool seek(int64_t ms)
+    // To the frame showing at `us`.
+    bool seek(int64_t us)
     {
+        const int64_t ms = std::max<int64_t>(0, us) / 1000; // messages
         for (AVFrame *f : ahead)
             av_frame_free(&f);
         ahead.clear();
         if (cur)
             av_frame_free(&cur);
         curConverted = false;
-        const int64_t ts = startPts + av_rescale_q(std::max<int64_t>(0, ms), AVRational{1, 1000}, timeBase);
+        const int64_t ts =
+            startPts + av_rescale_q(std::max<int64_t>(0, us), AVRational{1, 1000000}, timeBase);
         const int r = av_seek_frame(fmt, streamIndex, ts, AVSEEK_FLAG_BACKWARD);
         // A file that can't seek still plays from its start, as long as
         // nothing was read yet; after that, the start is out of reach.
-        if (r < 0 && !(ms <= 0 && atStart)) {
+        if (r < 0 && !(us <= 0 && atStart)) {
             err = avErr("seek to " + std::to_string(ms) + " ms", r);
             return false;
         }
-        if (r >= 0 && ms <= 0)
+        if (r >= 0 && us <= 0)
             atStart = true;
         avcodec_flush_buffers(ctx);
         eof = drained = false;
         decodedMs = -1;
-        // Decode up to the frame showing at `ms`; leave it at the front.
+        // Decode up to the frame showing at `us`; leave it at the front.
         AVFrame *prev = nullptr;
         for (;;) {
             AVFrame *f = peek();
-            if (!f || (prev && ptsMs(f) > ms))
+            if (!f || (prev && ptsUs(f) > us))
                 break;
             ahead.pop_front();
             if (prev)
                 av_frame_free(&prev);
             prev = f;
-            if (ptsMs(f) >= ms)
+            if (ptsUs(f) >= us)
                 break;
         }
         if (prev)
@@ -380,6 +392,7 @@ struct FlatVideoReader::Impl {
             h += h & 1;
         }
         out.ptsMs = ptsMs(f);
+        out.ptsUs = ptsUs(f);
         out.width = w;
         out.height = h;
         const int space = swsSpace(f->colorspace, f->height);
@@ -585,7 +598,7 @@ bool FlatVideoReader::seek(int64_t ms)
     if (!isOpen())
         return false;
     d->err.clear();
-    return d->seek(ms);
+    return d->seek(ms * 1000);
 }
 
 bool FlatVideoReader::readNext(VideoFrame &out)
@@ -601,7 +614,7 @@ bool FlatVideoReader::readNext(VideoFrame &out)
         d->ahead.push_front(f);
         return false;
     }
-    // It is now the frame showing, for a later frameAt().
+    // It is now the frame showing, for a later frameAtUs().
     if (d->cur)
         av_frame_free(&d->cur);
     d->cur = f;
@@ -609,21 +622,29 @@ bool FlatVideoReader::readNext(VideoFrame &out)
     return true;
 }
 
-const VideoFrame *FlatVideoReader::frameAt(int64_t ms)
+const VideoFrame *FlatVideoReader::frameAtUs(int64_t us)
 {
     if (!isOpen())
         return nullptr;
     d->err.clear();
-    constexpr int64_t kSeekAheadMs = 2000; // further than this: seek, don't decode through
-    const bool behind = d->cur && ms < d->ptsMs(d->cur);
+    constexpr int64_t kSeekAheadUs = 2000000; // further than this: seek, don't decode through
+    // The frame whose window [pts - half, pts + half) holds `us`, as the
+    // export conforms its main clips. Not the last frame at or before it:
+    // the times asked for (trims, clip starts) are whole ms, up to a ms off
+    // the frame times they stand for, and a clip at the output's frame rate
+    // trimmed on a frame would sit on that edge, a hair to either side.
+    const int64_t halfUs = std::llround(5e5 / d->info.fps);
+    const bool behind = d->cur && us + halfUs < d->ptsUs(d->cur);
     const AVFrame *next = d->cur ? d->peek() : nullptr;
     // The frame after the one showing didn't decode: which frame shows at
-    // `ms` is unknown, so not the one before.
+    // `us` is unknown, so not the one before.
     if (!d->err.empty())
         return nullptr;
-    const bool farAhead = d->cur && next && ms > d->ptsMs(next) + kSeekAheadMs;
+    const bool farAhead = d->cur && next && us > d->ptsUs(next) + kSeekAheadUs;
     if (!d->cur || behind || farAhead) {
-        if (!d->seek(ms))
+        // To the last frame at or before the window's start: the loop below
+        // steps on to the one whose window it is.
+        if (!d->seek(us - halfUs))
             return nullptr;
         d->cur = d->pop();
         d->curConverted = false;
@@ -632,7 +653,7 @@ const VideoFrame *FlatVideoReader::frameAt(int64_t ms)
     }
     // Step forward while the next frame is already due.
     while (AVFrame *n = d->peek()) {
-        if (d->ptsMs(n) > ms)
+        if (d->ptsUs(n) - halfUs > us)
             break;
         d->ahead.pop_front();
         av_frame_free(&d->cur);

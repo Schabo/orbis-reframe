@@ -79,30 +79,34 @@ void testReader(const std::string &dir)
 
     exportpipe::FlatVideoReader r;
     CHECK(r.open(path, err));
-    const exportpipe::VideoFrame *f = r.frameAt(0);
+    const exportpipe::VideoFrame *f = r.frameAtUs(0);
     CHECK(f && f->ptsMs == 0 && frameIndexOf(*f) == 0);
-    f = r.frameAt(1000); // forward
+    f = r.frameAtUs(1000000); // forward
     CHECK(f && f->ptsMs == 1000 && frameIndexOf(*f) == 25);
-    f = r.frameAt(1030); // same frame still showing
+    f = r.frameAtUs(1015000); // same frame still showing: its window is 980 .. 1020 ms
     CHECK(f && f->ptsMs == 1000);
-    f = r.frameAt(500); // backwards: seeks
+    f = r.frameAtUs(1025000); // the next one's
+    CHECK(f && f->ptsMs == 1040);
+    f = r.frameAtUs(490000); // backwards: seeks
     CHECK(f && f->ptsMs == 480 && frameIndexOf(*f) == 12);
-    f = r.frameAt(1900);
+    f = r.frameAtUs(500000); // the edge between two frames: the later one's window
+    CHECK(f && f->ptsMs == 520 && frameIndexOf(*f) == 13);
+    f = r.frameAtUs(1890000);
     CHECK(f && frameIndexOf(*f) == 47);
     // Past the end the last frame holds. (The encoder's last frame doesn't
     // decode -- ffprobe misses it too -- so that's frame 48.)
-    f = r.frameAt(5000);
+    f = r.frameAtUs(5000000);
     CHECK(f && frameIndexOf(*f) >= 48);
 
     CHECK(r.seek(800));
     exportpipe::VideoFrame v;
     CHECK(r.readNext(v) && v.ptsMs == 800 && frameIndexOf(v) == 20);
     CHECK(r.readNext(v) && v.ptsMs == 840 && frameIndexOf(v) == 21);
-    f = r.frameAt(900); // continues from where readNext left off
+    f = r.frameAtUs(890000); // continues from where readNext left off
     CHECK(f && f->ptsMs == 880);
 
     r.setOutputSize(160, 90);
-    f = r.frameAt(900);
+    f = r.frameAtUs(900000);
     CHECK(f && f->width == 160 && f->height == 90 && f->rgba.size() == 160u * 90 * 4);
 }
 
@@ -137,7 +141,7 @@ Run readThrough(exportpipe::FlatVideoReader &r)
 
 // Read and decode errors made on purpose (support/FfmpegFaults.h): each is
 // reported, not taken for the end of the file, and the reader carries on
-// after it; frameAt() never hands out an earlier frame for one that failed.
+// after it; frameAtUs() never hands out an earlier frame for one that failed.
 void testReaderErrors(const std::string &dir)
 {
     using ffmpegfaults::Call;
@@ -209,19 +213,19 @@ void testReaderErrors(const std::string &dir)
         CHECK(rest.errors == 0 && stalled.frames + rest.frames == all);
     }
 
-    // frameAt() with every read failing from frame 1 on: the frames already
+    // frameAtUs() with every read failing from frame 1 on: the frames already
     // decoded show, each at its own time, then null with the error -- not
     // the frame before -- and once the reads work again, the frame due.
     {
         exportpipe::FlatVideoReader r;
         ffmpegfaults::reset();
         CHECK(r.open(path, err));
-        const exportpipe::VideoFrame *f = r.frameAt(0);
+        const exportpipe::VideoFrame *f = r.frameAtUs(0);
         CHECK(f && f->ptsMs == 0);
         ffmpegfaults::arm(Call::ReadFrame, 0, AVERROR(EIO), -1);
         int64_t failedAt = -1;
         for (int64_t ms = 40; ms < 2000; ms += 40) {
-            f = r.frameAt(ms);
+            f = r.frameAtUs(ms * 1000);
             if (!f) {
                 failedAt = ms;
                 break;
@@ -230,24 +234,24 @@ void testReaderErrors(const std::string &dir)
         }
         CHECK(failedAt > 0 && r.lastError().find("Input/output error") != std::string::npos);
         ffmpegfaults::reset();
-        f = r.frameAt(failedAt);
+        f = r.frameAtUs(failedAt * 1000);
         CHECK(f && f->ptsMs == failedAt && r.lastError().empty());
     }
 
     // A rewind that fails after frames were read: an error, not a later
-    // frame passed off as frame 0 -- through frameAt() going back and
+    // frame passed off as frame 0 -- through frameAtUs() going back and
     // through seek(). Before any read the start needs no seek.
     {
         exportpipe::FlatVideoReader r;
         ffmpegfaults::reset();
         CHECK(r.open(path, err));
-        const exportpipe::VideoFrame *f = r.frameAt(400);
+        const exportpipe::VideoFrame *f = r.frameAtUs(400000);
         CHECK(f && frameIndexOf(*f) == 10);
         ffmpegfaults::arm(Call::SeekFrame, 0, AVERROR(EIO), -1);
-        CHECK(!r.frameAt(0) && r.lastError().find("seek to 0 ms") != std::string::npos);
+        CHECK(!r.frameAtUs(0) && r.lastError().find("seek to 0 ms") != std::string::npos);
         CHECK(!r.seek(0) && !r.lastError().empty());
         ffmpegfaults::reset();
-        f = r.frameAt(0); // seeks again, and can
+        f = r.frameAtUs(0); // seeks again, and can
         CHECK(f && f->ptsMs == 0 && frameIndexOf(*f) == 0 && r.lastError().empty());
     }
     {
@@ -255,7 +259,7 @@ void testReaderErrors(const std::string &dir)
         ffmpegfaults::reset();
         CHECK(r.open(path, err));
         ffmpegfaults::arm(Call::SeekFrame, 0, AVERROR(ENOSYS), -1); // a file that can't seek
-        const exportpipe::VideoFrame *f = r.frameAt(0);
+        const exportpipe::VideoFrame *f = r.frameAtUs(0);
         CHECK(f && f->ptsMs == 0 && frameIndexOf(*f) == 0 && r.lastError().empty());
         exportpipe::VideoFrame v;
         CHECK(r.readNext(v) && frameIndexOf(v) == 1);
@@ -273,7 +277,7 @@ void testRotation(const std::string &dir)
     std::string err;
     CHECK(r.open(path, err));
     CHECK(r.info().width == kH && r.info().height == kW); // portrait
-    const exportpipe::VideoFrame *f = r.frameAt(0);
+    const exportpipe::VideoFrame *f = r.frameAtUs(0);
     CHECK(f && f->width == kH && f->height == kW);
     // Turned clockwise: the dark left half is now on top.
     auto grey = [&](int x, int y) { return f->rgba[(size_t(y) * f->width + x) * 4 + 1]; };
@@ -303,11 +307,11 @@ void testCompositor(const std::string &dir)
     std::string err;
 
     // Before the clip starts: untouched.
-    CHECK(comp.composite(500, y.data(), W, uv.data(), W, err));
+    CHECK(comp.composite(exportpipe::TimelineTime::ofMs(500), y.data(), W, uv.data(), W, err));
     CHECK(y[size_t(H / 2) * W + W / 2] == 200);
 
-    // 500 ms in: frame 12 fills the rect (160, 90) .. (480, 270).
-    CHECK(comp.composite(1500, y.data(), W, uv.data(), W, err));
+    // 490 ms in: frame 12 fills the rect (160, 90) .. (480, 270).
+    CHECK(comp.composite(exportpipe::TimelineTime::ofMs(1490), y.data(), W, uv.data(), W, err));
     const int centre = y[size_t(H / 2) * W + W / 2];
     CHECK(std::abs(centre - lumaFor(12)) <= 3);
     CHECK(y[size_t(H / 2) * W + 100] == 200 && y[size_t(40) * W + W / 2] == 200); // outside
@@ -384,16 +388,16 @@ void testCompositor(const std::string &dir)
         };
         std::vector<uint8_t> y4(size_t(W) * H, 100), uv4(size_t(W) * H / 2, 128);
         exportpipe::InsetCompositor tc({t}, W, H);
-        CHECK(tc.composite(500, y4.data(), W, uv4.data(), W, err));
+        CHECK(tc.composite(exportpipe::TimelineTime::ofMs(500), y4.data(), W, uv4.data(), W, err));
         CHECK(y4[size_t(H / 2) * W + 200] == 235);          // white, opaque
         CHECK(y4[size_t(H / 2) * W + 440] == 100);          // clear: what was under it
         CHECK(std::abs(int(uv4[size_t(H / 4) * W + 440]) - 128) <= 1);
-        CHECK(tc.composite(1500, y4.data(), W, uv4.data(), W, err)); // past it: no file to read
+        CHECK(tc.composite(exportpipe::TimelineTime::ofMs(1500), y4.data(), W, uv4.data(), W, err)); // past it: no file to read
 
         // Into P010: 10-bit white (940), the clear part untouched.
         std::vector<uint16_t> y16(size_t(W) * H, uint16_t(400 << 6));
         std::vector<uint16_t> uv16(size_t(W) * H / 2, uint16_t(512 << 6));
-        CHECK(tc.composite(500, reinterpret_cast<uint8_t *>(y16.data()), W * 2,
+        CHECK(tc.composite(exportpipe::TimelineTime::ofMs(500), reinterpret_cast<uint8_t *>(y16.data()), W * 2,
                            reinterpret_cast<uint8_t *>(uv16.data()), W * 2, err, true));
         CHECK(y16[size_t(H / 2) * W + 200] == uint16_t(940 << 6));
         CHECK(y16[size_t(H / 2) * W + 440] == uint16_t(400 << 6));
@@ -404,7 +408,7 @@ void testCompositor(const std::string &dir)
     exportpipe::InsetClipJob bad = j;
     bad.path = dir + "/missing.mp4";
     exportpipe::InsetCompositor comp2({bad}, W, H);
-    CHECK(!comp2.composite(1500, y.data(), W, uv.data(), W, err) && !err.empty());
+    CHECK(!comp2.composite(exportpipe::TimelineTime::ofMs(1500), y.data(), W, uv.data(), W, err) && !err.empty());
 }
 
 // NV12 frames (Format::Nv12): via RGBA for a small clip (untagged, so
@@ -439,22 +443,22 @@ void testConversionErrors(const std::string &dir)
         CHECK(run.frames == all && run.inOrder);
     }
 
-    std::printf("  a failed conversion in frameAt(): null, then the frame due\n");
+    std::printf("  a failed conversion in frameAtUs(): null, then the frame due\n");
     for (Format format : {Format::Rgba, Format::Nv12}) {
         exportpipe::FlatVideoReader r;
         ffmpegfaults::reset();
         CHECK(r.open(path, err));
         r.setOutputFormat(format);
-        CHECK(r.frameAt(0));
+        CHECK(r.frameAtUs(0));
         // Every conversion fails: the direct NV12 one and the one through
         // RGBA alike.
         ffmpegfaults::arm(Call::Scale, 0, AVERROR(ENOMEM), -1);
-        CHECK(!r.frameAt(400));
+        CHECK(!r.frameAtUs(400000));
         CHECK(r.lastError().find(format == Format::Nv12 ? "to NV12" : "to RGBA") !=
               std::string::npos);
-        CHECK(!r.frameAt(400)); // not cached as converted
+        CHECK(!r.frameAtUs(400000)); // not cached as converted
         ffmpegfaults::reset();
-        const exportpipe::VideoFrame *f = r.frameAt(400);
+        const exportpipe::VideoFrame *f = r.frameAtUs(400000);
         CHECK(f && f->ptsMs == 400 && r.lastError().empty());
         if (f && format == Format::Rgba)
             CHECK(frameIndexOf(*f) == 10);
@@ -470,14 +474,14 @@ void testReaderNv12(const std::string &dir)
     exportpipe::FlatVideoReader r;
     CHECK(r.open(dir + "/solid.mp4", err));
     r.setOutputFormat(exportpipe::FlatVideoReader::Format::Nv12);
-    const exportpipe::VideoFrame *f = r.frameAt(1000);
+    const exportpipe::VideoFrame *f = r.frameAtUs(1000000);
     CHECK(f && f->width == kW && f->height == kH && f->nv12.size() >= size_t(kW) * kH * 3 / 2);
     if (f) {
         CHECK(std::abs(f->nv12[size_t(kH / 2) * kW + kW / 2] - lumaFor(25)) <= 2); // grey
         CHECK(std::abs(f->nv12[size_t(kW) * kH + size_t(kH / 4) * kW + kW / 2] - 128) <= 2);
     }
     r.setOutputSize(161, 91); // NV12 wants even
-    f = r.frameAt(1000);
+    f = r.frameAtUs(1000000);
     CHECK(f && f->width == 162 && f->height == 92);
 
     const std::string hd = dir + "/hd.mp4";
@@ -490,7 +494,7 @@ void testReaderNv12(const std::string &dir)
     exportpipe::FlatVideoReader h;
     CHECK(h.open(hd, err));
     h.setOutputFormat(exportpipe::FlatVideoReader::Format::Nv12);
-    f = h.frameAt(0);
+    f = h.frameAtUs(0);
     CHECK(f && f->width == 1280 && f->height == 720);
     if (f) {
         CHECK(std::abs(f->nv12[360 * 1280 + 100] - 40) <= 3);
@@ -501,7 +505,7 @@ void testReaderNv12(const std::string &dir)
     exportpipe::FlatVideoReader rot;
     CHECK(rot.open(dir + "/rot90.mp4", err));
     rot.setOutputFormat(exportpipe::FlatVideoReader::Format::Nv12);
-    f = rot.frameAt(0);
+    f = rot.frameAtUs(0);
     CHECK(f && f->width == kH && f->height == kW);
     if (f) { // the dark left half on top
         CHECK(f->nv12[size_t(20) * kH + kH / 2] < 60);
@@ -526,7 +530,7 @@ void testFullFrameCopy(const std::string &dir)
     std::string err;
     std::vector<uint8_t> y(size_t(W) * H, 200), uv(size_t(W) * H / 2, 60);
     exportpipe::InsetCompositor comp({job(dir + "/solid.mp4", double(kW) / kH, false)}, W, H);
-    CHECK(comp.composite(1000, y.data(), W, uv.data(), W, err));
+    CHECK(comp.composite(exportpipe::TimelineTime::ofMs(1000), y.data(), W, uv.data(), W, err));
     for (const size_t at : {size_t(0), size_t(W - 1), size_t(H / 2) * W + W / 2, size_t(H) * W - 1})
         CHECK(std::abs(y[at] - lumaFor(25)) <= 3);
     CHECK(std::abs(uv[0] - 128) <= 2 && std::abs(uv.back() - 128) <= 2);
@@ -535,10 +539,10 @@ void testFullFrameCopy(const std::string &dir)
     exportpipe::InsetClipJob g = job(dir + "/solid.mp4", double(kW) / kH, false);
     g.colorGrade.adjust = {1.0f, 0.0f, 0.0f, 0.0f}; // +1 EV
     exportpipe::InsetCompositor graded({g}, W, H);
-    CHECK(graded.composite(1000, y.data(), W, uv.data(), W, err));
+    CHECK(graded.composite(exportpipe::TimelineTime::ofMs(1000), y.data(), W, uv.data(), W, err));
     std::vector<uint8_t> rgb(size_t(W) * H * 3, 0);
     exportpipe::InsetCompositor gradedRgb({g}, W, H);
-    CHECK(gradedRgb.compositeRgb(1000, rgb.data(), W * 3, 3, err));
+    CHECK(gradedRgb.compositeRgb(exportpipe::TimelineTime::ofMs(1000), rgb.data(), W * 3, 3, err));
     const uint8_t *px = &rgb[(size_t(H / 2) * W + W / 2) * 3];
     const double luma709 =
         16.0 + 219.0 * (0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2]) / 255.0;
@@ -559,7 +563,7 @@ void testFullFrameCopy(const std::string &dir)
     CHECK(testmedia::writeVideo(tall, spec));
     exportpipe::InsetCompositor fill({job(tall, 4.0 / 3.0, true)}, W, H);
     std::fill(y.begin(), y.end(), 0);
-    CHECK(fill.composite(0, y.data(), W, uv.data(), W, err));
+    CHECK(fill.composite(exportpipe::TimelineTime::ofMs(0), y.data(), W, uv.data(), W, err));
     CHECK(std::abs(y[W / 2] - 40) <= 4 && std::abs(y[size_t(170) * W + W / 2] - 40) <= 4);
     CHECK(std::abs(y[size_t(190) * W + W / 2] - 220) <= 4);
     CHECK(std::abs(y[size_t(H - 1) * W + W / 2] - 220) <= 4);
@@ -784,10 +788,11 @@ struct FakePicture : exportpipe::PictureSource {
         w = width;
         h = height;
     }
-    const exportpipe::VideoFrame *frameAt(int64_t ms) override
+    const exportpipe::VideoFrame *frameAtUs(int64_t us) override
     {
-        asked->push_back(ms);
-        frame.ptsMs = ms;
+        asked->push_back(us);
+        frame.ptsMs = us / 1000;
+        frame.ptsUs = us;
         frame.width = w;
         frame.height = h;
         frame.rgba.assign(size_t(w) * h * 4, 255); // white
@@ -820,7 +825,7 @@ void testPictureLayer()
     const auto lumaAt = [&](int64_t ms) {
         std::fill(y.begin(), y.end(), 16); // black
         std::fill(uv.begin(), uv.end(), 128);
-        CHECK(comp.composite(ms, y.data(), W, uv.data(), W, err));
+        CHECK(comp.composite(exportpipe::TimelineTime::ofMs(ms), y.data(), W, uv.data(), W, err));
         return int(y[size_t(H / 2) * W + W / 2]);
     };
     CHECK(lumaAt(500) == 16 && asked.empty()); // before it
@@ -828,11 +833,11 @@ void testPictureLayer()
     CHECK(std::abs(lumaAt(1500) - (16 + 219 / 4)) <= 2); // a quarter
     CHECK(std::abs(lumaAt(1990) - (16 + 219 / 2)) <= 3); // nearly half at its end
     CHECK(lumaAt(2000) == 16); // past it
-    CHECK(asked.size() >= 2 && asked.back() == 4000 + 990 * 2); // its source time
+    CHECK(asked.size() >= 2 && asked.back() == (4000 + 990 * 2) * 1000); // its source time
     exportpipe::InsetClipJob bad = j;
     bad.picture = [&asked] { return std::make_unique<FakePicture>(&asked, false); };
     exportpipe::InsetCompositor failing({bad}, W, H);
-    CHECK(!failing.composite(1500, y.data(), W, uv.data(), W, err));
+    CHECK(!failing.composite(exportpipe::TimelineTime::ofMs(1500), y.data(), W, uv.data(), W, err));
     CHECK(err.find("/c/b.insv") != std::string::npos && err.find("no such clip") != std::string::npos);
 }
 
@@ -923,7 +928,7 @@ void testMotionLayer()
     const auto lit = [&](int64_t ms) {
         std::fill(y.begin(), y.end(), 16);
         std::fill(uv.begin(), uv.end(), 128);
-        CHECK(comp.composite(ms, y.data(), W, uv.data(), W, err));
+        CHECK(comp.composite(exportpipe::TimelineTime::ofMs(ms), y.data(), W, uv.data(), W, err));
         int n = 0;
         for (uint8_t v : y)
             n += v > 128;
@@ -954,6 +959,54 @@ void testFitted()
     CHECK(inset::fitted(16.0 / 9.0, 1080, 1920, true).width > 3.0f);
 }
 
+// A 29.97 fps clip in a 29.97 fps export, trimmed on a frame and placed on
+// an output frame -- both whole ms, so up to a ms off the frame times:
+// every output frame shows the next source frame, none twice, none
+// skipped. (Compared in ms, the two roundings tipped the frames to either
+// side of the edge by turns.)
+void testConformAtOutputRate(const std::string &dir)
+{
+    std::printf("  a clip at the output's frame rate: each frame once\n");
+    const std::string path = dir + "/ntsc.mp4";
+    testmedia::VideoSpec spec;
+    spec.width = kW;
+    spec.height = kH;
+    spec.fps = 30000;
+    spec.fpsDen = 1001;
+    spec.frames = kFrames;
+    spec.luma = [](int i, int, int) { return uint8_t(lumaFor(i)); };
+    CHECK(testmedia::writeVideo(path, spec));
+    const double fps = 30000.0 / 1001.0;
+    const auto frameMs = [fps](int64_t k) { return std::llround(k * 1000.0 / fps); };
+    std::vector<uint8_t> y(size_t(kW) * kH), uv(size_t(kW) * kH / 2);
+    for (int in = 1; in <= 6; ++in) {
+        for (int at = 1; at <= 6; ++at) {
+            exportpipe::InsetClipJob j;
+            j.path = path;
+            j.startMs = frameMs(at);
+            j.trimInMs = frameMs(in);
+            j.trimOutMs = frameMs(in + 30);
+            j.aspect = double(kW) / kH;
+            j.lookAt = [](int64_t) { return inset::fitted(double(kW) / kH, kW, kH, false); };
+            exportpipe::InsetCompositor comp({j}, kW, kH, fps);
+            std::string err;
+            int bad = 0;
+            for (int n = 0; n < 30; ++n) {
+                std::fill(y.begin(), y.end(), 16);
+                std::fill(uv.begin(), uv.end(), 128);
+                CHECK(comp.composite(exportpipe::TimelineTime::ofFrame(at + n, fps), y.data(), kW,
+                                     uv.data(), kW, err));
+                const int shown = int(std::lround((y[size_t(kH / 2) * kW + kW / 2] - 20.0) / 4.0));
+                bad += shown != in + n;
+            }
+            if (bad)
+                std::printf("    in at frame %d, on output frame %d: %d of 30 frames wrong\n", in,
+                            at, bad);
+            CHECK(bad == 0);
+        }
+    }
+}
+
 int main()
 {
     const char *tmp = std::getenv("TMPDIR");
@@ -969,6 +1022,7 @@ int main()
     testReaderNv12(dir);
     testConversionErrors(dir);
     testFullFrameCopy(dir);
+    testConformAtOutputRate(dir);
     testColorGrade();
     testEffects();
     testLook();
@@ -978,7 +1032,7 @@ int main()
     testMotion();
     testMotionLayer();
     if (!std::getenv("INSET_TEST_KEEP")) {
-        for (const char *f : {"/solid.mp4", "/rot90.mp4", "/hd.mp4", "/tall.mp4"})
+        for (const char *f : {"/solid.mp4", "/rot90.mp4", "/hd.mp4", "/tall.mp4", "/ntsc.mp4"})
             std::remove((dir + f).c_str());
         std::remove(dir.c_str());
     } else {

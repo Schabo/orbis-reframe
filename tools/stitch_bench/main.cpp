@@ -507,8 +507,8 @@ public:
         const double want = double(clipMs) - startMs_;
         if (want < -frameMs_ / 2)
             return {};
-        const exportpipe::VideoFrame* f = reader_.frameAt(std::llround(want + frameMs_ / 2));
-        if (!f || std::fabs(double(f->ptsMs) - want) > frameMs_ / 2 + 1)
+        const exportpipe::VideoFrame* f = reader_.frameAtUs(std::llround(want * 1000.0)); // nearest
+        if (!f || std::fabs(double(f->ptsUs) * 1e-3 - want) > frameMs_ / 2 + 1)
             return {};
         return cv::Mat(f->height, f->width, CV_8UC4, const_cast<uint8_t*>(f->rgba.data()));
     }

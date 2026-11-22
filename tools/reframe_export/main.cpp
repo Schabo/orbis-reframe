@@ -572,7 +572,8 @@ int main(int argc, char** argv)
             std::vector<exportpipe::InsetClipJob>{j}, a.outW, a.outH, fps);
         writer.setFrameHook([insets, fps](int64_t k, uint8_t* y, int ys, uint8_t* uv, int uvs,
                                           bool p010, std::string& e) {
-            return insets->composite(std::llround(k * 1000.0 / fps), y, ys, uv, uvs, e, p010);
+            return insets->composite(exportpipe::TimelineTime::ofFrame(k, fps), y, ys, uv, uvs, e,
+                                     p010);
         });
         std::printf("inset:  %s (%dx%d, %lld ms) from %lld ms\n", a.insetPath.c_str(),
                     info.width, info.height, static_cast<long long>(info.durationMs),

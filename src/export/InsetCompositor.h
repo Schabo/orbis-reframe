@@ -70,6 +70,26 @@ struct InsetClipJob {
     int64_t endMs() const { return startMs + spanMs(); }
 };
 
+// An output frame's timeline time, twice. `ms` rounded: where the clips'
+// spans, fades and keyframes are placed, so a cut lands on the same frame
+// for the layers as for the main track (whose frames are given out by
+// their rounded times too). `us` exact: which of a clip's pictures shows
+// (PictureSource::frameAtUs) -- rounded, the output frames of a clip on
+// the output's frame grid land either side of its frames by turns, and the
+// clip repeats and drops frames.
+struct TimelineTime {
+    int64_t ms = 0;
+    int64_t us = 0;
+    // Output frame `k` at `fps`.
+    static TimelineTime ofFrame(int64_t k, double fps)
+    {
+        const double frameMs = 1000.0 / fps;
+        return {std::llround(k * frameMs), std::llround(k * frameMs * 1000.0)};
+    }
+    // A time that is a whole ms (a screenshot's).
+    static TimelineTime ofMs(int64_t ms) { return {ms, ms * 1000}; }
+};
+
 class InsetCompositor {
 public:
     // `jobs` bottom-most first (drawn in that order). `fps`: the output's
@@ -81,15 +101,15 @@ public:
 
     bool empty() const { return m_jobs.empty(); }
 
-    // Blend every inset showing at timeline time `timelineMs` into an NV12
+    // Blend every inset showing at timeline time `at` into an NV12
     // frame (BT.709 limited range, like the export's) -- or, with `p010`, a
     // P010 one (16-bit samples, the 10-bit code in the high bits; strides in
     // bytes). False (with `err`) when a clip's file can't be read.
-    bool composite(int64_t timelineMs, uint8_t *y, int yStride, uint8_t *uv, int uvStride,
+    bool composite(const TimelineTime &at, uint8_t *y, int yStride, uint8_t *uv, int uvStride,
                    std::string &err, bool p010 = false);
     // The same into a packed RGB (bytesPerPixel 3) or RGBA (4) picture of
     // the output size -- the screenshot button's still.
-    bool compositeRgb(int64_t timelineMs, uint8_t *rgb, int stride, int bytesPerPixel,
+    bool compositeRgb(const TimelineTime &at, uint8_t *rgb, int stride, int bytesPerPixel,
                       std::string &err);
 
     // Blend one RGBA picture (picW x picH, already the rect's size or any
@@ -111,7 +131,7 @@ public:
 
 private:
     struct State;
-    // The picture to draw for job `i` at `timelineMs` and where: false if
+    // The picture to draw for job `i` at `at` and where: false if
     // it isn't showing (or on error: `err` set). With `nv12` (the output
     // is), one that's a plain copy (opaque, square, on whole even pixels)
     // comes as NV12 of the rect's size, to copy; else RGBA, to blend.
@@ -124,7 +144,7 @@ private:
         float opacity = 0.0f;
         uint32_t borderRgb = 0;
     };
-    bool layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &layer, std::string &err);
+    bool layerAt(size_t i, const TimelineTime &at, bool nv12, Layer &layer, std::string &err);
     std::vector<InsetClipJob> m_jobs;
     std::vector<std::unique_ptr<State>> m_states;
     int m_outW, m_outH;

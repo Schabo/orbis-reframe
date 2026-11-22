@@ -54,7 +54,7 @@ public:
 
     double fps() const override { return m_fps; }
     void setOutputSize(int width, int height) override;
-    const exportpipe::VideoFrame *frameAt(int64_t ms) override;
+    const exportpipe::VideoFrame *frameAtUs(int64_t us) override;
     bool readNext(exportpipe::VideoFrame &out) override;
     const std::string &lastError() const override { return m_error; }
 
@@ -66,7 +66,7 @@ private:
     std::unique_ptr<stitch::NativeStitchSource> m_src;
     double m_fps = 30.0;
     int m_w = 1280, m_h = 720;
-    exportpipe::VideoFrame m_cur;  // what frameAt() handed out last
+    exportpipe::VideoFrame m_cur;  // what frameAtUs() handed out last
     bool m_haveCur = false;
     exportpipe::VideoFrame m_next; // read ahead of it, not handed out yet
     bool m_haveNext = false;

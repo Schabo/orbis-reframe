@@ -45,6 +45,7 @@ LayerLease::Render render()
             return false;
         ++g_reads;
         out.ptsMs = f.timestamp_ms;
+        out.ptsUs = f.timestamp_us;
         return true;
     };
 }

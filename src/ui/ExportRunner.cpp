@@ -95,7 +95,8 @@ void ExportRunner::startStill(Still still)
         if (!img.isNull() && !s.insets.empty()) {
             exportpipe::InsetCompositor comp(s.insets, s.width, s.height, s.fps);
             std::string e;
-            if (!comp.compositeRgb(s.timelineMs, img.bits(), int(img.bytesPerLine()), 3, e))
+            if (!comp.compositeRgb(exportpipe::TimelineTime::ofMs(s.timelineMs), img.bits(),
+                                   int(img.bytesPerLine()), 3, e))
                 err = QString::fromStdString(e);
         }
         if (img.isNull() && err.isEmpty())

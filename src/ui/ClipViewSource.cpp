@@ -131,35 +131,37 @@ bool ClipViewSource::readFrom(stitch::NativeStitchSource &src, exportpipe::Video
     if (f.rgba.empty())
         return false;
     out.ptsMs = f.timestamp_ms;
+    out.ptsUs = f.timestamp_us;
     out.width = f.width;
     out.height = f.height;
     out.rgba = std::move(f.rgba);
     return true;
 }
 
-const exportpipe::VideoFrame *ClipViewSource::frameAt(int64_t ms)
+const exportpipe::VideoFrame *ClipViewSource::frameAtUs(int64_t us)
 {
     if (!m_src)
         return nullptr;
-    const double halfFrame = 500.0 / m_fps;
+    const double halfFrameUs = 5e5 / m_fps;
     // Behind the frame shown, or well ahead of it: jump there. The source
     // seeks to the first frame at or after a time, so half a frame early:
-    // that's the frame whose window holds `ms`, as below. At `ms` itself it
+    // that's the frame whose window holds `us`, as below. At `us` itself it
     // can be the next one, which at a transition layer's end lies past the
-    // layer's span.
-    if (!m_haveCur || ms + halfFrame < m_cur.ptsMs || ms > m_cur.ptsMs + 1000) {
+    // layer's span. The seek is to the ms: the loop below settles on the
+    // exact frame.
+    if (!m_haveCur || us + halfFrameUs < m_cur.ptsUs || us > m_cur.ptsUs + 1000000) {
         m_haveCur = m_haveNext = false;
-        if (!m_src->SeekTo(std::max<int64_t>(0, std::llround(ms - halfFrame)))) {
+        if (!m_src->SeekTo(std::max<int64_t>(0, int64_t(std::floor((us - halfFrameUs) / 1000.0))))) {
             m_error = m_src->GetLastError();
             return nullptr;
         }
         if (!read(m_cur))
             return nullptr;
         m_haveCur = true;
-        return &m_cur;
     }
     // Else on: the frame whose time window [pts - half, pts + half) holds
-    // `ms`, as the export conforms the main clip's.
+    // `us`, as the export conforms the main clip's -- in exact times, as
+    // there.
     for (;;) {
         if (!m_haveNext) {
             if (!read(m_next)) {
@@ -172,7 +174,7 @@ const exportpipe::VideoFrame *ClipViewSource::frameAt(int64_t ms)
             }
             m_haveNext = true;
         }
-        if (m_next.ptsMs - halfFrame > ms)
+        if (m_next.ptsUs - halfFrameUs > us)
             break;
         std::swap(m_cur, m_next);
         m_haveNext = false;

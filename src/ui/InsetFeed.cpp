@@ -221,13 +221,15 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
                 out.push_back(std::move(d));
                 continue;
             }
+            // The frame whose window [time - half, time + half) holds `ms`,
+            // as the export picks a layer's (FlatVideoReader::frameAtUs).
+            const double tol = s.frameMs / 2.0;
             const size_t before = s.queue.size();
-            while (s.queue.size() >= 2 && s.queue[1].timelineMs <= ms)
+            while (s.queue.size() >= 2 && s.queue[1].timelineMs <= ms + tol)
                 s.queue.pop_front();
             wake |= s.queue.size() != before;
             // Does the queue hold the frame for `ms`? The first frame of a
             // clip may start a hair after the clip on the timeline.
-            const double tol = s.frameMs / 2.0;
             bool covered = false;
             if (!s.queue.empty() && s.queue.front().timelineMs <= ms + tol) {
                 const qint64 slack = playing ? kBehindMs : std::llround(s.frameMs * 1.5);
@@ -352,9 +354,10 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
     bool waiting = false;
     if (anchor) {
         const qint64 at = std::clamp(target, clip.startMs, std::max(clip.startMs, clip.endMs() - 1));
-        const qint64 srcMs = clip.sourceAt(at);
-        if (const exportpipe::VideoFrame *v = s.picture ? s.picture->frameAt(srcMs)
-                                                        : s.reader->frameAt(srcMs)) {
+        // The clock is in whole ms (playback isn't on a frame grid).
+        const qint64 srcUs = clip.sourceAt(at) * 1000;
+        if (const exportpipe::VideoFrame *v = s.picture ? s.picture->frameAtUs(srcUs)
+                                                        : s.reader->frameAtUs(srcUs)) {
             f.timelineMs = clip.timelineAt(v->ptsMs);
             f.width = v->width;
             f.height = v->height;

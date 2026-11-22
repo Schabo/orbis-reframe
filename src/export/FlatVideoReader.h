@@ -19,6 +19,7 @@ namespace exportpipe {
 
 struct VideoFrame {
     int64_t ptsMs = -1; // source time of the frame, from the stream's start
+    int64_t ptsUs = -1; // the same, exact: which frame shows at a time (frameAtUs)
     int width = 0;
     int height = 0;
     std::vector<uint8_t> rgba; // Format::Rgba: width * height * 4, opaque (alpha 255)
@@ -88,11 +89,17 @@ public:
     // error (lastError() says which).
     bool readNext(VideoFrame &out);
 
-    // The frame showing at source time `ms`: decodes forward from the current
-    // position, and seeks only when `ms` is behind it or well ahead. The
-    // pointer stays valid until the next call. Null if there is no frame (an
-    // empty file), or on an error -- never an earlier frame in its place.
-    const VideoFrame *frameAt(int64_t ms);
+    // The frame showing at source time `us`: the one whose window
+    // [pts - half a frame, pts + half) holds it, as the export conforms its
+    // main clips (the first frame before the first window). Decodes forward
+    // from the current position, and seeks only when `us` is behind it or
+    // well ahead. The pointer stays valid until the next call. Null if there
+    // is no frame (an empty file), or on an error -- never an earlier frame
+    // in its place. In microseconds, as the frames' own times are compared:
+    // in ms, rounding both, the output frames of a clip land either side of
+    // the edge between two frames by turns, and a clip at the output's rate
+    // repeats and drops frames.
+    const VideoFrame *frameAtUs(int64_t us);
 
     // Why the last open, seek or read failed; empty when it succeeded or
     // only found the end of the file. A read after a failed one carries on

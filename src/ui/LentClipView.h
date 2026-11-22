@@ -25,7 +25,7 @@ public:
     bool open(std::string &err) override;
     double fps() const override { return m_view->fps(); }
     void setOutputSize(int width, int height) override { m_view->setOutputSize(width, height); }
-    const exportpipe::VideoFrame *frameAt(int64_t ms) override;
+    const exportpipe::VideoFrame *frameAtUs(int64_t us) override;
     bool readNext(exportpipe::VideoFrame &out) override;
     bool waiting() const override { return m_waiting; }
     const std::string &lastError() const override;
@@ -33,8 +33,8 @@ public:
 private:
     // Ask playback for its source from `fromMs` on (leaving the lease held).
     void ask(int64_t fromMs);
-    // From here on its own source: the frame showing at `ms`.
-    const exportpipe::VideoFrame *fallBack(int64_t ms);
+    // From here on its own source: the frame showing at `us`.
+    const exportpipe::VideoFrame *fallBack(int64_t us);
 
     std::shared_ptr<ClipViewSource> m_view; // shared with the lease's render
     std::shared_ptr<LayerLender> m_lender;
@@ -45,10 +45,10 @@ private:
     std::shared_ptr<LayerLease> m_lease;
     bool m_own = false; // reads its own source (m_view's)
     bool m_waiting = false;
-    exportpipe::VideoFrame m_cur; // what frameAt() handed out last
+    exportpipe::VideoFrame m_cur; // what frameAtUs() handed out last
     bool m_haveCur = false;
     exportpipe::VideoFrame m_next; // read ahead of it
     bool m_haveNext = false;
-    int64_t m_lastMs = -1; // the newest frame handed out, -1 before one
+    int64_t m_lastUs = -1; // the newest frame handed out (exact time), -1 before one
     std::string m_error;
 };

@@ -319,9 +319,10 @@ void ReframeExportController::run(const Request &req)
     auto insets = std::make_shared<exportpipe::InsetCompositor>(req.insets, req.outWidth,
                                                                 req.outHeight, req.fps);
     if (!insets->empty())
-        writer->setFrameHook([insets, outFrameMs](int64_t k, uint8_t *y, int ys, uint8_t *uv,
-                                                  int uvs, bool p010, std::string &e) {
-            return insets->composite(std::llround(k * outFrameMs), y, ys, uv, uvs, e, p010);
+        writer->setFrameHook([insets, fps = req.fps](int64_t k, uint8_t *y, int ys, uint8_t *uv,
+                                                     int uvs, bool p010, std::string &e) {
+            return insets->composite(exportpipe::TimelineTime::ofFrame(k, fps), y, ys, uv, uvs, e,
+                                     p010);
         });
     // Said in the "Export complete" message: a 10-bit export that is 8-bit
     // after all, or has 360 clips that only got 8 bits (no fused GPU pass).

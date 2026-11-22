@@ -253,9 +253,10 @@ void InsetCompositor::blendP010(const uint8_t *rgba, int picW, int picH, const i
                           uvStride, outW, outH);
 }
 
-bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &layer,
+bool InsetCompositor::layerAt(size_t i, const TimelineTime &at, bool nv12, Layer &layer,
                               std::string &err)
 {
+    const int64_t timelineMs = at.ms;
     const InsetClipJob &j = m_jobs[i];
     State &s = *m_states[i];
     if (timelineMs >= j.endMs()) {
@@ -267,6 +268,9 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
         return false;
     const int64_t localMs = timelineMs - j.startMs;
     const int64_t srcMs = j.trimInMs + static_cast<int64_t>(std::llround(localMs * j.speed));
+    // The picture's: exact.
+    const int64_t srcUs =
+        j.trimInMs * 1000 + std::llround(double(at.us - j.startMs * 1000) * j.speed);
     inset::Look look = j.lookAt ? j.lookAt(srcMs) : inset::Look{};
     double aspect = j.aspect;
     Still still;
@@ -303,7 +307,7 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
         }
         s.picture->setOutputSize(std::max(4, static_cast<int>(std::lround(rect.w)) & ~3),
                                  std::max(2, static_cast<int>(std::lround(rect.h)) & ~1));
-        const VideoFrame *f = s.picture->frameAt(srcMs);
+        const VideoFrame *f = s.picture->frameAtUs(srcUs);
         if (!f) {
             if (!s.picture->lastError().empty())
                 err = j.path + ": " + s.picture->lastError();
@@ -338,7 +342,7 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
             std::min(info.width, std::max(2, static_cast<int>(std::lround(rect.w)))),
             std::min(info.height, std::max(2, static_cast<int>(std::lround(rect.h)))));
     }
-    const VideoFrame *f = s.reader->frameAt(srcMs);
+    const VideoFrame *f = s.reader->frameAtUs(srcUs);
     if (!f) {
         if (!s.reader->lastError().empty())
             err = j.path + ": " + s.reader->lastError();
@@ -393,12 +397,12 @@ bool InsetCompositor::layerAt(size_t i, int64_t timelineMs, bool nv12, Layer &la
     return true;
 }
 
-bool InsetCompositor::composite(int64_t timelineMs, uint8_t *y, int yStride, uint8_t *uv,
+bool InsetCompositor::composite(const TimelineTime &at, uint8_t *y, int yStride, uint8_t *uv,
                                 int uvStride, std::string &err, bool p010)
 {
     for (size_t i = 0; i < m_jobs.size(); ++i) {
         Layer l;
-        if (!layerAt(i, timelineMs, true, l, err)) {
+        if (!layerAt(i, at, true, l, err)) {
             if (!err.empty())
                 return false;
         } else if (l.nv12) {
@@ -421,12 +425,12 @@ bool InsetCompositor::composite(int64_t timelineMs, uint8_t *y, int yStride, uin
     return true;
 }
 
-bool InsetCompositor::compositeRgb(int64_t timelineMs, uint8_t *rgb, int stride,
+bool InsetCompositor::compositeRgb(const TimelineTime &at, uint8_t *rgb, int stride,
                                    int bytesPerPixel, std::string &err)
 {
     for (size_t i = 0; i < m_jobs.size(); ++i) {
         Layer l;
-        if (layerAt(i, timelineMs, false, l, err))
+        if (layerAt(i, at, false, l, err))
             blendRgb(l.rgba, l.w, l.h, l.rect, l.opacity, l.borderRgb, rgb, stride, bytesPerPixel,
                      m_outW, m_outH);
         else if (!err.empty())
