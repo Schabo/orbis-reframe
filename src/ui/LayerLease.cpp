@@ -1,5 +1,6 @@
 #include "LayerLease.h"
 
+#include <cmath>
 #include <utility>
 
 LayerLease::LayerLease(int clipId, int64_t fromMs, int64_t endMs, bool leadIn, Render render,
@@ -56,20 +57,25 @@ bool LayerLease::nextIsLayers() const
     return !m_overran && !m_failed && next < m_endMs - 1.0;
 }
 
-bool LayerLease::readOne(exportpipe::VideoFrame &out)
+LayerLease::Next LayerLease::readOne(exportpipe::VideoFrame &out)
 {
     if (!m_render || !m_src || !nextIsLayers())
-        return false;
+        return Next::End;
     if (!m_render(*m_src, out)) {
+        if (m_src->GetLastFailure() == stitch::IStitchSource::ReadFailure::TooManyBlurRegions) {
+            // Left out, not the end: counted as read, at the time it was due.
+            m_lastMs = m_lastMs < 0 ? m_fromMs : std::llround(m_lastMs + m_frameMs);
+            return Next::Refused;
+        }
         m_failed = true;
-        return false;
+        return Next::End;
     }
     m_lastMs = out.ptsMs;
     if (out.ptsMs >= m_endMs) {
         m_overran = true; // playback's frame: dropped, and playback seeks
-        return false;
+        return Next::End;
     }
-    return true;
+    return Next::Frame;
 }
 
 std::shared_ptr<stitch::IStitchSource> LayerLease::takeBack(bool finish, bool &atEnd)
@@ -77,11 +83,17 @@ std::shared_ptr<stitch::IStitchSource> LayerLease::takeBack(bool finish, bool &a
     std::lock_guard<std::mutex> lk(m_mx);
     const bool lent = m_state == State::Lent || m_state == State::Left;
     if (finish && m_state == State::Lent) {
-        while (m_buffer.size() < kMaxBuffered) {
+        // A frame left out on the way is just skipped: the frame before it
+        // stays up. Playback waits at the cut meanwhile, so a run of them
+        // doesn't read on to the layer's end: the layer reads its own after.
+        for (size_t reads = 0; m_buffer.size() < kMaxBuffered && reads < 2 * kMaxBuffered;
+             ++reads) {
             exportpipe::VideoFrame f;
-            if (!readOne(f))
+            const Next got = readOne(f);
+            if (got == Next::End)
                 break;
-            m_buffer.push_back(std::move(f));
+            if (got == Next::Frame)
+                m_buffer.push_back(std::move(f));
         }
     }
     m_reachedEnd = lent && !m_overran && !m_failed && !nextIsLayers();
@@ -109,9 +121,8 @@ LayerLease::Next LayerLease::next(exportpipe::VideoFrame &out)
     case State::Lent:
         break;
     }
-    if (readOne(out))
-        return Next::Frame;
-    return Next::End; // the layer's last frame was read (or a read failed)
+    // End: the layer's last frame was read (or a read failed).
+    return readOne(out);
 }
 
 void LayerLease::leave()

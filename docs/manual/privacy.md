@@ -124,6 +124,8 @@ has more, orbis-reframe doesn't blur only some of them:
 
 - Playback leaves the frame out and keeps the picture before it. The edit
   toolbar names the clip, the number of plates and the time in the file.
+  In a [crossfade](transitions.md), the clip blending in or out does the
+  same.
 - An export stops at that frame with the same message.
 
 Remove blurs you don't need in those frames (see above), or trim the

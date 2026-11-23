@@ -42,6 +42,13 @@ public:
     // (its stitch is being got ready elsewhere), not because it ended: the
     // reader asks again once told (playback's InsetFeed::poke).
     virtual bool waiting() const { return false; }
+    // frameAtUs() / readNext() gave nothing because that frame was left out
+    // -- it has more privacy regions than the stitch blurs
+    // (stitch::IStitchSource::ReadFailure::TooManyBlurRegions) -- not
+    // because the source ended or failed: it is past that frame, and reading
+    // on gives the next. Playback holds the picture before it; the export
+    // stops there (lastError() names it).
+    virtual bool refused() const { return false; }
     virtual const std::string &lastError() const = 0;
 };
 

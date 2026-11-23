@@ -1557,6 +1557,160 @@ void testTransitions()
           mb->fadeInFrames == 500 * 48);
 }
 
+// A transition's 360 layer whose frames in [kBusyFromMs, kBusyToMs) have
+// more privacy regions than the blur takes (exportpipe::PictureSource::
+// refused), as ClipViewSource reads them: frames every 40 ms, its picture
+// the frame's number.
+class BusyPicture : public exportpipe::PictureSource {
+public:
+    static constexpr int64_t kFrameUs = 40000, kBusyFromMs = 1000, kBusyToMs = 1480,
+                             kEndMs = 3000;
+    BusyPicture(std::atomic<int> &reads, std::atomic<int> &seeks)
+        : m_reads(reads), m_seeks(seeks)
+    {
+    }
+    bool open(std::string &) override { return true; }
+    double fps() const override { return 1e6 / kFrameUs; }
+    void setOutputSize(int, int) override {}
+    const exportpipe::VideoFrame *frameAtUs(int64_t us) override
+    {
+        m_refused = false;
+        const int64_t half = kFrameUs / 2;
+        if (!m_haveCur || us + half < m_cur.ptsUs || us > m_cur.ptsUs + 1000000) {
+            m_haveCur = m_haveNext = false;
+            m_pos = std::max<int64_t>(0, (us - half + kFrameUs - 1) / kFrameUs);
+            ++m_seeks;
+            if (!read(m_cur))
+                return nullptr;
+            m_haveCur = true;
+        }
+        for (;;) {
+            if (!m_haveNext) {
+                if (!read(m_next)) {
+                    if (m_refused)
+                        return nullptr;
+                    break;
+                }
+                m_haveNext = true;
+            }
+            if (m_next.ptsUs - half > us)
+                break;
+            std::swap(m_cur, m_next);
+            m_haveNext = false;
+        }
+        return &m_cur;
+    }
+    bool readNext(exportpipe::VideoFrame &out) override
+    {
+        m_refused = false;
+        if (m_haveNext) {
+            out = std::move(m_next);
+            m_haveNext = false;
+            return true;
+        }
+        return read(out);
+    }
+    bool refused() const override { return m_refused; }
+    const std::string &lastError() const override { return m_error; }
+
+private:
+    bool read(exportpipe::VideoFrame &out)
+    {
+        ++m_reads;
+        const int64_t ms = m_pos++ * kFrameUs / 1000;
+        if (ms >= kEndMs)
+            return false;
+        if (ms >= kBusyFromMs && ms < kBusyToMs) {
+            m_refused = true;
+            m_error = "300 privacy regions";
+            return false;
+        }
+        out.ptsMs = ms;
+        out.ptsUs = ms * 1000;
+        out.width = out.height = 2;
+        out.rgba.assign(16, uint8_t(ms * 1000 / kFrameUs));
+        return true;
+    }
+    std::atomic<int> &m_reads, &m_seeks;
+    int64_t m_pos = 0;
+    exportpipe::VideoFrame m_cur, m_next;
+    bool m_haveCur = false, m_haveNext = false, m_refused = false;
+    std::string m_error;
+};
+
+// Its layer in playback: paused on a refused frame the picture before stays
+// up and nothing more is read (the frames after aren't the playhead's);
+// playing, it reads on past them, as the main clip does -- not taken for
+// the clip's end.
+void testLayerRefusedFrames()
+{
+    std::atomic<int> reads{0}, seeks{0};
+    InsetFeed::Clip c;
+    c.id = 1;
+    c.path = "/c/busy.insv";
+    c.trimOutMs = BusyPicture::kEndMs;
+    c.picture = [&] { return std::make_unique<BusyPicture>(reads, seeks); };
+    c.pictureKey = "busy";
+    InsetFeed player;
+    player.setClips({c});
+    // The frame number drawn at `ms`, once there is one (-1 if none in time).
+    auto shown = [&](qint64 ms, bool playing) {
+        int n = -1;
+        for (int i = 0; i < 200 && n < 0; ++i) {
+            const std::vector<EquirectViewportWindow::InsetDraw> d = player.frameFor(ms, playing);
+            if (d.size() == 1 && d[0].rgba && !d[0].rgba->empty())
+                n = (*d[0].rgba)[0];
+            else
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return n;
+    };
+    auto waitFor = [&](qint64 ms, bool playing, int frame) {
+        for (int i = 0; i < 200; ++i) {
+            if (shown(ms, playing) == frame)
+                return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return false;
+    };
+    CHECK(waitFor(890, false, 22)); // 880 ms
+    // Paused on a refused frame: 22 stays, and the reads stop.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK(shown(1200, false) == 22);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const int readsParked = reads.load(), seeksParked = seeks.load();
+    for (int i = 0; i < 30; ++i) {
+        CHECK(shown(1200, false) == 22);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(reads.load() == readsParked && seeks.load() == seeksParked);
+    // Played on: the frames after them, read on without a seek.
+    int last = -1;
+    for (qint64 ms = 1200; ms <= 1800; ms += 10) {
+        last = shown(ms, true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(last >= 1720 / 40 && last <= 1800 / 40);
+    CHECK(seeks.load() == seeksParked);
+    std::printf("layer refused frames: %d reads paused, %d after play, last frame %d\n",
+                readsParked, reads.load(), last);
+
+    // Played into them from before: on past them as well, not held at the
+    // last frame before them as if the clip had ended.
+    InsetFeed played;
+    played.setClips({c});
+    for (int i = 0; i < 200 && played.frameFor(800, false).empty(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    last = -1;
+    for (qint64 ms = 800; ms <= 1800; ms += 10) {
+        const std::vector<EquirectViewportWindow::InsetDraw> d = played.frameFor(ms, true);
+        if (d.size() == 1 && d[0].rgba && !d[0].rgba->empty())
+            last = (*d[0].rgba)[0];
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(last >= 1720 / 40 && last <= 1800 / 40);
+}
+
 // Playback draws a transition's layer only over the main-track clip it
 // blends with, and a little past its span: the main picture may lag the
 // clock at the cut, and the layer goes with the picture, not the clock.
@@ -1941,6 +2095,7 @@ int main(int argc, char **argv)
     testGaugeFeedVsExport();
     testTransitions();
     testLayerOverMainClip();
+    testLayerRefusedFrames();
     testClipJob(tmp.path());
     testSuggestedPaths(tmp.path());
     if (g_failures == 0)

@@ -129,6 +129,72 @@ void testEndOnAFrame()
     }
 }
 
+// Frames with more privacy regions than the blur takes, in [600, 800): the
+// source refuses them (stitch::IStitchSource::ReadFailure) and is past each.
+class BusySource : public BlankClipSource {
+public:
+    BusySource() : BlankClipSource(kFps, 60000, false) {}
+    stitch::Frame ReadFrame() override
+    {
+        stitch::Frame f = BlankClipSource::ReadFrame();
+        m_refused = f.timestamp_ms >= 600 && f.timestamp_ms < 800;
+        if (m_refused)
+            f.rgba.clear();
+        return f;
+    }
+    ReadFailure GetLastFailure() const override
+    {
+        return m_refused ? ReadFailure::TooManyBlurRegions : BlankClipSource::GetLastFailure();
+    }
+
+private:
+    bool m_refused = false;
+};
+
+std::shared_ptr<stitch::IStitchSource> busySource(int64_t seekMs)
+{
+    auto src = std::make_shared<BusySource>();
+    src->Open("clip.insv", {});
+    src->SeekTo(seekMs);
+    return src;
+}
+
+// A refused frame is said as one and read past -- not the layer's end -- in
+// the layer's reads and in those takeBack makes for it; the source is still
+// left at playback's first frame.
+void testRefusedFrames()
+{
+    auto lease = std::make_shared<LayerLease>(7, 500, 1000, true, render(), nullptr);
+    lease->lend(busySource(500));
+    exportpipe::VideoFrame f;
+    std::vector<int64_t> pts;
+    int refused = 0;
+    for (LayerLease::Next r; (r = lease->next(f)) != LayerLease::Next::End;) {
+        CHECK(r == LayerLease::Next::Frame || r == LayerLease::Next::Refused);
+        if (r == LayerLease::Next::Frame)
+            pts.push_back(f.ptsMs);
+        else
+            ++refused;
+    }
+    CHECK(refused == 6); // 600 .. 767
+    CHECK(pts.size() == 9 && pts.front() == 500 && pts[2] == 567 && pts[3] == 800 &&
+          pts.back() == 967);
+    bool atEnd = false;
+    auto src = lease->takeBack(true, atEnd);
+    CHECK(atEnd && src->ReadFrame().timestamp_ms == 1000);
+
+    // Taken back before them: read past them into the buffer.
+    auto early = std::make_shared<LayerLease>(7, 500, 1000, true, render(), nullptr);
+    early->lend(busySource(500));
+    CHECK(early->next(f) == LayerLease::Next::Frame && f.ptsMs == 500);
+    src = early->takeBack(true, atEnd);
+    CHECK(atEnd && src->ReadFrame().timestamp_ms == 1000);
+    pts.clear();
+    while (early->next(f) == LayerLease::Next::Frame)
+        pts.push_back(f.ptsMs);
+    CHECK(pts.size() == 8 && pts.front() == 533 && pts[2] == 800 && pts.back() == 967);
+}
+
 // Declined, or taken back before the layer read: it reads its own; a lease
 // the layer left can't be lent.
 void testDeclinedAndLeft()
@@ -243,6 +309,7 @@ int main()
     testTakeBackReadsTheRest();
     testTakeBackCapped();
     testEndOnAFrame();
+    testRefusedFrames();
     testDeclinedAndLeft();
     testThreads();
     testPastTrimOut();

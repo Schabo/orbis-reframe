@@ -67,6 +67,9 @@ public:
         End,     // the layer's frames are all read
         Waiting, // not answered yet: ask again once `answered` is called
         Gone,    // declined, or taken back before the end: the layer reads its own
+        // The next frame was left out for its privacy blur
+        // (exportpipe::PictureSource::refused): the source is past it.
+        Refused,
     };
     Next next(exportpipe::VideoFrame &out);
     // The layer reads no more (it's closing, or reads its own source).
@@ -85,8 +88,9 @@ private:
     // the end) not: the layer losing its last frame costs a frame of the
     // blend, playback's first frame read as the layer's costs a seek.
     bool nextIsLayers() const;
-    // One frame through m_render; false at the layer's end or on an error.
-    bool readOne(exportpipe::VideoFrame &out);
+    // One frame through m_render: Frame, Refused (and on past it), or End
+    // (the layer's end, or an error).
+    Next readOne(exportpipe::VideoFrame &out);
 
     const int m_clipId;
     const int64_t m_fromMs;

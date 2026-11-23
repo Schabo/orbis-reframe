@@ -28,6 +28,7 @@ public:
     const exportpipe::VideoFrame *frameAtUs(int64_t us) override;
     bool readNext(exportpipe::VideoFrame &out) override;
     bool waiting() const override { return m_waiting; }
+    bool refused() const override { return m_own ? m_view->refused() : m_refused; }
     const std::string &lastError() const override;
 
 private:
@@ -45,6 +46,7 @@ private:
     std::shared_ptr<LayerLease> m_lease;
     bool m_own = false; // reads its own source (m_view's)
     bool m_waiting = false;
+    bool m_refused = false; // the lent source's frame was left out (Next::Refused)
     exportpipe::VideoFrame m_cur; // what frameAtUs() handed out last
     bool m_haveCur = false;
     exportpipe::VideoFrame m_next; // read ahead of it

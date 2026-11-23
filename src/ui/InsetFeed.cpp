@@ -43,6 +43,11 @@ struct InsetFeed::Stream {
     bool removed = false;
     bool reopen = false; // close the reader / picture before the next step
     bool waiting = false; // its picture isn't ready to read yet: until poke()
+    // Anchored at a frame its picture left out for its blur
+    // (exportpipe::PictureSource::refused), at this timeline time, in
+    // re-anchor `refusedGen`: the picture before stays up (parked()).
+    qint64 refusedMs = -1;
+    uint64_t refusedGen = 0;
     Frame shown;
     bool haveShown = false;
     double frameMs = 0.0; // set when the reader opens
@@ -50,7 +55,18 @@ struct InsetFeed::Stream {
     std::unique_ptr<exportpipe::FlatVideoReader> reader;
     std::unique_ptr<exportpipe::PictureSource> picture; // instead, for a 360 view
     QString openedPath; // or the picture's key
+    bool saidRefused = false; // logged that its picture leaves frames out
     bool open() const { return reader || picture; }
+    // At `ms` (`playing` or not), hold the picture shown rather than
+    // re-anchor: the anchor's frame was left out. Paused, until the playhead
+    // moves -- the frames after it aren't the playhead's, and re-anchoring
+    // would only refuse it again; playing, while the frames read on from it
+    // come, as the main clip's do.
+    bool parked(qint64 ms, bool playing) const
+    {
+        return refusedMs >= 0 && refusedGen == gen &&
+               (playing ? ms < refusedMs + kBehindMs : ms == refusedMs);
+    }
     void close()
     {
         reader.reset();
@@ -235,7 +251,7 @@ std::vector<EquirectViewportWindow::InsetDraw> InsetFeed::frameFor(qint64 clockM
                 const qint64 slack = playing ? kBehindMs : std::llround(s.frameMs * 1.5);
                 covered = s.queue.size() >= 2 || s.eof || ms < s.queue.front().timelineMs + slack;
             }
-            if (!covered && !s.needAnchor && !s.failed) {
+            if (!covered && !s.needAnchor && !s.failed && !s.parked(ms, playing)) {
                 s.queue.clear();
                 s.eof = false;
                 s.needAnchor = true;
@@ -352,8 +368,11 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
     bool got = false;
     bool ended = false;
     bool waiting = false;
+    // A frame left out for its blur: no picture, not the end either -- the
+    // source is past it, and the next read gives the next frame.
+    bool refused = false;
+    const qint64 at = std::clamp(target, clip.startMs, std::max(clip.startMs, clip.endMs() - 1));
     if (anchor) {
-        const qint64 at = std::clamp(target, clip.startMs, std::max(clip.startMs, clip.endMs() - 1));
         // The clock is in whole ms (playback isn't on a frame grid).
         const qint64 srcUs = clip.sourceAt(at) * 1000;
         if (const exportpipe::VideoFrame *v = s.picture ? s.picture->frameAtUs(srcUs)
@@ -365,6 +384,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
             got = true;
         } else if (s.picture && s.picture->waiting()) {
             waiting = true;
+        } else if (s.picture && s.picture->refused()) {
+            refused = true;
         } else {
             ended = true;
         }
@@ -377,10 +398,16 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
             f.height = v.height;
             f.rgba = std::make_shared<const std::vector<uint8_t>>(std::move(v.rgba));
             got = true;
+        } else if (!read && s.picture && s.picture->refused()) {
+            refused = true;
         } else {
             ended = true;
         }
     }
+    if (refused && !std::exchange(s.saidRefused, true))
+        std::fprintf(stderr, "[inset] %s: frames with more privacy regions than the blur takes "
+                             "are left out (%s)\n",
+                     qPrintable(clip.path), s.picture->lastError().c_str());
 
     std::lock_guard<std::mutex> lk(m_mx);
     if (s.gen != gen || s.removed)
@@ -393,10 +420,15 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         s.needAnchor = false;
         s.queue.clear();
         s.eof = ended;
+        if (refused) {
+            s.refusedMs = at;
+            s.refusedGen = s.gen;
+        }
     } else if (ended) {
         s.eof = true;
     }
     if (got) {
+        s.refusedMs = -1;
         f.key = m_nextKey++;
         s.queue.push_back(std::move(f));
     }

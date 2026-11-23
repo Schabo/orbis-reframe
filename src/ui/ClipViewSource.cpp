@@ -77,6 +77,7 @@ bool ClipViewSource::read(exportpipe::VideoFrame &out)
     if (readFrom(*m_src, out))
         return true;
     m_error = m_src->GetLastError(); // empty at the end of the clip
+    m_refused = m_src->GetLastFailure() == stitch::IStitchSource::ReadFailure::TooManyBlurRegions;
     return false;
 }
 
@@ -140,6 +141,7 @@ bool ClipViewSource::readFrom(stitch::NativeStitchSource &src, exportpipe::Video
 
 const exportpipe::VideoFrame *ClipViewSource::frameAtUs(int64_t us)
 {
+    m_refused = false;
     if (!m_src)
         return nullptr;
     const double halfFrameUs = 5e5 / m_fps;
@@ -166,9 +168,8 @@ const exportpipe::VideoFrame *ClipViewSource::frameAtUs(int64_t us)
         if (!m_haveNext) {
             if (!read(m_next)) {
                 // A frame too busy to blur: not the end, and no picture to
-                // hold up in its place -- the export stops there.
-                if (m_src->GetLastFailure() ==
-                    stitch::IStitchSource::ReadFailure::TooManyBlurRegions)
+                // hold up in its place (refused()) -- the export stops there.
+                if (m_refused)
                     return nullptr;
                 break; // the end: the last one stays
             }
@@ -184,6 +185,7 @@ const exportpipe::VideoFrame *ClipViewSource::frameAtUs(int64_t us)
 
 bool ClipViewSource::readNext(exportpipe::VideoFrame &out)
 {
+    m_refused = false;
     if (m_haveNext) {
         out = std::move(m_next);
         m_haveNext = false;

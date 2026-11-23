@@ -56,6 +56,7 @@ public:
     void setOutputSize(int width, int height) override;
     const exportpipe::VideoFrame *frameAtUs(int64_t us) override;
     bool readNext(exportpipe::VideoFrame &out) override;
+    bool refused() const override { return m_refused; }
     const std::string &lastError() const override { return m_error; }
 
 private:
@@ -71,4 +72,5 @@ private:
     exportpipe::VideoFrame m_next; // read ahead of it, not handed out yet
     bool m_haveNext = false;
     std::string m_error;
+    bool m_refused = false; // the last read's frame was refused for its blur
 };

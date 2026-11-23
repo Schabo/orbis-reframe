@@ -85,6 +85,7 @@ const exportpipe::VideoFrame *LentClipView::frameAtUs(int64_t us)
     if (m_own)
         return m_view->frameAtUs(us);
     m_waiting = false;
+    m_refused = false;
     const double halfFrameUs = 5e5 / std::max(1.0, fps());
     // As ClipViewSource: the frame whose window [pts - half, pts + half)
     // holds `us`, in exact times. A lent source only reads on: behind what
@@ -109,6 +110,9 @@ const exportpipe::VideoFrame *LentClipView::frameAtUs(int64_t us)
         case LayerLease::Next::Waiting:
             m_waiting = true; // InsetFeed asks again once answered
             return nullptr;
+        case LayerLease::Next::Refused:
+            m_refused = true;
+            return nullptr;
         case LayerLease::Next::End:
             return nullptr;
         case LayerLease::Next::Gone:
@@ -117,7 +121,12 @@ const exportpipe::VideoFrame *LentClipView::frameAtUs(int64_t us)
     }
     for (;;) {
         if (!m_haveNext) {
-            if (m_lease->next(m_next) != LayerLease::Next::Frame)
+            const LayerLease::Next got = m_lease->next(m_next);
+            if (got == LayerLease::Next::Refused) {
+                m_refused = true; // as ClipViewSource: no picture for `us`
+                return nullptr;
+            }
+            if (got != LayerLease::Next::Frame)
                 break; // its end (or taken back): the last one stays
             m_haveNext = true;
         }
@@ -134,6 +143,7 @@ bool LentClipView::readNext(exportpipe::VideoFrame &out)
 {
     if (m_own)
         return m_view->readNext(out);
+    m_refused = false;
     if (m_haveNext) {
         out = std::move(m_next);
         m_haveNext = false;
@@ -159,6 +169,9 @@ bool LentClipView::readNext(exportpipe::VideoFrame &out)
         out = *v;
         return true;
     }
+    case LayerLease::Next::Refused:
+        m_refused = true;
+        return false;
     default:
         return false;
     }
