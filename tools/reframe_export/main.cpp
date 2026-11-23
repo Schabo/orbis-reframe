@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <numbers>
@@ -391,6 +392,12 @@ ReframeTrack loadKeys(const std::string& path, qint64 frameDurMs)
 int main(int argc, char** argv)
 {
     const Args a = parseArgs(argc, argv);
+    // The output file is replaced as the export starts: never one it reads.
+    for (const std::string& in : {a.input, a.insetPath}) {
+        std::error_code ec;
+        if (!in.empty() && std::filesystem::equivalent(a.output, in, ec))
+            die("the output " + a.output + " is the input " + in);
+    }
 
     std::string err;
     stitch::ClipProbe probe;

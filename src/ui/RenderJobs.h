@@ -153,6 +153,13 @@ QString missingMediaAdvice(const Timeline &timeline, MissingFor which);
 void showMissingMedia(QWidget *parent, const QString &title, const QString &text,
                       const QStringList &lines, const QString &advice);
 
+// Which of the project's own files `outPath` is -- `projectFile`, or a file
+// of `pool`'s (a clip's companions and parts included) -- under any name, a
+// link to it included; empty when it is none of them. Writing an export or
+// a screenshot there would destroy that file as the writing starts.
+QString projectFileAt(const QString &outPath, const MediaPool &pool,
+                      const QString &projectFile);
+
 // Where an export of the project in `projectFile` is suggested: its
 // exports/ folder (made if need be; else the project file's own folder),
 // named after the project, with -2, -3, ... if that's taken; ~/timeline.mp4

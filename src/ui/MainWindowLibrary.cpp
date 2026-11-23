@@ -255,6 +255,26 @@ QString MainWindow::askSaveFileName(const QString &caption, const QString &path,
     return dlg.selectedFiles().constFirst();
 }
 
+QString MainWindow::askOutputPath(const QString &caption, const QString &path,
+                                  const QString &filter, const QString &suffix)
+{
+    for (;;) {
+        QString chosen = askSaveFileName(caption, path, filter);
+        if (chosen.isEmpty())
+            return {};
+        if (QFileInfo(chosen).suffix().isEmpty())
+            chosen += QLatin1Char('.') + suffix;
+        const QString own =
+            renderjobs::projectFileAt(chosen, *m_project->mediaPool(), m_project->filePath());
+        if (own.isEmpty())
+            return chosen;
+        QMessageBox::warning(this, caption,
+                             tr("That is %1, one of this project's own files: saving over it "
+                                "would destroy it. Choose another name.")
+                                 .arg(QFileInfo(own).fileName()));
+    }
+}
+
 void MainWindow::updateWindowTitle()
 {
     if (m_pages && m_pages->currentWidget() == m_libraryPage) {

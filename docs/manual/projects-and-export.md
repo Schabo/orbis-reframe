@@ -238,9 +238,13 @@ normal, flat MP4 video that plays anywhere.
    approximate size of the finished file. Your choice is remembered for the
    next export.
 7. Click **Export…** and choose where to save the file. It's suggested in
-   the project's `exports/` folder, named after the project.
+   the project's `exports/` folder, named after the project. A file of the
+   project's own -- one of its clips, overlays or sound files, or the
+   project file -- can't be chosen: saving over it would destroy it, so
+   orbis-reframe says so and asks for another name.
 8. A progress window shows how far the export has come. **Cancel** stops it
-   and deletes the unfinished file.
+   and deletes the unfinished file. An export that fails part-way deletes
+   its unfinished file too.
 
 When it's done, orbis-reframe says where it wrote the file. For a 10-bit
 export it also says if something kept it from being fully 10-bit: when the
@@ -298,4 +302,5 @@ current view, with stabilization, colour, privacy blur and overlays.
 The suggested file name is the project's name and the playhead's time, in
 the project's `screenshots/` folder (in the project file's folder for a
 project from before project folders, and in your Pictures folder for an
-untitled one). The edit toolbar above the timeline says when the picture is saved.
+untitled one). As with the export, a file of the project's own can't be
+chosen. The edit toolbar above the timeline says when the picture is saved.

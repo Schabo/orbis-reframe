@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <map>
 #include <memory>
 
@@ -731,6 +732,28 @@ void showMissingMedia(QWidget *parent, const QString &title, const QString &text
         grid->addItem(new QSpacerItem(640, 0, QSizePolicy::Minimum, QSizePolicy::Expanding),
                       grid->rowCount(), 0, 1, grid->columnCount());
     box.exec();
+}
+
+QString projectFileAt(const QString &outPath, const MediaPool &pool,
+                      const QString &projectFile)
+{
+    // Not there yet: nothing to destroy.
+    std::error_code ec;
+    const std::filesystem::path out(outPath.toStdString());
+    if (!std::filesystem::exists(out, ec))
+        return {};
+    const auto is = [&](const QString &file) {
+        std::error_code e;
+        return !file.isEmpty() && std::filesystem::equivalent(out, file.toStdString(), e);
+    };
+    if (is(projectFile))
+        return projectFile;
+    for (const MediaItem &item : pool.items()) {
+        for (const QString &file : item.files() + item.partFiles())
+            if (is(file))
+                return file;
+    }
+    return {};
 }
 
 QString suggestedExportPath(const QString &projectFile)

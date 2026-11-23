@@ -491,7 +491,8 @@ prints when the encoder falls back to 8-bit, or when the frames are 8-bit
 (no fused GPU pass) widened into the 10-bit file.
 `--sharpen A,R,T` sharpens after the grade and look (amount 0..200, radius
 50..300 with 100 = a one-pixel blur at 1080 lines, threshold 0..20 % of
-white). `--vignette A,S,F` adds the clip effect, a vignette (amount −100..100,
+white). An output that is the input clip or the inset's file is refused.
+`--vignette A,S,F` adds the clip effect, a vignette (amount −100..100,
 negative darkens; size and softness 0..100), after the grade; `--grain
 A,S,C` film grain (amount 0..100, size 50..300 with 100 = one pixel at 1080
 lines, colour 0..100), new on every output frame. `--look ID|FILE.cube`

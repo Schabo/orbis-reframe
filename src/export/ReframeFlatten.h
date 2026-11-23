@@ -63,6 +63,11 @@ struct FlattenConfig {
 // GOP structure (no concat / remux, no extra generation loss). The caller
 // drives it clip-by-clip -- open() once, then addEquirectFrame() /
 // addNv12Frame() per frame, finish() once.
+//
+// open() creates the output file (replacing one already there). It stays
+// only if finish() completes it: a writer destroyed before that -- a
+// failure, a cancel -- removes what it wrote, and an open() that fails
+// after creating it removes it at once.
 class FlattenWriter {
 public:
     FlattenWriter();
@@ -140,9 +145,10 @@ public:
     // Total audio sample frames handed to addAudio() so far.
     int64_t audioFramesWritten() const;
 
-    // Flush the encoder(s) and write the container trailer. Returns the total
-    // frames written across every add*Frame(), or -1
-    // (with `err`) on failure.
+    // Flush the encoder(s), write the container trailer and close the file.
+    // Returns the total frames written across every add*Frame(), or -1
+    // (with `err`) on failure -- a packet the muxer refused or a failed
+    // close included (an add*Frame() that hit one failed already).
     int64_t finish(std::string& err);
 
 private:

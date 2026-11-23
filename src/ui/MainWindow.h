@@ -577,6 +577,11 @@ private:
     // QFileDialog::getSaveFileName with a "&Save" button (Alt+S / S in the
     // file list): Qt's own label has no mnemonic. `path` may name the file.
     QString askSaveFileName(const QString &caption, const QString &path, const QString &filter);
+    // askSaveFileName for a file the app writes: `suffix` added when the
+    // name has none, and asked again while it names one of the project's
+    // own files (renderjobs::projectFileAt), which writing would destroy.
+    QString askOutputPath(const QString &caption, const QString &path, const QString &filter,
+                          const QString &suffix);
 
     // The window's two pages: the library (start screen) and the editor.
     QStackedWidget *m_pages = nullptr;

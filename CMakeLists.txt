@@ -860,8 +860,8 @@ if(FFMPEG_FOUND)
     target_include_directories(test_media PUBLIC tests)
     target_link_libraries(test_media PRIVATE PkgConfig::FFMPEG)
 
-    # tests/support/FfmpegFaults: a test makes FFmpeg's reads, decodes and
-    # allocations fail through it. The linker sends the calls to its
+    # tests/support/FfmpegFaults: a test makes FFmpeg's reads, decodes,
+    # allocations and writes fail through it. The linker sends the calls to its
     # stand-ins, in the test executable only.
     add_library(ffmpeg_faults STATIC tests/support/FfmpegFaults.cpp tests/support/FfmpegFaults.h)
     target_include_directories(ffmpeg_faults PUBLIC tests)
@@ -871,7 +871,8 @@ if(FFMPEG_FOUND)
         target_link_options(${target} PRIVATE
             "LINKER:--wrap=av_read_frame,--wrap=av_seek_frame,--wrap=avcodec_send_packet,--wrap=avcodec_receive_frame"
             "LINKER:--wrap=avcodec_alloc_context3,--wrap=avcodec_parameters_to_context,--wrap=av_packet_alloc,--wrap=av_frame_alloc,--wrap=av_buffer_ref"
-            "LINKER:--wrap=sws_getContext,--wrap=sws_getCachedContext,--wrap=sws_init_context,--wrap=sws_scale,--wrap=sws_scale_frame")
+            "LINKER:--wrap=sws_getContext,--wrap=sws_getCachedContext,--wrap=sws_init_context,--wrap=sws_scale,--wrap=sws_scale_frame"
+            "LINKER:--wrap=avformat_new_stream,--wrap=av_frame_get_buffer,--wrap=av_frame_make_writable,--wrap=av_interleaved_write_frame,--wrap=avio_closep")
     endfunction()
 endif()
 
@@ -1095,10 +1096,12 @@ if(TARGET reframe_flatten)
     add_test(NAME inset_test COMMAND inset_test)
 
     # The export's container timing: every frame written is shown (stream
-    # duration and edit list cover the last frame). Skipped (77) where
+    # duration and edit list cover the last frame); and a failed allocation,
+    # write or close fails the export and leaves no file. Skipped (77) where
     # there's no hardware encoder.
     add_executable(flatten_writer_test tests/flatten_writer_test.cpp)
     target_link_libraries(flatten_writer_test PRIVATE reframe_flatten)
+    orbis_wrap_ffmpeg_faults(flatten_writer_test)
     add_test(NAME flatten_writer_test COMMAND flatten_writer_test)
     set_tests_properties(flatten_writer_test PROPERTIES SKIP_RETURN_CODE 77)
 endif()

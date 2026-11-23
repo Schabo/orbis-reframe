@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <numbers>
 #include <cstdio>
+#include <filesystem>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -1917,6 +1918,60 @@ void testSuggestedPaths(const QString &dir)
               .endsWith("/ride_00m00s000.png")); // unsaved: named after the clip
 }
 
+// An export or a screenshot never goes over one of the project's own files,
+// under any name: the media (a take's companion and a recording's parts
+// too) and the project file, by a link as well.
+void testProjectFileAt(const QString &dir)
+{
+    const QString d = QDir(dir).filePath("own");
+    CHECK(QDir().mkpath(d));
+    const auto make = [&](const QString &name) {
+        QFile f(QDir(d).filePath(name));
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write("x");
+        return f.fileName();
+    };
+    const QString lead = make("VID_00_001.insv");
+    const QString companion = make("VID_10_001.insv");
+    const QString part = make("VID_00_002.insv");
+    const QString music = make("song.mp3");
+    const QString project = make("Ride.orp");
+    const QString other = make("old-export.mp4");
+
+    MediaPool pool;
+    MediaItem take;
+    take.path = lead;
+    take.companions = {companion};
+    take.parts = {{lead, 0, 1000}, {part, 1000, 1000}};
+    CHECK(pool.add(take));
+    MediaItem song;
+    song.path = music;
+    song.kind = MediaItem::Kind::Audio;
+    CHECK(pool.add(song));
+
+    using renderjobs::projectFileAt;
+    CHECK(projectFileAt(lead, pool, project) == lead);
+    CHECK(projectFileAt(companion, pool, project) == companion);
+    CHECK(projectFileAt(part, pool, project) == part);
+    CHECK(projectFileAt(music, pool, project) == music);
+    CHECK(projectFileAt(project, pool, project) == project);
+    CHECK(projectFileAt(d + "/./VID_10_001.insv", pool, project) ==
+          companion);
+    CHECK(projectFileAt(other, pool, project).isEmpty()); // replacing an export is fine
+    CHECK(projectFileAt(QDir(d).filePath("new.mp4"), pool, project).isEmpty());
+    CHECK(projectFileAt(other, pool, QString()).isEmpty()); // an unsaved project
+
+    // The same file by another name: a symbolic link and a hard link.
+    const QString sym = QDir(d).filePath("sym.mp4");
+    CHECK(QFile::link(part, sym));
+    CHECK(projectFileAt(sym, pool, project) == part);
+    const QString hard = QDir(d).filePath("hard.mp4");
+    std::error_code ec;
+    std::filesystem::create_hard_link(music.toStdString(), hard.toStdString(), ec);
+    CHECK(!ec);
+    CHECK(projectFileAt(hard, pool, project) == music);
+}
+
 } // namespace
 
 // A title's or a gauge's picture doesn't depend on what the process drew
@@ -2098,6 +2153,7 @@ int main(int argc, char **argv)
     testLayerRefusedFrames();
     testClipJob(tmp.path());
     testSuggestedPaths(tmp.path());
+    testProjectFileAt(tmp.path());
     if (g_failures == 0)
         std::printf("render_jobs_test: all checks passed\n");
     else

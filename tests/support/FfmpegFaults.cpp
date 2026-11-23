@@ -20,7 +20,7 @@ struct Fault {
     int failed = 0;
 };
 
-constexpr int kCalls = 13;
+constexpr int kCalls = 18;
 Fault g_faults[kCalls];
 // The decoders that took the flush since reset(), for Call::ReceiveDraining.
 std::set<const AVCodecContext *> g_draining;
@@ -83,6 +83,11 @@ int __real_sws_init_context(SwsContext *sws_context, SwsFilter *srcFilter, SwsFi
 int __real_sws_scale(SwsContext *c, const uint8_t *const srcSlice[], const int srcStride[],
                      int srcSliceY, int srcSliceH, uint8_t *const dst[], const int dstStride[]);
 int __real_sws_scale_frame(SwsContext *c, AVFrame *dst, const AVFrame *src);
+AVStream *__real_avformat_new_stream(AVFormatContext *s, const AVCodec *c);
+int __real_av_frame_get_buffer(AVFrame *frame, int align);
+int __real_av_frame_make_writable(AVFrame *frame);
+int __real_av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt);
+int __real_avio_closep(AVIOContext **s);
 
 int __wrap_av_read_frame(AVFormatContext *s, AVPacket *pkt)
 {
@@ -188,6 +193,43 @@ int __wrap_sws_scale_frame(SwsContext *c, AVFrame *dst, const AVFrame *src)
     if (ffmpegfaults::fails(Call::Scale))
         return ffmpegfaults::rcOf(Call::Scale);
     return __real_sws_scale_frame(c, dst, src);
+}
+
+AVStream *__wrap_avformat_new_stream(AVFormatContext *s, const AVCodec *c)
+{
+    return ffmpegfaults::fails(Call::NewStream) ? nullptr : __real_avformat_new_stream(s, c);
+}
+
+int __wrap_av_frame_get_buffer(AVFrame *frame, int align)
+{
+    if (ffmpegfaults::fails(Call::FrameBuffer))
+        return ffmpegfaults::rcOf(Call::FrameBuffer);
+    return __real_av_frame_get_buffer(frame, align);
+}
+
+int __wrap_av_frame_make_writable(AVFrame *frame)
+{
+    if (ffmpegfaults::fails(Call::MakeWritable))
+        return ffmpegfaults::rcOf(Call::MakeWritable);
+    return __real_av_frame_make_writable(frame);
+}
+
+int __wrap_av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt)
+{
+    if (ffmpegfaults::fails(Call::WritePacket)) {
+        if (pkt)
+            av_packet_unref(pkt); // the muxer takes the packet either way
+        return ffmpegfaults::rcOf(Call::WritePacket);
+    }
+    return __real_av_interleaved_write_frame(s, pkt);
+}
+
+int __wrap_avio_closep(AVIOContext **s)
+{
+    const int r = __real_avio_closep(s);
+    if (ffmpegfaults::fails(Call::CloseOutput))
+        return ffmpegfaults::rcOf(Call::CloseOutput);
+    return r;
 }
 
 } // extern "C"

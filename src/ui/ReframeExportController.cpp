@@ -17,7 +17,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
@@ -280,15 +279,18 @@ void ReframeExportController::run(const Request &req)
 
     std::string err;
 
-    // Held by pointer so a cancelled export can close (destroy) the encoder and
-    // its half-written output file *before* deleting that file below.
+    // Held by pointer so a failed or cancelled export can destroy it -- which
+    // closes the half-written output file and removes it -- before it says
+    // it's finished.
     auto writer = std::make_unique<exportpipe::FlattenWriter>();
     int64_t outFrames = 0; // video frames sent to the encoder (the one being encoded included)
     // The hardware encoder failing is said in words -- its own errors
     // ("Function not implemented") don't point at the usual cause -- with
     // them as the details.
     auto failed = [&](const QString &e) {
-        if (!writer->encoderFailed()) {
+        const bool encoderFailed = writer->encoderFailed();
+        writer.reset();
+        if (!encoderFailed) {
             emit finished(false, e, req.outPath);
             return;
         }
@@ -586,8 +588,7 @@ void ReframeExportController::run(const Request &req)
     }
 
     if (cancelled) {
-        writer.reset(); // close the encoder + file before removing it
-        std::remove(cfg.out_path.c_str());
+        writer.reset(); // closes the file and removes it
         // Empty error string on !ok is the "cancelled by the user" signal.
         emit finished(false, QString(), req.outPath);
         return;

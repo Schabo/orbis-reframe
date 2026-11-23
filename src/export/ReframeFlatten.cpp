@@ -58,6 +58,12 @@ struct Encoder {
     // The hardware video encoder failed: it didn't open although the probe
     // found it usable, or it failed on a frame (FlattenWriter::encoderFailed).
     bool encoderFailed = false;
+    // Writing a packet into the file failed (the muxer refused it, or the
+    // disk): the file is broken, not the encoder.
+    bool writeFailed = false;
+    // avio_open() made (or emptied) the output file: it is this writer's to
+    // finish or to remove.
+    bool fileOpened = false;
     // Optional AAC audio stream (FlattenConfig::audio_sample_rate > 0).
     AVCodecContext* actx = nullptr;
     AVStream* astream = nullptr;
@@ -338,6 +344,10 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, bool tenBit, Encode
     const AVCodec* enc = avcodec_find_encoder_by_name(encName);
     const AVHWDeviceType deviceType = deviceFor(encName);
     e.ctx = avcodec_alloc_context3(enc);
+    if (!e.ctx) {
+        err = "cannot allocate the encoder context";
+        return false;
+    }
     e.ctx->width = p.out_w;
     e.ctx->height = p.out_h;
     const AVRational tb = av_d2q(1.0 / p.fps, 1000000);
@@ -353,6 +363,10 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, bool tenBit, Encode
                                                              : AV_PIX_FMT_VAAPI;
         e.ctx->sw_pix_fmt = swFormat;
         e.ctx->hw_device_ctx = av_buffer_ref(e.hwDevice);
+        if (!e.ctx->hw_device_ctx) {
+            err = "cannot reference the hardware device";
+            return false;
+        }
         e.hwFrames = av_hwframe_ctx_alloc(e.hwDevice);
         if (!e.hwFrames) {
             err = "cannot allocate hardware frames context";
@@ -370,6 +384,10 @@ bool tryEncoder(const char* encName, const FlattenConfig& p, bool tenBit, Encode
         // Vulkan video requires the frames context at open (VAAPI would
         // derive one from the device); the uploaded frames come out of it.
         e.ctx->hw_frames_ctx = av_buffer_ref(e.hwFrames);
+        if (!e.ctx->hw_frames_ctx) {
+            err = "cannot reference the hardware frames context";
+            return false;
+        }
         e.hw = av_frame_alloc();
         if (!e.hw) {
             err = "cannot allocate hardware frame";
@@ -484,7 +502,14 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std
     int ret = 0;
 
     e.stream = avformat_new_stream(e.fmt, nullptr);
-    avcodec_parameters_from_context(e.stream->codecpar, e.ctx);
+    if (!e.stream) {
+        err = "cannot add the video stream";
+        return false;
+    }
+    if ((ret = avcodec_parameters_from_context(e.stream->codecpar, e.ctx)) < 0) {
+        err = avErr("set the video stream's parameters", ret);
+        return false;
+    }
     e.stream->time_base = e.ctx->time_base;
 
     if (p.audio_sample_rate > 0) {
@@ -494,6 +519,10 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std
             return false;
         }
         e.actx = avcodec_alloc_context3(aenc);
+        if (!e.actx) {
+            err = "cannot allocate the AAC encoder context";
+            return false;
+        }
         e.actx->sample_fmt = AV_SAMPLE_FMT_FLTP; // FFmpeg's native aac encoder's only format
         e.actx->sample_rate = p.audio_sample_rate;
         av_channel_layout_default(&e.actx->ch_layout, p.audio_channels);
@@ -506,13 +535,27 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std
             return false;
         }
         e.astream = avformat_new_stream(e.fmt, nullptr);
-        avcodec_parameters_from_context(e.astream->codecpar, e.actx);
+        if (!e.astream) {
+            err = "cannot add the audio stream";
+            return false;
+        }
+        if ((ret = avcodec_parameters_from_context(e.astream->codecpar, e.actx)) < 0) {
+            err = avErr("set the audio stream's parameters", ret);
+            return false;
+        }
         e.astream->time_base = e.actx->time_base;
 
         e.aframe = av_frame_alloc();
+        if (!e.aframe) {
+            err = "cannot allocate the audio frame";
+            return false;
+        }
         e.aframe->format = e.actx->sample_fmt;
         e.aframe->sample_rate = e.actx->sample_rate;
-        av_channel_layout_copy(&e.aframe->ch_layout, &e.actx->ch_layout);
+        if ((ret = av_channel_layout_copy(&e.aframe->ch_layout, &e.actx->ch_layout)) < 0) {
+            err = avErr("set the audio frame's channels", ret);
+            return false;
+        }
         e.aframe->nb_samples = e.actx->frame_size > 0 ? e.actx->frame_size : 1024;
         if ((ret = av_frame_get_buffer(e.aframe, 0)) < 0) {
             err = avErr("allocate audio frame", ret);
@@ -525,6 +568,7 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std
             err = avErr("open output " + p.out_path, ret);
             return false;
         }
+        e.fileOpened = true;
     }
     if ((ret = avformat_write_header(e.fmt, nullptr)) < 0) {
         err = avErr("write output header", ret);
@@ -533,11 +577,22 @@ bool openEncoder(const FlattenConfig& p, Encoder& e, std::string& tenBitWhy, std
 
     const AVPixelFormat frameFormat = e.tenBit ? AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12;
     e.frame = av_frame_alloc();
+    if (!e.frame) {
+        err = "cannot allocate the video frame";
+        return false;
+    }
     e.frame->format = frameFormat;
     e.frame->width = p.out_w;
     e.frame->height = p.out_h;
-    av_frame_get_buffer(e.frame, 0);
+    if ((ret = av_frame_get_buffer(e.frame, 0)) < 0) {
+        err = avErr("allocate the video frame", ret);
+        return false;
+    }
     e.pkt = av_packet_alloc();
+    if (!e.pkt) {
+        err = "cannot allocate the packet";
+        return false;
+    }
     e.toYuv = sws_getContext(p.out_w, p.out_h, AV_PIX_FMT_RGBA, p.out_w, p.out_h, frameFormat,
                              SWS_BILINEAR, nullptr, nullptr, nullptr);
     if (!e.toYuv) {
@@ -575,8 +630,15 @@ bool drainTo(Encoder& e, AVCodecContext* ctx, AVStream* stream, AVFrame* frame, 
             e.pkt->duration = 1;
         av_packet_rescale_ts(e.pkt, ctx->time_base, stream->time_base);
         e.pkt->stream_index = stream->index;
-        av_interleaved_write_frame(e.fmt, e.pkt);
+        // A packet the muxer refuses (a timestamp out of order, the disk)
+        // would be a frame missing from a file that says it's complete.
+        ret = av_interleaved_write_frame(e.fmt, e.pkt);
         av_packet_unref(e.pkt);
+        if (ret < 0) {
+            e.writeFailed = true;
+            err = avErr("write to the output file", ret);
+            return false;
+        }
     }
     return true;
 }
@@ -600,8 +662,11 @@ bool drainEncoder(Encoder& e, AVFrame* frame, std::string& err)
         av_frame_copy_props(e.hw, frame);
         frame = e.hw;
     }
-    if (!drainTo(e, e.ctx, e.stream, frame, err))
+    if (!drainTo(e, e.ctx, e.stream, frame, err)) {
+        if (e.writeFailed)
+            e.encoderFailed = false; // it encoded; the file didn't take it
         return false;
+    }
     e.encoderFailed = false;
     return true;
 }
@@ -623,6 +688,30 @@ struct FlattenWriter::Impl {
     int64_t audioEncoded = 0;
     FrameHook hook;
     std::string tenBitWhy; // openEncoder's
+    bool finished = false; // finish() wrote the trailer and closed the file
+
+    // Close the encoder and the file; the file goes too unless finish()
+    // completed it: an MP4 without its trailer doesn't play.
+    void close()
+    {
+        const bool remove = enc.fileOpened && !finished;
+        closeEncoder(enc);
+        enc.fileOpened = false;
+        if (remove)
+            std::remove(cfg.out_path.c_str());
+    }
+
+    // The frame about to be filled, made writable (the encoder can still
+    // hold a reference to its last buffer).
+    bool writableFrame(AVFrame* f, std::string& err)
+    {
+        const int ret = av_frame_make_writable(f);
+        if (ret < 0) {
+            err = avErr("make the frame writable", ret);
+            return false;
+        }
+        return true;
+    }
 
     // Run the hook on the frame about to be encoded, then encode it at the
     // next shared PTS.
@@ -665,7 +754,8 @@ struct FlattenWriter::Impl {
 bool FlattenWriter::Impl::encodeAudioFrame(int frames, std::string& err)
 {
     AVFrame* f = enc.aframe;
-    av_frame_make_writable(f);
+    if (!writableFrame(f, err))
+        return false;
     const int ch = cfg.audio_channels;
     f->nb_samples = frames;
     for (int c = 0; c < ch; ++c) {
@@ -684,15 +774,16 @@ FlattenWriter::FlattenWriter() : d(std::make_unique<Impl>()) {}
 FlattenWriter::~FlattenWriter()
 {
     if (d)
-        closeEncoder(d->enc);
+        d->close();
 }
 
 bool FlattenWriter::open(const FlattenConfig& cfg, std::string& err)
 {
     d->cfg = cfg;
     d->tenBitWhy.clear();
+    d->finished = false;
     if (!openEncoder(d->cfg, d->enc, d->tenBitWhy, err)) {
-        closeEncoder(d->enc);
+        d->close();
         return false;
     }
     d->flatRgba.assign(static_cast<size_t>(cfg.out_w) * cfg.out_h * 4, 0);
@@ -709,11 +800,16 @@ bool FlattenWriter::encodeFrame(const uint8_t* eqRgba, int eqW, int eqH, const R
 
 bool FlattenWriter::encodeRgba(std::string& err)
 {
-    av_frame_make_writable(d->enc.frame);
+    if (!d->writableFrame(d->enc.frame, err))
+        return false;
     const uint8_t* src[1] = {d->flatRgba.data()};
     int srcStride[1] = {d->cfg.out_w * 4};
-    sws_scale(d->enc.toYuv, src, srcStride, 0, d->cfg.out_h, d->enc.frame->data,
-              d->enc.frame->linesize);
+    const int ret = sws_scale(d->enc.toYuv, src, srcStride, 0, d->cfg.out_h, d->enc.frame->data,
+                              d->enc.frame->linesize);
+    if (ret <= 0) {
+        err = ret < 0 ? avErr("convert the frame to YUV", ret) : "convert the frame to YUV";
+        return false;
+    }
     return d->encodeCurrent(err);
 }
 
@@ -763,7 +859,8 @@ bool FlattenWriter::addNv12Frame(const uint8_t* nv12, int w, int h, std::string&
         return false;
 
     AVFrame* f = d->enc.frame;
-    av_frame_make_writable(f);
+    if (!d->writableFrame(f, err))
+        return false;
     const uint8_t* srcY = nv12;
     const uint8_t* srcUV = nv12 + static_cast<size_t>(w) * h;
     // Rows of w bytes: h luma, h/2 interleaved chroma. Into a 10-bit file
@@ -795,7 +892,8 @@ bool FlattenWriter::addP010Frame(const uint8_t* p010, int w, int h, std::string&
         return false;
     }
     AVFrame* f = d->enc.frame;
-    av_frame_make_writable(f);
+    if (!d->writableFrame(f, err))
+        return false;
     const size_t rowBytes = static_cast<size_t>(w) * 2;
     const uint8_t* srcUV = p010 + rowBytes * h;
     for (int y = 0; y < h; ++y)
@@ -866,6 +964,13 @@ int64_t FlattenWriter::finish(std::string& err)
         err = avErr("write output trailer", ret);
         return -1;
     }
+    // Closing flushes what AVIO still buffers: the end of the file can fail
+    // here too.
+    if (d->enc.fileOpened && (ret = avio_closep(&d->enc.fmt->pb)) < 0) {
+        err = avErr("close the output file", ret);
+        return -1;
+    }
+    d->finished = true;
     d->opened = false;
     return d->written;
 }

@@ -111,13 +111,11 @@ void MainWindow::exportFlatVideo()
         return;
     opts.rememberQuality();
 
-    QString path = askSaveFileName(tr("Export flat video"),
-                                   renderjobs::suggestedExportPath(m_project->filePath()),
-                                   tr("MP4 video (*.mp4)"));
+    const QString path = askOutputPath(tr("Export flat video"),
+                                       renderjobs::suggestedExportPath(m_project->filePath()),
+                                       tr("MP4 video (*.mp4)"), QStringLiteral("mp4"));
     if (path.isEmpty())
         return;
-    if (QFileInfo(path).suffix().isEmpty())
-        path += QStringLiteral(".mp4");
 
     ReframeExportController::Request req;
     req.outPath = path;
@@ -233,14 +231,12 @@ void MainWindow::takeScreenshot()
     still.width = m_project->output().width;
     still.height = m_project->output().height;
 
-    QString path = askSaveFileName(
+    const QString path = askOutputPath(
         tr("Save screenshot"),
         renderjobs::suggestedScreenshotPath(m_project->filePath(), c->sourcePath, still.timelineMs),
-        tr("PNG image (*.png)"));
+        tr("PNG image (*.png)"), QStringLiteral("png"));
     if (path.isEmpty() || m_exports->savingStill() || m_exports->exporting())
         return;
-    if (QFileInfo(path).suffix().isEmpty())
-        path += QStringLiteral(".png");
     still.path = path;
 
     m_editToolbar->showNotice(tr("Saving screenshot…"), true);
