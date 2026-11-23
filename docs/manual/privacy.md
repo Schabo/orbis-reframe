@@ -94,7 +94,9 @@ If the scan missed a plate, blur it by hand:
    how far it has come. **Stop following** stops it.
 
 The tab counts the plates blurred by hand. A hand-blurred plate is
-blurred even without a scan, and even with **Blur number plates** off. To
+blurred even without a scan, and even with **Blur number plates** off.
+Where blurs overlap, such as yours over a plate the scan half caught, the
+picture is blurred at least as much as by either one alone. To
 remove one, right-click it in the viewport: **Remove this blur**, or
 **Remove this blur from here on**.
 

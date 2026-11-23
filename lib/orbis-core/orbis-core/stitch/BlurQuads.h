@@ -21,6 +21,13 @@
 // detected corners jitter; nothing finer than a cell survives either way.
 // The outer kBlurFeather of (s, t) fades into the picture.
 //
+// Where regions overlap (a hand-drawn region over a plate the scan found,
+// two scanned plates close together), adding a region never lets more of the
+// picture through: of the picture, prod(1 - w) is left, w each region's fade
+// weight there, so a point in any region's interior is fully blurred in
+// whatever order the regions come. The blur colour there is the regions'
+// colours averaged by w; a lone region is its own colour, as without overlap.
+//
 // Dependency-free, like the rest of orbis-core.
 
 #include <vector>

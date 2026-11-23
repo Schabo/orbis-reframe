@@ -805,11 +805,16 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
                 double rgb[3];
                 shade(dir, rgb);
                 // Privacy blur: the quads are in the sphere frame
-                // (fisheye_stitch_common.glsl blurredLenses).
+                // (fisheye_stitch_common.glsl blurredLenses). Overlapping
+                // regions combine as BlurQuads.h says.
                 const double sd[3] = {sphere.x, sphere.y, sphere.z};
+                double blurRgb[3] = {0, 0, 0}, weightSum = 0, cover = 0;
                 for (int k = 0; k < blurCount; ++k) {
                     double s, t;
                     if (!blurQuadST(blur[k], sd, s, t))
+                        continue;
+                    const double w = blurQuadWeight(s, t);
+                    if (w <= 0.0)
                         continue;
                     int cell[4];
                     double cw[4], mix[3] = {0, 0, 0};
@@ -818,11 +823,20 @@ void FisheyeStitcher::renderEquirect(const Image& lens0, const Image& lens1, Ima
                     for (int n = 0; n < 4; ++n)
                         for (int ch = 0; ch < 3; ++ch)
                             mix[ch] += cw[n] * cells[cell[n] * 3 + ch];
-                    const double w = blurQuadWeight(s, t);
-                    for (int ch = 0; ch < 3; ++ch)
-                        rgb[ch] += (mix[ch] - rgb[ch]) * w;
-                    break;
+                    // The first region's colour as it is (a lone region
+                    // renders as it always has), later ones into the
+                    // weighted mean.
+                    for (int ch = 0; ch < 3; ++ch) {
+                        if (weightSum > 0.0)
+                            blurRgb[ch] += (mix[ch] - blurRgb[ch]) * (w / (weightSum + w));
+                        else
+                            blurRgb[ch] = mix[ch];
+                    }
+                    weightSum += w;
+                    cover += w - cover * w;
                 }
+                for (int ch = 0; ch < 3; ++ch)
+                    rgb[ch] += (blurRgb[ch] - rgb[ch]) * cover;
                 uint8_t* px = &out.rgb[(static_cast<std::size_t>(y) * W + x) * 3];
                 for (int c = 0; c < 3; ++c)
                     px[c] = static_cast<uint8_t>(std::clamp(rgb[c] + 0.5, 0.0, 255.0));

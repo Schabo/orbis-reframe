@@ -2557,6 +2557,101 @@ void testManyBlurQuads()
     CHECK(mismatched == 0);
 }
 
+// Overlapping regions: region A's fading edge runs across region B's
+// interior. There the picture is fully blurred whichever comes first -- A's
+// low weight doesn't let the picture through B (BlurQuads.h).
+void testOverlappingBlurQuads()
+{
+    auto dirOf = [](double lonDeg, double latDeg, float out[3]) {
+        const double lon = lonDeg * std::numbers::pi / 180.0;
+        const double lat = latDeg * std::numbers::pi / 180.0;
+        out[0] = static_cast<float>(std::cos(lat) * std::sin(lon));
+        out[1] = static_cast<float>(std::sin(lat));
+        out[2] = static_cast<float>(-std::cos(lat) * std::cos(lon));
+    };
+    auto quad = [&](double lon0, double lon1, double lat0, double lat1) {
+        orbiscore::BlurQuad q;
+        dirOf(lon0, lat0, q.corner[0]);
+        dirOf(lon1, lat0, q.corner[1]);
+        dirOf(lon1, lat1, q.corner[2]);
+        dirOf(lon0, lat1, q.corner[3]);
+        return q;
+    };
+    // A's right-hand feather (~lon 16.8 .. 20) lies inside B's interior.
+    const orbiscore::BlurQuad a = quad(-20.0, 20.0, 10.0, -10.0), b = quad(14.0, 40.0, 5.0, -5.0);
+    // A 2 px checker: every cell's mean is the same grey, so a blurred pixel
+    // is that grey whichever regions' colours make it.
+    orbiscore::Image l0, l1;
+    for (orbiscore::Image* im : {&l0, &l1}) {
+        im->alloc(800, 800);
+        for (int y = 0; y < 800; ++y)
+            for (int x = 0; x < 800; ++x)
+                for (int c = 0; c < 3; ++c)
+                    im->rgb[(static_cast<size_t>(y) * 800 + x) * 3 + c] =
+                        ((x / 2 + y / 2) & 1) ? 220 : 40;
+    }
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Calibration(), 800, 800, insta360Params()));
+    constexpr int W = 1024, H = 512;
+    auto render = [&](const std::vector<orbiscore::BlurQuad>& qs) {
+        std::vector<orbiscore::BlurQuadFrame> f;
+        CHECK(orbiscore::prepareBlurQuads(qs, f));
+        orbiscore::Image eq;
+        eq.alloc(W, H);
+        st.renderEquirect(l0, l1, eq, nullptr, nullptr, f.data(), static_cast<int>(f.size()));
+        return eq;
+    };
+    std::vector<orbiscore::BlurQuadFrame> fa, fb;
+    CHECK(orbiscore::prepareBlurQuads({a}, fa) && orbiscore::prepareBlurQuads({b}, fb));
+    const orbiscore::Image plain = render({}), onlyB = render({b});
+    const orbiscore::Image ab = render({a, b}), ba = render({b, a});
+    // Each region's weight at pixel (x, y), 0 outside it.
+    auto weight = [&](const orbiscore::BlurQuadFrame& f, int x, int y) {
+        const double lat = (0.5 - (y + 0.5) / H) * std::numbers::pi;
+        const double lon = ((x + 0.5) / W - 0.5) * 2.0 * std::numbers::pi;
+        const double d[3] = {std::cos(lat) * std::sin(lon), std::sin(lat),
+                             -std::cos(lat) * std::cos(lon)};
+        double s, t;
+        return orbiscore::blurQuadST(f, d, s, t) ? orbiscore::blurQuadWeight(s, t) : 0.0;
+    };
+    const orbiscore::Image onlyA = render({a});
+    // Pixels in A's fading edge and B's interior: off B's own blur, and how
+    // much of the plain picture's detail is left (its distance from the grey).
+    // Pixels in one region only: as that region renders alone.
+    size_t n = 0, lone = 0, loneOff = 0;
+    double offAb = 0, offBa = 0, detailPlain = 0;
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const double wa = weight(fa[0], x, y), wb = weight(fb[0], x, y);
+            const size_t i = (static_cast<size_t>(y) * W + x) * 3;
+            if ((wa > 0.0) != (wb > 0.0)) {
+                ++lone;
+                const orbiscore::Image& alone = wa > 0.0 ? onlyA : onlyB;
+                for (int c = 0; c < 3; ++c)
+                    loneOff +=
+                        ab.rgb[i + c] != alone.rgb[i + c] || ba.rgb[i + c] != alone.rgb[i + c];
+            }
+            if (wb < 1.0 || wa <= 0.0 || wa > 0.5)
+                continue;
+            ++n;
+            for (int c = 0; c < 3; ++c) {
+                offAb += std::abs(int(ab.rgb[i + c]) - int(onlyB.rgb[i + c]));
+                offBa += std::abs(int(ba.rgb[i + c]) - int(onlyB.rgb[i + c]));
+                detailPlain += std::abs(int(plain.rgb[i + c]) - int(onlyB.rgb[i + c]));
+            }
+        }
+    const double k = n ? 1.0 / (3.0 * n) : 0.0;
+    std::printf("overlapping blur: %zu px, off B's blur by %.2f (A first) / %.2f (B first), "
+                "plain picture %.1f; %zu px in one region, %zu values off it alone\n",
+                n, offAb * k, offBa * k, detailPlain * k, lone, loneOff);
+    CHECK(n > 50);
+    CHECK(detailPlain * k > 30.0); // the picture there has detail to hide
+    CHECK(offAb * k < 3.0);
+    CHECK(offBa * k < 3.0);
+    CHECK(lone > 1000);
+    CHECK(loneOff == 0);
+}
+
 // A file that ends in a minimal Insta360 trailer holding one record:
 // `payload` with id `id`, right before the 78-byte footer (sequential layout).
 std::string writeTrailerFile(const char* name, uint16_t id, const std::vector<uint8_t>& payload)
@@ -3576,6 +3671,7 @@ int main()
     testSeamFlow();
     testBlurQuads();
     testManyBlurQuads();
+    testOverlappingBlurQuads();
     testTrailerThumbnail();
     testTrailerRecords();
     testHighlights();

@@ -949,18 +949,29 @@ vec3 blurCellMix(int k, vec2 st)
 }
 
 // blendLenses() with the privacy blur applied: what every render path calls.
+// Overlapping regions combine as orbis-core/stitch/BlurQuads.h says.
 vec3 blurredLenses(vec3 dir)
 {
     vec3 rgb = blendLenses(dir);
+    vec3 blurRgb = vec3(0.0);
+    float weightSum = 0.0, cover = 0.0;
     int n = int(P.blur0.x);
     for (int k = 0; k < n; ++k) {
         vec2 st;
         if (!blurST(k, dir, st))
             continue;
         float edge = min(min(st.x, 1.0 - st.x), min(st.y, 1.0 - st.y));
-        return mix(rgb, blurCellMix(k, st), smoothstep(0.0, BLUR_FEATHER, edge));
+        float w = smoothstep(0.0, BLUR_FEATHER, edge);
+        if (w <= 0.0)
+            continue;
+        // The first region's colour as it is (a lone region renders as it
+        // always has), later ones into the weighted mean.
+        vec3 c = blurCellMix(k, st);
+        blurRgb = weightSum > 0.0 ? blurRgb + (c - blurRgb) * (w / (weightSum + w)) : c;
+        weightSum += w;
+        cover += w - cover * w;
     }
-    return rgb;
+    return mix(rgb, blurRgb, cover);
 }
 
 #ifndef FISHEYE_STITCH_NO_MAIN
