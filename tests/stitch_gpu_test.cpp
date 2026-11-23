@@ -6,7 +6,9 @@
 // only by float rounding and the GPU's 8-bit sampling.
 // Also: the privacy blur with more regions than the stitch once held, and
 // a stitcher adopting a device another thread submits to takes the
-// queue's lock for its own setup's submits and its teardown.
+// queue's lock for its own setup's submits and its teardown, and a stitch
+// whose GPU work doesn't finish in time fails without reusing what that work
+// still holds (the test links with -Wl,--wrap for the Vulkan calls below).
 // Standalone; the exit code is the failure count, 77 (skipped) without a
 // Vulkan device.
 
@@ -21,12 +23,57 @@
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
+
+// Stand-ins for the stitcher's fence waits, resets and submits (linked
+// with --wrap): they pass straight on, but count, and a test can shorten
+// the waits or have the next one report a lost device.
+namespace vkfaults {
+uint64_t waitCapNs = 0; // nonzero: no wait is longer
+int loseNext = 0;       // the next this many waits report VK_ERROR_DEVICE_LOST
+int submits = 0, fenceResets = 0, cmdResets = 0;
+} // namespace vkfaults
+
+extern "C" {
+VkResult __real_vkWaitForFences(VkDevice, uint32_t, const VkFence*, VkBool32, uint64_t);
+VkResult __real_vkResetFences(VkDevice, uint32_t, const VkFence*);
+VkResult __real_vkResetCommandBuffer(VkCommandBuffer, VkCommandBufferResetFlags);
+VkResult __real_vkQueueSubmit(VkQueue, uint32_t, const VkSubmitInfo*, VkFence);
+
+VkResult __wrap_vkWaitForFences(VkDevice dev, uint32_t n, const VkFence* f, VkBool32 all,
+                                uint64_t timeout)
+{
+    if (vkfaults::loseNext > 0) {
+        --vkfaults::loseNext;
+        __real_vkWaitForFences(dev, n, f, all, timeout); // the work itself ends
+        return VK_ERROR_DEVICE_LOST;
+    }
+    if (vkfaults::waitCapNs)
+        timeout = std::min(timeout, vkfaults::waitCapNs);
+    return __real_vkWaitForFences(dev, n, f, all, timeout);
+}
+VkResult __wrap_vkResetFences(VkDevice dev, uint32_t n, const VkFence* f)
+{
+    ++vkfaults::fenceResets;
+    return __real_vkResetFences(dev, n, f);
+}
+VkResult __wrap_vkResetCommandBuffer(VkCommandBuffer c, VkCommandBufferResetFlags flags)
+{
+    ++vkfaults::cmdResets;
+    return __real_vkResetCommandBuffer(c, flags);
+}
+VkResult __wrap_vkQueueSubmit(VkQueue q, uint32_t n, const VkSubmitInfo* si, VkFence f)
+{
+    ++vkfaults::submits;
+    return __real_vkQueueSubmit(q, n, si, f);
+}
+}
 
 namespace {
 
@@ -489,6 +536,178 @@ void testAdoptLocksQueue()
     CHECK(!strayUnlock);
 }
 
+// Two NV12 lens pictures standing in for a decoder's, each with its
+// timeline semaphore at 0.
+struct DecodedPair {
+    VkDevice device = VK_NULL_HANDLE;
+    VkImage image[2] = {};
+    VkDeviceMemory mem[2] = {};
+    VkSemaphore sem[2] = {};
+
+    bool create(const OwnDevice& own)
+    {
+        device = own.device;
+        VkPhysicalDeviceMemoryProperties mp{};
+        vkGetPhysicalDeviceMemoryProperties(own.phys, &mp);
+        for (int i = 0; i < 2; ++i) {
+            VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+            ci.imageType = VK_IMAGE_TYPE_2D;
+            ci.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+            ci.extent = {kLens, kLens, 1};
+            ci.mipLevels = 1;
+            ci.arrayLayers = 1;
+            ci.samples = VK_SAMPLE_COUNT_1_BIT;
+            ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+            ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+            ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            if (vkCreateImage(device, &ci, nullptr, &image[i]) != VK_SUCCESS)
+                return false;
+            VkMemoryRequirements req{};
+            vkGetImageMemoryRequirements(device, image[i], &req);
+            VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            ai.allocationSize = req.size;
+            ai.memoryTypeIndex = UINT32_MAX;
+            for (uint32_t t = 0; t < mp.memoryTypeCount && ai.memoryTypeIndex == UINT32_MAX; ++t)
+                if (req.memoryTypeBits & (1u << t))
+                    ai.memoryTypeIndex = t;
+            if (ai.memoryTypeIndex == UINT32_MAX ||
+                vkAllocateMemory(device, &ai, nullptr, &mem[i]) != VK_SUCCESS ||
+                vkBindImageMemory(device, image[i], mem[i], 0) != VK_SUCCESS)
+                return false;
+            VkSemaphoreTypeCreateInfo tci{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+            tci.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+            VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+            sci.pNext = &tci;
+            if (vkCreateSemaphore(device, &sci, nullptr, &sem[i]) != VK_SUCCESS)
+                return false;
+        }
+        return true;
+    }
+    // The decoder finishing the pictures: their semaphores reach `value`.
+    void decoded(uint64_t value)
+    {
+        for (VkSemaphore s : sem) {
+            VkSemaphoreSignalInfo si{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+            si.semaphore = s;
+            si.value = value;
+            vkSignalSemaphore(device, &si);
+        }
+    }
+    uint64_t counter(int i) const
+    {
+        uint64_t v = 0;
+        vkGetSemaphoreCounterValue(device, sem[i], &v);
+        return v;
+    }
+    render::VulkanLensInput input(int i, uint64_t waitValue, VkImageLayout layout) const
+    {
+        render::VulkanLensInput in;
+        in.image = image[i];
+        in.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+        in.layout = layout;
+        in.semaphore = sem[i];
+        in.semWaitValue = waitValue;
+        in.width = kLens;
+        in.height = kLens;
+        in.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+        return in;
+    }
+    ~DecodedPair()
+    {
+        for (int i = 0; i < 2; ++i) {
+            if (sem[i]) vkDestroySemaphore(device, sem[i], nullptr);
+            if (image[i]) vkDestroyImage(device, image[i], nullptr);
+            if (mem[i]) vkFreeMemory(device, mem[i], nullptr);
+        }
+    }
+};
+
+// A stitch whose GPU work doesn't finish in time -- here it waits for
+// lens pictures whose decode hasn't finished -- fails, and still tells the
+// decoder what its work will signal. Until that work is seen to finish, the
+// next stitch fails without resetting or resubmitting what the work holds;
+// once it finishes, stitching goes on. After a lost device every stitch
+// fails without submitting.
+void testSubmitWaitGivesUp()
+{
+    OwnDevice own;
+    if (!own.create()) {
+        std::printf("SKIP  testSubmitWaitGivesUp: no device with ycbcr conversion\n");
+        return;
+    }
+    DecodedPair pair;
+    if (!pair.create(own)) {
+        std::printf("SKIP  testSubmitWaitGivesUp: no NV12 images\n");
+        return;
+    }
+    auto gpu = std::make_unique<render::VulkanFisheyeStitcher>();
+    std::string err;
+    if (!gpu->initAdopt(own.instance, own.phys, own.device, own.family, 0, render::AdoptedQueue{},
+                        err, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, orbiscore::YcbcrCoding{})) {
+        std::printf("SKIP  testSubmitWaitGivesUp: %s\n", err.c_str());
+        return;
+    }
+    orbiscore::FisheyeStitcher st;
+    CHECK(st.configure(x5Lenses(), kLens, kLens, insta360Params()));
+    const orbiscore::StitchGpuParams params = st.gpuParams();
+    const VkImageLayout read = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    std::vector<uint8_t> out;
+    render::VulkanLensOutcome r0, r1;
+
+    // The pictures' decode ends at 1; it hasn't yet, so the stitch can't run.
+    vkfaults::waitCapNs = 50'000'000;
+    err.clear();
+    bool ok = gpu->stitchVk(pair.input(0, 1, VK_IMAGE_LAYOUT_UNDEFINED),
+                            pair.input(1, 1, VK_IMAGE_LAYOUT_UNDEFINED), params, kEqW, kEqW / 2,
+                            out, &r0, &r1, err);
+    std::printf("stitch not finished: %s\n", err.c_str());
+    CHECK(!ok);
+    CHECK(err.find("didn't finish") != std::string::npos);
+    CHECK(r0.semSignalValue == 2 && r1.semSignalValue == 2);
+    CHECK(r0.newLayout == read && r1.newLayout == read);
+
+    const int submits = vkfaults::submits, fenceResets = vkfaults::fenceResets,
+              cmdResets = vkfaults::cmdResets;
+    err.clear();
+    ok = gpu->stitchVk(pair.input(0, 2, read), pair.input(1, 2, read), params, kEqW, kEqW / 2,
+                       out, &r0, &r1, err);
+    std::printf("next stitch while busy: %s\n", err.c_str());
+    CHECK(!ok);
+    CHECK(err.find("still busy") != std::string::npos);
+    CHECK(vkfaults::submits == submits);
+    CHECK(vkfaults::fenceResets == fenceResets);
+    CHECK(vkfaults::cmdResets == cmdResets);
+
+    pair.decoded(1); // the first stitch runs now, and signals 2
+    vkfaults::waitCapNs = 0;
+    err.clear();
+    ok = gpu->stitchVk(pair.input(0, 2, read), pair.input(1, 2, read), params, kEqW, kEqW / 2,
+                       out, &r0, &r1, err);
+    if (!ok)
+        std::printf("FAIL  stitch after the work finished: %s\n", err.c_str());
+    CHECK(ok);
+    CHECK(out.size() == static_cast<size_t>(kEqW) * (kEqW / 2) * 4);
+    CHECK(r0.semSignalValue == 3 && r1.semSignalValue == 3);
+    CHECK(pair.counter(0) == 3 && pair.counter(1) == 3);
+
+    vkfaults::loseNext = 1;
+    err.clear();
+    ok = gpu->stitchVk(pair.input(0, 3, read), pair.input(1, 3, read), params, kEqW, kEqW / 2,
+                       out, &r0, &r1, err);
+    CHECK(!ok);
+    CHECK(err.find("lost") != std::string::npos);
+    CHECK(r0.semSignalValue == 4); // submitted before the loss showed
+    const int submitsLost = vkfaults::submits;
+    err.clear();
+    ok = gpu->stitchVk(pair.input(0, 4, read), pair.input(1, 4, read), params, kEqW, kEqW / 2,
+                       out, &r0, &r1, err);
+    CHECK(!ok);
+    CHECK(err.find("lost") != std::string::npos);
+    CHECK(vkfaults::submits == submitsLost);
+    vkfaults::loseNext = 0;
+    gpu.reset();
+}
+
 } // namespace
 
 int main()
@@ -504,6 +723,7 @@ int main()
     testManyBlurRegions(gpu);
     testOverlappingBlurRegions(gpu);
     testAdoptLocksQueue();
+    testSubmitWaitGivesUp();
     std::printf("%s (%d failure%s)\n", g_failures ? "FAILED" : "OK", g_failures,
                 g_failures == 1 ? "" : "s");
     return g_failures;

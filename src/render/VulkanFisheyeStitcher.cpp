@@ -412,6 +412,8 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
         err = "stitcher not initialised";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     // Measured here, the frame stitches with the GPU's own field.
     orbiscore::StitchGpuParams flowParams;
     if (measureFlow) {
@@ -526,8 +528,8 @@ bool VulkanFisheyeStitcher::stitchRgbImpl(const uint8_t* rgb0, const uint8_t* rg
         err = "vkQueueSubmit failed";
         return false;
     }
-    vkWaitForFences(d->device, 1, &d->fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(d->device, 1, &d->fence);
+    if (!d->waitSubmitted(err))
+        return false;
 
     if (doStitch) {
         const size_t outBytes = static_cast<size_t>(eqW) * eqH * 4;
@@ -546,6 +548,8 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
         err = "stitchVk requires initAdopt()";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     if (eqW <= 0 || eqH <= 0) {
         err = "bad equirect dimensions";
         return false;
@@ -684,6 +688,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
         err = "reframe reproject pipeline not built";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     if (eqW <= 0 || eqH <= 0 || outW <= 0 || outH <= 0 || (outW & 3) != 0 || (outH & 1) != 0) {
         err = "bad dimensions (outW must be a multiple of 4, outH a multiple of 2)";
         return false;
@@ -944,6 +950,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
         err = "renderViewVk requires initAdopt() and the fused view pipeline";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     // A single view is its own canvas.
     const bool single = canvasW == 0;
     const int outW = single ? views[0].w : canvasW;
@@ -1178,6 +1186,8 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
         err = "measureSeamVk requires initAdopt()";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     // Pass 2 lives in both the stitch and the fused view shader. Prefer the
     // view pipeline: its binding 3 only needs a token buffer, where the
     // stitch's wants the whole equirect.
@@ -1351,6 +1361,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
         err = "fillLensFrameVk requires initAdopt(), the view pipeline and external memory";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     if (!(f0.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) ||
         !(f1.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
         err = "decoder images can't be copied from (no TRANSFER_SRC usage)";
@@ -1543,8 +1555,18 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
 
     std::chrono::steady_clock::time_point tSubmit;
     if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r0, r1, err,
-                              &tSubmit))
+                              &tSubmit)) {
+        // The copy may still be writing the slot: it goes back once that ends.
+        if (d->pending) {
+            release.armed = false;
+            d->whenIdle([ring = d->ring, slot] {
+                std::lock_guard<std::mutex> lk(ring->mx);
+                slot->busy = false;
+                ring->cv.notify_all();
+            });
+        }
         return false;
+    }
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
 

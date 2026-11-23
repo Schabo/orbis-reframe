@@ -75,6 +75,19 @@ render::VulkanLensInput toRenderInput(const orbiscore::VulkanLensFrame& lf) {
     return in;
 }
 
+// What the decoder's next use of a frame waits for: the frame as it came
+// in, until a stitcher call submits work on it -- then that call writes
+// what the work signals, also when it fails waiting for the work, which may
+// still be running. A caller starts its outcomes here and always hands them
+// back.
+render::VulkanLensOutcome asIs(const render::VulkanLensInput& in) {
+    return {in.semWaitValue, in.layout};
+}
+
+orbiscore::VulkanLensFrameResult toResult(const render::VulkanLensOutcome& o) {
+    return {o.semSignalValue, o.newLayout};
+}
+
 } // namespace
 
 const orbiscore::LensProfile* LensGuardProfile(const camera::ClipMetadata& clip,
@@ -770,23 +783,16 @@ Frame NativeStitchSource::readGpuAllVulkan() {
     frame.height = eq_h_;
     frame.timestamp_ms = pts.ms;
     frame.timestamp_us = pts.us;
-    render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    // As the seam measure (if any) left them.
+    render::VulkanLensOutcome oc0 = asIs(in0), oc1 = asIs(in1);
     std::string blurErr;
     const bool blurred = blurQuadsAt(pts, params, blurErr);
     const bool ok =
         blurred && gpu_->stitchVk(in0, in1, params, eq_w_, eq_h_, frame.rgba, &oc0, &oc1, gerr);
-
-    orbiscore::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
-    orbiscore::VulkanLensFrameResult r1{oc1.semSignalValue, oc1.newLayout};
-    if (ok) {
-        vdec_->unlockPair(f0, f1, r0, r1);
-    } else {
-        // On failure the frames are as the seam measure (if any) left them.
-        vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
-    }
+    vdec_->unlockPair(f0, f1, toResult(oc0), toResult(oc1));
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
 
@@ -873,15 +879,9 @@ bool NativeStitchSource::MeasureNextSeamFrame(orbiscore::SeamWindow& w, int64_t&
         pts_ms = pts.ms;
         w.measureTable(pts_ms, q);
         std::copy(q, q + orbiscore::kSeamDepthBins, p.seamQ);
-        render::VulkanLensOutcome o0, o1;
+        render::VulkanLensOutcome o0 = asIs(in0), o1 = asIs(in1);
         const bool ok = gpu_->measureSeamVk(in0, in1, p, *seam_costs_, cut_stats_.get(), &o0, &o1, err);
-        if (ok) {
-            vdec_->unlockPair(f0, f1, {o0.semSignalValue, o0.newLayout},
-                              {o1.semSignalValue, o1.newLayout});
-        } else {
-            vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout},
-                              {in1.semWaitValue, in1.layout});
-        }
+        vdec_->unlockPair(f0, f1, toResult(o0), toResult(o1));
         vdec_->freeFrame(f0);
         vdec_->freeFrame(f1);
         if (!ok) {
@@ -1027,21 +1027,19 @@ orbiscore::StitchGpuParams NativeStitchSource::paramsWithSeam(const orbiscore::F
         // colour, the seam flow's strips -- in one submission of their own,
         // so this frame's stitch uses them.
         const auto t0 = std::chrono::steady_clock::now();
-        render::VulkanLensOutcome o0, o1;
+        render::VulkanLensOutcome o0 = asIs(in0), o1 = asIs(in1);
         std::string err;
         const bool measured =
             seam_flow_on_
                 ? gpu_->measureSeamFlowVk(in0, in1, p, seam_colour_on_ ? cut_stats_.get() : nullptr,
                                           &o0, &o1, err)
                 : gpu_->measureSeamCutVk(in0, in1, p, *cut_stats_, &o0, &o1, err);
-        if (measured) {
-            in0.semWaitValue = o0.semSignalValue;
-            in0.layout = o0.newLayout;
-            in1.semWaitValue = o1.semSignalValue;
-            in1.layout = o1.newLayout;
-        } else {
+        in0.semWaitValue = o0.semSignalValue;
+        in0.layout = o0.newLayout;
+        in1.semWaitValue = o1.semSignalValue;
+        in1.layout = o1.newLayout;
+        if (!measured)
             seamMeasureFailed(err);
-        }
         if (seam_colour_on_)
             applySeamColour(pts.ms, p, [&] { return measured; });
         if (seam_flow_on_) {
@@ -1060,22 +1058,21 @@ orbiscore::StitchGpuParams NativeStitchSource::paramsWithSeam(const orbiscore::F
         // submission as the cost volume.
         orbiscore::StitchGpuParams m = p;
         std::copy(q, q + orbiscore::kSeamDepthBins, m.seamQ);
-        render::VulkanLensOutcome o0, o1;
+        render::VulkanLensOutcome o0 = asIs(in0), o1 = asIs(in1);
         std::string err;
-        if (!gpu_->measureSeamVk(in0, in1, m, *seam_costs_, cut_stats_.get(), &o0, &o1, err)) {
-            if (!seam_warned_) {
-                seam_warned_ = true;
-                std::fprintf(stderr, "[NativeStitchSource] seam depth measure failed (%s); "
-                                     "keeping the last table\n",
-                             err.c_str());
-            }
-            return false;
-        }
+        const bool measured =
+            gpu_->measureSeamVk(in0, in1, m, *seam_costs_, cut_stats_.get(), &o0, &o1, err);
         in0.semWaitValue = o0.semSignalValue;
         in0.layout = o0.newLayout;
         in1.semWaitValue = o1.semSignalValue;
         in1.layout = o1.newLayout;
-        return true;
+        if (!measured && !seam_warned_) {
+            seam_warned_ = true;
+            std::fprintf(stderr, "[NativeStitchSource] seam depth measure failed (%s); "
+                                 "keeping the last table\n",
+                         err.c_str());
+        }
+        return measured;
     });
     std::copy(seam_state_.q, seam_state_.q + orbiscore::kSeamDepthBins, p.seamQ);
     p.seamBlend = seam_state_.blend;
@@ -1147,7 +1144,7 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFromU
         orbiscore::VulkanLensFrame lf0, lf1;
         vdec_->lockPair(f0, f1, lf0, lf1);
         render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-        render::VulkanLensOutcome o0, o1;
+        render::VulkanLensOutcome o0 = asIs(in0), o1 = asIs(in1);
         // Measured as playback measures this frame: with its capture-time
         // correction, which moves what the strips see.
         const orbiscore::StitchGpuParams p = paramsAt(pts);
@@ -1159,18 +1156,10 @@ bool NativeStitchSource::measureNextSeamFrame(int64_t& pts_ms, int64_t flowFromU
                                          &o0, &o1, err);
         else if (measure && seam_colour_on_)
             ok = gpu_->measureSeamCutVk(in0, in1, p, *cut_stats_, &o0, &o1, err);
-        else
-            o0 = {in0.semWaitValue, in0.layout}, o1 = {in1.semWaitValue, in1.layout};
         if (flow && ok)
             seam_flow_gpu_ = true;
         *colourMeasured = ok && measure && seam_colour_on_;
-        if (ok) {
-            vdec_->unlockPair(f0, f1, {o0.semSignalValue, o0.newLayout},
-                              {o1.semSignalValue, o1.newLayout});
-        } else {
-            vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout},
-                              {in1.semWaitValue, in1.layout});
-        }
+        vdec_->unlockPair(f0, f1, toResult(o0), toResult(o1));
         vdec_->freeFrame(f0);
         vdec_->freeFrame(f1);
         if (!ok)
@@ -1336,10 +1325,10 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
     float stab[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     if (perFrame)
         perFrame(pts, pose, stab);
-    render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    render::VulkanLensOutcome oc0 = asIs(in0), oc1 = asIs(in1);
     std::string blurErr;
     const bool blurred = blurQuadsAt(pts, params, blurErr);
     const render::VulkanFisheyeStitcher::ViewFormat fmt =
@@ -1372,14 +1361,7 @@ bool NativeStitchSource::readView(int outW, int outH, const FramePoseFn& perFram
                                        colorGrade, out, &oc0, &oc1, gerr)
             : gpu_->renderViewVk(in0, in1, params, outW, outH, &pose, stab, colorGrade,
                                  fmt, out, &oc0, &oc1, gerr));
-
-    orbiscore::VulkanLensFrameResult r0{oc0.semSignalValue, oc0.newLayout};
-    orbiscore::VulkanLensFrameResult r1{oc1.semSignalValue, oc1.newLayout};
-    if (ok) {
-        vdec_->unlockPair(f0, f1, r0, r1);
-    } else {
-        vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
-    }
+    vdec_->unlockPair(f0, f1, toResult(oc0), toResult(oc1));
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
 
@@ -1462,17 +1444,15 @@ bool NativeStitchSource::RenderKeptViews(int handle, int canvasW, int canvasH,
     orbiscore::VulkanLensFrame lf0, lf1;
     vdec_->lockPair(h.f0, h.f1, lf0, lf1);
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
-    render::VulkanLensOutcome oc0, oc1;
+    render::VulkanLensOutcome oc0 = asIs(in0), oc1 = asIs(in1);
     std::string gerr;
     const bool ok = gpu_->renderViewsVk(in0, in1, h.params, canvasW, canvasH, vr, stab,
                                         clearRgba, rgba, &oc0, &oc1, gerr);
+    vdec_->unlockPair(h.f0, h.f1, toResult(oc0), toResult(oc1));
     if (ok) {
-        vdec_->unlockPair(h.f0, h.f1, {oc0.semSignalValue, oc0.newLayout},
-                          {oc1.semSignalValue, oc1.newLayout});
         copyGpuTiming();
         return true;
     }
-    vdec_->unlockPair(h.f0, h.f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
     last_error_ = "GPU renderViewsVk failed: " + gerr;
     return false;
 }
@@ -1599,19 +1579,14 @@ bool NativeStitchSource::ReadLensFrame(render::LensFrame& out) {
 
     orbiscore::VulkanLensFrame lf0, lf1;
     vdec_->lockPair(f0, f1, lf0, lf1);
-    render::VulkanLensOutcome oc0, oc1;
     std::string gerr;
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     orbiscore::StitchGpuParams params = paramsWithSeam(pts, in0, in1);
+    render::VulkanLensOutcome oc0 = asIs(in0), oc1 = asIs(in1);
     std::string blurErr;
     const bool blurred = blurQuadsAt(pts, params, blurErr);
     const bool ok = blurred && gpu_->fillLensFrameVk(in0, in1, params, out, &oc0, &oc1, gerr);
-    if (ok) {
-        vdec_->unlockPair(f0, f1, {oc0.semSignalValue, oc0.newLayout},
-                          {oc1.semSignalValue, oc1.newLayout});
-    } else {
-        vdec_->unlockPair(f0, f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
-    }
+    vdec_->unlockPair(f0, f1, toResult(oc0), toResult(oc1));
     vdec_->freeFrame(f0);
     vdec_->freeFrame(f1);
     if (!blurred) {

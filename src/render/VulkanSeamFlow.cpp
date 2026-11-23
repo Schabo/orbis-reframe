@@ -494,9 +494,7 @@ bool VulkanFisheyeStitcher::Impl::submitOnce(const std::function<void(VkCommandB
         err = "vkQueueSubmit failed";
         return false;
     }
-    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &fence);
-    return true;
+    return waitSubmitted(err);
 }
 
 bool VulkanFisheyeStitcher::estimateSeamFlow(const orbiscore::SeamFlowStrips& s, std::string& err)
@@ -507,6 +505,8 @@ bool VulkanFisheyeStitcher::estimateSeamFlow(const orbiscore::SeamFlowStrips& s,
         err = "estimateSeamFlow: not ready or invalid strips";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     orbiscore::StitchGpuParams p;
     p.seamFlowCols = g.cols;
     p.seamFlowRows = g.rows;
@@ -534,9 +534,12 @@ bool VulkanFisheyeStitcher::estimateSeamFlow(const orbiscore::SeamFlowStrips& s,
         vkCmdCopyBuffer(c, stage, d->stripBuf, 1, &region);
         d->recordSeamFlow(c);
     }, err);
-    vkUnmapMemory(d->device, stageMem);
-    vkDestroyBuffer(d->device, stage, nullptr);
-    vkFreeMemory(d->device, stageMem, nullptr);
+    // The copy may still be reading it, if the wait gave up.
+    d->whenIdle([dev = d->device, stage, stageMem] {
+        vkUnmapMemory(dev, stageMem);
+        vkDestroyBuffer(dev, stage, nullptr);
+        vkFreeMemory(dev, stageMem, nullptr);
+    });
     return ok;
 }
 
@@ -547,6 +550,8 @@ bool VulkanFisheyeStitcher::solveSeamFade(const orbiscore::StitchGpuParams& para
         err = "solveSeamFade: no GPU seam flow";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     orbiscore::StitchGpuParams p = params;
     p.seamColourActive = 1;
     p.seamFlow.reset();
@@ -561,6 +566,8 @@ bool VulkanFisheyeStitcher::readSeamFlow(orbiscore::SeamFlowField& out, std::str
         err = "readSeamFlow: no GPU seam flow";
         return false;
     }
+    if (!d->settle(err))
+        return false;
     const int W = d->flowW, H = d->flowH; // the grid's rows and the fade's
     VkBuffer buf = VK_NULL_HANDLE;
     VkDeviceMemory mem = VK_NULL_HANDLE;
@@ -608,9 +615,12 @@ bool VulkanFisheyeStitcher::readSeamFlow(orbiscore::SeamFlowField& out, std::str
         for (int x = 0; x < W; ++x)
             out.fade[x] = FromHalf(h[out.v.size() + 4 * x]);
     }
-    vkUnmapMemory(d->device, mem);
-    vkDestroyBuffer(d->device, buf, nullptr);
-    vkFreeMemory(d->device, mem, nullptr);
+    // The copy may still be writing it, if the wait gave up.
+    d->whenIdle([dev = d->device, buf, mem] {
+        vkUnmapMemory(dev, mem);
+        vkDestroyBuffer(dev, buf, nullptr);
+        vkFreeMemory(dev, mem, nullptr);
+    });
     return ok;
 }
 

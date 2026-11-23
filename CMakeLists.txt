@@ -1130,6 +1130,10 @@ set_tests_properties(seam_flow_gpu_test PROPERTIES SKIP_RETURN_CODE 77)
 # device.
 add_executable(stitch_gpu_test tests/stitch_gpu_test.cpp)
 target_link_libraries(stitch_gpu_test PRIVATE render_gpu_stitch)
+# The stitcher's fence waits, resets and submits go through the test's
+# stand-ins, which count them and can cut a wait short.
+target_link_options(stitch_gpu_test PRIVATE
+    "LINKER:--wrap=vkWaitForFences,--wrap=vkResetFences,--wrap=vkResetCommandBuffer,--wrap=vkQueueSubmit")
 add_test(NAME stitch_gpu_test COMMAND stitch_gpu_test)
 set_tests_properties(stitch_gpu_test PROPERTIES SKIP_RETURN_CODE 77)
 

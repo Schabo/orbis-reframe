@@ -29,6 +29,11 @@
 //
 // Not thread-safe -- drive it from one thread (the NativeStitchSource decoder
 // thread).
+//
+// Every call waits for its GPU work. If that takes longer than a few seconds
+// (a hung GPU) the call fails, and the next call waits for that work again
+// before it starts; it fails too while the work hasn't finished. After the
+// device is lost every call fails.
 
 namespace render {
 
@@ -46,7 +51,11 @@ struct VulkanLensInput {
     VkImageUsageFlags usage = 0; // pool image usage; fillLensFrameVk needs TRANSFER_SRC
 };
 
-// What stitchVk() left the image as -- write back into the AVVkFrame.
+// What stitchVk() (and every call taking a lens pair) left the image as --
+// write back into the AVVkFrame. Written once the call's work is submitted,
+// even if the call then fails (its wait for the GPU gave up, or the device
+// was lost); left alone when nothing was submitted. So the caller starts it
+// as the input's value and layout and always writes it back.
 struct VulkanLensOutcome {
     uint64_t semSignalValue = 0;
     VkImageLayout newLayout = VK_IMAGE_LAYOUT_UNDEFINED;

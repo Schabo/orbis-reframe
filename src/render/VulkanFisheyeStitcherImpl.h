@@ -253,6 +253,17 @@ struct VulkanFisheyeStitcher::Impl {
     // decoder in the process, on other threads (initAdopt).
     std::function<void()> lockQueue, unlockQueue;
 
+    // How long a call waits for its submission. Past it the GPU is taken to
+    // be hung (or a lens frame's decode never finished): the call fails, but
+    // the work stays the GPU's -- `pending` -- and the next call waits for it
+    // again before it touches the command buffer, descriptors or buffers.
+    static constexpr uint64_t kSubmitWaitNs = 5'000'000'000ULL;
+    bool pending = false; // submitted on `fence`, not yet seen to finish
+    bool lost = false;    // VK_ERROR_DEVICE_LOST: nothing more is submitted
+    // What waits for the pending submission to finish before it runs: frees
+    // of what that submission uses, and the hand-back of its lens slot.
+    std::vector<std::function<void()>> afterPending;
+
     VkResult submit(const VkSubmitInfo& si)
     {
         if (lockQueue)
@@ -260,14 +271,75 @@ struct VulkanFisheyeStitcher::Impl {
         const VkResult r = vkQueueSubmit(queue, 1, &si, fence);
         if (unlockQueue)
             unlockQueue();
+        if (r == VK_ERROR_DEVICE_LOST)
+            lost = true;
+        if (r == VK_SUCCESS)
+            pending = true;
         return r;
+    }
+    // Runs `fn` now, or once the pending submission has finished.
+    void whenIdle(std::function<void()> fn)
+    {
+        if (pending)
+            afterPending.push_back(std::move(fn));
+        else
+            fn();
+    }
+    void runAfterPending()
+    {
+        std::vector<std::function<void()>> run;
+        run.swap(afterPending);
+        for (auto& fn : run)
+            fn();
+    }
+    // Waits for the submission on `fence`. Fails if it doesn't finish in
+    // kSubmitWaitNs (it stays pending) or the device is lost (on a lost
+    // device nothing runs any more, so what waited for it is let go).
+    bool waitSubmitted(std::string& err)
+    {
+        const VkResult r = vkWaitForFences(device, 1, &fence, VK_TRUE, kSubmitWaitNs);
+        if (r == VK_SUCCESS) {
+            vkResetFences(device, 1, &fence);
+            pending = false;
+            runAfterPending();
+            return true;
+        }
+        if (r == VK_ERROR_DEVICE_LOST) {
+            lost = true;
+            pending = false;
+            runAfterPending();
+            err = "the GPU device was lost";
+        } else if (r == VK_TIMEOUT) {
+            err = "the GPU didn't finish in " + std::to_string(kSubmitWaitNs / 1'000'000'000ULL) +
+                  " s";
+        } else {
+            err = "waiting for the GPU failed, VkResult " + std::to_string(r);
+        }
+        return false;
+    }
+    // First thing in every call that records or touches the stitch's
+    // resources: the last call's submission, if its wait gave up, finished.
+    bool settle(std::string& err)
+    {
+        if (lost) {
+            err = "the GPU device was lost";
+            return false;
+        }
+        if (!pending)
+            return true;
+        if (waitSubmitted(err))
+            return true;
+        if (!lost)
+            err = "still busy with the last frame: " + err;
+        return false;
     }
     // Submits `c`, which reads both lens frames, once the decoder is done with
     // them -- it waits on each frame's timeline semaphore at its value and
     // signals it one higher -- and waits for it to finish. *r0 / *r1 (if
     // given) get the values signalled and `newLayout`, the layout `c` left the
-    // images in, for the decoder. *submitted (if given): when it was
-    // submitted.
+    // images in, for the decoder -- once submitted, even if the wait then
+    // fails: the decoder's next use of the frames has to wait for it.
+    // *submitted (if given): when it was submitted.
     bool submitAfterLenses(VkCommandBuffer c, const VulkanLensInput& f0, const VulkanLensInput& f1,
                            VkImageLayout newLayout, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                            std::string& err,
@@ -303,12 +375,11 @@ struct VulkanFisheyeStitcher::Impl {
             *r0 = {signalVals[0], newLayout};
         if (r1)
             *r1 = {signalVals[1], newLayout};
-        vkWaitForFences(device, 1, &fence, VK_TRUE, 5'000'000'000ULL);
-        vkResetFences(device, 1, &fence);
-        return true;
+        return waitSubmitted(err);
     }
     // Before freeing resources our submissions use. Each submission is waited
-    // on (its fence) before the call that made it returns, so on the shared,
+    // on (its fence) before the call that made it returns, or, if that wait
+    // gave up, before the next call goes on (settle), so on the shared,
     // adopted device there is nothing to wait for -- and a vkDeviceWaitIdle
     // there would race other threads' queue use.
     void idleBeforeFree()

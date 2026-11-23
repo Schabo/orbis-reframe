@@ -787,6 +787,9 @@ VulkanFisheyeStitcher::~VulkanFisheyeStitcher()
             }
         } else
             vkDeviceWaitIdle(d->device);
+        // A submission whose wait gave up is over now too.
+        d->pending = false;
+        d->runAfterPending();
         d->destroyResources();
         d->destroySeamFlowPipeline();
         d->ring.reset(); // freed now, or by the last LensFrame still holding a slot
