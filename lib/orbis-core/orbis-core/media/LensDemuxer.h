@@ -113,7 +113,10 @@ public:
     void keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_t& after) const;
 
     // The next lens-0 / lens-1 frame pair in play order; the caller owns both
-    // (av_frame_free). `*pts` (may be null) gets lens 0's time. False with
+    // (av_frame_free). The lenses are paired by time: two frames less than
+    // half a frame apart; a frame the other lens has none for is left out
+    // (the first one logged), so a lost frame costs one pair, not the
+    // lenses' agreement. `*pts` (may be null) gets lens 0's time. False with
     // `err` empty at end of stream, `err` set on a read or decode error
     // (the file and time in it); a read after an error carries on from
     // where it failed. Needs 2 lenses.
@@ -189,6 +192,9 @@ private:
     // of the file is not an error, and a read error doesn't end the file.
     bool pumpOnce(int input, std::string& err);
     void dropStale(int lens);                   // frames before the seek target
+    // Drops `lens`'s next frame, which the other lens has no frame for (its
+    // next is at `otherUs`); the first one per open() is logged.
+    void dropUnpaired(int lens, int64_t otherUs);
     AVFrame* popFront(int lens);
 
     std::vector<Input> m_inputs;
@@ -206,6 +212,7 @@ private:
     int64_t m_lastReadUs = kNoTime;           // time of the last frame (pair) read; none after open / a seek
     std::string m_seekFailed;                 // the failed seek's error, until a seek works (seekTo)
     bool m_shared = false;                    // two lenses, one stream: one decoder (decoderOf)
+    bool m_unpairedLogged = false;            // a frame without a partner was logged (dropUnpaired)
 };
 
 } // namespace orbiscore

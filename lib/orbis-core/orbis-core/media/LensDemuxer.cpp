@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -155,6 +156,7 @@ void LensDemuxer::close()
     m_lastReadUs = kNoTime;
     m_seekFailed.clear();
     m_shared = false;
+    m_unpairedLogged = false;
 }
 
 int LensDemuxer::openInput(const std::string& path, std::string& err)
@@ -707,6 +709,21 @@ void LensDemuxer::dropStale(int lens)
     }
 }
 
+void LensDemuxer::dropUnpaired(int lens, int64_t otherUs)
+{
+    AVFrame* f = popFront(lens);
+    if (!m_unpairedLogged) {
+        m_unpairedLogged = true;
+        std::fprintf(stderr,
+                     "[insv] lens %d's frame at %lld ms has no lens %d frame (its next is at "
+                     "%lld ms): left out%s; further ones not logged\n",
+                     lens, static_cast<long long>(MsOfUs(ptsUs(f, lensStream(lens)->time_base))),
+                     1 - lens, static_cast<long long>(MsOfUs(otherUs)),
+                     where(m_lensInput[lens]).c_str());
+    }
+    av_frame_free(&f);
+}
+
 AVFrame* LensDemuxer::popFront(int lens)
 {
     AVFrame* f = m_fifo[lens].front();
@@ -725,11 +742,27 @@ bool LensDemuxer::readNextPair(AVFrame*& out0, AVFrame*& out1, FramePts* pts, st
         return false;
     }
     const int d1 = decoderOf(1);
+    // Two lenses' frames less than half a frame apart show the same moment.
+    // Every camera read so far gives both lenses the same times, frame for
+    // frame; the tolerance only absorbs two time bases' rounding.
+    const int64_t halfFrameUs = std::llround(5e5 / m_lenses[0].fps);
     for (;;) {
         dropStale(0);
         dropStale(d1);
-        if (!m_fifo[0].empty() && !m_fifo[d1].empty())
-            break;
+        if (!m_fifo[0].empty() && !m_fifo[d1].empty()) {
+            if (d1 == 0)
+                break; // one stream: the pair is one frame
+            const int64_t t0 = ptsUs(m_fifo[0].front(), lensStream(0)->time_base);
+            const int64_t t1 = ptsUs(m_fifo[1].front(), lensStream(1)->time_base);
+            if (std::abs(t0 - t1) < halfFrameUs)
+                break;
+            // The earlier of the two has no partner: each lens's frames come
+            // in time order, and the other lens's next one is later. Pairing
+            // by position instead would stitch two moments for the rest of
+            // the clip (a damaged file, a frame a decoder lost).
+            dropUnpaired(t0 < t1 ? 0 : 1, std::max(t0, t1));
+            continue;
+        }
         const bool ex0 = m_streamEof[0] && m_fifo[0].empty();
         const bool ex1 = m_streamEof[d1] && m_fifo[d1].empty();
         if (ex0 || ex1) {

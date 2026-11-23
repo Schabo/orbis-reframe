@@ -29,6 +29,10 @@ struct VideoSpec {
     bool h264 = false;  // H.264 (what GPUs decode), not MPEG-4 Part 2; fails without the encoder
     // Pixel (x, y)'s luma in frame `frame`; chroma is neutral. Empty = mid grey.
     std::function<uint8_t(int frame, int x, int y)> luma;
+    // Whether stream `stream` gets frame `frame`; empty = every frame in every
+    // stream. Keyframes come every 10 frames, so a stream left without the
+    // frame before one (9, 19, ...) still decodes the rest as written.
+    std::function<bool(int stream, int frame)> keep;
 };
 
 bool writeVideo(const std::string &path, const VideoSpec &spec);

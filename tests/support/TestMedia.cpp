@@ -96,7 +96,11 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
             // A frame long: without it the last frame gets no duration and
             // falls outside the MP4's edit list, so it never decodes.
             pkt->duration = 1;
-            for (AVStream *st : streams) {
+            for (size_t s = 0; s < streams.size(); ++s) {
+                AVStream *st = streams[s];
+                // No B-frames: a packet's pts is its frame's index.
+                if (spec.keep && !spec.keep(static_cast<int>(s), static_cast<int>(pkt->pts)))
+                    continue;
                 av_packet_ref(copy, pkt);
                 av_packet_rescale_ts(copy, ctx->time_base, st->time_base);
                 copy->stream_index = st->index;

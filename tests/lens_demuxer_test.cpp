@@ -1,8 +1,9 @@
 // orbiscore::FisheyeDemux / LensDemuxer with a file per lens (the ONE X2's layout):
 // two single-stream videos written here, each frame a flat grey that encodes
 // its index, decoded as one lens pair -- in step, after seeks, to the end,
-// and in the order the lenses are given; and with read and decode errors made
-// on purpose (support/FfmpegFaults.h). Exit code is the failure count.
+// in the order the lenses are given, and paired by time when one lens lacks a
+// frame; and with read and decode errors made on purpose
+// (support/FfmpegFaults.h). Exit code is the failure count.
 
 #include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/media/StillPicture.h>
@@ -143,6 +144,84 @@ void testLensOrder(const std::string& a, const std::string& b)
 // A camera's proxy: both lenses side by side in one stream (left half lens
 // A's grey, right half lens B's), opened as two lenses on its halves -- one
 // decoder, each lens its half, in either order.
+// A lens without a frame the other has -- lens 1 lacks frame 9, lens 0 frame
+// 19, each the frame before a keyframe so the rest decodes as written: that
+// frame is left out and every other pair is one moment, in content and in
+// time, read in order and after seeks at and around the gaps. With a file
+// per lens and with both lenses in one file.
+void testMissingFrames(const std::string& dir)
+{
+    std::printf("  a frame missing from one lens: left out, every other pair in step\n");
+    const auto keep = [](int lens, int frame) {
+        return !(lens == 1 && frame == 9) && !(lens == 0 && frame == 19);
+    };
+    const std::string a = dir + "/gap0.mp4", b = dir + "/gap1.mp4", both = dir + "/gap2.mp4";
+    const auto write = [&](const std::string& path, int streams, int lens, int (*grey)(int)) {
+        testmedia::VideoSpec spec;
+        spec.width = 64;
+        spec.height = 64;
+        spec.fps = kFps;
+        spec.frames = kFrames;
+        spec.streams = streams;
+        spec.keep = [=](int stream, int frame) { return keep(streams == 1 ? lens : stream, frame); };
+        spec.luma = [grey](int frame, int, int) { return static_cast<uint8_t>(grey(frame)); };
+        return testmedia::writeVideo(path, spec);
+    };
+    CHECK(write(a, 1, 0, greyA));
+    CHECK(write(b, 1, 1, greyB));
+    CHECK(write(both, 2, 0, greyA)); // the same picture in both streams
+
+    struct Layout {
+        const char* name;
+        std::vector<orbiscore::LensSource> lenses;
+        int (*grey1)(int);
+    };
+    const Layout layouts[] = {{"a file per lens", {{a, 0}, {b, 0}}, greyB},
+                              {"one file", {{both, 0}, {both, 1}}, greyA}};
+    for (const Layout& l : layouts) {
+        orbiscore::FisheyeDemux d;
+        std::string err;
+        CHECK(d.open(l.lenses, err));
+        CHECK(d.lensCount() == 2);
+        // The next pair's frames, and whether its time is lens 0's frame's.
+        const auto next = [&] {
+            orbiscore::Image x, y;
+            orbiscore::FramePts pts;
+            if (!d.readNextPair(x, y, &pts, err))
+                return std::make_pair(-1, -1);
+            const int f0 = frameOf(x, greyA);
+            if (pts.us != f0 * 1000000LL / kFps)
+                return std::make_pair(f0, -2);
+            return std::make_pair(f0, frameOf(y, l.grey1));
+        };
+        int wrong = 0, n = 0;
+        for (int want = 0; want < kFrames; ++want) {
+            if (want == 9 || want == 19)
+                continue;
+            const auto got = next();
+            if (got != std::make_pair(want, want)) {
+                std::printf("    %s: pair %d read as %d / %d\n", l.name, want, got.first, got.second);
+                ++wrong;
+            }
+            ++n;
+        }
+        CHECK(wrong == 0);
+        CHECK(next() == std::make_pair(-1, -1));
+        CHECK(err.empty());
+        const auto at = [&](int64_t ms) {
+            CHECK(d.seekTo(ms, err));
+            return next();
+        };
+        CHECK(at(320) == std::make_pair(8, 8)); // before the gap, then across it
+        CHECK(next() == std::make_pair(10, 10));
+        CHECK(at(360) == std::make_pair(10, 10)); // at lens 1's missing frame
+        CHECK(at(720) == std::make_pair(18, 18));
+        CHECK(next() == std::make_pair(20, 20));
+        CHECK(at(760) == std::make_pair(20, 20)); // at lens 0's
+        CHECK(at(0) == std::make_pair(0, 0));
+    }
+}
+
 void testSideBySide(const std::string& dir)
 {
     std::printf("  one stream, two lenses side by side: one decode, each lens its half\n");
@@ -366,9 +445,10 @@ void testReadErrors(const std::string& a, const std::string& b)
         const Run run = readThrough(d);
         CHECK(run.errors == 1);
         CHECK(run.lastErr.find("decoding lens") != std::string::npos);
-        // The refused packet's frame is gone (and the lenses out of step
-        // after it): only that the read gets to the end is checked.
-        CHECK(run.pairs >= kFrames - 2);
+        // The refused packet's frame is gone, and with it that pair; the
+        // lenses stay in step past it.
+        CHECK(run.pairs == kFrames - 1);
+        CHECK(run.inStep);
     }
 
     std::printf("  a refused flush: reported, and the frames held still come out\n");
@@ -608,6 +688,7 @@ int main()
     testExactTimes(dir.string());
     testSeekAtReportedTimes(dir.string());
     testSideBySide(dir.string());
+    testMissingFrames(dir.string());
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);
