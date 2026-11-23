@@ -148,7 +148,59 @@ local function first_pass(doc)
   return doc
 end
 
+-- Sections people can link to: every heading below the title gets a link
+-- to itself (a "#" after its text, see page.html), and a page with
+-- `toc_min` headings or more a list of them right under its title, the
+-- `##` ones with their `###` under them. The ids are pandoc's, the same as
+-- GitHub's for the Markdown file, so a link written for one works on the
+-- other.
+local toc_min = 4
+
+-- A heading's text for the list, without links (an entry is a link itself).
+local function toc_text(header)
+  return header.content:walk({
+    Link = function(l) return l.content end,
+    Note = function() return {} end,
+  })
+end
+
+local function sections(doc)
+  local items, title, count = {}, nil, 0
+  for i, b in ipairs(doc.blocks) do
+    if b.t == "Header" and b.level == 1 then
+      title = title or i
+    elseif b.t == "Header" and b.identifier ~= "" then
+      if b.level <= 3 then
+        local entry = pandoc.Plain({ pandoc.Link(toc_text(b), "#" .. b.identifier) })
+        if b.level == 2 or #items == 0 then
+          table.insert(items, { entry })
+        else
+          local last = items[#items]
+          if #last == 1 then
+            table.insert(last, pandoc.BulletList({}))
+          end
+          table.insert(last[2].content, { entry })
+        end
+        count = count + 1
+      end
+      table.insert(b.content, pandoc.Link({ pandoc.Str("#") }, "#" .. b.identifier, "",
+        { class = "anchor", ["aria-label"] = "Link to this section" }))
+    end
+  end
+  if count >= toc_min then
+    local first = (title or 0) + 1
+    local long = count > 10 and " long" or ""
+    table.insert(doc.blocks, first, pandoc.RawBlock("html", "</nav>"))
+    table.insert(doc.blocks, first, pandoc.BulletList(items))
+    table.insert(doc.blocks, first, pandoc.RawBlock("html",
+      '<nav class="toc' .. long .. '" aria-labelledby="toc-title">'
+      .. '<p class="toc-title" id="toc-title">On this page</p>'))
+  end
+  return doc
+end
+
 return {
   { Pandoc = first_pass },
   { Link = Link, Image = Image, RawInline = RawInline, RawBlock = RawBlock },
+  { Pandoc = sections },
 }

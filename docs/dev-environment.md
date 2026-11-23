@@ -398,7 +398,8 @@ The project site (<https://schabo.github.io/orbis-reframe/>) is the project
 page in `site/` plus the user manual and the camera format documents,
 rendered from their Markdown into one page each by
 `scripts/build_site.sh` (`scripts/site/`: the pandoc template, a Lua filter
-that rewrites the links for the site, the build and a link check). It
+that rewrites the links for the site and gives the headings their links
+and the page its contents list, the build and a link check). It
 needs pandoc (`apt install pandoc`) and python3; nothing else in the
 project does.
 
@@ -415,6 +416,10 @@ published. Pull requests that touch them get the build and the link check
 only. A link between Markdown files (`timeline.md#highlight-marks`) becomes
 a link between site pages; one to anything else in the repository (code,
 other docs) goes to GitHub at the version the page was taken from.
+Every heading below a page's title links to itself (a `#` after it), with
+pandoc's id, the same as GitHub's for the Markdown file, so renaming a
+heading breaks the links people have shared to it; a page with four or
+more `##` / `###` headings lists them under its title.
 
 ## Environment switches
 

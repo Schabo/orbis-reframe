@@ -109,6 +109,38 @@
   h2 { font-size: 1.5rem; letter-spacing: -0.01em; margin: 40px 0 14px; padding-top: 8px; border-top: 1px solid var(--line); }
   h3 { font-size: 1.15rem; margin: 28px 0 10px; }
   h4 { font-size: 1rem; margin: 22px 0 8px; }
+  h2, h3, h4 { scroll-margin-top: 12px; }
+
+  /* A heading's link to itself (site.lua): shown on hover or focus, and
+     always, dimmed, where there is no hover (phones). */
+  a.anchor {
+    margin-left: 0.3em;
+    padding: 0 0.15em;
+    color: var(--muted);
+    font-weight: 400;
+    text-decoration: none;
+    opacity: 0;
+  }
+  h2:hover a.anchor, h3:hover a.anchor, h4:hover a.anchor, a.anchor:focus { opacity: 1; }
+  a.anchor:hover { color: var(--accent); }
+  @media (hover: none) { a.anchor { opacity: 0.6; } }
+
+  /* The page's own sections (site.lua), under its title. */
+  nav.toc {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 18px 6px;
+    margin: 0 0 24px;
+    font-size: 0.93rem;
+  }
+  nav.toc .toc-title { font-weight: 600; margin: 0 0 6px; }
+  nav.toc ul { list-style: none; padding: 0; margin: 0 0 6px; }
+  nav.toc ul ul { padding-left: 1.1em; margin: 0; }
+  nav.toc li { margin: 2px 0; break-inside: avoid; }
+  nav.toc a { text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  nav.toc.long > ul { columns: 2; column-gap: 28px; }
   p, ul, ol, table, pre, blockquote { margin: 0 0 14px; }
   ul, ol { padding-left: 1.4em; }
   li { margin: 4px 0; }
@@ -150,6 +182,7 @@
     nav.pages summary::before { content: "▸ "; }
     nav.pages details[open] summary::before { content: "▾ "; }
     nav.pages details[open] summary { margin-bottom: 8px; }
+    nav.toc.long > ul { columns: 1; }
   }
 </style>
 </head>
