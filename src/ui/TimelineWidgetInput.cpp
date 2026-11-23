@@ -193,6 +193,7 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
     m_pressPos = m_lastDragPos = e->pos();
     m_pressMs = timelineMsAt(e->pos().x());
     m_dragMoved = false;
+    m_dragClipId = 0;
     m_dragRow = -1;
     m_reorderTarget = -1;
     m_drag = Drag::None;
@@ -232,6 +233,7 @@ void TimelineWidget::mousePressEvent(QMouseEvent *e)
         return;
     case Hit::MainClip: {
         m_dragRow = h.row;
+        m_dragClipId = m_rows[h.row].clip.id;
         emit clipSelected(m_rows[h.row].clip.id);
         // A keyframe diamond or a mark's dot: jump the playhead to it, no
         // drag on the clip.
@@ -430,8 +432,12 @@ void TimelineWidget::dragTo(QPoint pos)
         const Row &r = m_rows[m_dragRow];
         const qint64 newStart = timelineMsAt(pos.x());
         const qint64 deltaSrc = std::llround((newStart - r.startMs) * r.clip.speed);
-        m_provTrimMs = std::clamp<qint64>(r.clip.trimInMs + deltaSrc, 0,
-                                          r.clip.trimOutMs - kMinTrimMs);
+        // A source no longer than the shortest trim plays whole
+        // (ClipItem::setRange): its edges don't move.
+        m_provTrimMs = r.clip.sourceDurationMs <= kMinTrimMs
+                           ? r.clip.trimInMs
+                           : std::clamp<qint64>(r.clip.trimInMs + deltaSrc, 0,
+                                                std::max<qint64>(0, r.clip.trimOutMs - kMinTrimMs));
         update();
         break;
     }
@@ -439,8 +445,11 @@ void TimelineWidget::dragTo(QPoint pos)
         const Row &r = m_rows[m_dragRow];
         const qint64 newDur = std::max<qint64>(
             kMinTrimMs, std::llround((timelineMsAt(pos.x()) - r.startMs) * r.clip.speed));
-        m_provTrimMs = std::clamp<qint64>(r.clip.trimInMs + newDur,
-                                          r.clip.trimInMs + kMinTrimMs, r.clip.sourceDurationMs);
+        const qint64 lo = r.clip.trimInMs + kMinTrimMs;
+        m_provTrimMs = r.clip.sourceDurationMs <= kMinTrimMs
+                           ? r.clip.trimOutMs
+                           : std::clamp<qint64>(r.clip.trimInMs + newDur, lo,
+                                                std::max(lo, r.clip.sourceDurationMs));
         update();
         break;
     }
@@ -513,6 +522,103 @@ void TimelineWidget::dragTo(QPoint pos)
     default:
         break;
     }
+}
+
+void TimelineWidget::followDrag(const QVector<TrackView> *oldTracks)
+{
+    switch (m_drag) {
+    case Drag::TrimIn:
+    case Drag::TrimOut:
+    case Drag::Reorder:
+    case Drag::KeySelect: {
+        if (m_drag == Drag::KeySelect && m_keySelBase.overlay)
+            return; // an overlay clip's lane: selectKeysTo looks it up by id
+        if (m_dragRow < 0 || m_dragRow >= m_rows.size()) {
+            endDrag();
+            return;
+        }
+        const Clip &was = m_rows[m_dragRow].clip; // m_rows: still the clips before
+        const auto it = std::find_if(m_clips.begin(), m_clips.end(),
+                                     [&](const Clip &c) { return c.id == m_dragClipId; });
+        if (it == m_clips.end()) {
+            endDrag();
+            return;
+        }
+        // A reorder needs only the clip; a trim or a sweep works from its
+        // span (and a sweep from its keys).
+        const bool spanChanged = it->trimInMs != was.trimInMs || it->trimOutMs != was.trimOutMs ||
+                                 it->speed != was.speed ||
+                                 it->sourceDurationMs != was.sourceDurationMs;
+        if (m_drag != Drag::Reorder &&
+            (spanChanged || (m_drag == Drag::KeySelect && it->keySourceMs != was.keySourceMs))) {
+            endDrag();
+            return;
+        }
+        m_dragRow = int(it - m_clips.begin());
+        return;
+    }
+    case Drag::AudioMove:
+    case Drag::AudioTrimIn:
+    case Drag::AudioTrimOut: {
+        if (!oldTracks)
+            return;
+        const TrackClipView &was = m_dragAudioOrig;
+        int track = -1;
+        const TrackClipView *c = trackClipById(was.id, &track);
+        const auto trackId = [](const QVector<TrackView> &tracks, int index) {
+            return index >= 0 && index < tracks.size() ? tracks[index].id : 0;
+        };
+        if (!c || m_tracks[track].id != trackId(*oldTracks, m_dragAudioTrack) ||
+            c->startMs != was.startMs || c->trimInMs != was.trimInMs ||
+            c->trimOutMs != was.trimOutMs || c->speed != was.speed ||
+            c->sourceDurationMs != was.sourceDurationMs || c->linked != was.linked ||
+            c->moveTargets != was.moveTargets) {
+            endDrag();
+            return;
+        }
+        // The same clip on the same track, perhaps at another index: the
+        // provisional track found again by id, the drawing (a waveform)
+        // taken from the new copy, the provisional place kept.
+        const int provId = trackId(*oldTracks, m_provTrack);
+        m_provTrack = track;
+        for (int i = 0; i < m_tracks.size(); ++i)
+            if (m_tracks[i].id == provId)
+                m_provTrack = i;
+        m_dragAudioTrack = track;
+        const TrackClipView prov = m_dragAudio;
+        m_dragAudioOrig = m_dragAudio = *c;
+        m_dragAudio.startMs = prov.startMs;
+        m_dragAudio.trimInMs = prov.trimInMs;
+        m_dragAudio.trimOutMs = prov.trimOutMs;
+        return;
+    }
+    case Drag::TrackMove: {
+        if (!oldTracks)
+            return;
+        // The drop gap is an index into the rows as they were: any change
+        // to which tracks there are, or their order, ends the drag.
+        bool same = oldTracks->size() == m_tracks.size();
+        for (int i = 0; same && i < m_tracks.size(); ++i)
+            same = (*oldTracks)[i].id == m_tracks[i].id;
+        if (!same)
+            endDrag();
+        return;
+    }
+    default:
+        return;
+    }
+}
+
+void TimelineWidget::endDrag()
+{
+    if (m_drag == Drag::TrackMove)
+        setCursor(Qt::ArrowCursor);
+    m_drag = Drag::None;
+    m_dragClipId = 0;
+    m_dragRow = -1;
+    m_reorderTarget = -1;
+    m_trackGap = -1;
+    m_autoScroll->stop();
 }
 
 void TimelineWidget::mouseReleaseEvent(QMouseEvent *e)

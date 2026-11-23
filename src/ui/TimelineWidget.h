@@ -464,6 +464,13 @@ private:
     void updateScrollBar();
     // The drag in progress, to `pos` (also re-run by the edge auto-scroll).
     void dragTo(QPoint pos);
+    // The gesture in progress after new clips or tracks were handed in
+    // (`oldTracks`: the tracks before; null when only the clips changed):
+    // it goes on with its clip or track found again by id, or ends when
+    // that is gone or changed what the gesture works from -- a refresh that
+    // only redraws (a waveform arriving) keeps it.
+    void followDrag(const QVector<TrackView> *oldTracks);
+    void endDrag(); // the gesture ends without an edit
     // A file drag over the timeline at `pos`: where it would land.
     void dropTo(QPoint pos);
     // How far one auto-scroll tick moves the view for a drag held at `pos`
@@ -536,6 +543,13 @@ private:
         TrackMove
     };
     Drag m_drag = Drag::None;
+    // A gesture on a main-track clip: the clip, and its row in m_rows. The
+    // rows are handed in anew on every model change (an undo, a delete, a
+    // finished measurement) while the mouse is still down, so the gesture
+    // holds the clip's id and setClips finds its row again; it ends when
+    // the clip is gone or what the gesture works from changed
+    // (followDrag).
+    int m_dragClipId = 0;
     int m_dragRow = -1;
     QPoint m_pressPos;
     qint64 m_pressMs = 0;  // timeline ms under the press (the view may scroll)

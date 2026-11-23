@@ -919,6 +919,9 @@ if(Qt6Test_FOUND)
     set_target_properties(timeline_widget_test PROPERTIES AUTOMOC ON)
     target_include_directories(timeline_widget_test PRIVATE src/ui)
     target_link_libraries(timeline_widget_test PRIVATE reframe_model Qt6::Widgets Qt6::Test)
+    # The standard library's checks on (a std::clamp with its bounds the
+    # wrong way round aborts), as a release build doesn't.
+    target_compile_definitions(timeline_widget_test PRIVATE _GLIBCXX_ASSERTIONS)
     add_test(NAME timeline_widget_test COMMAND timeline_widget_test)
 
     # The project library's start screen and New project dialog, found by

@@ -222,6 +222,7 @@ void TimelineWidget::setClips(const QVector<Clip> &clips)
         if (it == clips.end() || it->keySourceMs != m_keySel.clipKeys)
             m_keySel = KeySelection();
     }
+    followDrag(nullptr); // before rebuildLayout: m_rows still has the old clips
     rebuildLayout();
     update();
 }
@@ -261,7 +262,7 @@ QRect TimelineWidget::transitionRect(int index) const
 void TimelineWidget::setTracks(const QVector<TrackView> &tracks)
 {
     const bool resized = tracks.size() != m_tracks.size();
-    m_tracks = tracks;
+    const QVector<TrackView> oldTracks = std::exchange(m_tracks, tracks);
     // An overlay clip's selected keys, as for a main clip's (setClips).
     if (m_keySel.clipId && m_keySel.overlay) {
         const TrackClipView *c = trackClipById(m_keySel.clipId);
@@ -269,8 +270,7 @@ void TimelineWidget::setTracks(const QVector<TrackView> &tracks)
             m_keySel = KeySelection();
     }
     layoutRows();
-    if (m_drag == Drag::AudioMove || m_drag == Drag::AudioTrimIn || m_drag == Drag::AudioTrimOut)
-        m_drag = Drag::None; // the model changed under the drag
+    followDrag(&oldTracks);
     rebuildLayout();
     if (resized)
         updateGeometry();

@@ -4,7 +4,8 @@
 // reorders; overlay (video) tracks above the main track; rows scrolling
 // when the widget is shorter than them, also while a drag is held at
 // their edge; folding a video's sound tracks; keyframe diamonds that
-// highlight and seek; selecting keys in a clip's key lane and deleting them.
+// highlight and seek; selecting keys in a clip's key lane and deleting them;
+// gestures held while the model changes under them.
 // Exit code is the failure count.
 // ORBIS_TIMELINE_SHOT=<path> saves a picture of the widget at the end.
 
@@ -29,6 +30,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
+#include <memory>
 
 namespace {
 
@@ -1297,6 +1300,152 @@ void testDuplicateMenu()
     CHECK(dup.count() == 1 && dup.last().at(0).toInt() == 2); // clip "b"
 }
 
+// The model changes under a held gesture (Delete or Ctrl+Z while the mouse
+// is down, a waveform arriving): a gesture follows its clip by id, goes on
+// when only the drawing or the other clips changed, and ends without an
+// edit when its clip is gone or changed under it.
+void testGestureAcrossModelChange()
+{
+    const auto mainClip = [](int id, qint64 ms) {
+        TimelineWidget::Clip c;
+        c.id = id;
+        c.label = QString::number(id);
+        c.trimOutMs = c.sourceDurationMs = ms;
+        return c;
+    };
+    // Press, move a little, change the model, move on, release.
+    const auto held = [](TimelineWidget &w, QPoint from, QPoint to,
+                         const std::function<void()> &change) {
+        QTest::mousePress(&w, Qt::LeftButton, Qt::NoModifier, from);
+        QTest::mouseMove(&w, from + (to - from) / 4);
+        change();
+        QTest::mouseMove(&w, from + (to - from) / 2);
+        QTest::mouseMove(&w, to);
+        QTest::mouseRelease(&w, Qt::LeftButton, Qt::NoModifier, to);
+    };
+
+    { // The pressed clip deleted while its right edge is held: a clip
+      // after it, then the last one.
+        Fixture f;
+        QSignalSpy out(&f.w, &TimelineWidget::clipTrimOutRequested);
+        QSignalSpy in(&f.w, &TimelineWidget::clipTrimInRequested);
+        QSignalSpy moved(&f.w, &TimelineWidget::clipMoved);
+        const TimelineWidget::Clip b = mainClip(2, 10000);
+        held(f.w, QPoint(Fixture::x(10000) - 1, mainY()), QPoint(Fixture::x(8000), mainY()),
+             [&] { f.w.setClips({b}); });
+        CHECK(out.isEmpty() && in.isEmpty() && moved.isEmpty());
+        Fixture g;
+        QSignalSpy out2(&g.w, &TimelineWidget::clipTrimOutRequested);
+        const TimelineWidget::Clip a = mainClip(1, 10000);
+        held(g.w, QPoint(Fixture::x(20000) - 1, mainY()), QPoint(Fixture::x(18000), mainY()),
+             [&] { g.w.setClips({a}); });
+        CHECK(out2.isEmpty());
+        // ... and a reorder of a deleted clip.
+        Fixture h;
+        QSignalSpy moved2(&h.w, &TimelineWidget::clipMoved);
+        held(h.w, QPoint(Fixture::x(3000), mainY()), QPoint(Fixture::x(19000), mainY()),
+             [&] { h.w.setClips({b}); });
+        CHECK(moved2.isEmpty());
+    }
+    { // A clip before it deleted: the trim goes on, on the same clip.
+        TimelineWidget w;
+        w.setClips({mainClip(1, 10000), mainClip(2, 5000), mainClip(3, 5000)});
+        w.resize(kWidth, w.sizeHint().height());
+        w.show();
+        QSignalSpy out(&w, &TimelineWidget::clipTrimOutRequested);
+        // Clip 3's right edge (20 s) to 18 s; with clip 1 gone it starts at 5 s.
+        held(w, QPoint(Fixture::x(20000) - 1, mainY()), QPoint(Fixture::x(9000), mainY()),
+             [&] { w.setClips({mainClip(2, 5000), mainClip(3, 5000)}); });
+        CHECK(out.count() == 1 && out.last().at(0).toInt() == 3);
+    }
+    { // Undo changed the held clip's trim: the trim ends.
+        Fixture f;
+        QSignalSpy out(&f.w, &TimelineWidget::clipTrimOutRequested);
+        TimelineWidget::Clip a = mainClip(1, 10000), b = mainClip(2, 10000);
+        a.trimOutMs = 9000;
+        held(f.w, QPoint(Fixture::x(10000) - 1, mainY()), QPoint(Fixture::x(8000), mainY()),
+             [&] { f.w.setClips({a, b}); });
+        CHECK(out.isEmpty());
+    }
+    { // The same tracks again, now with a waveform: a move and both trims
+      // go on.
+        // The Fixture's tracks; with `peaks` clip 100's waveform.
+        const auto tracks = [](bool peaks) {
+            TimelineWidget::TrackView t1, t2;
+            t1.id = 11;
+            t2.id = 12;
+            TimelineWidget::TrackClipView m;
+            m.id = 100;
+            m.startMs = 2000;
+            m.trimInMs = 1000;
+            m.trimOutMs = 11000;
+            m.sourceDurationMs = 60000;
+            m.moveTargets = {12};
+            if (peaks)
+                m.peaks = std::make_shared<const std::vector<float>>(6000, 0.5f);
+            t1.clips = {m};
+            TimelineWidget::TrackClipView n;
+            n.id = 101;
+            n.startMs = 15000;
+            n.trimOutMs = n.sourceDurationMs = 5000;
+            n.moveTargets = {11};
+            t2.clips = {n};
+            return QVector<TimelineWidget::TrackView>{t1, t2};
+        };
+        Fixture f;
+        QSignalSpy moved(&f.w, &TimelineWidget::trackClipMoved);
+        QSignalSpy in(&f.w, &TimelineWidget::trackClipTrimInRequested);
+        QSignalSpy out(&f.w, &TimelineWidget::trackClipTrimOutRequested);
+        // Clip 100 moved 2 s later, onto track 12 (its clip at 15 s is clear
+        // of 4..14 s).
+        held(f.w, QPoint(Fixture::x(5000), trackY(0)), QPoint(Fixture::x(7000), trackY(1)),
+             [&] { f.w.setTracks(tracks(true)); });
+        CHECK(moved.count() == 1 && moved.last().at(0).toInt() == 100 &&
+              moved.last().at(1).toInt() == 12 &&
+              std::abs(moved.last().at(2).toLongLong() - 4000) <= 20);
+        f.w.setTracks(tracks(false));
+        held(f.w, QPoint(Fixture::x(2000) + 1, trackY(0)), QPoint(Fixture::x(3500) + 1, trackY(0)),
+             [&] { f.w.setTracks(tracks(true)); });
+        CHECK(in.count() == 1 && std::abs(in.last().at(1).toLongLong() - 2500) <= 20);
+        f.w.setTracks(tracks(false));
+        held(f.w, QPoint(Fixture::x(12000) - 1, trackY(0)),
+             QPoint(Fixture::x(14000) - 1, trackY(0)), [&] { f.w.setTracks(tracks(true)); });
+        CHECK(out.count() == 1 && std::abs(out.last().at(1).toLongLong() - 13000) <= 40);
+        // The moved clip deleted mid-drag: no move.
+        f.w.setTracks(tracks(false));
+        QVector<TimelineWidget::TrackView> without = tracks(false);
+        without[0].clips.clear();
+        held(f.w, QPoint(Fixture::x(5000), trackY(0)), QPoint(Fixture::x(7000), trackY(0)),
+             [&] { f.w.setTracks(without); });
+        CHECK(moved.count() == 1);
+    }
+}
+
+// A source no longer than the shortest trim (100 ms) plays whole: its edges
+// don't move when dragged (the test is built with _GLIBCXX_ASSERTIONS, so a
+// clamp with its bounds the wrong way round aborts it).
+void testTrimShortClip()
+{
+    for (const qint64 ms : {40, 100}) {
+        TimelineWidget w;
+        TimelineWidget::Clip a;
+        a.id = 1;
+        a.label = "a";
+        a.trimOutMs = a.sourceDurationMs = ms;
+        w.setClips({a});
+        w.resize(kWidth, w.sizeHint().height());
+        w.show();
+        QSignalSpy in(&w, &TimelineWidget::clipTrimInRequested);
+        QSignalSpy out(&w, &TimelineWidget::clipTrimOutRequested);
+        const int left = kHeaderW + kMarginX, right = kWidth - kMarginX - 1;
+        drag(&w, QPoint(left + 1, mainY()), QPoint(left + 300, mainY()));
+        drag(&w, QPoint(right - 1, mainY()), QPoint(right - 300, mainY()));
+        CHECK(in.count() <= 1 && (in.isEmpty() || in.last().at(1).toLongLong() == 0));
+        CHECK(out.count() <= 1 && (out.isEmpty() || out.last().at(1).toLongLong() == ms));
+        CHECK(in.count() + out.count() > 0); // the edges were grabbed
+    }
+}
+
 int main(int argc, char **argv)
 {
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -1321,6 +1470,8 @@ int main(int argc, char **argv)
     testVerticalScroll();
     testDragAutoScroll();
     testFoldSound();
+    testGestureAcrossModelChange();
+    testTrimShortClip();
     if (g_failures == 0)
         std::printf("timeline_widget_test: all checks passed\n");
     else
