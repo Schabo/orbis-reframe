@@ -21,7 +21,11 @@ class QWidget;
 // dialogs by title. One step per line, '#' starts a comment; a step that
 // waits gives up after its own timeout, records "<name>=timeout" and the
 // script goes on. A failed step also saves a picture of the window (or of
-// the dialog that's up) as fail-<line>.png next to the script. Steps:
+// the dialog that's up) as fail-<line>.png next to the script, and records
+// "step_failed=<line>: <step>: <why>"; before the script's end ("script=done"
+// or "script=ended without quit") "steps_failed=N" counts them, so a step
+// that measures nothing of its own (a key, a click) still fails the run.
+// Steps:
 //
 //   wait-frame NAME SECONDS     until playback has handed the viewport a
 //                               frame; NAME=ms since start
@@ -90,6 +94,7 @@ private:
     QElapsedTimer m_sinceStart;
     QElapsedTimer m_stepClock;
     QTimer *m_timer;
+    int m_failed = 0; // steps that failed or timed out
     // play: the viewport's frame counts and the playhead when playback began.
     int m_handedAtStart = 0;
     int m_takenAtStart = 0;

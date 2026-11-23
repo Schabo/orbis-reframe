@@ -174,7 +174,12 @@ the tracked path, the scan and the exported file; about a minute, also
 locally. `--sound` adds PipeWire with a null sink and checks the sound
 and the voice model (the release test uses it). The GPU runner's jobs can't
 open the GPU's render node, so there the viewport doesn't draw and its
-checks are left out.
+checks are left out. A step that fails fails the run, even one that measures
+nothing of its own. `tests/release/gpu_smoke_judge_test.sh OUT_DIR` then
+tests the judge on that run's output (the GPU workflow runs it): changed
+copies of its results and export -- a failed step, no sound, a stream cut
+short, a value written to run as a command -- must fail, and no value may
+run.
 
 For a release, the release workflow (`.github/workflows/release.yml`) runs
 `package.sh` per target on GitHub's runners when the tag is pushed and makes

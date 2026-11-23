@@ -25,9 +25,11 @@
 # in its container, without ffmpeg, and checks on the host).
 #
 # OUT_DIR gets app.log, sway.log, results.txt ("name=value" lines: what the
-# run measured, then "check_<name>=ok|FAIL ..."), the viewport grabs, a
-# fail-<line>.png for a failed step, the export and the saved project.
-# Exits non-zero if a check failed.
+# run measured, then "check_<name>=ok|FAIL (what it saw)"), the viewport
+# grabs, a fail-<line>.png for a failed step, the export and the saved
+# project. Exits non-zero if a check failed. The judge only compares
+# results.txt's values, never runs them: in the release test they come from
+# inside a container, and are judged on the host.
 #
 # Sway composites on the GPU only with access to its render node
 # (/dev/dri/renderD*), and NVIDIA's Vulkan presents to a Wayland window only
@@ -54,7 +56,8 @@ run_app() {
     local app=$1 orp
     orp=$(realpath "${3:-$here/smoke.orp}")
     [[ -d $app ]] && app=$app/orbis-reframe
-    : > "$R"
+    # Whether sound is checked, before anything that could fail to measure it.
+    echo "sound=$sound" > "$R"
 
     # The app saves the project: work on a copy. Its own settings, caches
     # and project library stay in OUT_DIR too. Outside the GPU runner's
@@ -170,10 +173,14 @@ EOF
     echo "exit=$status" >> "$R"
     if ((sound)); then
         sleep 0.5
-        echo "sound_peak=$(python3 -c '
+        # Whole samples only: parec may be cut off mid-sample.
+        local peak
+        peak=$(python3 -c '
 import array, sys
-a = array.array("h", open(sys.argv[1], "rb").read())
-print(max((abs(x) for x in a), default=0))' "$rec")" >> "$R"
+b = open(sys.argv[1], "rb").read()
+a = array.array("h", b[:len(b) // 2 * 2])
+print(max((abs(x) for x in a), default=0))' "$rec") || peak=unreadable
+        echo "sound_peak=$peak" >> "$R"
         rm -f "$rec"
     fi
     cleanup
@@ -181,76 +188,111 @@ print(max((abs(x) for x in a), default=0))' "$rec")" >> "$R"
 }
 
 # --- checking what a run left -------------------------------------------
+# shellcheck disable=SC2319 # each verdict's $? is the [[ ]] test before it
 check_run() {
     # Again from what the run measured, if checked before.
-    sed -i -E '/^(check_|export_(video|audio|duration_ms|frame_luma_spread)=)/d' "$R"
+    sed -i -E '/^(check_|export_(video|audio|duration_ms|video_ms|audio_ms|frame_luma_spread)=)/d' "$R"
     local failed=0
     get() { sed -nE "s/^$1=//p" "$R" | tail -1; }
-    # check NAME CONDITION...: CONDITION is a [[ ]] expression with the
-    # measured values filled in, evaluated as is and recorded with the verdict.
-    check() {
-        local name=$1 cond -
-        shift
-        set -f # the conditions' patterns (*,*) aren't file names
-        # shellcheck disable=SC2048,SC2086 # split on purpose: one line
-        cond=$(printf '%s ' $*)
-        cond=${cond% }
-        if eval "[[ $cond ]]" 2> /dev/null; then
-            echo "check_$name=ok ($cond)" >> "$R"
+    num() { [[ $1 =~ ^-?[0-9]+(\.[0-9]+)?$ ]] && echo "$1" || echo -1; }
+    int() { printf '%.0f' "$(num "$1")"; }
+    # Each check is a fixed [[ ]] test, run right before `verdict`, over
+    # values made safe for it: numbers through int (in [[ ]], -ge and the
+    # like would evaluate any other text as arithmetic, $(...) included),
+    # text only as a quoted operand or the left side of ==.
+    # verdict NAME STATUS SEEN: records the test's result (its STATUS) with
+    # what it saw.
+    verdict() {
+        if (($2 == 0)); then
+            echo "check_$1=ok ($3)" >> "$R"
         else
-            echo "check_$name=FAIL ($cond)" >> "$R"
+            echo "check_$1=FAIL ($3)" >> "$R"
             failed=1
         fi
     }
-    num() { [[ $1 =~ ^-?[0-9]+(\.[0-9]+)?$ ]] && echo "$1" || echo -1; }
-    int() { printf '%.0f' "$(num "$1")"; }
+    # at_least NAME KEY MIN: the measured KEY is a number, MIN or more.
+    at_least() {
+        local v
+        v=$(int "$(get "$2")")
+        [[ $v -ge $3 ]]
+        verdict "$1" $? "$2=$v, at least $3"
+    }
 
-    check quit "'$(get exit)' == 0 && '$(get script)' == done"
-    check first_frame "$(int "$(get first_frame)") -ge 0"
+    # Every step ran: one that measures nothing (a key, a click) fails here.
+    local exit_status script steps_failed last_failed
+    exit_status=$(get exit) script=$(get script) steps_failed=$(int "$(get steps_failed)")
+    last_failed=$(get step_failed)
+    [[ $exit_status == "0" && $script == "done" && $steps_failed == 0 ]]
+    verdict quit $? "exit=$exit_status, script=$script, steps_failed=$steps_failed${last_failed:+, last: $last_failed}"
+    at_least first_frame first_frame 0
     # 5 s of 29.97 fps playback: most frames reach the viewport and the
     # playhead keeps up with the clock.
-    check play_decoded "$(int "$(get play_decoded)") -ge 120"
-    check play_advance "$(int "$(get play_advance_ms)") -ge 4500"
+    at_least play_decoded play_decoded 120
+    at_least play_advance play_advance_ms 4500
     if [[ -z $(get viewport) ]]; then
-        check first_drawn "$(int "$(get first_drawn)") -ge 0"
-        check play_drawn "$(int "$(get play_drawn)") -ge 120"
+        at_least first_drawn first_drawn 0
+        at_least play_drawn play_drawn 120
         # A picture, not a flat colour: the road scene has plenty of contrast.
+        local g sd mean
         for g in paused played; do
-            check "${g}_picture" "$(int "$(get "${g}_luma_stddev")") -ge 20 &&
-                $(int "$(get "${g}_luma_mean")") -ge 20 && $(int "$(get "${g}_luma_mean")") -le 235"
+            sd=$(int "$(get "${g}_luma_stddev")") mean=$(int "$(get "${g}_luma_mean")")
+            [[ $sd -ge 20 && $mean -ge 20 && $mean -le 235 ]]
+            verdict "${g}_picture" $? "luma stddev $sd, at least 20; mean $mean, 20 to 235"
         done
     fi
-    if [[ -n $(get sound_peak) ]]; then
+    if [[ $(get sound) == "1" ]]; then
         # "Voice only": ONNX Runtime runs the voice model while playing.
-        check voice_model "$(int "$(get play_onnxruntime)") -gt 0"
-        check sound "$(int "$(get sound_peak)") -gt 0"
+        at_least voice_model play_onnxruntime 1
+        at_least sound sound_peak 1
     fi
-    check track "$(int "$(get track_samples)") -ge 30 && $(int "$(get track_keys)") -ge 2 &&
-        -z '$(get track_error)'"
+    local samples keys error
+    samples=$(int "$(get track_samples)") keys=$(int "$(get track_keys)") error=$(get track_error)
+    [[ $samples -ge 30 && $keys -ge 2 && -z $error ]]
+    verdict track $? "samples=$samples, at least 30; keys=$keys, at least 2; error=$error"
     # The whole 10 s trimmed part scanned.
-    check scan "$(int "$(get scan_frames)") -ge 280 && -z '$(get scan_error)'"
-    check export "'$(get export)' == 'Export complete' &&
-        $(stat -c %s "$out/smoke.mp4" 2> /dev/null || echo 0) -gt 0"
+    samples=$(int "$(get scan_frames)") error=$(get scan_error)
+    [[ $samples -ge 280 && -z $error ]]
+    verdict scan $? "frames=$samples, at least 280; error=$error"
+    local message size
+    message=$(get export) size=$(int "$(stat -c %s "$out/smoke.mp4" 2> /dev/null)")
+    [[ $message == "Export complete" && $size -gt 0 ]]
+    verdict export $? "export=$message, smoke.mp4 $size bytes"
 
     # The exported file: one 1920x1080 HEVC video (the dialog's default) and
-    # one audio stream, as long as the timeline, and a picture in its middle
-    # frame.
+    # one audio stream, each as long as the timeline, and a picture in its
+    # middle frame.
     if [[ -s $out/smoke.mp4 ]]; then
         probe() { ffprobe -v error -of default=nw=1:nk=1 "$@" "$out/smoke.mp4"; }
-        local video audio duration_ms timeline_ms stats ylow yhigh
+        # span STREAM: where the stream's first one starts and ends, in ms.
+        span() {
+            probe -select_streams "$1" -show_entries stream=start_time,duration | paste -sd' ' |
+                awk '$1 ~ /^-?[0-9.]+$/ && $2 ~ /^[0-9.]+$/ { printf "%d %d", $1 * 1000, ($1 + $2) * 1000; ok = 1 }
+                    END { if (!ok) print "? ?" }'
+        }
+        local video audio timeline_ms v0 v1 a0 a1 stats ylow yhigh spread
         video=$(probe -select_streams v -show_entries stream=codec_name,width,height | paste -sd,)
         audio=$(probe -select_streams a -show_entries stream=codec_name | paste -sd,)
-        duration_ms=$(probe -show_entries format=duration | awk '{printf "%d", $1 * 1000}')
+        read -r v0 v1 <<< "$(span v:0)"
+        read -r a0 a1 <<< "$(span a:0)"
+        v0=$(int "$v0") v1=$(int "$v1") a0=$(int "$a0") a1=$(int "$a1")
         {
             echo "export_video=$video"
             echo "export_audio=$audio"
-            echo "export_duration_ms=$duration_ms"
+            echo "export_video_ms=$v0-$v1"
+            echo "export_audio_ms=$a0-$a1"
         } >> "$R"
-        check export_video "'$video' == hevc,1920,1080"
-        check export_audio "-n '$audio' && '$audio' != *,*"
+        [[ $video == "hevc,1920,1080" ]]
+        verdict export_video $? "$video, want hevc,1920,1080"
+        [[ -n $audio && $audio != *,* ]]
+        verdict export_audio $? "$audio, want one stream"
+        # Both streams, not only the container (which is as long as the
+        # longer): within 100 ms of the timeline at both ends, for the frame
+        # boundaries and the audio encoder's padding.
         timeline_ms=$(int "$(get timeline_ms)")
-        check export_length "$timeline_ms -gt 0 && $((duration_ms - timeline_ms)) -le 100 &&
-            $((timeline_ms - duration_ms)) -le 100"
+        [[ $timeline_ms -gt 0 ]] && ((v0 >= -100 && v0 <= 100 && a0 >= -100 && a0 <= 100 &&
+            v1 - timeline_ms <= 100 && timeline_ms - v1 <= 100 &&
+            a1 - timeline_ms <= 100 && timeline_ms - a1 <= 100))
+        verdict export_length $? "video $v0-$v1 ms, audio $a0-$a1 ms, timeline $timeline_ms ms"
         # The middle frame's luma: its spread (YHIGH - YLOW: the 90th - 10th
         # percentile) shows a picture, not a flat colour.
         stats=$(ffmpeg -v error -ss "$((timeline_ms / 2000))" -i "$out/smoke.mp4" -frames:v 1 \
@@ -258,8 +300,10 @@ check_run() {
         # (the filter prints the frame's metadata twice)
         ylow=$(sed -nE 's/.*signalstats\.YLOW=([0-9.]+).*/\1/p' <<< "$stats" | head -1)
         yhigh=$(sed -nE 's/.*signalstats\.YHIGH=([0-9.]+).*/\1/p' <<< "$stats" | head -1)
-        echo "export_frame_luma_spread=$(($(int "$yhigh") - $(int "$ylow")))" >> "$R"
-        check export_picture "$(($(int "$yhigh") - $(int "$ylow"))) -ge 40"
+        spread=$(($(int "$yhigh") - $(int "$ylow")))
+        echo "export_frame_luma_spread=$spread" >> "$R"
+        [[ $spread -ge 40 ]]
+        verdict export_picture $? "luma spread $spread, at least 40"
     fi
     return $failed
 }

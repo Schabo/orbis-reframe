@@ -70,6 +70,8 @@ jobs:
       - name: Smoke test of the app
         if: "!cancelled()"
         run: tests/release/gpu_smoke.sh build gpu-results/smoke
+      - name: Smoke test's judge on that run
+        run: tests/release/gpu_smoke_judge_test.sh gpu-results/smoke
       # Logs only: the tools' pictures and video are of private footage, and
       # this repository's artifacts are public.
       - name: Keep the logs

@@ -222,10 +222,11 @@ development image's repository is gone). Results then go to
   `sample_footage/` (`tests/release/smoke.orp`), plays it with "Voice only"
   (frames arrive and are drawn, the viewport shows a picture, ONNX Runtime
   loads, sound reaches the output), Track subject, Scan clip, File ▸ Export
-  flat video (HEVC, 1920x1080, as long as the timeline, with audio, a
-  picture in its middle frame), saves, quits. The app is driven by
-  `tests/release/gpu_smoke.steps`, by key, action and button names -- no
-  screen positions.
+  flat video (HEVC, 1920x1080, with audio, both streams as long as the
+  timeline, a picture in its middle frame), saves, quits. The app is driven
+  by `tests/release/gpu_smoke.steps`, by key, action and button names -- no
+  screen positions -- and every step has to work, also one that measures
+  nothing of its own (a key, a click).
 - **Dev test**: the source archive builds with Debian's `-dev` packages,
   `ctest` passes, the headless GPU tools run (`tests/release/gpu_tools.sh`).
 
@@ -233,8 +234,9 @@ It prints one line per check, with the measured values, and ends with "all
 checks passed", or exits non-zero naming the failures. Logs, the saved
 project, the export and the viewport's grabs are in
 `tmp/release-test/<version>/<target>/` (per package: `app.log`,
-`results.txt`); a step that failed left a `fail-<line>.png` of the window or
-the dialog that was up, `<line>` being its line in `steps.txt` there.
+`results.txt`); a step that failed is named in the `quit` check and left a
+`fail-<line>.png` of the window or the dialog that was up, `<line>` being
+its line in `steps.txt` there.
 
 Then the AppImage, after the Debian Testing run (its export is compared
 with that one's):

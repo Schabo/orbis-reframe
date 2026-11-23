@@ -103,6 +103,9 @@ void SmokeTest::fail(const QString &why)
     // Steps that measure something record the failure under their name.
     const QString name = args.size() > 1 ? args.at(1) : args.at(0);
     result(name, why);
+    ++m_failed;
+    result(QStringLiteral("step_failed"),
+           QStringLiteral("%1: %2: %3").arg(m_lines.at(m_step)).arg(m_steps.at(m_step), why));
     // What was on screen: the dialog that's up, else the window (its
     // viewport, a Vulkan window of its own, shows blank).
     QWidget *shown = QApplication::activeModalWidget();
@@ -132,6 +135,7 @@ void SmokeTest::tick()
 {
     if (m_step >= m_steps.size()) {
         m_timer->stop();
+        result(QStringLiteral("steps_failed"), QString::number(m_failed));
         result(QStringLiteral("script"), QStringLiteral("ended without quit"));
         if (auto *quit = m_window->findChild<QAction *>(QStringLiteral("quitAction")))
             QMetaObject::invokeMethod(quit, &QAction::trigger, Qt::QueuedConnection);
@@ -350,6 +354,7 @@ void SmokeTest::tick()
         next();
     } else if (cmd == QLatin1String("quit")) {
         m_timer->stop();
+        result(QStringLiteral("steps_failed"), QString::number(m_failed));
         result(QStringLiteral("script"), QStringLiteral("done"));
         if (auto *quit = m_window->findChild<QAction *>(QStringLiteral("quitAction")))
             QMetaObject::invokeMethod(quit, &QAction::trigger, Qt::QueuedConnection);
