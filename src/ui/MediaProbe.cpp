@@ -29,18 +29,7 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
         stitch::ClipProbe probe;
         ok = probeClip ? probeClip(path.toStdString(), probe, err)
                        : stitch::ProbeClip(path.toStdString(), probe, err);
-        m.durationMs = probe.duration_ms;
-        m.width = probe.width;
-        m.height = probe.height;
-        m.fps = probe.fps;
-        // Another file of a take (a ONE X2's second lens or proxy): the clip
-        // is the take's.
-        if (!probe.clip_path.empty())
-            m.path = QString::fromStdString(probe.clip_path);
-        for (const std::string &f : probe.other_files)
-            m.companions << QString::fromStdString(f);
-        for (const stitch::ClipProbe::Part &p : probe.parts)
-            m.parts.append({QString::fromStdString(p.path), p.start_ms, p.duration_ms});
+        m = clipMediaItem(path, probe);
         if (clipProbe)
             *clipProbe = probe;
         break;
@@ -70,6 +59,26 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error,
             *error = err.empty() ? QObject::tr("can't be read") : QString::fromStdString(err);
         return std::nullopt;
     }
+    return m;
+}
+
+MediaItem clipMediaItem(const QString &path, const stitch::ClipProbe &probe)
+{
+    MediaItem m;
+    m.path = path;
+    m.kind = MediaItem::Kind::Clip360;
+    m.durationMs = probe.duration_ms;
+    m.width = probe.width;
+    m.height = probe.height;
+    m.fps = probe.fps;
+    // Another file of a take (a ONE X2's second lens or proxy): the clip
+    // is the take's.
+    if (!probe.clip_path.empty())
+        m.path = QString::fromStdString(probe.clip_path);
+    for (const std::string &f : probe.other_files)
+        m.companions << QString::fromStdString(f);
+    for (const stitch::ClipProbe::Part &p : probe.parts)
+        m.parts.append({QString::fromStdString(p.path), p.start_ms, p.duration_ms});
     return m;
 }
 

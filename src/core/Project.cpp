@@ -1353,17 +1353,19 @@ void Project::newProject()
     emit projectReset();
 }
 
-int Project::resetWithClip(const QString &sourcePath, qint64 durationMs, double fps, int width,
-                           int height, int audioStreams, stitch::LensGuardProfiles lensGuards)
+int Project::resetWithClip(const MediaItem &source, int audioStreams,
+                           stitch::LensGuardProfiles lensGuards)
 {
     m_rebuilding = true;
     m_mediaPool->clear();
     m_timeline->clear();
     setPreviewStitch(stitch::PreviewStitchConfig{});
     setOutput(OutputSettings{});
-    const int id = m_timeline->appendClip(sourcePath, durationMs, fps, width, height, audioStreams,
-                                          false, lensGuards);
+    m_mediaPool->add(source); // before the clip: the timeline would add it from its facts alone
+    const int id = m_timeline->appendClip(source.path, source.durationMs, source.fps, source.width,
+                                          source.height, audioStreams, false, lensGuards);
     addTimelineSourcesToPool(true);
+    applySourceGaps(); // a part already gone
     m_rebuilding = false;
 
     setFilePath(QString());

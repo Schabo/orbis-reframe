@@ -455,6 +455,31 @@ void testStartScreen(const Ctx &c)
 #endif
 }
 
+// Opening another file of a take by a relative path, as from the command
+// line: the take's clip, by its absolute lead path, its other file in the
+// pool -- so the check finds the take missing when that file goes.
+void testOpenTakeFile(const Ctx &c)
+{
+    const QString dir = QDir(c.dir).filePath(QStringLiteral("x2open"));
+    QDir().mkpath(dir);
+    const QString lead = dir + QStringLiteral("/VID_20250817_090000_00_001.insv");
+    const QString second = dir + QStringLiteral("/VID_20250817_090000_10_001.insv");
+    for (const QString &f : {lead, second})
+        writeFile(f);
+    const QString cwd = QDir::currentPath();
+    QDir::setCurrent(dir);
+    c.w->openPath(QFileInfo(second).fileName());
+    QDir::setCurrent(cwd);
+    CHECK(c.timeline->count() == 1);
+    if (c.timeline->count() == 1)
+        CHECK(c.timeline->clipAt(0).sourcePath == lead);
+    MediaPool *pool = c.project->mediaPool();
+    CHECK(pool->count() == 1 && pool->item(lead) &&
+          pool->item(lead)->companions == QStringList{second});
+    CHECK(QFile::remove(second));
+    CHECK(c.project->recheckMissingMedia().gone == QStringList{lead});
+}
+
 void testOpenClip(const Ctx &c)
 {
     c.w->openClip(c.clipA);
@@ -3092,6 +3117,7 @@ int main(int argc, char **argv)
             testNewProjectResets(c);
             testNaturalReachesViewport(c);
             testEmptyTimelineStops(c);
+            testOpenTakeFile(c); // replaces the project
         }
     }
 

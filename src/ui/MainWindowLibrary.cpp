@@ -21,6 +21,7 @@
 #include "EditToolbar.h"
 #include "ClipFactsCache.h"
 #include "MediaImporter.h"
+#include "MediaProbe.h"
 #include "ProjectFiles.h"
 #include "ProjectLibraryPage.h"
 #include "RenderJobs.h"
@@ -52,20 +53,26 @@ void MainWindow::openPath(const QString &path)
 
 void MainWindow::openClip(const QString &clipPath)
 {
+    // The clip is known by its absolute path everywhere (the pool, saved
+    // measurements, caches); a command-line argument may be relative.
+    const QString file = QFileInfo(clipPath).absoluteFilePath();
     stitch::ClipProbe probe;
     std::string probeErr;
-    if (!m_clipBackend.probe(clipPath.toStdString(), probe, probeErr)) {
+    if (!m_clipBackend.probe(file.toStdString(), probe, probeErr)) {
         QMessageBox::warning(this, tr("Could not open clip"),
                              probeErr.empty() ? tr("Unrecognised file: %1").arg(clipPath)
                                               : QString::fromStdString(probeErr));
         return;
     }
-    m_clipPath = clipPath;
+    // Into the pool as import would put it: another file of a take opens
+    // the take's clip, its other files and parts with it.
+    const MediaItem item = clipMediaItem(file, probe);
+    const QString path = item.path;
+    m_clipPath = path;
     m_fps = probe.fps;
     m_rebindingModel = true;
-    m_clipFacts->set(clipPath, probe);
-    m_clipId = m_project->resetWithClip(clipPath, probe.duration_ms, probe.fps, probe.width,
-                                        probe.height, audioStreamCount(clipPath), probe.lens_guards);
+    m_clipFacts->set(path, probe);
+    m_clipId = m_project->resetWithClip(item, audioStreamCount(path), probe.lens_guards);
     m_rebindingModel = false;
     if (const ClipItem *c = m_timeline->clipById(m_clipId))
         applyColorGrade(*c);

@@ -287,7 +287,7 @@ void testProjectJson()
         CHECK(p.load(projFile, &err));
         p.timeline()->setClipTrimIn(p.timeline()->clipAt(1).id, 500);
         CHECK(p.modified());
-        const int id = p.resetWithClip(outsideSrc, 4000, 30.0);
+        const int id = p.resetWithClip({outsideSrc, MediaItem::Kind::Clip360, 4000, 0, 0, 30.0});
         CHECK(p.timeline()->count() == 1);
         CHECK(p.timeline()->clipById(id) != nullptr);
         CHECK(p.filePath().isEmpty());
@@ -1069,6 +1069,53 @@ void testTakeFiles()
     CHECK(q.mediaPool()->relink(lead, moved));
     CHECK(q.mediaPool()->item(lead)->companions == moved.companions);
     CHECK(q.mediaPool()->item(lead)->missing); // that one isn't there
+}
+
+// A bare clip opened (resetWithClip, a file from the command line) keeps
+// the files it was probed with, as an import does: a take's other file and
+// a split recording's parts are in the pool, saved, and checked.
+void testResetWithClipKeepsFiles()
+{
+    QTemporaryDir tmp;
+    const QString dir = tmp.path();
+    const auto write = [](const QString &path) {
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly))
+            f.write("x");
+    };
+    const QString lead = dir + "/VID_20250816_103807_00_001.insv";
+    const QString second = dir + "/VID_20250816_103807_10_001.insv";
+    const QString part2 = dir + "/VID_20250816_103807_00_002.insv";
+    for (const QString &f : {lead, second, part2})
+        write(f);
+    MediaItem item{lead, MediaItem::Kind::Clip360, 30000, 2880, 2880, 25.0};
+    item.companions = {second};
+    item.parts = {{lead, 0, 20000}, {part2, 20000, 10000}};
+
+    Project p;
+    p.timeline()->appendClip(dir + "/other.insv", 1000, 25.0);
+    const int id = p.resetWithClip(item, 0);
+    CHECK(p.timeline()->count() == 1 && p.timeline()->clipById(id) &&
+          p.timeline()->clipById(id)->sourcePath == lead);
+    CHECK(p.mediaPool()->count() == 1 && p.mediaPool()->item(lead) &&
+          p.mediaPool()->item(lead)->companions == QStringList{second} &&
+          p.mediaPool()->item(lead)->parts == item.parts);
+    CHECK(!p.modified() && !p.canUndo());
+    const QString orp = dir + "/ride.orp";
+    CHECK(p.save(orp));
+    Project q;
+    CHECK(q.load(orp));
+    CHECK(q.mediaPool()->item(lead) && q.mediaPool()->item(lead)->companions == QStringList{second} &&
+          q.mediaPool()->item(lead)->parts == item.parts);
+    // Gone: the take by its clip file, the part by its own.
+    CHECK(QFile::remove(part2));
+    Project::MediaRecheck check = p.recheckMissingMedia();
+    CHECK(check.gone == QStringList{part2});
+    const SourceGap gone{20000, 30000, part2};
+    CHECK(p.timeline()->clipAt(0).sourceGaps == QList<SourceGap>{gone});
+    CHECK(QFile::remove(second));
+    check = p.recheckMissingMedia();
+    CHECK(check.gone == QStringList{lead} && p.timeline()->clipAt(0).mediaMissing);
 }
 
 // A recording the camera split over files: its parts are saved with the
@@ -3389,6 +3436,7 @@ int main(int argc, char **argv)
     testProjectVideoTracksJson();
     testMediaPool();
     testTakeFiles();
+    testResetWithClipKeepsFiles();
     testRecordingParts();
     testProjectFolder();
     testAutosave();

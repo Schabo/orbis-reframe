@@ -265,10 +265,12 @@ public slots:
     void newProject();
 
     // Replace the timeline with a single loose clip -- opening a bare .insv,
-    // not a project file. Clears the file path and the modified flag. Returns
-    // the new clip's id. `lensGuards`: as Timeline::insertClip.
-    int resetWithClip(const QString &sourcePath, qint64 durationMs, double fps,
-                      int width = 0, int height = 0, int audioStreams = 0,
+    // not a project file. `source` is its media pool item as probed (its
+    // take's other files and a split recording's parts with it, so a file
+    // gone later is found); the clip plays its path, which is absolute.
+    // Clears the file path and the modified flag. Returns the new clip's id.
+    // `audioStreams`, `lensGuards`: as Timeline::insertClip.
+    int resetWithClip(const MediaItem &source, int audioStreams = 0,
                       stitch::LensGuardProfiles lensGuards = stitch::LensGuardProfiles::all());
 
     // Write the timeline to `path` as JSON. On success records `path` as the

@@ -27,6 +27,13 @@ std::optional<MediaItem> probeMedia(const QString &path, QString *error = nullpt
                                     const ClipProbeFn &probeClip = {},
                                     stitch::ClipProbe *clipProbe = nullptr);
 
+// The media pool's item for the 360 clip at `path` (absolute), read by the
+// clip probe as `probe`: named by its take's file (probe.clip_path) when
+// `path` is another file of the take, with the take's other files and a
+// split recording's parts. What probeMedia gives for an .insv; for a file
+// the clip probe reads whatever its name (a path from the command line).
+MediaItem clipMediaItem(const QString &path, const stitch::ClipProbe &probe);
+
 // A picture for the Media tab, `size` (cropped to its shape): a 360 clip's
 // own preview from its trailer (clipThumbnail), a flat video's frame
 // at one second (or its middle when shorter). Null for audio and on failure.
