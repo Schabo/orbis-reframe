@@ -172,10 +172,32 @@ void PlaybackController::applyTimeline(const QList<Segment> &segments, qint64 po
         if (!m_timer->isActive())
             m_timer->start(kPresentIntervalMs);
         startDecoder();
-    } else if (m_viewport) {
-        // Nothing to present any more: don't leave the last project's
-        // picture up.
-        m_viewport->ClearPicture();
+    } else {
+        // Nothing to play: the transport goes idle. Playing, buffering, a
+        // held clock or a scrub left on would carry over to the next clip
+        // added, which would then start playing without Play.
+        if (m_timer)
+            m_timer->stop();
+        if (m_scrubEndTimer)
+            m_scrubEndTimer->stop();
+        m_resumeAfterScrub = false;
+        m_prerolling = false;
+        const bool wasPlaying = m_playing;
+        {
+            std::lock_guard<std::mutex> lk(m_mx);
+            m_playing = false;
+        }
+        if (m_buffering) {
+            m_buffering = false;
+            emit bufferingChanged(false);
+        }
+        setClockHeld(false);
+        setScrubbing(false);
+        if (wasPlaying)
+            emit playingChanged(false);
+        // Don't leave the last project's picture up.
+        if (m_viewport)
+            m_viewport->ClearPicture();
     }
 
     emit durationChanged(m_totalMs);

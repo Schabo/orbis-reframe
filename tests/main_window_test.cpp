@@ -6,10 +6,10 @@
 // actions and buttons found by objectName, keys, file dialogs and message
 // boxes answered from a timer, and the timeline / media pool's signals (their
 // own mouse handling has its own tests). Covers the start screen, opening and
-// adding clips, playback across a cut, edits by key and their undo, the media
-// pool, audio and overlay tracks, the Colour section, the View and Help
-// menus, Save as, autosave recovery, locating a moved file, and closing with
-// unsaved changes; also full screen, overlay layers, Track subject's box
+// adding clips, playback across a cut and stopping when the last clip goes,
+// edits by key and their undo, the media pool, audio and overlay tracks, the
+// Colour section, the View and Help menus, Save as, autosave recovery,
+// locating a moved file, and closing with unsaved changes; also full screen, overlay layers, Track subject's box
 // mode, the menu entries that ask for files, and the tiles to add on a
 // single-click desktop. Exit code is the failure count.
 
@@ -2961,6 +2961,34 @@ void testNaturalReachesViewport(const Ctx &c)
     CHECK(waitFor([&] { return c.w->viewport()->Pose().fisheye == 0.0f; }));
 }
 
+// The last clip removed during playback: playing stops, and a clip added
+// after it stays paused until Play.
+void testEmptyTimelineStops(const Ctx &c)
+{
+    auto *play = find<QToolButton>(c.w, "playerPlayButton");
+    if (!play)
+        return;
+    const QImage playIcon =
+        theme::icon(QStringLiteral("play"), theme::IconTone::Accent).pixmap(16).toImage();
+    const auto showsPlay = [&] { return play->icon().pixmap(16).toImage() == playIcon; };
+    if (c.timeline->count() == 0)
+        c.timeline->appendClip(c.clipA, kClipMs, kFps);
+    CHECK(seekTo(c, 0));
+    play->click();
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() > 300; }));
+    CHECK(!showsPlay());
+    while (c.timeline->count() > 0)
+        c.timeline->removeClip(c.timeline->clipAt(0).id);
+    CHECK(waitFor(showsPlay));
+    c.timeline->appendClip(c.clipA, kClipMs, kFps);
+    QTest::qWait(600);
+    CHECK(showsPlay() && c.timelineWidget->playhead() == 0);
+    // Play still works.
+    play->click();
+    CHECK(waitFor([&] { return c.timelineWidget->playhead() > 300; }));
+    play->click();
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -3063,6 +3091,7 @@ int main(int argc, char **argv)
             testNewProject(c);
             testNewProjectResets(c);
             testNaturalReachesViewport(c);
+            testEmptyTimelineStops(c);
         }
     }
 
