@@ -44,6 +44,7 @@ struct VulkanLensInput {
     VkImage image = VK_NULL_HANDLE;
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkAccessFlags2 access = 0;              // its last access in `layout`
     VkSemaphore semaphore = VK_NULL_HANDLE; // timeline
     uint64_t semWaitValue = 0;
     int width = 0;
@@ -59,6 +60,7 @@ struct VulkanLensInput {
 struct VulkanLensOutcome {
     uint64_t semSignalValue = 0;
     VkImageLayout newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkAccessFlags2 newAccess = 0; // the work's last access in newLayout
 };
 
 // Where the time went in the last stitchVk() / stitchAndReframeVk() call

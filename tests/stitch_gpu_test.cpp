@@ -665,6 +665,7 @@ void testSubmitWaitGivesUp()
     CHECK(err.find("didn't finish") != std::string::npos);
     CHECK(r0.semSignalValue == 2 && r1.semSignalValue == 2);
     CHECK(r0.newLayout == read && r1.newLayout == read);
+    CHECK(r0.newAccess == VK_ACCESS_2_SHADER_READ_BIT && r1.newAccess == VK_ACCESS_2_SHADER_READ_BIT);
 
     const int submits = vkfaults::submits, fenceResets = vkfaults::fenceResets,
               cmdResets = vkfaults::cmdResets;

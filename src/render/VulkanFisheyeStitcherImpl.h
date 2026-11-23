@@ -336,12 +336,14 @@ struct VulkanFisheyeStitcher::Impl {
     // Submits `c`, which reads both lens frames, once the decoder is done with
     // them -- it waits on each frame's timeline semaphore at its value and
     // signals it one higher -- and waits for it to finish. *r0 / *r1 (if
-    // given) get the values signalled and `newLayout`, the layout `c` left the
-    // images in, for the decoder -- once submitted, even if the wait then
+    // given) get the values signalled, `newLayout`, the layout `c` left the
+    // images in, and `newAccess`, its last access to them in it, for the
+    // decoder -- once submitted, even if the wait then
     // fails: the decoder's next use of the frames has to wait for it.
     // *submitted (if given): when it was submitted.
     bool submitAfterLenses(VkCommandBuffer c, const VulkanLensInput& f0, const VulkanLensInput& f1,
-                           VkImageLayout newLayout, VulkanLensOutcome* r0, VulkanLensOutcome* r1,
+                           VkImageLayout newLayout, VkAccessFlags2 newAccess,
+                           VulkanLensOutcome* r0, VulkanLensOutcome* r1,
                            std::string& err,
                            std::chrono::steady_clock::time_point* submitted = nullptr)
     {
@@ -372,9 +374,9 @@ struct VulkanFisheyeStitcher::Impl {
             return false;
         }
         if (r0)
-            *r0 = {signalVals[0], newLayout};
+            *r0 = {signalVals[0], newLayout, newAccess};
         if (r1)
-            *r1 = {signalVals[1], newLayout};
+            *r1 = {signalVals[1], newLayout, newAccess};
         return waitSubmitted(err);
     }
     // Before freeing resources our submissions use. Each submission is waited

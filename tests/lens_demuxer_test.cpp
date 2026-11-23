@@ -3,7 +3,9 @@
 // its index, decoded as one lens pair -- in step, after seeks, to the end,
 // in the order the lenses are given, and paired by time when one lens lacks a
 // frame; and with read and decode errors made on purpose
-// (support/FfmpegFaults.h). Exit code is the failure count.
+// (support/FfmpegFaults.h). Also what the Vulkan decoder hands a frame's
+// consumer and writes back into the frame after it. Exit code is the failure
+// count.
 
 #include <orbis-core/media/FisheyeDemux.h>
 #include <orbis-core/media/StillPicture.h>
@@ -16,6 +18,8 @@ extern "C" {
 #include <libavutil/buffer.h>
 #include <libavutil/frame.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/hwcontext_vulkan.h>
+#include <libavutil/mem.h>
 }
 
 #include <cerrno>
@@ -24,6 +28,7 @@ extern "C" {
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -666,6 +671,78 @@ void testAllocErrors(const std::string& a, const std::string& b, const std::stri
     av_buffer_unref(&dev);
 }
 
+// The synchronisation state a decoded frame's consumer gets from lockPair
+// and gives back through unlockPair, as FFmpeg's next barrier on the image
+// reads it: the layout, last access and timeline value the consumer's work
+// left -- a compute read, a transfer copy -- and the frame's own three when
+// it did no GPU work. Both lenses in one packed frame: written once, by
+// lens 0's result. Frames made up here, no device.
+void testFrameState()
+{
+    std::printf("  a frame's layout, access and timeline value through lock and unlock\n");
+    AVVulkanFramesContext vfc{};
+    vfc.format[0] = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+    AVHWFramesContext fc{};
+    fc.hwctx = &vfc;
+    AVBufferRef fcRef{};
+    fcRef.data = reinterpret_cast<uint8_t*>(&fc);
+    AVVkFrame* vk[2] = {av_vk_frame_alloc(), av_vk_frame_alloc()};
+    AVFrame frame[2]{};
+    for (int i = 0; i < 2; ++i) {
+        vk[i]->layout[0] = VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR;
+        // The field's type is FFmpeg's (32-bit VkAccessFlagBits in 7.1).
+        vk[i]->access[0] = static_cast<std::remove_reference_t<decltype(vk[i]->access[0])>>(
+            VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        vk[i]->sem_value[0] = 5;
+        frame[i].hw_frames_ctx = &fcRef;
+        frame[i].data[0] = reinterpret_cast<uint8_t*>(vk[i]);
+    }
+    orbiscore::VulkanVideoDecoder dec;
+    orbiscore::VulkanLensFrame l0, l1;
+    const auto stateIs = [&](int i, uint64_t value, VkImageLayout layout, VkAccessFlags2 access) {
+        return vk[i]->sem_value[0] == value && vk[i]->layout[0] == layout &&
+               static_cast<VkAccessFlags2>(vk[i]->access[0]) == access;
+    };
+
+    dec.lockPair(&frame[0], &frame[1], l0, l1);
+    CHECK(l0.semWaitValue == 5 && l0.layout == VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR &&
+          l0.access == VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    CHECK(l1.image == vk[1]->img[0] && l1.access == VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    // A compute read (the stitch).
+    dec.unlockPair(&frame[0], &frame[1],
+                   {6, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_2_SHADER_READ_BIT},
+                   {6, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_2_SHADER_READ_BIT});
+    for (int i = 0; i < 2; ++i)
+        CHECK(stateIs(i, 6, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_2_SHADER_READ_BIT));
+    // A transfer copy (the viewport's lens fill).
+    dec.lockPair(&frame[0], &frame[1], l0, l1);
+    CHECK(l0.semWaitValue == 6 && l0.access == VK_ACCESS_2_SHADER_READ_BIT);
+    dec.unlockPair(&frame[0], &frame[1],
+                   {7, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_2_TRANSFER_READ_BIT},
+                   {7, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_2_TRANSFER_READ_BIT});
+    for (int i = 0; i < 2; ++i)
+        CHECK(stateIs(i, 7, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_2_TRANSFER_READ_BIT));
+    // No GPU work: the frames as they were.
+    dec.lockPair(&frame[0], &frame[1], l0, l1);
+    dec.unlockPair(&frame[0], &frame[1], {l0.semWaitValue, l0.layout, l0.access},
+                   {l1.semWaitValue, l1.layout, l1.access});
+    for (int i = 0; i < 2; ++i)
+        CHECK(stateIs(i, 7, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_2_TRANSFER_READ_BIT));
+
+    // Both lenses in one frame (a camera's proxy): one image, one state.
+    frame[1].data[0] = frame[0].data[0];
+    dec.lockPair(&frame[0], &frame[1], l0, l1);
+    CHECK(l1.image == l0.image && l1.semWaitValue == 7 &&
+          l1.access == VK_ACCESS_2_TRANSFER_READ_BIT);
+    dec.unlockPair(&frame[0], &frame[1],
+                   {8, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_2_SHADER_READ_BIT},
+                   {8, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_2_SHADER_READ_BIT});
+    CHECK(stateIs(0, 8, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_2_SHADER_READ_BIT));
+    CHECK(stateIs(1, 7, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_2_TRANSFER_READ_BIT));
+    for (AVVkFrame* f : vk)
+        av_free(f);
+}
+
 } // namespace
 
 int main()
@@ -689,6 +766,7 @@ int main()
     testSeekAtReportedTimes(dir.string());
     testSideBySide(dir.string());
     testMissingFrames(dir.string());
+    testFrameState();
     if (!g_failures)
         std::filesystem::remove_all(dir);
     std::printf(g_failures ? "%d failure(s)\n" : "all passed\n", g_failures);

@@ -119,7 +119,8 @@ void benchDecode(const std::string& path, int frames, double fps) {
             wi.pSemaphores = sems;
             wi.pValues = vals;
             vkWaitSemaphores(dev, &wi, 5'000'000'000ULL);
-            dec.unlockPair(f0, f1, {l0.semWaitValue, l0.layout}, {l1.semWaitValue, l1.layout});
+            dec.unlockPair(f0, f1, {l0.semWaitValue, l0.layout, l0.access},
+                           {l1.semWaitValue, l1.layout, l1.access});
         }
         dec.freeFrame(f0);
         dec.freeFrame(f1);

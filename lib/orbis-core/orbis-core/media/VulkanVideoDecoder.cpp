@@ -9,6 +9,8 @@ extern "C" {
 #include <libavutil/version.h>
 }
 
+#include <type_traits>
+
 namespace orbiscore {
 
 namespace {
@@ -280,6 +282,7 @@ void VulkanVideoDecoder::lockFrame(AVFrame* f, VulkanLensFrame& lf)
     lf.image = vkf->img[0];
     lf.format = vfc->format[0];
     lf.layout = vkf->layout[0];
+    lf.access = vkf->access[0];
     lf.semaphore = vkf->sem[0];
     lf.semWaitValue = vkf->sem_value[0];
     lf.width = f->width;
@@ -294,7 +297,9 @@ void VulkanVideoDecoder::unlockFrame(AVFrame* f, const VulkanLensFrameResult& r)
     auto* vkf = reinterpret_cast<AVVkFrame*>(f->data[0]);
     vkf->sem_value[0] = r.semSignalValue;
     vkf->layout[0] = r.newLayout;
-    vkf->access[0] = VK_ACCESS_SHADER_READ_BIT;
+    // VkAccessFlagBits2 in newer FFmpeg (9), VkAccessFlagBits in older
+    // (7.1); the flags written here have the same value in both.
+    vkf->access[0] = static_cast<std::remove_reference_t<decltype(vkf->access[0])>>(r.access);
     if (vfc->unlock_frame)
         vfc->unlock_frame(fc, vkf);
 }

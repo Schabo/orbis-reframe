@@ -628,8 +628,8 @@ bool VulkanFisheyeStitcher::stitchVk(const VulkanLensInput& f0, const VulkanLens
     vkEndCommandBuffer(d->cmd);
 
     std::chrono::steady_clock::time_point tSubmit;
-    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err,
-                              &tSubmit))
+    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_ACCESS_2_SHADER_READ_BIT, r0, r1, err, &tSubmit))
         return false;
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
@@ -882,8 +882,8 @@ bool VulkanFisheyeStitcher::stitchAndReframeImpl(
     vkEndCommandBuffer(d->cmd);
 
     std::chrono::steady_clock::time_point tSubmit;
-    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err,
-                              &tSubmit))
+    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_ACCESS_2_SHADER_READ_BIT, r0, r1, err, &tSubmit))
         return false;
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(true);
@@ -1135,8 +1135,8 @@ bool VulkanFisheyeStitcher::renderViewsImpl(const VulkanLensInput& f0, const Vul
     vkEndCommandBuffer(d->cmd);
 
     std::chrono::steady_clock::time_point tSubmit;
-    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err,
-                              &tSubmit))
+    if (!d->submitAfterLenses(d->cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_ACCESS_2_SHADER_READ_BIT, r0, r1, err, &tSubmit))
         return false;
     const auto tDone = std::chrono::steady_clock::now();
     d->tsRead(false);
@@ -1322,7 +1322,8 @@ bool VulkanFisheyeStitcher::measureSeamImpl(const VulkanLensInput& f0, const Vul
                          nullptr, 1, &toHost, 0, nullptr);
     vkEndCommandBuffer(cmd);
 
-    if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, r0, r1, err))
+    if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              VK_ACCESS_2_SHADER_READ_BIT, r0, r1, err))
         return false;
 
     const float* c = static_cast<const float*>(d->seamMap);
@@ -1554,8 +1555,8 @@ bool VulkanFisheyeStitcher::fillLensFrameVk(const VulkanLensInput& f0, const Vul
     vkEndCommandBuffer(cmd);
 
     std::chrono::steady_clock::time_point tSubmit;
-    if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r0, r1, err,
-                              &tSubmit)) {
+    if (!d->submitAfterLenses(cmd, f0, f1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                              VK_ACCESS_2_TRANSFER_READ_BIT, r0, r1, err, &tSubmit)) {
         // The copy may still be writing the slot: it goes back once that ends.
         if (d->pending) {
             release.armed = false;

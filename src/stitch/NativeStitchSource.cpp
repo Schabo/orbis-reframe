@@ -67,6 +67,7 @@ render::VulkanLensInput toRenderInput(const orbiscore::VulkanLensFrame& lf) {
     in.image = lf.image;
     in.format = lf.format;
     in.layout = lf.layout;
+    in.access = lf.access;
     in.semaphore = lf.semaphore;
     in.semWaitValue = lf.semWaitValue;
     in.width = lf.width;
@@ -81,11 +82,11 @@ render::VulkanLensInput toRenderInput(const orbiscore::VulkanLensFrame& lf) {
 // still be running. A caller starts its outcomes here and always hands them
 // back.
 render::VulkanLensOutcome asIs(const render::VulkanLensInput& in) {
-    return {in.semWaitValue, in.layout};
+    return {in.semWaitValue, in.layout, in.access};
 }
 
 orbiscore::VulkanLensFrameResult toResult(const render::VulkanLensOutcome& o) {
-    return {o.semSignalValue, o.newLayout};
+    return {o.semSignalValue, o.newLayout, o.newAccess};
 }
 
 } // namespace
@@ -1410,7 +1411,7 @@ int NativeStitchSource::KeepNextPair(orbiscore::FramePts& pts) {
     vdec_->lockPair(h->f0, h->f1, lf0, lf1);
     render::VulkanLensInput in0 = toRenderInput(lf0), in1 = toRenderInput(lf1);
     h->params = paramsWithSeam(h->pts, in0, in1);
-    vdec_->unlockPair(h->f0, h->f1, {in0.semWaitValue, in0.layout}, {in1.semWaitValue, in1.layout});
+    vdec_->unlockPair(h->f0, h->f1, toResult(asIs(in0)), toResult(asIs(in1)));
     std::string blurErr;
     if (!blurQuadsAt(h->pts, h->params, blurErr)) {
         vdec_->freeFrame(h->f0);
