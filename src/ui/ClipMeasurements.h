@@ -6,13 +6,15 @@
 #include <QStringList>
 
 #include <atomic>
+#include <cstdint>
+#include <functional>
+#include <string>
+
+#include <ClipSeam.h> // stitch::MeasureClipSeam
 
 class QThread;
 class Project;
 struct ClipItem;
-namespace stitch {
-enum class MeasureFailure;
-}
 
 // The per-source measurements run in the background: the gyro sync
 // fine-tune (stitch::MeasureClipSync, only with ORBIS_REFRAME_HAVE_CLIP_SYNC),
@@ -42,6 +44,21 @@ public:
     ClipMeasurements(Project *project, bool enabled, QObject *parent = nullptr);
     // Cancels a running measurement and waits for it.
     ~ClipMeasurements() override;
+
+    // Another project is open, or none (the window's project switches in
+    // place, the same Project): the measurements running are for the one
+    // before. They're cancelled, and a result that still comes is dropped
+    // -- it would land on the new project's clips of the same file, and be
+    // written into its file. The new project's are measured on schedule().
+    void newSession();
+
+    // The seam alignment measurement: stitch::MeasureClipSeam, unless a
+    // test puts a stand-in here to decide what it gives.
+    using SeamMeasure = std::function<stitch::ClipSeamResult(
+        const std::string &clipPath, int64_t trimInMs, int64_t trimOutMs,
+        stitch::PreviewStitchConfig::LensGuard lensGuard,
+        const stitch::LensCalibration *calibration, const std::atomic<bool> *cancel)>;
+    void setSeamMeasure(SeamMeasure measure) { m_measureSeam = std::move(measure); }
 
     // Start whichever measurement is due next. Runs after the current event
     // (a load or add finishes first); not while playing.
@@ -118,6 +135,12 @@ private:
     bool m_playing = false;
     bool m_scrubbing = false;
     bool m_queued = false; // schedule() already pending
+    // newSession()'s count: a job's result is taken only in the session it
+    // started in.
+    int m_session = 0;
+    // A job's thread, started; a child of this, so one still there when
+    // this goes is deleted with it (after the destructor has waited for it).
+    QThread *startJob(QThread *thread);
 
     QThread *m_syncThread = nullptr;
     QString m_syncMeasuringPath;
@@ -126,6 +149,7 @@ private:
     // each its own, two clips can fail differently.
     QHash<QString, stitch::MeasureFailure> m_syncFailed;
 
+    SeamMeasure m_measureSeam = stitch::MeasureClipSeam;
     QThread *m_seamThread = nullptr;
     QString m_seamMeasuringPath;
     std::atomic<bool> m_seamCancel{false};

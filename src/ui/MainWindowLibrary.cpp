@@ -20,6 +20,7 @@
 
 #include "EditToolbar.h"
 #include "ClipFactsCache.h"
+#include "ClipMeasurements.h"
 #include "MediaImporter.h"
 #include "MediaProbe.h"
 #include "ProjectFiles.h"
@@ -198,6 +199,7 @@ void MainWindow::closeToLibrary()
 void MainWindow::showLibrary()
 {
     m_mediaImport->newSession();
+    m_measurements->newSession();
     setEditorActive(false);
     if (m_pages->currentWidget() != m_libraryPage) {
         // Let the viewport release its swapchain while it's still shown (as
@@ -215,6 +217,7 @@ void MainWindow::showLibrary()
 void MainWindow::showEditor()
 {
     m_mediaImport->newSession();
+    m_measurements->newSession();
     m_pages->setCurrentWidget(m_editorPage);
     setEditorActive(true);
     updateWindowTitle();

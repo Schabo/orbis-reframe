@@ -9,7 +9,6 @@
 
 #include <ClipLensColour.h> // stitch::MeasureClipLensColour
 #include <ClipSeamAnalysis.h> // stitch::AnalyseClipSeam
-#include <ClipSeam.h>       // stitch::MeasureClipSeam
 #ifdef ORBIS_REFRAME_HAVE_CLIP_SYNC
 #include <ClipSync.h> // stitch::MeasureClipSync
 #endif
@@ -43,6 +42,22 @@ ClipMeasurements::~ClipMeasurements()
         m_analysisCancel = true;
         m_analysisThread->wait();
     }
+}
+
+void ClipMeasurements::newSession()
+{
+    ++m_session;
+    m_syncCancel = true;
+    m_seamCancel = true;
+    m_colourCancel = true;
+    m_analysisCancel = true;
+}
+
+QThread *ClipMeasurements::startJob(QThread *thread)
+{
+    thread->setParent(this);
+    thread->start(QThread::LowPriority);
+    return thread;
 }
 
 const ClipItem *ClipMeasurements::measurableClip(const QString &clipPath) const
@@ -206,7 +221,8 @@ void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
     m_analysisPath = clipPath;
     m_analysisCancel = false;
     m_analysisPermille = static_cast<int>(total > 0 ? 1000 * done / total : 0);
-    m_analysisThread = QThread::create([this, key, ranges, total, clipPath] {
+    const int session = m_session;
+    m_analysisThread = QThread::create([this, key, ranges, total, clipPath, session] {
         stitch::SeamAnalysisResult r;
         r.ok = true;
         qint64 before = 0; // the length of the ranges already gone through
@@ -222,20 +238,20 @@ void ClipMeasurements::maybeAnalyseSeam(const QString &clipPath)
             if (!r.ok)
                 break;
         }
-        QMetaObject::invokeMethod(this, [this, clipPath, r] {
+        QMetaObject::invokeMethod(this, [this, clipPath, r, session] {
             m_analysisThread->wait(); // its function has just returned
             m_analysisThread->deleteLater();
             m_analysisThread = nullptr;
             m_analysisPath.clear();
             core::log::Info("[seam analysis] %s: %s\n", qPrintable(clipPath), r.message.c_str());
-            if (!r.ok && !r.cancelled)
+            if (!r.ok && !r.cancelled && session == m_session)
                 m_analysisFailed.insert(clipPath, QString::fromStdString(r.message));
             emit seamAnalysed(clipPath);
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
     });
-    m_analysisThread->start(QThread::LowPriority);
+    startJob(m_analysisThread);
     core::log::Info("[seam analysis] %s: analysing\n", qPrintable(clipPath));
 }
 
@@ -257,24 +273,28 @@ void ClipMeasurements::maybeMeasureSync(const QString &clipPath)
     m_syncCancel = false;
     const auto guard = clip->lensGuard;
     const auto cal = clip->lensCalibration;
-    m_syncThread = QThread::create([this, path, in, out, clipPath, guard, cal] {
+    const int session = m_session;
+    m_syncThread = QThread::create([this, path, in, out, clipPath, guard, cal, session] {
         const stitch::ClipSyncResult r =
             stitch::MeasureClipSync(path, in, out, &m_syncCancel, guard, cal ? &*cal : nullptr);
-        QMetaObject::invokeMethod(this, [this, clipPath, r] {
+        QMetaObject::invokeMethod(this, [this, clipPath, r, session] {
             m_syncThread->wait(); // its function has just returned
             m_syncThread->deleteLater();
             m_syncThread = nullptr;
             m_syncMeasuringPath.clear();
             core::log::Info("[sync] %s: %s\n", qPrintable(clipPath), r.message.c_str());
-            if (r.ok)
+            // Dropped when it's another project's, or a value came
+            // meanwhile (an undo).
+            const bool current = session == m_session;
+            if (current && r.ok && std::isnan(m_project->timeline()->sourceSyncAdjust(clipPath)))
                 m_project->timeline()->setSourceSyncAdjust(clipPath, r.adjustMs); // -> clipSyncChanged
-            else if (!m_syncCancel)
+            else if (current && !r.ok && !m_syncCancel)
                 m_syncFailed.insert(clipPath, r.failure);
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
     });
-    m_syncThread->start(QThread::LowPriority);
+    startJob(m_syncThread);
     core::log::Info("[sync] %s: measuring\n", qPrintable(clipPath));
     emit statusChanged();
 #else
@@ -298,28 +318,35 @@ void ClipMeasurements::maybeMeasureSeam(const QString &clipPath)
     const auto cal = clip->lensCalibration;
     m_seamMeasuringPath = clipPath;
     m_seamCancel = false;
-    m_seamThread = QThread::create([this, path, in, out, clipPath, guard, cal] {
+    const int session = m_session;
+    m_seamThread = QThread::create([this, path, in, out, clipPath, guard, cal, session,
+                                    measure = m_measureSeam] {
         const stitch::ClipSeamResult r =
-            stitch::MeasureClipSeam(path, in, out, guard, cal ? &*cal : nullptr, &m_seamCancel);
-        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, cal] {
+            measure(path, in, out, guard, cal ? &*cal : nullptr, &m_seamCancel);
+        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, cal, session] {
             m_seamThread->wait(); // its function has just returned
             m_seamThread->deleteLater();
             m_seamThread = nullptr;
             m_seamMeasuringPath.clear();
             core::log::Info("[seam] %s: %s\n", qPrintable(clipPath), r.message.c_str());
             // Stale if the guard or the calibration changed meanwhile: drop
-            // it and let the re-measure below run under the new one.
+            // it and let the re-measure below run under the new one. Also
+            // another project's, or when a value came meanwhile.
             const ClipItem *now = measurableClip(clipPath);
-            if (r.ok && now && guard == now->lensGuard && cal == now->lensCalibration)
+            orbiscore::SeamCorrection had;
+            const bool current = session == m_session;
+            if (current && r.ok && now && guard == now->lensGuard &&
+                cal == now->lensCalibration &&
+                !m_project->timeline()->sourceSeamCorrection(clipPath, had))
                 m_project->timeline()->setSourceSeamCorrection(
                     clipPath, r.correction, static_cast<int>(guard)); // -> clipSeamChanged
-            else if (!r.ok && !m_seamCancel)
+            else if (current && !r.ok && !m_seamCancel)
                 m_seamFailed.insert(clipPath, r.failure);
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
     });
-    m_seamThread->start(QThread::LowPriority);
+    startJob(m_seamThread);
     core::log::Info("[seam] %s: measuring\n", qPrintable(clipPath));
 }
 
@@ -344,31 +371,36 @@ void ClipMeasurements::maybeMeasureColour(const QString &clipPath)
     const auto cal = clip->lensCalibration;
     m_colourMeasuringPath = clipPath;
     m_colourCancel = false;
-    m_colourThread = QThread::create([this, path, in, out, clipPath, guard, cal, seam] {
+    const int session = m_session;
+    m_colourThread = QThread::create([this, path, in, out, clipPath, guard, cal, seam, session] {
         const stitch::ClipLensColourResult r = stitch::MeasureClipLensColour(
             path, in, out, guard, cal ? &*cal : nullptr, seam, &m_colourCancel);
-        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, cal, seam] {
+        QMetaObject::invokeMethod(this, [this, clipPath, r, guard, cal, seam, session] {
             m_colourThread->wait(); // its function has just returned
             m_colourThread->deleteLater();
             m_colourThread = nullptr;
             m_colourMeasuringPath.clear();
             core::log::Info("[colour] %s: %s\n", qPrintable(clipPath), r.message.c_str());
             // Stale if the guard, the calibration or the seam changed
-            // meanwhile: dropped, and measured again below.
+            // meanwhile: dropped, and measured again below. Also another
+            // project's, or when a value came meanwhile.
             const ClipItem *now = measurableClip(clipPath);
             orbiscore::SeamCorrection seamNow;
             m_project->timeline()->sourceSeamCorrection(clipPath, seamNow);
-            if (r.ok && now && guard == now->lensGuard && cal == now->lensCalibration &&
-                seam == seamNow)
+            orbiscore::LensColour had;
+            const bool current = session == m_session;
+            if (current && r.ok && now && guard == now->lensGuard &&
+                cal == now->lensCalibration && seam == seamNow &&
+                !m_project->timeline()->sourceLensColour(clipPath, had))
                 m_project->timeline()->setSourceLensColour(
                     clipPath, r.colour, static_cast<int>(guard)); // -> clipSeamChanged
-            else if (!r.ok && !m_colourCancel)
+            else if (current && !r.ok && !m_colourCancel)
                 m_colourFailed.insert(clipPath, r.failure);
             emit statusChanged();
             schedule(); // another source may be waiting for its turn
         }, Qt::QueuedConnection);
     });
-    m_colourThread->start(QThread::LowPriority);
+    startJob(m_colourThread);
     core::log::Info("[colour] %s: measuring\n", qPrintable(clipPath));
 }
 

@@ -61,6 +61,7 @@
 #include <QMimeData>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QProxyStyle>
 #include <QPushButton>
 #include <QScrollBar>
@@ -71,6 +72,7 @@
 #include <QStackedWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -80,7 +82,9 @@
 #include <cstdio>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <map>
+#include <memory>
 #include <set>
 
 namespace {
@@ -2461,6 +2465,95 @@ void testMeasurementFailureReasons(const Ctx &c)
                                             "colours (the file can't be read)."));
 }
 
+// A measurement that finishes after the project changed (another one
+// opened in the same window) is dropped, not taken for the new project's
+// clips -- nor when a value came meanwhile; in its own session it's taken.
+// And a job still there when the measurements go is deleted with them. The
+// seam measurement is a stand-in that gives a result at once.
+void testMeasurementAcrossProjects(const Ctx &c)
+{
+    std::printf("  measurement across projects\n");
+    orbiscore::SeamCorrection measured;
+    measured.radialScale = 1.01;
+    orbiscore::SeamCorrection other;
+    other.radialScale = 0.99;
+    const auto standIn = [&](const std::string &, int64_t, int64_t,
+                             stitch::PreviewStitchConfig::LensGuard,
+                             const stitch::LensCalibration *, const std::atomic<bool> *) {
+        stitch::ClipSeamResult r;
+        r.ok = true;
+        r.correction = measured;
+        return r;
+    };
+    const auto premium = stitch::PreviewStitchConfig::LensGuard::Premium;
+    const auto project = [&](Project &p) {
+        p.timeline()->appendClip(c.clipA, kClipMs, kFps);
+        p.timeline()->setSourceStitch(c.clipA, premium,
+                                      stitch::PreviewStitchConfig::Method::DepthSeam,
+                                      std::nullopt); // the old stitcher's measurements
+    };
+    // Runs schedule()'s queued pass and waits for the jobs it started:
+    // their results are posted, not yet delivered.
+    const auto finishJobs = [](ClipMeasurements &m) {
+        m.schedule();
+        QCoreApplication::sendPostedEvents(&m, QEvent::MetaCall);
+        const QList<QThread *> jobs = m.findChildren<QThread *>();
+        for (QThread *j : jobs)
+            CHECK(j->wait(20000));
+        return jobs;
+    };
+    const auto seamOf = [&](Project &p) {
+        orbiscore::SeamCorrection s;
+        return p.timeline()->sourceSeamCorrection(c.clipA, s) ? std::optional(s) : std::nullopt;
+    };
+
+    { // Another project open by the time it comes.
+        Project p;
+        project(p);
+        ClipMeasurements m(&p, true);
+        m.setSeamMeasure(standIn);
+        CHECK(!finishJobs(m).isEmpty());
+        m.newSession();
+        m.setPlaying(true); // nothing new starts
+        QTest::qWait(300);
+        CHECK(!seamOf(p));
+    }
+    { // A value came meanwhile (an undo, a load): it stays.
+        Project p;
+        project(p);
+        ClipMeasurements m(&p, true);
+        m.setSeamMeasure(standIn);
+        CHECK(!finishJobs(m).isEmpty());
+        p.timeline()->setSourceSeamCorrection(c.clipA, other, static_cast<int>(premium));
+        m.setPlaying(true);
+        QTest::qWait(300);
+        CHECK(seamOf(p) == other);
+    }
+    { // In its own session: taken.
+        Project p;
+        project(p);
+        ClipMeasurements m(&p, true);
+        m.setSeamMeasure(standIn);
+        CHECK(!finishJobs(m).isEmpty());
+        m.setPlaying(true);
+        QTest::qWait(300);
+        CHECK(seamOf(p) == measured);
+    }
+    { // Gone with its result undelivered: the job's thread goes too.
+        Project p;
+        project(p);
+        auto m = std::make_unique<ClipMeasurements>(&p, true);
+        m->setSeamMeasure(standIn);
+        QList<QPointer<QThread>> held;
+        for (QThread *j : finishJobs(*m))
+            held << j;
+        CHECK(!held.isEmpty());
+        m.reset();
+        for (const QPointer<QThread> &j : held)
+            CHECK(j.isNull());
+    }
+}
+
 // A grade pasted from elsewhere (another project's LUT) brings its LUT into
 // this project's luts/ folder, as every other way a LUT reaches a clip does.
 void testPasteGradeFromElsewhere(const Ctx &c)
@@ -3108,6 +3201,7 @@ int main(int argc, char **argv)
             testSaveAsTakesLuts();
             testSingleClickDesktop();
             testMeasurementFailureReasons(c);
+            testMeasurementAcrossProjects(c);
             testMenuFileDialogs(c);
             testRecovery(c);
             testLocateMovedFile(c);
