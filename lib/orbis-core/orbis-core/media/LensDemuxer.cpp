@@ -12,6 +12,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/imgutils.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/rational.h>
@@ -182,6 +183,21 @@ int LensDemuxer::openInput(const std::string& path, std::string& err)
     return static_cast<int>(m_inputs.size()) - 1;
 }
 
+namespace {
+// What InsvStreamInfo::pictureBytes says. A stream that doesn't name its
+// pixel format is sized as 4:2:0 at its bit depth, logged.
+int64_t PictureBytes(const AVCodecParameters* par, int bitDepth, int index)
+{
+    const int n =
+        av_image_get_buffer_size(static_cast<AVPixelFormat>(par->format), par->width, par->height, 1);
+    if (n > 0)
+        return n;
+    std::fprintf(stderr, "[insv] video stream %d doesn't say its pixel format; sizing it as 4:2:0\n",
+                 index);
+    return int64_t(par->width) * par->height * 3 / 2 * (bitDepth > 8 ? 2 : 1);
+}
+} // namespace
+
 bool LensDemuxer::addLens(int input, int streamIndex, const DecoderSetup& setup, std::string& err)
 {
     AVStream* st = m_inputs[input].fmt->streams[streamIndex];
@@ -192,6 +208,7 @@ bool LensDemuxer::addLens(int input, int streamIndex, const DecoderSetup& setup,
         info.bitDepth = d->comp[0].depth;
     info.ycbcr = StreamYcbcr(st->codecpar, streamIndex);
     info.height = st->codecpar->height;
+    info.pictureBytes = PictureBytes(st->codecpar, info.bitDepth, streamIndex);
     const AVRational fr = st->avg_frame_rate;
     if (fr.num <= 0 || fr.den <= 0) {
         err = "no frame rate in video stream " + std::to_string(streamIndex);
@@ -236,6 +253,13 @@ bool LensDemuxer::addLens(int input, int streamIndex, const DecoderSetup& setup,
     m_lenses.push_back(info);
     m_dec.push_back(ctx);
     return true;
+}
+
+int64_t LensDemuxer::pairPictureBytes() const
+{
+    if (m_lenses.empty())
+        return 0;
+    return m_lenses[0].pictureBytes + (lensCount() > 1 && decoderOf(1) != 0 ? m_lenses[1].pictureBytes : 0);
 }
 
 bool LensDemuxer::finishOpen(std::string& err)

@@ -209,7 +209,8 @@ public:
     bool RenderKeptViews(int handle, int canvasW, int canvasH, const std::vector<ViewRect>& views,
                          const float stab[9], uint32_t clearRgba, std::vector<uint8_t>& rgba);
     void ReleaseKeptPair(int handle);
-    // Bytes of GPU memory one kept pair takes (the two decoded lens images).
+    // Bytes of GPU memory one kept pair takes: its decoded pictures (one when
+    // both lenses share a stream; 10-bit samples take two bytes).
     size_t KeptPairBytes() const;
 
     // Per-lens / per-sensor-row capture-time correction in the GPU stitch

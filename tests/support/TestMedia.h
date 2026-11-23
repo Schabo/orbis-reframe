@@ -1,8 +1,8 @@
 #pragma once
 
 // Small media files written by the tests themselves, so no test needs
-// footage: a 16-bit stereo 48 kHz WAV, a short MPEG-4 or H.264 video, an
-// H.264 picture.
+// footage: a 16-bit stereo 48 kHz WAV, a short MPEG-4, H.264 or 10-bit FFV1
+// video, an H.264 picture.
 
 #include <cstdint>
 #include <functional>
@@ -27,6 +27,7 @@ struct VideoSpec {
     bool hlg = false;   // tags the stream HDR: HLG transfer, BT.2020
     int streams = 1;    // video streams carrying the same picture (a lens each)
     bool h264 = false;  // H.264 (what GPUs decode), not MPEG-4 Part 2; fails without the encoder
+    bool tenBit = false; // 10-bit 4:2:0 (yuv420p10), as lossless FFV1: write it to a .mkv
     // Pixel (x, y)'s luma in frame `frame`; chroma is neutral. Empty = mid grey.
     std::function<uint8_t(int frame, int x, int y)> luma;
     // Whether stream `stream` gets frame `frame`; empty = every frame in every

@@ -276,6 +276,41 @@ void testSideBySide(const std::string& dir)
     av_frame_free(&f1);
 }
 
+// What a decoded pair holds: a picture per stream (both lenses in one stream
+// share theirs), each in the stream's own format -- 10-bit samples in two
+// bytes, as the GPU's P010.
+void testPairPictureBytes(const std::string& a, const std::string& b, const std::string& dir)
+{
+    std::printf("  a pair's picture bytes: per stream, at the stream's bit depth\n");
+    const auto setup = [](const auto*, const auto*, auto*, std::string&) { return true; };
+    std::string err;
+    orbiscore::LensDemuxer twoFiles;
+    CHECK(twoFiles.open({{a, 0, {}}, {b, 0, {}}}, setup, err));
+    CHECK(twoFiles.lens(0).pictureBytes == 64 * 64 * 3 / 2);
+    CHECK(twoFiles.pairPictureBytes() == 2 * 64 * 64 * 3 / 2);
+
+    const std::string packed = dir + "/packed.mp4";
+    testmedia::VideoSpec spec;
+    spec.width = 128;
+    spec.height = 64;
+    spec.frames = 10;
+    CHECK(testmedia::writeVideo(packed, spec));
+    const orbiscore::LensRect left{0.0, 0.0, 0.5, 1.0}, right{0.5, 0.0, 0.5, 1.0};
+    orbiscore::LensDemuxer oneStream;
+    CHECK(oneStream.open({{packed, 0, left}, {packed, 0, right}}, setup, err));
+    CHECK(oneStream.pairPictureBytes() == 128 * 64 * 3 / 2);
+
+    const std::string deep = dir + "/main10.mkv";
+    spec.width = 64;
+    spec.streams = 2;
+    spec.tenBit = true;
+    CHECK(testmedia::writeVideo(deep, spec));
+    orbiscore::LensDemuxer tenBit;
+    CHECK(tenBit.open(deep, setup, err));
+    CHECK(tenBit.lensCount() == 2 && tenBit.lens(1).bitDepth == 10);
+    CHECK(tenBit.pairPictureBytes() == 2 * 64 * 64 * 3);
+}
+
 // At 29.97 fps a frame's time isn't a whole millisecond: `ms` is rounded as
 // ever, `us` is the stream's time (what the stabilizer's correction takes).
 void testExactTimes(const std::string& dir)
@@ -765,6 +800,7 @@ int main()
     testExactTimes(dir.string());
     testSeekAtReportedTimes(dir.string());
     testSideBySide(dir.string());
+    testPairPictureBytes(a, b, dir.string());
     testMissingFrames(dir.string());
     testFrameState();
     if (!g_failures)

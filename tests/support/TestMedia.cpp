@@ -43,7 +43,9 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     avformat_alloc_output_context2(&fmt, nullptr, nullptr, path.c_str());
     if (!fmt)
         return false;
-    const AVCodec *enc = avcodec_find_encoder(spec.h264 ? AV_CODEC_ID_H264 : AV_CODEC_ID_MPEG4);
+    const AVCodec *enc = avcodec_find_encoder(spec.tenBit ? AV_CODEC_ID_FFV1
+                                              : spec.h264 ? AV_CODEC_ID_H264
+                                                          : AV_CODEC_ID_MPEG4);
     if (!enc)
         return false;
     AVCodecContext *ctx = avcodec_alloc_context3(enc);
@@ -51,7 +53,7 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     ctx->height = spec.height;
     ctx->time_base = AVRational{spec.fpsDen, spec.fps};
     ctx->framerate = AVRational{spec.fps, spec.fpsDen};
-    ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    ctx->pix_fmt = spec.tenBit ? AV_PIX_FMT_YUV420P10 : AV_PIX_FMT_YUV420P;
     if (spec.hlg) {
         ctx->color_trc = AVCOL_TRC_ARIB_STD_B67;
         ctx->color_primaries = AVCOL_PRI_BT2020;
@@ -59,7 +61,7 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     }
     ctx->gop_size = 10;
     ctx->max_b_frames = 0;
-    if (!spec.h264) { // near-lossless, so a frame's grey reads back as written
+    if (!spec.h264 && !spec.tenBit) { // near-lossless, so a frame's grey reads back as written
         ctx->flags |= AV_CODEC_FLAG_QSCALE;
         ctx->global_quality = FF_QP2LAMBDA * 2;
     }
@@ -111,13 +113,21 @@ bool writeVideo(const std::string &path, const VideoSpec &spec)
     };
     for (int i = 0; i < spec.frames; ++i) {
         av_frame_make_writable(f);
+        // 10-bit: each sample in two bytes, the 8-bit value << 2.
+        const auto put = [&](int plane, int x, int y, int v) {
+            uint8_t *row = f->data[plane] + y * f->linesize[plane];
+            if (spec.tenBit)
+                reinterpret_cast<uint16_t *>(row)[x] = static_cast<uint16_t>(v << 2);
+            else
+                row[x] = static_cast<uint8_t>(v);
+        };
         for (int y = 0; y < spec.height; ++y)
             for (int x = 0; x < spec.width; ++x)
-                f->data[0][y * f->linesize[0] + x] = spec.luma ? spec.luma(i, x, y) : 128;
+                put(0, x, y, spec.luma ? spec.luma(i, x, y) : 128);
         for (int y = 0; y < spec.height / 2; ++y)
             for (int x = 0; x < spec.width / 2; ++x) {
-                f->data[1][y * f->linesize[1] + x] = 128;
-                f->data[2][y * f->linesize[2] + x] = 128;
+                put(1, x, y, 128);
+                put(2, x, y, 128);
             }
         f->pts = i;
         drain(f);

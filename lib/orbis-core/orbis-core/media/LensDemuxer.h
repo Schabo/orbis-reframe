@@ -61,6 +61,10 @@ struct InsvStreamInfo {
     // where the next part of a split recording starts.
     int64_t durationUs = 0;
     int bitDepth = 8; // bits per sample: 8, or 10 for HEVC Main 10 (the X6's I-Log)
+    // One decoded picture's bytes, unpadded, in the stream's pixel format: a
+    // 10-bit sample takes two. The GPU decode's NV12 / P010 hold as much as
+    // yuv420p / yuv420p10.
+    int64_t pictureBytes = 0;
     // The stream's matrix and range (its VUI). The X5 tags its streams BT.709
     // full range, the X6's Dolby Vision mode BT.2020 limited range.
     YcbcrCoding ycbcr;
@@ -94,6 +98,9 @@ public:
     int lensCount() const { return m_shared ? 2 : static_cast<int>(m_dec.size()); }
     // The lens's stream: with both lenses in one stream, the same for both.
     const InsvStreamInfo& lens(int i) const { return m_lenses.at(decoderOf(i)); }
+    // The bytes a pair's decoded pictures hold: both lenses in one stream
+    // share one picture.
+    int64_t pairPictureBytes() const;
 
     // Frame-exact: the next read returns the first frame at or after
     // `timestampMs` -- the first whose time, rounded to the ms as reads

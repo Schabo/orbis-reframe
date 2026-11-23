@@ -94,6 +94,7 @@ public:
 
     int lensCount() const { return m_demux.lensCount(); }
     const VulkanVideoStreamInfo& lens(int i) const { return m_demux.lens(i); }
+    int64_t pairPictureBytes() const { return m_demux.pairPictureBytes(); }
 
     // FFmpeg's Vulkan device, for the compute stitch to adopt. `queueFlags`
     // are the flags FFmpeg created its queues with

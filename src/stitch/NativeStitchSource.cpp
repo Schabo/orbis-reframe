@@ -1470,12 +1470,7 @@ void NativeStitchSource::ReleaseKeptPair(int handle) {
 }
 
 size_t NativeStitchSource::KeptPairBytes() const {
-    // Two NV12 lens images (one decoded pair).
-    size_t bytes = 0;
-    if (vdec_)
-        for (int i = 0; i < vdec_->lensCount(); ++i)
-            bytes += size_t(vdec_->lens(i).width) * vdec_->lens(i).height * 3 / 2;
-    return bytes;
+    return vdec_ ? static_cast<size_t>(vdec_->pairPictureBytes()) : 0;
 }
 
 bool NativeStitchSource::HoldNextPair(orbiscore::FramePts& pts) {
