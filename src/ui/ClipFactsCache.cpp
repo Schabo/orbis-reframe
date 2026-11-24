@@ -13,6 +13,21 @@ ClipFileFacts ClipFileFacts::fromProbe(const stitch::ClipProbe &probe)
     return f;
 }
 
+namespace {
+
+ClipFileFacts readFacts(const ClipProbeFn &probe, const QString &path)
+{
+    stitch::ClipProbe p;
+    std::string err;
+    const bool ok = probe ? probe(path.toStdString(), p, err)
+                          : stitch::ProbeClip(path.toStdString(), p, err);
+    // A file that can't be read doesn't play either; leave its choices
+    // open rather than read it again on every look.
+    return ok ? ClipFileFacts::fromProbe(p) : ClipFileFacts{};
+}
+
+} // namespace
+
 ClipFactsCache::ClipFactsCache(ClipProbeFn probe, QObject *parent)
     : QObject(parent), m_probe(std::move(probe))
 {
@@ -36,13 +51,7 @@ ClipFileFacts ClipFactsCache::facts(const QString &path)
 
     QPointer<ClipFactsCache> self(this);
     m_pool.start([self, path, read, probe = m_probe] {
-        stitch::ClipProbe p;
-        std::string err;
-        const bool ok = probe ? probe(path.toStdString(), p, err)
-                              : stitch::ProbeClip(path.toStdString(), p, err);
-        // A file that can't be read doesn't play either; leave its choices
-        // open rather than read it again on every look.
-        const ClipFileFacts found = ok ? ClipFileFacts::fromProbe(p) : ClipFileFacts{};
+        const ClipFileFacts found = readFacts(probe, path);
         QMetaObject::invokeMethod(
             self.data(),
             [self, path, read, found] {
@@ -55,6 +64,28 @@ ClipFileFacts ClipFactsCache::facts(const QString &path)
             Qt::QueuedConnection);
     });
     return {};
+}
+
+ClipFileFacts ClipFactsCache::factsNow(const QString &path)
+{
+    if (const auto it = m_done.constFind(path); it != m_done.constEnd())
+        return *it;
+    if (path.isEmpty())
+        return {};
+    // A read in the background under way is dropped when it's in (no
+    // longer pending): this one is the file's.
+    m_pending.remove(path);
+    const ClipFileFacts found = readFacts(m_probe, path);
+    m_done.insert(path, found);
+    QPointer<ClipFactsCache> self(this);
+    QMetaObject::invokeMethod(
+        this,
+        [self, path] {
+            if (self && self->m_done.contains(path))
+                emit self->ready(path);
+        },
+        Qt::QueuedConnection);
+    return found;
 }
 
 void ClipFactsCache::set(const QString &path, const stitch::ClipProbe &probe)

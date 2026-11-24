@@ -37,6 +37,11 @@ public:
     ~ClipFactsCache() override; // waits for running reads
 
     ClipFileFacts facts(const QString &path);
+    // The file's facts, read here and now when they aren't in yet: for what
+    // is made from them at once and not made again when they come (a
+    // file's preview stitches with its lens-guard profiles). ready() still
+    // fires, later, as for a read in the background.
+    ClipFileFacts factsNow(const QString &path);
     stitch::LensGuardProfiles profiles(const QString &path) { return facts(path).lensGuards; }
     QList<qint64> highlights(const QString &path) { return facts(path).highlightMs; }
     // A file's facts, as a probe on the GUI thread already read them.

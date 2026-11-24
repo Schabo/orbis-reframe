@@ -1009,6 +1009,36 @@ void testStitchingWithoutGuards(const Ctx &c)
           c.timeline->clipAt(0).stitchMethod == M::New);
 }
 
+// A file previewed before its facts are read stitches with the lens guard
+// its own profiles allow, not with every one open: a ONE X2 take, which
+// records none, previews with None though the clip it would follow on the
+// timeline has Premium.
+void testPreviewLensGuard(const Ctx &c)
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    auto *panel = find<MediaPoolPanel>(c.w, "mediaPoolPanel");
+    if (!panel || c.timeline->count() < 1)
+        return;
+    const QString dir = QDir(c.dir).filePath(QStringLiteral("x2preview"));
+    QDir().mkpath(dir);
+    const QString lead = dir + QStringLiteral("/VID_20250817_090000_00_007.insv");
+    writeFile(lead);
+    writeFile(dir + QStringLiteral("/VID_20250817_090000_10_007.insv"));
+    CHECK(c.timeline->clipAt(c.timeline->count() - 1).lensGuard == G::Premium);
+    emit panel->filesDropped({lead});
+    CHECK(waitFor([&] { return c.project->mediaPool()->contains(lead); }));
+    emit panel->previewRequested(lead);
+    CHECK(waitFor([&] { return wasOpened(lead); }));
+    {
+        std::lock_guard<std::mutex> lock(g_openedMutex);
+        const auto it = g_openedWith.find(lead.toStdString());
+        CHECK(it != g_openedWith.end() && it->second.lensGuard == G::None);
+    }
+    emit panel->previewRequested(lead); // pause
+    key(c, Qt::Key_Escape);             // the timeline again
+    settle();
+}
+
 // Direction lock: picking it holds the direction under the playhead, the
 // button takes it again where the playhead is now, and pasting it onto a
 // clip of another file holds that clip's first frame.
@@ -1769,8 +1799,7 @@ void testMediaPreview(const Ctx &c)
     key(c, Qt::Key_End);
     CHECK(waitFor([&] { return shows(kClipMs, kClipMs, kFps); }));
     CHECK(c.timelineWidget->playhead() == 1500);
-    // Its camera's mark, though the file was read in the background after
-    // the preview began: Ctrl+Up goes to it.
+    // Its camera's mark: Ctrl+Up goes to it.
     key(c, Qt::Key_Up, Qt::ControlModifier);
     CHECK(waitFor([&] { return shows(kSourceCameraMarkMs, kClipMs, kFps); }));
     // The screenshot is the timeline's: not while a file is shown.
@@ -2716,6 +2745,16 @@ void testCachesAfterReplace(const Ctx &c)
     settled([&] { return probes == 2; });
     QTest::qWait(100);
     CHECK(facts.highlights(clip) == QList<qint64>{2});
+    // Read here and now (a preview), with a read in the background under
+    // way: the facts at once, and the read in the background doesn't put
+    // its own in when it's done.
+    facts.forget({clip});
+    CHECK(facts.highlights(clip).isEmpty()); // in the background
+    const QList<qint64> now = facts.factsNow(clip).highlightMs;
+    CHECK(now.size() == 1 && facts.highlights(clip) == now);
+    settled([&] { return probes == 4; });
+    QTest::qWait(100);
+    CHECK(probes == 4 && facts.highlights(clip) == now);
 
     QTemporaryDir cacheDir;
     const QString wav = QDir(c.dir).filePath(QStringLiteral("replaced.wav"));
@@ -3464,6 +3503,7 @@ int main(int argc, char **argv)
             testColour(c);
             testStitching(c);
             testStitchingWithoutGuards(c);
+            testPreviewLensGuard(c);
             testDirectionLock(c);
             testSplitScreen(c);
             testEffects(c);

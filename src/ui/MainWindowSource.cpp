@@ -72,8 +72,11 @@ bool MainWindow::showSource(const QString &path)
     switch (m->kind) {
     case MediaItem::Kind::Clip360: {
         // Stitched as it would be if it went on at the end of the timeline:
-        // with its other clips' stitch settings when it's there already.
-        const stitch::LensGuardProfiles guards = m_clipFacts->profiles(path);
+        // with its other clips' stitch settings when it's there already, and
+        // the lens guard its file's profiles allow -- read now if they
+        // aren't in yet, as the timeline reads them when a file goes on.
+        const ClipFileFacts facts = m_clipFacts->factsNow(path);
+        const stitch::LensGuardProfiles &guards = facts.lensGuards;
         // Its stabilization too: the nearest 360 clip's, as it would be
         // there (Off with none).
         ClipItem c = m_timeline->newClip(m_timeline->count(), path, m->durationMs, m->fps,
@@ -87,7 +90,7 @@ bool MainWindow::showSource(const QString &path)
         seg.seamFlow = c.seamFlow;
         own.appendClip(path, m->durationMs, m->fps, m->width, m->height, audioStreamCount(path),
                        false, guards);
-        marks = m_clipFacts->highlights(path);
+        marks = facts.highlightMs;
         break;
     }
     case MediaItem::Kind::Video: {

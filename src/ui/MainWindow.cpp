@@ -804,8 +804,8 @@ void MainWindow::connectOverlaysAndAudio()
     connect(m_waveforms, &WaveformCache::ready, this, &MainWindow::refreshTimelineWidget);
     // A file's guard profiles and marks read in the background: the panel
     // may show it, the timeline its marks, and the preview its camera's
-    // marks when it's the file previewed (a file looked at for the first
-    // time is previewed before its read is in).
+    // marks when it's the file previewed (the preview reads them as it
+    // starts, but a file replaced in place meanwhile is read again).
     connect(m_clipFacts, &ClipFactsCache::ready, this, [this](const QString &path) {
         const ClipItem *c = m_timeline->clipById(editClipId());
         if (c && c->sourcePath == path)
