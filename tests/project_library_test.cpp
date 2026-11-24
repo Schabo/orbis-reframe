@@ -27,6 +27,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QWheelEvent>
 
 #include <atomic>
@@ -231,9 +232,25 @@ QString readAll(const QString &path)
     return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
 }
 
-// Rename and duplicate, in projectfolder and from the cards.
+// The page counting who reads its display metrics (devicePixelRatio and
+// the like): a widget's belong to the GUI thread, so the pictures' size is
+// worked out there, never in the workers that read them.
+class MetricWatchPage : public ProjectLibraryPage {
+public:
+    using ProjectLibraryPage::ProjectLibraryPage;
+    mutable std::atomic<int> guiReads = 0, workerReads = 0;
+
+protected:
+    int metric(PaintDeviceMetric m) const override
+    {
+        ++(QThread::currentThread() == qApp->thread() ? guiReads : workerReads);
+        return ProjectLibraryPage::metric(m);
+    }
+};
+
 // The cards' pictures after a Ctrl + wheel zoom: read again once the wheel
-// settles, at the last size, and not at all for a smaller one.
+// settles, at the last size, and not at all for a smaller one. Their sizes,
+// both times, from the GUI thread.
 void testCardZoomReads()
 {
     QTemporaryDir tmp;
@@ -250,7 +267,7 @@ void testCardZoomReads()
     library.load();
     CHECK(library.setProjectsFolder(folder));
 
-    ProjectLibraryPage page(&library);
+    MetricWatchPage page(&library);
     std::atomic<int> reads = 0, lastWidth = 0;
     page.setFlatThumbnail([&](const QString &, const QSize &size) {
         ++reads;
@@ -295,8 +312,11 @@ void testCardZoomReads()
     QTest::qWait(500);
     CHECK(reads == 2);
     CHECK(pictureWidth() == zoomedWidth);
+    CHECK(page.guiReads > 0);
+    CHECK(page.workerReads == 0);
 }
 
+// Rename and duplicate, in projectfolder and from the cards.
 void testRenameDuplicate()
 {
     QTemporaryDir tmp;
