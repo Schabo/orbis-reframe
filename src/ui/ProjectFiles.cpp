@@ -123,6 +123,9 @@ void ProjectFiles::prunePlateScans()
 
 bool ProjectFiles::confirmDiscard()
 {
+    // The answer covers the project as it is now, not a change that lands
+    // while the box is open.
+    m_answeredAt = m_project->changeCount();
     if (!m_project->modified())
         return true;
     // Qt's Save / Discard labels have no mnemonic; with one, S / D (and
@@ -143,6 +146,14 @@ bool ProjectFiles::confirmDiscard()
     }
     m_autosave->discard();
     return true; // Discard
+}
+
+bool ProjectFiles::confirmDiscardAgain()
+{
+    while (m_project->changeCount() != m_answeredAt)
+        if (!confirmDiscard())
+            return false;
+    return true;
 }
 
 bool ProjectFiles::askRecover(const QString &projectFile)

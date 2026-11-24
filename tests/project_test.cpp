@@ -1248,6 +1248,47 @@ void testProjectFolder()
     CHECK(projectfolder::ensure(projectfolder::exportsDir(file)) == parent + "/Summer trip/exports");
     CHECK(QFileInfo(parent + "/Summer trip/exports").isDir());
     CHECK(projectfolder::ensure(QString()).isEmpty());
+
+    // removeUnused() takes back a folder create() made, only while it holds
+    // no file; never anything but a project folder.
+    const QString fresh = projectfolder::create(parent, "Unused", &error);
+    CHECK(projectfolder::removeUnused(fresh));
+    CHECK(!QFileInfo::exists(parent + "/Unused"));
+    QFile cached(projectfolder::cacheDir(file) + "/kept.bin");
+    CHECK(cached.open(QIODevice::WriteOnly));
+    cached.close();
+    CHECK(!projectfolder::removeUnused(file));
+    CHECK(QFileInfo::exists(cached.fileName()));
+    CHECK(!projectfolder::removeUnused(loose));
+    CHECK(QFileInfo(parent).isDir());
+}
+
+// changeCount(): every change to the document counts, whether it was
+// already modified or not; saving and loading don't.
+void testChangeCount()
+{
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid());
+    Project p;
+    CHECK(p.changeCount() == 0);
+    p.timeline()->appendClip("a.insv", 10000, 30.0);
+    const quint64 one = p.changeCount();
+    CHECK(one > 0);
+    CHECK(p.modified());
+    MediaItem item;
+    item.path = tmp.path() + "/b.mp4";
+    item.kind = MediaItem::Kind::Video;
+    p.mediaPool()->add(item); // already modified: still a change
+    const quint64 two = p.changeCount();
+    CHECK(two > one);
+    const QString file = tmp.path() + "/p.orp";
+    CHECK(p.save(file));
+    CHECK(p.changeCount() == two);
+    p.undo();
+    CHECK(p.changeCount() > two);
+    const quint64 three = p.changeCount();
+    CHECK(p.load(file));
+    CHECK(p.changeCount() == three);
 }
 
 // Autosave's recovery file: written while there are unsaved changes, gone
@@ -3439,6 +3480,7 @@ int main(int argc, char **argv)
     testResetWithClipKeepsFiles();
     testRecordingParts();
     testProjectFolder();
+    testChangeCount();
     testAutosave();
     testMeasurementsWritten();
     testOldSeamMeasurement();

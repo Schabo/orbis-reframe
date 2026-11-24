@@ -34,6 +34,11 @@ public:
     // When the project has unsaved changes: Save / Discard / Cancel. False
     // when the user cancelled (or a Save didn't happen): the caller stops.
     bool confirmDiscard();
+    // Right before the project is replaced, after a dialog that ran since
+    // confirmDiscard() (New project's, the file picker): an import can land
+    // in the project while one is open. Asks again if the project changed
+    // since that answer, until it hasn't.
+    bool confirmDiscardAgain();
 
     // Before opening `projectFile`: if it has changes autosaved but never
     // saved, ask whether to recover them (else they're thrown away); an
@@ -72,5 +77,6 @@ private:
     Project *m_project;
     ProjectLibrary *m_library;
     Autosave *m_autosave;
+    quint64 m_answeredAt = 0; // the changeCount() confirmDiscard() last answered for
     QWidget *m_window;
 };

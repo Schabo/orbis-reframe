@@ -1301,6 +1301,8 @@ void Project::setAudioStreamCounter(std::function<int(const QString &)> counter)
 
 void Project::setModified(bool modified)
 {
+    if (modified)
+        ++m_changes;
     if (m_modified == modified)
         return;
     m_modified = modified;

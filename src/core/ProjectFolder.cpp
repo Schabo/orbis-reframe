@@ -6,6 +6,7 @@
 #include "ZipReader.h"
 
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -76,6 +77,18 @@ QString create(const QString &parentDir, const QString &name, QString *error)
             return fail(QObject::tr("Can't create the folder %1.").arg(folder));
     }
     return projectFilePath(parentDir, name);
+}
+
+bool removeUnused(const QString &projectFile)
+{
+    if (!isProjectFolder(projectFile))
+        return false;
+    const QString folder = QFileInfo(projectFile).absolutePath();
+    QDirIterator files(folder, QDir::Files | QDir::Hidden | QDir::System,
+                       QDirIterator::Subdirectories);
+    if (files.hasNext())
+        return false;
+    return QDir(folder).removeRecursively();
 }
 
 bool isProjectFolder(const QString &projectFile)

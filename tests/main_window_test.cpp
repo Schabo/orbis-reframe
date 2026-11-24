@@ -3104,6 +3104,65 @@ void testNewProject(const Ctx &c)
     CHECK(pages && pages->currentWidget() == find<QSplitter>(c.w, "editorSplitter"));
 }
 
+// A file imported while New project's dialog or Open project's file picker
+// is open (a card's probes finishing) is a change the save question before
+// the dialog didn't cover: it's asked again before the project goes, and
+// Cancel keeps the project with the file -- and takes back the new
+// project's folder the dialog made.
+void testLateImportAsksAgain(const Ctx &c)
+{
+    std::printf("  late import asks again\n");
+    CHECK(c.project->save(c.project->filePath())); // no question before the dialog
+    const QString current = c.project->filePath();
+    MediaPool *pool = c.project->mediaPool();
+    const auto lands = [pool](const QString &path) {
+        MediaItem item;
+        item.path = path;
+        item.kind = MediaItem::Kind::Audio;
+        item.durationMs = 3000;
+        pool->add(item);
+    };
+
+    const QString late = QDir(c.dir).filePath(QStringLiteral("late-new.wav"));
+    whenDialog([&](QWidget *w) {
+        lands(late);
+        answerMessageBox(QStringLiteral("Cancel"));
+        auto *nameEdit = w->findChild<QLineEdit *>(QStringLiteral("projectName"));
+        auto *location = w->findChild<QLineEdit *>(QStringLiteral("projectLocation"));
+        CHECK(nameEdit && location);
+        if (nameEdit && location) {
+            nameEdit->setText(QStringLiteral("Fourth"));
+            location->setText(c.dir);
+        }
+        if (auto *dialog = qobject_cast<QDialog *>(w))
+            dialog->accept();
+    });
+    trigger(c, "newProjectAction");
+    CHECK(c.project->filePath() == current);
+    CHECK(pool->contains(late));
+    CHECK(c.project->modified());
+    CHECK(!QFileInfo::exists(QDir(c.dir).filePath(QStringLiteral("Fourth"))));
+
+    CHECK(c.project->save(current));
+    const QString lateOpen = QDir(c.dir).filePath(QStringLiteral("late-open.wav"));
+    whenDialog([&](QWidget *w) {
+        lands(lateOpen);
+        answerMessageBox(QStringLiteral("Cancel"));
+        auto *name = w->findChild<QLineEdit *>(QStringLiteral("fileNameEdit"));
+        CHECK(name);
+        if (name)
+            name->setText(c.orp);
+        static_cast<QDialog *>(w)->accept();
+    });
+    trigger(c, "openProjectAction");
+    CHECK(c.project->filePath() == current);
+    CHECK(pool->contains(lateOpen));
+    CHECK(c.project->modified());
+
+    pool->remove({late, lateOpen});
+    CHECK(c.project->save(current));
+}
+
 // A new project starts from scratch: the settings shown for the last
 // project's clip, its view direction and the reframe arm don't carry over.
 void testNewProjectResets(const Ctx &c)
@@ -3293,6 +3352,7 @@ int main(int argc, char **argv)
             testSaveAndReopen(c);
             testCloseWithChanges(c);
             testNewProject(c);
+            testLateImportAsksAgain(c);
             testNewProjectResets(c);
             testNaturalReachesViewport(c);
             testEmptyTimelineStops(c);

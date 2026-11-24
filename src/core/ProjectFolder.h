@@ -30,6 +30,9 @@ QString nameProblem(const QString &name);
 // bad name or when <parentDir>/<name> already exists. Returns the path of the
 // project file to save (not written here).
 QString create(const QString &parentDir, const QString &name, QString *error = nullptr);
+// Take back the folder create() made for `projectFile`, while nothing has
+// been put in it: only when it holds no file. True when it is gone.
+bool removeUnused(const QString &projectFile);
 
 // True when `projectFile` is <name>/<name>.orp, inside its own folder.
 bool isProjectFolder(const QString &projectFile);

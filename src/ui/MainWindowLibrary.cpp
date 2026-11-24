@@ -158,7 +158,9 @@ void MainWindow::openProjectFile()
 {
     if (!m_files->confirmDiscard())
         return;
-    if (const QString path = m_files->pickProjectFile(); !path.isEmpty())
+    const QString path = m_files->pickProjectFile();
+    // An import may have landed while the picker was open.
+    if (!path.isEmpty() && m_files->confirmDiscardAgain())
         openProject(path);
 }
 
@@ -169,6 +171,12 @@ void MainWindow::newProject()
     const std::optional<ProjectFiles::NewProject> made = m_files->askNewProject();
     if (!made)
         return;
+    // An import may have landed while the dialog was open. Kept: the new
+    // project's folder goes again, still empty.
+    if (!m_files->confirmDiscardAgain()) {
+        projectfolder::removeUnused(made->file);
+        return;
+    }
     m_rebindingModel = true;
     m_project->newProject();
     m_project->setOutput(made->output);

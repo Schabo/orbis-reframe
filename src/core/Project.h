@@ -230,6 +230,10 @@ public:
     // Empty until the project is saved or loaded.
     QString filePath() const { return m_filePath; }
     bool modified() const { return m_modified; }
+    // Counts every change to the document (an edit, an import, an undo or
+    // redo), whether saved or not; loading, saving or starting a project
+    // doesn't count. Two equal readings: nothing changed in between.
+    quint64 changeCount() const { return m_changes; }
 
     // The preview's stitch size (View menu), handed to the live
     // playback path via PlaybackController::setPreviewConfig. Its lensGuard /
@@ -410,6 +414,7 @@ private:
     stitch::PreviewStitchConfig m_previewStitch;
     OutputSettings m_output;
     bool m_modified = false;
+    quint64 m_changes = 0;
     // True while load()/newProject()/resetWithClip()/undo()/redo() are
     // rebuilding, so the Timeline signals they cause don't set the modified
     // flag / don't recurse into the undo machinery.
