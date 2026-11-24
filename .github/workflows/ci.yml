@@ -2,7 +2,9 @@
 # more than docs, the site or Markdown, on GitHub's runners (free for a public
 # repository), in a clean container of each release target
 # (scripts/targets.sh) -- the same build dependencies and every feature on,
-# as scripts/package.sh. No GPU here: ctest runs offscreen, and the GPU checks
+# as scripts/package.sh -- and once more on the oldest with none of the
+# optional dependencies (OpenCV, ONNX Runtime, ncnn), which
+# docs/dev-environment.md promises still builds. No GPU here: ctest runs offscreen, and the GPU checks
 # stay with gpu.yml and scripts/release_test.sh. Commit messages are checked
 # by commits.yml, for every push and pull request.
 name: CI
@@ -24,7 +26,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build + test (${{ matrix.target }})
+    name: Build + test (${{ matrix.target }}${{ matrix.minimal && ', no optional features' || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -37,14 +39,19 @@ jobs:
             image: docker.io/library/debian:trixie
           - target: ubuntu-26.04
             image: docker.io/library/ubuntu:26.04
+          - target: debian-13
+            image: docker.io/library/debian:trixie
+            minimal: true
     container: ${{ matrix.image }}
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
       # docs/dev-environment.md's build dependencies, all of them
-      # (ORBIS_REQUIRE_ALL_FEATURES), plus git for the version and what
-      # scripts/fetch_ncnn.sh needs.
+      # (ORBIS_REQUIRE_ALL_FEATURES) or only the required ones, plus git for
+      # the version and what scripts/fetch_ncnn.sh needs.
       - name: Install build dependencies
+        env:
+          OPTIONAL: ${{ !matrix.minimal && 'libopencv-dev libopencv-contrib-dev libonnxruntime-dev' || '' }}
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
@@ -52,7 +59,7 @@ jobs:
               qt6-base-dev qt6-base-dev-tools qt6-wayland qt6-svg-plugins \
               libvulkan-dev glslang-tools nlohmann-json3-dev zlib1g-dev \
               libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
-              libopencv-dev libopencv-contrib-dev libonnxruntime-dev \
+              $OPTIONAL \
               git curl unzip ca-certificates xz-utils > /dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,9 +68,12 @@ jobs:
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch ncnn
+        if: ${{ !matrix.minimal }}
         run: scripts/fetch_ncnn.sh
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DORBIS_REQUIRE_ALL_FEATURES=ON
+        env:
+          REQUIRE_ALL: ${{ !matrix.minimal && 'ON' || 'OFF' }}
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DORBIS_REQUIRE_ALL_FEATURES="$REQUIRE_ALL"
       - name: Build
         run: cmake --build build -j"$(nproc)"
       - name: Test

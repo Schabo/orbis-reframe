@@ -6,8 +6,9 @@
 # orbis-reframe / stitch gate on FFmpeg (+ Vulkan) only; CMake
 # prints a STATUS line and skips them if the FFmpeg dev packages are absent.
 # libavfilter-dev is among them (atempo time-stretch for clip speed).
-# OpenCV (libopencv-dev) -> orbiscore_optical (the new stitcher's seam flow, the
-# sync fine-tune) + tools/residual_stab, optional; its objdetect module ->
+# OpenCV (libopencv-dev) -> orbiscore_seam_flow (the CPU stitch's seam flow),
+# orbiscore_optical (the sync fine-tune) + tools/residual_stab, optional; the
+# app builds without it. Its objdetect module ->
 # lens calibration (src/calib/, "Calibrate lenses" in the Stitching panel,
 # tools/lens_calib). Subject tracking (src/track/ -> "Track subject" in the
 # Reframe panel, tools/track_subject) also needs the contrib tracking + dnn

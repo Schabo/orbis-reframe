@@ -6,11 +6,12 @@
 #
 # Built from the app's CMakeLists.txt with add_subdirectory(); it relies on
 # what the app finds there: Threads, Vulkan, FFmpeg (FFMPEG_FOUND,
-# PkgConfig::FFMPEG) and OpenCV (OpenCV_FOUND, ORBIS_OPENCV_FEATURES). It
+# PkgConfig::FFMPEG) and OpenCV (OpenCV_FOUND, ORBIS_OPENCV_HAS_FEATURES,
+# ORBIS_OPENCV_FEATURES). It
 # links none of the app's targets.
 #
 # Users link the orbis-core:: aliases (orbis-core::orbiscore, ::metadata,
-# ::media, ::optical), the names an installed package will export.
+# ::media, ::seam_flow, ::optical), the names an installed package will export.
 
 # --- orbiscore_metadata: file metadata and telemetry -- the .insv trailer
 # (calibration + IMU / exposure / GPS records), DJI's djmd track, the IMU
@@ -192,20 +193,33 @@ if(FFMPEG_FOUND)
     target_link_libraries(orbis_stitch PRIVATE orbiscore orbiscore_media orbiscore_metadata)
 endif()
 
-# --- orbiscore_optical: the OpenCV-dependent piece -- residual 2-D
-# stabilization (ResidualPanEstimator: feature tracking + optical flow -> a
-# per-frame yaw/pitch correction), the gyro sync's fine-tune and the CPU
-# seam flow. Separate lib so the core stays OpenCV-free; the apply side
-# (ResidualTrack::sample) is header-only in ResidualStab.h.
+# --- orbiscore_seam_flow: the CPU seam flow (SeamFlowEstimator, OpenCV's
+# DIS optical flow). Its own lib, apart from orbiscore_optical, because it
+# needs only OpenCV's core and video modules -- it builds with an OpenCV 5
+# that has no `features` module.
 if(OpenCV_FOUND)
+    add_library(orbiscore_seam_flow STATIC
+        orbis-core/stitch/SeamFlowEstimator.h
+        orbis-core/stitch/SeamFlowEstimator.cpp
+    )
+    target_include_directories(orbiscore_seam_flow PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+        PRIVATE ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(orbiscore_seam_flow PUBLIC orbiscore PRIVATE opencv_core opencv_video)
+    add_library(orbis-core::seam_flow ALIAS orbiscore_seam_flow)
+endif()
+
+# --- orbiscore_optical: feature-point tracking -- residual 2-D
+# stabilization (ResidualPanEstimator: feature tracking + optical flow -> a
+# per-frame yaw/pitch correction) and the gyro sync's fine-tune. Separate lib
+# so the core stays OpenCV-free; the apply side (ResidualTrack::sample) is
+# header-only in ResidualStab.h.
+if(ORBIS_OPENCV_HAS_FEATURES)
     add_library(orbiscore_optical STATIC
         orbis-core/stab/ResidualStab.h
         orbis-core/stab/ResidualPanEstimator.h
         orbis-core/stab/ResidualPanEstimator.cpp
         orbis-core/stab/SyncEstimator.h
         orbis-core/stab/SyncEstimator.cpp
-        orbis-core/stitch/SeamFlowEstimator.h
-        orbis-core/stitch/SeamFlowEstimator.cpp
     )
     target_include_directories(orbiscore_optical PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(orbiscore_optical PUBLIC orbiscore

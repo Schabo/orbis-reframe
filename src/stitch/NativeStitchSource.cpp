@@ -694,6 +694,7 @@ bool NativeStitchSource::preRollSeam(int64_t from_us) {
     return true;
 }
 
+#ifdef ORBIS_SEAM_FLOW
 bool NativeStitchSource::addSeamFlow() {
     if (!seam_flow_estimator_ || !seam_flow_strips_)
         return false;
@@ -711,6 +712,11 @@ bool NativeStitchSource::addSeamFlow() {
     seam_flow_field_ = std::move(solved);
     return true;
 }
+#else
+// A build without OpenCV has no CPU seam flow: settleSeamFlow turns the seam
+// flow off unless the GPU stitch measures it, so nothing comes here.
+bool NativeStitchSource::addSeamFlow() { return false; }
+#endif
 
 bool NativeStitchSource::seekDecoder(int64_t from_us) {
     std::string err;

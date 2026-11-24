@@ -129,25 +129,29 @@ if(NOT FFMPEG_FOUND)
         " libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev)")
 endif()
 
-# --- OpenCV: optional. Drives residual 2-D stabilization (orbiscore_optical +
-# tools/residual_stab). Same "build it
-# only if present" pattern as the FFmpeg check above. Deliberately only
-# core/imgproc/video -- NOT cv::VideoCapture: opencv_videoio drags in GStreamer
-# + gdk-pixbuf + a second libGL. (Frames come from stitch::NativeStitchSource or
-# system FFmpeg instead.) ---
+# --- OpenCV: optional. Drives the CPU stitch's seam flow, the gyro sync
+# fine-tune, residual 2-D stabilization and the plate scan's tracking. Same
+# "build it only if present" pattern as the FFmpeg check above. Deliberately
+# only core/imgproc/video -- NOT cv::VideoCapture: opencv_videoio drags in
+# GStreamer + gdk-pixbuf + a second libGL. (Frames come from
+# stitch::NativeStitchSource or system FFmpeg instead.) ---
 find_package(OpenCV QUIET COMPONENTS core imgproc video)
 if(NOT OpenCV_FOUND)
     message(STATUS "OpenCV not found (sudo apt install libopencv-dev)"
-        " -- skipping orbiscore_optical and tools/residual_stab")
+        " -- no CPU seam flow, gyro sync fine-tune, lens calibration, plate scan"
+        " or subject tracking")
 endif()
 # OpenCV 5 moved what we use out of two modules: goodFeaturesToTrack from
 # imgproc into `features`, findHomography / estimateAffinePartial2D from
-# calib3d into `geometry`.
+# calib3d into `geometry`. ORBIS_OPENCV_HAS_FEATURES: feature-point tracking
+# is there (the sync fine-tune, residual_stab, the plate scan); the seam flow
+# and stitch_bench's measures need only the three modules above.
+set(ORBIS_OPENCV_HAS_FEATURES ${OpenCV_FOUND})
 if(OpenCV_FOUND AND OpenCV_VERSION VERSION_GREATER_EQUAL 5)
     if(NOT TARGET opencv_features)
         message(STATUS "OpenCV ${OpenCV_VERSION} without its features module"
-            " -- skipping everything that needs OpenCV")
-        set(OpenCV_FOUND FALSE)
+            " -- no gyro sync fine-tune, plate scan or tools/residual_stab")
+        set(ORBIS_OPENCV_HAS_FEATURES FALSE)
     endif()
     set(ORBIS_OPENCV_FEATURES opencv_features)
     set(ORBIS_OPENCV_GEOMETRY opencv_geometry)
@@ -407,10 +411,10 @@ if(FFMPEG_FOUND)
     target_link_libraries(stitch PUBLIC camera orbis-core::orbiscore orbis-core::media
         render_gpu_stitch
         PRIVATE vulkan_hw_device PkgConfig::FFMPEG)
-    # The new stitcher's seam flow estimates its flow with OpenCV
-    # (orbiscore::SeamFlowEstimator); without it the stitcher has no seam flow.
-    if(TARGET orbis-core::optical)
-        target_link_libraries(stitch PUBLIC orbis-core::optical)
+    # The CPU stitch estimates the seam flow with OpenCV
+    # (orbiscore::SeamFlowEstimator); without it only the GPU stitch has one.
+    if(TARGET orbis-core::seam_flow)
+        target_link_libraries(stitch PUBLIC orbis-core::seam_flow)
         target_compile_definitions(stitch PRIVATE ORBIS_SEAM_FLOW=1)
     endif()
 
@@ -715,7 +719,7 @@ if(FFMPEG_FOUND)
                 endif()
             endforeach()
         endif()
-        if(ncnn_FOUND AND TARGET ${ORBIS_OPENCV_GEOMETRY} AND TARGET opencv_video)
+        if(ncnn_FOUND AND ORBIS_OPENCV_HAS_FEATURES AND TARGET ${ORBIS_OPENCV_GEOMETRY})
             add_library(privacy_scan STATIC
                 src/privacy/PlateScanner.h src/privacy/PlateScanner.cpp
                 src/privacy/PlateTracking.h src/privacy/PlateTracking.cpp
@@ -747,8 +751,11 @@ if(FFMPEG_FOUND)
             endif()
             target_link_libraries(orbis_app PUBLIC privacy_scan)
             target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_PLATE_SCAN)
-        else()
+        elseif(NOT ncnn_FOUND)
             message(STATUS "ncnn not found (install ncnn, or scripts/fetch_ncnn.sh / NCNN_ROOT)"
+                " -- no plate scan")
+        else()
+            message(STATUS "OpenCV without feature tracking or ${ORBIS_OPENCV_GEOMETRY}"
                 " -- no plate scan")
         endif()
 
@@ -756,9 +763,11 @@ if(FFMPEG_FOUND)
         # NativeStitchSource windows -> orbiscore::SyncEstimator. OpenCV
         # via orbiscore_optical, so optional: without it the app skips the
         # fine-tune.
-        add_library(clip_sync STATIC src/stitch/ClipSync.h src/stitch/ClipSync.cpp)
-        target_include_directories(clip_sync PUBLIC src/stitch)
-        target_link_libraries(clip_sync PUBLIC stitch orbis-core::optical)
+        if(TARGET orbis-core::optical)
+            add_library(clip_sync STATIC src/stitch/ClipSync.h src/stitch/ClipSync.cpp)
+            target_include_directories(clip_sync PUBLIC src/stitch)
+            target_link_libraries(clip_sync PUBLIC stitch orbis-core::optical)
+        endif()
 
         # --- lens_calibration: a camera's own lens calibration from a clip
         # of the chart (src/calib/): ChArUco corners in both lenses, the
@@ -808,10 +817,12 @@ if(FFMPEG_FOUND)
         target_link_libraries(stitch_bench PRIVATE stitch stitch_bench_metrics reframe_flatten
             reframe_model)
 
-        add_executable(residual_stab tools/residual_stab/main.cpp)
-        target_include_directories(residual_stab PRIVATE src/stitch src/export)
-        target_link_libraries(residual_stab PRIVATE stitch orbis-core::optical reframe_flatten
-            clip_sync)
+        if(TARGET clip_sync)
+            add_executable(residual_stab tools/residual_stab/main.cpp)
+            target_include_directories(residual_stab PRIVATE src/stitch src/export)
+            target_link_libraries(residual_stab PRIVATE stitch orbis-core::optical
+                reframe_flatten clip_sync)
+        endif()
 
         # --- subject_track: object tracking (src/track/) -- a gyro-stabilized
         # rectilinear crop around the subject, OpenCV CSRT tracking it and
@@ -850,8 +861,10 @@ if(FFMPEG_FOUND)
 
         # Per-clip gyro sync fine-tune in the app; without
         # OpenCV the app keeps the camera's timing.
-        target_link_libraries(orbis_app PUBLIC clip_sync)
-        target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_CLIP_SYNC)
+        if(TARGET clip_sync)
+            target_link_libraries(orbis_app PUBLIC clip_sync)
+            target_compile_definitions(orbis_app PUBLIC ORBIS_REFRAME_HAVE_CLIP_SYNC)
+        endif()
     endif()
 
 else()
@@ -1127,8 +1140,8 @@ set_tests_properties(vulkan_lut_test PROPERTIES SKIP_RETURN_CODE 77)
 # OpenCV is there. Skipped (77) where there's no Vulkan device.
 add_executable(seam_flow_gpu_test tests/seam_flow_gpu_test.cpp)
 target_link_libraries(seam_flow_gpu_test PRIVATE render_gpu_stitch)
-if(TARGET orbis-core::optical)
-    target_link_libraries(seam_flow_gpu_test PRIVATE orbis-core::optical)
+if(TARGET orbis-core::seam_flow)
+    target_link_libraries(seam_flow_gpu_test PRIVATE orbis-core::seam_flow)
     target_compile_definitions(seam_flow_gpu_test PRIVATE ORBIS_SEAM_FLOW=1)
 endif()
 add_test(NAME seam_flow_gpu_test COMMAND seam_flow_gpu_test)

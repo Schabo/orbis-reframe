@@ -327,7 +327,7 @@ table (`orbiscore::InsvModel` for Insta360, `DjiReader`'s for DJI). What's still
   through stand-in clips (`tests/support/TestMedia`). Widgets and actions in
   tests are found by `objectName`, so give new ones a name.
 - CI (`.github/workflows/ci.yml`) builds and tests on every supported target
-  without a GPU. `gpu.yml` runs the GPU checks and a smoke test of the whole
+  without a GPU, and on Debian 13 without the optional dependencies. `gpu.yml` runs the GPU checks and a smoke test of the whole
   app.
 - GPU output (stitch, view, export) isn't covered by the offscreen tests:
   check it on real clips with the tools and say how in the pull request.

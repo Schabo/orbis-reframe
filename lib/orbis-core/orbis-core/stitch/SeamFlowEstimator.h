@@ -1,8 +1,9 @@
 #pragma once
 
 // The seam flow's estimate (SeamFlow.h): OpenCV's DIS optical flow between
-// the two lenses' strips, both ways. Part of orbiscore_optical, so the stitch
-// core stays OpenCV-free; without OpenCV there is no seam flow.
+// the two lenses' strips, both ways, for the CPU stitch (the GPU stitch has
+// its own, seam_flow.comp). Its own lib, orbiscore_seam_flow, so the stitch
+// core stays OpenCV-free; without OpenCV the CPU stitch has no seam flow.
 
 #include <orbis-core/stitch/SeamFlow.h>
 

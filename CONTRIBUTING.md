@@ -40,7 +40,8 @@ Say in the description which clips and hardware you tried it on.
 
 GitHub Actions (`.github/workflows/ci.yml`) builds every pull request that
 changes more than docs on Debian Testing, Debian 13 and Ubuntu 26.04 with
-every feature on, and runs the tests. It has no GPU, so it can't replace
+every feature on, and once more on Debian 13 with none of the optional
+dependencies, and runs the tests. It has no GPU, so it can't replace
 trying the change on real clips. `.github/workflows/commits.yml` checks the
 commit messages of every pull request, docs included. For contributors from
 outside the project these runs start once a maintainer has approved them.
