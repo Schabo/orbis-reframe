@@ -1533,12 +1533,22 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     case QEvent::ShortcutOverride:
         // A field keeps its own editing keys -- arrows, Home / End, Delete,
         // Backspace, Escape -- over the editor's unmodified shortcuts (a
-        // spin box doesn't claim Up / Down itself). Ctrl / Alt ones still
-        // reach the shortcuts.
+        // spin box doesn't claim Up / Down itself); a text field every key
+        // it types. A letter types nothing in a number field, so there it
+        // reaches its shortcut (kept from the spin box, whose line edit
+        // would claim it), with the value typed committed first, as Enter
+        // would: K keys the number just typed. Ctrl / Alt ones always reach
+        // the shortcuts.
         if (watched == fw) {
             const auto *ke = static_cast<QKeyEvent *>(event);
             if (!(ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
-                event->accept();
+                auto *number = qobject_cast<QAbstractSpinBox *>(fw);
+                if (number && ke->key() >= Qt::Key_A && ke->key() <= Qt::Key_Z) {
+                    number->interpretText();
+                    event->ignore();
+                } else {
+                    event->accept();
+                }
                 return true;
             }
         }

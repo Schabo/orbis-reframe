@@ -144,6 +144,9 @@ file, `Alt+S` saves (`Enter` does too).
 ## When typing in a field
 
 While the cursor is in a number or text field of the settings sidebar, keys
-like `Space`, the arrow keys, `Delete` and the letters go to the field, not
-to the shortcuts above. Press `Enter` or `Esc`, or click somewhere else, to
-leave the field. Shortcuts with `Ctrl` or `Alt` work in fields too.
+like `Space`, the arrow keys and `Delete` go to the field, not to the
+shortcuts above; in a text field the letters do too. In a number field a
+letter works as its shortcut, with the number you typed taken first: type a
+Pitch of `-45` and press `K`, and the key holds −45°. Press `Enter` or
+`Esc`, or click somewhere else, to leave the field. Shortcuts with `Ctrl`
+or `Alt` work in fields too.

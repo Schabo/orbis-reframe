@@ -84,6 +84,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cmath>
+#include <numbers>
 #include <cstdio>
 #include <functional>
 #include <mutex>
@@ -594,6 +595,48 @@ void testKeyOnTrimOut(const Ctx &c)
     CHECK(c.timeline->clipAt(1).reframe.isEmpty());
     key(c, Qt::Key_K, Qt::ShiftModifier);
     CHECK(c.timeline->clipAt(0).reframe.isEmpty());
+    settle();
+}
+
+// A number field keeps the keys it edits with, but a letter types nothing
+// in a number and reaches its shortcut: K with the cursor still in the
+// Reframe panel's field of view keys the value typed there (committed first,
+// as Enter would).
+void testNumberFieldLetters(const Ctx &c)
+{
+    if (c.timeline->count() < 1)
+        return;
+    const int a = c.timeline->clipAt(0).id;
+    auto *sidebar = c.w->findChild<SettingsSidebar *>();
+    if (sidebar)
+        sidebar->setCurrentIndex(SettingsSidebar::VideoTab);
+    auto *fov = find<QDoubleSpinBox>(c.w, "reframeFov");
+    CHECK(fov && fov->isVisibleTo(c.w));
+    if (!fov || !fov->isVisibleTo(c.w))
+        return;
+    CHECK(seekTo(c, 1500));
+    settle();
+    const qint64 at = c.timeline->clipAt(0).sourceAtLocalMs(1500);
+    CHECK(!c.timeline->clipById(a)->reframe.keyTimes().contains(at));
+    fov->setFocus();
+    CHECK(QTest::qWaitForWindowActive(c.w) && fov->hasFocus());
+    const double was = fov->value();
+    key(c, Qt::Key_Up); // the field's own: a step up, not to the cut before
+    CHECK(fov->hasFocus() && c.timelineWidget->playhead() == 1500 &&
+          std::fabs(fov->value() - (was + 1.0)) < 1e-6);
+    fov->selectAll();
+    QTest::keyClicks(fov, QStringLiteral("100"));
+    key(c, Qt::Key_K);
+    const ClipItem *clip = c.timeline->clipById(a);
+    const int k = clip->reframe.keyTimes().indexOf(at);
+    CHECK(k >= 0);
+    if (k >= 0)
+        CHECK(std::fabs(clip->reframe.keys()[k].pose.fov - 100.0 * std::numbers::pi / 180.0) <
+              1e-3);
+    CHECK(fov->hasFocus());
+    key(c, Qt::Key_K, Qt::ShiftModifier); // and off again
+    CHECK(!c.timeline->clipById(a)->reframe.keyTimes().contains(at));
+    fov->clearFocus();
     settle();
 }
 
@@ -3413,6 +3456,7 @@ int main(int argc, char **argv)
             testProxyOffer(c);
             testNavigationKeys(c);
             testKeyOnTrimOut(c);
+            testNumberFieldLetters(c);
             testKeyLaneDelete(c);
             testStepOntoCut(c);
             testMarkKeys(c);
