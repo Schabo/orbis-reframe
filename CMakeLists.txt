@@ -41,13 +41,12 @@ set(SHADER_SOURCES
 set(SHADER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${SHADER_BINARY_DIR})
 
-# .glsl includes (GL_GOOGLE_include_directive) -- any change forces a reglsl.
-file(GLOB SHADER_INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*.glsl)
-
 # Each shader is compiled to SPIR-V as a C array header (glslangValidator --vn)
 # and built into the binary through render_shaders (src/render/EmbeddedShaders),
 # so nothing is read from disk at run time and the binary can live anywhere
-# equirect.vert -> kSpv_equirect_vert.
+# equirect.vert -> kSpv_equirect_vert. glslang's depfile names the .glsl files
+# each one includes (GL_GOOGLE_include_directive), so a change to one -- or a
+# newly added one -- recompiles just the shaders that use it.
 set(SHADER_HEADERS "")
 foreach(SHADER ${SHADER_SOURCES})
     get_filename_component(SHADER_NAME ${SHADER} NAME)
@@ -59,7 +58,9 @@ foreach(SHADER ${SHADER_SOURCES})
             -I${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders
             --vn ${SHADER_IDENT}
             ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} -o ${SPIRV_HEADER}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} ${SHADER_INCLUDES}
+            --depfile ${SPIRV_HEADER}.d
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER}
+        DEPFILE ${SPIRV_HEADER}.d
         VERBATIM
     )
     list(APPEND SHADER_HEADERS ${SPIRV_HEADER})
@@ -83,7 +84,9 @@ function(orbis_shader_variant SHADER SUFFIX)
             -I${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders
             --vn ${SHADER_IDENT}
             ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} -o ${SPIRV_HEADER}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER} ${SHADER_INCLUDES}
+            --depfile ${SPIRV_HEADER}.d
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER}
+        DEPFILE ${SPIRV_HEADER}.d
         VERBATIM
     )
     set(SHADER_HEADERS ${SHADER_HEADERS} ${SPIRV_HEADER} PARENT_SCOPE)
