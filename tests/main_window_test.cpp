@@ -16,6 +16,7 @@
 #include "ClipBackend.h"
 #include "ClipMeasurements.h"
 #include "MainWindow.h"
+#include "MediaImporter.h"
 #include "panels/GaugePanel.h"
 #include "SettingsPanel.h"
 #include "SettingsSidebar.h"
@@ -78,6 +79,7 @@
 #include <QTreeWidget>
 
 #include <atomic>
+#include <condition_variable>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -2554,6 +2556,88 @@ void testMeasurementAcrossProjects(const Ctx &c)
     }
 }
 
+// An import still being probed when another project opens leaves nothing
+// behind in it: not its count of files, not a failure already in, and its
+// files not yet started aren't probed. The next project's import counts and
+// reports only its own. Project A's "held" probes wait until B's import has
+// started.
+void testImportAcrossProjects(const Ctx &c)
+{
+    std::printf("  import across projects\n");
+    struct Gate {
+        std::mutex mx;
+        std::condition_variable cv;
+        bool open = false;
+        QStringList probed;
+    };
+    auto gate = std::make_shared<Gate>();
+    const ClipProbeFn base = standIns().probe;
+    const ClipProbeFn probe = [gate, base](const std::string &path, stitch::ClipProbe &out,
+                                           std::string &err) {
+        const QString name = QFileInfo(QString::fromStdString(path)).fileName();
+        {
+            std::unique_lock lock(gate->mx);
+            gate->probed << name;
+            if (name.contains(QLatin1String("held")))
+                gate->cv.wait(lock, [&] { return gate->open; });
+        }
+        return base(path, out, err);
+    };
+    const QString dir = QDir(c.dir).filePath(QStringLiteral("importswitch"));
+    QDir().mkpath(dir);
+    const auto file = [&](const char *name, bool exists) {
+        const QString path = QDir(dir).filePath(QLatin1String(name));
+        if (exists)
+            writeFile(path);
+        return path;
+    };
+    const QString aBad = file("a-bad.insv", false), a1 = file("a-held1.insv", true),
+                  a2 = file("a-held2.insv", false), a3 = file("a-held3.insv", true),
+                  b1 = file("b1.insv", true), b2 = file("b2.insv", false);
+
+    Project p;
+    QWidget window;
+    MediaPoolPanel panel(p.mediaPool(), &window);
+    TabSidebar sidebar(TabSidebar::Side::Left, QStringLiteral("importSidebar"), &window);
+    MediaImporter importer(&p, &panel, &sidebar, probe, &window);
+    auto *status = panel.findChild<QLabel *>(QStringLiteral("mediaPoolStatus"));
+    CHECK(status);
+    if (!status)
+        return;
+
+    // a-bad fails at once; two held ones take both pool threads, one waits.
+    importer.import({aBad, a1, a2, a3});
+    CHECK(waitFor([&] { return status->text() == QStringLiteral("Adding 3 files…"); }));
+    CHECK(waitFor([&] {
+        std::lock_guard lock(gate->mx);
+        return gate->probed.size() == 3;
+    }));
+    importer.newSession();
+    CHECK(status->text().isEmpty());
+    importer.import({b1, b2});
+    CHECK(status->text() == QStringLiteral("Adding 2 files…"));
+
+    QString reported;
+    whenDialog([&](QWidget *w) {
+        if (auto *box = qobject_cast<QMessageBox *>(w))
+            reported = box->text();
+        w->close();
+    });
+    {
+        std::lock_guard lock(gate->mx);
+        gate->open = true;
+    }
+    gate->cv.notify_all();
+    CHECK(waitFor([&] { return !reported.isEmpty(); }));
+    CHECK(reported.contains(QLatin1String("b2.insv")));
+    CHECK(!reported.contains(QLatin1String("a-")));
+    CHECK(p.mediaPool()->contains(b1));
+    CHECK(!p.mediaPool()->contains(a1));
+    CHECK(status->text().isEmpty());
+    std::lock_guard lock(gate->mx);
+    CHECK(!gate->probed.contains(QStringLiteral("a-held3.insv")));
+}
+
 // A grade pasted from elsewhere (another project's LUT) brings its LUT into
 // this project's luts/ folder, as every other way a LUT reaches a clip does.
 void testPasteGradeFromElsewhere(const Ctx &c)
@@ -3202,6 +3286,7 @@ int main(int argc, char **argv)
             testSingleClickDesktop();
             testMeasurementFailureReasons(c);
             testMeasurementAcrossProjects(c);
+            testImportAcrossProjects(c);
             testMenuFileDialogs(c);
             testRecovery(c);
             testLocateMovedFile(c);

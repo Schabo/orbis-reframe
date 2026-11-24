@@ -31,6 +31,14 @@ MediaImporter::MediaImporter(Project *project, MediaPoolPanel *panel, TabSidebar
 {
 }
 
+void MediaImporter::newSession()
+{
+    ++*m_session;
+    m_pending = 0;
+    m_failures.clear();
+    m_panel->setStatus(QString());
+}
+
 void MediaImporter::importFiles()
 {
     QStringList exts;
@@ -89,8 +97,9 @@ void MediaImporter::import(const QStringList &paths)
 
     // Probing reads every file's header (an .insv's trailer too): on worker
     // threads, so a card full of clips doesn't stall the window. Results land
-    // one by one; those for a project that has been closed meanwhile are
-    // dropped.
+    // one by one. Those for a project that has been closed meanwhile are
+    // dropped, and its files not yet started aren't probed: the next
+    // project's import doesn't wait behind them, nor count or report them.
     m_sidebar->setOpen(true);
     m_pending += int(files.size());
     m_panel->setStatus(addingFilesText(m_pending));
@@ -100,23 +109,22 @@ void MediaImporter::import(const QStringList &paths)
         return p;
     }();
     QPointer<MediaImporter> self(this);
-    const int session = m_session;
+    const int session = *m_session;
     for (const QString &file : files) {
-        pool->start([self, session, file, probe = m_probe] {
+        pool->start([self, live = m_session, session, file, probe = m_probe] {
+            if (*live != session)
+                return;
             QString error;
             const std::optional<MediaItem> item = probeMedia(file, &error, probe);
             QMetaObject::invokeMethod(
                 qApp,
                 [self, session, file, item, error] {
-                    if (!self)
+                    if (!self || session != *self->m_session) // another project now
                         return;
-                    if (session == self->m_session) { // still the same project
-                        if (item)
-                            self->m_project->mediaPool()->add(*item);
-                        else
-                            self->m_failures
-                                << QFileInfo(file).fileName() + QStringLiteral(": ") + error;
-                    }
+                    if (item)
+                        self->m_project->mediaPool()->add(*item);
+                    else
+                        self->m_failures << QFileInfo(file).fileName() + QStringLiteral(": ") + error;
                     if (--self->m_pending > 0) {
                         self->m_panel->setStatus(addingFilesText(self->m_pending));
                         return;

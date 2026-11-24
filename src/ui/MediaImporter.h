@@ -5,6 +5,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -34,9 +36,10 @@ public:
     // ones that can be read to the pool; the ones that can't are reported
     // when the last is done. Files already in the pool are selected instead.
     void import(const QStringList &paths);
-    // Another project (or the library) is shown: imports still being probed
-    // for the one before are dropped when they land.
-    void newSession() { ++m_session; }
+    // Another project (or the library) is shown: imports still waiting for a
+    // probe thread for the one before are skipped, the ones being probed are
+    // dropped when they land, and its count and failures go with them.
+    void newSession();
 
     // Locate file… on the missing pool file `path`: pick where it is now; it
     // must be the same file (kind and length). Other missing files whose
@@ -62,5 +65,7 @@ private:
     QString m_lastDir;       // where files were last imported from
     int m_pending = 0;       // files still being probed
     QStringList m_failures;  // "name: why", reported when the last is done
-    int m_session = 0;
+    // Bumped by newSession(); shared with the probe tasks, which skip a file
+    // of an earlier session.
+    std::shared_ptr<std::atomic<int>> m_session = std::make_shared<std::atomic<int>>(0);
 };
