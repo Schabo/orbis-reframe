@@ -119,12 +119,14 @@ target_include_directories(render_shaders PUBLIC src/render PRIVATE ${SHADER_BIN
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
     # libavfilter: atempo time-stretch for clips at speed != 1 (ClipAudioReader).
+    # FFmpeg 7.1 at least: libavutil 59.34.100 gave AVVulkanDeviceContext its
+    # queue-family array (nb_qf / qf[]), which the Vulkan decoder reads.
     pkg_check_modules(FFMPEG IMPORTED_TARGET
-        libavcodec libavformat libavutil libswscale libswresample libavfilter)
+        libavcodec libavformat libavutil>=59.34.100 libswscale libswresample libavfilter)
 endif()
 if(NOT FFMPEG_FOUND)
-    message(STATUS "FFmpeg dev packages not found (sudo apt install libavcodec-dev"
-        " libavformat-dev libavutil-dev libswscale-dev libswresample-dev)")
+    message(STATUS "FFmpeg 7.1 or newer dev packages not found (sudo apt install libavcodec-dev"
+        " libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev)")
 endif()
 
 # --- OpenCV: optional. Drives residual 2-D stabilization (orbiscore_optical +
