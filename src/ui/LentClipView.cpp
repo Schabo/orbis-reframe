@@ -44,6 +44,7 @@ void LentClipView::ask(int64_t fromMs)
         m_lease->leave();
     m_haveCur = m_haveNext = false;
     m_lastUs = -1;
+    m_error.clear(); // a new lease: an earlier failure to read its own is past
     // Playback lends only a NativeStitchSource (one with the fused view pass).
     m_lease = m_lender->ask(m_clipId, std::max<int64_t>(0, fromMs), m_endMs, m_leadIn,
                             [view = m_view](stitch::IStitchSource &src, exportpipe::VideoFrame &out) {

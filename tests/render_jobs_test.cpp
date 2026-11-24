@@ -1561,13 +1561,16 @@ void testTransitions()
 // A transition's 360 layer whose frames in [kBusyFromMs, kBusyToMs) have
 // more privacy regions than the blur takes (exportpipe::PictureSource::
 // refused), as ClipViewSource reads them: frames every 40 ms, its picture
-// the frame's number.
+// the frame's number. Given `failures`, its reads from kBusyFromMs on fail
+// with an error instead, that many times (-1: every time), each time on
+// the same frame -- graphics memory full for a while.
 class BusyPicture : public exportpipe::PictureSource {
 public:
     static constexpr int64_t kFrameUs = 40000, kBusyFromMs = 1000, kBusyToMs = 1480,
                              kEndMs = 3000;
-    BusyPicture(std::atomic<int> &reads, std::atomic<int> &seeks)
-        : m_reads(reads), m_seeks(seeks)
+    BusyPicture(std::atomic<int> &reads, std::atomic<int> &seeks,
+                std::atomic<int> *failures = nullptr)
+        : m_reads(reads), m_seeks(seeks), m_failures(failures)
     {
     }
     bool open(std::string &) override { return true; }
@@ -1618,10 +1621,19 @@ private:
     bool read(exportpipe::VideoFrame &out)
     {
         ++m_reads;
+        m_error.clear(); // empty at the end
         const int64_t ms = m_pos++ * kFrameUs / 1000;
         if (ms >= kEndMs)
             return false;
-        if (ms >= kBusyFromMs && ms < kBusyToMs) {
+        if (m_failures) {
+            if (ms >= kBusyFromMs && m_failures->load() != 0) {
+                if (m_failures->load() > 0)
+                    --*m_failures;
+                --m_pos;
+                m_error = "out of graphics memory";
+                return false;
+            }
+        } else if (ms >= kBusyFromMs && ms < kBusyToMs) {
             m_refused = true;
             m_error = "300 privacy regions";
             return false;
@@ -1633,6 +1645,7 @@ private:
         return true;
     }
     std::atomic<int> &m_reads, &m_seeks;
+    std::atomic<int> *m_failures;
     int64_t m_pos = 0;
     exportpipe::VideoFrame m_cur, m_next;
     bool m_haveCur = false, m_haveNext = false, m_refused = false;
@@ -1710,6 +1723,61 @@ void testLayerRefusedFrames()
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     CHECK(last >= 1720 / 40 && last <= 1800 / 40);
+}
+
+// A layer read that fails with an error isn't the clip's end: playback
+// holds the picture before it and tries again, playing on once it reads --
+// and, while it doesn't, tries only now and then.
+void testLayerFailedReads()
+{
+    // The frame number drawn while playing from `fromMs` to `toMs` in real
+    // time: the last one, and whether one was drawn all along.
+    auto play = [](InsetFeed &player, qint64 fromMs, qint64 toMs, bool &always) {
+        for (int i = 0; i < 200 && player.frameFor(fromMs, false).empty(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        int last = -1;
+        always = true;
+        for (qint64 ms = fromMs; ms <= toMs; ms += 10) {
+            const std::vector<EquirectViewportWindow::InsetDraw> d = player.frameFor(ms, true);
+            if (d.size() == 1 && d[0].rgba && !d[0].rgba->empty())
+                last = (*d[0].rgba)[0];
+            else
+                always = false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return last;
+    };
+    std::atomic<int> reads{0}, seeks{0}, failures{3};
+    InsetFeed::Clip c;
+    c.id = 1;
+    c.path = "/c/full.insv";
+    c.trimOutMs = BusyPicture::kEndMs;
+    c.picture = [&] { return std::make_unique<BusyPicture>(reads, seeks, &failures); };
+    c.pictureKey = "full";
+    // A few failed reads at 1 s: played on past them.
+    {
+        InsetFeed player;
+        player.setClips({c});
+        bool always = false;
+        const int last = play(player, 800, 1800, always);
+        CHECK(failures.load() == 0 && always);
+        CHECK(last >= 1720 / 40 && last <= 1800 / 40);
+    }
+    // Reads failing for good from 1 s: the frame before stays up, tried
+    // again every so often (not as fast as the decoder thread can).
+    failures = -1;
+    {
+        InsetFeed player;
+        player.setClips({c});
+        for (int i = 0; i < 200 && player.frameFor(800, false).empty(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        const int before = reads.load();
+        bool always = false;
+        const int last = play(player, 800, 1800, always);
+        CHECK(always && last == 960 / 40);
+        CHECK(reads.load() - before < 40);
+        std::printf("layer failed reads: %d reads in 1 s of failing\n", reads.load() - before);
+    }
 }
 
 // Playback draws a transition's layer only over the main-track clip it
@@ -2151,6 +2219,7 @@ int main(int argc, char **argv)
     testTransitions();
     testLayerOverMainClip();
     testLayerRefusedFrames();
+    testLayerFailedReads();
     testClipJob(tmp.path());
     testSuggestedPaths(tmp.path());
     testProjectFileAt(tmp.path());

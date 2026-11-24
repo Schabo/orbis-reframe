@@ -3,6 +3,7 @@
 #include <FlatVideoReader.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <utility>
@@ -26,6 +27,14 @@ constexpr qint64 kBehindMs = 500;
 // How far past its span a transition's layer still shows over its main
 // clip (Clip::overMainClipId): the main picture lagging the clock.
 constexpr qint64 kOverMainSlackMs = 250;
+// A read that failed with an error rather than at the clip's end is tried
+// again after this long, playing / paused, as the main clip's are; the
+// picture shown stays up meanwhile. An inset has no next clip to go on
+// with, so it keeps trying while it's near the playhead: a frame that
+// never reads is passed when the playhead moves on and the decode is
+// re-anchored after it.
+constexpr std::chrono::milliseconds kReadRetryPlaying{100};
+constexpr std::chrono::milliseconds kReadRetryPaused{1000};
 
 } // namespace
 
@@ -43,6 +52,10 @@ struct InsetFeed::Stream {
     bool removed = false;
     bool reopen = false; // close the reader / picture before the next step
     bool waiting = false; // its picture isn't ready to read yet: until poke()
+    // The last read failed with an error, not at the end: the next one waits
+    // until `retryAt`.
+    bool readFailed = false;
+    std::chrono::steady_clock::time_point retryAt;
     // Anchored at a frame its picture left out for its blur
     // (exportpipe::PictureSource::refused), at this timeline time, in
     // re-anchor `refusedGen`: the picture before stays up (parked()).
@@ -110,7 +123,7 @@ void InsetFeed::setClips(std::vector<Clip> clips)
                 s->waiting = false;
                 ++s->gen;
                 if (s->clip.path != c.path || s->clip.pictureKey != c.pictureKey)
-                    s->failed = false;
+                    s->failed = s->readFailed = false;
             }
             s->clip = std::move(c);
             next.push_back(std::move(s));
@@ -131,7 +144,7 @@ void InsetFeed::reopen(const QStringList &paths)
             if (s->clip.path.isEmpty() || !paths.contains(s->clip.path))
                 continue;
             s->reopen = true;
-            s->failed = false;
+            s->failed = s->readFailed = false;
             s->queue.clear();
             s->eof = false;
             s->needAnchor = true;
@@ -299,7 +312,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         clip = s.clip;
         gen = s.gen;
         anchor = s.needAnchor;
-        if (s.removed || s.failed || s.waiting || !active(clip, target))
+        if (s.removed || s.failed || s.waiting || !active(clip, target) ||
+            (s.readFailed && std::chrono::steady_clock::now() < s.retryAt))
             return false;
         if (!clip.still && !anchor && (!playing || s.eof || s.queue.size() >= kAhead))
             return false;
@@ -371,6 +385,11 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
     // A frame left out for its blur: no picture, not the end either -- the
     // source is past it, and the next read gives the next frame.
     bool refused = false;
+    // A read that failed with an error: why. Not the end -- tried again.
+    std::string failure;
+    const auto readError = [&s] {
+        return s.picture ? s.picture->lastError() : s.reader->lastError();
+    };
     const qint64 at = std::clamp(target, clip.startMs, std::max(clip.startMs, clip.endMs() - 1));
     if (anchor) {
         // The clock is in whole ms (playback isn't on a frame grid).
@@ -387,7 +406,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         } else if (s.picture && s.picture->refused()) {
             refused = true;
         } else {
-            ended = true;
+            failure = readError();
+            ended = failure.empty();
         }
     } else {
         exportpipe::VideoFrame v;
@@ -401,7 +421,8 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
         } else if (!read && s.picture && s.picture->refused()) {
             refused = true;
         } else {
-            ended = true;
+            failure = read ? std::string() : readError();
+            ended = failure.empty();
         }
     }
     if (refused && !std::exchange(s.saidRefused, true))
@@ -409,29 +430,47 @@ bool InsetFeed::work(Stream &s, qint64 target, bool playing)
                              "are left out (%s)\n",
                      qPrintable(clip.path), s.picture->lastError().c_str());
 
-    std::lock_guard<std::mutex> lk(m_mx);
-    if (s.gen != gen || s.removed)
-        return true; // re-anchored or removed meanwhile: drop it
-    if (waiting) {
-        s.waiting = true; // the anchor stays wanted
-        return true;
-    }
-    if (anchor) {
-        s.needAnchor = false;
-        s.queue.clear();
-        s.eof = ended;
-        if (refused) {
-            s.refusedMs = at;
-            s.refusedGen = s.gen;
+    bool firstFailure = false;
+    bool readsAgain = false;
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        if (s.gen != gen || s.removed)
+            return true; // re-anchored or removed meanwhile: drop it
+        if (waiting) {
+            s.waiting = true; // the anchor stays wanted
+            return true;
         }
-    } else if (ended) {
-        s.eof = true;
+        if (!failure.empty()) {
+            // The anchor stays wanted, or the read goes on from the failed
+            // frame; the picture shown stays up.
+            firstFailure = !std::exchange(s.readFailed, true);
+            s.retryAt = std::chrono::steady_clock::now() +
+                        (playing ? kReadRetryPlaying : kReadRetryPaused);
+        } else {
+            readsAgain = got && std::exchange(s.readFailed, false);
+            if (anchor) {
+                s.needAnchor = false;
+                s.queue.clear();
+                s.eof = ended;
+                if (refused) {
+                    s.refusedMs = at;
+                    s.refusedGen = s.gen;
+                }
+            } else if (ended) {
+                s.eof = true;
+            }
+            if (got) {
+                s.refusedMs = -1;
+                f.key = m_nextKey++;
+                s.queue.push_back(std::move(f));
+            }
+        }
     }
-    if (got) {
-        s.refusedMs = -1;
-        f.key = m_nextKey++;
-        s.queue.push_back(std::move(f));
-    }
+    if (firstFailure)
+        std::fprintf(stderr, "[inset] a frame of %s didn't read (%s); trying it again\n",
+                     qPrintable(clip.path), failure.c_str());
+    if (readsAgain)
+        std::fprintf(stderr, "[inset] %s reads again\n", qPrintable(clip.path));
     return true;
 }
 
@@ -443,15 +482,23 @@ void InsetFeed::decoderLoop()
         bool playing = false;
         {
             std::unique_lock<std::mutex> lk(m_mx);
-            m_cv.wait(lk, [this] {
+            // The earliest retry of a failed read, when that's all there is.
+            auto retry = std::chrono::steady_clock::time_point::max();
+            const auto ready = [this, &retry] {
                 if (m_stop)
                     return true;
+                retry = std::chrono::steady_clock::time_point::max();
+                const auto now = std::chrono::steady_clock::now();
                 for (const auto &s : m_streams) {
                     const bool live = !s->removed && !s->failed && active(s->clip, m_targetMs);
                     if (!live && s->open())
                         return true; // a decoder to let go of
                     if (s->waiting)
                         continue;
+                    if (live && s->readFailed && now < s->retryAt) {
+                        retry = std::min(retry, s->retryAt);
+                        continue;
+                    }
                     if (live && s->clip.still) {
                         if (stillWants(s->clip, m_targetMs))
                             return true;
@@ -462,7 +509,13 @@ void InsetFeed::decoderLoop()
                         return true;
                 }
                 return false;
-            });
+            };
+            while (!ready()) {
+                if (retry == std::chrono::steady_clock::time_point::max())
+                    m_cv.wait(lk);
+                else
+                    m_cv.wait_until(lk, retry);
+            }
             if (m_stop)
                 return;
             streams = m_streams;
