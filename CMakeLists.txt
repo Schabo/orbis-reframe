@@ -1017,7 +1017,7 @@ endif()
 # orbiscore::FisheyeDemux with a file per lens, on generated videos -- needs FFmpeg.
 if(TARGET orbis-core::media)
     add_executable(lens_demuxer_test tests/lens_demuxer_test.cpp)
-    target_link_libraries(lens_demuxer_test PRIVATE orbis-core::media test_media)
+    target_link_libraries(lens_demuxer_test PRIVATE orbis-core::media test_media PkgConfig::FFMPEG)
     orbis_wrap_ffmpeg_faults(lens_demuxer_test)
     add_test(NAME lens_demuxer_test COMMAND lens_demuxer_test)
 endif()
@@ -1039,7 +1039,7 @@ endif()
 if(TARGET camera AND TARGET test_media)
     add_executable(camera_test tests/camera_test.cpp)
     # The stitch source too, for a seek that fails part-way (FfmpegFaults).
-    target_link_libraries(camera_test PRIVATE camera stitch test_media)
+    target_link_libraries(camera_test PRIVATE camera stitch test_media PkgConfig::FFMPEG)
     orbis_wrap_ffmpeg_faults(camera_test)
     # support/TestTrailer.h (Insta360 trailers built record by record) is
     # the library's test helper.
@@ -1052,7 +1052,8 @@ endif()
 # orbiscore::AudioMixer on generated WAVs -- needs FFmpeg, like orbiscore_media.
 if(TARGET orbis-core::media)
     add_executable(audio_mix_test tests/audio_mix_test.cpp)
-    target_link_libraries(audio_mix_test PRIVATE orbis-core::media orbis_paths test_media)
+    target_link_libraries(audio_mix_test PRIVATE orbis-core::media orbis_paths test_media
+        PkgConfig::FFMPEG)
     orbis_wrap_ffmpeg_faults(audio_mix_test)
     add_test(NAME audio_mix_test COMMAND audio_mix_test)
     # The voice-mode checks need the model even when the source-tree fallback
