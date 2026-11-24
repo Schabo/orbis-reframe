@@ -97,9 +97,11 @@ QString WaveformCache::diskPath(const std::vector<orbiscore::AudioPart> &parts, 
 
 void WaveformCache::forget(const QStringList &paths)
 {
-    m_done.removeIf([&](const auto &it) {
+    const auto forgotten = [&](const auto &it) {
         return paths.contains(it.key().section(QLatin1Char('#'), 0, -2));
-    });
+    };
+    m_done.removeIf(forgotten);
+    m_pending.removeIf(forgotten);
 }
 
 WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
@@ -109,11 +111,12 @@ WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
         return *it;
     if (m_pending.contains(k) || path.isEmpty())
         return nullptr;
-    m_pending.insert(k);
+    const quint64 scan = ++m_nextScan;
+    m_pending.insert(k, scan);
 
     QPointer<WaveformCache> self(this);
     auto cancel = m_cancel;
-    m_pool.start([self, k, path, stream, dir = m_dir, cancel] {
+    m_pool.start([self, k, scan, path, stream, dir = m_dir, cancel] {
         // Off the GUI thread: finding a clip's parts reads its file.
         const std::vector<orbiscore::AudioPart> parts = camera::ClipAudioParts(path.toStdString());
         const QString disk = diskPath(parts, stream, dir);
@@ -128,9 +131,9 @@ WaveformCache::Peaks WaveformCache::peaks(const QString &path, int stream)
         auto result = std::make_shared<const orbiscore::AudioPeaks>(std::move(p));
         QMetaObject::invokeMethod(
             self.data(),
-            [self, k, result] {
-                if (!self)
-                    return;
+            [self, k, scan, result] {
+                if (!self || self->m_pending.value(k) != scan)
+                    return; // forgotten meanwhile
                 self->m_pending.remove(k);
                 self->m_done.insert(k, result);
                 emit self->ready();

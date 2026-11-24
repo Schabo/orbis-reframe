@@ -3248,6 +3248,8 @@ void MainWindow::recheckMissingMedia()
     m_clipFacts->forget(fresh);
     m_telemetry->forget(fresh);
     m_measurements->forgetFailures(fresh);
+    for (const QString &path : fresh)
+        m_audioTrackCounts.remove(path); // a video copied over may have sound now
     for (const QString &path : fresh + gone)
         m_mediaInfo.remove(path); // a split recording's parts on the disk may differ now
     if (mainTrack)

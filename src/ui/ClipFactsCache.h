@@ -3,7 +3,6 @@
 #include <QHash>
 #include <QList>
 #include <QObject>
-#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QThreadPool>
@@ -52,6 +51,10 @@ signals:
 private:
     ClipProbeFn m_probe;
     QHash<QString, ClipFileFacts> m_done;
-    QSet<QString> m_pending;
+    // Files being read, by the number of their read: a read forgotten
+    // meanwhile finds another number (or none) and is dropped, so a file
+    // replaced in place doesn't get its old facts back.
+    QHash<QString, quint64> m_pending;
+    quint64 m_nextRead = 0;
     QThreadPool m_pool;
 };

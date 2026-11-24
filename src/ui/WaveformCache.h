@@ -2,7 +2,6 @@
 
 #include <QHash>
 #include <QObject>
-#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QThreadPool>
@@ -47,7 +46,11 @@ private:
 
     QString m_dir;
     QHash<QString, Peaks> m_done;
-    QSet<QString> m_pending;
+    // Scans running, by the number of their scan: one forgotten meanwhile
+    // finds another number (or none) and is dropped, so a file replaced in
+    // place doesn't get its old waveform back.
+    QHash<QString, quint64> m_pending;
+    quint64 m_nextScan = 0;
     QThreadPool m_pool;
     std::shared_ptr<std::atomic<bool>> m_cancel = std::make_shared<std::atomic<bool>>(false);
 };

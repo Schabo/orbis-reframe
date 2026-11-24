@@ -133,9 +133,10 @@ are. Your original files are never changed.
   changes, so this is nothing to save or undo.
 - **A file that can't be read** (a broken or half-finished copy) plays
   black. Copy the good file over it, under the same name, and it's picked
-  up the same way, within a couple of seconds: the clip plays again and its
-  Media card gets its picture and recording mode, without reopening the
-  project.
+  up the same way, within a couple of seconds: the clip plays again, its
+  Media card gets its picture and recording mode, its waveform and
+  highlight marks are the new file's, and a picture-in-picture whose new
+  file has sound can have it, without reopening the project.
 - **A file that breaks off partway** (a damaged copy, or a memory card or
   drive that fails to read): playback holds the last frame that read,
   tries again for about five seconds, then goes on to the next clip. An

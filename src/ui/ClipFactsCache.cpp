@@ -31,10 +31,11 @@ ClipFileFacts ClipFactsCache::facts(const QString &path)
         return *it;
     if (path.isEmpty() || m_pending.contains(path))
         return {};
-    m_pending.insert(path);
+    const quint64 read = ++m_nextRead;
+    m_pending.insert(path, read);
 
     QPointer<ClipFactsCache> self(this);
-    m_pool.start([self, path, probe = m_probe] {
+    m_pool.start([self, path, read, probe = m_probe] {
         stitch::ClipProbe p;
         std::string err;
         const bool ok = probe ? probe(path.toStdString(), p, err)
@@ -44,9 +45,10 @@ ClipFileFacts ClipFactsCache::facts(const QString &path)
         const ClipFileFacts found = ok ? ClipFileFacts::fromProbe(p) : ClipFileFacts{};
         QMetaObject::invokeMethod(
             self.data(),
-            [self, path, found] {
-                if (!self || !self->m_pending.remove(path))
+            [self, path, read, found] {
+                if (!self || self->m_pending.value(path) != read)
                     return; // forgotten meanwhile
+                self->m_pending.remove(path);
                 self->m_done.insert(path, found);
                 emit self->ready(path);
             },

@@ -898,8 +898,10 @@ void MediaPoolPanel::setModeProvider(ModeProvider provider)
 void MediaPoolPanel::forgetFiles(const QStringList &paths)
 {
     bool forgot = false;
-    for (const QString &path : paths)
+    for (const QString &path : paths) {
+        ++m_fileReads[path];
         forgot |= m_thumbnails.remove(path) | m_modes.remove(path);
+    }
     if (forgot)
         rebuild();
 }
@@ -1188,16 +1190,16 @@ void MediaPoolPanel::requestThumbnail(const MediaItem &m)
     if (m_thumbnailReadSize.isEmpty())
         m_thumbnailReadSize = thumbnailRequestSize();
     const QSize size = m_thumbnailReadSize;
-    m_thumbnailPool.start(
-        [this, m, size, generation = m_thumbnailGeneration, provider = m_thumbnailProvider] {
-            const QImage image = provider(m, size);
-            QMetaObject::invokeMethod(
-                this,
-                [this, path = m.path, image, generation] {
-                    applyThumbnail(path, image, generation);
-                },
-                Qt::QueuedConnection);
-        });
+    m_thumbnailPool.start([this, m, size, generation = m_thumbnailGeneration,
+                           read = m_fileReads.value(m.path), provider = m_thumbnailProvider] {
+        const QImage image = provider(m, size);
+        QMetaObject::invokeMethod(
+            this,
+            [this, path = m.path, image, generation, read] {
+                applyThumbnail(path, image, generation, read);
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 void MediaPoolPanel::requestThumbnails()
@@ -1214,8 +1216,11 @@ void MediaPoolPanel::requestThumbnails()
             requestThumbnail(*m);
 }
 
-void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image, int generation)
+void MediaPoolPanel::applyThumbnail(const QString &path, const QImage &image, int generation,
+                                    int read)
 {
+    if (read != m_fileReads.value(path))
+        return; // of the file before it was replaced
     // A picture read before the last zoom in: only while there's none yet,
     // so it can't replace the bigger one if it comes in after it.
     if (generation != m_thumbnailGeneration && !m_thumbnails.value(path).isNull())
@@ -1239,15 +1244,18 @@ void MediaPoolPanel::requestMode(const MediaItem &m)
     if (!m_modeProvider)
         return;
     m_modes.insert(m.path, QString()); // asked for: don't ask again
-    m_thumbnailPool.start([this, m, provider = m_modeProvider] {
+    m_thumbnailPool.start([this, m, read = m_fileReads.value(m.path), provider = m_modeProvider] {
         const QString mode = provider(m);
         QMetaObject::invokeMethod(
-            this, [this, path = m.path, mode] { applyMode(path, mode); }, Qt::QueuedConnection);
+            this, [this, path = m.path, mode, read] { applyMode(path, mode, read); },
+            Qt::QueuedConnection);
     });
 }
 
-void MediaPoolPanel::applyMode(const QString &path, const QString &mode)
+void MediaPoolPanel::applyMode(const QString &path, const QString &mode, int read)
 {
+    if (read != m_fileReads.value(path))
+        return; // of the file before it was replaced
     m_modes.insert(path, mode);
     const MediaItem *m = m_pool->item(path);
     if (!m)

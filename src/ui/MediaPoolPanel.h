@@ -223,9 +223,9 @@ private:
     // A view's zoom settled: the thumbnails again, if the views now want
     // them bigger than they were read.
     void requestThumbnails();
-    void applyThumbnail(const QString &path, const QImage &image, int generation);
+    void applyThumbnail(const QString &path, const QImage &image, int generation, int read);
     void requestMode(const MediaItem &m);
-    void applyMode(const QString &path, const QString &mode);
+    void applyMode(const QString &path, const QString &mode, int read);
     void removeSelected();
     void showInFileManager();
 
@@ -256,5 +256,8 @@ private:
     int m_thumbnailGeneration = 0; // bumped by each re-read at a new size
     QTimer *m_thumbnailTimer = nullptr; // the wheel settling
     QHash<QString, QString> m_modes;      // by path; empty = none to be had
+    // Bumped by forgetFiles(): a picture or mode read before is of the old
+    // file, and is dropped when it comes in.
+    QHash<QString, int> m_fileReads;
     QThreadPool m_thumbnailPool;
 };

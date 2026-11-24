@@ -14,6 +14,7 @@
 // single-click desktop. Exit code is the failure count.
 
 #include "ClipBackend.h"
+#include "ClipFactsCache.h"
 #include "ClipMeasurements.h"
 #include "MainWindow.h"
 #include "MediaImporter.h"
@@ -31,6 +32,7 @@
 #include "TitlePresets.h"
 #include "TitlesPanel.h"
 #include "TransitionsPanel.h"
+#include "WaveformCache.h"
 #include "panels/MediaInfoPanel.h"
 #include "support/TestMedia.h"
 #include "support/TestZip.h"
@@ -66,6 +68,7 @@
 #include <QProxyStyle>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSet>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QSlider>
@@ -235,6 +238,10 @@ private:
     std::string m_error;
 };
 
+// The files the stand-in counts an audio stream in; the rest have none.
+std::mutex g_soundFilesMx;
+QSet<QString> g_soundFiles;
+
 ClipBackend standIns()
 {
     ClipBackend b;
@@ -270,7 +277,10 @@ ClipBackend standIns()
                                                   : stitch::LensGuardProfiles{};
         return true;
     };
-    b.audioStreamCount = [](const std::string &) { return 0; };
+    b.audioStreamCount = [](const std::string &path) {
+        std::lock_guard lock(g_soundFilesMx);
+        return g_soundFiles.contains(QString::fromStdString(path)) ? 1 : 0;
+    };
     b.makeSource = [] { return std::make_unique<StandInSource>(); };
     b.measure = false;
     return b;
@@ -2638,6 +2648,99 @@ void testImportAcrossProjects(const Ctx &c)
     CHECK(!gate->probed.contains(QStringLiteral("a-held3.insv")));
 }
 
+// A file replaced in place is read again (forget()); a read of the old file
+// still under way or with its result queued is dropped, not kept as the new
+// file's. The clip facts: a stand-in probe answering 1, then 2, as the
+// highlight mark. The waveform: a 1 s file replaced by a 2 s one.
+void testCachesAfterReplace(const Ctx &c)
+{
+    std::printf("  caches after replace\n");
+    const QString clip = QDir(c.dir).filePath(QStringLiteral("facts.insv"));
+    std::atomic<int> probes = 0;
+    ClipFactsCache facts([&](const std::string &, stitch::ClipProbe &out, std::string &) {
+        out.highlight_ms = {++probes};
+        return true;
+    });
+    const auto settled = [](const std::function<bool()> &done) {
+        for (int i = 0; i < 500 && !done(); ++i)
+            QThread::msleep(10); // no events: the result stays queued
+        QThread::msleep(50);
+    };
+    CHECK(facts.highlights(clip).isEmpty()); // read 1
+    settled([&] { return probes == 1; });
+    facts.forget({clip});
+    CHECK(facts.highlights(clip).isEmpty()); // read 2
+    settled([&] { return probes == 2; });
+    QTest::qWait(100);
+    CHECK(facts.highlights(clip) == QList<qint64>{2});
+
+    QTemporaryDir cacheDir;
+    const QString wav = QDir(c.dir).filePath(QStringLiteral("replaced.wav"));
+    const auto silence = [](int) { return 0.0; };
+    testmedia::writeWav(wav.toStdString(), testmedia::kWavRate, silence);
+    WaveformCache waves;
+    waves.setDirectory(cacheDir.path());
+    CHECK(!waves.peaks(wav, -1)); // scan of the 1 s file
+    QThread::msleep(500);         // done, its result queued
+    testmedia::writeWav(wav.toStdString(), 2 * testmedia::kWavRate, silence);
+    waves.forget({wav});
+    const auto length = [&] {
+        const WaveformCache::Peaks p = waves.peaks(wav, -1);
+        return p ? int(p->peaks.size()) : 0;
+    };
+    CHECK(waitFor([&] { return length() > 150; }));
+    QTest::qWait(300);
+    CHECK(length() > 150);
+}
+
+// An overlay's video replaced in place by one with sound: its sound can go
+// on an audio track now (the stream count is read again, not the old file's
+// none).
+void testReplacedOverlaySound(const Ctx &c)
+{
+    std::printf("  replaced overlay sound\n");
+    const QString video = QDir(c.dir).filePath(QStringLiteral("overlay-replaced.mp4"));
+    CHECK(QFile::copy(c.mp4, video));
+    trigger(c, "addOverlayTrackAction");
+    const int trackId = trackIdWhere(c, [](const Track &t) {
+        return t.kind == Track::Kind::Video && t.clips.isEmpty();
+    });
+    CHECK(trackId != 0);
+    emit c.timelineWidget->videoFilesDropped({video}, trackId, 0);
+    const Track *t = track(c, trackId);
+    CHECK(t && t->clips.size() == 1);
+    if (!t || t->clips.size() != 1)
+        return;
+    const int clipId = t->clips.first().id;
+    const auto soundTracks = [&] {
+        return trackIdWhere(c, [&](const Track &a) {
+            return a.kind == Track::Kind::Audio && !a.clips.isEmpty() &&
+                   a.clips.first().sourcePath == video;
+        });
+    };
+    emit c.timelineWidget->overlayAudioRequested(clipId);
+    CHECK(soundTracks() == 0); // no sound in it
+    // The media check (as when the window comes to the front), here to see
+    // the file as it is: a replacement is a file that differs from that.
+    emit qApp->applicationStateChanged(Qt::ApplicationActive);
+
+    testmedia::VideoSpec spec;
+    spec.luma = [](int frame, int, int) { return uint8_t(200 - frame); };
+    CHECK(testmedia::writeVideo(video.toStdString(), spec));
+    {
+        std::lock_guard lock(g_soundFilesMx);
+        g_soundFiles.insert(video);
+    }
+    emit qApp->applicationStateChanged(Qt::ApplicationActive); // the media check
+    emit c.timelineWidget->overlayAudioRequested(clipId);
+    CHECK(soundTracks() != 0);
+
+    c.timeline->removeTrack(trackId);
+    CHECK(soundTracks() == 0);
+    std::lock_guard lock(g_soundFilesMx);
+    g_soundFiles.remove(video);
+}
+
 // A grade pasted from elsewhere (another project's LUT) brings its LUT into
 // this project's luts/ folder, as every other way a LUT reaches a clip does.
 void testPasteGradeFromElsewhere(const Ctx &c)
@@ -3325,6 +3428,7 @@ int main(int argc, char **argv)
             testTakeFiles(c);
             testAudioTrack(c);
             testOverlay(c);
+            testReplacedOverlaySound(c);
             testOverlayLayers(c);
             testFlatMainClip(c);
             testMediaPreview(c);
@@ -3346,6 +3450,7 @@ int main(int argc, char **argv)
             testMeasurementFailureReasons(c);
             testMeasurementAcrossProjects(c);
             testImportAcrossProjects(c);
+            testCachesAfterReplace(c);
             testMenuFileDialogs(c);
             testRecovery(c);
             testLocateMovedFile(c);

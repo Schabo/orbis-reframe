@@ -29,11 +29,15 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QToolButton>
 #include <QUrl>
 #include <QWheelEvent>
 
+#include <atomic>
+#include <condition_variable>
 #include <cstdio>
+#include <mutex>
 
 namespace {
 
@@ -807,6 +811,81 @@ public:
     }
 };
 
+// A file replaced in place (forgetFiles): the picture and mode read from it
+// before are of the old file, and don't take the new ones' place, whichever
+// comes in last. The stand-in providers answer "old" for the first read and
+// "new" after; `hold` keeps the old picture's or mode's read back until the
+// new one is in (one at a time: the panel reads on two threads).
+void testReplacedFile()
+{
+    enum class Hold { Nothing, Picture, Mode };
+    for (const Hold hold : {Hold::Picture, Hold::Mode, Hold::Nothing}) {
+        QTemporaryDir tmp;
+        const QString clip = tmp.path() + QStringLiteral("/VID_1.insv");
+        writeFile(clip);
+        MediaPool pool;
+        pool.add({clip, MediaItem::Kind::Clip360, 61000, 3840, 3840, 29.97});
+        MediaPoolPanel panel(&pool);
+        auto *list = find<MediaPoolList>(&panel, "mediaPoolList");
+        if (!list)
+            return;
+
+        struct Gate {
+            std::mutex mx;
+            std::condition_variable cv;
+            bool open = false;
+            int pictures = 0, modes = 0;
+        };
+        auto gate = std::make_shared<Gate>();
+        const auto first = [gate](int &calls, bool held) {
+            std::unique_lock lock(gate->mx);
+            const bool old = calls++ == 0;
+            if (old && held)
+                gate->cv.wait_for(lock, std::chrono::seconds(5), [&] { return gate->open; });
+            return old;
+        };
+        panel.setThumbnailProvider([gate, first, hold](const MediaItem &, const QSize &size) {
+            QImage img(size, QImage::Format_RGB32);
+            img.fill(first(gate->pictures, hold == Hold::Picture) ? Qt::red : Qt::blue);
+            return img;
+        });
+        panel.setModeProvider([gate, first, hold](const MediaItem &) {
+            return first(gate->modes, hold == Hold::Mode) ? QStringLiteral("Old")
+                                                          : QStringLiteral("New");
+        });
+        const auto picture = [&] {
+            const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
+            const QImage img =
+                r ? r->data(0, MediaPoolPanel::ThumbnailRole).value<QImage>() : QImage();
+            return img.isNull() ? QColor() : img.pixelColor(0, 0);
+        };
+        const auto mode = [&] {
+            const QTreeWidgetItem *r = row(list, QStringLiteral("VID_1.insv"));
+            return r ? r->data(0, MediaPoolPanel::FormatRole).toString() : QString();
+        };
+        // Both old reads started (held, or done with their results queued).
+        CHECK(QTest::qWaitFor(
+            [&] {
+                std::lock_guard lock(gate->mx);
+                return gate->pictures == 1 && gate->modes == 1;
+            },
+            5000));
+        if (hold == Hold::Nothing)
+            QThread::msleep(100); // their results posted, not yet delivered
+        panel.forgetFiles({clip});
+        CHECK(QTest::qWaitFor(
+            [&] { return picture() == QColor(Qt::blue) && mode().startsWith("New"); }, 5000));
+        {
+            std::lock_guard lock(gate->mx);
+            gate->open = true;
+        }
+        gate->cv.notify_all();
+        QTest::qWait(200);
+        CHECK(picture() == QColor(Qt::blue));
+        CHECK(mode().startsWith(QLatin1String("New")));
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -825,6 +904,7 @@ int main(int argc, char **argv)
     testSidebarResize();
     testMediaTab();
     testMediaGridAndZoom();
+    testReplacedFile();
     if (g_failures == 0)
         std::printf("media_pool_test: all checks passed\n");
     else
