@@ -159,6 +159,12 @@ std::string lower(std::string s) {
     return s;
 }
 
+std::string avError(int rc) {
+    char why[AV_ERROR_MAX_STRING_SIZE] = {};
+    av_strerror(rc, why, sizeof(why));
+    return why;
+}
+
 // An open MP4 and its first djmd track; closed with it.
 struct Mp4 {
     AVFormatContext* fmt = nullptr;
@@ -186,22 +192,33 @@ struct Mp4 {
         const AVDictionaryEntry* e = av_dict_get(fmt->metadata, key, nullptr, 0);
         return e && e->value ? e->value : "";
     }
-    // Up to `max` samples of the djmd track, in order (0 = all). The other
-    // streams are discarded unread.
-    std::vector<Bytes> samples(size_t max) {
-        std::vector<Bytes> out;
+    // Up to `max` samples of the djmd track, in order (0 = all), into `out`.
+    // The other streams are discarded unread. False, with `err`, when the
+    // track can't be read to its end: a clip whose metadata stops partway
+    // would otherwise look as if it had no motion or GPS after that point.
+    bool samples(size_t max, std::vector<Bytes>& out, std::string& err) {
+        out.clear();
         if (djmd < 0)
-            return out;
+            return true;
         for (unsigned i = 0; i < fmt->nb_streams; ++i)
             fmt->streams[i]->discard = static_cast<int>(i) == djmd ? AVDISCARD_DEFAULT : AVDISCARD_ALL;
         AVPacket* pkt = av_packet_alloc();
-        while ((max == 0 || out.size() < max) && av_read_frame(fmt, pkt) >= 0) {
+        if (!pkt) {
+            err = "out of memory reading the DJI metadata";
+            return false;
+        }
+        int rc = 0;
+        while ((max == 0 || out.size() < max) && (rc = av_read_frame(fmt, pkt)) >= 0) {
             if (pkt->stream_index == djmd && pkt->size > 0)
                 out.emplace_back(pkt->data, pkt->data + pkt->size);
             av_packet_unref(pkt);
         }
         av_packet_free(&pkt);
-        return out;
+        if (rc < 0 && rc != AVERROR_EOF) {
+            err = "the DJI metadata can't be read: " + avError(rc);
+            return false;
+        }
+        return true;
     }
 };
 
@@ -300,12 +317,19 @@ std::optional<orbiscore::DjiClipMeta> clipMeta(const Bytes& first, const DjiMode
 // The clip's frame metadata, every sample, from the clip itself. Not from
 // the proxy: it keeps one frame's sample in four (docs/formats/dji-360.md
 // §1), and reading only the djmd track of the clip costs about the same.
-std::vector<orbiscore::DjiFrameMeta> frames(const ClipMetadata& clip) {
-    std::vector<orbiscore::DjiFrameMeta> out;
+// nullopt, with `err`, when the track can't be read.
+std::optional<std::vector<orbiscore::DjiFrameMeta>> frames(const ClipMetadata& clip,
+                                                           std::string& err) {
     Mp4 mp4;
-    if (!mp4.open(clip.path) || mp4.djmd < 0)
-        return out;
-    for (const Bytes& s : mp4.samples(0))
+    if (!mp4.open(clip.path)) {
+        err = "the file can't be opened again to read its DJI metadata";
+        return std::nullopt;
+    }
+    std::vector<Bytes> samples;
+    if (!mp4.samples(0, samples, err))
+        return std::nullopt;
+    std::vector<orbiscore::DjiFrameMeta> out;
+    for (const Bytes& s : samples)
         if (const auto f = orbiscore::ParseDjiFrameMeta(s))
             out.push_back(*f);
     return out;
@@ -458,7 +482,10 @@ std::optional<orbiscore::ImuTrack> attitudeTrack(const std::vector<orbiscore::Dj
     return track;
 }
 
-std::optional<Bytes> firstSample(const std::string& path, bool* djiFile = nullptr) {
+// The djmd track's first sample; nullopt when there is none, with `err` set
+// when it couldn't be read.
+std::optional<Bytes> firstSample(const std::string& path, std::string& err,
+                                 bool* djiFile = nullptr) {
     Mp4 mp4;
     if (!mp4.open(path))
         return std::nullopt;
@@ -467,10 +494,17 @@ std::optional<Bytes> firstSample(const std::string& path, bool* djiFile = nullpt
         *djiFile = dji;
     if (!dji)
         return std::nullopt;
-    auto s = mp4.samples(1);
-    if (s.empty())
+    std::vector<Bytes> s;
+    if (!mp4.samples(1, s, err) || s.empty())
         return std::nullopt;
     return std::move(s.front());
+}
+
+// readImu / readGps answer only "none": say why when it was a failed read,
+// not a clip without the track.
+void logUnread(const std::string& path, const char* what, const std::string& err) {
+    if (!err.empty())
+        std::fprintf(stderr, "[camera] %s: no %s: %s\n", path.c_str(), what, err.c_str());
 }
 
 } // namespace
@@ -478,11 +512,12 @@ std::optional<Bytes> firstSample(const std::string& path, bool* djiFile = nullpt
 CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo>& streams,
                                      ClipMetadata& out, std::string& err) const {
     bool dji = false;
-    const auto first = firstSample(out.path, &dji);
+    std::string readErr;
+    const auto first = firstSample(out.path, readErr, &dji);
     if (!dji)
         return Result::NotMine;
     if (!first) {
-        err = "a DJI file without metadata in its djmd track";
+        err = readErr.empty() ? "a DJI file without metadata in its djmd track" : readErr;
         return Result::Failed;
     }
     const DjiModel* model = nullptr;
@@ -566,7 +601,10 @@ CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo
     if (out.recordedLocal.empty())
         out.recordedLocal = nameTime(self.filename().string());
 
-    const std::vector<orbiscore::DjiFrameMeta> all = frames(out);
+    const auto metaFrames = frames(out, err);
+    if (!metaFrames)
+        return Result::Failed;
+    const std::vector<orbiscore::DjiFrameMeta>& all = *metaFrames;
     // The motion: the camera's fused attitude (DjiReader::readImu), at its
     // rate over the clip.
     size_t samples = 0;
@@ -592,25 +630,41 @@ CameraReader::Result DjiReader::read(const std::vector<orbiscore::InsvStreamInfo
 }
 
 std::optional<orbiscore::ImuTrack> DjiReader::readImu(const ClipMetadata& clip) const {
-    const auto first = firstSample(clip.path);
-    if (!first)
+    std::string err;
+    const auto first = firstSample(clip.path, err);
+    if (!first) {
+        logUnread(clip.path, "motion", err);
         return std::nullopt;
+    }
     const DjiModel* model = nullptr;
     const auto meta = clipMeta(*first, model, clip.path);
     if (!meta)
         return std::nullopt;
-    return attitudeTrack(frames(clip), *meta, *model, clip.fps, readoutSec(*meta));
+    const auto all = frames(clip, err);
+    if (!all) {
+        logUnread(clip.path, "motion", err);
+        return std::nullopt;
+    }
+    return attitudeTrack(*all, *meta, *model, clip.fps, readoutSec(*meta));
 }
 
 std::optional<orbiscore::GpsTrack> DjiReader::readGps(const ClipMetadata& clip) const {
-    const auto first = firstSample(clip.path);
-    if (!first)
+    std::string err;
+    const auto first = firstSample(clip.path, err);
+    if (!first) {
+        logUnread(clip.path, "GPS", err);
         return std::nullopt;
+    }
     const DjiModel* model = nullptr;
     const auto meta = clipMeta(*first, model, clip.path);
     if (!meta)
         return std::nullopt;
-    orbiscore::GpsTrack t = gpsTrack(frames(clip), meta->clipTimestampUs);
+    const auto all = frames(clip, err);
+    if (!all) {
+        logUnread(clip.path, "GPS", err);
+        return std::nullopt;
+    }
+    orbiscore::GpsTrack t = gpsTrack(*all, meta->clipTimestampUs);
     if (t.fixes.empty())
         return std::nullopt;
     return t;

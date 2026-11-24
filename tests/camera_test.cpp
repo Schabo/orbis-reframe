@@ -1068,6 +1068,45 @@ void testDjiAvata360(const std::filesystem::path& osv, const std::filesystem::pa
                    teleAlone.gps->fixes[i].latitude == tele.gps->fixes[i].latitude;
         CHECK(same);
     }
+
+    // A metadata track that can't be read to its end fails the clip and its
+    // motion, rather than opening it as if it had less of both. Each under a
+    // name of its own: a clip read is kept by its path.
+    using ffmpegfaults::Call;
+    const auto fresh = [&](const char* sub) {
+        const std::filesystem::path d = dir / sub;
+        std::filesystem::create_directories(d);
+        std::filesystem::create_symlink(std::filesystem::absolute(osv), d / osv.filename());
+        return (d / osv.filename()).string();
+    };
+    // The stream probe before the camera's reader allocates packets of its
+    // own: the first allocation that fails past those is the reader's.
+    bool noMemory = false;
+    for (int after = 0; after < 20 && !noMemory; ++after) {
+        const std::string path = fresh(("dji_no_memory_" + std::to_string(after)).c_str());
+        ffmpegfaults::reset();
+        ffmpegfaults::arm(Call::PacketAlloc, after, 0, -1);
+        err.clear();
+        const bool read = camera::ReadClipMetadata(path, &err) != nullptr;
+        noMemory = !read && err.find("out of memory reading the DJI metadata") != std::string::npos;
+        if (read || err.find("demux open failed") == std::string::npos)
+            break;
+    }
+    CHECK(noMemory);
+    ffmpegfaults::reset();
+    ffmpegfaults::arm(Call::PacketAlloc, 0, 0, -1);
+    CHECK(!camera::ReadClipImu(osv.string()));
+    const std::string readError = fresh("dji_read_error");
+    ffmpegfaults::reset();
+    ffmpegfaults::arm(Call::ReadFrame, 1000, AVERROR(EIO), -1);
+    err.clear();
+    CHECK(!camera::ReadClipMetadata(readError, &err) &&
+          err.find("the DJI metadata can't be read") != std::string::npos);
+    ffmpegfaults::reset();
+    ffmpegfaults::arm(Call::ReadFrame, 1000, AVERROR(EIO), -1);
+    CHECK(!camera::ReadClipImu(osv.string()));
+    ffmpegfaults::reset();
+    CHECK(camera::ReadClipImu(osv.string()));
 }
 
 int main(int argc, char** argv)
