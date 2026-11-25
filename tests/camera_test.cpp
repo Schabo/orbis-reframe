@@ -803,6 +803,10 @@ void testIntervalPhotos(const std::filesystem::path& dir)
     CHECK(std::abs(clip->timelapseIntervalSec - 10.374636) < 1e-6 && // the median gap
           std::abs(clip->captureScale - 30 * clip->timelapseIntervalSec) < 1e-9);
     CHECK(clip->recordedLocal == "2026-08-15T08:11:08" && clip->missingFirst.empty());
+    // No lens-guard table in a photo: the X5's own (InsvModel::lensProfiles).
+    CHECK(clip->bareLens && clip->premiumGuard && clip->standardGuard &&
+          clip->premiumGuard->name == "ProtectorA" && clip->premiumGuard->fov_deg == 195 &&
+          clip->premiumGuard->poly[1] == 0.032190650500000001 && clip->bareLens->fov_deg == 200);
     // The pictures in that order, a photo a frame.
     {
         orbiscore::FisheyeDemux d;

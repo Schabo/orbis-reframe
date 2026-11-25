@@ -432,13 +432,31 @@ void findParts(ClipMetadata& out, const orbiscore::InsvModel& model,
     }
 }
 
+// The lens profile `name` from the file's table, or for a file that carries
+// none (an X5 photo) from the model's (InsvModel::lensProfiles).
 std::optional<orbiscore::LensProfile> profile(const orbiscore::InsvMakerNotes& notes,
-                                              const char* name) {
+                                              const orbiscore::InsvModel& model, const char* name) {
     if (!name)
         return std::nullopt;
     if (const orbiscore::LensProfile* p = orbiscore::FindLensProfile(notes, name))
         return *p;
+    if (notes.lens_profiles.empty())
+        for (const orbiscore::LensProfile& p : model.lensProfiles)
+            if (p.name == name)
+                return p;
     return std::nullopt;
+}
+
+// The lens profiles of `out` (bare and the model's guards), the model's when
+// the file has no table of its own (said so).
+void readLensProfiles(ClipMetadata& out, const orbiscore::InsvMakerNotes& notes,
+                      const orbiscore::InsvModel& model) {
+    out.bareLens = profile(notes, model, "bare");
+    out.standardGuard = profile(notes, model, model.standardGuard);
+    out.premiumGuard = profile(notes, model, model.premiumGuard);
+    if (notes.lens_profiles.empty() && !model.lensProfiles.empty())
+        std::fprintf(stderr, "[camera] no lens-guard profiles in %s; taking the %s's\n",
+                     out.path.c_str(), model.name);
 }
 
 // The MEI calibration Insta360 Studio stitches with, into `out.lenses`
@@ -594,9 +612,7 @@ CameraReader::Result readPhotoSeries(const std::vector<orbiscore::InsvStreamInfo
     out.mountPitchDeg = model.mountDeg[1];
     out.mountRollDeg = model.mountDeg[2];
     out.lensCorrection = model.lensCorrection;
-    out.bareLens = profile(notes, "bare");
-    out.standardGuard = profile(notes, model.standardGuard);
-    out.premiumGuard = profile(notes, model.premiumGuard);
+    readLensProfiles(out, notes, model);
     out.recordedLocal = LocalTimeFromDigits(std::to_string(notes.creation_time));
     if (out.recordedLocal.empty())
         out.recordedLocal = nameTime(out.path);
@@ -655,9 +671,7 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
     if (streams[0].width == streams[0].height)
         out.captureMode = model.captureMode(streams[0].width);
 
-    out.bareLens = profile(*notes, "bare");
-    out.standardGuard = profile(*notes, model.standardGuard);
-    out.premiumGuard = profile(*notes, model.premiumGuard);
+    readLensProfiles(out, *notes, model);
     const std::optional<std::string> heldName = orbiscore::ReadInsvHeldName(out.path);
     out.proxyPath = findProxy(out.path, model, *notes, heldName);
     out.parts[0].proxyLenses = proxyLensesOf(out.proxyPath, model);

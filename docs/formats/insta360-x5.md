@@ -398,8 +398,12 @@ v1.11.10):
   focal length and the centre alike by 5952 / 5376. Stitched this way
   (`orbis_stitch` on the two halves with the photo's trailer) the seam is
   0.203° off on `_012`, as a guarded 8K video of the day (0.202°).
-- **No lens-guard table** (no field 145): a photo stitches with the
-  calibration as it is.
+- **No lens-guard table** (no field 145). The table the X5's videos carry
+  is byte for byte the same on every file of both X5s in the samples
+  (`IAHEA25088AYDQ`, `IAHEA2505S3KC3`; firmware v1.5.6 to v1.11.10), so the
+  app takes it for a photo (`InsvModel::lensProfiles`). Photo `_012`
+  stitched with Premium (ProtectorA) beside bare: the user judged the
+  seams better with it (2026-11-25).
 - **The IMU record holds one unit vector, the camera's gravity** ✅: the
   100 samples (1 ms apart) all carry the same accelerometer reading, of
   length 1.000 on every photo, and a zero gyro. It is gravity with the

@@ -34,7 +34,9 @@ Set **Lens guards** to what was fitted over the lenses when you filmed:
 - **Premium lens guards**
 
 Lens guards bend the light slightly, so each choice uses a different lens
-model, recorded in the `.insv` file by the camera. The camera doesn't record
+model, recorded in the `.insv` file by the camera. The X5's photos don't
+record them; for a series of Interval photos orbis-reframe uses the ones
+every X5 video carries, so the choice works the same way. The camera doesn't record
 whether guards were fitted, so you have to tell orbis-reframe. With the
 wrong choice the two pictures don't line up: things along the seam show up
 twice, or have a piece missing.

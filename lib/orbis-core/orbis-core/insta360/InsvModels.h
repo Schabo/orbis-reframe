@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #pragma once
 
+#include <orbis-core/stitch/LensProfile.h>
 #include <orbis-core/stitch/SeamCorrection.h>
 
 #include <span>
@@ -145,6 +146,14 @@ struct InsvModel {
     // it gives lies on the real one all round on a photo 14 deg off level in
     // a curve and on one 3.6 deg off (docs/formats/insta360-x5.md §3.6).
     const char* photoGravityAxes;
+
+    // The lens-profile table (0x101 field 145) for a file of the model that
+    // carries none -- the X5's photos don't (§3.6) -- so a lens guard can
+    // still be set on them. X5: the table its videos carry, byte for byte
+    // the same on every file of both X5s sampled (two cameras, firmware
+    // v1.5.6 to v1.11.10). Empty when not known: such a file stitches as a
+    // bare lens.
+    std::span<const LensProfile> lensProfiles;
 };
 
 // Every row.
