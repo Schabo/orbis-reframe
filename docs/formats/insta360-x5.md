@@ -485,7 +485,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 |---|---|---|---|---|---|
 | `0x0000` | 0 | Offsets | 310 | locator table (§4.2) | ✅ |
 | `0x0101` | 1 | **Metadata** (protobuf) | ~4 KB | serial, model, firmware, calibration, timing, IMU config… (§5) | ✅ |
-| `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header (`u32 1, u32 record size, u32 1, u32 0, u32 width, u32 height`, zeros) + **1280×640 NV12**, an already **stitched equirectangular** frame from the start of the recording (ExifTool: `PreviewTIFF`; other models store JPEG, H.264 or, the Antigravity A1, a flat view here). Read by `ReadInsvThumbnail` for the Media tab's and project library's cards | ✅ |
+| `0x0200` | 2 | Thumbnail | 1 228 840 | 40-byte header (`u32 1, u32 record size, u32 1, u32 0, u32 width, u32 height`, zeros) + **1280×640 NV12**, an already **stitched equirectangular** frame from the start of the recording (ExifTool: `PreviewTIFF`; other models store JPEG, H.264 or, the Antigravity A1, a flat view here); 2560×1280 in a photo. It is **the camera's own stitch**, levelled by the gyro (turned up to ~50° against the file's frame), with the lens-guard profile when field 68 says a guard is fitted (§5.4); where it places the lenses, see §5.3. Read by `ReadInsvThumbnail` for the Media tab's and project library's cards | ✅ |
 | `0x0300` | 3 | **Gyro** (IMU) | 877 440 | accel + gyro, ~1 kHz (§6) | ✅ |
 | `0x0400` | 4 | **Exposure** | 20 928 | one per sensor frame (§7) | ✅ |
 | `0x0500` | 5 | ThumbnailExt | 76 800 (`.insp`) | 320×160 NV12; photos only (§3.6) | ⚠️ |
@@ -498,7 +498,7 @@ are from the 42.8 s clip `193105` (1282 video frames).
 | `0x1800` | 24 | TimelapseQuat | 540 320 (`_078`) | `{f64 s, f64 w, x, y, z}`, world → body, 11 per frame across the readout; timelapse only (§3.5) | ✅ |
 | `0x1600` | 22 | Snapshots (`shell_recognition_data` in the `.pb` sidecar, §9: probably for recognising a lens guard) | 8 306 836 | **four 1664×832 NV12 frames of the dual-fisheye picture** from across the clip (§4.5) | ✅ |
 | `0x1c00` | 28 | ? | 12 793 | eight 256-entry `u8` tables, identity on every sample, then one **256-entry `u16` tone curve** (values 0-255, concave: 40 -> ~89, 120 -> ~178, 200 -> ~229) that differs slightly between clips; the rest mostly zero. One curve for the whole picture, not per lens | ⚠️ |
-| `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz | ❓ |
+| `0x1d00` | 29 | ? | 1 953 | 9-byte `{u64 µs device timestamp, u8}`, ~5 Hz. The `u8` is 0 or 1: 0 throughout on every clip shorter than ~5 min (both guarded and bare, so not guard detection); on long recordings it turns to 1 after 5-22 min and stays mostly 1, with stretches back at 0 (`_079`, `_088`, `_095`; 2026-11-25). Perhaps a thermal state | ❓ |
 | `0x3900` | 57 | ? | — | only in the software-rewritten `_019-trim` clip, not in its card original: written by Insta360 software | ❓ |
 | `0x8000` | 128 | **TimeMap** | 862 136 (`144221_019-trim`) | written by Insta360 software on trimmed/re-timed exports (the card original of `144221` has none). Decoded ✅: header `{u32 32 (header size), u32 trimCount, u32 pairBytes, u32 frameCount, 16 B zero}`, then `trimCount × {f64 duration, source start, source end}` (ms), then `(video ms, original ms)` f64 pairs, one per frame. On the sample: 1 trim, source 2002.0 → 1 799 764.6 ms, pairs `(0, 2002.0), (33.37, 2035.37)…`. **Field 24 keeps naming the original first frame**, so sync must add the source offset (§7.1). The app models a plain trim only (one cut, one offset); a map with several cuts or a varying offset is flagged in Media information. No sample of one: every TimeMap we have (the two `144221` `-trim` copies) is one cut at a constant offset | ✅ |
 
@@ -541,6 +541,13 @@ across the three clips; a temperature?). `ev_target`, `exp_time`,
 `data_stat` and the other six spare words are 0 on every frame. **No
 white-balance or per-lens colour values**: nothing here says how the two
 lenses' colour differs (§7).
+
+On firmware v1.11.10 (the Demo day, 2026-11-25) the word after that
+counter is set too: 5000 on `_081`, 5800-6400 in daylight, rising to
+~9000-12 500 at dusk on `_095`, while the counter rises with the ISO. Both
+look like auto-white-balance state (word 6 like a colour temperature in K),
+one pair for the whole picture. A photo carries the same pair as metadata
+field 183 (`{1: 1866-2059, 2: 5747-6467}` on the 77 Demo photos).
 
 ### 4.5 Type 22 — Snapshots ✅
 
@@ -734,6 +741,50 @@ trailing token `flag`. Each lens block ends in `w h lensType` (`10752 5376
   −0.06 to −0.08 %, pitch +0.3 to +0.4°; the offset on other frames of the
   clip drops from 0.16–0.18° (rotation only) to 0.04–0.10°. The app
   measures it per clip from the video.
+- **The two lenses' focal lengths look exchanged** ⚠️ (2026-11-25). Every
+  string (fields 5, 53, 54, 111) makes lens 0's picture the larger: 0.57 %
+  at the seam in field 111, the same in field 54 and in field 53's
+  `radius` (which is field 111's image radius at 100.4°, nothing new).
+  Ground truth and Insta360's own stitches all make lens 1 the larger
+  instead:
+  - The chart fit (bare `No_Lensprotector/…_008`) finds fx 3092.7 for lens 0
+    and 3105.8 for lens 1 (video px); the file has 3104.1 and 3092.3, the
+    same two values within 0.05 % in the other lens's place.
+  - Scored on that chart (reprojection rms, lens 0 / lens 1, board pose
+    free per lens): the file as read 0.48 / 0.76 px; fx fy exchanged 0.36 /
+    0.63; fx fy and k1–k4 exchanged 0.31 / 0.58; the chart fit 0.21 / 0.20.
+    No other reading tried does better: p or s dropped, swapped or
+    sign-flipped, tokens 22–23 as extra thin-prism terms, the centres
+    mirrored or transposed, field 54's centres or angles (all 0.47-1.28 on
+    one lens or both).
+  - Against Insta360 Studio's All-off export of `_086` (frame 0, 2560 wide),
+    per-lens image radius Studio / ours is +0.30 % / −0.38 % as read and
+    −0.07 % / −0.03 % with fx fy exchanged. Against the camera's own
+    stitched thumbnail (record 2) of `_086`: +0.32 % / −0.10 % as read,
+    −0.03 % / +0.27 % exchanged. On a second camera (`fliperama/…_042`,
+    whose strings make lens 1 the larger): −0.24 % / +0.37 % as read,
+    −0.07 % / +0.17 % exchanged, with smaller flow residuals.
+  Method: dense optical flow from our render to the other stitch on far
+  content (above the horizon, 15° clear of the seam), a rotation and an
+  image-radius scale fitted per lens; checked by recovering an injected
+  3° lens-1 turn to 0.08° and a 0.5 % radius change to 0.01 %.
+  The exchange hardly moves the seam itself (offset on six riding clips
+  changes by −0.02 to +0.05°): the two lenses' errors push seam content the
+  same way. What it changes is the picture away from the seam, up to
+  ~0.5° near 90° off each lens's axis. Not applied in the app.
+- **Insta360's stitches turn lens 1 against the file's calibration**,
+  as the per-clip seam fit does. In seam-correction terms (lens 1 yaw /
+  pitch): Studio's All-off of `_086` +0.41° / +0.37°, the camera's
+  thumbnail of the same clip +0.15° / +0.37°, of the bare `_008` +0.22° /
+  +0.49°; the seam fit on this camera's videos finds pitch +0.3 to +0.4°.
+  None of the strings' angles gives it (field 54's, or exchanging the
+  lenses' angles). On the second camera the thumbnail says yaw −0.59°,
+  pitch −1.29°: stitched with that, its seam offset falls from 0.48° to
+  0.28° (the seam fit: yaw −1.26°, pitch −0.48°, centre −0.32 %, 0.05°).
+  In a photo the thumbnail turns lens 1 about 1° the other way in pitch
+  (`IMG_…_012`: yaw +0.47°, pitch −0.58°), as the per-photo seam fit
+  does (pitch −0.5 to −1.2° on eight Demo photos, +0.3 to +0.6° on the
+  day's videos) with byte-identical strings.
 - The MEI calibration is the **bare-lens** model. With a lens guard or dive
   case fitted, scale its image radius by the accessory profile (§5.4).
 - Gyroflow's X5 path multiplies `cx` by 2 ("`cx_fix`", because of the
