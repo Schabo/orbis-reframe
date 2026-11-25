@@ -675,6 +675,44 @@ void testInsertLensGuard()
     CHECK(tl.clipById(again)->lensGuard == G::Premium);
 }
 
+// The camera's own lens-guard setting (the X5's field 68) decides whether a
+// new clip has a guard; which one is the neighbour's, else Premium. A file's
+// other clips keep what the user chose for it.
+void testInsertLensGuardFromCamera()
+{
+    using G = stitch::PreviewStitchConfig::LensGuard;
+    stitch::LensGuardProfiles bare = stitch::LensGuardProfiles::all();
+    bare.fitted = false;
+    stitch::LensGuardProfiles guarded = stitch::LensGuardProfiles::all();
+    guarded.fitted = true;
+    stitch::LensGuardProfiles standardOnly{true, false, true};
+    CHECK(bare.forNewClip(G::Premium) == G::None && bare.forNewClip(G::Standard) == G::None);
+    CHECK(guarded.forNewClip(G::None) == G::Premium && guarded.forNewClip(G::Standard) == G::Standard);
+    CHECK(standardOnly.forNewClip(G::None) == G::Standard);
+    CHECK(standardOnly.forNewClip(G::Premium) == G::Standard);
+    const stitch::LensGuardProfiles unsaid = stitch::LensGuardProfiles::all();
+    CHECK(unsaid.forNewClip(G::None) == G::None && unsaid.forNewClip(G::Standard) == G::Standard);
+    const stitch::LensGuardProfiles noProfiles{false, false, true}; // nothing to stitch with
+    CHECK(noProfiles.forNewClip(G::Premium) == G::None);
+
+    Timeline tl;
+    const int a = tl.appendClip("bare.insv", 10000, 30.0, 3840, 3840, 0, false, bare);
+    CHECK(tl.clipById(a)->lensGuard == G::None); // not the Premium default
+    const int b = tl.appendClip("guarded.insv", 10000, 30.0, 3840, 3840, 0, false, guarded);
+    CHECK(tl.clipById(b)->lensGuard == G::Premium); // the clip before is bare
+    tl.setSourceStitch("guarded.insv", G::Standard, stitch::PreviewStitchConfig::Method::New,
+                       std::nullopt);
+    const int c = tl.appendClip("guarded2.insv", 10000, 30.0, 3840, 3840, 0, false, guarded);
+    CHECK(tl.clipById(c)->lensGuard == G::Standard); // the neighbour's guard
+    const int d = tl.appendClip("bare2.insv", 10000, 30.0, 3840, 3840, 0, false, bare);
+    CHECK(tl.clipById(d)->lensGuard == G::None);
+    // The user's choice for a file holds for its other clips.
+    tl.setSourceStitch("bare.insv", G::Premium, stitch::PreviewStitchConfig::Method::New,
+                       std::nullopt);
+    const int e = tl.appendClip("bare.insv", 10000, 30.0, 3840, 3840, 0, false, bare);
+    CHECK(tl.clipById(e)->lensGuard == G::Premium);
+}
+
 // newClip: the clip insertClip would add, without adding it -- what the
 // Media tab's preview plays a file as: the nearest 360 clip's
 // stabilization, the file's own clips' stitch settings.
@@ -869,6 +907,7 @@ int main()
     testSplitScreen();
     testTimelineDuplicate();
     testInsertLensGuard();
+    testInsertLensGuardFromCamera();
     testNewClip();
     testTransitions();
     testTrackQueries();

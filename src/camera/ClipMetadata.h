@@ -167,6 +167,10 @@ struct ClipMetadata {
     std::optional<orbiscore::LensProfile> bareLens;
     std::optional<orbiscore::LensProfile> standardGuard;
     std::optional<orbiscore::LensProfile> premiumGuard;
+    // Whether the camera had a lens guard fitted, by its own setting (the
+    // X5's field 68, docs/formats/insta360-x5.md §5.4); empty when the file
+    // doesn't say. It doesn't say which guard.
+    std::optional<bool> guardFitted;
 
     // When recording started, by the camera's own clock: local time with no
     // zone, "YYYY-MM-DDThh:mm:ss"; "" when the file doesn't say. The date a

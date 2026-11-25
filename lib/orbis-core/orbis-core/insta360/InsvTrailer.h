@@ -33,6 +33,11 @@ struct InsvMakerNotes {
     // carry (the ONE X2, docs/formats/insta360-one-x2.md §7). Empty when
     // absent.
     std::string offset_v3;
+    // Field 68: the camera's lens-guard setting -- 0 with bare lenses, 5
+    // with a guard fitted (the X5 recognises Insta360's own guards; standard
+    // and premium both write 5, docs/formats/insta360-x5.md §5.4). -1 when
+    // absent (the ONE X2 and the A1 don't write it).
+    int64_t lens_guard_setting = -1;
     // Field 7 `creation_time`: when recording started, by the camera's clock
     // (local time, no zone), as the decimal number YYYYMMDDhhmmss
     // (20250904193105; docs/formats/insta360-x5.md §5.1). 0 when absent (the

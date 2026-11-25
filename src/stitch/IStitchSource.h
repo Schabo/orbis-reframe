@@ -139,6 +139,10 @@ struct PreviewStitchConfig {
 struct LensGuardProfiles {
     bool standard = false;
     bool premium = false;
+    // The camera's own setting, when the file records it
+    // (camera::ClipMetadata::guardFitted): whether a guard was fitted, not
+    // which.
+    std::optional<bool> fitted;
 
     static LensGuardProfiles all() { return {true, true}; }
     bool any() const { return standard || premium; }
@@ -156,9 +160,22 @@ struct LensGuardProfiles {
     {
         return has(g) ? g : PreviewStitchConfig::LensGuard::None;
     }
+    // The guard a new clip of this file starts with, `g` being what it
+    // would take from its neighbours: None when the camera says bare; when
+    // it says fitted, `g` if that is a guard, else Premium (Standard when
+    // that is the only profile); `g` as usable() otherwise.
+    PreviewStitchConfig::LensGuard forNewClip(PreviewStitchConfig::LensGuard g) const
+    {
+        using G = PreviewStitchConfig::LensGuard;
+        if (fitted == false)
+            return G::None;
+        if (fitted == true && usable(g) == G::None)
+            return premium ? G::Premium : standard ? G::Standard : G::None;
+        return usable(g);
+    }
     bool operator==(const LensGuardProfiles& o) const
     {
-        return standard == o.standard && premium == o.premium;
+        return standard == o.standard && premium == o.premium && fitted == o.fitted;
     }
 };
 

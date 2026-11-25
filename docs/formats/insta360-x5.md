@@ -623,6 +623,8 @@ Our `ParseMakerNotes()` reads the first four length-delimited fields
 | **62** | **`is_raw_gyro`** | **true** | **type 3 holds raw integer IMU counts** (§6.1) 📖 |
 | 64 | `pts_type` | **2 = `VideoPtsEexposureFile`** | the video PTS derive from the exposure record, which confirms §7.1 📖 |
 | **65** | **`gyro_cfg_info`** | **{acc_range: 32, gyro_range: 2000}** | **±32 g, ±2000 °/s**: the scale for raw counts (§6.1) 📖 |
+| **68** | — | **5** (0 on bare lenses) | **the camera's lens-guard setting**: 0 bare, 5 a guard fitted (§5.4) ✅ |
+| 104 | — | 2 (3 on bare lenses) | changes with field 68 on every sample; meaning unknown ❓ |
 | 93 | — | 42776 | duration, ms |
 | 98 | — | {2468081984, 2510815317, 1757003465870, 1757003508603, 1282, 0, 20} | **first/last frame device µs, first/last frame Unix ms, frame count** (= ffprobe `nb_frames`). Absent in the rewritten `-trim` clips ✅ |
 | 111 / 112 | — | 56-token calibration | full MEI with 13 distortion terms (§5.3). Probably "offset_v4 / original_offset_v4" |
@@ -765,11 +767,24 @@ user-replaceable. Always read calibration per file; never hardcode it.
 - A **guard pushes each angle further out**: `Protector(θ)/bare(θ)` = 1.017
   at the centre, rising to ~1.024 at 70–95°. The image circle stays the same,
   so the guarded lens fits 195° into it.
-- **The camera does not record which accessory is fitted.** Fields 5/17,
-  53/55, 54/56 and 111/112 (the "may be adjusted for accessories" pairs) are
-  identical on guarded footage, and `ExtraUserOptions.offset_convert_states`
-  (field 13.10, telemetry-parser) is absent; it is written by Insta360
-  software after an edit. So the user has to choose it, as in Studio.
+- **The camera records whether a guard is fitted, not which one: field
+  68** ✅ (2026-11-25). 0 on the bare-lens chart clips (`No_Lensprotector/…_007`,
+  `_008`) and on another owner's bare clip (`fliperama/…_042`, another
+  camera); 5 on every guarded sample: Premium (`…_009`, the Demo day's 77
+  photos and 18 videos) and standard (the 2025 clips), so the two guards
+  aren't told apart. The camera's own stitch follows it: its stitched
+  thumbnail (record 2) matches our bare-lens render on the bare clips
+  (image radius within 0.3 %, against +2.3 / +3.3 % from our
+  guarded render) and our guarded render on the guarded ones. The camera
+  recognises Insta360's own guards, so a guard it doesn't recognise can
+  read as bare. Field 104 changes with it (3 bare, 2 guarded). The ONE X2
+  and the Antigravity A1 don't write field 68. The calibration strings
+  (fields 5/17, 53/55, 54/56, 111/112, the "may be adjusted for
+  accessories" pairs) are identical either way, and
+  `ExtraUserOptions.offset_convert_states` (field 13.10, telemetry-parser)
+  is absent; it is written by Insta360 software after an edit. The app
+  starts a clip with no guard when field 68 is 0 and with a guard when it
+  is 5; the user can still change it.
 - Which of `ProtectorA`/`S`/`AS` is the Premium or Standard guard is a guess
   (A = premium, S = standard). They carry identical data, so it doesn't
   matter on the X5.

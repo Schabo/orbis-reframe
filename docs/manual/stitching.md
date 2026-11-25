@@ -36,17 +36,23 @@ Set **Lens guards** to what was fitted over the lenses when you filmed:
 Lens guards bend the light slightly, so each choice uses a different lens
 model, recorded in the `.insv` file by the camera. The X5's photos don't
 record them; for a series of Interval photos orbis-reframe uses the ones
-every X5 video carries, so the choice works the same way. The camera doesn't record
-whether guards were fitted, so you have to tell orbis-reframe. With the
+every X5 video carries, so the choice works the same way. With the
 wrong choice the two pictures don't line up: things along the seam show up
 twice, or have a piece missing.
 
-The first clip in a project starts with **Premium lens guards**. A clip you
-add later takes the settings of the nearest 360° clip beside it, or of the
-other clips from its file if there are any. If you filmed without guards,
-or with the standard ones, change this first; when the whole project was
-filmed the same way, **Apply to all clips** gives every 360° clip the
-settings shown.
+The X5 records whether guards were fitted (it recognises Insta360's own
+guards), but not which ones. A clip filmed with bare lenses comes in with
+**None**; a clip filmed with guards comes in with the guards of the 360°
+clip beside it, or **Premium lens guards** when that clip has none. The
+choice stays yours: if the camera got it wrong (guards it doesn't
+recognise, say), change it here.
+
+Otherwise, and on cameras that don't record it, the first clip in a
+project starts with **Premium lens guards**. A clip you add later takes the
+settings of the nearest 360° clip beside it, or of the other clips from its
+file if there are any. If you filmed without guards, or with the standard
+ones, change this first; when the whole project was filmed the same way,
+**Apply to all clips** gives every 360° clip the settings shown.
 
 Some cameras, the ONE X2, the X6 and the DJI Avata 360 among them, record
 no lens-guard models. Their clips are always stitched with bare lenses: **Lens guards**

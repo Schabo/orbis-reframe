@@ -51,7 +51,9 @@ Prints what the X5 writes into a clip's `inst` trailer: camera model,
 firmware, lens calibration, capture settings, and a summary of the IMU and
 exposure data. The lens calibration comes twice: `Parameters:` is the short
 string in the maker-notes record (empty on the X6), `Extended:` the
-extended MEI string the stitch uses. `--imu` / `--exposure` print every sample, one per line, in
+extended MEI string the stitch uses. `Lens guard:` is the camera's own
+lens-guard setting where the file records it (the X5: 0 bare, 5 fitted).
+`--imu` / `--exposure` print every sample, one per line, in
 a layout that lines up with `exiftool -ee` for comparison. `--gps` prints
 each GPS fix once (the file repeats it ten times a second): its time in the
 clip in ms, Unix seconds, latitude, longitude, speed in m/s, heading (-1:

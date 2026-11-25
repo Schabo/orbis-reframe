@@ -185,6 +185,13 @@ int main(int argc, char** argv) {
         std::cout << "Extended:   " << *ext << "\n";
     if (!calib->offset_v3.empty())
         std::cout << "offset_v3:  " << calib->offset_v3 << "\n";
+    // The camera's lens-guard setting (field 68: 0 bare, 5 a guard fitted).
+    if (calib->lens_guard_setting >= 0)
+        std::cout << "Lens guard: " << calib->lens_guard_setting
+                  << (calib->lens_guard_setting == 0   ? " (bare)"
+                      : calib->lens_guard_setting == 5 ? " (fitted)"
+                                                       : " (not known)")
+                  << "\n";
     for (const auto& lp : calib->lens_profiles) {
         std::cout << "Lens profile: " << lp.name << " fov=" << lp.fov_deg << " poly=";
         for (double c : lp.poly) std::cout << " " << c;

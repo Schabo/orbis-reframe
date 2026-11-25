@@ -694,12 +694,16 @@ bool writeX5Part(const std::string& path, int frames, int grey0, int fps = kFps)
 // whole 5376 window and the X5's calibration string (lens 1's centre in the
 // right half); the IMU record one gravity vector, repeated, no gyro (in the
 // 56-byte samples of the video tests; the X5 writes 20-byte ones).
+// `guard`: field 68, the camera's lens-guard setting (0 bare, 5 fitted); -1
+// leaves it out.
 std::vector<uint8_t> x5PhotoTrailer(const std::string& serial, uint64_t taken, uint64_t type,
-                                    const std::string& identify)
+                                    const std::string& identify, int guard = 5)
 {
     Bytes meta;
     meta.pbString(1, serial).pbString(2, "Insta360 X5").pbString(3, "v1.11.10_build1");
     meta.pbVarint(7, 20260815081108).pbVarint(24, taken);
+    if (guard >= 0)
+        meta.pbVarint(68, static_cast<uint64_t>(guard));
     Bytes group; // {1: type, 2: index, 3: identify, 4: total}
     group.pbVarint(1, type).pbVarint(2, 1).pbString(3, identify).pbVarint(4, 0);
     meta.pbBytes(26, group.b);
@@ -770,8 +774,8 @@ void testIntervalPhotos(const std::filesystem::path& dir)
     // Another series (_001, _002) and a single photo (_020) beside them.
     const std::string other1 = (sub / name(1)).string(), other2 = (sub / name(2)).string();
     const std::string otherId = "./DCIM/Camera01/" + name(1);
-    CHECK(writeX5Photo(other1, 200, x5PhotoTrailer(serial, 81712530, 5, otherId)));
-    CHECK(writeX5Photo(other2, 210, x5PhotoTrailer(serial, 92012198, 5, otherId)));
+    CHECK(writeX5Photo(other1, 200, x5PhotoTrailer(serial, 81712530, 5, otherId, 0)));
+    CHECK(writeX5Photo(other2, 210, x5PhotoTrailer(serial, 92012198, 5, otherId, 0)));
     const std::string single = (sub / name(20)).string();
     CHECK(writeX5Photo(single, 220, x5PhotoTrailer(serial, 300000000, 0, "")));
 
@@ -807,6 +811,21 @@ void testIntervalPhotos(const std::filesystem::path& dir)
     CHECK(clip->bareLens && clip->premiumGuard && clip->standardGuard &&
           clip->premiumGuard->name == "ProtectorA" && clip->premiumGuard->fov_deg == 195 &&
           clip->premiumGuard->poly[1] == 0.032190650500000001 && clip->bareLens->fov_deg == 200);
+    // The camera's lens-guard setting (field 68): fitted on the series, bare
+    // on the single photo, unknown without the field.
+    CHECK(clip->guardFitted == true);
+    {
+        const auto bare = camera::ReadClipMetadata(other1, &err);
+        CHECK(bare && bare->guardFitted == false);
+        const std::string u1 = (sub / name(21)).string(), u2 = (sub / name(22)).string();
+        const std::string uId = "./DCIM/Camera01/" + name(21);
+        CHECK(writeX5Photo(u1, 230, x5PhotoTrailer(serial, 310000000, 5, uId, -1)));
+        CHECK(writeX5Photo(u2, 240, x5PhotoTrailer(serial, 320000000, 5, uId, -1)));
+        const auto none = camera::ReadClipMetadata(u1, &err);
+        CHECK(none && !none->guardFitted.has_value());
+        std::filesystem::remove(u1);
+        std::filesystem::remove(u2);
+    }
     // The pictures in that order, a photo a frame.
     {
         orbiscore::FisheyeDemux d;

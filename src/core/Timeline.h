@@ -166,7 +166,9 @@ public slots:
     // it's, else the one after it's (Off without one); a flat clip's stays Off.
     // Its stitch settings are those of the file's other clips, else the
     // nearest 360 clip's, its lens guard narrowed to what the file carries
-    // (`lensGuards`, stitch::ProbeClip's; a guard without a profile is None).
+    // (`lensGuards`, stitch::ProbeClip's; a guard without a profile is None)
+    // and set by the camera's own guard setting where the file records it
+    // (LensGuardProfiles::forNewClip).
     // Its sound: addClipSound with `audioStreams`, the source's audio stream count (AudioDemux::
     // countAudioStreams; 0 = none, or added by the caller -- a project load).
     // Returns the new clip's id.

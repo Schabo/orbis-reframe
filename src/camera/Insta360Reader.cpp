@@ -454,6 +454,11 @@ void readLensProfiles(ClipMetadata& out, const orbiscore::InsvMakerNotes& notes,
     out.bareLens = profile(notes, model, "bare");
     out.standardGuard = profile(notes, model, model.standardGuard);
     out.premiumGuard = profile(notes, model, model.premiumGuard);
+    if (notes.lens_guard_setting == 0 || notes.lens_guard_setting == 5)
+        out.guardFitted = notes.lens_guard_setting == 5;
+    else if (notes.lens_guard_setting >= 0)
+        std::fprintf(stderr, "[camera] lens-guard setting %lld in %s not known; not used\n",
+                     static_cast<long long>(notes.lens_guard_setting), out.path.c_str());
     if (notes.lens_profiles.empty() && !model.lensProfiles.empty())
         std::fprintf(stderr, "[camera] no lens-guard profiles in %s; taking the %s's\n",
                      out.path.c_str(), model.name);

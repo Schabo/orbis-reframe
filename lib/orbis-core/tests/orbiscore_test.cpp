@@ -2795,6 +2795,7 @@ std::vector<uint8_t> metadataRecord(bool rawGyro)
         Bytes crop; // window_crop_info: src 5376², dst 5312²
         crop.pbVarint(1, 5376).pbVarint(2, 5376).pbVarint(3, 5312).pbVarint(4, 5312);
         m.pbBytes(27, crop.b);
+        m.pbVarint(68, 5); // a lens guard fitted
     }
     m.pbVarint(24, 2468081984ull);
     m.pbDouble(25, 21.244);
@@ -3002,6 +3003,7 @@ void testTrailerRecords()
         CHECK(notes->lens_profiles.size() == 2);
         CHECK(notes->crop_dst_w == 5312.0);
         CHECK(notes->creation_time == 20250904193105ull);
+        CHECK(notes->lens_guard_setting == 5);
         const orbiscore::LensProfile* bare = orbiscore::FindLensProfile(*notes, "bare");
         CHECK(bare && near(bare->poly[1], 0.05, 1e-12) && near(bare->poly[3], 2e-8, 1e-20));
         CHECK(bare && bare->fov_deg == 200.0);
@@ -3061,6 +3063,7 @@ void testTrailerRecords()
     CHECK(td && td->gamma_mode.empty()); // no field 22
     const auto nd = orbiscore::ReadInsvMakerNotes(d);
     CHECK(nd && nd->crop_dst_w == 0.0); // no field 27
+    CHECK(nd && nd->lens_guard_setting == -1); // no field 68
     std::filesystem::remove(d);
 
     // No trailer (no magic), no moov: nothing, and no crash.

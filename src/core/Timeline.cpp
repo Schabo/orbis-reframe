@@ -266,7 +266,7 @@ ClipItem Timeline::newClip(int index, const QString &sourcePath, qint64 sourceDu
             c.seamColourBlend = m_clips.at(from).seamColourBlend;
             c.seamFlow = m_clips.at(from).seamFlow;
         }
-        c.lensGuard = lensGuards.usable(c.lensGuard);
+        c.lensGuard = lensGuards.forNewClip(c.lensGuard);
     }
     for (const ClipItem &o : m_clips) // the stitch and fine-tunes belong to the source file
         if (o.sourcePath == sourcePath) {

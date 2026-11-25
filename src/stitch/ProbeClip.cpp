@@ -31,7 +31,8 @@ bool ProbeClip(const std::string& clip_path, ClipProbe& out, std::string& err)
     out.height = clip->lensHeight;
     out.fps = clip->fps;
     out.duration_ms = clip->durationMs;
-    out.lens_guards = {clip->standardGuard.has_value(), clip->premiumGuard.has_value()};
+    out.lens_guards = {clip->standardGuard.has_value(), clip->premiumGuard.has_value(),
+                       clip->guardFitted};
     out.highlight_ms = clip->highlightMs;
     return true;
 }
