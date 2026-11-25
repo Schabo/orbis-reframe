@@ -16,35 +16,17 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
 
 ## Next, in order
 
-1. **Video effects** (*maintainer*): a library of effects in the left
-   sidebar's **Effects** tab, dragged onto a clip and adjusted in the
-   right sidebar. Built: the library, a clip's effects (`fx::ClipEffects`
-   in `src/core/ClipEffects.h`: at most one of each, in the pipeline's
-   fixed order, saved per clip) and the first effects, a colour look (a
-   creative LUT after the grade: one of the built-in looks (Black & White,
-   Deep sky, Teal & orange, Faded film; each a formula sampled into a LUT,
-   `src/core/LookPresets.*`), or a `.cube` of the user's,
-   copied into the project's `looks/`), sharpen (an unsharp mask on the
-   luma, its own pass, `sharpen.comp` and `src/core/Sharpen.h`, as it needs
-   the neighbouring pixels), a vignette and film grain, on every
-   render path (`clip_effects.glsl` and its C++ twin, right after the
-   grade). Lens filters are video
-   effects too: a **computed ND** filter -- the motion blur a longer
-   shutter would give, with a strength in stops and ND16 / ND32 / ND64
-   presets that multiply the exposure time the camera recorded per frame
-   (up to one frame interval), blurred along the stabilized view's motion
-   (from the gyro and the keyframes) and the scene's (optical flow, with
-   the view's motion alone as the fallback); a **graduated ND** that
-   darkens the sky against the horizon on the sphere, so it stays on the
-   sky however the view is reframed; diffusion / mist and a star filter.
-   The split screen layouts (side by side, stacked, grid) join the library
-   as **Layouts** to drop on a clip: a drop sets the clip's split, as its
-   **Split screen** section does. Split screen isn't an effect -- it is
-   several views into the sphere, not a filter on the flat picture -- so
-   it keeps its own section and its place in the clip. To settle when
-   they're built: a few effects (graduated ND) run on the sphere before
-   the reframe; room for the audio effects in the same tab; what preview
-   costs (the viewport shows the same blur as the export).
+1. **Interval photos as a timelapse** (*maintainer*): an Interval series of
+   `.insp` 360 photos (the X5's: a JPEG with both fisheyes, the lens
+   calibration and a moment of IMU in the trailer, GPS in the Exif) opens as
+   one clip -- a clip in parts, one photo per part, the parts opened as
+   playback reaches them -- and plays, stabilizes and exports like the
+   camera's own timelapse video. The clip's speed sets the pace. Each photo's
+   orientation is its own: level from the accelerometer, less the cornering
+   acceleration (the GPS speed times the gyro's turn rate), and the heading
+   from the GPS course between photos, so every stabilization mode works.
+   The photos' GPS is the clip's track for the map and gauges. The first
+   step of *360 photos* below.
 
 Everything else planned is under *Planned, not scheduled* below.
 
@@ -123,6 +105,35 @@ each is in its document in [`formats/`](formats/README.md).
 
 ## Planned, not scheduled
 
+- **Video effects** (*maintainer*), more of them: a library of effects in the left
+  sidebar's **Effects** tab, dragged onto a clip and adjusted in the
+  right sidebar. Built: the library, a clip's effects (`fx::ClipEffects`
+  in `src/core/ClipEffects.h`: at most one of each, in the pipeline's
+  fixed order, saved per clip) and the first effects, a colour look (a
+  creative LUT after the grade: one of the built-in looks (Black & White,
+  Deep sky, Teal & orange, Faded film; each a formula sampled into a LUT,
+  `src/core/LookPresets.*`), or a `.cube` of the user's,
+  copied into the project's `looks/`), sharpen (an unsharp mask on the
+  luma, its own pass, `sharpen.comp` and `src/core/Sharpen.h`, as it needs
+  the neighbouring pixels), a vignette and film grain, on every
+  render path (`clip_effects.glsl` and its C++ twin, right after the
+  grade). Lens filters are video
+  effects too: a **computed ND** filter -- the motion blur a longer
+  shutter would give, with a strength in stops and ND16 / ND32 / ND64
+  presets that multiply the exposure time the camera recorded per frame
+  (up to one frame interval), blurred along the stabilized view's motion
+  (from the gyro and the keyframes) and the scene's (optical flow, with
+  the view's motion alone as the fallback); a **graduated ND** that
+  darkens the sky against the horizon on the sphere, so it stays on the
+  sky however the view is reframed; diffusion / mist and a star filter.
+  The split screen layouts (side by side, stacked, grid) join the library
+  as **Layouts** to drop on a clip: a drop sets the clip's split, as its
+  **Split screen** section does. Split screen isn't an effect -- it is
+  several views into the sphere, not a filter on the flat picture -- so
+  it keeps its own section and its place in the clip. To settle when
+  they're built: a few effects (graduated ND) run on the sphere before
+  the reframe; room for the audio effects in the same tab; what preview
+  costs (the viewport shows the same blur as the export).
 - **The GPU stitch only** (*maintainer*): the CPU stitch fallback goes. It
   can't play 5.7K / 8K in real time, differs visibly from the GPU export,
   and doubles the work on every stitch and view feature. A graphics card
@@ -252,7 +263,7 @@ each is in its document in [`formats/`](formats/README.md).
   through the code.
 
 - **Audio effects**: audio effects in the same **Effects** library as the
-  video effects (see *Next*), after them: EQ, compressor, the existing
+  video effects (see *Video effects* above), after them: EQ, compressor, the existing
   noise filters as presets.
 - **Keyframes**: hold keys, a smooth curve through all keys (no overshoot on
   the field of view), a default easing for new keys.
@@ -271,7 +282,7 @@ each is in its document in [`formats/`](formats/README.md).
   picture.
 - **360 photos**: `.insp` photos as stills on the timeline, reframed with
   keyframes like a clip, and exported as a flat photo; later DNG and HDR
-  brackets.
+  brackets. An Interval series as a timelapse comes first (*Next*).
 - **Speed ramps**: speed keyframed inside a clip instead of one speed per
   clip. Every conversion between timeline and source time follows the
   curve: playback, export, keyframes, overlays, privacy regions,
