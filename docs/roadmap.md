@@ -21,12 +21,13 @@ The rules every change keeps are in [`architecture.md`](architecture.md).
    calibration and a moment of IMU in the trailer, GPS in the Exif) opens as
    one clip -- a clip in parts, one photo per part, the parts opened as
    playback reaches them -- and plays, stabilizes and exports like the
-   camera's own timelapse video. The clip's speed sets the pace. Each photo's
-   orientation is its own: level from the accelerometer, less the cornering
-   acceleration (the GPS speed times the gyro's turn rate), and the heading
-   from the GPS course between photos, so every stabilization mode works.
-   The photos' GPS is the clip's track for the map and gauges. The first
-   step of *360 photos* below.
+   camera's own timelapse video. The clip's speed sets the pace. Each photo
+   is levelled by the gravity the camera stores with it (its own estimate,
+   the vehicle's acceleration already out), so Horizon lock and Lean follow
+   work; the photos hold no heading (no gyro, and the GPS a single fix on
+   the samples), so Direction lock doesn't, and says why. The photos' GPS
+   is a track for the map and gauges only where its fixes change. The
+   first step of *360 photos* below.
 
 Everything else planned is under *Planned, not scheduled* below.
 
