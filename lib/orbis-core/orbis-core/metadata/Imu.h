@@ -37,7 +37,9 @@ struct OrientationSample {
     double up[3] = {0, 0, 0};
     // A horizontal direction fixed in the world (the flight controller's
     // north, which needn't be true north; the camera's fusion's, which turns
-    // as its heading drifts); all zero where the source knows only up.
+    // as its heading drifts); all zero where the source knows only up (a
+    // series of photos), which the stabilizer then takes from the camera
+    // itself: the view levels and turns with it.
     double north[3] = {0, 0, 0};
 };
 

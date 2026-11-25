@@ -187,10 +187,14 @@ struct ClipMetadata {
     // `hasMotion`: the file records how the camera moved -- an IMU
     // (`imuRateHz`), or in a timelapse the camera's own orientation per
     // frame in its place (`orientationPerFrame`; no IMU, so no
-    // accelerometer either).
+    // accelerometer either; in a series of photos up alone, `heading`).
     bool hasMotion = false;
     double imuRateHz = 0.0;
     bool orientationPerFrame = false;
+    // The motion data says which way the camera turned (a gyro, or an
+    // orientation with a heading): false for a series of photos, which hold
+    // only which way is up -- levelled, but no direction can be held.
+    bool heading = true;
     int64_t exposureRecords = 0; // every part's together
     double rollingShutterMs = 0.0;
     // When the video doesn't play in real time: seconds of the camera's

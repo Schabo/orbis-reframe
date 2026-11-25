@@ -675,17 +675,31 @@ void GyroStabilizer::buildOrientationOnly(const std::vector<OrientationSample>& 
         // Up and north in the sphere's axes, north made level against up.
         double u[3], n[3];
         am.apply(o.up, u);
-        am.apply(o.north, n);
         const double un = std::sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]);
         if (un < 0.5)
             continue;
         for (double& c : u)
             c /= un;
-        const double d = n[0] * u[0] + n[1] * u[1] + n[2] * u[2];
-        for (int k = 0; k < 3; ++k)
-            n[k] -= d * u[k];
-        const double nn = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        if (nn < 0.5) // no north (the source knows only up), or up along it
+        // A source that knows only up (a series of photos, ImuTrack::
+        // orientation): the heading is the camera's own -- its forward, else
+        // its top where it looks straight up or down -- so the view levels
+        // and turns with it, and no heading is held against it.
+        const bool upOnly = o.north[0] == 0.0 && o.north[1] == 0.0 && o.north[2] == 0.0;
+        double nn = 0.0;
+        for (const std::array<double, 3>& own : {std::array<double, 3>{0.0, 0.0, -1.0},
+                                                 std::array<double, 3>{0.0, 1.0, 0.0}}) {
+            if (upOnly)
+                std::copy(own.begin(), own.end(), n);
+            else
+                am.apply(o.north, n);
+            const double d = n[0] * u[0] + n[1] * u[1] + n[2] * u[2];
+            for (int k = 0; k < 3; ++k)
+                n[k] -= d * u[k];
+            nn = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+            if (nn >= 0.5 || !upOnly)
+                break;
+        }
+        if (nn < 0.5) // up along north
             continue;
         for (double& c : n)
             c /= nn;

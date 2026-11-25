@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
 #include <numbers>
 #include <utility>
 #include <vector>
@@ -328,6 +329,36 @@ ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& mod
         }
     }
     track.samples = std::move(tele.imu);
+    return track;
+}
+
+ImuTrack MakeInsvPhotoTrack(const std::vector<InsvPhotoGravity>& photos, double captureScale,
+                            const InsvModel& model)
+{
+    ImuTrack track;
+    if (!model.photoGravityAxes) {
+        std::fprintf(stderr, "insv: the axes of the %s's photo gravity aren't known; the photos "
+                             "aren't levelled\n",
+                     model.name);
+        return track;
+    }
+    if (photos.size() < 2)
+        return track;
+    track.axisMap = model.photoGravityAxes;
+    track.captureScale = captureScale;
+    uint64_t t0 = photos.front().takenUs;
+    for (const InsvPhotoGravity& p : photos)
+        t0 = std::min(t0, p.takenUs);
+    for (const InsvPhotoGravity& p : photos) {
+        OrientationSample o;
+        o.timestamp = p.takenUs;
+        std::copy(std::begin(p.up), std::end(p.up), o.up); // north stays 0: none
+        track.orientation.push_back(o);
+        track.frameTimes.push_back({p.videoSec, static_cast<double>(p.takenUs - t0) * 1e-6});
+    }
+    const FrameTime& f = track.frameTimes.front();
+    track.hasOffset = true;
+    track.offsetSec = f.trackSec - f.videoSec * captureScale;
     return track;
 }
 

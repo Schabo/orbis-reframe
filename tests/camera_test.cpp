@@ -692,7 +692,8 @@ bool writeX5Part(const std::string& path, int frames, int grey0, int fps = kFps)
 // preview before the metadata; in the metadata the model, field 24 (`taken`,
 // us), field 26 (`type`, the series' first photo `identify`), field 27's
 // whole 5376 window and the X5's calibration string (lens 1's centre in the
-// right half); the IMU record one gravity vector, repeated, no gyro.
+// right half); the IMU record one gravity vector, repeated, no gyro (in the
+// 56-byte samples of the video tests; the X5 writes 20-byte ones).
 std::vector<uint8_t> x5PhotoTrailer(const std::string& serial, uint64_t taken, uint64_t type,
                                     const std::string& identify)
 {
@@ -714,9 +715,11 @@ std::vector<uint8_t> x5PhotoTrailer(const std::string& serial, uint64_t taken, u
                   "1.25187707_0.26544470_-5.21495152_0.00000000_-0.00144929_-0.00059055_"
                   "0.00577204_0.01037207_-0.00314844_-0.00378038_-0.00842754_-0.02442369_10752_"
                   "5376_113_394240");
+    // 99 samples, not the X5's 100: 56-byte samples in a record whose size
+    // 20 doesn't divide too (ParseImu tells the layouts apart by it).
     Bytes imu;
-    for (int i = 0; i < 100; ++i) {
-        imu.u64(taken - 50000 + 1000 * i);
+    for (int i = 0; i < 99; ++i) {
+        imu.u64(taken - 49000 + 1000 * i);
         for (double v : {-0.99, 0.12, -0.06, 0.0, 0.0, 0.0})
             imu.f64(v);
     }
@@ -817,6 +820,23 @@ void testIntervalPhotos(const std::filesystem::path& dir)
             inOrder = inOrder && n < 6 && std::abs(mean(a) - (40 + 30 * order[n])) < 3 &&
                       std::abs(mean(b) - (40 + 30 * order[n])) < 3;
         CHECK(err.empty() && inOrder && n == 6);
+    }
+    // Levelled by each photo's gravity, timed by when it was taken; no heading.
+    CHECK(clip->hasMotion && clip->orientationPerFrame && !clip->heading);
+    {
+        const auto track = camera::ReadClipImu(photos[0]);
+        CHECK(track && track->samples.empty() && track->orientation.size() == 6 &&
+              track->axisMap == std::string("-z,-x,y"));
+        if (track && track->frameTimes.size() == 6) {
+            for (size_t i = 0; i < 6; ++i)
+                CHECK(std::abs(track->frameTimes[i].videoSec - std::llround(i * 1e6 / 30.0) * 1e-6) <
+                          1e-9 &&
+                      std::abs(track->frameTimes[i].trackSec -
+                               (takenUs[order[i]] - takenUs[0]) * 1e-6) < 1e-9);
+            const orbiscore::OrientationSample& o = track->orientation[0];
+            CHECK(o.up[0] == -0.99 && o.up[1] == 0.12 && o.up[2] == -0.06 && o.north[0] == 0.0 &&
+                  o.north[1] == 0.0 && o.north[2] == 0.0);
+        }
     }
     // Probed for the media pool, the photos follow on to the ms: no gap.
     {

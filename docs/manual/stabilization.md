@@ -182,6 +182,19 @@ clip:
 [Gyro sync](#gyro-sync)): there is nothing to fine-tune, since the camera
 times each frame's orientation itself.
 
+### Interval photos
+
+A series of X5 Interval photos (see [Getting started](getting-started.md))
+keeps only which way was up when each photo was taken, worked out by the
+camera with the bike's own acceleration already taken out, so a photo
+taken leaning through a corner still levels true. **Horizon lock**
+levels every photo; **Lean follow** smooths the lean across them. The
+photos don't record which way the camera turned, so the view turns with
+the camera, and **Direction lock** (and **Lock direction** under
+**Custom**) is greyed out for them. The camera's small sideways swings
+between photos stay in the picture. The smoothing sliders work in the time
+you watch, as in a timelapse: at 30 photos a second, 1 s spans 30 photos.
+
 ## Which clip it changes
 
 The setting belongs to one clip on the video track: the clip you selected,

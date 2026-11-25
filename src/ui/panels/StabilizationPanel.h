@@ -53,6 +53,11 @@ public:
     void setNoClip();
     // Whether a setting has been copied (enables Paste).
     void setCanPaste(bool canPaste);
+    // The clip's motion data has no heading (a series of photos holds only
+    // which way is up): Direction lock and Custom's Lock direction can't
+    // hold one, so they're greyed out with `why` as their tooltip. Empty
+    // offers them again. Does not emit.
+    void setNoHeading(const QString &why);
 
 signals:
     // mode is the picker choice; nativeConfig is the orbiscore::StabConfig for that
@@ -87,6 +92,7 @@ private:
     QDoubleSpinBox *m_rollOffset = nullptr;
     QCheckBox *m_autoLevel = nullptr; // Custom: StabConfig::autoLevel
     QCheckBox *m_customLockDirection = nullptr; // Custom: StabConfig::lockDirection
+    QString m_lockDirectionTip; // its own tooltip, while setNoHeading's reason shows
     QWidget *m_directionRow = nullptr; // Direction lock, or Custom holding a direction
     QLabel *m_directionStatus = nullptr;
     float m_directionSec = 0.0f; // the shown clip's StabConfig::directionSec, passed back

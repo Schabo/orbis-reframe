@@ -421,8 +421,10 @@ v1.11.10):
   frame at 30 fps (the time between them, the median gap, is the clip's
   timelapse interval), each lens's half by its calibrated centre. FFmpeg
   reads a photo as `jpeg_pipe` (one of the 77 as `mjpeg`), with a low
-  probe score: its Exif runs past the probe. Single photos don't open
-  yet.
+  probe score: its Exif runs past the probe. Each photo's gravity, mapped
+  by `InsvModel::photoGravityAxes`, is the clip's orientation track, up
+  only (`MakeInsvPhotoTrack`): levelled photo by photo, no heading.
+  Single photos don't open yet.
 
 ## 4. The `inst` trailer — framing
 

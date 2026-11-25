@@ -32,6 +32,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QStandardItemModel>
 #include <QDateTime>
 #include <QLocale>
 #include <QTimeZone>
@@ -1276,6 +1277,11 @@ void testMediaInfoPhotoSeries(SettingsSidebar &bar)
     CHECK(!shows("Recording") && !shows("Files") && !shows("Frames"));
     CHECK(shows("Interval photos") && shows("2 × 5952×5952 fisheye") && shows("11904×5952"));
     CHECK(shows("30 fps") && shows("A photo every 10.4 s") && shows("JPEG"));
+    CHECK(shows("Not recorded"));
+    m.orientationPerFrame = true; // its gravity, no heading
+    m.heading = false;
+    panel->setInfo(m);
+    CHECK(shows("Level per photo"));
     // As the project knows it: one photo gone.
     const QList<RecordingPart> known = {
         {QString::fromStdString(m.path), 0, 33, false},
@@ -1289,6 +1295,30 @@ void testMediaInfoPhotoSeries(SettingsSidebar &bar)
     panel->setInfo(m);
     CHECK(shows("Starts in") && shows("IMG_20260815_081045_00_001.insp\n⚠ Not here"));
     panel->setNoClip();
+}
+
+// A clip without a heading (a series of photos): Direction lock and
+// Custom's Lock direction greyed out, with the reason; offered again for
+// the next clip.
+void testStabilizationNoHeading(SettingsSidebar &bar)
+{
+    StabilizationPanel *panel = bar.stabilization();
+    auto *mode = panel->findChild<QComboBox *>(QStringLiteral("stabilizationMode"));
+    auto *lock = panel->findChild<QCheckBox *>(QStringLiteral("stabilizationCustomLockDirection"));
+    CHECK(mode && lock);
+    if (!mode || !lock)
+        return;
+    auto *model = qobject_cast<QStandardItemModel *>(mode->model());
+    const int dir = mode->findData(int(StabilizationPanel::Mode::DirectionLock));
+    const QString ownTip = lock->toolTip();
+    QSignalSpy changed(panel, &StabilizationPanel::modeChanged);
+    panel->setNoHeading(QStringLiteral("no heading"));
+    CHECK(model && !model->item(dir)->isEnabled() && model->item(dir)->toolTip() == "no heading");
+    CHECK(!lock->isEnabled() && lock->toolTip() == "no heading");
+    panel->setNoHeading(QString());
+    CHECK(model && model->item(dir)->isEnabled() && model->item(dir)->toolTip().isEmpty());
+    CHECK(lock->isEnabled() && lock->toolTip() == ownTip);
+    CHECK(changed.isEmpty());
 }
 
 int main(int argc, char **argv)
@@ -1326,6 +1356,7 @@ int main(int argc, char **argv)
     testMediaInfoProfile(bar);
     testMediaInfoParts(bar);
     testMediaInfoPhotoSeries(bar);
+    testStabilizationNoHeading(bar);
     testProjectSettingsDialog();
 
     if (const QByteArray shot = qgetenv("ORBIS_SETTINGS_SHOT"); !shot.isEmpty()) {

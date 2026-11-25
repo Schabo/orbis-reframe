@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSlider>
+#include <QStandardItemModel>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -403,6 +404,20 @@ void StabilizationPanel::setNoClip()
 {
     setState(Mode::Off, orbiscore::StabConfig::preset(orbiscore::StabMode::LeanFollow));
     setBodyEnabled(false);
+}
+
+void StabilizationPanel::setNoHeading(const QString &why)
+{
+    if (m_lockDirectionTip.isEmpty())
+        m_lockDirectionTip = m_customLockDirection->toolTip();
+    const QSignalBlocker block(m_mode);
+    if (auto *model = qobject_cast<QStandardItemModel *>(m_mode->model()))
+        if (QStandardItem *item = model->item(m_mode->findData(int(Mode::DirectionLock)))) {
+            item->setEnabled(why.isEmpty());
+            item->setToolTip(why);
+        }
+    m_customLockDirection->setEnabled(why.isEmpty());
+    m_customLockDirection->setToolTip(why.isEmpty() ? m_lockDirectionTip : why);
 }
 
 void StabilizationPanel::setCanPaste(bool canPaste)

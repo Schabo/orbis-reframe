@@ -113,6 +113,7 @@ bool ProbeMediaInfo(const std::string& path, MediaInfo& out, std::string& err) {
         out.firmware = clip->firmware;
         out.imuRateHz = clip->imuRateHz;
         out.orientationPerFrame = clip->orientationPerFrame;
+        out.heading = clip->heading;
         out.exposureRecords = clip->exposureRecords;
         out.rollingShutterMs = clip->rollingShutterMs;
         out.captureFps = clip->captureFps;

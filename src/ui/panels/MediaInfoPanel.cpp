@@ -378,12 +378,17 @@ void MediaInfoPanel::setInfo(const camera::MediaInfo &m, bool previewed,
         addValue(tr("Model"), QString::fromStdString(m.cameraModel));
         addValue(tr("Serial"), QString::fromStdString(m.serialNumber));
         addValue(tr("Firmware"), QString::fromStdString(m.firmware));
-        addValue(tr("Motion data"),
-                 m.imuRateHz > 0          ? tr("~%1 Hz").arg(qRound(m.imuRateHz))
-                 : m.orientationPerFrame ? tr("Orientation per frame")
-                                         : tr("Not recorded"),
-                 tr("How often the camera recorded its movement, which stabilization works "
-                    "from."));
+        if (m.photoCount > 0 && m.orientationPerFrame && !m.heading)
+            addValue(tr("Motion data"), tr("Level per photo"),
+                     tr("Which way was up when each photo was taken, which levels them. Not "
+                        "which way the camera turned."));
+        else
+            addValue(tr("Motion data"),
+                     m.imuRateHz > 0          ? tr("~%1 Hz").arg(qRound(m.imuRateHz))
+                     : m.orientationPerFrame ? tr("Orientation per frame")
+                                             : tr("Not recorded"),
+                     tr("How often the camera recorded its movement, which stabilization works "
+                        "from."));
         QString gps = tr("Not recorded");
         if (m.gpsRecords > 0) {
             gps = m.gpsRateHz > 0 ? tr("~%1 Hz").arg(qRound(m.gpsRateHz)) : tr("Recorded");

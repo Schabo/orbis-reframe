@@ -6,6 +6,7 @@
 #include <orbis-core/insta360/InsvTrailer.h>
 
 #include <string>
+#include <vector>
 
 namespace orbiscore {
 
@@ -44,5 +45,23 @@ namespace orbiscore {
 // (docs/formats/insta360-x5.md §3.5); without that map, or the frames'
 // times, the track is empty and that is logged.
 ImuTrack MakeInsvImuTrack(InsvTelemetry&& tele, double fps, const InsvModel& model);
+
+// A photo of a series and the gravity the camera stored with it (record
+// 0x300: one vector repeated, in the sensor's axes, the vehicle's
+// acceleration already out; docs/formats/insta360-x5.md §3.6): when it was
+// taken (device µs, field 24) and where it plays (video seconds).
+struct InsvPhotoGravity {
+    uint64_t takenUs = 0;
+    double up[3] = {0, 0, 0};
+    double videoSec = 0.0;
+};
+
+// A series of photos' track, orientation only: each photo's up, mapped by
+// InsvModel::photoGravityAxes, and no north -- the photos hold no heading --
+// each timed by when it was taken (ImuTrack::frameTimes), at `captureScale`
+// seconds of the camera's clock per video second. Empty without that map
+// (logged) or with fewer than two photos.
+ImuTrack MakeInsvPhotoTrack(const std::vector<InsvPhotoGravity>& photos, double captureScale,
+                            const InsvModel& model);
 
 } // namespace orbiscore

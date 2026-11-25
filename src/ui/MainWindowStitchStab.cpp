@@ -362,6 +362,11 @@ void MainWindow::syncStabilizationPanel()
         const auto clip = camera::ReadClipMetadata(c->sourcePath.toStdString());
         if (clip && !clip->hasMotion)
             why = tr("This clip has no motion data to stabilize with.");
+        m_stabilizationPanel->setNoHeading(
+            clip && clip->hasMotion && !clip->heading
+                ? tr("The photos record only which way is up, not which way the camera "
+                     "turned: they're levelled, and the view turns with the camera.")
+                : QString());
     }
     m_stabilizationPanel->setNotApplicable(why);
     if (!c || !why.isEmpty()) {

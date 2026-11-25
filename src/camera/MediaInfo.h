@@ -61,8 +61,10 @@ struct MediaInfo {
     std::string serialNumber;
     std::string firmware;
     double imuRateHz = 0.0; // 0 if the file has no IMU track
-    // No IMU, but the camera's orientation per frame (ClipMetadata::orientationPerFrame).
+    // No IMU, but the camera's orientation per frame (ClipMetadata::orientationPerFrame),
+    // in a series of photos which way is up alone (`heading` false).
     bool orientationPerFrame = false;
+    bool heading = true;
     int64_t exposureRecords = 0;
     double rollingShutterMs = 0.0;
     // See ClipMetadata::captureFps / timelapseIntervalSec; 0 when the clip

@@ -14,8 +14,10 @@ clip, a photo a frame at 30 frames a second, in the order they were taken.
 The clip's speed (see [The timeline](timeline.md)) sets how fast the photos
 go by. Each photo is a 72-megapixel picture decoded on the processor,
 several at once, so the series plays at about ten photos a second rather
-than its full 30; exporting it works at full quality. It isn't [stabilized](stabilization.md) yet. Single
-photos and the other photo modes don't open yet.
+than its full 30; exporting it works at full quality. Each photo is levelled by the up the camera stored
+with it ([stabilization](stabilization.md#interval-photos)); they don't
+record which way the camera turned, so Direction lock isn't available for
+them. Single photos and the other photo modes don't open yet.
 
 The **Insta360 X6** is supported experimentally: its clips open, stitch,
 [stabilize](stabilization.md) and export, including the 10-bit I-Log and

@@ -600,6 +600,13 @@ CameraReader::Result readPhotoSeries(const std::vector<orbiscore::InsvStreamInfo
     out.recordedLocal = LocalTimeFromDigits(std::to_string(notes.creation_time));
     if (out.recordedLocal.empty())
         out.recordedLocal = nameTime(out.path);
+    // Each photo's gravity (record 0x300), where the model's axes for it are
+    // known: levelled photo by photo, no heading (readImu).
+    if (const auto tele = orbiscore::ReadInsvTelemetry(out.path, 1, model.telemetryTickUs);
+        tele && !tele->imu.empty() && model.photoGravityAxes && photos.size() >= 2) {
+        out.hasMotion = out.orientationPerFrame = true;
+        out.heading = false;
+    }
     std::fprintf(stderr, "[camera] %s: an Interval series of %zu photos from here, %.1f s apart\n",
                  out.path.c_str(), photos.size(), out.timelapseIntervalSec);
     return CameraReader::Result::Read;
@@ -748,6 +755,27 @@ CameraReader::Result Insta360Reader::read(const std::vector<orbiscore::InsvStrea
 
 std::optional<orbiscore::ImuTrack> Insta360Reader::readImu(const ClipMetadata& clip) const {
     const orbiscore::InsvModel& model = orbiscore::FindInsvModel(clip.model);
+    if (clip.photoCount > 0) {
+        if (!clip.hasMotion)
+            return std::nullopt;
+        // Each photo's gravity and when it was taken, where it plays.
+        std::vector<orbiscore::InsvPhotoGravity> photos;
+        for (const Part& part : clip.parts) {
+            const auto tele = orbiscore::ReadInsvTelemetry(part.path, 1, model.telemetryTickUs);
+            if (!tele || tele->imu.empty() || tele->first_frame_timestamp == 0) {
+                std::fprintf(stderr, "[camera] no gravity in %s, a photo of %s; left out of its "
+                                     "levelling\n",
+                             part.path.c_str(), clip.path.c_str());
+                continue;
+            }
+            orbiscore::InsvPhotoGravity g;
+            g.takenUs = tele->first_frame_timestamp;
+            std::copy(std::begin(tele->imu[0].accel), std::end(tele->imu[0].accel), g.up);
+            g.videoSec = static_cast<double>(part.startUs) * 1e-6;
+            photos.push_back(g);
+        }
+        return orbiscore::MakeInsvPhotoTrack(photos, clip.captureScale, model);
+    }
     auto tele = orbiscore::ReadInsvTelemetry(clip.path, 0, model.telemetryTickUs);
     if (!tele || !clip.hasMotion)
         return std::nullopt;

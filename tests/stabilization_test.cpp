@@ -935,6 +935,67 @@ void testTimelapseOrientation()
     CHECK(none.orientation.empty() && none.samples.empty());
 }
 
+// A series of photos levels by the gravity each stores (up only, in the X5
+// photo's axes "-z,-x,y"), photo by photo through their own times, and
+// turns with the camera: no heading is held, whatever the mode.
+void testPhotoSeriesLevel()
+{
+    using namespace lapse;
+    const orbiscore::InsvModel &x5 = orbiscore::FindInsvModel("Insta360 X5");
+    constexpr int kPhotos = 40;
+    constexpr double kFps = 30.0;
+    // Taken 10 to 11.5 s apart; the truth turns 0.02 rad/s and sways.
+    std::vector<double> taken;
+    std::vector<orbiscore::InsvPhotoGravity> photos;
+    double t = 0.0;
+    for (int i = 0; i < kPhotos; ++i) {
+        taken.push_back(t);
+        const M3 b = truth(t);
+        const double up[3] = {b[1][0], b[1][1], b[1][2]}; // world up in the body's sphere axes
+        orbiscore::InsvPhotoGravity g;
+        g.takenUs = kStartUs + uint64_t(std::llround(t * 1e6));
+        // Sphere -> the photo's sensor ("-z,-x,y"): x = -Y, y = Z, z = -X.
+        g.up[0] = -up[1], g.up[1] = up[2], g.up[2] = -up[0];
+        g.videoSec = std::llround(i * 1e6 / kFps) * 1e-6;
+        photos.push_back(g);
+        t += i % 3 == 2 ? 11.5 : 10.3;
+    }
+    const double scale = 10.3 * kFps;
+    const orbiscore::ImuTrack track = orbiscore::MakeInsvPhotoTrack(photos, scale, x5);
+    CHECK(track.samples.empty() && track.orientation.size() == size_t(kPhotos) &&
+          track.axisMap == x5.photoGravityAxes && track.frameTimes.size() == size_t(kPhotos));
+    CHECK(track.hasOffset && std::fabs(track.offsetSec) < 1e-12 && track.captureScale == scale);
+    for (int i : {1, 5, kPhotos - 1})
+        CHECK(std::fabs(track.frameTimes[size_t(i)].trackSec - taken[size_t(i)]) < 1e-6);
+
+    for (orbiscore::StabMode mode : {orbiscore::StabMode::LeanFollow, orbiscore::StabMode::HorizonLock,
+                                     orbiscore::StabMode::DirectionLock}) {
+        orbiscore::GyroStabilizer g;
+        g.build(track, orbiscore::StabConfig::preset(mode));
+        CHECK(g.ready());
+        double tilt = 0.0, minYaw = 1e9, maxYaw = -1e9;
+        for (int i = 0; i < kPhotos; ++i) {
+            float c[3][3];
+            g.correctionMatrix(photos[size_t(i)].videoSec, c);
+            const M3 view = mul(truth(taken[size_t(i)]), fromFloat(c));
+            tilt = std::max(tilt, std::hypot(view[0][1], view[2][1]));
+            const double yaw = std::atan2(-view[0][2], -view[2][2]);
+            minYaw = std::min(minYaw, yaw);
+            maxYaw = std::max(maxYaw, yaw);
+        }
+        // Lean follow keeps a slow lean (the sway, 0.1 rad over 30 s of the
+        // camera's clock, is a few photos long); the locks level it.
+        if (mode != orbiscore::StabMode::LeanFollow)
+            CHECK(tilt < 1e-4);
+        CHECK(maxYaw - minYaw > 1.0); // it turns with the camera's 0.02 rad/s
+    }
+
+    // No map for the photos' axes (a model not measured): no track.
+    orbiscore::InsvModel unknown = x5;
+    unknown.photoGravityAxes = nullptr;
+    CHECK(orbiscore::MakeInsvPhotoTrack(photos, scale, unknown).orientation.empty());
+}
+
 void testPerClipStabilization()
 {
     const orbiscore::StabConfig lean =
@@ -1041,6 +1102,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv); // Project's timers want one (never run here)
     testStabConfig();
     testTimelapseOrientation();
+    testPhotoSeriesLevel();
     testPerClipStabilization();
     return modeltest::finish("stabilization_test");
 }
