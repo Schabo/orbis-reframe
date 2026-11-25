@@ -43,4 +43,12 @@ bool writeVideo(const std::string &path, const VideoSpec &spec);
 // H.264 encoder here.
 std::vector<uint8_t> encodeH264Picture(int width, int height, uint8_t luma);
 
+// A baseline JPEG, full-range 4:2:0 (yuvj420p, as cameras write them), of
+// `width` x `height` with pixel (x, y)'s luma `luma(x, y)` and neutral
+// chroma, followed by `trailer` (an Insta360 photo's `inst` record block).
+// False when FFmpeg has no MJPEG encoder or the file can't be written.
+bool writeJpeg(const std::string &path, int width, int height,
+               const std::function<uint8_t(int x, int y)> &luma,
+               const std::vector<uint8_t> &trailer = {});
+
 } // namespace testmedia

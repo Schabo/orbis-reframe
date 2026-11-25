@@ -71,6 +71,8 @@ struct Part {
     std::vector<LensSource> lenses; // in lens order, as Lens::source
     int64_t startUs = 0;      // its first frame, in clip time
     int64_t durationUs = 0;
+    // A photo of a series: one frame, shown for durationUs (ClipPart::stillUs).
+    bool still = false;
     // The same lenses in the camera's low-res proxy of this part, in lens
     // order: one stream, each lens its half of the frame. Only the picture
     // comes from it -- calibration, motion and timing stay the part's own.
@@ -113,7 +115,7 @@ struct ClipMetadata {
     {
         std::vector<orbiscore::ClipPart> s;
         for (const Part& p : parts)
-            s.push_back({p.startUs, p.lenses});
+            s.push_back({p.startUs, p.lenses, p.still ? p.durationUs : 0});
         return s;
     }
     // The same from the camera's proxies (Part::proxyLenses); empty unless
@@ -124,7 +126,7 @@ struct ClipMetadata {
         for (const Part& p : parts) {
             if (p.proxyLenses.empty())
                 return {};
-            s.push_back({p.startUs, p.proxyLenses});
+            s.push_back({p.startUs, p.proxyLenses, p.still ? p.durationUs : 0});
         }
         return s;
     }

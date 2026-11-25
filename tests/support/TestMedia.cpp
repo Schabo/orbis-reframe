@@ -185,4 +185,57 @@ std::vector<uint8_t> encodeH264Picture(int width, int height, uint8_t luma)
     return out;
 }
 
+bool writeJpeg(const std::string &path, int width, int height,
+               const std::function<uint8_t(int x, int y)> &luma,
+               const std::vector<uint8_t> &trailer)
+{
+    const AVCodec *enc = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    if (!enc)
+        return false;
+    AVCodecContext *ctx = avcodec_alloc_context3(enc);
+    ctx->width = width;
+    ctx->height = height;
+    ctx->time_base = AVRational{1, 25};
+    ctx->pix_fmt = AV_PIX_FMT_YUVJ420P;
+    ctx->color_range = AVCOL_RANGE_JPEG;
+    ctx->flags |= AV_CODEC_FLAG_QSCALE;
+    ctx->global_quality = FF_QP2LAMBDA * 2; // near lossless: the tests read the greys back
+    if (avcodec_open2(ctx, enc, nullptr) < 0) {
+        avcodec_free_context(&ctx);
+        return false;
+    }
+    AVFrame *f = av_frame_alloc();
+    f->format = ctx->pix_fmt;
+    f->width = width;
+    f->height = height;
+    f->quality = ctx->global_quality;
+    av_frame_get_buffer(f, 0);
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            f->data[0][y * f->linesize[0] + x] = luma(x, y);
+    for (int p = 1; p < 3; ++p)
+        for (int y = 0; y < height / 2; ++y)
+            std::fill_n(f->data[p] + y * f->linesize[p], width / 2, uint8_t(128));
+    f->pts = 0;
+    std::vector<uint8_t> out;
+    AVPacket *pkt = av_packet_alloc();
+    for (AVFrame *in : {f, static_cast<AVFrame *>(nullptr)}) {
+        avcodec_send_frame(ctx, in);
+        while (avcodec_receive_packet(ctx, pkt) == 0) {
+            out.insert(out.end(), pkt->data, pkt->data + pkt->size);
+            av_packet_unref(pkt);
+        }
+    }
+    av_packet_free(&pkt);
+    av_frame_free(&f);
+    avcodec_free_context(&ctx);
+    if (out.empty())
+        return false;
+    std::ofstream file(path, std::ios::binary);
+    file.write(reinterpret_cast<const char *>(out.data()), static_cast<std::streamsize>(out.size()));
+    file.write(reinterpret_cast<const char *>(trailer.data()),
+               static_cast<std::streamsize>(trailer.size()));
+    return static_cast<bool>(file);
+}
+
 } // namespace testmedia

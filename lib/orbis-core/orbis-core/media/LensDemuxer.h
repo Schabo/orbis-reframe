@@ -17,10 +17,14 @@
 // lens on the ONE X2), one persistent decoder per fisheye video stream
 // ("lens"), a FIFO of decoded frames per lens, and the strictly-forward pump
 // that fills them. A lens's read pumps only its own file. A clip in several
-// parts (orbiscore::ClipPart, a recording the camera split into files) plays them
-// back to back with one set of decoders: at a part's end they are drained
-// and go on into the next part's files, whose frames are handed out in clip
-// time; a seek goes to the part the target is in.
+// parts (orbiscore::ClipPart, a recording the camera split into files, or a
+// series of photos, one a part) plays them back to back with one set of
+// decoders: at a part's end they are drained and go on into the next part's
+// files, whose frames are handed out in clip time; a seek goes to the part
+// the target is in. A part's files are opened when the clip first needs
+// them, and no more than kMaxOpenFiles stay open (the least recently used
+// closed, never the part being read's), so a series of a thousand photos
+// doesn't hold a thousand files.
 // Two lenses in one stream (a camera's proxy: both fisheyes side by side)
 // share one decoder: each pair hands out its frame twice (a new reference),
 // and each lens's LensSource::rect says which part of it is that lens's.
@@ -91,8 +95,15 @@ public:
     bool open(const std::vector<LensSource>& lenses, const DecoderSetup& setup, std::string& err);
     // Opens a clip in parts, in time order: the decoders as for the first
     // part's lenses, which every other part's must match (the same codec,
-    // picture and time base). lens()'s length is then the whole clip's.
+    // picture and time base). lens()'s length is then the whole clip's. The
+    // first and the last part are opened and checked here; any other when a
+    // seek or a read first reaches it, which then fails as open() would
+    // (the part and file named) if it doesn't open or match.
     bool open(const std::vector<ClipPart>& parts, const DecoderSetup& setup, std::string& err);
+    // The most files kept open at once (more when one part has more).
+    static constexpr int kMaxOpenFiles = 8;
+    // The files open now; for tests.
+    int openFileCount() const;
     void close();
 
     int lensCount() const { return m_shared ? 2 : static_cast<int>(m_dec.size()); }
@@ -141,36 +152,52 @@ private:
     // The decoder lens `i` is read with: 0 for both of a shared pair.
     int decoderOf(int i) const { return m_shared && i == 1 ? 0 : i; }
 
-    // One part's lenses: per lens its input and stream, and where the part
-    // starts in clip time in that stream's time base.
+    // One part's lenses (`sources`, one for a shared pair), and once the
+    // part is opened (`opened`): per lens its input and stream, and where the
+    // part starts in clip time in that stream's time base. `still`: a still
+    // picture, its frame at `startUs`, for `durationUs` (ClipPart::stillUs).
     struct Part {
         int64_t startUs = 0;
+        int64_t durationUs = 0;
+        std::vector<LensSource> sources;
+        bool opened = false;
+        bool still = false;
         std::vector<int> lensInput;
         std::vector<int> lensStream;
         std::vector<int64_t> offset;
     };
-    // A keyframe's time, in lens 0's time base on the clip's time line.
+    // No keyframe (partKeyframes).
     static constexpr int64_t kNoKeyframe = INT64_MIN;
 
-    // One opened file.
+    // One file a part reads, open (`fmt`) or closed again to keep the files
+    // open few (kMaxOpenFiles); `lastUse` orders them for that.
     struct Input {
         std::string path;
         AVFormatContext* fmt = nullptr;
         bool drainStarted = false; // read to its end, its decoders took the flush
+        uint64_t lastUse = 0;
     };
 
     void clearFifos();
     void resetDecoders(); // flush + clear fifos, keep contexts
-    // The input for `path`, opened now if it isn't yet; -1 with `err` set.
-    int openInput(const std::string& path, std::string& err);
+    // The input for `path`, opened now if it isn't (again); -1 with `err`
+    // set. Closes inputs over kMaxOpenFiles, but not the part being read's
+    // or `keep`'s.
+    int openInput(const std::string& path, std::string& err, const Part* keep = nullptr) const;
+    // Closes the least recently used inputs over kMaxOpenFiles, but not the
+    // part being read's, `keep`'s or input `also`.
+    void closeSpareInputs(const Part* keep, int also) const;
     // A decoder for stream `streamIndex` of input `input`, as the next lens.
     bool addLens(int input, int streamIndex, const DecoderSetup& setup, std::string& err);
     bool finishOpen(std::string& err);
-    // Opens `lenses` (a part's) and the stream each names, as `part`; with
-    // `setup` a decoder per lens (the first part), else checked against the
-    // first part's lenses. On failure `failedPath` is the file it was at.
-    bool openPart(const std::vector<LensSource>& lenses, const DecoderSetup* setup, Part& part,
-                  std::string& failedPath, std::string& err);
+    // Opens `part`'s files and the stream each lens names; with `setup` a
+    // decoder per lens (the first part), else checked against the decoders'
+    // streams. On failure `failedPath` is the file it was at.
+    bool openPart(Part& part, const DecoderSetup* setup, std::string& failedPath,
+                  std::string& err) const;
+    // Part `part` opened (again, if its files were closed), for reading or
+    // its index; false with `err` set as open() would have it.
+    bool ensurePart(size_t part, std::string& err) const;
     size_t partAt(int64_t timestampMs) const;
     size_t partAtUs(int64_t us) const;
     void usePart(size_t part);
@@ -178,7 +205,8 @@ private:
     // there is none (or on error, `err` set).
     bool nextPart(std::string& err);
     // Lens 0's keyframes of part `part` at or before / after clip time
-    // `timestampMs`; kNoKeyframe where its index has none.
+    // `timestampMs`, in clip µs; kNoKeyframe where its index has none (a
+    // still's one frame is one).
     void partKeyframes(size_t part, int64_t timestampMs, int64_t& before, int64_t& after) const;
     // Around `timestampMs` across the parts: a part's last keyframe and the
     // next part's first count for a target near the join.
@@ -204,9 +232,12 @@ private:
     void dropUnpaired(int lens, int64_t otherUs);
     AVFrame* popFront(int lens);
 
-    std::vector<Input> m_inputs;
+    // Opened as the clip needs them, from const keyframe lookups too: a
+    // cache of the files, not the reading state.
+    mutable std::vector<Input> m_inputs;
+    mutable uint64_t m_useTick = 0;
     AVPacket* m_pkt = nullptr;
-    std::vector<Part> m_parts;
+    mutable std::vector<Part> m_parts;
     size_t m_part = 0;                   // the part being read
     std::vector<int> m_lensInput;        // lens -> m_inputs index, in the current part
     std::vector<int> m_videoStreamIndex; // lens -> AVStream index in its input, likewise

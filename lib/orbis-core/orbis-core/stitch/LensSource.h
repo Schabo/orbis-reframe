@@ -31,11 +31,16 @@ struct LensSource {
 
 // A stretch of a clip with files of its own: a recording longer than the
 // camera's file limit is split over several files, which play back to back
-// as one clip. `startUs` is where its first frame sits in the clip; every
-// part has the same lenses, coded alike.
+// as one clip, or a series of photos, each a part. `startUs` is where its
+// first frame sits in the clip; every part has the same lenses, coded alike.
+// `stillUs`: the part is a still picture (a photo of a series), whose file
+// has no time of its own -- its one frame shows from `startUs` for this
+// long; 0 = a video, timed by its file. The parts of a clip are all stills
+// or all videos.
 struct ClipPart {
     int64_t startUs = 0;
     std::vector<LensSource> lenses;
+    int64_t stillUs = 0;
 };
 
 } // namespace orbiscore

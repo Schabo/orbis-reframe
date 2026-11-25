@@ -778,6 +778,141 @@ void testFrameState()
         av_free(f);
 }
 
+// A series of photos (an Insta360 Interval series: JPEGs, both lenses side
+// by side), one a part: each photo at its part's start to the microsecond,
+// whatever the image demuxer's own rate (25 a second for jpeg_pipe); on through all of them, seeks into
+// any, with only a few files open at once; a photo gone or unlike the first
+// fails when it is reached, as open() would, and the rest still reads.
+void testPhotoSeries(const std::string& dir)
+{
+    std::printf("  a series of photos, one a part: their times, seeks, few files open\n");
+    constexpr int kPhotos = 20;
+    constexpr int64_t kFrameUs = 33333; // 30 a second
+    const auto startUs = [](int i) { return int64_t(std::llround(i * 1e6 / 30.0)); };
+    const orbiscore::LensRect left{0.0, 0.0, 0.5, 1.0}, right{0.5, 0.0, 0.5, 1.0};
+    std::vector<std::string> paths;
+    std::vector<orbiscore::ClipPart> parts;
+    for (int i = 0; i < kPhotos; ++i) {
+        const std::string path = dir + "/photo_" + std::to_string(i) + ".insp";
+        if (!testmedia::writeJpeg(path, 128, 64, [i](int x, int) {
+                return static_cast<uint8_t>(x < 64 ? greyA(i) : greyB(i));
+            })) {
+            std::printf("  (no MJPEG encoder: skipped)\n");
+            return;
+        }
+        paths.push_back(path);
+        parts.push_back({startUs(i), {{path, 0, left}, {path, 0, right}}, kFrameUs});
+    }
+    // Full-range JPEG greys come back as they were; away from the halves' seam.
+    const auto photoOf = [](const orbiscore::Image& img, int (*grey)(int)) {
+        double sum = 0;
+        int n = 0;
+        for (int y = 0; y < img.h; ++y)
+            for (int x = 4; x < img.w - 4; ++x, ++n)
+                sum += img.rgb[(y * img.w + x) * 3 + 1];
+        int best = -1;
+        for (int i = 0; i < kPhotos; ++i)
+            if (best < 0 || std::abs(grey(i) - sum / n) < std::abs(grey(best) - sum / n))
+                best = i;
+        return best;
+    };
+    const auto next = [&](orbiscore::FisheyeDemux& d, int64_t* us = nullptr) {
+        orbiscore::Image a, b;
+        orbiscore::FramePts pts;
+        std::string err;
+        if (!d.readNextPair(a, b, &pts, err))
+            return err.empty() ? -1 : -2;
+        if (us)
+            *us = pts.us;
+        const int i = photoOf(a, greyA);
+        return photoOf(b, greyB) == i ? i : -3;
+    };
+
+    orbiscore::FisheyeDemux d;
+    std::string err;
+    CHECK(d.open(parts, err));
+    CHECK(std::abs(d.lens(0).fps - 30.0) < 0.01 && d.lens(0).width == 128);
+    CHECK(d.lens(0).durationUs == startUs(kPhotos - 1) + kFrameUs);
+    bool inOrder = true;
+    int photos = 0;
+    for (int64_t us = -1;; ++photos) {
+        const int i = next(d, &us);
+        if (i < 0) {
+            CHECK(i == -1);
+            break;
+        }
+        inOrder = inOrder && i == photos && us == startUs(i);
+    }
+    CHECK(inOrder && photos == kPhotos);
+    int64_t us = -1;
+    CHECK(d.seekTo(orbiscore::MsOfUs(startUs(13)), err) && next(d, &us) == 13 && us == startUs(13));
+    CHECK(next(d) == 14);
+    CHECK(d.seekTo(orbiscore::MsOfUs(startUs(2)), err) && next(d) == 2);
+    CHECK(d.seekTo(orbiscore::MsOfUs(startUs(7)) + 5, err) && next(d) == 8); // after 7's time
+    CHECK(d.nearestKeyframeMs(orbiscore::MsOfUs(startUs(7)) + 5) == orbiscore::MsOfUs(startUs(7)));
+    CHECK(d.nearestKeyframeMs(orbiscore::MsOfUs(startUs(7)) + 25) == orbiscore::MsOfUs(startUs(8)));
+
+    std::printf("  ... no more files open than kMaxOpenFiles, through all and back\n");
+    {
+        orbiscore::LensDemuxer demux;
+        CHECK(demux.open(parts, [](const auto*, const auto*, auto*, std::string&) { return true; },
+                         err));
+        CHECK(demux.openFileCount() == 2); // the first and the last
+        int most = 0, read = 0;
+        AVFrame* f0 = nullptr;
+        AVFrame* f1 = nullptr;
+        while (demux.readNextPair(f0, f1, nullptr, err)) {
+            ++read;
+            most = std::max(most, demux.openFileCount());
+            av_frame_free(&f0);
+            av_frame_free(&f1);
+        }
+        CHECK(err.empty() && read == kPhotos && most == orbiscore::LensDemuxer::kMaxOpenFiles);
+        CHECK(demux.seekTo(0, err) && demux.readNextPair(f0, f1, nullptr, err));
+        av_frame_free(&f0);
+        av_frame_free(&f1);
+        CHECK(demux.openFileCount() <= orbiscore::LensDemuxer::kMaxOpenFiles);
+    }
+
+    std::printf("  ... a photo gone since open: an error when reached, the rest reads\n");
+    {
+        orbiscore::FisheyeDemux g;
+        CHECK(g.open(parts, err));
+        std::filesystem::rename(paths[10], paths[10] + ".gone");
+        int i = 0;
+        while ((i = next(g)) >= 0 && i < 9) {
+        }
+        CHECK(i == 9);
+        orbiscore::Image a, b;
+        CHECK(!g.readNextPair(a, b, nullptr, err));
+        CHECK(err.find("(part 11)") != std::string::npos && err.find(paths[10]) != std::string::npos);
+        err.clear();
+        CHECK(!g.seekTo(orbiscore::MsOfUs(startUs(10)), err) && err.find("(part 11)") != std::string::npos);
+        err.clear();
+        CHECK(g.seekTo(orbiscore::MsOfUs(startUs(12)), err) && next(g) == 12);
+        std::filesystem::rename(paths[10] + ".gone", paths[10]);
+        CHECK(g.seekTo(orbiscore::MsOfUs(startUs(10)), err) && next(g) == 10); // back
+    }
+
+    std::printf("  ... a photo unlike the first: refused when reached\n");
+    {
+        const std::string odd = dir + "/photo_odd.insp";
+        CHECK(testmedia::writeJpeg(odd, 256, 64, [](int, int) { return uint8_t(128); }));
+        std::vector<orbiscore::ClipPart> withOdd = parts;
+        withOdd[5].lenses = {{odd, 0, left}, {odd, 0, right}};
+        orbiscore::FisheyeDemux g;
+        CHECK(g.open(withOdd, err));
+        CHECK(!g.seekTo(orbiscore::MsOfUs(startUs(5)), err));
+        CHECK(err.find("isn't coded like") != std::string::npos && err.find("(part 6)") != std::string::npos &&
+              err.find(odd) != std::string::npos);
+        err.clear();
+        CHECK(g.seekTo(orbiscore::MsOfUs(startUs(6)), err) && next(g) == 6);
+        std::filesystem::remove(odd);
+    }
+    for (const std::string& p : paths)
+        std::filesystem::remove(p);
+}
+
 } // namespace
 
 int main()
@@ -802,6 +937,7 @@ int main()
     testSideBySide(dir.string());
     testPairPictureBytes(a, b, dir.string());
     testMissingFrames(dir.string());
+    testPhotoSeries(dir.string());
     testFrameState();
     if (!g_failures)
         std::filesystem::remove_all(dir);

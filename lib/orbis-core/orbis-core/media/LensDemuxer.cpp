@@ -29,11 +29,15 @@ std::string AvError(const std::string& what, int rc)
     return what + ": " + why;
 }
 
-// A frame's time in microseconds, rounded from the time base exactly.
+constexpr AVRational kMicros{1, 1000000};
+
+// A frame's time in microseconds, rounded from its time base exactly: the
+// one drainDecoder gives it (a still's are µs), else the stream's `tb`.
 int64_t ptsUs(const AVFrame* f, AVRational tb)
 {
     const int64_t p = (f->best_effort_timestamp == AV_NOPTS_VALUE) ? f->pts : f->best_effort_timestamp;
-    return (p == AV_NOPTS_VALUE) ? 0 : av_rescale_q(p, tb, AVRational{1, 1000000});
+    const AVRational t = f->time_base.num > 0 && f->time_base.den > 0 ? f->time_base : tb;
+    return (p == AV_NOPTS_VALUE) ? 0 : av_rescale_q(p, t, kMicros);
 }
 
 // The stream's matrix and range, as its VUI says. Where it doesn't: limited
@@ -160,27 +164,70 @@ void LensDemuxer::close()
     m_unpairedLogged = false;
 }
 
-int LensDemuxer::openInput(const std::string& path, std::string& err)
+int LensDemuxer::openInput(const std::string& path, std::string& err, const Part* keep) const
 {
-    for (size_t i = 0; i < m_inputs.size(); ++i)
+    int index = -1;
+    for (size_t i = 0; i < m_inputs.size() && index < 0; ++i)
         if (m_inputs[i].path == path)
-            return static_cast<int>(i);
-    Input in;
-    in.path = path;
+            index = static_cast<int>(i);
+    if (index >= 0 && m_inputs[index].fmt) {
+        m_inputs[index].lastUse = ++m_useTick;
+        return index;
+    }
+    AVFormatContext* fmt = nullptr;
     // The caller names the file: it knows which clip that is.
-    if (const int rc = avformat_open_input(&in.fmt, path.c_str(), nullptr, nullptr); rc < 0) {
+    if (const int rc = avformat_open_input(&fmt, path.c_str(), nullptr, nullptr); rc < 0) {
         char why[AV_ERROR_MAX_STRING_SIZE] = {0};
         av_strerror(rc, why, sizeof(why));
         err = std::string("avformat_open_input failed: ") + why;
         return -1;
     }
-    if (avformat_find_stream_info(in.fmt, nullptr) < 0) {
-        avformat_close_input(&in.fmt);
+    if (avformat_find_stream_info(fmt, nullptr) < 0) {
+        avformat_close_input(&fmt);
         err = "avformat_find_stream_info failed";
         return -1;
     }
-    m_inputs.push_back(std::move(in));
-    return static_cast<int>(m_inputs.size()) - 1;
+    if (index < 0) {
+        m_inputs.push_back(Input{path});
+        index = static_cast<int>(m_inputs.size()) - 1;
+    }
+    Input& in = m_inputs[index];
+    in.fmt = fmt;
+    in.drainStarted = false;
+    in.lastUse = ++m_useTick;
+    closeSpareInputs(keep, index);
+    return index;
+}
+
+void LensDemuxer::closeSpareInputs(const Part* keep, int also) const
+{
+    const auto kept = [&](int i) {
+        const auto in = [i](const std::vector<int>& v) {
+            return std::find(v.begin(), v.end(), i) != v.end();
+        };
+        return i == also || in(m_lensInput) || (keep && in(keep->lensInput));
+    };
+    for (;;) {
+        int open = 0, oldest = -1;
+        for (size_t i = 0; i < m_inputs.size(); ++i) {
+            if (!m_inputs[i].fmt)
+                continue;
+            ++open;
+            if (!kept(static_cast<int>(i)) &&
+                (oldest < 0 || m_inputs[i].lastUse < m_inputs[oldest].lastUse))
+                oldest = static_cast<int>(i);
+        }
+        if (open <= kMaxOpenFiles || oldest < 0)
+            return;
+        // Its part's streams are found again when it is opened again (ensurePart).
+        avformat_close_input(&m_inputs[oldest].fmt);
+    }
+}
+
+int LensDemuxer::openFileCount() const
+{
+    return static_cast<int>(std::count_if(m_inputs.begin(), m_inputs.end(),
+                                          [](const Input& in) { return in.fmt != nullptr; }));
 }
 
 namespace {
@@ -305,8 +352,16 @@ bool LensDemuxer::open(const std::string& path, const DecoderSetup& setup, std::
             return false;
         }
     }
-    m_parts.push_back({0, m_lensInput, m_videoStreamIndex,
-                       std::vector<int64_t>(m_lensInput.size(), 0)});
+    Part part;
+    for (size_t l = 0; l < m_lensInput.size(); ++l) {
+        // Each video stream a lens, in order (the n-th lens stream).
+        part.sources.push_back({path, static_cast<int>(l)});
+    }
+    part.opened = true;
+    part.lensInput = m_lensInput;
+    part.lensStream = m_videoStreamIndex;
+    part.offset.assign(m_lensInput.size(), 0);
+    m_parts.push_back(std::move(part));
     return finishOpen(err);
 }
 
@@ -316,18 +371,22 @@ bool LensDemuxer::open(const std::vector<LensSource>& lenses, const DecoderSetup
     return open(std::vector<ClipPart>{{0, lenses}}, setup, err);
 }
 
-bool LensDemuxer::openPart(const std::vector<LensSource>& lenses, const DecoderSetup* setup,
-                           Part& part, std::string& failedPath, std::string& err)
+bool LensDemuxer::openPart(Part& part, const DecoderSetup* setup, std::string& failedPath,
+                           std::string& err) const
 {
+    const std::vector<LensSource>& lenses = part.sources;
     if (!setup && lenses.size() != m_dec.size()) {
         err = "a part has " + std::to_string(lenses.size()) + " lenses, the first " +
               std::to_string(m_dec.size());
         return false;
     }
+    part.lensInput.clear();
+    part.lensStream.clear();
+    part.offset.clear();
     for (size_t l = 0; l < lenses.size(); ++l) {
         const LensSource& src = lenses[l];
         failedPath = src.path;
-        const int input = openInput(src.path, err);
+        const int input = openInput(src.path, err, &part);
         if (input < 0)
             return false;
         // The n-th lens stream of the file.
@@ -341,7 +400,8 @@ bool LensDemuxer::openPart(const std::vector<LensSource>& lenses, const DecoderS
             return false;
         }
         if (setup) {
-            if (!addLens(input, streamIndex, *setup, err))
+            // Only the first part's: open() isn't const.
+            if (!const_cast<LensDemuxer*>(this)->addLens(input, streamIndex, *setup, err))
                 return false;
         } else {
             // The first part's decoders go on into this one: it must be
@@ -363,7 +423,34 @@ bool LensDemuxer::openPart(const std::vector<LensSource>& lenses, const DecoderS
         part.lensInput.push_back(input);
         part.lensStream.push_back(streamIndex);
     }
+    for (size_t l = 0; l < part.lensInput.size(); ++l)
+        part.offset.push_back(av_rescale_q(part.startUs, AVRational{1, 1000000},
+                                           lensStream(static_cast<int>(l))->time_base));
+    part.opened = true;
     return true;
+}
+
+bool LensDemuxer::ensurePart(size_t p, std::string& err) const
+{
+    Part& part = m_parts[p];
+    if (part.opened) {
+        bool open = true;
+        for (const int i : part.lensInput)
+            open = open && m_inputs[i].fmt;
+        if (open) {
+            for (const int i : part.lensInput)
+                m_inputs[i].lastUse = ++m_useTick;
+            return true;
+        }
+    }
+    std::string failedPath;
+    if (openPart(part, nullptr, failedPath, err))
+        return true;
+    part.opened = false;
+    err += " (part " + std::to_string(p + 1) + ")";
+    if (failedPath != m_parts[0].sources[0].path)
+        err += ": " + failedPath;
+    return false;
 }
 
 bool LensDemuxer::open(const std::vector<ClipPart>& parts, const DecoderSetup& setup,
@@ -379,38 +466,50 @@ bool LensDemuxer::open(const std::vector<ClipPart>& parts, const DecoderSetup& s
         return l.size() == 2 && l[0].path == l[1].path && l[0].stream == l[1].stream;
     };
     const bool shared = sharesStream(parts.front().lenses);
-    for (const ClipPart& p : parts)
+    for (const ClipPart& p : parts) {
         if (sharesStream(p.lenses) != shared) {
             err = "the parts don't hold their lenses alike";
             return false;
         }
-    for (size_t p = 0; p < parts.size(); ++p) {
-        // The first part's first file is the clip's, which the caller
-        // names; another one is named here.
-        Part part;
-        part.startUs = parts[p].startUs;
-        std::string failedPath;
-        const std::vector<LensSource> lenses =
-            shared ? std::vector<LensSource>{parts[p].lenses[0]} : parts[p].lenses;
-        if (!openPart(lenses, p == 0 ? &setup : nullptr, part, failedPath, err)) {
-            if (p > 0)
-                err += " (part " + std::to_string(p + 1) + ")";
-            if (failedPath != parts[0].lenses[0].path)
-                err += ": " + failedPath;
-            close();
+        if ((p.stillUs > 0) != (parts.front().stillUs > 0)) {
+            err = "some parts are still pictures and some aren't";
             return false;
         }
-        if (p == 0) {
-            m_lensInput = part.lensInput;
-            m_videoStreamIndex = part.lensStream;
-        }
-        for (size_t l = 0; l < part.lensInput.size(); ++l)
-            part.offset.push_back(av_rescale_q(part.startUs, AVRational{1, 1000000},
-                                               lensStream(static_cast<int>(l))->time_base));
+    }
+    for (const ClipPart& cp : parts) {
+        Part part;
+        part.startUs = cp.startUs;
+        part.durationUs = cp.stillUs;
+        part.still = cp.stillUs > 0;
+        part.sources = shared ? std::vector<LensSource>{cp.lenses[0]} : cp.lenses;
         m_parts.push_back(std::move(part));
     }
-    // A clip in parts is as long as its last part's end.
-    if (m_parts.size() > 1)
+    // The first part's decoders, and the last part for the clip's length;
+    // the rest when they're reached (ensurePart). The first part's first
+    // file is the clip's, which the caller names; another one is named here.
+    std::string failedPath;
+    if (!openPart(m_parts[0], &setup, failedPath, err)) {
+        if (failedPath != m_parts[0].sources[0].path)
+            err += ": " + failedPath;
+        close();
+        return false;
+    }
+    m_lensInput = m_parts[0].lensInput;
+    m_videoStreamIndex = m_parts[0].lensStream;
+    if (m_parts.size() > 1 && !ensurePart(m_parts.size() - 1, err)) {
+        close();
+        return false;
+    }
+    // Stills: as many frames a second as they show for, and the series as
+    // long as its last one's end.
+    if (m_parts[0].still) {
+        for (InsvStreamInfo& info : m_lenses) {
+            info.fps = 1e6 / static_cast<double>(m_parts[0].durationUs);
+            info.durationUs = m_parts.back().startUs + m_parts.back().durationUs;
+            info.durationMs = info.durationUs / 1000;
+        }
+    } else if (m_parts.size() > 1)
+        // A clip in parts is as long as its last part's end.
         for (size_t l = 0; l < m_lenses.size(); ++l) {
             const Part& last = m_parts.back();
             const AVFormatContext* fmt = m_inputs[last.lensInput[l]].fmt;
@@ -459,12 +558,20 @@ bool LensDemuxer::drainDecoder(int lens, std::string& err)
             }
             return true;
         }
-        // Into clip time: a later part's frames count from its own start.
-        if (const int64_t off = m_parts[m_part].offset[lens]; off != 0) {
-            if (frm->pts != AV_NOPTS_VALUE)
-                frm->pts += off;
-            if (frm->best_effort_timestamp != AV_NOPTS_VALUE)
-                frm->best_effort_timestamp += off;
+        // Into clip time: a later part's frames count from its own start, a
+        // still's one frame is at it.
+        const Part& part = m_parts[m_part];
+        if (part.still) {
+            frm->pts = frm->best_effort_timestamp = part.startUs;
+            frm->time_base = kMicros;
+        } else {
+            if (const int64_t off = part.offset[lens]; off != 0) {
+                if (frm->pts != AV_NOPTS_VALUE)
+                    frm->pts += off;
+                if (frm->best_effort_timestamp != AV_NOPTS_VALUE)
+                    frm->best_effort_timestamp += off;
+            }
+            frm->time_base = lensStream(lens)->time_base;
         }
         m_fifo[lens].push_back(frm);
     }
@@ -561,6 +668,7 @@ size_t LensDemuxer::partAtUs(int64_t us) const
 
 void LensDemuxer::usePart(size_t part)
 {
+    // Opened by the caller (ensurePart).
     m_part = part;
     m_lensInput = m_parts[part].lensInput;
     m_videoStreamIndex = m_parts[part].lensStream;
@@ -569,14 +677,26 @@ void LensDemuxer::usePart(size_t part)
 void LensDemuxer::partKeyframes(size_t part, int64_t timestampMs, int64_t& before,
                                 int64_t& after) const
 {
+    std::string err;
+    if (!ensurePart(part, err)) {
+        // Unknown here; the seek or read that goes there says why.
+        before = after = kNoKeyframe;
+        return;
+    }
     const Part& pt = m_parts[part];
+    if (pt.still) {
+        const int64_t us = timestampMs * 1000;
+        before = us >= pt.startUs ? pt.startUs : kNoKeyframe;
+        after = us <= pt.startUs ? pt.startUs : kNoKeyframe;
+        return;
+    }
     AVStream* st = m_inputs[pt.lensInput[0]].fmt->streams[pt.lensStream[0]];
     const int64_t ts = av_rescale_q(timestampMs, AVRational{1, 1000}, st->time_base) - pt.offset[0];
     // Keyframes only (no AVSEEK_FLAG_ANY).
     const AVIndexEntry* b = avformat_index_get_entry_from_timestamp(st, ts, AVSEEK_FLAG_BACKWARD);
     const AVIndexEntry* a = avformat_index_get_entry_from_timestamp(st, ts, 0);
-    before = b ? b->timestamp + pt.offset[0] : kNoKeyframe;
-    after = a ? a->timestamp + pt.offset[0] : kNoKeyframe;
+    before = b ? av_rescale_q(b->timestamp + pt.offset[0], st->time_base, kMicros) : kNoKeyframe;
+    after = a ? av_rescale_q(a->timestamp + pt.offset[0], st->time_base, kMicros) : kNoKeyframe;
 }
 
 void LensDemuxer::keyframesAround(int64_t timestampMs, int64_t& before, int64_t& after) const
@@ -603,11 +723,7 @@ void LensDemuxer::keyframesAroundMs(int64_t timestampMs, int64_t& before, int64_
     }
     int64_t b = 0, a = 0;
     keyframesAround(timestampMs, b, a);
-    const AVRational tb = lensStream(0)->time_base;
-    const auto ms = [&](int64_t t) {
-        return t == kNoKeyframe ? int64_t(-1)
-                                : MsOfUs(av_rescale_q(t, tb, AVRational{1, 1000000}));
-    };
+    const auto ms = [](int64_t us) { return us == kNoKeyframe ? int64_t(-1) : MsOfUs(us); };
     before = ms(b);
     after = ms(a);
 }
@@ -621,14 +737,13 @@ int64_t LensDemuxer::nearestKeyframeMs(int64_t timestampMs) const
                                  timestampMs);
     int64_t before = 0, after = 0;
     keyframesAround(timestampMs, before, after);
-    const AVRational tb = lensStream(0)->time_base;
-    const int64_t ts = av_rescale_q(timestampMs, AVRational{1, 1000}, tb);
+    const int64_t ts = timestampMs * 1000;
     int64_t best = before;
     if (best == kNoKeyframe || (after != kNoKeyframe && after - ts < ts - before))
         best = after;
     if (best == kNoKeyframe)
         return timestampMs;
-    return MsOfUs(av_rescale_q(best, tb, AVRational{1, 1000000}));
+    return MsOfUs(best);
 }
 
 bool LensDemuxer::seekTo(int64_t timestampMs, std::string& err)
@@ -649,7 +764,11 @@ bool LensDemuxer::seekToUs(int64_t fromUs, std::string& err)
     // keyframes decide; with a file per lens, carrying on is right for the
     // other one too, just not always the cheaper way.
     // Only within the part being read: another part's files start over.
-    const size_t part = partAtUs(at);
+    // A still before the target has nothing at or after it: the next part
+    // holds the frame (and a photo is a costly decode to drop).
+    size_t part = partAtUs(at);
+    if (m_parts[part].still && m_parts[part].startUs < at && part + 1 < m_parts.size())
+        ++part;
     if (m_lastReadUs != kNoTime && fromUs > m_lastReadUs && part == m_part) {
         const int64_t atMs = at / 1000; // at or before the frame wanted
         double kf = -1.0;
@@ -659,7 +778,7 @@ bool LensDemuxer::seekToUs(int64_t fromUs, std::string& err)
             int64_t before = 0, unused = 0;
             partKeyframes(part, atMs, before, unused);
             if (before != kNoKeyframe)
-                kf = before * av_q2d(lensStream(0)->time_base);
+                kf = before / 1e6;
         }
         if (kf >= 0 && std::llround(kf * 1e6) <= m_lastReadUs) {
             m_seekFromUs = fromUs;
@@ -667,13 +786,22 @@ bool LensDemuxer::seekToUs(int64_t fromUs, std::string& err)
         }
     }
     m_lastReadUs = kNoTime;
+    if (!ensurePart(part, err)) {
+        // No file of the part to read: no read may go on (see seekTo in the
+        // header).
+        resetDecoders();
+        m_seekFailed = err;
+        return false;
+    }
     usePart(part);
     // In the part's own time. To the end of the window the frame wanted
     // lies in (it is the only frame there): a keyframe there is landed on,
     // not the one before it, as a seek to the start of the window would.
     const double fps = m_lenses.empty() ? 0.0 : m_lenses[0].fps;
     const int64_t windowUs = fps > 0.0 ? std::max<int64_t>(0, std::llround(1e6 / fps) - 1) : 0;
-    const int64_t targetUs = std::max<int64_t>(0, at + windowUs - m_parts[part].startUs);
+    // A still has its one frame at its start.
+    const int64_t targetUs =
+        m_parts[part].still ? 0 : std::max<int64_t>(0, at + windowUs - m_parts[part].startUs);
     for (size_t i = 0; i < m_inputs.size(); ++i) {
         const std::vector<int>& ins = m_parts[part].lensInput;
         if (std::find(ins.begin(), ins.end(), static_cast<int>(i)) == ins.end())
@@ -709,8 +837,10 @@ bool LensDemuxer::nextPart(std::string& err)
             if (!pumpOnce(m_lensInput[l], err))
                 return false;
     // The next part's files to their start before going on into them: if
-    // one can't, this part stays the one read (at its end), and the next
-    // read tries again.
+    // one can't (or can't be opened), this part stays the one read (at its
+    // end), and the next read tries again.
+    if (!ensurePart(m_part + 1, err))
+        return false;
     for (const int i : m_parts[m_part + 1].lensInput) {
         Input& in = m_inputs[i];
         if (const int rc = av_seek_frame(in.fmt, -1, 0, AVSEEK_FLAG_BACKWARD); rc < 0) {
